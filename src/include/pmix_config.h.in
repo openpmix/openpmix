@@ -88,6 +88,9 @@
 /* Define to 1 if you have the <err.h> header file. */
 #undef HAVE_ERR_H
 
+/* Define to 1 if you have the <event.h> header file. */
+#undef HAVE_EVENT_H
+
 /* Define to 1 if you have the <execinfo.h> header file. */
 #undef HAVE_EXECINFO_H
 
@@ -129,6 +132,12 @@
 
 /* Define to 1 if you have the <ioLib.h> header file. */
 #undef HAVE_IOLIB_H
+
+/* Define to 1 if you have the `event' library (-levent). */
+#undef HAVE_LIBEVENT
+
+/* Define to 1 if you have the `event_pthreads' library (-levent_pthreads). */
+#undef HAVE_LIBEVENT_PTHREADS
 
 /* Define to 1 if you have the <libgen.h> header file. */
 #undef HAVE_LIBGEN_H
@@ -487,43 +496,6 @@
    prevent bus errors */
 #undef PMIX_ALIGN_WORD_SIZE_INTEGERS
 
-/* Assembly align directive expects logarithmic value */
-#undef PMIX_ASM_ALIGN_LOG
-
-/* What ARM assembly version to use */
-#undef PMIX_ASM_ARM_VERSION
-
-/* Assembly directive for exporting symbols */
-#undef PMIX_ASM_GLOBAL
-
-/* Assembly prefix for gsym labels */
-#undef PMIX_ASM_GSYM
-
-/* Assembly suffix for labels */
-#undef PMIX_ASM_LABEL_SUFFIX
-
-/* Assembly prefix for lsym labels */
-#undef PMIX_ASM_LSYM
-
-/* Do we need to give a .size directive */
-#undef PMIX_ASM_SIZE
-
-/* Whether we can do 64bit assembly operations or not. Should not be used
-   outside of the assembly header files */
-#undef PMIX_ASM_SUPPORT_64BIT
-
-/* Assembly directive for setting text section */
-#undef PMIX_ASM_TEXT
-
-/* How to set function type in .type directive */
-#undef PMIX_ASM_TYPE
-
-/* Architecture type of assembly to use for atomic operations */
-#undef PMIX_ASSEMBLY_ARCH
-
-/* Format of assembly file */
-#undef PMIX_ASSEMBLY_FORMAT
-
 /* The compiler $lower which OMPI was built with */
 #undef PMIX_BUILD_PLATFORM_COMPILER_FAMILYID
 
@@ -551,12 +523,6 @@
 /* Use #pragma ident strings for C files */
 #undef PMIX_CC_USE_PRAGMA_IDENT
 
-/* Whether C compiler supports DEC style inline assembly */
-#undef PMIX_C_DEC_INLINE_ASSEMBLY
-
-/* Whether C compiler supports GCC style inline assembly */
-#undef PMIX_C_GCC_INLINE_ASSEMBLY
-
 /* Whether C compiler supports __builtin_clz */
 #undef PMIX_C_HAVE_BUILTIN_CLZ
 
@@ -569,17 +535,11 @@
 /* Whether C compiler supports symbol visibility or not */
 #undef PMIX_C_HAVE_VISIBILITY
 
-/* Whether C compiler supports XLC style inline assembly */
-#undef PMIX_C_XLC_INLINE_ASSEMBLY
-
 /* Whether we want developer-level debugging code or not */
 #undef PMIX_ENABLE_DEBUG
 
 /* Greek - alpha, beta, etc - release number of PMI-Exascale Client Library */
 #undef PMIX_GREEK_VERSION
-
-/* Whether there is an atomic assembly file available */
-#undef PMIX_HAVE_ASM_FILE
 
 /* Whether your compiler has __attribute__ or not */
 #undef PMIX_HAVE_ATTRIBUTE
@@ -693,9 +653,6 @@
 /* package/branding string for Open MPI */
 #undef PMIX_PACKAGE_STRING
 
-/* Whether r notation is used for ppc registers */
-#undef PMIX_POWERPC_R_REGISTERS
-
 /* type to use for ptrdiff_t */
 #undef PMIX_PTRDIFF_TYPE
 
@@ -720,9 +677,6 @@
 /* Whether we want to include the repository version or not PMI-Exascale
    Client Library */
 #undef PMIX_WANT_REPO_REV
-
-/* whether we want to have smp locks in atomic ops or not */
-#undef PMIX_WANT_SMP_LOCKS
 
 /* The size of `char', as computed by sizeof. */
 #undef SIZEOF_CHAR

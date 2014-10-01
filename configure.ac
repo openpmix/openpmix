@@ -415,13 +415,10 @@ PMIX_CHECK_ATTRIBUTES
 PMIX_CHECK_COMPILER_VERSION_ID
 
 ##################################
-# Assembler Configuration
+# Lex Configuration
 ##################################
 
-pmix_show_subtitle "Assembler"
-
-AM_PROG_AS
-PMIX_CONFIG_ASM
+pmix_show_subtitle "Lex"
 
 #
 # We also need lex
@@ -781,6 +778,13 @@ PMIX_CASE_SENSITIVE_FS_SETUP
 pmix_show_title "Symbol visibility feature"
 
 PMIX_CHECK_VISIBILITY
+
+##################################
+# Libevent
+##################################
+pmix_show_title "Libevent"
+
+PMIX_LIBEVENT_CONFIG
 
 ############################################################################
 # Libtool: part two
