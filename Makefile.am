@@ -32,10 +32,10 @@ sources =
 nodist_headers =
 
 EXTRA_DIST = README INSTALL VERSION LICENSE autogen.sh \
-             config/pmix_get_version.sh util/help-pmix-util.txt
-
-# setup the distribution tarball
-DIST_SUBDIRS = config src
+             config/pmix_get_version.sh src/util/help-pmix-util.txt \
+             src/include/pmix_config.h\
+             src/include/pmix_stdint.h \
+             include/pmix.h include/pmi_api.h include/pmi2_api.h
 
 include config/Makefile.am
 include src/class/Makefile.am
@@ -48,6 +48,6 @@ libpmix_la_SOURCES = $(headers) $(sources)
 libpmix_la_LDFLAGS = $(ldflags) -version-info $(libpmix_so_version) $(PMIX_LIBS)
 
 dist-hook:
-	csh "$(top_srcdir)/config/distscript.csh" "$(top_srcdir)" "$(distdir)" "$(OMPI_VERSION)" "$(OMPI_SVN_R)"
+	csh "$(top_srcdir)/config/distscript.csh" "$(top_srcdir)" "$(distdir)" "$(PMIX_VERSION)" "$(PMIX_SVN_R)"
 
 ACLOCAL_AMFLAGS = -I config

@@ -24,6 +24,9 @@ config.lt
 config.status
 config/Makefile
 libtool
+auto.out
+config.out
+dist.out
 src/include/pmix_config.h
 src/include/pmix_config.h.in~
 src/include/stamp-h1

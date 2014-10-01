@@ -169,6 +169,9 @@ AC_ARG_ENABLE(dist,
 if test "$PMIX_WANT_DIST" = "yes"; then
     AC_MSG_WARN([Configuring in 'make dist' mode])
     AC_MSG_WARN([Most make targets may be non-functional!])
+    pmix_dist_enabled=1
+else
+    pmix_dist_enabled=0
 fi
 
 # BEGIN: Derived from GASNet

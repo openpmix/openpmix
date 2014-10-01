@@ -31,7 +31,7 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
     AC_ARG_WITH([libevent-libdir],
                 [AC_HELP_STRING([--with-libevent-libdir=DIR],
                                 [Search for libevent libraries in DIR ])])
-
+    if test $pmix_dist_enabled != 1; then
         AC_MSG_CHECKING([for libevent in])
         if test ! -z "$with_libevent" -a "$with_libevent" != "yes"; then
             pmix_event_dir=$with_libevent
@@ -77,4 +77,5 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
                       AC_MSG_WARN([PMIx requires libevent to be compiled with])
                       AC_MSG_WARN([thread support enabled])
                       AC_MSG_ERROR([Cannot continue])])
+    fi
 ])dnl

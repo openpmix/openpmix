@@ -59,21 +59,21 @@ else
 fi
 
 greekonly=0
-want_ompi=1
 autogen_args=
+config_args=
 distdir=".."
-while test "$1" != ""; do
-    case $1 in
+for i in "$@"; do
+    case $i in
         -greekonly) greekonly=1 ;;
         --greekonly) greekonly=1 ;;
         -highok) highok=1 ;;
         --highok) highok=1 ;;
-        -no-ompi) want_ompi=0 ;;
-        --no-ompi) want_ompi=0 ;;
-        -autogen-args) autogen_args=$2; shift ;;
-        --autogen-args) autogen_args=$2; shift ;;
-        -distdir) distdir=$2; shift ;;
-        --distdir) distdir=$2; shift ;;
+        -autogen-args=*) autogen_args="${i#*=}"; shift ;;
+        --autogen-args=*) autogen_args="${i#*=}"; shift ;;
+        -config-args=*) config_args="${i#*=}"; shift ;;
+        --config-args=*) config_args="${i#*=}"; shift ;;
+        -distdir=*) distdir="${i#*=}"; shift ;;
+        --distdir=*) distdir="${i#*=}"; shift ;;
         --dirtyok) dirty_ok=1; shift ;;
         --verok) gnu_version_ignore=1;;
         -verok) gnu_version_ignore=1;;
@@ -84,8 +84,8 @@ Unrecognized argument: $1
 Valid arguments:
   --greekonly     Only build the greek tarball (vs. both tarballs)
   --highok        Ok if Autotools versions are too high
-  --no-ompi       Don't build the OMPI or OSHMEM layers
   --autogen-args  Arguments to pass to autogen
+  --config-args   Arguments to pass to configure (e.g., --with-libevent=<foo>)
   --distdir       Move the tarball(s) to this directory when done
   --dirtyok       Ok if the source tree is dirty
   --verok         Ignore result of autotools version checking
@@ -255,11 +255,7 @@ make_tarball() {
     #
     echo "*** Running autogen $autogen_args..."
     rm -f success
-    if test "$want_ompi" = "1" ; then
-        (./autogen.pl $autogen_args 2>&1 && touch success) | tee auto.out
-    else
-        (./autogen.pl --no-ompi $autogen_args 2>&1 && touch success) | tee auto.out
-    fi
+    (./autogen.sh $autogen_args 2>&1 && touch success) | tee auto.out
     if test ! -f success; then
         echo "Autogen failed.  Aborting"
         exit 1
@@ -270,7 +266,7 @@ make_tarball() {
     #
     echo "*** Running configure..."
     rm -f success
-    (./configure --enable-dist 2>&1 && touch success) | tee config.out
+    (./configure --enable-dist $config_args 2>&1 && touch success) | tee config.out
     if test ! -f success; then
         echo "Configure failed.  Aborting"
         exit 1

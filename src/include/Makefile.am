@@ -28,8 +28,13 @@
 headers += \
         src/include/align.h \
 	src/include/constants.h \
+        src/include/hash_string.h \
 	src/include/pmix_socket_errno.h \
-	src/include/types.h
+	src/include/types.h \
+        src/include/pmix_stdint.h \
+        src/include/pmix_config_top.h \
+        src/include/pmix_config_bottom.h \
+        src/include/pmix_portable_platform.h
 
 nodist_headers += \
 	src/include/version.h
