@@ -41,7 +41,7 @@
 #endif
 
 #if PMIX_ENABLE_DEBUG
-#include "pmix/util/output.h"
+#include "src/util/output.h"
 #endif
 
 

@@ -349,60 +349,6 @@ typedef unsigned char bool;
 #define PMIX_PATH_SEP "/"
 #define PMIX_ENV_SEP  ':'
 
-
-/*
- * Do we want memory debugging?
- *
- * A few scenarios:
- *
- * 1. In the OMPI C library: we want these defines in all cases
- * 2. In the OMPI C++ bindings: we do not want them
- * 3. In the OMPI C++ executables: we do want them
- *
- * So for 1, everyone must include <ompi_config.h> first.  For 2, the
- * C++ bindings will never include <ompi_config.h> -- they will only
- * include <mpi.h>, which includes <ompi_config.h>, but after
- * setting OMPI_BUILDING to 0  For 3, it's the same as 1 -- just include
- * <ompi_config.h> first.
- *
- * Give code that needs to include ompi_config.h but really can't have
- * this stuff enabled (like the memory manager code) a way to turn us
- * off
- */
-#if PMIX_ENABLE_MEM_DEBUG && !defined(PMIX_DISABLE_ENABLE_MEM_DEBUG)
-
-/* It is safe to include util/malloc.h here because a) it will only
-   happen when we are building OMPI and therefore have a full OMPI
-   source tree [including headers] available, and b) we guaranteed to
-   *not* to include anything else via util/malloc.h, so we won't
-   have Cascading Includes Of Death. */
-#    include "util/malloc.h"
-#    if defined(malloc)
-#        undef malloc
-#    endif
-#    define malloc(size) pmix_malloc((size), __FILE__, __LINE__)
-#    if defined(calloc)
-#        undef calloc
-#    endif
-#    define calloc(nmembers, size) pmix_calloc((nmembers), (size), __FILE__, __LINE__)
-#    if defined(realloc)
-#        undef realloc
-#    endif
-#    define realloc(ptr, size) pmix_realloc((ptr), (size), __FILE__, __LINE__)
-#    if defined(free)
-#        undef free
-#    endif
-#    define free(ptr) pmix_free((ptr), __FILE__, __LINE__)
-
-/*
- * If we're mem debugging, make the PMIX_DEBUG_ZERO resolve to memset
- */
-#    include <string.h>
-#    define PMIX_DEBUG_ZERO(obj) memset(&(obj), 0, sizeof(obj))
-#else
-#    define PMIX_DEBUG_ZERO(obj)
-#endif
-
 /*
  * printf functions for portability (only when building Open MPI)
  */
@@ -462,17 +408,6 @@ typedef unsigned char bool;
  * in such a way to keep the compilers silent.
  */
 #  define PMIX_INT_TO_BOOL(VALUE)  (bool)(VALUE)
-
-/**
- * Top level define to check 2 things: a) if we want ipv6 support, and
- * b) the underlying system supports ipv6.  Having one #define for
- * this makes it simpler to check throughout the code base.
- */
-#if PMIX_ENABLE_IPV6 && defined(HAVE_STRUCT_SOCKADDR_IN6)
-#define PMIX_ENABLE_IPV6 1
-#else
-#define PMIX_ENABLE_IPV6 0
-#endif
 
 #if !defined(HAVE_STRUCT_SOCKADDR_STORAGE) && defined(HAVE_STRUCT_SOCKADDR_IN)
 #define sockaddr_storage sockaddr

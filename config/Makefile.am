@@ -1,9 +1,9 @@
-#
 # PMIx copyrights:
 # Copyright (c) 2013      Intel, Inc. All rights reserved
 #
 #########################
-# Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
+#
+# Copyright (c) 2004-2006 The Trustees of Indiana University and Indiana
 #                         University Research and Technology
 #                         Corporation.  All rights reserved.
 # Copyright (c) 2004-2005 The University of Tennessee and The University
@@ -13,7 +13,9 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2006-2010 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2010      Oracle and/or its affiliates.  All rights 
+#                         reserved.
 #########################
 # $COPYRIGHT$
 # 
@@ -22,17 +24,8 @@
 # $HEADER$
 #
 
-# This makefile.am does not stand on its own - it is included from
-# src/Makefile.am
+EXTRA_DIST += \
+	config/pmix_get_version.m4sh
 
-headers += \
-        src/include/align.h \
-	src/include/constants.h \
-	src/include/pmix_socket_errno.h \
-	src/include/types.h
-
-nodist_headers += \
-	src/include/version.h
-
-version.h: $(top_builddir)/config.status $(srcdir)/pmix/version.h.in
-	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
+maintainer-clean-local:
+	rm -f config/pmix_get_version.sh

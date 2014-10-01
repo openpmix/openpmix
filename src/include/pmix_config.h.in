@@ -3,7 +3,7 @@
 /* -*- c -*-
  *
  * PMIx copyrights:
- * Copyright (c) 2013      Intel, Inc. All rights reserved
+ * Copyright (c) 2013-2014 Intel, Inc. All rights reserved
  *
  *#########################
  * This code has been adapted from opal_config.h in the Open MPI
@@ -35,6 +35,9 @@
 
 
 
+/* Define if building universal (internal helper macro) */
+#undef AC_APPLE_UNIVERSAL_BUILD
+
 /* Define to 1 if you have the <aio.h> header file. */
 #undef HAVE_AIO_H
 
@@ -44,14 +47,34 @@
 /* Define to 1 if you have the <arpa/inet.h> header file. */
 #undef HAVE_ARPA_INET_H
 
+/* Define to 1 if you have the `asprintf' function. */
+#undef HAVE_ASPRINTF
+
 /* Define to 1 if you have the <complex.h> header file. */
 #undef HAVE_COMPLEX_H
 
 /* Define to 1 if you have the <crt_externs.h> header file. */
 #undef HAVE_CRT_EXTERNS_H
 
-/* Define to 1 if you have the <db.h> header file. */
-#undef HAVE_DB_H
+/* Define to 1 if you have the declaration of `AF_INET6', and to 0 if you
+   don't. */
+#undef HAVE_DECL_AF_INET6
+
+/* Define to 1 if you have the declaration of `AF_UNSPEC', and to 0 if you
+   don't. */
+#undef HAVE_DECL_AF_UNSPEC
+
+/* Define to 1 if you have the declaration of `PF_INET6', and to 0 if you
+   don't. */
+#undef HAVE_DECL_PF_INET6
+
+/* Define to 1 if you have the declaration of `PF_UNSPEC', and to 0 if you
+   don't. */
+#undef HAVE_DECL_PF_UNSPEC
+
+/* Define to 1 if you have the declaration of `__func__', and to 0 if you
+   don't. */
+#undef HAVE_DECL___FUNC__
 
 /* Define to 1 if you have the <dirent.h> header file. */
 #undef HAVE_DIRENT_H
@@ -134,9 +157,6 @@
 /* Define to 1 if the system has the type `mode_t'. */
 #undef HAVE_MODE_T
 
-/* Define to 1 if you have the <ndbm.h> header file. */
-#undef HAVE_NDBM_H
-
 /* Define to 1 if you have the <netdb.h> header file. */
 #undef HAVE_NETDB_H
 
@@ -155,14 +175,8 @@
 /* Define to 1 if you have the <poll.h> header file. */
 #undef HAVE_POLL_H
 
-/* Define to 1 if you have the <pthread.h> header file. */
-#undef HAVE_PTHREAD_H
-
 /* Define to 1 if the system has the type `ptrdiff_t'. */
 #undef HAVE_PTRDIFF_T
-
-/* Define to 1 if you have the <pty.h> header file. */
-#undef HAVE_PTY_H
 
 /* Define to 1 if you have the <pwd.h> header file. */
 #undef HAVE_PWD_H
@@ -176,8 +190,23 @@
 /* Define to 1 if you have the <shlwapi.h> header file. */
 #undef HAVE_SHLWAPI_H
 
+/* Define to 1 if `si_band' is a member of `siginfo_t'. */
+#undef HAVE_SIGINFO_T_SI_BAND
+
+/* Define to 1 if `si_fd' is a member of `siginfo_t'. */
+#undef HAVE_SIGINFO_T_SI_FD
+
 /* Define to 1 if you have the <signal.h> header file. */
 #undef HAVE_SIGNAL_H
+
+/* Define to 1 if you have the `snprintf' function. */
+#undef HAVE_SNPRINTF
+
+/* Define to 1 if you have the `socketpair' function. */
+#undef HAVE_SOCKETPAIR
+
+/* Define to 1 if the system has the type `socklen_t'. */
+#undef HAVE_SOCKLEN_T
 
 /* Define to 1 if you have the <sockLib.h> header file. */
 #undef HAVE_SOCKLIB_H
@@ -206,8 +235,41 @@
 /* Define to 1 if you have the <string.h> header file. */
 #undef HAVE_STRING_H
 
+/* Define to 1 if you have the `strncpy_s' function. */
+#undef HAVE_STRNCPY_S
+
 /* Define to 1 if you have the <stropts.h> header file. */
 #undef HAVE_STROPTS_H
+
+/* Define to 1 if you have the `strsignal' function. */
+#undef HAVE_STRSIGNAL
+
+/* Define to 1 if `d_type' is a member of `struct dirent'. */
+#undef HAVE_STRUCT_DIRENT_D_TYPE
+
+/* Define to 1 if the system has the type `struct sockaddr_in'. */
+#undef HAVE_STRUCT_SOCKADDR_IN
+
+/* Define to 1 if the system has the type `struct sockaddr_in6'. */
+#undef HAVE_STRUCT_SOCKADDR_IN6
+
+/* Define to 1 if `sa_len' is a member of `struct sockaddr'. */
+#undef HAVE_STRUCT_SOCKADDR_SA_LEN
+
+/* Define to 1 if the system has the type `struct sockaddr_storage'. */
+#undef HAVE_STRUCT_SOCKADDR_STORAGE
+
+/* Define to 1 if `f_fstypename' is a member of `struct statfs'. */
+#undef HAVE_STRUCT_STATFS_F_FSTYPENAME
+
+/* Define to 1 if `f_type' is a member of `struct statfs'. */
+#undef HAVE_STRUCT_STATFS_F_TYPE
+
+/* Define to 1 if `f_basetype' is a member of `struct statvfs'. */
+#undef HAVE_STRUCT_STATVFS_F_BASETYPE
+
+/* Define to 1 if `f_fstypename' is a member of `struct statvfs'. */
+#undef HAVE_STRUCT_STATVFS_F_FSTYPENAME
 
 /* Define to 1 if you have the <syslog.h> header file. */
 #undef HAVE_SYSLOG_H
@@ -232,9 +294,6 @@
 
 /* Define to 1 if you have the <sys/queue.h> header file. */
 #undef HAVE_SYS_QUEUE_H
-
-/* Define to 1 if you have the <sys/resource.h> header file. */
-#undef HAVE_SYS_RESOURCE_H
 
 /* Define to 1 if you have the <sys/select.h> header file. */
 #undef HAVE_SYS_SELECT_H
@@ -314,11 +373,24 @@
 /* Define to 1 if you have the <unistd.h> header file. */
 #undef HAVE_UNISTD_H
 
+/* whether unix byteswap routines -- htonl, htons, nothl, ntohs -- are
+   available */
+#undef HAVE_UNIX_BYTESWAP
+
+/* Define to 1 if you have the `usleep' function. */
+#undef HAVE_USLEEP
+
 /* Define to 1 if you have the <util.h> header file. */
 #undef HAVE_UTIL_H
 
 /* Define to 1 if you have the <utmp.h> header file. */
 #undef HAVE_UTMP_H
+
+/* Define to 1 if you have the `vasprintf' function. */
+#undef HAVE_VASPRINTF
+
+/* Define to 1 if you have the `vsnprintf' function. */
+#undef HAVE_VSNPRINTF
 
 /* Define to 1 if the system has the type `__float128'. */
 #undef HAVE___FLOAT128
@@ -327,8 +399,8 @@
    */
 #undef LT_OBJDIR
 
-/* Name of package */
-#undef PACKAGE
+/* Define to 1 if your C compiler doesn't accept -c and -o together. */
+#undef NO_MINUS_C_MINUS_O
 
 /* Define to the address where bug reports for this package should be sent. */
 #undef PACKAGE_BUGREPORT
@@ -357,8 +429,14 @@
 /* Alignment of type double */
 #undef PMIX_ALIGNMENT_DOUBLE
 
+/* Alignment of type double _Complex */
+#undef PMIX_ALIGNMENT_DOUBLE_COMPLEX
+
 /* Alignment of type float */
 #undef PMIX_ALIGNMENT_FLOAT
+
+/* Alignment of type float _Complex */
+#undef PMIX_ALIGNMENT_FLOAT_COMPLEX
 
 /* Alignment of type int */
 #undef PMIX_ALIGNMENT_INT
@@ -384,17 +462,30 @@
 /* Alignment of type long double */
 #undef PMIX_ALIGNMENT_LONG_DOUBLE
 
+/* Alignment of type long double _Complex */
+#undef PMIX_ALIGNMENT_LONG_DOUBLE_COMPLEX
+
 /* Alignment of type long long */
 #undef PMIX_ALIGNMENT_LONG_LONG
 
 /* Alignment of type short */
 #undef PMIX_ALIGNMENT_SHORT
 
+/* Alignment of type size_t */
+#undef PMIX_ALIGNMENT_SIZE_T
+
+/* Alignment of type void * */
+#undef PMIX_ALIGNMENT_VOID_P
+
 /* Alignment of type wchar_t */
 #undef PMIX_ALIGNMENT_WCHAR
 
 /* Alignment of type __float128 */
 #undef PMIX_ALIGNMENT___FLOAT128
+
+/* set to 1 if word-size integers must be aligned to word-size padding to
+   prevent bus errors */
+#undef PMIX_ALIGN_WORD_SIZE_INTEGERS
 
 /* Assembly align directive expects logarithmic value */
 #undef PMIX_ASM_ALIGN_LOG
@@ -448,6 +539,18 @@
 /* PMIX underlying C compiler */
 #undef PMIX_CC
 
+/* Use static const char[] strings for C files */
+#undef PMIX_CC_USE_CONST_CHAR_IDENT
+
+/* Use #ident strings for C files */
+#undef PMIX_CC_USE_IDENT
+
+/* Use #pragma comment for C files */
+#undef PMIX_CC_USE_PRAGMA_COMMENT
+
+/* Use #pragma ident strings for C files */
+#undef PMIX_CC_USE_PRAGMA_IDENT
+
 /* Whether C compiler supports DEC style inline assembly */
 #undef PMIX_C_DEC_INLINE_ASSEMBLY
 
@@ -463,8 +566,17 @@
 /* Whether C compiler supports __builtin_prefetch */
 #undef PMIX_C_HAVE_BUILTIN_PREFETCH
 
+/* Whether C compiler supports symbol visibility or not */
+#undef PMIX_C_HAVE_VISIBILITY
+
 /* Whether C compiler supports XLC style inline assembly */
 #undef PMIX_C_XLC_INLINE_ASSEMBLY
+
+/* Whether we want developer-level debugging code or not */
+#undef PMIX_ENABLE_DEBUG
+
+/* Greek - alpha, beta, etc - release number of PMI-Exascale Client Library */
+#undef PMIX_GREEK_VERSION
 
 /* Whether there is an atomic assembly file available */
 #undef PMIX_HAVE_ASM_FILE
@@ -544,15 +656,70 @@
 /* Whether your compiler has __attribute__ weak alias or not */
 #undef PMIX_HAVE_ATTRIBUTE_WEAK_ALIAS
 
+/* whether qsort is broken or not */
+#undef PMIX_HAVE_BROKEN_QSORT
+
+/* whether ceil is found and available */
+#undef PMIX_HAVE_CEIL
+
+/* whether dirname is found and available */
+#undef PMIX_HAVE_DIRNAME
+
+/* Whether we have SA_RESTART in <signal.h> or not */
+#undef PMIX_HAVE_SA_RESTART
+
+/* whether socket is found and available */
+#undef PMIX_HAVE_SOCKET
+
+/* Whether we have __va_copy or not */
+#undef PMIX_HAVE_UNDERSCORE_VA_COPY
+
+/* Whether we have va_copy or not */
+#undef PMIX_HAVE_VA_COPY
+
+/* ident string for Open MPI */
+#undef PMIX_IDENT_STRING
+
+/* Major release number of PMI-Exascale Client Library */
+#undef PMIX_MAJOR_VERSION
+
+/* Minor release number of PMI-Exascale Client Library */
+#undef PMIX_MINOR_VERSION
+
 /* Whether the C compiler supports "bool" without any other help (such as
    <stdbool.h>) */
 #undef PMIX_NEED_C_BOOL
 
+/* package/branding string for Open MPI */
+#undef PMIX_PACKAGE_STRING
+
 /* Whether r notation is used for ppc registers */
 #undef PMIX_POWERPC_R_REGISTERS
 
+/* type to use for ptrdiff_t */
+#undef PMIX_PTRDIFF_TYPE
+
+/* Release date of PMI-Exascale Client Library */
+#undef PMIX_RELEASE_DATE
+
+/* Release release number of PMI-Exascale Client Library */
+#undef PMIX_RELEASE_VERSION
+
+/* The repository version PMI-Exascale Client Library */
+#undef PMIX_REPO_REV
+
 /* Whether to use <stdbool.h> or not */
 #undef PMIX_USE_STDBOOL_H
+
+/* Complete release number of PMI-Exascale Client Library */
+#undef PMIX_VERSION
+
+/* if want pretty-print stack trace feature */
+#undef PMIX_WANT_PRETTY_PRINT_STACKTRACE
+
+/* Whether we want to include the repository version or not PMI-Exascale
+   Client Library */
+#undef PMIX_WANT_REPO_REV
 
 /* whether we want to have smp locks in atomic ops or not */
 #undef PMIX_WANT_SMP_LOCKS
@@ -639,8 +806,17 @@
 #endif
 
 
-/* Version number of package */
-#undef VERSION
+/* Define WORDS_BIGENDIAN to 1 if your processor stores words with the most
+   significant byte first (like Motorola and SPARC, unlike Intel). */
+#if defined AC_APPLE_UNIVERSAL_BUILD
+# if defined __BIG_ENDIAN__
+#  define WORDS_BIGENDIAN 1
+# endif
+#else
+# ifndef WORDS_BIGENDIAN
+#  undef WORDS_BIGENDIAN
+# endif
+#endif
 
 /* Define to 1 if `lex' declares `yytext' as a `char *' by default, not a
    `char[]'. */
@@ -665,6 +841,20 @@
    calls it, or to nothing if 'inline' is not supported under any name.  */
 #ifndef __cplusplus
 #undef inline
+#endif
+
+/* Define to the equivalent of the C99 'restrict' keyword, or to
+   nothing if this is not supported.  Do not define if restrict is
+   supported directly.  */
+#undef restrict
+/* Work around a bug in Sun C++: it does not support _Restrict or
+   __restrict__, even though the corresponding Sun C compiler ends up with
+   "#define restrict _Restrict" or "#define restrict __restrict__" in the
+   previous line.  Perhaps some future version of Sun C++ will work with
+   restrict; if so, hopefully it defines __RESTRICT like Sun C does.  */
+#if defined __SUNPRO_CC && !defined __RESTRICT
+# define _Restrict
+# define __restrict__
 #endif
 
 

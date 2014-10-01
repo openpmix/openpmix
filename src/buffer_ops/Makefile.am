@@ -23,19 +23,24 @@
 # $HEADER$
 #
 
-AM_CFLAGS = $(PMIX_CFLAGS)
-AM_CPPFLAGS = $(PMIX_CPPFLAGS)
-AM_LDFLAGS = $(PMIX_LDFLAGS)
+# This makefile.am does not stand on its own - it is included from
+# src/Makefile.am
 
-headers =
-sources =
-nodist_headers =
+headers += \
+         src/buffer_ops/buffer_ops.h \
+         src/buffer_ops/types.h \
+         src/buffer_ops/internal.h
 
-include src/class/Makefile.am
-include include/Makefile.am
-include buffer_ops/Makefile.am
-include util/Makefile.am
-
-lib_LTLIBRARIES = libpmix.la
-libpmix_la_SOURCES = $(headers) $(sources)
-libpmix_la_LDFLAGS = $(ldflags) -version-info $(libpmix_so_version) $(PMIX_LIBS)
+sources += \
+        src/buffer_ops/compare.c \
+        src/buffer_ops/copy.c \
+        src/buffer_ops/dump.c \
+        src/buffer_ops/internal_functions.c \
+        src/buffer_ops/load_unload.c \
+        src/buffer_ops/lookup.c \
+        src/buffer_ops/open_close.c \
+        src/buffer_ops/pack.c \
+        src/buffer_ops/peek.c \
+        src/buffer_ops/print.c \
+        src/buffer_ops/register.c \
+        src/buffer_ops/unpack.c

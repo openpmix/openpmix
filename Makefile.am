@@ -1,10 +1,7 @@
 # PMIx copyrights:
-# Copyright (c) 2013      Intel, Inc. All rights reserved
+# Copyright (c) 2013-2014 Intel, Inc. All rights reserved
 #
 #########################
-# This code has been adapted from opal_get_version.m4sh in the Open MPI
-# code base - per the Open MPI license, all copyrights are retained below.
-#
 #
 # Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
 #                         University Research and Technology
@@ -26,16 +23,31 @@
 # $HEADER$
 #
 
-ACLOCAL_AMFLAGS = -I ./config
+AM_CFLAGS = $(PMIX_CFLAGS)
+AM_CPPFLAGS = $(PMIX_CPPFLAGS)
+AM_LDFLAGS = $(PMIX_LDFLAGS)
 
-SUBDIRS = config src
+headers =
+sources =
+nodist_headers =
+
 EXTRA_DIST = README INSTALL VERSION LICENSE autogen.sh \
-             config/pmix_get_version.sh
+             config/pmix_get_version.sh util/help-pmix-util.txt
 
 # setup the distribution tarball
-DIST_SUBDIRS = $(SUBDIRS)
+DIST_SUBDIRS = config src
 
+include config/Makefile.am
+include src/class/Makefile.am
+include src/include/Makefile.am
+include src/buffer_ops/Makefile.am
+include src/util/Makefile.am
+
+lib_LTLIBRARIES = libpmix.la
+libpmix_la_SOURCES = $(headers) $(sources)
+libpmix_la_LDFLAGS = $(ldflags) -version-info $(libpmix_so_version) $(PMIX_LIBS)
 
 dist-hook:
 	csh "$(top_srcdir)/config/distscript.csh" "$(top_srcdir)" "$(distdir)" "$(OMPI_VERSION)" "$(OMPI_SVN_R)"
 
+ACLOCAL_AMFLAGS = -I config

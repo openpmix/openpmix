@@ -1,3 +1,4 @@
+# -*- makefile -*-
 #
 # PMIx copyrights:
 # Copyright (c) 2013      Intel, Inc. All rights reserved
@@ -6,14 +7,13 @@
 # Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
 #                         University Research and Technology
 #                         Corporation.  All rights reserved.
-# Copyright (c) 2004-2005 The University of Tennessee and The University
+# Copyright (c) 2004-2007 The University of Tennessee and The University
 #                         of Tennessee Research Foundation.  All rights
 #                         reserved.
 # Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
 #########################
 # $COPYRIGHT$
 # 
@@ -25,14 +25,14 @@
 # This makefile.am does not stand on its own - it is included from
 # src/Makefile.am
 
+# Source code files
 headers += \
-        src/include/align.h \
-	src/include/constants.h \
-	src/include/pmix_socket_errno.h \
-	src/include/types.h
+        src/class/pmix_object.h \
+        src/class/pmix_list.h \
+        src/class/pmix_pointer_array.h
 
-nodist_headers += \
-	src/include/version.h
+sources += \
+        src/class/pmix_object.c \
+        src/class/pmix_list.c \
+        src/class/pmix_pointer_array.c
 
-version.h: $(top_builddir)/config.status $(srcdir)/pmix/version.h.in
-	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@

@@ -1,9 +1,8 @@
-# -*- makefile -*-
 #
 # PMIx copyrights:
 # Copyright (c) 2013-2014 Intel, Inc. All rights reserved
 #
-#########################
+#**********************************
 # Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
 #                         University Research and Technology
 #                         Corporation.  All rights reserved.
@@ -14,8 +13,10 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved. 
-#########################
+# Copyright (c) 2007-2010 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2013      NVIDIA Corporation.  All rights reserved.
+# Copyright (c) 2013      Intel, Inc. All rights reserved
+#**********************************
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -23,19 +24,18 @@
 # $HEADER$
 #
 
-AM_CFLAGS = $(PMIX_CFLAGS)
-AM_CPPFLAGS = $(PMIX_CPPFLAGS)
-AM_LDFLAGS = $(PMIX_LDFLAGS)
+# Source code files
 
-headers =
-sources =
-nodist_headers =
+headers += \
+        src/util/argv.h \
+        src/util/error.h \
+        src/util/printf.h \
+        src/util/output.h \
+        src/util/pmix_environ.h
 
-include src/class/Makefile.am
-include include/Makefile.am
-include buffer_ops/Makefile.am
-include util/Makefile.am
-
-lib_LTLIBRARIES = libpmix.la
-libpmix_la_SOURCES = $(headers) $(sources)
-libpmix_la_LDFLAGS = $(ldflags) -version-info $(libpmix_so_version) $(PMIX_LIBS)
+sources += \
+        src/util/argv.c \
+        src/util/error.c \
+        src/util/printf.c \
+        src/util/output.c \
+        src/util/pmix_environ.c
