@@ -41,6 +41,12 @@
 
 BEGIN_C_DECLS
 
+typedef uint64_t pmix_identifier_t;
+#define PMIX_ID_T PMIX_UINT64
+
+typedef struct event event_t;
+typedef struct event_base event_base_t;
+
 typedef uint8_t pmix_data_type_t;  /** data type indicators */
 #define PMIX_DATA_TYPE_T    PMIX_UINT8
 #define PMIX_BFROP_ID_MAX     UINT8_MAX
@@ -88,7 +94,7 @@ typedef struct {
 #define    PMIX_BUFFER              (pmix_data_type_t)   27 /**< pack the remaining contents of a buffer as an object */
 #define    PMIX_PTR                 (pmix_data_type_t)   28 /**< pointer to void* */
     /* PMIX Dynamic */
-#define    PMIX_BFROP_ID_DYNAMIC      (pmix_data_type_t)   30
+#define    PMIX_BFROP_ID_DYNAMIC    (pmix_data_type_t)   30
     /* PMIX Array types */
 #define    PMIX_FLOAT_ARRAY         (pmix_data_type_t)   31
 #define    PMIX_DOUBLE_ARRAY        (pmix_data_type_t)   32

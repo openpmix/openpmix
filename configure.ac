@@ -440,7 +440,7 @@ AC_CHECK_HEADERS([alloca.h aio.h arpa/inet.h dirent.h \
     sys/ioctl.h sys/mman.h sys/param.h sys/queue.h \
     sys/select.h sys/socket.h sys/sockio.h \
     stdarg.h sys/stat.h sys/statfs.h sys/statvfs.h sys/time.h sys/tree.h \
-    sys/types.h sys/uio.h net/uio.h sys/utsname.h sys/vfs.h sys/wait.h syslog.h \
+    sys/types.h sys/un.h sys/uio.h net/uio.h sys/utsname.h sys/vfs.h sys/wait.h syslog.h \
     time.h termios.h ulimit.h unistd.h util.h utmp.h malloc.h \
     ifaddrs.h crt_externs.h regex.h signal.h \
     ioLib.h sockLib.h hostLib.h shlwapi.h sys/synch.h limits.h])
@@ -839,8 +839,7 @@ LT_OUTPUT
 # final compiler config
 ############################################################################
 
-m4_ifdef([project_ompi], [pmix_show_subtitle "Compiler flags"],
-         [m4_ifdef([project_orte], [pmix_show_subtitle "Compiler flags"])])
+pmix_show_subtitle "Compiler flags"
 
 #
 # This is needed for VPATH builds, so that it will -I the appropriate

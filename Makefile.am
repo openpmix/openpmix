@@ -30,18 +30,19 @@ AM_LDFLAGS = $(PMIX_LDFLAGS)
 headers =
 sources =
 nodist_headers =
+include_HEADERS = src/api/pmix.h
+dist_pmixdata_DATA =
 
 EXTRA_DIST = README INSTALL VERSION LICENSE autogen.sh \
-             config/pmix_get_version.sh src/util/help-pmix-util.txt \
-             src/include/pmix_config.h\
-             src/include/pmix_stdint.h \
-             include/pmix.h include/pmi_api.h include/pmi2_api.h
+             config/pmix_get_version.sh \
+             src/include/pmix_config.h
 
 include config/Makefile.am
 include src/class/Makefile.am
 include src/include/Makefile.am
 include src/buffer_ops/Makefile.am
 include src/util/Makefile.am
+include src/client/Makefile.am
 
 lib_LTLIBRARIES = libpmix.la
 libpmix_la_SOURCES = $(headers) $(sources)
