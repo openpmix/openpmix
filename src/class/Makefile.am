@@ -29,10 +29,12 @@
 headers += \
         src/class/pmix_object.h \
         src/class/pmix_list.h \
-        src/class/pmix_pointer_array.h
+        src/class/pmix_pointer_array.h \
+        src/class/pmix_hash_table.h
 
 sources += \
         src/class/pmix_object.c \
         src/class/pmix_list.c \
-        src/class/pmix_pointer_array.c
+        src/class/pmix_pointer_array.c \
+        src/class/pmix_hash_table.c
 

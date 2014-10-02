@@ -31,11 +31,13 @@ headers += \
         src/util/error.h \
         src/util/printf.h \
         src/util/output.h \
-        src/util/pmix_environ.h
+        src/util/pmix_environ.h \
+        src/util/crc.h
 
 sources += \
         src/util/argv.c \
         src/util/error.c \
         src/util/printf.c \
         src/util/output.c \
-        src/util/pmix_environ.c
+        src/util/pmix_environ.c \
+        src/util/crc.c
