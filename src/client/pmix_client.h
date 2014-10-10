@@ -173,6 +173,7 @@ void pmix_usock_recv_handler(int sd, short flags, void *cbdata);
 char* pmix_usock_state_print(pmix_usock_state_t state);
 void pmix_usock_dump(const char* msg);
 int usock_send_connect_ack(void);
+void pmix_client_call_errhandler(int error);
 
 
 /* internal convenience macros */

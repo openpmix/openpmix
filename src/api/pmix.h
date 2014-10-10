@@ -4,7 +4,7 @@
  */
 /*****************************************************************************\
  *  FOR BACKWARD COMPATIBILITY, SOME PORTIONS OF THE FOLLOWING DEFINITIONS ARE
- *  TAKEN FROM THE PMI HEADERS AS DEFINED UNDER THE FOLLOWING COPYRIGHT:
+ *  TAKEN FROM THE PMI and PMI-2 HEADERS AS DEFINED UNDER THE FOLLOWING COPYRIGHT:
  *
  *  COPYRIGHT
  *
@@ -48,7 +48,6 @@
 
 #ifndef PMIx_H
 #define PMIx_H
-
 
 BEGIN_C_DECLS
 
@@ -134,18 +133,348 @@ typedef int PMI_BOOL;
 #define PMI_TRUE     1
 #define PMI_FALSE    0
 
+/* define some maximum sizes */
+#define PMIX_MAX_VALLEN   1024
+#define PMIX_MAX_INFO_KEY  255
+#define PMIX_MAX_INFO_VAL 1024
+
+/* define an INFO object corresponding to
+ * the MPI_Info structure */
+typedef struct {
+    char key[PMIX_MAX_INFO_KEY];
+    char value[PMIX_MAX_INFO_VAL];
+} pmix_info_t;
+
+/* define a scope for data "put" by PMI per the following:
+ *
+ * PMI_LOCAL - the data is intended only for other application
+ *             processes on the same node. Data marked in this way
+ *             will not be included in data packages sent to remote requestors
+ * PMI_REMOTE - the data is intended solely for applications processes on
+ *              remote nodes. Data marked in this way will not be shared with
+ *              other processes on the same node
+ * PMI_GLOBAL - the data is to be shared with all other requesting processes,
+ *              regardless of location
+ */
+typedef uint8_t pmix_scope_t;
+#define PMIX_SCOPE_T PMIX_UINT8
+#define PMIX_SCOPE_UNDEF  0
+#define PMIX_INTERNAL     1  // data used internally only
+#define PMIX_LOCAL        2  // share to procs also on this node
+#define PMIX_REMOTE       3  // share with procs not on this node
+#define PMIX_GLOBAL       4  // share with all procs (local + remote)
+
+/* callback function for non-blocking operations */
+typedef void (*pmix_cbfunc_t)(int status, pmix_value_t *kv, void *cbdata);
+
+/* flags to indicate if the modex value being pushed into
+ * the PMIx server comes from an element that is ready to
+ * support async modex operations, or from one that requires
+ * synchronous modex (i.e., blocking modex operation) */
+#define PMIX_SYNC_REQD  true
+#define PMIX_ASYNC_RDY  false
+
+/* define a set of "standard" PMIx attributes that can
+ * be queried. Implementations (and users) are free to extend as
+ * desired, so the get_attr functions need to be capable
+ * of handling the "not found" condition. Note that these
+ * are attributes of the system and the job as opposed to
+ * values the application (or underlying MPI library)
+ * might choose to expose - i.e., they are values provided
+ * by the resource manager as opposed to the application */
+#define PMIX_ATTR_UNDEF      NULL
+
+#define PMIX_CPUSET          "pmix.cpuset"      // (char*) hwloc bitmap applied to proc upon launch
+#define PMIX_CREDENTIAL      "pmix.cred"        // (opal_byte_object*) security credential assigned to proc
+#define PMIX_HOSTNAME        "pmix.hname"       // (char*) name of the host this proc is on
+/* scratch directory locations for use by applications */
+#define PMIX_TMPDIR          "pmix.tmpdir"      // (char*) top-level tmp dir assigned to session
+/* information about relative ranks as assigned */
+#define PMIX_JOBID           "pmix.jobid"       // (char*) jobid assigned by scheduler
+#define PMIX_APPNUM          "pmix.appnum"      // (uint32_t) app number within the job
+#define PMIX_RANK            "pmix.rank"        // (uint32_t) process rank within the job
+#define PMIX_GLOBAL_RANK     "pmix.grank"       // (uint32_t) rank spanning across all jobs in this session
+#define PMIX_APP_RANK        "pmix.apprank"     // (uint32_t) rank within this app
+#define PMIX_NPROC_OFFSET    "pmix.offset"      // (uint32_t) starting global rank of this job
+#define PMIX_LOCAL_RANK      "pmix.lrank"       // (uint16_t) rank on this node within this job
+#define PMIX_NODE_RANK       "pmix.nrank"       // (uint16_t) rank on this node spanning all jobs
+#define PMIX_LOCALLDR        "pmix.lldr"        // (uint64_t) opal_identifier of lowest rank on this node within this job
+#define PMIX_APPLDR          "pmix.aldr"        // (uint32_t) lowest rank in this app within this job
+/* proc location-related info */
+#define PMIX_PROC_MAP        "pmix.map"         // (byte_object) packed map of proc locations within this job
+#define PMIX_LOCAL_PEERS     "pmix.lpeers"      // (char*) comma-delimited string of ranks on this node within this job
+#define PMIX_LOCAL_CPUSETS   "pmix.lcpus"       // (byte_object) packed names and cpusets of local peers
+/* size info */
+#define PMIX_UNIV_SIZE       "pmix.univ.size"   // (uint32_t) #procs in this namespace
+#define PMIX_JOB_SIZE        "pmix.job.size"    // (uint32_t) #procs in this job
+#define PMIX_LOCAL_SIZE      "pmix.local.size"  // (uint32_t) #procs in this job on this node
+#define PMIX_NODE_SIZE       "pmix.node.size"   // (uint32_t) #procs across all jobs on this node
+#define PMIX_MAX_PROCS       "pmix.max.size"    // (uint32_t) max #procs for this job
+/* topology info */
+#define PMIX_NET_TOPO        "pmix.ntopo"       // (byte_object) network topology
+#define PMIX_LOCAL_TOPO      "pmix.ltopo"       // (hwloc topo) local node topology
+
+/**
+ * Provide a simplified macro for sending data via modex
+ * to other processes. The macro requires four arguments:
+ *
+ * r - the integer return status from the modex op
+ * f - whether this modex requires sync or is async ready
+ * sc - the PMIX scope of the data
+ * s - the key to tag the data being posted
+ * d - the data object being posted
+ * sz - the number of bytes in the data object
+ */
+#define OPAL_MODEX_SEND_STRING(r, f, sc, s, d, sz)              \
+    do {                                                        \
+        opal_value_t kv;                                        \
+        if (PMIX_SYNC_REQD == (f)) {                            \
+            opal_pmix_use_collective = true;                    \
+        }                                                       \
+        OBJ_CONSTRUCT(&kv, opal_value_t);                       \
+        kv.key = (s);                                           \
+        kv.type = OPAL_BYTE_OBJECT;                             \
+        kv.data.bo.bytes = (uint8_t*)(d);                       \
+        kv.data.bo.size = (sz);                                 \
+        if (OPAL_SUCCESS != ((r) = opal_pmix.put(sc, &kv))) {   \
+            OPAL_ERROR_LOG((r));                                \
+        }                                                       \
+        kv.data.bo.bytes = NULL; /* protect the data */         \
+        kv.key = NULL;  /* protect the key */                   \
+        OBJ_DESTRUCT(&kv);                                      \
+    } while(0);
+
+/**
+ * Provide a simplified macro for sending data via modex
+ * to other processes. The macro requires four arguments:
+ *
+ * r - the integer return status from the modex op
+ * f - whether this modex requires sync or is async ready
+ * sc - the PMIX scope of the data
+ * s - the MCA component that is posting the data
+ * d - the data object being posted
+ * sz - the number of bytes in the data object
+ */
+#define OPAL_MODEX_SEND(r, f, sc, s, d, sz)                     \
+    do {                                                        \
+        char *key;                                              \
+        if (PMIX_SYNC_REQD == (f)) {                            \
+            opal_pmix_use_collective = true;                    \
+        }                                                       \
+        key = mca_base_component_to_string((s));                \
+        OPAL_MODEX_SEND_STRING((r), (f), (sc), key, (d), (sz)); \
+        free(key);                                              \
+    } while(0);
+
+/**
+ * Provide a simplified macro for retrieving modex data
+ * from another process:
+ *
+ * r - the integer return status from the modex op (int)
+ * s - string key (char*)
+ * p - pointer to the opal_proc_t of the proc that posted
+ *     the data (opal_proc_t*)
+ * d - pointer to a location wherein the data object
+ *     it to be returned
+ * t - the expected data type
+ */
+#define OPAL_MODEX_RECV_VALUE(r, s, p, d, t)                            \
+    do {                                                                \
+        opal_value_t *kv;                                               \
+        if (OPAL_SUCCESS != ((r) = opal_pmix.get(&(p)->proc_name,       \
+                                                 (s), &kv))) {          \
+            *(d) = NULL;                                                \
+        } else {                                                        \
+            (r) = opal_value_unload(kv, (void**)(d), (t));              \
+            OBJ_RELEASE(kv);                                            \
+        }                                                               \
+    } while(0);
+
+/**
+ * Provide a simplified macro for retrieving modex data
+ * from another process:
+ *
+ * r - the integer return status from the modex op (int)
+ * s - string key (char*)
+ * p - pointer to the opal_proc_t of the proc that posted
+ *     the data (opal_proc_t*)
+ * d - pointer to a location wherein the data object
+ *     it to be returned (char**)
+ * sz - pointer to a location wherein the number of bytes
+ *     in the data object can be returned (size_t)
+ */
+#define OPAL_MODEX_RECV_STRING(r, s, p, d, sz)                          \
+    do {                                                                \
+        opal_value_t *kv;                                               \
+        if (OPAL_SUCCESS == ((r) = opal_pmix.get(&(p)->proc_name,       \
+                                                 (s), &kv)) &&          \
+            NULL != kv) {                                               \
+            *(d) = kv->data.bo.bytes;                                   \
+            *(sz) = kv->data.bo.size;                                   \
+            kv->data.bo.bytes = NULL; /* protect the data */            \
+            OBJ_RELEASE(kv);                                            \
+        } else {                                                        \
+            *(d) = NULL;                                                \
+            *(sz) = 0;                                                  \
+        }                                                               \
+    } while(0);
+
+/**
+ * Provide a simplified macro for retrieving modex data
+ * from another process:
+ *
+ * r - the integer return status from the modex op (int)
+ * s - the MCA component that posted the data (mca_base_component_t*)
+ * p - pointer to the opal_proc_t of the proc that posted
+ *     the data (opal_proc_t*)
+ * d - pointer to a location wherein the data object
+ *     it to be returned (char**)
+ * sz - pointer to a location wherein the number of bytes
+ *     in the data object can be returned (size_t)
+ */
+#define OPAL_MODEX_RECV(r, s, p, d, sz)                                 \
+    do {                                                                \
+        char *key;                                                      \
+        key = mca_base_component_to_string((s));                        \
+        if (NULL == key) {                                              \
+            OPAL_ERROR_LOG(OPAL_ERR_OUT_OF_RESOURCE);                   \
+            (r) = OPAL_ERR_OUT_OF_RESOURCE;                             \
+        } else {                                                        \
+            OPAL_MODEX_RECV_STRING((r), key, (p), (d), (sz));           \
+            free(key);                                                  \
+        }                                                               \
+    } while(0);
+
+
+/**
+ * Provide a simplified macro for calling the fence function
+ * that takes into account directives and availability of
+ * non-blocking operations
+ */
+#define OPAL_FENCE(p, s, cf, cd)                                        \
+    do {                                                                \
+        if (opal_pmix_use_collective || NULL == opal_pmix.fence_nb) {   \
+            opal_pmix.fence((p), (s));                                  \
+        } else {                                                        \
+            opal_pmix.fence_nb((p), (s), (cf), (cd));                   \
+        }                                                               \
+    } while(0);
+
+/* callback handler for errors */
+typedef void (*pmix_errhandler_fn_t)(int error);
+
+/****    DEFINE THE PUBLIC API'S                          ****
+ ****    NOTE THAT WE DO NOT HAVE A 1:1 MAPPING OF APIs   ****
+ ****    HERE TO THOSE CURRENTLY DEFINED BY PMI AS WE     ****
+ ****    DON'T USE SOME OF THOSE FUNCTIONS AND THIS ISN'T ****
+ ****    A GENERAL LIBRARY                                ****/
+
+/*****  APIs CURRENTLY USED IN THE OMPI/ORTE CODE BASE   ****/
+/* NOTE: calls to these APIs must be thread-protected as there
+ * currently is NO internal thread safety. */
+
+/* Init */
+int PMIx_Init(PMI_BOOL *spawned);
+
+/* Finalize */
+int PMIx_Finalize(void);
+
+/* Initialized */
+PMIx_BOOL PMIx_Initialized(void);
+
+/* Abort */
+int PMIx_Abort(int flag, const char msg[]);
+
+/* Fence - note that this call is required to commit any
+ * data "put" to the system since the last call to "fence"
+ * prior to (or as part of) executing the barrier. Serves both PMI2
+ * and PMI1 "barrier" purposes */
+int PMIx_Fence(pmix_identifier_t *procs, size_t nprocs);
+
+/* Fence_nb - not included in the current PMI standard. This is a non-blocking
+ * version of the standard "fence" call. All subsequent "get" calls will block
+ * pending completion of this operation. Non-blocking "get" calls will still
+ * complete as data becomes available */
+int PMIx_Fence_nb(pmix_identifier_t *procs, size_t nprocs,
+                  pmix_cbfunc_t cbfunc, void *cbdata);
+
+/* Put - note that this API has been modified from the current PMI standard to
+ * reflect the proposed PMIx extensions. */
+int PMIx_Put(pmix_scope_t scope, pmix_value_t *kv);
+
+/* Get - note that this API has been modified from the current PMI standard to
+ * reflect the proposed PMIx extensions, and to include the process identifier so
+ * we can form the PMI key within the active component instead of sprinkling that
+ * code all over the code base. */
+int PMIx_Get(const pmix_identifier_t *id,
+             const char *key,
+             pmix_value_t **kv);
+
+/* Get_nb - not included in the current PMI standard. This is a non-blocking
+ * version of the standard "get" call. Retrieved value will be provided as
+ * opal_value_t object in the callback. We include the process identifier so
+ * we can form the PMI key within the active component instead of sprinkling that
+ * code all over the code base. */
+void PMIx_Get_nb(const pmix_identifier_t *id,
+                 const char *key,
+                 pmix_cbfunc_t cbfunc,
+                 void *cbdata);
+
+/* Publish - the "info" parameter
+ * consists of a list of pmix_info_t objects */
+int PMIx_Publish(const char service_name[],
+                 pmix_list_t *info,
+                 const char port[]);
+
+/* Lookup - the "info" parameter
+ * consists of a list of pmix_info_t objects */
+int PMIx_Lookup(const char service_name[],
+                pmix_list_t *info,
+                char port[], int portLen);
+
+/* Unpublish - the "info" parameter
+ * consists of a list of pmix_info_t objects */
+int PMIx_Unpublish(const char service_name[], 
+                   pmix_list_t *info);
+
+/* Get attribute
+ * Query the server for the specified attribute, returning it in the
+ * provided opal_value_t. The function will return "true" if the attribute
+ * is found, and "false" if not.
+ * Attributes are provided by the PMIx server, so there is no corresponding
+ * "put" function. */
+PMIx_BOOL PMIx_Get_attr(const char *attr, pmix_value_t **kv);
+
+/* Get attribute (non-blocking)
+ * Query the server for the specified attribute..
+ * Attributes are provided by the PMIx server, so there is no corresponding "put"
+ * function. The call will be executed as non-blocking, returning immediately,
+ * with data resulting from the call returned in the callback function. A returned
+ * NULL opal_value_t* indicates that the attribute was not found. The returned
+ * pointer is "owned" by the PMIx module and must not be released by the
+ * callback function */
+int PMIx_Get_attr_nb(const char *attr,
+                     pmix_cbfunc_t cbfunc,
+                     void *cbdata);
+
+/* register an errhandler to report loss of connection to the server */
+void PMIx_Register_errhandler(pmix_errhandler_fn_t errhandler);
+
+/* deregister the errhandler */
+void PMIx_Deregister_errhandler(void);
+
 /*****************************************************************************\
- *            PMIx  FUNCTIONS
+ *            PMI  FUNCTIONS
 \*****************************************************************************/
 
 /*@
-PMIx_Init - initialize the Process Manager Interface
+PMI_Init - initialize the Process Manager Interface
 
 Output Parameter:
 . spawned - spawned flag
 
 Return values:
-+ PMIx_SUCCESS - initialization completed successfully
++ PMI_SUCCESS - initialization completed successfully
 . PMI_ERR_INVALID_ARG - invalid argument
 - PMI_FAIL - initialization failed
 
@@ -155,7 +484,7 @@ this process was created by 'PMI_Spawn_multiple'.  'spawned' will be 'PMI_TRUE' 
 this process group has a parent and 'PMI_FALSE' if it does not.
 
 @*/
-int PMIx_Init( int *spawned );
+int PMI_Init( int *spawned );
 
 /*@
 PMI_Initialized - check if PMI has been initialized

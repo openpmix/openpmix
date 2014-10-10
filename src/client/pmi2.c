@@ -832,7 +832,10 @@ PMIx_BOOL PMIx_Get_attr(const char *attr, pmix_value_t **kv)
     int32_t cnt;
     bool found=false;
     pmix_cb_t *cb;
-    uint32_t myrank;
+    uint32_t i, myrank;
+    pmix_identifier_t id;
+    char *cpuset;
+    pmix_buffer_t buf;
 
     pmix_output_verbose(2, pmix_debug_output,
                         "%s pmix:native get_attr called",
@@ -933,6 +936,7 @@ PMIx_BOOL PMIx_Get_attr(const char *attr, pmix_value_t **kv)
         return false;
     }
     OBJ_RELEASE(cb);
+    pmix_proc_set_name((pmix_process_name_t*)&native_pname);
 
     return found;
 }
@@ -944,12 +948,12 @@ int PMIx_Get_attr_nb(const char *attr,
     return PMIX_ERR_NOT_IMPLEMENTED;
 }
 
-void PMIx_Register_errhandler(pmix_errhandler_fn_t err)
+void PMIx_Register_errhandler(pmix_errhandler_fn_t errhandler)
 {
     errhandler = err;
 }
 
-void pmix_client_call_errhandler(int error)
+static void pmix_call_errhandler(int error)
 {
     if (NULL != errhandler) {
         errhandler(error);
@@ -959,6 +963,17 @@ void pmix_client_call_errhandler(int error)
 void PMIx_Deregister_errhandler(void)
 {
     errhandler = NULL;
+}
+
+
+static int native_job_connect(const char jobId[])
+{
+    return PMIX_ERR_NOT_IMPLEMENTED;
+}
+
+static int native_job_disconnect(const char jobId[])
+{
+    return PMIX_ERR_NOT_IMPLEMENTED;
 }
 
 /***   INSTANTIATE INTERNAL CLASSES   ***/

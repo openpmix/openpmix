@@ -34,7 +34,9 @@ headers += \
         src/util/printf.h \
         src/util/output.h \
         src/util/pmix_environ.h \
-        src/util/crc.h
+        src/util/crc.h \
+        src/util/progress_threads.h \
+        src/util/fd.h
 
 sources += \
         src/util/argv.c \
@@ -42,4 +44,6 @@ sources += \
         src/util/printf.c \
         src/util/output.c \
         src/util/pmix_environ.c \
-        src/util/crc.c
+        src/util/crc.c \
+        src/util/progress_threads.c \
+        src/util/fd.h

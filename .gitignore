@@ -7,6 +7,7 @@ Makefile.in
 *.libs
 *.deps
 *.dirstamp
+.DS_Store
 
 # http://www.gnu.org/software/autoconf
 
@@ -31,3 +32,9 @@ src/include/pmix_config.h
 src/include/pmix_config.h.in~
 src/include/stamp-h1
 src/include/version.h
+config/ar-lib
+config/compile
+config/config.guess
+config/config.sub
+config/depcomp
+config/missing
