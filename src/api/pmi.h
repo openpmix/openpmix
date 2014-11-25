@@ -60,6 +60,7 @@
 BEGIN_C_DECLS
 
 /* PMI Group functions */
+#typedef int PMI_BOOL
 
 /*@
 PMI_Init - initialize the Process Manager Interface

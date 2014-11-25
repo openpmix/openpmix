@@ -19,7 +19,7 @@
  * will also create a pipe so that libevent has something to block
  * against, thus keeping the thread from free-running
  */
-PMIX_DECLSPEC struct event_base *pmix_start_progress_thread(char *name,
+PMIX_DECLSPEC struct event_base* pmix_start_progress_thread(char *name,
                                                             bool create_block);
 
 /* stop the progress thread of the provided name. This function will

@@ -22,6 +22,7 @@
 #endif
 
 #include "src/api/pmix.h"
+#include "src/api/pmi.h"
 
 #include "src/buffer_ops/buffer_ops.h"
 #include "event.h"
@@ -29,8 +30,6 @@
 #include "src/util/error.h"
 #include "src/util/output.h"
 #include "src/util/progress_threads.h"
-
-#include "pmix_client.h"
 
 int PMI_Init( int *spawned )
 {

@@ -27,6 +27,7 @@
 #include <event.h>
 
 #include "src/buffer_ops/buffer_ops.h"
+#include "src/api/pmix.h"
 
 BEGIN_C_DECLS
 
@@ -128,7 +129,7 @@ typedef struct {
     event_t ev;
     volatile bool active;
     pmix_buffer_t data;
-    pmix_usock_cbfunc_t cbfunc;
+    pmix_cbfunc_t cbfunc;
     void *cbdata;
 } pmix_cb_t;
 OBJ_CLASS_DECLARATION(pmix_cb_t);
@@ -164,46 +165,40 @@ typedef struct {
 extern pmix_client_globals_t pmix_client_globals;
 
 
-
 /* module-level shared functions */
-void pmix_usock_process_msg(int fd, short flags, void *cbdata);
-void pmix_usock_send_recv(int fd, short args, void *cbdata);
-void pmix_usock_send_handler(int sd, short flags, void *cbdata);
-void pmix_usock_recv_handler(int sd, short flags, void *cbdata);
-char* pmix_usock_state_print(pmix_usock_state_t state);
-void pmix_usock_dump(const char* msg);
-int usock_send_connect_ack(void);
-void pmix_client_call_errhandler(int error);
+extern void pmix_usock_process_msg(int fd, short flags, void *cbdata);
+extern void pmix_usock_send_recv(int fd, short args, void *cbdata);
+extern void pmix_usock_send_handler(int sd, short flags, void *cbdata);
+extern void pmix_usock_recv_handler(int sd, short flags, void *cbdata);
+extern char* pmix_usock_state_print(pmix_usock_state_t state);
+extern void pmix_usock_dump(const char* msg);
+extern int usock_send_connect_ack(void);
+extern void pmix_client_call_errhandler(int error);
 
 
 /* internal convenience macros */
 #define PMIX_ACTIVATE_SEND_RECV(b, cb, d)                               \
     do {                                                                \
         pmix_usock_sr_t *ms;                                            \
-        pmix_output_verbose(5, pmix_pmix_base_framework.framework_output, \
-                            "%s [%s:%d] post send to server",           \
-                            PMIX_NAME_PRINT(PMIX_PROC_MY_NAME),         \
+        pmix_output_verbose(5, pmix_debug_output,                       \
+                            "[%s:%d] post send to server",              \
                             __FILE__, __LINE__);                        \
         ms = OBJ_NEW(pmix_usock_sr_t);                                  \
         ms->bfr = (b);                                                  \
         ms->cbfunc = (cb);                                              \
         ms->cbdata = (d);                                               \
-        event_set(mca_pmix_client_component.evbase, &((ms)->ev), -1,    \
+        event_assign(&((ms)->ev), pmix_client_evbase, -1,               \
                   EV_WRITE, pmix_usock_send_recv, (ms));                \
-        event_set_priority(&((ms)->ev), PMIX_EV_MSG_LO_PRI);            \
         event_active(&((ms)->ev), EV_WRITE, 1);                         \
     } while(0);
 
 #define PMIX_ACTIVATE_POST_MSG(ms)                                      \
     do {                                                                \
-        pmix_output_verbose(5, pmix_pmix_base_framework.framework_output, \
-                            "%s [%s:%d] post msg",                      \
-                            PMIX_NAME_PRINT(PMIX_PROC_MY_NAME),         \
+        pmix_output_verbose(5, pmix_debug_output,                       \
+                            "[%s:%d] post msg",                         \
                             __FILE__, __LINE__);                        \
-        event_set(mca_pmix_client_component.evbase, &ms->ev, -1,        \
-                  EV_WRITE,                                             \
-                       pmix_usock_process_msg, ms);                     \
-        event_set_priority(&ms->ev, PMIX_EV_MSG_LO_PRI);                \
+        event_assign( &ms->ev, pmix_client_evbase,-1,                   \
+                  EV_WRITE, pmix_usock_process_msg, ms);                \
         event_active(&ms->ev, EV_WRITE, 1);                             \
     } while(0);
 
@@ -212,7 +207,7 @@ void pmix_client_call_errhandler(int error);
         shutdown(socket, 2);                                    \
         close(socket);                                          \
         /* notify the error handler */                          \
-        pmix_errhandler(PMIX_ERR_COMM_FAILURE);                 \
+        pmix_client_call_errhandler(PMIX_ERR_COMM_FAILURE);     \
     } while(0)
 
 
