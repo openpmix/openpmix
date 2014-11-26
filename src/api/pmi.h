@@ -1,11 +1,4 @@
-/*
- * PMIx copyrights:
- * Copyright (c) 2013      Intel, Inc. All rights reserved
- */
 /*****************************************************************************\
- *  FOR BACKWARD COMPATIBILITY, SOME PORTIONS OF THE FOLLOWING DEFINITIONS ARE
- *  TAKEN FROM THE PMI HEADERS AS DEFINED UNDER THE FOLLOWING COPYRIGHT:
- *
  *  pmi.h - Process Management Interface for MPICH2, implemented by SLURM
  *  See http://www-unix.mcs.anl.gov/mpi/mpich2/
  *
@@ -57,10 +50,57 @@
 
 /* prototypes for the PMI interface in MPICH2 */
 
-BEGIN_C_DECLS
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
+/*D
+PMI_CONSTANTS - PMI definitions
+
+Error Codes:
++ PMI_SUCCESS - operation completed successfully
+. PMI_FAIL - operation failed
+. PMI_ERR_NOMEM - input buffer not large enough
+. PMI_ERR_INIT - PMI not initialized
+. PMI_ERR_INVALID_ARG - invalid argument
+. PMI_ERR_INVALID_KEY - invalid key argument
+. PMI_ERR_INVALID_KEY_LENGTH - invalid key length argument
+. PMI_ERR_INVALID_VAL - invalid val argument
+. PMI_ERR_INVALID_VAL_LENGTH - invalid val length argument
+. PMI_ERR_INVALID_LENGTH - invalid length argument
+. PMI_ERR_INVALID_NUM_ARGS - invalid number of arguments
+. PMI_ERR_INVALID_ARGS - invalid args argument
+. PMI_ERR_INVALID_NUM_PARSED - invalid num_parsed length argument
+. PMI_ERR_INVALID_KEYVALP - invalid keyvalp argument
+- PMI_ERR_INVALID_SIZE - invalid size argument
+
+Booleans:
++ PMI_TRUE - true
+- PMI_FALSE - false
+
+D*/
+#define PMI_SUCCESS                  0
+#define PMI_FAIL                    -1
+#define PMI_ERR_INIT                 1
+#define PMI_ERR_NOMEM                2
+#define PMI_ERR_INVALID_ARG          3
+#define PMI_ERR_INVALID_KEY          4
+#define PMI_ERR_INVALID_KEY_LENGTH   5
+#define PMI_ERR_INVALID_VAL          6
+#define PMI_ERR_INVALID_VAL_LENGTH   7
+#define PMI_ERR_INVALID_LENGTH       8
+#define PMI_ERR_INVALID_NUM_ARGS     9
+#define PMI_ERR_INVALID_ARGS        10
+#define PMI_ERR_INVALID_NUM_PARSED  11
+#define PMI_ERR_INVALID_KEYVALP     12
+#define PMI_ERR_INVALID_SIZE        13
+#define PMI_ERR_INVALID_KVS         14
+
+typedef int PMI_BOOL;
+#define PMI_TRUE     1
+#define PMI_FALSE    0
 
 /* PMI Group functions */
-#typedef int PMI_BOOL
 
 /*@
 PMI_Init - initialize the Process Manager Interface
@@ -782,6 +822,8 @@ Notes:
 @*/
 int PMI_Get_options(char *str, int *length);
 
-END_C_DECLS
+#if defined(__cplusplus)
+}
+#endif
 
 #endif
