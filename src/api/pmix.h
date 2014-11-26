@@ -162,8 +162,9 @@ int PMIx_Publish(const char service_name[],
                  pmix_list_t *info,
                  const char namespace[]);
 
-/* Lookup - the "info" parameter
- * consists of a list of pmix_info_t objects */
+/* Lookup - the "info" parameter consists of a list of
+ * pmix_info_t objects that can request additional
+ * information. Info will be returned in the objects */
 int PMIx_Lookup(const char service_name[],
                 pmix_list_t *info,
                 char **namespace);
