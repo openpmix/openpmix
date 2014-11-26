@@ -125,8 +125,8 @@ int PMIx_Init(char **namespace, int *rank)
         return PMIX_ERROR;
     }
 
-    /* we will connect on first send */
-
+    /* get our namespace and rank */
+    
     return PMIX_SUCCESS;
 }
 
@@ -797,13 +797,15 @@ void PMIx_Get_nb(const char *namespace, int rank,
 }
 
 int PMIx_Publish(const char service_name[],
-                 pmix_list_t *info)
+                 pmix_list_t *info,
+                 const char namespace[])
 {
     return PMIX_SUCCESS;
 }
 
 int PMIx_Lookup(const char service_name[],
-                pmix_list_t *info)
+                pmix_list_t *info,
+                char **namespace)
 {
     return PMIX_ERR_NOT_IMPLEMENTED;
 }

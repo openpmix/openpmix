@@ -159,12 +159,14 @@ void PMIx_Get_nb(const char *namespace, int rank,
 /* Publish - the "info" parameter
  * consists of a list of pmix_info_t objects */
 int PMIx_Publish(const char service_name[],
-                 pmix_list_t *info);
+                 pmix_list_t *info,
+                 const char namespace[]);
 
 /* Lookup - the "info" parameter
  * consists of a list of pmix_info_t objects */
 int PMIx_Lookup(const char service_name[],
-                pmix_list_t *info);
+                pmix_list_t *info,
+                char **namespace);
 
 /* Unpublish - the "info" parameter
  * consists of a list of pmix_info_t objects */
