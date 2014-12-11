@@ -62,6 +62,9 @@ typedef uint8_t pmix_cmd_t;
 #define PMIX_GETNB_CMD        6
 #define PMIX_FINALIZE_CMD     7
 #define PMIX_GETATTR_CMD      8
+#define PMIX_PUBLISH_CMD      9
+#define PMIX_LOOKUP_CMD      10
+#define PMIX_UNPUBLISH_CMD   11
 
 /* define some message types */
 #define PMIX_USOCK_IDENT  1

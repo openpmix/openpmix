@@ -109,17 +109,27 @@ int PMI_Get_appnum(int *appnum)
 int PMI_Publish_name(const char service_name[], const char port[])
 {
     int rc;
-
+    pmix_list_t info;
+    pmix_info_t *pt;
+    
     /* create an info object to pass the port */
+    OBJ_CONSTRUCT(&info, pmix_list_t);
+    pt = OBJ_NEW(pmix_info_t);
+    (void)strncpy(pt->key, PMIX_PORT, PMIX_MAX_INFO_KEY);
+    (void)strncpy(pt->value, port, PMIX_MAX_INFO_VAL);
+    pmix_list_append(&info, &pt->super);
     
     /* pass the service name, the port, and our namespace */
-    rc = PMIx_Publish(service_name, NULL, namespace);
+    rc = PMIx_Publish(service_name, &info);
+    PMIX_LIST_DESTRUCT(&info);
+    
     return rc;
 }
 
 int PMI_Unpublish_name(const char service_name[])
 {
-    return PMI_SUCCESS;
+    /* no info objects to pass, so just do the call */
+    return PMIx_Unpublish(service_name, NULL);
 }
 
 int PMI_Lookup_name(const char service_name[], char port[])

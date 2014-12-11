@@ -57,6 +57,10 @@ struct event_base *pmix_client_evbase;
 int pmix_client_sd = -1;
 
 /* callback for wait completion */
+/*****  RHC: need to extend this callback function to
+ *****  allow for getting a return status so we can
+ *****  tell the cb->cbfunc whether or not the request
+ *****  was successful, and pass it back in the cb object */
 static void wait_cbfunc(pmix_buffer_t *buf, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
@@ -797,9 +801,65 @@ void PMIx_Get_nb(const char *namespace, int rank,
 }
 
 int PMIx_Publish(const char service_name[],
-                 pmix_list_t *info,
-                 const char namespace[])
+                 pmix_list_t *info)
 {
+    pmix_buffer_t *msg;
+    pmix_info_t *iptr;
+    pmix_cmd_t cmd = PMIX_PUBLISH_CMD;
+    int rc;
+    pmix_cb_t *cb;
+    
+    pmix_output_verbose(2, pmix_debug_output,
+                        "pmix:native publish called");
+    
+    /* check for bozo case */
+    if (NULL == local_uri) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* create the publish cmd */
+    msg = OBJ_NEW(pmix_buffer_t);
+    /* pack the cmd */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD_T))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_RELEASE(msg);
+        return rc;
+    }
+    /* pack the service name */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &service_name, 1, PMIX_STRING))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_RELEASE(msg);
+        return rc;
+    }
+    /* pack any info keys that were given */
+    if (NULL != info) {
+        PMIX_LIST_FOREACH(iptr, info, pmix_info_t) {
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &iptr->key, 1, PMIX_STRING))) {
+                PMIX_ERROR_LOG(rc);
+                OBJ_RELEASE(msg);
+                return rc;
+            }
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &iptr->value, 1, PMIX_STRING))) {
+                PMIX_ERROR_LOG(rc);
+                OBJ_RELEASE(msg);
+                return rc;
+            }
+        }
+    }
+    
+    /* create a callback object as we need to pass it to the
+     * recv routine so we know which callback to use when
+     * the return message is recvd */
+    cb = OBJ_NEW(pmix_cb_t);
+    cb->active = true;
+
+    /* push the message into our event base to send to the server */
+    PMIX_ACTIVATE_SEND_RECV(msg, wait_cbfunc, cb);
+
+    /* wait for the server to ack our request */
+    PMIX_WAIT_FOR_COMPLETION(cb->active);
+    OBJ_RELEASE(cb);
+    
     return PMIX_SUCCESS;
 }
 
@@ -807,13 +867,161 @@ int PMIx_Lookup(const char service_name[],
                 pmix_list_t *info,
                 char **namespace)
 {
-    return PMIX_ERR_NOT_IMPLEMENTED;
+    pmix_buffer_t *msg;
+    pmix_info_t *iptr;
+    pmix_cmd_t cmd = PMIX_LOOKUP_CMD;
+    int rc, ret;
+    pmix_cb_t *cb;
+    char *key, *value;
+    
+    pmix_output_verbose(2, pmix_debug_output,
+                        "pmix:native lookup called");
+    
+    /* check for bozo case */
+    if (NULL == local_uri) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* create the lookup cmd */
+    msg = OBJ_NEW(pmix_buffer_t);
+    /* pack the cmd */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD_T))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_RELEASE(msg);
+        return rc;
+    }
+    /* pack the service name */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &service_name, 1, PMIX_STRING))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_RELEASE(msg);
+        return rc;
+    }
+    /* pack any info keys that were given - no need to send the value
+     * fields as they are empty */
+    if (NULL != info) {
+        PMIX_LIST_FOREACH(iptr, info, pmix_info_t) {
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &iptr->key, 1, PMIX_STRING))) {
+                PMIX_ERROR_LOG(rc);
+                OBJ_RELEASE(msg);
+                return rc;
+            }
+        }
+    }
+    
+    /* create a callback object as we need to pass it to the
+     * recv routine so we know which callback to use when
+     * the return message is recvd */
+    cb = OBJ_NEW(pmix_cb_t);
+    cb->active = true;
+
+    /* push the message into our event base to send to the server */
+    PMIX_ACTIVATE_SEND_RECV(msg, wait_cbfunc, cb);
+
+    /* wait for the server to ack our request */
+    PMIX_WAIT_FOR_COMPLETION(cb->active);
+
+    /* we have received the entire data blob for this request - unpack
+     * and return all values, starting with the return status */
+    cnt = 1;
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&cb->data, &ret, &cnt, PMIX_INT))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_RELEASE(cb);
+        return rc;
+    }
+    /* unpack the namespace of the process that published the service */
+    cnt = 1;
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&cb->data, namespace, &cnt, PMIX_STRING))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_RELEASE(cb);
+        return rc;
+    }
+    cnt = 1;
+    /* the returned data is in the form of a key followed by its value, so we
+     * unpack the strings in pairs */
+    while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&cb->data, &key, &cnt, PMIX_STRING))) {
+        /* find the matching key in the provided info list - error if not found */
+        /* unpack the value */
+        cnt = 1;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&cb->data, &value, &cnt, PMIX_STRING))) {
+            PMIX_ERROR_LOG(rc);
+            OBJ_RELEASE(cb);
+            return rc;
+        }
+        /* store the value in the pmix_info_t */
+        free(key);
+        free(value);
+    }
+    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+        PMIX_ERROR_LOG(rc);
+    } else {
+        rc = PMIX_SUCCESS;
+    }
+    OBJ_RELEASE(cb);
+    
+    return rc;
 }
 
 int PMIx_Unpublish(const char service_name[], 
                    pmix_list_t *info)
 {
-    return PMIX_SUCCESS;;
+    pmix_buffer_t *msg;
+    pmix_info_t *iptr;
+    pmix_cmd_t cmd = PMIX_UNPUBLISH_CMD;
+    int rc;
+    pmix_cb_t *cb;
+    
+    pmix_output_verbose(2, pmix_debug_output,
+                        "pmix:native unpublish called");
+    
+    /* check for bozo case */
+    if (NULL == local_uri) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* create the unpublish cmd */
+    msg = OBJ_NEW(pmix_buffer_t);
+    /* pack the cmd */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD_T))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_RELEASE(msg);
+        return rc;
+    }
+    /* pack the service name */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &service_name, 1, PMIX_STRING))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_RELEASE(msg);
+        return rc;
+    }
+    /* pack any info keys that were given */
+    if (NULL != info) {
+        PMIX_LIST_FOREACH(iptr, info, pmix_info_t) {
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &iptr->key, 1, PMIX_STRING))) {
+                PMIX_ERROR_LOG(rc);
+                OBJ_RELEASE(msg);
+                return rc;
+            }
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &iptr->value, 1, PMIX_STRING))) {
+                PMIX_ERROR_LOG(rc);
+                OBJ_RELEASE(msg);
+                return rc;
+            }
+        }
+    }
+    
+    /* create a callback object as we need to pass it to the
+     * recv routine so we know which callback to use when
+     * the return message is recvd */
+    cb = OBJ_NEW(pmix_cb_t);
+    cb->active = true;
+
+    /* push the message into our event base to send to the server */
+    PMIX_ACTIVATE_SEND_RECV(msg, wait_cbfunc, cb);
+
+    /* wait for the server to ack our request */
+    PMIX_WAIT_FOR_COMPLETION(cb->active);
+    OBJ_RELEASE(cb);
+    
+    return PMIX_SUCCESS;
 }
 
 bool PMIx_Get_attr(const char *namespace, int rank,
@@ -963,6 +1171,11 @@ int PMIx_Disconnect(pmix_list_t *ranges)
     return PMIX_ERR_NOT_IMPLEMENTED;
 }
 
+
+/***   INSTANTIATE PUBLIC CLASSES   ***/
+OBJ_CLASS_INSTANCE(pmix_info_t,
+                   pmix_list_item_t,
+                   NULL, NULL);
 
 
 /***   INSTANTIATE INTERNAL CLASSES   ***/

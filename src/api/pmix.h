@@ -45,9 +45,11 @@ BEGIN_C_DECLS
 /* define an INFO object corresponding to
  * the MPI_Info structure */
 typedef struct {
+    pmix_list_item_t super;
     char key[PMIX_MAX_INFO_KEY];
     char value[PMIX_MAX_INFO_VAL];
 } pmix_info_t;
+OBJ_CLASS_DECLARATION(pmix_info_t);
 
 /* define a scope for data "put" by PMI per the following:
  *
@@ -116,6 +118,11 @@ typedef uint8_t pmix_scope_t;
 #define PMIX_LOCAL_TOPO      "pmix.ltopo"       // (hwloc topo) local node topology
 
 
+/* miscellaneous common keys - used in functions and internally, but
+ * not attributes */
+#define PMIX_PORT     "pmix.port"
+
+
 /* callback handler for errors */
 typedef void (*pmix_errhandler_fn_t)(int error);
 
@@ -157,14 +164,15 @@ void PMIx_Get_nb(const char *namespace, int rank,
                  pmix_cbfunc_t cbfunc, void *cbdata);
 
 /* Publish - the "info" parameter
- * consists of a list of pmix_info_t objects */
+ * consists of an array of pmix_info_t objects */
 int PMIx_Publish(const char service_name[],
-                 pmix_list_t *info,
-                 const char namespace[]);
+                 pmix_list_t *info);
 
 /* Lookup - the "info" parameter consists of a list of
- * pmix_info_t objects that can request additional
- * information. Info will be returned in the objects */
+ * pmix_info_t objects that specify the requested
+ * information. Info will be returned in the objects.
+ * The namespace param will contain the namespace of
+ * the process that published the service_name */
 int PMIx_Lookup(const char service_name[],
                 pmix_list_t *info,
                 char **namespace);
