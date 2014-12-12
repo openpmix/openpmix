@@ -50,21 +50,22 @@ typedef enum {
 
 /* define a command type for communicating to the
  * pmix server */
-typedef uint8_t pmix_cmd_t;
-#define PMIX_CMD_T PMIX_UINT8
+#define PMIX_CMD PMIX_UINT8
 
 /* define some commands */
-#define PMIX_ABORT_CMD        1
-#define PMIX_FENCE_CMD        2
-#define PMIX_FENCENB_CMD      3
-#define PMIX_PUT_CMD          4
-#define PMIX_GET_CMD          5
-#define PMIX_GETNB_CMD        6
-#define PMIX_FINALIZE_CMD     7
-#define PMIX_GETATTR_CMD      8
-#define PMIX_PUBLISH_CMD      9
-#define PMIX_LOOKUP_CMD      10
-#define PMIX_UNPUBLISH_CMD   11
+typedef enum {
+    PMIX_ABORT_CMD,
+    PMIX_FENCE_CMD,
+    PMIX_FENCENB_CMD,
+    PMIX_PUT_CMD,
+    PMIX_GET_CMD,
+    PMIX_GETNB_CMD,
+    PMIX_FINALIZE_CMD,
+    PMIX_GETATTR_CMD,
+    PMIX_PUBLISH_CMD,
+    PMIX_LOOKUP_CMD,
+    PMIX_UNPUBLISH_CMD
+} pmix_cmd_t;
 
 /* define some message types */
 #define PMIX_USOCK_IDENT  1

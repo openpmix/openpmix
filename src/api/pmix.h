@@ -39,15 +39,14 @@ BEGIN_C_DECLS
 
 /* define some maximum sizes */
 #define PMIX_MAX_VALLEN   1024
-#define PMIX_MAX_INFO_KEY  255
-#define PMIX_MAX_INFO_VAL 1024
+#define PMIX_MAX_KEYLEN    255
 
 /* define an INFO object corresponding to
  * the MPI_Info structure */
 typedef struct {
     pmix_list_item_t super;
-    char key[PMIX_MAX_INFO_KEY];
-    char value[PMIX_MAX_INFO_VAL];
+    char key[PMIX_MAX_KEYLEN];
+    char value[PMIX_MAX_VALLEN];
 } pmix_info_t;
 OBJ_CLASS_DECLARATION(pmix_info_t);
 
@@ -62,13 +61,17 @@ OBJ_CLASS_DECLARATION(pmix_info_t);
  * PMI_GLOBAL - the data is to be shared with all other requesting processes,
  *              regardless of location
  */
-typedef uint8_t pmix_scope_t;
-#define PMIX_SCOPE_T PMIX_UINT8
-#define PMIX_SCOPE_UNDEF  0
-#define PMIX_INTERNAL     1  // data used internally only
-#define PMIX_LOCAL        2  // share to procs also on this node
-#define PMIX_REMOTE       3  // share with procs not on this node
-#define PMIX_GLOBAL       4  // share with all procs (local + remote)
+#define PMIX_SCOPE PMIX_UINT8
+typedef enum {
+    PMIX_SCOPE_UNDEF,
+    PMIX_INTERNAL,        // data used internally only
+    PMIX_LOCAL,           // share to procs also on this node
+    PMIX_REMOTE,          // share with procs not on this node
+    PMIX_GLOBAL,          // share with all procs (local + remote)
+    PMIX_NAMESPACE,       // used by Publish to indicate data is available to namespace only
+    PMIX_UNIVERSAL,       // used by Publish to indicate data available to all
+    PMIX_USER             // used by Publish to indicate data available to all user-owned namespaces
+} pmix_scope_t; 
 
 /* flags to indicate if the modex value being pushed into
  * the PMIx server comes from an element that is ready to
@@ -121,7 +124,7 @@ typedef uint8_t pmix_scope_t;
 /* miscellaneous common keys - used in functions and internally, but
  * not attributes */
 #define PMIX_PORT     "pmix.port"
-
+#define PMIX_SERVICE  "pmix.service"
 
 /* callback handler for errors */
 typedef void (*pmix_errhandler_fn_t)(int error);
@@ -164,32 +167,52 @@ void PMIx_Get_nb(const char *namespace, int rank,
                  pmix_cbfunc_t cbfunc, void *cbdata);
 
 /* Publish - the "info" parameter
- * consists of an array of pmix_info_t objects */
-int PMIx_Publish(const char service_name[],
-                 pmix_list_t *info);
+ * consists of a list of pmix_info_t objects that
+ * are to be pushed to the "universal" namespace
+ * for lookup by others subject to the provided scope.
+ * Note that the keys must be unique within the specified
+ * scope or else an error will be returned (first published
+ * wins). */
+int PMIx_Publish(pmix_scope_t scope, pmix_list_t *info);
 
 /* Lookup - the "info" parameter consists of a list of
  * pmix_info_t objects that specify the requested
  * information. Info will be returned in the objects.
  * The namespace param will contain the namespace of
- * the process that published the service_name */
-int PMIx_Lookup(const char service_name[],
-                pmix_list_t *info,
+ * the process that published the service_name. Passing
+ * a NULL for the namespace param indicates that the
+ * namespace information need not be returned */
+int PMIx_Lookup(pmix_list_t *info,
                 char **namespace);
 
 /* Unpublish - the "info" parameter
  * consists of a list of pmix_info_t objects */
-int PMIx_Unpublish(const char service_name[], 
-                   pmix_list_t *info);
+int PMIx_Unpublish(pmix_list_t *info);
 
 /* Get attribute */
-bool PMIx_Get_attr(const char *namespace, int rank,
+bool PMIx_Get_attr(const char *namespace,
                    const char *attr, pmix_value_t **kv);
 
 /* Get attribute (non-blocking) */
-int PMIx_Get_attr_nb(const char *namespace, int rank,
+int PMIx_Get_attr_nb(const char *namespace,
                      const char *attr,
                      pmix_cbfunc_t cbfunc, void *cbdata);
+
+/* Spawn a new job */
+typedef struct {
+    pmix_list_item_t super;
+    char *cmd;
+    int argc;
+    char **argv;
+    char **env;
+    int maxprocs;
+    pmix_list_t info;
+} pmix_app_t;
+OBJ_CLASS_DECLARATION(pmix_app_t);
+
+int PMIx_Spawn(pmix_list_t *apps,
+               char jobId[], int jobIdSize,
+               int errors[]);
 
 /* register an errhandler to report loss of connection to the server */
 void PMIx_Register_errhandler(pmix_errhandler_fn_t errhandler);
