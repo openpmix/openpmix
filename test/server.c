@@ -5,72 +5,705 @@
  * Copyright (c) 2004-2011 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006-2013 Los Alamos National Security, LLC. 
  *                         All rights reserved.
- * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2014 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  *
  */
 
 #include "orte_config.h"
+#include "orte/types.h"
+#include "opal/types.h"
 
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
-#include <fcntl.h>
-#ifdef HAVE_SYS_UIO_H
-#include <sys/uio.h>
-#endif
-#ifdef HAVE_NET_UIO_H
-#include <net/uio.h>
-#endif
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
-#include "opal/opal_socket_errno.h"
+#include <fcntl.h>
 #ifdef HAVE_NETINET_IN_H
 #include <netinet/in.h>
 #endif
 #ifdef HAVE_ARPA_INET_H
 #include <arpa/inet.h>
 #endif
-#ifdef HAVE_NETINET_TCP_H
-#include <netinet/tcp.h>
+#ifdef HAVE_NETDB_H
+#include <netdb.h>
 #endif
+#include <ctype.h>
 
 #include "opal_stdint.h"
-#include "opal/types.h"
-#include "opal/mca/backtrace/backtrace.h"
-#include "opal/util/output.h"
-#include "opal/util/net.h"
+#include "opal/class/opal_list.h"
+#include "opal/mca/base/mca_base_var.h"
+#include "opal/util/opal_environ.h"
+#include "opal/util/show_help.h"
 #include "opal/util/error.h"
+#include "opal/util/output.h"
+#include "opal/opal_socket_errno.h"
+#include "opal/util/if.h"
+#include "opal/util/net.h"
+#include "opal/util/argv.h"
 #include "opal/class/opal_hash_table.h"
 #include "opal/mca/dstore/dstore.h"
-#include "opal/mca/event/event.h"
-#include "opal/mca/sec/sec.h"
-#include "opal/runtime/opal.h"
 
-#include "orte/util/name_fns.h"
-#include "orte/runtime/orte_globals.h"
 #include "orte/mca/errmgr/errmgr.h"
-#include "orte/mca/ess/ess.h"
 #include "orte/mca/grpcomm/grpcomm.h"
 #include "orte/mca/rml/rml.h"
-#include "orte/mca/routed/routed.h"
-#include "orte/mca/state/state.h"
-#include "orte/runtime/orte_wait.h"
+#include "orte/util/name_fns.h"
+#include "orte/util/session_dir.h"
+#include "orte/util/show_help.h"
+#include "orte/runtime/orte_globals.h"
 
+#include "pmix_server.h"
 #include "pmix_server_internal.h"
+
+/*
+ * Local utility functions
+ */
+static void connection_handler(int incoming_sd, short flags, void* cbdata);
+static int pmix_server_start_listening(struct sockaddr_un *address);
+static void pmix_server_recv(int status, orte_process_name_t* sender,
+                             opal_buffer_t *buffer,
+                             orte_rml_tag_t tg, void *cbdata);
+static void pmix_server_release(int status,
+                                opal_buffer_t *buffer,
+                                void *cbdata);
+static void pmix_server_dmdx_recv(int status, orte_process_name_t* sender,
+                                  opal_buffer_t *buffer,
+                                  orte_rml_tag_t tg, void *cbdata);
+static void pmix_server_dmdx_resp(int status, orte_process_name_t* sender,
+                                  opal_buffer_t *buffer,
+                                  orte_rml_tag_t tg, void *cbdata);
+
+char *pmix_server_uri = NULL;
+opal_hash_table_t *pmix_server_peers = NULL;
+int pmix_server_verbosity = -1;
+int pmix_server_output = -1;
+int pmix_server_local_handle = -1;
+int pmix_server_remote_handle = -1;
+int pmix_server_global_handle = -1;
+opal_list_t pmix_server_pending_dmx_reqs;
+static bool initialized = false;
+static struct sockaddr_un address;
+static int pmix_server_listener_socket = -1;
+static bool pmix_server_listener_ev_active = false;
+static opal_event_t pmix_server_listener_event;
+static opal_list_t collectives;
+
+void pmix_server_register(void)
+{
+    /* register a verbosity */
+    pmix_server_verbosity = -1;
+    (void) mca_base_var_register ("orte", "pmix", NULL, "server_verbose",
+                                  "Debug verbosity for PMIx server",
+                                  MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                                  OPAL_INFO_LVL_9, MCA_BASE_VAR_SCOPE_ALL,
+                                  &pmix_server_verbosity);
+    if (0 <= pmix_server_verbosity) {
+        pmix_server_output = opal_output_open(NULL);
+        opal_output_set_verbosity(pmix_server_output, pmix_server_verbosity);
+    }
+}
+
+/*
+ * Initialize global variables used w/in the server.
+ */
+int main(int argc, char **argv)
+{
+    char **client_env=NULL;
+    char **client_argv=NULL;
+
+    /* initialize the event library */
+    
+    /* setup the path to the rendezvous point */
+    memset(&address, 0, sizeof(struct sockaddr_un));
+    address.sun_family = AF_UNIX;
+    snprintf(address.sun_path, sizeof(address.sun_path)-1, "pmix");
+
+    /* start listening */
+    
+    /* define the argv for the test client */
+    pmix_argv_append_nosize(&client_argv, "client");
+
+    /* pass our URI */
+    asprintf(&tmp, "PMIX_SERVER_URI=0:%s", address.sun_path);
+    pmix_argv_append_nosize(&client_env, tmp);
+    free(tmp);
+    /* pass an ID for the client */
+    pmix_argv_append_nosize(&client_env, "PMIX_ID=1");
+    /* pass a security credential */
+    pmix_argv_append_nosize(&client_env, "PMIX_SEC_CRED=credential-string");
+    
+    /* fork/exec the test */
+
+    /* cycle the event library until complete */
+    
+    return 0;
+}
+
+/*
+ * start listening on our rendezvous file
+ */
+static int server_start_listening(struct sockaddr_un *address)
+{
+    int flags;
+    opal_socklen_t addrlen;
+    int sd = -1;
+
+    /* create a listen socket for incoming connection attempts */
+    sd = socket(PF_UNIX, SOCK_STREAM, 0);
+    if (sd < 0) {
+        pmix_output(0,"pmix_server_start_listening: socket() failed");
+        return -1;
+    }
+
+    addrlen = sizeof(struct sockaddr_un);
+    if (bind(sd, (struct sockaddr*)address, addrlen) < 0) {
+        pmix_output(0, "%s bind() failed");
+        return -1;
+    }
+        
+    /* setup listen backlog to maximum allowed by kernel */
+    if (listen(sd, SOMAXCONN) < 0) {
+        pmix_output(0, "pmix_server_init: listen()");
+        return PMIX_ERROR;
+    }
+        
+    /* set socket up to be non-blocking, otherwise accept could block */
+    if ((flags = fcntl(sd, F_GETFL, 0)) < 0) {
+        pmix_output(0, "pmix_server_init: fcntl(F_GETFL) failed");
+        return PMIX_ERROR;
+    }
+    flags |= O_NONBLOCK;
+    if (fcntl(sd, F_SETFL, flags) < 0) {
+        pmix_output(0, "pmix_server_component_init: fcntl(F_SETFL) failed");
+        return PMIX_ERROR;
+    }
+
+    /* record this socket */
+    pmix_server_listener_socket = sd;
+
+    /* setup to listen via the event lib */
+    pmix_server_listener_ev_active = true;
+    event_set(pmix_event_base, &pmix_server_listener_event,
+              pmix_server_listener_socket,
+              OPAL_EV_READ|OPAL_EV_PERSIST,
+              connection_handler,
+              0);
+    event_add(&pmix_server_listener_event, 0);
+
+    pmix_output_verbose(2, pmix_server_output,
+                        "%s pmix server listening on socket %d",
+                        ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), sd);
+
+    return ORTE_SUCCESS;
+}
+
+/*
+ * Handler for accepting connections from the event library
+ */
+static void connection_handler(int incoming_sd, short flags, void* cbdata)
+{
+    struct sockaddr addr;
+    opal_socklen_t addrlen = sizeof(struct sockaddr);
+    int sd, rc;
+    pmix_server_hdr_t hdr;
+    pmix_server_peer_t *peer;
+
+    sd = accept(incoming_sd, (struct sockaddr*)&addr, &addrlen);
+    pmix_output_verbose(2, pmix_server_output,
+                        "connection_event_handler: working connection %d", sd);
+    if (sd < 0) {
+        if (EINTR == errno) {
+            return;
+        }
+        if (errno != EAGAIN && errno != EWOULDBLOCK) {
+            if (EMFILE == errno) {
+                /*
+                 * Close incoming_sd so that orte_show_help will have a file
+                 * descriptor with which to open the help file.  We will be
+                 * exiting anyway, so we don't need to keep it open.
+                 */
+                CLOSE_THE_SOCKET(incoming_sd);
+                pmix_output("Error: sys-limit-sockets";
+            } else {
+                pmix_output(0, "pmix_server_accept: accept() failed: %s (%d).", 
+                            strerror(errno), errno);
+            }
+        }
+        return;
+    }
+
+    /* get the handshake */
+    if (ORTE_SUCCESS != (rc = pmix_server_recv_connect_ack(NULL, sd, &hdr))) {
+        ORTE_ERROR_LOG(rc);
+        return;
+    }
+
+    /* finish processing ident */
+    if (PMIX_USOCK_IDENT == hdr.type) {
+        /* set socket up to be non-blocking */
+        if ((flags = fcntl(sd, F_GETFL, 0)) < 0) {
+            pmix_output(0, "pmix_server_recv_connect: fcntl(F_GETFL) failed: %s (%d)",
+                        strerror(errno), errno);
+        } else {
+            flags |= O_NONBLOCK;
+            if (fcntl(sd, F_SETFL, flags) < 0) {
+                pmix_output(0, "pmix_server_recv_connect: fcntl(F_SETFL) failed: %s (%d)",
+                            strerror(errno), errno);
+            }
+        }
+
+        /* is the peer instance willing to accept this connection */
+        peer->sd = sd;
+        if (peer->state != PMIX_SERVER_CONNECTED) {
+            pmix_server_peer_event_init(peer);
+
+            if (pmix_server_send_connect_ack(peer) != ORTE_SUCCESS) {
+                opal_output(0, "%s usock_peer_accept: "
+                            "usock_peer_send_connect_ack to %s failed\n",
+                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                            ORTE_NAME_PRINT(&(peer->name)));
+                peer->state = PMIX_SERVER_FAILED;
+                CLOSE_THE_SOCKET(sd);
+                return;
+            }
+
+            pmix_server_peer_connected(peer);
+            if (2 <= opal_output_get_verbosity(pmix_server_output)) {
+                pmix_server_peer_dump(peer, "accepted");
+            }
+        } else {
+            opal_output_verbose(2, pmix_server_output,
+                        "%s usock:peer_accept ignored for peer %s in state %s on socket %d",
+                        ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                        ORTE_NAME_PRINT(&peer->name),
+                        pmix_server_state_print(peer->state), peer->sd);
+            opal_hash_table_set_value_uint64(pmix_server_peers, sd, NULL);
+            CLOSE_THE_SOCKET(sd);
+            OBJ_RELEASE(peer);
+        }
+    }
+}
+
+char* pmix_server_state_print(pmix_server_state_t state)
+{
+    switch (state) {
+    case PMIX_SERVER_UNCONNECTED:
+        return "UNCONNECTED";
+    case PMIX_SERVER_CLOSED:
+        return "CLOSED";
+    case PMIX_SERVER_RESOLVE:
+        return "RESOLVE";
+    case PMIX_SERVER_CONNECTING:
+        return "CONNECTING";
+    case PMIX_SERVER_CONNECT_ACK:
+        return "ACK";
+    case PMIX_SERVER_CONNECTED:
+        return "CONNECTED";
+    case PMIX_SERVER_FAILED:
+        return "FAILED";
+    default:
+        return "UNKNOWN";
+    }
+}
+
+
+ static int usock_peer_send_blocking(pmix_server_peer_t* peer,
+                                    int sd, void* data, size_t size);
+static bool usock_peer_recv_blocking(pmix_server_peer_t* peer,
+                                     int sd, void* data, size_t size);
+
+int pmix_server_send_connect_ack(pmix_server_peer_t* peer)
+{
+    char *msg;
+    pmix_server_hdr_t hdr;
+    int rc;
+    size_t sdsize;
+
+    opal_output_verbose(2, pmix_server_output,
+                        "%s SEND CONNECT ACK", ORTE_NAME_PRINT(ORTE_PROC_MY_NAME));
+
+    /* send a handshake that includes our identifier */
+    memcpy(&hdr.id, &zero, sizeof(pmix_identifier_t));
+    hdr.type = PMIX_USOCK_IDENT;
+    hdr.tag = UINT32_MAX;
+
+    /* set the number of bytes to be read beyond the header */
+    hdr.nbytes = strlen(orte_version_string) + 1 + cred->size;
+
+    /* create a space for our message */
+    sdsize = (sizeof(hdr) + strlen(opal_version_string) + 1 + cred->size);
+    if (NULL == (msg = (char*)malloc(sdsize))) {
+        return ORTE_ERR_OUT_OF_RESOURCE;
+    }
+    memset(msg, 0, sdsize);
+
+    /* load the message */
+    memcpy(msg, &hdr, sizeof(hdr));
+    memcpy(msg+sizeof(hdr), opal_version_string, strlen(opal_version_string));
+    memcpy(msg+sizeof(hdr)+strlen(opal_version_string)+1, cred->credential, cred->size);
+
+
+    if (ORTE_SUCCESS != usock_peer_send_blocking(peer, pmix_server.sd, msg, sdsize)) {
+        ORTE_ERROR_LOG(ORTE_ERR_UNREACH);
+        return ORTE_ERR_UNREACH;
+    }
+    return ORTE_SUCCESS;
+}
+
+/*
+ * Initialize events to be used by the peer instance for USOCK select/poll callbacks.
+ */
+void pmix_server_peer_event_init(pmix_server_peer_t* peer)
+{
+    if (pmix_server.sd >= 0) {
+        opal_event_set(orte_event_base,
+                       &pmix_server.recv_event,
+                       pmix_server.sd,
+                       OPAL_EV_READ|OPAL_EV_PERSIST,
+                       pmix_server_recv_handler,
+                       peer);
+        opal_event_set_priority(&pmix_server.recv_event, ORTE_MSG_PRI);
+        if (pmix_server.recv_ev_active) {
+            opal_event_del(&pmix_server.recv_event);
+            pmix_server.recv_ev_active = false;
+        }
+        
+        opal_event_set(orte_event_base,
+                       &pmix_server.send_event,
+                       pmix_server.sd,
+                       OPAL_EV_WRITE|OPAL_EV_PERSIST,
+                       pmix_server_send_handler,
+                       peer);
+        opal_event_set_priority(&pmix_server.send_event, ORTE_MSG_PRI);
+        if (pmix_server.send_ev_active) {
+            opal_event_del(&pmix_server.send_event);
+            pmix_server.send_ev_active = false;
+        }
+    }
+}
+
+/*
+ * A blocking send on a non-blocking socket. Used to send the small amount of connection
+ * information that identifies the peers endpoint.
+ */
+static int usock_peer_send_blocking(pmix_server_peer_t* peer,
+                                    int sd, void* data, size_t size)
+{
+    unsigned char* ptr = (unsigned char*)data;
+    size_t cnt = 0;
+    int retval;
+
+    opal_output_verbose(2, pmix_server_output,
+                        "%s send blocking of %"PRIsize_t" bytes to socket %d",
+                        ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                        size, sd);
+
+    while (cnt < size) {
+        retval = send(sd, (char*)ptr+cnt, size-cnt, 0);
+        if (retval < 0) {
+            if (opal_socket_errno != EINTR && opal_socket_errno != EAGAIN && opal_socket_errno != EWOULDBLOCK) {
+                opal_output(0, "%s usock_peer_send_blocking: send() to socket %d failed: %s (%d)\n",
+                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), sd,
+                            strerror(opal_socket_errno),
+                            opal_socket_errno);
+                pmix_server.state = PMIX_SERVER_FAILED;
+                CLOSE_THE_SOCKET(pmix_server.sd);
+                return ORTE_ERR_UNREACH;
+            }
+            continue;
+        }
+        cnt += retval;
+    }
+
+    opal_output_verbose(2, pmix_server_output,
+                        "%s blocking send complete to socket %d",
+                        ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), sd);
+
+    return ORTE_SUCCESS;
+}
+
+/*
+ *  Receive the peers globally unique process identification from a newly
+ *  connected socket and verify the expected response. If so, move the
+ *  socket to a connected state.
+ */
+int pmix_server_recv_connect_ack(int sd)
+{
+    char *msg;
+    char *version;
+    int rc;
+    opal_sec_cred_t creds;
+    pmix_server_peer_t *peer;
+    pmix_server_hdr_t hdr;
+    orte_process_name_t sender;
+
+    opal_output_verbose(2, pmix_server_output,
+                        "RECV CONNECT ACK FROM CLIENT ON SOCKET %d", sd);
+
+    /* ensure all is zero'd */
+    memset(&hdr, 0, sizeof(pmix_server_hdr_t));
+
+    if (usock_peer_recv_blocking(peer, sd, &hdr, sizeof(pmix_server_hdr_t))) {
+        if (NULL != peer) {
+            /* If the peer state is CONNECT_ACK, then we were waiting for
+             * the connection to be ack'd
+             */
+            if (pmix_server.state != PMIX_SERVER_CONNECT_ACK) {
+                /* handshake broke down - abort this connection */
+                opal_output(0, "RECV CONNECT BAD HANDSHAKE FROM CLIENT ON SOCKET %d", sd);
+                pmix_server.state = PMIX_SERVER_FAILED;
+                return ORTE_ERR_UNREACH;
+            }
+        }
+    } else {
+        /* unable to complete the recv */
+        opal_output_verbose(2, pmix_server_output,
+                            "unable to complete recv of connect-ack from client ON SOCKET %d", sd);
+        return ORTE_ERR_UNREACH;
+    }
+    /* if the requestor wanted the header returned, then do so now */
+    if (NULL != dhdr) {
+        *dhdr = hdr;
+    }
+
+    if (hdr.type != PMIX_USOCK_IDENT) {
+        opal_output(0, "usock_peer_recv_connect_ack: invalid header type: %d\n", hdr.type);
+        if (NULL != peer) {
+            pmix_server.state = PMIX_SERVER_FAILED;
+            CLOSE_THE_SOCKET(pmix_server.sd);
+        } else {
+            CLOSE_THE_SOCKET(sd);
+        }
+        return ORTE_ERR_UNREACH;
+    }
+
+    opal_output_verbose(2, pmix_server_output,
+                        "%s connect-ack recvd from %s",
+                        ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                        (NULL == peer) ? "UNKNOWN" : ORTE_NAME_PRINT(&pmix_server.name));
+
+    memcpy(&sender, &hdr.id, sizeof(opal_identifier_t));
+    /* if we don't already have it, get the peer */
+    if (NULL == peer) {
+        peer = pmix_server_peer_lookup(sd);
+        if (NULL == peer) {
+            opal_output_verbose(2, pmix_server_output,
+                                "%s pmix_server_recv_connect: connection from new peer",
+                                ORTE_NAME_PRINT(ORTE_PROC_MY_NAME));
+            peer = OBJ_NEW(pmix_server_peer_t);
+            pmix_server.name = sender;
+            pmix_server.state = PMIX_SERVER_ACCEPTING;
+            pmix_server.sd = sd;
+            if (OPAL_SUCCESS != opal_hash_table_set_value_uint64(pmix_server_peers, sd, peer)) {
+                OBJ_RELEASE(peer);
+                CLOSE_THE_SOCKET(sd);
+                return ORTE_ERR_UNREACH;
+            }
+        } else if (PMIX_SERVER_CONNECTED == pmix_server.state ||
+                   PMIX_SERVER_CONNECTING == pmix_server.state ||
+                   PMIX_SERVER_CONNECT_ACK == pmix_server.state) {
+            /* if I already have an established such a connection, then we need
+             * to reject this connection */
+            opal_output_verbose(2, pmix_server_output,
+                                "%s EXISTING CONNECTION WITH %s",
+                                ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                ORTE_NAME_PRINT(&sender));
+            if (pmix_server.recv_ev_active) {
+                opal_event_del(&pmix_server.recv_event);
+                pmix_server.recv_ev_active = false;
+            }
+            if (pmix_server.send_ev_active) {
+                opal_event_del(&pmix_server.send_event);
+                pmix_server.send_ev_active = false;
+            }
+            if (0 < pmix_server.sd) {
+                CLOSE_THE_SOCKET(pmix_server.sd);
+                pmix_server.sd = -1;
+            }
+            pmix_server.retries = 0;
+        }
+    } else {
+        /* compare the peers name to the expected value */
+        if (OPAL_EQUAL != orte_util_compare_name_fields(ORTE_NS_CMP_ALL, &pmix_server.name, &sender)) {
+            opal_output(0, "%s usock_peer_recv_connect_ack: "
+                        "received unexpected process identifier %s from %s\n",
+                        ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                        ORTE_NAME_PRINT(&sender),
+                        ORTE_NAME_PRINT(&(pmix_server.name)));
+            pmix_server.state = PMIX_SERVER_FAILED;
+            CLOSE_THE_SOCKET(pmix_server.sd);
+            return ORTE_ERR_UNREACH;
+        }
+    }
+
+    opal_output_verbose(2, pmix_server_output,
+                        "%s connect-ack header from %s is okay",
+                        ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                        ORTE_NAME_PRINT(&pmix_server.name));
+
+    /* get the authentication and version payload */
+    if (NULL == (msg = (char*)malloc(hdr.nbytes))) {
+        pmix_server.state = PMIX_SERVER_FAILED;
+        CLOSE_THE_SOCKET(pmix_server.sd);
+        return ORTE_ERR_OUT_OF_RESOURCE;
+    }
+    if (!usock_peer_recv_blocking(peer, sd, msg, hdr.nbytes)) {
+        /* unable to complete the recv */
+        opal_output_verbose(2, pmix_server_output,
+                            "%s unable to complete recv of connect-ack from %s ON SOCKET %d",
+                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                            ORTE_NAME_PRINT(&pmix_server.name), pmix_server.sd);
+        free(msg);
+        return ORTE_ERR_UNREACH;
+    }
+
+    /* check that this is from a matching version */
+    version = (char*)(msg);
+    if (0 != strcmp(version, opal_version_string)) {
+        opal_output(0, "%s usock_peer_recv_connect_ack: "
+                    "received different version from %s: %s instead of %s\n",
+                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                    ORTE_NAME_PRINT(&(pmix_server.name)),
+                    version, opal_version_string);
+        pmix_server.state = PMIX_SERVER_FAILED;
+        CLOSE_THE_SOCKET(pmix_server.sd);
+        free(msg);
+        return ORTE_ERR_UNREACH;
+    }
+
+    opal_output_verbose(2, pmix_server_output,
+                        "%s connect-ack version from %s matches ours",
+                        ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                        ORTE_NAME_PRINT(&pmix_server.name));
+
+    /* check security token */
+    creds.credential = (char*)(msg + strlen(version) + 1);
+    creds.size = hdr.nbytes - strlen(version) - 1;
+    if (OPAL_SUCCESS != (rc = opal_sec.authenticate(&creds))) {
+        ORTE_ERROR_LOG(rc);
+    }
+    free(msg);
+
+    opal_output_verbose(2, pmix_server_output,
+                        "%s connect-ack %s authenticated",
+                        ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                        ORTE_NAME_PRINT(&pmix_server.name));
+
+    /* if the requestor wanted the header returned, then they
+     * will complete their processing
+     */
+    if (NULL != dhdr) {
+        return ORTE_SUCCESS;
+    }
+
+    /* connected */
+    pmix_server_peer_connected(peer);
+    if (2 <= opal_output_get_verbosity(pmix_server_output)) {
+        pmix_server_peer_dump(peer, "connected");
+    }
+    return ORTE_SUCCESS;
+}
+
+/*
+ *  Setup peer state to reflect that connection has been established,
+ *  and start any pending sends.
+ */
+void pmix_server_peer_connected(pmix_server_peer_t* peer)
+{
+    /* ensure the recv event is active */
+    if (!pmix_server.recv_ev_active) {
+        event_add(&pmix_server.recv_event, 0);
+        pmix_server.recv_ev_active = true;
+    }
+
+    /* initiate send of first message on queue */
+    if (NULL == pmix_server.send_msg) {
+        pmix_server.send_msg = (pmix_server_send_t*)
+            pmix_list_remove_first(&pmix_server.send_queue);
+    }
+    if (NULL != pmix_server.send_msg && !pmix_server.send_ev_active) {
+        event_add(&pmix_server.send_event, 0);
+        pmix_server.send_ev_active = true;
+    }
+}
+
+/*
+ * A blocking recv on a non-blocking socket. Used to receive the small amount of connection
+ * information that identifies the peers endpoint.
+ */
+static bool usock_peer_recv_blocking(int sd, void* data, size_t size)
+{
+    unsigned char* ptr = (unsigned char*)data;
+    size_t cnt = 0;
+
+    pmix_output_verbose(2, pmix_server_output,
+                        "waiting for connect ack from client");
+
+    while (cnt < size) {
+        int retval = recv(sd, (char *)ptr+cnt, size-cnt, 0);
+
+        /* remote closed connection */
+        if (retval == 0) {
+            pmix_output_verbose(2, pmix_server_output,
+                                "usock_peer_recv_blocking: "
+                                "client closed connection: peer state %d", pmix_server.state);
+            pmix_server.state = PMIX_SERVER_FAILED;
+            return false;
+        }
+
+        /* socket is non-blocking so handle errors */
+        if (retval < 0) {
+            if (errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK) {
+                if (pmix_server.state == PMIX_SERVER_CONNECT_ACK) {
+                    /* If we overflow the listen backlog, it's
+                       possible that even though we finished the three
+                       way handshake, the remote host was unable to
+                       transition the connection from half connected
+                       (received the initial SYN) to fully connected
+                       (in the listen backlog).  We likely won't see
+                       the failure until we try to receive, due to
+                       timing and the like.  The first thing we'll get
+                       in that case is a RST packet, which receive
+                       will turn into a connection reset by peer
+                       errno.  In that case, leave the socket in
+                       CONNECT_ACK and propogate the error up to
+                       recv_connect_ack, who will try to establish the
+                       connection again */
+                    pmix_output_verbose(2, pmix_server_output,
+                                        "connect ack received error %s from client",
+                                        ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                        strerror(errno));
+                    return false;
+                } else {
+                    pmix_output(0, "%s usock_peer_recv_blocking: recv() failed: %s (%d)\n",
+                                strerror(errno), errno);
+                    pmix_server.state = PMIX_SERVER_FAILED;
+                    return false;
+                }
+            }
+            continue;
+        }
+        cnt += retval;
+    }
+
+    pmix_output_verbose(2, pmix_server_output,
+                        "connect ack received from client");
+    return true;
+}
 
 static void complete_connect(pmix_server_peer_t *peer);
 
@@ -317,298 +950,7 @@ static int read_bytes(pmix_server_peer_t* peer)
     return ORTE_SUCCESS;
 }
 
-/* stuff proc attributes for sending back to a proc */
-static int stuff_proc_values(opal_buffer_t *reply, orte_job_t *jdata, orte_proc_t *proc)
-{
-    char *tmp;
-    opal_value_t kv, *kp;
-    int rc;
-    orte_node_t *node;
-    orte_app_context_t *app;
-    orte_proc_t *pptr;
-    int i;
-    char **list;
-    orte_process_name_t name;
-    opal_buffer_t buf;
-
-    /* convenience def */
-    node = proc->node;
-    app = (orte_app_context_t*)opal_pointer_array_get_item(jdata->apps, proc->app_idx);
-    kp = &kv;
-
-#if OPAL_HAVE_HWLOC
-    /* pass the local topology for the app so it doesn't
-     * have to discover it for itself */
-    if (NULL != opal_hwloc_topology) {
-        OBJ_CONSTRUCT(&buf, opal_buffer_t);
-        if (OPAL_SUCCESS != (rc = opal_dss.pack(&buf, &opal_hwloc_topology, 1, OPAL_HWLOC_TOPO))) {
-            ORTE_ERROR_LOG(rc);
-            OBJ_DESTRUCT(&buf);
-            return rc;
-        }
-        OBJ_CONSTRUCT(&kv, opal_value_t);
-        kv.key = strdup(PMIX_LOCAL_TOPO);
-        kv.type = OPAL_BYTE_OBJECT;
-        opal_dss.unload(&buf, (void**)&kv.data.bo.bytes, &kv.data.bo.size);
-        OBJ_DESTRUCT(&buf);
-        if (OPAL_SUCCESS != (rc = opal_dss.pack(reply, &kp, 1, OPAL_VALUE))) {
-            ORTE_ERROR_LOG(rc);
-            OBJ_DESTRUCT(&kv);
-            return rc;
-        }
-        OBJ_DESTRUCT(&kv);
-    }
-#endif /* OPAL_HAVE_HWLOC */
-    /* cpuset */
-    tmp = NULL;
-    if (orte_get_attribute(&proc->attributes, ORTE_PROC_CPU_BITMAP, (void**)&tmp, OPAL_STRING)) {
-        OBJ_CONSTRUCT(&kv, opal_value_t);
-        kv.key = strdup(PMIX_CPUSET);
-        kv.type = OPAL_STRING;
-        kv.data.string = tmp;
-        if (OPAL_SUCCESS != (rc = opal_dss.pack(reply, &kp, 1, OPAL_VALUE))) {
-            ORTE_ERROR_LOG(rc);
-            OBJ_DESTRUCT(&kv);
-            return rc;
-        }
-        OBJ_DESTRUCT(&kv);
-    }
-    /* jobid */
-    OBJ_CONSTRUCT(&kv, opal_value_t);
-    kv.key = strdup(PMIX_JOBID);
-    kv.type = OPAL_UINT32;
-    kv.data.uint32 = proc->name.jobid;
-    if (OPAL_SUCCESS != (rc = opal_dss.pack(reply, &kp, 1, OPAL_VALUE))) {
-        ORTE_ERROR_LOG(rc);
-        OBJ_DESTRUCT(&kv);
-        return rc;
-    }
-    OBJ_DESTRUCT(&kv);
-    /* appnum */
-    OBJ_CONSTRUCT(&kv, opal_value_t);
-    kv.key = strdup(PMIX_APPNUM);
-    kv.type = OPAL_UINT32;
-    kv.data.uint32 = proc->app_idx;
-    if (OPAL_SUCCESS != (rc = opal_dss.pack(reply, &kp, 1, OPAL_VALUE))) {
-        ORTE_ERROR_LOG(rc);
-        OBJ_DESTRUCT(&kv);
-        return rc;
-    }
-    OBJ_DESTRUCT(&kv);
-    /* rank */
-    OBJ_CONSTRUCT(&kv, opal_value_t);
-    kv.key = strdup(PMIX_RANK);
-    kv.type = OPAL_UINT32;
-    kv.data.uint32 = proc->name.vpid;
-    if (OPAL_SUCCESS != (rc = opal_dss.pack(reply, &kp, 1, OPAL_VALUE))) {
-        ORTE_ERROR_LOG(rc);
-        OBJ_DESTRUCT(&kv);
-        return rc;
-    }
-    OBJ_DESTRUCT(&kv);
-    /* global rank */
-    OBJ_CONSTRUCT(&kv, opal_value_t);
-    kv.key = strdup(PMIX_GLOBAL_RANK);
-    kv.type = OPAL_UINT32;
-    kv.data.uint32 = proc->name.vpid + jdata->offset;
-    if (OPAL_SUCCESS != (rc = opal_dss.pack(reply, &kp, 1, OPAL_VALUE))) {
-        ORTE_ERROR_LOG(rc);
-        OBJ_DESTRUCT(&kv);
-        return rc;
-    }
-    OBJ_DESTRUCT(&kv);
-    /* app rank */
-    OBJ_CONSTRUCT(&kv, opal_value_t);
-    kv.key = strdup(PMIX_APP_RANK);
-    kv.type = OPAL_UINT32;
-    kv.data.uint32 = proc->app_rank;
-    if (OPAL_SUCCESS != (rc = opal_dss.pack(reply, &kp, 1, OPAL_VALUE))) {
-        ORTE_ERROR_LOG(rc);
-        OBJ_DESTRUCT(&kv);
-        return rc;
-    }
-    OBJ_DESTRUCT(&kv);
-    /* offset */
-    OBJ_CONSTRUCT(&kv, opal_value_t);
-    kv.key = strdup(PMIX_NPROC_OFFSET);
-    kv.type = OPAL_UINT32;
-    kv.data.uint32 = jdata->offset;
-    if (OPAL_SUCCESS != (rc = opal_dss.pack(reply, &kp, 1, OPAL_VALUE))) {
-        ORTE_ERROR_LOG(rc);
-        OBJ_DESTRUCT(&kv);
-        return rc;
-    }
-    OBJ_DESTRUCT(&kv);
-    /* local rank */
-    OBJ_CONSTRUCT(&kv, opal_value_t);
-    kv.key = strdup(PMIX_LOCAL_RANK);
-    kv.type = OPAL_UINT16;
-    kv.data.uint16 = proc->local_rank;
-    if (OPAL_SUCCESS != (rc = opal_dss.pack(reply, &kp, 1, OPAL_VALUE))) {
-        ORTE_ERROR_LOG(rc);
-        OBJ_DESTRUCT(&kv);
-        return rc;
-    }
-    OBJ_DESTRUCT(&kv);
-    /* node rank */
-    OBJ_CONSTRUCT(&kv, opal_value_t);
-    kv.key = strdup(PMIX_NODE_RANK);
-    kv.type = OPAL_UINT16;
-    kv.data.uint16 = proc->node_rank;
-    if (OPAL_SUCCESS != (rc = opal_dss.pack(reply, &kp, 1, OPAL_VALUE))) {
-        ORTE_ERROR_LOG(rc);
-        OBJ_DESTRUCT(&kv);
-        return rc;
-    }
-    OBJ_DESTRUCT(&kv);
-    /* construct the list of local peers */
-    list = NULL;
-    name.jobid = jdata->jobid;
-    name.vpid = 0;
-    OBJ_CONSTRUCT(&buf, opal_buffer_t);
-    for (i=0; i < node->procs->size; i++) {
-        if (NULL == (pptr = (orte_proc_t*)opal_pointer_array_get_item(node->procs, i))) {
-            continue;
-        }
-        if (pptr->name.jobid == jdata->jobid) {
-            opal_argv_append_nosize(&list, ORTE_VPID_PRINT(pptr->name.vpid));
-            if (pptr->name.vpid < name.vpid) {
-                name.vpid = pptr->name.vpid;
-            }
-            /* note that we have to pass the cpuset for each local
-             * peer so locality can be computed */
-            tmp = NULL;
-            if (orte_get_attribute(&pptr->attributes, ORTE_PROC_CPU_BITMAP, (void**)&tmp, OPAL_STRING)) {
-                /* add the name of the proc */
-                if (OPAL_SUCCESS != (rc = opal_dss.pack(&buf, (opal_identifier_t*)&pptr->name, 1, OPAL_UINT64))) {
-                    ORTE_ERROR_LOG(rc);
-                    opal_argv_free(list);
-                    return rc;
-                }
-                /* add its cpuset */
-                if (OPAL_SUCCESS != (rc = opal_dss.pack(&buf, &tmp, 1, OPAL_STRING))) {
-                    ORTE_ERROR_LOG(rc);
-                    opal_argv_free(list);
-                    return rc;
-                }
-            }
-        }
-    }
-    /* pass the blob containing the cpusets for all local peers - note
-     * that the cpuset of the proc we are responding to will be included,
-     * so we don't need to send it separately */
-    OBJ_CONSTRUCT(&kv, opal_value_t);
-    kv.key = strdup(PMIX_LOCAL_CPUSETS);
-    kv.type = OPAL_BYTE_OBJECT;
-    opal_dss.unload(&buf, (void**)&kv.data.bo.bytes, &kv.data.bo.size);
-    OBJ_DESTRUCT(&buf);
-    if (OPAL_SUCCESS != (rc = opal_dss.pack(reply, &kp, 1, OPAL_VALUE))) {
-        ORTE_ERROR_LOG(rc);
-        OBJ_DESTRUCT(&kv);
-        opal_argv_free(list);
-        return rc;
-    }
-    OBJ_DESTRUCT(&kv);
-    /* construct the list of peers for transmission */
-    tmp = opal_argv_join(list, ',');
-    opal_argv_free(list);
-    /* pass the local ldr */
-    OBJ_CONSTRUCT(&kv, opal_value_t);
-    kv.key = strdup(PMIX_LOCALLDR);
-    kv.type = OPAL_UINT64;
-    kv.data.uint64 = *(uint64_t*)&name;
-    if (OPAL_SUCCESS != (rc = opal_dss.pack(reply, &kp, 1, OPAL_VALUE))) {
-        ORTE_ERROR_LOG(rc);
-        OBJ_DESTRUCT(&kv);
-        free(tmp);
-        return rc;
-    }
-    OBJ_DESTRUCT(&kv);
-    /* pass the list of peers */
-    OBJ_CONSTRUCT(&kv, opal_value_t);
-    kv.key = strdup(PMIX_LOCAL_PEERS);
-    kv.type = OPAL_STRING;
-    kv.data.string = tmp;
-    if (OPAL_SUCCESS != (rc = opal_dss.pack(reply, &kp, 1, OPAL_VALUE))) {
-        ORTE_ERROR_LOG(rc);
-        OBJ_DESTRUCT(&kv);
-        return rc;
-    }
-    OBJ_DESTRUCT(&kv);
-    /* app ldr */
-    OBJ_CONSTRUCT(&kv, opal_value_t);
-    kv.key = strdup(PMIX_APPLDR);
-    kv.type = OPAL_UINT32;
-    kv.data.uint32 = app->first_rank;
-    if (OPAL_SUCCESS != (rc = opal_dss.pack(reply, &kp, 1, OPAL_VALUE))) {
-        ORTE_ERROR_LOG(rc);
-        OBJ_DESTRUCT(&kv);
-        return rc;
-    }
-    OBJ_DESTRUCT(&kv);
-    /* univ size */
-    OBJ_CONSTRUCT(&kv, opal_value_t);
-    kv.key = strdup(PMIX_UNIV_SIZE);
-    kv.type = OPAL_UINT32;
-    kv.data.uint32 = jdata->num_procs;
-    if (OPAL_SUCCESS != (rc = opal_dss.pack(reply, &kp, 1, OPAL_VALUE))) {
-        ORTE_ERROR_LOG(rc);
-        OBJ_DESTRUCT(&kv);
-        return rc;
-    }
-    OBJ_DESTRUCT(&kv);
-    /* job size */
-    OBJ_CONSTRUCT(&kv, opal_value_t);
-    kv.key = strdup(PMIX_JOB_SIZE);
-    kv.type = OPAL_UINT32;
-    kv.data.uint32 = jdata->num_procs;
-    if (OPAL_SUCCESS != (rc = opal_dss.pack(reply, &kp, 1, OPAL_VALUE))) {
-        ORTE_ERROR_LOG(rc);
-        OBJ_DESTRUCT(&kv);
-        return rc;
-    }
-    OBJ_DESTRUCT(&kv);
-    /* local size */
-    OBJ_CONSTRUCT(&kv, opal_value_t);
-    kv.key = strdup(PMIX_LOCAL_SIZE);
-    kv.type = OPAL_UINT32;
-    kv.data.uint32 = jdata->num_local_procs;
-    if (OPAL_SUCCESS != (rc = opal_dss.pack(reply, &kp, 1, OPAL_VALUE))) {
-        ORTE_ERROR_LOG(rc);
-        OBJ_DESTRUCT(&kv);
-        return rc;
-    }
-    OBJ_DESTRUCT(&kv);
-    /* node size */
-    OBJ_CONSTRUCT(&kv, opal_value_t);
-    kv.key = strdup(PMIX_NODE_SIZE);
-    kv.type = OPAL_UINT32;
-    kv.data.uint32 = node->num_procs;
-    if (OPAL_SUCCESS != (rc = opal_dss.pack(reply, &kp, 1, OPAL_VALUE))) {
-        ORTE_ERROR_LOG(rc);
-        OBJ_DESTRUCT(&kv);
-        return rc;
-    }
-    OBJ_DESTRUCT(&kv);
-    /* max procs */
-    OBJ_CONSTRUCT(&kv, opal_value_t);
-    kv.key = strdup(PMIX_MAX_PROCS);
-    kv.type = OPAL_UINT32;
-    kv.data.uint16 = jdata->total_slots_alloc;
-    if (OPAL_SUCCESS != (rc = opal_dss.pack(reply, &kp, 1, OPAL_VALUE))) {
-        ORTE_ERROR_LOG(rc);
-        OBJ_DESTRUCT(&kv);
-        return rc;
-    }
-    OBJ_DESTRUCT(&kv);
-    /* local topology - we do this so the procs won't read the
-     * topology themselves as this could overwhelm the local
-     * system on large-scale SMPs */
-
-    return ORTE_SUCCESS;
-}
-
-/*
+ /*
  * Dispatch to the appropriate action routine based on the state
  * of the connection with the peer.
  */
@@ -662,23 +1004,7 @@ static void process_message(pmix_server_peer_t *peer)
             OBJ_DESTRUCT(&xfer);
             return;
         }
-        /* don't bother to unpack the message - we ignore this for now as the
-         * proc should have emitted it for itself */
-        memcpy(&name, &id, sizeof(orte_process_name_t));
-        /* go find the proc structure for this process */
-        if (NULL == (jdata = orte_get_job_data_object(name.jobid))) {
-            ORTE_ERROR_LOG(ORTE_ERR_NOT_FOUND);
-        } else {
-            if (NULL == (proc = (orte_proc_t*)opal_pointer_array_get_item(jdata->procs, name.vpid))) {
-                ORTE_ERROR_LOG(ORTE_ERR_NOT_FOUND);
-            } else {
-                proc->exit_code = ret;
-                ORTE_FLAG_SET(proc, ORTE_PROC_FLAG_ABORT);
-                ORTE_UPDATE_EXIT_STATUS(ret);
-            }
-        }
-        /* we will let the ODLS report this to errmgr when the proc exits, so
-         * send the release so the proc can depart */
+        /* send the release so the proc can depart */
         reply = OBJ_NEW(opal_buffer_t);
         /* pack the tag */
         if (OPAL_SUCCESS != (rc = opal_dss.pack(reply, &tag, 1, OPAL_UINT32))) {
@@ -697,20 +1023,7 @@ static void process_message(pmix_server_peer_t *peer)
                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                             (PMIX_FENCENB_CMD == cmd) ? "FENCE_NB" : "FENCE",
                             OPAL_NAME_PRINT(id), tag);
-        /* get the job and proc objects for the sender */
-        memcpy((char*)&name, (char*)&id, sizeof(orte_process_name_t));
-        if (NULL == (jdata = orte_get_job_data_object(name.jobid))) {
-            ORTE_ERROR_LOG(ORTE_ERR_NOT_FOUND);
-            OBJ_DESTRUCT(&xfer);
-            return;
-        }
-        if (NULL == (proc = (orte_proc_t*)opal_pointer_array_get_item(jdata->procs, name.vpid))) {
-            ORTE_ERROR_LOG(ORTE_ERR_NOT_FOUND);
-            OBJ_DESTRUCT(&xfer);
-            return;
-        }
-        /* setup a signature object */
-        sig = OBJ_NEW(orte_grpcomm_signature_t);
+        
         /* get the number of procs in this fence collective */
         cnt = 1;
         if (OPAL_SUCCESS != (rc = opal_dss.unpack(&xfer, &sig->sz, &cnt, OPAL_SIZE))) {
@@ -728,14 +1041,6 @@ static void process_message(pmix_server_peer_t *peer)
                 goto reply_fence;
             }
         }
-        if (4 < opal_output_get_verbosity(pmix_server_output)) {
-            char *tmp=NULL;
-            (void)opal_dss.print(&tmp, NULL, sig, ORTE_SIGNATURE);
-            opal_output(0, "%s %s called with procs %s",
-                        ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                        (PMIX_FENCENB_CMD == cmd) ? "FENCE_NB" : "FENCE", tmp);
-            free(tmp);
-        }
         /* get the URI for this process */
         cnt = 1;
         if (OPAL_SUCCESS != (rc = opal_dss.unpack(&xfer, &local_uri, &cnt, OPAL_STRING))) {
@@ -749,20 +1054,9 @@ static void process_message(pmix_server_peer_t *peer)
             orte_rml.set_contact_info(local_uri);
             free(local_uri);
         }
-        /* if we are in a group collective mode, then we need to prep
-         * the data as it should be included in the modex */
-        OBJ_CONSTRUCT(&save, opal_buffer_t);
-        if (orte_process_info.num_procs < orte_full_modex_cutoff) {
-            /* need to include the id of the sender for later unpacking */
-            opal_dss.pack(&save, &id, 1, OPAL_UINT64);
-            opal_dss.copy_payload(&save, &xfer);
-        }
         /* if data was given, unpack and store it in the pmix dstore - it is okay
          * if there was no data, it's just a fence */
         cnt = 1;
-        found = false;
-        OBJ_CONSTRUCT(&blocal, opal_buffer_t);
-        OBJ_CONSTRUCT(&bremote, opal_buffer_t);
         while (OPAL_SUCCESS == (rc = opal_dss.unpack(&xfer, &scope, &cnt, PMIX_SCOPE_T))) {
             found = true;  // at least one block of data is present
             /* unpack the buffer */
