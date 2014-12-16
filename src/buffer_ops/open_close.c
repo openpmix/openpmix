@@ -27,6 +27,7 @@
 #include <string.h>
 #endif
 
+#include "src/util/argv.h"
 #include "src/buffer_ops/internal.h"
 
 /**
@@ -132,6 +133,44 @@ static void pmix_bfrop_type_info_destruct(pmix_bfrop_type_info_t *obj)
 OBJ_CLASS_INSTANCE(pmix_bfrop_type_info_t, pmix_object_t,
                    pmix_bfrop_type_info_construct,
                    pmix_bfrop_type_info_destruct);
+
+
+static void pmix_bfrop_info_con(pmix_info_t *info)
+{
+    memset(info->key, 0, PMIX_MAX_KEYLEN);
+    memset(info->value, 0, PMIX_MAX_VALLEN);
+}
+OBJ_CLASS_INSTANCE(pmix_info_t,
+                   pmix_list_item_t,
+                   pmix_bfrop_info_con, NULL);
+
+
+static void pmix_bfrop_app_con(pmix_app_t *app)
+{
+    app->cmd = NULL;
+    app->argc = 0;
+    app->argv = NULL;
+    app->env = NULL;
+    app->maxprocs = 0;
+    OBJ_CONSTRUCT(&app->info, pmix_list_t);
+}
+static void pmix_bfrop_app_des(pmix_app_t *app)
+{
+    if (NULL != app->cmd) {
+        free(app->cmd);
+    }
+    if (NULL != app->argv) {
+        pmix_argv_free(app->argv);
+    }
+    if (NULL == app->env) {
+        pmix_argv_free(app->env);
+    }
+    PMIX_LIST_DESTRUCT(&app->info);
+}
+OBJ_CLASS_INSTANCE(pmix_app_t,
+                   pmix_list_item_t,
+                   pmix_bfrop_app_con,
+                   pmix_bfrop_app_des);
 
 
 int pmix_bfrop_register_vars (void)

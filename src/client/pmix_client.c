@@ -1248,12 +1248,6 @@ int PMIx_Disconnect(pmix_list_t *ranges)
 }
 
 
-/***   INSTANTIATE PUBLIC CLASSES   ***/
-OBJ_CLASS_INSTANCE(pmix_info_t,
-                   pmix_list_item_t,
-                   NULL, NULL);
-
-
 /***   INSTANTIATE INTERNAL CLASSES   ***/
 static void scon(pmix_usock_send_t *p)
 {
