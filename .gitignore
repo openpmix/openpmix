@@ -38,3 +38,4 @@ config/config.guess
 config/config.sub
 config/depcomp
 config/missing
+src/include/pmix_config.h.in
