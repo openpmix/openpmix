@@ -37,19 +37,6 @@ BEGIN_C_DECLS
 #define PMIX_ERR_COMM_FAILURE                      (PMIX_ERROR_BASE - 20)
 #define PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER    (PMIX_ERROR_BASE - 21)
 
-/* define some maximum sizes */
-#define PMIX_MAX_VALLEN   1024
-#define PMIX_MAX_KEYLEN    255
-
-/* define an INFO object corresponding to
- * the MPI_Info structure */
-typedef struct {
-    pmix_list_item_t super;
-    char key[PMIX_MAX_KEYLEN];
-    char value[PMIX_MAX_VALLEN];
-} pmix_info_t;
-OBJ_CLASS_DECLARATION(pmix_info_t);
-
 /* define a scope for data "put" by PMI per the following:
  *
  * PMI_LOCAL - the data is intended only for other application
@@ -199,17 +186,6 @@ int PMIx_Get_attr_nb(const char *namespace,
                      pmix_cbfunc_t cbfunc, void *cbdata);
 
 /* Spawn a new job */
-typedef struct {
-    pmix_list_item_t super;
-    char *cmd;
-    int argc;
-    char **argv;
-    char **env;
-    int maxprocs;
-    pmix_list_t info;
-} pmix_app_t;
-OBJ_CLASS_DECLARATION(pmix_app_t);
-
 int PMIx_Spawn(pmix_list_t *apps,
                char jobId[], int jobIdSize,
                int errors[]);

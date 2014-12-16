@@ -289,18 +289,6 @@ int pmix_bfrop_compare_byte_object(pmix_byte_object_t *value1, pmix_byte_object_
     return PMIX_EQUAL;  /* sum of both value's bytes was identical */
 }
 
-/* PMIX_PSTAT */
-int pmix_bfrop_compare_pstat(pmix_pstats_t *value1, pmix_pstats_t *value2, pmix_data_type_t type)
-{
-    return PMIX_EQUAL;  /* eventually compare field to field */
-}
-
-/* PMIX_NODE_STAT */
-int pmix_bfrop_compare_node_stat(pmix_node_stats_t *value1, pmix_node_stats_t *value2, pmix_data_type_t type)
-{
-    return PMIX_EQUAL;  /* eventually compare field to field */
-}
-
 /* PMIX_VALUE */
 int pmix_bfrop_compare_value(pmix_value_t *value1, pmix_value_t *value2, pmix_data_type_t type)
 {
@@ -311,4 +299,59 @@ int pmix_bfrop_compare_value(pmix_value_t *value1, pmix_value_t *value2, pmix_da
 int pmix_bfrop_compare_buffer_contents(pmix_buffer_t *value1, pmix_buffer_t *value2, pmix_data_type_t type)
 {
     return PMIX_EQUAL;  /* eventually compare bytes in buffers */
+}
+
+/* PMIX_INFO */
+int pmix_bfrop_compare_info(pmix_info_t *value1, pmix_info_t *value2, pmix_data_type_t type)
+{
+    int rc;
+    
+    if (strlen(value1->key) > strlen(value2->key)) {
+        return PMIX_VALUE1_GREATER;
+    }
+    if (strlen(value2->key) > strlen(value1->key)) {
+        return PMIX_VALUE2_GREATER;
+    }
+    if (0 != (rc = strcmp(value1->key, value2->key))) {
+        if (0 < rc) {
+        return PMIX_VALUE1_GREATER;
+        }
+        return PMIX_VALUE2_GREATER;
+    }
+
+    if (strlen(value1->value) > strlen(value2->value)) {
+        return PMIX_VALUE1_GREATER;
+    }
+    if (strlen(value2->value) > strlen(value1->value)) {
+        return PMIX_VALUE2_GREATER;
+    }
+    if (0 != (rc = strcmp(value1->value, value2->value))) {
+        if (0 < rc) {
+        return PMIX_VALUE1_GREATER;
+        }
+        return PMIX_VALUE2_GREATER;
+    }
+
+    return PMIX_EQUAL;
+}
+
+/* PMIX_APP */
+int pmix_bfrop_compare_app(pmix_app_t *value1, pmix_app_t *value2, pmix_data_type_t type)
+{
+    int rc;
+    
+    if (strlen(value1->cmd) > strlen(value2->cmd)) {
+        return PMIX_VALUE1_GREATER;
+    }
+    if (strlen(value2->cmd) > strlen(value1->cmd)) {
+        return PMIX_VALUE2_GREATER;
+    }
+    if (0 != (rc = strcmp(value1->cmd, value2->cmd))) {
+        if (0 < rc) {
+        return PMIX_VALUE1_GREATER;
+        }
+        return PMIX_VALUE2_GREATER;
+    }
+
+    return PMIX_EQUAL;
 }

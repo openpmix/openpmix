@@ -189,61 +189,6 @@ int pmix_bfrop_copy_byte_object(pmix_byte_object_t **dest, pmix_byte_object_t *s
     return PMIX_SUCCESS;
 }
 
-/* PMIX_PSTAT */
-int pmix_bfrop_copy_pstat(pmix_pstats_t **dest, pmix_pstats_t *src,
-                        pmix_data_type_t type)
-{
-    pmix_pstats_t *p;
-    
-    /* create the new object */
-    *dest = OBJ_NEW(pmix_pstats_t);
-    if (NULL == *dest) {
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    }
-    p = *dest;
-    
-    /* copy the individual fields */
-    memcpy(p->node, src->node, sizeof(src->node));
-    p->rank = src->rank;
-    p->pid = src->pid;
-    memcpy(p->cmd, src->cmd, sizeof(src->cmd));
-    p->state[0] = src->state[0];
-    p->time = src->time;
-    p->priority = src->priority;
-    p->num_threads = src->num_threads;
-    p->vsize = src->vsize;
-    p->rss = src->rss;
-    p->peak_vsize = src->peak_vsize;
-    p->processor = src->processor;
-    p->sample_time.tv_sec = src->sample_time.tv_sec;
-    p->sample_time.tv_usec = src->sample_time.tv_usec;    
-    return PMIX_SUCCESS;
-}
-
-/* PMIX_NODE_STAT */
-int pmix_bfrop_copy_node_stat(pmix_node_stats_t **dest, pmix_node_stats_t *src,
-                            pmix_data_type_t type)
-{
-    pmix_node_stats_t *p;
-    
-    /* create the new object */
-    *dest = OBJ_NEW(pmix_node_stats_t);
-    if (NULL == *dest) {
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    }
-    p = *dest;
-    
-    /* copy the individual fields */
-    p->la = src->la;
-    p->la5 = src->la5;
-    p->la15 = src->la15;
-    p->total_mem = src->total_mem;
-    p->free_mem = src->free_mem;
-    p->sample_time.tv_sec = src->sample_time.tv_sec;
-    p->sample_time.tv_usec = src->sample_time.tv_usec;    
-    return PMIX_SUCCESS;
-}
-
 /* PMIX_VALUE */
 int pmix_bfrop_copy_value(pmix_value_t **dest, pmix_value_t *src,
                         pmix_data_type_t type)
@@ -336,6 +281,18 @@ int pmix_bfrop_copy_value(pmix_value_t **dest, pmix_value_t *src,
 
 int pmix_bfrop_copy_buffer_contents(pmix_buffer_t **dest, pmix_buffer_t *src,
                                   pmix_data_type_t type)
+{
+    return PMIX_SUCCESS;
+}
+
+int pmix_bfrop_copy_info(pmix_info_t **dest, pmix_info_t *src,
+                         pmix_data_type_t type)
+{
+    return PMIX_SUCCESS;
+}
+
+int pmix_bfrop_copy_app(pmix_app_t **dest, pmix_app_t *src,
+                        pmix_data_type_t type)
 {
     return PMIX_SUCCESS;
 }

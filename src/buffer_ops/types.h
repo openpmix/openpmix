@@ -30,6 +30,7 @@
 
 #include "pmix_config.h"
 #include "src/include/types.h"
+#include "src/include/constants.h"
 
 #ifdef HAVE_SYS_TIME_H
 #include <sys/time.h> /* for struct timeval */
@@ -116,6 +117,7 @@ typedef struct {
 #define    PMIX_PID_ARRAY           (pmix_data_type_t)   48
 #define    PMIX_TIMEVAL_ARRAY       (pmix_data_type_t)   49
 #define    PMIX_APP                 (pmix_data_type_t)   50
+#define    PMIX_INFO                (pmix_data_type_t)   51
 
 
 /* define the results values for comparisons so we can change them in only one place */
@@ -264,81 +266,6 @@ typedef struct {
 } pmix_value_t;
 PMIX_DECLSPEC OBJ_CLASS_DECLARATION(pmix_value_t);
 
-/* Process statistics object */
-#define PMIX_PSTAT_MAX_STRING_LEN   32
-typedef struct {
-    pmix_list_item_t super;                /* required for this to be on a list */
-    /* process ident info */
-    char node[PMIX_PSTAT_MAX_STRING_LEN];
-    int32_t rank;
-    pid_t pid;
-    char cmd[PMIX_PSTAT_MAX_STRING_LEN];
-    /* process stats */
-    char state[2];
-    struct timeval time;
-    float percent_cpu;
-    int32_t priority;
-    int16_t num_threads;
-    float vsize;  /* in MBytes */
-    float rss;  /* in MBytes */
-    float peak_vsize;  /* in MBytes */
-    int16_t processor;
-    /* time at which sample was taken */
-    struct timeval sample_time;
-} pmix_pstats_t;
-PMIX_DECLSPEC OBJ_CLASS_DECLARATION(pmix_pstats_t);
-typedef struct {
-    pmix_list_item_t super;
-    char *disk;
-    unsigned long num_reads_completed;
-    unsigned long num_reads_merged;
-    unsigned long num_sectors_read;
-    unsigned long milliseconds_reading;
-    unsigned long num_writes_completed;
-    unsigned long num_writes_merged;
-    unsigned long num_sectors_written;
-    unsigned long milliseconds_writing;
-    unsigned long num_ios_in_progress;
-    unsigned long milliseconds_io;
-    unsigned long weighted_milliseconds_io;
-} pmix_diskstats_t;
-PMIX_DECLSPEC OBJ_CLASS_DECLARATION(pmix_diskstats_t);
-typedef struct {
-    pmix_list_item_t super;
-    char *net_interface;
-    unsigned long num_bytes_recvd;
-    unsigned long num_packets_recvd;
-    unsigned long num_recv_errs;
-    unsigned long num_bytes_sent;
-    unsigned long num_packets_sent;
-    unsigned long num_send_errs;
-} pmix_netstats_t;
-PMIX_DECLSPEC OBJ_CLASS_DECLARATION(pmix_netstats_t);
-typedef struct {
-    pmix_object_t super;
-    /* node-level load averages */
-    float la;
-    float la5;
-    float la15;
-    /* memory usage */
-    float total_mem;  /* in MBytes */
-    float free_mem;  /* in MBytes */
-    float buffers;  /* in MBytes */
-    float cached;   /* in MBytes */
-    float swap_cached;  /* in MBytes */
-    float swap_total;   /* in MBytes */
-    float swap_free;    /* in MBytes */
-    float mapped;       /* in MBytes */
-    /* time at which sample was taken */
-    struct timeval sample_time;
-    /* list of disk stats, one per disk */
-    pmix_list_t diskstats;
-    /* list of net stats, one per interface */
-    pmix_list_t netstats;
-
-} pmix_node_stats_t;
-PMIX_DECLSPEC OBJ_CLASS_DECLARATION(pmix_node_stats_t);
-
 /* structured-unstructured data flags */
 #define PMIX_BFROP_STRUCTURED     true
 #define PMIX_BFROP_UNSTRUCTURED   false
@@ -387,6 +314,27 @@ typedef struct pmix_buffer_t pmix_buffer_t;
 
 /** formalize the declaration */
 PMIX_DECLSPEC OBJ_CLASS_DECLARATION (pmix_buffer_t);
+
+/* define an INFO object corresponding to
+ * the MPI_Info structure */
+typedef struct {
+    pmix_list_item_t super;
+    char key[PMIX_MAX_KEYLEN];
+    char value[PMIX_MAX_VALLEN];
+} pmix_info_t;
+OBJ_CLASS_DECLARATION(pmix_info_t);
+
+typedef struct {
+    pmix_list_item_t super;
+    char *cmd;
+    int argc;
+    char **argv;
+    char **env;
+    int maxprocs;
+    pmix_list_t info;
+} pmix_app_t;
+OBJ_CLASS_DECLARATION(pmix_app_t);
+
 
 END_C_DECLS
 

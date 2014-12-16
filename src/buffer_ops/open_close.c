@@ -134,93 +134,6 @@ OBJ_CLASS_INSTANCE(pmix_bfrop_type_info_t, pmix_object_t,
                    pmix_bfrop_type_info_destruct);
 
 
-static void pmix_pstat_construct(pmix_pstats_t *obj)
-{
-    memset(obj->node, 0, sizeof(obj->node));
-    memset(obj->cmd, 0, sizeof(obj->cmd));
-    obj->rank = 0;
-    obj->pid = 0;
-    obj->state[0] = 'U';
-    obj->state[1] = '\0';
-    obj->percent_cpu = 0.0;
-    obj->time.tv_sec = 0;
-    obj->time.tv_usec = 0;
-    obj->priority = -1;
-    obj->num_threads = -1;
-    obj->vsize = 0.0;
-    obj->rss = 0.0;
-    obj->peak_vsize = 0.0;
-    obj->processor = -1;
-    obj->sample_time.tv_sec = 0;
-    obj->sample_time.tv_usec = 0;
-}
-OBJ_CLASS_INSTANCE(pmix_pstats_t, pmix_list_item_t,
-                   pmix_pstat_construct,
-                   NULL);
-
-static void diskstat_cons(pmix_diskstats_t *ptr)
-{
-    ptr->disk = NULL;
-}
-static void diskstat_dest(pmix_diskstats_t *ptr)
-{
-    if (NULL != ptr->disk) {
-        free(ptr->disk);
-    }
-}
-OBJ_CLASS_INSTANCE(pmix_diskstats_t,
-                   pmix_list_item_t,
-                   diskstat_cons, diskstat_dest);
-
-static void netstat_cons(pmix_netstats_t *ptr)
-{
-    ptr->net_interface = NULL;
-}
-static void netstat_dest(pmix_netstats_t *ptr)
-{
-    if (NULL != ptr->net_interface) {
-        free(ptr->net_interface);
-    }
-}
-OBJ_CLASS_INSTANCE(pmix_netstats_t,
-                   pmix_list_item_t,
-                   netstat_cons, netstat_dest);
-
-static void pmix_node_stats_construct(pmix_node_stats_t *obj)
-{
-    obj->la = 0.0;
-    obj->la5 = 0.0;
-    obj->la15 = 0.0;
-    obj->total_mem = 0;
-    obj->free_mem = 0.0;
-    obj->buffers = 0.0;
-    obj->cached = 0.0;
-    obj->swap_cached = 0.0;
-    obj->swap_total = 0.0;
-    obj->swap_free = 0.0;
-    obj->mapped = 0.0;
-    obj->sample_time.tv_sec = 0;
-    obj->sample_time.tv_usec = 0;
-    OBJ_CONSTRUCT(&obj->diskstats, pmix_list_t);
-    OBJ_CONSTRUCT(&obj->netstats, pmix_list_t);
-}
-static void pmix_node_stats_destruct(pmix_node_stats_t *obj)
-{
-    pmix_list_item_t *item;
-    while (NULL != (item = pmix_list_remove_first(&obj->diskstats))) {
-        OBJ_RELEASE(item);
-    }
-    OBJ_DESTRUCT(&obj->diskstats);
-    while (NULL != (item = pmix_list_remove_first(&obj->netstats))) {
-        OBJ_RELEASE(item);
-    }
-    OBJ_DESTRUCT(&obj->netstats);
-}
-OBJ_CLASS_INSTANCE(pmix_node_stats_t, pmix_object_t,
-                   pmix_node_stats_construct,
-                   pmix_node_stats_destruct);
-
-
 int pmix_bfrop_register_vars (void)
 {
     char *enviro_val;
@@ -453,27 +366,6 @@ int pmix_bfrop_open(void)
         return rc;
     }
 
-    tmp = PMIX_PSTAT;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.register_type(pmix_bfrop_pack_pstat,
-                                                     pmix_bfrop_unpack_pstat,
-                                                     (pmix_bfrop_copy_fn_t)pmix_bfrop_copy_pstat,
-                                                     (pmix_bfrop_compare_fn_t)pmix_bfrop_compare_pstat,
-                                                     (pmix_bfrop_print_fn_t)pmix_bfrop_print_pstat,
-                                                     PMIX_BFROP_STRUCTURED,
-                                                     "PMIX_PSTAT", &tmp))) {
-        return rc;
-    }
-
-    tmp = PMIX_NODE_STAT;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.register_type(pmix_bfrop_pack_node_stat,
-                                                     pmix_bfrop_unpack_node_stat,
-                                                     (pmix_bfrop_copy_fn_t)pmix_bfrop_copy_node_stat,
-                                                     (pmix_bfrop_compare_fn_t)pmix_bfrop_compare_node_stat,
-                                                     (pmix_bfrop_print_fn_t)pmix_bfrop_print_node_stat,
-                                                     PMIX_BFROP_STRUCTURED,
-                                                     "PMIX_NODE_STAT", &tmp))) {
-        return rc;
-    }
     tmp = PMIX_VALUE;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.register_type(pmix_bfrop_pack_value,
                                                      pmix_bfrop_unpack_value,
@@ -532,6 +424,26 @@ int pmix_bfrop_open(void)
                                                      (pmix_bfrop_print_fn_t)pmix_bfrop_print_time,
                                                      PMIX_BFROP_UNSTRUCTURED,
                                                      "PMIX_TIME", &tmp))) {
+        return rc;
+    }
+     tmp = PMIX_INFO;
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.register_type(pmix_bfrop_pack_info,
+                                                     pmix_bfrop_unpack_info,
+                                                     (pmix_bfrop_copy_fn_t)pmix_bfrop_copy_info,
+                                                     (pmix_bfrop_compare_fn_t)pmix_bfrop_compare_info,
+                                                     (pmix_bfrop_print_fn_t)pmix_bfrop_print_info,
+                                                     PMIX_BFROP_STRUCTURED,
+                                                     "PMIX_INFO", &tmp))) {
+        return rc;
+    }
+     tmp = PMIX_APP;
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.register_type(pmix_bfrop_pack_app,
+                                                     pmix_bfrop_unpack_apps,
+                                                     (pmix_bfrop_copy_fn_t)pmix_bfrop_copy_app,
+                                                     (pmix_bfrop_compare_fn_t)pmix_bfrop_compare_app,
+                                                     (pmix_bfrop_print_fn_t)pmix_bfrop_print_app,
+                                                     PMIX_BFROP_STRUCTURED,
+                                                     "PMIX_APP", &tmp))) {
         return rc;
     }
    /* All done */

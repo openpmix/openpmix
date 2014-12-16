@@ -19,7 +19,12 @@
 
 #ifndef PMIX_CONSTANTS_H
 #define PMIX_CONSTANTS_H
- 
+
+/* define some maximum sizes */
+#define PMIX_MAX_VALLEN   1024
+#define PMIX_MAX_KEYLEN    255
+
+
 /* error codes - don't forget to update pmix/rutime/pmix_init.c when 
    adding to this list */
 #define PMIX_ERR_BASE             0 /* internal use only */

@@ -25,6 +25,7 @@
 #endif
 
 #include "types.h"
+#include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
 #include "src/buffer_ops/internal.h"
@@ -454,238 +455,6 @@ int pmix_bfrop_pack_byte_object(pmix_buffer_t *buffer, const void *src, int32_t 
             if (PMIX_SUCCESS != (ret =
                 pmix_bfrop_pack_byte(buffer, sbyteptr[i]->bytes, n, PMIX_BYTE))) {
                 return ret;
-            }
-        }
-    }
-
-    return PMIX_SUCCESS;
-}
-
-/*
- * PMIX_PSTAT
- */
-int pmix_bfrop_pack_pstat(pmix_buffer_t *buffer, const void *src,
-                        int32_t num_vals, pmix_data_type_t type)
-{
-    pmix_pstats_t **ptr;
-    int32_t i;
-    int ret;
-    char *cptr;
-    
-    ptr = (pmix_pstats_t **) src;
-    
-    for (i = 0; i < num_vals; ++i) {
-        cptr = ptr[i]->node;
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &cptr, 1, PMIX_STRING))) {
-            return ret;
-        }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &ptr[i]->rank, 1, PMIX_INT32))) {
-            return ret;
-        }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &ptr[i]->pid, 1, PMIX_PID))) {
-            return ret;
-        }
-        cptr = ptr[i]->cmd;
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &cptr, 1, PMIX_STRING))) {
-            return ret;
-        }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &ptr[i]->state[0], 1, PMIX_BYTE))) {
-            return ret;
-        }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &ptr[i]->time, 1, PMIX_TIMEVAL))) {
-            return ret;
-        }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &ptr[i]->priority, 1, PMIX_INT32))) {
-            return ret;
-        }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &ptr[i]->num_threads, 1, PMIX_INT16))) {
-            return ret;
-        }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_float(buffer, &ptr[i]->vsize, 1, PMIX_FLOAT))) {
-            return ret;
-        }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_float(buffer, &ptr[i]->rss, 1, PMIX_FLOAT))) {
-            return ret;
-        }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_float(buffer, &ptr[i]->peak_vsize, 1, PMIX_FLOAT))) {
-            return ret;
-        }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &ptr[i]->processor, 1, PMIX_INT16))) {
-            return ret;
-        }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &ptr[i]->sample_time, 1, PMIX_TIMEVAL))) {
-            return ret;
-        }
-    }
-
-    return PMIX_SUCCESS;
-}
-
-static int pack_disk_stats(pmix_buffer_t *buffer, pmix_diskstats_t *dk)
-{
-    uint64_t i64;
-    int ret;
-
-    if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &dk->disk, 1, PMIX_STRING))) {
-        return ret;
-    }
-    i64 = (uint64_t)dk->num_reads_completed;
-    if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &i64, 1, PMIX_UINT64))) {
-        return ret;
-    }
-    i64 = (uint64_t)dk->num_reads_merged;
-    if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &i64, 1, PMIX_UINT64))) {
-        return ret;
-    }
-    i64 = (uint64_t)dk->num_sectors_read;
-    if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &i64, 1, PMIX_UINT64))) {
-        return ret;
-    }
-    i64 = (uint64_t)dk->milliseconds_reading;
-    if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &i64, 1, PMIX_UINT64))) {
-        return ret;
-    }
-    i64 = (uint64_t)dk->num_writes_completed;
-    if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &i64, 1, PMIX_UINT64))) {
-        return ret;
-    }
-    i64 = (uint64_t)dk->num_writes_merged;
-    if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &i64, 1, PMIX_UINT64))) {
-        return ret;
-    }
-    i64 = (uint64_t)dk->num_sectors_written;
-    if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &i64, 1, PMIX_UINT64))) {
-        return ret;
-    }
-    i64 = (uint64_t)dk->milliseconds_writing;
-    if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &i64, 1, PMIX_UINT64))) {
-        return ret;
-    }
-    i64 = (uint64_t)dk->num_ios_in_progress;
-    if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &i64, 1, PMIX_UINT64))) {
-        return ret;
-    }
-    i64 = (uint64_t)dk->milliseconds_io;
-    if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &i64, 1, PMIX_UINT64))) {
-        return ret;
-    }
-    i64 = (uint64_t)dk->weighted_milliseconds_io;
-    if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &i64, 1, PMIX_UINT64))) {
-        return ret;
-    }
-    return PMIX_SUCCESS;
-}
-
-static int pack_net_stats(pmix_buffer_t *buffer, pmix_netstats_t *ns)
-{
-    uint64_t i64;
-    int ret;
-
-    if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &ns->net_interface, 1, PMIX_STRING))) {
-        return ret;
-    }
-    i64 = (uint64_t)ns->num_bytes_recvd;
-    if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &i64, 1, PMIX_UINT64))) {
-        return ret;
-    }
-    i64 = (uint64_t)ns->num_packets_recvd;
-    if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &i64, 1, PMIX_UINT64))) {
-        return ret;
-    }
-    i64 = (uint64_t)ns->num_recv_errs;
-    if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &i64, 1, PMIX_UINT64))) {
-        return ret;
-    }
-    i64 = (uint64_t)ns->num_bytes_sent;
-    if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &i64, 1, PMIX_UINT64))) {
-        return ret;
-    }
-    i64 = (uint64_t)ns->num_packets_sent;
-    if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &i64, 1, PMIX_UINT64))) {
-        return ret;
-    }
-    i64 = (uint64_t)ns->num_send_errs;
-    if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &i64, 1, PMIX_UINT64))) {
-        return ret;
-    }
-    return PMIX_SUCCESS;
-}
-
-/*
- * PMIX_NODE_STAT
- */
-int pmix_bfrop_pack_node_stat(pmix_buffer_t *buffer, const void *src,
-                            int32_t num_vals, pmix_data_type_t type)
-{
-    pmix_node_stats_t **ptr;
-    int32_t i, j;
-    int ret;
-    pmix_diskstats_t *ds;
-    pmix_netstats_t *ns;
-
-    ptr = (pmix_node_stats_t **) src;
-    
-    for (i = 0; i < num_vals; ++i) {
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_float(buffer, &ptr[i]->la, 1, PMIX_FLOAT))) {
-            return ret;
-        }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_float(buffer, &ptr[i]->la5, 1, PMIX_FLOAT))) {
-            return ret;
-        }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_float(buffer, &ptr[i]->la15, 1, PMIX_FLOAT))) {
-            return ret;
-        }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_float(buffer, &ptr[i]->total_mem, 1, PMIX_FLOAT))) {
-            return ret;
-        }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_float(buffer, &ptr[i]->free_mem, 1, PMIX_FLOAT))) {
-            return ret;
-        }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_float(buffer, &ptr[i]->buffers, 1, PMIX_FLOAT))) {
-            return ret;
-        }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_float(buffer, &ptr[i]->cached, 1, PMIX_FLOAT))) {
-            return ret;
-        }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_float(buffer, &ptr[i]->swap_cached, 1, PMIX_FLOAT))) {
-            return ret;
-        }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_float(buffer, &ptr[i]->swap_total, 1, PMIX_FLOAT))) {
-            return ret;
-        }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_float(buffer, &ptr[i]->swap_free, 1, PMIX_FLOAT))) {
-            return ret;
-        }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_float(buffer, &ptr[i]->mapped, 1, PMIX_FLOAT))) {
-            return ret;
-        }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &ptr[i]->sample_time, 1, PMIX_TIMEVAL))) {
-            return ret;
-        }
-        /* pack the number of disk stat objects on the list */
-        j = pmix_list_get_size(&ptr[i]->diskstats);
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &j, 1, PMIX_INT32))) {
-            return ret;
-        }
-        if (0 < j) {
-            /* pack them */
-            PMIX_LIST_FOREACH(ds, &ptr[i]->diskstats, pmix_diskstats_t) {
-                if (PMIX_SUCCESS != (ret = pack_disk_stats(buffer, ds))) {
-                    return ret;
-                }
-            }
-        }
-        /* pack the number of net stat objects on the list */
-        j = pmix_list_get_size(&ptr[i]->netstats);
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &j, 1, PMIX_INT32))) {
-            return ret;
-        }
-        if (0 < j) {
-            /* pack them */
-            PMIX_LIST_FOREACH(ns, &ptr[i]->netstats, pmix_netstats_t) {
-                if (PMIX_SUCCESS != (ret = pack_net_stats(buffer, ns))) {
-                    return ret;
-                }
             }
         }
     }
@@ -1145,6 +914,82 @@ int pmix_bfrop_pack_buffer_contents(pmix_buffer_t *buffer, const void *src,
             ptr[i]->base_ptr = NULL;
         }
     }
+    return PMIX_SUCCESS;
+}
+
+
+int pmix_bfrop_pack_info(pmix_buffer_t *buffer, const void *src,
+                        int32_t num_vals, pmix_data_type_t type)
+{
+    pmix_info_t **ptr, *info;
+    int32_t i;
+    int ret;
+
+    ptr = (pmix_info_t **) src;
+    
+    for (i = 0; i < num_vals; ++i) {
+        info = ptr[i];
+        /* pack key */
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &info->key, 1, PMIX_STRING))) {
+            return ret;
+        }
+        /* pack value */
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &info->value, 1, PMIX_STRING))) {
+            return ret;
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
+int pmix_bfrop_pack_app(pmix_buffer_t *buffer, const void *src,
+                        int32_t num_vals, pmix_data_type_t type)
+{
+    pmix_app_t **ptr, *app;
+    int32_t i, j, nvals;
+    int ret;
+    pmix_info_t *info;
+    
+    ptr = (pmix_app_t **) src;
+    
+    for (i = 0; i < num_vals; ++i) {
+        app = ptr[i];
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &app->cmd, 1, PMIX_STRING))) {
+            return ret;
+        }
+        /* argv */
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int(buffer, &app->argc, 1, PMIX_INT))) {
+            return ret;
+        }
+        for (j=0; j < app->argc; j++) {
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &app->argv[j], 1, PMIX_STRING))) {
+                return ret;
+            }
+        }
+        /* env */
+        nvals = pmix_argv_count(app->env);
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int32(buffer, &nvals, 1, PMIX_INT32))) {
+            return ret;
+        }
+        for (j=0; j < nvals; j++) {
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &app->env[j], 1, PMIX_STRING))) {
+                return ret;
+            }
+        }
+        /* maxprocs */
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int(buffer, &app->maxprocs, 1, PMIX_INT))) {
+            return ret;
+        }
+        /* info list */
+        nvals = pmix_list_get_size(&app->info);
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int32(buffer, &nvals, 1, PMIX_INT32))) {
+            return ret;
+        }
+        PMIX_LIST_FOREACH(info, &app->info, pmix_info_t) {
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_info(buffer, &info, 1, PMIX_INFO))) {
+                return ret;
+            }
+        }
+     }
     return PMIX_SUCCESS;
 }
 
