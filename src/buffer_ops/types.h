@@ -115,6 +115,7 @@ typedef struct {
 #define    PMIX_BYTE_OBJECT_ARRAY   (pmix_data_type_t)   47
 #define    PMIX_PID_ARRAY           (pmix_data_type_t)   48
 #define    PMIX_TIMEVAL_ARRAY       (pmix_data_type_t)   49
+#define    PMIX_APP                 (pmix_data_type_t)   50
 
 
 /* define the results values for comparisons so we can change them in only one place */

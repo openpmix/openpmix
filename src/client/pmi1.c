@@ -41,7 +41,7 @@ static int rank;
 
 /* local functions */
 static int convert_int(int *value, pmix_value_t *kv);
-static int convert_int_array(int *value, pmix_value_t *kv);
+static int convert_int_array(int *value, int length, pmix_value_t *kv);
 
 int PMI_Init( int *spawned )
 {
@@ -156,8 +156,9 @@ int PMI_Publish_name(const char service_name[], const char port[])
     pmix_list_t info;
     pmix_info_t *pt;
 
-if (NULL == service_name || NULL == port) {
-
+    if (NULL == service_name || NULL == port) {
+        return PMIX_ERR_BAD_PARAM;
+    }
     /* create an info object to pass the service/port */
     OBJ_CONSTRUCT(&info, pmix_list_t);
     pt = OBJ_NEW(pmix_info_t);
@@ -355,13 +356,14 @@ int PMI_Spawn_multiple(int count,
     pmix_list_t info;
     pmix_list_t preput;
     pmix_app_t *pt;
-
+    int i;
+    
     /* convert the incoming PMI_keyval_t structs to pmix_info_t objects */
     OBJ_CONSTRUCT(&info, pmix_list_t);
     for (i=0; i < count; i++) {
         pt = OBJ_NEW(pmix_app_t);
         pt->cmd = strdup(cmds[i]);
-        pt->argv = opal_argv_copy(argvs[i]);
+        pt->argv = pmix_argv_copy((char**)argvs[i]);
     }
     return PMI_SUCCESS;
 }
@@ -431,7 +433,7 @@ static int convert_int(int *value, pmix_value_t *kv)
 }
 
 /* internal function */
-static int convert_int_array(int value[], int length,
+static int convert_int_array(int *value, int length,
                              pmix_value_t *kv)
 {
    int i;

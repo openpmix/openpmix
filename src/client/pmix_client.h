@@ -64,7 +64,8 @@ typedef enum {
     PMIX_GETATTR_CMD,
     PMIX_PUBLISH_CMD,
     PMIX_LOOKUP_CMD,
-    PMIX_UNPUBLISH_CMD
+    PMIX_UNPUBLISH_CMD,
+    PMIX_SPAWN_CMD
 } pmix_cmd_t;
 
 /* define some message types */

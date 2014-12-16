@@ -1166,6 +1166,7 @@ int PMIx_Spawn(pmix_list_t *apps,
     pmix_cb_t *cb;
     uint32_t myrank;
     pmix_value_t *lclpeers;
+    char *job;
     
     pmix_output_verbose(2, pmix_debug_output,
                         "pmix:native get_attr called");
@@ -1186,7 +1187,7 @@ int PMIx_Spawn(pmix_list_t *apps,
     }
 
     /* pack each app */
-    OPAL_LIST_FOREACH(ap, apps, pmix_app_t) {
+    PMIX_LIST_FOREACH(ap, apps, pmix_app_t) {
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &ap, 1, PMIX_APP))) {
             PMIX_ERROR_LOG(rc);
             OBJ_RELEASE(msg);
