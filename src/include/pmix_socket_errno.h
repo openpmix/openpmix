@@ -19,7 +19,7 @@
 #define PMIX_GET_SOCKET_ERROR_H
 
 #include <errno.h>
-#include "pmix/constants.h"
+#include "constants.h"
 
 #define pmix_socket_errno errno
 

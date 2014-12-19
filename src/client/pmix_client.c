@@ -45,7 +45,6 @@ static int init_cntr = 0;
 static char *local_uri = NULL;
 static struct sockaddr_un address;
 static int server;
-static int pmix_debug_output = -1;
 static pmix_buffer_t *cache_local = NULL;
 static pmix_buffer_t *cache_remote = NULL;
 static pmix_buffer_t *cache_global = NULL;
@@ -54,7 +53,7 @@ static pmix_errhandler_fn_t errhandler = NULL;
 // global variables
 pmix_usock_state_t pmix_client_state = PMIX_USOCK_UNCONNECTED;
 struct event_base *pmix_client_evbase;
-int pmix_client_sd = -1;
+int pmix_debug_output = -1;
 
 /* callback for wait completion */
 /*****  RHC: need to extend this callback function to
@@ -196,8 +195,8 @@ int PMIx_Finalize(void)
         pmix_client_evbase = NULL;
     }
 
-    if (0 <= pmix_client_sd) {
-        CLOSE_THE_SOCKET(pmix_client_sd);
+    if (0 <= pmix_client_globals.sd) {
+        CLOSE_THE_SOCKET(pmix_client_globals.sd);
     }
 
     return PMIX_SUCCESS;
@@ -309,7 +308,7 @@ int PMIx_Fence(pmix_list_t *ranges)
     pmix_buffer_t *msg, *bptr;
     pmix_cmd_t cmd = PMIX_FENCE_CMD;
     pmix_cb_t *cb;
-    int rc, ret;
+    int rc;
     pmix_scope_t scope;
     int32_t cnt;
     pmix_value_t *kp;
@@ -485,7 +484,7 @@ static void fencenb_cbfunc(pmix_buffer_t *buf, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
     pmix_buffer_t *msg, *bptr;
-    int rc, ret;
+    int rc;
     pmix_scope_t scope;
     int32_t cnt;
     pmix_value_t *kp;
@@ -1035,14 +1034,12 @@ bool PMIx_Get_attr(const char *namespace,
                    const char *attr, pmix_value_t **kv)
 {
     pmix_buffer_t *msg, *bptr;
-    pmix_list_t vals;
     pmix_value_t *kp;
     pmix_cmd_t cmd = PMIX_GETATTR_CMD;
     int rc, ret;
     int32_t cnt;
     bool found=false;
     pmix_cb_t *cb;
-    uint32_t myrank;
     pmix_value_t *lclpeers;
     
     pmix_output_verbose(2, pmix_debug_output,
@@ -1165,7 +1162,6 @@ int PMIx_Spawn(pmix_list_t *apps,
     bool found=false;
     pmix_cb_t *cb;
     uint32_t myrank;
-    pmix_value_t *lclpeers;
     char *job;
     
     pmix_output_verbose(2, pmix_debug_output,
