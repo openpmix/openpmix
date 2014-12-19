@@ -102,7 +102,6 @@ typedef struct PMI2_Connect_comm {
     int  isMaster;
 } PMI2_Connect_comm_t;
 
-struct MPID_Info;
 
 /*@
   PMI2_Init - initialize the Process Manager Interface
@@ -200,12 +199,11 @@ int PMI2_Job_Spawn(int count, const char * cmds[],
                    int argcs[], const char ** argvs[],
                    const int maxprocs[],
                    const int info_keyval_sizes[],
-                   const struct MPID_Info *info_keyval_vectors[],
+                   const PMI_keyval_t *info_keyval_vectors[],
                    int preput_keyval_size,
-                   const struct MPID_Info *preput_keyval_vector[],
+                   const PMI_keyval_t *preput_keyval_vector[],
                    char jobId[], int jobIdSize,
                    int errors[]);
-
 
 /*@
   PMI2_Job_GetId - get job id of this job 
@@ -508,7 +506,7 @@ int PMI2_Info_GetJobAttrIntArray(const char name[], int array[], int arraylen, i
   Returns 'MPI_SUCCESS' on success and an MPI error code on failure.
 
 @*/
-int PMI2_Nameserv_publish(const char service_name[], const struct MPID_Info *info_ptr, const char port[]);
+int PMI2_Nameserv_publish(const char service_name[], const PMI_keyval_t *info_ptr, const char port[]);
 
 /*@
   PMI2_Nameserv_lookup - lookup a service by name
@@ -525,7 +523,7 @@ int PMI2_Nameserv_publish(const char service_name[], const struct MPID_Info *inf
   Returns 'MPI_SUCCESS' on success and an MPI error code on failure.
 
 @*/
-int PMI2_Nameserv_lookup(const char service_name[], const struct MPID_Info *info_ptr,
+int PMI2_Nameserv_lookup(const char service_name[], const PMI_keyval_t *info_ptr,
                         char port[], int portLen);
 /*@
   PMI2_Nameserv_unpublish - unpublish a name
@@ -539,7 +537,7 @@ int PMI2_Nameserv_lookup(const char service_name[], const struct MPID_Info *info
 
 @*/
 int PMI2_Nameserv_unpublish(const char service_name[], 
-                           const struct MPID_Info *info_ptr);
+                           const PMI_keyval_t *info_ptr);
 
 
 
