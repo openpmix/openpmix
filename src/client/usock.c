@@ -279,7 +279,7 @@ static int usock_create_socket(void)
     }
 
     /* setup event callbacks */
-    pmix_event_set(&pmix_client_globals.evbase,
+    pmix_event_set(pmix_client_globals.evbase,
                    &pmix_client_globals.recv_event,
                    pmix_client_globals.sd,
                    PMIX_EV_READ | PMIX_EV_PERSIST,

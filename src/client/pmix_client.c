@@ -45,15 +45,13 @@ static int init_cntr = 0;
 static char *local_uri = NULL;
 static struct sockaddr_un address;
 static int server;
-static pmix_buffer_t *cache_local = NULL;
-static pmix_buffer_t *cache_remote = NULL;
-static pmix_buffer_t *cache_global = NULL;
 static pmix_errhandler_fn_t errhandler = NULL;
 
 // global variables
 pmix_usock_state_t pmix_client_state = PMIX_USOCK_UNCONNECTED;
 struct event_base *pmix_client_evbase;
 int pmix_debug_output = -1;
+pmix_client_globals_t pmix_client_globals = { 0 };
 
 /* callback for wait completion */
 /*****  RHC: need to extend this callback function to
@@ -123,8 +121,11 @@ int PMIx_Init(char **namespace, int *rank)
     snprintf(address.sun_path, sizeof(address.sun_path)-1, "%s", uri[1]);
     pmix_argv_free(uri);
 
+    pmix_client_globals.address = address;
+
+
     /* create an event base and progress thread for us */
-    if (NULL == (pmix_client_evbase = pmix_start_progress_thread("pmix_native", true))) {
+    if (NULL == (pmix_client_globals.evbase = pmix_start_progress_thread("pmix_native", true))) {
         return PMIX_ERROR;
     }
 
@@ -259,31 +260,31 @@ int PMIx_Put(pmix_scope_t scope, pmix_value_t *kv)
 
     /* pack the cache that matches the scope */
     if (PMIX_LOCAL == scope) {
-        if (NULL == cache_local) {
-            cache_local = OBJ_NEW(pmix_buffer_t);
+        if (NULL == pmix_client_globals.cache_local) {
+            pmix_client_globals.cache_local = OBJ_NEW(pmix_buffer_t);
         }
         pmix_output_verbose(2, pmix_debug_output,
                             "pmix:native put local data for key %s", kv->key);
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(cache_local, &kv, 1, PMIX_VALUE))) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(pmix_client_globals.cache_local, &kv, 1, PMIX_VALUE))) {
             PMIX_ERROR_LOG(rc);
         }
     } else if (PMIX_REMOTE == scope) {
-        if (NULL == cache_remote) {
-            cache_remote = OBJ_NEW(pmix_buffer_t);
+        if (NULL == pmix_client_globals.cache_remote) {
+            pmix_client_globals.cache_remote = OBJ_NEW(pmix_buffer_t);
         }
         pmix_output_verbose(2, pmix_debug_output,
                             "pmix:native put remote data for key %s", kv->key);
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(cache_remote, &kv, 1, PMIX_VALUE))) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(pmix_client_globals.cache_remote, &kv, 1, PMIX_VALUE))) {
             PMIX_ERROR_LOG(rc);
         }
     } else {
         /* must be global */
-        if (NULL == cache_global) {
-            cache_global = OBJ_NEW(pmix_buffer_t);
+        if (NULL == pmix_client_globals.cache_global) {
+            pmix_client_globals.cache_global = OBJ_NEW(pmix_buffer_t);
         }
         pmix_output_verbose(2, pmix_debug_output,
                             "pmix:native put global data for key %s", kv->key);
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(cache_global, &kv, 1, PMIX_VALUE))) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(pmix_client_globals.cache_global, &kv, 1, PMIX_VALUE))) {
             PMIX_ERROR_LOG(rc);
         }
     }
@@ -359,47 +360,47 @@ int PMIx_Fence(pmix_list_t *ranges)
     }
 
     /* if we haven't already done it, ensure we have committed our values */
-    if (NULL != cache_local) {
+    if (NULL != pmix_client_globals.cache_local) {
         scope = PMIX_LOCAL;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_SCOPE))) {
             PMIX_ERROR_LOG(rc);
             OBJ_RELEASE(msg);
             return rc;
         }
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cache_local, 1, PMIX_BUFFER))) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &pmix_client_globals.cache_local, 1, PMIX_BUFFER))) {
             PMIX_ERROR_LOG(rc);
             OBJ_RELEASE(msg);
             return rc;
         }
-        OBJ_RELEASE(cache_local);
+        OBJ_RELEASE(pmix_client_globals.cache_local);
     }
-    if (NULL != cache_remote) {
+    if (NULL != pmix_client_globals.cache_remote) {
         scope = PMIX_REMOTE;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_SCOPE))) {
             PMIX_ERROR_LOG(rc);
             OBJ_RELEASE(msg);
             return rc;
         }
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cache_remote, 1, PMIX_BUFFER))) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &pmix_client_globals.cache_remote, 1, PMIX_BUFFER))) {
             PMIX_ERROR_LOG(rc);
             OBJ_RELEASE(msg);
             return rc;
         }
-        OBJ_RELEASE(cache_remote);
+        OBJ_RELEASE(pmix_client_globals.cache_remote);
     }
-    if (NULL != cache_global) {
+    if (NULL != pmix_client_globals.cache_global) {
         scope = PMIX_GLOBAL;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_SCOPE))) {
             PMIX_ERROR_LOG(rc);
             OBJ_RELEASE(msg);
             return rc;
         }
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cache_global, 1, PMIX_BUFFER))) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &pmix_client_globals.cache_global, 1, PMIX_BUFFER))) {
             PMIX_ERROR_LOG(rc);
             OBJ_RELEASE(msg);
             return rc;
         }
-        OBJ_RELEASE(cache_global);
+        OBJ_RELEASE(pmix_client_globals.cache_global);
     }
 
     /* create a callback object as we need to pass it to the
@@ -607,47 +608,47 @@ int PMIx_Fence_nb(pmix_list_t *ranges, bool barrier,
     }
 
     /* if we haven't already done it, ensure we have committed our values */
-    if (NULL != cache_local) {
+    if (NULL != pmix_client_globals.cache_local) {
         scope = PMIX_LOCAL;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_SCOPE))) {
             PMIX_ERROR_LOG(rc);
             OBJ_RELEASE(msg);
             return rc;
         }
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cache_local, 1, PMIX_BUFFER))) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &pmix_client_globals.cache_local, 1, PMIX_BUFFER))) {
             PMIX_ERROR_LOG(rc);
             OBJ_RELEASE(msg);
             return rc;
         }
-        OBJ_RELEASE(cache_local);
+        OBJ_RELEASE(pmix_client_globals.cache_local);
     }
-    if (NULL != cache_remote) {
+    if (NULL != pmix_client_globals.cache_remote) {
         scope = PMIX_REMOTE;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_SCOPE))) {
             PMIX_ERROR_LOG(rc);
             OBJ_RELEASE(msg);
             return rc;
         }
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cache_remote, 1, PMIX_BUFFER))) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &pmix_client_globals.cache_remote, 1, PMIX_BUFFER))) {
             PMIX_ERROR_LOG(rc);
             OBJ_RELEASE(msg);
             return rc;
         }
-        OBJ_RELEASE(cache_remote);
+        OBJ_RELEASE(pmix_client_globals.cache_remote);
     }
-    if (NULL != cache_global) {
+    if (NULL != pmix_client_globals.cache_global) {
         scope = PMIX_GLOBAL;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_SCOPE))) {
             PMIX_ERROR_LOG(rc);
             OBJ_RELEASE(msg);
             return rc;
         }
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cache_global, 1, PMIX_BUFFER))) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &pmix_client_globals.cache_global, 1, PMIX_BUFFER))) {
             PMIX_ERROR_LOG(rc);
             OBJ_RELEASE(msg);
             return rc;
         }
-        OBJ_RELEASE(cache_global);
+        OBJ_RELEASE(pmix_client_globals.cache_global);
     }
 
     /* create a callback object as we need to pass it to the

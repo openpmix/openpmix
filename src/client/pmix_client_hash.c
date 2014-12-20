@@ -108,16 +108,16 @@ int pmix_client_hash_store(const pmix_identifier_t *uid,
     /* to protect alignment, copy the identifier across */
     memcpy(&id, uid, sizeof(pmix_identifier_t));
 
-    pmix_output_verbose(1, pmix_client_debug_output,
+    pmix_output_verbose(1, pmix_client_globals.debug_level,
                         "%"PRIu64" pmix:client:hash:store storing data for proc %"PRIu64"",
-                        pmix_client_myid, id);
+                        pmix_client_globals.id, id);
 
     /* lookup the proc data object for this proc */
     if (NULL == (proc_data = lookup_proc(&hash_data, id))) {
         /* unrecoverable error */
-        PMIX_OUTPUT_VERBOSE((5, pmix_client_debug_output,
+        PMIX_OUTPUT_VERBOSE((5, pmix_client_globals.debug_level,
                              "%"PRIu64" pmix:client:hash:store: storing data for proc %"PRIu64" unrecoverably failed",
-                             pmix_client_myid, id));
+                             pmix_client_globals.id, id));
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
@@ -127,9 +127,9 @@ int pmix_client_hash_store(const pmix_identifier_t *uid,
     kv = lookup_keyval(proc_data, val->key);
 #if PMIX_ENABLE_DEBUG
     char *_data_type = pmix_bfrop.lookup_data_type(val->type);
-    PMIX_OUTPUT_VERBOSE((5, pmix_client_debug_output,
+    PMIX_OUTPUT_VERBOSE((5, pmix_client_globals.debug_level,
                          "%"PRIu64" pmix:client:hash:store: %s key %s[%s] for proc %"PRIu64"",
-                         pmix_client_myid, (NULL == kv ? "storing" : "updating"),
+                         pmix_client_globals.id, (NULL == kv ? "storing" : "updating"),
                          val->key, _data_type, id));
     free (_data_type);
 #endif
@@ -159,15 +159,15 @@ int pmix_client_hash_fetch(const pmix_identifier_t *uid,
     /* to protect alignment, copy the identifier across */
     memcpy(&id, uid, sizeof(pmix_identifier_t));
 
-    PMIX_OUTPUT_VERBOSE((5, pmix_client_debug_output,
+    PMIX_OUTPUT_VERBOSE((5, pmix_client_globals.debug_level,
                          "%"PRIu64" pmix:client:hash:fetch: searching for key %s on proc %"PRIu64"",
-                         pmix_client_myid, (NULL == key) ? "NULL" : key, id));
+                         pmix_client_globals.id, (NULL == key) ? "NULL" : key, id));
 
     /* lookup the proc data object for this proc */
     if (NULL == (proc_data = lookup_proc(&hash_data, id))) {
-        PMIX_OUTPUT_VERBOSE((5, pmix_client_debug_output,
+        PMIX_OUTPUT_VERBOSE((5, pmix_client_globals.debug_level,
                              "%"PRIu64" pmix:client:hash:fetch data for proc %"PRIu64" not found",
-                             pmix_client_myid, id));
+                             pmix_client_globals.id, id));
         return PMIX_ERR_NOT_FOUND;
     }
 
@@ -179,9 +179,9 @@ int pmix_client_hash_fetch(const pmix_identifier_t *uid,
                 PMIX_ERROR_LOG(rc);
                 return rc;
             }
-            PMIX_OUTPUT_VERBOSE((5, pmix_client_debug_output,
+            PMIX_OUTPUT_VERBOSE((5, pmix_client_globals.debug_level,
                                  "%"PRIu64" pmix:client:hash:fetch: adding data for key %s on proc %"PRIu64"",
-                                 pmix_client_myid, (NULL == kv->key) ? "NULL" : kv->key, id));
+                                 pmix_client_globals.id, (NULL == kv->key) ? "NULL" : kv->key, id));
 
             /* add it to the output list */
             pmix_list_append(kvs, &knew->super);
@@ -191,9 +191,9 @@ int pmix_client_hash_fetch(const pmix_identifier_t *uid,
 
     /* find the value */
     if (NULL == (kv = lookup_keyval(proc_data, key))) {
-        PMIX_OUTPUT_VERBOSE((5, pmix_client_debug_output,
+        PMIX_OUTPUT_VERBOSE((5, pmix_client_globals.debug_level,
                              "%"PRIu64" pmix:client:hash:fetch key %s for proc %"PRIu64" not found",
-                             pmix_client_myid, (NULL == key) ? "NULL" : key, id));
+                             pmix_client_globals.id, (NULL == key) ? "NULL" : key, id));
         return PMIX_ERR_NOT_FOUND;
     }
 
