@@ -208,11 +208,11 @@ extern void pmix_client_call_errhandler(int error);
 
 #define PMIX_ACTIVATE_POST_MSG(ms)                                      \
     do {                                                                \
-        pmix_output_verbose(5, pmix_debug_output,                       \
+        pmix_output_verbose(5, pmix_client_globals.debug_level,                       \
                             "[%s:%d] post msg",                         \
                             __FILE__, __LINE__);                        \
-        event_assign( &ms->ev, pmix_client_evbase,-1,                   \
-                  EV_WRITE, pmix_usock_process_msg, ms);                \
+        event_assign( &ms->ev, pmix_client_globals.evbase,-1,                   \
+                  PMIX_EV_WRITE, pmix_usock_process_msg, ms);                \
         event_active(&ms->ev, EV_WRITE, 1);                             \
     } while(0);
 
