@@ -46,4 +46,4 @@ sources += \
         src/util/pmix_environ.c \
         src/util/crc.c \
         src/util/progress_threads.c \
-        src/util/fd.h
+        src/util/fd.c
