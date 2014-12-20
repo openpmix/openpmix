@@ -122,10 +122,11 @@ int PMIx_Init(char **namespace, int *rank)
     pmix_argv_free(uri);
 
     pmix_client_globals.address = address;
+    pmix_client_globals.state = PMIX_USOCK_UNCONNECTED;
 
 
     /* create an event base and progress thread for us */
-    if (NULL == (pmix_client_globals.evbase = pmix_start_progress_thread("pmix_native", true))) {
+    if (NULL == (pmix_client_globals.evbase = pmix_start_progress_thread())) {
         return PMIX_ERROR;
     }
 
@@ -163,7 +164,7 @@ int PMIx_Finalize(void)
         return PMIX_SUCCESS;
     }
 
-    if (PMIX_USOCK_CONNECTED == pmix_client_state) {
+    if (PMIX_USOCK_CONNECTED == pmix_client_globals.state) {
         /* setup a cmd message to notify the PMIx
          * server that we are normally terminating */
         msg = OBJ_NEW(pmix_buffer_t);
