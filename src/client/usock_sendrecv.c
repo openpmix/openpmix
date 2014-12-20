@@ -24,6 +24,7 @@
  */
 
 #include "pmix_config.h"
+#include "pmix_event.h"
 #include "pmix_client.h"
 #include "constants.h"
 #include "types.h"

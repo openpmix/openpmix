@@ -11,23 +11,21 @@
 #define PROGRESS_THREADS_H
 
 #include "pmix_config.h"
-
-#include <event.h>
+#include "pmix_event.h"
 
 /* start a progress thread, assigning it the provided name for
  * tracking purposes. If create_block is true, then this function
  * will also create a pipe so that libevent has something to block
  * against, thus keeping the thread from free-running
  */
-PMIX_DECLSPEC struct event_base* pmix_start_progress_thread(char *name,
-                                                            bool create_block);
+PMIX_DECLSPEC pmix_event_base_t *pmix_start_progress_thread();
 
 /* stop the progress thread of the provided name. This function will
  * also cleanup the blocking pipes and release the event base if
  * the cleanup param is true */
-PMIX_DECLSPEC void pmix_stop_progress_thread(char *name, bool cleanup);
+PMIX_DECLSPEC void pmix_stop_progress_thread(pmix_event_base_t *ev_base);
 
 /* restart the progress thread of the provided name */
-PMIX_DECLSPEC int pmix_restart_progress_thread(char *name);
+PMIX_DECLSPEC int pmix_restart_progress_thread(pmix_event_base_t *ev_base);
 
 #endif

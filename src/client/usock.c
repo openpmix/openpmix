@@ -32,6 +32,7 @@
 #include "pmix_socket_errno.h"
 #include "pmix_stdint.h"
 #include "src/util/error.h"
+#include "pmix_event.h"
 
 #include <event.h>
 

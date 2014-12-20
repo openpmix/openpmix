@@ -39,6 +39,7 @@
 #include "src/util/progress_threads.h"
 
 #include "pmix_client.h"
+#include "pmix_event.h"
 
 // local variables
 static int init_cntr = 0;
@@ -50,7 +51,6 @@ static pmix_errhandler_fn_t errhandler = NULL;
 // global variables
 pmix_usock_state_t pmix_client_state = PMIX_USOCK_UNCONNECTED;
 struct event_base *pmix_client_evbase;
-int pmix_debug_output = -1;
 pmix_client_globals_t pmix_client_globals = { 0 };
 
 /* callback for wait completion */
@@ -62,7 +62,7 @@ static void wait_cbfunc(pmix_buffer_t *buf, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
 
-    pmix_output_verbose(2, pmix_debug_output,
+    pmix_output_verbose(2, pmix_client_globals.debug_level,
                         "pmix:native recv callback activated with %d bytes",
                         (NULL == buf) ? -1 : (int)buf->bytes_used);
 
@@ -85,7 +85,7 @@ int PMIx_Init(char **namespace, int *rank)
         return PMIX_SUCCESS;
     }
 
-    pmix_output_verbose(2, pmix_debug_output,
+    pmix_output_verbose(2, pmix_client_globals.debug_level,
                         "pmix:native init called");
 
     /* if we don't have a path to the daxemon rendezvous point,
@@ -103,7 +103,7 @@ int PMIx_Init(char **namespace, int *rank)
     }
 
     /* setup the path to the daemon rendezvous point */
-    pmix_output_verbose(2, pmix_debug_output,
+    pmix_output_verbose(2, pmix_client_globals.debug_level,
                         "pmix:native constructing component fields with server %s",
                         local_uri);
 
@@ -155,7 +155,7 @@ int PMIx_Finalize(void)
     }
     init_cntr = 0;
 
-    pmix_output_verbose(2, pmix_debug_output,
+    pmix_output_verbose(2, pmix_client_globals.debug_level,
                         "pmix:native finalize called");
 
     if (NULL == local_uri) {
@@ -180,7 +180,7 @@ int PMIx_Finalize(void)
         cb = OBJ_NEW(pmix_cb_t);
         cb->active = true;
 
-        pmix_output_verbose(2, pmix_debug_output,
+        pmix_output_verbose(2, pmix_client_globals.debug_level,
                             "pmix:native sending finalize sync to server");
 
         /* push the message into our event base to send to the server */
@@ -191,9 +191,9 @@ int PMIx_Finalize(void)
         OBJ_RELEASE(cb);
     }
 
-    if (NULL != pmix_client_evbase) {
-        pmix_stop_progress_thread("pmix_native", true);
-        pmix_client_evbase = NULL;
+    if (NULL != pmix_client_globals.evbase) {
+        pmix_stop_progress_thread(pmix_client_globals.evbase);
+        pmix_client_globals.evbase = NULL;
     }
 
     if (0 <= pmix_client_globals.sd) {
@@ -210,7 +210,7 @@ int PMIx_Abort(int flag, const char msg[])
     int rc;
     pmix_cb_t *cb;
 
-    pmix_output_verbose(2, pmix_debug_output,
+    pmix_output_verbose(2, pmix_client_globals.debug_level,
                         "pmix:native abort called");
 
     if (NULL == local_uri) {
@@ -263,7 +263,7 @@ int PMIx_Put(pmix_scope_t scope, pmix_value_t *kv)
         if (NULL == pmix_client_globals.cache_local) {
             pmix_client_globals.cache_local = OBJ_NEW(pmix_buffer_t);
         }
-        pmix_output_verbose(2, pmix_debug_output,
+        pmix_output_verbose(2, pmix_client_globals.debug_level,
                             "pmix:native put local data for key %s", kv->key);
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(pmix_client_globals.cache_local, &kv, 1, PMIX_VALUE))) {
             PMIX_ERROR_LOG(rc);
@@ -272,7 +272,7 @@ int PMIx_Put(pmix_scope_t scope, pmix_value_t *kv)
         if (NULL == pmix_client_globals.cache_remote) {
             pmix_client_globals.cache_remote = OBJ_NEW(pmix_buffer_t);
         }
-        pmix_output_verbose(2, pmix_debug_output,
+        pmix_output_verbose(2, pmix_client_globals.debug_level,
                             "pmix:native put remote data for key %s", kv->key);
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(pmix_client_globals.cache_remote, &kv, 1, PMIX_VALUE))) {
             PMIX_ERROR_LOG(rc);
@@ -282,7 +282,7 @@ int PMIx_Put(pmix_scope_t scope, pmix_value_t *kv)
         if (NULL == pmix_client_globals.cache_global) {
             pmix_client_globals.cache_global = OBJ_NEW(pmix_buffer_t);
         }
-        pmix_output_verbose(2, pmix_debug_output,
+        pmix_output_verbose(2, pmix_client_globals.debug_level,
                             "pmix:native put global data for key %s", kv->key);
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(pmix_client_globals.cache_global, &kv, 1, PMIX_VALUE))) {
             PMIX_ERROR_LOG(rc);
@@ -317,7 +317,7 @@ int PMIx_Fence(pmix_list_t *ranges)
     size_t i;
     uint32_t np;
 
-    pmix_output_verbose(2, pmix_debug_output,
+    pmix_output_verbose(2, pmix_client_globals.debug_level,
                         "pmix:native executing fence");
 
     if (NULL == local_uri) {
@@ -475,7 +475,7 @@ int PMIx_Fence(pmix_list_t *ranges)
 
     OBJ_RELEASE(cb);
 
-    pmix_output_verbose(2, pmix_debug_output,
+    pmix_output_verbose(2, pmix_client_globals.debug_level,
                         "pmix:native fence released");
 
     return PMIX_SUCCESS;
@@ -676,7 +676,7 @@ int PMIx_Get(const char *namespace, int rank,
     pmix_value_t *kp;
     bool found;
 
-    pmix_output_verbose(2, pmix_debug_output,
+    pmix_output_verbose(2, pmix_client_globals.debug_level,
                         "pmix:native getting value for proc %s:%d key %s",
                         (NULL == namespace) ? "NULL" : namespace, rank, key);
 
@@ -687,7 +687,7 @@ int PMIx_Get(const char *namespace, int rank,
                                           key, &vals)) {
         *kv = (pmix_value_t*)pmix_list_remove_first(&vals);
         PMIX_LIST_DESTRUCT(&vals);
-        pmix_output_verbose(2, pmix_debug_output,
+        pmix_output_verbose(2, pmix_client_globals.debug_level,
                             "pmix:native value retrieved from dstore");
         return PMIX_SUCCESS;
     }
@@ -744,7 +744,7 @@ int PMIx_Get(const char *namespace, int rank,
     cnt = 1;
     while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&cb->data, &bptr, &cnt, PMIX_BUFFER))) {
         while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bptr, &kp, &cnt, PMIX_VALUE))) {
-            pmix_output_verbose(2, pmix_debug_output,
+            pmix_output_verbose(2, pmix_client_globals.debug_level,
                                 "pmix:native retrieved %s (%s) from server for proc %s:%d",
                                 kp->key, (PMIX_STRING == kp->type) ? kp->data.string : "NS",
                                 (NULL == namespace) ? "NULL" : namespace, rank);
@@ -773,7 +773,7 @@ int PMIx_Get(const char *namespace, int rank,
     }
     OBJ_RELEASE(cb);
 
-    pmix_output_verbose(2, pmix_debug_output,
+    pmix_output_verbose(2, pmix_client_globals.debug_level,
                         "pmix:native get completed");
     if (found) {
         return PMIX_SUCCESS;
@@ -809,7 +809,7 @@ int PMIx_Publish(pmix_scope_t scope,
     int rc;
     pmix_cb_t *cb;
     
-    pmix_output_verbose(2, pmix_debug_output,
+    pmix_output_verbose(2, pmix_client_globals.debug_level,
                         "pmix:native publish called");
     
     /* check for bozo cases */
@@ -878,7 +878,7 @@ int PMIx_Lookup(pmix_list_t *info,
     bool found;
     int32_t cnt;
     
-    pmix_output_verbose(2, pmix_debug_output,
+    pmix_output_verbose(2, pmix_client_globals.debug_level,
                         "pmix:native lookup called");
     
     /* check for bozo cases */
@@ -985,7 +985,7 @@ int PMIx_Unpublish(pmix_list_t *info)
     int rc;
     pmix_cb_t *cb;
     
-    pmix_output_verbose(2, pmix_debug_output,
+    pmix_output_verbose(2, pmix_client_globals.debug_level,
                         "pmix:native unpublish called");
     
     /* check for bozo cases */
@@ -1043,7 +1043,7 @@ bool PMIx_Get_attr(const char *namespace,
     pmix_cb_t *cb;
     pmix_value_t *lclpeers;
     
-    pmix_output_verbose(2, pmix_debug_output,
+    pmix_output_verbose(2, pmix_client_globals.debug_level,
                         "pmix:native get_attr called");
 
 #if 0
@@ -1102,7 +1102,7 @@ bool PMIx_Get_attr(const char *namespace,
         }
         cnt = 1;
         while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bptr, &kp, &cnt, PMIX_VALUE))) {
-            pmix_output_verbose(2, pmix_debug_output,
+            pmix_output_verbose(2, pmix_client_globals.debug_level,
                                 "unpacked attr %s", kp->key);
 #if 0
             if (PMIX_SUCCESS != (rc = pmix_dstore.store(pmix_dstore_internal, &PMIX_PROC_MY_NAME, kp))) {
@@ -1116,7 +1116,7 @@ bool PMIx_Get_attr(const char *namespace,
             if (0 == strcmp(PMIX_LOCAL_PEERS, kp->key)) {
                 OBJ_RETAIN(kp);
                 lclpeers = kp;
-                pmix_output_verbose(2, pmix_debug_output,
+                pmix_output_verbose(2, pmix_client_globals.debug_level,
                                     "saving local peers %s", lclpeers->data.string);
             }
             if (0 == strcmp(attr, kp->key)) {
@@ -1165,7 +1165,7 @@ int PMIx_Spawn(pmix_list_t *apps,
     uint32_t myrank;
     char *job;
     
-    pmix_output_verbose(2, pmix_debug_output,
+    pmix_output_verbose(2, pmix_client_globals.debug_level,
                         "pmix:native get_attr called");
 
     if (NULL == local_uri) {
