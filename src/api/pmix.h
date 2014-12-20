@@ -202,6 +202,30 @@ int PMIx_Connect(pmix_list_t *ranges);
 /* disconnect */
 int PMIx_Disconnect(pmix_list_t *ranges);
 
+/* Key-Value pair management macroses */
+// TODO: add all possible types/fields here.
+
+#define PMIX_KV_FIELD_uint32(x) ((x)->data.uint32)
+#define PMIX_KV_FIELD_uint16(x) ((x)->data.uint16)
+#define PMIX_KV_FIELD_string(x) ((x)->data.string)
+
+#define PMIX_KV_TYPE_uint32 PMIX_UINT32
+#define PMIX_KV_TYPE_uint16 PMIX_UINT16
+#define PMIX_KV_TYPE_string PMIX_STRING
+
+#define PMIX_KP_SET(_kp, _key, _field, _val, _rc, __eext )   \
+{                                           \
+    OBJ_CONSTRUCT(_kp, pmix_value_t);       \
+    (_kp)->key = strdup(_key);                \
+    if( NULL == (_kp)->key ) {                \
+        _rc = PMIX_ERR_OUT_OF_RESOURCE;      \
+        OBJ_DESTRUCT(_kp);                   \
+        goto __eext;                        \
+    }                                       \
+    (_kp)->type = PMIX_KV_TYPE_ ## _field;    \
+    PMIX_KV_FIELD_ ## _field(_kp) = _val;   \
+}
+
 END_C_DECLS
 
 #endif
