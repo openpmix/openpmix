@@ -47,14 +47,6 @@
 #include <sys/types.h>
 #endif
 
-
-
-static int usock_send_blocking(char *ptr, size_t size);
-static void pmix_usock_try_connect(int fd, short args, void *cbdata);
-static int usock_create_socket(void);
-
-
-
 /* State machine for internal operations */
 typedef struct {
     pmix_object_t super;
@@ -85,26 +77,87 @@ static OBJ_CLASS_INSTANCE(pmix_usock_op_t,
         event_add(op->ev, 0);                        \
     } while(0);
 
+static int usock_create_socket(void)
+{
+    int sd = -1;
+    pmix_output_verbose(1, pmix_client_globals.debug_level,
+                         "%s pmix:usock:peer creating socket to server",
+                         PMIX_NAME_PRINT(PMIX_PROC_MY_NAME));
+
+    sd = socket(PF_UNIX, SOCK_STREAM, 0);
+
+    if (sd < 0) {
+        pmix_output(0, "%s usock_peer_create_socket: socket() failed: %s (%d)\n",
+                    PMIX_NAME_PRINT(PMIX_PROC_MY_NAME),
+                    strerror(pmix_socket_errno),
+                    pmix_socket_errno);
+        return PMIX_ERR_UNREACH;
+    }
+    return sd;
+}
+
+int usock_set_nonblocking(int sd)
+{
+    int flags;
+     /* setup the socket as non-blocking */
+    if ((flags = fcntl(sd, F_GETFL, 0)) < 0) {
+        pmix_output(0, "%s usock_peer_connect: fcntl(F_GETFL) failed: %s (%d)\n",
+                    PMIX_NAME_PRINT(PMIX_PROC_MY_NAME),
+                    strerror(pmix_socket_errno),
+                    pmix_socket_errno);
+    } else {
+        flags |= O_NONBLOCK;
+        if(fcntl(sd, F_SETFL, flags) < 0)
+            pmix_output(0, "%s usock_peer_connect: fcntl(F_SETFL) failed: %s (%d)\n",
+                        PMIX_NAME_PRINT(PMIX_PROC_MY_NAME),
+                        strerror(pmix_socket_errno),
+                        pmix_socket_errno);
+    }
+    return PMIX_SUCCESS;
+}
+
+int usock_set_blocking(int sd)
+{
+    int flags;
+     /* setup the socket as non-blocking */
+    if ((flags = fcntl(sd, F_GETFL, 0)) < 0) {
+        pmix_output(0, "%s usock_peer_connect: fcntl(F_GETFL) failed: %s (%d)\n",
+                    PMIX_NAME_PRINT(PMIX_PROC_MY_NAME),
+                    strerror(pmix_socket_errno),
+                    pmix_socket_errno);
+    } else {
+        flags &= (~O_NONBLOCK);
+        if(fcntl(sd, F_SETFL, flags) < 0)
+            pmix_output(0, "%s usock_peer_connect: fcntl(F_SETFL) failed: %s (%d)\n",
+                        PMIX_NAME_PRINT(PMIX_PROC_MY_NAME),
+                        strerror(pmix_socket_errno),
+                        pmix_socket_errno);
+    }
+
+
+
+    return PMIX_SUCCESS;
+}
+
+
 /*
  * A blocking send on a non-blocking socket. Used to send the small amount of connection
  * information that identifies the peers endpoint.
  */
-static int usock_send_blocking(char *ptr, size_t size)
+static int usock_send_blocking(int sd, char *ptr, size_t size)
 {
     size_t cnt = 0;
     int retval;
 
     pmix_output_verbose(2, pmix_client_globals.debug_level,
                         "%s send blocking of %"PRIsize_t" bytes to socket %d",
-                        PMIX_NAME_PRINT(PMIX_PROC_MY_NAME),
-                        size, pmix_client_globals.sd );
+                        PMIX_NAME_PRINT(PMIX_PROC_MY_NAME), size, sd );
     while (cnt < size) {
-        retval = send(pmix_client_globals.sd, (char*)ptr+cnt, size-cnt, 0);
+        retval = send(sd, (char*)ptr+cnt, size-cnt, 0);
         if (retval < 0) {
-            if (pmix_socket_errno != EINTR && pmix_socket_errno != EAGAIN && pmix_socket_errno != EWOULDBLOCK) {
+            if ( pmix_socket_errno != EINTR ) {
                 pmix_output(0, "%s usock_peer_send_blocking: send() to socket %d failed: %s (%d)\n",
-                            PMIX_NAME_PRINT(PMIX_PROC_MY_NAME), pmix_client_globals.sd,
-                            strerror(pmix_socket_errno),
+                            PMIX_NAME_PRINT(PMIX_PROC_MY_NAME), sd, strerror(pmix_socket_errno),
                             pmix_socket_errno);
                 return PMIX_ERR_UNREACH;
             }
@@ -120,275 +173,135 @@ static int usock_send_blocking(char *ptr, size_t size)
     return PMIX_SUCCESS;
 }
 
-void pmix_usock_send_recv(int fd, short args, void *cbdata)
+/*
+ * A blocking recv on a non-blocking socket. Used to receive the small amount of connection
+ * information that identifies the peers endpoint.
+ */
+static int usock_recv_blocking(int sd, char *data, size_t size)
 {
-    pmix_usock_sr_t *ms = (pmix_usock_sr_t*)cbdata;
-    pmix_usock_posted_recv_t *req;
-    pmix_usock_send_t *snd;
-    uint32_t tag = UINT32_MAX;
+    size_t cnt = 0;
 
-    if (NULL != ms->cbfunc) {
-        /* if a callback msg is expected, setup a recv for it */
-        req = OBJ_NEW(pmix_usock_posted_recv_t);
-        /* take the next tag in the sequence */
-        if (UINT32_MAX == pmix_client_globals.tag ) {
-            pmix_client_globals.tag = 0;
+    pmix_output_verbose(2, pmix_client_globals.debug_level,
+                        "%s waiting for connect ack from server",
+                        PMIX_NAME_PRINT(PMIX_PROC_MY_NAME));
+
+    while (cnt < size) {
+        int retval = recv(sd, (char *)data+cnt, size-cnt, 0);
+
+        /* remote closed connection */
+        if (retval == 0) {
+            pmix_output_verbose(2, pmix_client_globals.debug_level,
+                                "%s usock_recv_blocking: server closed connection",
+                                PMIX_NAME_PRINT(PMIX_PROC_MY_NAME));
+            return PMIX_ERR_UNREACH;
         }
-        req->tag = pmix_client_globals.tag++;
-        tag = req->tag;
-        req->cbfunc = ms->cbfunc;
-        req->cbdata = ms->cbdata;
-        pmix_output_verbose(5, pmix_client_globals.debug_level,
-                            "%s posting recv on tag %d",
-                            PMIX_NAME_PRINT(PMIX_PROC_MY_NAME), req->tag);
-        /* add it to the list of recvs - we cannot have unexpected messages
-         * in this subsystem as the server never sends us something that
-         * we didn't previously request */
-        pmix_list_append(&pmix_client_globals.posted_recvs, &req->super);
-    }
 
-    snd = OBJ_NEW(pmix_usock_send_t);
-    snd->hdr.id = pmix_client_globals.tag;
-    snd->hdr.type = PMIX_USOCK_USER;
-    snd->hdr.tag = tag;
-    snd->hdr.nbytes = ms->bfr->bytes_used;
-    snd->data = ms->bfr->base_ptr;
-    /* always start with the header */
-    snd->sdptr = (char*)&snd->hdr;
-    snd->sdbytes = sizeof(pmix_usock_hdr_t);
-
-    /* add the msg to the send queue if we are already connected*/
-    if (PMIX_USOCK_CONNECTED == pmix_client_globals.state) {
-        pmix_output_verbose(2, pmix_client_globals.debug_level,
-                            "%s usock:send_nb: already connected to server - queueing for send",
-                            PMIX_NAME_PRINT(PMIX_PROC_MY_NAME));
-        /* if there is no message on-deck, put this one there */
-        if (NULL == pmix_client_globals.send_msg) {
-            pmix_client_globals.send_msg = snd;
-        } else {
-            /* add it to the queue */
-            pmix_list_append(&pmix_client_globals.send_queue, &snd->super);
-        }
-        /* ensure the send event is active */
-        if (!pmix_client_globals.send_ev_active) {
-            event_add(&pmix_client_globals.send_event, 0);
-            pmix_client_globals.send_ev_active = true;
-        }
-        return;
-    }
-
-    /* add the message to the queue for sending after the
-     * connection is formed
-     */
-    pmix_list_append(&pmix_client_globals.send_queue, &snd->super);
-
-    if (PMIX_USOCK_CONNECTING != pmix_client_globals.state &&
-        PMIX_USOCK_CONNECT_ACK != pmix_client_globals.state) {
-        /* we have to initiate the connection - again, we do not
-         * want to block while the connection is created.
-         * So throw us into an event that will create
-         * the connection via a mini-state-machine :-)
-         */
-        pmix_output_verbose(2, pmix_client_globals.debug_level,
-                            "%s usock:send_nb: initiating connection to server",
-                            PMIX_NAME_PRINT(PMIX_PROC_MY_NAME));
-        pmix_client_globals.state = PMIX_USOCK_CONNECTING;
-        PMIX_ACTIVATE_USOCK_STATE(pmix_usock_try_connect);
-    }
-}
-
-void pmix_usock_process_msg(int fd, short flags, void *cbdata)
-{
-    pmix_usock_recv_t *msg = (pmix_usock_recv_t*)cbdata;
-    pmix_usock_posted_recv_t *rcv;
-    pmix_buffer_t buf;
-
-    pmix_output_verbose(5, pmix_client_globals.debug_level,
-                         "%s message received %d bytes for tag %u",
-                         PMIX_NAME_PRINT(PMIX_PROC_MY_NAME),
-                         (int)msg->hdr.nbytes, msg->hdr.tag);
-
-    /* see if we have a waiting recv for this message */
-    PMIX_LIST_FOREACH(rcv, &pmix_client_globals.posted_recvs, pmix_usock_posted_recv_t) {
-        pmix_output_verbose(5, pmix_client_globals.debug_level,
-                            "%s checking msg on tag %u for tag %u",
-                            PMIX_NAME_PRINT(PMIX_PROC_MY_NAME),
-                            msg->hdr.tag, rcv->tag);
-
-        if (msg->hdr.tag == rcv->tag) {
-            if (NULL != rcv->cbfunc) {
-                /* construct and load the buffer */
-                OBJ_CONSTRUCT(&buf, pmix_buffer_t);
-                if (NULL != msg->data) {
-                    pmix_bfrop.load(&buf, msg->data, msg->hdr.nbytes);
-                }
-                msg->data = NULL;  // protect the data region
-                if (NULL != rcv->cbfunc) {
-                    rcv->cbfunc(&buf, rcv->cbdata);
-                }
-                OBJ_DESTRUCT(&buf);  // free's the msg data
-                /* also done with the recv */
-                pmix_list_remove_item(&pmix_client_globals.posted_recvs, &rcv->super);
-                OBJ_RELEASE(rcv);
-                OBJ_RELEASE(msg);
-                return;
+        /* handle errors */
+        if (retval < 0) {
+            if (pmix_socket_errno != EINTR ) {
+                /* If we overflow the listen backlog, it's
+                       possible that even though we finished the three
+                       way handshake, the remote host was unable to
+                       transition the connection from half connected
+                       (received the initial SYN) to fully connected
+                       (in the listen backlog).  We likely won't see
+                       the failure until we try to receive, due to
+                       timing and the like.  The first thing we'll get
+                       in that case is a RST packet, which receive
+                       will turn into a connection reset by peer
+                       errno.  In that case, leave the socket in
+                       CONNECT_ACK and propogate the error up to
+                       recv_connect_ack, who will try to establish the
+                       connection again */
+                pmix_output_verbose(2, pmix_client_globals.debug_level,
+                                    "%s connect ack received error %s from server",
+                                    PMIX_NAME_PRINT(PMIX_PROC_MY_NAME),
+                                    strerror(pmix_socket_errno));
+                return PMIX_ERR_UNREACH;
             }
+            continue;
         }
+        cnt += retval;
     }
 
-    /* we get here if no matching recv was found - this is an error */
-    pmix_output(0, "%s UNEXPECTED MESSAGE",
-                PMIX_NAME_PRINT(PMIX_PROC_MY_NAME));
-    OBJ_RELEASE(msg);
-}
-
-static int usock_create_socket(void)
-{
-   int flags;
-
-   if (pmix_client_globals.sd > 0) {
-        return PMIX_SUCCESS;
-    }
-
-    pmix_output_verbose(1, pmix_client_globals.debug_level,
-                         "%s pmix:usock:peer creating socket to server",
-                         PMIX_NAME_PRINT(PMIX_PROC_MY_NAME));
-    
-    pmix_client_globals.sd = socket(PF_UNIX, SOCK_STREAM, 0);
-
-    if (pmix_client_globals.sd < 0) {
-        pmix_output(0, "%s usock_peer_create_socket: socket() failed: %s (%d)\n",
-                    PMIX_NAME_PRINT(PMIX_PROC_MY_NAME),
-                    strerror(pmix_socket_errno),
-                    pmix_socket_errno);
-        return PMIX_ERR_UNREACH;
-    }
-
-     /* setup the socket as non-blocking */
-    if ((flags = fcntl(pmix_client_globals.sd, F_GETFL, 0)) < 0) {
-        pmix_output(0, "%s usock_peer_connect: fcntl(F_GETFL) failed: %s (%d)\n",
-                    PMIX_NAME_PRINT(PMIX_PROC_MY_NAME),
-                    strerror(pmix_socket_errno),
-                    pmix_socket_errno);
-    } else {
-        flags |= O_NONBLOCK;
-        if(fcntl(pmix_client_globals.sd, F_SETFL, flags) < 0)
-            pmix_output(0, "%s usock_peer_connect: fcntl(F_SETFL) failed: %s (%d)\n",
-                        PMIX_NAME_PRINT(PMIX_PROC_MY_NAME),
-                        strerror(pmix_socket_errno),
-                        pmix_socket_errno);
-    }
-
-    /* setup event callbacks */
-    pmix_event_set(pmix_client_globals.evbase,
-                   &pmix_client_globals.recv_event,
-                   pmix_client_globals.sd,
-                   PMIX_EV_READ | PMIX_EV_PERSIST,
-                   pmix_usock_recv_handler, NULL);
-    pmix_event_set_priority(&pmix_client_globals.recv_event, PMIX_EV_MSG_LO_PRI);
-    pmix_client_globals.recv_ev_active = false;
-
-    pmix_event_set(pmix_client_globals.evbase,
-                   &pmix_client_globals.send_event,
-                   pmix_client_globals.sd,
-                   PMIX_EV_WRITE|PMIX_EV_PERSIST,
-                   pmix_usock_send_handler, NULL);
-    pmix_event_set_priority(&pmix_client_globals.send_event, PMIX_EV_MSG_LO_PRI);
-    pmix_client_globals.send_ev_active = false;
-
+    pmix_output_verbose(2, pmix_client_globals.debug_level,
+                        "%s connect ack received from server",
+                        PMIX_NAME_PRINT(PMIX_PROC_MY_NAME));
     return PMIX_SUCCESS;
 }
 
-
-/*
- * Try connecting to a peer
- */
-static void pmix_usock_try_connect(int fd, short args, void *cbdata)
+int pmix_usock_connect(struct sockaddr *addr, int max_retries)
 {
-    int rc;
+    int rc, sd;
     pmix_socklen_t addrlen = 0;
+    int retries = 0;
 
     pmix_output_verbose(2, pmix_client_globals.debug_level,
                         "%s usock_peer_try_connect: attempting to connect to server",
                         PMIX_NAME_PRINT(PMIX_PROC_MY_NAME));
-
-    if (PMIX_SUCCESS != usock_create_socket()) {
-        return;
-    }
-
-    pmix_output_verbose(2, pmix_client_globals.debug_level,
-                        "%s usock_peer_try_connect: attempting to connect to server on socket %d",
-                        PMIX_NAME_PRINT(PMIX_PROC_MY_NAME),
-                        pmix_client_globals.sd);
-
     addrlen = sizeof(struct sockaddr_un);
- retry_connect:
-    pmix_client_globals.retries++;
-    if (connect(pmix_client_globals.sd, (struct sockaddr *) &pmix_client_globals.address, addrlen) < 0) {
-        /* non-blocking so wait for completion */
-        if (pmix_socket_errno == EINPROGRESS || pmix_socket_errno == EWOULDBLOCK) {
-            pmix_output_verbose(2, pmix_client_globals.debug_level,
-                                "%s waiting for connect completion to server - activating send event",
-                                PMIX_NAME_PRINT(PMIX_PROC_MY_NAME));
-            /* just ensure the send_event is active */
-            if (!pmix_client_globals.send_ev_active) {
-                pmix_event_add(&pmix_client_globals.send_event, 0);
-                pmix_client_globals.send_ev_active = true;
-            }
-            return;
+    while( retries < max_retries ){
+        retries++;
+        /* Create the new socket */
+        if ( 0 > (sd = usock_create_socket() ) ) {
+            continue;
         }
+        pmix_output_verbose(2, pmix_client_globals.debug_level,
+                            "%s usock_peer_try_connect: attempting to connect to server on socket %d",
+                            PMIX_NAME_PRINT(PMIX_PROC_MY_NAME),
+                            pmix_client_globals.sd);
+        /* try to connect */
+        if (connect(sd, addr, addrlen) < 0) {
+            if ( pmix_socket_errno == ETIMEDOUT ) {
+                /* The server may be too busy to accept new connections */
+                pmix_output_verbose(2, pmix_client_globals.debug_level,
+                                    "%s timeout connecting to server",
+                                    PMIX_NAME_PRINT(PMIX_PROC_MY_NAME));
+                goto repeat;
+            }
 
-        /* Some kernels (Linux 2.6) will automatically software
-           abort a connection that was ECONNREFUSED on the last
-           attempt, without even trying to establish the
-           connection.  Handle that case in a semi-rational
-           way by trying twice before giving up */
-        if (ECONNABORTED == pmix_socket_errno) {
-            if (pmix_client_globals.retries < pmix_client_globals.max_retries) {
+            /* Some kernels (Linux 2.6) will automatically software
+               abort a connection that was ECONNREFUSED on the last
+               attempt, without even trying to establish the
+               connection.  Handle that case in a semi-rational
+               way by trying twice before giving up */
+            if (ECONNABORTED == pmix_socket_errno) {
                 pmix_output_verbose(2, pmix_client_globals.debug_level,
                                     "%s connection to server aborted by OS - retrying",
                                     PMIX_NAME_PRINT(PMIX_PROC_MY_NAME));
-                goto retry_connect;
-            } else {
-                /* We were unsuccessful in establishing this connection, and are
-                 * not likely to suddenly become successful,
-                 */
-                pmix_client_globals.state = PMIX_USOCK_FAILED;
-                CLOSE_THE_SOCKET(pmix_client_globals.sd);
-                return;
+                goto repeat;
             }
         }
+
+        /* send our globally unique process identifier to the server */
+        if (PMIX_SUCCESS != (rc = usock_send_connect_ack(sd))) {
+            goto repeat;
+        }
+
+        /* receive ack from the server */
+        if (PMIX_SUCCESS != (rc = usock_recv_connect_ack(sd))) {
+            goto repeat;
+        }
+        break;
+repeat:
+        CLOSE_THE_SOCKET(sd);
+        continue;
     }
 
-    /* connection succeeded */
-    pmix_client_globals.retries = 0;
+    if(retries == max_retries){
+        /* We were unsuccessful in establishing this connection, and are
+         * not likely to suddenly become successful */
+        return PMIX_ERR_UNREACH;
+    }
 
     pmix_output_verbose(2, pmix_client_globals.debug_level,
                         "%s sock_peer_try_connect: Connection across to server succeeded",
                         PMIX_NAME_PRINT(PMIX_PROC_MY_NAME));
- 
-   /* setup our recv to catch the return ack call */
-    if (!pmix_client_globals.recv_ev_active) {
-        pmix_event_add(&pmix_client_globals.recv_event, 0);
-        pmix_client_globals.recv_ev_active = true;
-    }
-
-    /* send our globally unique process identifier to the server */
-    if (PMIX_SUCCESS == (rc = usock_send_connect_ack())) {
-        pmix_client_globals.state = PMIX_USOCK_CONNECT_ACK;
-    } else {
-        pmix_output(0,
-                    "%s usock_peer_try_connect: "
-                    "usock_send_connect_ack to server failed: %s (%d)",
-                    PMIX_NAME_PRINT(PMIX_PROC_MY_NAME),
-                    pmix_strerror(rc), rc);
-        pmix_client_globals.state = PMIX_USOCK_FAILED;
-        CLOSE_THE_SOCKET(pmix_client_globals.sd);
-        return;
-    }
+    usock_set_nonblocking(sd);
+    return sd;
 }
 
-int usock_send_connect_ack(void)
+int usock_send_connect_ack(int sd)
 {
     char *msg;
     pmix_usock_hdr_t hdr;
@@ -427,7 +340,7 @@ int usock_send_connect_ack(void)
     //memcpy(msg+sizeof(hdr)+strlen(opal_version_string)+1, cred->credential, cred->size);
 
 
-    if (PMIX_SUCCESS != usock_send_blocking(msg, sdsize)) {
+    if (PMIX_SUCCESS != usock_send_blocking(sd, msg, sdsize)) {
         // TODO: Process all peer state changes if need
         free(msg);
         return PMIX_ERR_UNREACH;
@@ -437,6 +350,94 @@ int usock_send_connect_ack(void)
 }
 
 
+/*
+ *  Receive the peers globally unique process identification from a newly
+ *  connected socket and verify the expected response. If so, move the
+ *  socket to a connected state.
+ */
+int usock_recv_connect_ack(int sd)
+{
+    char *msg;
+    char *version;
+    int rc;
+//    opal_sec_cred_t creds;
+    pmix_usock_hdr_t hdr;
+
+    pmix_output_verbose(2, pmix_client_globals.debug_level,
+                        "%s RECV CONNECT ACK FROM SERVER ON SOCKET %d",
+                        PMIX_NAME_PRINT(PMIX_PROC_MY_NAME),
+                        pmix_client_globals.sd);
+
+    /* ensure all is zero'd */
+    memset(&hdr, 0, sizeof(pmix_usock_hdr_t));
+
+    if ( PMIX_SUCCESS != (rc = usock_recv_blocking(sd, (char*)&hdr, sizeof(pmix_usock_hdr_t))) ) {
+        return rc;
+    }
+
+    pmix_output_verbose(2, pmix_client_globals.debug_level,
+                        "%s connect-ack recvd from server",
+                        PMIX_NAME_PRINT(PMIX_PROC_MY_NAME));
+
+    /* compare the servers name to the expected value */
+    if (hdr.id != pmix_client_globals.server) {
+        pmix_output(0, "usock_peer_recv_connect_ack: "
+                    "%s received unexpected process identifier %"PRIu64" from server: expected %"PRIu64"",
+                    PMIX_NAME_PRINT(PMIX_PROC_MY_NAME),
+                    hdr.id, pmix_client_globals.server);
+        return PMIX_ERR_UNREACH;
+    }
+
+    pmix_output_verbose(2, pmix_client_globals.debug_level,
+                        "%s connect-ack header from server is okay",
+                        PMIX_NAME_PRINT(PMIX_PROC_MY_NAME));
+
+    /* get the authentication and version payload */
+    if (NULL == (msg = (char*)malloc(hdr.nbytes))) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+    if ( PMIX_SUCCESS != usock_recv_blocking(sd, msg, hdr.nbytes)) {
+        /* unable to complete the recv */
+        pmix_output_verbose(2, pmix_client_globals.debug_level,
+                            "%s unable to complete recv of connect-ack from server ON SOCKET %d",
+                            PMIX_NAME_PRINT(PMIX_PROC_MY_NAME),
+                            pmix_client_globals.sd);
+        free(msg);
+        return PMIX_ERR_UNREACH;
+    }
+
+    /* check that this is from a matching version */
+    version = (char*)(msg);
+    if (0 != strcmp(version, pmix_version_string)) {
+        pmix_output(0, "usock_peer_recv_connect_ack: "
+                    "%s received different version from server: %s instead of %s",
+                    PMIX_NAME_PRINT(PMIX_PROC_MY_NAME),
+                    version, pmix_version_string);
+        free(msg);
+        return PMIX_ERR_UNREACH;
+    }
+
+    pmix_output_verbose(2, pmix_client_globals.debug_level,
+                        "%s connect-ack version from server matches ours",
+                        PMIX_NAME_PRINT(PMIX_PROC_MY_NAME));
+
+    /* check security token */
+//    creds.credential = (char*)(msg + strlen(version) + 1);
+//    creds.size = hdr.nbytes - strlen(version) - 1;
+//    if (PMIX_SUCCESS != (rc = opal_sec.authenticate(&creds))) {
+//        PMIX_ERROR_LOG(rc);
+//    }
+    free(msg);
+
+    pmix_output_verbose(2, pmix_client_globals.debug_level,
+                        "%s connect-ack from server authenticated",
+                        PMIX_NAME_PRINT(PMIX_PROC_MY_NAME));
+
+    if (2 <= pmix_output_get_verbosity(pmix_client_globals.debug_level)) {
+        pmix_usock_dump("connected");
+    }
+    return PMIX_SUCCESS;
+}
 
 /*
  * Routine for debugging to print the connection state and socket options
@@ -469,26 +470,31 @@ void pmix_usock_dump(const char* msg)
              msg, nodelay, flags);
     pmix_output(0, "%s", buff);
 }
-
+/*
 char* pmix_usock_state_print(pmix_usock_state_t state)
 {
     switch (state) {
     case PMIX_USOCK_UNCONNECTED:
         return "UNCONNECTED";
-    case PMIX_USOCK_CLOSED:
-        return "CLOSED";
-    case PMIX_USOCK_RESOLVE:
-        return "RESOLVE";
-    case PMIX_USOCK_CONNECTING:
-        return "CONNECTING";
-    case PMIX_USOCK_CONNECT_ACK:
-        return "ACK";
+
+//    case PMIX_USOCK_CLOSED:
+//        return "CLOSED";
+//    case PMIX_USOCK_RESOLVE:
+//        return "RESOLVE";
+//    case PMIX_USOCK_CONNECTING:
+//        return "CONNECTING";
+//    case PMIX_USOCK_CONNECT_ACK:
+//        return "ACK";
+
     case PMIX_USOCK_CONNECTED:
         return "CONNECTED";
-    case PMIX_USOCK_FAILED:
-        return "FAILED";
+
+//    case PMIX_USOCK_FAILED:
+//        return "FAILED";
+
     default:
         return "UNKNOWN";
     }
 }
 
+*/

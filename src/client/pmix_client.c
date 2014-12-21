@@ -3,6 +3,8 @@
  * Copyright (c) 2014      Intel, Inc.  All rights reserved.
  * Copyright (c) 2014      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -49,8 +51,6 @@ static int server;
 static pmix_errhandler_fn_t errhandler = NULL;
 
 // global variables
-pmix_usock_state_t pmix_client_state = PMIX_USOCK_UNCONNECTED;
-struct event_base *pmix_client_evbase;
 pmix_client_globals_t pmix_client_globals = { 0 };
 
 /* callback for wait completion */
@@ -76,14 +76,79 @@ static void wait_cbfunc(pmix_buffer_t *buf, void *cbdata)
     cb->active = false;
 }
 
+static void setup_globals()
+{
+    memset(&pmix_client_globals.address, 0, sizeof(pmix_client_globals.address));
+    pmix_client_globals.cache_global = NULL;
+    pmix_client_globals.cache_local = NULL;
+    pmix_client_globals.cache_remote = NULL;
+    pmix_client_globals.debug_level = 10; // ??
+    pmix_client_globals.id = 0;
+    pmix_client_globals.sd = -1;
+    pmix_client_globals.evbase = NULL;
+    pmix_client_globals.max_retries = 10; // TODO: Use the macro instead
+    pmix_client_globals.tag = 0; // ??
+    OBJ_CONSTRUCT(&pmix_client_globals.posted_recvs, pmix_list_t );
+    pmix_client_globals.recv_ev_active = false;
+    OBJ_CONSTRUCT(&pmix_client_globals.send_queue, pmix_list_t );
+    pmix_client_globals.recv_msg = NULL;
+    pmix_client_globals.send_ev_active = false;
+    pmix_client_globals.server = 0;
+    pmix_client_globals.timer_ev_active = false;
+    pmix_client_globals.uri = NULL;
+}
+
+static int connect_to_server()
+{
+    int rc;
+    pmix_client_globals.sd  = -1;
+    rc = pmix_usock_connect(&pmix_client_globals.address, pmix_client_globals.max_retries);
+    if( rc < 0 ){
+        return rc;
+    }
+    pmix_client_globals.sd = rc;
+    /* setup recv event */
+    pmix_event_set(pmix_client_globals.evbase,
+                   &pmix_client_globals.recv_event,
+                   pmix_client_globals.sd,
+                   PMIX_EV_READ | PMIX_EV_PERSIST,
+                   pmix_usock_recv_handler, NULL);
+    pmix_event_set_priority(&pmix_client_globals.recv_event, PMIX_EV_MSG_LO_PRI);
+    pmix_event_add(&pmix_client_globals.recv_event, 0);
+    pmix_client_globals.recv_ev_active = true;
+
+    /* setup send event */
+    pmix_event_set(pmix_client_globals.evbase,
+                   &pmix_client_globals.send_event,
+                   pmix_client_globals.sd,
+                   PMIX_EV_WRITE|PMIX_EV_PERSIST,
+                   pmix_usock_send_handler, NULL);
+    pmix_event_set_priority(&pmix_client_globals.send_event, PMIX_EV_MSG_LO_PRI);
+    pmix_client_globals.send_ev_active = false;
+
+//    /* initiate send of first message on queue */
+//    if (NULL == pmix_client_globals.send_msg) {
+//        pmix_client_globals.send_msg = (pmix_usock_send_t*)
+//            pmix_list_remove_first(&pmix_client_globals.send_queue);
+//    }
+//    if (NULL != pmix_client_globals.send_msg && !pmix_client_globals.send_ev_active) {
+//        pmix_event_add(&pmix_client_globals.send_event, 0);
+//        pmix_client_globals.send_ev_active = true;
+//    }
+
+}
+
 int PMIx_Init(char **namespace, int *rank)
 {
     char **uri, *srv;
+    int rc;
 
     ++init_cntr;
     if (1 < init_cntr) {
         return PMIX_SUCCESS;
     }
+
+    setup_globals();
 
     pmix_output_verbose(2, pmix_client_globals.debug_level,
                         "pmix:native init called");
@@ -122,8 +187,6 @@ int PMIx_Init(char **namespace, int *rank)
     pmix_argv_free(uri);
 
     pmix_client_globals.address = address;
-    pmix_client_globals.state = PMIX_USOCK_UNCONNECTED;
-
 
     /* create an event base and progress thread for us */
     if (NULL == (pmix_client_globals.evbase = pmix_start_progress_thread())) {
@@ -131,6 +194,9 @@ int PMIx_Init(char **namespace, int *rank)
     }
 
     /* get our namespace and rank */
+    if( PMIX_SUCCESS != (rc = connect_to_server()) ){
+        return rc;
+    }
     
     return PMIX_SUCCESS;
 }
@@ -164,7 +230,7 @@ int PMIx_Finalize(void)
         return PMIX_SUCCESS;
     }
 
-    if (PMIX_USOCK_CONNECTED == pmix_client_globals.state) {
+    if ( 0 <= pmix_client_globals.sd ) {
         /* setup a cmd message to notify the PMIx
          * server that we are normally terminating */
         msg = OBJ_NEW(pmix_buffer_t);

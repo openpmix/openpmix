@@ -30,6 +30,7 @@
 
 #include "src/buffer_ops/buffer_ops.h"
 #include "src/api/pmix.h"
+#include "usock.h"
 
 BEGIN_C_DECLS
 
@@ -39,16 +40,18 @@ extern pmix_identifier_t pmix_client_myid;
 /**
  * the state of the connection to the server
  */
+/*
 typedef enum {
     PMIX_USOCK_UNCONNECTED,
-    PMIX_USOCK_CLOSED,
-    PMIX_USOCK_RESOLVE,
-    PMIX_USOCK_CONNECTING,
-    PMIX_USOCK_CONNECT_ACK,
+    //PMIX_USOCK_CLOSED,
+    //PMIX_USOCK_RESOLVE,
+    //PMIX_USOCK_CONNECTING,
+    //PMIX_USOCK_CONNECT_ACK,
     PMIX_USOCK_CONNECTED,
-    PMIX_USOCK_FAILED,
-    PMIX_USOCK_ACCEPTING
+    //PMIX_USOCK_FAILED,
+    //PMIX_USOCK_ACCEPTING
 } pmix_usock_state_t;
+*/
 
 /* define a command type for communicating to the
  * pmix server */
@@ -100,7 +103,7 @@ OBJ_CLASS_DECLARATION(pmix_usock_send_t);
 /* usock structure for recving a message */
 typedef struct {
     pmix_list_item_t super;
-    event_t ev;
+    event_t *ev;
     pmix_usock_hdr_t hdr;
     char *data;
     bool hdr_recvd;
@@ -153,8 +156,8 @@ typedef struct {
     struct sockaddr_un address;
     int sd;
     int max_retries;
-    int retries;                  // number of times we have tried to connect to this address
-    pmix_usock_state_t state;
+    //int retries;                  // number of times we have tried to connect to this address
+    //pmix_usock_state_t state;     // use sd as indicator of 2 possible states: connected/unconnected
     event_t op_event;             // used for connecting and operations other than read/write
     uint32_t tag;                 // current tag
     event_t send_event;           // registration with event thread for send events
@@ -174,13 +177,6 @@ extern pmix_client_globals_t pmix_client_globals;
 
 
 /* module-level shared functions */
-extern void pmix_usock_process_msg(int fd, short flags, void *cbdata);
-extern void pmix_usock_send_recv(int fd, short args, void *cbdata);
-extern void pmix_usock_send_handler(int sd, short flags, void *cbdata);
-extern void pmix_usock_recv_handler(int sd, short flags, void *cbdata);
-extern char* pmix_usock_state_print(pmix_usock_state_t state);
-extern void pmix_usock_dump(const char* msg);
-extern int usock_send_connect_ack(void);
 extern void pmix_client_call_errhandler(int error);
 
 
@@ -201,9 +197,9 @@ extern void pmix_client_call_errhandler(int error);
         ms->bfr = (b);                                                  \
         ms->cbfunc = (cb);                                              \
         ms->cbdata = (d);                                               \
-        event_assign(&((ms)->ev), pmix_client_evbase, -1,               \
-                  EV_WRITE, pmix_usock_send_recv, (ms));                \
-        event_active(&((ms)->ev), EV_WRITE, 1);                         \
+        event_assign(&((ms)->ev), pmix_client_globals.evbase, -1,               \
+                  PMIX_EV_WRITE, pmix_usock_send_recv, (ms));                \
+        event_active(&((ms)->ev), PMIX_EV_WRITE, 1);                         \
     } while(0);
 
 #define PMIX_ACTIVATE_POST_MSG(ms)                                      \
@@ -213,7 +209,7 @@ extern void pmix_client_call_errhandler(int error);
                             __FILE__, __LINE__);                        \
         event_assign( &ms->ev, pmix_client_globals.evbase,-1,                   \
                   PMIX_EV_WRITE, pmix_usock_process_msg, ms);                \
-        event_active(&ms->ev, EV_WRITE, 1);                             \
+        event_active(&ms->ev, PMIX_EV_WRITE, 1);                             \
     } while(0);
 
 #define CLOSE_THE_SOCKET(socket)                                \

@@ -25,12 +25,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "pmix.h"
+#include <api/pmix.h>
+#include <class/pmix_object.h>
+#include <buffer_ops/types.h>
+
 
 int main(int argc, char **argv)
 {
     char *namespace;
     int rank;
+    int rc;
+    pmix_value_t kv;
 
     /* check for the server uri */
     if (NULL == getenv("PMIX_SERVER_URI")) {
