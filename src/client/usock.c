@@ -33,8 +33,7 @@
 #include "pmix_stdint.h"
 #include "src/util/error.h"
 #include "pmix_event.h"
-
-#include <event.h>
+#include "usock.h"
 
 #include <fcntl.h>
 #ifdef HAVE_SYS_UIO_H
@@ -46,6 +45,8 @@
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
+
+void pmix_usock_dump(const char* msg);
 
 /* State machine for internal operations */
 typedef struct {
