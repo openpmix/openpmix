@@ -8,6 +8,7 @@
 
 #include "src/class/pmix_list.h"
 #include "src/buffer_ops/types.h"
+#include <string.h>
 
 BEGIN_C_DECLS
 
@@ -48,7 +49,7 @@ BEGIN_C_DECLS
  * PMI_GLOBAL - the data is to be shared with all other requesting processes,
  *              regardless of location
  */
-#define PMIX_SCOPE PMIX_UINT8
+#define PMIX_SCOPE PMIX_UINT32
 typedef enum {
     PMIX_SCOPE_UNDEF,
     PMIX_INTERNAL,        // data used internally only
@@ -100,7 +101,7 @@ typedef enum {
 /* size info */
 #define PMIX_UNIV_SIZE       "pmix.univ.size"   // (uint32_t) #procs in this namespace
 #define PMIX_JOB_SIZE        "pmix.job.size"    // (uint32_t) #procs in this job
-#define PMIX_LOCAL_SIZE      "pmix.local.size"  // (uint32_t) #procs in this job on this node
+#define PMIX_LOCAL_SIZE      "pmix.local.size"  //PMIX_ERROR_BASE (uint32_t) #procs in this job on this node
 #define PMIX_NODE_SIZE       "pmix.node.size"   // (uint32_t) #procs across all jobs on this node
 #define PMIX_MAX_PROCS       "pmix.max.size"    // (uint32_t) max #procs for this job
 /* topology info */
@@ -205,26 +206,52 @@ int PMIx_Disconnect(pmix_list_t *ranges);
 /* Key-Value pair management macroses */
 // TODO: add all possible types/fields here.
 
+#define PMIX_KV_FIELD_int(x) ((x)->data.integer)
 #define PMIX_KV_FIELD_uint32(x) ((x)->data.uint32)
 #define PMIX_KV_FIELD_uint16(x) ((x)->data.uint16)
 #define PMIX_KV_FIELD_string(x) ((x)->data.string)
+#define PMIX_KV_FIELD_float(x) ((x)->data.fval)
 
+#define PMIX_KV_TYPE_int    PMIX_INT
 #define PMIX_KV_TYPE_uint32 PMIX_UINT32
 #define PMIX_KV_TYPE_uint16 PMIX_UINT16
 #define PMIX_KV_TYPE_string PMIX_STRING
+#define PMIX_KV_TYPE_float  PMIX_FLOAT
+
+#define PMIX_KP_set_assign(_kp, _key, _field, _val, _rc, __eext )   \
+{                                                       \
+    OBJ_CONSTRUCT(_kp, pmix_value_t);                   \
+    (_kp)->key = strdup(_key);                          \
+    if( NULL == (_kp)->key ) {                          \
+        _rc = PMIX_ERR_OUT_OF_RESOURCE;                 \
+        OBJ_DESTRUCT(_kp);                              \
+        goto __eext;                                    \
+    }                                                   \
+    (_kp)->type = PMIX_KV_TYPE_ ## _field;              \
+    PMIX_KV_FIELD_ ## _field((_kp)) = _val;             \
+}
+
+#define PMIX_KP_set_strdup(_kp, _key, _field, _val, _rc, __eext )   \
+{                                                       \
+    OBJ_CONSTRUCT(_kp, pmix_value_t);                   \
+    (_kp)->key = strdup(_key);                          \
+    if( NULL == (_kp)->key ) {                          \
+        _rc = PMIX_ERR_OUT_OF_RESOURCE;                 \
+        OBJ_DESTRUCT(_kp);                              \
+        goto __eext;                                    \
+    }                                                   \
+    (_kp)->type = PMIX_KV_TYPE_ ## _field;              \
+    PMIX_KV_FIELD_ ## _field((_kp)) = strdup(_val);     \
+}
+
+#define PMIX_KP_SET_int     PMIX_KP_set_assign
+#define PMIX_KP_SET_uint32  PMIX_KP_set_assign
+#define PMIX_KP_SET_uint16  PMIX_KP_set_assign
+#define PMIX_KP_SET_string  PMIX_KP_set_strdup
+#define PMIX_KP_SET_float   PMIX_KP_set_assign
 
 #define PMIX_KP_SET(_kp, _key, _field, _val, _rc, __eext )   \
-{                                           \
-    OBJ_CONSTRUCT(_kp, pmix_value_t);       \
-    (_kp)->key = strdup(_key);                \
-    if( NULL == (_kp)->key ) {                \
-        _rc = PMIX_ERR_OUT_OF_RESOURCE;      \
-        OBJ_DESTRUCT(_kp);                   \
-        goto __eext;                        \
-    }                                       \
-    (_kp)->type = PMIX_KV_TYPE_ ## _field;    \
-    PMIX_KV_FIELD_ ## _field(_kp) = _val;   \
-}
+    PMIX_KP_SET_ ## _field(_kp, _key, _field, _val, _rc, __eext)
 
 END_C_DECLS
 
