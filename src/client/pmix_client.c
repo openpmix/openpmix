@@ -150,7 +150,8 @@ int PMIx_Init(char **namespace, int *rank)
     }
 
     setup_globals();
-    pmix_bfrop_register_vars();
+    pmix_bfrop_open();
+
 
     pmix_output_verbose(2, pmix_client_globals.debug_level,
                         "pmix:native init called");
@@ -268,6 +269,8 @@ int PMIx_Finalize(void)
     if (0 <= pmix_client_globals.sd) {
         CLOSE_THE_SOCKET(pmix_client_globals.sd);
     }
+
+    pmix_bfrop_close();
 
     return PMIX_SUCCESS;
 }

@@ -211,6 +211,8 @@ int pmix_bfrop_open(void)
         return PMIX_SUCCESS;
     }
 
+    pmix_bfrop_register_vars();
+
     /* Setup the types array */
     OBJ_CONSTRUCT(&pmix_bfrop_types, pmix_pointer_array_t);
     if (PMIX_SUCCESS != (rc = pmix_pointer_array_init(&pmix_bfrop_types,
