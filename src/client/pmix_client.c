@@ -42,6 +42,7 @@
 
 #include "pmix_client.h"
 #include "pmix_event.h"
+#include "usock.h"
 
 // local variables
 static int init_cntr = 0;
@@ -135,7 +136,7 @@ static int connect_to_server()
 //        pmix_event_add(&pmix_client_globals.send_event, 0);
 //        pmix_client_globals.send_ev_active = true;
 //    }
-
+    return PMIX_SUCCESS;
 }
 
 int PMIx_Init(char **namespace, int *rank)
@@ -149,6 +150,7 @@ int PMIx_Init(char **namespace, int *rank)
     }
 
     setup_globals();
+    pmix_bfrop_register_vars();
 
     pmix_output_verbose(2, pmix_client_globals.debug_level,
                         "pmix:native init called");
