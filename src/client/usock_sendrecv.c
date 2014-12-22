@@ -56,12 +56,12 @@
 #include <netinet/tcp.h>
 #endif
 
-static int send_bytes(int sd, pmix_usock_send_t *msg)
+int send_bytes(int sd, char **buf, int *remain)
 {
-    int rc;
-
-    while (0 < msg->sdbytes) {
-        rc = write(sd, msg->sdptr, msg->sdbytes);
+    int ret = PMIX_SUCCESS, rc;
+    char *ptr = *buf;
+    while (0 < *remain) {
+        rc = write(sd, ptr, *remain);
         if (rc < 0) {
             if (pmix_socket_errno == EINTR) {
                 continue;
@@ -70,37 +70,42 @@ static int send_bytes(int sd, pmix_usock_send_t *msg)
                  * but let the event lib cycle so other messages
                  * can progress while this socket is busy
                  */
-                return PMIX_ERR_RESOURCE_BUSY;
+                ret = PMIX_ERR_RESOURCE_BUSY;
+                goto exit;
             } else if (pmix_socket_errno == EWOULDBLOCK) {
                 /* tell the caller to keep this message on active,
                  * but let the event lib cycle so other messages
                  * can progress while this socket is busy
                  */
-                return PMIX_ERR_WOULD_BLOCK;
+                ret = PMIX_ERR_WOULD_BLOCK;
+                goto exit;
             }
             /* we hit an error and cannot progress this message */
             pmix_output(0, "%s pmix_usock_msg_send_bytes: write failed: %s (%d) [sd = %d]",
                         PMIX_NAME_PRINT(PMIX_PROC_MY_NAME),
                         strerror(pmix_socket_errno),
-                        pmix_socket_errno,
-                        pmix_client_globals.sd);
-            return PMIX_ERR_COMM_FAILURE;
+                        pmix_socket_errno, sd);
+            ret = PMIX_ERR_COMM_FAILURE;
+            goto exit;
         }
         /* update location */
-        msg->sdbytes -= rc;
-        msg->sdptr += rc;
+        (*remain) -= rc;
+        ptr += rc;
     }
     /* we sent the full data block */
-    return PMIX_SUCCESS;
+exit:
+    *buf = ptr;
+    return ret;
 }
 
-static int read_bytes(int sd, pmix_usock_recv_t* recv)
+int read_bytes(int sd, char **buf, int *remain)
 {
-    int rc = PMIX_SUCCESS;
+    int ret = PMIX_SUCCESS, rc;
+    char *ptr = *buf;
 
     /* read until all bytes recvd or error */
-    while (0 < recv->rdbytes) {
-        rc = read(sd, recv->rdptr, recv->rdbytes);
+    while (0 < *remain) {
+        rc = read(sd, ptr, *remain);
         if (rc < 0) {
             if(pmix_socket_errno == EINTR) {
                 continue;
@@ -109,13 +114,15 @@ static int read_bytes(int sd, pmix_usock_recv_t* recv)
                  * but let the event lib cycle so other messages
                  * can progress while this socket is busy
                  */
-                return PMIX_ERR_RESOURCE_BUSY;
+                ret = PMIX_ERR_RESOURCE_BUSY;
+                goto exit;
             } else if (pmix_socket_errno == EWOULDBLOCK) {
                 /* tell the caller to keep this message on active,
                  * but let the event lib cycle so other messages
                  * can progress while this socket is busy
                  */
-                return PMIX_ERR_WOULD_BLOCK;
+                ret = PMIX_ERR_WOULD_BLOCK;
+                goto exit;
             }
             /* we hit an error and cannot progress this message - report
              * the error back to the RML and let the caller know
@@ -126,17 +133,20 @@ static int read_bytes(int sd, pmix_usock_recv_t* recv)
                                 PMIX_NAME_PRINT(PMIX_PROC_MY_NAME),
                                 strerror(pmix_socket_errno),
                                 pmix_socket_errno);
-            return PMIX_ERR_UNREACH;
+            ret = PMIX_ERR_UNREACH;
+            goto exit;
         } else if (rc == 0)  {
-            return PMIX_ERR_UNREACH;
+            ret = PMIX_ERR_UNREACH;
+            goto exit;
         }
         /* we were able to read something, so adjust counters and location */
-        recv->rdbytes -= rc;
-        recv->rdptr += rc;
+        *remain -= rc;
+        ptr += rc;
     }
-
     /* we read the full data block */
-    return PMIX_SUCCESS;
+exit:
+    *buf = ptr;
+    return ret;
 }
 
 /*
@@ -162,7 +172,7 @@ void pmix_usock_send_handler(int sd, short flags, void *cbdata)
             pmix_output_verbose(2, pmix_client_globals.debug_level,
                                 "%s usock:send_handler SENDING HEADER",
                                 PMIX_NAME_PRINT(PMIX_PROC_MY_NAME));
-            if (PMIX_SUCCESS == (rc = send_bytes(sd,msg))) {
+            if (PMIX_SUCCESS == (rc = send_bytes(sd,&msg->sdptr, &msg->sdbytes))) {
                 /* header is completely sent */
                 pmix_output_verbose(2, pmix_client_globals.debug_level,
                                     "%s usock:send_handler HEADER SENT",
@@ -204,7 +214,7 @@ void pmix_usock_send_handler(int sd, short flags, void *cbdata)
             pmix_output_verbose(2, pmix_client_globals.debug_level,
                                 "%s usock:send_handler SENDING BODY OF MSG",
                                 PMIX_NAME_PRINT(PMIX_PROC_MY_NAME));
-            if (PMIX_SUCCESS == (rc = send_bytes(sd,msg))) {
+            if (PMIX_SUCCESS == (rc = send_bytes(sd,&msg->sdptr, &msg->sdbytes))) {
                 // message is complete
                 pmix_output_verbose(2, pmix_client_globals.debug_level,
                                     "%s usock:send_handler BODY SENT",
@@ -260,13 +270,14 @@ void pmix_usock_recv_handler(int sd, short flags, void *cbdata)
 {
     int rc;
 
+    pmix_usock_recv_t *msg = NULL;
     pmix_output_verbose(2, pmix_client_globals.debug_level,
                         "%s usock:recv:handler called",
                         PMIX_NAME_PRINT(PMIX_PROC_MY_NAME));
-
     pmix_output_verbose(2, pmix_client_globals.debug_level,
                         "%s usock:recv:handler CONNECTED",
                         PMIX_NAME_PRINT(PMIX_PROC_MY_NAME));
+
     /* allocate a new message and setup for recv */
     if (NULL == pmix_client_globals.recv_msg) {
         pmix_output_verbose(2, pmix_client_globals.debug_level,
@@ -282,11 +293,13 @@ void pmix_usock_recv_handler(int sd, short flags, void *cbdata)
         pmix_client_globals.recv_msg->rdptr = (char*)&pmix_client_globals.recv_msg->hdr;
         pmix_client_globals.recv_msg->rdbytes = sizeof(pmix_usock_hdr_t);
     }
+    msg = pmix_client_globals.recv_msg;
     /* if the header hasn't been completely read, read it */
     if (!pmix_client_globals.recv_msg->hdr_recvd) {
+
         pmix_output_verbose(2, pmix_client_globals.debug_level,
                             "usock:recv:handler read hdr");
-        if (PMIX_SUCCESS == (rc = read_bytes(sd,pmix_client_globals.recv_msg))) {
+        if (PMIX_SUCCESS == (rc = read_bytes(sd, &msg->rdptr, &msg->rdbytes))) {
             /* completed reading the header */
             pmix_client_globals.recv_msg->hdr_recvd = true;
             /* if this is a zero-byte message, then we are done */
@@ -334,7 +347,7 @@ void pmix_usock_recv_handler(int sd, short flags, void *cbdata)
              * wherever we left off, which could be at the
              * beginning or somewhere in the message
              */
-        if (PMIX_SUCCESS == (rc = read_bytes(sd, pmix_client_globals.recv_msg))) {
+        if (PMIX_SUCCESS == (rc = read_bytes(sd, &msg->rdptr, &msg->rdbytes))) {
             /* we recvd all of the message */
             pmix_output_verbose(2, pmix_client_globals.debug_level,
                                 "%s RECVD COMPLETE MESSAGE FROM SERVER OF %d BYTES FOR TAG %d",

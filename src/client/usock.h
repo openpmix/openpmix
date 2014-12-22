@@ -27,19 +27,20 @@
 #ifndef USOCK_H
 #define USOCK_H
 
+#include <sys/socket.h>
+#include <sys/un.h>
+
 extern int pmix_usock_connect(struct sockaddr *addr, int max_retries);
 extern void pmix_usock_process_msg(int fd, short flags, void *cbdata);
 extern void pmix_usock_send_recv(int fd, short args, void *cbdata);
 extern void pmix_usock_send_handler(int sd, short flags, void *cbdata);
 extern void pmix_usock_recv_handler(int sd, short flags, void *cbdata);
-//extern char* pmix_usock_state_print(pmix_usock_state_t state);
 extern void pmix_usock_dump(const char* msg);
 extern int usock_send_connect_ack(int sd);
 extern int usock_recv_connect_ack(int sd);
 extern int usock_set_nonblocking(int sd);
 extern int usock_set_blocking(int sd);
-
-
-
+extern int send_bytes(int sd, char **buf, int *remain);
+extern int read_bytes(int sd, char **buf, int *remain);
 
 #endif // USOCK_H
