@@ -55,20 +55,40 @@ int main(int argc, char **argv)
         return rc;
     }
 
-    OBJ_CONSTRUCT(&kv, pmix_value_t);
-    kv.key = "test-uint32";
-    kv.type = PMIX_UINT32;
-    kv.data.uint32 = 3;
+    PMIX_KP_SET(&kv, "local-key", int, 12345, rc, kvp_error );
+    if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_LOCAL, &kv))) {
+        fprintf(stderr, "PMIx_Put failed: %d\n", rc);
+    }
+    OBJ_DESTRUCT(&kv);
+
+    char *ptr = "Test string";
+    PMIX_KP_SET(&kv, "remote-key", string, ptr, rc, kvp_error );
+    if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_REMOTE, &kv))) {
+        fprintf(stderr, "PMIx_Put failed: %d\n", rc);
+    }
+    OBJ_DESTRUCT(&kv);
+
+    PMIX_KP_SET(&kv, "global-key", float, 10.15, rc, kvp_error );
     if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_GLOBAL, &kv))) {
         fprintf(stderr, "PMIx_Put failed: %d\n", rc);
     }
     OBJ_DESTRUCT(&kv);
-    
+
+
+    /* Submit the data */
+    if (PMIX_SUCCESS != (rc = PMIx_Fence(NULL))) {
+        fprintf(stderr, "PMIx_Fence failed: %d\n", rc);
+        return rc;
+    }
+
     /* finalize us */
     if (PMIX_SUCCESS != (rc = PMIx_Finalize())) {
         fprintf(stderr, "PMIx_Finalize failed: %d\n", rc);
         return rc;
     }
     
+    return 0;
+kvp_error:
+    fprintf(stderr,"Cannot Set Key-Value Pair\n");
     return 0;
 }

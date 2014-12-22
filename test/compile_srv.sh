@@ -10,4 +10,4 @@ PMIX_INC=$PMIX_BASE/src/include
 PMIX_LIB=$PMIX_BASE/.libs/
 
 
-gcc -I$LIBEV_INC -I..  -g -o server server.c -L$LIBEV_LIB -levent -L$PMIX_LIB -lpmix
+gcc -I$LIBEV_INC -I$PMIX_BASE -I$PMIX_INC -I$PMIX_API  -g -o server server.c -L$LIBEV_LIB -levent -L$PMIX_LIB -lpmix

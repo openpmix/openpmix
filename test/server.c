@@ -32,8 +32,10 @@
 #include <event.h>
 #include "src/client/usock.h"
 #include "src/client/pmix_client.h"
+#include "src/buffer_ops/types.h"
 #include "src/include/constants.h"
-#include "src/buffer_ops/constants.h"
+#include "src/include/pmix_event.h"
+#include "src/buffer_ops/types.h"
 #include "src/util/error.h"
 
 
@@ -43,17 +45,17 @@ int listen_fd = -1;
 static int start_listening(struct sockaddr_un *address);
 static void connection_handler(int incoming_sd, short flags, void* cbdata);
 static void message_handler(int incoming_sd, short flags, void* cbdata);
-pmix_usock_recv_t rcvd;
+
+pmix_event_t *event;
+pmix_usock_hdr_t hdr;
+char *data = NULL;
+bool hdr_rcvd = false;
+char *rptr;
+int rbytes = 0;
+
 bool service = true;
 
-int init_sendrcvd()
-{
-    rcvd.hdr_recvd = false;
-    rcvd.data = NULL;
-    rcvd.rdptr = NULL;
-    rcvd.rdbytes = 0;
-    rcvd.ev = NULL;
-}
+void process_message();
 
 /*
  * Initialize global variables used w/in the server.
@@ -63,6 +65,8 @@ int main(int argc, char **argv)
     struct sockaddr_un address;
     char **client_env=NULL;
     char **client_argv=NULL;
+
+    pmix_bfrop_open();
 
     /* initialize the event library */
     if (NULL == (server_base = event_base_new())) {
@@ -159,7 +163,7 @@ static void connection_handler(int incomind_sd, short flags, void* cbdata)
     int rc, sd;
     struct sockaddr_un sa;
     int sa_len = sizeof(struct sockaddr_un);
-    struct event *ev = NULL;
+
     if( 0 > (sd = accept(incomind_sd,NULL,0)) ){
         printf("accept() failed");
         exit(0);
@@ -176,7 +180,351 @@ static void connection_handler(int incomind_sd, short flags, void* cbdata)
         printf("Cannot send my acknoledgement!\n");
         exit(0);
     }
-    rcvd.ev = event_new(server_base, sd, EV_READ|EV_PERSIST, message_handler, &rcvd);
-    event_add(rcvd.ev,0);
+    event = event_new(server_base, sd,
+                      PMIX_EV_READ|PMIX_EV_PERSIST, message_handler, NULL);
+    event_add(event,0);
+    usock_set_nonblocking(sd);
     printf("New client connection accepted\n");
+}
+
+
+static void message_handler(int sd, short flags, void* cbdata)
+{
+    int rc;
+    if( !hdr_rcvd && rptr == NULL ){
+        rptr = (char*)&hdr;
+        rbytes = sizeof(hdr);
+    }
+
+    if( !hdr_rcvd ){
+        /* if the header hasn't been completely read, read it */
+        rc = read_bytes(sd, &rptr, &rbytes);
+        /* Process errors first (if any) */
+        if ( PMIX_ERR_UNREACH == rc ) {
+            /* Communication error */
+            fprintf(stderr,"Error communicating with the client\n");
+            // TODO: make sure to kill the client
+            abort();
+        } else if( PMIX_ERR_RESOURCE_BUSY == rc ||
+                   PMIX_ERR_WOULD_BLOCK == rc) {
+                /* exit this event and let the event lib progress */
+                return;
+        }
+        /* completed reading the header */
+        hdr_rcvd = true;
+
+        /* if this is a zero-byte message, then we are done */
+        if (0 == hdr.nbytes) {
+            data = NULL;  /* Protect the data */
+            rptr = NULL;
+            rbytes = 0;
+        } else {
+            data = (char*)malloc(hdr.nbytes);
+            if (NULL == data ) {
+                fprintf(stderr,"Cannot allocate memory!\n");
+                return;
+            }
+            /* point to it */
+            rptr = data;
+            rbytes = hdr.nbytes;
+        }
+    }
+
+    if (hdr_rcvd) {
+        /* continue to read the data block - we start from
+             * wherever we left off, which could be at the
+             * beginning or somewhere in the message
+             */
+        if (PMIX_SUCCESS == (rc = read_bytes(sd, &rptr, &rbytes))) {
+            /* we recvd all of the message */
+            /* process the message */
+            process_message();
+        } else if( PMIX_ERR_RESOURCE_BUSY == rc ||
+                   PMIX_ERR_WOULD_BLOCK == rc) {
+                /* exit this event and let the event lib progress */
+                return;
+        } else {
+            /* Communication error */
+            fprintf(stderr,"Error communicating with the client\n");
+            // TODO: make sure to kill the client
+            exit(0);
+        }
+    }
+}
+
+
+inline static int verify_kvps(pmix_buffer_t *xfer)
+{
+    pmix_buffer_t *bptr;
+    pmix_scope_t scope = 0;
+    int rc, cnt = 1;
+    pmix_value_t *kvp = NULL;
+
+    // We expect 3 keys here:
+    // 1. for the local scope:  "local-key" = "12345" (INT)
+    // 2. for the remote scope: "remote-key" = "Test string" (STRING)
+    // 3. for the global scope: "global-key" = "10.15" (FLOAT)
+    // Should test more cases in future
+
+    while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(xfer, &scope, &cnt, PMIX_SCOPE))) {
+        /* unpack the buffer */
+        cnt = 1;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(xfer, &bptr, &cnt, PMIX_BUFFER))) {
+            fprintf(stderr,"Cannot unpack\n");
+            abort();
+        }
+        if (PMIX_LOCAL == scope) {
+            int keys = 0;
+            while( 1 ){
+                cnt = 1;
+                if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(bptr, &kvp, &cnt, PMIX_VALUE))) {
+                    break;
+                }
+                keys++;
+                if( keys == 1){
+                    if( strcmp(kvp->key, "local-key") || kvp->type != PMIX_INT || kvp->data.integer != 12345 ){
+                        fprintf(stderr,"Error receiving LOCAL key\n");
+                        abort();
+                    }
+                }
+            }
+        } else if (PMIX_REMOTE == scope) {
+            int keys = 0;
+            while( 1 ){
+                cnt = 1;
+                if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(bptr, &kvp, &cnt, PMIX_VALUE))) {
+                    break;
+                }
+                keys++;
+                if( keys == 1){
+                    if( strcmp(kvp->key, "remote-key") || kvp->type != PMIX_STRING || strcmp(kvp->data.string,"Test string") ){
+                        fprintf(stderr,"Error receiving REMOTE key\n");
+                        abort();
+                    }
+                }
+            }
+        } else {
+            int keys = 0;
+            while( 1 ){
+                cnt = 1;
+                if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(bptr, &kvp, &cnt, PMIX_VALUE))) {
+                    break;
+                }
+                keys++;
+                if( keys == 1){
+                    if( strcmp(kvp->key, "global-key") || kvp->type != PMIX_FLOAT || kvp->data.fval != (float)10.15 ){
+                        fprintf(stderr,"Error receiving GLOBAL key\n");
+                        abort();
+                    }
+                }
+            }
+        }
+        cnt = 1;
+    }
+    // TODO: Return an error at error :)
+    return PMIX_SUCCESS;
+}
+
+void process_message()
+{
+    int rc, ret;
+    int32_t cnt;
+    pmix_cmd_t cmd;
+    pmix_buffer_t *reply = NULL;
+    pmix_buffer_t xfer, *bptr, buf, save, blocal, bremote;
+    pmix_identifier_t id, idreq;
+
+    /* xfer the message to a buffer for unpacking */
+    OBJ_CONSTRUCT(&xfer, pmix_buffer_t);
+    pmix_bfrop.load(&xfer, data, hdr.nbytes);
+    uint32_t tag = hdr.tag;
+    id = hdr.id;
+    /* protect the transferred data */
+    data = NULL;
+    hdr_rcvd = false;
+    rptr = NULL;
+    rbytes = 0;
+
+    /* retrieve the cmd */
+    cnt = 1;
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&xfer, &cmd, &cnt, PMIX_CMD))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_DESTRUCT(&xfer);
+        return;
+    }
+//    opal_output_verbose(2, pmix_server_output,
+//                        "%s recvd pmix cmd %d from %s",
+//                        ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), cmd, ORTE_NAME_PRINT(&name));
+
+    /* get the job and proc objects for the sender */
+//    memcpy((char*)&name, (char*)&id, sizeof(orte_process_name_t));
+
+    switch(cmd) {
+    /*
+    case PMIX_FINALIZE_CMD:
+        opal_output_verbose(2, pmix_server_output,
+                            "%s recvd FINALIZE",
+                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME));
+        service = false;
+        reply = OBJ_NEW(opal_buffer_t);
+        // FIXME: Do we need to pack the tag?
+        goto reply_to_peer;
+    case PMIX_ABORT_CMD:
+        opal_output_verbose(2, pmix_server_output,
+                            "%s recvd ABORT",
+                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME));
+        // unpack the status
+        cnt = 1;
+        if (PMIX_SUCCESS != (rc = opal_dss.unpack(&xfer, &ret, &cnt, OPAL_INT))) {
+            ORTE_ERROR_LOG(rc);
+            goto cleanup;
+        }
+//         don't bother to unpack the message - we ignore this for now as the
+//         proc should have emitted it for itself
+        pmix_server_abort_pm(pm, ret);
+
+        reply = OBJ_NEW(opal_buffer_t);
+        // pack the tag
+        if (PMIX_SUCCESS != (rc = opal_dss.pack(reply, &tag, 1, OPAL_UINT32))) {
+            ORTE_ERROR_LOG(rc);
+            goto cleanup;
+        }
+        goto reply_to_peer;
+*/
+    case PMIX_FENCE_CMD:
+    case PMIX_FENCENB_CMD:{
+        char *local_uri;
+        int cnt = 1;
+        pmix_scope_t scope;
+
+        pmix_output(0, "executing fence");
+
+        /* TODO: Process signature when it will be supported */
+
+        /* Read URL. Drop it for now. TODO: verify it in future */
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&xfer, &local_uri, &cnt, PMIX_STRING))) {
+            abort();
+        }
+
+        verify_kvps(&xfer);
+/*
+        if (PMIX_FENCE_CMD == cmd) {
+            // send a release message back to the sender so they don't hang
+            reply = OBJ_NEW(pmix_buffer_t);
+            // pack the tag
+            if (PMIX_SUCCESS != (rc = opal_dss.pack(reply, &tag, 1, OPAL_UINT32))) {
+                ORTE_ERROR_LOG(rc);
+                goto cleanup;
+            }
+            goto reply_to_peer;
+        }
+ */
+        goto cleanup;
+    }
+/*
+    case PMIX_GET_CMD:
+        // unpack the id of the proc whose data is being requested
+        cnt = 1;
+        if (PMIX_SUCCESS != (rc = opal_dss.unpack(&xfer, &idreq, &cnt, OPAL_UINT64))) {
+            ORTE_ERROR_LOG(rc);
+            goto cleanup;
+        }
+        opal_output_verbose(2, pmix_server_output, "%s recvd GET FROM PROC %s FOR PROC %s",
+                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&name),
+                            ORTE_NAME_PRINT((orte_process_name_t*)&idreq) );
+
+        // get the job and proc objects for the sender
+        memcpy((char*)&name2, (char*)&idreq, sizeof(orte_process_name_t));
+        if( NULL == (pm2 = pmix_server_handler_pm(name2)) ){
+            // FIXME: do we need to respond with reject to the sender?
+            rc = ORTE_ERR_NOT_FOUND;
+            ORTE_ERROR_LOG(rc);
+            goto cleanup;
+        }
+
+//        if we have not yet received data for this proc, then we just
+//        need to track the request
+        if (!ORTE_FLAG_TEST(pm2->proc, ORTE_PROC_FLAG_DATA_RECVD)) {
+            if( (rc = _track_unknown_proc(pm2, peer, tag, &reply)) ){
+                ORTE_ERROR_LOG(rc);
+                goto cleanup;
+            }
+            if( reply ){
+                goto reply_to_peer;
+            }
+            // nothing further to do as we are waiting for data
+            goto cleanup;
+        }
+
+//        * regardless of where this proc is located, we need to ensure
+//         * that the hostname it is on is *always* returned. Otherwise,
+//         * the non-blocking fence operation will cause us to fail if
+//         * the number of procs is below the cutoff as we will immediately
+//         * attempt to retrieve the hostname for each proc, but they may
+//         * not have posted their data by that time
+        if (ORTE_FLAG_TEST(pm2->proc, ORTE_PROC_FLAG_LOCAL)) {
+            rc = _reply_for_local_proc(pm, idreq, &reply);
+        }else{
+            rc = _reply_for_remote_proc(pm, idreq, &reply);
+        }
+
+        if( ORTE_SUCCESS != rc ){
+            // In case of error we may steel want to notify the peer.
+            if( NULL != reply ){
+                goto reply_to_peer;
+            }else{
+                goto cleanup;
+            }
+        }
+        goto reply_to_peer;
+    case PMIX_GETATTR_CMD:
+        opal_output_verbose(2, pmix_server_output,
+                            "%s recvd GETATTR",
+                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME));
+        // create the attrs buffer
+        OBJ_CONSTRUCT(&buf, opal_buffer_t);
+
+        // FIXME: Probably remote peer wants out answer anyway!
+        //          We should pack ret in any case!
+        // stuff the values corresponding to the list of supported attrs
+        if (ORTE_SUCCESS != (ret = _proc_info(&buf, pm))) {
+            ORTE_ERROR_LOG(ret);
+            goto cleanup;
+        }
+        // return it
+        reply = OBJ_NEW(opal_buffer_t);
+        // pack the status
+        if (PMIX_SUCCESS != (rc = opal_dss.pack(reply, &ret, 1, OPAL_INT))) {
+            ORTE_ERROR_LOG(rc);
+            goto cleanup;
+        }
+        if (PMIX_SUCCESS == ret) {
+            // pack the buffer
+            bptr = &buf;
+            if (PMIX_SUCCESS != (rc = opal_dss.pack(reply, &bptr, 1, OPAL_BUFFER))) {
+                ORTE_ERROR_LOG(rc);
+                OBJ_DESTRUCT(&buf);
+                goto cleanup;
+            }
+        }
+        OBJ_DESTRUCT(&buf);OPAL
+        goto reply_to_peer;
+
+        */
+    default:
+            fprintf(stderr,"Bad command!");
+        abort();
+        return;
+    }
+/*
+reply_to_peer:
+    PMIX_SERVER_QUEUE_SEND(peer, tag, reply);
+    reply = NULL; // Drop it so it won't be released at cleanup
+*/
+cleanup:
+    if( NULL != reply ){
+        OBJ_RELEASE(reply);
+    }
+    OBJ_DESTRUCT(&xfer);
+
 }

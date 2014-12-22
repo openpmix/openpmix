@@ -12,3 +12,4 @@ export PMIX_SERVER_URI="0:pmix"
 export PMIX_ID=1
 
 gdb ./client
+#./client
