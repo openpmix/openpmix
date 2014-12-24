@@ -1,13 +1,8 @@
 # -*- shell-script -*-
 #
-# PMIx copyrights:
-# Copyright (c) 2013      Intel, Inc. All rights reserved
-#
-#**********************************
 # Copyright (c) 2009-2013 Cisco Systems, Inc.  All rights reserved. 
 # Copyright (c) 2013      Los Alamos National Security, LLC.  All rights reserved. 
-#
-#**********************************
+# Copyright (c) 2013-2014 Intel, Inc. All rights reserved
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow

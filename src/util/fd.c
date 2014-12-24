@@ -11,7 +11,6 @@
  */
 
 #include "pmix_config.h"
-#include "constants.h"
 
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
@@ -19,6 +18,7 @@
 #include <errno.h>
 #include <fcntl.h>
 
+#include "src/api/pmix.h"
 #include "src/util/fd.h"
 
 

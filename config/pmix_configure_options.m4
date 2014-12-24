@@ -1,10 +1,6 @@
 dnl -*- shell-script -*-
 dnl
-dnl PMIx copyrights:
-dnl Copyright (c) 2013-2014 Intel, Inc. All rights reserved
-dnl
-dnl########################
-dnl This code has been adapted from pmix_configure_options.m4 in the Open MPI
+dnl This code has been adapted from opal_configure_options.m4 in the Open MPI
 dnl code base - per the Open MPI license, all copyrights are retained below.
 dnl
 dnl Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
@@ -24,8 +20,7 @@ dnl Copyright (c) 2009      Los Alamos National Security, LLC.  All rights
 dnl                         reserved.
 dnl Copyright (c) 2009-2011 Oak Ridge National Labs.  All rights reserved.
 dnl Copyright (c) 2011-2013 NVIDIA Corporation.  All rights reserved.
-dnl Copyright (c) 2013      Intel, Inc. All rights reserved
-dnl########################
+dnl Copyright (c) 2013-2014 Intel, Inc. All rights reserved
 dnl
 dnl $COPYRIGHT$
 dnl 
@@ -87,7 +82,7 @@ else
     WANT_DEBUG=0
 fi
 #################### Early development override ####################
-if test "$WANT_DEBUG" = "0" -a -z "$enable_debug" -a "$PMIX_DEVEL" = 1; then
+if test "$WANT_DEBUG" = "0" -a -z "$enable_debug" -a "$PMIX_DEVEL" = "1"; then
     WANT_DEBUG=1
     echo "--> developer override: enable debugging code by default"
 fi
@@ -153,7 +148,7 @@ if test "$with_package_string" = "" -o "$with_package_string" = "no"; then
     with_package_string="Open MPI $PMIX_CONFIGURE_USER@$PMIX_CONFIGURE_HOST Distribution"
 fi
 AC_DEFINE_UNQUOTED([PMIX_PACKAGE_STRING], ["$with_package_string"],
-     [package/branding string for Open MPI])
+     [package/branding string for PMIX])
 AC_MSG_RESULT([$with_package_string])
 
 #
@@ -177,7 +172,7 @@ with_ident_string="`echo $with_ident_string | sed -e 's/%VERSION%/$PMIX_VERSION/
 with_ident_string="`eval echo $with_ident_string`"
 
 AC_DEFINE_UNQUOTED([PMIX_IDENT_STRING], ["$with_ident_string"],
-     [ident string for Open MPI])
+     [ident string for PMIX])
 AC_MSG_RESULT([$with_ident_string])
 
 # How to build libltdl

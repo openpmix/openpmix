@@ -29,12 +29,6 @@
 #define PMIX_BFROP_TYPES_H_
 
 #include "pmix_config.h"
-#include "src/include/types.h"
-#include "src/include/constants.h"
-
-#ifdef HAVE_SYS_TIME_H
-#include <sys/time.h> /* for struct timeval */
-#endif
 
 #include "src/class/pmix_object.h"
 #include "src/class/pmix_pointer_array.h"
@@ -42,233 +36,14 @@
 
 BEGIN_C_DECLS
 
-typedef uint64_t pmix_identifier_t;
-#define PMIX_ID_T PMIX_UINT64
-
+/* for convenience */
 typedef struct event event_t;
 typedef struct event_base event_base_t;
-
-typedef uint8_t pmix_data_type_t;  /** data type indicators */
-#define PMIX_DATA_TYPE_T    PMIX_UINT8
-#define PMIX_BFROP_ID_MAX     UINT8_MAX
-#define PMIX_BFROP_ID_INVALID PMIX_BFROP_ID_MAX
-
-/* define a structure to hold generic byte objects */
-typedef struct {
-    int32_t size;
-    uint8_t *bytes;
-} pmix_byte_object_t;
-
-/* Type defines for packing and unpacking */
-#define    PMIX_UNDEF               (pmix_data_type_t)    0 /**< type hasn't been defined yet */
-#define    PMIX_BYTE                (pmix_data_type_t)    1 /**< a byte of data */
-#define    PMIX_BOOL                (pmix_data_type_t)    2 /**< boolean */
-#define    PMIX_STRING              (pmix_data_type_t)    3 /**< a NULL terminated string */
-#define    PMIX_SIZE                (pmix_data_type_t)    4 /**< the generic size_t */
-#define    PMIX_PID                 (pmix_data_type_t)    5 /**< process pid */
-    /* all the integer flavors */
-#define    PMIX_INT                 (pmix_data_type_t)    6 /**< generic integer */
-#define    PMIX_INT8                (pmix_data_type_t)    7 /**< an 8-bit integer */
-#define    PMIX_INT16               (pmix_data_type_t)    8 /**< a 16-bit integer */
-#define    PMIX_INT32               (pmix_data_type_t)    9 /**< a 32-bit integer */
-#define    PMIX_INT64               (pmix_data_type_t)   10 /**< a 64-bit integer */
-    /* all the unsigned integer flavors */
-#define    PMIX_UINT                (pmix_data_type_t)   11 /**< generic unsigned integer */
-#define    PMIX_UINT8               (pmix_data_type_t)   12 /**< an 8-bit unsigned integer */
-#define    PMIX_UINT16              (pmix_data_type_t)   13 /**< a 16-bit unsigned integer */
-#define    PMIX_UINT32              (pmix_data_type_t)   14 /**< a 32-bit unsigned integer */
-#define    PMIX_UINT64              (pmix_data_type_t)   15 /**< a 64-bit unsigned integer */
-    /* floating point types */
-#define    PMIX_FLOAT               (pmix_data_type_t)   16
-#define    PMIX_DOUBLE              (pmix_data_type_t)   17
-    /* system types */
-#define    PMIX_TIMEVAL             (pmix_data_type_t)   18
-#define    PMIX_TIME                (pmix_data_type_t)   19
-    /* PMIX types */
-#define    PMIX_BYTE_OBJECT         (pmix_data_type_t)   20 /**< byte object structure */
-#define    PMIX_DATA_TYPE           (pmix_data_type_t)   21 /**< data type */
-#define    PMIX_NULL                (pmix_data_type_t)   22 /**< don't interpret data type */
-#define    PMIX_PSTAT               (pmix_data_type_t)   23 /**< process statistics */
-#define    PMIX_NODE_STAT           (pmix_data_type_t)   24 /**< node statistics */
-#define    PMIX_HWLOC_TOPO          (pmix_data_type_t)   25 /**< hwloc topology */
-#define    PMIX_VALUE               (pmix_data_type_t)   26 /**< pmix value structure */
-#define    PMIX_BUFFER              (pmix_data_type_t)   27 /**< pack the remaining contents of a buffer as an object */
-#define    PMIX_PTR                 (pmix_data_type_t)   28 /**< pointer to void* */
-    /* PMIX Dynamic */
-#define    PMIX_BFROP_ID_DYNAMIC    (pmix_data_type_t)   30
-    /* PMIX Array types */
-#define    PMIX_FLOAT_ARRAY         (pmix_data_type_t)   31
-#define    PMIX_DOUBLE_ARRAY        (pmix_data_type_t)   32
-#define    PMIX_STRING_ARRAY        (pmix_data_type_t)   33
-#define    PMIX_BOOL_ARRAY          (pmix_data_type_t)   34
-#define    PMIX_SIZE_ARRAY          (pmix_data_type_t)   35
-#define    PMIX_BYTE_ARRAY          (pmix_data_type_t)   36
-#define    PMIX_INT_ARRAY           (pmix_data_type_t)   37
-#define    PMIX_INT8_ARRAY          (pmix_data_type_t)   38
-#define    PMIX_INT16_ARRAY         (pmix_data_type_t)   39
-#define    PMIX_INT32_ARRAY         (pmix_data_type_t)   40
-#define    PMIX_INT64_ARRAY         (pmix_data_type_t)   41
-#define    PMIX_UINT_ARRAY          (pmix_data_type_t)   42
-#define    PMIX_UINT8_ARRAY         (pmix_data_type_t)   43
-#define    PMIX_UINT16_ARRAY        (pmix_data_type_t)   44
-#define    PMIX_UINT32_ARRAY        (pmix_data_type_t)   45
-#define    PMIX_UINT64_ARRAY        (pmix_data_type_t)   46
-#define    PMIX_BYTE_OBJECT_ARRAY   (pmix_data_type_t)   47
-#define    PMIX_PID_ARRAY           (pmix_data_type_t)   48
-#define    PMIX_TIMEVAL_ARRAY       (pmix_data_type_t)   49
-#define    PMIX_APP                 (pmix_data_type_t)   50
-#define    PMIX_INFO                (pmix_data_type_t)   51
-
 
 /* define the results values for comparisons so we can change them in only one place */
 #define PMIX_VALUE1_GREATER  +1
 #define PMIX_VALUE2_GREATER  -1
 #define PMIX_EQUAL            0
-
-/* List types for pmix_value_t, needs number of elements and a pointer */
-/* float array object */
-typedef struct {
-    int32_t size;
-    float *data;
-} pmix_float_array_t;
-/* double array object */
-typedef struct {
-    int32_t size;
-    double *data;
-} pmix_double_array_t;
-/* string array object */
-typedef struct {
-    int32_t size;
-    char **data;
-} pmix_string_array_t;
-/* bool array object */
-typedef struct {
-    int32_t size;
-    bool *data;
-} pmix_bool_array_t;
-/* size array object */
-typedef struct {
-    int32_t size;
-    size_t *data;
-} pmix_size_array_t;
-/* pmix byte object array object */
-typedef struct {
-    int32_t size;
-    pmix_byte_object_t *data;
-} pmix_byte_object_array_t;
-/* int array object */
-typedef struct {
-    int32_t size;
-    int *data;
-} pmix_int_array_t;
-/* int8 array object */
-typedef struct {
-    int32_t size;
-    int8_t *data;
-} pmix_int8_array_t;
-/* int16 array object */
-typedef struct {
-    int32_t size;
-    int16_t *data;
-} pmix_int16_array_t;
-/* int32 array object */
-typedef struct {
-    int32_t size;
-    int32_t *data;
-} pmix_int32_array_t;
-/* int64 array object */
-typedef struct {
-    int32_t size;
-    int64_t *data;
-} pmix_int64_array_t;
-/* uint array object */
-typedef struct {
-    int32_t size;
-    unsigned int *data;
-} pmix_uint_array_t;
-/* uint8 array object */
-typedef struct {
-    int32_t size;
-    uint8_t *data;
-} pmix_uint8_array_t;
-/* uint16 array object */
-typedef struct {
-    int32_t size;
-    uint16_t *data;
-} pmix_uint16_array_t;
-/* uint32 array object */
-typedef struct {
-    int32_t size;
-    uint32_t *data;
-} pmix_uint32_array_t;
-/* uint64 array object */
-typedef struct {
-    int32_t size;
-    uint64_t *data;
-} pmix_uint64_array_t;
-/* pid array object */
-typedef struct {
-    int32_t size;
-    pid_t *data;
-} pmix_pid_array_t;
-/* timeval array object */
-typedef struct {
-    int32_t size;
-    struct timeval *data;
-} pmix_timeval_array_t;
-
-/* Data value object */
-typedef struct {
-    pmix_list_item_t super;             /* required for this to be on lists */
-    char *key;                          /* key string */
-    pmix_data_type_t type;              /* the type of value stored */
-    union {
-        bool flag;
-        uint8_t byte;
-        char *string;
-        size_t size;
-        pid_t pid;
-        int integer;
-        int8_t int8;
-        int16_t int16;
-        int32_t int32;
-        int64_t int64;
-        unsigned int uint;
-        uint8_t uint8;
-        uint16_t uint16;
-        uint32_t uint32;
-        uint64_t uint64;
-        pmix_byte_object_t bo;
-        float fval;
-        double dval;
-        struct timeval tv;
-        pmix_bool_array_t flag_array;
-        pmix_uint8_array_t byte_array;
-        pmix_string_array_t string_array;
-        pmix_size_array_t size_array;
-        pmix_int_array_t integer_array;
-        pmix_int8_array_t int8_array;
-        pmix_int16_array_t int16_array;
-        pmix_int32_array_t int32_array;
-        pmix_int64_array_t int64_array;
-        pmix_uint_array_t uint_array;
-        pmix_uint8_array_t uint8_array;
-        pmix_uint16_array_t uint16_array;
-        pmix_uint32_array_t uint32_array;
-        pmix_uint64_array_t uint64_array;
-        pmix_byte_object_array_t bo_array;
-        pmix_float_array_t fval_array;
-        pmix_double_array_t dval_array;
-        pmix_pid_array_t pid_array;
-        pmix_timeval_array_t tv_array;
-        void *ptr;  // never packed or passed anywhere
-    } data;
-} pmix_value_t;
-PMIX_DECLSPEC OBJ_CLASS_DECLARATION(pmix_value_t);
-
-/* structured-unstructured data flags */
-#define PMIX_BFROP_STRUCTURED     true
-#define PMIX_BFROP_UNSTRUCTURED   false
 
 /**
  * buffer type
@@ -284,10 +59,8 @@ typedef enum pmix_bfrop_buffer_type_t pmix_bfrop_buffer_type_t;
 #define PMIX_BFROP_BUFFER_TYPE_NTOH(h);
 
 /**
- * Structure for holding a buffer to be used with the RML or OOB
- * subsystems.
- */
-struct pmix_buffer_t {
+ * Structure for holding a buffer */
+typedef struct {
     /** First member must be the object's parent */
     pmix_object_t parent;
     /** type of buffer */
@@ -306,35 +79,8 @@ struct pmix_buffer_t {
     /** Number of bytes used by the buffer (i.e., amount of data --
         including overhead -- packed in the buffer) */
     size_t bytes_used;
-};
-/**
- * Convenience typedef
- */
-typedef struct pmix_buffer_t pmix_buffer_t;
-
-/** formalize the declaration */
+} pmix_buffer_t;
 PMIX_DECLSPEC OBJ_CLASS_DECLARATION (pmix_buffer_t);
-
-/* define an INFO object corresponding to
- * the MPI_Info structure */
-typedef struct {
-    pmix_list_item_t super;
-    char key[PMIX_MAX_KEYLEN];
-    char value[PMIX_MAX_VALLEN];
-} pmix_info_t;
-OBJ_CLASS_DECLARATION(pmix_info_t);
-
-typedef struct {
-    pmix_list_item_t super;
-    char *cmd;
-    int argc;
-    char **argv;
-    char **env;
-    int maxprocs;
-    pmix_list_t info;
-} pmix_app_t;
-OBJ_CLASS_DECLARATION(pmix_app_t);
-
 
 END_C_DECLS
 

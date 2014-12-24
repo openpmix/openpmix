@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007-2012 Los Alamos National Security, LLC. 
  *                         All rights reserved.
+ * Copyright (c) 2014      Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -19,7 +20,6 @@
  */
 
 #include "pmix_config.h"
-#include "constants.h"
 
 #ifdef HAVE_STRING_H
 #include <string.h>
@@ -31,6 +31,7 @@
 #endif
 
 #include "src/util/error.h"
+#include "src/api/pmix.h"
 
 #define MAX_CONVERTERS 5
 #define MAX_CONVERTER_PROJECT_LEN 10

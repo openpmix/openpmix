@@ -35,23 +35,7 @@
 BEGIN_C_DECLS
 
 extern int pmix_client_debug_output;
-extern pmix_identifier_t pmix_client_myid;
-
-/**
- * the state of the connection to the server
- */
-/*
-typedef enum {
-    PMIX_USOCK_UNCONNECTED,
-    //PMIX_USOCK_CLOSED,
-    //PMIX_USOCK_RESOLVE,
-    //PMIX_USOCK_CONNECTING,
-    //PMIX_USOCK_CONNECT_ACK,
-    PMIX_USOCK_CONNECTED,
-    //PMIX_USOCK_FAILED,
-    //PMIX_USOCK_ACCEPTING
-} pmix_usock_state_t;
-*/
+extern uint64_t pmix_client_myid;
 
 /* define a command type for communicating to the
  * pmix server */
@@ -82,7 +66,7 @@ typedef void (*pmix_usock_cbfunc_t)(pmix_buffer_t *buf, void *cbdata);
 
 /* header for messages */
 typedef struct {
-    pmix_identifier_t id;
+    uint64_t id;
     uint8_t type;
     uint32_t tag;
     size_t nbytes;
@@ -150,8 +134,8 @@ typedef struct {
     pmix_buffer_t *cache_remote;
     pmix_buffer_t *cache_global;
     event_base_t *evbase;
-    pmix_identifier_t id;
-    pmix_identifier_t server;
+    uint64_t id;
+    uint64_t server;
     char *uri;
     struct sockaddr_un address;
     int sd;

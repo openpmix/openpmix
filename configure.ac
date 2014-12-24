@@ -786,6 +786,13 @@ pmix_show_title "Libevent"
 
 PMIX_LIBEVENT_CONFIG
 
+##################################
+# HWLOC
+##################################
+pmix_show_title "HWLOC"
+
+PMIX_HWLOC_CONFIG
+
 ############################################################################
 # Libtool: part two
 # (after C compiler setup = no compiler/linker tests after this)

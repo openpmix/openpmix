@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2014      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2014      Intel, Inc. All rights reserved
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -19,7 +20,6 @@
  */
 
 #include "pmix_config.h"
-#include "constants.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -28,6 +28,8 @@
 #include "src/util/crc.h"
 #include "src/class/pmix_list.h"
 #include "src/class/pmix_hash_table.h"
+
+#include "src/api/pmix.h"
 
 /*
  * pmix_hash_table_t

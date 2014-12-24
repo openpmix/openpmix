@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007      Voltaire. All rights reserved.
  * Copyright (c) 2012      Los Alamos National Security, LLC. All rights reserved.
+ * Copyright (c) 2014      Intel, Inc. All rights reserved.
  *
  * $COPYRIGHT$
  * 
@@ -20,7 +21,6 @@
  */
 
 #include "pmix_config.h"
-#include "constants.h"
 
 #ifdef HAVE_STDLIB_H
 #include <stdlib.h>
@@ -30,6 +30,8 @@
 #endif  /* HAVE_STRING_H */
 
 #include "src/util/argv.h"
+
+#include "src/api/pmix.h"
 
 #define ARGSIZE 128
 

@@ -5,7 +5,8 @@
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2011-2014 Los Alamos National Security, LLC.  All rights
- *                         reserved. 
+ *                         reserved.
+ * Copyright (c) 2014      Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -15,8 +16,8 @@
  */
 
 #include "pmix_config.h"
-#include "constants.h"
-#include "pmix_stdint.h"
+#include "src/include/pmix_stdint.h"
+#include "src/include/hash_string.h"
 
 #include <string.h>
 
@@ -25,6 +26,8 @@
 #include "src/buffer_ops/buffer_ops.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
+
+#include "src/api/pmix.h"
 
 #include "pmix_client.h"
 #include "pmix_client_hash.h"
@@ -40,7 +43,7 @@ typedef struct {
     /** Structure can be put on lists (including in hash tables) */
     pmix_list_item_t super;
     bool loaded;
-    /* List of pmix_value_t structures containing all data
+    /* List of pmix_kval_t structures containing all data
        received from this process, sorted by key. */
     pmix_list_t data;
 } pmix_proc_data_t;
@@ -56,10 +59,10 @@ static void pddes(pmix_proc_data_t *p)
 static OBJ_CLASS_INSTANCE(pmix_proc_data_t,
                           pmix_list_item_t,
                           pdcon, pddes);
-static pmix_value_t* lookup_keyval(pmix_proc_data_t *proc_data,
-                                   const char *key);
+static pmix_kval_t* lookup_keyval(pmix_proc_data_t *proc_data,
+                                        const char *key);
 static pmix_proc_data_t* lookup_proc(pmix_hash_table_t *jtable,
-                                     pmix_identifier_t id);
+                                     uint64_t id);
 
 /* Initialize our hash table */
 int pmix_client_hash_init(void)
@@ -97,125 +100,99 @@ void pmix_client_hash_finalize(void)
 
 
 
-int pmix_client_hash_store(const pmix_identifier_t *uid,
-                           pmix_value_t *val)
+int pmix_client_hash_store(const char *namespace, int rank,
+                           const char *key, pmix_value_t *val)
 {
     pmix_proc_data_t *proc_data;
-    pmix_value_t *kv;
-    pmix_identifier_t id;
-    int rc;
+    pmix_kval_t *kv;
+    uint32_t jobid;
+    uint64_t id;
 
-    /* to protect alignment, copy the identifier across */
-    memcpy(&id, uid, sizeof(pmix_identifier_t));
-
-    pmix_output_verbose(1, pmix_client_globals.debug_level,
-                        "%"PRIu64" pmix:client:hash:store storing data for proc %"PRIu64"",
-                        pmix_client_globals.id, id);
-
+    /* create a hash of the namespace */
+    PMIX_HASH_STR(namespace, jobid);
+    /* mix in the rank to get the id */
+    id = ((uint64_t)jobid << 32) | (int32_t)rank;
+    
     /* lookup the proc data object for this proc */
     if (NULL == (proc_data = lookup_proc(&hash_data, id))) {
-        /* unrecoverable error */
-        PMIX_OUTPUT_VERBOSE((5, pmix_client_globals.debug_level,
-                             "%"PRIu64" pmix:client:hash:store: storing data for proc %"PRIu64" unrecoverably failed",
-                             pmix_client_globals.id, id));
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
     /* see if we already have this key in the data - means we are updating
      * a pre-existing value
      */
-    kv = lookup_keyval(proc_data, val->key);
-#if PMIX_ENABLE_DEBUG
-    char *_data_type = pmix_bfrop.lookup_data_type(val->type);
-    PMIX_OUTPUT_VERBOSE((5, pmix_client_globals.debug_level,
-                         "%"PRIu64" pmix:client:hash:store: %s key %s[%s] for proc %"PRIu64"",
-                         pmix_client_globals.id, (NULL == kv ? "storing" : "updating"),
-                         val->key, _data_type, id));
-    free (_data_type);
-#endif
-
+    kv = lookup_keyval(proc_data, key);
     if (NULL != kv) {
         pmix_list_remove_item(&proc_data->data, &kv->super);
         OBJ_RELEASE(kv);
     }
-    /* create the copy */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)&kv, val, PMIX_VALUE))) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
+    /* create the new value */
+    kv = OBJ_NEW(pmix_kval_t);
+    kv->key = strdup(key);
+    pmix_value_load(&kv->value, (void*)&val->data, val->type);
     pmix_list_append(&proc_data->data, &kv->super);
 
     return PMIX_SUCCESS;
 }
 
-int pmix_client_hash_fetch(const pmix_identifier_t *uid,
+int pmix_client_hash_fetch(const char *namespace, int rank,
                            const char *key, pmix_list_t *kvs)
 {
     pmix_proc_data_t *proc_data;
-    pmix_value_t *kv, *knew;
-    pmix_identifier_t id;
-    int rc;
+    pmix_kval_t *hv, *hnew;
+    uint32_t jobid;
+    uint64_t id;
 
-    /* to protect alignment, copy the identifier across */
-    memcpy(&id, uid, sizeof(pmix_identifier_t));
-
-    PMIX_OUTPUT_VERBOSE((5, pmix_client_globals.debug_level,
-                         "%"PRIu64" pmix:client:hash:fetch: searching for key %s on proc %"PRIu64"",
-                         pmix_client_globals.id, (NULL == key) ? "NULL" : key, id));
+    /* create a hash of the namespace */
+    PMIX_HASH_STR(namespace, jobid);
+    /* mix in the rank to get the id */
+    id = ((uint64_t)jobid << 32) | (int32_t)rank;
 
     /* lookup the proc data object for this proc */
     if (NULL == (proc_data = lookup_proc(&hash_data, id))) {
-        PMIX_OUTPUT_VERBOSE((5, pmix_client_globals.debug_level,
-                             "%"PRIu64" pmix:client:hash:fetch data for proc %"PRIu64" not found",
-                             pmix_client_globals.id, id));
         return PMIX_ERR_NOT_FOUND;
     }
 
     /* if the key is NULL, that we want everything */
     if (NULL == key) {
-        PMIX_LIST_FOREACH(kv, &proc_data->data, pmix_value_t) {
+        PMIX_LIST_FOREACH(hv, &proc_data->data, pmix_kval_t) {
             /* copy the value */
-            if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)&knew, kv, PMIX_VALUE))) {
-                PMIX_ERROR_LOG(rc);
-                return rc;
-            }
-            PMIX_OUTPUT_VERBOSE((5, pmix_client_globals.debug_level,
-                                 "%"PRIu64" pmix:client:hash:fetch: adding data for key %s on proc %"PRIu64"",
-                                 pmix_client_globals.id, (NULL == kv->key) ? "NULL" : kv->key, id));
-
+            hnew = OBJ_NEW(pmix_kval_t);
+            hnew->key = strdup(hv->key);
+            pmix_value_load(&hnew->value, (void*)&hv->value.data, hv->value.type);
             /* add it to the output list */
-            pmix_list_append(kvs, &knew->super);
+            pmix_list_append(kvs, &hnew->super);
         }
         return PMIX_SUCCESS;
     }
 
     /* find the value */
-    if (NULL == (kv = lookup_keyval(proc_data, key))) {
-        PMIX_OUTPUT_VERBOSE((5, pmix_client_globals.debug_level,
-                             "%"PRIu64" pmix:client:hash:fetch key %s for proc %"PRIu64" not found",
-                             pmix_client_globals.id, (NULL == key) ? "NULL" : key, id));
+    if (NULL == (hv = lookup_keyval(proc_data, key))) {
         return PMIX_ERR_NOT_FOUND;
     }
 
     /* create the copy */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)&knew, kv, PMIX_VALUE))) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
+    hnew = OBJ_NEW(pmix_kval_t);
+    hnew->key = strdup(hv->key);
+    pmix_value_load(&hnew->value, (void*)&hv->value.data, hv->value.type);
     /* add it to the output list */
-    pmix_list_append(kvs, &knew->super);
+    pmix_list_append(kvs, &hnew->super);
 
     return PMIX_SUCCESS;
 }
 
-int pmix_client_hash_remove_data(const pmix_identifier_t *uid, const char *key)
+int pmix_client_hash_remove_data(const char *namespace,
+                                 int rank, const char *key)
 {
     pmix_proc_data_t *proc_data;
-    pmix_value_t *kv;
-    pmix_identifier_t id;
+    pmix_kval_t *kv;
+    uint32_t jobid;
+    uint64_t id;
 
-    /* to protect alignment, copy the identifier across */
-    memcpy(&id, uid, sizeof(pmix_identifier_t));
+    /* create a hash of the namespace */
+    PMIX_HASH_STR(namespace, jobid);
+    /* mix in the rank to get the id */
+    id = ((uint64_t)jobid << 32) | (int32_t)rank;
 
     /* lookup the specified proc */
     if (NULL == (proc_data = lookup_proc(&hash_data, id))) {
@@ -225,7 +202,7 @@ int pmix_client_hash_remove_data(const pmix_identifier_t *uid, const char *key)
 
     /* if key is NULL, remove all data for this proc */
     if (NULL == key) {
-        while (NULL != (kv = (pmix_value_t *) pmix_list_remove_first(&proc_data->data))) {
+        while (NULL != (kv = (pmix_kval_t*)pmix_list_remove_first(&proc_data->data))) {
             OBJ_RELEASE(kv);
         }
         /* remove the proc_data object itself from the jtable */
@@ -236,7 +213,7 @@ int pmix_client_hash_remove_data(const pmix_identifier_t *uid, const char *key)
     }
 
     /* remove this item */
-    PMIX_LIST_FOREACH(kv, &proc_data->data, pmix_value_t) {
+    PMIX_LIST_FOREACH(kv, &proc_data->data, pmix_kval_t) {
         if (0 == strcmp(key, kv->key)) {
             pmix_list_remove_item(&proc_data->data, &kv->super);
             OBJ_RELEASE(kv);
@@ -251,12 +228,12 @@ int pmix_client_hash_remove_data(const pmix_identifier_t *uid, const char *key)
  * Find data for a given key in a given proc_data_t
  * container.
  */
-static pmix_value_t* lookup_keyval(pmix_proc_data_t *proc_data,
-                                   const char *key)
+static pmix_kval_t* lookup_keyval(pmix_proc_data_t *proc_data,
+                                        const char *key)
 {
-    pmix_value_t *kv;
+    pmix_kval_t *kv;
 
-    PMIX_LIST_FOREACH(kv, &proc_data->data, pmix_value_t) {
+    PMIX_LIST_FOREACH(kv, &proc_data->data, pmix_kval_t) {
         if (0 == strcmp(key, kv->key)) {
             return kv;
         }
@@ -270,7 +247,7 @@ static pmix_value_t* lookup_keyval(pmix_proc_data_t *proc_data,
  * pmix_identifier_t.
  */
 static pmix_proc_data_t* lookup_proc(pmix_hash_table_t *jtable,
-                                     pmix_identifier_t id)
+                                     uint64_t id)
 {
     pmix_proc_data_t *proc_data = NULL;
 
@@ -287,4 +264,3 @@ static pmix_proc_data_t* lookup_proc(pmix_hash_table_t *jtable,
     
     return proc_data;
 }
-

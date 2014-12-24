@@ -1,9 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
 /*
- * PMIx copyrights:
- * Copyright (c) 2013      Intel, Inc. All rights reserved
- *
- **********************************
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
@@ -15,7 +11,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2007      Voltaire All rights reserved.
- **********************************
+ * Copyright (c) 2013-2014 Intel, Inc. All rights reserved
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -26,7 +22,7 @@
 #include "pmix_config.h"
 
 #include "src/class/pmix_list.h"
-#include "constants.h"
+#include "src/api/pmix.h"
 
 /*
  *  List classes

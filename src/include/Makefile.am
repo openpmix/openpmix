@@ -1,8 +1,4 @@
 #
-# PMIx copyrights:
-# Copyright (c) 2013      Intel, Inc. All rights reserved
-#
-#########################
 # Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
 #                         University Research and Technology
 #                         Corporation.  All rights reserved.
@@ -14,7 +10,7 @@
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
 # Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
-#########################
+# Copyright (c) 2013-2014 Intel, Inc. All rights reserved
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -27,7 +23,6 @@
 
 headers += \
         src/include/align.h \
-	src/include/constants.h \
         src/include/hash_string.h \
 	src/include/pmix_socket_errno.h \
 	src/include/types.h \

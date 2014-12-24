@@ -30,7 +30,7 @@ int pmix_bfrop_copy(void **dest, void *src, pmix_data_type_t type)
     if (NULL == dest) {
         return PMIX_ERR_BAD_PARAM;
     }
-    if (NULL == src && (PMIX_NULL != type && PMIX_STRING != type)) {
+    if (NULL == src) {
         return PMIX_ERR_BAD_PARAM;
     }
 
@@ -90,10 +90,6 @@ int pmix_bfrop_std_copy(void **dest, void *src, pmix_data_type_t type)
         datasize = 8;
         break;
 
-    case PMIX_DATA_TYPE:
-        datasize = sizeof(pmix_data_type_t);
-        break;
-
     case PMIX_FLOAT:
         datasize = sizeof(float);
         break;
@@ -124,26 +120,6 @@ int pmix_bfrop_std_copy(void **dest, void *src, pmix_data_type_t type)
 /* COPY FUNCTIONS FOR NON-STANDARD SYSTEM TYPES */
 
 /*
- * NULL
- */
-int pmix_bfrop_copy_null(char **dest, char *src, pmix_data_type_t type)
-{
-    char *val;
-
-    *dest = (char*)malloc(sizeof(char*));
-    if (NULL == *dest) {
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    }
-
-    val = *dest;  /* save the address of the value */
-
-    /* set the dest to null */
-    *val = 0x00;
-
-    return PMIX_SUCCESS;
-}
-
-/*
  * STRING
  */
 int pmix_bfrop_copy_string(char **dest, char *src, pmix_data_type_t type)
@@ -158,58 +134,12 @@ int pmix_bfrop_copy_string(char **dest, char *src, pmix_data_type_t type)
 }
 
 /* COPY FUNCTIONS FOR GENERIC PMIX TYPES */
-
-/*
- * PMIX_BYTE_OBJECT
- */
-int pmix_bfrop_copy_byte_object(pmix_byte_object_t **dest, pmix_byte_object_t *src,
-                              pmix_data_type_t type)
+static int copy_val(pmix_value_t *p,
+                    pmix_value_t *src,
+                    pmix_data_type_t type)
 {
-    /* allocate space for the new object */
-    *dest = (pmix_byte_object_t*)malloc(sizeof(pmix_byte_object_t));
-    if (NULL == *dest) {
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    }
-
-    (*dest)->size = src->size;
-
-    /* allocate the required space for the bytes */
-    if (NULL == src->bytes) {
-        (*dest)->bytes = NULL;
-    } else {
-        (*dest)->bytes = (uint8_t*)malloc(src->size);
-        if (NULL == (*dest)->bytes) {
-            OBJ_RELEASE(*dest);
-            return PMIX_ERR_OUT_OF_RESOURCE;
-        }
-        /* copy the data across */
-        memcpy((*dest)->bytes, src->bytes, src->size);
-    }
-
-    return PMIX_SUCCESS;
-}
-
-/* PMIX_VALUE */
-int pmix_bfrop_copy_value(pmix_value_t **dest, pmix_value_t *src,
-                        pmix_data_type_t type)
-{
-    pmix_value_t *p;
-    
-    /* create the new object */
-    *dest = OBJ_NEW(pmix_value_t);
-    if (NULL == *dest) {
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    }
-    p = *dest;
-    
-    /* copy the type and key */
-    if (NULL != src->key) {
-        p->key = strdup(src->key);
-    }
-    p->type = src->type;
-
     /* copy the right field */
-    switch (src->type) {
+    switch (type) {
     case PMIX_BYTE:
         p->data.byte = src->data.byte;
         break;
@@ -261,28 +191,30 @@ int pmix_bfrop_copy_value(pmix_value_t **dest, pmix_value_t *src,
         /* to avoid alignment issues */
         memcpy(&p->data.uint64, &src->data.uint64, 8);
         break;
-    case PMIX_BYTE_OBJECT:
-        if (NULL != src->data.bo.bytes && 0 < src->data.bo.size) {
-            p->data.bo.bytes = malloc(src->data.bo.size);
-            memcpy(p->data.bo.bytes, src->data.bo.bytes, src->data.bo.size);
-            p->data.bo.size = src->data.bo.size;
-        } else {
-            p->data.bo.bytes = NULL;
-            p->data.bo.size = 0;
-        }
-        break;
     default:
         pmix_output(0, "COPY-PMIX-VALUE: UNSUPPORTED TYPE %d", (int)src->type);
         return PMIX_ERROR;
     }
-
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_copy_buffer_contents(pmix_buffer_t **dest, pmix_buffer_t *src,
-                                  pmix_data_type_t type)
+/* PMIX_VALUE */
+int pmix_bfrop_copy_value(pmix_value_t **dest, pmix_value_t *src,
+                          pmix_data_type_t type)
 {
-    return PMIX_SUCCESS;
+    pmix_value_t *p;
+    
+    /* create the new object */
+    *dest = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+    if (NULL == *dest) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+    p = *dest;
+    
+    /* copy the type */
+    p->type = src->type;
+    /* copy the data */
+    return copy_val(p, src, type);
 }
 
 int pmix_bfrop_copy_info(pmix_info_t **dest, pmix_info_t *src,
@@ -297,3 +229,20 @@ int pmix_bfrop_copy_app(pmix_app_t **dest, pmix_app_t *src,
     return PMIX_SUCCESS;
 }
 
+int pmix_bfrop_copy_kval(pmix_kval_t **dest, pmix_kval_t *src,
+                         pmix_data_type_t type)
+{
+    pmix_kval_t *p;
+    
+    /* create the new object */
+    *dest = OBJ_NEW(pmix_kval_t);
+    if (NULL == *dest) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+    p = *dest;
+    
+    /* copy the type */
+    p->value.type = src->value.type;
+    /* copy the data */
+    return copy_val(&p->value, &src->value, src->value.type);
+}

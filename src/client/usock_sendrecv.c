@@ -471,7 +471,10 @@ void pmix_usock_process_msg(int fd, short flags, void *cbdata)
                 /* construct and load the buffer */
                 OBJ_CONSTRUCT(&buf, pmix_buffer_t);
                 if (NULL != msg->data) {
-                    pmix_bfrop.load(&buf, msg->data, msg->hdr.nbytes);
+                    buf.base_ptr = (char*)msg->data;
+                    buf.bytes_allocated = buf.bytes_used = msg->hdr.nbytes;
+                    buf.unpack_ptr = buf.base_ptr;
+                    buf.pack_ptr = ((char*)buf.base_ptr) + buf.bytes_used;
                 }
                 msg->data = NULL;  // protect the data region
                 if (NULL != rcv->cbfunc) {

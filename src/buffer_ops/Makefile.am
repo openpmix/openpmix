@@ -32,15 +32,9 @@ headers += \
          src/buffer_ops/internal.h
 
 sources += \
-        src/buffer_ops/compare.c \
         src/buffer_ops/copy.c \
-        src/buffer_ops/dump.c \
         src/buffer_ops/internal_functions.c \
-        src/buffer_ops/load_unload.c \
-        src/buffer_ops/lookup.c \
         src/buffer_ops/open_close.c \
         src/buffer_ops/pack.c \
-        src/buffer_ops/peek.c \
         src/buffer_ops/print.c \
-        src/buffer_ops/register.c \
         src/buffer_ops/unpack.c

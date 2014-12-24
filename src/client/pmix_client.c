@@ -13,8 +13,7 @@
  */
 
 #include "pmix_config.h"
-#include "constants.h"
-#include "types.h"
+#include "src/include/types.h"
 
 #ifdef HAVE_STRING_H
 #include <string.h>
@@ -41,7 +40,6 @@
 #include "src/util/progress_threads.h"
 
 #include "pmix_client.h"
-#include "pmix_event.h"
 #include "usock.h"
 
 // local variables
@@ -109,37 +107,35 @@ static int connect_to_server()
     }
     pmix_client_globals.sd = rc;
     /* setup recv event */
-    pmix_event_set(pmix_client_globals.evbase,
-                   &pmix_client_globals.recv_event,
-                   pmix_client_globals.sd,
-                   PMIX_EV_READ | PMIX_EV_PERSIST,
-                   pmix_usock_recv_handler, NULL);
-    pmix_event_set_priority(&pmix_client_globals.recv_event, PMIX_EV_MSG_LO_PRI);
-    pmix_event_add(&pmix_client_globals.recv_event, 0);
+    event_assign(&pmix_client_globals.recv_event,
+                 pmix_client_globals.evbase,
+                 pmix_client_globals.sd,
+                 EV_READ | EV_PERSIST,
+                 pmix_usock_recv_handler, NULL);
+    event_add(&pmix_client_globals.recv_event, 0);
     pmix_client_globals.recv_ev_active = true;
 
     /* setup send event */
-    pmix_event_set(pmix_client_globals.evbase,
-                   &pmix_client_globals.send_event,
-                   pmix_client_globals.sd,
-                   PMIX_EV_WRITE|PMIX_EV_PERSIST,
-                   pmix_usock_send_handler, NULL);
-    pmix_event_set_priority(&pmix_client_globals.send_event, PMIX_EV_MSG_LO_PRI);
+    event_assign(&pmix_client_globals.send_event,
+                 pmix_client_globals.evbase,
+                 pmix_client_globals.sd,
+                 EV_WRITE|EV_PERSIST,
+                 pmix_usock_send_handler, NULL);
     pmix_client_globals.send_ev_active = false;
 
-//    /* initiate send of first message on queue */
-//    if (NULL == pmix_client_globals.send_msg) {
-//        pmix_client_globals.send_msg = (pmix_usock_send_t*)
-//            pmix_list_remove_first(&pmix_client_globals.send_queue);
-//    }
-//    if (NULL != pmix_client_globals.send_msg && !pmix_client_globals.send_ev_active) {
-//        pmix_event_add(&pmix_client_globals.send_event, 0);
-//        pmix_client_globals.send_ev_active = true;
-//    }
+    //    /* initiate send of first message on queue */
+    //    if (NULL == pmix_client_globals.send_msg) {
+    //        pmix_client_globals.send_msg = (pmix_usock_send_t*)
+    //            pmix_list_remove_first(&pmix_client_globals.send_queue);
+    //    }
+    //    if (NULL != pmix_client_globals.send_msg && !pmix_client_globals.send_ev_active) {
+    //        pmix_event_add(&pmix_client_globals.send_event, 0);
+    //        pmix_client_globals.send_ev_active = true;
+    //    }
     return PMIX_SUCCESS;
 }
 
-int PMIx_Init(char **namespace, int *rank)
+int PMIx_Init(char namespace[], int *rank)
 {
     char **uri, *srv;
     int rc;
@@ -151,7 +147,6 @@ int PMIx_Init(char **namespace, int *rank)
 
     setup_globals();
     pmix_bfrop_open();
-
 
     pmix_output_verbose(2, pmix_client_globals.debug_level,
                         "pmix:native init called");
@@ -326,7 +321,7 @@ int PMIx_Abort(int flag, const char msg[])
     return PMIX_SUCCESS;
 }
 
-int PMIx_Put(pmix_scope_t scope, pmix_value_t *kv)
+int PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
 {
     int rc;
 
@@ -336,7 +331,7 @@ int PMIx_Put(pmix_scope_t scope, pmix_value_t *kv)
             pmix_client_globals.cache_local = OBJ_NEW(pmix_buffer_t);
         }
         pmix_output_verbose(2, pmix_client_globals.debug_level,
-                            "pmix:native put local data for key %s", kv->key);
+                            "pmix:native put local data for key %s", key);
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(pmix_client_globals.cache_local, &kv, 1, PMIX_VALUE))) {
             PMIX_ERROR_LOG(rc);
         }
@@ -376,7 +371,7 @@ int PMIx_Put(pmix_scope_t scope, pmix_value_t *kv)
 }
 
 
-int PMIx_Fence(pmix_list_t *ranges)
+int PMIx_Fence(const pmix_range_t ranges[], size_t nranges)
 {
     pmix_buffer_t *msg, *bptr;
     pmix_cmd_t cmd = PMIX_FENCE_CMD;
@@ -385,7 +380,7 @@ int PMIx_Fence(pmix_list_t *ranges)
     pmix_scope_t scope;
     int32_t cnt;
     pmix_value_t *kp;
-    pmix_identifier_t id;
+    uint64_t id;
     size_t i;
     uint32_t np;
 

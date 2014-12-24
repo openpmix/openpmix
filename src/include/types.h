@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2014      Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -39,6 +40,7 @@
 #ifdef HAVE_ARPA_INET_H
 #include <arpa/inet.h>
 #endif
+#include <event.h>
 
 #if PMIX_ENABLE_DEBUG
 #include "src/util/output.h"
@@ -57,18 +59,18 @@ typedef union {
        uint32_t uval;
        uint32_t lval;
    } sval;
-} ompi_ptr_t;
+} pmix_ptr_t;
 
 /*
  * handle differences in iovec
  */
 
 #if defined(__APPLE__) || defined(__WINDOWS__)
-typedef char* ompi_iov_base_ptr_t;
+typedef char* pmix_iov_base_ptr_t;
 #define PMIX_IOVBASE char
 #else
 #define PMIX_IOVBASE void
-typedef void* ompi_iov_base_ptr_t;
+typedef void* pmix_iov_base_ptr_t;
 #endif
 
 /*
@@ -133,18 +135,18 @@ static inline uint64_t ntoh64(uint64_t val)
 /**
  * Convert between a local representation of pointer and a 64 bits value.
  */
-static inline uint64_t ompi_ptr_ptol( void* ptr ) __pmix_attribute_const__;
-static inline uint64_t ompi_ptr_ptol( void* ptr )
+static inline uint64_t pmix_ptr_ptol( void* ptr ) __pmix_attribute_const__;
+static inline uint64_t pmix_ptr_ptol( void* ptr )
 {
     return (uint64_t)(uintptr_t) ptr;
 }
 
-static inline void* ompi_ptr_ltop( uint64_t value ) __pmix_attribute_const__;
-static inline void* ompi_ptr_ltop( uint64_t value )
+static inline void* pmix_ptr_ltop( uint64_t value ) __pmix_attribute_const__;
+static inline void* pmix_ptr_ltop( uint64_t value )
 {
 #if SIZEOF_VOID_P == 4 && PMIX_ENABLE_DEBUG
     if (value > ((1ULL << 32) - 1ULL)) {
-        pmix_output(0, "Warning: truncating value in ompi_ptr_ltop");
+        pmix_output(0, "Warning: truncating value in pmix_ptr_ltop");
     }
 #endif
     return (void*)(uintptr_t) value;
@@ -206,5 +208,8 @@ static inline uint64_t pmix_swap_bytes8(uint64_t val)
 #define pmix_swap_bytes4 htonl
 #define pmix_swap_bytes8 hton64
 #endif /* WORDS_BIGENDIAN || !HAVE_UNIX_BYTESWAP */
+
+typedef struct event_base pmix_event_base_t;
+typedef struct event pmix_event_t;
 
 #endif /* PMIX_TYPES_H */

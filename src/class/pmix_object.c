@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2014      Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -27,7 +28,6 @@
 #include <stdio.h>
 
 #include "src/class/pmix_object.h"
-#include "constants.h"
 
 /*
  * Instantiation of class descriptor for the base class.  This is
@@ -165,7 +165,7 @@ int pmix_class_finalize(void)
         max_classes = 0;
     }
 
-    return PMIX_SUCCESS;
+    return 0;
 }
 
 

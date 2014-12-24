@@ -8,7 +8,7 @@
  */
 
 #include "pmix_config.h"
-#include "constants.h"
+#include "src/include/types.h"
 
 #include <unistd.h>
 #include <event.h>
@@ -20,8 +20,8 @@
 #include "src/class/pmix_list.h"
 #include "src/util/error.h"
 #include "src/util/fd.h"
-#include "pmix_event.h"
 
+#include "src/api/pmix.h"
 #include "src/util/progress_threads.h"
 
 static volatile bool evlib_active;
@@ -42,17 +42,17 @@ static void* progress_engine(void *obj)
 {
     pmix_event_base_t *ev_base = (pmix_event_base_t *)obj;
     while (evlib_active) {
-        event_base_loop(ev_base, PMIX_EVLOOP_ONCE);
+        event_base_loop(ev_base, EVLOOP_ONCE);
     }
     return NULL;
 }
 
-pmix_event_base_t *pmix_start_progress_thread()
+pmix_event_base_t* pmix_start_progress_thread()
 {
     int rc;
     pmix_event_base_t *ev_base;
 
-    if (NULL == (ev_base = event_base_new())) {
+    if (NULL == (ev_base = (pmix_event_base_t*)event_base_new())) {
         PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
         return NULL;
     }
@@ -63,14 +63,14 @@ pmix_event_base_t *pmix_start_progress_thread()
         return NULL;
     }
     /* Make sure the pipe FDs are set to close-on-exec so that
-           they don't leak into children */
+       they don't leak into children */
     if (pmix_fd_set_cloexec(block_pipe[0]) != PMIX_SUCCESS ||
-            pmix_fd_set_cloexec(block_pipe[1]) != PMIX_SUCCESS) {
+        pmix_fd_set_cloexec(block_pipe[1]) != PMIX_SUCCESS) {
         PMIX_ERROR_LOG(PMIX_ERR_IN_ERRNO);
         return NULL;
     }
     event_assign(&block_ev, ev_base, block_pipe[0],
-            PMIX_EV_READ, wakeup, NULL);
+                 EV_READ, wakeup, NULL);
     event_add(&block_ev, 0);
     evlib_active = true;
 
@@ -109,27 +109,4 @@ void pmix_stop_progress_thread(pmix_event_base_t *ev_base)
     /* wait for thread to exit */
     pthread_join(engine, NULL);
     return;
-}
-
-// TODO: Do not used by now
-int pmix_restart_progress_thread(pmix_event_base_t *ev_base)
-{
-    int rc;
-
-    if (!thread_initalized) {
-        /* nothing we can do */
-        return PMIX_ERROR;
-    }
-
-    /* find the specified engine */
-    if (0 <= block_pipe[0] && !block_active) {
-        event_add(&block_ev, 0);
-        block_active = true;
-    }
-    /* start the thread again */
-    if (PMIX_SUCCESS != (rc = pthread_create(&engine, NULL, progress_engine, (void*)ev_base))) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-    return PMIX_SUCCESS;
 }
