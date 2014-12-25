@@ -155,6 +155,7 @@ typedef struct {
     pmix_usock_recv_t *recv_msg;  // current recv in progress
     pmix_list_t posted_recvs;     // list of pmix_usock_posted_recv_t
     int debug_level;              // debug level
+    int debug_output;             // debug output channel
 } pmix_client_globals_t;
 
 extern pmix_client_globals_t pmix_client_globals;
@@ -164,36 +165,30 @@ extern pmix_client_globals_t pmix_client_globals;
 extern void pmix_client_call_errhandler(int error);
 
 
-// TODO: fix it ASAP. This is stupid stub to make everything compile
-// nothing supposed to work with it.
-#define PMIX_PROC_MY_NAME 0
-#define PMIX_NAME_PRINT(x) "noname"
-#define pmix_version_string "some version"
-
 /* internal convenience macros */
 #define PMIX_ACTIVATE_SEND_RECV(b, cb, d)                               \
     do {                                                                \
         pmix_usock_sr_t *ms;                                            \
-        pmix_output_verbose(5, pmix_client_globals.debug_level,                       \
+        pmix_output_verbose(5, pmix_client_globals.debug_level,         \
                             "[%s:%d] post send to server",              \
                             __FILE__, __LINE__);                        \
         ms = OBJ_NEW(pmix_usock_sr_t);                                  \
         ms->bfr = (b);                                                  \
         ms->cbfunc = (cb);                                              \
         ms->cbdata = (d);                                               \
-        event_assign(&((ms)->ev), pmix_client_globals.evbase, -1,               \
-                  PMIX_EV_WRITE, pmix_usock_send_recv, (ms));                \
-        event_active(&((ms)->ev), PMIX_EV_WRITE, 1);                         \
+        event_assign(&((ms)->ev), pmix_client_globals.evbase, -1,       \
+                     EV_WRITE, pmix_usock_send_recv, (ms));             \
+        event_active(&((ms)->ev), EV_WRITE, 1);                         \
     } while(0);
 
-#define PMIX_ACTIVATE_POST_MSG(ms)                                      \
-    do {                                                                \
-        pmix_output_verbose(5, pmix_client_globals.debug_level,                       \
-                            "[%s:%d] post msg",                         \
-                            __FILE__, __LINE__);                        \
-        event_assign( &ms->ev, pmix_client_globals.evbase,-1,                   \
-                  PMIX_EV_WRITE, pmix_usock_process_msg, ms);                \
-        event_active(&ms->ev, PMIX_EV_WRITE, 1);                             \
+#define PMIX_ACTIVATE_POST_MSG(ms)                              \
+    do {                                                        \
+        pmix_output_verbose(5, pmix_client_globals.debug_level, \
+                            "[%s:%d] post msg",                 \
+                            __FILE__, __LINE__);                \
+        event_assign( &ms->ev, pmix_client_globals.evbase,-1,   \
+                      EV_WRITE, pmix_usock_process_msg, ms);    \
+        event_active(&ms->ev, EV_WRITE, 1);                     \
     } while(0);
 
 #define CLOSE_THE_SOCKET(socket)                                \

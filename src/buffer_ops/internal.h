@@ -284,6 +284,8 @@ int pmix_bfrop_pack_app(pmix_buffer_t *buffer, const void *src,
                         int32_t num_vals, pmix_data_type_t type);
 int pmix_bfrop_pack_info(pmix_buffer_t *buffer, const void *src,
                          int32_t num_vals, pmix_data_type_t type);
+int pmix_bfrop_pack_buf(pmix_buffer_t *buffer, const void *src,
+                        int32_t num_vals, pmix_data_type_t type);
 int pmix_bfrop_pack_kval(pmix_buffer_t *buffer, const void *src,
                          int32_t num_vals, pmix_data_type_t type);
 
@@ -334,6 +336,8 @@ int pmix_bfrop_unpack_app(pmix_buffer_t *buffer, void *dest,
                           int32_t *num_vals, pmix_data_type_t type);
 int pmix_bfrop_unpack_info(pmix_buffer_t *buffer, void *dest,
                            int32_t *num_vals, pmix_data_type_t type);
+int pmix_bfrop_unpack_buf(pmix_buffer_t *buffer, void *dest,
+                          int32_t *num_vals, pmix_data_type_t type);
 int pmix_bfrop_unpack_kval(pmix_buffer_t *buffer, void *dest,
                            int32_t *num_vals, pmix_data_type_t type);
 
@@ -359,6 +363,8 @@ int pmix_bfrop_copy_app(pmix_app_t **dest, pmix_app_t *src,
                         pmix_data_type_t type);
 int pmix_bfrop_copy_info(pmix_info_t **dest, pmix_info_t *src,
                          pmix_data_type_t type);
+int pmix_bfrop_copy_buf(pmix_buffer_t **dest, pmix_buffer_t *src,
+                        pmix_data_type_t type);
 int pmix_bfrop_copy_kval(pmix_kval_t **dest, pmix_kval_t *src,
                          pmix_data_type_t type);
 
@@ -402,6 +408,8 @@ int pmix_bfrop_print_app(char **output, char *prefix,
                          pmix_app_t *src, pmix_data_type_t type);
 int pmix_bfrop_print_info(char **output, char *prefix,
                           pmix_info_t *src, pmix_data_type_t type);
+int pmix_bfrop_print_buf(char **output, char *prefix,
+                          pmix_buffer_t *src, pmix_data_type_t type);
 int pmix_bfrop_print_kval(char **output, char *prefix,
                           pmix_kval_t *src, pmix_data_type_t type);
 

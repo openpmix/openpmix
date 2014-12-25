@@ -149,6 +149,7 @@ typedef enum {
     PMIX_RANGE,
     PMIX_APP,
     PMIX_INFO,
+    PMIX_BUFFER,
     PMIX_KVAL
 } pmix_data_type_t;
 
@@ -220,7 +221,7 @@ typedef struct {
 
 typedef struct {
     char key[PMIX_MAX_KEYLEN];
-    pmix_value_t value;
+    pmix_value_t *value;
 } pmix_info_t;
 
 typedef struct {
@@ -272,7 +273,7 @@ int PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val);
 
 /* Get */
 int PMIx_Get(const char namespace[], int rank,
-             const char key[], pmix_value_t *val);
+             const char key[], pmix_value_t **val);
 
 /* Get_nb */
 void PMIx_Get_nb(const char namespace[], int rank,
@@ -303,9 +304,9 @@ int PMIx_Lookup(pmix_info_t info[], size_t ninfo,
 int PMIx_Unpublish(const pmix_info_t info[], size_t ninfo);
 
 /* Spawn a new job */
-int PMIx_Spawn(const pmix_app_t apps[], size_t napps,
-               char jobId[], int jobIdSize,
-               int errors[]);
+int PMIx_Spawn(const pmix_app_t apps[],
+               size_t napps,
+               char namespace[]);
 
 /* register an errhandler to report loss of connection to the server */
 void PMIx_Register_errhandler(pmix_errhandler_fn_t errhandler);

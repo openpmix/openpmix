@@ -101,13 +101,13 @@ void pmix_client_hash_finalize(void)
 
 
 int pmix_client_hash_store(const char *namespace, int rank,
-                           const char *key, pmix_value_t *val)
+                           pmix_kval_t *kin)
 {
     pmix_proc_data_t *proc_data;
     pmix_kval_t *kv;
     uint32_t jobid;
     uint64_t id;
-
+    
     /* create a hash of the namespace */
     PMIX_HASH_STR(namespace, jobid);
     /* mix in the rank to get the id */
@@ -121,28 +121,32 @@ int pmix_client_hash_store(const char *namespace, int rank,
     /* see if we already have this key in the data - means we are updating
      * a pre-existing value
      */
-    kv = lookup_keyval(proc_data, key);
+    kv = lookup_keyval(proc_data, kin->key);
     if (NULL != kv) {
         pmix_list_remove_item(&proc_data->data, &kv->super);
         OBJ_RELEASE(kv);
     }
-    /* create the new value */
-    kv = OBJ_NEW(pmix_kval_t);
-    kv->key = strdup(key);
-    pmix_value_load(&kv->value, (void*)&val->data, val->type);
-    pmix_list_append(&proc_data->data, &kv->super);
+    /* store the new value */
+    OBJ_RETAIN(kin);
+    pmix_list_append(&proc_data->data, &kin->super);
 
     return PMIX_SUCCESS;
 }
 
 int pmix_client_hash_fetch(const char *namespace, int rank,
-                           const char *key, pmix_list_t *kvs)
+                           const char *key, pmix_value_t **kvs)
 {
     pmix_proc_data_t *proc_data;
-    pmix_kval_t *hv, *hnew;
+    pmix_kval_t *hv;
     uint32_t jobid;
     uint64_t id;
+    int rc;
 
+    /* NULL keys are not supported */
+    if (NULL == key) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    
     /* create a hash of the namespace */
     PMIX_HASH_STR(namespace, jobid);
     /* mix in the rank to get the id */
@@ -153,30 +157,15 @@ int pmix_client_hash_fetch(const char *namespace, int rank,
         return PMIX_ERR_NOT_FOUND;
     }
 
-    /* if the key is NULL, that we want everything */
-    if (NULL == key) {
-        PMIX_LIST_FOREACH(hv, &proc_data->data, pmix_kval_t) {
-            /* copy the value */
-            hnew = OBJ_NEW(pmix_kval_t);
-            hnew->key = strdup(hv->key);
-            pmix_value_load(&hnew->value, (void*)&hv->value.data, hv->value.type);
-            /* add it to the output list */
-            pmix_list_append(kvs, &hnew->super);
-        }
-        return PMIX_SUCCESS;
-    }
-
     /* find the value */
     if (NULL == (hv = lookup_keyval(proc_data, key))) {
         return PMIX_ERR_NOT_FOUND;
     }
 
     /* create the copy */
-    hnew = OBJ_NEW(pmix_kval_t);
-    hnew->key = strdup(hv->key);
-    pmix_value_load(&hnew->value, (void*)&hv->value.data, hv->value.type);
-    /* add it to the output list */
-    pmix_list_append(kvs, &hnew->super);
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)kvs, &hv->value, PMIX_VALUE))) {
+        return rc;
+    }
 
     return PMIX_SUCCESS;
 }

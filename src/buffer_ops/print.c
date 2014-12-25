@@ -651,6 +651,12 @@ int pmix_bfrop_print_info(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
+int pmix_bfrop_print_buf(char **output, char *prefix,
+                         pmix_buffer_t *src, pmix_data_type_t type)
+{
+    return PMIX_SUCCESS;
+}
+
 int pmix_bfrop_print_app(char **output, char *prefix,
                          pmix_app_t *src, pmix_data_type_t type)
 {

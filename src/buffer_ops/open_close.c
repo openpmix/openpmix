@@ -100,20 +100,15 @@ OBJ_CLASS_INSTANCE(pmix_bfrop_type_info_t, pmix_object_t,
 static void kvcon(pmix_kval_t *k)
 {
     k->key = NULL;
-    memset(&k->value, 0, sizeof(pmix_value_t));
+    k->value = NULL;
 }
 static void kvdes(pmix_kval_t *k)
 {
     if (NULL != k->key) {
         free(k->key);
     }
-    if (PMIX_STRING == k->value.type &&
-        NULL != k->value.data.string) {
-        free(k->value.data.string);
-    }
-    if (PMIX_ARRAY != k->value.type &&
-        NULL != k->value.data.array.array) {
-        free(k->value.data.array.array);
+    if (NULL != k->value) {
+        OBJ_RELEASE(k->value);
     }
 }
 OBJ_CLASS_INSTANCE(pmix_kval_t,
@@ -297,6 +292,12 @@ int pmix_bfrop_open(void)
                        pmix_bfrop_unpack_info,
                        pmix_bfrop_copy_info,
                        pmix_bfrop_print_info);
+    
+    PMIX_REGISTER_TYPE("PMIX_BUFFER", PMIX_BUFFER,
+                       pmix_bfrop_pack_buf,
+                       pmix_bfrop_unpack_buf,
+                       pmix_bfrop_copy_buf,
+                       pmix_bfrop_print_buf);
     
     PMIX_REGISTER_TYPE("PMIX_KVAL", PMIX_KVAL,
                        pmix_bfrop_pack_kval,

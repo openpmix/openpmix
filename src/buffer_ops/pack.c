@@ -535,13 +535,36 @@ int pmix_bfrop_pack_info(pmix_buffer_t *buffer, const void *src,
     return PMIX_SUCCESS;
 }
 
+int pmix_bfrop_pack_buf(pmix_buffer_t *buffer, const void *src,
+                        int32_t num_vals, pmix_data_type_t type)
+{
+    pmix_buffer_t **ptr;
+    int32_t i;
+    int ret;
+
+    ptr = (pmix_buffer_t **) src;
+    
+    for (i = 0; i < num_vals; ++i) {
+        /* pack the number of bytes */
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_sizet(buffer, &ptr[i]->bytes_used, 1, PMIX_SIZE))) {
+            return ret;
+        }
+        /* pack the bytes */
+        if (0 < ptr[i]->bytes_used) {
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_byte(buffer, ptr[i]->base_ptr, ptr[i]->bytes_used, PMIX_BYTE))) {
+                return ret;
+            }
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
 int pmix_bfrop_pack_app(pmix_buffer_t *buffer, const void *src,
                         int32_t num_vals, pmix_data_type_t type)
 {
     pmix_app_t **ptr, *app;
     int32_t i, j, nvals;
     int ret;
-    pmix_info_t *info;
     
     ptr = (pmix_app_t **) src;
     
@@ -594,11 +617,11 @@ int pmix_bfrop_pack_kval(pmix_buffer_t *buffer, const void *src,
             return ret;
         }
         /* pack the type */
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int(buffer, &ptr[i]->value.type, 1, PMIX_INT))) {
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int(buffer, &ptr[i]->value->type, 1, PMIX_INT))) {
             return ret;
         }
         /* now pack the right field */
-        if (PMIX_SUCCESS != (ret = pack_val(buffer, &ptr[i]->value, ptr[i]->value.type))) {
+        if (PMIX_SUCCESS != (ret = pack_val(buffer, ptr[i]->value, ptr[i]->value->type))) {
             return ret;
         }
     }

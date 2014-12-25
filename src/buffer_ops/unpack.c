@@ -624,8 +624,47 @@ int pmix_bfrop_unpack_info(pmix_buffer_t *buffer, void *dest,
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_unpack_apps(pmix_buffer_t *buffer, void *dest,
-                           int32_t *num_vals, pmix_data_type_t type)
+int pmix_bfrop_unpack_buf(pmix_buffer_t *buffer, void *dest,
+                          int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_buffer_t **ptr;
+    int32_t i, n, m;
+    int ret;
+    size_t nbytes;
+
+    ptr = (pmix_buffer_t **) dest;
+    n = *num_vals;
+    
+    for (i = 0; i < n; ++i) {
+        /* allocate the new object */
+        ptr[i] = OBJ_NEW(pmix_buffer_t);
+        if (NULL == ptr[i]) {
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+        /* unpack the number of bytes */
+        m=1;
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_sizet(buffer, &nbytes, &m, PMIX_SIZE))) {
+            return ret;
+        }
+        m = nbytes;
+        /* setup the buffer's data region */
+        if (0 < nbytes) {
+            ptr[i]->base_ptr = (char*)malloc(nbytes);
+            /* unpack the bytes */
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_byte(buffer, ptr[i]->base_ptr, &m, PMIX_BYTE))) {
+                return ret;
+            }
+        }
+        ptr[i]->pack_ptr = ptr[i]->base_ptr + m;
+        ptr[i]->unpack_ptr = ptr[i]->base_ptr;
+        ptr[i]->bytes_allocated = nbytes;
+        ptr[i]->bytes_used = m;
+    }
+    return PMIX_SUCCESS;
+}
+
+int pmix_bfrop_unpack_app(pmix_buffer_t *buffer, void *dest,
+                          int32_t *num_vals, pmix_data_type_t type)
 {
     pmix_app_t **ptr;
     int32_t i, k, n, m;

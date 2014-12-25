@@ -39,6 +39,7 @@
 #include "src/util/output.h"
 #include "src/util/progress_threads.h"
 
+#include "pmix_client_hash.h"
 #include "pmix_client.h"
 #include "usock.h"
 
@@ -75,13 +76,14 @@ static void wait_cbfunc(pmix_buffer_t *buf, void *cbdata)
     cb->active = false;
 }
 
-static void setup_globals()
+static void setup_globals(void)
 {
     memset(&pmix_client_globals.address, 0, sizeof(pmix_client_globals.address));
     pmix_client_globals.cache_global = NULL;
     pmix_client_globals.cache_local = NULL;
     pmix_client_globals.cache_remote = NULL;
-    pmix_client_globals.debug_level = 10; // ??
+    pmix_client_globals.debug_level = -1;
+    pmix_client_globals.debug_output = -1;
     pmix_client_globals.id = 0;
     pmix_client_globals.sd = -1;
     pmix_client_globals.evbase = NULL;
@@ -97,11 +99,11 @@ static void setup_globals()
     pmix_client_globals.uri = NULL;
 }
 
-static int connect_to_server()
+static int connect_to_server(void)
 {
     int rc;
     pmix_client_globals.sd  = -1;
-    rc = pmix_usock_connect(&pmix_client_globals.address, pmix_client_globals.max_retries);
+    rc = pmix_usock_connect((struct sockaddr *)&pmix_client_globals.address, pmix_client_globals.max_retries);
     if( rc < 0 ){
         return rc;
     }
@@ -137,7 +139,7 @@ static int connect_to_server()
 
 int PMIx_Init(char namespace[], int *rank)
 {
-    char **uri, *srv;
+    char **uri, *evar;
     int rc;
 
     ++init_cntr;
@@ -145,34 +147,55 @@ int PMIx_Init(char namespace[], int *rank)
         return PMIX_SUCCESS;
     }
 
+    /* initialize the output system */
+    if (!pmix_output_init()) {
+        return PMIX_ERROR;
+    }
+    
     setup_globals();
+    /* see if debug is requested */
+    if (NULL != (evar = getenv("PMIX_DEBUG"))) {
+        pmix_client_globals.debug_level = strtol(evar, NULL, 10);
+        pmix_client_globals.debug_output = pmix_output_open(NULL);
+        pmix_output_set_verbosity(pmix_client_globals.debug_output,
+                                  pmix_client_globals.debug_level);
+    }
     pmix_bfrop_open();
 
-    pmix_output_verbose(2, pmix_client_globals.debug_level,
-                        "pmix:native init called");
+    
+    pmix_output_verbose(2, pmix_client_globals.debug_output,
+                        "pmix: init called");
 
-    /* if we don't have a path to the daxemon rendezvous point,
+    /* if we don't have a path to the daemon rendezvous point,
      * then we need to return an error */
-    if (NULL == local_uri) {
-        /* see if we can find it */
-        if (NULL == (srv = getenv("PMIX_SERVER_URI"))) {
-            /* not ready yet, so decrement our init_cntr so we can come thru
-             * here again */
-            --init_cntr;
-            /* let the caller know that the server isn't available yet */
-            return PMIX_ERR_SERVER_NOT_AVAIL;
-        }
-        local_uri = strdup(srv);
+    if (NULL == (evar = getenv("PMIX_SERVER_URI"))) {
+        /* let the caller know that the server isn't available yet */
+        return PMIX_ERR_SERVER_NOT_AVAIL;
     }
+    pmix_client_globals.uri = strdup(evar);
+    
+    /* we also require the namespace */
+    if (NULL == (evar = getenv("PMIX_NAMESPACE"))) {
+        /* let the caller know that the server isn't available yet */
+        return PMIX_ERR_INVALID_NAMESPACE;
+    }
+    strncpy(namespace, evar, PMIX_MAX_VALLEN);
+    
+    /* we also require our rank */
+    if (NULL == (evar = getenv("PMIX_RANK"))) {
+        /* let the caller know that the server isn't available yet */
+        return PMIX_ERR_DATA_VALUE_NOT_FOUND;
+    }
+    *rank = strtol(evar, NULL, 10);
 
     /* setup the path to the daemon rendezvous point */
-    pmix_output_verbose(2, pmix_client_globals.debug_level,
-                        "pmix:native constructing component fields with server %s",
-                        local_uri);
+    pmix_output_verbose(2, pmix_client_globals.debug_output,
+                        "pmix: constructing component fields with server %s",
+                        pmix_client_globals.uri);
 
     memset(&address, 0, sizeof(struct sockaddr_un));
     address.sun_family = AF_UNIX;
-    uri = pmix_argv_split(local_uri, ':');
+    uri = pmix_argv_split(pmix_client_globals.uri, ':');
     if (2 != pmix_argv_count(uri)) {
         return PMIX_ERROR;
     }
@@ -191,8 +214,8 @@ int PMIx_Init(char namespace[], int *rank)
         return PMIX_ERROR;
     }
 
-    /* get our namespace and rank */
-    if( PMIX_SUCCESS != (rc = connect_to_server()) ){
+    /* connect to the server */
+    if (PMIX_SUCCESS != (rc = connect_to_server())){
         return rc;
     }
     
@@ -220,7 +243,7 @@ int PMIx_Finalize(void)
     }
     init_cntr = 0;
 
-    pmix_output_verbose(2, pmix_client_globals.debug_level,
+    pmix_output_verbose(2, pmix_client_globals.debug_output,
                         "pmix:native finalize called");
 
     if (NULL == local_uri) {
@@ -245,7 +268,7 @@ int PMIx_Finalize(void)
         cb = OBJ_NEW(pmix_cb_t);
         cb->active = true;
 
-        pmix_output_verbose(2, pmix_client_globals.debug_level,
+        pmix_output_verbose(2, pmix_client_globals.debug_output,
                             "pmix:native sending finalize sync to server");
 
         /* push the message into our event base to send to the server */
@@ -277,12 +300,11 @@ int PMIx_Abort(int flag, const char msg[])
     int rc;
     pmix_cb_t *cb;
 
-    pmix_output_verbose(2, pmix_client_globals.debug_level,
+    pmix_output_verbose(2, pmix_client_globals.debug_output,
                         "pmix:native abort called");
 
-    if (NULL == local_uri) {
-        /* no server available, so just return */
-        return PMIX_SUCCESS;
+    if (init_cntr <= 0) {
+        return PMIX_ERR_INIT;
     }
 
     /* create a buffer to hold the message */
@@ -324,24 +346,38 @@ int PMIx_Abort(int flag, const char msg[])
 int PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
 {
     int rc;
+    pmix_kval_t kv, *kp;
 
+    pmix_output_verbose(2, pmix_client_globals.debug_output,
+                        "pmix: executing put");
+
+    if (init_cntr <= 0) {
+        return PMIX_ERR_INIT;
+    }
+
+    /* setup to xfer the data */
+    OBJ_CONSTRUCT(&kv, pmix_kval_t);
+    kv.key = (char*)key;
+    kv.value = val;
+    kp = &kv;
+    
     /* pack the cache that matches the scope */
     if (PMIX_LOCAL == scope) {
         if (NULL == pmix_client_globals.cache_local) {
             pmix_client_globals.cache_local = OBJ_NEW(pmix_buffer_t);
         }
-        pmix_output_verbose(2, pmix_client_globals.debug_level,
-                            "pmix:native put local data for key %s", key);
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(pmix_client_globals.cache_local, &kv, 1, PMIX_VALUE))) {
+        pmix_output_verbose(2, pmix_client_globals.debug_output,
+                            "pmix: put local data for key %s", key);
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(pmix_client_globals.cache_local, &kp, 1, PMIX_KVAL))) {
             PMIX_ERROR_LOG(rc);
         }
     } else if (PMIX_REMOTE == scope) {
         if (NULL == pmix_client_globals.cache_remote) {
             pmix_client_globals.cache_remote = OBJ_NEW(pmix_buffer_t);
         }
-        pmix_output_verbose(2, pmix_client_globals.debug_level,
-                            "pmix:native put remote data for key %s", kv->key);
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(pmix_client_globals.cache_remote, &kv, 1, PMIX_VALUE))) {
+        pmix_output_verbose(2, pmix_client_globals.debug_output,
+                            "pmix: put remote data for key %s", key);
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(pmix_client_globals.cache_remote, &kp, 1, PMIX_VALUE))) {
             PMIX_ERROR_LOG(rc);
         }
     } else {
@@ -349,142 +385,34 @@ int PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
         if (NULL == pmix_client_globals.cache_global) {
             pmix_client_globals.cache_global = OBJ_NEW(pmix_buffer_t);
         }
-        pmix_output_verbose(2, pmix_client_globals.debug_level,
-                            "pmix:native put global data for key %s", kv->key);
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(pmix_client_globals.cache_global, &kv, 1, PMIX_VALUE))) {
+        pmix_output_verbose(2, pmix_client_globals.debug_output,
+                            "pmix: put global data for key %s", key);
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(pmix_client_globals.cache_global, &kp, 1, PMIX_VALUE))) {
             PMIX_ERROR_LOG(rc);
         }
     }
+    /* protect the incoming values */
+    kv.key = NULL;
+    kv.value = NULL;
+    /* destruct the object */
+    OBJ_DESTRUCT(&kv);
 
-#if 0
-    /* if this is our uri, save it as we need to send it to our server
-     * as a special, separate item */
-    if (0 == strcmp(PMIX_DSTORE_URI, kv->key)) {
-        local_uri = strdup(kv->data.string);
-    }
-    
-    /* have to save a copy locally as some of our components will
-     * look for it */
-    (void)pmix_dstore.store(pmix_dstore_internal, &PMIX_PROC_MY_NAME, kv);
-#endif
     return rc;
 }
 
-
-int PMIx_Fence(const pmix_range_t ranges[], size_t nranges)
+static int unpack_return(pmix_buffer_t *data)
 {
-    pmix_buffer_t *msg, *bptr;
-    pmix_cmd_t cmd = PMIX_FENCE_CMD;
-    pmix_cb_t *cb;
     int rc;
-    pmix_scope_t scope;
     int32_t cnt;
-    pmix_value_t *kp;
-    uint64_t id;
-    size_t i;
-    uint32_t np;
-
-    pmix_output_verbose(2, pmix_client_globals.debug_level,
-                        "pmix:native executing fence");
-
-    if (NULL == local_uri) {
-        /* no server available, so just return */
-        return PMIX_SUCCESS;
-    }
-
-    msg = OBJ_NEW(pmix_buffer_t);
-    /* pack the fence cmd */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
-        PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
-        return rc;
-    }
-#if 0
-    /* pack the number of procs */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &nprocs, 1, PMIX_SIZE))) {
-        PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
-        return rc;
-    }
-    if (0 < nprocs) {
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, procs, nprocs, PMIX_UINT64))) {
-            PMIX_ERROR_LOG(rc);
-            OBJ_RELEASE(msg);
-            return rc;
-        }
-    }
-#endif
-    /* provide our URI */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &local_uri, 1, PMIX_STRING))) {
-        PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
-        return rc;
-    }
-    /* only do it once */
-    if (NULL != local_uri) {
-        free(local_uri);
-        local_uri = NULL;
-    }
-
-    /* if we haven't already done it, ensure we have committed our values */
-    if (NULL != pmix_client_globals.cache_local) {
-        scope = PMIX_LOCAL;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_SCOPE))) {
-            PMIX_ERROR_LOG(rc);
-            OBJ_RELEASE(msg);
-            return rc;
-        }
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &pmix_client_globals.cache_local, 1, PMIX_BUFFER))) {
-            PMIX_ERROR_LOG(rc);
-            OBJ_RELEASE(msg);
-            return rc;
-        }
-        OBJ_RELEASE(pmix_client_globals.cache_local);
-    }
-    if (NULL != pmix_client_globals.cache_remote) {
-        scope = PMIX_REMOTE;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_SCOPE))) {
-            PMIX_ERROR_LOG(rc);
-            OBJ_RELEASE(msg);
-            return rc;
-        }
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &pmix_client_globals.cache_remote, 1, PMIX_BUFFER))) {
-            PMIX_ERROR_LOG(rc);
-            OBJ_RELEASE(msg);
-            return rc;
-        }
-        OBJ_RELEASE(pmix_client_globals.cache_remote);
-    }
-    if (NULL != pmix_client_globals.cache_global) {
-        scope = PMIX_GLOBAL;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_SCOPE))) {
-            PMIX_ERROR_LOG(rc);
-            OBJ_RELEASE(msg);
-            return rc;
-        }
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &pmix_client_globals.cache_global, 1, PMIX_BUFFER))) {
-            PMIX_ERROR_LOG(rc);
-            OBJ_RELEASE(msg);
-            return rc;
-        }
-        OBJ_RELEASE(pmix_client_globals.cache_global);
-    }
-
-    /* create a callback object as we need to pass it to the
-     * recv routine so we know which callback to use when
-     * the return message is recvd */
-    cb = OBJ_NEW(pmix_cb_t);
-    cb->active = true;
-
-    /* push the message into our event base to send to the server */
-    PMIX_ACTIVATE_SEND_RECV(msg, wait_cbfunc, cb);
-
-    /* wait for the fence to complete */
-    PMIX_WAIT_FOR_COMPLETION(cb->active);
-
+    pmix_buffer_t *msg, *bptr;
+    char *nspace;
+    uint32_t rank, i, np;
+    pmix_scope_t scope;
+    pmix_kval_t *kp;
+    
     /* get the number of contributors */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&cb->data, &np, &cnt, PMIX_UINT64))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(data, &np, &cnt, PMIX_UINT32))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -493,16 +421,22 @@ int PMIx_Fence(const pmix_range_t ranges[], size_t nranges)
     for (i=0; i < np; i++) {
         /* get the buffer that contains the data for the next proc */
         cnt = 1;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&cb->data, &msg, &cnt, PMIX_BUFFER))) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(data, &msg, &cnt, PMIX_BUFFER))) {
             if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
                 break;
             }
             PMIX_ERROR_LOG(rc);
             return rc;
         }
-        /* extract the id of the contributor from the blob */
+        /* extract the namespace of the contributor from the blob */
         cnt = 1;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(msg, &id, &cnt, PMIX_UINT64))) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(msg, &nspace, &cnt, PMIX_STRING))) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        /* extract the rank of the contributor from the blob */
+        cnt = 1;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(msg, &rank, &cnt, PMIX_UINT32))) {
             PMIX_ERROR_LOG(rc);
             return rc;
         }
@@ -517,12 +451,10 @@ int PMIx_Fence(const pmix_range_t ranges[], size_t nranges)
             }
             /* now unpack and store the values - everything goes into our internal store */
             cnt = 1;
-            while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bptr, &kp, &cnt, PMIX_VALUE))) {
-#if 0
-                if (PMIX_SUCCESS != (ret = pmix_dstore.store(pmix_dstore_internal, &id, kp))) {
-                    PMIX_ERROR_LOG(ret);
+            while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bptr, &kp, &cnt, PMIX_KVAL))) {
+                if (PMIX_SUCCESS != (rc = pmix_client_hash_store(nspace, rank, kp))) {
+                    PMIX_ERROR_LOG(rc);
                 }
-#endif
                 OBJ_RELEASE(kp);
                 cnt = 1;
             }
@@ -540,138 +472,33 @@ int PMIx_Fence(const pmix_range_t ranges[], size_t nranges)
         rc = PMIX_SUCCESS;
     }
 
-    OBJ_RELEASE(cb);
-
-    pmix_output_verbose(2, pmix_client_globals.debug_level,
-                        "pmix:native fence released");
-
-    return PMIX_SUCCESS;
+    return rc;
 }
 
-static void fencenb_cbfunc(pmix_buffer_t *buf, void *cbdata)
+static int pack_fence(pmix_buffer_t *msg,
+                      pmix_cmd_t cmd,
+                      const pmix_range_t ranges[],
+                      size_t nranges)
 {
-    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
-    pmix_buffer_t *msg, *bptr;
     int rc;
     pmix_scope_t scope;
-    int32_t cnt;
-    pmix_value_t *kp;
-    pmix_identifier_t id;
-    size_t i;
-    uint32_t np;
-
-    /* get the number of contributors */
-    cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &np, &cnt, PMIX_UINT64))) {
-        PMIX_ERROR_LOG(rc);
-        return;
-    }
-
-    /* if data was returned, unpack and store it */
-    for (i=0; i < np; i++) {
-        /* get the buffer that contains the data for the next proc */
-        cnt = 1;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &msg, &cnt, PMIX_BUFFER))) {
-            if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
-                break;
-            }
-            PMIX_ERROR_LOG(rc);
-            return;
-        }
-        /* extract the id of the contributor from the blob */
-        cnt = 1;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(msg, &id, &cnt, PMIX_UINT64))) {
-            PMIX_ERROR_LOG(rc);
-            return;
-        }
-        /* extract all blobs from this proc, starting with the scope */
-        cnt = 1;
-        while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(msg, &scope, &cnt, PMIX_SCOPE))) {
-            /* extract the blob for this scope */
-            cnt = 1;
-            if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(msg, &bptr, &cnt, PMIX_BUFFER))) {
-                PMIX_ERROR_LOG(rc);
-                return;
-            }
-            /* now unpack and store the values - everything goes into our internal store */
-            cnt = 1;
-            while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bptr, &kp, &cnt, PMIX_VALUE))) {
-#if 0
-                if (PMIX_SUCCESS != (ret = pmix_dstore.store(pmix_dstore_internal, &id, kp))) {
-                    PMIX_ERROR_LOG(ret);
-                }
-#endif
-                OBJ_RELEASE(kp);
-                cnt = 1;
-            }
-            OBJ_RELEASE(bptr);
-            cnt = 1;
-        }
-        if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
-            PMIX_ERROR_LOG(rc);
-        }
-        OBJ_RELEASE(msg);
-    }
-    if (PMIX_SUCCESS != rc && PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
-        PMIX_ERROR_LOG(rc);
-    }
-
-    /* if a callback was provided, execute it */
-    if (NULL != cb && NULL != cb->cbfunc) {
-        cb->cbfunc(rc, NULL, cb->cbdata);
-    }
-    OBJ_RELEASE(cb);
-}
-
-int PMIx_Fence_nb(pmix_list_t *ranges, bool barrier,
-                  pmix_cbfunc_t cbfunc, void *cbdata)
-{
-    pmix_buffer_t *msg;
-    pmix_cmd_t cmd = PMIX_FENCENB_CMD;
-    int rc;
-    pmix_cb_t *cb;
-    pmix_scope_t scope;
-
-    if (NULL == local_uri) {
-        /* no server available, so just execute the callback */
-        if (NULL != cbfunc) {
-            cbfunc(PMIX_SUCCESS, NULL, cbdata);
-        }
-        return PMIX_SUCCESS;
-    }
-
-    msg = OBJ_NEW(pmix_buffer_t);
-    /* pack the fence cmd */
+    
+    /* pack the cmd */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
         PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
         return rc;
     }
-#if 0
-    /* pack the number of procs */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &nprocs, 1, PMIX_SIZE))) {
+
+    /* pack the number of ranges */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &nranges, 1, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
         return rc;
     }
-    if (0 < nprocs) {
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, procs, nprocs, PMIX_UINT64))) {
+    if (0 < nranges) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, ranges, nranges, PMIX_RANGE))) {
             PMIX_ERROR_LOG(rc);
-            OBJ_RELEASE(msg);
             return rc;
         }
-    }
-#endif
-    /* provide our URI */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &local_uri, 1, PMIX_STRING))) {
-        PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
-        return rc;
-    }
-    /* only do it once */
-    if (NULL != local_uri) {
-        free(local_uri);
-        local_uri = NULL;
     }
 
     /* if we haven't already done it, ensure we have committed our values */
@@ -679,12 +506,10 @@ int PMIx_Fence_nb(pmix_list_t *ranges, bool barrier,
         scope = PMIX_LOCAL;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_SCOPE))) {
             PMIX_ERROR_LOG(rc);
-            OBJ_RELEASE(msg);
             return rc;
         }
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &pmix_client_globals.cache_local, 1, PMIX_BUFFER))) {
             PMIX_ERROR_LOG(rc);
-            OBJ_RELEASE(msg);
             return rc;
         }
         OBJ_RELEASE(pmix_client_globals.cache_local);
@@ -693,12 +518,10 @@ int PMIx_Fence_nb(pmix_list_t *ranges, bool barrier,
         scope = PMIX_REMOTE;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_SCOPE))) {
             PMIX_ERROR_LOG(rc);
-            OBJ_RELEASE(msg);
             return rc;
         }
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &pmix_client_globals.cache_remote, 1, PMIX_BUFFER))) {
             PMIX_ERROR_LOG(rc);
-            OBJ_RELEASE(msg);
             return rc;
         }
         OBJ_RELEASE(pmix_client_globals.cache_remote);
@@ -707,15 +530,107 @@ int PMIx_Fence_nb(pmix_list_t *ranges, bool barrier,
         scope = PMIX_GLOBAL;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_SCOPE))) {
             PMIX_ERROR_LOG(rc);
-            OBJ_RELEASE(msg);
             return rc;
         }
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &pmix_client_globals.cache_global, 1, PMIX_BUFFER))) {
             PMIX_ERROR_LOG(rc);
-            OBJ_RELEASE(msg);
             return rc;
         }
         OBJ_RELEASE(pmix_client_globals.cache_global);
+    }
+    return PMIX_SUCCESS;
+}
+
+int PMIx_Fence(const pmix_range_t ranges[], size_t nranges)
+{
+    pmix_buffer_t *msg;
+    pmix_cmd_t cmd = PMIX_FENCE_CMD;
+    pmix_cb_t *cb;
+    int rc;
+    
+    pmix_output_verbose(2, pmix_client_globals.debug_output,
+                        "pmix: executing fence");
+
+    if (init_cntr <= 0) {
+        return PMIX_ERR_INIT;
+    }
+
+    msg = OBJ_NEW(pmix_buffer_t);
+    if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, ranges, nranges))) {
+        OBJ_RELEASE(msg);
+        return rc;
+    }
+    
+    /* create a callback object as we need to pass it to the
+     * recv routine so we know which callback to use when
+     * the return message is recvd */
+    cb = OBJ_NEW(pmix_cb_t);
+    cb->active = true;
+
+    /* push the message into our event base to send to the server */
+    PMIX_ACTIVATE_SEND_RECV(msg, wait_cbfunc, cb);
+
+    /* wait for the fence to complete */
+    PMIX_WAIT_FOR_COMPLETION(cb->active);
+
+    /* unpack and store any returned data */
+    rc = unpack_return(&cb->data);
+    OBJ_RELEASE(cb);
+
+    pmix_output_verbose(2, pmix_client_globals.debug_output,
+                        "pmix:native fence released");
+
+    return rc;
+}
+
+static void fencenb_cbfunc(pmix_buffer_t *buf, void *cbdata)
+{
+    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+    int rc;
+
+    pmix_output_verbose(2, pmix_client_globals.debug_output,
+                        "pmix: fence_nb callback recvd");
+
+    rc = unpack_return(buf);
+
+    /* if a callback was provided, execute it */
+    if (NULL != cb && NULL != cb->cbfunc) {
+        cb->cbfunc(rc, NULL, cb->cbdata);
+    }
+    OBJ_RELEASE(cb);
+}
+
+int PMIx_Fence_nb(const pmix_range_t ranges[], size_t nranges, bool barrier,
+                  pmix_cbfunc_t cbfunc, void *cbdata)
+{
+    pmix_buffer_t *msg;
+    pmix_cmd_t cmd = PMIX_FENCENB_CMD;
+    int rc;
+    pmix_cb_t *cb;
+
+    pmix_output_verbose(2, pmix_client_globals.debug_output,
+                        "pmix: fence_nb called");
+
+    if (init_cntr <= 0) {
+        return PMIX_ERR_INIT;
+    }
+
+    msg = OBJ_NEW(pmix_buffer_t);
+    if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, ranges, nranges))) {
+        OBJ_RELEASE(msg);
+        return rc;
+    }
+    /* add the barrier flag - this tells the server whether or not
+     * we wish to delay the callback until a background barrier
+     * has been completed. If true, or if the server doesn't support
+     * direct-modex operations (i.e., the server requires a barrier
+     * as part of the fence operation to ensure data has been distributed
+     * prior to anyone calling "get"), then the server should execute a
+     * collective barrier across all participating procs before calling
+     * us back. Otherwise, the callback should come immediately */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &barrier, 1, PMIX_BOOL))) {
+        OBJ_RELEASE(msg);
+        return rc;
     }
 
     /* create a callback object as we need to pass it to the
@@ -731,40 +646,38 @@ int PMIx_Fence_nb(pmix_list_t *ranges, bool barrier,
     return PMIX_SUCCESS;
 }
 
-int PMIx_Get(const char *namespace, int rank,
-             const char *key, pmix_value_t **kv)
+int PMIx_Get(const char namespace[], int rank,
+             const char key[], pmix_value_t **val)
 {
     pmix_buffer_t *msg, *bptr;
     pmix_cmd_t cmd = PMIX_GET_CMD;
     pmix_cb_t *cb;
     int rc, ret;
     int32_t cnt;
-    pmix_list_t vals;
-    pmix_value_t *kp;
+    pmix_kval_t *kp;
     bool found;
 
-    pmix_output_verbose(2, pmix_client_globals.debug_level,
-                        "pmix:native getting value for proc %s:%d key %s",
-                        (NULL == namespace) ? "NULL" : namespace, rank, key);
+    pmix_output_verbose(2, pmix_client_globals.debug_output,
+                        "pmix: getting value for proc %s:%d key %s",
+                        (NULL == namespace) ? "NULL" : namespace, rank,
+                        (NULL == key) ? "NULL" : key);
 
+    if (init_cntr <= 0) {
+        return PMIX_ERR_INIT;
+    }
+
+    /* protect against bozo input */
+    if (NULL == namespace || NULL == key) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    
     /* first see if we already have the info in our dstore */
-    OBJ_CONSTRUCT(&vals, pmix_list_t);
-#if 0
-    if (PMIX_SUCCESS == pmix_dstore.fetch(pmix_dstore_internal, id,
-                                          key, &vals)) {
-        *kv = (pmix_value_t*)pmix_list_remove_first(&vals);
-        PMIX_LIST_DESTRUCT(&vals);
-        pmix_output_verbose(2, pmix_client_globals.debug_level,
-                            "pmix:native value retrieved from dstore");
+    if (PMIX_SUCCESS == pmix_client_hash_fetch(namespace, rank, key, val)) {
+        pmix_output_verbose(2, pmix_client_globals.debug_output,
+                            "pmix: value retrieved from dstore");
         return PMIX_SUCCESS;
     }
-#endif
     
-    if (NULL == local_uri) {
-        /* no server available, so just return */
-        return PMIX_ERR_NOT_FOUND;
-    }
-
     /* nope - see if we can get it */
     msg = OBJ_NEW(pmix_buffer_t);
     /* pack the get cmd */
@@ -810,18 +723,19 @@ int PMIx_Get(const char *namespace, int rank,
     found = false;
     cnt = 1;
     while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&cb->data, &bptr, &cnt, PMIX_BUFFER))) {
-        while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bptr, &kp, &cnt, PMIX_VALUE))) {
-            pmix_output_verbose(2, pmix_client_globals.debug_level,
-                                "pmix:native retrieved %s (%s) from server for proc %s:%d",
-                                kp->key, (PMIX_STRING == kp->type) ? kp->data.string : "NS",
-                                (NULL == namespace) ? "NULL" : namespace, rank);
-#if 0
-            if (PMIX_SUCCESS != (ret = pmix_dstore.store(pmix_dstore_internal, id, kp))) {
+        while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bptr, &kp, &cnt, PMIX_KVAL))) {
+            pmix_output_verbose(2, pmix_client_globals.debug_output,
+                                "pmix: retrieved %s from server for proc %s:%d",
+                                kp->key, namespace, rank);
+            if (PMIX_SUCCESS != (rc = pmix_client_hash_store(namespace, rank, kp))) {
                 PMIX_ERROR_LOG(ret);
             }
-#endif
             if (0 == strcmp(key, kp->key)) {
-                *kv = kp;
+                if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)val, &kp->value, PMIX_VALUE))) {
+                    PMIX_ERROR_LOG(rc);
+                    OBJ_RELEASE(kp);
+                    return rc;
+                }
                 found = true;
             } else {
                 OBJ_RELEASE(kp);
@@ -840,7 +754,7 @@ int PMIx_Get(const char *namespace, int rank,
     }
     OBJ_RELEASE(cb);
 
-    pmix_output_verbose(2, pmix_client_globals.debug_level,
+    pmix_output_verbose(2, pmix_client_globals.debug_output,
                         "pmix:native get completed");
     if (found) {
         return PMIX_SUCCESS;
@@ -849,7 +763,7 @@ int PMIx_Get(const char *namespace, int rank,
      * status that indicates the source of the problem,
      * either during the data fetch, message unpacking,
      * or not found */
-    *kv = NULL;
+    *val = NULL;
     if (PMIX_SUCCESS == rc) {
         if (PMIX_SUCCESS == ret) {
             rc = PMIX_ERR_NOT_FOUND;
@@ -868,22 +782,24 @@ void PMIx_Get_nb(const char *namespace, int rank,
 }
 
 int PMIx_Publish(pmix_scope_t scope,
-                 pmix_list_t *info)
+                 const pmix_info_t info[],
+                 size_t ninfo)
 {
     pmix_buffer_t *msg;
-    pmix_info_t *iptr;
     pmix_cmd_t cmd = PMIX_PUBLISH_CMD;
     int rc;
     pmix_cb_t *cb;
     
-    pmix_output_verbose(2, pmix_client_globals.debug_level,
-                        "pmix:native publish called");
+    pmix_output_verbose(2, pmix_client_globals.debug_output,
+                        "pmix: publish called");
     
-    /* check for bozo cases */
-    if (NULL == local_uri) {
-        return PMIX_ERR_NOT_AVAILABLE;
+    if (init_cntr <= 0) {
+        return PMIX_ERR_INIT;
     }
+
+    /* check for bozo cases */
     if (NULL == info) {
+        /* nothing to publish */
         return PMIX_ERR_BAD_PARAM;
     }
     
@@ -901,20 +817,16 @@ int PMIx_Publish(pmix_scope_t scope,
         OBJ_RELEASE(msg);
         return rc;
     }
-    /* pack any info keys that were given */
-    if (NULL != info) {
-        PMIX_LIST_FOREACH(iptr, info, pmix_info_t) {
-            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &iptr->key, 1, PMIX_STRING))) {
-                PMIX_ERROR_LOG(rc);
-                OBJ_RELEASE(msg);
-                return rc;
-            }
-            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &iptr->value, 1, PMIX_STRING))) {
-                PMIX_ERROR_LOG(rc);
-                OBJ_RELEASE(msg);
-                return rc;
-            }
-        }
+    /* pack the info keys that were given */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &ninfo, 1, PMIX_SIZE))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_RELEASE(msg);
+        return rc;
+    }
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &info, ninfo, PMIX_INFO))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_RELEASE(msg);
+        return rc;
     }
     
     /* create a callback object as we need to pass it to the
@@ -933,25 +845,27 @@ int PMIx_Publish(pmix_scope_t scope,
     return PMIX_SUCCESS;
 }
 
-int PMIx_Lookup(pmix_list_t *info,
-                char **namespace)
+int PMIx_Lookup(pmix_info_t info[], size_t ninfo,
+                char namespace[])
 {
     pmix_buffer_t *msg;
-    pmix_info_t *iptr;
     pmix_cmd_t cmd = PMIX_LOOKUP_CMD;
     int rc, ret;
     pmix_cb_t *cb;
-    char *key, *value;
+    char *key;
     bool found;
     int32_t cnt;
+    size_t i, np;
+    pmix_kval_t *kv;
     
-    pmix_output_verbose(2, pmix_client_globals.debug_level,
-                        "pmix:native lookup called");
+    pmix_output_verbose(2, pmix_client_globals.debug_output,
+                        "pmix: lookup called");
     
-    /* check for bozo cases */
-    if (NULL == local_uri) {
-        return PMIX_ERR_NOT_AVAILABLE;
+    if (init_cntr <= 0) {
+        return PMIX_ERR_INIT;
     }
+
+    /* check for bozo cases */
     if (NULL == info) {
         return PMIX_ERR_BAD_PARAM;
     }
@@ -966,8 +880,13 @@ int PMIx_Lookup(pmix_list_t *info,
     }
     /* pack any info keys that were given - no need to send the value
      * fields as they are empty */
-    PMIX_LIST_FOREACH(iptr, info, pmix_info_t) {
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &iptr->key, 1, PMIX_STRING))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &ninfo, 1, PMIX_SIZE))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_RELEASE(msg);
+        return rc;
+    }
+    for (i=0; i < ninfo; i++) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &info[i].key, 1, PMIX_STRING))) {
             PMIX_ERROR_LOG(rc);
             OBJ_RELEASE(msg);
             return rc;
@@ -994,41 +913,33 @@ int PMIx_Lookup(pmix_list_t *info,
         OBJ_RELEASE(cb);
         return rc;
     }
-    /* unpack the namespace of the process that published the service */
+    /* unpack the namespace of the process that published the info */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&cb->data, &value, &cnt, PMIX_STRING))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&cb->data, &key, &cnt, PMIX_STRING))) {
         PMIX_ERROR_LOG(rc);
         OBJ_RELEASE(cb);
         return rc;
     }
     if (NULL != namespace) {
-        *namespace = value;  // the string was already malloc'd when unpacked
-    } else if (NULL != value) {
-        free(value);
+        strncpy(namespace, key, PMIX_MAX_VALLEN);
     }
+    free(key);
+
     cnt = 1;
-    /* the returned data is in the form of a key followed by its value, so we
-     * unpack the strings in pairs */
-    while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&cb->data, &key, &cnt, PMIX_STRING))) {
-        /* unpack the value */
-        cnt = 1;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&cb->data, &value, &cnt, PMIX_STRING))) {
-            PMIX_ERROR_LOG(rc);
-            OBJ_RELEASE(cb);
-            return rc;
-        }
-        /* find the matching key in the provided info list - error if not found */
+    /* unpack the returned values */
+    while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&cb->data, &kv, &cnt, PMIX_KVAL))) {
+        /* find the matching key in the provided info array - error if not found */
         found = false;
-        PMIX_LIST_FOREACH(iptr, info, pmix_info_t) {
-            if (0 == strcmp(iptr->key, key)) {
-                /* store the value in the pmix_info_t */
-                (void)strncpy(iptr->value, value, PMIX_MAX_VALLEN);
+        for (i=0; i < ninfo; i++) {
+            if (0 == strcmp(info[i].key, kv->key)) {
+                /* transfer the value to the pmix_info_t */
+                info[i].value = kv->value;
+                kv->value = NULL;
                 found = true;
                 break;
             }
         }
-        free(key);
-        free(value);
+        OBJ_RELEASE(kv);
         if (!found) {
             rc = PMIX_ERR_NOT_FOUND;
             break;
@@ -1044,21 +955,22 @@ int PMIx_Lookup(pmix_list_t *info,
     return rc;
 }
 
-int PMIx_Unpublish(pmix_list_t *info)
+int PMIx_Unpublish(const pmix_info_t info[], size_t ninfo)
 {
     pmix_buffer_t *msg;
-    pmix_info_t *iptr;
     pmix_cmd_t cmd = PMIX_UNPUBLISH_CMD;
     int rc;
     pmix_cb_t *cb;
+    size_t i;
     
-    pmix_output_verbose(2, pmix_client_globals.debug_level,
-                        "pmix:native unpublish called");
+    pmix_output_verbose(2, pmix_client_globals.debug_output,
+                        "pmix: unpublish called");
     
-    /* check for bozo cases */
-    if (NULL == local_uri) {
-        return PMIX_ERR_NOT_AVAILABLE;
+    if (init_cntr <= 0) {
+        return PMIX_ERR_INIT;
     }
+
+    /* check for bozo case */
     if (NULL == info) {
         return PMIX_ERR_BAD_PARAM;
     }
@@ -1072,16 +984,19 @@ int PMIx_Unpublish(pmix_list_t *info)
         return rc;
     }
     /* pack any info keys that were given - no need for values */
-    if (NULL != info) {
-        PMIX_LIST_FOREACH(iptr, info, pmix_info_t) {
-            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &iptr->key, 1, PMIX_STRING))) {
-                PMIX_ERROR_LOG(rc);
-                OBJ_RELEASE(msg);
-                return rc;
-            }
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &ninfo, 1, PMIX_SIZE))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_RELEASE(msg);
+        return rc;
+    }
+    for (i=0; i < ninfo; i++) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &info[i].key, 1, PMIX_STRING))) {
+            PMIX_ERROR_LOG(rc);
+            OBJ_RELEASE(msg);
+            return rc;
         }
     }
-    
+
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
@@ -1098,46 +1013,44 @@ int PMIx_Unpublish(pmix_list_t *info)
     return PMIX_SUCCESS;
 }
 
-bool PMIx_Get_attr(const char *namespace,
-                   const char *attr, pmix_value_t **kv)
+int PMIx_Spawn(const pmix_app_t apps[],
+               size_t napps,
+               char namespace[])
 {
-    pmix_buffer_t *msg, *bptr;
-    pmix_value_t *kp;
-    pmix_cmd_t cmd = PMIX_GETATTR_CMD;
+    pmix_buffer_t *msg;
+    pmix_cmd_t cmd = PMIX_SPAWN_CMD;
     int rc, ret;
     int32_t cnt;
-    bool found=false;
     pmix_cb_t *cb;
-    pmix_value_t *lclpeers;
-    
-    pmix_output_verbose(2, pmix_client_globals.debug_level,
-                        "pmix:native get_attr called");
+    char *nspace;
+   
+    pmix_output_verbose(2, pmix_client_globals.debug_output,
+                        "pmix: spawn called");
 
-#if 0
-    /* try to retrieve the requested value from the dstore */
-    OBJ_CONSTRUCT(&vals, pmix_list_t);
-    if (PMIX_SUCCESS == pmix_dstore.fetch(pmix_dstore_internal, &PMIX_PROC_MY_NAME, attr, &vals)) {
-        *kv = (pmix_value_t*)pmix_list_remove_first(&vals);
-        PMIX_LIST_DESTRUCT(&vals);
-        return true;
-    }
-#endif
-    
-    if (NULL == local_uri) {
-        /* no server available, so just return */
-        return PMIX_ERR_NOT_FOUND;
+    if (init_cntr <= 0) {
+        return PMIX_ERR_INIT;
     }
 
-    /* if the value isn't yet available, then we should try to retrieve
-     * all the available attributes and store them for future use */
     msg = OBJ_NEW(pmix_buffer_t);
     /* pack the cmd */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
         PMIX_ERROR_LOG(rc);
         OBJ_RELEASE(msg);
-        return false;
+        return rc;
     }
 
+    /* pack the apps */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &napps, 1, PMIX_SIZE))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_RELEASE(msg);
+        return rc;
+    }
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &apps, napps, PMIX_APP))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_RELEASE(msg);
+        return rc;
+    }
+    
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
@@ -1150,138 +1063,24 @@ bool PMIx_Get_attr(const char *namespace,
     /* wait for the data to return */
     PMIX_WAIT_FOR_COMPLETION(cb->active);
 
-    /* we have received the entire data blob for this process - unpack
-     * and cache all values, keeping the one we requested to return
-     * to the caller */
+    /* unpack the results, which should include the namespace and
+     * any errors */
+    cnt = 1;
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&cb->data, &nspace, &cnt, PMIX_STRING))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_RELEASE(cb);
+        return rc;
+    }
+    (void)strncpy(namespace, nspace, PMIX_MAX_VALLEN);
+    
+    /* get the status */
     cnt = 1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&cb->data, &ret, &cnt, PMIX_INT))) {
         PMIX_ERROR_LOG(rc);
         OBJ_RELEASE(cb);
-        return false;
-    }
-    if (PMIX_SUCCESS == ret) {
-        /* unpack the buffer containing the values */
-        cnt = 1;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&cb->data, &bptr, &cnt, PMIX_BUFFER))) {
-            PMIX_ERROR_LOG(rc);
-            OBJ_RELEASE(cb);
-            return false;
-        }
-        cnt = 1;
-        while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bptr, &kp, &cnt, PMIX_VALUE))) {
-            pmix_output_verbose(2, pmix_client_globals.debug_level,
-                                "unpacked attr %s", kp->key);
-#if 0
-            if (PMIX_SUCCESS != (rc = pmix_dstore.store(pmix_dstore_internal, &PMIX_PROC_MY_NAME, kp))) {
-                PMIX_ERROR_LOG(rc);
-                OBJ_RELEASE(kp);
-                cnt = 1;
-                continue;
-            }
-#endif
-            /* save the list of local peers */
-            if (0 == strcmp(PMIX_LOCAL_PEERS, kp->key)) {
-                OBJ_RETAIN(kp);
-                lclpeers = kp;
-                pmix_output_verbose(2, pmix_client_globals.debug_level,
-                                    "saving local peers %s", lclpeers->data.string);
-            }
-            if (0 == strcmp(attr, kp->key)) {
-                OBJ_RETAIN(kp);
-                *kv = kp;
-                found = true;
-            }
-            OBJ_RELEASE(kp);
-            cnt = 1;
-        }
-        OBJ_RELEASE(bptr);
-        if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
-            PMIX_ERROR_LOG(rc);
-            return false;
-        }
-    } else {
-        PMIX_ERROR_LOG(ret);
-        OBJ_RELEASE(cb);
-        return false;
-    }
-    OBJ_RELEASE(cb);
-
-    return found;
-}
-
-int PMIx_Get_attr_nb(const char *namespace,
-                     const char *attr,
-                     pmix_cbfunc_t cbfunc, void *cbdata)
-{
-    return PMIX_ERR_NOT_IMPLEMENTED;
-}
-
-int PMIx_Spawn(pmix_list_t *apps,
-               char jobId[], int jobIdSize,
-               int errors[])
-{
-    pmix_app_t *ap;
-    pmix_buffer_t *msg, *bptr;
-    pmix_list_t vals;
-    pmix_value_t *kp;
-    pmix_cmd_t cmd = PMIX_SPAWN_CMD;
-    int rc, ret;
-    int32_t cnt;
-    bool found=false;
-    pmix_cb_t *cb;
-    uint32_t myrank;
-    char *job;
-    
-    pmix_output_verbose(2, pmix_client_globals.debug_level,
-                        "pmix:native get_attr called");
-
-    if (NULL == local_uri) {
-        /* no server available, so just return */
-        return PMIX_ERR_NOT_FOUND;
-    }
-
-    /* if the value isn't yet available, then we should try to retrieve
-     * all the available attributes and store them for future use */
-    msg = OBJ_NEW(pmix_buffer_t);
-    /* pack the cmd */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
-        PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
         return rc;
     }
-
-    /* pack each app */
-    PMIX_LIST_FOREACH(ap, apps, pmix_app_t) {
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &ap, 1, PMIX_APP))) {
-            PMIX_ERROR_LOG(rc);
-            OBJ_RELEASE(msg);
-            return rc;
-        }
-    }
-    
-    /* create a callback object as we need to pass it to the
-     * recv routine so we know which callback to use when
-     * the return message is recvd */
-    cb = OBJ_NEW(pmix_cb_t);
-    cb->active = true;
-
-    /* push the message into our event base to send to the server */
-    PMIX_ACTIVATE_SEND_RECV(msg, wait_cbfunc, cb);
-
-    /* wait for the data to return */
-    PMIX_WAIT_FOR_COMPLETION(cb->active);
-
-    /* unpack the results, which should include the jobId and
-     * any errors */
-    cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&cb->data, &job, &cnt, PMIX_STRING))) {
-        PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(cb);
-        return rc;
-    }
-    (void)strncpy(jobId, job, jobIdSize);
-    /* unpack the number of statuses returned */
-    
+    return ret;
 }
 
 void PMIx_Register_errhandler(pmix_errhandler_fn_t err)
@@ -1301,12 +1100,12 @@ void PMIx_Deregister_errhandler(void)
     errhandler = NULL;
 }
 
-int PMIx_Connect(pmix_list_t *ranges)
+int PMIx_Connect(const pmix_range_t ranges[], size_t nranges)
 {
     return PMIX_ERR_NOT_IMPLEMENTED;
 }
 
-int PMIx_Disconnect(pmix_list_t *ranges)
+int PMIx_Disconnect(const pmix_range_t ranges[], size_t nranges)
 {
     return PMIX_ERR_NOT_IMPLEMENTED;
 }

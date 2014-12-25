@@ -40,7 +40,7 @@ BEGIN_C_DECLS
 typedef struct {
     pmix_list_item_t super;
     char *key;
-    pmix_value_t value;
+    pmix_value_t *value;
 } pmix_kval_t;
 OBJ_CLASS_DECLARATION(pmix_kval_t);
 

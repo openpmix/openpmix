@@ -223,6 +223,12 @@ int pmix_bfrop_copy_info(pmix_info_t **dest, pmix_info_t *src,
     return PMIX_SUCCESS;
 }
 
+int pmix_bfrop_copy_buf(pmix_buffer_t **dest, pmix_buffer_t *src,
+                        pmix_data_type_t type)
+{
+    return PMIX_SUCCESS;
+}
+
 int pmix_bfrop_copy_app(pmix_app_t **dest, pmix_app_t *src,
                         pmix_data_type_t type)
 {
@@ -242,7 +248,7 @@ int pmix_bfrop_copy_kval(pmix_kval_t **dest, pmix_kval_t *src,
     p = *dest;
     
     /* copy the type */
-    p->value.type = src->value.type;
+    p->value->type = src->value->type;
     /* copy the data */
-    return copy_val(&p->value, &src->value, src->value.type);
+    return copy_val(p->value, src->value, src->value->type);
 }

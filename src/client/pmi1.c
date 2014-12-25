@@ -11,8 +11,7 @@
  */
 
 #include "pmix_config.h"
-#include "constants.h"
-#include "types.h"
+#include "src/include/types.h"
 
 #ifdef HAVE_STRING_H
 #include <string.h>
@@ -23,12 +22,12 @@
 #ifdef HAVE_STDLIB_H
 #include <stdlib.h>
 #endif
+#include <event.h>
 
 #include "src/api/pmix.h"
 #include "src/api/pmi.h"
 
 #include "src/buffer_ops/buffer_ops.h"
-#include "event.h"
 
 #include "src/util/argv.h"
 #include "src/util/error.h"
@@ -36,7 +35,7 @@
 #include "src/util/progress_threads.h"
 
 /* local variables */
-static char *namespace;
+static char namespace[PMIX_MAX_VALLEN];
 static int rank;
 
 /* local functions */
@@ -45,7 +44,7 @@ static int convert_int_array(int *value, int length, pmix_value_t *kv);
 
 int PMI_Init( int *spawned )
 {
-    return PMIx_Init(&namespace, &rank);
+    return PMIx_Init(namespace, &rank);
 }
 
 int PMI_Initialized(PMI_BOOL *initialized)
@@ -71,10 +70,9 @@ int PMI_KVS_Put(const char kvsname[], const char key[], const char value[])
     int rc;
     pmix_value_t val;
 
-    PMIX_KP_SET(&val, key, string, value, rc, exit);
-    rc = PMIx_Put(PMIX_GLOBAL, &val);
-    OBJ_DESTRUCT(&val);
-exit:
+    val.type = PMIX_STRING;
+    val.data.string = value;
+    rc = PMIx_Put(PMIX_GLOBAL, key, &val);
     return rc;
 }
 
@@ -88,48 +86,58 @@ int PMI_KVS_Commit(const char kvsname[])
 /* Barrier only applies to our own namespace */
 int PMI_Barrier(void)
 {
-    return PMIx_Fence(NULL);
+    pmix_range_t range;
+
+    (void)strncpy(range.namespace, namespace, PMIX_MAX_VALLEN);
+    range.ranks = NULL;
+    range.nranks = 0;
+    return PMIx_Fence(&range, 1);
 }
 
 int PMI_Get_size(int *size)
 {
     pmix_value_t *kv;
-    int rc;
+
+    if (NULL == size) {
+        return PMI_FAIL;
+    }
     
-    if (NULL != size && PMIx_Get_attr(namespace, PMIX_JOB_SIZE, &kv)) {
+    if (0 != PMIx_Get(namespace, PMIX_RANK_INVALID,
+                      PMIX_JOB_SIZE, &kv)) {
         rc = convert_int(size, kv);
         OBJ_RELEASE(kv);
-        return rc;
-}
-    
-return PMI_FAIL;
-}
-
-int PMI_Get_rank(int *rank)
-{
-    pmix_value_t *kv;
-    int rc;
-    
-    if (NULL != rank && PMIx_Get_attr(namespace, PMIX_RANK, &kv)) {
-        rc = convert_int(rank, kv);
-        OBJ_RELEASE(kv);
-        return rc;
+        return PMI_SUCCESS;
     }
     
     return PMI_FAIL;
 }
 
+int PMI_Get_rank(int *rk)
+{
+    pmix_value_t *kv;
+    
+    if (NULL == rk) {
+        return PMI_FAIL;
+    }
+    
+    *rk = rank;
+    return PMI_SUCCESS;
+}
+
 int PMI_Get_universe_size( int *size )
 {
     pmix_value_t *kv;
-    int rc;
     
-    if (NULL != size && PMIx_Get_attr(namespace, PMIX_UNIV_SIZE, &kv)) {
-        rc = convert_int(size, kv);
-        OBJ_RELEASE(kv);
-        return rc;
+    if (NULL == size) {
+        return PMI_FAIL;
     }
     
+    if (0 != PMIx_Get(namespace, PMIX_RANK_INVALID,
+                      PMIX_UNIV_SIZE, &kv)) {
+        rc = convert_int(size, kv);
+        OBJ_RELEASE(kv);
+        return PMI_SUCCESS;
+    }
     return PMI_FAIL;
 }
 
