@@ -40,7 +40,7 @@ extern int usock_send_connect_ack(int sd);
 extern int usock_recv_connect_ack(int sd);
 extern int usock_set_nonblocking(int sd);
 extern int usock_set_blocking(int sd);
-extern int send_bytes(int sd, char **buf, int *remain);
-extern int read_bytes(int sd, char **buf, int *remain);
+extern int send_bytes(int sd, char **buf, size_t *remain);
+extern int read_bytes(int sd, char **buf, size_t *remain);
 
 #endif // USOCK_H

@@ -40,11 +40,13 @@ static int rank;
 
 /* local functions */
 static int convert_int(int *value, pmix_value_t *kv);
-static int convert_int_array(int *value, int length, pmix_value_t *kv);
 
 int PMI_Init( int *spawned )
 {
-    return PMIx_Init(namespace, &rank);
+    if (PMIX_SUCCESS == PMIx_Init(namespace, &rank)) {
+        return PMI_SUCCESS;
+    }
+    return PMI_ERR_INIT;
 }
 
 int PMI_Initialized(PMI_BOOL *initialized)
@@ -71,7 +73,7 @@ int PMI_KVS_Put(const char kvsname[], const char key[], const char value[])
     pmix_value_t val;
 
     val.type = PMIX_STRING;
-    val.data.string = value;
+    val.data.string = (char*)value;
     rc = PMIx_Put(PMIX_GLOBAL, key, &val);
     return rc;
 }
@@ -97,16 +99,17 @@ int PMI_Barrier(void)
 int PMI_Get_size(int *size)
 {
     pmix_value_t *kv;
-
+    int rc;
+    
     if (NULL == size) {
         return PMI_FAIL;
     }
     
-    if (0 != PMIx_Get(namespace, PMIX_RANK_INVALID,
-                      PMIX_JOB_SIZE, &kv)) {
+    if (PMIX_SUCCESS == PMIx_Get(namespace, rank,
+                                 PMIX_JOB_SIZE, &kv)) {
         rc = convert_int(size, kv);
         OBJ_RELEASE(kv);
-        return PMI_SUCCESS;
+        return rc;
     }
     
     return PMI_FAIL;
@@ -114,8 +117,6 @@ int PMI_Get_size(int *size)
 
 int PMI_Get_rank(int *rk)
 {
-    pmix_value_t *kv;
-    
     if (NULL == rk) {
         return PMI_FAIL;
     }
@@ -124,19 +125,20 @@ int PMI_Get_rank(int *rk)
     return PMI_SUCCESS;
 }
 
-int PMI_Get_universe_size( int *size )
+int PMI_Get_universe_size(int *size)
 {
     pmix_value_t *kv;
+    int rc;
     
     if (NULL == size) {
         return PMI_FAIL;
     }
     
-    if (0 != PMIx_Get(namespace, PMIX_RANK_INVALID,
-                      PMIX_UNIV_SIZE, &kv)) {
+    if (PMIX_SUCCESS == PMIx_Get(namespace, rank,
+                                 PMIX_UNIV_SIZE, &kv)) {
         rc = convert_int(size, kv);
         OBJ_RELEASE(kv);
-        return PMI_SUCCESS;
+        return rc;
     }
     return PMI_FAIL;
 }
@@ -146,7 +148,8 @@ int PMI_Get_appnum(int *appnum)
     pmix_value_t *kv;
     int rc;
     
-    if (NULL != appnum && PMIx_Get_attr(namespace, PMIX_APPNUM, &kv)) {
+    if (NULL != appnum && PMIx_Get(namespace, rank,
+                                   PMIX_APPNUM, &kv)) {
         rc = convert_int(appnum, kv);
         OBJ_RELEASE(kv);
         return rc;
@@ -158,73 +161,62 @@ int PMI_Get_appnum(int *appnum)
 int PMI_Publish_name(const char service_name[], const char port[])
 {
     int rc;
-    pmix_list_t info;
-    pmix_info_t *pt;
-
+    pmix_info_t info;
+    
     if (NULL == service_name || NULL == port) {
         return PMIX_ERR_BAD_PARAM;
     }
-    /* create an info object to pass the service/port */
-    OBJ_CONSTRUCT(&info, pmix_list_t);
-    pt = OBJ_NEW(pmix_info_t);
-    (void)strncpy(pt->key, PMIX_SERVICE, PMIX_MAX_KEYLEN);
-    (void)strncpy(pt->value, service_name, PMIX_MAX_VALLEN);
-    pmix_list_append(&info, &pt->super);
-    (void)strncpy(pt->key, PMIX_PORT, PMIX_MAX_KEYLEN);
-    (void)strncpy(pt->value, port, PMIX_MAX_VALLEN);
-    pmix_list_append(&info, &pt->super);
+    /* pass the service/port */
+    (void)strncpy(info.key, service_name, PMIX_MAX_KEYLEN);
+    info.value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+    info.value->type = PMIX_STRING;
+    info.value->data.string = (char*)port;
     
     /* publish the info - PMI-1 doesn't support
      * any scope other than inside our own namespace */
-    rc = PMIx_Publish(PMIX_NAMESPACE, &info);
-    PMIX_LIST_DESTRUCT(&info);
+    rc = PMIx_Publish(PMIX_NAMESPACE, &info, 1);
+    free(info.value);
     
     return rc;
 }
 
 int PMI_Unpublish_name(const char service_name[])
 {
-    int rc;
-    pmix_list_t info;
-    pmix_info_t *pt;
+    pmix_info_t info;
     
-    /* create an info object to pass the service */
-    OBJ_CONSTRUCT(&info, pmix_list_t);
-    pt = OBJ_NEW(pmix_info_t);
-    (void)strncpy(pt->key, PMIX_SERVICE, PMIX_MAX_KEYLEN);
-    (void)strncpy(pt->value, service_name, PMIX_MAX_VALLEN);
-    pmix_list_append(&info, &pt->super);
+    /* pass the service */
+    (void)strncpy(info.key, service_name, PMIX_MAX_KEYLEN);
     
-    rc = PMIx_Unpublish(&info);
-    PMIX_LIST_DESTRUCT(&info);
-    
-    return rc;
+    return PMIx_Unpublish(&info, 1);
 }
 
 int PMI_Lookup_name(const char service_name[], char port[])
 {
     int rc;
-    pmix_list_t info;
-    pmix_info_t *pt;
+    pmix_info_t info;
     
-    /* create an info object to pass the service */
-    OBJ_CONSTRUCT(&info, pmix_list_t);
-    pt = OBJ_NEW(pmix_info_t);
-    (void)strncpy(pt->key, PMIX_SERVICE, PMIX_MAX_KEYLEN);
-    (void)strncpy(pt->value, service_name, PMIX_MAX_VALLEN);
-    pmix_list_append(&info, &pt->super);
+    /* pass the service */
+    (void)strncpy(info.key, service_name, PMIX_MAX_KEYLEN);
 
     /* PMI-1 doesn't want the namespace back */
-    if (PMIX_SUCCESS != (rc = PMIx_Lookup(&info, NULL))) {
-        PMIX_LIST_DESTRUCT(&info);
+    if (PMIX_SUCCESS != (rc = PMIx_Lookup(&info, 1, NULL))) {
         return rc;
     }
 
+    /* should have received a string back */
+    if (NULL == info.value || PMIX_STRING != info.value->type ||
+        NULL == info.value->data.string) {
+        if (NULL != info.value) {
+            free(info.value);
+        }
+        return PMIX_ERR_NOT_FOUND;
+    }
+    
     /* return the port */
-    pt = (pmix_info_t*)pmix_list_get_first(&info);
-    (void)strncpy(port, pt->value, PMIX_MAX_VALLEN);
-    PMIX_LIST_DESTRUCT(&info);
-
+    (void)strncpy(port, info.value->data.string, PMIX_MAX_VALLEN);
+    free(info.value->data.string);
+    free(info.value);
+    
     return PMIX_SUCCESS;
 }
 
@@ -261,9 +253,10 @@ int PMI_Get_clique_size(int *size)
     pmix_value_t *kv;
     int rc;
     
-    if (PMIx_Get_attr(namespace, PMIX_LOCAL_SIZE, &kv)) {
+    if (PMIX_SUCCESS == PMIx_Get(namespace, rank,
+                                 PMIX_LOCAL_SIZE, &kv)) {
         rc = convert_int(size, kv);
-        OBJ_RELEASE(kv);
+        free(kv);
         return rc;
     }
     
@@ -276,7 +269,7 @@ int PMI_Get_clique_ranks(int ranks[], int length)
     char **rks;
     int i;
     
-    if (PMIx_Get_attr(namespace, PMIX_LOCAL_PEERS, &kv)) {
+    if (PMIX_SUCCESS == PMIx_Get(namespace, rank, PMIX_LOCAL_PEERS, &kv)) {
         /* kv will contain a string of comma-separated
          * ranks on my node */
         rks = pmix_argv_split(kv->data.string, ',');
@@ -284,10 +277,10 @@ int PMI_Get_clique_ranks(int ranks[], int length)
             ranks[i] = strtol(rks[i], NULL, 10);
         }
         pmix_argv_free(rks);
-        OBJ_RELEASE(kv);
+        free(kv);
         return PMI_SUCCESS;
     }
-    return PMI_SUCCESS;
+    return PMI_FAIL;
 }
 
 int PMI_KVS_Get_my_name(char kvsname[], int length)
@@ -358,19 +351,39 @@ int PMI_Spawn_multiple(int count,
                        const PMI_keyval_t preput_keyval_vector[],
                        int errors[])
 {
-    pmix_list_t info;
-    pmix_list_t preput;
-    pmix_app_t *pt;
-    int i;
+    pmix_app_t *apps;
+    int i, k, rc;
+    size_t j;
+    char *evar;
     
-    /* convert the incoming PMI_keyval_t structs to pmix_info_t objects */
-    OBJ_CONSTRUCT(&info, pmix_list_t);
+    /* setup the apps */
+    apps = (pmix_app_t*)malloc(count * sizeof(pmix_app_t));
     for (i=0; i < count; i++) {
-        pt = OBJ_NEW(pmix_app_t);
-        pt->cmd = strdup(cmds[i]);
-        pt->argv = pmix_argv_copy((char**)argvs[i]);
+        apps[i].cmd = strdup(cmds[i]);
+        apps[i].maxprocs = maxprocs[i];
+        apps[i].argv = pmix_argv_copy((char**)argvs[i]);
+        apps[i].argc = pmix_argv_count(apps[i].argv);
+        apps[i].ninfo = info_keyval_sizesp[i];
+        apps[i].info = (pmix_info_t*)malloc(apps[i].ninfo * sizeof(pmix_info_t));
+        /* copy the info objects */
+        for (j=0; j < apps[i].ninfo; j++) {
+            (void)strncpy(apps[i].info[j].key, info_keyval_vectors[i][j].key, PMIX_MAX_KEYLEN);
+            apps[i].info[j].value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+            apps[i].info[j].value->type = PMIX_STRING;
+            (void)strncpy(apps[i].info[j].value->data.string, info_keyval_vectors[i][j].key, PMIX_MAX_VALLEN);
+        }
+        /* push the preput values into the apps environ */
+        for (k=0; k < preput_keyval_size; k++) {
+            (void)asprintf(&evar, "%s=%s", preput_keyval_vector[j].key, preput_keyval_vector[j].val);
+            pmix_argv_append_nosize(&apps[i].env, evar);
+            free(evar);
+        }
     }
-    return PMI_SUCCESS;
+
+    rc = PMIx_Spawn(apps, count, namespace);
+    /* tear down the apps array */
+    
+    return rc;
 }
 
 /* nobody supports this call, which is why it was
@@ -434,67 +447,5 @@ static int convert_int(int *value, pmix_value_t *kv)
        /* not an integer type */
        return PMI_FAIL;
    }
-   return PMI_SUCCESS;
-}
-
-/* internal function */
-static int convert_int_array(int *value, int length,
-                             pmix_value_t *kv)
-{
-   int i;
-   
-   if (kv->type == PMIX_INT_ARRAY) {
-       for (i = 0; i < length && i < kv->data.integer_array.size; i++) {
-           value[i] = kv->data.integer_array.data[i];
-       }
-   } else if (kv->type == PMIX_INT8_ARRAY) {
-       for (i = 0; i < length && i < kv->data.integer_array.size; i++) {
-           value[i] = kv->data.int8_array.data[i];
-       }
-   } else if (kv->type == PMIX_INT16_ARRAY) {
-       for (i = 0; i < length && i < kv->data.integer_array.size; i++) {
-           value[i] = kv->data.int16_array.data[i];
-       }
-   } else if (kv->type == PMIX_INT32_ARRAY) {
-       for (i = 0; i < length && i < kv->data.integer_array.size; i++) {
-           value[i] = kv->data.int32_array.data[i];
-       }
-   } else if (kv->type == PMIX_INT64_ARRAY) {
-       for (i = 0; i < length && i < kv->data.integer_array.size; i++) {
-           value[i] = kv->data.int64_array.data[i];
-       }
-   } else if (kv->type == PMIX_UINT_ARRAY) {
-       for (i = 0; i < length && i < kv->data.integer_array.size; i++) {
-           value[i] = kv->data.uint_array.data[i];
-       }
-   } else if (kv->type == PMIX_UINT8_ARRAY) {
-       for (i = 0; i < length && i < kv->data.integer_array.size; i++) {
-           value[i] = kv->data.uint8_array.data[i];
-       }
-   } else if (kv->type == PMIX_UINT16_ARRAY) {
-       for (i = 0; i < length && i < kv->data.integer_array.size; i++) {
-           value[i] = kv->data.uint16_array.data[i];
-       }
-   } else if (kv->type == PMIX_UINT32_ARRAY) {
-       for (i = 0; i < length && i < kv->data.integer_array.size; i++) {
-           value[i] = kv->data.uint32_array.data[i];
-       }
-   } else if (kv->type == PMIX_UINT64_ARRAY) {
-       for (i = 0; i < length && i < kv->data.integer_array.size; i++) {
-           value[i] = kv->data.uint64_array.data[i];
-       }
-   } else if (kv->type == PMIX_BYTE_ARRAY) {
-       for (i = 0; i < length && i < kv->data.integer_array.size; i++) {
-           value[i] = kv->data.byte_array.data[i];
-       }
-   } else if (kv->type == PMIX_SIZE_ARRAY) {
-       for (i = 0; i < length && i < kv->data.integer_array.size; i++) {
-           value[i] = kv->data.size_array.data[i];
-       }
-   } else {
-       /* not an integer array type */
-       return PMI_FAIL;
-   }
-   
    return PMI_SUCCESS;
 }
