@@ -329,38 +329,38 @@ int PMIx_Disconnect(const pmix_range_t ranges[], size_t nranges);
 /* Key-Value pair management macroses */
 // TODO: add all possible types/fields here.
 
-#define PMIX_KV_FIELD_int(x) ((x)->data.integer)
-#define PMIX_KV_FIELD_uint32(x) ((x)->data.uint32)
-#define PMIX_KV_FIELD_uint16(x) ((x)->data.uint16)
-#define PMIX_KV_FIELD_string(x) ((x)->data.string)
-#define PMIX_KV_FIELD_float(x) ((x)->data.fval)
+#define PMIX_VAL_FIELD_int(x) ((x)->data.integer)
+#define PMIX_VAL_FIELD_uint32(x) ((x)->data.uint32)
+#define PMIX_VAL_FIELD_uint16(x) ((x)->data.uint16)
+#define PMIX_VAL_FIELD_string(x) ((x)->data.string)
+#define PMIX_VAL_FIELD_float(x) ((x)->data.fval)
 
-#define PMIX_KV_TYPE_int    PMIX_INT
-#define PMIX_KV_TYPE_uint32 PMIX_UINT32
-#define PMIX_KV_TYPE_uint16 PMIX_UINT16
-#define PMIX_KV_TYPE_string PMIX_STRING
-#define PMIX_KV_TYPE_float  PMIX_FLOAT
+#define PMIX_VAL_TYPE_int    PMIX_INT
+#define PMIX_VAL_TYPE_uint32 PMIX_UINT32
+#define PMIX_VAL_TYPE_uint16 PMIX_UINT16
+#define PMIX_VAL_TYPE_string PMIX_STRING
+#define PMIX_VAL_TYPE_float  PMIX_FLOAT
 
-#define PMIX_KP_set_assign(_kp, _field, _val, _rc, __eext )   \
+#define PMIX_VAL_set_assign(_kp, _field, _val, _rc, __eext )   \
     do {                                                            \
-        (_kp)->type = PMIX_KV_TYPE_ ## _field;                      \
-        PMIX_KV_FIELD_ ## _field((_kp)) = _val;                     \
+        (_kp)->type = PMIX_VAL_TYPE_ ## _field;                      \
+        PMIX_VAL_FIELD_ ## _field((_kp)) = _val;                     \
     } while(0);
 
-#define PMIX_KP_set_strdup(_kp, _field, _val, _rc, __eext )       \
+#define PMIX_VAL_set_strdup(_kp, _field, _val, _rc, __eext )       \
     do {                                                                \
-        (_kp)->type = PMIX_KV_TYPE_ ## _field;                          \
-        PMIX_KV_FIELD_ ## _field((_kp)) = strdup(_val);                 \
+        (_kp)->type = PMIX_VAL_TYPE_ ## _field;                          \
+        PMIX_VAL_FIELD_ ## _field((_kp)) = strdup(_val);                 \
     } while(0);
 
-#define PMIX_KP_SET_int     PMIX_KP_set_assign
-#define PMIX_KP_SET_uint32  PMIX_KP_set_assign
-#define PMIX_KP_SET_uint16  PMIX_KP_set_assign
-#define PMIX_KP_SET_string  PMIX_KP_set_strdup
-#define PMIX_KP_SET_float   PMIX_KP_set_assign
+#define PMIX_VAL_SET_int     PMIX_VAL_set_assign
+#define PMIX_VAL_SET_uint32  PMIX_VAL_set_assign
+#define PMIX_VAL_SET_uint16  PMIX_VAL_set_assign
+#define PMIX_VAL_SET_string  PMIX_VAL_set_strdup
+#define PMIX_VAL_SET_float   PMIX_VAL_set_assign
 
-#define PMIX_KP_SET(_kp, _key, _field, _val, _rc, __eext )   \
-    PMIX_KP_SET_ ## _field(_kp, _key, _field, _val, _rc, __eext)
+#define PMIX_VAL_SET(_kp, _field, _val, _rc, __eext )   \
+    PMIX_VAL_SET_ ## _field(_kp, _field, _val, _rc, __eext)
 
 END_C_DECLS
 

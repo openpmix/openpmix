@@ -68,8 +68,8 @@ int PMI2_KVS_Put(const char key[], const char value[])
     int rc;
     pmix_value_t val;
 
-    PMIX_KP_SET(&val, key, string, value, rc, exit);
-    rc = PMIx_Put(PMIX_GLOBAL, &val);
+    PMIX_VAL_SET(&val, string, value, rc, exit);
+    rc = PMIx_Put(PMIX_GLOBAL, key, &val);
     OBJ_DESTRUCT(&val);
 exit:
     return rc;
