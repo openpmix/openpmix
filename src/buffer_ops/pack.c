@@ -671,13 +671,6 @@ int pmix_bfrop_pack_kval(pmix_buffer_t *buffer, const void *src,
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_pack_range(pmix_buffer_t *buffer, const void *src,
-                          int32_t num_vals, pmix_data_type_t type)
-{
-    // Functional is not provided yet!
-    abort();
-}
-
 int pmix_bfrop_pack_array(pmix_buffer_t *buffer, const void *src,
                           int32_t num_vals, pmix_data_type_t type)
 {
