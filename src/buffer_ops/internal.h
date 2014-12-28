@@ -35,6 +35,9 @@
 #ifdef HAVE_STRING_H
 #include <string.h>
 #endif
+#if PMIX_HAVE_HWLOC
+#include <hwloc.h>
+#endif
 
 BEGIN_C_DECLS
 
@@ -350,7 +353,8 @@ int pmix_bfrop_std_copy(void **dest, void *src, pmix_data_type_t type);
 int pmix_bfrop_copy_string(char **dest, char *src, pmix_data_type_t type);
 
 #if PMIX_HAVE_HWLOC
-int pmix_bfrop_copy_topo(pmix_value_t **dest, hwloc_topology_t *src,
+int pmix_bfrop_copy_topo(hwloc_topology_t *dest,
+                         hwloc_topology_t src,
                          pmix_data_type_t type);
 #endif
 int pmix_bfrop_copy_value(pmix_value_t **dest, pmix_value_t *src,
@@ -397,7 +401,7 @@ int pmix_bfrop_print_time(char **output, char *prefix, time_t *src, pmix_data_ty
 
 #if PMIX_HAVE_HWLOC
 int pmix_bfrop_print_topo(char **output, char *prefix,
-                          hwloc_topology_t *src, pmix_data_type_t type);
+                          hwloc_topology_t src, pmix_data_type_t type);
 #endif
 int pmix_bfrop_print_value(char **output, char *prefix, pmix_value_t *src, pmix_data_type_t type);
 int pmix_bfrop_print_array(char **output, char *prefix,

@@ -45,7 +45,7 @@ AC_DEFUN([PMIX_HWLOC_CONFIG],[
         PMIX_CHECK_PACKAGE([pmix_hwloc],
                            [hwloc.h],
                            [hwloc],
-                           [hwloc_topology_load],
+                           [hwloc_topology_dup],
                            [-lhwloc],
                            [$pmix_hwloc_dir],
                            [$pmix_hwloc_libdir],
@@ -58,7 +58,8 @@ AC_DEFUN([PMIX_HWLOC_CONFIG],[
     fi
 
     if test ! -z "$with_hwloc" && test "$with_hwloc" != "no" && test "$pmix_hwloc_support" != "1"; then
-        AC_MSG_WARN([HWLOC SUPPORT REQUESTED AND NOT FOUND])
+        AC_MSG_WARN([HWLOC SUPPORT REQUESTED AND NOT FOUND. PMIX HWLOC])
+        AC_MSG_WARN([SUPPORT REQUIRES A MINIMUM OF VERSION 1.9.1])
         AC_MSG_ERROR([CANNOT CONTINUE])
     fi
 

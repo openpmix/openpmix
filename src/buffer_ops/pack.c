@@ -382,12 +382,11 @@ int pmix_bfrop_pack_time(pmix_buffer_t *buffer, const void *src,
 
 /* PACK FUNCTIONS FOR GENERIC PMIX TYPES */
 static int pack_val(pmix_buffer_t *buffer,
-                    pmix_value_t *p,
-                    pmix_data_type_t type)
+                    pmix_value_t *p)
 {
     int ret;
     
-    switch (type) {
+    switch (p->type) {
     case PMIX_BOOL:
         if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &p->data.flag, 1, PMIX_BOOL))) {
             return ret;
@@ -478,8 +477,16 @@ static int pack_val(pmix_buffer_t *buffer,
             return ret;
         }
         break;
+    case PMIX_ARRAY:
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &p->data.array.type, 1, PMIX_INT))) {
+            return ret;
+        }
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &p->data.array.size, 1, PMIX_SIZE))) {
+            return ret;
+        }
+        break;
     default:
-        pmix_output(0, "PACK-PMIX-VALUE: UNSUPPORTED TYPE %d", (int)type);
+        pmix_output(0, "PACK-PMIX-VALUE: UNSUPPORTED TYPE %d", (int)p->type);
         return PMIX_ERROR;
     }
     return PMIX_SUCCESS;
@@ -503,7 +510,7 @@ int pmix_bfrop_pack_value(pmix_buffer_t *buffer, const void *src,
             return ret;
         }
         /* now pack the right field */
-        if (PMIX_SUCCESS != (ret = pack_val(buffer, ptr[i], ptr[i]->type))) {
+        if (PMIX_SUCCESS != (ret = pack_val(buffer, ptr[i]))) {
             return ret;
         }
     }
@@ -528,7 +535,7 @@ int pmix_bfrop_pack_info(pmix_buffer_t *buffer, const void *src,
             return ret;
         }
         /* pack value */
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &info->value, 1, PMIX_STRING))) {
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_value(buffer, &info->value, 1, PMIX_VALUE))) {
             return ret;
         }
     }
@@ -554,6 +561,30 @@ int pmix_bfrop_pack_buf(pmix_buffer_t *buffer, const void *src,
             if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_byte(buffer, ptr[i]->base_ptr, ptr[i]->bytes_used, PMIX_BYTE))) {
                 return ret;
             }
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
+int pmix_bfrop_pack_range(pmix_buffer_t *buffer, const void *src,
+                          int32_t num_vals, pmix_data_type_t type)
+{
+    pmix_range_t **ptr, *range;
+    int32_t i;
+    int ret;
+    
+    ptr = (pmix_range_t **) src;
+    
+    for (i = 0; i < num_vals; ++i) {
+        range = ptr[i];
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &range->namespace, 1, PMIX_STRING))) {
+            return ret;
+        }
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_sizet(buffer, &range->nranks, 1, PMIX_SIZE))) {
+            return ret;
+        }
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int(buffer, &range->ranks, range->nranks, PMIX_INT))) {
+            return ret;
         }
     }
     return PMIX_SUCCESS;
@@ -597,6 +628,17 @@ int pmix_bfrop_pack_app(pmix_buffer_t *buffer, const void *src,
             return ret;
         }
         /* info array */
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_sizet(buffer, &app->ninfo, 1, PMIX_SIZE))) {
+            return ret;
+        }
+        for (j=0; j < (int32_t)app->ninfo; j++) {
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &app->info[j].key, 1, PMIX_STRING))) {
+                return ret;
+            }
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_value(buffer, &app->info[j].value, 1, PMIX_VALUE))) {
+                return ret;
+            }
+        }
     }
     return PMIX_SUCCESS;
 }
@@ -621,10 +663,68 @@ int pmix_bfrop_pack_kval(pmix_buffer_t *buffer, const void *src,
             return ret;
         }
         /* now pack the right field */
-        if (PMIX_SUCCESS != (ret = pack_val(buffer, ptr[i]->value, ptr[i]->value->type))) {
+        if (PMIX_SUCCESS != (ret = pack_val(buffer, ptr[i]->value))) {
             return ret;
         }
     }
 
     return PMIX_SUCCESS;
 }
+
+#if PMIX_HAVE_HWLOC
+int pmix_bfrop_pack_topo(pmix_buffer_t *buffer, const void *src,
+                         int32_t num_vals, pmix_data_type_t type)
+{
+    /* NOTE: hwloc defines topology_t as a pointer to a struct! */
+    hwloc_topology_t t, *tarray  = (hwloc_topology_t*)src;
+    int rc, i;
+    char *xmlbuffer=NULL;
+    int len;
+    struct hwloc_topology_support *support;
+
+    for (i=0; i < num_vals; i++) {
+        t = tarray[i];
+
+        /* extract an xml-buffer representation of the tree */
+        if (0 != hwloc_topology_export_xmlbuffer(t, &xmlbuffer, &len)) {
+            return PMIX_ERROR;
+        }
+
+        /* add to buffer */
+        if (PMIX_SUCCESS != (rc = pmix_bfrop_pack_string(buffer, &xmlbuffer, 1, PMIX_STRING))) {
+            free(xmlbuffer);
+            return rc;
+        }
+
+        /* cleanup */
+        if (NULL != xmlbuffer) {
+            free(xmlbuffer);
+        }
+
+        /* get the available support - hwloc unfortunately does
+         * not include this info in its xml export!
+         */
+        support = (struct hwloc_topology_support*)hwloc_topology_get_support(t);
+        /* pack the discovery support */
+        if (PMIX_SUCCESS != (rc = pmix_bfrop_pack_byte(buffer, support->discovery,
+                                                       sizeof(struct hwloc_topology_discovery_support),
+                                                       PMIX_BYTE))) {
+            return rc;
+        }
+        /* pack the cpubind support */
+        if (PMIX_SUCCESS != (rc = pmix_bfrop_pack_byte(buffer, support->cpubind,
+                                                       sizeof(struct hwloc_topology_cpubind_support),
+                                                       PMIX_BYTE))) {
+            return rc;
+        }
+        /* pack the membind support */
+        if (PMIX_SUCCESS != (rc = pmix_bfrop_pack_byte(buffer, support->membind,
+                                                       sizeof(struct hwloc_topology_membind_support),
+                                                       PMIX_BYTE))) {
+            return rc;
+        }
+    }
+
+    return PMIX_SUCCESS;
+}
+#endif
