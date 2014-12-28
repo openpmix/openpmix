@@ -377,7 +377,7 @@ int PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
         }
         pmix_output_verbose(2, pmix_client_globals.debug_output,
                             "pmix: put remote data for key %s", key);
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(pmix_client_globals.cache_remote, &kp, 1, PMIX_VALUE))) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(pmix_client_globals.cache_remote, &kp, 1, PMIX_KVAL))) {
             PMIX_ERROR_LOG(rc);
         }
     } else {
@@ -387,7 +387,7 @@ int PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
         }
         pmix_output_verbose(2, pmix_client_globals.debug_output,
                             "pmix: put global data for key %s", key);
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(pmix_client_globals.cache_global, &kp, 1, PMIX_VALUE))) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(pmix_client_globals.cache_global, &kp, 1, PMIX_KVAL))) {
             PMIX_ERROR_LOG(rc);
         }
     }
