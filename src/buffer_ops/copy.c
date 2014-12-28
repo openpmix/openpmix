@@ -43,6 +43,13 @@ int pmix_bfrop_copy(void **dest, void *src, pmix_data_type_t type)
     return info->odti_copy_fn(dest, src, type);
 }
 
+int pmix_bfrop_copy_payload(pmix_buffer_t *dest, pmix_buffer_t *src)
+{
+    // No functionality yet.
+    abort();
+}
+
+
 /*
  * STANDARD COPY FUNCTION - WORKS FOR EVERYTHING NON-STRUCTURED
  */
@@ -251,4 +258,18 @@ int pmix_bfrop_copy_kval(pmix_kval_t **dest, pmix_kval_t *src,
     p->value->type = src->value->type;
     /* copy the data */
     return copy_val(p->value, src->value, src->value->type);
+}
+
+int pmix_bfrop_copy_array(pmix_value_t **dest, pmix_array_t *src,
+                          pmix_data_type_t type)
+{
+    // No functionality yet
+    abort();
+}
+
+int pmix_bfrop_copy_range(pmix_value_t **dest, pmix_range_t *src,
+                          pmix_data_type_t type)
+{
+    // No functionality yet
+    abort();
 }
