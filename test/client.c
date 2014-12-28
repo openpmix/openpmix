@@ -25,17 +25,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <api/pmix.h>
-#include <class/pmix_object.h>
-#include <buffer_ops/types.h>
+#include "src/api/pmix.h"
+#include "src/class/pmix_object.h"
+#include "src/buffer_ops/types.h"
 
 
 int main(int argc, char **argv)
 {
-    char *namespace;
+    char namespace[PMIX_MAX_VALLEN];
     int rank;
     int rc;
-    pmix_value_t kv;
+    pmix_value_t value;
+    char *key = NULL;
 
     /* check for the server uri */
     if (NULL == getenv("PMIX_SERVER_URI")) {
@@ -50,33 +51,39 @@ int main(int argc, char **argv)
     }
 
     /* init us */
-    if (PMIX_SUCCESS != (rc = PMIx_Init(&namespace, &rank))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Init(namespace, &rank))) {
         fprintf(stderr, "PMIx_Init failed: %d\n", rc);
         return rc;
     }
 
-    PMIX_KP_SET(&kv, "local-key", int, 12345, rc, kvp_error );
-    if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_LOCAL, &kv))) {
+    key = "local-key";
+    PMIX_VAL_SET(&value, int, 12345, rc, kvp_error );
+    if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_LOCAL, key, &value))) {
         fprintf(stderr, "PMIx_Put failed: %d\n", rc);
     }
-    OBJ_DESTRUCT(&kv);
+    OBJ_DESTRUCT(&value);
 
+    key = "remote-key";
     char *ptr = "Test string";
-    PMIX_KP_SET(&kv, "remote-key", string, ptr, rc, kvp_error );
-    if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_REMOTE, &kv))) {
+    PMIX_VAL_SET(&value, string, ptr, rc, kvp_error );
+    if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_REMOTE, key, &value))) {
         fprintf(stderr, "PMIx_Put failed: %d\n", rc);
     }
-    OBJ_DESTRUCT(&kv);
+    OBJ_DESTRUCT(&value);
 
-    PMIX_KP_SET(&kv, "global-key", float, 10.15, rc, kvp_error );
-    if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_GLOBAL, &kv))) {
+    key = "global-key";
+    PMIX_VAL_SET(&value, float, 10.15, rc, kvp_error );
+    if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_GLOBAL, key, &value))) {
         fprintf(stderr, "PMIx_Put failed: %d\n", rc);
     }
-    OBJ_DESTRUCT(&kv);
+    OBJ_DESTRUCT(&value);
 
 
     /* Submit the data */
-    if (PMIX_SUCCESS != (rc = PMIx_Fence(NULL))) {
+    pmix_range_t range;
+    range.ranks = NULL;
+    range.nranks = 0;
+    if (PMIX_SUCCESS != (rc = PMIx_Fence(&range, 1))) {
         fprintf(stderr, "PMIx_Fence failed: %d\n", rc);
         return rc;
     }
