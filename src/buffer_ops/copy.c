@@ -19,6 +19,7 @@
 
 #include "pmix_config.h"
 
+#include "src/util/argv.h"
 #include "src/util/output.h"
 #include "src/buffer_ops/internal.h"
 
@@ -142,11 +143,17 @@ int pmix_bfrop_copy_string(char **dest, char *src, pmix_data_type_t type)
 
 /* COPY FUNCTIONS FOR GENERIC PMIX TYPES */
 static int copy_val(pmix_value_t *p,
-                    pmix_value_t *src,
-                    pmix_data_type_t type)
+                    pmix_value_t *src)
 {
+    size_t j;
+    char **pstr, **sstr;
+    
     /* copy the right field */
-    switch (type) {
+    p->type = src->type;
+    switch (src->type) {
+    case PMIX_BOOL:
+        p->data.flag = src->data.flag;
+        break;
     case PMIX_BYTE:
         p->data.byte = src->data.byte;
         break;
@@ -156,6 +163,9 @@ static int copy_val(pmix_value_t *p,
         } else {
             p->data.string = NULL;
         }
+        break;
+    case PMIX_SIZE:
+        p->data.size = src->data.size;
         break;
     case PMIX_PID:
         p->data.pid = src->data.pid;
@@ -198,6 +208,85 @@ static int copy_val(pmix_value_t *p,
         /* to avoid alignment issues */
         memcpy(&p->data.uint64, &src->data.uint64, 8);
         break;
+    case PMIX_FLOAT:
+        p->data.fval = src->data.fval;
+        break;
+    case PMIX_DOUBLE:
+        p->data.dval = src->data.dval;
+        break;
+    case PMIX_TIMEVAL:
+        p->data.tv.tv_sec = src->data.tv.tv_sec;
+        p->data.tv.tv_usec = src->data.tv.tv_usec;
+        break;
+    case PMIX_ARRAY:
+        p->data.array.type = src->data.array.type;
+        p->data.array.size = src->data.array.size;
+        if (NULL != src->data.array.array) {
+            switch (p->data.array.type) {
+            case PMIX_BYTE:
+            case PMIX_INT8:
+            case PMIX_UINT8:
+                p->data.array.array = (uint8_t*)malloc(sizeof(uint8_t));
+                memcpy(p->data.array.array, src->data.array.array, src->data.array.size*sizeof(uint8_t));
+                break;
+            case PMIX_INT16:
+            case PMIX_UINT16:
+                p->data.array.array = (uint16_t*)malloc(sizeof(uint16_t));
+                memcpy(p->data.array.array, src->data.array.array, src->data.array.size*sizeof(uint16_t));
+                break;
+            case PMIX_INT32:
+            case PMIX_UINT32:
+                p->data.array.array = (uint32_t*)malloc(sizeof(uint32_t));
+                memcpy(p->data.array.array, src->data.array.array, src->data.array.size*sizeof(uint32_t));
+                break;
+            case PMIX_INT64:
+            case PMIX_UINT64:
+                p->data.array.array = (uint64_t*)malloc(sizeof(uint64_t));
+                memcpy(p->data.array.array, src->data.array.array, src->data.array.size*sizeof(uint64_t));
+                break;
+            case PMIX_INT:
+            case PMIX_UINT:
+                p->data.array.array = (int*)malloc(sizeof(int));
+                memcpy(p->data.array.array, src->data.array.array, src->data.array.size*sizeof(int));
+                break;
+            case PMIX_BOOL:
+                p->data.array.array = (bool*)malloc(sizeof(bool));
+                memcpy(p->data.array.array, src->data.array.array, src->data.array.size*sizeof(bool));
+                break;
+            case PMIX_STRING:
+                p->data.array.array = (char*)malloc(sizeof(char*));
+                pstr = (char**)p->data.array.array;
+                sstr = (char**)src->data.array.array;
+                for (j=0; j < src->data.array.size; j++) {
+                    pstr[j] = strdup(sstr[j]);
+                }
+                break;
+            case PMIX_PID:
+                p->data.array.array = (pid_t*)malloc(sizeof(pid_t));
+                memcpy(p->data.array.array, src->data.array.array, src->data.array.size*sizeof(pid_t));
+                break;
+            case PMIX_SIZE:
+                p->data.array.array = (size_t*)malloc(sizeof(size_t));
+                memcpy(p->data.array.array, src->data.array.array, src->data.array.size*sizeof(size_t));
+                break;
+            case PMIX_FLOAT:
+                p->data.array.array = (float*)malloc(sizeof(float));
+                memcpy(p->data.array.array, src->data.array.array, src->data.array.size*sizeof(float));
+                break;
+            case PMIX_DOUBLE:
+                p->data.array.array = (double*)malloc(sizeof(double));
+                memcpy(p->data.array.array, src->data.array.array, src->data.array.size*sizeof(double));
+                break;
+            case PMIX_TIMEVAL:
+                p->data.array.array = (struct timeval*)malloc(sizeof(struct timeval));
+                memcpy(p->data.array.array, src->data.array.array, src->data.array.size*sizeof(struct timeval));
+                break;
+            default:
+                pmix_output(0, "COPY-VALUE: ARRAY TYPE NOT SUPPORTED");
+                return PMIX_ERROR;
+            }
+        }
+        break;
     default:
         pmix_output(0, "COPY-PMIX-VALUE: UNSUPPORTED TYPE %d", (int)src->type);
         return PMIX_ERROR;
@@ -221,24 +310,42 @@ int pmix_bfrop_copy_value(pmix_value_t **dest, pmix_value_t *src,
     /* copy the type */
     p->type = src->type;
     /* copy the data */
-    return copy_val(p, src, type);
+    return copy_val(p, src);
 }
 
 int pmix_bfrop_copy_info(pmix_info_t **dest, pmix_info_t *src,
                          pmix_data_type_t type)
 {
-    return PMIX_SUCCESS;
+    *dest = (pmix_info_t*)malloc(sizeof(pmix_info_t));
+    (void)strncpy((*dest)->key, src->key, PMIX_MAX_VALLEN);
+    return copy_val((*dest)->value, src->value);
 }
 
 int pmix_bfrop_copy_buf(pmix_buffer_t **dest, pmix_buffer_t *src,
                         pmix_data_type_t type)
 {
+    *dest = OBJ_NEW(pmix_buffer_t);
+    pmix_bfrop.copy_payload(*dest, src);
     return PMIX_SUCCESS;
 }
 
 int pmix_bfrop_copy_app(pmix_app_t **dest, pmix_app_t *src,
                         pmix_data_type_t type)
 {
+    size_t j;
+    
+    *dest = (pmix_app_t*)malloc(sizeof(pmix_app_t));
+    (*dest)->cmd = strdup(src->cmd);
+    (*dest)->argc = src->argc;
+    (*dest)->argv = pmix_argv_copy(src->argv);
+    (*dest)->env = pmix_argv_copy(src->env);
+    (*dest)->maxprocs = src->maxprocs;
+    (*dest)->ninfo = src->ninfo;
+    (*dest)->info = (pmix_info_t*)malloc(src->ninfo * sizeof(pmix_info_t));
+    for (j=0; j < src->ninfo; j++) {
+        (void)strncpy((*dest)->info[j].key, src->info[j].key, PMIX_MAX_VALLEN);
+        copy_val((*dest)->info[j].value, src->info[j].value);
+    }
     return PMIX_SUCCESS;
 }
 
@@ -257,7 +364,7 @@ int pmix_bfrop_copy_kval(pmix_kval_t **dest, pmix_kval_t *src,
     /* copy the type */
     p->value->type = src->value->type;
     /* copy the data */
-    return copy_val(p->value, src->value, src->value->type);
+    return copy_val(p->value, src->value);
 }
 
 int pmix_bfrop_copy_array(pmix_value_t **dest, pmix_array_t *src,
@@ -273,3 +380,13 @@ int pmix_bfrop_copy_range(pmix_value_t **dest, pmix_range_t *src,
     // No functionality yet
     abort();
 }
+
+#if PMIX_HAVE_HWLOC
+int pmix_bfrop_copy_topo(hwloc_topology_t *dest,
+                         hwloc_topology_t src,
+                         pmix_data_type_t type)
+{
+    /* use the hwloc dup function */
+    return hwloc_topology_dup(dest, src);
+}
+#endif

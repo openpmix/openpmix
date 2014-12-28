@@ -663,7 +663,6 @@ int pmix_bfrop_print_app(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-
 int pmix_bfrop_print_range(char **output, char *prefix,
                            pmix_range_t *src, pmix_data_type_t type)
 {
@@ -681,3 +680,93 @@ int pmix_bfrop_print_array(char **output, char *prefix,
 {
     return PMIX_SUCCESS;
 }
+
+#if PMIX_HAVE_HWLOC
+#define PMIX_HWLOC_MAX_STRING   2048
+
+static void print_hwloc_obj(char **output, char *prefix,
+                            hwloc_topology_t topo, hwloc_obj_t obj)
+{
+    hwloc_obj_t obj2;
+    char string[1024], *tmp, *tmp2, *pfx;
+    unsigned i;
+    struct hwloc_topology_support *support;
+
+    /* print the object type */
+    hwloc_obj_type_snprintf(string, 1024, obj, 1);
+    asprintf(&pfx, "\n%s\t", (NULL == prefix) ? "" : prefix);
+    asprintf(&tmp, "%sType: %s Number of child objects: %u%sName=%s",
+             (NULL == prefix) ? "" : prefix, string, obj->arity,
+             pfx, (NULL == obj->name) ? "NULL" : obj->name);
+    if (0 < hwloc_obj_attr_snprintf(string, 1024, obj, pfx, 1)) {
+        /* print the attributes */
+        asprintf(&tmp2, "%s%s%s", tmp, pfx, string);
+        free(tmp);
+        tmp = tmp2;
+    }
+    /* print the cpusets - apparently, some new HWLOC types don't
+     * have cpusets, so protect ourselves here
+     */
+    if (NULL != obj->cpuset) {
+        hwloc_bitmap_snprintf(string, PMIX_HWLOC_MAX_STRING, obj->cpuset);
+        asprintf(&tmp2, "%s%sCpuset:  %s", tmp, pfx, string);
+        free(tmp);
+        tmp = tmp2;
+    }
+    if (NULL != obj->online_cpuset) {
+        hwloc_bitmap_snprintf(string, PMIX_HWLOC_MAX_STRING, obj->online_cpuset);
+        asprintf(&tmp2, "%s%sOnline:  %s", tmp, pfx, string);
+        free(tmp);
+        tmp = tmp2;
+    }
+    if (NULL != obj->allowed_cpuset) {
+        hwloc_bitmap_snprintf(string, PMIX_HWLOC_MAX_STRING, obj->allowed_cpuset);
+        asprintf(&tmp2, "%s%sAllowed: %s", tmp, pfx, string);
+        free(tmp);
+        tmp = tmp2;
+    }
+    if (HWLOC_OBJ_MACHINE == obj->type) {
+        /* root level object - add support values */
+        support = (struct hwloc_topology_support*)hwloc_topology_get_support(topo);
+        asprintf(&tmp2, "%s%sBind CPU proc:   %s%sBind CPU thread: %s", tmp, pfx,
+                 (support->cpubind->set_thisproc_cpubind) ? "TRUE" : "FALSE", pfx,
+                 (support->cpubind->set_thisthread_cpubind) ? "TRUE" : "FALSE");
+        free(tmp);
+        tmp = tmp2;
+        asprintf(&tmp2, "%s%sBind MEM proc:   %s%sBind MEM thread: %s", tmp, pfx,
+                 (support->membind->set_thisproc_membind) ? "TRUE" : "FALSE", pfx,
+                 (support->membind->set_thisthread_membind) ? "TRUE" : "FALSE");
+        free(tmp);
+        tmp = tmp2;
+    }
+    asprintf(&tmp2, "%s%s\n", (NULL == *output) ? "" : *output, tmp);
+    free(tmp);
+    free(pfx);
+    asprintf(&pfx, "%s\t", (NULL == prefix) ? "" : prefix);
+    for (i=0; i < obj->arity; i++) {
+        obj2 = obj->children[i];
+        /* print the object */
+        print_hwloc_obj(&tmp2, pfx, topo, obj2);
+    }
+    free(pfx);
+    if (NULL != *output) {
+        free(*output);
+    }
+    *output = tmp2;
+}
+
+int pmix_bfrop_print_topo(char **output, char *prefix,
+                          hwloc_topology_t src, pmix_data_type_t type)
+{
+    hwloc_obj_t obj;
+    char *tmp=NULL;
+
+    /* get root object */
+    obj = hwloc_get_root_obj(src);
+    /* print it */
+    print_hwloc_obj(&tmp, prefix, src, obj);
+    *output = tmp;
+    return PMIX_SUCCESS;
+}
+
+#endif

@@ -585,6 +585,14 @@ int pmix_bfrop_unpack_value(pmix_buffer_t *buffer, void *dest,
                 return ret;
             }
             break;
+        case PMIX_ARRAY:
+            m=1;
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_buffer(buffer, &ptr[i]->data.array.type, &m, PMIX_INT))) {
+                return ret;
+            }
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_buffer(buffer, &ptr[i]->data.array.size, &m, PMIX_SIZE))) {
+                return ret;
+            }
         default:
             pmix_output(0, "PACK-PMIX-VALUE: UNSUPPORTED TYPE");
             return PMIX_ERROR;
@@ -600,7 +608,8 @@ int pmix_bfrop_unpack_info(pmix_buffer_t *buffer, void *dest,
     pmix_info_t **ptr;
     int32_t i, n, m;
     int ret;
-
+    char *tmp;
+    
     ptr = (pmix_info_t **) dest;
     n = *num_vals;
     
@@ -612,12 +621,14 @@ int pmix_bfrop_unpack_info(pmix_buffer_t *buffer, void *dest,
         }
         /* unpack key */
         m=1;
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_string(buffer, &ptr[i]->key, &m, PMIX_STRING))) {
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_string(buffer, &tmp, &m, PMIX_STRING))) {
             return ret;
         }
+        (void)strncpy(ptr[i]->key, tmp, PMIX_MAX_VALLEN);
+        free(tmp);
         /* unpack value */
         m=1;
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_string(buffer, &ptr[i]->value, &m, PMIX_STRING))) {
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_value(buffer, &ptr[i]->value, &m, PMIX_VALUE))) {
             return ret;
         }
     }
@@ -663,6 +674,46 @@ int pmix_bfrop_unpack_buf(pmix_buffer_t *buffer, void *dest,
     return PMIX_SUCCESS;
 }
 
+int pmix_bfrop_unpack_range(pmix_buffer_t *buffer, void *dest,
+                            int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_range_t **ptr;
+    int32_t i, n, m;
+    int ret;
+    char *tmp;
+    
+    ptr = (pmix_range_t **) dest;
+    n = *num_vals;
+    
+    for (i = 0; i < n; ++i) {
+        /* allocate the new object */
+        ptr[i] = (pmix_range_t*)malloc(sizeof(pmix_range_t));
+        if (NULL == ptr[i]) {
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+        /* unpack namespace */
+        m=1;
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_string(buffer, &tmp, &m, PMIX_STRING))) {
+            return ret;
+        }
+        (void)strncpy(ptr[i]->namespace, tmp, PMIX_MAX_VALLEN);
+        free(tmp);
+        /* unpack the number of ranks */
+        m=1;
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_sizet(buffer, &ptr[i]->nranks, &m, PMIX_SIZE))) {
+            return ret;
+        }
+        if (0 < ptr[i]->nranks) {
+            ptr[i]->ranks = (int*)malloc(ptr[i]->nranks * sizeof(int));
+            m=ptr[i]->nranks;
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_sizet(buffer, &ptr[i]->ranks, &m, PMIX_INT))) {
+                return ret;
+            }
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
 int pmix_bfrop_unpack_app(pmix_buffer_t *buffer, void *dest,
                           int32_t *num_vals, pmix_data_type_t type)
 {
@@ -671,7 +722,6 @@ int pmix_bfrop_unpack_app(pmix_buffer_t *buffer, void *dest,
     int ret;
     int32_t nval;
     char *tmp;
-    pmix_info_t *info;
     
     ptr = (pmix_app_t **) dest;
     n = *num_vals;
@@ -719,6 +769,26 @@ int pmix_bfrop_unpack_app(pmix_buffer_t *buffer, void *dest,
         if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_int(buffer, &ptr[i]->maxprocs, &m, PMIX_INT))) {
             return ret;
         }
+        /* unpack info array */
+        m=1;
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_sizet(buffer, &ptr[i]->ninfo, &m, PMIX_SIZE))) {
+            return ret;
+        }
+        if (0 < ptr[i]->ninfo) {
+            ptr[i]->info = (pmix_info_t*)malloc(ptr[i]->ninfo * sizeof(pmix_info_t));
+            for (k=0; k < (int32_t)ptr[i]->ninfo; k++) {
+                m=1;
+                if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_string(buffer, &tmp, &m, PMIX_STRING))) {
+                    return ret;
+                }
+                (void)strncpy(ptr[i]->info[k].key, tmp, PMIX_MAX_VALLEN);
+                free(tmp);
+                m=1;
+                if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_value(buffer, &(ptr[i]->info[k].value), &m, PMIX_VALUE))) {
+                    return ret;
+                }
+            }
+        }
     }
     return PMIX_SUCCESS;
 }
@@ -744,3 +814,81 @@ int pmix_bfrop_unpack_array(pmix_buffer_t *buffer, void *dest,
     abort();
 }
 
+#if PMIX_HAVE_HWLOC
+int pmix_bfrop_unpack_topo(pmix_buffer_t *buffer, void *dest,
+                           int32_t *num_vals,
+                           pmix_data_type_t type)
+{
+    /* NOTE: hwloc defines topology_t as a pointer to a struct! */
+    hwloc_topology_t t, *tarray  = (hwloc_topology_t*)dest;
+    int rc=PMIX_SUCCESS, i, cnt, j;
+    char *xmlbuffer=NULL;
+    struct hwloc_topology_support *support;
+
+    for (i=0, j=0; i < *num_vals; i++) {
+        /* unpack the xml string */
+        cnt=1;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop_unpack_string(buffer, &xmlbuffer, &cnt, PMIX_STRING))) {
+            goto cleanup;
+        }
+
+        /* convert the xml */
+        if (0 != hwloc_topology_init(&t)) {
+            rc = PMIX_ERROR;
+            goto cleanup;
+        }
+        if (0 != hwloc_topology_set_xmlbuffer(t, xmlbuffer, strlen(xmlbuffer))) {
+            rc = PMIX_ERROR;
+            free(xmlbuffer);
+            hwloc_topology_destroy(t);
+            goto cleanup;
+        }
+        /* since we are loading this from an external source, we have to
+         * explicitly set a flag so hwloc sets things up correctly
+         */
+        if (0 != hwloc_topology_set_flags(t, HWLOC_TOPOLOGY_FLAG_IS_THISSYSTEM | HWLOC_TOPOLOGY_FLAG_IO_DEVICES)) {
+            free(xmlbuffer);
+            rc = PMIX_ERROR;
+            hwloc_topology_destroy(t);
+            goto cleanup;
+        }
+        /* now load the topology */
+        if (0 != hwloc_topology_load(t)) {
+            free(xmlbuffer);
+            rc = PMIX_ERROR;
+            hwloc_topology_destroy(t);
+            goto cleanup;
+        }
+        if (NULL != xmlbuffer) {
+            free(xmlbuffer);
+        }
+
+        /* get the available support - hwloc unfortunately does
+         * not include this info in its xml import!
+         */
+        support = (struct hwloc_topology_support*)hwloc_topology_get_support(t);
+        cnt = sizeof(struct hwloc_topology_discovery_support);
+        if (PMIX_SUCCESS != (rc = pmix_bfrop_unpack_byte(buffer, support->discovery, &cnt, PMIX_BYTE))) {
+            goto cleanup;
+        }
+        cnt = sizeof(struct hwloc_topology_cpubind_support);
+        if (PMIX_SUCCESS != (rc = pmix_bfrop_unpack_byte(buffer, support->cpubind, &cnt, PMIX_BYTE))) {
+            goto cleanup;
+        }
+        cnt = sizeof(struct hwloc_topology_membind_support);
+        if (PMIX_SUCCESS != (rc = pmix_bfrop_unpack_byte(buffer, support->membind, &cnt, PMIX_BYTE))) {
+            goto cleanup;
+        }
+
+        /* pass it back */
+        tarray[i] = t;
+
+        /* track the number added */
+        j++;
+    }
+
+ cleanup:
+    *num_vals = j;
+    return rc;
+}
+#endif
