@@ -834,6 +834,7 @@ int pmix_bfrop_unpack_kval(pmix_buffer_t *buffer, void *dest,
             return ret;
         }
     }
+    return PMIX_SUCCESS;
 }
 
 int pmix_bfrop_unpack_array(pmix_buffer_t *buffer, void *dest,

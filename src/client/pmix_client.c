@@ -51,7 +51,7 @@ static int server;
 static pmix_errhandler_fn_t errhandler = NULL;
 
 // global variables
-pmix_client_globals_t pmix_client_globals = { 0 };
+pmix_client_globals_t pmix_client_globals;
 
 /* callback for wait completion */
 /*****  RHC: need to extend this callback function to
@@ -78,6 +78,7 @@ static void wait_cbfunc(pmix_buffer_t *buf, void *cbdata)
 
 static void setup_globals(void)
 {
+    memset(pmix_client_globals.namespace, 0, PMIX_MAX_VALLEN);
     memset(&pmix_client_globals.address, 0, sizeof(pmix_client_globals.address));
     pmix_client_globals.cache_global = NULL;
     pmix_client_globals.cache_local = NULL;
@@ -179,8 +180,9 @@ int PMIx_Init(char namespace[], int *rank)
         /* let the caller know that the server isn't available yet */
         return PMIX_ERR_INVALID_NAMESPACE;
     }
-    strncpy(namespace, evar, PMIX_MAX_VALLEN);
-    
+    (void)strncpy(namespace, evar, PMIX_MAX_VALLEN);
+    (void)strncpy(pmix_client_globals.namespace, evar, PMIX_MAX_VALLEN);
+
     /* we also require our rank */
     if (NULL == (evar = getenv("PMIX_RANK"))) {
         /* let the caller know that the server isn't available yet */
@@ -547,7 +549,9 @@ int PMIx_Fence(const pmix_range_t ranges[], size_t nranges)
     pmix_cmd_t cmd = PMIX_FENCE_CMD;
     pmix_cb_t *cb;
     int rc;
-    
+    pmix_range_t rg, *rgs;
+    size_t nrg;
+
     pmix_output_verbose(2, pmix_client_globals.debug_output,
                         "pmix: executing fence");
 
@@ -555,8 +559,26 @@ int PMIx_Fence(const pmix_range_t ranges[], size_t nranges)
         return PMIX_ERR_INIT;
     }
 
+    /* check for bozo input */
+    if (NULL == ranges && 0 != nranges) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* if we are given a NULL range, then the caller is referencing
+     * all procs within our own namespace */
+    if (NULL == ranges) {
+        (void)strncpy(rg.namespace, pmix_client_globals.namespace, PMIX_MAX_VALLEN);
+        rg.ranks = NULL;
+        rg.nranks = 0;
+        rgs = &rg;
+        nrg = 1;
+    } else {
+        rgs = (pmix_range_t*)ranges;
+        nrg = nranges;
+    }
+    
     msg = OBJ_NEW(pmix_buffer_t);
-    if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, ranges, nranges))) {
+    if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, rgs, nrg))) {
         OBJ_RELEASE(msg);
         return rc;
     }
@@ -607,7 +629,9 @@ int PMIx_Fence_nb(const pmix_range_t ranges[], size_t nranges, bool barrier,
     pmix_cmd_t cmd = PMIX_FENCENB_CMD;
     int rc;
     pmix_cb_t *cb;
-
+    pmix_range_t rg, *rgs;
+    size_t nrg;
+    
     pmix_output_verbose(2, pmix_client_globals.debug_output,
                         "pmix: fence_nb called");
 
@@ -615,8 +639,26 @@ int PMIx_Fence_nb(const pmix_range_t ranges[], size_t nranges, bool barrier,
         return PMIX_ERR_INIT;
     }
 
+    /* check for bozo input */
+    if (NULL == ranges && 0 != nranges) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* if we are given a NULL range, then the caller is referencing
+     * all procs within our own namespace */
+    if (NULL == ranges) {
+        (void)strncpy(rg.namespace, pmix_client_globals.namespace, PMIX_MAX_VALLEN);
+        rg.ranks = NULL;
+        rg.nranks = 0;
+        rgs = &rg;
+        nrg = 1;
+    } else {
+        rgs = (pmix_range_t*)ranges;
+        nrg = nranges;
+    }
+    
     msg = OBJ_NEW(pmix_buffer_t);
-    if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, ranges, nranges))) {
+    if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, rgs, nrg))) {
         OBJ_RELEASE(msg);
         return rc;
     }
@@ -734,6 +776,7 @@ int PMIx_Get(const char namespace[], int rank,
     pmix_buffer_t *msg;
     pmix_cb_t *cb;
     int rc;
+    char *nm;
     
     pmix_output_verbose(2, pmix_client_globals.debug_output,
                         "pmix: getting value for proc %s:%d key %s",
@@ -745,18 +788,26 @@ int PMIx_Get(const char namespace[], int rank,
     }
 
     /* protect against bozo input */
-    if (NULL == namespace || NULL == key) {
+    if (NULL == key) {
         return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* if the namespace is NULL, then the caller is referencing
+     * our own namespace */
+    if (NULL == namespace) {
+        nm = pmix_client_globals.namespace;
+    } else {
+        nm = (char*)namespace;
     }
     
     /* first see if we already have the info in our dstore */
-    if (PMIX_SUCCESS == pmix_client_hash_fetch(namespace, rank, key, val)) {
+    if (PMIX_SUCCESS == pmix_client_hash_fetch(nm, rank, key, val)) {
         pmix_output_verbose(2, pmix_client_globals.debug_output,
                             "pmix: value retrieved from dstore");
         return PMIX_SUCCESS;
     }
     
-    if (NULL == (msg = pack_get(namespace, rank, key, PMIX_GET_CMD))) {
+    if (NULL == (msg = pack_get(nm, rank, key, PMIX_GET_CMD))) {
         return PMIX_ERROR;
     }
 
@@ -775,7 +826,7 @@ int PMIx_Get(const char namespace[], int rank,
     pmix_output_verbose(2, pmix_client_globals.debug_output,
                         "pmix:native get completed");
 
-    if (PMIX_SUCCESS == (rc = unpack_get_return(&cb->data, key, namespace, rank, val)) &&
+    if (PMIX_SUCCESS == (rc = unpack_get_return(&cb->data, key, nm, rank, val)) &&
         NULL != *val) {
         OBJ_RELEASE(cb);
         return PMIX_SUCCESS;
@@ -839,6 +890,7 @@ int PMIx_Get_nb(const char *namespace, int rank,
     pmix_buffer_t *msg;
     pmix_cb_t *cb;
     int rc;
+    char *nm;
     
     pmix_output_verbose(2, pmix_client_globals.debug_output,
                         "pmix: get_nb value for proc %s:%d key %s",
@@ -849,18 +901,26 @@ int PMIx_Get_nb(const char *namespace, int rank,
     }
 
     /* protect against bozo input */
-    if (NULL == namespace || NULL == key) {
+    if (NULL == key) {
         return PMIX_ERR_BAD_PARAM;
     }
     
+    /* if the namespace is NULL, then the caller is referencing
+     * our own namespace */
+    if (NULL == namespace) {
+        nm = pmix_client_globals.namespace;
+    } else {
+        nm = (char*)namespace;
+    }
+    
     /* first see if we already have the info in our dstore */
-    if (PMIX_SUCCESS == pmix_client_hash_fetch(namespace, rank, key, &val)) {
+    if (PMIX_SUCCESS == pmix_client_hash_fetch(nm, rank, key, &val)) {
         pmix_output_verbose(2, pmix_client_globals.debug_output,
                             "pmix: value retrieved from dstore");
         /* need to push this into the event library to ensure
          * the callback occurs within an event */
         cb = OBJ_NEW(pmix_cb_t);
-        cb->namespace = strdup(namespace);
+        cb->namespace = strdup(nm);
         cb->rank = rank;
         cb->key = strdup(key);
         cb->cbfunc = cbfunc;
@@ -881,7 +941,7 @@ int PMIx_Get_nb(const char *namespace, int rank,
         return PMIX_SUCCESS;
     }
     
-    if (NULL == (msg = pack_get(namespace, rank, key, PMIX_GETNB_CMD))) {
+    if (NULL == (msg = pack_get(nm, rank, key, PMIX_GETNB_CMD))) {
         return PMIX_ERROR;
     }
     
@@ -889,7 +949,7 @@ int PMIx_Get_nb(const char *namespace, int rank,
      * recv routine so we know which callback to use when
      * the return message is recvd */
     cb = OBJ_NEW(pmix_cb_t);
-    cb->namespace = strdup(namespace);
+    cb->namespace = strdup(nm);
     cb->rank = rank;
     cb->key = strdup(key);
     cb->cbfunc = cbfunc;

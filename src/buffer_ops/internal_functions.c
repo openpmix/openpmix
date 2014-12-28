@@ -106,8 +106,6 @@ bool pmix_bfrop_too_small(pmix_buffer_t *buffer, size_t bytes_reqd)
 
 int pmix_bfrop_store_data_type(pmix_buffer_t *buffer, pmix_data_type_t type)
 {
-    pmix_bfrop_type_info_t *info;
-
     /* Lookup the pack function for the actual pmix_data_type type and call it */  
     return pmix_bfrop_pack_datatype(buffer, &type, 1, PMIX_INT);
 }

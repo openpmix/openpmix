@@ -546,8 +546,7 @@ int pmix_bfrop_print_timeval(char **output, char *prefix,
 int pmix_bfrop_print_value(char **output, char *prefix,
                            pmix_value_t *src, pmix_data_type_t type)
 {
-    char *prefx, *t2;
-    int i;
+    char *prefx;
 
     /* deal with NULL prefix */
     if (NULL == prefix) asprintf(&prefx, " ");

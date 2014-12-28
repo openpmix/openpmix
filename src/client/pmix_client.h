@@ -133,6 +133,7 @@ OBJ_CLASS_DECLARATION(pmix_cb_t);
 
 
 typedef struct {
+    char namespace[PMIX_MAX_VALLEN];
     pmix_buffer_t *cache_local;
     pmix_buffer_t *cache_remote;
     pmix_buffer_t *cache_global;

@@ -88,12 +88,7 @@ int PMI_KVS_Commit(const char kvsname[])
 /* Barrier only applies to our own namespace */
 int PMI_Barrier(void)
 {
-    pmix_range_t range;
-
-    (void)strncpy(range.namespace, namespace, PMIX_MAX_VALLEN);
-    range.ranks = NULL;
-    range.nranks = 0;
-    return PMIx_Fence(&range, 1);
+    return PMIx_Fence(NULL, 0);
 }
 
 int PMI_Get_size(int *size)
@@ -105,7 +100,7 @@ int PMI_Get_size(int *size)
         return PMI_FAIL;
     }
     
-    if (PMIX_SUCCESS == PMIx_Get(namespace, rank,
+    if (PMIX_SUCCESS == PMIx_Get(NULL, rank,
                                  PMIX_JOB_SIZE, &kv)) {
         rc = convert_int(size, kv);
         OBJ_RELEASE(kv);
@@ -134,7 +129,7 @@ int PMI_Get_universe_size(int *size)
         return PMI_FAIL;
     }
     
-    if (PMIX_SUCCESS == PMIx_Get(namespace, rank,
+    if (PMIX_SUCCESS == PMIx_Get(NULL, rank,
                                  PMIX_UNIV_SIZE, &kv)) {
         rc = convert_int(size, kv);
         OBJ_RELEASE(kv);
@@ -148,7 +143,7 @@ int PMI_Get_appnum(int *appnum)
     pmix_value_t *kv;
     int rc;
     
-    if (NULL != appnum && PMIx_Get(namespace, rank,
+    if (NULL != appnum && PMIx_Get(NULL, rank,
                                    PMIX_APPNUM, &kv)) {
         rc = convert_int(appnum, kv);
         OBJ_RELEASE(kv);
@@ -253,7 +248,7 @@ int PMI_Get_clique_size(int *size)
     pmix_value_t *kv;
     int rc;
     
-    if (PMIX_SUCCESS == PMIx_Get(namespace, rank,
+    if (PMIX_SUCCESS == PMIx_Get(NULL, rank,
                                  PMIX_LOCAL_SIZE, &kv)) {
         rc = convert_int(size, kv);
         free(kv);
@@ -269,7 +264,7 @@ int PMI_Get_clique_ranks(int ranks[], int length)
     char **rks;
     int i;
     
-    if (PMIX_SUCCESS == PMIx_Get(namespace, rank, PMIX_LOCAL_PEERS, &kv)) {
+    if (PMIX_SUCCESS == PMIx_Get(NULL, rank, PMIX_LOCAL_PEERS, &kv)) {
         /* kv will contain a string of comma-separated
          * ranks on my node */
         rks = pmix_argv_split(kv->data.string, ',');
