@@ -125,6 +125,9 @@ typedef struct {
     pmix_buffer_t data;
     pmix_cbfunc_t cbfunc;
     void *cbdata;
+    char *namespace;
+    int rank;
+    char *key;
 } pmix_cb_t;
 OBJ_CLASS_DECLARATION(pmix_cb_t);
 

@@ -216,6 +216,8 @@ typedef struct {
         pmix_array_t array;
     } data;
 } pmix_value_t;
+/* utility function to free data contained in a pmix_value_t */
+void PMIx_free_value_data(pmix_value_t *val);
 
 typedef struct {
     char namespace[PMIX_MAX_VALLEN];
@@ -280,9 +282,9 @@ int PMIx_Get(const char namespace[], int rank,
              const char key[], pmix_value_t **val);
 
 /* Get_nb */
-void PMIx_Get_nb(const char namespace[], int rank,
-                 const char key[],
-                 pmix_cbfunc_t cbfunc, void *cbdata);
+int PMIx_Get_nb(const char namespace[], int rank,
+                const char key[],
+                pmix_cbfunc_t cbfunc, void *cbdata);
 
 /* Publish - the "info" parameter
  * consists of an array of pmix_info_t objects that

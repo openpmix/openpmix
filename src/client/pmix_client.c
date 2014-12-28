@@ -646,17 +646,95 @@ int PMIx_Fence_nb(const pmix_range_t ranges[], size_t nranges, bool barrier,
     return PMIX_SUCCESS;
 }
 
+static pmix_buffer_t* pack_get(const char namespace[], int rank,
+                               const char key[], pmix_cmd_t cmd)
+{
+    pmix_buffer_t *msg;
+    int rc;
+    
+    /* nope - see if we can get it */
+    msg = OBJ_NEW(pmix_buffer_t);
+    /* pack the get cmd */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_RELEASE(msg);
+        return NULL;
+    }
+    /* pack the request information - we'll get the entire blob
+     * for this proc, so we don't need to pass the key */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &namespace, 1, PMIX_STRING))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_RELEASE(msg);
+        return NULL;
+    }
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &rank, 1, PMIX_INT))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_RELEASE(msg);
+        return NULL;
+    }
+    return msg;
+}
+
+static int unpack_get_return(pmix_buffer_t *data, const char *key,
+                             const char *namespace, int rank,
+                             pmix_value_t **val)
+{
+    int32_t cnt;
+    int ret, rc;
+    pmix_kval_t *kp;
+    pmix_buffer_t *bptr;
+
+    /* init the return */
+    *val = NULL;
+    
+    /* we have received the entire data blob for this process - unpack
+     * and cache all values, keeping the one we requested to return
+     * to the caller */
+    cnt = 1;
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(data, &ret, &cnt, PMIX_INT))) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    cnt = 1;
+    while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(data, &bptr, &cnt, PMIX_BUFFER))) {
+        while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bptr, &kp, &cnt, PMIX_KVAL))) {
+            pmix_output_verbose(2, pmix_client_globals.debug_output,
+                                "pmix: retrieved %s from server for proc %s:%d",
+                                kp->key, namespace, rank);
+            if (PMIX_SUCCESS != (rc = pmix_client_hash_store(namespace, rank, kp))) {
+                PMIX_ERROR_LOG(ret);
+            }
+            if (0 == strcmp(key, kp->key)) {
+                if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)val, &kp->value, PMIX_VALUE))) {
+                    PMIX_ERROR_LOG(rc);
+                    OBJ_RELEASE(kp);
+                    return rc;
+                }
+            } else {
+                OBJ_RELEASE(kp);
+            }
+        }
+        if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
+        OBJ_RELEASE(bptr);
+        cnt = 1;
+    }
+    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+        PMIX_ERROR_LOG(rc);
+    } else {
+        rc = PMIX_SUCCESS;
+    }
+    return rc;
+}
+
 int PMIx_Get(const char namespace[], int rank,
              const char key[], pmix_value_t **val)
 {
-    pmix_buffer_t *msg, *bptr;
-    pmix_cmd_t cmd = PMIX_GET_CMD;
+    pmix_buffer_t *msg;
     pmix_cb_t *cb;
-    int rc, ret;
-    int32_t cnt;
-    pmix_kval_t *kp;
-    bool found;
-
+    int rc;
+    
     pmix_output_verbose(2, pmix_client_globals.debug_output,
                         "pmix: getting value for proc %s:%d key %s",
                         (NULL == namespace) ? "NULL" : namespace, rank,
@@ -678,25 +756,8 @@ int PMIx_Get(const char namespace[], int rank,
         return PMIX_SUCCESS;
     }
     
-    /* nope - see if we can get it */
-    msg = OBJ_NEW(pmix_buffer_t);
-    /* pack the get cmd */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
-        PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
-        return rc;
-    }
-    /* pack the request information - we'll get the entire blob
-     * for this proc, so we don't need to pass the key */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &namespace, 1, PMIX_STRING))) {
-        PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
-        return rc;
-    }
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &rank, 1, PMIX_INT))) {
-        PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
-        return rc;
+    if (NULL == (msg = pack_get(namespace, rank, key, PMIX_GET_CMD))) {
+        return PMIX_ERROR;
     }
 
     /* create a callback object as we need to pass it to the
@@ -711,74 +772,133 @@ int PMIx_Get(const char namespace[], int rank,
     /* wait for the data to return */
     PMIX_WAIT_FOR_COMPLETION(cb->active);
 
-    /* we have received the entire data blob for this process - unpack
-     * and cache all values, keeping the one we requested to return
-     * to the caller */
-    cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&cb->data, &ret, &cnt, PMIX_INT))) {
-        PMIX_ERROR_LOG(rc);
+    pmix_output_verbose(2, pmix_client_globals.debug_output,
+                        "pmix:native get completed");
+
+    if (PMIX_SUCCESS == (rc = unpack_get_return(&cb->data, key, namespace, rank, val)) &&
+        NULL != *val) {
         OBJ_RELEASE(cb);
-        return rc;
-    }
-    found = false;
-    cnt = 1;
-    while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&cb->data, &bptr, &cnt, PMIX_BUFFER))) {
-        while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bptr, &kp, &cnt, PMIX_KVAL))) {
-            pmix_output_verbose(2, pmix_client_globals.debug_output,
-                                "pmix: retrieved %s from server for proc %s:%d",
-                                kp->key, namespace, rank);
-            if (PMIX_SUCCESS != (rc = pmix_client_hash_store(namespace, rank, kp))) {
-                PMIX_ERROR_LOG(ret);
-            }
-            if (0 == strcmp(key, kp->key)) {
-                if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)val, &kp->value, PMIX_VALUE))) {
-                    PMIX_ERROR_LOG(rc);
-                    OBJ_RELEASE(kp);
-                    return rc;
-                }
-                found = true;
-            } else {
-                OBJ_RELEASE(kp);
-            }
-        }
-        if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
-            PMIX_ERROR_LOG(rc);
-        }
-        OBJ_RELEASE(bptr);
-        cnt = 1;
-    }
-    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
-        PMIX_ERROR_LOG(rc);
-    } else {
-        rc = PMIX_SUCCESS;
+        return PMIX_SUCCESS;
     }
     OBJ_RELEASE(cb);
 
-    pmix_output_verbose(2, pmix_client_globals.debug_output,
-                        "pmix:native get completed");
-    if (found) {
-        return PMIX_SUCCESS;
-    }
     /* we didn't find the requested data - pass back a
      * status that indicates the source of the problem,
      * either during the data fetch, message unpacking,
      * or not found */
     *val = NULL;
-    if (PMIX_SUCCESS == rc) {
-        if (PMIX_SUCCESS == ret) {
-            rc = PMIX_ERR_NOT_FOUND;
-        } else {
-            rc = ret;
-        }
-    }
     return rc;
 }
 
-void PMIx_Get_nb(const char *namespace, int rank,
-                 const char *key,
-                 pmix_cbfunc_t cbfunc, void *cbdata)
+static void getnb_cbfunc(pmix_buffer_t *buf, void *cbdata)
 {
-    return;
+    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+    int rc;
+    pmix_value_t *val;
+    
+    pmix_output_verbose(2, pmix_client_globals.debug_output,
+                        "pmix: get_nb callback recvd");
+
+    rc = unpack_get_return(buf, cb->key, cb->namespace, cb->rank, &val);
+
+    /* if a callback was provided, execute it */
+    if (NULL != cb && NULL != cb->cbfunc) {
+        cb->cbfunc(rc, val, cb->cbdata);
+    }
+    if (NULL != val) {
+        PMIx_free_value_data(val);
+        free(val);
+    }
+    OBJ_RELEASE(cb);
+}
+
+static void getnb_shortcut(int fd, short flags, void *cbdata)
+{
+    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+    pmix_value_t *val;
+    int rc;
+    int32_t m;
+
+    if (NULL != cb->cbfunc) {
+        m=1;
+        rc = pmix_bfrop.unpack(&cb->data, &val, &m, PMIX_VALUE);
+        cb->cbfunc(rc, val, cb->cbdata);
+        if (NULL != val) {
+            PMIx_free_value_data(val);
+            free(val);
+        }
+    }
+    OBJ_RELEASE(cb);
+}
+
+int PMIx_Get_nb(const char *namespace, int rank,
+                const char *key,
+                pmix_cbfunc_t cbfunc, void *cbdata)
+{
+    pmix_value_t *val;
+    pmix_buffer_t *msg;
+    pmix_cb_t *cb;
+    int rc;
+    
+    pmix_output_verbose(2, pmix_client_globals.debug_output,
+                        "pmix: get_nb value for proc %s:%d key %s",
+                        (NULL == namespace) ? "NULL" : namespace, rank,
+                        (NULL == key) ? "NULL" : key);
+    if (init_cntr <= 0) {
+        return PMIX_ERR_INIT;
+    }
+
+    /* protect against bozo input */
+    if (NULL == namespace || NULL == key) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    
+    /* first see if we already have the info in our dstore */
+    if (PMIX_SUCCESS == pmix_client_hash_fetch(namespace, rank, key, &val)) {
+        pmix_output_verbose(2, pmix_client_globals.debug_output,
+                            "pmix: value retrieved from dstore");
+        /* need to push this into the event library to ensure
+         * the callback occurs within an event */
+        cb = OBJ_NEW(pmix_cb_t);
+        cb->namespace = strdup(namespace);
+        cb->rank = rank;
+        cb->key = strdup(key);
+        cb->cbfunc = cbfunc;
+        cb->cbdata = cbdata;
+        /* pack the return data so the unpack routine can get it */
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&cb->data, &val, 1, PMIX_VALUE))) {
+            PMIX_ERROR_LOG(rc);
+        }
+        /* cleanup */
+        if (NULL != val) {
+            PMIx_free_value_data(val);
+            free(val);
+        }
+        /* activate the event */
+        event_assign(&(cb->ev), pmix_client_globals.evbase, -1,
+                     EV_WRITE, getnb_shortcut, cb);
+        event_active(&(cb->ev), EV_WRITE, 1);
+        return PMIX_SUCCESS;
+    }
+    
+    if (NULL == (msg = pack_get(namespace, rank, key, PMIX_GETNB_CMD))) {
+        return PMIX_ERROR;
+    }
+    
+    /* create a callback object as we need to pass it to the
+     * recv routine so we know which callback to use when
+     * the return message is recvd */
+    cb = OBJ_NEW(pmix_cb_t);
+    cb->namespace = strdup(namespace);
+    cb->rank = rank;
+    cb->key = strdup(key);
+    cb->cbfunc = cbfunc;
+    cb->cbdata = cbdata;
+
+    /* push the message into our event base to send to the server */
+    PMIX_ACTIVATE_SEND_RECV(msg, getnb_cbfunc, cb);
+
+    return PMIX_SUCCESS;
 }
 
 int PMIx_Publish(pmix_scope_t scope,
@@ -855,7 +975,7 @@ int PMIx_Lookup(pmix_info_t info[], size_t ninfo,
     char *key;
     bool found;
     int32_t cnt;
-    size_t i, np;
+    size_t i;
     pmix_kval_t *kv;
     
     pmix_output_verbose(2, pmix_client_globals.debug_output,
@@ -1156,10 +1276,19 @@ static void cbcon(pmix_cb_t *p)
     OBJ_CONSTRUCT(&p->data, pmix_buffer_t);
     p->cbfunc = NULL;
     p->cbdata = NULL;
+    p->namespace = NULL;
+    p->rank = -1;
+    p->key = NULL;
 }
 static void cbdes(pmix_cb_t *p)
 {
     OBJ_DESTRUCT(&p->data);
+    if (NULL != p->namespace) {
+        free(p->namespace);
+    }
+    if (NULL != p->key) {
+        free(p->key);
+    }
 }
 OBJ_CLASS_INSTANCE(pmix_cb_t,
                    pmix_object_t,
@@ -1175,3 +1304,31 @@ static void srcon(pmix_usock_sr_t *p)
 OBJ_CLASS_INSTANCE(pmix_usock_sr_t,
                    pmix_object_t,
                    srcon, NULL);
+
+void PMIx_free_value_data(pmix_value_t *val)
+{
+    size_t n;
+    char **str;
+    
+    if (PMIX_STRING == val->type &&
+        NULL != val->data.string) {
+        free(val->data.string);
+        return;
+    }
+    if (PMIX_ARRAY == val->type) {
+        if (NULL == val->data.array.array) {
+            return;
+        }
+        if (PMIX_STRING == val->data.array.type) {
+            str = (char**)val->data.array.array;
+            for (n=0; n < val->data.array.size; n++) {
+                if (NULL != str[n]) {
+                    free(str[n]);
+                }
+            }
+        }
+        free(val->data.array.array);
+    }
+    /* all other types have no malloc'd storage */
+}
+
