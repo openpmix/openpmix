@@ -10,11 +10,14 @@
 #ifndef PMIx_H
 #define PMIx_H
 
+#include <stdint.h>
 #include <string.h>
 #ifdef HAVE_SYS_TIME_H
 #include <sys/time.h> /* for struct timeval */
 #endif
 
+// For BEGIN/END_C_DECLS
+#include "src/include/pmix_config.h"
 
 BEGIN_C_DECLS
 
