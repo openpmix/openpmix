@@ -260,6 +260,8 @@ int pmix_bfrop_pack_int16(pmix_buffer_t *buffer, const void *src,
                           int32_t num_vals, pmix_data_type_t type);
 int pmix_bfrop_pack_int32(pmix_buffer_t *buffer, const void *src,
                           int32_t num_vals, pmix_data_type_t type);
+int pmix_bfrop_pack_datatype(pmix_buffer_t *buffer, const void *src,
+                          int32_t num_vals, pmix_data_type_t type);
 int pmix_bfrop_pack_int64(pmix_buffer_t *buffer, const void *src,
                           int32_t num_vals, pmix_data_type_t type);
 
@@ -311,6 +313,8 @@ int pmix_bfrop_unpack_int(pmix_buffer_t *buffer, void *dest,
 int pmix_bfrop_unpack_int16(pmix_buffer_t *buffer, void *dest,
                             int32_t *num_vals, pmix_data_type_t type);
 int pmix_bfrop_unpack_int32(pmix_buffer_t *buffer, void *dest,
+                            int32_t *num_vals, pmix_data_type_t type);
+int pmix_bfrop_unpack_datatype(pmix_buffer_t *buffer, void *dest,
                             int32_t *num_vals, pmix_data_type_t type);
 int pmix_bfrop_unpack_int64(pmix_buffer_t *buffer, void *dest,
                             int32_t *num_vals, pmix_data_type_t type);

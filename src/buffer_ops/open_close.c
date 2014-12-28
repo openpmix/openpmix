@@ -139,6 +139,8 @@ int pmix_bfrop_open(void)
         return rc;
     }
     pmix_bfrop_num_reg_types = 0;
+    pmix_bfrop_threshold_size = PMIX_BFROP_DEFAULT_THRESHOLD_SIZE;
+    pmix_bfrop_initial_size = 1;
 
     /* Register all the supported types */
     PMIX_REGISTER_TYPE("PMIX_BYTE", PMIX_BYTE,

@@ -236,6 +236,12 @@ int pmix_bfrop_pack_int32(pmix_buffer_t *buffer, const void *src,
     return PMIX_SUCCESS;
 }
 
+int pmix_bfrop_pack_datatype(pmix_buffer_t *buffer, const void *src,
+                          int32_t num_vals, pmix_data_type_t type)
+{
+    return pmix_bfrop_pack_int32(buffer, src, num_vals, type);
+}
+
 /*
  * INT64
  */
@@ -655,7 +661,7 @@ int pmix_bfrop_pack_kval(pmix_buffer_t *buffer, const void *src,
     
     for (i = 0; i < num_vals; ++i) {
         /* pack the key */
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int(buffer, &ptr[i]->key, 1, PMIX_STRING))) {
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &ptr[i]->key, 1, PMIX_STRING))) {
             return ret;
         }
         /* pack the type */

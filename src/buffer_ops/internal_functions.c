@@ -108,13 +108,8 @@ int pmix_bfrop_store_data_type(pmix_buffer_t *buffer, pmix_data_type_t type)
 {
     pmix_bfrop_type_info_t *info;
 
-    /* Lookup the pack function for the actual pmix_data_type type and call it */
-    
-    if (NULL == (info = (pmix_bfrop_type_info_t*)pmix_pointer_array_get_item(&pmix_bfrop_types, PMIX_INT))) {
-        return PMIX_ERR_PACK_FAILURE;
-    }
-    
-    return info->odti_pack_fn(buffer, &type, 1, PMIX_INT);
+    /* Lookup the pack function for the actual pmix_data_type type and call it */  
+    return pmix_bfrop_pack_datatype(buffer, &type, 1, PMIX_INT);
 }
 
 int pmix_bfrop_get_data_type(pmix_buffer_t *buffer, pmix_data_type_t *type)
