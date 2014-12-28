@@ -17,6 +17,7 @@ sources += \
         src/client/pmix_client_hash.c \
         src/client/pmix_client.c \
         src/client/pmi1.c \
+        src/client/pmi2.c \
         src/client/usock.c \
 	src/client/usock_sendrecv.c
 

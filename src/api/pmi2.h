@@ -7,10 +7,6 @@
 #ifndef PMI2_H_INCLUDED
 #define PMI2_H_INCLUDED
 
-#ifndef USE_PMI2_API
-#error This header file defines the PMI2 API, but PMI2 was not selected
-#endif
-
 #define PMI2_MAX_KEYLEN 64
 #define PMI2_MAX_VALLEN 1024
 #define PMI2_MAX_ATTRVALUE 1024
