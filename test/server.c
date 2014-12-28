@@ -33,8 +33,6 @@
 #include "src/client/usock.h"
 #include "src/client/pmix_client.h"
 #include "src/buffer_ops/types.h"
-#include "src/include/constants.h"
-#include "src/include/pmix_event.h"
 #include "src/buffer_ops/types.h"
 #include "src/util/error.h"
 
@@ -46,12 +44,12 @@ static int start_listening(struct sockaddr_un *address);
 static void connection_handler(int incoming_sd, short flags, void* cbdata);
 static void message_handler(int incoming_sd, short flags, void* cbdata);
 
-pmix_event_t *event;
+event_t *event;
 pmix_usock_hdr_t hdr;
 char *data = NULL;
 bool hdr_rcvd = false;
 char *rptr;
-int rbytes = 0;
+size_t rbytes = 0;
 
 bool service = true;
 
@@ -181,8 +179,8 @@ static void connection_handler(int incomind_sd, short flags, void* cbdata)
         exit(0);
     }
     event = event_new(server_base, sd,
-                      PMIX_EV_READ|PMIX_EV_PERSIST, message_handler, NULL);
-    event_add(event,0);
+                      EV_READ|EV_PERSIST, message_handler, NULL);
+    event_add(event,NULL);
     usock_set_nonblocking(sd);
     printf("New client connection accepted\n");
 }
@@ -258,7 +256,7 @@ inline static int verify_kvps(pmix_buffer_t *xfer)
     pmix_buffer_t *bptr;
     pmix_scope_t scope = 0;
     int rc, cnt = 1;
-    pmix_value_t *kvp = NULL;
+    pmix_kval_t *kvp = NULL;
 
     // We expect 3 keys here:
     // 1. for the local scope:  "local-key" = "12345" (INT)
@@ -277,12 +275,13 @@ inline static int verify_kvps(pmix_buffer_t *xfer)
             int keys = 0;
             while( 1 ){
                 cnt = 1;
-                if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(bptr, &kvp, &cnt, PMIX_VALUE))) {
+                if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(bptr, &kvp, &cnt, PMIX_KVAL))) {
                     break;
                 }
                 keys++;
                 if( keys == 1){
-                    if( strcmp(kvp->key, "local-key") || kvp->type != PMIX_INT || kvp->data.integer != 12345 ){
+                    if( strcmp(kvp->key, "local-key") || kvp->value->type != PMIX_INT
+                            || kvp->value->data.integer != 12345 ){
                         fprintf(stderr,"Error receiving LOCAL key\n");
                         abort();
                     }
@@ -297,7 +296,8 @@ inline static int verify_kvps(pmix_buffer_t *xfer)
                 }
                 keys++;
                 if( keys == 1){
-                    if( strcmp(kvp->key, "remote-key") || kvp->type != PMIX_STRING || strcmp(kvp->data.string,"Test string") ){
+                    if( strcmp(kvp->key, "remote-key") || kvp->value->type != PMIX_STRING
+                            || strcmp(kvp->value->data.string,"Test string") ){
                         fprintf(stderr,"Error receiving REMOTE key\n");
                         abort();
                     }
@@ -312,7 +312,8 @@ inline static int verify_kvps(pmix_buffer_t *xfer)
                 }
                 keys++;
                 if( keys == 1){
-                    if( strcmp(kvp->key, "global-key") || kvp->type != PMIX_FLOAT || kvp->data.fval != (float)10.15 ){
+                    if( strcmp(kvp->key, "global-key") || kvp->value->type != PMIX_FLOAT ||
+                            kvp->value->data.fval != (float)10.15 ){
                         fprintf(stderr,"Error receiving GLOBAL key\n");
                         abort();
                     }
@@ -332,11 +333,15 @@ void process_message()
     pmix_cmd_t cmd;
     pmix_buffer_t *reply = NULL;
     pmix_buffer_t xfer, *bptr, buf, save, blocal, bremote;
-    pmix_identifier_t id, idreq;
+    uint64_t id, idreq;
 
     /* xfer the message to a buffer for unpacking */
     OBJ_CONSTRUCT(&xfer, pmix_buffer_t);
-    pmix_bfrop.load(&xfer, data, hdr.nbytes);
+    buf.base_ptr = (char*)data;
+    buf.bytes_allocated = buf.bytes_used = hdr.nbytes;
+    buf.unpack_ptr = buf.base_ptr;
+    buf.pack_ptr = ((char*)buf.base_ptr) + buf.bytes_used;
+
     uint32_t tag = hdr.tag;
     id = hdr.id;
     /* protect the transferred data */
