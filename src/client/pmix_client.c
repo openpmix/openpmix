@@ -479,7 +479,7 @@ static int unpack_return(pmix_buffer_t *data)
 
 static int pack_fence(pmix_buffer_t *msg,
                       pmix_cmd_t cmd,
-                      const pmix_range_t ranges[],
+                      const pmix_range_t *ranges[],
                       size_t nranges)
 {
     int rc;
@@ -549,8 +549,9 @@ int PMIx_Fence(const pmix_range_t ranges[], size_t nranges)
     pmix_cmd_t cmd = PMIX_FENCE_CMD;
     pmix_cb_t *cb;
     int rc;
-    pmix_range_t rg, *rgs;
-    size_t nrg;
+    pmix_range_t rg, *rgs = NULL;
+    pmix_range_t **pranges  = NULL;
+    size_t nrg, i;
 
     pmix_output_verbose(2, pmix_client_globals.debug_output,
                         "pmix: executing fence");
@@ -576,9 +577,17 @@ int PMIx_Fence(const pmix_range_t ranges[], size_t nranges)
         rgs = (pmix_range_t*)ranges;
         nrg = nranges;
     }
+
+    pranges = malloc(sizeof(pmix_range_t *));
+    if( NULL == pranges){
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+    for (i = 0; i < nrg; i++){
+        pranges[i] = &rgs[i];
+    }
     
     msg = OBJ_NEW(pmix_buffer_t);
-    if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, rgs, nrg))) {
+    if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, (const pmix_range_t **)pranges, nrg))) {
         OBJ_RELEASE(msg);
         return rc;
     }
@@ -629,8 +638,8 @@ int PMIx_Fence_nb(const pmix_range_t ranges[], size_t nranges, bool barrier,
     pmix_cmd_t cmd = PMIX_FENCENB_CMD;
     int rc;
     pmix_cb_t *cb;
-    pmix_range_t rg, *rgs;
-    size_t nrg;
+    pmix_range_t rg, *rgs, **pranges;
+    size_t nrg, i;
     
     pmix_output_verbose(2, pmix_client_globals.debug_output,
                         "pmix: fence_nb called");
@@ -657,8 +666,16 @@ int PMIx_Fence_nb(const pmix_range_t ranges[], size_t nranges, bool barrier,
         nrg = nranges;
     }
     
+    pranges = malloc(sizeof(pmix_range_t *));
+    if( NULL == pranges){
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+    for (i = 0; i < nrg; i++){
+        pranges[i] = &rgs[i];
+    }
+
     msg = OBJ_NEW(pmix_buffer_t);
-    if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, rgs, nrg))) {
+    if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, (const pmix_range_t **)pranges, nrg))) {
         OBJ_RELEASE(msg);
         return rc;
     }

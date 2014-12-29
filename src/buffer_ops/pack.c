@@ -583,7 +583,8 @@ int pmix_bfrop_pack_range(pmix_buffer_t *buffer, const void *src,
     
     for (i = 0; i < num_vals; ++i) {
         range = ptr[i];
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &range->namespace, 1, PMIX_STRING))) {
+        char *ptr = range->namespace;
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &ptr, 1, PMIX_STRING))) {
             return ret;
         }
         if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_sizet(buffer, &range->nranks, 1, PMIX_SIZE))) {
