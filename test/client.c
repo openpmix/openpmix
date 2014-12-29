@@ -38,18 +38,6 @@ int main(int argc, char **argv)
     pmix_value_t value;
     char *key = NULL;
 
-    /* check for the server uri */
-    if (NULL == getenv("PMIX_SERVER_URI")) {
-        fprintf(stderr, "PMIX_SERVER_URI not found\n");
-        exit(1);
-    }
-
-    /* check for the PMIX_ID */
-    if (NULL == getenv("PMIX_ID")) {
-        fprintf(stderr, "PMIX_ID not found\n");
-        exit(1);
-    }
-
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(namespace, &rank))) {
         fprintf(stderr, "PMIx_Init failed: %d\n", rc);
@@ -61,7 +49,6 @@ int main(int argc, char **argv)
     if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_LOCAL, key, &value))) {
         fprintf(stderr, "PMIx_Put failed: %d\n", rc);
     }
-    OBJ_DESTRUCT(&value);
 
     key = "remote-key";
     char *ptr = "Test string";
@@ -69,21 +56,18 @@ int main(int argc, char **argv)
     if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_REMOTE, key, &value))) {
         fprintf(stderr, "PMIx_Put failed: %d\n", rc);
     }
-    OBJ_DESTRUCT(&value);
 
     key = "global-key";
     PMIX_VAL_SET(&value, float, 10.15, rc, kvp_error );
     if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_GLOBAL, key, &value))) {
         fprintf(stderr, "PMIx_Put failed: %d\n", rc);
     }
-    OBJ_DESTRUCT(&value);
-
 
     /* Submit the data */
     pmix_range_t range;
     range.ranks = NULL;
     range.nranks = 0;
-    if (PMIX_SUCCESS != (rc = PMIx_Fence(&range, 1))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Fence(NULL, 0))) {
         fprintf(stderr, "PMIx_Fence failed: %d\n", rc);
         return rc;
     }

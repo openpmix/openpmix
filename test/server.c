@@ -40,6 +40,7 @@
 struct event_base *server_base = NULL;
 struct event *listen_ev = NULL;
 int listen_fd = -1;
+int client_fd = -1;
 static int start_listening(struct sockaddr_un *address);
 static void connection_handler(int incoming_sd, short flags, void* cbdata);
 static void message_handler(int incoming_sd, short flags, void* cbdata);
@@ -182,6 +183,7 @@ static void connection_handler(int incomind_sd, short flags, void* cbdata)
                       EV_READ|EV_PERSIST, message_handler, NULL);
     event_add(event,NULL);
     usock_set_nonblocking(sd);
+    client_fd = sd;
     printf("New client connection accepted\n");
 }
 
@@ -201,8 +203,11 @@ static void message_handler(int sd, short flags, void* cbdata)
         if ( PMIX_ERR_UNREACH == rc ) {
             /* Communication error */
             fprintf(stderr,"Error communicating with the client\n");
-            // TODO: make sure to kill the client
-            abort();
+            event_del(event);
+            event_free(event);
+            close(client_fd);
+            client_fd = -1;
+            return;
         } else if( PMIX_ERR_RESOURCE_BUSY == rc ||
                    PMIX_ERR_WOULD_BLOCK == rc) {
                 /* exit this event and let the event lib progress */
@@ -291,7 +296,7 @@ inline static int verify_kvps(pmix_buffer_t *xfer)
             int keys = 0;
             while( 1 ){
                 cnt = 1;
-                if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(bptr, &kvp, &cnt, PMIX_VALUE))) {
+                if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(bptr, &kvp, &cnt, PMIX_KVAL))) {
                     break;
                 }
                 keys++;
@@ -307,7 +312,7 @@ inline static int verify_kvps(pmix_buffer_t *xfer)
             int keys = 0;
             while( 1 ){
                 cnt = 1;
-                if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(bptr, &kvp, &cnt, PMIX_VALUE))) {
+                if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(bptr, &kvp, &cnt, PMIX_KVAL))) {
                     break;
                 }
                 keys++;
@@ -332,15 +337,15 @@ void process_message()
     int32_t cnt;
     pmix_cmd_t cmd;
     pmix_buffer_t *reply = NULL;
-    pmix_buffer_t xfer, *bptr, buf, save, blocal, bremote;
+    pmix_buffer_t xfer;
     uint64_t id, idreq;
 
     /* xfer the message to a buffer for unpacking */
     OBJ_CONSTRUCT(&xfer, pmix_buffer_t);
-    buf.base_ptr = (char*)data;
-    buf.bytes_allocated = buf.bytes_used = hdr.nbytes;
-    buf.unpack_ptr = buf.base_ptr;
-    buf.pack_ptr = ((char*)buf.base_ptr) + buf.bytes_used;
+    xfer.base_ptr = (char*)data;
+    xfer.bytes_allocated = xfer.bytes_used = hdr.nbytes;
+    xfer.unpack_ptr = xfer.base_ptr;
+    xfer.pack_ptr = ((char*)xfer.base_ptr) + xfer.bytes_used;
 
     uint32_t tag = hdr.tag;
     id = hdr.id;
@@ -399,16 +404,29 @@ void process_message()
     case PMIX_FENCE_CMD:
     case PMIX_FENCENB_CMD:{
         char *local_uri;
-        int cnt = 1;
+        int cnt = 1, rc;
+        size_t nranges;
         pmix_scope_t scope;
+        pmix_range_t **ranges = NULL;
 
         pmix_output(0, "executing fence");
 
-        /* TODO: Process signature when it will be supported */
+        /* pack the number of ranges */
+        cnt = 1;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&xfer, &nranges, &cnt, PMIX_SIZE))) {
+            PMIX_ERROR_LOG(rc);
+        }
+        ranges = malloc( sizeof(pmix_range_t*) * nranges);
+        if( NULL == ranges ){
+            rc = PMIX_ERR_OUT_OF_RESOURCE;
+            PMIX_ERROR_LOG(rc);
+        }
 
-        /* Read URL. Drop it for now. TODO: verify it in future */
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&xfer, &local_uri, &cnt, PMIX_STRING))) {
-            abort();
+        if (0 < nranges) {
+            cnt = nranges;
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&xfer, ranges, &cnt, PMIX_RANGE))) {
+                PMIX_ERROR_LOG(rc);
+            }
         }
 
         verify_kvps(&xfer);

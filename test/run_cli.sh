@@ -9,7 +9,8 @@ PMIX_LIB=$PMIX_BASE/.libs/
 export LD_LIBRARY_PATH=$PMIX_LIB:$LD_LIBRARY_PATH
 
 export PMIX_SERVER_URI="0:pmix"
-export PMIX_ID=1
+export PMIX_RANK=1
+export PMIX_NAMESPACE="abc"
 
 gdb ./client
 #./client
