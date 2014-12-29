@@ -12,6 +12,7 @@
 
 #include <unistd.h>
 #include <event.h>
+#include <event2/thread.h>
 #include <pthread.h>
 #ifdef HAVE_STRING_H
 #include <string.h>
@@ -51,7 +52,9 @@ pmix_event_base_t* pmix_start_progress_thread()
 {
     int rc;
     pmix_event_base_t *ev_base;
-
+    /* Setup threading */
+    evthread_use_pthreads();
+    /* Create base for events */
     if (NULL == (ev_base = (pmix_event_base_t*)event_base_new())) {
         PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
         return NULL;
