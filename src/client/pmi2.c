@@ -38,12 +38,47 @@
 static char namespace[PMIX_MAX_VALLEN];
 static int myrank;
 
+/* local functions */
+static int convert_int(int *value, pmix_value_t *kv);
+
 int PMI2_Init(int *spawned, int *size, int *rank, int *appnum)
 {
+    pmix_value_t *kv;
     int rc;
-    rc = PMIx_Init(namespace, &myrank);
+
+    if (PMIX_SUCCESS != PMIx_Init(namespace, &myrank)) {
+        return PMI2_ERR_INIT;
+    }
     *rank = myrank;
-    return rc;
+
+    if (NULL != spawned) {
+        /* get the spawned flag - this will likely pull
+         * down all attributes assigned to the job, thus
+         * making all subsequent "get" operations purely
+         * local */
+        if (PMIX_SUCCESS == PMIx_Get(NULL, myrank,
+                                     PMIX_SPAWNED, &kv)) {
+            rc = convert_int(spawned, kv);
+            OBJ_RELEASE(kv);
+            return rc;
+        } else {
+            return PMI2_ERR_INIT;
+        }
+    }
+    
+    if (NULL != appnum) {
+        /* get our appnum */
+        if (PMIX_SUCCESS == PMIx_Get(NULL, myrank,
+                                     PMIX_APPNUM, &kv)) {
+            rc = convert_int(appnum, kv);
+            OBJ_RELEASE(kv);
+            return rc;
+        } else {
+            return PMI2_ERR_INIT;
+        }
+    }
+    
+    return PMI2_SUCCESS;
 }
 
 int PMI2_Initialized(void)
@@ -318,3 +353,55 @@ int PMI2_Job_Spawn(int count, const char * cmds[],
     return rc;
 }
 
+static int convert_int(int *value, pmix_value_t *kv)
+{
+    switch(kv->type) {
+    case PMIX_INT:
+        *value = kv->data.integer;
+        break;
+    case PMIX_INT8:
+        *value = kv->data.int8;
+        break;
+    case PMIX_INT16:
+        *value = kv->data.int16;
+        break;
+    case PMIX_INT32:
+        *value = kv->data.int32;
+        break;
+    case PMIX_INT64:
+        *value = kv->data.int64;
+        break;
+    case PMIX_UINT:
+        *value = kv->data.uint;
+        break;
+    case PMIX_UINT8:
+        *value = kv->data.uint8;
+        break;
+    case PMIX_UINT16:
+        *value = kv->data.uint16;
+        break;
+    case PMIX_UINT32:
+        *value = kv->data.uint32;
+        break;
+    case PMIX_UINT64:
+        *value = kv->data.uint64;
+        break;
+    case PMIX_BYTE:
+        *value = kv->data.byte;
+        break;
+    case PMIX_SIZE:
+        *value = kv->data.size;
+        break;
+    case PMIX_BOOL:
+        if (kv->data.flag) {
+            *value = 1;
+        } else {
+            *value = 0;
+        }
+        break;
+    default:
+        /* not an integer type */
+        return PMI2_FAIL;
+    }
+    return PMI2_SUCCESS;
+}

@@ -41,6 +41,7 @@ BEGIN_C_DECLS
 #define PMIX_CPUSET          "pmix.cpuset"      // (char*) hwloc bitmap applied to proc upon launch
 #define PMIX_CREDENTIAL      "pmix.cred"        // (opal_byte_object*) security credential assigned to proc
 #define PMIX_HOSTNAME        "pmix.hname"       // (char*) name of the host this proc is on
+#define PMIX_SPAWNED         "pmix.spawned"     // (bool) true if this proc resulted from a call to PMIx_Spawn
 /* scratch directory locations for use by applications */
 #define PMIX_TMPDIR          "pmix.tmpdir"      // (char*) top-level tmp dir assigned to session
 /* information about relative ranks as assigned */
@@ -61,7 +62,7 @@ BEGIN_C_DECLS
 /* size info */
 #define PMIX_UNIV_SIZE       "pmix.univ.size"   // (uint32_t) #procs in this namespace
 #define PMIX_JOB_SIZE        "pmix.job.size"    // (uint32_t) #procs in this job
-#define PMIX_LOCAL_SIZE      "pmix.local.size"  //PMIX_ERROR_BASE (uint32_t) #procs in this job on this node
+#define PMIX_LOCAL_SIZE      "pmix.local.size"  // (uint32_t) #procs in this job on this node
 #define PMIX_NODE_SIZE       "pmix.node.size"   // (uint32_t) #procs across all jobs on this node
 #define PMIX_MAX_PROCS       "pmix.max.size"    // (uint32_t) max #procs for this job
 /* topology info */
