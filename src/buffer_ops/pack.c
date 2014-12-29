@@ -590,8 +590,10 @@ int pmix_bfrop_pack_range(pmix_buffer_t *buffer, const void *src,
         if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_sizet(buffer, &range->nranks, 1, PMIX_SIZE))) {
             return ret;
         }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int(buffer, &range->ranks, range->nranks, PMIX_INT))) {
-            return ret;
+        if( 0 < range->nranks){
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int(buffer, &range->ranks, range->nranks, PMIX_INT))) {
+                return ret;
+            }
         }
     }
     return PMIX_SUCCESS;
