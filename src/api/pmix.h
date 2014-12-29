@@ -257,35 +257,35 @@ typedef void (*pmix_cbfunc_t)(int status, pmix_value_t *kv, void *cbdata);
  * currently is NO internal thread safety. */
 
 /* Init */
-int PMIx_Init(char namespace[], int *rank);
+pmix_status_t PMIx_Init(char namespace[], int *rank);
 
 /* Finalize */
-int PMIx_Finalize(void);
+pmix_status_t PMIx_Finalize(void);
 
 /* Initialized */
 bool PMIx_Initialized(void);
 
 /* Abort */
-int PMIx_Abort(int status, const char msg[]);
+pmix_status_t PMIx_Abort(int status, const char msg[]);
 
 /* Fence */
-int PMIx_Fence(const pmix_range_t ranges[], size_t nranges);
+pmix_status_t PMIx_Fence(const pmix_range_t ranges[], size_t nranges);
 
 /* Fence_nb */
-int PMIx_Fence_nb(const pmix_range_t ranges[], size_t nranges, bool barrier,
-                  pmix_cbfunc_t cbfunc, void *cbdata);
+pmix_status_t PMIx_Fence_nb(const pmix_range_t ranges[], size_t nranges, bool barrier,
+                            pmix_cbfunc_t cbfunc, void *cbdata);
 
 /* Put */
-int PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val);
+pmix_status_t PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val);
 
 /* Get */
-int PMIx_Get(const char namespace[], int rank,
-             const char key[], pmix_value_t **val);
+pmix_status_t PMIx_Get(const char namespace[], int rank,
+                       const char key[], pmix_value_t **val);
 
 /* Get_nb */
-int PMIx_Get_nb(const char namespace[], int rank,
-                const char key[],
-                pmix_cbfunc_t cbfunc, void *cbdata);
+pmix_status_t PMIx_Get_nb(const char namespace[], int rank,
+                          const char key[],
+                          pmix_cbfunc_t cbfunc, void *cbdata);
 
 /* Publish - the "info" parameter
  * consists of an array of pmix_info_t objects that
@@ -294,7 +294,7 @@ int PMIx_Get_nb(const char namespace[], int rank,
  * Note that the keys must be unique within the specified
  * scope or else an error will be returned (first published
  * wins). */
-int PMIx_Publish(pmix_scope_t scope, const pmix_info_t info[], size_t ninfo);
+pmix_status_t PMIx_Publish(pmix_scope_t scope, const pmix_info_t info[], size_t ninfo);
 
 /* Lookup - the "info" parameter consists of an array of
  * pmix_info_t objects that specify the requested
@@ -303,17 +303,17 @@ int PMIx_Publish(pmix_scope_t scope, const pmix_info_t info[], size_t ninfo);
  * the process that published the service_name. Passing
  * a NULL for the namespace param indicates that the
  * namespace information need not be returned */
-int PMIx_Lookup(pmix_info_t info[], size_t ninfo,
-                char namespace[]);
+pmix_status_t PMIx_Lookup(pmix_info_t info[], size_t ninfo,
+                          char namespace[]);
 
 /* Unpublish - the "info" parameter
  * consists of an array of pmix_info_t objects */
-int PMIx_Unpublish(const pmix_info_t info[], size_t ninfo);
+pmix_status_t PMIx_Unpublish(const pmix_info_t info[], size_t ninfo);
 
 /* Spawn a new job */
-int PMIx_Spawn(const pmix_app_t apps[],
-               size_t napps,
-               char namespace[]);
+pmix_status_t PMIx_Spawn(const pmix_app_t apps[],
+                         size_t napps,
+                         char namespace[]);
 
 /* register an errhandler to report loss of connection to the server */
 void PMIx_Register_errhandler(pmix_errhandler_fn_t errhandler);
@@ -322,14 +322,12 @@ void PMIx_Register_errhandler(pmix_errhandler_fn_t errhandler);
 void PMIx_Deregister_errhandler(void);
 
 /* connect */
-int PMIx_Connect(const pmix_range_t ranges[], size_t nranges);
+pmix_status_t PMIx_Connect(const pmix_range_t ranges[], size_t nranges);
 
 /* disconnect */
-int PMIx_Disconnect(const pmix_range_t ranges[], size_t nranges);
+pmix_status_t PMIx_Disconnect(const pmix_range_t ranges[], size_t nranges);
 
-// RHC: I don't believe we really need these any more, do we?
-
-/* Key-Value pair management macroses */
+/* Key-Value pair management macros */
 // TODO: add all possible types/fields here.
 
 #define PMIX_VAL_FIELD_int(x) ((x)->data.integer)

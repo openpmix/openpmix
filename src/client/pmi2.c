@@ -39,12 +39,13 @@ static char namespace[PMIX_MAX_VALLEN];
 static int myrank;
 
 /* local functions */
-static int convert_int(int *value, pmix_value_t *kv);
+static pmix_status_t convert_int(int *value, pmix_value_t *kv);
+static int convert_err(pmix_status_t rc);
 
 int PMI2_Init(int *spawned, int *size, int *rank, int *appnum)
 {
     pmix_value_t *kv;
-    int rc;
+    pmix_status_t rc;
 
     if (PMIX_SUCCESS != PMIx_Init(namespace, &myrank)) {
         return PMI2_ERR_INIT;
@@ -60,7 +61,7 @@ int PMI2_Init(int *spawned, int *size, int *rank, int *appnum)
                                      PMIX_SPAWNED, &kv)) {
             rc = convert_int(spawned, kv);
             OBJ_RELEASE(kv);
-            return rc;
+            return convert_err(rc);
         } else {
             return PMI2_ERR_INIT;
         }
@@ -72,7 +73,7 @@ int PMI2_Init(int *spawned, int *size, int *rank, int *appnum)
                                      PMIX_APPNUM, &kv)) {
             rc = convert_int(appnum, kv);
             OBJ_RELEASE(kv);
-            return rc;
+            return convert_err(rc);
         } else {
             return PMI2_ERR_INIT;
         }
@@ -90,30 +91,39 @@ int PMI2_Initialized(void)
 
 int PMI2_Finalize(void)
 {
-    return PMIx_Finalize();
+    pmix_status_t rc;
+    
+    rc = PMIx_Finalize();
+    return convert_err(rc);
 }
 
 int PMI2_Abort(int flag, const char msg[])
 {
-    return PMIx_Abort(flag, msg);
+    pmix_status_t rc;
+    
+    rc = PMIx_Abort(flag, msg);
+    return convert_err(rc);
 }
 
 /* KVS_Put - we default to PMIX_GLOBAL scope */
 int PMI2_KVS_Put(const char key[], const char value[])
 {
-   int rc;
+    pmix_status_t rc;
     pmix_value_t val;
 
     val.type = PMIX_STRING;
     val.data.string = (char*)value;
     rc = PMIx_Put(PMIX_GLOBAL, key, &val);
-    return rc;
+    return convert_err(rc);
 }
 
 /* KVS_Fence */
 int PMI2_KVS_Fence(void)
 {
-    return PMIx_Fence(NULL, 0);
+    pmix_status_t rc;
+    
+    rc = PMIx_Fence(NULL, 0);
+    return convert_err(rc);
 }
 
 /* the jobid is equated to the namespace in PMIx, and the
@@ -125,7 +135,7 @@ int PMI2_KVS_Get(const char *jobid, int src_pmi_id,
                  const char key[], char value [],
                  int maxvalue, int *vallen)
 {
-    int rc;
+    pmix_status_t rc;
     pmix_value_t *val;
     
     rc = PMIx_Get(jobid, src_pmi_id, key, &val);
@@ -143,7 +153,7 @@ int PMI2_KVS_Get(const char *jobid, int src_pmi_id,
         PMIx_free_value_data(val);
         free(val);
     }
-    return rc;
+    return convert_err(rc);
 }
 
 int PMI2_Info_GetNodeAttr(const char name[], char value[], int valuelen, int *found, int waitfor)
@@ -156,18 +166,18 @@ int PMI2_Info_GetNodeAttr(const char name[], char value[], int valuelen, int *fo
 /* push info at the PMIX_LOCAL scope */
 int PMI2_Info_PutNodeAttr(const char name[], const char value[])
 {
-    int rc;
+    pmix_status_t rc;
     pmix_value_t val;
 
     val.type = PMIX_STRING;
     val.data.string = (char*)value;
     rc = PMIx_Put(PMIX_LOCAL, name, &val);
-    return rc;
+    return convert_err(rc);
 }
 
 int PMI2_Info_GetJobAttr(const char name[], char value[], int valuelen, int *found)
 {
-    int rc;
+    pmix_status_t rc;
     pmix_value_t *val;
 
     *found = 0;
@@ -186,7 +196,7 @@ int PMI2_Info_GetJobAttr(const char name[], char value[], int valuelen, int *fou
         PMIx_free_value_data(val);
         free(val);
     }
-    return rc;
+    return convert_err(rc);
 }
 
 int PMI2_Info_GetJobAttrIntArray(const char name[], int array[], int arraylen, int *outlen, int *found)
@@ -196,7 +206,7 @@ int PMI2_Info_GetJobAttrIntArray(const char name[], int array[], int arraylen, i
 
 int PMI2_Nameserv_publish(const char service_name[], const PMI_keyval_t *info_ptr, const char port[])
 {
-    int rc, nvals;
+    pmix_status_t rc, nvals;
     pmix_info_t info[2];
     
     if (NULL == service_name || NULL == port) {
@@ -225,7 +235,7 @@ int PMI2_Nameserv_publish(const char service_name[], const PMI_keyval_t *info_pt
         free(info[1].value);
     }
     
-    return rc;
+    return convert_err(rc);
 }
 
 int PMI2_Nameserv_unpublish(const char service_name[],
@@ -233,6 +243,7 @@ int PMI2_Nameserv_unpublish(const char service_name[],
 {
     int nvals;
     pmix_info_t info[2];
+    pmix_status_t rc;
     
     /* pass the service */
     (void)strncpy(info[0].key, service_name, PMIX_MAX_KEYLEN);
@@ -244,13 +255,15 @@ int PMI2_Nameserv_unpublish(const char service_name[],
         nvals = 2;
     }
     
-    return PMIx_Unpublish(info, nvals);
+    rc = PMIx_Unpublish(info, nvals);
+    return convert_err(rc);
 }
 
 int PMI2_Nameserv_lookup(const char service_name[], const PMI_keyval_t *info_ptr,
                         char port[], int portLen)
 {
-    int rc, nvals;
+    pmix_status_t rc;
+    int nvals;
     pmix_info_t info[2];
     
     /* pass the service */
@@ -265,7 +278,7 @@ int PMI2_Nameserv_lookup(const char service_name[], const PMI_keyval_t *info_ptr
 
     /* PMI-2 doesn't want the namespace back */
     if (PMIX_SUCCESS != (rc = PMIx_Lookup(info, nvals, NULL))) {
-        return rc;
+        return convert_err(rc);
     }
 
     /* should have received a string back */
@@ -300,12 +313,26 @@ int PMI2_Job_GetId(char jobid[], int jobid_size)
 
 int PMI2_Job_Connect(const char jobid[], PMI2_Connect_comm_t *conn)
 {
-    return PMI2_ERR_OTHER;
+    pmix_status_t rc;
+    pmix_range_t range;
+
+    (void)strncpy(range.namespace, jobid, PMIX_MAX_VALLEN);
+    range.ranks = NULL;
+    range.nranks = 0;
+    rc = PMIx_Connect(&range, 1);
+    return convert_err(rc);
 }
 
 int PMI2_Job_Disconnect(const char jobid[])
 {
-    return PMI2_ERR_OTHER;
+    pmix_status_t rc;
+    pmix_range_t range;
+
+    (void)strncpy(range.namespace, jobid, PMIX_MAX_VALLEN);
+    range.ranks = NULL;
+    range.nranks = 0;
+    rc = PMIx_Disconnect(&range, 1);
+    return convert_err(rc);
 }
 
 int PMI2_Job_Spawn(int count, const char * cmds[],
@@ -319,7 +346,8 @@ int PMI2_Job_Spawn(int count, const char * cmds[],
                    int errors[])
 {
     pmix_app_t *apps;
-    int i, k, rc;
+    int i, k;
+    pmix_status_t rc;
     size_t j;
     char *evar;
     
@@ -349,11 +377,31 @@ int PMI2_Job_Spawn(int count, const char * cmds[],
 
     rc = PMIx_Spawn(apps, count, namespace);
     /* tear down the apps array */
-    
-    return rc;
+    for (i=0; i < count; i++) {
+        if (NULL != apps[i].cmd) {
+            free(apps[i].cmd);
+        }
+        pmix_argv_free(apps[i].argv);
+        pmix_argv_free(apps[i].env);
+        if (NULL != apps[i].info) {
+            for (j=0; j < apps[i].ninfo; j++) {
+                if (NULL != apps[i].info[j].value) {
+                    free(apps[i].info[j].value);
+                }
+            }
+            free(apps[i].info);
+        }
+    }
+    if (NULL != errors) {
+        for (i=0; i < count; i++) {
+            errors[i] = convert_err(rc);
+        }
+    }
+
+    return convert_err(rc);
 }
 
-static int convert_int(int *value, pmix_value_t *kv)
+static pmix_status_t convert_int(int *value, pmix_value_t *kv)
 {
     switch(kv->type) {
     case PMIX_INT:
@@ -401,7 +449,83 @@ static int convert_int(int *value, pmix_value_t *kv)
         break;
     default:
         /* not an integer type */
+        return PMIX_ERR_BAD_PARAM;
+    }
+    return PMIX_SUCCESS;
+}
+
+static int convert_err(pmix_status_t rc)
+{
+    switch(rc) {
+    case PMIX_ERR_INVALID_SIZE:
+        return PMI2_ERR_INVALID_SIZE;
+        
+    case PMIX_ERR_INVALID_KEYVALP:
+        return PMI2_ERR_INVALID_KEYVALP;
+        
+    case PMIX_ERR_INVALID_NUM_PARSED:
+        return PMI2_ERR_INVALID_NUM_PARSED;
+        
+    case PMIX_ERR_INVALID_ARGS:
+        return PMI2_ERR_INVALID_ARGS;
+        
+    case PMIX_ERR_INVALID_NUM_ARGS:
+        return PMI2_ERR_INVALID_NUM_ARGS;
+        
+    case PMIX_ERR_INVALID_LENGTH:
+        return PMI2_ERR_INVALID_LENGTH;
+        
+    case PMIX_ERR_INVALID_VAL_LENGTH:
+        return PMI2_ERR_INVALID_VAL_LENGTH;
+        
+    case PMIX_ERR_INVALID_VAL:
+        return PMI2_ERR_INVALID_VAL;
+        
+    case PMIX_ERR_INVALID_KEY_LENGTH:
+        return PMI2_ERR_INVALID_KEY_LENGTH;
+        
+    case PMIX_ERR_INVALID_KEY:
+        return PMI2_ERR_INVALID_KEY;
+        
+    case PMIX_ERR_INVALID_ARG:
+        return PMI2_ERR_INVALID_ARG;
+        
+    case PMIX_ERR_NOMEM:
+        return PMI2_ERR_NOMEM;
+        
+    case PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER:
+    case PMIX_ERR_COMM_FAILURE:
+    case PMIX_ERR_NOT_IMPLEMENTED:
+    case PMIX_ERR_NOT_SUPPORTED:
+    case PMIX_ERR_NOT_FOUND:
+    case PMIX_ERR_SERVER_NOT_AVAIL:
+    case PMIX_ERR_INVALID_NAMESPACE:
+    case PMIX_ERR_DATA_VALUE_NOT_FOUND:
+    case PMIX_ERR_OUT_OF_RESOURCE:
+    case PMIX_ERR_RESOURCE_BUSY:
+    case PMIX_ERR_BAD_PARAM:
+    case PMIX_ERR_IN_ERRNO:
+    case PMIX_ERR_UNREACH:
+    case PMIX_ERR_TIMEOUT:
+    case PMIX_ERR_NO_PERMISSIONS:
+    case PMIX_ERR_PACK_MISMATCH:
+    case PMIX_ERR_PACK_FAILURE:
+    case PMIX_ERR_UNPACK_FAILURE:
+    case PMIX_ERR_UNPACK_INADEQUATE_SPACE:
+    case PMIX_ERR_TYPE_MISMATCH:
+    case PMIX_ERR_PROC_ENTRY_NOT_FOUND:
+    case PMIX_ERR_UNKNOWN_DATA_TYPE:
+    case PMIX_ERR_WOULD_BLOCK:
+    case PMIX_EXISTS:
+    case PMIX_ERROR:
+        return PMI2_FAIL;
+        
+    case PMIX_ERR_INIT:
+        return PMI2_ERR_INIT;
+
+    case PMIX_SUCCESS:
+        return PMI2_SUCCESS;
+    default:
         return PMI2_FAIL;
     }
-    return PMI2_SUCCESS;
 }

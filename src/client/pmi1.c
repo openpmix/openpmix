@@ -39,12 +39,13 @@ static char namespace[PMIX_MAX_VALLEN];
 static int rank;
 
 /* local functions */
-static int convert_int(int *value, pmix_value_t *kv);
+static pmix_status_t convert_int(int *value, pmix_value_t *kv);
+static int convert_err(pmix_status_t rc);
 
 int PMI_Init( int *spawned )
 {
     pmix_value_t *kv;
-    int rc;
+    pmix_status_t rc;
 
     if (PMIX_SUCCESS != PMIx_Init(namespace, &rank)) {
         return PMI_ERR_INIT;
@@ -62,7 +63,7 @@ int PMI_Init( int *spawned )
                                  PMIX_SPAWNED, &kv)) {
         rc = convert_int(spawned, kv);
         OBJ_RELEASE(kv);
-        return rc;
+        return convert_err(rc);
     }
 
     return PMI_ERR_INIT;
@@ -81,20 +82,23 @@ int PMI_Finalize(void)
 
 int PMI_Abort(int flag, const char msg[])
 {
-    return PMIx_Abort(flag, msg);
+    pmix_status_t rc;
+
+    rc = PMIx_Abort(flag, msg);
+    return convert_err(rc);
 }
 
 /* KVS_Put - we default to PMIX_GLOBAL scope and ignore the
  * provided kvsname as we only put into our own namespace */
 int PMI_KVS_Put(const char kvsname[], const char key[], const char value[])
 {
-    int rc;
+    pmix_status_t rc;
     pmix_value_t val;
 
     val.type = PMIX_STRING;
     val.data.string = (char*)value;
     rc = PMIx_Put(PMIX_GLOBAL, key, &val);
-    return rc;
+    return convert_err(rc);
 }
 
 /* KVS_Commit - PMIx has no equivalent operation as any Put
@@ -113,7 +117,7 @@ int PMI_Barrier(void)
 int PMI_Get_size(int *size)
 {
     pmix_value_t *kv;
-    int rc;
+    pmix_status_t rc;
     
     if (NULL == size) {
         return PMI_FAIL;
@@ -123,7 +127,7 @@ int PMI_Get_size(int *size)
                                  PMIX_JOB_SIZE, &kv)) {
         rc = convert_int(size, kv);
         OBJ_RELEASE(kv);
-        return rc;
+        return convert_err(rc);
     }
     
     return PMI_FAIL;
@@ -142,7 +146,7 @@ int PMI_Get_rank(int *rk)
 int PMI_Get_universe_size(int *size)
 {
     pmix_value_t *kv;
-    int rc;
+    pmix_status_t rc;
     
     if (NULL == size) {
         return PMI_FAIL;
@@ -152,7 +156,7 @@ int PMI_Get_universe_size(int *size)
                                  PMIX_UNIV_SIZE, &kv)) {
         rc = convert_int(size, kv);
         OBJ_RELEASE(kv);
-        return rc;
+        return convert_err(rc);
     }
     return PMI_FAIL;
 }
@@ -160,13 +164,13 @@ int PMI_Get_universe_size(int *size)
 int PMI_Get_appnum(int *appnum)
 {
     pmix_value_t *kv;
-    int rc;
+    pmix_status_t rc;
     
     if (NULL != appnum && PMIx_Get(NULL, rank,
                                    PMIX_APPNUM, &kv)) {
         rc = convert_int(appnum, kv);
         OBJ_RELEASE(kv);
-        return rc;
+        return convert_err(rc);
     }
     
     return PMI_FAIL;
@@ -174,11 +178,11 @@ int PMI_Get_appnum(int *appnum)
 
 int PMI_Publish_name(const char service_name[], const char port[])
 {
-    int rc;
+    pmix_status_t rc;
     pmix_info_t info;
     
     if (NULL == service_name || NULL == port) {
-        return PMIX_ERR_BAD_PARAM;
+        return convert_err(PMIX_ERR_BAD_PARAM);
     }
     /* pass the service/port */
     (void)strncpy(info.key, service_name, PMIX_MAX_KEYLEN);
@@ -191,22 +195,24 @@ int PMI_Publish_name(const char service_name[], const char port[])
     rc = PMIx_Publish(PMIX_NAMESPACE, &info, 1);
     free(info.value);
     
-    return rc;
+    return convert_err(rc);
 }
 
 int PMI_Unpublish_name(const char service_name[])
 {
     pmix_info_t info;
+    pmix_status_t rc;
     
     /* pass the service */
     (void)strncpy(info.key, service_name, PMIX_MAX_KEYLEN);
     
-    return PMIx_Unpublish(&info, 1);
+    rc = PMIx_Unpublish(&info, 1);
+    return convert_err(rc);
 }
 
 int PMI_Lookup_name(const char service_name[], char port[])
 {
-    int rc;
+    pmix_status_t rc;
     pmix_info_t info;
     
     /* pass the service */
@@ -214,7 +220,7 @@ int PMI_Lookup_name(const char service_name[], char port[])
 
     /* PMI-1 doesn't want the namespace back */
     if (PMIX_SUCCESS != (rc = PMIx_Lookup(&info, 1, NULL))) {
-        return rc;
+        return convert_err(rc);
     }
 
     /* should have received a string back */
@@ -223,7 +229,7 @@ int PMI_Lookup_name(const char service_name[], char port[])
         if (NULL != info.value) {
             free(info.value);
         }
-        return PMIX_ERR_NOT_FOUND;
+        return convert_err(PMIX_ERR_NOT_FOUND);
     }
     
     /* return the port */
@@ -265,13 +271,13 @@ int PMI_Get_id_length_max(int *length)
 int PMI_Get_clique_size(int *size)
 {
     pmix_value_t *kv;
-    int rc;
+    pmix_status_t rc;
     
     if (PMIX_SUCCESS == PMIx_Get(NULL, rank,
                                  PMIX_LOCAL_SIZE, &kv)) {
         rc = convert_int(size, kv);
         free(kv);
-        return rc;
+        return convert_err(rc);
     }
     
     return PMI_FAIL;
@@ -366,7 +372,8 @@ int PMI_Spawn_multiple(int count,
                        int errors[])
 {
     pmix_app_t *apps;
-    int i, k, rc;
+    int i, k;
+    pmix_status_t rc;
     size_t j;
     char *evar;
     
@@ -378,17 +385,19 @@ int PMI_Spawn_multiple(int count,
         apps[i].argv = pmix_argv_copy((char**)argvs[i]);
         apps[i].argc = pmix_argv_count(apps[i].argv);
         apps[i].ninfo = info_keyval_sizesp[i];
-        apps[i].info = (pmix_info_t*)malloc(apps[i].ninfo * sizeof(pmix_info_t));
-        /* copy the info objects */
-        for (j=0; j < apps[i].ninfo; j++) {
-            (void)strncpy(apps[i].info[j].key, info_keyval_vectors[i][j].key, PMIX_MAX_KEYLEN);
-            apps[i].info[j].value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
-            apps[i].info[j].value->type = PMIX_STRING;
-            (void)strncpy(apps[i].info[j].value->data.string, info_keyval_vectors[i][j].key, PMIX_MAX_VALLEN);
+        if (0 < apps[i].ninfo) {
+            apps[i].info = (pmix_info_t*)malloc(apps[i].ninfo * sizeof(pmix_info_t));
+            /* copy the info objects */
+            for (j=0; j < apps[i].ninfo; j++) {
+                (void)strncpy(apps[i].info[j].key, info_keyval_vectors[i][j].key, PMIX_MAX_KEYLEN);
+                apps[i].info[j].value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+                apps[i].info[j].value->type = PMIX_STRING;
+                (void)strncpy(apps[i].info[j].value->data.string, info_keyval_vectors[i][j].key, PMIX_MAX_VALLEN);
+            }
         }
         /* push the preput values into the apps environ */
         for (k=0; k < preput_keyval_size; k++) {
-            (void)asprintf(&evar, "%s=%s", preput_keyval_vector[j].key, preput_keyval_vector[j].val);
+            (void)asprintf(&evar, "%s=%s", preput_keyval_vector[k].key, preput_keyval_vector[k].val);
             pmix_argv_append_nosize(&apps[i].env, evar);
             free(evar);
         }
@@ -396,8 +405,27 @@ int PMI_Spawn_multiple(int count,
 
     rc = PMIx_Spawn(apps, count, namespace);
     /* tear down the apps array */
-    
-    return rc;
+    for (i=0; i < count; i++) {
+        if (NULL != apps[i].cmd) {
+            free(apps[i].cmd);
+        }
+        pmix_argv_free(apps[i].argv);
+        pmix_argv_free(apps[i].env);
+        if (NULL != apps[i].info) {
+            for (j=0; j < apps[i].ninfo; j++) {
+                if (NULL != apps[i].info[j].value) {
+                    free(apps[i].info[j].value);
+                }
+            }
+            free(apps[i].info);
+        }
+    }
+    if (NULL != errors) {
+        for (i=0; i < count; i++) {
+            errors[i] = convert_err(rc);
+        }
+    }
+    return convert_err(rc);
 }
 
 /* nobody supports this call, which is why it was
@@ -431,7 +459,7 @@ int PMI_Get_options(char *str, int *length)
 
 /***   UTILITY FUNCTIONS   ***/
 /* internal function */
-static int convert_int(int *value, pmix_value_t *kv)
+static pmix_status_t convert_int(int *value, pmix_value_t *kv)
 {
     switch(kv->type) {
     case PMIX_INT:
@@ -479,7 +507,83 @@ static int convert_int(int *value, pmix_value_t *kv)
         break;
     default:
         /* not an integer type */
+        return PMIX_ERR_BAD_PARAM;
+    }
+    return PMIX_SUCCESS;
+}
+
+static int convert_err(pmix_status_t rc)
+{
+    switch(rc) {
+    case PMIX_ERR_INVALID_SIZE:
+        return PMI_ERR_INVALID_SIZE;
+        
+    case PMIX_ERR_INVALID_KEYVALP:
+        return PMI_ERR_INVALID_KEYVALP;
+        
+    case PMIX_ERR_INVALID_NUM_PARSED:
+        return PMI_ERR_INVALID_NUM_PARSED;
+        
+    case PMIX_ERR_INVALID_ARGS:
+        return PMI_ERR_INVALID_ARGS;
+        
+    case PMIX_ERR_INVALID_NUM_ARGS:
+        return PMI_ERR_INVALID_NUM_ARGS;
+        
+    case PMIX_ERR_INVALID_LENGTH:
+        return PMI_ERR_INVALID_LENGTH;
+        
+    case PMIX_ERR_INVALID_VAL_LENGTH:
+        return PMI_ERR_INVALID_VAL_LENGTH;
+        
+    case PMIX_ERR_INVALID_VAL:
+        return PMI_ERR_INVALID_VAL;
+        
+    case PMIX_ERR_INVALID_KEY_LENGTH:
+        return PMI_ERR_INVALID_KEY_LENGTH;
+        
+    case PMIX_ERR_INVALID_KEY:
+        return PMI_ERR_INVALID_KEY;
+        
+    case PMIX_ERR_INVALID_ARG:
+        return PMI_ERR_INVALID_ARG;
+        
+    case PMIX_ERR_NOMEM:
+        return PMI_ERR_NOMEM;
+        
+    case PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER:
+    case PMIX_ERR_COMM_FAILURE:
+    case PMIX_ERR_NOT_IMPLEMENTED:
+    case PMIX_ERR_NOT_SUPPORTED:
+    case PMIX_ERR_NOT_FOUND:
+    case PMIX_ERR_SERVER_NOT_AVAIL:
+    case PMIX_ERR_INVALID_NAMESPACE:
+    case PMIX_ERR_DATA_VALUE_NOT_FOUND:
+    case PMIX_ERR_OUT_OF_RESOURCE:
+    case PMIX_ERR_RESOURCE_BUSY:
+    case PMIX_ERR_BAD_PARAM:
+    case PMIX_ERR_IN_ERRNO:
+    case PMIX_ERR_UNREACH:
+    case PMIX_ERR_TIMEOUT:
+    case PMIX_ERR_NO_PERMISSIONS:
+    case PMIX_ERR_PACK_MISMATCH:
+    case PMIX_ERR_PACK_FAILURE:
+    case PMIX_ERR_UNPACK_FAILURE:
+    case PMIX_ERR_UNPACK_INADEQUATE_SPACE:
+    case PMIX_ERR_TYPE_MISMATCH:
+    case PMIX_ERR_PROC_ENTRY_NOT_FOUND:
+    case PMIX_ERR_UNKNOWN_DATA_TYPE:
+    case PMIX_ERR_WOULD_BLOCK:
+    case PMIX_EXISTS:
+    case PMIX_ERROR:
+        return PMI_FAIL;
+        
+    case PMIX_ERR_INIT:
+        return PMI_ERR_INIT;
+
+    case PMIX_SUCCESS:
+        return PMI_SUCCESS;
+    default:
         return PMI_FAIL;
     }
-    return PMI_SUCCESS;
 }
