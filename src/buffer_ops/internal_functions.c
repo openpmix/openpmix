@@ -112,14 +112,6 @@ int pmix_bfrop_store_data_type(pmix_buffer_t *buffer, pmix_data_type_t type)
 
 int pmix_bfrop_get_data_type(pmix_buffer_t *buffer, pmix_data_type_t *type)
 {
-    pmix_bfrop_type_info_t *info;
     int32_t n=1;
-    
-    /* Lookup the unpack function for the actual pmix_data_type type and call it */
-    
-    if (NULL == (info = (pmix_bfrop_type_info_t*)pmix_pointer_array_get_item(&pmix_bfrop_types, PMIX_INT))) {
-        return PMIX_ERR_PACK_FAILURE;
-    }
-    
-    return info->odti_unpack_fn(buffer, type, &n, PMIX_INT);
+    return pmix_bfrop_unpack_datatype(buffer, type, &n, PMIX_INT);
 }
