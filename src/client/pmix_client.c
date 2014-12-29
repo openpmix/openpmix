@@ -479,12 +479,13 @@ static int unpack_return(pmix_buffer_t *data)
 
 static int pack_fence(pmix_buffer_t *msg,
                       pmix_cmd_t cmd,
-                      pmix_range_t **ranges,
+                      pmix_range_t *ranges,
                       size_t nranges)
 {
     int rc;
     pmix_scope_t scope;
     size_t i;
+    pmix_range_t *r;
     
     /* pack the cmd */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
@@ -498,7 +499,8 @@ static int pack_fence(pmix_buffer_t *msg,
         return rc;
     }
     for (i=0; i < nranges; i++) {
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &ranges[i], 1, PMIX_RANGE))) {
+        r = &ranges[i];
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &r, 1, PMIX_RANGE))) {
             PMIX_ERROR_LOG(rc);
             return rc;
         }
@@ -579,7 +581,7 @@ int PMIx_Fence(const pmix_range_t ranges[], size_t nranges)
     }
 
     msg = OBJ_NEW(pmix_buffer_t);
-    if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, &rgs, nrg))) {
+    if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, rgs, nrg))) {
         OBJ_RELEASE(msg);
         return rc;
     }
@@ -659,7 +661,7 @@ int PMIx_Fence_nb(const pmix_range_t ranges[], size_t nranges, bool barrier,
     }
     
     msg = OBJ_NEW(pmix_buffer_t);
-    if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, &rgs, nrg))) {
+    if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, rgs, nrg))) {
         OBJ_RELEASE(msg);
         return rc;
     }
@@ -1287,6 +1289,8 @@ int PMIx_Connect(const pmix_range_t ranges[], size_t nranges)
     pmix_cmd_t cmd = PMIX_CONNECT_CMD;
     int rc;
     pmix_cb_t *cb;
+    size_t i;
+    pmix_range_t *r, *rptr;
     
     pmix_output_verbose(2, pmix_client_globals.debug_output,
                         "pmix: connect called");
@@ -1312,8 +1316,10 @@ int PMIx_Connect(const pmix_range_t ranges[], size_t nranges)
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    if (0 < nranges) {
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, ranges, nranges, PMIX_RANGE))) {
+    rptr = (pmix_range_t*)ranges;
+    for (i=0; i < nranges; i++) {
+        r = &rptr[i];
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &r, 1, PMIX_RANGE))) {
             PMIX_ERROR_LOG(rc);
             return rc;
         }
@@ -1344,6 +1350,8 @@ int PMIx_Disconnect(const pmix_range_t ranges[], size_t nranges)
     pmix_cmd_t cmd = PMIX_DISCONNECT_CMD;
     int rc;
     pmix_cb_t *cb;
+    size_t i;
+    pmix_range_t *r, *rptr;
     
     pmix_output_verbose(2, pmix_client_globals.debug_output,
                         "pmix: disconnect called");
@@ -1369,8 +1377,10 @@ int PMIx_Disconnect(const pmix_range_t ranges[], size_t nranges)
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    if (0 < nranges) {
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, ranges, nranges, PMIX_RANGE))) {
+    rptr = (pmix_range_t*)ranges;
+    for (i=0; i < nranges; i++) {
+        r = &rptr[i];
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &r, 1, PMIX_RANGE))) {
             PMIX_ERROR_LOG(rc);
             return rc;
         }
