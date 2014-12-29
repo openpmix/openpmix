@@ -479,11 +479,12 @@ static int unpack_return(pmix_buffer_t *data)
 
 static int pack_fence(pmix_buffer_t *msg,
                       pmix_cmd_t cmd,
-                      pmix_range_t *ranges[],
+                      pmix_range_t **ranges,
                       size_t nranges)
 {
     int rc;
     pmix_scope_t scope;
+    size_t i;
     
     /* pack the cmd */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
@@ -496,8 +497,8 @@ static int pack_fence(pmix_buffer_t *msg,
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    if (0 < nranges) {
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, ranges, nranges, PMIX_RANGE))) {
+    for (i=0; i < nranges; i++) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &ranges[i], 1, PMIX_RANGE))) {
             PMIX_ERROR_LOG(rc);
             return rc;
         }
