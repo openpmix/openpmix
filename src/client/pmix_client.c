@@ -578,7 +578,7 @@ int PMIx_Fence(const pmix_range_t ranges[], size_t nranges)
         nrg = nranges;
     }
 
-    pranges = malloc(sizeof(pmix_range_t *));
+    pranges = malloc(sizeof(pmix_range_t *) * nranges);
     if( NULL == pranges){
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
@@ -666,7 +666,7 @@ int PMIx_Fence_nb(const pmix_range_t ranges[], size_t nranges, bool barrier,
         nrg = nranges;
     }
     
-    pranges = malloc(sizeof(pmix_range_t *));
+    pranges = malloc(sizeof(pmix_range_t *) * nranges);
     if( NULL == pranges){
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
