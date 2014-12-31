@@ -87,7 +87,7 @@ OBJ_CLASS_DECLARATION(pmix_usock_send_t);
 /* usock structure for recving a message */
 typedef struct {
     pmix_list_item_t super;
-    event_t *ev;
+    event_t ev;
     pmix_usock_hdr_t hdr;
     char *data;
     bool hdr_recvd;
@@ -172,6 +172,7 @@ extern void pmix_client_call_errhandler(int error);
 /* internal convenience macros */
 #define PMIX_ACTIVATE_SEND_RECV(b, cb, d)                               \
     do {                                                                \
+        int rc = -1;    \
         pmix_usock_sr_t *ms;                                            \
         pmix_output_verbose(5, pmix_client_globals.debug_level,         \
                             "[%s:%d] post send to server",              \
@@ -180,8 +181,9 @@ extern void pmix_client_call_errhandler(int error);
         ms->bfr = (b);                                                  \
         ms->cbfunc = (cb);                                              \
         ms->cbdata = (d);                                               \
-        event_assign(&((ms)->ev), pmix_client_globals.evbase, -1,       \
+        rc = event_assign(&((ms)->ev), pmix_client_globals.evbase, -1,       \
                      EV_WRITE, pmix_usock_send_recv, (ms));             \
+        printf("event_assign returned %d", rc); \
         event_active(&((ms)->ev), EV_WRITE, 1);                         \
     } while(0);
 
@@ -190,9 +192,9 @@ extern void pmix_client_call_errhandler(int error);
         pmix_output_verbose(5, pmix_client_globals.debug_level, \
                             "[%s:%d] post msg",                 \
                             __FILE__, __LINE__);                \
-        event_assign((ms)->ev, pmix_client_globals.evbase,-1,   \
+        event_assign(&((ms)->ev), pmix_client_globals.evbase,-1,   \
                      EV_WRITE, pmix_usock_process_msg, (ms));   \
-        event_active((ms)->ev, EV_WRITE, 1);                    \
+        event_active(&((ms)->ev), EV_WRITE, 1);                    \
     } while(0);
 
 #define CLOSE_THE_SOCKET(socket)                                \
