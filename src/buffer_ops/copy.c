@@ -46,8 +46,26 @@ int pmix_bfrop_copy(void **dest, void *src, pmix_data_type_t type)
 
 int pmix_bfrop_copy_payload(pmix_buffer_t *dest, pmix_buffer_t *src)
 {
-    // No functionality yet.
-    abort();
+    size_t to_copy = 0;
+    char *ptr;
+    /* deal with buffer type */
+    if( NULL == dest->base_ptr ){
+        /* destination buffer is empty - derive src buffer type */
+        dest->type = src->type;
+    } else if( dest->type != src->type ){
+        /* buffer types mismatch */
+        pmix_output(0, "PMIX bfrop:copy_payload: source/destination buffer types mismatch");
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    to_copy = src->pack_ptr - src->unpack_ptr;
+    if( NULL == (ptr = pmix_bfrop_buffer_extend(dest, to_copy)) ){
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+    memcpy(ptr,src->unpack_ptr, to_copy);
+    dest->bytes_used += to_copy;
+    dest->pack_ptr += to_copy;
+    return PMIX_SUCCESS;
 }
 
 
