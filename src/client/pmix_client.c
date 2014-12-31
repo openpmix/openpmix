@@ -161,8 +161,9 @@ int PMIx_Init(char namespace[], int *rank)
         pmix_output_set_verbosity(pmix_client_globals.debug_output,
                                   pmix_client_globals.debug_level);
     }
-    pmix_bfrop_open();
 
+    pmix_bfrop_open();
+    pmix_client_hash_init();
     
     pmix_output_verbose(2, pmix_client_globals.debug_output,
                         "pmix: init called");
