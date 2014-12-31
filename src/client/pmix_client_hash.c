@@ -163,7 +163,7 @@ int pmix_client_hash_fetch(const char *namespace, int rank,
     }
 
     /* create the copy */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)kvs, &hv->value, PMIX_VALUE))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)kvs, hv->value, PMIX_VALUE))) {
         return rc;
     }
 
