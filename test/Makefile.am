@@ -23,34 +23,28 @@ AM_CFLAGS = $(PMIX_CFLAGS)
 AM_CPPFLAGS = $(PMIX_CPPFLAGS)
 AM_LDFLAGS = $(PMIX_LDFLAGS)
 
-headers =
-sources =
-nodist_headers =
-include_HEADERS = src/api/pmix.h src/api/pmix_server.h
-dist_pmixdata_DATA =
-server_headers =
-server_sources =
+bin_PROGRAMS = pmix_test pmix_client pmi_client pmi2_client
 
-EXTRA_DIST = README INSTALL VERSION LICENSE autogen.sh \
-             config/pmix_get_version.sh \
-             src/include/pmix_config.h
+pmix_test_SOURCES = \
+        pmix_test.c
 
-include config/Makefile.am
-include src/class/Makefile.am
-include src/include/Makefile.am
-include src/buffer_ops/Makefile.am
-include src/util/Makefile.am
-include src/client/Makefile.am
-include src/server/Makefile.am
+pmix_test_LDADD = \
+	$(top_builddir)/libpmix-server.la
 
-lib_LTLIBRARIES = libpmix.la libpmix-server.la
-libpmix_la_SOURCES = $(headers) $(sources)
-libpmix_la_LDFLAGS = $(ldflags) -version-info $(libpmix_so_version) $(PMIX_LIBS)
+pmix_client_SOURCES = \
+        pmix_client.c
 
-libpmix_server_la_SOURCES = $(server_headers) $(server_sources)
-libpmix_server_la_LDFLAGS = $(ldflags) -version-info $(libpmix_so_version) $(PMIX_LIBS)
+pmix_client_LDADD = \
+	$(top_builddir)/libpmix.la
 
-dist-hook:
-	csh "$(top_srcdir)/config/distscript.csh" "$(top_srcdir)" "$(distdir)" "$(PMIX_VERSION)" "$(PMIX_SVN_R)"
+pmi_client_SOURCES = \
+        pmi_client.c
 
-ACLOCAL_AMFLAGS = -I config
+pmi_client_LDADD = \
+	$(top_builddir)/libpmix.la
+
+pmi2_client_SOURCES = \
+        pmi2_client.c
+
+pmi2_client_LDADD = \
+	$(top_builddir)/libpmix.la

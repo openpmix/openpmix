@@ -25,45 +25,34 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "src/api/pmix.h"
-#include "src/class/pmix_object.h"
-#include "src/buffer_ops/types.h"
-#include "test_common.h"
+#include "pmi2.h"
 
 
 int main(int argc, char **argv)
 {
-    char nspace[PMIX_MAX_VALLEN];
-    int rank;
-    int rc, i;
-    pmix_value_t value;
-    char *key = NULL;
+    int spawned, size, rank, appnum;
 
     /* init us */
-    if (PMIX_SUCCESS != (rc = PMIx_Init(nspace, &rank))) {
-        fprintf(stderr, "PMIx_Init failed: %d\n", rc);
+    if (PMI2_SUCCESS != (rc = PMI2_Init(&spawned, &size, &rank, &appnum))) {
+        fprintf(stderr, "PMI2_Init failed: %d\n", rc);
         return rc;
     }
-
-    if( 0 != strcmp(nspace, TEST_NAMESPACE) ) {
-        printf("Bad namespace!\n");
-    }
-
-    key = "local-key-2";
-    PMIX_VAL_SET(&value, int, 12342);
+#if 0
+    key = "local-key";
+    PMIX_VAL_SET(&value, int, 12345, rc, kvp_error );
     if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_LOCAL, key, &value))) {
         fprintf(stderr, "PMIx_Put failed: %d\n", rc);
     }
 
-    key = "remote-key-2";
-    char *ptr = "Test string #2";
-    PMIX_VAL_SET(&value, string, ptr);
+    key = "remote-key";
+    char *ptr = "Test string";
+    PMIX_VAL_SET(&value, string, ptr, rc, kvp_error );
     if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_REMOTE, key, &value))) {
         fprintf(stderr, "PMIx_Put failed: %d\n", rc);
     }
 
-    key = "global-key-2";
-    PMIX_VAL_SET(&value, float, 12.15);
+    key = "global-key";
+    PMIX_VAL_SET(&value, float, 10.15, rc, kvp_error );
     if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_GLOBAL, key, &value))) {
         fprintf(stderr, "PMIx_Put failed: %d\n", rc);
     }
@@ -76,35 +65,12 @@ int main(int argc, char **argv)
         fprintf(stderr, "PMIx_Fence failed: %d\n", rc);
         return rc;
     }
-
-    /* Check the predefined output */
-    for(i=0;i<3;i++){
-        char key[256];
-        pmix_value_t *val;
-        sprintf(key,"local-key-%d",i);
-        PMIx_Get(nspace, i, key, &val);
-        if( val->type != PMIX_INT || val->data.integer != (12340+i) ){
-            printf("Key %s value or type mismatch, wait %d(%d) get %d(%d)\n",
-                   key, (12340+i), PMIX_INT, val->type, val->data.integer);
-        }
-        free(val);
-/*
-                sprintf(key,"remote-key-%d",i);
-                sprintf(sval,"Test string #%d",i);
-                PMIX_VAL_SET(&val,string, str);
-
-                sprintf(key,"global-key-%d",i);
-                PMIX_VAL_SET(&val,float, 10.15 + i);
-*/
-    }
+#endif
     /* finalize us */
-    if (PMIX_SUCCESS != (rc = PMIx_Finalize())) {
-        fprintf(stderr, "PMIx_Finalize failed: %d\n", rc);
+    if (PMI2_SUCCESS != (rc = PMI2_Finalize())) {
+        fprintf(stderr, "PMI2_Finalize failed: %d\n", rc);
         return rc;
     }
     
-    return 0;
-kvp_error:
-    fprintf(stderr,"Cannot Set Key-Value Pair\n");
     return 0;
 }

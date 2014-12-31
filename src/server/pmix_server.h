@@ -88,6 +88,13 @@ extern pmix_client_globals_t pmix_client_globals;
 /* module-level shared functions */
 extern void pmix_client_call_errhandler(int error);
 
+#define PMIXAIT_FOR_COMPLETION(a)               \
+    do {                                        \
+        while ((a)) {                           \
+            usleep(10);                         \
+        }                                       \
+    } while (0);
+
 END_C_DECLS
 
 #endif /* MCA_PMIX_CLIENT_H */

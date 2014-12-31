@@ -30,13 +30,8 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <event.h>
-#include "src/client/usock.h"
-#include "src/client/pmix_client.h"
-#include "src/buffer_ops/types.h"
-#include "src/buffer_ops/types.h"
-#include "src/util/error.h"
-extern int errno;
-#include <errno.h>
+
+#include "pmix_server.h"
 
 #include "test_common.h"
 

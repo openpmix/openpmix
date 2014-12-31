@@ -15,6 +15,9 @@
 #ifdef HAVE_SYS_TIME_H
 #include <sys/time.h> /* for struct timeval */
 #endif
+#ifdef PMIX_NEED_C_BOOL
+#include <stdbool.h>
+#endif
 
 /* For true/false */
 #include "src/include/pmix_config.h"

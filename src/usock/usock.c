@@ -1,51 +1,3 @@
-/*
- * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
- *                         University Research and Technology
- *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
- *                         of Tennessee Research Foundation.  All rights
- *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
- *                         University of Stuttgart.  All rights reserved.
- * Copyright (c) 2004-2005 The Regents of the University of California.
- *                         All rights reserved.
- * Copyright (c) 2006-2013 Los Alamos National Security, LLC. 
- *                         All rights reserved.
- * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
- * Copyright (c) 2013-2014 Intel, Inc.  All rights reserved.
- * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
- *                         All rights reserved.
- * $COPYRIGHT$
- *
- * Additional copyrights may follow
- *
- * $HEADER$
- *
- */
-
-#include "pmix_config.h"
-#include "pmix_client.h"
-#include "src/include/types.h"
-#include "pmix_stdint.h"
-#include "pmix_socket_errno.h"
-
-#include "src/util/error.h"
-#include "usock.h"
-
-#include <fcntl.h>
-#ifdef HAVE_SYS_UIO_H
-#include <sys/uio.h>
-#endif
-#ifdef HAVE_NET_UIO_H
-#include <net/uio.h>
-#endif
-#ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
-#endif
-
-void pmix_usock_dump(const char* msg);
-
 static int usock_create_socket(void)
 {
     int sd = -1;
@@ -438,3 +390,78 @@ char* pmix_usock_state_print(pmix_usock_state_t state)
 }
 
 */
+
+/***   INSTANTIATE INTERNAL CLASSES   ***/
+static void scon(pmix_usock_send_t *p)
+{
+    p->hdr.type = 0;
+    p->hdr.tag = UINT32_MAX;
+    p->hdr.nbytes = 0;
+    p->data = NULL;
+    p->hdr_sent = false;
+    p->sdptr = NULL;
+    p->sdbytes = 0;
+}
+OBJ_CLASS_INSTANCE(pmix_usock_send_t,
+                   pmix_list_item_t,
+                   scon, NULL);
+
+static void rcon(pmix_usock_recv_t *p)
+{
+    p->hdr.type = 0;
+    p->hdr.tag = UINT32_MAX;
+    p->hdr.nbytes = 0;
+    p->data = NULL;
+    p->hdr_recvd = false;
+    p->rdptr = NULL;
+    p->rdbytes = 0;
+}
+OBJ_CLASS_INSTANCE(pmix_usock_recv_t,
+                   pmix_list_item_t,
+                   rcon, NULL);
+
+static void prcon(pmix_usock_posted_recv_t *p)
+{
+    p->tag = UINT32_MAX;
+    p->cbfunc = NULL;
+    p->cbdata = NULL;
+}
+OBJ_CLASS_INSTANCE(pmix_usock_posted_recv_t,
+                   pmix_list_item_t,
+                   prcon, NULL);
+
+static void cbcon(pmix_cb_t *p)
+{
+    p->active = false;
+    OBJ_CONSTRUCT(&p->data, pmix_buffer_t);
+    p->cbfunc = NULL;
+    p->cbdata = NULL;
+    p->namespace = NULL;
+    p->rank = -1;
+    p->key = NULL;
+}
+static void cbdes(pmix_cb_t *p)
+{
+    OBJ_DESTRUCT(&p->data);
+    if (NULL != p->namespace) {
+        free(p->namespace);
+    }
+    if (NULL != p->key) {
+        free(p->key);
+    }
+}
+OBJ_CLASS_INSTANCE(pmix_cb_t,
+                   pmix_object_t,
+                   cbcon, cbdes);
+
+
+static void srcon(pmix_usock_sr_t *p)
+{
+    p->bfr = NULL;
+    p->cbfunc = NULL;
+    p->cbdata = NULL;
+}
+OBJ_CLASS_INSTANCE(pmix_usock_sr_t,
+                   pmix_object_t,
+                   srcon, NULL);
+

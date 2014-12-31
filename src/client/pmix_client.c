@@ -14,10 +14,13 @@
 
 #include "pmix_config.h"
 #include "src/include/types.h"
+#include "pmix_stdint.h"
+#include "pmix_socket_errno.h"
 
 #ifdef HAVE_STRING_H
 #include <string.h>
 #endif
+#include <fcntl.h>
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
@@ -26,6 +29,12 @@
 #endif
 #ifdef HAVE_SYS_UN_H
 #include <sys/un.h>
+#endif
+#ifdef HAVE_SYS_UIO_H
+#include <sys/uio.h>
+#endif
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>
 #endif
 
 #include "src/api/pmix.h"
@@ -38,10 +47,24 @@
 #include "src/util/error.h"
 #include "src/util/output.h"
 #include "src/util/progress_threads.h"
+#include "src/usock/usock.h"
 
 #include "pmix_client_hash.h"
 #include "pmix_client.h"
-#include "usock.h"
+
+// usock forward declarations
+static int pmix_usock_connect(struct sockaddr *addr, int max_retries);
+static void pmix_usock_process_msg(int fd, short flags, void *cbdata);
+static void pmix_usock_send_recv(int fd, short args, void *cbdata);
+static void pmix_usock_send_handler(int sd, short flags, void *cbdata);
+static void pmix_usock_recv_handler(int sd, short flags, void *cbdata);
+static void pmix_usock_dump(const char* msg);
+static int usock_send_connect_ack(int sd);
+static int usock_recv_connect_ack(int sd);
+static int usock_set_nonblocking(int sd);
+static int usock_set_blocking(int sd);
+static int send_bytes(int sd, char **buf, size_t *remain);
+static int read_bytes(int sd, char **buf, size_t *remain);
 
 // local variables
 static int init_cntr = 0;
@@ -1406,81 +1429,6 @@ int PMIx_Disconnect(const pmix_range_t ranges[], size_t nranges)
     return PMIX_SUCCESS;
 }
 
-
-/***   INSTANTIATE INTERNAL CLASSES   ***/
-static void scon(pmix_usock_send_t *p)
-{
-    p->hdr.type = 0;
-    p->hdr.tag = UINT32_MAX;
-    p->hdr.nbytes = 0;
-    p->data = NULL;
-    p->hdr_sent = false;
-    p->sdptr = NULL;
-    p->sdbytes = 0;
-}
-OBJ_CLASS_INSTANCE(pmix_usock_send_t,
-                   pmix_list_item_t,
-                   scon, NULL);
-
-static void rcon(pmix_usock_recv_t *p)
-{
-    p->hdr.type = 0;
-    p->hdr.tag = UINT32_MAX;
-    p->hdr.nbytes = 0;
-    p->data = NULL;
-    p->hdr_recvd = false;
-    p->rdptr = NULL;
-    p->rdbytes = 0;
-}
-OBJ_CLASS_INSTANCE(pmix_usock_recv_t,
-                   pmix_list_item_t,
-                   rcon, NULL);
-
-static void prcon(pmix_usock_posted_recv_t *p)
-{
-    p->tag = UINT32_MAX;
-    p->cbfunc = NULL;
-    p->cbdata = NULL;
-}
-OBJ_CLASS_INSTANCE(pmix_usock_posted_recv_t,
-                   pmix_list_item_t,
-                   prcon, NULL);
-
-static void cbcon(pmix_cb_t *p)
-{
-    p->active = false;
-    OBJ_CONSTRUCT(&p->data, pmix_buffer_t);
-    p->cbfunc = NULL;
-    p->cbdata = NULL;
-    p->namespace = NULL;
-    p->rank = -1;
-    p->key = NULL;
-}
-static void cbdes(pmix_cb_t *p)
-{
-    OBJ_DESTRUCT(&p->data);
-    if (NULL != p->namespace) {
-        free(p->namespace);
-    }
-    if (NULL != p->key) {
-        free(p->key);
-    }
-}
-OBJ_CLASS_INSTANCE(pmix_cb_t,
-                   pmix_object_t,
-                   cbcon, cbdes);
-
-
-static void srcon(pmix_usock_sr_t *p)
-{
-    p->bfr = NULL;
-    p->cbfunc = NULL;
-    p->cbdata = NULL;
-}
-OBJ_CLASS_INSTANCE(pmix_usock_sr_t,
-                   pmix_object_t,
-                   srcon, NULL);
-
 void PMIx_free_value_data(pmix_value_t *val)
 {
     size_t n;
@@ -1508,3 +1456,6 @@ void PMIx_free_value_data(pmix_value_t *val)
     /* all other types have no malloc'd storage */
 }
 
+
+#include "src/usock/usock.c"
+#include "src/usock/usock_sendrecv.c"
