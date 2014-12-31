@@ -4,6 +4,7 @@ Makefile
 Makefile.in
 *.lo
 *.la
+*.o
 *.libs
 *.deps
 *.dirstamp

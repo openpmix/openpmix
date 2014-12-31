@@ -14,6 +14,8 @@
 # --------------------------------------------------------------------
 AC_DEFUN([PMIX_HWLOC_CONFIG],[
 
+    PMIX_VAR_SCOPE_PUSH([pmix_hwloc_support pmix_hwloc_dir pmix_hwloc_libdir])
+
     AC_ARG_WITH([hwloc],
                 [AC_HELP_STRING([--with-hwloc=DIR],
                                 [Search for hwloc headers and libraries in DIR ])])
@@ -53,7 +55,7 @@ AC_DEFUN([PMIX_HWLOC_CONFIG],[
                            [pmix_hwloc_support=0])
 
         CPPFLAGS="$pmix_hwloc_CPPFLAGS $CPPFLAGS"
-        LIBS="$pmix_hwloc_LIBS $LIBS"
+        LIBS="$LIBS -lhwloc"
         LDFLAGS="$pmix_hwloc_LDFLAGS $LDFLAGS"
     fi
 
@@ -73,4 +75,5 @@ AC_DEFUN([PMIX_HWLOC_CONFIG],[
     AC_DEFINE_UNQUOTED(PMIX_HAVE_HWLOC, [$pmix_hwloc_support],
                       [Whether we have hwloc support or not])
 
+    PMIX_VAR_SCOPE_POP
 ])dnl

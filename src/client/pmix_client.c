@@ -480,11 +480,13 @@ static int unpack_return(pmix_buffer_t *data)
 
 static int pack_fence(pmix_buffer_t *msg,
                       pmix_cmd_t cmd,
-                      const pmix_range_t *ranges[],
+                      pmix_range_t *ranges,
                       size_t nranges)
 {
     int rc;
     pmix_scope_t scope;
+    size_t i;
+    pmix_range_t *r;
     
     /* pack the cmd */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
@@ -497,8 +499,9 @@ static int pack_fence(pmix_buffer_t *msg,
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    if (0 < nranges) {
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, ranges, nranges, PMIX_RANGE))) {
+    for (i=0; i < nranges; i++) {
+        r = &ranges[i];
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &r, 1, PMIX_RANGE))) {
             PMIX_ERROR_LOG(rc);
             return rc;
         }
@@ -551,8 +554,7 @@ int PMIx_Fence(const pmix_range_t ranges[], size_t nranges)
     pmix_cb_t *cb;
     int rc;
     pmix_range_t rg, *rgs = NULL;
-    pmix_range_t **pranges  = NULL;
-    size_t nrg, i;
+    size_t nrg;
 
     pmix_output_verbose(2, pmix_client_globals.debug_output,
                         "pmix: executing fence");
@@ -579,16 +581,8 @@ int PMIx_Fence(const pmix_range_t ranges[], size_t nranges)
         nrg = nranges;
     }
 
-    pranges = malloc(sizeof(pmix_range_t *) * nranges);
-    if( NULL == pranges){
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    }
-    for (i = 0; i < nrg; i++){
-        pranges[i] = &rgs[i];
-    }
-    
     msg = OBJ_NEW(pmix_buffer_t);
-    if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, (const pmix_range_t **)pranges, nrg))) {
+    if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, rgs, nrg))) {
         OBJ_RELEASE(msg);
         return rc;
     }
@@ -610,7 +604,7 @@ int PMIx_Fence(const pmix_range_t ranges[], size_t nranges)
     OBJ_RELEASE(cb);
 
     pmix_output_verbose(2, pmix_client_globals.debug_output,
-                        "pmix:native fence released");
+                        "pmix: fence released");
 
     return rc;
 }
@@ -639,8 +633,8 @@ int PMIx_Fence_nb(const pmix_range_t ranges[], size_t nranges, bool barrier,
     pmix_cmd_t cmd = PMIX_FENCENB_CMD;
     int rc;
     pmix_cb_t *cb;
-    pmix_range_t rg, *rgs, **pranges;
-    size_t nrg, i;
+    pmix_range_t rg, *rgs;
+    size_t nrg;
     
     pmix_output_verbose(2, pmix_client_globals.debug_output,
                         "pmix: fence_nb called");
@@ -667,16 +661,8 @@ int PMIx_Fence_nb(const pmix_range_t ranges[], size_t nranges, bool barrier,
         nrg = nranges;
     }
     
-    pranges = malloc(sizeof(pmix_range_t *) * nranges);
-    if( NULL == pranges){
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    }
-    for (i = 0; i < nrg; i++){
-        pranges[i] = &rgs[i];
-    }
-
     msg = OBJ_NEW(pmix_buffer_t);
-    if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, (const pmix_range_t **)pranges, nrg))) {
+    if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, rgs, nrg))) {
         OBJ_RELEASE(msg);
         return rc;
     }
@@ -1300,12 +1286,124 @@ void PMIx_Deregister_errhandler(void)
 
 int PMIx_Connect(const pmix_range_t ranges[], size_t nranges)
 {
-    return PMIX_ERR_NOT_IMPLEMENTED;
+    pmix_buffer_t *msg;
+    pmix_cmd_t cmd = PMIX_CONNECT_CMD;
+    int rc;
+    pmix_cb_t *cb;
+    size_t i;
+    pmix_range_t *r, *rptr;
+    
+    pmix_output_verbose(2, pmix_client_globals.debug_output,
+                        "pmix: connect called");
+
+    if (init_cntr <= 0) {
+        return PMIX_ERR_INIT;
+    }
+
+    /* check for bozo input */
+    if (NULL == ranges || 0 >= nranges) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    msg = OBJ_NEW(pmix_buffer_t);
+    /* pack the cmd */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    /* pack the number of ranges */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &nranges, 1, PMIX_SIZE))) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    rptr = (pmix_range_t*)ranges;
+    for (i=0; i < nranges; i++) {
+        r = &rptr[i];
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &r, 1, PMIX_RANGE))) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+    }
+
+    /* create a callback object as we need to pass it to the
+     * recv routine so we know which callback to use when
+     * the return message is recvd */
+    cb = OBJ_NEW(pmix_cb_t);
+    cb->active = true;
+
+    /* push the message into our event base to send to the server */
+    PMIX_ACTIVATE_SEND_RECV(msg, fencenb_cbfunc, cb);
+
+    /* wait for the connect to complete */
+    PMIX_WAIT_FOR_COMPLETION(cb->active);
+    OBJ_RELEASE(cb);
+
+    pmix_output_verbose(2, pmix_client_globals.debug_output,
+                        "pmix: connect completed");
+
+    return PMIX_SUCCESS;
 }
 
 int PMIx_Disconnect(const pmix_range_t ranges[], size_t nranges)
 {
-    return PMIX_ERR_NOT_IMPLEMENTED;
+    pmix_buffer_t *msg;
+    pmix_cmd_t cmd = PMIX_DISCONNECT_CMD;
+    int rc;
+    pmix_cb_t *cb;
+    size_t i;
+    pmix_range_t *r, *rptr;
+    
+    pmix_output_verbose(2, pmix_client_globals.debug_output,
+                        "pmix: disconnect called");
+
+    if (init_cntr <= 0) {
+        return PMIX_ERR_INIT;
+    }
+
+    /* check for bozo input */
+    if (NULL == ranges || 0 >= nranges) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    msg = OBJ_NEW(pmix_buffer_t);
+    /* pack the cmd */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    /* pack the number of ranges */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &nranges, 1, PMIX_SIZE))) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    rptr = (pmix_range_t*)ranges;
+    for (i=0; i < nranges; i++) {
+        r = &rptr[i];
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &r, 1, PMIX_RANGE))) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+    }
+
+    /* create a callback object as we need to pass it to the
+     * recv routine so we know which callback to use when
+     * the return message is recvd */
+    cb = OBJ_NEW(pmix_cb_t);
+    cb->active = true;
+
+    /* push the message into our event base to send to the server */
+    PMIX_ACTIVATE_SEND_RECV(msg, fencenb_cbfunc, cb);
+
+    /* wait for the connect to complete */
+    PMIX_WAIT_FOR_COMPLETION(cb->active);
+    OBJ_RELEASE(cb);
+
+    pmix_output_verbose(2, pmix_client_globals.debug_output,
+                        "pmix: disconnect completed");
+
+    return PMIX_SUCCESS;
 }
 
 

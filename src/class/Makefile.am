@@ -1,9 +1,5 @@
 # -*- makefile -*-
 #
-# PMIx copyrights:
-# Copyright (c) 2013      Intel, Inc. All rights reserved
-#
-#########################
 # Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
 #                         University Research and Technology
 #                         Corporation.  All rights reserved.
@@ -14,7 +10,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-#########################
+# Copyright (c) 2013-2014 Intel, Inc. All rights reserved
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -33,6 +29,18 @@ headers += \
         src/class/pmix_hash_table.h
 
 sources += \
+        src/class/pmix_object.c \
+        src/class/pmix_list.c \
+        src/class/pmix_pointer_array.c \
+        src/class/pmix_hash_table.c
+
+server_headers += \
+        src/class/pmix_object.h \
+        src/class/pmix_list.h \
+        src/class/pmix_pointer_array.h \
+        src/class/pmix_hash_table.h
+
+server_sources += \
         src/class/pmix_object.c \
         src/class/pmix_list.c \
         src/class/pmix_pointer_array.c \

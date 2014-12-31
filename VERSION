@@ -3,50 +3,46 @@
 # Copyright (c) 2011      NVIDIA Corporation.  All rights reserved.
 # Copyright (c) 2013      Mellanox Technologies, Inc.
 #                         All rights reserved.
+# Copyright (c) 2014      Intel, Inc. All rights reserved.
 
-# This is the VERSION file for Open MPI, describing the precise
-# version of Open MPI in this distribution.  The various components of
+# This is the VERSION file for PMIx, describing the precise
+# version of PMIx in this distribution.  The various components of
 # the version number below are combined to form a single version
 # number string.
 
 # major, minor, and release are generally combined in the form
-# <major>.<minor>.<release>.  If release is zero, then it is omitted.
+# <major>.<minor>.<release>.
 
 major=1
-minor=9
+minor=0
 release=0
 
 # greek is used for alpha or beta release tags.  If it is non-empty,
 # it will be appended to the version number.  It does not have to be
-# numeric.  Common examples include a1 (alpha release 1),
-# b1 (beta release 1), sc2005 (Super Computing 2005 release).  The
-# only requirement is that it must be entirely printable ASCII
+# numeric.  Common examples include a1 (alpha release 1), b1 or (beta release 1).
+# The only requirement is that it must be entirely printable ASCII
 # characters and have no white space.
 
 greek=a1
 
 # If want_repo_rev=1, then the repo revision number will be included
-# in the overall Open MPI version number in some form.
+# in the overall PMIx version number in some form.
 
 want_repo_rev=1
 
 # If repo_rev=-1, then the repository version number will be obtained
 # dynamically at run time, either:
 #
-# 1) via the "svnversion" command (if this is a Subversion checkout)
-#    in the form "r<svn_r>", or
-# 2) via the "hg -v -R tip" command (if this is a Mercurial clone)
-#    in the form of "hg<hash>", using the hash tag at the tip
-# 3) via the "git log -1" command (if this is a Git clone) in the form
+# 1) via the "git log -1" command (if this is a Git clone) in the form
 #    of "git<hash>", using the hash tag at the HEAD
-# 4) with the date (if none of the above work) in the form of
+# 4) with the date (if the above doesn't work) in the form of
 #    "date<date>".
 #
 # Alternatively, if repo_rev is not -1, the value of repo_rev_r will
 # be directly appended to the version string.  This happens during
 # "make dist", for example: if the distribution tarball is being made
-# from an SVN checkout, if repo_rev=-1, then its value is replaced
-# with the output of "svnversion".
+# from a git checkout, if repo_rev=-1, then its value is replaced
+# with the output of "gitversion".
 
 repo_rev=-1
 
@@ -54,37 +50,18 @@ repo_rev=-1
 
 date="Unreleased developer copy"
 
-# The shared library version of each of Open MPI's public libraries.
+# The shared library version of each of PMIx's public libraries.
 # These versions are maintained in accordance with the "Library
-# Interface Versions" chapter from the GNU Libtool documentation.  The
-# first Open MPI release to programatically specify these versions was
-# v1.3.4 (note that Libtool defaulted all prior releases to 0:0:0).
-# All changes in these version numbers are dictated by the Open MPI
+# Interface Versions" chapter from the GNU Libtool documentation.
+# All changes in these version numbers are dictated by the PMIx
 # release managers (not individual developers).  Notes:
 
 # 1. Since these version numbers are associated with *releases*, the
-# version numbers maintained on the Open MPI SVN trunk (and developer
+# version numbers maintained on the PMIx Github trunk (and developer
 # branches) is always 0:0:0 for all libraries.
 
-# 2. The version number of libmpi refers to the public MPI interfaces.
+# 2. The version number of libpmix refers to the public pmix interfaces.
 # It does not refer to any internal interfaces.
-
-# 3. Similar to libmpi, the version numbers of the Fortran libraries
-# refer to the public MPI interfaces.  For example, that there have
-# been typo fixes in the parameter types to mpif.h Fortran library
-# functions over time; these technically did not change the interface
-# because Fortran 77 does not link by parameter type.
-
-# 4. Similar to libmpi, libmpi_cxx's version number refers to the
-# public MPI interfaces.  Note that this version number may or may not
-# be affected by changes to inlined functions in OMPI's
-# header-file-based C++ bindings implementation.
-
-# 5. The ORTE and OPAL libraries will change versions when their
-# public interfaces change (as relative to the layer(s) above them).
-# None of the ORTE and OPAL interfaces are public to MPI applications,
-# but they are "public" within the OMPI code base and select 3rd party
-# software packages.
 
 # Version numbers are described in the Libtool current:revision:age
 # format.

@@ -30,8 +30,10 @@ AM_LDFLAGS = $(PMIX_LDFLAGS)
 headers =
 sources =
 nodist_headers =
-include_HEADERS = src/api/pmix.h
+include_HEADERS = src/api/pmix.h src/api/pmix_server.h
 dist_pmixdata_DATA =
+server_headers =
+server_sources =
 
 EXTRA_DIST = README INSTALL VERSION LICENSE autogen.sh \
              config/pmix_get_version.sh \
@@ -44,9 +46,12 @@ include src/buffer_ops/Makefile.am
 include src/util/Makefile.am
 include src/client/Makefile.am
 
-lib_LTLIBRARIES = libpmix.la
+lib_LTLIBRARIES = libpmix.la libpmix-server.la
 libpmix_la_SOURCES = $(headers) $(sources)
 libpmix_la_LDFLAGS = $(ldflags) -version-info $(libpmix_so_version) $(PMIX_LIBS)
+
+libpmix_server_la_SOURCES = $(server_headers) $(server_sources)
+libpmix_server_la_LDFLAGS = $(ldflags) -version-info $(libpmix_so_version) $(PMIX_LIBS)
 
 dist-hook:
 	csh "$(top_srcdir)/config/distscript.csh" "$(top_srcdir)" "$(distdir)" "$(PMIX_VERSION)" "$(PMIX_SVN_R)"
