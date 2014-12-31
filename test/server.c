@@ -35,8 +35,12 @@
 #include "src/buffer_ops/types.h"
 #include "src/buffer_ops/types.h"
 #include "src/util/error.h"
+extern int errno;
+#include <errno.h>
 
+#include "test_common.h"
 
+pmix_buffer_t **pmix_db = NULL;
 struct event_base *server_base = NULL;
 struct event *listen_ev = NULL;
 int listen_fd = -1;
@@ -45,7 +49,7 @@ static int start_listening(struct sockaddr_un *address);
 static void connection_handler(int incoming_sd, short flags, void* cbdata);
 static void message_handler(int incoming_sd, short flags, void* cbdata);
 
-event_t *event;
+event_t *cli_ev;
 pmix_usock_hdr_t hdr;
 char *data = NULL;
 bool hdr_rcvd = false;
@@ -55,6 +59,7 @@ size_t rbytes = 0;
 bool service = true;
 
 void process_message();
+void prepare_db(void);
 
 /*
  * Initialize global variables used w/in the server.
@@ -72,6 +77,9 @@ int main(int argc, char **argv)
         printf("Cannot create libevent event\n");
         return 0;
     }
+
+    /* prepare database */
+    prepare_db();
     
     /* setup the path to the rendezvous point */
     memset(&address, 0, sizeof(struct sockaddr_un));
@@ -179,9 +187,9 @@ static void connection_handler(int incomind_sd, short flags, void* cbdata)
         printf("Cannot send my acknoledgement!\n");
         exit(0);
     }
-    event = event_new(server_base, sd,
+    cli_ev = event_new(server_base, sd,
                       EV_READ|EV_PERSIST, message_handler, NULL);
-    event_add(event,NULL);
+    event_add(cli_ev,NULL);
     usock_set_nonblocking(sd);
     client_fd = sd;
     printf("New client connection accepted\n");
@@ -203,8 +211,8 @@ static void message_handler(int sd, short flags, void* cbdata)
         if ( PMIX_ERR_UNREACH == rc ) {
             /* Communication error */
             fprintf(stderr,"Error communicating with the client\n");
-            event_del(event);
-            event_free(event);
+            event_del(cli_ev);
+            event_free(cli_ev);
             close(client_fd);
             client_fd = -1;
             return;
@@ -255,6 +263,122 @@ static void message_handler(int sd, short flags, void* cbdata)
     }
 }
 
+/* Copy from src/client/usock.c */
+static int usock_send_blocking(int sd, void *ptr, size_t size)
+{
+    size_t cnt = 0;
+    int retval;
+
+    while (cnt < size) {
+        retval = send(sd, (char*)ptr+cnt, size-cnt, 0);
+        if (retval < 0) {
+            if ( errno != EINTR ) {
+                pmix_output(0, "usock_peer_send_blocking: send() to socket %d failed: %s (%d)\n",
+                            sd, strerror(errno), errno);
+                return PMIX_ERR_UNREACH;
+            }
+            continue;
+        }
+        cnt += retval;
+    }
+
+    pmix_output_verbose(2, pmix_client_globals.debug_output,
+                        "blocking send complete to socket %d",
+                        pmix_client_globals.sd);
+    return PMIX_SUCCESS;
+}
+
+void prepare_db(void)
+{
+    int i;
+    char *str = NULL;
+
+    pmix_db = malloc(sizeof(pmix_buffer_t*) * 3);
+    for (i=0;i<3;i++){
+        uint32_t scope;
+        pmix_buffer_t scope_b, *scope_bp = &scope_b, *buf;
+        pmix_value_t val;
+        pmix_kval_t kv, *kvp = &kv;
+        char sval[256], key[256];
+        uint32_t tmp;
+
+        /* Construct the buffer */
+        pmix_db[i] = OBJ_NEW(pmix_buffer_t);
+        buf = pmix_db[i];
+        OBJ_CONSTRUCT(scope_bp,pmix_buffer_t);
+
+        /* Pack namespace of this processes in scenario */
+        str = TEST_NAMESPACE;
+        pmix_bfrop.pack(buf,&str,1,PMIX_STRING);
+
+        /* Pack rank of the ghost process */
+        tmp = i;
+        pmix_bfrop.pack(buf,&tmp,1,PMIX_UINT32);
+
+        /* Create local data  */
+        sprintf(key,"local-key-%d",i);
+        PMIX_VAL_SET(&val, int, 12340+i);
+        kv.key = key;
+        kv.value = &val;
+        pmix_bfrop.pack(scope_bp,&kvp, 1, PMIX_KVAL);
+        scope = PMIX_LOCAL;
+        pmix_bfrop.pack(buf,&scope, 1, PMIX_SCOPE);
+        pmix_bfrop.pack(buf, &scope_bp, 1, PMIX_BUFFER);
+        OBJ_DESTRUCT(scope_bp);
+        PMIX_VAL_FREE(&val);
+
+        /* Create remote data  */
+        OBJ_CONSTRUCT(scope_bp,pmix_buffer_t);
+        sprintf(key,"remote-key-%d",i);
+        sprintf(sval,"Test string #%d",i);
+        PMIX_VAL_SET(&val,string, str);
+        kv.key = key;
+        kv.value = &val;
+        pmix_bfrop.pack(scope_bp,&kvp, 1, PMIX_KVAL);
+        scope = PMIX_REMOTE;
+        pmix_bfrop.pack(buf, &scope, 1, PMIX_SCOPE);
+        pmix_bfrop.pack(buf, &scope_bp, 1, PMIX_BUFFER);
+        OBJ_DESTRUCT(scope_bp);
+        PMIX_VAL_FREE(&val);
+
+        /* Create global data  */
+        OBJ_CONSTRUCT(scope_bp,pmix_buffer_t);
+        sprintf(key,"global-key-%d",i);
+        PMIX_VAL_SET(&val,float, 10.15 + i);
+        kv.key = key;
+        kv.value = &val;
+        pmix_bfrop.pack(scope_bp,&kvp, 1, PMIX_KVAL);
+        scope = PMIX_GLOBAL;
+        pmix_bfrop.pack(buf, &scope, 1, PMIX_SCOPE);
+        pmix_bfrop.pack(buf, &scope_bp, 1, PMIX_BUFFER);
+        OBJ_DESTRUCT(scope_bp);
+        PMIX_VAL_FREE(&val);
+    }
+}
+
+static void reply_to_client(pmix_buffer_t *reply,
+                            uint64_t id, uint8_t type, uint32_t tag)
+{
+    int rc;
+    pmix_usock_hdr_t hdr;
+
+    hdr.id = 0;
+    hdr.nbytes = reply->bytes_used;
+    hdr.tag = tag;
+    hdr.type = type;
+
+    rc = usock_send_blocking(client_fd, &hdr, sizeof(hdr));
+    if( PMIX_SUCCESS != rc ){
+        pmix_output(0,"Error sending the header to the client");
+        return;
+    }
+
+    rc = usock_send_blocking(client_fd,reply->unpack_ptr,reply->bytes_used);
+    if( PMIX_SUCCESS != rc ){
+        pmix_output(0,"Error sending the header to the client");
+        return;
+    }
+}
 
 inline static int verify_kvps(pmix_buffer_t *xfer)
 {
@@ -264,9 +388,9 @@ inline static int verify_kvps(pmix_buffer_t *xfer)
     pmix_kval_t *kvp = NULL;
 
     // We expect 3 keys here:
-    // 1. for the local scope:  "local-key" = "12345" (INT)
-    // 2. for the remote scope: "remote-key" = "Test string" (STRING)
-    // 3. for the global scope: "global-key" = "10.15" (FLOAT)
+    // 1. for the local scope:  "local-key-2" = "12342" (INT)
+    // 2. for the remote scope: "remote-key-2" = "Test string #2" (STRING)
+    // 3. for the global scope: "global-key-2" = "12.15" (FLOAT)
     // Should test more cases in future
 
     while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(xfer, &scope, &cnt, PMIX_SCOPE))) {
@@ -276,6 +400,8 @@ inline static int verify_kvps(pmix_buffer_t *xfer)
             fprintf(stderr,"Cannot unpack\n");
             abort();
         }
+
+        /* process the input */
         if (PMIX_LOCAL == scope) {
             int keys = 0;
             while( 1 ){
@@ -285,8 +411,8 @@ inline static int verify_kvps(pmix_buffer_t *xfer)
                 }
                 keys++;
                 if( keys == 1){
-                    if( strcmp(kvp->key, "local-key") || kvp->value->type != PMIX_INT
-                            || kvp->value->data.integer != 12345 ){
+                    if( strcmp(kvp->key, "local-key-2") || kvp->value->type != PMIX_INT
+                            || kvp->value->data.integer != 12342 ){
                         fprintf(stderr,"Error receiving LOCAL key\n");
                         abort();
                     }
@@ -301,8 +427,8 @@ inline static int verify_kvps(pmix_buffer_t *xfer)
                 }
                 keys++;
                 if( keys == 1){
-                    if( strcmp(kvp->key, "remote-key") || kvp->value->type != PMIX_STRING
-                            || strcmp(kvp->value->data.string,"Test string") ){
+                    if( strcmp(kvp->key, "remote-key-2") || kvp->value->type != PMIX_STRING
+                            || strcmp(kvp->value->data.string,"Test string #2") ){
                         fprintf(stderr,"Error receiving REMOTE key\n");
                         abort();
                     }
@@ -317,8 +443,8 @@ inline static int verify_kvps(pmix_buffer_t *xfer)
                 }
                 keys++;
                 if( keys == 1){
-                    if( strcmp(kvp->key, "global-key") || kvp->value->type != PMIX_FLOAT ||
-                            kvp->value->data.fval != (float)10.15 ){
+                    if( strcmp(kvp->key, "global-key-2") || kvp->value->type != PMIX_FLOAT ||
+                            kvp->value->data.fval != (float)12.15 ){
                         fprintf(stderr,"Error receiving GLOBAL key\n");
                         abort();
                     }
@@ -337,8 +463,11 @@ void process_message()
     int32_t cnt;
     pmix_cmd_t cmd;
     pmix_buffer_t *reply = NULL;
-    pmix_buffer_t xfer;
+    pmix_buffer_t xfer, buf;
     uint64_t id, idreq;
+    uint32_t tag;
+    uint8_t type;
+    char *str;
 
     /* xfer the message to a buffer for unpacking */
     OBJ_CONSTRUCT(&xfer, pmix_buffer_t);
@@ -347,7 +476,8 @@ void process_message()
     xfer.unpack_ptr = xfer.base_ptr;
     xfer.pack_ptr = ((char*)xfer.base_ptr) + xfer.bytes_used;
 
-    uint32_t tag = hdr.tag;
+    type = hdr.type;
+    tag = hdr.tag;
     id = hdr.id;
     /* protect the transferred data */
     data = NULL;
@@ -403,15 +533,20 @@ void process_message()
 */
     case PMIX_FENCE_CMD:
     case PMIX_FENCENB_CMD:{
-        char *local_uri;
-        int cnt = 1, rc;
+        int cnt = 1, rc, tmp, i;
         size_t nranges;
         pmix_scope_t scope;
         pmix_range_t **ranges = NULL;
 
         pmix_output(0, "executing fence");
 
-        /* pack the number of ranges */
+        /* Save the input in tthe reply */
+        /* In this scenario we have 3 processes each exporting:
+         * - local-key-<rank>=1234<rank>: 12340/12341/12342. Our client is #2.
+         * - remote-key-<rank>="Test string #<rank>"
+         * - global-key-<rank>=1<rank>.15 */
+
+        /* unpack the number of ranges */
         cnt = 1;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&xfer, &nranges, &cnt, PMIX_SIZE))) {
             PMIX_ERROR_LOG(rc);
@@ -429,20 +564,20 @@ void process_message()
             }
         }
 
+        /* prepare reply */
+        reply = OBJ_NEW(pmix_buffer_t);
+        /* 1. pack number of processes in scenario */
+        tmp = 3;
+        pmix_bfrop.pack(reply,&tmp,1,PMIX_UINT32);
+
+        /* 3. verify incoming data */
         verify_kvps(&xfer);
-/*
-        if (PMIX_FENCE_CMD == cmd) {
-            // send a release message back to the sender so they don't hang
-            reply = OBJ_NEW(pmix_buffer_t);
-            // pack the tag
-            if (PMIX_SUCCESS != (rc = opal_dss.pack(reply, &tag, 1, OPAL_UINT32))) {
-                ORTE_ERROR_LOG(rc);
-                goto cleanup;
-            }
-            goto reply_to_peer;
+
+        /* 4. pack the result of processing in reply */
+        for(i=0;i<3;i++){
+            pmix_bfrop.pack(reply,&pmix_db[i],1, PMIX_BUFFER);
         }
- */
-        goto cleanup;
+        break;
     }
 /*
     case PMIX_GET_CMD:
@@ -546,8 +681,8 @@ reply_to_peer:
 */
 cleanup:
     if( NULL != reply ){
+        reply_to_client(reply, id, type, tag);
         OBJ_RELEASE(reply);
     }
     OBJ_DESTRUCT(&xfer);
-
 }
