@@ -58,6 +58,11 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
                            [AC_MSG_WARN([LIBEVENT SUPPORT NOT FOUND])
                             AC_MSG_ERROR([CANNOT CONTINE])])
 
+        CPPFLAGS="$pmix_libevent_CPPFLAGS $CPPFLAGS"
+        LIBS="$pmix_libevent_LIBS $LIBS"
+        LDFLAGS="$pmix_libevent_LDFLAGS $LDFLAGS"
+
+
         # Ensure that this libevent has the symbol
         # "evthread_set_lock_callbacks", which will only exist if
         # libevent was configured with thread support.
