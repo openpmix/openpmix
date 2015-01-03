@@ -16,6 +16,9 @@
 #include <sys/time.h> /* for struct timeval */
 #endif
 
+/* For true/false */
+#include "src/include/pmix_config.h"
+
 #if defined(c_plusplus) || defined(__cplusplus)
 extern "C" {
 #endif
