@@ -10,12 +10,16 @@
 #
 
 headers += \
-        src/client/pmix_client_hash.h
+        src/usock/usock.h
 
 sources += \
-        src/client/pmix_client_hash.c \
-        src/client/pmix_client.c \
-        src/client/pmi1.c \
-        src/client/pmi2.c
+        src/usock/usock.c \
+        src/usock/usock_sendrecv.c
 
+server_headers += \
+        src/usock/usock.h
+
+server_sources += \
+        src/usock/usock.c \
+        src/usock/usock_sendrecv.c
 

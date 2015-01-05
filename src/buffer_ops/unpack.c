@@ -133,31 +133,6 @@ int pmix_bfrop_unpack_buffer(pmix_buffer_t *buffer, void *dst, int32_t *num_vals
 /* UNPACK GENERIC SYSTEM TYPES */
 
 /*
- * BOOL
- */
-int pmix_bfrop_unpack_bool(pmix_buffer_t *buffer, void *dest,
-                           int32_t *num_vals, pmix_data_type_t type)
-{
-    int ret;
-    pmix_data_type_t remote_type;
-
-    if (PMIX_SUCCESS != (ret = pmix_bfrop_get_data_type(buffer, &remote_type))) {
-        return ret;
-    }
-
-    if (remote_type == BFROP_TYPE_BOOL) {
-        /* fast path it if the sizes are the same */
-        /* Turn around and unpack the real type */
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_buffer(buffer, dest, num_vals, BFROP_TYPE_BOOL))) {
-        }
-    } else {
-        /* slow path - types are different sizes */
-        UNPACK_SIZE_MISMATCH(bool, remote_type, ret);
-    }
-    return ret;
-}
-
-/*
  * INT
  */
 int pmix_bfrop_unpack_int(pmix_buffer_t *buffer, void *dest,
@@ -484,11 +459,6 @@ static int unpack_val(pmix_buffer_t *buffer, pmix_value_t *val)
 
     m = 1;
     switch (val->type) {
-    case PMIX_BOOL:
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_buffer(buffer, &val->data.flag, &m, PMIX_BOOL))) {
-            return ret;
-        }
-        break;
     case PMIX_BYTE:
         if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_buffer(buffer, &val->data.byte, &m, PMIX_BYTE))) {
             return ret;
@@ -607,7 +577,7 @@ int pmix_bfrop_unpack_value(pmix_buffer_t *buffer, void *dest,
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
         /* unpack value */
-        if (PMIX_SUCCESS != (ret = unpack_val(buffer,ptr[i]->value)) ) {
+        if (PMIX_SUCCESS != (ret = unpack_val(buffer,&ptr[i]->value)) ) {
             return ret;
         }
     }
@@ -708,7 +678,7 @@ int pmix_bfrop_unpack_range(pmix_buffer_t *buffer, void *dest,
         if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_string(buffer, &tmp, &m, PMIX_STRING))) {
             return ret;
         }
-        (void)strncpy(ptr[i]->namespace, tmp, PMIX_MAX_VALLEN);
+        (void)strncpy(ptr[i]->namespace, tmp, PMIX_MAX_NSLEN);
         free(tmp);
         /* unpack the number of ranks */
         m=1;
@@ -922,3 +892,47 @@ int pmix_bfrop_unpack_topo(pmix_buffer_t *buffer, void *dest,
     return rc;
 }
 #endif
+
+int pmix_bfrop_unpack_modex(pmix_buffer_t *buffer, void *dest,
+                            int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_modex_data_t **ptr;
+    int32_t i, n, m;
+    int ret;
+    char *tmp;
+    
+    ptr = (pmix_modex_data_t **) dest;
+    n = *num_vals;
+    
+    for (i = 0; i < n; ++i) {
+        /* allocate the new object */
+        ptr[i] = (pmix_modex_data_t*)malloc(sizeof(pmix_modex_data_t));
+        if (NULL == ptr[i]) {
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+        /* unpack namespace */
+        m=1;
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_string(buffer, &tmp, &m, PMIX_STRING))) {
+            return ret;
+        }
+        (void)strncpy(ptr[i]->namespace, tmp, PMIX_MAX_NSLEN);
+        free(tmp);
+        m=1;
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_int(buffer, &ptr[i]->rank, &m, PMIX_INT))) {
+            return ret;
+        }
+        /* unpack the number of bytes */
+        m=1;
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_sizet(buffer, &ptr[i]->size, &m, PMIX_SIZE))) {
+            return ret;
+        }
+        if (0 < ptr[i]->size) {
+            ptr[i]->blob = (uint8_t*)malloc(ptr[i]->size * sizeof(uint8_t));
+            m=ptr[i]->size;
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_byte(buffer, &ptr[i]->blob, &m, PMIX_UINT8))) {
+                return ret;
+            }
+        }
+    }
+    return PMIX_SUCCESS;
+}

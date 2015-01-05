@@ -30,7 +30,8 @@ headers += \
         src/include/pmix_config_top.h \
         src/include/pmix_config_bottom.h \
         src/include/pmix_portable_platform.h \
-        src/include/prefetch.h
+        src/include/prefetch.h \
+        src/include/pmix_globals.h
 
 server_headers += \
         src/include/align.h \
@@ -41,7 +42,8 @@ server_headers += \
         src/include/pmix_config_top.h \
         src/include/pmix_config_bottom.h \
         src/include/pmix_portable_platform.h \
-        src/include/prefetch.h
+        src/include/prefetch.h \
+        src/include/pmix_globals.h
 
 nodist_headers += \
 	src/include/version.h

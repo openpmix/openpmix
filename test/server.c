@@ -41,6 +41,8 @@
 extern int errno;
 #include <errno.h>
 #include "src/util/argv.h"
+
+#include "pmix_server.h"
 #include "test_common.h"
 
 pmix_buffer_t **pmix_db = NULL;
@@ -584,7 +586,7 @@ void process_message()
 
         pmix_output(0, "executing fence");
 
-        /* Save the input in tthe reply */
+        /* Save the input in the reply */
         /* In this scenario we have 3 processes each exporting:
          * - local-key-<rank>=1234<rank>: 12340/12341/12342. Our client is #2.
          * - remote-key-<rank>="Test string #<rank>"

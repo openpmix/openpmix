@@ -12,6 +12,7 @@
 #ifndef PMIX_HASH_H
 #define PMIX_HASH_H
 
+#include "src/buffer_ops/buffer_ops.h"
 #include "src/class/pmix_hash_table.h"
 
 BEGIN_C_DECLS

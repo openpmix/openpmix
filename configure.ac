@@ -894,6 +894,7 @@ AC_SUBST(pmixincludedir)
 pmix_show_subtitle "Final output"
 
 AC_CONFIG_FILES([
-    Makefile
+                   Makefile
+                   test/Makefile
 ])
 AC_OUTPUT

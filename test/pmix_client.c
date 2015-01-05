@@ -55,7 +55,7 @@ int main(int argc, char **argv)
     if (PMIX_SUCCESS != (rc = PMIx_Init(nspace, &rank))) {
         fprintf(stderr, "PMIx cli: PMIx_Init failed: %d\n", rc);
         notify_parent();
-        return rc;
+        exit(0);
     }
 
     if( 0 != strcmp(nspace, TEST_NAMESPACE) ) {
@@ -162,7 +162,7 @@ int main(int argc, char **argv)
     }
     
     return 0;
-kvp_error:
+ kvp_error:
     fprintf(stderr,"Cannot Set Key-Value Pair\n");
     return 0;
 }

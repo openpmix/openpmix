@@ -9,13 +9,6 @@
 # $HEADER$
 #
 
-headers += \
-        src/client/pmix_client_hash.h
-
-sources += \
-        src/client/pmix_client_hash.c \
-        src/client/pmix_client.c \
-        src/client/pmi1.c \
-        src/client/pmi2.c
-
+server_sources += \
+        src/server/pmix_server.c
 

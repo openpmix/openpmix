@@ -33,12 +33,9 @@
 #include "src/class/pmix_object.h"
 #include "src/class/pmix_pointer_array.h"
 #include "src/class/pmix_list.h"
+#include "src/api/pmix_common.h"
 
 BEGIN_C_DECLS
-
-/* for convenience */
-typedef struct event event_t;
-typedef struct event_base event_base_t;
 
 /* define the results values for comparisons so we can change them in only one place */
 #define PMIX_VALUE1_GREATER  +1

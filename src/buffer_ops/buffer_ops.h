@@ -28,8 +28,8 @@
 #define PMIX_BFROP_H_
 
 #include "pmix_config.h"
-
-#include "src/api/pmix.h"
+#include "src/include/types.h"
+#include "src/include/pmix_globals.h"
 #include "src/buffer_ops/types.h"
 
 BEGIN_C_DECLS
@@ -45,13 +45,10 @@ typedef struct {
 OBJ_CLASS_DECLARATION(pmix_kval_t);
 
 /* A non-API function for something that happens in a number
- * of places throughout the code base - loading a value into
- * a pmix_value_t structure
+ * of places throughout the code base - transferring a value to
+ * another pmix_value_t structure
  */
-PMIX_DECLSPEC int pmix_value_load(pmix_value_t *kv,
-                                  void *data, pmix_data_type_t type);
-PMIX_DECLSPEC int pmix_value_unload(pmix_value_t *kv,
-                                    void **data, pmix_data_type_t type);
+PMIX_DECLSPEC int pmix_value_xfer(pmix_value_t *kv, pmix_value_t *src);
 
 /**
  * Top-level interface function to pack one or more values into a
