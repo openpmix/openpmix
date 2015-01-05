@@ -30,6 +30,9 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <event.h>
+#include <unistd.h>
+#include <signal.h>
+
 #include "src/client/usock.h"
 #include "src/client/pmix_client.h"
 #include "src/buffer_ops/types.h"
@@ -37,7 +40,7 @@
 #include "src/util/error.h"
 extern int errno;
 #include <errno.h>
-
+#include "src/util/argv.h"
 #include "test_common.h"
 
 pmix_buffer_t **pmix_db = NULL;
@@ -45,11 +48,12 @@ struct event_base *server_base = NULL;
 struct event *listen_ev = NULL;
 int listen_fd = -1;
 int client_fd = -1;
+pid_t client_pid = -1;
 static int start_listening(struct sockaddr_un *address);
 static void connection_handler(int incoming_sd, short flags, void* cbdata);
 static void message_handler(int incoming_sd, short flags, void* cbdata);
 
-event_t *cli_ev;
+event_t *cli_ev, *exit_ev;
 pmix_usock_hdr_t hdr;
 char *data = NULL;
 bool hdr_rcvd = false;
@@ -60,24 +64,23 @@ bool service = true;
 
 void process_message();
 void prepare_db(void);
+int run_client(struct sockaddr_un address, char **env);
 
 /*
  * Initialize global variables used w/in the server.
  */
-int main(int argc, char **argv)
+int main(int argc, char **argv, char **env)
 {
     struct sockaddr_un address;
-    char **client_env=NULL;
-    char **client_argv=NULL;
+
+    fprintf(stderr,"Start PMIx smoke test\n");
 
     pmix_bfrop_open();
-
     /* initialize the event library */
     if (NULL == (server_base = event_base_new())) {
         printf("Cannot create libevent event\n");
         return 0;
     }
-
     /* prepare database */
     prepare_db();
     
@@ -86,29 +89,22 @@ int main(int argc, char **argv)
     address.sun_family = AF_UNIX;
     snprintf(address.sun_path, sizeof(address.sun_path)-1, "pmix");
 
+    fprintf(stderr,"PMIx srv: Initialization finished\n");
+
     /* start listening */
     start_listening(&address);
 
-    
-    /* define the argv for the test client */
-    //pmix_argv_append_nosize(&client_argv, "client");
-
-    /* pass our URI */
-    //asprintf(&tmp, "PMIX_SERVER_URI=0:%s", address.sun_path);
-    //pmix_argv_append_nosize(&client_env, tmp);
-    //free(tmp);
-    /* pass an ID for the client */
-    //pmix_argv_append_nosize(&client_env, "PMIX_ID=1");
-    /* pass a security credential */
-    //pmix_argv_append_nosize(&client_env, "PMIX_SEC_CRED=credential-string");
-    
     /* fork/exec the test */
+    if( run_client(address, env) ){
+        exit(0);
+    }
 
     /* cycle the event library until complete */
     while( service ){
          event_base_loop(server_base, EVLOOP_ONCE);
     }
-    
+    fprintf(stderr,"PMIx srv: exit service loop. wait() for the client termination\n");
+    wait(NULL);
     return 0;
 }
 
@@ -124,30 +120,36 @@ static int start_listening(struct sockaddr_un *address)
     /* create a listen socket for incoming connection attempts */
     sd = socket(PF_UNIX, SOCK_STREAM, 0);
     if (sd < 0) {
-        printf("%s:%d socket() failed", __FILE__, __LINE__);
+        fprintf(stderr, "PMIx srv: %s:%d socket() failed %d:%s",
+                __FILE__, __LINE__, errno, strerror(errno));
         return -1;
     }
 
     addrlen = sizeof(struct sockaddr_un);
     if (bind(sd, (struct sockaddr*)address, addrlen) < 0) {
-        printf("%s:%d bind() failed", __FILE__, __LINE__);
+        fprintf(stderr, "PMIx srv: %s:%d bind() failed %d:%s",
+                __FILE__, __LINE__, errno, strerror(errno));
         return -1;
     }
         
     /* setup listen backlog to maximum allowed by kernel */
     if (listen(sd, SOMAXCONN) < 0) {
-        printf("%s:%d listen() failed", __FILE__, __LINE__);
+        fprintf(stderr, "PMIx srv: %s:%d listen() failed %d:%s",
+                __FILE__, __LINE__, errno, strerror(errno));
         return -1;
     }
         
     /* set socket up to be non-blocking, otherwise accept could block */
     if ((flags = fcntl(sd, F_GETFL, 0)) < 0) {
-        printf("%s:%d fcntl(F_GETFL) failed", __FILE__, __LINE__);
+        fprintf(stderr, "PMIx srv: %s:%d fcntl(F_GETFL) failed %d:%s",
+                __FILE__, __LINE__, errno, strerror(errno));
         return -1;
     }
     flags |= O_NONBLOCK;
     if (fcntl(sd, F_SETFL, flags) < 0) {
-        printf("%s:%d fcntl(F_SETFL) failed", __FILE__, __LINE__);
+        fprintf(stderr, "PMIx srv: %s:%d fcntl(F_SETFL) failed %d:%s",
+                __FILE__, __LINE__, errno, strerror(errno));
+
         return -1;
     }
 
@@ -158,7 +160,68 @@ static int start_listening(struct sockaddr_un *address)
     listen_ev = event_new(server_base, listen_fd,
                           EV_READ|EV_PERSIST, connection_handler, 0);
     event_add(listen_ev, 0);
-    printf("Server is listening for incoming connections\n");
+    fprintf(stderr, "PMIx srv: Server is listening for incoming connections\n");
+    return 0;
+}
+
+static void exit_handler(int incomind_sd, short flags, void* cbdata)
+{
+    fprintf(stderr, "PMIx srv: Caught signal from the client. Exit\n");
+    service = false;
+}
+
+int run_client(struct sockaddr_un address, char **env)
+{
+    char **client_env = NULL;
+    char **client_argv = NULL;
+    char *tmp;
+    int i;
+
+    // setup signal handler to be notified on error
+    // at client exec
+    event_t *ev = evsignal_new(server_base, SIGUSR1, exit_handler, NULL);
+    event_add(ev,NULL);
+    fprintf(stderr, "PMIx srv: SIGUSR1 handler was intalled\n");
+
+    /* define the argv for the test client */
+    pmix_argv_append_nosize(&client_argv, "client");
+
+    for(i=0; NULL != env[i]; i++){
+        pmix_argv_append_nosize(&client_env, env[i]);
+    }
+    /* pass our URI */
+    asprintf(&tmp, "PMIX_SERVER_URI=0:%s", address.sun_path);
+    pmix_argv_append_nosize(&client_env, tmp);
+    free(tmp);
+    /* pass an ID for the client */
+    pmix_argv_append_nosize(&client_env, "PMIX_RANK=1");
+    /* pass a security credential */
+    asprintf(&tmp, "PMIX_NAMESPACE=smoky_namespace");
+    pmix_argv_append_nosize(&client_env, tmp);
+    free(tmp);
+
+    fprintf(stderr, "PMIx srv: Client environment was initialized\n");
+
+    /* fork/exec the test */
+    client_pid = fork();
+    if( client_pid < 0 ){
+        printf("Cannot fork()\n");
+        return -1;
+    }else if( client_pid == 0 ){
+        /* setup environment */
+        int rc = execve("./client", client_argv, client_env);
+        // shouldn't get here
+        printf("Cannot execle the client, rc = %d (%s)\n",
+               errno, strerror(errno));
+        fflush(stderr);
+        // Let parent know
+        pid_t ppid = getppid();
+        kill(ppid,SIGUSR1);
+        abort();
+    }
+
+    fprintf(stderr, "PMIx srv: Client was spawned\n");
+
     return 0;
 }
 
@@ -171,20 +234,23 @@ static void connection_handler(int incomind_sd, short flags, void* cbdata)
     struct sockaddr_un sa;
     int sa_len = sizeof(struct sockaddr_un);
 
+    fprintf(stderr, "PMIx srv: Incoming connection from the client\n");
+
     if( 0 > (sd = accept(incomind_sd,NULL,0)) ){
-        printf("accept() failed");
+        fprintf(stderr, "PMIx srv: %s:%d accept() failed %d:%s",
+                __FILE__, __LINE__, errno, strerror(errno));
         exit(0);
     }
 
     /* receive ack from the server */
     if (PMIX_SUCCESS != (rc = usock_recv_connect_ack(sd))) {
-        printf("Bad acknoledgement!\n");
+        printf("PMIx srv: Bad acknoledgement!\n");
         exit(0);
     }
 
     /* send our globally unique process identifier to the server */
     if (PMIX_SUCCESS != (rc = usock_send_connect_ack(sd))) {
-        printf("Cannot send my acknoledgement!\n");
+        printf("PMIx srv: Cannot send my acknoledgement!\n");
         exit(0);
     }
     cli_ev = event_new(server_base, sd,
@@ -192,7 +258,7 @@ static void connection_handler(int incomind_sd, short flags, void* cbdata)
     event_add(cli_ev,NULL);
     usock_set_nonblocking(sd);
     client_fd = sd;
-    printf("New client connection accepted\n");
+    printf("PMIx srv: New client connection accepted\n");
 }
 
 
@@ -210,7 +276,7 @@ static void message_handler(int sd, short flags, void* cbdata)
         /* Process errors first (if any) */
         if ( PMIX_ERR_UNREACH == rc ) {
             /* Communication error */
-            fprintf(stderr,"Error communicating with the client\n");
+            fprintf(stderr,"PMIx srv: Client closed connection\n");
             event_del(cli_ev);
             event_free(cli_ev);
             close(client_fd);
@@ -232,7 +298,8 @@ static void message_handler(int sd, short flags, void* cbdata)
         } else {
             data = (char*)malloc(hdr.nbytes);
             if (NULL == data ) {
-                fprintf(stderr,"Cannot allocate memory!\n");
+                fprintf(stderr, "PMIx srv: %s:%d Cannot allocate memory! %d",
+                        __FILE__, __LINE__, errno);
                 return;
             }
             /* point to it */
@@ -256,7 +323,9 @@ static void message_handler(int sd, short flags, void* cbdata)
                 return;
         } else {
             /* Communication error */
-            fprintf(stderr,"Error communicating with the client\n");
+            fprintf(stderr, "PMIx srv: %s:%d Error communicating with the client",
+                    __FILE__, __LINE__);
+            kill(client_pid, SIGKILL);
             // TODO: make sure to kill the client
             exit(0);
         }
@@ -273,8 +342,8 @@ static int usock_send_blocking(int sd, void *ptr, size_t size)
         retval = send(sd, (char*)ptr+cnt, size-cnt, 0);
         if (retval < 0) {
             if ( errno != EINTR ) {
-                pmix_output(0, "usock_peer_send_blocking: send() to socket %d failed: %s (%d)\n",
-                            sd, strerror(errno), errno);
+                fprintf(stderr, "PMIx srv: %s:%d send() to socket %d failed: %d:%s",
+                        __FILE__, __LINE__, sd, errno, strerror(errno));
                 return PMIX_ERR_UNREACH;
             }
             continue;
@@ -331,7 +400,7 @@ void prepare_db(void)
         OBJ_CONSTRUCT(scope_bp,pmix_buffer_t);
         sprintf(key,"remote-key-%d",i);
         sprintf(sval,"Test string #%d",i);
-        PMIX_VAL_SET(&val,string, str);
+        PMIX_VAL_SET(&val,string, sval);
         kv.key = key;
         kv.value = &val;
         pmix_bfrop.pack(scope_bp,&kvp, 1, PMIX_KVAL);
@@ -369,13 +438,13 @@ static void reply_to_client(pmix_buffer_t *reply,
 
     rc = usock_send_blocking(client_fd, &hdr, sizeof(hdr));
     if( PMIX_SUCCESS != rc ){
-        pmix_output(0,"Error sending the header to the client");
+        pmix_output(0,"PMIx srv: Error sending the header to the client");
         return;
     }
 
     rc = usock_send_blocking(client_fd,reply->unpack_ptr,reply->bytes_used);
     if( PMIX_SUCCESS != rc ){
-        pmix_output(0,"Error sending the header to the client");
+        pmix_output(0,"PMIx srv: Error sending the header to the client");
         return;
     }
 }
@@ -397,7 +466,7 @@ inline static int verify_kvps(pmix_buffer_t *xfer)
         /* unpack the buffer */
         cnt = 1;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(xfer, &bptr, &cnt, PMIX_BUFFER))) {
-            fprintf(stderr,"Cannot unpack\n");
+            fprintf(stderr,"PMIx srv [verify_kvps]: Cannot unpack\n");
             abort();
         }
 
@@ -413,7 +482,7 @@ inline static int verify_kvps(pmix_buffer_t *xfer)
                 if( keys == 1){
                     if( strcmp(kvp->key, "local-key-2") || kvp->value->type != PMIX_INT
                             || kvp->value->data.integer != 12342 ){
-                        fprintf(stderr,"Error receiving LOCAL key\n");
+                        fprintf(stderr,"PMIx srv [verify_kvps]: Error receiving LOCAL key\n");
                         abort();
                     }
                 }
@@ -500,37 +569,12 @@ void process_message()
 //    memcpy((char*)&name, (char*)&id, sizeof(orte_process_name_t));
 
     switch(cmd) {
-    /*
     case PMIX_FINALIZE_CMD:
-        opal_output_verbose(2, pmix_server_output,
-                            "%s recvd FINALIZE",
-                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME));
+        fprintf(stderr,"PMIx srv: PMIx_Finalize() was called by the client\n");
         service = false;
-        reply = OBJ_NEW(opal_buffer_t);
-        // FIXME: Do we need to pack the tag?
-        goto reply_to_peer;
-    case PMIX_ABORT_CMD:
-        opal_output_verbose(2, pmix_server_output,
-                            "%s recvd ABORT",
-                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME));
-        // unpack the status
-        cnt = 1;
-        if (PMIX_SUCCESS != (rc = opal_dss.unpack(&xfer, &ret, &cnt, OPAL_INT))) {
-            ORTE_ERROR_LOG(rc);
-            goto cleanup;
-        }
-//         don't bother to unpack the message - we ignore this for now as the
-//         proc should have emitted it for itself
-        pmix_server_abort_pm(pm, ret);
+        reply = OBJ_NEW(pmix_buffer_t);
+        break;
 
-        reply = OBJ_NEW(opal_buffer_t);
-        // pack the tag
-        if (PMIX_SUCCESS != (rc = opal_dss.pack(reply, &tag, 1, OPAL_UINT32))) {
-            ORTE_ERROR_LOG(rc);
-            goto cleanup;
-        }
-        goto reply_to_peer;
-*/
     case PMIX_FENCE_CMD:
     case PMIX_FENCENB_CMD:{
         int cnt = 1, rc, tmp, i;
@@ -674,11 +718,7 @@ void process_message()
         abort();
         return;
     }
-/*
-reply_to_peer:
-    PMIX_SERVER_QUEUE_SEND(peer, tag, reply);
-    reply = NULL; // Drop it so it won't be released at cleanup
-*/
+
 cleanup:
     if( NULL != reply ){
         reply_to_client(reply, id, type, tag);
@@ -686,3 +726,4 @@ cleanup:
     }
     OBJ_DESTRUCT(&xfer);
 }
+
