@@ -24,13 +24,14 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include "src/api/pmix.h"
 #include "src/class/pmix_object.h"
 #include "src/buffer_ops/types.h"
 #include "test_common.h"
 
-void notify_parent()
+static void notify_parent(void)
 {
     pid_t ppid = getppid();
     kill(ppid, SIGUSR1);
@@ -52,7 +53,7 @@ int main(int argc, char **argv)
     }
 
     /* init us */
-    if (PMIX_SUCCESS != (rc = PMIx_Init(nspace, &rank))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Init(nspace, &rank, NULL, NULL))) {
         fprintf(stderr, "PMIx cli: PMIx_Init failed: %d\n", rc);
         notify_parent();
         exit(0);
