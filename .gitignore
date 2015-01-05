@@ -44,3 +44,4 @@ test/pmi2_client
 test/pmi_client
 test/pmix_client
 test/pmix_test
+test/pmix_client2

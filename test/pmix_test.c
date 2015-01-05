@@ -41,35 +41,33 @@
 static int authenticate(char *credential);
 static int terminated(const char namespace[], int rank);
 static int abort_fn(int status, const char msg[]);
-static int fence_fn(const pmix_range_t ranges[], size_t nranges,
-                    pmix_modex_data_t *data[], size_t *ndata);
-static int fencenb_fn(const pmix_range_t ranges[], size_t nranges, int barrier,
-                      pmix_fence_cbfunc_t cbfunc, void *cbdata);
+static int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
+                      int collect_data,
+                      pmix_modex_cbfunc_t cbfunc, void *cbdata);
 static int store_modex_fn(pmix_scope_t scope, pmix_modex_data_t *data);
-static int get_modex_fn(const char namespace[], int rank,
-                        pmix_modex_data_t *data[], size_t *ndata);
 static int get_modexnb_fn(const char namespace[], int rank,
                           pmix_modex_cbfunc_t cbfunc, void *cbdata);
 static int get_job_info_fn(const char namespace[], int rank,
-                           pmix_info_t *info[], int *ninfo);
+                           pmix_info_t *info[], size_t *ninfo);
 static int publish_fn(pmix_scope_t scope, const pmix_info_t info[], size_t ninfo);
-static int lookup_fn(pmix_info_t info[], size_t ninfo,
-                     char namespace[]);
-static int unpublish_fn(const pmix_info_t info[], size_t ninfo);
+static int lookup_fn(pmix_scope_t scope,
+                     pmix_info_t info[], size_t ninfo,
+                     char *namespace[]);
+static int unpublish_fn(pmix_scope_t scope, char **keys);
 static int spawn_fn(const pmix_app_t apps[],
                     size_t napps,
                     pmix_spawn_cbfunc_t cbfunc, void *cbdata);
-static int connect_fn(const pmix_range_t ranges[], size_t nranges);
-static int disconnect_fn(const pmix_range_t ranges[], size_t nranges);
+static int connect_fn(const pmix_range_t ranges[], size_t nranges,
+                      pmix_connect_cbfunc_t cbfunc, void *cbdata);
+static int disconnect_fn(const pmix_range_t ranges[], size_t nranges,
+                         pmix_connect_cbfunc_t cbfunc, void *cbdata);
 
 static pmix_server_module_t mymodule = {
     authenticate,
     terminated,
     abort_fn,
-    fence_fn,
     fencenb_fn,
     store_modex_fn,
-    get_modex_fn,
     get_modexnb_fn,
     get_job_info_fn,
     publish_fn,
@@ -113,7 +111,7 @@ int main(int argc, char **argv)
     }
     
     if (pid == 0) {
-        execve("pmix_client", client_argv, client_env);
+        execve("pmix_client2", client_argv, client_env);
         /* Does not return */
     } 
 
@@ -121,7 +119,6 @@ int main(int argc, char **argv)
     while (!test_complete) {
         usleep(10000);
     }
-    usleep(10000);
     
     /* finalize the server library */
     if (PMIX_SUCCESS != (rc = PMIx_server_finalize())) {
@@ -150,17 +147,12 @@ static int abort_fn(int status, const char msg[])
     return PMIX_SUCCESS;
 }
 
-static int fence_fn(const pmix_range_t ranges[], size_t nranges,
-                    pmix_modex_data_t *data[], size_t *ndata)
-{
-    *data = NULL;
-    *ndata = 0;
-    return PMIX_SUCCESS;
-}
-
 static int fencenb_fn(const pmix_range_t ranges[], size_t nranges, int barrier,
-                      pmix_fence_cbfunc_t cbfunc, void *cbdata)
+                      pmix_modex_cbfunc_t cbfunc, void *cbdata)
 {
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, NULL, 0, cbdata);
+    }
     return PMIX_SUCCESS;
 }
 
@@ -169,23 +161,20 @@ static int store_modex_fn(pmix_scope_t scope, pmix_modex_data_t *data)
     return PMIX_SUCCESS;
 }
 
-static int get_modex_fn(const char namespace[], int rank,
-                        pmix_modex_data_t *data[], size_t *ndata)
-{
-    *data = NULL;
-    *ndata = 0;
-    return PMIX_SUCCESS;
-}
-
 static int get_modexnb_fn(const char namespace[], int rank,
                           pmix_modex_cbfunc_t cbfunc, void *cbdata)
 {
+   if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, NULL, 0, cbdata);
+    }
     return PMIX_SUCCESS;
 }
 
 static int get_job_info_fn(const char namespace[], int rank,
-                           pmix_info_t *info[], int *ninfo)
+                           pmix_info_t *info[], size_t *ninfo)
 {
+    *info = NULL;
+    *ninfo = 0;
     return PMIX_SUCCESS;
 }
 
@@ -194,13 +183,15 @@ static int publish_fn(pmix_scope_t scope, const pmix_info_t info[], size_t ninfo
     return PMIX_SUCCESS;
 }
 
-static int lookup_fn(pmix_info_t info[], size_t ninfo,
-                     char namespace[])
+static int lookup_fn(pmix_scope_t scope,
+                     pmix_info_t info[], size_t ninfo,
+                     char *namespace[])
 {
+    *namespace = NULL;
     return PMIX_SUCCESS;
 }
 
-static int unpublish_fn(const pmix_info_t info[], size_t ninfo)
+static int unpublish_fn(pmix_scope_t scope, char **keys)
 {
     return PMIX_SUCCESS;
 }
@@ -209,16 +200,27 @@ static int spawn_fn(const pmix_app_t apps[],
                     size_t napps,
                     pmix_spawn_cbfunc_t cbfunc, void *cbdata)
 {
+   if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, "foobar", cbdata);
+    }
     return PMIX_SUCCESS;
 }
 
-static int connect_fn(const pmix_range_t ranges[], size_t nranges)
+static int connect_fn(const pmix_range_t ranges[], size_t nranges,
+                      pmix_connect_cbfunc_t cbfunc, void *cbdata)
 {
-    return PMIX_SUCCESS;
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, cbdata);
+    }
+   return PMIX_SUCCESS;
 }
 
-static int disconnect_fn(const pmix_range_t ranges[], size_t nranges)
+static int disconnect_fn(const pmix_range_t ranges[], size_t nranges,
+                         pmix_connect_cbfunc_t cbfunc, void *cbdata)
 {
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, cbdata);
+    }
     return PMIX_SUCCESS;
 }
 

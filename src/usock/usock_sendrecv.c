@@ -115,6 +115,10 @@ static int read_bytes(int sd, char **buf, size_t *remain)
                                 pmix_socket_errno);
             ret = PMIX_ERR_UNREACH;
             goto exit;
+        } else if (0 == rc) {
+            /* the remote peer closed the connection */
+            ret = PMIX_ERR_UNREACH;
+            goto exit;
         }
         /* we were able to read something, so adjust counters and location */
         *remain -= rc;
@@ -290,10 +294,7 @@ void pmix_usock_recv_handler(int sd, short flags, void *cbdata)
             /* exit this event and let the event lib progress */
             return;
         } else {
-            /* close the connection */
-            pmix_output_verbose(2, pmix_globals.debug_output,
-                                "usock:recv:handler error reading bytes - closing connection");
-            /* the remote peer closed the connection - report that condition
+           /* the remote peer closed the connection - report that condition
              * and let the caller know
              */
             pmix_output_verbose(2, pmix_globals.debug_output,
@@ -322,11 +323,12 @@ void pmix_usock_recv_handler(int sd, short flags, void *cbdata)
             /* exit this event and let the event lib progress */
             return;
         } else {
-            // report the error
-            pmix_output(0, "usock_peer_recv_handler: unable to recv message");
-            /* turn off the recv event */
+           /* the remote peer closed the connection - report that condition
+             * and let the caller know
+             */
+            pmix_output_verbose(2, pmix_globals.debug_output,
+                                "pmix_usock_msg_recv: peer closed connection");
             goto err_close;
-            return;
         }
     }
     /* success */

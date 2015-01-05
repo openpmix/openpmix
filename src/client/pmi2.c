@@ -118,8 +118,9 @@ int PMI2_KVS_Put(const char key[], const char value[])
 int PMI2_KVS_Fence(void)
 {
     pmix_status_t rc;
-    
-    rc = PMIx_Fence(NULL, 0);
+
+    /* we want all data to be collected upon completion */
+    rc = PMIx_Fence(NULL, 0, 1);
     return convert_err(rc);
 }
 
@@ -250,7 +251,7 @@ int PMI2_Nameserv_unpublish(const char service_name[],
         nvals = 2;
     }
     
-    rc = PMIx_Unpublish(info, nvals);
+    rc = PMIx_Unpublish(PMIX_NAMESPACE, info, nvals);
     return convert_err(rc);
 }
 
@@ -274,7 +275,7 @@ int PMI2_Nameserv_lookup(const char service_name[], const PMI_keyval_t *info_ptr
     }
 
     /* PMI-2 doesn't want the namespace back */
-    if (PMIX_SUCCESS != (rc = PMIx_Lookup(info, nvals, NULL))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Lookup(PMIX_NAMESPACE, info, nvals, NULL))) {
         PMIx_free_value_data(&info[0].value);
         if (2 == nvals) {
             PMIx_free_value_data(&info[1].value);

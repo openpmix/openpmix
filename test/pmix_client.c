@@ -100,7 +100,7 @@ int main(int argc, char **argv)
     }
 
 
-    if (PMIX_SUCCESS != (rc = PMIx_Fence(NULL, 0))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Fence(NULL, 0, 1))) {
         fprintf(stderr, "PMIx cli: PMIx_Fence failed (%d)\n", rc);
         notify_parent();
         exit(0);

@@ -77,10 +77,28 @@ int PMIx_Initialized(void);
 pmix_status_t PMIx_Abort(int status, const char msg[]);
 
 /* Fence */
-pmix_status_t PMIx_Fence(const pmix_range_t ranges[], size_t nranges);
+/* collect_data - false (0) indicates that the callback is just used as
+ * a release and no data is to be returned at that time, true (1) indicates
+ * that all modex data is to be included in the callback. Returned data
+ * is locally cached so that subsequent calls to PMIx_Get can be serviced
+ * without communicating to/from the server, but at the cost of increased
+ * memory footprint */
+pmix_status_t PMIx_Fence(const pmix_range_t ranges[],
+                         size_t nranges, int collect_data);
 
 /* Fence_nb */
-pmix_status_t PMIx_Fence_nb(const pmix_range_t ranges[], size_t nranges, int barrier,
+/* barrier - false (0) indicates that we are to be called back immediately,
+ * true (non-zero) indicates that the callback is to occur once all participants
+ * have reached the fence_nb call
+ *
+ * collect_data - false (0) indicates that the callback is just used as
+ * a release and no data is to be returned at that time, true (1) indicates
+ * that all modex data is to be included in the callback. Returned data
+ * is locally cached so that subsequent calls to PMIx_Get can be serviced
+ * without communicating to/from the server, but at the cost of increased
+ * memory footprint */
+pmix_status_t PMIx_Fence_nb(const pmix_range_t ranges[], size_t nranges,
+                            int barrier, int collect_data,
                             pmix_cbfunc_t cbfunc, void *cbdata);
 
 /* Put */
@@ -102,7 +120,9 @@ pmix_status_t PMIx_Get_nb(const char namespace[], int rank,
  * Note that the keys must be unique within the specified
  * scope or else an error will be returned (first published
  * wins). */
-pmix_status_t PMIx_Publish(pmix_scope_t scope, const pmix_info_t info[], size_t ninfo);
+pmix_status_t PMIx_Publish(pmix_scope_t scope,
+                           const pmix_info_t info[],
+                           size_t ninfo);
 
 /* Lookup - the "info" parameter consists of an array of
  * pmix_info_t objects that specify the requested
@@ -111,19 +131,25 @@ pmix_status_t PMIx_Publish(pmix_scope_t scope, const pmix_info_t info[], size_t 
  * the process that published the service_name. Passing
  * a NULL for the namespace param indicates that the
  * namespace information need not be returned */
-pmix_status_t PMIx_Lookup(pmix_info_t info[], size_t ninfo,
+pmix_status_t PMIx_Lookup(pmix_scope_t scope,
+                          pmix_info_t info[], size_t ninfo,
                           char namespace[]);
 
 /* Unpublish - the "info" parameter
  * consists of an array of pmix_info_t objects */
-pmix_status_t PMIx_Unpublish(const pmix_info_t info[], size_t ninfo);
+pmix_status_t PMIx_Unpublish(pmix_scope_t scope,
+                             const pmix_info_t info[],
+                             size_t ninfo);
 
 /* Spawn a new job */
 pmix_status_t PMIx_Spawn(const pmix_app_t apps[],
                          size_t napps,
                          char namespace[]);
 
-/* register an errhandler to report loss of connection to the server */
+/* register an errhandler to report errors that occur
+ * within the client library, but are not reportable
+ * via the API itself (e.g., loss of connection to
+ * the server) */
 void PMIx_Register_errhandler(pmix_errhandler_fn_t errhandler);
 
 /* deregister the errhandler */

@@ -49,6 +49,58 @@
 #include "src/util/progress_threads.h"
 #include "src/usock/usock.h"
 
+// local classes
+typedef struct {
+    pmix_list_item_t super;
+    pmix_range_t *ranges;
+    size_t nranges;
+    pmix_list_t locals;
+    pmix_list_t *trkr;
+} pmix_server_trkr_t;
+static void tcon(pmix_server_trkr_t *t)
+{
+    t->ranges = NULL;
+    t->nranges = 0;
+    OBJ_CONSTRUCT(&t->locals, pmix_list_t);
+    t->trkr = NULL;
+}
+static void tdes(pmix_server_trkr_t *t)
+{
+    size_t i;
+    
+    if (NULL != t->ranges) {
+        for (i=0; i < t->nranges; i++) {
+            if (NULL != t->ranges[i].ranks) {
+                free(t->ranges[i].ranks);
+            }
+        }
+        free(t->ranges);
+    }
+    PMIX_LIST_DESTRUCT(&t->locals);
+}
+static OBJ_CLASS_INSTANCE(pmix_server_trkr_t,
+                          pmix_list_item_t,
+                          tcon, tdes);
+
+typedef struct {
+    pmix_list_item_t super;
+    pmix_peer_t *peer;
+    uint32_t tag;
+} pmix_server_caddy_t;
+static void cdcon(pmix_server_caddy_t *cd)
+{
+    cd->peer = NULL;
+}
+static void cddes(pmix_server_caddy_t *cd)
+{
+    if (NULL != cd->peer) {
+        OBJ_RELEASE(cd->peer);
+    }
+}
+static OBJ_CLASS_INSTANCE(pmix_server_caddy_t,
+                          pmix_list_item_t,
+                          cdcon, cddes);
+
 // local variables
 static int init_cntr = 0;
 static pmix_server_module_t server;
@@ -58,6 +110,9 @@ static bool local_evbase = false;
 static int mysocket = -1;
 static pmix_list_t peers;
 static struct sockaddr_un myaddress;
+static pmix_list_t fences, gets;
+static pmix_list_t connects, disconnects;
+static pmix_list_t spawns;
 
 // local functions
 static int start_listening(struct sockaddr_un *address);
@@ -130,7 +185,12 @@ int PMIx_server_init(pmix_server_module_t *module,
     memset(&pmix_globals, 0, sizeof(pmix_globals));
     memset(&server, 0, sizeof(pmix_server_module_t));
     OBJ_CONSTRUCT(&peers, pmix_list_t);
-    
+    OBJ_CONSTRUCT(&fences, pmix_list_t);
+    OBJ_CONSTRUCT(&gets, pmix_list_t);
+    OBJ_CONSTRUCT(&connects, pmix_list_t);
+    OBJ_CONSTRUCT(&disconnects, pmix_list_t);
+    OBJ_CONSTRUCT(&spawns, pmix_list_t);
+
     /* initialize the output system */
     if (!pmix_output_init()) {
         return -1;
@@ -224,7 +284,12 @@ int PMIx_server_finalize(void)
         free(myuri);
     }
     PMIX_LIST_DESTRUCT(&peers);
-    
+    PMIX_LIST_DESTRUCT(&fences);
+    PMIX_LIST_DESTRUCT(&gets);
+    PMIX_LIST_DESTRUCT(&connects);
+    PMIX_LIST_DESTRUCT(&disconnects);
+    PMIX_LIST_DESTRUCT(&spawns);
+
     pmix_bfrop_close();
     pmix_usock_finalize();
 
@@ -490,21 +555,202 @@ static int send_client_response(int sd, int status)
     return rc;
 }
 
-            static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
-                                          pmix_buffer_t *buf, void *cbdata)
+static pmix_server_trkr_t* get_tracker(pmix_list_t *trks,
+                                       pmix_range_t *ranges,
+                                       size_t nranges)
 {
-    int rc, status, ret;
+    pmix_server_trkr_t *trk;
+    size_t i, j;
+    bool match;
+
+    PMIX_LIST_FOREACH(trk, trks, pmix_server_trkr_t) {
+        if (trk->nranges != nranges) {
+            continue;
+        }
+        match = true;
+        for (i=0; match && i < nranges; i++) {
+            if (0 != strcmp(ranges[i].namespace, trk->ranges[i].namespace)) {
+                match = false;
+                break;
+            }
+            if (ranges[i].nranks != trk->ranges[i].nranks) {
+                match = false;
+                break;
+            }
+            if (NULL == ranges[i].ranks && NULL == trk->ranges[i].ranks) {
+                /* this range matches */
+                break;
+            }
+            for (j=0; j < ranges[i].nranks; j++) {
+                if (ranges[i].ranks[j] != trk->ranges[i].ranks[j]) {
+                    match = false;
+                    break;
+                }
+            }
+        }
+        if (match) {
+            return trk;
+        }
+    }
+    /* get here if this tracker is new - create it */
+    trk = OBJ_NEW(pmix_server_trkr_t);
+    /* copy the ranges */
+    trk->nranges = nranges;
+    trk->ranges = (pmix_range_t*)malloc(nranges * sizeof(pmix_range_t));
+    for (i=0; i < nranges; i++) {
+        (void)strncpy(trk->ranges[i].namespace, ranges[i].namespace, PMIX_MAX_NSLEN);
+        trk->ranges[i].nranks = ranges[i].nranks;
+        if (NULL != ranges[i].ranks) {
+            trk->ranges[i].ranks = (int*)malloc(ranges[i].nranks * sizeof(int));
+            for (j=0; j < ranges[i].nranks; j++) {
+                trk->ranges[i].ranks[j] = ranges[i].ranks[j];
+            }
+        }
+    }
+    trk->trkr = trks;
+    pmix_list_append(trks, &trk->super);
+    return trk;
+}
+
+static void server_release(int status, pmix_modex_data_t data[],
+                          size_t ndata, void *cbdata)
+{
+    pmix_server_trkr_t *tracker = (pmix_server_trkr_t*)cbdata;
+    pmix_buffer_t *reply;
+    int rc;
+    pmix_server_caddy_t *cd;
+    size_t i;
+    pmix_modex_data_t *mptr;
+
+    if (NULL == tracker) {
+        /* nothing to do */
+        return;
+    }
+    
+    /* setup the reply, starting with the returned status */
+    reply = OBJ_NEW(pmix_buffer_t);
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &status, 1, PMIX_INT))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_RELEASE(reply);
+        return;
+    }
+    /* pack the nblobs being returned */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &ndata, 1, PMIX_SIZE))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_RELEASE(reply);
+        return;
+    }
+    if (0 < ndata) {
+        for (i=0; i < ndata; i++) {
+            mptr = &data[i];
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &mptr, 1, PMIX_MODEX))) {
+                PMIX_ERROR_LOG(rc);
+                OBJ_RELEASE(reply);
+                return;
+            }
+        }
+    }
+    /* send a copy to every member of the tracker */
+    PMIX_LIST_FOREACH(cd, &tracker->locals, pmix_server_caddy_t) {
+        OBJ_RETAIN(reply);
+        PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->tag, reply);
+    }
+    /* maintain reference count */
+    OBJ_RELEASE(reply);
+    /* cleanup the tracker */
+    pmix_list_remove_item(tracker->trkr, &tracker->super);
+    OBJ_RELEASE(tracker);
+}
+
+static void connect_release(int status, void *cbdata)
+{
+    pmix_server_trkr_t *tracker = (pmix_server_trkr_t*)cbdata;
+    pmix_buffer_t *reply;
+    int rc;
+    pmix_server_caddy_t *cd;
+
+    if (NULL == tracker) {
+        /* nothing to do */
+        return;
+    }
+    
+    /* setup the reply with the returned status */
+    reply = OBJ_NEW(pmix_buffer_t);
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &status, 1, PMIX_INT))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_RELEASE(reply);
+        return;
+    }
+    /* send a copy to every member of the tracker */
+    PMIX_LIST_FOREACH(cd, &tracker->locals, pmix_server_caddy_t) {
+        OBJ_RETAIN(reply);
+        PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->tag, reply);
+    }
+    /* maintain reference count */
+    OBJ_RELEASE(reply);
+    /* cleanup the tracker */
+    pmix_list_remove_item(tracker->trkr, &tracker->super);
+    OBJ_RELEASE(tracker);
+}
+
+static void spawn_release(int status, char *namespace, void *cbdata)
+{
+    pmix_server_trkr_t *tracker = (pmix_server_trkr_t*)cbdata;
+    pmix_buffer_t *reply;
+    int rc;
+    pmix_server_caddy_t *cd;
+
+    if (NULL == tracker) {
+        /* nothing to do */
+        return;
+    }
+    
+    /* setup the reply with the returned status */
+    reply = OBJ_NEW(pmix_buffer_t);
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &status, 1, PMIX_INT))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_RELEASE(reply);
+        return;
+    }
+    /* add the namespace */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &namespace, 1, PMIX_STRING))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_RELEASE(reply);
+        return;
+    }
+    /* send a copy to every member of the tracker */
+    PMIX_LIST_FOREACH(cd, &tracker->locals, pmix_server_caddy_t) {
+        OBJ_RETAIN(reply);
+        PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->tag, reply);
+    }
+    /* maintain reference count */
+    OBJ_RELEASE(reply);
+    /* cleanup the tracker */
+    pmix_list_remove_item(&spawns, &tracker->super);
+    OBJ_RELEASE(tracker);
+}
+
+static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
+                              pmix_buffer_t *buf, void *cbdata)
+{
+    int rc, status, ret, barrier, collect_data;
     int32_t cnt;
     pmix_cmd_t cmd;
     char *msg;
     pmix_peer_t *peer, *pr;
     pmix_buffer_t *reply, *bptr;
-    pmix_range_t *ranges, *rngptr;
-    size_t i, nranges, nblobs;
+    pmix_range_t *ranges, *rngptr, range;
+    size_t i, nranges, ninfo;
     pmix_scope_t scope;
     char *nspace;
     int rnk;
-    pmix_modex_data_t mdx, *mdxarray, *mptr;
+    pmix_modex_data_t mdx;
+    pmix_server_trkr_t *trk;
+    pmix_server_caddy_t *cd;
+    pmix_info_t *info, *iptr;
+    char **keys;
+    pmix_value_t *vptr;
+    pmix_app_t *apps, *aptr;
     
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "SWITCHYARD for %s:%d:%d", hdr->namespace, hdr->rank, sd);
@@ -555,6 +801,8 @@ static int send_client_response(int sd, int status)
         /* let the local host's server execute it */
         if (NULL != server.abort) {
             ret = server.abort(status, msg);
+        } else {
+            ret = PMIX_ERR_NOT_SUPPORTED;
         }
         if (NULL != msg) {
             free(msg);
@@ -571,8 +819,9 @@ static int send_client_response(int sd, int status)
 
         
     case PMIX_FENCE_CMD:
+    case PMIX_FENCENB_CMD:
         pmix_output_verbose(2, pmix_globals.debug_output,
-                            "recvd FENCE");
+                            "recvd %s", (PMIX_FENCE_CMD == cmd) ? "FENCE" : "FENCENB");
         /* unpack the number of ranges */
         cnt = 1;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &nranges, &cnt, PMIX_SIZE))) {
@@ -580,6 +829,7 @@ static int send_client_response(int sd, int status)
             return;
         }
         ranges = NULL;
+        /* unpack the ranges, if provided */
         if (0 < nranges) {
             /* allocate reqd space */
             ranges = (pmix_range_t*)malloc(nranges * sizeof(pmix_range_t));
@@ -592,6 +842,13 @@ static int send_client_response(int sd, int status)
                     return;
                 }
             }
+        }
+        /* unpack the data flag - indicates if the caller wants
+         * all modex data returned at end of procedure */
+        cnt = 1;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &collect_data, &cnt, PMIX_INT))) {
+            PMIX_ERROR_LOG(rc);
+            return;
         }
         /* unpack any provided data blobs */
         cnt = 1;
@@ -612,55 +869,70 @@ static int send_client_response(int sd, int status)
             OBJ_RELEASE(bptr);
             cnt = 1;
         }
-        /* let the local host's server execute the fence - this
-         * should block until the fence is complete */
-        if (NULL != server.fence) {
-            ret = server.fence(ranges, nranges, &mdxarray, &nblobs);
+        /* if this is the non-blocking variation, then there is
+         * an additional flag indicating if we are to callback
+         * once all procs have executed the fence_nb call, or
+         * callback immediately */
+        if (PMIX_FENCENB_CMD == cmd) {
+            cnt = 1;
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &barrier, &cnt, PMIX_INT))) {
+                PMIX_ERROR_LOG(rc);
+                return;
+            }
+        }
+        if (PMIX_FENCE_CMD == cmd || 0 != barrier) {
+            /* find/create the local tracker for this operation */
+            trk = get_tracker(&fences, ranges, nranges);
+            /* add this contributor to the tracker so they get
+             * notified when we are done */
+            cd = OBJ_NEW(pmix_server_caddy_t);
+            OBJ_RETAIN(peer);
+            cd->peer = peer;
+            cd->tag = hdr->tag;
+            pmix_list_append(&trk->locals, &cd->super);
+            /* let the local host's server know that we are at the
+             * "fence" point - they will callback once the barrier
+             * across all participants has been completed */
+            if (NULL != server.fence_nb) {
+                ret = server.fence_nb(ranges, nranges, collect_data, server_release, trk);
+            } else {
+                /* need to send an "err_not_supported" status back
+                 * to the client so they don't hang */
+                reply = OBJ_NEW(pmix_buffer_t);
+                ret = PMIX_ERR_NOT_SUPPORTED;
+                if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &ret, 1, PMIX_INT))) {
+                    PMIX_ERROR_LOG(rc);
+                    OBJ_RELEASE(reply);
+                    return;
+                }
+                PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
+            }
+        } else {
+            /* send an immediate release */
+            reply = OBJ_NEW(pmix_buffer_t);
+            ret = PMIX_SUCCESS;
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &ret, 1, PMIX_INT))) {
+                PMIX_ERROR_LOG(rc);
+                OBJ_RELEASE(reply);
+                return;
+            }
+            PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
         }
         if (NULL != ranges) {
             free(ranges);
         }
-        /* send the reply */
-        reply = OBJ_NEW(pmix_buffer_t);
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &ret, 1, PMIX_INT))) {
-            PMIX_ERROR_LOG(rc);
-            OBJ_RELEASE(reply);
-            return;
-        }
-        /* pack the nblobs being returned */
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &nblobs, 1, PMIX_SIZE))) {
-            PMIX_ERROR_LOG(rc);
-            OBJ_RELEASE(reply);
-            return;
-        }
-        if (0 < nblobs) {
-            for (i=0; i < nblobs; i++) {
-                mptr = &mdxarray[i];
-                if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &mptr, 1, PMIX_MODEX))) {
-                    PMIX_ERROR_LOG(rc);
-                    OBJ_RELEASE(reply);
-                    free(mdxarray);
-                    return;
-                }
-                if (NULL != mdxarray[i].blob) {
-                    free(mdxarray[i].blob);
-                }
-            }
-            free(mdxarray);
-        }
-        PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
         break;
 
         
-    case PMIX_FENCENB_CMD:
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "recvd FENCENB");
         break;
 
         
     case PMIX_GET_CMD:
+    case PMIX_GETNB_CMD:
         pmix_output_verbose(2, pmix_globals.debug_output,
-                            "recvd GET");
+                            "recvd %s", (PMIX_GET_CMD == cmd) ? "GET" : "GETNB");
         /* retrieve the namespace and rank of the requested proc */
         cnt = 1;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &nspace, &cnt, PMIX_STRING))) {
@@ -670,56 +942,86 @@ static int send_client_response(int sd, int status)
         cnt = 1;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &rnk, &cnt, PMIX_INT))) {
             PMIX_ERROR_LOG(rc);
+            free(nspace);
             return;
         }
+        /* put it into range format */
+        (void)strncpy(range.namespace, nspace, PMIX_MAX_NSLEN);
+        range.ranks = (int*)malloc(sizeof(int));
+        range.ranks[0] = rnk;
+        range.nranks = 1;
+        /* find/create the local tracker for this operation */
+        trk = get_tracker(&gets, &range, 1);
+        free(range.ranks);
+        /* add this contributor to the tracker so they get
+         * notified when we are done */
+        cd = OBJ_NEW(pmix_server_caddy_t);
+        OBJ_RETAIN(peer);
+        cd->peer = peer;
+        cd->tag = hdr->tag;
+        pmix_list_append(&trk->locals, &cd->super);
         /* request the data, if supported */
-        if (NULL != server.get_modex) {
-            ret = server.get_modex(nspace, rnk, &mdxarray, &nblobs);
+        if (NULL != server.get_modex_nb) {
+            ret = server.get_modex_nb(nspace, rnk, server_release, trk);
+        } else {
+            /* need to send an "err_not_supported" status back
+             * to the client so they don't hang */
+            reply = OBJ_NEW(pmix_buffer_t);
+            ret = PMIX_ERR_NOT_SUPPORTED;
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &ret, 1, PMIX_INT))) {
+                PMIX_ERROR_LOG(rc);
+                OBJ_RELEASE(reply);
+                free(nspace);
+                return;
+            }
+            PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
         }
-        /* send the reply */
+        free(nspace);
+        break;
+
+        
+    case PMIX_JOBINFO_CMD:
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "recvd JOBINFO");
+        /* no further params are passed - just get the info
+         * if available */
+        ret = PMIX_ERR_NOT_SUPPORTED;
+        if (NULL != server.get_job_info) {
+            ret = server.get_job_info(peer->namespace, peer->rank,
+                                      &info, &ninfo);
+        }
+        /* send a release */
         reply = OBJ_NEW(pmix_buffer_t);
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &ret, 1, PMIX_INT))) {
             PMIX_ERROR_LOG(rc);
             OBJ_RELEASE(reply);
             return;
         }
-        /* pack the nblobs being returned */
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &nblobs, 1, PMIX_SIZE))) {
-            PMIX_ERROR_LOG(rc);
-            OBJ_RELEASE(reply);
-            return;
-        }
-        /* pack any blobs */
-        if (0 < nblobs) {
-            for (i=0; i < nblobs; i++) {
-                mptr = &mdxarray[i];
-                if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &mptr, 1, PMIX_MODEX))) {
+        /* add any returned info */
+        if (NULL != info && 0 < ninfo) {
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &ninfo, 1, PMIX_SIZE))) {
+                PMIX_ERROR_LOG(rc);
+                OBJ_RELEASE(reply);
+                return;
+            }
+            for (i=0; i < ninfo; i++) {
+                iptr = &info[i];
+                if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &iptr, 1, PMIX_INFO))) {
                     PMIX_ERROR_LOG(rc);
                     OBJ_RELEASE(reply);
-                    free(mdxarray);
                     return;
                 }
-                if (NULL != mdxarray[i].blob) {
-                    free(mdxarray[i].blob);
-                }
             }
-            free(mdxarray);
         }
         PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
         break;
 
-        
-    case PMIX_GETNB_CMD:
-        pmix_output_verbose(2, pmix_globals.debug_output,
-                            "recvd GETNB");
-        break;
 
-        
     case PMIX_FINALIZE_CMD:
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "recvd FINALIZE");
         /* call the local server, if supported */
-        ret = PMIX_SUCCESS;
+        ret = PMIX_ERR_NOT_SUPPORTED;
         if (NULL != server.terminated) {
             ret = server.terminated(peer->namespace, peer->rank);
         }
@@ -742,26 +1044,287 @@ static int send_client_response(int sd, int status)
     case PMIX_PUBLISH_CMD:
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "recvd PUBLISH");
+        /* unpack the scope */
+        cnt=1;
+        if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &scope, &cnt, PMIX_SCOPE))) {
+            PMIX_ERROR_LOG(rc);
+            return;
+        }
+        /* unpack the number of info objects */
+        cnt=1;
+        if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
+            PMIX_ERROR_LOG(rc);
+            return;
+        }
+        /* unpack the array of info objects */
+        if (0 < ninfo) {
+            info = (pmix_info_t*)malloc(ninfo * sizeof(pmix_info_t));
+            for (i=0; i < ninfo; i++) {
+                cnt=1;
+                iptr = &info[i];
+                if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &iptr, &cnt, PMIX_INFO))) {
+                    PMIX_ERROR_LOG(rc);
+                    return;
+                }
+            }
+        } else {
+            info = NULL;
+        }
+        /* call the local server, if supported */
+        ret = PMIX_ERR_NOT_SUPPORTED;
+        if (NULL != server.publish) {
+            ret = server.publish(scope, info, ninfo);
+        }
+        /* send a release */
+        reply = OBJ_NEW(pmix_buffer_t);
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &ret, 1, PMIX_INT))) {
+            PMIX_ERROR_LOG(rc);
+            OBJ_RELEASE(reply);
+            return;
+        }
+        if (NULL != info) {
+            free(info);
+        }
+        PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
         break;
+
+        
     case PMIX_LOOKUP_CMD:
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "recvd LOOKUP");
+        /* unpack the scope */
+        cnt=1;
+        if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &scope, &cnt, PMIX_SCOPE))) {
+            PMIX_ERROR_LOG(rc);
+            return;
+        }
+        /* unpack the number of keys objects */
+        cnt=1;
+        if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
+            PMIX_ERROR_LOG(rc);
+            return;
+        }
+        /* setup the array of info objects */
+        info = (pmix_info_t*)malloc(ninfo * sizeof(pmix_info_t));
+        /* unpack the array of keys */
+        for (i=0; i < ninfo; i++) {
+            cnt=1;
+            if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &msg, &cnt, PMIX_STRING))) {
+                PMIX_ERROR_LOG(rc);
+                return;
+            }
+            (void)strncpy(info[i].key, msg, PMIX_MAX_KEYLEN);
+            free(msg);
+        }
+        /* call the local server, if supported */
+        ret = PMIX_ERR_NOT_SUPPORTED;
+        nspace = NULL;
+        if (NULL != server.lookup) {
+            ret = server.lookup(scope, info, ninfo, &nspace);
+        }
+        /* send a release */
+        reply = OBJ_NEW(pmix_buffer_t);
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &ret, 1, PMIX_INT))) {
+            PMIX_ERROR_LOG(rc);
+            OBJ_RELEASE(reply);
+            return;
+        }
+        /* send the namespace */
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &nspace, 1, PMIX_STRING))) {
+            PMIX_ERROR_LOG(rc);
+            OBJ_RELEASE(reply);
+            return;
+        }
+        /* pack the results as key-values */
+        for (i=0; i < ninfo; i++) {
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(buf, &info[i].key, 1, PMIX_STRING))) {
+                PMIX_ERROR_LOG(rc);
+                return;
+            }
+            vptr = &info[i].value;
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(buf, &vptr, 1, PMIX_VALUE))) {
+                PMIX_ERROR_LOG(rc);
+                return;
+            }
+        }
+        if (NULL != info) {
+            free(info);
+        }
+        PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
         break;
+
+        
     case PMIX_UNPUBLISH_CMD:
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "recvd UNPUBLISH");
+        /* unpack the scope */
+        cnt=1;
+        if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &scope, &cnt, PMIX_SCOPE))) {
+            PMIX_ERROR_LOG(rc);
+            return;
+        }
+        /* unpack the number of keys */
+        cnt=1;
+        if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
+            PMIX_ERROR_LOG(rc);
+            return;
+        }
+        /* unpack the array of keys */
+        keys = NULL;
+        if (0 < ninfo) {
+            for (i=0; i < ninfo; i++) {
+                cnt=1;
+                if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &msg, &cnt, PMIX_STRING))) {
+                    PMIX_ERROR_LOG(rc);
+                    return;
+                }
+                pmix_argv_append_nosize(&keys, msg);
+                free(msg);
+            }
+        }
+        /* call the local server, if supported */
+        ret = PMIX_ERR_NOT_SUPPORTED;
+        if (NULL != server.unpublish) {
+            ret = server.unpublish(scope, keys);
+        }
+        pmix_argv_free(keys);
+        /* send a release */
+        reply = OBJ_NEW(pmix_buffer_t);
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &ret, 1, PMIX_INT))) {
+            PMIX_ERROR_LOG(rc);
+            OBJ_RELEASE(reply);
+            return;
+        }
+        PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
         break;
+
+        
     case PMIX_SPAWN_CMD:
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "recvd SPAWN");
+        /* unpack the number of apps */
+        cnt=1;
+        if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
+            PMIX_ERROR_LOG(rc);
+            return;
+        }
+        /* unpack the array of apps */
+        apps = (pmix_app_t*)malloc(ninfo * sizeof(pmix_app_t));
+        if (0 < ninfo) {
+            for (i=0; i < ninfo; i++) {
+                cnt=1;
+                aptr = &apps[i];
+                if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &aptr, &cnt, PMIX_APP))) {
+                    PMIX_ERROR_LOG(rc);
+                    return;
+                }
+            }
+        }
+        /* get/create a tracker for this operation so we don't block */
+        (void)strncpy(range.namespace, peer->namespace, PMIX_MAX_NSLEN);
+        range.ranks = (int*)malloc(sizeof(int));
+        range.ranks[0] = peer->rank;
+        range.nranks = 1;
+        trk = get_tracker(&spawns, &range, 1);
+        free(range.ranks);
+        /* add this contributor to the tracker so they get
+         * notified when we are done */
+        cd = OBJ_NEW(pmix_server_caddy_t);
+        OBJ_RETAIN(peer);
+        cd->peer = peer;
+        cd->tag = hdr->tag;
+        pmix_list_append(&trk->locals, &cd->super);
+        /* call the local server, if supported */
+        ret = PMIX_ERR_NOT_SUPPORTED;
+        if (NULL != server.spawn) {
+            ret = server.spawn(apps, ninfo, spawn_release, trk);
+        }
+        if (PMIX_SUCCESS != ret) {
+            /* send a release so the caller doesn't hang */
+            reply = OBJ_NEW(pmix_buffer_t);
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &ret, 1, PMIX_INT))) {
+                PMIX_ERROR_LOG(rc);
+                OBJ_RELEASE(reply);
+                return;
+            }
+            PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
+        }
+        /* free the apps array */
         break;
+
+        
     case PMIX_CONNECT_CMD:
-        pmix_output_verbose(2, pmix_globals.debug_output,
-                            "recvd CONNECT");
-        break;
     case PMIX_DISCONNECT_CMD:
         pmix_output_verbose(2, pmix_globals.debug_output,
-                            "recvd DISCONNECT");
+                            "recvd %s", (PMIX_CONNECT_CMD == cmd) ? "CONNECT" : "DISCONNECT");
+        /* unpack the number of ranges */
+        cnt = 1;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &nranges, &cnt, PMIX_SIZE))) {
+            PMIX_ERROR_LOG(rc);
+            return;
+        }
+        ranges = NULL;
+        /* unpack the ranges, if provided */
+        if (0 < nranges) {
+            /* allocate reqd space */
+            ranges = (pmix_range_t*)malloc(nranges * sizeof(pmix_range_t));
+            /* unpack the ranges */
+            for (i=0; i < nranges; i++) {
+                rngptr = &ranges[i];
+                cnt = 1;
+                if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &rngptr, &cnt, PMIX_RANGE))) {
+                    PMIX_ERROR_LOG(rc);
+                    return;
+                }
+            }
+        }
+        /* find/create the local tracker for this operation */
+        if (PMIX_CONNECT_CMD == cmd) {
+            trk = get_tracker(&connects, ranges, nranges);
+        } else {
+            trk = get_tracker(&disconnects, ranges, nranges);
+        }
+        /* add this contributor to the tracker so they get
+         * notified when we are done */
+        cd = OBJ_NEW(pmix_server_caddy_t);
+        OBJ_RETAIN(peer);
+        cd->peer = peer;
+        cd->tag = hdr->tag;
+        pmix_list_append(&trk->locals, &cd->super);
+        if (PMIX_CONNECT_CMD == cmd) {
+            /* request the connect */
+            if (NULL != server.connect) {
+                ret = server.connect(ranges, nranges, connect_release, trk);
+            } else {
+                /* need to send an "err_not_supported" status back
+                 * to the client so they don't hang */
+                reply = OBJ_NEW(pmix_buffer_t);
+                ret = PMIX_ERR_NOT_SUPPORTED;
+                if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &ret, 1, PMIX_INT))) {
+                    PMIX_ERROR_LOG(rc);
+                    OBJ_RELEASE(reply);
+                    return;
+                }
+                PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
+            }
+        } else {
+            /* request the connect */
+            if (NULL != server.disconnect) {
+                ret = server.disconnect(ranges, nranges, connect_release, trk);
+            } else {
+                /* need to send an "err_not_supported" status back
+                 * to the client so they don't hang */
+                reply = OBJ_NEW(pmix_buffer_t);
+                ret = PMIX_ERR_NOT_SUPPORTED;
+                if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &ret, 1, PMIX_INT))) {
+                    PMIX_ERROR_LOG(rc);
+                    OBJ_RELEASE(reply);
+                    return;
+                }
+                PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
+            }
+        }
+        free(ranges);
         break;
     }
 }

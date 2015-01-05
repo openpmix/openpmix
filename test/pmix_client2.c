@@ -31,12 +31,6 @@
 #include "src/buffer_ops/types.h"
 #include "test_common.h"
 
-static void notify_parent(void)
-{
-    pid_t ppid = getppid();
-    kill(ppid, SIGUSR1);
-}
-
 int main(int argc, char **argv)
 {
     char nspace[PMIX_MAX_VALLEN];
@@ -48,8 +42,7 @@ int main(int argc, char **argv)
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(nspace, &rank, NULL, TEST_CREDENTIAL))) {
         fprintf(stderr, "PMIx cli: PMIx_Init failed: %d\n", rc);
-        notify_parent();
-        exit(0);
+        goto error_out;
     }
 
     if( 0 != strcmp(nspace, TEST_NAMESPACE) ) {
@@ -60,7 +53,7 @@ int main(int argc, char **argv)
     PMIX_VAL_SET(&value, int, 12342);
     if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_LOCAL, key, &value))) {
         fprintf(stderr, "PMIx cli: PMIx_Put failed: %d\n", rc);
-        notify_parent();
+        goto error_out;
     }
 
     key = "remote-key-2";
@@ -68,23 +61,20 @@ int main(int argc, char **argv)
     PMIX_VAL_SET(&value, string, ptr);
     if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_REMOTE, key, &value))) {
         fprintf(stderr, "PMIx cli: PMIx_Put failed: %d\n", rc);
-        notify_parent();
-        exit(0);
+        goto error_out;
     }
 
     key = "global-key-2";
     PMIX_VAL_SET(&value, float, 12.15);
     if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_GLOBAL, key, &value))) {
         fprintf(stderr, "PMIx cli: PMIx_Put failed: %d\n", rc);
-        notify_parent();
-        exit(0);
+        goto error_out;
     }
 
     /* Submit the data */
-    if (PMIX_SUCCESS != (rc = PMIx_Fence(NULL, 0))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Fence(NULL, 0, 1))) {
         fprintf(stderr, "PMIx cli: PMIx_Fence failed (%d)\n", rc);
-        notify_parent();
-        exit(0);
+        goto error_out;
     }
 
     /* Check the predefined output */
@@ -93,58 +83,48 @@ int main(int argc, char **argv)
         pmix_value_t *val;
         sprintf(key,"local-key-%d",i);
         if( PMIX_SUCCESS != ( rc = PMIx_Get(nspace, i, key, &val) ) ){
-            fprintf(stderr, "PMIx cli: PMIx_Fence failed (%d)\n", rc);
-            notify_parent();
-            exit(0);
+            fprintf(stderr, "PMIx cli: PMIx_Get failed (%d)\n", rc);
+            goto error_out;
         }
         if( val->type != PMIX_INT || val->data.integer != (12340+i) ){
             printf("Key %s value or type mismatch, wait %d(%d) get %d(%d)\n",
                    key, (12340+i), PMIX_INT, val->data.integer, val->type);
-            notify_parent();
-            exit(0);
+            goto error_out;
         }
         free(val);
 
         sprintf(key,"remote-key-%d",i);
         sprintf(sval,"Test string #%d",i);
         if( PMIX_SUCCESS != ( rc = PMIx_Get(nspace, i, key, &val) ) ){
-            fprintf(stderr, "PMIx cli: PMIx_Fence failed (%d)\n", rc);
-            notify_parent();
-            exit(0);
+            fprintf(stderr, "PMIx cli: PMIx_Get failed (%d)\n", rc);
+            goto error_out;
         }
         if( val->type != PMIX_STRING || strcmp(val->data.string, sval) ){
             fprintf(stderr, "PMIx cli: Key %s value or type mismatch, wait %s(%d) get %s(%d)\n",
-                   key, sval, PMIX_STRING, val->data.string, val->type);
-            notify_parent();
-            exit(0);
+                    key, sval, PMIX_STRING, val->data.string, val->type);
+            goto error_out;
         }
         free(val);
 
         sprintf(key,"global-key-%d",i);
         if( PMIX_SUCCESS != ( rc = PMIx_Get(nspace, i, key, &val) ) ){
-            fprintf(stderr, "PMIx cli: PMIx_Fence failed (%d)\n", rc);
-            notify_parent();
-            exit(0);
+            fprintf(stderr, "PMIx cli: PMIx_Get failed (%d)\n", rc);
+            goto error_out;
         }
         if( val->type != PMIX_FLOAT || val->data.fval != (float)10.15 + i ){
             printf("PMIx cli: Key %s value or type mismatch, wait %f(%d) get %f(%d)\n",
                    key, ((float)10.15 + i), PMIX_FLOAT, val->data.fval, val->type);
-            notify_parent();
-            exit(0);
+            goto error_out;
         }
         free(val);
         fprintf(stderr,"PMIx cli: rank %d is OK\n", i);
     }
 
+ error_out:
     /* finalize us */
     if (PMIX_SUCCESS != (rc = PMIx_Finalize())) {
         fprintf(stderr, "PMIx_Finalize failed: %d\n", rc);
-        notify_parent();
-        exit(0);
     }
     
-    return 0;
- kvp_error:
-    fprintf(stderr,"Cannot Set Key-Value Pair\n");
     return 0;
 }

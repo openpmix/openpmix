@@ -102,10 +102,11 @@ int PMI_KVS_Commit(const char kvsname[])
     return PMI_SUCCESS;
 }
 
-/* Barrier only applies to our own namespace */
+/* Barrier only applies to our own namespace, and we want all
+ * data to be collected upon completion */
 int PMI_Barrier(void)
 {
-    return PMIx_Fence(NULL, 0);
+    return PMIx_Fence(NULL, 0, 1);
 }
 
 int PMI_Get_size(int *size)
@@ -198,7 +199,7 @@ int PMI_Unpublish_name(const char service_name[])
     /* pass the service */
     (void)strncpy(info.key, service_name, PMIX_MAX_KEYLEN);
     
-    rc = PMIx_Unpublish(&info, 1);
+    rc = PMIx_Unpublish(PMIX_NAMESPACE, &info, 1);
     return convert_err(rc);
 }
 
@@ -211,7 +212,7 @@ int PMI_Lookup_name(const char service_name[], char port[])
     (void)strncpy(info.key, service_name, PMIX_MAX_KEYLEN);
 
     /* PMI-1 doesn't want the namespace back */
-    if (PMIX_SUCCESS != (rc = PMIx_Lookup(&info, 1, NULL))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Lookup(PMIX_NAMESPACE, &info, 1, NULL))) {
         return convert_err(rc);
     }
 

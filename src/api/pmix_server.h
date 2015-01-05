@@ -67,34 +67,34 @@
 BEGIN_C_DECLS
 
 /****    SERVER CALLBACK FUNCTIONS FOR ASYNC OPERATIONS    ****/
-typedef void (*pmix_fence_cbfunc_t)(void *cbdata);
 typedef void (*pmix_modex_cbfunc_t)(int status, pmix_modex_data_t data[],
                                     size_t ndata, void *cbdata);
-typedef void (*pmix_spawn_cbfunc_t)(int status, char namespace[]);
+typedef void (*pmix_spawn_cbfunc_t)(int status, char namespace[], void *cbdata);
+typedef void (*pmix_connect_cbfunc_t)(int status, void *cbdata);
 
 /****    SERVER FUNCTION-SHIPPED APIs    ****/
 typedef int (*pmix_server_terminated_fn_t)(const char namespace[], int rank);
 typedef int (*pmix_server_abort_fn_t)(int status, const char msg[]);
-typedef int (*pmix_server_fence_fn_t)(const pmix_range_t ranges[], size_t nranges,
-                                      pmix_modex_data_t *data[], size_t *ndata);
-typedef int (*pmix_server_fencenb_fn_t)(const pmix_range_t ranges[], size_t nranges, int barrier,
-                                        pmix_fence_cbfunc_t cbfunc, void *cbdata);
+typedef int (*pmix_server_fencenb_fn_t)(const pmix_range_t ranges[], size_t nranges,
+                                        int collect_data,
+                                        pmix_modex_cbfunc_t cbfunc, void *cbdata);
 typedef int (*pmix_server_store_modex_fn_t)(pmix_scope_t scope, pmix_modex_data_t *data);
-typedef int (*pmix_server_get_modex_fn_t)(const char namespace[], int rank,
-                                          pmix_modex_data_t *data[], size_t *ndata);
 typedef int (*pmix_server_get_modexnb_fn_t)(const char namespace[], int rank,
                                             pmix_modex_cbfunc_t cbfunc, void *cbdata);
 typedef int (*pmix_server_get_job_info_fn_t)(const char namespace[], int rank,
-                                             pmix_info_t *info[], int *ninfo);
+                                             pmix_info_t *info[], size_t *ninfo);
 typedef int (*pmix_server_publish_fn_t)(pmix_scope_t scope, const pmix_info_t info[], size_t ninfo);
-typedef int (*pmix_server_lookup_fn_t)(pmix_info_t info[], size_t ninfo,
-                                       char namespace[]);
-typedef int (*pmix_server_unpublish_fn_t)(const pmix_info_t info[], size_t ninfo);
+typedef int (*pmix_server_lookup_fn_t)(pmix_scope_t scope,
+                                       pmix_info_t info[], size_t ninfo,
+                                       char *namespace[]);
+typedef int (*pmix_server_unpublish_fn_t)(pmix_scope_t scope, char **keys);
 typedef int (*pmix_server_spawn_fn_t)(const pmix_app_t apps[],
                                       size_t napps,
                                       pmix_spawn_cbfunc_t cbfunc, void *cbdata);
-typedef int (*pmix_server_connect_fn_t)(const pmix_range_t ranges[], size_t nranges);
-typedef int (*pmix_server_disconnect_fn_t)(const pmix_range_t ranges[], size_t nranges);
+typedef int (*pmix_server_connect_fn_t)(const pmix_range_t ranges[], size_t nranges,
+                                        pmix_connect_cbfunc_t cbfunc, void *cbdata);
+typedef int (*pmix_server_disconnect_fn_t)(const pmix_range_t ranges[], size_t nranges,
+                                           pmix_connect_cbfunc_t cbfunc, void *cbdata);
 
 /****    SERVER SECURITY CREDENTIAL FUNCTIONS    ****/
 typedef int (*pmix_server_authenticate_fn_t)(char *credential);
@@ -103,10 +103,8 @@ typedef struct pmix_server_module_1_0_0_t {
     pmix_server_authenticate_fn_t     authenticate;
     pmix_server_terminated_fn_t       terminated;
     pmix_server_abort_fn_t            abort;
-    pmix_server_fence_fn_t            fence;
     pmix_server_fencenb_fn_t          fence_nb;
     pmix_server_store_modex_fn_t      store_modex;
-    pmix_server_get_modex_fn_t        get_modex;
     pmix_server_get_modexnb_fn_t      get_modex_nb;
     pmix_server_get_job_info_fn_t     get_job_info;
     pmix_server_publish_fn_t          publish;

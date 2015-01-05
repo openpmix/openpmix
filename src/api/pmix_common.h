@@ -83,6 +83,7 @@ BEGIN_C_DECLS
  * these keys are RESERVED */
 #define PMIX_ATTR_UNDEF      NULL
 
+#define PMIX_JOBINFO         "pmix.jobinfo"     // (void) used internally to request all job-related info
 #define PMIX_CPUSET          "pmix.cpuset"      // (char*) hwloc bitmap applied to proc upon launch
 #define PMIX_CREDENTIAL      "pmix.cred"        // (opal_byte_object*) security credential assigned to proc
 #define PMIX_HOSTNAME        "pmix.hname"       // (char*) name of the host this proc is on

@@ -66,7 +66,8 @@ typedef enum {
     PMIX_UNPUBLISH_CMD,
     PMIX_SPAWN_CMD,
     PMIX_CONNECT_CMD,
-    PMIX_DISCONNECT_CMD
+    PMIX_DISCONNECT_CMD,
+    PMIX_JOBINFO_CMD
 } pmix_cmd_t;
 
 /* define some message types */
