@@ -312,7 +312,7 @@ void pmix_usock_recv_handler(int sd, short flags, void *cbdata)
              */
             pmix_output_verbose(2, pmix_client_globals.debug_level,
                                 "pmix_usock_msg_recv: peer closed connection");
-            goto err_closed;
+            goto err_close;
         }
     }
 
@@ -338,13 +338,13 @@ void pmix_usock_recv_handler(int sd, short flags, void *cbdata)
             // report the error
             pmix_output(0, "usock_peer_recv_handler: unable to recv message");
             /* turn off the recv event */
-            event_del(&pmix_client_globals.recv_event);
-            pmix_client_globals.recv_ev_active = false;
-            CLOSE_THE_SOCKET(pmix_client_globals.sd);
+            goto err_close;
             return;
         }
     }
-err_closed:
+    /* success */
+    return;
+err_close:
     /* stop all events */
     if (pmix_client_globals.recv_ev_active) {
         event_del(&pmix_client_globals.recv_event);
