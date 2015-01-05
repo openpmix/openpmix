@@ -53,7 +53,7 @@ AC_DEFUN([PMIX_HWLOC_CONFIG],[
                            [$pmix_hwloc_libdir],
                            [pmix_hwloc_support=1],
                            [pmix_hwloc_support=0])
-        if test $pmix_hwlock_support == "1"; then
+        if test $pmix_hwloc_support == "1"; then
             CPPFLAGS="$pmix_hwloc_CPPFLAGS $CPPFLAGS"
             LIBS="$LIBS -lhwloc"
             LDFLAGS="$pmix_hwloc_LDFLAGS $LDFLAGS"
