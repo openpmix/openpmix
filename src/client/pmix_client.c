@@ -45,7 +45,6 @@
 
 // local variables
 static int init_cntr = 0;
-static char *local_uri = NULL;
 static struct sockaddr_un address;
 static int server;
 static pmix_errhandler_fn_t errhandler = NULL;
@@ -249,7 +248,7 @@ int PMIx_Finalize(void)
     pmix_output_verbose(2, pmix_client_globals.debug_output,
                         "pmix:native finalize called");
 
-    if (NULL == local_uri) {
+    if ( NULL == pmix_client_globals.uri ) {
         /* nothing was setup, so return */
         return PMIX_SUCCESS;
     }
