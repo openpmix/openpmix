@@ -45,13 +45,6 @@ int main(int argc, char **argv)
     pmix_value_t value;
     char *key = NULL;
 
-    {
-        int delay = 0;
-        while( delay ){
-            sleep(1);
-        }
-    }
-
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(nspace, &rank, NULL, TEST_CREDENTIAL))) {
         fprintf(stderr, "PMIx cli: PMIx_Init failed: %d\n", rc);
@@ -88,18 +81,6 @@ int main(int argc, char **argv)
     }
 
     /* Submit the data */
-    pmix_range_t range;
-    range.ranks = NULL;
-    range.nranks = 0;
-
-    {
-        int delay = 0;
-        while( delay ){
-            sleep(1);
-        }
-    }
-
-
     if (PMIX_SUCCESS != (rc = PMIx_Fence(NULL, 0))) {
         fprintf(stderr, "PMIx cli: PMIx_Fence failed (%d)\n", rc);
         notify_parent();

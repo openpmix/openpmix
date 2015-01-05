@@ -98,7 +98,7 @@ int main(int argc, char **argv)
     client_env = pmix_argv_copy(environ);
     
     /* fork/exec the test */
-    pmix_argv_append_nosize(&client_argv, "pmix_client");
+    pmix_argv_append_nosize(&client_argv, "pmix_client2");
     if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(TEST_NAMESPACE, 0, &client_env))) {
         fprintf(stderr, "Server fork setup failed with error %d\n", rc);
         PMIx_server_finalize();
@@ -133,7 +133,10 @@ int main(int argc, char **argv)
 
 static int authenticate(char *credential)
 {
-    return PMIX_SUCCESS;
+    if (0 == strcmp(credential, TEST_CREDENTIAL)) {
+        return PMIX_SUCCESS;
+    }
+    return PMIX_ERROR;
 }
 
 static int terminated(const char namespace[], int rank)
