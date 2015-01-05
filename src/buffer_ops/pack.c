@@ -85,24 +85,6 @@ int pmix_bfrop_pack_buffer(pmix_buffer_t *buffer,
 /* PACK FUNCTIONS FOR GENERIC SYSTEM TYPES */
 
 /*
- * BOOL
- */
-int pmix_bfrop_pack_bool(pmix_buffer_t *buffer, const void *src,
-                         int32_t num_vals, pmix_data_type_t type)
-{
-    int ret;
-
-    /* System types need to always be described so we can properly
-     * unpack them */
-    if (PMIX_SUCCESS != (ret = pmix_bfrop_store_data_type(buffer, BFROP_TYPE_BOOL))) {
-        return ret;
-    }
-
-    /* Turn around and pack the real type */
-    return pmix_bfrop_pack_buffer(buffer, src, num_vals, BFROP_TYPE_BOOL);
-}
-
-/*
  * INT
  */
 int pmix_bfrop_pack_int(pmix_buffer_t *buffer, const void *src,
@@ -393,11 +375,6 @@ static int pack_val(pmix_buffer_t *buffer,
     int ret;
     
     switch (p->type) {
-    case PMIX_BOOL:
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &p->data.flag, 1, PMIX_BOOL))) {
-            return ret;
-        }
-        break;
     case PMIX_BYTE:
         if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &p->data.byte, 1, PMIX_BYTE))) {
             return ret;
@@ -531,7 +508,8 @@ int pmix_bfrop_pack_info(pmix_buffer_t *buffer, const void *src,
     pmix_info_t **ptr, *info;
     int32_t i;
     int ret;
-
+    pmix_value_t *v;
+    
     ptr = (pmix_info_t **) src;
     
     for (i = 0; i < num_vals; ++i) {
@@ -541,7 +519,8 @@ int pmix_bfrop_pack_info(pmix_buffer_t *buffer, const void *src,
             return ret;
         }
         /* pack value */
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_value(buffer, &info->value, 1, PMIX_VALUE))) {
+        v = &info->value;
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_value(buffer, &v, 1, PMIX_VALUE))) {
             return ret;
         }
     }
@@ -744,3 +723,34 @@ int pmix_bfrop_pack_topo(pmix_buffer_t *buffer, const void *src,
     return PMIX_SUCCESS;
 }
 #endif
+
+int pmix_bfrop_pack_modex(pmix_buffer_t *buffer, const void *src,
+                          int32_t num_vals, pmix_data_type_t type)
+{
+    pmix_modex_data_t **ptr, *data;
+    int32_t i;
+    int ret;
+    
+    ptr = (pmix_modex_data_t **) src;
+    
+    for (i = 0; i < num_vals; ++i) {
+        data = ptr[i];
+        char *ptr = data->namespace;
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &ptr, 1, PMIX_STRING))) {
+            return ret;
+        }
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int(buffer, &data->rank, 1, PMIX_INT))) {
+            return ret;
+        }
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_sizet(buffer, &data->size, 1, PMIX_SIZE))) {
+            return ret;
+        }
+        if( 0 < data->size){
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_byte(buffer, &data->blob, data->size, PMIX_UINT8))) {
+                return ret;
+            }
+        }
+    }
+    return PMIX_SUCCESS;
+}
+

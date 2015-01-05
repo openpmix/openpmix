@@ -26,7 +26,7 @@ AM_LDFLAGS = $(PMIX_LDFLAGS)
 headers =
 sources =
 nodist_headers =
-include_HEADERS = src/api/pmix.h src/api/pmix_server.h
+include_HEADERS = src/api/pmix.h src/api/pmix_server.h src/api/pmix_common.h src/api/pmi.h src/api/pmi2.h
 dist_pmixdata_DATA =
 server_headers =
 server_sources =
@@ -40,6 +40,7 @@ include src/class/Makefile.am
 include src/include/Makefile.am
 include src/buffer_ops/Makefile.am
 include src/util/Makefile.am
+include src/usock/Makefile.am
 include src/client/Makefile.am
 include src/server/Makefile.am
 

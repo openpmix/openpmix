@@ -40,3 +40,7 @@ config/config.sub
 config/depcomp
 config/missing
 src/include/pmix_config.h.in
+test/pmi2_client
+test/pmi_client
+test/pmix_client
+test/pmix_test

@@ -148,31 +148,6 @@ int pmix_bfrop_print_pid(char **output, char *prefix, pid_t *src, pmix_data_type
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_bool(char **output, char *prefix, bool *src, pmix_data_type_t type)
-{
-    char *prefx;
-
-    /* deal with NULL prefix */
-    if (NULL == prefix) asprintf(&prefx, " ");
-    else prefx = prefix;
-
-    /* if src is NULL, just print data type and return */
-    if (NULL == src) {
-        asprintf(output, "%sData type: PMIX_BOOL\tValue: NULL pointer", prefx);
-        if (prefx != prefix) {
-            free(prefx);
-        }
-        return PMIX_SUCCESS;
-    }
-
-    asprintf(output, "%sData type: PMIX_BOOL\tValue: %s", prefx, *src ? "TRUE" : "FALSE");
-    if (prefx != prefix) {
-        free(prefx);
-    }
-
-    return PMIX_SUCCESS;
-}
-
 int pmix_bfrop_print_int(char **output, char *prefix, int *src, pmix_data_type_t type)
 {
     char *prefx;
@@ -562,10 +537,6 @@ int pmix_bfrop_print_value(char **output, char *prefix,
     }
     
     switch (src->type) {
-    case PMIX_BOOL:
-        asprintf(output, "%sPMIX_VALUE: Data type: PMIX_BOOL\tValue: %s",
-                 prefx, src->data.flag ? "true" : "false");
-        break;
     case PMIX_BYTE:
         asprintf(output, "%sPMIX_VALUE: Data type: PMIX_BYTE\tValue: %x",
                  prefx, src->data.byte);
@@ -769,3 +740,10 @@ int pmix_bfrop_print_topo(char **output, char *prefix,
 }
 
 #endif
+
+int pmix_bfrop_print_modex(char **output, char *prefix,
+                           pmix_modex_data_t *src, pmix_data_type_t type)
+{
+    return PMIX_SUCCESS;
+}
+

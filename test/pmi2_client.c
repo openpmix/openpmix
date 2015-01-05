@@ -31,7 +31,8 @@
 int main(int argc, char **argv)
 {
     int spawned, size, rank, appnum;
-
+    int rc;
+    
     /* init us */
     if (PMI2_SUCCESS != (rc = PMI2_Init(&spawned, &size, &rank, &appnum))) {
         fprintf(stderr, "PMI2_Init failed: %d\n", rc);

@@ -16,6 +16,8 @@
  */
 
 #include "pmix_config.h"
+#include "pmix_client_hash.h"
+
 #include "src/include/pmix_stdint.h"
 #include "src/include/hash_string.h"
 
@@ -26,11 +28,6 @@
 #include "src/buffer_ops/buffer_ops.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
-
-#include "src/api/pmix.h"
-
-#include "pmix_client.h"
-#include "pmix_client_hash.h"
 
 static pmix_hash_table_t hash_data;
 

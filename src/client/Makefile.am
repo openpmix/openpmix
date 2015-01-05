@@ -10,8 +10,7 @@
 #
 
 headers += \
-        src/client/pmix_client_hash.h \
-        src/client/pmix_client.h
+        src/client/pmix_client_hash.h
 
 sources += \
         src/client/pmix_client_hash.c \

@@ -19,9 +19,7 @@
 # $HEADER$
 #
 
-AM_CFLAGS = $(PMIX_CFLAGS)
-AM_CPPFLAGS = $(PMIX_CPPFLAGS)
-AM_LDFLAGS = $(PMIX_LDFLAGS)
+AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/src/api
 
 bin_PROGRAMS = pmix_test pmix_client pmi_client pmi2_client
 

@@ -149,12 +149,6 @@ int pmix_bfrop_open(void)
                        pmix_bfrop_std_copy,
                        pmix_bfrop_print_byte);
     
-    PMIX_REGISTER_TYPE("PMIX_BOOL", PMIX_BOOL,
-                       pmix_bfrop_pack_bool,
-                       pmix_bfrop_unpack_bool,
-                       pmix_bfrop_std_copy,
-                       pmix_bfrop_print_bool);
-
     PMIX_REGISTER_TYPE("PMIX_STRING", PMIX_STRING,
                        pmix_bfrop_pack_string,
                        pmix_bfrop_unpack_string,
@@ -306,6 +300,12 @@ int pmix_bfrop_open(void)
                        pmix_bfrop_unpack_kval,
                        pmix_bfrop_copy_kval,
                        pmix_bfrop_print_kval);
+
+    PMIX_REGISTER_TYPE("PMIX_MODEX", PMIX_MODEX,
+                       pmix_bfrop_pack_modex,
+                       pmix_bfrop_unpack_modex,
+                       pmix_bfrop_copy_modex,
+                       pmix_bfrop_print_modex);
 
     /* All done */
     pmix_bfrop_initialized = true;

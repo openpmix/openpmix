@@ -52,9 +52,6 @@
 #include <sys/time.h> /* for struct timeval */
 #endif
 #include <event.h>
-#ifndef bool
-typedef enum { false = 0, true = 1, } bool;
-#endif
 
 #undef BEGIN_C_DECLS
 #undef END_C_DECLS
@@ -173,7 +170,6 @@ typedef enum {
 typedef enum {
     PMIX_UNDEF = 0,
     PMIX_BYTE,           // a byte of data
-    PMIX_BOOL,           // boolean
     PMIX_STRING,         // NULL-terminated string
     PMIX_SIZE,           // size_t
     PMIX_PID,            // OS-pid
@@ -203,7 +199,8 @@ typedef enum {
     PMIX_APP,
     PMIX_INFO,
     PMIX_BUFFER,
-    PMIX_KVAL
+    PMIX_KVAL,
+    PMIX_MODEX
 } pmix_data_type_t;
 
 /* define a scope for data "put" by PMI per the following:
@@ -244,7 +241,6 @@ typedef struct {
 typedef struct {
     pmix_data_type_t type;
     union {
-        bool flag;
         uint8_t byte;
         char *string;
         size_t size;
@@ -288,6 +284,23 @@ typedef struct {
     pmix_info_t *info;
     size_t ninfo;
 } pmix_app_t;
+
+typedef struct {
+    char namespace[PMIX_MAX_NSLEN];
+    int rank;
+    uint8_t *blob;
+    size_t size;
+} pmix_modex_data_t;
+
+/* callback handler for errors */
+typedef void (*pmix_errhandler_fn_t)(int error);
+
+/* callback function for non-blocking operations - the pmix_value_t
+ * is "owned" by the PMIx client library. Memory cleanup will be
+ * done by the library upon return from the callback function, so
+ * the receiver must copy/protect the data prior to returning if
+ * it needs to be retained */
+typedef void (*pmix_cbfunc_t)(int status, pmix_value_t *kv, void *cbdata);
 
 /* Key-Value pair management macros */
 // TODO: add all possible types/fields here.

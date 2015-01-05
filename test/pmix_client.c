@@ -39,7 +39,7 @@ int main(int argc, char **argv)
     char *key = NULL;
 
     /* init us */
-    if (PMIX_SUCCESS != (rc = PMIx_Init(nspace, &rank))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Init(nspace, &rank, NULL, NULL))) {
         fprintf(stderr, "PMIx_Init failed: %d\n", rc);
         return rc;
     }
@@ -77,24 +77,30 @@ int main(int argc, char **argv)
     }
 
     /* Check the predefined output */
-    for(i=0;i<3;i++){
+    for(i=0;i<1;i++){
         char key[256];
         pmix_value_t *val;
         sprintf(key,"local-key-%d",i);
-        PMIx_Get(nspace, i, key, &val);
-        if( val->type != PMIX_INT || val->data.integer != (12340+i) ){
-            printf("Key %s value or type mismatch, wait %d(%d) get %d(%d)\n",
-                   key, (12340+i), PMIX_INT, val->type, val->data.integer);
+        if (PMIX_SUCCESS == PMIx_Get(nspace, i, key, &val)) {
+            fprintf(stderr, "SUCCESSFUL GET\n");
+            if (NULL != val) {
+                if( val->type != PMIX_INT || val->data.integer != (12340+i) ){
+                    printf("Key %s value or type mismatch, wait %d(%d) get %d(%d)\n",
+                           key, (12340+i), PMIX_INT, val->type, val->data.integer);
+                }
+                free(val);
+            }
+        } else {
+            fprintf(stderr, "UNSUCCESSFUL GET\n");
         }
-        free(val);
-/*
-                sprintf(key,"remote-key-%d",i);
-                sprintf(sval,"Test string #%d",i);
-                PMIX_VAL_SET(&val,string, str);
+        /*
+          sprintf(key,"remote-key-%d",i);
+          sprintf(sval,"Test string #%d",i);
+          PMIX_VAL_SET(&val,string, str);
 
-                sprintf(key,"global-key-%d",i);
-                PMIX_VAL_SET(&val,float, 10.15 + i);
-*/
+          sprintf(key,"global-key-%d",i);
+          PMIX_VAL_SET(&val,float, 10.15 + i);
+        */
     }
     /* finalize us */
     if (PMIX_SUCCESS != (rc = PMIx_Finalize())) {
@@ -103,7 +109,7 @@ int main(int argc, char **argv)
     }
     
     return 0;
-kvp_error:
+ kvp_error:
     fprintf(stderr,"Cannot Set Key-Value Pair\n");
     return 0;
 }

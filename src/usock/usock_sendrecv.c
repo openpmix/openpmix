@@ -1,4 +1,44 @@
-int send_bytes(int sd, char **buf, size_t *remain)
+/*
+ * Copyright (c) 2014      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
+ *                         All rights reserved.
+ * $COPYRIGHT$
+ * 
+ * Additional copyrights may follow
+ * 
+ * $HEADER$
+ */
+#include "pmix_config.h"
+#include "src/include/types.h"
+#include "src/include/pmix_globals.h"
+#include "pmix_stdint.h"
+#include "pmix_socket_errno.h"
+
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
+#include <fcntl.h>
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
+#endif
+#ifdef HAVE_SYS_SOCKET_H
+#include <sys/socket.h>
+#endif
+#ifdef HAVE_SYS_UN_H
+#include <sys/un.h>
+#endif
+#ifdef HAVE_SYS_UIO_H
+#include <sys/uio.h>
+#endif
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>
+#endif
+
+#include "usock.h"
+
+static uint32_t current_tag = 0;
+
+static int send_bytes(int sd, char **buf, size_t *remain)
 {
     int ret = PMIX_SUCCESS, rc;
     char *ptr = *buf;
@@ -39,7 +79,7 @@ exit:
     return ret;
 }
 
-int read_bytes(int sd, char **buf, size_t *remain)
+static int read_bytes(int sd, char **buf, size_t *remain)
 {
     int ret = PMIX_SUCCESS, rc;
     char *ptr = *buf;
@@ -69,13 +109,10 @@ int read_bytes(int sd, char **buf, size_t *remain)
              * the error back to the RML and let the caller know
              * to abort this message
              */
-            pmix_output_verbose(2, pmix_client_globals.debug_level,
+            pmix_output_verbose(2, pmix_globals.debug_output,
                                 "pmix_usock_msg_recv: readv failed: %s (%d)",
                                 strerror(pmix_socket_errno),
                                 pmix_socket_errno);
-            ret = PMIX_ERR_UNREACH;
-            goto exit;
-        } else if (rc == 0)  {
             ret = PMIX_ERR_UNREACH;
             goto exit;
         }
@@ -95,27 +132,28 @@ exit:
  */
 void pmix_usock_send_handler(int sd, short flags, void *cbdata)
 {
-    pmix_usock_send_t *msg = pmix_client_globals.send_msg;
-
+    pmix_peer_t *peer = (pmix_peer_t*)cbdata;
+    pmix_usock_send_t *msg = peer->send_msg;
     int rc;
 
-    pmix_output_verbose(2, pmix_client_globals.debug_level,
-                        "sock:send_handler SENDING TO SERVER with %s msg",
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "sock:send_handler SENDING TO PEER %s:%d with %s msg",
+                        peer->namespace, peer->rank,
                         (NULL == msg) ? "NULL" : "NON-NULL");
     if (NULL != msg) {
         if (!msg->hdr_sent) {
-            pmix_output_verbose(2, pmix_client_globals.debug_level,
+            pmix_output_verbose(2, pmix_globals.debug_output,
                                 "usock:send_handler SENDING HEADER");
-            if (PMIX_SUCCESS == (rc = send_bytes(sd, &msg->sdptr, &msg->sdbytes))) {
+            if (PMIX_SUCCESS == (rc = send_bytes(peer->sd, &msg->sdptr, &msg->sdbytes))) {
                 /* header is completely sent */
-                pmix_output_verbose(2, pmix_client_globals.debug_level,
+                pmix_output_verbose(2, pmix_globals.debug_output,
                                     "usock:send_handler HEADER SENT");
                 msg->hdr_sent = true;
                 /* setup to send the data */
                 if (NULL == msg->data) {
                     /* this was a zero-byte msg - nothing more to do */
                     OBJ_RELEASE(msg);
-                    pmix_client_globals.send_msg = NULL;
+                    peer->send_msg = NULL;
                     goto next;
                 } else {
                     /* send the data as a single block */
@@ -126,45 +164,45 @@ void pmix_usock_send_handler(int sd, short flags, void *cbdata)
             } else if (PMIX_ERR_RESOURCE_BUSY == rc ||
                        PMIX_ERR_WOULD_BLOCK == rc) {
                 /* exit this event and let the event lib progress */
-                pmix_output_verbose(2, pmix_client_globals.debug_level,
+                pmix_output_verbose(2, pmix_globals.debug_output,
                                     "usock:send_handler RES BUSY OR WOULD BLOCK");
                 return;
             } else {
                 // report the error
                 pmix_output(0, "pmix_usock_peer_send_handler: unable to send message ON SOCKET %d",
-                            pmix_client_globals.sd);
-                event_del(&pmix_client_globals.send_event);
-                pmix_client_globals.send_ev_active = false;
+                            peer->sd);
+                event_del(&peer->send_event);
+                peer->send_ev_active = false;
                 OBJ_RELEASE(msg);
-                pmix_client_globals.send_msg = NULL;
+                peer->send_msg = NULL;
                 return;
             }
         }
 
         if (msg->hdr_sent) {
-            pmix_output_verbose(2, pmix_client_globals.debug_level,
+            pmix_output_verbose(2, pmix_globals.debug_output,
                                 "usock:send_handler SENDING BODY OF MSG");
-            if (PMIX_SUCCESS == (rc = send_bytes(sd,&msg->sdptr, &msg->sdbytes))) {
+            if (PMIX_SUCCESS == (rc = send_bytes(peer->sd, &msg->sdptr, &msg->sdbytes))) {
                 // message is complete
-                pmix_output_verbose(2, pmix_client_globals.debug_level,
+                pmix_output_verbose(2, pmix_globals.debug_output,
                                     "usock:send_handler BODY SENT");
                 OBJ_RELEASE(msg);
-                pmix_client_globals.send_msg = NULL;
+                peer->send_msg = NULL;
                 goto next;
             } else if (PMIX_ERR_RESOURCE_BUSY == rc ||
                        PMIX_ERR_WOULD_BLOCK == rc) {
                 /* exit this event and let the event lib progress */
-                pmix_output_verbose(2, pmix_client_globals.debug_level,
+                pmix_output_verbose(2, pmix_globals.debug_output,
                                     "usock:send_handler RES BUSY OR WOULD BLOCK");
                 return;
             } else {
                 // report the error
                 pmix_output(0, "pmix_usock_peer_send_handler: unable to send message ON SOCKET %d",
-                            pmix_client_globals.sd);
-                event_del(&pmix_client_globals.send_event);
-                pmix_client_globals.send_ev_active = false;
+                            peer->sd);
+                event_del(&peer->send_event);
+                peer->send_ev_active = false;
                 OBJ_RELEASE(msg);
-                pmix_client_globals.send_msg = NULL;
+                peer->send_msg = NULL;
                 return;
             }
         }
@@ -176,15 +214,14 @@ next:
              * wait for another send_event to fire before doing so. This gives
              * us a chance to service any pending recvs.
              */
-        pmix_client_globals.send_msg = (pmix_usock_send_t*)
-                pmix_list_remove_first(&pmix_client_globals.send_queue);
+        peer->send_msg = (pmix_usock_send_t*)
+                pmix_list_remove_first(&peer->send_queue);
     }
 
     /* if nothing else to do unregister for send event notifications */
-    if (NULL == pmix_client_globals.send_msg &&
-            pmix_client_globals.send_ev_active) {
-        event_del(&pmix_client_globals.send_event);
-        pmix_client_globals.send_ev_active = false;
+    if (NULL == peer->send_msg && peer->send_ev_active) {
+        event_del(&peer->send_event);
+        peer->send_ev_active = false;
     }
 }
 
@@ -196,50 +233,56 @@ next:
 void pmix_usock_recv_handler(int sd, short flags, void *cbdata)
 {
     int rc;
-
+    pmix_peer_t *peer = (pmix_peer_t*)cbdata;
     pmix_usock_recv_t *msg = NULL;
-    pmix_output_verbose(2, pmix_client_globals.debug_level,
-                        "usock:recv:handler called");
 
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "usock:recv:handler called with peer %s:%d",
+                        (NULL == peer) ? "NULL" : peer->namespace,
+                        (NULL == peer) ? -1 : peer->rank);
+
+    if (NULL == peer) {
+        return;
+    }
     /* allocate a new message and setup for recv */
-    if (NULL == pmix_client_globals.recv_msg) {
-        pmix_output_verbose(2, pmix_client_globals.debug_level,
+    if (NULL == peer->recv_msg) {
+        pmix_output_verbose(2, pmix_globals.debug_output,
                             "usock:recv:handler allocate new recv msg");
-        pmix_client_globals.recv_msg = OBJ_NEW(pmix_usock_recv_t);
-        if (NULL == pmix_client_globals.recv_msg) {
+        peer->recv_msg = OBJ_NEW(pmix_usock_recv_t);
+        if (NULL == peer->recv_msg) {
             pmix_output(0, "usock_recv_handler: unable to allocate recv message\n");
             return;
         }
         /* start by reading the header */
-        pmix_client_globals.recv_msg->rdptr = (char*)&pmix_client_globals.recv_msg->hdr;
-        pmix_client_globals.recv_msg->rdbytes = sizeof(pmix_usock_hdr_t);
+        peer->recv_msg->rdptr = (char*)&peer->recv_msg->hdr;
+        peer->recv_msg->rdbytes = sizeof(pmix_usock_hdr_t);
     }
-    msg = pmix_client_globals.recv_msg;
+    msg = peer->recv_msg;
+    msg->sd = sd;
     /* if the header hasn't been completely read, read it */
-    if (!pmix_client_globals.recv_msg->hdr_recvd) {
-
-        pmix_output_verbose(2, pmix_client_globals.debug_level,
-                            "usock:recv:handler read hdr");
-        if (PMIX_SUCCESS == (rc = read_bytes(sd, &msg->rdptr, &msg->rdbytes))) {
+    if (!msg->hdr_recvd) {
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "usock:recv:handler read hdr on socket %d", peer->sd);
+        if (PMIX_SUCCESS == (rc = read_bytes(peer->sd, &msg->rdptr, &msg->rdbytes))) {
             /* completed reading the header */
-            pmix_client_globals.recv_msg->hdr_recvd = true;
+            peer->recv_msg->hdr_recvd = true;
             /* if this is a zero-byte message, then we are done */
-            if (0 == pmix_client_globals.recv_msg->hdr.nbytes) {
-                pmix_output_verbose(2, pmix_client_globals.debug_level,
-                                    "RECVD ZERO-BYTE MESSAGE FROM SERVER for tag %d",
-                                    pmix_client_globals.recv_msg->hdr.tag);
-                pmix_client_globals.recv_msg->data = NULL;  // make sure
-                pmix_client_globals.recv_msg->rdptr = NULL;
-                pmix_client_globals.recv_msg->rdbytes = 0;
+            if (0 == peer->recv_msg->hdr.nbytes) {
+                pmix_output_verbose(2, pmix_globals.debug_output,
+                                    "RECVD ZERO-BYTE MESSAGE FROM %s:%d for tag %d",
+                                    peer->namespace, peer->rank, peer->recv_msg->hdr.tag);
+                peer->recv_msg->data = NULL;  // make sure
+                peer->recv_msg->rdptr = NULL;
+                peer->recv_msg->rdbytes = 0;
             } else {
-                pmix_output_verbose(2, pmix_client_globals.debug_level,
+                pmix_output_verbose(2, pmix_globals.debug_output,
                                     "usock:recv:handler allocate data region of size %lu",
-                                    (unsigned long)pmix_client_globals.recv_msg->hdr.nbytes);
+                                    (unsigned long)peer->recv_msg->hdr.nbytes);
                 /* allocate the data region */
-                pmix_client_globals.recv_msg->data = (char*)malloc(pmix_client_globals.recv_msg->hdr.nbytes);
+                peer->recv_msg->data = (char*)malloc(peer->recv_msg->hdr.nbytes);
                 /* point to it */
-                pmix_client_globals.recv_msg->rdptr = pmix_client_globals.recv_msg->data;
-                pmix_client_globals.recv_msg->rdbytes = pmix_client_globals.recv_msg->hdr.nbytes;
+                peer->recv_msg->rdptr = peer->recv_msg->data;
+                peer->recv_msg->rdbytes = peer->recv_msg->hdr.nbytes;
             }
             /* fall thru and attempt to read the data */
         } else if (PMIX_ERR_RESOURCE_BUSY == rc ||
@@ -248,31 +291,32 @@ void pmix_usock_recv_handler(int sd, short flags, void *cbdata)
             return;
         } else {
             /* close the connection */
-            pmix_output_verbose(2, pmix_client_globals.debug_level,
+            pmix_output_verbose(2, pmix_globals.debug_output,
                                 "usock:recv:handler error reading bytes - closing connection");
             /* the remote peer closed the connection - report that condition
              * and let the caller know
              */
-            pmix_output_verbose(2, pmix_client_globals.debug_level,
+            pmix_output_verbose(2, pmix_globals.debug_output,
                                 "pmix_usock_msg_recv: peer closed connection");
             goto err_closed;
         }
     }
 
-    if (pmix_client_globals.recv_msg->hdr_recvd) {
+    if (peer->recv_msg->hdr_recvd) {
         /* continue to read the data block - we start from
              * wherever we left off, which could be at the
              * beginning or somewhere in the message
              */
-        if (PMIX_SUCCESS == (rc = read_bytes(sd, &msg->rdptr, &msg->rdbytes))) {
+        if (PMIX_SUCCESS == (rc = read_bytes(peer->sd, &msg->rdptr, &msg->rdbytes))) {
             /* we recvd all of the message */
-            pmix_output_verbose(2, pmix_client_globals.debug_level,
-                                "RECVD COMPLETE MESSAGE FROM SERVER OF %d BYTES FOR TAG %d",
-                                (int)pmix_client_globals.recv_msg->hdr.nbytes,
-                                pmix_client_globals.recv_msg->hdr.tag);
+            pmix_output_verbose(2, pmix_globals.debug_output,
+                                "RECVD COMPLETE MESSAGE FROM SERVER OF %d BYTES FOR TAG %d ON PEER SOCKET %d",
+                                (int)peer->recv_msg->hdr.nbytes,
+                                peer->recv_msg->hdr.tag, peer->sd);
             /* post it for delivery */
-            PMIX_ACTIVATE_POST_MSG(pmix_client_globals.recv_msg);
-            pmix_client_globals.recv_msg = NULL;
+            PMIX_ACTIVATE_POST_MSG(peer->recv_msg);
+            peer->recv_msg = NULL;
+            return;
         } else if (PMIX_ERR_RESOURCE_BUSY == rc ||
                    PMIX_ERR_WOULD_BLOCK == rc) {
             /* exit this event and let the event lib progress */
@@ -281,32 +325,28 @@ void pmix_usock_recv_handler(int sd, short flags, void *cbdata)
             // report the error
             pmix_output(0, "usock_peer_recv_handler: unable to recv message");
             /* turn off the recv event */
-            event_del(&pmix_client_globals.recv_event);
-            pmix_client_globals.recv_ev_active = false;
-            CLOSE_THE_SOCKET(pmix_client_globals.sd);
+            event_del(&peer->recv_event);
+            peer->recv_ev_active = false;
+            CLOSE_THE_SOCKET(peer->sd);
             return;
         }
     }
 err_closed:
     /* stop all events */
-    if (pmix_client_globals.recv_ev_active) {
-        event_del(&pmix_client_globals.recv_event);
-        pmix_client_globals.recv_ev_active = false;
+    if (peer->recv_ev_active) {
+        event_del(&peer->recv_event);
+        peer->recv_ev_active = false;
     }
-    if (pmix_client_globals.timer_ev_active) {
-        event_del(&pmix_client_globals.timer_event);
-        pmix_client_globals.timer_ev_active = false;
+    if (peer->send_ev_active) {
+        event_del(&peer->send_event);
+        peer->send_ev_active = false;
     }
-    if (pmix_client_globals.send_ev_active) {
-        event_del(&pmix_client_globals.send_event);
-        pmix_client_globals.send_ev_active = false;
+    if (NULL != peer->recv_msg) {
+        OBJ_RELEASE(peer->recv_msg);
+        peer->recv_msg = NULL;
     }
-    if (NULL != pmix_client_globals.recv_msg) {
-        OBJ_RELEASE(pmix_client_globals.recv_msg);
-        pmix_client_globals.recv_msg = NULL;
-    }
-    CLOSE_THE_SOCKET(pmix_client_globals.sd);
-    pmix_client_globals.sd = -1;
+    CLOSE_THE_SOCKET(peer->sd);
+    peer->sd = -1;
 }
 
 void pmix_usock_send_recv(int fd, short args, void *cbdata)
@@ -314,29 +354,32 @@ void pmix_usock_send_recv(int fd, short args, void *cbdata)
     pmix_usock_sr_t *ms = (pmix_usock_sr_t*)cbdata;
     pmix_usock_posted_recv_t *req;
     pmix_usock_send_t *snd;
-    uint32_t tag = UINT32_MAX;
+    uint32_t tag;
 
+    /* set the tag */
+    tag = current_tag++;
+    
     if (NULL != ms->cbfunc) {
         /* if a callback msg is expected, setup a recv for it */
         req = OBJ_NEW(pmix_usock_posted_recv_t);
         /* take the next tag in the sequence */
-        if (UINT32_MAX == pmix_client_globals.tag ) {
-            pmix_client_globals.tag = 0;
+        if (UINT32_MAX == current_tag ) {
+            current_tag = 0;
         }
-        req->tag = pmix_client_globals.tag++;
-        tag = req->tag;
+        req->tag = tag;
         req->cbfunc = ms->cbfunc;
         req->cbdata = ms->cbdata;
-        pmix_output_verbose(5, pmix_client_globals.debug_level,
+        pmix_output_verbose(5, pmix_globals.debug_output,
                             "posting recv on tag %d", req->tag);
         /* add it to the list of recvs - we cannot have unexpected messages
          * in this subsystem as the server never sends us something that
          * we didn't previously request */
-        pmix_list_append(&pmix_client_globals.posted_recvs, &req->super);
+        pmix_list_prepend(&pmix_usock_globals.posted_recvs, &req->super);
     }
 
     snd = OBJ_NEW(pmix_usock_send_t);
-    snd->hdr.id = pmix_client_globals.tag;
+    (void)strncpy(snd->hdr.namespace, pmix_globals.namespace, PMIX_MAX_NSLEN);
+    snd->hdr.rank = pmix_globals.rank;
     snd->hdr.type = PMIX_USOCK_USER;
     snd->hdr.tag = tag;
     snd->hdr.nbytes = ms->bfr->bytes_used;
@@ -345,19 +388,17 @@ void pmix_usock_send_recv(int fd, short args, void *cbdata)
     snd->sdptr = (char*)&snd->hdr;
     snd->sdbytes = sizeof(pmix_usock_hdr_t);
 
-    pmix_output_verbose(2, pmix_client_globals.debug_level,
-                        "usock:send_nb: already connected to server - queueing for send");
     /* if there is no message on-deck, put this one there */
-    if (NULL == pmix_client_globals.send_msg) {
-        pmix_client_globals.send_msg = snd;
+    if (NULL == ms->peer->send_msg) {
+        ms->peer->send_msg = snd;
     } else {
         /* add it to the queue */
-        pmix_list_append(&pmix_client_globals.send_queue, &snd->super);
+        pmix_list_append(&ms->peer->send_queue, &snd->super);
     }
     /* ensure the send event is active */
-    if (!pmix_client_globals.send_ev_active) {
-        event_add(&pmix_client_globals.send_event, 0);
-        pmix_client_globals.send_ev_active = true;
+    if (!ms->peer->send_ev_active) {
+        event_add(&ms->peer->send_event, 0);
+        ms->peer->send_ev_active = true;
     }
 }
 
@@ -367,17 +408,17 @@ void pmix_usock_process_msg(int fd, short flags, void *cbdata)
     pmix_usock_posted_recv_t *rcv;
     pmix_buffer_t buf;
 
-    pmix_output_verbose(5, pmix_client_globals.debug_level,
-                         "message received %d bytes for tag %u",
-                         (int)msg->hdr.nbytes, msg->hdr.tag);
+    pmix_output_verbose(5, pmix_globals.debug_output,
+                        "message received %d bytes for tag %u on socket %d",
+                        (int)msg->hdr.nbytes, msg->hdr.tag, msg->sd);
 
     /* see if we have a waiting recv for this message */
-    PMIX_LIST_FOREACH(rcv, &pmix_client_globals.posted_recvs, pmix_usock_posted_recv_t) {
-        pmix_output_verbose(5, pmix_client_globals.debug_level,
+    PMIX_LIST_FOREACH(rcv, &pmix_usock_globals.posted_recvs, pmix_usock_posted_recv_t) {
+        pmix_output_verbose(5, pmix_globals.debug_output,
                             "checking msg on tag %u for tag %u",
                             msg->hdr.tag, rcv->tag);
 
-        if (msg->hdr.tag == rcv->tag) {
+        if (msg->hdr.tag == rcv->tag || UINT_MAX == rcv->tag) {
             if (NULL != rcv->cbfunc) {
                 /* construct and load the buffer */
                 OBJ_CONSTRUCT(&buf, pmix_buffer_t);
@@ -389,12 +430,14 @@ void pmix_usock_process_msg(int fd, short flags, void *cbdata)
                 }
                 msg->data = NULL;  // protect the data region
                 if (NULL != rcv->cbfunc) {
-                    rcv->cbfunc(&buf, rcv->cbdata);
+                    rcv->cbfunc(msg->sd, &msg->hdr, &buf, rcv->cbdata);
                 }
                 OBJ_DESTRUCT(&buf);  // free's the msg data
-                /* also done with the recv */
-                pmix_list_remove_item(&pmix_client_globals.posted_recvs, &rcv->super);
-                OBJ_RELEASE(rcv);
+                /* also done with the recv, if not a wildcard */
+                if (UINT32_MAX != rcv->tag) {
+                    pmix_list_remove_item(&pmix_usock_globals.posted_recvs, &rcv->super);
+                    OBJ_RELEASE(rcv);
+                }
                 OBJ_RELEASE(msg);
                 return;
             }

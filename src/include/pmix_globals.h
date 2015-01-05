@@ -21,7 +21,10 @@
 #define PMIX_GLOBALS_H
 
 #include "pmix_config.h"
+#include "src/include/types.h"
 #include <event.h>
+
+#include "src/api/pmix_common.h"
 
 BEGIN_C_DECLS
 
@@ -29,10 +32,10 @@ BEGIN_C_DECLS
  * between various parts of the code library. Both the client
  * and server libraries must instance this structure */
 typedef struct {
-    char namespace[PMIX_MAX_VALLEN];
+    char namespace[PMIX_MAX_NSLEN];
     int rank;
     char *credential;
-    event_base_t *evbase;
+    pmix_event_base_t *evbase;
     int debug_output;
 } pmix_globals_t;
 

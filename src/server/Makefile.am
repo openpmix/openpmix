@@ -9,9 +9,6 @@
 # $HEADER$
 #
 
-server_headers += \
-        src/server/pmix_server.h
-
 server_sources += \
         src/server/pmix_server.c
 
