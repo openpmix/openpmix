@@ -940,7 +940,7 @@ int pmix_bfrop_unpack_modex(pmix_buffer_t *buffer, void *dest,
         if (0 < ptr[i]->size) {
             ptr[i]->blob = (uint8_t*)malloc(ptr[i]->size * sizeof(uint8_t));
             m=ptr[i]->size;
-            if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_byte(buffer, &ptr[i]->blob, &m, PMIX_UINT8))) {
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_byte(buffer, ptr[i]->blob, &m, PMIX_UINT8))) {
                 return ret;
             }
         }

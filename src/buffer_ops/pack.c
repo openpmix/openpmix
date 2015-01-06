@@ -746,7 +746,7 @@ int pmix_bfrop_pack_modex(pmix_buffer_t *buffer, const void *src,
             return ret;
         }
         if( 0 < data->size){
-            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_byte(buffer, &data->blob, data->size, PMIX_UINT8))) {
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_byte(buffer, data->blob, data->size, PMIX_UINT8))) {
                 return ret;
             }
         }
