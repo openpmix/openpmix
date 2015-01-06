@@ -306,14 +306,14 @@ typedef void (*pmix_cbfunc_t)(int status, pmix_value_t *kv, void *cbdata);
 // TODO: add all possible types/fields here.
 
 #define PMIX_VAL_FIELD_int(x) ((x)->data.integer)
-#define PMIX_VAL_FIELD_uint32(x) ((x)->data.uint32)
-#define PMIX_VAL_FIELD_uint16(x) ((x)->data.uint16)
+#define PMIX_VAL_FIELD_uint32_t(x) ((x)->data.uint32)
+#define PMIX_VAL_FIELD_uint16_t(x) ((x)->data.uint16)
 #define PMIX_VAL_FIELD_string(x) ((x)->data.string)
 #define PMIX_VAL_FIELD_float(x) ((x)->data.fval)
 
 #define PMIX_VAL_TYPE_int    PMIX_INT
-#define PMIX_VAL_TYPE_uint32 PMIX_UINT32
-#define PMIX_VAL_TYPE_uint16 PMIX_UINT16
+#define PMIX_VAL_TYPE_uint32_t PMIX_UINT32
+#define PMIX_VAL_TYPE_uint16_t PMIX_UINT16
 #define PMIX_VAL_TYPE_string PMIX_STRING
 #define PMIX_VAL_TYPE_float  PMIX_FLOAT
 
@@ -330,8 +330,8 @@ typedef void (*pmix_cbfunc_t)(int status, pmix_value_t *kv, void *cbdata);
     } while(0);
 
 #define PMIX_VAL_SET_int     PMIX_VAL_set_assign
-#define PMIX_VAL_SET_uint32  PMIX_VAL_set_assign
-#define PMIX_VAL_SET_uint16  PMIX_VAL_set_assign
+#define PMIX_VAL_SET_uint32_t  PMIX_VAL_set_assign
+#define PMIX_VAL_SET_uint16_t  PMIX_VAL_set_assign
 #define PMIX_VAL_SET_string  PMIX_VAL_set_strdup
 #define PMIX_VAL_SET_float   PMIX_VAL_set_assign
 
