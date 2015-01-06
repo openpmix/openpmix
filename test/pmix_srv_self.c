@@ -21,7 +21,7 @@
  * $HEADER$
  *
  */
-
+ #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -32,6 +32,7 @@
 #include <event.h>
 #include <unistd.h>
 #include <signal.h>
+#include <sys/wait.h>
 
 #include "src/include/types.h"
 #include "src/usock/usock.h"
@@ -54,6 +55,10 @@ static int start_listening(struct sockaddr_un *address);
 static void connection_handler(int incoming_sd, short flags, void* cbdata);
 static void message_handler(int incoming_sd, short flags, void* cbdata);
 static int read_bytes(int sd, char **buf, size_t *remain);
+int blocking_recv(int sd, void *buf, int size);
+
+int reply_cli_auth(int sd, int rc);
+int recv_cli_auth(int sd);
 
 pmix_event_t *cli_ev, *exit_ev;
 pmix_usock_hdr_t hdr;
@@ -64,7 +69,7 @@ size_t rbytes = 0;
 
 bool service = true;
 
-void process_message();
+void process_message(void);
 void prepare_db(void);
 int run_client(struct sockaddr_un address, char **env);
 
@@ -216,7 +221,7 @@ int run_client(struct sockaddr_un address, char **env)
         return -1;
     }else if( client_pid == 0 ){
         /* setup environment */
-        int rc = execve("./pmix_client", client_argv, client_env);
+        execve("./pmix_client", client_argv, client_env);
         // shouldn't get here
         printf("Cannot execle the client, rc = %d (%s)\n",
                errno, strerror(errno));
@@ -232,7 +237,7 @@ int run_client(struct sockaddr_un address, char **env)
     return 0;
 }
 
-blocking_recv(int sd, void *buf, int size)
+int blocking_recv(int sd, void *buf, int size)
 {
     int rc;
     int rcvd = 0;
@@ -276,7 +281,7 @@ static int blocking_send(int sd, void *ptr, size_t size)
 
 int reply_cli_auth(int sd, int rc)
 {
-    blocking_send(sd,&rc,sizeof(rc));
+    return blocking_send(sd,&rc,sizeof(rc));
 }
 
 int recv_cli_auth(int sd)
@@ -324,8 +329,6 @@ int recv_cli_auth(int sd)
 static void connection_handler(int incomind_sd, short flags, void* cbdata)
 {
     int rc, sd;
-    struct sockaddr_un sa;
-    int sa_len = sizeof(struct sockaddr_un);
 
     fprintf(stderr, "PMIx srv: Incoming connection from the client\n");
 
@@ -458,7 +461,6 @@ exit:
 void prepare_db(void)
 {
     int i;
-    char *str = NULL;
 
     pmix_db = malloc(sizeof(pmix_modex_data_t*) * 3);
     for (i=0;i<3;i++){
@@ -466,7 +468,6 @@ void prepare_db(void)
         pmix_value_t val;
         pmix_kval_t kv, *kvp = &kv;
         char sval[256], key[256];
-        uint32_t tmp;
 
         pmix_db[i] = malloc(sizeof(pmix_modex_data_t));
         strcpy(pmix_db[i]->namespace, TEST_NAMESPACE);
@@ -500,15 +501,14 @@ void prepare_db(void)
         pmix_bfrop.pack(buf,&kvp, 1, PMIX_KVAL);
         PMIX_VAL_FREE(&val);
 
-        pmix_db[i]->blob = buf->base_ptr;
+        pmix_db[i]->blob = (uint8_t*)buf->base_ptr;
         pmix_db[i]->size = buf->bytes_used;
         buf->base_ptr = NULL;
         OBJ_RELEASE(buf);
     }
 }
 
-static void reply_to_client(pmix_buffer_t *reply,
-                            uint64_t id, uint8_t type, uint32_t tag)
+static void reply_to_client(pmix_buffer_t *reply, uint8_t type, uint32_t tag)
 {
     int rc;
     pmix_usock_hdr_t hdr;
@@ -614,17 +614,15 @@ inline static int verify_kvps(pmix_buffer_t *xfer)
     return PMIX_SUCCESS;
 }
 
-void process_message()
+void process_message(void)
 {
-    int rc, ret;
+    int rc;
     int32_t cnt;
     pmix_cmd_t cmd;
     pmix_buffer_t *reply = NULL;
-    pmix_buffer_t xfer, buf;
-    uint64_t id, idreq;
+    pmix_buffer_t xfer;
     uint32_t tag;
     uint8_t type;
-    char *str;
 
     /* xfer the message to a buffer for unpacking */
     OBJ_CONSTRUCT(&xfer, pmix_buffer_t);
@@ -690,7 +688,6 @@ void process_message()
     case PMIX_FENCENB_CMD:{
         int cnt = 1, rc, tmp, i;
         size_t nranges;
-        pmix_scope_t scope;
         pmix_range_t **ranges = NULL;
 
         pmix_output(0, "executing fence");
@@ -835,9 +832,8 @@ void process_message()
         return;
     }
 
-cleanup:
     if( NULL != reply ){
-        reply_to_client(reply, id, type, tag);
+        reply_to_client(reply, type, tag);
         OBJ_RELEASE(reply);
     }
     OBJ_DESTRUCT(&xfer);
