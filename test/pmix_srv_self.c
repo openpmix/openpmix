@@ -33,29 +33,29 @@
 #include <unistd.h>
 #include <signal.h>
 
-#include "src/client/usock.h"
-#include "src/client/pmix_client.h"
-#include "src/buffer_ops/types.h"
+#include "src/include/types.h"
+#include "src/usock/usock.h"
+#include "src/api/pmix_common.h"
 #include "src/buffer_ops/types.h"
 #include "src/util/error.h"
 extern int errno;
 #include <errno.h>
 #include "src/util/argv.h"
 
-#include "pmix_server.h"
 #include "test_common.h"
 
-pmix_buffer_t **pmix_db = NULL;
+pmix_modex_data_t **pmix_db = NULL;
 struct event_base *server_base = NULL;
-struct event *listen_ev = NULL;
+pmix_event_t *listen_ev = NULL;
 int listen_fd = -1;
 int client_fd = -1;
 pid_t client_pid = -1;
 static int start_listening(struct sockaddr_un *address);
 static void connection_handler(int incoming_sd, short flags, void* cbdata);
 static void message_handler(int incoming_sd, short flags, void* cbdata);
+static int read_bytes(int sd, char **buf, size_t *remain);
 
-event_t *cli_ev, *exit_ev;
+pmix_event_t *cli_ev, *exit_ev;
 pmix_usock_hdr_t hdr;
 char *data = NULL;
 bool hdr_rcvd = false;
@@ -119,6 +119,11 @@ static int start_listening(struct sockaddr_un *address)
     unsigned int addrlen;
     int sd = -1;
 
+    /* unlink old unix socket file if presents */
+    if (0 == access(address->sun_path, R_OK)) {
+        unlink(address->sun_path);
+    }
+
     /* create a listen socket for incoming connection attempts */
     sd = socket(PF_UNIX, SOCK_STREAM, 0);
     if (sd < 0) {
@@ -181,12 +186,12 @@ int run_client(struct sockaddr_un address, char **env)
 
     // setup signal handler to be notified on error
     // at client exec
-    event_t *ev = evsignal_new(server_base, SIGUSR1, exit_handler, NULL);
+    pmix_event_t *ev = evsignal_new(server_base, SIGUSR1, exit_handler, NULL);
     event_add(ev,NULL);
     fprintf(stderr, "PMIx srv: SIGUSR1 handler was intalled\n");
 
     /* define the argv for the test client */
-    pmix_argv_append_nosize(&client_argv, "client");
+    pmix_argv_append_nosize(&client_argv, "pmix_client");
 
     for(i=0; NULL != env[i]; i++){
         pmix_argv_append_nosize(&client_env, env[i]);
@@ -211,7 +216,7 @@ int run_client(struct sockaddr_un address, char **env)
         return -1;
     }else if( client_pid == 0 ){
         /* setup environment */
-        int rc = execve("./client", client_argv, client_env);
+        int rc = execve("./pmix_client", client_argv, client_env);
         // shouldn't get here
         printf("Cannot execle the client, rc = %d (%s)\n",
                errno, strerror(errno));
@@ -225,6 +230,92 @@ int run_client(struct sockaddr_un address, char **env)
     fprintf(stderr, "PMIx srv: Client was spawned\n");
 
     return 0;
+}
+
+blocking_recv(int sd, void *buf, int size)
+{
+    int rc;
+    int rcvd = 0;
+    while( rcvd < size ){
+        rc = read(sd, buf, size);
+        if( rc < 0 ){
+            fprintf(stderr, "PMIx srv: %s:%d read() failed %d:%s",
+                    __FILE__, __LINE__, errno, strerror(errno));
+            return PMIX_ERR_UNREACH;
+        }else if( rc == 0){
+            fprintf(stderr, "PMIx srv: %s:%d read() failed: client closed connection",
+                    __FILE__, __LINE__);
+            return PMIX_ERR_UNREACH;
+        }
+        rcvd += rc;
+    }
+    return PMIX_SUCCESS;
+}
+
+/* Copy from src/client/usock.c */
+static int blocking_send(int sd, void *ptr, size_t size)
+{
+    size_t cnt = 0;
+    int retval;
+
+    while (cnt < size) {
+        retval = send(sd, (char*)ptr+cnt, size-cnt, 0);
+        if (retval < 0) {
+            if ( errno != EINTR ) {
+                fprintf(stderr, "PMIx srv: %s:%d send() to socket %d failed: %d:%s",
+                        __FILE__, __LINE__, sd, errno, strerror(errno));
+                return PMIX_ERR_UNREACH;
+            }
+            continue;
+        }
+        cnt += retval;
+    }
+
+    return PMIX_SUCCESS;
+}
+
+int reply_cli_auth(int sd, int rc)
+{
+    blocking_send(sd,&rc,sizeof(rc));
+}
+
+int recv_cli_auth(int sd)
+{
+    pmix_usock_hdr_t hdr;
+    char *data;
+    char str[256];
+    int rc, len;
+
+    if( PMIX_SUCCESS != (rc = blocking_recv(sd,&hdr,sizeof(hdr))) ){
+        return rc;
+    }
+    data = malloc(hdr.nbytes);
+    if( PMIX_SUCCESS != (rc = blocking_recv(sd,data, hdr.nbytes)) ){
+        return rc;
+    }
+    len = strlen(PMIX_VERSION);
+    memcpy(str,data,len);
+    str[len] = '\0';
+    if( strcmp(PMIX_VERSION, str) ){
+        fprintf(stderr, "PMIx srv: %s:%d pmix version mismatch: expect \"%s\", get \"%s\"",
+                __FILE__, __LINE__, PMIX_VERSION, str);
+        rc = PMIX_ERR_BAD_PARAM;
+        reply_cli_auth(sd, rc);
+        return rc;
+    }
+    memcpy(str,data + len + 1,hdr.nbytes - len - 1);
+    len = hdr.nbytes - len - 1;
+    str[len] = '\0';
+    if( strcmp(TEST_CREDENTIAL, str) ){
+        fprintf(stderr, "PMIx srv: %s:%d pmix credential mismatch: expect \"%s\", get \"%s\"",
+                __FILE__, __LINE__, PMIX_VERSION, str);
+        rc = PMIX_ERR_BAD_PARAM;
+        reply_cli_auth(sd, rc);
+        return rc;
+    }
+    rc = PMIX_SUCCESS;
+    reply_cli_auth(sd, rc);
+    return rc;
 }
 
 /*
@@ -245,20 +336,15 @@ static void connection_handler(int incomind_sd, short flags, void* cbdata)
     }
 
     /* receive ack from the server */
-    if (PMIX_SUCCESS != (rc = usock_recv_connect_ack(sd))) {
-        printf("PMIx srv: Bad acknoledgement!\n");
+    if (PMIX_SUCCESS != (rc = recv_cli_auth(sd))) {
+        printf("PMIx srv: Bad authentification!\n");
         exit(0);
     }
 
-    /* send our globally unique process identifier to the server */
-    if (PMIX_SUCCESS != (rc = usock_send_connect_ack(sd))) {
-        printf("PMIx srv: Cannot send my acknoledgement!\n");
-        exit(0);
-    }
     cli_ev = event_new(server_base, sd,
                       EV_READ|EV_PERSIST, message_handler, NULL);
     event_add(cli_ev,NULL);
-    usock_set_nonblocking(sd);
+    pmix_usock_set_nonblocking(sd);
     client_fd = sd;
     printf("PMIx srv: New client connection accepted\n");
 }
@@ -334,29 +420,39 @@ static void message_handler(int sd, short flags, void* cbdata)
     }
 }
 
-/* Copy from src/client/usock.c */
-static int usock_send_blocking(int sd, void *ptr, size_t size)
+static int read_bytes(int sd, char **buf, size_t *remain)
 {
-    size_t cnt = 0;
-    int retval;
+    int ret = PMIX_SUCCESS, rc;
+    char *ptr = *buf;
 
-    while (cnt < size) {
-        retval = send(sd, (char*)ptr+cnt, size-cnt, 0);
-        if (retval < 0) {
-            if ( errno != EINTR ) {
-                fprintf(stderr, "PMIx srv: %s:%d send() to socket %d failed: %d:%s",
-                        __FILE__, __LINE__, sd, errno, strerror(errno));
-                return PMIX_ERR_UNREACH;
+    /* read until all bytes recvd or error */
+    while (0 < *remain) {
+        rc = read(sd, ptr, *remain);
+        if (rc < 0) {
+            if(errno == EINTR) {
+                continue;
+            } else if (errno == EAGAIN) {
+                ret = PMIX_ERR_RESOURCE_BUSY;
+                goto exit;
+            } else if (errno == EWOULDBLOCK) {
+                ret = PMIX_ERR_WOULD_BLOCK;
+                goto exit;
             }
-            continue;
+            ret = PMIX_ERR_UNREACH;
+            goto exit;
+        } else if (0 == rc) {
+            /* the remote peer closed the connection */
+            ret = PMIX_ERR_UNREACH;
+            goto exit;
         }
-        cnt += retval;
+        /* we were able to read something, so adjust counters and location */
+        *remain -= rc;
+        ptr += rc;
     }
-
-    pmix_output_verbose(2, pmix_client_globals.debug_output,
-                        "blocking send complete to socket %d",
-                        pmix_client_globals.sd);
-    return PMIX_SUCCESS;
+    /* we read the full data block */
+exit:
+    *buf = ptr;
+    return ret;
 }
 
 void prepare_db(void)
@@ -364,66 +460,50 @@ void prepare_db(void)
     int i;
     char *str = NULL;
 
-    pmix_db = malloc(sizeof(pmix_buffer_t*) * 3);
+    pmix_db = malloc(sizeof(pmix_modex_data_t*) * 3);
     for (i=0;i<3;i++){
-        uint32_t scope;
-        pmix_buffer_t scope_b, *scope_bp = &scope_b, *buf;
+        pmix_buffer_t *buf;
         pmix_value_t val;
         pmix_kval_t kv, *kvp = &kv;
         char sval[256], key[256];
         uint32_t tmp;
 
+        pmix_db[i] = malloc(sizeof(pmix_modex_data_t));
+        strcpy(pmix_db[i]->namespace, TEST_NAMESPACE);
+        pmix_db[i]->rank = i;
+
         /* Construct the buffer */
-        pmix_db[i] = OBJ_NEW(pmix_buffer_t);
-        buf = pmix_db[i];
-        OBJ_CONSTRUCT(scope_bp,pmix_buffer_t);
-
-        /* Pack namespace of this processes in scenario */
-        str = TEST_NAMESPACE;
-        pmix_bfrop.pack(buf,&str,1,PMIX_STRING);
-
-        /* Pack rank of the ghost process */
-        tmp = i;
-        pmix_bfrop.pack(buf,&tmp,1,PMIX_UINT32);
+        buf = OBJ_NEW(pmix_buffer_t);
 
         /* Create local data  */
         sprintf(key,"local-key-%d",i);
         PMIX_VAL_SET(&val, int, 12340+i);
         kv.key = key;
         kv.value = &val;
-        pmix_bfrop.pack(scope_bp,&kvp, 1, PMIX_KVAL);
-        scope = PMIX_LOCAL;
-        pmix_bfrop.pack(buf,&scope, 1, PMIX_SCOPE);
-        pmix_bfrop.pack(buf, &scope_bp, 1, PMIX_BUFFER);
-        OBJ_DESTRUCT(scope_bp);
+        pmix_bfrop.pack(buf,&kvp, 1, PMIX_KVAL);
         PMIX_VAL_FREE(&val);
 
         /* Create remote data  */
-        OBJ_CONSTRUCT(scope_bp,pmix_buffer_t);
         sprintf(key,"remote-key-%d",i);
         sprintf(sval,"Test string #%d",i);
         PMIX_VAL_SET(&val,string, sval);
         kv.key = key;
         kv.value = &val;
-        pmix_bfrop.pack(scope_bp,&kvp, 1, PMIX_KVAL);
-        scope = PMIX_REMOTE;
-        pmix_bfrop.pack(buf, &scope, 1, PMIX_SCOPE);
-        pmix_bfrop.pack(buf, &scope_bp, 1, PMIX_BUFFER);
-        OBJ_DESTRUCT(scope_bp);
+        pmix_bfrop.pack(buf,&kvp, 1, PMIX_KVAL);
         PMIX_VAL_FREE(&val);
 
         /* Create global data  */
-        OBJ_CONSTRUCT(scope_bp,pmix_buffer_t);
         sprintf(key,"global-key-%d",i);
         PMIX_VAL_SET(&val,float, 10.15 + i);
         kv.key = key;
         kv.value = &val;
-        pmix_bfrop.pack(scope_bp,&kvp, 1, PMIX_KVAL);
-        scope = PMIX_GLOBAL;
-        pmix_bfrop.pack(buf, &scope, 1, PMIX_SCOPE);
-        pmix_bfrop.pack(buf, &scope_bp, 1, PMIX_BUFFER);
-        OBJ_DESTRUCT(scope_bp);
+        pmix_bfrop.pack(buf,&kvp, 1, PMIX_KVAL);
         PMIX_VAL_FREE(&val);
+
+        pmix_db[i]->blob = buf->base_ptr;
+        pmix_db[i]->size = buf->bytes_used;
+        buf->base_ptr = NULL;
+        OBJ_RELEASE(buf);
     }
 }
 
@@ -432,19 +512,17 @@ static void reply_to_client(pmix_buffer_t *reply,
 {
     int rc;
     pmix_usock_hdr_t hdr;
-
-    hdr.id = 0;
     hdr.nbytes = reply->bytes_used;
     hdr.tag = tag;
     hdr.type = type;
 
-    rc = usock_send_blocking(client_fd, &hdr, sizeof(hdr));
+    rc = blocking_send(client_fd, &hdr, sizeof(hdr));
     if( PMIX_SUCCESS != rc ){
         pmix_output(0,"PMIx srv: Error sending the header to the client");
         return;
     }
 
-    rc = usock_send_blocking(client_fd,reply->unpack_ptr,reply->bytes_used);
+    rc = blocking_send(client_fd,reply->unpack_ptr,reply->bytes_used);
     if( PMIX_SUCCESS != rc ){
         pmix_output(0,"PMIx srv: Error sending the header to the client");
         return;
@@ -457,6 +535,7 @@ inline static int verify_kvps(pmix_buffer_t *xfer)
     pmix_scope_t scope = 0;
     int rc, cnt = 1;
     pmix_kval_t *kvp = NULL;
+    int collect_data;
 
     // We expect 3 keys here:
     // 1. for the local scope:  "local-key-2" = "12342" (INT)
@@ -464,11 +543,18 @@ inline static int verify_kvps(pmix_buffer_t *xfer)
     // 3. for the global scope: "global-key-2" = "12.15" (FLOAT)
     // Should test more cases in future
 
+    cnt = 1;
+    if( PMIX_SUCCESS != pmix_bfrop.unpack(xfer,&collect_data,&cnt, PMIX_INT) ){
+        fprintf(stderr,"PMIx srv [%s:%d]: Cannot unpack\n", __FILE__,__LINE__);
+        abort();
+    }
+
+    cnt = 1;
     while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(xfer, &scope, &cnt, PMIX_SCOPE))) {
         /* unpack the buffer */
         cnt = 1;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(xfer, &bptr, &cnt, PMIX_BUFFER))) {
-            fprintf(stderr,"PMIx srv [verify_kvps]: Cannot unpack\n");
+            fprintf(stderr,"PMIx srv [%s:%d]: Cannot unpack\n", __FILE__,__LINE__);
             abort();
         }
 
@@ -549,7 +635,6 @@ void process_message()
 
     type = hdr.type;
     tag = hdr.tag;
-    id = hdr.id;
     /* protect the transferred data */
     data = NULL;
     hdr_rcvd = false;
@@ -576,7 +661,31 @@ void process_message()
         service = false;
         reply = OBJ_NEW(pmix_buffer_t);
         break;
+    case PMIX_JOBINFO_CMD:{
+        reply = OBJ_NEW(pmix_buffer_t);
+        pmix_kval_t *kp = OBJ_NEW(pmix_kval_t);
+        kp->value = malloc(sizeof(pmix_value_t));
+        int rc = PMIX_SUCCESS;
 
+        pmix_bfrop.pack(reply,&rc,1,PMIX_INT);
+
+        /* Put some jobinfo */
+        kp->key = PMIX_UNIV_SIZE;
+        PMIX_VAL_SET(kp->value,uint32_t,3);
+        pmix_bfrop.pack(reply,&kp,1,PMIX_KVAL);
+        PMIX_VAL_FREE(kp->value);
+
+        kp->key = PMIX_JOBID;
+        PMIX_VAL_SET(kp->value,string,"job0");
+        pmix_bfrop.pack(reply,&kp,1,PMIX_KVAL);
+        PMIX_VAL_FREE(kp->value);
+
+        kp->key = PMIX_RANK;
+        PMIX_VAL_SET(kp->value,uint32_t,2);
+        pmix_bfrop.pack(reply,&kp,1,PMIX_KVAL);
+        PMIX_VAL_FREE(kp->value);
+        break;
+    }
     case PMIX_FENCE_CMD:
     case PMIX_FENCENB_CMD:{
         int cnt = 1, rc, tmp, i;
@@ -612,16 +721,21 @@ void process_message()
 
         /* prepare reply */
         reply = OBJ_NEW(pmix_buffer_t);
-        /* 1. pack number of processes in scenario */
+
+        /* 1. Pack the status */
+        tmp = PMIX_SUCCESS;
+        pmix_bfrop.pack(reply,&tmp,1,PMIX_INT);
+
+        /* 2. pack number of processes in scenario */
         tmp = 3;
-        pmix_bfrop.pack(reply,&tmp,1,PMIX_UINT32);
+        pmix_bfrop.pack(reply,&tmp,1,PMIX_SIZE);
 
         /* 3. verify incoming data */
         verify_kvps(&xfer);
 
         /* 4. pack the result of processing in reply */
         for(i=0;i<3;i++){
-            pmix_bfrop.pack(reply,&pmix_db[i],1, PMIX_BUFFER);
+            pmix_bfrop.pack(reply,&pmix_db[i],1, PMIX_MODEX);
         }
         break;
     }
