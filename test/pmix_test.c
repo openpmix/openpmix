@@ -32,8 +32,10 @@
 #include <event.h>
 
 #include "pmix_server.h"
+#include "src/class/pmix_list.h"
 #include "src/util/argv.h"
 #include "src/util/pmix_environ.h"
+#include "src/util/output.h"
 
 #include "test_common.h"
 
@@ -78,7 +80,21 @@ static pmix_server_module_t mymodule = {
     disconnect_fn
 };
 
+typedef struct {
+    pmix_list_item_t super;
+    pmix_modex_data_t data;
+} pmix_test_data_t;
+static OBJ_CLASS_INSTANCE(pmix_test_data_t,
+                          pmix_list_item_t,
+                          NULL, NULL);
+
 static bool test_complete = false;
+static pmix_list_t modex;
+
+static void errhandler(int error)
+{
+    test_complete = true;
+}
 
 int main(int argc, char **argv)
 {
@@ -86,6 +102,8 @@ int main(int argc, char **argv)
     char **client_argv=NULL;
     int rc;
     pid_t pid;
+
+    OBJ_CONSTRUCT(&modex, pmix_list_t);
     
     /* setup the server library */
     if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, NULL, NULL, "1234"))) {
@@ -93,6 +111,9 @@ int main(int argc, char **argv)
         return rc;
     }
 
+    /* register the errhandler */
+    PMIx_Register_errhandler(errhandler);
+    
     client_env = pmix_argv_copy(environ);
     
     /* fork/exec the test */
@@ -119,11 +140,15 @@ int main(int argc, char **argv)
     while (!test_complete) {
         usleep(10000);
     }
+
+    /* deregister the errhandler */
+    PMIx_Deregister_errhandler();
     
     /* finalize the server library */
     if (PMIX_SUCCESS != (rc = PMIx_server_finalize())) {
         fprintf(stderr, "Finalize failed with error %d\n", rc);
     }
+    PMIX_LIST_DESTRUCT(&modex);
     
     return rc;
 }
@@ -158,14 +183,59 @@ static int fencenb_fn(const pmix_range_t ranges[], size_t nranges, int barrier,
 
 static int store_modex_fn(pmix_scope_t scope, pmix_modex_data_t *data)
 {
+    pmix_test_data_t *mdx;
+
+    pmix_output(0, "Storing data for %s:%d", data->namespace, data->rank);
+    
+    mdx = OBJ_NEW(pmix_test_data_t);
+    (void)strncpy(mdx->data.namespace, data->namespace, PMIX_MAX_NSLEN);
+    mdx->data.rank = data->rank;
+    mdx->data.size = data->size;
+    if (0 < mdx->data.size) {
+        mdx->data.blob = (uint8_t*)malloc(mdx->data.size);
+        memcpy(mdx->data.blob, data->blob, mdx->data.size);
+    }
+    pmix_list_append(&modex, &mdx->super);
     return PMIX_SUCCESS;
 }
 
 static int get_modexnb_fn(const char namespace[], int rank,
                           pmix_modex_cbfunc_t cbfunc, void *cbdata)
 {
-   if (NULL != cbfunc) {
-        cbfunc(PMIX_SUCCESS, NULL, 0, cbdata);
+    pmix_test_data_t *mdx;
+    pmix_modex_data_t *mdxarray;
+    size_t size, n;
+
+    pmix_output(0, "Getting data for %s:%d", namespace, rank);
+
+    size = pmix_list_get_size(&modex);
+    if (0 < size) {
+        mdxarray = (pmix_modex_data_t*)malloc(size * sizeof(pmix_modex_data_t));
+        n = 0;
+        PMIX_LIST_FOREACH(mdx, &modex, pmix_test_data_t) {
+            (void)strncpy(mdxarray[n].namespace, mdx->data.namespace, PMIX_MAX_NSLEN);
+            mdxarray[n].rank = mdx->data.rank;
+            mdxarray[n].size = mdx->data.size;
+            if (0 < mdx->data.size) {
+                mdxarray[n].blob = (uint8_t*)malloc(mdx->data.size);
+                memcpy(mdxarray[n].blob, mdx->data.blob, mdx->data.size);
+            }
+            n++;
+        }
+    } else {
+        mdxarray = NULL;
+    }
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, mdxarray, size, cbdata);
+    }
+    /* free the array */
+    for (n=0; n < size; n++) {
+        if (NULL != mdxarray[n].blob) {
+            free(mdxarray[n].blob);
+        }
+    }
+    if (NULL != mdxarray) {
+        free(mdxarray);
     }
     return PMIX_SUCCESS;
 }

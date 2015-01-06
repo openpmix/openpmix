@@ -37,6 +37,7 @@ typedef struct {
     char *credential;
     pmix_event_base_t *evbase;
     int debug_output;
+    pmix_errhandler_fn_t errhandler;
 } pmix_globals_t;
 
 extern pmix_globals_t pmix_globals;

@@ -31,7 +31,8 @@
 #endif
 
 #include "src/util/error.h"
-#include "src/api/pmix.h"
+#include "src/api/pmix_common.h"
+#include "src/include/pmix_globals.h"
 
 #define MAX_CONVERTERS 5
 #define MAX_CONVERTER_PROJECT_LEN 10
@@ -204,4 +205,11 @@ pmix_error_register(const char *project, int err_base, int err_max,
     }
 
     return PMIX_ERR_OUT_OF_RESOURCE;
+}
+
+void pmix_errhandler_invoke(int error)
+{
+    if (NULL != pmix_globals.errhandler) {
+        pmix_globals.errhandler(error);
+    }
 }

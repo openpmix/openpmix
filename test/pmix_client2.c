@@ -87,8 +87,8 @@ int main(int argc, char **argv)
             goto error_out;
         }
         if( val->type != PMIX_INT || val->data.integer != (12340+i) ){
-            printf("Key %s value or type mismatch, wait %d(%d) get %d(%d)\n",
-                   key, (12340+i), PMIX_INT, val->data.integer, val->type);
+            fprintf(stderr, "Key %s value or type mismatch, wait %d(%d) get %d(%d)\n",
+                    key, (12340+i), PMIX_INT, val->data.integer, val->type);
             goto error_out;
         }
         free(val);
@@ -112,7 +112,7 @@ int main(int argc, char **argv)
             goto error_out;
         }
         if( val->type != PMIX_FLOAT || val->data.fval != (float)10.15 + i ){
-            printf("PMIx cli: Key %s value or type mismatch, wait %f(%d) get %f(%d)\n",
+            fprintf(stderr, "PMIx cli: Key %s value or type mismatch, wait %f(%d) get %f(%d)\n",
                    key, ((float)10.15 + i), PMIX_FLOAT, val->data.fval, val->type);
             goto error_out;
         }
@@ -122,6 +122,8 @@ int main(int argc, char **argv)
 
  error_out:
     /* finalize us */
+    fprintf(stderr, "Finalizing pmix_client2\n");
+    fflush(stderr);
     if (PMIX_SUCCESS != (rc = PMIx_Finalize())) {
         fprintf(stderr, "PMIx_Finalize failed: %d\n", rc);
     }

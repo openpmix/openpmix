@@ -59,7 +59,6 @@ static int get_jobinfo(void);
 static int init_cntr = 0;
 // TODO: remove static struct sockaddr_un address;
 static int server;
-static pmix_errhandler_fn_t errhandler = NULL;
 static bool local_evbase = false;
 static pmix_peer_t myserver;
 static pmix_buffer_t *cache_local;
@@ -82,7 +81,7 @@ static void wait_cbfunc(int sd, pmix_usock_hdr_t *hdr,
     int32_t cnt;
     
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:native recv callback activated with %d bytes",
+                        "pmix:client recv callback activated with %d bytes",
                         (NULL == buf) ? -1 : (int)buf->bytes_used);
 
     if (NULL != buf) {
@@ -280,7 +279,7 @@ int PMIx_Finalize(void)
     init_cntr = 0;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:native finalize called");
+                        "pmix:client finalize called");
 
     if ( 0 <= myserver.sd ) {
         /* setup a cmd message to notify the PMIx
@@ -335,7 +334,7 @@ int PMIx_Abort(int flag, const char msg[])
     pmix_cb_t *cb;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:native abort called");
+                        "pmix:client abort called");
 
     if (init_cntr <= 0) {
         return PMIX_ERR_INIT;
@@ -766,6 +765,10 @@ static int unpack_get_return(pmix_buffer_t *data, const char *key,
         return rc;
     }
 
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix: unpacking %d blobs for key %s",
+                        (int)np, (NULL == key) ? "NULL" : key);
+
     /* if data was returned, unpack and store it */
     for (i=0; i < np; i++) {
         /* get the next modex data */
@@ -777,17 +780,26 @@ static int unpack_get_return(pmix_buffer_t *data, const char *key,
             PMIX_ERROR_LOG(rc);
             return rc;
         }
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "pmix: unpacked blob %d of size %d",
+                            (int)i, (int)mdx->size);
+        if (NULL == mdx->blob) {
+            PMIX_ERROR_LOG(PMIX_ERROR);
+            return PMIX_ERROR;
+        }
         /* now unpack and store the values - everything goes into our internal store */
         OBJ_CONSTRUCT(&buf, pmix_buffer_t);
-        buf.base_ptr = (char*)mdx->blob;
-        buf.bytes_used = mdx->size;
-        buf.bytes_allocated = mdx->size;
+        PMIX_LOAD_BUFFER(&buf, mdx->blob, mdx->size);
         cnt = 1;
         while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&buf, &kp, &cnt, PMIX_KVAL))) {
+            pmix_output_verbose(2, pmix_globals.debug_output,
+                                "pmix: unpacked key %s", kp->key);
             if (PMIX_SUCCESS != (rc = pmix_client_hash_store(mdx->namespace, mdx->rank, kp))) {
                 PMIX_ERROR_LOG(rc);
             }
             if (NULL != key && 0 == strcmp(key, kp->key)) {
+                    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix: found requested value");
                 if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)val, &kp->value, PMIX_VALUE))) {
                     PMIX_ERROR_LOG(rc);
                     OBJ_RELEASE(kp);
@@ -863,17 +875,17 @@ int PMIx_Get(const char namespace[], int rank,
     PMIX_WAIT_FOR_COMPLETION(cb->active);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:native get completed");
+                        "pmix:client get completed");
 
     if (PMIX_SUCCESS == (rc = unpack_get_return(&cb->data, key, val)) &&
         (NULL == key || NULL != *val)) {
         pmix_output_verbose(2, pmix_globals.debug_output,
-                            "pmix:native get successfully unpacked");
+                            "pmix:client get successfully unpacked");
         OBJ_RELEASE(cb);
         return PMIX_SUCCESS;
     }
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:native get unsuccessfully unpacked");
+                        "pmix:client get unsuccessfully unpacked");
     OBJ_RELEASE(cb);
 
     /* we didn't find the requested data - pass back a
@@ -1337,21 +1349,12 @@ int PMIx_Spawn(const pmix_app_t apps[],
 
 void PMIx_Register_errhandler(pmix_errhandler_fn_t err)
 {
-    errhandler = err;
+    pmix_globals.errhandler = err;
 }
-
-#if 0
-static void pmix_client_call_errhandler(int error)
-{
-    if (NULL != errhandler) {
-        errhandler(error);
-    }
-}
-#endif
 
 void PMIx_Deregister_errhandler(void)
 {
-    errhandler = NULL;
+   pmix_globals.errhandler = NULL;
 }
 
 int PMIx_Connect(const pmix_range_t ranges[], size_t nranges)

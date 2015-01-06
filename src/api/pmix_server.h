@@ -121,6 +121,15 @@ int PMIx_server_init(pmix_server_module_t *module,
                      char *tmpdir, char *credential);
 int PMIx_server_finalize(void);
 int PMIx_server_setup_fork(const char namespace[], int rank, char ***env);
+/* register an errhandler to report errors that occur
+ * within the client library, but are not reportable
+ * via the API itself (e.g., loss of connection to
+ * the server) */
+void PMIx_Register_errhandler(pmix_errhandler_fn_t errhandler);
+
+/* deregister the errhandler */
+void PMIx_Deregister_errhandler(void);
+
 
 END_C_DECLS
 

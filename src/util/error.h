@@ -29,6 +29,7 @@ BEGIN_C_DECLS
     pmix_output(0, "PMIX ERROR: %s in file %s at line %d", \
                 pmix_strerror((r)), __FILE__, __LINE__);
 
+#define PMIX_REPORT_ERROR(e) pmix_errhandler_invoke(e)
 
 /**
  * Prints error message for errnum on stderr
@@ -88,6 +89,8 @@ typedef int (*pmix_err2str_fn_t)(int errnum, const char **str);
 PMIX_DECLSPEC int pmix_error_register(const char *project,
                                       int err_base, int err_max,
                                       pmix_err2str_fn_t converter);
+
+PMIX_DECLSPEC void pmix_errhandler_invoke(int error);
 
 END_C_DECLS
 

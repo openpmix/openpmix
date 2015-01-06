@@ -359,6 +359,16 @@ void PMIx_free_value_data(pmix_value_t *val)
     /* all other types have no malloc'd storage */
 }
 
+void PMIx_Register_errhandler(pmix_errhandler_fn_t err)
+{
+    pmix_globals.errhandler = err;
+}
+
+void PMIx_Deregister_errhandler(void)
+{
+   pmix_globals.errhandler = NULL;
+}
+
 /*
  * start listening on our rendezvous file
  */

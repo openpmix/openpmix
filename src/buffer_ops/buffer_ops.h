@@ -11,7 +11,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2012      Los Alamos National Security, Inc. All rights reserved.
- * Copyright (c) 2013-2014 Intel, Inc. All rights reserved
+ * Copyright (c) 2013-2015 Intel, Inc. All rights reserved
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -49,6 +49,15 @@ OBJ_CLASS_DECLARATION(pmix_kval_t);
  * another pmix_value_t structure
  */
 PMIX_DECLSPEC int pmix_value_xfer(pmix_value_t *kv, pmix_value_t *src);
+
+#define PMIX_LOAD_BUFFER(b, d, s)                       \
+    do {                                                \
+        (b)->base_ptr = (char*)(d);                     \
+        (b)->bytes_used = (s);                          \
+        (b)->bytes_allocated = (s);                     \
+        (b)->pack_ptr = ((char*)(b)->base_ptr) + (s);   \
+        (b)->unpack_ptr = (b)->base_ptr;                \
+    } while(0);
 
 /**
  * Top-level interface function to pack one or more values into a

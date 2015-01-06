@@ -35,7 +35,6 @@
  * globals
  */
 bool pmix_bfrop_initialized = false;
-int pmix_bfrop_verbose = -1;  /* by default disabled */
 int pmix_bfrop_initial_size;
 int pmix_bfrop_threshold_size;
 pmix_pointer_array_t pmix_bfrop_types;

@@ -9,10 +9,6 @@
  * $HEADER$
  */
 #include "pmix_config.h"
-#include "src/include/types.h"
-#include "src/include/pmix_globals.h"
-#include "pmix_stdint.h"
-#include "pmix_socket_errno.h"
 
 #ifdef HAVE_STRING_H
 #include <string.h>
@@ -33,6 +29,12 @@
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
+
+#include "src/include/types.h"
+#include "src/include/pmix_globals.h"
+#include "pmix_stdint.h"
+#include "pmix_socket_errno.h"
+#include "src/util/error.h"
 
 #include "usock.h"
 
@@ -179,6 +181,7 @@ void pmix_usock_send_handler(int sd, short flags, void *cbdata)
                 peer->send_ev_active = false;
                 OBJ_RELEASE(msg);
                 peer->send_msg = NULL;
+                PMIX_REPORT_ERROR(rc);
                 return;
             }
         }
@@ -207,6 +210,7 @@ void pmix_usock_send_handler(int sd, short flags, void *cbdata)
                 peer->send_ev_active = false;
                 OBJ_RELEASE(msg);
                 peer->send_msg = NULL;
+                PMIX_REPORT_ERROR(rc);
                 return;
             }
         }
@@ -349,6 +353,7 @@ err_close:
     }
     CLOSE_THE_SOCKET(peer->sd);
     peer->sd = -1;
+    PMIX_REPORT_ERROR(PMIX_ERR_UNREACH);
 }
 
 void pmix_usock_send_recv(int fd, short args, void *cbdata)
@@ -449,4 +454,5 @@ void pmix_usock_process_msg(int fd, short flags, void *cbdata)
     /* we get here if no matching recv was found - this is an error */
     pmix_output(0, "UNEXPECTED MESSAGE");
     OBJ_RELEASE(msg);
+    PMIX_REPORT_ERROR(PMIX_ERROR);
 }

@@ -162,7 +162,6 @@ typedef enum {
     PMIX_ERR_WOULD_BLOCK,
     PMIX_EXISTS,
     PMIX_ERROR,
-
     PMIX_SUCCESS
 } pmix_status_t;
 

@@ -191,8 +191,6 @@ PMIX_DECLSPEC OBJ_CLASS_DECLARATION(pmix_bfrop_type_info_t);
  * globals needed within bfrop
  */
 extern bool pmix_bfrop_initialized;
-extern bool pmix_bfrop_debug;
-extern int pmix_bfrop_verbose;
 extern int pmix_bfrop_initial_size;
 extern int pmix_bfrop_threshold_size;
 extern pmix_pointer_array_t pmix_bfrop_types;

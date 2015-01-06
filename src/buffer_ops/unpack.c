@@ -42,7 +42,7 @@ int pmix_bfrop_unpack(pmix_buffer_t *buffer, void *dst, int32_t *num_vals,
      * so return an appropriate error
      */
     if (0 == *num_vals) {
-        PMIX_OUTPUT( ( pmix_bfrop_verbose, "pmix_bfrop_unpack: inadequate space ( %p, %p, %lu, %d )\n",
+        PMIX_OUTPUT( ( pmix_globals.debug_output, "pmix_bfrop_unpack: inadequate space ( %p, %p, %lu, %d )\n",
                        (void*)buffer, dst, (long unsigned int)*num_vals, (int)type ) );
         return PMIX_ERR_UNPACK_INADEQUATE_SPACE;
     }
@@ -57,22 +57,30 @@ int pmix_bfrop_unpack(pmix_buffer_t *buffer, void *dst, int32_t *num_vals,
      * int32_t as used here.
      */
     if (PMIX_BFROP_BUFFER_FULLY_DESC == buffer->type) {
-        if (PMIX_SUCCESS != (
-                             rc = pmix_bfrop_get_data_type(buffer, &local_type))) {
+        PMIX_OUTPUT((pmix_globals.debug_output, "pmix_bfrop_unpack: get data type of length"));
+        if (PMIX_SUCCESS != (rc = pmix_bfrop_get_data_type(buffer, &local_type))) {
+            PMIX_OUTPUT((pmix_globals.debug_output, "pmix_bfrop_unpack: failed to get data type"));
             *num_vals = 0;
             return rc;
         }
+        PMIX_OUTPUT((pmix_globals.debug_output, "pmix_bfrop_unpack: got data type %d", local_type));
         if (PMIX_INT32 != local_type) { /* if the length wasn't first, then error */
-            *num_vals = 0;
+            PMIX_OUTPUT((pmix_globals.debug_output, "pmix_bfrop_unpack: type mismatch"));
+           *num_vals = 0;
             return PMIX_ERR_UNPACK_FAILURE;
         }
     }
 
+    PMIX_OUTPUT((pmix_globals.debug_output, "pmix_bfrop_unpack: get num vals"));
+    
     n=1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop_unpack_int32(buffer, &local_num, &n, PMIX_INT32))) {
         *num_vals = 0;
         return rc;
     }
+
+    PMIX_OUTPUT((pmix_globals.debug_output, "pmix_bfrop_unpack: found %d values for %d provided storage",
+                 local_num, *num_vals));
 
     /** if the storage provided is inadequate, set things up
      * to unpack as much as we can and to return an error code
@@ -81,7 +89,7 @@ int pmix_bfrop_unpack(pmix_buffer_t *buffer, void *dst, int32_t *num_vals,
      */
     if (local_num > *num_vals) {
         local_num = *num_vals;
-        PMIX_OUTPUT( ( pmix_bfrop_verbose, "pmix_bfrop_unpack: inadequate space ( %p, %p, %lu, %d )\n",
+        PMIX_OUTPUT( ( pmix_globals.debug_output, "pmix_bfrop_unpack: inadequate space ( %p, %p, %lu, %d )\n",
                        (void*)buffer, dst, (long unsigned int)*num_vals, (int)type ) );
         ret = PMIX_ERR_UNPACK_INADEQUATE_SPACE;
     } else {  /** enough or more than enough storage */
@@ -105,7 +113,7 @@ int pmix_bfrop_unpack_buffer(pmix_buffer_t *buffer, void *dst, int32_t *num_vals
     pmix_data_type_t local_type;
     pmix_bfrop_type_info_t *info;
 
-    PMIX_OUTPUT( ( pmix_bfrop_verbose, "pmix_bfrop_unpack_buffer( %p, %p, %lu, %d )\n",
+    PMIX_OUTPUT( ( pmix_globals.debug_output, "pmix_bfrop_unpack_buffer( %p, %p, %lu, %d )\n",
                    (void*)buffer, dst, (long unsigned int)*num_vals, (int)type ) );
 
     /** Unpack the declared data type */
@@ -219,7 +227,7 @@ int pmix_bfrop_unpack_pid(pmix_buffer_t *buffer, void *dest,
 int pmix_bfrop_unpack_byte(pmix_buffer_t *buffer, void *dest,
                            int32_t *num_vals, pmix_data_type_t type)
 {
-    PMIX_OUTPUT( ( pmix_bfrop_verbose, "pmix_bfrop_unpack_byte * %d\n", (int)*num_vals ) );
+    PMIX_OUTPUT( ( pmix_globals.debug_output, "pmix_bfrop_unpack_byte * %d\n", (int)*num_vals ) );
     /* check to see if there's enough data in buffer */
     if (pmix_bfrop_too_small(buffer, *num_vals)) {
         return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
@@ -240,7 +248,7 @@ int pmix_bfrop_unpack_int16(pmix_buffer_t *buffer, void *dest,
     int32_t i;
     uint16_t tmp, *desttmp = (uint16_t*) dest;
 
-    PMIX_OUTPUT( ( pmix_bfrop_verbose, "pmix_bfrop_unpack_int16 * %d\n", (int)*num_vals ) );
+    PMIX_OUTPUT( ( pmix_globals.debug_output, "pmix_bfrop_unpack_int16 * %d\n", (int)*num_vals ) );
     /* check to see if there's enough data in buffer */
     if (pmix_bfrop_too_small(buffer, (*num_vals)*sizeof(tmp))) {
         return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
@@ -263,7 +271,7 @@ int pmix_bfrop_unpack_int32(pmix_buffer_t *buffer, void *dest,
     int32_t i;
     uint32_t tmp, *desttmp = (uint32_t*) dest;
 
-    PMIX_OUTPUT( ( pmix_bfrop_verbose, "pmix_bfrop_unpack_int32 * %d\n", (int)*num_vals ) );
+    PMIX_OUTPUT( ( pmix_globals.debug_output, "pmix_bfrop_unpack_int32 * %d\n", (int)*num_vals ) );
     /* check to see if there's enough data in buffer */
     if (pmix_bfrop_too_small(buffer, (*num_vals)*sizeof(tmp))) {
         return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
@@ -292,7 +300,7 @@ int pmix_bfrop_unpack_int64(pmix_buffer_t *buffer, void *dest,
     int32_t i;
     uint64_t tmp, *desttmp = (uint64_t*) dest;
 
-    PMIX_OUTPUT( ( pmix_bfrop_verbose, "pmix_bfrop_unpack_int64 * %d\n", (int)*num_vals ) );
+    PMIX_OUTPUT( ( pmix_globals.debug_output, "pmix_bfrop_unpack_int64 * %d\n", (int)*num_vals ) );
     /* check to see if there's enough data in buffer */
     if (pmix_bfrop_too_small(buffer, (*num_vals)*sizeof(tmp))) {
         return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
@@ -344,7 +352,7 @@ int pmix_bfrop_unpack_float(pmix_buffer_t *buffer, void *dest,
     int ret;
     char *convert;
 
-    PMIX_OUTPUT( ( pmix_bfrop_verbose, "pmix_bfrop_unpack_float * %d\n", (int)*num_vals ) );
+    PMIX_OUTPUT( ( pmix_globals.debug_output, "pmix_bfrop_unpack_float * %d\n", (int)*num_vals ) );
     /* check to see if there's enough data in buffer */
     if (pmix_bfrop_too_small(buffer, (*num_vals)*sizeof(float))) {
         return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
@@ -371,7 +379,7 @@ int pmix_bfrop_unpack_double(pmix_buffer_t *buffer, void *dest,
     int ret;
     char *convert;
 
-    PMIX_OUTPUT( ( pmix_bfrop_verbose, "pmix_bfrop_unpack_double * %d\n", (int)*num_vals ) );
+    PMIX_OUTPUT( ( pmix_globals.debug_output, "pmix_bfrop_unpack_double * %d\n", (int)*num_vals ) );
     /* check to see if there's enough data in buffer */
     if (pmix_bfrop_too_small(buffer, (*num_vals)*sizeof(double))) {
         return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
@@ -398,7 +406,7 @@ int pmix_bfrop_unpack_timeval(pmix_buffer_t *buffer, void *dest,
     struct timeval *desttmp = (struct timeval *) dest, tt;
     int ret;
 
-    PMIX_OUTPUT( ( pmix_bfrop_verbose, "pmix_bfrop_unpack_timeval * %d\n", (int)*num_vals ) );
+    PMIX_OUTPUT( ( pmix_globals.debug_output, "pmix_bfrop_unpack_timeval * %d\n", (int)*num_vals ) );
     /* check to see if there's enough data in buffer */
     if (pmix_bfrop_too_small(buffer, (*num_vals)*sizeof(struct timeval))) {
         return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
@@ -429,7 +437,7 @@ int pmix_bfrop_unpack_time(pmix_buffer_t *buffer, void *dest,
      * to uint64_t as a generic safe size
      */
 
-    PMIX_OUTPUT( ( pmix_bfrop_verbose, "pmix_bfrop_unpack_time * %d\n", (int)*num_vals ) );
+    PMIX_OUTPUT( ( pmix_globals.debug_output, "pmix_bfrop_unpack_time * %d\n", (int)*num_vals ) );
     /* check to see if there's enough data in buffer */
     if (pmix_bfrop_too_small(buffer, (*num_vals)*(sizeof(uint64_t)))) {
         return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
@@ -781,7 +789,7 @@ int pmix_bfrop_unpack_kval(pmix_buffer_t *buffer, void *dest,
     pmix_kval_t **ptr;
     int32_t i, n, m;
     int ret;
-
+    
     ptr = (pmix_kval_t **) dest;
     n = *num_vals;
 
@@ -790,6 +798,7 @@ int pmix_bfrop_unpack_kval(pmix_buffer_t *buffer, void *dest,
         /* pack the key */
         m = 1;
         if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_string(buffer, &ptr[i]->key, &m, PMIX_STRING))) {
+            PMIX_ERROR_LOG(ret);
             return ret;
         }
 
@@ -797,10 +806,12 @@ int pmix_bfrop_unpack_kval(pmix_buffer_t *buffer, void *dest,
         /* pack the type */
         m = 1;
         if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_int(buffer, &ptr[i]->value->type, &m, PMIX_INT))) {
+            PMIX_ERROR_LOG(ret);
             return ret;
         }
         /* now pack the right field */
         if (PMIX_SUCCESS != (ret = unpack_val(buffer, ptr[i]->value))) {
+            PMIX_ERROR_LOG(ret);
             return ret;
         }
     }
