@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2011-2013 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2014      Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -62,8 +62,8 @@ int pmix_bfrop_pack_buffer(pmix_buffer_t *buffer,
     int rc;
     pmix_bfrop_type_info_t *info;
 
-    PMIX_OUTPUT( ( pmix_globals.debug_output, "pmix_bfrop_pack_buffer( %p, %p, %lu, %d )\n",
-                   (void*)buffer, src, (long unsigned int)num_vals, (int)type ) );
+    pmix_output_verbose(20, pmix_globals.debug_output, "pmix_bfrop_pack_buffer( %p, %p, %lu, %d )\n",
+                   (void*)buffer, src, (long unsigned int)num_vals, (int)type);
 
     /* Pack the declared data type */
     if (PMIX_BFROP_BUFFER_FULLY_DESC == buffer->type) {
@@ -148,7 +148,7 @@ int pmix_bfrop_pack_byte(pmix_buffer_t *buffer, const void *src,
 {
     char *dst;
 
-    PMIX_OUTPUT( ( pmix_globals.debug_output, "pmix_bfrop_pack_byte * %d\n", num_vals ) );
+    pmix_output_verbose(20, pmix_globals.debug_output, "pmix_bfrop_pack_byte * %d\n", num_vals);
     /* check to see if buffer needs extending */
     if (NULL == (dst = pmix_bfrop_buffer_extend(buffer, num_vals))) {
         return PMIX_ERR_OUT_OF_RESOURCE;
@@ -174,7 +174,7 @@ int pmix_bfrop_pack_int16(pmix_buffer_t *buffer, const void *src,
     uint16_t tmp, *srctmp = (uint16_t*) src;
     char *dst;
 
-    PMIX_OUTPUT( ( pmix_globals.debug_output, "pmix_bfrop_pack_int16 * %d\n", num_vals ) );
+    pmix_output_verbose(20, pmix_globals.debug_output, "pmix_bfrop_pack_int16 * %d\n", num_vals);
     /* check to see if buffer needs extending */
     if (NULL == (dst = pmix_bfrop_buffer_extend(buffer, num_vals*sizeof(tmp)))) {
         return PMIX_ERR_OUT_OF_RESOURCE;
@@ -201,7 +201,7 @@ int pmix_bfrop_pack_int32(pmix_buffer_t *buffer, const void *src,
     uint32_t tmp, *srctmp = (uint32_t*) src;
     char *dst;
 
-    PMIX_OUTPUT( ( pmix_globals.debug_output, "pmix_bfrop_pack_int32 * %d\n", num_vals ) );
+    pmix_output_verbose(20, pmix_globals.debug_output, "pmix_bfrop_pack_int32 * %d\n", num_vals);
     /* check to see if buffer needs extending */
     if (NULL == (dst = pmix_bfrop_buffer_extend(buffer, num_vals*sizeof(tmp)))) {
         return PMIX_ERR_OUT_OF_RESOURCE;
@@ -235,7 +235,7 @@ int pmix_bfrop_pack_int64(pmix_buffer_t *buffer, const void *src,
     char *dst;
     size_t bytes_packed = num_vals * sizeof(tmp);
 
-    PMIX_OUTPUT( ( pmix_globals.debug_output, "pmix_bfrop_pack_int64 * %d\n", num_vals ) );
+    pmix_output_verbose(20, pmix_globals.debug_output, "pmix_bfrop_pack_int64 * %d\n", num_vals);
     /* check to see if buffer needs extending */
     if (NULL == (dst = pmix_bfrop_buffer_extend(buffer, bytes_packed))) {
         return PMIX_ERR_OUT_OF_RESOURCE;
