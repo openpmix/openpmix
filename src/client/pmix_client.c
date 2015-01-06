@@ -465,6 +465,9 @@ static int unpack_return(pmix_buffer_t *data)
         buf.base_ptr = (char*)mdx->blob;
         buf.bytes_used = mdx->size;
         buf.bytes_allocated = mdx->size;
+        buf.unpack_ptr = buf.base_ptr;
+        buf.pack_ptr = buf.base_ptr + buf.bytes_used;
+
         cnt = 1;
         while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&buf, &kp, &cnt, PMIX_KVAL))) {
             if (PMIX_SUCCESS != (rc = pmix_client_hash_store(mdx->namespace, mdx->rank, kp))) {
