@@ -70,13 +70,17 @@ pmix_event_base_t* pmix_start_progress_thread()
     if (pmix_fd_set_cloexec(block_pipe[0]) != PMIX_SUCCESS ||
         pmix_fd_set_cloexec(block_pipe[1]) != PMIX_SUCCESS) {
         PMIX_ERROR_LOG(PMIX_ERR_IN_ERRNO);
+        close(block_pipe[0]);
+        close(block_pipe[1]);
+        event_base_free(ev_base);
         return NULL;
     }
     event_assign(&block_ev, ev_base, block_pipe[0],
                  EV_READ, wakeup, NULL);
     event_add(&block_ev, 0);
     evlib_active = true;
-
+    block_active = true;
+    
     /* fork off a thread to progress it */
     if (PMIX_SUCCESS != (rc = pthread_create(&engine, NULL, progress_engine, (void*)ev_base))) {
         PMIX_ERROR_LOG(rc);
@@ -99,17 +103,25 @@ void pmix_stop_progress_thread(pmix_event_base_t *ev_base)
 
     /* mark it as inactive */
     evlib_active = false;
-    /* break the event loop - this will cause the loop to exit
-             * upon completion of any current event */
-    event_base_loopbreak(ev_base);
     /* if present, use the block to break it loose just in
-             * case the thread is blocked in a call to select for
-             * a long time */
+     * case the thread is blocked in a call to select for
+     * a long time */
     if (block_active) {
         i=1;
         write(block_pipe[1], &i, sizeof(int));
     }
+    /* break the event loop - this will cause the loop to exit
+     * upon completion of any current event */
+    event_base_loopbreak(ev_base);
     /* wait for thread to exit */
     pthread_join(engine, NULL);
+    if (block_active) {
+        /* delete the blocking event */
+        event_del(&block_ev);
+        block_active = false;
+    }
+    /* close the pipes */
+    close(block_pipe[0]);
+    close(block_pipe[1]);
     return;
 }

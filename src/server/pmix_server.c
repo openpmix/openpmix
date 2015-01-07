@@ -295,6 +295,7 @@ int PMIx_server_finalize(void)
 
     if (local_evbase) {
         pmix_stop_progress_thread(pmix_globals.evbase);
+        event_base_free(pmix_globals.evbase);
     }
 
     /* cleanup the rendezvous file */
@@ -302,6 +303,9 @@ int PMIx_server_finalize(void)
     
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:server finalize complete");
+
+    pmix_output_finalize();
+    pmix_class_finalize();
     return 0;
 }
 
