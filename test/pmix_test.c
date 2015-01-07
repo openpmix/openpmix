@@ -110,7 +110,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "Init failed with error %d\n", rc);
         return rc;
     }
-
+#if 0
     /* register the errhandler */
     PMIx_Register_errhandler(errhandler);
     
@@ -143,12 +143,12 @@ int main(int argc, char **argv)
 
     /* deregister the errhandler */
     PMIx_Deregister_errhandler();
-    
+#endif
+    PMIX_LIST_DESTRUCT(&modex);
     /* finalize the server library */
     if (PMIX_SUCCESS != (rc = PMIx_server_finalize())) {
         fprintf(stderr, "Finalize failed with error %d\n", rc);
     }
-    PMIX_LIST_DESTRUCT(&modex);
     
     return rc;
 }

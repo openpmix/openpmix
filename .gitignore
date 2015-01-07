@@ -45,3 +45,4 @@ test/pmi_client
 test/pmix_client
 test/pmix_test
 test/pmix_client2
+test/pmix_srv_self

@@ -11,7 +11,7 @@
 #                         All rights reserved.
 # Copyright (c) 2006-2010 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2012-2013 Los Alamos National Security, Inc.  All rights reserved.
-# Copyright (c) 2013-2014 Intel, Inc. All rights reserved
+# Copyright (c) 2013-2015 Intel, Inc. All rights reserved
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -27,7 +27,7 @@ pmix_test_SOURCES = \
         pmix_test.c
 
 pmix_test_LDADD = \
-	$(top_builddir)/libpmix-server.la
+	$(top_builddir)/libpmix-server.la -levent -levent_pthreads -lm  -lhwloc
 
 pmix_client_SOURCES = \
         pmix_client.c
