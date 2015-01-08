@@ -320,6 +320,7 @@ int PMIx_Finalize(void)
         CLOSE_THE_SOCKET(myserver.sd);
     }
 
+    pmix_client_hash_finalize();
     pmix_bfrop_close();
     pmix_usock_finalize();
 
