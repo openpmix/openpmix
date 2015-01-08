@@ -80,8 +80,9 @@ int main(int argc, char **argv)
     /* Check the predefined output */
     for(i=0;i<1;i++){
         char key[256], sval[256];
-        pmix_value_t *val;
+        pmix_value_t *val = &value;
         sprintf(key,"local-key-%d",i);
+
         if( PMIX_SUCCESS != ( rc = PMIx_Get(nspace, i, key, &val) ) ){
             fprintf(stderr, "PMIx cli: PMIx_Get failed (%d)\n", rc);
             goto error_out;
