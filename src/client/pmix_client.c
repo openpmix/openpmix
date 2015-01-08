@@ -803,7 +803,7 @@ static int unpack_get_return(pmix_buffer_t *data, const char *key,
             if (NULL != key && 0 == strcmp(key, kp->key)) {
                     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: found requested value");
-                if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)val, &kp->value, PMIX_VALUE))) {
+                if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)val, kp->value, PMIX_VALUE))) {
                     PMIX_ERROR_LOG(rc);
                     OBJ_RELEASE(kp);
                     return rc;
