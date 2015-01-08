@@ -84,9 +84,20 @@ typedef struct {
     pmix_list_item_t super;
     pmix_modex_data_t data;
 } pmix_test_data_t;
+static void pcon(pmix_test_data_t *p)
+{
+    p->data.blob = NULL;
+    p->data.size = 0;
+}
+static void pdes(pmix_test_data_t *p)
+{
+    if (NULL != p->data.blob) {
+        free(p->data.blob);
+    }
+}
 static OBJ_CLASS_INSTANCE(pmix_test_data_t,
                           pmix_list_item_t,
-                          NULL, NULL);
+                          pcon, pdes);
 
 static bool test_complete = false;
 static pmix_list_t modex;
@@ -141,6 +152,7 @@ int main(int argc, char **argv)
         usleep(10000);
     }
 
+    pmix_argv_free(client_argv);
     pmix_argv_free(client_env);
     
     /* deregister the errhandler */
