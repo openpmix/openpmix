@@ -1,5 +1,7 @@
 /*
- * Copyright (c) 2013-2014 Intel, Inc. All rights reserved
+ * Copyright (c) 2013-2015 Intel, Inc. All rights reserved
+ * Copyright (c) 2015      Artem Y. Polyakov <artpol84@gmail.com>.
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Redistribution and use in source and binary forms, with or without
