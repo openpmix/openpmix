@@ -821,7 +821,7 @@ int pmix_bfrop_unpack_kval(pmix_buffer_t *buffer, void *dest,
         ptr[i]->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
         /* unpack the value */
         m = 1;
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_value(buffer, &ptr[i]->value, &m, PMIX_VALUE))) {
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_value(buffer, ptr[i]->value, &m, PMIX_VALUE))) {
             PMIX_ERROR_LOG(ret);
             return ret;
         }
