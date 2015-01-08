@@ -130,6 +130,23 @@ void PMIx_Register_errhandler(pmix_errhandler_fn_t errhandler);
 /* deregister the errhandler */
 void PMIx_Deregister_errhandler(void);
 
+/****    Authentification     ****/
+/* Returns authentification string passed from the client */
+int PMIx_server_auth_string(int sd, char *auth_str);
+/* Send the result of authentification to the client */
+int PMIx_server_auth_reply(int sd, int ok);
+
+/****    Message receiving     ****/
+typedef struct pmix_message pmix_message_t;
+pmix_message_t *PMIx_message_new(void);
+uint32_t PMIx_message_hdr_size(pmix_message_t *msg);
+int PMIx_message_set_hdr(pmix_message_t *msg, char *hdr);
+uint32_t PMIx_message_payload_size(pmix_message_t *msg);
+int PMIx_message_set_payload(pmix_message_t *msg, char *pay);
+
+/****    Message processing     ****/
+int PMIx_server_set_handlers(pmix_server_module_t *module);
+int PMIx_server_process_msg(pmix_message_t *msg);
 
 END_C_DECLS
 
