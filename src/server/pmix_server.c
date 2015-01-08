@@ -145,7 +145,7 @@ pmix_globals_t pmix_globals;
     snd->hdr.type = PMIX_USOCK_USER;                                    \
     snd->hdr.tag = (t);                                                 \
     snd->hdr.nbytes = (b)->bytes_used;                                  \
-    snd->data = (b)->base_ptr;                                          \
+    snd->data = (b);                                                    \
     /* always start with the header */                                  \
     snd->sdptr = (char*)&snd->hdr;                                      \
     snd->sdbytes = sizeof(pmix_usock_hdr_t);                            \

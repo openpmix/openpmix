@@ -92,7 +92,7 @@ typedef struct {
     pmix_list_item_t super;
     pmix_event_t ev;
     pmix_usock_hdr_t hdr;
-    char *data;
+    pmix_buffer_t *data;
     bool hdr_sent;
     char *sdptr;
     size_t sdbytes;

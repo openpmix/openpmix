@@ -167,9 +167,15 @@ static void scon(pmix_usock_send_t *p)
     p->sdptr = NULL;
     p->sdbytes = 0;
 }
+static void sdes(pmix_usock_send_t *p)
+{
+    if (NULL != p->data) {
+        OBJ_RELEASE(p->data);
+    }
+}
 OBJ_CLASS_INSTANCE(pmix_usock_send_t,
                    pmix_list_item_t,
-                   scon, NULL);
+                   scon, sdes);
 
 static void rcon(pmix_usock_recv_t *p)
 {

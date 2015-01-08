@@ -163,7 +163,7 @@ void pmix_usock_send_handler(int sd, short flags, void *cbdata)
                     goto next;
                 } else {
                     /* send the data as a single block */
-                    msg->sdptr = msg->data;
+                    msg->sdptr = msg->data->base_ptr;
                     msg->sdbytes = msg->hdr.nbytes;
                 }
                 /* fall thru and let the send progress */
@@ -391,7 +391,7 @@ void pmix_usock_send_recv(int fd, short args, void *cbdata)
     snd->hdr.type = PMIX_USOCK_USER;
     snd->hdr.tag = tag;
     snd->hdr.nbytes = ms->bfr->bytes_used;
-    snd->data = ms->bfr->base_ptr;
+    snd->data = ms->bfr;
     /* always start with the header */
     snd->sdptr = (char*)&snd->hdr;
     snd->sdbytes = sizeof(pmix_usock_hdr_t);

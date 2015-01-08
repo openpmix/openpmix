@@ -92,6 +92,7 @@ int main(int argc, char **argv)
                     key, (12340+i), PMIX_INT, val->data.integer, val->type);
             goto error_out;
         }
+        fprintf(stderr, "GET OF %s SUCCEEDED\n", key);
         free(val);
 #if 0
         sprintf(key,"remote-key-%d",i);
