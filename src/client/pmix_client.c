@@ -311,19 +311,23 @@ int PMIx_Finalize(void)
                             "pmix:client finalize sync received");
     }
 
-   if (0 <= myserver.sd) {
+    if (local_evbase) {
+        pmix_stop_progress_thread(pmix_globals.evbase);
+        event_base_free(pmix_globals.evbase);
+    }
+
+    if (0 <= myserver.sd) {
         CLOSE_THE_SOCKET(myserver.sd);
     }
 
     pmix_bfrop_close();
     pmix_usock_finalize();
 
-    if (local_evbase) {
-        pmix_stop_progress_thread(pmix_globals.evbase);
-        pmix_globals.evbase = NULL;
-    }
+    pmix_output_close(pmix_globals.debug_output);
+    pmix_output_finalize();
+    pmix_class_finalize();
 
-     return PMIX_SUCCESS;
+    return PMIX_SUCCESS;
 }
 
 int PMIx_Abort(int flag, const char msg[])

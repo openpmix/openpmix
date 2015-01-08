@@ -61,11 +61,13 @@ char* pmix_bfrop_buffer_extend(pmix_buffer_t *buffer, size_t bytes_to_add)
         unpack_offset = ((char*) buffer->unpack_ptr) -
             ((char*) buffer->base_ptr);
         buffer->base_ptr = (char*)realloc(buffer->base_ptr, to_alloc);
+        memset(buffer->base_ptr + pack_offset, 0, to_alloc - buffer->bytes_allocated);
     } else {
         pack_offset = 0;
         unpack_offset = 0;
         buffer->bytes_used = 0;
         buffer->base_ptr = (char*)malloc(to_alloc);
+        memset(buffer->base_ptr, 0, to_alloc);
     }
     
     if (NULL == buffer->base_ptr) { 

@@ -106,6 +106,7 @@ static int init_cntr = 0;
 static pmix_server_module_t server;
 static char *myuri = NULL;
 static pmix_event_t listen_ev;
+static bool listening = false;
 static bool local_evbase = false;
 static int mysocket = -1;
 static pmix_list_t peers;
@@ -183,6 +184,8 @@ int PMIx_server_init(pmix_server_module_t *module,
 
     /* setup the globals */
     memset(&pmix_globals, 0, sizeof(pmix_globals));
+    (void)strncpy(pmix_globals.namespace, "pmix-server", PMIX_MAX_NSLEN);
+    pmix_globals.debug_output = -1;
     memset(&server, 0, sizeof(pmix_server_module_t));
     OBJ_CONSTRUCT(&peers, pmix_list_t);
     OBJ_CONSTRUCT(&fences, pmix_list_t);
@@ -259,7 +262,12 @@ int PMIx_server_init(pmix_server_module_t *module,
     pmix_list_append(&pmix_usock_globals.posted_recvs, &req->super);
 
     /* start listening */
-    return start_listening(&myaddress);
+    if (0 != start_listening(&myaddress)) {
+        PMIx_server_finalize();
+        return -1;
+    }
+
+    return 0;
 }
 
 int PMIx_server_finalize(void)
@@ -272,11 +280,10 @@ int PMIx_server_finalize(void)
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:server finalize called");
-
-    if (0 <= mysocket) {
-        CLOSE_THE_SOCKET(mysocket);
+    if (listening) {
+        event_del(&listen_ev);
     }
-
+    
     if (NULL != pmix_globals.credential) {
         free(pmix_globals.credential);
     }
@@ -290,13 +297,17 @@ int PMIx_server_finalize(void)
     PMIX_LIST_DESTRUCT(&disconnects);
     PMIX_LIST_DESTRUCT(&spawns);
 
-    pmix_bfrop_close();
-    pmix_usock_finalize();
-
     if (local_evbase) {
         pmix_stop_progress_thread(pmix_globals.evbase);
         event_base_free(pmix_globals.evbase);
     }
+
+    if (0 <= mysocket) {
+        CLOSE_THE_SOCKET(mysocket);
+    }
+
+    pmix_bfrop_close();
+    pmix_usock_finalize();
 
     /* cleanup the rendezvous file */
     unlink(myaddress.sun_path);
@@ -304,6 +315,7 @@ int PMIx_server_finalize(void)
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:server finalize complete");
 
+    pmix_output_close(pmix_globals.debug_output);
     pmix_output_finalize();
     pmix_class_finalize();
     return 0;
@@ -612,8 +624,10 @@ static pmix_server_trkr_t* get_tracker(pmix_list_t *trks,
     trk->nranges = nranges;
     trk->ranges = (pmix_range_t*)malloc(nranges * sizeof(pmix_range_t));
     for (i=0; i < nranges; i++) {
+        memset(trk->ranges[i].namespace, 0, PMIX_MAX_NSLEN);
         (void)strncpy(trk->ranges[i].namespace, ranges[i].namespace, PMIX_MAX_NSLEN);
         trk->ranges[i].nranks = ranges[i].nranks;
+        trk->ranges[i].ranks = NULL;
         if (NULL != ranges[i].ranks) {
             trk->ranges[i].ranks = (int*)malloc(ranges[i].nranks * sizeof(int));
             for (j=0; j < ranges[i].nranks; j++) {
@@ -842,6 +856,9 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
             PMIX_ERROR_LOG(rc);
             return;
         }
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "recvd %s with %d ranges",
+                            (PMIX_FENCE_CMD == cmd) ? "FENCE" : "FENCENB", (int)nranges);
         ranges = NULL;
         /* unpack the ranges, if provided */
         if (0 < nranges) {

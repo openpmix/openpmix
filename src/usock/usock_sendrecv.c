@@ -288,6 +288,7 @@ void pmix_usock_recv_handler(int sd, short flags, void *cbdata)
                                     (unsigned long)peer->recv_msg->hdr.nbytes);
                 /* allocate the data region */
                 peer->recv_msg->data = (char*)malloc(peer->recv_msg->hdr.nbytes);
+                memset(peer->recv_msg->data, 0, peer->recv_msg->hdr.nbytes);
                 /* point to it */
                 peer->recv_msg->rdptr = peer->recv_msg->data;
                 peer->recv_msg->rdbytes = peer->recv_msg->hdr.nbytes;
