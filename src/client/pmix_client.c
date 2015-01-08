@@ -444,7 +444,7 @@ static int unpack_return(pmix_buffer_t *data)
     pmix_buffer_t buf;
     size_t np, i;
     pmix_kval_t *kp;
-    pmix_modex_data_t *mdx;
+    pmix_modex_data_t mdx;
     
     /* get the number of blobs */
     cnt = 1;
@@ -466,22 +466,17 @@ static int unpack_return(pmix_buffer_t *data)
         }
         /* now unpack and store the values - everything goes into our internal store */
         OBJ_CONSTRUCT(&buf, pmix_buffer_t);
-        buf.base_ptr = (char*)mdx->blob;
-        buf.bytes_used = mdx->size;
-        buf.bytes_allocated = mdx->size;
-        buf.unpack_ptr = buf.base_ptr;
-        buf.pack_ptr = buf.base_ptr + buf.bytes_used;
-
+        PMIX_LOAD_BUFFER(&buf, mdx.blob, mdx.size);
+        
         cnt = 1;
         while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&buf, &kp, &cnt, PMIX_KVAL))) {
-            if (PMIX_SUCCESS != (rc = pmix_client_hash_store(mdx->namespace, mdx->rank, kp))) {
+            if (PMIX_SUCCESS != (rc = pmix_client_hash_store(mdx.namespace, mdx.rank, kp))) {
                 PMIX_ERROR_LOG(rc);
             }
             OBJ_RELEASE(kp);
             cnt = 1;
         }
         OBJ_DESTRUCT(&buf);  // free's the data region
-        free(mdx);
         if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
             PMIX_ERROR_LOG(rc);
         }
@@ -499,7 +494,8 @@ static int pack_fence(pmix_buffer_t *msg,
                       pmix_cmd_t cmd,
                       pmix_range_t *ranges,
                       size_t nranges,
-                      int collect_data)
+                      int collect_data,
+                      int barrier)
 {
     int rc;
     pmix_scope_t scope;
@@ -530,7 +526,11 @@ static int pack_fence(pmix_buffer_t *msg,
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-
+    /* pack the barrier flag */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &barrier, 1, PMIX_INT))) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
     /* if we haven't already done it, ensure we have committed our values */
     if (NULL != cache_local) {
         scope = PMIX_LOCAL;
@@ -607,7 +607,7 @@ int PMIx_Fence(const pmix_range_t ranges[],
     }
 
     msg = OBJ_NEW(pmix_buffer_t);
-    if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, rgs, nrg, collect_data))) {
+    if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, rgs, nrg, collect_data, true))) {
         OBJ_RELEASE(msg);
         return rc;
     }
@@ -694,14 +694,10 @@ int PMIx_Fence_nb(const pmix_range_t ranges[], size_t nranges,
     }
     
     msg = OBJ_NEW(pmix_buffer_t);
-    if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, rgs, nrg, collect_data))) {
-        OBJ_RELEASE(msg);
-        return rc;
-    }
-    /* add the barrier flag - if true, then the server must delay calling
+    /* if the barrier flag is true, then the server must delay calling
      * us back until all participating procs have called fence_nb. If false,
      * then the server should call us back right away */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &barrier, 1, PMIX_INT))) {
+    if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, rgs, nrg, collect_data, barrier))) {
         OBJ_RELEASE(msg);
         return rc;
     }
@@ -756,7 +752,7 @@ static int unpack_get_return(pmix_buffer_t *data, const char *key,
     pmix_buffer_t buf;
     size_t np, i;
     pmix_kval_t *kp;
-    pmix_modex_data_t *mdx;
+    pmix_modex_data_t mdx;
     
     /* init the return */
     *val = NULL;
@@ -789,19 +785,19 @@ static int unpack_get_return(pmix_buffer_t *data, const char *key,
         }
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "pmix: unpacked blob %d of size %d",
-                            (int)i, (int)mdx->size);
-        if (NULL == mdx->blob) {
+                            (int)i, (int)mdx.size);
+        if (NULL == mdx.blob) {
             PMIX_ERROR_LOG(PMIX_ERROR);
             return PMIX_ERROR;
         }
         /* now unpack and store the values - everything goes into our internal store */
         OBJ_CONSTRUCT(&buf, pmix_buffer_t);
-        PMIX_LOAD_BUFFER(&buf, mdx->blob, mdx->size);
+        PMIX_LOAD_BUFFER(&buf, mdx.blob, mdx.size);
         cnt = 1;
         while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&buf, &kp, &cnt, PMIX_KVAL))) {
             pmix_output_verbose(2, pmix_globals.debug_output,
                                 "pmix: unpacked key %s", kp->key);
-            if (PMIX_SUCCESS != (rc = pmix_client_hash_store(mdx->namespace, mdx->rank, kp))) {
+            if (PMIX_SUCCESS != (rc = pmix_client_hash_store(mdx.namespace, mdx.rank, kp))) {
                 PMIX_ERROR_LOG(rc);
             }
             if (NULL != key && 0 == strcmp(key, kp->key)) {
@@ -818,7 +814,6 @@ static int unpack_get_return(pmix_buffer_t *data, const char *key,
             cnt = 1;
         }
         OBJ_DESTRUCT(&buf);  // free's the data region
-        free(mdx);
         if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
             PMIX_ERROR_LOG(rc);
         }

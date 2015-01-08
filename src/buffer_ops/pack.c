@@ -481,19 +481,19 @@ static int pack_val(pmix_buffer_t *buffer,
 int pmix_bfrop_pack_value(pmix_buffer_t *buffer, const void *src,
                           int32_t num_vals, pmix_data_type_t type)
 {
-    pmix_value_t **ptr;
+    pmix_value_t *ptr;
     int32_t i;
     int ret;
 
-    ptr = (pmix_value_t **) src;
+    ptr = (pmix_value_t *) src;
     
     for (i = 0; i < num_vals; ++i) {
         /* pack the type */
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int(buffer, &ptr[i]->type, 1, PMIX_INT))) {
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int(buffer, &ptr[i].type, 1, PMIX_INT))) {
             return ret;
         }
         /* now pack the right field */
-        if (PMIX_SUCCESS != (ret = pack_val(buffer, ptr[i]))) {
+        if (PMIX_SUCCESS != (ret = pack_val(buffer, &ptr[i]))) {
             return ret;
         }
     }
@@ -505,24 +505,25 @@ int pmix_bfrop_pack_value(pmix_buffer_t *buffer, const void *src,
 int pmix_bfrop_pack_info(pmix_buffer_t *buffer, const void *src,
                          int32_t num_vals, pmix_data_type_t type)
 {
-    pmix_info_t **ptr, *info;
+    pmix_info_t *info;
     int32_t i;
     int ret;
+    char *foo;
     
-    ptr = (pmix_info_t **) src;
+    info = (pmix_info_t *) src;
     
     for (i = 0; i < num_vals; ++i) {
-        info = ptr[i];
         /* pack key */
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &info->key, 1, PMIX_STRING))) {
+        foo = info[i].key;
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &foo, 1, PMIX_STRING))) {
             return ret;
         }
         /* pack the type */
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int(buffer, &info->value.type, 1, PMIX_INT))) {
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int(buffer, &info[i].value.type, 1, PMIX_INT))) {
             return ret;
         }
         /* pack value */
-        if (PMIX_SUCCESS != (ret = pack_val(buffer, &info->value))) {
+        if (PMIX_SUCCESS != (ret = pack_val(buffer, &info[i].value))) {
             return ret;
         }
     }
@@ -556,25 +557,24 @@ int pmix_bfrop_pack_buf(pmix_buffer_t *buffer, const void *src,
 int pmix_bfrop_pack_range(pmix_buffer_t *buffer, const void *src,
                           int32_t num_vals, pmix_data_type_t type)
 {
-    pmix_range_t **ptr, *range;
+    pmix_range_t *range;
     int32_t i;
     int ret;
     
-    ptr = (pmix_range_t **) src;
+    range = (pmix_range_t *) src;
     
     for (i = 0; i < num_vals; ++i) {
-        range = ptr[i];
-        char *ptr = range->namespace;
+        char *ptr = range[i].namespace;
         if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &ptr, 1, PMIX_STRING))) {
             return ret;
         }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_sizet(buffer, &range->nranks, 1, PMIX_SIZE))) {
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_sizet(buffer, &range[i].nranks, 1, PMIX_SIZE))) {
             return ret;
         }
-        if( 0 < range->nranks){
+        if( 0 < range[i].nranks){
             /* the ranks field is an array of int's, and thus unstructured - so
              * just pass the field to pack it */
-            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int(buffer, range->ranks, range->nranks, PMIX_INT))) {
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int(buffer, range[i].ranks, range[i].nranks, PMIX_INT))) {
                 return ret;
             }
         }
@@ -585,54 +585,55 @@ int pmix_bfrop_pack_range(pmix_buffer_t *buffer, const void *src,
 int pmix_bfrop_pack_app(pmix_buffer_t *buffer, const void *src,
                         int32_t num_vals, pmix_data_type_t type)
 {
-    pmix_app_t **ptr, *app;
+    pmix_app_t *app;
     int32_t i, j, nvals;
     int ret;
+    char *foo;
     
-    ptr = (pmix_app_t **) src;
+    app = (pmix_app_t *) src;
     
     for (i = 0; i < num_vals; ++i) {
-        app = ptr[i];
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &app->cmd, 1, PMIX_STRING))) {
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &app[i].cmd, 1, PMIX_STRING))) {
             return ret;
         }
         /* argv */
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int(buffer, &app->argc, 1, PMIX_INT))) {
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int(buffer, &app[i].argc, 1, PMIX_INT))) {
             return ret;
         }
         for (j=0; j < app->argc; j++) {
-            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &app->argv[j], 1, PMIX_STRING))) {
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &app[i].argv[j], 1, PMIX_STRING))) {
                 return ret;
             }
         }
         /* env */
-        nvals = pmix_argv_count(app->env);
+        nvals = pmix_argv_count(app[i].env);
         if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int32(buffer, &nvals, 1, PMIX_INT32))) {
             return ret;
         }
         for (j=0; j < nvals; j++) {
-            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &app->env[j], 1, PMIX_STRING))) {
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &app[i].env[j], 1, PMIX_STRING))) {
                 return ret;
             }
         }
         /* maxprocs */
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int(buffer, &app->maxprocs, 1, PMIX_INT))) {
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int(buffer, &app[i].maxprocs, 1, PMIX_INT))) {
             return ret;
         }
         /* info array */
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_sizet(buffer, &app->ninfo, 1, PMIX_SIZE))) {
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_sizet(buffer, &app[i].ninfo, 1, PMIX_SIZE))) {
             return ret;
         }
-        for (j=0; j < (int32_t)app->ninfo; j++) {
-            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &app->info[j].key, 1, PMIX_STRING))) {
+        for (j=0; j < (int32_t)app[i].ninfo; j++) {
+            foo = app[i].info[j].key;
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &foo, 1, PMIX_STRING))) {
                 return ret;
             }
             /* pack the type */
-            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int(buffer, &app->info[j].value.type, 1, PMIX_INT))) {
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int(buffer, &app[i].info[j].value.type, 1, PMIX_INT))) {
                 return ret;
             }
             /* pack value */
-            if (PMIX_SUCCESS != (ret = pack_val(buffer, &app->info[j].value))) {
+            if (PMIX_SUCCESS != (ret = pack_val(buffer, &app[i].info[j].value))) {
                 return ret;
             }
         }
@@ -656,7 +657,7 @@ int pmix_bfrop_pack_kval(pmix_buffer_t *buffer, const void *src,
             return ret;
         }
         /* pack the value */
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_value(buffer, &ptr[i]->value, 1, PMIX_INT))) {
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_value(buffer, ptr[i]->value, 1, PMIX_INT))) {
             return ret;
         }
     }
@@ -732,26 +733,26 @@ int pmix_bfrop_pack_topo(pmix_buffer_t *buffer, const void *src,
 int pmix_bfrop_pack_modex(pmix_buffer_t *buffer, const void *src,
                           int32_t num_vals, pmix_data_type_t type)
 {
-    pmix_modex_data_t **ptr, *data;
+    pmix_modex_data_t *ptr;
     int32_t i;
     int ret;
+    char *foo;
     
-    ptr = (pmix_modex_data_t **) src;
+    ptr = (pmix_modex_data_t *) src;
     
     for (i = 0; i < num_vals; ++i) {
-        data = ptr[i];
-        char *ptr = data->namespace;
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &ptr, 1, PMIX_STRING))) {
+        foo = ptr[i].namespace;
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &foo, 1, PMIX_STRING))) {
             return ret;
         }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int(buffer, &data->rank, 1, PMIX_INT))) {
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int(buffer, &ptr[i].rank, 1, PMIX_INT))) {
             return ret;
         }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_sizet(buffer, &data->size, 1, PMIX_SIZE))) {
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_sizet(buffer, &ptr[i].size, 1, PMIX_SIZE))) {
             return ret;
         }
-        if( 0 < data->size){
-            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_byte(buffer, data->blob, data->size, PMIX_UINT8))) {
+        if( 0 < ptr[i].size){
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_byte(buffer, ptr[i].blob, ptr[i].size, PMIX_UINT8))) {
                 return ret;
             }
         }

@@ -648,7 +648,6 @@ static void server_release(int status, pmix_modex_data_t data[],
     int rc;
     pmix_server_caddy_t *cd;
     size_t i;
-    pmix_modex_data_t *mptr;
 
     if (NULL == tracker) {
         /* nothing to do */
@@ -670,8 +669,7 @@ static void server_release(int status, pmix_modex_data_t data[],
     }
     if (0 < ndata) {
         for (i=0; i < ndata; i++) {
-            mptr = &data[i];
-            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &mptr, 1, PMIX_MODEX))) {
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &data[i], 1, PMIX_MODEX))) {
                 PMIX_ERROR_LOG(rc);
                 OBJ_RELEASE(reply);
                 return;
@@ -865,19 +863,24 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
             /* allocate reqd space */
             ranges = (pmix_range_t*)malloc(nranges * sizeof(pmix_range_t));
             /* unpack the ranges */
-            for (i=0; i < nranges; i++) {
-                rngptr = &ranges[i];
-                cnt = 1;
-                if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &rngptr, &cnt, PMIX_RANGE))) {
-                    PMIX_ERROR_LOG(rc);
-                    return;
-                }
+            cnt = nranges;
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, ranges, &cnt, PMIX_RANGE))) {
+                PMIX_ERROR_LOG(rc);
+                return;
             }
         }
         /* unpack the data flag - indicates if the caller wants
          * all modex data returned at end of procedure */
         cnt = 1;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &collect_data, &cnt, PMIX_INT))) {
+            PMIX_ERROR_LOG(rc);
+            return;
+        }
+        /* unpack an additional flag indicating if we are to callback
+         * once all procs have executed the fence_nb call, or
+         * callback immediately */
+        cnt = 1;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &barrier, &cnt, PMIX_INT))) {
             PMIX_ERROR_LOG(rc);
             return;
         }
@@ -899,17 +902,6 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
             }
             OBJ_RELEASE(bptr);
             cnt = 1;
-        }
-        /* if this is the non-blocking variation, then there is
-         * an additional flag indicating if we are to callback
-         * once all procs have executed the fence_nb call, or
-         * callback immediately */
-        if (PMIX_FENCENB_CMD == cmd) {
-            cnt = 1;
-            if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &barrier, &cnt, PMIX_INT))) {
-                PMIX_ERROR_LOG(rc);
-                return;
-            }
         }
         if (PMIX_FENCE_CMD == cmd || 0 != barrier) {
             /* find/create the local tracker for this operation */

@@ -49,13 +49,13 @@ int main(int argc, char **argv)
         printf("PMIx cli: Bad namespace!\n");
     }
 
-    key = "local-key-2";
-    PMIX_VAL_SET(&value, int, 12342);
+    key = "local-key-0";
+    PMIX_VAL_SET(&value, int, 12340);
     if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_LOCAL, key, &value))) {
         fprintf(stderr, "PMIx cli: PMIx_Put failed: %d\n", rc);
         goto error_out;
     }
-
+#if 0
     key = "remote-key-2";
     char *ptr = "Test string #2";
     PMIX_VAL_SET(&value, string, ptr);
@@ -70,7 +70,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "PMIx cli: PMIx_Put failed: %d\n", rc);
         goto error_out;
     }
-
+#endif
     /* Submit the data */
     if (PMIX_SUCCESS != (rc = PMIx_Fence(NULL, 0, 1))) {
         fprintf(stderr, "PMIx cli: PMIx_Fence failed (%d)\n", rc);
@@ -78,7 +78,7 @@ int main(int argc, char **argv)
     }
 
     /* Check the predefined output */
-    for(i=0;i<3;i++){
+    for(i=0;i<1;i++){
         char key[256], sval[256];
         pmix_value_t *val;
         sprintf(key,"local-key-%d",i);
@@ -87,12 +87,12 @@ int main(int argc, char **argv)
             goto error_out;
         }
         if( val->type != PMIX_INT || val->data.integer != (12340+i) ){
-            fprintf(stderr, "Key %s value or type mismatch, wait %d(%d) get %d(%d)\n",
+            fprintf(stderr, "Key %s value or type mismatch, want %d(%d) get %d(%d)\n",
                     key, (12340+i), PMIX_INT, val->data.integer, val->type);
             goto error_out;
         }
         free(val);
-
+#if 0
         sprintf(key,"remote-key-%d",i);
         sprintf(sval,"Test string #%d",i);
         if( PMIX_SUCCESS != ( rc = PMIx_Get(nspace, i, key, &val) ) ){
@@ -118,6 +118,7 @@ int main(int argc, char **argv)
         }
         free(val);
         fprintf(stderr,"PMIx cli: rank %d is OK\n", i);
+#endif
     }
 
  error_out:
