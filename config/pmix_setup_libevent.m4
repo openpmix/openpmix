@@ -14,7 +14,7 @@
 # --------------------------------------------------------------------
 AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
 
-    PMIX_VAR_SCOPE_PUSH([pmix_libevent_support pmix_event_dir pmix_event_libdir])
+    PMIX_VAR_SCOPE_PUSH([pmix_event_dir pmix_event_libdir])
 
     AC_ARG_WITH([libevent],
                 [AC_HELP_STRING([--with-libevent=DIR],
@@ -54,7 +54,7 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
                            [-levent -levent_pthreads],
                            [$pmix_event_dir],
                            [$pmix_event_libdir],
-                           [pmix_libevent_support=yes],
+                           [],
                            [AC_MSG_WARN([LIBEVENT SUPPORT NOT FOUND])
                             AC_MSG_ERROR([CANNOT CONTINE])])
 
@@ -78,6 +78,10 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
                       AC_MSG_WARN([PMIx requires libevent to be compiled with])
                       AC_MSG_WARN([thread support enabled])
                       AC_MSG_ERROR([Cannot continue])])
+        # Chck if this libevent has the symbol
+        # "libevent_global_shutdown", which will only exist in
+        # libevent version 2.1.1+
+        AC_CHECK_FUNCS([libevent_global_shutdown],[], [])
     fi
     PMIX_VAR_SCOPE_POP
 ])dnl

@@ -78,7 +78,7 @@ typedef void (*pmix_connect_cbfunc_t)(int status, void *cbdata);
 typedef int (*pmix_server_terminated_fn_t)(const char namespace[], int rank);
 typedef int (*pmix_server_abort_fn_t)(int status, const char msg[]);
 typedef int (*pmix_server_fencenb_fn_t)(const pmix_range_t ranges[], size_t nranges,
-                                        int collect_data,
+                                        int barrier, int collect_data,
                                         pmix_modex_cbfunc_t cbfunc, void *cbdata);
 typedef int (*pmix_server_store_modex_fn_t)(pmix_scope_t scope, pmix_modex_data_t *data);
 typedef int (*pmix_server_get_modexnb_fn_t)(const char namespace[], int rank,

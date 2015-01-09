@@ -251,6 +251,9 @@ static void pcon(pmix_peer_t *p)
 }
 static void pdes(pmix_peer_t *p)
 {
+    if (0 <= p->sd) {
+        CLOSE_THE_SOCKET(p->sd);
+    }
     if (p->send_ev_active) {
         event_del(&p->send_event);
     }

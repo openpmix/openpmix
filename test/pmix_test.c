@@ -44,7 +44,7 @@ static int authenticate(char *credential);
 static int terminated(const char namespace[], int rank);
 static int abort_fn(int status, const char msg[]);
 static int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
-                      int collect_data,
+                      int barrier, int collect_data,
                       pmix_modex_cbfunc_t cbfunc, void *cbdata);
 static int store_modex_fn(pmix_scope_t scope, pmix_modex_data_t *data);
 static int get_modexnb_fn(const char namespace[], int rank,
@@ -186,11 +186,99 @@ static int abort_fn(int status, const char msg[])
     return PMIX_SUCCESS;
 }
 
-static int fencenb_fn(const pmix_range_t ranges[], size_t nranges, int barrier,
+static void gather_data(const char namespace[], int rank,
+                        pmix_list_t *mdxlist)
+{
+    pmix_test_data_t *tdat, *mdx;
+
+    PMIX_LIST_FOREACH(mdx, &modex, pmix_test_data_t) {
+        if (0 != strcmp(namespace, mdx->data.namespace)) {
+            continue;
+        }
+        if (rank != mdx->data.rank || PMIX_RANK_WILDCARD == rank) {
+            continue;
+        }
+        tdat = OBJ_NEW(pmix_test_data_t);
+        (void)strncpy(tdat->data.namespace, mdx->data.namespace, PMIX_MAX_NSLEN);
+        tdat->data.rank = mdx->data.rank;
+        tdat->data.size = mdx->data.size;
+        if (0 < mdx->data.size) {
+            tdat->data.blob = (uint8_t*)malloc(mdx->data.size);
+            memcpy(tdat->data.blob, mdx->data.blob, mdx->data.size);
+        }
+        pmix_list_append(mdxlist, &tdat->super);
+    }
+}
+
+static void xfer_to_array(pmix_list_t *mdxlist,
+                          pmix_modex_data_t **mdxarray, size_t *size)
+{
+    pmix_modex_data_t *mdxa;
+    pmix_test_data_t *dat;
+    size_t n;
+
+    *size = 0;
+    *mdxarray = NULL;
+    n = pmix_list_get_size(mdxlist);
+    if (0 == n) {
+        return;
+    }
+    /* allocate the array */
+    mdxa = (pmix_modex_data_t*)malloc(n * sizeof(pmix_modex_data_t));
+    *mdxarray = mdxa;
+    *size = n;
+    n = 0;
+    PMIX_LIST_FOREACH(dat, mdxlist, pmix_test_data_t) {
+        (void)strncpy(mdxa[n].namespace, dat->data.namespace, PMIX_MAX_NSLEN);
+        mdxa[n].rank = dat->data.rank;
+        mdxa[n].size = dat->data.size;
+        if (0 < dat->data.size) {
+            mdxa[n].blob = (uint8_t*)malloc(dat->data.size);
+            memcpy(mdxa[n].blob, dat->data.blob, dat->data.size);
+        }
+        n++;
+    }
+}
+
+static int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
+                      int barrier, int collect_data,
                       pmix_modex_cbfunc_t cbfunc, void *cbdata)
 {
+    pmix_list_t data;
+    size_t i, j;
+    pmix_modex_data_t *mdxarray = NULL;
+    size_t size=0, n;
+    
+    /* if barrier is given, then we need to wait until all the
+     * procs have reported prior to responding */
+
+    /* if they want all the data returned, do so */
+    if (0 != collect_data) {
+        OBJ_CONSTRUCT(&data, pmix_list_t);
+        for (i=0; i < nranges; i++) {
+            if (NULL == ranges[i].ranks) {
+                gather_data(ranges[i].namespace, UINT_MAX, &data);
+            } else {
+                for (j=0; j < ranges[i].nranks; j++) {
+                    gather_data(ranges[i].namespace, ranges[i].ranks[j], &data);
+                }
+            }
+        }
+        /* xfer the data to the mdx array */
+        xfer_to_array(&data, &mdxarray, &size);
+        PMIX_LIST_DESTRUCT(&data);
+    }
     if (NULL != cbfunc) {
-        cbfunc(PMIX_SUCCESS, NULL, 0, cbdata);
+        cbfunc(PMIX_SUCCESS, mdxarray, size, cbdata);
+    }
+    /* free the array */
+    for (n=0; n < size; n++) {
+        if (NULL != mdxarray[n].blob) {
+            free(mdxarray[n].blob);
+        }
+    }
+    if (NULL != mdxarray) {
+        free(mdxarray);
     }
     return PMIX_SUCCESS;
 }
@@ -216,29 +304,17 @@ static int store_modex_fn(pmix_scope_t scope, pmix_modex_data_t *data)
 static int get_modexnb_fn(const char namespace[], int rank,
                           pmix_modex_cbfunc_t cbfunc, void *cbdata)
 {
-    pmix_test_data_t *mdx;
+    pmix_list_t data;
     pmix_modex_data_t *mdxarray;
-    size_t size, n;
+    size_t n, size;
 
     pmix_output(0, "Getting data for %s:%d", namespace, rank);
 
-    size = pmix_list_get_size(&modex);
-    if (0 < size) {
-        mdxarray = (pmix_modex_data_t*)malloc(size * sizeof(pmix_modex_data_t));
-        n = 0;
-        PMIX_LIST_FOREACH(mdx, &modex, pmix_test_data_t) {
-            (void)strncpy(mdxarray[n].namespace, mdx->data.namespace, PMIX_MAX_NSLEN);
-            mdxarray[n].rank = mdx->data.rank;
-            mdxarray[n].size = mdx->data.size;
-            if (0 < mdx->data.size) {
-                mdxarray[n].blob = (uint8_t*)malloc(mdx->data.size);
-                memcpy(mdxarray[n].blob, mdx->data.blob, mdx->data.size);
-            }
-            n++;
-        }
-    } else {
-        mdxarray = NULL;
-    }
+    OBJ_CONSTRUCT(&data, pmix_list_t);
+    gather_data(namespace, rank, &data);
+    /* convert the data to an array */
+    xfer_to_array(&data, &mdxarray, &size);
+    PMIX_LIST_DESTRUCT(&data);
     if (NULL != cbfunc) {
         cbfunc(PMIX_SUCCESS, mdxarray, size, cbdata);
     }

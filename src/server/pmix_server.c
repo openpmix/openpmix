@@ -179,16 +179,6 @@ static int initialize_server_base(pmix_server_module_t *module, char *tmpdir,
     /* Zero globals */
     memset(&pmix_globals, 0, sizeof(pmix_globals));
 
-    /* see if debug is requested */
-    if (NULL != (evar = getenv("PMIX_DEBUG"))) {
-        debug_level = strtol(evar, NULL, 10);
-        pmix_globals.debug_output = pmix_output_open(NULL);
-        pmix_output_set_verbosity(pmix_globals.debug_output, debug_level);
-    }
-
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:server init called");
-
     /* setup the globals */
 
     (void)strncpy(pmix_globals.namespace, "pmix-server", PMIX_MAX_NSLEN);
@@ -199,6 +189,16 @@ static int initialize_server_base(pmix_server_module_t *module, char *tmpdir,
     OBJ_CONSTRUCT(&connects, pmix_list_t);
     OBJ_CONSTRUCT(&disconnects, pmix_list_t);
     OBJ_CONSTRUCT(&spawns, pmix_list_t);
+
+    /* see if debug is requested */
+    if (NULL != (evar = getenv("PMIX_DEBUG"))) {
+        debug_level = strtol(evar, NULL, 10);
+        pmix_globals.debug_output = pmix_output_open(NULL);
+        pmix_output_set_verbosity(pmix_globals.debug_output, debug_level);
+    }
+
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:server init called");
 
     /* setup the function pointers */
     memset(&server, 0, sizeof(pmix_server_module_t));
@@ -359,6 +359,9 @@ int PMIx_server_finalize(void)
     if (local_evbase) {
         pmix_stop_progress_thread(pmix_globals.evbase);
         event_base_free(pmix_globals.evbase);
+#ifdef HAVE_LIBEVENT_SHUTDOWN
+        libevent_global_shutdown();
+#endif
     }
 
     if (0 <= mysocket) {
@@ -1013,7 +1016,8 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
              * "fence" point - they will callback once the barrier
              * across all participants has been completed */
             if (NULL != server.fence_nb) {
-                ret = server.fence_nb(ranges, nranges, collect_data, server_release, trk);
+                ret = server.fence_nb(ranges, nranges, barrier,
+                                      collect_data, server_release, trk);
             } else {
                 /* need to send an "err_not_supported" status back
                  * to the client so they don't hang */

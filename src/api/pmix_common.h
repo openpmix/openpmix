@@ -72,6 +72,9 @@ BEGIN_C_DECLS
 #define PMIX_MAX_VALLEN   1024
 #define PMIX_MAX_KEYLEN    512
 
+/* define a *wildcard* value for requests involving rank */
+#define PMIX_RANK_WILDCARD -1
+
 /* define a set of "standard" PMIx attributes that can
  * be queried. Implementations (and users) are free to extend as
  * desired, so the get functions need to be capable

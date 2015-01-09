@@ -11,7 +11,7 @@
 #                         All rights reserved.
 # Copyright (c) 2006-2010 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2012-2013 Los Alamos National Security, Inc.  All rights reserved.
-# Copyright (c) 2013-2014 Intel, Inc. All rights reserved
+# Copyright (c) 2013-2015 Intel, Inc. All rights reserved
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -27,7 +27,7 @@ headers =
 sources =
 nodist_headers =
 include_HEADERS = src/api/pmix.h src/api/pmix_server.h src/api/pmix_common.h src/api/pmi.h src/api/pmi2.h
-dist_pmixdata_DATA =
+dist_pmixdata_DATA = contrib/pmix-valgrind.supp
 server_headers =
 server_sources =
 

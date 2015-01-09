@@ -317,6 +317,9 @@ int PMIx_Finalize(void)
     if (local_evbase) {
         pmix_stop_progress_thread(pmix_globals.evbase);
         event_base_free(pmix_globals.evbase);
+#ifdef HAVE_LIBEVENT_SHUTDOWN
+        libevent_global_shutdown();
+#endif
     }
 
     if (0 <= myserver.sd) {

@@ -81,7 +81,7 @@ int main(int argc, char **argv)
     }
 
     /* Check the predefined output */
-    for(i=0;i<3;i++){
+    for(i=0;i<1;i++){
         pmix_value_t *val = &value;
         sprintf(key,"local-key-%d",i);
 
