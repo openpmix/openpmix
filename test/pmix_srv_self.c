@@ -537,7 +537,7 @@ inline static int verify_kvps(pmix_buffer_t *xfer)
     pmix_scope_t scope = 0;
     int rc, cnt = 1;
     pmix_kval_t *kvp = NULL;
-    int collect_data;
+    int collect_data, barrier;
 
     // We expect 3 keys here:
     // 1. for the local scope:  "local-key-2" = "12342" (INT)
@@ -547,6 +547,12 @@ inline static int verify_kvps(pmix_buffer_t *xfer)
 
     cnt = 1;
     if( PMIX_SUCCESS != pmix_bfrop.unpack(xfer,&collect_data,&cnt, PMIX_INT) ){
+        fprintf(stderr,"PMIx srv [%s:%d]: Cannot unpack\n", __FILE__,__LINE__);
+        abort();
+    }
+
+    cnt = 1;
+    if( PMIX_SUCCESS != pmix_bfrop.unpack(xfer,&barrier,&cnt, PMIX_INT) ){
         fprintf(stderr,"PMIx srv [%s:%d]: Cannot unpack\n", __FILE__,__LINE__);
         abort();
     }
@@ -689,9 +695,8 @@ void process_message(void)
     case PMIX_FENCE_CMD:
     case PMIX_FENCENB_CMD:{
         int cnt = 1, rc, tmp, i;
+        size_t np;
         size_t nranges;
-        pmix_range_t **ranges = NULL;
-
         pmix_output(0, "executing fence");
 
         /* Save the input in the reply */
@@ -705,14 +710,14 @@ void process_message(void)
         if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&xfer, &nranges, &cnt, PMIX_SIZE))) {
             PMIX_ERROR_LOG(rc);
         }
-        ranges = malloc( sizeof(pmix_range_t*) * nranges);
-        if( NULL == ranges ){
-            rc = PMIX_ERR_OUT_OF_RESOURCE;
-            PMIX_ERROR_LOG(rc);
-        }
 
         if (0 < nranges) {
             cnt = nranges;
+            pmix_range_t *ranges = malloc(sizeof(pmix_range_t) * nranges);
+            if( NULL == ranges ){
+                rc = PMIX_ERR_OUT_OF_RESOURCE;
+                PMIX_ERROR_LOG(rc);
+            }
             if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&xfer, ranges, &cnt, PMIX_RANGE))) {
                 PMIX_ERROR_LOG(rc);
             }
@@ -726,15 +731,15 @@ void process_message(void)
         pmix_bfrop.pack(reply,&tmp,1,PMIX_INT);
 
         /* 2. pack number of processes in scenario */
-        tmp = 3;
-        pmix_bfrop.pack(reply,&tmp,1,PMIX_SIZE);
+        np = 3;
+        pmix_bfrop.pack(reply,&np,1,PMIX_SIZE);
 
         /* 3. verify incoming data */
         verify_kvps(&xfer);
 
         /* 4. pack the result of processing in reply */
         for(i=0;i<3;i++){
-            pmix_bfrop.pack(reply,&pmix_db[i],1, PMIX_MODEX);
+            pmix_bfrop.pack(reply, pmix_db[i],1, PMIX_MODEX);
         }
         break;
     }
