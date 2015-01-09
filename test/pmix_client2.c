@@ -37,7 +37,7 @@ int main(int argc, char **argv)
     int rank;
     int rc, i;
     pmix_value_t value;
-    char *key = NULL;
+    char key[50], sval[50];
 
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(nspace, &rank, NULL, TEST_CREDENTIAL))) {
@@ -49,28 +49,30 @@ int main(int argc, char **argv)
         printf("PMIx cli: Bad namespace!\n");
     }
 
-    key = "local-key-0";
-    PMIX_VAL_SET(&value, int, 12340);
-    if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_LOCAL, key, &value))) {
-        fprintf(stderr, "PMIx cli: PMIx_Put failed: %d\n", rc);
-        goto error_out;
-    }
-#if 0
-    key = "remote-key-2";
-    char *ptr = "Test string #2";
-    PMIX_VAL_SET(&value, string, ptr);
-    if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_REMOTE, key, &value))) {
-        fprintf(stderr, "PMIx cli: PMIx_Put failed: %d\n", rc);
-        goto error_out;
-    }
+    for (i=0; i < 3; i++) {
+        (void)snprintf(key, 50, "local-key-%d", i);
+        PMIX_VAL_SET(&value, int, 12340 + i);
+        if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_LOCAL, key, &value))) {
+            fprintf(stderr, "PMIx cli: PMIx_Put failed: %d\n", rc);
+            goto error_out;
+        }
 
-    key = "global-key-2";
-    PMIX_VAL_SET(&value, float, 12.15);
-    if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_GLOBAL, key, &value))) {
-        fprintf(stderr, "PMIx cli: PMIx_Put failed: %d\n", rc);
-        goto error_out;
+        (void)snprintf(key, 50, "remote-key-%d", i);
+        (void)snprintf(sval, 50, "Test string #%d", i);
+        PMIX_VAL_SET(&value, string, sval);
+        if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_REMOTE, key, &value))) {
+            fprintf(stderr, "PMIx cli: PMIx_Put failed: %d\n", rc);
+            goto error_out;
+        }
+
+        (void)snprintf(key, 50, "global-key-%d", i);
+        PMIX_VAL_SET(&value, float, 12.15 + i);
+        if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_GLOBAL, key, &value))) {
+            fprintf(stderr, "PMIx cli: PMIx_Put failed: %d\n", rc);
+            goto error_out;
+        }
     }
-#endif
+    
     /* Submit the data */
     if (PMIX_SUCCESS != (rc = PMIx_Fence(NULL, 0, 1))) {
         fprintf(stderr, "PMIx cli: PMIx_Fence failed (%d)\n", rc);
@@ -78,8 +80,7 @@ int main(int argc, char **argv)
     }
 
     /* Check the predefined output */
-    for(i=0;i<1;i++){
-        char key[256], sval[256];
+    for(i=0;i<3;i++){
         pmix_value_t *val = &value;
         sprintf(key,"local-key-%d",i);
 
@@ -94,7 +95,7 @@ int main(int argc, char **argv)
         }
         fprintf(stderr, "GET OF %s SUCCEEDED\n", key);
         free(val);
-#if 0
+
         sprintf(key,"remote-key-%d",i);
         sprintf(sval,"Test string #%d",i);
         if( PMIX_SUCCESS != ( rc = PMIx_Get(nspace, i, key, &val) ) ){
@@ -106,6 +107,7 @@ int main(int argc, char **argv)
                     key, sval, PMIX_STRING, val->data.string, val->type);
             goto error_out;
         }
+        fprintf(stderr, "GET OF %s SUCCEEDED\n", key);
         free(val);
 
         sprintf(key,"global-key-%d",i);
@@ -113,14 +115,14 @@ int main(int argc, char **argv)
             fprintf(stderr, "PMIx cli: PMIx_Get failed (%d)\n", rc);
             goto error_out;
         }
-        if( val->type != PMIX_FLOAT || val->data.fval != (float)10.15 + i ){
+        if( val->type != PMIX_FLOAT || val->data.fval != (float)12.15 + i ){
             fprintf(stderr, "PMIx cli: Key %s value or type mismatch, wait %f(%d) get %f(%d)\n",
-                   key, ((float)10.15 + i), PMIX_FLOAT, val->data.fval, val->type);
+                    key, ((float)10.15 + i), PMIX_FLOAT, val->data.fval, val->type);
             goto error_out;
         }
         free(val);
+        fprintf(stderr, "GET OF %s SUCCEEDED\n", key);
         fprintf(stderr,"PMIx cli: rank %d is OK\n", i);
-#endif
     }
 
  error_out:
