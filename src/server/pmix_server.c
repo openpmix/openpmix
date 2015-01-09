@@ -474,17 +474,51 @@ static void connection_handler(int incoming_sd, short flags, void* cbdata)
                         peer->namespace, peer->rank, peer->sd);
 }
 
+/* initialize pmix_peer_cred_t structure with pointers to
+ * the message and header. Note: you don't need to free anything in
+ * pmix_peer_cred_t. */
+static int load_peer_cred(pmix_peer_cred_t *cred, pmix_usock_hdr_t hdr, char *msg)
+{
+    char *version;
+    cred->namespace = hdr.namespace;
+    cred->rank = hdr.rank;
+
+    /* check that this is from a matching version */
+    version = (char*)(msg);
+    if (0 != strcmp(version, PMIX_VERSION)) {
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "pmix:server client/server PMIx versions mismatch");
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "connect-ack version from client matches ours");
+
+    /* check security token */
+    if (NULL != server.authenticate) {
+        /* server desires authentication */
+        if( hdr.nbytes <= strlen(version) + 1 ){
+            /* client do not support authentication */
+            pmix_output(0, "usock_peer_recv_connect_ack: "
+                        "received different version from client: %s instead of %s",
+                        version, PMIX_VERSION);
+            return PMIX_ERR_INVALID_ARG;
+        }
+        cred->auth_token = (char*)(msg + strlen(version) + 1);
+    }
+    return PMIX_SUCCESS;
+}
+
 /*  Receive the peer's identification info from a newly
  *  connected socket and verify the expected response.
  */
 static int authenticate_client(int sd, pmix_peer_t **peer)
 {
     char *msg;
-    char *version;
     int rc;
     pmix_usock_hdr_t hdr;
     pmix_peer_t *pr;
-    char *credential;
+    pmix_peer_cred_t cred;
     bool found;
     
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -502,11 +536,30 @@ static int authenticate_client(int sd, pmix_peer_t **peer)
                         "connect-ack recvd from peer %s:%d",
                         hdr.namespace, hdr.rank);
 
+    /* get the authentication and version payload
+     * artpol: put some sane limits here to prevent
+     * attack, 1MB? */
+    if (NULL == (msg = (char*)malloc(hdr.nbytes))) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+    if (PMIX_SUCCESS != pmix_usock_recv_blocking(sd, msg, hdr.nbytes)) {
+        /* unable to complete the recv */
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "unable to complete recv of connect-ack with client ON SOCKET %d", sd);
+        free(msg);
+        return PMIX_ERR_UNREACH;
+    }
+
+    if( PMIX_SUCCESS != (rc = load_peer_cred(&cred, hdr, msg) ) ){
+        free(msg);
+        return rc;
+    }
+
     /* see if we have this peer in our list */
     found = false;
     PMIX_LIST_FOREACH(pr, &peers, pmix_peer_t) {
-        if (0 == strcmp(pr->namespace, hdr.namespace) &&
-            pr->rank == hdr.rank) {
+        if (0 == strcmp(pr->namespace, cred.namespace) &&
+            pr->rank == cred.rank) {
             found = true;
             if (pr->sd < 0) {
                 *peer = pr;
@@ -523,41 +576,17 @@ static int authenticate_client(int sd, pmix_peer_t **peer)
     if (NULL == *peer) {
         /* need to add another tracker for this peer */
         *peer = OBJ_NEW(pmix_peer_t);
-        (void)strncpy((*peer)->namespace, hdr.namespace, PMIX_MAX_NSLEN);
-        (*peer)->rank = hdr.rank;
+        (void)strncpy((*peer)->namespace, cred.namespace, PMIX_MAX_NSLEN);
+        (*peer)->rank = cred.rank;
         pmix_list_append(&peers, &(*peer)->super);
     }
     
-    /* get the authentication and version payload */
-    if (NULL == (msg = (char*)malloc(hdr.nbytes))) {
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    }
-    if (PMIX_SUCCESS != pmix_usock_recv_blocking(sd, msg, hdr.nbytes)) {
-        /* unable to complete the recv */
-        pmix_output_verbose(2, pmix_globals.debug_output,
-                            "unable to complete recv of connect-ack with client ON SOCKET %d", sd);
-        free(msg);
-        return PMIX_ERR_UNREACH;
-    }
-
-    /* check that this is from a matching version */
-    version = (char*)(msg);
-    if (0 != strcmp(version, PMIX_VERSION)) {
-        pmix_output(0, "usock_peer_recv_connect_ack: "
-                    "received different version from client: %s instead of %s",
-                    version, PMIX_VERSION);
-        free(msg);
-        return PMIX_ERR_UNREACH;
-    }
-
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "connect-ack version from client matches ours");
 
     /* check security token */
     if (NULL != server.authenticate) {
-        /* server desires authentication */
-        credential = (char*)(msg + strlen(version) + 1);
-        if (0 != server.authenticate(credential)) {
+        if (0 != server.authenticate(cred.auth_token)) {
             /* reject the connection */
             free(msg);
             return PMIX_ERR_UNREACH;
