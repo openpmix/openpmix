@@ -678,9 +678,7 @@ int pmix_bfrop_unpack_range(pmix_buffer_t *buffer, void *dest,
     for (i = 0; i < n; ++i) {
         pmix_output_verbose(20, pmix_globals.debug_output,
                             "pmix_bfrop_unpack: init range[%d]", i);
-        memset(ptr[i].namespace, 0, PMIX_MAX_NSLEN);
-        ptr[i].ranks = NULL;
-        ptr[i].nranks = 0;
+        memset(&ptr[i], 0, sizeof(pmix_range_t));
         /* unpack namespace */
         m=1;
         if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_string(buffer, &tmp, &m, PMIX_STRING))) {
@@ -932,10 +930,8 @@ int pmix_bfrop_unpack_modex(pmix_buffer_t *buffer, void *dest,
     n = *num_vals;
     
     for (i = 0; i < n; ++i) {
-        memset(ptr[i].namespace, 0, PMIX_MAX_NSLEN);
+        memset(&ptr[i], 0, sizeof(pmix_modex_data_t));
         ptr[i].rank = -1;
-        ptr[i].blob = NULL;
-        ptr[i].size = 0;
         /* unpack namespace */
         m=1;
         if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_string(buffer, &tmp, &m, PMIX_STRING))) {

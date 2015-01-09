@@ -158,7 +158,7 @@ int pmix_usock_recv_blocking(int sd, char *data, size_t size)
 /***   INSTANTIATE INTERNAL CLASSES   ***/
 static void scon(pmix_usock_send_t *p)
 {
-    memset(p->hdr.namespace, 0, PMIX_MAX_NSLEN);
+    memset(&p->hdr, 0, sizeof(pmix_usock_hdr_t));
     p->hdr.type = 0;
     p->hdr.tag = UINT32_MAX;
     p->hdr.nbytes = 0;
@@ -179,7 +179,7 @@ OBJ_CLASS_INSTANCE(pmix_usock_send_t,
 
 static void rcon(pmix_usock_recv_t *p)
 {
-    memset(p->hdr.namespace, 0, PMIX_MAX_NSLEN);
+    memset(&p->hdr, 0, sizeof(pmix_usock_hdr_t));
     p->hdr.type = 0;
     p->hdr.tag = UINT32_MAX;
     p->hdr.nbytes = 0;

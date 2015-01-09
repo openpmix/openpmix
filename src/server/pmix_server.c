@@ -564,10 +564,9 @@ static int load_peer_cred(pmix_peer_cred_t *cred, pmix_usock_hdr_t hdr, char *ms
     if (NULL != server.authenticate) {
         /* server desires authentication */
         if( hdr.nbytes <= strlen(version) + 1 ){
-            /* client do not support authentication */
+            /* client did not provide authentication */
             pmix_output(0, "usock_peer_recv_connect_ack: "
-                        "received different version from client: %s instead of %s",
-                        version, PMIX_VERSION);
+                        "client failed to provide required authentication token");
             return PMIX_ERR_INVALID_ARG;
         }
         cred->auth_token = (char*)(msg + strlen(version) + 1);
@@ -721,7 +720,7 @@ static pmix_server_trkr_t* get_tracker(pmix_list_t *trks,
     trk->nranges = nranges;
     trk->ranges = (pmix_range_t*)malloc(nranges * sizeof(pmix_range_t));
     for (i=0; i < nranges; i++) {
-        memset(trk->ranges[i].namespace, 0, PMIX_MAX_NSLEN);
+        memset(&trk->ranges[i], 0, sizeof(pmix_range_t));
         (void)strncpy(trk->ranges[i].namespace, ranges[i].namespace, PMIX_MAX_NSLEN);
         trk->ranges[i].nranks = ranges[i].nranks;
         trk->ranges[i].ranks = NULL;

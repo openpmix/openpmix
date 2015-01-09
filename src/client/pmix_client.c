@@ -1588,6 +1588,7 @@ static int send_connect_ack(int sd)
                         "pmix: SEND CONNECT ACK");
 
     /* setup the header */
+    memset(&hdr, 0, sizeof(pmix_usock_hdr_t));
     (void)strncpy(hdr.namespace, pmix_globals.namespace, PMIX_MAX_NSLEN);
     hdr.rank = pmix_globals.rank;
     hdr.tag = UINT32_MAX;
@@ -1599,7 +1600,7 @@ static int send_connect_ack(int sd)
     }
 
     /* set the number of bytes to be read beyond the header */
-    hdr.nbytes = strlen(PMIX_VERSION) + 1 + csize;
+    hdr.nbytes = strlen(PMIX_VERSION) + 1 + csize + 1;  // must NULL terminate the strings!
 
     /* create a space for our message */
     sdsize = (sizeof(hdr) + hdr.nbytes);
@@ -1609,7 +1610,7 @@ static int send_connect_ack(int sd)
     memset(msg, 0, sdsize);
 
     /* load the message */
-    memcpy(msg, &hdr, sizeof(hdr));
+    memcpy(msg, &hdr, sizeof(pmix_usock_hdr_t));
     memcpy(msg+sizeof(hdr), PMIX_VERSION, strlen(PMIX_VERSION));
     if (0 < csize) {
         memcpy(msg+sizeof(hdr)+strlen(PMIX_VERSION)+1, pmix_globals.credential, csize);
