@@ -118,9 +118,12 @@ typedef struct pmix_server_module_1_0_0_t {
 } pmix_server_module_t;
 
 /****    SERVER SUPPORT INIT/FINALIZE FUNCTIONS    ****/
+int PMIx_server_init_light(pmix_server_module_t *module,
+                           char *tmpdir, char *credential);
 int PMIx_server_init(pmix_server_module_t *module,
                      struct event_base *evbase,
                      char *tmpdir, char *credential);
+int PMIx_server_finalize_light(void);
 int PMIx_server_finalize(void);
 int PMIx_server_setup_fork(const char namespace[], int rank, char ***env);
 /* register an errhandler to report errors that occur
@@ -132,24 +135,25 @@ void PMIx_Register_errhandler(pmix_errhandler_fn_t errhandler);
 /* deregister the errhandler */
 void PMIx_Deregister_errhandler(void);
 
-/****    Message receiving     ****/
-typedef struct pmix_message pmix_message_t;
+/****    Message processing     ****/
+typedef struct pmix_message_opaque pmix_message_t;
 pmix_message_t *PMIx_message_new(void);
 uint32_t PMIx_message_hdr_size(pmix_message_t *msg);
-int PMIx_message_set_hdr(pmix_message_t *msg, char *hdr);
-uint32_t PMIx_message_payload_size(pmix_message_t *msg);
-int PMIx_message_set_payload(pmix_message_t *msg, char *pay);
+void *PMIx_message_hdr_ptr(pmix_message_t *msg_opaq);
+int PMIx_message_hdr_fix(pmix_message_t *msg, char *hdr);
+uint32_t PMIx_message_pay_size(pmix_message_t *msg);
+void *PMIx_message_pay_ptr(pmix_message_t *msg, char *pay);
+void PMIx_message_free(pmix_message_t *msg);
 
 /****    Authentification     ****/
 typedef struct {
     char *namespace;
     int rank;
-    int sd;
+    uint32_t tag;
     char *auth_token;
 } pmix_peer_cred_t;
 int PMIx_server_cred_extract(pmix_message_t *msg, pmix_peer_cred_t *cred);
-int PMIx_server_cred_reply(pmix_message_t *msg, int rc);
-
+pmix_message_t *PMIx_server_cred_reply(int rc);
 /****    Message processing     ****/
 int PMIx_server_set_handlers(pmix_server_module_t *module);
 int PMIx_server_process_msg(pmix_message_t *msg);

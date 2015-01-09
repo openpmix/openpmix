@@ -21,13 +21,13 @@
 
 AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/src/api
 
-bin_PROGRAMS = pmix_test pmix_client pmi_client pmi2_client pmix_client2 pmix_srv_self
+bin_PROGRAMS = pmix_test pmix_client pmi_client pmi2_client pmix_client2 pmix_srv_self pmix_server_api2
 
 pmix_test_SOURCES = \
         pmix_test.c
 
 pmix_test_LDADD = \
-	$(top_builddir)/libpmix-server.la -levent -levent_pthreads -lm  -lhwloc
+	$(top_builddir)/libpmix-server.la 
 
 pmix_client_SOURCES = \
         pmix_client.c
@@ -57,4 +57,10 @@ pmix_srv_self_SOURCES = \
         pmix_srv_self.c
 
 pmix_srv_self_LDADD = \
+	$(top_builddir)/libpmix-server.la
+
+pmix_server_api2_SOURCES = \
+        pmix_server_api2.c
+
+pmix_server_api2_LDADD = \
 	$(top_builddir)/libpmix-server.la

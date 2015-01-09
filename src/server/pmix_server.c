@@ -18,6 +18,7 @@
 #include "src/include/pmix_globals.h"
 #include "pmix_stdint.h"
 #include "pmix_socket_errno.h"
+#include "pmix_message.h"
 
 #ifdef HAVE_STRING_H
 #include <string.h>
@@ -164,48 +165,20 @@ pmix_globals_t pmix_globals;
     }                                                                   \
     }while(0);
 
-
-int PMIx_server_init(pmix_server_module_t *module,
-                     struct event_base *evbase,
-                     char *tmpdir, char *credential)
+static int initialize_server_base(pmix_server_module_t *module, char *tmpdir,
+                                   char *credential)
 {
     int debug_level;
     pid_t pid;
     char *tdir, *evar;
-    pmix_usock_posted_recv_t *req;
-    
-    ++init_cntr;
-    if (1 < init_cntr) {
-        return 0;
-    }
-
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:server init called");
-
-    /* setup the globals */
-    memset(&pmix_globals, 0, sizeof(pmix_globals));
-    (void)strncpy(pmix_globals.namespace, "pmix-server", PMIX_MAX_NSLEN);
-    pmix_globals.debug_output = -1;
-    memset(&server, 0, sizeof(pmix_server_module_t));
-    OBJ_CONSTRUCT(&peers, pmix_list_t);
-    OBJ_CONSTRUCT(&fences, pmix_list_t);
-    OBJ_CONSTRUCT(&gets, pmix_list_t);
-    OBJ_CONSTRUCT(&connects, pmix_list_t);
-    OBJ_CONSTRUCT(&disconnects, pmix_list_t);
-    OBJ_CONSTRUCT(&spawns, pmix_list_t);
 
     /* initialize the output system */
     if (!pmix_output_init()) {
         return -1;
     }
-    
-    /* setup the function pointers */
-    server = *module;
-    /* save the credential, if provided */
-    if (NULL != credential) {
-        pmix_globals.credential = strdup(credential);
-    }
-    
+    /* Zero globals */
+    memset(&pmix_globals, 0, sizeof(pmix_globals));
+
     /* see if debug is requested */
     if (NULL != (evar = getenv("PMIX_DEBUG"))) {
         debug_level = strtol(evar, NULL, 10);
@@ -213,11 +186,31 @@ int PMIx_server_init(pmix_server_module_t *module,
         pmix_output_set_verbosity(pmix_globals.debug_output, debug_level);
     }
 
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:server init called");
+
+    /* setup the globals */
+
+    (void)strncpy(pmix_globals.namespace, "pmix-server", PMIX_MAX_NSLEN);
+    pmix_globals.debug_output = -1;
+    OBJ_CONSTRUCT(&peers, pmix_list_t);
+    OBJ_CONSTRUCT(&fences, pmix_list_t);
+    OBJ_CONSTRUCT(&gets, pmix_list_t);
+    OBJ_CONSTRUCT(&connects, pmix_list_t);
+    OBJ_CONSTRUCT(&disconnects, pmix_list_t);
+    OBJ_CONSTRUCT(&spawns, pmix_list_t);
+
+    /* setup the function pointers */
+    memset(&server, 0, sizeof(pmix_server_module_t));
+    server = *module;
+    /* save the credential, if provided */
+    if (NULL != credential) {
+        pmix_globals.credential = strdup(credential);
+    }
+
     /* initialize the datatype support */
     pmix_bfrop_open();
-    /* and the usock system */
-    pmix_usock_init();
-    
+
     /* setup the path to the daemon rendezvous point, using our
      * pid as the "rank" */
     pid = getpid();
@@ -235,8 +228,47 @@ int PMIx_server_init(pmix_server_module_t *module,
     /* now set the address */
     memset(&myaddress, 0, sizeof(struct sockaddr_un));
     myaddress.sun_family = AF_UNIX;
-    snprintf(myaddress.sun_path, sizeof(myaddress.sun_path)-1, "%s/pmix", tdir);
+    snprintf(myaddress.sun_path, sizeof(myaddress.sun_path)-1, "%s/pmix-%d", tdir, pid);
     asprintf(&myuri, "%lu:%s", (unsigned long)pid, myaddress.sun_path);
+
+
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:server constructed uri %s", myuri);
+    return 0;
+}
+
+int PMIx_server_init_light(pmix_server_module_t *module, char *tmpdir,
+                           char *credential)
+{
+    ++init_cntr;
+    if (1 < init_cntr) {
+        return 0;
+    }
+    return initialize_server_base(module, tmpdir, credential);
+}
+
+int PMIx_server_init(pmix_server_module_t *module,
+                     struct event_base *evbase,
+                     char *tmpdir, char *credential)
+{
+    pmix_usock_posted_recv_t *req;
+    int rc;
+    
+    ++init_cntr;
+    if (1 < init_cntr) {
+        return 0;
+    }
+
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:server init called");
+
+    rc = initialize_server_base(module, tmpdir, credential);
+    if( rc ){
+        return rc;
+    }
+
+    /* and the usock system */
+    pmix_usock_init();
     
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:server constructed uri %s", myuri);
@@ -270,6 +302,46 @@ int PMIx_server_init(pmix_server_module_t *module,
     return 0;
 }
 
+static void cleanup_server_state(void)
+{
+    PMIX_LIST_DESTRUCT(&peers);
+    PMIX_LIST_DESTRUCT(&fences);
+    PMIX_LIST_DESTRUCT(&gets);
+    PMIX_LIST_DESTRUCT(&connects);
+    PMIX_LIST_DESTRUCT(&disconnects);
+    PMIX_LIST_DESTRUCT(&spawns);
+
+    if (NULL != pmix_globals.credential) {
+        free(pmix_globals.credential);
+    }
+    if (NULL != myuri) {
+        free(myuri);
+    }
+
+    pmix_bfrop_close();
+
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:server finalize complete");
+
+    pmix_output_close(pmix_globals.debug_output);
+    pmix_output_finalize();
+    pmix_class_finalize();
+}
+
+int PMIx_server_finalize_light(void)
+{
+    if (1 != init_cntr) {
+        --init_cntr;
+       return 0;
+    }
+    init_cntr = 0;
+
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:server finalize called");
+    cleanup_server_state();
+    return 0;
+}
+
 int PMIx_server_finalize(void)
 {
     if (1 != init_cntr) {
@@ -284,19 +356,6 @@ int PMIx_server_finalize(void)
         event_del(&listen_ev);
     }
     
-    if (NULL != pmix_globals.credential) {
-        free(pmix_globals.credential);
-    }
-    if (NULL != myuri) {
-        free(myuri);
-    }
-    PMIX_LIST_DESTRUCT(&peers);
-    PMIX_LIST_DESTRUCT(&fences);
-    PMIX_LIST_DESTRUCT(&gets);
-    PMIX_LIST_DESTRUCT(&connects);
-    PMIX_LIST_DESTRUCT(&disconnects);
-    PMIX_LIST_DESTRUCT(&spawns);
-
     if (local_evbase) {
         pmix_stop_progress_thread(pmix_globals.evbase);
         event_base_free(pmix_globals.evbase);
@@ -306,7 +365,6 @@ int PMIx_server_finalize(void)
         CLOSE_THE_SOCKET(mysocket);
     }
 
-    pmix_bfrop_close();
     pmix_usock_finalize();
 
     /* cleanup the rendezvous file */
@@ -315,9 +373,7 @@ int PMIx_server_finalize(void)
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:server finalize complete");
 
-    pmix_output_close(pmix_globals.debug_output);
-    pmix_output_finalize();
-    pmix_class_finalize();
+    cleanup_server_state();
     return 0;
 }
 
@@ -1381,3 +1437,34 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
     }
 }
 
+int PMIx_server_cred_extract(pmix_message_t *msg_opaq, pmix_peer_cred_t *cred)
+{
+    pmix_message_inst_t *msg = (pmix_message_inst_t *)msg_opaq;
+    int rc;
+    rc = load_peer_cred(cred,msg->hdr, msg->payload);
+    return rc;
+}
+
+pmix_message_t *PMIx_server_cred_reply(int rc)
+{
+    pmix_message_inst_t *msg = (void*)PMIx_message_new();
+    if( NULL == msg ){
+        return NULL;
+    }
+    msg->hdr.nbytes = sizeof(int);
+    msg->payload = calloc(1, sizeof(int));
+    if( NULL == msg->payload ){
+        PMIx_message_free((void*)msg);
+        return NULL;
+    }
+    *((int*)msg->payload) = rc;
+    msg->hdr_rcvd = 1;
+    msg->hdr.rank = pmix_globals.rank;
+    (void)strncpy(msg->hdr.namespace, pmix_globals.namespace, PMIX_MAX_NSLEN);
+    msg->hdr.type = PMIX_USOCK_IDENT;
+    msg->hdr.tag = 0;
+    return (pmix_message_t *)msg;
+}
+
+int PMIx_server_set_handlers(pmix_server_module_t *module);
+int PMIx_server_process_msg(pmix_message_t *msg);
