@@ -195,7 +195,6 @@ void pmix_usock_send_handler(int sd, short flags, void *cbdata)
                                     "usock:send_handler BODY SENT");
                 OBJ_RELEASE(msg);
                 peer->send_msg = NULL;
-                goto next;
             } else if (PMIX_ERR_RESOURCE_BUSY == rc ||
                        PMIX_ERR_WOULD_BLOCK == rc) {
                 /* exit this event and let the event lib progress */
@@ -214,7 +213,7 @@ void pmix_usock_send_handler(int sd, short flags, void *cbdata)
                 return;
             }
         }
-
+        
 next:
         /* if current message completed - progress any pending sends by
              * moving the next in the queue into the "on-deck" position. Note
@@ -408,6 +407,8 @@ void pmix_usock_send_recv(int fd, short args, void *cbdata)
         event_add(&ms->peer->send_event, 0);
         ms->peer->send_ev_active = true;
     }
+    /* cleanup */
+    OBJ_RELEASE(ms);
 }
 
 void pmix_usock_process_msg(int fd, short flags, void *cbdata)

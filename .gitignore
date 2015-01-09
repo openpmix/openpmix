@@ -46,3 +46,4 @@ test/pmix_client
 test/pmix_test
 test/pmix_client2
 test/pmix_srv_self
+test/pmix_server_api2

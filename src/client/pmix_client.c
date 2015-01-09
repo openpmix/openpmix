@@ -311,6 +311,9 @@ int PMIx_Finalize(void)
                             "pmix:client finalize sync received");
     }
 
+    pmix_usock_finalize();
+    OBJ_DESTRUCT(&myserver);
+
     if (local_evbase) {
         pmix_stop_progress_thread(pmix_globals.evbase);
         event_base_free(pmix_globals.evbase);
@@ -319,11 +322,13 @@ int PMIx_Finalize(void)
     if (0 <= myserver.sd) {
         CLOSE_THE_SOCKET(myserver.sd);
     }
-
+    if (NULL != pmix_globals.credential) {
+        free(pmix_globals.credential);
+    }
     pmix_client_hash_finalize();
     pmix_bfrop_close();
-    pmix_usock_finalize();
 
+    
     pmix_output_close(pmix_globals.debug_output);
     pmix_output_finalize();
     pmix_class_finalize();
@@ -809,9 +814,8 @@ static int unpack_get_return(pmix_buffer_t *data, const char *key,
                     OBJ_RELEASE(kp);
                     return rc;
                 }
-            } else {
-                OBJ_RELEASE(kp);
             }
+            OBJ_RELEASE(kp);
             cnt = 1;
         }
         OBJ_DESTRUCT(&buf);  // free's the data region
@@ -916,8 +920,7 @@ static void getnb_cbfunc(int sd, pmix_usock_hdr_t *hdr,
         cb->cbfunc(rc, val, cb->cbdata);
     }
     if (NULL != val) {
-        PMIx_free_value_data(val);
-        free(val);
+        PMIx_free_value(&val);
     }
     OBJ_RELEASE(cb);
 }
@@ -933,10 +936,7 @@ static void getnb_shortcut(int fd, short flags, void *cbdata)
         m=1;
         rc = pmix_bfrop.unpack(&cb->data, &val, &m, PMIX_VALUE);
         cb->cbfunc(rc, val, cb->cbdata);
-        if (NULL != val) {
-            PMIx_free_value_data(val);
-            free(val);
-        }
+        PMIx_free_value(&val);
     }
     OBJ_RELEASE(cb);
 }
@@ -990,8 +990,7 @@ int PMIx_Get_nb(const char *namespace, int rank,
         }
         /* cleanup */
         if (NULL != val) {
-            PMIx_free_value_data(val);
-            free(val);
+            PMIx_free_value(&val);
         }
         /* activate the event */
         event_assign(&(cb->ev), pmix_globals.evbase, -1,
@@ -1192,8 +1191,7 @@ int PMIx_Lookup(pmix_scope_t scope,
             }
         }
         free(key);
-        PMIx_free_value_data(value);
-        free(value);
+        PMIx_free_value(&value);
         if (!found) {
             rc = PMIX_ERR_NOT_FOUND;
             break;
@@ -1507,6 +1505,16 @@ void PMIx_free_value_data(pmix_value_t *val)
         free(val->data.array.array);
     }
     /* all other types have no malloc'd storage */
+}
+
+void PMIx_free_value(pmix_value_t **val)
+{
+    if (NULL == val || NULL == *val) {
+        return;
+    }
+    PMIx_free_value_data(*val);
+    free(*val);
+    *val = NULL;
 }
 
 /* provide a function that retrieves the job-specific info

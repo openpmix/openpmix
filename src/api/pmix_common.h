@@ -261,8 +261,9 @@ typedef struct {
         pmix_array_t array;
     } data;
 } pmix_value_t;
-/* utility function to free data contained in a pmix_value_t */
+/* utility functions to free data contained in a pmix_value_t */
 void PMIx_free_value_data(pmix_value_t *val);
+void PMIx_free_value(pmix_value_t **val);
 
 typedef struct {
     char namespace[PMIX_MAX_NSLEN];

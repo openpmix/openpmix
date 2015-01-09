@@ -107,7 +107,7 @@ static void kvdes(pmix_kval_t *k)
         free(k->key);
     }
     if (NULL != k->value) {
-        PMIx_free_value_data(k->value);
+        PMIx_free_value(&k->value);
     }
 }
 OBJ_CLASS_INSTANCE(pmix_kval_t,
