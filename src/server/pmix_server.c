@@ -1,9 +1,9 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2015 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
+ * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * $COPYRIGHT$
  *
@@ -561,6 +561,8 @@ static int load_peer_cred(pmix_peer_cred_t *cred, pmix_usock_hdr_t hdr, char *ms
             return PMIX_ERR_INVALID_ARG;
         }
         cred->auth_token = (char*)(msg + strlen(version) + 1);
+    } else {
+        cred->auth_token = NULL;
     }
     return PMIX_SUCCESS;
 }
