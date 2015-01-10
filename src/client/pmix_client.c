@@ -1642,6 +1642,9 @@ static int recv_connect_ack(int sd)
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
+    if( hdr.nbytes != sizeof(reply) ){
+        return PMIX_ERR_BAD_PARAM;
+    }
     rc = pmix_usock_recv_blocking(sd, (char*)&reply, hdr.nbytes);
     if (PMIX_SUCCESS == rc) {
         rc = reply;
