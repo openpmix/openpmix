@@ -101,6 +101,9 @@ static OBJ_CLASS_INSTANCE(pmix_test_data_t,
 
 static bool test_complete = false;
 static pmix_list_t modex;
+static bool barrier = false;
+static bool collect = false;
+static bool nonblocking = false;
 
 static void errhandler(int error)
 {
@@ -111,8 +114,41 @@ int main(int argc, char **argv)
 {
     char **client_env=NULL;
     char **client_argv=NULL;
-    int rc;
+    int rc, i;
     pid_t pid;
+    int nprocs=1;
+    char *binary = "pmix_client2";
+    char *tmp;
+    char *np = NULL;
+    
+    /* parse user options */
+    for (i=1; i < argc; i++) {
+        if (0 == strcmp(argv[i], "--n") || 0 == strcmp(argv[i], "-n")) {
+            i++;
+            np = argv[i];
+            nprocs = strtol(argv[i], NULL, 10);
+        } else if (0 == strcmp(argv[i], "--h") || 0 == strcmp(argv[i], "-h")) {
+            /* print help */
+            fprintf(stderr, "usage: pmix_test [-h] [-e foo] [-b] [-c] [-nb]\n");
+            fprintf(stderr, "\t-e foo   use foo as test client\n");
+            fprintf(stderr, "\t-b       execute fence_nb callback when all procs reach that point\n");
+            fprintf(stderr, "\t-c       fence[_nb] callback shall include all collected data\n");
+            fprintf(stderr, "\t-nb      use non-blocking fence\n");
+            exit(0);
+        } else if (0 == strcmp(argv[i], "--exec") || 0 == strcmp(argv[i], "-e")) {
+            i++;
+            binary = argv[i];
+        } else if (0 == strcmp(argv[i], "--barrier") || 0 == strcmp(argv[i], "-b")) {
+            barrier = true;
+        } else if (0 == strcmp(argv[i], "--collect") || 0 == strcmp(argv[i], "-c")) {
+            collect = true;
+        } else if (0 == strcmp(argv[i], "--non-blocking") || 0 == strcmp(argv[i], "-nb")) {
+            nonblocking = true;
+        } else {
+            fprintf(stderr, "unrecognized option: %s\n", argv[i]);
+            exit(1);
+        }
+    }
 
     OBJ_CONSTRUCT(&modex, pmix_list_t);
     
@@ -128,24 +164,46 @@ int main(int argc, char **argv)
     client_env = pmix_argv_copy(environ);
     
     /* fork/exec the test */
-    pmix_argv_append_nosize(&client_argv, "pmix_client2");
-    if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(TEST_NAMESPACE, 0, &client_env))) {
-        fprintf(stderr, "Server fork setup failed with error %d\n", rc);
-        PMIx_server_finalize();
-        return rc;
+    pmix_argv_append_nosize(&client_argv, binary);
+    if (nonblocking) {
+        pmix_argv_append_nosize(&client_argv, "nb");
+        if (barrier) {
+            pmix_argv_append_nosize(&client_argv, "barrier");
+        }
+    }
+    if (collect) {
+        pmix_argv_append_nosize(&client_argv, "collect");
+    }
+    pmix_argv_append_nosize(&client_argv, "-n");
+    if (NULL == np) {
+        pmix_argv_append_nosize(&client_argv, "1");
+    } else {
+        pmix_argv_append_nosize(&client_argv, np);
     }
     
-    pid = fork();    
-    if (pid < 0) {
-        fprintf(stderr, "Fork failed\n");
-        PMIx_server_finalize();
-        return -1;
-    }
+    tmp = pmix_argv_join(client_argv, ' ');
+    fprintf(stderr, "Executing test: %s\n", tmp);
+    free(tmp);
+
+    for (i=0; i < nprocs; i++) {
+        if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(TEST_NAMESPACE, i, &client_env))) {
+            fprintf(stderr, "Server fork setup failed with error %d\n", rc);
+            PMIx_server_finalize();
+            return rc;
+        }
     
-    if (pid == 0) {
-        execve("pmix_client2", client_argv, client_env);
-        /* Does not return */
-    } 
+        pid = fork();    
+        if (pid < 0) {
+            fprintf(stderr, "Fork failed\n");
+            PMIx_server_finalize();
+            return -1;
+        }
+        
+        if (pid == 0) {
+            execve(binary, client_argv, client_env);
+            /* Does not return */
+        }
+    }
 
     /* hang around until the client finalizes */
     while (!test_complete) {
