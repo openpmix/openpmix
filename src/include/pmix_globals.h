@@ -28,6 +28,14 @@
 
 BEGIN_C_DECLS
 
+typedef enum {
+    PMI1,
+    PMI2,
+    PMIX
+} pmix_protocol_t;
+
+#define PMIX_MAX_CRED_SIZE  131072   // set max at 128kbytes
+
 /* define a global construct that includes values that must be shared
  * between various parts of the code library. Both the client
  * and server libraries must instance this structure */
@@ -38,6 +46,7 @@ typedef struct {
     pmix_event_base_t *evbase;
     int debug_output;
     pmix_errhandler_fn_t errhandler;
+    pmix_protocol_t protocol;
 } pmix_globals_t;
 
 extern pmix_globals_t pmix_globals;

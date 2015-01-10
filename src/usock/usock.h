@@ -71,8 +71,10 @@ typedef enum {
 } pmix_cmd_t;
 
 /* define some message types */
-#define PMIX_USOCK_IDENT  1
-#define PMIX_USOCK_USER   2
+#define PMIX_USOCK_USER         1
+#define PMIX_USOCK_IDENT_PMI1   2
+#define PMIX_USOCK_IDENT_PMI2   3
+#define PMIX_USOCK_IDENT_PMIX   4
 
 /* header for messages */
 typedef struct {

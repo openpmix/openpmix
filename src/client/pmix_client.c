@@ -66,7 +66,13 @@ static pmix_buffer_t *cache_remote;
 static pmix_buffer_t *cache_global;
 
 // global variables
-pmix_globals_t pmix_globals;
+pmix_globals_t pmix_globals = {
+    .credential = NULL,
+    .evbase = NULL,
+    .debug_output = -1,
+    .errhandler = NULL,
+    .protocol = PMIX
+};
 
 /* callback for wait completion */
 /*****  RHC: need to extend this callback function to
@@ -104,8 +110,7 @@ static void setup_globals(void)
     cache_local = NULL;
     cache_remote = NULL;
     /* setup our copy of the pmix globals object */
-    memset(&pmix_globals, 0, sizeof(pmix_globals));
-    pmix_globals.debug_output = -1;
+    memset(&pmix_globals.namespace, 0, PMIX_MAX_NSLEN);
 }
 
 static int connect_to_server(struct sockaddr_un *address)
@@ -1595,8 +1600,14 @@ static int send_connect_ack(int sd)
     (void)strncpy(hdr.namespace, pmix_globals.namespace, PMIX_MAX_NSLEN);
     hdr.rank = pmix_globals.rank;
     hdr.tag = UINT32_MAX;
-    hdr.type = PMIX_USOCK_IDENT;
-
+    if (PMI1 == pmix_globals.protocol) {
+        hdr.type = PMIX_USOCK_IDENT_PMI1;
+    } else if (PMI2 == pmix_globals.protocol) {
+        hdr.type = PMIX_USOCK_IDENT_PMI1;
+    } else {
+        hdr.type = PMIX_USOCK_IDENT_PMIX;
+    }
+    
     /* if we were given a security credential, pass it along */
     if (NULL != pmix_globals.credential) {
         csize = strlen(pmix_globals.credential);
@@ -1642,7 +1653,7 @@ static int recv_connect_ack(int sd)
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
-    if( hdr.nbytes != sizeof(reply) ){
+    if (hdr.nbytes != sizeof(reply)){
         return PMIX_ERR_BAD_PARAM;
     }
     rc = pmix_usock_recv_blocking(sd, (char*)&reply, hdr.nbytes);

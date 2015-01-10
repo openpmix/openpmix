@@ -221,7 +221,7 @@ int reply_cli_auth(int sd, int rc)
 
     hdr.nbytes = 4;
     hdr.rank = pmix_globals.rank;
-    hdr.type = PMIX_USOCK_IDENT;
+    hdr.type = PMIX_USOCK_IDENT_PMIX;
     hdr.tag = 0; // TODO: do we need to put other value here?
 
     if (PMIX_SUCCESS != (rc = pmix_usock_send_blocking(sd, (char*)&hdr, sizeof(hdr)))) {

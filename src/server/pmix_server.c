@@ -563,10 +563,12 @@ static int load_peer_cred(pmix_peer_cred_t *cred, pmix_usock_hdr_t hdr, char *ms
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "connect-ack version from client matches ours");
 
-    /* check security token */
-    if (NULL != server.authenticate) {
+    /* check security token  - this is
+     * only required if the protocol was PMIX */
+    if (NULL != server.authenticate &&
+        PMIX_USOCK_IDENT_PMIX == hdr.type) {
         /* server desires authentication */
-        if( hdr.nbytes <= strlen(version) + 1 ){
+        if (hdr.nbytes <= strlen(version) + 1){
             /* client did not provide authentication */
             pmix_output(0, "usock_peer_recv_connect_ack: "
                         "client failed to provide required authentication token");
@@ -606,9 +608,12 @@ static int authenticate_client(int sd, pmix_peer_t **peer)
                         "connect-ack recvd from peer %s:%d",
                         hdr.namespace, hdr.rank);
 
-    /* get the authentication and version payload
-     * artpol: put some sane limits here to prevent
-     * attack, 1MB? */
+    /* get the authentication and version payload - to
+     * guard against potential attacks, we'll set an
+     * arbitrary limit per a define */
+    if (PMIX_MAX_CRED_SIZE < hdr.nbytes) {
+        return PMIX_ERR_BAD_PARAM;
+    }
     if (NULL == (msg = (char*)malloc(hdr.nbytes))) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
@@ -641,6 +646,26 @@ static int authenticate_client(int sd, pmix_peer_t **peer)
         /* we don't know this peer, reject it */
         return PMIX_ERR_NOT_FOUND;
     }
+    
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "connect-ack version from client matches ours");
+
+    /* check security token - if PMI1 or PMI2 protocol is being
+     * used, then there is no way to provide a credential as
+     * those libraries don't contain an interface by which
+     * the client can pass a credential to the library. So we
+     * cannot authenticate the client in those cases, and will
+     * instead have to rely on the above checks */
+    if (NULL != server.authenticate &&
+        PMIX_USOCK_IDENT_PMIX == hdr.type) {
+        if (0 != server.authenticate(cred.auth_token)) {
+            /* reject the connection */
+            free(msg);
+            return PMIX_ERR_UNREACH;
+        }
+    }
+    free(msg);
+
     /* a peer can connect on multiple sockets since it can
      * fork/exec a child that also calls PMIx_Init. */
     if (NULL == *peer) {
@@ -650,20 +675,6 @@ static int authenticate_client(int sd, pmix_peer_t **peer)
         (*peer)->rank = cred.rank;
         pmix_list_append(&peers, &(*peer)->super);
     }
-    
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "connect-ack version from client matches ours");
-
-    /* check security token */
-    if (NULL != server.authenticate) {
-        if (0 != server.authenticate(cred.auth_token)) {
-            /* reject the connection */
-            free(msg);
-            return PMIX_ERR_UNREACH;
-        }
-    }
-    free(msg);
-
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "connect-ack from client authenticated");
 
@@ -677,8 +688,8 @@ static int send_client_response(int sd, int status)
 
     hdr.nbytes = 4;
     hdr.rank = pmix_globals.rank;
-    hdr.type = PMIX_USOCK_IDENT;
-    hdr.tag = 0; // TODO: do we need to put other value here?
+    hdr.type = PMIX_USOCK_IDENT_PMIX;
+    hdr.tag = 0; // tag doesn't matter as we aren't matching to a recv
 
     if (PMIX_SUCCESS != (rc = pmix_usock_send_blocking(sd, (char*)&hdr, sizeof(hdr)))) {
         PMIX_ERROR_LOG(rc);
@@ -1486,7 +1497,7 @@ pmix_message_t *PMIx_server_cred_reply(int rc)
     msg->hdr_rcvd = 1;
     msg->hdr.rank = pmix_globals.rank;
     (void)strncpy(msg->hdr.namespace, pmix_globals.namespace, PMIX_MAX_NSLEN);
-    msg->hdr.type = PMIX_USOCK_IDENT;
+    msg->hdr.type = PMIX_USOCK_IDENT_PMIX;
     msg->hdr.tag = 0;
     return (pmix_message_t *)msg;
 }

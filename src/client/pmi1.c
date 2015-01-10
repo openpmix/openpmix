@@ -41,6 +41,9 @@ int PMI_Init( int *spawned )
     pmix_value_t *kv;
     pmix_status_t rc;
 
+    /* set the protocol */
+    pmix_globals.protocol = PMI1;
+    
     if (PMIX_SUCCESS != PMIx_Init(NULL, NULL, NULL, NULL)) {
         return PMI_ERR_INIT;
     }

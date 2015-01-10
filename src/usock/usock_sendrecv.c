@@ -214,15 +214,15 @@ void pmix_usock_send_handler(int sd, short flags, void *cbdata)
             }
         }
         
-next:
+    next:
         /* if current message completed - progress any pending sends by
-             * moving the next in the queue into the "on-deck" position. Note
-             * that this doesn't mean we send the message right now - we will
-             * wait for another send_event to fire before doing so. This gives
-             * us a chance to service any pending recvs.
-             */
+         * moving the next in the queue into the "on-deck" position. Note
+         * that this doesn't mean we send the message right now - we will
+         * wait for another send_event to fire before doing so. This gives
+         * us a chance to service any pending recvs.
+         */
         peer->send_msg = (pmix_usock_send_t*)
-                pmix_list_remove_first(&peer->send_queue);
+            pmix_list_remove_first(&peer->send_queue);
     }
 
     /* if nothing else to do unregister for send event notifications */
@@ -298,7 +298,7 @@ void pmix_usock_recv_handler(int sd, short flags, void *cbdata)
             /* exit this event and let the event lib progress */
             return;
         } else {
-           /* the remote peer closed the connection - report that condition
+            /* the remote peer closed the connection - report that condition
              * and let the caller know
              */
             pmix_output_verbose(2, pmix_globals.debug_output,
@@ -309,9 +309,9 @@ void pmix_usock_recv_handler(int sd, short flags, void *cbdata)
 
     if (peer->recv_msg->hdr_recvd) {
         /* continue to read the data block - we start from
-             * wherever we left off, which could be at the
-             * beginning or somewhere in the message
-             */
+         * wherever we left off, which could be at the
+         * beginning or somewhere in the message
+         */
         if (PMIX_SUCCESS == (rc = read_bytes(peer->sd, &msg->rdptr, &msg->rdbytes))) {
             /* we recvd all of the message */
             pmix_output_verbose(2, pmix_globals.debug_output,
@@ -327,7 +327,7 @@ void pmix_usock_recv_handler(int sd, short flags, void *cbdata)
             /* exit this event and let the event lib progress */
             return;
         } else {
-           /* the remote peer closed the connection - report that condition
+            /* the remote peer closed the connection - report that condition
              * and let the caller know
              */
             pmix_output_verbose(2, pmix_globals.debug_output,
@@ -337,7 +337,7 @@ void pmix_usock_recv_handler(int sd, short flags, void *cbdata)
     }
     /* success */
     return;
-err_close:
+ err_close:
     /* stop all events */
     if (peer->recv_ev_active) {
         event_del(&peer->recv_event);
