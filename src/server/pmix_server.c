@@ -673,6 +673,16 @@ static int authenticate_client(int sd, pmix_peer_t **peer)
 static int send_client_response(int sd, int status)
 {
     int rc;
+    pmix_usock_hdr_t hdr;
+
+    hdr.nbytes = 4;
+    hdr.rank = pmix_globals.rank;
+    hdr.type = PMIX_USOCK_IDENT;
+    hdr.tag = 0; // TODO: do we need to put other value here?
+
+    if (PMIX_SUCCESS != (rc = pmix_usock_send_blocking(sd, (char*)&hdr, sizeof(hdr)))) {
+        PMIX_ERROR_LOG(rc);
+    }
 
     if (PMIX_SUCCESS != (rc = pmix_usock_send_blocking(sd, (char*)&status, sizeof(int)))) {
         PMIX_ERROR_LOG(rc);

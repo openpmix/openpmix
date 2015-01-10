@@ -1631,12 +1631,18 @@ static int send_connect_ack(int sd)
  * consisting of nothing more than a status report */
 static int recv_connect_ack(int sd)
 {
+    pmix_usock_hdr_t hdr;
     int32_t reply;
     int rc;
     
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: RECV CONNECT ACK FROM SERVER");
-    rc = pmix_usock_recv_blocking(sd, (char*)&reply, sizeof(int32_t));
+    /* receive the header */
+    rc = pmix_usock_recv_blocking(sd, (char*)&hdr, sizeof(pmix_usock_hdr_t));
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    rc = pmix_usock_recv_blocking(sd, (char*)&reply, hdr.nbytes);
     if (PMIX_SUCCESS == rc) {
         rc = reply;
     }
