@@ -46,6 +46,7 @@ extern int errno;
 #include "src/util/argv.h"
 
 #include "test_common.h"
+#include "pmix_srv_common.h"
 
 pmix_modex_data_t **pmix_db = NULL;
 struct event_base *server_base = NULL;
@@ -53,10 +54,9 @@ pmix_event_t *listen_ev = NULL;
 int listen_fd = -1;
 int client_fd = -1;
 pid_t client_pid = -1;
-static int start_listening(struct sockaddr_un *address);
+
 static void connection_handler(int incoming_sd, short flags, void* cbdata);
 static void message_handler(int incoming_sd, short flags, void* cbdata);
-static int read_bytes(int sd, char **buf, size_t *remain);
 int blocking_recv(int sd, void *buf, int size);
 
 int reply_cli_auth(int sd, int rc);
@@ -69,11 +69,10 @@ bool hdr_rcvd = false;
 char *rptr;
 size_t rbytes = 0;
 
-bool service = true;
+int service = true;
 
 void process_message(void);
 void prepare_db(void);
-int run_client(struct sockaddr_un address, char **env);
 
 /*
  * Initialize global variables used w/in the server.
@@ -101,10 +100,18 @@ int main(int argc, char **argv, char **env)
     fprintf(stderr,"PMIx srv: Initialization finished\n");
 
     /* start listening */
-    start_listening(&address);
+    listen_fd = start_listening(&address);
+
+    /* setup to listen via the event lib */
+    listen_ev = event_new(server_base, listen_fd,
+                          EV_READ|EV_PERSIST, connection_handler, 0);
+    event_add(listen_ev, 0);
+    fprintf(stderr, "PMIx srv: Server is listening for incoming connections\n");
+
 
     /* fork/exec the test */
-    if( run_client(address, env) ){
+    if( 0 > (client_pid = run_client(address, server_base, env, &service) ) ){
+        fprintf(stderr,"PMIx srv: Cannot spawn the client\n");
         exit(0);
     }
 
@@ -117,174 +124,6 @@ int main(int argc, char **argv, char **env)
     return 0;
 }
 
-/*
- * start listening on our rendezvous file
- */
-static int start_listening(struct sockaddr_un *address)
-{
-    int flags;
-    unsigned int addrlen;
-    int sd = -1;
-
-    /* unlink old unix socket file if presents */
-    if (0 == access(address->sun_path, R_OK)) {
-        unlink(address->sun_path);
-    }
-
-    /* create a listen socket for incoming connection attempts */
-    sd = socket(PF_UNIX, SOCK_STREAM, 0);
-    if (sd < 0) {
-        fprintf(stderr, "PMIx srv: %s:%d socket() failed %d:%s",
-                __FILE__, __LINE__, errno, strerror(errno));
-        return -1;
-    }
-
-    addrlen = sizeof(struct sockaddr_un);
-    if (bind(sd, (struct sockaddr*)address, addrlen) < 0) {
-        fprintf(stderr, "PMIx srv: %s:%d bind() failed %d:%s",
-                __FILE__, __LINE__, errno, strerror(errno));
-        return -1;
-    }
-        
-    /* setup listen backlog to maximum allowed by kernel */
-    if (listen(sd, SOMAXCONN) < 0) {
-        fprintf(stderr, "PMIx srv: %s:%d listen() failed %d:%s",
-                __FILE__, __LINE__, errno, strerror(errno));
-        return -1;
-    }
-        
-    /* set socket up to be non-blocking, otherwise accept could block */
-    if ((flags = fcntl(sd, F_GETFL, 0)) < 0) {
-        fprintf(stderr, "PMIx srv: %s:%d fcntl(F_GETFL) failed %d:%s",
-                __FILE__, __LINE__, errno, strerror(errno));
-        return -1;
-    }
-    flags |= O_NONBLOCK;
-    if (fcntl(sd, F_SETFL, flags) < 0) {
-        fprintf(stderr, "PMIx srv: %s:%d fcntl(F_SETFL) failed %d:%s",
-                __FILE__, __LINE__, errno, strerror(errno));
-
-        return -1;
-    }
-
-    /* record this socket */
-    listen_fd = sd;
-
-    /* setup to listen via the event lib */
-    listen_ev = event_new(server_base, listen_fd,
-                          EV_READ|EV_PERSIST, connection_handler, 0);
-    event_add(listen_ev, 0);
-    fprintf(stderr, "PMIx srv: Server is listening for incoming connections\n");
-    return 0;
-}
-
-static void exit_handler(int incomind_sd, short flags, void* cbdata)
-{
-    fprintf(stderr, "PMIx srv: Caught signal from the client. Exit\n");
-    service = false;
-}
-
-int run_client(struct sockaddr_un address, char **env)
-{
-    char **client_env = NULL;
-    char **client_argv = NULL;
-    char *tmp;
-    int i;
-
-    // setup signal handler to be notified on error
-    // at client exec
-    pmix_event_t *ev = evsignal_new(server_base, SIGUSR1, exit_handler, NULL);
-    event_add(ev,NULL);
-    fprintf(stderr, "PMIx srv: SIGUSR1 handler was intalled\n");
-
-    /* define the argv for the test client */
-    pmix_argv_append_nosize(&client_argv, "pmix_client");
-
-    for(i=0; NULL != env[i]; i++){
-        pmix_argv_append_nosize(&client_env, env[i]);
-    }
-    /* pass our URI */
-    asprintf(&tmp, "PMIX_SERVER_URI=0:%s", address.sun_path);
-    pmix_argv_append_nosize(&client_env, tmp);
-    free(tmp);
-    /* pass an ID for the client */
-    pmix_argv_append_nosize(&client_env, "PMIX_RANK=1");
-    /* pass a security credential */
-    asprintf(&tmp, "PMIX_NAMESPACE=smoky_namespace");
-    pmix_argv_append_nosize(&client_env, tmp);
-    free(tmp);
-
-    fprintf(stderr, "PMIx srv: Client environment was initialized\n");
-
-    /* fork/exec the test */
-    client_pid = fork();
-    if( client_pid < 0 ){
-        printf("Cannot fork()\n");
-        return -1;
-    }else if( client_pid == 0 ){
-        /* setup environment */
-        execve("./pmix_client", client_argv, client_env);
-        // shouldn't get here
-        printf("Cannot execle the client, rc = %d (%s)\n",
-               errno, strerror(errno));
-        fflush(stderr);
-        // Let parent know
-        pid_t ppid = getppid();
-        kill(ppid,SIGUSR1);
-        abort();
-    }
-
-    fprintf(stderr, "PMIx srv: Client was spawned\n");
-
-    return 0;
-}
-
-int blocking_recv(int sd, void *buf, int size)
-{
-    int rc;
-    int rcvd = 0;
-    while( rcvd < size ){
-        rc = read(sd, buf, size);
-        if( rc < 0 ){
-            fprintf(stderr, "PMIx srv: %s:%d read() failed %d:%s",
-                    __FILE__, __LINE__, errno, strerror(errno));
-            return PMIX_ERR_UNREACH;
-        }else if( rc == 0){
-            fprintf(stderr, "PMIx srv: %s:%d read() failed: client closed connection",
-                    __FILE__, __LINE__);
-            return PMIX_ERR_UNREACH;
-        }
-        rcvd += rc;
-    }
-    return PMIX_SUCCESS;
-}
-
-/* Copy from src/client/usock.c */
-static int blocking_send(int sd, void *ptr, size_t size)
-{
-    size_t cnt = 0;
-    int retval;
-
-    while (cnt < size) {
-        retval = send(sd, (char*)ptr+cnt, size-cnt, 0);
-        if (retval < 0) {
-            if ( errno != EINTR ) {
-                fprintf(stderr, "PMIx srv: %s:%d send() to socket %d failed: %d:%s",
-                        __FILE__, __LINE__, sd, errno, strerror(errno));
-                return PMIX_ERR_UNREACH;
-            }
-            continue;
-        }
-        cnt += retval;
-    }
-
-    return PMIX_SUCCESS;
-}
-
-int reply_cli_auth(int sd, int rc)
-{
-    return blocking_send(sd,&rc,sizeof(rc));
-}
 
 int recv_cli_auth(int sd)
 {
@@ -365,7 +204,7 @@ static void message_handler(int sd, short flags, void* cbdata)
 
     if( !hdr_rcvd ){
         /* if the header hasn't been completely read, read it */
-        rc = read_bytes(sd, &rptr, &rbytes);
+        rc = blocking_recv(sd, rptr, rbytes);
         /* Process errors first (if any) */
         if ( PMIX_ERR_UNREACH == rc ) {
             /* Communication error */
@@ -406,7 +245,7 @@ static void message_handler(int sd, short flags, void* cbdata)
              * wherever we left off, which could be at the
              * beginning or somewhere in the message
              */
-        if (PMIX_SUCCESS == (rc = read_bytes(sd, &rptr, &rbytes))) {
+        if (PMIX_SUCCESS == (rc = blocking_recv(sd, rptr, rbytes))) {
             /* we recvd all of the message */
             /* process the message */
             process_message();
@@ -425,40 +264,6 @@ static void message_handler(int sd, short flags, void* cbdata)
     }
 }
 
-static int read_bytes(int sd, char **buf, size_t *remain)
-{
-    int ret = PMIX_SUCCESS, rc;
-    char *ptr = *buf;
-
-    /* read until all bytes recvd or error */
-    while (0 < *remain) {
-        rc = read(sd, ptr, *remain);
-        if (rc < 0) {
-            if(errno == EINTR) {
-                continue;
-            } else if (errno == EAGAIN) {
-                ret = PMIX_ERR_RESOURCE_BUSY;
-                goto exit;
-            } else if (errno == EWOULDBLOCK) {
-                ret = PMIX_ERR_WOULD_BLOCK;
-                goto exit;
-            }
-            ret = PMIX_ERR_UNREACH;
-            goto exit;
-        } else if (0 == rc) {
-            /* the remote peer closed the connection */
-            ret = PMIX_ERR_UNREACH;
-            goto exit;
-        }
-        /* we were able to read something, so adjust counters and location */
-        *remain -= rc;
-        ptr += rc;
-    }
-    /* we read the full data block */
-exit:
-    *buf = ptr;
-    return ret;
-}
 
 void prepare_db(void)
 {
@@ -529,97 +334,6 @@ static void reply_to_client(pmix_buffer_t *reply, uint8_t type, uint32_t tag)
         pmix_output(0,"PMIx srv: Error sending the header to the client");
         return;
     }
-}
-
-inline static int verify_kvps(pmix_buffer_t *xfer)
-{
-    pmix_buffer_t *bptr;
-    pmix_scope_t scope = 0;
-    int rc, cnt = 1;
-    pmix_kval_t *kvp = NULL;
-    int collect_data, barrier;
-
-    // We expect 3 keys here:
-    // 1. for the local scope:  "local-key-2" = "12342" (INT)
-    // 2. for the remote scope: "remote-key-2" = "Test string #2" (STRING)
-    // 3. for the global scope: "global-key-2" = "12.15" (FLOAT)
-    // Should test more cases in future
-
-    cnt = 1;
-    if( PMIX_SUCCESS != pmix_bfrop.unpack(xfer,&collect_data,&cnt, PMIX_INT) ){
-        fprintf(stderr,"PMIx srv [%s:%d]: Cannot unpack\n", __FILE__,__LINE__);
-        abort();
-    }
-
-    cnt = 1;
-    if( PMIX_SUCCESS != pmix_bfrop.unpack(xfer,&barrier,&cnt, PMIX_INT) ){
-        fprintf(stderr,"PMIx srv [%s:%d]: Cannot unpack\n", __FILE__,__LINE__);
-        abort();
-    }
-
-    cnt = 1;
-    while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(xfer, &scope, &cnt, PMIX_SCOPE))) {
-        /* unpack the buffer */
-        cnt = 1;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(xfer, &bptr, &cnt, PMIX_BUFFER))) {
-            fprintf(stderr,"PMIx srv [%s:%d]: Cannot unpack\n", __FILE__,__LINE__);
-            abort();
-        }
-
-        /* process the input */
-        if (PMIX_LOCAL == scope) {
-            int keys = 0;
-            while( 1 ){
-                cnt = 1;
-                if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(bptr, &kvp, &cnt, PMIX_KVAL))) {
-                    break;
-                }
-                keys++;
-                if( keys == 1){
-                    if( strcmp(kvp->key, "local-key-2") || kvp->value->type != PMIX_INT
-                            || kvp->value->data.integer != 12342 ){
-                        fprintf(stderr,"PMIx srv [verify_kvps]: Error receiving LOCAL key\n");
-                        abort();
-                    }
-                }
-            }
-        } else if (PMIX_REMOTE == scope) {
-            int keys = 0;
-            while( 1 ){
-                cnt = 1;
-                if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(bptr, &kvp, &cnt, PMIX_KVAL))) {
-                    break;
-                }
-                keys++;
-                if( keys == 1){
-                    if( strcmp(kvp->key, "remote-key-2") || kvp->value->type != PMIX_STRING
-                            || strcmp(kvp->value->data.string,"Test string #2") ){
-                        fprintf(stderr,"Error receiving REMOTE key\n");
-                        abort();
-                    }
-                }
-            }
-        } else {
-            int keys = 0;
-            while( 1 ){
-                cnt = 1;
-                if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(bptr, &kvp, &cnt, PMIX_KVAL))) {
-                    break;
-                }
-                keys++;
-                if( keys == 1){
-                    if( strcmp(kvp->key, "global-key-2") || kvp->value->type != PMIX_FLOAT ||
-                            kvp->value->data.fval != (float)12.15 ){
-                        fprintf(stderr,"Error receiving GLOBAL key\n");
-                        abort();
-                    }
-                }
-            }
-        }
-        cnt = 1;
-    }
-    // TODO: Return an error at error :)
-    return PMIX_SUCCESS;
 }
 
 void process_message(void)

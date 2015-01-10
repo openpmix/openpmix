@@ -54,7 +54,7 @@ pmix_client2_LDADD = \
 	$(top_builddir)/libpmix.la
 
 pmix_srv_self_SOURCES = \
-        pmix_srv_self.c
+        pmix_srv_self.c pmix_srv_common.c
 
 pmix_srv_self_LDADD = \
 	$(top_builddir)/libpmix-server.la
