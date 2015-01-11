@@ -552,14 +552,14 @@ static void connection_handler(int incoming_sd, short flags, void* cbdata)
  * the message and header. Note: you don't need to free anything in
  * pmix_peer_cred_t. */
 static int load_peer_cred(int sd, pmix_peer_t **peer, pmix_peer_cred_t *cred,
-                          pmix_usock_hdr_t hdr, char *msg)
+                          pmix_usock_hdr_t *hdr, char *msg)
 {
     bool found;
     char *version;
     pmix_peer_t *pr;
 
-    cred->namespace = hdr.namespace;
-    cred->rank = hdr.rank;
+    cred->namespace = hdr->namespace;
+    cred->rank = hdr->rank;
 
     /* check that this is from a matching version */
     version = (char*)(msg);
@@ -575,9 +575,9 @@ static int load_peer_cred(int sd, pmix_peer_t **peer, pmix_peer_cred_t *cred,
     /* check security token  - this is
      * only required if the protocol was PMIX */
     if (NULL != server.authenticate &&
-        PMIX_USOCK_IDENT_PMIX == hdr.type) {
+        PMIX_USOCK_IDENT_PMIX == hdr->type) {
         /* server desires authentication */
-        if (hdr.nbytes <= strlen(version) + 1){
+        if (hdr->nbytes <= strlen(version) + 1){
             /* client did not provide authentication */
             pmix_output(0, "usock_peer_recv_connect_ack: "
                         "client failed to provide required authentication token");
@@ -596,6 +596,7 @@ static int load_peer_cred(int sd, pmix_peer_t **peer, pmix_peer_cred_t *cred,
             found = true;
             if (pr->sd < 0) {
                 *peer = pr;
+                pr->sd = sd;
                 break;
             }
         }
@@ -660,7 +661,7 @@ static int authenticate_client(int sd, pmix_peer_t **peer)
         return PMIX_ERR_UNREACH;
     }
 
-    if( PMIX_SUCCESS != (rc = load_peer_cred(sd, peer, &cred, hdr, msg) ) ){
+    if( PMIX_SUCCESS != (rc = load_peer_cred(sd, peer, &cred, &hdr, msg) ) ){
         free(msg);
         return rc;
     }
@@ -1485,7 +1486,7 @@ int PMIx_server_cred_extract(int sd, pmix_message_t *msg_opaq, pmix_peer_cred_t 
     pmix_message_inst_t *msg = (pmix_message_inst_t *)msg_opaq;
     pmix_peer_t *peer;
     int rc;
-    rc = load_peer_cred(sd, &peer, cred,msg->hdr, msg->payload);
+    rc = load_peer_cred(sd, &peer, cred, &msg->hdr, msg->payload);
     return rc;
 }
 
