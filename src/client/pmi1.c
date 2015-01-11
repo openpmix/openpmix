@@ -62,8 +62,9 @@ int PMI_Init( int *spawned )
         OBJ_RELEASE(kv);
         return convert_err(rc);
     }
-
-    return PMI_ERR_INIT;
+    /* if it wasn't found, then default to "not spawned" */
+    *spawned = 0;
+    return PMI_SUCCESS;
 }
 
 int PMI_Initialized(PMI_BOOL *initialized)

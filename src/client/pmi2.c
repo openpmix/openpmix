@@ -51,19 +51,33 @@ int PMI2_Init(int *spawned, int *size, int *rank, int *appnum)
     if (NULL != rank) {
         *rank = pmix_globals.rank;
     }
-    
-    if (NULL != spawned) {
-        /* get the spawned flag - this will likely pull
+
+    if (NULL != size) {
+        /* get the universe size - this will likely pull
          * down all attributes assigned to the job, thus
          * making all subsequent "get" operations purely
          * local */
         if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
-                                     PMIX_SPAWNED, &kv)) {
-            rc = convert_int(spawned, kv);
-            OBJ_RELEASE(kv);
+                                     PMIX_UNIV_SIZE, &kv)) {
+            rc = convert_int(size, kv);
+            PMIx_free_value(&kv);
             return convert_err(rc);
         } else {
+            /* cannot continue without this info */
             return PMI2_ERR_INIT;
+        }
+    }
+
+    if (NULL != spawned) {
+        /* get the spawned flag */
+        if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
+                                     PMIX_SPAWNED, &kv)) {
+            rc = convert_int(spawned, kv);
+            PMIx_free_value(&kv);
+            return convert_err(rc);
+        } else {
+            /* if not found, default to not spawned */
+            *spawned = 0;
         }
     }
     
@@ -72,10 +86,11 @@ int PMI2_Init(int *spawned, int *size, int *rank, int *appnum)
         if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
                                      PMIX_APPNUM, &kv)) {
             rc = convert_int(appnum, kv);
-            OBJ_RELEASE(kv);
+            PMIx_free_value(&kv);
             return convert_err(rc);
         } else {
-            return PMI2_ERR_INIT;
+            /* if not found, default to 0 */
+            *appnum = 0;
         }
     }
     
@@ -143,16 +158,14 @@ int PMI2_KVS_Get(const char *jobid, int src_pmi_id,
     if (PMIX_SUCCESS == rc && NULL != val) {
         if (PMIX_STRING != val->type) {
             /* this is an error */
-            PMIx_free_value_data(val);
-            free(val);
+            PMIx_free_value(&val);
             return PMI2_FAIL;
         }
         if (NULL != val->data.string) {
             (void)strncpy(value, val->data.string, maxvalue);
             *vallen = strlen(val->data.string);
         }
-        PMIx_free_value_data(val);
-        free(val);
+        PMIx_free_value(&val);
     }
     return convert_err(rc);
 }
@@ -186,16 +199,14 @@ int PMI2_Info_GetJobAttr(const char name[], char value[], int valuelen, int *fou
     if (PMIX_SUCCESS == rc && NULL != val) {
         if (PMIX_STRING != val->type) {
             /* this is an error */
-            PMIx_free_value_data(val);
-            free(val);
+            PMIx_free_value(&val);
             return PMI2_FAIL;
         }
         if (NULL != val->data.string) {
             (void)strncpy(value, val->data.string, valuelen);
             *found = 1;
         }
-        PMIx_free_value_data(val);
-        free(val);
+        PMIx_free_value(&val);
     }
     return convert_err(rc);
 }
@@ -229,10 +240,6 @@ int PMI2_Nameserv_publish(const char service_name[], const PMI_keyval_t *info_pt
     /* publish the info - PMI-2 doesn't support
      * any scope other than inside our own namespace */
     rc = PMIx_Publish(PMIX_NAMESPACE, info, nvals);
-    PMIx_free_value_data(&info[0].value);
-    if (2 == nvals) {
-        PMIx_free_value_data(&info[1].value);
-    }
     
     return convert_err(rc);
 }
@@ -273,16 +280,12 @@ int PMI2_Nameserv_lookup(const char service_name[], const PMI_keyval_t *info_ptr
     if (NULL != info_ptr) {
         (void)strncpy(info[1].key, info_ptr->key, PMIX_MAX_KEYLEN);
         info[1].value.type = PMIX_STRING;
-        info[1].value.data.string = strdup(info_ptr->val);
+        info[1].value.data.string = info_ptr->val;
         nvals = 2;
     }
 
     /* PMI-2 doesn't want the namespace back */
     if (PMIX_SUCCESS != (rc = PMIx_Lookup(PMIX_NAMESPACE, info, nvals, NULL))) {
-        PMIx_free_value_data(&info[0].value);
-        if (2 == nvals) {
-            PMIx_free_value_data(&info[1].value);
-        }
         return convert_err(rc);
     }
 
@@ -290,18 +293,12 @@ int PMI2_Nameserv_lookup(const char service_name[], const PMI_keyval_t *info_ptr
     if (PMIX_STRING != info[0].value.type ||
         NULL == info[0].value.data.string) {
         PMIx_free_value_data(&info[0].value);
-        if (2 == nvals) {
-            PMIx_free_value_data(&info[1].value);
-        }
         return PMI2_FAIL;
     }
     
     /* return the port */
     (void)strncpy(port, info[0].value.data.string, PMIX_MAX_VALLEN);
     PMIx_free_value_data(&info[0].value);
-    if (2 == nvals) {
-        PMIx_free_value_data(&info[1].value);
-    }
     
     return PMI2_SUCCESS;
 }

@@ -895,8 +895,9 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
     pmix_server_caddy_t *cd;
     pmix_info_t *info, *iptr;
     char **keys;
-    pmix_value_t *vptr;
+    pmix_value_t *vptr, val;
     pmix_app_t *apps, *aptr;
+    pmix_kval_t *kptr, kv;
     
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "SWITCHYARD for %s:%d:%d", hdr->namespace, hdr->rank, sd);
@@ -1143,14 +1144,14 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
         }
         /* add any returned info */
         if (NULL != info && 0 < ninfo) {
-            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &ninfo, 1, PMIX_SIZE))) {
-                PMIX_ERROR_LOG(rc);
-                OBJ_RELEASE(reply);
-                return;
-            }
+            /* pack the reply as pmix_kval_t objects for unpacking and
+             * storing in the client */
+            kptr = &kv;
+            kv.value = &val;
             for (i=0; i < ninfo; i++) {
-                iptr = &info[i];
-                if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &iptr, 1, PMIX_INFO))) {
+                kv.key = info[i].key;
+                pmix_value_xfer(&val, &info[i].value);
+                if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &kptr, 1, PMIX_KVAL))) {
                     PMIX_ERROR_LOG(rc);
                     OBJ_RELEASE(reply);
                     return;

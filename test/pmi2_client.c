@@ -32,41 +32,35 @@ int main(int argc, char **argv)
 {
     int spawned, size, rank, appnum;
     int rc;
+    char *key;
     
     /* init us */
     if (PMI2_SUCCESS != (rc = PMI2_Init(&spawned, &size, &rank, &appnum))) {
         fprintf(stderr, "PMI2_Init failed: %d\n", rc);
         return rc;
     }
-#if 0
+
     key = "local-key";
-    PMIX_VAL_SET(&value, int, 12345, rc, kvp_error );
-    if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_LOCAL, key, &value))) {
-        fprintf(stderr, "PMIx_Put failed: %d\n", rc);
+    if (PMI2_SUCCESS != (rc = PMI2_KVS_Put(key, "my-local-value"))) {
+        fprintf(stderr, "PMI2_Put failed: %d\n", rc);
     }
 
     key = "remote-key";
-    char *ptr = "Test string";
-    PMIX_VAL_SET(&value, string, ptr, rc, kvp_error );
-    if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_REMOTE, key, &value))) {
-        fprintf(stderr, "PMIx_Put failed: %d\n", rc);
+    if (PMI2_SUCCESS != (rc = PMI2_KVS_Put(key, "remote-value"))) {
+        fprintf(stderr, "PMI2_Put failed: %d\n", rc);
     }
 
     key = "global-key";
-    PMIX_VAL_SET(&value, float, 10.15, rc, kvp_error );
-    if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_GLOBAL, key, &value))) {
-        fprintf(stderr, "PMIx_Put failed: %d\n", rc);
+    if (PMI2_SUCCESS != (rc = PMI2_KVS_Put(key, "global-value"))) {
+        fprintf(stderr, "PMI2_Put failed: %d\n", rc);
     }
 
     /* Submit the data */
-    pmix_range_t range;
-    range.ranks = NULL;
-    range.nranks = 0;
-    if (PMIX_SUCCESS != (rc = PMIx_Fence(NULL, 0))) {
-        fprintf(stderr, "PMIx_Fence failed: %d\n", rc);
+    if (PMI2_SUCCESS != (rc = PMI2_KVS_Fence())) {
+        fprintf(stderr, "PMI2_Fence failed: %d\n", rc);
         return rc;
     }
-#endif
+
     /* finalize us */
     if (PMI2_SUCCESS != (rc = PMI2_Finalize())) {
         fprintf(stderr, "PMI2_Finalize failed: %d\n", rc);

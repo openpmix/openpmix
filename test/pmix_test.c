@@ -104,6 +104,7 @@ static pmix_list_t modex;
 static bool barrier = false;
 static bool collect = false;
 static bool nonblocking = false;
+static uint32_t nprocs = 1;
 
 static void errhandler(int error)
 {
@@ -116,7 +117,6 @@ int main(int argc, char **argv)
     char **client_argv=NULL;
     int rc, i;
     pid_t pid;
-    int nprocs=1;
     char *binary = "pmix_client2";
     char *tmp;
     char *np = NULL;
@@ -345,8 +345,6 @@ static int store_modex_fn(pmix_scope_t scope, pmix_modex_data_t *data)
 {
     pmix_test_data_t *mdx;
 
-    pmix_output(0, "Storing data for %s:%d", data->namespace, data->rank);
-    
     mdx = OBJ_NEW(pmix_test_data_t);
     (void)strncpy(mdx->data.namespace, data->namespace, PMIX_MAX_NSLEN);
     mdx->data.rank = data->rank;
@@ -391,8 +389,16 @@ static int get_modexnb_fn(const char namespace[], int rank,
 static int get_job_info_fn(const char namespace[], int rank,
                            pmix_info_t *info[], size_t *ninfo)
 {
-    *info = NULL;
-    *ninfo = 0;
+    pmix_info_t *resp;
+    size_t n;
+
+    resp = (pmix_info_t*)malloc(sizeof(pmix_info_t));
+    (void)strncpy(resp[0].key, PMIX_UNIV_SIZE, PMIX_MAX_KEYLEN);
+    resp[0].value.type = PMIX_UINT32;
+    resp[0].value.data.uint32 = nprocs;
+
+    *info = resp;
+    *ninfo = 1;
     return PMIX_SUCCESS;
 }
 
