@@ -94,6 +94,7 @@ struct event_base *server_base = NULL;
 int listen_fd = -1;
 int client_fd = -1;
 pid_t client_pid = -1;
+static pmix_list_t modex;
 
 struct event *cli_ev, *exit_ev;
 struct event *listen_ev = NULL;
@@ -109,6 +110,8 @@ int main(int argc, char **argv, char **env)
     int rc;
 
     fprintf(stderr,"Start PMIx smoke test\n");
+
+    OBJ_CONSTRUCT(&modex, pmix_list_t);
 
     /* initialize the event library */
     if (NULL == (server_base = event_base_new())) {
@@ -136,9 +139,29 @@ int main(int argc, char **argv, char **env)
     fprintf(stderr, "PMIx srv: Server is listening for incoming connections\n");
 
     /* fork/exec the test */
-    if( 0 > (client_pid = run_client(address, server_base, env, &service) ) ){
-        fprintf(stderr,"PMIx srv: Cannot spawn the client\n");
-        exit(0);
+    {
+        char **client_env = NULL;
+        char **client_argv = NULL;
+        if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(TEST_NAMESPACE, 2, &client_env))) {
+            fprintf(stderr, "Server fork setup failed with error %d\n", rc);
+            PMIx_server_finalize();
+            return rc;
+        }
+        pmix_argv_append_nosize(&client_argv, "pmix_client");
+
+        client_pid = fork();
+        if (client_pid < 0) {
+            fprintf(stderr, "Fork failed\n");
+            PMIx_server_finalize();
+            return -1;
+        }
+
+        if (client_pid == 0) {
+            execve("./pmix_client", client_argv, client_env);
+            /* Does not return */
+        }
+        pmix_argv_free(client_argv);
+        pmix_argv_free(client_env);
     }
 
     /* cycle the event library until complete */
@@ -227,6 +250,7 @@ static void message_handler(int sd, short flags, void* cbdata)
 {
     int rc;
     pmix_message_t *msg = PMIx_message_new();
+    pmix_message_t *rmsg = NULL;
 
     rc = blocking_recv(sd, PMIx_message_hdr_ptr(msg), PMIx_message_hdr_size(msg));
     /* Process errors first (if any) */
@@ -249,7 +273,17 @@ static void message_handler(int sd, short flags, void* cbdata)
     if( 0 < PMIx_message_pay_size(msg) ){
         rc = blocking_recv(sd, PMIx_message_pay_ptr(msg), PMIx_message_pay_size(msg));
         if (PMIX_SUCCESS == rc) {
-            PMIx_server_process_msg(sd, msg);
+            rmsg = PMIx_server_process_msg(sd, msg);
+            if( NULL != rmsg ){
+                rc = pmix_usock_send_blocking(sd, PMIx_message_hdr_ptr(rmsg), PMIx_message_hdr_size(rmsg));
+                if (PMIX_SUCCESS != rc) {
+                    goto exit;
+                }
+                rc = pmix_usock_send_blocking(sd, PMIx_message_pay_ptr(rmsg), PMIx_message_pay_size(rmsg));
+                if (PMIX_SUCCESS != rc) {
+                    goto exit;
+                }
+            }
         } else {
             /* Communication error */
             fprintf(stderr, "PMIx srv: %s:%d Error communicating with the client",
@@ -258,6 +292,16 @@ static void message_handler(int sd, short flags, void* cbdata)
             // TODO: make sure to kill the client
             exit(0);
         }
+    }
+
+exit:
+    if( NULL != msg ){
+        PMIx_message_free(msg);
+        msg = NULL;
+    }
+    if( NULL != rmsg ){
+        PMIx_message_free(rmsg);
+        rmsg = NULL;
     }
     return;
 }
@@ -297,7 +341,6 @@ static int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
 
 static int store_modex_fn(pmix_scope_t scope, pmix_modex_data_t *data)
 {
-    /*
     pmix_test_data_t *mdx;
 
     pmix_output(0, "Storing data for %s:%d", data->namespace, data->rank);
@@ -311,7 +354,6 @@ static int store_modex_fn(pmix_scope_t scope, pmix_modex_data_t *data)
         memcpy(mdx->data.blob, data->blob, mdx->data.size);
     }
     pmix_list_append(&modex, &mdx->super);
-    */
     return PMIX_SUCCESS;
 }
 
@@ -361,8 +403,15 @@ static int get_modexnb_fn(const char namespace[], int rank,
 static int get_job_info_fn(const char namespace[], int rank,
                            pmix_info_t *info[], size_t *ninfo)
 {
-    *info = NULL;
-    *ninfo = 0;
+    pmix_info_t *resp;
+
+    resp = (pmix_info_t*)malloc(sizeof(pmix_info_t));
+    (void)strncpy(resp[0].key, PMIX_UNIV_SIZE, PMIX_MAX_KEYLEN);
+    resp[0].value.type = PMIX_UINT32;
+    resp[0].value.data.uint32 = 3;
+
+    *info = resp;
+    *ninfo = 1;
     return PMIX_SUCCESS;
 }
 

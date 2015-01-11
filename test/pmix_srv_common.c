@@ -165,7 +165,6 @@ int run_client(struct sockaddr_un address, struct event_base *base,
     char **client_argv = NULL;
     char *tmp;
     int pid;
-    int i;
 
     // setup signal handler to be notified on error
     // at client exec
@@ -177,9 +176,8 @@ int run_client(struct sockaddr_un address, struct event_base *base,
     /* define the argv for the test client */
     pmix_argv_append_nosize(&client_argv, "pmix_client");
 
-    for(i=0; NULL != env[i]; i++){
-        pmix_argv_append_nosize(&client_env, env[i]);
-    }
+    client_env = pmix_argv_copy(env);
+
     /* pass our URI */
     asprintf(&tmp, "PMIX_SERVER_URI=0:%s", address.sun_path);
     pmix_argv_append_nosize(&client_env, tmp);
