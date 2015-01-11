@@ -121,7 +121,7 @@ static int start_listening(struct sockaddr_un *address);
 static void connection_handler(int incoming_sd, short flags, void* cbdata);
 static int authenticate_client(int sd, pmix_peer_t **peer);
 static int send_client_response(int sd, int status);
-static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
+static void server_message_handler(int sd, pmix_usock_hdr_t *hdr,
                               pmix_buffer_t *buf, void *cbdata);
 // global variables
 pmix_globals_t pmix_globals;
@@ -289,7 +289,7 @@ int PMIx_server_init(pmix_server_module_t *module,
     /* setup the wildcard recv for inbound messages from clients */
     req = OBJ_NEW(pmix_usock_posted_recv_t);
     req->tag = UINT32_MAX;
-    req->cbfunc = server_switchyard;
+    req->cbfunc = server_message_handler;
     /* add it to the end of the list of recvs */
     pmix_list_append(&pmix_usock_globals.posted_recvs, &req->super);
 
@@ -300,6 +300,11 @@ int PMIx_server_init(pmix_server_module_t *module,
     }
 
     return 0;
+}
+
+struct sockaddr_un PMIx_get_addr(void)
+{
+    return myaddress;
 }
 
 static void cleanup_server_state(void)
@@ -546,9 +551,13 @@ static void connection_handler(int incoming_sd, short flags, void* cbdata)
 /* initialize pmix_peer_cred_t structure with pointers to
  * the message and header. Note: you don't need to free anything in
  * pmix_peer_cred_t. */
-static int load_peer_cred(pmix_peer_cred_t *cred, pmix_usock_hdr_t hdr, char *msg)
+static int load_peer_cred(int sd, pmix_peer_t **peer, pmix_peer_cred_t *cred,
+                          pmix_usock_hdr_t hdr, char *msg)
 {
+    bool found;
     char *version;
+    pmix_peer_t *pr;
+
     cred->namespace = hdr.namespace;
     cred->rank = hdr.rank;
 
@@ -578,6 +587,34 @@ static int load_peer_cred(pmix_peer_cred_t *cred, pmix_usock_hdr_t hdr, char *ms
     } else {
         cred->auth_token = NULL;
     }
+
+    /* see if we have this peer in our list */
+    found = false;
+    PMIX_LIST_FOREACH(pr, &peers, pmix_peer_t) {
+        if (0 == strcmp(pr->namespace, cred->namespace) &&
+            pr->rank == cred->rank) {
+            found = true;
+            if (pr->sd < 0) {
+                *peer = pr;
+                break;
+            }
+        }
+    }
+    if (!found) {
+        /* we don't know this peer, reject it */
+        return PMIX_ERR_NOT_FOUND;
+    }
+    /* a peer can connect on multiple sockets since it can
+     * fork/exec a child that also calls PMIx_Init. */
+    if (NULL == *peer) {
+        /* need to add another tracker for this peer */
+        *peer = OBJ_NEW(pmix_peer_t);
+        (void)strncpy((*peer)->namespace, cred->namespace, PMIX_MAX_NSLEN);
+        (*peer)->rank = cred->rank;
+        (*peer)->sd = sd;
+        pmix_list_append(&peers, &(*peer)->super);
+    }
+
     return PMIX_SUCCESS;
 }
 
@@ -589,9 +626,7 @@ static int authenticate_client(int sd, pmix_peer_t **peer)
     char *msg;
     int rc;
     pmix_usock_hdr_t hdr;
-    pmix_peer_t *pr;
     pmix_peer_cred_t cred;
-    bool found;
     
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "RECV CONNECT ACK FROM PEER ON SOCKET %d", sd);
@@ -625,28 +660,11 @@ static int authenticate_client(int sd, pmix_peer_t **peer)
         return PMIX_ERR_UNREACH;
     }
 
-    if( PMIX_SUCCESS != (rc = load_peer_cred(&cred, hdr, msg) ) ){
+    if( PMIX_SUCCESS != (rc = load_peer_cred(sd, peer, &cred, hdr, msg) ) ){
         free(msg);
         return rc;
     }
 
-    /* see if we have this peer in our list */
-    found = false;
-    PMIX_LIST_FOREACH(pr, &peers, pmix_peer_t) {
-        if (0 == strcmp(pr->namespace, cred.namespace) &&
-            pr->rank == cred.rank) {
-            found = true;
-            if (pr->sd < 0) {
-                *peer = pr;
-                break;
-            }
-        }
-    }
-    if (!found) {
-        /* we don't know this peer, reject it */
-        return PMIX_ERR_NOT_FOUND;
-    }
-    
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "connect-ack version from client matches ours");
 
@@ -666,15 +684,6 @@ static int authenticate_client(int sd, pmix_peer_t **peer)
     }
     free(msg);
 
-    /* a peer can connect on multiple sockets since it can
-     * fork/exec a child that also calls PMIx_Init. */
-    if (NULL == *peer) {
-        /* need to add another tracker for this peer */
-        *peer = OBJ_NEW(pmix_peer_t);
-        (void)strncpy((*peer)->namespace, cred.namespace, PMIX_MAX_NSLEN);
-        (*peer)->rank = cred.rank;
-        pmix_list_append(&peers, &(*peer)->super);
-    }
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "connect-ack from client authenticated");
 
@@ -876,15 +885,14 @@ static void spawn_release(int status, char *namespace, void *cbdata)
     OBJ_RELEASE(tracker);
 }
 
-static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
-                              pmix_buffer_t *buf, void *cbdata)
+static int server_switchyard(pmix_usock_hdr_t *hdr, pmix_peer_t *peer,
+                              pmix_buffer_t *buf, pmix_buffer_t **reply_ptr)
 {
     int rc, status, ret, barrier, collect_data;
     int32_t cnt;
     pmix_cmd_t cmd;
     char *msg;
-    pmix_peer_t *peer, *pr;
-    pmix_buffer_t *reply, *bptr;
+    pmix_buffer_t *bptr, *reply = NULL;
     pmix_range_t *ranges, *rngptr, range;
     size_t i, nranges, ninfo;
     pmix_scope_t scope;
@@ -899,36 +907,18 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
     pmix_app_t *apps, *aptr;
     pmix_kval_t *kptr, kv;
     
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "SWITCHYARD for %s:%d:%d", hdr->namespace, hdr->rank, sd);
-    
-    /* find the peer object */
-    peer = NULL;
-    PMIX_LIST_FOREACH(pr, &peers, pmix_peer_t) {
-        if (0 == strcmp(hdr->namespace, pr->namespace) &&
-            hdr->rank == pr->rank &&
-            sd == pr->sd) {
-            peer = pr;
-            break;
-        }
-    }
-    if (NULL == peer) {
-        /* should be impossible as the connection
-         * was validated */
-        PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
-        return;
-    }
-    
+    *reply_ptr = NULL;
+
     /* retrieve the cmd */
     cnt = 1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &cmd, &cnt, PMIX_CMD))) {
         PMIX_ERROR_LOG(rc);
-        return;
+        return rc;
     }
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "recvd pmix cmd %d from %s:%d",
                         cmd, hdr->namespace, hdr->rank);
-    
+
     switch(cmd) {
     case PMIX_ABORT_CMD:
         pmix_output_verbose(2, pmix_globals.debug_output,
@@ -937,13 +927,13 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
         cnt = 1;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &status, &cnt, PMIX_INT))) {
             PMIX_ERROR_LOG(rc);
-            return;
+            return rc;
         }
         /* unpack the message */
         cnt = 1;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &msg, &cnt, PMIX_STRING))) {
             PMIX_ERROR_LOG(rc);
-            return;
+            return rc;
         }
         /* let the local host's server execute it */
         if (NULL != server.abort) {
@@ -951,20 +941,20 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
         } else {
             ret = PMIX_ERR_NOT_SUPPORTED;
         }
+
+        /* TODO: should we pass this message to the client? */
         if (NULL != msg) {
             free(msg);
         }
+
         /* send the reply */
         reply = OBJ_NEW(pmix_buffer_t);
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &ret, 1, PMIX_INT))) {
             PMIX_ERROR_LOG(rc);
             OBJ_RELEASE(reply);
-            return;
+            return rc;
         }
-        PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
         break;
-
-        
     case PMIX_FENCE_CMD:
     case PMIX_FENCENB_CMD:
         pmix_output_verbose(2, pmix_globals.debug_output,
@@ -973,7 +963,7 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
         cnt = 1;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &nranges, &cnt, PMIX_SIZE))) {
             PMIX_ERROR_LOG(rc);
-            return;
+            return rc;
         }
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "recvd %s with %d ranges",
@@ -987,7 +977,7 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
             cnt = nranges;
             if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, ranges, &cnt, PMIX_RANGE))) {
                 PMIX_ERROR_LOG(rc);
-                return;
+                return rc;
             }
         }
         /* unpack the data flag - indicates if the caller wants
@@ -995,7 +985,7 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
         cnt = 1;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &collect_data, &cnt, PMIX_INT))) {
             PMIX_ERROR_LOG(rc);
-            return;
+            return rc;
         }
         /* unpack an additional flag indicating if we are to callback
          * once all procs have executed the fence_nb call, or
@@ -1003,7 +993,7 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
         cnt = 1;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &barrier, &cnt, PMIX_INT))) {
             PMIX_ERROR_LOG(rc);
-            return;
+            return rc;
         }
         /* unpack any provided data blobs */
         cnt = 1;
@@ -1048,9 +1038,8 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
                 if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &ret, 1, PMIX_INT))) {
                     PMIX_ERROR_LOG(rc);
                     OBJ_RELEASE(reply);
-                    return;
+                    return rc;
                 }
-                PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
             }
         } else {
             /* send an immediate release */
@@ -1059,21 +1048,17 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
             if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &ret, 1, PMIX_INT))) {
                 PMIX_ERROR_LOG(rc);
                 OBJ_RELEASE(reply);
-                return;
+                return rc;
             }
-            PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
         }
         if (NULL != ranges) {
             free(ranges);
         }
-        break;
 
-        
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "recvd FENCENB");
         break;
 
-        
     case PMIX_GET_CMD:
     case PMIX_GETNB_CMD:
         pmix_output_verbose(2, pmix_globals.debug_output,
@@ -1082,13 +1067,13 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
         cnt = 1;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &nspace, &cnt, PMIX_STRING))) {
             PMIX_ERROR_LOG(rc);
-            return;
+            return rc;
         }
         cnt = 1;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &rnk, &cnt, PMIX_INT))) {
             PMIX_ERROR_LOG(rc);
             free(nspace);
-            return;
+            return rc;
         }
         /* put it into range format */
         (void)strncpy(range.namespace, nspace, PMIX_MAX_NSLEN);
@@ -1117,14 +1102,12 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
                 PMIX_ERROR_LOG(rc);
                 OBJ_RELEASE(reply);
                 free(nspace);
-                return;
+                return rc;
             }
-            PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
         }
         free(nspace);
         break;
 
-        
     case PMIX_JOBINFO_CMD:
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "recvd JOBINFO");
@@ -1140,7 +1123,7 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &ret, 1, PMIX_INT))) {
             PMIX_ERROR_LOG(rc);
             OBJ_RELEASE(reply);
-            return;
+            return rc;
         }
         /* add any returned info */
         if (NULL != info && 0 < ninfo) {
@@ -1154,13 +1137,11 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
                 if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &kptr, 1, PMIX_KVAL))) {
                     PMIX_ERROR_LOG(rc);
                     OBJ_RELEASE(reply);
-                    return;
+                    return rc;
                 }
             }
         }
-        PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
         break;
-
 
     case PMIX_FINALIZE_CMD:
         pmix_output_verbose(2, pmix_globals.debug_output,
@@ -1180,12 +1161,10 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &ret, 1, PMIX_INT))) {
             PMIX_ERROR_LOG(rc);
             OBJ_RELEASE(reply);
-            return;
+            return rc;
         }
-        PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
         break;
 
-        
     case PMIX_PUBLISH_CMD:
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "recvd PUBLISH");
@@ -1193,13 +1172,13 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
         cnt=1;
         if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &scope, &cnt, PMIX_SCOPE))) {
             PMIX_ERROR_LOG(rc);
-            return;
+            return rc;
         }
         /* unpack the number of info objects */
         cnt=1;
         if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
             PMIX_ERROR_LOG(rc);
-            return;
+            return rc;
         }
         /* unpack the array of info objects */
         if (0 < ninfo) {
@@ -1209,7 +1188,7 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
                 iptr = &info[i];
                 if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &iptr, &cnt, PMIX_INFO))) {
                     PMIX_ERROR_LOG(rc);
-                    return;
+                    return rc;
                 }
             }
         } else {
@@ -1225,15 +1204,13 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &ret, 1, PMIX_INT))) {
             PMIX_ERROR_LOG(rc);
             OBJ_RELEASE(reply);
-            return;
+            return rc;
         }
         if (NULL != info) {
             free(info);
         }
-        PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
         break;
 
-        
     case PMIX_LOOKUP_CMD:
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "recvd LOOKUP");
@@ -1241,13 +1218,13 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
         cnt=1;
         if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &scope, &cnt, PMIX_SCOPE))) {
             PMIX_ERROR_LOG(rc);
-            return;
+            return rc;
         }
         /* unpack the number of keys objects */
         cnt=1;
         if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
             PMIX_ERROR_LOG(rc);
-            return;
+            return rc;
         }
         /* setup the array of info objects */
         info = (pmix_info_t*)malloc(ninfo * sizeof(pmix_info_t));
@@ -1256,7 +1233,7 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
             cnt=1;
             if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &msg, &cnt, PMIX_STRING))) {
                 PMIX_ERROR_LOG(rc);
-                return;
+                return rc;
             }
             (void)strncpy(info[i].key, msg, PMIX_MAX_KEYLEN);
             free(msg);
@@ -1272,33 +1249,31 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &ret, 1, PMIX_INT))) {
             PMIX_ERROR_LOG(rc);
             OBJ_RELEASE(reply);
-            return;
+            return rc;
         }
         /* send the namespace */
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &nspace, 1, PMIX_STRING))) {
             PMIX_ERROR_LOG(rc);
             OBJ_RELEASE(reply);
-            return;
+            return rc;
         }
         /* pack the results as key-values */
         for (i=0; i < ninfo; i++) {
             if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(buf, &info[i].key, 1, PMIX_STRING))) {
                 PMIX_ERROR_LOG(rc);
-                return;
+                return rc;
             }
             vptr = &info[i].value;
             if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(buf, &vptr, 1, PMIX_VALUE))) {
                 PMIX_ERROR_LOG(rc);
-                return;
+                return rc;
             }
         }
         if (NULL != info) {
             free(info);
         }
-        PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
         break;
 
-        
     case PMIX_UNPUBLISH_CMD:
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "recvd UNPUBLISH");
@@ -1306,13 +1281,13 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
         cnt=1;
         if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &scope, &cnt, PMIX_SCOPE))) {
             PMIX_ERROR_LOG(rc);
-            return;
+            return rc;
         }
         /* unpack the number of keys */
         cnt=1;
         if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
             PMIX_ERROR_LOG(rc);
-            return;
+            return rc;
         }
         /* unpack the array of keys */
         keys = NULL;
@@ -1321,7 +1296,7 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
                 cnt=1;
                 if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &msg, &cnt, PMIX_STRING))) {
                     PMIX_ERROR_LOG(rc);
-                    return;
+                    return rc;
                 }
                 pmix_argv_append_nosize(&keys, msg);
                 free(msg);
@@ -1338,12 +1313,10 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &ret, 1, PMIX_INT))) {
             PMIX_ERROR_LOG(rc);
             OBJ_RELEASE(reply);
-            return;
+            return rc;
         }
-        PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
         break;
 
-        
     case PMIX_SPAWN_CMD:
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "recvd SPAWN");
@@ -1351,7 +1324,7 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
         cnt=1;
         if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
             PMIX_ERROR_LOG(rc);
-            return;
+            return rc;
         }
         /* unpack the array of apps */
         apps = (pmix_app_t*)malloc(ninfo * sizeof(pmix_app_t));
@@ -1361,7 +1334,7 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
                 aptr = &apps[i];
                 if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &aptr, &cnt, PMIX_APP))) {
                     PMIX_ERROR_LOG(rc);
-                    return;
+                    return rc;
                 }
             }
         }
@@ -1390,14 +1363,12 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
             if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &ret, 1, PMIX_INT))) {
                 PMIX_ERROR_LOG(rc);
                 OBJ_RELEASE(reply);
-                return;
+                return rc;
             }
-            PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
         }
         /* free the apps array */
         break;
 
-        
     case PMIX_CONNECT_CMD:
     case PMIX_DISCONNECT_CMD:
         pmix_output_verbose(2, pmix_globals.debug_output,
@@ -1406,7 +1377,7 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
         cnt = 1;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &nranges, &cnt, PMIX_SIZE))) {
             PMIX_ERROR_LOG(rc);
-            return;
+            return rc;
         }
         ranges = NULL;
         /* unpack the ranges, if provided */
@@ -1419,7 +1390,7 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
                 cnt = 1;
                 if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &rngptr, &cnt, PMIX_RANGE))) {
                     PMIX_ERROR_LOG(rc);
-                    return;
+                    return rc;
                 }
             }
         }
@@ -1448,9 +1419,8 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
                 if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &ret, 1, PMIX_INT))) {
                     PMIX_ERROR_LOG(rc);
                     OBJ_RELEASE(reply);
-                    return;
+                    return rc;
                 }
-                PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
             }
         } else {
             /* request the connect */
@@ -1464,44 +1434,140 @@ static void server_switchyard(int sd, pmix_usock_hdr_t *hdr,
                 if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &ret, 1, PMIX_INT))) {
                     PMIX_ERROR_LOG(rc);
                     OBJ_RELEASE(reply);
-                    return;
+                    return rc;
                 }
-                PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
             }
         }
         free(ranges);
         break;
     }
+
+    *reply_ptr = reply;
+    return PMIX_SUCCESS;
 }
 
-int PMIx_server_cred_extract(pmix_message_t *msg_opaq, pmix_peer_cred_t *cred)
+static void server_message_handler(int sd, pmix_usock_hdr_t *hdr,
+                              pmix_buffer_t *buf, void *cbdata)
+{
+    pmix_peer_t *peer, *pr;
+    pmix_buffer_t *reply;
+    int rc;
+
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "SWITCHYARD for %s:%d:%d", hdr->namespace, hdr->rank, sd);
+
+    /* find the peer object */
+    peer = NULL;
+    PMIX_LIST_FOREACH(pr, &peers, pmix_peer_t) {
+        if (0 == strcmp(hdr->namespace, pr->namespace) &&
+            hdr->rank == pr->rank &&
+            sd == pr->sd) {
+            peer = pr;
+            break;
+        }
+    }
+    if (NULL == peer) {
+        /* should be impossible as the connection
+         * was validated */
+        PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+        return;
+    }
+
+    rc = server_switchyard(hdr, peer, buf, &reply);
+    if( (PMIX_SUCCESS == rc) && NULL != reply ){
+        PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
+    }
+}
+
+
+int PMIx_server_cred_extract(int sd, pmix_message_t *msg_opaq, pmix_peer_cred_t *cred)
 {
     pmix_message_inst_t *msg = (pmix_message_inst_t *)msg_opaq;
+    pmix_peer_t *peer;
     int rc;
-    rc = load_peer_cred(cred,msg->hdr, msg->payload);
+    rc = load_peer_cred(sd, &peer, cred,msg->hdr, msg->payload);
     return rc;
 }
 
 pmix_message_t *PMIx_server_cred_reply(int rc)
 {
     pmix_message_inst_t *msg = (void*)PMIx_message_new();
+
     if( NULL == msg ){
         return NULL;
     }
     msg->hdr.nbytes = sizeof(int);
-    msg->payload = calloc(1, sizeof(int));
-    if( NULL == msg->payload ){
+    msg->hdr.rank = pmix_globals.rank;
+    msg->hdr.type = PMIX_USOCK_IDENT_PMIX;
+    msg->hdr.tag = 0; // ???
+    (void)strncpy(msg->hdr.namespace, pmix_globals.namespace, PMIX_MAX_NSLEN);
+
+    if( PMIX_SUCCESS != PMIx_message_hdr_fix((void*)msg) ){
         PMIx_message_free((void*)msg);
         return NULL;
     }
-    *((int*)msg->payload) = rc;
-    msg->hdr_rcvd = 1;
-    msg->hdr.rank = pmix_globals.rank;
-    (void)strncpy(msg->hdr.namespace, pmix_globals.namespace, PMIX_MAX_NSLEN);
-    msg->hdr.type = PMIX_USOCK_IDENT_PMIX;
-    msg->hdr.tag = 0;
+    *((int*)PMIx_message_pay_ptr((void*)msg)) = rc;
     return (pmix_message_t *)msg;
 }
 
-int PMIx_server_set_handlers(pmix_server_module_t *module);
-int PMIx_server_process_msg(pmix_message_t *msg);
+pmix_message_t *PMIx_server_process_msg(int sd, pmix_message_t *msg)
+{
+//    pmix_message_inst_t *msg = (pmix_message_inst_t *)msg_opaq;
+    pmix_usock_hdr_t *hdr = PMIx_message_hdr_ptr(msg);
+    pmix_peer_t *peer, *pr;
+    pmix_buffer_t *reply;
+    pmix_message_t *rmsg = NULL;
+    pmix_buffer_t buf;
+    int rc;
+
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "PMIx_server_process_msg for %s:%d:%d", hdr->namespace, hdr->rank, sd);
+
+    /* find the peer object */
+    peer = NULL;
+    PMIX_LIST_FOREACH(pr, &peers, pmix_peer_t) {
+        if (0 == strcmp(hdr->namespace, pr->namespace) &&
+            hdr->rank == pr->rank &&
+            sd == pr->sd) {
+            peer = pr;
+            break;
+        }
+    }
+    if (NULL == peer) {
+        /* should be impossible as the connection
+         * was validated */
+        PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+        return NULL;
+    }
+
+    OBJ_CONSTRUCT(&buf, pmix_buffer_t);
+    PMIX_LOAD_BUFFER(&buf,PMIx_message_pay_ptr(msg),
+                     PMIx_message_pay_size(msg));
+    rc = server_switchyard(hdr, peer, &buf, &reply);
+    buf.base_ptr = NULL;
+    OBJ_DESTRUCT(&buf);
+
+    if( (PMIX_SUCCESS == rc) && NULL != reply ){
+        pmix_usock_hdr_t *rhdr = NULL;
+        rmsg = PMIx_message_new();
+        if( NULL == rmsg ){
+            PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
+            return NULL;
+        }
+        rhdr = PMIx_message_hdr_ptr(rmsg);
+        rhdr->rank = pmix_globals.rank;
+        rhdr->type = PMIX_USOCK_USER;
+        rhdr->tag = hdr->tag;
+        rhdr->nbytes = reply->bytes_used;
+        rc = PMIx_message_set_payload((void*)rmsg, reply->base_ptr, reply->bytes_used);
+        if( PMIX_SUCCESS != rc ){
+            PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
+            OBJ_RELEASE(reply);
+            return NULL;
+        } else {
+            reply->base_ptr = NULL;
+            OBJ_RELEASE(reply);
+        }
+    }
+    return rmsg;
+}

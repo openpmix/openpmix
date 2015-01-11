@@ -120,6 +120,7 @@ typedef struct pmix_server_module_1_0_0_t {
 /****    SERVER SUPPORT INIT/FINALIZE FUNCTIONS    ****/
 int PMIx_server_init_light(pmix_server_module_t *module,
                            char *tmpdir, char *credential);
+struct sockaddr_un PMIx_get_addr(void);
 int PMIx_server_init(pmix_server_module_t *module,
                      struct event_base *evbase,
                      char *tmpdir, char *credential);
@@ -137,12 +138,15 @@ void PMIx_Deregister_errhandler(void);
 
 /****    Message processing     ****/
 typedef struct pmix_message_opaque pmix_message_t;
+typedef struct pmix_peer_hndl_opaque  pmix_peer_hndl_t;
+
 pmix_message_t *PMIx_message_new(void);
 uint32_t PMIx_message_hdr_size(pmix_message_t *msg);
 void *PMIx_message_hdr_ptr(pmix_message_t *msg_opaq);
-int PMIx_message_hdr_fix(pmix_message_t *msg, char *hdr);
+int PMIx_message_hdr_fix(pmix_message_t *msg);
 uint32_t PMIx_message_pay_size(pmix_message_t *msg);
-void *PMIx_message_pay_ptr(pmix_message_t *msg, char *pay);
+void *PMIx_message_pay_ptr(pmix_message_t *msg);
+int PMIx_message_set_payload(pmix_message_t *msg_opaq, void *payload, size_t size);
 void PMIx_message_free(pmix_message_t *msg);
 
 /****    Authentification     ****/
@@ -151,12 +155,13 @@ typedef struct {
     int rank;
     uint32_t tag;
     char *auth_token;
+    pmix_peer_hndl_t *peer_hndl;
 } pmix_peer_cred_t;
-int PMIx_server_cred_extract(pmix_message_t *msg, pmix_peer_cred_t *cred);
+int PMIx_server_cred_extract(int sd, pmix_message_t *msg_opaq, pmix_peer_cred_t *cred);
 pmix_message_t *PMIx_server_cred_reply(int rc);
 /****    Message processing     ****/
 int PMIx_server_set_handlers(pmix_server_module_t *module);
-int PMIx_server_process_msg(pmix_message_t *msg);
+pmix_message_t *PMIx_server_process_msg(int sd, pmix_message_t *msg_opaq);
 
 END_C_DECLS
 

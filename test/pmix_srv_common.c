@@ -49,6 +49,7 @@ extern int errno;
 
 #include "test_common.h"
 #include "pmix_srv_common.h"
+#include "pmix_server.h"
 
 int blocking_recv(int sd, void *buf, int size)
 {
