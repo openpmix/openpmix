@@ -530,7 +530,7 @@ static int pack_fence(pmix_buffer_t *msg,
     /* pack any provided ranges */
     for (i=0; i < nranges; i++) {
         r = &ranges[i];
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &r, 1, PMIX_RANGE))) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, r, 1, PMIX_RANGE))) {
             PMIX_ERROR_LOG(rc);
             return rc;
         }

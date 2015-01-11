@@ -253,7 +253,7 @@ static void gather_data(const char namespace[], int rank,
         if (0 != strcmp(namespace, mdx->data.namespace)) {
             continue;
         }
-        if (rank != mdx->data.rank || PMIX_RANK_WILDCARD == rank) {
+        if (rank != mdx->data.rank && PMIX_RANK_WILDCARD != rank) {
             continue;
         }
         tdat = OBJ_NEW(pmix_test_data_t);
@@ -315,7 +315,7 @@ static int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
         OBJ_CONSTRUCT(&data, pmix_list_t);
         for (i=0; i < nranges; i++) {
             if (NULL == ranges[i].ranks) {
-                gather_data(ranges[i].namespace, UINT_MAX, &data);
+                gather_data(ranges[i].namespace, PMIX_RANK_WILDCARD, &data);
             } else {
                 for (j=0; j < ranges[i].nranks; j++) {
                     gather_data(ranges[i].namespace, ranges[i].ranks[j], &data);
