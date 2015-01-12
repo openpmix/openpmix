@@ -57,6 +57,7 @@ typedef struct {
     size_t nranges;
     pmix_list_t locals;
     pmix_list_t *trkr;
+    pmix_buffer_t *reply;
 } pmix_server_trkr_t;
 static void tcon(pmix_server_trkr_t *t)
 {
@@ -64,6 +65,7 @@ static void tcon(pmix_server_trkr_t *t)
     t->nranges = 0;
     OBJ_CONSTRUCT(&t->locals, pmix_list_t);
     t->trkr = NULL;
+    t->reply = NULL;
 }
 static void tdes(pmix_server_trkr_t *t)
 {
@@ -78,6 +80,9 @@ static void tdes(pmix_server_trkr_t *t)
         free(t->ranges);
     }
     PMIX_LIST_DESTRUCT(&t->locals);
+    if( NULL != t->reply ){
+        OBJ_RELEASE(t->reply);
+    }
 }
 static OBJ_CLASS_INSTANCE(pmix_server_trkr_t,
                           pmix_list_item_t,
@@ -776,7 +781,6 @@ static void server_release(int status, pmix_modex_data_t data[],
     pmix_server_trkr_t *tracker = (pmix_server_trkr_t*)cbdata;
     pmix_buffer_t *reply;
     int rc;
-    pmix_server_caddy_t *cd;
     size_t i;
 
     if (NULL == tracker) {
@@ -806,16 +810,7 @@ static void server_release(int status, pmix_modex_data_t data[],
             }
         }
     }
-    /* send a copy to every member of the tracker */
-    PMIX_LIST_FOREACH(cd, &tracker->locals, pmix_server_caddy_t) {
-        OBJ_RETAIN(reply);
-        PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->tag, reply);
-    }
-    /* maintain reference count */
-    OBJ_RELEASE(reply);
-    /* cleanup the tracker */
-    pmix_list_remove_item(tracker->trkr, &tracker->super);
-    OBJ_RELEASE(tracker);
+    tracker->reply = reply;
 }
 
 static void connect_release(int status, void *cbdata)
@@ -887,7 +882,8 @@ static void spawn_release(int status, char *namespace, void *cbdata)
 }
 
 static int server_switchyard(pmix_usock_hdr_t *hdr, pmix_peer_t *peer,
-                              pmix_buffer_t *buf, pmix_buffer_t **reply_ptr)
+                              pmix_buffer_t *buf, pmix_buffer_t **reply_ptr,
+                             pmix_list_t *reply_peers)
 {
     int rc, status, ret, barrier, collect_data;
     int32_t cnt;
@@ -900,7 +896,7 @@ static int server_switchyard(pmix_usock_hdr_t *hdr, pmix_peer_t *peer,
     char *nspace;
     int rnk;
     pmix_modex_data_t mdx;
-    pmix_server_trkr_t *trk;
+    pmix_server_trkr_t *trk = NULL;
     pmix_server_caddy_t *cd;
     pmix_info_t *info, *iptr;
     char **keys;
@@ -1443,7 +1439,22 @@ static int server_switchyard(pmix_usock_hdr_t *hdr, pmix_peer_t *peer,
         break;
     }
 
-    *reply_ptr = reply;
+    if( NULL != trk && NULL != trk->reply){
+            *reply_ptr = trk->reply;
+            trk->reply = NULL; // protect the data
+            pmix_list_splice(reply_peers, pmix_list_get_end(reply_peers),
+                             &trk->locals, pmix_list_get_first(&trk->locals),
+                             pmix_list_get_end(&trk->locals));
+            pmix_list_remove_item(trk->trkr, &trk->super);
+            OBJ_RELEASE(trk);
+    }else {
+        pmix_server_caddy_t *cd = OBJ_NEW(pmix_server_caddy_t);
+        cd->peer = peer;
+        cd->tag = hdr->tag;
+        OBJ_RETAIN(peer);
+        pmix_list_append(reply_peers, (pmix_list_item_t *)cd);
+        *reply_ptr = reply;
+    }
     return PMIX_SUCCESS;
 }
 
@@ -1452,6 +1463,7 @@ static void server_message_handler(int sd, pmix_usock_hdr_t *hdr,
 {
     pmix_peer_t *peer, *pr;
     pmix_buffer_t *reply;
+    pmix_list_t peer_list;
     int rc;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -1474,10 +1486,19 @@ static void server_message_handler(int sd, pmix_usock_hdr_t *hdr,
         return;
     }
 
-    rc = server_switchyard(hdr, peer, buf, &reply);
+    OBJ_CONSTRUCT(&peer_list,pmix_list_t);
+    rc = server_switchyard(hdr, peer, buf, &reply, &peer_list);
+    /* send a copy to every member of the tracker */
     if( (PMIX_SUCCESS == rc) && NULL != reply ){
-        PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
+        pmix_server_caddy_t *cd;
+        PMIX_LIST_FOREACH(cd, &peer_list, pmix_server_caddy_t) {
+            OBJ_RETAIN(reply);
+            PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->tag, reply);
+        }
+        /* maintain reference count */
+        OBJ_RELEASE(reply);
     }
+    OBJ_DESTRUCT(&peer_list);
 }
 
 
@@ -1511,18 +1532,26 @@ pmix_message_t *PMIx_server_cred_reply(int rc)
     return (pmix_message_t *)msg;
 }
 
-pmix_message_t *PMIx_server_process_msg(int sd, pmix_message_t *msg)
+size_t PMIx_server_process_msg(int sd, pmix_message_t *msg,
+                                 pmix_message_t **reply_msg,
+                                 pmix_peer_reply_t **reply_peers)
 {
-//    pmix_message_inst_t *msg = (pmix_message_inst_t *)msg_opaq;
     pmix_usock_hdr_t *hdr = PMIx_message_hdr_ptr(msg);
     pmix_peer_t *peer, *pr;
-    pmix_buffer_t *reply;
     pmix_message_t *rmsg = NULL;
     pmix_buffer_t buf;
-    int rc;
+    pmix_buffer_t *reply = NULL;
+    pmix_list_t peer_list;
+    pmix_server_caddy_t *cd;
+    int rc, i;
+    size_t ret = 0;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "PMIx_server_process_msg for %s:%d:%d", hdr->namespace, hdr->rank, sd);
+
+    *reply_msg = NULL;
+    *reply_peers = NULL;
+     OBJ_CONSTRUCT(&peer_list, pmix_list_t);
 
     /* find the peer object */
     peer = NULL;
@@ -1538,37 +1567,56 @@ pmix_message_t *PMIx_server_process_msg(int sd, pmix_message_t *msg)
         /* should be impossible as the connection
          * was validated */
         PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
-        return NULL;
+        return -1;
     }
 
+    /* Load payload into the buffer and call switchyard */
     OBJ_CONSTRUCT(&buf, pmix_buffer_t);
     PMIX_LOAD_BUFFER(&buf,PMIx_message_pay_ptr(msg),
                      PMIx_message_pay_size(msg));
-    rc = server_switchyard(hdr, peer, &buf, &reply);
+    rc = server_switchyard(hdr, peer, &buf, &reply, &peer_list);
+
+    /* Free buffer protecting the data */
     buf.base_ptr = NULL;
     OBJ_DESTRUCT(&buf);
 
+    /* If we have something to reply */
     if( (PMIX_SUCCESS == rc) && NULL != reply ){
+        /* Prepare the message pattern */
         pmix_usock_hdr_t *rhdr = NULL;
         rmsg = PMIx_message_new();
         if( NULL == rmsg ){
             PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
-            return NULL;
+            return PMIX_ERROR;
         }
         rhdr = PMIx_message_hdr_ptr(rmsg);
         rhdr->rank = pmix_globals.rank;
         rhdr->type = PMIX_USOCK_USER;
-        rhdr->tag = hdr->tag;
+        rhdr->tag = UINT_MAX;
         rhdr->nbytes = reply->bytes_used;
         rc = PMIx_message_set_payload((void*)rmsg, reply->base_ptr, reply->bytes_used);
         if( PMIX_SUCCESS != rc ){
             PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
+            /* release the buffer and it's content */
             OBJ_RELEASE(reply);
-            return NULL;
+            return PMIX_ERROR;
         } else {
+            /* release the buffer but retain the content */
             reply->base_ptr = NULL;
             OBJ_RELEASE(reply);
         }
+        *reply_msg = rmsg;
+
+        /* prepare the list of recepients of this data */
+        ret = pmix_list_get_size(&peer_list);
+        *reply_peers = malloc(sizeof(pmix_peer_reply_t) * ret);
+        i = 0;
+        PMIX_LIST_FOREACH(cd, &peer_list, pmix_server_caddy_t) {
+            (*reply_peers)[i].tag = cd->tag;
+            (*reply_peers)[i].sd = cd->peer->sd;
+            i++;
+        }
     }
-    return rmsg;
+    OBJ_DESTRUCT(&peer_list);
+    return ret;
 }

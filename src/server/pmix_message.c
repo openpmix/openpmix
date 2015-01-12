@@ -45,6 +45,16 @@ int PMIx_message_hdr_fix(pmix_message_t *msg_opaq)
     return PMIX_SUCCESS;
 }
 
+void PMIx_message_tag_set(pmix_message_t *msg_opaq, uint32_t tag)
+{
+    pmix_message_inst_t *msg = (pmix_message_inst_t *)msg_opaq;
+    if( NULL == msg ){
+        return;
+    }
+    msg->hdr.tag = tag;
+}
+
+
 int PMIx_message_set_payload(pmix_message_t *msg_opaq, void *payload, size_t size)
 {
     pmix_message_inst_t *msg = (pmix_message_inst_t *)msg_opaq;

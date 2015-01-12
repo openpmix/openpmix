@@ -139,11 +139,16 @@ void PMIx_Deregister_errhandler(void);
 /****    Message processing     ****/
 typedef struct pmix_message_opaque pmix_message_t;
 typedef struct pmix_peer_hndl_opaque  pmix_peer_hndl_t;
+typedef struct {
+    int sd;
+    uint32_t tag;
+} pmix_peer_reply_t;
 
 pmix_message_t *PMIx_message_new(void);
 uint32_t PMIx_message_hdr_size(pmix_message_t *msg);
 void *PMIx_message_hdr_ptr(pmix_message_t *msg_opaq);
 int PMIx_message_hdr_fix(pmix_message_t *msg);
+void PMIx_message_tag_set(pmix_message_t *msg_opaq, uint32_t tag);
 uint32_t PMIx_message_pay_size(pmix_message_t *msg);
 void *PMIx_message_pay_ptr(pmix_message_t *msg);
 int PMIx_message_set_payload(pmix_message_t *msg_opaq, void *payload, size_t size);
@@ -161,7 +166,9 @@ int PMIx_server_cred_extract(int sd, pmix_message_t *msg_opaq, pmix_peer_cred_t 
 pmix_message_t *PMIx_server_cred_reply(int rc);
 /****    Message processing     ****/
 int PMIx_server_set_handlers(pmix_server_module_t *module);
-pmix_message_t *PMIx_server_process_msg(int sd, pmix_message_t *msg_opaq);
+size_t PMIx_server_process_msg(int sd, pmix_message_t *msg,
+                                 pmix_message_t **reply,
+                                 pmix_peer_reply_t **rpeers);
 
 END_C_DECLS
 

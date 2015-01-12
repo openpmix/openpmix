@@ -88,6 +88,25 @@ static pmix_server_module_t mymodule = {
     disconnect_fn
 };
 
+typedef struct {
+    pmix_list_item_t super;
+    pmix_modex_data_t data;
+} pmix_test_data_t;
+static void pcon(pmix_test_data_t *p)
+{
+    p->data.blob = NULL;
+    p->data.size = 0;
+}
+static void pdes(pmix_test_data_t *p)
+{
+    if (NULL != p->data.blob) {
+        free(p->data.blob);
+    }
+}
+static OBJ_CLASS_INSTANCE(pmix_test_data_t,
+                          pmix_list_item_t,
+                          pcon, pdes);
+
 int service = true;
 pmix_modex_data_t **pmix_db = NULL;
 struct event_base *server_base = NULL;
@@ -251,6 +270,7 @@ static void message_handler(int sd, short flags, void* cbdata)
     int rc;
     pmix_message_t *msg = PMIx_message_new();
     pmix_message_t *rmsg = NULL;
+    pmix_peer_reply_t *peers = NULL;
 
     rc = blocking_recv(sd, PMIx_message_hdr_ptr(msg), PMIx_message_hdr_size(msg));
     /* Process errors first (if any) */
@@ -273,15 +293,19 @@ static void message_handler(int sd, short flags, void* cbdata)
     if( 0 < PMIx_message_pay_size(msg) ){
         rc = blocking_recv(sd, PMIx_message_pay_ptr(msg), PMIx_message_pay_size(msg));
         if (PMIX_SUCCESS == rc) {
-            rmsg = PMIx_server_process_msg(sd, msg);
-            if( NULL != rmsg ){
-                rc = pmix_usock_send_blocking(sd, PMIx_message_hdr_ptr(rmsg), PMIx_message_hdr_size(rmsg));
-                if (PMIX_SUCCESS != rc) {
-                    goto exit;
-                }
-                rc = pmix_usock_send_blocking(sd, PMIx_message_pay_ptr(rmsg), PMIx_message_pay_size(rmsg));
-                if (PMIX_SUCCESS != rc) {
-                    goto exit;
+            size_t size = PMIx_server_process_msg(sd, msg, &rmsg, &peers);
+            if( size > 0 && NULL != rmsg && NULL != peers ){
+                size_t i;
+                for(i=0; i<size; i++){
+                    PMIx_message_tag_set(rmsg, peers[i].tag);
+                    rc = pmix_usock_send_blocking(peers[i].sd, PMIx_message_hdr_ptr(rmsg), PMIx_message_hdr_size(rmsg));
+                    if (PMIX_SUCCESS != rc) {
+                        goto exit;
+                    }
+                    rc = pmix_usock_send_blocking(peers[i].sd, PMIx_message_pay_ptr(rmsg), PMIx_message_pay_size(rmsg));
+                    if (PMIX_SUCCESS != rc) {
+                        goto exit;
+                    }
                 }
             }
         } else {
@@ -318,9 +342,7 @@ static int authenticate(char *credential)
 
 static int terminated(const char namespace[], int rank)
 {
-    /*
-    test_complete = true;
-    */
+    service = false;
     return PMIX_SUCCESS;
 }
 
@@ -329,12 +351,99 @@ static int abort_fn(int status, const char msg[])
     return PMIX_SUCCESS;
 }
 
+static void gather_data(const char namespace[], int rank,
+                        pmix_list_t *mdxlist)
+{
+    pmix_test_data_t *tdat, *mdx;
+
+    PMIX_LIST_FOREACH(mdx, &modex, pmix_test_data_t) {
+        if (0 != strcmp(namespace, mdx->data.namespace)) {
+            continue;
+        }
+        if (rank != mdx->data.rank && PMIX_RANK_WILDCARD != rank) {
+            continue;
+        }
+        tdat = OBJ_NEW(pmix_test_data_t);
+        (void)strncpy(tdat->data.namespace, mdx->data.namespace, PMIX_MAX_NSLEN);
+        tdat->data.rank = mdx->data.rank;
+        tdat->data.size = mdx->data.size;
+        if (0 < mdx->data.size) {
+            tdat->data.blob = (uint8_t*)malloc(mdx->data.size);
+            memcpy(tdat->data.blob, mdx->data.blob, mdx->data.size);
+        }
+        pmix_list_append(mdxlist, &tdat->super);
+    }
+}
+
+static void xfer_to_array(pmix_list_t *mdxlist,
+                          pmix_modex_data_t **mdxarray, size_t *size)
+{
+    pmix_modex_data_t *mdxa;
+    pmix_test_data_t *dat;
+    size_t n;
+
+    *size = 0;
+    *mdxarray = NULL;
+    n = pmix_list_get_size(mdxlist);
+    if (0 == n) {
+        return;
+    }
+    /* allocate the array */
+    mdxa = (pmix_modex_data_t*)malloc(n * sizeof(pmix_modex_data_t));
+    *mdxarray = mdxa;
+    *size = n;
+    n = 0;
+    PMIX_LIST_FOREACH(dat, mdxlist, pmix_test_data_t) {
+        (void)strncpy(mdxa[n].namespace, dat->data.namespace, PMIX_MAX_NSLEN);
+        mdxa[n].rank = dat->data.rank;
+        mdxa[n].size = dat->data.size;
+        if (0 < dat->data.size) {
+            mdxa[n].blob = (uint8_t*)malloc(dat->data.size);
+            memcpy(mdxa[n].blob, dat->data.blob, dat->data.size);
+        }
+        n++;
+    }
+}
+
 static int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
                       int barrier, int collect_data,
                       pmix_modex_cbfunc_t cbfunc, void *cbdata)
 {
+    pmix_list_t data;
+    size_t i, j;
+    pmix_modex_data_t *mdxarray = NULL;
+    size_t size=0, n;
+
+    /* if barrier is given, then we need to wait until all the
+     * procs have reported prior to responding */
+
+    /* if they want all the data returned, do so */
+    if (0 != collect_data) {
+        OBJ_CONSTRUCT(&data, pmix_list_t);
+        for (i=0; i < nranges; i++) {
+            if (NULL == ranges[i].ranks) {
+                gather_data(ranges[i].namespace, PMIX_RANK_WILDCARD, &data);
+            } else {
+                for (j=0; j < ranges[i].nranks; j++) {
+                    gather_data(ranges[i].namespace, ranges[i].ranks[j], &data);
+                }
+            }
+        }
+        /* xfer the data to the mdx array */
+        xfer_to_array(&data, &mdxarray, &size);
+        PMIX_LIST_DESTRUCT(&data);
+    }
     if (NULL != cbfunc) {
-        cbfunc(PMIX_SUCCESS, NULL, 0, cbdata);
+        cbfunc(PMIX_SUCCESS, mdxarray, size, cbdata);
+    }
+    /* free the array */
+    for (n=0; n < size; n++) {
+        if (NULL != mdxarray[n].blob) {
+            free(mdxarray[n].blob);
+        }
+    }
+    if (NULL != mdxarray) {
+        free(mdxarray);
     }
     return PMIX_SUCCESS;
 }
