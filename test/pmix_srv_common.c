@@ -185,7 +185,7 @@ int run_client(struct sockaddr_un address, struct event_base *base,
     /* pass an ID for the client */
     pmix_argv_append_nosize(&client_env, "PMIX_RANK=1");
     /* pass a security credential */
-    asprintf(&tmp, "PMIX_NAMESPACE=smoky_namespace");
+    asprintf(&tmp, "PMIX_NAMESPACE=smoky_nspace");
     pmix_argv_append_nosize(&client_env, tmp);
     free(tmp);
 

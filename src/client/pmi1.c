@@ -41,10 +41,7 @@ int PMI_Init( int *spawned )
     pmix_value_t *kv;
     pmix_status_t rc;
 
-    /* set the protocol */
-    pmix_globals.protocol = PMI1;
-    
-    if (PMIX_SUCCESS != PMIx_Init(NULL, NULL, NULL, NULL)) {
+    if (PMIX_SUCCESS != PMIx_Init(NULL, NULL)) {
         return PMI_ERR_INIT;
     }
     
@@ -87,7 +84,7 @@ int PMI_Abort(int flag, const char msg[])
 }
 
 /* KVS_Put - we default to PMIX_GLOBAL scope and ignore the
- * provided kvsname as we only put into our own namespace */
+ * provided kvsname as we only put into our own nspace */
 int PMI_KVS_Put(const char kvsname[], const char key[], const char value[])
 {
     pmix_status_t rc;
@@ -106,7 +103,7 @@ int PMI_KVS_Commit(const char kvsname[])
     return PMI_SUCCESS;
 }
 
-/* Barrier only applies to our own namespace, and we want all
+/* Barrier only applies to our own nspace, and we want all
  * data to be collected upon completion */
 int PMI_Barrier(void)
 {
@@ -189,7 +186,7 @@ int PMI_Publish_name(const char service_name[], const char port[])
     info.value.data.string = (char*)port;
     
     /* publish the info - PMI-1 doesn't support
-     * any scope other than inside our own namespace */
+     * any scope other than inside our own nspace */
     rc = PMIx_Publish(PMIX_NAMESPACE, &info, 1);
     
     return convert_err(rc);
@@ -215,7 +212,7 @@ int PMI_Lookup_name(const char service_name[], char port[])
     /* pass the service */
     (void)strncpy(info.key, service_name, PMIX_MAX_KEYLEN);
 
-    /* PMI-1 doesn't want the namespace back */
+    /* PMI-1 doesn't want the nspace back */
     if (PMIX_SUCCESS != (rc = PMIx_Lookup(PMIX_NAMESPACE, &info, 1, NULL))) {
         return convert_err(rc);
     }
@@ -235,14 +232,14 @@ int PMI_Lookup_name(const char service_name[], char port[])
 
 int PMI_Get_id(char id_str[], int length)
 {
-    /* we already obtained our namespace during PMI_Init,
+    /* we already obtained our nspace during PMI_Init,
      * so all we have to do here is return it */
 
     /* bozo check */
     if (NULL == id_str) {
         return PMI_ERR_INVALID_ARGS;
     }
-    (void)strncpy(id_str, pmix_globals.namespace, length);
+    (void)strncpy(id_str, pmix_globals.nspace, length);
     return PMI_SUCCESS;
 }
 

@@ -20,6 +20,7 @@
 
 #include "src/include/pmix_stdint.h"
 #include "src/include/hash_string.h"
+#include "src/include/pmix_globals.h"
 
 #include <string.h>
 
@@ -97,16 +98,20 @@ void pmix_client_hash_finalize(void)
 
 
 
-int pmix_client_hash_store(const char *namespace, int rank,
+int pmix_client_hash_store(const char *nspace, int rank,
                            pmix_kval_t *kin)
 {
     pmix_proc_data_t *proc_data;
     pmix_kval_t *kv;
     uint32_t jobid;
     uint64_t id;
+
+    pmix_output_verbose(10, pmix_globals.debug_output,
+                        "HASH:STORE %s:%d key %s",
+                        nspace, rank, kin->key);
     
-    /* create a hash of the namespace */
-    PMIX_HASH_STR(namespace, jobid);
+    /* create a hash of the nspace */
+    PMIX_HASH_STR(nspace, jobid);
     /* mix in the rank to get the id */
     id = ((uint64_t)jobid << 32) | (int32_t)rank;
     
@@ -130,7 +135,7 @@ int pmix_client_hash_store(const char *namespace, int rank,
     return PMIX_SUCCESS;
 }
 
-int pmix_client_hash_fetch(const char *namespace, int rank,
+int pmix_client_hash_fetch(const char *nspace, int rank,
                            const char *key, pmix_value_t **kvs)
 {
     pmix_proc_data_t *proc_data;
@@ -139,13 +144,17 @@ int pmix_client_hash_fetch(const char *namespace, int rank,
     uint64_t id;
     int rc;
 
+    pmix_output_verbose(10, pmix_globals.debug_output,
+                        "HASH:FETCH %s:%d key %s",
+                        nspace, rank, (NULL == key) ? "NULL" : key);
+    
     /* NULL keys are not supported */
     if (NULL == key) {
         return PMIX_ERR_BAD_PARAM;
     }
     
-    /* create a hash of the namespace */
-    PMIX_HASH_STR(namespace, jobid);
+    /* create a hash of the nspace */
+    PMIX_HASH_STR(nspace, jobid);
     /* mix in the rank to get the id */
     id = ((uint64_t)jobid << 32) | (int32_t)rank;
 
@@ -167,7 +176,7 @@ int pmix_client_hash_fetch(const char *namespace, int rank,
     return PMIX_SUCCESS;
 }
 
-int pmix_client_hash_remove_data(const char *namespace,
+int pmix_client_hash_remove_data(const char *nspace,
                                  int rank, const char *key)
 {
     pmix_proc_data_t *proc_data;
@@ -175,8 +184,8 @@ int pmix_client_hash_remove_data(const char *namespace,
     uint32_t jobid;
     uint64_t id;
 
-    /* create a hash of the namespace */
-    PMIX_HASH_STR(namespace, jobid);
+    /* create a hash of the nspace */
+    PMIX_HASH_STR(nspace, jobid);
     /* mix in the rank to get the id */
     id = ((uint64_t)jobid << 32) | (int32_t)rank;
 

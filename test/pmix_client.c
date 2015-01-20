@@ -55,14 +55,14 @@ int main(int argc, char **argv)
     }
 
     /* init us */
-    if (PMIX_SUCCESS != (rc = PMIx_Init(nspace, &rank, NULL, TEST_CREDENTIAL))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Init(nspace, &rank))) {
         fprintf(stderr, "PMIx cli: PMIx_Init failed: %d\n", rc);
         notify_parent();
         exit(0);
     }
 
     if( 0 != strcmp(nspace, TEST_NAMESPACE) ) {
-        printf("PMIx cli: Bad namespace!\n");
+        printf("PMIx cli: Bad nspace!\n");
     }
 
     key = "local-key-2";

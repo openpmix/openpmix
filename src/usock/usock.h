@@ -13,7 +13,7 @@
  *                         All rights reserved.
  * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
- * Copyright (c) 2013-2014 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2015 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * $COPYRIGHT$
@@ -31,7 +31,9 @@
 #include "src/include/types.h"
 #include "src/api/pmix_common.h"
 
+#ifdef HAVE_UNISTD_H
 #include <unistd.h>
+#endif
 #ifdef HAVE_SYS_SOCKET_H
 #include <sys/socket.h>
 #endif
@@ -43,6 +45,9 @@
 #endif
 #ifdef HAVE_NET_UIO_H
 #include <net/uio.h>
+#endif
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>
 #endif
 #include <event.h>
 
@@ -56,29 +61,24 @@
 /* define some commands */
 typedef enum {
     PMIX_ABORT_CMD,
-    PMIX_FENCE_CMD,
     PMIX_FENCENB_CMD,
-    PMIX_GET_CMD,
     PMIX_GETNB_CMD,
     PMIX_FINALIZE_CMD,
-    PMIX_PUBLISH_CMD,
-    PMIX_LOOKUP_CMD,
-    PMIX_UNPUBLISH_CMD,
-    PMIX_SPAWN_CMD,
-    PMIX_CONNECT_CMD,
-    PMIX_DISCONNECT_CMD,
-    PMIX_JOBINFO_CMD
+    PMIX_PUBLISHNB_CMD,
+    PMIX_LOOKUPNB_CMD,
+    PMIX_UNPUBLISHNB_CMD,
+    PMIX_SPAWNNB_CMD,
+    PMIX_CONNECTNB_CMD,
+    PMIX_DISCONNECTNB_CMD
 } pmix_cmd_t;
 
 /* define some message types */
-#define PMIX_USOCK_USER         1
-#define PMIX_USOCK_IDENT_PMI1   2
-#define PMIX_USOCK_IDENT_PMI2   3
-#define PMIX_USOCK_IDENT_PMIX   4
+#define PMIX_USOCK_USER   1
+#define PMIX_USOCK_IDENT  2
 
 /* header for messages */
 typedef struct {
-    char namespace[PMIX_MAX_NSLEN];
+    char nspace[PMIX_MAX_NSLEN];
     int rank;
     uint8_t type;
     uint32_t tag;
@@ -128,11 +128,13 @@ OBJ_CLASS_DECLARATION(pmix_usock_posted_recv_t);
  * connections. This can occur if the initial app executes
  * a fork/exec, and the child initiates its own connection
  * back to the PMIx server. Thus, the trackers should be "indexed"
- * by the socket, not the process namespace/rank */
+ * by the socket, not the process nspace/rank */
 typedef struct pmix_peer_t {
     pmix_list_item_t super;
-    char namespace[PMIX_MAX_NSLEN];
+    char nspace[PMIX_MAX_NSLEN];
     int rank;
+    uid_t uid;
+    gid_t gid;
     int sd;
     pmix_event_t send_event;    /**< registration with event thread for send events */
     bool send_ev_active;
@@ -160,13 +162,19 @@ typedef struct {
     pmix_object_t super;
     pmix_event_t ev;
     volatile bool active;
-    pmix_usock_cbfunc_t internal_cbfunc;
+    int status;
     pmix_buffer_t data;
-    pmix_cbfunc_t cbfunc;
+    pmix_usock_cbfunc_t cbfunc;
+    pmix_op_cbfunc_t op_cbfunc;
+    pmix_value_cbfunc_t value_cbfunc;
+    pmix_lookup_cbfunc_t lookup_cbfunc;
+    pmix_spawn_cbfunc_t spawn_cbfunc;
     void *cbdata;
-    char *namespace;
+    char *nspace;
     int rank;
     char *key;
+    pmix_value_t *value;
+    size_t nvals;
 } pmix_cb_t;
 OBJ_CLASS_DECLARATION(pmix_cb_t);
 

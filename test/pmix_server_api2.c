@@ -48,21 +48,20 @@ extern int errno;
 #include "pmix_srv_common.h"
 
 /* setup the PMIx server module */
-static int authenticate(char *credential);
-static int terminated(const char namespace[], int rank);
+static int terminated(const char nspace[], int rank);
 static int abort_fn(int status, const char msg[]);
 static int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
                       int barrier, int collect_data,
                       pmix_modex_cbfunc_t cbfunc, void *cbdata);
 static int store_modex_fn(pmix_scope_t scope, pmix_modex_data_t *data);
-static int get_modexnb_fn(const char namespace[], int rank,
+static int get_modexnb_fn(const char nspace[], int rank,
                           pmix_modex_cbfunc_t cbfunc, void *cbdata);
-static int get_job_info_fn(const char namespace[], int rank,
+static int get_job_info_fn(const char nspace[], int rank,
                            pmix_info_t *info[], size_t *ninfo);
 static int publish_fn(pmix_scope_t scope, const pmix_info_t info[], size_t ninfo);
 static int lookup_fn(pmix_scope_t scope,
                      pmix_info_t info[], size_t ninfo,
-                     char *namespace[]);
+                     char *nspace[]);
 static int unpublish_fn(pmix_scope_t scope, char **keys);
 static int spawn_fn(const pmix_app_t apps[],
                     size_t napps,
@@ -73,7 +72,6 @@ static int disconnect_fn(const pmix_range_t ranges[], size_t nranges,
                          pmix_connect_cbfunc_t cbfunc, void *cbdata);
 
 static pmix_server_module_t mymodule = {
-    authenticate,
     terminated,
     abort_fn,
     fencenb_fn,
@@ -127,7 +125,9 @@ int main(int argc, char **argv, char **env)
 {
     struct sockaddr_un address;
     int rc;
-
+    uid_t myuid;
+    gid_t mygid;
+    
     fprintf(stderr,"Start PMIx smoke test\n");
 
     OBJ_CONSTRUCT(&modex, pmix_list_t);
@@ -139,7 +139,7 @@ int main(int argc, char **argv, char **env)
     }
 
     /* setup the server library */
-    if (PMIX_SUCCESS != (rc = PMIx_server_init_light(&mymodule, NULL, "1234"))) {
+    if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, false))) {
         fprintf(stderr, "Init failed with error %d\n", rc);
         return rc;
     }
@@ -161,7 +161,9 @@ int main(int argc, char **argv, char **env)
     {
         char **client_env = NULL;
         char **client_argv = NULL;
-        if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(TEST_NAMESPACE, 2, &client_env))) {
+        myuid = getuid();
+        mygid = getgid();
+        if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(TEST_NAMESPACE, 2, myuid, mygid, &client_env))) {
             fprintf(stderr, "Server fork setup failed with error %d\n", rc);
             PMIx_server_finalize();
             return rc;
@@ -185,14 +187,14 @@ int main(int argc, char **argv, char **env)
 
     /* cycle the event library until complete */
     while( service ){
-         event_base_loop(server_base, EVLOOP_ONCE);
+        event_base_loop(server_base, EVLOOP_ONCE);
     }
 
     fprintf(stderr,"PMIx srv: exit service loop. wait() for the client termination\n");
     wait(NULL);
 
     /* finalize the server library */
-    if (PMIX_SUCCESS != (rc = PMIx_server_finalize_light())) {
+    if (PMIX_SUCCESS != (rc = PMIx_server_finalize())) {
         fprintf(stderr, "Finalize failed with error %d\n", rc);
     }
 
@@ -232,7 +234,6 @@ static int recv_cli_auth(int sd)
 {
     pmix_message_t *msg = PMIx_message_new();
     int rc;
-    pmix_peer_cred_t cred;
 
     if( PMIX_SUCCESS != (rc = blocking_recv(sd,PMIx_message_hdr_ptr(msg),
                                             PMIx_message_hdr_size(msg))) ){
@@ -245,10 +246,9 @@ static int recv_cli_auth(int sd)
                                             PMIx_message_pay_size(msg) )) ){
         return rc;
     }
-    rc = PMIx_server_cred_extract(sd, msg, &cred);
-    PMIx_message_free(msg);
-    msg = PMIx_server_cred_reply(rc);
 
+    // RHC: need to call the new security system to authenticate connection
+    
     if (PMIX_SUCCESS != (rc = pmix_usock_send_blocking(sd, PMIx_message_hdr_ptr(msg),
                                                        PMIx_message_hdr_size(msg) ))) {
         fprintf(stderr,"PMIx srv [%s:%d]: Cannot send header\n",
@@ -332,15 +332,7 @@ exit:
 
 /**** PMIx hooks ****/
 
-static int authenticate(char *credential)
-{
-    if (0 == strcmp(credential, TEST_CREDENTIAL)) {
-        return PMIX_SUCCESS;
-    }
-    return PMIX_ERROR;
-}
-
-static int terminated(const char namespace[], int rank)
+static int terminated(const char nspace[], int rank)
 {
     service = false;
     return PMIX_SUCCESS;
@@ -351,20 +343,20 @@ static int abort_fn(int status, const char msg[])
     return PMIX_SUCCESS;
 }
 
-static void gather_data(const char namespace[], int rank,
+static void gather_data(const char nspace[], int rank,
                         pmix_list_t *mdxlist)
 {
     pmix_test_data_t *tdat, *mdx;
 
     PMIX_LIST_FOREACH(mdx, &modex, pmix_test_data_t) {
-        if (0 != strcmp(namespace, mdx->data.namespace)) {
+        if (0 != strcmp(nspace, mdx->data.nspace)) {
             continue;
         }
         if (rank != mdx->data.rank && PMIX_RANK_WILDCARD != rank) {
             continue;
         }
         tdat = OBJ_NEW(pmix_test_data_t);
-        (void)strncpy(tdat->data.namespace, mdx->data.namespace, PMIX_MAX_NSLEN);
+        (void)strncpy(tdat->data.nspace, mdx->data.nspace, PMIX_MAX_NSLEN);
         tdat->data.rank = mdx->data.rank;
         tdat->data.size = mdx->data.size;
         if (0 < mdx->data.size) {
@@ -394,7 +386,7 @@ static void xfer_to_array(pmix_list_t *mdxlist,
     *size = n;
     n = 0;
     PMIX_LIST_FOREACH(dat, mdxlist, pmix_test_data_t) {
-        (void)strncpy(mdxa[n].namespace, dat->data.namespace, PMIX_MAX_NSLEN);
+        (void)strncpy(mdxa[n].nspace, dat->data.nspace, PMIX_MAX_NSLEN);
         mdxa[n].rank = dat->data.rank;
         mdxa[n].size = dat->data.size;
         if (0 < dat->data.size) {
@@ -422,10 +414,10 @@ static int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
         OBJ_CONSTRUCT(&data, pmix_list_t);
         for (i=0; i < nranges; i++) {
             if (NULL == ranges[i].ranks) {
-                gather_data(ranges[i].namespace, PMIX_RANK_WILDCARD, &data);
+                gather_data(ranges[i].nspace, PMIX_RANK_WILDCARD, &data);
             } else {
                 for (j=0; j < ranges[i].nranks; j++) {
-                    gather_data(ranges[i].namespace, ranges[i].ranks[j], &data);
+                    gather_data(ranges[i].nspace, ranges[i].ranks[j], &data);
                 }
             }
         }
@@ -452,10 +444,10 @@ static int store_modex_fn(pmix_scope_t scope, pmix_modex_data_t *data)
 {
     pmix_test_data_t *mdx;
 
-    pmix_output(0, "Storing data for %s:%d", data->namespace, data->rank);
+    pmix_output(0, "Storing data for %s:%d", data->nspace, data->rank);
 
     mdx = OBJ_NEW(pmix_test_data_t);
-    (void)strncpy(mdx->data.namespace, data->namespace, PMIX_MAX_NSLEN);
+    (void)strncpy(mdx->data.nspace, data->nspace, PMIX_MAX_NSLEN);
     mdx->data.rank = data->rank;
     mdx->data.size = data->size;
     if (0 < mdx->data.size) {
@@ -466,7 +458,7 @@ static int store_modex_fn(pmix_scope_t scope, pmix_modex_data_t *data)
     return PMIX_SUCCESS;
 }
 
-static int get_modexnb_fn(const char namespace[], int rank,
+static int get_modexnb_fn(const char nspace[], int rank,
                           pmix_modex_cbfunc_t cbfunc, void *cbdata)
 {
     /*
@@ -474,14 +466,14 @@ static int get_modexnb_fn(const char namespace[], int rank,
     pmix_modex_data_t *mdxarray;
     size_t size, n;
 
-    pmix_output(0, "Getting data for %s:%d", namespace, rank);
+    pmix_output(0, "Getting data for %s:%d", nspace, rank);
 
     size = pmix_list_get_size(&modex);
     if (0 < size) {
         mdxarray = (pmix_modex_data_t*)malloc(size * sizeof(pmix_modex_data_t));
         n = 0;
         PMIX_LIST_FOREACH(mdx, &modex, pmix_test_data_t) {
-            (void)strncpy(mdxarray[n].namespace, mdx->data.namespace, PMIX_MAX_NSLEN);
+            (void)strncpy(mdxarray[n].nspace, mdx->data.nspace, PMIX_MAX_NSLEN);
             mdxarray[n].rank = mdx->data.rank;
             mdxarray[n].size = mdx->data.size;
             if (0 < mdx->data.size) {
@@ -509,7 +501,7 @@ static int get_modexnb_fn(const char namespace[], int rank,
     return PMIX_SUCCESS;
 }
 
-static int get_job_info_fn(const char namespace[], int rank,
+static int get_job_info_fn(const char nspace[], int rank,
                            pmix_info_t *info[], size_t *ninfo)
 {
     pmix_info_t *resp;
@@ -531,9 +523,9 @@ static int publish_fn(pmix_scope_t scope, const pmix_info_t info[], size_t ninfo
 
 static int lookup_fn(pmix_scope_t scope,
                      pmix_info_t info[], size_t ninfo,
-                     char *namespace[])
+                     char *nspace[])
 {
-    *namespace = NULL;
+    *nspace = NULL;
     return PMIX_SUCCESS;
 }
 

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2014      Intel, Inc.  All rights reserved.
+# Copyright (c) 2014-2015 Intel, Inc.  All rights reserved.
 # Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
 #                         All rights reserved.
 # $COPYRIGHT$
@@ -10,11 +10,13 @@
 #
 
 server_headers += \
-        src/server/pmix_message.h
+        src/server/pmix_server_lite.h \
+        src/server/pmix_server_ops.h
 
 server_sources += \
         src/server/pmix_server.c \
-        src/server/pmix_message.c
+        src/server/pmix_server_lite.c \
+        src/server/pmix_server_ops.c
 
 
 

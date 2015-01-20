@@ -61,13 +61,13 @@ int main(int argc, char **argv)
     }
 
     /* init us */
-    if (PMIX_SUCCESS != (rc = PMIx_Init(nspace, &rank, NULL, TEST_CREDENTIAL))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Init(nspace, &rank))) {
         fprintf(stderr, "PMIx cli: PMIx_Init failed: %d\n", rc);
         goto error_out;
     }
 
     if( 0 != strcmp(nspace, TEST_NAMESPACE) ) {
-        printf("PMIx cli: Bad namespace!\n");
+        printf("PMIx cli: Bad nspace!\n");
     }
 
     for (i=0; i < 3; i++) {
@@ -100,7 +100,8 @@ int main(int argc, char **argv)
         fprintf(stderr, "PMIx cli: PMIx_Fence failed (%d)\n", rc);
         goto error_out;
     }
-
+    fprintf(stderr, "PMIx client2: Fence successfully completed\n");
+    
     /* Check the predefined output */
     for (i=0; i < nprocs; i++) {
         pmix_value_t *val = &value;

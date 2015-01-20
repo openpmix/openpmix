@@ -68,41 +68,123 @@
 
 BEGIN_C_DECLS
 
-/****    SERVER CALLBACK FUNCTIONS FOR ASYNC OPERATIONS    ****/
-typedef void (*pmix_modex_cbfunc_t)(int status, pmix_modex_data_t data[],
-                                    size_t ndata, void *cbdata);
-typedef void (*pmix_spawn_cbfunc_t)(int status, char namespace[], void *cbdata);
-typedef void (*pmix_connect_cbfunc_t)(int status, void *cbdata);
-
 /****    SERVER FUNCTION-SHIPPED APIs    ****/
-typedef int (*pmix_server_terminated_fn_t)(const char namespace[], int rank);
-typedef int (*pmix_server_abort_fn_t)(int status, const char msg[]);
+/* NOTE: for performance purposes, the host server is required to
+ * return as quickly as possible from all functions. Execution of
+ * the function is thus to be done asynchronously so as to allow
+ * the PMIx server support library to handle multiple client requests
+ * as quickly and scalably as possible.
+ *
+ * ALL data passed to the host server functions is "owned" by the
+ * PMIX server support library and MUST NOT be free'd. Data returned
+ * by the host server via callback function is owned by the host
+ * server, which is free to release it upon return from the callback */
+
+
+/* Notify the host server that a client has terminated, as detected
+ * when the PMIx server library receives a socket closure notification */
+typedef int (*pmix_server_terminated_fn_t)(const char nspace[], int rank);
+
+/* Client called PMIx_Abort - note that the client will be in a blocked
+ * state until the host server executes the callback function, thus
+ * allowing the PMIx server support library to release the client */
+typedef int (*pmix_server_abort_fn_t)(int status, const char msg[],
+                                      pmix_op_cbfunc_t cbfunc, void *cbdata);
+
+/* Client called either PMIx_Fence or PMIx_Fence_nb. In either case,
+ * the host server will be called via a non-blocking function to execute
+ * the specified operation. All processes in the specified ranges are
+ * required to participate in the Fence[_nb] operation. If the "barrier"
+ * parameter is "true", then the callback is to be executed once all
+ * participants have participated. If the "barrier" parameter is "false",
+ * then the callback is to be executed immediately upon completion of
+ * whatever local bookkeeping the host server must do to support the
+ * function.
+ *
+ * If the "barrier" parameter is "true", AND the "collect_data" parameter
+ * is "true", then the callback function shall return *all* modex data
+ * provided by the participants. If the "collect_data" parameter is "false",
+ * then the callback shall just return the status */
 typedef int (*pmix_server_fencenb_fn_t)(const pmix_range_t ranges[], size_t nranges,
                                         int barrier, int collect_data,
                                         pmix_modex_cbfunc_t cbfunc, void *cbdata);
-typedef int (*pmix_server_store_modex_fn_t)(pmix_scope_t scope, pmix_modex_data_t *data);
-typedef int (*pmix_server_get_modexnb_fn_t)(const char namespace[], int rank,
-                                            pmix_modex_cbfunc_t cbfunc, void *cbdata);
-typedef int (*pmix_server_get_job_info_fn_t)(const char namespace[], int rank,
-                                             pmix_info_t *info[], size_t *ninfo);
-typedef int (*pmix_server_publish_fn_t)(pmix_scope_t scope, const pmix_info_t info[], size_t ninfo);
-typedef int (*pmix_server_lookup_fn_t)(pmix_scope_t scope,
-                                       pmix_info_t info[], size_t ninfo,
-                                       char *namespace[]);
-typedef int (*pmix_server_unpublish_fn_t)(pmix_scope_t scope, char **keys);
-typedef int (*pmix_server_spawn_fn_t)(const pmix_app_t apps[],
-                                      size_t napps,
-                                      pmix_spawn_cbfunc_t cbfunc, void *cbdata);
-typedef int (*pmix_server_connect_fn_t)(const pmix_range_t ranges[], size_t nranges,
-                                        pmix_connect_cbfunc_t cbfunc, void *cbdata);
-typedef int (*pmix_server_disconnect_fn_t)(const pmix_range_t ranges[], size_t nranges,
-                                           pmix_connect_cbfunc_t cbfunc, void *cbdata);
 
-/****    SERVER SECURITY CREDENTIAL FUNCTIONS    ****/
-typedef int (*pmix_server_authenticate_fn_t)(char *credential);
+/* Store modex data for the given scope - should be copied into
+ * the host server's storage */
+typedef int (*pmix_server_store_modex_fn_t)(pmix_scope_t scope, pmix_modex_data_t *data);
+
+/* Retrieve modex data from the specified rank. A rank value of PMIX_RANK_WILDCARD
+ * indicates that all modex data associated with the given nspace is to be
+ * returned. */
+typedef int (*pmix_server_get_modexnb_fn_t)(const char nspace[], int rank,
+                                            pmix_modex_cbfunc_t cbfunc, void *cbdata);
+
+
+/* Retrieve all job-related info for this nspace and rank. The list of
+ * supported data keys is provided in pmix_common.h. Note that the host
+ * server is not required to support all of the defined keys, nor is it limited
+ * to those that are defined in that file. */
+typedef int (*pmix_server_get_job_info_fn_t)(const char nspace[], int rank,
+                                             pmix_info_t *info[], size_t *ninfo);
+
+
+/* Publish data per the PMIx API specification. The callback is to be executed
+ * upon completion of the operation. The host server is not required to guarantee
+ * support for the requested scope - i.e., the server does not need to return an
+ * error if the data store doesn't support scope-based isolation. However, the
+ * server must return an error (a) if the key is duplicative within the storage
+ * scope, and (b) if the server does not allow overwriting of published info by
+ * the original publisher - it is left to the discretion of the host server to
+ * allow info-key-based flags to modify this behavior */
+typedef int (*pmix_server_publish_fn_t)(pmix_scope_t scope,
+                                        const pmix_info_t info[], size_t ninfo,
+                                        pmix_op_cbfunc_t cbfunc, void *cbdata);
+
+/* Lookup published data. The host server will be passed a NULL-terminated array
+ * of string keys along with the scope within which the data is expected to have
+ * been published. The host server is not required to guarantee support for all
+ * PMIx-defined scopes, but should only search data stores within the specified
+ * scope within the context of the corresponding "publish" API. */
+typedef int (*pmix_server_lookup_fn_t)(pmix_scope_t scope, char **keys,
+                                       pmix_lookup_cbfunc_t cbfunc, void *cbdata);
+
+/* Delete data from the data store. The host server will be passed a NULL-terminated array
+ * of string keys along with the scope within which the data is expected to have
+ * been published. The callback is to be executed upon completion of the delete
+ * procedure */
+typedef int (*pmix_server_unpublish_fn_t)(pmix_scope_t scope, char **keys,
+                                          pmix_op_cbfunc_t cbfunc, void *cbdata);
+
+/* Spawn a set of applications/processes as per the PMIx API. Note that
+ * applications are not required to be MPI or any other programming model.
+ * Thus, the host server cannot make any assumptions as to their required
+ * support. The callback function is to be executed once all processes have
+ * been started. An error in starting any application or process in this
+ * request shall cause all applications and processes in the request to
+ * be terminated, and an error returned to the originating caller */
+typedef int (*pmix_server_spawn_fn_t)(const pmix_app_t apps[], size_t napps,
+                                      pmix_spawn_cbfunc_t cbfunc, void *cbdata);
+
+/* Record the specified processes as "connected". This means that the resource
+ * manager should treat the failure of any process in the specified group as
+ * a reportable event, and take appropriate action. The callback function is
+ * to be called once all participating processes have called connect. Note that
+ * a process can only engage in *one* connect operation involving the identical
+ * set of ranges at a time. However, a process *can* be simultaneously engaged
+ * in multiple connect operations, each involving a different set of ranges */
+typedef int (*pmix_server_connect_fn_t)(const pmix_range_t ranges[], size_t nranges,
+                                        pmix_op_cbfunc_t cbfunc, void *cbdata);
+
+/* Disconnect a previously connected set of processes. An error should be returned
+ * if the specified set of ranges was not previously "connected". As above, a process
+ * may be involved in multiple simultaneous disconnect operations. However, a process
+ * is not allowed to reconnect to a set of ranges that has not fully completed
+ * disconnect - i.e., you have to fully disconnect before you can reconnect to the
+ * same group of processes. */
+typedef int (*pmix_server_disconnect_fn_t)(const pmix_range_t ranges[], size_t nranges,
+                                           pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 typedef struct pmix_server_module_1_0_0_t {
-    pmix_server_authenticate_fn_t     authenticate;
     pmix_server_terminated_fn_t       terminated;
     pmix_server_abort_fn_t            abort;
     pmix_server_fencenb_fn_t          fence_nb;
@@ -118,23 +200,70 @@ typedef struct pmix_server_module_1_0_0_t {
 } pmix_server_module_t;
 
 /****    SERVER SUPPORT INIT/FINALIZE FUNCTIONS    ****/
-int PMIx_server_init_light(pmix_server_module_t *module,
-                           char *tmpdir, char *credential);
-struct sockaddr_un PMIx_get_addr(void);
-int PMIx_server_init(pmix_server_module_t *module,
-                     struct event_base *evbase,
-                     char *tmpdir, char *credential);
-int PMIx_server_finalize_light(void);
-int PMIx_server_finalize(void);
-int PMIx_server_setup_fork(const char namespace[], int rank, char ***env);
-/* register an errhandler to report errors that occur
- * within the client library, but are not reportable
- * via the API itself (e.g., loss of connection to
- * the server) */
-void PMIx_Register_errhandler(pmix_errhandler_fn_t errhandler);
 
-/* deregister the errhandler */
+/* Initialize the server support library. The library supports
+ * two modes of operation:
+ *
+ * (a) internal comm - the library will provide all comm
+ *     between the server and clients. In this mode, the
+ *     caller is only responsible for processing the
+ *     data provided in the module callback functions. The
+ *     server library will spin off its own progress thread
+ *     that will "block" when not actively processing
+ *     messages.
+ *
+ * (b) external comm - the library will provide message
+ *     preparation support (e.g., packing/unpacking data),
+ *     but all comm between server and clients will be
+ *     the responsibility of the caller.
+ *
+ * Input parameters:
+ *
+ * module - pointer to a pmix_server_module_t structure
+ * containing the caller's callback functions
+ *
+ * use_internal_comm - boolean that is true if the server
+ * library is to use its internal comm system, false if the
+ * caller will be providing its own messaging support
+ */
+int PMIx_server_init(pmix_server_module_t *module,
+                     int use_internal_comm);
+
+/* Finalize the server support library. If internal comm is
+ * in-use, the server will shut it down at this time. All
+ * memory usage is released */
+int PMIx_server_finalize(void);
+
+/* Get the sockaddr_un being used by the internal comm
+ * system. */
+struct sockaddr_un PMIx_get_addr(void);
+
+/* Setup the environment of a child process to be forked
+ * by the host so it can correctly interact with the PMIx
+ * server. The PMIx client needs some setup information
+ * so it can properly connect back to the server. This function
+ * will set appropriate environmental variables for this purpose.
+ *
+ * In addition, the expected user ID and group ID of the
+ * child process helps the server library to properly authenticate
+ * clients as they connect by requiring the two values to match.
+ * These parameters are only relevant when internal comm is
+ * in use, and will be ignored otherwise */
+int PMIx_server_setup_fork(const char nspace[], int rank,
+                           uid_t uid, gid_t gid, char ***env);
+
+/* Register an errhandler to report errors that occur
+ * within the server library, but are not reportable
+ * via the API itself (e.g., loss of connection to
+ * the server). Only used when internal comm is in use. */
+void PMIx_Register_errhandler(pmix_notification_fn_t errhandler);
+
+/* Deregister the errhandler. The error handler will automatically
+ * be deregistered upon calling PMIx_server_finalize - this API
+ * is provided should the host wish to disable the errhandler
+ * in advance */
 void PMIx_Deregister_errhandler(void);
+
 
 /****    Message processing     ****/
 typedef struct pmix_message_opaque pmix_message_t;
@@ -154,21 +283,10 @@ void *PMIx_message_pay_ptr(pmix_message_t *msg);
 int PMIx_message_set_payload(pmix_message_t *msg_opaq, void *payload, size_t size);
 void PMIx_message_free(pmix_message_t *msg);
 
-/****    Authentification     ****/
-typedef struct {
-    char *namespace;
-    int rank;
-    uint32_t tag;
-    char *auth_token;
-    pmix_peer_hndl_t *peer_hndl;
-} pmix_peer_cred_t;
-int PMIx_server_cred_extract(int sd, pmix_message_t *msg_opaq, pmix_peer_cred_t *cred);
-pmix_message_t *PMIx_server_cred_reply(int rc);
 /****    Message processing     ****/
 int PMIx_server_set_handlers(pmix_server_module_t *module);
 size_t PMIx_server_process_msg(int sd, pmix_message_t *msg,
-                                 pmix_message_t **reply,
-                                 pmix_peer_reply_t **rpeers);
+                                 pmix_message_t **reply);
 
 END_C_DECLS
 

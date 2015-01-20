@@ -41,10 +41,7 @@ int PMI2_Init(int *spawned, int *size, int *rank, int *appnum)
     pmix_value_t *kv;
     pmix_status_t rc;
 
-    /* set the protocol */
-    pmix_globals.protocol = PMI2;
-    
-    if (PMIX_SUCCESS != PMIx_Init(NULL, NULL, NULL, NULL)) {
+    if (PMIX_SUCCESS != PMIx_Init(NULL, NULL)) {
         return PMI2_ERR_INIT;
     }
 
@@ -142,9 +139,9 @@ int PMI2_KVS_Fence(void)
     return convert_err(rc);
 }
 
-/* the jobid is equated to the namespace in PMIx, and the
+/* the jobid is equated to the nspace in PMIx, and the
  * src_pmi_id equates to the rank. If jobid=NULL, then PMIx
- * will use the local namespace, which matches the PMI2 spec.
+ * will use the local nspace, which matches the PMI2 spec.
  * The only type of value supported by PMI2 is a string, so
  * the return of anything else is an error */
 int PMI2_KVS_Get(const char *jobid, int src_pmi_id,
@@ -238,7 +235,7 @@ int PMI2_Nameserv_publish(const char service_name[], const PMI_keyval_t *info_pt
         nvals = 2;
     }
     /* publish the info - PMI-2 doesn't support
-     * any scope other than inside our own namespace */
+     * any scope other than inside our own nspace */
     rc = PMIx_Publish(PMIX_NAMESPACE, info, nvals);
     
     return convert_err(rc);
@@ -284,7 +281,7 @@ int PMI2_Nameserv_lookup(const char service_name[], const PMI_keyval_t *info_ptr
         nvals = 2;
     }
 
-    /* PMI-2 doesn't want the namespace back */
+    /* PMI-2 doesn't want the nspace back */
     if (PMIX_SUCCESS != (rc = PMIx_Lookup(PMIX_NAMESPACE, info, nvals, NULL))) {
         return convert_err(rc);
     }
@@ -305,14 +302,14 @@ int PMI2_Nameserv_lookup(const char service_name[], const PMI_keyval_t *info_ptr
 
 int PMI2_Job_GetId(char jobid[], int jobid_size)
 {
-    /* we already obtained our namespace during PMI_Init,
+    /* we already obtained our nspace during PMI_Init,
      * so all we have to do here is return it */
 
     /* bozo check */
     if (NULL == jobid) {
         return PMI2_ERR_INVALID_ARGS;
     }
-    (void)strncpy(jobid, pmix_globals.namespace, jobid_size);
+    (void)strncpy(jobid, pmix_globals.nspace, jobid_size);
     return PMI2_SUCCESS;
 }
 
@@ -321,7 +318,7 @@ int PMI2_Job_Connect(const char jobid[], PMI2_Connect_comm_t *conn)
     pmix_status_t rc;
     pmix_range_t range;
 
-    (void)strncpy(range.namespace, jobid, PMIX_MAX_VALLEN);
+    (void)strncpy(range.nspace, jobid, PMIX_MAX_VALLEN);
     range.ranks = NULL;
     range.nranks = 0;
     rc = PMIx_Connect(&range, 1);
@@ -333,7 +330,7 @@ int PMI2_Job_Disconnect(const char jobid[])
     pmix_status_t rc;
     pmix_range_t range;
 
-    (void)strncpy(range.namespace, jobid, PMIX_MAX_VALLEN);
+    (void)strncpy(range.nspace, jobid, PMIX_MAX_VALLEN);
     range.ranks = NULL;
     range.nranks = 0;
     rc = PMIx_Disconnect(&range, 1);

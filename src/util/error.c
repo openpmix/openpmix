@@ -34,182 +34,104 @@
 #include "src/api/pmix_common.h"
 #include "src/include/pmix_globals.h"
 
-#define MAX_CONVERTERS 5
-#define MAX_CONVERTER_PROJECT_LEN 10
-
-struct converter_info_t {
-    int init;
-    char project[MAX_CONVERTER_PROJECT_LEN];
-    int err_base;
-    int err_max;
-    pmix_err2str_fn_t converter;
-};
-typedef struct converter_info_t converter_info_t;
-
-/* all default to NULL */
-converter_info_t converters[MAX_CONVERTERS];
-
-static int
-pmix_strerror_int(int errnum, const char **str)
+const char *pmix_strerror(pmix_status_t errnum)
 {
-    int i, ret = PMIX_SUCCESS;
-    *str = NULL;
+    switch(errnum) {
+    case PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER:
+        return "UNPACK-PAST-END";
+    case PMIX_ERR_COMM_FAILURE:
+        return "COMM-FAILURE";
+    case PMIX_ERR_NOT_IMPLEMENTED:
+        return "NOT-IMPLEMENTED";
+    case PMIX_ERR_NOT_SUPPORTED:
+        return "NOT-SUPPORTED";
+    case PMIX_ERR_NOT_FOUND:
+        return "NOT-FOUND";
+    case PMIX_ERR_SERVER_NOT_AVAIL:
+        return "SERVER-NOT-AVAIL";
+    case PMIX_ERR_INVALID_NAMESPACE:
+        return "INVALID-NAMESPACE";
+    case PMIX_ERR_INVALID_SIZE:
+        return "INVALID-SIZE";
+    case PMIX_ERR_INVALID_KEYVALP:
+        return "INVALID-KEYVAL";
+    case PMIX_ERR_INVALID_NUM_PARSED:
+        return "INVALID-NUM-PARSED";
 
-    for (i = 0 ; i < MAX_CONVERTERS ; ++i) {
-        if (0 != converters[i].init &&
-            errnum < converters[i].err_base &&
-            converters[i].err_max < errnum) {
-            ret = converters[i].converter(errnum, str);
-            break;
-        }
+    case PMIX_ERR_INVALID_ARGS:
+        return "INVALID-ARGS";
+    case PMIX_ERR_INVALID_NUM_ARGS:
+        return "INVALID-NUM-ARGS";
+    case PMIX_ERR_INVALID_LENGTH:
+        return "INVALID-LENGTH";
+    case PMIX_ERR_INVALID_VAL_LENGTH:
+        return "INVALID-VAL-LENGTH";
+    case PMIX_ERR_INVALID_VAL:
+        return "INVALID-VAL";
+    case PMIX_ERR_INVALID_KEY_LENGTH:
+        return "INVALID-KEY-LENGTH";
+    case PMIX_ERR_INVALID_KEY:
+        return "INVALID-KEY";
+    case PMIX_ERR_INVALID_ARG:
+        return "INVALID-ARG";
+    case PMIX_ERR_NOMEM:
+        return "NO-MEM";
+    case PMIX_ERR_INIT:
+        return "INIT";
+        
+    case PMIX_ERR_DATA_VALUE_NOT_FOUND:
+        return "DATA-VALUE-NOT-FOUND";
+    case PMIX_ERR_OUT_OF_RESOURCE:
+        return "OUT-OF-RESOURCE";
+    case PMIX_ERR_RESOURCE_BUSY:
+        return "RESOURCE-BUSY";
+    case PMIX_ERR_BAD_PARAM:
+        return "BAD-PARAM";
+    case PMIX_ERR_IN_ERRNO:
+        return "ERR-IN-ERRNO";
+    case PMIX_ERR_UNREACH:
+        return "UNREACHABLE";
+    case PMIX_ERR_TIMEOUT:
+        return "TIMEOUT";
+    case PMIX_ERR_NO_PERMISSIONS:
+        return "NO-PERMISSIONS";
+    case PMIX_ERR_PACK_MISMATCH:
+        return "PACK-MISMATCH";
+    case PMIX_ERR_PACK_FAILURE:
+        return "PACK-FAILURE";
+    
+    case PMIX_ERR_UNPACK_FAILURE:
+        return "UNPACK-FAILURE";
+    case PMIX_ERR_UNPACK_INADEQUATE_SPACE:
+        return "UNPACK-INADEQUATE-SPACE";
+    case PMIX_ERR_TYPE_MISMATCH:
+        return "TYPE-MISMATCH";
+    case PMIX_ERR_PROC_ENTRY_NOT_FOUND:
+        return "PROC-ENTRY-NOT-FOUND";
+    case PMIX_ERR_UNKNOWN_DATA_TYPE:
+        return "UNKNOWN-DATA-TYPE";
+    case PMIX_ERR_WOULD_BLOCK:
+        return "WOULD-BLOCK";
+    case PMIX_ERR_READY_FOR_HANDSHAKE:
+        return "READY-FOR-HANDSHAKE";
+    case PMIX_ERR_HANDSHAKE_FAILED:
+        return "HANDSHAKE-FAILED";
+    case PMIX_ERR_INVALID_CRED:
+        return "INVALID-CREDENTIAL";
+    case PMIX_EXISTS:
+        return "EXISTS";
+
+    case PMIX_ERROR:
+        return "ERROR";
+    case PMIX_SUCCESS:
+        return "SUCCESS";
     }
-
-    return ret;
+    return "ERROR STRING NOT FOUND";
 }
 
-
-/* caller must free string */
-static int
-pmix_strerror_unknown(int errnum, char **str)
-{
-    int i;
-    *str = NULL;
-
-    for (i = 0 ; i < MAX_CONVERTERS ; ++i) {
-        if (0 != converters[i].init) {
-            if (errnum < converters[i].err_base && 
-                errnum > converters[i].err_max) {
-                asprintf(str, "Unknown error: %d (%s error %d)",
-                         errnum, converters[i].project, 
-                         errnum - converters[i].err_base);
-                return PMIX_SUCCESS;
-            }
-        }
-    }
-
-    asprintf(str, "Unknown error: %d", errnum);
-
-    return PMIX_SUCCESS;
-}
-
-
-void
-pmix_perror(int errnum, const char *msg)
-{
-    int ret;
-    const char* errmsg;
-    ret = pmix_strerror_int(errnum, &errmsg);
-
-    if (NULL != msg && errnum != PMIX_ERR_IN_ERRNO) {
-        fprintf(stderr, "%s: ", msg);
-    }
-
-    if (PMIX_SUCCESS != ret) {
-        if (errnum == PMIX_ERR_IN_ERRNO) {
-            perror(msg);
-        } else {
-            char *ue_msg;
-            ret = pmix_strerror_unknown(errnum, &ue_msg);
-            fprintf(stderr, "%s\n", ue_msg);
-            free(ue_msg);
-        }
-    } else {
-        fprintf(stderr, "%s\n", errmsg);
-    }
-
-    fflush(stderr);
-}
-
-/* big enough to hold long version */
-#define UNKNOWN_RETBUF_LEN 50
-static char unknown_retbuf[UNKNOWN_RETBUF_LEN];
-
-const char *
-pmix_strerror(int errnum)
-{
-    int ret;
-    const char* errmsg;
-
-    if (errnum == PMIX_ERR_IN_ERRNO) {
-        return strerror(errno);
-    }
-
-    ret = pmix_strerror_int(errnum, &errmsg);
-
-    if (PMIX_SUCCESS != ret) {
-        char *ue_msg;
-        ret = pmix_strerror_unknown(errnum, &ue_msg);
-        snprintf(unknown_retbuf, UNKNOWN_RETBUF_LEN, "%s", ue_msg);
-        free(ue_msg);
-        errno = EINVAL;
-        return (const char*) unknown_retbuf;
-    } else {
-        return errmsg;
-    }
-}
-
-
-int
-pmix_strerror_r(int errnum, char *strerrbuf, size_t buflen)
-{
-    const char* errmsg;
-    int ret, len;
-
-    ret = pmix_strerror_int(errnum, &errmsg);
-    if (PMIX_SUCCESS != ret) {
-        if (errnum == PMIX_ERR_IN_ERRNO) {
-            char *tmp = strerror(errno);
-            strncpy(strerrbuf, tmp, buflen);
-            return PMIX_SUCCESS;
-        } else {
-            char *ue_msg;
-            ret = pmix_strerror_unknown(errnum, &ue_msg);
-            len =  snprintf(strerrbuf, buflen, "%s", ue_msg);
-            free(ue_msg);
-            if (len > (int) buflen) {
-                errno = ERANGE;
-                return PMIX_ERR_OUT_OF_RESOURCE;
-            } else {
-                errno = EINVAL;
-                return PMIX_SUCCESS;
-            }
-        }
-    } else {
-        len =  snprintf(strerrbuf, buflen, "%s", errmsg);
-        if (len > (int) buflen) {
-            errno = ERANGE;
-            return PMIX_ERR_OUT_OF_RESOURCE;
-        } else {
-            return PMIX_SUCCESS;
-        }
-    }
-}
-
-
-int
-pmix_error_register(const char *project, int err_base, int err_max,
-                    pmix_err2str_fn_t converter)
-{
-    int i;
-
-    for (i = 0 ; i < MAX_CONVERTERS ; ++i) {
-        if (0 == converters[i].init) {
-            converters[i].init = 1;
-            strncpy(converters[i].project, project, MAX_CONVERTER_PROJECT_LEN);
-            converters[i].project[MAX_CONVERTER_PROJECT_LEN-1] = '\0';
-            converters[i].err_base = err_base;
-            converters[i].err_max = err_max;
-            converters[i].converter = converter;
-            return PMIX_SUCCESS;
-        }
-    }
-
-    return PMIX_ERR_OUT_OF_RESOURCE;
-}
-
-void pmix_errhandler_invoke(int error)
+void pmix_errhandler_invoke(int error, const char nspace[], int rank)
 {
     if (NULL != pmix_globals.errhandler) {
-        pmix_globals.errhandler(error);
+        pmix_globals.errhandler(error, nspace, rank);
     }
 }

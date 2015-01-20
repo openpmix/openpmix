@@ -21,7 +21,9 @@
 
 AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/src/api
 
-bin_PROGRAMS = pmix_test pmix_client pmi_client pmi2_client pmix_client2 pmix_srv_self pmix_server_api2
+bin_PROGRAMS = pmix_test pmix_client2
+
+#pmix_client pmi_client pmi2_client  pmix_srv_self pmix_server_api2
 
 pmix_test_SOURCES = \
         pmix_test.c
@@ -29,22 +31,22 @@ pmix_test_SOURCES = \
 pmix_test_LDADD = \
 	$(top_builddir)/libpmix-server.la 
 
-pmix_client_SOURCES = \
+#pmix_client_SOURCES = \
         pmix_client.c
 
-pmix_client_LDADD = \
+#pmix_client_LDADD = \
 	$(top_builddir)/libpmix.la
 
-pmi_client_SOURCES = \
+#pmi_client_SOURCES = \
         pmi_client.c
 
-pmi_client_LDADD = \
+#pmi_client_LDADD = \
 	$(top_builddir)/libpmix.la
 
-pmi2_client_SOURCES = \
+#pmi2_client_SOURCES = \
         pmi2_client.c
 
-pmi2_client_LDADD = \
+#pmi2_client_LDADD = \
 	$(top_builddir)/libpmix.la
 
 pmix_client2_SOURCES = \
@@ -53,14 +55,14 @@ pmix_client2_SOURCES = \
 pmix_client2_LDADD = \
 	$(top_builddir)/libpmix.la
 
-pmix_srv_self_SOURCES = \
+#pmix_srv_self_SOURCES = \
         pmix_srv_self.c pmix_srv_common.c
 
-pmix_srv_self_LDADD = \
+#pmix_srv_self_LDADD = \
 	$(top_builddir)/libpmix-server.la
 
-pmix_server_api2_SOURCES = \
+#pmix_server_api2_SOURCES = \
         pmix_server_api2.c pmix_srv_common.c
 
-pmix_server_api2_LDADD = \
+#pmix_server_api2_LDADD = \
 	$(top_builddir)/libpmix-server.la

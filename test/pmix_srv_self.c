@@ -277,7 +277,7 @@ void prepare_db(void)
         char sval[256], key[256];
 
         pmix_db[i] = malloc(sizeof(pmix_modex_data_t));
-        strcpy(pmix_db[i]->namespace, TEST_NAMESPACE);
+        strcpy(pmix_db[i]->nspace, TEST_NAMESPACE);
         pmix_db[i]->rank = i;
 
         /* Construct the buffer */

@@ -86,7 +86,6 @@ BEGIN_C_DECLS
  * these keys are RESERVED */
 #define PMIX_ATTR_UNDEF      NULL
 
-#define PMIX_JOBINFO         "pmix.jobinfo"     // (void) used internally to request all job-related info
 #define PMIX_CPUSET          "pmix.cpuset"      // (char*) hwloc bitmap applied to proc upon launch
 #define PMIX_CREDENTIAL      "pmix.cred"        // (opal_byte_object*) security credential assigned to proc
 #define PMIX_HOSTNAME        "pmix.hname"       // (char*) name of the host this proc is on
@@ -109,7 +108,7 @@ BEGIN_C_DECLS
 #define PMIX_LOCAL_PEERS     "pmix.lpeers"      // (char*) comma-delimited string of ranks on this node within this job
 #define PMIX_LOCAL_CPUSETS   "pmix.lcpus"       // (byte_object) packed names and cpusets of local peers
 /* size info */
-#define PMIX_UNIV_SIZE       "pmix.univ.size"   // (uint32_t) #procs in this namespace
+#define PMIX_UNIV_SIZE       "pmix.univ.size"   // (uint32_t) #procs in this nspace
 #define PMIX_JOB_SIZE        "pmix.job.size"    // (uint32_t) #procs in this job
 #define PMIX_LOCAL_SIZE      "pmix.local.size"  // (uint32_t) #procs in this job on this node
 #define PMIX_NODE_SIZE       "pmix.node.size"   // (uint32_t) #procs across all jobs on this node
@@ -121,7 +120,7 @@ BEGIN_C_DECLS
 
 /****    PMIX ERROR CONSTANTS    ****/
 /* PMIx errors are always negative, with 0 reserved for success */
-#define PMIX_ERROR_MIN  -38  // set equal to number of non-zero entries in enum
+#define PMIX_ERROR_MIN  -41  // set equal to number of non-zero entries in enum
 
 typedef enum {
     PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER = PMIX_ERROR_MIN,
@@ -163,7 +162,11 @@ typedef enum {
     PMIX_ERR_PROC_ENTRY_NOT_FOUND,
     PMIX_ERR_UNKNOWN_DATA_TYPE,
     PMIX_ERR_WOULD_BLOCK,
+    PMIX_ERR_READY_FOR_HANDSHAKE,
+    PMIX_ERR_HANDSHAKE_FAILED,
+    PMIX_ERR_INVALID_CRED,
     PMIX_EXISTS,
+    
     PMIX_ERROR,
     PMIX_SUCCESS
 } pmix_status_t;
@@ -224,9 +227,9 @@ typedef enum {
     PMIX_LOCAL,           // share to procs also on this node
     PMIX_REMOTE,          // share with procs not on this node
     PMIX_GLOBAL,          // share with all procs (local + remote)
-    PMIX_NAMESPACE,       // used by Publish to indicate data is available to namespace only
+    PMIX_NAMESPACE,       // used by Publish to indicate data is available to nspace only
     PMIX_UNIVERSAL,       // used by Publish to indicate data available to all
-    PMIX_USER             // used by Publish to indicate data available to all user-owned namespaces
+    PMIX_USER             // used by Publish to indicate data available to all user-owned nspaces
 } pmix_scope_t; 
 
 
@@ -269,7 +272,7 @@ void PMIx_free_value_data(pmix_value_t *val);
 void PMIx_free_value(pmix_value_t **val);
 
 typedef struct {
-    char namespace[PMIX_MAX_NSLEN];
+    char nspace[PMIX_MAX_NSLEN];
     int *ranks;
     size_t nranks;
 } pmix_range_t;
@@ -290,21 +293,27 @@ typedef struct {
 } pmix_app_t;
 
 typedef struct {
-    char namespace[PMIX_MAX_NSLEN];
+    char nspace[PMIX_MAX_NSLEN];
     int rank;
     uint8_t *blob;
     size_t size;
 } pmix_modex_data_t;
 
-/* callback handler for errors */
-typedef void (*pmix_errhandler_fn_t)(int error);
-
+/****    CALLBACK FUNCTIONS FOR ASYNC OPERATIONS    ****/
 /* callback function for non-blocking operations - the pmix_value_t
  * is "owned" by the PMIx client library. Memory cleanup will be
  * done by the library upon return from the callback function, so
  * the receiver must copy/protect the data prior to returning if
  * it needs to be retained */
-typedef void (*pmix_cbfunc_t)(int status, pmix_value_t *kv, void *cbdata);
+
+typedef void (*pmix_modex_cbfunc_t)(int status, pmix_modex_data_t data[],
+                                    size_t ndata, void *cbdata);
+typedef void (*pmix_spawn_cbfunc_t)(int status, char nspace[], void *cbdata);
+typedef void (*pmix_op_cbfunc_t)(int status, void *cbdata);
+typedef void (*pmix_lookup_cbfunc_t)(int status, pmix_info_t info[], size_t ninfo,
+                                     char nspace[], void *cbdata);
+typedef void (*pmix_notification_fn_t)(int status, const char nspace[], int rank);
+typedef void (*pmix_value_cbfunc_t)(int status, pmix_value_t *kv, void *cbdata);
 
 /* Key-Value pair management macros */
 // TODO: add all possible types/fields here.

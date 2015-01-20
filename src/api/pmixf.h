@@ -63,7 +63,9 @@ BEGIN_C_DECLS
  * currently is NO internal thread safety. */
 
 /* Init */
-pmix_status_t PMIx_Init(char nspace[], int *rank);
+pmix_status_t PMIx_Init(char nspace[], int *rank,
+                        struct event_base *evbase,
+                        char *mycredential);
 
 /* Finalize */
 pmix_status_t PMIx_Finalize(void);
@@ -91,13 +93,13 @@ pmix_status_t PMIx_Fence(const pmix_range_t ranges[],
  *
  * collect_data - false (0) indicates that the callback is just used as
  * a release and no data is to be returned at that time, true (1) indicates
- * that all modex data is to be locally cached in the process upon completion
- * of the fence operation. Locally cached data means that subsequent calls to
- * PMIx_Get can be serviced without communicating to/from the server, but at
- * the cost of increased memory footprint */
+ * that all modex data is to be included in the callback. Returned data
+ * is locally cached so that subsequent calls to PMIx_Get can be serviced
+ * without communicating to/from the server, but at the cost of increased
+ * memory footprint */
 pmix_status_t PMIx_Fence_nb(const pmix_range_t ranges[], size_t nranges,
                             int barrier, int collect_data,
-                            pmix_op_cbfunc_t cbfunc, void *cbdata);
+                            pmix_cbfunc_t cbfunc, void *cbdata);
 
 /* Put */
 pmix_status_t PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val);
@@ -109,7 +111,7 @@ pmix_status_t PMIx_Get(const char nspace[], int rank,
 /* Get_nb */
 pmix_status_t PMIx_Get_nb(const char nspace[], int rank,
                           const char key[],
-                          pmix_value_cbfunc_t cbfunc, void *cbdata);
+                          pmix_cbfunc_t cbfunc, void *cbdata);
 
 /* Publish - the "info" parameter
  * consists of an array of pmix_info_t objects that
@@ -121,10 +123,6 @@ pmix_status_t PMIx_Get_nb(const char nspace[], int rank,
 pmix_status_t PMIx_Publish(pmix_scope_t scope,
                            const pmix_info_t info[],
                            size_t ninfo);
-pmix_status_t PMIx_Publish_nb(pmix_scope_t scope,
-                              const pmix_info_t info[],
-                              size_t ninfo,
-                              pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Lookup - the "info" parameter consists of an array of
  * pmix_info_t objects that specify the requested
@@ -136,67 +134,32 @@ pmix_status_t PMIx_Publish_nb(pmix_scope_t scope,
 pmix_status_t PMIx_Lookup(pmix_scope_t scope,
                           pmix_info_t info[], size_t ninfo,
                           char nspace[]);
-pmix_status_t PMIx_Lookup_nb(pmix_scope_t scope, char **keys,
-                             pmix_lookup_cbfunc_t cbfunc, void *cbdata);
 
 /* Unpublish - the "info" parameter
  * consists of an array of pmix_info_t objects */
 pmix_status_t PMIx_Unpublish(pmix_scope_t scope,
                              const pmix_info_t info[],
                              size_t ninfo);
-pmix_status_t PMIx_Unpublish_nb(pmix_scope_t scope,
-                                const pmix_info_t info[],
-                                size_t ninfo,
-                                pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Spawn a new job */
 pmix_status_t PMIx_Spawn(const pmix_app_t apps[],
-                         size_t napps, char nspace[]);
-pmix_status_t PMIx_Spawn_nb(const pmix_app_t apps[], size_t napps,
-                            pmix_spawn_cbfunc_t cbfunc, void *cbdata);
+                         size_t napps,
+                         char nspace[]);
 
-/* Record the specified processes as "connected". Both blocking and non-blocking
- * versions are provided. This means that the resource
- * manager should treat the failure of any process in the specified group as
- * a reportable event, and take appropriate action. The callback function is
- * to be called once all participating processes have called connect. Note that
- * a process can only engage in *one* connect operation involving the identical
- * set of ranges at a time. However, a process *can* be simultaneously engaged
- * in multiple connect operations, each involving a different set of ranges */
-pmix_status_t PMIx_Connect(const pmix_range_t ranges[], size_t nranges);
-
-pmix_status_t PMIx_Connect_nb(const pmix_range_t ranges[], size_t nranges,
-                              pmix_op_cbfunc_t cbfunc, void *cbdata);
-                              
-/* Disconnect a previously connected set of processes. An error will be returned
- * if the specified set of ranges was not previously "connected". As above, a process
- * may be involved in multiple simultaneous disconnect operations. However, a process
- * is not allowed to reconnect to a set of ranges that has not fully completed
- * disconnect - i.e., you have to fully disconnect before you can reconnect to the
- * same group of processes. */
-pmix_status_t PMIx_Disconnect(const pmix_range_t ranges[], size_t nranges);
-
-pmix_status_t PMIx_Disconnect_nb(const pmix_range_t ranges[], size_t nranges,
-                                 pmix_op_cbfunc_t cbfunc, void *cbdata);
-
-/* Register an errhandler to report errors. Two types of errors
- * will be reported:
- *
- * (a) those that occur within the client library, but are not
- *     reportable via the API itself (e.g., loss of connection to
- *     the server). These errors typically occur during behind-the-scenes
- *     non-blocking operations.
- *
- * (b) job-related errors such as the failure of another process in
- *     the job, impending failure of hardware within the job's
- *     usage footprint, etc.
- *
- * In both cases, the errhandler function will be given the error
- * code, plus the namespace and rank of the affected process. */
-void PMIx_Register_errhandler(pmix_notification_fn_t errhandler);
+/* register an errhandler to report errors that occur
+ * within the client library, but are not reportable
+ * via the API itself (e.g., loss of connection to
+ * the server) */
+void PMIx_Register_errhandler(pmix_errhandler_fn_t errhandler);
 
 /* deregister the errhandler */
 void PMIx_Deregister_errhandler(void);
+
+/* connect */
+pmix_status_t PMIx_Connect(const pmix_range_t ranges[], size_t nranges);
+
+/* disconnect */
+pmix_status_t PMIx_Disconnect(const pmix_range_t ranges[], size_t nranges);
 
 /* Key-Value pair management macros */
 // TODO: add all possible types/fields here.

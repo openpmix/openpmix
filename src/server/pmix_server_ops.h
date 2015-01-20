@@ -1,0 +1,79 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
+/*
+ * Copyright (c) 2015      Intel, Inc. All rights reserved
+ * Copyright (c) 2015      Artem Y. Polyakov <artpol84@gmail.com>.
+ *                         All rights reserved.
+ * $COPYRIGHT$
+ */
+
+#ifndef PMIX_SERVER_OPS_H
+#define PMIX_SERVER_OPS_H
+
+#include "pmix_config.h"
+#include "src/api/pmix_server.h"
+#include "src/usock/usock.h"
+
+typedef struct {
+    pmix_list_item_t super;
+    pmix_peer_t *peer;
+    uint32_t tag;
+} pmix_server_caddy_t;
+OBJ_CLASS_DECLARATION(pmix_server_caddy_t);
+
+typedef struct {
+    pmix_list_item_t super;
+    bool active;
+    pmix_range_t *ranges;
+    size_t nranges;
+    pmix_list_t locals;
+    pmix_list_t *trklist;
+} pmix_server_trkr_t;
+OBJ_CLASS_DECLARATION(pmix_server_trkr_t);
+
+typedef struct {
+    pmix_list_t peers;
+    pmix_list_t fence_ops;
+    pmix_list_t connect_ops;
+    pmix_list_t disconnect_ops;
+} pmix_server_globals_t;
+
+#define PMIX_PEER_CADDY(c, p, t)                \
+    do {                                        \
+        (c) = OBJ_NEW(pmix_server_caddy_t);     \
+        OBJ_RETAIN((p));                        \
+        (c)->peer = (p);                        \
+        (c)->tag = (t);                         \
+    } while(0);
+
+int pmix_server_abort(pmix_buffer_t *buf,
+                      pmix_op_cbfunc_t cbfunc, void *cbdata);
+
+int pmix_server_fence(pmix_server_caddy_t *cd,
+                      pmix_buffer_t *buf,
+                      pmix_modex_cbfunc_t modexcbfunc,
+                      pmix_op_cbfunc_t opcbfunc);
+
+int pmix_server_get(pmix_buffer_t *buf,
+                    pmix_modex_cbfunc_t cbfunc, void *cbdata);
+
+int pmix_server_publish(pmix_buffer_t *buf,
+                        pmix_op_cbfunc_t cbfunc, void *cbdata);
+
+int pmix_server_lookup(pmix_buffer_t *buf,
+                       pmix_lookup_cbfunc_t cbfunc, void *cbdata);
+
+int pmix_server_unpublish(pmix_buffer_t *buf,
+                          pmix_op_cbfunc_t cbfunc, void *cbdata);
+
+int pmix_server_spawn(pmix_buffer_t *buf,
+                      pmix_spawn_cbfunc_t cbfunc,
+                      void *cbdata);
+
+int pmix_server_connect(pmix_server_caddy_t *cd,
+                        pmix_buffer_t *buf, bool disconnect,
+                        pmix_op_cbfunc_t cbfunc);
+
+extern pmix_server_module_t pmix_host_server;
+extern pmix_server_globals_t pmix_server_globals;
+
+#endif // PMIX_SERVER_OPS_H

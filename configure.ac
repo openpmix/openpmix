@@ -1,9 +1,5 @@
 # -*- shell-script -*-
 #
-# PMIx copyrights:
-# Copyright (c) 2013      Intel, Inc. All rights reserved
-#
-#########################
 # This code has been adapted from opal_get_version.m4sh in the Open MPI
 # code base - per the Open MPI license, all copyrights are retained below.
 #
@@ -26,7 +22,7 @@
 # Copyright (c) 2012      Oracle and/or its affiliates.  All rights reserved.
 # Copyright (c) 2013      Mellanox Technologies, Inc.
 #                         All rights reserved.
-#########################
+# Copyright (c) 2014-2015 Intel, Inc. All rights reserved
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -57,7 +53,15 @@ PMIX_CONFIGURE_SETUP
 pmix_show_title "Configuring PMIx"
 
 # Init automake
+PMIX_VAR_SCOPE_PUSH([CFLAGS_save])
+CFLAGS_save=$CFLAGS
 AC_USE_SYSTEM_EXTENSIONS
+# AC_USE_SYSTEM_EXTENSIONS will modify CFLAGS if nothing was in there
+# beforehand.  We don't want that.  So if there was nothing in
+# CFLAGS, put nothing back in there.
+AS_IF([test -z "$CFLAGS_save"], [CFLAGS=])
+PMIX_VAR_SCOPE_POP
+
 AM_INIT_AUTOMAKE([foreign dist-bzip2 subdir-objects no-define 1.12.2 tar-ustar -Wall -Werror])
 # SILENT_RULES is new in AM 1.11, but we require 1.11 or higher via
 # autogen.  Limited testing shows that calling SILENT_RULES directly
@@ -792,6 +796,20 @@ PMIX_LIBEVENT_CONFIG
 pmix_show_title "HWLOC"
 
 PMIX_HWLOC_CONFIG
+
+##################################
+# SASL
+##################################
+pmix_show_title "SASL"
+
+PMIX_SASL_CONFIG
+
+##################################
+# Munge
+##################################
+pmix_show_title "Munge"
+
+PMIX_MUNGE_CONFIG
 
 ############################################################################
 # Libtool: part two

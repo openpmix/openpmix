@@ -20,7 +20,7 @@
 #define PMIX_UTIL_ERROR_H
 
 #include "pmix_config.h"
-
+#include "src/api/pmix_common.h"
 #include "src/util/output.h"
 
 BEGIN_C_DECLS
@@ -29,21 +29,8 @@ BEGIN_C_DECLS
     pmix_output(0, "PMIX ERROR: %s in file %s at line %d", \
                 pmix_strerror((r)), __FILE__, __LINE__);
 
-#define PMIX_REPORT_ERROR(e) pmix_errhandler_invoke(e)
-
-/**
- * Prints error message for errnum on stderr
- *
- * Print the error message corresponding to the value of \c errnum and
- * writes it, followed by a newline, to the standard error file
- * descriptor.  If the argument \c msg is non-NULL, this string is
- * prepended to the message string and separated from it by a colon
- * and a space.  Otherwise, only the error message string is printed.
- *
- * If errnum is PMIX_ERR_IN_ERRNO, the system perror is called with
- * the argument \c msg.
- */
-PMIX_DECLSPEC void pmix_perror(int errnum, const char *msg);
+#define PMIX_REPORT_ERROR(e) \
+    pmix_errhandler_invoke(e, pmix_globals.nspace, pmix_globals.rank)
 
 /**
  * Return string for given error message
@@ -59,38 +46,9 @@ PMIX_DECLSPEC void pmix_perror(int errnum, const char *msg);
  * If the errnum is not a known value, the returned value may be
  * overwritten by subsequent calls to pmix_strerror.
  */
-PMIX_DECLSPEC const char *pmix_strerror(int errnum);
+PMIX_DECLSPEC const char *pmix_strerror(pmix_status_t errnum);
 
-/**
- * Return string for given error message
- * 
- * Similar to pmix_strerror, but a buffer is passed in which is filled
- * with a string (up to buflen - 1 characters long) containing the
- * error message corresponding to \c errnum.  Unlike pmix_strerror(),
- * if an unknown value for \c errnum is passed, the returned buffer
- * will not be overwritten by subsequent calls to pmix_strerror_r().
- */
-PMIX_DECLSPEC int pmix_strerror_r(int errnum, char *strerrbuf, size_t buflen);
-
-
-typedef int (*pmix_err2str_fn_t)(int errnum, const char **str);
-
-/**
- * \internal
- *
- * Register a handler for converting errnums to error strings
- *
- * Handlers will be invoked by pmix_perror() , pmix_strerror(), and
- * pmix_strerror_r() to return the appropriate values.
- *
- * \note A maximum of 5 converters can be registered.  The 6th
- * converter registration attempt will return PMIX_ERR_OUT_OF_RESOURCE
- */
-PMIX_DECLSPEC int pmix_error_register(const char *project,
-                                      int err_base, int err_max,
-                                      pmix_err2str_fn_t converter);
-
-PMIX_DECLSPEC void pmix_errhandler_invoke(int error);
+PMIX_DECLSPEC void pmix_errhandler_invoke(int error, const char nspace[], int rank);
 
 END_C_DECLS
 

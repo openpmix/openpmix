@@ -564,7 +564,7 @@ int pmix_bfrop_pack_range(pmix_buffer_t *buffer, const void *src,
     range = (pmix_range_t *) src;
     
     for (i = 0; i < num_vals; ++i) {
-        char *ptr = range[i].namespace;
+        char *ptr = range[i].nspace;
         if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &ptr, 1, PMIX_STRING))) {
             return ret;
         }
@@ -645,19 +645,19 @@ int pmix_bfrop_pack_app(pmix_buffer_t *buffer, const void *src,
 int pmix_bfrop_pack_kval(pmix_buffer_t *buffer, const void *src,
                          int32_t num_vals, pmix_data_type_t type)
 {
-    pmix_kval_t **ptr;
+    pmix_kval_t *ptr;
     int32_t i;
     int ret;
 
-    ptr = (pmix_kval_t **) src;
+    ptr = (pmix_kval_t *) src;
     
     for (i = 0; i < num_vals; ++i) {
         /* pack the key */
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &ptr[i]->key, 1, PMIX_STRING))) {
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &ptr[i].key, 1, PMIX_STRING))) {
             return ret;
         }
         /* pack the value */
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_value(buffer, ptr[i]->value, 1, PMIX_INT))) {
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_value(buffer, ptr[i].value, 1, PMIX_INT))) {
             return ret;
         }
     }
@@ -668,8 +668,7 @@ int pmix_bfrop_pack_kval(pmix_buffer_t *buffer, const void *src,
 int pmix_bfrop_pack_array(pmix_buffer_t *buffer, const void *src,
                           int32_t num_vals, pmix_data_type_t type)
 {
-    // Functional is not provided yet!
-    abort();
+    return PMIX_ERR_NOT_IMPLEMENTED;
 }
 
 #if PMIX_HAVE_HWLOC
@@ -741,7 +740,7 @@ int pmix_bfrop_pack_modex(pmix_buffer_t *buffer, const void *src,
     ptr = (pmix_modex_data_t *) src;
     
     for (i = 0; i < num_vals; ++i) {
-        foo = ptr[i].namespace;
+        foo = ptr[i].nspace;
         if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &foo, 1, PMIX_STRING))) {
             return ret;
         }

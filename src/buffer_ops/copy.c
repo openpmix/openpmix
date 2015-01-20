@@ -387,7 +387,7 @@ int pmix_bfrop_copy_range(pmix_range_t **dest, pmix_range_t *src,
     if (NULL == *dest) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
-    (void)strncpy((*dest)->namespace, src->namespace, PMIX_MAX_NSLEN);
+    (void)strncpy((*dest)->nspace, src->nspace, PMIX_MAX_NSLEN);
     (*dest)->nranks = src->nranks;
     if (0 < src->nranks) {
         (*dest)->ranks = (int*)malloc(src->nranks * sizeof(int));
@@ -413,7 +413,7 @@ int pmix_bfrop_copy_modex(pmix_modex_data_t **dest, pmix_modex_data_t *src,
     if (NULL == *dest) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
-    (void)strncpy((*dest)->namespace, src->namespace, PMIX_MAX_NSLEN);
+    (void)strncpy((*dest)->nspace, src->nspace, PMIX_MAX_NSLEN);
     (*dest)->rank = src->rank;
     (*dest)->blob = NULL;
     (*dest)->size = 0;

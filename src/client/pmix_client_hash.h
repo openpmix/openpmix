@@ -21,13 +21,13 @@ int pmix_client_hash_init(void);
 
 void pmix_client_hash_finalize(void);
 
-int pmix_client_hash_store(const char *namespace, int rank,
+int pmix_client_hash_store(const char *nspace, int rank,
                            pmix_kval_t *kv);
 
-int pmix_client_hash_fetch(const char *namespace, int rank,
+int pmix_client_hash_fetch(const char *nspace, int rank,
                            const char *key, pmix_value_t **kvs);
 
-int pmix_client_hash_remove_data(const char *namespace,
+int pmix_client_hash_remove_data(const char *nspace,
                                  int rank, const char *key);
 
 END_C_DECLS
