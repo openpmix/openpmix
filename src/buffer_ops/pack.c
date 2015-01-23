@@ -588,7 +588,6 @@ int pmix_bfrop_pack_app(pmix_buffer_t *buffer, const void *src,
     pmix_app_t *app;
     int32_t i, j, nvals;
     int ret;
-    char *foo;
     
     app = (pmix_app_t *) src;
     
@@ -623,17 +622,8 @@ int pmix_bfrop_pack_app(pmix_buffer_t *buffer, const void *src,
         if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_sizet(buffer, &app[i].ninfo, 1, PMIX_SIZE))) {
             return ret;
         }
-        for (j=0; j < (int32_t)app[i].ninfo; j++) {
-            foo = app[i].info[j].key;
-            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &foo, 1, PMIX_STRING))) {
-                return ret;
-            }
-            /* pack the type */
-            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int(buffer, &app[i].info[j].value.type, 1, PMIX_INT))) {
-                return ret;
-            }
-            /* pack value */
-            if (PMIX_SUCCESS != (ret = pack_val(buffer, &app[i].info[j].value))) {
+        if (0 < app[i].ninfo) {
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_info(buffer, app[i].info, app[i].ninfo, PMIX_INFO))) {
                 return ret;
             }
         }

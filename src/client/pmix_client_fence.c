@@ -185,36 +185,38 @@ static int unpack_return(pmix_buffer_t *data)
     }
 
     /* if data was returned, unpack and store it */
-    mdx = (pmix_modex_data_t*)malloc(np * sizeof(pmix_modex_data_t));
-    cnt = np;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(data, mdx, &cnt, PMIX_MODEX))) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-    /* now unpack and store the values - everything goes into our internal store */
-    for (i=0; i < np; i++) {
-        OBJ_CONSTRUCT(&buf, pmix_buffer_t);
-        PMIX_LOAD_BUFFER(&buf, mdx[i].blob, mdx[i].size);
-        cnt = 1;
-        kp = OBJ_NEW(pmix_kval_t);
-        while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&buf, kp, &cnt, PMIX_KVAL))) {
-            if (PMIX_SUCCESS != (rc = pmix_client_hash_store(mdx[i].nspace, mdx[i].rank, kp))) {
-                PMIX_ERROR_LOG(rc);
-            }
-            OBJ_RELEASE(kp);  // maintain acctg
+    if (0 < np) {
+        mdx = (pmix_modex_data_t*)malloc(np * sizeof(pmix_modex_data_t));
+        cnt = np;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(data, mdx, &cnt, PMIX_MODEX))) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        /* now unpack and store the values - everything goes into our internal store */
+        for (i=0; i < np; i++) {
+            OBJ_CONSTRUCT(&buf, pmix_buffer_t);
+            PMIX_LOAD_BUFFER(&buf, mdx[i].blob, mdx[i].size);
             cnt = 1;
             kp = OBJ_NEW(pmix_kval_t);
+            while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&buf, kp, &cnt, PMIX_KVAL))) {
+                if (PMIX_SUCCESS != (rc = pmix_client_hash_store(mdx[i].nspace, mdx[i].rank, kp))) {
+                    PMIX_ERROR_LOG(rc);
+                }
+                OBJ_RELEASE(kp);  // maintain acctg
+                cnt = 1;
+                kp = OBJ_NEW(pmix_kval_t);
+            }
+            OBJ_RELEASE(kp);  // maintain acctg
+            OBJ_DESTRUCT(&buf);  // free's the data region
+            if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
         }
-        OBJ_RELEASE(kp);  // maintain acctg
-        OBJ_DESTRUCT(&buf);  // free's the data region
-        if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+        if (PMIX_SUCCESS != rc && PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
             PMIX_ERROR_LOG(rc);
+        } else {
+            rc = PMIX_SUCCESS;
         }
-    }
-    if (PMIX_SUCCESS != rc && PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
-        PMIX_ERROR_LOG(rc);
-    } else {
-        rc = PMIX_SUCCESS;
     }
 
     return rc;

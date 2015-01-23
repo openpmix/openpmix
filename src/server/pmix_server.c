@@ -672,7 +672,7 @@ static void op_cbfunc(int status, void *cbdata)
         return;
     }
     /* send a copy to the originator */
-    PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->tag, reply);
+    PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
     /* cleanup */
     OBJ_RELEASE(cd);
 }
@@ -697,7 +697,7 @@ static void spawn_cbfunc(int status, char *nspace, void *cbdata)
         return;
     }
     /* tell the originator the result */
-    PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->tag, reply);
+    PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
     /* cleanup */
     OBJ_RELEASE(cd);
 }
@@ -717,11 +717,26 @@ static void lookup_cbfunc(int status, pmix_info_t info[], size_t ninfo,
         return;
     }
     /* pack the returned nspace */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &nspace, 1, PMIX_STRING))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_RELEASE(reply);
+        return;
+    }
 
     /* pack the returned info objects */
-    
-    /* send a copy to the originator */
-    PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->tag, reply);
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &ninfo, 1, PMIX_SIZE))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_RELEASE(reply);
+        return;
+    }
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, info, ninfo, PMIX_INFO))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_RELEASE(reply);
+        return;
+    }
+
+    /* send to the originator */
+    PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
     /* cleanup */
     OBJ_RELEASE(cd);
 }
@@ -768,7 +783,7 @@ static void modex_cbfunc(int status, pmix_modex_data_t data[],
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "server:modex_cbfunc reply being sent to %s:%d",
                             cd->peer->nspace, cd->peer->rank);
-       PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->tag, reply);
+       PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
     }
     OBJ_RELEASE(reply);  // maintain accounting
     pmix_list_remove_item(tracker->trklist, &tracker->super);
@@ -811,11 +826,47 @@ static void get_cbfunc(int status, pmix_modex_data_t data[],
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "server:get_cbfunc reply being sent to %s:%d",
                         cd->peer->nspace, cd->peer->rank);
-    PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->tag, reply);
+    PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
 
  cleanup:
     OBJ_RELEASE(cd);
 }
+
+static void cnct_cbfunc(int status, void *cbdata)
+{
+    pmix_server_trkr_t *tracker = (pmix_server_trkr_t*)cbdata;
+    pmix_buffer_t *reply;
+    int rc;
+    pmix_server_caddy_t *cd;
+    
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "server:cnct_cbfunc called");
+
+    if (NULL == tracker) {
+        /* nothing to do */
+        return;
+    }
+    
+    /* setup the reply, starting with the returned status */
+    reply = OBJ_NEW(pmix_buffer_t);
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &status, 1, PMIX_INT))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_RELEASE(reply);
+        return;
+    }
+    /* loop across all procs in the tracker, sending them the reply */
+    PMIX_LIST_FOREACH(cd, &tracker->locals, pmix_server_caddy_t) {
+        OBJ_RETAIN(reply);
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "server:cnct_cbfunc reply being sent to %s:%d",
+                            cd->peer->nspace, cd->peer->rank);
+       PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
+    }
+    OBJ_RELEASE(reply);  // maintain accounting
+    pmix_list_remove_item(tracker->trklist, &tracker->super);
+    OBJ_RELEASE(tracker);
+}
+
 
 /* the switchyard is the primary message handling function. It's purpose
  * is to take incoming commands (packed into a buffer), unpack them,
@@ -861,7 +912,7 @@ static int server_switchyard(pmix_peer_t *peer, uint32_t tag,
     }
         
     if (PMIX_FENCENB_CMD == cmd) {
-        PMIX_PEER_CADDY(cd, peer, tag); 
+        PMIX_PEER_CADDY(cd, peer, tag);
         if (PMIX_SUCCESS != (rc = pmix_server_fence(cd, buf, modex_cbfunc, op_cbfunc))) {
             PMIX_ERROR_LOG(rc);
         }
@@ -884,6 +935,8 @@ static int server_switchyard(pmix_peer_t *peer, uint32_t tag,
         if (NULL != pmix_host_server.terminated) {
             rc = pmix_host_server.terminated(peer->nspace, peer->rank);
         }
+        PMIX_PEER_CADDY(cd, peer, tag);
+        op_cbfunc(rc, cd);
         /* turn off the recv event */
         if (peer->recv_ev_active) {
             event_del(&peer->recv_event);
@@ -931,7 +984,7 @@ static int server_switchyard(pmix_peer_t *peer, uint32_t tag,
         
     if (PMIX_CONNECTNB_CMD == cmd) {
         PMIX_PEER_CADDY(cd, peer, tag);
-        if (PMIX_SUCCESS != (rc = pmix_server_connect(cd, buf, false, op_cbfunc))) {
+        if (PMIX_SUCCESS != (rc = pmix_server_connect(cd, buf, false, cnct_cbfunc))) {
             PMIX_ERROR_LOG(rc);
         }
         return rc;
@@ -939,7 +992,7 @@ static int server_switchyard(pmix_peer_t *peer, uint32_t tag,
 
     if (PMIX_DISCONNECTNB_CMD == cmd) {
         PMIX_PEER_CADDY(cd, peer, tag);
-        if (PMIX_SUCCESS != (rc = pmix_server_connect(cd, buf, true, op_cbfunc))) {
+        if (PMIX_SUCCESS != (rc = pmix_server_connect(cd, buf, true, cnct_cbfunc))) {
             PMIX_ERROR_LOG(rc);
         }
         return rc;

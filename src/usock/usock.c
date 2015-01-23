@@ -278,3 +278,7 @@ static void pdes(pmix_peer_t *p)
 OBJ_CLASS_INSTANCE(pmix_peer_t,
                    pmix_list_item_t,
                    pcon, pdes);
+
+OBJ_CLASS_INSTANCE(pmix_timer_t,
+                   pmix_object_t,
+                   NULL, NULL);

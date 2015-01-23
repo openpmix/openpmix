@@ -42,7 +42,8 @@ int main(int argc, char **argv)
     bool barrier = false;
     bool collect = false;
     bool nonblocking = false;
-    
+    pmix_value_t *val = &value;
+
     /* check options */
     for (i=1; i < argc; i++) {
         if (0 == strcmp(argv[i], "--n") || 0 == strcmp(argv[i], "-n")) {
@@ -104,12 +105,15 @@ int main(int argc, char **argv)
     
     /* Check the predefined output */
     for (i=0; i < nprocs; i++) {
-        pmix_value_t *val = &value;
 
         for (j=0; j < 3; j++) {
             sprintf(key,"local-key-%d",j);
             if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, i, key, &val))) {
                 fprintf(stderr, "PMIx cli: PMIx_Get failed (%d)\n", rc);
+                goto error_out;
+            }
+            if (NULL == val) {
+                fprintf(stderr, "PMIx test: PMIx_Get returned NULL value\n");
                 goto error_out;
             }
             if (val->type != PMIX_INT || val->data.integer != (12340+j)) {
@@ -150,13 +154,29 @@ int main(int argc, char **argv)
         }
     }
 
+    /* ask for a non-existent key */
+    if (PMIX_SUCCESS == (rc = PMIx_Get(nspace, i, "foobar", &val))) {
+        fprintf(stderr, "PMIx_Get returned success instead of failure\n");
+        goto error_out;
+    }
+    if (PMIX_ERR_NOT_FOUND != rc) {
+        fprintf(stderr, "PMIx_Get returned %d instead of not_found\n", rc);
+    }
+    if (NULL != val) {
+        fprintf(stderr, "PMIx test: PMIx_Get did not return NULL value\n");
+        goto error_out;
+    }
+    fprintf(stderr, "GET OF NON-EXISTENT KEY CORRECTLY HANDLED\n");
+    
  error_out:
     /* finalize us */
     fprintf(stderr, "Finalizing pmix_client2 rank %d\n", rank);
     fflush(stderr);
     if (PMIX_SUCCESS != (rc = PMIx_Finalize())) {
         fprintf(stderr, "PMIx_Finalize failed: %d\n", rc);
+    } else {
+        fprintf(stderr, "PMIx_Finalize successfully completed\n");
     }
     
-    return 0;
+    exit(0);
 }

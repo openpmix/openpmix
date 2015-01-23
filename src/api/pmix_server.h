@@ -265,28 +265,39 @@ void PMIx_Register_errhandler(pmix_notification_fn_t errhandler);
 void PMIx_Deregister_errhandler(void);
 
 
-/****    Message processing     ****/
-typedef struct pmix_message_opaque pmix_message_t;
-typedef struct pmix_peer_hndl_opaque  pmix_peer_hndl_t;
-typedef struct {
-    int sd;
-    uint32_t tag;
-} pmix_peer_reply_t;
+/****    Message processing for the "lite" version of the  ****
+ ****    server convenience library. Note that we must     ****
+ ****    preserve the ability of the local server to       ****
+ ****    operate asynchronously - thus, the lite library   ****
+ ****    cannot block while waiting for a reply to be      ****
+ ****    generated                                         ****/
 
-pmix_message_t *PMIx_message_new(void);
-uint32_t PMIx_message_hdr_size(pmix_message_t *msg);
-void *PMIx_message_hdr_ptr(pmix_message_t *msg_opaq);
-int PMIx_message_hdr_fix(pmix_message_t *msg);
-void PMIx_message_tag_set(pmix_message_t *msg_opaq, uint32_t tag);
-uint32_t PMIx_message_pay_size(pmix_message_t *msg);
-void *PMIx_message_pay_ptr(pmix_message_t *msg);
-int PMIx_message_set_payload(pmix_message_t *msg_opaq, void *payload, size_t size);
-void PMIx_message_free(pmix_message_t *msg);
+/* retrieve the size of the PMIx message header so the host
+ * server messaging system can read the correct number of bytes.
+ * Note that the host will need to provide these bytes separately
+ * to the message processor */
+size_t PMIx_message_hdr_size(void);
 
-/****    Message processing     ****/
-int PMIx_server_set_handlers(pmix_server_module_t *module);
-size_t PMIx_server_process_msg(int sd, pmix_message_t *msg,
-                                 pmix_message_t **reply);
+/* given the header read by the host server, return the number of
+ * bytes the client included in the payload of the message so
+ * the host server can read them. These bytes will need to be
+ * provided separately to the message processor */
+size_t PMIx_message_payload_size(char *hdr);
+
+/* define a callback function by which the convenience library can
+ * request that a message be sent via the specified socket. The PMIx
+ * header will be included in the provided payload */
+typedef void (*pmix_send_message_cbfunc_t)(int sd, char *payload, size_t size);
+
+/* process a received PMIx client message, sending any desired return
+ * via the provided callback function. Params:
+ *
+ * sd - the socket where the message was received
+ * hdr - the header read by the host server messaging system
+ * msg - the payload read by the host server messaging system
+ * snd_msg - the function to be called when a reply is to be sent */
+int PMIx_server_process_msg(int sd, char *hdr, char *msg,
+                            pmix_send_message_cbfunc_t snd_msg);
 
 END_C_DECLS
 

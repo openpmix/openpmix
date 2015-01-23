@@ -178,6 +178,13 @@ typedef struct {
 } pmix_cb_t;
 OBJ_CLASS_DECLARATION(pmix_cb_t);
 
+typedef struct {
+    pmix_object_t super;
+    pmix_event_t ev;
+    void *cbdata;
+} pmix_timer_t;
+OBJ_CLASS_DECLARATION(pmix_timer_t);
+
 /* internal convenience macros */
 #define PMIX_ACTIVATE_SEND_RECV(p, b, cb, d)                            \
     do {                                                                \
@@ -221,6 +228,23 @@ OBJ_CLASS_DECLARATION(pmix_cb_t);
             usleep(10);                         \
         }                                       \
     } while (0);
+
+#define PMIX_TIMER_EVENT(s, f, d)                                       \
+    do {                                                                \
+        pmix_timer_t *tm;                                               \
+        struct timeval tv;                                              \
+        tm = OBJ_NEW(pmix_timer_t);                                     \
+        tm->cbdata = (d);                                               \
+        event_assign(&tm->ev, pmix_globals.evbase, -1, 0, (f), tm);     \
+        tv.tv_sec = (s);                                                \
+        tv.tv_usec = 0;                                                 \
+        PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,              \
+                             "defining timer event: %ld sec %ld usec at %s:%d", \
+                             (long)tv.tv_sec, (long)tv.tv_usec,         \
+                             __FILE__, __LINE__));                      \
+        event_add(&tm->ev, &tv);                                        \
+    }while(0);                                                          \
+
 
 /* usock common variables */
 typedef struct {

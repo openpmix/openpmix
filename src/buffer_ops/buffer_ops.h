@@ -207,8 +207,8 @@ typedef int (*pmix_bfrop_pack_fn_t)(pmix_buffer_t *buffer, const void *src,
  * @endcode
  */
 typedef int (*pmix_bfrop_unpack_fn_t)(pmix_buffer_t *buffer, void *dest,
-                                    int32_t *max_num_values,
-                                    pmix_data_type_t type);
+                                      int32_t *max_num_values,
+                                      pmix_data_type_t type);
 /**
  * Copy a payload from one buffer to another
  * This function will append a copy of the payload in one buffer into
@@ -221,7 +221,7 @@ typedef int (*pmix_bfrop_unpack_fn_t)(pmix_buffer_t *buffer, void *dest,
  * payload in the destination's buffer.
  */
 typedef int (*pmix_bfrop_copy_payload_fn_t)(pmix_buffer_t *dest,
-                                          pmix_buffer_t *src);
+                                            pmix_buffer_t *src);
 
 /**
  * BFROP initialization function.

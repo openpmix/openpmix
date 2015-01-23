@@ -10,7 +10,6 @@
 #
 
 server_headers += \
-        src/server/pmix_server_lite.h \
         src/server/pmix_server_ops.h
 
 server_sources += \

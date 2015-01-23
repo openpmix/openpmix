@@ -14,9 +14,17 @@
 #include "src/usock/usock.h"
 
 typedef struct {
+    pmix_object_t super;
+    int sd;
+    pmix_send_message_cbfunc_t cbfunc;
+} pmix_snd_caddy_t;
+OBJ_CLASS_DECLARATION(pmix_snd_caddy_t);
+
+typedef struct {
     pmix_list_item_t super;
+    pmix_usock_hdr_t hdr;
     pmix_peer_t *peer;
-    uint32_t tag;
+    pmix_snd_caddy_t snd;
 } pmix_server_caddy_t;
 OBJ_CLASS_DECLARATION(pmix_server_caddy_t);
 
@@ -37,12 +45,22 @@ typedef struct {
     pmix_list_t disconnect_ops;
 } pmix_server_globals_t;
 
-#define PMIX_PEER_CADDY(c, p, t)                \
-    do {                                        \
-        (c) = OBJ_NEW(pmix_server_caddy_t);     \
-        OBJ_RETAIN((p));                        \
-        (c)->peer = (p);                        \
-        (c)->tag = (t);                         \
+#define PMIX_PEER_CADDY(c, p, t)                                        \
+    do {                                                                \
+        (c) = OBJ_NEW(pmix_server_caddy_t);                             \
+        (void)memcpy((c)->hdr.nspace, (p)->nspace, PMIX_MAX_NSLEN);     \
+        (c)->hdr.rank = (p)->rank;                                      \
+        (c)->hdr.tag = (t);                                             \
+        OBJ_RETAIN((p));                                                \
+        (c)->peer = (p);                                                \
+    } while(0);
+
+#define PMIX_SND_CADDY(c, h, s)                                         \
+    do {                                                                \
+        (c) = OBJ_NEW(pmix_server_caddy_t);                             \
+        (void)memcpy(&(c)->hdr, &(h), sizeof(pmix_usock_hdr_t));        \
+        OBJ_RETAIN((s));                                                \
+        (c)->snd = (s);                                                 \
     } while(0);
 
 int pmix_server_abort(pmix_buffer_t *buf,

@@ -205,8 +205,8 @@ int pmix_server_fence(pmix_server_caddy_t *cd,
     }
     /* unpack any provided data blobs */
     cnt = 1;
-    (void)strncpy(mdx.nspace, cd->peer->nspace, PMIX_MAX_NSLEN);
-    mdx.rank = cd->peer->rank;
+    (void)strncpy(mdx.nspace, cd->hdr.nspace, PMIX_MAX_NSLEN);
+    mdx.rank = cd->hdr.rank;
     while (PMIX_SUCCESS == pmix_bfrop.unpack(buf, &scope, &cnt, PMIX_SCOPE)) {
         cnt = 1;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &bptr, &cnt, PMIX_BUFFER))) {
@@ -554,14 +554,24 @@ OBJ_CLASS_INSTANCE(pmix_server_trkr_t,
 static void cdcon(pmix_server_caddy_t *cd)
 {
     cd->peer = NULL;
+    OBJ_CONSTRUCT(&cd->snd, pmix_snd_caddy_t);
 }
 static void cddes(pmix_server_caddy_t *cd)
 {
     if (NULL != cd->peer) {
         OBJ_RELEASE(cd->peer);
     }
+    OBJ_DESTRUCT(&cd->snd);
 }
 OBJ_CLASS_INSTANCE(pmix_server_caddy_t,
                    pmix_list_item_t,
                    cdcon, cddes);
 
+
+static void pscon(pmix_snd_caddy_t *p)
+{
+    p->cbfunc = NULL;
+}
+OBJ_CLASS_INSTANCE(pmix_snd_caddy_t,
+                   pmix_object_t,
+                   pscon, NULL);

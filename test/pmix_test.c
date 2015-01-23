@@ -108,7 +108,10 @@ static uint32_t nprocs = 1;
 
 static void errhandler(int error, const char nspace[], int rank)
 {
-    test_complete = true;
+    --nprocs;
+    if (nprocs <= 0) {
+        test_complete = true;
+    }
 }
 
 int main(int argc, char **argv)
@@ -215,11 +218,11 @@ int main(int argc, char **argv)
         }
     }
 
-    /* hang around until the client finalizes */
+    /* hang around until the client(s) finalize */
     while (!test_complete) {
         usleep(10000);
     }
-
+    
     pmix_argv_free(client_argv);
     pmix_argv_free(client_env);
     
@@ -237,7 +240,10 @@ int main(int argc, char **argv)
 
 static int terminated(const char nspace[], int rank)
 {
-    test_complete = true;
+    --nprocs;
+    if (nprocs <= 0) {
+        test_complete = true;
+    }
     return PMIX_SUCCESS;
 }
 
@@ -380,7 +386,8 @@ static int get_modexnb_fn(const char nspace[], int rank,
     pmix_list_t data;
     pmix_modex_data_t *mdxarray;
     size_t n, size;
-
+    int rc=PMIX_SUCCESS;
+    
     pmix_output(0, "Getting data for %s:%d", nspace, rank);
 
     OBJ_CONSTRUCT(&data, pmix_list_t);
@@ -391,8 +398,11 @@ static int get_modexnb_fn(const char nspace[], int rank,
                         "test:get_modexnb returning %d array blocks",
                         (int)size);
     PMIX_LIST_DESTRUCT(&data);
+    if (0 == size) {
+        rc = PMIX_ERR_NOT_FOUND;
+    }
     if (NULL != cbfunc) {
-        cbfunc(PMIX_SUCCESS, mdxarray, size, cbdata);
+        cbfunc(rc, mdxarray, size, cbdata);
     }
     /* free the array */
     for (n=0; n < size; n++) {

@@ -23,6 +23,8 @@ AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_buildd
 
 bin_PROGRAMS = pmix_test pmix_client2
 
+check_PROGRAMS = pmix_test
+
 #pmix_client pmi_client pmi2_client  pmix_srv_self pmix_server_api2
 
 pmix_test_SOURCES = \

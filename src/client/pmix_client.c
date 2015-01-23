@@ -55,12 +55,17 @@
 #define PMIX_MAX_RETRIES 10
 
 static int usock_connect(struct sockaddr *address);
+static void myerrhandler(int status, const char nspace[], int rank)
+{
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:client default errhandler activated");
+}
 
 // global variables
 pmix_globals_t pmix_globals = {
     .evbase = NULL,
     .debug_output = -1,
-    .errhandler = NULL,
+    .errhandler = myerrhandler,
     .server = false,
 };
 pmix_client_globals_t pmix_client_globals = {
@@ -82,7 +87,7 @@ static void wait_cbfunc(int sd, pmix_usock_hdr_t *hdr,
 
     cb->active = false;
 }
-
+ 
 static void setup_globals(void)
 {
     OBJ_CONSTRUCT(&pmix_client_globals.myserver, pmix_peer_t);
@@ -589,7 +594,8 @@ static int recv_connect_ack(int sd)
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
-    if (0 < ninfo) {
+    pmix_output(0, "GOT %d INFOS", ninfo);
+   if (0 < ninfo) {
         info = (pmix_info_t*)malloc(ninfo * sizeof(pmix_info_t));
         cnt = ninfo;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&buf, info, &cnt, PMIX_INFO))) {
@@ -597,6 +603,7 @@ static int recv_connect_ack(int sd)
             free(info);
             goto cleanup;
         }
+        return PMIX_SUCCESS;
         for (i=0; i < ninfo; i++) {
             kv = OBJ_NEW(pmix_kval_t);
             kv->key = strdup(info[i].key);

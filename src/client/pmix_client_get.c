@@ -218,8 +218,8 @@ static int unpack_get_return(pmix_buffer_t *data, const char *key,
     int32_t cnt;
     pmix_buffer_t buf;
     size_t np, i;
-    pmix_kval_t kp;
-    pmix_modex_data_t mdx;
+    pmix_kval_t *kp;
+    pmix_modex_data_t *mdx;
     
     /* init the return */
     *val = NULL;
@@ -250,52 +250,52 @@ static int unpack_get_return(pmix_buffer_t *data, const char *key,
                         (int)np, (NULL == key) ? "NULL" : key);
 
     /* if data was returned, unpack and store it */
-    for (i=0; i < np; i++) {
-        /* get the next modex data */
-        cnt = 1;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(data, &mdx, &cnt, PMIX_MODEX))) {
-            if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
-                break;
-            }
+    if (0 < np) {
+        mdx = (pmix_modex_data_t*)malloc(np * sizeof(pmix_modex_data_t));
+        cnt = np;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(data, mdx, &cnt, PMIX_MODEX))) {
             PMIX_ERROR_LOG(rc);
             return rc;
         }
-        pmix_output_verbose(2, pmix_globals.debug_output,
-                            "pmix: unpacked blob %d of size %d",
-                            (int)i, (int)mdx.size);
-        if (NULL == mdx.blob) {
-            PMIX_ERROR_LOG(PMIX_ERROR);
-            return PMIX_ERROR;
-        }
-        /* now unpack and store the values - everything goes into our internal store */
-        OBJ_CONSTRUCT(&buf, pmix_buffer_t);
-        PMIX_LOAD_BUFFER(&buf, mdx.blob, mdx.size);
-        cnt = 1;
-        OBJ_CONSTRUCT(&kp, pmix_kval_t);
-        while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&buf, &kp, &cnt, PMIX_KVAL))) {
+        for (i=0; i < np; i++) {
             pmix_output_verbose(2, pmix_globals.debug_output,
-                                "pmix: unpacked key %s", kp.key);
-            if (PMIX_SUCCESS != (rc = pmix_client_hash_store(mdx.nspace, mdx.rank, &kp))) {
+                                "pmix: unpacked blob %d of size %d",
+                                (int)i, (int)mdx[i].size);
+            if (NULL == mdx[i].blob) {
+                PMIX_ERROR_LOG(PMIX_ERROR);
+                return PMIX_ERROR;
+            }
+            /* now unpack and store the values - everything goes into our internal store */
+            OBJ_CONSTRUCT(&buf, pmix_buffer_t);
+            PMIX_LOAD_BUFFER(&buf, mdx[i].blob, mdx[i].size);
+            cnt = 1;
+            kp = OBJ_NEW(pmix_kval_t);
+            while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&buf, kp, &cnt, PMIX_KVAL))) {
+                pmix_output_verbose(2, pmix_globals.debug_output,
+                                    "pmix: unpacked key %s", kp->key);
+                if (PMIX_SUCCESS != (rc = pmix_client_hash_store(mdx[i].nspace, mdx[i].rank, kp))) {
+                    PMIX_ERROR_LOG(rc);
+                }
+                if (NULL != key && 0 == strcmp(key, kp->key)) {
+                    pmix_output_verbose(2, pmix_globals.debug_output,
+                                        "pmix: found requested value");
+                    if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)val, kp->value, PMIX_VALUE))) {
+                        PMIX_ERROR_LOG(rc);
+                        OBJ_RELEASE(kp);
+                        return rc;
+                    }
+                }
+                OBJ_RELEASE(kp); // maintain acctg - hash_store does a retain
+                cnt = 1;
+                kp = OBJ_NEW(pmix_kval_t);
+            }
+            OBJ_RELEASE(kp);
+            OBJ_DESTRUCT(&buf);  // free's the data region
+            if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
                 PMIX_ERROR_LOG(rc);
             }
-            if (NULL != key && 0 == strcmp(key, kp.key)) {
-                    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix: found requested value");
-                if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)val, kp.value, PMIX_VALUE))) {
-                    PMIX_ERROR_LOG(rc);
-                    OBJ_DESTRUCT(&kp);
-                    return rc;
-                }
-            }
-            OBJ_DESTRUCT(&kp);
-            cnt = 1;
-            OBJ_CONSTRUCT(&kp, pmix_kval_t);
         }
-        OBJ_DESTRUCT(&kp);
-        OBJ_DESTRUCT(&buf);  // free's the data region
-        if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
-            PMIX_ERROR_LOG(rc);
-        }
+        free(mdx);
     }
     rc = PMIX_SUCCESS;
 

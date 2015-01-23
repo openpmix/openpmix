@@ -599,16 +599,16 @@ int pmix_bfrop_unpack_info(pmix_buffer_t *buffer, void *dest,
 
     ptr = (pmix_info_t *) dest;
     n = *num_vals;
-    
+
     for (i = 0; i < n; ++i) {
-        memset(ptr[i].key, 0, PMIX_MAX_VALLEN);
+        memset(ptr[i].key, 0, PMIX_MAX_KEYLEN);
         memset(&ptr[i].value, 0, sizeof(pmix_value_t));
         /* unpack key */
         m=1;
         if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_string(buffer, &tmp, &m, PMIX_STRING))) {
             return ret;
         }
-        (void)strncpy(ptr[i].key, tmp, PMIX_MAX_VALLEN);
+        (void)strncpy(ptr[i].key, tmp, PMIX_MAX_KEYLEN);
         free(tmp);
         /* unpack value - since the value structure is statically-defined
          * instead of a pointer in this struct, we directly unpack it to
@@ -777,22 +777,9 @@ int pmix_bfrop_unpack_app(pmix_buffer_t *buffer, void *dest,
         }
         if (0 < ptr[i].ninfo) {
             ptr[i].info = (pmix_info_t*)malloc(ptr[i].ninfo * sizeof(pmix_info_t));
-            for (k=0; k < (int32_t)ptr[i].ninfo; k++) {
-                memset(ptr[i].info[k].key, 0, PMIX_MAX_VALLEN);
-                memset(&ptr[i].info[k].value, 0, sizeof(pmix_value_t));
-                m=1;
-                if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_string(buffer, &tmp, &m, PMIX_STRING))) {
-                    return ret;
-                }
-                (void)strncpy(ptr[i].info[k].key, tmp, PMIX_MAX_VALLEN);
-                free(tmp);
-                m=1;
-                if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_int(buffer, &(ptr[i].info[k].value.type), &m, PMIX_INT))) {
-                    return ret;
-                }
-                if (PMIX_SUCCESS != (ret = unpack_val(buffer, &ptr[i].info[k].value))) {
-                    return ret;
-                }
+            m = ptr[i].ninfo;
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_info(buffer, &tmp, &m, PMIX_INFO))) {
+                return ret;
             }
         }
     }
