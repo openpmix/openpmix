@@ -65,7 +65,6 @@ static char *security_mode = NULL;
 // local functions
 static int start_listening(struct sockaddr_un *address);
 static void connection_handler(int incoming_sd, short flags, void* cbdata);
-static int authenticate_client(int sd, pmix_peer_t **peer);
 static void server_message_handler(int sd, pmix_usock_hdr_t *hdr,
                               pmix_buffer_t *buf, void *cbdata);
 // global variables
@@ -232,11 +231,6 @@ int PMIx_server_init(pmix_server_module_t *module,
     }
 
     return 0;
-}
-
-struct sockaddr_un PMIx_get_addr(void)
-{
-    return myaddress;
 }
 
 static void cleanup_server_state(void)
@@ -468,7 +462,7 @@ static void connection_handler(int incoming_sd, short flags, void* cbdata)
     /* receive identifier info from the client and authenticate it - the
      * function will lookup and return the peer object if the connection
      * is successfully authenticated */
-    if (PMIX_SUCCESS != authenticate_client(sd, &peer)) {
+    if (PMIX_SUCCESS != pmix_server_authenticate(sd, &peer, NULL)) {
         CLOSE_THE_SOCKET(sd);
         return;
     }
@@ -490,16 +484,18 @@ static void connection_handler(int incoming_sd, short flags, void* cbdata)
 /*  Receive the peer's identification info from a newly
  *  connected socket and verify the expected response.
  */
-static int authenticate_client(int sd, pmix_peer_t **peer)
+pmix_status_t pmix_server_authenticate(int sd, pmix_peer_t **peer,
+                                       pmix_buffer_t **reply)
 {
     char *msg, *version, *cred;
     int rc;
     pmix_usock_hdr_t hdr;
     pmix_peer_t *pr, *psave = NULL;
     size_t csize;
-    pmix_buffer_t buf;
+    pmix_buffer_t buf, *bptr;
     pmix_info_t *info;
     size_t i, ninfo;
+    bool found;
     
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "RECV CONNECT ACK FROM PEER ON SOCKET %d", sd);
@@ -507,6 +503,9 @@ static int authenticate_client(int sd, pmix_peer_t **peer)
     /* ensure all is zero'd */
     memset(&hdr, 0, sizeof(pmix_usock_hdr_t));
     *peer = NULL;
+    if (NULL != reply) {
+        *reply = NULL;
+    }
     
     if (PMIX_SUCCESS != (rc = pmix_usock_recv_blocking(sd, (char*)&hdr, sizeof(pmix_usock_hdr_t)))) {
         return rc;
@@ -546,18 +545,20 @@ static int authenticate_client(int sd, pmix_peer_t **peer)
                         "connect-ack version from client matches ours");
 
     /* see if we have this peer in our list */
+    psave = NULL;
+    found = false;
     PMIX_LIST_FOREACH(pr, &pmix_server_globals.peers, pmix_peer_t) {
         if (0 == strcmp(pr->nspace, hdr.nspace) &&
             pr->rank == hdr.rank) {
-            psave = pr;
+            found = true;
             if (pr->sd < 0) {
-                *peer = pr;
+                psave = pr;
                 pr->sd = sd;
                 break;
             }
         }
     }
-    if (NULL == psave) {
+    if (!found) {
         /* we don't know this peer, reject it */
         free(msg);
         return PMIX_ERR_NOT_FOUND;
@@ -565,15 +566,14 @@ static int authenticate_client(int sd, pmix_peer_t **peer)
     /* a peer can connect on multiple sockets
      * since it can fork/exec a child that also calls PMIx_Init, so
      * add it here if necessary */
-    if (NULL == *peer) {
+    if (NULL == psave) {
         /* need to create another tracker for this peer */
-        *peer = OBJ_NEW(pmix_peer_t);
-        (void)strncpy((*peer)->nspace, psave->nspace, PMIX_MAX_NSLEN);
-        (*peer)->rank = psave->rank;
-        (*peer)->sd = sd;
-        pmix_list_append(&pmix_server_globals.peers, &(*peer)->super);
+        psave = OBJ_NEW(pmix_peer_t);
+        (void)strncpy(psave->nspace, hdr.nspace, PMIX_MAX_NSLEN);
+        psave->rank = hdr.rank;
+        psave->sd = sd;
+        pmix_list_append(&pmix_server_globals.peers, &psave->super);
     }
-    psave = *peer;
     
     /* see if there is a credential */
     csize = strlen(version) + 1;
@@ -585,7 +585,7 @@ static int authenticate_client(int sd, pmix_peer_t **peer)
                                     "validation of client credential failed");
                 free(msg);
                 pmix_list_remove_item(&pmix_server_globals.peers, &psave->super);
-                OBJ_RELEASE(*peer);
+                OBJ_RELEASE(psave);
                 return rc;
             }
             pmix_output_verbose(2, pmix_globals.debug_output,
@@ -617,15 +617,21 @@ static int authenticate_client(int sd, pmix_peer_t **peer)
                                            &info, &ninfo);
         /* pack any returned info */
         if (0 == rc && NULL != info && 0 < ninfo) {
-            OBJ_CONSTRUCT(&buf, pmix_buffer_t);
-            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&buf, &ninfo, 1, PMIX_SIZE))) {
+            if (NULL == reply) {
+                OBJ_CONSTRUCT(&buf, pmix_buffer_t);
+                bptr = &buf;
+            } else {
+                bptr = OBJ_NEW(pmix_buffer_t);
+                *reply = bptr;
+            }
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(bptr, &ninfo, 1, PMIX_SIZE))) {
                 PMIX_ERROR_LOG(rc);
                 OBJ_DESTRUCT(&buf);
                 pmix_list_remove_item(&pmix_server_globals.peers, &psave->super);
                 OBJ_RELEASE(psave);
                 return rc;
             }
-            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&buf, info, ninfo, PMIX_INFO))) {
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(bptr, info, ninfo, PMIX_INFO))) {
                 PMIX_ERROR_LOG(rc);
                 OBJ_DESTRUCT(&buf);
                 pmix_list_remove_item(&pmix_server_globals.peers, &psave->super);
@@ -636,25 +642,31 @@ static int authenticate_client(int sd, pmix_peer_t **peer)
                 PMIx_free_value_data(&info[i].value);
             }
             free(info);
-            /* let the client know we are ready to go */
-            if (PMIX_SUCCESS != (rc = send_client_response(sd, PMIX_SUCCESS, &buf))) {
-                pmix_list_remove_item(&pmix_server_globals.peers, &psave->super);
-                OBJ_RELEASE(psave);
+            if (NULL == reply) {
+                /* let the client know we are ready to go */
+                if (PMIX_SUCCESS != (rc = send_client_response(sd, PMIX_SUCCESS, bptr))) {
+                    pmix_list_remove_item(&pmix_server_globals.peers, &psave->super);
+                    OBJ_RELEASE(psave);
+                }
             }
+            *peer = psave;
             return rc;
         }
     }
-    
-    /* let the client know we are ready to go */
-    if (PMIX_SUCCESS != (rc = send_client_response(sd, PMIX_SUCCESS, NULL))) {
-        pmix_list_remove_item(&pmix_server_globals.peers, &psave->super);
-        OBJ_RELEASE(psave);
-    }
 
+    if (NULL == reply) {
+        /* let the client know we are ready to go */
+        if (PMIX_SUCCESS != (rc = send_client_response(sd, PMIX_SUCCESS, NULL))) {
+            pmix_list_remove_item(&pmix_server_globals.peers, &psave->super);
+            OBJ_RELEASE(psave);
+        }
+    }
+    
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "connect-ack from client %s",
                         (PMIX_SUCCESS == rc) ? "completed" : "failed");
 
+    *peer = psave;
     return rc;
 }
 

@@ -35,6 +35,42 @@ size_t PMIx_message_payload_size(char *readhdr)
     return hdr->nbytes;
 }
 
+int PMIx_server_authenticate_client(int sd, pmix_send_message_cbfunc_t snd_msg)
+{
+    int rc;
+    pmix_peer_t *peer;
+    pmix_buffer_t *info, reply;
+    pmix_usock_hdr_t hdr;
+    
+    /* perform the authentication */
+    rc = pmix_server_authenticate(sd, &peer, &info);
+
+    if (NULL != snd_msg) {
+        /* pack the response, starting with rc */
+        OBJ_CONSTRUCT(&reply, pmix_buffer_t);
+        (void)pmix_bfrop.pack(&reply, &rc, 1, PMIX_INT);
+        if (NULL != info) {
+            /* transfer the data payload */
+            pmix_bfrop.copy_payload(&reply, info);
+            OBJ_RELEASE(info);
+        }
+        /* create the header */
+        (void)strncpy(hdr.nspace, pmix_globals.nspace, PMIX_MAX_NSLEN);
+        hdr.rank = pmix_globals.rank;
+        hdr.nbytes = reply.bytes_used;
+        hdr.type = PMIX_USOCK_IDENT;
+        hdr.tag = 0; // tag doesn't matter as we aren't matching to a recv
+
+        /* send the response */
+        snd_message(sd, &hdr, &reply, snd_msg);
+        /* protect the data */
+        reply.base_ptr = NULL;
+        OBJ_DESTRUCT(&reply);
+    }
+
+    return rc;
+}
+
 int PMIx_server_process_msg(int sd, char *hdrptr, char *msgptr,
                             pmix_send_message_cbfunc_t snd_msg)
 {

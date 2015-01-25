@@ -63,6 +63,9 @@ typedef struct {
         (c)->snd = (s);                                                 \
     } while(0);
 
+pmix_status_t pmix_server_authenticate(int sd, pmix_peer_t **peer,
+                                       pmix_buffer_t **reply);
+
 int pmix_server_abort(pmix_buffer_t *buf,
                       pmix_op_cbfunc_t cbfunc, void *cbdata);
 

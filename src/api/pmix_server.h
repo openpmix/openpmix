@@ -234,10 +234,6 @@ int PMIx_server_init(pmix_server_module_t *module,
  * memory usage is released */
 int PMIx_server_finalize(void);
 
-/* Get the sockaddr_un being used by the internal comm
- * system. */
-struct sockaddr_un PMIx_get_addr(void);
-
 /* Setup the environment of a child process to be forked
  * by the host so it can correctly interact with the PMIx
  * server. The PMIx client needs some setup information
@@ -288,6 +284,13 @@ size_t PMIx_message_payload_size(char *hdr);
  * request that a message be sent via the specified socket. The PMIx
  * header will be included in the provided payload */
 typedef void (*pmix_send_message_cbfunc_t)(int sd, char *payload, size_t size);
+
+/* given a socket, conduct the client-server authentication protocol
+ * to authenticate the requested connection. The function will return
+ * PMIX_SUCCESS if the connection is authenticated, and an appropriate
+ * PMIx error code if not. If the client is authenticated, it will
+ * be sent whatever initial job_info the host server can provide */
+int PMIx_server_authenticate_client(int sd, pmix_send_message_cbfunc_t snd_msg);
 
 /* process a received PMIx client message, sending any desired return
  * via the provided callback function. Params:
