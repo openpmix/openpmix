@@ -594,7 +594,6 @@ static int recv_connect_ack(int sd)
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
-    pmix_output(0, "GOT %d INFOS", ninfo);
    if (0 < ninfo) {
         info = (pmix_info_t*)malloc(ninfo * sizeof(pmix_info_t));
         cnt = ninfo;

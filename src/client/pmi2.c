@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2015 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
@@ -318,7 +318,7 @@ int PMI2_Job_Connect(const char jobid[], PMI2_Connect_comm_t *conn)
     pmix_status_t rc;
     pmix_range_t range;
 
-    (void)strncpy(range.nspace, jobid, PMIX_MAX_VALLEN);
+    (void)strncpy(range.nspace, jobid, PMIX_MAX_NSLEN);
     range.ranks = NULL;
     range.nranks = 0;
     rc = PMIx_Connect(&range, 1);
@@ -330,7 +330,7 @@ int PMI2_Job_Disconnect(const char jobid[])
     pmix_status_t rc;
     pmix_range_t range;
 
-    (void)strncpy(range.nspace, jobid, PMIX_MAX_VALLEN);
+    (void)strncpy(range.nspace, jobid, PMIX_MAX_NSLEN);
     range.ranks = NULL;
     range.nranks = 0;
     rc = PMIx_Disconnect(&range, 1);
