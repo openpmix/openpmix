@@ -86,7 +86,7 @@ int pmix_usock_send_blocking(int sd, char *ptr, size_t size)
     while (cnt < size) {
         retval = send(sd, (char*)ptr+cnt, size-cnt, 0);
         if (retval < 0) {
-            if ( pmix_socket_errno != EINTR ) {
+            if (pmix_socket_errno != EINTR) {
                 pmix_output(0, "usock_peer_send_blocking: send() to socket %d failed: %s (%d)\n",
                             sd, strerror(pmix_socket_errno),
                             pmix_socket_errno);
@@ -127,19 +127,19 @@ int pmix_usock_recv_blocking(int sd, char *data, size_t size)
         if (retval < 0) {
             if (pmix_socket_errno != EINTR ) {
                 /* If we overflow the listen backlog, it's
-                       possible that even though we finished the three
-                       way handshake, the remote host was unable to
-                       transition the connection from half connected
-                       (received the initial SYN) to fully connected
-                       (in the listen backlog).  We likely won't see
-                       the failure until we try to receive, due to
-                       timing and the like.  The first thing we'll get
-                       in that case is a RST packet, which receive
-                       will turn into a connection reset by peer
-                       errno.  In that case, leave the socket in
-                       CONNECT_ACK and propogate the error up to
-                       recv_connect_ack, who will try to establish the
-                       connection again */
+                   possible that even though we finished the three
+                   way handshake, the remote host was unable to
+                   transition the connection from half connected
+                   (received the initial SYN) to fully connected
+                   (in the listen backlog).  We likely won't see
+                   the failure until we try to receive, due to
+                   timing and the like.  The first thing we'll get
+                   in that case is a RST packet, which receive
+                   will turn into a connection reset by peer
+                   errno.  In that case, leave the socket in
+                   CONNECT_ACK and propogate the error up to
+                   recv_connect_ack, who will try to establish the
+                   connection again */
                 pmix_output_verbose(10, pmix_globals.debug_output,
                                     "blocking_recv received error %s from remote",
                                     strerror(pmix_socket_errno));
