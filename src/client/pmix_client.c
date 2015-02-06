@@ -618,7 +618,6 @@ static int recv_connect_ack(int sd)
             free(info);
             goto cleanup;
         }
-        return PMIX_SUCCESS;
         for (i=0; i < ninfo; i++) {
             kv = OBJ_NEW(pmix_kval_t);
             kv->key = strdup(info[i].key);

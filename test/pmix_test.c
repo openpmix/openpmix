@@ -423,13 +423,18 @@ static int get_job_info_fn(const char nspace[], int rank,
 {
     pmix_info_t *resp;
 
-    resp = (pmix_info_t*)malloc(sizeof(pmix_info_t));
+    pmix_output(0, "Getting job info for %s:%d", nspace, rank);
+    
+    resp = (pmix_info_t*)malloc(2 * sizeof(pmix_info_t));
     (void)strncpy(resp[0].key, PMIX_UNIV_SIZE, PMIX_MAX_KEYLEN);
     resp[0].value.type = PMIX_UINT32;
     resp[0].value.data.uint32 = nprocs;
+    (void)strncpy(resp[1].key, PMIX_SPAWNED, PMIX_MAX_KEYLEN);
+    resp[1].value.type = PMIX_UINT32;
+    resp[1].value.data.uint32 = 0;
 
     *info = resp;
-    *ninfo = 1;
+    *ninfo = 2;
     return PMIX_SUCCESS;
 }
 

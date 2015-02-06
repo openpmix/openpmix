@@ -56,7 +56,7 @@ int PMI_Init( int *spawned )
     if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
                                  PMIX_SPAWNED, &kv)) {
         rc = convert_int(spawned, kv);
-        OBJ_RELEASE(kv);
+        PMIx_free_value(&kv);
         return convert_err(rc);
     }
     /* if it wasn't found, then default to "not spawned" */
@@ -122,7 +122,7 @@ int PMI_Get_size(int *size)
     if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
                                  PMIX_JOB_SIZE, &kv)) {
         rc = convert_int(size, kv);
-        OBJ_RELEASE(kv);
+        PMIx_free_value(&kv);
         return convert_err(rc);
     }
     
@@ -151,7 +151,7 @@ int PMI_Get_universe_size(int *size)
     if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
                                  PMIX_UNIV_SIZE, &kv)) {
         rc = convert_int(size, kv);
-        OBJ_RELEASE(kv);
+        PMIx_free_value(&kv);
         return convert_err(rc);
     }
     return PMI_FAIL;
@@ -165,7 +165,7 @@ int PMI_Get_appnum(int *appnum)
     if (NULL != appnum && PMIx_Get(NULL, pmix_globals.rank,
                                    PMIX_APPNUM, &kv)) {
         rc = convert_int(appnum, kv);
-        OBJ_RELEASE(kv);
+        PMIx_free_value(&kv);
         return convert_err(rc);
     }
     
@@ -266,7 +266,7 @@ int PMI_Get_clique_size(int *size)
     if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
                                  PMIX_LOCAL_SIZE, &kv)) {
         rc = convert_int(size, kv);
-        free(kv);
+        PMIx_free_value(&kv);
         return convert_err(rc);
     }
     
@@ -287,7 +287,7 @@ int PMI_Get_clique_ranks(int ranks[], int length)
             ranks[i] = strtol(rks[i], NULL, 10);
         }
         pmix_argv_free(rks);
-        free(kv);
+        PMIx_free_value(&kv);
         return PMI_SUCCESS;
     }
     return PMI_FAIL;
