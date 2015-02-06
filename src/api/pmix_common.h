@@ -239,7 +239,7 @@ typedef struct {
     size_t size;
     void *array;
 } pmix_array_t;
-/* NOTE: PMIX_Put can push a collection of values under
+/* NOTE: operations can supply a collection of values under
  * a single key by passing a pmix_value_t containing an
  * array of type PMIX_VALUE, with each array element
  * containing its own pmix_value_t object */
@@ -306,14 +306,67 @@ typedef struct {
  * the receiver must copy/protect the data prior to returning if
  * it needs to be retained */
 
-typedef void (*pmix_modex_cbfunc_t)(int status, pmix_modex_data_t data[],
+typedef void (*pmix_modex_cbfunc_t)(pmix_status_t status, pmix_modex_data_t data[],
                                     size_t ndata, void *cbdata);
-typedef void (*pmix_spawn_cbfunc_t)(int status, char nspace[], void *cbdata);
-typedef void (*pmix_op_cbfunc_t)(int status, void *cbdata);
-typedef void (*pmix_lookup_cbfunc_t)(int status, pmix_info_t info[], size_t ninfo,
+
+/* define a callback function for calls to PMIx_Spawn_nb - the function
+ * will be called upon completion of the spawn command. The nspace
+ * of the spawned processes will be returned, along with any provided
+ * callback data */
+typedef void (*pmix_spawn_cbfunc_t)(pmix_status_t status, char nspace[], void *cbdata);
+typedef void (*pmix_op_cbfunc_t)(pmix_status_t status, void *cbdata);
+typedef void (*pmix_lookup_cbfunc_t)(pmix_status_t status,
+                                     pmix_info_t info[], size_t ninfo,
                                      char nspace[], void *cbdata);
-typedef void (*pmix_notification_fn_t)(int status, const char nspace[], int rank);
-typedef void (*pmix_value_cbfunc_t)(int status, pmix_value_t *kv, void *cbdata);
+
+/* define a callback function for the errhandler. Upon receipt of an
+ * error notification, PMIx will execute the specified notification
+ * callback function, providing:
+ *
+ * status - the error that occurred
+ * ranges - the nspace and ranks of the affected processes. A NULL
+ *          value indicates that the error occurred in the PMIx
+ *          client library within this process itself
+ * nranges - the number of ranges in the provided array
+ * info - any additional info provided regarding the error.
+ * ninfo - the number of info objects in the provided array
+ *
+ * Note that different resource managers will provide differing levels
+ * of support for error notification to application processes. Thus, the
+ * info array may be NULL or may contain detailed information of the error.
+ * It is the responsibility of the application to parse any provided info array
+ * for defined key-values if it so desires */
+typedef void (*pmix_notification_fn_t)(pmix_status_t status,
+                                       pmix_range_t ranges[], size_t nranges,
+                                       pmix_info_t info[], size_t ninfo);
+
+typedef void (*pmix_value_cbfunc_t)(pmix_status_t status,
+                                    pmix_value_t *kv, void *cbdata);
+
+/****    COMMON SUPPORT FUNCTIONS    ****/
+/* Register an errhandler to report errors. Two types of errors
+ * will be reported:
+ *
+ * (a) those that occur within the client library, but are not
+ *     reportable via the API itself (e.g., loss of connection to
+ *     the server). These errors typically occur during behind-the-scenes
+ *     non-blocking operations.
+ *
+ * (b) job-related errors such as the failure of another process in
+ *     the job, impending failure of hardware within the job's
+ *     usage footprint, etc.
+ *
+ * See pmix_common.h for a description of the notification function */
+void PMIx_Register_errhandler(pmix_notification_fn_t errhandler);
+
+/* deregister the errhandler */
+void PMIx_Deregister_errhandler(void);
+
+/* Provide a string representation of a pmix_status_t value. Note
+ * that the provided string is statically defined and must NOT be
+ * free'd */
+const char* PMIx_Error_string(pmix_status_t status);
+
 
 /* Key-Value pair management macros */
 // TODO: add all possible types/fields here.

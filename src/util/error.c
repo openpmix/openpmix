@@ -34,7 +34,7 @@
 #include "src/api/pmix_common.h"
 #include "src/include/pmix_globals.h"
 
-const char *pmix_strerror(pmix_status_t errnum)
+const char* PMIx_Error_string(pmix_status_t errnum)
 {
     switch(errnum) {
     case PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER:
@@ -129,9 +129,11 @@ const char *pmix_strerror(pmix_status_t errnum)
     return "ERROR STRING NOT FOUND";
 }
 
-void pmix_errhandler_invoke(int error, const char nspace[], int rank)
+void pmix_errhandler_invoke(pmix_status_t status,
+                            pmix_range_t ranges[], size_t nranges,
+                            pmix_info_t info[], size_t ninfo)
 {
     if (NULL != pmix_globals.errhandler) {
-        pmix_globals.errhandler(error, nspace, rank);
+        pmix_globals.errhandler(status, ranges, nranges, info, ninfo);
     }
 }

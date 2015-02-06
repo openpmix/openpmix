@@ -106,7 +106,9 @@ static bool collect = false;
 static bool nonblocking = false;
 static uint32_t nprocs = 1;
 
-static void errhandler(int error, const char nspace[], int rank)
+static void errhandler(pmix_status_t status,
+                       pmix_range_t ranges[], size_t nranges,
+                       pmix_info_t info[], size_t ninfo)
 {
     --nprocs;
     if (nprocs <= 0) {

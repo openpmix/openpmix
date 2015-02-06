@@ -118,7 +118,9 @@ static void connection_handler(int incoming_sd, short flags, void* cbdata);
 static void message_handler(int incoming_sd, short flags, void* cbdata);
 static int start_listening(struct sockaddr_un *address);
 
-static void errhandler(int error, const char nspace[], int rank)
+static void errhandler(pmix_status_t status,
+                       pmix_range_t ranges[], size_t nranges,
+                       pmix_info_t info[], size_t ninfo)
 {
     --nprocs;
     if (nprocs <= 0) {

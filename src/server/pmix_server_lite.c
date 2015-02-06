@@ -337,6 +337,7 @@ static int server_switchyard(pmix_server_caddy_t *cd,
     cnt = 1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &cmd, &cnt, PMIX_CMD))) {
         PMIX_ERROR_LOG(rc);
+        OBJ_RETAIN(cd); // op_cbfunc will release it to maintain accounting
         op_cbfunc(rc, cd);
         return rc;
     }
@@ -348,8 +349,8 @@ static int server_switchyard(pmix_server_caddy_t *cd,
         OBJ_RETAIN(cd);
         if (PMIX_SUCCESS != (rc = pmix_server_abort(buf, op_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
+            OBJ_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
-            OBJ_RELEASE(cd);
         }
         return rc;
     }
@@ -357,6 +358,7 @@ static int server_switchyard(pmix_server_caddy_t *cd,
     if (PMIX_FENCENB_CMD == cmd) {
         if (PMIX_SUCCESS != (rc = pmix_server_fence(cd, buf, modex_cbfunc, op_cbfunc))) {
             PMIX_ERROR_LOG(rc);
+            OBJ_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
         }
         return rc;
@@ -366,8 +368,8 @@ static int server_switchyard(pmix_server_caddy_t *cd,
         OBJ_RETAIN(cd);
         if (PMIX_SUCCESS != (rc = pmix_server_get(buf, get_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
+            OBJ_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
-            OBJ_RELEASE(cd);
         }
         return rc;
     }
@@ -380,6 +382,7 @@ static int server_switchyard(pmix_server_caddy_t *cd,
         if (NULL != pmix_host_server.terminated) {
             rc = pmix_host_server.terminated(cd->hdr.nspace, cd->hdr.rank);
         }
+        OBJ_RETAIN(cd); // op_cbfunc will release it to maintain accounting
         op_cbfunc(rc, cd);
         return rc;
     }
@@ -389,8 +392,8 @@ static int server_switchyard(pmix_server_caddy_t *cd,
         OBJ_RETAIN(cd);
         if (PMIX_SUCCESS != (rc = pmix_server_publish(buf, op_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
+            OBJ_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
-            OBJ_RELEASE(cd);
         }
         return rc;
     }
@@ -400,8 +403,8 @@ static int server_switchyard(pmix_server_caddy_t *cd,
         OBJ_RETAIN(cd);
         if (PMIX_SUCCESS != (rc = pmix_server_lookup(buf, lookup_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
+            OBJ_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
-            OBJ_RELEASE(cd);
         }
         return rc;
     }
@@ -411,8 +414,8 @@ static int server_switchyard(pmix_server_caddy_t *cd,
         OBJ_RETAIN(cd);
         if (PMIX_SUCCESS != (rc = pmix_server_unpublish(buf, op_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
+            OBJ_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
-            OBJ_RELEASE(cd);
         }
         return rc;
     }
@@ -422,8 +425,8 @@ static int server_switchyard(pmix_server_caddy_t *cd,
         OBJ_RETAIN(cd);
         if (PMIX_SUCCESS != (rc = pmix_server_spawn(buf, spawn_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
+            OBJ_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
-            OBJ_RELEASE(cd);
         }
         return rc;
     }
@@ -433,8 +436,8 @@ static int server_switchyard(pmix_server_caddy_t *cd,
         OBJ_RETAIN(cd);
         if (PMIX_SUCCESS != (rc = pmix_server_connect(cd, buf, false, cnct_cbfunc))) {
             PMIX_ERROR_LOG(rc);
+            OBJ_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
-            OBJ_RELEASE(cd);
         }
         return rc;
     }
@@ -443,8 +446,8 @@ static int server_switchyard(pmix_server_caddy_t *cd,
         OBJ_RETAIN(cd);
         if (PMIX_SUCCESS != (rc = pmix_server_connect(cd, buf, true, cnct_cbfunc))) {
             PMIX_ERROR_LOG(rc);
+            OBJ_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
-            OBJ_RELEASE(cd);
         }
         return rc;
     }

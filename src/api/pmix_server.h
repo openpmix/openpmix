@@ -226,13 +226,13 @@ typedef struct pmix_server_module_1_0_0_t {
  * library is to use its internal comm system, false if the
  * caller will be providing its own messaging support
  */
-int PMIx_server_init(pmix_server_module_t *module,
-                     int use_internal_comm);
+pmix_status_t PMIx_server_init(pmix_server_module_t *module,
+                               int use_internal_comm);
 
 /* Finalize the server support library. If internal comm is
  * in-use, the server will shut it down at this time. All
  * memory usage is released */
-int PMIx_server_finalize(void);
+pmix_status_t PMIx_server_finalize(void);
 
 /* Setup the environment of a child process to be forked
  * by the host so it can correctly interact with the PMIx
@@ -245,20 +245,8 @@ int PMIx_server_finalize(void);
  * clients as they connect by requiring the two values to match.
  * These parameters are only relevant when internal comm is
  * in use, and will be ignored otherwise */
-int PMIx_server_setup_fork(const char nspace[], int rank,
-                           uid_t uid, gid_t gid, char ***env);
-
-/* Register an errhandler to report errors that occur
- * within the server library, but are not reportable
- * via the API itself (e.g., loss of connection to
- * the server). Only used when internal comm is in use. */
-void PMIx_Register_errhandler(pmix_notification_fn_t errhandler);
-
-/* Deregister the errhandler. The error handler will automatically
- * be deregistered upon calling PMIx_server_finalize - this API
- * is provided should the host wish to disable the errhandler
- * in advance */
-void PMIx_Deregister_errhandler(void);
+pmix_status_t PMIx_server_setup_fork(const char nspace[], int rank,
+                                     uid_t uid, gid_t gid, char ***env);
 
 
 /****    Message processing for the "lite" version of the  ****
@@ -270,7 +258,7 @@ void PMIx_Deregister_errhandler(void);
 
 /* retrieve the address assigned by the server library for
  * clients to rendezvous with */
-int PMIx_get_rendezvous_address(struct sockaddr_un *address);
+pmix_status_t PMIx_get_rendezvous_address(struct sockaddr_un *address);
 
 /* retrieve the size of the PMIx message header so the host
  * server messaging system can read the correct number of bytes.
@@ -294,7 +282,7 @@ typedef void (*pmix_send_message_cbfunc_t)(int sd, char *payload, size_t size);
  * PMIX_SUCCESS if the connection is authenticated, and an appropriate
  * PMIx error code if not. If the client is authenticated, it will
  * be sent whatever initial job_info the host server can provide */
-int PMIx_server_authenticate_client(int sd, pmix_send_message_cbfunc_t snd_msg);
+pmix_status_t PMIx_server_authenticate_client(int sd, pmix_send_message_cbfunc_t snd_msg);
 
 /* process a received PMIx client message, sending any desired return
  * via the provided callback function. Params:
@@ -303,8 +291,8 @@ int PMIx_server_authenticate_client(int sd, pmix_send_message_cbfunc_t snd_msg);
  * hdr - the header read by the host server messaging system
  * msg - the payload read by the host server messaging system
  * snd_msg - the function to be called when a reply is to be sent */
-int PMIx_server_process_msg(int sd, char *hdr, char *msg,
-                            pmix_send_message_cbfunc_t snd_msg);
+pmix_status_t PMIx_server_process_msg(int sd, char *hdr, char *msg,
+                                      pmix_send_message_cbfunc_t snd_msg);
 
 END_C_DECLS
 

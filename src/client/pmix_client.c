@@ -55,7 +55,9 @@
 #define PMIX_MAX_RETRIES 10
 
 static int usock_connect(struct sockaddr *address);
-static void myerrhandler(int status, const char nspace[], int rank)
+static void myerrhandler(pmix_status_t status,
+                         pmix_range_t ranges[], size_t nranges,
+                         pmix_info_t info[], size_t ninfo)
 {
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:client default errhandler activated");
