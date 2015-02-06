@@ -62,7 +62,7 @@ int pmix_bfrop_unpack(pmix_buffer_t *buffer, void *dst, int32_t *num_vals,
             return rc;
         }
         if (PMIX_INT32 != local_type) { /* if the length wasn't first, then error */
-           *num_vals = 0;
+            *num_vals = 0;
             return PMIX_ERR_UNPACK_FAILURE;
         }
     }

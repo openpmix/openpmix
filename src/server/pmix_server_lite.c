@@ -233,18 +233,22 @@ static void modex_cbfunc(int status, pmix_modex_data_t data[],
     }
     
     /* setup the reply, starting with the returned status */
+    OBJ_CONSTRUCT(&reply, pmix_buffer_t);
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, &status, 1, PMIX_INT))) {
         PMIX_ERROR_LOG(rc);
+        OBJ_DESTRUCT(&reply);
         return;
     }
     /* pack the nblobs being returned */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, &ndata, 1, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
+        OBJ_DESTRUCT(&reply);
         return;
     }
     if (0 < ndata) {
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, data, ndata, PMIX_MODEX))) {
             PMIX_ERROR_LOG(rc);
+        OBJ_DESTRUCT(&reply);
             return;
         }
     }
@@ -261,6 +265,7 @@ static void modex_cbfunc(int status, pmix_modex_data_t data[],
         rmsg.base_ptr = NULL;
         OBJ_DESTRUCT(&rmsg);
     }
+    OBJ_DESTRUCT(&reply);
     pmix_list_remove_item(tracker->trklist, &tracker->super);
     OBJ_RELEASE(tracker);
 }
@@ -461,10 +466,11 @@ static void snd_message(int sd, pmix_usock_hdr_t *hdr,
 {
     size_t rsize;
     char *rmsg;
-    
-    /* setup a header for the reply */
+
+    /* setup the reply */
     rsize = sizeof(pmix_usock_hdr_t) + msg->bytes_used;
     rmsg = (char*)malloc(rsize);
+    hdr->nbytes = msg->bytes_used;
     /* copy the header */
     memcpy(rmsg, hdr, sizeof(pmix_usock_hdr_t));
     /* add in the reply bytes */
