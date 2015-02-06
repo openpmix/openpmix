@@ -529,7 +529,7 @@ static int recv_connect_ack(int sd)
     int32_t reply;
     int rc;
     int32_t cnt;
-    char *msg;
+    char *msg = NULL;
     size_t i, ninfo;
     pmix_info_t *info;
     pmix_buffer_t buf;
@@ -549,52 +549,66 @@ static int recv_connect_ack(int sd)
         free(msg);
         return rc;
     }
-    memcpy(&reply, msg, sizeof(int32_t));
+    /* load the buffer for unpacking */
+    OBJ_CONSTRUCT(&buf, pmix_buffer_t);
+    PMIX_LOAD_BUFFER(&buf, msg, hdr.nbytes);
+
+    /* unpack the status */
+    cnt = 1;
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&buf, &reply, &cnt, PMIX_INT))) {
+        PMIX_ERROR_LOG(rc);
+        goto cleanup;
+    }
 
     /* see if they want us to do the handshake */
     if (PMIX_ERR_READY_FOR_HANDSHAKE == reply) {
         free(msg);
+        msg = NULL;
         if (NULL == pmix_sec.client_handshake) {
-            return PMIX_ERR_HANDSHAKE_FAILED;
+            rc = PMIX_ERR_HANDSHAKE_FAILED;
+            goto cleanup;
         }
         if (PMIX_SUCCESS != pmix_sec.client_handshake(sd)) {
-            return rc;
+            goto cleanup;
         }
         /* if we successfully did the handshake, there will be a follow-on
          * message that contains any job info */
         rc = pmix_usock_recv_blocking(sd, (char*)&hdr, sizeof(pmix_usock_hdr_t));
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
-            return rc;
+            goto cleanup;
         }
         /* get whatever else was sent */
         msg = (char*)malloc(hdr.nbytes);
         if (PMIX_SUCCESS != (rc = pmix_usock_recv_blocking(sd, msg, hdr.nbytes))) {
-            free(msg);
-            return rc;
+            goto cleanup;
         }
-        memcpy(&reply, msg, sizeof(int32_t));
-        /* we now return to our regularly-scheduled programming */
+        OBJ_DESTRUCT(&buf);
+        OBJ_CONSTRUCT(&buf, pmix_buffer_t);
+        PMIX_LOAD_BUFFER(&buf, msg, hdr.nbytes);
+        cnt = 1;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&buf, &reply, &cnt, PMIX_INT))) {
+            PMIX_ERROR_LOG(rc);
+            goto cleanup;
+        }
     }
 
     /* see if we succeeded */
     if (PMIX_SUCCESS != reply) {
-        free(msg);
-        return reply;
+        rc = reply;
+        goto cleanup;
     }
     
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: RECV CONNECT CONFIRMATION AND INITIAL DATA FROM SERVER OF %d BYTES",
-                        (int)(hdr.nbytes - sizeof(int)));
+                        (int)hdr.nbytes);
     
-    OBJ_CONSTRUCT(&buf, pmix_buffer_t);
-    PMIX_LOAD_BUFFER(&buf, (char*)(msg + sizeof(int)), hdr.nbytes - sizeof(int));
     cnt = 1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&buf, &ninfo, &cnt, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
-   if (0 < ninfo) {
+    if (0 < ninfo) {
         info = (pmix_info_t*)malloc(ninfo * sizeof(pmix_info_t));
         cnt = ninfo;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&buf, info, &cnt, PMIX_INFO))) {
@@ -618,7 +632,7 @@ static int recv_connect_ack(int sd)
     }
 
  cleanup:
-    buf.base_ptr = NULL; // protect data
+    buf.base_ptr = NULL;  // protect data region from double-free
     OBJ_DESTRUCT(&buf);
     free(msg);
     return rc;

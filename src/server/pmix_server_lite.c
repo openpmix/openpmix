@@ -458,18 +458,14 @@ static void snd_message(int sd, pmix_usock_hdr_t *hdr,
 {
     size_t rsize;
     char *rmsg;
-    pmix_usock_hdr_t *hptr;
     
     /* setup a header for the reply */
     rsize = sizeof(pmix_usock_hdr_t) + msg->bytes_used;
     rmsg = (char*)malloc(rsize);
-    hptr = (pmix_usock_hdr_t*)rmsg;
-    (void)strncpy(hptr->nspace, hdr->nspace, PMIX_MAX_NSLEN);
-    hptr->rank = hdr->rank;
-    hptr->tag = hdr->tag;
-    hptr->nbytes = msg->bytes_used;
+    /* copy the header */
+    memcpy(rmsg, hdr, sizeof(pmix_usock_hdr_t));
     /* add in the reply bytes */
-    (void)memcpy(rmsg+sizeof(hptr), msg->base_ptr, msg->bytes_used);
+    (void)memcpy(rmsg+sizeof(pmix_usock_hdr_t), msg->base_ptr, msg->bytes_used);
     /* send it - the send function will release the rmsg storage */
     snd(sd, rmsg, rsize);
 }

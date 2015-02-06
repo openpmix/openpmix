@@ -233,6 +233,12 @@ int PMIx_server_init(pmix_server_module_t *module,
     return 0;
 }
 
+int PMIx_get_rendezvous_address(struct sockaddr_un *address)
+{
+    memcpy(address, &myaddress, sizeof(struct sockaddr_un));
+    return PMIX_SUCCESS;
+}
+
 static void cleanup_server_state(void)
 {
     PMIX_LIST_DESTRUCT(&pmix_server_globals.peers);
@@ -418,11 +424,20 @@ static int send_client_response(int sd, int status, pmix_buffer_t *payload)
 {
     int rc;
     pmix_usock_hdr_t hdr;
+    pmix_buffer_t buf;
     
-    hdr.nbytes = sizeof(int);
-    if (NULL != payload) {
-        hdr.nbytes += payload->bytes_used;
+    /* pack the status */
+    OBJ_CONSTRUCT(&buf, pmix_buffer_t);
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&buf, &status, 1, PMIX_INT))) {
+        PMIX_ERROR_LOG(rc);
+        OBJ_DESTRUCT(&buf);
+        return rc;
     }
+    if (NULL != payload) {
+        pmix_bfrop.copy_payload(&buf, payload);
+    }
+
+    hdr.nbytes = buf.bytes_used;
     hdr.rank = pmix_globals.rank;
     hdr.type = PMIX_USOCK_IDENT;
     hdr.tag = 0; // tag doesn't matter as we aren't matching to a recv
@@ -432,16 +447,12 @@ static int send_client_response(int sd, int status, pmix_buffer_t *payload)
         return rc;
     }
 
-    if (PMIX_SUCCESS != (rc = pmix_usock_send_blocking(sd, (char*)&status, sizeof(int)))) {
+    if (PMIX_SUCCESS != (rc = pmix_usock_send_blocking(sd, (char*)buf.base_ptr, buf.bytes_used))) {
         PMIX_ERROR_LOG(rc);
+        OBJ_DESTRUCT(&buf);
         return rc;
     }
-    if (NULL != payload) {
-        if (PMIX_SUCCESS != (rc = pmix_usock_send_blocking(sd, (char*)payload->base_ptr, payload->bytes_used))) {
-            PMIX_ERROR_LOG(rc);
-            return rc;
-        }
-    }
+    OBJ_DESTRUCT(&buf);
     
     return PMIX_SUCCESS;
 }

@@ -79,7 +79,7 @@ int pmix_sec_init(void)
     bool exclude;
     
     /* see if the PMIX_SEC_MODE envar has been provided */
-    if (NULL != (evar = getenv("PMIX_SEC_MODE"))) {
+    if (NULL != (evar = getenv("PMIX_SECURITY_MODE"))) {
         /* if the leading character is '^', then we are excluding */
         if ('^' == evar[0]) {
             options = pmix_argv_split(&evar[1], ',');

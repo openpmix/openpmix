@@ -268,6 +268,10 @@ void PMIx_Deregister_errhandler(void);
  ****    cannot block while waiting for a reply to be      ****
  ****    generated                                         ****/
 
+/* retrieve the address assigned by the server library for
+ * clients to rendezvous with */
+int PMIx_get_rendezvous_address(struct sockaddr_un *address);
+
 /* retrieve the size of the PMIx message header so the host
  * server messaging system can read the correct number of bytes.
  * Note that the host will need to provide these bytes separately

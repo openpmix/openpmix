@@ -30,6 +30,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <event.h>
+#include <errno.h>
 
 #include "src/include/pmix_globals.h"
 #include "pmix_server.h"
@@ -37,6 +38,7 @@
 #include "src/util/argv.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/output.h"
+#include "src/usock/usock.h"
 
 #include "test_common.h"
 
@@ -107,6 +109,7 @@ static bool nonblocking = false;
 static uint32_t nprocs = 1;
 struct event_base *server_base = NULL;
 pmix_event_t *listen_ev = NULL;
+pmix_event_t *cli_ev = NULL;
 int listen_fd = -1;
 int client_fd = -1;
 pid_t client_pid = -1;
@@ -189,13 +192,15 @@ int main(int argc, char **argv)
      * for the server */
     if (NULL == (server_base = event_base_new())) {
         printf("Cannot create libevent event\n");
-        return 1;
+        goto cleanup;
     }
     
-    /* setup the path to the rendezvous point */
-    memset(&address, 0, sizeof(struct sockaddr_un));
-    address.sun_family = AF_UNIX;
-    snprintf(address.sun_path, sizeof(address.sun_path)-1, "pmix");
+    /* retrieve the rendezvous address */
+    if (PMIX_SUCCESS != PMIx_get_rendezvous_address(&address)) {
+        fprintf(stderr, "%s: failed to get rendezvous address\n", argv[0]);
+        rc = -1;
+        goto cleanup;
+    }
 
     fprintf(stderr,"PMIx srv: Initialization finished\n");
 
@@ -234,6 +239,9 @@ int main(int argc, char **argv)
             PMIx_server_finalize();
             return rc;
         }
+        for (i=0; NULL != client_env[i]; i++) {
+            pmix_output(0, "env[%d]: %s", i, client_env[i]);
+        }
     
         pid = fork();    
         if (pid < 0) {
@@ -250,7 +258,7 @@ int main(int argc, char **argv)
 
     /* hang around until the client(s) finalize */
     while (!test_complete) {
-        usleep(10000);
+        event_base_loop(server_base, EVLOOP_ONCE);
     }
     
     pmix_argv_free(client_argv);
@@ -260,6 +268,7 @@ int main(int argc, char **argv)
     PMIx_Deregister_errhandler();
 
     PMIX_LIST_DESTRUCT(&modex);
+    cleanup:
     /* finalize the server library */
     if (PMIX_SUCCESS != (rc = PMIx_server_finalize())) {
         fprintf(stderr, "Finalize failed with error %d\n", rc);
@@ -561,8 +570,12 @@ static int start_listening(struct sockaddr_un *address)
     return 0;
 }
 
-static void snd_message(int sd, char *payload, size_t size)
+static void snd_ack(int sd, char *payload, size_t size)
 {
+    /* the call to authenticate_client will have included
+     * the result of the handshake - so collect add job-related
+     * info and send it down */
+    pmix_usock_send_blocking(sd, payload, size);
 }
 
 /*
@@ -581,7 +594,7 @@ static void connection_handler(int incomind_sd, short flags, void* cbdata)
     }
 
     /* authenticate the connection */
-    if (PMIX_SUCCESS != (rc = PMIx_server_authenticate_client(sd, snd_message))) {
+    if (PMIX_SUCCESS != (rc = PMIx_server_authenticate_client(sd, snd_ack))) {
         printf("PMIx srv: Bad authentification!\n");
         exit(0);
     }
@@ -590,77 +603,47 @@ static void connection_handler(int incomind_sd, short flags, void* cbdata)
                       EV_READ|EV_PERSIST, message_handler, NULL);
     event_add(cli_ev,NULL);
     pmix_usock_set_nonblocking(sd);
-    client_fd = sd;
     printf("PMIx srv: New client connection accepted\n");
 }
 
 
 static void message_handler(int sd, short flags, void* cbdata)
 {
-    int rc;
-    if( !hdr_rcvd && rptr == NULL ){
-        rptr = (char*)&hdr;
-        rbytes = sizeof(hdr);
+    char *hdr, *payload = NULL;
+    size_t hdrsize, paysize;
+
+    hdrsize = PMIx_message_hdr_size();
+    hdr = (char*)malloc(hdrsize);
+    
+    if (PMIX_SUCCESS != pmix_usock_recv_blocking(sd, hdr, hdrsize)) {
+        /* Communication error */
+        fprintf(stderr,"PMIx srv: Client closed connection\n");
+        event_del(cli_ev);
+        event_free(cli_ev);
+        close(sd);
+        return;
     }
 
-    if( !hdr_rcvd ){
-        /* if the header hasn't been completely read, read it */
-        rc = blocking_recv(sd, rptr, rbytes);
-        /* Process errors first (if any) */
-        if ( PMIX_ERR_UNREACH == rc ) {
+    /* if this is a zero-byte message, then we are done */
+    paysize = PMIx_message_payload_size(hdr);
+    if (0 < paysize) {
+        payload = (char*)malloc(paysize);
+        if (PMIX_SUCCESS != pmix_usock_recv_blocking(sd, payload, paysize)) {
             /* Communication error */
             fprintf(stderr,"PMIx srv: Client closed connection\n");
             event_del(cli_ev);
             event_free(cli_ev);
-            close(client_fd);
-            client_fd = -1;
+            close(sd);
             return;
-        } else if( PMIX_ERR_RESOURCE_BUSY == rc ||
-                   PMIX_ERR_WOULD_BLOCK == rc) {
-                /* exit this event and let the event lib progress */
-                return;
-        }
-        /* completed reading the header */
-        hdr_rcvd = true;
-
-        /* if this is a zero-byte message, then we are done */
-        if (0 == hdr.nbytes) {
-            data = NULL;  /* Protect the data */
-            rptr = NULL;
-            rbytes = 0;
-        } else {
-            data = (char*)malloc(hdr.nbytes);
-            if (NULL == data ) {
-                fprintf(stderr, "PMIx srv: %s:%d Cannot allocate memory! %d",
-                        __FILE__, __LINE__, errno);
-                return;
-            }
-            /* point to it */
-            rptr = data;
-            rbytes = hdr.nbytes;
         }
     }
 
-    if (hdr_rcvd) {
-        /* continue to read the data block - we start from
-             * wherever we left off, which could be at the
-             * beginning or somewhere in the message
-             */
-        if (PMIX_SUCCESS == (rc = blocking_recv(sd, rptr, rbytes))) {
-            /* we recvd all of the message */
-            /* process the message */
-            process_message();
-        } else if( PMIX_ERR_RESOURCE_BUSY == rc ||
-                   PMIX_ERR_WOULD_BLOCK == rc) {
-                /* exit this event and let the event lib progress */
-                return;
-        } else {
-            /* Communication error */
-            fprintf(stderr, "PMIx srv: %s:%d Error communicating with the client",
-                    __FILE__, __LINE__);
-            kill(client_pid, SIGKILL);
-            // TODO: make sure to kill the client
-            exit(0);
-        }
+    /* process the message */
+    if (PMIX_SUCCESS != PMIx_server_process_msg(sd, hdr, payload, snd_ack)) {
+        /* Communication error */
+        fprintf(stderr,"PMIx srv: Client closed connection\n");
+        event_del(cli_ev);
+        event_free(cli_ev);
+        close(sd);
     }
 }
