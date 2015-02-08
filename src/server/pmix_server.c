@@ -182,6 +182,11 @@ static int initialize_server_base(pmix_server_module_t *module)
     return 0;
 }
 
+const char* PMIx_Get_version(void)
+{
+    return pmix_version_string;
+}
+
 int PMIx_server_init(pmix_server_module_t *module,
                      int use_internal_comm)
 {

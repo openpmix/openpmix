@@ -125,6 +125,11 @@ static int connect_to_server(struct sockaddr_un *address)
     return PMIX_SUCCESS;
 }
 
+const char* PMIx_Get_version(void)
+{
+    return pmix_version_string;
+}
+
 int PMIx_Init(char nspace[], int *rank)
 {
     char **uri, *evar;

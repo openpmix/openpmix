@@ -134,6 +134,8 @@ int main(int argc, char **argv)
         fprintf(stderr, "ERROR IN COMPUTING CONSTANTS: PMIX_SUCCESS = %d\n", PMIX_SUCCESS);
         exit(1);
     }
+
+    fprintf(stderr, "Testing version %s\n", PMIx_Get_version());
     
     /* parse user options */
     for (i=1; i < argc; i++) {

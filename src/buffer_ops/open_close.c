@@ -11,7 +11,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2012-2013 Los Alamos National Security, Inc.  All rights reserved. 
- * Copyright (c) 2014      Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,6 +30,14 @@
 
 #include "src/util/argv.h"
 #include "src/buffer_ops/internal.h"
+
+#if PMIX_CC_USE_PRAGMA_IDENT
+#pragma ident PMIX_IDENT_STRING
+#elif PMIX_CC_USE_IDENT
+#ident PMIX_IDENT_STRING
+#endif
+const char pmix_version_string[] = PMIX_IDENT_STRING;
+
 
 /**
  * globals

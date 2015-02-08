@@ -53,6 +53,15 @@
 #endif
 #include <event.h>
 
+#ifndef PMIX_CONFIG_H
+
+/* ensure we have the version info available for external users */
+#undef PMIX_MAJOR_VERSION
+#undef PMIX_MINOR_VERSION
+#undef PMIX_RELEASE_VERSION
+
+#endif
+
 #undef BEGIN_C_DECLS
 #undef END_C_DECLS
 #if defined(c_plusplus) || defined(__cplusplus)
@@ -366,6 +375,10 @@ void PMIx_Deregister_errhandler(void);
  * that the provided string is statically defined and must NOT be
  * free'd */
 const char* PMIx_Error_string(pmix_status_t status);
+
+/* Get the PMIx version string. Note that the provided string is
+ * statically defined and must NOT be free'd  */
+const char* PMIx_Get_version(void);
 
 
 /* Key-Value pair management macros */

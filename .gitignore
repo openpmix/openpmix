@@ -33,6 +33,8 @@ src/include/pmix_config.h
 src/include/pmix_config.h.in~
 src/include/stamp-h1
 src/include/version.h
+src/api/pmix_common.h
+src/api/stamp-h2
 config/ar-lib
 config/compile
 config/config.guess

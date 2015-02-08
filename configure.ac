@@ -109,12 +109,13 @@ AC_MSG_RESULT([$ltversion])
 
 # List header files to generate
 AC_CONFIG_HEADERS([src/include/pmix_config.h])
+AC_CONFIG_HEADERS([src/api/pmix_common.h])
 
 # Setup the top of the pmix_config.h file
 AH_TOP([/* -*- c -*-
  *
  * PMIx copyrights:
- * Copyright (c) 2013-2014 Intel, Inc. All rights reserved
+ * Copyright (c) 2013-2015 Intel, Inc. All rights reserved
  *
  *#########################
  * This code has been adapted from opal_config.h in the Open MPI
