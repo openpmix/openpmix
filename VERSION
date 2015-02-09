@@ -28,7 +28,7 @@ greek=a1
 # If want_repo_rev=1, then the repo revision number will be included
 # in the overall PMIx version number in some form.
 
-want_repo_rev=1
+want_repo_rev=0
 
 # If repo_rev=-1, then the repository version number will be obtained
 # dynamically at run time, either:
@@ -44,11 +44,11 @@ want_repo_rev=1
 # from a git checkout, if repo_rev=-1, then its value is replaced
 # with the output of "gitversion".
 
-repo_rev=-1
+repo_rev=gitb86d402
 
 # The date when this release was created
 
-date="Unreleased developer copy"
+date="Feb 09, 2015"
 
 # The shared library version of each of PMIx's public libraries.
 # These versions are maintained in accordance with the "Library
