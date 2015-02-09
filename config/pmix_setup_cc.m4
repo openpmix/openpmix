@@ -131,48 +131,9 @@ AC_DEFUN([PMIX_SETUP_CC],[
     # gcc-impersonating compilers won't accept them.
     PMIX_CFLAGS_BEFORE_PICKY="$CFLAGS"
     if test "$WANT_PICKY_COMPILER" = 1 -a "$pmix_c_vendor" = "gnu" ; then
-        add="-Wall -Wundef -Wno-long-long -Wsign-compare"
+        add="-Wall -Wundef -Wsign-compare"
         add="$add -Wmissing-prototypes -Wstrict-prototypes"
         add="$add -Wcomment -pedantic"
-
-        # see if -Wno-long-double works...
-        CFLAGS_orig="$CFLAGS"
-        # CFLAGS="$CFLAGS -Wno-long-double"
-        # Starting with GCC-4.4, the compiler complains about not
-        # knowing -Wno-long-double, only if -Wstrict-prototypes is set, too.
-        #
-        # Actually, this is not real fix, as GCC will pass on any -Wno- flag,
-        # have fun with the warning: -Wno-britney
-        CFLAGS="$CFLAGS $add -Wno-long-double -Wstrict-prototypes"
-
-        AC_CACHE_CHECK([if $CC supports -Wno-long-double],
-                   [pmix_cv_cc_wno_long_double],
-                   [AC_TRY_COMPILE([], [], 
-                                   [
-                                    dnl Alright, the -Wno-long-double did not produce any errors...
-                                    dnl Well well, try to extract a warning regarding unrecognized or ignored options
-                                    AC_TRY_COMPILE([], [long double test;], 
-                                                   [
-                                                       pmix_cv_cc_wno_long_double="yes"
-                                                       if test -s conftest.err ; then
-                                                           dnl Yes, it should be "ignor", in order to catch ignoring and ignore
-                                                           for i in invalid ignor unrecognized ; do
-                                                               $GREP -iq $i conftest.err
-                                                               if test "$?" = "0" ; then
-                                                                   pmix_cv_cc_wno_long_double="no"
-                                                                   break;
-                                                               fi
-                                                           done
-                                                       fi
-                                                   ],
-                                                   [pmix_cv_cc_wno_long_double="no"])],
-                                   [pmix_cv_cc_wno_long_double="no"])])
-
-        CFLAGS="$CFLAGS_orig"
-        if test "$pmix_cv_cc_wno_long_double" = "yes" ; then
-            add="$add -Wno-long-double"
-        fi
-
         add="$add -Werror-implicit-function-declaration "
 
         CFLAGS="$CFLAGS $add"
