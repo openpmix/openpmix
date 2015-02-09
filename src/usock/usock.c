@@ -72,6 +72,24 @@ int pmix_usock_set_nonblocking(int sd)
     return PMIX_SUCCESS;
 }
 
+int pmix_usock_set_blocking(int sd)
+{
+    int flags;
+     /* setup the socket as non-blocking */
+    if ((flags = fcntl(sd, F_GETFL, 0)) < 0) {
+        pmix_output(0, "usock_peer_connect: fcntl(F_GETFL) failed: %s (%d)\n",
+                    strerror(pmix_socket_errno),
+                    pmix_socket_errno);
+    } else {
+        flags &= ~(O_NONBLOCK);
+        if(fcntl(sd, F_SETFL, flags) < 0)
+            pmix_output(0, "usock_peer_connect: fcntl(F_SETFL) failed: %s (%d)\n",
+                        strerror(pmix_socket_errno),
+                        pmix_socket_errno);
+    }
+    return PMIX_SUCCESS;
+}
+
 /*
  * A blocking send on a non-blocking socket. Used to send the small amount of connection
  * information that identifies the peers endpoint.
@@ -142,8 +160,8 @@ int pmix_usock_recv_blocking(int sd, char *data, size_t size)
                    recv_connect_ack, who will try to establish the
                    connection again */
                 pmix_output_verbose(10, pmix_globals.debug_output,
-                                    "blocking_recv received error %s from remote",
-                                    strerror(pmix_socket_errno));
+                                    "blocking_recv received error %d:%s from remote",
+                                    pmix_socket_errno, strerror(pmix_socket_errno));
                 return PMIX_ERR_UNREACH;
             }
             continue;

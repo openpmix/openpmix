@@ -39,7 +39,7 @@ pmix_test_LDADD = \
 	$(top_builddir)/libpmix-server.la 
 
 pmix_test_lite_SOURCES = \
-        pmix_test_lite.c
+        pmix_test_lite.c test_common.c
 
 pmix_test_lite_LDADD = \
 	$(top_builddir)/libpmix-server.la 

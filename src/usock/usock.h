@@ -256,6 +256,7 @@ extern pmix_usock_globals_t pmix_usock_globals;
 void pmix_usock_init(void);
 void pmix_usock_finalize(void);
 int pmix_usock_set_nonblocking(int sd);
+int pmix_usock_set_blocking(int sd);
 int pmix_usock_send_blocking(int sd, char *ptr, size_t size);
 int pmix_usock_recv_blocking(int sd, char *data, size_t size);
 void pmix_usock_send_recv(int sd, short args, void *cbdata);
