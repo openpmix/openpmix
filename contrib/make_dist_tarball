@@ -307,7 +307,7 @@ make_tarball() {
     # move
     #
     echo "*** Moving tarballs..."
-    mv openmpi-* $distdir
+    mv pmix-* $distdir
 
     echo "*** All done"
 }
