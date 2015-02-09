@@ -159,21 +159,6 @@ case "$prefix" in
     ;;
 esac
 
-# Allow the --enable-dist flag to be passed in
-
-AC_ARG_ENABLE(dist, 
-    AC_HELP_STRING([--enable-dist],
-		   [guarantee that that the "dist" make target will be functional, although may not guarantee that any other make target will be functional.]),
-    PMIX_WANT_DIST=yes, PMIX_WANT_DIST=no)
-
-if test "$PMIX_WANT_DIST" = "yes"; then
-    AC_MSG_WARN([Configuring in 'make dist' mode])
-    AC_MSG_WARN([Most make targets may be non-functional!])
-    pmix_dist_enabled=1
-else
-    pmix_dist_enabled=0
-fi
-
 # BEGIN: Derived from GASNet
 
 # Suggestion from Paul Hargrove to disable --program-prefix and
