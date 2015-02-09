@@ -33,7 +33,8 @@ server_sources =
 
 EXTRA_DIST = README INSTALL VERSION LICENSE autogen.sh \
              config/pmix_get_version.sh \
-             src/include/pmix_config.h
+             src/include/pmix_config.h \
+             test/test_common.h
 
 include config/Makefile.am
 include src/class/Makefile.am

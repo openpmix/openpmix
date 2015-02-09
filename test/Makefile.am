@@ -19,6 +19,8 @@
 # $HEADER$
 #
 
+headers = test_common.h
+
 AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/src/api
 
 bin_PROGRAMS = pmix_test pmix_client2 pmix_test_lite pmi_client pmi2_client
