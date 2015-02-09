@@ -79,25 +79,5 @@ fi
 
 AM_CONDITIONAL(CASE_SENSITIVE_FS, test "$PMIX_WANT_CS_FS" = "1")
 
-if test "$PMIX_WANT_CS_FS" = "0"; then
-	cat <<EOF
-
-*******************************************************************************
-NOTE NOTE NOTE NOTE NOTE NOTE NOTE NOTE NOTE NOTE NOTE NOTE NOTE NOTE NOTE NOTE
-*******************************************************************************
-
-Because PMIX is being installed on a non-case sensitive file
-system, the C++ wrapper compiler will be named pmixc++ instead of the
-traditional pmixCC.
-
-Please update any makefiles appropriately.
-
-*******************************************************************************
-NOTE NOTE NOTE NOTE NOTE NOTE NOTE NOTE NOTE NOTE NOTE NOTE NOTE NOTE NOTE NOTE
-*******************************************************************************
-
-EOF
-fi
-
 # Clean up
 unset have_cs_fs])dnl
