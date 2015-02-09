@@ -1,6 +1,6 @@
 /*
  * PMIx copyrights:
- * Copyright (c) 2013      Intel, Inc. All rights reserved
+ * Copyright (c) 2013-2015 Intel, Inc. All rights reserved
  *
  *#########################
  * This code has been adapted from pmix_config_bottom.h in the Open MPI
@@ -257,7 +257,7 @@
 #include "pmix_config.h"
 #include <stdint.h>
 #else
-#include "pmix_stdint.h"
+#include "src/include/pmix_stdint.h"
 #endif
 
 /***********************************************************************

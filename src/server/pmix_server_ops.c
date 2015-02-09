@@ -16,8 +16,8 @@
 #include "src/api/pmix_server.h"
 #include "src/include/types.h"
 #include "src/include/pmix_globals.h"
-#include "pmix_stdint.h"
-#include "pmix_socket_errno.h"
+#include "src/include/pmix_stdint.h"
+#include "src/include/pmix_socket_errno.h"
 
 #ifdef HAVE_STRING_H
 #include <string.h>

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2015 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * $COPYRIGHT$
@@ -12,8 +12,8 @@
 #include "pmix_config.h"
 #include "src/include/types.h"
 #include "src/include/pmix_globals.h"
-#include "pmix_stdint.h"
-#include "pmix_socket_errno.h"
+#include "src/include/pmix_stdint.h"
+#include "src/include/pmix_socket_errno.h"
 
 #ifdef HAVE_STRING_H
 #include <string.h>

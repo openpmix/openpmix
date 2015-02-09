@@ -100,6 +100,8 @@ EOF
     shift
 done
 
+export DISTCHECK_CONFIGURE_FLAGS=$config_args
+
 #
 # First things first -- check that the auto versions that we have are
 # the ones that we want.
