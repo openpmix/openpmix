@@ -375,8 +375,6 @@ AC_C_INLINE
 if test "x$pmix_cv_c_compiler_vendor" != "xmicrosoft"; then
     AC_C_RESTRICT
 fi
-PMIX_C_WEAK_SYMBOLS
-PMIX_C_MACRO_WEAK_SYMBOLS
 if test "$GCC" = "yes"; then
     CFLAGS=$CFLAGS_save
 fi
