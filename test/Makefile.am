@@ -25,6 +25,9 @@ bin_PROGRAMS = pmix_test pmix_client2 pmix_test_lite pmi_client pmi2_client
 
 check_PROGRAMS = pmix_test pmix_test_lite
 
+TESTS = \
+	$(check_PROGRAMS)
+
 #pmix_client  pmix_srv_self pmix_server_api2
 
 pmix_test_SOURCES = \

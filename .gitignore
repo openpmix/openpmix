@@ -50,3 +50,9 @@ test/pmix_client2
 test/pmix_srv_self
 test/pmix_server_api2
 test/pmix_test_lite
+config/test-driver
+test/pmix_test.log
+test/pmix_test.trs
+test/pmix_test_lite.log
+test/pmix_test_lite.trs
+test/test-suite.log

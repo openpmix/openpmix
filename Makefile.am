@@ -52,6 +52,8 @@ libpmix_la_LDFLAGS = $(ldflags) -version-info $(libpmix_so_version) $(PMIX_LIBS)
 libpmix_server_la_SOURCES = $(server_headers) $(server_sources)
 libpmix_server_la_LDFLAGS = $(ldflags) -version-info $(libpmix_so_version) $(PMIX_LIBS)
 
+DIST_SUBDIRS = test
+
 dist-hook:
 	csh "$(top_srcdir)/config/distscript.csh" "$(top_srcdir)" "$(distdir)" "$(PMIX_VERSION)" "$(PMIX_SVN_R)"
 
