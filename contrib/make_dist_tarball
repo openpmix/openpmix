@@ -47,6 +47,7 @@ DISTCHECK_MAKE_FLAGS=-j4
 # non-distribution tarballs.
 dirty_ok=0
 gnu_version_ignore=0
+mac=0
 dist_target=distcheck
 distcheck_flags="AM_MAKEFLAGS=$DISTCHECK_MAKE_FLAGS"
 if test "`basename $0`" = "make_tarball"; then
@@ -77,6 +78,8 @@ for i in "$@"; do
         --dirtyok) dirty_ok=1; shift ;;
         --verok) gnu_version_ignore=1;;
         -verok) gnu_version_ignore=1;;
+        --macosx) mac=1;;
+        -macosx) mac=1;;
         *)
             cat <<EOF
 Unrecognized argument: $1
@@ -89,6 +92,7 @@ Valid arguments:
   --distdir       Move the tarball(s) to this directory when done
   --dirtyok       Ok if the source tree is dirty
   --verok         Ignore result of autotools version checking
+  --macosx        Executing on Mac OSX, so do not check libtool version
 EOF
             exit 1
             ;;
@@ -317,7 +321,9 @@ echo "*** Checking tools versions..."
 check_gnu_version m4 $M4_TARGET_VERSION
 check_gnu_version automake $AM_TARGET_VERSION
 check_gnu_version autoconf $AC_TARGET_VERSION
-check_gnu_version libtool $LT_TARGET_VERSION
+if test mac -eq 0; then
+    check_gnu_version libtool $LT_TARGET_VERSION
+fi
 # Windows needs a recent version of flex; old versions don't generate
 # Windows-friendly *_lex.c files.
 check_gnu_version flex $FLEX_TARGET_VERSION

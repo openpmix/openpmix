@@ -36,6 +36,7 @@
 #endif
 
 #include "src/buffer_ops/buffer_ops.h"
+#include "src/util/output.h"
 
 #include "usock.h"
 

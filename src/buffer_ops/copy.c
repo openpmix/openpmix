@@ -323,7 +323,7 @@ int pmix_bfrop_copy_info(pmix_info_t **dest, pmix_info_t *src,
                          pmix_data_type_t type)
 {
     *dest = (pmix_info_t*)malloc(sizeof(pmix_info_t));
-    (void)strncpy((*dest)->key, src->key, PMIX_MAX_VALLEN);
+    (void)strncpy((*dest)->key, src->key, PMIX_MAX_KEYLEN);
     return pmix_value_xfer(&(*dest)->value, &src->value);
 }
 
@@ -349,7 +349,7 @@ int pmix_bfrop_copy_app(pmix_app_t **dest, pmix_app_t *src,
     (*dest)->ninfo = src->ninfo;
     (*dest)->info = (pmix_info_t*)malloc(src->ninfo * sizeof(pmix_info_t));
     for (j=0; j < src->ninfo; j++) {
-        (void)strncpy((*dest)->info[j].key, src->info[j].key, PMIX_MAX_VALLEN);
+        (void)strncpy((*dest)->info[j].key, src->info[j].key, PMIX_MAX_KEYLEN);
         pmix_value_xfer(&(*dest)->info[j].value, &src->info[j].value);
     }
     return PMIX_SUCCESS;
