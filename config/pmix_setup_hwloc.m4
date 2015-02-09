@@ -25,7 +25,7 @@ AC_DEFUN([PMIX_HWLOC_CONFIG],[
                                 [Search for hwloc libraries in DIR ])])
 
     pmix_hwloc_support=0
-    if test $pmix_dist_enabled != 1 -a "$with_hwloc" != "no"; then
+    if test "$with_hwloc" != "no"; then
         AC_MSG_CHECKING([for hwloc in])
         if test ! -z "$with_hwloc" -a "$with_hwloc" != "yes"; then
             pmix_hwloc_dir=$with_hwloc
