@@ -19,10 +19,6 @@
 # $HEADER$
 #
 
-AM_CFLAGS = $(PMIX_CFLAGS)
-AM_CPPFLAGS = $(PMIX_CPPFLAGS)
-AM_LDFLAGS = $(PMIX_LDFLAGS)
-
 headers =
 sources =
 nodist_headers =
