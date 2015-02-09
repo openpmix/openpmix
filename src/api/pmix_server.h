@@ -294,7 +294,7 @@ typedef void (*pmix_send_message_cbfunc_t)(int sd, char *payload, size_t size);
  * PMIX_SUCCESS if the connection is authenticated, and an appropriate
  * PMIx error code if not. If the client is authenticated, it will
  * be sent whatever initial job_info the host server can provide */
-pmix_status_t PMIx_server_authenticate_client(int sd, pmix_send_message_cbfunc_t snd_msg);
+pmix_status_t PMIx_server_authenticate_client(int sd, int *rank, pmix_send_message_cbfunc_t snd_msg);
 
 /* process a received PMIx client message, sending any desired return
  * via the provided callback function. Params:

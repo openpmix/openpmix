@@ -35,7 +35,7 @@ size_t PMIx_message_payload_size(char *readhdr)
     return hdr->nbytes;
 }
 
-int PMIx_server_authenticate_client(int sd, pmix_send_message_cbfunc_t snd_msg)
+int PMIx_server_authenticate_client(int sd, int *rank, pmix_send_message_cbfunc_t snd_msg)
 {
     int rc;
     pmix_peer_t *peer;
@@ -44,6 +44,7 @@ int PMIx_server_authenticate_client(int sd, pmix_send_message_cbfunc_t snd_msg)
     
     /* perform the authentication */
     rc = pmix_server_authenticate(sd, &peer, &info);
+    *rank = peer->rank;
 
     if (NULL != snd_msg) {
         /* pack the response, starting with rc */
