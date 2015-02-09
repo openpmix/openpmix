@@ -9,7 +9,6 @@
 
 headers += \
         src/sec/pmix_sec.h \
-        src/sec/sec.h \
         src/sec/pmix_native.h
 
 sources += \
@@ -18,7 +17,6 @@ sources += \
 
 server_headers += \
         src/sec/pmix_sec.h \
-        src/sec/sec.h \
         src/sec/pmix_native.h
 
 server_sources += \
