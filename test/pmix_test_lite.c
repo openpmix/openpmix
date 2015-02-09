@@ -586,6 +586,7 @@ static void snd_ack(int sd, char *payload, size_t size)
 static void connection_handler(int incomind_sd, short flags, void* cbdata)
 {
     int rc, sd;
+    int rank;
 
     fprintf(stderr, "PMIx srv: Incoming connection from the client\n");
 
@@ -596,7 +597,7 @@ static void connection_handler(int incomind_sd, short flags, void* cbdata)
     }
 
     /* authenticate the connection */
-    if (PMIX_SUCCESS != (rc = PMIx_server_authenticate_client(sd, snd_ack))) {
+    if (PMIX_SUCCESS != (rc = PMIx_server_authenticate_client(sd, &rank, snd_ack))) {
         printf("PMIx srv: Bad authentification!\n");
         exit(0);
     }
