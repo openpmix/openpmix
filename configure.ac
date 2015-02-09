@@ -884,7 +884,7 @@ if test "$PMIX_TOP_BUILDDIR" != "$PMIX_TOP_SRCDIR"; then
     # rather than have successive assignments to these shell
     # variables, lest the $(foo) names try to get evaluated here.
     # Yuck!
-    CPPFLAGS='-I$(top_srcdir) -I$(top_builddir) -I$(top_srcdir)/pmix/include'" $CPPFLAGS"
+    CPPFLAGS='-I$(top_srcdir) -I$(top_builddir) -I$(top_srcdir)/src/include'" $CPPFLAGS"
 else
     CPPFLAGS='-I$(top_srcdir)'" $CPPFLAGS"
 fi
