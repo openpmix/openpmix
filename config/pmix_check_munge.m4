@@ -16,18 +16,21 @@ AC_DEFUN([PMIX_MUNGE_CONFIG],[
 
     AC_ARG_WITH([munge],
                 [AC_HELP_STRING([--with-munge=DIR],
-                                [Search for munge headers and libraries in DIR ])],
-               [], [with_munge=no])
+                                [Search for munge headers and libraries in DIR ])])
 
     AC_ARG_WITH([munge-libdir],
                 [AC_HELP_STRING([--with-munge-libdir=DIR],
                                 [Search for munge libraries in DIR ])])
 
     pmix_munge_support=0
-    if test $pmix_dist_enabled != 1 -a "$with_munge" != "no"; then
+    if test "$with_munge" != "no"; then
         AC_MSG_CHECKING([for munge in])
         if test ! -z "$with_munge" -a "$with_munge" != "yes"; then
-            pmix_munge_dir=$with_munge/include/munge
+            if test -d $with_munge/include/munge; then
+                pmix_munge_dir=$with_munge/include/munge
+            else
+                pmix_munge_dir=$with_munge
+            fi
             if test -d $with_munge/lib; then
                 pmix_munge_libdir=$with_munge/lib
             elif -d $with_munge/lib64; then

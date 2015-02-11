@@ -43,6 +43,8 @@ pmix_sec_base_module_t pmix_munge_module = {
 };
 
 static char *mycred = NULL;
+static bool initialized = false;
+static bool refresh = false;
 
 static int munge_init(void)
 {
@@ -61,6 +63,7 @@ static int munge_init(void)
                             munge_strerror(rc));
         return PMIX_ERR_SERVER_NOT_AVAIL;
     }
+    initialized = true;
 
     return PMIX_SUCCESS;
 }
@@ -69,19 +72,37 @@ static void munge_finalize(void)
 {
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "sec: munge finalize");
-    if (NULL != mycred) {
-        free(mycred);
-        mycred = NULL;
+    if (initialized) {
+        if (NULL != mycred) {
+            free(mycred);
+            mycred = NULL;
+        }
     }
 }
 
 static char* create_cred(void)
 {
+    int rc;
+    
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "sec: munge create_cred");
 
-
-    return mycred;
+    if (initialized) {
+        if (!refresh) {
+            refresh = true;
+            return mycred;
+        } else {
+            /* munge does not allow reuse of a credential, so we have to
+             * refresh it for every use */
+            if (EMUNGE_SUCCESS != (rc = munge_encode(&mycred, NULL, NULL, 0))) {
+                pmix_output_verbose(2, pmix_globals.debug_output,
+                                    "sec: munge failed to create credential: %s",
+                                    munge_strerror(rc));
+                return NULL;
+            }
+        }
+    }
+    return NULL;
 }
 
 static int validate_cred(pmix_peer_t *peer, char *cred)
