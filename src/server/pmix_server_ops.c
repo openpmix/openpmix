@@ -96,6 +96,7 @@ static pmix_server_trkr_t* get_tracker(pmix_list_t *trks,
     pmix_server_trkr_t *trk;
     size_t i, j;
     bool match;
+    uint32_t local_cnt = 0, local_cnt_max;
 
     PMIX_LIST_FOREACH(trk, trks, pmix_server_trkr_t) {
         if (trk->nranges != nranges) {
@@ -132,6 +133,8 @@ static pmix_server_trkr_t* get_tracker(pmix_list_t *trks,
     /* copy the ranges */
     trk->nranges = nranges;
     trk->ranges = (pmix_range_t*)malloc(nranges * sizeof(pmix_range_t));
+    local_cnt_max = pmix_list_get_size(&pmix_server_globals.peers);
+
     for (i=0; i < nranges; i++) {
         memset(&trk->ranges[i], 0, sizeof(pmix_range_t));
         (void)strncpy(trk->ranges[i].nspace, ranges[i].nspace, PMIX_MAX_NSLEN);
@@ -141,9 +144,21 @@ static pmix_server_trkr_t* get_tracker(pmix_list_t *trks,
             trk->ranges[i].ranks = (int*)malloc(ranges[i].nranks * sizeof(int));
             for (j=0; j < ranges[i].nranks; j++) {
                 trk->ranges[i].ranks[j] = ranges[i].ranks[j];
+                if( local_cnt < local_cnt_max ){
+                    // Note if this is local peer
+                    pmix_peer_t *pr = NULL;
+                    PMIX_LIST_FOREACH(pr, &pmix_server_globals.peers, pmix_peer_t) {
+                        if( ranges[i].ranks[j] == pr->rank ){
+                            local_cnt++;
+                        }
+                    }
+                }
             }
+        } else {
+            local_cnt = local_cnt_max;
         }
     }
+    trk->local_cnt = local_cnt;
     trk->trklist = trks;
     pmix_list_append(trks, &trk->super);
     return trk;
@@ -228,11 +243,14 @@ int pmix_server_fence(pmix_server_caddy_t *cd,
          * notified when we are done */
         OBJ_RETAIN(cd);
         pmix_list_append(&trk->locals, &cd->super);
-        /* let the local host's server know that we are at the
+        /* if all local contributions were collected
+         * let the local host's server know that we are at the
          * "fence" point - they will callback once the barrier
          * across all participants has been completed */
-        rc = pmix_host_server.fence_nb(ranges, nranges, barrier,
-                                       collect_data, modexcbfunc, trk);
+        if( pmix_list_get_size(&trk->locals) == trk->local_cnt ){
+            rc = pmix_host_server.fence_nb(ranges, nranges, barrier,
+                                           collect_data, modexcbfunc, trk);
+        }
     } else {
         /* tell the caller to send an immediate release */
         if (NULL != opcbfunc) {

@@ -34,6 +34,7 @@ typedef struct {
     pmix_range_t *ranges;
     size_t nranges;
     pmix_list_t locals;
+    uint32_t local_cnt;
     pmix_list_t *trklist;
 } pmix_server_trkr_t;
 OBJ_CLASS_DECLARATION(pmix_server_trkr_t);
