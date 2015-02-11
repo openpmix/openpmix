@@ -316,6 +316,9 @@ static void getnb_cbfunc(int sd, pmix_usock_hdr_t *hdr,
 
     /* if a callback was provided, execute it */
     if (NULL != cb && NULL != cb->value_cbfunc) {
+        if( !rc && ( NULL == val ) ){
+            rc = PMIX_ERR_NOT_FOUND;
+        }
         cb->value_cbfunc(rc, val, cb->cbdata);
     }
     PMIx_free_value(&val);
