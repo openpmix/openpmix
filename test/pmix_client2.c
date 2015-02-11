@@ -152,22 +152,21 @@ int main(int argc, char **argv)
             fprintf(stderr, "GET OF %s SUCCEEDED\n", key);
             fprintf(stderr,"PMIx cli: rank %d is OK\n", i);
         }
+        /* ask for a non-existent key */
+        if (PMIX_SUCCESS == (rc = PMIx_Get(nspace, i, "foobar", &val))) {
+            fprintf(stderr, "PMIx_Get returned success instead of failure\n");
+            goto error_out;
+        }
+        if (PMIX_ERR_NOT_FOUND != rc) {
+            fprintf(stderr, "PMIx_Get returned %d instead of not_found\n", rc);
+        }
+        if (NULL != val) {
+            fprintf(stderr, "PMIx test: PMIx_Get did not return NULL value\n");
+            goto error_out;
+        }
+        fprintf(stderr, "GET OF NON-EXISTENT KEY CORRECTLY HANDLED\n");
     }
 
-    /* ask for a non-existent key */
-    if (PMIX_SUCCESS == (rc = PMIx_Get(nspace, i, "foobar", &val))) {
-        fprintf(stderr, "PMIx_Get returned success instead of failure\n");
-        goto error_out;
-    }
-    if (PMIX_ERR_NOT_FOUND != rc) {
-        fprintf(stderr, "PMIx_Get returned %d instead of not_found\n", rc);
-    }
-    if (NULL != val) {
-        fprintf(stderr, "PMIx test: PMIx_Get did not return NULL value\n");
-        goto error_out;
-    }
-    fprintf(stderr, "GET OF NON-EXISTENT KEY CORRECTLY HANDLED\n");
-    
  error_out:
     /* finalize us */
     fprintf(stderr, "Finalizing pmix_client2 rank %d\n", rank);
