@@ -62,47 +62,110 @@ BEGIN_C_DECLS
 /* NOTE: calls to these APIs must be thread-protected as there
  * currently is NO internal thread safety. */
 
-/* Init */
+/* Initialize the PMIx client, returning the namespace assigned
+ * to this client's application in the provided character array 
+ * (must be of size PMIX_MAX_NSLEN or greater). Passing a parameter
+ * of _NULL_ for either or both parameters is allowed if the user
+ * wishes solely to initialize the PMIx system and does not require
+ * return of the NULL parameter(s) at that time.
+ *
+ * When called the PMIx client will check for the required connection
+ * information of the local PMIx server and will establish the connection.
+ * If the information is not found, or the server connection fails, then
+ * an appropriate error constant will be returned.
+ *
+ * If successful, the function will return PMIX_SUCCESS, will fill the
+ * provided namespace array with the server-assigned namespace, and return
+ * the rank of the process within the application. Note that the PMIx
+ * client library is referenced counted, and so multiple calls to PMIx_Init
+ * are allowed. Thus, one way to obtain the namespace and rank of the
+ * process is to simply call PMIx_Init with non-NULL parameters. */
 pmix_status_t PMIx_Init(char nspace[], int *rank);
 
-/* Finalize */
+/* Finalize the PMIx client, closing the connection to the local server.
+ * An error code will be returned if, for some reason, the connection
+ * cannot be closed. */
 pmix_status_t PMIx_Finalize(void);
 
-/* Initialized */
+/* Returns _true_ if the PMIx client has been successfully initialized,
+ * returns _false_ otherwise. Note that the function only reports the
+ * internal state of the PMIx client - it does not verify an active
+ * connection with the server, nor that the server is functional. */
 int PMIx_Initialized(void);
 
-/* Abort */
+/* Request that the current application be aborted, returning the
+ * provided _status_ and printing the provided message. The response
+ * to this request is somewhat dependent on the specific resource
+ * manager and its configuration (e.g., some resource managers will
+ * not abort the application if the provided _status_ is zero unless
+ * specifically configured to do so), and thus lies outside the control
+ * of PMIx itself. However, the client will inform the local PMIx of
+ * the request that the application be aborted, regardless of the
+ * value of the provided _status_.
+ *
+ * Passing a _NULL_ msg parameter is allowed. Note that race conditions
+ * caused by multiple processes calling PMIx_Abort are left to the
+ * server implementation to resolve with regard to which status is
+ * returned and what messages (if any) are printed.
+ */
 pmix_status_t PMIx_Abort(int status, const char msg[]);
 
-/* Fence */
-/* collect_data - false (0) indicates that the callback is just used as
- * a release and no data is to be returned at that time, true (1) indicates
- * that all modex data is to be included in the callback. Returned data
- * is locally cached so that subsequent calls to PMIx_Get can be serviced
- * without communicating to/from the server, but at the cost of increased
- * memory footprint */
+/* Push all previously _PMIx_Put_ values to the local PMIx server and
+ * execute a blocking barrier across the processes identified in the
+ * specified ranges. Passing a _NULL_ pointer as the _ranges_ parameter
+ * indicates that the barrier is to span all processes in the client's
+ * namespace. Each provided range struct can pass _NULL_ for its array
+ * of ranks to indicate that all processes in the given namespace are
+ * participating.
+ *
+ * The _collect_data_ parameter is passed to the server to indicate whether
+ * or not the barrier operation is to return the _put_ data from all
+ * participating processes. A value of _false_ indicates that the callback
+ * is just used as a release and no data is to be returned at that time. A
+ * value of _true_ indicates that all _put_ data is to be collected by the
+ * barrier. Returned data is locally cached so that subsequent calls to _PMIx_Get_
+ * can be serviced without communicating to/from the server, but at the cost
+ * of increased memory footprint
+ */
 pmix_status_t PMIx_Fence(const pmix_range_t ranges[],
                          size_t nranges, int collect_data);
 
 /* Fence_nb */
-/* barrier - false (0) indicates that we are to be called back immediately,
- * true (non-zero) indicates that the callback is to occur once all participants
- * have reached the fence_nb call
+/* Non-blocking version of PMIx_Fence. Push all previously _PMIx_Put_ values
+ * to the local PMIx server. Passing a _true_ value to the _barrier_ parameter
+ * will direct the PMIx server to execute the specified callback function once
+ * all participating processes have called _PMIx_Fence_nb_. Passing a value of
+ * _false_ for _barrier_ will cause the callback function to be immediately
+ * executed upon the server receiving the command.
  *
- * collect_data - false (0) indicates that the callback is just used as
- * a release and no data is to be returned at that time, true (1) indicates
- * that all modex data is to be locally cached in the process upon completion
- * of the fence operation. Locally cached data means that subsequent calls to
- * PMIx_Get can be serviced without communicating to/from the server, but at
- * the cost of increased memory footprint */
+ * Passing a _NULL_ pointer as the _ranges_ parameter indicates that any
+ * requested barrier is to span all processes in the client's namespace. Each
+ * provided range struct can pass _NULL_ for its array of ranks to indicate
+ * that all processes in the given namespace are participating.
+ *
+ * The _collect_data_ parameter is passed to the server to indicate whether
+ * or not the barrier operation is to return the _put_ data from all participating
+ * processes in the callback. A value of _false_ indicates that the callback is
+ * just used as a release and no data is to be returned at that time. A value of
+ * _true_ indicates that all _put_ data is to be collected by the barrier and
+ * returned in the callback function. A _NULL_ callback function can be used to
+ * indicate that no callback is desired. */
 pmix_status_t PMIx_Fence_nb(const pmix_range_t ranges[], size_t nranges,
                             int barrier, int collect_data,
                             pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-/* Put */
+/* Push a value into the client's namespace. The client library will cache
+ * the information locally until _PMIx_Fence_ is called. The provided scope
+ * value is passed to the local PMIx server, which will distribute the data
+ * as directed. */
 pmix_status_t PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val);
 
-/* Get */
+/* Retrieve information for the specified _key_ as published by the given _rank_
+ * within the provided _namespace_, returning a pointer to the value in the
+ * given address. This is a blocking operation - the caller will block until
+ * the specified data has been _PMIx_Put_ by the specified rank. The caller is
+ * responsible for freeing all memory associated with the returned value when
+ * no longer required. */
 pmix_status_t PMIx_Get(const char nspace[], int rank,
                        const char key[], pmix_value_t **val);
 
