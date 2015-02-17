@@ -228,7 +228,7 @@ export USER
 do_command "./autogen.sh"
 
 # do config
-do_command "./configure"
+do_command "./configure --with-libevent=$LIBEVENT"
 
 # Do make distcheck (which will invoke config/distscript.csh to set
 # the right values in VERSION).  distcheck does many things; we need
