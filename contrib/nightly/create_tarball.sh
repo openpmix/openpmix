@@ -213,7 +213,7 @@ fi
 # insert the actual value that we want (so that pmix_get_version.sh
 # will report exactly that version).
 sed -e 's/^repo_rev=.*/repo_rev='$describe/ \
-    -e 's/^tarball_version=.*/tarball_version='$describe/ \
+    -e 's/^want_repo_rev=.*/want_repo_rev=1/' \
     VERSION > VERSION.new
 cp -f VERSION.new VERSION
 rm -f VERSION.new
