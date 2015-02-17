@@ -34,13 +34,13 @@ gitbranch=$5
 
 # Set this to any value for additional output; typically only when
 # debugging
-debug=1
+debug=
 
 # do you want a success mail?
 want_success_mail=1
 
 # max length of logfile to send in an e-mail
-max_log_len=50
+max_log_len=500
 
 # how many snapshots to keep in the destdir?
 max_snapshots=5
@@ -228,7 +228,8 @@ export USER
 do_command "./autogen.sh"
 
 # do config
-do_command "./configure --with-libevent=$LIBEVENT"
+CONFIG_FLAGS="--with-libevent=$LIBEVENT"
+do_command "./configure $CONFIG_FLAGS"
 
 # Do make distcheck (which will invoke config/distscript.csh to set
 # the right values in VERSION).  distcheck does many things; we need
@@ -239,7 +240,10 @@ do_command "./configure --with-libevent=$LIBEVENT"
 # future...
 save=$LD_LIBRARY_PATH
 LD_LIBRARY_PATH=
-do_command "make -j 8 distcheck"
+DISTCHECK_CONFIGURE_FLAGS=$CONFIG_FLAGS
+DISTCHECK_MAKE_FLAGS="-j8"
+export DISTCHECK_CONFIGURE_FLAGS DISTCHECK_MAKE_FLAGS
+do_command "make distcheck"
 LD_LIBRARY_PATH=$save
 save=
 
