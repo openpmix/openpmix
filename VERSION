@@ -25,30 +25,26 @@ release=0
 
 greek=a1
 
-# If want_repo_rev=1, then the repo revision number will be included
-# in the overall PMIx version number in some form.
+# If repo_rev is empty, then the repository version number will be
+# obtained during "make dist" via the "git describe --tags --always"
+# command, or with the date (if "git describe" fails) in the form of
+# "date<date>".
 
-want_repo_rev=0
+repo_rev=
 
-# If repo_rev=-1, then the repository version number will be obtained
-# dynamically at run time, either:
-#
-# 1) via the "git log -1" command (if this is a Git clone) in the form
-#    of "git<hash>", using the hash tag at the HEAD
-# 4) with the date (if the above doesn't work) in the form of
-#    "date<date>".
-#
-# Alternatively, if repo_rev is not -1, the value of repo_rev_r will
-# be directly appended to the version string.  This happens during
-# "make dist", for example: if the distribution tarball is being made
-# from a git checkout, if repo_rev=-1, then its value is replaced
-# with the output of "gitversion".
+# If tarball_version is not empty, it is used as the version string in
+# the tarball filename, regardless of all other versions listed in
+# this file.  For example, if tarball_version is empty, the tarball
+# filename will be of the form
+# openmpi-<major>.<minor>.<release><greek>.tar.*.  However, if
+# tarball_version is not empty, the tarball filename will be of the
+# form openmpi-<tarball_version>.tar.*.
 
-repo_rev=gitb86d402
+tarball_version=gitclone
 
 # The date when this release was created
 
-date="Feb 09, 2015"
+date="Unreleased developer copy"
 
 # The shared library version of each of PMIx's public libraries.
 # These versions are maintained in accordance with the "Library
