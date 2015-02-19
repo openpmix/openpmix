@@ -62,6 +62,9 @@ typedef struct {
     int errcode;
 } pmix_timing_prep_t;
 
+/* Pass down our namespace and rank for pretty-print purposes */
+void pmix_init_id(char* nspace, int rank);
+
 /**
  * Initialize timing structure.
  *
@@ -233,6 +236,12 @@ int pmix_timing_deltas(pmix_timing_t *t, char *fname);
 void pmix_timing_release(pmix_timing_t *t);
 
 /**
+ * Macro for passing down process id - compiled out
+ * when configured without --enable-timing
+ */
+#define PMIX_TIMING_ID(n, r) pmix_timing_id((n), (r));
+
+/**
  * Main macro for use in declaring pmix timing handler;
  * will be "compiled out" when PMIX is configured without
  * --enable-timing.
@@ -378,6 +387,8 @@ void pmix_timing_release(pmix_timing_t *t);
 #define PMIX_TIMING_RELEASE(t) pmix_timing_release(t)
 
 #else
+
+#define PMIX_TIMING_ID(n, r)
 
 #define PMIX_TIMING_DECLARE(t)
 

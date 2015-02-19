@@ -59,6 +59,11 @@ static char *jobid = "";
 static double hnp_offs = 0;
 static bool pmix_timing_overhead = false;
 
+void pmix_init_id(char* nspace, int rank)
+{
+    asprintf(&jobid, "%s:%d", nspace, rank);
+}
+
 /* Get current timestamp. Derived from MPI_Wtime */
 
 static double get_ts_gettimeofday(void)
