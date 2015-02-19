@@ -92,7 +92,7 @@ static void wait_cbfunc(int sd, pmix_usock_hdr_t *hdr,
  
 static void setup_globals(void)
 {
-    OBJ_CONSTRUCT(&pmix_client_globals.myserver, pmix_peer_t);
+    PMIX_CONSTRUCT(&pmix_client_globals.myserver, pmix_peer_t);
     /* setup our copy of the pmix globals object */
     memset(&pmix_globals.nspace, 0, PMIX_MAX_NSLEN);
 }
@@ -264,18 +264,18 @@ int PMIx_Finalize(void)
     if ( 0 <= pmix_client_globals.myserver.sd ) {
         /* setup a cmd message to notify the PMIx
          * server that we are normally terminating */
-        msg = OBJ_NEW(pmix_buffer_t);
+        msg = PMIX_NEW(pmix_buffer_t);
         /* pack the cmd */
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
             PMIX_ERROR_LOG(rc);
-            OBJ_RELEASE(msg);
+            PMIX_RELEASE(msg);
             return rc;
         }
 
         /* create a callback object as we need to pass it to the
          * recv routine so we know which callback to use when
          * the return message is recvd */
-        cb = OBJ_NEW(pmix_cb_t);
+        cb = PMIX_NEW(pmix_cb_t);
         cb->active = true;
 
         pmix_output_verbose(2, pmix_globals.debug_output,
@@ -286,13 +286,13 @@ int PMIx_Finalize(void)
 
         /* wait for the ack to return */
         PMIX_WAIT_FOR_COMPLETION(cb->active);
-        OBJ_RELEASE(cb);
+        PMIX_RELEASE(cb);
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "pmix:client finalize sync received");
     }
 
     pmix_usock_finalize();
-    OBJ_DESTRUCT(&pmix_client_globals.myserver);
+    PMIX_DESTRUCT(&pmix_client_globals.myserver);
 
     pmix_stop_progress_thread(pmix_globals.evbase);
     event_base_free(pmix_globals.evbase);
@@ -329,30 +329,30 @@ int PMIx_Abort(int flag, const char msg[])
     }
 
     /* create a buffer to hold the message */
-    bfr = OBJ_NEW(pmix_buffer_t);
+    bfr = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(bfr, &cmd, 1, PMIX_CMD))) {
         PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(bfr);
+        PMIX_RELEASE(bfr);
         return rc;
     }
     /* pack the status flag */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(bfr, &flag, 1, PMIX_INT))) {
         PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(bfr);
+        PMIX_RELEASE(bfr);
         return rc;
     }
     /* pack the string message - a NULL is okay */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(bfr, &msg, 1, PMIX_STRING))) {
         PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(bfr);
+        PMIX_RELEASE(bfr);
         return rc;
     }
 
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
-    cb = OBJ_NEW(pmix_cb_t);
+    cb = PMIX_NEW(pmix_cb_t);
     cb->active = true;
 
     /* push the message into our event base to send to the server */
@@ -360,7 +360,7 @@ int PMIx_Abort(int flag, const char msg[])
 
     /* wait for the release */
     PMIX_WAIT_FOR_COMPLETION(cb->active);
-    OBJ_RELEASE(cb);
+    PMIX_RELEASE(cb);
     return PMIX_SUCCESS;
 }
 
@@ -377,14 +377,14 @@ int PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
     }
 
     /* setup to xfer the data */
-    OBJ_CONSTRUCT(&kv, pmix_kval_t);
+    PMIX_CONSTRUCT(&kv, pmix_kval_t);
     kv.key = (char*)key;
     kv.value = val;
     
     /* pack the cache that matches the scope */
     if (PMIX_LOCAL == scope) {
         if (NULL == pmix_client_globals.cache_local) {
-            pmix_client_globals.cache_local = OBJ_NEW(pmix_buffer_t);
+            pmix_client_globals.cache_local = PMIX_NEW(pmix_buffer_t);
         }
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "pmix: put local data for key %s", key);
@@ -393,7 +393,7 @@ int PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
         }
     } else if (PMIX_REMOTE == scope) {
         if (NULL == pmix_client_globals.cache_remote) {
-            pmix_client_globals.cache_remote = OBJ_NEW(pmix_buffer_t);
+            pmix_client_globals.cache_remote = PMIX_NEW(pmix_buffer_t);
         }
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "pmix: put remote data for key %s", key);
@@ -403,7 +403,7 @@ int PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
     } else {
         /* must be global */
         if (NULL == pmix_client_globals.cache_global) {
-            pmix_client_globals.cache_global = OBJ_NEW(pmix_buffer_t);
+            pmix_client_globals.cache_global = PMIX_NEW(pmix_buffer_t);
         }
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "pmix: put global data for key %s", key);
@@ -415,7 +415,7 @@ int PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
     kv.key = NULL;
     kv.value = NULL;
     /* destruct the object */
-    OBJ_DESTRUCT(&kv);
+    PMIX_DESTRUCT(&kv);
 
     return rc;
 }
@@ -557,7 +557,7 @@ static int recv_connect_ack(int sd)
         return rc;
     }
     /* load the buffer for unpacking */
-    OBJ_CONSTRUCT(&buf, pmix_buffer_t);
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
     PMIX_LOAD_BUFFER(&buf, msg, hdr.nbytes);
 
     /* unpack the status */
@@ -590,8 +590,8 @@ static int recv_connect_ack(int sd)
         if (PMIX_SUCCESS != (rc = pmix_usock_recv_blocking(sd, msg, hdr.nbytes))) {
             goto cleanup;
         }
-        OBJ_DESTRUCT(&buf);
-        OBJ_CONSTRUCT(&buf, pmix_buffer_t);
+        PMIX_DESTRUCT(&buf);
+        PMIX_CONSTRUCT(&buf, pmix_buffer_t);
         PMIX_LOAD_BUFFER(&buf, msg, hdr.nbytes);
         cnt = 1;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&buf, &reply, &cnt, PMIX_INT))) {
@@ -624,7 +624,7 @@ static int recv_connect_ack(int sd)
             goto cleanup;
         }
         for (i=0; i < ninfo; i++) {
-            kv = OBJ_NEW(pmix_kval_t);
+            kv = PMIX_NEW(pmix_kval_t);
             kv->key = strdup(info[i].key);
             kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
             pmix_value_xfer(kv->value, &info[i].value);
@@ -632,14 +632,14 @@ static int recv_connect_ack(int sd)
                                                              pmix_globals.rank, kv))) {
                 PMIX_ERROR_LOG(rc);
             }
-            OBJ_RELEASE(kv); // maintain accounting
+            PMIX_RELEASE(kv); // maintain accounting
         }
         //free(info);
     }
 
  cleanup:
     buf.base_ptr = NULL;  // protect data region from double-free
-    OBJ_DESTRUCT(&buf);
+    PMIX_DESTRUCT(&buf);
     free(msg);
     return rc;
 }

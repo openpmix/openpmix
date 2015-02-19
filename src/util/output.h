@@ -551,7 +551,7 @@ struct pmix_output_stream_t {
  * The intended usage is to invoke the constructor and then enable
  * the output fields that you want.
  */
-PMIX_DECLSPEC OBJ_CLASS_DECLARATION(pmix_output_stream_t);
+PMIX_DECLSPEC PMIX_CLASS_DECLARATION(pmix_output_stream_t);
 
 END_C_DECLS
 

@@ -18,7 +18,7 @@ typedef struct {
     int sd;
     pmix_send_message_cbfunc_t cbfunc;
 } pmix_snd_caddy_t;
-OBJ_CLASS_DECLARATION(pmix_snd_caddy_t);
+PMIX_CLASS_DECLARATION(pmix_snd_caddy_t);
 
 typedef struct {
     pmix_list_item_t super;
@@ -26,7 +26,7 @@ typedef struct {
     pmix_peer_t *peer;
     pmix_snd_caddy_t snd;
 } pmix_server_caddy_t;
-OBJ_CLASS_DECLARATION(pmix_server_caddy_t);
+PMIX_CLASS_DECLARATION(pmix_server_caddy_t);
 
 typedef struct {
     pmix_list_item_t super;
@@ -37,7 +37,7 @@ typedef struct {
     uint32_t local_cnt;
     pmix_list_t *trklist;
 } pmix_server_trkr_t;
-OBJ_CLASS_DECLARATION(pmix_server_trkr_t);
+PMIX_CLASS_DECLARATION(pmix_server_trkr_t);
 
 typedef struct {
     pmix_list_t peers;
@@ -48,19 +48,19 @@ typedef struct {
 
 #define PMIX_PEER_CADDY(c, p, t)                                        \
     do {                                                                \
-        (c) = OBJ_NEW(pmix_server_caddy_t);                             \
+        (c) = PMIX_NEW(pmix_server_caddy_t);                             \
         (void)memcpy((c)->hdr.nspace, (p)->nspace, PMIX_MAX_NSLEN);     \
         (c)->hdr.rank = (p)->rank;                                      \
         (c)->hdr.tag = (t);                                             \
-        OBJ_RETAIN((p));                                                \
+        PMIX_RETAIN((p));                                                \
         (c)->peer = (p);                                                \
     } while(0);
 
 #define PMIX_SND_CADDY(c, h, s)                                         \
     do {                                                                \
-        (c) = OBJ_NEW(pmix_server_caddy_t);                             \
+        (c) = PMIX_NEW(pmix_server_caddy_t);                             \
         (void)memcpy(&(c)->hdr, &(h), sizeof(pmix_usock_hdr_t));        \
-        OBJ_RETAIN((s));                                                \
+        PMIX_RETAIN((s));                                                \
         (c)->snd = (s);                                                 \
     } while(0);
 

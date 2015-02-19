@@ -78,7 +78,7 @@ static void pmix_buffer_destruct (pmix_buffer_t* buffer)
     }
 }
 
-OBJ_CLASS_INSTANCE(pmix_buffer_t,
+PMIX_CLASS_INSTANCE(pmix_buffer_t,
                    pmix_object_t,
                    pmix_buffer_construct,
                    pmix_buffer_destruct);
@@ -100,7 +100,7 @@ static void pmix_bfrop_type_info_destruct(pmix_bfrop_type_info_t *obj)
     }
 }
 
-OBJ_CLASS_INSTANCE(pmix_bfrop_type_info_t, pmix_object_t,
+PMIX_CLASS_INSTANCE(pmix_bfrop_type_info_t, pmix_object_t,
                    pmix_bfrop_type_info_construct,
                    pmix_bfrop_type_info_destruct);
 
@@ -118,7 +118,7 @@ static void kvdes(pmix_kval_t *k)
         PMIx_free_value(&k->value);
     }
 }
-OBJ_CLASS_INSTANCE(pmix_kval_t,
+PMIX_CLASS_INSTANCE(pmix_kval_t,
                    pmix_list_item_t,
                    kvcon, kvdes);
 
@@ -141,7 +141,7 @@ int pmix_bfrop_open(void)
 #endif
 
     /* Setup the types array */
-    OBJ_CONSTRUCT(&pmix_bfrop_types, pmix_pointer_array_t);
+    PMIX_CONSTRUCT(&pmix_bfrop_types, pmix_pointer_array_t);
     if (PMIX_SUCCESS != (rc = pmix_pointer_array_init(&pmix_bfrop_types, 64, 255, 64))) {
         return rc;
     }
@@ -333,11 +333,11 @@ int pmix_bfrop_close(void)
         pmix_bfrop_type_info_t *info = (pmix_bfrop_type_info_t*)pmix_pointer_array_get_item(&pmix_bfrop_types, i);
         if (NULL != info) {
             pmix_pointer_array_set_item(&pmix_bfrop_types, i, NULL);
-            OBJ_RELEASE(info);
+            PMIX_RELEASE(info);
         }
     }
 
-    OBJ_DESTRUCT(&pmix_bfrop_types);
+    PMIX_DESTRUCT(&pmix_bfrop_types);
 
     return PMIX_SUCCESS;
 }

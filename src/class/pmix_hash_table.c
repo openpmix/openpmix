@@ -39,7 +39,7 @@ static void pmix_hash_table_construct(pmix_hash_table_t* ht);
 static void pmix_hash_table_destruct(pmix_hash_table_t* ht);
 
 
-OBJ_CLASS_INSTANCE(
+PMIX_CLASS_INSTANCE(
     pmix_hash_table_t, 
     pmix_object_t,
     pmix_hash_table_construct,
@@ -49,7 +49,7 @@ OBJ_CLASS_INSTANCE(
 
 static void pmix_hash_table_construct(pmix_hash_table_t* ht)
 {
-    OBJ_CONSTRUCT(&ht->ht_nodes, pmix_list_t);
+    PMIX_CONSTRUCT(&ht->ht_nodes, pmix_list_t);
     ht->ht_table = NULL;
     ht->ht_table_size = 0;
     ht->ht_size = 0;
@@ -61,12 +61,12 @@ static void pmix_hash_table_destruct(pmix_hash_table_t* ht)
     size_t i;
     pmix_hash_table_remove_all(ht);
     for(i=0; i<ht->ht_table_size; i++) {
-        OBJ_DESTRUCT(ht->ht_table+i);
+        PMIX_DESTRUCT(ht->ht_table+i);
     }
     if(NULL != ht->ht_table) {
         free(ht->ht_table);
     }
-    OBJ_DESTRUCT(&ht->ht_nodes);
+    PMIX_DESTRUCT(&ht->ht_nodes);
 }
 
 
@@ -82,7 +82,7 @@ int pmix_hash_table_init(pmix_hash_table_t* ht, size_t table_size)
     }
     for(i=ht->ht_table_size; i<power2; i++) {
         pmix_list_t* list = ht->ht_table+i;
-        OBJ_CONSTRUCT(list, pmix_list_t);
+        PMIX_CONSTRUCT(list, pmix_list_t);
     }
     ht->ht_table_size = power2;
     return PMIX_SUCCESS;
@@ -95,13 +95,13 @@ int pmix_hash_table_remove_all(pmix_hash_table_t* ht)
         pmix_list_t* list = ht->ht_table+i;
         while(pmix_list_get_size(list)) {
             pmix_list_item_t *item = pmix_list_remove_first(list);
-            OBJ_RELEASE(item);
+            PMIX_RELEASE(item);
         }
     }
 
     while(pmix_list_get_size(&ht->ht_nodes)) {
         pmix_list_item_t* item = pmix_list_remove_first(&ht->ht_nodes);
-        OBJ_RELEASE(item);
+        PMIX_RELEASE(item);
     }
     ht->ht_size = 0;
     ht->ht_size -= 1;
@@ -122,7 +122,7 @@ struct pmix_uint32_hash_node_t
 };
 typedef struct pmix_uint32_hash_node_t pmix_uint32_hash_node_t;
 
-static OBJ_CLASS_INSTANCE(pmix_uint32_hash_node_t,
+static PMIX_CLASS_INSTANCE(pmix_uint32_hash_node_t,
                           pmix_list_item_t,
                           NULL,
                           NULL);
@@ -177,7 +177,7 @@ int pmix_hash_table_set_value_uint32(pmix_hash_table_t* ht,
 
     node = (pmix_uint32_hash_node_t*)pmix_list_remove_first(&ht->ht_nodes); 
     if(NULL == node) {
-        node = OBJ_NEW(pmix_uint32_hash_node_t);
+        node = PMIX_NEW(pmix_uint32_hash_node_t);
         if(NULL == node)
             return PMIX_ERR_OUT_OF_RESOURCE;
     }
@@ -228,7 +228,7 @@ struct pmix_uint64_hash_node_t
 };
 typedef struct pmix_uint64_hash_node_t pmix_uint64_hash_node_t;
 
-static OBJ_CLASS_INSTANCE(pmix_uint64_hash_node_t,
+static PMIX_CLASS_INSTANCE(pmix_uint64_hash_node_t,
                           pmix_list_item_t,
                           NULL,
                           NULL);
@@ -283,7 +283,7 @@ int pmix_hash_table_set_value_uint64(pmix_hash_table_t* ht,
 
     node = (pmix_uint64_hash_node_t*)pmix_list_remove_first(&ht->ht_nodes); 
     if(NULL == node) {
-        node = OBJ_NEW(pmix_uint64_hash_node_t);
+        node = PMIX_NEW(pmix_uint64_hash_node_t);
         if(NULL == node) {
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
@@ -350,7 +350,7 @@ static void pmix_ptr_hash_node_destruct(pmix_ptr_hash_node_t* hn)
     }
 }
 
-static OBJ_CLASS_INSTANCE(pmix_ptr_hash_node_t,
+static PMIX_CLASS_INSTANCE(pmix_ptr_hash_node_t,
                           pmix_list_item_t,
                           pmix_ptr_hash_node_construct,
                           pmix_ptr_hash_node_destruct);
@@ -415,7 +415,7 @@ int pmix_hash_table_set_value_ptr(pmix_hash_table_t* ht, const void* key,
 
     node = (pmix_ptr_hash_node_t*)pmix_list_remove_first(&ht->ht_nodes); 
     if(NULL == node) {
-        node = OBJ_NEW(pmix_ptr_hash_node_t);
+        node = PMIX_NEW(pmix_ptr_hash_node_t);
         if(NULL == node) {
             return PMIX_ERR_OUT_OF_RESOURCE;
         }

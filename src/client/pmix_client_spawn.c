@@ -67,11 +67,11 @@ int PMIx_Spawn(const pmix_app_t apps[],
                         "pmix: spawn called");
 
     /* create a callback object */
-    cb = OBJ_NEW(pmix_cb_t);
+    cb = PMIX_NEW(pmix_cb_t);
     cb->active = true;
     
     if (PMIX_SUCCESS != (rc = PMIx_Spawn_nb(apps, napps, spawn_cbfunc, cb))) {
-        OBJ_RELEASE(cb);
+        PMIX_RELEASE(cb);
         return rc;
     }
     
@@ -81,7 +81,7 @@ int PMIx_Spawn(const pmix_app_t apps[],
     if (NULL != nspace) {
         (void)strncpy(nspace, cb->nspace, PMIX_MAX_NSLEN);
     }
-    OBJ_RELEASE(cb);
+    PMIX_RELEASE(cb);
     return rc;
 }
 
@@ -100,30 +100,30 @@ int PMIx_Spawn_nb(const pmix_app_t apps[], size_t napps,
         return PMIX_ERR_INIT;
     }
 
-    msg = OBJ_NEW(pmix_buffer_t);
+    msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
         PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
+        PMIX_RELEASE(msg);
         return rc;
     }
 
     /* pack the apps */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &napps, 1, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
+        PMIX_RELEASE(msg);
         return rc;
     }
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, apps, napps, PMIX_APP))) {
         PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
+        PMIX_RELEASE(msg);
         return rc;
     }
     
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
-    cb = OBJ_NEW(pmix_cb_t);
+    cb = PMIX_NEW(pmix_cb_t);
     cb->active = true;
 
     /* push the message into our event base to send to the server */

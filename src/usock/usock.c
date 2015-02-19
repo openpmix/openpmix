@@ -46,7 +46,7 @@ pmix_usock_globals_t pmix_usock_globals;
 void pmix_usock_init(void)
 {
     /* setup the usock globals */
-    OBJ_CONSTRUCT(&pmix_usock_globals.posted_recvs, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_usock_globals.posted_recvs, pmix_list_t);
 }
 
 void pmix_usock_finalize(void)
@@ -171,10 +171,10 @@ static void scon(pmix_usock_send_t *p)
 static void sdes(pmix_usock_send_t *p)
 {
     if (NULL != p->data) {
-        OBJ_RELEASE(p->data);
+        PMIX_RELEASE(p->data);
     }
 }
-OBJ_CLASS_INSTANCE(pmix_usock_send_t,
+PMIX_CLASS_INSTANCE(pmix_usock_send_t,
                    pmix_list_item_t,
                    scon, sdes);
 
@@ -189,7 +189,7 @@ static void rcon(pmix_usock_recv_t *p)
     p->rdptr = NULL;
     p->rdbytes = 0;
 }
-OBJ_CLASS_INSTANCE(pmix_usock_recv_t,
+PMIX_CLASS_INSTANCE(pmix_usock_recv_t,
                    pmix_list_item_t,
                    rcon, NULL);
 
@@ -199,14 +199,14 @@ static void prcon(pmix_usock_posted_recv_t *p)
     p->cbfunc = NULL;
     p->cbdata = NULL;
 }
-OBJ_CLASS_INSTANCE(pmix_usock_posted_recv_t,
+PMIX_CLASS_INSTANCE(pmix_usock_posted_recv_t,
                    pmix_list_item_t,
                    prcon, NULL);
 
 static void cbcon(pmix_cb_t *p)
 {
     p->active = false;
-    OBJ_CONSTRUCT(&p->data, pmix_buffer_t);
+    PMIX_CONSTRUCT(&p->data, pmix_buffer_t);
     p->cbfunc = NULL;
     p->op_cbfunc = NULL;
     p->value_cbfunc = NULL;
@@ -220,7 +220,7 @@ static void cbcon(pmix_cb_t *p)
 }
 static void cbdes(pmix_cb_t *p)
 {
-    OBJ_DESTRUCT(&p->data);
+    PMIX_DESTRUCT(&p->data);
     if (NULL != p->nspace) {
         free(p->nspace);
     }
@@ -228,7 +228,7 @@ static void cbdes(pmix_cb_t *p)
         free(p->key);
     }
 }
-OBJ_CLASS_INSTANCE(pmix_cb_t,
+PMIX_CLASS_INSTANCE(pmix_cb_t,
                    pmix_object_t,
                    cbcon, cbdes);
 
@@ -240,7 +240,7 @@ static void srcon(pmix_usock_sr_t *p)
     p->cbfunc = NULL;
     p->cbdata = NULL;
 }
-OBJ_CLASS_INSTANCE(pmix_usock_sr_t,
+PMIX_CLASS_INSTANCE(pmix_usock_sr_t,
                    pmix_object_t,
                    srcon, NULL);
 
@@ -253,7 +253,7 @@ static void pcon(pmix_peer_t *p)
     p->sd = -1;
     p->send_ev_active = false;
     p->recv_ev_active = false;
-    OBJ_CONSTRUCT(&p->send_queue, pmix_list_t);
+    PMIX_CONSTRUCT(&p->send_queue, pmix_list_t);
     p->send_msg = NULL;
     p->recv_msg = NULL;
 }
@@ -270,16 +270,16 @@ static void pdes(pmix_peer_t *p)
     }
     PMIX_LIST_DESTRUCT(&p->send_queue);
     if (NULL != p->send_msg) {
-        OBJ_RELEASE(p->send_msg);
+        PMIX_RELEASE(p->send_msg);
     }
     if (NULL != p->recv_msg) {
-        OBJ_RELEASE(p->recv_msg);
+        PMIX_RELEASE(p->recv_msg);
     }
 }
-OBJ_CLASS_INSTANCE(pmix_peer_t,
+PMIX_CLASS_INSTANCE(pmix_peer_t,
                    pmix_list_item_t,
                    pcon, pdes);
 
-OBJ_CLASS_INSTANCE(pmix_timer_t,
+PMIX_CLASS_INSTANCE(pmix_timer_t,
                    pmix_object_t,
                    NULL, NULL);

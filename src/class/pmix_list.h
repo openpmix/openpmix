@@ -87,13 +87,13 @@ BEGIN_C_DECLS
  *
  * The class for the list container.
  */
-PMIX_DECLSPEC OBJ_CLASS_DECLARATION(pmix_list_t);
+PMIX_DECLSPEC PMIX_CLASS_DECLARATION(pmix_list_t);
 /**
  * \internal
  *
  * Base class for items that are put in list (pmix_list_t) containers.
  */
-PMIX_DECLSPEC OBJ_CLASS_DECLARATION(pmix_list_item_t);
+PMIX_DECLSPEC PMIX_CLASS_DECLARATION(pmix_list_item_t);
 
 
 /**
@@ -176,18 +176,18 @@ typedef struct pmix_list_t pmix_list_t;
     do {                                                        \
         pmix_list_item_t *it;                                   \
         while (NULL != (it = pmix_list_remove_first(list))) {   \
-            OBJ_RELEASE(it);                                    \
+            PMIX_RELEASE(it);                                    \
         }                                                       \
-        OBJ_DESTRUCT(list);                                     \
+        PMIX_DESTRUCT(list);                                     \
     } while(0);
 
 #define PMIX_LIST_RELEASE(list)                                 \
     do {                                                        \
         pmix_list_item_t *it;                                   \
         while (NULL != (it = pmix_list_remove_first(list))) {   \
-            OBJ_RELEASE(it);                                    \
+            PMIX_RELEASE(it);                                    \
         }                                                       \
-        OBJ_RELEASE(list);                                      \
+        PMIX_RELEASE(list);                                      \
     } while(0);
 
 
@@ -462,7 +462,7 @@ static inline size_t pmix_list_get_size(pmix_list_t* list)
  * This is an O(1) operation to remove an item from the list.  The
  * forward / reverse pointers in the list are updated and the item is
  * removed.  The list item that is returned is now "owned" by the
- * caller -- they are responsible for OBJ_RELEASE()'ing it.
+ * caller -- they are responsible for PMIX_RELEASE()'ing it.
  *
  * If debugging is enabled (specifically, if --enable-debug was used
  * to configure Open MPI), this is an O(N) operation because it checks
@@ -523,7 +523,7 @@ static inline pmix_list_item_t *pmix_list_remove_item
  * @param item The item to append
  *
  * This is an O(1) operation to append an item to the end of a list.
- * The pmix_list_item_t is not OBJ_RETAIN()'ed; it is assumed that
+ * The pmix_list_item_t is not PMIX_RETAIN()'ed; it is assumed that
  * "ownership" of the item is passed from the caller to the list.
  *
  * This is an inlined function in compilers that support inlining, so
@@ -587,7 +587,7 @@ static inline void _pmix_list_append(pmix_list_t *list, pmix_list_item_t *item
  * @param item The item to prepend
  *
  * This is an O(1) operation to prepend an item to the beginning of a
- * list.  The pmix_list_item_t is not OBJ_RETAIN()'ed; it is assumed
+ * list.  The pmix_list_item_t is not PMIX_RETAIN()'ed; it is assumed
  * that "ownership" of the item is passed from the caller to the list.
  *
  * This is an inlined function in compilers that support inlining, so
@@ -641,7 +641,7 @@ static inline void pmix_list_prepend(pmix_list_t *list,
  * This is an O(1) operation to return the first item on the list.  If
  * the list is not empty, a pointer to the first item in the list will
  * be returned.  Ownership of the item is transferred from the list to
- * the caller; no calls to OBJ_RETAIN() or OBJ_RELEASE() are invoked.
+ * the caller; no calls to PMIX_RETAIN() or PMIX_RELEASE() are invoked.
  *
  * This is an inlined function in compilers that support inlining, so
  * it's usually a cheap operation.
@@ -703,7 +703,7 @@ static inline pmix_list_item_t *pmix_list_remove_first(pmix_list_t *list)
  * This is an O(1) operation to return the last item on the list.  If
  * the list is not empty, a pointer to the last item in the list will
  * be returned.  Ownership of the item is transferred from the list to
- * the caller; no calls to OBJ_RETAIN() or OBJ_RELEASE() are invoked.
+ * the caller; no calls to PMIX_RETAIN() or PMIX_RELEASE() are invoked.
  *
  * This is an inlined function in compilers that support inlining, so
  * it's usually a cheap operation.

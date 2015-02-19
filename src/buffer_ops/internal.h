@@ -185,7 +185,7 @@ typedef struct {
     /** print function */
     pmix_bfrop_print_fn_t odti_print_fn;
 } pmix_bfrop_type_info_t;
-PMIX_DECLSPEC OBJ_CLASS_DECLARATION(pmix_bfrop_type_info_t);
+PMIX_DECLSPEC PMIX_CLASS_DECLARATION(pmix_bfrop_type_info_t);
 
 /*
  * globals needed within bfrop
@@ -200,7 +200,7 @@ extern pmix_data_type_t pmix_bfrop_num_reg_types;
 #define PMIX_REGISTER_TYPE(n, t, p, u, c, pr)                           \
     do {                                                                \
         pmix_bfrop_type_info_t *_info;                                  \
-        _info = OBJ_NEW(pmix_bfrop_type_info_t);                        \
+        _info = PMIX_NEW(pmix_bfrop_type_info_t);                        \
         _info->odti_name = strdup((n));                                 \
         _info->odti_type = (t);                                         \
         _info->odti_pack_fn = (pmix_bfrop_pack_fn_t)(p);                \

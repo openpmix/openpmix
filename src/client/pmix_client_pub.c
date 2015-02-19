@@ -71,18 +71,18 @@ int PMIx_Publish(pmix_scope_t scope,
                         "pmix: publish called");
     
     /* create a callback object to let us know when it is done */
-    cb = OBJ_NEW(pmix_cb_t);
+    cb = PMIX_NEW(pmix_cb_t);
     cb->active = true;
 
     if (PMIX_SUCCESS != (rc = PMIx_Publish_nb(scope, info, ninfo, op_cbfunc, cb))) {
-        OBJ_RELEASE(cb);
+        PMIX_RELEASE(cb);
         return rc;
     }
 
     /* wait for the server to ack our request */
     PMIX_WAIT_FOR_COMPLETION(cb->active);
     rc = cb->status;
-    OBJ_RELEASE(cb);
+    PMIX_RELEASE(cb);
     
     return rc;
 }
@@ -111,35 +111,35 @@ int PMIx_Publish_nb(pmix_scope_t scope,
     }
     
     /* create the publish cmd */
-    msg = OBJ_NEW(pmix_buffer_t);
+    msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
         PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
+        PMIX_RELEASE(msg);
         return rc;
     }
     /* pack the scope */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_SCOPE))) {
         PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
+        PMIX_RELEASE(msg);
         return rc;
     }
     /* pack the info keys that were given */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &ninfo, 1, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
+        PMIX_RELEASE(msg);
         return rc;
     }
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, info, ninfo, PMIX_INFO))) {
         PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
+        PMIX_RELEASE(msg);
         return rc;
     }
     
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
-    cb = OBJ_NEW(pmix_cb_t);
+    cb = PMIX_NEW(pmix_cb_t);
     cb->op_cbfunc = cbfunc;
     cb->cbdata = cbdata;
     cb->active = true;
@@ -177,13 +177,13 @@ int PMIx_Lookup(pmix_scope_t scope,
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
-    cb = OBJ_NEW(pmix_cb_t);
+    cb = PMIX_NEW(pmix_cb_t);
     cb->cbdata = (void*)info;
     cb->nvals = ninfo;
     cb->active = true;
 
     if (PMIX_SUCCESS != (rc = PMIx_Lookup_nb(scope, keys, lookup_cbfunc, cb))) {
-        OBJ_RELEASE(cb);
+        PMIX_RELEASE(cb);
         pmix_argv_free(keys);
         return rc;
     }
@@ -194,7 +194,7 @@ int PMIx_Lookup(pmix_scope_t scope,
     /* the data has been stored in the info array by lookup_cbfunc, so
      * nothing more for us to do */
     rc = cb->status;
-    OBJ_RELEASE(cb);
+    PMIX_RELEASE(cb);
     return rc;
 }
 
@@ -220,30 +220,30 @@ int PMIx_Lookup_nb(pmix_scope_t scope, char **keys,
     }
     
     /* create the lookup cmd */
-    msg = OBJ_NEW(pmix_buffer_t);
+    msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
         PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
+        PMIX_RELEASE(msg);
         return rc;
     }
     /* pack the scope */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_SCOPE))) {
         PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
+        PMIX_RELEASE(msg);
         return rc;
     }
     /* pack the keys */
     nkeys = pmix_argv_count(keys);
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &nkeys, 1, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
+        PMIX_RELEASE(msg);
         return rc;
     }
     if (0 < nkeys) {
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, keys, nkeys, PMIX_STRING))) {
             PMIX_ERROR_LOG(rc);
-            OBJ_RELEASE(msg);
+            PMIX_RELEASE(msg);
             return rc;
         }
     }
@@ -251,7 +251,7 @@ int PMIx_Lookup_nb(pmix_scope_t scope, char **keys,
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
-    cb = OBJ_NEW(pmix_cb_t);
+    cb = PMIX_NEW(pmix_cb_t);
     cb->lookup_cbfunc = cbfunc;
     cb->cbdata = cbdata;
 
@@ -274,19 +274,19 @@ int PMIx_Unpublish(pmix_scope_t scope,
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
-    cb = OBJ_NEW(pmix_cb_t);
+    cb = PMIX_NEW(pmix_cb_t);
     cb->active = true;
 
     /* push the message into our event base to send to the server */
     if (PMIX_SUCCESS != (rc = PMIx_Unpublish_nb(scope, info, ninfo, op_cbfunc, cb))) {
-        OBJ_RELEASE(cb);
+        PMIX_RELEASE(cb);
         return rc;
     }
 
     /* wait for the server to ack our request */
     PMIX_WAIT_FOR_COMPLETION(cb->active);
     rc = cb->status;
-    OBJ_RELEASE(cb);
+    PMIX_RELEASE(cb);
     
     return rc;
 }
@@ -314,35 +314,35 @@ int PMIx_Unpublish_nb(pmix_scope_t scope,
     }
     
     /* create the unpublish cmd */
-    msg = OBJ_NEW(pmix_buffer_t);
+    msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
         PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
+        PMIX_RELEASE(msg);
         return rc;
     }
     /* pack the scope */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_SCOPE))) {
         PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
+        PMIX_RELEASE(msg);
         return rc;
     }
     /* pack any info keys that were given - no need for values */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &ninfo, 1, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
+        PMIX_RELEASE(msg);
         return rc;
     }
     for (i=0; i < ninfo; i++) {
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &info[i].key, 1, PMIX_STRING))) {
             PMIX_ERROR_LOG(rc);
-            OBJ_RELEASE(msg);
+            PMIX_RELEASE(msg);
             return rc;
         }
     }
 
     /* create a callback object */
-    cb = OBJ_NEW(pmix_cb_t);
+    cb = PMIX_NEW(pmix_cb_t);
     cb->op_cbfunc = cbfunc;
     cb->cbdata = cbdata;
     cb->active = true;
@@ -373,7 +373,7 @@ static void wait_cbfunc(int sd, pmix_usock_hdr_t *hdr,
     if (NULL != cb->op_cbfunc) {
         cb->op_cbfunc(ret, cb->cbdata);
     }
-    OBJ_RELEASE(cb);
+    PMIX_RELEASE(cb);
 }
 
 static void op_cbfunc(int status, void *cbdata)
@@ -401,7 +401,7 @@ static void wait_lookup_cbfunc(int sd, pmix_usock_hdr_t *hdr,
 
     if (NULL == cb->lookup_cbfunc) {
         /* nothing we can do with this */
-        OBJ_RELEASE(cb);
+        PMIX_RELEASE(cb);
         return;
     }
 
@@ -420,7 +420,7 @@ static void wait_lookup_cbfunc(int sd, pmix_usock_hdr_t *hdr,
         if (NULL != cb->lookup_cbfunc) {
             cb->lookup_cbfunc(ret, NULL, 0, NULL, cb->cbdata);
         }
-        OBJ_RELEASE(cb);
+        PMIX_RELEASE(cb);
         return;
     }
     
@@ -428,7 +428,7 @@ static void wait_lookup_cbfunc(int sd, pmix_usock_hdr_t *hdr,
     cnt = 1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&cb->data, &key, &cnt, PMIX_STRING))) {
         PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(cb);
+        PMIX_RELEASE(cb);
         return;
     }
     if (NULL != nspace) {
@@ -440,7 +440,7 @@ static void wait_lookup_cbfunc(int sd, pmix_usock_hdr_t *hdr,
     cnt = 1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&cb->data, &ninfo, &cnt, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(cb);
+        PMIX_RELEASE(cb);
         return;
     }
     if (0 < ninfo) {
@@ -465,7 +465,7 @@ static void wait_lookup_cbfunc(int sd, pmix_usock_hdr_t *hdr,
         free(info);
     }
     
-    OBJ_RELEASE(cb);
+    PMIX_RELEASE(cb);
 }
 
 static void lookup_cbfunc(int status, pmix_info_t info[], size_t ninfo,

@@ -44,7 +44,7 @@ typedef struct {
     char *key;
     pmix_value_t *value;
 } pmix_kval_t;
-OBJ_CLASS_DECLARATION(pmix_kval_t);
+PMIX_CLASS_DECLARATION(pmix_kval_t);
 
 /* A non-API function for something that happens in a number
  * of places throughout the code base - transferring a value to
@@ -67,7 +67,7 @@ PMIX_DECLSPEC int pmix_value_xfer(pmix_value_t *kv, pmix_value_t *src);
  *
  * The pack function packs one or more values of a specified type into
  * the specified buffer.  The buffer must have already been
- * initialized via an OBJ_NEW or OBJ_CONSTRUCT call - otherwise, the
+ * initialized via an PMIX_NEW or PMIX_CONSTRUCT call - otherwise, the
  * pack_value function will return an error. Providing an unsupported
  * type flag will likewise be reported as an error.
  *
@@ -121,8 +121,8 @@ typedef int (*pmix_bfrop_pack_fn_t)(pmix_buffer_t *buffer, const void *src,
  * The unpack function unpacks the next value (or values) of a
  * specified type from the specified buffer.
  *
- * The buffer must have already been initialized via an OBJ_NEW or
- * OBJ_CONSTRUCT call (and assumedly filled with some data) -
+ * The buffer must have already been initialized via an PMIX_NEW or
+ * PMIX_CONSTRUCT call (and assumedly filled with some data) -
  * otherwise, the unpack_value function will return an
  * error. Providing an unsupported type flag will likewise be reported
  * as an error, as will specifying a data type that DOES NOT match the

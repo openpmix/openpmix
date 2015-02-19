@@ -75,19 +75,19 @@ int PMIx_Fence(const pmix_range_t ranges[],
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
-    cb = OBJ_NEW(pmix_cb_t);
+    cb = PMIX_NEW(pmix_cb_t);
     cb->active = true;
 
     /* push the message into our event base to send to the server */
     if (PMIX_SUCCESS != (rc = PMIx_Fence_nb(ranges, nranges, true, collect_data, op_cbfunc, cb))) {
-        OBJ_RELEASE(cb);
+        PMIX_RELEASE(cb);
         return rc;
     }
 
     /* wait for the fence to complete */
     PMIX_WAIT_FOR_COMPLETION(cb->active);
     rc = cb->status;
-    OBJ_RELEASE(cb);
+    PMIX_RELEASE(cb);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: fence released");
@@ -136,19 +136,19 @@ int PMIx_Fence_nb(const pmix_range_t ranges[], size_t nranges,
         nrg = nranges;
     }
     
-    msg = OBJ_NEW(pmix_buffer_t);
+    msg = PMIX_NEW(pmix_buffer_t);
     /* if the barrier flag is true, then the server must delay calling
      * us back until all participating procs have called fence_nb. If false,
      * then the server should call us back right away */
     if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, rgs, nrg, collect_data, barrier))) {
-        OBJ_RELEASE(msg);
+        PMIX_RELEASE(msg);
         return rc;
     }
 
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
-    cb = OBJ_NEW(pmix_cb_t);
+    cb = PMIX_NEW(pmix_cb_t);
     cb->op_cbfunc = cbfunc;
     cb->cbdata = cbdata;
 
@@ -194,20 +194,20 @@ static int unpack_return(pmix_buffer_t *data)
         }
         /* now unpack and store the values - everything goes into our internal store */
         for (i=0; i < np; i++) {
-            OBJ_CONSTRUCT(&buf, pmix_buffer_t);
+            PMIX_CONSTRUCT(&buf, pmix_buffer_t);
             PMIX_LOAD_BUFFER(&buf, mdx[i].blob, mdx[i].size);
             cnt = 1;
-            kp = OBJ_NEW(pmix_kval_t);
+            kp = PMIX_NEW(pmix_kval_t);
             while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&buf, kp, &cnt, PMIX_KVAL))) {
                 if (PMIX_SUCCESS != (rc = pmix_client_hash_store(mdx[i].nspace, mdx[i].rank, kp))) {
                     PMIX_ERROR_LOG(rc);
                 }
-                OBJ_RELEASE(kp);  // maintain acctg
+                PMIX_RELEASE(kp);  // maintain acctg
                 cnt = 1;
-                kp = OBJ_NEW(pmix_kval_t);
+                kp = PMIX_NEW(pmix_kval_t);
             }
-            OBJ_RELEASE(kp);  // maintain acctg
-            OBJ_DESTRUCT(&buf);  // free's the data region
+            PMIX_RELEASE(kp);  // maintain acctg
+            PMIX_DESTRUCT(&buf);  // free's the data region
             if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
                 PMIX_ERROR_LOG(rc);
             }
@@ -269,7 +269,7 @@ static int pack_fence(pmix_buffer_t *msg,
             PMIX_ERROR_LOG(rc);
             return rc;
         }
-        OBJ_RELEASE(pmix_client_globals.cache_local);
+        PMIX_RELEASE(pmix_client_globals.cache_local);
     }
     if (NULL != pmix_client_globals.cache_remote) {
         scope = PMIX_REMOTE;
@@ -281,7 +281,7 @@ static int pack_fence(pmix_buffer_t *msg,
             PMIX_ERROR_LOG(rc);
             return rc;
         }
-        OBJ_RELEASE(pmix_client_globals.cache_remote);
+        PMIX_RELEASE(pmix_client_globals.cache_remote);
     }
     if (NULL != pmix_client_globals.cache_global) {
         scope = PMIX_GLOBAL;
@@ -293,7 +293,7 @@ static int pack_fence(pmix_buffer_t *msg,
             PMIX_ERROR_LOG(rc);
             return rc;
         }
-        OBJ_RELEASE(pmix_client_globals.cache_global);
+        PMIX_RELEASE(pmix_client_globals.cache_global);
     }
     return PMIX_SUCCESS;
 }
@@ -313,7 +313,7 @@ static void wait_cbfunc(int sd, pmix_usock_hdr_t *hdr,
     if (NULL != cb && NULL != cb->op_cbfunc) {
         cb->op_cbfunc(rc, cb->cbdata);
     }
-    OBJ_RELEASE(cb);
+    PMIX_RELEASE(cb);
 }
 
 static void op_cbfunc(int status, void *cbdata)

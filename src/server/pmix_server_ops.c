@@ -128,7 +128,7 @@ static pmix_server_trkr_t* get_tracker(pmix_list_t *trks,
         }
     }
     /* get here if this tracker is new - create it */
-    trk = OBJ_NEW(pmix_server_trkr_t);
+    trk = PMIX_NEW(pmix_server_trkr_t);
     trk->active = true;
     /* copy the ranges */
     trk->nranges = nranges;
@@ -233,7 +233,7 @@ int pmix_server_fence(pmix_server_caddy_t *cd,
         if (NULL != pmix_host_server.store_modex) {
             pmix_host_server.store_modex(scope, &mdx);
         }
-        OBJ_RELEASE(bptr);
+        PMIX_RELEASE(bptr);
         cnt = 1;
     }
     if (0 != barrier) {
@@ -241,7 +241,7 @@ int pmix_server_fence(pmix_server_caddy_t *cd,
         trk = get_tracker(&pmix_server_globals.fence_ops, ranges, nranges);
         /* add this contributor to the tracker so they get
          * notified when we are done */
-        OBJ_RETAIN(cd);
+        PMIX_RETAIN(cd);
         pmix_list_append(&trk->locals, &cd->super);
         /* if all local contributions were collected
          * let the local host's server know that we are at the
@@ -534,7 +534,7 @@ int pmix_server_connect(pmix_server_caddy_t *cd,
     trk = get_tracker(&pmix_server_globals.connect_ops, ranges, nranges);
     /* add this contributor to the tracker so they get
      * notified when we are done */
-    OBJ_RETAIN(cd);
+    PMIX_RETAIN(cd);
     pmix_list_append(&trk->locals, &cd->super);
     /* request the connect */
     rc = pmix_host_server.connect(ranges, nranges, cbfunc, trk);
@@ -548,7 +548,7 @@ static void tcon(pmix_server_trkr_t *t)
 {
     t->ranges = NULL;
     t->nranges = 0;
-    OBJ_CONSTRUCT(&t->locals, pmix_list_t);
+    PMIX_CONSTRUCT(&t->locals, pmix_list_t);
     t->trklist = NULL;
 }
 static void tdes(pmix_server_trkr_t *t)
@@ -565,23 +565,23 @@ static void tdes(pmix_server_trkr_t *t)
     }
     PMIX_LIST_DESTRUCT(&t->locals);
 }
-OBJ_CLASS_INSTANCE(pmix_server_trkr_t,
+PMIX_CLASS_INSTANCE(pmix_server_trkr_t,
                    pmix_list_item_t,
                    tcon, tdes);
 
 static void cdcon(pmix_server_caddy_t *cd)
 {
     cd->peer = NULL;
-    OBJ_CONSTRUCT(&cd->snd, pmix_snd_caddy_t);
+    PMIX_CONSTRUCT(&cd->snd, pmix_snd_caddy_t);
 }
 static void cddes(pmix_server_caddy_t *cd)
 {
     if (NULL != cd->peer) {
-        OBJ_RELEASE(cd->peer);
+        PMIX_RELEASE(cd->peer);
     }
-    OBJ_DESTRUCT(&cd->snd);
+    PMIX_DESTRUCT(&cd->snd);
 }
-OBJ_CLASS_INSTANCE(pmix_server_caddy_t,
+PMIX_CLASS_INSTANCE(pmix_server_caddy_t,
                    pmix_list_item_t,
                    cdcon, cddes);
 
@@ -590,6 +590,6 @@ static void pscon(pmix_snd_caddy_t *p)
 {
     p->cbfunc = NULL;
 }
-OBJ_CLASS_INSTANCE(pmix_snd_caddy_t,
+PMIX_CLASS_INSTANCE(pmix_snd_caddy_t,
                    pmix_object_t,
                    pscon, NULL);

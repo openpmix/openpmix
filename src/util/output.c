@@ -113,7 +113,7 @@ static bool syslog_opened = false;
 #endif
 static char *redirect_syslog_ident = NULL;
 
-OBJ_CLASS_INSTANCE(pmix_output_stream_t, pmix_object_t, construct, NULL);
+PMIX_CLASS_INSTANCE(pmix_output_stream_t, pmix_object_t, construct, NULL);
 
 /*
  * Setup the output stream infrastructure
@@ -158,7 +158,7 @@ bool pmix_output_init(void)
         redirect_syslog_ident = strdup(str);
     }
 
-    OBJ_CONSTRUCT(&verbose, pmix_output_stream_t);
+    PMIX_CONSTRUCT(&verbose, pmix_output_stream_t);
     if (pmix_output_redirected_to_syslog) {
         verbose.lds_want_syslog = true;
         verbose.lds_syslog_priority = pmix_output_redirected_syslog_pri;
@@ -485,7 +485,7 @@ void pmix_output_finalize(void)
 	    temp_str = NULL;
 	    temp_str_len = 0;
 	}
-        OBJ_DESTRUCT(&verbose);
+        PMIX_DESTRUCT(&verbose);
     }
 }
 

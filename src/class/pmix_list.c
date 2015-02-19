@@ -31,7 +31,7 @@
 static void pmix_list_item_construct(pmix_list_item_t*);
 static void pmix_list_item_destruct(pmix_list_item_t*);
 
-OBJ_CLASS_INSTANCE(
+PMIX_CLASS_INSTANCE(
     pmix_list_item_t,
     pmix_object_t,
     pmix_list_item_construct,
@@ -41,7 +41,7 @@ OBJ_CLASS_INSTANCE(
 static void pmix_list_construct(pmix_list_t*);
 static void pmix_list_destruct(pmix_list_t*);
 
-OBJ_CLASS_INSTANCE(
+PMIX_CLASS_INSTANCE(
     pmix_list_t,
     pmix_object_t,
     pmix_list_construct,
@@ -87,7 +87,7 @@ static void pmix_list_construct(pmix_list_t *list)
        should never be removed from this list, added to another list,
        etc.  So set them to sentinel values. */
 
-    OBJ_CONSTRUCT( &(list->pmix_list_sentinel), pmix_list_item_t );
+    PMIX_CONSTRUCT( &(list->pmix_list_sentinel), pmix_list_item_t );
     list->pmix_list_sentinel.pmix_list_item_refcount  = 1;
     list->pmix_list_sentinel.pmix_list_item_belong_to = list;
 #endif

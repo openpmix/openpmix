@@ -75,11 +75,11 @@ int PMIx_Get(const char nspace[], int rank,
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
-    cb = OBJ_NEW(pmix_cb_t);
+    cb = PMIX_NEW(pmix_cb_t);
     cb->active = true;
 
     if (PMIX_SUCCESS != (rc = PMIx_Get_nb(nspace, rank, key, value_cbfunc, cb))) {
-        OBJ_RELEASE(cb);
+        PMIX_RELEASE(cb);
         return rc;
     }
     
@@ -87,7 +87,7 @@ int PMIx_Get(const char nspace[], int rank,
     PMIX_WAIT_FOR_COMPLETION(cb->active);
     rc = cb->status;
     *val = cb->value;
-    OBJ_RELEASE(cb);
+    PMIX_RELEASE(cb);
     
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:client get completed");
@@ -132,7 +132,7 @@ int PMIx_Get_nb(const char *nspace, int rank,
                             "pmix: value retrieved from dstore");
         /* need to push this into the event library to ensure
          * the callback occurs within an event */
-        cb = OBJ_NEW(pmix_cb_t);
+        cb = PMIX_NEW(pmix_cb_t);
         cb->nspace = strdup(nm);
         cb->rank = rank;
         cb->key = strdup(key);
@@ -160,7 +160,7 @@ int PMIx_Get_nb(const char *nspace, int rank,
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
-    cb = OBJ_NEW(pmix_cb_t);
+    cb = PMIX_NEW(pmix_cb_t);
     cb->nspace = strdup(nm);
     cb->rank = rank;
     cb->key = strdup(key);
@@ -189,23 +189,23 @@ static pmix_buffer_t* pack_get(const char nspace[], int rank,
     int rc;
     
     /* nope - see if we can get it */
-    msg = OBJ_NEW(pmix_buffer_t);
+    msg = PMIX_NEW(pmix_buffer_t);
     /* pack the get cmd */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
         PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
+        PMIX_RELEASE(msg);
         return NULL;
     }
     /* pack the request information - we'll get the entire blob
      * for this proc, so we don't need to pass the key */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &nspace, 1, PMIX_STRING))) {
         PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
+        PMIX_RELEASE(msg);
         return NULL;
     }
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &rank, 1, PMIX_INT))) {
         PMIX_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
+        PMIX_RELEASE(msg);
         return NULL;
     }
     return msg;
@@ -266,10 +266,10 @@ static int unpack_get_return(pmix_buffer_t *data, const char *key,
                 return PMIX_ERROR;
             }
             /* now unpack and store the values - everything goes into our internal store */
-            OBJ_CONSTRUCT(&buf, pmix_buffer_t);
+            PMIX_CONSTRUCT(&buf, pmix_buffer_t);
             PMIX_LOAD_BUFFER(&buf, mdx[i].blob, mdx[i].size);
             cnt = 1;
-            kp = OBJ_NEW(pmix_kval_t);
+            kp = PMIX_NEW(pmix_kval_t);
             while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&buf, kp, &cnt, PMIX_KVAL))) {
                 pmix_output_verbose(2, pmix_globals.debug_output,
                                     "pmix: unpacked key %s", kp->key);
@@ -281,16 +281,16 @@ static int unpack_get_return(pmix_buffer_t *data, const char *key,
                                         "pmix: found requested value");
                     if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)val, kp->value, PMIX_VALUE))) {
                         PMIX_ERROR_LOG(rc);
-                        OBJ_RELEASE(kp);
+                        PMIX_RELEASE(kp);
                         return rc;
                     }
                 }
-                OBJ_RELEASE(kp); // maintain acctg - hash_store does a retain
+                PMIX_RELEASE(kp); // maintain acctg - hash_store does a retain
                 cnt = 1;
-                kp = OBJ_NEW(pmix_kval_t);
+                kp = PMIX_NEW(pmix_kval_t);
             }
-            OBJ_RELEASE(kp);
-            OBJ_DESTRUCT(&buf);  // free's the data region
+            PMIX_RELEASE(kp);
+            PMIX_DESTRUCT(&buf);  // free's the data region
             if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
                 PMIX_ERROR_LOG(rc);
             }
@@ -322,7 +322,7 @@ static void getnb_cbfunc(int sd, pmix_usock_hdr_t *hdr,
         cb->value_cbfunc(rc, val, cb->cbdata);
     }
     PMIx_free_value(&val);
-    OBJ_RELEASE(cb);
+    PMIX_RELEASE(cb);
 }
 
 static void getnb_shortcut(int fd, short flags, void *cbdata)
@@ -342,5 +342,5 @@ static void getnb_shortcut(int fd, short flags, void *cbdata)
         cb->value_cbfunc(rc, &val, cb->cbdata);
     }
     PMIx_free_value_data(&val);
-    OBJ_RELEASE(cb);
+    PMIX_RELEASE(cb);
 }

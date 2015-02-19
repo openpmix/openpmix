@@ -48,12 +48,12 @@ int PMIx_server_authenticate_client(int sd, int *rank, pmix_send_message_cbfunc_
 
     if (NULL != snd_msg) {
         /* pack the response, starting with rc */
-        OBJ_CONSTRUCT(&reply, pmix_buffer_t);
+        PMIX_CONSTRUCT(&reply, pmix_buffer_t);
         (void)pmix_bfrop.pack(&reply, &rc, 1, PMIX_INT);
         if (NULL != info) {
             /* transfer the data payload */
             pmix_bfrop.copy_payload(&reply, info);
-            OBJ_RELEASE(info);
+            PMIX_RELEASE(info);
         }
         /* create the header */
         (void)strncpy(hdr.nspace, pmix_globals.nspace, PMIX_MAX_NSLEN);
@@ -66,7 +66,7 @@ int PMIx_server_authenticate_client(int sd, int *rank, pmix_send_message_cbfunc_
         snd_message(sd, &hdr, &reply, snd_msg);
         /* protect the data */
         reply.base_ptr = NULL;
-        OBJ_DESTRUCT(&reply);
+        PMIX_DESTRUCT(&reply);
     }
 
     return rc;
@@ -85,22 +85,22 @@ int PMIx_server_process_msg(int sd, char *hdrptr, char *msgptr,
                         hdr->nspace, hdr->rank, sd);
 
     /* Load payload into the buffer */
-    OBJ_CONSTRUCT(&buf, pmix_buffer_t);
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
     PMIX_LOAD_BUFFER(&buf, msgptr, hdr->nbytes);
 
     /* setup the caddy */
-    cd = OBJ_NEW(pmix_server_caddy_t);
+    cd = PMIX_NEW(pmix_server_caddy_t);
     cd->snd.sd = sd;
     (void)memcpy(&cd->hdr, hdr, sizeof(pmix_usock_hdr_t));
     cd->snd.cbfunc = snd_msg;
     
     /* process the message */
     rc = server_switchyard(cd, &buf);
-    OBJ_RELEASE(cd);
+    PMIX_RELEASE(cd);
     
     /* Free buffer protecting the data */
     buf.base_ptr = NULL;
-    OBJ_DESTRUCT(&buf);
+    PMIX_DESTRUCT(&buf);
 
     return rc;
 }
@@ -121,7 +121,7 @@ static void get_cbfunc(int status, pmix_modex_data_t data[],
     }
     
     /* setup the reply, starting with the returned status */
-    OBJ_CONSTRUCT(&reply, pmix_buffer_t);
+    PMIX_CONSTRUCT(&reply, pmix_buffer_t);
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, &status, 1, PMIX_INT))) {
         PMIX_ERROR_LOG(rc);
         goto cleanup;
@@ -143,9 +143,9 @@ static void get_cbfunc(int status, pmix_modex_data_t data[],
 
  cleanup:
     /* protect the data */
-    OBJ_DESTRUCT(&reply);
+    PMIX_DESTRUCT(&reply);
     /* cleanup */
-    OBJ_RELEASE(cd);
+    PMIX_RELEASE(cd);
 }
 
 
@@ -156,7 +156,7 @@ static void spawn_cbfunc(int status, char *nspace, void *cbdata)
     pmix_buffer_t reply;
     
     /* setup the reply with the returned status */
-    OBJ_CONSTRUCT(&reply, pmix_buffer_t);
+    PMIX_CONSTRUCT(&reply, pmix_buffer_t);
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, &status, 1, PMIX_INT))) {
         PMIX_ERROR_LOG(rc);
         goto cleanup;
@@ -172,9 +172,9 @@ static void spawn_cbfunc(int status, char *nspace, void *cbdata)
     reply.base_ptr = NULL;
 
  cleanup:
-    OBJ_DESTRUCT(&reply);
+    PMIX_DESTRUCT(&reply);
     /* cleanup */
-    OBJ_RELEASE(cd);
+    PMIX_RELEASE(cd);
 }
 
 static void lookup_cbfunc(int status, pmix_info_t info[], size_t ninfo,
@@ -185,7 +185,7 @@ static void lookup_cbfunc(int status, pmix_info_t info[], size_t ninfo,
     pmix_buffer_t reply;
     
     /* setup the reply with the returned status */
-    OBJ_CONSTRUCT(&reply, pmix_buffer_t);
+    PMIX_CONSTRUCT(&reply, pmix_buffer_t);
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, &status, 1, PMIX_INT))) {
         PMIX_ERROR_LOG(rc);
         goto cleanup;
@@ -212,9 +212,9 @@ static void lookup_cbfunc(int status, pmix_info_t info[], size_t ninfo,
     reply.base_ptr = NULL;
 
  cleanup:
-    OBJ_DESTRUCT(&reply);
+    PMIX_DESTRUCT(&reply);
     /* cleanup */
-    OBJ_RELEASE(cd);
+    PMIX_RELEASE(cd);
 }
 
 static void modex_cbfunc(int status, pmix_modex_data_t data[],
@@ -234,28 +234,28 @@ static void modex_cbfunc(int status, pmix_modex_data_t data[],
     }
     
     /* setup the reply, starting with the returned status */
-    OBJ_CONSTRUCT(&reply, pmix_buffer_t);
+    PMIX_CONSTRUCT(&reply, pmix_buffer_t);
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, &status, 1, PMIX_INT))) {
         PMIX_ERROR_LOG(rc);
-        OBJ_DESTRUCT(&reply);
+        PMIX_DESTRUCT(&reply);
         return;
     }
     /* pack the nblobs being returned */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, &ndata, 1, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
-        OBJ_DESTRUCT(&reply);
+        PMIX_DESTRUCT(&reply);
         return;
     }
     if (0 < ndata) {
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, data, ndata, PMIX_MODEX))) {
             PMIX_ERROR_LOG(rc);
-        OBJ_DESTRUCT(&reply);
+        PMIX_DESTRUCT(&reply);
             return;
         }
     }
     /* loop across all procs in the tracker, sending them the reply */
     PMIX_LIST_FOREACH(cd, &tracker->locals, pmix_server_caddy_t) {
-        OBJ_CONSTRUCT(&rmsg, pmix_buffer_t);
+        PMIX_CONSTRUCT(&rmsg, pmix_buffer_t);
         pmix_bfrop.copy_payload(&rmsg, &reply);
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "serverlite:modex_cbfunc reply being sent to %s:%d",
@@ -264,11 +264,11 @@ static void modex_cbfunc(int status, pmix_modex_data_t data[],
         snd_message(cd->snd.sd, &cd->hdr, &rmsg, cd->snd.cbfunc);
         /* protect the data */
         rmsg.base_ptr = NULL;
-        OBJ_DESTRUCT(&rmsg);
+        PMIX_DESTRUCT(&rmsg);
     }
-    OBJ_DESTRUCT(&reply);
+    PMIX_DESTRUCT(&reply);
     pmix_list_remove_item(tracker->trklist, &tracker->super);
-    OBJ_RELEASE(tracker);
+    PMIX_RELEASE(tracker);
 }
 
 static void op_cbfunc(int status, void *cbdata)
@@ -278,7 +278,7 @@ static void op_cbfunc(int status, void *cbdata)
     pmix_buffer_t reply;
     
     /* setup the reply with the returned status */
-    OBJ_CONSTRUCT(&reply, pmix_buffer_t);
+    PMIX_CONSTRUCT(&reply, pmix_buffer_t);
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, &status, 1, PMIX_INT))) {
         PMIX_ERROR_LOG(rc);
         goto cleanup;
@@ -289,9 +289,9 @@ static void op_cbfunc(int status, void *cbdata)
     reply.base_ptr = NULL;
 
  cleanup:
-    OBJ_DESTRUCT(&reply);
+    PMIX_DESTRUCT(&reply);
     /* cleanup */
-    OBJ_RELEASE(cd);
+    PMIX_RELEASE(cd);
 }
 
 static void cnct_cbfunc(int status, void *cbdata)
@@ -316,7 +316,7 @@ static void cnct_cbfunc(int status, void *cbdata)
     }
     /* loop across all procs in the tracker, sending them the reply */
     PMIX_LIST_FOREACH(cd, &tracker->locals, pmix_server_caddy_t) {
-        OBJ_CONSTRUCT(&rmsg, pmix_buffer_t);
+        PMIX_CONSTRUCT(&rmsg, pmix_buffer_t);
         pmix_bfrop.copy_payload(&rmsg, &reply);
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "serverlite:cnct_cbfunc reply being sent to %s:%d",
@@ -325,10 +325,10 @@ static void cnct_cbfunc(int status, void *cbdata)
         snd_message(cd->snd.sd, &cd->hdr, &rmsg, cd->snd.cbfunc);
         /* protect the data */
         rmsg.base_ptr = NULL;
-        OBJ_DESTRUCT(&rmsg);
+        PMIX_DESTRUCT(&rmsg);
     }
     pmix_list_remove_item(tracker->trklist, &tracker->super);
-    OBJ_RELEASE(tracker);
+    PMIX_RELEASE(tracker);
 }
 
 
@@ -343,7 +343,7 @@ static int server_switchyard(pmix_server_caddy_t *cd,
     cnt = 1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &cmd, &cnt, PMIX_CMD))) {
         PMIX_ERROR_LOG(rc);
-        OBJ_RETAIN(cd); // op_cbfunc will release it to maintain accounting
+        PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
         op_cbfunc(rc, cd);
         return rc;
     }
@@ -352,10 +352,10 @@ static int server_switchyard(pmix_server_caddy_t *cd,
                         cmd, cd->hdr.nspace, cd->hdr.rank);
 
     if (PMIX_ABORT_CMD == cmd) {
-        OBJ_RETAIN(cd);
+        PMIX_RETAIN(cd);
         if (PMIX_SUCCESS != (rc = pmix_server_abort(buf, op_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
-            OBJ_RETAIN(cd); // op_cbfunc will release it to maintain accounting
+            PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
         }
         return rc;
@@ -364,17 +364,17 @@ static int server_switchyard(pmix_server_caddy_t *cd,
     if (PMIX_FENCENB_CMD == cmd) {
         if (PMIX_SUCCESS != (rc = pmix_server_fence(cd, buf, modex_cbfunc, op_cbfunc))) {
             PMIX_ERROR_LOG(rc);
-            OBJ_RETAIN(cd); // op_cbfunc will release it to maintain accounting
+            PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
         }
         return rc;
     }
 
     if (PMIX_GETNB_CMD == cmd) {
-        OBJ_RETAIN(cd);
+        PMIX_RETAIN(cd);
         if (PMIX_SUCCESS != (rc = pmix_server_get(buf, get_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
-            OBJ_RETAIN(cd); // op_cbfunc will release it to maintain accounting
+            PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
         }
         return rc;
@@ -388,17 +388,17 @@ static int server_switchyard(pmix_server_caddy_t *cd,
         if (NULL != pmix_host_server.terminated) {
             rc = pmix_host_server.terminated(cd->hdr.nspace, cd->hdr.rank);
         }
-        OBJ_RETAIN(cd); // op_cbfunc will release it to maintain accounting
+        PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
         op_cbfunc(rc, cd);
         return rc;
     }
 
         
     if (PMIX_PUBLISHNB_CMD == cmd) {
-        OBJ_RETAIN(cd);
+        PMIX_RETAIN(cd);
         if (PMIX_SUCCESS != (rc = pmix_server_publish(buf, op_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
-            OBJ_RETAIN(cd); // op_cbfunc will release it to maintain accounting
+            PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
         }
         return rc;
@@ -406,10 +406,10 @@ static int server_switchyard(pmix_server_caddy_t *cd,
 
     
     if (PMIX_LOOKUPNB_CMD == cmd) {
-        OBJ_RETAIN(cd);
+        PMIX_RETAIN(cd);
         if (PMIX_SUCCESS != (rc = pmix_server_lookup(buf, lookup_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
-            OBJ_RETAIN(cd); // op_cbfunc will release it to maintain accounting
+            PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
         }
         return rc;
@@ -417,10 +417,10 @@ static int server_switchyard(pmix_server_caddy_t *cd,
 
         
     if (PMIX_UNPUBLISHNB_CMD == cmd) {
-        OBJ_RETAIN(cd);
+        PMIX_RETAIN(cd);
         if (PMIX_SUCCESS != (rc = pmix_server_unpublish(buf, op_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
-            OBJ_RETAIN(cd); // op_cbfunc will release it to maintain accounting
+            PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
         }
         return rc;
@@ -428,10 +428,10 @@ static int server_switchyard(pmix_server_caddy_t *cd,
 
         
     if (PMIX_SPAWNNB_CMD == cmd) {
-        OBJ_RETAIN(cd);
+        PMIX_RETAIN(cd);
         if (PMIX_SUCCESS != (rc = pmix_server_spawn(buf, spawn_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
-            OBJ_RETAIN(cd); // op_cbfunc will release it to maintain accounting
+            PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
         }
         return rc;
@@ -439,20 +439,20 @@ static int server_switchyard(pmix_server_caddy_t *cd,
 
         
     if (PMIX_CONNECTNB_CMD == cmd) {
-        OBJ_RETAIN(cd);
+        PMIX_RETAIN(cd);
         if (PMIX_SUCCESS != (rc = pmix_server_connect(cd, buf, false, cnct_cbfunc))) {
             PMIX_ERROR_LOG(rc);
-            OBJ_RETAIN(cd); // op_cbfunc will release it to maintain accounting
+            PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
         }
         return rc;
     }
 
     if (PMIX_DISCONNECTNB_CMD == cmd) {
-        OBJ_RETAIN(cd);
+        PMIX_RETAIN(cd);
         if (PMIX_SUCCESS != (rc = pmix_server_connect(cd, buf, true, cnct_cbfunc))) {
             PMIX_ERROR_LOG(rc);
-            OBJ_RETAIN(cd); // op_cbfunc will release it to maintain accounting
+            PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
         }
         return rc;

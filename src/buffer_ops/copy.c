@@ -330,7 +330,7 @@ int pmix_bfrop_copy_info(pmix_info_t **dest, pmix_info_t *src,
 int pmix_bfrop_copy_buf(pmix_buffer_t **dest, pmix_buffer_t *src,
                         pmix_data_type_t type)
 {
-    *dest = OBJ_NEW(pmix_buffer_t);
+    *dest = PMIX_NEW(pmix_buffer_t);
     pmix_bfrop.copy_payload(*dest, src);
     return PMIX_SUCCESS;
 }
@@ -361,7 +361,7 @@ int pmix_bfrop_copy_kval(pmix_kval_t **dest, pmix_kval_t *src,
     pmix_kval_t *p;
     
     /* create the new object */
-    *dest = OBJ_NEW(pmix_kval_t);
+    *dest = PMIX_NEW(pmix_kval_t);
     if (NULL == *dest) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }

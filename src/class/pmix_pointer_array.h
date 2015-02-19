@@ -64,7 +64,7 @@ typedef struct pmix_pointer_array_t pmix_pointer_array_t;
 /**
  * Class declaration
  */
-PMIX_DECLSPEC OBJ_CLASS_DECLARATION(pmix_pointer_array_t);
+PMIX_DECLSPEC PMIX_CLASS_DECLARATION(pmix_pointer_array_t);
 
 /**
  * Initialize the pointer array with an initial size of initial_allocation.

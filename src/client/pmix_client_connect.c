@@ -68,19 +68,19 @@ int PMIx_Connect(const pmix_range_t ranges[], size_t nranges)
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
-    cb = OBJ_NEW(pmix_cb_t);
+    cb = PMIX_NEW(pmix_cb_t);
     cb->active = true;
 
     /* push the message into our event base to send to the server */
     if (PMIX_SUCCESS != (rc = PMIx_Connect_nb(ranges, nranges, op_cbfunc, cb))) {
-        OBJ_RELEASE(cb);
+        PMIX_RELEASE(cb);
         return rc;
     }
 
     /* wait for the connect to complete */
     PMIX_WAIT_FOR_COMPLETION(cb->active);
     rc = cb->status;
-    OBJ_RELEASE(cb);
+    PMIX_RELEASE(cb);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: connect completed");
@@ -108,7 +108,7 @@ int PMIx_Connect_nb(const pmix_range_t ranges[], size_t nranges,
         return PMIX_ERR_BAD_PARAM;
     }
 
-    msg = OBJ_NEW(pmix_buffer_t);
+    msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
         PMIX_ERROR_LOG(rc);
@@ -128,7 +128,7 @@ int PMIx_Connect_nb(const pmix_range_t ranges[], size_t nranges,
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
-    cb = OBJ_NEW(pmix_cb_t);
+    cb = PMIX_NEW(pmix_cb_t);
     cb->op_cbfunc = cbfunc;
     cb->cbdata = cbdata;
 
@@ -146,18 +146,18 @@ int PMIx_Disconnect(const pmix_range_t ranges[], size_t nranges)
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
-    cb = OBJ_NEW(pmix_cb_t);
+    cb = PMIX_NEW(pmix_cb_t);
     cb->active = true;
 
     if (PMIX_SUCCESS != (rc = PMIx_Disconnect_nb(ranges, nranges, op_cbfunc, cb))) {
-        OBJ_RELEASE(cb);
+        PMIX_RELEASE(cb);
         return rc;
     }
 
     /* wait for the connect to complete */
     PMIX_WAIT_FOR_COMPLETION(cb->active);
     rc = cb->status;
-    OBJ_RELEASE(cb);
+    PMIX_RELEASE(cb);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: disconnect completed");
@@ -185,7 +185,7 @@ int PMIx_Disconnect_nb(const pmix_range_t ranges[], size_t nranges,
         return PMIX_ERR_BAD_PARAM;
     }
 
-    msg = OBJ_NEW(pmix_buffer_t);
+    msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
         PMIX_ERROR_LOG(rc);
@@ -205,7 +205,7 @@ int PMIx_Disconnect_nb(const pmix_range_t ranges[], size_t nranges,
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
-    cb = OBJ_NEW(pmix_cb_t);
+    cb = PMIX_NEW(pmix_cb_t);
     cb->active = true;
     cb->op_cbfunc = cbfunc;
     cb->cbdata = cbdata;

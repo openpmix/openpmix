@@ -158,7 +158,7 @@ void pmix_usock_send_handler(int sd, short flags, void *cbdata)
                 /* setup to send the data */
                 if (NULL == msg->data) {
                     /* this was a zero-byte msg - nothing more to do */
-                    OBJ_RELEASE(msg);
+                    PMIX_RELEASE(msg);
                     peer->send_msg = NULL;
                     goto next;
                 } else {
@@ -179,7 +179,7 @@ void pmix_usock_send_handler(int sd, short flags, void *cbdata)
                             peer->sd);
                 event_del(&peer->send_event);
                 peer->send_ev_active = false;
-                OBJ_RELEASE(msg);
+                PMIX_RELEASE(msg);
                 peer->send_msg = NULL;
                 PMIX_REPORT_ERROR(rc);
                 return;
@@ -193,7 +193,7 @@ void pmix_usock_send_handler(int sd, short flags, void *cbdata)
                 // message is complete
                 pmix_output_verbose(2, pmix_globals.debug_output,
                                     "usock:send_handler BODY SENT");
-                OBJ_RELEASE(msg);
+                PMIX_RELEASE(msg);
                 peer->send_msg = NULL;
             } else if (PMIX_ERR_RESOURCE_BUSY == rc ||
                        PMIX_ERR_WOULD_BLOCK == rc) {
@@ -207,7 +207,7 @@ void pmix_usock_send_handler(int sd, short flags, void *cbdata)
                             peer->sd);
                 event_del(&peer->send_event);
                 peer->send_ev_active = false;
-                OBJ_RELEASE(msg);
+                PMIX_RELEASE(msg);
                 peer->send_msg = NULL;
                 PMIX_REPORT_ERROR(rc);
                 return;
@@ -255,7 +255,7 @@ void pmix_usock_recv_handler(int sd, short flags, void *cbdata)
     if (NULL == peer->recv_msg) {
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "usock:recv:handler allocate new recv msg");
-        peer->recv_msg = OBJ_NEW(pmix_usock_recv_t);
+        peer->recv_msg = PMIX_NEW(pmix_usock_recv_t);
         if (NULL == peer->recv_msg) {
             pmix_output(0, "usock_recv_handler: unable to allocate recv message\n");
             return;
@@ -348,7 +348,7 @@ void pmix_usock_recv_handler(int sd, short flags, void *cbdata)
         peer->send_ev_active = false;
     }
     if (NULL != peer->recv_msg) {
-        OBJ_RELEASE(peer->recv_msg);
+        PMIX_RELEASE(peer->recv_msg);
         peer->recv_msg = NULL;
     }
     CLOSE_THE_SOCKET(peer->sd);
@@ -368,7 +368,7 @@ void pmix_usock_send_recv(int fd, short args, void *cbdata)
     
     if (NULL != ms->cbfunc) {
         /* if a callback msg is expected, setup a recv for it */
-        req = OBJ_NEW(pmix_usock_posted_recv_t);
+        req = PMIX_NEW(pmix_usock_posted_recv_t);
         /* take the next tag in the sequence */
         if (UINT32_MAX == current_tag ) {
             current_tag = 0;
@@ -384,7 +384,7 @@ void pmix_usock_send_recv(int fd, short args, void *cbdata)
         pmix_list_prepend(&pmix_usock_globals.posted_recvs, &req->super);
     }
 
-    snd = OBJ_NEW(pmix_usock_send_t);
+    snd = PMIX_NEW(pmix_usock_send_t);
     (void)strncpy(snd->hdr.nspace, pmix_globals.nspace, PMIX_MAX_NSLEN);
     snd->hdr.rank = pmix_globals.rank;
     snd->hdr.type = PMIX_USOCK_USER;
@@ -408,7 +408,7 @@ void pmix_usock_send_recv(int fd, short args, void *cbdata)
         ms->peer->send_ev_active = true;
     }
     /* cleanup */
-    OBJ_RELEASE(ms);
+    PMIX_RELEASE(ms);
 }
 
 void pmix_usock_process_msg(int fd, short flags, void *cbdata)
@@ -430,7 +430,7 @@ void pmix_usock_process_msg(int fd, short flags, void *cbdata)
         if (msg->hdr.tag == rcv->tag || UINT_MAX == rcv->tag) {
             if (NULL != rcv->cbfunc) {
                 /* construct and load the buffer */
-                OBJ_CONSTRUCT(&buf, pmix_buffer_t);
+                PMIX_CONSTRUCT(&buf, pmix_buffer_t);
                 if (NULL != msg->data) {
                     buf.base_ptr = (char*)msg->data;
                     buf.bytes_allocated = buf.bytes_used = msg->hdr.nbytes;
@@ -441,13 +441,13 @@ void pmix_usock_process_msg(int fd, short flags, void *cbdata)
                 if (NULL != rcv->cbfunc) {
                     rcv->cbfunc(msg->sd, &msg->hdr, &buf, rcv->cbdata);
                 }
-                OBJ_DESTRUCT(&buf);  // free's the msg data
+                PMIX_DESTRUCT(&buf);  // free's the msg data
                 /* also done with the recv, if not a wildcard */
                 if (UINT32_MAX != rcv->tag) {
                     pmix_list_remove_item(&pmix_usock_globals.posted_recvs, &rcv->super);
-                    OBJ_RELEASE(rcv);
+                    PMIX_RELEASE(rcv);
                 }
-                OBJ_RELEASE(msg);
+                PMIX_RELEASE(msg);
                 return;
             }
         }
@@ -455,6 +455,6 @@ void pmix_usock_process_msg(int fd, short flags, void *cbdata)
 
     /* we get here if no matching recv was found - this is an error */
     pmix_output(0, "UNEXPECTED MESSAGE");
-    OBJ_RELEASE(msg);
+    PMIX_RELEASE(msg);
     PMIX_REPORT_ERROR(PMIX_ERROR);
 }

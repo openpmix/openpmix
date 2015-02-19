@@ -48,13 +48,13 @@ typedef struct {
 static void pdcon(pmix_proc_data_t *p)
 {
     p->loaded = false;
-    OBJ_CONSTRUCT(&p->data, pmix_list_t);
+    PMIX_CONSTRUCT(&p->data, pmix_list_t);
 }
 static void pddes(pmix_proc_data_t *p)
 {
     PMIX_LIST_DESTRUCT(&p->data);
 }
-static OBJ_CLASS_INSTANCE(pmix_proc_data_t,
+static PMIX_CLASS_INSTANCE(pmix_proc_data_t,
                           pmix_list_item_t,
                           pdcon, pddes);
 static pmix_kval_t* lookup_keyval(pmix_proc_data_t *proc_data,
@@ -65,7 +65,7 @@ static pmix_proc_data_t* lookup_proc(pmix_hash_table_t *jtable,
 /* Initialize our hash table */
 int pmix_client_hash_init(void)
 {
-    OBJ_CONSTRUCT(&hash_data, pmix_hash_table_t);
+    PMIX_CONSTRUCT(&hash_data, pmix_hash_table_t);
     pmix_hash_table_init(&hash_data, 256);
     return PMIX_SUCCESS;
 }
@@ -83,17 +83,17 @@ void pmix_client_hash_finalize(void)
                                                              (void**)&proc_data,
                                                              (void**)&node)) {
         if (NULL != proc_data) {
-            OBJ_RELEASE(proc_data);
+            PMIX_RELEASE(proc_data);
         }
         while (PMIX_SUCCESS == pmix_hash_table_get_next_key_uint64(&hash_data, &key,
                                                                    (void**)&proc_data,
                                                                    node, (void**)&node)) {
             if (NULL != proc_data) {
-                OBJ_RELEASE(proc_data);
+                PMIX_RELEASE(proc_data);
             }
         }
     }
-    OBJ_DESTRUCT(&hash_data);
+    PMIX_DESTRUCT(&hash_data);
 }
 
 
@@ -126,10 +126,10 @@ int pmix_client_hash_store(const char *nspace, int rank,
     kv = lookup_keyval(proc_data, kin->key);
     if (NULL != kv) {
         pmix_list_remove_item(&proc_data->data, &kv->super);
-        OBJ_RELEASE(kv);
+        PMIX_RELEASE(kv);
     }
     /* store the new value */
-    OBJ_RETAIN(kin);
+    PMIX_RETAIN(kin);
     pmix_list_append(&proc_data->data, &kin->super);
 
     return PMIX_SUCCESS;
@@ -198,12 +198,12 @@ int pmix_client_hash_remove_data(const char *nspace,
     /* if key is NULL, remove all data for this proc */
     if (NULL == key) {
         while (NULL != (kv = (pmix_kval_t*)pmix_list_remove_first(&proc_data->data))) {
-            OBJ_RELEASE(kv);
+            PMIX_RELEASE(kv);
         }
         /* remove the proc_data object itself from the jtable */
         pmix_hash_table_remove_value_uint64(&hash_data, id);
         /* cleanup */
-        OBJ_RELEASE(proc_data);
+        PMIX_RELEASE(proc_data);
         return PMIX_SUCCESS;
     }
 
@@ -211,7 +211,7 @@ int pmix_client_hash_remove_data(const char *nspace,
     PMIX_LIST_FOREACH(kv, &proc_data->data, pmix_kval_t) {
         if (0 == strcmp(key, kv->key)) {
             pmix_list_remove_item(&proc_data->data, &kv->super);
-            OBJ_RELEASE(kv);
+            PMIX_RELEASE(kv);
             break;
         }
     }
@@ -249,7 +249,7 @@ static pmix_proc_data_t* lookup_proc(pmix_hash_table_t *jtable,
     pmix_hash_table_get_value_uint64(jtable, id, (void**)&proc_data);
     if (NULL == proc_data) {
         /* The proc clearly exists, so create a data structure for it */
-        proc_data = OBJ_NEW(pmix_proc_data_t);
+        proc_data = PMIX_NEW(pmix_proc_data_t);
         if (NULL == proc_data) {
             pmix_output(0, "pmix:client:hash:lookup_pmix_proc: unable to allocate proc_data_t\n");
             return NULL;

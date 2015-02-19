@@ -49,20 +49,20 @@
  *   };
  *   typedef struct sally_t sally_t;
  *
- *   OBJ_CLASS_DECLARATION(sally_t);
+ *   PMIX_CLASS_DECLARATION(sally_t);
  * @endcode
  * All classes must have a parent which is also class.
  * 
  * In an implementation (.c) file, instantiate a class descriptor for
  * the class like this:
  * @code
- *   OBJ_CLASS_INSTANCE(sally_t, parent_t, sally_construct, sally_destruct);
+ *   PMIX_CLASS_INSTANCE(sally_t, parent_t, sally_construct, sally_destruct);
  * @endcode
  * This macro actually expands to 
  * @code
  *   pmix_class_t sally_t_class = {
  *     "sally_t",
- *     OBJ_CLASS(parent_t),  // pointer to parent_t_class
+ *     PMIX_CLASS(parent_t),  // pointer to parent_t_class
  *     sally_construct,
  *     sally_destruct,
  *     0, 0, NULL, NULL,
@@ -70,7 +70,7 @@
  *   };
  * @endcode
  * This variable should be declared in the interface (.h) file using
- * the OBJ_CLASS_DECLARATION macro as shown above.
+ * the PMIX_CLASS_DECLARATION macro as shown above.
  *
  * sally_construct, and sally_destruct are function pointers to the
  * constructor and destructor for the class and are best defined as
@@ -81,19 +81,19 @@
  *
  * (b) Class instantiation: dynamic
  *
- * To create a instance of a class (an object) use OBJ_NEW:
+ * To create a instance of a class (an object) use PMIX_NEW:
  * @code
- *   sally_t *sally = OBJ_NEW(sally_t);
+ *   sally_t *sally = PMIX_NEW(sally_t);
  * @endcode
  * which allocates memory of sizeof(sally_t) and runs the class's
  * constructors.
  *
- * Use OBJ_RETAIN, OBJ_RELEASE to do reference-count-based
+ * Use PMIX_RETAIN, PMIX_RELEASE to do reference-count-based
  * memory management:
  * @code
- *   OBJ_RETAIN(sally);
- *   OBJ_RELEASE(sally);
- *   OBJ_RELEASE(sally);
+ *   PMIX_RETAIN(sally);
+ *   PMIX_RELEASE(sally);
+ *   PMIX_RELEASE(sally);
  * @endcode
  * When the reference count reaches zero, the class's destructor, and
  * those of its parents, are run and the memory is freed.
@@ -105,17 +105,17 @@
  *
  * For an object with static (or stack) allocation, it is only
  * necessary to initialize the memory, which is done using
- * OBJ_CONSTRUCT:
+ * PMIX_CONSTRUCT:
  * @code
  *   sally_t sally;
  *
- *   OBJ_CONSTRUCT(&sally, sally_t);
+ *   PMIX_CONSTRUCT(&sally, sally_t);
  * @endcode
  * The retain/release model is not necessary here, but before the
- * object goes out of scope, OBJ_DESTRUCT should be run to release
+ * object goes out of scope, PMIX_DESTRUCT should be run to release
  * initialized resources:
  * @code
- *   OBJ_DESTRUCT(&sally);
+ *   PMIX_DESTRUCT(&sally);
  * @endcode
  */
 
@@ -133,7 +133,7 @@ BEGIN_C_DECLS
 
 #if PMIX_ENABLE_DEBUG
 /* Any kind of unique ID should do the job */
-#define PMIX_OBJ_MAGIC_ID ((0xdeafbeedULL << 32) + 0xdeafbeedULL)
+#define PMIX_PMIX_MAGIC_ID ((0xdeafbeedULL << 32) + 0xdeafbeedULL)
 #endif
 
 /* typedefs ***********************************************************/
@@ -172,9 +172,9 @@ struct pmix_class_t {
  * @param NAME   Name of the class to initialize
  */
 #if PMIX_ENABLE_DEBUG
-#define PMIX_OBJ_STATIC_INIT(BASE_CLASS) { PMIX_OBJ_MAGIC_ID, OBJ_CLASS(BASE_CLASS), 1, __FILE__, __LINE__ }
+#define PMIX_PMIX_STATIC_INIT(BASE_CLASS) { PMIX_PMIX_MAGIC_ID, PMIX_CLASS(BASE_CLASS), 1, __FILE__, __LINE__ }
 #else
-#define PMIX_OBJ_STATIC_INIT(BASE_CLASS) { OBJ_CLASS(BASE_CLASS), 1 }
+#define PMIX_PMIX_STATIC_INIT(BASE_CLASS) { PMIX_CLASS(BASE_CLASS), 1 }
 #endif
 
 /**
@@ -205,7 +205,7 @@ struct pmix_object_t {
  * @param NAME          Name of class
  * @return              Pointer to class descriptor
  */
-#define OBJ_CLASS(NAME)     (&(NAME ## _class))
+#define PMIX_CLASS(NAME)     (&(NAME ## _class))
 
 
 /**
@@ -218,10 +218,10 @@ struct pmix_object_t {
  *
  * Put this in NAME.c
  */
-#define OBJ_CLASS_INSTANCE(NAME, PARENT, CONSTRUCTOR, DESTRUCTOR)       \
+#define PMIX_CLASS_INSTANCE(NAME, PARENT, CONSTRUCTOR, DESTRUCTOR)       \
     pmix_class_t NAME ## _class = {                                     \
         # NAME,                                                         \
-        OBJ_CLASS(PARENT),                                              \
+        PMIX_CLASS(PARENT),                                              \
         (pmix_construct_t) CONSTRUCTOR,                                 \
         (pmix_destruct_t) DESTRUCTOR,                                   \
         0, 0, NULL, NULL,                                               \
@@ -236,7 +236,7 @@ struct pmix_object_t {
  *
  * Put this in NAME.h
  */
-#define OBJ_CLASS_DECLARATION(NAME)             \
+#define PMIX_CLASS_DECLARATION(NAME)             \
     extern pmix_class_t NAME ## _class
 
 
@@ -252,16 +252,16 @@ static inline pmix_object_t *pmix_obj_new(pmix_class_t * cls);
 static inline pmix_object_t *pmix_obj_new_debug(pmix_class_t* type, const char* file, int line)
 {
     pmix_object_t* object = pmix_obj_new(type);
-    object->obj_magic_id = PMIX_OBJ_MAGIC_ID;
+    object->obj_magic_id = PMIX_PMIX_MAGIC_ID;
     object->cls_init_file_name = file;
     object->cls_init_lineno = line;
     return object;
 }
-#define OBJ_NEW(type)                                   \
-    ((type *)pmix_obj_new_debug(OBJ_CLASS(type), __FILE__, __LINE__))
+#define PMIX_NEW(type)                                   \
+    ((type *)pmix_obj_new_debug(PMIX_CLASS(type), __FILE__, __LINE__))
 #else
-#define OBJ_NEW(type)                                   \
-    ((type *) pmix_obj_new(OBJ_CLASS(type)))
+#define PMIX_NEW(type)                                   \
+    ((type *) pmix_obj_new(PMIX_CLASS(type)))
 #endif  /* PMIX_ENABLE_DEBUG */
 
 /**
@@ -270,15 +270,15 @@ static inline pmix_object_t *pmix_obj_new_debug(pmix_class_t* type, const char* 
  * @param object        Pointer to the object
  */
 #if PMIX_ENABLE_DEBUG
-#define OBJ_RETAIN(object)                                              \
+#define PMIX_RETAIN(object)                                              \
     do {                                                                \
         assert(NULL != ((pmix_object_t *) (object))->obj_class);        \
-        assert(PMIX_OBJ_MAGIC_ID == ((pmix_object_t *) (object))->obj_magic_id); \
+        assert(PMIX_PMIX_MAGIC_ID == ((pmix_object_t *) (object))->obj_magic_id); \
         pmix_obj_update((pmix_object_t *) (object), 1);                 \
         assert(((pmix_object_t *) (object))->obj_reference_count >= 0); \
     } while (0)
 #else
-#define OBJ_RETAIN(object)  pmix_obj_update((pmix_object_t *) (object), 1);
+#define PMIX_RETAIN(object)  pmix_obj_update((pmix_object_t *) (object), 1);
 #endif
 
 /**
@@ -286,18 +286,18 @@ static inline pmix_object_t *pmix_obj_new_debug(pmix_class_t* type, const char* 
  * an object change.
  */
 #if PMIX_ENABLE_DEBUG
-#define OBJ_REMEMBER_FILE_AND_LINENO( OBJECT, FILE, LINENO )    \
+#define PMIX_REMEMBER_FILE_AND_LINENO( OBJECT, FILE, LINENO )    \
     do {                                                        \
         ((pmix_object_t*)(OBJECT))->cls_init_file_name = FILE;  \
         ((pmix_object_t*)(OBJECT))->cls_init_lineno = LINENO;   \
     } while(0)
-#define OBJ_SET_MAGIC_ID( OBJECT, VALUE )                       \
+#define PMIX_SET_MAGIC_ID( OBJECT, VALUE )                       \
     do {                                                        \
         ((pmix_object_t*)(OBJECT))->obj_magic_id = (VALUE);     \
     } while(0)
 #else
-#define OBJ_REMEMBER_FILE_AND_LINENO( OBJECT, FILE, LINENO )
-#define OBJ_SET_MAGIC_ID( OBJECT, VALUE )
+#define PMIX_REMEMBER_FILE_AND_LINENO( OBJECT, FILE, LINENO )
+#define PMIX_SET_MAGIC_ID( OBJECT, VALUE )
 #endif  /* PMIX_ENABLE_DEBUG */
 
 /**
@@ -311,20 +311,20 @@ static inline pmix_object_t *pmix_obj_new_debug(pmix_class_t* type, const char* 
  * @param object        Pointer to the object
  */
 #if PMIX_ENABLE_DEBUG
-#define OBJ_RELEASE(object)                                             \
+#define PMIX_RELEASE(object)                                             \
     do {                                                                \
         assert(NULL != ((pmix_object_t *) (object))->obj_class);        \
-        assert(PMIX_OBJ_MAGIC_ID == ((pmix_object_t *) (object))->obj_magic_id); \
+        assert(PMIX_PMIX_MAGIC_ID == ((pmix_object_t *) (object))->obj_magic_id); \
         if (0 == pmix_obj_update((pmix_object_t *) (object), -1)) {     \
-            OBJ_SET_MAGIC_ID((object), 0);                              \
+            PMIX_SET_MAGIC_ID((object), 0);                              \
             pmix_obj_run_destructors((pmix_object_t *) (object));       \
-            OBJ_REMEMBER_FILE_AND_LINENO( object, __FILE__, __LINE__ ); \
+            PMIX_REMEMBER_FILE_AND_LINENO( object, __FILE__, __LINE__ ); \
             free(object);                                               \
             object = NULL;                                              \
         }                                                               \
     } while (0)
 #else
-#define OBJ_RELEASE(object)                                             \
+#define PMIX_RELEASE(object)                                             \
     do {                                                                \
         if (0 == pmix_obj_update((pmix_object_t *) (object), -1)) {     \
             pmix_obj_run_destructors((pmix_object_t *) (object));       \
@@ -342,21 +342,21 @@ static inline pmix_object_t *pmix_obj_new_debug(pmix_class_t* type, const char* 
  * @param type          The object type
  */
 
-#define OBJ_CONSTRUCT(object, type)                             \
+#define PMIX_CONSTRUCT(object, type)                             \
 do {                                                            \
-    OBJ_CONSTRUCT_INTERNAL((object), OBJ_CLASS(type));          \
+    PMIX_CONSTRUCT_INTERNAL((object), PMIX_CLASS(type));          \
 } while (0)
 
-#define OBJ_CONSTRUCT_INTERNAL(object, type)                        \
+#define PMIX_CONSTRUCT_INTERNAL(object, type)                        \
 do {                                                                \
-    OBJ_SET_MAGIC_ID((object), PMIX_OBJ_MAGIC_ID);              \
+    PMIX_SET_MAGIC_ID((object), PMIX_PMIX_MAGIC_ID);              \
     if (0 == (type)->cls_initialized) {                             \
         pmix_class_initialize((type));                              \
     }                                                               \
     ((pmix_object_t *) (object))->obj_class = (type);               \
     ((pmix_object_t *) (object))->obj_reference_count = 1;          \
     pmix_obj_run_constructors((pmix_object_t *) (object));          \
-    OBJ_REMEMBER_FILE_AND_LINENO( object, __FILE__, __LINE__ ); \
+    PMIX_REMEMBER_FILE_AND_LINENO( object, __FILE__, __LINE__ ); \
 } while (0)
 
 
@@ -366,22 +366,22 @@ do {                                                                \
  * @param object        Pointer to the object
  */
 #if PMIX_ENABLE_DEBUG
-#define OBJ_DESTRUCT(object)                                    \
+#define PMIX_DESTRUCT(object)                                    \
 do {                                                            \
-    assert(PMIX_OBJ_MAGIC_ID == ((pmix_object_t *) (object))->obj_magic_id); \
-    OBJ_SET_MAGIC_ID((object), 0);                              \
+    assert(PMIX_PMIX_MAGIC_ID == ((pmix_object_t *) (object))->obj_magic_id); \
+    PMIX_SET_MAGIC_ID((object), 0);                              \
     pmix_obj_run_destructors((pmix_object_t *) (object));       \
-    OBJ_REMEMBER_FILE_AND_LINENO( object, __FILE__, __LINE__ ); \
+    PMIX_REMEMBER_FILE_AND_LINENO( object, __FILE__, __LINE__ ); \
 } while (0)
 #else
-#define OBJ_DESTRUCT(object)                                    \
+#define PMIX_DESTRUCT(object)                                    \
 do {                                                            \
     pmix_obj_run_destructors((pmix_object_t *) (object));       \
-    OBJ_REMEMBER_FILE_AND_LINENO( object, __FILE__, __LINE__ ); \
+    PMIX_REMEMBER_FILE_AND_LINENO( object, __FILE__, __LINE__ ); \
 } while (0)
 #endif
 
-PMIX_DECLSPEC OBJ_CLASS_DECLARATION(pmix_object_t);
+PMIX_DECLSPEC PMIX_CLASS_DECLARATION(pmix_object_t);
 
 /* declarations *******************************************************/
 
@@ -410,7 +410,7 @@ PMIX_DECLSPEC int pmix_class_finalize(void);
  * Run the hierarchy of class constructors for this object, in a
  * parent-first order.
  *
- * Do not use this function directly: use OBJ_CONSTRUCT() instead.
+ * Do not use this function directly: use PMIX_CONSTRUCT() instead.
  *
  * WARNING: This implementation relies on a hardwired maximum depth of
  * the inheritance tree!!!
@@ -436,7 +436,7 @@ static inline void pmix_obj_run_constructors(pmix_object_t * object)
  * Run the hierarchy of class destructors for this object, in a
  * parent-last order.
  *
- * Do not use this function directly: use OBJ_DESTRUCT() instead.
+ * Do not use this function directly: use PMIX_DESTRUCT() instead.
  *
  * @param size          Pointer to the object.
  */
@@ -458,7 +458,7 @@ static inline void pmix_obj_run_destructors(pmix_object_t * object)
  * Create new object: dynamically allocate storage and run the class
  * constructor.
  *
- * Do not use this function directly: use OBJ_NEW() instead.
+ * Do not use this function directly: use PMIX_NEW() instead.
  *
  * @param size          Size of the object
  * @param cls           Pointer to the class descriptor of this object
@@ -486,7 +486,7 @@ static inline pmix_object_t *pmix_obj_new(pmix_class_t * cls)
  * Atomically update the object's reference count by some increment.
  *
  * This function should not be used directly: it is called via the
- * macros OBJ_RETAIN and OBJ_RELEASE
+ * macros PMIX_RETAIN and PMIX_RELEASE
  *
  * @param object        Pointer to the object
  * @param inc           Increment by which to update reference count

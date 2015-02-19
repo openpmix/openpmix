@@ -640,7 +640,7 @@ int pmix_bfrop_unpack_buf(pmix_buffer_t *buffer, void *dest,
     
     for (i = 0; i < n; ++i) {
         /* allocate the new object */
-        ptr[i] = OBJ_NEW(pmix_buffer_t);
+        ptr[i] = PMIX_NEW(pmix_buffer_t);
         if (NULL == ptr[i]) {
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
@@ -800,7 +800,7 @@ int pmix_bfrop_unpack_kval(pmix_buffer_t *buffer, void *dest,
     n = *num_vals;
 
     for (i = 0; i < n; ++i) {
-        OBJ_CONSTRUCT(&ptr[i], pmix_kval_t);
+        PMIX_CONSTRUCT(&ptr[i], pmix_kval_t);
         /* unpack the key */
         m = 1;
         if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_string(buffer, &ptr[i].key, &m, PMIX_STRING))) {

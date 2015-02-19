@@ -77,7 +77,7 @@ typedef struct {
         including overhead -- packed in the buffer) */
     size_t bytes_used;
 } pmix_buffer_t;
-PMIX_DECLSPEC OBJ_CLASS_DECLARATION (pmix_buffer_t);
+PMIX_DECLSPEC PMIX_CLASS_DECLARATION (pmix_buffer_t);
 
 END_C_DECLS
 

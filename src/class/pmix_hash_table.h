@@ -39,7 +39,7 @@
 
 BEGIN_C_DECLS
 
-PMIX_DECLSPEC OBJ_CLASS_DECLARATION(pmix_hash_table_t);
+PMIX_DECLSPEC PMIX_CLASS_DECLARATION(pmix_hash_table_t);
                            
 struct pmix_hash_table_t
 {
