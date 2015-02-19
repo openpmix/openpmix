@@ -31,7 +31,7 @@ AC_DEFUN([PMIX_HWLOC_CONFIG],[
             pmix_hwloc_dir=$with_hwloc
             if test -d $with_hwloc/lib; then
                 pmix_hwloc_libdir=$with_hwloc/lib
-            elif -d $with_hwloc/lib64; then
+            elif test -d $with_hwloc/lib64; then
                 pmix_hwloc_libdir=$with_hwloc/lib64
             else
                 AC_MSG_RESULT([Could not find $with_hwloc/lib or $with_hwloc/lib64])

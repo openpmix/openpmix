@@ -33,7 +33,7 @@ AC_DEFUN([PMIX_MUNGE_CONFIG],[
             fi
             if test -d $with_munge/lib; then
                 pmix_munge_libdir=$with_munge/lib
-            elif -d $with_munge/lib64; then
+            elif test -d $with_munge/lib64; then
                 pmix_munge_libdir=$with_munge/lib64
             else
                 AC_MSG_RESULT([Could not find $with_munge/lib or $with_munge/lib64])
