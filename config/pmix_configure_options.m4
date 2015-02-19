@@ -20,7 +20,7 @@ dnl Copyright (c) 2009      Los Alamos National Security, LLC.  All rights
 dnl                         reserved.
 dnl Copyright (c) 2009-2011 Oak Ridge National Labs.  All rights reserved.
 dnl Copyright (c) 2011-2013 NVIDIA Corporation.  All rights reserved.
-dnl Copyright (c) 2013-2014 Intel, Inc. All rights reserved
+dnl Copyright (c) 2013-2015 Intel, Inc. All rights reserved
 dnl
 dnl $COPYRIGHT$
 dnl 
@@ -180,5 +180,23 @@ AC_ARG_WITH([libltdl],
     [AC_HELP_STRING([--with-libltdl(=DIR)],
          [Where to find libltdl (this option is ignored if --disable-dlopen is used). Supplying a valid directory name adds DIR/include, DIR/lib, and DIR/lib64 to the search path for headers and libraries.])])
 
+#
+# Timing support
+#
+AC_MSG_CHECKING([if want developer-level timing support])
+AC_ARG_ENABLE(timing, 
+    AC_HELP_STRING([--enable-timing],
+                   [enable developer-level timing code (default: disabled)]))
+if test "$enable_timing" = "yes"; then
+    AC_MSG_RESULT([yes])
+    WANT_TIMING=1
+else
+    AC_MSG_RESULT([no])
+    WANT_TIMING=0
+fi
+
+AC_DEFINE_UNQUOTED(PMIX_ENABLE_TIMING, $WANT_TIMING,
+    [Whether we want developer-level timing support or not])
+AM_CONDITIONAL([PMIX_COMPILE_TIMING], [test "$WANT_TIMING" = "1"])
 
 ])dnl

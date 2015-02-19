@@ -12,7 +12,7 @@
 # Copyright (c) 2007-2010 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2013      NVIDIA Corporation.  All rights reserved.
 # Copyright (c) 2013      Intel, Inc. All rights reserved
-# Copyright (c) 2013-2014 Intel, Inc. All rights reserved
+# Copyright (c) 2013-2015 Intel, Inc. All rights reserved
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -32,7 +32,10 @@ headers += \
         src/util/pmix_environ.h \
         src/util/crc.h \
         src/util/progress_threads.h \
-        src/util/fd.h
+        src/util/fd.h \
+        src/util/timings.h \
+        src/util/os_path.h \
+        src/util/basename.h
 
 sources += \
         src/util/argv.c \
@@ -42,7 +45,14 @@ sources += \
         src/util/pmix_environ.c \
         src/util/crc.c \
         src/util/progress_threads.c \
-        src/util/fd.c
+        src/util/fd.c \
+        src/util/os_path.c \
+        src/util/basename.c
+
+if PMIX_COMPILE_TIMING
+sources += src/util/timings.c
+endif
+
 
 server_headers += \
         src/util/argv.h \
@@ -52,7 +62,10 @@ server_headers += \
         src/util/pmix_environ.h \
         src/util/crc.h \
         src/util/progress_threads.h \
-        src/util/fd.h
+        src/util/fd.h \
+        src/util/timings.h \
+        src/util/os_path.h \
+        src/util/basename.h
 
 server_sources += \
         src/util/argv.c \
@@ -62,4 +75,10 @@ server_sources += \
         src/util/pmix_environ.c \
         src/util/crc.c \
         src/util/progress_threads.c \
-        src/util/fd.c
+        src/util/fd.c \
+        src/util/os_path.c \
+        src/util/basename.c
+
+if PMIX_COMPILE_TIMING
+server_sources += src/util/timings.c
+endif
