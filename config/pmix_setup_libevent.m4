@@ -34,7 +34,7 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
         pmix_event_dir=$with_libevent
         if test -d $with_libevent/lib; then
             pmix_event_libdir=$with_libevent/lib
-        elif -d $with_libevent/lib64; then
+        elif test -d $with_libevent/lib64; then
             pmix_event_libdir=$with_libevent/lib64
         else
             AC_MSG_RESULT([Could not find $with_libevent/lib or $with_libevent/lib64])
