@@ -24,13 +24,13 @@ AC_DEFUN([PMIX_SASL_CONFIG],[
                                 [Search for sasl libraries in DIR ])])
 
     pmix_sasl_support=0
-    if test $pmix_dist_enabled != 1 -a "$with_sasl" != "no"; then
+    if test "$with_sasl" != "no"; then
         AC_MSG_CHECKING([for sasl in])
         if test ! -z "$with_sasl" -a "$with_sasl" != "yes"; then
             pmix_sasl_dir=$with_sasl/include/sasl
             if test -d $with_sasl/lib; then
                 pmix_sasl_libdir=$with_sasl/lib
-            elif -d $with_sasl/lib64; then
+            elif test -d $with_sasl/lib64; then
                 pmix_sasl_libdir=$with_sasl/lib64
             else
                 AC_MSG_RESULT([Could not find $with_sasl/lib or $with_sasl/lib64])
