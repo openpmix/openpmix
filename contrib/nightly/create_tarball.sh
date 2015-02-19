@@ -78,7 +78,7 @@ send_error_mail() {
             cat "$file" >> "$outfile"
         fi
     done
-    Mail -s "=== CREATE FAILURE ($version) ===" "$email" < "$outfile"
+    Mail -s "=== PMIx CREATE FAILURE ($version) ===" "$email" < "$outfile"
     rm -f "$outfile"
 }
 
@@ -297,7 +297,7 @@ rm -rf "$root"
 
 # send success mail
 if test "$want_success_mail" = "1"; then
-    Mail -s "Create success ($version)" "$email" <<EOF
+    Mail -s "PMIx Create success ($version)" "$email" <<EOF
 Creating nightly snapshot tarball was a success.
 
 Snapshot:   $version
