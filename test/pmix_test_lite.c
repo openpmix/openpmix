@@ -104,7 +104,7 @@ static void pdes(pmix_test_data_t *p)
         free(p->data.blob);
     }
 }
-static OBJ_CLASS_INSTANCE(pmix_test_data_t,
+static PMIX_CLASS_INSTANCE(pmix_test_data_t,
                           pmix_list_item_t,
                           pcon, pdes);
 
@@ -170,7 +170,7 @@ static void cli_init(int nprocs)
         cli_info[n].ev = NULL;
         cli_info[n].pid = -1;
         cli_info[n].state = CLI_UNINIT;
-        OBJ_CONSTRUCT(&(cli_info[n].modex), pmix_list_t);
+        PMIX_CONSTRUCT(&(cli_info[n].modex), pmix_list_t);
     }
 }
 
@@ -622,7 +622,7 @@ static void gather_data_rank(const char nspace[], int rank,
         }
         TEST_VERBOSE(("test:gather_data adding blob for %s:%d of size %d",
                             mdx->data.nspace, mdx->data.rank, (int)mdx->data.size));
-        tdat = OBJ_NEW(pmix_test_data_t);
+        tdat = PMIX_NEW(pmix_test_data_t);
         (void)strncpy(tdat->data.nspace, mdx->data.nspace, PMIX_MAX_NSLEN);
         tdat->data.rank = mdx->data.rank;
         tdat->data.size = mdx->data.size;
@@ -691,7 +691,7 @@ static int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
 
     /* if they want all the data returned, do so */
     if (0 != collect_data) {
-        OBJ_CONSTRUCT(&data, pmix_list_t);
+        PMIX_CONSTRUCT(&data, pmix_list_t);
         for (i=0; i < nranges; i++) {
             if (NULL == ranges[i].ranks) {
                 gather_data(ranges[i].nspace, PMIX_RANK_WILDCARD, &data);
@@ -726,7 +726,7 @@ static int store_modex_fn(pmix_scope_t scope, pmix_modex_data_t *data)
 
     TEST_VERBOSE(("storing modex data for %s:%d of size %d",
                         data->nspace, data->rank, (int)data->size));
-    mdx = OBJ_NEW(pmix_test_data_t);
+    mdx = PMIX_NEW(pmix_test_data_t);
     (void)strncpy(mdx->data.nspace, data->nspace, PMIX_MAX_NSLEN);
     mdx->data.rank = data->rank;
     mdx->data.size = data->size;
@@ -748,7 +748,7 @@ static int get_modexnb_fn(const char nspace[], int rank,
 
     TEST_VERBOSE(("Getting data for %s:%d", nspace, rank));
 
-    OBJ_CONSTRUCT(&data, pmix_list_t);
+    PMIX_CONSTRUCT(&data, pmix_list_t);
     gather_data(nspace, rank, &data);
     /* convert the data to an array */
     xfer_to_array(&data, &mdxarray, &size);
