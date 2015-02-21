@@ -44,6 +44,8 @@ int main(int argc, char **argv)
     bool nonblocking = false;
     pmix_value_t *val = &value;
 
+    fprintf(stderr, "rank X: Start\n", rank);
+
     /* check options */
     for (i=1; i < argc; i++) {
         if (0 == strcmp(argv[i], "--n") || 0 == strcmp(argv[i], "-n")) {
@@ -61,14 +63,18 @@ int main(int argc, char **argv)
         }
     }
 
+    fprintf(stderr, "rank X: parsed command line\n", rank);
+
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(nspace, &rank))) {
-        fprintf(stderr, "PMIx cli: PMIx_Init failed: %d\n", rc);
+        fprintf(stderr, "rank %d: PMIx_Init failed: %d\n", rank, rc);
         goto error_out;
     }
 
+    fprintf(stderr, "rank %d: PMIx_Init success\n", rank);
+
     if( 0 != strcmp(nspace, TEST_NAMESPACE) ) {
-        printf("PMIx cli: Bad nspace!\n");
+        printf("rank %d: Bad nspace!\n", rank);
     }
 
     for (i=0; i < 3; i++) {
@@ -98,10 +104,11 @@ int main(int argc, char **argv)
     
     /* Submit the data */
     if (PMIX_SUCCESS != (rc = PMIx_Fence(NULL, 0, 1))) {
-        fprintf(stderr, "PMIx cli: PMIx_Fence failed (%d)\n", rc);
+        fprintf(stderr, "rank %d [ERROR]: PMIx_Fence failed (%d)\n",
+                rank, rc);
         goto error_out;
     }
-    fprintf(stderr, "PMIx client2: Fence successfully completed\n");
+    fprintf(stderr, "rank %d: Fence successfully completed\n", rank);
     
     /* Check the predefined output */
     for (i=0; i < nprocs; i++) {
@@ -109,25 +116,28 @@ int main(int argc, char **argv)
         for (j=0; j < 3; j++) {
             sprintf(key,"local-key-%d",j);
             if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, i, key, &val))) {
-                fprintf(stderr, "PMIx cli: PMIx_Get failed (%d)\n", rc);
+                fprintf(stderr, "rank %d [ERROR]: PMIx_Get failed (%d)\n",
+                        rank, rc);
                 goto error_out;
             }
             if (NULL == val) {
-                fprintf(stderr, "PMIx test: PMIx_Get returned NULL value\n");
+                fprintf(stderr, "rank %d [ERROR]: PMIx_Get returned NULL value\n", rank);
                 goto error_out;
             }
             if (val->type != PMIX_INT || val->data.integer != (12340+j)) {
-                fprintf(stderr, "Key %s value or type mismatch, want %d(%d) get %d(%d)\n",
-                        key, (12340+j), PMIX_INT, val->data.integer, val->type);
+                fprintf(stderr, "rank %d [ERROR]: Key %s value or type mismatch,"
+                        " want %d(%d) get %d(%d)\n",
+                        rank, key, (12340+j), PMIX_INT,
+                        val->data.integer, val->type);
                 goto error_out;
             }
-            fprintf(stderr, "GET OF %s SUCCEEDED\n", key);
+            fprintf(stderr, "rank %d: GET OF %s SUCCEEDED\n", rank, key);
             PMIx_free_value(&val);
 
             sprintf(key,"remote-key-%d",j);
             sprintf(sval,"Test string #%d",j);
             if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, i, key, &val))) {
-                fprintf(stderr, "PMIx cli: PMIx_Get failed (%d)\n", rc);
+                fprintf(stderr, "rank %d [ERROR]: PMIx_Get failed (%d)\n", rank, rc);
                 goto error_out;
             }
             if (val->type != PMIX_STRING || strcmp(val->data.string, sval)) {
@@ -135,7 +145,7 @@ int main(int argc, char **argv)
                         key, sval, PMIX_STRING, val->data.string, val->type);
                 goto error_out;
             }
-            fprintf(stderr, "GET OF %s SUCCEEDED\n", key);
+            fprintf(stderr, "rank %d: GET OF %s SUCCEEDED\n", rank, key);
             PMIx_free_value(&val);
 
             sprintf(key, "global-key-%d", j);
@@ -144,37 +154,41 @@ int main(int argc, char **argv)
                 goto error_out;
             }
             if (val->type != PMIX_FLOAT || val->data.fval != (float)12.15 + j) {
-                fprintf(stderr, "PMIx cli: Key %s value or type mismatch, wait %f(%d) get %f(%d)\n",
-                        key, ((float)10.15 + i), PMIX_FLOAT, val->data.fval, val->type);
+                fprintf(stderr, "rank %d [ERROR]: Key %s value or type mismatch,"
+                        " wait %f(%d) get %f(%d)\n",
+                        rank, key, ((float)10.15 + i), PMIX_FLOAT,
+                        val->data.fval, val->type);
                 goto error_out;
             }
             PMIx_free_value(&val);
-            fprintf(stderr, "GET OF %s SUCCEEDED\n", key);
-            fprintf(stderr,"PMIx cli: rank %d is OK\n", i);
+            fprintf(stderr, "rank %d: GET OF %s SUCCEEDED\n", rank, key);
+            fprintf(stderr,"rank %d: rank %d is OK\n", rank, i);
         }
         /* ask for a non-existent key */
         if (PMIX_SUCCESS == (rc = PMIx_Get(nspace, i, "foobar", &val))) {
-            fprintf(stderr, "PMIx_Get returned success instead of failure\n");
+            fprintf(stderr, "rank %d [ERROR]: PMIx_Get returned success instead of failure\n",
+                    rank);
             goto error_out;
         }
         if (PMIX_ERR_NOT_FOUND != rc) {
-            fprintf(stderr, "PMIx_Get returned %d instead of not_found\n", rc);
+            fprintf(stderr, "rank %d [ERROR]: PMIx_Get returned %d instead of not_found\n",
+                    rank, rc);
         }
         if (NULL != val) {
-            fprintf(stderr, "PMIx test: PMIx_Get did not return NULL value\n");
+            fprintf(stderr, "rank %d [ERROR]: PMIx_Get did not return NULL value\n", rank);
             goto error_out;
         }
-        fprintf(stderr, "GET OF NON-EXISTENT KEY CORRECTLY HANDLED\n");
+        fprintf(stderr, "rank %d: GET OF NON-EXISTENT KEY CORRECTLY HANDLED\n", rank);
     }
 
  error_out:
     /* finalize us */
-    fprintf(stderr, "Finalizing pmix_client2 rank %d\n", rank);
+    fprintf(stderr, "rank %d: Finalizing\n", rank);
     fflush(stderr);
     if (PMIX_SUCCESS != (rc = PMIx_Finalize())) {
-        fprintf(stderr, "PMIx_Finalize failed: %d\n", rc);
+        fprintf(stderr, "rank %d:PMIx_Finalize failed: %d\n", rank, rc);
     } else {
-        fprintf(stderr, "PMIx_Finalize successfully completed\n");
+        fprintf(stderr, "rank %d:PMIx_Finalize successfully completed\n", rank);
     }
     
     exit(0);

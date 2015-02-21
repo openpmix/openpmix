@@ -95,7 +95,7 @@ static void pdes(pmix_test_data_t *p)
         free(p->data.blob);
     }
 }
-static OBJ_CLASS_INSTANCE(pmix_test_data_t,
+static PMIX_CLASS_INSTANCE(pmix_test_data_t,
                           pmix_list_item_t,
                           pcon, pdes);
 
@@ -166,7 +166,7 @@ int main(int argc, char **argv)
         }
     }
 
-    OBJ_CONSTRUCT(&modex, pmix_list_t);
+    PMIX_CONSTRUCT(&modex, pmix_list_t);
     
     /* setup the server library */
     if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, true))) {
@@ -279,7 +279,7 @@ static void gather_data(const char nspace[], int rank,
         pmix_output_verbose(5, pmix_globals.debug_output,
                             "test:gather_data adding blob for %s:%d of size %d",
                             mdx->data.nspace, mdx->data.rank, (int)mdx->data.size);
-        tdat = OBJ_NEW(pmix_test_data_t);
+        tdat = PMIX_NEW(pmix_test_data_t);
         (void)strncpy(tdat->data.nspace, mdx->data.nspace, PMIX_MAX_NSLEN);
         tdat->data.rank = mdx->data.rank;
         tdat->data.size = mdx->data.size;
@@ -335,7 +335,7 @@ static int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
 
     /* if they want all the data returned, do so */
     if (0 != collect_data) {
-        OBJ_CONSTRUCT(&data, pmix_list_t);
+        PMIX_CONSTRUCT(&data, pmix_list_t);
         for (i=0; i < nranges; i++) {
             if (NULL == ranges[i].ranks) {
                 gather_data(ranges[i].nspace, PMIX_RANK_WILDCARD, &data);
@@ -372,7 +372,7 @@ static int store_modex_fn(pmix_scope_t scope, pmix_modex_data_t *data)
                         "test: storing modex data for %s:%d of size %d",
                         data->nspace, data->rank, (int)data->size);
     
-    mdx = OBJ_NEW(pmix_test_data_t);
+    mdx = PMIX_NEW(pmix_test_data_t);
     (void)strncpy(mdx->data.nspace, data->nspace, PMIX_MAX_NSLEN);
     mdx->data.rank = data->rank;
     mdx->data.size = data->size;
@@ -394,7 +394,7 @@ static int get_modexnb_fn(const char nspace[], int rank,
     
     pmix_output(0, "Getting data for %s:%d", nspace, rank);
 
-    OBJ_CONSTRUCT(&data, pmix_list_t);
+    PMIX_CONSTRUCT(&data, pmix_list_t);
     gather_data(nspace, rank, &data);
     /* convert the data to an array */
     xfer_to_array(&data, &mdxarray, &size);

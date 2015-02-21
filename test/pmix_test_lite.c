@@ -14,6 +14,8 @@
  * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2015 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015      Artem Y. Polyakov <artpol84@gmail.com>.
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,7 +32,12 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <event.h>
+extern int errno;
 #include <errno.h>
+#include <sys/wait.h>
+#include <time.h>
+#include <sys/time.h>
+#include <time.h>
 
 #include "src/include/pmix_globals.h"
 #include "pmix_server.h"
@@ -97,34 +104,259 @@ static void pdes(pmix_test_data_t *p)
         free(p->data.blob);
     }
 }
-static OBJ_CLASS_INSTANCE(pmix_test_data_t,
+static PMIX_CLASS_INSTANCE(pmix_test_data_t,
                           pmix_list_item_t,
                           pcon, pdes);
 
-static bool test_complete = false;
-static pmix_list_t modex;
+// In correct scenario each client has to sequentially pass all of this stages
+typedef enum {
+    CLI_UNINIT, CLI_FORKED, CLI_CONNECTED, CLI_FIN, CLI_DISCONN, CLI_TERM
+} cli_state_t;
+
+typedef struct {
+    pmix_list_t modex;
+    pid_t pid;
+    int sd;
+    pmix_event_t *ev;
+    cli_state_t state;
+} cli_info_t;
+
+static cli_info_t *cli_info = NULL;
+int cli_info_cnt = 0;
+
+static bool test_abort = false;
+
 static bool barrier = false;
 static bool collect = false;
 static bool nonblocking = false;
 static uint32_t nprocs = 1;
 struct event_base *server_base = NULL;
 pmix_event_t *listen_ev = NULL;
-pmix_event_t *cli_ev = NULL;
-int listen_fd = -1;
-int client_fd = -1;
-pid_t client_pid = -1;
 
+int listen_fd = -1;
 static void connection_handler(int incoming_sd, short flags, void* cbdata);
 static void message_handler(int incoming_sd, short flags, void* cbdata);
 static int start_listening(struct sockaddr_un *address);
+
+bool verbose = false;
 
 static void errhandler(pmix_status_t status,
                        pmix_range_t ranges[], size_t nranges,
                        pmix_info_t info[], size_t ninfo)
 {
-    --nprocs;
-    if (nprocs <= 0) {
-        test_complete = true;
+    TEST_ERROR(("Error handler with status = %d", status))
+    test_abort = true;
+}
+
+static int cli_rank(cli_info_t *cli)
+{
+    int i;
+    for(i=0; i < cli_info_cnt; i++){
+        if( cli == &cli_info[i] ){
+            return i;
+        }
+    }
+    return -1;
+}
+
+static void cli_init(int nprocs)
+{
+    int n;
+    cli_info = malloc( sizeof(*cli_info) * nprocs);
+    cli_info_cnt = nprocs;
+
+    for (n=0; n < nprocs; n++) {
+        cli_info[n].sd = -1;
+        cli_info[n].ev = NULL;
+        cli_info[n].pid = -1;
+        cli_info[n].state = CLI_UNINIT;
+        PMIX_CONSTRUCT(&(cli_info[n].modex), pmix_list_t);
+    }
+}
+
+void cli_connect(cli_info_t *cli, int sd)
+{
+    if( CLI_FORKED != cli->state ){
+        TEST_ERROR(("Rank %d has bad state: expect %d have %d!",
+                     cli_rank(cli), CLI_FORKED, cli->state));
+        test_abort = true;
+        return;
+    }
+
+    cli->sd = sd;
+    cli->ev = event_new(server_base, sd,
+                      EV_READ|EV_PERSIST, message_handler, cli);
+    event_add(cli->ev,NULL);
+    pmix_usock_set_nonblocking(sd);
+    TEST_OUTPUT(("Connection accepted from rank %d", cli_rank(cli) ));
+    cli->state = CLI_CONNECTED;
+}
+
+void cli_finalize(cli_info_t *cli)
+{
+    if( CLI_CONNECTED != cli->state ){
+        TEST_ERROR(("rank %d: bad client state: expect %d have %d!",
+                     cli_rank(cli), CLI_CONNECTED, cli->state));
+        test_abort = true;
+        return;
+    }
+
+    cli->state = CLI_FIN;
+}
+
+static void cli_disconnect(cli_info_t *cli)
+{
+
+    if( CLI_FIN != cli->state ){
+        TEST_ERROR(("rank %d: bad client state: expect %d have %d!",
+                     cli_rank(cli), CLI_FIN, cli->state));
+    }
+
+    if( 0 > cli->sd ){
+        TEST_ERROR(("Bad sd = %d of rank = %d ", cli->sd, cli_rank(cli)));
+    } else {
+        TEST_VERBOSE(("close sd = %d for rank = %d", cli->sd, cli_rank(cli)));
+        close(cli->sd);
+        cli->sd = -1;
+    }
+
+    if( NULL == cli->ev ){
+        TEST_ERROR(("Bad ev = NULL of rank = %d ", cli->sd, cli_rank(cli)));
+    } else {
+        TEST_VERBOSE(("remove event of rank %d from event queue", cli_rank(cli)));
+        event_del(cli->ev);
+        event_free(cli->ev);
+        cli->ev = NULL;
+    }
+
+    TEST_VERBOSE(("Destruct modex list for the rank %d", cli_rank(cli)));
+    PMIX_LIST_DESTRUCT(&(cli->modex));
+
+    cli->state = CLI_DISCONN;
+}
+
+static void cli_terminate(cli_info_t *cli)
+{
+    if( CLI_DISCONN != cli->state ){
+        TEST_ERROR(("rank %d: bad client state: expect %d have %d!",
+                     cli_rank(cli), CLI_FIN, cli->state));
+    }
+    cli->pid = -1;
+    TEST_VERBOSE(("Client rank = %d terminated", cli_rank(cli)));
+    cli->state = CLI_TERM;
+}
+
+static void cli_cleanup(cli_info_t *cli)
+{
+    switch( cli->state ){
+    case CLI_CONNECTED:
+        cli_finalize(cli);
+    case CLI_FIN:
+        cli_disconnect(cli);
+    case CLI_DISCONN:
+        cli_terminate(cli);
+    case CLI_TERM:
+    case CLI_FORKED:
+        cli->state = CLI_TERM;
+    case CLI_UNINIT:
+        break;
+    default:
+        TEST_ERROR(("Bad rank %d state %d", cli_rank(cli), cli->state));
+    }
+}
+
+
+static bool test_completed(void)
+{
+    bool ret = true;
+    int i;
+
+    // All of the client should deisconnect
+    for(i=0; i < cli_info_cnt; i++){
+        ret = ret && (CLI_DISCONN <= cli_info[i].state);
+    }
+    return (ret || test_abort);
+}
+
+static bool test_terminated(void)
+{
+    bool ret = true;
+    int i;
+
+    // All of the client should deisconnect
+    for(i=0; i < cli_info_cnt; i++){
+        ret = ret && (CLI_TERM <= cli_info[i].state);
+    }
+    return ret;
+}
+
+static void cli_wait_all(double timeout)
+{
+    int status_all[cli_info_cnt];
+    bool finish = false;
+    struct timeval tv;
+    double start_time, cur_time;
+    int i;
+
+    gettimeofday(&tv, NULL);
+    start_time = tv.tv_sec + 1E-6*tv.tv_usec;
+    cur_time = start_time;
+
+    TEST_VERBOSE(("Wait for all children to terminate"))
+
+    // Wait for all childrens to cleanup after the test.
+    while( !test_terminated() && ( timeout > (cur_time - start_time) ) ){
+        struct timespec ts;
+        int status, i;
+        pid_t pid;
+        while( 0 < (pid = waitpid(-1, &status, WNOHANG) ) ){
+            TEST_VERBOSE(("waitpid = %d", pid));
+            if( pid < 0 ){
+                TEST_ERROR(("waitpid(): %d : %s", errno, strerror(errno)));
+                if( errno == ECHILD ){
+                    TEST_ERROR(("No more childs to wait (shouldn't happen)"));
+                    break;
+                } else {
+                    exit(0);
+                }
+            } else if( 0 < pid ){
+                for(i=0; i < cli_info_cnt; i++){
+                    if( cli_info[i].pid == pid ){
+                        TEST_VERBOSE(("the child with pid = %d has rank = %d\n"
+                                      "\t\texited = %d, signalled = %d", pid, i,
+                                      WIFEXITED(status), WIFSIGNALED(status) ));
+                        if( WIFEXITED(status) || WIFSIGNALED(status) ){
+                            cli_cleanup(&cli_info[i]);
+                        }
+                    }
+                }
+            }
+        }
+        ts.tv_sec = 0;
+        ts.tv_nsec = 100000;
+        nanosleep(&ts, NULL);
+        // calculate current timestamp
+        gettimeofday(&tv, NULL);
+        cur_time = tv.tv_sec + 1E-6*tv.tv_usec;
+
+    }
+}
+
+static void cli_kill_all()
+{
+    int i;
+    for(i = 0; i < cli_info_cnt; i++){
+        if( CLI_UNINIT == cli_info[i].state ){
+            TEST_ERROR(("Skip rank %d as it wasn't ever initialized (shouldn't happe)",
+                          i));
+            continue;
+        } else if( CLI_TERM <= cli_info[i].state ){
+            TEST_VERBOSE(("Skip rank %d as it was already terminated.", i));
+            continue;
+
+        }
+        TEST_VERBOSE(("Kill rank %d (pid = %d).", i, cli_info[i].pid));
+        kill(cli_info[i].pid, SIGKILL);
     }
 }
 
@@ -134,17 +366,24 @@ int main(int argc, char **argv)
     char **client_argv=NULL;
     int rc, i;
     uint32_t n;
-    pid_t pid;
     char *binary = "pmix_client2";
     char *tmp;
     char *np = NULL;
     uid_t myuid;
     gid_t mygid;
     struct sockaddr_un address;
+    // In what time test should complete
+#define TEST_DEFAULT_TIMEOUT 10
+    int test_timeout = TEST_DEFAULT_TIMEOUT;
+    struct timeval tv;
+    double test_start;
+
+    gettimeofday(&tv, NULL);
+    test_start = tv.tv_sec + 1E-6*tv.tv_usec;
 
     /* smoke test */
     if (PMIX_SUCCESS != 0) {
-        fprintf(stderr, "ERROR IN COMPUTING CONSTANTS: PMIX_SUCCESS = %d\n", PMIX_SUCCESS);
+        TEST_ERROR(("ERROR IN COMPUTING CONSTANTS: PMIX_SUCCESS = %d\n", PMIX_SUCCESS));
         exit(1);
     }
     
@@ -161,6 +400,8 @@ int main(int argc, char **argv)
             fprintf(stderr, "\t-b       execute fence_nb callback when all procs reach that point\n");
             fprintf(stderr, "\t-c       fence[_nb] callback shall include all collected data\n");
             fprintf(stderr, "\t-nb      use non-blocking fence\n");
+            fprintf(stderr, "\t-v       verbose output\n");
+            fprintf(stderr, "\t-t       --timeout\n");
             exit(0);
         } else if (0 == strcmp(argv[i], "--exec") || 0 == strcmp(argv[i], "-e")) {
             i++;
@@ -171,19 +412,26 @@ int main(int argc, char **argv)
             collect = true;
         } else if (0 == strcmp(argv[i], "--non-blocking") || 0 == strcmp(argv[i], "-nb")) {
             nonblocking = true;
-        } else {
+        } else if( 0 == strcmp(argv[i], "--verbose") || 0 == strcmp(argv[i],"-v") ){
+            TEST_VERBOSE_ON();
+        } else if (0 == strcmp(argv[i], "--timeout") || 0 == strcmp(argv[i], "-t")) {
+            i++;
+            test_timeout = atoi(argv[i]);
+            if( test_timeout == 0 ){
+                test_timeout = TEST_DEFAULT_TIMEOUT;
+            }
+        }
+        else {
             fprintf(stderr, "unrecognized option: %s\n", argv[i]);
             exit(1);
         }
     }
 
-    OBJ_CONSTRUCT(&modex, pmix_list_t);
-    
-    fprintf(stderr,"Start PMIx_lite smoke test\n");
+    TEST_OUTPUT(("Start PMIx_lite smoke test (timeout is %d)", test_timeout));
 
     /* setup the server library */
     if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, false))) {
-        fprintf(stderr, "Init failed with error %d\n", rc);
+        TEST_ERROR(("Init failed with error %d\n", rc));
         return rc;
     }
     /* register the errhandler */
@@ -193,21 +441,24 @@ int main(int argc, char **argv)
     /* initialize the event library - we will be providing messaging support
      * for the server */
     if (NULL == (server_base = event_base_new())) {
-        printf("Cannot create libevent event\n");
+        TEST_ERROR(("Cannot create libevent event\n"));
         goto cleanup;
     }
     
     /* retrieve the rendezvous address */
     if (PMIX_SUCCESS != PMIx_get_rendezvous_address(&address)) {
-        fprintf(stderr, "%s: failed to get rendezvous address\n", argv[0]);
+        TEST_ERROR(("failed to get rendezvous address"));
         rc = -1;
         goto cleanup;
     }
 
-    fprintf(stderr,"PMIx srv: Initialization finished\n");
+    TEST_OUTPUT(("Initialization finished"));
 
     /* start listening */
-    listen_fd = start_listening(&address);
+    if( 0 > (listen_fd = start_listening(&address) ) ){
+        TEST_ERROR(("start_listening failed"));
+        exit(0);
+    }
 
     client_env = pmix_argv_copy(environ);
     
@@ -230,38 +481,68 @@ int main(int argc, char **argv)
     }
     
     tmp = pmix_argv_join(client_argv, ' ');
-    fprintf(stderr, "Executing test: %s\n", tmp);
+    TEST_OUTPUT(("Executing test: %s", tmp));
     free(tmp);
 
     myuid = getuid();
     mygid = getgid();
+    cli_init(nprocs);
+
     for (n=0; n < nprocs; n++) {
         if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(TEST_NAMESPACE, n, myuid, mygid, &client_env))) {
-            fprintf(stderr, "Server fork setup failed with error %d\n", rc);
+            TEST_ERROR(("Server fork setup failed with error %d", rc));
             PMIx_server_finalize();
+            cli_kill_all(0);
             return rc;
         }
-        for (i=0; NULL != client_env[i]; i++) {
-            pmix_output(0, "env[%d]: %s", i, client_env[i]);
-        }
+
+//        for (i=0; NULL != client_env[i]; i++) {
+//            TEST_VERBOSE(("env[%d]: %s", i, client_env[i]));
+//        }
     
-        pid = fork();    
-        if (pid < 0) {
-            fprintf(stderr, "Fork failed\n");
+        cli_info[n].pid = fork();
+        if (cli_info[n].pid < 0) {
+            TEST_ERROR(("Fork failed"));
             PMIx_server_finalize();
+            cli_kill_all(0);
             return -1;
         }
         
-        if (pid == 0) {
+        if (cli_info[n].pid == 0) {
             execve(binary, client_argv, client_env);
             /* Does not return */
         }
+        cli_info[n].state = CLI_FORKED;
     }
 
     /* hang around until the client(s) finalize */
-    while (!test_complete) {
+    while (!test_completed()) {
+        // To avoid test hang we want to interrupt the loop each 0.1s
+        struct timeval loop_tv = {0, 100000};
+        double test_current;
+
+        // run the processing loop
+        event_base_loopexit(server_base, &loop_tv);
         event_base_loop(server_base, EVLOOP_ONCE);
+
+        // check if we exceed the max time
+        gettimeofday(&tv, NULL);
+        test_current = tv.tv_sec + 1E-6*tv.tv_usec;
+        if( (test_current - test_start) > test_timeout ){
+            break;
+        }
     }
+
+    if( !test_completed() ){
+        TEST_ERROR(("Test exited by a timeout!"));
+        cli_kill_all();
+    }
+
+    if( test_abort ){
+        TEST_ERROR(("Test was aborted!"));
+        cli_kill_all();
+    }
+
     
     pmix_argv_free(client_argv);
     pmix_argv_free(client_env);
@@ -269,22 +550,42 @@ int main(int argc, char **argv)
     /* deregister the errhandler */
     PMIx_Deregister_errhandler();
 
-    PMIX_LIST_DESTRUCT(&modex);
+
     cleanup:
+
+    cli_wait_all(1.0);
+
     /* finalize the server library */
     if (PMIX_SUCCESS != (rc = PMIx_server_finalize())) {
-        fprintf(stderr, "Finalize failed with error %d\n", rc);
+        TEST_ERROR(("Finalize failed with error %d", rc));
     }
-    
+
+    if( !test_terminated() ){
+        int i;
+        // All of the client should deisconnect
+        TEST_ERROR(("Error while cleaning up test. Expect state = %d:", CLI_TERM));
+        for(i=0; i < cli_info_cnt; i++){
+            TEST_ERROR(("\trank %d, state = %d\n", i, cli_info[i].state));
+        }
+
+    } else {
+        TEST_OUTPUT(("Test finished OK!"));
+    }
+
+    close(listen_fd);
+    unlink(address.sun_path);
+
     return rc;
 }
 
 static int terminated(const char nspace[], int rank)
 {
-    --nprocs;
-    if (nprocs <= 0) {
-        test_complete = true;
+    if( CLI_TERM <= cli_info[rank].state ){
+        TEST_ERROR(("double termination of rank %d", rank));
+        return PMIX_SUCCESS;
     }
+    TEST_VERBOSE(("Rank %d terminated", rank));
+    cli_finalize(&cli_info[rank]);
     return PMIX_SUCCESS;
 }
 
@@ -294,29 +595,34 @@ static int abort_fn(int status, const char msg[],
     if (NULL != cbfunc) {
         cbfunc(PMIX_SUCCESS, cbdata);
     }
+    TEST_VERBOSE(("Abort is called with status = %d, msg = %s",
+                 status, msg));
+    test_abort = true;
     return PMIX_SUCCESS;
 }
 
-static void gather_data(const char nspace[], int rank,
+static void gather_data_rank(const char nspace[], int rank,
                         pmix_list_t *mdxlist)
 {
     pmix_test_data_t *tdat, *mdx;
 
-    pmix_output(0, "gather_data: list has %d items", pmix_list_get_size(&modex));
-    
-    PMIX_LIST_FOREACH(mdx, &modex, pmix_test_data_t) {
-        pmix_output(0, "gather_data: checking %s vs %s", nspace, mdx->data.nspace);
+    TEST_VERBOSE(("from %d list has %d items",
+                rank, pmix_list_get_size(&cli_info[rank].modex)) );
+
+    PMIX_LIST_FOREACH(mdx, &cli_info[rank].modex, pmix_test_data_t) {
+        TEST_VERBOSE(("gather_data: checking %s vs %s",
+                     nspace, mdx->data.nspace));
         if (0 != strcmp(nspace, mdx->data.nspace)) {
             continue;
         }
-        pmix_output(0, "gather_data: checking %d vs %d", rank, mdx->data.rank);
+        TEST_VERBOSE(("gather_data: checking %d vs %d",
+                     rank, mdx->data.rank));
         if (rank != mdx->data.rank && PMIX_RANK_WILDCARD != rank) {
             continue;
         }
-        pmix_output_verbose(5, pmix_globals.debug_output,
-                            "test:gather_data adding blob for %s:%d of size %d",
-                            mdx->data.nspace, mdx->data.rank, (int)mdx->data.size);
-        tdat = OBJ_NEW(pmix_test_data_t);
+        TEST_VERBOSE(("test:gather_data adding blob for %s:%d of size %d",
+                            mdx->data.nspace, mdx->data.rank, (int)mdx->data.size));
+        tdat = PMIX_NEW(pmix_test_data_t);
         (void)strncpy(tdat->data.nspace, mdx->data.nspace, PMIX_MAX_NSLEN);
         tdat->data.rank = mdx->data.rank;
         tdat->data.size = mdx->data.size;
@@ -325,6 +631,19 @@ static void gather_data(const char nspace[], int rank,
             memcpy(tdat->data.blob, mdx->data.blob, mdx->data.size);
         }
         pmix_list_append(mdxlist, &tdat->super);
+    }
+}
+
+static void gather_data(const char nspace[], int rank,
+                        pmix_list_t *mdxlist)
+{
+    if( PMIX_RANK_WILDCARD == rank ){
+        int i;
+        for(i = 0; i < cli_info_cnt; i++){
+            gather_data_rank(nspace, i, mdxlist);
+        }
+    } else {
+        gather_data_rank(nspace, rank, mdxlist);
     }
 }
 
@@ -372,7 +691,7 @@ static int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
 
     /* if they want all the data returned, do so */
     if (0 != collect_data) {
-        OBJ_CONSTRUCT(&data, pmix_list_t);
+        PMIX_CONSTRUCT(&data, pmix_list_t);
         for (i=0; i < nranges; i++) {
             if (NULL == ranges[i].ranks) {
                 gather_data(ranges[i].nspace, PMIX_RANK_WILDCARD, &data);
@@ -405,11 +724,9 @@ static int store_modex_fn(pmix_scope_t scope, pmix_modex_data_t *data)
 {
     pmix_test_data_t *mdx;
 
-    pmix_output_verbose(5, pmix_globals.debug_output,
-                        "test: storing modex data for %s:%d of size %d",
-                        data->nspace, data->rank, (int)data->size);
-    
-    mdx = OBJ_NEW(pmix_test_data_t);
+    TEST_VERBOSE(("storing modex data for %s:%d of size %d",
+                        data->nspace, data->rank, (int)data->size));
+    mdx = PMIX_NEW(pmix_test_data_t);
     (void)strncpy(mdx->data.nspace, data->nspace, PMIX_MAX_NSLEN);
     mdx->data.rank = data->rank;
     mdx->data.size = data->size;
@@ -417,7 +734,7 @@ static int store_modex_fn(pmix_scope_t scope, pmix_modex_data_t *data)
         mdx->data.blob = (uint8_t*)malloc(mdx->data.size);
         memcpy(mdx->data.blob, data->blob, mdx->data.size);
     }
-    pmix_list_append(&modex, &mdx->super);
+    pmix_list_append(&cli_info[data->rank].modex, &mdx->super);
     return PMIX_SUCCESS;
 }
 
@@ -428,16 +745,15 @@ static int get_modexnb_fn(const char nspace[], int rank,
     pmix_modex_data_t *mdxarray;
     size_t n, size;
     int rc=PMIX_SUCCESS;
-    
-    pmix_output(0, "Getting data for %s:%d", nspace, rank);
 
-    OBJ_CONSTRUCT(&data, pmix_list_t);
+    TEST_VERBOSE(("Getting data for %s:%d", nspace, rank));
+
+    PMIX_CONSTRUCT(&data, pmix_list_t);
     gather_data(nspace, rank, &data);
     /* convert the data to an array */
     xfer_to_array(&data, &mdxarray, &size);
-    pmix_output_verbose(5, pmix_globals.debug_output,
-                        "test:get_modexnb returning %d array blocks",
-                        (int)size);
+    TEST_VERBOSE(("test:get_modexnb returning %d array blocks", (int)size));
+
     PMIX_LIST_DESTRUCT(&data);
     if (0 == size) {
         rc = PMIX_ERR_NOT_FOUND;
@@ -537,30 +853,30 @@ static int start_listening(struct sockaddr_un *address)
     /* create a listen socket for incoming connection attempts */
     listen_fd = socket(PF_UNIX, SOCK_STREAM, 0);
     if (listen_fd < 0) {
-        printf("%s:%d socket() failed", __FILE__, __LINE__);
+        TEST_OUTPUT(("socket() failed"));
         return -1;
     }
 
     addrlen = sizeof(struct sockaddr_un);
     if (bind(listen_fd, (struct sockaddr*)address, addrlen) < 0) {
-        printf("%s:%d bind() failed", __FILE__, __LINE__);
+        TEST_OUTPUT(("bind() failed"));
         return -1;
     }
-        
+
     /* setup listen backlog to maximum allowed by kernel */
     if (listen(listen_fd, SOMAXCONN) < 0) {
-        printf("%s:%d listen() failed", __FILE__, __LINE__);
+        TEST_OUTPUT(("listen() failed"));
         return -1;
     }
         
     /* set socket up to be non-blocking, otherwise accept could block */
     if ((flags = fcntl(listen_fd, F_GETFL, 0)) < 0) {
-        printf("%s:%d fcntl(F_GETFL) failed", __FILE__, __LINE__);
+        TEST_OUTPUT(("fcntl(F_GETFL) failed"));
         return -1;
     }
     flags |= O_NONBLOCK;
     if (fcntl(listen_fd, F_SETFL, flags) < 0) {
-        printf("%s:%d fcntl(F_SETFL) failed", __FILE__, __LINE__);
+        TEST_OUTPUT(("fcntl(F_SETFL) failed"));
         return -1;
     }
 
@@ -568,7 +884,7 @@ static int start_listening(struct sockaddr_un *address)
     listen_ev = event_new(server_base, listen_fd,
                           EV_READ|EV_PERSIST, connection_handler, 0);
     event_add(listen_ev, 0);
-    fprintf(stderr, "PMIx srv: Server is listening for incoming connections\n");
+    TEST_OUTPUT(("Server is listening for incoming connections"));
     return 0;
 }
 
@@ -588,25 +904,22 @@ static void connection_handler(int incomind_sd, short flags, void* cbdata)
     int rc, sd;
     int rank;
 
-    fprintf(stderr, "PMIx srv: Incoming connection from the client\n");
+    TEST_VERBOSE(("Incoming connection from the client"));
 
     if( 0 > (sd = accept(incomind_sd,NULL,0)) ){
-        fprintf(stderr, "PMIx srv: %s:%d accept() failed %d:%s",
-                __FILE__, __LINE__, errno, strerror(errno));
-        exit(0);
+        TEST_ERROR(("accept() failed %d:%s!", errno, strerror(errno) ));
+        test_abort = true;
+        return;
     }
 
     /* authenticate the connection */
     if (PMIX_SUCCESS != (rc = PMIx_server_authenticate_client(sd, &rank, snd_ack))) {
-        printf("PMIx srv: Bad authentification!\n");
-        exit(0);
+        TEST_ERROR(("PMIx srv: Bad authentification!"));
+        test_abort = true;
+        return;
     }
 
-    cli_ev = event_new(server_base, sd,
-                      EV_READ|EV_PERSIST, message_handler, NULL);
-    event_add(cli_ev,NULL);
-    pmix_usock_set_nonblocking(sd);
-    printf("PMIx srv: New client connection accepted\n");
+    cli_connect(&cli_info[rank], sd);
 }
 
 
@@ -614,39 +927,54 @@ static void message_handler(int sd, short flags, void* cbdata)
 {
     char *hdr, *payload = NULL;
     size_t hdrsize, paysize;
+    cli_info_t *item = (cli_info_t *)cbdata;
+
+    TEST_VERBOSE(("Message from sd = %d, rank = %d", item->sd, cli_rank(item)) );
+
+    // sanity check, shouldn't happen
+    if( item->sd != sd ){
+        TEST_ERROR(("Rank %d file descriptor mismatch: saved = %d, real = %d",
+                cli_rank(item), item->sd, sd ));
+        test_abort = true;
+        return;
+    }
+
+    // Restore blocking mode for the time of receive
+    pmix_usock_set_blocking(sd);
 
     hdrsize = PMIx_message_hdr_size();
     hdr = (char*)malloc(hdrsize);
-    
     if (PMIX_SUCCESS != pmix_usock_recv_blocking(sd, hdr, hdrsize)) {
-        /* Communication error */
-        fprintf(stderr,"PMIx srv: Client closed connection\n");
-        event_del(cli_ev);
-        event_free(cli_ev);
-        close(sd);
+        cli_disconnect(item);
         return;
     }
 
     /* if this is a zero-byte message, then we are done */
     paysize = PMIx_message_payload_size(hdr);
+    TEST_VERBOSE(("rank %d: header received, payload size is %d",
+                  cli_rank(item), paysize ));
+
     if (0 < paysize) {
         payload = (char*)malloc(paysize);
         if (PMIX_SUCCESS != pmix_usock_recv_blocking(sd, payload, paysize)) {
             /* Communication error */
-            fprintf(stderr,"PMIx srv: Client closed connection\n");
-            event_del(cli_ev);
-            event_free(cli_ev);
-            close(sd);
+            TEST_ERROR(("Rank %d closed connection in the middle of the transmission",
+                        cli_rank(item) ));
+            test_abort = true;
             return;
         }
     }
 
+    pmix_usock_set_nonblocking(sd);
+
+    TEST_VERBOSE(("rank %d: payload received", cli_rank(item)));
+
     /* process the message */
     if (PMIX_SUCCESS != PMIx_server_process_msg(sd, hdr, payload, snd_ack)) {
         /* Communication error */
-        fprintf(stderr,"PMIx srv: Client closed connection\n");
-        event_del(cli_ev);
-        event_free(cli_ev);
-        close(sd);
+        TEST_ERROR(("Cannot process message from the rank %d",
+                    cli_rank(item) ));
+        test_abort = true;
     }
+    TEST_VERBOSE(("rank %d: message processed", cli_rank(item)));
 }
