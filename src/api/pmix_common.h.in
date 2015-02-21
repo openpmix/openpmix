@@ -215,7 +215,8 @@ typedef enum {
     PMIX_INFO,
     PMIX_BUFFER,
     PMIX_KVAL,
-    PMIX_MODEX
+    PMIX_MODEX,
+    PMIX_PERSIST
 } pmix_data_type_t;
 
 /* define a scope for data "put" by PMI per the following:
@@ -241,8 +242,17 @@ typedef enum {
     PMIX_USER             // used by Publish to indicate data available to all user-owned nspaces
 } pmix_scope_t; 
 
+/* define a "persistence" policy for data published by
+ * clients to the "global" nspace */
+typedef enum {
+    PMIX_PERSIST_INDEF = 0,   // retain until specifically deleted
+    PMIX_PERSIST_PROC,        // retain until publishing process terminates
+    PMIX_PERSIST_APP,         // retain until application terminates
+    PMIX_PERSIST_SESSION      // retain until session/allocation terminates
+} pmix_persistence_t;
 
-/****    PMIX STRUCTS    ****/
+
+/****    PMIX VALUE STRUCT    ****/
 typedef struct {
     pmix_data_type_t type;
     size_t size;
@@ -276,21 +286,107 @@ typedef struct {
         pmix_array_t array;
     } data;
 } pmix_value_t;
-/* utility functions to free data contained in a pmix_value_t */
-void PMIx_free_value_data(pmix_value_t *val);
-void PMIx_free_value(pmix_value_t **val);
+/* allocate and initialize a specified number of value structs */
+#define PMIX_VALUE_CREATE(m, n)                                         \
+    do {                                                                \
+        int _ii;                                                        \
+        (m) = (pmix_value_t*)malloc((n) * sizeof(pmix_value_t));        \
+        memset((m), 0, (n) * sizeof(pmix_value_t));                     \
+        for (_ii=0; _ii < (int)(n); _ii++) {                            \
+            (m)[_ii].type = PMIX_UNDEF;                                 \
+        }                                                               \
+    } while(0);
 
+/* release a single pmix_value_t struct, including its data */
+#define PMIX_VALUE_RELEASE(m)                                           \
+    do {                                                                \
+        PMIX_VALUE_DESTRUCT((m));                                       \
+        free((m));                                                      \
+    } while(0);
+
+/* initialize a single value struct */
+#define PMIX_VALUE_CONSTRUCT(m)                 \
+    do {                                        \
+        memset((m), 0, sizeof(pmix_value_t));   \
+        (m)->type = PMIX_UNDEF;                 \
+    } while(0);
+
+/* release the memory in the value struct data field */
+#define PMIX_VALUE_DESTRUCT(m)                                          \
+    do {                                                                \
+        if (PMIX_STRING == (m)->type && NULL != (m)->data.string) {     \
+            free((m)->data.string);                                     \
+        }                                                               \
+    } while(0);
+
+
+
+/****    PMIX RANGE STRUCT    ****/
 typedef struct {
     char nspace[PMIX_MAX_NSLEN];
     int *ranks;
     size_t nranks;
 } pmix_range_t;
+/* utility macros for working with pmix_range_t structs */
+#define PMIX_RANGE_CREATE(m, n) \
+    do {                                                                \
+        (m) = (pmix_range_t*)malloc((n) * sizeof(pmix_range_t));        \
+        memset((m), 0, (n) * sizeof(pmix_range_t));                     \
+    } while(0);
 
+#define PMIX_RANGE_RELEASE(m)                   \
+    do {                                        \
+        PMIX_RANGE_DESTRUCT((m));               \
+        free((m));                              \
+    } while(0);
+
+#define PMIX_RANGE_CONSTRUCT(m)                 \
+    do {                                        \
+        memset((m), 0, sizeof(pmix_range_t));   \
+    } while(0);
+
+#define PMIX_RANGE_DESTRUCT(m) \
+    do { \
+        if (NULL != (m)->ranks) {               \
+            free((m)->ranks);                   \
+        }                                       \
+    } while(0);
+
+
+/****    PMIX INFO STRUCT    ****/
 typedef struct {
     char key[PMIX_MAX_KEYLEN];
     pmix_value_t value;
 } pmix_info_t;
 
+/* utility macros for working with pmix_info_t structs */
+#define PMIX_INFO_CREATE(m, n)                                  \
+    do {                                                        \
+        (m) = (pmix_info_t*)malloc((n) * sizeof(pmix_info_t));  \
+        memset((m), 0, (n) * sizeof(pmix_info_t));              \
+    } while(0);
+
+#define PMIX_INFO_RELEASE(m)                    \
+    do {                                        \
+        PMIX_VALUE_DESTRUCT(&(m)->value);       \
+        free((m));                              \
+    } while(0);
+
+#define PMIX_INFO_CONSTRUCT(m)                  \
+    do {                                        \
+        memset((m), 0, sizeof(pmix_value_t));   \
+        (m)->type = PMIX_UNDEF;                 \
+    } while(0);
+
+#define PMIX_INFO_DESTRUCT(m) \
+    do {                                        \
+        PMIX_VALUE_DESTRUCT(&(m)->value);       \
+    } while(0);
+
+
+
+
+/****    PMIX APP STRUCT    ****/
 typedef struct {
     char *cmd;
     int argc;
@@ -300,30 +396,117 @@ typedef struct {
     pmix_info_t *info;
     size_t ninfo;
 } pmix_app_t;
+/* utility macros for working with pmix_app_t structs */
+#define PMIX_APP_CREATE(m, n)                                   \
+    do {                                                        \
+        (m) = (pmix_app_t*)malloc((n) * sizeof(pmix_app_t));    \
+        memset((m), 0, (n) * sizeof(pmix_app_t));               \
+    } while(0);
 
+#define PMIX_APP_RELEASE(m)                     \
+    do {                                        \
+        PMIX_APP_DESTRUCT((m));                 \
+        free((m));                              \
+    } while(0);
+
+#define PMIX_APP_CONSTRUCT(m)                   \
+    do {                                        \
+        memset((m), 0, sizeof(pmix_app_t));     \
+    } while(0);
+
+#define PMIX_APP_DESTRUCT(m)                                    \
+    do {                                                        \
+        size_t _ii;                                             \
+        if (NULL != (m)->cmd) {                                 \
+            free((m)->cmd);                                     \
+        }                                                       \
+        if (NULL != (m)->argv) {                                \
+            for (_ii=0; NULL != (m)->argv[_ii]; _ii++) {        \
+                free((m)->argv[_ii]);                           \
+            }                                                   \
+            free((m)->argv);                                    \
+        }                                                       \
+        if (NULL != (m)->env) {                                 \
+            for (_ii=0; NULL != (m)->env[_ii]; _ii++) {         \
+                free((m)->env[_ii]);                            \
+            }                                                   \
+            free((m)->env);                                     \
+        }                                                       \
+        if (NULL != (m)->info) {                                \
+            for (_ii=0; _ii < (m)->ninfo; _ii++) {              \
+                PMIX_INFO_DESTRUCT(&(m)->info[_ii]);            \
+            }                                                   \
+        }                                                       \
+    } while(0);    
+
+
+/****    PMIX MODEX STRUCT    ****/
 typedef struct {
     char nspace[PMIX_MAX_NSLEN];
     int rank;
     uint8_t *blob;
     size_t size;
 } pmix_modex_data_t;
+/* utility macros for working with pmix_modex_t structs */
+#define PMIX_MODEX_CREATE(m, n)                                         \
+    do {                                                                \
+        (m) = (pmix_modex_data_t*)malloc((n) * sizeof(pmix_modex_data_t)); \
+        memset((m), 0, (n) * sizeof(pmix_modex_data_t));                \
+    } while(0);
 
-/****    CALLBACK FUNCTIONS FOR ASYNC OPERATIONS    ****/
-/* callback function for non-blocking operations - the pmix_value_t
- * is "owned" by the PMIx client library. Memory cleanup will be
- * done by the library upon return from the callback function, so
- * the receiver must copy/protect the data prior to returning if
- * it needs to be retained */
+#define PMIX_MODEX_RELEASE(m)                   \
+    do {                                        \
+        PMIX_MODEX_DESTRUCT((m));               \
+        free((m));                              \
+    } while(0);
 
-typedef void (*pmix_modex_cbfunc_t)(pmix_status_t status, pmix_modex_data_t data[],
+#define PMIX_MODEX_CONSTRUCT(m)                         \
+    do {                                                \
+        memset((m), 0, sizeof(pmix_modex_data_t));      \
+    } while(0);
+
+#define PMIX_MODEX_DESTRUCT(m)                  \
+    do {                                        \
+        if (NULL != (m)->blob) {                \
+            free((m)->blob);                    \
+        }                                       \
+    } while(0);
+
+
+/****    CALLBACK FUNCTIONS FOR NON-BLOCKING OPERATIONS    ****/
+
+/* define a callback function that is solely used by servers, and
+ * not clients, to return modex data (i.e., data pushed to the
+ * server by clients via the PMIx_Put function) in response
+ * to "get" and "fence" operations. */
+typedef void (*pmix_modex_cbfunc_t)(pmix_status_t status,
+                                    pmix_modex_data_t data[],
                                     size_t ndata, void *cbdata);
 
 /* define a callback function for calls to PMIx_Spawn_nb - the function
- * will be called upon completion of the spawn command. The nspace
+ * will be called upon completion of the spawn command. The status
+ * will indicate whether or not the spawn succeeded. The nspace
  * of the spawned processes will be returned, along with any provided
- * callback data */
-typedef void (*pmix_spawn_cbfunc_t)(pmix_status_t status, char nspace[], void *cbdata);
+ * callback data. Note that the returned nspace value will be
+ * released by the library upon return from the callback function, so
+ * the receiver must copy it if it needs to be retained */
+typedef void (*pmix_spawn_cbfunc_t)(pmix_status_t status,
+                                    char nspace[], void *cbdata);
+
+/* define a callback for common operations that simply return
+ * a status. Examples include the non-blocking versions of
+ * Fence, Connect, and Disconnect */
 typedef void (*pmix_op_cbfunc_t)(pmix_status_t status, void *cbdata);
+
+/* define a callback function for calls to PMIx_Lookup_nb - the
+ * function will be called upon completion of the command with the
+ * status indicating the success of failure of the request. Any
+ * retrieved data will be returned in an array of pmix_info_t structs.
+ * The nspace of the process that provided the data is also returned.
+ * Note that these structures will be released upon return from
+ * the callback function, so the receiver must copy/protect the
+ * data prior to returning if it needs to be retained */
+
 typedef void (*pmix_lookup_cbfunc_t)(pmix_status_t status,
                                      pmix_info_t info[], size_t ninfo,
                                      char nspace[], void *cbdata);
@@ -349,8 +532,13 @@ typedef void (*pmix_notification_fn_t)(pmix_status_t status,
                                        pmix_range_t ranges[], size_t nranges,
                                        pmix_info_t info[], size_t ninfo);
 
+/* define a callback function for calls to PMIx_Get_nb. The status
+ * indicates if the requested data was found or not - a pointer to the
+ * pmix_value_t structure containing the found data is returned. The
+ * pointer will be NULL if the requested data was not found. */ 
 typedef void (*pmix_value_cbfunc_t)(pmix_status_t status,
                                     pmix_value_t *kv, void *cbdata);
+
 
 /****    COMMON SUPPORT FUNCTIONS    ****/
 /* Register an errhandler to report errors. Two types of errors

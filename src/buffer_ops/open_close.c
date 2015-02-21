@@ -115,7 +115,7 @@ static void kvdes(pmix_kval_t *k)
         free(k->key);
     }
     if (NULL != k->value) {
-        PMIx_free_value(&k->value);
+        PMIX_VALUE_RELEASE(k->value);
     }
 }
 PMIX_CLASS_INSTANCE(pmix_kval_t,
@@ -313,6 +313,12 @@ int pmix_bfrop_open(void)
                        pmix_bfrop_unpack_modex,
                        pmix_bfrop_copy_modex,
                        pmix_bfrop_print_modex);
+
+    PMIX_REGISTER_TYPE("PMIX_PERSIST", PMIX_PERSIST,
+                       pmix_bfrop_pack_persist,
+                       pmix_bfrop_unpack_persist,
+                       pmix_bfrop_copy_persist,
+                       pmix_bfrop_print_persist);
 
     /* All done */
     pmix_bfrop_initialized = true;

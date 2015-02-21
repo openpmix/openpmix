@@ -428,3 +428,14 @@ int pmix_bfrop_copy_modex(pmix_modex_data_t **dest, pmix_modex_data_t *src,
     return PMIX_SUCCESS;
 }
 
+int pmix_bfrop_copy_persist(pmix_persistence_t **dest, pmix_persistence_t *src,
+                            pmix_data_type_t type)
+{
+    *dest = (pmix_persistence_t*)malloc(sizeof(pmix_persistence_t));
+    if (NULL == *dest) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+    memcpy(*dest, src, sizeof(pmix_persistence_t));
+    return PMIX_SUCCESS;
+}
+

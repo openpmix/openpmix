@@ -749,3 +749,8 @@ int pmix_bfrop_pack_modex(pmix_buffer_t *buffer, const void *src,
     return PMIX_SUCCESS;
 }
 
+int pmix_bfrop_pack_persist(pmix_buffer_t *buffer, const void *src,
+                            int32_t num_vals, pmix_data_type_t type)
+{
+    return pmix_bfrop_pack_int(buffer, src, num_vals, PMIX_INT);
+}

@@ -61,6 +61,7 @@ static void lookup_cbfunc(int status, pmix_info_t info[], size_t ninfo,
                           char nspace[], void *cbdata);
 
 int PMIx_Publish(pmix_scope_t scope,
+                 pmix_persistence_t persist,
                  const pmix_info_t info[],
                  size_t ninfo)
 {
@@ -74,7 +75,7 @@ int PMIx_Publish(pmix_scope_t scope,
     cb = PMIX_NEW(pmix_cb_t);
     cb->active = true;
 
-    if (PMIX_SUCCESS != (rc = PMIx_Publish_nb(scope, info, ninfo, op_cbfunc, cb))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Publish_nb(scope, persist, info, ninfo, op_cbfunc, cb))) {
         PMIX_RELEASE(cb);
         return rc;
     }
@@ -88,6 +89,7 @@ int PMIx_Publish(pmix_scope_t scope,
 }
 
 int PMIx_Publish_nb(pmix_scope_t scope,
+                    pmix_persistence_t persist,
                     const pmix_info_t info[],
                     size_t ninfo,
                     pmix_op_cbfunc_t cbfunc, void *cbdata)
@@ -120,6 +122,12 @@ int PMIx_Publish_nb(pmix_scope_t scope,
     }
     /* pack the scope */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_SCOPE))) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        return rc;
+    }
+    /* pack the persistence */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &persist, 1, PMIX_PERSIST))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
@@ -182,7 +190,7 @@ int PMIx_Lookup(pmix_scope_t scope,
     cb->nvals = ninfo;
     cb->active = true;
 
-    if (PMIX_SUCCESS != (rc = PMIx_Lookup_nb(scope, keys, lookup_cbfunc, cb))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Lookup_nb(scope, false, keys, lookup_cbfunc, cb))) {
         PMIX_RELEASE(cb);
         pmix_argv_free(keys);
         return rc;
@@ -198,7 +206,7 @@ int PMIx_Lookup(pmix_scope_t scope,
     return rc;
 }
 
-int PMIx_Lookup_nb(pmix_scope_t scope, char **keys,
+int PMIx_Lookup_nb(pmix_scope_t scope, int wait, char **keys,
                    pmix_lookup_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_buffer_t *msg;
@@ -233,6 +241,12 @@ int PMIx_Lookup_nb(pmix_scope_t scope, char **keys,
         PMIX_RELEASE(msg);
         return rc;
     }
+    /* pack the wait flag */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &wait, 1, PMIX_INT))) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        return rc;
+    }
     /* pack the keys */
     nkeys = pmix_argv_count(keys);
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &nkeys, 1, PMIX_SIZE))) {
@@ -261,9 +275,7 @@ int PMIx_Lookup_nb(pmix_scope_t scope, char **keys,
     return PMIX_SUCCESS;
 }
 
-int PMIx_Unpublish(pmix_scope_t scope,
-                   const pmix_info_t info[],
-                   size_t ninfo)
+int PMIx_Unpublish(pmix_scope_t scope, char **keys)
 {
     int rc;
     pmix_cb_t *cb;
@@ -278,7 +290,7 @@ int PMIx_Unpublish(pmix_scope_t scope,
     cb->active = true;
 
     /* push the message into our event base to send to the server */
-    if (PMIX_SUCCESS != (rc = PMIx_Unpublish_nb(scope, info, ninfo, op_cbfunc, cb))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Unpublish_nb(scope, keys, op_cbfunc, cb))) {
         PMIX_RELEASE(cb);
         return rc;
     }
@@ -291,15 +303,14 @@ int PMIx_Unpublish(pmix_scope_t scope,
     return rc;
 }
 
-int PMIx_Unpublish_nb(pmix_scope_t scope,
-                      const pmix_info_t info[], size_t ninfo,
+int PMIx_Unpublish_nb(pmix_scope_t scope, char **keys,
                       pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_UNPUBLISHNB_CMD;
     int rc;
     pmix_cb_t *cb;
-    size_t i;
+    size_t i, j;
     
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: unpublish called");
@@ -308,11 +319,6 @@ int PMIx_Unpublish_nb(pmix_scope_t scope,
         return PMIX_ERR_INIT;
     }
 
-    /* check for bozo case */
-    if (NULL == info) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    
     /* create the unpublish cmd */
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
@@ -327,17 +333,20 @@ int PMIx_Unpublish_nb(pmix_scope_t scope,
         PMIX_RELEASE(msg);
         return rc;
     }
-    /* pack any info keys that were given - no need for values */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &ninfo, 1, PMIX_SIZE))) {
+    /* pack the number of keys */
+    i = pmix_argv_count(keys);
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &i, 1, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
     }
-    for (i=0; i < ninfo; i++) {
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &info[i].key, 1, PMIX_STRING))) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(msg);
-            return rc;
+    if (0 < i) {
+        for (j=0; j < i; j++) {
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &keys[j], 1, PMIX_STRING))) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(msg);
+                return rc;
+            }
         }
     }
 
@@ -460,7 +469,7 @@ static void wait_lookup_cbfunc(int sd, pmix_usock_hdr_t *hdr,
     /* cleanup */
     if (NULL != info) {
         for (i=0; i < ninfo; i++) {
-            PMIx_free_value_data(&info[i].value);
+            PMIX_INFO_DESTRUCT(&info[i]);
         }
         free(info);
     }
@@ -484,7 +493,7 @@ static void lookup_cbfunc(int status, pmix_info_t info[], size_t ninfo,
                 break;
             }
         }
-        PMIx_free_value_data(&info[i].value);
+        PMIX_INFO_DESTRUCT(&info[i]);
     }
     if (NULL != info) {
         free(info);

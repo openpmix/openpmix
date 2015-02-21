@@ -52,9 +52,10 @@ static int get_modexnb_fn(const char nspace[], int rank,
                           pmix_modex_cbfunc_t cbfunc, void *cbdata);
 static int get_job_info_fn(const char nspace[], int rank,
                            pmix_info_t *info[], size_t *ninfo);
-static int publish_fn(pmix_scope_t scope, const pmix_info_t info[], size_t ninfo,
+static int publish_fn(pmix_scope_t scope, pmix_persistence_t persist,
+                      const pmix_info_t info[], size_t ninfo,
                       pmix_op_cbfunc_t cbfunc, void *cbdata);
-static int lookup_fn(pmix_scope_t scope, char **keys,
+static int lookup_fn(pmix_scope_t scope, int wait, char **keys,
                      pmix_lookup_cbfunc_t cbfunc, void *cbdata);
 static int unpublish_fn(pmix_scope_t scope, char **keys,
                         pmix_op_cbfunc_t cbfunc, void *cbdata);
@@ -265,7 +266,7 @@ static void gather_data(const char nspace[], int rank,
 {
     pmix_test_data_t *tdat, *mdx;
 
-    pmix_output(0, "gather_data: list has %d items", pmix_list_get_size(&modex));
+    pmix_output(0, "gather_data: list has %d items", (int)pmix_list_get_size(&modex));
     
     PMIX_LIST_FOREACH(mdx, &modex, pmix_test_data_t) {
         pmix_output(0, "gather_data: checking %s vs %s", nspace, mdx->data.nspace);
@@ -440,7 +441,8 @@ static int get_job_info_fn(const char nspace[], int rank,
     return PMIX_SUCCESS;
 }
 
-static int publish_fn(pmix_scope_t scope, const pmix_info_t info[], size_t ninfo,
+static int publish_fn(pmix_scope_t scope, pmix_persistence_t persist,
+                      const pmix_info_t info[], size_t ninfo,
                       pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     if (NULL != cbfunc) {
@@ -449,7 +451,7 @@ static int publish_fn(pmix_scope_t scope, const pmix_info_t info[], size_t ninfo
     return PMIX_SUCCESS;
 }
 
-static int lookup_fn(pmix_scope_t scope, char **keys,
+static int lookup_fn(pmix_scope_t scope, int wait, char **keys,
                      pmix_lookup_cbfunc_t cbfunc, void *cbdata)
 {
     if (NULL != cbfunc) {

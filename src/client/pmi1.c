@@ -56,7 +56,7 @@ int PMI_Init( int *spawned )
     if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
                                  PMIX_SPAWNED, &kv)) {
         rc = convert_int(spawned, kv);
-        PMIx_free_value(&kv);
+        PMIX_VALUE_RELEASE(kv);
         return convert_err(rc);
     }
     /* if it wasn't found, then default to "not spawned" */
@@ -122,7 +122,7 @@ int PMI_Get_size(int *size)
     if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
                                  PMIX_JOB_SIZE, &kv)) {
         rc = convert_int(size, kv);
-        PMIx_free_value(&kv);
+        PMIX_VALUE_RELEASE(kv);
         return convert_err(rc);
     }
     
@@ -151,7 +151,7 @@ int PMI_Get_universe_size(int *size)
     if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
                                  PMIX_UNIV_SIZE, &kv)) {
         rc = convert_int(size, kv);
-        PMIx_free_value(&kv);
+        PMIX_VALUE_RELEASE(kv);
         return convert_err(rc);
     }
     return PMI_FAIL;
@@ -165,7 +165,7 @@ int PMI_Get_appnum(int *appnum)
     if (NULL != appnum && PMIx_Get(NULL, pmix_globals.rank,
                                    PMIX_APPNUM, &kv)) {
         rc = convert_int(appnum, kv);
-        PMIx_free_value(&kv);
+        PMIX_VALUE_RELEASE(kv);
         return convert_err(rc);
     }
     
@@ -187,20 +187,21 @@ int PMI_Publish_name(const char service_name[], const char port[])
     
     /* publish the info - PMI-1 doesn't support
      * any scope other than inside our own nspace */
-    rc = PMIx_Publish(PMIX_NAMESPACE, &info, 1);
+    rc = PMIx_Publish(PMIX_NAMESPACE, PMIX_PERSIST_APP, &info, 1);
     
     return convert_err(rc);
 }
 
 int PMI_Unpublish_name(const char service_name[])
 {
-    pmix_info_t info;
     pmix_status_t rc;
+    char *keys[2];
     
     /* pass the service */
-    (void)strncpy(info.key, service_name, PMIX_MAX_KEYLEN);
+    keys[1] = (char*)service_name;
+    keys[2] = NULL;
     
-    rc = PMIx_Unpublish(PMIX_NAMESPACE, &info, 1);
+    rc = PMIx_Unpublish(PMIX_NAMESPACE, keys);
     return convert_err(rc);
 }
 
@@ -266,7 +267,7 @@ int PMI_Get_clique_size(int *size)
     if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
                                  PMIX_LOCAL_SIZE, &kv)) {
         rc = convert_int(size, kv);
-        PMIx_free_value(&kv);
+        PMIX_VALUE_RELEASE(kv);
         return convert_err(rc);
     }
     
@@ -287,7 +288,7 @@ int PMI_Get_clique_ranks(int ranks[], int length)
             ranks[i] = strtol(rks[i], NULL, 10);
         }
         pmix_argv_free(rks);
-        PMIx_free_value(&kv);
+        PMIX_VALUE_RELEASE(kv);
         return PMI_SUCCESS;
     }
     return PMI_FAIL;
@@ -371,7 +372,7 @@ int PMI_Spawn_multiple(int count,
     char *evar;
     
     /* setup the apps */
-    apps = (pmix_app_t*)malloc(count * sizeof(pmix_app_t));
+    PMIX_APP_CREATE(apps, count);
     for (i=0; i < count; i++) {
         apps[i].cmd = strdup(cmds[i]);
         apps[i].maxprocs = maxprocs[i];
@@ -398,18 +399,9 @@ int PMI_Spawn_multiple(int count,
     rc = PMIx_Spawn(apps, count, NULL);
     /* tear down the apps array */
     for (i=0; i < count; i++) {
-        if (NULL != apps[i].cmd) {
-            free(apps[i].cmd);
-        }
-        pmix_argv_free(apps[i].argv);
-        pmix_argv_free(apps[i].env);
-        for (j=0; j < apps[i].ninfo; j++) {
-            PMIx_free_value_data(&apps[i].info[j].value);
-        }
-        if (NULL != apps[i].info) {
-            free(apps[i].info);
-        }
+        PMIX_APP_DESTRUCT(&apps[i]);
     }
+    free(apps);
     if (NULL != errors) {
         for (i=0; i < count; i++) {
             errors[i] = convert_err(rc);

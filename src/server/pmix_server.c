@@ -332,44 +332,6 @@ int PMIx_server_setup_fork(const char nspace[], int rank,
     return 0;
 }
 
-
-void PMIx_free_value_data(pmix_value_t *val)
-{
-    size_t n;
-    char **str;
-    
-    if (PMIX_STRING == val->type &&
-        NULL != val->data.string) {
-        free(val->data.string);
-        return;
-    }
-    if (PMIX_ARRAY == val->type) {
-        if (NULL == val->data.array.array) {
-            return;
-        }
-        if (PMIX_STRING == val->data.array.type) {
-            str = (char**)val->data.array.array;
-            for (n=0; n < val->data.array.size; n++) {
-                if (NULL != str[n]) {
-                    free(str[n]);
-                }
-            }
-        }
-        free(val->data.array.array);
-    }
-    /* all other types have no malloc'd storage */
-}
-
-void PMIx_free_value(pmix_value_t **val)
-{
-    if (NULL == val || NULL == *val) {
-        return;
-    }
-    PMIx_free_value_data(*val);
-    free(*val);
-    *val = NULL;
-}
-
 void PMIx_Register_errhandler(pmix_notification_fn_t err)
 {
     pmix_globals.errhandler = err;
@@ -655,7 +617,7 @@ pmix_status_t pmix_server_authenticate(int sd, pmix_peer_t **peer,
                 return rc;
             }
             for (i=0; i < ninfo; i++) {
-                PMIx_free_value_data(&info[i].value);
+                PMIX_INFO_DESTRUCT(&info[i]);
             }
             free(info);
             if (NULL == reply) {

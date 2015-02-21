@@ -430,43 +430,6 @@ void PMIx_Deregister_errhandler(void)
    pmix_globals.errhandler = NULL;
 }
 
-void PMIx_free_value_data(pmix_value_t *val)
-{
-    size_t n;
-    char **str;
-    
-    if (PMIX_STRING == val->type &&
-        NULL != val->data.string) {
-        free(val->data.string);
-        return;
-    }
-    if (PMIX_ARRAY == val->type) {
-        if (NULL == val->data.array.array) {
-            return;
-        }
-        if (PMIX_STRING == val->data.array.type) {
-            str = (char**)val->data.array.array;
-            for (n=0; n < val->data.array.size; n++) {
-                if (NULL != str[n]) {
-                    free(str[n]);
-                }
-            }
-        }
-        free(val->data.array.array);
-    }
-    /* all other types have no malloc'd storage */
-}
-
-void PMIx_free_value(pmix_value_t **val)
-{
-    if (NULL == val || NULL == *val) {
-        return;
-    }
-    PMIx_free_value_data(*val);
-    free(*val);
-    *val = NULL;
-}
-
 static int send_connect_ack(int sd)
 {
     char *msg;

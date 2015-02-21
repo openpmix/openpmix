@@ -11,7 +11,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved. 
- * Copyright (c) 2014      Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -291,6 +291,8 @@ int pmix_bfrop_pack_kval(pmix_buffer_t *buffer, const void *src,
                          int32_t num_vals, pmix_data_type_t type);
 int pmix_bfrop_pack_modex(pmix_buffer_t *buffer, const void *src,
                          int32_t num_vals, pmix_data_type_t type);
+int pmix_bfrop_pack_persist(pmix_buffer_t *buffer, const void *src,
+                            int32_t num_vals, pmix_data_type_t type);
 
 /*
  * Internal unpack functions
@@ -345,6 +347,8 @@ int pmix_bfrop_unpack_kval(pmix_buffer_t *buffer, void *dest,
                            int32_t *num_vals, pmix_data_type_t type);
 int pmix_bfrop_unpack_modex(pmix_buffer_t *buffer, void *dest,
                            int32_t *num_vals, pmix_data_type_t type);
+int pmix_bfrop_unpack_persist(pmix_buffer_t *buffer, void *dest,
+                              int32_t *num_vals, pmix_data_type_t type);
 
 /*
  * Internal copy functions
@@ -374,7 +378,9 @@ int pmix_bfrop_copy_buf(pmix_buffer_t **dest, pmix_buffer_t *src,
 int pmix_bfrop_copy_kval(pmix_kval_t **dest, pmix_kval_t *src,
                          pmix_data_type_t type);
 int pmix_bfrop_copy_modex(pmix_modex_data_t **dest, pmix_modex_data_t *src,
-                         pmix_data_type_t type);
+                          pmix_data_type_t type);
+int pmix_bfrop_copy_persist(pmix_persistence_t **dest, pmix_persistence_t *src,
+                            pmix_data_type_t type);
 
 /*
  * Internal print functions
@@ -420,7 +426,9 @@ int pmix_bfrop_print_buf(char **output, char *prefix,
 int pmix_bfrop_print_kval(char **output, char *prefix,
                           pmix_kval_t *src, pmix_data_type_t type);
 int pmix_bfrop_print_modex(char **output, char *prefix,
-                          pmix_modex_data_t *src, pmix_data_type_t type);
+                           pmix_modex_data_t *src, pmix_data_type_t type);
+int pmix_bfrop_print_persist(char **output, char *prefix,
+                             pmix_persistence_t *src, pmix_data_type_t type);
 
 /*
  * Internal helper functions

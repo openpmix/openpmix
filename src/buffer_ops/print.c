@@ -747,3 +747,28 @@ int pmix_bfrop_print_modex(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
+int pmix_bfrop_print_persist(char **output, char *prefix, pmix_persistence_t *src, pmix_data_type_t type)
+{
+    char *prefx;
+
+    /* deal with NULL prefix */
+    if (NULL == prefix) asprintf(&prefx, " ");
+    else prefx = prefix;
+
+    /* if src is NULL, just print data type and return */
+    if (NULL == src) {
+        asprintf(output, "%sData type: PMIX_PERSIST\tValue: NULL pointer", prefx);
+        if (prefx != prefix) {
+            free(prefx);
+        }
+        return PMIX_SUCCESS;
+    }
+
+    asprintf(output, "%sData type: PMIX_PERSIST\tValue: %ld", prefx, (long) *src);
+    if (prefx != prefix) {
+        free(prefx);
+    }
+
+    return PMIX_SUCCESS;
+}
+

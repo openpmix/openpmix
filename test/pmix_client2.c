@@ -44,7 +44,7 @@ int main(int argc, char **argv)
     bool nonblocking = false;
     pmix_value_t *val = &value;
 
-    fprintf(stderr, "rank X: Start\n", rank);
+    fprintf(stderr, "rank %d: Start\n", rank);
 
     /* check options */
     for (i=1; i < argc; i++) {
@@ -63,7 +63,7 @@ int main(int argc, char **argv)
         }
     }
 
-    fprintf(stderr, "rank X: parsed command line\n", rank);
+    fprintf(stderr, "rank %d: parsed command line\n", rank);
 
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(nspace, &rank))) {
@@ -92,7 +92,7 @@ int main(int argc, char **argv)
             fprintf(stderr, "PMIx cli: PMIx_Put failed: %d\n", rc);
             goto error_out;
         }
-        PMIx_free_value_data(&value);
+        PMIX_VALUE_DESTRUCT(&value);
         
         (void)snprintf(key, 50, "global-key-%d", i);
         PMIX_VAL_SET(&value, float, 12.15 + i);
@@ -132,7 +132,7 @@ int main(int argc, char **argv)
                 goto error_out;
             }
             fprintf(stderr, "rank %d: GET OF %s SUCCEEDED\n", rank, key);
-            PMIx_free_value(&val);
+            PMIX_VALUE_RELEASE(val);
 
             sprintf(key,"remote-key-%d",j);
             sprintf(sval,"Test string #%d",j);
@@ -146,7 +146,7 @@ int main(int argc, char **argv)
                 goto error_out;
             }
             fprintf(stderr, "rank %d: GET OF %s SUCCEEDED\n", rank, key);
-            PMIx_free_value(&val);
+            PMIX_VALUE_RELEASE(val);
 
             sprintf(key, "global-key-%d", j);
             if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, i, key, &val))) {
@@ -160,7 +160,7 @@ int main(int argc, char **argv)
                         val->data.fval, val->type);
                 goto error_out;
             }
-            PMIx_free_value(&val);
+            PMIX_VALUE_RELEASE(val);
             fprintf(stderr, "rank %d: GET OF %s SUCCEEDED\n", rank, key);
             fprintf(stderr,"rank %d: rank %d is OK\n", rank, i);
         }

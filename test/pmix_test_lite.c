@@ -61,9 +61,10 @@ static int get_modexnb_fn(const char nspace[], int rank,
                           pmix_modex_cbfunc_t cbfunc, void *cbdata);
 static int get_job_info_fn(const char nspace[], int rank,
                            pmix_info_t *info[], size_t *ninfo);
-static int publish_fn(pmix_scope_t scope, const pmix_info_t info[], size_t ninfo,
+static int publish_fn(pmix_scope_t scope, pmix_persistence_t persist,
+                      const pmix_info_t info[], size_t ninfo,
                       pmix_op_cbfunc_t cbfunc, void *cbdata);
-static int lookup_fn(pmix_scope_t scope, char **keys,
+static int lookup_fn(pmix_scope_t scope, int wait, char **keys,
                      pmix_lookup_cbfunc_t cbfunc, void *cbdata);
 static int unpublish_fn(pmix_scope_t scope, char **keys,
                         pmix_op_cbfunc_t cbfunc, void *cbdata);
@@ -174,7 +175,7 @@ static void cli_init(int nprocs)
     }
 }
 
-void cli_connect(cli_info_t *cli, int sd)
+static void cli_connect(cli_info_t *cli, int sd)
 {
     if( CLI_FORKED != cli->state ){
         TEST_ERROR(("Rank %d has bad state: expect %d have %d!",
@@ -192,7 +193,7 @@ void cli_connect(cli_info_t *cli, int sd)
     cli->state = CLI_CONNECTED;
 }
 
-void cli_finalize(cli_info_t *cli)
+static void cli_finalize(cli_info_t *cli)
 {
     if( CLI_CONNECTED != cli->state ){
         TEST_ERROR(("rank %d: bad client state: expect %d have %d!",
@@ -342,7 +343,7 @@ static void cli_wait_all(double timeout)
     }
 }
 
-static void cli_kill_all()
+static void cli_kill_all(void)
 {
     int i;
     for(i = 0; i < cli_info_cnt; i++){
@@ -492,7 +493,7 @@ int main(int argc, char **argv)
         if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(TEST_NAMESPACE, n, myuid, mygid, &client_env))) {
             TEST_ERROR(("Server fork setup failed with error %d", rc));
             PMIx_server_finalize();
-            cli_kill_all(0);
+            cli_kill_all();
             return rc;
         }
 
@@ -504,7 +505,7 @@ int main(int argc, char **argv)
         if (cli_info[n].pid < 0) {
             TEST_ERROR(("Fork failed"));
             PMIx_server_finalize();
-            cli_kill_all(0);
+            cli_kill_all();
             return -1;
         }
         
@@ -788,7 +789,8 @@ static int get_job_info_fn(const char nspace[], int rank,
     return PMIX_SUCCESS;
 }
 
-static int publish_fn(pmix_scope_t scope, const pmix_info_t info[], size_t ninfo,
+static int publish_fn(pmix_scope_t scope, pmix_persistence_t persist,
+                      const pmix_info_t info[], size_t ninfo,
                       pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     if (NULL != cbfunc) {
@@ -797,7 +799,7 @@ static int publish_fn(pmix_scope_t scope, const pmix_info_t info[], size_t ninfo
     return PMIX_SUCCESS;
 }
 
-static int lookup_fn(pmix_scope_t scope, char **keys,
+static int lookup_fn(pmix_scope_t scope, int wait, char **keys,
                      pmix_lookup_cbfunc_t cbfunc, void *cbdata)
 {
     if (NULL != cbfunc) {

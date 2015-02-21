@@ -144,7 +144,7 @@ int PMIx_Get_nb(const char *nspace, int rank,
         }
         /* cleanup */
         if (NULL != val) {
-            PMIx_free_value(&val);
+            PMIX_VALUE_RELEASE(val);
         }
         /* activate the event */
         event_assign(&(cb->ev), pmix_globals.evbase, -1,
@@ -321,7 +321,7 @@ static void getnb_cbfunc(int sd, pmix_usock_hdr_t *hdr,
         }
         cb->value_cbfunc(rc, val, cb->cbdata);
     }
-    PMIx_free_value(&val);
+    PMIX_VALUE_RELEASE(val);
     PMIX_RELEASE(cb);
 }
 
@@ -341,6 +341,6 @@ static void getnb_shortcut(int fd, short flags, void *cbdata)
         rc = pmix_bfrop.unpack(&cb->data, &val, &m, PMIX_VALUE);
         cb->value_cbfunc(rc, &val, cb->cbdata);
     }
-    PMIx_free_value_data(&val);
+    PMIX_VALUE_DESTRUCT(&val);
     PMIX_RELEASE(cb);
 }

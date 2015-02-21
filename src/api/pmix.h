@@ -169,47 +169,88 @@ pmix_status_t PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val);
 pmix_status_t PMIx_Get(const char nspace[], int rank,
                        const char key[], pmix_value_t **val);
 
-/* Get_nb */
+/* Retrieve information for the specified _key_ as published by the given _rank_
+ * within the provided _namespace_. This is a non-blocking operation - the
+ * callback function will be executed once the specified data has been _PMIx_Put_
+ * by the specified rank and retrieved by the local server. */
 pmix_status_t PMIx_Get_nb(const char nspace[], int rank,
                           const char key[],
                           pmix_value_cbfunc_t cbfunc, void *cbdata);
 
-/* Publish - the "info" parameter
- * consists of an array of pmix_info_t objects that
- * are to be pushed to the "universal" nspace
+/* Publish the given data to the "universal" nspace
  * for lookup by others subject to the provided scope.
  * Note that the keys must be unique within the specified
  * scope or else an error will be returned (first published
- * wins). */
+ * wins). Attempts to access the data by procs outside of
+ * the provided scope will be rejected.
+ *
+ * Note: Some host environments may support user/group level
+ * access controls on the information in addition to the scope.
+ * These can be specified in the info array using the appropriately
+ * defined keys.
+ *
+ * The persistence parameter instructs the server as to how long
+ * the data is to be retained.
+ *
+ * The blocking form will block until the server confirms that the
+ * data has been posted and is available. The non-blocking form will
+ * return immediately, executing the callback when the server confirms
+ * availability of the data */
 pmix_status_t PMIx_Publish(pmix_scope_t scope,
+                           pmix_persistence_t persist,
                            const pmix_info_t info[],
                            size_t ninfo);
 pmix_status_t PMIx_Publish_nb(pmix_scope_t scope,
+                              pmix_persistence_t persist,
                               const pmix_info_t info[],
                               size_t ninfo,
                               pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-/* Lookup - the "info" parameter consists of an array of
- * pmix_info_t objects that specify the requested
- * information. Info will be returned in the provided objects.
- * The nspace param will contain the nspace of
- * the process that published the service_name. Passing
- * a NULL for the nspace param indicates that the
- * nspace information need not be returned */
+/* Lookup information published by another process. The "info"
+ * parameter consists of an array of pmix_info_t struct with the
+ * keys specifying the requested information. Data will be returned
+ * for each key in the associated info struct - any key that cannot
+ * be found will return with a data type of "PMIX_UNDEF". The function
+ * will return SUCCESS if _any_ values can be found, so the caller
+ * must check each data element to ensure it was returned.
+ * 
+ * The nspace param will contain the nspace of the process that
+ * published the data. Passing a _NULL_ for the nspace param indicates
+ * that the nspace information need not be returned.
+ *
+ * Note: although this is a blocking function, it will _not_ wait
+ * for the requested data to be published. Instead, it will block
+ * for the time required by the server to lookup its current data
+ * and return any found items. Thus, the caller is responsible for
+ * ensuring that data is published prior to executing a lookup, or
+ * for retrying until the requested data is found */
 pmix_status_t PMIx_Lookup(pmix_scope_t scope,
                           pmix_info_t info[], size_t ninfo,
                           char nspace[]);
-pmix_status_t PMIx_Lookup_nb(pmix_scope_t scope, char **keys,
+
+/* Non-blocking form of the _PMIx_Lookup_ function. Data for
+ * the provided NULL-terminated keys array will be returned
+ * in the provided callback function. The _wait_ parameter
+ * is used to indicate if the caller wishes the callback to
+ * wait for _all_ requested data before executing the callback
+ * (_true_), or to callback once the server returns whatever
+ * data is immediately available (_false_) */
+pmix_status_t PMIx_Lookup_nb(pmix_scope_t scope, int wait, char **keys,
                              pmix_lookup_cbfunc_t cbfunc, void *cbdata);
 
-/* Unpublish - the "info" parameter
- * consists of an array of pmix_info_t objects */
-pmix_status_t PMIx_Unpublish(pmix_scope_t scope,
-                             const pmix_info_t info[],
-                             size_t ninfo);
-pmix_status_t PMIx_Unpublish_nb(pmix_scope_t scope,
-                                const pmix_info_t info[],
-                                size_t ninfo,
+/* Unpublish data posted by this process using the given keys
+ * within the specified scope. The function will block until
+ * the data has been removed by the server. A value of _NULL_
+ * for the keys parameter instructs the server to remove
+ * _all_ data published by this process within the given scope */
+pmix_status_t PMIx_Unpublish(pmix_scope_t scope, char **keys);
+
+/* Non-blocking form of the _PMIx_Unpublish_ function. The
+ * callback function will be executed once the server confirms
+ * removal of the specified data. A value of _NULL_
+ * for the keys parameter instructs the server to remove
+ * _all_ data published by this process within the given scope  */
+pmix_status_t PMIx_Unpublish_nb(pmix_scope_t scope, char **keys,
                                 pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Spawn a new job */
@@ -223,8 +264,8 @@ pmix_status_t PMIx_Spawn_nb(const pmix_app_t apps[], size_t napps,
  * manager should treat the failure of any process in the specified group as
  * a reportable event, and take appropriate action. The callback function is
  * to be called once all participating processes have called connect. Note that
- * a process can only engage in *one* connect operation involving the identical
- * set of ranges at a time. However, a process *can* be simultaneously engaged
+ * a process can only engage in _one_ connect operation involving the identical
+ * set of ranges at a time. However, a process _can_ be simultaneously engaged
  * in multiple connect operations, each involving a different set of ranges */
 pmix_status_t PMIx_Connect(const pmix_range_t ranges[], size_t nranges);
 

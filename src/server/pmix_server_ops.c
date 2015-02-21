@@ -315,6 +315,7 @@ int pmix_server_publish(pmix_buffer_t *buf,
     int rc;
     int32_t cnt;
     pmix_scope_t scope;
+    pmix_persistence_t persist;
     size_t i, ninfo;
     pmix_info_t *info = NULL;
     
@@ -328,6 +329,12 @@ int pmix_server_publish(pmix_buffer_t *buf,
     /* unpack the scope */
     cnt=1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &scope, &cnt, PMIX_SCOPE))) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    /* unpack the persistence */
+    cnt=1;
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &persist, &cnt, PMIX_PERSIST))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -348,12 +355,12 @@ int pmix_server_publish(pmix_buffer_t *buf,
     }
     
     /* call the local server */
-    rc = pmix_host_server.publish(scope, info, ninfo, cbfunc, cbdata);
+    rc = pmix_host_server.publish(scope, persist, info, ninfo, cbfunc, cbdata);
 
  cleanup:
     if (NULL != info) {
         for (i=0; i < ninfo; i++) {
-            PMIx_free_value_data(&info[i].value);
+            PMIX_INFO_DESTRUCT(&info[i]);
         }
         free(info);
     }
@@ -364,7 +371,7 @@ int pmix_server_lookup(pmix_buffer_t *buf,
                        pmix_lookup_cbfunc_t cbfunc, void *cbdata)
 {
     int32_t cnt;
-    int rc;
+    int rc, wait;
     pmix_scope_t scope;
     size_t nkeys, i;
     char **keys=NULL, *sptr;
@@ -379,6 +386,12 @@ int pmix_server_lookup(pmix_buffer_t *buf,
     /* unpack the scope */
     cnt=1;
     if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &scope, &cnt, PMIX_SCOPE))) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    /* unpack the wait flag */
+    cnt=1;
+    if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &wait, &cnt, PMIX_INT))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -399,7 +412,7 @@ int pmix_server_lookup(pmix_buffer_t *buf,
         free(sptr);
     }
     /* call the local server */
-    rc = pmix_host_server.lookup(scope, keys, cbfunc, cbdata);
+    rc = pmix_host_server.lookup(scope, wait, keys, cbfunc, cbdata);
 
  cleanup:
     pmix_argv_free(keys);
@@ -475,7 +488,7 @@ int pmix_server_spawn(pmix_buffer_t *buf,
     }
     /* unpack the array of apps */
     if (0 < napps) {
-        apps = (pmix_app_t*)malloc(napps * sizeof(pmix_app_t));
+        PMIX_APP_CREATE(apps, napps);
         cnt=napps;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, apps, &cnt, PMIX_APP))) {
             PMIX_ERROR_LOG(rc);
@@ -486,11 +499,12 @@ int pmix_server_spawn(pmix_buffer_t *buf,
     rc = pmix_host_server.spawn(apps, napps, cbfunc, cbdata);
 
  cleanup:
-    /* free the apps array */
-    for (i=0; i < napps; i++) {
-        if (NULL != apps[i].cmd) {
-            free(apps[i].cmd);
+    if (NULL != apps) {
+        /* free the apps array */
+        for (i=0; i < napps; i++) {
+            PMIX_APP_DESTRUCT(&apps[i]);
         }
+        free(apps);
     }
     return rc;
 }
