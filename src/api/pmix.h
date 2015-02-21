@@ -190,7 +190,12 @@ pmix_status_t PMIx_Get_nb(const char nspace[], int rank,
  * defined keys.
  *
  * The persistence parameter instructs the server as to how long
- * the data is to be retained.
+ * the data is to be retained, within the context of the scope.
+ * For example, data published within _PMIX_NAMESPACE_ will be
+ * deleted along with the namespace regardless of the persistence.
+ * However, data published within PMIX_USER would be retained if
+ * the persistence was set to _PMIX_PERSIST_SESSION_ until the
+ * allocation terminates.
  *
  * The blocking form will block until the server confirms that the
  * data has been posted and is available. The non-blocking form will
@@ -206,8 +211,10 @@ pmix_status_t PMIx_Publish_nb(pmix_scope_t scope,
                               size_t ninfo,
                               pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-/* Lookup information published by another process. The "info"
- * parameter consists of an array of pmix_info_t struct with the
+/* Lookup information published by another process within the
+ * specified scope. A scope of _PMIX_SCOPE_UNDEF_ requests that
+ * the search be conducted across _all_ namespaces. The "info"
+ * parameter consists of an array of  pmix_info_t struct with the
  * keys specifying the requested information. Data will be returned
  * for each key in the associated info struct - any key that cannot
  * be found will return with a data type of "PMIX_UNDEF". The function
@@ -253,18 +260,34 @@ pmix_status_t PMIx_Unpublish(pmix_scope_t scope, char **keys);
 pmix_status_t PMIx_Unpublish_nb(pmix_scope_t scope, char **keys,
                                 pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-/* Spawn a new job */
+/* Spawn a new job. The spawned applications are automatically
+ * connected to the calling process, and their assigned namespace
+ * is returned in the nspace parameter - a _NULL_ value in that
+ * location indicates that the caller doesn't wish to have the
+ * namespace returned. Behavior of individual resource managers
+ * may differ, but it is expected that failure of any application
+ * process to start will result in termination/cleanup of _all_
+ * processes in the newly spawned job and return of an error
+ * code to the caller */
 pmix_status_t PMIx_Spawn(const pmix_app_t apps[],
                          size_t napps, char nspace[]);
+
+/* Non-blocking form of the _PMIx_Spawn_ function. The callback
+ * will be executed upon launch of the specified applications,
+ * or upon failure to launch any of them. */
 pmix_status_t PMIx_Spawn_nb(const pmix_app_t apps[], size_t napps,
                             pmix_spawn_cbfunc_t cbfunc, void *cbdata);
 
 /* Record the specified processes as "connected". Both blocking and non-blocking
- * versions are provided. This means that the resource
- * manager should treat the failure of any process in the specified group as
- * a reportable event, and take appropriate action. The callback function is
- * to be called once all participating processes have called connect. Note that
- * a process can only engage in _one_ connect operation involving the identical
+ * versions are provided. This means that the resource manager should treat the
+ * failure of any process in the specified group as  a reportable event, and take
+ * appropriate action. Note that different resource managers may respond to
+ * failures in different manners.
+ *
+ * The callback function is to be called once all participating processes have
+ * called connect.
+ *
+ * Note: a process can only engage in _one_ connect operation involving the identical
  * set of ranges at a time. However, a process _can_ be simultaneously engaged
  * in multiple connect operations, each involving a different set of ranges */
 pmix_status_t PMIx_Connect(const pmix_range_t ranges[], size_t nranges);
@@ -277,7 +300,7 @@ pmix_status_t PMIx_Connect_nb(const pmix_range_t ranges[], size_t nranges,
  * may be involved in multiple simultaneous disconnect operations. However, a process
  * is not allowed to reconnect to a set of ranges that has not fully completed
  * disconnect - i.e., you have to fully disconnect before you can reconnect to the
- * same group of processes. */
+ * _same_ group of processes. */
 pmix_status_t PMIx_Disconnect(const pmix_range_t ranges[], size_t nranges);
 
 pmix_status_t PMIx_Disconnect_nb(const pmix_range_t ranges[], size_t nranges,
