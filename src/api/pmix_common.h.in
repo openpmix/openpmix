@@ -332,7 +332,7 @@ typedef struct {
     do {                                                                \
         (m)->type = t;                                                  \
         switch((t)) {                                                   \
-        case PMIX_INDEF:                                                \
+        case PMIX_UNDEF:                                                \
             break;                                                      \
         case PMIX_BYTE:                                                 \
             memcpy(&((m)->data.byte), &(d), 1);                         \
@@ -389,6 +389,92 @@ typedef struct {
             (m)->data.bo.bytes = (d);                                   \
             memcpy(&((m)->data.bo.size), &(d), sizeof(size_t));         \
             break;                                                      \
+        }                                                               \
+    } while(0);
+
+/* unload a value */
+#define PMIX_VALUE_UNLOAD(r, m, d, t)                                   \
+    do {                                                                \
+        pmix_byte_object_t *boptr;                                      \
+        (r) = PMIX_SUCCESS;                                             \
+        if ((t) != (m)->type) {                                         \
+            (r) = PMIX_ERR_TYPE_MISMATCH;                               \
+        } else if (NULL == (d) ||                                       \
+                   (NULL == *(d) && PMIX_STRING != type && PMIX_BYTE_OBJECT != type)) { \
+            (r) = PMIX_ERR_BAD_PARAM;                                   \
+        } else {                                                        \
+            switch((t)) {                                               \
+            case PMIX_UNDEF:                                            \
+                (r) = PMIX_ERR_UNKNOWN_DATA_TYPE;                       \
+                break;                                                  \
+            case PMIX_BYTE:                                             \
+                memcpy(*(d), &((m)->data.byte), 1);                     \
+                break;                                                  \
+            case PMIX_STRING:                                           \
+                if (NULL == (m)->data.string) {                         \
+                    *(d) = NULL;                                        \
+                } else {                                                \
+                    *(d) = strdup((m)->data.string);                    \
+                }                                                       \
+                break;                                                  \
+            case PMIX_SIZE:                                             \
+                memcpy(*(d), &((m)->data.size), sizeof(size_t));        \
+                break;                                                  \
+            case PMIX_PID:                                              \
+                memcpy(*(d), &((m)->data.pid), sizeof(pid_t));          \
+                break;                                                  \
+            case PMIX_INT:                                              \
+                memcpy(*(d), &((m)->data.integer), sizeof(int));        \
+                break;                                                  \
+            case PMIX_INT8:                                             \
+                memcpy(*(d), &((m)->data.int8), 1);                     \
+                break;                                                  \
+            case PMIX_INT16:                                            \
+                memcpy(*(d), &((m)->data.int16), 2);                    \
+                break;                                                  \
+            case PMIX_INT32:                                            \
+                memcpy(*(d), &((m)->data.int32), 4);                    \
+                break;                                                  \
+            case PMIX_INT64:                                            \
+                memcpy(*(d), &((m)->data.int64), 8);                    \
+                break;                                                  \
+            case PMIX_UINT:                                             \
+                memcpy(*(d), &((m)->data.uint), sizeof(int));           \
+                break;                                                  \
+            case PMIX_UINT8:                                            \
+                memcpy(*(d), &((m)->data.uint8), 1);                    \
+                break;                                                  \
+            case PMIX_UINT16:                                           \
+                memcpy(*(d), &((m)->data.uint16), 2);                   \
+                break;                                                  \
+            case PMIX_UINT32:                                           \
+                memcpy(*(d), &((m)->data.uint32), 4);                   \
+                break;                                                  \
+            case PMIX_UINT64:                                           \
+                memcpy(*(d), &((m)->data.uint64), 8);                   \
+                break;                                                  \
+            case PMIX_FLOAT:                                            \
+                memcpy(*(d), &((m)->data.fval), sizeof(float));         \
+                break;                                                  \
+            case PMIX_DOUBLE:                                           \
+                memcpy(*(d), &((m)->data.dval), sizeof(double));        \
+                break;                                                  \
+            case PMIX_TIMEVAL:                                          \
+                memcpy(*(d), &((m)->data.tv), sizeof(struct timeval));  \
+                break;                                                  \
+            case PMIX_BYTE_OBJECT:                                      \
+                boptr = (pmix_byte_object_t*)malloc(sizeof(pmix_byte_object_t)); \
+                if (NULL != (m)->data.bo.bytes && 0 < (m)->data.bo.size) { \
+                    boptr->bytes = (uint8_t*)malloc((m)->data.bo.size); \
+                    memcpy(boptr->bytes, (m)->data.bo.bytes, (m)->data.bo.size); \
+                    boptr->size = (m)->data.bo.size;                    \
+                } else {                                                \
+                    boptr->bytes = NULL;                                \
+                    boptr->size = 0;                                    \
+                }                                                       \
+                *(d) = boptr;                                           \
+                break;                                                  \
+            }                                                           \
         }                                                               \
     } while(0);
 
