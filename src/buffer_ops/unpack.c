@@ -957,3 +957,34 @@ int pmix_bfrop_unpack_persist(pmix_buffer_t *buffer, void *dest,
 {
     return pmix_bfrop_unpack_buffer(buffer, dest, num_vals, PMIX_INT);
 }
+
+int pmix_bfrop_unpack_bo(pmix_buffer_t *buffer, void *dest,
+                         int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_byte_object_t *ptr;
+    int32_t i, n, m;
+    int ret;
+    
+    pmix_output_verbose(20, pmix_globals.debug_output,
+                        "pmix_bfrop_unpack: %d byte_object", *num_vals);
+
+    ptr = (pmix_byte_object_t *) dest;
+    n = *num_vals;
+    
+    for (i = 0; i < n; ++i) {
+        memset(&ptr[i], 0, sizeof(pmix_byte_object_t));
+        /* unpack the number of bytes */
+        m=1;
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_sizet(buffer, &ptr[i].size, &m, PMIX_SIZE))) {
+            return ret;
+        }
+        if (0 < ptr[i].size) {
+            ptr[i].bytes = (char*)malloc(ptr[i].size * sizeof(char));
+            m=ptr[i].size;
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_byte(buffer, ptr[i].bytes, &m, PMIX_BYTE))) {
+                return ret;
+            }
+        }
+    }
+    return PMIX_SUCCESS;
+}

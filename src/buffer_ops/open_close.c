@@ -302,6 +302,12 @@ int pmix_bfrop_open(void)
                        pmix_bfrop_copy_buf,
                        pmix_bfrop_print_buf);
     
+    PMIX_REGISTER_TYPE("PMIX_BYTE_OBJECT", PMIX_BYTE_OBJECT,
+                       pmix_bfrop_pack_bo,
+                       pmix_bfrop_unpack_bo,
+                       pmix_bfrop_copy_bo,
+                       pmix_bfrop_print_bo);
+    
     PMIX_REGISTER_TYPE("PMIX_KVAL", PMIX_KVAL,
                        pmix_bfrop_pack_kval,
                        pmix_bfrop_unpack_kval,

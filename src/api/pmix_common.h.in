@@ -214,6 +214,7 @@ typedef enum {
     PMIX_APP,
     PMIX_INFO,
     PMIX_BUFFER,
+    PMIX_BYTE_OBJECT,
     PMIX_KVAL,
     PMIX_MODEX,
     PMIX_PERSIST
@@ -252,6 +253,12 @@ typedef enum {
 } pmix_persistence_t;
 
 
+/****    PMIX BYTE OBJECT    ****/
+typedef struct {
+    char *bytes;
+    size_t size;
+} pmix_byte_object_t;
+
 /****    PMIX VALUE STRUCT    ****/
 typedef struct {
     pmix_data_type_t type;
@@ -284,6 +291,7 @@ typedef struct {
         double dval;
         struct timeval tv;
         pmix_array_t array;
+        pmix_byte_object_t bo;
     } data;
 } pmix_value_t;
 /* allocate and initialize a specified number of value structs */
@@ -319,6 +327,70 @@ typedef struct {
         }                                                               \
     } while(0);
 
+/* load a value */
+#define PMIX_VALUE_LOAD(m, d, t)                                        \
+    do {                                                                \
+        (m)->type = t;                                                  \
+        switch((t)) {                                                   \
+        case PMIX_INDEF:                                                \
+            break;                                                      \
+        case PMIX_BYTE:                                                 \
+            memcpy(&((m)->data.byte), &(d), 1);                         \
+            break;                                                      \
+        case PMIX_STRING:                                               \
+            (m)->data.string = strdup(&(d));                            \
+            break;                                                      \
+        case PMIX_SIZE:                                                 \
+            memcpy(&((m)->data.size), &(d), sizeof(size_t));            \
+            break;                                                      \
+        case PMIX_PID:                                                  \
+            memcpy(&((m)->data.pid), &(d), sizeof(pid_t));              \
+            break;                                                      \
+        case PMIX_INT:                                                  \
+            memcpy(&((m)->data.integer), &(d), sizeof(int));            \
+            break;                                                      \
+        case PMIX_INT8:                                                 \
+            memcpy(&((m)->data.int8), &(d), 1);                         \
+            break;                                                      \
+        case PMIX_INT16:                                                \
+            memcpy(&((m)->data.int16), &(d), 2);                        \
+            break;                                                      \
+        case PMIX_INT32:                                                \
+            memcpy(&((m)->data.int32), &(d), 4);                        \
+            break;                                                      \
+        case PMIX_INT64:                                                \
+            memcpy(&((m)->data.int64), &(d), 8);                        \
+            break;                                                      \
+        case PMIX_UINT:                                                 \
+            memcpy(&((m)->data.uint), &(d), sizeof(int));               \
+            break;                                                      \
+        case PMIX_UINT8:                                                \
+            memcpy(&((m)->data.uint8), &(d), 1);                        \
+            break;                                                      \
+        case PMIX_UINT16:                                               \
+            memcpy(&((m)->data.uint16), &(d), 2);                       \
+            break;                                                      \
+        case PMIX_UINT32:                                               \
+            memcpy(&((m)->data.uint32), &(d), 4);                       \
+            break;                                                      \
+        case PMIX_UINT64:                                               \
+            memcpy(&((m)->data.uint64), &(d), 8);                       \
+            break;                                                      \
+        case PMIX_FLOAT:                                                \
+            memcpy(&((m)->data.fval), &(d), sizeof(float));             \
+            break;                                                      \
+        case PMIX_DOUBLE:                                               \
+            memcpy(&((m)->data.dval), &(d), sizeof(double));            \
+            break;                                                      \
+        case PMIX_TIMEVAL:                                              \
+            memcpy(&((m)->data.tv), &(d), sizeof(struct timeval));      \
+            break;                                                      \
+        case PMIX_BYTE_OBJECT:                                          \
+            (m)->data.bo.bytes = (d);                                   \
+            memcpy(&((m)->data.bo.size), &(d), sizeof(size_t));         \
+            break;                                                      \
+        }                                                               \
+    } while(0);
 
 
 /****    PMIX RANGE STRUCT    ****/

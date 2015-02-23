@@ -162,7 +162,10 @@ pmix_status_t PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val);
 
 /* Retrieve information for the specified _key_ as published by the given _rank_
  * within the provided _namespace_, returning a pointer to the value in the
- * given address. This is a blocking operation - the caller will block until
+ * given address. A _NULL_ value for the namespace indicates that the rank
+ * is within the caller's namespace.
+ *
+ * This is a blocking operation - the caller will block until
  * the specified data has been _PMIx_Put_ by the specified rank. The caller is
  * responsible for freeing all memory associated with the returned value when
  * no longer required. */

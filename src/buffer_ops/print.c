@@ -772,3 +772,29 @@ int pmix_bfrop_print_persist(char **output, char *prefix, pmix_persistence_t *sr
     return PMIX_SUCCESS;
 }
 
+int pmix_bfrop_print_bo(char **output, char *prefix,
+                        pmix_byte_object_t *src, pmix_data_type_t type)
+{
+    char *prefx;
+
+    /* deal with NULL prefix */
+    if (NULL == prefix) asprintf(&prefx, " ");
+    else prefx = prefix;
+
+    /* if src is NULL, just print data type and return */
+    if (NULL == src) {
+        asprintf(output, "%sData type: PMIX_BYTE_OBJECT\tValue: NULL pointer", prefx);
+        if (prefx != prefix) {
+            free(prefx);
+        }
+        return PMIX_SUCCESS;
+    }
+
+    asprintf(output, "%sData type: PMIX_BYTE_OBJECT\tSize: %ld", prefx, (long)src->size);
+    if (prefx != prefix) {
+        free(prefx);
+    }
+
+    return PMIX_SUCCESS;
+}
+

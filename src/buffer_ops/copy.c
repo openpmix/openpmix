@@ -439,3 +439,16 @@ int pmix_bfrop_copy_persist(pmix_persistence_t **dest, pmix_persistence_t *src,
     return PMIX_SUCCESS;
 }
 
+int pmix_bfrop_copy_bo(pmix_byte_object_t **dest, pmix_byte_object_t *src,
+                       pmix_data_type_t type)
+{
+    *dest = (pmix_byte_object_t*)malloc(sizeof(pmix_byte_object_t));
+    if (NULL == *dest) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+    (*dest)->bytes = (char*)malloc(src->size);
+    memcpy((*dest)->bytes, src->bytes, src->size);
+    (*dest)->size = src->size;
+    return PMIX_SUCCESS;
+}
+

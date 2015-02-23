@@ -754,3 +754,24 @@ int pmix_bfrop_pack_persist(pmix_buffer_t *buffer, const void *src,
 {
     return pmix_bfrop_pack_int(buffer, src, num_vals, PMIX_INT);
 }
+
+int pmix_bfrop_pack_bo(pmix_buffer_t *buffer, const void *src,
+                       int32_t num_vals, pmix_data_type_t type)
+{
+    int ret;
+    int i;
+    pmix_byte_object_t *bo;
+
+    bo = (pmix_byte_object_t*)src;
+    for (i=0; i < num_vals; i++) {
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_sizet(buffer, &bo[i].size, 1, PMIX_SIZE))) {
+            return ret;
+        }
+        if (0 < bo[i].size) {
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_byte(buffer, bo[i].bytes, bo[i].size, PMIX_BYTE))) {
+                return ret;
+            }
+        }
+    }
+    return PMIX_SUCCESS;
+}
