@@ -353,3 +353,202 @@ int pmix_bfrop_close(void)
 
     return PMIX_SUCCESS;
 }
+
+/**** UTILITY SUPPORT ****/
+void pmix_value_load(pmix_value_t *v, void *data,
+                     pmix_data_type_t type)
+{
+    v->type = type;
+    if (NULL == data && PMIX_STRING != type && PMIX_BYTE_OBJECT != type) {
+        /* just set the fields to zero */
+        memset(&v->data, 0, sizeof(v->data));
+    } else {
+        switch(type) {
+        case PMIX_UNDEF:
+            break;
+        case PMIX_BYTE:
+            memcpy(&(v->data.byte), data, 1);
+            break;
+        case PMIX_STRING:
+            v->data.string = strdup(data);
+            break;
+        case PMIX_SIZE:
+            memcpy(&(v->data.size), data, sizeof(size_t));
+            break;
+        case PMIX_PID:
+            memcpy(&(v->data.pid), data, sizeof(pid_t));
+            break;
+        case PMIX_INT:
+            memcpy(&(v->data.integer), data, sizeof(int));
+            break;
+        case PMIX_INT8:
+            memcpy(&(v->data.int8), data, 1);
+            break;
+        case PMIX_INT16:
+            memcpy(&(v->data.int16), data, 2);
+            break;
+        case PMIX_INT32:
+            memcpy(&(v->data.int32), data, 4);
+            break;
+        case PMIX_INT64:
+            memcpy(&(v->data.int64), data, 8);
+            break;
+        case PMIX_UINT:
+            memcpy(&(v->data.uint), data, sizeof(int));
+            break;
+        case PMIX_UINT8:
+            memcpy(&(v->data.uint8), data, 1);
+            break;
+        case PMIX_UINT16:
+            memcpy(&(v->data.uint16), data, 2);
+            break;
+        case PMIX_UINT32:
+            memcpy(&(v->data.uint32), data, 4);
+            break;
+        case PMIX_UINT64:
+            memcpy(&(v->data.uint64), data, 8);
+            break;
+        case PMIX_FLOAT:
+            memcpy(&(v->data.fval), data, sizeof(float));
+            break;
+        case PMIX_DOUBLE:
+            memcpy(&(v->data.dval), data, sizeof(double));
+            break;
+        case PMIX_TIMEVAL:
+            memcpy(&(v->data.tv), data, sizeof(struct timeval));
+            break;
+        case PMIX_BYTE_OBJECT:
+            v->data.bo.bytes = data;
+            memcpy(&(v->data.bo.size), data, sizeof(size_t));
+            break;
+        case PMIX_TIME:
+        case PMIX_HWLOC_TOPO:
+        case PMIX_VALUE:
+        case PMIX_ARRAY:
+        case PMIX_RANGE:
+        case PMIX_APP:
+        case PMIX_INFO:
+        case PMIX_BUFFER:
+        case PMIX_KVAL:
+        case PMIX_MODEX:
+        case PMIX_PERSIST:
+            /* silence warnings */
+            break;
+        }
+    }
+}
+
+int pmix_value_unload(pmix_value_t *kv, void **data,
+                      size_t *sz, pmix_data_type_t type)
+{
+    int rc;
+
+    rc = PMIX_SUCCESS;
+    if (type != kv->type) {
+        rc = PMIX_ERR_TYPE_MISMATCH;
+    } else if (NULL == data ||
+               (NULL == *data && PMIX_STRING != type && PMIX_BYTE_OBJECT != type)) {
+        rc = PMIX_ERR_BAD_PARAM;
+    } else {
+        switch(type) {
+        case PMIX_UNDEF:
+            rc = PMIX_ERR_UNKNOWN_DATA_TYPE;
+            break;
+        case PMIX_BYTE:
+            memcpy(*data, &(kv->data.byte), 1);
+            *sz = 1;
+            break;
+        case PMIX_STRING:
+            if (NULL != kv->data.string) {
+                *data = strdup(kv->data.string);
+                *sz = strlen(kv->data.string);
+            }
+            break;
+        case PMIX_SIZE:
+            memcpy(*data, &(kv->data.size), sizeof(size_t));
+            *sz = sizeof(size_t);
+            break;
+        case PMIX_PID:
+            memcpy(*data, &(kv->data.pid), sizeof(pid_t));
+            *sz = sizeof(pid_t);
+            break;
+        case PMIX_INT:
+            memcpy(*data, &(kv->data.integer), sizeof(int));
+            *sz = sizeof(int);
+            break;
+        case PMIX_INT8:
+            memcpy(*data, &(kv->data.int8), 1);
+            *sz = 1;
+            break;
+        case PMIX_INT16:
+            memcpy(*data, &(kv->data.int16), 2);
+            *sz = 2;
+            break;
+        case PMIX_INT32:
+            memcpy(*data, &(kv->data.int32), 4);
+            *sz = 4;
+            break;
+        case PMIX_INT64:
+            memcpy(*data, &(kv->data.int64), 8);
+            *sz = 8;
+            break;
+        case PMIX_UINT:
+            memcpy(*data, &(kv->data.uint), sizeof(int));
+            *sz = sizeof(int);
+            break;
+        case PMIX_UINT8:
+            memcpy(*data, &(kv->data.uint8), 1);
+            *sz = 1;
+            break;
+        case PMIX_UINT16:
+            memcpy(*data, &(kv->data.uint16), 2);
+            *sz = 2;
+            break;
+        case PMIX_UINT32:
+            memcpy(*data, &(kv->data.uint32), 4);
+            *sz = 4;
+            break;
+        case PMIX_UINT64:
+            memcpy(*data, &(kv->data.uint64), 8);
+            *sz = 8;
+            break;
+        case PMIX_FLOAT:
+            memcpy(*data, &(kv->data.fval), sizeof(float));
+            *sz = sizeof(float);
+            break;
+        case PMIX_DOUBLE:
+            memcpy(*data, &(kv->data.dval), sizeof(double));
+            *sz = sizeof(double);
+            break;
+        case PMIX_TIMEVAL:
+            memcpy(*data, &(kv->data.tv), sizeof(struct timeval));
+            *sz = sizeof(struct timeval);
+            break;
+        case PMIX_BYTE_OBJECT:
+            if (NULL != kv->data.bo.bytes && 0 < kv->data.bo.size) {
+                *data = kv->data.bo.bytes;
+                *sz = kv->data.bo.size;
+            } else {
+                *data = NULL;
+                *sz = 0;
+            }
+            break;
+        case PMIX_TIME:
+        case PMIX_HWLOC_TOPO:
+        case PMIX_VALUE:
+        case PMIX_ARRAY:
+        case PMIX_RANGE:
+        case PMIX_APP:
+        case PMIX_INFO:
+        case PMIX_BUFFER:
+        case PMIX_KVAL:
+        case PMIX_MODEX:
+        case PMIX_PERSIST:
+            /* silence warnings */
+            rc = PMIX_ERROR;
+            break;
+        }
+    }
+    return rc;
+}
+

@@ -51,6 +51,11 @@ PMIX_CLASS_DECLARATION(pmix_kval_t);
  * another pmix_value_t structure
  */
 PMIX_DECLSPEC int pmix_value_xfer(pmix_value_t *kv, pmix_value_t *src);
+PMIX_DECLSPEC void pmix_value_load(pmix_value_t *v, void *data,
+                                   pmix_data_type_t type);
+PMIX_DECLSPEC int pmix_value_unload(pmix_value_t *kv, void **data,
+                                    size_t *sz, pmix_data_type_t type);
+
 
 #define PMIX_LOAD_BUFFER(b, d, s)                       \
     do {                                                \

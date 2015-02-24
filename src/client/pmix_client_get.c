@@ -337,7 +337,8 @@ static void getnb_shortcut(int fd, short flags, void *cbdata)
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "getnb_shortcut called with %s cbfunc",
                         (NULL == cb->value_cbfunc) ? "NULL" : "NON-NULL");
-    
+
+    PMIX_VALUE_CONSTRUCT(&val);
     if (NULL != cb->value_cbfunc) {
         m=1;
         rc = pmix_bfrop.unpack(&cb->data, &val, &m, PMIX_VALUE);
