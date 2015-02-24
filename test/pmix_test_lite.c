@@ -24,19 +24,19 @@
  *
  */
 
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/un.h>
+#include <sys/wait.h>
+#include <sys/time.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <sys/types.h>
 #include <fcntl.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 #include <event.h>
 extern int errno;
 #include <errno.h>
-#include <sys/wait.h>
-#include <time.h>
-#include <sys/time.h>
 #include <time.h>
 
 #include "src/include/pmix_globals.h"
@@ -293,11 +293,8 @@ static bool test_terminated(void)
 
 static void cli_wait_all(double timeout)
 {
-    int status_all[cli_info_cnt];
-    bool finish = false;
     struct timeval tv;
     double start_time, cur_time;
-    int i;
 
     gettimeofday(&tv, NULL);
     start_time = tv.tv_sec + 1E-6*tv.tv_usec;
@@ -306,7 +303,7 @@ static void cli_wait_all(double timeout)
     TEST_VERBOSE(("Wait for all children to terminate"))
 
     // Wait for all childrens to cleanup after the test.
-    while( !test_terminated() && ( timeout > (cur_time - start_time) ) ){
+    while( !test_terminated() && ( timeout >= (cur_time - start_time) ) ){
         struct timespec ts;
         int status, i;
         pid_t pid;
@@ -339,7 +336,6 @@ static void cli_wait_all(double timeout)
         // calculate current timestamp
         gettimeofday(&tv, NULL);
         cur_time = tv.tv_sec + 1E-6*tv.tv_usec;
-
     }
 }
 
@@ -367,17 +363,19 @@ int main(int argc, char **argv)
     char **client_argv=NULL;
     int rc, i;
     uint32_t n;
-    char *binary = "pmix_client2";
+    char *binary = "pmix_client";
     char *tmp;
     char *np = NULL;
     uid_t myuid;
     gid_t mygid;
     struct sockaddr_un address;
+    struct stat stat_buf;
     // In what time test should complete
 #define TEST_DEFAULT_TIMEOUT 10
     int test_timeout = TEST_DEFAULT_TIMEOUT;
     struct timeval tv;
     double test_start;
+    bool verbose = false;
 
     gettimeofday(&tv, NULL);
     test_start = tv.tv_sec + 1E-6*tv.tv_usec;
@@ -415,6 +413,7 @@ int main(int argc, char **argv)
             nonblocking = true;
         } else if( 0 == strcmp(argv[i], "--verbose") || 0 == strcmp(argv[i],"-v") ){
             TEST_VERBOSE_ON();
+            verbose = true;
         } else if (0 == strcmp(argv[i], "--timeout") || 0 == strcmp(argv[i], "-t")) {
             i++;
             test_timeout = atoi(argv[i]);
@@ -429,6 +428,18 @@ int main(int argc, char **argv)
     }
 
     TEST_OUTPUT(("Start PMIx_lite smoke test (timeout is %d)", test_timeout));
+
+    /* verify executable */
+    if( 0 > ( rc = stat(binary, &stat_buf) ) ){
+        TEST_ERROR(("Cannot stat() executable \"%s\": %d: %s", binary, errno, strerror(errno)));
+        return 0;
+    } else if( !S_ISREG(stat_buf.st_mode) ){
+        TEST_ERROR(("Client executable \"%s\": is not a regular file", binary));
+        return 0;
+    }else if( !(stat_buf.st_mode & S_IXUSR) ){
+        TEST_ERROR(("Client executable \"%s\": has no executable flag", binary));
+        return 0;
+    }
 
     /* setup the server library */
     if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, false))) {
@@ -480,7 +491,11 @@ int main(int argc, char **argv)
     } else {
         pmix_argv_append_nosize(&client_argv, np);
     }
-    
+
+    if( verbose ){
+        pmix_argv_append_nosize(&client_argv, "-v");
+    }
+
     tmp = pmix_argv_join(client_argv, ' ');
     TEST_OUTPUT(("Executing test: %s", tmp));
     free(tmp);
@@ -512,6 +527,7 @@ int main(int argc, char **argv)
         if (cli_info[n].pid == 0) {
             execve(binary, client_argv, client_env);
             /* Does not return */
+	    exit(0);
         }
         cli_info[n].state = CLI_FORKED;
     }
@@ -532,6 +548,7 @@ int main(int argc, char **argv)
         if( (test_current - test_start) > test_timeout ){
             break;
         }
+	cli_wait_all(0);
     }
 
     if( !test_completed() ){
