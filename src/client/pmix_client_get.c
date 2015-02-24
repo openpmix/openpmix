@@ -321,7 +321,9 @@ static void getnb_cbfunc(int sd, pmix_usock_hdr_t *hdr,
         }
         cb->value_cbfunc(rc, val, cb->cbdata);
     }
-    PMIX_VALUE_RELEASE(val);
+    if( NULL != val ){
+        PMIX_VALUE_RELEASE(val);
+    }
     PMIX_RELEASE(cb);
 }
 
