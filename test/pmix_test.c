@@ -22,14 +22,17 @@
  *
  */
 
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/un.h>
+#include <sys/stat.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <sys/types.h>
 #include <fcntl.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 #include <event.h>
+#include <errno.h>
+extern int errno;
 
 #include "src/include/pmix_globals.h"
 #include "pmix_server.h"
@@ -124,19 +127,21 @@ int main(int argc, char **argv)
     int rc, i;
     uint32_t n;
     pid_t pid;
-    char *binary = "pmix_client2";
+    char *binary = "pmix_client";
     char *tmp;
     char *np = NULL;
     uid_t myuid;
     gid_t mygid;
+    struct stat stat_buf;
+    bool verbose = false;
 
     /* smoke test */
     if (PMIX_SUCCESS != 0) {
-        fprintf(stderr, "ERROR IN COMPUTING CONSTANTS: PMIX_SUCCESS = %d\n", PMIX_SUCCESS);
+        TEST_ERROR(("ERROR IN COMPUTING CONSTANTS: PMIX_SUCCESS = %d", PMIX_SUCCESS));
         exit(1);
     }
 
-    fprintf(stderr, "Testing version %s\n", PMIx_Get_version());
+    TEST_OUTPUT(("Testing version %s", PMIx_Get_version()));
     
     /* parse user options */
     for (i=1; i < argc; i++) {
@@ -151,6 +156,7 @@ int main(int argc, char **argv)
             fprintf(stderr, "\t-b       execute fence_nb callback when all procs reach that point\n");
             fprintf(stderr, "\t-c       fence[_nb] callback shall include all collected data\n");
             fprintf(stderr, "\t-nb      use non-blocking fence\n");
+            fprintf(stderr, "\t-v       verbose output\n");
             exit(0);
         } else if (0 == strcmp(argv[i], "--exec") || 0 == strcmp(argv[i], "-e")) {
             i++;
@@ -161,17 +167,32 @@ int main(int argc, char **argv)
             collect = true;
         } else if (0 == strcmp(argv[i], "--non-blocking") || 0 == strcmp(argv[i], "-nb")) {
             nonblocking = true;
-        } else {
+        } else if (0 == strcmp(argv[i], "--verbose") || 0 == strcmp(argv[i], "-v")) {
+            TEST_VERBOSE_ON();
+            verbose = true;
+        }else {
             fprintf(stderr, "unrecognized option: %s\n", argv[i]);
             exit(1);
         }
+    }
+
+    /* verify executable */
+    if( 0 > ( rc = stat(binary, &stat_buf) ) ){
+        TEST_ERROR(("Cannot stat() executable \"%s\": %d: %s", binary, errno, strerror(errno)));
+        return 0;
+    } else if( !S_ISREG(stat_buf.st_mode) ){
+        TEST_ERROR(("Client executable \"%s\": is not a regular file", binary));
+        return 0;
+    }else if( !(stat_buf.st_mode & S_IXUSR) ){
+        TEST_ERROR(("Client executable \"%s\": has no executable flag", binary));
+        return 0;
     }
 
     PMIX_CONSTRUCT(&modex, pmix_list_t);
     
     /* setup the server library */
     if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, true))) {
-        fprintf(stderr, "Init failed with error %d\n", rc);
+        TEST_ERROR(("Init failed with error %d", rc));
         return rc;
     }
     /* register the errhandler */
@@ -196,23 +217,27 @@ int main(int argc, char **argv)
     } else {
         pmix_argv_append_nosize(&client_argv, np);
     }
+
+    if( verbose ){
+        pmix_argv_append_nosize(&client_argv, "-v");
+    }
     
     tmp = pmix_argv_join(client_argv, ' ');
-    fprintf(stderr, "Executing test: %s\n", tmp);
+    TEST_OUTPUT(("Executing test: %s", tmp));
     free(tmp);
 
     myuid = getuid();
     mygid = getgid();
     for (n=0; n < nprocs; n++) {
         if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(TEST_NAMESPACE, n, myuid, mygid, &client_env))) {
-            fprintf(stderr, "Server fork setup failed with error %d\n", rc);
+            TEST_ERROR(("Server fork setup failed with error %d", rc));
             PMIx_server_finalize();
             return rc;
         }
     
         pid = fork();    
         if (pid < 0) {
-            fprintf(stderr, "Fork failed\n");
+            TEST_ERROR(("Fork failed"));
             PMIx_server_finalize();
             return -1;
         }
@@ -237,7 +262,7 @@ int main(int argc, char **argv)
     PMIX_LIST_DESTRUCT(&modex);
     /* finalize the server library */
     if (PMIX_SUCCESS != (rc = PMIx_server_finalize())) {
-        fprintf(stderr, "Finalize failed with error %d\n", rc);
+        TEST_ERROR(("Finalize failed with error %d", rc));
     }
     
     return rc;
@@ -266,20 +291,19 @@ static void gather_data(const char nspace[], int rank,
 {
     pmix_test_data_t *tdat, *mdx;
 
-    pmix_output(0, "gather_data: list has %d items", (int)pmix_list_get_size(&modex));
+    TEST_VERBOSE(("gather_data: list has %d items", (int)pmix_list_get_size(&modex)));
     
     PMIX_LIST_FOREACH(mdx, &modex, pmix_test_data_t) {
-        pmix_output(0, "gather_data: checking %s vs %s", nspace, mdx->data.nspace);
+        TEST_VERBOSE(("gather_data: checking %s vs %s", nspace, mdx->data.nspace));
         if (0 != strcmp(nspace, mdx->data.nspace)) {
             continue;
         }
-        pmix_output(0, "gather_data: checking %d vs %d", rank, mdx->data.rank);
+        TEST_VERBOSE(("gather_data: checking %d vs %d", rank, mdx->data.rank));
         if (rank != mdx->data.rank && PMIX_RANK_WILDCARD != rank) {
             continue;
         }
-        pmix_output_verbose(5, pmix_globals.debug_output,
-                            "test:gather_data adding blob for %s:%d of size %d",
-                            mdx->data.nspace, mdx->data.rank, (int)mdx->data.size);
+        TEST_VERBOSE(("test:gather_data adding blob for %s:%d of size %d",
+                            mdx->data.nspace, mdx->data.rank, (int)mdx->data.size));
         tdat = PMIX_NEW(pmix_test_data_t);
         (void)strncpy(tdat->data.nspace, mdx->data.nspace, PMIX_MAX_NSLEN);
         tdat->data.rank = mdx->data.rank;
@@ -369,9 +393,8 @@ static int store_modex_fn(pmix_scope_t scope, pmix_modex_data_t *data)
 {
     pmix_test_data_t *mdx;
 
-    pmix_output_verbose(5, pmix_globals.debug_output,
-                        "test: storing modex data for %s:%d of size %d",
-                        data->nspace, data->rank, (int)data->size);
+    TEST_VERBOSE(("test: storing modex data for %s:%d of size %d",
+                  data->nspace, data->rank, (int)data->size));
     
     mdx = PMIX_NEW(pmix_test_data_t);
     (void)strncpy(mdx->data.nspace, data->nspace, PMIX_MAX_NSLEN);
@@ -393,15 +416,13 @@ static int get_modexnb_fn(const char nspace[], int rank,
     size_t n, size;
     int rc=PMIX_SUCCESS;
     
-    pmix_output(0, "Getting data for %s:%d", nspace, rank);
+    TEST_VERBOSE(("Getting data for %s:%d", nspace, rank));
 
     PMIX_CONSTRUCT(&data, pmix_list_t);
     gather_data(nspace, rank, &data);
     /* convert the data to an array */
     xfer_to_array(&data, &mdxarray, &size);
-    pmix_output_verbose(5, pmix_globals.debug_output,
-                        "test:get_modexnb returning %d array blocks",
-                        (int)size);
+    TEST_VERBOSE(("test:get_modexnb returning %d array blocks",(int)size));
     PMIX_LIST_DESTRUCT(&data);
     if (0 == size) {
         rc = PMIX_ERR_NOT_FOUND;
@@ -426,7 +447,7 @@ static int get_job_info_fn(const char nspace[], int rank,
 {
     pmix_info_t *resp;
 
-    pmix_output(0, "Getting job info for %s:%d", nspace, rank);
+    TEST_VERBOSE(("Getting job info for %s:%d", nspace, rank));
     
     resp = (pmix_info_t*)malloc(2 * sizeof(pmix_info_t));
     (void)strncpy(resp[0].key, PMIX_UNIV_SIZE, PMIX_MAX_KEYLEN);
