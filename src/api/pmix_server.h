@@ -80,6 +80,8 @@
 
 BEGIN_C_DECLS
 
+#ifndef PMIX_EMBEDDED_MODE
+
 /****    SERVER FUNCTION-SHIPPED APIs    ****/
 /* NOTE: for performance purposes, the host server is required to
  * return as quickly as possible from all functions. Execution of
@@ -214,6 +216,8 @@ typedef struct pmix_server_module_1_0_0_t {
     pmix_server_connect_fn_t          connect;
     pmix_server_disconnect_fn_t       disconnect;
 } pmix_server_module_t;
+
+#endif // PMIX_EMBEDDED_MODE
 
 /****    SERVER SUPPORT INIT/FINALIZE FUNCTIONS    ****/
 
