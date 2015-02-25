@@ -67,7 +67,7 @@ typedef struct {
 pmix_status_t pmix_server_authenticate(int sd, pmix_peer_t **peer,
                                        pmix_buffer_t **reply);
 
-int pmix_server_abort(pmix_buffer_t *buf,
+int pmix_server_abort(const char nspace[], int rank, pmix_buffer_t *buf,
                       pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 int pmix_server_fence(pmix_server_caddy_t *cd,

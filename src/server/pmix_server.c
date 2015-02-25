@@ -895,7 +895,7 @@ static int server_switchyard(pmix_peer_t *peer, uint32_t tag,
 
     if (PMIX_ABORT_CMD == cmd) {
         PMIX_PEER_CADDY(cd, peer, tag); 
-        if (PMIX_SUCCESS != (rc = pmix_server_abort(buf, op_cbfunc, cd))) {
+        if (PMIX_SUCCESS != (rc = pmix_server_abort(peer->nspace, peer->rank, buf, op_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
         }
         return rc;

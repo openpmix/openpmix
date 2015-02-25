@@ -102,7 +102,8 @@ typedef int (*pmix_server_terminated_fn_t)(const char nspace[], int rank);
 /* Client called PMIx_Abort - note that the client will be in a blocked
  * state until the host server executes the callback function, thus
  * allowing the PMIx server support library to release the client */
-typedef int (*pmix_server_abort_fn_t)(int status, const char msg[],
+typedef int (*pmix_server_abort_fn_t)(const char nspace[], int rank,
+                                      int status, const char msg[],
                                       pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Client called either PMIx_Fence or PMIx_Fence_nb. In either case,
@@ -125,7 +126,8 @@ typedef int (*pmix_server_fencenb_fn_t)(const pmix_range_t ranges[], size_t nran
 
 /* Store modex data for the given scope - should be copied into
  * the host server's storage */
-typedef int (*pmix_server_store_modex_fn_t)(pmix_scope_t scope, pmix_modex_data_t *data);
+typedef int (*pmix_server_store_modex_fn_t)(const char nspace[], int rank,
+                                            pmix_scope_t scope, pmix_modex_data_t *data);
 
 /* Retrieve modex data from the specified rank. A rank value of PMIX_RANK_WILDCARD
  * indicates that all modex data associated with the given nspace is to be

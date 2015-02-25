@@ -32,7 +32,6 @@
 #include <fcntl.h>
 #include <event.h>
 #include <errno.h>
-extern int errno;
 
 #include "src/include/pmix_globals.h"
 #include "pmix_server.h"
@@ -45,12 +44,14 @@ extern int errno;
 
 /* setup the PMIx server module */
 static int terminated(const char nspace[], int rank);
-static int abort_fn(int status, const char msg[],
+static int abort_fn(const char nspace[], int rank,
+                    int status, const char msg[],
                     pmix_op_cbfunc_t cbfunc, void *cbdata);
 static int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
                       int barrier, int collect_data,
                       pmix_modex_cbfunc_t cbfunc, void *cbdata);
-static int store_modex_fn(pmix_scope_t scope, pmix_modex_data_t *data);
+static int store_modex_fn(const char nspace[], int rank,
+                          pmix_scope_t scope, pmix_modex_data_t *data);
 static int get_modexnb_fn(const char nspace[], int rank,
                           pmix_modex_cbfunc_t cbfunc, void *cbdata);
 static int get_job_info_fn(const char nspace[], int rank,
@@ -277,7 +278,8 @@ static int terminated(const char nspace[], int rank)
     return PMIX_SUCCESS;
 }
 
-static int abort_fn(int status, const char msg[],
+static int abort_fn(const char nspace[], int rank,
+                    int status, const char msg[],
                     pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     if (NULL != cbfunc) {
@@ -389,7 +391,8 @@ static int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
     return PMIX_SUCCESS;
 }
 
-static int store_modex_fn(pmix_scope_t scope, pmix_modex_data_t *data)
+static int store_modex_fn(const char nspace[], int rank,
+                          pmix_scope_t scope, pmix_modex_data_t *data)
 {
     pmix_test_data_t *mdx;
 

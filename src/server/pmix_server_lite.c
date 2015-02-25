@@ -353,7 +353,7 @@ static int server_switchyard(pmix_server_caddy_t *cd,
 
     if (PMIX_ABORT_CMD == cmd) {
         PMIX_RETAIN(cd);
-        if (PMIX_SUCCESS != (rc = pmix_server_abort(buf, op_cbfunc, cd))) {
+        if (PMIX_SUCCESS != (rc = pmix_server_abort(cd->hdr.nspace, cd->hdr.rank, buf, op_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
             PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);

@@ -54,7 +54,7 @@
 
 pmix_server_module_t pmix_host_server;
 
-int pmix_server_abort(pmix_buffer_t *buf,
+int pmix_server_abort(const char nspace[], int rank, pmix_buffer_t *buf,
                       pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     int32_t cnt;
@@ -75,7 +75,7 @@ int pmix_server_abort(pmix_buffer_t *buf,
     }
     /* let the local host's server execute it */
     if (NULL != pmix_host_server.abort) {
-        rc = pmix_host_server.abort(status, msg, cbfunc, cbdata);
+        rc = pmix_host_server.abort(nspace, rank, status, msg, cbfunc, cbdata);
     } else {
         rc = PMIX_ERR_NOT_SUPPORTED;
     }
@@ -231,7 +231,7 @@ int pmix_server_fence(pmix_server_caddy_t *cd,
         mdx.blob = (uint8_t*)bptr->base_ptr;
         mdx.size = bptr->bytes_used;
         if (NULL != pmix_host_server.store_modex) {
-            pmix_host_server.store_modex(scope, &mdx);
+            pmix_host_server.store_modex(cd->hdr.nspace, cd->hdr.rank, scope, &mdx);
         }
         PMIX_RELEASE(bptr);
         cnt = 1;
