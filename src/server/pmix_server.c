@@ -331,7 +331,7 @@ pmix_status_t PMIx_server_setup_job(const char nspace[],
         memcpy(nptr->nspace, nspace, PMIX_MAX_NSLEN);
         pmix_list_append(&pmix_server_globals.nspaces, &nptr->super);
     }
-#if 0
+
     /* pack the provided info */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&nptr->job_info, &ninfo, 1, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
@@ -345,7 +345,7 @@ pmix_status_t PMIx_server_setup_job(const char nspace[],
         PMIX_RELEASE(nptr);
         return rc;
     }
-#endif
+
     return PMIX_SUCCESS;
 }
 
@@ -513,11 +513,10 @@ pmix_status_t pmix_server_authenticate(int sd, pmix_peer_t **peer,
     char *msg, *version, *cred;
     int rc;
     pmix_usock_hdr_t hdr;
+    pmix_nspace_t *nptr, *tmp;
     pmix_peer_t *pr, *psave = NULL;
     size_t csize;
     pmix_buffer_t buf, *bptr;
-    pmix_info_t *info;
-    size_t i, ninfo;
     bool found;
     
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -566,6 +565,20 @@ pmix_status_t pmix_server_authenticate(int sd, pmix_peer_t **peer,
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "connect-ack version from client matches ours");
+
+    /* see if we know this nspace */
+    nptr = NULL;
+    PMIX_LIST_FOREACH(tmp, &pmix_server_globals.nspaces, pmix_nspace_t) {
+        if (0 == strcmp(tmp->nspace, hdr.nspace)) {
+            nptr = tmp;
+            break;
+        }
+    }
+    if (NULL == nptr) {
+        /* we don't know this peer, reject it */
+        free(msg);
+        return PMIX_ERR_NOT_FOUND;
+    }
 
     /* see if we have this peer in our list */
     psave = NULL;

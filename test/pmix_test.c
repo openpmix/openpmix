@@ -132,6 +132,7 @@ int main(int argc, char **argv)
     gid_t mygid;
     struct stat stat_buf;
     bool verbose = false;
+    pmix_info_t info[2];
 
     /* smoke test */
     if (PMIX_SUCCESS != 0) {
@@ -196,9 +197,21 @@ int main(int argc, char **argv)
     /* register the errhandler */
     PMIx_Register_errhandler(errhandler);
     
-    client_env = pmix_argv_copy(environ);
+    TEST_VERBOSE(("Setting job info"));
+    PMIX_INFO_CONSTRUCT(&info[0]);
+    (void)strncpy(info[0].key, PMIX_UNIV_SIZE, PMIX_MAX_KEYLEN);
+    info[0].value.type = PMIX_UINT32;
+    info[0].value.data.uint32 = nprocs;
+    PMIX_INFO_CONSTRUCT(&info[1]);
+    (void)strncpy(info[1].key, PMIX_SPAWNED, PMIX_MAX_KEYLEN);
+    info[1].value.type = PMIX_UINT32;
+    info[1].value.data.uint32 = 0;
+    PMIx_server_setup_job(TEST_NAMESPACE, info, 2);
+    PMIX_INFO_DESTRUCT(&info[0]);
+    PMIX_INFO_DESTRUCT(&info[1]);
     
     /* fork/exec the test */
+    client_env = pmix_argv_copy(environ);
     pmix_argv_append_nosize(&client_argv, binary);
     if (nonblocking) {
         pmix_argv_append_nosize(&client_argv, "nb");

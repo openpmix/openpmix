@@ -382,8 +382,8 @@ typedef struct {
 
 #define PMIX_INFO_CONSTRUCT(m)                  \
     do {                                        \
-        memset((m), 0, sizeof(pmix_value_t));   \
-        (m)->type = PMIX_UNDEF;                 \
+        memset((m), 0, sizeof(pmix_info_t));    \
+        (m)->value.type = PMIX_UNDEF;           \
     } while(0);
 
 #define PMIX_INFO_DESTRUCT(m) \
