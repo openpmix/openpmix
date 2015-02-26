@@ -96,7 +96,9 @@ static pmix_server_trkr_t* get_tracker(pmix_list_t *trks,
     pmix_server_trkr_t *trk;
     size_t i, j;
     bool match;
-    uint32_t local_cnt = 0, local_cnt_max;
+    uint32_t local_cnt = 0;
+    pmix_nspace_t *nptr, *tmp;
+    pmix_peer_t *pr;
 
     PMIX_LIST_FOREACH(trk, trks, pmix_server_trkr_t) {
         if (trk->nranges != nranges) {
@@ -133,29 +135,40 @@ static pmix_server_trkr_t* get_tracker(pmix_list_t *trks,
     /* copy the ranges */
     trk->nranges = nranges;
     trk->ranges = (pmix_range_t*)malloc(nranges * sizeof(pmix_range_t));
-    local_cnt_max = pmix_list_get_size(&pmix_server_globals.peers);
 
     for (i=0; i < nranges; i++) {
         memset(&trk->ranges[i], 0, sizeof(pmix_range_t));
         (void)strncpy(trk->ranges[i].nspace, ranges[i].nspace, PMIX_MAX_NSLEN);
         trk->ranges[i].nranks = ranges[i].nranks;
         trk->ranges[i].ranks = NULL;
+        /* find the namespace */
+        nptr = NULL;
+        PMIX_LIST_FOREACH(tmp, &pmix_server_globals.nspaces, pmix_nspace_t) {
+            if (0 == strcmp(ranges[i].nspace, tmp->nspace)) {
+                nptr = tmp;
+                break;
+            }
+        }
+        if (NULL == nptr) {
+            /* not allowed */
+            PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+            PMIX_RELEASE(trk);
+            return NULL;
+        }
         if (NULL != ranges[i].ranks) {
             trk->ranges[i].ranks = (int*)malloc(ranges[i].nranks * sizeof(int));
             for (j=0; j < ranges[i].nranks; j++) {
                 trk->ranges[i].ranks[j] = ranges[i].ranks[j];
-                if( local_cnt < local_cnt_max ){
-                    // Note if this is local peer
-                    pmix_peer_t *pr = NULL;
-                    PMIX_LIST_FOREACH(pr, &pmix_server_globals.peers, pmix_peer_t) {
-                        if( ranges[i].ranks[j] == pr->rank ){
-                            local_cnt++;
-                        }
+                // Note if this is local peer
+                PMIX_LIST_FOREACH(pr, &nptr->peers, pmix_peer_t) {
+                    if (ranges[i].ranks[j] == pr->rank) {
+                        local_cnt++;
+                        break;
                     }
                 }
             }
         } else {
-            local_cnt = local_cnt_max;
+            local_cnt += pmix_list_get_size(&nptr->peers);
         }
     }
     trk->local_cnt = local_cnt;

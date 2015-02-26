@@ -279,7 +279,7 @@ PMIX_CLASS_INSTANCE(pmix_nspace_t,
 
 static void pcon(pmix_peer_t *p)
 {
-    memset(p->nspace, 0, PMIX_MAX_NSLEN);
+    p->nptr = NULL;
     p->rank = -1;
     p->uid = 0;
     p->gid = 0;

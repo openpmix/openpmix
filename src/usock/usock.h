@@ -140,7 +140,7 @@ PMIX_CLASS_DECLARATION(pmix_nspace_t);
  * by the socket, not the process nspace/rank */
 typedef struct pmix_peer_t {
     pmix_list_item_t super;
-    char nspace[PMIX_MAX_NSLEN];
+    pmix_nspace_t *nptr;
     int rank;
     uid_t uid;
     gid_t gid;

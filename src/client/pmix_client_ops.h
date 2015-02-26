@@ -17,6 +17,7 @@ BEGIN_C_DECLS
 
 typedef struct {
     int init_cntr;
+    pmix_nspace_t myserver_nspace;
     pmix_peer_t myserver;
     pmix_buffer_t *cache_local;
     pmix_buffer_t *cache_remote;

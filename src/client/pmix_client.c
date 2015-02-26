@@ -92,7 +92,9 @@ static void wait_cbfunc(int sd, pmix_usock_hdr_t *hdr,
  
 static void setup_globals(void)
 {
+    PMIX_CONSTRUCT(&pmix_client_globals.myserver_nspace, pmix_nspace_t);
     PMIX_CONSTRUCT(&pmix_client_globals.myserver, pmix_peer_t);
+    pmix_client_globals.myserver.nptr = &pmix_client_globals.myserver_nspace;
     /* setup our copy of the pmix globals object */
     memset(&pmix_globals.nspace, 0, PMIX_MAX_NSLEN);
 }
@@ -183,7 +185,7 @@ int PMIx_Init(char nspace[], int *rank)
         (void)strncpy(nspace, evar, PMIX_MAX_NSLEN);
     }
     (void)strncpy(pmix_globals.nspace, evar, PMIX_MAX_NSLEN);
-    (void)strncpy(pmix_client_globals.myserver.nspace, evar, PMIX_MAX_NSLEN);
+    (void)strncpy(pmix_client_globals.myserver_nspace.nspace, evar, PMIX_MAX_NSLEN);
 
     /* if we don't have a path to the daemon rendezvous point,
      * then we need to return an error */

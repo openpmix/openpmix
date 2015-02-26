@@ -41,7 +41,6 @@ PMIX_CLASS_DECLARATION(pmix_server_trkr_t);
 
 typedef struct {
     pmix_list_t nspaces;
-    pmix_list_t peers;
     pmix_list_t fence_ops;
     pmix_list_t connect_ops;
     pmix_list_t disconnect_ops;
@@ -49,11 +48,11 @@ typedef struct {
 
 #define PMIX_PEER_CADDY(c, p, t)                                        \
     do {                                                                \
-        (c) = PMIX_NEW(pmix_server_caddy_t);                             \
-        (void)memcpy((c)->hdr.nspace, (p)->nspace, PMIX_MAX_NSLEN);     \
+        (c) = PMIX_NEW(pmix_server_caddy_t);                            \
+        (void)memcpy((c)->hdr.nspace, (p)->nptr->nspace, PMIX_MAX_NSLEN); \
         (c)->hdr.rank = (p)->rank;                                      \
         (c)->hdr.tag = (t);                                             \
-        PMIX_RETAIN((p));                                                \
+        PMIX_RETAIN((p));                                               \
         (c)->peer = (p);                                                \
     } while(0);
 
