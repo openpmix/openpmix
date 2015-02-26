@@ -246,6 +246,19 @@ pmix_status_t PMIx_server_init(pmix_server_module_t *module,
  * memory usage is released */
 pmix_status_t PMIx_server_finalize(void);
 
+/* Setup the data about a particular nspace so it can
+ * be passed to any child process upon startup. The PMIx
+ * connection procedure provides an opportunity for the
+ * host PMIx server to pass job-related info down to a
+ * child process. This might include the number of
+ * processes in the job, relative local ranks of the
+ * processes within the job, and other information of
+ * use to the process. The server is free to determine
+ * which, if any, of the supported elements it will
+ * provide - defined values are provided in pmix_common.h */
+pmix_status_t PMIx_server_setup_job(const char nspace[],
+                                    pmix_info_t info[], size_t ninfo);
+
 /* Setup the environment of a child process to be forked
  * by the host so it can correctly interact with the PMIx
  * server. The PMIx client needs some setup information

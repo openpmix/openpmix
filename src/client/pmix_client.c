@@ -575,6 +575,12 @@ static int recv_connect_ack(int sd)
     
     cnt = 1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&buf, &ninfo, &cnt, PMIX_SIZE))) {
+        if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
+            /* this isn't an error - the host server may not
+             * have provided any job-level info */
+            rc = PMIX_SUCCESS;
+            goto cleanup;
+        }
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }

@@ -132,6 +132,7 @@ static int initialize_server_base(pmix_server_module_t *module)
 
     (void)strncpy(pmix_globals.nspace, "pmix-server", PMIX_MAX_NSLEN);
     pmix_globals.debug_output = -1;
+    PMIX_CONSTRUCT(&pmix_server_globals.nspaces, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_server_globals.peers, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_server_globals.fence_ops, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_server_globals.connect_ops, pmix_list_t);
@@ -246,6 +247,7 @@ int PMIx_get_rendezvous_address(struct sockaddr_un *address)
 
 static void cleanup_server_state(void)
 {
+    PMIX_LIST_DESTRUCT(&pmix_server_globals.nspaces);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.peers);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.fence_ops);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.connect_ops);
@@ -302,6 +304,49 @@ int PMIx_server_finalize(void)
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:server finalize complete");
     return 0;
+}
+
+/* setup the data for a job */
+pmix_status_t PMIx_server_setup_job(const char nspace[],
+                                    pmix_info_t info[], size_t ninfo)
+{
+    pmix_status_t rc;
+    pmix_nspace_t *nptr, *tmp;
+
+    /* see if we already have this nspace */
+    nptr = NULL;
+    PMIX_LIST_FOREACH(tmp, &pmix_server_globals.nspaces, pmix_nspace_t) {
+        if (0 == strcmp(tmp->nspace, nspace)) {
+            nptr = tmp;
+            /* release any existing packed data - we will replace it */
+            if (0 < nptr->job_info.bytes_used) {
+                PMIX_DESTRUCT(&nptr->job_info);
+                PMIX_CONSTRUCT(&nptr->job_info, pmix_buffer_t);
+            }
+            break;
+        }
+    }
+    if (NULL == nptr) {
+        nptr = PMIX_NEW(pmix_nspace_t);
+        memcpy(nptr->nspace, nspace, PMIX_MAX_NSLEN);
+        pmix_list_append(&pmix_server_globals.nspaces, &nptr->super);
+    }
+#if 0
+    /* pack the provided info */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&nptr->job_info, &ninfo, 1, PMIX_SIZE))) {
+        PMIX_ERROR_LOG(rc);
+        pmix_list_remove_item(&pmix_server_globals.nspaces, &nptr->super);
+        PMIX_RELEASE(nptr);
+        return rc;
+    }
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&nptr->job_info, info, ninfo, PMIX_INFO))) {
+        PMIX_ERROR_LOG(rc);
+        pmix_list_remove_item(&pmix_server_globals.nspaces, &nptr->super);
+        PMIX_RELEASE(nptr);
+        return rc;
+    }
+#endif
+    return PMIX_SUCCESS;
 }
 
 /* setup the envars for a child process */

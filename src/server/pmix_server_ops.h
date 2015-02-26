@@ -40,6 +40,7 @@ typedef struct {
 PMIX_CLASS_DECLARATION(pmix_server_trkr_t);
 
 typedef struct {
+    pmix_list_t nspaces;
     pmix_list_t peers;
     pmix_list_t fence_ops;
     pmix_list_t connect_ops;

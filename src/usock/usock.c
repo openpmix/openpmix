@@ -262,6 +262,21 @@ PMIX_CLASS_INSTANCE(pmix_usock_sr_t,
                    pmix_object_t,
                    srcon, NULL);
 
+static void ncon(pmix_nspace_t *p)
+{
+    memset(p->nspace, 0, PMIX_MAX_NSLEN);
+    PMIX_CONSTRUCT(&p->job_info, pmix_buffer_t);
+    PMIX_CONSTRUCT(&p->peers, pmix_list_t);
+}
+static void ndes(pmix_nspace_t *p)
+{
+    PMIX_DESTRUCT(&p->job_info);
+    PMIX_LIST_DESTRUCT(&p->peers);
+}
+PMIX_CLASS_INSTANCE(pmix_nspace_t,
+                    pmix_list_item_t,
+                    ncon, ndes);
+
 static void pcon(pmix_peer_t *p)
 {
     memset(p->nspace, 0, PMIX_MAX_NSLEN);

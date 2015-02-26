@@ -124,6 +124,15 @@ typedef struct {
 } pmix_usock_posted_recv_t;
 PMIX_CLASS_DECLARATION(pmix_usock_posted_recv_t);
 
+/* object for tracking active nspaces */
+typedef struct {
+    pmix_list_item_t super;
+    char nspace[PMIX_MAX_NSLEN];
+    pmix_buffer_t job_info;
+    pmix_list_t peers;
+} pmix_nspace_t;
+PMIX_CLASS_DECLARATION(pmix_nspace_t);
+
 /* object for tracking peers - each peer can have multiple
  * connections. This can occur if the initial app executes
  * a fork/exec, and the child initiates its own connection
