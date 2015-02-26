@@ -61,8 +61,6 @@ static int store_modex_fn(const char nspace[], int rank,
                           pmix_scope_t scope, pmix_modex_data_t *data);
 static int get_modexnb_fn(const char nspace[], int rank,
                           pmix_modex_cbfunc_t cbfunc, void *cbdata);
-static int get_job_info_fn(const char nspace[], int rank,
-                           pmix_info_t *info[], size_t *ninfo);
 static int publish_fn(pmix_scope_t scope, pmix_persistence_t persist,
                       const pmix_info_t info[], size_t ninfo,
                       pmix_op_cbfunc_t cbfunc, void *cbdata);
@@ -83,7 +81,6 @@ static pmix_server_module_t mymodule = {
     fencenb_fn,
     store_modex_fn,
     get_modexnb_fn,
-    get_job_info_fn,
     publish_fn,
     lookup_fn,
     unpublish_fn,
@@ -792,21 +789,6 @@ static int get_modexnb_fn(const char nspace[], int rank,
     if (NULL != mdxarray) {
         free(mdxarray);
     }
-    return PMIX_SUCCESS;
-}
-
-static int get_job_info_fn(const char nspace[], int rank,
-                           pmix_info_t *info[], size_t *ninfo)
-{
-    pmix_info_t *resp;
-
-    resp = (pmix_info_t*)malloc(sizeof(pmix_info_t));
-    (void)strncpy(resp[0].key, PMIX_UNIV_SIZE, PMIX_MAX_KEYLEN);
-    resp[0].value.type = PMIX_UINT32;
-    resp[0].value.data.uint32 = nprocs;
-
-    *info = resp;
-    *ninfo = 1;
     return PMIX_SUCCESS;
 }
 
