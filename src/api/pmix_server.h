@@ -74,7 +74,6 @@
 #ifdef HAVE_NET_UIO_H
 #include <net/uio.h>
 #endif
-#include <event.h>
 
 #include "pmix_common.h"
 
