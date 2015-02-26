@@ -135,14 +135,6 @@ typedef int (*pmix_server_get_modexnb_fn_t)(const char nspace[], int rank,
                                             pmix_modex_cbfunc_t cbfunc, void *cbdata);
 
 
-/* Retrieve all job-related info for this nspace and rank. The list of
- * supported data keys is provided in pmix_common.h. Note that the host
- * server is not required to support all of the defined keys, nor is it limited
- * to those that are defined in that file. */
-typedef int (*pmix_server_get_job_info_fn_t)(const char nspace[], int rank,
-                                             pmix_info_t *info[], size_t *ninfo);
-
-
 /* Publish data per the PMIx API specification. The callback is to be executed
  * upon completion of the operation. The host server is not required to guarantee
  * support for the requested scope - i.e., the server does not need to return an
@@ -209,7 +201,6 @@ typedef struct pmix_server_module_1_0_0_t {
     pmix_server_fencenb_fn_t          fence_nb;
     pmix_server_store_modex_fn_t      store_modex;
     pmix_server_get_modexnb_fn_t      get_modex_nb;
-    pmix_server_get_job_info_fn_t     get_job_info;
     pmix_server_publish_fn_t          publish;
     pmix_server_lookup_fn_t           lookup;
     pmix_server_unpublish_fn_t        unpublish;

@@ -589,49 +589,6 @@ pmix_status_t pmix_server_authenticate(int sd, pmix_peer_t **peer,
         }
     }
     
-    /* get any job info the host server might have for this client */
-    if (NULL != pmix_host_server.get_job_info) {
-        rc = pmix_host_server.get_job_info(psave->nspace, psave->rank,
-                                           &info, &ninfo);
-        /* pack any returned info */
-        if (0 == rc && NULL != info && 0 < ninfo) {
-            if (NULL == reply) {
-                PMIX_CONSTRUCT(&buf, pmix_buffer_t);
-                bptr = &buf;
-            } else {
-                bptr = PMIX_NEW(pmix_buffer_t);
-                *reply = bptr;
-            }
-            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(bptr, &ninfo, 1, PMIX_SIZE))) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_DESTRUCT(&buf);
-                pmix_list_remove_item(&pmix_server_globals.peers, &psave->super);
-                PMIX_RELEASE(psave);
-                return rc;
-            }
-            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(bptr, info, ninfo, PMIX_INFO))) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_DESTRUCT(&buf);
-                pmix_list_remove_item(&pmix_server_globals.peers, &psave->super);
-                PMIX_RELEASE(psave);
-                return rc;
-            }
-            for (i=0; i < ninfo; i++) {
-                PMIX_INFO_DESTRUCT(&info[i]);
-            }
-            free(info);
-            if (NULL == reply) {
-                /* let the client know we are ready to go */
-                if (PMIX_SUCCESS != (rc = send_client_response(sd, PMIX_SUCCESS, bptr))) {
-                    pmix_list_remove_item(&pmix_server_globals.peers, &psave->super);
-                    PMIX_RELEASE(psave);
-                }
-            }
-            *peer = psave;
-            return rc;
-        }
-    }
-
     if (NULL == reply) {
         /* let the client know we are ready to go */
         if (PMIX_SUCCESS != (rc = send_client_response(sd, PMIX_SUCCESS, NULL))) {
