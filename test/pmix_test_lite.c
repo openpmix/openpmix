@@ -356,6 +356,19 @@ static void cli_kill_all(void)
     }
 }
 
+void set_job_info(int nprocs)
+{
+    pmix_info_t *info;
+
+    info = (pmix_info_t*)malloc(sizeof(pmix_info_t));
+    (void)strncpy(info[0].key, PMIX_UNIV_SIZE, PMIX_MAX_KEYLEN);
+    info[0].value.type = PMIX_UINT32;
+    info[0].value.data.uint32 = nprocs;
+    PMIx_server_setup_job(TEST_NAMESPACE,info,1);
+    free(info);
+    return PMIX_SUCCESS;
+}
+
 int main(int argc, char **argv)
 {
     char **client_env=NULL;
@@ -447,6 +460,7 @@ int main(int argc, char **argv)
     }
     /* register the errhandler */
     PMIx_Register_errhandler(errhandler);
+    set_job_info(nprocs);
         
 
     /* initialize the event library - we will be providing messaging support
