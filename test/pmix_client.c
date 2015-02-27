@@ -163,8 +163,9 @@ int main(int argc, char **argv)
             }
             PMIX_VALUE_RELEASE(val);
             TEST_VERBOSE(("rank %d: GET OF %s SUCCEEDED", rank, key));
-            TEST_VERBOSE(("rank %d: rank %d is OK", rank, i));
         }
+
+        TEST_VERBOSE(("rank %d: rank %d is OK", rank, i));
 
         /* ask for a non-existent key */
         if (PMIX_SUCCESS == (rc = PMIx_Get(nspace, i, "foobar", &val))) {
