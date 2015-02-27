@@ -165,8 +165,6 @@ int main(int argc, char **argv)
             TEST_VERBOSE(("rank %d: GET OF %s SUCCEEDED", rank, key));
         }
 
-        TEST_VERBOSE(("rank %d: rank %d is OK", rank, i));
-
         /* ask for a non-existent key */
         if (PMIX_SUCCESS == (rc = PMIx_Get(nspace, i, "foobar", &val))) {
             TEST_ERROR(("rank %d: PMIx_Get returned success instead of failure",
@@ -181,7 +179,7 @@ int main(int argc, char **argv)
             TEST_ERROR(("rank %d [ERROR]: PMIx_Get did not return NULL value", rank));
             goto error_out;
         }
-        TEST_VERBOSE(("rank %d: GET OF NON-EXISTENT KEY CORRECTLY HANDLED", rank));
+        TEST_VERBOSE(("rank %d: rank %d is OK", rank, i));
     }
 
     TEST_OUTPUT(("rank %d: test PASSED", rank));
