@@ -75,6 +75,24 @@ int main(int argc, char **argv)
 
     TEST_OUTPUT(("rank %d: PMIx_Init success", rank));
 
+    if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, rank,PMIX_UNIV_SIZE,&val))) {
+        TEST_ERROR(("rank %d: PMIx_Get universe size failed: %d", rank, rc));
+        goto error_out;
+    }
+    if (NULL == val) {
+        TEST_ERROR(("rank %d: PMIx_Get universe size returned NULL value", rank));
+        goto error_out;
+    }
+    if (val->type != PMIX_UINT32 || val->data.uint32 != nprocs ) {
+        TEST_ERROR(("rank %d: Universe size value or type mismatch,"
+                    " want %d(%d) get %d(%d)",
+                    rank, nprocs, PMIX_UINT32,
+                    val->data.integer, val->type));
+        goto error_out;
+    }
+
+    TEST_OUTPUT(("rank %d: Universe size check: PASSED", rank));
+
     if( 0 != strcmp(nspace, TEST_NAMESPACE) ) {
         TEST_ERROR(("rank %d: Bad nspace!", rank));
         exit(0);
