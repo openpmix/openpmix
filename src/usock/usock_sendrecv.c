@@ -144,7 +144,7 @@ void pmix_usock_send_handler(int sd, short flags, void *cbdata)
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "sock:send_handler SENDING TO PEER %s:%d with %s msg",
-                        peer->nptr->nspace, peer->rank,
+                        peer->info.nptr->nspace, peer->info.rank,
                         (NULL == msg) ? "NULL" : "NON-NULL");
     if (NULL != msg) {
         if (!msg->hdr_sent) {
@@ -245,8 +245,8 @@ void pmix_usock_recv_handler(int sd, short flags, void *cbdata)
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "usock:recv:handler called with peer %s:%d",
-                        (NULL == peer) ? "NULL" : peer->nptr->nspace,
-                        (NULL == peer) ? -1 : peer->rank);
+                        (NULL == peer) ? "NULL" : peer->info.nptr->nspace,
+                        (NULL == peer) ? -1 : peer->info.rank);
 
     if (NULL == peer) {
         return;
@@ -277,7 +277,8 @@ void pmix_usock_recv_handler(int sd, short flags, void *cbdata)
             if (0 == peer->recv_msg->hdr.nbytes) {
                 pmix_output_verbose(2, pmix_globals.debug_output,
                                     "RECVD ZERO-BYTE MESSAGE FROM %s:%d for tag %d",
-                                    peer->nptr->nspace, peer->rank, peer->recv_msg->hdr.tag);
+                                    peer->info.nptr->nspace, peer->info.rank,
+                                    peer->recv_msg->hdr.tag);
                 peer->recv_msg->data = NULL;  // make sure
                 peer->recv_msg->rdptr = NULL;
                 peer->recv_msg->rdbytes = 0;
@@ -387,6 +388,7 @@ void pmix_usock_send_recv(int fd, short args, void *cbdata)
     snd = PMIX_NEW(pmix_usock_send_t);
     (void)strncpy(snd->hdr.nspace, pmix_globals.nspace, PMIX_MAX_NSLEN);
     snd->hdr.rank = pmix_globals.rank;
+    snd->hdr.localid = pmix_globals.localid;
     snd->hdr.type = PMIX_USOCK_USER;
     snd->hdr.tag = tag;
     snd->hdr.nbytes = ms->bfr->bytes_used;

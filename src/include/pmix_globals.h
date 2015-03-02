@@ -35,7 +35,7 @@ BEGIN_C_DECLS
  * and server libraries must instance this structure */
 typedef struct {
     char nspace[PMIX_MAX_NSLEN];
-    int rank;
+    int rank, localid;
     pmix_event_base_t *evbase;
     int debug_output;
     pmix_notification_fn_t errhandler;

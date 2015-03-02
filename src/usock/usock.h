@@ -80,6 +80,7 @@ typedef enum {
 typedef struct {
     char nspace[PMIX_MAX_NSLEN];
     int rank;
+    int localid;
     uint8_t type;
     uint32_t tag;
     size_t nbytes;
@@ -129,9 +130,20 @@ typedef struct {
     pmix_list_item_t super;
     char nspace[PMIX_MAX_NSLEN];
     pmix_buffer_t job_info;
-    pmix_list_t peers;
+    pmix_list_t ranks;
+    pmix_pointer_array_t peers_a;
 } pmix_nspace_t;
 PMIX_CLASS_DECLARATION(pmix_nspace_t);
+
+typedef struct pmix_rank_info_t {
+    pmix_list_item_t super;
+    pmix_nspace_t *nptr;
+    int rank;
+    uid_t uid;
+    gid_t gid;
+    int proc_cnt;
+} pmix_rank_info_t;
+PMIX_CLASS_DECLARATION(pmix_rank_info_t);
 
 /* object for tracking peers - each peer can have multiple
  * connections. This can occur if the initial app executes
@@ -139,11 +151,9 @@ PMIX_CLASS_DECLARATION(pmix_nspace_t);
  * back to the PMIx server. Thus, the trackers should be "indexed"
  * by the socket, not the process nspace/rank */
 typedef struct pmix_peer_t {
-    pmix_list_item_t super;
-    pmix_nspace_t *nptr;
-    int rank;
-    uid_t uid;
-    gid_t gid;
+    pmix_object_t super;
+    pmix_rank_info_t info;
+    int localid;
     int sd;
     pmix_event_t send_event;    /**< registration with event thread for send events */
     bool send_ev_active;

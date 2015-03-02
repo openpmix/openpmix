@@ -266,12 +266,19 @@ static void ncon(pmix_nspace_t *p)
 {
     memset(p->nspace, 0, PMIX_MAX_NSLEN);
     PMIX_CONSTRUCT(&p->job_info, pmix_buffer_t);
-    PMIX_CONSTRUCT(&p->peers, pmix_list_t);
+    PMIX_CONSTRUCT(&p->ranks, pmix_list_t);
+    PMIX_CONSTRUCT(&p->peers_a, pmix_pointer_array_t);
 }
 static void ndes(pmix_nspace_t *p)
 {
+    int i;
     PMIX_DESTRUCT(&p->job_info);
-    PMIX_LIST_DESTRUCT(&p->peers);
+    for(i=0; i < pmix_pointer_array_get_size(&p->peers_a); i++){
+        pmix_peer_t *peer = pmix_pointer_array_get_item(&p->peers_a, i);
+        PMIX_RELEASE(peer);
+    }
+    PMIX_DESTRUCT(&p->peers_a);
+    PMIX_LIST_DESTRUCT(&p->ranks);
 }
 PMIX_CLASS_INSTANCE(pmix_nspace_t,
                     pmix_list_item_t,
@@ -279,10 +286,7 @@ PMIX_CLASS_INSTANCE(pmix_nspace_t,
 
 static void pcon(pmix_peer_t *p)
 {
-    p->nptr = NULL;
-    p->rank = -1;
-    p->uid = 0;
-    p->gid = 0;
+    PMIX_CONSTRUCT(&p->info, pmix_rank_info_t);
     p->sd = -1;
     p->send_ev_active = false;
     p->recv_ev_active = false;
@@ -310,8 +314,20 @@ static void pdes(pmix_peer_t *p)
     }
 }
 PMIX_CLASS_INSTANCE(pmix_peer_t,
-                   pmix_list_item_t,
+                   pmix_object_t,
                    pcon, pdes);
+
+static void info_con(pmix_rank_info_t *info)
+{
+    info->gid = info->uid = 0;
+    info->nptr = NULL;
+    info->rank = -1;
+    info->proc_cnt = 0;
+}
+PMIX_CLASS_INSTANCE(pmix_rank_info_t,
+                   pmix_list_item_t,
+                   info_con, NULL);
+
 
 PMIX_CLASS_INSTANCE(pmix_timer_t,
                    pmix_object_t,

@@ -92,14 +92,14 @@ static int validate_cred(pmix_peer_t *peer, char *cred)
 
     /* check uid */
     uid = strtoul(vals[0], NULL, 10);
-    if (uid != peer->uid) {
+    if (uid != peer->info.uid) {
         pmix_argv_free(vals);
         return PMIX_ERR_INVALID_CRED;
     }
 
     /* check guid */
     gid = strtoul(vals[1], NULL, 10);
-    if (gid != peer->gid) {
+    if (gid != peer->info.gid) {
         pmix_argv_free(vals);
         return PMIX_ERR_INVALID_CRED;
     }

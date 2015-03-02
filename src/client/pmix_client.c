@@ -94,7 +94,7 @@ static void setup_globals(void)
 {
     PMIX_CONSTRUCT(&pmix_client_globals.myserver_nspace, pmix_nspace_t);
     PMIX_CONSTRUCT(&pmix_client_globals.myserver, pmix_peer_t);
-    pmix_client_globals.myserver.nptr = &pmix_client_globals.myserver_nspace;
+    pmix_client_globals.myserver.info.nptr = &pmix_client_globals.myserver_nspace;
     /* setup our copy of the pmix globals object */
     memset(&pmix_globals.nspace, 0, PMIX_MAX_NSLEN);
 }
@@ -210,7 +210,7 @@ int PMIx_Init(char nspace[], int *rank)
         return PMIX_ERR_NOT_FOUND;
     }
     /* set the server rank */
-    pmix_client_globals.myserver.rank = strtoull(uri[0], NULL, 10);
+    pmix_client_globals.myserver.info.rank = strtoull(uri[0], NULL, 10);
     snprintf(address.sun_path, sizeof(address.sun_path)-1, "%s", uri[1]);
     pmix_argv_free(uri);
 
@@ -224,6 +224,7 @@ int PMIx_Init(char nspace[], int *rank)
     if (NULL != rank) {
         *rank = pmix_globals.rank;
     }
+    pmix_globals.localid = -1;
     
     /* create an event base and progress thread for us */
     if (NULL == (pmix_globals.evbase = pmix_start_progress_thread())) {
@@ -446,6 +447,7 @@ static int send_connect_ack(int sd)
     memset(&hdr, 0, sizeof(pmix_usock_hdr_t));
     (void)strncpy(hdr.nspace, pmix_globals.nspace, PMIX_MAX_NSLEN);
     hdr.rank = pmix_globals.rank;
+    hdr.localid = pmix_globals.localid;
     hdr.tag = UINT32_MAX;
     hdr.type = PMIX_USOCK_IDENT;
 
@@ -575,6 +577,19 @@ static int recv_connect_ack(int sd)
                         "pmix: RECV CONNECT CONFIRMATION AND INITIAL DATA FROM SERVER OF %d BYTES",
                         (int)hdr.nbytes);
     
+    /* unpack our localid */
+    cnt = 1;
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&buf, &pmix_globals.localid, &cnt, PMIX_INT))) {
+        if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
+            /* this isn't an error - the host must provide us
+             * the localid */
+            rc = PMIX_SUCCESS;
+            goto cleanup;
+        }
+        PMIX_ERROR_LOG(rc);
+        goto cleanup;
+    }
+
     cnt = 1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&buf, &ninfo, &cnt, PMIX_SIZE))) {
         if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {

@@ -89,6 +89,65 @@ int pmix_server_abort(const char nspace[], int rank, pmix_buffer_t *buf,
     return rc;
 }
 
+static int trk_update(pmix_server_trkr_t *trk)
+{
+    size_t i, j;
+    uint32_t local_cnt = 0;
+
+    for (i=0; i < trk->nranges; i++) {
+        pmix_nspace_t *nptr, *tmp;
+        nptr = NULL;
+        PMIX_LIST_FOREACH(tmp, &pmix_server_globals.nspaces, pmix_nspace_t) {
+            if (0 == strcmp(trk->ranges[i].nspace, tmp->nspace)) {
+                nptr = tmp;
+                break;
+            }
+        }
+        if (NULL == nptr) {
+            /* not allowed */
+            return -1;
+        }
+        if (NULL != trk->ranges[i].ranks) {
+            for (j=0; j < trk->ranges[i].nranks; j++) {
+                pmix_rank_info_t *info;
+                PMIX_LIST_FOREACH(info, &nptr->ranks, pmix_rank_info_t) {
+                    if ( trk->ranges[i].ranks[j] == info->rank ) {
+                        local_cnt += info->proc_cnt;
+                        break;
+                    }
+                }
+            }
+        } else {
+            pmix_rank_info_t *info;
+            PMIX_LIST_FOREACH(info, &nptr->ranks, pmix_rank_info_t) {
+                /* Even if nobody has connected yet we still need at least
+                 * one representative from this rank */
+                local_cnt += (0 < info->proc_cnt) ? info->proc_cnt : 1;
+            }
+        }
+    }
+    trk->local_cnt = local_cnt;
+    return 0;
+}
+
+static int trk_complete(pmix_server_trkr_t *trk)
+{
+    if( trk->local_cnt > pmix_list_get_size(&trk->locals) ){
+        // no need to update
+        return 0;
+    }
+
+    if( trk_update(trk) ){
+        return -1;
+    }
+
+    if( trk->local_cnt == pmix_list_get_size(&trk->locals) ){
+        return 1;
+    }
+    return 0;
+}
+
+
 static pmix_server_trkr_t* get_tracker(pmix_list_t *trks,
                                        pmix_range_t *ranges,
                                        size_t nranges)
@@ -96,9 +155,7 @@ static pmix_server_trkr_t* get_tracker(pmix_list_t *trks,
     pmix_server_trkr_t *trk;
     size_t i, j;
     bool match;
-    uint32_t local_cnt = 0;
     pmix_nspace_t *nptr, *tmp;
-    pmix_peer_t *pr;
 
     PMIX_LIST_FOREACH(trk, trks, pmix_server_trkr_t) {
         if (trk->nranges != nranges) {
@@ -159,19 +216,15 @@ static pmix_server_trkr_t* get_tracker(pmix_list_t *trks,
             trk->ranges[i].ranks = (int*)malloc(ranges[i].nranks * sizeof(int));
             for (j=0; j < ranges[i].nranks; j++) {
                 trk->ranges[i].ranks[j] = ranges[i].ranks[j];
-                // Note if this is local peer
-                PMIX_LIST_FOREACH(pr, &nptr->peers, pmix_peer_t) {
-                    if (ranges[i].ranks[j] == pr->rank) {
-                        local_cnt++;
-                        break;
-                    }
-                }
             }
-        } else {
-            local_cnt += pmix_list_get_size(&nptr->peers);
         }
     }
-    trk->local_cnt = local_cnt;
+    /* update count of local processes */
+    if( trk_update(trk) ){
+        PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+        PMIX_RELEASE(trk);
+        return NULL;
+    }
     trk->trklist = trks;
     pmix_list_append(trks, &trk->super);
     return trk;
@@ -260,7 +313,7 @@ int pmix_server_fence(pmix_server_caddy_t *cd,
          * let the local host's server know that we are at the
          * "fence" point - they will callback once the barrier
          * across all participants has been completed */
-        if( pmix_list_get_size(&trk->locals) == trk->local_cnt ){
+        if( 0 < (rc = trk_complete(trk)) ){
             rc = pmix_host_server.fence_nb(ranges, nranges, barrier,
                                            collect_data, modexcbfunc, trk);
         }
