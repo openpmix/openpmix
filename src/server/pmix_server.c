@@ -347,24 +347,32 @@ pmix_status_t PMIx_server_setup_job(const char nspace[],
     return PMIX_SUCCESS;
 }
 
-/* setup the envars for a child process */
-int PMIx_server_setup_fork(const char nspace[], int rank,
-                           uid_t uid, gid_t gid, char ***env)
+
+static int _setenv_cb(char ***array_ptr, const char *name,
+                      const char *value)
+{
+    return pmix_setenv(name, value, true, array_ptr);
+}
+
+ /* setup the envars for a child process */
+int PMIx_server_setup_fork_fn(const char nspace[], int rank,
+                              uid_t uid, gid_t gid, char ***env,
+                              pmix_setenv_cb_t setenv_cb)
 {
     char rankstr[PMIX_MAX_VALLEN];
-    pmix_peer_t *peer;
     pmix_nspace_t *nptr, *tmp;
-
+    pmix_peer_t *peer;
+ 
     /* pass the nspace */
-    pmix_setenv("PMIX_NAMESPACE", nspace, true, env);
+    setenv_cb(env, "PMIX_NAMESPACE", nspace);
     /* pass the rank */
     (void)snprintf(rankstr, PMIX_MAX_VALLEN, "%d", rank);
-    pmix_setenv("PMIX_RANK", rankstr, true, env);
-    /* pass our rendezvous info */
-    pmix_setenv("PMIX_SERVER_URI", myuri, true, env);
-    /* pass our active security mode */
-    pmix_setenv("PMIX_SECURITY_MODE", security_mode, true, env);
-
+    setenv_cb(env, "PMIX_RANK", rankstr);
+     /* pass our rendezvous info */
+    setenv_cb(env, "PMIX_SERVER_URI", myuri);
+     /* pass our active security mode */
+    setenv_cb(env, "PMIX_SECURITY_MODE", security_mode);
+ 
     /* see if we already have this nspace */
     nptr = NULL;
     PMIX_LIST_FOREACH(tmp, &pmix_server_globals.nspaces, pmix_nspace_t) {
@@ -388,6 +396,14 @@ int PMIx_server_setup_fork(const char nspace[], int rank,
 
     return 0;
 }
+
+/* setup the envars for a child process */
+int PMIx_server_setup_fork(const char nspace[], int rank,
+                           uid_t uid, gid_t gid, char ***env)
+{
+    return PMIx_server_setup_fork_fn(nspace, rank, uid, gid, env, _setenv_cb);
+}
+
 
 void PMIx_Register_errhandler(pmix_notification_fn_t err)
 {

@@ -273,6 +273,14 @@ pmix_status_t PMIx_server_setup_job(const char nspace[],
 pmix_status_t PMIx_server_setup_fork(const char nspace[], int rank,
                                      uid_t uid, gid_t gid, char ***env);
 
+typedef int (*pmix_setenv_cb_t)(char ***array_ptr, const char *name,
+                                const char *value);
+/* Same as PMIx_server_setup_fork but uses provided function
+ * to set the environment instead of pmix_setenv. */
+pmix_status_t PMIx_server_setup_fork_fn(const char nspace[], int rank,
+                                        uid_t uid, gid_t gid, char ***env,
+                                        pmix_setenv_cb_t setenv_cb);
+
 
 /****    Message processing for the "lite" version of the  ****
  ****    server convenience library. Note that we must     ****
