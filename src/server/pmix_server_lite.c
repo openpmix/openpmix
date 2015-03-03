@@ -43,7 +43,10 @@ int PMIx_server_authenticate_client(int sd, int *rank, pmix_send_message_cbfunc_
     pmix_usock_hdr_t hdr;
     
     /* perform the authentication */
-    rc = pmix_server_authenticate(sd, &peer, &info);
+    if( PMIX_SUCCESS != (rc = pmix_server_authenticate(sd, &peer, &info) ) ){
+        return rc;
+    }
+
     *rank = peer->rank;
 
     if (NULL != snd_msg) {
