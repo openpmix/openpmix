@@ -51,7 +51,6 @@
 #ifdef HAVE_SYS_TIME_H
 #include <sys/time.h> /* for struct timeval */
 #endif
-#include <event.h>
 
 #include "pmix_common.h"
 
