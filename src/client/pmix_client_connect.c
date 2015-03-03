@@ -53,7 +53,7 @@
 #include "pmix_client_ops.h"
 
 /* callback for wait completion */
-static void wait_cbfunc(int sd, pmix_usock_hdr_t *hdr,
+static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                         pmix_buffer_t *buf, void *cbdata);
 static void op_cbfunc(int status, void *cbdata);
 
@@ -219,7 +219,7 @@ int PMIx_Disconnect_nb(const pmix_range_t ranges[], size_t nranges,
     return PMIX_SUCCESS;
 }
 
-static void wait_cbfunc(int sd, pmix_usock_hdr_t *hdr,
+static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                         pmix_buffer_t *buf, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;

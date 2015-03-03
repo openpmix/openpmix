@@ -52,7 +52,7 @@
 #include "pmix_client_hash.h"
 #include "pmix_client_ops.h"
 
-static void wait_cbfunc(int sd, pmix_usock_hdr_t *hdr,
+static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                         pmix_buffer_t *buf, void *cbdata);
 static void spawn_cbfunc(int status, char nspace[], void *cbdata);
 
@@ -133,7 +133,7 @@ int PMIx_Spawn_nb(const pmix_app_t apps[], size_t napps,
 }
 
 /* callback for wait completion */
-static void wait_cbfunc(int sd, pmix_usock_hdr_t *hdr,
+static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                         pmix_buffer_t *buf, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
