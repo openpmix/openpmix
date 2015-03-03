@@ -208,7 +208,7 @@ int main(int argc, char **argv)
     (void)strncpy(info[1].key, PMIX_SPAWNED, PMIX_MAX_KEYLEN);
     info[1].value.type = PMIX_UINT32;
     info[1].value.data.uint32 = 0;
-    PMIx_server_setup_job(TEST_NAMESPACE, info, 2);
+    PMIx_server_register_nspace(TEST_NAMESPACE, nprocs, info, 2);
     PMIX_INFO_DESTRUCT(&info[0]);
     PMIX_INFO_DESTRUCT(&info[1]);
     

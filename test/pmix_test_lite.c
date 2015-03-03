@@ -365,7 +365,7 @@ static void set_job_info(int nprocs)
     (void)strncpy(info[0].key, PMIX_UNIV_SIZE, PMIX_MAX_KEYLEN);
     info[0].value.type = PMIX_UINT32;
     info[0].value.data.uint32 = nprocs;
-    PMIx_server_setup_job(TEST_NAMESPACE,info,1);
+    PMIx_server_register_nspace(TEST_NAMESPACE,nprocs,info,1);
     free(info);
 }
 
