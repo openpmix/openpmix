@@ -59,7 +59,8 @@ static int pack_fence(pmix_buffer_t *msg,
                       size_t nranges,
                       int collect_data,
                       int barrier);
-static void wait_cbfunc(int sd, pmix_usock_hdr_t *hdr,
+static void wait_cbfunc(struct pmix_peer_t *pr,
+                        pmix_usock_hdr_t *hdr,
                         pmix_buffer_t *buf, void *cbdata);
 static void op_cbfunc(int status, void *cbdata);
 
@@ -298,7 +299,7 @@ static int pack_fence(pmix_buffer_t *msg,
     return PMIX_SUCCESS;
 }
 
-static void wait_cbfunc(int sd, pmix_usock_hdr_t *hdr,
+static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                         pmix_buffer_t *buf, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;

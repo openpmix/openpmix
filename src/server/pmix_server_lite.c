@@ -43,7 +43,7 @@ int PMIx_server_authenticate_client(int sd, pmix_send_message_cbfunc_t snd_msg)
     pmix_usock_hdr_t hdr;
     
     /* perform the authentication */
-    if( PMIX_SUCCESS != (rc = pmix_server_authenticate(sd, &peer, &info) ) ){
+    if (PMIX_SUCCESS != (rc = pmix_server_authenticate(sd, &peer, &info))) {
         return rc;
     }
 
@@ -57,10 +57,8 @@ int PMIx_server_authenticate_client(int sd, pmix_send_message_cbfunc_t snd_msg)
             PMIX_RELEASE(info);
         }
         /* create the header */
-        (void)strncpy(hdr.nspace, pmix_globals.nspace, PMIX_MAX_NSLEN);
-        hdr.rank = pmix_globals.rank;
+        hdr.pindex = peer->index;  // pass back the index so the client can include it in future msgs
         hdr.nbytes = reply.bytes_used;
-        hdr.type = PMIX_USOCK_IDENT;
         hdr.tag = 0; // tag doesn't matter as we aren't matching to a recv
 
         /* send the response */
@@ -80,10 +78,17 @@ int PMIx_server_process_msg(int sd, char *hdrptr, char *msgptr,
     pmix_buffer_t buf;
     pmix_server_caddy_t *cd;
     int rc;
+    pmix_peer_t *peer;
+    
+    /* get the peer object for this client - the header
+     * contains the index to it */
+    if (NULL == (peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, hdr->pindex))) {
+        return PMIX_ERR_NOT_FOUND;
+    }
     
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "PMIx_server_process_msg for %s:%d:%d",
-                        hdr->nspace, hdr->rank, sd);
+                        peer->info->nptr->nspace, peer->info->rank, sd);
 
     /* Load payload into the buffer */
     PMIX_CONSTRUCT(&buf, pmix_buffer_t);
@@ -91,6 +96,8 @@ int PMIx_server_process_msg(int sd, char *hdrptr, char *msgptr,
 
     /* setup the caddy */
     cd = PMIX_NEW(pmix_server_caddy_t);
+    PMIX_RETAIN(peer);
+    cd->peer = peer;
     cd->snd.sd = sd;
     (void)memcpy(&cd->hdr, hdr, sizeof(pmix_usock_hdr_t));
     cd->snd.cbfunc = snd_msg;
@@ -260,7 +267,7 @@ static void modex_cbfunc(int status, pmix_modex_data_t data[],
         pmix_bfrop.copy_payload(&rmsg, &reply);
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "serverlite:modex_cbfunc reply being sent to %s:%d",
-                            cd->hdr.nspace, cd->hdr.rank);
+                            cd->peer->info->nptr->nspace, cd->peer->info->rank);
         /* send the message */
         snd_message(cd->snd.sd, &cd->hdr, &rmsg, cd->snd.cbfunc);
         /* protect the data */
@@ -321,7 +328,7 @@ static void cnct_cbfunc(int status, void *cbdata)
         pmix_bfrop.copy_payload(&rmsg, &reply);
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "serverlite:cnct_cbfunc reply being sent to %s:%d",
-                            cd->hdr.nspace, cd->hdr.rank);
+                            cd->peer->info->nptr->nspace, cd->peer->info->rank);
         /* send the message */
         snd_message(cd->snd.sd, &cd->hdr, &rmsg, cd->snd.cbfunc);
         /* protect the data */
@@ -350,11 +357,12 @@ static int server_switchyard(pmix_server_caddy_t *cd,
     }
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "recvd pmix cmd %d from %s:%d",
-                        cmd, cd->hdr.nspace, cd->hdr.rank);
+                        cmd, cd->peer->info->nptr->nspace, cd->peer->info->rank);
+
 
     if (PMIX_ABORT_CMD == cmd) {
         PMIX_RETAIN(cd);
-        if (PMIX_SUCCESS != (rc = pmix_server_abort(cd->hdr.nspace, cd->hdr.rank, buf, op_cbfunc, cd))) {
+        if (PMIX_SUCCESS != (rc = pmix_server_abort(cd->peer, buf, op_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
             PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
@@ -385,9 +393,15 @@ static int server_switchyard(pmix_server_caddy_t *cd,
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "recvd FINALIZE");
         /* call the local server, if supported */
-        rc = PMIX_ERR_NOT_SUPPORTED;
-        if (NULL != pmix_host_server.terminated) {
-            rc = pmix_host_server.terminated(cd->hdr.nspace, cd->hdr.rank);
+        if (NULL != pmix_host_server.finalized) {
+            PMIX_RETAIN(cd);
+            if (PMIX_SUCCESS != (rc = pmix_host_server.finalized(cd->peer->info->nptr->nspace,
+                                                                 cd->peer->info->rank,
+                                                                 cd->peer->info->server_object,
+                                                                 op_cbfunc, cd))) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(cd);
+            }
         }
         PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
         op_cbfunc(rc, cd);

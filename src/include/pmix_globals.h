@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2014      Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -35,7 +35,7 @@ BEGIN_C_DECLS
  * and server libraries must instance this structure */
 typedef struct {
     char nspace[PMIX_MAX_NSLEN];
-    int rank, localid;
+    int rank, pindex;
     pmix_event_base_t *evbase;
     int debug_output;
     pmix_notification_fn_t errhandler;

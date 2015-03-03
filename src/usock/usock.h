@@ -14,7 +14,7 @@
  * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2015 Intel, Inc.  All rights reserved.
- * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
+ * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * $COPYRIGHT$
  *
@@ -72,22 +72,18 @@ typedef enum {
     PMIX_DISCONNECTNB_CMD
 } pmix_cmd_t;
 
-/* define some message types */
-#define PMIX_USOCK_USER   1
-#define PMIX_USOCK_IDENT  2
-
 /* header for messages */
 typedef struct {
-    char nspace[PMIX_MAX_NSLEN];
-    int rank;
-    int localid;
-    uint8_t type;
+    int pindex;
     uint32_t tag;
     size_t nbytes;
 } pmix_usock_hdr_t;
 
+// forward declaration
+struct pmix_peer_t;
+
 /* internally used cbfunc */
-typedef void (*pmix_usock_cbfunc_t)(int sd, pmix_usock_hdr_t *hdr,
+typedef void (*pmix_usock_cbfunc_t)(struct pmix_peer_t *peer, pmix_usock_hdr_t *hdr,
                                     pmix_buffer_t *buf, void *cbdata);
 
 /* usock structure for sending a message */
@@ -106,6 +102,7 @@ PMIX_CLASS_DECLARATION(pmix_usock_send_t);
 typedef struct {
     pmix_list_item_t super;
     pmix_event_t ev;
+    struct pmix_peer_t *peer;
     int sd;
     pmix_usock_hdr_t hdr;
     char *data;
@@ -129,9 +126,10 @@ PMIX_CLASS_DECLARATION(pmix_usock_posted_recv_t);
 typedef struct {
     pmix_list_item_t super;
     char nspace[PMIX_MAX_NSLEN];
+    size_t nlocalprocs;
+    bool all_registered;
     pmix_buffer_t job_info;
-    pmix_list_t ranks;
-    pmix_pointer_array_t peers_a;
+    pmix_list_t ranks;  // list of pmix_rank_info_t
 } pmix_nspace_t;
 PMIX_CLASS_DECLARATION(pmix_nspace_t);
 
@@ -142,6 +140,7 @@ typedef struct pmix_rank_info_t {
     uid_t uid;
     gid_t gid;
     int proc_cnt;
+    void *server_object;
 } pmix_rank_info_t;
 PMIX_CLASS_DECLARATION(pmix_rank_info_t);
 
@@ -152,8 +151,8 @@ PMIX_CLASS_DECLARATION(pmix_rank_info_t);
  * by the socket, not the process nspace/rank */
 typedef struct pmix_peer_t {
     pmix_object_t super;
-    pmix_rank_info_t info;
-    int localid;
+    pmix_rank_info_t *info;
+    int index;
     int sd;
     pmix_event_t send_event;    /**< registration with event thread for send events */
     bool send_ev_active;

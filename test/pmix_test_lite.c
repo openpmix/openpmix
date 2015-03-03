@@ -50,14 +50,15 @@ extern int errno;
 #include "test_common.h"
 
 /* setup the PMIx server module */
-static int terminated(const char nspace[], int rank);
-static int abort_fn(const char nspace[], int rank,
+static int finalized(const char nspace[], int rank, void *server_object,
+                     pmix_op_cbfunc_t cbfunc, void *cbdata);
+static int abort_fn(const char nspace[], int rank, void *server_object,
                     int status, const char msg[],
                     pmix_op_cbfunc_t cbfunc, void *cbdata);
 static int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
                       int barrier, int collect_data,
                       pmix_modex_cbfunc_t cbfunc, void *cbdata);
-static int store_modex_fn(const char nspace[], int rank,
+static int store_modex_fn(const char nspace[], int rank, void *server_object,
                           pmix_scope_t scope, pmix_modex_data_t *data);
 static int get_modexnb_fn(const char nspace[], int rank,
                           pmix_modex_cbfunc_t cbfunc, void *cbdata);
@@ -76,7 +77,7 @@ static int disconnect_fn(const pmix_range_t ranges[], size_t nranges,
                          pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 static pmix_server_module_t mymodule = {
-    terminated,
+    finalized,
     abort_fn,
     fencenb_fn,
     store_modex_fn,
@@ -356,7 +357,7 @@ static void cli_kill_all(void)
     }
 }
 
-void set_job_info(int nprocs)
+static void set_job_info(int nprocs)
 {
     pmix_info_t *info;
 
@@ -366,7 +367,6 @@ void set_job_info(int nprocs)
     info[0].value.data.uint32 = nprocs;
     PMIx_server_setup_job(TEST_NAMESPACE,info,1);
     free(info);
-    return PMIX_SUCCESS;
 }
 
 int main(int argc, char **argv)
@@ -518,7 +518,13 @@ int main(int argc, char **argv)
     cli_init(nprocs);
 
     for (n=0; n < nprocs; n++) {
-        if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(TEST_NAMESPACE, n, myuid, mygid, &client_env))) {
+        if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(TEST_NAMESPACE, n, &client_env))) {
+            TEST_ERROR(("Server fork setup failed with error %d", rc));
+            PMIx_server_finalize();
+            cli_kill_all();
+            return rc;
+        }
+        if (PMIX_SUCCESS != (rc = PMIx_server_register_client(TEST_NAMESPACE, n, myuid, mygid, NULL))) {
             TEST_ERROR(("Server fork setup failed with error %d", rc));
             PMIx_server_finalize();
             cli_kill_all();
@@ -609,7 +615,8 @@ int main(int argc, char **argv)
     return rc;
 }
 
-static int terminated(const char nspace[], int rank)
+static int finalized(const char nspace[], int rank, void *server_object,
+                     pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     if( CLI_TERM <= cli_info[rank].state ){
         TEST_ERROR(("double termination of rank %d", rank));
@@ -617,10 +624,13 @@ static int terminated(const char nspace[], int rank)
     }
     TEST_VERBOSE(("Rank %d terminated", rank));
     cli_finalize(&cli_info[rank]);
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, cbdata);
+    }
     return PMIX_SUCCESS;
 }
 
-static int abort_fn(const char nspace[], int rank,
+static int abort_fn(const char nspace[], int rank, void *server_object,
                     int status, const char msg[],
                     pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
@@ -752,7 +762,7 @@ static int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
     return PMIX_SUCCESS;
 }
 
-static int store_modex_fn(const char nspace[], int rank,
+static int store_modex_fn(const char nspace[], int rank, void *server_object,
                           pmix_scope_t scope, pmix_modex_data_t *data)
 {
     pmix_test_data_t *mdx;
@@ -932,13 +942,13 @@ static void connection_handler(int incomind_sd, short flags, void* cbdata)
     }
 
     /* authenticate the connection */
-    if (PMIX_SUCCESS != (rc = PMIx_server_authenticate_client(sd, &rank, snd_ack))) {
+    if (PMIX_SUCCESS != (rc = PMIx_server_authenticate_client(sd, snd_ack))) {
         TEST_ERROR(("PMIx srv: Bad authentification!"));
         test_abort = true;
         return;
     }
 
-    cli_connect(&cli_info[rank], sd);
+    // cli_connect(&cli_info[rank], sd);
 }
 
 

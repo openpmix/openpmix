@@ -128,12 +128,12 @@ static int validate_cred(pmix_peer_t *peer, char *cred)
     }
 
     /* check uid */
-    if (uid != peer->uid) {
+    if (uid != peer->info->uid) {
         return PMIX_ERR_INVALID_CRED;
     }
 
     /* check guid */
-    if (gid != peer->gid) {
+    if (gid != peer->info->gid) {
         return PMIX_ERR_INVALID_CRED;
     }
 

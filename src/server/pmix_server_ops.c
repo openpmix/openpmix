@@ -54,7 +54,7 @@
 
 pmix_server_module_t pmix_host_server;
 
-int pmix_server_abort(const char nspace[], int rank, pmix_buffer_t *buf,
+int pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
                       pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     int32_t cnt;
@@ -75,7 +75,8 @@ int pmix_server_abort(const char nspace[], int rank, pmix_buffer_t *buf,
     }
     /* let the local host's server execute it */
     if (NULL != pmix_host_server.abort) {
-        rc = pmix_host_server.abort(nspace, rank, status, msg, cbfunc, cbdata);
+        rc = pmix_host_server.abort(peer->info->nptr->nspace, peer->info->rank,
+                                    peer->info->server_object, status, msg, cbfunc, cbdata);
     } else {
         rc = PMIX_ERR_NOT_SUPPORTED;
     }
@@ -89,11 +90,30 @@ int pmix_server_abort(const char nspace[], int rank, pmix_buffer_t *buf,
     return rc;
 }
 
-static int trk_update(pmix_server_trkr_t *trk)
+static bool trk_update(pmix_server_trkr_t *trk)
 {
     size_t i, j;
     uint32_t local_cnt = 0;
-
+    pmix_range_trkr_t *rtrk;
+    
+    /* no simple way to do this - just have to perform an
+     * exhaustive search across the ranges in this tracker */
+    PMIX_LIST_FOREACH(rtrk, &trk->ranges, pmix_range_trkr_t) {
+        /* see if this trkr is complete */
+        if (NULL != rtrk->nptr) {
+            continue;
+        }
+        /* okay, see if we can complete it - the nspace may have
+         * been defined since the last time we looked */
+        
+    }
+    
+#if 0
+    /* if the ranks for this range is NULL, then all procs participate */
+    if (NULL == rtrk->ranks) {
+        trk->local_cnt += nptr->nlocalprocs;
+        trk->def_complete = true;
+    }
     for (i=0; i < trk->nranges; i++) {
         pmix_nspace_t *nptr, *tmp;
         nptr = NULL;
@@ -127,11 +147,23 @@ static int trk_update(pmix_server_trkr_t *trk)
         }
     }
     trk->local_cnt = local_cnt;
+#endif
     return 0;
 }
 
-static int trk_complete(pmix_server_trkr_t *trk)
+static bool trk_complete(pmix_server_trkr_t *trk)
 {
+    /* see if all the local procs in the participating ranges
+     * have reported in */
+    if (!trk->def_complete) {
+        /* see if we can update - if we now have all the reqd
+         * info, then we will be marked as complete */
+        if (!trk_update(trk)) {
+            /* still missing some info */
+            return false;
+        }
+    }
+    
     if( trk->local_cnt > pmix_list_get_size(&trk->locals) ){
         // no need to update
         return 0;
@@ -147,84 +179,84 @@ static int trk_complete(pmix_server_trkr_t *trk)
     return 0;
 }
 
-
+/* get an object for tracking LOCAL participation in a collective
+ * operation such as "fence". The only way this function can be
+ * called is if at least one local client process is participating
+ * in the operation. Thus, we know that at least one process is
+ * involved AND has called the collective operation. */
 static pmix_server_trkr_t* get_tracker(pmix_list_t *trks,
                                        pmix_range_t *ranges,
                                        size_t nranges)
 {
     pmix_server_trkr_t *trk;
-    size_t i, j;
-    bool match;
-    pmix_nspace_t *nptr, *tmp;
+    pmix_range_trkr_t *rtrk;
+    size_t i;
+    size_t match;
+    pmix_nspace_t *nptr;
 
     PMIX_LIST_FOREACH(trk, trks, pmix_server_trkr_t) {
-        if (trk->nranges != nranges) {
+        if (nranges != pmix_list_get_size(&trk->ranges)) {
             continue;
         }
-        match = true;
-        for (i=0; match && i < nranges; i++) {
-            if (0 != strcmp(ranges[i].nspace, trk->ranges[i].nspace)) {
-                match = false;
-                break;
-            }
-            if (ranges[i].nranks != trk->ranges[i].nranks) {
-                match = false;
-                break;
-            }
-            if (NULL == ranges[i].ranks && NULL == trk->ranges[i].ranks) {
-                /* this range matches */
-                break;
-            }
-            for (j=0; j < ranges[i].nranks; j++) {
-                if (ranges[i].ranks[j] != trk->ranges[i].ranks[j]) {
-                    match = false;
+        match = 0;
+        for (i=0; i < nranges; i++) {
+            PMIX_LIST_FOREACH(rtrk, &trk->ranges, pmix_range_trkr_t) {            
+                if (0 != strcmp(ranges[i].nspace, rtrk->nspace)) {
+                    continue;
+                }
+                /* if we haven't yet connected the nspace to its
+                 * definition, then try to do so now */
+                if (NULL == rtrk->nptr) {
+                    PMIX_LIST_FOREACH(nptr, &pmix_server_globals.nspaces, pmix_nspace_t) {
+                        if (0 == strcmp(rtrk->nspace, nptr->nspace)) {
+                            rtrk->nptr = nptr;
+                            break;
+                        }
+                    }
+                }
+                if (ranges[i].nranks != rtrk->nranks) {
+                    continue;
+                }
+                if (NULL == ranges[i].ranks && NULL == rtrk->ranks) {
+                    /* this range matches */
+                    match++;
                     break;
                 }
+                if (0 == memcmp(ranges[i].ranks, rtrk->ranks, rtrk->nranks*sizeof(int))) {
+                    match++;
+                }
+            }
+            if (match != (i+1)) {
+                /* we didn't find a match for this range */
+                break;
             }
         }
-        if (match) {
+        if (match == nranges) {
             return trk;
         }
     }
     /* get here if this tracker is new - create it */
     trk = PMIX_NEW(pmix_server_trkr_t);
-    trk->active = true;
+    
     /* copy the ranges */
-    trk->nranges = nranges;
-    trk->ranges = (pmix_range_t*)malloc(nranges * sizeof(pmix_range_t));
-
     for (i=0; i < nranges; i++) {
-        memset(&trk->ranges[i], 0, sizeof(pmix_range_t));
-        (void)strncpy(trk->ranges[i].nspace, ranges[i].nspace, PMIX_MAX_NSLEN);
-        trk->ranges[i].nranks = ranges[i].nranks;
-        trk->ranges[i].ranks = NULL;
-        /* find the namespace */
-        nptr = NULL;
-        PMIX_LIST_FOREACH(tmp, &pmix_server_globals.nspaces, pmix_nspace_t) {
-            if (0 == strcmp(ranges[i].nspace, tmp->nspace)) {
-                nptr = tmp;
+        rtrk = PMIX_NEW(pmix_range_trkr_t);
+        (void)strncpy(rtrk->nspace, ranges[i].nspace, PMIX_MAX_NSLEN);
+        rtrk->nranks = ranges[i].nranks;
+        if (0 < ranges[i].nranks) {
+            rtrk->ranks = (int*)malloc(ranges[i].nranks * sizeof(int));
+            memcpy(rtrk->ranks, ranges[i].ranks, ranges[i].nranks * sizeof(int));
+        }
+        /* find the nspace - it is okay if we don't have it. It just
+         * means that we don't know about it yet */
+        PMIX_LIST_FOREACH(nptr, &pmix_server_globals.nspaces, pmix_nspace_t) {
+            if (0 == strcmp(rtrk->nspace, nptr->nspace)) {
+                rtrk->nptr = nptr;
                 break;
             }
         }
-        if (NULL == nptr) {
-            /* not allowed */
-            PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
-            PMIX_RELEASE(trk);
-            return NULL;
-        }
-        if (NULL != ranges[i].ranks) {
-            trk->ranges[i].ranks = (int*)malloc(ranges[i].nranks * sizeof(int));
-            for (j=0; j < ranges[i].nranks; j++) {
-                trk->ranges[i].ranks[j] = ranges[i].ranks[j];
-            }
-        }
     }
-    /* update count of local processes */
-    if( trk_update(trk) ){
-        PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
-        PMIX_RELEASE(trk);
-        return NULL;
-    }
+    /* track what list we are being put on */
     trk->trklist = trks;
     pmix_list_append(trks, &trk->super);
     return trk;
@@ -286,8 +318,8 @@ int pmix_server_fence(pmix_server_caddy_t *cd,
     }
     /* unpack any provided data blobs */
     cnt = 1;
-    (void)strncpy(mdx.nspace, cd->hdr.nspace, PMIX_MAX_NSLEN);
-    mdx.rank = cd->hdr.rank;
+    (void)strncpy(mdx.nspace, cd->peer->info->nptr->nspace, PMIX_MAX_NSLEN);
+    mdx.rank = cd->peer->info->rank;
     while (PMIX_SUCCESS == pmix_bfrop.unpack(buf, &scope, &cnt, PMIX_SCOPE)) {
         cnt = 1;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &bptr, &cnt, PMIX_BUFFER))) {
@@ -297,7 +329,10 @@ int pmix_server_fence(pmix_server_caddy_t *cd,
         mdx.blob = (uint8_t*)bptr->base_ptr;
         mdx.size = bptr->bytes_used;
         if (NULL != pmix_host_server.store_modex) {
-            pmix_host_server.store_modex(cd->hdr.nspace, cd->hdr.rank, scope, &mdx);
+            pmix_host_server.store_modex(cd->peer->info->nptr->nspace,
+                                         cd->peer->info->rank,
+                                         cd->peer->info->server_object,
+                                         scope, &mdx);
         }
         PMIX_RELEASE(bptr);
         cnt = 1;
@@ -624,25 +659,38 @@ int pmix_server_connect(pmix_server_caddy_t *cd,
 }
 
 // instance server library classes
+static void rtcon(pmix_range_trkr_t *t)
+{
+    t->nptr = NULL;
+    memset(t->nspace, 0, PMIX_MAX_NSLEN);
+    t->ranks = NULL;
+    t->nranks = 0;
+}
+static void rtdes(pmix_range_trkr_t *t)
+{
+    if (NULL != t->nptr) {
+        PMIX_RELEASE(t->nptr);
+    }
+    if (NULL != t->ranks) {
+        free(t->ranks);
+    }
+}
+PMIX_CLASS_INSTANCE(pmix_range_trkr_t,
+                    pmix_list_item_t,
+                    rtcon, rtdes);
+
 static void tcon(pmix_server_trkr_t *t)
 {
-    t->ranges = NULL;
-    t->nranges = 0;
+    t->active = true;
+    t->def_complete = false;
+    PMIX_CONSTRUCT(&t->ranges, pmix_list_t);
     PMIX_CONSTRUCT(&t->locals, pmix_list_t);
+    t->local_cnt = 0;
     t->trklist = NULL;
 }
 static void tdes(pmix_server_trkr_t *t)
 {
-    size_t i;
-    
-    if (NULL != t->ranges) {
-        for (i=0; i < t->nranges; i++) {
-            if (NULL != t->ranges[i].ranks) {
-                free(t->ranges[i].ranks);
-            }
-        }
-        free(t->ranges);
-    }
+    PMIX_LIST_DESTRUCT(&t->ranges);
     PMIX_LIST_DESTRUCT(&t->locals);
 }
 PMIX_CLASS_INSTANCE(pmix_server_trkr_t,
@@ -673,3 +721,13 @@ static void pscon(pmix_snd_caddy_t *p)
 PMIX_CLASS_INSTANCE(pmix_snd_caddy_t,
                    pmix_object_t,
                    pscon, NULL);
+
+static void scadcon(pmix_setup_caddy_t *p)
+{
+    memset(p->nspace, 0, PMIX_MAX_NSLEN);
+    p->active = true;
+    p->server_object = NULL;
+}
+PMIX_CLASS_INSTANCE(pmix_setup_caddy_t,
+                    pmix_object_t,
+                    scadcon, NULL);

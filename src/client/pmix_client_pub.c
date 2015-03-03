@@ -52,10 +52,10 @@
 #include "pmix_client_hash.h"
 #include "pmix_client_ops.h"
 
-static void wait_cbfunc(int sd, pmix_usock_hdr_t *hdr,
+static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                         pmix_buffer_t *buf, void *cbdata);
 static void op_cbfunc(int status, void *cbdata);
-static void wait_lookup_cbfunc(int sd, pmix_usock_hdr_t *hdr,
+static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                                pmix_buffer_t *buf, void *cbdata);
 static void lookup_cbfunc(int status, pmix_info_t info[], size_t ninfo,
                           char nspace[], void *cbdata);
@@ -362,7 +362,7 @@ int PMIx_Unpublish_nb(pmix_scope_t scope, char **keys,
     return PMIX_SUCCESS;
 }
 
-static void wait_cbfunc(int sd, pmix_usock_hdr_t *hdr,
+static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                         pmix_buffer_t *buf, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
@@ -393,7 +393,7 @@ static void op_cbfunc(int status, void *cbdata)
     cb->active = false;
 }
 
-static void wait_lookup_cbfunc(int sd, pmix_usock_hdr_t *hdr,
+static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                                pmix_buffer_t *buf, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;

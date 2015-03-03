@@ -56,7 +56,7 @@ static pmix_buffer_t* pack_get(const char nspace[], int rank,
                                const char key[], pmix_cmd_t cmd);
 static int unpack_get_return(pmix_buffer_t *data, const char *key,
                              pmix_value_t **val);
-static void getnb_cbfunc(int sd, pmix_usock_hdr_t *hdr,
+static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                          pmix_buffer_t *buf, void *cbdata);
 static void getnb_shortcut(int fd, short flags, void *cbdata);
 static void value_cbfunc(int status, pmix_value_t *kv, void *cbdata);
@@ -302,7 +302,7 @@ static int unpack_get_return(pmix_buffer_t *data, const char *key,
     return rc;
 }
 
-static void getnb_cbfunc(int sd, pmix_usock_hdr_t *hdr,
+static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                          pmix_buffer_t *buf, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;

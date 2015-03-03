@@ -178,7 +178,6 @@ int pmix_usock_recv_blocking(int sd, char *data, size_t size)
 static void scon(pmix_usock_send_t *p)
 {
     memset(&p->hdr, 0, sizeof(pmix_usock_hdr_t));
-    p->hdr.type = 0;
     p->hdr.tag = UINT32_MAX;
     p->hdr.nbytes = 0;
     p->data = NULL;
@@ -199,7 +198,6 @@ PMIX_CLASS_INSTANCE(pmix_usock_send_t,
 static void rcon(pmix_usock_recv_t *p)
 {
     memset(&p->hdr, 0, sizeof(pmix_usock_hdr_t));
-    p->hdr.type = 0;
     p->hdr.tag = UINT32_MAX;
     p->hdr.nbytes = 0;
     p->data = NULL;
@@ -265,19 +263,14 @@ PMIX_CLASS_INSTANCE(pmix_usock_sr_t,
 static void ncon(pmix_nspace_t *p)
 {
     memset(p->nspace, 0, PMIX_MAX_NSLEN);
+    p->nlocalprocs = 0;
+    p->all_registered = false;
     PMIX_CONSTRUCT(&p->job_info, pmix_buffer_t);
     PMIX_CONSTRUCT(&p->ranks, pmix_list_t);
-    PMIX_CONSTRUCT(&p->peers_a, pmix_pointer_array_t);
 }
 static void ndes(pmix_nspace_t *p)
 {
-    int i;
     PMIX_DESTRUCT(&p->job_info);
-    for(i=0; i < pmix_pointer_array_get_size(&p->peers_a); i++){
-        pmix_peer_t *peer = pmix_pointer_array_get_item(&p->peers_a, i);
-        PMIX_RELEASE(peer);
-    }
-    PMIX_DESTRUCT(&p->peers_a);
     PMIX_LIST_DESTRUCT(&p->ranks);
 }
 PMIX_CLASS_INSTANCE(pmix_nspace_t,
@@ -286,7 +279,7 @@ PMIX_CLASS_INSTANCE(pmix_nspace_t,
 
 static void pcon(pmix_peer_t *p)
 {
-    PMIX_CONSTRUCT(&p->info, pmix_rank_info_t);
+    p->info = NULL;
     p->sd = -1;
     p->send_ev_active = false;
     p->recv_ev_active = false;
@@ -296,6 +289,9 @@ static void pcon(pmix_peer_t *p)
 }
 static void pdes(pmix_peer_t *p)
 {
+    if (NULL != p->info) {
+        PMIX_RELEASE(p->info);
+    }
     if (0 <= p->sd) {
         CLOSE_THE_SOCKET(p->sd);
     }
@@ -323,6 +319,7 @@ static void info_con(pmix_rank_info_t *info)
     info->nptr = NULL;
     info->rank = -1;
     info->proc_cnt = 0;
+    info->server_object = NULL;
 }
 PMIX_CLASS_INSTANCE(pmix_rank_info_t,
                    pmix_list_item_t,
@@ -332,3 +329,4 @@ PMIX_CLASS_INSTANCE(pmix_rank_info_t,
 PMIX_CLASS_INSTANCE(pmix_timer_t,
                    pmix_object_t,
                    NULL, NULL);
+

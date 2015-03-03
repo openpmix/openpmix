@@ -94,14 +94,17 @@ BEGIN_C_DECLS
  * server, which is free to release it upon return from the callback */
 
 
-/* Notify the host server that a client has terminated, as detected
- * when the PMIx server library receives a socket closure notification */
-typedef int (*pmix_server_terminated_fn_t)(const char nspace[], int rank);
+/* Notify the host server that a client called PMIx_Finalize- note
+ * that the client will be in a blocked state until the host server
+ * executes the callback function, thus allowing the PMIx server support
+ * library to release the client */
+typedef int (*pmix_server_finalized_fn_t)(const char nspace[], int rank, void* server_object,
+                                          pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Client called PMIx_Abort - note that the client will be in a blocked
  * state until the host server executes the callback function, thus
  * allowing the PMIx server support library to release the client */
-typedef int (*pmix_server_abort_fn_t)(const char nspace[], int rank,
+typedef int (*pmix_server_abort_fn_t)(const char nspace[], int rank, void *server_object,
                                       int status, const char msg[],
                                       pmix_op_cbfunc_t cbfunc, void *cbdata);
 
@@ -125,7 +128,7 @@ typedef int (*pmix_server_fencenb_fn_t)(const pmix_range_t ranges[], size_t nran
 
 /* Store modex data for the given scope - should be copied into
  * the host server's storage */
-typedef int (*pmix_server_store_modex_fn_t)(const char nspace[], int rank,
+typedef int (*pmix_server_store_modex_fn_t)(const char nspace[], int rank, void *server_object,
                                             pmix_scope_t scope, pmix_modex_data_t *data);
 
 /* Retrieve modex data from the specified rank. A rank value of PMIX_RANK_WILDCARD
@@ -196,7 +199,7 @@ typedef int (*pmix_server_disconnect_fn_t)(const pmix_range_t ranges[], size_t n
                                            pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 typedef struct pmix_server_module_1_0_0_t {
-    pmix_server_terminated_fn_t       terminated;
+    pmix_server_finalized_fn_t        finalized;
     pmix_server_abort_fn_t            abort;
     pmix_server_fencenb_fn_t          fence_nb;
     pmix_server_store_modex_fn_t      store_modex;
@@ -255,23 +258,49 @@ pmix_status_t PMIx_server_finalize(void);
  * processes within the job, and other information of
  * use to the process. The server is free to determine
  * which, if any, of the supported elements it will
- * provide - defined values are provided in pmix_common.h */
-pmix_status_t PMIx_server_setup_job(const char nspace[],
-                                    pmix_info_t info[], size_t ninfo);
+ * provide - defined values are provided in pmix_common.h.
+ *
+ * NOTE: the server must register ALL nspaces that will
+ * participate in collective operations with local processes.
+ * This means that the server must register an nspace even
+ * if it will not host any local procs from within that
+ * nspace IF any local proc might at some point perform
+ * a collective operation involving one or more procs from
+ * that nspace. This is necessary so that the collective
+ * operation can know when it is locally complete.
+ *
+ * The caller must also provide the number of local procs
+ * that will be launched within this nspace. This is required
+ * for the PMIx server library to correctly handle collectives
+ * as a collective operation call can occur before all the
+ * procs have been started */
+pmix_status_t PMIx_server_register_nspace(const char nspace[], int nlocalprocs,
+                                          pmix_info_t info[], size_t ninfo);
+
+/* Register a client process with the PMIx server library. The
+ * expected user ID and group ID of the child process helps the
+ * server library to properly authenticate clients as they connect
+ * by requiring the two values to match.
+ *
+ * The host server can also, if it desires, provide an object
+ * it wishes to be returned when a server function is called
+ * that relates to a specific process. For example, the host
+ * server may have an object that tracks the specific client.
+ * Passing the object to the library allows the library to
+ * return that object when the client calls "finalize", thus
+ * allowing the host server to access the object without
+ * performing a lookup. */ 
+pmix_status_t PMIx_server_register_client(const char nspace[], int rank,
+                                          uid_t uid, gid_t gid,
+                                          void *server_object);
 
 /* Setup the environment of a child process to be forked
  * by the host so it can correctly interact with the PMIx
  * server. The PMIx client needs some setup information
  * so it can properly connect back to the server. This function
- * will set appropriate environmental variables for this purpose.
- *
- * In addition, the expected user ID and group ID of the
- * child process helps the server library to properly authenticate
- * clients as they connect by requiring the two values to match.
- * These parameters are only relevant when internal comm is
- * in use, and will be ignored otherwise */
-pmix_status_t PMIx_server_setup_fork(const char nspace[], int rank,
-                                     uid_t uid, gid_t gid, char ***env);
+ * will set appropriate environmental variables for this purpose. */
+pmix_status_t PMIx_server_setup_fork(const char nspace[],
+                                     int rank, char ***env);
 
 
 /****    Message processing for the "lite" version of the  ****
@@ -307,9 +336,7 @@ typedef void (*pmix_send_message_cbfunc_t)(int sd, char *payload, size_t size);
  * PMIX_SUCCESS if the connection is authenticated, and an appropriate
  * PMIx error code if not. If the client is authenticated, it will
  * be sent whatever initial job_info the host server can provide */
-pmix_status_t PMIx_server_authenticate_client(int sd, int *rank,
-                                              int *localid,
-                                              pmix_send_message_cbfunc_t snd_msg);
+pmix_status_t PMIx_server_authenticate_client(int sd, pmix_send_message_cbfunc_t snd_msg);
 
 /* process a received PMIx client message, sending any desired return
  * via the provided callback function. Params:

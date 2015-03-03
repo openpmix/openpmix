@@ -13,7 +13,7 @@
  *                         All rights reserved.
  * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
- * Copyright (c) 2013-2014 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2015 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -43,14 +43,16 @@
 #include "test_common.h"
 
 /* setup the PMIx server module */
-static int terminated(const char nspace[], int rank);
+static int finalized(const char nspace[], int rank, void *server_object,
+                     pmix_op_cbfunc_t cbfunc, void *cbdata);
 static int abort_fn(const char nspace[], int rank,
+                    void *server_object,
                     int status, const char msg[],
                     pmix_op_cbfunc_t cbfunc, void *cbdata);
 static int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
                       int barrier, int collect_data,
                       pmix_modex_cbfunc_t cbfunc, void *cbdata);
-static int store_modex_fn(const char nspace[], int rank,
+static int store_modex_fn(const char nspace[], int rank, void *server_object,
                           pmix_scope_t scope, pmix_modex_data_t *data);
 static int get_modexnb_fn(const char nspace[], int rank,
                           pmix_modex_cbfunc_t cbfunc, void *cbdata);
@@ -69,7 +71,7 @@ static int disconnect_fn(const pmix_range_t ranges[], size_t nranges,
                          pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 static pmix_server_module_t mymodule = {
-    terminated,
+    finalized,
     abort_fn,
     fencenb_fn,
     store_modex_fn,
@@ -240,7 +242,12 @@ int main(int argc, char **argv)
     myuid = getuid();
     mygid = getgid();
     for (n=0; n < nprocs; n++) {
-        if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(TEST_NAMESPACE, n, myuid, mygid, &client_env))) {
+        if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(TEST_NAMESPACE, n, &client_env))) {
+            TEST_ERROR(("Server fork setup failed with error %d", rc));
+            PMIx_server_finalize();
+            return rc;
+        }
+        if (PMIX_SUCCESS != (rc = PMIx_server_register_client(TEST_NAMESPACE, n, myuid, mygid, NULL))) {
             TEST_ERROR(("Server fork setup failed with error %d", rc));
             PMIx_server_finalize();
             return rc;
@@ -279,16 +286,21 @@ int main(int argc, char **argv)
     return rc;
 }
 
-static int terminated(const char nspace[], int rank)
+static int finalized(const char nspace[], int rank, void *server_object,
+                     pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     --nprocs;
     if (nprocs <= 0) {
         test_complete = true;
     }
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, cbdata);
+    }
     return PMIX_SUCCESS;
 }
 
 static int abort_fn(const char nspace[], int rank,
+                    void *server_object,
                     int status, const char msg[],
                     pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
@@ -401,7 +413,7 @@ static int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
     return PMIX_SUCCESS;
 }
 
-static int store_modex_fn(const char nspace[], int rank,
+static int store_modex_fn(const char nspace[], int rank, void *server_object,
                           pmix_scope_t scope, pmix_modex_data_t *data)
 {
     pmix_test_data_t *mdx;

@@ -78,7 +78,7 @@ pmix_client_globals_t pmix_client_globals = {
 };
     
 /* callback for wait completion */
-static void wait_cbfunc(int sd, pmix_usock_hdr_t *hdr,
+static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                         pmix_buffer_t *buf, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
@@ -92,9 +92,18 @@ static void wait_cbfunc(int sd, pmix_usock_hdr_t *hdr,
  
 static void setup_globals(void)
 {
+    pmix_rank_info_t *info;
+    
     PMIX_CONSTRUCT(&pmix_client_globals.myserver_nspace, pmix_nspace_t);
+    (void)strncpy(pmix_client_globals.myserver_nspace.nspace, "pmix-server", PMIX_MAX_NSLEN);
+    info = PMIX_NEW(pmix_rank_info_t);
+    info->nptr = &pmix_client_globals.myserver_nspace;
+    pmix_list_append(&pmix_client_globals.myserver_nspace.ranks, &info->super);
+    
     PMIX_CONSTRUCT(&pmix_client_globals.myserver, pmix_peer_t);
-    pmix_client_globals.myserver.info.nptr = &pmix_client_globals.myserver_nspace;
+    PMIX_RETAIN(info);
+    pmix_client_globals.myserver.info = info;
+    
     /* setup our copy of the pmix globals object */
     memset(&pmix_globals.nspace, 0, PMIX_MAX_NSLEN);
 }
@@ -185,7 +194,6 @@ int PMIx_Init(char nspace[], int *rank)
         (void)strncpy(nspace, evar, PMIX_MAX_NSLEN);
     }
     (void)strncpy(pmix_globals.nspace, evar, PMIX_MAX_NSLEN);
-    (void)strncpy(pmix_client_globals.myserver_nspace.nspace, evar, PMIX_MAX_NSLEN);
 
     /* if we don't have a path to the daemon rendezvous point,
      * then we need to return an error */
@@ -210,7 +218,7 @@ int PMIx_Init(char nspace[], int *rank)
         return PMIX_ERR_NOT_FOUND;
     }
     /* set the server rank */
-    pmix_client_globals.myserver.info.rank = strtoull(uri[0], NULL, 10);
+    pmix_client_globals.myserver.info->rank = strtoull(uri[0], NULL, 10);
     snprintf(address.sun_path, sizeof(address.sun_path)-1, "%s", uri[1]);
     pmix_argv_free(uri);
 
@@ -224,7 +232,7 @@ int PMIx_Init(char nspace[], int *rank)
     if (NULL != rank) {
         *rank = pmix_globals.rank;
     }
-    pmix_globals.localid = -1;
+    pmix_globals.pindex = -1;
     
     /* create an event base and progress thread for us */
     if (NULL == (pmix_globals.evbase = pmix_start_progress_thread())) {
@@ -385,7 +393,12 @@ int PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
     kv.value = val;
     
     /* pack the cache that matches the scope */
-    if (PMIX_LOCAL == scope) {
+    if (PMIX_INTERNAL == scope) {
+        /* just put it in the hash table */
+        if (PMIX_SUCCESS != (rc = pmix_client_hash_store(pmix_globals.nspace, pmix_globals.rank, &kv))) {
+            PMIX_ERROR_LOG(rc);
+        }
+    } else if (PMIX_LOCAL == scope) {
         if (NULL == pmix_client_globals.cache_local) {
             pmix_client_globals.cache_local = PMIX_NEW(pmix_buffer_t);
         }
@@ -445,12 +458,12 @@ static int send_connect_ack(int sd)
 
     /* setup the header */
     memset(&hdr, 0, sizeof(pmix_usock_hdr_t));
-    (void)strncpy(hdr.nspace, pmix_globals.nspace, PMIX_MAX_NSLEN);
-    hdr.rank = pmix_globals.rank;
-    hdr.localid = pmix_globals.localid;
+    hdr.pindex = -1;
     hdr.tag = UINT32_MAX;
-    hdr.type = PMIX_USOCK_IDENT;
 
+    /* reserve space for the nspace and rank info */
+    sdsize = strlen(pmix_globals.nspace) + 1 + sizeof(int);
+    
     /* get a credential, if the security system provides one. Not
      * every SPC will do so, thus we must first check */
     if (NULL != pmix_sec.create_cred) {
@@ -461,7 +474,7 @@ static int send_connect_ack(int sd)
         csize = strlen(cred) + 1;  // must NULL terminate the string!
     }
     /* set the number of bytes to be read beyond the header */
-    hdr.nbytes = strlen(PMIX_VERSION) + 1 + csize;  // must NULL terminate the VERSION string!
+    hdr.nbytes = sdsize + strlen(PMIX_VERSION) + 1 + csize;  // must NULL terminate the VERSION string!
 
     /* create a space for our message */
     sdsize = (sizeof(hdr) + hdr.nbytes);
@@ -474,10 +487,17 @@ static int send_connect_ack(int sd)
     memset(msg, 0, sdsize);
 
     /* load the message */
+    csize=0;
     memcpy(msg, &hdr, sizeof(pmix_usock_hdr_t));
-    memcpy(msg+sizeof(hdr), PMIX_VERSION, strlen(PMIX_VERSION));
+    csize += sizeof(pmix_usock_hdr_t);
+    memcpy(msg+csize, pmix_globals.nspace, strlen(pmix_globals.nspace));
+    csize += strlen(pmix_globals.nspace)+1;
+    memcpy(msg+csize, &pmix_globals.rank, sizeof(int));
+    csize += sizeof(int);
+    memcpy(msg+csize, PMIX_VERSION, strlen(PMIX_VERSION));
+    csize += strlen(PMIX_VERSION)+1;
     if (NULL != cred) {
-        memcpy(msg+sizeof(hdr)+strlen(PMIX_VERSION)+1, cred, strlen(cred));
+        memcpy(msg+csize, cred, strlen(cred));  // leaves last position in msg set to NULL
     }
     
     if (PMIX_SUCCESS != pmix_usock_send_blocking(sd, msg, sdsize)) {
@@ -577,9 +597,9 @@ static int recv_connect_ack(int sd)
                         "pmix: RECV CONNECT CONFIRMATION AND INITIAL DATA FROM SERVER OF %d BYTES",
                         (int)hdr.nbytes);
     
-    /* unpack our localid */
+    /* unpack our index into the server's client array */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&buf, &pmix_globals.localid, &cnt, PMIX_INT))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&buf, &pmix_globals.pindex, &cnt, PMIX_INT))) {
         if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
             /* this isn't an error - the host must provide us
              * the localid */
