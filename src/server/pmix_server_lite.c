@@ -402,9 +402,10 @@ static int server_switchyard(pmix_server_caddy_t *cd,
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(cd);
             }
+        } else {
+            PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
+            op_cbfunc(rc, cd);
         }
-        PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
-        op_cbfunc(rc, cd);
         return rc;
     }
 
