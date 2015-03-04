@@ -1050,6 +1050,7 @@ static int server_switchyard(pmix_peer_t *peer, uint32_t tag,
             event_del(&peer->recv_event);
             peer->recv_ev_active = false;
         }
+        PMIX_RELEASE(peer);
         return rc;
     }
 
