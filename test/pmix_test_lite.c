@@ -917,7 +917,7 @@ static int start_listening(struct sockaddr_un *address)
     return 0;
 }
 
-static void snd_ack(int sd, char *payload, size_t size)
+static void snd_ack(int sd, void *server_obj, char *payload, size_t size)
 {
     /* the call to authenticate_client will have included
      * the result of the handshake - so collect add job-related
