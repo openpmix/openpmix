@@ -127,9 +127,9 @@ typedef struct {
     pmix_list_item_t super;
     char nspace[PMIX_MAX_NSLEN];
     size_t nlocalprocs;
-    bool all_registered;
+    bool all_registered;       // all local ranks have been defined
     pmix_buffer_t job_info;
-    pmix_list_t ranks;  // list of pmix_rank_info_t
+    pmix_list_t ranks;         // list of pmix_rank_info_t
 } pmix_nspace_t;
 PMIX_CLASS_DECLARATION(pmix_nspace_t);
 

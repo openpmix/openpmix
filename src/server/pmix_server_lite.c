@@ -275,7 +275,7 @@ static void modex_cbfunc(int status, pmix_modex_data_t data[],
         PMIX_DESTRUCT(&rmsg);
     }
     PMIX_DESTRUCT(&reply);
-    pmix_list_remove_item(tracker->trklist, &tracker->super);
+    pmix_list_remove_item(&pmix_server_globals.collectives, &tracker->super);
     PMIX_RELEASE(tracker);
 }
 
@@ -335,7 +335,7 @@ static void cnct_cbfunc(int status, void *cbdata)
         rmsg.base_ptr = NULL;
         PMIX_DESTRUCT(&rmsg);
     }
-    pmix_list_remove_item(tracker->trklist, &tracker->super);
+    pmix_list_remove_item(&pmix_server_globals.collectives, &tracker->super);
     PMIX_RELEASE(tracker);
 }
 

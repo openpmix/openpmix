@@ -90,93 +90,109 @@ int pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
     return rc;
 }
 
-static bool trk_update(pmix_server_trkr_t *trk)
+bool pmix_server_trk_update(pmix_server_trkr_t *trk)
 {
-    size_t i, j;
-    uint32_t local_cnt = 0;
+    size_t j;
     pmix_range_trkr_t *rtrk;
+    pmix_nspace_t *nptr;
+    pmix_rank_info_t *info;
+    bool complete=true;
+    
+    pmix_output_verbose(5, pmix_globals.debug_output,
+                        "trk_update");
+    
+    /* if the definition for this tracker is complete, then
+     * there is nothing we need do */
+    if (trk->def_complete) {
+        pmix_output_verbose(5, pmix_globals.debug_output,
+                            "trk_update: trk complete");
+        return true;
+    }
     
     /* no simple way to do this - just have to perform an
-     * exhaustive search across the ranges in this tracker */
+     * exhaustive search across the ranges in this tracker.
+     * Fortunately, there typically is only one */
     PMIX_LIST_FOREACH(rtrk, &trk->ranges, pmix_range_trkr_t) {
-        /* see if this trkr is complete */
-        if (NULL != rtrk->nptr) {
-            continue;
-        }
-        /* okay, see if we can complete it - the nspace may have
-         * been defined since the last time we looked */
-        
-    }
-    
-#if 0
-    /* if the ranks for this range is NULL, then all procs participate */
-    if (NULL == rtrk->ranks) {
-        trk->local_cnt += nptr->nlocalprocs;
-        trk->def_complete = true;
-    }
-    for (i=0; i < trk->nranges; i++) {
-        pmix_nspace_t *nptr, *tmp;
-        nptr = NULL;
-        PMIX_LIST_FOREACH(tmp, &pmix_server_globals.nspaces, pmix_nspace_t) {
-            if (0 == strcmp(trk->ranges[i].nspace, tmp->nspace)) {
-                nptr = tmp;
-                break;
+        pmix_output_verbose(5, pmix_globals.debug_output,
+                            "trk_update: checking range");
+        /* see if the nspace for this tracker is known */
+        if (NULL == rtrk->nptr) {
+            pmix_output_verbose(5, pmix_globals.debug_output,
+                                "trk_update: looking for nspace %s",
+                                rtrk->nspace);
+            /* okay, see if we can find it - the nspace may have
+             * been defined since the last time we looked */
+            PMIX_LIST_FOREACH(nptr, &pmix_server_globals.nspaces, pmix_nspace_t) {
+                if (0 == strcmp(rtrk->nspace, nptr->nspace)) {
+                    PMIX_RETAIN(nptr);
+                    rtrk->nptr = nptr;
+                    break;
+                }
             }
         }
-        if (NULL == nptr) {
-            /* not allowed */
-            return -1;
-        }
-        if (NULL != trk->ranges[i].ranks) {
-            for (j=0; j < trk->ranges[i].nranks; j++) {
-                pmix_rank_info_t *info;
-                PMIX_LIST_FOREACH(info, &nptr->ranks, pmix_rank_info_t) {
-                    if ( trk->ranges[i].ranks[j] == info->rank ) {
-                        local_cnt += info->proc_cnt;
-                        break;
+        if (NULL != rtrk->nptr) {
+            if (!rtrk->contribution_added) {
+                /* if the ranks for this range is NULL, then all procs
+                 * participate - we know the number of local procs we
+                 * will have, so we can take care of it now */
+                if (NULL == rtrk->ranks) {
+                    pmix_output_verbose(5, pmix_globals.debug_output,
+                                        "trk_update: all %d local procs in nspace %s participating",
+                                        (int)rtrk->nptr->nlocalprocs, rtrk->nspace);
+                    trk->local_cnt += rtrk->nptr->nlocalprocs;
+                    rtrk->contribution_added = true;
+                } else {
+                    /* we have to look for the specific ranks to see if
+                     * we have them. First, we have to check to see if we
+                     * already know about them all - otherwise, we cannot
+                     * perform the check */
+                    if (nptr->all_registered) {
+                        for (j=0; j < rtrk->nranks; j++) {
+                            PMIX_LIST_FOREACH(info, &rtrk->nptr->ranks, pmix_rank_info_t) {
+                                if (rtrk->ranks[j] == info->rank ) {
+                                    pmix_output_verbose(5, pmix_globals.debug_output,
+                                                        "trk_update: proc %d in nspace %s participating",
+                                                        info->rank, rtrk->nspace);
+                                    /* we can only count the primary client as
+                                     * we cannot know how many clones might
+                                     * eventually connect. Thus, we restrict
+                                     * collective participation to one representative
+                                     * from each rank */
+                                    trk->local_cnt++;
+                                    break;
+                                }
+                            }
+                        }
+                        rtrk->contribution_added = true;
                     }
                 }
             }
         } else {
-            pmix_rank_info_t *info;
-            PMIX_LIST_FOREACH(info, &nptr->ranks, pmix_rank_info_t) {
-                /* Even if nobody has connected yet we still need at least
-                 * one representative from this rank */
-                local_cnt += (0 < info->proc_cnt) ? info->proc_cnt : 1;
-            }
+            complete = false;
         }
     }
-    trk->local_cnt = local_cnt;
-#endif
-    return 0;
+    
+    /* if all of the range contributions have been added, then
+     * the definition is complete */
+    if (complete) {
+        trk->def_complete = true;
+    }
+
+    return trk->def_complete;
 }
 
 static bool trk_complete(pmix_server_trkr_t *trk)
 {
-    /* see if all the local procs in the participating ranges
-     * have reported in */
-    if (!trk->def_complete) {
-        /* see if we can update - if we now have all the reqd
-         * info, then we will be marked as complete */
-        if (!trk_update(trk)) {
-            /* still missing some info */
-            return false;
-        }
+    /* see if we know everything we need */
+    if (!pmix_server_trk_update(trk)) {
+        /* still missing some info */
+        return false;
     }
     
-    if( trk->local_cnt > pmix_list_get_size(&trk->locals) ){
-        // no need to update
-        return 0;
+    if (trk->local_cnt == pmix_list_get_size(&trk->locals)) {
+        return true;
     }
-
-    if( trk_update(trk) ){
-        return -1;
-    }
-
-    if( trk->local_cnt == pmix_list_get_size(&trk->locals) ){
-        return 1;
-    }
-    return 0;
+    return false;
 }
 
 /* get an object for tracking LOCAL participation in a collective
@@ -184,8 +200,7 @@ static bool trk_complete(pmix_server_trkr_t *trk)
  * called is if at least one local client process is participating
  * in the operation. Thus, we know that at least one process is
  * involved AND has called the collective operation. */
-static pmix_server_trkr_t* get_tracker(pmix_list_t *trks,
-                                       pmix_range_t *ranges,
+static pmix_server_trkr_t* get_tracker(pmix_range_t *ranges,
                                        size_t nranges)
 {
     pmix_server_trkr_t *trk;
@@ -194,13 +209,21 @@ static pmix_server_trkr_t* get_tracker(pmix_list_t *trks,
     size_t match;
     pmix_nspace_t *nptr;
 
-    PMIX_LIST_FOREACH(trk, trks, pmix_server_trkr_t) {
+    pmix_output_verbose(5, pmix_globals.debug_output,
+                        "get_tracker called with %d ranges", (int)nranges);
+    
+    /* there is no shortcut way to search the trackers - all
+     * we can do is perform a brute-force search. Fortunately,
+     * it is highly unlikely that there will be more than one
+     * or two active at a time, and they are most likely to
+     * involve only a single range - so this shouldn't take long */
+    PMIX_LIST_FOREACH(trk, &pmix_server_globals.collectives, pmix_server_trkr_t) {
         if (nranges != pmix_list_get_size(&trk->ranges)) {
             continue;
         }
         match = 0;
         for (i=0; i < nranges; i++) {
-            PMIX_LIST_FOREACH(rtrk, &trk->ranges, pmix_range_trkr_t) {            
+            PMIX_LIST_FOREACH(rtrk, &trk->ranges, pmix_range_trkr_t) {
                 if (0 != strcmp(ranges[i].nspace, rtrk->nspace)) {
                     continue;
                 }
@@ -209,6 +232,7 @@ static pmix_server_trkr_t* get_tracker(pmix_list_t *trks,
                 if (NULL == rtrk->nptr) {
                     PMIX_LIST_FOREACH(nptr, &pmix_server_globals.nspaces, pmix_nspace_t) {
                         if (0 == strcmp(rtrk->nspace, nptr->nspace)) {
+                            PMIX_RETAIN(nptr);
                             rtrk->nptr = nptr;
                             break;
                         }
@@ -223,7 +247,9 @@ static pmix_server_trkr_t* get_tracker(pmix_list_t *trks,
                     break;
                 }
                 if (0 == memcmp(ranges[i].ranks, rtrk->ranks, rtrk->nranks*sizeof(int))) {
+                    /* this range matches */
                     match++;
+                    break;
                 }
             }
             if (match != (i+1)) {
@@ -235,11 +261,17 @@ static pmix_server_trkr_t* get_tracker(pmix_list_t *trks,
             return trk;
         }
     }
+
+    pmix_output_verbose(5, pmix_globals.debug_output,
+                        "adding new tracker with %d ranges", (int)nranges);
+        
     /* get here if this tracker is new - create it */
     trk = PMIX_NEW(pmix_server_trkr_t);
     
     /* copy the ranges */
     for (i=0; i < nranges; i++) {
+        pmix_output_verbose(5, pmix_globals.debug_output,
+                            "adding range for nspace %s", ranges[i].nspace);
         rtrk = PMIX_NEW(pmix_range_trkr_t);
         (void)strncpy(rtrk->nspace, ranges[i].nspace, PMIX_MAX_NSLEN);
         rtrk->nranks = ranges[i].nranks;
@@ -250,15 +282,17 @@ static pmix_server_trkr_t* get_tracker(pmix_list_t *trks,
         /* find the nspace - it is okay if we don't have it. It just
          * means that we don't know about it yet */
         PMIX_LIST_FOREACH(nptr, &pmix_server_globals.nspaces, pmix_nspace_t) {
+            pmix_output_verbose(5, pmix_globals.debug_output,
+                                "comparing %s to %s", rtrk->nspace, nptr->nspace);
             if (0 == strcmp(rtrk->nspace, nptr->nspace)) {
+                PMIX_RETAIN(nptr);
                 rtrk->nptr = nptr;
                 break;
             }
         }
+        pmix_list_append(&trk->ranges, &rtrk->super);
     }
-    /* track what list we are being put on */
-    trk->trklist = trks;
-    pmix_list_append(trks, &trk->super);
+    pmix_list_append(&pmix_server_globals.collectives, &trk->super);
     return trk;
 }
 
@@ -339,7 +373,7 @@ int pmix_server_fence(pmix_server_caddy_t *cd,
     }
     if (0 != barrier) {
         /* find/create the local tracker for this operation */
-        trk = get_tracker(&pmix_server_globals.fence_ops, ranges, nranges);
+        trk = get_tracker(ranges, nranges);
         /* add this contributor to the tracker so they get
          * notified when we are done */
         PMIX_RETAIN(cd);
@@ -348,7 +382,7 @@ int pmix_server_fence(pmix_server_caddy_t *cd,
          * let the local host's server know that we are at the
          * "fence" point - they will callback once the barrier
          * across all participants has been completed */
-        if( 0 < (rc = trk_complete(trk)) ){
+        if (trk_complete(trk)) {
             rc = pmix_host_server.fence_nb(ranges, nranges, barrier,
                                            collect_data, modexcbfunc, trk);
         }
@@ -646,7 +680,7 @@ int pmix_server_connect(pmix_server_caddy_t *cd,
         }
     }
     /* find/create the local tracker for this operation */
-    trk = get_tracker(&pmix_server_globals.connect_ops, ranges, nranges);
+    trk = get_tracker(ranges, nranges);
     /* add this contributor to the tracker so they get
      * notified when we are done */
     PMIX_RETAIN(cd);
@@ -686,7 +720,6 @@ static void tcon(pmix_server_trkr_t *t)
     PMIX_CONSTRUCT(&t->ranges, pmix_list_t);
     PMIX_CONSTRUCT(&t->locals, pmix_list_t);
     t->local_cnt = 0;
-    t->trklist = NULL;
 }
 static void tdes(pmix_server_trkr_t *t)
 {

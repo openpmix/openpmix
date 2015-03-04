@@ -135,9 +135,7 @@ static int initialize_server_base(pmix_server_module_t *module)
     PMIX_CONSTRUCT(&pmix_server_globals.clients, pmix_pointer_array_t);
     pmix_pointer_array_init(&pmix_server_globals.clients, 1, INT_MAX, 1);
 
-    PMIX_CONSTRUCT(&pmix_server_globals.fence_ops, pmix_list_t);
-    PMIX_CONSTRUCT(&pmix_server_globals.connect_ops, pmix_list_t);
-    PMIX_CONSTRUCT(&pmix_server_globals.disconnect_ops, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_server_globals.collectives, pmix_list_t);
 
     /* see if debug is requested */
     if (NULL != (evar = getenv("PMIX_DEBUG"))) {
@@ -258,10 +256,7 @@ static void cleanup_server_state(void)
     }
     PMIX_DESTRUCT(&pmix_server_globals.clients);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.nspaces);
-    
-    PMIX_LIST_DESTRUCT(&pmix_server_globals.fence_ops);
-    PMIX_LIST_DESTRUCT(&pmix_server_globals.connect_ops);
-    PMIX_LIST_DESTRUCT(&pmix_server_globals.disconnect_ops);
+    PMIX_LIST_DESTRUCT(&pmix_server_globals.collectives);
 
     if (NULL != myuri) {
         free(myuri);
@@ -365,7 +360,8 @@ static void _setup_fork(int sd, short args, void *cbdata)
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t*)cbdata;
     pmix_rank_info_t *info;
     pmix_nspace_t *nptr, *tmp;
-
+    pmix_server_trkr_t *trk;
+    
     /* see if we already have this nspace */
     nptr = NULL;
     PMIX_LIST_FOREACH(tmp, &pmix_server_globals.nspaces, pmix_nspace_t) {
@@ -393,8 +389,21 @@ static void _setup_fork(int sd, short args, void *cbdata)
     if (nptr->nlocalprocs == pmix_list_get_size(&nptr->ranks)) {
         nptr->all_registered = true;
         /* check any pending trackers to see if they are
-         * waiting for us */
-        
+         * waiting for us - we don't want to block someone
+         * here, so kick any completed trackers into a
+         * new event for processing */
+        PMIX_LIST_FOREACH(trk, &pmix_server_globals.collectives, pmix_server_trkr_t) {
+            /* if this tracker is already complete, then we
+             * don't need to update it */
+            if (trk->def_complete) {
+                continue;
+            }
+            /* update and see if that completes it */
+            if (pmix_server_trk_update(trk)) {
+                /* it did, so now we need to process it */
+                continue;
+            }
+        } 
     }
     /* let the caller know we are done */
     cd->active = false;
@@ -877,7 +886,7 @@ static void modex_cbfunc(int status, pmix_modex_data_t data[],
        PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
     }
     PMIX_RELEASE(reply);  // maintain accounting
-    pmix_list_remove_item(tracker->trklist, &tracker->super);
+    pmix_list_remove_item(&pmix_server_globals.collectives, &tracker->super);
     PMIX_RELEASE(tracker);
 }
 
@@ -954,7 +963,7 @@ static void cnct_cbfunc(int status, void *cbdata)
        PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
     }
     PMIX_RELEASE(reply);  // maintain accounting
-    pmix_list_remove_item(tracker->trklist, &tracker->super);
+    pmix_list_remove_item(&pmix_server_globals.collectives, &tracker->super);
     PMIX_RELEASE(tracker);
 }
 
