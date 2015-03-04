@@ -942,13 +942,13 @@ static void connection_handler(int incomind_sd, short flags, void* cbdata)
     }
 
     /* authenticate the connection */
-    if (PMIX_SUCCESS != (rc = PMIx_server_authenticate_client(sd, snd_ack))) {
+    if (PMIX_SUCCESS != (rc = PMIx_server_authenticate_client(sd, &rank, snd_ack))) {
         TEST_ERROR(("PMIx srv: Bad authentification!"));
         test_abort = true;
         return;
     }
 
-    // cli_connect(&cli_info[rank], sd);
+    cli_connect(&cli_info[rank], sd);
 }
 
 

@@ -545,6 +545,7 @@ static void connection_handler(int incoming_sd, short flags, void* cbdata)
 {
     int sd;
     pmix_peer_t *peer;
+    int rank;
     
     if( 0 > (sd = accept(incoming_sd,NULL,0)) ){
         printf("accept() failed");
@@ -554,7 +555,7 @@ static void connection_handler(int incoming_sd, short flags, void* cbdata)
     /* receive identifier info from the client and authenticate it - the
      * function will lookup and return the peer object if the connection
      * is successfully authenticated */
-    if (PMIX_SUCCESS != pmix_server_authenticate(sd, &peer, NULL)) {
+    if (PMIX_SUCCESS != pmix_server_authenticate(sd, &rank, &peer, NULL)) {
         CLOSE_THE_SOCKET(sd);
         return;
     }
@@ -575,7 +576,7 @@ static void connection_handler(int incoming_sd, short flags, void* cbdata)
 /*  Receive the peer's identification info from a newly
  *  connected socket and verify the expected response.
  */
-pmix_status_t pmix_server_authenticate(int sd, pmix_peer_t **peer,
+pmix_status_t pmix_server_authenticate(int sd, int *out_rank, pmix_peer_t **peer,
                                        pmix_buffer_t **reply)
 {
     char *msg, *nspace, *version, *cred;
@@ -672,6 +673,7 @@ pmix_status_t pmix_server_authenticate(int sd, pmix_peer_t **peer,
         free(msg);
         return PMIX_ERR_NOT_FOUND;
     }
+    *out_rank = rank;
     /* a peer can connect on multiple sockets since it can fork/exec
      * a child that also calls PMIx_Init, so add it here if necessary.
      * Create the tracker for this peer */
