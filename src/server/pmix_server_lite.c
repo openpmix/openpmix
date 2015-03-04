@@ -20,8 +20,8 @@
 static void op_cbfunc(int status, void *cbdata);
 static int server_switchyard(pmix_server_caddy_t *cd,
                              pmix_buffer_t *buf);
-static void snd_message(int sd, pmix_usock_hdr_t *hdptr,
-                        pmix_buffer_t *msg,
+static void snd_message(int sd, pmix_usock_hdr_t *hdr,
+                        pmix_buffer_t *msg, void *srv_obj,
                         pmix_send_message_cbfunc_t snd);
 
 size_t PMIx_message_hdr_size(void)
@@ -62,7 +62,7 @@ int PMIx_server_authenticate_client(int sd, int *rank, pmix_send_message_cbfunc_
         hdr.tag = 0; // tag doesn't matter as we aren't matching to a recv
 
         /* send the response */
-        snd_message(sd, &hdr, &reply, snd_msg);
+        snd_message(sd, &hdr, &reply, NULL, snd_msg);
         /* protect the data */
         reply.base_ptr = NULL;
         PMIX_DESTRUCT(&reply);
@@ -146,7 +146,7 @@ static void get_cbfunc(int status, pmix_modex_data_t data[],
         }
     }
     /* send the data to the requestor */
-    snd_message(cd->snd.sd, &cd->hdr, &reply, cd->snd.cbfunc);
+    snd_message(cd->snd.sd, &cd->hdr, &reply, cd->peer->info->server_object, cd->snd.cbfunc);
     reply.base_ptr = NULL;
 
  cleanup:
@@ -175,7 +175,7 @@ static void spawn_cbfunc(int status, char *nspace, void *cbdata)
         goto cleanup;
     }
     /* send the result */
-    snd_message(cd->snd.sd, &cd->hdr, &reply, cd->snd.cbfunc);
+    snd_message(cd->snd.sd, &cd->hdr, &reply, cd->peer->info->server_object, cd->snd.cbfunc);
     /* protect the data */
     reply.base_ptr = NULL;
 
@@ -215,7 +215,7 @@ static void lookup_cbfunc(int status, pmix_info_t info[], size_t ninfo,
     }
 
     /* send to the originator */
-    snd_message(cd->snd.sd, &cd->hdr, &reply, cd->snd.cbfunc);
+    snd_message(cd->snd.sd, &cd->hdr, &reply, cd->peer->info->server_object, cd->snd.cbfunc);
     /* protect the data */
     reply.base_ptr = NULL;
 
@@ -269,7 +269,7 @@ static void modex_cbfunc(int status, pmix_modex_data_t data[],
                             "serverlite:modex_cbfunc reply being sent to %s:%d",
                             cd->peer->info->nptr->nspace, cd->peer->info->rank);
         /* send the message */
-        snd_message(cd->snd.sd, &cd->hdr, &rmsg, cd->snd.cbfunc);
+        snd_message(cd->snd.sd, &cd->hdr, &rmsg, cd->peer->info->server_object, cd->snd.cbfunc);
         /* protect the data */
         rmsg.base_ptr = NULL;
         PMIX_DESTRUCT(&rmsg);
@@ -292,7 +292,7 @@ static void op_cbfunc(int status, void *cbdata)
         goto cleanup;
     }
     /* send the result */
-    snd_message(cd->snd.sd, &cd->hdr, &reply, cd->snd.cbfunc);
+    snd_message(cd->snd.sd, &cd->hdr, &reply, cd->peer->info->server_object, cd->snd.cbfunc);
     /* protect the data */
     reply.base_ptr = NULL;
 
@@ -330,7 +330,7 @@ static void cnct_cbfunc(int status, void *cbdata)
                             "serverlite:cnct_cbfunc reply being sent to %s:%d",
                             cd->peer->info->nptr->nspace, cd->peer->info->rank);
         /* send the message */
-        snd_message(cd->snd.sd, &cd->hdr, &rmsg, cd->snd.cbfunc);
+        snd_message(cd->snd.sd, &cd->hdr, &rmsg, cd->peer->info->server_object, cd->snd.cbfunc);
         /* protect the data */
         rmsg.base_ptr = NULL;
         PMIX_DESTRUCT(&rmsg);
@@ -477,7 +477,7 @@ static int server_switchyard(pmix_server_caddy_t *cd,
 }
 
 static void snd_message(int sd, pmix_usock_hdr_t *hdr,
-                        pmix_buffer_t *msg,
+                        pmix_buffer_t *msg, void *srv_obj,
                         pmix_send_message_cbfunc_t snd)
 {
     size_t rsize;
@@ -492,6 +492,6 @@ static void snd_message(int sd, pmix_usock_hdr_t *hdr,
     /* add in the reply bytes */
     (void)memcpy(rmsg+sizeof(pmix_usock_hdr_t), msg->base_ptr, msg->bytes_used);
     /* send it - the send function will release the rmsg storage */
-    snd(sd, rmsg, rsize);
+    snd(sd, srv_obj, rmsg, rsize);
 }
 

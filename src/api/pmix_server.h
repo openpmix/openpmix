@@ -329,7 +329,7 @@ size_t PMIx_message_payload_size(char *hdr);
 /* define a callback function by which the convenience library can
  * request that a message be sent via the specified socket. The PMIx
  * header will be included in the provided payload */
-typedef void (*pmix_send_message_cbfunc_t)(int sd, char *payload, size_t size);
+typedef void (*pmix_send_message_cbfunc_t)(int sd, void *srv_obj, char *payload, size_t size);
 
 /* given a socket, conduct the client-server authentication protocol
  * to authenticate the requested connection. The function will return
