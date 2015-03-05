@@ -379,6 +379,10 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
     if (0 != barrier) {
         /* find/create the local tracker for this operation */
         trk = get_tracker(ranges, nranges);
+        trk->type = PMIX_FENCENB_CMD;
+        trk->modexcbfunc = modexcbfunc;
+        trk->barrier = barrier;
+        trk->collect_data = collect_data;
         /* add this contributor to the tracker so they get
          * notified when we are done */
         PMIX_RETAIN(cd);
@@ -689,6 +693,12 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
     }
     /* find/create the local tracker for this operation */
     trk = get_tracker(ranges, nranges);
+    if (disconnect) {
+        trk->type = PMIX_DISCONNECTNB_CMD;
+    } else {
+        trk->type = PMIX_CONNECTNB_CMD;
+    }
+    trk->op_cbfunc = cbfunc;
     /* add this contributor to the tracker so they get
      * notified when we are done */
     PMIX_RETAIN(cd);
