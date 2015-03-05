@@ -433,7 +433,7 @@ static void _register_client(int sd, short args, void *cbdata)
                 } else {
                     /* have to do it here as there is no
                      * event engine behind us */
-                    PMIX_EXECUTE_COLLECTIVE(tcd, trk, NULL);
+                    PMIX_SETUP_COLLECTIVE(tcd, trk);
                     _execute_collective(0, 0, tcd);
                 }
             }
