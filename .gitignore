@@ -56,3 +56,6 @@ test/pmix_test.trs
 test/pmix_test_lite.log
 test/pmix_test_lite.trs
 test/test-suite.log
+
+# coverity
+cov-int
