@@ -96,37 +96,42 @@ BEGIN_C_DECLS
  * these keys are RESERVED */
 #define PMIX_ATTR_UNDEF      NULL
 
-#define PMIX_CPUSET          "pmix.cpuset"      // (char*) hwloc bitmap applied to proc upon launch
-#define PMIX_CREDENTIAL      "pmix.cred"        // (opal_byte_object*) security credential assigned to proc
-#define PMIX_HOSTNAME        "pmix.hname"       // (char*) name of the host this proc is on
-#define PMIX_SPAWNED         "pmix.spawned"     // (bool) true if this proc resulted from a call to PMIx_Spawn
+#define PMIX_CPUSET                "pmix.cpuset"       // (char*) hwloc bitmap applied to proc upon launch
+#define PMIX_CREDENTIAL            "pmix.cred"         // (opal_byte_object*) security credential assigned to proc
+#define PMIX_SPAWNED               "pmix.spawned"      // (bool) true if this proc resulted from a call to PMIx_Spawn
 /* scratch directory locations for use by applications */
-#define PMIX_TMPDIR          "pmix.tmpdir"      // (char*) top-level tmp dir assigned to session
-/* information about relative ranks as assigned */
-#define PMIX_JOBID           "pmix.jobid"       // (char*) jobid assigned by scheduler
-#define PMIX_APPNUM          "pmix.appnum"      // (uint32_t) app number within the job
-#define PMIX_RANK            "pmix.rank"        // (uint32_t) process rank within the job
-#define PMIX_GLOBAL_RANK     "pmix.grank"       // (uint32_t) rank spanning across all jobs in this session
-#define PMIX_APP_RANK        "pmix.apprank"     // (uint32_t) rank within this app
-#define PMIX_NPROC_OFFSET    "pmix.offset"      // (uint32_t) starting global rank of this job
-#define PMIX_LOCAL_RANK      "pmix.lrank"       // (uint16_t) rank on this node within this job
-#define PMIX_NODE_RANK       "pmix.nrank"       // (uint16_t) rank on this node spanning all jobs
-#define PMIX_LOCALLDR        "pmix.lldr"        // (uint64_t) opal_identifier of lowest rank on this node within this job
-#define PMIX_APPLDR          "pmix.aldr"        // (uint32_t) lowest rank in this app within this job
+#define PMIX_TMPDIR                "pmix.tmpdir"       // (char*) top-level tmp dir assigned to session
+/* information about relative ranks as assigned by the RM */
+#define PMIX_JOBID                 "pmix.jobid"        // (char*) jobid assigned by scheduler
+#define PMIX_APPNUM                "pmix.appnum"       // (uint32_t) app number within the job
+#define PMIX_RANK                  "pmix.rank"         // (uint32_t) process rank within the job
+#define PMIX_GLOBAL_RANK           "pmix.grank"        // (uint32_t) rank spanning across all jobs in this session
+#define PMIX_APP_RANK              "pmix.apprank"      // (uint32_t) rank within this app
+#define PMIX_NPROC_OFFSET          "pmix.offset"       // (uint32_t) starting global rank of this job
+#define PMIX_LOCAL_RANK            "pmix.lrank"        // (uint16_t) rank on this node within this job
+#define PMIX_NODE_RANK             "pmix.nrank"        // (uint16_t) rank on this node spanning all jobs
+#define PMIX_LOCALLDR              "pmix.lldr"         // (uint64_t) opal_identifier of lowest rank on this node within this job
+#define PMIX_APPLDR                "pmix.aldr"         // (uint32_t) lowest rank in this app within this job
 /* proc location-related info */
-#define PMIX_PROC_MAP        "pmix.map"         // (byte_object) packed map of proc locations within this job
-#define PMIX_LOCAL_PEERS     "pmix.lpeers"      // (char*) comma-delimited string of ranks on this node within this job
-#define PMIX_LOCAL_CPUSETS   "pmix.lcpus"       // (byte_object) packed names and cpusets of local peers
+#define PMIX_HOSTNAME              "pmix.hname"        // (char*) name of the host this proc is on
+#define PMIX_PROC_MAP              "pmix.map"          // (byte_object) packed map of proc locations within this job
+#define PMIX_LOCAL_PEERS           "pmix.lpeers"       // (char*) comma-delimited string of ranks on this node within this job
+#define PMIX_LOCAL_CPUSETS         "pmix.lcpus"        // (byte_object) packed names and cpusets of local peers
 /* size info */
-#define PMIX_UNIV_SIZE       "pmix.univ.size"   // (uint32_t) #procs in this nspace
-#define PMIX_JOB_SIZE        "pmix.job.size"    // (uint32_t) #procs in this job
-#define PMIX_LOCAL_SIZE      "pmix.local.size"  // (uint32_t) #procs in this job on this node
-#define PMIX_NODE_SIZE       "pmix.node.size"   // (uint32_t) #procs across all jobs on this node
-#define PMIX_MAX_PROCS       "pmix.max.size"    // (uint32_t) max #procs for this job
+#define PMIX_UNIV_SIZE             "pmix.univ.size"    // (uint32_t) #procs in this nspace
+#define PMIX_JOB_SIZE              "pmix.job.size"     // (uint32_t) #procs in this job
+#define PMIX_LOCAL_SIZE            "pmix.local.size"   // (uint32_t) #procs in this job on this node
+#define PMIX_NODE_SIZE             "pmix.node.size"    // (uint32_t) #procs across all jobs on this node
+#define PMIX_MAX_PROCS             "pmix.max.size"     // (uint32_t) max #procs for this job
 /* topology info */
-#define PMIX_NET_TOPO        "pmix.ntopo"       // (byte_object) network topology
-#define PMIX_LOCAL_TOPO      "pmix.ltopo"       // (hwloc topo) local node topology
-
+#define PMIX_NET_TOPO              "pmix.ntopo"        // (byte_object) network topology
+#define PMIX_LOCAL_TOPO            "pmix.ltopo"        // (hwloc topo) local node topology
+/* fault tolerance-related info */
+#define PMIX_TERMINATE_SESSION     "pmix.term.sess"    // (bool) RM intends to terminate session
+#define PMIX_TERMINATE_JOB         "pmix.term.job"     // (bool) RM intends to terminate this job
+#define PMIX_TERMINATE_NODE        "pmix.term.node"    // (bool) RM intends to terminate all procs on this node
+#define PMIX_TERMINATE_PROC        "pmix.term.proc"    // (bool) RM intends to terminate just this process
+#define PMIX_ERROR_ACTION_TIMEOUT  "pmix.err.timeout"  // (int) time in sec before RM will execute error response
 
 /****    PMIX ERROR CONSTANTS    ****/
 /* PMIx errors are always negative, with 0 reserved for success */
@@ -531,11 +536,31 @@ typedef void (*pmix_lookup_cbfunc_t)(pmix_status_t status,
  * info - any additional info provided regarding the error.
  * ninfo - the number of info objects in the provided array
  *
- * Note that different resource managers will provide differing levels
+ * Note that different resource managers may provide differing levels
  * of support for error notification to application processes. Thus, the
  * info array may be NULL or may contain detailed information of the error.
  * It is the responsibility of the application to parse any provided info array
- * for defined key-values if it so desires */
+ * for defined key-values if it so desires.
+ *
+ * Possible uses of the pmix_info_t object include:
+ *
+ * - for the RM to alert the process as to planned actions, such as
+ *   to abort the session, in response to the reported error
+ *
+ * - provide a timeout for alternative action to occur, such as for
+ *   the application to request an alternate response to the error
+ *
+ * For example, the RM might alert the application to the failure of
+ * a node that resulted in termination of several processes, and indicate
+ * that the overall session will be aborted unless the application
+ * requests an alternative behavior in the next 5 seconds. The application
+ * then has time to respond with a checkpoint request, or a request to
+ * recover from the failure by obtaining replacement nodes and restarting
+ * from some earlier checkpoint.
+ *
+ * Support for these options is left to the discretion of the host RM. Info
+ * keys are included in the common definions above, but also may be augmented
+ * on a per-RM basis. */
 typedef void (*pmix_notification_fn_t)(pmix_status_t status,
                                        pmix_range_t ranges[], size_t nranges,
                                        pmix_info_t info[], size_t ninfo);
