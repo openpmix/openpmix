@@ -127,7 +127,7 @@ int PMIx_Get_nb(const char *nspace, int rank,
     }
     
     /* first see if we already have the info in our dstore */
-    if (PMIX_SUCCESS == pmix_client_hash_fetch(nm, rank, key, &val)) {
+    if (PMIX_SUCCESS == (rc = pmix_client_hash_fetch(nm, rank, key, &val))) {
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "pmix: value retrieved from dstore");
         /* need to push this into the event library to ensure
@@ -138,7 +138,7 @@ int PMIx_Get_nb(const char *nspace, int rank,
         cb->key = strdup(key);
         cb->value_cbfunc = cbfunc;
         cb->cbdata = cbdata;
-        /* pack the return data so the unpack routine can get it */
+       /* pack the return data so the unpack routine can get it */
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&cb->data, val, 1, PMIX_VALUE))) {
             PMIX_ERROR_LOG(rc);
         }
@@ -151,8 +151,16 @@ int PMIx_Get_nb(const char *nspace, int rank,
                      EV_WRITE, getnb_shortcut, cb);
         event_active(&(cb->ev), EV_WRITE, 1);
         return PMIX_SUCCESS;
+    } else if (PMIX_ERR_NOT_FOUND == rc) {
+        /* we have the data from this proc, but didn't find the key
+         * the user requested. At this time, there is no way for the
+         * key to eventually be found, so all we can do is return
+         * the error */
+        return rc;
     }
-    
+
+    /* if we got here, then we don't have the data for this proc, so
+     * we request it from the server */
     if (NULL == (msg = pack_get(nm, rank, key, PMIX_GETNB_CMD))) {
         return PMIX_ERROR;
     }
@@ -322,12 +330,12 @@ static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
 
     /* if a callback was provided, execute it */
     if (NULL != cb && NULL != cb->value_cbfunc) {
-        if( !rc && ( NULL == val ) ){
+        if (PMIX_SUCCESS != rc && (NULL == val) ){
             rc = PMIX_ERR_NOT_FOUND;
         }
         cb->value_cbfunc(rc, val, cb->cbdata);
     }
-    if( NULL != val ){
+    if (NULL != val){
         PMIX_VALUE_RELEASE(val);
     }
     PMIX_RELEASE(cb);
