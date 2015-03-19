@@ -233,10 +233,11 @@ PMIX_CLASS_DECLARATION(pmix_timer_t);
         event_active(&((ms)->ev), EV_WRITE, 1);                         \
     } while(0);
 
-#define CLOSE_THE_SOCKET(socket)                                \
-    do {                                                        \
-        shutdown(socket, 2);                                    \
-        close(socket);                                          \
+#define CLOSE_THE_SOCKET(socket)                \
+    do {                                        \
+        shutdown(socket, 2);                    \
+        close(socket);                          \
+        socket = -1;                            \
     } while(0)
 
 

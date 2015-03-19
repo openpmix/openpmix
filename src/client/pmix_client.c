@@ -703,7 +703,6 @@ static int usock_connect(struct sockaddr *addr)
          * not likely to suddenly become successful */
         if (0 <= sd) {
             CLOSE_THE_SOCKET(sd);
-            sd = -1;
         }
         return PMIX_ERR_UNREACH;
     }
@@ -711,14 +710,12 @@ static int usock_connect(struct sockaddr *addr)
     /* send our identity and any authentication credentials to the server */
     if (PMIX_SUCCESS != (rc = send_connect_ack(sd))) {
         CLOSE_THE_SOCKET(sd);
-        sd = -1;
         return sd;
     }
 
     /* do whatever handshake is required */
     if (PMIX_SUCCESS != (rc = recv_connect_ack(sd))) {
         CLOSE_THE_SOCKET(sd);
-        sd = -1;
         return sd;
     }
 

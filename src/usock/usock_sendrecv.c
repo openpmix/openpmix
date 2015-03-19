@@ -354,7 +354,6 @@ void pmix_usock_recv_handler(int sd, short flags, void *cbdata)
         peer->recv_msg = NULL;
     }
     CLOSE_THE_SOCKET(peer->sd);
-    peer->sd = -1;
     PMIX_REPORT_ERROR(PMIX_ERR_UNREACH);
 }
 
