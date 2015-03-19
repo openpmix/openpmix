@@ -262,7 +262,7 @@ PMIX_CLASS_INSTANCE(pmix_usock_sr_t,
 
 static void ncon(pmix_nspace_t *p)
 {
-    memset(p->nspace, 0, PMIX_MAX_NSLEN);
+    memset(p->nspace, 0, sizeof(p->nspace));
     p->nlocalprocs = 0;
     p->all_registered = false;
     PMIX_CONSTRUCT(&p->job_info, pmix_buffer_t);

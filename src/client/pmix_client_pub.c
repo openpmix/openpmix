@@ -177,7 +177,7 @@ int PMIx_Lookup(pmix_scope_t scope,
 
     /* transfer the info keys to the keys argv array */
     for (i=0; i < ninfo; i++) {
-        if (NULL != info[i].key) {
+        if ('\0' != info[i].key[0]) {
             pmix_argv_append_nosize(&keys, info[i].key);
         }
     }
@@ -401,8 +401,8 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     int32_t cnt;
     char *key;
     pmix_info_t *info;
-    size_t i, ninfo;
-    char nspace[PMIX_MAX_NSLEN];
+    size_t ninfo;
+    char nspace[PMIX_MAX_NSLEN+1];
     
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:client recv callback activated with %d bytes",
@@ -415,7 +415,7 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     }
 
     /* set the defaults */
-    memset(nspace, 0, PMIX_MAX_NSLEN);
+    memset(nspace, 0, sizeof(nspace));
     info = NULL;
     ninfo = 0;
     
@@ -435,15 +435,16 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     
     /* start by unpacking the nspace of the process that published the info */
     cnt = 1;
+    key = NULL;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&cb->data, &key, &cnt, PMIX_STRING))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(cb);
         return;
     }
-    if (NULL != nspace) {
+    if (NULL != key) {
         strncpy(nspace, key, PMIX_MAX_NSLEN);
+        free(key);
     }
-    free(key);
 
     /* unpack the number of returned values */
     cnt = 1;
@@ -467,12 +468,7 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
 
  cleanup:
     /* cleanup */
-    if (NULL != info) {
-        for (i=0; i < ninfo; i++) {
-            PMIX_INFO_DESTRUCT(&info[i]);
-        }
-        free(info);
-    }
+    PMIX_INFO_FREE(info, ninfo);
     
     PMIX_RELEASE(cb);
 }
@@ -493,10 +489,7 @@ static void lookup_cbfunc(int status, pmix_info_t info[], size_t ninfo,
                 break;
             }
         }
-        PMIX_INFO_DESTRUCT(&info[i]);
     }
-    if (NULL != info) {
-        free(info);
-    }
+    PMIX_INFO_FREE(info, ninfo);
     cb->active = false;
 }

@@ -105,7 +105,7 @@ static void setup_globals(void)
     pmix_client_globals.myserver.info = info;
     
     /* setup our copy of the pmix globals object */
-    memset(&pmix_globals.nspace, 0, PMIX_MAX_NSLEN);
+    memset(&pmix_globals.nspace, 0, sizeof(pmix_globals.nspace));
 }
 
 static int connect_to_server(struct sockaddr_un *address)
@@ -701,6 +701,9 @@ static int usock_connect(struct sockaddr *addr)
     if (retries == PMIX_MAX_RETRIES || sd < 0){
         /* We were unsuccessful in establishing this connection, and are
          * not likely to suddenly become successful */
+        if (0 <= sd) {
+            CLOSE_THE_SOCKET(sd);
+        }
         return PMIX_ERR_UNREACH;
     }
 

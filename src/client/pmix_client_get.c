@@ -312,6 +312,12 @@ static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: get_nb callback recvd");
 
+    if (NULL == cb) {
+        /* nothing we can do */
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        return;
+    }
+    
     rc = unpack_get_return(buf, cb->key, &val);
 
     /* if a callback was provided, execute it */

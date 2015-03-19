@@ -104,7 +104,9 @@ int PMIx_server_process_msg(int sd, char *hdrptr, char *msgptr,
     
     /* process the message */
     rc = server_switchyard(cd, &buf);
-    PMIX_RELEASE(cd);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(cd);
+    }
     
     /* Free buffer protecting the data */
     buf.base_ptr = NULL;

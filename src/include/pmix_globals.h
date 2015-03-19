@@ -34,7 +34,7 @@ BEGIN_C_DECLS
  * between various parts of the code library. Both the client
  * and server libraries must instance this structure */
 typedef struct {
-    char nspace[PMIX_MAX_NSLEN];
+    char nspace[PMIX_MAX_NSLEN+1];
     int rank, pindex;
     pmix_event_base_t *evbase;
     int debug_output;

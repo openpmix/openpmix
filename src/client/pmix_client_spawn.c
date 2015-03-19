@@ -137,7 +137,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                         pmix_buffer_t *buf, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
-    char nspace[PMIX_MAX_NSLEN];
+    char nspace[PMIX_MAX_NSLEN+1];
     char *n2;
     int rc, ret;
     int32_t cnt;

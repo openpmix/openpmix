@@ -359,7 +359,7 @@ void pmix_value_load(pmix_value_t *v, void *data,
                      pmix_data_type_t type)
 {
     v->type = type;
-    if (NULL == data && PMIX_STRING != type && PMIX_BYTE_OBJECT != type) {
+    if (NULL == data) {
         /* just set the fields to zero */
         memset(&v->data, 0, sizeof(v->data));
     } else {

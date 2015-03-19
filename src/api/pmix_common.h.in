@@ -78,9 +78,9 @@ BEGIN_C_DECLS
 /****  PMIX CONSTANTS    ****/
 
 /* define maximum value and key sizes */
-#define PMIX_MAX_NSLEN     256
-#define PMIX_MAX_VALLEN   1024
-#define PMIX_MAX_KEYLEN    512
+#define PMIX_MAX_NSLEN     255
+#define PMIX_MAX_VALLEN   1023
+#define PMIX_MAX_KEYLEN    511
 
 /* define a *wildcard* value for requests involving rank */
 #define PMIX_RANK_WILDCARD -1
@@ -333,15 +333,26 @@ typedef struct {
         }                                                               \
     } while(0);
 
+#define PMIX_VALUE_FREE(m, n)                           \
+    do {                                                \
+        size_t _s;                                      \
+        if (NULL != (m)) {                              \
+            for (_s=0; _s < (n); _s++) {                \
+                PMIX_VALUE_DESTRUCT(&((m)[_s]));        \
+            }                                           \
+            free((m));                                  \
+        }                                               \
+    } while(0);
+
 
 /****    PMIX RANGE STRUCT    ****/
 typedef struct {
-    char nspace[PMIX_MAX_NSLEN];
+    char nspace[PMIX_MAX_NSLEN+1];  // ensure room for the NULL terminator
     int *ranks;
     size_t nranks;
 } pmix_range_t;
 /* utility macros for working with pmix_range_t structs */
-#define PMIX_RANGE_CREATE(m, n) \
+#define PMIX_RANGE_CREATE(m, n)                                         \
     do {                                                                \
         (m) = (pmix_range_t*)malloc((n) * sizeof(pmix_range_t));        \
         memset((m), 0, (n) * sizeof(pmix_range_t));                     \
@@ -365,10 +376,21 @@ typedef struct {
         }                                       \
     } while(0);
 
+#define PMIX_RANGE_FREE(m, n)                           \
+    do {                                                \
+        size_t _s;                                      \
+        if (NULL != (m)) {                              \
+            for (_s=0; _s < (n); _s++) {                \
+                PMIX_RANGE_DESTRUCT(&((m)[_s]));        \
+            }                                           \
+            free((m));                                  \
+        }                                               \
+    } while(0);
+
 
 /****    PMIX INFO STRUCT    ****/
 typedef struct {
-    char key[PMIX_MAX_KEYLEN];
+    char key[PMIX_MAX_KEYLEN+1];  // ensure room for the NULL terminator
     pmix_value_t value;
 } pmix_info_t;
 
@@ -394,6 +416,17 @@ typedef struct {
 #define PMIX_INFO_DESTRUCT(m) \
     do {                                        \
         PMIX_VALUE_DESTRUCT(&(m)->value);       \
+    } while(0);
+
+#define PMIX_INFO_FREE(m, n)                    \
+    do {                                        \
+        size_t _s;                              \
+        if (NULL != (m)) {                      \
+            for (_s=0; _s < (n); _s++) {        \
+                PMIX_INFO_DESTRUCT(&((m)[_s])); \
+            }                                   \
+            free((m));                          \
+        }                                       \
     } while(0);
 
 
@@ -452,10 +485,20 @@ typedef struct {
         }                                                       \
     } while(0);    
 
+#define PMIX_APP_FREE(m, n)                     \
+    do {                                        \
+        size_t _s;                              \
+        if (NULL != (m)) {                      \
+            for (_s=0; _s < (n); _s++) {        \
+                PMIX_APP_DESTRUCT(&((m)[_s]));  \
+            }                                   \
+            free((m));                          \
+        }                                       \
+    } while(0);
 
 /****    PMIX MODEX STRUCT    ****/
 typedef struct {
-    char nspace[PMIX_MAX_NSLEN];
+    char nspace[PMIX_MAX_NSLEN+1];  // ensure room for the NULL terminator
     int rank;
     uint8_t *blob;
     size_t size;

@@ -355,12 +355,15 @@ int pmix_bfrop_unpack_float(pmix_buffer_t *buffer, void *dest,
     /* unpack the data */
     for (i = 0; i < (*num_vals); ++i) {
         n=1;
+        convert = NULL;
         if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_string(buffer, &convert, &n, PMIX_STRING))) {
             return ret;
         }
-        tmp = strtof(convert, NULL);
-        memcpy(&desttmp[i], &tmp, sizeof(tmp));
-        free(convert);
+        if (NULL != convert) {
+            tmp = strtof(convert, NULL);
+            memcpy(&desttmp[i], &tmp, sizeof(tmp));
+            free(convert);
+        }
     }
     return PMIX_SUCCESS;
 }
@@ -382,12 +385,15 @@ int pmix_bfrop_unpack_double(pmix_buffer_t *buffer, void *dest,
     /* unpack the data */
     for (i = 0; i < (*num_vals); ++i) {
         n=1;
+        convert = NULL;
         if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_string(buffer, &convert, &n, PMIX_STRING))) {
             return ret;
         }
-        tmp = strtod(convert, NULL);
-        memcpy(&desttmp[i], &tmp, sizeof(tmp));
-        free(convert);
+        if (NULL != convert) {
+            tmp = strtod(convert, NULL);
+            memcpy(&desttmp[i], &tmp, sizeof(tmp));
+            free(convert);
+        }
     }
     return PMIX_SUCCESS;
 }
@@ -554,6 +560,7 @@ static int unpack_val(pmix_buffer_t *buffer, pmix_value_t *val)
         if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_buffer(buffer, &val->data.array.size, &m, PMIX_SIZE))) {
             return ret;
         }
+        break;
     default:
         pmix_output(0, "UNPACK-PMIX-VALUE: UNSUPPORTED TYPE");
         return PMIX_ERROR;
@@ -601,12 +608,16 @@ int pmix_bfrop_unpack_info(pmix_buffer_t *buffer, void *dest,
     n = *num_vals;
 
     for (i = 0; i < n; ++i) {
-        memset(ptr[i].key, 0, PMIX_MAX_KEYLEN);
+        memset(ptr[i].key, 0, sizeof(ptr[i].key));
         memset(&ptr[i].value, 0, sizeof(pmix_value_t));
         /* unpack key */
         m=1;
+        tmp = NULL;
         if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_string(buffer, &tmp, &m, PMIX_STRING))) {
             return ret;
+        }
+        if (NULL == tmp) {
+            return PMIX_ERROR;
         }
         (void)strncpy(ptr[i].key, tmp, PMIX_MAX_KEYLEN);
         free(tmp);
@@ -686,8 +697,12 @@ int pmix_bfrop_unpack_range(pmix_buffer_t *buffer, void *dest,
         memset(&ptr[i], 0, sizeof(pmix_range_t));
         /* unpack nspace */
         m=1;
+        tmp = NULL;
         if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_string(buffer, &tmp, &m, PMIX_STRING))) {
             return ret;
+        }
+        if (NULL == tmp) {
+            return PMIX_ERROR;
         }
         (void)strncpy(ptr[i].nspace, tmp, PMIX_MAX_NSLEN);
         free(tmp);
@@ -746,8 +761,12 @@ int pmix_bfrop_unpack_app(pmix_buffer_t *buffer, void *dest,
         /* unpack argv */
         for (k=0; k < ptr[i].argc; k++) {
             m=1;
+            tmp = NULL;
             if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_string(buffer, &tmp, &m, PMIX_STRING))) {
                 return ret;
+            }
+            if (NULL == tmp) {
+                return PMIX_ERROR;
             }
             pmix_argv_append_nosize(&ptr[i].argv, tmp);
             free(tmp);
@@ -759,8 +778,12 @@ int pmix_bfrop_unpack_app(pmix_buffer_t *buffer, void *dest,
         }
         for (k=0; k < nval; k++) {
             m=1;
+            tmp = NULL;
             if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_string(buffer, &tmp, &m, PMIX_STRING))) {
                 return ret;
+            }
+            if (NULL == tmp) {
+                return PMIX_ERROR;
             }
             pmix_argv_append_nosize(&ptr[i].env, tmp);
             free(tmp);
@@ -836,16 +859,19 @@ int pmix_bfrop_unpack_topo(pmix_buffer_t *buffer, void *dest,
     /* NOTE: hwloc defines topology_t as a pointer to a struct! */
     hwloc_topology_t t, *tarray  = (hwloc_topology_t*)dest;
     int rc=PMIX_SUCCESS, i, cnt, j;
-    char *xmlbuffer=NULL;
+    char *xmlbuffer;
     struct hwloc_topology_support *support;
 
     for (i=0, j=0; i < *num_vals; i++) {
         /* unpack the xml string */
         cnt=1;
+        xmlbuffer = NULL;
         if (PMIX_SUCCESS != (rc = pmix_bfrop_unpack_string(buffer, &xmlbuffer, &cnt, PMIX_STRING))) {
             goto cleanup;
         }
-
+        if (NULL == xmlbuffer) {
+            goto cleanup;
+        }
         /* convert the xml */
         if (0 != hwloc_topology_init(&t)) {
             rc = PMIX_ERROR;
@@ -926,8 +952,12 @@ int pmix_bfrop_unpack_modex(pmix_buffer_t *buffer, void *dest,
         ptr[i].rank = -1;
         /* unpack nspace */
         m=1;
+        tmp = NULL;
         if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_string(buffer, &tmp, &m, PMIX_STRING))) {
             return ret;
+        }
+        if (NULL == tmp) {
+            return PMIX_ERROR;
         }
         (void)strncpy(ptr[i].nspace, tmp, PMIX_MAX_NSLEN);
         free(tmp);

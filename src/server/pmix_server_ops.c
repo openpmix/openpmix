@@ -147,7 +147,7 @@ bool pmix_server_trk_update(pmix_server_trkr_t *trk)
                      * we have them. First, we have to check to see if we
                      * already know about them all - otherwise, we cannot
                      * perform the check */
-                    if (nptr->all_registered) {
+                    if (rtrk->nptr->all_registered) {
                         for (j=0; j < rtrk->range->nranks; j++) {
                             PMIX_LIST_FOREACH(info, &rtrk->nptr->ranks, pmix_rank_info_t) {
                                 if (rtrk->range->ranks[j] == info->rank ) {
@@ -212,6 +212,12 @@ static pmix_server_trkr_t* get_tracker(pmix_range_t *ranges,
 
     pmix_output_verbose(5, pmix_globals.debug_output,
                         "get_tracker called with %d ranges", (int)nranges);
+
+    /* bozo check - should never happen outside of programmer error */
+    if (NULL == ranges) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        return NULL;
+    }
     
     /* there is no shortcut way to search the trackers - all
      * we can do is perform a brute-force search. Fortunately,
@@ -308,7 +314,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
 {
     int32_t cnt;
     pmix_status_t rc;
-    size_t i, nranges;
+    size_t nranges;
     pmix_range_t *ranges=NULL;
     int collect_data, barrier;
     pmix_modex_data_t mdx;
@@ -330,18 +336,21 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
     }
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "recvd fence with %d ranges", (int)nranges);
-    ranges = NULL;
-    /* unpack the ranges, if provided */
-    if (0 < nranges) {
-        /* allocate reqd space */
-        ranges = (pmix_range_t*)malloc(nranges * sizeof(pmix_range_t));
-        memset(ranges, 0, nranges * sizeof(pmix_range_t));
-        /* unpack the ranges */
-        cnt = nranges;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, ranges, &cnt, PMIX_RANGE))) {
-            goto cleanup;
-        }
+    /* there must be at least one as the client has to at least provide
+     * their own namespace */
+    if (nranges < 1) {
+        return PMIX_ERR_BAD_PARAM;
     }
+    
+    /* unpack the ranges */
+    ranges = (pmix_range_t*)malloc(nranges * sizeof(pmix_range_t));
+    memset(ranges, 0, nranges * sizeof(pmix_range_t));
+    /* unpack the ranges */
+    cnt = nranges;
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, ranges, &cnt, PMIX_RANGE))) {
+        goto cleanup;
+    }
+    
     /* unpack the data flag - indicates if the caller wants
      * all modex data returned at end of procedure */
     cnt = 1;
@@ -378,7 +387,16 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
     }
     if (0 != barrier) {
         /* find/create the local tracker for this operation */
-        trk = get_tracker(ranges, nranges);
+        if (NULL == (trk = get_tracker(ranges, nranges))) {
+            /* only if a bozo error occurs */
+            PMIX_ERROR_LOG(PMIX_ERROR);
+            /* DO NOT HANG */
+            if (NULL != opcbfunc) {
+                opcbfunc(PMIX_ERROR, cd);
+            }
+            rc = PMIX_ERROR;
+            goto cleanup;
+        }
         trk->type = PMIX_FENCENB_CMD;
         trk->modexcbfunc = modexcbfunc;
         trk->barrier = barrier;
@@ -404,14 +422,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
     }
 
  cleanup:
-    if (NULL != ranges) {
-        for (i=0; i < nranges; i++) {
-            if (NULL != ranges[i].ranks) {
-                free(ranges[i].ranks);
-            }
-        }
-        free(ranges);
-    }
+    PMIX_RANGE_FREE(ranges, nranges);
 
     return rc;
 }
@@ -424,7 +435,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     pmix_status_t rc;
     int rank;
     char *nsp;
-    char nspace[PMIX_MAX_NSLEN];
+    char nspace[PMIX_MAX_NSLEN+1];
     
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "recvd GET");
@@ -434,7 +445,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     }
     
     /* setup */
-    memset(nspace, 0, PMIX_MAX_NSLEN);
+    memset(nspace, 0, sizeof(nspace));
     
     /* retrieve the nspace and rank of the requested proc */
     cnt = 1;
@@ -679,20 +690,35 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    ranges = NULL;
-    /* unpack the ranges, if provided */
-    if (0 < nranges) {
-        /* allocate reqd space */
-        ranges = (pmix_range_t*)malloc(nranges * sizeof(pmix_range_t));
-        /* unpack the ranges */
-        cnt = nranges;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, ranges, &cnt, PMIX_RANGE))) {
-            PMIX_ERROR_LOG(rc);
-            return rc;
-        }
+    /* there must be at least one range - we do not allow the client
+     * to send us NULL range as the server has no idea what to do
+     * with that situation. Instead, the client should at least send
+     * us their own namespace for the use-case where the connection
+     * spans all procs in that namespace */
+    if (nranges < 1) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        return PMIX_ERR_BAD_PARAM;
     }
+    
+    /* unpack the ranges */
+    ranges = (pmix_range_t*)malloc(nranges * sizeof(pmix_range_t));
+    cnt = nranges;
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, ranges, &cnt, PMIX_RANGE))) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
     /* find/create the local tracker for this operation */
-    trk = get_tracker(ranges, nranges);
+    if (NULL == (trk = get_tracker(ranges, nranges))) {
+        /* only if a bozo error occurs */
+        PMIX_ERROR_LOG(PMIX_ERROR);
+        /* DO NOT HANG */
+        if (NULL != cbfunc) {
+            cbfunc(PMIX_ERROR, cd);
+        }
+        rc = PMIX_ERROR;
+        goto cleanup;
+    }
     if (disconnect) {
         trk->type = PMIX_DISCONNECTNB_CMD;
     } else {
@@ -716,7 +742,9 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
     } else {
         rc = PMIX_SUCCESS;
     }
-    free(ranges);
+    
+ cleanup:
+    PMIX_RANGE_FREE(ranges, nranges);
 
     return rc;
 }
@@ -791,7 +819,7 @@ PMIX_CLASS_INSTANCE(pmix_snd_caddy_t,
 
 static void scadcon(pmix_setup_caddy_t *p)
 {
-    memset(p->nspace, 0, PMIX_MAX_NSLEN);
+    memset(p->nspace, 0, sizeof(p->nspace));
     p->active = true;
     p->server_object = NULL;
 }

@@ -125,7 +125,7 @@ PMIX_CLASS_DECLARATION(pmix_usock_posted_recv_t);
 /* object for tracking active nspaces */
 typedef struct {
     pmix_list_item_t super;
-    char nspace[PMIX_MAX_NSLEN];
+    char nspace[PMIX_MAX_NSLEN+1];
     size_t nlocalprocs;
     bool all_registered;       // all local ranks have been defined
     pmix_buffer_t job_info;

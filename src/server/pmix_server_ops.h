@@ -63,7 +63,7 @@ typedef struct {
     pmix_object_t super;
     pmix_event_t ev;
     volatile bool active;
-    char nspace[PMIX_MAX_NSLEN];
+    char nspace[PMIX_MAX_NSLEN+1];
     int rank;
     uid_t uid;
     gid_t gid;

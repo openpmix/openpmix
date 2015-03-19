@@ -198,8 +198,8 @@ int PMI_Unpublish_name(const char service_name[])
     char *keys[2];
     
     /* pass the service */
-    keys[1] = (char*)service_name;
-    keys[2] = NULL;
+    keys[0] = (char*)service_name;
+    keys[1] = NULL;
     
     rc = PMIx_Unpublish(PMIX_NAMESPACE, keys);
     return convert_err(rc);

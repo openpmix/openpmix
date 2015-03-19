@@ -244,7 +244,7 @@ static int pack_fence(pmix_buffer_t *msg,
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    /* pack any provided ranges */
+    /* pack any provided ranges - must always be at least one (our own) */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, ranges, nranges, PMIX_RANGE))) {
         PMIX_ERROR_LOG(rc);
         return rc;
@@ -308,10 +308,14 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: fence_nb callback recvd");
 
+    if (NULL == cb) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        return;
+    }
     rc = unpack_return(buf);
 
     /* if a callback was provided, execute it */
-    if (NULL != cb && NULL != cb->op_cbfunc) {
+    if (NULL != cb->op_cbfunc) {
         cb->op_cbfunc(rc, cb->cbdata);
     }
     PMIX_RELEASE(cb);

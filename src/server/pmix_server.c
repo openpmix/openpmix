@@ -475,7 +475,7 @@ pmix_status_t PMIx_server_register_client(const char nspace[], int rank,
 pmix_status_t PMIx_server_setup_fork(const char nspace[],
                                      int rank, char ***env)
 {
-    char rankstr[PMIX_MAX_VALLEN];
+    char rankstr[PMIX_MAX_VALLEN+1];
     
     /* pass the nspace */
     pmix_setenv("PMIX_NAMESPACE", nspace, true, env);
@@ -724,7 +724,9 @@ pmix_status_t pmix_server_authenticate(int sd, int *out_rank, pmix_peer_t **peer
     psave->info = info;
     info->proc_cnt++; /* increase number of processes on this rank */
     psave->sd = sd;
-    psave->index = pmix_pointer_array_add(&pmix_server_globals.clients, psave);
+    if (0 > (psave->index = pmix_pointer_array_add(&pmix_server_globals.clients, psave))) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
     
     /* see if there is a credential */
     if (csize < hdr.nbytes) {
@@ -785,8 +787,7 @@ pmix_status_t pmix_server_authenticate(int sd, int *out_rank, pmix_peer_t **peer
     }
     
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "connect-ack from client %s",
-                        (PMIX_SUCCESS == rc) ? "completed" : "failed");
+                        "connect-ack from client completed");
 
     *peer = psave;
     return rc;
@@ -1101,7 +1102,6 @@ static int server_switchyard(pmix_peer_t *peer, uint32_t tag,
             event_del(&peer->recv_event);
             peer->recv_ev_active = false;
         }
-        PMIX_RELEASE(peer);
         return rc;
     }
 
