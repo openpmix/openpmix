@@ -725,6 +725,8 @@ pmix_status_t pmix_server_authenticate(int sd, int *out_rank, pmix_peer_t **peer
     info->proc_cnt++; /* increase number of processes on this rank */
     psave->sd = sd;
     if (0 > (psave->index = pmix_pointer_array_add(&pmix_server_globals.clients, psave))) {
+        free(msg);
+        PMIX_RELEASE(psave);
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
     

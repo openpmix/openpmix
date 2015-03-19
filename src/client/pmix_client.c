@@ -703,6 +703,7 @@ static int usock_connect(struct sockaddr *addr)
          * not likely to suddenly become successful */
         if (0 <= sd) {
             CLOSE_THE_SOCKET(sd);
+            sd = -1;
         }
         return PMIX_ERR_UNREACH;
     }

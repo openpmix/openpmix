@@ -60,7 +60,7 @@ static PMIX_CLASS_INSTANCE(pmix_proc_data_t,
 static pmix_kval_t* lookup_keyval(pmix_proc_data_t *proc_data,
                                         const char *key);
 static pmix_proc_data_t* lookup_proc(pmix_hash_table_t *jtable,
-                                     uint64_t id);
+                                     uint64_t id, bool create);
 
 /* Initialize our hash table */
 int pmix_client_hash_init(void)
@@ -116,7 +116,7 @@ int pmix_client_hash_store(const char *nspace, int rank,
     id = ((uint64_t)jobid << 32) | (int32_t)rank;
     
     /* lookup the proc data object for this proc */
-    if (NULL == (proc_data = lookup_proc(&hash_data, id))) {
+    if (NULL == (proc_data = lookup_proc(&hash_data, id, true))) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
@@ -159,12 +159,14 @@ int pmix_client_hash_fetch(const char *nspace, int rank,
     id = ((uint64_t)jobid << 32) | (int32_t)rank;
 
     /* lookup the proc data object for this proc */
-    if (NULL == (proc_data = lookup_proc(&hash_data, id))) {
-        return PMIX_ERR_NOT_FOUND;
+    if (NULL == (proc_data = lookup_proc(&hash_data, id, false))) {
+        /* indicate that we do not have the data for this proc yet */
+        return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
     }
 
     /* find the value */
     if (NULL == (hv = lookup_keyval(proc_data, key))) {
+        /* indicate that we have the proc, but that key isn't included */
         return PMIX_ERR_NOT_FOUND;
     }
 
@@ -190,7 +192,7 @@ int pmix_client_hash_remove_data(const char *nspace,
     id = ((uint64_t)jobid << 32) | (int32_t)rank;
 
     /* lookup the specified proc */
-    if (NULL == (proc_data = lookup_proc(&hash_data, id))) {
+    if (NULL == (proc_data = lookup_proc(&hash_data, id, false))) {
         /* no data for this proc */
         return PMIX_SUCCESS;
     }
@@ -242,12 +244,12 @@ static pmix_kval_t* lookup_keyval(pmix_proc_data_t *proc_data,
  * pmix_identifier_t.
  */
 static pmix_proc_data_t* lookup_proc(pmix_hash_table_t *jtable,
-                                     uint64_t id)
+                                     uint64_t id, bool create)
 {
     pmix_proc_data_t *proc_data = NULL;
 
     pmix_hash_table_get_value_uint64(jtable, id, (void**)&proc_data);
-    if (NULL == proc_data) {
+    if (NULL == proc_data && create) {
         /* The proc clearly exists, so create a data structure for it */
         proc_data = PMIX_NEW(pmix_proc_data_t);
         if (NULL == proc_data) {

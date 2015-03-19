@@ -363,29 +363,27 @@ static int server_switchyard(pmix_server_caddy_t *cd,
 
 
     if (PMIX_ABORT_CMD == cmd) {
-        PMIX_RETAIN(cd);
+        PMIX_RETAIN(cd);  // op_cbfunc will release it to maintain accounting
         if (PMIX_SUCCESS != (rc = pmix_server_abort(cd->peer, buf, op_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
-            PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
         }
         return rc;
     }
         
     if (PMIX_FENCENB_CMD == cmd) {
+        PMIX_RETAIN(cd);  // op_cbfunc will release it to maintain accounting
         if (PMIX_SUCCESS != (rc = pmix_server_fence(cd, buf, modex_cbfunc, op_cbfunc))) {
             PMIX_ERROR_LOG(rc);
-            PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
         }
         return rc;
     }
 
     if (PMIX_GETNB_CMD == cmd) {
-        PMIX_RETAIN(cd);
+        PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
         if (PMIX_SUCCESS != (rc = pmix_server_get(buf, get_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
-            PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
         }
         return rc;
@@ -394,18 +392,17 @@ static int server_switchyard(pmix_server_caddy_t *cd,
     if (PMIX_FINALIZE_CMD == cmd) {
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "recvd FINALIZE");
+        PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
         /* call the local server, if supported */
         if (NULL != pmix_host_server.finalized) {
-            PMIX_RETAIN(cd);
             if (PMIX_SUCCESS != (rc = pmix_host_server.finalized(cd->peer->info->nptr->nspace,
                                                                  cd->peer->info->rank,
                                                                  cd->peer->info->server_object,
                                                                  op_cbfunc, cd))) {
                 PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE(cd);
+                op_cbfunc(rc, cd);
             }
         } else {
-            PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
         }
         return rc;
@@ -413,10 +410,9 @@ static int server_switchyard(pmix_server_caddy_t *cd,
 
         
     if (PMIX_PUBLISHNB_CMD == cmd) {
-        PMIX_RETAIN(cd);
+        PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
         if (PMIX_SUCCESS != (rc = pmix_server_publish(buf, op_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
-            PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
         }
         return rc;
@@ -424,10 +420,9 @@ static int server_switchyard(pmix_server_caddy_t *cd,
 
     
     if (PMIX_LOOKUPNB_CMD == cmd) {
-        PMIX_RETAIN(cd);
+        PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
         if (PMIX_SUCCESS != (rc = pmix_server_lookup(buf, lookup_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
-            PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
         }
         return rc;
@@ -435,10 +430,9 @@ static int server_switchyard(pmix_server_caddy_t *cd,
 
         
     if (PMIX_UNPUBLISHNB_CMD == cmd) {
-        PMIX_RETAIN(cd);
+        PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
         if (PMIX_SUCCESS != (rc = pmix_server_unpublish(buf, op_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
-            PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
         }
         return rc;
@@ -446,10 +440,9 @@ static int server_switchyard(pmix_server_caddy_t *cd,
 
         
     if (PMIX_SPAWNNB_CMD == cmd) {
-        PMIX_RETAIN(cd);
+        PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
         if (PMIX_SUCCESS != (rc = pmix_server_spawn(buf, spawn_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
-            PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
         }
         return rc;
@@ -457,20 +450,18 @@ static int server_switchyard(pmix_server_caddy_t *cd,
 
         
     if (PMIX_CONNECTNB_CMD == cmd) {
-        PMIX_RETAIN(cd);
+        PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
         if (PMIX_SUCCESS != (rc = pmix_server_connect(cd, buf, false, cnct_cbfunc))) {
             PMIX_ERROR_LOG(rc);
-            PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
         }
         return rc;
     }
 
     if (PMIX_DISCONNECTNB_CMD == cmd) {
-        PMIX_RETAIN(cd);
+        PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
         if (PMIX_SUCCESS != (rc = pmix_server_connect(cd, buf, true, cnct_cbfunc))) {
             PMIX_ERROR_LOG(rc);
-            PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
             op_cbfunc(rc, cd);
         }
         return rc;
