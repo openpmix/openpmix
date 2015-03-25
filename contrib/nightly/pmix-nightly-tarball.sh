@@ -80,7 +80,7 @@ for branch in $branches; do
     echo "=== Getting script from: $raw_uri"
     wget --quiet --no-check-certificate --tries=10 $raw_uri/$branch/$script_uri -O $script
     if test ! $? -eq 0 ; then
-        echo "wget of OMPI nightly tarball create script failed."
+        echo "wget of PMIX nightly tarball create script failed."
         if test -f $script ; then
             echo "Using older version of $script for this run."
         else
