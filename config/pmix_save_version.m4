@@ -13,20 +13,20 @@ dnl                         Corporation.  All rights reserved.
 dnl Copyright (c) 2004-2005 The University of Tennessee and The University
 dnl                         of Tennessee Research Foundation.  All rights
 dnl                         reserved.
-dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
 dnl                         University of Stuttgart.  All rights reserved.
 dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
-dnl Copyright (c) 2008-2012 Cisco Systems, Inc.  All rights reserved.
+dnl Copyright (c) 2008-2015 Cisco Systems, Inc.  All rights reserved.
 dnl########################
 dnl $COPYRIGHT$
-dnl 
+dnl
 dnl Additional copyrights may follow
-dnl 
+dnl
 dnl $HEADER$
 dnl
 
-# PMIX_SAVE_VERSION(project_short, project-long, 
+# PMIX_SAVE_VERSION(project_short, project-long,
 #                  version_file, header_file])
 # ----------------------------------------------
 # creates version information for project from version_file, using
@@ -39,8 +39,8 @@ AC_DEFUN([PMIX_SAVE_VERSION], [
     AC_SUBST($1[_MINOR_VERSION])
     AC_SUBST($1[_RELEASE_VERSION])
     AC_SUBST($1[_GREEK_VERSION])
-    AC_SUBST($1[_WANT_REPO_REV])
     AC_SUBST($1[_REPO_REV])
+    AC_SUBST($1[_TARBALL_VERSION])
     AC_SUBST($1[_VERSION])
     AC_SUBST($1[_RELEASE_DATE])
 
@@ -48,7 +48,7 @@ AC_DEFUN([PMIX_SAVE_VERSION], [
     AC_MSG_RESULT([$]$1[_VERSION])
     AC_MSG_CHECKING([$2 release date])
     AC_MSG_RESULT([$]$1[_RELEASE_DATE])
-    AC_MSG_CHECKING([$2 Subversion repository version])
+    AC_MSG_CHECKING([$2 repository version])
     AC_MSG_RESULT([$]$1[_REPO_REV])
 
     AC_DEFINE_UNQUOTED($1[_MAJOR_VERSION], [$]$1[_MAJOR_VERSION],
@@ -59,14 +59,14 @@ AC_DEFUN([PMIX_SAVE_VERSION], [
         [Release release number of ]$2)
     AC_DEFINE_UNQUOTED($1[_GREEK_VERSION], ["$]$1[_GREEK_VERSION"],
         [Greek - alpha, beta, etc - release number of ]$2)
+    AC_DEFINE_UNQUOTED($1[_REPO_REV], ["$]$1[_REPO_REV"],
+        [The repository version ]$2)
+    AC_DEFINE_UNQUOTED($1[_TARBALL_VERSION], ["$]$1[_TARBALL_VERSION"],
+        [Tarball filename version string of ]$2)
     AC_DEFINE_UNQUOTED($1[_VERSION], ["$]$1[_RELEASE_VERSION"],
         [Complete release number of ]$2)
     AC_DEFINE_UNQUOTED($1[_RELEASE_DATE], ["$]$1[_RELEASE_DATE"],
         [Release date of ]$2)
-    AC_DEFINE_UNQUOTED($1[_WANT_REPO_REV], [$]$1[_WANT_REPO_REV],
-        [Whether we want to include the repository version or not ]$2)
-    AC_DEFINE_UNQUOTED($1[_REPO_REV], ["$]$1[_REPO_REV"],
-        [The repository version ]$2)
 
     AC_CONFIG_FILES([$4])
 ])dnl

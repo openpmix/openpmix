@@ -35,6 +35,10 @@ fi
 # Build root - scratch space
 build_root=/home/mpiteam/pmix/nightly-tarball-build-root
 
+# Coverity stuff
+coverity_token=`cat $HOME/coverity/pmix-token.txt`
+coverity_configure_args=
+
 export PATH=$HOME/local/bin:$PATH
 export LD_LIBRARY_PATH=$HOME/local/lib:$LD_LIBRARY_PATH
 
@@ -76,7 +80,7 @@ for branch in $branches; do
     echo "=== Getting script from: $raw_uri"
     wget --quiet --no-check-certificate --tries=10 $raw_uri/$branch/$script_uri -O $script
     if test ! $? -eq 0 ; then
-        echo "wget of OMPI nightly tarball create script failed."
+        echo "wget of PMIX nightly tarball create script failed."
         if test -f $script ; then
             echo "Using older version of $script for this run."
         else
@@ -123,11 +127,10 @@ done
 for tarball in `cat $pending_coverity`; do
     $HOME/scripts/pmix-nightly-coverity.pl \
         --filename=$tarball \
-        --coverity-token=`cat $HOME/coverity-token.txt` \
+        --coverity-token=$coverity_token \
         --verbose \
         --logfile-dir=$HOME/coverity \
         --make-args=-j8 \
-        --configure-args="--enable-mpi-fortran --enable-mpi-java --enable-oshmem --enable-oshmem-fortran --enable-oshmem-java --with-mxm=/opt/mellanox/mxm --with-psm --with-usnic"
-# JMS ^^ definitely need to update these configure params
+        --configure-args="$coverity_configure_args"
 done
 rm -f $pending_coverity

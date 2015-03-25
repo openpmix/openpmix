@@ -13,7 +13,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2006-2013 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2006-2015 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2006-2008 Sun Microsystems, Inc.  All rights reserved.
 # Copyright (c) 2006-2011 Los Alamos National Security, LLC.  All rights
 #                         reserved.
@@ -39,8 +39,8 @@
 m4_include([config/pmix_get_version.m4])
 AC_LANG([C])
 
-AC_INIT([pmix], 
-        [m4_normalize(esyscmd([config/pmix_get_version.sh VERSION --version]))],
+AC_INIT([pmix],
+        [m4_normalize(esyscmd([config/pmix_get_version.sh VERSION --tarball]))],
         [http://www.open-mpi.org/projects/pmix/], [pmix])
 AC_PREREQ(2.69)
 AC_CONFIG_AUX_DIR(config)
@@ -73,21 +73,10 @@ AM_SILENT_RULES([yes])
 AC_SUBST([CONFIGURE_DEPENDENCIES], ['$(top_srcdir)/VERSION'])
 
 # Get the version of pmix that we are installing
-PMIX_SAVE_VERSION([PMIX], [PMI-Exascale Client Library], 
+PMIX_SAVE_VERSION([PMIX], [PMI-Exascale Client Library],
                           [$srcdir/VERSION],
                           [src/include/version.h])
 AM_PROG_AR
-
-# Override/fixup the version numbers set by AC_INIT, since on
-# developer builds, there's no good way to know what the version is
-# before running configure :(.  We only use the base version number
-# for the version set in AC_INIT.  This will always match reality
-# because we add the VERSION file (the only way to change the
-# major.minor.release{greek}) into the configure dependencies.
-
-PACKAGE_VERSION="$PMIX_VERSION"
-PACKAGE_STRING="${PACKAGE_NAME} ${PACKAGE_VERSION}"
-VERSION="${PACKAGE_VERSION}"
 
 # For standalone configurations, we also include a .so version number.
 
