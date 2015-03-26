@@ -37,7 +37,7 @@ build_root=/home/mpiteam/pmix/nightly-tarball-build-root
 
 # Coverity stuff
 coverity_token=`cat $HOME/coverity/pmix-token.txt`
-coverity_configure_args=
+coverity_configure_args="--with-libevent=$HOME/local/libevent-2.0.22"
 
 export PATH=$HOME/local/bin:$PATH
 export LD_LIBRARY_PATH=$HOME/local/lib:$LD_LIBRARY_PATH
