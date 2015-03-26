@@ -8,7 +8,7 @@
 
 # e-mail address to send results to
 results_addr=testing@open-mpi.org
-results_addr=jsquyres@osl.iu.edu
+results_addr=rhc
 
 # svn repository uri
 master_code_uri=https://github.com/open-mpi/pmix.git

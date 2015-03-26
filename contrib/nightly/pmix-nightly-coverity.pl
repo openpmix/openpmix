@@ -144,7 +144,7 @@ if ($dry_run_arg) {
 } else {
     verbose "*** Submitting results\n";
     safe_system(0, "curl --form token=$coverity_token_arg " .
-                "--form email=jsquyres\@cisco.com " .
+                "--form email=rhc\@open-mpi.org " .
                 "--form file=\@$pmix_ver-analyzed.tar.bz2 " .
                 "--form version=$pmix_ver " .
                 "--form description=nightly-master " .
