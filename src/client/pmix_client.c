@@ -187,7 +187,6 @@ int PMIx_Init(char nspace[], int *rank)
     /* we require the nspace */
     if (NULL == (evar = getenv("PMIX_NAMESPACE"))) {
         /* let the caller know that the server isn't available yet */
-        pmix_output(0, "NO NAMESPACE");
         return PMIX_ERR_INVALID_NAMESPACE;
     }
     if (NULL != nspace) {
@@ -199,13 +198,11 @@ int PMIx_Init(char nspace[], int *rank)
      * then we need to return an error */
     if (NULL == (evar = getenv("PMIX_SERVER_URI"))) {
         /* let the caller know that the server isn't available */
-        pmix_output(0, "NO SERVER URI");
         return PMIX_ERR_SERVER_NOT_AVAIL;
     }
     uri = pmix_argv_split(evar, ':');
     if (2 != pmix_argv_count(uri)) {
         pmix_argv_free(uri);
-        pmix_output(0, "BAD URI");
         return PMIX_ERROR;
     }
     /* setup the path to the daemon rendezvous point */
@@ -214,7 +211,6 @@ int PMIx_Init(char nspace[], int *rank)
     /* if the rendezvous file doesn't exist, that's an error */
     if (0 != access(uri[1], R_OK)) {
         pmix_argv_free(uri);
-        pmix_output(0, "REND FILE NOT FOUND");
         return PMIX_ERR_NOT_FOUND;
     }
     /* set the server rank */
@@ -225,7 +221,6 @@ int PMIx_Init(char nspace[], int *rank)
     /* we also require our rank */
     if (NULL == (evar = getenv("PMIX_RANK"))) {
         /* let the caller know that the server isn't available yet */
-        pmix_output(0, "NO RANK");
         return PMIX_ERR_DATA_VALUE_NOT_FOUND;
     }
     pmix_globals.rank = strtol(evar, NULL, 10);
@@ -434,6 +429,62 @@ int PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
     PMIX_DESTRUCT(&kv);
 
     return rc;
+}
+
+pmix_status_t PMIx_Commit(void)
+{
+    int rc;
+    pmix_scope_t scope;
+    pmix_buffer_t *msg;
+    pmix_cmd_t cmd=PMIX_COMMIT_CMD;
+
+    msg = PMIX_NEW(pmix_buffer_t);
+    /* pack the cmd */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    /* if we haven't already done it, ensure we have committed our values */
+    if (NULL != pmix_client_globals.cache_local) {
+        scope = PMIX_LOCAL;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_SCOPE))) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &pmix_client_globals.cache_local, 1, PMIX_BUFFER))) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        PMIX_RELEASE(pmix_client_globals.cache_local);
+    }
+    if (NULL != pmix_client_globals.cache_remote) {
+        scope = PMIX_REMOTE;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_SCOPE))) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &pmix_client_globals.cache_remote, 1, PMIX_BUFFER))) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        PMIX_RELEASE(pmix_client_globals.cache_remote);
+    }
+    if (NULL != pmix_client_globals.cache_global) {
+        scope = PMIX_GLOBAL;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_SCOPE))) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &pmix_client_globals.cache_global, 1, PMIX_BUFFER))) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        PMIX_RELEASE(pmix_client_globals.cache_global);
+    }
+    /* push the message into our event base to send to the server */
+    PMIX_ACTIVATE_SEND_RECV(&pmix_client_globals.myserver, msg, NULL, NULL);
+    return PMIX_SUCCESS;
 }
 
 void PMIx_Register_errhandler(pmix_notification_fn_t err)

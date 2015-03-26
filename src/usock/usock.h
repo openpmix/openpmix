@@ -61,6 +61,7 @@
 /* define some commands */
 typedef enum {
     PMIX_ABORT_CMD,
+    PMIX_COMMIT_CMD,
     PMIX_FENCENB_CMD,
     PMIX_GETNB_CMD,
     PMIX_FINALIZE_CMD,
@@ -69,7 +70,8 @@ typedef enum {
     PMIX_UNPUBLISHNB_CMD,
     PMIX_SPAWNNB_CMD,
     PMIX_CONNECTNB_CMD,
-    PMIX_DISCONNECTNB_CMD
+    PMIX_DISCONNECTNB_CMD,
+    PMIX_NOTIFY_CMD
 } pmix_cmd_t;
 
 /* header for messages */

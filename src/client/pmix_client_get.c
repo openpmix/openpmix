@@ -80,6 +80,7 @@ int PMIx_Get(const char nspace[], int rank,
 
     if (PMIX_SUCCESS != (rc = PMIx_Get_nb(nspace, rank, key, value_cbfunc, cb))) {
         PMIX_RELEASE(cb);
+        *val = NULL;
         return rc;
     }
     

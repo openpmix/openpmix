@@ -56,7 +56,7 @@ static int abort_fn(const char nspace[], int rank, void *server_object,
                     int status, const char msg[],
                     pmix_op_cbfunc_t cbfunc, void *cbdata);
 static int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
-                      int barrier, int collect_data,
+                      int collect_data,
                       pmix_modex_cbfunc_t cbfunc, void *cbdata);
 static int store_modex_fn(const char nspace[], int rank, void *server_object,
                           pmix_scope_t scope, pmix_modex_data_t *data);
@@ -127,9 +127,7 @@ int cli_info_cnt = 0;
 
 static bool test_abort = false;
 
-static bool barrier = false;
 static bool collect = false;
-static bool nonblocking = false;
 static uint32_t nprocs = 1;
 struct event_base *server_base = NULL;
 pmix_event_t *listen_ev = NULL;
@@ -408,21 +406,15 @@ int main(int argc, char **argv)
             /* print help */
             fprintf(stderr, "usage: pmix_test [-h] [-e foo] [-b] [-c] [-nb]\n");
             fprintf(stderr, "\t-e foo   use foo as test client\n");
-            fprintf(stderr, "\t-b       execute fence_nb callback when all procs reach that point\n");
             fprintf(stderr, "\t-c       fence[_nb] callback shall include all collected data\n");
-            fprintf(stderr, "\t-nb      use non-blocking fence\n");
             fprintf(stderr, "\t-v       verbose output\n");
             fprintf(stderr, "\t-t       --timeout\n");
             exit(0);
         } else if (0 == strcmp(argv[i], "--exec") || 0 == strcmp(argv[i], "-e")) {
             i++;
             binary = argv[i];
-        } else if (0 == strcmp(argv[i], "--barrier") || 0 == strcmp(argv[i], "-b")) {
-            barrier = true;
         } else if (0 == strcmp(argv[i], "--collect") || 0 == strcmp(argv[i], "-c")) {
             collect = true;
-        } else if (0 == strcmp(argv[i], "--non-blocking") || 0 == strcmp(argv[i], "-nb")) {
-            nonblocking = true;
         } else if( 0 == strcmp(argv[i], "--verbose") || 0 == strcmp(argv[i],"-v") ){
             TEST_VERBOSE_ON();
             verbose = true;
@@ -489,12 +481,6 @@ int main(int argc, char **argv)
     
     /* fork/exec the test */
     pmix_argv_append_nosize(&client_argv, binary);
-    if (nonblocking) {
-        pmix_argv_append_nosize(&client_argv, "nb");
-        if (barrier) {
-            pmix_argv_append_nosize(&client_argv, "barrier");
-        }
-    }
     if (collect) {
         pmix_argv_append_nosize(&client_argv, "collect");
     }
@@ -720,7 +706,7 @@ static void xfer_to_array(pmix_list_t *mdxlist,
 }
 
 static int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
-                      int barrier, int collect_data,
+                      int collect_data,
                       pmix_modex_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_list_t data;
@@ -728,7 +714,7 @@ static int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
     pmix_modex_data_t *mdxarray = NULL;
     size_t size=0, n;
     
-    /* if barrier is given, then we need to wait until all the
+    /* we need to wait until all the
      * procs have reported prior to responding */
 
     /* if they want all the data returned, do so */

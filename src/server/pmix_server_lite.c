@@ -371,6 +371,13 @@ static int server_switchyard(pmix_server_caddy_t *cd,
         return rc;
     }
         
+    if (PMIX_COMMIT_CMD == cmd) {
+        if (PMIX_SUCCESS != (rc = pmix_server_commit(cd->peer, buf))) {
+            PMIX_ERROR_LOG(rc);
+        }
+        return rc;
+    }
+        
     if (PMIX_FENCENB_CMD == cmd) {
         PMIX_RETAIN(cd);  // op_cbfunc will release it to maintain accounting
         if (PMIX_SUCCESS != (rc = pmix_server_fence(cd, buf, modex_cbfunc, op_cbfunc))) {

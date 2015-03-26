@@ -45,7 +45,6 @@ typedef struct {
     pmix_list_t ranges;     // list of pmix_range_trkr_t identifying the participating ranges
     pmix_list_t locals;     // list of pmix_server_caddy_t identifying the local participants
     uint32_t local_cnt;     // number of local participants
-    bool barrier;
     bool collect_data;
     pmix_modex_cbfunc_t modexcbfunc;
     pmix_op_cbfunc_t op_cbfunc;
@@ -68,8 +67,26 @@ typedef struct {
     uid_t uid;
     gid_t gid;
     void *server_object;
+    int nlocalprocs;
+    pmix_info_t *info;
+    size_t ninfo;
 } pmix_setup_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_setup_caddy_t);
+
+typedef struct {
+    pmix_object_t super;
+    pmix_event_t ev;
+    volatile bool active;
+    pmix_status_t status;
+    pmix_range_t *ranges;
+    size_t nranges;
+    pmix_range_t *error_ranges;
+    size_t error_nranges;
+    pmix_info_t *info;
+    size_t ninfo;
+    pmix_buffer_t buf;
+} pmix_notify_caddy_t;
+PMIX_CLASS_DECLARATION(pmix_notify_caddy_t);
 
 typedef struct {
     pmix_list_t nspaces;
@@ -126,6 +143,8 @@ pmix_status_t pmix_server_authenticate(int sd, int *out_rank,
 
 pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
                                 pmix_op_cbfunc_t cbfunc, void *cbdata);
+
+pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf);
 
 pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
                                 pmix_buffer_t *buf,

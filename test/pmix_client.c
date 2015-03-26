@@ -13,7 +13,7 @@
  *                         All rights reserved.
  * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
- * Copyright (c) 2013-2014 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2015 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -38,10 +38,8 @@ int main(int argc, char **argv)
     int rc, i, j;
     pmix_value_t value;
     char key[50], sval[50];
-    int nprocs = 1;
-    bool barrier = false;
+    uint32_t nprocs = 1;
     bool collect = false;
-    bool nonblocking = false;
     pmix_value_t *val = &value;
 
     TEST_OUTPUT(("rank X: Start", rank));
@@ -51,12 +49,8 @@ int main(int argc, char **argv)
         if (0 == strcmp(argv[i], "--n") || 0 == strcmp(argv[i], "-n")) {
             i++;
             nprocs = strtol(argv[i], NULL, 10);
-        } else if (0 == strcmp(argv[i], "barrier")) {
-            barrier = true;
         } else if (0 == strcmp(argv[i], "collect")) {
             collect = true;
-        } else if (0 == strcmp(argv[i], "nb")) {
-            nonblocking = true;
         } else if ( (0 == strcmp(argv[i], "-v") ) || (0 == strcmp(argv[i], "--verbose") ) ) {
             TEST_VERBOSE_ON();
         }else {
@@ -124,6 +118,10 @@ int main(int argc, char **argv)
     }
     
     /* Submit the data */
+    if (PMIX_SUCCESS != (rc = PMIx_Commit())) {
+        TEST_ERROR(("rank %d: PMIx_Commit failed: %d", rank, rc));
+        goto error_out;
+    }
     if (PMIX_SUCCESS != (rc = PMIx_Fence(NULL, 0, 1))) {
         TEST_ERROR(("rank %d: PMIx_Fence failed: %d", rank, rc));
         goto error_out;
@@ -131,7 +129,7 @@ int main(int argc, char **argv)
     TEST_OUTPUT(("rank %d: Fence successfully completed", rank));
     
     /* Check the predefined output */
-    for (i=0; i < nprocs; i++) {
+    for (i=0; i < (int)nprocs; i++) {
 
         for (j=0; j < 3; j++) {
             sprintf(key,"local-key-%d",j);

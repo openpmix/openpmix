@@ -603,7 +603,10 @@ typedef void (*pmix_lookup_cbfunc_t)(pmix_status_t status,
  *
  * Support for these options is left to the discretion of the host RM. Info
  * keys are included in the common definions above, but also may be augmented
- * on a per-RM basis. */
+ * on a per-RM basis.
+ *
+ * On the server side, the notification function is used to inform the host
+ * server of a detected error in the PMIx subsystem and/or client */
 typedef void (*pmix_notification_fn_t)(pmix_status_t status,
                                        pmix_range_t ranges[], size_t nranges,
                                        pmix_info_t info[], size_t ninfo);
@@ -627,8 +630,8 @@ typedef void (*pmix_value_cbfunc_t)(pmix_status_t status,
  *     non-blocking operations.
  *
  * (b) job-related errors such as the failure of another process in
- *     the job, impending failure of hardware within the job's
- *     usage footprint, etc.
+ *     the job or in any connected job, impending failure of hardware
+ *     within the job's usage footprint, etc.
  *
  * See pmix_common.h for a description of the notification function */
 void PMIx_Register_errhandler(pmix_notification_fn_t errhandler);

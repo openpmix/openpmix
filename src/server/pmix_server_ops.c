@@ -91,6 +91,40 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
     return rc;
 }
 
+pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
+{
+    int32_t cnt;
+    pmix_status_t rc=PMIX_SUCCESS;
+    pmix_modex_data_t mdx;
+    pmix_scope_t scope;
+    pmix_buffer_t *bptr;
+
+    /* unpack any provided data blobs */
+    cnt = 1;
+    (void)strncpy(mdx.nspace, peer->info->nptr->nspace, PMIX_MAX_NSLEN);
+    mdx.rank = peer->info->rank;
+    while (PMIX_SUCCESS == pmix_bfrop.unpack(buf, &scope, &cnt, PMIX_SCOPE)) {
+        cnt = 1;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &bptr, &cnt, PMIX_BUFFER))) {
+            goto cleanup;
+        }
+        /* let the local host's server store it */
+        mdx.blob = (uint8_t*)bptr->base_ptr;
+        mdx.size = bptr->bytes_used;
+        if (NULL != pmix_host_server.store_modex) {
+            pmix_host_server.store_modex(peer->info->nptr->nspace,
+                                         peer->info->rank,
+                                         peer->info->server_object,
+                                         scope, &mdx);
+        }
+        PMIX_RELEASE(bptr);
+        cnt = 1;
+    }
+ cleanup:
+    return rc;
+}
+
+
 bool pmix_server_trk_update(pmix_server_trkr_t *trk)
 {
     size_t j;
@@ -316,10 +350,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
     pmix_status_t rc;
     size_t nranges;
     pmix_range_t *ranges=NULL;
-    int collect_data, barrier;
-    pmix_modex_data_t mdx;
-    pmix_scope_t scope;
-    pmix_buffer_t *bptr;
+    int collect_data;
     pmix_server_trkr_t *trk;
     
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -357,68 +388,31 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &collect_data, &cnt, PMIX_INT))) {
         goto cleanup;
     }
-    /* unpack an additional flag indicating if we are to callback
-     * once all procs have executed the fence_nb call, or
-     * callback immediately */
-    cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &barrier, &cnt, PMIX_INT))) {
+    /* find/create the local tracker for this operation */
+    if (NULL == (trk = get_tracker(ranges, nranges))) {
+        /* only if a bozo error occurs */
+        PMIX_ERROR_LOG(PMIX_ERROR);
+        /* DO NOT HANG */
+        if (NULL != opcbfunc) {
+            opcbfunc(PMIX_ERROR, cd);
+        }
+        rc = PMIX_ERROR;
         goto cleanup;
     }
-    /* unpack any provided data blobs */
-    cnt = 1;
-    (void)strncpy(mdx.nspace, cd->peer->info->nptr->nspace, PMIX_MAX_NSLEN);
-    mdx.rank = cd->peer->info->rank;
-    while (PMIX_SUCCESS == pmix_bfrop.unpack(buf, &scope, &cnt, PMIX_SCOPE)) {
-        cnt = 1;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &bptr, &cnt, PMIX_BUFFER))) {
-            goto cleanup;
-        }
-        /* let the local host's server store it */
-        mdx.blob = (uint8_t*)bptr->base_ptr;
-        mdx.size = bptr->bytes_used;
-        if (NULL != pmix_host_server.store_modex) {
-            pmix_host_server.store_modex(cd->peer->info->nptr->nspace,
-                                         cd->peer->info->rank,
-                                         cd->peer->info->server_object,
-                                         scope, &mdx);
-        }
-        PMIX_RELEASE(bptr);
-        cnt = 1;
-    }
-    if (0 != barrier) {
-        /* find/create the local tracker for this operation */
-        if (NULL == (trk = get_tracker(ranges, nranges))) {
-            /* only if a bozo error occurs */
-            PMIX_ERROR_LOG(PMIX_ERROR);
-            /* DO NOT HANG */
-            if (NULL != opcbfunc) {
-                opcbfunc(PMIX_ERROR, cd);
-            }
-            rc = PMIX_ERROR;
-            goto cleanup;
-        }
-        trk->type = PMIX_FENCENB_CMD;
-        trk->modexcbfunc = modexcbfunc;
-        trk->barrier = barrier;
-        trk->collect_data = collect_data;
-        /* add this contributor to the tracker so they get
-         * notified when we are done */
-        PMIX_RETAIN(cd);
-        pmix_list_append(&trk->locals, &cd->super);
-        /* if all local contributions were collected
-         * let the local host's server know that we are at the
-         * "fence" point - they will callback once the barrier
-         * across all participants has been completed */
-        if (trk_complete(trk)) {
-            rc = pmix_host_server.fence_nb(ranges, nranges, barrier,
-                                           collect_data, modexcbfunc, trk);
-        }
-    } else {
-        /* tell the caller to send an immediate release */
-        if (NULL != opcbfunc) {
-            opcbfunc(PMIX_SUCCESS, cd);
-        }
-        rc = PMIX_SUCCESS;
+    trk->type = PMIX_FENCENB_CMD;
+    trk->modexcbfunc = modexcbfunc;
+    trk->collect_data = collect_data;
+    /* add this contributor to the tracker so they get
+     * notified when we are done */
+    PMIX_RETAIN(cd);
+    pmix_list_append(&trk->locals, &cd->super);
+    /* if all local contributions were collected
+     * let the local host's server know that we are at the
+     * "fence" point - they will callback once the barrier
+     * across all participants has been completed */
+    if (trk_complete(trk)) {
+        rc = pmix_host_server.fence_nb(ranges, nranges,
+                                       collect_data, modexcbfunc, trk);
     }
 
  cleanup:
@@ -775,7 +769,6 @@ static void tcon(pmix_server_trkr_t *t)
     PMIX_CONSTRUCT(&t->ranges, pmix_list_t);
     PMIX_CONSTRUCT(&t->locals, pmix_list_t);
     t->local_cnt = 0;
-    t->barrier = false;
     t->collect_data = false;
     t->modexcbfunc = NULL;
     t->op_cbfunc = NULL;
@@ -822,10 +815,47 @@ static void scadcon(pmix_setup_caddy_t *p)
     memset(p->nspace, 0, sizeof(p->nspace));
     p->active = true;
     p->server_object = NULL;
+    p->nlocalprocs = 0;
+    p->info = NULL;
+    p->ninfo = 0;
+}
+static void scaddes(pmix_setup_caddy_t *p)
+{
+    if (NULL != p->info) {
+        PMIX_INFO_FREE(p->info, p->ninfo);
+    }
 }
 PMIX_CLASS_INSTANCE(pmix_setup_caddy_t,
                     pmix_object_t,
-                    scadcon, NULL);
+                    scadcon, scaddes);
+
+static void ncon(pmix_notify_caddy_t *p)
+{
+    p->active = true;
+    p->ranges = NULL;
+    p->nranges = 0;
+    p->error_ranges = NULL;
+    p->error_nranges = 0;
+    p->info = NULL;
+    p->ninfo = 0;
+    PMIX_CONSTRUCT(&p->buf, pmix_buffer_t);
+}
+static void ndes(pmix_notify_caddy_t *p)
+{
+    if (NULL != p->ranges) {
+        PMIX_RANGE_FREE(p->ranges, p->nranges);
+    }
+    if (NULL != p->error_ranges) {
+        PMIX_RANGE_FREE(p->error_ranges, p->error_nranges);
+    }
+    if (NULL != p->info) {
+        PMIX_INFO_FREE(p->info, p->ninfo);
+    }
+    PMIX_DESTRUCT(&p->buf);
+}
+PMIX_CLASS_INSTANCE(pmix_notify_caddy_t,
+                    pmix_object_t,
+                    ncon, ndes);
 
 PMIX_CLASS_INSTANCE(pmix_trkr_caddy_t,
                     pmix_object_t,

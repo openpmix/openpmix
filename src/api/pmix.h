@@ -109,8 +109,13 @@ int PMIx_Initialized(void);
  */
 pmix_status_t PMIx_Abort(int status, const char msg[]);
 
-/* Push all previously _PMIx_Put_ values to the local PMIx server and
- * execute a blocking barrier across the processes identified in the
+/* Push all previously _PMIx_Put_ values to the local PMIx server.
+ * This is an asynchronous operation - the library will immediately
+ * return to the caller while the data is transmitted to the local
+ * server in the background */
+pmix_status_t PMIx_Commit(void);
+
+/* Execute a blocking barrier across the processes identified in the
  * specified ranges. Passing a _NULL_ pointer as the _ranges_ parameter
  * indicates that the barrier is to span all processes in the client's
  * namespace. Each provided range struct can pass _NULL_ for its array
@@ -130,31 +135,14 @@ pmix_status_t PMIx_Fence(const pmix_range_t ranges[],
                          size_t nranges, int collect_data);
 
 /* Fence_nb */
-/* Non-blocking version of PMIx_Fence. Push all previously _PMIx_Put_ values
- * to the local PMIx server. Passing a _true_ value to the _barrier_ parameter
- * will direct the PMIx server to execute the specified callback function once
- * all participating processes have called _PMIx_Fence_nb_. Passing a value of
- * _false_ for _barrier_ will cause the callback function to be immediately
- * executed upon the server receiving the command.
- *
- * Passing a _NULL_ pointer as the _ranges_ parameter indicates that any
- * requested barrier is to span all processes in the client's namespace. Each
- * provided range struct can pass _NULL_ for its array of ranks to indicate
- * that all processes in the given namespace are participating.
- *
- * The _collect_data_ parameter is passed to the server to indicate whether
- * or not the barrier operation is to return the _put_ data from all participating
- * processes in the callback. A value of _false_ indicates that the callback is
- * just used as a release and no data is to be returned at that time. A value of
- * _true_ indicates that all _put_ data is to be collected by the barrier and
- * returned in the callback function. A _NULL_ callback function can be used to
- * indicate that no callback is desired. */
+/* Non-blocking version of PMIx_Fence. Note that the function will return
+ * an error if a _NULL_ callback function is given. */
 pmix_status_t PMIx_Fence_nb(const pmix_range_t ranges[], size_t nranges,
-                            int barrier, int collect_data,
+                            int collect_data,
                             pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Push a value into the client's namespace. The client library will cache
- * the information locally until _PMIx_Fence_ is called. The provided scope
+ * the information locally until _PMIx_Commit_ is called. The provided scope
  * value is passed to the local PMIx server, which will distribute the data
  * as directed. */
 pmix_status_t PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val);

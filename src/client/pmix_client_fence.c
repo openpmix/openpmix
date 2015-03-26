@@ -57,8 +57,7 @@ static int pack_fence(pmix_buffer_t *msg,
                       pmix_cmd_t cmd,
                       pmix_range_t *ranges,
                       size_t nranges,
-                      int collect_data,
-                      int barrier);
+                      int collect_data);
 static void wait_cbfunc(struct pmix_peer_t *pr,
                         pmix_usock_hdr_t *hdr,
                         pmix_buffer_t *buf, void *cbdata);
@@ -80,7 +79,7 @@ int PMIx_Fence(const pmix_range_t ranges[],
     cb->active = true;
 
     /* push the message into our event base to send to the server */
-    if (PMIX_SUCCESS != (rc = PMIx_Fence_nb(ranges, nranges, true, collect_data, op_cbfunc, cb))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Fence_nb(ranges, nranges, collect_data, op_cbfunc, cb))) {
         PMIX_RELEASE(cb);
         return rc;
     }
@@ -97,7 +96,7 @@ int PMIx_Fence(const pmix_range_t ranges[],
 }
 
 int PMIx_Fence_nb(const pmix_range_t ranges[], size_t nranges,
-                  int barrier, int collect_data,
+                  int collect_data,
                   pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_buffer_t *msg;
@@ -118,12 +117,6 @@ int PMIx_Fence_nb(const pmix_range_t ranges[], size_t nranges,
     if (NULL == ranges && 0 != nranges) {
         return PMIX_ERR_BAD_PARAM;
     }
-    if (0 != collect_data && 0 == barrier) {
-        /* we cannot return all the data if we don't
-         * do a barrier */
-        return PMIX_ERR_BAD_PARAM;
-    }
-    
     /* if we are given a NULL range, then the caller is referencing
      * all procs within our own nspace */
     if (NULL == ranges) {
@@ -138,10 +131,7 @@ int PMIx_Fence_nb(const pmix_range_t ranges[], size_t nranges,
     }
     
     msg = PMIX_NEW(pmix_buffer_t);
-    /* if the barrier flag is true, then the server must delay calling
-     * us back until all participating procs have called fence_nb. If false,
-     * then the server should call us back right away */
-    if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, rgs, nrg, collect_data, barrier))) {
+    if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, rgs, nrg, collect_data))) {
         PMIX_RELEASE(msg);
         return rc;
     }
@@ -227,11 +217,9 @@ static int pack_fence(pmix_buffer_t *msg,
                       pmix_cmd_t cmd,
                       pmix_range_t *ranges,
                       size_t nranges,
-                      int collect_data,
-                      int barrier)
+                      int collect_data)
 {
     int rc;
-    pmix_scope_t scope;
     
     /* pack the cmd */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
@@ -253,48 +241,6 @@ static int pack_fence(pmix_buffer_t *msg,
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &collect_data, 1, PMIX_INT))) {
         PMIX_ERROR_LOG(rc);
         return rc;
-    }
-    /* pack the barrier flag */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &barrier, 1, PMIX_INT))) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-    /* if we haven't already done it, ensure we have committed our values */
-    if (NULL != pmix_client_globals.cache_local) {
-        scope = PMIX_LOCAL;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_SCOPE))) {
-            PMIX_ERROR_LOG(rc);
-            return rc;
-        }
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &pmix_client_globals.cache_local, 1, PMIX_BUFFER))) {
-            PMIX_ERROR_LOG(rc);
-            return rc;
-        }
-        PMIX_RELEASE(pmix_client_globals.cache_local);
-    }
-    if (NULL != pmix_client_globals.cache_remote) {
-        scope = PMIX_REMOTE;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_SCOPE))) {
-            PMIX_ERROR_LOG(rc);
-            return rc;
-        }
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &pmix_client_globals.cache_remote, 1, PMIX_BUFFER))) {
-            PMIX_ERROR_LOG(rc);
-            return rc;
-        }
-        PMIX_RELEASE(pmix_client_globals.cache_remote);
-    }
-    if (NULL != pmix_client_globals.cache_global) {
-        scope = PMIX_GLOBAL;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_SCOPE))) {
-            PMIX_ERROR_LOG(rc);
-            return rc;
-        }
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &pmix_client_globals.cache_global, 1, PMIX_BUFFER))) {
-            PMIX_ERROR_LOG(rc);
-            return rc;
-        }
-        PMIX_RELEASE(pmix_client_globals.cache_global);
     }
     return PMIX_SUCCESS;
 }

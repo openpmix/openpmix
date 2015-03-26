@@ -111,19 +111,15 @@ typedef int (*pmix_server_abort_fn_t)(const char nspace[], int rank, void *serve
 /* Client called either PMIx_Fence or PMIx_Fence_nb. In either case,
  * the host server will be called via a non-blocking function to execute
  * the specified operation. All processes in the specified ranges are
- * required to participate in the Fence[_nb] operation. If the "barrier"
- * parameter is "true", then the callback is to be executed once all
- * participants have participated. If the "barrier" parameter is "false",
- * then the callback is to be executed immediately upon completion of
- * whatever local bookkeeping the host server must do to support the
- * function.
+ * required to participate in the Fence[_nb] operation.The callback is
+ * to be executed once all participants have participated.
  *
- * If the "barrier" parameter is "true", AND the "collect_data" parameter
- * is "true", then the callback function shall return *all* modex data
- * provided by the participants. If the "collect_data" parameter is "false",
- * then the callback shall just return the status */
+ * If the "collect_data" parameter is "true", then the callback function
+ * shall return *all* modex data provided by the participants. If the
+ * "collect_data" parameter is "false", then the callback shall just return
+ * the status */
 typedef int (*pmix_server_fencenb_fn_t)(const pmix_range_t ranges[], size_t nranges,
-                                        int barrier, int collect_data,
+                                        int collect_data,
                                         pmix_modex_cbfunc_t cbfunc, void *cbdata);
 
 /* Store modex data for the given scope - should be copied into
@@ -302,6 +298,47 @@ pmix_status_t PMIx_server_register_client(const char nspace[], int rank,
 pmix_status_t PMIx_server_setup_fork(const char nspace[],
                                      int rank, char ***env);
 
+/* Report an error to a process for notification via any
+ * registered errhandler. The errhandler registration can be
+ * called by both the server and the client application. On the
+ * server side, the errhandler is used to report errors detected
+ * by PMIx to the host server for handling. On the client side,
+ * the errhandler is used to notify the process of errors
+ * reported by the server - e.g., the failure of another process.
+ *
+ * This function allows the host server to direct the server
+ * convenience library to notify all indicated local procs of
+ * an error. The error can be local, or anywhere in the cluster.
+ * The status indicates the error being reported.
+ *
+ * The first array  of ranges informs the server library as to which
+ * processes should be alerted - e.g., the processes that are in
+ * a directly-affected job or are connected to one that is affected.
+ * Passing a NULL for this array will indicate that all local procs
+ * are to be notified.
+ *
+ * The second array identifies the processes that caused the error. This
+ * could consist of a single process, or a number of processes.
+ *
+ * The info array contains any further info the RM can and/or chooses
+ * to provide.
+ *
+ * If the payload and size parameters are non-NULL, then the function
+ * will assume that the caller intends to send the message itself. In
+ * this situation, the convenience library will simply pack the message
+ * for transmission, and return the payload and size in the provided
+ * variables (external comm should have been indicated during server_init).
+ * The caller will be responsible for thread protection.
+ *
+ * Otherwise, the convenience library will transmit the message to
+ * the identified target processes, and the function call will be
+ * internally thread protected. */
+pmix_status_t PMIx_server_notify_error(pmix_status_t status,
+                                       pmix_range_t ranges[], size_t nranges,
+                                       pmix_range_t error_ranges[], size_t error_nranges,
+                                       pmix_info_t info[], size_t ninfo,
+                                       char **payload, size_t *size);
+
 
 /****    Message processing for the "lite" version of the  ****
  ****    server convenience library. Note that we must     ****
@@ -329,14 +366,16 @@ size_t PMIx_message_payload_size(char *hdr);
 /* define a callback function by which the convenience library can
  * request that a message be sent via the specified socket. The PMIx
  * header will be included in the provided payload */
-typedef void (*pmix_send_message_cbfunc_t)(int sd, void *srv_obj, char *payload, size_t size);
+typedef void (*pmix_send_message_cbfunc_t)(int sd, void *srv_obj,
+                                           char *payload, size_t size);
 
 /* given a socket, conduct the client-server authentication protocol
  * to authenticate the requested connection. The function will return
  * PMIX_SUCCESS if the connection is authenticated, and an appropriate
  * PMIx error code if not. If the client is authenticated, it will
  * be sent whatever initial job_info the host server can provide */
-pmix_status_t PMIx_server_authenticate_client(int sd, int *rank, pmix_send_message_cbfunc_t snd_msg);
+pmix_status_t PMIx_server_authenticate_client(int sd, int *rank,
+                                              pmix_send_message_cbfunc_t snd_msg);
 
 /* process a received PMIx client message, sending any desired return
  * via the provided callback function. Params:

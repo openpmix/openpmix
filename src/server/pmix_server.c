@@ -311,17 +311,16 @@ pmix_status_t PMIx_server_finalize(void)
     return PMIX_SUCCESS;
 }
 
-/* setup the data for a job */
-pmix_status_t PMIx_server_register_nspace(const char nspace[], int nlocalprocs,
-                                          pmix_info_t info[], size_t ninfo)
+static void _register_nspace(int sd, short args, void *cbdata)
 {
-    pmix_status_t rc;
+    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t*)cbdata;
     pmix_nspace_t *nptr, *tmp;
-
+    pmix_status_t rc;
+    
     /* see if we already have this nspace */
     nptr = NULL;
     PMIX_LIST_FOREACH(tmp, &pmix_server_globals.nspaces, pmix_nspace_t) {
-        if (0 == strcmp(tmp->nspace, nspace)) {
+        if (0 == strcmp(tmp->nspace, cd->nspace)) {
             nptr = tmp;
             /* release any existing packed data - we will replace it */
             if (0 < nptr->job_info.bytes_used) {
@@ -333,25 +332,58 @@ pmix_status_t PMIx_server_register_nspace(const char nspace[], int nlocalprocs,
     }
     if (NULL == nptr) {
         nptr = PMIX_NEW(pmix_nspace_t);
-        memcpy(nptr->nspace, nspace, PMIX_MAX_NSLEN);
-        nptr->nlocalprocs = nlocalprocs;
+        memcpy(nptr->nspace, cd->nspace, PMIX_MAX_NSLEN);
+        nptr->nlocalprocs = cd->nlocalprocs;
         pmix_list_append(&pmix_server_globals.nspaces, &nptr->super);
     }
-
     /* pack the provided info */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&nptr->job_info, &ninfo, 1, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&nptr->job_info, &cd->ninfo, 1, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         pmix_list_remove_item(&pmix_server_globals.nspaces, &nptr->super);
         PMIX_RELEASE(nptr);
-        return rc;
+        goto release;
     }
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&nptr->job_info, info, ninfo, PMIX_INFO))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&nptr->job_info, cd->info, cd->ninfo, PMIX_INFO))) {
         PMIX_ERROR_LOG(rc);
         pmix_list_remove_item(&pmix_server_globals.nspaces, &nptr->super);
         PMIX_RELEASE(nptr);
-        return rc;
     }
+ release:
+    cd->active = false;
+}
 
+/* setup the data for a job */
+pmix_status_t PMIx_server_register_nspace(const char nspace[], int nlocalprocs,
+                                          pmix_info_t info[], size_t ninfo)
+{
+    pmix_setup_caddy_t *cd;
+    size_t i;
+    
+    cd = PMIX_NEW(pmix_setup_caddy_t);
+    (void)memcpy(cd->nspace, nspace, PMIX_MAX_NSLEN);
+    cd->nlocalprocs = nlocalprocs;
+    /* copy across the info array, if given */
+    if (0 < ninfo) {
+        cd->ninfo = ninfo;
+        PMIX_INFO_CREATE(cd->info, ninfo);
+        for (i=0; i < ninfo; i++) {
+            (void)strncpy(cd->info[i].key, info[i].key, PMIX_MAX_KEYLEN);
+            pmix_value_xfer(&cd->info[i].value, &info[i].value);
+        }
+    }
+    
+    if (using_internal_comm) {
+        /* we have to push this into our event library to avoid
+         * potential threading issues */
+        event_assign(&cd->ev, pmix_globals.evbase, -1,
+                          EV_WRITE, _register_nspace, cd);
+        event_active(&cd->ev, EV_WRITE, 1);
+        PMIX_WAIT_FOR_COMPLETION(cd->active);
+        PMIX_RELEASE(cd);
+    } else {
+        /* the caller is responsible for thread protection */
+        _register_nspace(0, 0, (void*)cd);
+    }
     return PMIX_SUCCESS;
 }
 
@@ -364,7 +396,7 @@ static void _execute_collective(int sd, short args, void *cbdata)
      * that was already done when the tracker was created */
     if (PMIX_FENCENB_CMD == trk->type) {
         pmix_host_server.fence_nb(trk->rngs, pmix_list_get_size(&trk->ranges),
-                                  trk->barrier, trk->collect_data, trk->modexcbfunc, trk);
+                                  trk->collect_data, trk->modexcbfunc, trk);
     } else if (PMIX_CONNECTNB_CMD == trk->type) {
         pmix_host_server.connect(trk->rngs, pmix_list_get_size(&trk->ranges),
                                  trk->op_cbfunc, trk);
@@ -488,6 +520,52 @@ pmix_status_t PMIx_server_setup_fork(const char nspace[],
     pmix_setenv("PMIX_SECURITY_MODE", security_mode, true, env);
 
     return PMIX_SUCCESS;
+}
+
+static void _notify_error(int sd, short args, void *cbdata)
+{
+    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t*)cbdata;
+
+    /* pack the message */
+
+    if (using_internal_comm) {
+        /* send to all connected clients */
+    }
+    cd->active = false;
+}
+
+
+pmix_status_t PMIx_server_notify_error(pmix_status_t status,
+                                       pmix_range_t ranges[], size_t nranges,
+                                       pmix_range_t error_ranges[], size_t error_nranges,
+                                       pmix_info_t info[], size_t ninfo,
+                                       char **payload, size_t *size)
+{
+    pmix_notify_caddy_t *cd;
+
+    cd = PMIX_NEW(pmix_notify_caddy_t);
+    
+    if (using_internal_comm) {
+        /* we have to push this into our event library to avoid
+         * potential threading issues */
+        event_assign(&cd->ev, pmix_globals.evbase, -1,
+                          EV_WRITE, _notify_error, cd);
+        event_active(&cd->ev, EV_WRITE, 1);
+        PMIX_WAIT_FOR_COMPLETION(cd->active);
+        PMIX_RELEASE(cd);
+        return PMIX_SUCCESS;
+    }
+
+    /* the caller is responsible for thread protection */
+    _notify_error(0, 0, (void*)cd);
+    *payload = cd->buf.base_ptr;
+    *size = cd->buf.bytes_used;
+    /* protect the data */
+    cd->buf.bytes_used = 0;
+    cd->buf.base_ptr = NULL;
+    PMIX_RELEASE(cd);
+    return PMIX_SUCCESS;
+    
 }
 
 void PMIx_Register_errhandler(pmix_notification_fn_t err)
@@ -1062,6 +1140,13 @@ static int server_switchyard(pmix_peer_t *peer, uint32_t tag,
         if (PMIX_SUCCESS != (rc = pmix_server_abort(peer, buf, op_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(cd);
+        }
+        return rc;
+    }
+        
+    if (PMIX_COMMIT_CMD == cmd) {
+        if (PMIX_SUCCESS != (rc = pmix_server_commit(peer, buf))) {
+            PMIX_ERROR_LOG(rc);
         }
         return rc;
     }

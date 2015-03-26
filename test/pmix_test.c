@@ -50,7 +50,7 @@ static int abort_fn(const char nspace[], int rank,
                     int status, const char msg[],
                     pmix_op_cbfunc_t cbfunc, void *cbdata);
 static int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
-                      int barrier, int collect_data,
+                      int collect_data,
                       pmix_modex_cbfunc_t cbfunc, void *cbdata);
 static int store_modex_fn(const char nspace[], int rank, void *server_object,
                           pmix_scope_t scope, pmix_modex_data_t *data);
@@ -371,7 +371,7 @@ static void xfer_to_array(pmix_list_t *mdxlist,
 }
 
 static int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
-                      int barrier, int collect_data,
+                      int collect_data,
                       pmix_modex_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_list_t data;
@@ -379,7 +379,7 @@ static int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
     pmix_modex_data_t *mdxarray = NULL;
     size_t size=0, n;
     
-    /* if barrier is given, then we need to wait until all the
+    /* We need to wait until all the
      * procs have reported prior to responding */
 
     /* if they want all the data returned, do so */
