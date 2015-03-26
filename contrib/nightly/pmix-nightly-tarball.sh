@@ -109,11 +109,10 @@ for branch in $branches; do
     # spawn the coverity checker on it afterwards.  Only for this for the
     # master (for now).
     latest_snapshot=`cat $outputroot/$branch/latest_snapshot.txt`
-# JMS Skipped for now
-#    if test "$prev_snapshot" != "$latest_snapshot" && \
-#        test "$branch" = "master"; then
-#        echo "$outputroot/$branch/pmix-$latest_snapshot.tar.bz2" >> $pending_coverity
-#    fi
+    if test "$prev_snapshot" != "$latest_snapshot" && \
+        test "$branch" = "master"; then
+        echo "$outputroot/$branch/pmix-$latest_snapshot.tar.bz2" >> $pending_coverity
+    fi
 
     # Failed builds are not removed.  But if a human forgets to come
     # in here and clean up the old failed builds, we can accumulate
