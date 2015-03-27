@@ -162,8 +162,9 @@ int PMI_Get_appnum(int *appnum)
     pmix_value_t *kv;
     pmix_status_t rc;
     
-    if (NULL != appnum && PMIx_Get(NULL, pmix_globals.rank,
-                                   PMIX_APPNUM, &kv)) {
+    if (NULL != appnum &&
+        PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
+                                 PMIX_APPNUM, &kv)) {
         rc = convert_int(appnum, kv);
         PMIX_VALUE_RELEASE(kv);
         return convert_err(rc);
