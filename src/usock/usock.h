@@ -274,7 +274,7 @@ typedef struct {
 extern pmix_usock_globals_t pmix_usock_globals;
 
 /* usock common functions */
-void pmix_usock_init(void);
+void pmix_usock_init(pmix_usock_cbfunc_t cbfunc);
 void pmix_usock_finalize(void);
 int pmix_usock_set_nonblocking(int sd);
 int pmix_usock_set_blocking(int sd);

@@ -215,7 +215,7 @@ pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     }
     
     /* and the usock system */
-    pmix_usock_init();
+    pmix_usock_init(NULL);
     
     /* create an event base and progress thread for us */
     if (NULL == (pmix_globals.evbase = pmix_start_progress_thread())) {
@@ -524,12 +524,59 @@ pmix_status_t PMIx_server_setup_fork(const char nspace[],
 
 static void _notify_error(int sd, short args, void *cbdata)
 {
-    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t*)cbdata;
+    pmix_notify_caddy_t *cd = (pmix_notify_caddy_t*)cbdata;
+    int rc;
+    int i;
+    pmix_peer_t *peer;
+    
+    /* pack the status */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(cd->buf, &cd->status, 1, PMIX_INT))) {
+        PMIX_ERROR_LOG(rc);
+        return;
+    }
 
-    /* pack the message */
+    /* pack the error ranges */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(cd->buf, &cd->error_nranges, 1, PMIX_SIZE))) {
+        PMIX_ERROR_LOG(rc);
+        return;
+    }
+    if (0 < cd->error_nranges) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(cd->buf, cd->error_ranges, cd->error_nranges, PMIX_RANGE))) {
+            PMIX_ERROR_LOG(rc);
+            return;
+        }
+    }
 
-    if (using_internal_comm) {
-        /* send to all connected clients */
+    /* pack the info */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(cd->buf, &cd->ninfo, 1, PMIX_SIZE))) {
+        PMIX_ERROR_LOG(rc);
+        return;
+    }
+    if (0 < cd->ninfo) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(cd->buf, cd->info, cd->ninfo, PMIX_INFO))) {
+            PMIX_ERROR_LOG(rc);
+            return;
+        }
+    }
+
+    if (!using_internal_comm) {
+        /* it is up to the host server to decide who should get this
+         * message, and to send it - so just return the data here */
+        return;
+    }
+
+    /* cycle across our connected clients and send the message to
+     * any within the specified range */
+    for (i=0; i < pmix_server_globals.clients.size; i++) {
+        if (NULL == (peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, i))) {
+            continue;
+        }
+        /* if the range is NULL, then send it to everyone */
+        if (NULL == cd->ranges) {
+            PMIX_RETAIN(cd->buf);
+            PMIX_SERVER_QUEUE_REPLY(peer, 0, cd->buf);
+            continue;
+        }
     }
     cd->active = false;
 }
@@ -544,7 +591,7 @@ pmix_status_t PMIx_server_notify_error(pmix_status_t status,
     pmix_notify_caddy_t *cd;
 
     cd = PMIX_NEW(pmix_notify_caddy_t);
-    
+
     if (using_internal_comm) {
         /* we have to push this into our event library to avoid
          * potential threading issues */
@@ -558,11 +605,11 @@ pmix_status_t PMIx_server_notify_error(pmix_status_t status,
 
     /* the caller is responsible for thread protection */
     _notify_error(0, 0, (void*)cd);
-    *payload = cd->buf.base_ptr;
-    *size = cd->buf.bytes_used;
+    *payload = cd->buf->base_ptr;
+    *size = cd->buf->bytes_used;
     /* protect the data */
-    cd->buf.bytes_used = 0;
-    cd->buf.base_ptr = NULL;
+    cd->buf->bytes_used = 0;
+    cd->buf->base_ptr = NULL;
     PMIX_RELEASE(cd);
     return PMIX_SUCCESS;
     

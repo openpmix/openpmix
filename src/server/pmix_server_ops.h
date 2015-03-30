@@ -13,6 +13,8 @@
 #include "src/api/pmix_server.h"
 #include "src/usock/usock.h"
 
+/* define an object for moving a send
+ * request into the server's event base */
 typedef struct {
     pmix_object_t super;
     int sd;
@@ -20,6 +22,9 @@ typedef struct {
 } pmix_snd_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_snd_caddy_t);
 
+
+/* define an object for moving a send
+ * request into the server's event base */
 typedef struct {
     pmix_list_item_t super;
     pmix_usock_hdr_t hdr;
@@ -36,6 +41,7 @@ typedef struct {
 } pmix_range_trkr_t;
 PMIX_CLASS_DECLARATION(pmix_range_trkr_t);
 
+/* define a tracker for collective operations */
 typedef struct {
     pmix_list_item_t super;
     pmix_cmd_t type;
@@ -84,7 +90,7 @@ typedef struct {
     size_t error_nranges;
     pmix_info_t *info;
     size_t ninfo;
-    pmix_buffer_t buf;
+    pmix_buffer_t *buf;
 } pmix_notify_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_notify_caddy_t);
 

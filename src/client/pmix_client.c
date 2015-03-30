@@ -63,6 +63,67 @@ static void myerrhandler(pmix_status_t status,
                         "pmix:client default errhandler activated");
 }
 
+static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_usock_hdr_t *hdr,
+                                    pmix_buffer_t *buf, void *cbdata)
+{
+    pmix_status_t pstatus;
+    int status, rc;
+    int32_t cnt;
+    pmix_range_t *ranges=NULL;
+    size_t nranges, ninfo;
+    pmix_info_t *info=NULL;
+    
+    if (NULL == pmix_globals.errhandler) {
+        return;
+    }
+
+    /* unpack the status */
+    cnt=1;
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &status, &cnt, PMIX_INT))) {
+        PMIX_ERROR_LOG(rc);
+        return;
+    }
+    pstatus = status;
+    
+    /* unpack the ranges that are impacted */
+    cnt=1;
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &nranges, &cnt, PMIX_SIZE))) {
+        PMIX_ERROR_LOG(rc);
+        goto cleanup;
+    }
+    if (0 < nranges) {
+        ranges = (pmix_range_t*)malloc(nranges * sizeof(pmix_range_t));
+        cnt = nranges;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ranges, &cnt, PMIX_SIZE))) {
+            PMIX_ERROR_LOG(rc);
+            goto cleanup;
+        }
+    }
+    
+    /* unpack the info that might have been provided */
+    cnt=1;
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
+        PMIX_ERROR_LOG(rc);
+        goto cleanup;
+    }
+    if (0 < ninfo) {
+        info = (pmix_info_t*)malloc(ninfo * sizeof(pmix_info_t));
+        cnt = ninfo;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &info, &cnt, PMIX_SIZE))) {
+            PMIX_ERROR_LOG(rc);
+            goto cleanup;
+        }
+    }
+    
+    pmix_globals.errhandler(pstatus, ranges, nranges, info, ninfo);
+
+    /* cleanup */
+ cleanup:
+    PMIX_RANGE_FREE(ranges, nranges);
+    PMIX_INFO_FREE(info, ninfo);
+}
+
+
 // global variables
 pmix_globals_t pmix_globals = {
     .evbase = NULL,
@@ -181,7 +242,7 @@ int PMIx_Init(char nspace[], int *rank)
 
     pmix_bfrop_open();
     pmix_client_hash_init();
-    pmix_usock_init();
+    pmix_usock_init(pmix_client_notify_recv);
     pmix_sec_init();
     
     /* we require the nspace */

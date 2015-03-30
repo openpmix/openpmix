@@ -43,17 +43,34 @@
 /* instance usock globals */
 pmix_usock_globals_t pmix_usock_globals;
 
-void pmix_usock_init(void)
+void pmix_usock_init(pmix_usock_cbfunc_t cbfunc)
 {
+    pmix_usock_posted_recv_t *req;
+
     /* setup the usock globals */
     PMIX_CONSTRUCT(&pmix_usock_globals.posted_recvs, pmix_list_t);
+
+    /* if a cbfunc was given, post a persistent recv
+     * for the special 0 tag so the client can recv
+     * error notifications from the server */
+    if (NULL != cbfunc) {
+        req = PMIX_NEW(pmix_usock_posted_recv_t);
+        req->tag = 0;
+        req->cbfunc = cbfunc;
+        pmix_output_verbose(5, pmix_globals.debug_output,
+                            "posting notification recv on tag %d", req->tag);
+        /* add it to the list of recvs - we cannot have unexpected messages
+         * in this subsystem as the server never sends us something that
+         * we didn't previously request */
+        pmix_list_prepend(&pmix_usock_globals.posted_recvs, &req->super);
+    }
 }
 
 void pmix_usock_finalize(void)
 {
     PMIX_LIST_DESTRUCT(&pmix_usock_globals.posted_recvs);
 }
-
+    
 int pmix_usock_set_nonblocking(int sd)
 {
     int flags;

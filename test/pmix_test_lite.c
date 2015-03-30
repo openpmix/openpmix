@@ -38,6 +38,7 @@
 extern int errno;
 #include <errno.h>
 #include <time.h>
+#include <signal.h>
 
 #include "src/include/pmix_globals.h"
 #include "pmix_server.h"

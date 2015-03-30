@@ -838,7 +838,7 @@ static void ncon(pmix_notify_caddy_t *p)
     p->error_nranges = 0;
     p->info = NULL;
     p->ninfo = 0;
-    PMIX_CONSTRUCT(&p->buf, pmix_buffer_t);
+    p->buf = PMIX_NEW(pmix_buffer_t);
 }
 static void ndes(pmix_notify_caddy_t *p)
 {
@@ -851,7 +851,9 @@ static void ndes(pmix_notify_caddy_t *p)
     if (NULL != p->info) {
         PMIX_INFO_FREE(p->info, p->ninfo);
     }
-    PMIX_DESTRUCT(&p->buf);
+    if (NULL != p->buf) {
+        PMIX_RELEASE(p->buf);
+    }
 }
 PMIX_CLASS_INSTANCE(pmix_notify_caddy_t,
                     pmix_object_t,

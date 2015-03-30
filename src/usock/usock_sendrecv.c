@@ -38,7 +38,7 @@
 
 #include "usock.h"
 
-static uint32_t current_tag = 0;
+static uint32_t current_tag = 1;  // 0 is reserved for system purposes
 
 static int send_bytes(int sd, char **buf, size_t *remain)
 {
@@ -372,7 +372,7 @@ void pmix_usock_send_recv(int fd, short args, void *cbdata)
         req = PMIX_NEW(pmix_usock_posted_recv_t);
         /* take the next tag in the sequence */
         if (UINT32_MAX == current_tag ) {
-            current_tag = 0;
+            current_tag = 1;
         }
         req->tag = tag;
         req->cbfunc = ms->cbfunc;
