@@ -528,6 +528,17 @@ typedef struct {
         }                                       \
     } while(0);
 
+#define PMIX_MODEX_FREE(m, n)                           \
+    do {                                                \
+        size_t _s;                                      \
+        if (NULL != (m)) {                              \
+            for (_s=0; _s < (n); _s++) {                \
+                PMIX_MODEX_DESTRUCT(&((m)[_s]));        \
+            }                                           \
+            free((m));                                  \
+        }                                               \
+    } while(0);
+
 
 /****    CALLBACK FUNCTIONS FOR NON-BLOCKING OPERATIONS    ****/
 
