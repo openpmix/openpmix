@@ -464,7 +464,7 @@ int main(int argc, char **argv)
     }
     
     /* retrieve the rendezvous address */
-    if (PMIX_SUCCESS != PMIx_get_rendezvous_address(&address)) {
+    if (PMIX_SUCCESS != PMIx_get_rendezvous_address(&address, NULL)) {
         TEST_ERROR(("failed to get rendezvous address"));
         rc = -1;
         goto cleanup;

@@ -245,6 +245,10 @@ pmix_status_t PMIx_server_init(pmix_server_module_t *module,
  * memory usage is released */
 pmix_status_t PMIx_server_finalize(void);
 
+/* retrieve the address and path assigned by the server library for
+ * clients to rendezvous with */
+pmix_status_t PMIx_get_rendezvous_address(struct sockaddr_un *address, char **path);
+
 /* Setup the data about a particular nspace so it can
  * be passed to any child process upon startup. The PMIx
  * connection procedure provides an opportunity for the
@@ -346,10 +350,6 @@ pmix_status_t PMIx_server_notify_error(pmix_status_t status,
  ****    operate asynchronously - thus, the lite library   ****
  ****    cannot block while waiting for a reply to be      ****
  ****    generated                                         ****/
-
-/* retrieve the address assigned by the server library for
- * clients to rendezvous with */
-pmix_status_t PMIx_get_rendezvous_address(struct sockaddr_un *address);
 
 /* retrieve the size of the PMIx message header so the host
  * server messaging system can read the correct number of bytes.
