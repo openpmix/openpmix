@@ -24,112 +24,13 @@
  *
  */
 
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/un.h>
-#include <sys/wait.h>
-#include <sys/time.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <event.h>
-extern int errno;
-#include <errno.h>
-#include <time.h>
-#include <signal.h>
-
-#include "src/include/pmix_globals.h"
-#include "pmix_server.h"
-#include "src/class/pmix_list.h"
 #include "src/util/argv.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/output.h"
-#include "src/usock/usock.h"
 
-#include "test_common.h"
+#include "server_callbacks.h"
 
-/* setup the PMIx server module */
-static int finalized(const char nspace[], int rank, void *server_object,
-                     pmix_op_cbfunc_t cbfunc, void *cbdata);
-static int abort_fn(const char nspace[], int rank, void *server_object,
-                    int status, const char msg[],
-                    pmix_op_cbfunc_t cbfunc, void *cbdata);
-static int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
-                      int collect_data,
-                      pmix_modex_cbfunc_t cbfunc, void *cbdata);
-static int store_modex_fn(const char nspace[], int rank, void *server_object,
-                          pmix_scope_t scope, pmix_modex_data_t *data);
-static int get_modexnb_fn(const char nspace[], int rank,
-                          pmix_modex_cbfunc_t cbfunc, void *cbdata);
-static int publish_fn(pmix_scope_t scope, pmix_persistence_t persist,
-                      const pmix_info_t info[], size_t ninfo,
-                      pmix_op_cbfunc_t cbfunc, void *cbdata);
-static int lookup_fn(pmix_scope_t scope, int wait, char **keys,
-                     pmix_lookup_cbfunc_t cbfunc, void *cbdata);
-static int unpublish_fn(pmix_scope_t scope, char **keys,
-                        pmix_op_cbfunc_t cbfunc, void *cbdata);
-static int spawn_fn(const pmix_app_t apps[], size_t napps,
-                    pmix_spawn_cbfunc_t cbfunc, void *cbdata);
-static int connect_fn(const pmix_range_t ranges[], size_t nranges,
-                      pmix_op_cbfunc_t cbfunc, void *cbdata);
-static int disconnect_fn(const pmix_range_t ranges[], size_t nranges,
-                         pmix_op_cbfunc_t cbfunc, void *cbdata);
-
-static pmix_server_module_t mymodule = {
-    finalized,
-    abort_fn,
-    fencenb_fn,
-    store_modex_fn,
-    get_modexnb_fn,
-    publish_fn,
-    lookup_fn,
-    unpublish_fn,
-    spawn_fn,
-    connect_fn,
-    disconnect_fn
-};
-
-typedef struct {
-    pmix_list_item_t super;
-    pmix_modex_data_t data;
-} pmix_test_data_t;
-static void pcon(pmix_test_data_t *p)
-{
-    p->data.blob = NULL;
-    p->data.size = 0;
-}
-static void pdes(pmix_test_data_t *p)
-{
-    if (NULL != p->data.blob) {
-        free(p->data.blob);
-    }
-}
-static PMIX_CLASS_INSTANCE(pmix_test_data_t,
-                          pmix_list_item_t,
-                          pcon, pdes);
-
-// In correct scenario each client has to sequentially pass all of this stages
-typedef enum {
-    CLI_UNINIT, CLI_FORKED, CLI_CONNECTED, CLI_FIN, CLI_DISCONN, CLI_TERM
-} cli_state_t;
-
-typedef struct {
-    pmix_list_t modex;
-    pid_t pid;
-    int sd;
-    pmix_event_t *ev;
-    cli_state_t state;
-} cli_info_t;
-
-static cli_info_t *cli_info = NULL;
-int cli_info_cnt = 0;
-
-static bool test_abort = false;
-
-static bool collect = false;
-static uint32_t nprocs = 1;
 struct event_base *server_base = NULL;
 pmix_event_t *listen_ev = NULL;
 
@@ -137,224 +38,6 @@ int listen_fd = -1;
 static void connection_handler(int incoming_sd, short flags, void* cbdata);
 static void message_handler(int incoming_sd, short flags, void* cbdata);
 static int start_listening(struct sockaddr_un *address);
-
-bool verbose = false;
-
-static void errhandler(pmix_status_t status,
-                       pmix_range_t ranges[], size_t nranges,
-                       pmix_info_t info[], size_t ninfo)
-{
-    TEST_ERROR(("Error handler with status = %d", status))
-    test_abort = true;
-}
-
-static int cli_rank(cli_info_t *cli)
-{
-    int i;
-    for(i=0; i < cli_info_cnt; i++){
-        if( cli == &cli_info[i] ){
-            return i;
-        }
-    }
-    return -1;
-}
-
-static void cli_init(int nprocs)
-{
-    int n;
-    cli_info = malloc( sizeof(*cli_info) * nprocs);
-    cli_info_cnt = nprocs;
-
-    for (n=0; n < nprocs; n++) {
-        cli_info[n].sd = -1;
-        cli_info[n].ev = NULL;
-        cli_info[n].pid = -1;
-        cli_info[n].state = CLI_UNINIT;
-        PMIX_CONSTRUCT(&(cli_info[n].modex), pmix_list_t);
-    }
-}
-
-static void cli_connect(cli_info_t *cli, int sd)
-{
-    if( CLI_FORKED != cli->state ){
-        TEST_ERROR(("Rank %d has bad state: expect %d have %d!",
-                     cli_rank(cli), CLI_FORKED, cli->state));
-        test_abort = true;
-        return;
-    }
-
-    cli->sd = sd;
-    cli->ev = event_new(server_base, sd,
-                      EV_READ|EV_PERSIST, message_handler, cli);
-    event_add(cli->ev,NULL);
-    pmix_usock_set_nonblocking(sd);
-    TEST_OUTPUT(("Connection accepted from rank %d", cli_rank(cli) ));
-    cli->state = CLI_CONNECTED;
-}
-
-static void cli_finalize(cli_info_t *cli)
-{
-    if( CLI_CONNECTED != cli->state ){
-        TEST_ERROR(("rank %d: bad client state: expect %d have %d!",
-                     cli_rank(cli), CLI_CONNECTED, cli->state));
-        test_abort = true;
-        return;
-    }
-
-    cli->state = CLI_FIN;
-}
-
-static void cli_disconnect(cli_info_t *cli)
-{
-
-    if( CLI_FIN != cli->state ){
-        TEST_ERROR(("rank %d: bad client state: expect %d have %d!",
-                     cli_rank(cli), CLI_FIN, cli->state));
-    }
-
-    if( 0 > cli->sd ){
-        TEST_ERROR(("Bad sd = %d of rank = %d ", cli->sd, cli_rank(cli)));
-    } else {
-        TEST_VERBOSE(("close sd = %d for rank = %d", cli->sd, cli_rank(cli)));
-        close(cli->sd);
-        cli->sd = -1;
-    }
-
-    if( NULL == cli->ev ){
-        TEST_ERROR(("Bad ev = NULL of rank = %d ", cli->sd, cli_rank(cli)));
-    } else {
-        TEST_VERBOSE(("remove event of rank %d from event queue", cli_rank(cli)));
-        event_del(cli->ev);
-        event_free(cli->ev);
-        cli->ev = NULL;
-    }
-
-    TEST_VERBOSE(("Destruct modex list for the rank %d", cli_rank(cli)));
-    PMIX_LIST_DESTRUCT(&(cli->modex));
-
-    cli->state = CLI_DISCONN;
-}
-
-static void cli_terminate(cli_info_t *cli)
-{
-    if( CLI_DISCONN != cli->state ){
-        TEST_ERROR(("rank %d: bad client state: expect %d have %d!",
-                     cli_rank(cli), CLI_FIN, cli->state));
-    }
-    cli->pid = -1;
-    TEST_VERBOSE(("Client rank = %d terminated", cli_rank(cli)));
-    cli->state = CLI_TERM;
-}
-
-static void cli_cleanup(cli_info_t *cli)
-{
-    switch( cli->state ){
-    case CLI_CONNECTED:
-        cli_finalize(cli);
-    case CLI_FIN:
-        cli_disconnect(cli);
-    case CLI_DISCONN:
-        cli_terminate(cli);
-    case CLI_TERM:
-    case CLI_FORKED:
-        cli->state = CLI_TERM;
-    case CLI_UNINIT:
-        break;
-    default:
-        TEST_ERROR(("Bad rank %d state %d", cli_rank(cli), cli->state));
-    }
-}
-
-
-static bool test_completed(void)
-{
-    bool ret = true;
-    int i;
-
-    // All of the client should deisconnect
-    for(i=0; i < cli_info_cnt; i++){
-        ret = ret && (CLI_DISCONN <= cli_info[i].state);
-    }
-    return (ret || test_abort);
-}
-
-static bool test_terminated(void)
-{
-    bool ret = true;
-    int i;
-
-    // All of the client should deisconnect
-    for(i=0; i < cli_info_cnt; i++){
-        ret = ret && (CLI_TERM <= cli_info[i].state);
-    }
-    return ret;
-}
-
-static void cli_wait_all(double timeout)
-{
-    struct timeval tv;
-    double start_time, cur_time;
-
-    gettimeofday(&tv, NULL);
-    start_time = tv.tv_sec + 1E-6*tv.tv_usec;
-    cur_time = start_time;
-
-    TEST_VERBOSE(("Wait for all children to terminate"))
-
-    // Wait for all childrens to cleanup after the test.
-    while( !test_terminated() && ( timeout >= (cur_time - start_time) ) ){
-        struct timespec ts;
-        int status, i;
-        pid_t pid;
-        while( 0 < (pid = waitpid(-1, &status, WNOHANG) ) ){
-            TEST_VERBOSE(("waitpid = %d", pid));
-            if( pid < 0 ){
-                TEST_ERROR(("waitpid(): %d : %s", errno, strerror(errno)));
-                if( errno == ECHILD ){
-                    TEST_ERROR(("No more childs to wait (shouldn't happen)"));
-                    break;
-                } else {
-                    exit(0);
-                }
-            } else if( 0 < pid ){
-                for(i=0; i < cli_info_cnt; i++){
-                    if( cli_info[i].pid == pid ){
-                        TEST_VERBOSE(("the child with pid = %d has rank = %d\n"
-                                      "\t\texited = %d, signalled = %d", pid, i,
-                                      WIFEXITED(status), WIFSIGNALED(status) ));
-                        if( WIFEXITED(status) || WIFSIGNALED(status) ){
-                            cli_cleanup(&cli_info[i]);
-                        }
-                    }
-                }
-            }
-        }
-        ts.tv_sec = 0;
-        ts.tv_nsec = 100000;
-        nanosleep(&ts, NULL);
-        // calculate current timestamp
-        gettimeofday(&tv, NULL);
-        cur_time = tv.tv_sec + 1E-6*tv.tv_usec;
-    }
-}
-
-static void cli_kill_all(void)
-{
-    int i;
-    for(i = 0; i < cli_info_cnt; i++){
-        if( CLI_UNINIT == cli_info[i].state ){
-            TEST_ERROR(("Skip rank %d as it wasn't ever initialized (shouldn't happe)",
-                          i));
-            continue;
-        } else if( CLI_TERM <= cli_info[i].state ){
-            TEST_VERBOSE(("Skip rank %d as it was already terminated.", i));
-            continue;
-
-        }
-        TEST_VERBOSE(("Kill rank %d (pid = %d).", i, cli_info[i].pid));
-        kill(cli_info[i].pid, SIGKILL);
-    }
-}
 
 static void set_job_info(int nprocs)
 {
@@ -372,7 +55,7 @@ int main(int argc, char **argv)
 {
     char **client_env=NULL;
     char **client_argv=NULL;
-    int rc, i;
+    int rc;
     uint32_t n;
     char *binary = "pmix_client";
     char *tmp;
@@ -382,7 +65,6 @@ int main(int argc, char **argv)
     struct sockaddr_un address;
     struct stat stat_buf;
     // In what time test should complete
-#define TEST_DEFAULT_TIMEOUT 10
     int test_timeout = TEST_DEFAULT_TIMEOUT;
     struct timeval tv;
     double test_start;
@@ -396,42 +78,8 @@ int main(int argc, char **argv)
         TEST_ERROR(("ERROR IN COMPUTING CONSTANTS: PMIX_SUCCESS = %d\n", PMIX_SUCCESS));
         exit(1);
     }
-    
-    /* parse user options */
-    for (i=1; i < argc; i++) {
-        if (0 == strcmp(argv[i], "--n") || 0 == strcmp(argv[i], "-n")) {
-            i++;
-            np = argv[i];
-            nprocs = strtol(argv[i], NULL, 10);
-        } else if (0 == strcmp(argv[i], "--h") || 0 == strcmp(argv[i], "-h")) {
-            /* print help */
-            fprintf(stderr, "usage: pmix_test [-h] [-e foo] [-b] [-c] [-nb]\n");
-            fprintf(stderr, "\t-e foo   use foo as test client\n");
-            fprintf(stderr, "\t-c       fence[_nb] callback shall include all collected data\n");
-            fprintf(stderr, "\t-v       verbose output\n");
-            fprintf(stderr, "\t-t       --timeout\n");
-            exit(0);
-        } else if (0 == strcmp(argv[i], "--exec") || 0 == strcmp(argv[i], "-e")) {
-            i++;
-            binary = argv[i];
-        } else if (0 == strcmp(argv[i], "--collect") || 0 == strcmp(argv[i], "-c")) {
-            collect = true;
-        } else if( 0 == strcmp(argv[i], "--verbose") || 0 == strcmp(argv[i],"-v") ){
-            TEST_VERBOSE_ON();
-            verbose = true;
-        } else if (0 == strcmp(argv[i], "--timeout") || 0 == strcmp(argv[i], "-t")) {
-            i++;
-            test_timeout = atoi(argv[i]);
-            if( test_timeout == 0 ){
-                test_timeout = TEST_DEFAULT_TIMEOUT;
-            }
-        }
-        else {
-            fprintf(stderr, "unrecognized option: %s\n", argv[i]);
-            exit(1);
-        }
-    }
-
+  
+    parse_cmd(argc, argv, &binary, &np, &test_timeout);
     TEST_OUTPUT(("Start PMIx_lite smoke test (timeout is %d)", test_timeout));
 
     /* verify executable */
@@ -502,7 +150,15 @@ int main(int argc, char **argv)
 
     myuid = getuid();
     mygid = getgid();
-    cli_init(nprocs);
+    
+    int order[CLI_TERM+1];
+    order[CLI_UNINIT] = CLI_FORKED;
+    order[CLI_FORKED] = CLI_CONNECTED;
+    order[CLI_CONNECTED] = CLI_FIN;
+    order[CLI_FIN] = CLI_DISCONN;
+    order[CLI_DISCONN] = CLI_TERM;
+    order[CLI_TERM] = -1;
+    cli_init(nprocs, order);
 
     for (n=0; n < nprocs; n++) {
         if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(TEST_NAMESPACE, n, &client_env))) {
@@ -554,7 +210,7 @@ int main(int argc, char **argv)
         if( (test_current - test_start) > test_timeout ){
             break;
         }
-	cli_wait_all(0);
+        cli_wait_all(0);
     }
 
     if( !test_completed() ){
@@ -589,7 +245,7 @@ int main(int argc, char **argv)
         // All of the client should deisconnect
         TEST_ERROR(("Error while cleaning up test. Expect state = %d:", CLI_TERM));
         for(i=0; i < cli_info_cnt; i++){
-            TEST_ERROR(("\trank %d, state = %d\n", i, cli_info[i].state));
+            TEST_ERROR(("\trank %d, state = %d", i, cli_info[i].state));
         }
 
     } else {
@@ -600,262 +256,6 @@ int main(int argc, char **argv)
     unlink(address.sun_path);
 
     return rc;
-}
-
-static int finalized(const char nspace[], int rank, void *server_object,
-                     pmix_op_cbfunc_t cbfunc, void *cbdata)
-{
-    if( CLI_TERM <= cli_info[rank].state ){
-        TEST_ERROR(("double termination of rank %d", rank));
-        return PMIX_SUCCESS;
-    }
-    TEST_VERBOSE(("Rank %d terminated", rank));
-    cli_finalize(&cli_info[rank]);
-    if (NULL != cbfunc) {
-        cbfunc(PMIX_SUCCESS, cbdata);
-    }
-    return PMIX_SUCCESS;
-}
-
-static int abort_fn(const char nspace[], int rank, void *server_object,
-                    int status, const char msg[],
-                    pmix_op_cbfunc_t cbfunc, void *cbdata)
-{
-    if (NULL != cbfunc) {
-        cbfunc(PMIX_SUCCESS, cbdata);
-    }
-    TEST_VERBOSE(("Abort is called with status = %d, msg = %s",
-                 status, msg));
-    test_abort = true;
-    return PMIX_SUCCESS;
-}
-
-static void gather_data_rank(const char nspace[], int rank,
-                        pmix_list_t *mdxlist)
-{
-    pmix_test_data_t *tdat, *mdx;
-
-    TEST_VERBOSE(("from %d list has %d items",
-                rank, pmix_list_get_size(&cli_info[rank].modex)) );
-
-    PMIX_LIST_FOREACH(mdx, &cli_info[rank].modex, pmix_test_data_t) {
-        TEST_VERBOSE(("gather_data: checking %s vs %s",
-                     nspace, mdx->data.nspace));
-        if (0 != strcmp(nspace, mdx->data.nspace)) {
-            continue;
-        }
-        TEST_VERBOSE(("gather_data: checking %d vs %d",
-                     rank, mdx->data.rank));
-        if (rank != mdx->data.rank && PMIX_RANK_WILDCARD != rank) {
-            continue;
-        }
-        TEST_VERBOSE(("test:gather_data adding blob for %s:%d of size %d",
-                            mdx->data.nspace, mdx->data.rank, (int)mdx->data.size));
-        tdat = PMIX_NEW(pmix_test_data_t);
-        (void)strncpy(tdat->data.nspace, mdx->data.nspace, PMIX_MAX_NSLEN);
-        tdat->data.rank = mdx->data.rank;
-        tdat->data.size = mdx->data.size;
-        if (0 < mdx->data.size) {
-            tdat->data.blob = (uint8_t*)malloc(mdx->data.size);
-            memcpy(tdat->data.blob, mdx->data.blob, mdx->data.size);
-        }
-        pmix_list_append(mdxlist, &tdat->super);
-    }
-}
-
-static void gather_data(const char nspace[], int rank,
-                        pmix_list_t *mdxlist)
-{
-    if( PMIX_RANK_WILDCARD == rank ){
-        int i;
-        for(i = 0; i < cli_info_cnt; i++){
-            gather_data_rank(nspace, i, mdxlist);
-        }
-    } else {
-        gather_data_rank(nspace, rank, mdxlist);
-    }
-}
-
-static void xfer_to_array(pmix_list_t *mdxlist,
-                          pmix_modex_data_t **mdxarray, size_t *size)
-{
-    pmix_modex_data_t *mdxa;
-    pmix_test_data_t *dat;
-    size_t n;
-
-    *size = 0;
-    *mdxarray = NULL;
-    n = pmix_list_get_size(mdxlist);
-    if (0 == n) {
-        return;
-    }
-    /* allocate the array */
-    mdxa = (pmix_modex_data_t*)malloc(n * sizeof(pmix_modex_data_t));
-    *mdxarray = mdxa;
-    *size = n;
-    n = 0;
-    PMIX_LIST_FOREACH(dat, mdxlist, pmix_test_data_t) {
-        (void)strncpy(mdxa[n].nspace, dat->data.nspace, PMIX_MAX_NSLEN);
-        mdxa[n].rank = dat->data.rank;
-        mdxa[n].size = dat->data.size;
-        if (0 < dat->data.size) {
-            mdxa[n].blob = (uint8_t*)malloc(dat->data.size);
-            memcpy(mdxa[n].blob, dat->data.blob, dat->data.size);
-        }
-        n++;
-    }
-}
-
-static int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
-                      int collect_data,
-                      pmix_modex_cbfunc_t cbfunc, void *cbdata)
-{
-    pmix_list_t data;
-    size_t i, j;
-    pmix_modex_data_t *mdxarray = NULL;
-    size_t size=0, n;
-    
-    /* we need to wait until all the
-     * procs have reported prior to responding */
-
-    /* if they want all the data returned, do so */
-    if (0 != collect_data) {
-        PMIX_CONSTRUCT(&data, pmix_list_t);
-        for (i=0; i < nranges; i++) {
-            if (NULL == ranges[i].ranks) {
-                gather_data(ranges[i].nspace, PMIX_RANK_WILDCARD, &data);
-            } else {
-                for (j=0; j < ranges[i].nranks; j++) {
-                    gather_data(ranges[i].nspace, ranges[i].ranks[j], &data);
-                }
-            }
-        }
-        /* xfer the data to the mdx array */
-        xfer_to_array(&data, &mdxarray, &size);
-        PMIX_LIST_DESTRUCT(&data);
-    }
-    if (NULL != cbfunc) {
-        cbfunc(PMIX_SUCCESS, mdxarray, size, cbdata);
-    }
-    /* free the array */
-    for (n=0; n < size; n++) {
-        if (NULL != mdxarray[n].blob) {
-            free(mdxarray[n].blob);
-        }
-    }
-    if (NULL != mdxarray) {
-        free(mdxarray);
-    }
-    return PMIX_SUCCESS;
-}
-
-static int store_modex_fn(const char nspace[], int rank, void *server_object,
-                          pmix_scope_t scope, pmix_modex_data_t *data)
-{
-    pmix_test_data_t *mdx;
-
-    TEST_VERBOSE(("storing modex data for %s:%d of size %d",
-                        data->nspace, data->rank, (int)data->size));
-    mdx = PMIX_NEW(pmix_test_data_t);
-    (void)strncpy(mdx->data.nspace, data->nspace, PMIX_MAX_NSLEN);
-    mdx->data.rank = data->rank;
-    mdx->data.size = data->size;
-    if (0 < mdx->data.size) {
-        mdx->data.blob = (uint8_t*)malloc(mdx->data.size);
-        memcpy(mdx->data.blob, data->blob, mdx->data.size);
-    }
-    pmix_list_append(&cli_info[data->rank].modex, &mdx->super);
-    return PMIX_SUCCESS;
-}
-
-static int get_modexnb_fn(const char nspace[], int rank,
-                          pmix_modex_cbfunc_t cbfunc, void *cbdata)
-{
-    pmix_list_t data;
-    pmix_modex_data_t *mdxarray;
-    size_t n, size;
-    int rc=PMIX_SUCCESS;
-
-    TEST_VERBOSE(("Getting data for %s:%d", nspace, rank));
-
-    PMIX_CONSTRUCT(&data, pmix_list_t);
-    gather_data(nspace, rank, &data);
-    /* convert the data to an array */
-    xfer_to_array(&data, &mdxarray, &size);
-    TEST_VERBOSE(("test:get_modexnb returning %d array blocks", (int)size));
-
-    PMIX_LIST_DESTRUCT(&data);
-    if (0 == size) {
-        rc = PMIX_ERR_NOT_FOUND;
-    }
-    if (NULL != cbfunc) {
-        cbfunc(rc, mdxarray, size, cbdata);
-    }
-    /* free the array */
-    for (n=0; n < size; n++) {
-        if (NULL != mdxarray[n].blob) {
-            free(mdxarray[n].blob);
-        }
-    }
-    if (NULL != mdxarray) {
-        free(mdxarray);
-    }
-    return PMIX_SUCCESS;
-}
-
-static int publish_fn(pmix_scope_t scope, pmix_persistence_t persist,
-                      const pmix_info_t info[], size_t ninfo,
-                      pmix_op_cbfunc_t cbfunc, void *cbdata)
-{
-    if (NULL != cbfunc) {
-        cbfunc(PMIX_SUCCESS, cbdata);
-    }
-    return PMIX_SUCCESS;
-}
-
-static int lookup_fn(pmix_scope_t scope, int wait, char **keys,
-                     pmix_lookup_cbfunc_t cbfunc, void *cbdata)
-{
-    if (NULL != cbfunc) {
-        cbfunc(PMIX_SUCCESS, NULL, 0, NULL, cbdata);
-    }
-    return PMIX_SUCCESS;
-}
-
-static int unpublish_fn(pmix_scope_t scope, char **keys,
-                        pmix_op_cbfunc_t cbfunc, void *cbdata)
-{
-    if (NULL != cbfunc) {
-        cbfunc(PMIX_SUCCESS, cbdata);
-    }
-    return PMIX_SUCCESS;
-}
-
-static int spawn_fn(const pmix_app_t apps[], size_t napps,
-                    pmix_spawn_cbfunc_t cbfunc, void *cbdata)
-{
-   if (NULL != cbfunc) {
-        cbfunc(PMIX_SUCCESS, "foobar", cbdata);
-    }
-    return PMIX_SUCCESS;
-}
-
-static int connect_fn(const pmix_range_t ranges[], size_t nranges,
-                      pmix_op_cbfunc_t cbfunc, void *cbdata)
-{
-    if (NULL != cbfunc) {
-        cbfunc(PMIX_SUCCESS, cbdata);
-    }
-   return PMIX_SUCCESS;
-}
-
-static int disconnect_fn(const pmix_range_t ranges[], size_t nranges,
-                         pmix_op_cbfunc_t cbfunc, void *cbdata)
-{
-    if (NULL != cbfunc) {
-        cbfunc(PMIX_SUCCESS, cbdata);
-    }
-    return PMIX_SUCCESS;
 }
 
 /*
@@ -935,7 +335,7 @@ static void connection_handler(int incomind_sd, short flags, void* cbdata)
         return;
     }
 
-    cli_connect(&cli_info[rank], sd);
+    cli_connect(&cli_info[rank], sd, server_base, message_handler);
 }
 
 

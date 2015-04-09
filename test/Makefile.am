@@ -19,7 +19,7 @@
 # $HEADER$
 #
 
-headers = test_common.h
+headers = test_common.h cli_stages.h server_callbacks.h
 
 AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/src/api
 
@@ -31,13 +31,13 @@ TESTS = \
 	$(check_PROGRAMS)
 
 pmix_test_SOURCES = \
-        pmix_test.c test_common.c
+        pmix_test.c test_common.c cli_stages.c server_callbacks.c
 
 pmix_test_LDADD = \
 	$(top_builddir)/libpmix-server.la 
 
 pmix_test_lite_SOURCES = \
-        pmix_test_lite.c test_common.c
+        pmix_test_lite.c test_common.c cli_stages.c server_callbacks.c
 
 pmix_test_lite_LDADD = \
 	$(top_builddir)/libpmix-server.la 

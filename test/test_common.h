@@ -15,6 +15,9 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <stdint.h>
 
 #define TEST_NAMESPACE "smoky_nspace"
 #define TEST_CREDENTIAL "dummy"
@@ -24,6 +27,12 @@
  */
 char *pmix_test_output_prepare(const char *fmt,... );
 extern int pmix_test_verbose;
+
+extern int barrier;
+extern int collect;
+extern int nonblocking;
+extern uint32_t nprocs;
+extern int verbose;
 
 #define STRIPPED_FILE_NAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 
@@ -47,5 +56,7 @@ extern int pmix_test_verbose;
     } \
 }
 
+#define TEST_DEFAULT_TIMEOUT 10
+void parse_cmd(int argc, char **argv, char **binary, char **np, int *timeout);
 
 #endif // TEST_COMMON_H
