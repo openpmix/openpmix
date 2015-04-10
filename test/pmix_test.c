@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2013 Los Alamos National Security, LLC. 
+ * Copyright (c) 2006-2013 Los Alamos National Security, LLC.
  *                         All rights reserved.
  * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
@@ -60,10 +60,10 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    TEST_OUTPUT(("Testing version %s", PMIx_Get_version()));
-    
+    TEST_VERBOSE(("Testing version %s", PMIx_Get_version()));
+
     parse_cmd(argc, argv, &binary, &np, &test_timeout);
-    TEST_OUTPUT(("Start PMIx_lite smoke test (timeout is %d)", test_timeout));
+    TEST_VERBOSE(("Start PMIx_lite smoke test (timeout is %d)", test_timeout));
 
     /* verify executable */
     if( 0 > ( rc = stat(binary, &stat_buf) ) ){
@@ -84,7 +84,7 @@ int main(int argc, char **argv)
     }
     /* register the errhandler */
     PMIx_Register_errhandler(errhandler);
-    
+
     TEST_VERBOSE(("Setting job info"));
     fill_seq_ranks_array(nprocs, &ranks);
     if (NULL == ranks) {
@@ -96,18 +96,18 @@ int main(int argc, char **argv)
     if (NULL != ranks) {
         free(ranks);
     }
-    
+
     /* fork/exec the test */
     client_env = pmix_argv_copy(environ);
     pmix_argv_append_nosize(&client_argv, binary);
     if (nonblocking) {
-        pmix_argv_append_nosize(&client_argv, "nb");
+        pmix_argv_append_nosize(&client_argv, "-nb");
         if (barrier) {
-            pmix_argv_append_nosize(&client_argv, "barrier");
+            pmix_argv_append_nosize(&client_argv, "-b");
         }
     }
     if (collect) {
-        pmix_argv_append_nosize(&client_argv, "collect");
+        pmix_argv_append_nosize(&client_argv, "-c");
     }
     pmix_argv_append_nosize(&client_argv, "-n");
     if (NULL == np) {
@@ -115,13 +115,17 @@ int main(int argc, char **argv)
     } else {
         pmix_argv_append_nosize(&client_argv, np);
     }
-
     if( verbose ){
         pmix_argv_append_nosize(&client_argv, "-v");
     }
-    
+    if (NULL != out_file) {
+        pmix_argv_append_nosize(&client_argv, "-o");
+        pmix_argv_append_nosize(&client_argv, out_file);
+        free(out_file);
+    }
+
     tmp = pmix_argv_join(client_argv, ' ');
-    TEST_OUTPUT(("Executing test: %s", tmp));
+    TEST_VERBOSE(("Executing test: %s", tmp));
     free(tmp);
 
     myuid = getuid();
@@ -149,7 +153,7 @@ int main(int argc, char **argv)
             cli_kill_all();
             return rc;
         }
-    
+
         cli_info[n].pid = fork();
         if (cli_info[n].pid < 0) {
             TEST_ERROR(("Fork failed"));
@@ -157,7 +161,7 @@ int main(int argc, char **argv)
             cli_kill_all();
             return -1;
         }
-        
+
         if (cli_info[n].pid == 0) {
             execve(binary, client_argv, client_env);
             /* Does not return */
@@ -192,17 +196,17 @@ int main(int argc, char **argv)
 
     pmix_argv_free(client_argv);
     pmix_argv_free(client_env);
-    
+
     /* deregister the errhandler */
     PMIx_Deregister_errhandler();
-    
+
     cli_wait_all(1.0);
 
     /* finalize the server library */
     if (PMIX_SUCCESS != (rc = PMIx_server_finalize())) {
         TEST_ERROR(("Finalize failed with error %d", rc));
     }
-    
+
     if( !test_terminated() ){
         int i;
         // All clients should disconnect
@@ -214,7 +218,7 @@ int main(int argc, char **argv)
     } else {
         TEST_OUTPUT(("Test finished OK!"));
     }
-    
+
     return rc;
 }
 

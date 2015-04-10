@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2013 Los Alamos National Security, LLC. 
+ * Copyright (c) 2006-2013 Los Alamos National Security, LLC.
  *                         All rights reserved.
  * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
@@ -57,7 +57,6 @@ int main(int argc, char **argv)
     int test_timeout = TEST_DEFAULT_TIMEOUT;
     struct timeval tv;
     double test_start;
-    bool verbose = false;
     char *ranks = NULL;
 
     gettimeofday(&tv, NULL);
@@ -68,9 +67,9 @@ int main(int argc, char **argv)
         TEST_ERROR(("ERROR IN COMPUTING CONSTANTS: PMIX_SUCCESS = %d\n", PMIX_SUCCESS));
         exit(1);
     }
-  
+
     parse_cmd(argc, argv, &binary, &np, &test_timeout);
-    TEST_OUTPUT(("Start PMIx_lite smoke test (timeout is %d)", test_timeout));
+    TEST_VERBOSE(("Start PMIx_lite smoke test (timeout is %d)", test_timeout));
 
     /* verify executable */
     if( 0 > ( rc = stat(binary, &stat_buf) ) ){
@@ -110,7 +109,7 @@ int main(int argc, char **argv)
         TEST_ERROR(("Cannot create libevent event\n"));
         goto cleanup;
     }
-    
+
     /* retrieve the rendezvous address */
     if (PMIX_SUCCESS != PMIx_get_rendezvous_address(&address, NULL)) {
         TEST_ERROR(("failed to get rendezvous address"));
@@ -118,7 +117,7 @@ int main(int argc, char **argv)
         goto cleanup;
     }
 
-    TEST_OUTPUT(("Initialization finished"));
+    TEST_VERBOSE(("Initialization finished"));
 
     /* start listening */
     if( 0 > (listen_fd = start_listening(&address) ) ){
@@ -127,11 +126,17 @@ int main(int argc, char **argv)
     }
 
     client_env = pmix_argv_copy(environ);
-    
+
     /* fork/exec the test */
     pmix_argv_append_nosize(&client_argv, binary);
+    if (nonblocking) {
+        pmix_argv_append_nosize(&client_argv, "-nb");
+        if (barrier) {
+            pmix_argv_append_nosize(&client_argv, "-b");
+        }
+    }
     if (collect) {
-        pmix_argv_append_nosize(&client_argv, "collect");
+        pmix_argv_append_nosize(&client_argv, "-c");
     }
     pmix_argv_append_nosize(&client_argv, "-n");
     if (NULL == np) {
@@ -139,18 +144,22 @@ int main(int argc, char **argv)
     } else {
         pmix_argv_append_nosize(&client_argv, np);
     }
-
     if( verbose ){
         pmix_argv_append_nosize(&client_argv, "-v");
     }
+    if (NULL != out_file) {
+        pmix_argv_append_nosize(&client_argv, "-o");
+        pmix_argv_append_nosize(&client_argv, out_file);
+        free(out_file);
+    }
 
     tmp = pmix_argv_join(client_argv, ' ');
-    TEST_OUTPUT(("Executing test: %s", tmp));
+    TEST_VERBOSE(("Executing test: %s", tmp));
     free(tmp);
 
     myuid = getuid();
     mygid = getgid();
-    
+
     int order[CLI_TERM+1];
     order[CLI_UNINIT] = CLI_FORKED;
     order[CLI_FORKED] = CLI_CONNECTED;
@@ -177,7 +186,7 @@ int main(int argc, char **argv)
 //        for (i=0; NULL != client_env[i]; i++) {
 //            TEST_VERBOSE(("env[%d]: %s", i, client_env[i]));
 //        }
-    
+
         cli_info[n].pid = fork();
         if (cli_info[n].pid < 0) {
             TEST_ERROR(("Fork failed"));
@@ -185,7 +194,7 @@ int main(int argc, char **argv)
             cli_kill_all();
             return -1;
         }
-        
+
         if (cli_info[n].pid == 0) {
             execve(binary, client_argv, client_env);
             /* Does not return */
@@ -223,10 +232,10 @@ int main(int argc, char **argv)
         cli_kill_all();
     }
 
-    
+
     pmix_argv_free(client_argv);
     pmix_argv_free(client_env);
-    
+
     /* deregister the errhandler */
     PMIx_Deregister_errhandler();
 
@@ -269,30 +278,30 @@ static int start_listening(struct sockaddr_un *address)
     /* create a listen socket for incoming connection attempts */
     listen_fd = socket(PF_UNIX, SOCK_STREAM, 0);
     if (listen_fd < 0) {
-        TEST_OUTPUT(("socket() failed"));
+        TEST_ERROR(("socket() failed"));
         return -1;
     }
 
     addrlen = sizeof(struct sockaddr_un);
     if (bind(listen_fd, (struct sockaddr*)address, addrlen) < 0) {
-        TEST_OUTPUT(("bind() failed"));
+        TEST_ERROR(("bind() failed"));
         return -1;
     }
 
     /* setup listen backlog to maximum allowed by kernel */
     if (listen(listen_fd, SOMAXCONN) < 0) {
-        TEST_OUTPUT(("listen() failed"));
+        TEST_ERROR(("listen() failed"));
         return -1;
     }
-        
+
     /* set socket up to be non-blocking, otherwise accept could block */
     if ((flags = fcntl(listen_fd, F_GETFL, 0)) < 0) {
-        TEST_OUTPUT(("fcntl(F_GETFL) failed"));
+        TEST_ERROR(("fcntl(F_GETFL) failed"));
         return -1;
     }
     flags |= O_NONBLOCK;
     if (fcntl(listen_fd, F_SETFL, flags) < 0) {
-        TEST_OUTPUT(("fcntl(F_SETFL) failed"));
+        TEST_ERROR(("fcntl(F_SETFL) failed"));
         return -1;
     }
 
@@ -300,7 +309,7 @@ static int start_listening(struct sockaddr_un *address)
     listen_ev = event_new(server_base, listen_fd,
                           EV_READ|EV_PERSIST, connection_handler, 0);
     event_add(listen_ev, 0);
-    TEST_OUTPUT(("Server is listening for incoming connections"));
+    TEST_VERBOSE(("Server is listening for incoming connections"));
     return 0;
 }
 

@@ -135,40 +135,44 @@ int main(int argc, char **argv)
     int *peers, npeers;
     pmix_value_t *val = &value;
 
-    TEST_OUTPUT(("rank X: Start", rank));
-
     parse_cmd(argc, argv, NULL, NULL, NULL);
-    TEST_OUTPUT(("rank X: parsed command line", rank));
+    if (NULL != out_file) {
+        out_file = realloc(out_file, strlen(out_file) + MAX_DIGIT_LEN + 2);
+        sprintf(out_file + strlen(out_file), ":%d", getpid());
+        file = fopen(out_file, "w");
+    }
+
+    TEST_VERBOSE(("rank %d: Start", rank));
 
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(nspace, &rank))) {
         TEST_ERROR(("rank %d: PMIx_Init failed: %d", rank, rc));
-        goto error_out;
+        exit(0);
     }
 
-    TEST_OUTPUT(("rank %d: PMIx_Init success", rank));
+    TEST_VERBOSE(("rank %d: PMIx_Init success", rank));
 
     if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, rank,PMIX_UNIV_SIZE,&val))) {
         TEST_ERROR(("rank %d: PMIx_Get universe size failed: %d", rank, rc));
-        goto error_out;
+        exit(0);
     }
     if (NULL == val) {
         TEST_ERROR(("rank %d: PMIx_Get universe size returned NULL value", rank));
-        goto error_out;
+        exit(0);
     }
     if (val->type != PMIX_UINT32 || val->data.uint32 != nprocs ) {
         TEST_ERROR(("rank %d: Universe size value or type mismatch,"
                     " want %d(%d) get %d(%d)",
                     rank, nprocs, PMIX_UINT32,
                     val->data.integer, val->type));
-        goto error_out;
+        exit(0);
     }
 
-    TEST_OUTPUT(("rank %d: Universe size check: PASSED", rank));
+    TEST_VERBOSE(("rank %d: Universe size check: PASSED", rank));
 
     if( 0 != strcmp(nspace, TEST_NAMESPACE) ) {
         TEST_ERROR(("rank %d: Bad nspace!", rank));
-        goto error_out;
+        exit(0);
     }
 
     for (i=0; i < 3; i++) {
@@ -176,7 +180,7 @@ int main(int argc, char **argv)
         PMIX_VAL_SET(&value, int, 12340 + i);
         if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_LOCAL, key, &value))) {
             TEST_ERROR(("rank %d: PMIx_Put failed: %d", rank, rc));
-            goto error_out;
+            exit(0);
         }
 
         (void)snprintf(key, 50, "remote-key-%d", i);
@@ -184,7 +188,7 @@ int main(int argc, char **argv)
         PMIX_VAL_SET(&value, string, sval);
         if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_REMOTE, key, &value))) {
             TEST_ERROR(("rank %d: PMIx_Put failed: %d", rank, rc));
-            goto error_out;
+            exit(0);
         }
         PMIX_VALUE_DESTRUCT(&value);
 
@@ -192,27 +196,27 @@ int main(int argc, char **argv)
         PMIX_VAL_SET(&value, float, 12.15 + i);
         if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_GLOBAL, key, &value))) {
             TEST_ERROR(("rank %d: PMIx_Put failed: %d", rank, rc));
-            goto error_out;
+            exit(0);
         }
     }
 
     /* Submit the data */
     if (PMIX_SUCCESS != (rc = PMIx_Commit())) {
         TEST_ERROR(("rank %d: PMIx_Commit failed: %d", rank, rc));
-        goto error_out;
+        exit(0);
     }
 
     /* Perform a fence if was requested */
     if( !nonblocking ){
         if (PMIX_SUCCESS != (rc = PMIx_Fence(NULL, 0, 1))) {
             TEST_ERROR(("rank %d: PMIx_Fence failed: %d", rank, rc));
-            goto error_out;
+            exit(0);
         }
     } else {
         int in_progress = 1, count;
         if ( PMIX_SUCCESS != (rc = PMIx_Fence_nb(NULL, 0, collect, release_cb, &in_progress))) {
             TEST_ERROR(("rank %d: PMIx_Fence failed: %d", rank, rc));
-            goto error_out;
+            exit(0);
         }
 
         count = 0;
@@ -224,12 +228,12 @@ int main(int argc, char **argv)
             count++;
 
         }
-        TEST_OUTPUT(("PMIx_Fence_nb(barrier,collect): free time: %lfs", count*100*1E-9));
+        TEST_VERBOSE(("PMIx_Fence_nb(barrier,collect): free time: %lfs", count*100*1E-9));
     }
-    TEST_OUTPUT(("rank %d: Fence successfully completed", rank));
+    TEST_VERBOSE(("rank %d: Fence successfully completed", rank));
 
     if (PMIX_SUCCESS != (rc = get_local_peers(&peers, &npeers))) {
-        goto error_out;
+        exit(0);
     }
 
     /* Check the predefined output */
@@ -247,18 +251,18 @@ int main(int argc, char **argv)
                 sprintf(key,"local-key-%d",j);
                 if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, i, key, &val))) {
                     TEST_ERROR(("rank %d: PMIx_Get failed: %d", rank, rc));
-                    goto error_out;
+                    exit(0);
                 }
                 if (NULL == val) {
                     TEST_ERROR(("rank %d: PMIx_Get returned NULL value", rank));
-                    goto error_out;
+                    exit(0);
                 }
                 if (val->type != PMIX_INT || val->data.integer != (12340+j)) {
                     TEST_ERROR(("rank %d: Key %s value or type mismatch,"
                             " want %d(%d) get %d(%d)",
                             rank, key, (12340+j), PMIX_INT,
                             val->data.integer, val->type));
-                    goto error_out;
+                    exit(0);
                 }
                 TEST_VERBOSE(("rank %d: GET OF %s SUCCEEDED", rank, key));
                 PMIX_VALUE_RELEASE(val);
@@ -268,12 +272,12 @@ int main(int argc, char **argv)
             sprintf(sval,"Test string #%d",j);
             if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, i, key, &val))) {
                 TEST_ERROR(("rank %d: PMIx_Get failed (%d)", rank, rc));
-                goto error_out;
+                exit(0);
             }
             if (val->type != PMIX_STRING || strcmp(val->data.string, sval)) {
                 TEST_ERROR(("rank %d:  Key %s value or type mismatch, wait %s(%d) get %s(%d)",
                             rank, key, sval, PMIX_STRING, val->data.string, val->type));
-                goto error_out;
+                exit(0);
             }
             TEST_VERBOSE(("rank %d: GET OF %s SUCCEEDED", rank, key));
             PMIX_VALUE_RELEASE(val);
@@ -281,14 +285,14 @@ int main(int argc, char **argv)
             sprintf(key, "global-key-%d", j);
             if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, i, key, &val))) {
                 TEST_ERROR(("rank %d: PMIx_Get failed (%d)", rank, rc))
-                goto error_out;
+                exit(0);
             }
             if (val->type != PMIX_FLOAT || val->data.fval != (float)12.15 + j) {
                 TEST_ERROR(("rank %d [ERROR]: Key %s value or type mismatch,"
                             " wait %f(%d) get %f(%d)",
                             rank, key, ((float)10.15 + i), PMIX_FLOAT,
                             val->data.fval, val->type));
-                goto error_out;
+                exit(0);
             }
             PMIX_VALUE_RELEASE(val);
             TEST_VERBOSE(("rank %d: GET OF %s SUCCEEDED", rank, key));
@@ -298,7 +302,7 @@ int main(int argc, char **argv)
         if (PMIX_SUCCESS == (rc = PMIx_Get(nspace, i, "foobar", &val))) {
             TEST_ERROR(("rank %d: PMIx_Get returned success instead of failure",
                         rank));
-            goto error_out;
+            exit(0);
         }
         if (PMIX_ERR_NOT_FOUND != rc) {
             TEST_ERROR(("rank %d [ERROR]: PMIx_Get returned %d instead of not_found",
@@ -306,22 +310,26 @@ int main(int argc, char **argv)
         }
         if (NULL != val) {
             TEST_ERROR(("rank %d [ERROR]: PMIx_Get did not return NULL value", rank));
-            goto error_out;
+            exit(0);
         }
         TEST_VERBOSE(("rank %d: rank %d is OK", rank, i));
     }
 
-    TEST_OUTPUT(("rank %d: test PASSED", rank));
+    TEST_VERBOSE(("rank %d: PASSED", rank));
 
- error_out:
     /* finalize us */
-    TEST_OUTPUT(("rank %d: Finalizing", rank));
-    fflush(stderr);
+    TEST_VERBOSE(("rank %d: Finalizing", rank));
     if (PMIX_SUCCESS != (rc = PMIx_Finalize())) {
         TEST_ERROR(("rank %d:PMIx_Finalize failed: %d", rank, rc));
     } else {
-        TEST_OUTPUT(("rank %d:PMIx_Finalize successfully completed", rank));
+        TEST_VERBOSE(("rank %d:PMIx_Finalize successfully completed", rank));
     }
 
+    if (NULL != out_file) {
+        free(out_file);
+        if (NULL != file) {
+            fclose(file);
+        }
+    }
     exit(0);
 }

@@ -47,7 +47,7 @@ void cli_connect(cli_info_t *cli, int sd, struct event_base * ebase, event_callb
                       EV_READ|EV_PERSIST, callback, cli);
     event_add(cli->ev,NULL);
     pmix_usock_set_nonblocking(sd);
-    TEST_OUTPUT(("Connection accepted from rank %d", cli_rank(cli) ));
+    TEST_VERBOSE(("Connection accepted from rank %d", cli_rank(cli) ));
     cli->state = CLI_CONNECTED;
 }
 
