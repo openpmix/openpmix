@@ -31,6 +31,7 @@
 #include "src/util/output.h"
 
 #include "server_callbacks.h"
+#include "utils.h"
 
 int main(int argc, char **argv)
 {
@@ -44,11 +45,11 @@ int main(int argc, char **argv)
     uid_t myuid;
     gid_t mygid;
     struct stat stat_buf;
-    pmix_info_t info[2];
     // In what time test should complete
     int test_timeout = TEST_DEFAULT_TIMEOUT;
     struct timeval tv;
     double test_start;
+    char *ranks = NULL;
 
     gettimeofday(&tv, NULL);
     test_start = tv.tv_sec + 1E-6*tv.tv_usec;
@@ -85,17 +86,16 @@ int main(int argc, char **argv)
     PMIx_Register_errhandler(errhandler);
     
     TEST_VERBOSE(("Setting job info"));
-    PMIX_INFO_CONSTRUCT(&info[0]);
-    (void)strncpy(info[0].key, PMIX_UNIV_SIZE, PMIX_MAX_KEYLEN);
-    info[0].value.type = PMIX_UINT32;
-    info[0].value.data.uint32 = nprocs;
-    PMIX_INFO_CONSTRUCT(&info[1]);
-    (void)strncpy(info[1].key, PMIX_SPAWNED, PMIX_MAX_KEYLEN);
-    info[1].value.type = PMIX_UINT32;
-    info[1].value.data.uint32 = 0;
-    PMIx_server_register_nspace(TEST_NAMESPACE, nprocs, info, 2);
-    PMIX_INFO_DESTRUCT(&info[0]);
-    PMIX_INFO_DESTRUCT(&info[1]);
+    fill_seq_ranks_array(nprocs, &ranks);
+    if (NULL == ranks) {
+        PMIx_server_finalize();
+        TEST_ERROR(("fill_seq_ranks_array failed"));
+        return PMIX_ERROR;
+    }
+    set_namespace(nprocs, ranks, TEST_NAMESPACE);
+    if (NULL != ranks) {
+        free(ranks);
+    }
     
     /* fork/exec the test */
     client_env = pmix_argv_copy(environ);

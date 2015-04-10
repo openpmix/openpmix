@@ -27,7 +27,9 @@ void parse_cmd(int argc, char **argv, char **binary, char **np, int *timeout)
     for (i=1; i < argc; i++) {
         if (0 == strcmp(argv[i], "--n") || 0 == strcmp(argv[i], "-n")) {
             i++;
-            *np = argv[i];
+            if (NULL != np) {
+                *np = argv[i];
+            }
             nprocs = strtol(argv[i], NULL, 10);
         } else if (0 == strcmp(argv[i], "--h") || 0 == strcmp(argv[i], "-h")) {
             /* print help */
@@ -41,7 +43,9 @@ void parse_cmd(int argc, char **argv, char **binary, char **np, int *timeout)
             exit(0);
         } else if (0 == strcmp(argv[i], "--exec") || 0 == strcmp(argv[i], "-e")) {
             i++;
-            *binary = argv[i];
+            if (NULL != binary) {
+                *binary = argv[i];
+            }
         } else if (0 == strcmp(argv[i], "--barrier") || 0 == strcmp(argv[i], "-b")) {
             barrier = 1;
         } else if (0 == strcmp(argv[i], "--collect") || 0 == strcmp(argv[i], "-c")) {
@@ -53,9 +57,11 @@ void parse_cmd(int argc, char **argv, char **binary, char **np, int *timeout)
             verbose = 1;
         } else if (0 == strcmp(argv[i], "--timeout") || 0 == strcmp(argv[i], "-t")) {
             i++;
-            *timeout = atoi(argv[i]);
-            if( *timeout == 0 ){
-                *timeout = TEST_DEFAULT_TIMEOUT;
+            if (NULL != timeout) {
+                *timeout = atoi(argv[i]);
+                if( *timeout == 0 ){
+                    *timeout = TEST_DEFAULT_TIMEOUT;
+                }
             }
         }
         else {
