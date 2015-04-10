@@ -204,7 +204,7 @@ int main(int argc, char **argv)
     }
 
     /* hang around until the client(s) finalize */
-    while (!test_completed()) {
+    while (!test_terminated()) {
         // To avoid test hang we want to interrupt the loop each 0.1s
         struct timeval loop_tv = {0, 100000};
         double test_current;
@@ -222,7 +222,7 @@ int main(int argc, char **argv)
         cli_wait_all(0);
     }
 
-    if( !test_completed() ){
+    if( !test_terminated() ){
         TEST_ERROR(("Test exited by a timeout!"));
         cli_kill_all();
     }
@@ -231,7 +231,6 @@ int main(int argc, char **argv)
         TEST_ERROR(("Test was aborted!"));
         cli_kill_all();
     }
-
 
     pmix_argv_free(client_argv);
     pmix_argv_free(client_env);
@@ -249,15 +248,14 @@ int main(int argc, char **argv)
         TEST_ERROR(("Finalize failed with error %d", rc));
     }
 
-    if( !test_terminated() ){
+    if (!test_abort && !test_succeeded()) {
         int i;
         // All of the client should deisconnect
-        TEST_ERROR(("Error while cleaning up test. Expect state = %d:", CLI_TERM));
-        for(i=0; i < cli_info_cnt; i++){
-            TEST_ERROR(("\trank %d, state = %d", i, cli_info[i].state));
+        TEST_ERROR(("Test failed. Some of processes didn't call PMIX_Finalize."));
+        for (i = 0; i < cli_info_cnt; i++) {
+            TEST_ERROR(("\trank %d, status = %d", i, cli_info[i].status));
         }
-
-    } else {
+    } else if (!test_abort) {
         TEST_OUTPUT(("Test finished OK!"));
     }
 

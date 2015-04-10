@@ -26,6 +26,7 @@ void cli_init(int nprocs, int order[])
         cli_info[n].ev = NULL;
         cli_info[n].pid = -1;
         cli_info[n].state = CLI_UNINIT;
+        cli_info[n].status = 0;
         PMIX_CONSTRUCT(&(cli_info[n].modex), pmix_list_t);
         for (i = 0; i < CLI_TERM+1; i++) {
             cli_info[n].state_order[i] = order[i];
@@ -68,10 +69,14 @@ void cli_disconnect(cli_info_t *cli)
     if( CLI_DISCONN != cli->state_order[cli->state] ){
         TEST_ERROR(("rank %d: bad client next state: expect %d have %d!",
                      cli_rank(cli), CLI_DISCONN, cli->state_order[cli->state]));
+        test_abort = true;
+        return;
     }
 
     if( 0 > cli->sd ){
         TEST_ERROR(("Bad sd = %d of rank = %d ", cli->sd, cli_rank(cli)));
+        test_abort = true;
+        return;
     } else {
         TEST_VERBOSE(("close sd = %d for rank = %d", cli->sd, cli_rank(cli)));
         close(cli->sd);
@@ -80,6 +85,8 @@ void cli_disconnect(cli_info_t *cli)
 
     if( NULL == cli->ev ){
         TEST_ERROR(("Bad ev = NULL of rank = %d ", cli->sd, cli_rank(cli)));
+        test_abort = true;
+        return;
     } else {
         TEST_VERBOSE(("remove event of rank %d from event queue", cli_rank(cli)));
         event_del(cli->ev);
@@ -98,6 +105,8 @@ void cli_terminate(cli_info_t *cli)
     if( CLI_TERM != cli->state_order[cli->state] ){
         TEST_ERROR(("rank %d: bad client next state: expect %d have %d!",
                      cli_rank(cli), CLI_TERM, cli->state_order[cli->state]));
+        test_abort = true;
+        return;
     }
     cli->pid = -1;
     TEST_VERBOSE(("Client rank = %d terminated", cli_rank(cli)));
@@ -108,12 +117,15 @@ void cli_cleanup(cli_info_t *cli)
 {
     if (0 > cli->state || CLI_TERM < cli->state) {
         TEST_ERROR(("Bad rank %d state %d", cli_rank(cli), cli->state));
+        test_abort = true;
         return;
     }
     switch( cli->state_order[cli->state] ){
     case CLI_FORKED:
         break;
     case CLI_FIN:
+        /* error - means that process terminated w/o calling finalize */
+        cli->status = 1;
         cli_finalize(cli);
         cli_cleanup(cli);
         break;
@@ -129,21 +141,22 @@ void cli_cleanup(cli_info_t *cli)
         break;
     default:
         TEST_ERROR(("Bad rank %d next state %d", cli_rank(cli), cli->state_order[cli->state]));
-        break;
+        test_abort = true;
+        return;
     }
 }
 
 
-bool test_completed(void)
+bool test_succeeded(void)
 {
     bool ret = true;
     int i;
 
-    // All clients should disconnect
+    // To succeed all clients status should be 0
     for(i=0; i < cli_info_cnt; i++){
-        ret = ret && (CLI_TERM <= cli_info[i].state_order[cli_info[i].state]);
+        ret = ret && (0 == cli_info[i].status);
     }
-    return (ret || test_abort);
+    return (ret && !test_abort);
 }
 
 bool test_terminated(void)
@@ -155,7 +168,7 @@ bool test_terminated(void)
     for(i=0; i < cli_info_cnt; i++){
         ret = ret && (CLI_TERM <= cli_info[i].state);
     }
-    return ret;
+    return (ret || test_abort);
 }
 
 void cli_wait_all(double timeout)
