@@ -8,9 +8,7 @@ int barrier = 0;
 int collect = 0;
 int nonblocking = 0;
 int verbose = 0;
-
-FILE *file = NULL;
-char *out_file = NULL;
+FILE *file;
 
 #define OUTPUT_MAX 1024
 char *pmix_test_output_prepare(const char *fmt, ... )
@@ -23,9 +21,14 @@ char *pmix_test_output_prepare(const char *fmt, ... )
     return output;
 }
 
-void parse_cmd(int argc, char **argv, char **binary, char **np, int *timeout)
+void parse_cmd(int argc, char **argv, char **binary, char **np, int *timeout, char **prefix)
 {
     int i;
+
+    /* set output to stderr by default */
+    file = stdout;
+    *prefix = NULL;
+
     /* parse user options */
     for (i=1; i < argc; i++) {
         if (0 == strcmp(argv[i], "--n") || 0 == strcmp(argv[i], "-n")) {
@@ -69,10 +72,10 @@ void parse_cmd(int argc, char **argv, char **binary, char **np, int *timeout)
                     *timeout = TEST_DEFAULT_TIMEOUT;
                 }
             }
-        } else if ( 0 == strcmp(argv[i], "-o")) {
+        } else if( 0 == strcmp(argv[i], "-o")) {
             i++;
             if (NULL != argv[i]) {
-                out_file = strdup(argv[i]);
+                *prefix = strdup(argv[i]);
             }
         }
         else {

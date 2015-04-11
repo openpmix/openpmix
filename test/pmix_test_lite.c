@@ -58,6 +58,7 @@ int main(int argc, char **argv)
     struct timeval tv;
     double test_start;
     char *ranks = NULL;
+    char *prefix = NULL;
 
     gettimeofday(&tv, NULL);
     test_start = tv.tv_sec + 1E-6*tv.tv_usec;
@@ -68,7 +69,7 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    parse_cmd(argc, argv, &binary, &np, &test_timeout);
+    parse_cmd(argc, argv, &binary, &np, &test_timeout, &prefix);
     TEST_VERBOSE(("Start PMIx_lite smoke test (timeout is %d)", test_timeout));
 
     /* verify executable */
@@ -147,10 +148,11 @@ int main(int argc, char **argv)
     if( verbose ){
         pmix_argv_append_nosize(&client_argv, "-v");
     }
-    if (NULL != out_file) {
+    if (NULL != prefix) {
         pmix_argv_append_nosize(&client_argv, "-o");
-        pmix_argv_append_nosize(&client_argv, out_file);
-        free(out_file);
+        pmix_argv_append_nosize(&client_argv, prefix);
+        free(prefix);
+        prefix = NULL;
     }
 
     tmp = pmix_argv_join(client_argv, ' ');
@@ -196,6 +198,12 @@ int main(int argc, char **argv)
         }
 
         if (cli_info[n].pid == 0) {
+            if( !TEST_VERBOSE_GET() ){
+                // Hide clients stdout
+                // TODO: on some systems stdout is a constant, address this
+                fclose(stdout);
+                stdout = fopen("/dev/null","w");
+            }
             execve(binary, client_argv, client_env);
             /* Does not return */
 	    exit(0);

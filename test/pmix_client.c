@@ -133,21 +133,22 @@ int main(int argc, char **argv)
     int collect = 0;
     int nonblocking = 0;
     int *peers, npeers;
+    char *prefix = NULL;
     pmix_value_t *val = &value;
 
-    parse_cmd(argc, argv, NULL, NULL, NULL);
-    if (NULL != out_file) {
-        out_file = realloc(out_file, strlen(out_file) + MAX_DIGIT_LEN + 2);
-        sprintf(out_file + strlen(out_file), ":%d", getpid());
-        file = fopen(out_file, "w");
-    }
+    parse_cmd(argc, argv, NULL, NULL, NULL, &prefix);
 
-    TEST_VERBOSE(("rank %d: Start", rank));
+    // We don't know rank at this place!
+    TEST_VERBOSE(("rank X: Start", rank));
 
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(nspace, &rank))) {
         TEST_ERROR(("rank %d: PMIx_Init failed: %d", rank, rc));
         exit(0);
+    }
+
+    if ( NULL != prefix ) {
+        TEST_SET_FILE(prefix, rank);
     }
 
     TEST_VERBOSE(("rank %d: PMIx_Init success", rank));
@@ -325,11 +326,7 @@ int main(int argc, char **argv)
         TEST_VERBOSE(("rank %d:PMIx_Finalize successfully completed", rank));
     }
 
-    if (NULL != out_file) {
-        free(out_file);
-        if (NULL != file) {
-            fclose(file);
-        }
-    }
+    TEST_OUTPUT_CLEAR(("OK\n"));
+    TEST_CLOSE_FILE();
     exit(0);
 }

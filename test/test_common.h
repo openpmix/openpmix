@@ -33,24 +33,32 @@ extern int collect;
 extern int nonblocking;
 extern uint32_t nprocs;
 extern int verbose;
-extern char *out_file;
 extern FILE *file;
 
 #define STRIPPED_FILE_NAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 
 #define TEST_OUTPUT(x) { \
-    fprintf((NULL == file) ? stderr : file,"%s:%s: %s\n",STRIPPED_FILE_NAME, __FUNCTION__, \
+    fprintf(file,"%s:%s: %s\n",STRIPPED_FILE_NAME, __FUNCTION__, \
             pmix_test_output_prepare x ); \
-    fflush((NULL == file) ? stderr : file); \
+    fflush(file); \
 }
 
+// Write output wightout adding anything to it.
+// Need for automate tests to receive "OK" string
+#define TEST_OUTPUT_CLEAR(x) { \
+    fprintf(file, "%s", pmix_test_output_prepare x ); \
+    fflush(file); \
+}
+
+// Always write errors to the stderr
 #define TEST_ERROR(x) { \
-    fprintf((NULL == file) ? stderr : file,"ERROR [%s:%d:%s]: %s\n", STRIPPED_FILE_NAME, __LINE__, __FUNCTION__, \
+    fprintf(stderr,"ERROR [%s:%d:%s]: %s\n", STRIPPED_FILE_NAME, __LINE__, __FUNCTION__, \
             pmix_test_output_prepare x ); \
-    fflush((NULL == file) ? stderr : file); \
+    fflush(stderr); \
 }
 
 #define TEST_VERBOSE_ON() (pmix_test_verbose = 1)
+#define TEST_VERBOSE_GET() (pmix_test_verbose)
 
 #define TEST_VERBOSE(x) { \
     if( pmix_test_verbose ){ \
@@ -61,6 +69,25 @@ extern FILE *file;
 #define TEST_DEFAULT_TIMEOUT 10
 #define MAX_DIGIT_LEN 10
 
-void parse_cmd(int argc, char **argv, char **binary, char **np, int *timeout);
+#define TEST_SET_FILE(prefix, rank) { \
+    char *fname = malloc( strlen(prefix) + MAX_DIGIT_LEN + 2 ); \
+    sprintf(fname, "%s.%d", prefix, rank); \
+    file = fopen(fname, "w"); \
+    if( NULL == file ){ \
+        free(fname); \
+        fprintf(stderr, "Cannot open file %s for writing!", fname); \
+        exit(1); \
+    } \
+}
+
+#define TEST_CLOSE_FILE() { \
+    if ( stderr != file ) { \
+        fclose(file); \
+    } \
+}
+
+
+
+void parse_cmd(int argc, char **argv, char **binary, char **np, int *timeout, char **prefix);
 
 #endif // TEST_COMMON_H
