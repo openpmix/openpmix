@@ -69,7 +69,7 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    parse_cmd(argc, argv, &binary, &np, &test_timeout, &prefix);
+    parse_cmd(argc, argv, &binary, &np, &test_timeout, &prefix, NULL);
     TEST_VERBOSE(("Start PMIx_lite smoke test (timeout is %d)", test_timeout));
 
     /* verify executable */
@@ -130,6 +130,8 @@ int main(int argc, char **argv)
 
     /* fork/exec the test */
     pmix_argv_append_nosize(&client_argv, binary);
+    pmix_argv_append_nosize(&client_argv, "-s");
+    pmix_argv_append_nosize(&client_argv, TEST_NAMESPACE);
     if (nonblocking) {
         pmix_argv_append_nosize(&client_argv, "-nb");
         if (barrier) {

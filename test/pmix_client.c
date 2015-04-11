@@ -133,10 +133,10 @@ int main(int argc, char **argv)
     int collect = 0;
     int nonblocking = 0;
     int *peers, npeers;
-    char *prefix = NULL;
+    char *prefix = NULL, *nspace_chk = NULL;
     pmix_value_t *val = &value;
 
-    parse_cmd(argc, argv, NULL, NULL, NULL, &prefix);
+    parse_cmd(argc, argv, NULL, NULL, NULL, &prefix, &nspace_chk);
 
     // We don't know rank at this place!
     TEST_VERBOSE(("rank X: Start", rank));
@@ -149,6 +149,7 @@ int main(int argc, char **argv)
 
     if ( NULL != prefix ) {
         TEST_SET_FILE(prefix, rank);
+        free(prefix);
     }
 
     TEST_VERBOSE(("rank %d: PMIx_Init success", rank));
@@ -171,7 +172,7 @@ int main(int argc, char **argv)
 
     TEST_VERBOSE(("rank %d: Universe size check: PASSED", rank));
 
-    if( 0 != strcmp(nspace, TEST_NAMESPACE) ) {
+    if( NULL != nspace_chk && 0 != strcmp(nspace, nspace_chk) ) {
         TEST_ERROR(("rank %d: Bad nspace!", rank));
         exit(0);
     }

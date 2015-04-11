@@ -88,6 +88,7 @@ extern FILE *file;
 
 
 
-void parse_cmd(int argc, char **argv, char **binary, char **np, int *timeout, char **prefix);
+void parse_cmd(int argc, char **argv, char **binary, char **np, int *timeout, 
+                char **prefix, char **nspace);
 
 #endif // TEST_COMMON_H

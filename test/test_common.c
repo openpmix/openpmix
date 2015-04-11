@@ -21,13 +21,16 @@ char *pmix_test_output_prepare(const char *fmt, ... )
     return output;
 }
 
-void parse_cmd(int argc, char **argv, char **binary, char **np, int *timeout, char **prefix)
+void parse_cmd(int argc, char **argv, char **binary, char **np, int *timeout,
+                char **prefix, char **nspace)
 {
     int i;
 
     /* set output to stderr by default */
     file = stdout;
     *prefix = NULL;
+    if( nspace != NULL )
+        *nspace = NULL;
 
     /* parse user options */
     for (i=1; i < argc; i++) {
@@ -42,13 +45,15 @@ void parse_cmd(int argc, char **argv, char **binary, char **np, int *timeout, ch
         } else if (0 == strcmp(argv[i], "--h") || 0 == strcmp(argv[i], "-h")) {
             /* print help */
             fprintf(stderr, "usage: pmix_test [-h] [-e foo] [-b] [-c] [-nb]\n");
+            fprintf(stderr, "\t-n       provides information about the job size (for checking purposes)\n");
+            fprintf(stderr, "\t-s nsp   namespace of the job (for checking purposes)\n");
             fprintf(stderr, "\t-e foo   use foo as test client\n");
             fprintf(stderr, "\t-b       execute fence_nb callback when all procs reach that point\n");
             fprintf(stderr, "\t-c       fence[_nb] callback shall include all collected data\n");
             fprintf(stderr, "\t-nb      use non-blocking fence\n");
             fprintf(stderr, "\t-v       verbose output\n");
             fprintf(stderr, "\t-t <>    set timeout\n");
-            fprintf(stderr, "\t-o out   redirect clients logs to file out:<pid>\n");
+            fprintf(stderr, "\t-o out   redirect clients logs to file out.<rank>\n");
             exit(0);
         } else if (0 == strcmp(argv[i], "--exec") || 0 == strcmp(argv[i], "-e")) {
             i++;
@@ -77,7 +82,13 @@ void parse_cmd(int argc, char **argv, char **binary, char **np, int *timeout, ch
             if (NULL != argv[i]) {
                 *prefix = strdup(argv[i]);
             }
+        } else if( 0 == strcmp(argv[i], "-s")) {
+            i++;
+            if (NULL != nspace && NULL != argv[i]) {
+                *nspace = strdup(argv[i]);
+            }
         }
+
         else {
             fprintf(stderr, "unrecognized option: %s\n", argv[i]);
             exit(1);
