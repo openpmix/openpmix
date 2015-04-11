@@ -33,19 +33,21 @@ extern int collect;
 extern int nonblocking;
 extern uint32_t nprocs;
 extern int verbose;
+extern char *out_file;
+extern FILE *file;
 
 #define STRIPPED_FILE_NAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 
 #define TEST_OUTPUT(x) { \
-    fprintf(stderr,"%s:%s: %s\n",STRIPPED_FILE_NAME, __FUNCTION__, \
+    fprintf((NULL == file) ? stderr : file,"%s:%s: %s\n",STRIPPED_FILE_NAME, __FUNCTION__, \
             pmix_test_output_prepare x ); \
-    fflush(stderr); \
+    fflush((NULL == file) ? stderr : file); \
 }
 
 #define TEST_ERROR(x) { \
-    fprintf(stderr,"ERROR [%s:%d:%s]: %s\n", STRIPPED_FILE_NAME, __LINE__, __FUNCTION__, \
+    fprintf((NULL == file) ? stderr : file,"ERROR [%s:%d:%s]: %s\n", STRIPPED_FILE_NAME, __LINE__, __FUNCTION__, \
             pmix_test_output_prepare x ); \
-    fflush(stderr); \
+    fflush((NULL == file) ? stderr : file); \
 }
 
 #define TEST_VERBOSE_ON() (pmix_test_verbose = 1)
@@ -57,6 +59,8 @@ extern int verbose;
 }
 
 #define TEST_DEFAULT_TIMEOUT 10
+#define MAX_DIGIT_LEN 10
+
 void parse_cmd(int argc, char **argv, char **binary, char **np, int *timeout);
 
 #endif // TEST_COMMON_H

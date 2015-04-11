@@ -9,6 +9,9 @@ int collect = 0;
 int nonblocking = 0;
 int verbose = 0;
 
+FILE *file = NULL;
+char *out_file = NULL;
+
 #define OUTPUT_MAX 1024
 char *pmix_test_output_prepare(const char *fmt, ... )
 {
@@ -27,10 +30,12 @@ void parse_cmd(int argc, char **argv, char **binary, char **np, int *timeout)
     for (i=1; i < argc; i++) {
         if (0 == strcmp(argv[i], "--n") || 0 == strcmp(argv[i], "-n")) {
             i++;
-            if (NULL != np) {
-                *np = argv[i];
+            if (NULL != argv[i]) {
+                if (NULL != np) {
+                    *np = argv[i];
+                }
+                nprocs = strtol(argv[i], NULL, 10);
             }
-            nprocs = strtol(argv[i], NULL, 10);
         } else if (0 == strcmp(argv[i], "--h") || 0 == strcmp(argv[i], "-h")) {
             /* print help */
             fprintf(stderr, "usage: pmix_test [-h] [-e foo] [-b] [-c] [-nb]\n");
@@ -39,11 +44,12 @@ void parse_cmd(int argc, char **argv, char **binary, char **np, int *timeout)
             fprintf(stderr, "\t-c       fence[_nb] callback shall include all collected data\n");
             fprintf(stderr, "\t-nb      use non-blocking fence\n");
             fprintf(stderr, "\t-v       verbose output\n");
-            fprintf(stderr, "\t-t       --timeout\n");
+            fprintf(stderr, "\t-t <>    set timeout\n");
+            fprintf(stderr, "\t-o out   redirect clients logs to file out:<pid>\n");
             exit(0);
         } else if (0 == strcmp(argv[i], "--exec") || 0 == strcmp(argv[i], "-e")) {
             i++;
-            if (NULL != binary) {
+            if (NULL != binary && NULL != argv[i]) {
                 *binary = argv[i];
             }
         } else if (0 == strcmp(argv[i], "--barrier") || 0 == strcmp(argv[i], "-b")) {
@@ -57,11 +63,16 @@ void parse_cmd(int argc, char **argv, char **binary, char **np, int *timeout)
             verbose = 1;
         } else if (0 == strcmp(argv[i], "--timeout") || 0 == strcmp(argv[i], "-t")) {
             i++;
-            if (NULL != timeout) {
+            if (NULL != timeout && NULL != argv[i]) {
                 *timeout = atoi(argv[i]);
                 if( *timeout == 0 ){
                     *timeout = TEST_DEFAULT_TIMEOUT;
                 }
+            }
+        } else if ( 0 == strcmp(argv[i], "-o")) {
+            i++;
+            if (NULL != argv[i]) {
+                out_file = strdup(argv[i]);
             }
         }
         else {
