@@ -140,6 +140,11 @@ int main(int argc, char **argv)
     // We don't know rank at this place!
     TEST_VERBOSE(("rank X: Start"));
 
+    /* handle early-fail test case */
+    if (1 == params.early_fail && 0 == params.rank) {
+        exit(0);
+    }
+
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(nspace, &rank))) {
         TEST_ERROR(("rank %d: PMIx_Init failed: %d", rank, rc));

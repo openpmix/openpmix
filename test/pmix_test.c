@@ -130,6 +130,9 @@ int main(int argc, char **argv)
         pmix_argv_append_nosize(&client_argv, "-o");
         pmix_argv_append_nosize(&client_argv, params.prefix);
     }
+    if( params.early_fail ){
+        pmix_argv_append_nosize(&client_argv, "--early-fail");
+    }
 
     tmp = pmix_argv_join(client_argv, ' ');
     TEST_VERBOSE(("Executing test: %s", tmp));

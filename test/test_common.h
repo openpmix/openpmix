@@ -92,6 +92,7 @@ typedef struct {
     int nonblocking;
     int verbose;
     int rank;
+    int early_fail;
 } test_params;
 
 #define INIT_TEST_PARAMS(params) do { \
@@ -101,6 +102,7 @@ typedef struct {
     params.nonblocking = 0;           \
     params.verbose = 0;               \
     params.rank = 0;                  \
+    params.early_fail = 0;            \
     params.binary = NULL;             \
     params.np = NULL;                 \
     params.timeout = TEST_DEFAULT_TIMEOUT; \

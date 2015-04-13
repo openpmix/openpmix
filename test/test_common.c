@@ -46,6 +46,7 @@ void parse_cmd(int argc, char **argv, test_params *params)
             fprintf(stderr, "\t-v       verbose output\n");
             fprintf(stderr, "\t-t <>    set timeout\n");
             fprintf(stderr, "\t-o out   redirect clients logs to file out.<rank>\n");
+            fprintf(stderr, "\t--early-fail    force client process with rank 0 to fail before PMIX_Init.\n");
             exit(0);
         } else if (0 == strcmp(argv[i], "--exec") || 0 == strcmp(argv[i], "-e")) {
             i++;
@@ -84,6 +85,8 @@ void parse_cmd(int argc, char **argv, test_params *params)
             if (NULL != argv[i]) {
                 params->rank = strtol(argv[i], NULL, 10);
             }
+        } else if( 0 == strcmp(argv[i], "--early-fail") ){
+            params->early_fail = 1;
         }
 
         else {
