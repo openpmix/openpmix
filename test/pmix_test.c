@@ -46,6 +46,9 @@ int main(int argc, char **argv)
     struct timeval tv;
     double test_start;
     char *ranks = NULL;
+    int order[CLI_TERM+1];
+    char digit[MAX_DIGIT_LEN];
+    int cl_arg_len;
     test_params params;
     INIT_TEST_PARAMS(params);
 
@@ -135,7 +138,6 @@ int main(int argc, char **argv)
     myuid = getuid();
     mygid = getgid();
 
-    int order[CLI_TERM+1];
     order[CLI_UNINIT] = CLI_FORKED;
     order[CLI_FORKED] = CLI_FIN;
     order[CLI_CONNECTED] = -1;
@@ -168,6 +170,10 @@ int main(int argc, char **argv)
             FREE_TEST_PARAMS(params);
             return -1;
         }
+        /* add two last arguments: -r <rank> */
+        sprintf(digit, "%d", n);
+        pmix_argv_append_nosize(&client_argv, "-r");
+        pmix_argv_append_nosize(&client_argv, digit);
 
         if (cli_info[n].pid == 0) {
             if( !TEST_VERBOSE_GET() ){
@@ -181,6 +187,10 @@ int main(int argc, char **argv)
             exit(0);
         }
         cli_info[n].state = CLI_FORKED;
+
+        /* delete two last arguments : -r <rank> */
+        cl_arg_len = pmix_argv_len(client_argv);
+        pmix_argv_delete(&cl_arg_len, &client_argv, cl_arg_len-2, 2);
     }
 
     /* hang around until the client(s) finalize */

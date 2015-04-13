@@ -147,6 +147,12 @@ int main(int argc, char **argv)
         exit(0);
     }
 
+    if (rank != params.rank) {
+        TEST_ERROR(("Rank returned in PMIx_Init %d does not match to rank from command line %d.", rank, params.rank));
+        FREE_TEST_PARAMS(params);
+        exit(0);
+    }
+
     if ( NULL != params.prefix ) {
         TEST_SET_FILE(params.prefix, rank);
     }

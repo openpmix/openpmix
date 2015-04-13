@@ -79,6 +79,11 @@ void parse_cmd(int argc, char **argv, test_params *params)
             if (NULL != argv[i]) {
                 params->nspace = strdup(argv[i]);
             }
+        } else if (0 == strcmp(argv[i], "--rank") || 0 == strcmp(argv[i], "-r")) {
+            i++;
+            if (NULL != argv[i]) {
+                params->rank = strtol(argv[i], NULL, 10);
+            }
         }
 
         else {
