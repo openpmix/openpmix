@@ -39,18 +39,18 @@ int main(int argc, char **argv)
     char **client_argv=NULL;
     int rc;
     uint32_t n;
-    char *binary = "pmix_client";
     char *tmp;
-    char *np = NULL;
     uid_t myuid;
     gid_t mygid;
     struct stat stat_buf;
-    // In what time test should complete
-    int test_timeout = TEST_DEFAULT_TIMEOUT;
     struct timeval tv;
     double test_start;
     char *ranks = NULL;
-    char *prefix = NULL;
+    int order[CLI_TERM+1];
+    char digit[MAX_DIGIT_LEN];
+    int cl_arg_len;
+    test_params params;
+    INIT_TEST_PARAMS(params);
 
     gettimeofday(&tv, NULL);
     test_start = tv.tv_sec + 1E-6*tv.tv_usec;
@@ -63,69 +63,75 @@ int main(int argc, char **argv)
 
     TEST_VERBOSE(("Testing version %s", PMIx_Get_version()));
 
-    parse_cmd(argc, argv, &binary, &np, &test_timeout, &prefix, NULL);
-    TEST_VERBOSE(("Start PMIx_lite smoke test (timeout is %d)", test_timeout));
+    parse_cmd(argc, argv, &params);
+    TEST_VERBOSE(("Start PMIx_lite smoke test (timeout is %d)", params.timeout));
 
     /* verify executable */
-    if( 0 > ( rc = stat(binary, &stat_buf) ) ){
-        TEST_ERROR(("Cannot stat() executable \"%s\": %d: %s", binary, errno, strerror(errno)));
+    if( 0 > ( rc = stat(params.binary, &stat_buf) ) ){
+        TEST_ERROR(("Cannot stat() executable \"%s\": %d: %s", params.binary, errno, strerror(errno)));
+        FREE_TEST_PARAMS(params);
         return 0;
     } else if( !S_ISREG(stat_buf.st_mode) ){
-        TEST_ERROR(("Client executable \"%s\": is not a regular file", binary));
+        TEST_ERROR(("Client executable \"%s\": is not a regular file", params.binary));
+        FREE_TEST_PARAMS(params);
         return 0;
     }else if( !(stat_buf.st_mode & S_IXUSR) ){
-        TEST_ERROR(("Client executable \"%s\": has no executable flag", binary));
+        TEST_ERROR(("Client executable \"%s\": has no executable flag", params.binary));
+        FREE_TEST_PARAMS(params);
         return 0;
     }
 
     /* setup the server library */
     if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, true))) {
         TEST_ERROR(("Init failed with error %d", rc));
+        FREE_TEST_PARAMS(params);
         return rc;
     }
     /* register the errhandler */
     PMIx_Register_errhandler(errhandler);
 
     TEST_VERBOSE(("Setting job info"));
-    fill_seq_ranks_array(nprocs, &ranks);
+    fill_seq_ranks_array(params.nprocs, &ranks);
     if (NULL == ranks) {
         PMIx_server_finalize();
         TEST_ERROR(("fill_seq_ranks_array failed"));
+        FREE_TEST_PARAMS(params);
         return PMIX_ERROR;
     }
-    set_namespace(nprocs, ranks, TEST_NAMESPACE);
+    set_namespace(params.nprocs, ranks, TEST_NAMESPACE);
     if (NULL != ranks) {
         free(ranks);
     }
 
     /* fork/exec the test */
     client_env = pmix_argv_copy(environ);
-    pmix_argv_append_nosize(&client_argv, binary);
+    pmix_argv_append_nosize(&client_argv, params.binary);
     pmix_argv_append_nosize(&client_argv, "-s");
     pmix_argv_append_nosize(&client_argv, TEST_NAMESPACE);
-    if (nonblocking) {
+    if (params.nonblocking) {
         pmix_argv_append_nosize(&client_argv, "-nb");
-        if (barrier) {
+        if (params.barrier) {
             pmix_argv_append_nosize(&client_argv, "-b");
         }
     }
-    if (collect) {
+    if (params.collect) {
         pmix_argv_append_nosize(&client_argv, "-c");
     }
     pmix_argv_append_nosize(&client_argv, "-n");
-    if (NULL == np) {
+    if (NULL == params.np) {
         pmix_argv_append_nosize(&client_argv, "1");
     } else {
-        pmix_argv_append_nosize(&client_argv, np);
+        pmix_argv_append_nosize(&client_argv, params.np);
     }
-    if( verbose ){
+    if( params.verbose ){
         pmix_argv_append_nosize(&client_argv, "-v");
     }
-    if (NULL != prefix) {
+    if (NULL != params.prefix) {
         pmix_argv_append_nosize(&client_argv, "-o");
-        pmix_argv_append_nosize(&client_argv, prefix);
-        free(prefix);
-        prefix = NULL;
+        pmix_argv_append_nosize(&client_argv, params.prefix);
+    }
+    if( params.early_fail ){
+        pmix_argv_append_nosize(&client_argv, "--early-fail");
     }
 
     tmp = pmix_argv_join(client_argv, ' ');
@@ -135,26 +141,27 @@ int main(int argc, char **argv)
     myuid = getuid();
     mygid = getgid();
 
-    int order[CLI_TERM+1];
     order[CLI_UNINIT] = CLI_FORKED;
     order[CLI_FORKED] = CLI_FIN;
     order[CLI_CONNECTED] = -1;
     order[CLI_FIN] = CLI_TERM;
     order[CLI_DISCONN] = -1;
     order[CLI_TERM] = -1;
-    cli_init(nprocs, order);
+    cli_init(params.nprocs, order);
 
-    for (n=0; n < nprocs; n++) {
+    for (n=0; n < params.nprocs; n++) {
         if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(TEST_NAMESPACE, n, &client_env))) {
             TEST_ERROR(("Server fork setup failed with error %d", rc));
             PMIx_server_finalize();
             cli_kill_all();
+            FREE_TEST_PARAMS(params);
             return rc;
         }
         if (PMIX_SUCCESS != (rc = PMIx_server_register_client(TEST_NAMESPACE, n, myuid, mygid, NULL))) {
             TEST_ERROR(("Server fork setup failed with error %d", rc));
             PMIx_server_finalize();
             cli_kill_all();
+            FREE_TEST_PARAMS(params);
             return rc;
         }
 
@@ -163,8 +170,13 @@ int main(int argc, char **argv)
             TEST_ERROR(("Fork failed"));
             PMIx_server_finalize();
             cli_kill_all();
+            FREE_TEST_PARAMS(params);
             return -1;
         }
+        /* add two last arguments: -r <rank> */
+        sprintf(digit, "%d", n);
+        pmix_argv_append_nosize(&client_argv, "-r");
+        pmix_argv_append_nosize(&client_argv, digit);
 
         if (cli_info[n].pid == 0) {
             if( !TEST_VERBOSE_GET() ){
@@ -173,11 +185,15 @@ int main(int argc, char **argv)
                 fclose(stdout);
                 stdout = fopen("/dev/null","w");
             }
-            execve(binary, client_argv, client_env);
+            execve(params.binary, client_argv, client_env);
             /* Does not return */
             exit(0);
         }
         cli_info[n].state = CLI_FORKED;
+
+        /* delete two last arguments : -r <rank> */
+        cl_arg_len = pmix_argv_len(client_argv);
+        pmix_argv_delete(&cl_arg_len, &client_argv, cl_arg_len-2, 2);
     }
 
     /* hang around until the client(s) finalize */
@@ -188,7 +204,7 @@ int main(int argc, char **argv)
         // check if we exceed the max time
         gettimeofday(&tv, NULL);
         test_current = tv.tv_sec + 1E-6*tv.tv_usec;
-        if( (test_current - test_start) > test_timeout ){
+        if( (test_current - test_start) > params.timeout ){
             break;
         }
         cli_wait_all(0);
@@ -228,6 +244,7 @@ int main(int argc, char **argv)
         TEST_OUTPUT(("Test finished OK!"));
     }
 
+    FREE_TEST_PARAMS(params);
     return rc;
 }
 

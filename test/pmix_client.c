@@ -130,50 +130,64 @@ int main(int argc, char **argv)
     int rc, i, j;
     pmix_value_t value;
     char key[50], sval[50];
-    int collect = 0;
-    int nonblocking = 0;
     int *peers, npeers;
-    char *prefix = NULL, *nspace_chk = NULL;
     pmix_value_t *val = &value;
+    test_params params;
+    INIT_TEST_PARAMS(params);
 
-    parse_cmd(argc, argv, NULL, NULL, NULL, &prefix, &nspace_chk);
+    parse_cmd(argc, argv, &params);
 
     // We don't know rank at this place!
-    TEST_VERBOSE(("rank X: Start", rank));
+    TEST_VERBOSE(("rank X: Start"));
+
+    /* handle early-fail test case */
+    if (1 == params.early_fail && 0 == params.rank) {
+        exit(0);
+    }
 
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(nspace, &rank))) {
         TEST_ERROR(("rank %d: PMIx_Init failed: %d", rank, rc));
+        FREE_TEST_PARAMS(params);
         exit(0);
     }
 
-    if ( NULL != prefix ) {
-        TEST_SET_FILE(prefix, rank);
-        free(prefix);
+    if (rank != params.rank) {
+        TEST_ERROR(("Rank returned in PMIx_Init %d does not match to rank from command line %d.", rank, params.rank));
+        FREE_TEST_PARAMS(params);
+        exit(0);
+    }
+
+    if ( NULL != params.prefix ) {
+        TEST_SET_FILE(params.prefix, rank);
     }
 
     TEST_VERBOSE(("rank %d: PMIx_Init success", rank));
 
     if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, rank,PMIX_UNIV_SIZE,&val))) {
         TEST_ERROR(("rank %d: PMIx_Get universe size failed: %d", rank, rc));
+        FREE_TEST_PARAMS(params);
         exit(0);
     }
     if (NULL == val) {
         TEST_ERROR(("rank %d: PMIx_Get universe size returned NULL value", rank));
+        FREE_TEST_PARAMS(params);
         exit(0);
     }
-    if (val->type != PMIX_UINT32 || val->data.uint32 != nprocs ) {
+    if (val->type != PMIX_UINT32 || val->data.uint32 != params.nprocs ) {
         TEST_ERROR(("rank %d: Universe size value or type mismatch,"
                     " want %d(%d) get %d(%d)",
-                    rank, nprocs, PMIX_UINT32,
+                    rank, params.nprocs, PMIX_UINT32,
                     val->data.integer, val->type));
+        FREE_TEST_PARAMS(params);
         exit(0);
     }
 
     TEST_VERBOSE(("rank %d: Universe size check: PASSED", rank));
 
-    if( NULL != nspace_chk && 0 != strcmp(nspace, nspace_chk) ) {
+    if( NULL != params.nspace && 0 != strcmp(nspace, params.nspace) ) {
         TEST_ERROR(("rank %d: Bad nspace!", rank));
+        FREE_TEST_PARAMS(params);
         exit(0);
     }
 
@@ -182,6 +196,7 @@ int main(int argc, char **argv)
         PMIX_VAL_SET(&value, int, 12340 + i);
         if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_LOCAL, key, &value))) {
             TEST_ERROR(("rank %d: PMIx_Put failed: %d", rank, rc));
+            FREE_TEST_PARAMS(params);
             exit(0);
         }
 
@@ -190,6 +205,7 @@ int main(int argc, char **argv)
         PMIX_VAL_SET(&value, string, sval);
         if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_REMOTE, key, &value))) {
             TEST_ERROR(("rank %d: PMIx_Put failed: %d", rank, rc));
+            FREE_TEST_PARAMS(params);
             exit(0);
         }
         PMIX_VALUE_DESTRUCT(&value);
@@ -198,6 +214,7 @@ int main(int argc, char **argv)
         PMIX_VAL_SET(&value, float, 12.15 + i);
         if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_GLOBAL, key, &value))) {
             TEST_ERROR(("rank %d: PMIx_Put failed: %d", rank, rc));
+            FREE_TEST_PARAMS(params);
             exit(0);
         }
     }
@@ -205,19 +222,22 @@ int main(int argc, char **argv)
     /* Submit the data */
     if (PMIX_SUCCESS != (rc = PMIx_Commit())) {
         TEST_ERROR(("rank %d: PMIx_Commit failed: %d", rank, rc));
+        FREE_TEST_PARAMS(params);
         exit(0);
     }
 
     /* Perform a fence if was requested */
-    if( !nonblocking ){
+    if( !params.nonblocking ){
         if (PMIX_SUCCESS != (rc = PMIx_Fence(NULL, 0, 1))) {
             TEST_ERROR(("rank %d: PMIx_Fence failed: %d", rank, rc));
+            FREE_TEST_PARAMS(params);
             exit(0);
         }
     } else {
         int in_progress = 1, count;
-        if ( PMIX_SUCCESS != (rc = PMIx_Fence_nb(NULL, 0, collect, release_cb, &in_progress))) {
+        if ( PMIX_SUCCESS != (rc = PMIx_Fence_nb(NULL, 0, params.collect, release_cb, &in_progress))) {
             TEST_ERROR(("rank %d: PMIx_Fence failed: %d", rank, rc));
+            FREE_TEST_PARAMS(params);
             exit(0);
         }
 
@@ -235,11 +255,12 @@ int main(int argc, char **argv)
     TEST_VERBOSE(("rank %d: Fence successfully completed", rank));
 
     if (PMIX_SUCCESS != (rc = get_local_peers(&peers, &npeers))) {
+        FREE_TEST_PARAMS(params);
         exit(0);
     }
 
     /* Check the predefined output */
-    for (i=0; i < (int)nprocs; i++) {
+    for (i=0; i < (int)params.nprocs; i++) {
 
         for (j=0; j < 3; j++) {
 
@@ -253,10 +274,12 @@ int main(int argc, char **argv)
                 sprintf(key,"local-key-%d",j);
                 if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, i, key, &val))) {
                     TEST_ERROR(("rank %d: PMIx_Get failed: %d", rank, rc));
+                    FREE_TEST_PARAMS(params);
                     exit(0);
                 }
                 if (NULL == val) {
                     TEST_ERROR(("rank %d: PMIx_Get returned NULL value", rank));
+                    FREE_TEST_PARAMS(params);
                     exit(0);
                 }
                 if (val->type != PMIX_INT || val->data.integer != (12340+j)) {
@@ -264,6 +287,7 @@ int main(int argc, char **argv)
                             " want %d(%d) get %d(%d)",
                             rank, key, (12340+j), PMIX_INT,
                             val->data.integer, val->type));
+                    FREE_TEST_PARAMS(params);
                     exit(0);
                 }
                 TEST_VERBOSE(("rank %d: GET OF %s SUCCEEDED", rank, key));
@@ -274,11 +298,13 @@ int main(int argc, char **argv)
             sprintf(sval,"Test string #%d",j);
             if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, i, key, &val))) {
                 TEST_ERROR(("rank %d: PMIx_Get failed (%d)", rank, rc));
+                FREE_TEST_PARAMS(params);
                 exit(0);
             }
             if (val->type != PMIX_STRING || strcmp(val->data.string, sval)) {
                 TEST_ERROR(("rank %d:  Key %s value or type mismatch, wait %s(%d) get %s(%d)",
                             rank, key, sval, PMIX_STRING, val->data.string, val->type));
+                FREE_TEST_PARAMS(params);
                 exit(0);
             }
             TEST_VERBOSE(("rank %d: GET OF %s SUCCEEDED", rank, key));
@@ -286,7 +312,8 @@ int main(int argc, char **argv)
 
             sprintf(key, "global-key-%d", j);
             if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, i, key, &val))) {
-                TEST_ERROR(("rank %d: PMIx_Get failed (%d)", rank, rc))
+                TEST_ERROR(("rank %d: PMIx_Get failed (%d)", rank, rc));
+                FREE_TEST_PARAMS(params);
                 exit(0);
             }
             if (val->type != PMIX_FLOAT || val->data.fval != (float)12.15 + j) {
@@ -294,6 +321,7 @@ int main(int argc, char **argv)
                             " wait %f(%d) get %f(%d)",
                             rank, key, ((float)10.15 + i), PMIX_FLOAT,
                             val->data.fval, val->type));
+                FREE_TEST_PARAMS(params);
                 exit(0);
             }
             PMIX_VALUE_RELEASE(val);
@@ -304,6 +332,7 @@ int main(int argc, char **argv)
         if (PMIX_SUCCESS == (rc = PMIx_Get(nspace, i, "foobar", &val))) {
             TEST_ERROR(("rank %d: PMIx_Get returned success instead of failure",
                         rank));
+            FREE_TEST_PARAMS(params);
             exit(0);
         }
         if (PMIX_ERR_NOT_FOUND != rc) {
@@ -312,6 +341,7 @@ int main(int argc, char **argv)
         }
         if (NULL != val) {
             TEST_ERROR(("rank %d [ERROR]: PMIx_Get did not return NULL value", rank));
+            FREE_TEST_PARAMS(params);
             exit(0);
         }
         TEST_VERBOSE(("rank %d: rank %d is OK", rank, i));
@@ -329,5 +359,6 @@ int main(int argc, char **argv)
 
     TEST_OUTPUT_CLEAR(("OK\n"));
     TEST_CLOSE_FILE();
+    FREE_TEST_PARAMS(params);
     exit(0);
 }

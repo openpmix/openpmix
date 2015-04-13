@@ -27,12 +27,6 @@
  */
 char *pmix_test_output_prepare(const char *fmt,... );
 extern int pmix_test_verbose;
-
-extern int barrier;
-extern int collect;
-extern int nonblocking;
-extern uint32_t nprocs;
-extern int verbose;
 extern FILE *file;
 
 #define STRIPPED_FILE_NAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
@@ -73,8 +67,8 @@ extern FILE *file;
     char *fname = malloc( strlen(prefix) + MAX_DIGIT_LEN + 2 ); \
     sprintf(fname, "%s.%d", prefix, rank); \
     file = fopen(fname, "w"); \
+    free(fname); \
     if( NULL == file ){ \
-        free(fname); \
         fprintf(stderr, "Cannot open file %s for writing!", fname); \
         exit(1); \
     } \
@@ -86,9 +80,51 @@ extern FILE *file;
     } \
 }
 
+typedef struct {
+    char *binary;
+    char *np;
+    char *prefix;
+    char *nspace;
+    uint32_t nprocs;
+    int timeout;
+    int barrier;
+    int collect;
+    int nonblocking;
+    int verbose;
+    int rank;
+    int early_fail;
+} test_params;
 
+#define INIT_TEST_PARAMS(params) do { \
+    params.nprocs = 1;                \
+    params.barrier = 0;               \
+    params.collect = 0;               \
+    params.nonblocking = 0;           \
+    params.verbose = 0;               \
+    params.rank = 0;                  \
+    params.early_fail = 0;            \
+    params.binary = NULL;             \
+    params.np = NULL;                 \
+    params.timeout = TEST_DEFAULT_TIMEOUT; \
+    params.prefix = NULL;             \
+    params.nspace = NULL;             \
+} while (0)
 
-void parse_cmd(int argc, char **argv, char **binary, char **np, int *timeout, 
-                char **prefix, char **nspace);
+#define FREE_TEST_PARAMS(params) do { \
+    if (NULL != params.binary) {      \
+        free(params.binary);          \
+    }                                 \
+    if (NULL != params.np) {          \
+        free(params.np);              \
+    }                                 \
+    if (NULL != params.prefix) {      \
+        free(params.prefix);          \
+    }                                 \
+    if (NULL != params.nspace) {      \
+        free(params.nspace);          \
+    }                                 \
+} while (0)
+
+void parse_cmd(int argc, char **argv, test_params *params);
 
 #endif // TEST_COMMON_H
