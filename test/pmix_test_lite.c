@@ -59,6 +59,7 @@ int main(int argc, char **argv)
     int cl_arg_len;
     test_params params;
     INIT_TEST_PARAMS(params);
+    int test_fail = 0;
 
     gettimeofday(&tv, NULL);
     test_start = tv.tv_sec + 1E-6*tv.tv_usec;
@@ -252,11 +253,13 @@ int main(int argc, char **argv)
     if( !test_terminated() ){
         TEST_ERROR(("Test exited by a timeout!"));
         cli_kill_all();
+        test_fail = 1;
     }
 
     if( test_abort ){
         TEST_ERROR(("Test was aborted!"));
         cli_kill_all();
+        test_fail = 1;
     }
 
     pmix_argv_free(client_argv);
@@ -275,14 +278,7 @@ int main(int argc, char **argv)
         TEST_ERROR(("Finalize failed with error %d", rc));
     }
 
-    if (!test_abort && !test_succeeded()) {
-        int i;
-        // All of the client should deisconnect
-        TEST_ERROR(("Test failed. Some of processes didn't call PMIX_Finalize."));
-        for (i = 0; i < cli_info_cnt; i++) {
-            TEST_ERROR(("\trank %d, status = %d", i, cli_info[i].status));
-        }
-    } else if (!test_abort) {
+    if (0 == test_fail) {
         TEST_OUTPUT(("Test finished OK!"));
     }
 

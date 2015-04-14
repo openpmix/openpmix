@@ -26,8 +26,7 @@ typedef struct {
     int sd;
     pmix_event_t *ev;
     cli_state_t state;
-    cli_state_t state_order[CLI_TERM+1];
-    int status; /* 0 - successfully finished, 1 - otherwise */
+    cli_state_t next_state[CLI_TERM+1];
 } cli_info_t;
 
 extern cli_info_t *cli_info;
@@ -44,7 +43,6 @@ void cli_cleanup(cli_info_t *cli);
 void cli_wait_all(double timeout);
 void cli_kill_all(void);
 
-bool test_succeeded(void);
 bool test_terminated(void);
 
 void errhandler(pmix_status_t status,
