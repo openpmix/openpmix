@@ -249,6 +249,37 @@ pmix_status_t PMIx_server_finalize(void);
  * clients to rendezvous with */
 pmix_status_t PMIx_get_rendezvous_address(struct sockaddr_un *address, char **path);
 
+/* given a semicolon-separated list of input values, generate
+ * a regex that can be passed down to the client for parsing.
+ * The caller is responsible for free'ing the resulting
+ * string
+ *
+ * If values have leading zero's, then that is preserved. You
+ * have to add back any prefix/suffix for node names
+ * odin[009-015,017-023,076-086]
+ *
+ *     "pmix:odin[009-015,017-023,076-086]"
+ *
+ * Note that the "pmix" at the beginning of each regex indicates
+ * that the PMIx native parser is to be used by the client for
+ * parsing the provided regex. Other parsers may be supported - see
+ * the pmix_client.h header for a list.
+ */
+pmix_status_t PMIx_generate_regex(const char *input, char **regex);
+
+/* The input is expected to consist of a comma-separated list
+ * of ranges. Thus, an input of:
+ *     "1-4;2-5;8,10,11,12;6,7,9"
+ * would generate a regex of
+ *     "[pmix:2x(3);8,10-12;6-7,9]"
+ *
+ * Note that the "pmix" at the beginning of each regex indicates
+ * that the PMIx native parser is to be used by the client for
+ * parsing the provided regex. Other parsers may be supported - see
+ * the pmix_client.h header for a list.
+ */
+pmix_status_t PMIx_generate_ppn(const char *input, char **ppn);
+
 /* Setup the data about a particular nspace so it can
  * be passed to any child process upon startup. The PMIx
  * connection procedure provides an opportunity for the

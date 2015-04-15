@@ -460,11 +460,8 @@ static int pack_val(pmix_buffer_t *buffer,
             return ret;
         }
         break;
-    case PMIX_ARRAY:
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &p->data.array.type, 1, PMIX_INT))) {
-            return ret;
-        }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &p->data.array.size, 1, PMIX_SIZE))) {
+    case PMIX_INFO_ARRAY:
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &p->data.array, 1, PMIX_INFO_ARRAY))) {
             return ret;
         }
         break;
@@ -658,7 +655,26 @@ int pmix_bfrop_pack_kval(pmix_buffer_t *buffer, const void *src,
 int pmix_bfrop_pack_array(pmix_buffer_t *buffer, const void *src,
                           int32_t num_vals, pmix_data_type_t type)
 {
-    return PMIX_ERR_NOT_IMPLEMENTED;
+    pmix_info_array_t *ptr;
+    int32_t i;
+    int ret;
+
+    ptr = (pmix_info_array_t *) src;
+    
+    for (i = 0; i < num_vals; ++i) {
+        /* pack the size */
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_sizet(buffer, &ptr[i].size, 1, PMIX_SIZE))) {
+            return ret;
+        }
+        if (0 < ptr[i].size) {
+            /* pack the values */
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_info(buffer, ptr[i].array, ptr[i].size, PMIX_INFO))) {
+                return ret;
+            }
+        }
+    }
+
+    return PMIX_SUCCESS;
 }
 
 #if PMIX_HAVE_HWLOC

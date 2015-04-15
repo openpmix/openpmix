@@ -181,6 +181,12 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
                                   pmix_buffer_t *buf, bool disconnect,
                                   pmix_op_cbfunc_t cbfunc);
 
+void pmix_pack_proc_map(pmix_buffer_t *buf,
+                        char **nodes, char **procs);
+pmix_status_t pmix_regex_parse_nodes(const char *regexp, char ***names);
+pmix_status_t pmix_regex_parse_procs(const char *regexp, char ***procs);
+
+
 extern pmix_server_module_t pmix_host_server;
 extern pmix_server_globals_t pmix_server_globals;
 

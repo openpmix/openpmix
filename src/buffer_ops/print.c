@@ -618,6 +618,14 @@ int pmix_bfrop_print_value(char **output, char *prefix,
 int pmix_bfrop_print_info(char **output, char *prefix,
                           pmix_info_t *src, pmix_data_type_t type)
 {
+    char *tmp;
+    
+    pmix_bfrop_print_value(&tmp, NULL, &src->value, PMIX_VALUE);
+    asprintf(output, "%sKEY: %s %s", prefix, src->key,
+             (NULL == tmp) ? "NULL" : tmp);
+    if (NULL != tmp) {
+        free(tmp);
+    }
     return PMIX_SUCCESS;
 }
 
@@ -646,8 +654,24 @@ int pmix_bfrop_print_kval(char **output, char *prefix,
 }
 
 int pmix_bfrop_print_array(char **output, char *prefix,
-                           pmix_array_t *src, pmix_data_type_t type)
+                           pmix_info_array_t *src, pmix_data_type_t type)
 {
+    size_t j;
+    char *tmp, *tmp2, *tmp3, *pfx;
+    pmix_info_t *s1;
+    
+    asprintf(&tmp, "%sARRAY SIZE: %ld", prefix, (long)src->size);
+    asprintf(&pfx, "\n%s\t",  (NULL == prefix) ? "" : prefix);
+    s1 = (pmix_info_t*)src->array;
+    
+    for (j=0; j < src->size; j++) {
+        pmix_bfrop_print_info(&tmp2, pfx, &s1[j], PMIX_INFO);
+        asprintf(&tmp3, "%s%s", tmp, tmp2);
+        free(tmp);
+        free(tmp2);
+        tmp = tmp3;
+    }
+    *output = tmp;
     return PMIX_SUCCESS;
 }
 

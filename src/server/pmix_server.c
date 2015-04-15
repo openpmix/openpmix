@@ -38,6 +38,7 @@
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
+#include <ctype.h>
 #include <event.h>
 
 #include "src/class/pmix_list.h"
@@ -240,6 +241,9 @@ pmix_status_t PMIx_server_init(pmix_server_module_t *module,
 
 pmix_status_t PMIx_get_rendezvous_address(struct sockaddr_un *address, char **path)
 {
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:server get rendezvous address");
+
     memcpy(address, &myaddress, sizeof(struct sockaddr_un));
     if (NULL == path) {
         return PMIX_SUCCESS;
@@ -325,6 +329,16 @@ static void _register_nspace(int sd, short args, void *cbdata)
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t*)cbdata;
     pmix_nspace_t *nptr, *tmp;
     pmix_status_t rc;
+    size_t i, j, size, rank;
+    pmix_kval_t kv;
+    char **nodes=NULL, **procs=NULL;
+    pmix_buffer_t buf2;
+    pmix_info_t *iptr;
+    pmix_value_t val;
+    char *msg;
+    
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:server _register_nspace");
     
     /* see if we already have this nspace */
     nptr = NULL;
@@ -341,22 +355,120 @@ static void _register_nspace(int sd, short args, void *cbdata)
     }
     if (NULL == nptr) {
         nptr = PMIX_NEW(pmix_nspace_t);
-        memcpy(nptr->nspace, cd->nspace, PMIX_MAX_NSLEN);
+        (void)strncpy(nptr->nspace, cd->nspace, PMIX_MAX_NSLEN);
         nptr->nlocalprocs = cd->nlocalprocs;
         pmix_list_append(&pmix_server_globals.nspaces, &nptr->super);
     }
-    /* pack the provided info */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&nptr->job_info, &cd->ninfo, 1, PMIX_SIZE))) {
+    /* pack the name of the nspace */
+    msg = nptr->nspace;
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&nptr->job_info, &msg, 1, PMIX_STRING))) {
         PMIX_ERROR_LOG(rc);
         pmix_list_remove_item(&pmix_server_globals.nspaces, &nptr->super);
         PMIX_RELEASE(nptr);
         goto release;
     }
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&nptr->job_info, cd->info, cd->ninfo, PMIX_INFO))) {
-        PMIX_ERROR_LOG(rc);
-        pmix_list_remove_item(&pmix_server_globals.nspaces, &nptr->super);
-        PMIX_RELEASE(nptr);
+
+    /* pack the provided info */
+    PMIX_CONSTRUCT(&kv, pmix_kval_t);
+    for (i=0; i < cd->ninfo; i++) {
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "pmix:server _register_nspace recording %s",
+                            cd->info[i].key);
+    
+        if (0 == strcmp(cd->info[i].key, PMIX_NODE_MAP)) {
+            /* parse the regex to get the argv array of node names */
+            if (PMIX_SUCCESS != (rc = pmix_regex_parse_nodes(cd->info[i].value.data.string, &nodes))) {
+                PMIX_ERROR_LOG(rc);
+                continue;
+            }
+            /* if we have already found the proc map, then pass
+             * the detailed map */
+            if (NULL != procs) {
+                pmix_pack_proc_map(&nptr->job_info, nodes, procs);
+                pmix_argv_free(nodes);
+                nodes = NULL;
+                pmix_argv_free(procs);
+                procs = NULL;
+            }
+        } else if (0 == strcmp(cd->info[i].key, PMIX_PROC_MAP)) {
+            /* parse the regex to get the argv array containg proc ranks on each node */
+            if (PMIX_SUCCESS != (rc = pmix_regex_parse_procs(cd->info[i].value.data.string, &procs))) {
+                PMIX_ERROR_LOG(rc);
+                continue;
+            }
+            /* if we have already recv'd the node map, then record
+             * the detailed map */
+            if (NULL != nodes) {
+                pmix_pack_proc_map(&nptr->job_info, nodes, procs);
+                pmix_argv_free(nodes);
+                nodes = NULL;
+                pmix_argv_free(procs);
+                procs = NULL;
+            }
+        } else if (0 == strcmp(cd->info[i].key, PMIX_PROC_DATA)) {
+            /* an array of data pertaining to a specific proc */
+            if (PMIX_INFO_ARRAY != cd->info[i].value.type) {
+                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                goto release;
+            }
+            size = cd->info[i].value.data.array.size;
+            iptr = (pmix_info_t*)cd->info[i].value.data.array.array;
+            PMIX_CONSTRUCT(&buf2, pmix_buffer_t);
+            /* first element of the array must be the rank */
+            if (0 != strcmp(iptr[0].key, PMIX_RANK)) {
+                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                PMIX_DESTRUCT(&buf2);
+                goto release;
+            }
+            /* pack it separately */
+            rank = iptr[0].value.data.integer;
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&buf2, &rank, 1, PMIX_INT))) {
+                PMIX_ERROR_LOG(rc);
+                pmix_list_remove_item(&pmix_server_globals.nspaces, &nptr->super);
+                PMIX_RELEASE(nptr);
+                PMIX_DESTRUCT(&buf2);
+                goto release;
+            }
+            /* cycle thru the values for this rank and pack them */
+            for (j=1; j < size; j++) {
+                kv.key = iptr[j].key;
+                kv.value = &iptr[j].value;
+                if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&buf2, &kv, 1, PMIX_KVAL))) {
+                    PMIX_ERROR_LOG(rc);
+                    pmix_list_remove_item(&pmix_server_globals.nspaces, &nptr->super);
+                    PMIX_RELEASE(nptr);
+                    PMIX_DESTRUCT(&buf2);
+                    goto release;
+                }
+            }
+            /* now add the blob */
+            kv.key = PMIX_PROC_BLOB;
+            kv.value = &val;
+            val.type = PMIX_BYTE_OBJECT;
+            val.data.bo.bytes = buf2.base_ptr;
+            val.data.bo.size = buf2.bytes_used;
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&nptr->job_info, &kv, 1, PMIX_KVAL))) {
+                PMIX_ERROR_LOG(rc);
+                pmix_list_remove_item(&pmix_server_globals.nspaces, &nptr->super);
+                PMIX_RELEASE(nptr);
+                PMIX_DESTRUCT(&buf2);
+                goto release;
+            }
+            PMIX_DESTRUCT(&buf2);
+        } else {
+            /* just a value relating to the entire job */
+            kv.key = cd->info[i].key;
+            kv.value = &cd->info[i].value;
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&nptr->job_info, &kv, 1, PMIX_KVAL))) {
+                PMIX_ERROR_LOG(rc);
+                pmix_list_remove_item(&pmix_server_globals.nspaces, &nptr->super);
+                PMIX_RELEASE(nptr);
+                goto release;
+            }
+        }
     }
+    /* do not destruct the kv object - no memory leak will result */
+    
  release:
     cd->active = false;
 }
@@ -369,7 +481,7 @@ pmix_status_t PMIx_server_register_nspace(const char nspace[], int nlocalprocs,
     size_t i;
     
     cd = PMIX_NEW(pmix_setup_caddy_t);
-    (void)memcpy(cd->nspace, nspace, PMIX_MAX_NSLEN);
+    (void)strncpy(cd->nspace, nspace, PMIX_MAX_NSLEN);
     cd->nlocalprocs = nlocalprocs;
     /* copy across the info array, if given */
     if (0 < ninfo) {
@@ -429,6 +541,10 @@ static void _register_client(int sd, short args, void *cbdata)
     pmix_server_trkr_t *trk;
     pmix_trkr_caddy_t *tcd;
     
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:server _register_client for nspace %s rank %d",
+                        cd->nspace, cd->rank);
+    
     /* see if we already have this nspace */
     nptr = NULL;
     PMIX_LIST_FOREACH(tmp, &pmix_server_globals.nspaces, pmix_nspace_t) {
@@ -439,7 +555,7 @@ static void _register_client(int sd, short args, void *cbdata)
     }
     if (NULL == nptr) {
         nptr = PMIX_NEW(pmix_nspace_t);
-        memcpy(nptr->nspace, cd->nspace, PMIX_MAX_NSLEN);
+        (void)strncpy(nptr->nspace, cd->nspace, PMIX_MAX_NSLEN);
         pmix_list_append(&pmix_server_globals.nspaces, &nptr->super);
     }
     /* setup a peer object for this client - since the host server
@@ -490,8 +606,12 @@ pmix_status_t PMIx_server_register_client(const char nspace[], int rank,
 {
     pmix_setup_caddy_t *cd;
 
-    cd = PMIX_NEW(pmix_setup_caddy_t);
-    (void)memcpy(cd->nspace, nspace, PMIX_MAX_NSLEN);
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:server register client %s:%d",
+                        nspace, rank);
+    
+     cd = PMIX_NEW(pmix_setup_caddy_t);
+    (void)strncpy(cd->nspace, nspace, PMIX_MAX_NSLEN);
     cd->rank = rank;
     cd->uid = uid;
     cd->gid = gid;
@@ -517,6 +637,10 @@ pmix_status_t PMIx_server_setup_fork(const char nspace[],
                                      int rank, char ***env)
 {
     char rankstr[PMIX_MAX_VALLEN+1];
+    
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:server setup_fork for nspace %s rank %d",
+                        nspace, rank);
     
     /* pass the nspace */
     pmix_setenv("PMIX_NAMESPACE", nspace, true, env);
@@ -632,6 +756,348 @@ void PMIx_Register_errhandler(pmix_notification_fn_t err)
 void PMIx_Deregister_errhandler(void)
 {
    pmix_globals.errhandler = NULL;
+}
+
+#define PMIX_MAX_NODE_PREFIX        50
+
+pmix_status_t PMIx_generate_regex(const char *input, char **regexp)
+{
+    char *vptr, *vsave;
+    char prefix[PMIX_MAX_NODE_PREFIX];
+    int i, j, len, startnum, vnum, numdigits;
+    bool found, fullval;
+    char *suffix, *sfx;
+    pmix_regex_value_t *vreg;
+    pmix_regex_range_t *range;
+    pmix_list_t vids;
+    char **regexargs = NULL, *tmp, *tmp2;
+    char *cptr;
+
+    /* define the default */
+    *regexp = NULL;
+
+    cptr = strchr(input, ',');
+    if (NULL == cptr) {
+        /* if there is only one value, don't bother */
+        *regexp = strdup(input);
+        return PMIX_SUCCESS;
+    }
+
+    /* setup the list of results */
+    PMIX_CONSTRUCT(&vids, pmix_list_t);
+
+    /* cycle thru the array of input values - first copy
+     * it so we don't overwrite what we were given*/
+    vsave = strdup(input);
+    vptr = vsave;
+    while (NULL != (cptr = strchr(vptr, ',')) || 0 < strlen(vptr)) {
+        if (NULL != cptr) {
+            *cptr = '\0';
+        }
+        /* determine this node's prefix by looking for first non-alpha char */
+        fullval = false;
+        len = strlen(vptr);
+        startnum = -1;
+        memset(prefix, 0, PMIX_MAX_NODE_PREFIX);
+        numdigits = 0;
+        for (i=0, j=0; i < len; i++) {
+            if (!isalpha(vptr[i])) {
+                /* found a non-alpha char */
+                if (!isdigit(vptr[i])) {
+                    /* if it is anything but a digit, we just use
+                     * the entire name
+                     */
+                    fullval = true;
+                    break;
+                }
+                /* count the size of the numeric field - but don't
+                 * add the digits to the prefix
+                 */
+                numdigits++;
+                if (startnum < 0) {
+                    /* okay, this defines end of the prefix */
+                    startnum = i;
+                }
+                continue;
+            }
+            if (startnum < 0) {
+                prefix[j++] = vptr[i];
+            }
+        }
+        if (fullval || startnum < 0) {
+            /* can't compress this name - just add it to the list */
+            vreg = PMIX_NEW(pmix_regex_value_t);
+            vreg->prefix = strdup(vptr);
+            pmix_list_append(&vids, &vreg->super);
+            /* move to the next posn */
+            if (NULL == cptr) {
+                break;
+            }
+            vptr = cptr + 1;
+            continue;
+        }
+        /* convert the digits and get any suffix */
+        vnum = strtol(&vptr[startnum], &sfx, 10);
+        if (NULL != sfx) {
+            suffix = strdup(sfx);
+        } else {
+            suffix = NULL;
+        }
+        /* is this value already on our list? */
+        found = false;
+        PMIX_LIST_FOREACH(vreg, &vids, pmix_regex_value_t) {
+            if (0 < strlen(prefix) && NULL == vreg->prefix) {
+                continue;
+            }
+            if (0 == strlen(prefix) && NULL != vreg->prefix) {
+                continue;
+            }
+            if (0 < strlen(prefix) && NULL != vreg->prefix
+                && 0 != strcmp(prefix, vreg->prefix)) {
+                continue;
+            }
+            if (NULL == suffix && NULL != vreg->suffix) {
+                continue;
+            }
+            if (NULL != suffix && NULL == vreg->suffix) {
+                continue;
+            }
+            if (NULL != suffix && NULL != vreg->suffix &&
+                0 != strcmp(suffix, vreg->suffix)) {
+                continue;
+            }
+            if (numdigits != vreg->num_digits) {
+                continue;
+            }
+            /* found a match - flag it */
+            found = true;
+            /* get the last range on this nodeid - we do this
+             * to preserve order
+             */
+            range = (pmix_regex_range_t*)pmix_list_get_last(&vreg->ranges);
+            if (NULL == range) {
+                /* first range for this value */
+                range = PMIX_NEW(pmix_regex_range_t);
+                range->start = vnum;
+                range->cnt = 1;
+                pmix_list_append(&vreg->ranges, &range->super);
+                break;
+            }
+            /* see if the value is out of sequence */
+            if (vnum != (range->start + range->cnt)) {
+                /* start a new range */
+                range = PMIX_NEW(pmix_regex_range_t);
+                range->start = vnum;
+                range->cnt = 1;
+                pmix_list_append(&vreg->ranges, &range->super);
+                break;
+            }
+            /* everything matches - just increment the cnt */
+            range->cnt++;
+            break;
+        }
+        if (!found) {
+            /* need to add it */
+            vreg = PMIX_NEW(pmix_regex_value_t);
+            if (0 < strlen(prefix)) {
+                vreg->prefix = strdup(prefix);
+            }
+            if (NULL != suffix) {
+                vreg->suffix = strdup(suffix);
+            }
+            vreg->num_digits = numdigits;
+            pmix_list_append(&vids, &vreg->super);
+            /* record the first range for this value - we took
+             * care of values we can't compress above
+             */
+            range = PMIX_NEW(pmix_regex_range_t);
+            range->start = vnum;
+            range->cnt = 1;
+            pmix_list_append(&vreg->ranges, &range->super);
+        }
+        if (NULL != suffix) {
+            free(suffix);
+        }
+        /* move to the next posn */
+        if (NULL == cptr) {
+            break;
+        }
+        vptr = cptr + 1;
+    }
+    free(vsave);
+
+    /* begin constructing the regular expression */
+    while (NULL != (vreg = (pmix_regex_value_t*)pmix_list_remove_first(&vids))) {        
+        /* if no ranges, then just add the name */
+        if (0 == pmix_list_get_size(&vreg->ranges)) {
+            if (NULL != vreg->prefix) {
+                /* solitary value */
+                asprintf(&tmp, "%s", vreg->prefix);
+                pmix_argv_append_nosize(&regexargs, tmp);
+                free(tmp);
+            }
+            PMIX_RELEASE(vreg);
+            continue;
+        }
+        /* start the regex for this value with the prefix */
+        if (NULL != vreg->prefix) {
+            asprintf(&tmp, "%s[%d:", vreg->prefix, vreg->num_digits);
+        } else {
+            asprintf(&tmp, "[%d:", vreg->num_digits);
+        }
+        /* add the ranges */
+        while (NULL != (range = (pmix_regex_range_t*)pmix_list_remove_first(&vreg->ranges))) {
+            if (1 == range->cnt) {
+                asprintf(&tmp2, "%s%d,", tmp, range->start);
+            } else {
+                asprintf(&tmp2, "%s%d-%d,", tmp, range->start, range->start + range->cnt - 1);
+            }
+            free(tmp);
+            tmp = tmp2;
+            PMIX_RELEASE(range);
+        }
+        /* replace the final comma */
+        tmp[strlen(tmp)-1] = ']';
+        if (NULL != vreg->suffix) {
+            /* add in the suffix, if provided */
+            asprintf(&tmp2, "%s%s", tmp, vreg->suffix);
+            free(tmp);
+            tmp = tmp2;
+        }
+        pmix_argv_append_nosize(&regexargs, tmp);
+        free(tmp);
+        PMIX_RELEASE(vreg);
+    }
+    
+    /* assemble final result */
+    tmp = pmix_argv_join(regexargs, ',');
+    asprintf(regexp, "pmix[%s]", tmp);
+    free(tmp);
+    
+    /* cleanup */
+    pmix_argv_free(regexargs);
+
+    PMIX_DESTRUCT(&vids);
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t PMIx_generate_ppn(const char *input, char **regexp)
+{
+    char **ppn, **npn;
+    int i, j, start, end;
+    pmix_regex_value_t *vreg;
+    pmix_regex_range_t *rng;
+    pmix_list_t nodes;
+    char *tmp, *tmp2;
+    char *cptr;
+
+    /* define the default */
+    *regexp = NULL;
+
+    /* setup the list of results */
+    PMIX_CONSTRUCT(&nodes, pmix_list_t);
+
+    /* split the input by node */
+    ppn = pmix_argv_split(input, ';');
+    if (1 == pmix_argv_count(ppn)) {
+        /* if there is only one node, don't bother */
+        *regexp = strdup(input);
+        pmix_argv_free(ppn);
+        return PMIX_SUCCESS;
+    }
+
+    /* for each node, split the input by comma */
+    for (i=0; NULL != ppn[i]; i++) {
+        rng = NULL;
+        /* create a record for this node */
+        vreg = PMIX_NEW(pmix_regex_value_t);
+        pmix_list_append(&nodes, &vreg->super);
+        /* split the input for this node */
+        npn = pmix_argv_split(ppn[i], ',');
+        /* look at each element */
+        for (j=0; NULL != npn[j]; j++) {
+            /* is this a range? */
+            if (NULL != (cptr = strchr(npn[j], '-'))) {
+                /* terminate the string */
+                *cptr = '\0';
+                ++cptr;
+                start = strtol(npn[j], NULL, 10);
+                end = strtol(cptr, NULL, 10);
+                /* are we collecting a range? */
+                if (NULL == rng) {
+                    /* no - better start one */
+                    rng = PMIX_NEW(pmix_regex_range_t);
+                    rng->start = start;
+                    rng->cnt = end - start + 1;
+                    pmix_list_append(&vreg->ranges, &rng->super);
+                } else {
+                    /* is this a continuation of the current range? */
+                    if (start == (rng->start + rng->cnt)) {
+                        /* just add it to the end of this range */
+                        rng->cnt++;
+                    } else {
+                        /* nope, there is a break - create new range */
+                        rng = PMIX_NEW(pmix_regex_range_t);
+                        rng->start = start;
+                        rng->cnt = end - start + 1;
+                        pmix_list_append(&vreg->ranges, &rng->super);
+                    }
+                }
+            } else {
+                /* single rank given */
+                start = strtol(npn[j], NULL, 10);
+                /* are we collecting a range? */
+                if (NULL == rng) {
+                    /* no - better start one */
+                    rng = PMIX_NEW(pmix_regex_range_t);
+                    rng->start = start;
+                    rng->cnt = 1;
+                    pmix_list_append(&vreg->ranges, &rng->super);
+                } else {
+                    /* is this a continuation of the current range? */
+                    if (start == (rng->start + rng->cnt)) {
+                        /* just add it to the end of this range */
+                        rng->cnt++;
+                    } else {
+                        /* nope, there is a break - create new range */
+                        rng = PMIX_NEW(pmix_regex_range_t);
+                        rng->start = start;
+                        rng->cnt = 1;
+                        pmix_list_append(&vreg->ranges, &rng->super);
+                    }
+                }
+            }
+        }
+        pmix_argv_free(npn);
+    }
+    pmix_argv_free(ppn);
+    
+
+    /* begin constructing the regular expression */
+    tmp = strdup("pmix[");
+    PMIX_LIST_FOREACH(vreg, &nodes, pmix_regex_value_t) {
+        while (NULL != (rng = (pmix_regex_range_t*)pmix_list_remove_first(&vreg->ranges))) {
+            if (1 == rng->cnt) {
+                asprintf(&tmp2, "%s%d,", tmp, rng->start);
+            } else {
+                asprintf(&tmp2, "%s%d-%d,", tmp, rng->start, rng->start + rng->cnt - 1);
+            }
+            free(tmp);
+            tmp = tmp2;
+            PMIX_RELEASE(rng);
+        }
+        /* replace the final comma */
+        tmp[strlen(tmp)-1] = ';';
+    }
+    
+    /* replace the final semi-colon */
+    tmp[strlen(tmp)-1] = ']';
+    
+    /* assemble final result */
+    *regexp = tmp;
+
+    PMIX_LIST_DESTRUCT(&nodes);
+    return PMIX_SUCCESS;
 }
 
 /*
@@ -756,7 +1222,7 @@ static void connection_handler(int incoming_sd, short flags, void* cbdata)
 pmix_status_t pmix_server_authenticate(int sd, int *out_rank, pmix_peer_t **peer,
                                        pmix_buffer_t **reply)
 {
-    char *msg, *nspace, *version, *cred;
+    char *msg, *nspace, *version, *cred, *ptr;
     int rc, rank;
     pmix_usock_hdr_t hdr;
     pmix_nspace_t *nptr, *tmp;
@@ -808,9 +1274,20 @@ pmix_status_t pmix_server_authenticate(int sd, int *out_rank, pmix_peer_t **peer
                         "connect-ack recvd from peer %s:%d",
                         nspace, rank);
 
-    /* check that this is from a matching version */
+    /* check that this is from a matching version - for ABI
+     * compatibility, we only require that this match at the
+     * major and minor levels: not the release */
     csize = strlen(nspace)+1+sizeof(int);
     version = (char*)(msg+csize);
+    /* find the first '.' */
+    ptr = strchr(version, '.');
+    if (NULL != ptr) {
+        ++ptr;
+        /* stop it at the second '.', if present */
+        if (NULL != (ptr = strchr(ptr, '.'))) {
+            *ptr = '\0';
+        }
+    }
     if (0 != strcmp(version, PMIX_VERSION)) {
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "pmix:server client/server PMIx versions mismatch");
@@ -948,7 +1425,9 @@ static void op_cbfunc(int status, void *cbdata)
         PMIX_RELEASE(reply);
         return;
     }
-    /* send a copy to the originator */
+    /* the function that created the server_caddy did a
+     * retain on the peer, so we don't have to worry about
+     * it still being present - send a copy to the originator */
     PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
     /* cleanup */
     PMIX_RELEASE(cd);
@@ -973,7 +1452,9 @@ static void spawn_cbfunc(int status, char *nspace, void *cbdata)
         PMIX_RELEASE(reply);
         return;
     }
-    /* tell the originator the result */
+    /* the function that created the server_caddy did a
+     * retain on the peer, so we don't have to worry about
+     * it still being present - tell the originator the result */
     PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
     /* cleanup */
     PMIX_RELEASE(cd);
@@ -1012,7 +1493,9 @@ static void lookup_cbfunc(int status, pmix_info_t info[], size_t ninfo,
         return;
     }
 
-    /* send to the originator */
+    /* the function that created the server_caddy did a
+     * retain on the peer, so we don't have to worry about
+     * it still being present - tell the originator the result */
     PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
     /* cleanup */
     PMIX_RELEASE(cd);
@@ -1123,8 +1606,10 @@ static void cnct_cbfunc(int status, void *cbdata)
 {
     pmix_server_trkr_t *tracker = (pmix_server_trkr_t*)cbdata;
     pmix_buffer_t *reply;
-    int rc;
+    int rc, i;
     pmix_server_caddy_t *cd;
+    char **nspaces=NULL;
+    pmix_nspace_t *nptr;
     
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "server:cnct_cbfunc called");
@@ -1141,6 +1626,28 @@ static void cnct_cbfunc(int status, void *cbdata)
         PMIX_RELEASE(reply);
         return;
     }
+    /* find the unique nspaces that are participating */
+    PMIX_LIST_FOREACH(cd, &tracker->locals, pmix_server_caddy_t) {
+        pmix_argv_append_unique_nosize(&nspaces, cd->peer->info->nptr->nspace, false);
+    }
+    
+    /* loop across all participating nspaces and include their
+     * job-related info */
+    for (i=0; NULL != nspaces[i]; i++) {
+        PMIX_LIST_FOREACH(nptr, &pmix_server_globals.nspaces, pmix_nspace_t) {
+            if (0 != strcmp(nspaces[i], nptr->nspace)) {
+                continue;
+            }
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &nptr->job_info, 1, PMIX_BUFFER))) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(reply);
+                pmix_argv_free(nspaces);
+                return;
+            }
+        }
+    }
+    pmix_argv_free(nspaces);
+    
     /* loop across all procs in the tracker, sending them the reply */
     PMIX_LIST_FOREACH(cd, &tracker->locals, pmix_server_caddy_t) {
         PMIX_RETAIN(reply);

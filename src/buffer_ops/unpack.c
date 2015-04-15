@@ -552,12 +552,8 @@ static int unpack_val(pmix_buffer_t *buffer, pmix_value_t *val)
             return ret;
         }
         break;
-    case PMIX_ARRAY:
-        m=1;
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_buffer(buffer, &val->data.array.type, &m, PMIX_INT))) {
-            return ret;
-        }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_buffer(buffer, &val->data.array.size, &m, PMIX_SIZE))) {
+    case PMIX_INFO_ARRAY:
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_buffer(buffer, &val->data.array, &m, PMIX_INFO_ARRAY))) {
             return ret;
         }
         break;
@@ -845,10 +841,34 @@ int pmix_bfrop_unpack_kval(pmix_buffer_t *buffer, void *dest,
 int pmix_bfrop_unpack_array(pmix_buffer_t *buffer, void *dest,
                             int32_t *num_vals, pmix_data_type_t type)
 {
+    pmix_info_array_t *ptr;
+    int32_t i, n, m;
+    int ret;
+    
     pmix_output_verbose(20, pmix_globals.debug_output,
-                        "pmix_bfrop_unpack: %d arrays", *num_vals);
-    // No functional yet.
-    abort();
+                        "pmix_bfrop_unpack: %d info arrays", *num_vals);
+
+    ptr = (pmix_info_array_t*) dest;
+    n = *num_vals;
+
+    for (i = 0; i < n; ++i) {
+        pmix_output_verbose(20, pmix_globals.debug_output,
+                            "pmix_bfrop_unpack: init array[%d]", i);
+        memset(&ptr[i], 0, sizeof(pmix_info_array_t));
+        /* unpack the size of this array */
+        m=1;
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_sizet(buffer, &ptr[i].size, &m, PMIX_SIZE))) {
+            return ret;
+        }
+        if (0 < ptr[i].size) {
+            ptr[i].array = (struct pmix_info_t*)malloc(ptr[i].size * sizeof(pmix_info_t));
+            m=ptr[i].size;
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_value(buffer, ptr[i].array, &m, PMIX_INFO))) {
+                return ret;
+            }
+        }
+    }
+    return PMIX_SUCCESS;
 }
 
 #if PMIX_HAVE_HWLOC

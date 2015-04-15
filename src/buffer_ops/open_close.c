@@ -122,6 +122,36 @@ PMIX_CLASS_INSTANCE(pmix_kval_t,
                    pmix_list_item_t,
                    kvcon, kvdes);
 
+static void rcon(pmix_regex_range_t *p)
+{
+    p->start = 0;
+    p->cnt = 0;
+}
+PMIX_CLASS_INSTANCE(pmix_regex_range_t,
+                    pmix_list_item_t,
+                    rcon, NULL);
+
+static void rvcon(pmix_regex_value_t *p)
+{
+    p->prefix = NULL;
+    p->suffix = NULL;
+    p->num_digits = 0;
+    PMIX_CONSTRUCT(&p->ranges, pmix_list_t);
+}
+static void rvdes(pmix_regex_value_t *p)
+{
+    if (NULL != p->prefix) {
+        free(p->prefix);
+    }
+    if (NULL != p->suffix) {
+        free(p->suffix);
+    }
+    PMIX_LIST_DESTRUCT(&p->ranges);
+}
+PMIX_CLASS_INSTANCE(pmix_regex_value_t,
+                    pmix_list_item_t,
+                    rvcon, rvdes);
+
 int pmix_bfrop_open(void)
 {
     int rc;
@@ -272,7 +302,7 @@ int pmix_bfrop_open(void)
                        pmix_bfrop_copy_value,
                        pmix_bfrop_print_value);
 
-    PMIX_REGISTER_TYPE("PMIX_ARRAY", PMIX_ARRAY,
+    PMIX_REGISTER_TYPE("PMIX_INFO_ARRAY", PMIX_INFO_ARRAY,
                        pmix_bfrop_pack_array,
                        pmix_bfrop_unpack_array,
                        pmix_bfrop_copy_array,
@@ -424,7 +454,7 @@ void pmix_value_load(pmix_value_t *v, void *data,
         case PMIX_TIME:
         case PMIX_HWLOC_TOPO:
         case PMIX_VALUE:
-        case PMIX_ARRAY:
+        case PMIX_INFO_ARRAY:
         case PMIX_RANGE:
         case PMIX_APP:
         case PMIX_INFO:
@@ -432,6 +462,7 @@ void pmix_value_load(pmix_value_t *v, void *data,
         case PMIX_KVAL:
         case PMIX_MODEX:
         case PMIX_PERSIST:
+        case PMIX_PROC:
             /* silence warnings */
             break;
         }
@@ -536,7 +567,7 @@ int pmix_value_unload(pmix_value_t *kv, void **data,
         case PMIX_TIME:
         case PMIX_HWLOC_TOPO:
         case PMIX_VALUE:
-        case PMIX_ARRAY:
+        case PMIX_INFO_ARRAY:
         case PMIX_RANGE:
         case PMIX_APP:
         case PMIX_INFO:
@@ -544,6 +575,7 @@ int pmix_value_unload(pmix_value_t *kv, void **data,
         case PMIX_KVAL:
         case PMIX_MODEX:
         case PMIX_PERSIST:
+        case PMIX_PROC:
             /* silence warnings */
             rc = PMIX_ERROR;
             break;

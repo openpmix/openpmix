@@ -369,7 +369,7 @@ int pmix_bfrop_copy_topo(hwloc_topology_t *dest,
 #endif
 int pmix_bfrop_copy_value(pmix_value_t **dest, pmix_value_t *src,
                           pmix_data_type_t type);
-int pmix_bfrop_copy_array(pmix_array_t **dest, pmix_array_t *src,
+int pmix_bfrop_copy_array(pmix_info_array_t **dest, pmix_info_array_t *src,
                           pmix_data_type_t type);
 int pmix_bfrop_copy_range(pmix_range_t **dest, pmix_range_t *src,
                           pmix_data_type_t type);
@@ -420,7 +420,7 @@ int pmix_bfrop_print_topo(char **output, char *prefix,
 #endif
 int pmix_bfrop_print_value(char **output, char *prefix, pmix_value_t *src, pmix_data_type_t type);
 int pmix_bfrop_print_array(char **output, char *prefix,
-                           pmix_array_t *src, pmix_data_type_t type);
+                           pmix_info_array_t *src, pmix_data_type_t type);
 int pmix_bfrop_print_range(char **output, char *prefix,
                            pmix_range_t *src, pmix_data_type_t type);
 int pmix_bfrop_print_app(char **output, char *prefix,

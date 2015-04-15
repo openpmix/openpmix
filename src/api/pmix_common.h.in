@@ -97,7 +97,7 @@ BEGIN_C_DECLS
 #define PMIX_ATTR_UNDEF      NULL
 
 #define PMIX_CPUSET                "pmix.cpuset"       // (char*) hwloc bitmap applied to proc upon launch
-#define PMIX_CREDENTIAL            "pmix.cred"         // (opal_byte_object*) security credential assigned to proc
+#define PMIX_CREDENTIAL            "pmix.cred"         // (char*) security credential assigned to proc
 #define PMIX_SPAWNED               "pmix.spawned"      // (bool) true if this proc resulted from a call to PMIx_Spawn
 /* scratch directory locations for use by applications */
 #define PMIX_TMPDIR                "pmix.tmpdir"       // (char*) top-level tmp dir assigned to session
@@ -113,10 +113,22 @@ BEGIN_C_DECLS
 #define PMIX_LOCALLDR              "pmix.lldr"         // (uint64_t) opal_identifier of lowest rank on this node within this job
 #define PMIX_APPLDR                "pmix.aldr"         // (uint32_t) lowest rank in this app within this job
 /* proc location-related info */
-#define PMIX_HOSTNAME              "pmix.hname"        // (char*) name of the host this proc is on
-#define PMIX_PROC_MAP              "pmix.map"          // (byte_object) packed map of proc locations within this job
-#define PMIX_LOCAL_PEERS           "pmix.lpeers"       // (char*) comma-delimited string of ranks on this node within this job
-#define PMIX_LOCAL_CPUSETS         "pmix.lcpus"        // (byte_object) packed names and cpusets of local peers
+/* For PMIX_HOSTNAME, three use-cases exist for PMIx_Get:
+ *
+ * (a) Specifying a namespace with PMIX_RANK_WILDCARD will return
+ *     a comma-delimited list of nodes that host procs in that namespace
+ *
+ * (b) Passing a NULL namespace will return a comma-delimited list of all
+ *     nodes known to this session, regardless of whether or not they
+ *     currently host procs. The rank argument in PMIx_Get is ignored
+ *     for this use-case
+ *
+ * (c) Specifying a namespace and a rank will return the name of the
+ *     host this proc is on
+ */
+#define PMIX_HOSTNAME              "pmix.hname"        // (char*) see above comment
+#define PMIX_LOCAL_PEERS           "pmix.lpeers"       // (char*) comma-delimited string of ranks on this node within the specified nspace
+#define PMIX_LOCAL_CPUSETS         "pmix.lcpus"        // (char*) colon-delimited cpusets of local peers within the specified nspace
 /* size info */
 #define PMIX_UNIV_SIZE             "pmix.univ.size"    // (uint32_t) #procs in this nspace
 #define PMIX_JOB_SIZE              "pmix.job.size"     // (uint32_t) #procs in this job
@@ -124,14 +136,26 @@ BEGIN_C_DECLS
 #define PMIX_NODE_SIZE             "pmix.node.size"    // (uint32_t) #procs across all jobs on this node
 #define PMIX_MAX_PROCS             "pmix.max.size"     // (uint32_t) max #procs for this job
 /* topology info */
-#define PMIX_NET_TOPO              "pmix.ntopo"        // (byte_object) network topology
-#define PMIX_LOCAL_TOPO            "pmix.ltopo"        // (hwloc topo) local node topology
+#define PMIX_NET_TOPO              "pmix.ntopo"        // (char*) xml-representation of network topology
+#define PMIX_LOCAL_TOPO            "pmix.ltopo"        // (char*) xml-representation of local node topology
 /* fault tolerance-related info */
 #define PMIX_TERMINATE_SESSION     "pmix.term.sess"    // (bool) RM intends to terminate session
 #define PMIX_TERMINATE_JOB         "pmix.term.job"     // (bool) RM intends to terminate this job
 #define PMIX_TERMINATE_NODE        "pmix.term.node"    // (bool) RM intends to terminate all procs on this node
 #define PMIX_TERMINATE_PROC        "pmix.term.proc"    // (bool) RM intends to terminate just this process
 #define PMIX_ERROR_ACTION_TIMEOUT  "pmix.err.timeout"  // (int) time in sec before RM will execute error response
+
+
+/* attribute used by host server to pass data to the server convenience library - the
+ * data will then be parsed and provided to the local clients */
+#define PMIX_PROC_DATA             "pmix.pdata"        // (pmix_value_array_t) starts with rank, then contains more data
+#define PMIX_NODE_MAP              "pmix.nmap"         // (char*) regex of nodes containing procs for this job
+#define PMIX_PROC_MAP              "pmix.pmap"         // (char*) regex describing procs on each node within this job
+
+/* attributes used internally to communicate data from the server to the client */
+#define PMIX_PROC_BLOB             "pmix.pblob"        // (pmix_byte_object_t) packed blob of process data
+#define PMIX_MAP_BLOB              "pmix.mblob"        // (pmix_byte_object_t) packed blob of process location
+
 
 /****    PMIX ERROR CONSTANTS    ****/
 /* PMIx errors are always negative, with 0 reserved for success */
@@ -215,8 +239,9 @@ typedef enum {
 
     PMIX_HWLOC_TOPO,
     PMIX_VALUE,
-    PMIX_ARRAY,
+    PMIX_INFO_ARRAY,
     PMIX_RANGE,
+    PMIX_PROC,
     PMIX_APP,
     PMIX_INFO,
     PMIX_BUFFER,
@@ -265,16 +290,50 @@ typedef struct {
     size_t size;
 } pmix_byte_object_t;
 
-/****    PMIX VALUE STRUCT    ****/
+
+/****    PMIX PROC OBJECT    ****/
 typedef struct {
-    pmix_data_type_t type;
+    char nspace[PMIX_MAX_NSLEN];
+    int rank;
+} pmix_proc_t;
+#define PMIX_PROC_CREATE(m, n)                                  \
+    do {                                                        \
+        (m) = (pmix_proc_t*)malloc((n) * sizeof(pmix_proc_t));  \
+        memset((m), 0, (n) * sizeof(pmix_proc_t));              \
+    } while(0);
+
+#define PMIX_PROC_RELEASE(m)                    \
+    do {                                        \
+        PMIX_PROC_FREE((m));                    \
+    } while(0);
+
+#define PMIX_PROC_CONSTRUCT(m)                  \
+    do {                                        \
+        memset((m), 0, sizeof(pmix_proc_t));    \
+    } while(0);
+
+#define PMIX_PROC_DESTRUCT(m)
+
+#define PMIX_PROC_FREE(m, n)                    \
+    do {                                        \
+        if (NULL != (m)) {                      \
+            free((m));                          \
+        }                                       \
+    } while(0);
+
+
+
+/****    PMIX VALUE STRUCT    ****/
+struct pmix_info_t;
+
+typedef struct {
     size_t size;
-    void *array;
-} pmix_array_t;
+    struct pmix_info_t *array;
+} pmix_info_array_t;
 /* NOTE: operations can supply a collection of values under
  * a single key by passing a pmix_value_t containing an
- * array of type PMIX_VALUE, with each array element
- * containing its own pmix_value_t object */
+ * array of type PMIX_INFO_ARRAY, with each array element
+ * containing its own pmix_info_t object */
 
 typedef struct {
     pmix_data_type_t type;
@@ -296,7 +355,7 @@ typedef struct {
         float fval;
         double dval;
         struct timeval tv;
-        pmix_array_t array;
+        pmix_info_array_t array;
         pmix_byte_object_t bo;
     } data;
 } pmix_value_t;
@@ -429,6 +488,12 @@ typedef struct {
         }                                       \
     } while(0);
 
+#define PMIX_INFO_LOAD(m, k, v, t)                      \
+    do {                                                \
+    if (NULL != (m)) {                                  \
+        (void)strncpy((m)->key, (k), PMIX_MAX_KEYLEN);  \
+        pmix_value_load(&((m)->value), (v), (t));       \
+    } while(0);
 
 
 

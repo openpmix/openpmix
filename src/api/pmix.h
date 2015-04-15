@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2014 Intel, Inc. All rights reserved
+ * Copyright (c) 2013-2015 Intel, Inc. All rights reserved
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -275,7 +275,10 @@ pmix_status_t PMIx_Spawn_nb(const pmix_app_t apps[], size_t napps,
  * failures in different manners.
  *
  * The callback function is to be called once all participating processes have
- * called connect.
+ * called connect. The server is required to return any job-level info for the
+ * connecting processes that might not already have - i.e., if the connect
+ * request involves procs from different nspaces, then each proc shall receive
+ * the job-level info from those nspaces other than their own.
  *
  * Note: a process can only engage in _one_ connect operation involving the identical
  * set of ranges at a time. However, a process _can_ be simultaneously engaged
@@ -295,6 +298,17 @@ pmix_status_t PMIx_Disconnect(const pmix_range_t ranges[], size_t nranges);
 
 pmix_status_t PMIx_Disconnect_nb(const pmix_range_t ranges[], size_t nranges,
                                  pmix_op_cbfunc_t cbfunc, void *cbdata);
+
+/* Given a node name, return an array of processes within the specified nspace
+ * on that node. If the nspace is NULL, then all processes on the node will
+ * be returned. If the specified node does not currently host any processes,
+ * then the returned array will be NULL, and nprocs=0. The caller is responsible
+ * for releasing the array when done with it - the PMIX_PROC_FREE macro is
+ * provided for this purpose.
+ */
+pmix_status_t PMIx_Resolve_peers(const char *nodename, const char *nspace,
+                                 pmix_proc_t **procs, size_t *nprocs);
+
 
 END_C_DECLS
 #endif

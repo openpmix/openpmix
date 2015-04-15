@@ -164,6 +164,8 @@ static void setup_globals(void)
     PMIX_CONSTRUCT(&pmix_client_globals.myserver, pmix_peer_t);
     PMIX_RETAIN(info);
     pmix_client_globals.myserver.info = info;
+
+    PMIX_CONSTRUCT(&pmix_client_globals.nspaces, pmix_list_t);
     
     /* setup our copy of the pmix globals object */
     memset(&pmix_globals.nspace, 0, sizeof(pmix_globals.nspace));
@@ -207,6 +209,7 @@ int PMIx_Init(char nspace[], int *rank)
     char **uri, *evar;
     int rc, debug_level;
     struct sockaddr_un address;
+    pmix_nsrec_t *nsptr;
     
     ++pmix_client_globals.init_cntr;
     if (1 < pmix_client_globals.init_cntr) {
@@ -254,7 +257,10 @@ int PMIx_Init(char nspace[], int *rank)
         (void)strncpy(nspace, evar, PMIX_MAX_NSLEN);
     }
     (void)strncpy(pmix_globals.nspace, evar, PMIX_MAX_NSLEN);
-
+    nsptr = PMIX_NEW(pmix_nsrec_t);
+    (void)strncpy(nsptr->nspace, evar, PMIX_MAX_NSLEN);
+    pmix_list_append(&pmix_client_globals.nspaces, &nsptr->super);
+    
     /* if we don't have a path to the daemon rendezvous point,
      * then we need to return an error */
     if (NULL == (evar = getenv("PMIX_SERVER_URI"))) {
@@ -361,6 +367,8 @@ int PMIx_Finalize(void)
     pmix_usock_finalize();
     PMIX_DESTRUCT(&pmix_client_globals.myserver);
 
+    PMIX_LIST_DESTRUCT(&pmix_client_globals.nspaces);
+    
     pmix_stop_progress_thread(pmix_globals.evbase);
     event_base_free(pmix_globals.evbase);
 #ifdef HAVE_LIBEVENT_SHUTDOWN
@@ -554,6 +562,60 @@ void PMIx_Deregister_errhandler(void)
    pmix_globals.errhandler = NULL;
 }
 
+pmix_status_t PMIx_Resolve_peers(const char *nodename, const char *nspace,
+                                 pmix_proc_t **procs, size_t *nprocs)
+{
+    char **nsprocs=NULL, **nsps=NULL, **tmp;
+    pmix_nsrec_t *nsptr;
+    pmix_nrec_t *nptr;
+    size_t i;
+    
+    /* set the default */
+    *procs = NULL;
+    *nprocs = 0;
+
+    /* cycle across our known nspaces */
+    tmp = NULL;
+    PMIX_LIST_FOREACH(nsptr, &pmix_client_globals.nspaces, pmix_nsrec_t) {
+        if (NULL == nspace || 0 == strcmp(nsptr->nspace, nspace)) {
+            /* cycle across the nodes in this nspace */
+            PMIX_LIST_FOREACH(nptr, &nsptr->nodes, pmix_nrec_t) {
+                if (0 == strcmp(nodename, nptr->name)) {
+                    /* add the contribution from this node */
+                    tmp = pmix_argv_split(nptr->procs, ',');
+                    for (i=0; NULL != tmp[i]; i++) {
+                        pmix_argv_append_nosize(&nsps, nsptr->nspace);
+                        pmix_argv_append_nosize(&nsprocs, tmp[i]);
+                    }
+                    pmix_argv_free(tmp);
+                    tmp = NULL;
+                }
+            }
+        }
+    }
+    if (0 == (i = pmix_argv_count(nsps))) {
+        /* if we don't already have a record for this nspace,
+         * see if we have the data in our local cache */
+        
+        return PMIX_ERR_NOT_FOUND;
+    }
+    
+    /* create the required storage */
+    i = pmix_argv_count(nsps);
+    PMIX_PROC_CREATE(*procs, i);
+
+    /* transfer the data */
+    for (i=0; NULL != nsps[i]; i++) {
+        (void)strncpy((*procs)[i].nspace, nsps[i], PMIX_MAX_NSLEN);
+        (*procs)[i].rank = strtol(nsprocs[i], NULL, 10);
+    }
+    pmix_argv_free(nsps);
+    pmix_argv_free(nsprocs);
+    
+    return PMIX_SUCCESS;
+}
+
+
 static int send_connect_ack(int sd)
 {
     char *msg;
@@ -632,11 +694,9 @@ static int recv_connect_ack(int sd)
     int rc;
     int32_t cnt;
     char *msg = NULL;
-    size_t i, ninfo;
-    pmix_info_t *info;
     pmix_buffer_t buf;
-    pmix_kval_t *kv;
-
+    char *nspace;
+    
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: RECV CONNECT ACK FROM SERVER");
     /* receive the header */
@@ -718,44 +778,157 @@ static int recv_connect_ack(int sd)
         goto cleanup;
     }
 
+    /* unpack the nspace - we don't need it, but need
+     * to step over it */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&buf, &ninfo, &cnt, PMIX_SIZE))) {
-        if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
-            /* this isn't an error - the host server may not
-             * have provided any job-level info */
-            rc = PMIX_SUCCESS;
-            goto cleanup;
-        }
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&buf, &nspace, &cnt, PMIX_STRING))) {
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
-    if (0 < ninfo) {
-        info = (pmix_info_t*)malloc(ninfo * sizeof(pmix_info_t));
-        cnt = ninfo;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&buf, info, &cnt, PMIX_INFO))) {
-            PMIX_ERROR_LOG(rc);
-            free(info);
-            goto cleanup;
+    /* do a sanity check */
+    if (NULL == nspace || 0 != strcmp(nspace, pmix_globals.nspace)) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        if (NULL != nspace) {
+            free(nspace);
         }
-        for (i=0; i < ninfo; i++) {
-            kv = PMIX_NEW(pmix_kval_t);
-            kv->key = strdup(info[i].key);
-            kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
-            pmix_value_xfer(kv->value, &info[i].value);
-            if (PMIX_SUCCESS != (rc = pmix_client_hash_store(pmix_globals.nspace,
-                                                             pmix_globals.rank, kv))) {
-                PMIX_ERROR_LOG(rc);
-            }
-            PMIX_RELEASE(kv); // maintain accounting
-        }
-        //free(info);
+        goto cleanup;
+    }
+    if (NULL != nspace) {
+        free(nspace);
     }
 
+    /* unpack any info structs provided */
+    pmix_client_process_nspace_blob(pmix_globals.nspace, &buf);
+    
  cleanup:
     buf.base_ptr = NULL;  // protect data region from double-free
     PMIX_DESTRUCT(&buf);
-    free(msg);
+    if (NULL != msg) {
+        free(msg);
+    }
     return rc;
+}
+
+void pmix_client_process_nspace_blob(const char *nspace, pmix_buffer_t *bptr)
+{
+    pmix_status_t rc;
+    int32_t cnt;
+    int rank;
+    pmix_kval_t *kptr, *kp2, kv;
+    pmix_buffer_t buf2;
+    pmix_byte_object_t *bo;
+    size_t nnodes, i, j;
+    pmix_nsrec_t *nsptr, *nsptr2;
+    pmix_nrec_t *nrec;
+    char **procs;
+    
+    /* cycle across our known nspaces */
+    nsptr = NULL;
+    PMIX_LIST_FOREACH(nsptr2, &pmix_client_globals.nspaces, pmix_nsrec_t) {
+        if (0 == strcmp(nsptr2->nspace, nspace)) {
+            nsptr = nsptr2;
+            break;
+        }
+    }
+    if (NULL == nsptr) {
+        /* we don't know this nspace - add it */
+        nsptr = PMIX_NEW(pmix_nsrec_t);
+        (void)strncpy(nsptr->nspace, nspace, PMIX_MAX_NSLEN);
+        pmix_list_append(&pmix_client_globals.nspaces, &nsptr->super);
+    }
+
+    /* unpack any info structs provided */
+    cnt = 1;
+    kptr = PMIX_NEW(pmix_kval_t);
+    while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bptr, kptr, &cnt, PMIX_KVAL))) {
+        if (0 == strcmp(kptr->key, PMIX_PROC_BLOB)) {
+            /* transfer the byte object for unpacking */
+            bo = &(kptr->value->data.bo);
+            PMIX_CONSTRUCT(&buf2, pmix_buffer_t);
+            PMIX_LOAD_BUFFER(&buf2, bo->bytes, bo->size);
+            /* protect the data */
+            bo->bytes = NULL;
+            bo->size = 0;
+            /* start by unpacking the rank */
+            cnt = 1;
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&buf2, &rank, &cnt, PMIX_INT))) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_DESTRUCT(&buf2);
+                return;
+            }
+            cnt = 1;
+            kp2 = PMIX_NEW(pmix_kval_t);
+            while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&buf2, kp2, &cnt, PMIX_KVAL))) {
+                /* store the data */
+                if (PMIX_SUCCESS != (rc = pmix_client_hash_store(nspace, rank, kp2))) {
+                    PMIX_ERROR_LOG(rc);
+                }
+                PMIX_RELEASE(kp2); // maintain accounting
+                kp2 = PMIX_NEW(pmix_kval_t);
+            }
+            /* cleanup */
+            PMIX_DESTRUCT(&buf2);
+            PMIX_RELEASE(kp2);
+        } else if (0 == strcmp(kptr->key, PMIX_MAP_BLOB)) {
+            /* transfer the byte object for unpacking */
+            bo = &(kptr->value->data.bo);
+            PMIX_CONSTRUCT(&buf2, pmix_buffer_t);
+            PMIX_LOAD_BUFFER(&buf2, bo->bytes, bo->size);
+            /* protect the data */
+            bo->bytes = NULL;
+            bo->size = 0;
+            /* start by unpacking the number of nodes */
+            cnt = 1;
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&buf2, &nnodes, &cnt, PMIX_SIZE))) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_DESTRUCT(&buf2);
+                return;
+            }
+            /* unpack the list of procs on each node */
+            for (i=0; i < nnodes; i++) {
+                cnt = 1;
+                PMIX_CONSTRUCT(&kv, pmix_kval_t);
+                while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&buf2, &kv, &cnt, PMIX_KVAL))) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_DESTRUCT(&buf2);
+                    PMIX_DESTRUCT(&kv);
+                    return;
+                }
+                /* the name of the node is in the key, and the value is
+                 * a comma-delimited list of procs on that node. Create
+                 * a node record and store that list */
+                nrec = PMIX_NEW(pmix_nrec_t);
+                nrec->name = strdup(kv.key);
+                nrec->procs = strdup(kv.value->data.string);
+                /* split the list of procs so we can store their
+                 * individual data */
+                procs = pmix_argv_split(nrec->procs, ',');
+                for (j=0; NULL != procs[j]; j++) {
+                    /* store the hostname for each proc */
+                    kp2 = PMIX_NEW(pmix_kval_t);
+                    kp2->key = strdup(PMIX_HOSTNAME);
+                    kp2->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+                    kp2->value->type = PMIX_STRING;
+                    kp2->value->data.string = strdup(nrec->name);
+                    rank = strtol(procs[j], NULL, 10);
+                    if (PMIX_SUCCESS != (rc = pmix_client_hash_store(nspace, rank, kp2))) {
+                        PMIX_ERROR_LOG(rc);
+                    }
+                    PMIX_RELEASE(kp2); // maintain accounting
+                }
+                pmix_argv_free(procs);
+                PMIX_DESTRUCT(&kv);
+            }
+        } else {
+            /* store the data */
+            if (PMIX_SUCCESS != (rc = pmix_client_hash_store(nspace, PMIX_RANK_WILDCARD, kptr))) {
+                PMIX_ERROR_LOG(rc);
+            }
+            PMIX_RELEASE(kptr); // maintain accounting
+        }
+        kptr = PMIX_NEW(pmix_kval_t);
+        cnt = 1;
+    }
 }
 
 static int usock_connect(struct sockaddr *addr)
@@ -834,3 +1007,34 @@ static int usock_connect(struct sockaddr *addr)
     return sd;
 }
 
+/****   CLIENT-LEVEL CLASS INSTANTIATIONS    ****/
+static void nscon(pmix_nsrec_t *p)
+{
+    memset(p->nspace, 0, PMIX_MAX_NSLEN);
+    PMIX_CONSTRUCT(&p->nodes, pmix_list_t);
+}
+static void nsdes(pmix_nsrec_t *p)
+{
+    PMIX_LIST_DESTRUCT(&p->nodes);
+}
+PMIX_CLASS_INSTANCE(pmix_nsrec_t,
+                    pmix_list_item_t,
+                    nscon, nsdes);
+
+static void ncon(pmix_nrec_t *p)
+{
+    p->name = NULL;
+    p->procs = NULL;
+}
+static void ndes(pmix_nrec_t *p)
+{
+    if (NULL != p->name) {
+        free(p->name);
+    }
+    if (NULL != p->procs) {
+        free(p->procs);
+    }
+}
+PMIX_CLASS_INSTANCE(pmix_nrec_t,
+                    pmix_list_item_t,
+                    ncon, ndes);

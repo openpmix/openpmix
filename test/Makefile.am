@@ -23,7 +23,7 @@ headers = test_common.h cli_stages.h server_callbacks.h utils.h test_fence.h
 
 AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/src/api
 
-bin_PROGRAMS = pmix_test pmix_client pmix_test_lite pmi_client pmi2_client
+bin_PROGRAMS = pmix_test pmix_client pmix_test_lite pmi_client pmi2_client pmix_regex
 
 check_PROGRAMS = pmix_test pmix_test_lite
 
@@ -59,4 +59,10 @@ pmix_client_SOURCES = \
 
 pmix_client_LDADD = \
 	$(top_builddir)/libpmix.la
+
+pmix_regex_SOURCES = \
+        pmix_regex.c test_common.c cli_stages.c utils.c
+
+pmix_regex_LDADD = \
+	$(top_builddir)/libpmix-server.la $(top_builddir)/libpmix.la
 

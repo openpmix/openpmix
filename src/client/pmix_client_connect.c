@@ -225,6 +225,8 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
     int rc, ret;
     int32_t cnt;
+    char *nspace;
+    pmix_buffer_t *bptr;
     
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:client recv callback activated with %d bytes",
@@ -236,6 +238,26 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
         PMIX_ERROR_LOG(rc);
         ret = rc;
     }
+    /* connect has to also pass back data from all nspace's involved in
+     * the operation, including our own. Each will come as a buffer */
+    cnt = 1;
+    while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(buf, &bptr, &cnt, PMIX_BUFFER))) {
+        /* unpack the nspace for this blob */
+        cnt = 1;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(bptr, &nspace, &cnt, PMIX_STRING))) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(bptr);
+            continue;
+        }
+        /* extract and process any proc-related info for this nspace */
+        pmix_client_process_nspace_blob(pmix_globals.nspace, bptr);
+        PMIX_RELEASE(bptr);
+    }
+    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+        PMIX_ERROR_LOG(rc);
+        ret = rc;
+    }
+
     if (NULL != cb->op_cbfunc) {
         cb->op_cbfunc(ret, cb->cbdata);
     }
