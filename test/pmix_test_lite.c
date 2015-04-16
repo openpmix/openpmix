@@ -25,7 +25,6 @@
  */
 
 #include <stdio.h>
-#include "src/util/argv.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/output.h"
 
@@ -133,36 +132,7 @@ int main(int argc, char **argv)
     }
 
     client_env = pmix_argv_copy(environ);
-
-    /* fork/exec the test */
-    pmix_argv_append_nosize(&client_argv, params.binary);
-    pmix_argv_append_nosize(&client_argv, "-s");
-    pmix_argv_append_nosize(&client_argv, TEST_NAMESPACE);
-    if (params.nonblocking) {
-        pmix_argv_append_nosize(&client_argv, "-nb");
-        if (params.barrier) {
-            pmix_argv_append_nosize(&client_argv, "-b");
-        }
-    }
-    if (params.collect) {
-        pmix_argv_append_nosize(&client_argv, "-c");
-    }
-    pmix_argv_append_nosize(&client_argv, "-n");
-    if (NULL == params.np) {
-        pmix_argv_append_nosize(&client_argv, "1");
-    } else {
-        pmix_argv_append_nosize(&client_argv, params.np);
-    }
-    if( params.verbose ){
-        pmix_argv_append_nosize(&client_argv, "-v");
-    }
-    if (NULL != params.prefix) {
-        pmix_argv_append_nosize(&client_argv, "-o");
-        pmix_argv_append_nosize(&client_argv, params.prefix);
-    }
-    if( params.early_fail ){
-        pmix_argv_append_nosize(&client_argv, "--early-fail");
-    }
+    set_client_argv(&params, &client_argv);
 
     tmp = pmix_argv_join(client_argv, ' ');
     TEST_VERBOSE(("Executing test: %s", tmp));
@@ -179,6 +149,7 @@ int main(int argc, char **argv)
     order[CLI_TERM] = -1;
     cli_init(params.nprocs, order);
 
+    /* fork/exec the test */
     for (n=0; n < params.nprocs; n++) {
         if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(TEST_NAMESPACE, n, &client_env))) {
             TEST_ERROR(("Server fork setup failed with error %d", rc));

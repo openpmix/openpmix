@@ -93,6 +93,9 @@ typedef struct {
     int verbose;
     int rank;
     int early_fail;
+    char *fences;
+    char *data;
+    char *noise;
 } test_params;
 
 #define INIT_TEST_PARAMS(params) do { \
@@ -108,6 +111,9 @@ typedef struct {
     params.timeout = TEST_DEFAULT_TIMEOUT; \
     params.prefix = NULL;             \
     params.nspace = NULL;             \
+    params.fences = NULL;             \
+    params.data = NULL;               \
+    params.noise = NULL;              \
 } while (0)
 
 #define FREE_TEST_PARAMS(params) do { \
@@ -122,6 +128,15 @@ typedef struct {
     }                                 \
     if (NULL != params.nspace) {      \
         free(params.nspace);          \
+    }                                 \
+    if (NULL != params.fences) {      \
+        free(params.fences);          \
+    }                                 \
+    if (NULL != params.data) {        \
+        free(params.data);            \
+    }                                 \
+    if (NULL != params.noise) {       \
+        free(params.noise);           \
     }                                 \
 } while (0)
 

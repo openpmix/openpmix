@@ -87,6 +87,21 @@ void parse_cmd(int argc, char **argv, test_params *params)
             }
         } else if( 0 == strcmp(argv[i], "--early-fail") ){
             params->early_fail = 1;
+        } else if (0 == strcmp(argv[i], "--fence")) {
+            i++;
+            if (NULL != argv[i]) {
+                params->fences = strdup(argv[i]);
+            }
+        } else if (0 == strcmp(argv[i], "--data")) {
+            i++;
+            if (NULL != argv[i]) {
+                params->data = strdup(argv[i]);
+            }
+        } else if (0 == strcmp(argv[i], "--noise")) {
+            i++;
+            if (NULL != argv[i]) {
+                params->noise = strdup(argv[i]);
+            }
         }
 
         else {

@@ -47,3 +47,47 @@ void set_namespace(int nprocs, char *ranks, char *name)
     PMIX_INFO_FREE(info, ninfo);
 }
 
+void set_client_argv(test_params *params, char ***argv)
+{
+    pmix_argv_append_nosize(argv, params->binary);
+    pmix_argv_append_nosize(argv, "-s");
+    pmix_argv_append_nosize(argv, TEST_NAMESPACE);
+    if (params->nonblocking) {
+        pmix_argv_append_nosize(argv, "-nb");
+        if (params->barrier) {
+            pmix_argv_append_nosize(argv, "-b");
+        }
+    }
+    if (params->collect) {
+        pmix_argv_append_nosize(argv, "-c");
+    }
+    pmix_argv_append_nosize(argv, "-n");
+    if (NULL == params->np) {
+        pmix_argv_append_nosize(argv, "1");
+    } else {
+        pmix_argv_append_nosize(argv, params->np);
+    }
+    if( params->verbose ){
+        pmix_argv_append_nosize(argv, "-v");
+    }
+    if (NULL != params->prefix) {
+        pmix_argv_append_nosize(argv, "-o");
+        pmix_argv_append_nosize(argv, params->prefix);
+    }
+    if( params->early_fail ){
+        pmix_argv_append_nosize(argv, "--early-fail");
+    }
+    if (NULL != params->fences) {
+        pmix_argv_append_nosize(argv, "--fence");
+        pmix_argv_append_nosize(argv, params->fences);
+    }
+    if (NULL != params->data) {
+        pmix_argv_append_nosize(argv, "--data");
+        pmix_argv_append_nosize(argv, params->data);
+    }
+    if (NULL != params->noise) {
+        pmix_argv_append_nosize(argv, "--noise");
+        pmix_argv_append_nosize(argv, params->noise);
+    }
+
+}
