@@ -91,6 +91,10 @@ void parse_cmd(int argc, char **argv, test_params *params)
             i++;
             if (NULL != argv[i]) {
                 params->fences = strdup(argv[i]);
+                if (0 != parse_fence(params->fences, 0)) {
+                    fprintf(stderr, "Incorrect --fence option format: %s\n", params->fences);
+                    exit(1);
+                }
             }
         } else if (0 == strcmp(argv[i], "--data")) {
             i++;
@@ -112,4 +116,231 @@ void parse_cmd(int argc, char **argv, test_params *params)
     if (NULL == params->binary) {
         params->binary = strdup("pmix_client");
     }
+}
+
+pmix_list_t test_fences;
+
+static void ncon(nspace_desc_t *p)
+{
+    p->id = -1;
+    PMIX_CONSTRUCT(&(p->ranks), pmix_list_t);
+}
+
+static void ndes(nspace_desc_t *p)
+{
+    PMIX_LIST_DESTRUCT(&(p->ranks));
+}
+
+PMIX_CLASS_INSTANCE(nspace_desc_t,
+                          pmix_list_item_t,
+                          ncon, ndes);
+
+static void fcon(fence_desc_t *p)
+{
+    p->blocking = 0;
+    p->data_exchange = 0;
+    PMIX_CONSTRUCT(&(p->nspaces), pmix_list_t);
+}
+
+static void fdes(fence_desc_t *p)
+{
+    PMIX_LIST_DESTRUCT(&(p->nspaces));
+}
+
+PMIX_CLASS_INSTANCE(fence_desc_t,
+                          pmix_list_item_t,
+                          fcon, fdes);
+
+PMIX_CLASS_INSTANCE(rank_desc_t,
+                          pmix_list_item_t,
+                          NULL, NULL);
+
+static int ns_id = -1;
+static fence_desc_t *fdesc = NULL;
+
+#define CHECK_STRTOL_VAL(val, str, store) do {                  \
+    if (0 == val) {                                             \
+        if (0 != strncmp(str, "0", 1)) {                         \
+            if (!store) {                                       \
+                return 1;                                       \
+            }                                                   \
+        }                                                       \
+    }                                                           \
+} while (0)
+
+static int parse_token(char *str, int step, int store)
+{
+    char *pch;
+    int count = 0;
+    int remember = -1;
+    int i;
+    nspace_desc_t *ndesc;
+    rank_desc_t *rdesc;
+    int rank;
+    switch (step) {
+        case 0:
+            if (store) {
+                fdesc = PMIX_NEW(fence_desc_t);
+            }
+            pch = strchr(str, '|');
+            if (NULL != pch) {
+                while (pch != str) {
+                    if ('d' == *str) {
+                        if (store && NULL != fdesc) {
+                            fdesc->data_exchange = 1;
+                        }
+                    } else if ('b' == *str) {
+                        if (store && NULL != fdesc) {
+                            fdesc->blocking = 1;
+                        }
+                    } else if (' ' != *str) {
+                        if (!store) {
+                            return 1;
+                        }
+                    }
+                    str++;
+                }
+                if (0 < parse_token(pch+1, 1, store)) {
+                    if (!store) {
+                        return 1;
+                    }
+                }
+            } else {
+                if (0 < parse_token(str, 1, store)) {
+                    if (!store) {
+                        return 1;
+                    }
+                }
+            }
+            if (store && NULL != fdesc) {
+                pmix_list_append(&test_fences, &fdesc->super);
+            }
+            break;
+        case 1:
+            pch = strtok(str, ";");
+            while (NULL != pch) {
+                if (0 < parse_token(pch, 2, store)) {
+                    if (!store) {
+                        return 1;
+                    }
+                }
+                pch = strtok (NULL, ";");
+            }
+            break;
+        case 2:
+            pch = strchr(str, ':');
+            if (NULL != pch) {
+                *pch = '\0';
+                pch++;
+                ns_id = (int)(strtol(str, NULL, 10));
+                CHECK_STRTOL_VAL(ns_id, str, store);
+                if (0 < parse_token(pch, 3, store)) {
+                    if (!store) {
+                        return 1;
+                    }
+                }
+            } else {
+                if (!store) {
+                    return 1;
+                }
+            }
+            break;
+        case 3:
+            if (store && NULL != fdesc) {
+                ndesc = PMIX_NEW(nspace_desc_t);
+                ndesc->id = ns_id;
+            }
+            if ('\0' == *str) {
+                /* all ranks from namespace participate */
+                if (store && NULL != fdesc) {
+                    rdesc = PMIX_NEW(rank_desc_t);
+                    rdesc->rank = -1;
+                    pmix_list_append(&(ndesc->ranks), &rdesc->super);
+                }
+            }
+            while ('\0' != *str) {
+                if (',' == *str && 0 != count) {
+                    *str = '\0';
+                    if (-1 != remember) {
+                        rank = (int)(strtol(str-count, NULL, 10));
+                        CHECK_STRTOL_VAL(rank, str-count, store);
+                        for (i = remember; i < rank; i++) {
+                            if (store && NULL != fdesc) {
+                                rdesc = PMIX_NEW(rank_desc_t);
+                                rdesc->rank = i;
+                                pmix_list_append(&(ndesc->ranks), &rdesc->super);
+                            }
+                        }
+                        remember = -1;
+                    }
+                    rank = (int)(strtol(str-count, NULL, 10));
+                    CHECK_STRTOL_VAL(rank, str-count, store);
+                    if (store && NULL != fdesc) {
+                        rdesc = PMIX_NEW(rank_desc_t);
+                        rdesc->rank = rank;
+                        pmix_list_append(&(ndesc->ranks), &rdesc->super);
+                    }
+                    count = -1;
+                } else if ('-' == *str && 0 != count) {
+                    *str = '\0';
+                    remember = (int)(strtol(str-count, NULL, 10));
+                    CHECK_STRTOL_VAL(remember, str-count, store);
+                    count = -1;
+                }
+                str++;
+                count++;
+            }
+            if (0 != count) {
+                if (-1 != remember) {
+                    rank = (int)(strtol(str-count, NULL, 10));
+                    CHECK_STRTOL_VAL(rank, str-count, store);
+                    for (i = remember; i < rank; i++) {
+                        if (store && NULL != fdesc) {
+                            rdesc = PMIX_NEW(rank_desc_t);
+                            rdesc->rank = i;
+                            pmix_list_append(&(ndesc->ranks), &rdesc->super);
+                        }
+                    }
+                    remember = -1;
+                }
+                rank = (int)(strtol(str-count, NULL, 10));
+                CHECK_STRTOL_VAL(rank, str-count, store);
+                if (store && NULL != fdesc) {
+                    rdesc = PMIX_NEW(rank_desc_t);
+                    rdesc->rank = rank;
+                    pmix_list_append(&(ndesc->ranks), &rdesc->super);
+                }
+            }
+            if (store && NULL != fdesc) {
+                pmix_list_append(&(fdesc->nspaces), &ndesc->super);
+            }
+            break;
+        default:
+            fprintf(stderr, "Incorrect parsing step.\n");
+            return 1;
+    }
+    return 0;
+}
+
+int parse_fence(char *fence_param, int store)
+{
+    int ret = 0;
+    char *tmp = strdup(fence_param);
+    char * pch, *ech;
+    pch = strchr(tmp, '[');
+    while (NULL != pch) {
+        pch++;
+        ech = strchr(pch, ']');
+        if (NULL != ech) {
+            *ech = '\0';
+            ech++;
+            ret += parse_token(pch, 0, store);
+            pch = strchr(ech, '[');
+        } else {
+            ret = 1;
+            break;
+        }
+    }
+    free(tmp);
+    return ret;
 }

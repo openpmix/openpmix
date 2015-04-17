@@ -32,6 +32,7 @@
 #include "src/class/pmix_object.h"
 #include "src/buffer_ops/types.h"
 #include "test_common.h"
+#include "test_fence.h"
 
 static int get_local_peers(int **_peers, int *count)
 {
@@ -184,6 +185,10 @@ int main(int argc, char **argv)
     }
 
     TEST_VERBOSE(("rank %d: Universe size check: PASSED", rank));
+
+    if (NULL != params.fences) {
+        test_fence(params, -1, rank);
+    }
 
     if( NULL != params.nspace && 0 != strcmp(nspace, params.nspace) ) {
         TEST_ERROR(("rank %d: Bad nspace!", rank));

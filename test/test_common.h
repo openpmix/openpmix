@@ -19,6 +19,8 @@
 #include <unistd.h>
 #include <stdint.h>
 
+#include "src/class/pmix_list.h"
+
 #define TEST_NAMESPACE "smoky_nspace"
 #define TEST_CREDENTIAL "dummy"
 
@@ -141,5 +143,29 @@ typedef struct {
 } while (0)
 
 void parse_cmd(int argc, char **argv, test_params *params);
+int parse_fence(char *fence_param, int store);
+
+typedef struct {
+    pmix_list_item_t super;
+    int rank;
+} rank_desc_t;
+PMIX_CLASS_DECLARATION(rank_desc_t);
+
+typedef struct {
+    pmix_list_item_t super;
+    int id;
+    pmix_list_t ranks;
+} nspace_desc_t;
+PMIX_CLASS_DECLARATION(nspace_desc_t);
+
+typedef struct {
+    pmix_list_item_t super;
+    int blocking;
+    int data_exchange;
+    pmix_list_t nspaces;
+} fence_desc_t;
+PMIX_CLASS_DECLARATION(fence_desc_t);
+
+extern pmix_list_t test_fences;
 
 #endif // TEST_COMMON_H
