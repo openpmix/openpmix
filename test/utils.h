@@ -6,7 +6,4 @@
 #include "src/util/argv.h"
 #include "test_common.h"
 
-void fill_seq_ranks_array(size_t nprocs, char **ranks);
-void set_namespace(int nprocs, char *ranks, char *name);
-void set_client_argv(test_params *params, char ***argv);
-
+int launch_clients(test_params params, char *** client_env, char ***client_argv);

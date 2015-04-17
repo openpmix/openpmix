@@ -37,17 +37,10 @@ int main(int argc, char **argv)
     char **client_env=NULL;
     char **client_argv=NULL;
     int rc;
-    uint32_t n;
-    char *tmp;
-    uid_t myuid;
-    gid_t mygid;
     struct stat stat_buf;
     struct timeval tv;
     double test_start;
-    char *ranks = NULL;
     int order[CLI_TERM+1];
-    char digit[MAX_DIGIT_LEN];
-    int cl_arg_len;
     test_params params;
     INIT_TEST_PARAMS(params);
     int test_fail = 0;
@@ -90,29 +83,6 @@ int main(int argc, char **argv)
     /* register the errhandler */
     PMIx_Register_errhandler(errhandler);
 
-    TEST_VERBOSE(("Setting job info"));
-    fill_seq_ranks_array(params.nprocs, &ranks);
-    if (NULL == ranks) {
-        PMIx_server_finalize();
-        TEST_ERROR(("fill_seq_ranks_array failed"));
-        FREE_TEST_PARAMS(params);
-        return PMIX_ERROR;
-    }
-    set_namespace(params.nprocs, ranks, TEST_NAMESPACE);
-    if (NULL != ranks) {
-        free(ranks);
-    }
-
-    /* fork/exec the test */
-    client_env = pmix_argv_copy(environ);
-    set_client_argv(&params, &client_argv);
-    tmp = pmix_argv_join(client_argv, ' ');
-    TEST_VERBOSE(("Executing test: %s", tmp));
-    free(tmp);
-
-    myuid = getuid();
-    mygid = getgid();
-
     order[CLI_UNINIT] = CLI_FORKED;
     order[CLI_FORKED] = CLI_FIN;
     order[CLI_CONNECTED] = -1;
@@ -121,51 +91,10 @@ int main(int argc, char **argv)
     order[CLI_TERM] = -1;
     cli_init(params.nprocs, order);
 
-    for (n=0; n < params.nprocs; n++) {
-        if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(TEST_NAMESPACE, n, &client_env))) {
-            TEST_ERROR(("Server fork setup failed with error %d", rc));
-            PMIx_server_finalize();
-            cli_kill_all();
-            FREE_TEST_PARAMS(params);
-            return rc;
-        }
-        if (PMIX_SUCCESS != (rc = PMIx_server_register_client(TEST_NAMESPACE, n, myuid, mygid, NULL))) {
-            TEST_ERROR(("Server fork setup failed with error %d", rc));
-            PMIx_server_finalize();
-            cli_kill_all();
-            FREE_TEST_PARAMS(params);
-            return rc;
-        }
-
-        cli_info[n].pid = fork();
-        if (cli_info[n].pid < 0) {
-            TEST_ERROR(("Fork failed"));
-            PMIx_server_finalize();
-            cli_kill_all();
-            FREE_TEST_PARAMS(params);
-            return -1;
-        }
-        /* add two last arguments: -r <rank> */
-        sprintf(digit, "%d", n);
-        pmix_argv_append_nosize(&client_argv, "-r");
-        pmix_argv_append_nosize(&client_argv, digit);
-
-        if (cli_info[n].pid == 0) {
-            if( !TEST_VERBOSE_GET() ){
-                // Hide clients stdout
-                // TODO: on some systems stdout is a constant, address this
-                fclose(stdout);
-                stdout = fopen("/dev/null","w");
-            }
-            execve(params.binary, client_argv, client_env);
-            /* Does not return */
-            exit(0);
-        }
-        cli_info[n].state = CLI_FORKED;
-
-        /* delete two last arguments : -r <rank> */
-        cl_arg_len = pmix_argv_len(client_argv);
-        pmix_argv_delete(&cl_arg_len, &client_argv, cl_arg_len-2, 2);
+    /* set namespaces and fork clients */
+    rc = launch_clients(params, &client_env, &client_argv);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
     }
 
     /* hang around until the client(s) finalize */
