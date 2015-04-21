@@ -65,9 +65,9 @@ extern FILE *file;
 #define TEST_DEFAULT_TIMEOUT 10
 #define MAX_DIGIT_LEN 10
 
-#define TEST_SET_FILE(prefix, rank) { \
+#define TEST_SET_FILE(prefix, ns_id, rank) { \
     char *fname = malloc( strlen(prefix) + MAX_DIGIT_LEN + 2 ); \
-    sprintf(fname, "%s.%d", prefix, rank); \
+    sprintf(fname, "%s.%d.%d", prefix, ns_id, rank); \
     file = fopen(fname, "w"); \
     free(fname); \
     if( NULL == file ){ \
@@ -98,6 +98,10 @@ typedef struct {
     char *fences;
     char *data;
     char *noise;
+    char *ns_dist;
+    int ns_size;
+    int ns_id;
+    int base_rank;
 } test_params;
 
 #define INIT_TEST_PARAMS(params) do { \
@@ -108,14 +112,17 @@ typedef struct {
     params.verbose = 0;               \
     params.rank = 0;                  \
     params.early_fail = 0;            \
+    params.ns_size = -1;              \
+    params.ns_id = -1;                \
+    params.timeout = TEST_DEFAULT_TIMEOUT; \
     params.binary = NULL;             \
     params.np = NULL;                 \
-    params.timeout = TEST_DEFAULT_TIMEOUT; \
     params.prefix = NULL;             \
     params.nspace = NULL;             \
     params.fences = NULL;             \
     params.data = NULL;               \
     params.noise = NULL;              \
+    params.ns_dist = NULL;            \
 } while (0)
 
 #define FREE_TEST_PARAMS(params) do { \
@@ -139,6 +146,9 @@ typedef struct {
     }                                 \
     if (NULL != params.noise) {       \
         free(params.noise);           \
+    }                                 \
+    if (NULL != params.ns_dist) {     \
+        free(params.ns_dist);         \
     }                                 \
 } while (0)
 

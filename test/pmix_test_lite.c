@@ -26,6 +26,7 @@
 
 #include <stdio.h>
 #include "src/util/output.h"
+#include "src/util/pmix_environ.h"
 
 #include "server_callbacks.h"
 #include "utils.h"
@@ -51,6 +52,8 @@ int main(int argc, char **argv)
     test_params params;
     INIT_TEST_PARAMS(params);
     int test_fail = 0;
+    char *tmp;
+    int ns_nprocs;
 
     gettimeofday(&tv, NULL);
     test_start = tv.tv_sec + 1E-6*tv.tv_usec;
@@ -118,10 +121,51 @@ int main(int argc, char **argv)
         exit(0);
     }
 
+    /* set common argv and env */
+    client_env = pmix_argv_copy(environ);
+    set_client_argv(&params, &client_argv);
+
+    tmp = pmix_argv_join(client_argv, ' ');
+    TEST_VERBOSE(("Executing test: %s", tmp));
+    free(tmp);
+
+    int launched = 0;
     /* set namespaces and fork clients */
-    rc = launch_clients(params, &client_env, &client_argv);
-    if (PMIX_SUCCESS != rc) {
-        return rc;
+    if (NULL == params.ns_dist) {
+        /* we have a single namespace for all clients */
+        ns_nprocs = params.nprocs;
+        rc = launch_clients(ns_nprocs, params.binary, &client_env, &client_argv);
+        if (PMIX_SUCCESS != rc) {
+            FREE_TEST_PARAMS(params);
+            return rc;
+        }
+        launched += ns_nprocs;
+    } else {
+        char *pch;
+        pch = strtok(params.ns_dist, ":");
+        while (NULL != pch) {
+            ns_nprocs = (int)strtol(pch, NULL, 10);
+            if (params.nprocs < (uint32_t)(launched+ns_nprocs)) {
+                TEST_ERROR(("Total number of processes doesn't correspond number specified by ns_dist parameter."));
+                FREE_TEST_PARAMS(params);
+                return PMIX_ERROR;
+            }
+            if (0 < ns_nprocs) {
+                rc = launch_clients(ns_nprocs, params.binary, &client_env, &client_argv);
+                if (PMIX_SUCCESS != rc) {
+                    FREE_TEST_PARAMS(params);
+                    return rc;
+                }
+            }
+            pch = strtok (NULL, ":");
+            launched += ns_nprocs;
+        }
+    }
+
+    if (params.nprocs != (uint32_t)launched) {
+        TEST_ERROR(("Total number of processes doesn't correspond number specified by ns_dist parameter."));
+        cli_kill_all();
+        test_fail = 1;
     }
 
     /* hang around until the client(s) finalize */
@@ -227,7 +271,6 @@ static int start_listening(struct sockaddr_un *address)
     TEST_VERBOSE(("Server is listening for incoming connections"));
     return 0;
 }
-
 static void snd_ack(int sd, void *server_obj, char *payload, size_t size)
 {
     /* the call to authenticate_client will have included

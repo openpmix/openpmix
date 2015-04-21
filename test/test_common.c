@@ -33,6 +33,9 @@ void parse_cmd(int argc, char **argv, test_params *params)
             if (NULL != argv[i]) {
                 params->np = strdup(argv[i]);
                 params->nprocs = strtol(argv[i], NULL, 10);
+                if (-1 == params->ns_size) {
+                    params->ns_size = params->nprocs;
+                }
             }
         } else if (0 == strcmp(argv[i], "--h") || 0 == strcmp(argv[i], "-h")) {
             /* print help */
@@ -105,6 +108,26 @@ void parse_cmd(int argc, char **argv, test_params *params)
             i++;
             if (NULL != argv[i]) {
                 params->noise = strdup(argv[i]);
+            }
+        } else if (0 == strcmp(argv[i], "--ns-dist")) {
+            i++;
+            if (NULL != argv[i]) {
+                params->ns_dist = strdup(argv[i]);
+            }
+        } else if (0 == strcmp(argv[i], "--ns-size")) {
+            i++;
+            if (NULL != argv[i]) {
+                params->ns_size = strtol(argv[i], NULL, 10);
+            }
+        } else if (0 == strcmp(argv[i], "--ns-id")) {
+            i++;
+            if (NULL != argv[i]) {
+                params->ns_id = strtol(argv[i], NULL, 10);
+            }
+        } else if (0 == strcmp(argv[i], "--base-rank")) {
+            i++;
+            if (NULL != argv[i]) {
+                params->base_rank = strtol(argv[i], NULL, 10);
             }
         }
 

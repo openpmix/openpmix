@@ -30,6 +30,8 @@ void cli_init(int nprocs, int order[])
         for (i = 0; i < CLI_TERM+1; i++) {
             cli_info[n].next_state[i] = order[i];
         }
+        cli_info[n].rank = -1;
+        cli_info[n].ns = NULL;
     }
 }
 
@@ -105,6 +107,9 @@ void cli_terminate(cli_info_t *cli)
     cli->pid = -1;
     TEST_VERBOSE(("Client rank = %d terminated", cli_rank(cli)));
     cli->state = CLI_TERM;
+    if (NULL != cli->ns) {
+        free(cli->ns);
+    }
 }
 
 void cli_cleanup(cli_info_t *cli)

@@ -1,17 +1,19 @@
 #include "utils.h"
 #include "test_common.h"
 #include "pmix_server.h"
-#include "src/util/pmix_environ.h"
 #include "cli_stages.h"
 
-static void fill_seq_ranks_array(size_t nprocs, char **ranks)
+static void fill_seq_ranks_array(size_t nprocs, int base_rank, char **ranks)
 {
     uint32_t i;
     int len = 0, max_ranks_len;
+    if (0 >= nprocs) {
+        return;
+    }
     max_ranks_len = nprocs * (MAX_DIGIT_LEN+1);
     *ranks = (char*) malloc(max_ranks_len);
     for (i = 0; i < nprocs; i++) {
-        len += snprintf(*ranks + len, max_ranks_len-len-1, "%d", i);
+        len += snprintf(*ranks + len, max_ranks_len-len-1, "%d", i+base_rank);
         if (i != nprocs-1) {
             len += snprintf(*ranks + len, max_ranks_len-len-1, "%c", ',');
         }
@@ -49,11 +51,9 @@ static void set_namespace(int nprocs, char *ranks, char *name)
     PMIX_INFO_FREE(info, ninfo);
 }
 
-static void set_client_argv(test_params *params, char ***argv)
+void set_client_argv(test_params *params, char ***argv)
 {
     pmix_argv_append_nosize(argv, params->binary);
-    pmix_argv_append_nosize(argv, "-s");
-    pmix_argv_append_nosize(argv, TEST_NAMESPACE);
     if (params->nonblocking) {
         pmix_argv_append_nosize(argv, "-nb");
         if (params->barrier) {
@@ -94,33 +94,29 @@ static void set_client_argv(test_params *params, char ***argv)
 
 }
 
-int launch_clients(test_params params, char *** client_env, char ***client_argv)
+int launch_clients(int num_procs, char *binary, char *** client_env, char ***client_argv)
 {
-    uint32_t n;
-    char *tmp;
+    int n;
     uid_t myuid;
     gid_t mygid;
     char *ranks = NULL;
     char digit[MAX_DIGIT_LEN];
     int cl_arg_len;
     int rc;
-
-    *client_env = pmix_argv_copy(environ);
-    set_client_argv(&params, client_argv);
-
-    tmp = pmix_argv_join(*client_argv, ' ');
-    TEST_VERBOSE(("Executing test: %s", tmp));
-    free(tmp);
+    static int counter = 0;
+    static int num_ns = 0;
+    char *ns_name;
 
     TEST_VERBOSE(("Setting job info"));
-    fill_seq_ranks_array(params.nprocs, &ranks);
+    fill_seq_ranks_array(num_procs, counter, &ranks);
     if (NULL == ranks) {
         PMIx_server_finalize();
         TEST_ERROR(("fill_seq_ranks_array failed"));
-        FREE_TEST_PARAMS(params);
         return PMIX_ERROR;
     }
-    set_namespace(params.nprocs, ranks, TEST_NAMESPACE);
+    ns_name = (char*)malloc(strlen(TEST_NAMESPACE) + MAX_DIGIT_LEN + 2);
+    sprintf(ns_name, "%s-%d", TEST_NAMESPACE, num_ns);
+    set_namespace(num_procs, ranks, ns_name);
     if (NULL != ranks) {
         free(ranks);
     }
@@ -129,52 +125,70 @@ int launch_clients(test_params params, char *** client_env, char ***client_argv)
     mygid = getgid();
 
     /* fork/exec the test */
-    for (n=0; n < params.nprocs; n++) {
-        if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(TEST_NAMESPACE, n, client_env))) {
+    for (n = 0; n < num_procs; n++) {
+        if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(ns_name, counter, client_env))) {//n
             TEST_ERROR(("Server fork setup failed with error %d", rc));
             PMIx_server_finalize();
             cli_kill_all();
-            FREE_TEST_PARAMS(params);
             return rc;
         }
-        if (PMIX_SUCCESS != (rc = PMIx_server_register_client(TEST_NAMESPACE, n, myuid, mygid, NULL))) {
+        if (PMIX_SUCCESS != (rc = PMIx_server_register_client(ns_name, counter, myuid, mygid, NULL))) {//n
             TEST_ERROR(("Server fork setup failed with error %d", rc));
             PMIx_server_finalize();
             cli_kill_all();
-            FREE_TEST_PARAMS(params);
             return rc;
         }
 
-        cli_info[n].pid = fork();
-        if (cli_info[n].pid < 0) {
+        cli_info[counter].pid = fork();
+        if (cli_info[counter].pid < 0) {
             TEST_ERROR(("Fork failed"));
             PMIx_server_finalize();
             cli_kill_all();
-            FREE_TEST_PARAMS(params);
             return -1;
         }
+        cli_info[counter].rank = counter;//n
+        cli_info[counter].ns = strdup(ns_name);
 
         /* add two last arguments: -r <rank> */
-        sprintf(digit, "%d", n);
+        sprintf(digit, "%d", counter);//n
         pmix_argv_append_nosize(client_argv, "-r");
         pmix_argv_append_nosize(client_argv, digit);
 
-        if (cli_info[n].pid == 0) {
+        pmix_argv_append_nosize(client_argv, "-s");
+        pmix_argv_append_nosize(client_argv, ns_name);
+
+        sprintf(digit, "%d", num_procs);
+        pmix_argv_append_nosize(client_argv, "--ns-size");
+        pmix_argv_append_nosize(client_argv, digit);
+
+        sprintf(digit, "%d", num_ns);
+        pmix_argv_append_nosize(client_argv, "--ns-id");
+        pmix_argv_append_nosize(client_argv, digit);
+
+        sprintf(digit, "%d", (counter-n));
+        pmix_argv_append_nosize(client_argv, "--base-rank");
+        pmix_argv_append_nosize(client_argv, digit);
+
+        if (cli_info[counter].pid == 0) {
             if( !TEST_VERBOSE_GET() ){
                 // Hide clients stdout
                 // TODO: on some systems stdout is a constant, address this
                 fclose(stdout);
                 stdout = fopen("/dev/null","w");
             }
-            execve(params.binary, *client_argv, *client_env);
+            execve(binary, *client_argv, *client_env);
             /* Does not return */
             exit(0);
         }
-        cli_info[n].state = CLI_FORKED;
+        cli_info[counter].state = CLI_FORKED;
 
-        /* delete two last arguments : -r <rank> */
+        /* delete four last arguments : -r <rank> -s <ns_name> --ns-size <ns_size> ...*/
         cl_arg_len = pmix_argv_len(*client_argv);
-        pmix_argv_delete(&cl_arg_len, client_argv, cl_arg_len-2, 2);
+        pmix_argv_delete(&cl_arg_len, client_argv, cl_arg_len-10, 10);
+
+        counter++;
     }
+    num_ns++;
+    free(ns_name);
     return PMIX_SUCCESS;
 }

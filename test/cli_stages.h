@@ -27,6 +27,8 @@ typedef struct {
     pmix_event_t *ev;
     cli_state_t state;
     cli_state_t next_state[CLI_TERM+1];
+    int rank;
+    char *ns;
 } cli_info_t;
 
 extern cli_info_t *cli_info;

@@ -139,7 +139,7 @@ int main(int argc, char **argv)
     parse_cmd(argc, argv, &params);
 
     // We don't know rank at this place!
-    TEST_VERBOSE(("rank X: Start"));
+    TEST_VERBOSE(("Client ns %s rank %d: Start", params.nspace, params.rank));
 
     /* handle early-fail test case */
     if (1 == params.early_fail && 0 == params.rank) {
@@ -148,22 +148,20 @@ int main(int argc, char **argv)
 
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(nspace, &rank))) {
-        TEST_ERROR(("rank %d: PMIx_Init failed: %d", rank, rc));
+        TEST_ERROR(("Client ns %s rank %d: PMIx_Init failed: %d", params.nspace, rank, rc));
         FREE_TEST_PARAMS(params);
         exit(0);
     }
 
     if (rank != params.rank) {
-        TEST_ERROR(("Rank returned in PMIx_Init %d does not match to rank from command line %d.", rank, params.rank));
+        TEST_ERROR(("Client ns %s Rank returned in PMIx_Init %d does not match to rank from command line %d.", params.nspace, rank, params.rank));
         FREE_TEST_PARAMS(params);
         exit(0);
     }
-
-    if ( NULL != params.prefix ) {
-        TEST_SET_FILE(params.prefix, rank);
+    if ( NULL != params.prefix && -1 != params.ns_id) {
+        TEST_SET_FILE(params.prefix, params.ns_id, rank);
     }
-
-    TEST_VERBOSE(("rank %d: PMIx_Init success", rank));
+    TEST_VERBOSE((" Client ns %s rank %d: PMIx_Init success", params.nspace, rank));
 
     if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, rank,PMIX_UNIV_SIZE,&val))) {
         TEST_ERROR(("rank %d: PMIx_Get universe size failed: %d", rank, rc));
@@ -175,10 +173,10 @@ int main(int argc, char **argv)
         FREE_TEST_PARAMS(params);
         exit(0);
     }
-    if (val->type != PMIX_UINT32 || val->data.uint32 != params.nprocs ) {
+    if (val->type != PMIX_UINT32 || val->data.uint32 != (uint32_t)params.ns_size ) {
         TEST_ERROR(("rank %d: Universe size value or type mismatch,"
                     " want %d(%d) get %d(%d)",
-                    rank, params.nprocs, PMIX_UINT32,
+                    rank, params.ns_size, PMIX_UINT32,
                     val->data.integer, val->type));
         FREE_TEST_PARAMS(params);
         exit(0);
@@ -265,19 +263,19 @@ int main(int argc, char **argv)
     }
 
     /* Check the predefined output */
-    for (i=0; i < (int)params.nprocs; i++) {
+    for (i=0; i < (int)params.ns_size; i++) {
 
         for (j=0; j < 3; j++) {
 
             int local = 0, k;
             for(k=0; k<npeers; k++){
-                if( peers[k] == i){
+                if( peers[k] == i+params.base_rank){
                     local = 1;
                 }
             }
             if( local ){
                 sprintf(key,"local-key-%d",j);
-                if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, i, key, &val))) {
+                if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, i+params.base_rank, key, &val))) {
                     TEST_ERROR(("rank %d: PMIx_Get failed: %d", rank, rc));
                     FREE_TEST_PARAMS(params);
                     exit(0);
@@ -301,7 +299,7 @@ int main(int argc, char **argv)
 
             sprintf(key,"remote-key-%d",j);
             sprintf(sval,"Test string #%d",j);
-            if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, i, key, &val))) {
+            if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, i+params.base_rank, key, &val))) {
                 TEST_ERROR(("rank %d: PMIx_Get failed (%d)", rank, rc));
                 FREE_TEST_PARAMS(params);
                 exit(0);
@@ -316,7 +314,7 @@ int main(int argc, char **argv)
             PMIX_VALUE_RELEASE(val);
 
             sprintf(key, "global-key-%d", j);
-            if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, i, key, &val))) {
+            if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, i+params.base_rank, key, &val))) {
                 TEST_ERROR(("rank %d: PMIx_Get failed (%d)", rank, rc));
                 FREE_TEST_PARAMS(params);
                 exit(0);
@@ -334,7 +332,7 @@ int main(int argc, char **argv)
         }
 
         /* ask for a non-existent key */
-        if (PMIX_SUCCESS == (rc = PMIx_Get(nspace, i, "foobar", &val))) {
+        if (PMIX_SUCCESS == (rc = PMIx_Get(nspace, i+params.base_rank, "foobar", &val))) {
             TEST_ERROR(("rank %d: PMIx_Get returned success instead of failure",
                         rank));
             FREE_TEST_PARAMS(params);
@@ -349,17 +347,17 @@ int main(int argc, char **argv)
             FREE_TEST_PARAMS(params);
             exit(0);
         }
-        TEST_VERBOSE(("rank %d: rank %d is OK", rank, i));
+        TEST_VERBOSE(("rank %d: rank %d is OK", rank, i+params.base_rank));
     }
 
-    TEST_VERBOSE(("rank %d: PASSED", rank));
+    TEST_VERBOSE(("Client ns %s rank %d: PASSED", params.nspace, rank));
 
     /* finalize us */
-    TEST_VERBOSE(("rank %d: Finalizing", rank));
+    TEST_VERBOSE(("Client ns %s rank %d: Finalizing", params.nspace, rank));
     if (PMIX_SUCCESS != (rc = PMIx_Finalize())) {
-        TEST_ERROR(("rank %d:PMIx_Finalize failed: %d", rank, rc));
+        TEST_ERROR(("Client ns %s rank %d:PMIx_Finalize failed: %d", params.nspace, rank, rc));
     } else {
-        TEST_VERBOSE(("rank %d:PMIx_Finalize successfully completed", rank));
+        TEST_VERBOSE(("Client ns %s rank %d:PMIx_Finalize successfully completed", params.nspace, rank));
     }
 
     TEST_OUTPUT_CLEAR(("OK\n"));

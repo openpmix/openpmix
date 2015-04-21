@@ -6,4 +6,5 @@
 #include "src/util/argv.h"
 #include "test_common.h"
 
-int launch_clients(test_params params, char *** client_env, char ***client_argv);
+void set_client_argv(test_params *params, char ***argv);
+int launch_clients(int num_procs, char *binary, char *** client_env, char ***client_argv);
