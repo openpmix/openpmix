@@ -6,6 +6,32 @@ static void release_cb(pmix_status_t status, void *cbdata)
     *ptr = 0;
 }
 
+static void add_noise(char *noise_param, char *my_nspace, int my_rank)
+{
+    int participate = 0;
+    nspace_desc_t *ndesc;
+    rank_desc_t *rdesc;
+    char nspace[PMIX_MAX_NSLEN];
+    parse_noise(noise_param, 1);
+    if (NULL != noise_range) {
+        PMIX_LIST_FOREACH(ndesc, &(noise_range->nspaces), nspace_desc_t) {
+            (void)snprintf(nspace, PMIX_MAX_NSLEN, "%s-%d", TEST_NAMESPACE, ndesc->id);
+            PMIX_LIST_FOREACH(rdesc, &(ndesc->ranks), rank_desc_t) {
+                if (!strncmp(my_nspace, nspace, strlen(my_nspace)) && (my_rank == rdesc->rank || -1 == rdesc->rank)) {
+                    participate = 1;
+                    break;
+                }
+            }
+        }
+        if (1 == participate) {
+            sleep(2);
+            fprintf(stderr, "I'm %s:%d sleeping\n", my_nspace, my_rank);
+        }
+        PMIX_RELEASE(noise_range);
+        noise_range = NULL;
+    }
+}
+
 int test_fence(test_params params, char *my_nspace, int my_rank)
 {
     int len;
@@ -23,16 +49,20 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
     char key[50], sval[50];
     pmix_value_t *val = &value;
 
+    if (NULL != params.noise) {
+        add_noise(params.noise, my_nspace, my_rank);
+    }
+
     PMIX_CONSTRUCT(&test_fences, pmix_list_t);
     parse_fence(params.fences, 1);
 
     PMIX_LIST_FOREACH(desc, &test_fences, fence_desc_t) {
-        nranges = pmix_list_get_size(&(desc->nspaces));
+        nranges = pmix_list_get_size(&(desc->range->nspaces));
         PMIX_RANGE_CREATE(rngs, nranges);
         char tmp[256] = {0};
         len = sprintf(tmp, "fence %d: block = %d de = %d ", fence_num, desc->blocking, desc->data_exchange);
         n = 0;
-        PMIX_LIST_FOREACH(ndesc, &(desc->nspaces), nspace_desc_t) {
+        PMIX_LIST_FOREACH(ndesc, &(desc->range->nspaces), nspace_desc_t) {
             (void)snprintf(rngs[n].nspace, PMIX_MAX_NSLEN, "%s-%d", TEST_NAMESPACE, ndesc->id);
             rngs[n].nranks = pmix_list_get_size(&(ndesc->ranks));
             if (0 < rngs[n].nranks) {

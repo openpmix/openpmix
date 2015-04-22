@@ -154,6 +154,7 @@ typedef struct {
 
 void parse_cmd(int argc, char **argv, test_params *params);
 int parse_fence(char *fence_param, int store);
+int parse_noise(char *noise_param, int store);
 
 typedef struct {
     pmix_list_item_t super;
@@ -170,12 +171,19 @@ PMIX_CLASS_DECLARATION(nspace_desc_t);
 
 typedef struct {
     pmix_list_item_t super;
+    pmix_list_t nspaces;
+} range_desc_t;
+PMIX_CLASS_DECLARATION(range_desc_t);
+
+typedef struct {
+    pmix_list_item_t super;
     int blocking;
     int data_exchange;
-    pmix_list_t nspaces;
+    range_desc_t *range;
 } fence_desc_t;
 PMIX_CLASS_DECLARATION(fence_desc_t);
 
 extern pmix_list_t test_fences;
+extern range_desc_t *noise_range;
 
 #endif // TEST_COMMON_H
