@@ -41,7 +41,6 @@ void parse_cmd(int argc, char **argv, test_params *params)
             /* print help */
             fprintf(stderr, "usage: pmix_test [-h] [-e foo] [-b] [-c] [-nb]\n");
             fprintf(stderr, "\t-n       provides information about the job size (for checking purposes)\n");
-            fprintf(stderr, "\t-s nsp   namespace of the job (for checking purposes)\n");
             fprintf(stderr, "\t-e foo   use foo as test client\n");
             fprintf(stderr, "\t-b       execute fence_nb callback when all procs reach that point\n");
             fprintf(stderr, "\t-c       fence[_nb] callback shall include all collected data\n");

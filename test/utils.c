@@ -91,6 +91,10 @@ void set_client_argv(test_params *params, char ***argv)
         pmix_argv_append_nosize(argv, "--noise");
         pmix_argv_append_nosize(argv, params->noise);
     }
+    if (NULL != params->ns_dist) {
+        pmix_argv_append_nosize(argv, "--ns-dist");
+        pmix_argv_append_nosize(argv, params->ns_dist);
+    }
 
 }
 
