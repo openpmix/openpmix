@@ -41,7 +41,6 @@ void parse_cmd(int argc, char **argv, test_params *params)
             /* print help */
             fprintf(stderr, "usage: pmix_test [-h] [-e foo] [-b] [-c] [-nb]\n");
             fprintf(stderr, "\t-n       provides information about the job size (for checking purposes)\n");
-            fprintf(stderr, "\t-s nsp   namespace of the job (for checking purposes)\n");
             fprintf(stderr, "\t-e foo   use foo as test client\n");
             fprintf(stderr, "\t-b       execute fence_nb callback when all procs reach that point\n");
             fprintf(stderr, "\t-c       fence[_nb] callback shall include all collected data\n");
@@ -50,6 +49,9 @@ void parse_cmd(int argc, char **argv, test_params *params)
             fprintf(stderr, "\t-t <>    set timeout\n");
             fprintf(stderr, "\t-o out   redirect clients logs to file out.<rank>\n");
             fprintf(stderr, "\t--early-fail    force client process with rank 0 to fail before PMIX_Init.\n");
+            fprintf(stderr, "\t--ns-dist n1:n2:n3   register n namespaces (3 in this example) each with ni ranks (n1, n2 or n3).\n");
+            fprintf(stderr, "\t--fence \"[<data_exchange><blocking> | ns0:ranks;ns1:ranks...][...]\"  specify fences in different configurations.\n");
+            fprintf(stderr, "\t--noise \"[ns0:ranks;ns1:ranks...]\"  add system noise to specified processes.\n");
             exit(0);
         } else if (0 == strcmp(argv[i], "--exec") || 0 == strcmp(argv[i], "-e")) {
             i++;
@@ -108,6 +110,10 @@ void parse_cmd(int argc, char **argv, test_params *params)
             i++;
             if (NULL != argv[i]) {
                 params->noise = strdup(argv[i]);
+                if (0 != parse_noise(params->noise, 0)) {
+                    fprintf(stderr, "Incorrect --noise option format: %s\n", params->noise);
+                    exit(1);
+                }
             }
         } else if (0 == strcmp(argv[i], "--ns-dist")) {
             i++;
@@ -142,6 +148,7 @@ void parse_cmd(int argc, char **argv, test_params *params)
 }
 
 pmix_list_t test_fences;
+range_desc_t *noise_range = NULL;
 
 static void ncon(nspace_desc_t *p)
 {
@@ -162,12 +169,12 @@ static void fcon(fence_desc_t *p)
 {
     p->blocking = 0;
     p->data_exchange = 0;
-    PMIX_CONSTRUCT(&(p->nspaces), pmix_list_t);
+    p->range = PMIX_NEW(range_desc_t);
 }
 
 static void fdes(fence_desc_t *p)
 {
-    PMIX_LIST_DESTRUCT(&(p->nspaces));
+    PMIX_RELEASE(p->range);
 }
 
 PMIX_CLASS_INSTANCE(fence_desc_t,
@@ -178,8 +185,23 @@ PMIX_CLASS_INSTANCE(rank_desc_t,
                           pmix_list_item_t,
                           NULL, NULL);
 
+static void rcon(range_desc_t *p)
+{
+    PMIX_CONSTRUCT(&(p->nspaces), pmix_list_t);
+}
+
+static void rdes(range_desc_t *p)
+{
+    PMIX_LIST_DESTRUCT(&(p->nspaces));
+}
+
+PMIX_CLASS_INSTANCE(range_desc_t,
+                          pmix_list_item_t,
+                          rcon, rdes);
+
 static int ns_id = -1;
 static fence_desc_t *fdesc = NULL;
+static range_desc_t *range = NULL;
 
 #define CHECK_STRTOL_VAL(val, str, store) do {                  \
     if (0 == val) {                                             \
@@ -204,6 +226,7 @@ static int parse_token(char *str, int step, int store)
         case 0:
             if (store) {
                 fdesc = PMIX_NEW(fence_desc_t);
+                range = fdesc->range;
             }
             pch = strchr(str, '|');
             if (NULL != pch) {
@@ -240,6 +263,10 @@ static int parse_token(char *str, int step, int store)
             }
             break;
         case 1:
+            if (store && NULL == range) {
+                range = PMIX_NEW(range_desc_t);
+                noise_range = range;
+            }
             pch = strtok(str, ";");
             while (NULL != pch) {
                 if (0 < parse_token(pch, 2, store)) {
@@ -255,6 +282,9 @@ static int parse_token(char *str, int step, int store)
             if (NULL != pch) {
                 *pch = '\0';
                 pch++;
+                while (' ' == *str) {
+                    str++;
+                }
                 ns_id = (int)(strtol(str, NULL, 10));
                 CHECK_STRTOL_VAL(ns_id, str, store);
                 if (0 < parse_token(pch, 3, store)) {
@@ -269,13 +299,16 @@ static int parse_token(char *str, int step, int store)
             }
             break;
         case 3:
-            if (store && NULL != fdesc) {
+            if (store && NULL != range) {
                 ndesc = PMIX_NEW(nspace_desc_t);
                 ndesc->id = ns_id;
             }
+            while (' ' == *str) {
+                str++;
+            }
             if ('\0' == *str) {
                 /* all ranks from namespace participate */
-                if (store && NULL != fdesc) {
+                if (store && NULL != range) {
                     rdesc = PMIX_NEW(rank_desc_t);
                     rdesc->rank = -1;
                     pmix_list_append(&(ndesc->ranks), &rdesc->super);
@@ -288,7 +321,7 @@ static int parse_token(char *str, int step, int store)
                         rank = (int)(strtol(str-count, NULL, 10));
                         CHECK_STRTOL_VAL(rank, str-count, store);
                         for (i = remember; i < rank; i++) {
-                            if (store && NULL != fdesc) {
+                            if (store && NULL != range) {
                                 rdesc = PMIX_NEW(rank_desc_t);
                                 rdesc->rank = i;
                                 pmix_list_append(&(ndesc->ranks), &rdesc->super);
@@ -298,7 +331,7 @@ static int parse_token(char *str, int step, int store)
                     }
                     rank = (int)(strtol(str-count, NULL, 10));
                     CHECK_STRTOL_VAL(rank, str-count, store);
-                    if (store && NULL != fdesc) {
+                    if (store && NULL != range) {
                         rdesc = PMIX_NEW(rank_desc_t);
                         rdesc->rank = rank;
                         pmix_list_append(&(ndesc->ranks), &rdesc->super);
@@ -318,7 +351,7 @@ static int parse_token(char *str, int step, int store)
                     rank = (int)(strtol(str-count, NULL, 10));
                     CHECK_STRTOL_VAL(rank, str-count, store);
                     for (i = remember; i < rank; i++) {
-                        if (store && NULL != fdesc) {
+                        if (store && NULL != range) {
                             rdesc = PMIX_NEW(rank_desc_t);
                             rdesc->rank = i;
                             pmix_list_append(&(ndesc->ranks), &rdesc->super);
@@ -328,14 +361,14 @@ static int parse_token(char *str, int step, int store)
                 }
                 rank = (int)(strtol(str-count, NULL, 10));
                 CHECK_STRTOL_VAL(rank, str-count, store);
-                if (store && NULL != fdesc) {
+                if (store && NULL != range) {
                     rdesc = PMIX_NEW(rank_desc_t);
                     rdesc->rank = rank;
                     pmix_list_append(&(ndesc->ranks), &rdesc->super);
                 }
             }
-            if (store && NULL != fdesc) {
-                pmix_list_append(&(fdesc->nspaces), &ndesc->super);
+            if (store && NULL != range) {
+                pmix_list_append(&(range->nspaces), &ndesc->super);
             }
             break;
         default:
@@ -350,6 +383,7 @@ int parse_fence(char *fence_param, int store)
     int ret = 0;
     char *tmp = strdup(fence_param);
     char * pch, *ech;
+    range = NULL;
     pch = strchr(tmp, '[');
     while (NULL != pch) {
         pch++;
@@ -362,6 +396,32 @@ int parse_fence(char *fence_param, int store)
         } else {
             ret = 1;
             break;
+        }
+    }
+    free(tmp);
+    return ret;
+}
+
+int parse_noise(char *noise_param, int store)
+{
+    int ret = 0;
+    char *tmp = strdup(noise_param);
+    char * pch, *ech;
+    range = NULL;
+    pch = strchr(tmp, '[');
+    if (NULL != pch) {
+        pch++;
+        ech = strchr(pch, ']');
+        if (NULL != ech) {
+            *ech = '\0';
+            ech++;
+            if ('\0' != *ech) {
+                ret = 1;
+            } else {
+                ret = parse_token(pch, 1, store);
+            }
+        } else {
+            ret = 1;
         }
     }
     free(tmp);

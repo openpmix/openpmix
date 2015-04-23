@@ -185,7 +185,11 @@ int main(int argc, char **argv)
     TEST_VERBOSE(("rank %d: Universe size check: PASSED", rank));
 
     if (NULL != params.fences) {
-        test_fence(params, -1, rank);
+        rc = test_fence(params, params.nspace, rank);
+        if (PMIX_SUCCESS != rc) {
+            FREE_TEST_PARAMS(params);
+            exit(0);
+        }
     }
 
     if( NULL != params.nspace && 0 != strcmp(nspace, params.nspace) ) {
