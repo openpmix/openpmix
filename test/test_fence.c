@@ -114,7 +114,7 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
 
             /* perform fence */
             if( desc->blocking ){
-                if (PMIX_SUCCESS != (rc = PMIx_Fence(NULL, 0, desc->data_exchange))) {
+                if (PMIX_SUCCESS != (rc = PMIx_Fence(rngs, nranges, desc->data_exchange))) {
                     TEST_ERROR(("%s:%d: PMIx_Fence failed: %d", my_nspace, my_rank, rc));
                     PMIX_RANGE_FREE(rngs, nranges);
                     PMIX_LIST_DESTRUCT(&test_fences);
@@ -122,7 +122,7 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
                 }
             } else {
                 int in_progress = 1, count;
-                if ( PMIX_SUCCESS != (rc = PMIx_Fence_nb(NULL, 0, desc->data_exchange, release_cb, &in_progress))) {
+                if ( PMIX_SUCCESS != (rc = PMIx_Fence_nb(rngs, nranges, desc->data_exchange, release_cb, &in_progress))) {
                     TEST_ERROR(("%s:%d: PMIx_Fence failed: %d", my_nspace, my_rank, rc));
                     PMIX_RANGE_FREE(rngs, nranges);
                     PMIX_LIST_DESTRUCT(&test_fences);
