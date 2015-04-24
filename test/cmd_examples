@@ -1,0 +1,13 @@
+# 1 blocking fence with data exchange among all processes from two namespaces:
+./pmix_test -n 4 --ns-dist 3:1 --fence "[db | 0:0-2;1:3]"
+./pmix_test -n 4 --ns-dist 3:1 --fence "[db | 0:;1:3]"
+./pmix_test -n 4 --ns-dist 3:1 --fence "[db | 0:;1:]"
+
+# 1 non-blocking fence without data exchange among processes from the 1st namespace
+./pmix_test -n 4 --ns-dist 3:1 --fence "[0:]"
+
+# blocking fence without data exchange among processes from the 1st namespace
+./pmix_test -n 4 --ns-dist 3:1 --fence "[b | 0:]"
+
+# non-blocking fence with data exchange among processes from the 1st namespace. Ranks 0, 1 from ns 0 are sleeping for 2 sec before doing fence test.
+./pmix_test -n 4 --ns-dist 3:1 --fence "[d | 0:]" --noise "[0:0,1]"
