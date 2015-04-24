@@ -157,11 +157,12 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
                             rngs[i].ranks[j] = j;
                         }
                     } else {
-                        char *pch = params.ns_dist;
+                        char *tmp = strdup(params.ns_dist);
+                        char *pch = tmp;
                         int ns_id = (int)strtol(rngs[i].nspace + strlen(TEST_NAMESPACE) + 1, NULL, 10);
                         while (NULL != pch && num != ns_id) {
                             base_rank += num_ranks;
-                            pch = strtok((-1 == num ) ? params.ns_dist : NULL, ":");
+                            pch = strtok((-1 == num ) ? tmp : NULL, ":");
                             num++;
                             num_ranks = (size_t)strtol(pch, NULL, 10);
                         }
@@ -175,8 +176,10 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
                             TEST_ERROR(("%s:%d: Can't parse --ns-dist value in order to get ranks for namespace %s", my_nspace, my_rank, rngs[i].nspace));
                             PMIX_RANGE_FREE(rngs, nranges);
                             PMIX_LIST_DESTRUCT(&test_fences);
+                            free(tmp);
                             return PMIX_ERROR;
                         }
+                        free(tmp);
                     }
                 }
                 for (j = 0; j < rngs[i].nranks; j++) {
