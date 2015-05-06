@@ -696,6 +696,19 @@ const char* PMIx_Get_version(void);
 #define PMIX_VAL_SET(_v, _field, _val )   \
     PMIX_VAL_SET_ ## _field(_v, _field, _val)
 
+#define PMIX_VAL_cmp_val(_val1, _val2)      ((_val1) != (_val2))
+#define PMIX_VAL_cmp_float(_val1, _val2)    (abs((_val1) - (_val2)) > 0.000001)
+#define PMIX_VAL_cmp_ptr(_val1, _val2)      strncmp(_val1, _val2, strlen(_val1)+1)
+
+#define PMIX_VAL_CMP_int     PMIX_VAL_cmp_val
+#define PMIX_VAL_CMP_uint32_t     PMIX_VAL_cmp_val
+#define PMIX_VAL_CMP_uint16_t     PMIX_VAL_cmp_val
+#define PMIX_VAL_CMP_float     PMIX_VAL_cmp_float
+#define PMIX_VAL_CMP_string     PMIX_VAL_cmp_ptr
+
+#define PMIX_VAL_CMP(_field, _val1, _val2) \
+    PMIX_VAL_CMP_ ## _field(_val1, _val2)
+
 #define PMIX_VAL_FREE(_v) \
      PMIx_free_value_data(_v)
 
