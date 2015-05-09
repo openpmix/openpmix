@@ -141,7 +141,7 @@ int pmix_client_hash_fetch(const char *nspace, int rank,
     pmix_proc_data_t *proc_data;
     pmix_kval_t *hv;
     uint32_t jobid;
-    uint64_t id, idwild;
+    uint64_t id;
     int rc;
 
     pmix_output_verbose(10, pmix_globals.debug_output,
@@ -157,12 +157,11 @@ int pmix_client_hash_fetch(const char *nspace, int rank,
     PMIX_HASH_STR(nspace, jobid);
     /* mix in the rank to get the id */
     id = ((uint64_t)jobid << 32) | (int32_t)rank;
-    idwild = ((uint64_t)jobid << 32) | (int32_t)PMIX_RANK_WILDCARD;
 
     /* lookup the proc data object for this proc */
     if (NULL == (proc_data = lookup_proc(&hash_data, id, false))) {
         /* see if we have the wildcard */
-        if (NULL == (proc_data = lookup_proc(&hash_data, idwild, false))) {
+        if (NULL == (proc_data = lookup_proc(&hash_data, PMIX_RANK_WILDCARD, false))) {
             return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
         }
     }
@@ -170,7 +169,7 @@ int pmix_client_hash_fetch(const char *nspace, int rank,
     /* find the value */
     if (NULL == (hv = lookup_keyval(proc_data, key))) {
         /* check to see if the data is under the wildcard */
-        if (NULL == (proc_data = lookup_proc(&hash_data, idwild, false))) {
+        if (NULL == (proc_data = lookup_proc(&hash_data, PMIX_RANK_WILDCARD, false))) {
             return PMIX_ERR_NOT_FOUND;
         }
         if (NULL == (hv = lookup_keyval(proc_data, key))) {

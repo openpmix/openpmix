@@ -470,6 +470,12 @@ static void _register_nspace(int sd, short args, void *cbdata)
     /* do not destruct the kv object - no memory leak will result */
     
  release:
+    if (NULL != nodes) {
+        pmix_argv_free(nodes);
+    }
+    if (NULL != procs) {
+        pmix_argv_free(procs);
+    }
     cd->active = false;
 }
 

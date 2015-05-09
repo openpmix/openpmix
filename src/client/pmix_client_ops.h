@@ -28,7 +28,7 @@ typedef struct {
 
 typedef struct {
     pmix_list_item_t super;
-    char nspace[PMIX_MAX_NSLEN];
+    char nspace[PMIX_MAX_NSLEN+1];
     pmix_list_t nodes;
 } pmix_nsrec_t;
 PMIX_CLASS_DECLARATION(pmix_nsrec_t);
