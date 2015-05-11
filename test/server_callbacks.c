@@ -1,3 +1,13 @@
+/*
+ * Copyright (c) 2015      Intel, Inc.  All rights reserved.
+ * $COPYRIGHT$
+ *
+ * Additional copyrights may follow
+ *
+ * $HEADER$
+ *
+ */
+
 #include "server_callbacks.h"
 
 pmix_server_module_t mymodule = {
@@ -184,8 +194,9 @@ int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
     return PMIX_SUCCESS;
 }
 
-int store_modex_fn(const char nspace[], int rank, void *server_object,
-                          pmix_scope_t scope, pmix_modex_data_t *data)
+int store_modex_fn(pmix_modex_data_t *data,
+                   void *server_object,
+                   pmix_scope_t scope)
 {
     pmix_test_data_t *mdx;
 

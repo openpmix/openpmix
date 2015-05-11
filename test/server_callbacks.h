@@ -1,3 +1,16 @@
+/*
+ * Copyright (c) 2015      Intel, Inc.  All rights reserved.
+ * $COPYRIGHT$
+ *
+ * Additional copyrights may follow
+ *
+ * $HEADER$
+ *
+ */
+
+#ifndef PMIX_SERVER_CALLBACK_H
+#define PMIX_SERVER_CALLBACK_H
+
 #include "cli_stages.h"
 
 int finalized(const char nspace[], int rank, void *server_object,
@@ -9,8 +22,9 @@ int abort_fn(const char nspace[], int rank,
 int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
                       int collect_data,
                       pmix_modex_cbfunc_t cbfunc, void *cbdata);
-int store_modex_fn(const char nspace[], int rank, void *server_object,
-                          pmix_scope_t scope, pmix_modex_data_t *data);
+int store_modex_fn(pmix_modex_data_t *data,
+                   void *server_object,
+                   pmix_scope_t scope);
 int get_modexnb_fn(const char nspace[], int rank,
                           pmix_modex_cbfunc_t cbfunc, void *cbdata);
 int publish_fn(pmix_scope_t scope, pmix_persistence_t persist,
@@ -29,3 +43,4 @@ int disconnect_fn(const pmix_range_t ranges[], size_t nranges,
 
 extern pmix_server_module_t mymodule;
 
+#endif

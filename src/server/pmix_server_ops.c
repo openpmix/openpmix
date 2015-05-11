@@ -112,10 +112,9 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
         mdx.blob = (uint8_t*)bptr->base_ptr;
         mdx.size = bptr->bytes_used;
         if (NULL != pmix_host_server.store_modex) {
-            pmix_host_server.store_modex(peer->info->nptr->nspace,
-                                         peer->info->rank,
+            pmix_host_server.store_modex(&mdx,
                                          peer->info->server_object,
-                                         scope, &mdx);
+                                         scope);
         }
         PMIX_RELEASE(bptr);
         cnt = 1;
