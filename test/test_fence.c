@@ -97,9 +97,9 @@ static int get_all_ranks_from_namespace(test_params params, char *nspace, int **
         rc = PMIX_ERROR;                                                                                            \
     }                                                                                                               \
     else if (val->type != PMIX_VAL_TYPE_ ## dtype || PMIX_VAL_CMP(dtype, PMIX_VAL_FIELD_ ## dtype((val)), data)) {  \
-        TEST_ERROR(("%s:%d: Key %s value or type mismatch,"                                                         \
+        TEST_ERROR(("%s:%d: from %s:%d Key %s value or type mismatch,"                                                         \
                     " want type %d get type %d",                                                                    \
-                    my_nspace, my_rank, key, PMIX_VAL_TYPE_ ## dtype, val->type));                                  \
+                    my_nspace, my_rank, ns, rank, key, PMIX_VAL_TYPE_ ## dtype, val->type));                                  \
         rc = PMIX_ERROR;                                                                                            \
     }                                                                                                               \
     if (PMIX_SUCCESS == rc) {                                                                                       \
@@ -303,6 +303,9 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
                     }
                 }
             }
+            /* barrier across participating processes to prevent putting new values with the same key
+             * before finishing data exchange with other processes. */
+            FENCE(1, 0, rngs, nranges);
         }
         PMIX_RANGE_FREE(rngs, nranges);
         fence_num++;

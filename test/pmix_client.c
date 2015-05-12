@@ -102,6 +102,7 @@ int main(int argc, char **argv)
         rc = test_fence(params, params.nspace, rank);
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
+            TEST_ERROR(("%s:%d Fence test failed: %d", params.nspace, rank, rc));
             exit(0);
         }
     }
