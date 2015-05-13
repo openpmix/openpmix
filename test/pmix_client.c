@@ -107,10 +107,13 @@ int main(int argc, char **argv)
         }
     }
 
-    rc = test_job_fence(params, params.nspace, rank);
-    if (PMIX_SUCCESS != rc) {
-        FREE_TEST_PARAMS(params);
-        exit(0);
+    if (0 != params.test_job_fence) {
+        rc = test_job_fence(params, params.nspace, rank);
+        if (PMIX_SUCCESS != rc) {
+            FREE_TEST_PARAMS(params);
+            TEST_ERROR(("%s:%d Job fence test failed: %d", params.nspace, rank, rc));
+            exit(0);
+        }
     }
 
     TEST_VERBOSE(("Client ns %s rank %d: PASSED", params.nspace, rank));

@@ -89,14 +89,14 @@ typedef struct {
     char *nspace;
     uint32_t nprocs;
     int timeout;
-    int barrier;
-    int collect;
-    int nonblocking;
     int verbose;
     int rank;
     int early_fail;
+    int test_job_fence;
+    int use_same_keys;
+    int collect;
+    int nonblocking;
     char *fences;
-    char *data;
     char *noise;
     char *ns_dist;
     int ns_size;
@@ -106,21 +106,21 @@ typedef struct {
 
 #define INIT_TEST_PARAMS(params) do { \
     params.nprocs = 1;                \
-    params.barrier = 0;               \
-    params.collect = 0;               \
-    params.nonblocking = 0;           \
     params.verbose = 0;               \
     params.rank = 0;                  \
     params.early_fail = 0;            \
     params.ns_size = -1;              \
     params.ns_id = -1;                \
     params.timeout = TEST_DEFAULT_TIMEOUT; \
+    params.test_job_fence = 0;        \
+    params.use_same_keys = 0;         \
+    params.collect = 0;               \
+    params.nonblocking = 0;           \
     params.binary = NULL;             \
     params.np = NULL;                 \
     params.prefix = NULL;             \
     params.nspace = NULL;             \
     params.fences = NULL;             \
-    params.data = NULL;               \
     params.noise = NULL;              \
     params.ns_dist = NULL;            \
 } while (0)
@@ -140,9 +140,6 @@ typedef struct {
     }                                 \
     if (NULL != params.fences) {      \
         free(params.fences);          \
-    }                                 \
-    if (NULL != params.data) {        \
-        free(params.data);            \
     }                                 \
     if (NULL != params.noise) {       \
         free(params.noise);           \

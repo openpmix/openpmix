@@ -42,15 +42,16 @@ void parse_cmd(int argc, char **argv, test_params *params)
             fprintf(stderr, "usage: pmix_test [-h] [-e foo] [-b] [-c] [-nb]\n");
             fprintf(stderr, "\t-n       provides information about the job size (for checking purposes)\n");
             fprintf(stderr, "\t-e foo   use foo as test client\n");
-            fprintf(stderr, "\t-b       execute fence_nb callback when all procs reach that point\n");
-            fprintf(stderr, "\t-c       fence[_nb] callback shall include all collected data\n");
-            fprintf(stderr, "\t-nb      use non-blocking fence\n");
             fprintf(stderr, "\t-v       verbose output\n");
             fprintf(stderr, "\t-t <>    set timeout\n");
             fprintf(stderr, "\t-o out   redirect clients logs to file out.<rank>\n");
             fprintf(stderr, "\t--early-fail    force client process with rank 0 to fail before PMIX_Init.\n");
             fprintf(stderr, "\t--ns-dist n1:n2:n3   register n namespaces (3 in this example) each with ni ranks (n1, n2 or n3).\n");
             fprintf(stderr, "\t--fence \"[<data_exchange><blocking> | ns0:ranks;ns1:ranks...][...]\"  specify fences in different configurations.\n");
+            fprintf(stderr, "\t--use-same-keys relaative to the --fence option: put the same keys in the interim between multiple fences.\n");
+            fprintf(stderr, "\t--job-fence  test fence inside its own namespace.\n");
+            fprintf(stderr, "\t-c       relative to the --job-fence option: fence[_nb] callback shall include all collected data\n");
+            fprintf(stderr, "\t-nb      relative to the --job-fence option: use non-blocking fence\n");
             fprintf(stderr, "\t--noise \"[ns0:ranks;ns1:ranks...]\"  add system noise to specified processes.\n");
             exit(0);
         } else if (0 == strcmp(argv[i], "--exec") || 0 == strcmp(argv[i], "-e")) {
@@ -58,12 +59,6 @@ void parse_cmd(int argc, char **argv, test_params *params)
             if (NULL != argv[i]) {
                 params->binary = strdup(argv[i]);
             }
-        } else if (0 == strcmp(argv[i], "--barrier") || 0 == strcmp(argv[i], "-b")) {
-            params->barrier = 1;
-        } else if (0 == strcmp(argv[i], "--collect") || 0 == strcmp(argv[i], "-c")) {
-            params->collect = 1;
-        } else if (0 == strcmp(argv[i], "--non-blocking") || 0 == strcmp(argv[i], "-nb")) {
-            params->nonblocking = 1;
         } else if( 0 == strcmp(argv[i], "--verbose") || 0 == strcmp(argv[i],"-v") ){
             TEST_VERBOSE_ON();
             params->verbose = 1;
@@ -101,11 +96,14 @@ void parse_cmd(int argc, char **argv, test_params *params)
                     exit(1);
                 }
             }
-        } else if (0 == strcmp(argv[i], "--data")) {
-            i++;
-            if (NULL != argv[i]) {
-                params->data = strdup(argv[i]);
-            }
+        } else if (0 == strcmp(argv[i], "--use-same-keys")) {
+            params->use_same_keys = 1;
+        } else if (0 == strcmp(argv[i], "--job-fence")) {
+            params->test_job_fence = 1;
+        } else if (0 == strcmp(argv[i], "--collect") || 0 == strcmp(argv[i], "-c")) {
+            params->collect = 1;
+        } else if (0 == strcmp(argv[i], "--non-blocking") || 0 == strcmp(argv[i], "-nb")) {
+            params->nonblocking = 1;
         } else if (0 == strcmp(argv[i], "--noise")) {
             i++;
             if (NULL != argv[i]) {

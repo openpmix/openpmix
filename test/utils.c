@@ -21,7 +21,7 @@ static void fill_seq_ranks_array(size_t nprocs, int base_rank, char **ranks)
     if (len >= max_ranks_len-1) {
         free(*ranks);
         *ranks = NULL;
-        fprintf(stderr, "Not enough allocated space for global ranks array.");
+        TEST_ERROR(("Not enough allocated space for global ranks array."));
     }
 }
 
@@ -54,15 +54,6 @@ static void set_namespace(int nprocs, char *ranks, char *name)
 void set_client_argv(test_params *params, char ***argv)
 {
     pmix_argv_append_nosize(argv, params->binary);
-    if (params->nonblocking) {
-        pmix_argv_append_nosize(argv, "-nb");
-        if (params->barrier) {
-            pmix_argv_append_nosize(argv, "-b");
-        }
-    }
-    if (params->collect) {
-        pmix_argv_append_nosize(argv, "-c");
-    }
     pmix_argv_append_nosize(argv, "-n");
     if (NULL == params->np) {
         pmix_argv_append_nosize(argv, "1");
@@ -82,10 +73,18 @@ void set_client_argv(test_params *params, char ***argv)
     if (NULL != params->fences) {
         pmix_argv_append_nosize(argv, "--fence");
         pmix_argv_append_nosize(argv, params->fences);
+        if (params->use_same_keys) {
+            pmix_argv_append_nosize(argv, "--use-same-keys");
+        }
     }
-    if (NULL != params->data) {
-        pmix_argv_append_nosize(argv, "--data");
-        pmix_argv_append_nosize(argv, params->data);
+    if (params->test_job_fence) {
+        pmix_argv_append_nosize(argv, "--job-fence");
+        if (params->nonblocking) {
+            pmix_argv_append_nosize(argv, "-nb");
+        }
+        if (params->collect) {
+            pmix_argv_append_nosize(argv, "-c");
+        }
     }
     if (NULL != params->noise) {
         pmix_argv_append_nosize(argv, "--noise");
