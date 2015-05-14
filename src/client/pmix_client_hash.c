@@ -113,7 +113,7 @@ int pmix_client_hash_store(const char *nspace, int rank,
     /* create a hash of the nspace */
     PMIX_HASH_STR(nspace, jobid);
     /* mix in the rank to get the id */
-    if (rank < 0) {
+    if (PMIX_RANK_WILDCARD == rank) {
         id = ((uint64_t)jobid << 32) | 0x00000000ffffffff;
     } else {
         rk64 = (uint64_t)rank;
@@ -162,7 +162,7 @@ int pmix_client_hash_fetch(const char *nspace, int rank,
     PMIX_HASH_STR(nspace, jobid);
     idwild = ((uint64_t)jobid << 32) | 0x00000000ffffffff;
     /* mix in the rank to get the id */
-    if (rank < 0) {
+    if (PMIX_RANK_WILDCARD == rank) {
         id = idwild;
     } else {
         rk64 = (uint64_t)rank;
