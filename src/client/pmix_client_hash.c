@@ -148,7 +148,7 @@ int pmix_client_hash_fetch(const char *nspace, int rank,
     uint32_t jobid;
     uint64_t id, idwild, rk64;
     int rc;
-    int found_wild_data;
+    bool found_wild_data;
 
     pmix_output_verbose(10, pmix_globals.debug_output,
                         "HASH:FETCH %s:%d key %s",
@@ -170,29 +170,64 @@ int pmix_client_hash_fetch(const char *nspace, int rank,
         id = ((uint64_t)jobid << 32) | rk64;
     }
 
-    found_wild_data = 0;
+    found_wild_data = false;
     /* lookup the proc data object for this proc */
     if (NULL == (proc_data = lookup_proc(&hash_data, id, false))) {
-        /* see if we have the wildcard */
-        if (id == idwild || NULL == (proc_data = lookup_proc(&hash_data, idwild, false))) {
+        /* if the requestor asked for wildcard data, then no point
+         * in looking further - we already checked that option */
+        if (id == idwild) {
             return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
         }
-        found_wild_data = 1;
+        /* if the requestor asked for data about a specific
+         * rank, but we didn't find it, then see if we have
+         * the wildcard data object because some data resides
+         * in there - i.e., the requestor may be asking for
+         * data that relates to the entire job and not just
+         * this rank */
+        if (NULL == (proc_data = lookup_proc(&hash_data, idwild, false))) {
+            return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
+        }
+        found_wild_data = true;
     }
 
-    /* find the value */
+    /* find the value from within this proc_data object */
     if (NULL == (hv = lookup_keyval(proc_data, key))) {
-        /* check to see if the data is under the wildcard */
-        if (id != idwild && 1 == found_wild_data) {
+        /* if it isn't present, then we have to treat three cases:
+         *
+         * (a) the requestor asked for data about a specific rank,
+         *     and we found the blob for that rank. In this case,
+         *     we have to also check the wildcard rank's object
+         *     for the reasons cited above
+         *
+         * (b) the requestor asked for data about a specific rank,
+         *     but we didn't find a blob for that rank and are
+         *     already looking at the wildcard rank's blob. In this
+         *     case, we return PROC_ENTRY_NOT_FOUND so the get
+         *     function can try to get it from the server
+         *
+         * (c) the requestor asked for data from the wildcard rank.
+         *     In this case, there is nothing more we can do, so
+         *     return NOT_FOUND */
+        
+        if (id == idwild) {  // case (c)
+            return PMIX_ERR_NOT_FOUND;
+        }
+        
+        if (found_wild_data) {  // case (b)
             /* We don't treat this case as a failure because data blob for target process
              * wasn't found in hash storage, so continue by asking the server for data.
              * This is a typical case when direct modex is used. */
             return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
         }
-        if (id == idwild || NULL == (proc_data = lookup_proc(&hash_data, idwild, false))) {
-            return PMIX_ERR_NOT_FOUND;
+        
+        if (NULL == (proc_data = lookup_proc(&hash_data, idwild, false))) {  // case (a)
+            /* we don't have data for the wildcard rank yet */
+            return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
         }
         if (NULL == (hv = lookup_keyval(proc_data, key))) {
+            /* we have the wildcard rank data, but this key isn't in it. So
+             * we have both blobs and neither one contains the specified
+             * key - return an error */
             return PMIX_ERR_NOT_FOUND;
         }
     }
