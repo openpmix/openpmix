@@ -148,6 +148,7 @@ int pmix_client_hash_fetch(const char *nspace, int rank,
     uint32_t jobid;
     uint64_t id, idwild, rk64;
     int rc;
+    int found_wild_data;
 
     pmix_output_verbose(10, pmix_globals.debug_output,
                         "HASH:FETCH %s:%d key %s",
@@ -168,18 +169,26 @@ int pmix_client_hash_fetch(const char *nspace, int rank,
         rk64 = (uint64_t)rank;
         id = ((uint64_t)jobid << 32) | rk64;
     }
-    
+
+    found_wild_data = 0;
     /* lookup the proc data object for this proc */
     if (NULL == (proc_data = lookup_proc(&hash_data, id, false))) {
         /* see if we have the wildcard */
         if (id == idwild || NULL == (proc_data = lookup_proc(&hash_data, idwild, false))) {
             return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
         }
+        found_wild_data = 1;
     }
 
     /* find the value */
     if (NULL == (hv = lookup_keyval(proc_data, key))) {
         /* check to see if the data is under the wildcard */
+        if (id != idwild && 1 == found_wild_data) {
+            /* We don't treat this case as a failure because data blob for target process
+             * wasn't found in hash storage, so continue by asking the server for data.
+             * This is a typical case when direct modex is used. */
+            return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
+        }
         if (id == idwild || NULL == (proc_data = lookup_proc(&hash_data, idwild, false))) {
             return PMIX_ERR_NOT_FOUND;
         }
