@@ -56,7 +56,7 @@
 
 static int usock_connect(struct sockaddr *address);
 static void myerrhandler(pmix_status_t status,
-                         pmix_range_t ranges[], size_t nranges,
+                         pmix_proc_t procs[], size_t nprocs,
                          pmix_info_t info[], size_t ninfo)
 {
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -69,8 +69,8 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_usock_hdr_t *
     pmix_status_t pstatus;
     int status, rc;
     int32_t cnt;
-    pmix_range_t *ranges=NULL;
-    size_t nranges, ninfo;
+    pmix_proc_t *procs=NULL;
+    size_t nprocs, ninfo;
     pmix_info_t *info=NULL;
     
     if (NULL == pmix_globals.errhandler) {
@@ -85,16 +85,16 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_usock_hdr_t *
     }
     pstatus = status;
     
-    /* unpack the ranges that are impacted */
+    /* unpack the procs that are impacted */
     cnt=1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &nranges, &cnt, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &nprocs, &cnt, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
-    if (0 < nranges) {
-        ranges = (pmix_range_t*)malloc(nranges * sizeof(pmix_range_t));
-        cnt = nranges;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ranges, &cnt, PMIX_SIZE))) {
+    if (0 < nprocs) {
+        procs = (pmix_proc_t*)malloc(nprocs * sizeof(pmix_proc_t));
+        cnt = nprocs;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &procs, &cnt, PMIX_PROC))) {
             PMIX_ERROR_LOG(rc);
             goto cleanup;
         }
@@ -115,11 +115,11 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_usock_hdr_t *
         }
     }
     
-    pmix_globals.errhandler(pstatus, ranges, nranges, info, ninfo);
+    pmix_globals.errhandler(pstatus, procs, nprocs, info, ninfo);
 
     /* cleanup */
  cleanup:
-    PMIX_RANGE_FREE(ranges, nranges);
+    PMIX_PROC_FREE(procs, nprocs);
     PMIX_INFO_FREE(info, ninfo);
 }
 

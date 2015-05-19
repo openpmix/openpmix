@@ -315,24 +315,22 @@ int PMI2_Job_GetId(char jobid[], int jobid_size)
 int PMI2_Job_Connect(const char jobid[], PMI2_Connect_comm_t *conn)
 {
     pmix_status_t rc;
-    pmix_range_t range;
+    pmix_proc_t proc;
 
-    (void)strncpy(range.nspace, jobid, PMIX_MAX_NSLEN);
-    range.ranks = NULL;
-    range.nranks = 0;
-    rc = PMIx_Connect(&range, 1);
+    (void)strncpy(proc.nspace, jobid, PMIX_MAX_NSLEN);
+    proc.rank = PMIX_RANK_WILDCARD;
+    rc = PMIx_Connect(&proc, 1);
     return convert_err(rc);
 }
 
 int PMI2_Job_Disconnect(const char jobid[])
 {
     pmix_status_t rc;
-    pmix_range_t range;
+    pmix_proc_t proc;
 
-    (void)strncpy(range.nspace, jobid, PMIX_MAX_NSLEN);
-    range.ranks = NULL;
-    range.nranks = 0;
-    rc = PMIx_Disconnect(&range, 1);
+    (void)strncpy(proc.nspace, jobid, PMIX_MAX_NSLEN);
+    proc.rank = PMIX_RANK_WILDCARD;
+    rc = PMIx_Disconnect(&proc, 1);
     return convert_err(rc);
 }
 

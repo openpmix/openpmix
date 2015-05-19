@@ -116,10 +116,10 @@ pmix_status_t PMIx_Abort(int status, const char msg[]);
 pmix_status_t PMIx_Commit(void);
 
 /* Execute a blocking barrier across the processes identified in the
- * specified ranges. Passing a _NULL_ pointer as the _ranges_ parameter
+ * specified array. Passing a _NULL_ pointer as the _procs_ parameter
  * indicates that the barrier is to span all processes in the client's
- * namespace. Each provided range struct can pass _NULL_ for its array
- * of ranks to indicate that all processes in the given namespace are
+ * namespace. Each provided proc struct can pass PMIX_RANK_WILDCARD to
+ * indicate that all processes in the given namespace are
  * participating.
  *
  * The _collect_data_ parameter is passed to the server to indicate whether
@@ -131,13 +131,13 @@ pmix_status_t PMIx_Commit(void);
  * can be serviced without communicating to/from the server, but at the cost
  * of increased memory footprint
  */
-pmix_status_t PMIx_Fence(const pmix_range_t ranges[],
-                         size_t nranges, int collect_data);
+pmix_status_t PMIx_Fence(const pmix_proc_t procs[],
+                         size_t nprocs, int collect_data);
 
 /* Fence_nb */
 /* Non-blocking version of PMIx_Fence. Note that the function will return
  * an error if a _NULL_ callback function is given. */
-pmix_status_t PMIx_Fence_nb(const pmix_range_t ranges[], size_t nranges,
+pmix_status_t PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs,
                             int collect_data,
                             pmix_op_cbfunc_t cbfunc, void *cbdata);
 
@@ -211,9 +211,9 @@ pmix_status_t PMIx_Publish_nb(pmix_scope_t scope,
  * will return SUCCESS if _any_ values can be found, so the caller
  * must check each data element to ensure it was returned.
  * 
- * The nspace param will contain the nspace of the process that
- * published the data. Passing a _NULL_ for the nspace param indicates
- * that the nspace information need not be returned.
+ * The proc param will contain the nspace/rank of the process that
+ * published the data. Passing a _NULL_ for the proc param indicates
+ * that the proc information need not be returned.
  *
  * Note: although this is a blocking function, it will _not_ wait
  * for the requested data to be published. Instead, it will block
@@ -223,7 +223,7 @@ pmix_status_t PMIx_Publish_nb(pmix_scope_t scope,
  * for retrying until the requested data is found */
 pmix_status_t PMIx_Lookup(pmix_scope_t scope,
                           pmix_info_t info[], size_t ninfo,
-                          char nspace[]);
+                          pmix_proc_t *proc);
 
 /* Non-blocking form of the _PMIx_Lookup_ function. Data for
  * the provided NULL-terminated keys array will be returned
@@ -270,7 +270,7 @@ pmix_status_t PMIx_Spawn_nb(const pmix_app_t apps[], size_t napps,
 
 /* Record the specified processes as "connected". Both blocking and non-blocking
  * versions are provided. This means that the resource manager should treat the
- * failure of any process in the specified group as  a reportable event, and take
+ * failure of any process in the specified group as a reportable event, and take
  * appropriate action. Note that different resource managers may respond to
  * failures in different manners.
  *
@@ -283,20 +283,20 @@ pmix_status_t PMIx_Spawn_nb(const pmix_app_t apps[], size_t napps,
  * Note: a process can only engage in _one_ connect operation involving the identical
  * set of ranges at a time. However, a process _can_ be simultaneously engaged
  * in multiple connect operations, each involving a different set of ranges */
-pmix_status_t PMIx_Connect(const pmix_range_t ranges[], size_t nranges);
+pmix_status_t PMIx_Connect(const pmix_proc_t procs[], size_t nprocs);
 
-pmix_status_t PMIx_Connect_nb(const pmix_range_t ranges[], size_t nranges,
+pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t nprocs,
                               pmix_op_cbfunc_t cbfunc, void *cbdata);
                               
 /* Disconnect a previously connected set of processes. An error will be returned
- * if the specified set of ranges was not previously "connected". As above, a process
+ * if the specified set of procs was not previously "connected". As above, a process
  * may be involved in multiple simultaneous disconnect operations. However, a process
- * is not allowed to reconnect to a set of ranges that has not fully completed
+ * is not allowed to reconnect to a set of procs that has not fully completed
  * disconnect - i.e., you have to fully disconnect before you can reconnect to the
  * _same_ group of processes. */
-pmix_status_t PMIx_Disconnect(const pmix_range_t ranges[], size_t nranges);
+pmix_status_t PMIx_Disconnect(const pmix_proc_t procs[], size_t nprocs);
 
-pmix_status_t PMIx_Disconnect_nb(const pmix_range_t ranges[], size_t nranges,
+pmix_status_t PMIx_Disconnect_nb(const pmix_proc_t ranges[], size_t nprocs,
                                  pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Given a node name, return an array of processes within the specified nspace

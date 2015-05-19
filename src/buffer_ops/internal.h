@@ -279,7 +279,7 @@ int pmix_bfrop_pack_value(pmix_buffer_t *buffer, const void *src,
                           int32_t num_vals, pmix_data_type_t type);
 int pmix_bfrop_pack_array(pmix_buffer_t *buffer, const void *src,
                           int32_t num_vals, pmix_data_type_t type);
-int pmix_bfrop_pack_range(pmix_buffer_t *buffer, const void *src,
+int pmix_bfrop_pack_proc(pmix_buffer_t *buffer, const void *src,
                           int32_t num_vals, pmix_data_type_t type);
 int pmix_bfrop_pack_app(pmix_buffer_t *buffer, const void *src,
                         int32_t num_vals, pmix_data_type_t type);
@@ -337,7 +337,7 @@ int pmix_bfrop_unpack_value(pmix_buffer_t *buffer, void *dest,
                             int32_t *num_vals, pmix_data_type_t type);
 int pmix_bfrop_unpack_array(pmix_buffer_t *buffer, void *dest,
                             int32_t *num_vals, pmix_data_type_t type);
-int pmix_bfrop_unpack_range(pmix_buffer_t *buffer, void *dest,
+int pmix_bfrop_unpack_proc(pmix_buffer_t *buffer, void *dest,
                             int32_t *num_vals, pmix_data_type_t type);
 int pmix_bfrop_unpack_app(pmix_buffer_t *buffer, void *dest,
                           int32_t *num_vals, pmix_data_type_t type);
@@ -371,7 +371,7 @@ int pmix_bfrop_copy_value(pmix_value_t **dest, pmix_value_t *src,
                           pmix_data_type_t type);
 int pmix_bfrop_copy_array(pmix_info_array_t **dest, pmix_info_array_t *src,
                           pmix_data_type_t type);
-int pmix_bfrop_copy_range(pmix_range_t **dest, pmix_range_t *src,
+int pmix_bfrop_copy_proc(pmix_proc_t **dest, pmix_proc_t *src,
                           pmix_data_type_t type);
 int pmix_bfrop_copy_app(pmix_app_t **dest, pmix_app_t *src,
                         pmix_data_type_t type);
@@ -421,8 +421,8 @@ int pmix_bfrop_print_topo(char **output, char *prefix,
 int pmix_bfrop_print_value(char **output, char *prefix, pmix_value_t *src, pmix_data_type_t type);
 int pmix_bfrop_print_array(char **output, char *prefix,
                            pmix_info_array_t *src, pmix_data_type_t type);
-int pmix_bfrop_print_range(char **output, char *prefix,
-                           pmix_range_t *src, pmix_data_type_t type);
+int pmix_bfrop_print_proc(char **output, char *prefix,
+                           pmix_proc_t *src, pmix_data_type_t type);
 int pmix_bfrop_print_app(char **output, char *prefix,
                          pmix_app_t *src, pmix_data_type_t type);
 int pmix_bfrop_print_info(char **output, char *prefix,

@@ -34,7 +34,7 @@ BEGIN_C_DECLS
     pmix_errhandler_invoke(e, NULL, 0, NULL, 0)
 
 PMIX_DECLSPEC void pmix_errhandler_invoke(pmix_status_t status,
-                                          pmix_range_t ranges[], size_t nranges,
+                                          pmix_proc_t procs[], size_t nprocs,
                                           pmix_info_t info[], size_t ninfo);
 
 END_C_DECLS

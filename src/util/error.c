@@ -130,10 +130,10 @@ const char* PMIx_Error_string(pmix_status_t errnum)
 }
 
 void pmix_errhandler_invoke(pmix_status_t status,
-                            pmix_range_t ranges[], size_t nranges,
+                            pmix_proc_t procs[], size_t nprocs,
                             pmix_info_t info[], size_t ninfo)
 {
     if (NULL != pmix_globals.errhandler) {
-        pmix_globals.errhandler(status, ranges, nranges, info, ninfo);
+        pmix_globals.errhandler(status, procs, nprocs, info, ninfo);
     }
 }

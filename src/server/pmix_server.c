@@ -522,13 +522,13 @@ static void _execute_collective(int sd, short args, void *cbdata)
     /* we don't need to check for non-NULL APIs here as
      * that was already done when the tracker was created */
     if (PMIX_FENCENB_CMD == trk->type) {
-        pmix_host_server.fence_nb(trk->rngs, pmix_list_get_size(&trk->ranges),
+        pmix_host_server.fence_nb(trk->rngs, pmix_list_get_size(&trk->procs),
                                   trk->collect_data, trk->modexcbfunc, trk);
     } else if (PMIX_CONNECTNB_CMD == trk->type) {
-        pmix_host_server.connect(trk->rngs, pmix_list_get_size(&trk->ranges),
+        pmix_host_server.connect(trk->rngs, pmix_list_get_size(&trk->procs),
                                  trk->op_cbfunc, trk);
     } else if (PMIX_DISCONNECTNB_CMD == trk->type) {
-        pmix_host_server.disconnect(trk->rngs, pmix_list_get_size(&trk->ranges),
+        pmix_host_server.disconnect(trk->rngs, pmix_list_get_size(&trk->procs),
                                     trk->op_cbfunc, trk);
     } else {
         /* unknown type */
@@ -674,13 +674,13 @@ static void _notify_error(int sd, short args, void *cbdata)
         return;
     }
 
-    /* pack the error ranges */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(cd->buf, &cd->error_nranges, 1, PMIX_SIZE))) {
+    /* pack the error procs */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(cd->buf, &cd->error_nprocs, 1, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         return;
     }
-    if (0 < cd->error_nranges) {
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(cd->buf, cd->error_ranges, cd->error_nranges, PMIX_RANGE))) {
+    if (0 < cd->error_nprocs) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(cd->buf, cd->error_procs, cd->error_nprocs, PMIX_PROC))) {
             PMIX_ERROR_LOG(rc);
             return;
         }
@@ -705,25 +705,26 @@ static void _notify_error(int sd, short args, void *cbdata)
     }
 
     /* cycle across our connected clients and send the message to
-     * any within the specified range */
+     * any within the specified proc */
     for (i=0; i < pmix_server_globals.clients.size; i++) {
         if (NULL == (peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, i))) {
             continue;
         }
-        /* if the range is NULL, then send it to everyone */
-        if (NULL == cd->ranges) {
+        /* if the procs field is NULL, then send it to everyone */
+        if (NULL == cd->procs) {
             PMIX_RETAIN(cd->buf);
             PMIX_SERVER_QUEUE_REPLY(peer, 0, cd->buf);
             continue;
         }
+        /* otherwise, check to see if this proc is included */
     }
     cd->active = false;
 }
 
 
 pmix_status_t PMIx_server_notify_error(pmix_status_t status,
-                                       pmix_range_t ranges[], size_t nranges,
-                                       pmix_range_t error_ranges[], size_t error_nranges,
+                                       pmix_proc_t procs[], size_t nprocs,
+                                       pmix_proc_t error_procs[], size_t error_nprocs,
                                        pmix_info_t info[], size_t ninfo,
                                        char **payload, size_t *size)
 {
@@ -1467,7 +1468,7 @@ static void spawn_cbfunc(int status, char *nspace, void *cbdata)
 }
 
 static void lookup_cbfunc(int status, pmix_info_t info[], size_t ninfo,
-                          char nspace[], void *cbdata)
+                          const pmix_proc_t *proc, void *cbdata)
 {
     pmix_server_caddy_t *cd = (pmix_server_caddy_t*)cbdata;
     pmix_buffer_t *reply;
@@ -1481,13 +1482,12 @@ static void lookup_cbfunc(int status, pmix_info_t info[], size_t ninfo,
         return;
     }
     if (PMIX_SUCCESS == status) {
-        /* pack the returned nspace */
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &nspace, 1, PMIX_STRING))) {
+        /* pack the returned proc */
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, proc, 1, PMIX_PROC))) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(reply);
             return;
         }
-
         /* pack the returned info objects */
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &ninfo, 1, PMIX_SIZE))) {
             PMIX_ERROR_LOG(rc);

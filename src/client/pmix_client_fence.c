@@ -55,16 +55,16 @@
 static int unpack_return(pmix_buffer_t *data);
 static int pack_fence(pmix_buffer_t *msg,
                       pmix_cmd_t cmd,
-                      pmix_range_t *ranges,
-                      size_t nranges,
+                      pmix_proc_t *procs,
+                      size_t nprocs,
                       int collect_data);
 static void wait_cbfunc(struct pmix_peer_t *pr,
                         pmix_usock_hdr_t *hdr,
                         pmix_buffer_t *buf, void *cbdata);
 static void op_cbfunc(int status, void *cbdata);
 
-int PMIx_Fence(const pmix_range_t ranges[],
-               size_t nranges, int collect_data)
+int PMIx_Fence(const pmix_proc_t procs[],
+               size_t nprocs, int collect_data)
 {
     pmix_cb_t *cb;
     int rc;
@@ -79,7 +79,7 @@ int PMIx_Fence(const pmix_range_t ranges[],
     cb->active = true;
 
     /* push the message into our event base to send to the server */
-    if (PMIX_SUCCESS != (rc = PMIx_Fence_nb(ranges, nranges, collect_data, op_cbfunc, cb))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Fence_nb(procs, nprocs, collect_data, op_cbfunc, cb))) {
         PMIX_RELEASE(cb);
         return rc;
     }
@@ -95,7 +95,7 @@ int PMIx_Fence(const pmix_range_t ranges[],
     return rc;
 }
 
-int PMIx_Fence_nb(const pmix_range_t ranges[], size_t nranges,
+int PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs,
                   int collect_data,
                   pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
@@ -103,7 +103,7 @@ int PMIx_Fence_nb(const pmix_range_t ranges[], size_t nranges,
     pmix_cmd_t cmd = PMIX_FENCENB_CMD;
     int rc;
     pmix_cb_t *cb;
-    pmix_range_t rg, *rgs;
+    pmix_proc_t rg, *rgs;
     size_t nrg;
     
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -114,20 +114,19 @@ int PMIx_Fence_nb(const pmix_range_t ranges[], size_t nranges,
     }
 
     /* check for bozo input */
-    if (NULL == ranges && 0 != nranges) {
+    if (NULL == procs && 0 != nprocs) {
         return PMIX_ERR_BAD_PARAM;
     }
-    /* if we are given a NULL range, then the caller is referencing
+    /* if we are given a NULL proc, then the caller is referencing
      * all procs within our own nspace */
-    if (NULL == ranges) {
+    if (NULL == procs) {
         (void)strncpy(rg.nspace, pmix_globals.nspace, PMIX_MAX_NSLEN);
-        rg.ranks = NULL;
-        rg.nranks = 0;
+        rg.rank = PMIX_RANK_WILDCARD;
         rgs = &rg;
         nrg = 1;
     } else {
-        rgs = (pmix_range_t*)ranges;
-        nrg = nranges;
+        rgs = (pmix_proc_t*)procs;
+        nrg = nprocs;
     }
     
     msg = PMIX_NEW(pmix_buffer_t);
@@ -215,8 +214,8 @@ static int unpack_return(pmix_buffer_t *data)
 
 static int pack_fence(pmix_buffer_t *msg,
                       pmix_cmd_t cmd,
-                      pmix_range_t *ranges,
-                      size_t nranges,
+                      pmix_proc_t *procs,
+                      size_t nprocs,
                       int collect_data)
 {
     int rc;
@@ -227,13 +226,13 @@ static int pack_fence(pmix_buffer_t *msg,
         return rc;
     }
 
-    /* pack the number of ranges */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &nranges, 1, PMIX_SIZE))) {
+    /* pack the number of procs */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &nprocs, 1, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    /* pack any provided ranges - must always be at least one (our own) */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, ranges, nranges, PMIX_RANGE))) {
+    /* pack any provided procs - must always be at least one (our own) */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, procs, nprocs, PMIX_PROC))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }

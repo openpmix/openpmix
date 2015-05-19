@@ -57,7 +57,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                         pmix_buffer_t *buf, void *cbdata);
 static void op_cbfunc(int status, void *cbdata);
 
-int PMIx_Connect(const pmix_range_t ranges[], size_t nranges)
+int PMIx_Connect(const pmix_proc_t procs[], size_t nprocs)
 {
     int rc;
     pmix_cb_t *cb;
@@ -72,7 +72,7 @@ int PMIx_Connect(const pmix_range_t ranges[], size_t nranges)
     cb->active = true;
 
     /* push the message into our event base to send to the server */
-    if (PMIX_SUCCESS != (rc = PMIx_Connect_nb(ranges, nranges, op_cbfunc, cb))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Connect_nb(procs, nprocs, op_cbfunc, cb))) {
         PMIX_RELEASE(cb);
         return rc;
     }
@@ -88,7 +88,7 @@ int PMIx_Connect(const pmix_range_t ranges[], size_t nranges)
     return rc;
 }
 
-int PMIx_Connect_nb(const pmix_range_t ranges[], size_t nranges,
+int PMIx_Connect_nb(const pmix_proc_t procs[], size_t nprocs,
                     pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_buffer_t *msg;
@@ -104,7 +104,7 @@ int PMIx_Connect_nb(const pmix_range_t ranges[], size_t nranges,
     }
 
     /* check for bozo input */
-    if (NULL == ranges || 0 >= nranges) {
+    if (NULL == procs || 0 >= nprocs) {
         return PMIX_ERR_BAD_PARAM;
     }
 
@@ -115,12 +115,12 @@ int PMIx_Connect_nb(const pmix_range_t ranges[], size_t nranges,
         return rc;
     }
 
-    /* pack the number of ranges */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &nranges, 1, PMIX_SIZE))) {
+    /* pack the number of procs */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &nprocs, 1, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, ranges, nranges, PMIX_RANGE))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, procs, nprocs, PMIX_PROC))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -138,7 +138,7 @@ int PMIx_Connect_nb(const pmix_range_t ranges[], size_t nranges,
     return PMIX_SUCCESS;
 }
 
-int PMIx_Disconnect(const pmix_range_t ranges[], size_t nranges)
+int PMIx_Disconnect(const pmix_proc_t procs[], size_t nprocs)
 {
     int rc;
     pmix_cb_t *cb;
@@ -149,7 +149,7 @@ int PMIx_Disconnect(const pmix_range_t ranges[], size_t nranges)
     cb = PMIX_NEW(pmix_cb_t);
     cb->active = true;
 
-    if (PMIX_SUCCESS != (rc = PMIx_Disconnect_nb(ranges, nranges, op_cbfunc, cb))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Disconnect_nb(procs, nprocs, op_cbfunc, cb))) {
         PMIX_RELEASE(cb);
         return rc;
     }
@@ -165,7 +165,7 @@ int PMIx_Disconnect(const pmix_range_t ranges[], size_t nranges)
     return rc;
 }
 
-int PMIx_Disconnect_nb(const pmix_range_t ranges[], size_t nranges,
+int PMIx_Disconnect_nb(const pmix_proc_t procs[], size_t nprocs,
                        pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_buffer_t *msg;
@@ -181,7 +181,7 @@ int PMIx_Disconnect_nb(const pmix_range_t ranges[], size_t nranges,
     }
 
     /* check for bozo input */
-    if (NULL == ranges || 0 >= nranges) {
+    if (NULL == procs || 0 >= nprocs) {
         return PMIX_ERR_BAD_PARAM;
     }
 
@@ -192,12 +192,12 @@ int PMIx_Disconnect_nb(const pmix_range_t ranges[], size_t nranges,
         return rc;
     }
 
-    /* pack the number of ranges */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &nranges, 1, PMIX_SIZE))) {
+    /* pack the number of procs */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &nprocs, 1, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, ranges, nranges, PMIX_RANGE))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, procs, nprocs, PMIX_PROC))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }

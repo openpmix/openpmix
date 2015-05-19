@@ -144,9 +144,9 @@ bool pmix_server_trk_update(pmix_server_trkr_t *trk)
     }
     
     /* no simple way to do this - just have to perform an
-     * exhaustive search across the ranges in this tracker.
+     * exhaustive search across the procs in this tracker.
      * Fortunately, there typically is only one */
-    PMIX_LIST_FOREACH(rtrk, &trk->ranges, pmix_range_trkr_t) {
+    PMIX_LIST_FOREACH(rtrk, &trk->procs, pmix_range_trkr_t) {
         pmix_output_verbose(5, pmix_globals.debug_output,
                             "trk_update: checking range");
         /* see if the nspace for this tracker is known */

@@ -678,24 +678,24 @@ int pmix_bfrop_unpack_buf(pmix_buffer_t *buffer, void *dest,
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_unpack_range(pmix_buffer_t *buffer, void *dest,
-                            int32_t *num_vals, pmix_data_type_t type)
+int pmix_bfrop_unpack_proc(pmix_buffer_t *buffer, void *dest,
+                           int32_t *num_vals, pmix_data_type_t type)
 {
-    pmix_range_t *ptr;
+    pmix_proc_t *ptr;
     int32_t i, n, m;
     int ret;
     char *tmp;
     
     pmix_output_verbose(20, pmix_globals.debug_output,
-                        "pmix_bfrop_unpack: %d ranges", *num_vals);
+                        "pmix_bfrop_unpack: %d procs", *num_vals);
     
-    ptr = (pmix_range_t *) dest;
+    ptr = (pmix_proc_t *) dest;
     n = *num_vals;
     
     for (i = 0; i < n; ++i) {
         pmix_output_verbose(20, pmix_globals.debug_output,
-                            "pmix_bfrop_unpack: init range[%d]", i);
-        memset(&ptr[i], 0, sizeof(pmix_range_t));
+                            "pmix_bfrop_unpack: init proc[%d]", i);
+        memset(&ptr[i], 0, sizeof(pmix_proc_t));
         /* unpack nspace */
         m=1;
         tmp = NULL;
@@ -707,19 +707,10 @@ int pmix_bfrop_unpack_range(pmix_buffer_t *buffer, void *dest,
         }
         (void)strncpy(ptr[i].nspace, tmp, PMIX_MAX_NSLEN);
         free(tmp);
-        /* unpack the number of ranks */
+        /* unpack the rank */
         m=1;
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_sizet(buffer, &ptr[i].nranks, &m, PMIX_SIZE))) {
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_int(buffer, &ptr[i].rank, &m, PMIX_INT))) {
             return ret;
-        }
-        if (0 < ptr[i].nranks) {
-            /* the ranks field is an array of int's, and thus unstructured - so
-             * just pass the field to unpack it */
-            ptr[i].ranks = (int*)malloc(ptr[i].nranks * sizeof(int));
-            m=ptr[i].nranks;
-            if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_int(buffer, ptr[i].ranks, &m, PMIX_INT))) {
-                return ret;
-            }
         }
     }
     return PMIX_SUCCESS;

@@ -556,29 +556,22 @@ int pmix_bfrop_pack_buf(pmix_buffer_t *buffer, const void *src,
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_pack_range(pmix_buffer_t *buffer, const void *src,
+int pmix_bfrop_pack_proc(pmix_buffer_t *buffer, const void *src,
                           int32_t num_vals, pmix_data_type_t type)
 {
-    pmix_range_t *range;
+    pmix_proc_t *proc;
     int32_t i;
     int ret;
     
-    range = (pmix_range_t *) src;
+    proc = (pmix_proc_t *) src;
     
     for (i = 0; i < num_vals; ++i) {
-        char *ptr = range[i].nspace;
+        char *ptr = proc[i].nspace;
         if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &ptr, 1, PMIX_STRING))) {
             return ret;
         }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_sizet(buffer, &range[i].nranks, 1, PMIX_SIZE))) {
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_sizet(buffer, &proc[i].rank, 1, PMIX_INT))) {
             return ret;
-        }
-        if( 0 < range[i].nranks){
-            /* the ranks field is an array of int's, and thus unstructured - so
-             * just pass the field to pack it */
-            if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int(buffer, range[i].ranks, range[i].nranks, PMIX_INT))) {
-                return ret;
-            }
         }
     }
     return PMIX_SUCCESS;

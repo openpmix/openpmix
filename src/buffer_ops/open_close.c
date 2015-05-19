@@ -308,11 +308,11 @@ int pmix_bfrop_open(void)
                        pmix_bfrop_copy_array,
                        pmix_bfrop_print_array);
 
-    PMIX_REGISTER_TYPE("PMIX_RANGE", PMIX_RANGE,
-                       pmix_bfrop_pack_range,
-                       pmix_bfrop_unpack_range,
-                       pmix_bfrop_copy_range,
-                       pmix_bfrop_print_range);
+    PMIX_REGISTER_TYPE("PMIX_PROC", PMIX_PROC,
+                       pmix_bfrop_pack_proc,
+                       pmix_bfrop_unpack_proc,
+                       pmix_bfrop_copy_proc,
+                       pmix_bfrop_print_proc);
 
     PMIX_REGISTER_TYPE("PMIX_APP", PMIX_APP,
                        pmix_bfrop_pack_app,
@@ -455,7 +455,6 @@ void pmix_value_load(pmix_value_t *v, void *data,
         case PMIX_HWLOC_TOPO:
         case PMIX_VALUE:
         case PMIX_INFO_ARRAY:
-        case PMIX_RANGE:
         case PMIX_APP:
         case PMIX_INFO:
         case PMIX_BUFFER:
@@ -568,7 +567,6 @@ int pmix_value_unload(pmix_value_t *kv, void **data,
         case PMIX_HWLOC_TOPO:
         case PMIX_VALUE:
         case PMIX_INFO_ARRAY:
-        case PMIX_RANGE:
         case PMIX_APP:
         case PMIX_INFO:
         case PMIX_BUFFER:

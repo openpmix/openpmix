@@ -110,7 +110,7 @@ typedef int (*pmix_server_abort_fn_t)(const char nspace[], int rank, void *serve
 
 /* Client called either PMIx_Fence or PMIx_Fence_nb. In either case,
  * the host server will be called via a non-blocking function to execute
- * the specified operation. All processes in the specified ranges are
+ * the specified operation. All processes in the specified array are
  * required to participate in the Fence[_nb] operation.The callback is
  * to be executed once all participants have participated.
  *
@@ -118,12 +118,13 @@ typedef int (*pmix_server_abort_fn_t)(const char nspace[], int rank, void *serve
  * shall return *all* modex data provided by the participants. If the
  * "collect_data" parameter is "false", then the callback shall just return
  * the status */
-typedef int (*pmix_server_fencenb_fn_t)(const pmix_range_t ranges[], size_t nranges,
+typedef int (*pmix_server_fencenb_fn_t)(const pmix_proc_t procs[], size_t nprocs,
                                         int collect_data,
                                         pmix_modex_cbfunc_t cbfunc, void *cbdata);
 
 /* Store modex data for the given scope - should be copied into
- * the host server's storage */
+ * the host server's storage. The pmix_modex_data_t object contains
+ * the nspace/rank of the process providing the data */
 typedef int (*pmix_server_store_modex_fn_t)(pmix_modex_data_t *data,
                                             void *server_object,
                                             pmix_scope_t scope);
@@ -143,8 +144,11 @@ typedef int (*pmix_server_get_modexnb_fn_t)(const char nspace[], int rank,
  * scope, and (b) if the server does not allow overwriting of published info by
  * the original publisher - it is left to the discretion of the host server to
  * allow info-key-based flags to modify this behavior. The persist flag indicates
- * how long the server should retain the data */
-typedef int (*pmix_server_publish_fn_t)(pmix_scope_t scope, pmix_persistence_t persist,
+ * how long the server should retain the data. The nspace/rank of the publishing
+ * process is also provided and is expected to be returned on any subsequent
+ * lookup request */
+typedef int (*pmix_server_publish_fn_t)(const char nspace[], int rank,
+                                        pmix_scope_t scope, pmix_persistence_t persist,
                                         const pmix_info_t info[], size_t ninfo,
                                         pmix_op_cbfunc_t cbfunc, void *cbdata);
 
@@ -183,7 +187,7 @@ typedef int (*pmix_server_spawn_fn_t)(const pmix_app_t apps[], size_t napps,
  * a process can only engage in *one* connect operation involving the identical
  * set of ranges at a time. However, a process *can* be simultaneously engaged
  * in multiple connect operations, each involving a different set of ranges */
-typedef int (*pmix_server_connect_fn_t)(const pmix_range_t ranges[], size_t nranges,
+typedef int (*pmix_server_connect_fn_t)(const pmix_proc_t procs[], size_t nprocs,
                                         pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Disconnect a previously connected set of processes. An error should be returned
@@ -192,7 +196,7 @@ typedef int (*pmix_server_connect_fn_t)(const pmix_range_t ranges[], size_t nran
  * is not allowed to reconnect to a set of ranges that has not fully completed
  * disconnect - i.e., you have to fully disconnect before you can reconnect to the
  * same group of processes. */
-typedef int (*pmix_server_disconnect_fn_t)(const pmix_range_t ranges[], size_t nranges,
+typedef int (*pmix_server_disconnect_fn_t)(const pmix_proc_t procs[], size_t nprocs,
                                            pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 typedef struct pmix_server_module_1_0_0_t {
@@ -347,7 +351,7 @@ pmix_status_t PMIx_server_setup_fork(const char nspace[],
  * an error. The error can be local, or anywhere in the cluster.
  * The status indicates the error being reported.
  *
- * The first array  of ranges informs the server library as to which
+ * The first array  of procs informs the server library as to which
  * processes should be alerted - e.g., the processes that are in
  * a directly-affected job or are connected to one that is affected.
  * Passing a NULL for this array will indicate that all local procs
@@ -370,8 +374,8 @@ pmix_status_t PMIx_server_setup_fork(const char nspace[],
  * the identified target processes, and the function call will be
  * internally thread protected. */
 pmix_status_t PMIx_server_notify_error(pmix_status_t status,
-                                       pmix_range_t ranges[], size_t nranges,
-                                       pmix_range_t error_ranges[], size_t error_nranges,
+                                       pmix_proc_t procs[], size_t nprocs,
+                                       pmix_proc_t error_procs[], size_t error_nprocs,
                                        pmix_info_t info[], size_t ninfo,
                                        char **payload, size_t *size);
 

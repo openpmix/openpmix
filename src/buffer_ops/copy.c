@@ -331,19 +331,15 @@ int pmix_bfrop_copy_array(pmix_info_array_t **dest,
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_copy_range(pmix_range_t **dest, pmix_range_t *src,
-                          pmix_data_type_t type)
+int pmix_bfrop_copy_proc(pmix_proc_t **dest, pmix_proc_t *src,
+                         pmix_data_type_t type)
 {
-    *dest = (pmix_range_t*)malloc(sizeof(pmix_range_t));
+    *dest = (pmix_proc_t*)malloc(sizeof(pmix_proc_t));
     if (NULL == *dest) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
     (void)strncpy((*dest)->nspace, src->nspace, PMIX_MAX_NSLEN);
-    (*dest)->nranks = src->nranks;
-    if (0 < src->nranks) {
-        (*dest)->ranks = (int*)malloc(src->nranks * sizeof(int));
-        memcpy((*dest)->ranks, src->ranks, src->nranks * sizeof(int));
-    }
+    (*dest)->rank = src->rank;
     return PMIX_SUCCESS;
 }
 
