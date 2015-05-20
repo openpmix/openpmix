@@ -200,20 +200,22 @@ static void lookup_cbfunc(int status, pmix_info_t info[], size_t ninfo,
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
-    /* pack the returned nspace */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, &nspace, 1, PMIX_STRING))) {
-        PMIX_ERROR_LOG(rc);
-        goto cleanup;
-    }
+    if (PMIX_SUCCESS == status) {
+        /* pack the returned nspace */
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, &nspace, 1, PMIX_STRING))) {
+            PMIX_ERROR_LOG(rc);
+            goto cleanup;
+        }
 
-    /* pack the returned info objects */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, &ninfo, 1, PMIX_SIZE))) {
-        PMIX_ERROR_LOG(rc);
-        goto cleanup;
-    }
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, info, ninfo, PMIX_INFO))) {
-        PMIX_ERROR_LOG(rc);
-        goto cleanup;
+        /* pack the returned info objects */
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, &ninfo, 1, PMIX_SIZE))) {
+            PMIX_ERROR_LOG(rc);
+            goto cleanup;
+        }
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, info, ninfo, PMIX_INFO))) {
+            PMIX_ERROR_LOG(rc);
+            goto cleanup;
+        }
     }
 
     /* send to the originator */

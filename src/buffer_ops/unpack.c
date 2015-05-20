@@ -1005,7 +1005,7 @@ int pmix_bfrop_unpack_modex(pmix_buffer_t *buffer, void *dest,
 int pmix_bfrop_unpack_persist(pmix_buffer_t *buffer, void *dest,
                             int32_t *num_vals, pmix_data_type_t type)
 {
-    return pmix_bfrop_unpack_buffer(buffer, dest, num_vals, PMIX_INT);
+    return pmix_bfrop_unpack_int(buffer, dest, num_vals, PMIX_INT);
 }
 
 int pmix_bfrop_unpack_bo(pmix_buffer_t *buffer, void *dest,
