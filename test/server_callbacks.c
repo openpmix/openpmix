@@ -9,6 +9,7 @@
  */
 
 #include "server_callbacks.h"
+#include "src/util/argv.h"
 
 pmix_server_module_t mymodule = {
     finalized,
@@ -46,6 +47,29 @@ PMIX_CLASS_INSTANCE(pmix_test_data_t,
                           pmix_list_item_t,
                           pcon, pdes);
 
+typedef struct {
+    pmix_list_item_t super;
+    pmix_info_t data;
+    char *namespace_published;
+} pmix_test_info_t;
+
+static void tcon(pmix_test_info_t *p)
+{
+    PMIX_INFO_CONSTRUCT(&p->data);
+}
+
+static void tdes(pmix_test_info_t *p)
+{
+    PMIX_INFO_DESTRUCT(&p->data);
+}
+
+PMIX_CLASS_INSTANCE(pmix_test_info_t,
+                          pmix_list_item_t,
+                          tcon, tdes);
+
+pmix_list_t *pmix_test_published_list = NULL;
+
+static int finalized_count = 0;
 
 int finalized(const char nspace[], int rank, void *server_object,
                      pmix_op_cbfunc_t cbfunc, void *cbdata)
@@ -56,6 +80,12 @@ int finalized(const char nspace[], int rank, void *server_object,
     }
     TEST_VERBOSE(("Rank %d terminated", rank));
     cli_finalize(&cli_info[rank]);
+    finalized_count++;
+    if (finalized_count == cli_info_cnt) {
+        if (NULL != pmix_test_published_list) {
+            PMIX_LIST_RELEASE(pmix_test_published_list);
+        }
+    }
     if (NULL != cbfunc) {
         cbfunc(PMIX_SUCCESS, cbdata);
     }
@@ -253,6 +283,28 @@ int publish_fn(pmix_scope_t scope, pmix_persistence_t persist,
                       const pmix_info_t info[], size_t ninfo,
                       pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
+    size_t i;
+    int found;
+    pmix_test_info_t *new_info, *old_info;
+    if (NULL == pmix_test_published_list) {
+        pmix_test_published_list = PMIX_NEW(pmix_list_t);
+    }
+    for (i = 0; i < ninfo; i++) {
+        found = 0;
+        PMIX_LIST_FOREACH(old_info, pmix_test_published_list, pmix_test_info_t) {
+            if (!strcmp(old_info->data.key, info[i].key)) {
+                found = 1;
+                break;
+            }
+        }
+        if (!found) {
+            new_info = PMIX_NEW(pmix_test_info_t);
+            strncpy(new_info->data.key, info[i].key, strlen(info[i].key)+1);
+            pmix_value_xfer(&new_info->data.value, &info[i].value);
+//            new_info->namespace_published
+            pmix_list_append(pmix_test_published_list, &new_info->super);
+        }
+    }
     if (NULL != cbfunc) {
         cbfunc(PMIX_SUCCESS, cbdata);
     }
@@ -262,15 +314,58 @@ int publish_fn(pmix_scope_t scope, pmix_persistence_t persist,
 int lookup_fn(pmix_scope_t scope, int wait, char **keys,
                      pmix_lookup_cbfunc_t cbfunc, void *cbdata)
 {
-    if (NULL != cbfunc) {
-        cbfunc(PMIX_SUCCESS, NULL, 0, NULL, cbdata);
+    size_t i, ninfo, ret;
+    pmix_info_t *info;
+    pmix_test_info_t *tinfo;
+    if (NULL == pmix_test_published_list) {
+        return PMIX_ERR_NOT_FOUND;
     }
+    ninfo = pmix_argv_count(keys);
+    PMIX_INFO_CREATE(info, ninfo);
+    ret = 0;
+    for (i = 0; i < ninfo; i++) {
+        PMIX_INFO_CONSTRUCT(&info[i]);
+        PMIX_LIST_FOREACH(tinfo, pmix_test_published_list, pmix_test_info_t) {
+            if (!strcmp(tinfo->data.key, keys[i])) {
+                strncpy(info[i].key, keys[i], strlen(keys[i])+1);
+                pmix_value_xfer(&info[i].value, &tinfo->data.value);
+                ret++;
+                break;
+            }
+        }
+    }
+    if (NULL != cbfunc) {
+        cbfunc((ret == ninfo) ? PMIX_SUCCESS : PMIX_ERR_NOT_FOUND, info, ninfo, "lalala", cbdata);
+    }
+    PMIX_INFO_FREE(info, ninfo);
     return PMIX_SUCCESS;
 }
 
 int unpublish_fn(pmix_scope_t scope, char **keys,
                         pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
+    size_t i, ninfo;
+    pmix_test_info_t *info, *next;
+    if (NULL == pmix_test_published_list) {
+        return PMIX_ERR_NOT_FOUND;
+    }
+    PMIX_LIST_FOREACH_SAFE(info, next, pmix_test_published_list, pmix_test_info_t) {
+        if (1) {// if data posted by this process
+            if (NULL == keys) {
+                pmix_list_remove_item(pmix_test_published_list, &info->super);
+                PMIX_RELEASE(info);
+            } else {
+                ninfo = pmix_argv_count(keys);
+                for (i = 0; i < ninfo; i++) {
+                    if (!strcmp(info->data.key, keys[i])) {
+                        pmix_list_remove_item(pmix_test_published_list, &info->super);
+                        PMIX_RELEASE(info);
+                        break;
+                    }
+                }
+            }
+        }
+    }
     if (NULL != cbfunc) {
         cbfunc(PMIX_SUCCESS, cbdata);
     }

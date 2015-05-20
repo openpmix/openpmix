@@ -215,6 +215,8 @@ int main(int argc, char **argv)
         TEST_ERROR(("Finalize failed with error %d", rc));
     }
 
+    FREE_TEST_PARAMS(params);
+
     if (0 == test_fail) {
         TEST_OUTPUT(("Test finished OK!"));
     }
@@ -222,7 +224,6 @@ int main(int argc, char **argv)
     close(listen_fd);
     unlink(address.sun_path);
 
-    FREE_TEST_PARAMS(params);
     return rc;
 }
 
