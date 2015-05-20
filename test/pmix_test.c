@@ -178,11 +178,12 @@ int main(int argc, char **argv)
         TEST_ERROR(("Finalize failed with error %d", rc));
     }
 
+    FREE_TEST_PARAMS(params);
+
     if (0 == test_fail) {
         TEST_OUTPUT(("Test finished OK!"));
     }
 
-    FREE_TEST_PARAMS(params);
     return rc;
 }
 

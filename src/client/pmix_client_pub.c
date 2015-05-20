@@ -436,7 +436,7 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     /* start by unpacking the nspace of the process that published the info */
     cnt = 1;
     key = NULL;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&cb->data, &key, &cnt, PMIX_STRING))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &key, &cnt, PMIX_STRING))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(cb);
         return;
@@ -448,7 +448,7 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
 
     /* unpack the number of returned values */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&cb->data, &ninfo, &cnt, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(cb);
         return;
@@ -458,13 +458,15 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
         info = (pmix_info_t*)malloc(ninfo * sizeof(pmix_info_t));
         cnt = ninfo;
         /* unpack the returned values into the info array */
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&cb->data, info, &cnt, PMIX_INFO))) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, info, &cnt, PMIX_INFO))) {
             PMIX_ERROR_LOG(rc);
             goto cleanup;
         }
     }
 
-    cb->lookup_cbfunc(rc, info, ninfo, nspace, cb->cbdata);
+    if (NULL != cb->lookup_cbfunc) {
+        cb->lookup_cbfunc(rc, info, ninfo, nspace, cb->cbdata);
+    }
 
  cleanup:
     /* cleanup */
@@ -490,6 +492,5 @@ static void lookup_cbfunc(int status, pmix_info_t info[], size_t ninfo,
             }
         }
     }
-    PMIX_INFO_FREE(info, ninfo);
     cb->active = false;
 }

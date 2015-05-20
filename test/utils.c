@@ -94,7 +94,9 @@ void set_client_argv(test_params *params, char ***argv)
         pmix_argv_append_nosize(argv, "--ns-dist");
         pmix_argv_append_nosize(argv, params->ns_dist);
     }
-
+    if (params->test_publish) {
+        pmix_argv_append_nosize(argv, "--test-publish");
+    }
 }
 
 int launch_clients(int num_procs, char *binary, char *** client_env, char ***client_argv)
