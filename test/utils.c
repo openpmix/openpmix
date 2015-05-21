@@ -97,6 +97,9 @@ void set_client_argv(test_params *params, char ***argv)
     if (params->test_publish) {
         pmix_argv_append_nosize(argv, "--test-publish");
     }
+    if (params->test_spawn) {
+        pmix_argv_append_nosize(argv, "--test-spawn");
+    }
 }
 
 int launch_clients(int num_procs, char *binary, char *** client_env, char ***client_argv)

@@ -103,6 +103,7 @@ typedef struct {
     int ns_id;
     int base_rank;
     int test_publish;
+    int test_spawn;
 } test_params;
 
 #define INIT_TEST_PARAMS(params) do { \
@@ -118,6 +119,7 @@ typedef struct {
     params.collect = 0;               \
     params.nonblocking = 0;           \
     params.test_publish = 0;          \
+    params.test_spawn = 0;            \
     params.binary = NULL;             \
     params.np = NULL;                 \
     params.prefix = NULL;             \

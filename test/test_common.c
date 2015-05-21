@@ -54,6 +54,7 @@ void parse_cmd(int argc, char **argv, test_params *params)
             fprintf(stderr, "\t-nb      relative to the --job-fence option: use non-blocking fence\n");
             fprintf(stderr, "\t--noise \"[ns0:ranks;ns1:ranks...]\"  add system noise to specified processes.\n");
             fprintf(stderr, "\t--test-publish     test publish/lookup/unpublish api.\n");
+            fprintf(stderr, "\t--test-spawn       test spawn api.\n");
             exit(0);
         } else if (0 == strcmp(argv[i], "--exec") || 0 == strcmp(argv[i], "-e")) {
             i++;
@@ -136,6 +137,8 @@ void parse_cmd(int argc, char **argv, test_params *params)
             }
         } else if( 0 == strcmp(argv[i], "--test-publish") ){
             params->test_publish = 1;
+        } else if( 0 == strcmp(argv[i], "--test-spawn") ){
+            params->test_spawn = 1;
         }
 
         else {
