@@ -39,7 +39,7 @@
 
 int main(int argc, char **argv)
 {
-    char nspace[PMIX_MAX_VALLEN];
+    char nspace[PMIX_MAX_NSLEN+1];
     int rank;
     int rc;
     pmix_value_t value;

@@ -254,9 +254,6 @@ static void cbcon(pmix_cb_t *p)
 static void cbdes(pmix_cb_t *p)
 {
     PMIX_DESTRUCT(&p->data);
-    if (NULL != p->nspace) {
-        free(p->nspace);
-    }
     if (NULL != p->key) {
         free(p->key);
     }
