@@ -69,6 +69,7 @@ int PMIx_Spawn(const pmix_app_t apps[],
     /* create a callback object */
     cb = PMIX_NEW(pmix_cb_t);
     cb->active = true;
+    cb->nspace = (char*)malloc(PMIX_MAX_NSLEN);
     
     if (PMIX_SUCCESS != (rc = PMIx_Spawn_nb(apps, napps, spawn_cbfunc, cb))) {
         PMIX_RELEASE(cb);
@@ -124,7 +125,8 @@ int PMIx_Spawn_nb(const pmix_app_t apps[], size_t napps,
      * recv routine so we know which callback to use when
      * the return message is recvd */
     cb = PMIX_NEW(pmix_cb_t);
-    cb->active = true;
+    cb->spawn_cbfunc = cbfunc;
+    cb->cbdata = cbdata;
 
     /* push the message into our event base to send to the server */
     PMIX_ACTIVATE_SEND_RECV(&pmix_client_globals.myserver, msg, wait_cbfunc, cb);
