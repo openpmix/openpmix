@@ -246,7 +246,7 @@ static void cbcon(pmix_cb_t *p)
     p->lookup_cbfunc = NULL;
     p->spawn_cbfunc = NULL;
     p->cbdata = NULL;
-    p->nspace = NULL;
+    memset(p->nspace, 0, PMIX_MAX_NSLEN+1);
     p->rank = -1;
     p->key = NULL;
     p->value = NULL;

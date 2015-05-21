@@ -134,7 +134,7 @@ int PMIx_Get_nb(const char *nspace, int rank,
         /* need to push this into the event library to ensure
          * the callback occurs within an event */
         cb = PMIX_NEW(pmix_cb_t);
-        cb->nspace = strdup(nm);
+        (void)strncpy(cb->nspace, nm, PMIX_MAX_NSLEN);
         cb->rank = rank;
         cb->key = strdup(key);
         cb->value_cbfunc = cbfunc;
@@ -170,7 +170,7 @@ int PMIx_Get_nb(const char *nspace, int rank,
      * recv routine so we know which callback to use when
      * the return message is recvd */
     cb = PMIX_NEW(pmix_cb_t);
-    cb->nspace = strdup(nm);
+    (void)strncpy(cb->nspace, nm, PMIX_MAX_NSLEN);
     cb->rank = rank;
     cb->key = strdup(key);
     cb->value_cbfunc = cbfunc;

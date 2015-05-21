@@ -190,7 +190,7 @@ typedef struct {
     pmix_lookup_cbfunc_t lookup_cbfunc;
     pmix_spawn_cbfunc_t spawn_cbfunc;
     void *cbdata;
-    char *nspace;
+    char nspace[PMIX_MAX_NSLEN+1];
     int rank;
     char *key;
     pmix_value_t *value;

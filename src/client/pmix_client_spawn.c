@@ -66,10 +66,14 @@ int PMIx_Spawn(const pmix_app_t apps[],
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: spawn called");
 
+    /* ensure the nspace (if provided) is initialized */
+    if (NULL != nspace) {
+        memset(nspace, 0, PMIX_MAX_NSLEN+1);
+    }
+    
     /* create a callback object */
     cb = PMIX_NEW(pmix_cb_t);
     cb->active = true;
-    cb->nspace = (char*)malloc(PMIX_MAX_NSLEN);
     
     if (PMIX_SUCCESS != (rc = PMIx_Spawn_nb(apps, napps, spawn_cbfunc, cb))) {
         PMIX_RELEASE(cb);
