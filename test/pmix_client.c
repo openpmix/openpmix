@@ -35,6 +35,7 @@
 #include "test_fence.h"
 #include "test_publish.h"
 #include "test_spawn.h"
+#include "test_cd.h"
 
 int main(int argc, char **argv)
 {
@@ -132,6 +133,15 @@ int main(int argc, char **argv)
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
             TEST_ERROR(("%s:%d Spawn test failed: %d", params.nspace, rank, rc));
+            exit(0);
+        }
+    }
+
+    if (0 != params.test_connect) {
+        rc = test_connect_disconnect(params.nspace, rank);
+        if (PMIX_SUCCESS != rc) {
+            FREE_TEST_PARAMS(params);
+            TEST_ERROR(("%s:%d Connect/Disconnect test failed: %d", params.nspace, rank, rc));
             exit(0);
         }
     }

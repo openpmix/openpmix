@@ -385,7 +385,8 @@ int connect_fn(const pmix_range_t ranges[], size_t nranges,
                       pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     if (NULL != cbfunc) {
-        cbfunc(PMIX_SUCCESS, cbdata);
+        /* return PMIX_EXISTS here just to ensure we get the correct status on the client */
+        cbfunc(PMIX_EXISTS, cbdata);
     }
    return PMIX_SUCCESS;
 }
