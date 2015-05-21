@@ -322,7 +322,9 @@ static void cnct_cbfunc(int status, void *cbdata)
     }
     
     /* setup the reply, starting with the returned status */
+    PMIX_CONSTRUCT(&reply, pmix_buffer_t);
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, &status, 1, PMIX_INT))) {
+        PMIX_DESTRUCT(&reply);
         PMIX_ERROR_LOG(rc);
         return;
     }
@@ -339,6 +341,7 @@ static void cnct_cbfunc(int status, void *cbdata)
         rmsg.base_ptr = NULL;
         PMIX_DESTRUCT(&rmsg);
     }
+    PMIX_DESTRUCT(&reply);
     pmix_list_remove_item(&pmix_server_globals.collectives, &tracker->super);
     PMIX_RELEASE(tracker);
 }

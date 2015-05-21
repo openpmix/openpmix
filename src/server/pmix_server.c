@@ -1618,6 +1618,7 @@ static void cnct_cbfunc(int status, void *cbdata)
     pmix_server_caddy_t *cd;
     char **nspaces=NULL;
     pmix_nspace_t *nptr;
+    pmix_buffer_t *job_info_ptr;
     
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "server:cnct_cbfunc called");
@@ -1646,7 +1647,8 @@ static void cnct_cbfunc(int status, void *cbdata)
             if (0 != strcmp(nspaces[i], nptr->nspace)) {
                 continue;
             }
-            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &nptr->job_info, 1, PMIX_BUFFER))) {
+            job_info_ptr = &nptr->job_info;
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &job_info_ptr, 1, PMIX_BUFFER))) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(reply);
                 pmix_argv_free(nspaces);

@@ -206,7 +206,6 @@ int PMIx_Disconnect_nb(const pmix_range_t ranges[], size_t nranges,
      * recv routine so we know which callback to use when
      * the return message is recvd */
     cb = PMIX_NEW(pmix_cb_t);
-    cb->active = true;
     cb->op_cbfunc = cbfunc;
     cb->cbdata = cbdata;
     
