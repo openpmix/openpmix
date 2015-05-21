@@ -295,6 +295,8 @@ int pmix_bfrop_pack_persist(pmix_buffer_t *buffer, const void *src,
                             int32_t num_vals, pmix_data_type_t type);
 int pmix_bfrop_pack_bo(pmix_buffer_t *buffer, const void *src,
                        int32_t num_vals, pmix_data_type_t type);
+int pmix_bfrop_pack_pdata(pmix_buffer_t *buffer, const void *src,
+                          int32_t num_vals, pmix_data_type_t type);
 
 /*
  * Internal unpack functions
@@ -353,6 +355,8 @@ int pmix_bfrop_unpack_persist(pmix_buffer_t *buffer, void *dest,
                               int32_t *num_vals, pmix_data_type_t type);
 int pmix_bfrop_unpack_bo(pmix_buffer_t *buffer, void *dest,
                          int32_t *num_vals, pmix_data_type_t type);
+int pmix_bfrop_unpack_pdata(pmix_buffer_t *buffer, void *dest,
+                            int32_t *num_vals, pmix_data_type_t type);
 
 /*
  * Internal copy functions
@@ -387,6 +391,8 @@ int pmix_bfrop_copy_persist(pmix_persistence_t **dest, pmix_persistence_t *src,
                             pmix_data_type_t type);
 int pmix_bfrop_copy_bo(pmix_byte_object_t **dest, pmix_byte_object_t *src,
                        pmix_data_type_t type);
+int pmix_bfrop_copy_pdata(pmix_pdata_t **dest, pmix_pdata_t *src,
+                          pmix_data_type_t type);
 
 /*
  * Internal print functions
@@ -437,6 +443,8 @@ int pmix_bfrop_print_persist(char **output, char *prefix,
                              pmix_persistence_t *src, pmix_data_type_t type);
 int pmix_bfrop_print_bo(char **output, char *prefix,
                         pmix_byte_object_t *src, pmix_data_type_t type);
+int pmix_bfrop_print_pdata(char **output, char *prefix,
+                           pmix_pdata_t *src, pmix_data_type_t type);
 
 /*
  * Internal helper functions

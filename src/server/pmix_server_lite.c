@@ -187,8 +187,8 @@ static void spawn_cbfunc(int status, char *nspace, void *cbdata)
     PMIX_RELEASE(cd);
 }
 
-static void lookup_cbfunc(int status, pmix_info_t info[], size_t ninfo,
-                          char nspace[], void *cbdata)
+static void lookup_cbfunc(int status, pmix_pdata_t pdata[], size_t ndata,
+                          void *cbdata)
 {
     pmix_server_caddy_t *cd = (pmix_server_caddy_t*)cbdata;
     int rc;
@@ -201,18 +201,12 @@ static void lookup_cbfunc(int status, pmix_info_t info[], size_t ninfo,
         goto cleanup;
     }
     if (PMIX_SUCCESS == status) {
-        /* pack the returned nspace */
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, &nspace, 1, PMIX_STRING))) {
+        /* pack the returned objects */
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, &ndata, 1, PMIX_SIZE))) {
             PMIX_ERROR_LOG(rc);
             goto cleanup;
         }
-
-        /* pack the returned info objects */
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, &ninfo, 1, PMIX_SIZE))) {
-            PMIX_ERROR_LOG(rc);
-            goto cleanup;
-        }
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, info, ninfo, PMIX_INFO))) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, pdata, ndata, PMIX_PDATA))) {
             PMIX_ERROR_LOG(rc);
             goto cleanup;
         }

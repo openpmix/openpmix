@@ -203,17 +203,16 @@ pmix_status_t PMIx_Publish_nb(pmix_scope_t scope,
 
 /* Lookup information published by another process within the
  * specified scope. A scope of _PMIX_SCOPE_UNDEF_ requests that
- * the search be conducted across _all_ namespaces. The "info"
- * parameter consists of an array of  pmix_info_t struct with the
+ * the search be conducted across _all_ namespaces. The "data"
+ * parameter consists of an array of pmix_pdata_t struct with the
  * keys specifying the requested information. Data will be returned
  * for each key in the associated info struct - any key that cannot
  * be found will return with a data type of "PMIX_UNDEF". The function
  * will return SUCCESS if _any_ values can be found, so the caller
  * must check each data element to ensure it was returned.
  * 
- * The proc param will contain the nspace/rank of the process that
- * published the data. Passing a _NULL_ for the proc param indicates
- * that the proc information need not be returned.
+ * The proc field in each pmix_pdata_t struct will contain the
+ * nspace/rank of the process that published the data.
  *
  * Note: although this is a blocking function, it will _not_ wait
  * for the requested data to be published. Instead, it will block
@@ -222,8 +221,7 @@ pmix_status_t PMIx_Publish_nb(pmix_scope_t scope,
  * ensuring that data is published prior to executing a lookup, or
  * for retrying until the requested data is found */
 pmix_status_t PMIx_Lookup(pmix_scope_t scope,
-                          pmix_info_t info[], size_t ninfo,
-                          pmix_proc_t *proc);
+                          pmix_pdata_t data[], size_t ndata);
 
 /* Non-blocking form of the _PMIx_Lookup_ function. Data for
  * the provided NULL-terminated keys array will be returned

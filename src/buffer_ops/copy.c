@@ -399,3 +399,13 @@ int pmix_bfrop_copy_bo(pmix_byte_object_t **dest, pmix_byte_object_t *src,
     return PMIX_SUCCESS;
 }
 
+int pmix_bfrop_copy_pdata(pmix_pdata_t **dest, pmix_pdata_t *src,
+                          pmix_data_type_t type)
+{
+    *dest = (pmix_pdata_t*)malloc(sizeof(pmix_pdata_t));
+    (void)strncpy((*dest)->proc.nspace, src->proc.nspace, PMIX_MAX_NSLEN);
+    (*dest)->proc.rank = src->proc.rank;
+    (void)strncpy((*dest)->key, src->key, PMIX_MAX_KEYLEN);
+    return pmix_value_xfer(&(*dest)->value, &src->value);
+}
+

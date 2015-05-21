@@ -639,6 +639,55 @@ int pmix_bfrop_unpack_info(pmix_buffer_t *buffer, void *dest,
     return PMIX_SUCCESS;
 }
 
+int pmix_bfrop_unpack_pdata(pmix_buffer_t *buffer, void *dest,
+                           int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_pdata_t *ptr;
+    int32_t i, n, m;
+    int ret;
+    char *tmp;
+
+    pmix_output_verbose(20, pmix_globals.debug_output,
+                        "pmix_bfrop_unpack: %d pdata", *num_vals);
+
+    ptr = (pmix_pdata_t *) dest;
+    n = *num_vals;
+
+    for (i = 0; i < n; ++i) {
+        PMIX_PDATA_CONSTRUCT(&ptr[i]);
+        /* unpack the proc */
+        m=1;
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_string(buffer, &ptr[i].proc, &m, PMIX_PROC))) {
+            return ret;
+        }
+        /* unpack key */
+        m=1;
+        tmp = NULL;
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_string(buffer, &tmp, &m, PMIX_STRING))) {
+            return ret;
+        }
+        if (NULL == tmp) {
+            return PMIX_ERROR;
+        }
+        (void)strncpy(ptr[i].key, tmp, PMIX_MAX_KEYLEN);
+        free(tmp);
+        /* unpack value - since the value structure is statically-defined
+         * instead of a pointer in this struct, we directly unpack it to
+         * avoid the malloc */
+        m=1;
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_int(buffer, &ptr[i].value.type, &m, PMIX_INT))) {
+            return ret;
+        }
+        pmix_output_verbose(20, pmix_globals.debug_output,
+                            "pmix_bfrop_unpack: pdata type %d", ptr[i].value.type);
+        m=1;
+        if (PMIX_SUCCESS != (ret = unpack_val(buffer, &ptr[i].value))) {
+            return ret;
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
 int pmix_bfrop_unpack_buf(pmix_buffer_t *buffer, void *dest,
                           int32_t *num_vals, pmix_data_type_t type)
 {

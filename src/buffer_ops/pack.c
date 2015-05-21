@@ -532,6 +532,38 @@ int pmix_bfrop_pack_info(pmix_buffer_t *buffer, const void *src,
     return PMIX_SUCCESS;
 }
 
+int pmix_bfrop_pack_pdata(pmix_buffer_t *buffer, const void *src,
+                         int32_t num_vals, pmix_data_type_t type)
+{
+    pmix_pdata_t *pdata;
+    int32_t i;
+    int ret;
+    char *foo;
+    
+    pdata = (pmix_pdata_t *) src;
+    
+    for (i = 0; i < num_vals; ++i) {
+        /* pack the proc */
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_proc(buffer, &pdata[i].proc, 1, PMIX_PROC))) {
+            return ret;
+        }
+        /* pack key */
+        foo = pdata[i].key;
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &foo, 1, PMIX_STRING))) {
+            return ret;
+        }
+        /* pack the type */
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int(buffer, &pdata[i].value.type, 1, PMIX_INT))) {
+            return ret;
+        }
+        /* pack value */
+        if (PMIX_SUCCESS != (ret = pack_val(buffer, &pdata[i].value))) {
+            return ret;
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
 int pmix_bfrop_pack_buf(pmix_buffer_t *buffer, const void *src,
                         int32_t num_vals, pmix_data_type_t type)
 {

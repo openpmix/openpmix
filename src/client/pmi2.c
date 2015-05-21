@@ -266,36 +266,46 @@ int PMI2_Nameserv_lookup(const char service_name[], const PMI_keyval_t *info_ptr
 {
     pmix_status_t rc;
     int nvals;
-    pmix_info_t info[2];
+    pmix_pdata_t pdata[2];
+
+    PMIX_PDATA_CONSTRUCT(&pdata[0]);
+    PMIX_PDATA_CONSTRUCT(&pdata[1]);
     
     /* pass the service */
-    (void)strncpy(info[0].key, service_name, PMIX_MAX_KEYLEN);
+    (void)strncpy(pdata[0].key, service_name, PMIX_MAX_KEYLEN);
     nvals = 1;
 
     /* if provided, add any other value */
     if (NULL != info_ptr) {
-        (void)strncpy(info[1].key, info_ptr->key, PMIX_MAX_KEYLEN);
-        info[1].value.type = PMIX_STRING;
-        info[1].value.data.string = info_ptr->val;
+        (void)strncpy(pdata[1].key, info_ptr->key, PMIX_MAX_KEYLEN);
+        pdata[1].value.type = PMIX_STRING;
+        pdata[1].value.data.string = info_ptr->val;
         nvals = 2;
     }
 
-    /* PMI-2 doesn't want the nspace back */
-    if (PMIX_SUCCESS != (rc = PMIx_Lookup(PMIX_NAMESPACE, info, nvals, NULL))) {
+    /* lookup the info */
+    if (PMIX_SUCCESS != (rc = PMIx_Lookup(PMIX_NAMESPACE, pdata, nvals))) {
+        PMIX_PDATA_DESTRUCT(&pdata[0]);
+        PMIX_PDATA_DESTRUCT(&pdata[1]);
         return convert_err(rc);
     }
 
     /* should have received a string back */
-    if (PMIX_STRING != info[0].value.type ||
-        NULL == info[0].value.data.string) {
-        PMIX_INFO_DESTRUCT(&info[0]);
+    if (PMIX_STRING != pdata[0].value.type ||
+        NULL == pdata[0].value.data.string) {
+        PMIX_PDATA_DESTRUCT(&pdata[0]);
+        PMIX_PDATA_DESTRUCT(&pdata[1]);
         return PMI2_FAIL;
     }
     
     /* return the port */
-    (void)strncpy(port, info[0].value.data.string, PMIX_MAX_VALLEN);
-    PMIX_INFO_DESTRUCT(&info[0]);
-    
+    (void)strncpy(port, pdata[0].value.data.string, PMIX_MAX_VALLEN);
+    PMIX_PDATA_DESTRUCT(&pdata[0]);
+
+    if (NULL != info_ptr) {
+    }
+    PMIX_PDATA_DESTRUCT(&pdata[1]);
+
     return PMI2_SUCCESS;
 }
 

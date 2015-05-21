@@ -209,25 +209,27 @@ int PMI_Unpublish_name(const char service_name[])
 int PMI_Lookup_name(const char service_name[], char port[])
 {
     pmix_status_t rc;
-    pmix_info_t info;
+    pmix_pdata_t pdata;
     
+    PMIX_PDATA_CONSTRUCT(&pdata);
+
     /* pass the service */
-    (void)strncpy(info.key, service_name, PMIX_MAX_KEYLEN);
+    (void)strncpy(pdata.key, service_name, PMIX_MAX_KEYLEN);
 
     /* PMI-1 doesn't want the nspace back */
-    if (PMIX_SUCCESS != (rc = PMIx_Lookup(PMIX_NAMESPACE, &info, 1, NULL))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Lookup(PMIX_NAMESPACE, &pdata, 1))) {
         return convert_err(rc);
     }
 
     /* should have received a string back */
-    if (PMIX_STRING != info.value.type ||
-        NULL == info.value.data.string) {
+    if (PMIX_STRING != pdata.value.type ||
+        NULL == pdata.value.data.string) {
         return convert_err(PMIX_ERR_NOT_FOUND);
     }
     
     /* return the port */
-    (void)strncpy(port, info.value.data.string, PMIX_MAX_VALLEN);
-    free(info.value.data.string);
+    (void)strncpy(port, pdata.value.data.string, PMIX_MAX_VALLEN);
+    PMIX_PDATA_DESTRUCT(&pdata);
     
     return PMIX_SUCCESS;
 }

@@ -326,6 +326,12 @@ int pmix_bfrop_open(void)
                        pmix_bfrop_copy_info,
                        pmix_bfrop_print_info);
     
+    PMIX_REGISTER_TYPE("PMIX_PDATA", PMIX_PDATA,
+                       pmix_bfrop_pack_pdata,
+                       pmix_bfrop_unpack_pdata,
+                       pmix_bfrop_copy_pdata,
+                       pmix_bfrop_print_pdata);
+
     PMIX_REGISTER_TYPE("PMIX_BUFFER", PMIX_BUFFER,
                        pmix_bfrop_pack_buf,
                        pmix_bfrop_unpack_buf,
@@ -457,6 +463,7 @@ void pmix_value_load(pmix_value_t *v, void *data,
         case PMIX_INFO_ARRAY:
         case PMIX_APP:
         case PMIX_INFO:
+        case PMIX_PDATA:
         case PMIX_BUFFER:
         case PMIX_KVAL:
         case PMIX_MODEX:
@@ -569,6 +576,7 @@ int pmix_value_unload(pmix_value_t *kv, void **data,
         case PMIX_INFO_ARRAY:
         case PMIX_APP:
         case PMIX_INFO:
+        case PMIX_PDATA:
         case PMIX_BUFFER:
         case PMIX_KVAL:
         case PMIX_MODEX:

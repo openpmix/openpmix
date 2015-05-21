@@ -57,8 +57,8 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
 static void op_cbfunc(int status, void *cbdata);
 static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                                pmix_buffer_t *buf, void *cbdata);
-static void lookup_cbfunc(int status, pmix_info_t info[], size_t ninfo,
-                          pmix_proc_t *proc, void *cbdata);
+static void lookup_cbfunc(int status, pmix_pdata_t pdata[], size_t ndata,
+                          void *cbdata);
 
 int PMIx_Publish(pmix_scope_t scope,
                  pmix_persistence_t persist,
@@ -159,8 +159,7 @@ int PMIx_Publish_nb(pmix_scope_t scope,
 }
 
 int PMIx_Lookup(pmix_scope_t scope,
-                pmix_info_t info[], size_t ninfo,
-                pmix_proc_t *proc)
+                pmix_pdata_t pdata[], size_t ndata)
 {
     int rc;
     pmix_cb_t *cb;
@@ -171,14 +170,14 @@ int PMIx_Lookup(pmix_scope_t scope,
                         "pmix: lookup called");
 
     /* bozo protection */
-    if (NULL == info) {
+    if (NULL == pdata) {
         return PMIX_ERR_BAD_PARAM;
     }
 
     /* transfer the info keys to the keys argv array */
-    for (i=0; i < ninfo; i++) {
-        if ('\0' != info[i].key[0]) {
-            pmix_argv_append_nosize(&keys, info[i].key);
+    for (i=0; i < ndata; i++) {
+        if ('\0' != pdata[i].key[0]) {
+            pmix_argv_append_nosize(&keys, pdata[i].key);
         }
     }
     
@@ -186,8 +185,8 @@ int PMIx_Lookup(pmix_scope_t scope,
      * recv routine so we know which callback to use when
      * the return message is recvd */
     cb = PMIX_NEW(pmix_cb_t);
-    cb->cbdata = (void*)info;
-    cb->nvals = ninfo;
+    cb->cbdata = (void*)pdata;
+    cb->nvals = ndata;
     cb->active = true;
 
     if (PMIX_SUCCESS != (rc = PMIx_Lookup_nb(scope, false, keys, lookup_cbfunc, cb))) {
@@ -399,10 +398,8 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
     int rc, ret;
     int32_t cnt;
-    char *key;
-    pmix_info_t *info;
-    size_t ninfo;
-    char nspace[PMIX_MAX_NSLEN+1];
+    pmix_pdata_t *pdata;
+    size_t ndata;
     
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:client recv callback activated with %d bytes",
@@ -415,9 +412,8 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     }
 
     /* set the defaults */
-    memset(nspace, 0, sizeof(nspace));
-    info = NULL;
-    ninfo = 0;
+    pdata = NULL;
+    ndata = 0;
     
     /* unpack the returned status */
     cnt = 1;
@@ -427,67 +423,57 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     }
     if (PMIX_SUCCESS != ret) {
         if (NULL != cb->lookup_cbfunc) {
-            cb->lookup_cbfunc(ret, NULL, 0, NULL, cb->cbdata);
+            cb->lookup_cbfunc(ret, NULL, 0, cb->cbdata);
         }
         PMIX_RELEASE(cb);
         return;
     }
     
-    /* start by unpacking the nspace of the process that published the info */
-    cnt = 1;
-    key = NULL;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &key, &cnt, PMIX_STRING))) {
-        PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(cb);
-        return;
-    }
-    if (NULL != key) {
-        strncpy(nspace, key, PMIX_MAX_NSLEN);
-        free(key);
-    }
-
     /* unpack the number of returned values */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ndata, &cnt, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(cb);
         return;
     }
-    if (0 < ninfo) {
-        /* create the info array storage */
-        info = (pmix_info_t*)malloc(ninfo * sizeof(pmix_info_t));
-        cnt = ninfo;
-        /* unpack the returned values into the info array */
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, info, &cnt, PMIX_INFO))) {
+    if (0 < ndata) {
+        /* create the array storage */
+        PMIX_PDATA_CREATE(pdata, ndata);
+        cnt = ndata;
+        /* unpack the returned values into the pdata array */
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, pdata, &cnt, PMIX_PDATA))) {
             PMIX_ERROR_LOG(rc);
             goto cleanup;
         }
     }
 
     if (NULL != cb->lookup_cbfunc) {
-        cb->lookup_cbfunc(rc, info, ninfo, nspace, cb->cbdata);
+        cb->lookup_cbfunc(rc, pdata, ndata, cb->cbdata);
     }
 
  cleanup:
     /* cleanup */
-    PMIX_INFO_FREE(info, ninfo);
+    PMIX_PDATA_FREE(pdata, ndata);
     
     PMIX_RELEASE(cb);
 }
 
-static void lookup_cbfunc(int status, pmix_info_t info[], size_t ninfo,
-                          pmix_proc_t *proc, void *cbdata)
+static void lookup_cbfunc(int status, pmix_pdata_t pdata[], size_t ndata,
+                          void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
-    pmix_info_t *tgt = (pmix_info_t*)cb->cbdata;
+    pmix_pdata_t *tgt = (pmix_pdata_t*)cb->cbdata;
     size_t i, j;
     
     /* find the matching key in the provided info array - error if not found */
-    for (i=0; i < ninfo; i++) {
+    for (i=0; i < ndata; i++) {
         for (j=0; j < cb->nvals; j++) {
-            if (0 == strcmp(info[i].key, tgt[j].key)) {
+            if (0 == strcmp(pdata[i].key, tgt[j].key)) {
+                /* transfer the publishing proc id */
+                (void)strncpy(tgt[j].proc.nspace, pdata[i].proc.nspace, PMIX_MAX_NSLEN);
+                tgt[j].proc.rank = pdata[i].proc.rank;
                 /* transfer the value to the pmix_info_t */
-                pmix_value_xfer(&tgt[j].value, &info[i].value);
+                pmix_value_xfer(&tgt[j].value, &pdata[i].value);
                 break;
             }
         }
