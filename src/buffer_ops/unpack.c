@@ -557,6 +557,11 @@ static int unpack_val(pmix_buffer_t *buffer, pmix_value_t *val)
             return ret;
         }
         break;
+    case PMIX_BYTE_OBJECT:
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_buffer(buffer, &val->data.bo, &m, PMIX_BYTE_OBJECT))) {
+            return ret;
+        }
+        break;
     default:
         pmix_output(0, "UNPACK-PMIX-VALUE: UNSUPPORTED TYPE");
         return PMIX_ERROR;

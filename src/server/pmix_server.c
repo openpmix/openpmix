@@ -782,12 +782,12 @@ pmix_status_t PMIx_generate_regex(const char *input, char **regexp)
     /* define the default */
     *regexp = NULL;
 
-    cptr = strchr(input, ',');
-    if (NULL == cptr) {
-        /* if there is only one value, don't bother */
-        *regexp = strdup(input);
-        return PMIX_SUCCESS;
-    }
+    //cptr = strchr(input, ',');
+    //if (NULL == cptr) {
+    //    /* if there is only one value, don't bother */
+    //    *regexp = strdup(input);
+    //    return PMIX_SUCCESS;
+    //}
 
     /* setup the list of results */
     PMIX_CONSTRUCT(&vids, pmix_list_t);
@@ -1005,12 +1005,12 @@ pmix_status_t PMIx_generate_ppn(const char *input, char **regexp)
 
     /* split the input by node */
     ppn = pmix_argv_split(input, ';');
-    if (1 == pmix_argv_count(ppn)) {
-        /* if there is only one node, don't bother */
-        *regexp = strdup(input);
-        pmix_argv_free(ppn);
-        return PMIX_SUCCESS;
-    }
+//    if (1 == pmix_argv_count(ppn)) {
+//        /* if there is only one node, don't bother */
+//        *regexp = strdup(input);
+//        pmix_argv_free(ppn);
+//        return PMIX_SUCCESS;
+//    }
 
     /* for each node, split the input by comma */
     for (i=0; NULL != ppn[i]; i++) {

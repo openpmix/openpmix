@@ -603,6 +603,7 @@ pmix_status_t PMIx_Resolve_peers(const char *nodename, const char *nspace,
     /* create the required storage */
     i = pmix_argv_count(nsps);
     PMIX_PROC_CREATE(*procs, i);
+    *nprocs = i;
 
     /* transfer the data */
     for (i=0; NULL != nsps[i]; i++) {
@@ -888,7 +889,7 @@ void pmix_client_process_nspace_blob(const char *nspace, pmix_buffer_t *bptr)
             for (i=0; i < nnodes; i++) {
                 cnt = 1;
                 PMIX_CONSTRUCT(&kv, pmix_kval_t);
-                while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&buf2, &kv, &cnt, PMIX_KVAL))) {
+                if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&buf2, &kv, &cnt, PMIX_KVAL))) {
                     PMIX_ERROR_LOG(rc);
                     PMIX_DESTRUCT(&buf2);
                     PMIX_DESTRUCT(&kv);
@@ -900,6 +901,7 @@ void pmix_client_process_nspace_blob(const char *nspace, pmix_buffer_t *bptr)
                 nrec = PMIX_NEW(pmix_nrec_t);
                 nrec->name = strdup(kv.key);
                 nrec->procs = strdup(kv.value->data.string);
+                pmix_list_append(&nsptr->nodes, &nrec->super);
                 /* split the list of procs so we can store their
                  * individual data */
                 procs = pmix_argv_split(nrec->procs, ',');
