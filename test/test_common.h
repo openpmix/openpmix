@@ -192,6 +192,7 @@ extern pmix_list_t test_fences;
 extern range_desc_t *noise_range;
 
 #define NODE_NAME "node1"
+int get_total_ns_number(test_params params);
 int get_all_ranks_from_namespace(test_params params, char *nspace, int **ranks, size_t *nranks);
 
 #endif // TEST_COMMON_H

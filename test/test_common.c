@@ -439,6 +439,24 @@ int parse_noise(char *noise_param, int store)
     return ret;
 }
 
+int get_total_ns_number(test_params params)
+{
+    int num = 0;
+    if (NULL == params.ns_dist) {
+        return 1;
+    } else {
+        char *tmp = strdup(params.ns_dist);
+        char *pch = tmp;
+        while (NULL != pch) {
+            num++;
+            pch = strtok((1 == num ) ? tmp : NULL, ":");
+        }
+        num--;
+        free(tmp);
+    }
+    return num;
+}
+
 int get_all_ranks_from_namespace(test_params params, char *nspace, int **ranks, size_t *nranks)
 {
     int base_rank = 0;
