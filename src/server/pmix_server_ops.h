@@ -37,7 +37,7 @@ typedef struct {
     pmix_list_item_t super;
     pmix_nspace_t *nptr;
     bool contribution_added;      // indicates the number of procs from this nspace have been counted
-    pmix_proc_t *proc;          // point to the proc in tracker array
+    pmix_proc_t *proc;            // point to the proc in tracker array
 } pmix_range_trkr_t;
 PMIX_CLASS_DECLARATION(pmix_range_trkr_t);
 
@@ -45,10 +45,10 @@ PMIX_CLASS_DECLARATION(pmix_range_trkr_t);
 typedef struct {
     pmix_list_item_t super;
     pmix_cmd_t type;
-    pmix_proc_t *rngs;     // retain a copy of the original procs
+    pmix_proc_t *pcs;       // retain a copy of the original procs
     volatile bool active;   // flag for waiting for completion
     bool def_complete;      // all procs have been recorded and the trk definition is complete
-    pmix_list_t procs;     // list of pmix_range_trkr_t identifying the participating procs
+    pmix_list_t procs;      // list of pmix_range_trkr_t identifying the participating procs
     pmix_list_t locals;     // list of pmix_server_caddy_t identifying the local participants
     uint32_t local_cnt;     // number of local participants
     bool collect_data;
@@ -161,7 +161,8 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
                               pmix_modex_cbfunc_t cbfunc,
                               void *cbdata);
 
-pmix_status_t pmix_server_publish(pmix_buffer_t *buf,
+pmix_status_t pmix_server_publish(pmix_peer_t *peer,
+                                  pmix_buffer_t *buf,
                                   pmix_op_cbfunc_t cbfunc,
                                   void *cbdata);
 

@@ -1,3 +1,13 @@
+/*
+ * Copyright (c) 2015      Intel, Inc.  All rights reserved.
+ * $COPYRIGHT$
+ *
+ * Additional copyrights may follow
+ *
+ * $HEADER$
+ *
+ */
+
 #include "test_fence.h"
 
 static void release_cb(pmix_status_t status, void *cbdata)
@@ -79,12 +89,12 @@ static void add_noise(char *noise_param, char *my_nspace, int my_rank)
     PMIX_VALUE_RELEASE(val);                                                                                        \
 } while(0);
 
-#define FENCE(blocking, data_ex, rngs, nranges) do {                                                                \
+#define FENCE(blocking, data_ex, pcs, nprocs) do {                      \
     if( blocking ){                                                                                                 \
-        rc = PMIx_Fence(rngs, nranges, data_ex);                                                                    \
+        rc = PMIx_Fence(pcs, nprocs, data_ex);                                                                    \
     } else {                                                                                                        \
         int in_progress = 1, count;                                                                                 \
-        if ( PMIX_SUCCESS == (rc = PMIx_Fence_nb(rngs, nranges, data_ex, release_cb, &in_progress))) {              \
+        if ( PMIX_SUCCESS == (rc = PMIx_Fence_nb(pcs, nprocs, data_ex, release_cb, &in_progress))) {              \
             count = 0;                                                                                              \
             while( in_progress ){                                                                                   \
                 struct timespec ts;                                                                                 \
@@ -109,8 +119,8 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
     fence_desc_t *desc;
     nspace_desc_t *ndesc;
     rank_desc_t *rdesc;
-    size_t nranges;
-    pmix_range_t *rngs;
+    size_t nprocs;
+    pmix_procs_t *pcs;
     int n = 0, r = 0;
     int participate = 0;
     int fence_num = 0;
@@ -125,8 +135,8 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
     parse_fence(params.fences, 1);
 
     PMIX_LIST_FOREACH(desc, &test_fences, fence_desc_t) {
-        nranges = pmix_list_get_size(&(desc->range->nspaces));
-        PMIX_RANGE_CREATE(rngs, nranges);
+        nprocs = pmix_list_get_size(&(desc->range->nspaces));
+        PMIX_PROC_CREATE(pcs, nprocs);
         char tmp[256] = {0};
         len = sprintf(tmp, "fence %d: block = %d de = %d ", fence_num, desc->blocking, desc->data_exchange);
         n = 0;

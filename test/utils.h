@@ -1,3 +1,13 @@
+/*
+ * Copyright (c) 2015      Intel, Inc.  All rights reserved.
+ * $COPYRIGHT$
+ *
+ * Additional copyrights may follow
+ *
+ * $HEADER$
+ *
+ */
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>

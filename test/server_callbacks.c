@@ -51,6 +51,7 @@ typedef struct {
     pmix_list_item_t super;
     pmix_info_t data;
     char *namespace_published;
+    int rank_published;
 } pmix_test_info_t;
 
 static void tcon(pmix_test_info_t *p)
@@ -72,7 +73,7 @@ pmix_list_t *pmix_test_published_list = NULL;
 static int finalized_count = 0;
 
 int finalized(const char nspace[], int rank, void *server_object,
-                     pmix_op_cbfunc_t cbfunc, void *cbdata)
+              pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     if( CLI_TERM <= cli_info[rank].state ){
         TEST_ERROR(("double termination of rank %d", rank));
@@ -93,8 +94,8 @@ int finalized(const char nspace[], int rank, void *server_object,
 }
 
 int abort_fn(const char nspace[], int rank, void *server_object,
-                    int status, const char msg[],
-                    pmix_op_cbfunc_t cbfunc, void *cbdata)
+             int status, const char msg[],
+             pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     if (NULL != cbfunc) {
         cbfunc(PMIX_SUCCESS, cbdata);
@@ -106,7 +107,7 @@ int abort_fn(const char nspace[], int rank, void *server_object,
 }
 
 static void gather_data_rank(const char nspace[], int rank,
-                        pmix_list_t *mdxlist)
+                             pmix_list_t *mdxlist)
 {
     pmix_test_data_t *tdat, *mdx;
 
@@ -181,12 +182,12 @@ static void xfer_to_array(pmix_list_t *mdxlist,
     }
 }
 
-int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
-                      int collect_data,
-                      pmix_modex_cbfunc_t cbfunc, void *cbdata)
+int fencenb_fn(const pmix_proc_t procs[], size_t nprocs,
+               int collect_data,
+               pmix_modex_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_list_t data;
-    size_t i, j;
+    size_t i;
     pmix_modex_data_t *mdxarray = NULL;
     size_t size=0, n;
     
@@ -196,14 +197,8 @@ int fencenb_fn(const pmix_range_t ranges[], size_t nranges,
     /* if they want all the data returned, do so */
     if (0 != collect_data) {
         PMIX_CONSTRUCT(&data, pmix_list_t);
-        for (i=0; i < nranges; i++) {
-            if (NULL == ranges[i].ranks) {
-                gather_data(ranges[i].nspace, PMIX_RANK_WILDCARD, &data);
-            } else {
-                for (j=0; j < ranges[i].nranks; j++) {
-                    gather_data(ranges[i].nspace, ranges[i].ranks[j], &data);
-                }
-            }
+        for (i=0; i < nprocs; i++) {
+                gather_data(procs[i].nspace, procs[i].rank, &data);
         }
         /* xfer the data to the mdx array */
         xfer_to_array(&data, &mdxarray, &size);
@@ -245,7 +240,7 @@ int store_modex_fn(pmix_modex_data_t *data,
 }
 
 int get_modexnb_fn(const char nspace[], int rank,
-                          pmix_modex_cbfunc_t cbfunc, void *cbdata)
+                   pmix_modex_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_list_t data;
     pmix_modex_data_t *mdxarray;
@@ -279,9 +274,10 @@ int get_modexnb_fn(const char nspace[], int rank,
     return PMIX_SUCCESS;
 }
 
-int publish_fn(pmix_scope_t scope, pmix_persistence_t persist,
-                      const pmix_info_t info[], size_t ninfo,
-                      pmix_op_cbfunc_t cbfunc, void *cbdata)
+int publish_fn(const char nspace[], int rank,
+               pmix_scope_t scope, pmix_persistence_t persist,
+               const pmix_info_t info[], size_t ninfo,
+               pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     size_t i;
     int found;
@@ -300,8 +296,9 @@ int publish_fn(pmix_scope_t scope, pmix_persistence_t persist,
         if (!found) {
             new_info = PMIX_NEW(pmix_test_info_t);
             strncpy(new_info->data.key, info[i].key, strlen(info[i].key)+1);
-            pmix_value_xfer(&new_info->data.value, &info[i].value);
-//            new_info->namespace_published
+            pmix_value_xfer(&new_info->data.value, (pmix_value_t*)&info[i].value);
+            new_info->namespace_published = strdup(nspace);
+            new_info->rank_published = rank;
             pmix_list_append(pmix_test_published_list, &new_info->super);
         }
     }
@@ -312,37 +309,38 @@ int publish_fn(pmix_scope_t scope, pmix_persistence_t persist,
 }
 
 int lookup_fn(pmix_scope_t scope, int wait, char **keys,
-                     pmix_lookup_cbfunc_t cbfunc, void *cbdata)
+              pmix_lookup_cbfunc_t cbfunc, void *cbdata)
 {
-    size_t i, ninfo, ret;
-    pmix_info_t *info;
+    size_t i, ndata, ret;
+    pmix_pdata_t *pdata;
     pmix_test_info_t *tinfo;
     if (NULL == pmix_test_published_list) {
         return PMIX_ERR_NOT_FOUND;
     }
-    ninfo = pmix_argv_count(keys);
-    PMIX_INFO_CREATE(info, ninfo);
+    ndata = pmix_argv_count(keys);
+    PMIX_PDATA_CREATE(pdata, ndata);
     ret = 0;
-    for (i = 0; i < ninfo; i++) {
-        PMIX_INFO_CONSTRUCT(&info[i]);
+    for (i = 0; i < ndata; i++) {
         PMIX_LIST_FOREACH(tinfo, pmix_test_published_list, pmix_test_info_t) {
-            if (!strcmp(tinfo->data.key, keys[i])) {
-                strncpy(info[i].key, keys[i], strlen(keys[i])+1);
-                pmix_value_xfer(&info[i].value, &tinfo->data.value);
+            if (0 == strcmp(tinfo->data.key, keys[i])) {
+                (void)strncpy(pdata[i].proc.nspace, tinfo->namespace_published, PMIX_MAX_NSLEN);
+                pdata[i].proc.rank = tinfo->rank_published;
+                (void)strncpy(pdata[i].key, keys[i], strlen(keys[i])+1);
+                pmix_value_xfer(&pdata[i].value, &tinfo->data.value);
                 ret++;
                 break;
             }
         }
     }
     if (NULL != cbfunc) {
-        cbfunc((ret == ninfo) ? PMIX_SUCCESS : PMIX_ERR_NOT_FOUND, info, ninfo, "lalala", cbdata);
+        cbfunc((ret == ndata) ? PMIX_SUCCESS : PMIX_ERR_NOT_FOUND, pdata, ndata, cbdata);
     }
-    PMIX_INFO_FREE(info, ninfo);
+    PMIX_PDATA_FREE(pdata, ndata);
     return PMIX_SUCCESS;
 }
 
 int unpublish_fn(pmix_scope_t scope, char **keys,
-                        pmix_op_cbfunc_t cbfunc, void *cbdata)
+                 pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     size_t i, ninfo;
     pmix_test_info_t *info, *next;
@@ -373,7 +371,7 @@ int unpublish_fn(pmix_scope_t scope, char **keys,
 }
 
 int spawn_fn(const pmix_app_t apps[], size_t napps,
-                    pmix_spawn_cbfunc_t cbfunc, void *cbdata)
+             pmix_spawn_cbfunc_t cbfunc, void *cbdata)
 {
    if (NULL != cbfunc) {
         cbfunc(PMIX_SUCCESS, "foobar", cbdata);
@@ -381,8 +379,8 @@ int spawn_fn(const pmix_app_t apps[], size_t napps,
     return PMIX_SUCCESS;
 }
 
-int connect_fn(const pmix_range_t ranges[], size_t nranges,
-                      pmix_op_cbfunc_t cbfunc, void *cbdata)
+int connect_fn(const pmix_proc_t procs[], size_t nprocs,
+               pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     if (NULL != cbfunc) {
         /* return PMIX_EXISTS here just to ensure we get the correct status on the client */
@@ -391,8 +389,8 @@ int connect_fn(const pmix_range_t ranges[], size_t nranges,
    return PMIX_SUCCESS;
 }
 
-int disconnect_fn(const pmix_range_t ranges[], size_t nranges,
-                         pmix_op_cbfunc_t cbfunc, void *cbdata)
+int disconnect_fn(const pmix_proc_t procs[], size_t nprocs,
+                  pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     if (NULL != cbfunc) {
         cbfunc(PMIX_SUCCESS, cbdata);

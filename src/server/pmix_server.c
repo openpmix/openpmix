@@ -522,13 +522,13 @@ static void _execute_collective(int sd, short args, void *cbdata)
     /* we don't need to check for non-NULL APIs here as
      * that was already done when the tracker was created */
     if (PMIX_FENCENB_CMD == trk->type) {
-        pmix_host_server.fence_nb(trk->rngs, pmix_list_get_size(&trk->procs),
+        pmix_host_server.fence_nb(trk->pcs, pmix_list_get_size(&trk->procs),
                                   trk->collect_data, trk->modexcbfunc, trk);
     } else if (PMIX_CONNECTNB_CMD == trk->type) {
-        pmix_host_server.connect(trk->rngs, pmix_list_get_size(&trk->procs),
+        pmix_host_server.connect(trk->pcs, pmix_list_get_size(&trk->procs),
                                  trk->op_cbfunc, trk);
     } else if (PMIX_DISCONNECTNB_CMD == trk->type) {
-        pmix_host_server.disconnect(trk->rngs, pmix_list_get_size(&trk->procs),
+        pmix_host_server.disconnect(trk->pcs, pmix_list_get_size(&trk->procs),
                                     trk->op_cbfunc, trk);
     } else {
         /* unknown type */
@@ -1762,7 +1762,7 @@ static int server_switchyard(pmix_peer_t *peer, uint32_t tag,
         
     if (PMIX_PUBLISHNB_CMD == cmd) {
         PMIX_PEER_CADDY(cd, peer, tag);
-        if (PMIX_SUCCESS != (rc = pmix_server_publish(buf, op_cbfunc, cd))) {
+        if (PMIX_SUCCESS != (rc = pmix_server_publish(peer, buf, op_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(cd);
         }

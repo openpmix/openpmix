@@ -1,3 +1,13 @@
+/*
+ * Copyright (c) 2015      Intel, Inc.  All rights reserved.
+ * $COPYRIGHT$
+ *
+ * Additional copyrights may follow
+ *
+ * $HEADER$
+ *
+ */
+
 #include "test_publish.h"
 #include <time.h>
 #include "src/buffer_ops/buffer_ops.h"

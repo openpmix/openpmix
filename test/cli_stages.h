@@ -59,6 +59,6 @@ void cli_kill_all(void);
 bool test_terminated(void);
 
 void errhandler(pmix_status_t status,
-                       pmix_range_t ranges[], size_t nranges,
-                       pmix_info_t info[], size_t ninfo);
+                pmix_proc_t procs[], size_t nprocs,
+                pmix_info_t info[], size_t ninfo);
 

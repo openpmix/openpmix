@@ -417,7 +417,7 @@ static int server_switchyard(pmix_server_caddy_t *cd,
         
     if (PMIX_PUBLISHNB_CMD == cmd) {
         PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
-        if (PMIX_SUCCESS != (rc = pmix_server_publish(buf, op_cbfunc, cd))) {
+        if (PMIX_SUCCESS != (rc = pmix_server_publish(cd->peer, buf, op_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
             op_cbfunc(rc, cd);
         }

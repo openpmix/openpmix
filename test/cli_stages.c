@@ -244,8 +244,8 @@ void cli_kill_all(void)
 }
 
 void errhandler(pmix_status_t status,
-                       pmix_range_t ranges[], size_t nranges,
-                       pmix_info_t info[], size_t ninfo)
+                pmix_proc_t procs[], size_t nprocs,
+                pmix_info_t info[], size_t ninfo)
 {
     TEST_ERROR(("Error handler with status = %d", status))
     test_abort = true;
