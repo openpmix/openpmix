@@ -105,6 +105,7 @@ typedef struct {
     int test_publish;
     int test_spawn;
     int test_connect;
+    int test_resolve_peers;
 } test_params;
 
 #define INIT_TEST_PARAMS(params) do { \
@@ -122,6 +123,7 @@ typedef struct {
     params.test_publish = 0;          \
     params.test_spawn = 0;            \
     params.test_connect = 0;          \
+    params.test_resolve_peers = 0;    \
     params.binary = NULL;             \
     params.np = NULL;                 \
     params.prefix = NULL;             \
@@ -188,5 +190,8 @@ PMIX_CLASS_DECLARATION(fence_desc_t);
 
 extern pmix_list_t test_fences;
 extern range_desc_t *noise_range;
+
+#define NODE_NAME "node1"
+int get_all_ranks_from_namespace(test_params params, char *nspace, int **ranks, size_t *nranks);
 
 #endif // TEST_COMMON_H

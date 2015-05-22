@@ -29,7 +29,8 @@ static void set_namespace(int nprocs, char *ranks, char *name)
 {
     size_t ninfo;
     pmix_info_t *info;
-    ninfo = 4;
+    ninfo = 6;
+    char *regex, *ppn;
     PMIX_INFO_CREATE(info, ninfo);
     (void)strncpy(info[0].key, PMIX_UNIV_SIZE, PMIX_MAX_KEYLEN);
     info[0].value.type = PMIX_UINT32;
@@ -46,7 +47,17 @@ static void set_namespace(int nprocs, char *ranks, char *name)
     (void)strncpy(info[3].key, PMIX_LOCAL_PEERS, PMIX_MAX_KEYLEN);
     info[3].value.type = PMIX_STRING;
     info[3].value.data.string = strdup(ranks);
+
+    PMIx_generate_regex(NODE_NAME, &regex);
+    (void)strncpy(info[4].key, PMIX_NODE_MAP, PMIX_MAX_KEYLEN);
+    info[4].value.type = PMIX_STRING;
+    info[4].value.data.string = regex;
     
+    PMIx_generate_ppn(ranks, &ppn);
+    (void)strncpy(info[5].key, PMIX_PROC_MAP, PMIX_MAX_KEYLEN);
+    info[5].value.type = PMIX_STRING;
+    info[5].value.data.string = ppn;
+
     PMIx_server_register_nspace(name, nprocs, info, ninfo);
     PMIX_INFO_FREE(info, ninfo);
 }
@@ -102,6 +113,9 @@ void set_client_argv(test_params *params, char ***argv)
     }
     if (params->test_connect) {
         pmix_argv_append_nosize(argv, "--test-connect");
+    }
+    if (params->test_resolve_peers) {
+        pmix_argv_append_nosize(argv, "--test-resolve-peers");
     }
 }
 

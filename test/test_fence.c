@@ -32,43 +32,6 @@ static void add_noise(char *noise_param, char *my_nspace, int my_rank)
     }
 }
 
-static int get_all_ranks_from_namespace(test_params params, char *nspace, int **ranks, size_t *nranks)
-{
-    int base_rank = 0;
-    size_t num_ranks = 0;
-    int num = -1;
-    size_t j;
-    if (NULL == params.ns_dist) {
-        *nranks = params.ns_size;
-        *ranks = (int*)malloc(params.ns_size * sizeof(int));
-        for (j = 0; j < (size_t)params.ns_size; j++) {
-            (*ranks)[j] = j;
-        }
-    } else {
-        char *tmp = strdup(params.ns_dist);
-        char *pch = tmp;
-        int ns_id = (int)strtol(nspace + strlen(TEST_NAMESPACE) + 1, NULL, 10);
-        while (NULL != pch && num != ns_id) {
-            base_rank += num_ranks;
-            pch = strtok((-1 == num ) ? tmp : NULL, ":");
-            num++;
-            num_ranks = (size_t)strtol(pch, NULL, 10);
-        }
-        if (num == ns_id && 0 != num_ranks) {
-            *nranks = num_ranks;
-            *ranks = (int*)malloc(num_ranks * sizeof(int));
-            for (j = 0; j < num_ranks; j++) {
-                (*ranks)[j] = base_rank+j;
-            }
-        } else {
-            free(tmp);
-            return PMIX_ERROR;
-        }
-        free(tmp);
-    }
-    return PMIX_SUCCESS;
-}
-
 #define SET_KEY(key, fence_num, ind, use_same_keys) do {                                                            \
     if (use_same_keys) {                                                                                            \
         (void)snprintf(key, sizeof(key)-1, "key-%d", ind);                                                            \

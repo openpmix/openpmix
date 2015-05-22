@@ -1,5 +1,6 @@
 #include "test_common.h"
 #include <stdarg.h>
+#include "src/api/pmix_common.h"
 
 int pmix_test_verbose = 0;
 
@@ -56,6 +57,7 @@ void parse_cmd(int argc, char **argv, test_params *params)
             fprintf(stderr, "\t--test-publish     test publish/lookup/unpublish api.\n");
             fprintf(stderr, "\t--test-spawn       test spawn api.\n");
             fprintf(stderr, "\t--test-connect     test connect/disconnect api.\n");
+            fprintf(stderr, "\t--test-resolve-peers    test resolve_peers api.\n");
             exit(0);
         } else if (0 == strcmp(argv[i], "--exec") || 0 == strcmp(argv[i], "-e")) {
             i++;
@@ -142,6 +144,8 @@ void parse_cmd(int argc, char **argv, test_params *params)
             params->test_spawn = 1;
         } else if( 0 == strcmp(argv[i], "--test-connect") ){
             params->test_connect = 1;
+        } else if( 0 == strcmp(argv[i], "--test-resolve-peers") ){
+            params->test_resolve_peers = 1;
         }
 
         else {
@@ -434,3 +438,41 @@ int parse_noise(char *noise_param, int store)
     free(tmp);
     return ret;
 }
+
+int get_all_ranks_from_namespace(test_params params, char *nspace, int **ranks, size_t *nranks)
+{
+    int base_rank = 0;
+    size_t num_ranks = 0;
+    int num = -1;
+    size_t j;
+    if (NULL == params.ns_dist) {
+        *nranks = params.ns_size;
+        *ranks = (int*)malloc(params.ns_size * sizeof(int));
+        for (j = 0; j < (size_t)params.ns_size; j++) {
+            (*ranks)[j] = j;
+        }
+    } else {
+        char *tmp = strdup(params.ns_dist);
+        char *pch = tmp;
+        int ns_id = (int)strtol(nspace + strlen(TEST_NAMESPACE) + 1, NULL, 10);
+        while (NULL != pch && num != ns_id) {
+            base_rank += num_ranks;
+            pch = strtok((-1 == num ) ? tmp : NULL, ":");
+            num++;
+            num_ranks = (size_t)strtol(pch, NULL, 10);
+        }
+        if (num == ns_id && 0 != num_ranks) {
+            *nranks = num_ranks;
+            *ranks = (int*)malloc(num_ranks * sizeof(int));
+            for (j = 0; j < num_ranks; j++) {
+                (*ranks)[j] = base_rank+j;
+            }
+        } else {
+            free(tmp);
+            return PMIX_ERROR;
+        }
+        free(tmp);
+    }
+    return PMIX_SUCCESS;
+}
+

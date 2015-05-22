@@ -36,6 +36,7 @@
 #include "test_publish.h"
 #include "test_spawn.h"
 #include "test_cd.h"
+#include "test_resolve_peers.h"
 
 int main(int argc, char **argv)
 {
@@ -142,6 +143,15 @@ int main(int argc, char **argv)
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
             TEST_ERROR(("%s:%d Connect/Disconnect test failed: %d", params.nspace, rank, rc));
+            exit(0);
+        }
+    }
+
+    if (0 != params.test_resolve_peers) {
+        rc = test_resolve_peers(params.nspace, rank, params);
+        if (PMIX_SUCCESS != rc) {
+            FREE_TEST_PARAMS(params);
+            TEST_ERROR(("%s:%d Resolve peers test failed: %d", params.nspace, rank, rc));
             exit(0);
         }
     }
