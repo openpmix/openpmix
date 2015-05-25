@@ -657,7 +657,7 @@ int pmix_bfrop_unpack_pdata(pmix_buffer_t *buffer, void *dest,
         PMIX_PDATA_CONSTRUCT(&ptr[i]);
         /* unpack the proc */
         m=1;
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_string(buffer, &ptr[i].proc, &m, PMIX_PROC))) {
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_proc(buffer, &ptr[i].proc, &m, PMIX_PROC))) {
             return ret;
         }
         /* unpack key */

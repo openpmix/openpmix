@@ -60,7 +60,7 @@ int test_resolve_peers(char *my_nspace, int my_rank, test_params params)
         PMIX_PROC_FREE(procs, nprocs);
         PMIX_PROC_FREE(ranks, nranks);
         if (PMIX_SUCCESS == rc) {
-            fprintf(stderr, "------------success for ns %s\n", nspace);
+            TEST_VERBOSE(("%s:%d: Resolve peers succeeded for ns %s\n", my_nspace, my_rank, nspace));
         } else {
             break;
         }

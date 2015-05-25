@@ -135,7 +135,7 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
         len = sprintf(tmp, "fence %d: block = %d de = %d ", fence_num, desc->blocking, desc->data_exchange);
         participate = false;
         /* search the participants */
-        PMIX_LIST_FOREACH(p, participants, participant_t) {
+        PMIX_LIST_FOREACH(p, desc->participants, participant_t) {
             if (0 == strncmp(my_nspace, p->proc.nspace, strlen(my_nspace)) &&
                 (my_rank == p->proc.rank || PMIX_RANK_WILDCARD == p->proc.rank)) {
                 participate = true;
@@ -146,7 +146,9 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
                 len += sprintf(tmp+len, "%d,", p->proc.rank);
             }
         }
+        fprintf(stderr, "%s\n", tmp);
         if (participate) {
+                fprintf(stderr, "f %d participate %s:%d\n", fence_num, my_nspace, my_rank);
             /*run fence test on this range */
             /* first put value (my_ns, my_rank) with key based on fence_num to split results of different fences*/
             put_ind = 0;
@@ -194,12 +196,13 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
             }
 
             /* setup the fence */
-            npcs = pmix_list_get_size(participants);
+            npcs = pmix_list_get_size(desc->participants);
             PMIX_PROC_CREATE(pcs, npcs);
             i = 0;
-            PMIX_LIST_FOREACH(p, participants, participant_t) {
+            PMIX_LIST_FOREACH(p, desc->participants, participant_t) {
                 (void)strncpy(pcs[i].nspace, p->proc.nspace, PMIX_MAX_NSLEN);
                 pcs[i].rank = p->proc.rank;
+                i++;
             }
             
             /* perform fence */
@@ -212,7 +215,7 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
             }
 
             /* get data from all participating in this fence clients */
-            PMIX_LIST_FOREACH(p, participants, participant_t) {
+            PMIX_LIST_FOREACH(p, desc->participants, participant_t) {
                 put_ind = 0;
                 snprintf(sval, 50, "%d:%s:%d", fence_num, p->proc.nspace, p->proc.rank);
                 GET(string, sval, p->proc.nspace, p->proc.rank, fence_num, put_ind++, params.use_same_keys);
@@ -251,11 +254,11 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
                     return rc;
                 }
             }
+            /* barrier across participating processes to prevent putting new values with the same key
+             * before finishing data exchange with other processes. */
+            FENCE(1, 0, pcs, npcs);
+            PMIX_PROC_FREE(pcs, npcs);
         }
-        /* barrier across participating processes to prevent putting new values with the same key
-         * before finishing data exchange with other processes. */
-        FENCE(1, 0, pcs, npcs);
-        PMIX_PROC_FREE(pcs, npcs);
         fence_num++;
     }
 

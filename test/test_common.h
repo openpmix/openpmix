@@ -164,29 +164,9 @@ int parse_noise(char *noise_param, int store);
 
 typedef struct {
     pmix_list_item_t super;
-    int rank;
-} rank_desc_t;
-PMIX_CLASS_DECLARATION(rank_desc_t);
-
-typedef struct {
-    pmix_list_item_t super;
-    int id;
-    pmix_list_t ranks;
-} nspace_desc_t;
-PMIX_CLASS_DECLARATION(nspace_desc_t);
-
-typedef struct {
-    pmix_list_item_t super;
-    pmix_list_t nspaces;
-} range_desc_t;
-PMIX_CLASS_DECLARATION(range_desc_t);
-
-typedef struct {
-    pmix_list_item_t super;
     int blocking;
     int data_exchange;
-    pmix_proc_t *participants;  // array of participants
-    size_t nparticipants;
+    pmix_list_t *participants;  // list of participants
 } fence_desc_t;
 PMIX_CLASS_DECLARATION(fence_desc_t);
 
@@ -198,7 +178,6 @@ PMIX_CLASS_DECLARATION(participant_t);
 
 extern pmix_list_t test_fences;
 extern pmix_list_t *noise_range;
-extern pmix_list_t *participants;
 
 #define NODE_NAME "node1"
 int get_total_ns_number(test_params params);

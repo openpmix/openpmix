@@ -171,56 +171,21 @@ void parse_cmd(int argc, char **argv, test_params *params)
     }
 }
 
-static void ncon(nspace_desc_t *p)
-{
-    p->id = -1;
-    PMIX_CONSTRUCT(&(p->ranks), pmix_list_t);
-}
-
-static void ndes(nspace_desc_t *p)
-{
-    PMIX_LIST_DESTRUCT(&(p->ranks));
-}
-
-PMIX_CLASS_INSTANCE(nspace_desc_t,
-                    pmix_list_item_t,
-                    ncon, ndes);
-
 static void fcon(fence_desc_t *p)
 {
     p->blocking = 0;
     p->data_exchange = 0;
-    p->participants = NULL;
+    p->participants = PMIX_NEW(pmix_list_t);
 }
 
 static void fdes(fence_desc_t *p)
 {
-    if (NULL != p->participants) {
-        free(p->participants);
-    }
+    PMIX_LIST_RELEASE(p->participants);
 }
 
 PMIX_CLASS_INSTANCE(fence_desc_t,
                     pmix_list_item_t,
                     fcon, fdes);
-
-PMIX_CLASS_INSTANCE(rank_desc_t,
-                    pmix_list_item_t,
-                    NULL, NULL);
-
-static void rcon(range_desc_t *p)
-{
-    PMIX_CONSTRUCT(&(p->nspaces), pmix_list_t);
-}
-
-static void rdes(range_desc_t *p)
-{
-    PMIX_LIST_DESTRUCT(&(p->nspaces));
-}
-
-PMIX_CLASS_INSTANCE(range_desc_t,
-                    pmix_list_item_t,
-                    rcon, rdes);
 
 PMIX_CLASS_INSTANCE(participant_t,
                     pmix_list_item_t,
@@ -255,7 +220,7 @@ static int parse_token(char *str, int step, int store)
     case 0:
         if (store) {
             fdesc = PMIX_NEW(fence_desc_t);
-            participants = PMIX_NEW(pmix_list_t);
+            participants = fdesc->participants;
         }
         pch = strchr(str, '|');
         if (NULL != pch) {
@@ -480,10 +445,12 @@ int get_all_ranks_from_namespace(test_params params, char *nspace, pmix_proc_t *
     int num = -1;
     size_t j;
     if (NULL == params.ns_dist) {
-        *nranks = 1;
-        PMIX_PROC_CREATE(*ranks, 1);
-        (void)strncpy((*ranks)[0].nspace, nspace, PMIX_MAX_NSLEN);
-        (*ranks)[0].rank = PMIX_RANK_WILDCARD;
+        *nranks = params.ns_size;
+        PMIX_PROC_CREATE(*ranks, params.ns_size);
+        for (j = 0; j < (size_t)params.ns_size; j++) {
+            (void)strncpy((*ranks)[j].nspace, nspace, PMIX_MAX_NSLEN);
+            (*ranks)[j].rank = j;
+        }
     } else {
         char *tmp = strdup(params.ns_dist);
         char *pch = tmp;
