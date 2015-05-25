@@ -160,7 +160,7 @@ int pmix_client_hash_store_modex(const char *nspace, int rank,
     uint64_t id, rk64;
 
     pmix_output_verbose(10, pmix_globals.debug_output,
-                        "HASH:STORE %s:%d key %s",
+                        "HASH:STORE:MODEX %s:%d key %s",
                         nspace, rank, kin->key);
     
     /* create a hash of the nspace */
@@ -216,9 +216,14 @@ int pmix_client_hash_fetch(const char *nspace, int rank,
     found_wild_data = false;
     /* lookup the proc data object for this proc */
     if (NULL == (proc_data = lookup_proc(&hash_data, id, false))) {
+        pmix_output_verbose(10, pmix_globals.debug_output,
+                            "HASH:FETCH proc data for %s:%d not found",
+                            nspace, rank);
         /* if the requestor asked for wildcard data, then no point
          * in looking further - we already checked that option */
         if (id == idwild) {
+            pmix_output_verbose(10, pmix_globals.debug_output,
+                                "HASH:FETCH id = idwild - returning proc_entry_not_found");
             return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
         }
         /* if the requestor asked for data about a specific
@@ -228,14 +233,20 @@ int pmix_client_hash_fetch(const char *nspace, int rank,
          * data that relates to the entire job and not just
          * this rank */
         if (NULL == (proc_data = lookup_proc(&hash_data, idwild, false))) {
+            pmix_output_verbose(10, pmix_globals.debug_output,
+                                "HASH:FETCH WILD proc_data not found - returning proc_entry_not_found");
             return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
         }
         found_wild_data = true;
+        pmix_output_verbose(10, pmix_globals.debug_output,
+                            "HASH:FETCH WILD proc_data entry found");
     }
 
     /* find the value from within this proc_data object - first
      * check the job-level data */
     if (NULL == (hv = lookup_keyval(&proc_data->data, key))) {
+        pmix_output_verbose(10, pmix_globals.debug_output,
+                            "HASH:FETCH data for key %s not found in job-level data", key);
         /* if it isn't present, then we have to treat three cases:
          *
          * (a) the requestor asked for data about a specific rank,
@@ -256,6 +267,8 @@ int pmix_client_hash_fetch(const char *nspace, int rank,
         
         if (id == idwild) {  // case (c)
             /* there is no wildcard modex data */
+            pmix_output_verbose(10, pmix_globals.debug_output,
+                                "HASH:FETCH id = idwild - returning not_found");
             return PMIX_ERR_NOT_FOUND;
         }
         
@@ -263,31 +276,46 @@ int pmix_client_hash_fetch(const char *nspace, int rank,
             /* We don't treat this case as a failure because data blob for target process
              * wasn't found in hash storage, so continue by asking the server for data.
              * This is a typical case when direct modex is used. */
+            pmix_output_verbose(10, pmix_globals.debug_output,
+                                "HASH:FETCH looked in WILD proc data and key %s not found - returning proc_entry_not_found", key);
             return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
         }
         
         /* it might be a modex key - do we have that data yet? */
         if (0 != pmix_list_get_size(&proc_data->modex)) {
-            /* we do have modex data, so check it */
+            pmix_output_verbose(10, pmix_globals.debug_output,
+                                "HASH:FETCH modex data available for %s:%d", nspace, rank);
+            /* we have modex data, so check it */
             if (NULL != (hv = lookup_keyval(&proc_data->modex, key))) {
+                pmix_output_verbose(10, pmix_globals.debug_output,
+                                    "HASH:FETCH modex data found for key %s", key);
                 goto returndata;
             }
         }
 
-        /* at this point, we know we have a blob for the requested proc, but
-         * we don't have modex data OR the requested key wasn't in it. We
+        /* at this point, we know we have a proc entry for the requested proc, but
+         * either we don't have modex data OR the requested key wasn't in it. We
          * can now check to see if we have job-level data, and if the key
          * is in there */
         if (NULL == (proc_data = lookup_proc(&hash_data, idwild, false))) {  // case (a)
             /* we don't have data for the wildcard rank yet - give us
              * a chance to get it */
+            pmix_output_verbose(10, pmix_globals.debug_output,
+                                "HASH:FETCH wildcard data not available - returning proc_entry_not_found");
             return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
         }
         if (NULL == (hv = lookup_keyval(&proc_data->data, key))) {
             /* we have the wildcard rank data, but this key isn't in it. So
-             * we have both blobs and neither one contains the specified
-             * key - return an error */
-            return PMIX_ERR_NOT_FOUND;
+             * we have both blobs and neither one contains the specified key */
+            pmix_output_verbose(10, pmix_globals.debug_output,
+                                "HASH:FETCH wildcard available, but key %s not found", key);
+            /* if we have modex data, then we simply cannot find this key */
+            if (0 != pmix_list_get_size(&proc_data->modex)) {
+                return PMIX_ERR_NOT_FOUND;
+            } else {
+                /* give us a chance to get it via modex */
+                return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
+            }
         }
     }
 
