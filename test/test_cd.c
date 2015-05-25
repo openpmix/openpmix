@@ -1,3 +1,13 @@
+/*
+ * Copyright (c) 2015      Intel, Inc.  All rights reserved.
+ * $COPYRIGHT$
+ *
+ * Additional copyrights may follow
+ *
+ * $HEADER$
+ *
+ */
+
 #include "test_cd.h"
 #include <time.h>
 
@@ -17,25 +27,24 @@ static void cd_cb(pmix_status_t status, void *cbdata)
 static int test_cd_common(char *my_nspace, int my_rank, int blocking, int disconnect)
 {
     int rc;
-    pmix_range_t range;
+    pmix_proc_t proc;
 
-    (void)strncpy(range.nspace, my_nspace, PMIX_MAX_NSLEN);
-    range.ranks = NULL;
-    range.nranks = 0;
+    (void)strncpy(proc.nspace, my_nspace, PMIX_MAX_NSLEN);
+    proc.rank = PMIX_RANK_WILDCARD;
     if (blocking) {
         if (!disconnect) {
-            rc = PMIx_Connect(&range, 1);
+            rc = PMIx_Connect(&proc, 1);
         } else {
-            rc = PMIx_Disconnect(&range, 1);
+            rc = PMIx_Disconnect(&proc, 1);
         }
     } else {
         int count;
         cd_cbdata cbdata;
         cbdata.in_progress = 1;
         if (!disconnect) {
-            rc = PMIx_Connect_nb(&range, 1, cd_cb, (void*)&cbdata);
+            rc = PMIx_Connect_nb(&proc, 1, cd_cb, (void*)&cbdata);
         } else {
-            rc = PMIx_Disconnect_nb(&range, 1, cd_cb, (void*)&cbdata);
+            rc = PMIx_Disconnect_nb(&proc, 1, cd_cb, (void*)&cbdata);
         }
         if (PMIX_SUCCESS == rc) {
             count = 0;

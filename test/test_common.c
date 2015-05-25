@@ -1,5 +1,18 @@
+/*
+ * Copyright (c) 2013-2015 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015      Artem Y. Polyakov <artpol84@gmail.com>.
+ *                         All rights reserved.
+ * $COPYRIGHT$
+ *
+ * Additional copyrights may follow
+ *
+ * $HEADER$
+ *
+ */
+
 #include "test_common.h"
 #include <stdarg.h>
+#include <stdio.h>
 #include "src/api/pmix_common.h"
 
 int pmix_test_verbose = 0;
@@ -158,9 +171,6 @@ void parse_cmd(int argc, char **argv, test_params *params)
     }
 }
 
-pmix_list_t test_fences;
-range_desc_t *noise_range = NULL;
-
 static void ncon(nspace_desc_t *p)
 {
     p->id = -1;
@@ -173,28 +183,30 @@ static void ndes(nspace_desc_t *p)
 }
 
 PMIX_CLASS_INSTANCE(nspace_desc_t,
-                          pmix_list_item_t,
-                          ncon, ndes);
+                    pmix_list_item_t,
+                    ncon, ndes);
 
 static void fcon(fence_desc_t *p)
 {
     p->blocking = 0;
     p->data_exchange = 0;
-    p->range = PMIX_NEW(range_desc_t);
+    p->participants = NULL;
 }
 
 static void fdes(fence_desc_t *p)
 {
-    PMIX_RELEASE(p->range);
+    if (NULL != p->participants) {
+        free(p->participants);
+    }
 }
 
 PMIX_CLASS_INSTANCE(fence_desc_t,
-                          pmix_list_item_t,
-                          fcon, fdes);
+                    pmix_list_item_t,
+                    fcon, fdes);
 
 PMIX_CLASS_INSTANCE(rank_desc_t,
-                          pmix_list_item_t,
-                          NULL, NULL);
+                    pmix_list_item_t,
+                    NULL, NULL);
 
 static void rcon(range_desc_t *p)
 {
@@ -207,12 +219,18 @@ static void rdes(range_desc_t *p)
 }
 
 PMIX_CLASS_INSTANCE(range_desc_t,
-                          pmix_list_item_t,
-                          rcon, rdes);
+                    pmix_list_item_t,
+                    rcon, rdes);
+
+PMIX_CLASS_INSTANCE(participant_t,
+                    pmix_list_item_t,
+                    NULL, NULL);
 
 static int ns_id = -1;
 static fence_desc_t *fdesc = NULL;
-static range_desc_t *range = NULL;
+pmix_list_t *participants = NULL;
+pmix_list_t test_fences;
+pmix_list_t *noise_range = NULL;
 
 #define CHECK_STRTOL_VAL(val, str, store) do {                  \
     if (0 == val) {                                             \
@@ -230,161 +248,159 @@ static int parse_token(char *str, int step, int store)
     int count = 0;
     int remember = -1;
     int i;
-    nspace_desc_t *ndesc;
-    rank_desc_t *rdesc;
     int rank;
+    participant_t *proc;
+    
     switch (step) {
-        case 0:
-            if (store) {
-                fdesc = PMIX_NEW(fence_desc_t);
-                range = fdesc->range;
-            }
-            pch = strchr(str, '|');
-            if (NULL != pch) {
-                while (pch != str) {
-                    if ('d' == *str) {
-                        if (store && NULL != fdesc) {
-                            fdesc->data_exchange = 1;
-                        }
-                    } else if ('b' == *str) {
-                        if (store && NULL != fdesc) {
-                            fdesc->blocking = 1;
-                        }
-                    } else if (' ' != *str) {
-                        if (!store) {
-                            return 1;
-                        }
+    case 0:
+        if (store) {
+            fdesc = PMIX_NEW(fence_desc_t);
+            participants = PMIX_NEW(pmix_list_t);
+        }
+        pch = strchr(str, '|');
+        if (NULL != pch) {
+            while (pch != str) {
+                if ('d' == *str) {
+                    if (store && NULL != fdesc) {
+                        fdesc->data_exchange = 1;
                     }
-                    str++;
-                }
-                if (0 < parse_token(pch+1, 1, store)) {
+                } else if ('b' == *str) {
+                    if (store && NULL != fdesc) {
+                        fdesc->blocking = 1;
+                    }
+                } else if (' ' != *str) {
                     if (!store) {
                         return 1;
                     }
                 }
-            } else {
-                if (0 < parse_token(str, 1, store)) {
-                    if (!store) {
-                        return 1;
-                    }
-                }
+                str++;
             }
-            if (store && NULL != fdesc) {
-                pmix_list_append(&test_fences, &fdesc->super);
-            }
-            break;
-        case 1:
-            if (store && NULL == range) {
-                range = PMIX_NEW(range_desc_t);
-                noise_range = range;
-            }
-            pch = strtok(str, ";");
-            while (NULL != pch) {
-                if (0 < parse_token(pch, 2, store)) {
-                    if (!store) {
-                        return 1;
-                    }
-                }
-                pch = strtok (NULL, ";");
-            }
-            break;
-        case 2:
-            pch = strchr(str, ':');
-            if (NULL != pch) {
-                *pch = '\0';
-                pch++;
-                while (' ' == *str) {
-                    str++;
-                }
-                ns_id = (int)(strtol(str, NULL, 10));
-                CHECK_STRTOL_VAL(ns_id, str, store);
-                if (0 < parse_token(pch, 3, store)) {
-                    if (!store) {
-                        return 1;
-                    }
-                }
-            } else {
+            if (0 < parse_token(pch+1, 1, store)) {
                 if (!store) {
                     return 1;
                 }
             }
-            break;
-        case 3:
-            if (store && NULL != range) {
-                ndesc = PMIX_NEW(nspace_desc_t);
-                ndesc->id = ns_id;
+        } else {
+            if (0 < parse_token(str, 1, store)) {
+                if (!store) {
+                    return 1;
+                }
             }
+        }
+        if (store && NULL != fdesc) {
+            pmix_list_append(&test_fences, &fdesc->super);
+        }
+        break;
+    case 1:
+        if (store && NULL == participants) {
+            participants = PMIX_NEW(pmix_list_t);
+            noise_range = participants;
+        }
+        pch = strtok(str, ";");
+        while (NULL != pch) {
+            if (0 < parse_token(pch, 2, store)) {
+                if (!store) {
+                    return 1;
+                }
+            }
+            pch = strtok (NULL, ";");
+        }
+        break;
+    case 2:
+        pch = strchr(str, ':');
+        if (NULL != pch) {
+            *pch = '\0';
+            pch++;
             while (' ' == *str) {
                 str++;
             }
-            if ('\0' == *str) {
-                /* all ranks from namespace participate */
-                if (store && NULL != range) {
-                    rdesc = PMIX_NEW(rank_desc_t);
-                    rdesc->rank = -1;
-                    pmix_list_append(&(ndesc->ranks), &rdesc->super);
+            ns_id = (int)(strtol(str, NULL, 10));
+            CHECK_STRTOL_VAL(ns_id, str, store);
+            if (0 < parse_token(pch, 3, store)) {
+                if (!store) {
+                    return 1;
                 }
             }
-            while ('\0' != *str) {
-                if (',' == *str && 0 != count) {
-                    *str = '\0';
-                    if (-1 != remember) {
-                        rank = (int)(strtol(str-count, NULL, 10));
-                        CHECK_STRTOL_VAL(rank, str-count, store);
-                        for (i = remember; i < rank; i++) {
-                            if (store && NULL != range) {
-                                rdesc = PMIX_NEW(rank_desc_t);
-                                rdesc->rank = i;
-                                pmix_list_append(&(ndesc->ranks), &rdesc->super);
-                            }
-                        }
-                        remember = -1;
-                    }
-                    rank = (int)(strtol(str-count, NULL, 10));
-                    CHECK_STRTOL_VAL(rank, str-count, store);
-                    if (store && NULL != range) {
-                        rdesc = PMIX_NEW(rank_desc_t);
-                        rdesc->rank = rank;
-                        pmix_list_append(&(ndesc->ranks), &rdesc->super);
-                    }
-                    count = -1;
-                } else if ('-' == *str && 0 != count) {
-                    *str = '\0';
-                    remember = (int)(strtol(str-count, NULL, 10));
-                    CHECK_STRTOL_VAL(remember, str-count, store);
-                    count = -1;
-                }
-                str++;
-                count++;
+        } else {
+            if (!store) {
+                return 1;
             }
-            if (0 != count) {
+        }
+        break;
+    case 3:
+        while (' ' == *str) {
+            str++;
+        }
+        if ('\0' == *str) {
+            /* all ranks from namespace participate */
+            if (store && NULL != participants) {
+                proc = PMIX_NEW(participant_t);
+                (void)snprintf(proc->proc.nspace, PMIX_MAX_NSLEN, "%s-%d", TEST_NAMESPACE, ns_id);
+                proc->proc.rank = PMIX_RANK_WILDCARD;
+                pmix_list_append(participants, &proc->super);
+            }
+        }
+        while ('\0' != *str) {
+            if (',' == *str && 0 != count) {
+                *str = '\0';
                 if (-1 != remember) {
                     rank = (int)(strtol(str-count, NULL, 10));
                     CHECK_STRTOL_VAL(rank, str-count, store);
                     for (i = remember; i < rank; i++) {
-                        if (store && NULL != range) {
-                            rdesc = PMIX_NEW(rank_desc_t);
-                            rdesc->rank = i;
-                            pmix_list_append(&(ndesc->ranks), &rdesc->super);
+                        if (store && NULL != participants) {
+                            proc = PMIX_NEW(participant_t);
+                            (void)snprintf(proc->proc.nspace, PMIX_MAX_NSLEN, "%s-%d", TEST_NAMESPACE, ns_id);
+                            proc->proc.rank = i;
+                            pmix_list_append(participants, &proc->super);
                         }
                     }
                     remember = -1;
                 }
                 rank = (int)(strtol(str-count, NULL, 10));
                 CHECK_STRTOL_VAL(rank, str-count, store);
-                if (store && NULL != range) {
-                    rdesc = PMIX_NEW(rank_desc_t);
-                    rdesc->rank = rank;
-                    pmix_list_append(&(ndesc->ranks), &rdesc->super);
+                if (store && NULL != participants) {
+                    proc = PMIX_NEW(participant_t);
+                    (void)snprintf(proc->proc.nspace, PMIX_MAX_NSLEN, "%s-%d", TEST_NAMESPACE, ns_id);
+                    proc->proc.rank = rank;
+                    pmix_list_append(participants, &proc->super);
                 }
+                count = -1;
+            } else if ('-' == *str && 0 != count) {
+                *str = '\0';
+                remember = (int)(strtol(str-count, NULL, 10));
+                CHECK_STRTOL_VAL(remember, str-count, store);
+                count = -1;
             }
-            if (store && NULL != range) {
-                pmix_list_append(&(range->nspaces), &ndesc->super);
+            str++;
+            count++;
+        }
+        if (0 != count) {
+            if (-1 != remember) {
+                rank = (int)(strtol(str-count, NULL, 10));
+                CHECK_STRTOL_VAL(rank, str-count, store);
+                for (i = remember; i < rank; i++) {
+                    if (store && NULL != participants) {
+                        proc = PMIX_NEW(participant_t);
+                        (void)snprintf(proc->proc.nspace, PMIX_MAX_NSLEN, "%s-%d", TEST_NAMESPACE, ns_id);
+                        proc->proc.rank = i;
+                        pmix_list_append(participants, &proc->super);
+                    }
+                }
+                remember = -1;
             }
-            break;
-        default:
-            fprintf(stderr, "Incorrect parsing step.\n");
-            return 1;
+            rank = (int)(strtol(str-count, NULL, 10));
+            CHECK_STRTOL_VAL(rank, str-count, store);
+            if (store && NULL != participants) {
+                proc = PMIX_NEW(participant_t);
+                (void)snprintf(proc->proc.nspace, PMIX_MAX_NSLEN, "%s-%d", TEST_NAMESPACE, ns_id);
+                proc->proc.rank = rank;
+                pmix_list_append(participants, &proc->super);
+            }
+        }
+        break;
+    default:
+        fprintf(stderr, "Incorrect parsing step.\n");
+        return 1;
     }
     return 0;
 }
@@ -394,7 +410,7 @@ int parse_fence(char *fence_param, int store)
     int ret = 0;
     char *tmp = strdup(fence_param);
     char * pch, *ech;
-    range = NULL;
+
     pch = strchr(tmp, '[');
     while (NULL != pch) {
         pch++;
@@ -418,7 +434,7 @@ int parse_noise(char *noise_param, int store)
     int ret = 0;
     char *tmp = strdup(noise_param);
     char * pch, *ech;
-    range = NULL;
+
     pch = strchr(tmp, '[');
     if (NULL != pch) {
         pch++;
@@ -457,18 +473,17 @@ int get_total_ns_number(test_params params)
     return num;
 }
 
-int get_all_ranks_from_namespace(test_params params, char *nspace, int **ranks, size_t *nranks)
+int get_all_ranks_from_namespace(test_params params, char *nspace, pmix_proc_t **ranks, size_t *nranks)
 {
     int base_rank = 0;
     size_t num_ranks = 0;
     int num = -1;
     size_t j;
     if (NULL == params.ns_dist) {
-        *nranks = params.ns_size;
-        *ranks = (int*)malloc(params.ns_size * sizeof(int));
-        for (j = 0; j < (size_t)params.ns_size; j++) {
-            (*ranks)[j] = j;
-        }
+        *nranks = 1;
+        PMIX_PROC_CREATE(*ranks, 1);
+        (void)strncpy((*ranks)[0].nspace, nspace, PMIX_MAX_NSLEN);
+        (*ranks)[0].rank = PMIX_RANK_WILDCARD;
     } else {
         char *tmp = strdup(params.ns_dist);
         char *pch = tmp;
@@ -481,9 +496,10 @@ int get_all_ranks_from_namespace(test_params params, char *nspace, int **ranks, 
         }
         if (num == ns_id && 0 != num_ranks) {
             *nranks = num_ranks;
-            *ranks = (int*)malloc(num_ranks * sizeof(int));
+            PMIX_PROC_CREATE(*ranks, num_ranks);
             for (j = 0; j < num_ranks; j++) {
-                (*ranks)[j] = base_rank+j;
+                (void)strncpy((*ranks)[j].nspace, nspace, PMIX_MAX_NSLEN);
+                (*ranks)[j].rank = base_rank+j;
             }
         } else {
             free(tmp);

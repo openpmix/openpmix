@@ -20,6 +20,7 @@
 #include <stdint.h>
 
 #include "src/class/pmix_list.h"
+#include "src/api/pmix_common.h"
 
 #define TEST_NAMESPACE "smoky_nspace"
 #define TEST_CREDENTIAL "dummy"
@@ -184,15 +185,23 @@ typedef struct {
     pmix_list_item_t super;
     int blocking;
     int data_exchange;
-    range_desc_t *range;
+    pmix_proc_t *participants;  // array of participants
+    size_t nparticipants;
 } fence_desc_t;
 PMIX_CLASS_DECLARATION(fence_desc_t);
 
+typedef struct {
+    pmix_list_item_t super;
+    pmix_proc_t proc;
+} participant_t;
+PMIX_CLASS_DECLARATION(participant_t);
+
 extern pmix_list_t test_fences;
-extern range_desc_t *noise_range;
+extern pmix_list_t *noise_range;
+extern pmix_list_t *participants;
 
 #define NODE_NAME "node1"
 int get_total_ns_number(test_params params);
-int get_all_ranks_from_namespace(test_params params, char *nspace, int **ranks, size_t *nranks);
+int get_all_ranks_from_namespace(test_params params, char *nspace, pmix_proc_t **ranks, size_t *nranks);
 
 #endif // TEST_COMMON_H

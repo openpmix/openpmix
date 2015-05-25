@@ -32,7 +32,6 @@ int main(int argc, char **argv)
 {
     int spawned;
     int rc;
-    char *key = NULL;
 
     /* init us */
     if (PMI_SUCCESS != (rc = PMI_Init(&spawned))) {
@@ -71,11 +70,7 @@ int main(int argc, char **argv)
     /* finalize us */
     if (PMI_SUCCESS != (rc = PMI_Finalize())) {
         fprintf(stderr, "PMI_Finalize failed: %d\n", rc);
-        return rc;
     }
     
-    return 0;
-kvp_error:
-    fprintf(stderr,"Cannot Set Key-Value Pair\n");
-    return 0;
+    return rc;
 }

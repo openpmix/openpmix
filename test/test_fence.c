@@ -18,26 +18,23 @@ static void release_cb(pmix_status_t status, void *cbdata)
 
 static void add_noise(char *noise_param, char *my_nspace, int my_rank)
 {
-    int participate = 0;
-    nspace_desc_t *ndesc;
-    rank_desc_t *rdesc;
-    char nspace[PMIX_MAX_NSLEN];
+    bool participate = false;
+    participant_t *p;
+
     parse_noise(noise_param, 1);
     if (NULL != noise_range) {
-        PMIX_LIST_FOREACH(ndesc, &(noise_range->nspaces), nspace_desc_t) {
-            (void)snprintf(nspace, PMIX_MAX_NSLEN, "%s-%d", TEST_NAMESPACE, ndesc->id);
-            PMIX_LIST_FOREACH(rdesc, &(ndesc->ranks), rank_desc_t) {
-                if (!strncmp(my_nspace, nspace, strlen(my_nspace)) && (my_rank == rdesc->rank || -1 == rdesc->rank)) {
-                    participate = 1;
-                    break;
-                }
+        PMIX_LIST_FOREACH(p, noise_range, participant_t) {
+            if (0 == strncmp(my_nspace, p->proc.nspace, strlen(my_nspace)) &&
+                (my_rank == p->proc.rank || PMIX_RANK_WILDCARD == p->proc.rank)) {
+                participate = true;
+                break;
             }
         }
-        if (1 == participate) {
+        if (participate) {
             sleep(2);
             TEST_VERBOSE(("I'm %s:%d sleeping\n", my_nspace, my_rank));
         }
-        PMIX_RELEASE(noise_range);
+        PMIX_LIST_RELEASE(noise_range);
         noise_range = NULL;
     }
 }
@@ -115,18 +112,15 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
 {
     int len;
     int rc;
-    size_t i, j;
+    size_t i, npcs;
     fence_desc_t *desc;
-    nspace_desc_t *ndesc;
-    rank_desc_t *rdesc;
-    size_t nprocs;
-    pmix_procs_t *pcs;
-    int n = 0, r = 0;
-    int participate = 0;
+    participant_t *p;
+    pmix_proc_t *pcs;
+    bool participate;
     int fence_num = 0;
     char sval[50];
     int put_ind;
-
+    
     if (NULL != params.noise) {
         add_noise(params.noise, my_nspace, my_rank);
     }
@@ -134,40 +128,25 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
     PMIX_CONSTRUCT(&test_fences, pmix_list_t);
     parse_fence(params.fences, 1);
 
+    /* cycle thru all the test fence descriptors to find
+     * those that include my nspace/rank */
     PMIX_LIST_FOREACH(desc, &test_fences, fence_desc_t) {
-        nprocs = pmix_list_get_size(&(desc->range->nspaces));
-        PMIX_PROC_CREATE(pcs, nprocs);
         char tmp[256] = {0};
         len = sprintf(tmp, "fence %d: block = %d de = %d ", fence_num, desc->blocking, desc->data_exchange);
-        n = 0;
-        participate = 0;
-        PMIX_LIST_FOREACH(ndesc, &(desc->range->nspaces), nspace_desc_t) {
-            (void)snprintf(rngs[n].nspace, PMIX_MAX_NSLEN, "%s-%d", TEST_NAMESPACE, ndesc->id);
-            rngs[n].nranks = pmix_list_get_size(&(ndesc->ranks));
-            if (0 < rngs[n].nranks) {
-                rngs[n].ranks = (int*)malloc(rngs[n].nranks * sizeof(int));
+        participate = false;
+        /* search the participants */
+        PMIX_LIST_FOREACH(p, participants, participant_t) {
+            if (0 == strncmp(my_nspace, p->proc.nspace, strlen(my_nspace)) &&
+                (my_rank == p->proc.rank || PMIX_RANK_WILDCARD == p->proc.rank)) {
+                participate = true;
             }
-            len += sprintf(tmp+len, "ns %d ranks: ", ndesc->id);
-            r = 0;
-            PMIX_LIST_FOREACH(rdesc, &(ndesc->ranks), rank_desc_t) {
-                if (!strncmp(my_nspace, rngs[n].nspace, strlen(my_nspace)) && (my_rank == rdesc->rank || -1 == rdesc->rank)) {
-                    participate = 1;
-                }
-                if (-1 == rdesc->rank) {
-                    len += sprintf(tmp+len, "all; ");
-                    free(rngs[n].ranks);
-                    rngs[n].ranks = NULL;
-                    rngs[n].nranks = 0;
-                    break;
-                } else {
-                    len += sprintf(tmp+len, "%d,", rdesc->rank);
-                    rngs[n].ranks[r] = rdesc->rank;
-                }
-                r++;
+            if (PMIX_RANK_WILDCARD == p->proc.rank) {
+                len += sprintf(tmp+len, "all; ");
+            } else {
+                len += sprintf(tmp+len, "%d,", p->proc.rank);
             }
-            n++;
         }
-        if (1 == participate) {
+        if (participate) {
             /*run fence test on this range */
             /* first put value (my_ns, my_rank) with key based on fence_num to split results of different fences*/
             put_ind = 0;
@@ -175,7 +154,6 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
             PUT(string, sval, PMIX_GLOBAL, fence_num, put_ind++, params.use_same_keys);
             if (PMIX_SUCCESS != rc) {
                 TEST_ERROR(("%s:%d: PMIx_Put failed: %d", my_nspace, my_rank, rc));
-                PMIX_RANGE_FREE(rngs, nranges);
                 PMIX_LIST_DESTRUCT(&test_fences);
                 return rc;
             }
@@ -183,7 +161,6 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
             PUT(int, fence_num+my_rank, PMIX_GLOBAL, fence_num, put_ind++, params.use_same_keys);
             if (PMIX_SUCCESS != rc) {
                 TEST_ERROR(("%s:%d: PMIx_Put failed: %d", my_nspace, my_rank, rc));
-                PMIX_RANGE_FREE(rngs, nranges);
                 PMIX_LIST_DESTRUCT(&test_fences);
                 return rc;
             }
@@ -191,7 +168,6 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
             PUT(float, fence_num+1.1, PMIX_GLOBAL, fence_num, put_ind++, params.use_same_keys);
             if (PMIX_SUCCESS != rc) {
                 TEST_ERROR(("%s:%d: PMIx_Put failed: %d", my_nspace, my_rank, rc));
-                PMIX_RANGE_FREE(rngs, nranges);
                 PMIX_LIST_DESTRUCT(&test_fences);
                 return rc;
             }
@@ -199,7 +175,6 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
             PUT(uint32_t, fence_num+14, PMIX_GLOBAL, fence_num, put_ind++, params.use_same_keys);
             if (PMIX_SUCCESS != rc) {
                 TEST_ERROR(("%s:%d: PMIx_Put failed: %d", my_nspace, my_rank, rc));
-                PMIX_RANGE_FREE(rngs, nranges);
                 PMIX_LIST_DESTRUCT(&test_fences);
                 return rc;
             }
@@ -207,7 +182,6 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
             PUT(uint16_t, fence_num+15, PMIX_GLOBAL, fence_num, put_ind++, params.use_same_keys);
             if (PMIX_SUCCESS != rc) {
                 TEST_ERROR(("%s:%d: PMIx_Put failed: %d", my_nspace, my_rank, rc));
-                PMIX_RANGE_FREE(rngs, nranges);
                 PMIX_LIST_DESTRUCT(&test_fences);
                 return rc;
             }
@@ -215,81 +189,76 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
             /* Submit the data */
             if (PMIX_SUCCESS != (rc = PMIx_Commit())) {
                 TEST_ERROR(("%s:%d: PMIx_Commit failed: %d", my_nspace, my_rank, rc));
-                PMIX_RANGE_FREE(rngs, nranges);
                 PMIX_LIST_DESTRUCT(&test_fences);
                 return rc;
             }
 
+            /* setup the fence */
+            npcs = pmix_list_get_size(participants);
+            PMIX_PROC_CREATE(pcs, npcs);
+            i = 0;
+            PMIX_LIST_FOREACH(p, participants, participant_t) {
+                (void)strncpy(pcs[i].nspace, p->proc.nspace, PMIX_MAX_NSLEN);
+                pcs[i].rank = p->proc.rank;
+            }
+            
             /* perform fence */
-            FENCE(desc->blocking, desc->data_exchange, rngs, nranges);
+            FENCE(desc->blocking, desc->data_exchange, pcs, npcs);
             if (PMIX_SUCCESS != rc) {
                 TEST_ERROR(("%s:%d: PMIx_Fence failed: %d", my_nspace, my_rank, rc));
-                PMIX_RANGE_FREE(rngs, nranges);
                 PMIX_LIST_DESTRUCT(&test_fences);
+                PMIX_PROC_FREE(pcs, npcs);
                 return rc;
             }
 
             /* get data from all participating in this fence clients */
-            for (i = 0; i < nranges; i++ ) {
-                /* handle case if all processes from the namespace should participate (ranks == NULL):
-                 * parse --ns-dist option and count number of processes and rank offset for the target namespace
-                 * to fill ranks array in the current range. This needs to be done for checking purposes.*/
-                if (0 == rngs[i].nranks && NULL == rngs[i].ranks) {
-                    rc = get_all_ranks_from_namespace(params, rngs[i].nspace, &rngs[i].ranks, &rngs[i].nranks);
-                    if (PMIX_SUCCESS != rc) {
-                        TEST_ERROR(("%s:%d: Can't parse --ns-dist value in order to get ranks for namespace %s", my_nspace, my_rank, rngs[i].nspace));
-                        PMIX_RANGE_FREE(rngs, nranges);
-                        PMIX_LIST_DESTRUCT(&test_fences);
-                        return PMIX_ERROR;
-                    }
+            PMIX_LIST_FOREACH(p, participants, participant_t) {
+                put_ind = 0;
+                snprintf(sval, 50, "%d:%s:%d", fence_num, p->proc.nspace, p->proc.rank);
+                GET(string, sval, p->proc.nspace, p->proc.rank, fence_num, put_ind++, params.use_same_keys);
+                if (PMIX_SUCCESS != rc) {
+                    TEST_ERROR(("%s:%d: PMIx_Get failed (%d) from %s:%d", my_nspace, my_rank, rc, p->proc.nspace, p->proc.rank));
+                    PMIX_PROC_FREE(pcs, npcs);
+                    PMIX_LIST_DESTRUCT(&test_fences);
+                    return rc;
                 }
-                for (j = 0; j < rngs[i].nranks; j++) {
-                    put_ind = 0;
-                    snprintf(sval, 50, "%d:%s:%d", fence_num, rngs[i].nspace, rngs[i].ranks[j]);
-                    GET(string, sval, rngs[i].nspace, rngs[i].ranks[j], fence_num, put_ind++, params.use_same_keys);
-                    if (PMIX_SUCCESS != rc) {
-                        TEST_ERROR(("%s:%d: PMIx_Get failed (%d) from %s:%d", my_nspace, my_rank, rc, rngs[i].nspace, rngs[i].ranks[j]));
-                        PMIX_RANGE_FREE(rngs, nranges);
-                        PMIX_LIST_DESTRUCT(&test_fences);
-                        return rc;
-                    }
-                    GET(int, fence_num+rngs[i].ranks[j], rngs[i].nspace, rngs[i].ranks[j], fence_num, put_ind++, params.use_same_keys);
-                    if (PMIX_SUCCESS != rc) {
-                        TEST_ERROR(("%s:%d: PMIx_Get failed (%d) from %s:%d", my_nspace, my_rank, rc, rngs[i].nspace, rngs[i].ranks[j]));
-                        PMIX_RANGE_FREE(rngs, nranges);
-                        PMIX_LIST_DESTRUCT(&test_fences);
-                        return rc;
-                    }
-                    GET(float, fence_num+1.1, rngs[i].nspace, rngs[i].ranks[j], fence_num, put_ind++, params.use_same_keys);
-                    if (PMIX_SUCCESS != rc) {
-                        TEST_ERROR(("%s:%d: PMIx_Get failed (%d) from %s:%d", my_nspace, my_rank, rc, rngs[i].nspace, rngs[i].ranks[j]));
-                        PMIX_RANGE_FREE(rngs, nranges);
-                        PMIX_LIST_DESTRUCT(&test_fences);
-                        return rc;
-                    }
-                    GET(uint32_t, (uint32_t)fence_num+14, rngs[i].nspace, rngs[i].ranks[j], fence_num, put_ind++, params.use_same_keys);
-                    if (PMIX_SUCCESS != rc) {
-                        TEST_ERROR(("%s:%d: PMIx_Get failed (%d) from %s:%d", my_nspace, my_rank, rc, rngs[i].nspace, rngs[i].ranks[j]));
-                        PMIX_RANGE_FREE(rngs, nranges);
-                        PMIX_LIST_DESTRUCT(&test_fences);
-                        return rc;
-                    }
-                    GET(uint16_t, fence_num+15, rngs[i].nspace, rngs[i].ranks[j], fence_num, put_ind++, params.use_same_keys);
-                    if (PMIX_SUCCESS != rc) {
-                        TEST_ERROR(("%s:%d: PMIx_Get failed (%d) from %s:%d", my_nspace, my_rank, rc, rngs[i].nspace, rngs[i].ranks[j]));
-                        PMIX_RANGE_FREE(rngs, nranges);
-                        PMIX_LIST_DESTRUCT(&test_fences);
-                        return rc;
-                    }
+                GET(int, fence_num+p->proc.rank, p->proc.nspace, p->proc.rank, fence_num, put_ind++, params.use_same_keys);
+                if (PMIX_SUCCESS != rc) {
+                    TEST_ERROR(("%s:%d: PMIx_Get failed (%d) from %s:%d", my_nspace, my_rank, rc, p->proc.nspace, p->proc.rank));
+                    PMIX_PROC_FREE(pcs, npcs);
+                    PMIX_LIST_DESTRUCT(&test_fences);
+                    return rc;
+                }
+                GET(float, fence_num+1.1, p->proc.nspace, p->proc.rank, fence_num, put_ind++, params.use_same_keys);
+                if (PMIX_SUCCESS != rc) {
+                    TEST_ERROR(("%s:%d: PMIx_Get failed (%d) from %s:%d", my_nspace, my_rank, rc, p->proc.nspace, p->proc.rank));
+                    PMIX_PROC_FREE(pcs, npcs);
+                    PMIX_LIST_DESTRUCT(&test_fences);
+                    return rc;
+                }
+                GET(uint32_t, (uint32_t)fence_num+14, p->proc.nspace, p->proc.rank, fence_num, put_ind++, params.use_same_keys);
+                if (PMIX_SUCCESS != rc) {
+                    TEST_ERROR(("%s:%d: PMIx_Get failed (%d) from %s:%d", my_nspace, my_rank, rc, p->proc.nspace, p->proc.rank));
+                    PMIX_PROC_FREE(pcs, npcs);
+                    PMIX_LIST_DESTRUCT(&test_fences);
+                    return rc;
+                }
+                GET(uint16_t, fence_num+15, p->proc.nspace, p->proc.rank, fence_num, put_ind++, params.use_same_keys);
+                if (PMIX_SUCCESS != rc) {
+                    TEST_ERROR(("%s:%d: PMIx_Get failed (%d) from %s:%d", my_nspace, my_rank, rc, p->proc.nspace, p->proc.rank));
+                    PMIX_PROC_FREE(pcs, npcs);
+                    PMIX_LIST_DESTRUCT(&test_fences);
+                    return rc;
                 }
             }
-            /* barrier across participating processes to prevent putting new values with the same key
-             * before finishing data exchange with other processes. */
-            FENCE(1, 0, rngs, nranges);
         }
-        PMIX_RANGE_FREE(rngs, nranges);
+        /* barrier across participating processes to prevent putting new values with the same key
+         * before finishing data exchange with other processes. */
+        FENCE(1, 0, pcs, npcs);
+        PMIX_PROC_FREE(pcs, npcs);
         fence_num++;
     }
+
     PMIX_LIST_DESTRUCT(&test_fences);
     return PMIX_SUCCESS;
 }

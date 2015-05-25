@@ -14,8 +14,8 @@
 
 typedef struct {
     int in_progress;
-    size_t ninfo;
-    pmix_info_t *info;
+    size_t npdata;
+    pmix_pdata_t *pdata;
 } lookup_cbdata;
 
 static void release_cb(pmix_status_t status, void *cbdata)
@@ -25,19 +25,21 @@ static void release_cb(pmix_status_t status, void *cbdata)
 }
 
 static void lookup_cb(pmix_status_t status,
-                      pmix_info_t info[], size_t ninfo,
-                      char nspace[], void *cbdata)
+                      pmix_pdata_t pdata[], size_t npdata,
+                      void *cbdata)
 {
     size_t i, j;
     lookup_cbdata *cb = (lookup_cbdata*)cbdata;
-    pmix_info_t *tgt = cb->info;
+    pmix_pdata_t *tgt = cb->pdata;
 
     /* find the matching key in the provided info array - error if not found */
-    for (i=0; i < ninfo; i++) {
-        for (j=0; j < cb->ninfo; j++) {
-            if (0 == strcmp(info[i].key, tgt[j].key)) {
-                /* transfer the value to the pmix_info_t */
-                pmix_value_xfer(&tgt[j].value, &info[i].value);
+    for (i=0; i < npdata; i++) {
+        for (j=0; j < cb->npdata; j++) {
+            if (0 == strcmp(pdata[i].key, tgt[j].key)) {
+                /* transfer the value to the pmix_pdata_t */
+                (void)strncpy(tgt[j].proc.nspace, pdata[i].proc.nspace, PMIX_MAX_NSLEN);
+                tgt[j].proc.rank = pdata[i].proc.rank;
+                pmix_value_xfer(&tgt[j].value, &pdata[i].value);
                 break;
             }
         }
@@ -79,17 +81,17 @@ static int test_publish(char *my_nspace, int my_rank, int blocking)
 static int test_lookup(char *my_nspace, int my_rank, int blocking)
 {
     int rc;
-    pmix_info_t info;
+    pmix_pdata_t pdata;
     char data[512];
     char *keys[2];
 
-    PMIX_INFO_CONSTRUCT(&info);
-    (void)snprintf(info.key, PMIX_MAX_KEYLEN, "%s:%d", my_nspace, my_rank);
+    PMIX_PDATA_CONSTRUCT(&pdata);
+    (void)snprintf(pdata.key, PMIX_MAX_KEYLEN, "%s:%d", my_nspace, my_rank);
     (void)snprintf(data, 512, "data from proc %s:%d", my_nspace, my_rank);
 
     if (blocking) {
-        if (PMIX_SUCCESS != (rc = PMIx_Lookup(PMIX_UNIVERSAL, &info, 1, NULL))) {
-            PMIX_INFO_DESTRUCT(&info);
+        if (PMIX_SUCCESS != (rc = PMIx_Lookup(PMIX_UNIVERSAL, &pdata, 1))) {
+            PMIX_PDATA_DESTRUCT(&pdata);
             return rc;
         }
     } else {
@@ -100,11 +102,13 @@ static int test_lookup(char *my_nspace, int my_rank, int blocking)
         int count;
         lookup_cbdata cbdata;
         cbdata.in_progress = 1;
-        cbdata.ninfo = 1;
-        cbdata.info = &info;
+        cbdata.npdata = 1;
+        cbdata.pdata = &pdata;
+        /* copy the key across */
+        (void)strncpy(pdata.key, keys[0], PMIX_MAX_KEYLEN);
         rc = PMIx_Lookup_nb(PMIX_UNIVERSAL, 1, keys, lookup_cb, (void*)&cbdata);
         if (PMIX_SUCCESS != rc) {
-            PMIX_INFO_DESTRUCT(&info);
+            PMIX_PDATA_DESTRUCT(&pdata);
             return rc;
         }
         count = 0;
@@ -117,17 +121,17 @@ static int test_lookup(char *my_nspace, int my_rank, int blocking)
         }
     }
 
-    if (PMIX_STRING != info.value.type ||
-            NULL == info.value.data.string) {
-        PMIX_INFO_DESTRUCT(&info);
+    if (PMIX_STRING != pdata.value.type ||
+            NULL == pdata.value.data.string) {
+        PMIX_PDATA_DESTRUCT(&pdata);
         return PMIX_ERR_NOT_FOUND;
     }
 
-    if (strncmp(data, info.value.data.string, strlen(data))) {
-        PMIX_INFO_DESTRUCT(&info);
+    if (strncmp(data, pdata.value.data.string, strlen(data))) {
+        PMIX_PDATA_DESTRUCT(&pdata);
         return PMIX_ERR_NOT_FOUND;
     }
-    PMIX_INFO_DESTRUCT(&info);
+    PMIX_PDATA_DESTRUCT(&pdata);
     return rc;
 }
 
