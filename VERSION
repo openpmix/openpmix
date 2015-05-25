@@ -23,7 +23,7 @@ release=0
 # The only requirement is that it must be entirely printable ASCII
 # characters and have no white space.
 
-greek=a1
+greek=rc1
 
 # If repo_rev is empty, then the repository version number will be
 # obtained during "make dist" via the "git describe --tags --always"
@@ -40,7 +40,7 @@ repo_rev=
 # tarball_version is not empty, the tarball filename will be of the
 # form openmpi-<tarball_version>.tar.*.
 
-tarball_version=gitclone
+tarball_version=
 
 # The date when this release was created
 

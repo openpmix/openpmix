@@ -345,40 +345,12 @@ fi
 # Do svn up and all that
 #
 
-if test -d .svn; then
-    echo "*** Removing old VERSION file..."
-    rm -f VERSION
-    echo "*** Restoring pristine VERSION file..."
-    svn revert VERSION
-    echo "*** Running svn up..."
-    svn up
-    if test ! "$?" = "0"; then
-        echo "SVN update failed.  Aborting"
-        exit 1
-    fi
-    echo "*** Getting svn r number..."
-    repo_rev="r`svnversion .`"
-elif test -d .hg; then
-    echo "*** Removing old VERSION file..."
-    rm -f VERSION
-    echo "*** Restoring pristine VERSION file..."
-    hg revert VERSION
-    echo "*** Running hg up..."
-    hg up
-    if test ! "$?" = "0"; then
-        echo "HG update failed.  Aborting"
-        exit 1
-    fi
-    echo "*** Getting hg version number..."
-    repo_rev=hg`hg tip | grep ^changeset: | head -n 1 | cut -d: -f3`
-elif test -d .git; then
-    echo "*** Removing old VERSION file..."
-    rm -f VERSION
-    echo "*** Restoring pristine VERSION file..."
-    git checkout VERSION
-    echo "*** Getting git version number..."
-    repo_rev=git`git log -1 --oneline | head -1 | cut -d' ' -f1`
-fi
+echo "*** Removing old VERSION file..."
+rm -f VERSION
+echo "*** Restoring pristine VERSION file..."
+git checkout VERSION
+echo "*** Getting git version number..."
+repo_rev=git`git log -1 --oneline | head -1 | cut -d' ' -f1`
 echo "    Repo rev number: $repo_rev"
 
 # Sanity checks
