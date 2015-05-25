@@ -274,7 +274,8 @@ static int unpack_get_return(pmix_buffer_t *data, const char *key,
                 PMIX_ERROR_LOG(PMIX_ERROR);
                 return PMIX_ERROR;
             }
-            /* now unpack and store the values - everything goes into our internal store */
+            /* now unpack and store the values - everything goes into our internal store
+             * using the modex hash */
             PMIX_CONSTRUCT(&buf, pmix_buffer_t);
             PMIX_LOAD_BUFFER(&buf, mdx[i].blob, mdx[i].size);
             cnt = 1;
@@ -282,7 +283,7 @@ static int unpack_get_return(pmix_buffer_t *data, const char *key,
             while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&buf, kp, &cnt, PMIX_KVAL))) {
                 pmix_output_verbose(2, pmix_globals.debug_output,
                                     "pmix: unpacked key %s", kp->key);
-                if (PMIX_SUCCESS != (rc = pmix_client_hash_store(mdx[i].nspace, mdx[i].rank, kp))) {
+                if (PMIX_SUCCESS != (rc = pmix_client_hash_store_modex(mdx[i].nspace, mdx[i].rank, kp))) {
                     PMIX_ERROR_LOG(rc);
                 }
                 if (NULL != key && 0 == strcmp(key, kp->key)) {
