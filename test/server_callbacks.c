@@ -198,7 +198,7 @@ int fencenb_fn(const pmix_proc_t procs[], size_t nprocs,
     if (0 != collect_data) {
         PMIX_CONSTRUCT(&data, pmix_list_t);
         for (i=0; i < nprocs; i++) {
-                gather_data(procs[i].nspace, procs[i].rank, &data);
+            gather_data(procs[i].nspace, procs[i].rank, &data);
         }
         /* xfer the data to the mdx array */
         xfer_to_array(&data, &mdxarray, &size);

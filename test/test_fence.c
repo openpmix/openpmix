@@ -114,7 +114,7 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
     int rc;
     size_t i, npcs;
     fence_desc_t *desc;
-    participant_t *p;
+    participant_t *p, *next;
     pmix_proc_t *pcs;
     bool participate;
     int fence_num = 0;
@@ -148,7 +148,6 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
         }
         fprintf(stderr, "%s\n", tmp);
         if (participate) {
-                fprintf(stderr, "f %d participate %s:%d\n", fence_num, my_nspace, my_rank);
             /*run fence test on this range */
             /* first put value (my_ns, my_rank) with key based on fence_num to split results of different fences*/
             put_ind = 0;
@@ -212,6 +211,29 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
                 PMIX_LIST_DESTRUCT(&test_fences);
                 PMIX_PROC_FREE(pcs, npcs);
                 return rc;
+            }
+
+            /* replace all items in the list with PMIX_RANK_WILDCARD rank by real ranks to get their data. */
+            pmix_proc_t *ranks;
+            size_t nranks;
+            PMIX_LIST_FOREACH_SAFE(p, next, desc->participants, participant_t) {
+                if (-1 == p->proc.rank) {
+                    rc = get_all_ranks_from_namespace(params, p->proc.nspace, &ranks, &nranks);
+                    if (PMIX_SUCCESS != rc) {
+                        TEST_ERROR(("%s:%d: Can't parse --ns-dist value in order to get ranks for namespace %s", my_nspace, my_rank, p->proc.nspace));
+                        PMIX_LIST_DESTRUCT(&test_fences);
+                        return PMIX_ERROR;
+                    }
+                    pmix_list_remove_item(desc->participants, (pmix_list_item_t*)p);
+                    for (i = 0; i < nranks; i++) {
+                        participant_t *prt;
+                        prt = PMIX_NEW(participant_t);
+                        strncpy(prt->proc.nspace, ranks[i].nspace, strlen(ranks[i].nspace)+1);
+                        prt->proc.rank = ranks[i].rank;
+                        pmix_list_append(desc->participants, &prt->super);
+                    }
+                    PMIX_PROC_FREE(ranks, nranks);
+                }
             }
 
             /* get data from all participating in this fence clients */
