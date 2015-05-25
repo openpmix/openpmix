@@ -249,7 +249,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
             continue;
         }
         /* extract and process any proc-related info for this nspace */
-        pmix_client_process_nspace_blob(pmix_globals.nspace, bptr);
+        pmix_client_process_nspace_blob(nspace, bptr);
         PMIX_RELEASE(bptr);
     }
     if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {

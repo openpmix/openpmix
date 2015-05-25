@@ -456,8 +456,8 @@ int PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
     kv->key = strdup((char*)key);
     kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
     pmix_value_xfer(kv->value, val);
-    /* put it in the hash table */
-    if (PMIX_SUCCESS != (rc = pmix_client_hash_store(pmix_globals.nspace, pmix_globals.rank, kv))) {
+    /* put it in the modex hash table */
+    if (PMIX_SUCCESS != (rc = pmix_client_hash_store_modex(pmix_globals.nspace, pmix_globals.rank, kv))) {
         PMIX_ERROR_LOG(rc);
     }
 

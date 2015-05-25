@@ -182,14 +182,16 @@ static int unpack_return(pmix_buffer_t *data)
             PMIX_ERROR_LOG(rc);
             return rc;
         }
-        /* now unpack and store the values - everything goes into our internal store */
+        /* now unpack and store the values - everything goes into our internal store.
+         * However, since this data was obtained via the Fence operation, mark
+         * it as "modex" data */
         for (i=0; i < np; i++) {
             PMIX_CONSTRUCT(&buf, pmix_buffer_t);
             PMIX_LOAD_BUFFER(&buf, mdx[i].blob, mdx[i].size);
             cnt = 1;
             kp = PMIX_NEW(pmix_kval_t);
             while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&buf, kp, &cnt, PMIX_KVAL))) {
-                if (PMIX_SUCCESS != (rc = pmix_client_hash_store(mdx[i].nspace, mdx[i].rank, kp))) {
+                if (PMIX_SUCCESS != (rc = pmix_client_hash_store_modex(mdx[i].nspace, mdx[i].rank, kp))) {
                     PMIX_ERROR_LOG(rc);
                 }
                 PMIX_RELEASE(kp);  // maintain acctg

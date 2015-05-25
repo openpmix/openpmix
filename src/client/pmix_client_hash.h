@@ -23,6 +23,8 @@ void pmix_client_hash_finalize(void);
 
 int pmix_client_hash_store(const char *nspace, int rank,
                            pmix_kval_t *kv);
+int pmix_client_hash_store_modex(const char *nspace, int rank,
+                                 pmix_kval_t *kin);
 
 int pmix_client_hash_fetch(const char *nspace, int rank,
                            const char *key, pmix_value_t **kvs);

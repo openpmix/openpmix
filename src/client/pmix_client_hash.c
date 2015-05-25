@@ -44,21 +44,26 @@ typedef struct {
     /* List of pmix_kval_t structures containing all data
        received from this process, sorted by key. */
     pmix_list_t data;
+    /* List of pmix_kval_t structures containing all modex
+     * data from this process, sorted by key */
+    pmix_list_t modex;
 } pmix_proc_data_t;
 static void pdcon(pmix_proc_data_t *p)
 {
     p->loaded = false;
     PMIX_CONSTRUCT(&p->data, pmix_list_t);
+    PMIX_CONSTRUCT(&p->modex, pmix_list_t);
 }
 static void pddes(pmix_proc_data_t *p)
 {
     PMIX_LIST_DESTRUCT(&p->data);
+    PMIX_LIST_DESTRUCT(&p->modex);
 }
 static PMIX_CLASS_INSTANCE(pmix_proc_data_t,
                           pmix_list_item_t,
                           pdcon, pddes);
-static pmix_kval_t* lookup_keyval(pmix_proc_data_t *proc_data,
-                                        const char *key);
+static pmix_kval_t* lookup_keyval(pmix_list_t *data,
+                                  const char *key);
 static pmix_proc_data_t* lookup_proc(pmix_hash_table_t *jtable,
                                      uint64_t id, bool create);
 
@@ -97,12 +102,29 @@ void pmix_client_hash_finalize(void)
 }
 
 
+static void hash_store(pmix_list_t *data,
+                       pmix_kval_t *kin)
+{
+     pmix_kval_t *kv;
+
+     /* see if we already have this key in the data - means we are updating
+     * a pre-existing value
+     */
+    kv = lookup_keyval(data, kin->key);
+    if (NULL != kv) {
+        pmix_list_remove_item(data, &kv->super);
+        PMIX_RELEASE(kv);
+    }
+    /* store the new value */
+    PMIX_RETAIN(kin);
+    pmix_list_append(data, &kin->super);
+}
+
 
 int pmix_client_hash_store(const char *nspace, int rank,
                            pmix_kval_t *kin)
 {
     pmix_proc_data_t *proc_data;
-    pmix_kval_t *kv;
     uint32_t jobid;
     uint64_t id, rk64;
 
@@ -125,17 +147,38 @@ int pmix_client_hash_store(const char *nspace, int rank,
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
-    /* see if we already have this key in the data - means we are updating
-     * a pre-existing value
-     */
-    kv = lookup_keyval(proc_data, kin->key);
-    if (NULL != kv) {
-        pmix_list_remove_item(&proc_data->data, &kv->super);
-        PMIX_RELEASE(kv);
+    hash_store(&proc_data->data, kin);
+
+    return PMIX_SUCCESS;
+}
+
+int pmix_client_hash_store_modex(const char *nspace, int rank,
+                                 pmix_kval_t *kin)
+{
+    pmix_proc_data_t *proc_data;
+    uint32_t jobid;
+    uint64_t id, rk64;
+
+    pmix_output_verbose(10, pmix_globals.debug_output,
+                        "HASH:STORE %s:%d key %s",
+                        nspace, rank, kin->key);
+    
+    /* create a hash of the nspace */
+    PMIX_HASH_STR(nspace, jobid);
+    /* mix in the rank to get the id */
+    if (PMIX_RANK_WILDCARD == rank) {
+        id = ((uint64_t)jobid << 32) | 0x00000000ffffffff;
+    } else {
+        rk64 = (uint64_t)rank;
+        id = ((uint64_t)jobid << 32) | rk64;
     }
-    /* store the new value */
-    PMIX_RETAIN(kin);
-    pmix_list_append(&proc_data->data, &kin->super);
+
+    /* lookup the proc data object for this proc */
+    if (NULL == (proc_data = lookup_proc(&hash_data, id, true))) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+
+    hash_store(&proc_data->modex, kin);
 
     return PMIX_SUCCESS;
 }
@@ -179,7 +222,7 @@ int pmix_client_hash_fetch(const char *nspace, int rank,
             return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
         }
         /* if the requestor asked for data about a specific
-         * rank, but we didn't find it, then see if we have
+         * rank, but we didn't find that proc, then see if we have
          * the wildcard data object because some data resides
          * in there - i.e., the requestor may be asking for
          * data that relates to the entire job and not just
@@ -190,14 +233,16 @@ int pmix_client_hash_fetch(const char *nspace, int rank,
         found_wild_data = true;
     }
 
-    /* find the value from within this proc_data object */
-    if (NULL == (hv = lookup_keyval(proc_data, key))) {
+    /* find the value from within this proc_data object - first
+     * check the job-level data */
+    if (NULL == (hv = lookup_keyval(&proc_data->data, key))) {
         /* if it isn't present, then we have to treat three cases:
          *
          * (a) the requestor asked for data about a specific rank,
          *     and we found the blob for that rank. In this case,
          *     we have to also check the wildcard rank's object
-         *     for the reasons cited above
+         *     for the reasons cited above, as well as the modex
+         *     data to see if the key is there
          *
          * (b) the requestor asked for data about a specific rank,
          *     but we didn't find a blob for that rank and are
@@ -210,6 +255,7 @@ int pmix_client_hash_fetch(const char *nspace, int rank,
          *     return NOT_FOUND */
         
         if (id == idwild) {  // case (c)
+            /* there is no wildcard modex data */
             return PMIX_ERR_NOT_FOUND;
         }
         
@@ -220,11 +266,24 @@ int pmix_client_hash_fetch(const char *nspace, int rank,
             return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
         }
         
+        /* it might be a modex key - do we have that data yet? */
+        if (0 != pmix_list_get_size(&proc_data->modex)) {
+            /* we do have modex data, so check it */
+            if (NULL != (hv = lookup_keyval(&proc_data->modex, key))) {
+                goto returndata;
+            }
+        }
+
+        /* at this point, we know we have a blob for the requested proc, but
+         * we don't have modex data OR the requested key wasn't in it. We
+         * can now check to see if we have job-level data, and if the key
+         * is in there */
         if (NULL == (proc_data = lookup_proc(&hash_data, idwild, false))) {  // case (a)
-            /* we don't have data for the wildcard rank yet */
+            /* we don't have data for the wildcard rank yet - give us
+             * a chance to get it */
             return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
         }
-        if (NULL == (hv = lookup_keyval(proc_data, key))) {
+        if (NULL == (hv = lookup_keyval(&proc_data->data, key))) {
             /* we have the wildcard rank data, but this key isn't in it. So
              * we have both blobs and neither one contains the specified
              * key - return an error */
@@ -232,6 +291,7 @@ int pmix_client_hash_fetch(const char *nspace, int rank,
         }
     }
 
+ returndata:
     /* create the copy */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)kvs, hv->value, PMIX_VALUE))) {
         return rc;
@@ -284,15 +344,14 @@ int pmix_client_hash_remove_data(const char *nspace,
 }
 
 /**
- * Find data for a given key in a given proc_data_t
- * container.
+ * Find data for a given key in a given pmix_list_t.
  */
-static pmix_kval_t* lookup_keyval(pmix_proc_data_t *proc_data,
-                                        const char *key)
+static pmix_kval_t* lookup_keyval(pmix_list_t *data,
+                                  const char *key)
 {
     pmix_kval_t *kv;
 
-    PMIX_LIST_FOREACH(kv, &proc_data->data, pmix_kval_t) {
+    PMIX_LIST_FOREACH(kv, data, pmix_kval_t) {
         if (0 == strcmp(key, kv->key)) {
             return kv;
         }
