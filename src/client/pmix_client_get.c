@@ -258,6 +258,7 @@ static int unpack_get_return(pmix_buffer_t *data, const char *key,
                         "pmix: unpacking %d blobs for key %s",
                         (int)np, (NULL == key) ? "NULL" : key);
 
+    ret = PMIX_ERR_NOT_FOUND;
     /* if data was returned, unpack and store it */
     if (0 < np) {
         mdx = (pmix_modex_data_t*)malloc(np * sizeof(pmix_modex_data_t));
@@ -294,6 +295,7 @@ static int unpack_get_return(pmix_buffer_t *data, const char *key,
                         PMIX_RELEASE(kp);
                         return rc;
                     }
+                    ret = PMIX_SUCCESS;
                 }
                 PMIX_RELEASE(kp); // maintain acctg - hash_store does a retain
                 cnt = 1;
@@ -307,9 +309,8 @@ static int unpack_get_return(pmix_buffer_t *data, const char *key,
         }
         free(mdx);
     }
-    rc = PMIX_SUCCESS;
 
-    return rc;
+    return ret;
 }
 
 static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
