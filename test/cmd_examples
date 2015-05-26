@@ -19,3 +19,15 @@
 # 2 - non-blocking across processes 0 and 1 from ns 0 and process 3 from ns 1,
 # 3 - blocking with data exchange across processes from their own namespace.
 ./pmix_test -n 4 --job-fence -c --fence "[0:][d|0:0-1;1:]" --use-same-keys --ns-dist "3:1"
+
+# test publish/lookup/unpublish functionality.
+./pmix_test -n 2 --test-publish
+
+# test spawn functionality.
+./pmix_test -n 2 --test-spawn
+
+# test connect/disconnect between processes from the same namespace.
+./pmix_test -n 2 --test-connect
+
+# resolve peers from different namespaces.
+./pmix_test -n 5 --test-resolve-peers --ns-dist "1:2:2"

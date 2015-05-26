@@ -146,7 +146,7 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
                 len += sprintf(tmp+len, "%d,", p->proc.rank);
             }
         }
-        fprintf(stderr, "%s\n", tmp);
+        TEST_VERBOSE(("%s\n", tmp));
         if (participate) {
             /*run fence test on this range */
             /* first put value (my_ns, my_rank) with key based on fence_num to split results of different fences*/
@@ -448,11 +448,11 @@ int test_job_fence(test_params params, char *my_nspace, int my_rank)
             return PMIX_ERROR;
         }
         if (PMIX_ERR_NOT_FOUND != rc) {
-            TEST_ERROR(("rank %d [ERROR]: PMIx_Get returned %d instead of not_found",
+            TEST_ERROR(("%s:%d [ERROR]: PMIx_Get returned %d instead of not_found",
                         my_nspace, my_rank, rc));
         }
         if (NULL != val) {
-            TEST_ERROR(("rank %d [ERROR]: PMIx_Get did not return NULL value", my_nspace, my_rank));
+            TEST_ERROR(("%s:%d [ERROR]: PMIx_Get did not return NULL value", my_nspace, my_rank));
             return PMIX_ERROR;
         }
         TEST_VERBOSE(("%s:%d: rank %d is OK", my_nspace, my_rank, i+params.base_rank));
