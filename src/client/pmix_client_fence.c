@@ -44,12 +44,12 @@
 #include "src/buffer_ops/buffer_ops.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
+#include "src/util/hash.h"
 #include "src/util/output.h"
 #include "src/util/progress_threads.h"
 #include "src/usock/usock.h"
 #include "src/sec/pmix_sec.h"
 
-#include "pmix_client_hash.h"
 #include "pmix_client_ops.h"
 
 static int unpack_return(pmix_buffer_t *data);
@@ -152,11 +152,12 @@ static int unpack_return(pmix_buffer_t *data)
 {
     int rc, ret;
     int32_t cnt;
-    pmix_buffer_t buf;
-    size_t np, i;
+    pmix_buffer_t *bptr, *bprank, *bpscope;
     pmix_kval_t *kp;
-    pmix_modex_data_t *mdx;
-
+    char *nspace;
+    int rank;
+    pmix_nsrec_t *ns, *nptr;
+    
     /* unpack the status code */
     cnt = 1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(data, &ret, &cnt, PMIX_INT))) {
@@ -167,48 +168,70 @@ static int unpack_return(pmix_buffer_t *data)
         return ret;
     }
     
-    /* get the number of blobs */
-    cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(data, &np, &cnt, PMIX_SIZE))) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-
     /* if data was returned, unpack and store it */
-    if (0 < np) {
-        mdx = (pmix_modex_data_t*)malloc(np * sizeof(pmix_modex_data_t));
-        cnt = np;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(data, mdx, &cnt, PMIX_MODEX))) {
+    while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(data, &bptr, &cnt, PMIX_BUFFER))) {
+        /* unpack the nspace */
+        cnt = 1;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(bptr, &nspace, &cnt, PMIX_STRING))) {
             PMIX_ERROR_LOG(rc);
             return rc;
         }
-        /* now unpack and store the values - everything goes into our internal store.
-         * However, since this data was obtained via the Fence operation, mark
-         * it as "modex" data */
-        for (i=0; i < np; i++) {
-            PMIX_CONSTRUCT(&buf, pmix_buffer_t);
-            PMIX_LOAD_BUFFER(&buf, mdx[i].blob, mdx[i].size);
+        /* find the nspace object */
+        nptr = NULL;
+        PMIX_LIST_FOREACH(ns, &pmix_client_globals.nspaces, pmix_nsrec_t) {
+            if (0 == strcmp(nspace, ns->nspace)) {
+                nptr = ns;
+                break;
+            }
+        }
+        if (NULL == nptr) {
+            /* new nspace - setup a record for it */
+            nptr = PMIX_NEW(pmix_nsrec_t);
+            (void)strncpy(nptr->nspace, nspace, PMIX_MAX_NSLEN);
+            pmix_list_append(&pmix_client_globals.nspaces, &nptr->super);
+        }
+        /* unpack the modex blobs - there will be one blob for each rank */
+        cnt = 1;
+        while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bptr, &bprank, &cnt, PMIX_BUFFER))) {
+            /* unpack the rank */
             cnt = 1;
-            kp = PMIX_NEW(pmix_kval_t);
-            while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&buf, kp, &cnt, PMIX_KVAL))) {
-                if (PMIX_SUCCESS != (rc = pmix_client_hash_store_modex(mdx[i].nspace, mdx[i].rank, kp))) {
-                    PMIX_ERROR_LOG(rc);
-                }
-                PMIX_RELEASE(kp);  // maintain acctg
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(bprank, &rank, &cnt, PMIX_INT))) {
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
+            /* there may be multiple blobs for each rank, each from a different scope */
+            cnt = 1;
+            while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bprank, &bpscope, &cnt, PMIX_BUFFER))) {
+                /* unpack each value they provided */
                 cnt = 1;
                 kp = PMIX_NEW(pmix_kval_t);
-            }
-            PMIX_RELEASE(kp);  // maintain acctg
-            PMIX_DESTRUCT(&buf);  // free's the data region
+                while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bpscope, kp, &cnt, PMIX_KVAL))) {
+                    if (PMIX_SUCCESS != (rc = pmix_hash_store(&nptr->modex, rank, kp))) {
+                        PMIX_ERROR_LOG(rc);
+                    }
+                    PMIX_RELEASE(kp);  // maintain acctg
+                    cnt = 1;
+                    kp = PMIX_NEW(pmix_kval_t);
+                }
+                PMIX_RELEASE(kp);  // maintain acctg
+            }  // while bpscope
             if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
                 PMIX_ERROR_LOG(rc);
             }
-        }
-        if (PMIX_SUCCESS != rc && PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+            PMIX_RELEASE(bpscope);
+            cnt = 1;
+        }  // while bprank
+        if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
             PMIX_ERROR_LOG(rc);
-        } else {
-            rc = PMIX_SUCCESS;
         }
+        PMIX_RELEASE(bprank);
+        PMIX_RELEASE(bptr);
+        cnt = 1;
+    } // while bptr
+    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+        PMIX_ERROR_LOG(rc);
+    } else {
+        rc = PMIX_SUCCESS;
     }
 
     return rc;

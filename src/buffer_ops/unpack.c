@@ -1004,7 +1004,6 @@ int pmix_bfrop_unpack_modex(pmix_buffer_t *buffer, void *dest,
     pmix_modex_data_t *ptr;
     int32_t i, n, m;
     int ret;
-    char *tmp;
     
     pmix_output_verbose(20, pmix_globals.debug_output,
                         "pmix_bfrop_unpack: %d modex", *num_vals);
@@ -1014,22 +1013,6 @@ int pmix_bfrop_unpack_modex(pmix_buffer_t *buffer, void *dest,
     
     for (i = 0; i < n; ++i) {
         memset(&ptr[i], 0, sizeof(pmix_modex_data_t));
-        ptr[i].rank = -1;
-        /* unpack nspace */
-        m=1;
-        tmp = NULL;
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_string(buffer, &tmp, &m, PMIX_STRING))) {
-            return ret;
-        }
-        if (NULL == tmp) {
-            return PMIX_ERROR;
-        }
-        (void)strncpy(ptr[i].nspace, tmp, PMIX_MAX_NSLEN);
-        free(tmp);
-        m=1;
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_int(buffer, &ptr[i].rank, &m, PMIX_INT))) {
-            return ret;
-        }
         /* unpack the number of bytes */
         m=1;
         if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_sizet(buffer, &ptr[i].size, &m, PMIX_SIZE))) {

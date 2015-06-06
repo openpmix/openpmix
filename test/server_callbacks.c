@@ -15,8 +15,7 @@ pmix_server_module_t mymodule = {
     finalized,
     abort_fn,
     fencenb_fn,
-    store_modex_fn,
-    get_modexnb_fn,
+    dmodex_fn,
     publish_fn,
     lookup_fn,
     unpublish_fn,
@@ -95,181 +94,49 @@ int finalized(const char nspace[], int rank, void *server_object,
 
 int abort_fn(const char nspace[], int rank, void *server_object,
              int status, const char msg[],
+             pmix_proc_t procs[], size_t nprocs,
              pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     if (NULL != cbfunc) {
         cbfunc(PMIX_SUCCESS, cbdata);
     }
     TEST_VERBOSE(("Abort is called with status = %d, msg = %s",
-                 status, msg));
+                  status, msg));
     test_abort = true;
     return PMIX_SUCCESS;
 }
 
-static void gather_data_rank(const char nspace[], int rank,
-                             pmix_list_t *mdxlist)
-{
-    pmix_test_data_t *tdat, *mdx;
-
-    TEST_VERBOSE(("gather data: from %d list has %d items",
-                rank, pmix_list_get_size(&cli_info[rank].modex)) );
-
-    PMIX_LIST_FOREACH(mdx, &cli_info[rank].modex, pmix_test_data_t) {
-        TEST_VERBOSE(("gather_data: checking %s vs %s",
-                     nspace, mdx->data.nspace));
-        if (0 != strcmp(nspace, mdx->data.nspace)) {
-            continue;
-        }
-        TEST_VERBOSE(("gather_data: checking %d vs %d",
-                     rank, mdx->data.rank));
-        if (rank != mdx->data.rank && PMIX_RANK_WILDCARD != rank) {
-            continue;
-        }
-        TEST_VERBOSE(("test:gather_data adding blob for %s:%d of size %d",
-                            mdx->data.nspace, mdx->data.rank, (int)mdx->data.size));
-        tdat = PMIX_NEW(pmix_test_data_t);
-        (void)strncpy(tdat->data.nspace, mdx->data.nspace, PMIX_MAX_NSLEN);
-        tdat->data.rank = mdx->data.rank;
-        tdat->data.size = mdx->data.size;
-        if (0 < mdx->data.size) {
-            tdat->data.blob = (uint8_t*)malloc(mdx->data.size);
-            memcpy(tdat->data.blob, mdx->data.blob, mdx->data.size);
-        }
-        pmix_list_append(mdxlist, &tdat->super);
-    }
-}
-
-static void gather_data(const char nspace[], int rank,
-                        pmix_list_t *mdxlist)
-{
-    if( PMIX_RANK_WILDCARD == rank ){
-        int i;
-        for(i = 0; i < cli_info_cnt; i++){
-            gather_data_rank(nspace, i, mdxlist);
-        }
-    } else {
-        gather_data_rank(nspace, rank, mdxlist);
-    }
-}
-
-static void xfer_to_array(pmix_list_t *mdxlist,
-                          pmix_modex_data_t **mdxarray, size_t *size)
-{
-    pmix_modex_data_t *mdxa;
-    pmix_test_data_t *dat;
-    size_t n;
-
-    *size = 0;
-    *mdxarray = NULL;
-    n = pmix_list_get_size(mdxlist);
-    if (0 == n) {
-        return;
-    }
-    /* allocate the array */
-    mdxa = (pmix_modex_data_t*)malloc(n * sizeof(pmix_modex_data_t));
-    *mdxarray = mdxa;
-    *size = n;
-    n = 0;
-    PMIX_LIST_FOREACH(dat, mdxlist, pmix_test_data_t) {
-        (void)strncpy(mdxa[n].nspace, dat->data.nspace, PMIX_MAX_NSLEN);
-        mdxa[n].rank = dat->data.rank;
-        mdxa[n].size = dat->data.size;
-        if (0 < dat->data.size) {
-            mdxa[n].blob = (uint8_t*)malloc(dat->data.size);
-            memcpy(mdxa[n].blob, dat->data.blob, dat->data.size);
-        }
-        n++;
-    }
-}
-
 int fencenb_fn(const pmix_proc_t procs[], size_t nprocs,
-               int collect_data,
+               char *data, size_t ndata,
                pmix_modex_cbfunc_t cbfunc, void *cbdata)
 {
-    pmix_list_t data;
-    size_t i;
-    pmix_modex_data_t *mdxarray = NULL;
-    size_t size=0, n;
-    
-    /* We need to wait until all the
-     * procs have reported prior to responding */
+    TEST_VERBOSE(("Getting data for %s:%d",
+                  procs[0].nspace, procs[0].rank));
 
-    /* if they want all the data returned, do so */
-    if (0 != collect_data) {
-        PMIX_CONSTRUCT(&data, pmix_list_t);
-        for (i=0; i < nprocs; i++) {
-            gather_data(procs[i].nspace, procs[i].rank, &data);
-        }
-        /* xfer the data to the mdx array */
-        xfer_to_array(&data, &mdxarray, &size);
-        PMIX_LIST_DESTRUCT(&data);
-    }
+    /* In a perfect world, we should wait until
+     * the test servers from all involved procs
+     * respond. We don't have multi-server capability
+     * yet, so we'll just respond right away and
+     * return what we were given */
+
     if (NULL != cbfunc) {
-        cbfunc(PMIX_SUCCESS, mdxarray, size, cbdata);
-    }
-    /* free the array */
-    for (n=0; n < size; n++) {
-        if (NULL != mdxarray[n].blob) {
-            free(mdxarray[n].blob);
-        }
-    }
-    if (NULL != mdxarray) {
-        free(mdxarray);
+        cbfunc(PMIX_SUCCESS, data, ndata, cbdata);
     }
     return PMIX_SUCCESS;
 }
 
-int store_modex_fn(pmix_modex_data_t *data,
-                   void *server_object,
-                   pmix_scope_t scope)
+int dmodex_fn(const char nspace[], int rank,
+              pmix_modex_cbfunc_t cbfunc, void *cbdata)
 {
-    pmix_test_data_t *mdx;
-
-    TEST_VERBOSE(("storing modex data for %s:%d of size %d",
-                        data->nspace, data->rank, (int)data->size));
-    mdx = PMIX_NEW(pmix_test_data_t);
-    (void)strncpy(mdx->data.nspace, data->nspace, PMIX_MAX_NSLEN);
-    mdx->data.rank = data->rank;
-    mdx->data.size = data->size;
-    if (0 < mdx->data.size) {
-        mdx->data.blob = (uint8_t*)malloc(mdx->data.size);
-        memcpy(mdx->data.blob, data->blob, mdx->data.size);
-    }
-    pmix_list_append(&cli_info[data->rank].modex, &mdx->super);
-    return PMIX_SUCCESS;
-}
-
-int get_modexnb_fn(const char nspace[], int rank,
-                   pmix_modex_cbfunc_t cbfunc, void *cbdata)
-{
-    pmix_list_t data;
-    pmix_modex_data_t *mdxarray;
-    size_t n, size;
-    int rc=PMIX_SUCCESS;
-
     TEST_VERBOSE(("Getting data for %s:%d", nspace, rank));
 
-    PMIX_CONSTRUCT(&data, pmix_list_t);
-    gather_data(nspace, rank, &data);
-    /* convert the data to an array */
-    xfer_to_array(&data, &mdxarray, &size);
-    TEST_VERBOSE(("test:get_modexnb returning %d array blocks", (int)size));
-
-    PMIX_LIST_DESTRUCT(&data);
-    if (0 == size) {
-        rc = PMIX_ERR_NOT_FOUND;
-    }
+    /* In a perfect world, we should call another server
+     * to get the data for one of its clients. We don't
+     * have multi-server capability yet, so we'll just
+     * respond right away */
+    
     if (NULL != cbfunc) {
-        cbfunc(rc, mdxarray, size, cbdata);
-    }
-    /* free the array */
-    for (n=0; n < size; n++) {
-        if (NULL != mdxarray[n].blob) {
-            free(mdxarray[n].blob);
-        }
-    }
-    if (NULL != mdxarray) {
-        free(mdxarray);
+        cbfunc(PMIX_ERR_NOT_FOUND, NULL, 0, cbdata);
     }
     return PMIX_SUCCESS;
 }

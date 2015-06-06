@@ -18,15 +18,13 @@ int finalized(const char nspace[], int rank, void *server_object,
 int abort_fn(const char nspace[], int rank,
              void *server_object,
              int status, const char msg[],
+             pmix_proc_t procs[], size_t nprocs,
              pmix_op_cbfunc_t cbfunc, void *cbdata);
 int fencenb_fn(const pmix_proc_t procs[], size_t nprocs,
-               int collect_data,
+               char *data, size_t ndata,
                pmix_modex_cbfunc_t cbfunc, void *cbdata);
-int store_modex_fn(pmix_modex_data_t *data,
-                   void *server_object,
-                   pmix_scope_t scope);
-int get_modexnb_fn(const char nspace[], int rank,
-                   pmix_modex_cbfunc_t cbfunc, void *cbdata);
+int dmodex_fn(const char nspace[], int rank,
+              pmix_modex_cbfunc_t cbfunc, void *cbdata);
 int publish_fn(const char nspace[], int rank,
                pmix_scope_t scope, pmix_persistence_t persist,
                const pmix_info_t info[], size_t ninfo,

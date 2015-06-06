@@ -113,7 +113,7 @@ int PMI2_Abort(int flag, const char msg[])
 {
     pmix_status_t rc;
     
-    rc = PMIx_Abort(flag, msg);
+    rc = PMIx_Abort(flag, msg, NULL, 0);
     return convert_err(rc);
 }
 
@@ -134,6 +134,10 @@ int PMI2_KVS_Fence(void)
 {
     pmix_status_t rc;
 
+    if (PMIX_SUCCESS != (rc = PMIx_Commit())) {
+        return convert_err(rc);
+    }
+    
     /* we want all data to be collected upon completion */
     rc = PMIx_Fence(NULL, 0, 1);
     return convert_err(rc);

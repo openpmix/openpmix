@@ -79,7 +79,7 @@ int PMI_Abort(int flag, const char msg[])
 {
     pmix_status_t rc;
 
-    rc = PMIx_Abort(flag, msg);
+    rc = PMIx_Abort(flag, msg, NULL, 0);
     return convert_err(rc);
 }
 
@@ -96,11 +96,13 @@ int PMI_KVS_Put(const char kvsname[], const char key[], const char value[])
     return convert_err(rc);
 }
 
-/* KVS_Commit - PMIx has no equivalent operation as any Put
- * values are locally cached and transmitted upon Fence */
+/* KVS_Commit */
 int PMI_KVS_Commit(const char kvsname[])
 {
-    return PMI_SUCCESS;
+    pmix_status_t rc;
+    
+    rc = PMIx_Commit();
+    return convert_err(rc);
 }
 
 /* Barrier only applies to our own nspace, and we want all

@@ -44,18 +44,16 @@
 #include "src/buffer_ops/buffer_ops.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
+#include "src/util/hash.h"
 #include "src/util/output.h"
 #include "src/util/progress_threads.h"
 #include "src/usock/usock.h"
 #include "src/sec/pmix_sec.h"
 
-#include "pmix_client_hash.h"
 #include "pmix_client_ops.h"
 
 static pmix_buffer_t* pack_get(const char nspace[], int rank,
                                const char key[], pmix_cmd_t cmd);
-static int unpack_get_return(pmix_buffer_t *data, const char *key,
-                             pmix_value_t **val);
 static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                          pmix_buffer_t *buf, void *cbdata);
 static void getnb_shortcut(int fd, short flags, void *cbdata);
@@ -105,6 +103,7 @@ int PMIx_Get_nb(const char *nspace, int rank,
     pmix_cb_t *cb;
     int rc;
     char *nm;
+    pmix_nsrec_t *ns, *nptr;
     
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: get_nb value for proc %s:%d key %s",
@@ -126,9 +125,54 @@ int PMIx_Get_nb(const char *nspace, int rank,
     } else {
         nm = (char*)nspace;
     }
+
+    /* find the nspace object */
+    nptr = NULL;
+    PMIX_LIST_FOREACH(ns, &pmix_client_globals.nspaces, pmix_nsrec_t) {
+        if (0 == strcmp(nm, ns->nspace)) {
+            nptr = ns;
+            break;
+        }
+    }
+    if (NULL == nptr) {
+        /* never heard of it - this is an error as we do not
+         * support retrieval of data from namespaces with which
+         * we are not connected */
+        return PMIX_ERR_NOT_FOUND;
+    }
+
+    /* the requested data could be in the job-data table, so let's
+     * just check there first.  */
+    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->data, PMIX_RANK_WILDCARD, key, &val))) {
+        /* found it - return it via appropriate channel */
+        cb = PMIX_NEW(pmix_cb_t);
+        (void)strncpy(cb->nspace, nm, PMIX_MAX_NSLEN);
+        cb->rank = rank;
+        cb->key = strdup(key);
+        cb->value_cbfunc = cbfunc;
+        cb->cbdata = cbdata;
+        /* pack the return data so the unpack routine can get it */
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&cb->data, val, 1, PMIX_VALUE))) {
+            PMIX_ERROR_LOG(rc);
+        }
+        /* cleanup */
+        if (NULL != val) {
+            PMIX_VALUE_RELEASE(val);
+        }
+        /* activate the event */
+        event_assign(&(cb->ev), pmix_globals.evbase, -1,
+                     EV_WRITE, getnb_shortcut, cb);
+        event_active(&(cb->ev), EV_WRITE, 1);
+        return PMIX_SUCCESS;
+    }
+    if (PMIX_RANK_WILDCARD == rank) {
+        /* can't be anywhere else */
+        return PMIX_ERR_NOT_FOUND;
+    }
     
-    /* first see if we already have the info in our dstore */
-    if (PMIX_SUCCESS == (rc = pmix_client_hash_fetch(nm, rank, key, &val))) {
+    /* not finding it is not an error - it could be in the
+     * modex hash table, so check it */
+    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->modex, rank, key, &val))) {
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "pmix: value retrieved from dstore");
         /* need to push this into the event library to ensure
@@ -139,7 +183,7 @@ int PMIx_Get_nb(const char *nspace, int rank,
         cb->key = strdup(key);
         cb->value_cbfunc = cbfunc;
         cb->cbdata = cbdata;
-       /* pack the return data so the unpack routine can get it */
+        /* pack the return data so the unpack routine can get it */
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&cb->data, val, 1, PMIX_VALUE))) {
             PMIX_ERROR_LOG(rc);
         }
@@ -153,7 +197,7 @@ int PMIx_Get_nb(const char *nspace, int rank,
         event_active(&(cb->ev), EV_WRITE, 1);
         return PMIX_SUCCESS;
     } else if (PMIX_ERR_NOT_FOUND == rc) {
-        /* we have the data from this proc, but didn't find the key
+        /* we have the modex data from this proc, but didn't find the key
          * the user requested. At this time, there is no way for the
          * key to eventually be found, so all we can do is return
          * the error */
@@ -220,105 +264,16 @@ static pmix_buffer_t* pack_get(const char nspace[], int rank,
     return msg;
 }
 
-static int unpack_get_return(pmix_buffer_t *data, const char *key,
-                             pmix_value_t **val)
-{
-    int rc, ret;
-    int32_t cnt;
-    pmix_buffer_t buf;
-    size_t np, i;
-    pmix_kval_t *kp;
-    pmix_modex_data_t *mdx;
-    
-    /* init the return */
-    *val = NULL;
-
-    /* unpack the status */
-    cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(data, &ret, &cnt, PMIX_INT))) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-    if (PMIX_SUCCESS != ret) {
-        return ret;
-    }
-    
-    /* we have received the entire data blob for this process - unpack
-     * and cache all values, keeping the one we requested to return
-     * to the caller */
-    
-    /* get the number of blobs */
-    cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(data, &np, &cnt, PMIX_SIZE))) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix: unpacking %d blobs for key %s",
-                        (int)np, (NULL == key) ? "NULL" : key);
-
-    ret = PMIX_ERR_NOT_FOUND;
-    /* if data was returned, unpack and store it */
-    if (0 < np) {
-        mdx = (pmix_modex_data_t*)malloc(np * sizeof(pmix_modex_data_t));
-        cnt = np;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(data, mdx, &cnt, PMIX_MODEX))) {
-            PMIX_ERROR_LOG(rc);
-            return rc;
-        }
-        for (i=0; i < np; i++) {
-            pmix_output_verbose(2, pmix_globals.debug_output,
-                                "pmix: unpacked blob %d of size %d",
-                                (int)i, (int)mdx[i].size);
-            if (NULL == mdx[i].blob) {
-                PMIX_ERROR_LOG(PMIX_ERROR);
-                return PMIX_ERROR;
-            }
-            /* now unpack and store the values - everything goes into our internal store
-             * using the modex hash */
-            PMIX_CONSTRUCT(&buf, pmix_buffer_t);
-            PMIX_LOAD_BUFFER(&buf, mdx[i].blob, mdx[i].size);
-            cnt = 1;
-            kp = PMIX_NEW(pmix_kval_t);
-            while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&buf, kp, &cnt, PMIX_KVAL))) {
-                pmix_output_verbose(2, pmix_globals.debug_output,
-                                    "pmix: unpacked key %s", kp->key);
-                if (PMIX_SUCCESS != (rc = pmix_client_hash_store_modex(mdx[i].nspace, mdx[i].rank, kp))) {
-                    PMIX_ERROR_LOG(rc);
-                }
-                if (NULL != key && 0 == strcmp(key, kp->key)) {
-                    pmix_output_verbose(2, pmix_globals.debug_output,
-                                        "pmix: found requested value");
-                    if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)val, kp->value, PMIX_VALUE))) {
-                        PMIX_ERROR_LOG(rc);
-                        PMIX_RELEASE(kp);
-                        return rc;
-                    }
-                    ret = PMIX_SUCCESS;
-                }
-                PMIX_RELEASE(kp); // maintain acctg - hash_store does a retain
-                cnt = 1;
-                kp = PMIX_NEW(pmix_kval_t);
-            }
-            PMIX_RELEASE(kp);
-            PMIX_DESTRUCT(&buf);  // free's the data region
-            if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
-                PMIX_ERROR_LOG(rc);
-            }
-        }
-        free(mdx);
-    }
-
-    return ret;
-}
-
 static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                          pmix_buffer_t *buf, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
     int rc;
-    pmix_value_t *val;
+    pmix_value_t *val = NULL;
+    int32_t cnt;
+    pmix_buffer_t *bptr;
+    pmix_kval_t *kp;
+    pmix_nsrec_t *ns, *nptr;
     
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: get_nb callback recvd");
@@ -328,12 +283,64 @@ static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return;
     }
-    
-    rc = unpack_get_return(buf, cb->key, &val);
 
+    /* look up the nspace object for this proc */
+    nptr = NULL;
+    PMIX_LIST_FOREACH(ns, &pmix_client_globals.nspaces, pmix_nsrec_t) {
+        if (0 == strcmp(cb->nspace, ns->nspace)) {
+            nptr = ns;
+            break;
+        }
+    }
+    if (NULL == nptr) {
+        /* new nspace - setup a record for it */
+        nptr = PMIX_NEW(pmix_nsrec_t);
+        (void)strncpy(nptr->nspace, cb->nspace, PMIX_MAX_NSLEN);
+        pmix_list_append(&pmix_client_globals.nspaces, &nptr->super);
+    }
+
+    /* we received the entire blob for this process, so
+     * unpack and store it in the modex - this could consist
+     * of buffers from multiple scopes */
+    cnt = 1;
+    while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(buf, &bptr, &cnt, PMIX_BUFFER))) {
+        cnt = 1;
+        kp = PMIX_NEW(pmix_kval_t);
+        while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bptr, kp, &cnt, PMIX_KVAL))) {
+            pmix_output_verbose(2, pmix_globals.debug_output,
+                                "pmix: unpacked key %s", kp->key);
+            if (PMIX_SUCCESS != (rc = pmix_hash_store(&nptr->modex, cb->rank, kp))) {
+                PMIX_ERROR_LOG(rc);
+            }
+            if (NULL != cb->key && 0 == strcmp(cb->key, kp->key)) {
+                pmix_output_verbose(2, pmix_globals.debug_output,
+                                    "pmix: found requested value");
+                if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)&val, kp->value, PMIX_VALUE))) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_RELEASE(kp);
+                    return;
+                }
+            }
+            PMIX_RELEASE(kp); // maintain acctg - hash_store does a retain
+            cnt = 1;
+            kp = PMIX_NEW(pmix_kval_t);
+        }
+        PMIX_RELEASE(kp);
+        PMIX_RELEASE(bptr);  // free's the data region
+        if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+    }
+    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+        PMIX_ERROR_LOG(rc);
+    } else {
+        rc = PMIX_SUCCESS;
+    }
+    
     /* if a callback was provided, execute it */
     if (NULL != cb && NULL != cb->value_cbfunc) {
-        if (PMIX_SUCCESS != rc && (NULL == val) ){
+        if (NULL == val) {
             rc = PMIX_ERR_NOT_FOUND;
         }
         cb->value_cbfunc(rc, val, cb->cbdata);

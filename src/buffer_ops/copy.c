@@ -360,8 +360,6 @@ int pmix_bfrop_copy_modex(pmix_modex_data_t **dest, pmix_modex_data_t *src,
     if (NULL == *dest) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
-    (void)strncpy((*dest)->nspace, src->nspace, PMIX_MAX_NSLEN);
-    (*dest)->rank = src->rank;
     (*dest)->blob = NULL;
     (*dest)->size = 0;
     if (NULL != src->blob) {

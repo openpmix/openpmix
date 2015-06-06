@@ -185,7 +185,7 @@ void cli_wait_all(double timeout)
     start_time = tv.tv_sec + 1E-6*tv.tv_usec;
     cur_time = start_time;
 
-    TEST_VERBOSE(("Wait for all children to terminate"))
+    //TEST_VERBOSE(("Wait for all children to terminate"))
 
     // Wait for all children to cleanup after the test.
     while( !test_terminated() && ( timeout >= (cur_time - start_time) ) ){

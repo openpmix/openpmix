@@ -771,18 +771,10 @@ int pmix_bfrop_pack_modex(pmix_buffer_t *buffer, const void *src,
     pmix_modex_data_t *ptr;
     int32_t i;
     int ret;
-    char *foo;
     
     ptr = (pmix_modex_data_t *) src;
     
     for (i = 0; i < num_vals; ++i) {
-        foo = ptr[i].nspace;
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &foo, 1, PMIX_STRING))) {
-            return ret;
-        }
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int(buffer, &ptr[i].rank, 1, PMIX_INT))) {
-            return ret;
-        }
         if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_sizet(buffer, &ptr[i].size, 1, PMIX_SIZE))) {
             return ret;
         }

@@ -79,8 +79,6 @@
 
 BEGIN_C_DECLS
 
-#ifndef PMIX_EMBEDDED_MODE
-
 /****    SERVER FUNCTION-SHIPPED APIs    ****/
 /* NOTE: for performance purposes, the host server is required to
  * return as quickly as possible from all functions. Execution of
@@ -101,39 +99,37 @@ BEGIN_C_DECLS
 typedef int (*pmix_server_finalized_fn_t)(const char nspace[], int rank, void* server_object,
                                           pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-/* Client called PMIx_Abort - note that the client will be in a blocked
+/* A local client called PMIx_Abort - note that the client will be in a blocked
  * state until the host server executes the callback function, thus
- * allowing the PMIx server support library to release the client */
+ * allowing the PMIx server support library to release the client. The
+ * array of procs indicates which processes are to be terminated. A NULL
+ * indicates that all procs in the client's nspace are to be terminated */
 typedef int (*pmix_server_abort_fn_t)(const char nspace[], int rank, void *server_object,
                                       int status, const char msg[],
+                                      pmix_proc_t procs[], size_t nprocs,
                                       pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-/* Client called either PMIx_Fence or PMIx_Fence_nb. In either case,
+/* At least one client called either PMIx_Fence or PMIx_Fence_nb. In either case,
  * the host server will be called via a non-blocking function to execute
- * the specified operation. All processes in the specified array are
- * required to participate in the Fence[_nb] operation.The callback is
- * to be executed once all participants have participated.
+ * the specified operation once all participating local procs have
+ * contributed. All processes in the specified array are required to participate
+ * in the Fence[_nb] operation. The callback is to be executed once each daemon
+ * hosting at least one participant has called the host server's fencenb function.
  *
- * If the "collect_data" parameter is "true", then the callback function
- * shall return *all* modex data provided by the participants. If the
- * "collect_data" parameter is "false", then the callback shall just return
- * the status */
+ * The provided data is to be collectively shared with all PMIx
+ * servers involved in the fence operation, and returned in the modex
+ * cbfunc. A _NULL_ data value indicates that the local procs had
+ * no data to contribute */
 typedef int (*pmix_server_fencenb_fn_t)(const pmix_proc_t procs[], size_t nprocs,
-                                        int collect_data,
+                                        char *data, size_t ndata,
                                         pmix_modex_cbfunc_t cbfunc, void *cbdata);
 
-/* Store modex data for the given scope - should be copied into
- * the host server's storage. The pmix_modex_data_t object contains
- * the nspace/rank of the process providing the data */
-typedef int (*pmix_server_store_modex_fn_t)(pmix_modex_data_t *data,
-                                            void *server_object,
-                                            pmix_scope_t scope);
 
-/* Retrieve modex data from the specified rank. A rank value of PMIX_RANK_WILDCARD
- * indicates that all modex data associated with the given nspace is to be
- * returned. */
-typedef int (*pmix_server_get_modexnb_fn_t)(const char nspace[], int rank,
-                                            pmix_modex_cbfunc_t cbfunc, void *cbdata);
+/* Used by the PMIx server to request its local host contact the
+ * PMIx server on the remote node that hosts the specified proc to
+ * obtain and return a direct modex blob for that proc */
+typedef int (*pmix_server_dmodex_req_fn_t)(const char nspace[], int rank,
+                                           pmix_modex_cbfunc_t cbfunc, void *cbdata);
 
 
 /* Publish data per the PMIx API specification. The callback is to be executed
@@ -185,13 +181,13 @@ typedef int (*pmix_server_spawn_fn_t)(const pmix_app_t apps[], size_t napps,
  * a reportable event, and take appropriate action. The callback function is
  * to be called once all participating processes have called connect. Note that
  * a process can only engage in *one* connect operation involving the identical
- * set of ranges at a time. However, a process *can* be simultaneously engaged
- * in multiple connect operations, each involving a different set of ranges */
+ * set of procs at a time. However, a process *can* be simultaneously engaged
+ * in multiple connect operations, each involving a different set of procs */
 typedef int (*pmix_server_connect_fn_t)(const pmix_proc_t procs[], size_t nprocs,
                                         pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Disconnect a previously connected set of processes. An error should be returned
- * if the specified set of ranges was not previously "connected". As above, a process
+ * if the specified set of procs was not previously "connected". As above, a process
  * may be involved in multiple simultaneous disconnect operations. However, a process
  * is not allowed to reconnect to a set of ranges that has not fully completed
  * disconnect - i.e., you have to fully disconnect before you can reconnect to the
@@ -203,8 +199,7 @@ typedef struct pmix_server_module_1_0_0_t {
     pmix_server_finalized_fn_t        finalized;
     pmix_server_abort_fn_t            abort;
     pmix_server_fencenb_fn_t          fence_nb;
-    pmix_server_store_modex_fn_t      store_modex;
-    pmix_server_get_modexnb_fn_t      get_modex_nb;
+    pmix_server_dmodex_req_fn_t       direct_modex;
     pmix_server_publish_fn_t          publish;
     pmix_server_lookup_fn_t           lookup;
     pmix_server_unpublish_fn_t        unpublish;
@@ -212,8 +207,6 @@ typedef struct pmix_server_module_1_0_0_t {
     pmix_server_connect_fn_t          connect;
     pmix_server_disconnect_fn_t       disconnect;
 } pmix_server_module_t;
-
-#endif // PMIX_EMBEDDED_MODE
 
 /****    SERVER SUPPORT INIT/FINALIZE FUNCTIONS    ****/
 
@@ -338,6 +331,26 @@ pmix_status_t PMIx_server_register_client(const char nspace[], int rank,
 pmix_status_t PMIx_server_setup_fork(const char nspace[],
                                      int rank, char ***env);
 
+/* Define a callback function the PMIx server will use to return
+ * direct modex requests to the host server. The PMIx server
+ * will free the data blob upon return from the response fn */
+typedef void (*pmix_dmodex_response_fn_t)(pmix_status_t status,
+                                          char *data, size_t sz,
+                                          void *cbdata);
+
+/* Define a function by which the host server can request modex data
+ * from the local PMIx server. This is used to support the direct modex
+ * operation - i.e., where data is cached locally on each PMIx
+ * server for its own local clients, and is obtained on-demand
+ * for remote requests. Upon receiving a request from a remote
+ * server, the host server will call this function to pass the
+ * request into the PMIx server. The PMIx server will return a blob
+ * (once it becomes available) via the cbfunc - the host
+ * server shall send the blob back to the original requestor */
+pmix_status_t PMIx_server_dmodex_request(const char nspace[], int rank,
+                                         pmix_dmodex_response_fn_t cbfunc,
+                                         void *cbdata);
+ 
 /* Report an error to a process for notification via any
  * registered errhandler. The errhandler registration can be
  * called by both the server and the client application. On the

@@ -66,6 +66,18 @@ PMIX_DECLSPEC int pmix_value_unload(pmix_value_t *kv, void **data,
         (b)->unpack_ptr = (b)->base_ptr;                \
     } while(0);
 
+#define PMIX_UNLOAD_BUFFER(b, d, s)             \
+    do {                                        \
+        (d) = (char*)(b)->unpack_ptr;           \
+        (s) = (b)->bytes_used;                  \
+        (b)->base_ptr = NULL;                   \
+        (b)->bytes_used = 0;                    \
+        (b)->bytes_allocated = 0;               \
+        (b)->pack_ptr = NULL;                   \
+        (b)->unpack_ptr = NULL;                 \
+    } while (0);
+
+
 /**
  * Top-level interface function to pack one or more values into a
  * buffer.

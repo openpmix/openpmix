@@ -274,23 +274,6 @@ PMIX_CLASS_INSTANCE(pmix_usock_sr_t,
                    pmix_object_t,
                    srcon, NULL);
 
-static void ncon(pmix_nspace_t *p)
-{
-    memset(p->nspace, 0, sizeof(p->nspace));
-    p->nlocalprocs = 0;
-    p->all_registered = false;
-    PMIX_CONSTRUCT(&p->job_info, pmix_buffer_t);
-    PMIX_CONSTRUCT(&p->ranks, pmix_list_t);
-}
-static void ndes(pmix_nspace_t *p)
-{
-    PMIX_DESTRUCT(&p->job_info);
-    PMIX_LIST_DESTRUCT(&p->ranks);
-}
-PMIX_CLASS_INSTANCE(pmix_nspace_t,
-                    pmix_list_item_t,
-                    ncon, ndes);
-
 static void pcon(pmix_peer_t *p)
 {
     p->info = NULL;
@@ -303,6 +286,9 @@ static void pcon(pmix_peer_t *p)
 }
 static void pdes(pmix_peer_t *p)
 {
+    if (NULL != p->info) {
+        PMIX_RELEASE(p->info);
+    }
     if (0 <= p->sd) {
         CLOSE_THE_SOCKET(p->sd);
     }
@@ -324,20 +310,66 @@ PMIX_CLASS_INSTANCE(pmix_peer_t,
                    pmix_object_t,
                    pcon, pdes);
 
-static void info_con(pmix_rank_info_t *info)
-{
-    info->gid = info->uid = 0;
-    info->nptr = NULL;
-    info->rank = -1;
-    info->proc_cnt = 0;
-    info->server_object = NULL;
-}
-PMIX_CLASS_INSTANCE(pmix_rank_info_t,
-                   pmix_list_item_t,
-                   info_con, NULL);
-
 
 PMIX_CLASS_INSTANCE(pmix_timer_t,
                    pmix_object_t,
                    NULL, NULL);
 
+static void sncon(pmix_server_nspace_t *p)
+{
+    p->nlocalprocs = 0;
+    p->all_registered = false;
+    PMIX_CONSTRUCT(&p->job_info, pmix_buffer_t);
+    PMIX_CONSTRUCT(&p->ranks, pmix_list_t);
+    PMIX_CONSTRUCT(&p->mylocal, pmix_hash_table_t);
+    pmix_hash_table_init(&p->mylocal, 16);
+    PMIX_CONSTRUCT(&p->myremote, pmix_hash_table_t);
+    pmix_hash_table_init(&p->myremote, 16);
+    PMIX_CONSTRUCT(&p->remote, pmix_hash_table_t);
+    pmix_hash_table_init(&p->remote, 256);
+}
+static void sndes(pmix_server_nspace_t *p)
+{
+    PMIX_DESTRUCT(&p->job_info);
+    PMIX_LIST_DESTRUCT(&p->ranks);
+    PMIX_DESTRUCT(&p->mylocal);
+    PMIX_DESTRUCT(&p->myremote);
+    PMIX_DESTRUCT(&p->remote);
+}
+PMIX_CLASS_INSTANCE(pmix_server_nspace_t,
+                    pmix_object_t,
+                    sncon, sndes);
+
+static void ncon(pmix_nspace_t *p)
+{
+    memset(p->nspace, 0, sizeof(p->nspace));
+    p->server = NULL;
+}
+static void ndes(pmix_nspace_t *p)
+{
+    if (NULL != p->server) {
+        PMIX_RELEASE(p->server);
+    }
+}
+PMIX_CLASS_INSTANCE(pmix_nspace_t,
+                    pmix_list_item_t,
+                    ncon, ndes);
+
+static void info_con(pmix_rank_info_t *info)
+{
+    info->gid = info->uid = 0;
+    info->nptr = NULL;
+    info->rank = PMIX_RANK_WILDCARD;
+    info->modex_recvd = false;
+    info->proc_cnt = 0;
+    info->server_object = NULL;
+}
+static void info_des(pmix_rank_info_t *info)
+{
+    if (NULL!= info->nptr) {
+        PMIX_RELEASE(info->nptr);
+    }
+}
+PMIX_CLASS_INSTANCE(pmix_rank_info_t,
+                   pmix_list_item_t,
+                  info_con, info_des);

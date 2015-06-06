@@ -12,6 +12,7 @@
 #include "pmix_config.h"
 #include "src/api/pmix_server.h"
 #include "src/usock/usock.h"
+#include "src/util/hash.h"
 
 /* define an object for moving a send
  * request into the server's event base */
@@ -33,25 +34,18 @@ typedef struct {
 } pmix_server_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_server_caddy_t);
 
-typedef struct {
-    pmix_list_item_t super;
-    pmix_nspace_t *nptr;
-    bool contribution_added;      // indicates the number of procs from this nspace have been counted
-    pmix_proc_t *proc;            // point to the proc in tracker array
-} pmix_range_trkr_t;
-PMIX_CLASS_DECLARATION(pmix_range_trkr_t);
-
 /* define a tracker for collective operations */
 typedef struct {
     pmix_list_item_t super;
     pmix_cmd_t type;
-    pmix_proc_t *pcs;       // retain a copy of the original procs
+    pmix_proc_t *pcs;       // copy of the original array of participants
+    size_t   npcs;          // number of procs in the array
     volatile bool active;   // flag for waiting for completion
-    bool def_complete;      // all procs have been recorded and the trk definition is complete
-    pmix_list_t procs;      // list of pmix_range_trkr_t identifying the participating procs
-    pmix_list_t locals;     // list of pmix_server_caddy_t identifying the local participants
-    uint32_t local_cnt;     // number of local participants
-    bool collect_data;
+    bool def_complete;      // all local procs have been registered and the trk definition is complete
+    pmix_list_t ranks;      // list of pmix_rank_info_t of the local participants
+    pmix_list_t local_cbs;  // list of pmix_server_caddy_t for sending result to the local participants
+    uint32_t local_cnt;     // number of local participants who have contributed
+    bool collect_data;      // whether or not data is to be returned at completion
     pmix_modex_cbfunc_t modexcbfunc;
     pmix_op_cbfunc_t op_cbfunc;
 } pmix_server_trkr_t;
@@ -76,6 +70,8 @@ typedef struct {
     int nlocalprocs;
     pmix_info_t *info;
     size_t ninfo;
+    pmix_dmodex_response_fn_t cbfunc;
+    void *cbdata;
 } pmix_setup_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_setup_caddy_t);
 
@@ -95,9 +91,25 @@ typedef struct {
 PMIX_CLASS_DECLARATION(pmix_notify_caddy_t);
 
 typedef struct {
-    pmix_list_t nspaces;
-    pmix_pointer_array_t clients;
-    pmix_list_t collectives;
+    pmix_list_item_t super;
+    pmix_setup_caddy_t *cd;
+} pmix_dmodex_caddy_t;
+PMIX_CLASS_DECLARATION(pmix_dmodex_caddy_t);
+
+typedef struct {
+    pmix_list_item_t super;
+    pmix_server_caddy_t *cd;
+    pmix_modex_cbfunc_t cbfunc;
+    void *cbdata;
+} pmix_local_modex_caddy_t;
+PMIX_CLASS_DECLARATION(pmix_local_modex_caddy_t);
+
+typedef struct {
+    pmix_list_t nspaces;           // list of pmix_nspace_t for the nspaces we know about
+    pmix_pointer_array_t clients;  // array of pmix_peer_t local clients
+    pmix_list_t collectives;       // list of active pmix_server_trkr_t
+    pmix_list_t dmodex;            // list of pmix_dmodex_caddy_t awaiting arrival of data
+    pmix_list_t localmodex;        // list of pmix_local_modex_caddy_t awaiting arrival of data
 } pmix_server_globals_t;
 
 #define PMIX_PEER_CADDY(c, p, t)                \
@@ -110,9 +122,9 @@ typedef struct {
 
 #define PMIX_SND_CADDY(c, h, s)                                         \
     do {                                                                \
-        (c) = PMIX_NEW(pmix_server_caddy_t);                             \
+        (c) = PMIX_NEW(pmix_server_caddy_t);                            \
         (void)memcpy(&(c)->hdr, &(h), sizeof(pmix_usock_hdr_t));        \
-        PMIX_RETAIN((s));                                                \
+        PMIX_RETAIN((s));                                               \
         (c)->snd = (s);                                                 \
     } while(0);
 
@@ -154,8 +166,8 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf);
 
 pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
                                 pmix_buffer_t *buf,
-                      pmix_modex_cbfunc_t modexcbfunc,
-                      pmix_op_cbfunc_t opcbfunc);
+                                pmix_modex_cbfunc_t modexcbfunc,
+                                pmix_op_cbfunc_t opcbfunc);
 
 pmix_status_t pmix_server_get(pmix_buffer_t *buf,
                               pmix_modex_cbfunc_t cbfunc,

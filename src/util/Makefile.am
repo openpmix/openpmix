@@ -35,7 +35,8 @@ headers += \
         src/util/fd.h \
         src/util/timings.h \
         src/util/os_path.h \
-        src/util/basename.h
+        src/util/basename.h \
+        src/util/hash.h
 
 sources += \
         src/util/argv.c \
@@ -47,7 +48,8 @@ sources += \
         src/util/progress_threads.c \
         src/util/fd.c \
         src/util/os_path.c \
-        src/util/basename.c
+        src/util/basename.c \
+        src/util/hash.c
 
 if PMIX_COMPILE_TIMING
 sources += src/util/timings.c
@@ -65,7 +67,8 @@ server_headers += \
         src/util/fd.h \
         src/util/timings.h \
         src/util/os_path.h \
-        src/util/basename.h
+        src/util/basename.h \
+        src/util/hash.h
 
 server_sources += \
         src/util/argv.c \
@@ -77,7 +80,8 @@ server_sources += \
         src/util/progress_threads.c \
         src/util/fd.c \
         src/util/os_path.c \
-        src/util/basename.c
+        src/util/basename.c \
+        src/util/hash.c
 
 if PMIX_COMPILE_TIMING
 server_sources += src/util/timings.c

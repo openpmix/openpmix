@@ -49,7 +49,6 @@
 #include "src/usock/usock.h"
 #include "src/sec/pmix_sec.h"
 
-#include "pmix_client_hash.h"
 #include "pmix_client_ops.h"
 
 static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,

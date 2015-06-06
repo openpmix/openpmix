@@ -96,11 +96,13 @@ BEGIN_C_DECLS
  * these keys are RESERVED */
 #define PMIX_ATTR_UNDEF      NULL
 
-#define PMIX_CPUSET                "pmix.cpuset"       // (char*) hwloc bitmap applied to proc upon launch
+/* general proc-level attributes */
 #define PMIX_CREDENTIAL            "pmix.cred"         // (char*) security credential assigned to proc
 #define PMIX_SPAWNED               "pmix.spawned"      // (bool) true if this proc resulted from a call to PMIx_Spawn
+
 /* scratch directory locations for use by applications */
 #define PMIX_TMPDIR                "pmix.tmpdir"       // (char*) top-level tmp dir assigned to session
+
 /* information about relative ranks as assigned by the RM */
 #define PMIX_JOBID                 "pmix.jobid"        // (char*) jobid assigned by scheduler
 #define PMIX_APPNUM                "pmix.appnum"       // (uint32_t) app number within the job
@@ -112,7 +114,9 @@ BEGIN_C_DECLS
 #define PMIX_NODE_RANK             "pmix.nrank"        // (uint16_t) rank on this node spanning all jobs
 #define PMIX_LOCALLDR              "pmix.lldr"         // (uint64_t) opal_identifier of lowest rank on this node within this job
 #define PMIX_APPLDR                "pmix.aldr"         // (uint32_t) lowest rank in this app within this job
+
 /* proc location-related info */
+#define PMIX_CPUSET                "pmix.cpuset"       // (char*) hwloc bitmap applied to proc upon launch
 /* For PMIX_HOSTNAME, three use-cases exist for PMIx_Get:
  *
  * (a) Specifying a namespace with PMIX_RANK_WILDCARD will return
@@ -129,15 +133,19 @@ BEGIN_C_DECLS
 #define PMIX_HOSTNAME              "pmix.hname"        // (char*) see above comment
 #define PMIX_LOCAL_PEERS           "pmix.lpeers"       // (char*) comma-delimited string of ranks on this node within the specified nspace
 #define PMIX_LOCAL_CPUSETS         "pmix.lcpus"        // (char*) colon-delimited cpusets of local peers within the specified nspace
+
 /* size info */
 #define PMIX_UNIV_SIZE             "pmix.univ.size"    // (uint32_t) #procs in this nspace
 #define PMIX_JOB_SIZE              "pmix.job.size"     // (uint32_t) #procs in this job
 #define PMIX_LOCAL_SIZE            "pmix.local.size"   // (uint32_t) #procs in this job on this node
 #define PMIX_NODE_SIZE             "pmix.node.size"    // (uint32_t) #procs across all jobs on this node
 #define PMIX_MAX_PROCS             "pmix.max.size"     // (uint32_t) max #procs for this job
+
 /* topology info */
 #define PMIX_NET_TOPO              "pmix.ntopo"        // (char*) xml-representation of network topology
 #define PMIX_LOCAL_TOPO            "pmix.ltopo"        // (char*) xml-representation of local node topology
+#define PMIX_NODE_LIST             "pmix.nlist"        // (char*) comma-delimited list of nodes running procs for this job
+
 /* fault tolerance-related info */
 #define PMIX_TERMINATE_SESSION     "pmix.term.sess"    // (bool) RM intends to terminate session
 #define PMIX_TERMINATE_JOB         "pmix.term.job"     // (bool) RM intends to terminate this job
@@ -146,7 +154,7 @@ BEGIN_C_DECLS
 #define PMIX_ERROR_ACTION_TIMEOUT  "pmix.err.timeout"  // (int) time in sec before RM will execute error response
 
 
-/* attribute used by host server to pass data to the server convenience library - the
+/* attributes used by host server to pass data to the server convenience library - the
  * data will then be parsed and provided to the local clients */
 #define PMIX_PROC_DATA             "pmix.pdata"        // (pmix_value_array_t) starts with rank, then contains more data
 #define PMIX_NODE_MAP              "pmix.nmap"         // (char*) regex of nodes containing procs for this job
@@ -571,7 +579,7 @@ typedef struct {
 
 /****    PMIX MODEX STRUCT    ****/
 typedef struct {
-    char nspace[PMIX_MAX_NSLEN+1];  // ensure room for the NULL terminator
+    char nspace[PMIX_MAX_NSLEN+1];
     int rank;
     uint8_t *blob;
     size_t size;
@@ -616,12 +624,12 @@ typedef struct {
 /****    CALLBACK FUNCTIONS FOR NON-BLOCKING OPERATIONS    ****/
 
 /* define a callback function that is solely used by servers, and
- * not clients, to return modex data (i.e., data pushed to the
- * server by clients via the PMIx_Put function) in response
- * to "get" and "fence" operations. */
+ * not clients, to return modex data in response to "fence" and "get"
+ * operations. The returned blob contains the data collected from each
+ * server participating in the operation. */
 typedef void (*pmix_modex_cbfunc_t)(pmix_status_t status,
-                                    pmix_modex_data_t data[],
-                                    size_t ndata, void *cbdata);
+                                    const char *data, size_t ndata,
+                                    void *cbdata);
 
 /* define a callback function for calls to PMIx_Spawn_nb - the function
  * will be called upon completion of the spawn command. The status

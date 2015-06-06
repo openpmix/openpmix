@@ -17,26 +17,26 @@
 BEGIN_C_DECLS
 
 typedef struct {
-    int init_cntr;
-    pmix_nspace_t myserver_nspace;
-    pmix_peer_t myserver;
-    pmix_buffer_t *cache_local;
-    pmix_buffer_t *cache_remote;
-    pmix_buffer_t *cache_global;
-    pmix_list_t nspaces;
+    int init_cntr;                  // #times someone called PMIx_Init - #times called PMIx_Finalize
+    pmix_peer_t myserver;           // messaging support to/from my server
+    pmix_buffer_t *cache_local;     // data PUT by me to local scope
+    pmix_buffer_t *cache_remote;    // data PUT by me to remote scope
+    pmix_list_t nspaces;            // list of pmix_nsrec_t of nspaces I know about
 } pmix_client_globals_t;
 
 typedef struct {
     pmix_list_item_t super;
     char nspace[PMIX_MAX_NSLEN+1];
-    pmix_list_t nodes;
+    pmix_list_t nodes;               // list of pmix_nrec_t
+    pmix_hash_table_t data;          // hash_table for data provided at job-level exchange
+    pmix_hash_table_t modex;         // hash_table of received modex data
 } pmix_nsrec_t;
 PMIX_CLASS_DECLARATION(pmix_nsrec_t);
 
 typedef struct {
     pmix_list_item_t super;
-    char *name;
-    char *procs;
+    char *name;              // name of the node
+    char *procs;             // comma-separated list of proc ranks on that node
 } pmix_nrec_t;
 PMIX_CLASS_DECLARATION(pmix_nrec_t);
 

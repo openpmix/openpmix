@@ -92,13 +92,16 @@ pmix_status_t PMIx_Finalize(void);
  * connection with the server, nor that the server is functional. */
 int PMIx_Initialized(void);
 
-/* Request that the current application be aborted, returning the
- * provided _status_ and printing the provided message. The response
- * to this request is somewhat dependent on the specific resource
+/* Request that the provided array of procs be aborted, returning the
+ * provided _status_ and printing the provided message. A _NULL_
+ * for the proc array indicates that all processes in the caller's
+ * nspace are to be aborted.
+ *
+ * The response to this request is somewhat dependent on the specific resource
  * manager and its configuration (e.g., some resource managers will
  * not abort the application if the provided _status_ is zero unless
  * specifically configured to do so), and thus lies outside the control
- * of PMIx itself. However, the client will inform the local PMIx of
+ * of PMIx itself. However, the client will inform the RM of
  * the request that the application be aborted, regardless of the
  * value of the provided _status_.
  *
@@ -107,7 +110,8 @@ int PMIx_Initialized(void);
  * server implementation to resolve with regard to which status is
  * returned and what messages (if any) are printed.
  */
-pmix_status_t PMIx_Abort(int status, const char msg[]);
+pmix_status_t PMIx_Abort(int status, const char msg[],
+                         pmix_proc_t procs[], size_t nprocs);
 
 /* Push all previously _PMIx_Put_ values to the local PMIx server.
  * This is an asynchronous operation - the library will immediately
@@ -307,6 +311,12 @@ pmix_status_t PMIx_Disconnect_nb(const pmix_proc_t ranges[], size_t nprocs,
 pmix_status_t PMIx_Resolve_peers(const char *nodename, const char *nspace,
                                  pmix_proc_t **procs, size_t *nprocs);
 
+
+/* Given an nspace, return the list of nodes hosting processes within
+ * that nspace. The returned string will contain a comma-delimited list
+ * of nodenames. The caller is responsible for releasing the string
+ * when done with it */
+pmix_status_t PMIx_Resolve_nodes(const char *nspace, char **nodelist);
 
 END_C_DECLS
 #endif

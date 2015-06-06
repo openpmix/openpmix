@@ -260,7 +260,7 @@ static void modex_cbfunc(int status, pmix_modex_data_t data[],
         }
     }
     /* loop across all procs in the tracker, sending them the reply */
-    PMIX_LIST_FOREACH(cd, &tracker->locals, pmix_server_caddy_t) {
+    PMIX_LIST_FOREACH(cd, &tracker->local_cbs, pmix_server_caddy_t) {
         PMIX_CONSTRUCT(&rmsg, pmix_buffer_t);
         pmix_bfrop.copy_payload(&rmsg, &reply);
         pmix_output_verbose(2, pmix_globals.debug_output,
@@ -323,7 +323,7 @@ static void cnct_cbfunc(int status, void *cbdata)
         return;
     }
     /* loop across all procs in the tracker, sending them the reply */
-    PMIX_LIST_FOREACH(cd, &tracker->locals, pmix_server_caddy_t) {
+    PMIX_LIST_FOREACH(cd, &tracker->local_cbs, pmix_server_caddy_t) {
         PMIX_CONSTRUCT(&rmsg, pmix_buffer_t);
         pmix_bfrop.copy_payload(&rmsg, &reply);
         pmix_output_verbose(2, pmix_globals.debug_output,

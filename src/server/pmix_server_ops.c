@@ -61,6 +61,8 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
     pmix_status_t rc;
     int status;
     char *msg;
+    size_t nprocs;
+    pmix_proc_t *procs = NULL;
     
     pmix_output_verbose(2, pmix_globals.debug_output, "recvd ABORT");
     
@@ -74,14 +76,31 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &msg, &cnt, PMIX_STRING))) {
         return rc;
     }
+    /* unpack the number of procs */
+    cnt = 1;
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &nprocs, &cnt, PMIX_SIZE))) {
+        return rc;
+    }
+
+    /* unpack any provided procs */
+    if (0 < nprocs) {
+        PMIX_PROC_CREATE(procs, nprocs);
+        cnt = nprocs;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, procs, &cnt, PMIX_PROC))) {
+            return rc;
+        }
+    }
+    
     /* let the local host's server execute it */
     if (NULL != pmix_host_server.abort) {
         rc = pmix_host_server.abort(peer->info->nptr->nspace, peer->info->rank,
-                                    peer->info->server_object, status, msg, cbfunc, cbdata);
+                                    peer->info->server_object, status, msg,
+                                    procs, nprocs, cbfunc, cbdata);
     } else {
         rc = PMIX_ERR_NOT_SUPPORTED;
     }
-
+    PMIX_PROC_FREE(procs, nprocs);
+    
     /* the client passed this msg to us so we could give
      * it to the host server - we are done with it now */
     if (NULL != msg) {
@@ -94,151 +113,156 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
 pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
 {
     int32_t cnt;
-    pmix_status_t rc=PMIX_SUCCESS;
-    pmix_modex_data_t mdx;
+    pmix_status_t rc;
+    pmix_buffer_t *b2;
+    pmix_kval_t *kp;
     pmix_scope_t scope;
-    pmix_buffer_t *bptr;
-
-    /* unpack any provided data blobs */
-    cnt = 1;
-    (void)strncpy(mdx.nspace, peer->info->nptr->nspace, PMIX_MAX_NSLEN);
-    mdx.rank = peer->info->rank;
-    while (PMIX_SUCCESS == pmix_bfrop.unpack(buf, &scope, &cnt, PMIX_SCOPE)) {
-        cnt = 1;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &bptr, &cnt, PMIX_BUFFER))) {
-            goto cleanup;
-        }
-        /* let the local host's server store it */
-        mdx.blob = (uint8_t*)bptr->base_ptr;
-        mdx.size = bptr->bytes_used;
-        if (NULL != pmix_host_server.store_modex) {
-            pmix_host_server.store_modex(&mdx,
-                                         peer->info->server_object,
-                                         scope);
-        }
-        PMIX_RELEASE(bptr);
-        cnt = 1;
-    }
- cleanup:
-    return rc;
-}
-
-
-bool pmix_server_trk_update(pmix_server_trkr_t *trk)
-{
-    pmix_range_trkr_t *rtrk;
+    pmix_hash_table_t *ht;
     pmix_nspace_t *nptr;
-    pmix_rank_info_t *info;
-    bool complete=true;
+    pmix_rank_info_t *info, *iptr;
+    pmix_dmodex_caddy_t *dcd, *dcdnext;
+    pmix_local_modex_caddy_t *lcd, *lcdnext;
+    pmix_server_caddy_t *cd;
+    pmix_buffer_t pbkt, xfer;
+    pmix_value_t *val;
+    char *data;
+    size_t sz;
+
+    /* shorthand */
+    info = peer->info;
+    nptr = info->nptr;
     
-    pmix_output_verbose(5, pmix_globals.debug_output,
-                        "trk_update");
-    
-    /* if the definition for this tracker is complete, then
-     * there is nothing we need do */
-    if (trk->def_complete) {
-        pmix_output_verbose(5, pmix_globals.debug_output,
-                            "trk_update: trk complete");
-        return true;
-    }
-    
-    /* no simple way to do this - just have to perform an
-     * exhaustive search across the procs in this tracker.
-     * Fortunately, there typically is only one */
-    PMIX_LIST_FOREACH(rtrk, &trk->procs, pmix_range_trkr_t) {
-        pmix_output_verbose(5, pmix_globals.debug_output,
-                            "trk_update: checking range");
-        /* see if the nspace for this tracker is known */
-        if (NULL == rtrk->nptr) {
-            pmix_output_verbose(5, pmix_globals.debug_output,
-                                "trk_update: looking for nspace %s",
-                                rtrk->proc->nspace);
-            /* okay, see if we can find it - the nspace may have
-             * been defined since the last time we looked */
-            PMIX_LIST_FOREACH(nptr, &pmix_server_globals.nspaces, pmix_nspace_t) {
-                if (0 == strcmp(rtrk->proc->nspace, nptr->nspace)) {
-                    PMIX_RETAIN(nptr);
-                    rtrk->nptr = nptr;
-                    break;
-                }
-            }
-        }
-        if (NULL != rtrk->nptr) {
-            if (!rtrk->contribution_added) {
-                /* if the rank for this proc is WILDCARD, then all procs
-                 * participate - we know the number of local procs we
-                 * will have, so we can take care of it now */
-                if (PMIX_RANK_WILDCARD == rtrk->proc->rank) {
-                    pmix_output_verbose(5, pmix_globals.debug_output,
-                                        "trk_update: all %d local procs in nspace %s participating",
-                                        (int)rtrk->nptr->nlocalprocs, rtrk->proc->nspace);
-                    trk->local_cnt += rtrk->nptr->nlocalprocs;
-                    rtrk->contribution_added = true;
-                } else {
-                    /* we have to look for the specific rank to see if
-                     * we have it. First, we have to check to see if we
-                     * already know about it - otherwise, we cannot
-                     * perform the check */
-                    if (rtrk->nptr->all_registered) {
-                        PMIX_LIST_FOREACH(info, &rtrk->nptr->ranks, pmix_rank_info_t) {
-                            if (rtrk->proc->rank == info->rank ) {
-                                pmix_output_verbose(5, pmix_globals.debug_output,
-                                                    "trk_update: proc %d in nspace %s participating",
-                                                    info->rank, rtrk->proc->nspace);
-                                /* we can only count the primary client as
-                                 * we cannot know how many clones might
-                                 * eventually connect. Thus, we restrict
-                                 * collective participation to one representative
-                                 * from each rank */
-                                trk->local_cnt++;
-                                break;
-                            }
-                        }
-                    }
-                    rtrk->contribution_added = true;
-                }
-            }
+    /* this buffer will contain one or more buffers, each
+     * representing a different scope. These need to be locally
+     * stored separately so we can provide required data based
+     * on the requestor's location */
+    cnt = 1;
+    while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(buf, &scope, &cnt, PMIX_SCOPE))) {
+        if (PMIX_LOCAL == scope) {
+            ht = &nptr->server->mylocal;
+        } else if (PMIX_REMOTE == scope) {
+            ht = &nptr->server->myremote;
         } else {
-            complete = false;
+            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            rc = PMIX_ERR_BAD_PARAM;
+            return rc;
+        }
+        /* unpack and store the blob */
+        cnt = 1;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &b2, &cnt, PMIX_BUFFER))) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        kp = PMIX_NEW(pmix_kval_t);
+        kp->key = strdup("modex");
+        PMIX_VALUE_CREATE(kp->value, 1);
+        PMIX_UNLOAD_BUFFER(b2, kp->value->data.bo.bytes, kp->value->data.bo.size);
+        PMIX_RELEASE(b2);
+        /* store it in the appropriate hash */
+        if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, info->rank, kp))) {
+            PMIX_ERROR_LOG(rc);
+        }
+        PMIX_RELEASE(kp);  // maintain acctg
+        cnt = 1;
+    }
+    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    rc = PMIX_SUCCESS;
+    /* mark us as having successfully received a blob from this proc */
+    info->modex_recvd = true;
+
+    /* see if anyone remote is waiting on this data- could be more than one */
+    PMIX_LIST_FOREACH_SAFE(dcd, dcdnext, &pmix_server_globals.dmodex, pmix_dmodex_caddy_t) {
+        if (0 != strncmp(dcd->cd->nspace, nptr->nspace, PMIX_MAX_NSLEN)) {
+            continue;
+        }
+        if (dcd->cd->rank == info->rank) {
+            /* we can now fulfill this request - collect the
+             * remote/global data from this proc */
+            PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+            /* get any remote contribution - note that there
+             * may not be a contribution */
+            if (PMIX_SUCCESS == pmix_hash_fetch(&nptr->server->myremote, info->rank, "modex", &val)) {
+                PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
+                PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
+                pmix_bfrop.pack(&pbkt, &xfer, 1, PMIX_BUFFER);
+                PMIX_DESTRUCT(&xfer);
+                PMIX_RELEASE(val);
+            }
+            PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
+            PMIX_DESTRUCT(&pbkt);
+            /* execute the callback */
+            dcd->cd->cbfunc(PMIX_SUCCESS, data, sz, dcd->cd->cbdata);
+            if (NULL != data) {
+                free(data);
+            }
+            /* we have finished this request */
+            pmix_list_remove_item(&pmix_server_globals.dmodex, &dcd->super);
+            PMIX_RELEASE(dcd);
         }
     }
-    
-    /* if all of the range contributions have been added, then
-     * the definition is complete */
-    if (complete) {
-        trk->def_complete = true;
+    /* see if anyone local is waiting on this data- could be more than one */
+    PMIX_LIST_FOREACH_SAFE(lcd, lcdnext, &pmix_server_globals.localmodex, pmix_local_modex_caddy_t) {
+        cd = lcd->cd;
+        iptr = cd->peer->info;
+        if (0 != strncmp(iptr->nptr->nspace, nptr->nspace, PMIX_MAX_NSLEN)) {
+            continue;
+        }
+        if (iptr->rank == info->rank) {
+            /* we can now fulfill this request - collect the
+             * local/global data from this proc */
+            PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+            /* get any remote contribution - note that there
+             * may not be a contribution */
+            if (PMIX_SUCCESS == pmix_hash_fetch(&nptr->server->mylocal, info->rank, "modex", &val)) {
+                PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
+                PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
+                pmix_bfrop.pack(&pbkt, &xfer, 1, PMIX_BUFFER);
+                PMIX_DESTRUCT(&xfer);
+                PMIX_RELEASE(val);
+            }
+            PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
+            PMIX_DESTRUCT(&pbkt);
+            /* execute the callback */
+            lcd->cbfunc(PMIX_SUCCESS, data, sz, lcd->cbdata);
+            if (NULL != data) {
+                free(data);
+            }
+            /* we have finished this request */
+            pmix_list_remove_item(&pmix_server_globals.localmodex, &lcd->super);
+            PMIX_RELEASE(lcd);
+        }
     }
 
-    return trk->def_complete;
-}
-
-static bool trk_complete(pmix_server_trkr_t *trk)
-{
-    /* see if we know everything we need */
-    if (!pmix_server_trk_update(trk)) {
-        /* still missing some info */
-        return false;
-    }
-    
-    if (trk->local_cnt == pmix_list_get_size(&trk->locals)) {
-        return true;
-    }
-    return false;
+    return rc;
 }
 
 /* get an object for tracking LOCAL participation in a collective
  * operation such as "fence". The only way this function can be
  * called is if at least one local client process is participating
  * in the operation. Thus, we know that at least one process is
- * involved AND has called the collective operation. */
+ * involved AND has called the collective operation.
+ *
+ * NOTE: the host server *cannot* call us with a collective operation
+ * as there is no mechanism by which it can do so. We call the host
+ * server only after all participating local procs have called us.
+ * So it is impossible for us to be called with a collective without
+ * us already knowing about all local participants.
+ *
+ * procs - the array of procs participating in the collective,
+ *         regardless of location
+ * nprocs - the number of procs in the array
+ */
 static pmix_server_trkr_t* get_tracker(pmix_proc_t *procs,
                                        size_t nprocs)
 {
     pmix_server_trkr_t *trk;
-    pmix_range_trkr_t *rtrk;
+    pmix_rank_info_t *iptr, *info;
     size_t i;
-    size_t match;
-    pmix_nspace_t *nptr;
+    bool match, all_def;
+    pmix_nspace_t *nptr, *ns;
 
     pmix_output_verbose(5, pmix_globals.debug_output,
                         "get_tracker called with %d procs", (int)nprocs);
@@ -256,38 +280,18 @@ static pmix_server_trkr_t* get_tracker(pmix_proc_t *procs,
      * involve only a single proc with WILDCARD rank - so this
      * shouldn't take long */
     PMIX_LIST_FOREACH(trk, &pmix_server_globals.collectives, pmix_server_trkr_t) {
-        if (nprocs != pmix_list_get_size(&trk->procs)) {
+        if (nprocs != trk->npcs) {
             continue;
         }
-        match = 0;
+        match = true;
         for (i=0; i < nprocs; i++) {
-            PMIX_LIST_FOREACH(rtrk, &trk->procs, pmix_range_trkr_t) {
-                if (0 != strcmp(procs[i].nspace, rtrk->proc->nspace)) {
-                    continue;
-                }
-                /* if we haven't yet connected the nspace to its
-                 * definition, then try to do so now */
-                if (NULL == rtrk->nptr) {
-                    PMIX_LIST_FOREACH(nptr, &pmix_server_globals.nspaces, pmix_nspace_t) {
-                        if (0 == strcmp(rtrk->proc->nspace, nptr->nspace)) {
-                            PMIX_RETAIN(nptr);
-                            rtrk->nptr = nptr;
-                            break;
-                        }
-                    }
-                }
-                if (procs[i].rank == rtrk->proc->rank) {
-                    /* this proc matches */
-                    match++;
-                    break;
-                }
-            }
-            if (match != (i+1)) {
-                /* we didn't find a match for this proc */
+            if (0 != strcmp(procs[i].nspace, trk->pcs[i].nspace) ||
+                procs[i].rank != trk->pcs[i].rank) {
+                match = false;
                 break;
             }
         }
-        if (match == nprocs) {
+        if (match) {
             return trk;
         }
     }
@@ -300,27 +304,64 @@ static pmix_server_trkr_t* get_tracker(pmix_proc_t *procs,
     
     /* copy the procs */
     PMIX_PROC_CREATE(trk->pcs, nprocs);
-    
+    trk->npcs = nprocs;
+
+    all_def = true;
     for (i=0; i < nprocs; i++) {
-        pmix_output_verbose(5, pmix_globals.debug_output,
-                            "adding proc %s.%d", procs[i].nspace, procs[i].rank);
         (void)strncpy(trk->pcs[i].nspace, procs[i].nspace, PMIX_MAX_NSLEN);
         trk->pcs[i].rank = procs[i].rank;
-        /* add a tracker for this proc */
-        rtrk = PMIX_NEW(pmix_range_trkr_t);
-        rtrk->proc = &trk->pcs[i];
-        /* find the nspace - it is okay if we don't have it. It just
-         * means that we don't know about it yet */
-        PMIX_LIST_FOREACH(nptr, &pmix_server_globals.nspaces, pmix_nspace_t) {
-            pmix_output_verbose(5, pmix_globals.debug_output,
-                                "comparing %s to %s", rtrk->proc->nspace, nptr->nspace);
-            if (0 == strcmp(rtrk->proc->nspace, nptr->nspace)) {
-                PMIX_RETAIN(nptr);
-                rtrk->nptr = nptr;
+        /* is this nspace known to us? */
+        nptr = NULL;
+        PMIX_LIST_FOREACH(ns, &pmix_server_globals.nspaces, pmix_nspace_t) {
+            if (0 == strcmp(procs[i].nspace, ns->nspace)) {
+                nptr = ns;
                 break;
             }
         }
-        pmix_list_append(&trk->procs, &rtrk->super);
+        if (NULL == nptr) {
+            /* cannot be a local proc */
+            pmix_output_verbose(8, pmix_globals.debug_output,
+                                "get_tracker: unknown nspace %s",
+                                procs[i].nspace);
+            continue;
+        }
+        /* have all the clients for this nspace been defined? */
+        if (!nptr->server->all_registered) {
+            /* nope, so no point in going further on this one - we'll
+             * process it once all the procs are known */
+            all_def = false;
+            pmix_output_verbose(8, pmix_globals.debug_output,
+                                "get_tracker: all clients not registered nspace %s",
+                                procs[i].nspace);
+            continue;
+        }
+        /* is this one of my local ranks? */
+        info = NULL;
+        PMIX_LIST_FOREACH(iptr, &nptr->server->ranks, pmix_rank_info_t) {
+            if (procs[i].rank == iptr->rank ||
+                PMIX_RANK_WILDCARD == procs[i].rank) {
+                info = iptr;
+                break;
+            }
+        }
+        if (NULL == info) {
+            /* not one of mine */
+            pmix_output_verbose(8, pmix_globals.debug_output,
+                                "get_tracker: non-local proc %s:%d",
+                                procs[i].nspace, procs[i].rank);
+            continue;
+        }
+        pmix_output_verbose(5, pmix_globals.debug_output,
+                            "adding local proc %s.%d to tracker", procs[i].nspace, procs[i].rank);
+        /* add a tracker for this proc - don't need more than
+         * the nspace pointer and rank */
+        iptr = PMIX_NEW(pmix_rank_info_t);
+        iptr->nptr = info->nptr;
+        iptr->rank = procs[i].rank;
+        pmix_list_append(&trk->ranks, &iptr->super);
+    }
+    if (all_def) {
+        trk->def_complete = true;
     }
     pmix_list_append(&pmix_server_globals.collectives, &trk->super);
     return trk;
@@ -337,7 +378,12 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
     pmix_proc_t *procs=NULL;
     int collect_data;
     pmix_server_trkr_t *trk;
-    
+    char *data = NULL;
+    size_t sz = 0;
+    pmix_buffer_t bucket, pbkt, xfer;
+    pmix_rank_info_t *info;
+    pmix_value_t *val;
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "recvd FENCE");
 
@@ -385,18 +431,51 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
     }
     trk->type = PMIX_FENCENB_CMD;
     trk->modexcbfunc = modexcbfunc;
-    trk->collect_data = collect_data;
+    /* mark if they want the data back */
+    if (0 == collect_data) {
+        trk->collect_data = false;
+    } else {
+        trk->collect_data = true;
+    }
     /* add this contributor to the tracker so they get
      * notified when we are done */
     PMIX_RETAIN(cd);
-    pmix_list_append(&trk->locals, &cd->super);
-    /* if all local contributions were collected
+    pmix_list_append(&trk->local_cbs, &cd->super);
+    /* if all local contributions have been received,
      * let the local host's server know that we are at the
      * "fence" point - they will callback once the barrier
      * across all participants has been completed */
-    if (trk_complete(trk)) {
-        rc = pmix_host_server.fence_nb(procs, nprocs,
-                                       collect_data, modexcbfunc, trk);
+    if (trk->def_complete &&
+        pmix_list_get_size(&trk->local_cbs) == pmix_list_get_size(&trk->ranks)) {
+        /* if the user asked us to collect data, then we have
+         * to provide any locally collected data to the host
+         * server so they can circulate it - only take data
+         * from the specified procs as not everyone is necessarily
+         * participating! And only take data intended for remote
+         * distribution as local data will be added when we send
+         * the result to our local clients */
+        PMIX_CONSTRUCT(&bucket, pmix_buffer_t);
+        if (trk->collect_data) {
+            PMIX_LIST_FOREACH(info, &trk->ranks, pmix_rank_info_t) {
+                PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+                /* get any remote contribution - note that there
+                 * may not be a contribution */
+                if (PMIX_SUCCESS == pmix_hash_fetch(&info->nptr->server->myremote, info->rank, "modex", &val)) {
+                    PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
+                    PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
+                    pmix_bfrop.pack(&pbkt, &xfer, 1, PMIX_BUFFER);
+                    PMIX_DESTRUCT(&xfer);
+                    PMIX_RELEASE(val);
+                }
+                /* now pack this proc's contribution into the bucket */
+                pmix_bfrop.pack(&bucket, &pbkt, 1, PMIX_BUFFER);
+                PMIX_DESTRUCT(&pbkt);
+            }
+        }
+        PMIX_UNLOAD_BUFFER(&bucket, data, sz);
+        PMIX_DESTRUCT(&bucket);
+        pmix_host_server.fence_nb(trk->pcs, trk->npcs,
+                                  data, sz, trk->modexcbfunc, trk);
     }
 
  cleanup:
@@ -412,34 +491,123 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     int32_t cnt;
     pmix_status_t rc;
     int rank;
-    char *nsp;
+    char *cptr;
     char nspace[PMIX_MAX_NSLEN+1];
+    pmix_nspace_t *ns, *nptr;
+    pmix_rank_info_t *iptr, *info;
+    pmix_buffer_t pbkt, xfer;
+    pmix_value_t *val;
+    char *data;
+    size_t sz;
+    pmix_local_modex_caddy_t *lcd;
     
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "recvd GET");
 
-    if (NULL == pmix_host_server.get_modex_nb) {
-        return PMIX_ERR_NOT_SUPPORTED;
-    }
-    
     /* setup */
     memset(nspace, 0, sizeof(nspace));
     
     /* retrieve the nspace and rank of the requested proc */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &nsp, &cnt, PMIX_STRING))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &cptr, &cnt, PMIX_STRING))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    (void)strncpy(nspace, nsp, PMIX_MAX_NSLEN);
-    free(nsp);
+    (void)strncpy(nspace, cptr, PMIX_MAX_NSLEN);
+    free(cptr);
     cnt = 1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &rank, &cnt, PMIX_INT))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    /* request the data */
-    rc = pmix_host_server.get_modex_nb(nspace, rank, cbfunc, cbdata);
+    /* find the nspace object for this client */
+    nptr = NULL;
+    PMIX_LIST_FOREACH(ns, &pmix_server_globals.nspaces, pmix_nspace_t) {
+        if (0 == strcmp(nspace, ns->nspace)) {
+            nptr = ns;
+            break;
+        }
+    }
+    if (NULL == nptr) {
+        /* if this is for an nspace we don't know, then there
+         * isn't any way for us to get the data */
+        PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+        return PMIX_ERR_NOT_FOUND;
+    }
+    /* and the rank entry for it */
+    info = NULL;
+    PMIX_LIST_FOREACH(iptr, &nptr->server->ranks, pmix_rank_info_t) {
+        if (iptr->rank == rank) {
+            info = iptr;
+            break;
+        }
+    }
+    if (NULL == info) {
+        /* this can mean either of two things: (a) they are asking
+         * about a non-local proc, or (b) it is a local proc, but
+         * we don't know about it yet (i.e., it's a race condition).
+         * Let's start by checking for (b) - if we know about all
+         * of our local procs, then clearly we are in (a) */
+        if (nptr->server->nlocalprocs == pmix_list_get_size(&nptr->server->ranks)) {
+            /* we know about all our local procs, so this must be
+             * a request for data about someone non-local - generate
+             * a request and pass it up to the host server */
+            goto dmodex;
+        } else {
+            /* we don't know about everyone yet, so let's mark it
+             * for later processing - we'll check each time the host
+             * server registers a client until we either find this one
+             * or all local clients are known and this isn't one of them */
+            lcd = PMIX_NEW(pmix_local_modex_caddy_t);
+            lcd->cd = cbdata;
+            lcd->cbfunc = cbfunc;
+            lcd->cbdata = cbdata;
+            pmix_list_append(&pmix_server_globals.localmodex, &lcd->super);
+            return PMIX_SUCCESS;
+        }
+        PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+        return PMIX_ERR_NOT_FOUND;
+    }
+    /* we are talking about a local proc - see if we already have its data */
+    if (!info->modex_recvd) {
+        /* nope - need to defer */
+    }
+    
+    /* unload the key they want */
+    cnt = 1;
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &cptr, &cnt, PMIX_STRING))) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    /* since this came from a local client,
+     * we have to include both local and remote data */
+    PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+    /* get any remote contribution - note that there
+     * may not be a contribution */
+    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&info->nptr->server->myremote, info->rank, "modex", &val))) {
+        PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
+        PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
+        pmix_bfrop.pack(&pbkt, &xfer, 1, PMIX_BUFFER);
+        PMIX_DESTRUCT(&xfer);
+        PMIX_RELEASE(val);
+    }
+    PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
+    PMIX_DESTRUCT(&pbkt);
+    /* pass it back */
+    cbfunc(rc, data, sz, cbdata);
+    return rc;
+
+ dmodex:
+    /* nope - need to ask the host server to send a remote
+     * request to the hosting PMIx server for the data, if
+     * they support it - they will callback with the answer */
+    if (NULL == pmix_host_server.direct_modex) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+    
+    rc = pmix_host_server.direct_modex(nspace, rank, cbfunc, cbdata);
+    
     return rc;
 }
 
@@ -708,12 +876,13 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
     /* add this contributor to the tracker so they get
      * notified when we are done */
     PMIX_RETAIN(cd);
-    pmix_list_append(&trk->locals, &cd->super);
-    /* if all local contributions were collected
+    pmix_list_append(&trk->local_cbs, &cd->super);
+    /* if all local contributions have been received,
      * let the local host's server know that we are at the
-     * "connect" point - they will callback once the connect
+     * "fence" point - they will callback once the [dis]connect
      * across all participants has been completed */
-    if (trk_complete(trk)) {
+    if (trk->def_complete &&
+        pmix_list_get_size(&trk->local_cbs) == pmix_list_get_size(&trk->ranks)) {
         if (disconnect) {
             rc = pmix_host_server.disconnect(procs, nprocs, cbfunc, trk);
         } else {
@@ -730,30 +899,14 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
 }
 
 // instance server library classes
-static void rtcon(pmix_range_trkr_t *t)
-{
-    t->nptr = NULL;
-    t->contribution_added = false;
-    t->proc = NULL;
-}
-static void rtdes(pmix_range_trkr_t *t)
-{
-    if (NULL != t->nptr) {
-        PMIX_RELEASE(t->nptr);
-    }
-    PMIX_PROC_DESTRUCT(t->proc);
-}
-PMIX_CLASS_INSTANCE(pmix_range_trkr_t,
-                    pmix_list_item_t,
-                    rtcon, rtdes);
-
 static void tcon(pmix_server_trkr_t *t)
 {
     t->pcs = NULL;
+    t->npcs = 0;
     t->active = true;
     t->def_complete = false;
-    PMIX_CONSTRUCT(&t->procs, pmix_list_t);
-    PMIX_CONSTRUCT(&t->locals, pmix_list_t);
+    PMIX_CONSTRUCT(&t->ranks, pmix_list_t);
+    PMIX_CONSTRUCT(&t->local_cbs, pmix_list_t);
     t->local_cnt = 0;
     t->collect_data = false;
     t->modexcbfunc = NULL;
@@ -764,8 +917,8 @@ static void tdes(pmix_server_trkr_t *t)
     if (NULL != t->pcs) {
         free(t->pcs);
     }
-    PMIX_LIST_DESTRUCT(&t->procs);
-    PMIX_LIST_DESTRUCT(&t->locals);
+    PMIX_LIST_DESTRUCT(&t->ranks);
+    PMIX_LIST_DESTRUCT(&t->local_cbs);
 }
 PMIX_CLASS_INSTANCE(pmix_server_trkr_t,
                    pmix_list_item_t,
@@ -804,6 +957,8 @@ static void scadcon(pmix_setup_caddy_t *p)
     p->nlocalprocs = 0;
     p->info = NULL;
     p->ninfo = 0;
+    p->cbfunc = NULL;
+    p->cbdata = NULL;
 }
 static void scaddes(pmix_setup_caddy_t *p)
 {
@@ -848,3 +1003,31 @@ PMIX_CLASS_INSTANCE(pmix_notify_caddy_t,
 PMIX_CLASS_INSTANCE(pmix_trkr_caddy_t,
                     pmix_object_t,
                     NULL, NULL);
+
+static void dmcon(pmix_dmodex_caddy_t *p)
+{
+    p->cd = NULL;
+}
+static void dmdes(pmix_dmodex_caddy_t *p)
+{
+    if (NULL != p->cd) {
+        PMIX_RELEASE(p->cd);
+    }
+}
+PMIX_CLASS_INSTANCE(pmix_dmodex_caddy_t,
+                    pmix_list_item_t,
+                    dmcon, dmdes);
+
+static void lmcon(pmix_local_modex_caddy_t *p)
+{
+    p->cd = NULL;
+}
+static void lmdes(pmix_local_modex_caddy_t *p)
+{
+    if (NULL != p->cd) {
+        PMIX_RELEASE(p->cd);
+    }
+}
+PMIX_CLASS_INSTANCE(pmix_local_modex_caddy_t,
+                    pmix_list_item_t,
+                    lmcon, lmdes);
