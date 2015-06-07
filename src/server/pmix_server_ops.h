@@ -104,12 +104,24 @@ typedef struct {
 } pmix_local_modex_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_local_modex_caddy_t);
 
+/* connection support */
+typedef struct {
+    pmix_object_t super;
+    pmix_event_t ev;
+    int sd;
+    struct sockaddr addr;
+} pmix_pending_connection_t;
+PMIX_CLASS_DECLARATION(pmix_pending_connection_t);
+
 typedef struct {
     pmix_list_t nspaces;           // list of pmix_nspace_t for the nspaces we know about
     pmix_pointer_array_t clients;  // array of pmix_peer_t local clients
     pmix_list_t collectives;       // list of active pmix_server_trkr_t
     pmix_list_t dmodex;            // list of pmix_dmodex_caddy_t awaiting arrival of data
     pmix_list_t localmodex;        // list of pmix_local_modex_caddy_t awaiting arrival of data
+    bool listen_thread_active;     // listen this is running
+    int listen_socket;             // socket listener is watching
+    int stop_thread[2];            // pipe used to stop listener thread
 } pmix_server_globals_t;
 
 #define PMIX_PEER_CADDY(c, p, t)                \
@@ -152,6 +164,9 @@ typedef struct {
         event_active(&((c)->ev), EV_WRITE, 1);                  \
     } while(0);
 
+
+int pmix_start_listening(struct sockaddr_un *address);
+void pmix_stop_listening(void);
 
 bool pmix_server_trk_update(pmix_server_trkr_t *trk);
 

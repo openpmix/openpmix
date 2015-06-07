@@ -1031,3 +1031,7 @@ static void lmdes(pmix_local_modex_caddy_t *p)
 PMIX_CLASS_INSTANCE(pmix_local_modex_caddy_t,
                     pmix_list_item_t,
                     lmcon, lmdes);
+
+PMIX_CLASS_INSTANCE(pmix_pending_connection_t,
+                    pmix_object_t,
+                    NULL, NULL);

@@ -195,6 +195,23 @@ typedef int (*pmix_server_connect_fn_t)(const pmix_proc_t procs[], size_t nprocs
 typedef int (*pmix_server_disconnect_fn_t)(const pmix_proc_t procs[], size_t nprocs,
                                            pmix_op_cbfunc_t cbfunc, void *cbdata);
 
+/* Callback function for incoming connection requests from
+ * local clients */
+typedef void (*pmix_connection_cbfunc_t)(int incoming_sd);
+
+/* Register a socket the host server can monitor for connection
+ * requests, harvest them, and then call our internal callback
+ * function for further processing. A listener thread is essential
+ * to efficiently harvesting connection requests from large
+ * numbers of local clients such as occur when running on large
+ * SMPs. The host server listener is required to call accept
+ * on the incoming connection request, and then passing the
+ * resulting soct to the provided cbfunc. A NULL for this function
+ * will cause the internal PMIx server to spawn its own listener
+ * thread */
+typedef int (*pmix_server_listener_fn_t)(int listening_sd,
+                                         pmix_connection_cbfunc_t cbfunc);
+
 typedef struct pmix_server_module_1_0_0_t {
     pmix_server_finalized_fn_t        finalized;
     pmix_server_abort_fn_t            abort;
@@ -206,6 +223,7 @@ typedef struct pmix_server_module_1_0_0_t {
     pmix_server_spawn_fn_t            spawn;
     pmix_server_connect_fn_t          connect;
     pmix_server_disconnect_fn_t       disconnect;
+    pmix_server_listener_fn_t         listener;
 } pmix_server_module_t;
 
 /****    SERVER SUPPORT INIT/FINALIZE FUNCTIONS    ****/
