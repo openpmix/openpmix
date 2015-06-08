@@ -367,6 +367,7 @@ static pmix_server_trkr_t* get_tracker(pmix_proc_t *procs,
         /* add a tracker for this proc - don't need more than
          * the nspace pointer and rank */
         iptr = PMIX_NEW(pmix_rank_info_t);
+        PMIX_RETAIN(info->nptr);
         iptr->nptr = info->nptr;
         iptr->rank = procs[i].rank;
         pmix_list_append(&trk->ranks, &iptr->super);
