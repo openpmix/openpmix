@@ -168,6 +168,7 @@ static int unpack_return(pmix_buffer_t *data)
         return ret;
     }
     
+    cnt = 1;
     /* if data was returned, unpack and store it */
     while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(data, &bptr, &cnt, PMIX_BUFFER))) {
         /* unpack the nspace */

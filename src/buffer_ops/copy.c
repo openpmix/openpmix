@@ -236,6 +236,16 @@ int pmix_value_xfer(pmix_value_t *p, pmix_value_t *src)
             memcpy(p1, s1, src->data.array.size * sizeof(pmix_info_t));
         }
         break;
+    case PMIX_BYTE_OBJECT:
+        if (NULL != src->data.bo.bytes && 0 < src->data.bo.size) {
+            p->data.bo.bytes = malloc(src->data.bo.size);
+            memcpy(p->data.bo.bytes, src->data.bo.bytes, src->data.bo.size);
+            p->data.bo.size = src->data.bo.size;
+        } else {
+            p->data.bo.bytes = NULL;
+            p->data.bo.size = 0;
+        }
+        break;
     default:
         pmix_output(0, "COPY-PMIX-VALUE: UNSUPPORTED TYPE %d", (int)src->type);
         return PMIX_ERROR;
