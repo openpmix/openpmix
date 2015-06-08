@@ -16,6 +16,7 @@
 #define PMIX_UTIL_FD_H_
 
 #include "pmix_config.h"
+#include "src/include/rename.h"
 
 BEGIN_C_DECLS
 

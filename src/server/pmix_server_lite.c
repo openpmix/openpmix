@@ -115,12 +115,12 @@ int PMIx_server_process_msg(int sd, char *hdrptr, char *msgptr,
     return rc;
 }
 
-static void get_cbfunc(int status, pmix_modex_data_t data[],
+static void get_cbfunc(int status, const char *data,
                        size_t ndata, void *cbdata)
 {
     pmix_server_caddy_t *cd = (pmix_server_caddy_t*)cbdata;
     int rc;
-    pmix_buffer_t reply;
+    pmix_buffer_t reply, buf;
     
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "serverlite:get_cbfunc called with %d elements", (int)ndata);
@@ -136,17 +136,14 @@ static void get_cbfunc(int status, pmix_modex_data_t data[],
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
-    /* pack the nblobs being returned */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, &ndata, 1, PMIX_SIZE))) {
-        PMIX_ERROR_LOG(rc);
-        goto cleanup;
-    }
-    if (0 < ndata) {
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, data, ndata, PMIX_MODEX))) {
-            PMIX_ERROR_LOG(rc);
-            goto cleanup;
-        }
-    }
+    /* pack the blob being returned */
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    PMIX_LOAD_BUFFER(&buf, data, ndata);
+    pmix_bfrop.copy_payload(&reply, &buf);
+    buf.base_ptr = NULL;
+    buf.bytes_used = 0;
+    PMIX_DESTRUCT(&buf);
+    
     /* send the data to the requestor */
     snd_message(cd->snd.sd, &cd->hdr, &reply, cd->peer->info->server_object, cd->snd.cbfunc);
     reply.base_ptr = NULL;
@@ -223,14 +220,14 @@ static void lookup_cbfunc(int status, pmix_pdata_t pdata[], size_t ndata,
     PMIX_RELEASE(cd);
 }
 
-static void modex_cbfunc(int status, pmix_modex_data_t data[],
+static void modex_cbfunc(int status, const char *data,
                          size_t ndata, void *cbdata)
 {
     pmix_server_trkr_t *tracker = (pmix_server_trkr_t*)cbdata;
     int rc;
     pmix_server_caddy_t *cd;
-    pmix_buffer_t reply, rmsg;
-    
+    pmix_buffer_t reply, rmsg, xfer;
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "serverlite:modex_cbfunc called with %d elements", (int)ndata);
 
@@ -246,19 +243,16 @@ static void modex_cbfunc(int status, pmix_modex_data_t data[],
         PMIX_DESTRUCT(&reply);
         return;
     }
-    /* pack the nblobs being returned */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, &ndata, 1, PMIX_SIZE))) {
-        PMIX_ERROR_LOG(rc);
-        PMIX_DESTRUCT(&reply);
-        return;
-    }
-    if (0 < ndata) {
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, data, ndata, PMIX_MODEX))) {
-            PMIX_ERROR_LOG(rc);
-        PMIX_DESTRUCT(&reply);
-            return;
-        }
-    }
+    /* pass the blobs being returned */
+    PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
+    PMIX_LOAD_BUFFER(&xfer, data, ndata);
+    pmix_bfrop.copy_payload(&reply, &xfer);
+    /* protect the incoming data */
+    xfer.base_ptr = NULL;
+    xfer.bytes_used = 0;
+    /* cleanup */
+    PMIX_DESTRUCT(&xfer);
+    
     /* loop across all procs in the tracker, sending them the reply */
     PMIX_LIST_FOREACH(cd, &tracker->local_cbs, pmix_server_caddy_t) {
         PMIX_CONSTRUCT(&rmsg, pmix_buffer_t);

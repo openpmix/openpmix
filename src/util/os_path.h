@@ -43,6 +43,7 @@
 #define PMIX_OS_PATH_H
 
 #include "pmix_config.h"
+#include "src/include/rename.h"
 
 #include <stdio.h>
 #include <stdarg.h>

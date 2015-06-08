@@ -23,6 +23,7 @@
 #define _PMIX_CRC_H_
 
 #include "pmix_config.h"
+#include "src/include/rename.h"
 
 #include <stddef.h>
 

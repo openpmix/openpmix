@@ -151,14 +151,12 @@ cd "$PMIX_TOP_BUILDDIR"
 AC_SUBST(PMIX_TOP_SRCDIR)
 AC_SUBST(PMIX_TOP_BUILDDIR)
 
-
 ############################################################################
 # Configuration options
 ############################################################################
 
 PMIX_CONFIGURE_OPTIONS
 PMIX_CHECK_OS_FLAVORS
-
 
 ############################################################################
 # Libtool: part one

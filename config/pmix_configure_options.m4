@@ -199,4 +199,34 @@ AC_DEFINE_UNQUOTED(PMIX_ENABLE_TIMING, $WANT_TIMING,
     [Whether we want developer-level timing support or not])
 AM_CONDITIONAL([PMIX_COMPILE_TIMING], [test "$WANT_TIMING" = "1"])
 
+# What prefix are we using?
+AC_MSG_CHECKING([for pmix symbol prefix])
+AS_IF([test "$pmix_symbol_prefix_value" = ""],
+      [AS_IF([test "$with_pmix_symbol_prefix" = ""],
+             [pmix_symbol_prefix_value=pmix_],
+             [pmix_symbol_prefix_value=$with_pmix_symbol_prefix])])
+AC_DEFINE_UNQUOTED(PMIX_SYM_PREFIX, [$pmix_symbol_prefix_value],
+                   [The pmix symbol prefix])
+# Ensure to [] escape the whole next line so that we can get the
+# proper tr tokens
+[pmix_symbol_prefix_value_caps="`echo $pmix_symbol_prefix_value | tr '[:lower:]' '[:upper:]'`"]
+AC_DEFINE_UNQUOTED(PMIX_SYM_PREFIX_CAPS, [$pmix_symbol_prefix_value_caps],
+                   [The pmix symbol prefix in all caps])
+AC_MSG_RESULT([$pmix_symbol_prefix_value])
+
+# Give an easy #define to know if we need to transform all the
+# pmix names - if so, then that means we are in embedded mode
+AH_TEMPLATE([PMIX_SYM_TRANSFORM], [Whether we need to re-define all the pmix public symbols or not])
+AS_IF([test "$pmix_symbol_prefix_value" = "pmix_"],
+      [AC_DEFINE([PMIX_SYM_TRANSFORM], [0])],
+      [AC_DEFINE([PMIX_SYM_TRANSFORM], [1])])
+AM_CONDITIONAL([PMIX_SYM_TRANSFORM], [test "$pmix_symbol_prefix_value" != "pmix_"])
+
+
 ])dnl
+
+# Specify the symbol prefix
+AC_DEFUN([PMIX_SET_SYMBOL_PREFIX],[
+    pmix_symbol_prefix_value=$1
+])dnl
+

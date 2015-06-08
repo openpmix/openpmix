@@ -28,6 +28,7 @@
 #define PMIX_ENVIRON_H
 
 #include "pmix_config.h"
+#include "src/include/rename.h"
 
 #ifdef HAVE_CRT_EXTERNS_H
 #include <crt_externs.h>

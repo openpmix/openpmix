@@ -11,6 +11,8 @@
 #define PROGRESS_THREADS_H
 
 #include "pmix_config.h"
+#include "src/include/rename.h"
+
 #include "src/include/types.h"
 
 #include <event.h>

@@ -23,6 +23,7 @@
 #define PMIX_BFROP_INTERNAL_H_
 
 #include "pmix_config.h"
+#include "src/include/rename.h"
 
 #ifdef HAVE_SYS_TIME_H
 #include <sys/time.h> /* for struct timeval */

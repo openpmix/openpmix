@@ -1433,7 +1433,6 @@ static void modex_cbfunc(int status, const char *data,
     pmix_buffer_t *reply, xfer;
     int rc;
     pmix_server_caddy_t *cd;
-    char *dptr = (char*)data;
     
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "server:modex_cbfunc called with %d elements", (int)ndata);
@@ -1452,7 +1451,7 @@ static void modex_cbfunc(int status, const char *data,
     }
     /* pass the blobs being returned */
     PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
-    PMIX_LOAD_BUFFER(&xfer, dptr, ndata);
+    PMIX_LOAD_BUFFER(&xfer, data, ndata);
     pmix_bfrop.copy_payload(reply, &xfer);
     /* protect the incoming data */
     xfer.base_ptr = NULL;

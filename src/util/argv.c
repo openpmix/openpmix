@@ -21,6 +21,7 @@
  */
 
 #include "pmix_config.h"
+#include "src/include/rename.h"
 
 #ifdef HAVE_STDLIB_H
 #include <stdlib.h>

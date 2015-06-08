@@ -123,6 +123,8 @@
 #define PMIX_OBJECT_H
 
 #include "pmix_config.h"
+#include "src/include/rename.h"
+
 #include <assert.h>
 #ifdef HAVE_STDLIB_H
 #include <stdlib.h>

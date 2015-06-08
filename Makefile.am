@@ -22,7 +22,11 @@
 headers =
 sources =
 nodist_headers =
-include_HEADERS = src/api/pmix.h src/api/pmix_server.h src/api/pmix_common.h src/api/pmi.h src/api/pmi2.h
+include_HEADERS = src/api/pmix.h src/api/pmix_server.h src/api/pmix_common.h
+if !PMIX_SYM_TRANSFORM
+include_HEADERS += src/api/pmi.h src/api/pmi2.h
+endif
+
 dist_pmixdata_DATA = contrib/pmix-valgrind.supp
 server_headers =
 server_sources =

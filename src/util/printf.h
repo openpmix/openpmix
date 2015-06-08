@@ -25,6 +25,7 @@
 #define PMIX_PRINTF_H
 
 #include "pmix_config.h"
+#include "src/include/rename.h"
 
 #include <stdarg.h>
 #include <stdlib.h>

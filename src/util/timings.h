@@ -12,6 +12,7 @@
 #define PMIX_UTIL_TIMING_H
 
 #include "pmix_config.h"
+#include "src/include/rename.h"
 
 #include "src/class/pmix_list.h"
 

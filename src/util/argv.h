@@ -31,6 +31,7 @@
 #ifndef PMIX_ARGV_H
 #define PMIX_ARGV_H
 #include "pmix_config.h"
+#include "src/include/rename.h"
 
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
