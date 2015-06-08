@@ -545,12 +545,18 @@ static void _execute_collective(int sd, short args, void *cbdata)
                 if (PMIX_SUCCESS == pmix_hash_fetch(&info->nptr->server->myremote, info->rank, "modex", &val)) {
                     PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
                     PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
-                    pmix_bfrop.pack(&pbkt, &xfer, 1, PMIX_BUFFER);
+                    pmix_buffer_t *pxfer = &xfer;
+                    pmix_bfrop.pack(&pbkt, &pxfer, 1, PMIX_BUFFER);
+                    xfer.base_ptr = NULL;
+                    xfer.bytes_used = 0;
                     PMIX_DESTRUCT(&xfer);
-                    PMIX_RELEASE(val);
+                    if (NULL != val) {
+                        PMIX_VALUE_RELEASE(val);
+                    }
                 }
                 /* now pack this proc's contribution into the bucket */
-                pmix_bfrop.pack(&bucket, &pbkt, 1, PMIX_BUFFER);
+                pmix_buffer_t *ppbkt = &pbkt;
+                pmix_bfrop.pack(&bucket, &ppbkt, 1, PMIX_BUFFER);
                 PMIX_DESTRUCT(&pbkt);
             }
         }
@@ -810,9 +816,14 @@ static void _dmodex_req(int sd, short args, void *cbdata)
     if (PMIX_SUCCESS == pmix_hash_fetch(&nptr->server->myremote, info->rank, "modex", &val)) {
         PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
         PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
-        pmix_bfrop.pack(&pbkt, &xfer, 1, PMIX_BUFFER);
+        pmix_buffer_t *pxfer = &xfer;
+        pmix_bfrop.pack(&pbkt, &pxfer, 1, PMIX_BUFFER);
+        xfer.base_ptr = NULL;
+        xfer.bytes_used = 0;
         PMIX_DESTRUCT(&xfer);
-        PMIX_RELEASE(val);
+        if (NULL != val) {
+            PMIX_VALUE_RELEASE(val);
+        }
     }
     PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
     PMIX_DESTRUCT(&pbkt);
@@ -1471,7 +1482,7 @@ static void get_cbfunc(int status, const char *data,
     int rc;
     
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "server:modex_cbfunc called with %d elements", (int)ndata);
+                        "server:get_cbfunc called with %d elements", (int)ndata);
 
     if (NULL == cd) {
         /* nothing to do */

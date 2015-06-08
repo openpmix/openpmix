@@ -156,6 +156,7 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
         kp = PMIX_NEW(pmix_kval_t);
         kp->key = strdup("modex");
         PMIX_VALUE_CREATE(kp->value, 1);
+        kp->value->type = PMIX_BYTE_OBJECT;
         PMIX_UNLOAD_BUFFER(b2, kp->value->data.bo.bytes, kp->value->data.bo.size);
         PMIX_RELEASE(b2);
         /* store it in the appropriate hash */
@@ -187,9 +188,14 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
             if (PMIX_SUCCESS == pmix_hash_fetch(&nptr->server->myremote, info->rank, "modex", &val)) {
                 PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
                 PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
-                pmix_bfrop.pack(&pbkt, &xfer, 1, PMIX_BUFFER);
+                pmix_buffer_t *pxfer = &xfer;
+                pmix_bfrop.pack(&pbkt, &pxfer, 1, PMIX_BUFFER);
+                xfer.base_ptr = NULL;
+                xfer.bytes_used = 0;
                 PMIX_DESTRUCT(&xfer);
-                PMIX_RELEASE(val);
+                if (NULL != val) {
+                    PMIX_VALUE_RELEASE(val);
+                }
             }
             PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
             PMIX_DESTRUCT(&pbkt);
@@ -219,9 +225,14 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
             if (PMIX_SUCCESS == pmix_hash_fetch(&nptr->server->mylocal, info->rank, "modex", &val)) {
                 PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
                 PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
-                pmix_bfrop.pack(&pbkt, &xfer, 1, PMIX_BUFFER);
+                pmix_buffer_t *pxfer = &xfer;
+                pmix_bfrop.pack(&pbkt, &pxfer, 1, PMIX_BUFFER);
+                xfer.base_ptr = NULL;
+                xfer.bytes_used = 0;
                 PMIX_DESTRUCT(&xfer);
-                PMIX_RELEASE(val);
+                if (NULL != val) {
+                    PMIX_VALUE_RELEASE(val);
+                }
             }
             PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
             PMIX_DESTRUCT(&pbkt);
@@ -463,12 +474,18 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
                 if (PMIX_SUCCESS == pmix_hash_fetch(&info->nptr->server->myremote, info->rank, "modex", &val)) {
                     PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
                     PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
-                    pmix_bfrop.pack(&pbkt, &xfer, 1, PMIX_BUFFER);
+                    pmix_buffer_t *pxfer = &xfer;
+                    pmix_bfrop.pack(&pbkt, &pxfer, 1, PMIX_BUFFER);
+                    xfer.base_ptr = NULL;
+                    xfer.bytes_used = 0;
                     PMIX_DESTRUCT(&xfer);
-                    PMIX_RELEASE(val);
+                    if (NULL != val) {
+                        PMIX_VALUE_RELEASE(val);
+                    }
+                    /* now pack this proc's contribution into the bucket */
+                    pmix_buffer_t *ppbkt = &pbkt;
+                    pmix_bfrop.pack(&bucket, &ppbkt, 1, PMIX_BUFFER);
                 }
-                /* now pack this proc's contribution into the bucket */
-                pmix_bfrop.pack(&bucket, &pbkt, 1, PMIX_BUFFER);
                 PMIX_DESTRUCT(&pbkt);
             }
         }
@@ -506,7 +523,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
 
     /* setup */
     memset(nspace, 0, sizeof(nspace));
-    
+
     /* retrieve the nspace and rank of the requested proc */
     cnt = 1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &cptr, &cnt, PMIX_STRING))) {
@@ -520,6 +537,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         return rc;
     }
+
     /* find the nspace object for this client */
     nptr = NULL;
     PMIX_LIST_FOREACH(ns, &pmix_server_globals.nspaces, pmix_nspace_t) {
@@ -528,6 +546,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
             break;
         }
     }
+
     if (NULL == nptr) {
         /* if this is for an nspace we don't know, then there
          * isn't any way for us to get the data */
@@ -542,6 +561,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
             break;
         }
     }
+
     if (NULL == info) {
         /* this can mean either of two things: (a) they are asking
          * about a non-local proc, or (b) it is a local proc, but
@@ -566,20 +586,20 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
             return PMIX_SUCCESS;
         }
         PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+
         return PMIX_ERR_NOT_FOUND;
     }
     /* we are talking about a local proc - see if we already have its data */
     if (!info->modex_recvd) {
         /* nope - need to defer */
+        lcd = PMIX_NEW(pmix_local_modex_caddy_t);
+        lcd->cd = cbdata;
+        lcd->cbfunc = cbfunc;
+        lcd->cbdata = cbdata;
+        pmix_list_append(&pmix_server_globals.localmodex, &lcd->super);
+        return PMIX_SUCCESS;
     }
     
-    /* unload the key they want */
-    cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &cptr, &cnt, PMIX_STRING))) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-
     /* since this came from a local client,
      * we have to include both local and remote data */
     PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
@@ -587,15 +607,22 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
      * may not be a contribution */
     if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&info->nptr->server->myremote, info->rank, "modex", &val))) {
         PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
+        pmix_buffer_t *pxfer = &xfer;
         PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
-        pmix_bfrop.pack(&pbkt, &xfer, 1, PMIX_BUFFER);
+        pmix_bfrop.pack(&pbkt, &pxfer, 1, PMIX_BUFFER);
+        xfer.base_ptr = NULL;
+        xfer.bytes_used = 0;
         PMIX_DESTRUCT(&xfer);
-        PMIX_RELEASE(val);
+        if (NULL != val) {
+            PMIX_VALUE_RELEASE(val);
+        }
     }
     PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
     PMIX_DESTRUCT(&pbkt);
     /* pass it back */
+
     cbfunc(rc, data, sz, cbdata);
+
     return rc;
 
  dmodex:

@@ -87,7 +87,7 @@ int PMIx_Get(const char nspace[], int rank,
     rc = cb->status;
     *val = cb->value;
     PMIX_RELEASE(cb);
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:client get completed");
 
@@ -140,7 +140,6 @@ int PMIx_Get_nb(const char *nspace, int rank,
          * we are not connected */
         return PMIX_ERR_NOT_FOUND;
     }
-
     /* the requested data could be in the job-data table, so let's
      * just check there first.  */
     if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->data, PMIX_RANK_WILDCARD, key, &val))) {
@@ -268,7 +267,7 @@ static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                          pmix_buffer_t *buf, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
-    int rc;
+    int rc, ret;
     pmix_value_t *val = NULL;
     int32_t cnt;
     pmix_buffer_t *bptr;
@@ -281,6 +280,18 @@ static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     if (NULL == cb) {
         /* nothing we can do */
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        return;
+    }
+
+    /* unpack the status */
+    cnt = 1;
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ret, &cnt, PMIX_INT))) {
+        PMIX_ERROR_LOG(rc);
+        return;
+    }
+
+    if (PMIX_SUCCESS != ret) {
+        PMIX_ERROR_LOG(ret);
         return;
     }
 
@@ -325,6 +336,7 @@ static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
             cnt = 1;
             kp = PMIX_NEW(pmix_kval_t);
         }
+        cnt = 1;
         PMIX_RELEASE(kp);
         PMIX_RELEASE(bptr);  // free's the data region
         if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
