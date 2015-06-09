@@ -347,30 +347,25 @@ static pmix_server_trkr_t* get_tracker(pmix_proc_t *procs,
             continue;
         }
         /* is this one of my local ranks? */
-        info = NULL;
-        PMIX_LIST_FOREACH(iptr, &nptr->server->ranks, pmix_rank_info_t) {
-            if (procs[i].rank == iptr->rank ||
+        PMIX_LIST_FOREACH(info, &nptr->server->ranks, pmix_rank_info_t) {
+            if (procs[i].rank == info->rank ||
                 PMIX_RANK_WILDCARD == procs[i].rank) {
-                info = iptr;
-                break;
+                pmix_output_verbose(5, pmix_globals.debug_output,
+                                    "adding local proc %s.%d to tracker", procs[i].nspace, procs[i].rank);
+                /* add a tracker for this proc - don't need more than
+                 * the nspace pointer and rank */
+                iptr = PMIX_NEW(pmix_rank_info_t);
+                PMIX_RETAIN(info->nptr);
+                iptr->nptr = info->nptr;
+                iptr->rank = info->rank;
+                pmix_list_append(&trk->ranks, &iptr->super);
+                /* track the count */
+                ++trk->nlocal;
+                if (PMIX_RANK_WILDCARD != procs[i].rank) {
+                    break;
+                }
             }
         }
-        if (NULL == info) {
-            /* not one of mine */
-            pmix_output_verbose(8, pmix_globals.debug_output,
-                                "get_tracker: non-local proc %s:%d",
-                                procs[i].nspace, procs[i].rank);
-            continue;
-        }
-        pmix_output_verbose(5, pmix_globals.debug_output,
-                            "adding local proc %s.%d to tracker", procs[i].nspace, procs[i].rank);
-        /* add a tracker for this proc - don't need more than
-         * the nspace pointer and rank */
-        iptr = PMIX_NEW(pmix_rank_info_t);
-        PMIX_RETAIN(info->nptr);
-        iptr->nptr = info->nptr;
-        iptr->rank = procs[i].rank;
-        pmix_list_append(&trk->ranks, &iptr->super);
     }
     if (all_def) {
         trk->def_complete = true;
@@ -458,7 +453,9 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
      * "fence" point - they will callback once the barrier
      * across all participants has been completed */
     if (trk->def_complete &&
-        pmix_list_get_size(&trk->local_cbs) == pmix_list_get_size(&trk->ranks)) {
+        pmix_list_get_size(&trk->local_cbs) == trk->nlocal) {
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "fence complete");
         /* if the user asked us to collect data, then we have
          * to provide any locally collected data to the host
          * server so they can circulate it - only take data
@@ -468,11 +465,17 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
          * the result to our local clients */
         PMIX_CONSTRUCT(&bucket, pmix_buffer_t);
         if (trk->collect_data) {
+            pmix_output_verbose(2, pmix_globals.debug_output,
+                                "fence - assembling data");
             PMIX_LIST_FOREACH(info, &trk->ranks, pmix_rank_info_t) {
                 PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
                 /* get any remote contribution - note that there
                  * may not be a contribution */
                 if (PMIX_SUCCESS == pmix_hash_fetch(&info->nptr->server->myremote, info->rank, "modex", &val)) {
+                    /* pack the proc so we know the source */
+                    char *foobar = info->nptr->nspace;
+                    pmix_bfrop.pack(&pbkt, &foobar, 1, PMIX_STRING);
+                    pmix_bfrop.pack(&pbkt, &info->rank, 1, PMIX_INT);
                     PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
                     PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
                     pmix_buffer_t *pxfer = &xfer;
@@ -910,7 +913,7 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
      * "fence" point - they will callback once the [dis]connect
      * across all participants has been completed */
     if (trk->def_complete &&
-        pmix_list_get_size(&trk->local_cbs) == pmix_list_get_size(&trk->ranks)) {
+        pmix_list_get_size(&trk->local_cbs) == trk->nlocal) {
         if (disconnect) {
             rc = pmix_host_server.disconnect(procs, nprocs, cbfunc, trk);
         } else {
@@ -935,6 +938,7 @@ static void tcon(pmix_server_trkr_t *t)
     t->def_complete = false;
     PMIX_CONSTRUCT(&t->ranks, pmix_list_t);
     PMIX_CONSTRUCT(&t->local_cbs, pmix_list_t);
+    t->nlocal = 0;
     t->local_cnt = 0;
     t->collect_data = false;
     t->modexcbfunc = NULL;

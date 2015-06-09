@@ -152,18 +152,23 @@ static int unpack_return(pmix_buffer_t *data)
 {
     int rc, ret;
     int32_t cnt;
-    pmix_buffer_t *bptr, *bprank, *bpscope;
+    pmix_buffer_t *bptr, *bpscope;
     pmix_kval_t *kp;
     char *nspace;
     int rank;
     pmix_nsrec_t *ns, *nptr;
     
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "client:unpack fence called");
+
     /* unpack the status code */
     cnt = 1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(data, &ret, &cnt, PMIX_INT))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "client:unpack fence received status %d", ret);
     if (PMIX_SUCCESS != ret) {
         return ret;
     }
@@ -177,6 +182,8 @@ static int unpack_return(pmix_buffer_t *data)
             PMIX_ERROR_LOG(rc);
             return rc;
         }
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "client:unpack fence unpacked blob for npsace %s", nspace);
         /* find the nspace object */
         nptr = NULL;
         PMIX_LIST_FOREACH(ns, &pmix_client_globals.nspaces, pmix_nsrec_t) {
@@ -191,41 +198,38 @@ static int unpack_return(pmix_buffer_t *data)
             (void)strncpy(nptr->nspace, nspace, PMIX_MAX_NSLEN);
             pmix_list_append(&pmix_client_globals.nspaces, &nptr->super);
         }
-        /* unpack the modex blobs - there will be one blob for each rank */
+        /* unpack the rank */
         cnt = 1;
-        while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bptr, &bprank, &cnt, PMIX_BUFFER))) {
-            /* unpack the rank */
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(bptr, &rank, &cnt, PMIX_INT))) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "client:unpack fence received blob for rank %d", rank);
+        /* there may be multiple blobs for this rank, each from a different scope */
+        cnt = 1;
+        while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bptr, &bpscope, &cnt, PMIX_BUFFER))) {
+            /* unpack each value they provided */
             cnt = 1;
-            if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(bprank, &rank, &cnt, PMIX_INT))) {
-                PMIX_ERROR_LOG(rc);
-                return rc;
-            }
-            /* there may be multiple blobs for each rank, each from a different scope */
-            cnt = 1;
-            while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bprank, &bpscope, &cnt, PMIX_BUFFER))) {
-                /* unpack each value they provided */
-                cnt = 1;
-                kp = PMIX_NEW(pmix_kval_t);
-                while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bpscope, kp, &cnt, PMIX_KVAL))) {
-                    if (PMIX_SUCCESS != (rc = pmix_hash_store(&nptr->modex, rank, kp))) {
-                        PMIX_ERROR_LOG(rc);
-                    }
-                    PMIX_RELEASE(kp);  // maintain acctg
-                    cnt = 1;
-                    kp = PMIX_NEW(pmix_kval_t);
+            kp = PMIX_NEW(pmix_kval_t);
+            while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bpscope, kp, &cnt, PMIX_KVAL))) {
+                pmix_output_verbose(2, pmix_globals.debug_output,
+                                    "client:unpack fence unpacked key %s", kp->key);
+                if (PMIX_SUCCESS != (rc = pmix_hash_store(&nptr->modex, rank, kp))) {
+                    PMIX_ERROR_LOG(rc);
                 }
                 PMIX_RELEASE(kp);  // maintain acctg
-            }  // while bpscope
-            if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
-                PMIX_ERROR_LOG(rc);
+                cnt = 1;
+                kp = PMIX_NEW(pmix_kval_t);
             }
-            PMIX_RELEASE(bpscope);
+            PMIX_RELEASE(kp);  // maintain acctg
             cnt = 1;
-        }  // while bprank
+        }  // while bpscope
         if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
             PMIX_ERROR_LOG(rc);
         }
-        PMIX_RELEASE(bprank);
+        PMIX_RELEASE(bpscope);
+        cnt = 1;
         PMIX_RELEASE(bptr);
         cnt = 1;
     } // while bptr
