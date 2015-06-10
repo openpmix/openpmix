@@ -46,6 +46,7 @@ typedef struct {
     bool def_complete;      // all local procs have been registered and the trk definition is complete
     pmix_list_t ranks;      // list of pmix_rank_info_t of the local participants
     pmix_list_t local_cbs;  // list of pmix_server_caddy_t for sending result to the local participants
+    uint32_t nlocal;        // number of local participants
     uint32_t local_cnt;     // number of local participants who have contributed
     bool collect_data;      // whether or not data is to be returned at completion
     pmix_modex_cbfunc_t modexcbfunc;

@@ -634,7 +634,7 @@ static void _register_client(int sd, short args, void *cbdata)
                 continue;
             }
             /* is this now completed? */
-            if (pmix_list_get_size(&trk->local_cbs) == pmix_list_get_size(&trk->ranks)) {
+            if (pmix_list_get_size(&trk->local_cbs) == trk->nlocal) {
                 /* it did, so now we need to process it */
                 if (using_internal_comm) {
                     /* we don't want to block someone
@@ -1430,12 +1430,14 @@ static void modex_cbfunc(int status, const char *data,
                          size_t ndata, void *cbdata)
 {
     pmix_server_trkr_t *tracker = (pmix_server_trkr_t*)cbdata;
-    pmix_buffer_t *reply, xfer;
+    pmix_buffer_t *reply, xfer, pbkt;
     int rc;
     pmix_server_caddy_t *cd;
+    pmix_rank_info_t *info;
+    pmix_value_t *val;
     
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "server:modex_cbfunc called with %d elements", (int)ndata);
+                        "server:modex_cbfunc called with %d bytes", (int)ndata);
 
     if (NULL == tracker) {
         /* nothing to do */
@@ -1458,14 +1460,45 @@ static void modex_cbfunc(int status, const char *data,
     xfer.bytes_used = 0;
     /* cleanup */
     PMIX_DESTRUCT(&xfer);
-    
+
+    /* if collect_data is set, then find all local procs involved in
+     * the modex, and add their "local" modex data as well - it
+     * would not have been included when we sent this out */
+    if (tracker->collect_data) {
+        PMIX_LIST_FOREACH(info, &tracker->ranks, pmix_rank_info_t) {
+            PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+            /* get any local contribution - note that there
+             * may not be a contribution */
+            if (PMIX_SUCCESS == pmix_hash_fetch(&info->nptr->server->mylocal, info->rank, "modex", &val)) {
+                /* pack the proc so we know the source */
+                char *foobar = info->nptr->nspace;
+                pmix_bfrop.pack(&pbkt, &foobar, 1, PMIX_STRING);
+                pmix_bfrop.pack(&pbkt, &info->rank, 1, PMIX_INT);
+                PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
+                PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
+                pmix_buffer_t *pxfer = &xfer;
+                pmix_bfrop.pack(&pbkt, &pxfer, 1, PMIX_BUFFER);
+                xfer.base_ptr = NULL;
+                xfer.bytes_used = 0;
+                PMIX_DESTRUCT(&xfer);
+                if (NULL != val) {
+                    PMIX_VALUE_RELEASE(val);
+                }
+                /* now pack this proc's contribution into the bucket */
+                pmix_buffer_t *ppbkt = &pbkt;
+                pmix_bfrop.pack(reply, &ppbkt, 1, PMIX_BUFFER);
+            }
+            PMIX_DESTRUCT(&pbkt);
+        }
+    }
+
     /* loop across all procs in the tracker, sending them the reply */
     PMIX_LIST_FOREACH(cd, &tracker->local_cbs, pmix_server_caddy_t) {
         PMIX_RETAIN(reply);
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "server:modex_cbfunc reply being sent to %s:%d",
                             cd->peer->info->nptr->nspace, cd->peer->info->rank);
-       PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
+        PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
     }
     PMIX_RELEASE(reply);  // maintain accounting
     /* push this into our own thread so we can remove it from the

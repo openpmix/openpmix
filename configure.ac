@@ -902,5 +902,6 @@ pmix_show_subtitle "Final output"
 AC_CONFIG_FILES([
                    Makefile
                    test/Makefile
+                   test/simple/Makefile
 ])
 AC_OUTPUT

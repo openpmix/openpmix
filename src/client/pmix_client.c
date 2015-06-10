@@ -449,7 +449,8 @@ int PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
     pmix_nsrec_t *ns;
     
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix: executing put");
+                        "pmix: executing put for key %s type %d",
+                        key, val->type);
 
     if (pmix_client_globals.init_cntr <= 0) {
         return PMIX_ERR_INIT;
