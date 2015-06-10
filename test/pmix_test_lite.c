@@ -224,7 +224,7 @@ int main(int argc, char **argv)
     close(listen_fd);
     unlink(address.sun_path);
 
-    return rc;
+    return test_fail;
 }
 
 /*
