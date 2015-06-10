@@ -184,6 +184,6 @@ int main(int argc, char **argv)
         TEST_OUTPUT(("Test finished OK!"));
     }
 
-    return rc;
+    return test_fail;
 }
 
