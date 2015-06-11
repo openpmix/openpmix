@@ -293,6 +293,13 @@ static int fencenb_fn(const pmix_proc_t procs[], size_t nprocs,
 static int dmodex_fn(const char nspace[], int rank,
                      pmix_modex_cbfunc_t cbfunc, void *cbdata)
 {
+    pmix_output(0, "SERVER: DMODEX");
+
+    /* we don't have any data for remote procs as this
+     * test only runs one server - so report accordingly */
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_ERR_NOT_FOUND, NULL, 0, cbdata);
+    }
     return PMIX_SUCCESS;
 }
 

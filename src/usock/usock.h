@@ -199,7 +199,7 @@ PMIX_CLASS_DECLARATION(pmix_usock_sr_t);
 
 /* usock struct for tracking ops */
 typedef struct {
-    pmix_object_t super;
+    pmix_list_item_t super;
     pmix_event_t ev;
     volatile bool active;
     int status;

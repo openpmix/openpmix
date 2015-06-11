@@ -101,8 +101,9 @@ PMIX_CLASS_DECLARATION(pmix_dmodex_caddy_t);
 
 typedef struct {
     pmix_list_item_t super;
-    pmix_server_caddy_t *cd;
-    pmix_modex_cbfunc_t cbfunc;
+    char nspace[PMIX_MAX_NSLEN+1];  // nspace of proc whose data is being requested
+    int rank;                       // rank of proc whose data is being requested
+    pmix_modex_cbfunc_t cbfunc;     // cbfunc to be executed when data is available
     void *cbdata;
 } pmix_local_modex_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_local_modex_caddy_t);

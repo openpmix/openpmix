@@ -22,6 +22,7 @@ typedef struct {
     pmix_buffer_t *cache_local;     // data PUT by me to local scope
     pmix_buffer_t *cache_remote;    // data PUT by me to remote scope
     pmix_list_t nspaces;            // list of pmix_nsrec_t of nspaces I know about
+    pmix_list_t pending_requests;   // list of pmix_cb_t pending data requests
 } pmix_client_globals_t;
 
 typedef struct {

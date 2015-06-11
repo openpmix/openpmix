@@ -60,6 +60,7 @@ test/pmix_regex
 test/simple/simptest
 test/simple/simpclient
 test/simple/simppub
+test/simple/simpdmodex
 
 # coverity
 cov-int

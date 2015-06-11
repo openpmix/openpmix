@@ -259,7 +259,7 @@ static void cbdes(pmix_cb_t *p)
     }
 }
 PMIX_CLASS_INSTANCE(pmix_cb_t,
-                   pmix_object_t,
+                   pmix_list_item_t,
                    cbcon, cbdes);
 
 

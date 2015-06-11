@@ -119,10 +119,9 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
     pmix_scope_t scope;
     pmix_hash_table_t *ht;
     pmix_nspace_t *nptr;
-    pmix_rank_info_t *info, *iptr;
+    pmix_rank_info_t *info;
     pmix_dmodex_caddy_t *dcd, *dcdnext;
     pmix_local_modex_caddy_t *lcd, *lcdnext;
-    pmix_server_caddy_t *cd;
     pmix_buffer_t pbkt, xfer;
     pmix_value_t *val;
     char *data;
@@ -139,7 +138,7 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
     cnt = 1;
     while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(buf, &scope, &cnt, PMIX_SCOPE))) {
         if (PMIX_LOCAL == scope) {
-            ht = &nptr->server->mylocal;
+           ht = &nptr->server->mylocal;
         } else if (PMIX_REMOTE == scope) {
             ht = &nptr->server->myremote;
         } else {
@@ -180,7 +179,7 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
             continue;
         }
         if (dcd->cd->rank == info->rank) {
-            /* we can now fulfill this request - collect the
+           /* we can now fulfill this request - collect the
              * remote/global data from this proc */
             PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
             /* get any remote contribution - note that there
@@ -210,16 +209,14 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
     }
     /* see if anyone local is waiting on this data- could be more than one */
     PMIX_LIST_FOREACH_SAFE(lcd, lcdnext, &pmix_server_globals.localmodex, pmix_local_modex_caddy_t) {
-        cd = lcd->cd;
-        iptr = cd->peer->info;
-        if (0 != strncmp(iptr->nptr->nspace, nptr->nspace, PMIX_MAX_NSLEN)) {
+        if (0 != strncmp(lcd->nspace, nptr->nspace, PMIX_MAX_NSLEN)) {
             continue;
         }
-        if (iptr->rank == info->rank) {
+        if (lcd->rank == info->rank) {
             /* we can now fulfill this request - collect the
              * local/global data from this proc */
             PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
-            /* get any remote contribution - note that there
+            /* get any local contribution - note that there
              * may not be a contribution */
             if (PMIX_SUCCESS == pmix_hash_fetch(&nptr->server->mylocal, info->rank, "modex", &val) &&
                 NULL != val) {
@@ -538,7 +535,6 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-
     /* find the nspace object for this client */
     nptr = NULL;
     PMIX_LIST_FOREACH(ns, &pmix_server_globals.nspaces, pmix_nspace_t) {
@@ -580,7 +576,8 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
              * server registers a client until we either find this one
              * or all local clients are known and this isn't one of them */
             lcd = PMIX_NEW(pmix_local_modex_caddy_t);
-            lcd->cd = cbdata;
+            (void)strncpy(lcd->nspace, nspace, PMIX_MAX_NSLEN);
+            lcd->rank = rank;
             lcd->cbfunc = cbfunc;
             lcd->cbdata = cbdata;
             pmix_list_append(&pmix_server_globals.localmodex, &lcd->super);
@@ -594,15 +591,15 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     if (!info->modex_recvd) {
         /* nope - need to defer */
         lcd = PMIX_NEW(pmix_local_modex_caddy_t);
-        lcd->cd = cbdata;
+        (void)strncpy(lcd->nspace, nspace, PMIX_MAX_NSLEN);
+        lcd->rank = rank;
         lcd->cbfunc = cbfunc;
         lcd->cbdata = cbdata;
         pmix_list_append(&pmix_server_globals.localmodex, &lcd->super);
         return PMIX_SUCCESS;
     }
     
-    /* since this came from a local client,
-     * we have to include both local and remote data */
+    /* check for the remote data - the local data will be added at cback */
     PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
     /* get any remote contribution - note that there
      * may not be a contribution */
@@ -1048,17 +1045,11 @@ PMIX_CLASS_INSTANCE(pmix_dmodex_caddy_t,
 
 static void lmcon(pmix_local_modex_caddy_t *p)
 {
-    p->cd = NULL;
-}
-static void lmdes(pmix_local_modex_caddy_t *p)
-{
-    if (NULL != p->cd) {
-        PMIX_RELEASE(p->cd);
-    }
+    memset(p->nspace, 0, PMIX_MAX_NSLEN+1);
 }
 PMIX_CLASS_INSTANCE(pmix_local_modex_caddy_t,
                     pmix_list_item_t,
-                    lmcon, lmdes);
+                    lmcon, NULL);
 
 PMIX_CLASS_INSTANCE(pmix_pending_connection_t,
                     pmix_object_t,

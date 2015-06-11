@@ -653,13 +653,13 @@ static void _register_client(int sd, short args, void *cbdata)
          * in one of our nspaces, but we didn't know all the local procs
          * and so couldn't determine the proc was remote */
         PMIX_LIST_FOREACH_SAFE(lcd, lcdnext, &pmix_server_globals.localmodex, pmix_local_modex_caddy_t) {
-            if (0 != strncmp(nptr->nspace, lcd->cd->peer->info->nptr->nspace, PMIX_MAX_NSLEN)) {
+            if (0 != strncmp(nptr->nspace, lcd->nspace, PMIX_MAX_NSLEN)) {
                 continue;
             }
             /* is this one of our local ranks? */
             found = false;
             PMIX_LIST_FOREACH(info, &nptr->server->ranks, pmix_rank_info_t) {
-                if (info->rank == lcd->cd->peer->info->rank) {
+                if (info->rank == lcd->rank) {
                     found = true;
                     break;
                 }
@@ -676,11 +676,13 @@ static void _register_client(int sd, short args, void *cbdata)
                     /* the required server caddy so the callback knows
                      * how to return the result to the requestor was
                      * included when we cached this */
-                    pmix_host_server.direct_modex(nptr->nspace, lcd->cd->peer->info->rank,
+                    pmix_host_server.direct_modex(lcd->nspace, lcd->rank,
                                                   lcd->cbfunc, lcd->cbdata);
                 }
                 pmix_list_remove_item(&pmix_server_globals.localmodex, &lcd->super);
                 PMIX_RELEASE(lcd);
+            } else {
+                pmix_output(0, "SERVER: LOCAL PROCESS");
             }
         }
     }

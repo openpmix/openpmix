@@ -153,6 +153,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
 static void setup_globals(void)
 {
     PMIX_CONSTRUCT(&pmix_client_globals.nspaces, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_client_globals.pending_requests, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_client_globals.myserver, pmix_peer_t);
     /* setup our copy of the pmix globals object */
     memset(&pmix_globals.nspace, 0, sizeof(pmix_globals.nspace));
@@ -356,14 +357,15 @@ int PMIx_Finalize(void)
     pmix_usock_finalize();
     PMIX_DESTRUCT(&pmix_client_globals.myserver);
 
-    PMIX_LIST_DESTRUCT(&pmix_client_globals.nspaces);
-    
     pmix_stop_progress_thread(pmix_globals.evbase);
     event_base_free(pmix_globals.evbase);
 #ifdef HAVE_LIBEVENT_SHUTDOWN
     libevent_global_shutdown();
 #endif
 
+    PMIX_LIST_DESTRUCT(&pmix_client_globals.nspaces);
+    PMIX_LIST_DESTRUCT(&pmix_client_globals.pending_requests);
+    
     if (0 <= pmix_client_globals.myserver.sd) {
         CLOSE_THE_SOCKET(pmix_client_globals.myserver.sd);
     }

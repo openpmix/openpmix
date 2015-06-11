@@ -109,6 +109,7 @@ int PMIx_Get_nb(const char *nspace, int rank,
                         "pmix: get_nb value for proc %s:%d key %s",
                         (NULL == nspace) ? "NULL" : nspace, rank,
                         (NULL == key) ? "NULL" : key);
+    
     if (pmix_client_globals.init_cntr <= 0) {
         return PMIX_ERR_INIT;
     }
@@ -203,8 +204,26 @@ int PMIx_Get_nb(const char *nspace, int rank,
         return rc;
     }
 
-    /* if we got here, then we don't have the data for this proc, so
-     * we request it from the server */
+    /* if we got here, then we don't have the data for this proc - see if
+     * we already have a request in place with the server for data from
+     * this nspace:rank. If we do, then no need to ask again as the
+     * request will return _all_ data from that proc */
+    PMIX_LIST_FOREACH(cb, &pmix_client_globals.pending_requests, pmix_cb_t) {
+        if (0 == strncmp(nm, cb->nspace, PMIX_MAX_NSLEN) && cb->rank == rank) {
+            /* we do have a pending request, but we still need to track this
+             * outstanding request so we can satisfy it once the data is returned */
+            cb = PMIX_NEW(pmix_cb_t);
+            (void)strncpy(cb->nspace, nm, PMIX_MAX_NSLEN);
+            cb->rank = rank;
+            cb->key = strdup(key);
+            cb->value_cbfunc = cbfunc;
+            cb->cbdata = cbdata;
+            pmix_list_append(&pmix_client_globals.pending_requests, &cb->super);
+            return PMIX_SUCCESS;
+        }
+    }
+    
+    /* we don't have a pending request, so let's create one */
     if (NULL == (msg = pack_get(nm, rank, key, PMIX_GETNB_CMD))) {
         return PMIX_ERROR;
     }
@@ -218,7 +237,8 @@ int PMIx_Get_nb(const char *nspace, int rank,
     cb->key = strdup(key);
     cb->value_cbfunc = cbfunc;
     cb->cbdata = cbdata;
-
+    pmix_list_append(&pmix_client_globals.pending_requests, &cb->super);
+    
     /* push the message into our event base to send to the server */
     PMIX_ACTIVATE_SEND_RECV(&pmix_client_globals.myserver, msg, getnb_cbfunc, cb);
 
@@ -267,12 +287,14 @@ static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                          pmix_buffer_t *buf, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+    pmix_cb_t *cb2;
     int rc, ret;
     pmix_value_t *val = NULL;
     int32_t cnt;
     pmix_buffer_t *bptr;
     pmix_kval_t *kp;
     pmix_nsrec_t *ns, *nptr;
+    int rank;
     
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: get_nb callback recvd");
@@ -282,16 +304,13 @@ static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return;
     }
-
+    // cache the rank
+    rank = cb->rank;
+    
     /* unpack the status */
     cnt = 1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ret, &cnt, PMIX_INT))) {
         PMIX_ERROR_LOG(rc);
-        return;
-    }
-
-    if (PMIX_SUCCESS != ret) {
-        PMIX_ERROR_LOG(ret);
         return;
     }
 
@@ -308,6 +327,10 @@ static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
         nptr = PMIX_NEW(pmix_nsrec_t);
         (void)strncpy(nptr->nspace, cb->nspace, PMIX_MAX_NSLEN);
         pmix_list_append(&pmix_client_globals.nspaces, &nptr->super);
+    }
+
+    if (PMIX_SUCCESS != ret) {
+        goto done;
     }
 
     /* we received the entire blob for this process, so
@@ -329,7 +352,8 @@ static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                 if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)&val, kp->value, PMIX_VALUE))) {
                     PMIX_ERROR_LOG(rc);
                     PMIX_RELEASE(kp);
-                    return;
+                    val = NULL;
+                    goto done;
                 }
             }
             PMIX_RELEASE(kp); // maintain acctg - hash_store does a retain
@@ -349,7 +373,8 @@ static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     } else {
         rc = PMIX_SUCCESS;
     }
-    
+
+ done:
     /* if a callback was provided, execute it */
     if (NULL != cb && NULL != cb->value_cbfunc) {
         if (NULL == val) {
@@ -357,10 +382,28 @@ static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
         }
         cb->value_cbfunc(rc, val, cb->cbdata);
     }
-    if (NULL != val){
+    if (NULL != val) {
         PMIX_VALUE_RELEASE(val);
     }
+    /* we obviously processed this one, so remove it from the
+     * list of pending requests */
+    pmix_list_remove_item(&pmix_client_globals.pending_requests, &cb->super);
     PMIX_RELEASE(cb);
+
+    /* now search any pending requests to see if they can be met */
+    PMIX_LIST_FOREACH_SAFE(cb, cb2, &pmix_client_globals.pending_requests, pmix_cb_t) {
+        if (0 == strncmp(nptr->nspace, cb->nspace, PMIX_MAX_NSLEN) && cb->rank == rank) {
+           /* we have the data - see if we can find the key */
+            val = NULL;
+            rc = pmix_hash_fetch(&nptr->modex, rank, cb->key, &val);
+            cb->value_cbfunc(rc, val, cb->cbdata);
+            if (NULL != val) {
+                PMIX_VALUE_RELEASE(val);
+            }
+            pmix_list_remove_item(&pmix_client_globals.pending_requests, &cb->super);
+            PMIX_RELEASE(cb);
+        }
+    }
 }
 
 static void getnb_shortcut(int fd, short flags, void *cbdata)
