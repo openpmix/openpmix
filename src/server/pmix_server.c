@@ -1469,7 +1469,8 @@ static void modex_cbfunc(int status, const char *data,
             PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
             /* get any local contribution - note that there
              * may not be a contribution */
-            if (PMIX_SUCCESS == pmix_hash_fetch(&info->nptr->server->mylocal, info->rank, "modex", &val)) {
+            if (PMIX_SUCCESS == pmix_hash_fetch(&info->nptr->server->mylocal, info->rank, "modex", &val) &&
+                NULL != val) {
                 /* pack the proc so we know the source */
                 char *foobar = info->nptr->nspace;
                 pmix_bfrop.pack(&pbkt, &foobar, 1, PMIX_STRING);
@@ -1481,9 +1482,7 @@ static void modex_cbfunc(int status, const char *data,
                 xfer.base_ptr = NULL;
                 xfer.bytes_used = 0;
                 PMIX_DESTRUCT(&xfer);
-                if (NULL != val) {
-                    PMIX_VALUE_RELEASE(val);
-                }
+                PMIX_VALUE_RELEASE(val);
                 /* now pack this proc's contribution into the bucket */
                 pmix_buffer_t *ppbkt = &pbkt;
                 pmix_bfrop.pack(reply, &ppbkt, 1, PMIX_BUFFER);
