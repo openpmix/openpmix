@@ -103,9 +103,37 @@ int main(int argc, char **argv)
             pmix_output(0, "Client ns %s rank %d: PMIx_Lookup failed: %d", nspace, rank, rc);
             goto done;
         }
-        /* check the return */
+        /* check the return for value and source */
+        if (0 != strncmp(nspace, pdata[0].proc.nspace, PMIX_MAX_NSLEN)) {
+            pmix_output(0, "Client ns %s rank %d: PMIx_Lookup returned wrong nspace: %s",
+                        nspace, rank, pdata[0].proc.nspace);
+            goto done;
+        }
+        if (0 != pdata[0].proc.rank) {
+            pmix_output(0, "Client ns %s rank %d: PMIx_Lookup returned wrong rank: %d",
+                        nspace, rank, pdata[0].proc.rank);
+            goto done;
+        }
+        if (PMIX_UINT8 != pdata[0].value.type) {
+            pmix_output(0, "Client ns %s rank %d: PMIx_Lookup returned wrong type: %d",
+                        nspace, rank, pdata[0].value.type);
+            goto done;
+        }
+        if (1 != pdata[0].value.data.uint8) {
+            pmix_output(0, "Client ns %s rank %d: PMIx_Lookup returned wrong value: %d",
+                        nspace, rank, (int)pdata[0].value.data.uint8);
+            goto done;
+        }
         PMIX_PDATA_FREE(pdata, 1);
+        pmix_output(0, "PUBLISH-LOOKUP SUCCEEDED");
     }
+
+    /* call fence again so rank 0 waits before leaving */
+    if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, false))) {
+        pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", nspace, rank, rc);
+        goto done;
+    }
+
     
  done:
     /* finalize us */

@@ -34,6 +34,7 @@
 #include "src/util/output.h"
 #include "src/util/printf.h"
 #include "src/util/argv.h"
+#include "src/buffer_ops/buffer_ops.h"
 
 static int finalized(const char nspace[], int rank, void *server_object,
                      pmix_op_cbfunc_t cbfunc, void *cbdata);
@@ -301,16 +302,21 @@ static int publish_fn(const char nspace[], int rank,
                       const pmix_info_t info[], size_t ninfo,
                       pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
-    pmix_locdata_t *p;
+    pmix_locdat_t *p;
     size_t n;
     
     pmix_output(0, "SERVER: PUBLISH");
 
     for (n=0; n < ninfo; n++) {
-        p = PMIX_NEW(pmix_locdata_t);
+        p = PMIX_NEW(pmix_locdat_t);
         (void)strncpy(p->pdata.proc.nspace, nspace, PMIX_MAX_NSLEN);
         p->pdata.proc.rank = rank;
         (void)strncpy(p->pdata.key, info[n].key, PMIX_MAX_KEYLEN);
+        pmix_value_xfer(&p->pdata.value, (pmix_value_t*)&info[n].value);
+        pmix_list_append(&pubdata, &p->super);
+    }
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, cbdata);
     }
     return PMIX_SUCCESS;
 }
@@ -319,7 +325,46 @@ static int publish_fn(const char nspace[], int rank,
 static int lookup_fn(pmix_scope_t scope, int wait, char **keys,
                      pmix_lookup_cbfunc_t cbfunc, void *cbdata)
 {
+    pmix_locdat_t *p, *p2;
+    pmix_list_t results;
+    size_t i, n;
+    pmix_pdata_t *pd;
+    int ret=PMIX_ERR_NOT_FOUND;
+    
     pmix_output(0, "SERVER: LOOKUP");
+
+    PMIX_CONSTRUCT(&results, pmix_list_t);
+    
+    for (n=0; NULL != keys[n]; n++) {
+        PMIX_LIST_FOREACH(p, &pubdata, pmix_locdat_t) {
+            if (0 == strncmp(keys[n], p->pdata.key, PMIX_MAX_KEYLEN)) {
+                p2 = PMIX_NEW(pmix_locdat_t);
+                (void)strncpy(p2->pdata.proc.nspace, p->pdata.proc.nspace, PMIX_MAX_NSLEN);
+                p2->pdata.proc.rank = p->pdata.proc.rank;
+                (void)strncpy(p2->pdata.key, p->pdata.key, PMIX_MAX_KEYLEN);
+                pmix_value_xfer(&p2->pdata.value, &p->pdata.value);
+                pmix_list_append(&results, &p2->super);
+            }
+        }
+    }
+    if (0 < (n = pmix_list_get_size(&results))) {
+        ret = PMIX_SUCCESS;
+        PMIX_PDATA_CREATE(pd, n);
+        for (i=0; i < n; i++) {
+            p = (pmix_locdat_t*)pmix_list_remove_first(&results);
+            (void)strncpy(pd[i].proc.nspace, p->pdata.proc.nspace, PMIX_MAX_NSLEN);
+            pd[i].proc.rank = p->pdata.proc.rank;
+            (void)strncpy(pd[i].key, p->pdata.key, PMIX_MAX_KEYLEN);
+            pmix_value_xfer(&pd[i].value, &p->pdata.value);
+        }
+    }
+    PMIX_LIST_DESTRUCT(&results);
+    if (NULL != cbfunc) {
+        cbfunc(ret, pd, n, cbdata);
+    }
+    if (0 < n) {
+        PMIX_PDATA_FREE(pd, n);
+    }
     return PMIX_SUCCESS;
 }
 
