@@ -32,6 +32,7 @@
 #include "src/api/pmix.h"
 #include "src/class/pmix_object.h"
 #include "src/buffer_ops/types.h"
+#include "src/util/argv.h"
 #include "src/util/output.h"
 #include "src/util/printf.h"
 
@@ -134,7 +135,24 @@ int main(int argc, char **argv)
         goto done;
     }
 
-    
+    if (0 == rank) {
+        char **keys = NULL;
+        pmix_argv_append_nosize(&keys, "FOOBAR");
+        pmix_argv_append_nosize(&keys, "PANDA");
+
+        if (PMIX_SUCCESS != (rc = PMIx_Unpublish(PMIX_GLOBAL, keys))) {
+            pmix_output(0, "Client ns %s rank %d: PMIx_Unpublish failed: %d", nspace, rank, rc);
+            goto done;
+        }
+        pmix_output(0, "UNPUBLISH SUCCEEDED");
+    }
+
+    /* call fence again so everyone waits for rank 0 before leaving */
+    if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, false))) {
+        pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", nspace, rank, rc);
+        goto done;
+    }
+
  done:
     /* finalize us */
     pmix_output(0, "Client ns %s rank %d: Finalizing", nspace, rank);

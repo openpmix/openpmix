@@ -344,6 +344,7 @@ static int lookup_fn(pmix_scope_t scope, int wait, char **keys,
                 (void)strncpy(p2->pdata.key, p->pdata.key, PMIX_MAX_KEYLEN);
                 pmix_value_xfer(&p2->pdata.value, &p->pdata.value);
                 pmix_list_append(&results, &p2->super);
+                break;
             }
         }
     }
@@ -372,7 +373,23 @@ static int lookup_fn(pmix_scope_t scope, int wait, char **keys,
 static int unpublish_fn(pmix_scope_t scope, char **keys,
                         pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
+    pmix_locdat_t *p, *p2;
+    size_t n;
+    
     pmix_output(0, "SERVER: UNPUBLISH");
+    
+    for (n=0; NULL != keys[n]; n++) {
+        PMIX_LIST_FOREACH_SAFE(p, p2, &pubdata, pmix_locdat_t) {
+            if (0 == strncmp(keys[n], p->pdata.key, PMIX_MAX_KEYLEN)) {
+                pmix_list_remove_item(&pubdata, &p->super);
+                PMIX_RELEASE(p);
+                break;
+            }
+        }
+    }
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, cbdata);
+    }
     return PMIX_SUCCESS;
 }
 
