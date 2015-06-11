@@ -23,7 +23,7 @@ headers =
 
 AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/src/api
 
-bin_PROGRAMS = simptest simpclient
+bin_PROGRAMS = simptest simpclient simppub
 
 simptest_SOURCES = \
         simptest.c
@@ -35,4 +35,10 @@ simpclient_SOURCES = \
         simpclient.c 
 
 simpclient_LDADD = \
+	$(top_builddir)/libpmix.la
+
+simppub_SOURCES = \
+        simppub.c 
+
+simppub_LDADD = \
 	$(top_builddir)/libpmix.la

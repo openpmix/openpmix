@@ -97,7 +97,7 @@ int main(int argc, char **argv)
     (void)strncpy(proc.nspace, nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
     if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, true))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Commit failed: %d", nspace, rank, rc);
+        pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", nspace, rank, rc);
         goto done;
     }
     
@@ -144,7 +144,7 @@ int main(int argc, char **argv)
         PMIX_VALUE_RELEASE(val);
         free(tmp);
     }
-    
+
  done:
     /* finalize us */
     pmix_output(0, "Client ns %s rank %d: Finalizing", nspace, rank);

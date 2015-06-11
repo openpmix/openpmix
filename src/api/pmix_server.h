@@ -58,7 +58,7 @@
 #define PMIx_SERVER_API_H
 
 #include "pmix_config.h"
-#include "src/include/rename.h"
+#include "rename.h"
 
 #include <stdint.h>
 #include <string.h>

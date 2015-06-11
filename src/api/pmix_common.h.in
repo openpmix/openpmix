@@ -47,7 +47,7 @@
 #define PMIx_COMMON_H
 
 #include "pmix_config.h"
-#include "src/include/rename.h"
+#include "rename.h"
 
 #include <stdint.h>
 #include <string.h>
@@ -75,8 +75,6 @@
 #endif
 
 BEGIN_C_DECLS
-
-#ifndef PMIX_EMBEDDED_MODE
 
 /****  PMIX CONSTANTS    ****/
 
@@ -714,8 +712,6 @@ typedef void (*pmix_notification_fn_t)(pmix_status_t status,
  * pointer will be NULL if the requested data was not found. */ 
 typedef void (*pmix_value_cbfunc_t)(pmix_status_t status,
                                     pmix_value_t *kv, void *cbdata);
-
-#endif  // PMIX_EMBEDDED_MODE
 
 /****    COMMON SUPPORT FUNCTIONS    ****/
 /* Register an errhandler to report errors. Two types of errors

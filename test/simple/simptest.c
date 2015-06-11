@@ -78,7 +78,17 @@ static pmix_server_module_t mymodule = {
     NULL
 };
 
+typedef struct {
+    pmix_list_item_t super;
+    pmix_pdata_t pdata;
+} pmix_locdat_t;
+PMIX_CLASS_INSTANCE(pmix_locdat_t,
+                    pmix_list_item_t,
+                    NULL, NULL);
+
 static volatile int wakeup;
+static pmix_list_t pubdata;
+
 static void set_namespace(int nprocs, char *ranks, char *nspace);
 static void errhandler(pmix_status_t status,
                        pmix_proc_t procs[], size_t nprocs,
@@ -88,8 +98,8 @@ int main(int argc, char **argv)
 {
     char **client_env=NULL;
     char **client_argv=NULL;
-    char *tmp, **atmp;
-    int rc, nprocs, n;
+    char *tmp, **atmp, *executable=NULL;
+    int rc, nprocs=1, n;
     uid_t myuid;
     gid_t mygid;
     pid_t pid;
@@ -110,19 +120,28 @@ int main(int argc, char **argv)
     /* register the errhandler */
     PMIx_Register_errhandler(errhandler);
 
-    /* set common argv and env */
-    client_env = pmix_argv_copy(environ);
-    pmix_argv_append_nosize(&client_argv, "simpclient");
-
+    /* setup the pub data, in case it is used */
+    PMIX_CONSTRUCT(&pubdata, pmix_list_t);
+    
     /* see if we were passed the number of procs to run */
     for (n=1; n < argc; n++) {
         if (0 == strcmp("-n", argv[n])) {
             nprocs = strtol(argv[n+1], NULL, 10);
             ++n;  // step over the argument
+        } else if (0 == strcmp("-e", argv[n])) {
+            executable = strdup(argv[n+1]);
+            ++n;
         }
     }
+    if (NULL == executable) {
+        executable = strdup("simpclient");
+    }
     
-    /* we have a single namespace for all clients */
+     /* set common argv and env */
+    client_env = pmix_argv_copy(environ);
+    pmix_argv_append_nosize(&client_argv, executable);
+    
+   /* we have a single namespace for all clients */
     atmp = NULL;
     for (n=0; n < nprocs; n++) {
         asprintf(&tmp, "%d", n);
@@ -157,7 +176,7 @@ int main(int argc, char **argv)
         }
 
         if (pid == 0) {
-            execve("/home/common/openmpi/pmix/test/simple/simpclient", client_argv, client_env);
+            execve(executable, client_argv, client_env);
             /* Does not return */
             exit(0);
         }
@@ -177,6 +196,9 @@ int main(int argc, char **argv)
     /* deregister the errhandler */
     PMIx_Deregister_errhandler();
 
+    /* release any pub data */
+    PMIX_LIST_DESTRUCT(&pubdata);
+    
     /* finalize the server library */
     if (PMIX_SUCCESS != (rc = PMIx_server_finalize())) {
         fprintf(stderr, "Finalize failed with error %d\n", rc);
@@ -279,6 +301,17 @@ static int publish_fn(const char nspace[], int rank,
                       const pmix_info_t info[], size_t ninfo,
                       pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
+    pmix_locdata_t *p;
+    size_t n;
+    
+    pmix_output(0, "SERVER: PUBLISH");
+
+    for (n=0; n < ninfo; n++) {
+        p = PMIX_NEW(pmix_locdata_t);
+        (void)strncpy(p->pdata.proc.nspace, nspace, PMIX_MAX_NSLEN);
+        p->pdata.proc.rank = rank;
+        (void)strncpy(p->pdata.key, info[n].key, PMIX_MAX_KEYLEN);
+    }
     return PMIX_SUCCESS;
 }
 
@@ -286,6 +319,7 @@ static int publish_fn(const char nspace[], int rank,
 static int lookup_fn(pmix_scope_t scope, int wait, char **keys,
                      pmix_lookup_cbfunc_t cbfunc, void *cbdata)
 {
+    pmix_output(0, "SERVER: LOOKUP");
     return PMIX_SUCCESS;
 }
 
@@ -293,6 +327,7 @@ static int lookup_fn(pmix_scope_t scope, int wait, char **keys,
 static int unpublish_fn(pmix_scope_t scope, char **keys,
                         pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
+    pmix_output(0, "SERVER: UNPUBLISH");
     return PMIX_SUCCESS;
 }
 

@@ -59,6 +59,7 @@ test/test-suite.log
 test/pmix_regex
 test/simple/simptest
 test/simple/simpclient
+test/simple/simppub
 
 # coverity
 cov-int
