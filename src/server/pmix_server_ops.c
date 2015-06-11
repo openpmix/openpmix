@@ -185,7 +185,8 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
             PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
             /* get any remote contribution - note that there
              * may not be a contribution */
-            if (PMIX_SUCCESS == pmix_hash_fetch(&nptr->server->myremote, info->rank, "modex", &val)) {
+            if (PMIX_SUCCESS == pmix_hash_fetch(&nptr->server->myremote, info->rank, "modex", &val) &&
+                NULL != val) {
                 PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
                 PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
                 pmix_buffer_t *pxfer = &xfer;
@@ -193,9 +194,7 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
                 xfer.base_ptr = NULL;
                 xfer.bytes_used = 0;
                 PMIX_DESTRUCT(&xfer);
-                if (NULL != val) {
-                    PMIX_VALUE_RELEASE(val);
-                }
+                PMIX_VALUE_RELEASE(val);
             }
             PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
             PMIX_DESTRUCT(&pbkt);
@@ -222,7 +221,8 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
             PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
             /* get any remote contribution - note that there
              * may not be a contribution */
-            if (PMIX_SUCCESS == pmix_hash_fetch(&nptr->server->mylocal, info->rank, "modex", &val)) {
+            if (PMIX_SUCCESS == pmix_hash_fetch(&nptr->server->mylocal, info->rank, "modex", &val) &&
+                NULL != val) {
                 PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
                 PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
                 pmix_buffer_t *pxfer = &xfer;
@@ -230,9 +230,7 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
                 xfer.base_ptr = NULL;
                 xfer.bytes_used = 0;
                 PMIX_DESTRUCT(&xfer);
-                if (NULL != val) {
-                    PMIX_VALUE_RELEASE(val);
-                }
+                PMIX_VALUE_RELEASE(val);
             }
             PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
             PMIX_DESTRUCT(&pbkt);
@@ -608,7 +606,8 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
     /* get any remote contribution - note that there
      * may not be a contribution */
-    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&info->nptr->server->myremote, info->rank, "modex", &val))) {
+    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&info->nptr->server->myremote, info->rank, "modex", &val)) &&
+        NULL != val) {
         PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
         pmix_buffer_t *pxfer = &xfer;
         PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
@@ -616,9 +615,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
         xfer.base_ptr = NULL;
         xfer.bytes_used = 0;
         PMIX_DESTRUCT(&xfer);
-        if (NULL != val) {
-            PMIX_VALUE_RELEASE(val);
-        }
+        PMIX_VALUE_RELEASE(val);
     }
     PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
     PMIX_DESTRUCT(&pbkt);

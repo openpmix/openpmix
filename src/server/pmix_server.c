@@ -542,7 +542,8 @@ static void _execute_collective(int sd, short args, void *cbdata)
                 PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
                 /* get any remote contribution - note that there
                  * may not be a contribution */
-                if (PMIX_SUCCESS == pmix_hash_fetch(&info->nptr->server->myremote, info->rank, "modex", &val)) {
+                if (PMIX_SUCCESS == pmix_hash_fetch(&info->nptr->server->myremote, info->rank, "modex", &val) &&
+                    NULL != val) {
                     PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
                     PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
                     pmix_buffer_t *pxfer = &xfer;
@@ -550,9 +551,7 @@ static void _execute_collective(int sd, short args, void *cbdata)
                     xfer.base_ptr = NULL;
                     xfer.bytes_used = 0;
                     PMIX_DESTRUCT(&xfer);
-                    if (NULL != val) {
-                        PMIX_VALUE_RELEASE(val);
-                    }
+                    PMIX_VALUE_RELEASE(val);
                 }
                 /* now pack this proc's contribution into the bucket */
                 pmix_buffer_t *ppbkt = &pbkt;
