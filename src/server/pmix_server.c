@@ -938,11 +938,11 @@ static void _notify_error(int sd, short args, void *cbdata)
                 cd->procs[j].rank == peer->info->rank) {
                 PMIX_RETAIN(cd->buf);
                 PMIX_SERVER_QUEUE_REPLY(peer, 0, cd->buf);
-                continue;
             }
         }
     }
-    cd->active = false;
+
+    PMIX_RELEASE(cd);
 }
 
 
@@ -953,18 +953,31 @@ pmix_status_t PMIx_server_notify_error(pmix_status_t status,
                                        char **payload, size_t *size)
 {
     pmix_notify_caddy_t *cd;
-
+    size_t n;
+        
     cd = PMIX_NEW(pmix_notify_caddy_t);
-    cd->procs = procs;
-    cd->nprocs = nprocs;
-    cd->error_procs = error_procs;
-    cd->error_nprocs = error_nprocs;
-    cd->info = info;
-    cd->ninfo = ninfo;
-
-    /*set defaults */
-    *payload = NULL;
-    *size = 0;
+    cd->status = status;
+    if (0 < nprocs) {
+        PMIX_PROC_CREATE(cd->procs, nprocs);
+        memcpy(cd->procs, procs, nprocs * sizeof(pmix_proc_t));
+        cd->nprocs = nprocs;
+    }
+    if (0 < error_nprocs) {
+        PMIX_PROC_CREATE(cd->error_procs, error_nprocs);
+        for (n=0; n < error_nprocs; n++) {
+            (void)strncpy(cd->error_procs[n].nspace, error_procs[n].nspace, PMIX_MAX_NSLEN);
+            cd->error_procs[n].rank = error_procs[n].rank;
+        }
+        cd->error_nprocs = error_nprocs;
+    }
+    if (0 < ninfo) {
+        PMIX_INFO_CREATE(cd->info, ninfo);
+        for (n=0; n < ninfo; n++) {
+            (void)strncpy(cd->info[n].key, info[n].key, PMIX_MAX_KEYLEN);
+            pmix_value_xfer(&cd->info[n].value, &info[n].value);
+        }
+        cd->ninfo = ninfo;
+    }
     
     if (using_internal_comm) {
         /* we have to push this into our event library to avoid
@@ -972,10 +985,17 @@ pmix_status_t PMIx_server_notify_error(pmix_status_t status,
         event_assign(&cd->ev, pmix_globals.evbase, -1,
                           EV_WRITE, _notify_error, cd);
         event_active(&cd->ev, EV_WRITE, 1);
-        PMIX_WAIT_FOR_COMPLETION(cd->active);
-        PMIX_RELEASE(cd);
         return PMIX_SUCCESS;
     }
+
+        /*set defaults */
+    if (NULL == payload) {
+        /* we can't process this as we have no way
+         * to hand it back */
+        return PMIX_ERR_BAD_PARAM;
+    }
+    *payload = NULL;
+    *size = 0;
 
     /* the caller is responsible for thread protection */
     _notify_error(0, 0, (void*)cd);

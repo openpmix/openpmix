@@ -89,14 +89,14 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_usock_hdr_t *
     cnt=1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &nprocs, &cnt, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
-        goto cleanup;
+        goto error;
     }
     if (0 < nprocs) {
-        procs = (pmix_proc_t*)malloc(nprocs * sizeof(pmix_proc_t));
+        PMIX_PROC_CREATE(procs, nprocs);
         cnt = nprocs;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &procs, &cnt, PMIX_PROC))) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, procs, &cnt, PMIX_PROC))) {
             PMIX_ERROR_LOG(rc);
-            goto cleanup;
+            goto error;
         }
     }
     
@@ -104,23 +104,30 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_usock_hdr_t *
     cnt=1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
-        goto cleanup;
+        goto error;
     }
     if (0 < ninfo) {
-        info = (pmix_info_t*)malloc(ninfo * sizeof(pmix_info_t));
+        PMIX_INFO_CREATE(info, ninfo);
         cnt = ninfo;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &info, &cnt, PMIX_SIZE))) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, info, &cnt, PMIX_INFO))) {
             PMIX_ERROR_LOG(rc);
-            goto cleanup;
+            goto error;
         }
     }
     
     pmix_globals.errhandler(pstatus, procs, nprocs, info, ninfo);
 
     /* cleanup */
- cleanup:
     PMIX_PROC_FREE(procs, nprocs);
     PMIX_INFO_FREE(info, ninfo);
+    return;
+
+ error:
+    /* we always need to return */
+    pmix_globals.errhandler(rc, NULL, 0, NULL, 0);
+    PMIX_PROC_FREE(procs, nprocs);
+    PMIX_INFO_FREE(info, ninfo);
+ 
 }
 
 

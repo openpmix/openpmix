@@ -259,6 +259,7 @@ static void errhandler(pmix_status_t status,
 static int finalized(const char nspace[], int rank, void *server_object,
                      pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
+    pmix_output(0, "SERVER: FINALIZED %s:%d", nspace, rank);
     --wakeup;
     /* ensure we call the cbfunc so the proc can exit! */
     if (NULL != cbfunc) {
@@ -273,6 +274,36 @@ static int abort_fn(const char nspace[], int rank,
                     pmix_proc_t procs[], size_t nprocs,
                     pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
+    int rc;
+    pmix_proc_t caller;
+    pmix_info_t *info;
+    
+    pmix_output(0, "SERVER: ABORT");
+    /* instead of aborting the specified procs, notify them
+     * (if they have registered their errhandler) */
+    (void)strncpy(caller.nspace, nspace, PMIX_MAX_NSLEN);
+    caller.rank = rank;
+    
+    PMIX_INFO_CREATE(info, 2);
+    (void)strncpy(info[0].key, "DARTH", PMIX_MAX_KEYLEN);
+    info[0].value.type = PMIX_INT8;
+    info[0].value.data.int8 = 12;
+    (void)strncpy(info[1].key, "VADER", PMIX_MAX_KEYLEN);
+    info[1].value.type = PMIX_DOUBLE;
+    info[1].value.data.dval = 12.34;
+
+    if (PMIX_SUCCESS != (rc = PMIx_server_notify_error(status, procs, nprocs,
+                                                       &caller, 1, info, 2,
+                                                       NULL, 0))) {
+        pmix_output(0, "SERVER: FAILED NOTIFY ERROR %d", rc);
+    }
+    PMIX_INFO_FREE(info, 2);
+    
+    /* release the caller */
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, cbdata);
+    }
+
     return PMIX_SUCCESS;
 }
 

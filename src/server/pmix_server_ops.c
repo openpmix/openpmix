@@ -82,7 +82,8 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
         return rc;
     }
 
-    /* unpack any provided procs */
+    /* unpack any provided procs - these are the procs the caller
+     * wants aborted */
     if (0 < nprocs) {
         PMIX_PROC_CREATE(procs, nprocs);
         cnt = nprocs;
@@ -98,6 +99,10 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
                                     procs, nprocs, cbfunc, cbdata);
     } else {
         rc = PMIX_ERR_NOT_SUPPORTED;
+        /* release the caller */
+        if (NULL != cbfunc) {
+            cbfunc(rc, cbdata);
+        }
     }
     PMIX_PROC_FREE(procs, nprocs);
     
@@ -106,7 +111,7 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
     if (NULL != msg) {
         free(msg);
     }
-
+    
     return rc;
 }
 

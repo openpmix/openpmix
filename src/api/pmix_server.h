@@ -391,8 +391,9 @@ pmix_status_t PMIx_server_dmodex_request(const char nspace[], int rank,
  * Passing a NULL for this array will indicate that all local procs
  * are to be notified.
  *
- * The second array identifies the processes that caused the error. This
- * could consist of a single process, or a number of processes.
+ * The second array identifies the processes that will be impacted
+ * by the error. This could consist of a single process, or a number
+ * of processes.
  *
  * The info array contains any further info the RM can and/or chooses
  * to provide.

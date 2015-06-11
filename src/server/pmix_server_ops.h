@@ -90,6 +90,8 @@ typedef struct {
     pmix_info_t *info;
     size_t ninfo;
     pmix_buffer_t *buf;
+    pmix_op_cbfunc_t cbfunc;
+    void *cbdata;
 } pmix_notify_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_notify_caddy_t);
 
