@@ -471,7 +471,8 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
                 PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
                 /* get any remote contribution - note that there
                  * may not be a contribution */
-                if (PMIX_SUCCESS == pmix_hash_fetch(&info->nptr->server->myremote, info->rank, "modex", &val)) {
+                if (PMIX_SUCCESS == pmix_hash_fetch(&info->nptr->server->myremote, info->rank, "modex", &val) &&
+                    NULL != val) {
                     /* pack the proc so we know the source */
                     char *foobar = info->nptr->nspace;
                     pmix_bfrop.pack(&pbkt, &foobar, 1, PMIX_STRING);
@@ -483,9 +484,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
                     xfer.base_ptr = NULL;
                     xfer.bytes_used = 0;
                     PMIX_DESTRUCT(&xfer);
-                    if (NULL != val) {
-                        PMIX_VALUE_RELEASE(val);
-                    }
+                    PMIX_VALUE_RELEASE(val);
                     /* now pack this proc's contribution into the bucket */
                     pmix_buffer_t *ppbkt = &pbkt;
                     pmix_bfrop.pack(&bucket, &ppbkt, 1, PMIX_BUFFER);
