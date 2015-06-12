@@ -41,6 +41,7 @@ static void set_namespace(int nprocs, char *ranks, char *name)
     pmix_info_t *info;
     ninfo = 6;
     char *regex, *ppn;
+    
     PMIX_INFO_CREATE(info, ninfo);
     (void)strncpy(info[0].key, PMIX_UNIV_SIZE, PMIX_MAX_KEYLEN);
     info[0].value.type = PMIX_UINT32;
@@ -68,7 +69,7 @@ static void set_namespace(int nprocs, char *ranks, char *name)
     info[5].value.type = PMIX_STRING;
     info[5].value.data.string = ppn;
 
-    PMIx_server_register_nspace(name, nprocs, info, ninfo);
+    PMIx_server_register_nspace(name, nprocs, info, ninfo, NULL, NULL);
     PMIX_INFO_FREE(info, ninfo);
 }
 
@@ -167,7 +168,7 @@ int launch_clients(int num_procs, char *binary, char *** client_env, char ***cli
             cli_kill_all();
             return rc;
         }
-        if (PMIX_SUCCESS != (rc = PMIx_server_register_client(ns_name, counter, myuid, mygid, NULL))) {//n
+        if (PMIX_SUCCESS != (rc = PMIx_server_register_client(ns_name, counter, myuid, mygid, NULL, NULL, NULL))) {//n
             TEST_ERROR(("Server fork setup failed with error %d", rc));
             PMIx_server_finalize();
             cli_kill_all();

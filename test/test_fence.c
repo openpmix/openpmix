@@ -25,7 +25,9 @@ typedef struct {
 static void get_cb(pmix_status_t status, pmix_value_t *kv, void *cbdata)
 {
     get_cbdata *cb = (get_cbdata*)cbdata;
-    pmix_value_xfer(cb->kv, kv);
+    if (PMIX_SUCCESS == status) {
+        pmix_value_xfer(cb->kv, kv);
+    }
     cb->in_progress = 0;
 }
 
