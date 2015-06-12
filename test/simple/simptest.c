@@ -87,13 +87,56 @@ PMIX_CLASS_INSTANCE(pmix_locdat_t,
                     pmix_list_item_t,
                     NULL, NULL);
 
+typedef struct {
+    pmix_object_t super;
+    volatile bool completed;
+    pmix_proc_t caller;
+    pmix_info_t *info;
+    size_t ninfo;
+    pmix_op_cbfunc_t cbfunc;
+    pmix_spawn_cbfunc_t spcbfunc;
+    void *cbdata;
+} myxfer_t;
+static void xfcon(myxfer_t *p)
+{
+    p->info = NULL;
+    p->ninfo = 0;
+    p->completed = false;
+    p->cbfunc = NULL;
+    p->spcbfunc = NULL;
+    p->cbdata = NULL;
+}
+static void xfdes(myxfer_t *p)
+{
+    if (NULL != p->info) {
+        PMIX_INFO_FREE(p->info, p->ninfo);
+    }
+}
+PMIX_CLASS_INSTANCE(myxfer_t,
+                    pmix_object_t,
+                    xfcon, xfdes);
+
 static volatile int wakeup;
 static pmix_list_t pubdata;
 
-static void set_namespace(int nprocs, char *ranks, char *nspace);
+static void set_namespace(int nprocs, char *ranks, char *nspace,
+                          pmix_op_cbfunc_t cbfunc, myxfer_t *x);
 static void errhandler(pmix_status_t status,
                        pmix_proc_t procs[], size_t nprocs,
                        pmix_info_t info[], size_t ninfo);
+
+static void opcbfunc(pmix_status_t status, void *cbdata)
+{
+    myxfer_t *x = (myxfer_t*)cbdata;
+    
+    x->completed = true;
+    /* release the caller, if necessary - note that
+     * this may result in release of x, so this must
+     * be the last thing we do with it here */
+    if (NULL != x->cbfunc) {
+        x->cbfunc(PMIX_SUCCESS, x->cbdata);
+    }
+}
 
 int main(int argc, char **argv)
 {
@@ -104,6 +147,7 @@ int main(int argc, char **argv)
     uid_t myuid;
     gid_t mygid;
     pid_t pid;
+    myxfer_t *x;
     
     /* smoke test */
     if (PMIX_SUCCESS != 0) {
@@ -138,11 +182,7 @@ int main(int argc, char **argv)
         executable = strdup("simpclient");
     }
     
-     /* set common argv and env */
-    client_env = pmix_argv_copy(environ);
-    pmix_argv_append_nosize(&client_argv, executable);
-    
-   /* we have a single namespace for all clients */
+    /* we have a single namespace for all clients */
     atmp = NULL;
     for (n=0; n < nprocs; n++) {
         asprintf(&tmp, "%d", n);
@@ -150,13 +190,28 @@ int main(int argc, char **argv)
         free(tmp);
     }
     tmp = pmix_argv_join(atmp, ',');
-    set_namespace(nprocs, tmp, "foobar");
+    x = PMIX_NEW(myxfer_t);
+    set_namespace(nprocs, tmp, "foobar", opcbfunc, x);
     free(tmp);
-    wakeup = nprocs;
+
+    /* set common argv and env */
+    client_env = pmix_argv_copy(environ);
+    pmix_argv_append_nosize(&client_argv, executable);
     
+    wakeup = nprocs;
     myuid = getuid();
     mygid = getgid();
 
+    /* if the nspace registration hasn't completed yet,
+     * wait for it here */
+    while (!x->completed) {
+        struct timespec ts;
+        ts.tv_sec = 0;
+        ts.tv_nsec = 100000;
+        nanosleep(&ts, NULL);
+    }
+    PMIX_RELEASE(x);
+    
     /* fork/exec the test */
     for (n = 0; n < nprocs; n++) {
         if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork("foobar", n, &client_env))) {//n
@@ -164,11 +219,22 @@ int main(int argc, char **argv)
             PMIx_server_finalize();
             return rc;
         }
-        if (PMIX_SUCCESS != (rc = PMIx_server_register_client("foobar", n, myuid, mygid, NULL))) {
+        x = PMIX_NEW(myxfer_t);
+        if (PMIX_SUCCESS != (rc = PMIx_server_register_client("foobar", n, myuid, mygid,
+                                                              NULL, opcbfunc, x))) {
             fprintf(stderr, "Server fork setup failed with error %d\n", rc);
             PMIx_server_finalize();
             return rc;
         }
+        /* don't fork/exec the client until we know it is registered
+         * so we avoid a potential race condition in the server */
+        while (!x->completed) {
+            struct timespec ts;
+            ts.tv_sec = 0;
+            ts.tv_nsec = 100000;
+            nanosleep(&ts, NULL);
+        }
+        PMIX_RELEASE(x);
         pid = fork();
         if (pid < 0) {
             fprintf(stderr, "Fork failed\n");
@@ -210,7 +276,8 @@ int main(int argc, char **argv)
     return rc;
 }
 
-static void set_namespace(int nprocs, char *ranks, char *nspace)
+static void set_namespace(int nprocs, char *ranks, char *nspace,
+                          pmix_op_cbfunc_t cbfunc, myxfer_t *x)
 {
     size_t ninfo = 6;
     pmix_info_t *info;
@@ -246,14 +313,15 @@ static void set_namespace(int nprocs, char *ranks, char *nspace)
     info[5].value.type = PMIX_STRING;
     info[5].value.data.string = ppn;
 
-    PMIx_server_register_nspace(nspace, nprocs, info, ninfo);
-    PMIX_INFO_FREE(info, ninfo);
+    PMIx_server_register_nspace(nspace, nprocs, info, ninfo,
+                                cbfunc, x);
 }
 
 static void errhandler(pmix_status_t status,
                        pmix_proc_t procs[], size_t nprocs,
                        pmix_info_t info[], size_t ninfo)
 {
+    pmix_output(0, "SERVER: ERRHANDLER CALLED WITH STATUS %d", status);
 }
 
 static int finalized(const char nspace[], int rank, void *server_object,
@@ -268,6 +336,17 @@ static int finalized(const char nspace[], int rank, void *server_object,
     return PMIX_SUCCESS;
 }
 
+static void abcbfunc(pmix_status_t status, void *cbdata)
+{
+    myxfer_t *x = (myxfer_t*)cbdata;
+
+    /* be sure to release the caller */
+    if (NULL != x->cbfunc) {
+        x->cbfunc(status, x->cbdata);
+    }
+    PMIX_RELEASE(x);
+}
+    
 static int abort_fn(const char nspace[], int rank,
                     void *server_object,
                     int status, const char msg[],
@@ -275,35 +354,35 @@ static int abort_fn(const char nspace[], int rank,
                     pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     int rc;
-    pmix_proc_t caller;
-    pmix_info_t *info;
+    myxfer_t *x;
     
-    pmix_output(0, "SERVER: ABORT");
+    pmix_output(0, "SERVER: ABORT on %s:%d", procs[0].nspace, procs[0].rank);
+    
     /* instead of aborting the specified procs, notify them
      * (if they have registered their errhandler) */
-    (void)strncpy(caller.nspace, nspace, PMIX_MAX_NSLEN);
-    caller.rank = rank;
-    
-    PMIX_INFO_CREATE(info, 2);
-    (void)strncpy(info[0].key, "DARTH", PMIX_MAX_KEYLEN);
-    info[0].value.type = PMIX_INT8;
-    info[0].value.data.int8 = 12;
-    (void)strncpy(info[1].key, "VADER", PMIX_MAX_KEYLEN);
-    info[1].value.type = PMIX_DOUBLE;
-    info[1].value.data.dval = 12.34;
 
+    /* use the myxfer_t object to ensure we release
+     * the caller when notification has been queued */
+    x = PMIX_NEW(myxfer_t);
+    (void)strncpy(x->caller.nspace, nspace, PMIX_MAX_NSLEN);
+    x->caller.rank = rank;
+    
+    PMIX_INFO_CREATE(x->info, 2);
+    (void)strncpy(x->info[0].key, "DARTH", PMIX_MAX_KEYLEN);
+    x->info[0].value.type = PMIX_INT8;
+    x->info[0].value.data.int8 = 12;
+    (void)strncpy(x->info[1].key, "VADER", PMIX_MAX_KEYLEN);
+    x->info[1].value.type = PMIX_DOUBLE;
+    x->info[1].value.data.dval = 12.34;
+    x->cbfunc = cbfunc;
+    x->cbdata = cbdata;
+    
     if (PMIX_SUCCESS != (rc = PMIx_server_notify_error(status, procs, nprocs,
-                                                       &caller, 1, info, 2,
-                                                       NULL, 0))) {
+                                                       &x->caller, 1, x->info, 2,
+                                                       NULL, 0, abcbfunc, x))) {
         pmix_output(0, "SERVER: FAILED NOTIFY ERROR %d", rc);
     }
-    PMIX_INFO_FREE(info, 2);
     
-    /* release the caller */
-    if (NULL != cbfunc) {
-        cbfunc(PMIX_SUCCESS, cbdata);
-    }
-
     return PMIX_SUCCESS;
 }
 
@@ -431,10 +510,35 @@ static int unpublish_fn(pmix_scope_t scope, char **keys,
     return PMIX_SUCCESS;
 }
 
+static void spcbfunc(pmix_status_t status, void *cbdata)
+{
+    myxfer_t *x = (myxfer_t*)cbdata;
+    
+    if (NULL != x->spcbfunc) {
+        x->spcbfunc(PMIX_SUCCESS, "DYNSPACE", x->cbdata);
+    }
+}
 
 static int spawn_fn(const pmix_app_t apps[], size_t napps,
                     pmix_spawn_cbfunc_t cbfunc, void *cbdata)
 {
+    myxfer_t *x;
+    
+    pmix_output(0, "SERVER: SPAWN");
+
+    /* in practice, we would pass this request to the local
+     * resource manager for launch, and then have that server
+     * execute our callback function. For now, we will fake
+     * the spawn and just pretend */
+
+    /* must register the nspace for the new procs before
+     * we return to the caller */
+    x = PMIX_NEW(myxfer_t);
+    x->spcbfunc = cbfunc;
+    x->cbdata = cbdata;
+    
+    set_namespace(2, "0,1", "DYNSPACE", spcbfunc, x);
+
     return PMIX_SUCCESS;
 }
 
@@ -442,6 +546,15 @@ static int spawn_fn(const pmix_app_t apps[], size_t napps,
 static int connect_fn(const pmix_proc_t procs[], size_t nprocs,
                       pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
+    pmix_output(0, "SERVER: CONNECT");
+
+    /* in practice, we would pass this request to the local
+     * resource manager for handling */
+
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, cbdata);
+    }
+    
     return PMIX_SUCCESS;
 }
 
@@ -449,6 +562,15 @@ static int connect_fn(const pmix_proc_t procs[], size_t nprocs,
 static int disconnect_fn(const pmix_proc_t procs[], size_t nprocs,
                          pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
+    pmix_output(0, "SERVER: DISCONNECT");
+    
+    /* in practice, we would pass this request to the local
+     * resource manager for handling */
+
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, cbdata);
+    }
+    
     return PMIX_SUCCESS;
 }
 

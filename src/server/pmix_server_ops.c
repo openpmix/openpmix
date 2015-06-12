@@ -804,7 +804,7 @@ pmix_status_t pmix_server_spawn(pmix_buffer_t *buf,
                                 void *cbdata)
 {
     int32_t cnt;
-    size_t i, napps;
+    size_t napps;
     pmix_app_t *apps=NULL;
     pmix_status_t rc;
     
@@ -834,11 +834,7 @@ pmix_status_t pmix_server_spawn(pmix_buffer_t *buf,
 
  cleanup:
     if (NULL != apps) {
-        /* free the apps array */
-        for (i=0; i < napps; i++) {
-            PMIX_APP_DESTRUCT(&apps[i]);
-        }
-        free(apps);
+        PMIX_APP_FREE(apps, napps);
     }
     return rc;
 }

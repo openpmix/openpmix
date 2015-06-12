@@ -614,8 +614,8 @@ pmix_status_t PMIx_Resolve_peers(const char *nodename, const char *nspace,
     /* create the required storage */
     i = pmix_argv_count(nsps);
     PMIX_PROC_CREATE(*procs, i);
-    *nprocs = i;
-
+    *nprocs = pmix_argv_count(nsps);
+    
     /* transfer the data */
     for (i=0; NULL != nsps[i]; i++) {
         (void)strncpy((*procs)[i].nspace, nsps[i], PMIX_MAX_NSLEN);
@@ -858,7 +858,7 @@ void pmix_client_process_nspace_blob(const char *nspace, pmix_buffer_t *bptr)
     pmix_byte_object_t *bo;
     size_t nnodes, i, j;
     pmix_nsrec_t *nsptr, *nsptr2;
-    pmix_nrec_t *nrec;
+    pmix_nrec_t *nrec, *nr2;
     char **procs;
     
     /* cycle across our known nspaces */
@@ -935,12 +935,27 @@ void pmix_client_process_nspace_blob(const char *nspace, pmix_buffer_t *bptr)
                     return;
                 }
                 /* the name of the node is in the key, and the value is
-                 * a comma-delimited list of procs on that node. Create
-                 * a node record and store that list */
-                nrec = PMIX_NEW(pmix_nrec_t);
-                nrec->name = strdup(kv.key);
+                 * a comma-delimited list of procs on that node. See if we already
+                 * have this node */
+                nrec = NULL;
+                PMIX_LIST_FOREACH(nr2, &nsptr->nodes, pmix_nrec_t) {
+                    if (0 == strcmp(nr2->name, kv.key)) {
+                        nrec = nr2;
+                        break;
+                    }
+                }
+                if (NULL == nrec) {
+                    /* Create a node record and store that list */
+                    nrec = PMIX_NEW(pmix_nrec_t);
+                    nrec->name = strdup(kv.key);
+                    pmix_list_append(&nsptr->nodes, &nrec->super);
+                } else {
+                    /* refresh the list */
+                    if (NULL != nrec->procs) {
+                        free(nrec->procs);
+                    }
+                }
                 nrec->procs = strdup(kv.value->data.string);
-                pmix_list_append(&nsptr->nodes, &nrec->super);
                 /* split the list of procs so we can store their
                  * individual location data */
                 procs = pmix_argv_split(nrec->procs, ',');

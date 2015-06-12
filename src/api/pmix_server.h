@@ -325,7 +325,8 @@ pmix_status_t PMIx_generate_ppn(const char *input, char **ppn);
  * as a collective operation call can occur before all the
  * procs have been started */
 pmix_status_t PMIx_server_register_nspace(const char nspace[], int nlocalprocs,
-                                          pmix_info_t info[], size_t ninfo);
+                                          pmix_info_t info[], size_t ninfo,
+                                          pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Register a client process with the PMIx server library. The
  * expected user ID and group ID of the child process helps the
@@ -342,7 +343,8 @@ pmix_status_t PMIx_server_register_nspace(const char nspace[], int nlocalprocs,
  * performing a lookup. */ 
 pmix_status_t PMIx_server_register_client(const char nspace[], int rank,
                                           uid_t uid, gid_t gid,
-                                          void *server_object);
+                                          void *server_object,
+                                          pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Setup the environment of a child process to be forked
  * by the host so it can correctly interact with the PMIx
@@ -407,12 +409,19 @@ pmix_status_t PMIx_server_dmodex_request(const char nspace[], int rank,
  *
  * Otherwise, the convenience library will transmit the message to
  * the identified target processes, and the function call will be
- * internally thread protected. */
+ * internally thread protected.
+ *
+ * The callback function will be called upon completion of the
+ * notify_error function's actions. Note that any messages will
+ * have been queued, but may not have been transmitted by this
+ * time. Note that the caller is required to maintain the input
+ * data until the callback function has been executed! */
 pmix_status_t PMIx_server_notify_error(pmix_status_t status,
                                        pmix_proc_t procs[], size_t nprocs,
                                        pmix_proc_t error_procs[], size_t error_nprocs,
                                        pmix_info_t info[], size_t ninfo,
-                                       char **payload, size_t *size);
+                                       char **payload, size_t *size,
+                                       pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 
 /****    Message processing for the "lite" version of the  ****
