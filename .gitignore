@@ -41,6 +41,12 @@ config/config.guess
 config/config.sub
 config/depcomp
 config/missing
+examples/client
+examples/dmodex
+examples/dynamic
+examples/fault
+examples/pub
+examples/server
 src/include/pmix_config.h.in
 test/pmi2_client
 test/pmi_client

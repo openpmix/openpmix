@@ -903,5 +903,6 @@ AC_CONFIG_FILES([
                    Makefile
                    test/Makefile
                    test/simple/Makefile
+                   examples/Makefile
 ])
 AC_OUTPUT
