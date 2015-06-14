@@ -861,19 +861,17 @@ pmix_show_subtitle "Compiler flags"
 # purely aesthetic.
 #
 # Because pmix_config.h is created by AC_CONFIG_HEADERS, we
-# don't need to -I the builddir for pmix/include. However, we do
-# need to add it for orte as it doesn't have an AC_CONFIG_HEADERS that
-# will install it for us. If we VPATH building, we do need to include the
-# source directories, however.
+# don't need to -I the builddir for pmix/include. However, if we
+# are VPATH building, we do need to include the source directories.
 #
 if test "$PMIX_TOP_BUILDDIR" != "$PMIX_TOP_SRCDIR"; then
     # Note the embedded m4 directives here -- we must embed them
     # rather than have successive assignments to these shell
     # variables, lest the $(foo) names try to get evaluated here.
     # Yuck!
-    CPPFLAGS='-I$(top_srcdir) -I$(top_builddir) -I$(top_srcdir)/src/include'" $CPPFLAGS"
+    CPPFLAGS='-I$(top_srcdir) -I$(top_builddir) -I$(top_srcdir)/src -I$(top_srcdir)/src/include'" $CPPFLAGS"
 else
-    CPPFLAGS='-I$(top_srcdir)'" $CPPFLAGS"
+    CPPFLAGS='-I$(top_srcdir) -I$(top_srcdir)/src -I$(top_srcdir)/src/include'" $CPPFLAGS"
 fi
 
 #
