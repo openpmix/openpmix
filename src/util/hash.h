@@ -12,8 +12,8 @@
 #ifndef PMIX_HASH_H
 #define PMIX_HASH_H
 
-#include "pmix_config.h"
-#include "src/include/rename.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
 
 #include "src/buffer_ops/buffer_ops.h"
 #include "src/class/pmix_hash_table.h"

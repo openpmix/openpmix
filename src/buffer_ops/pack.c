@@ -18,13 +18,14 @@
  * $HEADER$
  */
 
-#include "pmix_config.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
+#include <private/types.h>
 
 #ifdef HAVE_ARPA_INET_H
 #include <arpa/inet.h>
 #endif
 
-#include "src/include/types.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/output.h"

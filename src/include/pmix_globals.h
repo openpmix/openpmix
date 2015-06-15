@@ -20,12 +20,13 @@
 #ifndef PMIX_GLOBALS_H
 #define PMIX_GLOBALS_H
 
-#include "pmix_config.h"
-#include "src/include/rename.h"
-#include "src/include/types.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
+#include <private/types.h>
+
 #include <event.h>
 
-#include "src/api/pmix_common.h"
+#include <pmix_common.h>
 
 BEGIN_C_DECLS
 

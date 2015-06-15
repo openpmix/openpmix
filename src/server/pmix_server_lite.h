@@ -8,8 +8,10 @@
 #ifndef PMIX_SERVER_LITE_H
 #define PMIX_SERVER_LITE_H
 
-#include "pmix_config.h"
-#include "src/api/pmix_server.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
+
+#include <pmix_server.h>
 #include "src/usock/usock.h"
 
 typedef struct pmix_message_local_t {

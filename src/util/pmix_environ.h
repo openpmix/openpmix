@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007-2013 Los Alamos National Security, LLC.  All rights
  *                         reserved. 
+ * Copyright (c) 2015      Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -27,8 +28,8 @@
 #ifndef PMIX_ENVIRON_H
 #define PMIX_ENVIRON_H
 
-#include "pmix_config.h"
-#include "src/include/rename.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
 
 #ifdef HAVE_CRT_EXTERNS_H
 #include <crt_externs.h>

@@ -27,8 +27,10 @@
 #ifndef PMIX_BFROP_H_
 #define PMIX_BFROP_H_
 
-#include "pmix_config.h"
-#include "src/include/types.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
+#include <private/types.h>
+
 #include "src/include/pmix_globals.h"
 #include "src/buffer_ops/types.h"
 

@@ -19,29 +19,33 @@
 # $HEADER$
 #
 
+# Note that the -I directory must *exactly* match what was specified
+# via AC_CONFIG_MACRO_DIR in configure.ac.
+ACLOCAL_AMFLAGS = -I ./config
+
 headers =
 sources =
 nodist_headers =
-include_HEADERS = src/api/pmix.h src/api/pmix_server.h src/api/pmix_common.h
-if !PMIX_EMBEDDED_MODE
-include_HEADERS += src/api/pmi.h src/api/pmi2.h
+
+# Only install the valgrind suppressions file if we're building in standalone mode
+if PMIX_BUILD_STANDALONE
+dist_pmixdata_DATA = contrib/pmix-valgrind.supp
+else
+dist_pmixdata_DATA =
 endif
 
-dist_pmixdata_DATA = contrib/pmix-valgrind.supp
 server_headers =
 server_sources =
 
 EXTRA_DIST = README INSTALL VERSION LICENSE autogen.sh \
              config/pmix_get_version.sh \
-             src/include/pmix_config.h \
              test/test_common.h test/cli_stages.h \
              test/server_callbacks.h test/test_fence.h \
              test/test_publish.h test/test_resolve_peers.h \
              test/test_spawn.h test/utils.h
 
-# include examples/Makefile.include
-
 include config/Makefile.am
+include include/Makefile.am
 include src/class/Makefile.am
 include src/include/Makefile.am
 include src/buffer_ops/Makefile.am
@@ -63,4 +67,3 @@ DIST_SUBDIRS = test test/simple examples
 dist-hook:
 	env LS_COLORS= csh "$(top_srcdir)/config/distscript.csh" "$(top_srcdir)" "$(distdir)" "$(PMIX_VERSION)" "$(PMIX_REPO_REV)"
 
-ACLOCAL_AMFLAGS = -I ./config

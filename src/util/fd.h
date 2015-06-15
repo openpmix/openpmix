@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2008-2014 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2009      Sandia National Laboratories. All rights reserved.
- * Copyright (c) 2014      Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
  *
  * $COPYRIGHT$
  * 
@@ -15,8 +15,8 @@
 #ifndef PMIX_UTIL_FD_H_
 #define PMIX_UTIL_FD_H_
 
-#include "pmix_config.h"
-#include "src/include/rename.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
 
 BEGIN_C_DECLS
 

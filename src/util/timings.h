@@ -11,8 +11,8 @@
 #ifndef PMIX_UTIL_TIMING_H
 #define PMIX_UTIL_TIMING_H
 
-#include "pmix_config.h"
-#include "src/include/rename.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
 
 #include "src/class/pmix_list.h"
 

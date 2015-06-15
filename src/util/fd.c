@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2008-2014 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2009      Sandia National Laboratories. All rights reserved.
- * Copyright (c) 2014      Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
  *
  * $COPYRIGHT$
  * 
@@ -10,7 +10,9 @@
  * $HEADER$
  */
 
-#include "pmix_config.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
+#include <pmix_common.h>
 
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
@@ -18,7 +20,6 @@
 #include <errno.h>
 #include <fcntl.h>
 
-#include "src/api/pmix.h"
 #include "src/util/fd.h"
 
 

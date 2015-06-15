@@ -7,8 +7,9 @@
  * $HEADER$
  */
 
-#include "pmix_config.h"
-#include "src/include/types.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
+#include <private/types.h>
 
 #include <unistd.h>
 #include <event.h>
@@ -22,7 +23,7 @@
 #include "src/util/error.h"
 #include "src/util/fd.h"
 
-#include "src/api/pmix.h"
+#include <pmix_common.h>
 #include "src/util/progress_threads.h"
 
 static volatile bool evlib_active;

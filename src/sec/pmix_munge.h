@@ -13,6 +13,9 @@
 
 BEGIN_C_DECLS
 
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
+
 extern pmix_sec_base_module_t pmix_munge_module;
 
 END_C_DECLS

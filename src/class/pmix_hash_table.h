@@ -30,13 +30,13 @@
 #define PMIX_HASH_TABLE_H
 
 #include <private/autogen/config.h>
+#include <private/prefetch.h>
 
 #ifdef HAVE_STDINT_H
 #include <stdint.h>
 #endif
 
 #include "src/class/pmix_list.h"
-#include "src/include/prefetch.h"
 
 BEGIN_C_DECLS
 

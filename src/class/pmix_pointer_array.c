@@ -30,7 +30,7 @@
 
 #include "src/class/pmix_pointer_array.h"
 #include "src/util/output.h"
-#include "<pmix.h>
+#include <pmix.h>
 
 enum { TABLE_INIT = 1, TABLE_GROW = 2 };
 

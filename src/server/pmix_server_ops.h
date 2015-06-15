@@ -9,10 +9,10 @@
 #ifndef PMIX_SERVER_OPS_H
 #define PMIX_SERVER_OPS_H
 
-#include "pmix_config.h"
-#include "src/include/rename.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
 
-#include "src/api/pmix_server.h"
+#include <pmix_server.h>
 #include "src/usock/usock.h"
 #include "src/util/hash.h"
 

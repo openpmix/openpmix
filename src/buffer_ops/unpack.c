@@ -18,8 +18,10 @@
  * $HEADER$
  */
 
-#include "pmix_config.h"
-#include "src/include/types.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
+#include <private/types.h>
+
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/output.h"

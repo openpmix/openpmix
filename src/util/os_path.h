@@ -42,8 +42,8 @@
 #ifndef PMIX_OS_PATH_H
 #define PMIX_OS_PATH_H
 
-#include "pmix_config.h"
-#include "src/include/rename.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
 
 #include <stdio.h>
 #include <stdarg.h>

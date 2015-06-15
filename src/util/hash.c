@@ -15,12 +15,13 @@
  *
  */
 
-#include "pmix_config.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
+#include <private/pmix_stdint.h>
+#include <private/hash_string.h>
 
 #include <string.h>
 
-#include "src/include/pmix_stdint.h"
-#include "src/include/hash_string.h"
 #include "src/include/pmix_globals.h"
 #include "src/class/pmix_hash_table.h"
 #include "src/class/pmix_pointer_array.h"

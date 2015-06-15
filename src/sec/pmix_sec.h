@@ -65,6 +65,9 @@
 #ifndef PMIX_SEC_H
 #define PMIX_SEC_H
 
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
+
 #include "src/usock/usock.h"
 
 BEGIN_C_DECLS

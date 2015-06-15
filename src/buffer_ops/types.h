@@ -12,7 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007-2011 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2012-2013 Los Alamos National Security, Inc. All rights reserved.
- * Copyright (c) 2014      Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -28,12 +28,13 @@
 #ifndef PMIX_BFROP_TYPES_H_
 #define PMIX_BFROP_TYPES_H_
 
-#include "pmix_config.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
 
 #include "src/class/pmix_object.h"
 #include "src/class/pmix_pointer_array.h"
 #include "src/class/pmix_list.h"
-#include "src/api/pmix_common.h"
+#include <pmix_common.h>
 
 BEGIN_C_DECLS
 

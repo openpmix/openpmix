@@ -11,7 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007-2012 Los Alamos National Security, LLC. 
  *                         All rights reserved.
- * Copyright (c) 2014      Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -19,7 +19,8 @@
  * $HEADER$
  */
 
-#include "pmix_config.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
 
 #ifdef HAVE_STRING_H
 #include <string.h>
@@ -30,8 +31,9 @@
 #include <stdlib.h>
 #endif
 
+#include <pmix_common.h>
+
 #include "src/util/error.h"
-#include "src/api/pmix_common.h"
 #include "src/include/pmix_globals.h"
 
 const char* PMIx_Error_string(pmix_status_t errnum)

@@ -27,9 +27,10 @@
 #ifndef USOCK_H
 #define USOCK_H
 
-#include "pmix_config.h"
-#include "src/include/types.h"
-#include "src/api/pmix_common.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
+#include <private/types.h>
+#include <pmix_common.h>
 
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>

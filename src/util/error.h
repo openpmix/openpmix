@@ -20,10 +20,10 @@
 #ifndef PMIX_UTIL_ERROR_H
 #define PMIX_UTIL_ERROR_H
 
-#include "pmix_config.h"
-#include "src/include/rename.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
 
-#include "src/api/pmix_common.h"
+#include <pmix_common.h>
 #include "src/util/output.h"
 
 BEGIN_C_DECLS

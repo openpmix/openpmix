@@ -10,10 +10,13 @@
  * $HEADER$
  */
 
-#include "pmix_config.h"
-#include "src/api/pmix.h"
-#include "src/api/pmi2.h"
-#include "src/include/types.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
+#include <private/types.h>
+
+#include <pmix.h>
+#include <pmi2.h>
+
 #include "src/include/pmix_globals.h"
 
 #ifdef HAVE_STRING_H

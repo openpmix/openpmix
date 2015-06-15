@@ -12,7 +12,7 @@
  * Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2007-2013 Los Alamos National Security, LLC.  All rights
  *                         reserved. 
- * Copyright (c) 2014      Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -20,7 +20,9 @@
  * $HEADER$
  */
 
-#include "pmix_config.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
+#include <pmix_common.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,7 +31,6 @@
 #include "src/util/printf.h"
 #include "src/util/argv.h"
 #include "src/util/pmix_environ.h"
-#include "src/api/pmix.h"
 
 #define PMIX_DEFAULT_TMPDIR "/tmp" 
 

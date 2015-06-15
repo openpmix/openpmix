@@ -21,8 +21,9 @@
 /** @file:
  *
  */
-#include "pmix_config.h"
-#include "src/api/pmix.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
+#include <pmix/pmix_common.h>
 
 #ifdef HAVE_STRING_H
 #include <string.h>

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014      Intel, Inc.  All rights reserved. 
+ * Copyright (c) 2014-2015 Intel, Inc.  All rights reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -10,10 +10,9 @@
 #ifndef PROGRESS_THREADS_H
 #define PROGRESS_THREADS_H
 
-#include "pmix_config.h"
-#include "src/include/rename.h"
-
-#include "src/include/types.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
+#include <private/types.h>
 
 #include <event.h>
 

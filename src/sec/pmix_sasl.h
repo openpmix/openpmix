@@ -11,7 +11,9 @@
 #ifndef PMIX_SASL_H
 #define PMIX_SASL_H
 
-#include "pmix_config.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
+
 #include "src/sec/pmix_sec.h"
 
 BEGIN_C_DECLS

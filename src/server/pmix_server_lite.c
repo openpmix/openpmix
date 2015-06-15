@@ -10,8 +10,10 @@
  * $HEADER$
  */
 
-#include "pmix_config.h"
-#include "src/api/pmix_server.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
+
+#include <pmix_server.h>
 #include "src/util/error.h"
 
 #include "pmix_server_ops.h"

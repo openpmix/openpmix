@@ -8,9 +8,10 @@
  * $HEADER$
  */
 
-#include "pmix_config.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
+#include <pmix_common.h>
 
-#include "src/api/pmix_common.h"
 #include "src/include/pmix_globals.h"
 #include "src/util/argv.h"
 #include "src/util/output.h"
