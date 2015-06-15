@@ -13,6 +13,12 @@
 #include "pmix_server.h"
 #include "cli_stages.h"
 
+static void release_cb(pmix_status_t status, void *cbdata)
+{
+    int *ptr = (int*)cbdata;
+    *ptr = 0;
+}
+
 static void fill_seq_ranks_array(size_t nprocs, int base_rank, char **ranks)
 {
     uint32_t i;
@@ -41,12 +47,12 @@ static void set_namespace(int nprocs, char *ranks, char *name)
     pmix_info_t *info;
     ninfo = 6;
     char *regex, *ppn;
-    
+
     PMIX_INFO_CREATE(info, ninfo);
     (void)strncpy(info[0].key, PMIX_UNIV_SIZE, PMIX_MAX_KEYLEN);
     info[0].value.type = PMIX_UINT32;
     info[0].value.data.uint32 = nprocs;
-    
+
     (void)strncpy(info[1].key, PMIX_SPAWNED, PMIX_MAX_KEYLEN);
     info[1].value.type = PMIX_UINT32;
     info[1].value.data.uint32 = 0;
@@ -63,13 +69,23 @@ static void set_namespace(int nprocs, char *ranks, char *name)
     (void)strncpy(info[4].key, PMIX_NODE_MAP, PMIX_MAX_KEYLEN);
     info[4].value.type = PMIX_STRING;
     info[4].value.data.string = regex;
-    
+
     PMIx_generate_ppn(ranks, &ppn);
     (void)strncpy(info[5].key, PMIX_PROC_MAP, PMIX_MAX_KEYLEN);
     info[5].value.type = PMIX_STRING;
     info[5].value.data.string = ppn;
 
-    PMIx_server_register_nspace(name, nprocs, info, ninfo, NULL, NULL);
+    int in_progress = 1, count, rc;
+    if (PMIX_SUCCESS == (rc = PMIx_server_register_nspace(name, nprocs, info, ninfo, release_cb, &in_progress))) {
+        count = 0;
+        while( in_progress ){
+            struct timespec ts;
+            ts.tv_sec = 0;
+            ts.tv_nsec = 100;
+            nanosleep(&ts,NULL);
+            count++;
+        }
+    }
     PMIX_INFO_FREE(info, ninfo);
 }
 
