@@ -20,7 +20,7 @@ sources += \
         src/client/pmix_client_spawn.c \
         src/client/pmix_client_connect.c
 
-if !PMIX_SYM_TRANSFORM
+if !PMIX_EMBEDDED_MODE
 sources += \
         src/client/pmi1.c \
         src/client/pmi2.c

@@ -34,19 +34,21 @@
 ############################################################################
 # Initialization, version number, and other random setup/init stuff
 ############################################################################
-# Load the version code.  Because this is also used directly as a
-# shell script, no ac_defun
-m4_include([config/pmix_get_version.m4])
 AC_LANG([C])
 
 AC_INIT([pmix],
         [m4_normalize(esyscmd([config/pmix_get_version.sh VERSION --tarball]))],
         [http://www.open-mpi.org/projects/pmix/], [pmix])
 AC_PREREQ(2.69)
-AC_CONFIG_AUX_DIR(config)
+# We want new Libtool.  None of that old stuff.  Pfft.
+m4_ifdef([LT_PREREQ], [],
+	 [m4_fatal([libtool version 2.2.6 or higher is required], [63])])
+LT_PREREQ([2.2.6])
+
+AC_CONFIG_AUX_DIR(./config)
 # Note that this directory must *exactly* match what was specified via
 # -I in ACLOCAL_AMFLAGS in the top-level Makefile.am.
-AC_CONFIG_MACRO_DIR(config)
+AC_CONFIG_MACRO_DIR(./config)
 
 # setup configure options
 PMIX_CONFIGURE_SETUP
@@ -62,6 +64,9 @@ AC_USE_SYSTEM_EXTENSIONS
 AS_IF([test -z "$CFLAGS_save"], [CFLAGS=])
 PMIX_VAR_SCOPE_POP
 
+# This must be before AM_INIT_AUTOMAKE
+AC_CANONICAL_TARGET
+
 AM_INIT_AUTOMAKE([foreign dist-bzip2 subdir-objects no-define 1.12.2 tar-ustar -Wall -Werror])
 # SILENT_RULES is new in AM 1.11, but we require 1.11 or higher via
 # autogen.  Limited testing shows that calling SILENT_RULES directly
@@ -72,10 +77,6 @@ AM_SILENT_RULES([yes])
 # Make configure depend on the VERSION file, since it's used in AC_INIT
 AC_SUBST([CONFIGURE_DEPENDENCIES], ['$(top_srcdir)/VERSION'])
 
-# Get the version of pmix that we are installing
-PMIX_SAVE_VERSION([PMIX], [PMI-Exascale Client Library],
-                          [$srcdir/VERSION],
-                          [src/include/version.h])
 AM_PROG_AR
 
 # For standalone configurations, we also include a .so version number.
@@ -95,10 +96,6 @@ AC_MSG_RESULT([$am__api_version])
 AC_MSG_CHECKING([for boostrap Libtool version])
 ltversion=`grep VERSION= $srcdir/config/ltmain.sh | head -n 1 | cut -d= -f2`
 AC_MSG_RESULT([$ltversion])
-
-# List header files to generate
-AC_CONFIG_HEADERS([src/include/pmix_config.h])
-AC_CONFIG_HEADERS([src/api/pmix_common.h])
 
 # Setup the top of the pmix_config.h file
 AH_TOP([/* -*- c -*-
@@ -132,31 +129,32 @@ AH_TOP([/* -*- c -*-
 #ifndef PMIX_CONFIG_H
 #define PMIX_CONFIG_H
 
-#include "src/include/pmix_config_top.h"
+ #include <pmix/autogen/pmix_config_top.h>
 
 ])
 AH_BOTTOM([
-#include "src/include/pmix_config_bottom.h"
+#include <pmix/autogen/pmix_config_bottom.h>
 #endif /* PMIX_CONFIG_H */
 ])
-
-# Other basic setup stuff (shared with components)
-
-PMIX_BASIC_SETUP
-
-PMIX_TOP_BUILDDIR="`pwd`"
-cd "$srcdir"
-PMIX_TOP_SRCDIR="`pwd`"
-cd "$PMIX_TOP_BUILDDIR"
-AC_SUBST(PMIX_TOP_SRCDIR)
-AC_SUBST(PMIX_TOP_BUILDDIR)
 
 ############################################################################
 # Configuration options
 ############################################################################
 
-PMIX_CONFIGURE_OPTIONS
-PMIX_CHECK_OS_FLAVORS
+PMIX_DEFINE_ARGS
+PMIX_CONFIGURE_SETUP
+PMIX_BASIC_SETUP
+
+# If the user didn't specifically ask for embedding mode, default to
+# standalone mode
+AS_IF([test "$enable_embedded_mode" != "yes"],
+      [PMIX_BUILD_STANDALONE])
+
+# Setup the pmix core
+PMIX_SETUP_CORE([], [], [AC_MSG_ERROR([Cannot build PMIx core])], [1])
+
+# Run the AM_CONDITIONALs
+PMIX_DO_AM_CONDITIONALS
 
 ############################################################################
 # Libtool: part one
@@ -869,9 +867,9 @@ if test "$PMIX_TOP_BUILDDIR" != "$PMIX_TOP_SRCDIR"; then
     # rather than have successive assignments to these shell
     # variables, lest the $(foo) names try to get evaluated here.
     # Yuck!
-    CPPFLAGS='-I$(top_srcdir) -I$(top_builddir) -I$(top_srcdir)/src -I$(top_srcdir)/src/include'" $CPPFLAGS"
+    CPPFLAGS='-I$(top_srcdir) -I$(top_builddir) -I$(top_srcdir)/src -I$(top_srcdir)/include'" $CPPFLAGS"
 else
-    CPPFLAGS='-I$(top_srcdir) -I$(top_srcdir)/src -I$(top_srcdir)/src/include'" $CPPFLAGS"
+    CPPFLAGS='-I$(top_srcdir) -I$(top_srcdir)/src -I$(top_srcdir)/include'" $CPPFLAGS"
 fi
 
 #

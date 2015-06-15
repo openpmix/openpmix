@@ -1,9 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
 /*
- * PMIx copyrights:
- * Copyright (c) 2013      Intel, Inc. All rights reserved
- *
- **********************************
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
@@ -15,7 +11,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
- **********************************
+ * Copyright (c) 2013-2015 Intel, Inc. All rights reserved
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -122,8 +118,7 @@
 #ifndef PMIX_OBJECT_H
 #define PMIX_OBJECT_H
 
-#include "pmix_config.h"
-#include "src/include/rename.h"
+#include <private/autogen/config.h>
 
 #include <assert.h>
 #ifdef HAVE_STDLIB_H

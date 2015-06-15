@@ -46,8 +46,7 @@
 #ifndef PMIx_H
 #define PMIx_H
 
-#include "pmix_config.h"
-#include "rename.h"
+#include <pmix/autogen/config.h>
 
 #include <stdint.h>
 #include <string.h>
@@ -55,7 +54,12 @@
 #include <sys/time.h> /* for struct timeval */
 #endif
 
-#include "pmix_common.h"
+/* Symbol transforms */
+#include <pmix/rename.h>
+
+/* Structure and constant definitions */
+#include <pmix/pmix_common.h>
+
 
 BEGIN_C_DECLS
 

@@ -10,7 +10,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2013-2014 Intel, Inc. All rights reserved
+ * Copyright (c) 2013-2015 Intel, Inc. All rights reserved
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -18,7 +18,7 @@
  * $HEADER$
  */
 
-#include "pmix_config.h"
+#include <private/autogen/config.h>
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -30,7 +30,7 @@
 
 #include "src/class/pmix_pointer_array.h"
 #include "src/util/output.h"
-#include "src/api/pmix.h"
+#include "<pmix.h>
 
 enum { TABLE_INIT = 1, TABLE_GROW = 2 };
 

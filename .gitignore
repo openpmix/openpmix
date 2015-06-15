@@ -48,6 +48,7 @@ examples/fault
 examples/pub
 examples/server
 src/include/pmix_config.h.in
+include/pmix/stamp-h3
 test/pmi2_client
 test/pmi_client
 test/pmix_client

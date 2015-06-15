@@ -1,8 +1,4 @@
 /*
- * PMIx copyrights:
- * Copyright (c) 2013-2015 Intel, Inc. All rights reserved
- *
- *#########################
  * This code has been adapted from pmix_config_bottom.h in the Open MPI
  * code base - per the Open MPI license, all copyrights are retained below.
  *
@@ -20,7 +16,7 @@
  * Copyright (c) 2009-2011 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2013      Mellanox Technologies, Inc.
  *                         All rights reserved.
- *#########################
+ * Copyright (c) 2013-2015 Intel, Inc. All rights reserved
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -254,10 +250,10 @@
    including stdint.h */
 #define __STDC_LIMIT_MACROS
 #endif
-#include "pmix_config.h"
+#include <pmix/autogen/config.h>
 #include <stdint.h>
 #else
-#include "src/include/pmix_stdint.h"
+#include <pmix/autogen/pmix_stdint.h>
 #endif
 
 /***********************************************************************

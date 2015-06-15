@@ -1,13 +1,6 @@
 /*
- * PMIx copyrights:
- * Copyright (c) 2013      Intel, Inc. All rights reserved
- *
- *#########################
- * This code has been adapted from pmix_config_top.h in the Open MPI
- * code base - per the Open MPI license, all copyrights are retained below.
- *
- * Copyright (c) 2011 Cisco Systems, Inc.  All rights reserved.
- *#########################
+ * Copyright (c) 2011      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2013-2015 Intel, Inc. All rights reserved
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow

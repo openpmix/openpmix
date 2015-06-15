@@ -5,7 +5,7 @@
 #ifndef PMIX_RENAME_H
 #define PMIX_RENAME_H
 
-#include "pmix_config.h"
+#include <pmix/autogen/config.h>
 
 
 BEGIN_C_DECLS

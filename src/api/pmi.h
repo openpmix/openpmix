@@ -1,5 +1,5 @@
 /*****************************************************************************\
- *  pmi.h - Process Management Interface for MPICH2, implemented by SLURM
+ *  pmi.h - Process Management Interface for MPICH2
  *  See http://www-unix.mcs.anl.gov/mpi/mpich2/
  *
  *  NOTE: Dynamic Process Management functions (PMI part 2) are not supported

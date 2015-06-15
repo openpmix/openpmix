@@ -23,7 +23,7 @@ headers =
 sources =
 nodist_headers =
 include_HEADERS = src/api/pmix.h src/api/pmix_server.h src/api/pmix_common.h
-if !PMIX_SYM_TRANSFORM
+if !PMIX_EMBEDDED_MODE
 include_HEADERS += src/api/pmi.h src/api/pmi2.h
 endif
 
@@ -63,4 +63,4 @@ DIST_SUBDIRS = test test/simple examples
 dist-hook:
 	env LS_COLORS= csh "$(top_srcdir)/config/distscript.csh" "$(top_srcdir)" "$(distdir)" "$(PMIX_VERSION)" "$(PMIX_REPO_REV)"
 
-ACLOCAL_AMFLAGS = -I config
+ACLOCAL_AMFLAGS = -I ./config

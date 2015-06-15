@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2014      Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -23,7 +23,7 @@
  * Implementation of pmix_object_t, the base pmix foundation class
  */
 
-#include "pmix_config.h"
+#include <private/autogen/config.h>
 
 #include <stdio.h>
 

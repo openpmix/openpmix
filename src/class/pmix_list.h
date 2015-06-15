@@ -1,9 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*
- * PMIx copyrights:
- * Copyright (c) 2013      Intel, Inc. All rights reserved
- *
- **********************************
+ /*
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
@@ -17,7 +13,7 @@
  * Copyright (c) 2007      Voltaire All rights reserved.
  * Copyright (c) 2013      Los Alamos National Security, LLC. All rights
  *                         reserved.
- **********************************
+ * Copyright (c) 2013-2015 Intel, Inc. All rights reserved
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -71,7 +67,7 @@
 #ifndef PMIX_LIST_H
 #define PMIX_LIST_H
 
-#include "pmix_config.h"
+#include <private/autogen/config.h>
 #include <stdio.h>
 #include <stdlib.h>
 #if HAVE_STDBOOL_H

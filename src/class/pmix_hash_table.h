@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2015      Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -28,7 +29,7 @@
 #ifndef PMIX_HASH_TABLE_H
 #define PMIX_HASH_TABLE_H
 
-#include "pmix_config.h"
+#include <private/autogen/config.h>
 
 #ifdef HAVE_STDINT_H
 #include <stdint.h>
