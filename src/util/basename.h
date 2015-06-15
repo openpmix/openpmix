@@ -26,8 +26,8 @@
 #ifndef PMIX_BASENAME_H
 #define PMIX_BASENAME_H
 
-#include "pmix_config.h"
-#include "src/include/rename.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
 
 BEGIN_C_DECLS
 

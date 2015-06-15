@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2014      Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -18,7 +18,8 @@
  */
 
 
-#include "pmix_config.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
 
 #ifdef HAVE_STDIO_H
 #include <stdio.h>

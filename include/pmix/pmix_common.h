@@ -47,7 +47,7 @@
 #ifndef PMIx_COMMON_H
 #define PMIx_COMMON_H
 
-#include <pmix/autogen/pmix_config.h>
+#include <pmix/autogen/config.h>
 #include <pmix/rename.h>
 
 #include <stdint.h>

@@ -13,6 +13,7 @@
  *                         All rights reserved. 
  * Copyright (c) 2007      Voltaire. All rights reserved.
  * Copyright (c) 2012      Los Alamos National Security, LLC. All rights reserved.
+ * Copyright (c) 2015      Intel, Inc. All rights reserved.
  *
  * $COPYRIGHT$
  * 
@@ -30,8 +31,9 @@
 
 #ifndef PMIX_ARGV_H
 #define PMIX_ARGV_H
-#include "pmix_config.h"
-#include "src/include/rename.h"
+
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
 
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>

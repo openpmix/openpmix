@@ -20,7 +20,8 @@
  * $HEADER$
  */
 
-#include "pmix_config.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
 
 #include <stdlib.h>
 #ifdef HAVE_STRING_H
