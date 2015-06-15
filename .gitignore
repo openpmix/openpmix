@@ -20,7 +20,9 @@ depcomp
 install-sh
 missing
 stamp-h1
-config/pmix_get_version.sh
+config/install-sh
+config/libtool.m4
+config/ltmain.sh
 config.log
 config.lt
 config.status
@@ -50,7 +52,9 @@ examples/server
 src/include/pmix_config.h.in
 include/pmix/stamp-h3
 include/pmix/autogen/config.h
+include/pmix/autogen/config.h.in~
 include/private/autogen/config.h
+include/private/autogen/config.h.in~
 test/pmi2_client
 test/pmi_client
 test/pmix_client
