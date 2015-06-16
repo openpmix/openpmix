@@ -116,8 +116,8 @@ AC_DEFUN([PMIX_SETUP_CORE],[
           [pmix_debug=0
            pmix_debug_msg="disabled"])
     # Grr; we use #ifndef for PMIX_DEBUG!  :-(
-    AH_TEMPLATE(PMIX_DEBUG, [Whether we are in debugging mode or not])
-    AS_IF([test "$pmix_debug" = "1"], [AC_DEFINE([PMIX_DEBUG])])
+    AH_TEMPLATE(PMIX_ENABLE_DEBUG, [Whether we are in debugging mode or not])
+    AS_IF([test "$pmix_debug" = "1"], [AC_DEFINE([PMIX_ENABLE_DEBUG])])
     AC_MSG_RESULT([$pmix_debug_msg])
 
     # We need to set a path for header, etc files depending on whether
@@ -704,6 +704,9 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     pmix_show_subtitle "Final output"
 
     AC_CONFIG_FILES(pmix_config_prefix[Makefile])
+
+    # Success
+    $2
 ])dnl
 
 AC_DEFUN([PMIX_DEFINE_ARGS],[
