@@ -703,10 +703,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     pmix_show_subtitle "Final output"
 
-    AC_CONFIG_FILES(pmix_config_prefix[Makefile]
-                    pmix_config_prefix[test/Makefile]
-                    pmix_config_prefix[test/simple/Makefile]
-                    pmix_config_prefix[examples/Makefile])
+    AC_CONFIG_FILES(pmix_config_prefix[Makefile])
 ])dnl
 
 AC_DEFUN([PMIX_DEFINE_ARGS],[

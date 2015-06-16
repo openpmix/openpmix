@@ -212,5 +212,8 @@ VERSION="${PACKAGE_VERSION}"
 . $srcdir/VERSION
 AC_SUBST([libpmix_so_version])
 
+AC_CONFIG_FILES(pmix_config_prefix[test/Makefile]
+                pmix_config_prefix[test/simple/Makefile]
+                pmix_config_prefix[examples/Makefile])
 AC_OUTPUT
 
