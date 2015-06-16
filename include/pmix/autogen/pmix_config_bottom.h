@@ -220,12 +220,6 @@
 #    define __pmix_attribute_warn_unused_result__
 #endif
 
-#if PMIX_HAVE_ATTRIBUTE_WEAK_ALIAS
-#    define __pmix_attribute_weak_alias__(a) __attribute__((__weak__, __alias__(a)))
-#else
-#    define __pmix_attribute_weak_alias__(a)
-#endif
-
 #if PMIX_HAVE_ATTRIBUTE_DESTRUCTOR
 #    define __pmix_attribute_destructor__    __attribute__((__destructor__))
 #else

@@ -13,19 +13,19 @@ dnl                         Corporation.  All rights reserved.
 dnl Copyright (c) 2004-2005 The University of Tennessee and The University
 dnl                         of Tennessee Research Foundation.  All rights
 dnl                         reserved.
-dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
 dnl                         University of Stuttgart.  All rights reserved.
 dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
 dnl Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
 dnl Copyright (c) 2009      Oak Ridge National Labs.  All rights reserved.
-dnl Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
+dnl Copyright (c) 2009-2015 Cisco Systems, Inc.  All rights reserved.
 dnl########################
 dnl
 dnl $COPYRIGHT$
-dnl 
+dnl
 dnl Additional copyrights may follow
-dnl 
+dnl
 dnl $HEADER$
 dnl
 dnl Portions of this file derived from GASNet v1.12 (see "GASNet"
@@ -36,7 +36,7 @@ dnl IN NO EVENT SHALL THE UNIVERSITY OF CALIFORNIA BE LIABLE TO ANY PARTY FOR
 dnl DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES ARISING OUT
 dnl OF THE USE OF THIS SOFTWARE AND ITS DOCUMENTATION, EVEN IF THE UNIVERSITY OF
 dnl CALIFORNIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-dnl 
+dnl
 dnl THE UNIVERSITY OF CALIFORNIA SPECIFICALLY DISCLAIMS ANY WARRANTIES,
 dnl INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
 dnl AND FITNESS FOR A PARTICULAR PURPOSE.  THE SOFTWARE PROVIDED HEREUNDER IS
@@ -143,19 +143,19 @@ unset pmix_prefix_save
 case "$prefix" in
   /*/bin)
     prefix="`dirname $prefix`"
-    echo installing to directory \"$prefix\" 
+    echo installing to directory \"$prefix\"
     ;;
-  /*) 
-    echo installing to directory \"$prefix\" 
+  /*)
+    echo installing to directory \"$prefix\"
     ;;
   NONE)
-    echo installing to directory \"$ac_default_prefix\" 
+    echo installing to directory \"$ac_default_prefix\"
     ;;
   @<:@a-zA-Z@:>@:*)
-    echo installing to directory \"$prefix\" 
+    echo installing to directory \"$prefix\"
     ;;
-  *) 
-    AC_MSG_ERROR(prefix "$prefix" must be an absolute directory path) 
+  *)
+    AC_MSG_ERROR(prefix "$prefix" must be an absolute directory path)
     ;;
 esac
 
@@ -276,8 +276,8 @@ for val in ${$1}; do
     # http://www.open-mpi.org/community/lists/devel/2012/08/11362.php).
 
     case $val in
-    -Xclang)  
-            pmix_found=0 
+    -Xclang)
+            pmix_found=0
             pmix_i=`expr $pmix_count + 1`
             ;;
     esac
