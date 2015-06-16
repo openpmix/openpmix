@@ -9,11 +9,11 @@ dnl                         Corporation.  All rights reserved.
 dnl Copyright (c) 2004-2005 The University of Tennessee and The University
 dnl                         of Tennessee Research Foundation.  All rights
 dnl                         reserved.
-dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
 dnl                         University of Stuttgart.  All rights reserved.
 dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
-dnl Copyright (c) 2006-2010 Cisco Systems, Inc.  All rights reserved.
+dnl Copyright (c) 2006-2015 Cisco Systems, Inc.  All rights reserved.
 dnl Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
 dnl Copyright (c) 2009      IBM Corporation.  All rights reserved.
 dnl Copyright (c) 2009      Los Alamos National Security, LLC.  All rights
@@ -23,9 +23,9 @@ dnl Copyright (c) 2011-2013 NVIDIA Corporation.  All rights reserved.
 dnl Copyright (c) 2013-2015 Intel, Inc. All rights reserved
 dnl
 dnl $COPYRIGHT$
-dnl 
+dnl
 dnl Additional copyrights may follow
-dnl 
+dnl
 dnl $HEADER$
 dnl
 
@@ -133,7 +133,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_CONFIG_HEADERS(pmix_config_prefix[include/private/autogen/config.h])
     AC_CONFIG_HEADERS(pmix_config_prefix[include/pmix/autogen/config.h])
     AC_CONFIG_HEADERS(pmix_config_prefix[include/pmix/pmix_common.h])
-    
+
     # What prefix are we using?
     AC_MSG_CHECKING([for pmix symbol prefix])
     AS_IF([test "$pmix_symbol_prefix_value" = ""],
@@ -169,7 +169,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     ##################################
     # C compiler characteristics
-    ##################################    
+    ##################################
     # Does the compiler support "ident"-like constructs?
     PMIX_CHECK_IDENT([CC], [CFLAGS], [c], [C])
 
@@ -188,7 +188,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_CHECK_TYPES(int128_t)
     AC_CHECK_TYPES(uint128_t)
     AC_CHECK_TYPES(long long)
-    
+
     AC_CHECK_TYPES(__float128)
     AC_CHECK_TYPES(long double)
     # We only need these types if we're building the OMPI project, but
@@ -251,7 +251,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     #
     # Check for type alignments
     #
-    
+
     PMIX_C_GET_ALIGNMENT(_Bool, PMIX_ALIGNMENT_BOOL)
     PMIX_C_GET_ALIGNMENT(int8_t, PMIX_ALIGNMENT_INT8)
     PMIX_C_GET_ALIGNMENT(int16_t, PMIX_ALIGNMENT_INT16)
@@ -285,15 +285,15 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     if test "$ac_cv_type_long_double__Complex" = yes; then
         PMIX_C_GET_ALIGNMENT(long double _Complex, PMIX_ALIGNMENT_LONG_DOUBLE_COMPLEX)
     fi
-    
+
     PMIX_C_GET_ALIGNMENT(void *, PMIX_ALIGNMENT_VOID_P)
     PMIX_C_GET_ALIGNMENT(size_t, PMIX_ALIGNMENT_SIZE_T)
-    
+
     #
     # Does the C compiler native support "bool"? (i.e., without
     # <stdbool.h> or any other help)
     #
-    
+
     PMIX_VAR_SCOPE_PUSH([MSG])
     AC_MSG_CHECKING(for C bool type)
     AC_COMPILE_IFELSE([AC_LANG_PROGRAM([
@@ -305,14 +305,14 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_MSG_RESULT([$MSG])
     AC_CHECK_SIZEOF(_Bool)
     PMIX_VAR_SCOPE_POP
-    
+
     #
     # Check for other compiler characteristics
     #
 
     PMIX_VAR_SCOPE_PUSH([CFLAGS_save])
     if test "$GCC" = "yes"; then
-        
+
         # gcc 2.96 will emit oodles of warnings if you use "inline" with
         # -pedantic (which we do in developer builds).  However,
         # "__inline__" is ok.  So we have to force gcc to select the
@@ -328,7 +328,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         #
         # This also works nicely for gcc 3.x because "inline" will work on
         # the first check, and all is fine.  :-)
-        
+
         CFLAGS_save=$CFLAGS
         CFLAGS="$PMIX_CFLAGS_BEFORE_PICKY -Werror -ansi"
     fi
@@ -337,7 +337,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         CFLAGS=$CFLAGS_save
     fi
     PMIX_VAR_SCOPE_POP
-    
+
     if test "x$CC" = "xicc"; then
         PMIX_CHECK_ICC_VARARGS
     fi
@@ -347,18 +347,18 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # Only after setting up
     # C do we check compiler attributes.
     ##################################
-    
+
     pmix_show_subtitle "Compiler characteristics"
-    
+
     PMIX_CHECK_ATTRIBUTES
     PMIX_CHECK_COMPILER_VERSION_ID
-    
+
     ##################################
     # Header files
     ##################################
-    
+
     pmix_show_title "Header file tests"
-    
+
     AC_CHECK_HEADERS([alloca.h aio.h arpa/inet.h dirent.h \
                                dlfcn.h execinfo.h err.h fcntl.h grp.h inttypes.h libgen.h \
                                libutil.h memory.h netdb.h netinet/in.h netinet/tcp.h \
@@ -378,7 +378,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # "_Bool" [see
     # http://www.opengroup.org/onlinepubs/009695399/basedefs/stdbool.h.html],
     # and Portland has no idea what to do with _Bool).
-    
+
     # So first figure out if we have <stdbool.h> (i.e., check the value of
     # the macro HAVE_STDBOOL_H from the result of AC_CHECK_HEADERS,
     # above).  If we do have it, then check to see if it actually works.
@@ -400,16 +400,16 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_DEFINE_UNQUOTED(PMIX_USE_STDBOOL_H, $PMIX_USE_STDBOOL_H,
                        [Whether to use <stdbool.h> or not])
     AC_MSG_RESULT([$MSG])
-                           
+
     # checkpoint results
     AC_CACHE_SAVE
-                           
+
     ##################################
     # Types
     ##################################
-                           
+
     pmix_show_title "Type tests"
-    
+
     AC_CHECK_TYPES([socklen_t, struct sockaddr_in, struct sockaddr_in6,
                     struct sockaddr_storage],
                    [], [], [AC_INCLUDES_DEFAULT
@@ -525,23 +525,23 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_DEFINE_UNQUOTED([PMIX_PTRDIFF_TYPE], [$pmix_ptrdiff_t],
                        [type to use for ptrdiff_t])
     AC_MSG_RESULT([$pmix_ptrdiff_t (size: $pmix_ptrdiff_size)])
-    
+
     ##################################
     # Libraries
     ##################################
-    
+
     pmix_show_title "Library and Function tests"
-    
+
     PMIX_SEARCH_LIBS_CORE([socket], [socket])
-    
+
     # IRIX and CentOS have dirname in -lgen, usually in libc
     PMIX_SEARCH_LIBS_CORE([dirname], [gen])
-    
+
     # Darwin doesn't need -lm, as it's a symlink to libSystem.dylib
     PMIX_SEARCH_LIBS_CORE([ceil], [m])
-    
+
     AC_CHECK_FUNCS([asprintf snprintf vasprintf vsnprintf strsignal socketpair strncpy_s usleep])
-    
+
     # On some hosts, htonl is a define, so the AC_CHECK_FUNC will get
     # confused.  On others, it's in the standard library, but stubbed with
     # the magic glibc foo as not implemented.  and on other systems, it's
@@ -566,36 +566,36 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AS_IF([test "$ompi_cv_htonl_define" = "yes" -o "$ompi_have_htonl" = "yes"],
           [AC_DEFINE_UNQUOTED([HAVE_UNIX_BYTESWAP], [1],
                               [whether unix byteswap routines -- htonl, htons, nothl, ntohs -- are available])])
-    
+
     #
     # Make sure we can copy va_lists (need check declared, not linkable)
     #
-    
+
     AC_CHECK_DECL(va_copy, PMIX_HAVE_VA_COPY=1, PMIX_HAVE_VA_COPY=0,
                   [#include <stdarg.h>])
     AC_DEFINE_UNQUOTED(PMIX_HAVE_VA_COPY, $PMIX_HAVE_VA_COPY,
                        [Whether we have va_copy or not])
-    
+
     AC_CHECK_DECL(__va_copy, PMIX_HAVE_UNDERSCORE_VA_COPY=1,
                   PMIX_HAVE_UNDERSCORE_VA_COPY=0, [#include <stdarg.h>])
     AC_DEFINE_UNQUOTED(PMIX_HAVE_UNDERSCORE_VA_COPY, $PMIX_HAVE_UNDERSCORE_VA_COPY,
                        [Whether we have __va_copy or not])
-    
+
     AC_CHECK_DECLS(__func__)
-    
+
     # checkpoint results
     AC_CACHE_SAVE
-    
+
     ##################################
     # System-specific tests
     ##################################
-    
+
     pmix_show_title "System-specific tests"
-    
+
     AC_C_BIGENDIAN
-    
+
     PMIX_CHECK_BROKEN_QSORT
-    
+
     AC_CACHE_CHECK([if word-sized integers must be word-size aligned],
                    [ompi_cv_c_word_size_align],
                    [AC_LANG_PUSH(C)
@@ -618,26 +618,26 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     ##################################
     # Visibility
     ##################################
-    
+
     # Check the visibility declspec at the end to avoid problem with
     # the previous tests that are not necessarily prepared for
     # the visibility feature.
     pmix_show_title "Symbol visibility feature"
-    
+
     PMIX_CHECK_VISIBILITY
-    
+
     ##################################
     # Libevent
     ##################################
     pmix_show_title "Libevent"
-    
+
     PMIX_LIBEVENT_CONFIG
-    
+
     ##################################
     # HWLOC
     ##################################
     pmix_show_title "HWLOC"
-    
+
     PMIX_HWLOC_CONFIG
 
     ##################################
@@ -679,15 +679,15 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     else
         CPPFLAGS=' -DCPPFLAGS_START -I$(PMIX_top_srcdir) -I$(PMIX_top_srcdir)/src -I$(PMIX_top_srcdir)/include'" -DCPPFLAGS_END $CPPFLAGS"
     fi
-    
+
     #
     # Delayed the substitution of CFLAGS and CXXFLAGS until now because
     # they may have been modified throughout the course of this script.
     #
-    
+
     AC_SUBST(CFLAGS)
     AC_SUBST(CPPFLAGS)
-    
+
     # pmixdatadir, pmixlibdir, and pmixinclude are essentially the same as
     # pkg*dir, but will always be */pmix.
     pmixdatadir='${datadir}/pmix'
@@ -739,7 +739,7 @@ fi
 #
 
 AC_MSG_CHECKING([if want developer-level compiler pickyness])
-AC_ARG_ENABLE(picky, 
+AC_ARG_ENABLE(picky,
     AC_HELP_STRING([--enable-picky],
                    [enable developer-level compiler pickyness when building PMIx (default: disabled)]))
 if test "$enable_picky" = "yes"; then
@@ -761,7 +761,7 @@ fi
 #
 
 AC_MSG_CHECKING([if want developer-level debugging code])
-AC_ARG_ENABLE(debug, 
+AC_ARG_ENABLE(debug,
     AC_HELP_STRING([--enable-debug],
                    [enable developer-level debugging code (not for general PMIx users!) (default: disabled)]))
 if test "$enable_debug" = "yes"; then
@@ -835,7 +835,7 @@ AC_MSG_RESULT([$with_ident_string])
 # Timing support
 #
 AC_MSG_CHECKING([if want developer-level timing support])
-AC_ARG_ENABLE(timing, 
+AC_ARG_ENABLE(timing,
     AC_HELP_STRING([--enable-timing],
                    [enable developer-level timing code (default: disabled)]))
 if test "$enable_timing" = "yes"; then

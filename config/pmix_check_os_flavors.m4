@@ -1,6 +1,6 @@
 dnl -*- shell-script -*-
 dnl
-dnl Copyright (c) 2010     Cisco Systems, Inc.  All rights reserved.
+dnl Copyright (c) 2010-2015 Cisco Systems, Inc.  All rights reserved.
 dnl
 dnl $COPYRIGHT$
 dnl
@@ -44,9 +44,9 @@ AC_DEFUN([PMIX_CHECK_OS_FLAVORS],
     PMIX_CHECK_OS_FLAVOR_SPECIFIC([__sun__], [sun])
 
     # check for sockaddr_in (a good sign we have TCP)
-    AC_CHECK_TYPES([struct sockaddr_in], 
+    AC_CHECK_TYPES([struct sockaddr_in],
                    [pmix_found_sockaddr=yes],
-                   [pmix_found_sockaddr=no], 
+                   [pmix_found_sockaddr=no],
                    [AC_INCLUDES_DEFAULT
 #ifdef HAVE_NETINET_IN_H
 #include <netinet/in.h>

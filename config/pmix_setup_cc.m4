@@ -13,19 +13,19 @@ dnl                         Corporation.  All rights reserved.
 dnl Copyright (c) 2004-2006 The University of Tennessee and The University
 dnl                         of Tennessee Research Foundation.  All rights
 dnl                         reserved.
-dnl Copyright (c) 2004-2008 High Performance Computing Center Stuttgart, 
+dnl Copyright (c) 2004-2008 High Performance Computing Center Stuttgart,
 dnl                         University of Stuttgart.  All rights reserved.
 dnl Copyright (c) 2004-2006 The Regents of the University of California.
 dnl                         All rights reserved.
 dnl Copyright (c) 2007-2009 Sun Microsystems, Inc.  All rights reserved.
-dnl Copyright (c) 2008-2010 Cisco Systems, Inc.  All rights reserved.
+dnl Copyright (c) 2008-2015 Cisco Systems, Inc.  All rights reserved.
 dnl Copyright (c) 2012      Los Alamos National Security, LLC. All rights
 dnl                         reserved.
 dnl########################
 dnl $COPYRIGHT$
-dnl 
+dnl
 dnl Additional copyrights may follow
-dnl 
+dnl
 dnl $HEADER$
 dnl
 
@@ -193,7 +193,7 @@ AC_DEFUN([PMIX_SETUP_CC],[
         add=
         AC_CACHE_CHECK([if $CC supports $RESTRICT_CFLAGS],
                    [pmix_cv_cc_restrict_cflags],
-                   [AC_TRY_COMPILE([], [], 
+                   [AC_TRY_COMPILE([], [],
                                    [pmix_cv_cc_restrict_cflags="yes"],
                                    [pmix_cv_cc_restrict_cflags="no"])])
         if test "$pmix_cv_cc_restrict_cflags" = "yes" ; then
@@ -285,7 +285,7 @@ AC_DEFUN([PMIX_SETUP_CC],[
 
 
 AC_DEFUN([_PMIX_START_SETUP_CC],[
-    pmix_show_subtitle "C compiler and preprocessor" 
+    pmix_show_subtitle "C compiler and preprocessor"
 
 	# $%@#!@#% AIX!!  This has to be called before anything invokes the C
     # compiler.

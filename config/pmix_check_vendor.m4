@@ -13,16 +13,17 @@ dnl                         Corporation.  All rights reserved.
 dnl Copyright (c) 2004-2005 The University of Tennessee and The University
 dnl                         of Tennessee Research Foundation.  All rights
 dnl                         reserved.
-dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
 dnl                         University of Stuttgart.  All rights reserved.
 dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
 dnl Copyright (c) 2012      Oracle and/or its affiliates.  All rights reserved.
 dnl########################
+dnl Copyright (c) 2015 Cisco Systems, Inc.  All rights reserved.
 dnl $COPYRIGHT$
-dnl 
+dnl
 dnl Additional copyrights may follow
-dnl 
+dnl
 dnl $HEADER$
 dnl
 
@@ -51,7 +52,7 @@ AC_DEFUN([PMIX_C_COMPILER_VENDOR], [
 m4_ifndef([AC_LANG_DEFINES_PROVIDED],
 	  [m4_define([AC_LANG_DEFINES_PROVIDED])])
 
-# PMIX_IFDEF_IFELSE(symbol, [action-if-defined], 
+# PMIX_IFDEF_IFELSE(symbol, [action-if-defined],
 #                   [action-if-not-defined])
 # ----------------------------------------------
 # Run compiler to determine if preprocessor symbol "symbol" is
@@ -64,7 +65,7 @@ choke me
 #endif], [$2], [$3])])
 
 
-# PMIX_IF_IFELSE(symbol, [action-if-defined], 
+# PMIX_IF_IFELSE(symbol, [action-if-defined],
 #                [action-if-not-defined])
 # ----------------------------------------------
 # Run compiler to determine if preprocessor symbol "symbol" is
@@ -94,19 +95,19 @@ AC_DEFUN([_PMIX_CHECK_COMPILER_VENDOR], [
 
     # Intel
     AS_IF([test "$pmix_check_compiler_vendor_result" = "unknown"],
-          [PMIX_IF_IFELSE([defined(__INTEL_COMPILER) || defined(__ICC)], 
+          [PMIX_IF_IFELSE([defined(__INTEL_COMPILER) || defined(__ICC)],
                [pmix_check_compiler_vendor_result="intel"])])
 
     # GNU
     AS_IF([test "$pmix_check_compiler_vendor_result" = "unknown"],
-          [PMIX_IFDEF_IFELSE([__GNUC__], 
+          [PMIX_IFDEF_IFELSE([__GNUC__],
                [pmix_check_compiler_vendor_result="gnu"
 
-               # We do not support gccfss as a compiler so die if 
-               # someone tries to use said compiler.  gccfss (gcc 
-               # for SPARC Systems) is a compiler that is no longer 
+               # We do not support gccfss as a compiler so die if
+               # someone tries to use said compiler.  gccfss (gcc
+               # for SPARC Systems) is a compiler that is no longer
                # supported by Oracle and it has some major flaws
-               # that prevents it from actually compiling PMIX code. 
+               # that prevents it from actually compiling PMIX code.
                # So if we detect it we automatically bail.
 
                if ($CC --version | grep gccfss) >/dev/null 2>&1; then
@@ -122,17 +123,17 @@ AC_DEFUN([_PMIX_CHECK_COMPILER_VENDOR], [
 
     # Borland Turbo C
     AS_IF([test "$pmix_check_compiler_vendor_result" = "unknown"],
-          [PMIX_IFDEF_IFELSE([__TURBOC__], 
+          [PMIX_IFDEF_IFELSE([__TURBOC__],
                [pmix_check_compiler_vendor_result="borland"])])
 
     # Borland C++
     AS_IF([test "$pmix_check_compiler_vendor_result" = "unknown"],
-          [PMIX_IFDEF_IFELSE([__BORLANDC__], 
+          [PMIX_IFDEF_IFELSE([__BORLANDC__],
                [pmix_check_compiler_vendor_result="borland"])])
 
     # Comeau C++
     AS_IF([test "$pmix_check_compiler_vendor_result" = "unknown"],
-          [PMIX_IFDEF_IFELSE([__COMO__], 
+          [PMIX_IFDEF_IFELSE([__COMO__],
                [pmix_check_compiler_vendor_result="comeau"])])
 
     # Compaq C/C++
@@ -146,12 +147,12 @@ AC_DEFUN([_PMIX_CHECK_COMPILER_VENDOR], [
 
     # Cray C/C++
     AS_IF([test "$pmix_check_compiler_vendor_result" = "unknown"],
-          [PMIX_IFDEF_IFELSE([_CRAYC], 
+          [PMIX_IFDEF_IFELSE([_CRAYC],
                [pmix_check_compiler_vendor_result="cray"])])
 
     # Diab C/C++
     AS_IF([test "$pmix_check_compiler_vendor_result" = "unknown"],
-          [PMIX_IFDEF_IFELSE([__DCC__], 
+          [PMIX_IFDEF_IFELSE([__DCC__],
                [pmix_check_compiler_vendor_result="diab"])])
 
     # Digital Mars
@@ -193,12 +194,12 @@ AC_DEFUN([_PMIX_CHECK_COMPILER_VENDOR], [
 
     # MIPSpro (SGI)
     AS_IF([test "$pmix_check_compiler_vendor_result" = "unknown"],
-          [PMIX_IF_IFELSE([defined(sgi) || defined(__sgi)], 
+          [PMIX_IF_IFELSE([defined(sgi) || defined(__sgi)],
                [pmix_check_compiler_vendor_result="sgi"])])
 
     # MPW C++
     AS_IF([test "$pmix_check_compiler_vendor_result" = "unknown"],
-          [PMIX_IF_IFELSE([defined(__MRC__) || defined(MPW_C) || defined(MPW_CPLUS)], 
+          [PMIX_IF_IFELSE([defined(__MRC__) || defined(MPW_C) || defined(MPW_CPLUS)],
                [pmix_check_compiler_vendor_result="mpw"])])
 
     # Norcroft C
@@ -213,7 +214,7 @@ AC_DEFUN([_PMIX_CHECK_COMPILER_VENDOR], [
 
     # Portland Group
     AS_IF([test "$pmix_check_compiler_vendor_result" = "unknown"],
-          [PMIX_IFDEF_IFELSE([__PGI], 
+          [PMIX_IFDEF_IFELSE([__PGI],
                [pmix_check_compiler_vendor_result="portland group"])])
 
     # SAS/C

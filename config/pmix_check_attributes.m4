@@ -15,7 +15,7 @@
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
 # Copyright (c) 2009      Oak Ridge National Labs.  All rights reserved.
-# Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2010-2015 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2013      Mellanox Technologies, Inc.
 #                         All rights reserved.
 #########################
@@ -27,7 +27,7 @@
 #
 
 #
-# Search the generated warnings for 
+# Search the generated warnings for
 # keywords regarding skipping or ignoring certain attributes
 #   Intel: ignore
 #   Sun C++: skip
@@ -56,7 +56,7 @@ AC_DEFUN([_PMIX_ATTRIBUTE_FAIL_SEARCH],[
 # regarding unused function in main file)
 #       static int usage (int * argument);
 #
-# The last argument is for specific CFLAGS, that need to be set 
+# The last argument is for specific CFLAGS, that need to be set
 # for the compiler to generate a warning on the cross-check.
 # This may need adaption for future compilers / CFLAG-settings.
 #
@@ -141,7 +141,7 @@ AC_DEFUN([_PMIX_CHECK_SPECIFIC_ATTRIBUTE], [
 # attribute most often fail with a warning (when the warning
 # level is set).
 # The compilers output is parsed in _PMIX_ATTRIBUTE_FAIL_SEARCH
-# 
+#
 # To add a new attributes __NAME__ add the
 #   pmix_cv___attribute__NAME
 # add a new check with _PMIX_CHECK_SPECIFIC_ATTRIBUTE (possibly with a cross-check)
