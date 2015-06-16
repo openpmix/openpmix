@@ -23,19 +23,14 @@
  *
  */
 
-#include "src/include/pmix_config.h"
+#include <pmix/autogen/config.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <time.h>
 
-#include "src/api/pmix.h"
-#include "src/class/pmix_object.h"
-#include "src/buffer_ops/types.h"
-#include "src/util/argv.h"
-#include "src/util/output.h"
-#include "src/util/pmix_environ.h"
-#include "src/util/printf.h"
+#include <pmix.h>
 
 static char nspace[PMIX_MAX_NSLEN+1];
 static int rank;

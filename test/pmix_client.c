@@ -22,13 +22,14 @@
  * $HEADER$
  *
  */
+#include <private/autogen/config.h>
+#include <pmix.h>
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <time.h>
 
-#include "src/api/pmix.h"
 #include "src/class/pmix_object.h"
 #include "src/buffer_ops/types.h"
 #include "test_common.h"

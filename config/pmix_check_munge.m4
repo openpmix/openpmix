@@ -77,7 +77,6 @@ AC_DEFUN([PMIX_MUNGE_CONFIG],[
     
     AC_DEFINE_UNQUOTED([PMIX_HAVE_MUNGE], [$pmix_munge_support],
                        [Whether we have munge support or not])
-    AM_CONDITIONAL([PMIX_WANT_MUNGE], [test "$pmix_munge_support" = "1"])
 
     PMIX_VAR_SCOPE_POP
 ])dnl

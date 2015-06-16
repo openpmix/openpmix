@@ -836,12 +836,10 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     pmix_show_subtitle "Final output"
 
-    AC_CONFIG_FILES([
-                       Makefile
-                       test/Makefile
-                       test/simple/Makefile
-                       examples/Makefile
-                   ])
+    AC_CONFIG_FILES(pmix_config_prefix[Makefile]
+                    pmix_config_prefix[test/Makefile]
+                    pmix_config_prefix[test/simple/Makefile]
+                    pmix_config_prefix[examples/Makefile])
 ])dnl
 
 AC_DEFUN([PMIX_DEFINE_ARGS],[
@@ -849,7 +847,9 @@ AC_DEFUN([PMIX_DEFINE_ARGS],[
     AC_ARG_ENABLE([embedded-mode],
                     AC_HELP_STRING([--enable-embedded-mode],
                                    [Using --enable-embedded-mode puts PMIx into "embedded" mode.  The default is --disable-embedded-mode, meaning that PMIx is in "standalone" mode.]))
-
+    AS_IF([test !-z "$enable_embedded_mode" && "$enable_embedded_mode" = "yes"],
+          [pmix_mode=embedded],
+          [pmix_mode=standalone])
 
     # Change the symbol prefix?
     AC_ARG_WITH([pmix-symbol-prefix],
@@ -974,30 +974,6 @@ AC_DEFINE_UNQUOTED([PMIX_PACKAGE_STRING], ["$with_package_string"],
      [package/branding string for PMIX])
 AC_MSG_RESULT([$with_package_string])
 
-#
-# Ident string
-#
-AC_MSG_CHECKING([if want ident string])
-AC_ARG_WITH([ident-string],
-     [AC_HELP_STRING([--with-ident-string=STRING],
-                     [Embed an ident string into PMIx object files])])
-if test "$with_ident_string" = "" -o "$with_ident_string" = "no"; then
-    with_ident_string="%VERSION%"
-fi
-# This is complicated, because $PMIX_VERSION may have spaces in it.
-# So put the whole sed expr in single quotes -- i.e., directly
-# substitute %VERSION% for (not expanded) $PMIX_VERSION.
-with_ident_string="`echo $with_ident_string | sed -e 's/%VERSION%/$PMIX_VERSION/'`"
-
-# Now eval an echo of that so that the "$PMIX_VERSION" token is
-# replaced with its value.  Enclose the whole thing in "" so that it
-# ends up as 1 token.
-with_ident_string="`eval echo $with_ident_string`"
-
-AC_DEFINE_UNQUOTED([PMIX_IDENT_STRING], ["$with_ident_string"],
-     [ident string for PMIX])
-AC_MSG_RESULT([$with_ident_string])
-
 # How to build libltdl
 AC_ARG_WITH([libltdl],
     [AC_HELP_STRING([--with-libltdl(=DIR)],
@@ -1020,7 +996,6 @@ fi
 
 AC_DEFINE_UNQUOTED(PMIX_ENABLE_TIMING, $WANT_TIMING,
     [Whether we want developer-level timing support or not])
-AM_CONDITIONAL([PMIX_COMPILE_TIMING], [test "$WANT_TIMING" = "1"])
 
 ])dnl
 
@@ -1034,25 +1009,10 @@ AC_DEFUN([PMIX_SET_SYMBOL_PREFIX],[
 AC_DEFUN([PMIX_DO_AM_CONDITIONALS],[
     AS_IF([test "$pmix_did_am_conditionals" != "yes"],[
         AM_CONDITIONAL([PMIX_BUILD_STANDALONE], [test "$pmix_mode" = "standalone"])
-
-        AM_CONDITIONAL([PMIX_HAVE_GCC], [test "x$GCC" = "xyes"])
-        AM_CONDITIONAL([PMIX_HAVE_PTHREAD],
-                       [test "x$pmix_have_pthread" = "xyes"])
-
-        AM_CONDITIONAL([PMIX_HAVE_LINUX], [test "x$pmix_linux" = "xyes"])
-        AM_CONDITIONAL([PMIX_HAVE_BGQ], [test "x$pmix_bgq" = "xyes"])
-        AM_CONDITIONAL([PMIX_HAVE_IRIX], [test "x$pmix_irix" = "xyes"])
-        AM_CONDITIONAL([PMIX_HAVE_DARWIN], [test "x$pmix_darwin" = "xyes"])
-        AM_CONDITIONAL([PMIX_HAVE_FREEBSD], [test "x$pmix_freebsd" = "xyes"])
-        AM_CONDITIONAL([PMIX_HAVE_NETBSD], [test "x$pmix_netbsd" = "xyes"])
-        AM_CONDITIONAL([PMIX_HAVE_SOLARIS], [test "x$pmix_solaris" = "xyes"])
-        AM_CONDITIONAL([PMIX_HAVE_AIX], [test "x$pmix_aix" = "xyes"])
-        AM_CONDITIONAL([PMIX_HAVE_OSF], [test "x$pmix_osf" = "xyes"])
-        AM_CONDITIONAL([PMIX_HAVE_HPUX], [test "x$pmix_hpux" = "xyes"])
-        AM_CONDITIONAL([PMIX_HAVE_WINDOWS], [test "x$pmix_windows" = "xyes"])
-        AM_CONDITIONAL([PMIX_HAVE_MINGW32], [test "x$target_os" = "xmingw32"])
-
         AM_CONDITIONAL([PMIX_EMBEDDED_MODE], [test "x$pmix_mode" = "xembedded"])
+        AM_CONDITIONAL([PMIX_COMPILE_TIMING], [test "$WANT_TIMING" = "1"])
+        AM_CONDITIONAL([PMIX_WANT_MUNGE], [test "$pmix_munge_support" = "1"])
+        AM_CONDITIONAL([PMIX_WANT_SASL], [test "$pmix_sasl_support" = "1"])
     ])
     pmix_did_am_conditionals=yes
 ])dnl

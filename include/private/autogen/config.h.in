@@ -652,9 +652,6 @@
 /* Whether we have va_copy or not */
 #undef PMIX_HAVE_VA_COPY
 
-/* ident string for PMIX */
-#undef PMIX_IDENT_STRING
-
 /* Whether the C compiler supports "bool" without any other help (such as
    <stdbool.h>) */
 #undef PMIX_NEED_C_BOOL

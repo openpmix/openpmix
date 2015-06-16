@@ -74,7 +74,6 @@ AC_DEFUN([PMIX_SASL_CONFIG],[
     
     AC_DEFINE_UNQUOTED(PMIX_HAVE_SASL, [$pmix_sasl_support],
                        [Whether we have sasl support or not])
-    AM_CONDITIONAL([PMIX_WANT_SASL], [test "$pmix_sasl_support" = "1"])
 
     PMIX_VAR_SCOPE_POP
 ])dnl

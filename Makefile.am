@@ -38,11 +38,15 @@ server_headers =
 server_sources =
 
 EXTRA_DIST = README INSTALL VERSION LICENSE autogen.sh \
-             config/pmix_get_version.sh \
+             config/pmix_get_version.sh
+
+if PMIX_BUILD_STANDALONE
+EXTRA_DIST += \
              test/test_common.h test/cli_stages.h \
              test/server_callbacks.h test/test_fence.h \
              test/test_publish.h test/test_resolve_peers.h \
              test/test_spawn.h test/utils.h
+endif
 
 include config/Makefile.am
 include include/Makefile.am
@@ -62,7 +66,9 @@ libpmix_la_LDFLAGS = $(ldflags) -version-info $(libpmix_so_version) $(PMIX_LIBS)
 libpmix_server_la_SOURCES = $(server_headers) $(server_sources)
 libpmix_server_la_LDFLAGS = $(ldflags) -version-info $(libpmix_so_version) $(PMIX_LIBS)
 
+if PMIX_BUILD_STANDALONE
 DIST_SUBDIRS = test test/simple examples
+endif
 
 dist-hook:
 	env LS_COLORS= csh "$(top_srcdir)/config/distscript.csh" "$(top_srcdir)" "$(distdir)" "$(PMIX_VERSION)" "$(PMIX_REPO_REV)"

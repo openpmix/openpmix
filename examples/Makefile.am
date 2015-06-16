@@ -21,7 +21,7 @@
 
 headers = 
 
-AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/src/api
+AM_CPPFLAGS = -I$(prefix) -I$(prefix)/include
 
 bin_PROGRAMS = server client pub dmodex fault dynamic
 
@@ -29,34 +29,34 @@ server_SOURCES = \
         server.c
 
 server_LDADD = \
-	$(top_builddir)/libpmix-server.la 
+	$(prefix)/lib/libpmix-server.la 
 
 client_SOURCES = \
         client.c 
 
 client_LDADD = \
-	$(top_builddir)/libpmix.la
+	$(prefix)/lib/libpmix.la
 
 pub_SOURCES = \
         pub.c 
 
 pub_LDADD = \
-	$(top_builddir)/libpmix.la
+	$(prefix)/lib/libpmix.la
 
 dmodex_SOURCES = \
         dmodex.c 
 
 dmodex_LDADD = \
-	$(top_builddir)/libpmix.la
+	$(prefix)/lib/libpmix.la
 
 fault_SOURCES = \
         fault.c 
 
 fault_LDADD = \
-	$(top_builddir)/libpmix.la
+	$(prefix)/lib/libpmix.la
 
 dynamic_SOURCES = \
         dynamic.c 
 
 dynamic_LDADD = \
-	$(top_builddir)/libpmix.la
+	$(prefix)/lib/libpmix.la

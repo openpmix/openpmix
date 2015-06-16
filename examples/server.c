@@ -22,14 +22,14 @@
  *
  */
 
-#include "src/include/pmix_config.h"
+#include <private/autogen/config.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <time.h>
 
-#include "src/api/pmix_common.h"
-#include "src/api/pmix_server.h"
+#include <pmix_server.h>
 #include "src/util/pmix_environ.h"
 #include "src/util/output.h"
 #include "src/util/printf.h"
@@ -150,7 +150,7 @@ int main(int argc, char **argv)
     gid_t mygid;
     pid_t pid;
     myxfer_t *x;
-    
+
     fprintf(stderr, "Running version %s\n", PMIx_Get_version());
 
     /* setup the server library */

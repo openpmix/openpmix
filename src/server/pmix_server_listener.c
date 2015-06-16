@@ -61,7 +61,7 @@
 static void* listen_thread(void *obj);
 static void listener_cb(int incoming_sd);
 static void connection_handler(int incoming_sd, short flags, void* cbdata);
-
+static char *myversion = NULL;
 static pthread_t engine;
 
 /*
@@ -71,7 +71,8 @@ int pmix_start_listening(struct sockaddr_un *address)
 {
     int flags, rc;
     unsigned int addrlen;
-
+    char *ptr;
+    
     /* create a listen socket for incoming connection attempts */
     pmix_server_globals.listen_socket = socket(PF_UNIX, SOCK_STREAM, 0);
     if (pmix_server_globals.listen_socket < 0) {
@@ -100,6 +101,19 @@ int pmix_start_listening(struct sockaddr_un *address)
     if (fcntl(pmix_server_globals.listen_socket, F_SETFL, flags) < 0) {
         printf("%s:%d fcntl(F_SETFL) failed", __FILE__, __LINE__);
         return -1;
+    }
+
+    /* setup my version for validating connections - we
+     * only check the major version numbers */
+    myversion = strdup(PMIX_VERSION);
+    /* find the first '.' */
+    ptr = strchr(myversion, '.');
+    if (NULL != ptr) {
+        ++ptr;
+        /* stop it at the second '.', if present */
+        if (NULL != (ptr = strchr(ptr, '.'))) {
+            *ptr = '\0';
+        }
     }
 
     /* if the server will listen for us, then ask it to do so now */
@@ -403,6 +417,7 @@ pmix_status_t pmix_server_authenticate(int sd, int *out_rank, pmix_peer_t **peer
      * major and minor levels: not the release */
     csize = strlen(nspace)+1+sizeof(int);
     version = (char*)(msg+csize);
+    csize += strlen(version) + 1;  // position ourselves before modifiying version
     /* find the first '.' */
     ptr = strchr(version, '.');
     if (NULL != ptr) {
@@ -412,13 +427,13 @@ pmix_status_t pmix_server_authenticate(int sd, int *out_rank, pmix_peer_t **peer
             *ptr = '\0';
         }
     }
-    if (0 != strcmp(version, PMIX_VERSION)) {
+    if (0 != strcmp(version, myversion)) {
         pmix_output_verbose(2, pmix_globals.debug_output,
-                            "pmix:server client/server PMIx versions mismatch");
+                            "pmix:server client/server PMIx versions mismatch - server %s client %s",
+                            myversion, version);
         free(msg);
         return PMIX_ERR_NOT_SUPPORTED;
     }
-    csize += strlen(version) + 1;
     
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "connect-ack version from client matches ours");

@@ -10,10 +10,12 @@
  *
  */
 
+#include <private/autogen/config.h>
+#include <pmix/pmix_common.h>
+
 #include "test_common.h"
 #include <stdarg.h>
 #include <stdio.h>
-#include "src/api/pmix_common.h"
 
 int pmix_test_verbose = 0;
 
