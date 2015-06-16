@@ -25,7 +25,7 @@
 #
 
 EXTRA_DIST += \
-	config/pmix_get_version.m4sh \
+	config/pmix_get_version.sh \
 	config/distscript.csh
 
 maintainer-clean-local:

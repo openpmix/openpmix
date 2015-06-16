@@ -1,12 +1,12 @@
 # -*- shell-script -*-
 #
-# Copyright (c) 2009-2013 Cisco Systems, Inc.  All rights reserved. 
-# Copyright (c) 2013      Los Alamos National Security, LLC.  All rights reserved. 
+# Copyright (c) 2009-2015 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2013      Los Alamos National Security, LLC.  All rights reserved.
 # Copyright (c) 2013-2014 Intel, Inc. All rights reserved
 # $COPYRIGHT$
-# 
+#
 # Additional copyrights may follow
-# 
+#
 # $HEADER$
 #
 
@@ -72,7 +72,7 @@ AC_DEFUN([PMIX_HWLOC_CONFIG],[
     else
         AC_MSG_RESULT([yes])
     fi
-    
+
     AC_DEFINE_UNQUOTED(PMIX_HAVE_HWLOC, [$pmix_hwloc_support],
                       [Whether we have hwloc support or not])
 

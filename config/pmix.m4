@@ -9,11 +9,11 @@ dnl                         Corporation.  All rights reserved.
 dnl Copyright (c) 2004-2005 The University of Tennessee and The University
 dnl                         of Tennessee Research Foundation.  All rights
 dnl                         reserved.
-dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
 dnl                         University of Stuttgart.  All rights reserved.
 dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
-dnl Copyright (c) 2006-2010 Cisco Systems, Inc.  All rights reserved.
+dnl Copyright (c) 2006-2015 Cisco Systems, Inc.  All rights reserved.
 dnl Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
 dnl Copyright (c) 2009      IBM Corporation.  All rights reserved.
 dnl Copyright (c) 2009      Los Alamos National Security, LLC.  All rights
@@ -23,9 +23,9 @@ dnl Copyright (c) 2011-2013 NVIDIA Corporation.  All rights reserved.
 dnl Copyright (c) 2013-2015 Intel, Inc. All rights reserved
 dnl
 dnl $COPYRIGHT$
-dnl 
+dnl
 dnl Additional copyrights may follow
-dnl 
+dnl
 dnl $HEADER$
 dnl
 
@@ -133,7 +133,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_CONFIG_HEADERS(pmix_config_prefix[include/private/autogen/config.h])
     AC_CONFIG_HEADERS(pmix_config_prefix[include/pmix/autogen/config.h])
     AC_CONFIG_HEADERS(pmix_config_prefix[include/pmix/pmix_common.h])
-    
+
     # What prefix are we using?
     AC_MSG_CHECKING([for pmix symbol prefix])
     AS_IF([test "$pmix_symbol_prefix_value" = ""],
@@ -163,32 +163,13 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     fi
 
     ############################################################################
-    # Libtool: part one
-    # (before C compiler setup)
-    ############################################################################
-
-    #
-    # Part one of libtool magic.  Enable static so that we have the --with
-    # tests done up here and can check for OS.  Save the values of
-    # $enable_static and $enable_shared before setting the defaults,
-    # because if the user specified --[en|dis]able-[static|shared] on the
-    # command line, they'll already be set.  In this way, we can tell if
-    # the user requested something or if the default was set here.
-    #
-
-    pmix_enable_shared="$enable_shared"
-    pmix_enable_static="$enable_static"
-    AM_ENABLE_SHARED
-    AM_DISABLE_STATIC
-
-    ############################################################################
     # Check for compilers and preprocessors
     ############################################################################
     pmix_show_title "Compiler and preprocessor tests"
 
     ##################################
     # C compiler characteristics
-    ##################################    
+    ##################################
     # Does the compiler support "ident"-like constructs?
     PMIX_CHECK_IDENT([CC], [CFLAGS], [c], [C])
 
@@ -207,7 +188,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_CHECK_TYPES(int128_t)
     AC_CHECK_TYPES(uint128_t)
     AC_CHECK_TYPES(long long)
-    
+
     AC_CHECK_TYPES(__float128)
     AC_CHECK_TYPES(long double)
     # We only need these types if we're building the OMPI project, but
@@ -270,7 +251,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     #
     # Check for type alignments
     #
-    
+
     PMIX_C_GET_ALIGNMENT(_Bool, PMIX_ALIGNMENT_BOOL)
     PMIX_C_GET_ALIGNMENT(int8_t, PMIX_ALIGNMENT_INT8)
     PMIX_C_GET_ALIGNMENT(int16_t, PMIX_ALIGNMENT_INT16)
@@ -304,15 +285,15 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     if test "$ac_cv_type_long_double__Complex" = yes; then
         PMIX_C_GET_ALIGNMENT(long double _Complex, PMIX_ALIGNMENT_LONG_DOUBLE_COMPLEX)
     fi
-    
+
     PMIX_C_GET_ALIGNMENT(void *, PMIX_ALIGNMENT_VOID_P)
     PMIX_C_GET_ALIGNMENT(size_t, PMIX_ALIGNMENT_SIZE_T)
-    
+
     #
     # Does the C compiler native support "bool"? (i.e., without
     # <stdbool.h> or any other help)
     #
-    
+
     PMIX_VAR_SCOPE_PUSH([MSG])
     AC_MSG_CHECKING(for C bool type)
     AC_COMPILE_IFELSE([AC_LANG_PROGRAM([
@@ -324,14 +305,14 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_MSG_RESULT([$MSG])
     AC_CHECK_SIZEOF(_Bool)
     PMIX_VAR_SCOPE_POP
-    
+
     #
     # Check for other compiler characteristics
     #
 
     PMIX_VAR_SCOPE_PUSH([CFLAGS_save])
     if test "$GCC" = "yes"; then
-        
+
         # gcc 2.96 will emit oodles of warnings if you use "inline" with
         # -pedantic (which we do in developer builds).  However,
         # "__inline__" is ok.  So we have to force gcc to select the
@@ -347,7 +328,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         #
         # This also works nicely for gcc 3.x because "inline" will work on
         # the first check, and all is fine.  :-)
-        
+
         CFLAGS_save=$CFLAGS
         CFLAGS="$PMIX_CFLAGS_BEFORE_PICKY -Werror -ansi"
     fi
@@ -356,40 +337,28 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         CFLAGS=$CFLAGS_save
     fi
     PMIX_VAR_SCOPE_POP
-    
+
     if test "x$CC" = "xicc"; then
         PMIX_CHECK_ICC_VARARGS
     fi
-    
-    # If we want the profiling layer:
-    # - If the C compiler has weak symbols, use those.
-    # - If not, then set to compile the code again with #define's in a
-    #   separate directory.
 
-    if test "$WANT_WEAK_SYMBOLS" = "0"; then
-        PMIX_C_HAVE_WEAK_SYMBOLS=0
-    fi
-    
-    # Check if we support the offsetof compiler directive
-    PMIX_CHECK_OFFSETOF
-    
-    
+
     ##################################
     # Only after setting up
     # C do we check compiler attributes.
     ##################################
-    
+
     pmix_show_subtitle "Compiler characteristics"
-    
+
     PMIX_CHECK_ATTRIBUTES
     PMIX_CHECK_COMPILER_VERSION_ID
-    
+
     ##################################
     # Header files
     ##################################
-    
+
     pmix_show_title "Header file tests"
-    
+
     AC_CHECK_HEADERS([alloca.h aio.h arpa/inet.h dirent.h \
                                dlfcn.h execinfo.h err.h fcntl.h grp.h inttypes.h libgen.h \
                                libutil.h memory.h netdb.h netinet/in.h netinet/tcp.h \
@@ -402,37 +371,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
                                time.h termios.h ulimit.h unistd.h util.h utmp.h malloc.h \
                                ifaddrs.h crt_externs.h regex.h signal.h \
                                ioLib.h sockLib.h hostLib.h shlwapi.h sys/synch.h limits.h])
-    
-    AC_CHECK_HEADERS([sys/mount.h], [], [],
-                     [AC_INCLUDES_DEFAULT
-                      #if HAVE_SYS_PARAM_H
-                      #include <sys/param.h>
-                      #endif
-                     ])
-    
-    AC_CHECK_HEADERS([sys/sysctl.h], [], [],
-                     [AC_INCLUDES_DEFAULT
-                      #if HAVE_SYS_PARAM_H
-                      #include <sys/param.h>
-                      #endif
-                     ])
-    
-    # Needed to work around Darwin requiring sys/socket.h for
-    # net/if.h
-    AC_CHECK_HEADERS([net/if.h], [], [],
-                     [#include <stdio.h>
-                      #if STDC_HEADERS
-                      # include <stdlib.h>
-                      # include <stddef.h>
-                      #else
-                      # if HAVE_STDLIB_H
-                      #  include <stdlib.h>
-                      # endif
-                      #endif
-                      #if HAVE_SYS_SOCKET_H
-                      # include <sys/socket.h>
-                      #endif
-                     ])
 
     # Note that sometimes we have <stdbool.h>, but it doesn't work (e.g.,
     # have both Portland and GNU installed; using pgcc will find GNU's
@@ -440,7 +378,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # "_Bool" [see
     # http://www.opengroup.org/onlinepubs/009695399/basedefs/stdbool.h.html],
     # and Portland has no idea what to do with _Bool).
-    
+
     # So first figure out if we have <stdbool.h> (i.e., check the value of
     # the macro HAVE_STDBOOL_H from the result of AC_CHECK_HEADERS,
     # above).  If we do have it, then check to see if it actually works.
@@ -462,16 +400,16 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_DEFINE_UNQUOTED(PMIX_USE_STDBOOL_H, $PMIX_USE_STDBOOL_H,
                        [Whether to use <stdbool.h> or not])
     AC_MSG_RESULT([$MSG])
-                           
+
     # checkpoint results
     AC_CACHE_SAVE
-                           
+
     ##################################
     # Types
     ##################################
-                           
+
     pmix_show_title "Type tests"
-    
+
     AC_CHECK_TYPES([socklen_t, struct sockaddr_in, struct sockaddr_in6,
                     struct sockaddr_storage],
                    [], [], [AC_INCLUDES_DEFAULT
@@ -587,23 +525,23 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_DEFINE_UNQUOTED([PMIX_PTRDIFF_TYPE], [$pmix_ptrdiff_t],
                        [type to use for ptrdiff_t])
     AC_MSG_RESULT([$pmix_ptrdiff_t (size: $pmix_ptrdiff_size)])
-    
+
     ##################################
     # Libraries
     ##################################
-    
+
     pmix_show_title "Library and Function tests"
-    
+
     PMIX_SEARCH_LIBS_CORE([socket], [socket])
-    
+
     # IRIX and CentOS have dirname in -lgen, usually in libc
     PMIX_SEARCH_LIBS_CORE([dirname], [gen])
-    
+
     # Darwin doesn't need -lm, as it's a symlink to libSystem.dylib
     PMIX_SEARCH_LIBS_CORE([ceil], [m])
-    
+
     AC_CHECK_FUNCS([asprintf snprintf vasprintf vsnprintf strsignal socketpair strncpy_s usleep])
-    
+
     # On some hosts, htonl is a define, so the AC_CHECK_FUNC will get
     # confused.  On others, it's in the standard library, but stubbed with
     # the magic glibc foo as not implemented.  and on other systems, it's
@@ -628,36 +566,36 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AS_IF([test "$ompi_cv_htonl_define" = "yes" -o "$ompi_have_htonl" = "yes"],
           [AC_DEFINE_UNQUOTED([HAVE_UNIX_BYTESWAP], [1],
                               [whether unix byteswap routines -- htonl, htons, nothl, ntohs -- are available])])
-    
+
     #
     # Make sure we can copy va_lists (need check declared, not linkable)
     #
-    
+
     AC_CHECK_DECL(va_copy, PMIX_HAVE_VA_COPY=1, PMIX_HAVE_VA_COPY=0,
                   [#include <stdarg.h>])
     AC_DEFINE_UNQUOTED(PMIX_HAVE_VA_COPY, $PMIX_HAVE_VA_COPY,
                        [Whether we have va_copy or not])
-    
+
     AC_CHECK_DECL(__va_copy, PMIX_HAVE_UNDERSCORE_VA_COPY=1,
                   PMIX_HAVE_UNDERSCORE_VA_COPY=0, [#include <stdarg.h>])
     AC_DEFINE_UNQUOTED(PMIX_HAVE_UNDERSCORE_VA_COPY, $PMIX_HAVE_UNDERSCORE_VA_COPY,
                        [Whether we have __va_copy or not])
-    
+
     AC_CHECK_DECLS(__func__)
-    
+
     # checkpoint results
     AC_CACHE_SAVE
-    
+
     ##################################
     # System-specific tests
     ##################################
-    
+
     pmix_show_title "System-specific tests"
-    
+
     AC_C_BIGENDIAN
-    
+
     PMIX_CHECK_BROKEN_QSORT
-    
+
     AC_CACHE_CHECK([if word-sized integers must be word-size aligned],
                    [ompi_cv_c_word_size_align],
                    [AC_LANG_PUSH(C)
@@ -676,52 +614,30 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AS_IF([test $ompi_cv_c_word_size_align = yes], [results=1], [results=0])
     AC_DEFINE_UNQUOTED([PMIX_ALIGN_WORD_SIZE_INTEGERS], [$results],
                        [set to 1 if word-size integers must be aligned to word-size padding to prevent bus errors])
-                     
-    # all: SYSV semaphores
-    # all: SYSV shared memory
-    # all: size of FD_SET
-    # all: sizeof struct stat members
-    # all: type of getsockopt optlen
-    # all: type of recvfrom optlen
-
-    #
-    # What is the local equivalent of "ln -s"
-    #
-
-    AC_PROG_LN_S
-    
-    AC_PROG_GREP
-    AC_PROG_EGREP
-
-    #
-    # File system case sensitivity
-    #
-
-    PMIX_CASE_SENSITIVE_FS_SETUP
 
     ##################################
     # Visibility
     ##################################
-    
+
     # Check the visibility declspec at the end to avoid problem with
     # the previous tests that are not necessarily prepared for
     # the visibility feature.
     pmix_show_title "Symbol visibility feature"
-    
+
     PMIX_CHECK_VISIBILITY
-    
+
     ##################################
     # Libevent
     ##################################
     pmix_show_title "Libevent"
-    
+
     PMIX_LIBEVENT_CONFIG
-    
+
     ##################################
     # HWLOC
     ##################################
     pmix_show_title "HWLOC"
-    
+
     PMIX_HWLOC_CONFIG
 
     ##################################
@@ -739,55 +655,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     PMIX_MUNGE_CONFIG
 
     ############################################################################
-    # Libtool: part two
-    # (after C compiler setup = no compiler/linker tests after this)
-    ############################################################################
-
-    pmix_show_subtitle "Libtool configuration"
-
-    LTDL_CONVENIENCE
-    LT_INIT([dlopen win32-dll])
-
-    # What's the suffix of shared libraries?  Inspired by generated
-    # Libtool code (even though we don't support several of these
-    # platforms, there didn't seem to be any harm in leaving in some of
-    # them, alhtough I did remove some that we have never/will never
-    # support, like OS/2).
-    PMIX_DYN_LIB_PREFIX=lib
-    case $host_os in
-        cygwin*)
-            PMIX_DYN_LIB_PREFIX=cyg
-            PMIX_DYN_LIB_SUFFIX=dll
-            ;;
-        mingw* | pw32* | cegcc*)
-            PMIX_DYN_LIB_SUFFIX=dll
-            ;;
-        darwin* | rhapsody*)
-            PMIX_DYN_LIB_SUFFIX=dylib
-            ;;
-        hpux9* | hpux10* | hpux11*)
-            case $host_cpu in
-                ia64*)
-                    PMIX_DYN_LIB_SUFFIX=so
-                    ;;
-                *)
-                    PMIX_DYN_LIB_SUFFIX=sl
-                    ;;
-            esac
-            ;;
-        *)
-            PMIX_DYN_LIB_SUFFIX=so
-            ;;
-    esac
-    AC_SUBST(PMIX_DYN_LIB_PREFIX)
-    AC_SUBST(PMIX_DYN_LIB_SUFFIX)
-
-    #PMIX_SETUP_LIBLTDL
-
-    # Need the libtool binary before the rpathify stuff
-    LT_OUTPUT
-
-    ############################################################################
     # final compiler config
     ############################################################################
 
@@ -803,24 +670,24 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # don't need to -I the builddir for pmix/include. However, if we
     # are VPATH building, we do need to include the source directories.
     #
-    if test "$PMIX_TOP_BUILDDIR" != "$PMIX_TOP_SRCDIR"; then
+    if test "$PMIX_top_builddir" != "$PMIX_top_srcdir"; then
         # Note the embedded m4 directives here -- we must embed them
         # rather than have successive assignments to these shell
         # variables, lest the $(foo) names try to get evaluated here.
         # Yuck!
-        CPPFLAGS='-I$(top_srcdir) -I$(top_builddir) -I$(top_srcdir)/src -I$(top_srcdir)/include'" $CPPFLAGS"
+        CPPFLAGS=' -DVPATH_CPPFLAGS_START -I$(PMIX_top_srcdir) -I$(PMIX_top_builddir) -I$(PMIX_top_srcdir)/src -I$(PMIX_top_srcdir)/include -I$(PMIX_top_builddir)/include'" -DVPATH_CPPFLAGS_END $CPPFLAGS"
     else
-        CPPFLAGS='-I$(top_srcdir) -I$(top_srcdir)/src -I$(top_srcdir)/include'" $CPPFLAGS"
+        CPPFLAGS=' -DCPPFLAGS_START -I$(PMIX_top_srcdir) -I$(PMIX_top_srcdir)/src -I$(PMIX_top_srcdir)/include'" -DCPPFLAGS_END $CPPFLAGS"
     fi
-    
+
     #
     # Delayed the substitution of CFLAGS and CXXFLAGS until now because
     # they may have been modified throughout the course of this script.
     #
-    
+
     AC_SUBST(CFLAGS)
     AC_SUBST(CPPFLAGS)
-    
+
     # pmixdatadir, pmixlibdir, and pmixinclude are essentially the same as
     # pkg*dir, but will always be */pmix.
     pmixdatadir='${datadir}/pmix'
@@ -872,7 +739,7 @@ fi
 #
 
 AC_MSG_CHECKING([if want developer-level compiler pickyness])
-AC_ARG_ENABLE(picky, 
+AC_ARG_ENABLE(picky,
     AC_HELP_STRING([--enable-picky],
                    [enable developer-level compiler pickyness when building PMIx (default: disabled)]))
 if test "$enable_picky" = "yes"; then
@@ -894,7 +761,7 @@ fi
 #
 
 AC_MSG_CHECKING([if want developer-level debugging code])
-AC_ARG_ENABLE(debug, 
+AC_ARG_ENABLE(debug,
     AC_HELP_STRING([--enable-debug],
                    [enable developer-level debugging code (not for general PMIx users!) (default: disabled)]))
 if test "$enable_debug" = "yes"; then
@@ -941,49 +808,34 @@ AC_DEFINE_UNQUOTED([PMIX_WANT_PRETTY_PRINT_STACKTRACE],
                    [if want pretty-print stack trace feature])
 
 #
-# Do we want to allow DLOPEN?
+# Ident string
 #
-
-AC_MSG_CHECKING([if want dlopen support])
-AC_ARG_ENABLE([dlopen],
-    [AC_HELP_STRING([--enable-dlopen],
-                    [Whether build should attempt to use dlopen (or
-                     similar) to dynamically load components.
-                     Disabling dlopen implies --disable-mca-dso.
-                     (default: enabled)])])
-if test "$enable_dlopen" = "no" ; then
-    PMIX_ENABLE_DLOPEN_SUPPORT=0
-    AC_MSG_RESULT([no])
-else
-    PMIX_ENABLE_DLOPEN_SUPPORT=1
-    AC_MSG_RESULT([yes])
+AC_MSG_CHECKING([if want ident string])
+AC_ARG_WITH([ident-string],
+     [AC_HELP_STRING([--with-ident-string=STRING],
+                     [Embed an ident string into PMIx object files])])
+if test "$with_ident_string" = "" -o "$with_ident_string" = "no"; then
+    with_ident_string="%VERSION%"
 fi
+# This is complicated, because $PMIX_VERSION may have spaces in it.
+# So put the whole sed expr in single quotes -- i.e., directly
+# substitute %VERSION% for (not expanded) $PMIX_VERSION.
+with_ident_string="`echo $with_ident_string | sed -e 's/%VERSION%/$PMIX_VERSION/'`"
 
+# Now eval an echo of that so that the "$PMIX_VERSION" token is
+# replaced with its value.  Enclose the whole thing in "" so that it
+# ends up as 1 token.
+with_ident_string="`eval echo $with_ident_string`"
 
-#
-# Package/brand string
-#
-AC_MSG_CHECKING([if want package/brand string])
-AC_ARG_WITH([package-string],
-     [AC_HELP_STRING([--with-package-string=STRING],
-                     [Use a branding string throughout PMIx])])
-if test "$with_package_string" = "" -o "$with_package_string" = "no"; then
-    with_package_string="Open MPI $PMIX_CONFIGURE_USER@$PMIX_CONFIGURE_HOST Distribution"
-fi
-AC_DEFINE_UNQUOTED([PMIX_PACKAGE_STRING], ["$with_package_string"],
-     [package/branding string for PMIX])
-AC_MSG_RESULT([$with_package_string])
-
-# How to build libltdl
-AC_ARG_WITH([libltdl],
-    [AC_HELP_STRING([--with-libltdl(=DIR)],
-         [Where to find libltdl (this option is ignored if --disable-dlopen is used). Supplying a valid directory name adds DIR/include, DIR/lib, and DIR/lib64 to the search path for headers and libraries.])])
+AC_DEFINE_UNQUOTED([PMIX_IDENT_STRING], ["$with_ident_string"],
+     [ident string for PMIX])
+AC_MSG_RESULT([$with_ident_string])
 
 #
 # Timing support
 #
 AC_MSG_CHECKING([if want developer-level timing support])
-AC_ARG_ENABLE(timing, 
+AC_ARG_ENABLE(timing,
     AC_HELP_STRING([--enable-timing],
                    [enable developer-level timing code (default: disabled)]))
 if test "$enable_timing" = "yes"; then

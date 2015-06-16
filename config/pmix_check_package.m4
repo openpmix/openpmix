@@ -6,21 +6,21 @@
 # Copyright (c) 2004-2005 The University of Tennessee and The University
 #                         of Tennessee Research Foundation.  All rights
 #                         reserved.
-# Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+# Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2012      Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2012-2015 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2012      Oracle and/or its affiliates.  All rights reserved.
 # Copyright (c) 2014      Intel, Inc. All rights reserved.
 # $COPYRIGHT$
-# 
+#
 # Additional copyrights may follow
-# 
+#
 # $HEADER$
 #
 
-# _PMIX_CHECK_PACKAGE_HEADER(prefix, header, dir-prefix, 
+# _PMIX_CHECK_PACKAGE_HEADER(prefix, header, dir-prefix,
 #                            [action-if-found], [action-if-not-found],
 #                            includes)
 # --------------------------------------------------------------------
@@ -32,7 +32,7 @@ AC_DEFUN([_PMIX_CHECK_PACKAGE_HEADER], [
 
     # so this sucks, but there's no way to get through the progression
     # of header includes without killing off the cache variable and trying
-    # again...  
+    # again...
     unset pmix_Header
 
     pmix_check_package_header_happy="no"
@@ -52,7 +52,7 @@ AC_DEFUN([_PMIX_CHECK_PACKAGE_HEADER], [
 	  AS_IF([test "$pmix_check_package_header_happy" = "yes"], [$4], [$5])],
           [$4])
     unset pmix_check_package_header_happy
-    
+
     AS_VAR_POPDEF([pmix_Header])dnl
 ])
 
@@ -76,8 +76,8 @@ AC_DEFUN([_PMIX_CHECK_PACKAGE_LIB], [
           [ # libdir was specified - search only there
            $1_LDFLAGS="$$1_LDFLAGS -L$6"
            LDFLAGS="$LDFLAGS -L$6"
-           AC_CHECK_LIB([$2], [$3], 
-                        [pmix_check_package_lib_happy="yes"], 
+           AC_CHECK_LIB([$2], [$3],
+                        [pmix_check_package_lib_happy="yes"],
                         [pmix_check_package_lib_happy="no"], [$4])
            AS_IF([test "$pmix_check_package_lib_happy" = "no"],
                  [LDFLAGS="$pmix_check_package_$1_save_LDFLAGS"
@@ -88,8 +88,8 @@ AC_DEFUN([_PMIX_CHECK_PACKAGE_LIB], [
            AS_IF([test "$pmix_check_package_libdir" = "" -o "$pmix_check_package_libdir" = "/usr" -o "$pmix_check_package_libdir" = "/usr/local"],
                [ # try as is...
                 AC_VERBOSE([looking for library without search path])
-                AC_CHECK_LIB([$2], [$3], 
-                        [pmix_check_package_lib_happy="yes"], 
+                AC_CHECK_LIB([$2], [$3],
+                        [pmix_check_package_lib_happy="yes"],
                         [pmix_check_package_lib_happy="no"], [$4])
                 AS_IF([test "$pmix_check_package_lib_happy" = "no"],
                     [ # no go on the as is..  see what happens later...
@@ -102,8 +102,8 @@ AC_DEFUN([_PMIX_CHECK_PACKAGE_LIB], [
                     [$1_LDFLAGS="$$1_LDFLAGS -L$pmix_check_package_libdir/lib"
                      LDFLAGS="$LDFLAGS -L$pmix_check_package_libdir/lib"
                      AC_VERBOSE([looking for library in lib])
-                     AC_CHECK_LIB([$2], [$3], 
-                               [pmix_check_package_lib_happy="yes"], 
+                     AC_CHECK_LIB([$2], [$3],
+                               [pmix_check_package_lib_happy="yes"],
                                [pmix_check_package_lib_happy="no"], [$4])
                      AS_IF([test "$pmix_check_package_lib_happy" = "no"],
                          [ # no go on the as is..  see what happens later...
@@ -116,8 +116,8 @@ AC_DEFUN([_PMIX_CHECK_PACKAGE_LIB], [
                     [$1_LDFLAGS="$$1_LDFLAGS -L$pmix_check_package_libdir/lib64"
                      LDFLAGS="$LDFLAGS -L$pmix_check_package_libdir/lib64"
                      AC_VERBOSE([looking for library in lib64])
-                     AC_CHECK_LIB([$2], [$3], 
-                               [pmix_check_package_lib_happy="yes"], 
+                     AC_CHECK_LIB([$2], [$3],
+                               [pmix_check_package_lib_happy="yes"],
                                [pmix_check_package_lib_happy="no"], [$4])
                      AS_IF([test "$pmix_check_package_lib_happy" = "no"],
                          [ # no go on the as is..  see what happens later...
@@ -131,13 +131,13 @@ AC_DEFUN([_PMIX_CHECK_PACKAGE_LIB], [
 
     AS_VAR_POPDEF([pmix_Lib])dnl
 ])
-    
 
-# PMIX_CHECK_PACKAGE(prefix, 
-#                    header, 
-#                    library, 
-#                    function, 
-#                    extra-libraries, 
+
+# PMIX_CHECK_PACKAGE(prefix,
+#                    header,
+#                    library,
+#                    function,
+#                    extra-libraries,
 #                    dir-prefix,
 #                    libdir-prefix,
 #                    [action-if-found], [action-if-not-found],
@@ -156,7 +156,7 @@ AC_DEFUN([PMIX_CHECK_PACKAGE],[
     pmix_check_package_$1_orig_LDFLAGS="$$1_LDFLAGS"
     pmix_check_package_$1_orig_LIBS="$$1_LIBS"
 
-    _PMIX_CHECK_PACKAGE_HEADER([$1], [$2], [$6], 
+    _PMIX_CHECK_PACKAGE_HEADER([$1], [$2], [$6],
           [_PMIX_CHECK_PACKAGE_LIB([$1], [$3], [$4], [$5], [$6], [$7],
                 [pmix_check_package_happy="yes"],
                 [pmix_check_package_happy="no"])],
@@ -173,4 +173,4 @@ AC_DEFUN([PMIX_CHECK_PACKAGE],[
     CPPFLAGS="$pmix_check_package_$1_save_CPPFLAGS"
     LDFLAGS="$pmix_check_package_$1_save_LDFLAGS"
     LIBS="$pmix_check_package_$1_save_LIBS"
-]) 
+])

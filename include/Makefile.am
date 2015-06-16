@@ -18,20 +18,21 @@ include_pmix_HEADERS = \
 	include/pmix/rename.h
 
 include_pmix_autogendir = $(includedir)/pmix/autogen
-nodist_include_pmix_autogen_HEADERS = include/pmix/autogen/config.h
+include_pmix_autogen_HEADERS = \
+        include/pmix/autogen/pmix_config_top.h \
+        include/pmix/autogen/pmix_config_bottom.h
+nodist_include_pmix_autogen_HEADERS = \
+        include/pmix/autogen/config.h
 
 noinst_HEADERS = \
-	include/private/align.h
+	include/private/align.h \
 	include/private/hash_string.h \
 	include/private/pmix_socket_errno.h \
-	include/private/pmix_stding.h \
+	include/private/pmix_stdint.h \
 	include/private/prefetch.h \
 	include/private/types.h
 
 server_headers += \
 	include/pmix_server.h
-
-EXTRA_DIST += \
-	include/pmix/pmix_common.h.in
 
 endif PMIX_BUILD_STANDALONE

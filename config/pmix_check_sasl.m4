@@ -1,10 +1,11 @@
 # -*- shell-script -*-
 #
 # Copyright (c) 2015      Intel, Inc. All rights reserved
+# Copyright (c) 2015 Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
-# 
+#
 # Additional copyrights may follow
-# 
+#
 # $HEADER$
 #
 
@@ -71,7 +72,7 @@ AC_DEFUN([PMIX_SASL_CONFIG],[
     else
         AC_MSG_RESULT([yes])
     fi
-    
+
     AC_DEFINE_UNQUOTED(PMIX_HAVE_SASL, [$pmix_sasl_support],
                        [Whether we have sasl support or not])
 
