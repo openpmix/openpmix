@@ -237,12 +237,29 @@ int unpublish_fn(pmix_scope_t scope, char **keys,
     return PMIX_SUCCESS;
 }
 
+typedef struct {
+    int status;
+    pmix_spawn_cbfunc_t cbfunc;
+    void *cbdata;
+} release_cbdata;
+
+static void release_cb(pmix_status_t status, void *cbdata)
+{
+    release_cbdata *cb = (release_cbdata*)cbdata;
+    if (NULL != cb->cbfunc) {
+        cb->cbfunc(cb->status, "foobar", cb->cbdata);
+    }
+    free(cb);
+}
+
 int spawn_fn(const pmix_app_t apps[], size_t napps,
              pmix_spawn_cbfunc_t cbfunc, void *cbdata)
 {
-   if (NULL != cbfunc) {
-        cbfunc(PMIX_SUCCESS, "foobar", cbdata);
-    }
+    release_cbdata *cb = malloc(sizeof(release_cbdata));
+    cb->status = PMIX_SUCCESS;
+    cb->cbfunc = cbfunc;
+    cb->cbdata = cbdata;
+    PMIx_server_register_nspace("foobar", napps, NULL, 0, release_cb, (void*)cb);
     return PMIX_SUCCESS;
 }
 
