@@ -221,7 +221,6 @@ AC_DEFUN([PMIX_CHECK_ATTRIBUTES], [
     pmix_cv___attribute__unused=0
     pmix_cv___attribute__visibility=0
     pmix_cv___attribute__warn_unused_result=0
-    pmix_cv___attribute__weak_alias=0
     pmix_cv___attribute__destructor=0
   else
     AC_MSG_RESULT([yes])
@@ -531,15 +530,6 @@ AC_DEFUN([PMIX_CHECK_ATTRIBUTES], [
         ],
         [$ATTRIBUTE_CFLAGS])
 
-
-    _PMIX_CHECK_SPECIFIC_ATTRIBUTE([weak_alias],
-        [
-         int foo(int arg);
-         int foo(int arg) { return arg + 3; }
-         int foo2(int arg) __attribute__ ((__weak__, __alias__("foo")));
-        ],
-        [],
-        [])
 
     _PMIX_CHECK_SPECIFIC_ATTRIBUTE([destructor],
         [
