@@ -39,7 +39,7 @@
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
-#include <event.h>
+#include PMIX_EVENT_HEADER
 #include <sasl/sasl.h>
 
 #include "src/class/pmix_list.h"

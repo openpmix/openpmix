@@ -35,7 +35,7 @@
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
-#include <event.h>
+#include PMIX_EVENT_HEADER
 
 #include "src/util/argv.h"
 #include "src/util/output.h"

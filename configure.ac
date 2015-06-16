@@ -172,17 +172,12 @@ PMIX_BASIC_SETUP
 AS_IF([test "$pmix_debug" = "1"],
       [CFLAGS="$CFLAGS -g"])
 
-## If the user didn't specifically ask for embedding mode, default to
-# standalone mode
-AS_IF([test "$enable_embedded_mode" != "yes"],
-      [PMIX_BUILD_STANDALONE])
-
 ############################################################################
 # Setup the core
 ############################################################################
 
 # Setup the pmix core
-PMIX_SETUP_CORE([], [], [AC_MSG_ERROR([Cannot build PMIx core])], [1])
+PMIX_SETUP_CORE([])
 
 # Run the AM_CONDITIONALs
 PMIX_DO_AM_CONDITIONALS
@@ -206,8 +201,6 @@ AC_SUBST([CONFIGURE_DEPENDENCIES], ['$(top_srcdir)/VERSION'])
 PACKAGE_VERSION="$PMIX_VERSION"
 PACKAGE_STRING="${PACKAGE_NAME} ${PACKAGE_VERSION}"
 VERSION="${PACKAGE_VERSION}"
-
-# For standalone configurations, we also include a .so version number.
 
 . $srcdir/VERSION
 AC_SUBST([libpmix_so_version])

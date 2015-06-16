@@ -40,7 +40,7 @@
 #ifdef HAVE_ARPA_INET_H
 #include <arpa/inet.h>
 #endif
-#include <event.h>
+#include PMIX_EVENT_HEADER
 
 #if PMIX_ENABLE_DEBUG
 #include "src/util/output.h"
