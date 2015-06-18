@@ -26,7 +26,24 @@
 
 EXTRA_DIST += \
 	config/pmix_get_version.sh \
-	config/distscript.csh
+	config/distscript.csh \
+	config/pmix_check_attributes.m4 \
+	config/pmix_check_broken_qsort.m4 \
+	config/pmix_check_compiler_version.m4 \
+	config/pmix_check_ident.m4 \
+	config/pmix_check_munge.m4 \
+	config/pmix_check_package.m4 \
+	config/pmix_check_sasl.m4 \
+	config/pmix_check_vendor.m4 \
+	config/pmix_check_visibility.m4 \
+	config/pmix_ensure_contains_optflags.m4 \
+	config/pmix_functions.m4 \
+	config/pmix.m4 \
+	config/pmix_search_libs.m4 \
+	config/pmix_setup_cc.m4 \
+	config/pmix_setup_hwloc.m4 \
+	config/pmix_setup_libevent.m4
+
 
 maintainer-clean-local:
 	rm -f config/pmix_get_version.sh

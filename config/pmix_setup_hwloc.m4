@@ -13,8 +13,42 @@
 # MCA_hwloc_CONFIG([action-if-found], [action-if-not-found])
 # --------------------------------------------------------------------
 AC_DEFUN([PMIX_HWLOC_CONFIG],[
+    AC_ARG_WITH([libevent-header],
+        [AC_HELP_STRING([libevent-header=HEADER],
+                [The value that should be included in C files to include event.h])])
 
-    PMIX_VAR_SCOPE_PUSH([pmix_hwloc_support pmix_hwloc_dir pmix_hwloc_libdir])
+    pmix_hwloc_support=0
+    AS_IF([test "$enable_embedded_mode" = "yes"],
+          [PMIX_HWLOC_EMBEDDED_MODE],
+          [PMIX_HWLOC_EXTERNAL])
+
+    AC_DEFINE_UNQUOTED(PMIX_HAVE_HWLOC, [$pmix_hwloc_support],
+                      [Whether we have hwloc support or not])
+
+    AC_MSG_CHECKING([libevent header])
+    AC_DEFINE_UNQUOTED([PMIX_EVENT_HEADER], [$PMIX_EVENT_HEADER],
+        [Location of event.h])
+    AC_MSG_RESULT([$PMIX_EVENT_HEADER])
+
+    CPPFLAGS="$CPPFLAGS $PMIX_EVENT_CPPFLAGS"
+    LDFLAGS="$LDFLAGS $PMIX_EVENT_LDFLAGS"
+    LIBS="$LIBS $PMIX_EVENT_LIBS"
+])
+
+AC_DEFUN([_PMIX_HWLOC_EMBEDDED_MODE],[
+    AC_MSG_CHECKING([for hwloc])
+    AC_MSG_RESULT([assumed available (embedded mode)])
+
+    PMIX_HWLOC_HEADER=$with_hwloc_header
+    PMIX_HWLOC_CPPFLAGS=
+    PMIX_HWLOC_LIB=
+    PMIX_HWLOC_LDFLAGS=
+
+    pmix_hwloc_support=1
+])
+
+AC_DEFUN([_PMIX_HWLOC_EXTERNAL],[
+    PMIX_VAR_SCOPE_PUSH([pmix_hwloc_dir pmix_hwloc_libdir])
 
     AC_ARG_WITH([hwloc],
                 [AC_HELP_STRING([--with-hwloc=DIR],
@@ -66,15 +100,20 @@ AC_DEFUN([PMIX_HWLOC_CONFIG],[
         AC_MSG_ERROR([CANNOT CONTINUE])
     fi
 
+    # Set output variables
+    PMIX_EVENT_HEADER="<hwloc.h>"
+    PMIX_EVENT_LIB=-lhwloc
+    AS_IF([test "$pmix_hwloc_dir" != ""],
+        [PMIX_EVENT_CPPFLAGS="-I$pmix_hwloc_dir/include"])
+    AS_IF([test "$pmix_hwloc_libdir" != ""],
+        [PMIX_EVENT_LDFLAGS="-L$pmix_hwloc_libdir"])
+
     AC_MSG_CHECKING([will hwloc support be built])
     if test "$pmix_hwloc_support" != "1"; then
         AC_MSG_RESULT([no])
     else
         AC_MSG_RESULT([yes])
     fi
-
-    AC_DEFINE_UNQUOTED(PMIX_HAVE_HWLOC, [$pmix_hwloc_support],
-                      [Whether we have hwloc support or not])
 
     PMIX_VAR_SCOPE_POP
 ])dnl

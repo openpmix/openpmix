@@ -50,7 +50,7 @@
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
-#include <event.h>
+#include PMIX_EVENT_HEADER
 
 #include "src/buffer_ops/buffer_ops.h"
 #include "src/class/pmix_hash_table.h"

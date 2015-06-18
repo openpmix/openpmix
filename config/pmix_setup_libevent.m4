@@ -13,7 +13,35 @@
 # MCA_libevent_CONFIG([action-if-found], [action-if-not-found])
 # --------------------------------------------------------------------
 AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
+    AC_ARG_WITH([libevent-header],
+        [AC_HELP_STRING([libevent-header=HEADER],
+                [The value that should be included in C files to include event.h])])
 
+    AS_IF([test "$enable_embedded_mode" = "yes"],
+          [_PMIX_LIBEVENT_EMBEDDED_MODE],
+          [_PMIX_LIBEVENT_EXTERNAL])
+
+    AC_MSG_CHECKING([libevent header])
+    AC_DEFINE_UNQUOTED([PMIX_EVENT_HEADER], [$PMIX_EVENT_HEADER],
+        [Location of event.h])
+    AC_MSG_RESULT([$PMIX_EVENT_HEADER])
+
+    CPPFLAGS="$CPPFLAGS $PMIX_EVENT_CPPFLAGS"
+    LDFLAGS="$LDFLAGS $PMIX_EVENT_LDFLAGS"
+    LIBS="$LIBS $PMIX_EVENT_LIBS"
+])
+
+AC_DEFUN([_PMIX_LIBEVENT_EMBEDDED_MODE],[
+    AC_MSG_CHECKING([for libevent])
+    AC_MSG_RESULT([assumed available (embedded mode)])
+
+    PMIX_EVENT_HEADER=$with_libevent_header
+    PMIX_EVENT_CPPFLAGS=
+    PMIX_EVENT_LIB=
+    PMIX_EVENT_LDFLAGS=
+])
+
+AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
     PMIX_VAR_SCOPE_PUSH([pmix_event_dir pmix_event_libdir])
 
     AC_ARG_WITH([libevent],
@@ -82,6 +110,14 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
     # "libevent_global_shutdown", which will only exist in
     # libevent version 2.1.1+
     AC_CHECK_FUNCS([libevent_global_shutdown],[], [])
+
+    # Set output variables
+    PMIX_EVENT_HEADER="<event.h>"
+    PMIX_EVENT_LIB=-levent
+    AS_IF([test "$pmix_event_dir" != ""],
+        [PMIX_EVENT_CPPFLAGS="-I$pmix_event_dir/include"])
+    AS_IF([test "$pmix_event_libdir" != ""],
+        [PMIX_EVENT_LDFLAGS="-L$pmix_event_libdir"])
 
     PMIX_VAR_SCOPE_POP
 ])dnl

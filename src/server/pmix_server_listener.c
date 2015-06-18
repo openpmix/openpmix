@@ -41,7 +41,7 @@
 #include <sys/types.h>
 #endif
 #include <ctype.h>
-#include <event.h>
+#include PMIX_EVENT_HEADER
 #include <pthread.h>
 
 #include "src/class/pmix_list.h"
