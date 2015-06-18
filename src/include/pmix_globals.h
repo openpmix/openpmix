@@ -24,7 +24,7 @@
 #include <pmix/rename.h>
 #include <private/types.h>
 
-#include <event.h>
+#include PMIX_EVENT_HEADER
 
 #include <pmix_common.h>
 

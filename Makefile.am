@@ -27,11 +27,11 @@ headers =
 sources =
 nodist_headers =
 
-# Only install the valgrind suppressions file if we're building in standalone mode
-if PMIX_BUILD_STANDALONE
-dist_pmixdata_DATA = contrib/pmix-valgrind.supp
-else
+# Only install the valgrind suppressions file if we're building in
+# standalone mode
 dist_pmixdata_DATA =
+if ! PMIX_EMBEDDED_MODE
+dist_pmixdata_DATA += contrib/pmix-valgrind.supp
 endif
 
 server_headers =
@@ -40,13 +40,11 @@ server_sources =
 EXTRA_DIST = README INSTALL VERSION LICENSE autogen.sh \
              config/pmix_get_version.sh
 
-if PMIX_BUILD_STANDALONE
 EXTRA_DIST += \
              test/test_common.h test/cli_stages.h \
              test/server_callbacks.h test/test_fence.h \
              test/test_publish.h test/test_resolve_peers.h \
              test/test_spawn.h test/utils.h
-endif
 
 include config/Makefile.am
 include include/Makefile.am
@@ -60,13 +58,14 @@ include src/server/Makefile.am
 include src/sec/Makefile.am
 
 lib_LTLIBRARIES = libpmix.la libpmix-server.la
+
 libpmix_la_SOURCES = $(headers) $(sources)
-libpmix_la_LDFLAGS = $(ldflags) -version-info $(libpmix_so_version) $(PMIX_LIBS)
+libpmix_la_LDFLAGS = -version-info $(libpmix_so_version)
 
 libpmix_server_la_SOURCES = $(server_headers) $(server_sources)
-libpmix_server_la_LDFLAGS = $(ldflags) -version-info $(libpmix_so_version) $(PMIX_LIBS)
+libpmix_server_la_LDFLAGS = -version-info $(libpmix_so_version)
 
-if PMIX_BUILD_STANDALONE
+if ! PMIX_EMBEDDED_MODE
 DIST_SUBDIRS = test test/simple examples
 endif
 

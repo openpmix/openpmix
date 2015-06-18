@@ -42,10 +42,8 @@
 #include <sys/types.h>
 #endif
 #include <ctype.h>
-#include <event.h>
+#include PMIX_EVENT_HEADER
 
-#include "src/class/pmix_list.h"
-#include "src/buffer_ops/buffer_ops.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
@@ -308,7 +306,7 @@ pmix_status_t PMIx_server_finalize(void)
     
         pmix_stop_progress_thread(pmix_globals.evbase);
         event_base_free(pmix_globals.evbase);
-#ifdef HAVE_LIBEVENT_SHUTDOWN
+#ifdef HAVE_LIBEVENT_GLOBAL_SHUTDOWN
         libevent_global_shutdown();
 #endif
         

@@ -29,11 +29,6 @@ dnl
 dnl $HEADER$
 dnl
 
-# Probably only ever invoked by pmix's configure.ac
-AC_DEFUN([PMIX_BUILD_STANDALONE],[
-    pmix_mode=standalone
-])dnl
-
 AC_DEFUN([PMIX_SETUP_CORE],[
 
     AC_REQUIRE([AC_USE_SYSTEM_EXTENSIONS])
@@ -45,15 +40,8 @@ AC_DEFUN([PMIX_SETUP_CORE],[
              [m4_define([pmix_config_prefix],[$1/])],
              [m4_define([pmix_config_prefix], [])])
 
-    # Unless previously set to "standalone" mode, default to embedded
-    # mode
-    AS_IF([test "$pmix_mode" = ""], [pmix_mode=embedded])
-    AC_MSG_CHECKING([pmix building mode])
-    AC_MSG_RESULT([$pmix_mode])
-
     # Get pmix's absolute top builddir (which may not be the same as
-    # the real $top_builddir, because we may be building in embedded
-    # mode).
+    # the real $top_builddir)
     PMIX_startdir=`pwd`
     if test x"pmix_config_prefix" != "x" -a ! -d "pmix_config_prefix"; then
         mkdir -p "pmix_config_prefix"
@@ -64,10 +52,9 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     PMIX_top_builddir=`pwd`
     AC_SUBST(PMIX_top_builddir)
 
-    # Get pmix's absolute top srcdir (which may not be the same as
-    # the real $top_srcdir, because we may be building in embedded
-    # mode).  First, go back to the startdir incase the $srcdir is
-    # relative.
+    # Get pmix's absolute top srcdir (which may not be the same as the
+    # real $top_srcdir.  First, go back to the startdir incase the
+    # $srcdir is relative.
 
     cd "$PMIX_startdir"
     cd "$srcdir"/pmix_config_prefix
@@ -92,23 +79,13 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     PMIX_RELEASE_DATE="`$PMIX_top_srcdir/config/pmix_get_version.sh $PMIX_top_srcdir/VERSION --release-date`"
     AC_SUBST(PMIX_VERSION)
     AC_DEFINE_UNQUOTED([PMIX_VERSION], ["$PMIX_VERSION"],
-                       [The library version, always available, even in embedded mode, contrary to VERSION])
+                       [The library version is always available, contrary to VERSION])
     AC_SUBST(PMIX_RELEASE_DATE)
     AC_MSG_RESULT([$PMIX_VERSION])
 
     # Debug mode?
     AC_MSG_CHECKING([if want pmix maintainer support])
     pmix_debug=
-
-    # Unconditionally disable debug mode in embedded mode; if someone
-    # asks, we can add a configure-time option for it.  Disable it
-    # now, however, because --enable-debug is not even added as an
-    # option when configuring in embedded mode, and we wouldn't want
-    # to hijack the enclosing application's --enable-debug configure
-    # switch.
-    AS_IF([test "$pmix_mode" = "embedded"],
-          [pmix_debug=0
-           pmix_debug_msg="disabled (embedded mode)"])
     AS_IF([test "$pmix_debug" = "" -a "$enable_debug" = "yes"],
           [pmix_debug=1
            pmix_debug_msg="enabled"])
@@ -119,9 +96,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AH_TEMPLATE(PMIX_ENABLE_DEBUG, [Whether we are in debugging mode or not])
     AS_IF([test "$pmix_debug" = "1"], [AC_DEFINE([PMIX_ENABLE_DEBUG])])
     AC_MSG_RESULT([$pmix_debug_msg])
-
-    # We need to set a path for header, etc files depending on whether
-    # we're standalone or embedded. this is taken care of by PMIX_EMBEDDED.
 
     AC_MSG_CHECKING([for pmix directory prefix])
     AC_MSG_RESULT(m4_ifval([$1], pmix_config_prefix, [(none)]))
@@ -185,23 +159,10 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_CHECK_TYPES(uint32_t)
     AC_CHECK_TYPES(int64_t)
     AC_CHECK_TYPES(uint64_t)
-    AC_CHECK_TYPES(int128_t)
-    AC_CHECK_TYPES(uint128_t)
     AC_CHECK_TYPES(long long)
-
-    AC_CHECK_TYPES(__float128)
-    AC_CHECK_TYPES(long double)
-    # We only need these types if we're building the OMPI project, but
-    # PMIX currently doesn't protect for their lack of presence well.
-    AC_CHECK_HEADERS(complex.h)
-    AC_CHECK_TYPES(float _Complex)
-    AC_CHECK_TYPES(double _Complex)
-    AC_CHECK_TYPES(long double _Complex)
 
     AC_CHECK_TYPES(intptr_t)
     AC_CHECK_TYPES(uintptr_t)
-    AC_CHECK_TYPES(mode_t)
-    AC_CHECK_TYPES(ssize_t)
     AC_CHECK_TYPES(ptrdiff_t)
 
     #
@@ -217,23 +178,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     fi
     AC_CHECK_SIZEOF(float)
     AC_CHECK_SIZEOF(double)
-    if test "$ac_cv_type_long_double" = yes; then
-        AC_CHECK_SIZEOF(long double)
-    fi
-    if test "$ac_cv_type___float128" = yes; then
-        AC_CHECK_SIZEOF(__float128)
-    fi
-    # We only need these types if we're building the OMPI project, but
-    # PMIX currently doesn't protect for their lack of presence well.
-    if test "$ac_cv_type_float__Complex" = yes; then
-        AC_CHECK_SIZEOF(float _Complex)
-    fi
-    if test "$ac_cv_type_double__Complex" = yes; then
-        AC_CHECK_SIZEOF(double _Complex)
-    fi
-    if test "$ac_cv_type_long_double__Complex" = yes; then
-        AC_CHECK_SIZEOF(long double _Complex)
-    fi
 
     AC_CHECK_SIZEOF(void *)
     AC_CHECK_SIZEOF(size_t)
@@ -247,47 +191,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     AC_CHECK_SIZEOF(pid_t)
 
-
-    #
-    # Check for type alignments
-    #
-
-    PMIX_C_GET_ALIGNMENT(_Bool, PMIX_ALIGNMENT_BOOL)
-    PMIX_C_GET_ALIGNMENT(int8_t, PMIX_ALIGNMENT_INT8)
-    PMIX_C_GET_ALIGNMENT(int16_t, PMIX_ALIGNMENT_INT16)
-    PMIX_C_GET_ALIGNMENT(int32_t, PMIX_ALIGNMENT_INT32)
-    PMIX_C_GET_ALIGNMENT(int64_t, PMIX_ALIGNMENT_INT64)
-    if test "$ac_cv_type_int128_t" = yes ; then
-        PMIX_C_GET_ALIGNMENT(int128_t, PMIX_ALIGNMENT_INT128)
-    fi
-    PMIX_C_GET_ALIGNMENT(char, PMIX_ALIGNMENT_CHAR)
-    PMIX_C_GET_ALIGNMENT(short, PMIX_ALIGNMENT_SHORT)
-    PMIX_C_GET_ALIGNMENT(wchar_t, PMIX_ALIGNMENT_WCHAR)
-    PMIX_C_GET_ALIGNMENT(int, PMIX_ALIGNMENT_INT)
-    PMIX_C_GET_ALIGNMENT(long, PMIX_ALIGNMENT_LONG)
-    if test "$ac_cv_type_long_long" = yes; then
-        PMIX_C_GET_ALIGNMENT(long long, PMIX_ALIGNMENT_LONG_LONG)
-    fi
-    PMIX_C_GET_ALIGNMENT(float, PMIX_ALIGNMENT_FLOAT)
-    PMIX_C_GET_ALIGNMENT(double, PMIX_ALIGNMENT_DOUBLE)
-    if test "$ac_cv_type_long_double" = yes; then
-        PMIX_C_GET_ALIGNMENT(long double, PMIX_ALIGNMENT_LONG_DOUBLE)
-    fi
-    if test "$ac_cv_type___float128" = yes; then
-        PMIX_C_GET_ALIGNMENT(__float128, PMIX_ALIGNMENT___FLOAT128)
-    fi
-    if test "$ac_cv_type_float__Complex" = yes; then
-        PMIX_C_GET_ALIGNMENT(float _Complex, PMIX_ALIGNMENT_FLOAT_COMPLEX)
-    fi
-    if test "$ac_cv_type_double__Complex" = yes; then
-        PMIX_C_GET_ALIGNMENT(double _Complex, PMIX_ALIGNMENT_DOUBLE_COMPLEX)
-    fi
-    if test "$ac_cv_type_long_double__Complex" = yes; then
-        PMIX_C_GET_ALIGNMENT(long double _Complex, PMIX_ALIGNMENT_LONG_DOUBLE_COMPLEX)
-    fi
-
-    PMIX_C_GET_ALIGNMENT(void *, PMIX_ALIGNMENT_VOID_P)
-    PMIX_C_GET_ALIGNMENT(size_t, PMIX_ALIGNMENT_SIZE_T)
 
     #
     # Does the C compiler native support "bool"? (i.e., without
@@ -310,7 +213,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # Check for other compiler characteristics
     #
 
-    PMIX_VAR_SCOPE_PUSH([CFLAGS_save])
+    PMIX_VAR_SCOPE_PUSH([PMIX_CFLAGS_save])
     if test "$GCC" = "yes"; then
 
         # gcc 2.96 will emit oodles of warnings if you use "inline" with
@@ -329,12 +232,12 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         # This also works nicely for gcc 3.x because "inline" will work on
         # the first check, and all is fine.  :-)
 
-        CFLAGS_save=$CFLAGS
+        PMIX_CFLAGS_save=$CFLAGS
         CFLAGS="$PMIX_CFLAGS_BEFORE_PICKY -Werror -ansi"
     fi
     AC_C_INLINE
     if test "$GCC" = "yes"; then
-        CFLAGS=$CFLAGS_save
+        CFLAGS=$PMIX_CFLAGS_save
     fi
     PMIX_VAR_SCOPE_POP
 
@@ -359,18 +262,19 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     pmix_show_title "Header file tests"
 
-    AC_CHECK_HEADERS([alloca.h aio.h arpa/inet.h dirent.h \
-                               dlfcn.h execinfo.h err.h fcntl.h grp.h inttypes.h libgen.h \
-                               libutil.h memory.h netdb.h netinet/in.h netinet/tcp.h \
-                               poll.h pwd.h sched.h stdint.h stddef.h \
-                               stdlib.h string.h strings.h stropts.h sys/fcntl.h sys/ipc.h sys/shm.h \
-                               sys/ioctl.h sys/mman.h sys/param.h sys/queue.h \
-                               sys/select.h sys/socket.h sys/sockio.h \
-                               stdarg.h sys/stat.h sys/statfs.h sys/statvfs.h sys/time.h sys/tree.h \
-                               sys/types.h sys/un.h sys/uio.h net/uio.h sys/utsname.h sys/vfs.h sys/wait.h syslog.h \
-                               time.h termios.h ulimit.h unistd.h util.h utmp.h malloc.h \
-                               ifaddrs.h crt_externs.h regex.h signal.h \
-                               ioLib.h sockLib.h hostLib.h shlwapi.h sys/synch.h limits.h])
+    AC_CHECK_HEADERS([arpa/inet.h \
+                               fcntl.h inttypes.h libgen.h \
+                               netinet/in.h \
+                               stdint.h stddef.h \
+                               stdlib.h string.h strings.h \
+                               sys/param.h \
+                               sys/select.h sys/socket.h \
+                               stdarg.h sys/stat.h sys/time.h \
+                               sys/types.h sys/un.h sys/uio.h net/uio.h \
+                               sys/wait.h syslog.h \
+                               time.h unistd.h \
+                               crt_externs.h signal.h \
+                               ioLib.h sockLib.h hostLib.h limits.h])
 
     # Note that sometimes we have <stdbool.h>, but it doesn't work (e.g.,
     # have both Portland and GNU installed; using pgcc will find GNU's
@@ -410,11 +314,14 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     pmix_show_title "Type tests"
 
-    AC_CHECK_TYPES([socklen_t, struct sockaddr_in, struct sockaddr_in6,
-                    struct sockaddr_storage],
+    AC_CHECK_TYPES([socklen_t, struct sockaddr_in, struct sockaddr_un,
+                    struct sockaddr_in6, struct sockaddr_storage],
                    [], [], [AC_INCLUDES_DEFAULT
                             #if HAVE_SYS_SOCKET_H
                             #include <sys/socket.h>
+                            #endif
+                            #if HAVE_SYS_UN_H
+                            #include <sys/un.h>
                             #endif
                             #ifdef HAVE_NETINET_IN_H
                             #include <netinet/in.h>
@@ -593,27 +500,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     pmix_show_title "System-specific tests"
 
     AC_C_BIGENDIAN
-
     PMIX_CHECK_BROKEN_QSORT
-
-    AC_CACHE_CHECK([if word-sized integers must be word-size aligned],
-                   [ompi_cv_c_word_size_align],
-                   [AC_LANG_PUSH(C)
-                    AC_RUN_IFELSE([AC_LANG_PROGRAM([dnl
-                                                    #include <stdlib.h>], [[    long data[2] = {0, 0};
-                                                    long *lp;
-                                                    int *ip;
-                                                    ip = (int*) data;
-                                                    ip++;
-                                                    lp = (long*) ip;
-                                                    return lp[0]; ])
-                                                  ])],
-                   [ompi_cv_c_word_size_align=no],
-                   [ompi_cv_c_word_size_align=yes],
-                   [ompi_cv_c_word_size_align=yes])])
-    AS_IF([test $ompi_cv_c_word_size_align = yes], [results=1], [results=0])
-    AC_DEFINE_UNQUOTED([PMIX_ALIGN_WORD_SIZE_INTEGERS], [$results],
-                       [set to 1 if word-size integers must be aligned to word-size padding to prevent bus errors])
 
     ##################################
     # Visibility
@@ -675,9 +562,9 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         # rather than have successive assignments to these shell
         # variables, lest the $(foo) names try to get evaluated here.
         # Yuck!
-        CPPFLAGS=' -DVPATH_CPPFLAGS_START -I$(PMIX_top_srcdir) -I$(PMIX_top_builddir) -I$(PMIX_top_srcdir)/src -I$(PMIX_top_srcdir)/include -I$(PMIX_top_builddir)/include'" -DVPATH_CPPFLAGS_END $CPPFLAGS"
+        CPPFLAGS='-I$(PMIX_top_srcdir) -I$(PMIX_top_builddir) -I$(PMIX_top_srcdir)/src -I$(PMIX_top_srcdir)/include -I$(PMIX_top_builddir)/include'" $CPPFLAGS"
     else
-        CPPFLAGS=' -DCPPFLAGS_START -I$(PMIX_top_srcdir) -I$(PMIX_top_srcdir)/src -I$(PMIX_top_srcdir)/include'" -DCPPFLAGS_END $CPPFLAGS"
+        CPPFLAGS='-I$(PMIX_top_srcdir) -I$(PMIX_top_srcdir)/src -I$(PMIX_top_srcdir)/include'" $CPPFLAGS"
     fi
 
     #
@@ -712,9 +599,9 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 AC_DEFUN([PMIX_DEFINE_ARGS],[
     # Embedded mode, or standalone?
     AC_ARG_ENABLE([embedded-mode],
-                    AC_HELP_STRING([--enable-embedded-mode],
-                                   [Using --enable-embedded-mode puts PMIx into "embedded" mode.  The default is --disable-embedded-mode, meaning that PMIx is in "standalone" mode.]))
-    AS_IF([test !-z "$enable_embedded_mode" && "$enable_embedded_mode" = "yes"],
+        [AC_HELP_STRING([--enable-embedded-mode],
+                [Using --enable-embedded-mode causes PMIx to skip a few configure checks and install nothing.  It should only be used when building PMIx within the scope of a larger package.])])
+    AS_IF([test ! -z "$enable_embedded_mode" && test "$enable_embedded_mode" = "yes"],
           [pmix_mode=embedded],
           [pmix_mode=standalone])
 
@@ -860,7 +747,6 @@ AC_DEFUN([PMIX_SET_SYMBOL_PREFIX],[
 # PMIX_INIT and an external caller (if PMIX_INIT is not invoked).
 AC_DEFUN([PMIX_DO_AM_CONDITIONALS],[
     AS_IF([test "$pmix_did_am_conditionals" != "yes"],[
-        AM_CONDITIONAL([PMIX_BUILD_STANDALONE], [test "$pmix_mode" = "standalone"])
         AM_CONDITIONAL([PMIX_EMBEDDED_MODE], [test "x$pmix_mode" = "xembedded"])
         AM_CONDITIONAL([PMIX_COMPILE_TIMING], [test "$WANT_TIMING" = "1"])
         AM_CONDITIONAL([PMIX_WANT_MUNGE], [test "$pmix_munge_support" = "1"])

@@ -17,7 +17,7 @@
 #include <sys/wait.h>
 #include <sys/time.h>
 #include <time.h>
-#include <event.h>
+#include PMIX_EVENT_HEADER
 #include <errno.h>
 #include "src/include/pmix_globals.h"
 #include "pmix_server.h"

@@ -45,4 +45,3 @@ server_sources += \
         src/class/pmix_list.c \
         src/class/pmix_pointer_array.c \
         src/class/pmix_hash_table.c
-

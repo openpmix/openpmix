@@ -12,7 +12,8 @@
 #include <private/types.h>
 
 #include <unistd.h>
-#include <event.h>
+#include PMIX_EVENT_HEADER
+/* JMS Is this going to be a problem? :-( */
 #include <event2/thread.h>
 #include <pthread.h>
 #ifdef HAVE_STRING_H

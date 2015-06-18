@@ -14,7 +14,7 @@
 #include <pmix/rename.h>
 #include <private/types.h>
 
-#include <event.h>
+#include PMIX_EVENT_HEADER
 
 /* start a progress thread, assigning it the provided name for
  * tracking purposes. If create_block is true, then this function

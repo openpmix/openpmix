@@ -28,7 +28,7 @@
 #ifdef HAVE_STDLIB_H
 #include <stdlib.h>
 #endif
-#include <event.h>
+#include PMIX_EVENT_HEADER
 
 #include "src/buffer_ops/buffer_ops.h"
 #include "src/util/argv.h"
