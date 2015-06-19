@@ -51,6 +51,9 @@ gnu_version_ignore=0
 mac=0
 dist_target=distcheck
 distcheck_flags="AM_MAKEFLAGS=$DISTCHECK_MAKE_FLAGS"
+if test "$LIBEVENT" != ""; then
+    distcheck_flags="$distcheck_flags AM_DISTCHECK_CONFIGURE_FLAGS=--with-libevent=$LIBEVENT"
+fi
 if test "`basename $0`" = "make_tarball"; then
     dist_target=dist
     distcheck_flags=
