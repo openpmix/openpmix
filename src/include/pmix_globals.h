@@ -42,6 +42,7 @@ typedef struct {
     int debug_output;
     pmix_notification_fn_t errhandler;
     bool server;
+    bool connected;
 } pmix_globals_t;
 
 extern pmix_globals_t pmix_globals;

@@ -176,12 +176,11 @@ void pmix_usock_send_handler(int sd, short flags, void *cbdata)
                 return;
             } else {
                 // report the error
-                pmix_output(0, "pmix_usock_peer_send_handler: unable to send message ON SOCKET %d",
-                            peer->sd);
                 event_del(&peer->send_event);
                 peer->send_ev_active = false;
                 PMIX_RELEASE(msg);
                 peer->send_msg = NULL;
+                CLOSE_THE_SOCKET(peer->sd);
                 PMIX_REPORT_ERROR(rc);
                 return;
             }
@@ -210,6 +209,7 @@ void pmix_usock_send_handler(int sd, short flags, void *cbdata)
                 peer->send_ev_active = false;
                 PMIX_RELEASE(msg);
                 peer->send_msg = NULL;
+                CLOSE_THE_SOCKET(peer->sd);
                 PMIX_REPORT_ERROR(rc);
                 return;
             }
@@ -259,7 +259,7 @@ void pmix_usock_recv_handler(int sd, short flags, void *cbdata)
         peer->recv_msg = PMIX_NEW(pmix_usock_recv_t);
         if (NULL == peer->recv_msg) {
             pmix_output(0, "usock_recv_handler: unable to allocate recv message\n");
-            return;
+            goto err_close;
         }
         peer->recv_msg->peer = peer;  // provide a handle back to the peer object
         /* start by reading the header */

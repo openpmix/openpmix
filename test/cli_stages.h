@@ -8,6 +8,7 @@
  * $HEADER$
  */
 
+#include <private/autogen/config.h>
 #include <signal.h>
 #include <fcntl.h>
 #include <sys/types.h>

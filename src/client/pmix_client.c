@@ -404,6 +404,11 @@ int PMIx_Abort(int flag, const char msg[],
         return PMIX_ERR_INIT;
     }
 
+    /* if we aren't connected, don't attempt to send */
+    if (!pmix_globals.connected) {
+        return PMIX_ERR_UNREACH;
+    }
+
     /* create a buffer to hold the message */
     bfr = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
@@ -521,6 +526,11 @@ pmix_status_t PMIx_Commit(void)
     pmix_buffer_t *msgout;
     pmix_cmd_t cmd=PMIX_COMMIT_CMD;
     
+    /* if we aren't connected, don't attempt to send */
+    if (!pmix_globals.connected) {
+        return PMIX_ERR_UNREACH;
+    }
+
     msgout = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msgout, &cmd, 1, PMIX_CMD))) {
@@ -802,7 +812,7 @@ static int recv_connect_ack(int sd)
         rc = reply;
         goto cleanup;
     }
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: RECV CONNECT CONFIRMATION AND INITIAL DATA FROM SERVER OF %d BYTES",
                         (int)hdr.nbytes);
@@ -1065,6 +1075,9 @@ static int usock_connect(struct sockaddr *addr)
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "sock_peer_try_connect: Connection across to server succeeded");
 
+    /* mark the connection as made */
+    pmix_globals.connected = true;
+    
     pmix_usock_set_nonblocking(sd);
     return sd;
 }

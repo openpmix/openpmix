@@ -66,6 +66,15 @@ int PMIx_Connect(const pmix_proc_t procs[], size_t nprocs)
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: connect called");
 
+    if (pmix_client_globals.init_cntr <= 0) {
+        return PMIX_ERR_INIT;
+    }
+
+    /* if we aren't connected, don't attempt to send */
+    if (!pmix_globals.connected) {
+        return PMIX_ERR_UNREACH;
+    }
+
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
@@ -102,6 +111,11 @@ int PMIx_Connect_nb(const pmix_proc_t procs[], size_t nprocs,
 
     if (pmix_client_globals.init_cntr <= 0) {
         return PMIX_ERR_INIT;
+    }
+
+    /* if we aren't connected, don't attempt to send */
+    if (!pmix_globals.connected) {
+        return PMIX_ERR_UNREACH;
     }
 
     /* check for bozo input */
@@ -144,6 +158,15 @@ int PMIx_Disconnect(const pmix_proc_t procs[], size_t nprocs)
     int rc;
     pmix_cb_t *cb;
      
+    if (pmix_client_globals.init_cntr <= 0) {
+        return PMIX_ERR_INIT;
+    }
+
+    /* if we aren't connected, don't attempt to send */
+    if (!pmix_globals.connected) {
+        return PMIX_ERR_UNREACH;
+    }
+
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
@@ -179,6 +202,11 @@ int PMIx_Disconnect_nb(const pmix_proc_t procs[], size_t nprocs,
 
     if (pmix_client_globals.init_cntr <= 0) {
         return PMIX_ERR_INIT;
+    }
+
+    /* if we aren't connected, don't attempt to send */
+    if (!pmix_globals.connected) {
+        return PMIX_ERR_UNREACH;
     }
 
     /* check for bozo input */

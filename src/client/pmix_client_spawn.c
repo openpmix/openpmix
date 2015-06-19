@@ -67,6 +67,15 @@ int PMIx_Spawn(const pmix_app_t apps[],
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: spawn called");
 
+    if (pmix_client_globals.init_cntr <= 0) {
+        return PMIX_ERR_INIT;
+    }
+
+    /* if we aren't connected, don't attempt to send */
+    if (!pmix_globals.connected) {
+        return PMIX_ERR_UNREACH;
+    }
+
     /* ensure the nspace (if provided) is initialized */
     if (NULL != nspace) {
         memset(nspace, 0, PMIX_MAX_NSLEN+1);
@@ -104,6 +113,11 @@ int PMIx_Spawn_nb(const pmix_app_t apps[], size_t napps,
 
     if (pmix_client_globals.init_cntr <= 0) {
         return PMIX_ERR_INIT;
+    }
+
+    /* if we aren't connected, don't attempt to send */
+    if (!pmix_globals.connected) {
+        return PMIX_ERR_UNREACH;
     }
 
     msg = PMIX_NEW(pmix_buffer_t);

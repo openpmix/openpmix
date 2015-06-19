@@ -72,6 +72,15 @@ int PMIx_Publish(pmix_scope_t scope,
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: publish called");
     
+    if (pmix_client_globals.init_cntr <= 0) {
+        return PMIX_ERR_INIT;
+    }
+
+    /* if we aren't connected, don't attempt to send */
+    if (!pmix_globals.connected) {
+        return PMIX_ERR_UNREACH;
+    }
+
     /* create a callback object to let us know when it is done */
     cb = PMIX_NEW(pmix_cb_t);
     cb->active = true;
@@ -105,6 +114,11 @@ int PMIx_Publish_nb(pmix_scope_t scope,
     
     if (pmix_client_globals.init_cntr <= 0) {
         return PMIX_ERR_INIT;
+    }
+
+    /* if we aren't connected, don't attempt to send */
+    if (!pmix_globals.connected) {
+        return PMIX_ERR_UNREACH;
     }
 
     /* check for bozo cases */

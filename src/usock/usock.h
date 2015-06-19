@@ -258,9 +258,11 @@ PMIX_CLASS_DECLARATION(pmix_timer_t);
 
 #define CLOSE_THE_SOCKET(socket)                \
     do {                                        \
-        shutdown(socket, 2);                    \
-        close(socket);                          \
-        socket = -1;                            \
+        if (0 <= socket) {                      \
+            shutdown(socket, 2);                \
+            close(socket);                      \
+            socket = -1;                        \
+        }                                       \
     } while(0)
 
 

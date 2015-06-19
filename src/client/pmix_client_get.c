@@ -72,6 +72,15 @@ int PMIx_Get(const char nspace[], int rank,
                         (NULL == nspace) ? "NULL" : nspace, rank,
                         (NULL == key) ? "NULL" : key);
 
+    if (pmix_client_globals.init_cntr <= 0) {
+        return PMIX_ERR_INIT;
+    }
+
+    /* if we aren't connected, don't attempt to send */
+    if (!pmix_globals.connected) {
+        return PMIX_ERR_UNREACH;
+    }
+
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
@@ -114,6 +123,11 @@ int PMIx_Get_nb(const char *nspace, int rank,
     
     if (pmix_client_globals.init_cntr <= 0) {
         return PMIX_ERR_INIT;
+    }
+
+    /* if we aren't connected, don't attempt to send */
+    if (!pmix_globals.connected) {
+        return PMIX_ERR_UNREACH;
     }
 
     /* protect against bozo input */

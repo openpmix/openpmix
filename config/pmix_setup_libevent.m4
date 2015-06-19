@@ -87,13 +87,10 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
                        [-levent -levent_pthreads],
                        [$pmix_event_dir],
                        [$pmix_event_libdir],
-                       [pmix_libevent_found=1],
-                       [pmix_libevent_found=0])
+                       [],
+                       [AC_MSG_WARN([LIBEVENT SUPPORT NOT FOUND])
+                        AC_MSG_ERROR([CANNOT CONTINE])])
 
-    AS_IF([test "$pmix_libevent_found" = "0" && "$PMIX_BUILDING_TARBALL" != "1"],
-          [AC_MSG_WARN([LIBEVENT SUPPORT NOT FOUND])
-           AC_MSG_ERROR([CANNOT CONTINE])])
-    
     CPPFLAGS="$pmix_libevent_CPPFLAGS $CPPFLAGS"
     LIBS="$pmix_libevent_LIBS $LIBS"
     LDFLAGS="$pmix_libevent_LDFLAGS $LDFLAGS"

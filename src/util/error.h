@@ -32,8 +32,11 @@ BEGIN_C_DECLS
     pmix_output(0, "PMIX ERROR: %s in file %s at line %d",      \
                 PMIx_Error_string((r)), __FILE__, __LINE__);
 
-#define PMIX_REPORT_ERROR(e)                                            \
-    pmix_errhandler_invoke(e, NULL, 0, NULL, 0)
+#define PMIX_REPORT_ERROR(e)                            \
+    do {                                                \
+        pmix_globals.connected = false;                 \
+        pmix_errhandler_invoke(e, NULL, 0, NULL, 0);    \
+    } while(0);
 
 PMIX_DECLSPEC void pmix_errhandler_invoke(pmix_status_t status,
                                           pmix_proc_t procs[], size_t nprocs,
