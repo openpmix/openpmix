@@ -51,9 +51,6 @@ gnu_version_ignore=0
 mac=0
 dist_target=distcheck
 distcheck_flags="AM_MAKEFLAGS=$DISTCHECK_MAKE_FLAGS"
-if test "$LIBEVENT" != ""; then
-    distcheck_flags="$distcheck_flags AM_DISTCHECK_CONFIGURE_FLAGS=--with-libevent=$LIBEVENT"
-fi
 if test "`basename $0`" = "make_tarball"; then
     dist_target=dist
     distcheck_flags=
@@ -103,6 +100,22 @@ EOF
     esac
     shift
 done
+
+# pmix needs libevent to build.  If $LIBEVENT is set in the
+# environment, automatically add it to the config_args.
+if test "$LIBEVENT" != ""; then
+    echo "*** Found \$LIBEVENT: $LIBEVENT"
+    echo "*** Adding --with-libevent=$LIBEVENT to config_args"
+    config_args="--with-libevent=$LIBEVENT $config_args"
+fi
+
+# if config_args isn't empty, then add that to the distcheck_flags
+# (because we'll assumedly need those to run configure under "make
+# distcheck").
+if test "$config_args" != ""; then
+    echo "*** Adding to distcheck_flags: $config_args"
+    distcheck_flags="$distcheck_flags AM_DISTCHECK_CONFIGURE_FLAGS=\"$config_args\""
+fi
 
 export DISTCHECK_CONFIGURE_FLAGS=$config_args
 
@@ -299,7 +312,7 @@ make_tarball() {
     save_LD=$LD_LIBRARY_PATH
     LD_LIBRARY_PATH=
     rm -f success
-    (make $distcheck_flags $dist_target 2>&1 && touch success) | tee dist.out
+    (eval make $distcheck_flags $dist_target 2>&1 && touch success) | tee dist.out
     if test ! -f success; then
         echo "Make $dist_target failed.  Aborting"
         exit 1
