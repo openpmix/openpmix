@@ -14,8 +14,8 @@
 # --------------------------------------------------------------------
 AC_DEFUN([PMIX_HWLOC_CONFIG],[
     AC_ARG_WITH([hwloc-header],
-        [AC_HELP_STRING([hwloc-header=HEADER],
-                [The value that should be included in C files to include hwloc.h])])
+                [AC_HELP_STRING([hwloc-header=HEADER],
+                                [The value that should be included in C files to include hwloc.h])])
 
     pmix_hwloc_support=0
     AS_IF([test "$enable_embedded_mode" = "yes"],
@@ -27,7 +27,7 @@ AC_DEFUN([PMIX_HWLOC_CONFIG],[
 
     AC_MSG_CHECKING([hwloc header])
     AC_DEFINE_UNQUOTED([PMIX_HWLOC_HEADER], [$PMIX_HWLOC_HEADER],
-        [Location of hwloc.h])
+                       [Location of hwloc.h])
     AC_MSG_RESULT([$PMIX_HWLOC_HEADER])
 
     CPPFLAGS="$CPPFLAGS $PMIX_HWLOC_CPPFLAGS"

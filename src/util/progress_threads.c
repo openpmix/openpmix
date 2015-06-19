@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014      Intel, Inc.  All rights reserved. 
+ * Copyright (c) 2014-2015 Intel, Inc.  All rights reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -13,8 +13,7 @@
 
 #include <unistd.h>
 #include PMIX_EVENT_HEADER
-/* JMS Is this going to be a problem? :-( */
-#include <event2/thread.h>
+#include PMIX_EVENT2_THREAD_HEADER
 #include <pthread.h>
 #ifdef HAVE_STRING_H
 #include <string.h>

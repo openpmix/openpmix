@@ -14,8 +14,8 @@
 # --------------------------------------------------------------------
 AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
     AC_ARG_WITH([libevent-header],
-        [AC_HELP_STRING([libevent-header=HEADER],
-                [The value that should be included in C files to include event.h])])
+                [AC_HELP_STRING([libevent-header=HEADER],
+                                [The value that should be included in C files to include event.h])])
 
     AS_IF([test "$enable_embedded_mode" = "yes"],
           [_PMIX_LIBEVENT_EMBEDDED_MODE],
@@ -23,8 +23,12 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
 
     AC_MSG_CHECKING([libevent header])
     AC_DEFINE_UNQUOTED([PMIX_EVENT_HEADER], [$PMIX_EVENT_HEADER],
-        [Location of event.h])
+                       [Location of event.h])
     AC_MSG_RESULT([$PMIX_EVENT_HEADER])
+    AC_MSG_CHECKING([libevent2/thread header])
+    AC_DEFINE_UNQUOTED([PMIX_EVENT2_THREAD_HEADER], [$PMIX_EVENT2_THREAD_HEADER],
+                       [Location of event2/thread.h])
+    AC_MSG_RESULT([$PMIX_EVENT2_THREAD_HEADER])
 
     CPPFLAGS="$CPPFLAGS $PMIX_EVENT_CPPFLAGS"
     LDFLAGS="$LDFLAGS $PMIX_EVENT_LDFLAGS"
@@ -36,6 +40,7 @@ AC_DEFUN([_PMIX_LIBEVENT_EMBEDDED_MODE],[
     AC_MSG_RESULT([assumed available (embedded mode)])
 
     PMIX_EVENT_HEADER=$with_libevent_header
+    PMIX_EVENT2_INCLUDE_HEADER=$with_libevent_header
     PMIX_EVENT_CPPFLAGS=
     PMIX_EVENT_LIB=
     PMIX_EVENT_LDFLAGS=
@@ -116,6 +121,7 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
 
     # Set output variables
     PMIX_EVENT_HEADER="<event.h>"
+    PMIX_EVENT2_THREAD_HEADER="<event2/thread.h>"
     PMIX_EVENT_LIB=-levent
     AS_IF([test "$pmix_event_dir" != ""],
         [PMIX_EVENT_CPPFLAGS="-I$pmix_event_dir/include"])

@@ -672,8 +672,8 @@ AC_DEFINE_UNQUOTED(PMIX_ENABLE_DEBUG, $WANT_DEBUG,
                    [Whether we want developer-level debugging code or not])
 
 AC_ARG_ENABLE(debug-symbols,
-    AC_HELP_STRING([--disable-debug-symbols],
-                   [Disable adding compiler flags to enable debugging symbols if --enable-debug is specified.  For non-debugging builds, this flag has no effect.]))
+              AC_HELP_STRING([--disable-debug-symbols],
+                             [Disable adding compiler flags to enable debugging symbols if --enable-debug is specified.  For non-debugging builds, this flag has no effect.]))
 
 #
 # Do we want the pretty-print stack trace feature?
