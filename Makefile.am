@@ -44,7 +44,7 @@ EXTRA_DIST += \
              test/test_common.h test/cli_stages.h \
              test/server_callbacks.h test/test_fence.h \
              test/test_publish.h test/test_resolve_peers.h \
-             test/test_spawn.h test/utils.h
+             test/test_spawn.h test/utils.h test/test_cd.h
 
 include config/Makefile.am
 include include/Makefile.am
