@@ -13,7 +13,7 @@
 # --------------------------------------------------------------------
 AC_DEFUN([PMIX_MUNGE_CONFIG],[
 
-    PMIX_VAR_SCOPE_PUSH([pmix_munge_support pmix_munge_dir pmix_munge_libdir])
+    PMIX_VAR_SCOPE_PUSH([pmix_munge_dir pmix_munge_libdir])
 
     AC_ARG_WITH([munge],
                 [AC_HELP_STRING([--with-munge=DIR],

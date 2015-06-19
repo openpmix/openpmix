@@ -37,7 +37,7 @@
 #include <string.h>
 #endif
 #if PMIX_HAVE_HWLOC
-#include <hwloc.h>
+#include PMIX_HWLOC_HEADER
 #endif
 
 BEGIN_C_DECLS

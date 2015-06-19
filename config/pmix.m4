@@ -669,11 +669,11 @@ if test "$WANT_DEBUG" = "0"; then
     CXXFLAGS="-DNDEBUG $CXXFLAGS"
 fi
 AC_DEFINE_UNQUOTED(PMIX_ENABLE_DEBUG, $WANT_DEBUG,
-    [Whether we want developer-level debugging code or not])
+                   [Whether we want developer-level debugging code or not])
 
 AC_ARG_ENABLE(debug-symbols,
     AC_HELP_STRING([--disable-debug-symbols],
-        [Disable adding compiler flags to enable debugging symbols if --enable-debug is specified.  For non-debugging builds, this flag has no effect.]))
+                   [Disable adding compiler flags to enable debugging symbols if --enable-debug is specified.  For non-debugging builds, this flag has no effect.]))
 
 #
 # Do we want the pretty-print stack trace feature?
@@ -681,8 +681,8 @@ AC_ARG_ENABLE(debug-symbols,
 
 AC_MSG_CHECKING([if want pretty-print stacktrace])
 AC_ARG_ENABLE([pretty-print-stacktrace],
-    [AC_HELP_STRING([--enable-pretty-print-stacktrace],
-                    [Pretty print stacktrace on process signal (default: enabled)])])
+              [AC_HELP_STRING([--enable-pretty-print-stacktrace],
+                              [Pretty print stacktrace on process signal (default: enabled)])])
 if test "$enable_pretty_print_stacktrace" = "no" ; then
     AC_MSG_RESULT([no])
     WANT_PRETTY_PRINT_STACKTRACE=0
@@ -699,8 +699,8 @@ AC_DEFINE_UNQUOTED([PMIX_WANT_PRETTY_PRINT_STACKTRACE],
 #
 AC_MSG_CHECKING([if want ident string])
 AC_ARG_WITH([ident-string],
-     [AC_HELP_STRING([--with-ident-string=STRING],
-                     [Embed an ident string into PMIx object files])])
+            [AC_HELP_STRING([--with-ident-string=STRING],
+                            [Embed an ident string into PMIx object files])])
 if test "$with_ident_string" = "" -o "$with_ident_string" = "no"; then
     with_ident_string="%VERSION%"
 fi
@@ -715,7 +715,7 @@ with_ident_string="`echo $with_ident_string | sed -e 's/%VERSION%/$PMIX_VERSION/
 with_ident_string="`eval echo $with_ident_string`"
 
 AC_DEFINE_UNQUOTED([PMIX_IDENT_STRING], ["$with_ident_string"],
-     [ident string for PMIX])
+                   [ident string for PMIX])
 AC_MSG_RESULT([$with_ident_string])
 
 #
@@ -723,8 +723,8 @@ AC_MSG_RESULT([$with_ident_string])
 #
 AC_MSG_CHECKING([if want developer-level timing support])
 AC_ARG_ENABLE(timing,
-    AC_HELP_STRING([--enable-timing],
-                   [enable developer-level timing code (default: disabled)]))
+              AC_HELP_STRING([--enable-timing],
+                             [enable developer-level timing code (default: disabled)]))
 if test "$enable_timing" = "yes"; then
     AC_MSG_RESULT([yes])
     WANT_TIMING=1
@@ -733,8 +733,8 @@ else
     WANT_TIMING=0
 fi
 
-AC_DEFINE_UNQUOTED(PMIX_ENABLE_TIMING, $WANT_TIMING,
-    [Whether we want developer-level timing support or not])
+AC_DEFINE_UNQUOTED([PMIX_ENABLE_TIMING], [$WANT_TIMING],
+                   [Whether we want developer-level timing support or not])
 
 ])dnl
 

@@ -2,7 +2,7 @@
 #
 # Copyright (c) 2009-2015 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2013      Los Alamos National Security, LLC.  All rights reserved.
-# Copyright (c) 2013-2014 Intel, Inc. All rights reserved
+# Copyright (c) 2013-2015 Intel, Inc. All rights reserved
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -13,26 +13,26 @@
 # MCA_hwloc_CONFIG([action-if-found], [action-if-not-found])
 # --------------------------------------------------------------------
 AC_DEFUN([PMIX_HWLOC_CONFIG],[
-    AC_ARG_WITH([libevent-header],
-        [AC_HELP_STRING([libevent-header=HEADER],
-                [The value that should be included in C files to include event.h])])
+    AC_ARG_WITH([hwloc-header],
+        [AC_HELP_STRING([hwloc-header=HEADER],
+                [The value that should be included in C files to include hwloc.h])])
 
     pmix_hwloc_support=0
     AS_IF([test "$enable_embedded_mode" = "yes"],
-          [PMIX_HWLOC_EMBEDDED_MODE],
-          [PMIX_HWLOC_EXTERNAL])
+          [_PMIX_HWLOC_EMBEDDED_MODE],
+          [_PMIX_HWLOC_EXTERNAL])
 
     AC_DEFINE_UNQUOTED(PMIX_HAVE_HWLOC, [$pmix_hwloc_support],
                       [Whether we have hwloc support or not])
 
-    AC_MSG_CHECKING([libevent header])
-    AC_DEFINE_UNQUOTED([PMIX_EVENT_HEADER], [$PMIX_EVENT_HEADER],
-        [Location of event.h])
-    AC_MSG_RESULT([$PMIX_EVENT_HEADER])
+    AC_MSG_CHECKING([hwloc header])
+    AC_DEFINE_UNQUOTED([PMIX_HWLOC_HEADER], [$PMIX_HWLOC_HEADER],
+        [Location of hwloc.h])
+    AC_MSG_RESULT([$PMIX_HWLOC_HEADER])
 
-    CPPFLAGS="$CPPFLAGS $PMIX_EVENT_CPPFLAGS"
-    LDFLAGS="$LDFLAGS $PMIX_EVENT_LDFLAGS"
-    LIBS="$LIBS $PMIX_EVENT_LIBS"
+    CPPFLAGS="$CPPFLAGS $PMIX_HWLOC_CPPFLAGS"
+    LDFLAGS="$LDFLAGS $PMIX_HWLOC_LDFLAGS"
+    LIBS="$LIBS $PMIX_HWLOC_LIBS"
 ])
 
 AC_DEFUN([_PMIX_HWLOC_EMBEDDED_MODE],[
@@ -101,12 +101,12 @@ AC_DEFUN([_PMIX_HWLOC_EXTERNAL],[
     fi
 
     # Set output variables
-    PMIX_EVENT_HEADER="<hwloc.h>"
-    PMIX_EVENT_LIB=-lhwloc
+    PMIX_HWLOC_HEADER="<hwloc.h>"
+    PMIX_HWLOC_LIB=-lhwloc
     AS_IF([test "$pmix_hwloc_dir" != ""],
-        [PMIX_EVENT_CPPFLAGS="-I$pmix_hwloc_dir/include"])
+        [PMIX_HWLOC_CPPFLAGS="-I$pmix_hwloc_dir/include"])
     AS_IF([test "$pmix_hwloc_libdir" != ""],
-        [PMIX_EVENT_LDFLAGS="-L$pmix_hwloc_libdir"])
+        [PMIX_HWLOC_LDFLAGS="-L$pmix_hwloc_libdir"])
 
     AC_MSG_CHECKING([will hwloc support be built])
     if test "$pmix_hwloc_support" != "1"; then

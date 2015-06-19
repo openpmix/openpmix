@@ -13,7 +13,7 @@
 # --------------------------------------------------------------------
 AC_DEFUN([PMIX_SASL_CONFIG],[
 
-    PMIX_VAR_SCOPE_PUSH([pmix_sasl_support pmix_sasl_dir pmix_sasl_libdir])
+    PMIX_VAR_SCOPE_PUSH([pmix_sasl_dir pmix_sasl_libdir])
 
     AC_ARG_WITH([sasl],
                 [AC_HELP_STRING([--with-sasl=DIR],
