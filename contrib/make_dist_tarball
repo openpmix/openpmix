@@ -390,6 +390,10 @@ for file in $version_files; do
     rm $file.new
 done
 
+# Let the build system know we are making a tarball
+# so it doesn't require libevent to be present
+export PMIX_BUILDING_TARBALL=1
+
 #
 # Make 2 tarballs:
 #
