@@ -85,7 +85,7 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
                        [pmix_libevent_found=1],
                        [pmix_libevent_found=0])
 
-    AS_IF([test "$pmix_libevent_found" = "0" && "PMIX_BUILDING_TARBALL" != "1"],
+    AS_IF([test "$pmix_libevent_found" = "0" && "$PMIX_BUILDING_TARBALL" != "1"],
           [AC_MSG_WARN([LIBEVENT SUPPORT NOT FOUND])
            AC_MSG_ERROR([CANNOT CONTINE])])
     
