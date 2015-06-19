@@ -335,7 +335,7 @@ check_gnu_version flex $FLEX_TARGET_VERSION
 # Verify that we're in a top PMIx dir
 #
 echo "*** Checking to ensure in top-level PMIx directory..."
-if test -f VERSION -a -f configure.ac -a -f config/pmix_get_version.m4 ; then
+if test -f VERSION -a -f configure.ac -a -f config/pmix.m4 ; then
     happy=1
 else
     echo "Do not appear to be in an PMIx top directory.  Abort!"
