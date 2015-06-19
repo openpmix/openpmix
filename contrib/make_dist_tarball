@@ -302,7 +302,7 @@ make_tarball() {
     # happened to be in the tree already).
     #
     echo "*** Removing old generated flex files..."
-    chmod -R a+rw .
+    chmod -R ug+rw .
     find . -name \*_lex.c -exec rm -f {} \; -print
 
     #
