@@ -57,7 +57,7 @@ include src/client/Makefile.am
 include src/server/Makefile.am
 include src/sec/Makefile.am
 
-lib_LTLIBRARIES = libpmix.la libpmix-server.la
+lib_LTLIBRARIES = libpmix.la libpmix_server.la
 
 libpmix_la_SOURCES = $(headers) $(sources)
 libpmix_la_LDFLAGS = -version-info $(libpmix_so_version)

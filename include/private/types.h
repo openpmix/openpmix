@@ -87,8 +87,8 @@ typedef int pmix_socklen_t;
 /*
  * Convert a 64 bit value to network byte order.
  */
-static inline uint64_t hton64(uint64_t val) __pmix_attribute_const__;
-static inline uint64_t hton64(uint64_t val)
+static inline uint64_t pmix_hton64(uint64_t val) __pmix_attribute_const__;
+static inline uint64_t pmix_hton64(uint64_t val)
 {
 #ifdef HAVE_UNIX_BYTESWAP
     union { uint64_t ll;
@@ -111,8 +111,8 @@ static inline uint64_t hton64(uint64_t val)
  * Convert a 64 bit value from network to host byte order.
  */
 
-static inline uint64_t ntoh64(uint64_t val) __pmix_attribute_const__;
-static inline uint64_t ntoh64(uint64_t val)
+static inline uint64_t pmix_ntoh64(uint64_t val) __pmix_attribute_const__;
+static inline uint64_t pmix_ntoh64(uint64_t val)
 {
 #ifdef HAVE_UNIX_BYTESWAP
     union { uint64_t ll;
