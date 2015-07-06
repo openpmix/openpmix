@@ -24,6 +24,8 @@
  */
 
 #include <private/autogen/config.h>
+/* Symbol transforms */
+#include <pmix/rename.h>
 
 #include <stdio.h>
 

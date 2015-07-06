@@ -182,7 +182,7 @@ int pmix_bfrop_pack_int16(pmix_buffer_t *buffer, const void *src,
     }
 
     for (i = 0; i < num_vals; ++i) {
-        tmp = htons(srctmp[i]);
+        tmp = pmix_htons(srctmp[i]);
         memcpy(dst, &tmp, sizeof(tmp));
         dst += sizeof(tmp);
     }

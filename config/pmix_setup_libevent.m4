@@ -40,7 +40,7 @@ AC_DEFUN([_PMIX_LIBEVENT_EMBEDDED_MODE],[
     AC_MSG_RESULT([assumed available (embedded mode)])
 
     PMIX_EVENT_HEADER=$with_libevent_header
-    PMIX_EVENT2_INCLUDE_HEADER=$with_libevent_header
+    PMIX_EVENT2_THREAD_HEADER=$with_libevent_header
     PMIX_EVENT_CPPFLAGS=
     PMIX_EVENT_LIB=
     PMIX_EVENT_LDFLAGS=

@@ -72,13 +72,13 @@ BEGIN_C_DECLS
  * Internal type corresponding to bool.  Do not use this in interface
  * calls - use PMIX_BOOL instead.
  */
-#if SIZEOF_BOOL == 1
+#if SIZEOF__BOOL == 1
 #define BFROP_TYPE_BOOL PMIX_UINT8
-#elif SIZEOF_BOOL == 2
+#elif SIZEOF__BOOL == 2
 #define BFROP_TYPE_BOOL PMIX_UINT16
-#elif SIZEOF_BOOL == 4
+#elif SIZEOF__BOOL == 4
 #define BFROP_TYPE_BOOL PMIX_UINT32
-#elif SIZEOF_BOOL == 8
+#elif SIZEOF__BOOL == 8
 #define BFROP_TYPE_BOOL PMIX_UINT64
 #else
 #error Unsupported bool size!

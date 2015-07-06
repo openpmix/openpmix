@@ -264,61 +264,6 @@ typedef PMIX_PTRDIFF_TYPE ptrdiff_t;
 #endif
 
 /*
- * If we're in C, we may need to bring in the bool type and true/false
- * constants.  PMIX_NEED_C_BOOL will be true if the compiler either
- * needs <stdbool.h> or doesn't define the bool type at all.
- */
-#if !(defined(c_plusplus) || defined(__cplusplus))
-#    if PMIX_NEED_C_BOOL
-#        if PMIX_USE_STDBOOL_H
-             /* If we're using <stdbool.h>, there is an implicit
-                assumption that the C++ bool is the same size and has
-                the same alignment.  However, configure may have
-                disabled the MPI C++ bindings, so if "_Bool" exists,
-                then use that sizeof. */
-#            include <stdbool.h>
-             /* This section exists because AC_SIZEOF(bool) may not be
-                run in configure if we're not building the MPI C++
-                bindings. */
-#            undef SIZEOF_BOOL
-#            if SIZEOF__BOOL > 0
-#                define SIZEOF_BOOL SIZEOF__BOOL
-#            else
-                 /* If all else fails, assume it's 1 */
-#                define SIZEOF_BOOL 1
-#            endif
-#        else
-             /* We need to create a bool type and ensure that it's the
-                same size / alignment as the C++ bool size /
-                alignment */
-#            define false 0
-#            define true 1
-#            if SIZEOF_BOOL == SIZEOF_CHAR && PMIX_ALIGNMENT_CXX_BOOL == PMIX_ALIGNMENT_CHAR
-typedef unsigned char bool;
-#            elif SIZEOF_BOOL == SIZEOF_SHORT && PMIX_ALIGNMENT_CXX_BOOL == PMIX_ALIGNMENT_SHORT
-typedef short bool;
-#            elif SIZEOF_BOOL == SIZEOF_INT && PMIX_ALIGNMENT_CXX_BOOL == PMIX_ALIGNMENT_INT
-typedef int bool;
-#            elif SIZEOF_BOOL == SIZEOF_LONG && PMIX_ALIGNMENT_CXX_BOOL == PMIX_ALIGNMENT_LONG
-typedef long bool;
-#            elif defined(SIZEOF_LONG_LONG) && defined(PMIX_ALIGNMENT_LONG) && SIZEOF_BOOL == SIZEOF_LONG && PMIX_ALIGNMENT_CXX_BOOL == PMIX_ALIGNMENT_LONG
-typedef long long bool;
-             /* If we have _Bool, use that */
-#            elif SIZEOF__BOOL > 0
-#                undef SIZEOF_BOOL
-#                define bool _Bool
-#                define SIZEOF_BOOL SIZEOF__BOOL
-#            else
-             /* If all else fails, just make bool be an unsigned char
-                and size of 1 */
-typedef unsigned char bool;
-#                define SIZEOF_BOOL 1
-#            endif
-#        endif  /* PMIX_USE_STDBOOL_H */
-#    endif  /* PMIX_NEED_C_BOOL */
-#endif
-
-/*
  * Maximum size of a filename path.
  */
 #include <limits.h>
@@ -393,6 +338,7 @@ typedef unsigned char bool;
 
 #define IOVBASE_TYPE  void
 
+#include <stdbool.h>
 /**
  * If we generate our own bool type, we need a special way to cast the result
  * in such a way to keep the compilers silent.

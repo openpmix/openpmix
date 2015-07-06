@@ -169,6 +169,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # Check for type sizes
     #
 
+    AC_CHECK_SIZEOF(_Bool)
     AC_CHECK_SIZEOF(char)
     AC_CHECK_SIZEOF(short)
     AC_CHECK_SIZEOF(int)
