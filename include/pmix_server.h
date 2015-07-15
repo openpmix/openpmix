@@ -103,18 +103,18 @@ BEGIN_C_DECLS
  * that the client will be in a blocked state until the host server
  * executes the callback function, thus allowing the PMIx server support
  * library to release the client */
-typedef int (*pmix_server_finalized_fn_t)(const char nspace[], int rank, void* server_object,
-                                          pmix_op_cbfunc_t cbfunc, void *cbdata);
+typedef pmix_status_t (*pmix_server_finalized_fn_t)(const char nspace[], int rank, void* server_object,
+                                                    pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* A local client called PMIx_Abort - note that the client will be in a blocked
  * state until the host server executes the callback function, thus
  * allowing the PMIx server support library to release the client. The
  * array of procs indicates which processes are to be terminated. A NULL
  * indicates that all procs in the client's nspace are to be terminated */
-typedef int (*pmix_server_abort_fn_t)(const char nspace[], int rank, void *server_object,
-                                      int status, const char msg[],
-                                      pmix_proc_t procs[], size_t nprocs,
-                                      pmix_op_cbfunc_t cbfunc, void *cbdata);
+typedef pmix_status_t (*pmix_server_abort_fn_t)(const char nspace[], int rank, void *server_object,
+                                                int status, const char msg[],
+                                                pmix_proc_t procs[], size_t nprocs,
+                                                pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* At least one client called either PMIx_Fence or PMIx_Fence_nb. In either case,
  * the host server will be called via a non-blocking function to execute
@@ -127,16 +127,16 @@ typedef int (*pmix_server_abort_fn_t)(const char nspace[], int rank, void *serve
  * servers involved in the fence operation, and returned in the modex
  * cbfunc. A _NULL_ data value indicates that the local procs had
  * no data to contribute */
-typedef int (*pmix_server_fencenb_fn_t)(const pmix_proc_t procs[], size_t nprocs,
-                                        char *data, size_t ndata,
-                                        pmix_modex_cbfunc_t cbfunc, void *cbdata);
+typedef pmix_status_t (*pmix_server_fencenb_fn_t)(const pmix_proc_t procs[], size_t nprocs,
+                                                  char *data, size_t ndata,
+                                                  pmix_modex_cbfunc_t cbfunc, void *cbdata);
 
 
 /* Used by the PMIx server to request its local host contact the
  * PMIx server on the remote node that hosts the specified proc to
  * obtain and return a direct modex blob for that proc */
-typedef int (*pmix_server_dmodex_req_fn_t)(const char nspace[], int rank,
-                                           pmix_modex_cbfunc_t cbfunc, void *cbdata);
+typedef pmix_status_t (*pmix_server_dmodex_req_fn_t)(const char nspace[], int rank,
+                                                     pmix_modex_cbfunc_t cbfunc, void *cbdata);
 
 
 /* Publish data per the PMIx API specification. The callback is to be executed
@@ -150,10 +150,10 @@ typedef int (*pmix_server_dmodex_req_fn_t)(const char nspace[], int rank,
  * how long the server should retain the data. The nspace/rank of the publishing
  * process is also provided and is expected to be returned on any subsequent
  * lookup request */
-typedef int (*pmix_server_publish_fn_t)(const char nspace[], int rank,
-                                        pmix_scope_t scope, pmix_persistence_t persist,
-                                        const pmix_info_t info[], size_t ninfo,
-                                        pmix_op_cbfunc_t cbfunc, void *cbdata);
+typedef pmix_status_t (*pmix_server_publish_fn_t)(const char nspace[], int rank,
+                                                  pmix_scope_t scope, pmix_persistence_t persist,
+                                                  const pmix_info_t info[], size_t ninfo,
+                                                  pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Lookup published data. The host server will be passed a NULL-terminated array
  * of string keys along with the scope within which the data is expected to have
@@ -163,15 +163,15 @@ typedef int (*pmix_server_publish_fn_t)(const char nspace[], int rank,
  * indicates whether the server should wait for all data to become available
  * before executing the callback function, or should callback with whatever
  * data is immediately available. */
-typedef int (*pmix_server_lookup_fn_t)(pmix_scope_t scope, int wait, char **keys,
-                                       pmix_lookup_cbfunc_t cbfunc, void *cbdata);
+typedef pmix_status_t (*pmix_server_lookup_fn_t)(pmix_scope_t scope, int wait, char **keys,
+                                                 pmix_lookup_cbfunc_t cbfunc, void *cbdata);
 
 /* Delete data from the data store. The host server will be passed a NULL-terminated array
  * of string keys along with the scope within which the data is expected to have
  * been published. The callback is to be executed upon completion of the delete
  * procedure */
-typedef int (*pmix_server_unpublish_fn_t)(pmix_scope_t scope, char **keys,
-                                          pmix_op_cbfunc_t cbfunc, void *cbdata);
+typedef pmix_status_t (*pmix_server_unpublish_fn_t)(pmix_scope_t scope, char **keys,
+                                                    pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Spawn a set of applications/processes as per the PMIx API. Note that
  * applications are not required to be MPI or any other programming model.
@@ -180,8 +180,8 @@ typedef int (*pmix_server_unpublish_fn_t)(pmix_scope_t scope, char **keys,
  * been started. An error in starting any application or process in this
  * request shall cause all applications and processes in the request to
  * be terminated, and an error returned to the originating caller */
-typedef int (*pmix_server_spawn_fn_t)(const pmix_app_t apps[], size_t napps,
-                                      pmix_spawn_cbfunc_t cbfunc, void *cbdata);
+typedef pmix_status_t (*pmix_server_spawn_fn_t)(const pmix_app_t apps[], size_t napps,
+                                                pmix_spawn_cbfunc_t cbfunc, void *cbdata);
 
 /* Record the specified processes as "connected". This means that the resource
  * manager should treat the failure of any process in the specified group as
@@ -190,8 +190,8 @@ typedef int (*pmix_server_spawn_fn_t)(const pmix_app_t apps[], size_t napps,
  * a process can only engage in *one* connect operation involving the identical
  * set of procs at a time. However, a process *can* be simultaneously engaged
  * in multiple connect operations, each involving a different set of procs */
-typedef int (*pmix_server_connect_fn_t)(const pmix_proc_t procs[], size_t nprocs,
-                                        pmix_op_cbfunc_t cbfunc, void *cbdata);
+typedef pmix_status_t (*pmix_server_connect_fn_t)(const pmix_proc_t procs[], size_t nprocs,
+                                                  pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Disconnect a previously connected set of processes. An error should be returned
  * if the specified set of procs was not previously "connected". As above, a process
@@ -199,8 +199,8 @@ typedef int (*pmix_server_connect_fn_t)(const pmix_proc_t procs[], size_t nprocs
  * is not allowed to reconnect to a set of ranges that has not fully completed
  * disconnect - i.e., you have to fully disconnect before you can reconnect to the
  * same group of processes. */
-typedef int (*pmix_server_disconnect_fn_t)(const pmix_proc_t procs[], size_t nprocs,
-                                           pmix_op_cbfunc_t cbfunc, void *cbdata);
+typedef pmix_status_t (*pmix_server_disconnect_fn_t)(const pmix_proc_t procs[], size_t nprocs,
+                                                     pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Callback function for incoming connection requests from
  * local clients */
@@ -216,8 +216,8 @@ typedef void (*pmix_connection_cbfunc_t)(int incoming_sd);
  * resulting soct to the provided cbfunc. A NULL for this function
  * will cause the internal PMIx server to spawn its own listener
  * thread */
-typedef int (*pmix_server_listener_fn_t)(int listening_sd,
-                                         pmix_connection_cbfunc_t cbfunc);
+typedef pmix_status_t (*pmix_server_listener_fn_t)(int listening_sd,
+                                                   pmix_connection_cbfunc_t cbfunc);
 
 typedef struct pmix_server_module_1_0_0_t {
     pmix_server_finalized_fn_t        finalized;
