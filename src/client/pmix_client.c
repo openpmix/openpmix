@@ -364,14 +364,14 @@ int PMIx_Finalize(void)
                             "pmix:client finalize sync received");
     }
 
-    pmix_usock_finalize();
-    PMIX_DESTRUCT(&pmix_client_globals.myserver);
-
     pmix_stop_progress_thread(pmix_globals.evbase);
     event_base_free(pmix_globals.evbase);
 #ifdef HAVE_LIBEVENT_GLOBAL_SHUTDOWN
     libevent_global_shutdown();
 #endif
+
+    pmix_usock_finalize();
+    PMIX_DESTRUCT(&pmix_client_globals.myserver);
 
     PMIX_LIST_DESTRUCT(&pmix_client_globals.nspaces);
     PMIX_LIST_DESTRUCT(&pmix_client_globals.pending_requests);
