@@ -84,6 +84,10 @@ typedef int pmix_socklen_t;
 #endif
 
 
+#define pmix_htons htons
+#define pmix_ntohs ntohs
+
+
 /*
  * Convert a 64 bit value to network byte order.
  */

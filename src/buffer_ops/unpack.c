@@ -305,7 +305,7 @@ int pmix_bfrop_unpack_int64(pmix_buffer_t *buffer, void *dest,
     /* unpack the data */
     for (i = 0; i < (*num_vals); ++i) {
         memcpy( &(tmp), buffer->unpack_ptr, sizeof(tmp) );
-        tmp = ntoh64(tmp);
+        tmp = pmix_ntoh64(tmp);
         memcpy(&desttmp[i], &tmp, sizeof(tmp));
         buffer->unpack_ptr += sizeof(tmp);
     }
