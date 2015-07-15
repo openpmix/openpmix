@@ -288,9 +288,6 @@ static void pcon(pmix_peer_t *p)
 }
 static void pdes(pmix_peer_t *p)
 {
-    if (NULL != p->info) {
-        PMIX_RELEASE(p->info);
-    }
     if (0 <= p->sd) {
         CLOSE_THE_SOCKET(p->sd);
     }
@@ -300,6 +297,11 @@ static void pdes(pmix_peer_t *p)
     if (p->recv_ev_active) {
         event_del(&p->recv_event);
     }
+
+    if (NULL != p->info) {
+        PMIX_RELEASE(p->info);
+    }
+
     PMIX_LIST_DESTRUCT(&p->send_queue);
     if (NULL != p->send_msg) {
         PMIX_RELEASE(p->send_msg);
