@@ -766,7 +766,8 @@ static void _dmodex_req(int sd, short args, void *cbdata)
     char *data;
     size_t sz;
     pmix_dmodex_caddy_t *dcd;
-    
+    int rc;
+
     /* this should be one of my clients, but a race condition
      * could cause this request to arrive prior to us having
      * been informed of it - so first check to see if we know
@@ -820,7 +821,7 @@ static void _dmodex_req(int sd, short args, void *cbdata)
     PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
     /* get any remote contribution - note that there
      * may not be a contribution */
-    if (PMIX_SUCCESS == pmix_hash_fetch(&nptr->server->myremote, info->rank, "modex", &val) &&
+    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->server->myremote, info->rank, "modex", &val)) &&
         NULL != val) {
         PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
         PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
@@ -835,7 +836,7 @@ static void _dmodex_req(int sd, short args, void *cbdata)
     PMIX_DESTRUCT(&pbkt);
 
     /* execute the callback */
-    cd->cbfunc(PMIX_SUCCESS, data, sz, cd->cbdata);
+    cd->cbfunc(rc, data, sz, cd->cbdata);
     if (NULL != data) {
         free(data);
     }

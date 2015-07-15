@@ -180,7 +180,7 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
     /* mark us as having successfully received a blob from this proc */
     info->modex_recvd = true;
 
-    /* see if anyone remote is waiting on this data- could be more than one */
+    /* see if anyone remote is waiting on this data - could be more than one */
     PMIX_LIST_FOREACH_SAFE(dcd, dcdnext, &pmix_server_globals.dmodex, pmix_dmodex_caddy_t) {
         if (0 != strncmp(dcd->cd->nspace, nptr->nspace, PMIX_MAX_NSLEN)) {
             continue;
@@ -506,6 +506,69 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
     return rc;
 }
 
+static void dmdx_cbfunc(pmix_status_t status,
+                        const char *data, size_t ndata,
+                        void *cbdata)
+{
+    pmix_local_modex_caddy_t *lcd = (pmix_local_modex_caddy_t*)cbdata;
+    pmix_kval_t *kp;
+    pmix_nspace_t *ns, *nptr;
+    pmix_rank_info_t *iptr, *info;
+    pmix_status_t rc;
+
+    /* find the nspace object for this client */
+    nptr = NULL;
+    PMIX_LIST_FOREACH(ns, &pmix_server_globals.nspaces, pmix_nspace_t) {
+        if (0 == strcmp(lcd->nspace, ns->nspace)) {
+            nptr = ns;
+            break;
+        }
+    }
+
+    if (NULL == nptr) {
+        /* should be impossible */
+        PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+        status = PMIX_ERR_NOT_FOUND;
+        goto cleanup;
+    }
+    /* and the rank entry for it */
+    info = NULL;
+    PMIX_LIST_FOREACH(iptr, &nptr->server->ranks, pmix_rank_info_t) {
+        if (iptr->rank == lcd->rank) {
+            info = iptr;
+            break;
+        }
+    }
+    if (NULL == info) {
+        /* create the entry */
+        info = PMIX_NEW(pmix_rank_info_t);
+        info->rank = lcd->rank;
+        PMIX_RETAIN(nptr);
+        info->nptr = nptr;
+        pmix_list_append(&nptr->server->ranks, &info->super);
+    }
+
+    kp = PMIX_NEW(pmix_kval_t);
+    kp->key = strdup("modex");
+    PMIX_VALUE_CREATE(kp->value, 1);
+    kp->value->type = PMIX_BYTE_OBJECT;
+    kp->value->data.bo.bytes = (char*)data;
+    kp->value->data.bo.size = ndata;
+    /* store it in the appropriate hash */
+    if (PMIX_SUCCESS != (rc = pmix_hash_store(&info->nptr->server->remote, info->rank, kp))) {
+        PMIX_ERROR_LOG(rc);
+    }
+    kp->value->data.bo.bytes = NULL;  // protect the data
+    PMIX_RELEASE(kp);  // maintain acctg
+
+  cleanup:
+    /* always execute the callback to avoid having the client hang */
+    if (NULL != lcd->cbfunc) {
+        lcd->cbfunc(status, data, ndata, lcd->cbdata);
+    }
+    PMIX_RELEASE(lcd);
+}
+
 pmix_status_t pmix_server_get(pmix_buffer_t *buf,
                               pmix_modex_cbfunc_t cbfunc,
                               void *cbdata)
@@ -606,11 +669,12 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
         return PMIX_SUCCESS;
     }
     
-    /* check for the remote data - the local data will be added at cback */
-    PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
-    /* get any remote contribution - note that there
+    /* check for the local/global data - data committed to remote
+     * scope does not get returned to a local proc */
+    /* get any local/global contribution - note that there
      * may not be a contribution */
-    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&info->nptr->server->myremote, info->rank, "modex", &val)) &&
+    PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&info->nptr->server->mylocal, info->rank, "modex", &val)) &&
         NULL != val) {
         PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
         pmix_buffer_t *pxfer = &xfer;
@@ -624,20 +688,47 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
     PMIX_DESTRUCT(&pbkt);
     /* pass it back */
-
     cbfunc(rc, data, sz, cbdata);
 
     return rc;
 
  dmodex:
+    /* first, let's check to see if this data already has been
+     * obtained as a result of a prior direct modex request from
+     * another local peer */
+    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&info->nptr->server->remote, info->rank, "modex", &val)) &&
+        NULL != val) {
+        /* yes, we have it - pass it down */
+        PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+        PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
+        pmix_buffer_t *pxfer = &xfer;
+        PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
+        pmix_bfrop.pack(&pbkt, &pxfer, 1, PMIX_BUFFER);
+        xfer.base_ptr = NULL;
+        xfer.bytes_used = 0;
+        PMIX_DESTRUCT(&xfer);
+        PMIX_VALUE_RELEASE(val);
+        PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
+        PMIX_DESTRUCT(&pbkt);
+        /* pass it back */
+        cbfunc(rc, data, sz, cbdata);
+        return rc;
+    }
+
     /* nope - need to ask the host server to send a remote
      * request to the hosting PMIx server for the data, if
      * they support it - they will callback with the answer */
     if (NULL == pmix_host_server.direct_modex) {
         return PMIX_ERR_NOT_SUPPORTED;
     }
-    
-    rc = pmix_host_server.direct_modex(nspace, rank, cbfunc, cbdata);
+    /* direct modex is supported, so create a caddy and
+     * generate the request */
+    lcd = PMIX_NEW(pmix_local_modex_caddy_t);
+    (void)strncpy(lcd->nspace, nspace, PMIX_MAX_NSLEN);
+    lcd->rank = rank;
+    lcd->cbfunc = cbfunc;
+    lcd->cbdata = cbdata;
+    rc = pmix_host_server.direct_modex(nspace, rank, dmdx_cbfunc, lcd);
     
     return rc;
 }

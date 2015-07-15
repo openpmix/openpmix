@@ -36,34 +36,34 @@
 #include "src/util/argv.h"
 #include "src/buffer_ops/buffer_ops.h"
 
-static int finalized(const char nspace[], int rank, void *server_object,
-                     pmix_op_cbfunc_t cbfunc, void *cbdata);
-static int abort_fn(const char nspace[], int rank,
-                    void *server_object,
-                    int status, const char msg[],
-                    pmix_proc_t procs[], size_t nprocs,
-                    pmix_op_cbfunc_t cbfunc, void *cbdata);
-static int fencenb_fn(const pmix_proc_t procs[], size_t nprocs,
-                      char *data, size_t ndata,
-                      pmix_modex_cbfunc_t cbfunc, void *cbdata);
-static int dmodex_fn(const char nspace[], int rank,
-                     pmix_modex_cbfunc_t cbfunc, void *cbdata);
-static int publish_fn(const char nspace[], int rank,
-                      pmix_scope_t scope, pmix_persistence_t persist,
-                      const pmix_info_t info[], size_t ninfo,
-                      pmix_op_cbfunc_t cbfunc, void *cbdata);
-static int lookup_fn(pmix_scope_t scope, int wait, char **keys,
-                     pmix_lookup_cbfunc_t cbfunc, void *cbdata);
-static int unpublish_fn(pmix_scope_t scope, char **keys,
-                        pmix_op_cbfunc_t cbfunc, void *cbdata);
-static int spawn_fn(const pmix_app_t apps[], size_t napps,
-                    pmix_spawn_cbfunc_t cbfunc, void *cbdata);
-static int connect_fn(const pmix_proc_t procs[], size_t nprocs,
-                      pmix_op_cbfunc_t cbfunc, void *cbdata);
-static int disconnect_fn(const pmix_proc_t procs[], size_t nprocs,
-                         pmix_op_cbfunc_t cbfunc, void *cbdata);
-static int listener_fn(int listening_sd,
-                       pmix_connection_cbfunc_t cbfunc);
+static pmix_status_t finalized(const char nspace[], int rank, void *server_object,
+                               pmix_op_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t abort_fn(const char nspace[], int rank,
+                              void *server_object,
+                              int status, const char msg[],
+                              pmix_proc_t procs[], size_t nprocs,
+                              pmix_op_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t fencenb_fn(const pmix_proc_t procs[], size_t nprocs,
+                                char *data, size_t ndata,
+                                pmix_modex_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t dmodex_fn(const char nspace[], int rank,
+                               pmix_modex_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t publish_fn(const char nspace[], int rank,
+                                pmix_scope_t scope, pmix_persistence_t persist,
+                                const pmix_info_t info[], size_t ninfo,
+                                pmix_op_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t lookup_fn(pmix_scope_t scope, int wait, char **keys,
+                               pmix_lookup_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t unpublish_fn(pmix_scope_t scope, char **keys,
+                                  pmix_op_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t spawn_fn(const pmix_app_t apps[], size_t napps,
+                              pmix_spawn_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t connect_fn(const pmix_proc_t procs[], size_t nprocs,
+                                pmix_op_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t disconnect_fn(const pmix_proc_t procs[], size_t nprocs,
+                                   pmix_op_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t listener_fn(int listening_sd,
+                                 pmix_connection_cbfunc_t cbfunc);
 
 static pmix_server_module_t mymodule = {
     finalized,
