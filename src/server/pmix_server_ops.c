@@ -793,7 +793,8 @@ pmix_status_t pmix_server_publish(pmix_peer_t *peer,
     return rc;
 }
 
-pmix_status_t pmix_server_lookup(pmix_buffer_t *buf,
+pmix_status_t pmix_server_lookup(pmix_peer_t *peer,
+                                 pmix_buffer_t *buf,
                                  pmix_lookup_cbfunc_t cbfunc, void *cbdata)
 {
     int32_t cnt;
@@ -839,14 +840,15 @@ pmix_status_t pmix_server_lookup(pmix_buffer_t *buf,
         free(sptr);
     }
     /* call the local server */
-    rc = pmix_host_server.lookup(scope, wait, keys, cbfunc, cbdata);
+    rc = pmix_host_server.lookup(peer->info->nptr->nspace, peer->info->rank, scope, wait, keys, cbfunc, cbdata);
 
  cleanup:
     pmix_argv_free(keys);
     return rc;
 }
         
-pmix_status_t pmix_server_unpublish(pmix_buffer_t *buf,
+pmix_status_t pmix_server_unpublish(pmix_peer_t *peer,
+                                    pmix_buffer_t *buf,
                                     pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     int32_t cnt;
@@ -885,7 +887,7 @@ pmix_status_t pmix_server_unpublish(pmix_buffer_t *buf,
         free(sptr);
     }
     /* call the local server */
-    rc = pmix_host_server.unpublish(scope, keys, cbfunc, cbdata);
+    rc = pmix_host_server.unpublish(peer->info->nptr->nspace, peer->info->rank, scope, keys, cbfunc, cbdata);
 
  cleanup:
     pmix_argv_free(keys);

@@ -1758,7 +1758,7 @@ static int server_switchyard(pmix_peer_t *peer, uint32_t tag,
     
     if (PMIX_LOOKUPNB_CMD == cmd) {
         PMIX_PEER_CADDY(cd, peer, tag);
-        if (PMIX_SUCCESS != (rc = pmix_server_lookup(buf, lookup_cbfunc, cd))) {
+        if (PMIX_SUCCESS != (rc = pmix_server_lookup(peer, buf, lookup_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(cd);
         }
@@ -1768,7 +1768,7 @@ static int server_switchyard(pmix_peer_t *peer, uint32_t tag,
         
     if (PMIX_UNPUBLISHNB_CMD == cmd) {
         PMIX_PEER_CADDY(cd, peer, tag);
-        if (PMIX_SUCCESS != (rc = pmix_server_unpublish(buf, op_cbfunc, cd))) {
+        if (PMIX_SUCCESS != (rc = pmix_server_unpublish(peer, buf, op_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(cd);
         }

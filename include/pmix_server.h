@@ -163,14 +163,16 @@ typedef pmix_status_t (*pmix_server_publish_fn_t)(const char nspace[], int rank,
  * indicates whether the server should wait for all data to become available
  * before executing the callback function, or should callback with whatever
  * data is immediately available. */
-typedef pmix_status_t (*pmix_server_lookup_fn_t)(pmix_scope_t scope, int wait, char **keys,
+typedef pmix_status_t (*pmix_server_lookup_fn_t)(const char nspace[], int rank,
+                                                 pmix_scope_t scope, int wait, char **keys,
                                                  pmix_lookup_cbfunc_t cbfunc, void *cbdata);
 
 /* Delete data from the data store. The host server will be passed a NULL-terminated array
  * of string keys along with the scope within which the data is expected to have
  * been published. The callback is to be executed upon completion of the delete
  * procedure */
-typedef pmix_status_t (*pmix_server_unpublish_fn_t)(pmix_scope_t scope, char **keys,
+typedef pmix_status_t (*pmix_server_unpublish_fn_t)(const char nspace[], int rank,
+                                                    pmix_scope_t scope, char **keys,
                                                     pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Spawn a set of applications/processes as per the PMIx API. Note that

@@ -423,7 +423,7 @@ static int server_switchyard(pmix_server_caddy_t *cd,
     
     if (PMIX_LOOKUPNB_CMD == cmd) {
         PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
-        if (PMIX_SUCCESS != (rc = pmix_server_lookup(buf, lookup_cbfunc, cd))) {
+        if (PMIX_SUCCESS != (rc = pmix_server_lookup(cd->peer, buf, lookup_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
             op_cbfunc(rc, cd);
         }
@@ -433,7 +433,7 @@ static int server_switchyard(pmix_server_caddy_t *cd,
         
     if (PMIX_UNPUBLISHNB_CMD == cmd) {
         PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
-        if (PMIX_SUCCESS != (rc = pmix_server_unpublish(buf, op_cbfunc, cd))) {
+        if (PMIX_SUCCESS != (rc = pmix_server_unpublish(cd->peer, buf, op_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
             op_cbfunc(rc, cd);
         }
