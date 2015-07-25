@@ -108,7 +108,7 @@ for branch in $branches; do
     echo "=== Done running script"
 
     # Did the script generate a new tarball?  If so, save it so that we can
-    # spawn the coverity checker on it afterwards.  Only for this for the
+    # spawn the coverity checker on it afterwards.  Only do this for the
     # master (for now).
     latest_snapshot=`cat $outputroot/$branch/latest_snapshot.txt`
     echo "=== Latest snapshot: $latest_snapshot"
@@ -118,7 +118,6 @@ for branch in $branches; do
         echo "$outputroot/$branch/pmix-$latest_snapshot.tar.bz2" >> $pending_coverity
     else
         echo "=== NOT saving output for a Coverity run"
-    fi
     fi
 
     # Failed builds are not removed.  But if a human forgets to come

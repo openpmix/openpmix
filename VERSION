@@ -40,11 +40,11 @@ repo_rev=
 # tarball_version is not empty, the tarball filename will be of the
 # form openmpi-<tarball_version>.tar.*.
 
-tarball_version=
+tarball_version=gitclone
 
 # The date when this release was created
 
-date="Jun 12, 2015"
+date="Unreleased developer copy"
 
 # The shared library version of each of PMIx's public libraries.
 # These versions are maintained in accordance with the "Library
