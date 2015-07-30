@@ -70,8 +70,6 @@ else
             PMIX_TARBALL_VERSION=$PMIX_VERSION
         fi
 
-
-
         # If repo_rev was not set in the VERSION file, then get it now
         if test "$PMIX_REPO_REV" = ""; then
             # See if we can find the "git" command.
