@@ -191,17 +191,6 @@ PMIX_DO_AM_CONDITIONALS
 # Make configure depend on the VERSION file, since it's used in AC_INIT
 AC_SUBST([CONFIGURE_DEPENDENCIES], ['$(top_srcdir)/VERSION'])
 
-# Override/fixup the version numbers set by AC_INIT, since on
-# developer builds, there's no good way to know what the version is
-# before running configure :(.  We only use the base version number
-# for the version set in AC_INIT.  This will always match reality
-# because we add the VERSION file (the only way to change the
-# major.minor.release{greek}) into the configure dependencies.
-
-PACKAGE_VERSION="$PMIX_VERSION"
-PACKAGE_STRING="${PACKAGE_NAME} ${PACKAGE_VERSION}"
-VERSION="${PACKAGE_VERSION}"
-
 . $srcdir/VERSION
 AC_SUBST([libpmix_so_version])
 
