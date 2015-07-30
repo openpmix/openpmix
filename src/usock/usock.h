@@ -88,9 +88,10 @@ typedef struct {
     bool all_registered;         // all local ranks have been defined
     pmix_buffer_t job_info;      // packed copy of the job-level info to be delivered to each proc
     pmix_list_t ranks;           // list of pmix_rank_info_t for connection support of my clients
+    pmix_hash_table_t internal;  // hash_table for storing internal data related to this nspace for my use
     pmix_hash_table_t mylocal;   // hash_table for storing data PUT with local/global scope by my clients
     pmix_hash_table_t myremote;  // hash_table for storing data PUT with remote/global scope by my clients
-    pmix_hash_table_t remote;    // hash_table for storing data PUT with remote/global scope recvd from other server daemons
+    pmix_hash_table_t remote;    // hash_table for storing data PUT with remote/global scope recvd from remote clients via modex
 } pmix_server_nspace_t;
 PMIX_CLASS_DECLARATION(pmix_server_nspace_t);
 

@@ -23,33 +23,15 @@
  * 
  * $HEADER$
  *
- * This file is included at the bottom of pmix_config.h, and is
- * therefore a) after all the #define's that were output from
- * configure, and b) included in most/all files in Open MPI.
- *
- * Since this file is *only* ever included by pmix_config.h, and
- * pmix_config.h already has #ifndef/#endif protection, there is no
- * need to #ifndef/#endif protection here.
  */
 
-#ifndef PMIX_CONFIG_H 
-#error "pmix_config_bottom.h should only be included from pmix_config.h"
-#endif
+#ifndef PMIX_CONFIG_BOTTOM_H 
+#define PMIX_CONFIG_BOTTOM_H
 
 /*
  * If we build a static library, Visual C define the _LIB symbol. In the
  * case of a shared library _USERDLL get defined.
  *
- * OMPI_BUILDING and _LIB define how ompi_config.h
- * handles configuring all of Open MPI's "compatibility" code.  Both
- * constants will always be defined by the end of ompi_config.h.
- *
- * OMPI_BUILDING affects how much compatibility code is included by
- * ompi_config.h.  It will always be 1 or 0.  The user can set the
- * value before including either mpi.h or ompi_config.h and it will be
- * respected.  If ompi_config.h is included before mpi.h, it will
- * default to 1.  If mpi.h is included before ompi_config.h, it will
- * default to 0.
  */
 #ifndef PMIX_BUILDING
 #define PMIX_BUILDING 1
@@ -226,6 +208,7 @@
 #    define __pmix_attribute_destructor__
 #endif
 
+#ifndef PMIX_DECLSPEC
 #  if PMIX_C_HAVE_VISIBILITY
 #    define PMIX_DECLSPEC           __pmix_attribute_visibility__("default")
 #    define PMIX_MODULE_DECLSPEC    __pmix_attribute_visibility__("default")
@@ -233,7 +216,8 @@
 #    define PMIX_DECLSPEC
 #    define PMIX_MODULE_DECLSPEC
 #  endif
-
+#endif
+ 
 /*
  * Do we have <stdint.h>?
  */
@@ -444,3 +428,5 @@ typedef PMIX_PTRDIFF_TYPE ptrdiff_t;
 #undef HAVE_CONFIG_H
 
 #endif /* PMIX_BUILDING */
+#endif /* PMIX_CONFIG_BOTTOM_H */
+

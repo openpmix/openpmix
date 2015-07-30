@@ -143,6 +143,8 @@ static pmix_status_t initialize_server_base(pmix_server_module_t *module)
         pmix_globals.debug_output = pmix_output_open(NULL);
         pmix_output_set_verbosity(pmix_globals.debug_output, debug_level);
     }
+        pmix_globals.debug_output = pmix_output_open(NULL);
+        pmix_output_set_verbosity(pmix_globals.debug_output, 10);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:server init called");
@@ -359,8 +361,12 @@ static void _register_nspace(int sd, short args, void *cbdata)
         nptr = PMIX_NEW(pmix_nspace_t);
         (void)strncpy(nptr->nspace, cd->nspace, PMIX_MAX_NSLEN);
         nptr->server = PMIX_NEW(pmix_server_nspace_t);
-        nptr->server->nlocalprocs = cd->nlocalprocs;
         pmix_list_append(&pmix_server_globals.nspaces, &nptr->super);
+    }
+    nptr->server->nlocalprocs = cd->nlocalprocs;
+    /* see if we have everyone */
+    if (nptr->server->nlocalprocs == pmix_list_get_size(&nptr->server->ranks)) {
+        nptr->server->all_registered = true;
     }
     /* pack the name of the nspace */
     msg = nptr->nspace;
@@ -504,6 +510,7 @@ pmix_status_t PMIx_server_register_nspace(const char nspace[], int nlocalprocs,
         PMIX_INFO_CREATE(cd->info, ninfo);
         for (i=0; i < ninfo; i++) {
             (void)strncpy(cd->info[i].key, info[i].key, PMIX_MAX_KEYLEN);
+            pmix_output(0, "COPY %s", info[i].key);
             pmix_value_xfer(&cd->info[i].value, &info[i].value);
         }
     }
@@ -1030,6 +1037,104 @@ void PMIx_Deregister_errhandler(void)
 {
    pmix_globals.errhandler = NULL;
 }
+
+pmix_status_t PMIx_Store_internal(const char nspace[], int rank,
+                                  const char *key, pmix_value_t *val)
+{
+    pmix_nspace_t *ns, *nsptr;
+    pmix_kval_t *kv;
+    pmix_status_t rc;
+
+    kv = PMIX_NEW(pmix_kval_t);
+    kv->key = strdup((char*)key);
+    kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+    rc = pmix_value_xfer(kv->value, val);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(kv);
+        return rc;
+    }
+
+    NULL == ns;
+    PMIX_LIST_FOREACH(nsptr, &pmix_server_globals.nspaces, pmix_nspace_t) {
+        if (0 == strncmp(nspace, nsptr->nspace, PMIX_MAX_NSLEN)) {
+            ns = nsptr;
+            break;
+        }
+    }
+    if (NULL == ns || NULL == ns->server) {
+        /* shouldn't be possible */
+        PMIX_RELEASE(kv);
+        PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+        return PMIX_ERR_NOT_FOUND;
+    }
+
+    if (PMIX_SUCCESS != (rc = pmix_hash_store(&ns->server->internal, rank, kv))) {
+        PMIX_ERROR_LOG(rc);
+    }
+    return rc;
+}
+
+pmix_status_t PMIx_Get(const char nspace[], int rank,
+                       const char key[], pmix_value_t **val)
+{
+    int rc;
+    char *nm;
+    pmix_nspace_t *ns, *nptr;
+    
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix: get_nb value for proc %s:%d key %s",
+                        (NULL == nspace) ? "NULL" : nspace, rank,
+                        (NULL == key) ? "NULL" : key);
+    
+    /* protect against bozo input */
+    if (NULL == key) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    
+    /* if the nspace is NULL, then the caller is referencing
+     * our own nspace */
+    if (NULL == nspace) {
+        nm = pmix_globals.nspace;
+    } else {
+        nm = (char*)nspace;
+    }
+
+    /* find the nspace object */
+    nptr = NULL;
+    PMIX_LIST_FOREACH(ns, &pmix_server_globals.nspaces, pmix_nspace_t) {
+        if (0 == strcmp(nm, ns->nspace)) {
+            nptr = ns;
+            break;
+        }
+    }
+    if (NULL == nptr || NULL == nptr->server) {
+        /* should never happen */
+        PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+        return PMIX_ERR_NOT_FOUND;
+    }
+
+    /* check our internal data store */
+    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->server->internal, PMIX_RANK_WILDCARD, key, val))) {
+        return PMIX_SUCCESS;
+    }
+    if (PMIX_RANK_WILDCARD == rank) {
+        /* can't be anywhere else */
+        return PMIX_ERR_NOT_FOUND;
+    }
+
+    /* it could still be in the internal table, only stored under its own
+     * rank and not WILDCARD */
+    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->server->internal, rank, key, val))) {
+        return PMIX_SUCCESS;
+    }
+
+    /* if we get here, then we don't know anything about this proc and
+     * have no way to find out about it */
+
+   return PMIX_ERR_NOT_FOUND;
+}
+
 
 #define PMIX_MAX_NODE_PREFIX        50
 

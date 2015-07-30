@@ -325,6 +325,8 @@ static void sncon(pmix_server_nspace_t *p)
     p->all_registered = false;
     PMIX_CONSTRUCT(&p->job_info, pmix_buffer_t);
     PMIX_CONSTRUCT(&p->ranks, pmix_list_t);
+    PMIX_CONSTRUCT(&p->internal, pmix_hash_table_t);
+    pmix_hash_table_init(&p->internal, 16);
     PMIX_CONSTRUCT(&p->mylocal, pmix_hash_table_t);
     pmix_hash_table_init(&p->mylocal, 16);
     PMIX_CONSTRUCT(&p->myremote, pmix_hash_table_t);
@@ -336,6 +338,7 @@ static void sndes(pmix_server_nspace_t *p)
 {
     PMIX_DESTRUCT(&p->job_info);
     PMIX_LIST_DESTRUCT(&p->ranks);
+    PMIX_DESTRUCT(&p->internal);
     PMIX_DESTRUCT(&p->mylocal);
     PMIX_DESTRUCT(&p->myremote);
     PMIX_DESTRUCT(&p->remote);

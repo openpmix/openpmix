@@ -21,7 +21,8 @@ pmix_server_module_t mymodule = {
     unpublish_fn,
     spawn_fn,
     connect_fn,
-    disconnect_fn
+    disconnect_fn,
+    NULL
 };
 
 typedef struct {
@@ -142,7 +143,7 @@ int dmodex_fn(const char nspace[], int rank,
 }
 
 int publish_fn(const char nspace[], int rank,
-               pmix_scope_t scope, pmix_persistence_t persist,
+               pmix_data_range_t scope, pmix_persistence_t persist,
                const pmix_info_t info[], size_t ninfo,
                pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
@@ -175,7 +176,7 @@ int publish_fn(const char nspace[], int rank,
     return PMIX_SUCCESS;
 }
 
-int lookup_fn(pmix_scope_t scope, int wait, char **keys,
+int lookup_fn(pmix_data_range_t scope, int wait, char **keys,
               pmix_lookup_cbfunc_t cbfunc, void *cbdata)
 {
     size_t i, ndata, ret;
@@ -206,7 +207,7 @@ int lookup_fn(pmix_scope_t scope, int wait, char **keys,
     return PMIX_SUCCESS;
 }
 
-int unpublish_fn(pmix_scope_t scope, char **keys,
+int unpublish_fn(pmix_data_range_t scope, char **keys,
                  pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     size_t i, ninfo;

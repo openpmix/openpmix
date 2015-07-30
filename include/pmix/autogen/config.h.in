@@ -8,8 +8,8 @@
 
 /* The configuration file */
 
-#ifndef PMIX_CONFIG_H
-#define PMIX_CONFIG_H
+#ifndef PMIX_PUBLIC_CONFIG_H
+#define PMIX_PUBLIC_CONFIG_H
 
 #if (__GNUC__ > 2 || (__GNUC__ == 2 && __GNUC_MINOR__ >= 95))
 # define __pmix_restrict __restrict
@@ -146,6 +146,7 @@
 # define __pmix_attribute_may_alias
 #endif
 
+#ifndef PMIX_DECLSPEC
 #ifdef PMIX_C_HAVE_VISIBILITY
 # if PMIX_C_HAVE_VISIBILITY
 #  define PMIX_DECLSPEC __attribute__((__visibility__("default")))
@@ -154,6 +155,7 @@
 # endif
 #else
 # define PMIX_DECLSPEC
+#endif
 #endif
 
 /* Defined to 1 on Linux */

@@ -116,8 +116,8 @@ int main(int argc, char **argv)
     (void)asprintf(&tmp, "%s-%d-internal", nspace, rank);
     value.type = PMIX_UINT32;
     value.data.uint32 = 1234;
-    if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_INTERNAL, tmp, &value))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Put internal failed: %d", nspace, rank, rc);
+    if (PMIX_SUCCESS != (rc = PMIx_Store_internal(nspace, rank, tmp, &value))) {
+        pmix_output(0, "Client ns %s rank %d: PMIx_Store_internal failed: %d", nspace, rank, rc);
         goto done;
     }
 

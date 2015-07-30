@@ -26,7 +26,7 @@
 
 EXTRA_DIST += \
 	config/pmix_get_version.sh \
-	config/distscript.sh \
+	config/distscript.csh \
 	config/pmix_check_attributes.m4 \
 	config/pmix_check_broken_qsort.m4 \
 	config/pmix_check_compiler_version.m4 \

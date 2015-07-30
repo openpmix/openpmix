@@ -61,7 +61,7 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
 static void lookup_cbfunc(int status, pmix_pdata_t pdata[], size_t ndata,
                           void *cbdata);
 
-int PMIx_Publish(pmix_scope_t scope,
+int PMIx_Publish(pmix_data_range_t scope,
                  pmix_persistence_t persist,
                  const pmix_info_t info[],
                  size_t ninfo)
@@ -98,7 +98,7 @@ int PMIx_Publish(pmix_scope_t scope,
     return rc;
 }
 
-int PMIx_Publish_nb(pmix_scope_t scope,
+int PMIx_Publish_nb(pmix_data_range_t scope,
                     pmix_persistence_t persist,
                     const pmix_info_t info[],
                     size_t ninfo,
@@ -135,8 +135,8 @@ int PMIx_Publish_nb(pmix_scope_t scope,
         PMIX_RELEASE(msg);
         return rc;
     }
-    /* pack the scope */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_SCOPE))) {
+    /* pack the data range */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_DATA_RANGE))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
@@ -173,7 +173,7 @@ int PMIx_Publish_nb(pmix_scope_t scope,
     return PMIX_SUCCESS;
 }
 
-int PMIx_Lookup(pmix_scope_t scope,
+int PMIx_Lookup(pmix_data_range_t scope,
                 pmix_pdata_t pdata[], size_t ndata)
 {
     int rc;
@@ -220,7 +220,7 @@ int PMIx_Lookup(pmix_scope_t scope,
     return rc;
 }
 
-int PMIx_Lookup_nb(pmix_scope_t scope, int wait, char **keys,
+int PMIx_Lookup_nb(pmix_data_range_t scope, int wait, char **keys,
                    pmix_lookup_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_buffer_t *msg;
@@ -250,7 +250,7 @@ int PMIx_Lookup_nb(pmix_scope_t scope, int wait, char **keys,
         return rc;
     }
     /* pack the scope */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_SCOPE))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_DATA_RANGE))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
@@ -289,7 +289,7 @@ int PMIx_Lookup_nb(pmix_scope_t scope, int wait, char **keys,
     return PMIX_SUCCESS;
 }
 
-int PMIx_Unpublish(pmix_scope_t scope, char **keys)
+int PMIx_Unpublish(pmix_data_range_t scope, char **keys)
 {
     int rc;
     pmix_cb_t *cb;
@@ -317,7 +317,7 @@ int PMIx_Unpublish(pmix_scope_t scope, char **keys)
     return rc;
 }
 
-int PMIx_Unpublish_nb(pmix_scope_t scope, char **keys,
+int PMIx_Unpublish_nb(pmix_data_range_t scope, char **keys,
                       pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_buffer_t *msg;
@@ -342,7 +342,7 @@ int PMIx_Unpublish_nb(pmix_scope_t scope, char **keys,
         return rc;
     }
     /* pack the scope */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_SCOPE))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_DATA_RANGE))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;

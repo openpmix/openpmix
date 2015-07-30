@@ -461,7 +461,7 @@ int PMIx_Abort(int flag, const char msg[],
 
 int PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
 {
-    int rc;
+    pmix_status_t rc;
     pmix_kval_t *kv;
     pmix_nsrec_t *ns;
     
@@ -477,7 +477,12 @@ int PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
     kv = PMIX_NEW(pmix_kval_t);
     kv->key = strdup((char*)key);
     kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
-    pmix_value_xfer(kv->value, val);
+    rc = pmix_value_xfer(kv->value, val);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(kv);
+        return rc;
+    }
     /* put it in our own modex hash table in case something
      * internal to us wants it - our nsrecord is always
      * first on the list */
@@ -497,7 +502,8 @@ int PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
             pmix_client_globals.cache_local = PMIX_NEW(pmix_buffer_t);
         }
         pmix_output_verbose(2, pmix_globals.debug_output,
-                            "pmix: put local data for key %s", key);
+                            "pmix: put %s data for key %s in local cache",
+                            key, (PMIX_GLOBAL == scope) ? "global" : "local");
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(pmix_client_globals.cache_local, kv, 1, PMIX_KVAL))) {
             PMIX_ERROR_LOG(rc);
         }
@@ -508,7 +514,8 @@ int PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
             pmix_client_globals.cache_remote = PMIX_NEW(pmix_buffer_t);
         }
         pmix_output_verbose(2, pmix_globals.debug_output,
-                            "pmix: put remote data for key %s", key);
+                            "pmix: put %s data for key %s in remote cache",
+                            key, (PMIX_GLOBAL == scope) ? "global" : "remote");
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(pmix_client_globals.cache_remote, kv, 1, PMIX_KVAL))) {
             PMIX_ERROR_LOG(rc);
         }
@@ -584,6 +591,42 @@ void PMIx_Register_errhandler(pmix_notification_fn_t err)
 void PMIx_Deregister_errhandler(void)
 {
    pmix_globals.errhandler = NULL;
+}
+
+pmix_status_t PMIx_Store_internal(const char nspace[], int rank,
+                                  const char *key, pmix_value_t *val)
+{
+    pmix_nsrec_t *ns, *nsptr;
+    pmix_kval_t *kv;
+    pmix_status_t rc;
+
+    kv = PMIX_NEW(pmix_kval_t);
+    kv->key = strdup((char*)key);
+    kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+    rc = pmix_value_xfer(kv->value, val);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(kv);
+        return rc;
+    }
+
+    NULL == ns;
+    PMIX_LIST_FOREACH(nsptr, &pmix_client_globals.nspaces, pmix_nsrec_t) {
+        if (0 == strncmp(nspace, nsptr->nspace, PMIX_MAX_NSLEN)) {
+            ns = nsptr;
+            break;
+        }
+    }
+    if (NULL == ns) {
+        /* shouldn't be possible */
+        PMIX_RELEASE(kv);
+        return PMIX_ERR_INIT;
+    }
+
+    if (PMIX_SUCCESS != (rc = pmix_hash_store(&ns->modex, rank, kv))) {
+        PMIX_ERROR_LOG(rc);
+    }
+    return rc;
 }
 
 pmix_status_t PMIx_Resolve_peers(const char *nodename, const char *nspace,
@@ -873,7 +916,8 @@ void pmix_client_process_nspace_blob(const char *nspace, pmix_buffer_t *bptr)
     pmix_nsrec_t *nsptr, *nsptr2;
     pmix_nrec_t *nrec, *nr2;
     char **procs;
-    
+    pmix_value_t *val;
+
     /* cycle across our known nspaces */
     nsptr = NULL;
     PMIX_LIST_FOREACH(nsptr2, &pmix_client_globals.nspaces, pmix_nsrec_t) {
@@ -908,6 +952,15 @@ void pmix_client_process_nspace_blob(const char *nspace, pmix_buffer_t *bptr)
                 PMIX_DESTRUCT(&buf2);
                 return;
             }
+            kp2 = PMIX_NEW(pmix_kval_t);
+            kp2->key = strdup(PMIX_RANK);
+            PMIX_VALUE_CREATE(kp2->value, 1);
+            kp2->value->type = PMIX_INT;
+            kp2->value->data.integer = rank;
+            if (PMIX_SUCCESS != (rc = pmix_hash_store(&nsptr->data, rank, kp2))) {
+                PMIX_ERROR_LOG(rc);
+            }
+            PMIX_RELEASE(kp2); // maintain accounting
             cnt = 1;
             kp2 = PMIX_NEW(pmix_kval_t);
             while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&buf2, kp2, &cnt, PMIX_KVAL))) {

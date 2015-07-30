@@ -496,6 +496,8 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
         }
         PMIX_UNLOAD_BUFFER(&bucket, data, sz);
         PMIX_DESTRUCT(&bucket);
+        pmix_output(0, "CALLING HOST FENCE WITH %s:%d BYTES",
+                    (NULL == data) ? "NULL" : "NON_NULL", (int)sz);
         pmix_host_server.fence_nb(trk->pcs, trk->npcs,
                                   data, sz, trk->modexcbfunc, trk);
     }
@@ -739,7 +741,7 @@ pmix_status_t pmix_server_publish(pmix_peer_t *peer,
 {
     pmix_status_t rc;
     int32_t cnt;
-    pmix_scope_t scope;
+    pmix_data_range_t scope;
     pmix_persistence_t persist;
     size_t i, ninfo;
     pmix_info_t *info = NULL;
@@ -753,7 +755,7 @@ pmix_status_t pmix_server_publish(pmix_peer_t *peer,
     
     /* unpack the scope */
     cnt=1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &scope, &cnt, PMIX_SCOPE))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &scope, &cnt, PMIX_DATA_RANGE))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -800,7 +802,7 @@ pmix_status_t pmix_server_lookup(pmix_peer_t *peer,
     int32_t cnt;
     pmix_status_t rc;
     int wait;
-    pmix_scope_t scope;
+    pmix_data_range_t scope;
     size_t nkeys, i;
     char **keys=NULL, *sptr;
     
@@ -813,7 +815,7 @@ pmix_status_t pmix_server_lookup(pmix_peer_t *peer,
     
     /* unpack the scope */
     cnt=1;
-    if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &scope, &cnt, PMIX_SCOPE))) {
+    if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &scope, &cnt, PMIX_DATA_RANGE))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -853,7 +855,7 @@ pmix_status_t pmix_server_unpublish(pmix_peer_t *peer,
 {
     int32_t cnt;
     pmix_status_t rc;
-    pmix_scope_t scope;
+    pmix_data_range_t scope;
     size_t i, nkeys;
     char **keys=NULL, *sptr;
     
@@ -866,7 +868,7 @@ pmix_status_t pmix_server_unpublish(pmix_peer_t *peer,
     
     /* unpack the scope */
     cnt=1;
-    if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &scope, &cnt, PMIX_SCOPE))) {
+    if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &scope, &cnt, PMIX_DATA_RANGE))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }

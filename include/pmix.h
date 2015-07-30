@@ -178,20 +178,20 @@ pmix_status_t PMIx_Get_nb(const char nspace[], int rank,
                           const char key[],
                           pmix_value_cbfunc_t cbfunc, void *cbdata);
 
-/* Publish the given data to the "universal" nspace
- * for lookup by others subject to the provided scope.
+/* Publish the given data
+ * for lookup by others subject to the provided data range.
  * Note that the keys must be unique within the specified
- * scope or else an error will be returned (first published
+ * data range or else an error will be returned (first published
  * wins). Attempts to access the data by procs outside of
- * the provided scope will be rejected.
+ * the provided data range will be rejected.
  *
  * Note: Some host environments may support user/group level
- * access controls on the information in addition to the scope.
+ * access controls on the information in addition to the data range.
  * These can be specified in the info array using the appropriately
  * defined keys.
  *
  * The persistence parameter instructs the server as to how long
- * the data is to be retained, within the context of the scope.
+ * the data is to be retained, within the context of the range.
  * For example, data published within _PMIX_NAMESPACE_ will be
  * deleted along with the namespace regardless of the persistence.
  * However, data published within PMIX_USER would be retained if
@@ -202,19 +202,20 @@ pmix_status_t PMIx_Get_nb(const char nspace[], int rank,
  * data has been posted and is available. The non-blocking form will
  * return immediately, executing the callback when the server confirms
  * availability of the data */
-pmix_status_t PMIx_Publish(pmix_scope_t scope,
+pmix_status_t PMIx_Publish(pmix_data_range_t scope,
                            pmix_persistence_t persist,
                            const pmix_info_t info[],
                            size_t ninfo);
-pmix_status_t PMIx_Publish_nb(pmix_scope_t scope,
+pmix_status_t PMIx_Publish_nb(pmix_data_range_t scope,
                               pmix_persistence_t persist,
                               const pmix_info_t info[],
                               size_t ninfo,
                               pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Lookup information published by another process within the
- * specified scope. A scope of _PMIX_SCOPE_UNDEF_ requests that
- * the search be conducted across _all_ namespaces. The "data"
+ * specified range. A rabge of _PMIX_DATA_RANGE_UNDEF_ requests that
+ * the search be conducted across _all_ namespaces accessible by this
+ * user. The "data"
  * parameter consists of an array of pmix_pdata_t struct with the
  * keys specifying the requested information. Data will be returned
  * for each key in the associated info struct - any key that cannot
@@ -231,7 +232,7 @@ pmix_status_t PMIx_Publish_nb(pmix_scope_t scope,
  * and return any found items. Thus, the caller is responsible for
  * ensuring that data is published prior to executing a lookup, or
  * for retrying until the requested data is found */
-pmix_status_t PMIx_Lookup(pmix_scope_t scope,
+pmix_status_t PMIx_Lookup(pmix_data_range_t scope,
                           pmix_pdata_t data[], size_t ndata);
 
 /* Non-blocking form of the _PMIx_Lookup_ function. Data for
@@ -241,22 +242,22 @@ pmix_status_t PMIx_Lookup(pmix_scope_t scope,
  * wait for _all_ requested data before executing the callback
  * (_true_), or to callback once the server returns whatever
  * data is immediately available (_false_) */
-pmix_status_t PMIx_Lookup_nb(pmix_scope_t scope, int wait, char **keys,
+pmix_status_t PMIx_Lookup_nb(pmix_data_range_t scope, int wait, char **keys,
                              pmix_lookup_cbfunc_t cbfunc, void *cbdata);
 
 /* Unpublish data posted by this process using the given keys
- * within the specified scope. The function will block until
+ * within the specified data range. The function will block until
  * the data has been removed by the server. A value of _NULL_
  * for the keys parameter instructs the server to remove
- * _all_ data published by this process within the given scope */
-pmix_status_t PMIx_Unpublish(pmix_scope_t scope, char **keys);
+ * _all_ data published by this process within the given range */
+pmix_status_t PMIx_Unpublish(pmix_data_range_t scope, char **keys);
 
 /* Non-blocking form of the _PMIx_Unpublish_ function. The
  * callback function will be executed once the server confirms
  * removal of the specified data. A value of _NULL_
  * for the keys parameter instructs the server to remove
- * _all_ data published by this process within the given scope  */
-pmix_status_t PMIx_Unpublish_nb(pmix_scope_t scope, char **keys,
+ * _all_ data published by this process within the given range  */
+pmix_status_t PMIx_Unpublish_nb(pmix_data_range_t scope, char **keys,
                                 pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Spawn a new job. The spawned applications are automatically

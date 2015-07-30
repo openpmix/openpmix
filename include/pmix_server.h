@@ -141,38 +141,38 @@ typedef pmix_status_t (*pmix_server_dmodex_req_fn_t)(const char nspace[], int ra
 
 /* Publish data per the PMIx API specification. The callback is to be executed
  * upon completion of the operation. The host server is not required to guarantee
- * support for the requested scope - i.e., the server does not need to return an
- * error if the data store doesn't support scope-based isolation. However, the
+ * support for the requested range - i.e., the server does not need to return an
+ * error if the data store doesn't support range-based isolation. However, the
  * server must return an error (a) if the key is duplicative within the storage
- * scope, and (b) if the server does not allow overwriting of published info by
+ * range, and (b) if the server does not allow overwriting of published info by
  * the original publisher - it is left to the discretion of the host server to
  * allow info-key-based flags to modify this behavior. The persist flag indicates
  * how long the server should retain the data. The nspace/rank of the publishing
  * process is also provided and is expected to be returned on any subsequent
  * lookup request */
 typedef pmix_status_t (*pmix_server_publish_fn_t)(const char nspace[], int rank,
-                                                  pmix_scope_t scope, pmix_persistence_t persist,
+                                                  pmix_data_range_t scope, pmix_persistence_t persist,
                                                   const pmix_info_t info[], size_t ninfo,
                                                   pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Lookup published data. The host server will be passed a NULL-terminated array
- * of string keys along with the scope within which the data is expected to have
+ * of string keys along with the range within which the data is expected to have
  * been published. The host server is not required to guarantee support for all
- * PMIx-defined scopes, but should only search data stores within the specified
- * scope within the context of the corresponding "publish" API. The wait flag
+ * PMIx-defined ranges, but should only search data stores within the specified
+ * range within the context of the corresponding "publish" API. The wait flag
  * indicates whether the server should wait for all data to become available
  * before executing the callback function, or should callback with whatever
  * data is immediately available. */
 typedef pmix_status_t (*pmix_server_lookup_fn_t)(const char nspace[], int rank,
-                                                 pmix_scope_t scope, int wait, char **keys,
+                                                 pmix_data_range_t scope, int wait, char **keys,
                                                  pmix_lookup_cbfunc_t cbfunc, void *cbdata);
 
 /* Delete data from the data store. The host server will be passed a NULL-terminated array
- * of string keys along with the scope within which the data is expected to have
+ * of string keys along with the range within which the data is expected to have
  * been published. The callback is to be executed upon completion of the delete
  * procedure */
 typedef pmix_status_t (*pmix_server_unpublish_fn_t)(const char nspace[], int rank,
-                                                    pmix_scope_t scope, char **keys,
+                                                    pmix_data_range_t scope, char **keys,
                                                     pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Spawn a set of applications/processes as per the PMIx API. Note that

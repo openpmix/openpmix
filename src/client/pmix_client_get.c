@@ -152,11 +152,18 @@ int PMIx_Get_nb(const char *nspace, int rank,
         }
     }
     if (NULL == nptr) {
-        /* never heard of it - this is an error as we do not
-         * support retrieval of data from namespaces with which
-         * we are not connected */
-        return PMIX_ERR_NOT_FOUND;
+        /* we are asking for info about a new nspace - give us
+         * a chance to learn about it from the server. If the
+         * server has never heard of it, the server will return
+         * an error */
+         nptr = PMIX_NEW(pmix_nsrec_t);
+         (void)strncpy(nptr->nspace, nm, PMIX_MAX_NSLEN);
+         pmix_list_append(&pmix_client_globals.nspaces, &nptr->super);
+         /* there is no point in looking for data in this nspace
+          * object, so let's just go generate the request */
+         goto request;
     }
+
     /* the requested data could be in the job-data table, so let's
      * just check there first.  */
     if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->data, PMIX_RANK_WILDCARD, key, &val))) {
@@ -185,7 +192,33 @@ int PMIx_Get_nb(const char *nspace, int rank,
         /* can't be anywhere else */
         return PMIX_ERR_NOT_FOUND;
     }
-    
+
+    /* it could still be in the job-data table, only stored under its own
+     * rank and not WILDCARD - e.g., this is true of data returned about
+     * ourselves during startup */
+    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->data, rank, key, &val))) {
+        /* found it - return it via appropriate channel */
+        cb = PMIX_NEW(pmix_cb_t);
+        (void)strncpy(cb->nspace, nm, PMIX_MAX_NSLEN);
+        cb->rank = rank;
+        cb->key = strdup(key);
+        cb->value_cbfunc = cbfunc;
+        cb->cbdata = cbdata;
+        /* pack the return data so the unpack routine can get it */
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&cb->data, val, 1, PMIX_VALUE))) {
+            PMIX_ERROR_LOG(rc);
+        }
+        /* cleanup */
+        if (NULL != val) {
+            PMIX_VALUE_RELEASE(val);
+        }
+        /* activate the event */
+        event_assign(&(cb->ev), pmix_globals.evbase, -1,
+                     EV_WRITE, getnb_shortcut, cb);
+        event_active(&(cb->ev), EV_WRITE, 1);
+        return PMIX_SUCCESS;
+    }
+
     /* not finding it is not an error - it could be in the
      * modex hash table, so check it */
     if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->modex, rank, key, &val))) {
@@ -220,6 +253,7 @@ int PMIx_Get_nb(const char *nspace, int rank,
         return rc;
     }
 
+  request:
     /* if we got here, then we don't have the data for this proc - see if
      * we already have a request in place with the server for data from
      * this nspace:rank. If we do, then no need to ask again as the
