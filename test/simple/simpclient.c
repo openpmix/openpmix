@@ -104,8 +104,8 @@ int main(int argc, char **argv)
     
     /* check the returned data */
     for (n=0; n < nprocs; n++) {
-        (void)asprintf(&tmp, "%s-%d-local", nspace, rank);
-        if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, rank, tmp, &val))) {
+        (void)asprintf(&tmp, "%s-%d-local", nspace, n);
+        if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, n, tmp, &val))) {
             pmix_output(0, "Client ns %s rank %d: PMIx_Get %s failed: %d", nspace, rank, tmp, rc);
             goto done;
         }
@@ -124,8 +124,9 @@ int main(int argc, char **argv)
         pmix_output(0, "Client ns %s rank %d: PMIx_Get %s returned correct", nspace, rank, tmp);
         PMIX_VALUE_RELEASE(val);
         free(tmp);
-        (void)asprintf(&tmp, "%s-%d-remote", nspace, rank);
-        if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, rank, tmp, &val))) {
+
+        (void)asprintf(&tmp, "%s-%d-remote", nspace, n);
+        if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, n, tmp, &val))) {
             pmix_output(0, "Client ns %s rank %d: PMIx_Get %s failed: %d", nspace, rank, tmp, rc);
             goto done;
         }
