@@ -1055,7 +1055,7 @@ pmix_status_t PMIx_Store_internal(const char nspace[], int rank,
         return rc;
     }
 
-    NULL == ns;
+    ns = NULL;
     PMIX_LIST_FOREACH(nsptr, &pmix_server_globals.nspaces, pmix_nspace_t) {
         if (0 == strncmp(nspace, nsptr->nspace, PMIX_MAX_NSLEN)) {
             ns = nsptr;
