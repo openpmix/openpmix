@@ -168,12 +168,7 @@ static int unpack_return(pmix_buffer_t *data)
 {
     int rc, ret;
     int32_t cnt;
-    pmix_buffer_t *bptr, *bpscope;
-    pmix_kval_t *kp;
-    char *nspace;
-    int rank;
-    pmix_nsrec_t *ns, *nptr;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "client:unpack fence called");
 
@@ -185,77 +180,7 @@ static int unpack_return(pmix_buffer_t *data)
     }
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "client:unpack fence received status %d", ret);
-    if (PMIX_SUCCESS != ret) {
-        return ret;
-    }
-    
-    cnt = 1;
-    /* if data was returned, unpack and store it */
-    while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(data, &bptr, &cnt, PMIX_BUFFER))) {
-        /* unpack the nspace */
-        cnt = 1;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(bptr, &nspace, &cnt, PMIX_STRING))) {
-            PMIX_ERROR_LOG(rc);
-            return rc;
-        }
-        pmix_output_verbose(2, pmix_globals.debug_output,
-                            "client:unpack fence unpacked blob for npsace %s", nspace);
-        /* find the nspace object */
-        nptr = NULL;
-        PMIX_LIST_FOREACH(ns, &pmix_client_globals.nspaces, pmix_nsrec_t) {
-            if (0 == strcmp(nspace, ns->nspace)) {
-                nptr = ns;
-                break;
-            }
-        }
-        if (NULL == nptr) {
-            /* new nspace - setup a record for it */
-            nptr = PMIX_NEW(pmix_nsrec_t);
-            (void)strncpy(nptr->nspace, nspace, PMIX_MAX_NSLEN);
-            pmix_list_append(&pmix_client_globals.nspaces, &nptr->super);
-        }
-        /* unpack the rank */
-        cnt = 1;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(bptr, &rank, &cnt, PMIX_INT))) {
-            PMIX_ERROR_LOG(rc);
-            return rc;
-        }
-        pmix_output_verbose(2, pmix_globals.debug_output,
-                            "client:unpack fence received blob for rank %d", rank);
-        /* there may be multiple blobs for this rank, each from a different scope */
-        cnt = 1;
-        while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bptr, &bpscope, &cnt, PMIX_BUFFER))) {
-            /* unpack each value they provided */
-            cnt = 1;
-            kp = PMIX_NEW(pmix_kval_t);
-            while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bpscope, kp, &cnt, PMIX_KVAL))) {
-                pmix_output_verbose(2, pmix_globals.debug_output,
-                                    "client:unpack fence unpacked key %s", kp->key);
-                if (PMIX_SUCCESS != (rc = pmix_hash_store(&nptr->modex, rank, kp))) {
-                    PMIX_ERROR_LOG(rc);
-                }
-                PMIX_RELEASE(kp);  // maintain acctg
-                cnt = 1;
-                kp = PMIX_NEW(pmix_kval_t);
-            }
-            PMIX_RELEASE(kp);  // maintain acctg
-            cnt = 1;
-        }  // while bpscope
-        if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
-            PMIX_ERROR_LOG(rc);
-        }
-        PMIX_RELEASE(bpscope);
-        cnt = 1;
-        PMIX_RELEASE(bptr);
-        cnt = 1;
-    } // while bptr
-    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
-        PMIX_ERROR_LOG(rc);
-    } else {
-        rc = PMIX_SUCCESS;
-    }
-
-    return rc;
+    return ret;
 }
 
 static int pack_fence(pmix_buffer_t *msg,
