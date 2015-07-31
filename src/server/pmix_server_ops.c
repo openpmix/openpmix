@@ -698,7 +698,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     /* first, let's check to see if this data already has been
      * obtained as a result of a prior direct modex request from
      * another local peer */
-    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&info->nptr->server->remote, info->rank, "modex", &val)) &&
+    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->server->remote, rank, "modex", &val)) &&
         NULL != val) {
         /* yes, we have it - pass it down */
         PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
