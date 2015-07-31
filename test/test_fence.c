@@ -462,13 +462,26 @@ int test_job_fence(test_params params, char *my_nspace, int my_rank)
                     TEST_ERROR(("%s:%d: PMIx_Get failed: %d", my_nspace, my_rank, rc));
                     return PMIX_ERROR;
                 }
-            }
 
-            snprintf(sval, 50, "%s:%d", my_nspace, i+params.base_rank);
-            GET(string, sval, my_nspace, i+params.base_rank, 101, j, 0, 1);
-            if (PMIX_SUCCESS != rc) {
-                TEST_ERROR(("%s:%d: PMIx_Get failed (%d)", my_nspace, my_rank, rc));
-                return PMIX_ERROR;
+                snprintf(sval, 50, "%s:%d", my_nspace, i+params.base_rank);
+                GET(string, sval, my_nspace, i+params.base_rank, 101, j, 0, 1);
+                if (PMIX_SUCCESS == rc && (i+params.base_rank) != my_rank ) {
+                    TEST_ERROR(("%s:%d: PMIx_Get of remote key on local proc", my_nspace, my_rank));
+                    return PMIX_ERROR;
+                }
+            } else {
+                GET(int, (12340+j), my_nspace, i+params.base_rank, 100, j, 0, 0);
+                if (PMIX_SUCCESS == rc && (i+params.base_rank) != my_rank) {
+                    TEST_ERROR(("%s:%d: PMIx_Get of local key on the remote proc", my_nspace, my_rank));
+                    return PMIX_ERROR;
+                }
+
+                snprintf(sval, 50, "%s:%d", my_nspace, i+params.base_rank);
+                GET(string, sval, my_nspace, i+params.base_rank, 101, j, 0, 1);
+                if (PMIX_SUCCESS != rc) {
+                    TEST_ERROR(("%s:%d: PMIx_Get failed (%d)", my_nspace, my_rank, rc));
+                    return PMIX_ERROR;
+                }
             }
 
             GET(float, (float)12.15 + j, my_nspace, i+params.base_rank, 102, j, 0, 0);
