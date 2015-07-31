@@ -161,7 +161,7 @@ int main(int argc, char **argv)
     
     /* get the committed data - ask for someone who doesn't exist as well */
     num_gets = 0;
-    for (n=0; n <= nprocs; n++) {
+    for (n=0; n < nprocs; n++) {
         (void)asprintf(&tmp, "%s-%d-local", nspace, n);
         if (PMIX_SUCCESS != (rc = PMIx_Get_nb(nspace, n, tmp,
                                               valcbfunc, tmp))) {
