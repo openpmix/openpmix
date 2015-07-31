@@ -119,8 +119,8 @@ static void add_noise(char *noise_param, char *my_nspace, int my_rank)
     }                                                                                                               \
     if (PMIX_SUCCESS == rc) {                                                                                       \
         TEST_VERBOSE(("%s:%d: GET OF %s from %s:%d SUCCEEDED", my_nspace, my_rank, key, ns, rank));                 \
+        PMIX_VALUE_RELEASE(val);                                                                                    \
     }                                                                                                               \
-    PMIX_VALUE_RELEASE(val);                                                                                        \
 } while(0);
 
 #define FENCE(blocking, data_ex, pcs, nprocs) do {                      \
