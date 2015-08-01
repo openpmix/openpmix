@@ -176,7 +176,8 @@ int publish_fn(const char nspace[], int rank,
     return PMIX_SUCCESS;
 }
 
-int lookup_fn(pmix_data_range_t scope, int wait, char **keys,
+int lookup_fn(const char nspace[], int rank,
+              pmix_data_range_t scope, int wait, char **keys,
               pmix_lookup_cbfunc_t cbfunc, void *cbdata)
 {
     size_t i, ndata, ret;
@@ -207,7 +208,8 @@ int lookup_fn(pmix_data_range_t scope, int wait, char **keys,
     return PMIX_SUCCESS;
 }
 
-int unpublish_fn(pmix_data_range_t scope, char **keys,
+int unpublish_fn(const char nspace[], int rank,
+                 pmix_data_range_t scope, char **keys,
                  pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     size_t i, ninfo;

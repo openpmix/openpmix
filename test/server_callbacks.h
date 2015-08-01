@@ -29,9 +29,11 @@ pmix_status_t publish_fn(const char nspace[], int rank,
                          pmix_data_range_t scope, pmix_persistence_t persist,
                          const pmix_info_t info[], size_t ninfo,
                          pmix_op_cbfunc_t cbfunc, void *cbdata);
-pmix_status_t lookup_fn(pmix_data_range_t scope, int wait, char **keys,
+pmix_status_t lookup_fn(const char nspace[], int rank,
+                        pmix_data_range_t scope, int wait, char **keys,
                         pmix_lookup_cbfunc_t cbfunc, void *cbdata);
-pmix_status_t unpublish_fn(pmix_data_range_t scope, char **keys,
+pmix_status_t unpublish_fn(const char nspace[], int rank,
+                           pmix_data_range_t scope, char **keys,
                            pmix_op_cbfunc_t cbfunc, void *cbdata);
 pmix_status_t spawn_fn(const pmix_app_t apps[], size_t napps,
                        pmix_spawn_cbfunc_t cbfunc, void *cbdata);
