@@ -549,27 +549,45 @@ static void _execute_collective(int sd, short args, void *cbdata)
          * distribution as local data will be added when we send
          * the result to our local clients */
         PMIX_CONSTRUCT(&bucket, pmix_buffer_t);
-        if (trk->collect_data) {
+
+        assert( PMIX_COLLECT_MAX < UCHAR_MAX );
+        unsigned char tmp = (unsigned char)trk->collect_type;
+        pmix_bfrop.pack(&bucket, &tmp, 1, PMIX_BYTE);
+
+        if (PMIX_COLLECT_YES == trk->collect_type) {
+            pmix_buffer_t databuf;
+            PMIX_CONSTRUCT(&databuf, pmix_buffer_t);
+            pmix_output_verbose(2, pmix_globals.debug_output,
+                                "fence - assembling data");
             PMIX_LIST_FOREACH(info, &trk->ranks, pmix_rank_info_t) {
-                PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+                pmix_buffer_t rankbuf;
+                PMIX_CONSTRUCT(&rankbuf, pmix_buffer_t);
                 /* get any remote contribution - note that there
                  * may not be a contribution */
                 if (PMIX_SUCCESS == pmix_hash_fetch(&info->nptr->server->myremote, info->rank, "modex", &val) &&
                     NULL != val) {
+                    /* pack the proc so we know the source */
+                    char *foobar = info->nptr->nspace;
+                    pmix_bfrop.pack(&rankbuf, &foobar, 1, PMIX_STRING);
+                    pmix_bfrop.pack(&rankbuf, &info->rank, 1, PMIX_INT);
                     PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
                     PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
                     pmix_buffer_t *pxfer = &xfer;
-                    pmix_bfrop.pack(&pbkt, &pxfer, 1, PMIX_BUFFER);
+                    pmix_bfrop.pack(&rankbuf, &pxfer, 1, PMIX_BUFFER);
                     xfer.base_ptr = NULL;
                     xfer.bytes_used = 0;
                     PMIX_DESTRUCT(&xfer);
                     PMIX_VALUE_RELEASE(val);
+                    /* now pack this proc's contribution into the bucket */
+                    pmix_buffer_t *pdatabuf = &rankbuf;
+                    pmix_bfrop.pack(&databuf, &pdatabuf, 1, PMIX_BUFFER);
                 }
-                /* now pack this proc's contribution into the bucket */
-                pmix_buffer_t *ppbkt = &pbkt;
-                pmix_bfrop.pack(&bucket, &ppbkt, 1, PMIX_BUFFER);
-                PMIX_DESTRUCT(&pbkt);
+                PMIX_DESTRUCT(&rankbuf);
             }
+            // TODO: we have multiple data movings while only one is actually need
+            pmix_buffer_t *pbkt = &databuf;
+            pmix_bfrop.pack(&bucket, &pbkt, 1, PMIX_BUFFER);
+            PMIX_DESTRUCT(&databuf);
         }
         PMIX_UNLOAD_BUFFER(&bucket, data, sz);
         PMIX_DESTRUCT(&bucket);
@@ -1579,38 +1597,71 @@ static void modex_cbfunc(int status, const char *data,
                          size_t ndata, void *cbdata)
 {
     pmix_server_trkr_t *tracker = (pmix_server_trkr_t*)cbdata;
-    pmix_buffer_t xfer, *bptr, *bpscope, *reply;
+    pmix_buffer_t xfer, *bptr, *databuf, *bpscope, *reply;
     pmix_nspace_t *nptr, *ns;
     pmix_server_caddy_t *cd;
     pmix_kval_t *kp;
     char *nspace;
     int rank, rc;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "server:modex_cbfunc called with %d bytes", (int)ndata);
 
-    if (NULL == tracker) {
-        /* nothing to do */
-        return;
-    }
-    
     /* pass the blobs being returned */
     PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
     PMIX_LOAD_BUFFER(&xfer, data, ndata);
 
-    /* if collect_data is set, then find all local procs involved in
-     * the modex, and add their "local" modex data as well - it
-     * would not have been included when we sent this out */
-    if (tracker->collect_data) {
-        int32_t cnt = 1;
-        /* if data was returned, unpack and store it */
-        while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&xfer, &bptr, &cnt, PMIX_BUFFER))) {
+    if (NULL == tracker) {
+        /* nothing to do */
+        PMIX_DESTRUCT(&xfer);
+        return;
+    }
+
+    if( PMIX_COLLECT_INVALID == tracker->collect_type ){
+        status = PMIX_ERR_INVALID_ARG;
+        goto finish_collective;
+    }
+
+    {
+        int delay = 1;
+        while( delay ){
+            sleep(1);
+        }
+    }
+
+    int32_t cnt = 1;
+    char byte;
+    /* if data was returned, unpack and store it */
+    while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&xfer, &byte, &cnt, PMIX_BYTE))) {
+        pmix_collect_t ctype = (pmix_collect_t)byte;
+
+        // Check that this blob was accumulated with the same data collection setting
+        if( ctype != tracker->collect_type ){
+            status = PMIX_ERR_INVALID_ARG;
+            goto finish_collective;
+        }
+
+        // Skip the rest of the iteration if there is no data
+        if( PMIX_COLLECT_YES != tracker->collect_type){
+            continue;
+        }
+
+        // Extract the node-wise blob containing rank data
+        cnt = 1;
+        if( PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&xfer, &databuf, &cnt, PMIX_BUFFER) ) ){
+            status = PMIX_ERR_DATA_VALUE_NOT_FOUND;
+            goto finish_collective;
+        }
+
+        // Loop over rank blobs
+        cnt = 1;
+        while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(databuf, &bptr, &cnt, PMIX_BUFFER))) {
             /* unpack the nspace */
             cnt = 1;
             if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(bptr, &nspace, &cnt, PMIX_STRING))) {
                 PMIX_ERROR_LOG(rc);
                 status = rc;
-                break;
+                goto finish_collective;
             }
             pmix_output_verbose(2, pmix_globals.debug_output,
                                 "server:modex_cbfunc unpacked blob for npsace %s", nspace);
@@ -1636,7 +1687,7 @@ static void modex_cbfunc(int status, const char *data,
                  * computation or this is our task?
                  */
                 status = PMIX_ERR_INVALID_NAMESPACE;
-                break;
+                goto finish_collective;
             }
 
             /* unpack the rank */
@@ -1644,7 +1695,7 @@ static void modex_cbfunc(int status, const char *data,
             if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(bptr, &rank, &cnt, PMIX_INT))) {
                 PMIX_ERROR_LOG(rc);
                 status = rc;
-                break;
+                goto finish_collective;
             }
             pmix_output_verbose(2, pmix_globals.debug_output,
                                 "client:unpack fence received blob for rank %d", rank);
@@ -1671,19 +1722,28 @@ static void modex_cbfunc(int status, const char *data,
                  * the server is in inconsistent state. Should we rely on the client to abort
                  * computation or this is our task?
                  */
-                break;
+                goto finish_collective;
             }
             PMIX_RELEASE(bpscope);
             PMIX_RELEASE(bptr);
             cnt = 1;
-        } // while bptr
+        }
         if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
             status = rc;
+            goto finish_collective;
         } else {
             rc = PMIX_SUCCESS;
         }
+        cnt = 1;
+    } // while bptr
+
+    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+        status = rc;
+    } else {
+        rc = PMIX_SUCCESS;
     }
 
+finish_collective:
     PMIX_DESTRUCT(&xfer);
 
     /* setup the reply, starting with the returned status */
