@@ -1622,13 +1622,6 @@ static void modex_cbfunc(int status, const char *data,
         goto finish_collective;
     }
 
-    {
-        int delay = 1;
-        while( delay ){
-            sleep(1);
-        }
-    }
-
     int32_t cnt = 1;
     char byte;
     /* if data was returned, unpack and store it */
