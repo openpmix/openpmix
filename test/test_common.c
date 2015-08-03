@@ -120,6 +120,8 @@ void parse_cmd(int argc, char **argv, test_params *params)
             params->use_same_keys = 1;
         } else if (0 == strcmp(argv[i], "--job-fence")) {
             params->test_job_fence = 1;
+        } else if (0 == strcmp(argv[i], "--collect-corrupt")) {
+            params->collect_bad = 1;
         } else if (0 == strcmp(argv[i], "--collect") || 0 == strcmp(argv[i], "-c")) {
             params->collect = 1;
         } else if (0 == strcmp(argv[i], "--non-blocking") || 0 == strcmp(argv[i], "-nb")) {
@@ -170,6 +172,10 @@ void parse_cmd(int argc, char **argv, test_params *params)
     }
     if (NULL == params->binary) {
         params->binary = strdup("pmix_client");
+    }
+
+    if( params->collect_bad ){
+        params->collect = params->rank % 2;
     }
 }
 

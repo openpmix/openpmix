@@ -96,6 +96,7 @@ typedef struct {
     int rank;
     int early_fail;
     int test_job_fence;
+    int collect_bad;
     int use_same_keys;
     int collect;
     int nonblocking;
@@ -122,6 +123,7 @@ typedef struct {
     params.test_job_fence = 0;        \
     params.use_same_keys = 0;         \
     params.collect = 0;               \
+    params.collect_bad = 0;           \
     params.nonblocking = 0;           \
     params.test_publish = 0;          \
     params.test_spawn = 0;            \

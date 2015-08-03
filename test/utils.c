@@ -123,6 +123,9 @@ void set_client_argv(test_params *params, char ***argv)
         if (params->collect) {
             pmix_argv_append_nosize(argv, "-c");
         }
+        if (params->collect_bad) {
+            pmix_argv_append_nosize(argv, "--collect-corrupt");
+        }
     }
     if (NULL != params->noise) {
         pmix_argv_append_nosize(argv, "--noise");

@@ -252,7 +252,7 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
     return rc;
 }
 
-/* get an object for tracking LOCAL participation in a collective
+/* get an existing object for tracking LOCAL participation in a collective
  * operation such as "fence". The only way this function can be
  * called is if at least one local client process is participating
  * in the operation. Thus, we know that at least one process is
@@ -269,7 +269,7 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
  * nprocs - the number of procs in the array
  */
 static pmix_server_trkr_t* get_tracker(pmix_proc_t *procs,
-                                       size_t nprocs)
+                                       size_t nprocs, pmix_cmd_t type)
 {
     pmix_server_trkr_t *trk;
     pmix_rank_info_t *iptr, *info;
@@ -293,7 +293,13 @@ static pmix_server_trkr_t* get_tracker(pmix_proc_t *procs,
      * involve only a single proc with WILDCARD rank - so this
      * shouldn't take long */
     PMIX_LIST_FOREACH(trk, &pmix_server_globals.collectives, pmix_server_trkr_t) {
+        /* Collective operation if unique identified by
+         * the set of participating processes and the type of collective
+         */
         if (nprocs != trk->npcs) {
+            continue;
+        }
+        if( type != trk->type ){
             continue;
         }
         match = true;
@@ -308,16 +314,56 @@ static pmix_server_trkr_t* get_tracker(pmix_proc_t *procs,
             return trk;
         }
     }
+    /* No tracker was found */
+    return NULL;
+}
+
+/* create a new object for tracking LOCAL participation in a collective
+ * operation such as "fence". The only way this function can be
+ * called is if at least one local client process is participating
+ * in the operation. Thus, we know that at least one process is
+ * involved AND has called the collective operation.
+ *
+ * NOTE: the host server *cannot* call us with a collective operation
+ * as there is no mechanism by which it can do so. We call the host
+ * server only after all participating local procs have called us.
+ * So it is impossible for us to be called with a collective without
+ * us already knowing about all local participants.
+ *
+ * procs - the array of procs participating in the collective,
+ *         regardless of location
+ * nprocs - the number of procs in the array
+ */
+static pmix_server_trkr_t* new_tracker(pmix_proc_t *procs,
+                                       size_t nprocs, pmix_cmd_t type)
+{
+    pmix_server_trkr_t *trk;
+    pmix_rank_info_t *iptr, *info;
+    size_t i;
+    bool match, all_def;
+    pmix_nspace_t *nptr, *ns;
+
+    pmix_output_verbose(5, pmix_globals.debug_output,
+                        "get_tracker called with %d procs", (int)nprocs);
+
+    /* bozo check - should never happen outside of programmer error */
+    if (NULL == procs) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        return NULL;
+    }
+
+    assert( NULL == get_tracker(procs, nprocs, type) );
 
     pmix_output_verbose(5, pmix_globals.debug_output,
                         "adding new tracker with %d procs", (int)nprocs);
-        
+
     /* get here if this tracker is new - create it */
     trk = PMIX_NEW(pmix_server_trkr_t);
-    
+
     /* copy the procs */
     PMIX_PROC_CREATE(trk->pcs, nprocs);
     trk->npcs = nprocs;
+    trk->type = type;
 
     all_def = true;
     for (i=0; i < nprocs; i++) {
@@ -389,7 +435,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
     pmix_server_trkr_t *trk;
     char *data = NULL;
     size_t sz = 0;
-    pmix_buffer_t bucket, pbkt, xfer;
+    pmix_buffer_t bucket, xfer;
     pmix_rank_info_t *info;
     pmix_value_t *val;
 
@@ -428,24 +474,43 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
         goto cleanup;
     }
     /* find/create the local tracker for this operation */
-    if (NULL == (trk = get_tracker(procs, nprocs))) {
-        /* only if a bozo error occurs */
-        PMIX_ERROR_LOG(PMIX_ERROR);
-        /* DO NOT HANG */
-        if (NULL != opcbfunc) {
-            opcbfunc(PMIX_ERROR, cd);
+    if (NULL == (trk = get_tracker(procs, nprocs, PMIX_FENCENB_CMD))) {
+        /* If no tracker was found - create and initialize it once */
+        if( NULL == (trk = new_tracker(procs, nprocs, PMIX_FENCENB_CMD))) {
+            /* only if a bozo error occurs */
+            PMIX_ERROR_LOG(PMIX_ERROR);
+            /* DO NOT HANG */
+            if (NULL != opcbfunc) {
+                opcbfunc(PMIX_ERROR, cd);
+            }
+            rc = PMIX_ERROR;
+            goto cleanup;
         }
-        rc = PMIX_ERROR;
-        goto cleanup;
-    }
-    trk->type = PMIX_FENCENB_CMD;
-    trk->modexcbfunc = modexcbfunc;
-    /* mark if they want the data back */
-    if (0 == collect_data) {
-        trk->collect_data = false;
+        trk->type = PMIX_FENCENB_CMD;
+        trk->modexcbfunc = modexcbfunc;
+        /* mark if they want the data back */
+        if (0 == collect_data) {
+            trk->collect_type = PMIX_COLLECT_NO;
+        } else {
+            trk->collect_type = PMIX_COLLECT_YES;
+        }
     } else {
-        trk->collect_data = true;
+        switch ( trk->collect_type ) {
+        case PMIX_COLLECT_NO:
+            if( collect_data ){
+                trk->collect_type = PMIX_COLLECT_INVALID;
+            }
+            break;
+        case PMIX_COLLECT_YES:
+            if( !collect_data ){
+                trk->collect_type = PMIX_COLLECT_INVALID;
+            }
+            break;
+        default:
+            break;
+        }
     }
+
     /* add this contributor to the tracker so they get
      * notified when we are done */
     PMIX_RETAIN(cd);
@@ -463,37 +528,50 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
          * server so they can circulate it - only take data
          * from the specified procs as not everyone is necessarily
          * participating! And only take data intended for remote
-         * distribution as local data will be added when we send
-         * the result to our local clients */
+         * distribution */
+
         PMIX_CONSTRUCT(&bucket, pmix_buffer_t);
-        if (trk->collect_data) {
+
+        assert( PMIX_COLLECT_MAX < UCHAR_MAX );
+        unsigned char tmp = (unsigned char)trk->collect_type;
+        pmix_bfrop.pack(&bucket, &tmp, 1, PMIX_BYTE);
+
+        if( PMIX_COLLECT_YES == trk->collect_type) {
+            pmix_buffer_t databuf;
+            PMIX_CONSTRUCT(&databuf, pmix_buffer_t);
             pmix_output_verbose(2, pmix_globals.debug_output,
                                 "fence - assembling data");
             PMIX_LIST_FOREACH(info, &trk->ranks, pmix_rank_info_t) {
-                PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+                pmix_buffer_t rankbuf;
+                PMIX_CONSTRUCT(&rankbuf, pmix_buffer_t);
                 /* get any remote contribution - note that there
                  * may not be a contribution */
                 if (PMIX_SUCCESS == pmix_hash_fetch(&info->nptr->server->myremote, info->rank, "modex", &val) &&
                     NULL != val) {
                     /* pack the proc so we know the source */
                     char *foobar = info->nptr->nspace;
-                    pmix_bfrop.pack(&pbkt, &foobar, 1, PMIX_STRING);
-                    pmix_bfrop.pack(&pbkt, &info->rank, 1, PMIX_INT);
+                    pmix_bfrop.pack(&rankbuf, &foobar, 1, PMIX_STRING);
+                    pmix_bfrop.pack(&rankbuf, &info->rank, 1, PMIX_INT);
                     PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
                     PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
                     pmix_buffer_t *pxfer = &xfer;
-                    pmix_bfrop.pack(&pbkt, &pxfer, 1, PMIX_BUFFER);
+                    pmix_bfrop.pack(&rankbuf, &pxfer, 1, PMIX_BUFFER);
                     xfer.base_ptr = NULL;
                     xfer.bytes_used = 0;
                     PMIX_DESTRUCT(&xfer);
                     PMIX_VALUE_RELEASE(val);
                     /* now pack this proc's contribution into the bucket */
-                    pmix_buffer_t *ppbkt = &pbkt;
-                    pmix_bfrop.pack(&bucket, &ppbkt, 1, PMIX_BUFFER);
+                    pmix_buffer_t *pdatabuf = &rankbuf;
+                    pmix_bfrop.pack(&databuf, &pdatabuf, 1, PMIX_BUFFER);
                 }
-                PMIX_DESTRUCT(&pbkt);
+                PMIX_DESTRUCT(&rankbuf);
             }
+            // TODO: we have multiple data movings while only one is actually need
+            pmix_buffer_t *pbkt = &databuf;
+            pmix_bfrop.pack(&bucket, &pbkt, 1, PMIX_BUFFER);
+            PMIX_DESTRUCT(&databuf);
         }
+
         PMIX_UNLOAD_BUFFER(&bucket, data, sz);
         PMIX_DESTRUCT(&bucket);
         pmix_output(0, "CALLING HOST FENCE WITH %s:%d BYTES",
@@ -979,22 +1057,24 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
     }
 
     /* find/create the local tracker for this operation */
-    if (NULL == (trk = get_tracker(procs, nprocs))) {
-        /* only if a bozo error occurs */
-        PMIX_ERROR_LOG(PMIX_ERROR);
-        /* DO NOT HANG */
-        if (NULL != cbfunc) {
-            cbfunc(PMIX_ERROR, cd);
-        }
-        rc = PMIX_ERROR;
-        goto cleanup;
-    }
+    pmix_cmd_t type = PMIX_CONNECTNB_CMD;
     if (disconnect) {
-        trk->type = PMIX_DISCONNECTNB_CMD;
-    } else {
-        trk->type = PMIX_CONNECTNB_CMD;
+        type = PMIX_DISCONNECTNB_CMD;
     }
-    trk->op_cbfunc = cbfunc;
+    if (NULL == (trk = get_tracker(procs, nprocs, type))) {
+        if (NULL == (trk = new_tracker(procs, nprocs, type))) {
+            /* only if a bozo error occurs */
+            PMIX_ERROR_LOG(PMIX_ERROR);
+            /* DO NOT HANG */
+            if (NULL != cbfunc) {
+                cbfunc(PMIX_ERROR, cd);
+            }
+            rc = PMIX_ERROR;
+            goto cleanup;
+        }
+        trk->op_cbfunc = cbfunc;
+    }
+
     /* add this contributor to the tracker so they get
      * notified when we are done */
     PMIX_RETAIN(cd);
@@ -1031,7 +1111,8 @@ static void tcon(pmix_server_trkr_t *t)
     PMIX_CONSTRUCT(&t->local_cbs, pmix_list_t);
     t->nlocal = 0;
     t->local_cnt = 0;
-    t->collect_data = false;
+    /* this needs to be set explicitly */
+    t->collect_type = PMIX_COLLECT_INVALID;
     t->modexcbfunc = NULL;
     t->op_cbfunc = NULL;
 }

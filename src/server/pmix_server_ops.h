@@ -36,19 +36,26 @@ typedef struct {
 } pmix_server_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_server_caddy_t);
 
+typedef enum {
+    PMIX_COLLECT_INVALID = -1,
+    PMIX_COLLECT_NO,
+    PMIX_COLLECT_YES,
+    PMIX_COLLECT_MAX
+} pmix_collect_t;
+
 /* define a tracker for collective operations */
 typedef struct {
     pmix_list_item_t super;
     pmix_cmd_t type;
-    pmix_proc_t *pcs;       // copy of the original array of participants
-    size_t   npcs;          // number of procs in the array
-    volatile bool active;   // flag for waiting for completion
-    bool def_complete;      // all local procs have been registered and the trk definition is complete
-    pmix_list_t ranks;      // list of pmix_rank_info_t of the local participants
-    pmix_list_t local_cbs;  // list of pmix_server_caddy_t for sending result to the local participants
-    uint32_t nlocal;        // number of local participants
-    uint32_t local_cnt;     // number of local participants who have contributed
-    bool collect_data;      // whether or not data is to be returned at completion
+    pmix_proc_t *pcs;               // copy of the original array of participants
+    size_t   npcs;                  // number of procs in the array
+    volatile bool active;           // flag for waiting for completion
+    bool def_complete;              // all local procs have been registered and the trk definition is complete
+    pmix_list_t ranks;              // list of pmix_rank_info_t of the local participants
+    pmix_list_t local_cbs;          // list of pmix_server_caddy_t for sending result to the local participants
+    uint32_t nlocal;                // number of local participants
+    uint32_t local_cnt;             // number of local participants who have contributed
+    pmix_collect_t collect_type;    // whether or not data is to be returned at completion
     pmix_modex_cbfunc_t modexcbfunc;
     pmix_op_cbfunc_t op_cbfunc;
 } pmix_server_trkr_t;
