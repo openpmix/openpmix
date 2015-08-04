@@ -29,8 +29,8 @@
 BEGIN_C_DECLS
 
 #define PMIX_ERROR_LOG(r)                                       \
-    pmix_output(0, "PMIX ERROR: %s in file %s at line %d",      \
-                PMIx_Error_string((r)), __FILE__, __LINE__);
+    pmix_output(0, "PMIX ERROR (%d): %s in file %s at line %d", \
+                r, PMIx_Error_string((r)), __FILE__, __LINE__);
 
 #define PMIX_REPORT_ERROR(e)                            \
     do {                                                \

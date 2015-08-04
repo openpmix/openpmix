@@ -14,7 +14,7 @@
 # --------------------------------------------------------------------
 AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
     AC_ARG_WITH([libevent-header],
-                [AC_HELP_STRING([libevent-header=HEADER],
+                [AC_HELP_STRING([--with-libevent-header=HEADER],
                                 [The value that should be included in C files to include event.h])])
 
     AS_IF([test "$enable_embedded_mode" = "yes"],

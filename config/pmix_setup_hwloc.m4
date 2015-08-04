@@ -14,7 +14,7 @@
 # --------------------------------------------------------------------
 AC_DEFUN([PMIX_HWLOC_CONFIG],[
     AC_ARG_WITH([hwloc-header],
-                [AC_HELP_STRING([hwloc-header=HEADER],
+                [AC_HELP_STRING([--with-hwloc-header=HEADER],
                                 [The value that should be included in C files to include hwloc.h])])
 
     pmix_hwloc_support=0
