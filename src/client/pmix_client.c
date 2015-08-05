@@ -303,7 +303,6 @@ int PMIx_Init(char nspace[], int *rank)
 
     /* connect to the server - returns job info if successful */
     if (PMIX_SUCCESS != (rc = connect_to_server(&address))){
-        pmix_output(0, "NO CONNECT");
         return rc;
     }
 
@@ -623,7 +622,7 @@ pmix_status_t PMIx_Store_internal(const char nspace[], int rank,
         return PMIX_ERR_INIT;
     }
 
-    if (PMIX_SUCCESS != (rc = pmix_hash_store(&ns->modex, rank, kv))) {
+    if (PMIX_SUCCESS != (rc = pmix_hash_store(&ns->data, rank, kv))) {
         PMIX_ERROR_LOG(rc);
     }
     return rc;

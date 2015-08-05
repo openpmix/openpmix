@@ -137,6 +137,7 @@ BEGIN_C_DECLS
  *     host this proc is on
  */
 #define PMIX_HOSTNAME              "pmix.hname"        // (char*) see above comment
+#define PMIX_NODEID                "pmix.nodeid"       // (uint32_t) node identifier
 #define PMIX_LOCAL_PEERS           "pmix.lpeers"       // (char*) comma-delimited string of ranks on this node within the specified nspace
 #define PMIX_LOCAL_CPUSETS         "pmix.lcpus"        // (char*) colon-delimited cpusets of local peers within the specified nspace
 #define PMIX_PROC_URI              "pmix.puri"         // (char*) URI containing contact info for proc
@@ -278,7 +279,7 @@ typedef enum {
  * PMI_GLOBAL - the data is to be shared with all other requesting processes,
  *              regardless of location
  */
-#define PMIX_SCOPE PMIX_UINT8
+#define PMIX_SCOPE PMIX_UINT
 typedef enum {
     PMIX_SCOPE_UNDEF = 0,
     PMIX_LOCAL,           // share to procs also on this node
@@ -288,7 +289,7 @@ typedef enum {
 
 /* define a range for data "published" by PMI
  */
-#define PMIX_DATA_RANGE PMIX_UINT8
+#define PMIX_DATA_RANGE PMIX_UINT
 typedef enum {
     PMIX_DATA_RANGE_UNDEF = 0,
     PMIX_NAMESPACE,       // data is available to procs in the same nspace only
@@ -303,26 +304,6 @@ typedef enum {
     PMIX_PERSIST_APP,         // retain until application terminates
     PMIX_PERSIST_SESSION      // retain until session/allocation terminates
 } pmix_persistence_t;
-
-/* define locality flags for relative location of one proc
- * to another */
- typedef enum uint16_t {
-    PMIX_LOCALITY_UNKNOWN  = 0x0000,
-    PMIX_NON_LOCAL         = 0x8000,
-    PMIX_ON_CLUSTER        = 0x0001,
-    PMIX_ON_CU             = 0x0003,
-    PMIX_ON_HOST           = 0x0007,
-    PMIX_ON_BOARD          = 0x000f,
-    PMIX_ON_NODE           = 0x000f,   // same host and board
-    PMIX_ON_NUMA           = 0x001f,
-    PMIX_ON_SOCKET         = 0x003f,
-    PMIX_ON_L3CACHE        = 0x007f,
-    PMIX_ON_L2CACHE        = 0x00ff,
-    PMIX_ON_L1CACHE        = 0x01ff,
-    PMIX_ON_CORE           = 0x03ff,
-    PMIX_ON_HWTHREAD       = 0x07ff,
-    PMIX_ALL_LOCAL         = 0x0fff
-} pmix_locality_t;
 
 /****    PMIX BYTE OBJECT    ****/
 typedef struct {

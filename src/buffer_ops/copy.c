@@ -21,6 +21,7 @@
 #include <pmix/rename.h>
 
 #include "src/util/argv.h"
+#include "src/util/error.h"
 #include "src/util/output.h"
 #include "src/buffer_ops/internal.h"
 
@@ -30,15 +31,18 @@ int pmix_bfrop_copy(void **dest, void *src, pmix_data_type_t type)
 
     /* check for error */
     if (NULL == dest) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return PMIX_ERR_BAD_PARAM;
     }
     if (NULL == src) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return PMIX_ERR_BAD_PARAM;
     }
 
    /* Lookup the copy function for this type and call it */
 
     if (NULL == (info = (pmix_bfrop_type_info_t*)pmix_pointer_array_get_item(&pmix_bfrop_types, type))) {
+        PMIX_ERROR_LOG(PMIX_ERR_UNKNOWN_DATA_TYPE);
         return PMIX_ERR_UNKNOWN_DATA_TYPE;
     }
 
@@ -55,12 +59,13 @@ int pmix_bfrop_copy_payload(pmix_buffer_t *dest, pmix_buffer_t *src)
         dest->type = src->type;
     } else if( dest->type != src->type ){
         /* buffer types mismatch */
-        pmix_output(0, "PMIX bfrop:copy_payload: source/destination buffer types mismatch");
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return PMIX_ERR_BAD_PARAM;
     }
 
     to_copy = src->pack_ptr - src->unpack_ptr;
     if( NULL == (ptr = pmix_bfrop_buffer_extend(dest, to_copy)) ){
+        PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
     memcpy(ptr,src->unpack_ptr, to_copy);

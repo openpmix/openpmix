@@ -152,6 +152,7 @@ int PMIx_Get_nb(const char *nspace, int rank,
         }
     }
     if (NULL == nptr) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
         /* we are asking for info about a new nspace - give us
          * a chance to learn about it from the server. If the
          * server has never heard of it, the server will return
@@ -190,6 +191,7 @@ int PMIx_Get_nb(const char *nspace, int rank,
     }
     if (PMIX_RANK_WILDCARD == rank) {
         /* can't be anywhere else */
+        PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
         return PMIX_ERR_NOT_FOUND;
     }
 
@@ -250,6 +252,7 @@ int PMIx_Get_nb(const char *nspace, int rank,
          * the user requested. At this time, there is no way for the
          * key to eventually be found, so all we can do is return
          * the error */
+         PMIX_ERROR_LOG(rc);
         return rc;
     }
 
@@ -291,7 +294,6 @@ int PMIx_Get_nb(const char *nspace, int rank,
     
     /* push the message into our event base to send to the server */
     PMIX_ACTIVATE_SEND_RECV(&pmix_client_globals.myserver, msg, getnb_cbfunc, cb);
-
     return PMIX_SUCCESS;
 }
 
@@ -348,7 +350,6 @@ static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: get_nb callback recvd");
-
     if (NULL == cb) {
         /* nothing we can do */
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);

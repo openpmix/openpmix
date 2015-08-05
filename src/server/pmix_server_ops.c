@@ -574,8 +574,6 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
 
         PMIX_UNLOAD_BUFFER(&bucket, data, sz);
         PMIX_DESTRUCT(&bucket);
-        pmix_output(0, "CALLING HOST FENCE WITH %s:%d BYTES",
-                    (NULL == data) ? "NULL" : "NON_NULL", (int)sz);
         pmix_host_server.fence_nb(trk->pcs, trk->npcs,
                                   data, sz, trk->modexcbfunc, trk);
     }
@@ -717,8 +715,26 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
          * of our local procs, then clearly we are in (a) */
         if (nptr->server->nlocalprocs == pmix_list_get_size(&nptr->server->ranks)) {
             /* we know about all our local procs, so this must be
-             * a request for data about someone non-local - generate
-             * a request and pass it up to the host server */
+             * a request for data about someone non-local - see if
+             * we already have it */
+            if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->server->remote, rank, "modex", &val)) &&
+                NULL != val) {
+                PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+                PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
+                pmix_buffer_t *pxfer = &xfer;
+                PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
+                pmix_bfrop.pack(&pbkt, &pxfer, 1, PMIX_BUFFER);
+                xfer.base_ptr = NULL;
+                xfer.bytes_used = 0;
+                PMIX_DESTRUCT(&xfer);
+                PMIX_VALUE_RELEASE(val);
+                PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
+                PMIX_DESTRUCT(&pbkt);
+                /* pass it back */
+                cbfunc(rc, data, sz, cbdata);
+                return rc;
+            }
+            /* nope - generate a request and pass it up to the host server */
             goto dmodex;
         } else {
             /* we don't know about everyone yet, so let's mark it
@@ -764,13 +780,12 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
         xfer.bytes_used = 0;
         PMIX_DESTRUCT(&xfer);
         PMIX_VALUE_RELEASE(val);
+        PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
+        PMIX_DESTRUCT(&pbkt);
+        /* pass it back */
+        cbfunc(rc, data, sz, cbdata);
+        return rc;
     }
-    PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
-    PMIX_DESTRUCT(&pbkt);
-    /* pass it back */
-    cbfunc(rc, data, sz, cbdata);
-
-    return rc;
 
  dmodex:
     /* first, let's check to see if this data already has been

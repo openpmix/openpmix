@@ -143,8 +143,6 @@ static pmix_status_t initialize_server_base(pmix_server_module_t *module)
         pmix_globals.debug_output = pmix_output_open(NULL);
         pmix_output_set_verbosity(pmix_globals.debug_output, debug_level);
     }
-        pmix_globals.debug_output = pmix_output_open(NULL);
-        pmix_output_set_verbosity(pmix_globals.debug_output, 10);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:server init called");
@@ -510,7 +508,6 @@ pmix_status_t PMIx_server_register_nspace(const char nspace[], int nlocalprocs,
         PMIX_INFO_CREATE(cd->info, ninfo);
         for (i=0; i < ninfo; i++) {
             (void)strncpy(cd->info[i].key, info[i].key, PMIX_MAX_KEYLEN);
-            pmix_output(0, "COPY %s", info[i].key);
             pmix_value_xfer(&cd->info[i].value, &info[i].value);
         }
     }
@@ -1517,7 +1514,6 @@ static void spawn_cbfunc(int status, char *nspace, void *cbdata)
     int rc;
     pmix_nspace_t *nptr, *ns;
     
-    pmix_output(0, "SPAWN_CBFUNC: %d %s", status, nspace);
     /* setup the reply with the returned status */
     reply = PMIX_NEW(pmix_buffer_t);
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &status, 1, PMIX_INT))) {
@@ -1701,10 +1697,9 @@ static void modex_cbfunc(int status, const char *data,
                 kp->value->type = PMIX_BYTE_OBJECT;
                 PMIX_UNLOAD_BUFFER(bpscope, kp->value->data.bo.bytes, kp->value->data.bo.size);
                 /* store it in the appropriate hash */
-                if (PMIX_SUCCESS != (rc = pmix_hash_store(&nptr->server->remote, rank, kp))) {
+               if (PMIX_SUCCESS != (rc = pmix_hash_store(&nptr->server->remote, rank, kp))) {
                     PMIX_ERROR_LOG(rc);
                 }
-                kp->value->data.bo.bytes = NULL;  // protect the data
                 PMIX_RELEASE(kp);  // maintain acctg
             }  // while bpscope
             if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {

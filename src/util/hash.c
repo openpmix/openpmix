@@ -138,6 +138,7 @@ int pmix_hash_fetch(pmix_hash_table_t *table, int rank,
 
     /* create the copy */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)kvs, hv->value, PMIX_VALUE))) {
+        PMIX_ERROR_LOG(rc);
         return rc;
     }
 

@@ -74,7 +74,8 @@ int pmix_bfrop_unpack(pmix_buffer_t *buffer, void *dst, int32_t *num_vals,
     n=1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop_unpack_int32(buffer, &local_num, &n, PMIX_INT32))) {
         *num_vals = 0;
-        PMIX_ERROR_LOG(rc);
+        /* don't error log here as the user may be unpacking past
+         * the end of the buffer, which isn't necessarily an error */
         return rc;
     }
 
