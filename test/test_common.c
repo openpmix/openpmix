@@ -171,7 +171,15 @@ void parse_cmd(int argc, char **argv, test_params *params)
         }
     }
     if (NULL == params->binary) {
-        params->binary = strdup("pmix_client");
+        char *basename = NULL;
+        basename = strrchr(argv[0], '/');
+        if (basename) {
+            *basename = '\0';
+            asprintf(&params->binary, "%s/pmix_client", argv[0]);
+            *basename = '/';
+        } else {
+            asprintf(&params->binary, "pmix_client");
+        }
     }
 
     if( params->collect_bad ){
