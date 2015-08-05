@@ -64,7 +64,7 @@ void parse_cmd(int argc, char **argv, test_params *params)
             fprintf(stderr, "\t--early-fail    force client process with rank 0 to fail before PMIX_Init.\n");
             fprintf(stderr, "\t--ns-dist n1:n2:n3   register n namespaces (3 in this example) each with ni ranks (n1, n2 or n3).\n");
             fprintf(stderr, "\t--fence \"[<data_exchange><blocking> | ns0:ranks;ns1:ranks...][...]\"  specify fences in different configurations.\n");
-            fprintf(stderr, "\t--use-same-keys relaative to the --fence option: put the same keys in the interim between multiple fences.\n");
+            fprintf(stderr, "\t--use-same-keys relative to the --fence option: put the same keys in the interim between multiple fences.\n");
             fprintf(stderr, "\t--job-fence  test fence inside its own namespace.\n");
             fprintf(stderr, "\t-c       relative to the --job-fence option: fence[_nb] callback shall include all collected data\n");
             fprintf(stderr, "\t-nb      relative to the --job-fence option: use non-blocking fence\n");
@@ -171,7 +171,15 @@ void parse_cmd(int argc, char **argv, test_params *params)
         }
     }
     if (NULL == params->binary) {
-        params->binary = strdup("pmix_client");
+        char *basename = NULL;
+        basename = strrchr(argv[0], '/');
+        if (basename) {
+            *basename = '\0';
+            asprintf(&params->binary, "%s/pmix_client", argv[0]);
+            *basename = '/';
+        } else {
+            asprintf(&params->binary, "pmix_client");
+        }
     }
 
     if( params->collect_bad ){
