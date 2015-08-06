@@ -115,7 +115,7 @@ typedef struct {
 #define INIT_TEST_PARAMS(params) do { \
     params.nprocs = 1;                \
     params.verbose = 0;               \
-    params.rank = 0;                  \
+    params.rank = -1;                 \
     params.early_fail = 0;            \
     params.ns_size = -1;              \
     params.ns_id = -1;                \

@@ -67,14 +67,14 @@ int main(int argc, char **argv)
     }
 
     if (rank != params.rank) {
-        TEST_ERROR(("Client ns %s Rank returned in PMIx_Init %d does not match to rank from command line %d.", params.nspace, rank, params.rank));
+        TEST_ERROR(("Client ns %s Rank returned in PMIx_Init %d does not match to rank from command line %d.", nspace, rank, params.rank));
         FREE_TEST_PARAMS(params);
         exit(0);
     }
     if ( NULL != params.prefix && -1 != params.ns_id) {
         TEST_SET_FILE(params.prefix, params.ns_id, rank);
     }
-    TEST_VERBOSE((" Client ns %s rank %d: PMIx_Init success", params.nspace, rank));
+    TEST_VERBOSE((" Client ns %s rank %d: PMIx_Init success", nspace, rank));
 
     if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, rank,PMIX_UNIV_SIZE,&val))) {
         TEST_ERROR(("rank %d: PMIx_Get universe size failed: %d", rank, rc));
@@ -104,67 +104,67 @@ int main(int argc, char **argv)
     }
 
     if (NULL != params.fences) {
-        rc = test_fence(params, params.nspace, rank);
+        rc = test_fence(params, nspace, rank);
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
-            TEST_ERROR(("%s:%d Fence test failed: %d", params.nspace, rank, rc));
+            TEST_ERROR(("%s:%d Fence test failed: %d", nspace, rank, rc));
             exit(0);
         }
     }
 
     if (0 != params.test_job_fence) {
-        rc = test_job_fence(params, params.nspace, rank);
+        rc = test_job_fence(params, nspace, rank);
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
-            TEST_ERROR(("%s:%d Job fence test failed: %d", params.nspace, rank, rc));
+            TEST_ERROR(("%s:%d Job fence test failed: %d", nspace, rank, rc));
             exit(0);
         }
     }
 
     if (0 != params.test_publish) {
-        rc = test_publish_lookup(params.nspace, rank);
+        rc = test_publish_lookup(nspace, rank);
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
-            TEST_ERROR(("%s:%d Publish/Lookup test failed: %d", params.nspace, rank, rc));
+            TEST_ERROR(("%s:%d Publish/Lookup test failed: %d", nspace, rank, rc));
             exit(0);
         }
     }
 
     if (0 != params.test_spawn) {
-        rc = test_spawn(params.nspace, rank);
+        rc = test_spawn(nspace, rank);
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
-            TEST_ERROR(("%s:%d Spawn test failed: %d", params.nspace, rank, rc));
+            TEST_ERROR(("%s:%d Spawn test failed: %d", nspace, rank, rc));
             exit(0);
         }
     }
 
     if (0 != params.test_connect) {
-        rc = test_connect_disconnect(params.nspace, rank);
+        rc = test_connect_disconnect(nspace, rank);
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
-            TEST_ERROR(("%s:%d Connect/Disconnect test failed: %d", params.nspace, rank, rc));
+            TEST_ERROR(("%s:%d Connect/Disconnect test failed: %d", nspace, rank, rc));
             exit(0);
         }
     }
 
     if (0 != params.test_resolve_peers) {
-        rc = test_resolve_peers(params.nspace, rank, params);
+        rc = test_resolve_peers(nspace, rank, params);
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
-            TEST_ERROR(("%s:%d Resolve peers test failed: %d", params.nspace, rank, rc));
+            TEST_ERROR(("%s:%d Resolve peers test failed: %d", nspace, rank, rc));
             exit(0);
         }
     }
 
-    TEST_VERBOSE(("Client ns %s rank %d: PASSED", params.nspace, rank));
+    TEST_VERBOSE(("Client ns %s rank %d: PASSED", nspace, rank));
 
     /* finalize us */
-    TEST_VERBOSE(("Client ns %s rank %d: Finalizing", params.nspace, rank));
+    TEST_VERBOSE(("Client ns %s rank %d: Finalizing", nspace, rank));
     if (PMIX_SUCCESS != (rc = PMIx_Finalize())) {
-        TEST_ERROR(("Client ns %s rank %d:PMIx_Finalize failed: %d", params.nspace, rank, rc));
+        TEST_ERROR(("Client ns %s rank %d:PMIx_Finalize failed: %d", nspace, rank, rc));
     } else {
-        TEST_VERBOSE(("Client ns %s rank %d:PMIx_Finalize successfully completed", params.nspace, rank));
+        TEST_VERBOSE(("Client ns %s rank %d:PMIx_Finalize successfully completed", nspace, rank));
     }
 
     TEST_OUTPUT_CLEAR(("OK\n"));

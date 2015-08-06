@@ -185,6 +185,28 @@ void parse_cmd(int argc, char **argv, test_params *params)
     if( params->collect_bad ){
         params->collect = params->rank % 2;
     }
+
+    // Fix rank if running under SLURM
+    if( 0 > params->rank ){
+        char *slurm_rank = getenv("SLURM_GTIDS");
+        if( NULL != slurm_rank ){
+            params->rank = strtol(slurm_rank, NULL, 10);
+        } else {
+            fprintf(stderr, "No rank information was provided\n");
+            exit(1);
+        }
+    }
+
+    // Fix namespace if running under SLURM
+    if( NULL == params->nspace ){
+        char *nspace = getenv("PMIX_NAMESPACE");
+        if( NULL != nspace ){
+            params->nspace = strdup(nspace);
+        } else {
+            fprintf(stderr, "No rank information was provided\n");
+            exit(1);
+        }
+    }
 }
 
 static void fcon(fence_desc_t *p)
