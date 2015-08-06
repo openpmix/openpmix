@@ -152,7 +152,9 @@ int PMIx_Get_nb(const char *nspace, int rank,
         }
     }
     if (NULL == nptr) {
-        PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "pmix: looking for nspace %s on the server",
+                            nm);
         /* we are asking for info about a new nspace - give us
          * a chance to learn about it from the server. If the
          * server has never heard of it, the server will return
