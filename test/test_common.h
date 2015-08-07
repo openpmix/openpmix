@@ -116,6 +116,7 @@ typedef struct {
     params.nprocs = 1;                \
     params.verbose = 0;               \
     params.rank = -1;                 \
+    params.base_rank = 0;             \
     params.early_fail = 0;            \
     params.ns_size = -1;              \
     params.ns_id = -1;                \
