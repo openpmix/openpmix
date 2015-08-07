@@ -1605,13 +1605,12 @@ static void modex_cbfunc(int status, const char *data,
 
     /* pass the blobs being returned */
     PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
-    PMIX_LOAD_BUFFER(&xfer, data, ndata);
-
     if (NULL == tracker) {
         /* nothing to do */
         PMIX_DESTRUCT(&xfer);
         return;
     }
+    PMIX_LOAD_BUFFER(&xfer, data, ndata);
 
     if( PMIX_COLLECT_INVALID == tracker->collect_type ){
         status = PMIX_ERR_INVALID_ARG;
@@ -1732,6 +1731,12 @@ static void modex_cbfunc(int status, const char *data,
     }
 
 finish_collective:
+    /* Protect data from being free'd because RM pass
+     * the pointer that is set to the middle of some
+     * buffer (the case with SLURM).
+     * RM is responsible on the release of the buffer
+     */
+    PMIX_UNLOAD_BUFFER(&xfer,data, ndata);
     PMIX_DESTRUCT(&xfer);
 
     /* setup the reply, starting with the returned status */
