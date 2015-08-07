@@ -47,14 +47,10 @@ sources += \
         src/util/crc.c \
         src/util/progress_threads.c \
         src/util/fd.c \
+        src/util/timings.c \
         src/util/os_path.c \
         src/util/basename.c \
         src/util/hash.c
-
-if PMIX_COMPILE_TIMING
-sources += src/util/timings.c
-endif
-
 
 server_headers += \
         src/util/argv.h \
@@ -83,6 +79,3 @@ server_sources += \
         src/util/basename.c \
         src/util/hash.c
 
-if PMIX_COMPILE_TIMING
-server_sources += src/util/timings.c
-endif

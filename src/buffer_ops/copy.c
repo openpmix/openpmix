@@ -165,7 +165,7 @@ int pmix_bfrop_copy_string(char **dest, char *src, pmix_data_type_t type)
 int pmix_value_xfer(pmix_value_t *p, pmix_value_t *src)
 {
     pmix_info_t *p1, *s1;
-    
+
     /* copy the right field */
     p->type = src->type;
     switch (src->type) {
@@ -264,14 +264,14 @@ int pmix_bfrop_copy_value(pmix_value_t **dest, pmix_value_t *src,
                           pmix_data_type_t type)
 {
     pmix_value_t *p;
-    
+
     /* create the new object */
     *dest = (pmix_value_t*)malloc(sizeof(pmix_value_t));
     if (NULL == *dest) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
     p = *dest;
-    
+
     /* copy the type */
     p->type = src->type;
     /* copy the data */
@@ -298,7 +298,7 @@ int pmix_bfrop_copy_app(pmix_app_t **dest, pmix_app_t *src,
                         pmix_data_type_t type)
 {
     size_t j;
-    
+
     *dest = (pmix_app_t*)malloc(sizeof(pmix_app_t));
     (*dest)->cmd = strdup(src->cmd);
     (*dest)->argc = src->argc;
@@ -318,14 +318,14 @@ int pmix_bfrop_copy_kval(pmix_kval_t **dest, pmix_kval_t *src,
                          pmix_data_type_t type)
 {
     pmix_kval_t *p;
-    
+
     /* create the new object */
     *dest = PMIX_NEW(pmix_kval_t);
     if (NULL == *dest) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
     p = *dest;
-    
+
     /* copy the type */
     p->value->type = src->value->type;
     /* copy the data */
@@ -337,7 +337,7 @@ int pmix_bfrop_copy_array(pmix_info_array_t **dest,
                           pmix_data_type_t type)
 {
     pmix_info_t *d1, *s1;
-    
+
     *dest = (pmix_info_array_t*)malloc(sizeof(pmix_info_array_t));
     (*dest)->size = src->size;
     (*dest)->array = (struct pmix_info_t*)malloc(src->size * sizeof(pmix_info_t));

@@ -65,9 +65,9 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
     char *msg;
     size_t nprocs;
     pmix_proc_t *procs = NULL;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output, "recvd ABORT");
-    
+
     /* unpack the status */
     cnt = 1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &status, &cnt, PMIX_INT))) {
@@ -93,7 +93,7 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
             return rc;
         }
     }
-    
+
     /* let the local host's server execute it */
     if (NULL != pmix_host_server.abort) {
         rc = pmix_host_server.abort(peer->info->nptr->nspace, peer->info->rank,
@@ -107,13 +107,13 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
         }
     }
     PMIX_PROC_FREE(procs, nprocs);
-    
+
     /* the client passed this msg to us so we could give
      * it to the host server - we are done with it now */
     if (NULL != msg) {
         free(msg);
     }
-    
+
     return rc;
 }
 
@@ -137,7 +137,7 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
     /* shorthand */
     info = peer->info;
     nptr = info->nptr;
-    
+
     /* this buffer will contain one or more buffers, each
      * representing a different scope. These need to be locally
      * stored separately so we can provide required data based
@@ -285,7 +285,7 @@ static pmix_server_trkr_t* get_tracker(pmix_proc_t *procs,
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return NULL;
     }
-    
+
     /* there is no shortcut way to search the trackers - all
      * we can do is perform a brute-force search. Fortunately,
      * it is highly unlikely that there will be more than one
@@ -445,7 +445,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
     if (NULL == pmix_host_server.fence_nb) {
         return PMIX_ERR_NOT_SUPPORTED;
     }
-    
+
     /* unpack the number of procs */
     cnt = 1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &nprocs, &cnt, PMIX_SIZE))) {
@@ -458,7 +458,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
     if (nprocs < 1) {
         return PMIX_ERR_BAD_PARAM;
     }
-    
+
     /* create space for the procs */
     PMIX_PROC_CREATE(procs, nprocs);
     /* unpack the procs */
@@ -466,7 +466,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, procs, &cnt, PMIX_PROC))) {
         goto cleanup;
     }
-    
+
     /* unpack the data flag - indicates if the caller wants
      * all modex data returned at end of procedure */
     cnt = 1;
@@ -663,7 +663,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     char *data;
     size_t sz;
     pmix_local_modex_caddy_t *lcd;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "recvd GET");
 
@@ -692,13 +692,25 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
         }
     }
 
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "%s:%d EXECUTE GET FOR %s:%d",
+                        pmix_globals.nspace,
+                        pmix_globals.rank, nspace, rank);
     if (NULL == nptr) {
-        /* if this is for an nspace we don't know, then there
-         * isn't any way for us to get the data */
-        PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
-        return PMIX_ERR_NOT_FOUND;
+        /* this is for an nspace we don't know, so give
+         * the host server a chance to find it */
+        nptr = PMIX_NEW(pmix_nspace_t);
+        (void)strncpy(nptr->nspace, nspace, PMIX_MAX_NSLEN);
+        /* add the server object */
+        nptr->server = PMIX_NEW(pmix_server_nspace_t);
+        pmix_list_append(&pmix_server_globals.nspaces, &nptr->super);
+        goto dmodex;
     }
-    /* and the rank entry for it */
+    /* if we don't have any ranks for this job, protect ourselves here */
+    if (NULL == nptr->server) {
+        nptr->server = PMIX_NEW(pmix_server_nspace_t);
+    }
+    /* find the rank entry for it */
     info = NULL;
     PMIX_LIST_FOREACH(iptr, &nptr->server->ranks, pmix_rank_info_t) {
         if (iptr->rank == rank) {
@@ -749,9 +761,6 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
             pmix_list_append(&pmix_server_globals.localmodex, &lcd->super);
             return PMIX_SUCCESS;
         }
-        PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
-
-        return PMIX_ERR_NOT_FOUND;
     }
     /* we are talking about a local proc - see if we already have its data */
     if (!info->modex_recvd) {
@@ -764,7 +773,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
         pmix_list_append(&pmix_server_globals.localmodex, &lcd->super);
         return PMIX_SUCCESS;
     }
-    
+
     /* check for the local/global data - data committed to remote
      * scope does not get returned to a local proc */
     /* get any local/global contribution - note that there
@@ -787,7 +796,6 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
         return rc;
     }
 
- dmodex:
     /* first, let's check to see if this data already has been
      * obtained as a result of a prior direct modex request from
      * another local peer */
@@ -810,6 +818,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
         return rc;
     }
 
+ dmodex:
     /* nope - need to ask the host server to send a remote
      * request to the hosting PMIx server for the data, if
      * they support it - they will callback with the answer */
@@ -824,7 +833,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     lcd->cbfunc = cbfunc;
     lcd->cbdata = cbdata;
     rc = pmix_host_server.direct_modex(nspace, rank, dmdx_cbfunc, lcd);
-    
+
     return rc;
 }
 
@@ -838,14 +847,14 @@ pmix_status_t pmix_server_publish(pmix_peer_t *peer,
     pmix_persistence_t persist;
     size_t i, ninfo;
     pmix_info_t *info = NULL;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "recvd PUBLISH");
 
     if (NULL == pmix_host_server.publish) {
         return PMIX_ERR_NOT_SUPPORTED;
     }
-    
+
     /* unpack the scope */
     cnt=1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &scope, &cnt, PMIX_DATA_RANGE))) {
@@ -873,7 +882,7 @@ pmix_status_t pmix_server_publish(pmix_peer_t *peer,
             goto cleanup;
         }
     }
-    
+
     /* call the local server */
     rc = pmix_host_server.publish(peer->info->nptr->nspace, peer->info->rank,
                                   scope, persist, info, ninfo, cbfunc, cbdata);
@@ -898,14 +907,14 @@ pmix_status_t pmix_server_lookup(pmix_peer_t *peer,
     pmix_data_range_t scope;
     size_t nkeys, i;
     char **keys=NULL, *sptr;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "recvd LOOKUP");
-    
+
     if (NULL == pmix_host_server.lookup) {
         return PMIX_ERR_NOT_SUPPORTED;
     }
-    
+
     /* unpack the scope */
     cnt=1;
     if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &scope, &cnt, PMIX_DATA_RANGE))) {
@@ -941,7 +950,7 @@ pmix_status_t pmix_server_lookup(pmix_peer_t *peer,
     pmix_argv_free(keys);
     return rc;
 }
-        
+
 pmix_status_t pmix_server_unpublish(pmix_peer_t *peer,
                                     pmix_buffer_t *buf,
                                     pmix_op_cbfunc_t cbfunc, void *cbdata)
@@ -951,14 +960,14 @@ pmix_status_t pmix_server_unpublish(pmix_peer_t *peer,
     pmix_data_range_t scope;
     size_t i, nkeys;
     char **keys=NULL, *sptr;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "recvd UNPUBLISH");
-    
+
     if (NULL == pmix_host_server.unpublish) {
         return PMIX_ERR_NOT_SUPPORTED;
     }
-    
+
     /* unpack the scope */
     cnt=1;
     if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &scope, &cnt, PMIX_DATA_RANGE))) {
@@ -997,14 +1006,14 @@ pmix_status_t pmix_server_spawn(pmix_buffer_t *buf,
     size_t napps;
     pmix_app_t *apps=NULL;
     pmix_status_t rc;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "recvd SPAWN");
 
     if (NULL == pmix_host_server.spawn) {
         return PMIX_ERR_NOT_SUPPORTED;
     }
-    
+
     /* unpack the number of apps */
     cnt=1;
     if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &napps, &cnt, PMIX_SIZE))) {
@@ -1038,7 +1047,7 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
     pmix_proc_t *procs;
     size_t nprocs;
     pmix_server_trkr_t *trk;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "recvd CONNECT");
 
@@ -1046,7 +1055,7 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
         (!disconnect && NULL == pmix_host_server.connect)) {
         return PMIX_ERR_NOT_SUPPORTED;
     }
-    
+
     /* unpack the number of procs */
     cnt = 1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &nprocs, &cnt, PMIX_SIZE))) {
@@ -1062,7 +1071,7 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return PMIX_ERR_BAD_PARAM;
     }
-    
+
     /* unpack the procs */
     PMIX_PROC_CREATE(procs, nprocs);
     cnt = nprocs;
@@ -1108,7 +1117,7 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
     } else {
         rc = PMIX_SUCCESS;
     }
-    
+
  cleanup:
     PMIX_PROC_FREE(procs, nprocs);
 

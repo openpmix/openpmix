@@ -33,6 +33,7 @@
 #endif
 
 
+#if PMIX_COMPILE_TIMING
 
 #include "src/class/pmix_pointer_array.h"
 #include "src/class/pmix_list.h"
@@ -641,3 +642,4 @@ void pmix_timing_release(pmix_timing_t *t)
     PMIX_RELEASE(t->events);
     t->events = NULL;
 }
+#endif

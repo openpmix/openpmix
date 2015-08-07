@@ -169,6 +169,8 @@ void pmix_stop_listening(void)
     write(pmix_server_globals.stop_thread[1], &i, sizeof(int));
     /* wait for thread to exit */
     pthread_join(engine, NULL);
+    /* close the socket to remove the connection point */
+    CLOSE_THE_SOCKET(pmix_server_globals.listen_socket);
     return;
 }
 

@@ -66,9 +66,10 @@ int PMIx_Get(const char nspace[], int rank,
 {
     pmix_cb_t *cb;
     int rc;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix: getting value for proc %s:%d key %s",
+                        "pmix: %s:%d getting value for proc %s:%d key %s",
+                        pmix_globals.nspace, pmix_globals.rank,
                         (NULL == nspace) ? "NULL" : nspace, rank,
                         (NULL == key) ? "NULL" : key);
 
@@ -92,7 +93,7 @@ int PMIx_Get(const char nspace[], int rank,
         *val = NULL;
         return rc;
     }
-    
+
     /* wait for the data to return */
     PMIX_WAIT_FOR_COMPLETION(cb->active);
     rc = cb->status;
@@ -115,12 +116,12 @@ int PMIx_Get_nb(const char *nspace, int rank,
     int rc;
     char *nm;
     pmix_nsrec_t *ns, *nptr;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: get_nb value for proc %s:%d key %s",
                         (NULL == nspace) ? "NULL" : nspace, rank,
                         (NULL == key) ? "NULL" : key);
-    
+
     if (pmix_client_globals.init_cntr <= 0) {
         return PMIX_ERR_INIT;
     }
@@ -134,7 +135,7 @@ int PMIx_Get_nb(const char *nspace, int rank,
     if (NULL == key) {
         return PMIX_ERR_BAD_PARAM;
     }
-    
+
     /* if the nspace is NULL, then the caller is referencing
      * our own nspace */
     if (NULL == nspace) {
@@ -152,9 +153,6 @@ int PMIx_Get_nb(const char *nspace, int rank,
         }
     }
     if (NULL == nptr) {
-        pmix_output_verbose(2, pmix_globals.debug_output,
-                            "pmix: looking for nspace %s on the server",
-                            nm);
         /* we are asking for info about a new nspace - give us
          * a chance to learn about it from the server. If the
          * server has never heard of it, the server will return
@@ -193,7 +191,6 @@ int PMIx_Get_nb(const char *nspace, int rank,
     }
     if (PMIX_RANK_WILDCARD == rank) {
         /* can't be anywhere else */
-        PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
         return PMIX_ERR_NOT_FOUND;
     }
 
@@ -254,9 +251,7 @@ int PMIx_Get_nb(const char *nspace, int rank,
          * the user requested. At this time, there is no way for the
          * key to eventually be found, so all we can do is return
          * the error */
-	 pmix_output_verbose(2, pmix_globals.debug_output,
-			     "Error requesting key=%s for rank = %d, namespace = %s\n",
-			     key, rank, nm);
+         PMIX_ERROR_LOG(rc);
         return rc;
     }
 
@@ -279,12 +274,12 @@ int PMIx_Get_nb(const char *nspace, int rank,
             return PMIX_SUCCESS;
         }
     }
-    
+
     /* we don't have a pending request, so let's create one */
     if (NULL == (msg = pack_get(nm, rank, key, PMIX_GETNB_CMD))) {
         return PMIX_ERROR;
     }
-    
+
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
@@ -295,7 +290,7 @@ int PMIx_Get_nb(const char *nspace, int rank,
     cb->value_cbfunc = cbfunc;
     cb->cbdata = cbdata;
     pmix_list_append(&pmix_client_globals.pending_requests, &cb->super);
-    
+
     /* push the message into our event base to send to the server */
     PMIX_ACTIVATE_SEND_RECV(&pmix_client_globals.myserver, msg, getnb_cbfunc, cb);
     return PMIX_SUCCESS;
@@ -304,9 +299,12 @@ int PMIx_Get_nb(const char *nspace, int rank,
 static void value_cbfunc(int status, pmix_value_t *kv, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+    pmix_status_t rc;
 
     cb->status = status;
-    pmix_bfrop.copy((void**)&cb->value, kv, PMIX_VALUE);
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)&cb->value, kv, PMIX_VALUE))) {
+        PMIX_ERROR_LOG(rc);
+    }
     cb->active = false;
 }
 
@@ -315,7 +313,7 @@ static pmix_buffer_t* pack_get(const char nspace[], int rank,
 {
     pmix_buffer_t *msg;
     int rc;
-    
+
     /* nope - see if we can get it */
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the get cmd */
@@ -351,7 +349,7 @@ static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     pmix_kval_t *kp;
     pmix_nsrec_t *ns, *nptr;
     int rank;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: get_nb callback recvd");
     if (NULL == cb) {
@@ -361,7 +359,7 @@ static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     }
     // cache the rank
     rank = cb->rank;
-    
+
     /* unpack the status */
     cnt = 1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ret, &cnt, PMIX_INT))) {
