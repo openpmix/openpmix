@@ -66,7 +66,7 @@ libpmix_server_la_SOURCES = $(server_headers) $(server_sources)
 libpmix_server_la_LDFLAGS = -version-info $(libpmix_so_version)
 
 if ! PMIX_EMBEDDED_MODE
-DIST_SUBDIRS = test test/simple examples
+SUBDIRS = . test examples
 endif
 
 dist-hook:
