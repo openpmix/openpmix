@@ -19,8 +19,6 @@
 # $HEADER$
 #
 
-headers = 
-
 AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/include -I$(top_builddir)/include/pmix
 
 bin_PROGRAMS = simptest simpclient simppub simpdmodex simpft simpdyn
