@@ -1,9 +1,9 @@
 /*
- * Copyright (c) 2014-2015 Intel, Inc.  All rights reserved. 
+ * Copyright (c) 2014-2015 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -81,7 +81,7 @@ pmix_event_base_t* pmix_start_progress_thread()
     event_add(&block_ev, 0);
     evlib_active = true;
     block_active = true;
-    
+
     /* fork off a thread to progress it */
     if (PMIX_SUCCESS != (rc = pthread_create(&engine, NULL, progress_engine, (void*)ev_base))) {
         PMIX_ERROR_LOG(rc);

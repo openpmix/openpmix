@@ -6,16 +6,16 @@
  * Copyright (c) 2004-2006 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2007 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2007 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2007      Voltaire All rights reserved.
  * Copyright (c) 2013-2015 Intel, Inc. All rights reserved
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -116,11 +116,11 @@ bool pmix_list_insert(pmix_list_t *list, pmix_list_item_t *item, long long idx)
     /* Adds item to list at index and retains item. */
     int     i;
     volatile pmix_list_item_t *ptr, *next;
-    
+
     if ( idx >= (long long)list->pmix_list_length ) {
         return false;
     }
-    
+
     if ( 0 == idx )
     {
         pmix_list_prepend(list, item);
@@ -151,8 +151,8 @@ bool pmix_list_insert(pmix_list_t *list, pmix_list_item_t *item, long long idx)
         item->pmix_list_item_belong_to = list;
 #endif
     }
-    
-    list->pmix_list_length++;    
+
+    list->pmix_list_length++;
     return true;
 }
 
@@ -190,7 +190,7 @@ pmix_list_transfer(pmix_list_item_t *pos, pmix_list_item_t *begin,
 
 
 void
-pmix_list_join(pmix_list_t *thislist, pmix_list_item_t *pos, 
+pmix_list_join(pmix_list_t *thislist, pmix_list_item_t *pos,
                pmix_list_t *xlist)
 {
     if (0 != pmix_list_get_size(xlist)) {
@@ -208,14 +208,14 @@ void
 pmix_list_splice(pmix_list_t *thislist, pmix_list_item_t *pos,
                  pmix_list_t *xlist, pmix_list_item_t *first,
                  pmix_list_item_t *last)
-{ 
+{
     size_t change = 0;
     pmix_list_item_t *tmp;
 
     if (first != last) {
         /* figure out how many things we are going to move (have to do
          * first, since last might be end and then we wouldn't be able
-         * to run the loop) 
+         * to run the loop)
          */
         for (tmp = first ; tmp != last ; tmp = pmix_list_get_next(tmp)) {
             change++;
@@ -239,7 +239,7 @@ int pmix_list_sort(pmix_list_t* list, pmix_list_item_compare_fn_t compare)
     if (0 == list->pmix_list_length) {
         return PMIX_SUCCESS;
     }
-    items = (pmix_list_item_t**)malloc(sizeof(pmix_list_item_t*) * 
+    items = (pmix_list_item_t**)malloc(sizeof(pmix_list_item_t*) *
                                        list->pmix_list_length);
 
     if (NULL == items) {
@@ -249,8 +249,8 @@ int pmix_list_sort(pmix_list_t* list, pmix_list_item_compare_fn_t compare)
     while(NULL != (item = pmix_list_remove_first(list))) {
         items[index++] = item;
     }
-    
-    qsort(items, index, sizeof(pmix_list_item_t*), 
+
+    qsort(items, index, sizeof(pmix_list_item_t*),
           (int(*)(const void*,const void*))compare);
     for (i=0; i<index; i++) {
         pmix_list_append(list,items[i]);

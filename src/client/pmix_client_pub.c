@@ -68,10 +68,10 @@ int PMIx_Publish(pmix_data_range_t scope,
 {
     int rc;
     pmix_cb_t *cb;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: publish called");
-    
+
     if (pmix_client_globals.init_cntr <= 0) {
         return PMIX_ERR_INIT;
     }
@@ -94,7 +94,7 @@ int PMIx_Publish(pmix_data_range_t scope,
     PMIX_WAIT_FOR_COMPLETION(cb->active);
     rc = cb->status;
     PMIX_RELEASE(cb);
-    
+
     return rc;
 }
 
@@ -108,10 +108,10 @@ int PMIx_Publish_nb(pmix_data_range_t scope,
     pmix_cmd_t cmd = PMIX_PUBLISHNB_CMD;
     int rc;
     pmix_cb_t *cb;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: publish called");
-    
+
     if (pmix_client_globals.init_cntr <= 0) {
         return PMIX_ERR_INIT;
     }
@@ -126,7 +126,7 @@ int PMIx_Publish_nb(pmix_data_range_t scope,
         /* nothing to publish */
         return PMIX_ERR_BAD_PARAM;
     }
-    
+
     /* create the publish cmd */
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
@@ -158,7 +158,7 @@ int PMIx_Publish_nb(pmix_data_range_t scope,
         PMIX_RELEASE(msg);
         return rc;
     }
-    
+
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
@@ -180,7 +180,7 @@ int PMIx_Lookup(pmix_data_range_t scope,
     pmix_cb_t *cb;
     char **keys = NULL;
     size_t i;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: lookup called");
 
@@ -195,7 +195,7 @@ int PMIx_Lookup(pmix_data_range_t scope,
             pmix_argv_append_nosize(&keys, pdata[i].key);
         }
     }
-    
+
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
@@ -228,10 +228,10 @@ int PMIx_Lookup_nb(pmix_data_range_t scope, int wait, char **keys,
     int rc;
     pmix_cb_t *cb;
     size_t nkeys;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: lookup called");
-    
+
     if (pmix_client_globals.init_cntr <= 0) {
         return PMIX_ERR_INIT;
     }
@@ -240,7 +240,7 @@ int PMIx_Lookup_nb(pmix_data_range_t scope, int wait, char **keys,
     if (NULL == keys) {
         return PMIX_ERR_BAD_PARAM;
     }
-    
+
     /* create the lookup cmd */
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
@@ -275,7 +275,7 @@ int PMIx_Lookup_nb(pmix_data_range_t scope, int wait, char **keys,
             return rc;
         }
     }
-    
+
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
@@ -293,10 +293,10 @@ int PMIx_Unpublish(pmix_data_range_t scope, char **keys)
 {
     int rc;
     pmix_cb_t *cb;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: unpublish called");
-    
+
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
@@ -313,7 +313,7 @@ int PMIx_Unpublish(pmix_data_range_t scope, char **keys)
     PMIX_WAIT_FOR_COMPLETION(cb->active);
     rc = cb->status;
     PMIX_RELEASE(cb);
-    
+
     return rc;
 }
 
@@ -325,10 +325,10 @@ int PMIx_Unpublish_nb(pmix_data_range_t scope, char **keys,
     int rc;
     pmix_cb_t *cb;
     size_t i, j;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: unpublish called");
-    
+
     if (pmix_client_globals.init_cntr <= 0) {
         return PMIX_ERR_INIT;
     }
@@ -415,7 +415,7 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     int32_t cnt;
     pmix_pdata_t *pdata;
     size_t ndata;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:client recv callback activated with %d bytes",
                         (NULL == buf) ? -1 : (int)buf->bytes_used);
@@ -429,7 +429,7 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     /* set the defaults */
     pdata = NULL;
     ndata = 0;
-    
+
     /* unpack the returned status */
     cnt = 1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ret, &cnt, PMIX_INT))) {
@@ -443,7 +443,7 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
         PMIX_RELEASE(cb);
         return;
     }
-    
+
     /* unpack the number of returned values */
     cnt = 1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ndata, &cnt, PMIX_SIZE))) {
@@ -469,7 +469,7 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
  cleanup:
     /* cleanup */
     PMIX_PDATA_FREE(pdata, ndata);
-    
+
     PMIX_RELEASE(cb);
 }
 
@@ -479,7 +479,7 @@ static void lookup_cbfunc(int status, pmix_pdata_t pdata[], size_t ndata,
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
     pmix_pdata_t *tgt = (pmix_pdata_t*)cb->cbdata;
     size_t i, j;
-    
+
     /* find the matching key in the provided info array - error if not found */
     for (i=0; i < ndata; i++) {
         for (j=0; j < cb->nvals; j++) {

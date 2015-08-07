@@ -3,9 +3,9 @@
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -72,7 +72,7 @@ void pmix_usock_finalize(void)
 {
     PMIX_LIST_DESTRUCT(&pmix_usock_globals.posted_recvs);
 }
-    
+
 int pmix_usock_set_nonblocking(int sd)
 {
     int flags;

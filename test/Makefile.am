@@ -5,7 +5,7 @@
 # Copyright (c) 2004-2005 The University of Tennessee and The University
 #                         of Tennessee Research Foundation.  All rights
 #                         reserved.
-# Copyright (c) 2004-2009 High Performance Computing Center Stuttgart, 
+# Copyright (c) 2004-2009 High Performance Computing Center Stuttgart,
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
@@ -13,9 +13,9 @@
 # Copyright (c) 2012-2013 Los Alamos National Security, Inc.  All rights reserved.
 # Copyright (c) 2013-2015 Intel, Inc. All rights reserved
 # $COPYRIGHT$
-# 
+#
 # Additional copyrights may follow
-# 
+#
 # $HEADER$
 #
 
@@ -36,16 +36,16 @@ pmix_test_SOURCES = $(headers) \
         pmix_test.c test_common.c cli_stages.c server_callbacks.c utils.c
 
 pmix_test_LDADD = \
-	$(top_builddir)/libpmix_server.la 
+	$(top_builddir)/libpmix_server.la
 
 pmix_test_lite_SOURCES = $(headers) \
         pmix_test_lite.c test_common.c cli_stages.c server_callbacks.c utils.c
 
 pmix_test_lite_LDADD = \
-	$(top_builddir)/libpmix_server.la 
+	$(top_builddir)/libpmix_server.la
 
 pmi_client_SOURCES = $(headers) \
-        pmi_client.c 
+        pmi_client.c
 
 pmi_client_LDADD = \
 	$(top_builddir)/libpmix.la

@@ -2,9 +2,9 @@
  * Copyright (C) 2014      Artem Polyakov <artpol84@gmail.com>
  * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -88,7 +88,7 @@ static get_ts_t _init_timestamping(void)
 pmix_timing_event_t *pmix_timing_event_alloc(pmix_timing_t *t)
 {
     if( t->buffer_offset >= t->buffer_size ){
-        // notch timings overhead 
+        // notch timings overhead
         double alloc_begin = t->get_ts();
 
         t->buffer = malloc(sizeof(pmix_timing_event_t)*t->buffer_size);
@@ -102,7 +102,7 @@ pmix_timing_event_t *pmix_timing_event_alloc(pmix_timing_t *t)
         t->buffer_offset = 0;
         t->buffer[0].fib = 1;
         t->buffer[0].ts_ovh = alloc_end - alloc_begin;
-    } 
+    }
     int tmp = t->buffer_offset;
     (t->buffer_offset)++;
     return t->buffer + tmp;
@@ -343,7 +343,7 @@ int pmix_timing_report(pmix_timing_t *t, char *fname)
     }
 
     _prepare_descriptions(t, &descr);
-    
+
     buf = malloc(PMIX_TIMING_OUTBUF_SIZE+1);
     if( buf == NULL ){
         rc = PMIX_ERR_OUT_OF_RESOURCE;

@@ -116,7 +116,7 @@ int PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs,
     pmix_cb_t *cb;
     pmix_proc_t rg, *rgs;
     size_t nrg;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: fence_nb called");
 
@@ -144,7 +144,7 @@ int PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs,
         rgs = (pmix_proc_t*)procs;
         nrg = nprocs;
     }
-    
+
     msg = PMIX_NEW(pmix_buffer_t);
     if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, rgs, nrg, collect_data))) {
         PMIX_RELEASE(msg);
@@ -190,7 +190,7 @@ static int pack_fence(pmix_buffer_t *msg,
                       int collect_data)
 {
     int rc;
-    
+
     /* pack the cmd */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
         PMIX_ERROR_LOG(rc);

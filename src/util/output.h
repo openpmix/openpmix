@@ -5,7 +5,7 @@
  * Copyright (c) 2004-2006 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
@@ -13,9 +13,9 @@
  * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
  * Copyright (c) 2015      Intel, Inc. All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -98,7 +98,7 @@ PMIX_DECLSPEC extern bool pmix_output_redirected_to_syslog;
 PMIX_DECLSPEC extern int pmix_output_redirected_syslog_pri;
 
 /**
- * \class pmix_output_stream_t 
+ * \class pmix_output_stream_t
  *
  * Structure used to request the opening of a PMIX output stream.  A
  * pointer to this structure is passed to pmix_output_open() to tell
@@ -128,7 +128,7 @@ struct pmix_output_stream_t {
      * more output and diagnostics should be displayed.
      */
     int lds_verbose_level;
-    
+
     /**
      * When pmix_output_stream_t::lds_want_syslog is true, this field is
      * examined to see what priority output from the stream should be
@@ -142,7 +142,7 @@ struct pmix_output_stream_t {
     /**
      * When pmix_output_stream_t::lds_want_syslog is true, this field is
      * examined to see what ident value should be passed to openlog(3).
-     * 
+     *
      * If a NULL value is given, the string "pmix" is used.
      */
 #if !defined(__WINDOWS__)
@@ -152,7 +152,7 @@ struct pmix_output_stream_t {
 #else
     HANDLE lds_syslog_ident;
 #endif  /* !defined(__WINDOWS__) */
-    
+
     /**
      * String prefix added to all output on the stream.
      *
@@ -162,7 +162,7 @@ struct pmix_output_stream_t {
      * to an internal structure in the call to pmix_output_open()!
      */
     char *lds_prefix;
-    
+
     /**
      * String suffix added to all output on the stream.
      *
@@ -210,7 +210,7 @@ struct pmix_output_stream_t {
      * If this field is true, stream output is sent to stderr.
      */
     bool lds_want_stderr;
-    
+
     /**
      * Whether to send stream output to a file or not.
      *
@@ -248,7 +248,7 @@ struct pmix_output_stream_t {
 
     /**
      * Convenience typedef
-     */    
+     */
     typedef struct pmix_output_stream_t pmix_output_stream_t;
 
     /**
@@ -267,7 +267,7 @@ struct pmix_output_stream_t {
      * and has a verbose level of 0.
      */
     PMIX_DECLSPEC bool pmix_output_init(void);
-    
+
     /**
      * Shut down the output stream system.
      *
@@ -313,7 +313,7 @@ struct pmix_output_stream_t {
      * new stream with a specific stream handle.
      */
     PMIX_DECLSPEC int pmix_output_reopen(int output_id, pmix_output_stream_t *lds);
-    
+
     /**
      * Enables and disables output streams.
      *
@@ -382,7 +382,7 @@ struct pmix_output_stream_t {
      * writing to it.
      */
     PMIX_DECLSPEC void pmix_output(int output_id, const char *format, ...) __pmix_attribute_format__(__printf__, 2, 3);
-    
+
     /**
      * Send output to a stream only if the passed verbosity level is
      * high enough.
@@ -411,16 +411,16 @@ struct pmix_output_stream_t {
      *
      * @see pmix_output_set_verbosity()
      */
-    PMIX_DECLSPEC void pmix_output_verbose(int verbose_level, int output_id, 
+    PMIX_DECLSPEC void pmix_output_verbose(int verbose_level, int output_id,
                                            const char *format, ...) __pmix_attribute_format__(__printf__, 3, 4);
 
    /**
     * Same as pmix_output_verbose(), but takes a va_list form of varargs.
     */
-    PMIX_DECLSPEC void pmix_output_vverbose(int verbose_level, int output_id, 
+    PMIX_DECLSPEC void pmix_output_vverbose(int verbose_level, int output_id,
                                             const char *format, va_list ap) __pmix_attribute_format__(__printf__, 3, 0);
 
-    /**    
+    /**
      * Send output to a string if the verbosity level is high enough.
      *
      * @param output_id Stream id returned from pmix_output_open().
@@ -434,13 +434,13 @@ struct pmix_output_stream_t {
      * level is not high enough, NULL is returned.  The caller is
      * responsible for free()'ing the returned string.
      */
-    PMIX_DECLSPEC char *pmix_output_string(int verbose_level, int output_id, 
+    PMIX_DECLSPEC char *pmix_output_string(int verbose_level, int output_id,
                                            const char *format, ...) __pmix_attribute_format__(__printf__, 3, 4);
 
    /**
     * Same as pmix_output_string, but accepts a va_list form of varargs.
     */
-    PMIX_DECLSPEC char *pmix_output_vstring(int verbose_level, int output_id, 
+    PMIX_DECLSPEC char *pmix_output_vstring(int verbose_level, int output_id,
                                             const char *format, va_list ap) __pmix_attribute_format__(__printf__, 3, 0);
 
     /**
@@ -506,7 +506,7 @@ struct pmix_output_stream_t {
                                                         const char *prefix,
                                                         char **olddir,
                                                         char **oldprefix);
-    
+
 #if PMIX_ENABLE_DEBUG
     /**
      * Main macro for use in sending debugging output to output streams;
@@ -516,8 +516,8 @@ struct pmix_output_stream_t {
      * @see pmix_output()
      */
 #define PMIX_OUTPUT(a) pmix_output a
-    
-    /** 
+
+    /**
      * Macro for use in sending debugging output to the output
      * streams.  Will be "compiled out" when PMIX is configured
      * without --enable-debug.
@@ -534,8 +534,8 @@ struct pmix_output_stream_t {
      * @see pmix_output()
      */
 #define PMIX_OUTPUT(a)
-    
-    /** 
+
+    /**
      * Macro for use in sending debugging output to the output
      * streams.  Will be "compiled out" when PMIX is configured
      * without --enable-debug.

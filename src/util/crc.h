@@ -64,8 +64,8 @@ pmix_bcopy_csum (
     size_t plength = 0;
     return pmix_bcopy_csum_partial(source, destination, copylen, csumlen, &plong, &plength);
 }
-                                                                                                                  
-PMIX_DECLSPEC unsigned int 
+
+PMIX_DECLSPEC unsigned int
 pmix_bcopy_uicsum_partial (
     const void *  source,
     void *  destination,
@@ -87,8 +87,8 @@ pmix_bcopy_uicsum (
     size_t plength = 0;
     return pmix_bcopy_uicsum_partial(source, destination, copylen, csumlen, &pint, &plength);
 }
-                                                                                                                  
-PMIX_DECLSPEC unsigned long 
+
+PMIX_DECLSPEC unsigned long
 pmix_csum_partial (
     const void *  source,
     size_t csumlen,
@@ -97,7 +97,7 @@ pmix_csum_partial (
     );
 
 
-static inline unsigned long 
+static inline unsigned long
 pmix_csum(const void *  source, size_t csumlen)
 {
     unsigned long lastPartialLong = 0;
@@ -117,13 +117,13 @@ pmix_csum16 (const void *  source, size_t csumlen)
 	    csum += *src++;
         csumlen -= 2;
     }
-    /* Add leftover byte, if any */ 
+    /* Add leftover byte, if any */
     if(csumlen > 0)
         csum += *((unsigned char*)src);
     /* Fold 32-bit checksum to 16 bits */
     while(csum >> 16) {
-        csum = (csum & 0xFFFF) + (csum >> 16);    
-    }        
+        csum = (csum & 0xFFFF) + (csum >> 16);
+    }
     return csum;
 }
 
@@ -135,21 +135,21 @@ pmix_uicsum_partial (
     size_t*  lastPartialLength
     );
 
-static inline unsigned int 
+static inline unsigned int
 pmix_uicsum(const void *  source, size_t csumlen)
 {
     unsigned int lastPartialInt = 0;
     size_t lastPartialLength = 0;
     return pmix_uicsum_partial(source, csumlen, &lastPartialInt, &lastPartialLength);
 }
-                                                                                                                  
+
 /*
  * CRC Support
  */
 
 void pmix_initialize_crc_table(void);
 
-PMIX_DECLSPEC unsigned int 
+PMIX_DECLSPEC unsigned int
 pmix_bcopy_uicrc_partial(
     const void *  source,
     void *  destination,
@@ -157,29 +157,29 @@ pmix_bcopy_uicrc_partial(
     size_t crclen,
     unsigned int partial_crc);
 
-static inline unsigned int 
+static inline unsigned int
 pmix_bcopy_uicrc(
-    const void *  source, 
+    const void *  source,
     void *  destination,
-    size_t copylen, 
+    size_t copylen,
     size_t crclen)
 {
     return pmix_bcopy_uicrc_partial(source, destination, copylen, crclen, CRC_INITIAL_REGISTER);
 }
 
-PMIX_DECLSPEC unsigned int 
+PMIX_DECLSPEC unsigned int
 pmix_uicrc_partial(
-    const void *  source, 
-    size_t crclen, 
+    const void *  source,
+    size_t crclen,
     unsigned int partial_crc);
 
 
-static inline unsigned int 
+static inline unsigned int
 pmix_uicrc(const void *  source, size_t crclen)
 {
     return pmix_uicrc_partial(source, crclen, CRC_INITIAL_REGISTER);
 }
-                                                                                                                  
+
 END_C_DECLS
 
 #endif

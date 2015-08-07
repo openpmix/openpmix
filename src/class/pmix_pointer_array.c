@@ -6,15 +6,15 @@
  * Copyright (c) 2004-2007 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2013-2015 Intel, Inc. All rights reserved
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -77,21 +77,21 @@ int pmix_pointer_array_init(pmix_pointer_array_t* array,
                             int max_size, int block_size)
 {
     size_t num_bytes;
-    
+
     /* check for errors */
     if (NULL == array || max_size < block_size) {
         return PMIX_ERR_BAD_PARAM;
     }
-    
+
     array->max_size = max_size;
     array->block_size = block_size;
-   
+
     num_bytes = (0 < initial_allocation ? initial_allocation : block_size);
     array->number_free = num_bytes;
     array->size = num_bytes;
     num_bytes *= sizeof(void*);
 
-    /* Allocate and set the array to NULL */   
+    /* Allocate and set the array to NULL */
     array->addr = (void **)calloc(num_bytes, 1);
     if (NULL == array->addr) { /* out of memory */
         return PMIX_ERR_OUT_OF_RESOURCE;
@@ -114,8 +114,8 @@ int pmix_pointer_array_add(pmix_pointer_array_t *table, void *ptr)
 
     if (table->number_free == 0) {
         /* need to grow table */
-        if (!grow_table(table, 
-                        (NULL == table->addr ? TABLE_INIT : table->size * TABLE_GROW), 
+        if (!grow_table(table,
+                        (NULL == table->addr ? TABLE_INIT : table->size * TABLE_GROW),
                         INT_MAX)) {
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
@@ -188,17 +188,17 @@ int pmix_pointer_array_set_item(pmix_pointer_array_t *table, int index,
         /* Reset lowest_free if required */
         if ( index == table->lowest_free ) {
             int i;
-            
+
             table->lowest_free = table->size;
             for ( i=index + 1; i<table->size; i++) {
                 if ( NULL == table->addr[i] ){
                     table->lowest_free = i;
                     break;
-                }                    
+                }
             }
         }
     }
-    table->addr[index] = value;	
+    table->addr[index] = value;
 
 #if 0
     pmix_output(0,"pmix_pointer_array_set_item: OUT: "
@@ -222,10 +222,10 @@ int pmix_pointer_array_set_item(pmix_pointer_array_t *table, int index,
  * @return true/false True if element could be reserved
  *                    False if element could not be reserved (e.g.in use).
  *
- * In contrary to array_set, this function does not allow to overwrite 
+ * In contrary to array_set, this function does not allow to overwrite
  * a value, unless the previous value is NULL ( equiv. to free ).
  */
-bool pmix_pointer_array_test_and_set_item (pmix_pointer_array_t *table, 
+bool pmix_pointer_array_test_and_set_item (pmix_pointer_array_t *table,
                                            int index, void *value)
 {
     assert(table != NULL);
@@ -254,7 +254,7 @@ bool pmix_pointer_array_test_and_set_item (pmix_pointer_array_t *table,
         }
     }
 
-    /* 
+    /*
      * allow a specific index to be changed.
      */
     table->addr[index] = value;
@@ -268,7 +268,7 @@ bool pmix_pointer_array_test_and_set_item (pmix_pointer_array_t *table,
             if ( NULL == table->addr[i] ){
                 table->lowest_free = i;
                 break;
-            }                    
+            }
         }
     }
 
@@ -316,7 +316,7 @@ static bool grow_table(pmix_pointer_array_t *table, int soft, int hard)
     if (p == NULL) {
         return false;
     }
-    
+
     new_size_int = (int) new_size;
     table->number_free += new_size_int - table->size;
     table->addr = (void**)p;

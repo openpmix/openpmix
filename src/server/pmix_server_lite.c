@@ -43,7 +43,7 @@ int PMIx_server_authenticate_client(int sd, int *rank, pmix_send_message_cbfunc_
     pmix_peer_t *peer;
     pmix_buffer_t *info, reply;
     pmix_usock_hdr_t hdr;
-    
+
     /* perform the authentication */
     if (PMIX_SUCCESS != (rc = pmix_server_authenticate(sd, rank, &peer, &info))) {
         return rc;
@@ -81,13 +81,13 @@ int PMIx_server_process_msg(int sd, char *hdrptr, char *msgptr,
     pmix_server_caddy_t *cd;
     int rc;
     pmix_peer_t *peer;
-    
+
     /* get the peer object for this client - the header
      * contains the index to it */
     if (NULL == (peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, hdr->pindex))) {
         return PMIX_ERR_NOT_FOUND;
     }
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "PMIx_server_process_msg for %s:%d:%d",
                         peer->info->nptr->nspace, peer->info->rank, sd);
@@ -103,13 +103,13 @@ int PMIx_server_process_msg(int sd, char *hdrptr, char *msgptr,
     cd->snd.sd = sd;
     (void)memcpy(&cd->hdr, hdr, sizeof(pmix_usock_hdr_t));
     cd->snd.cbfunc = snd_msg;
-    
+
     /* process the message */
     rc = server_switchyard(cd, &buf);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(cd);
     }
-    
+
     /* Free buffer protecting the data */
     buf.base_ptr = NULL;
     PMIX_DESTRUCT(&buf);
@@ -123,7 +123,7 @@ static void get_cbfunc(int status, const char *data,
     pmix_server_caddy_t *cd = (pmix_server_caddy_t*)cbdata;
     int rc;
     pmix_buffer_t reply, buf;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "serverlite:get_cbfunc called with %d elements", (int)ndata);
 
@@ -131,7 +131,7 @@ static void get_cbfunc(int status, const char *data,
         /* nothing to do */
         return;
     }
-    
+
     /* setup the reply, starting with the returned status */
     PMIX_CONSTRUCT(&reply, pmix_buffer_t);
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, &status, 1, PMIX_INT))) {
@@ -145,7 +145,7 @@ static void get_cbfunc(int status, const char *data,
     buf.base_ptr = NULL;
     buf.bytes_used = 0;
     PMIX_DESTRUCT(&buf);
-    
+
     /* send the data to the requestor */
     snd_message(cd->snd.sd, &cd->hdr, &reply, cd->peer->info->server_object, cd->snd.cbfunc);
     reply.base_ptr = NULL;
@@ -163,7 +163,7 @@ static void spawn_cbfunc(int status, char *nspace, void *cbdata)
     pmix_server_caddy_t *cd = (pmix_server_caddy_t*)cbdata;
     int rc;
     pmix_buffer_t reply;
-    
+
     /* setup the reply with the returned status */
     PMIX_CONSTRUCT(&reply, pmix_buffer_t);
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, &status, 1, PMIX_INT))) {
@@ -192,7 +192,7 @@ static void lookup_cbfunc(int status, pmix_pdata_t pdata[], size_t ndata,
     pmix_server_caddy_t *cd = (pmix_server_caddy_t*)cbdata;
     int rc;
     pmix_buffer_t reply;
-    
+
     /* setup the reply with the returned status */
     PMIX_CONSTRUCT(&reply, pmix_buffer_t);
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, &status, 1, PMIX_INT))) {
@@ -237,7 +237,7 @@ static void modex_cbfunc(int status, const char *data,
         /* nothing to do */
         return;
     }
-    
+
     /* setup the reply, starting with the returned status */
     PMIX_CONSTRUCT(&reply, pmix_buffer_t);
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, &status, 1, PMIX_INT))) {
@@ -254,7 +254,7 @@ static void modex_cbfunc(int status, const char *data,
     xfer.bytes_used = 0;
     /* cleanup */
     PMIX_DESTRUCT(&xfer);
-    
+
     /* loop across all procs in the tracker, sending them the reply */
     PMIX_LIST_FOREACH(cd, &tracker->local_cbs, pmix_server_caddy_t) {
         PMIX_CONSTRUCT(&rmsg, pmix_buffer_t);
@@ -278,7 +278,7 @@ static void op_cbfunc(int status, void *cbdata)
     pmix_server_caddy_t *cd = (pmix_server_caddy_t*)cbdata;
     int rc;
     pmix_buffer_t reply;
-    
+
     /* setup the reply with the returned status */
     PMIX_CONSTRUCT(&reply, pmix_buffer_t);
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, &status, 1, PMIX_INT))) {
@@ -302,7 +302,7 @@ static void cnct_cbfunc(int status, void *cbdata)
     int rc;
     pmix_server_caddy_t *cd;
     pmix_buffer_t reply, rmsg;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "serverlite:cnct_cbfunc called");
 
@@ -310,7 +310,7 @@ static void cnct_cbfunc(int status, void *cbdata)
         /* nothing to do */
         return;
     }
-    
+
     /* setup the reply, starting with the returned status */
     PMIX_CONSTRUCT(&reply, pmix_buffer_t);
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&reply, &status, 1, PMIX_INT))) {
@@ -343,7 +343,7 @@ static int server_switchyard(pmix_server_caddy_t *cd,
     int rc;
     int32_t cnt;
     pmix_cmd_t cmd;
-    
+
     /* retrieve the cmd */
     cnt = 1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &cmd, &cnt, PMIX_CMD))) {
@@ -365,14 +365,14 @@ static int server_switchyard(pmix_server_caddy_t *cd,
         }
         return rc;
     }
-        
+
     if (PMIX_COMMIT_CMD == cmd) {
         if (PMIX_SUCCESS != (rc = pmix_server_commit(cd->peer, buf))) {
             PMIX_ERROR_LOG(rc);
         }
         return rc;
     }
-        
+
     if (PMIX_FENCENB_CMD == cmd) {
         PMIX_RETAIN(cd);  // op_cbfunc will release it to maintain accounting
         if (PMIX_SUCCESS != (rc = pmix_server_fence(cd, buf, modex_cbfunc, op_cbfunc))) {
@@ -390,7 +390,7 @@ static int server_switchyard(pmix_server_caddy_t *cd,
         }
         return rc;
     }
-        
+
     if (PMIX_FINALIZE_CMD == cmd) {
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "recvd FINALIZE");
@@ -410,7 +410,7 @@ static int server_switchyard(pmix_server_caddy_t *cd,
         return rc;
     }
 
-        
+
     if (PMIX_PUBLISHNB_CMD == cmd) {
         PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
         if (PMIX_SUCCESS != (rc = pmix_server_publish(cd->peer, buf, op_cbfunc, cd))) {
@@ -420,7 +420,7 @@ static int server_switchyard(pmix_server_caddy_t *cd,
         return rc;
     }
 
-    
+
     if (PMIX_LOOKUPNB_CMD == cmd) {
         PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
         if (PMIX_SUCCESS != (rc = pmix_server_lookup(cd->peer, buf, lookup_cbfunc, cd))) {
@@ -430,7 +430,7 @@ static int server_switchyard(pmix_server_caddy_t *cd,
         return rc;
     }
 
-        
+
     if (PMIX_UNPUBLISHNB_CMD == cmd) {
         PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
         if (PMIX_SUCCESS != (rc = pmix_server_unpublish(cd->peer, buf, op_cbfunc, cd))) {
@@ -440,7 +440,7 @@ static int server_switchyard(pmix_server_caddy_t *cd,
         return rc;
     }
 
-        
+
     if (PMIX_SPAWNNB_CMD == cmd) {
         PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
         if (PMIX_SUCCESS != (rc = pmix_server_spawn(buf, spawn_cbfunc, cd))) {
@@ -450,7 +450,7 @@ static int server_switchyard(pmix_server_caddy_t *cd,
         return rc;
     }
 
-        
+
     if (PMIX_CONNECTNB_CMD == cmd) {
         PMIX_RETAIN(cd); // op_cbfunc will release it to maintain accounting
         if (PMIX_SUCCESS != (rc = pmix_server_connect(cd, buf, false, cnct_cbfunc))) {

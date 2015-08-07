@@ -6,7 +6,7 @@
  * Copyright (c) 2004-2006 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
@@ -15,13 +15,13 @@
  *                         reserved.
  * Copyright (c) 2013-2015 Intel, Inc. All rights reserved
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 /**
- * @file 
+ * @file
  *
  * The pmix_list_t interface is used to provide a generic
  * doubly-linked list container for Open MPI.  It was inspired by (but
@@ -94,7 +94,7 @@ PMIX_DECLSPEC PMIX_CLASS_DECLARATION(pmix_list_item_t);
 
 /**
  * \internal
- * 
+ *
  * Struct of an pmix_list_item_t
  */
 struct pmix_list_item_t
@@ -296,7 +296,7 @@ typedef struct pmix_list_t pmix_list_t;
  */
 static inline bool pmix_list_is_empty(pmix_list_t* list)
 {
-    return (list->pmix_list_sentinel.pmix_list_next == 
+    return (list->pmix_list_sentinel.pmix_list_next ==
         &(list->pmix_list_sentinel) ? true : false);
 }
 
@@ -407,7 +407,7 @@ static inline pmix_list_item_t* pmix_list_get_end(pmix_list_t* list)
  *
  * @returns The size of the list (size_t)
  *
- * This is an O(1) lookup to return the size of the list.  
+ * This is an O(1) lookup to return the size of the list.
  *
  * This is an inlined function in compilers that support inlining, so
  * it's usually a cheap operation.
@@ -424,7 +424,7 @@ static inline size_t pmix_list_get_size(pmix_list_t* list)
 #if PMIX_ENABLE_DEBUG && 0
     /* not sure if we really want this running in devel, as it does
      * slow things down.  Wanted for development of splice / join to
-     * make sure length was reset properly 
+     * make sure length was reset properly
      */
     size_t check_len = 0;
     pmix_list_item_t *item;
@@ -589,8 +589,8 @@ static inline void _pmix_list_append(pmix_list_t *list, pmix_list_item_t *item
  * This is an inlined function in compilers that support inlining, so
  * it's usually a cheap operation.
  */
-static inline void pmix_list_prepend(pmix_list_t *list, 
-                                     pmix_list_item_t *item) 
+static inline void pmix_list_prepend(pmix_list_t *list,
+                                     pmix_list_item_t *item)
 {
     pmix_list_item_t* sentinel = &(list->pmix_list_sentinel);
 #if PMIX_ENABLE_DEBUG
@@ -602,16 +602,16 @@ static inline void pmix_list_prepend(pmix_list_t *list,
 
   /* reset item's next pointer */
   item->pmix_list_next = sentinel->pmix_list_next;
-  
+
   /* reset item's previous pointer */
   item->pmix_list_prev = sentinel;
-  
+
   /* reset previous first element's previous poiner */
   sentinel->pmix_list_next->pmix_list_prev = item;
-  
+
   /* reset head's next pointer */
   sentinel->pmix_list_next = item;
-  
+
   /* increment list element counter */
   list->pmix_list_length++;
 
@@ -652,7 +652,7 @@ static inline pmix_list_item_t *pmix_list_remove_first(pmix_list_t *list)
   if ( 0 == list->pmix_list_length ) {
     return (pmix_list_item_t *)NULL;
   }
-  
+
 #if PMIX_ENABLE_DEBUG
   /* Spot check: ensure that the first item is only on this list */
 
@@ -661,16 +661,16 @@ static inline pmix_list_item_t *pmix_list_remove_first(pmix_list_t *list)
 
   /* reset list length counter */
   list->pmix_list_length--;
-  
+
   /* get pointer to first element on the list */
   item = list->pmix_list_sentinel.pmix_list_next;
-  
+
   /* reset previous pointer of next item on the list */
   item->pmix_list_next->pmix_list_prev = item->pmix_list_prev;
-  
+
   /* reset the head next pointer */
   list->pmix_list_sentinel.pmix_list_next = item->pmix_list_next;
-  
+
 #if PMIX_ENABLE_DEBUG
   assert( list == item->pmix_list_item_belong_to );
   item->pmix_list_item_belong_to = NULL;
@@ -714,7 +714,7 @@ static inline pmix_list_item_t *pmix_list_remove_last(pmix_list_t *list)
   if ( 0 == list->pmix_list_length ) {
       return (pmix_list_item_t *)NULL;
   }
-  
+
 #if PMIX_ENABLE_DEBUG
   /* Spot check: ensure that the first item is only on this list */
 
@@ -723,16 +723,16 @@ static inline pmix_list_item_t *pmix_list_remove_last(pmix_list_t *list)
 
   /* reset list length counter */
   list->pmix_list_length--;
-  
+
   /* get item */
   item = list->pmix_list_sentinel.pmix_list_prev;
-  
+
   /* reset previous pointer on next to last pointer */
   item->pmix_list_prev->pmix_list_next = item->pmix_list_next;
-  
+
   /* reset tail's previous pointer */
   list->pmix_list_sentinel.pmix_list_prev = item->pmix_list_prev;
-  
+
 #if PMIX_ENABLE_DEBUG
   assert( list == item->pmix_list_item_belong_to );
   item->pmix_list_next = item->pmix_list_prev = (pmix_list_item_t *)NULL;
@@ -807,7 +807,7 @@ static inline void pmix_list_insert_pos(pmix_list_t *list, pmix_list_item_t *pos
    * If index is greater than the length of the list, no action is
    * performed and false is returned.
    */
-  PMIX_DECLSPEC bool pmix_list_insert(pmix_list_t *list, pmix_list_item_t *item, 
+  PMIX_DECLSPEC bool pmix_list_insert(pmix_list_t *list, pmix_list_item_t *item,
                                       long long idx);
 
 
@@ -820,7 +820,7 @@ static inline void pmix_list_insert_pos(pmix_list_t *list, pmix_list_item_t *pos
      * @param xlist List container for list being spliced from
      *
      * Join a list into another list.  All of the elements of \c xlist
-     * are inserted before \c pos and removed from \c xlist.  
+     * are inserted before \c pos and removed from \c xlist.
      *
      * This operation is an O(1) operation.  Both \c thislist and \c
      * xlist must be valid list containsers.  \c xlist will be empty
@@ -828,7 +828,7 @@ static inline void pmix_list_insert_pos(pmix_list_t *list, pmix_list_item_t *pos
      * containers remain valid, including those that point to elements
      * in \c xlist.
      */
-    PMIX_DECLSPEC void pmix_list_join(pmix_list_t *thislist, pmix_list_item_t *pos, 
+    PMIX_DECLSPEC void pmix_list_join(pmix_list_t *thislist, pmix_list_item_t *pos,
                                       pmix_list_t *xlist);
 
 
@@ -839,7 +839,7 @@ static inline void pmix_list_insert_pos(pmix_list_t *list, pmix_list_item_t *pos
      * @param pos List item in \c thislist marking the position before
      *             which items are inserted
      * @param xlist List container for list being spliced from
-     * @param first List item in \c xlist marking the start of elements 
+     * @param first List item in \c xlist marking the start of elements
      *             to be copied into \c thislist
      * @param last List item in \c xlist marking the end of elements
      * to be copied into \c thislist

@@ -5,19 +5,19 @@
  * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015      Intel, Inc. All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
-/** 
+/**
  * @file
  *
  * Returns an OS-independant basename() of a given filename.
@@ -49,7 +49,7 @@ BEGIN_C_DECLS
  * Windows-based operating systems.  For example:
  *
  * foo.txt returns "foo.txt"
- * 
+ *
  * /foo/bar/baz returns "baz"
  *
  * /yow.c returns "yow.c"
@@ -88,7 +88,7 @@ PMIX_DECLSPEC char *pmix_basename(const char* filename) __pmix_attribute_malloc_
  * Windows-based operating systems.  For example:
  *
  * foo.txt returns "foo.txt"
- * 
+ *
  * /foo/bar/baz returns "/foo/bar"
  *
  * /yow.c returns "/"

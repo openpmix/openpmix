@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved. 
+ * Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
  * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
@@ -527,7 +527,7 @@ int pmix_bfrop_print_value(char **output, char *prefix,
     /* deal with NULL prefix */
     if (NULL == prefix) asprintf(&prefx, " ");
     else prefx = prefix;
-    
+
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
         asprintf(output, "%sData type: PMIX_VALUE\tValue: NULL pointer", prefx);
@@ -536,7 +536,7 @@ int pmix_bfrop_print_value(char **output, char *prefix,
         }
         return PMIX_SUCCESS;
     }
-    
+
     switch (src->type) {
     case PMIX_BYTE:
         asprintf(output, "%sPMIX_VALUE: Data type: PMIX_BYTE\tValue: %x",
@@ -620,7 +620,7 @@ int pmix_bfrop_print_info(char **output, char *prefix,
                           pmix_info_t *src, pmix_data_type_t type)
 {
     char *tmp;
-    
+
     pmix_bfrop_print_value(&tmp, NULL, &src->value, PMIX_VALUE);
     asprintf(output, "%sKEY: %s %s", prefix, src->key,
              (NULL == tmp) ? "NULL" : tmp);
@@ -678,11 +678,11 @@ int pmix_bfrop_print_array(char **output, char *prefix,
     size_t j;
     char *tmp, *tmp2, *tmp3, *pfx;
     pmix_info_t *s1;
-    
+
     asprintf(&tmp, "%sARRAY SIZE: %ld", prefix, (long)src->size);
     asprintf(&pfx, "\n%s\t",  (NULL == prefix) ? "" : prefix);
     s1 = (pmix_info_t*)src->array;
-    
+
     for (j=0; j < src->size; j++) {
         pmix_bfrop_print_info(&tmp2, pfx, &s1[j], PMIX_INFO);
         asprintf(&tmp3, "%s%s", tmp, tmp2);

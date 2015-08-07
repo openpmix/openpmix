@@ -3,9 +3,9 @@
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 #include <private/autogen/config.h>
@@ -214,7 +214,7 @@ void pmix_usock_send_handler(int sd, short flags, void *cbdata)
                 return;
             }
         }
-        
+
     next:
         /* if current message completed - progress any pending sends by
          * moving the next in the queue into the "on-deck" position. Note
@@ -367,7 +367,7 @@ void pmix_usock_send_recv(int fd, short args, void *cbdata)
 
     /* set the tag */
     tag = current_tag++;
-    
+
     if (NULL != ms->cbfunc) {
         /* if a callback msg is expected, setup a recv for it */
         req = PMIX_NEW(pmix_usock_posted_recv_t);

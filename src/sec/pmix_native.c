@@ -58,7 +58,7 @@ static char* create_cred(void)
     uid_t uid;
     gid_t gid;
     char *cred;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "sec: native create_cred");
 
@@ -71,7 +71,7 @@ static char* create_cred(void)
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "sec: using credential %s", cred);
-    
+
     return cred;
 }
 
@@ -80,7 +80,7 @@ static int validate_cred(pmix_peer_t *peer, char *cred)
     uid_t uid;
     gid_t gid;
     char **vals;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "sec: native validate_cred %s", cred);
 

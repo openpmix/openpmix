@@ -73,7 +73,7 @@ static int sasl_init(void)
 {
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "sec: sasl init");
-    
+
     return PMIX_ERR_NOT_SUPPORTED;
 }
 

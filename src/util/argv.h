@@ -5,20 +5,20 @@
  * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2008 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2008 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2007      Los Alamos National Security, LLC.
- *                         All rights reserved. 
+ *                         All rights reserved.
  * Copyright (c) 2007      Voltaire. All rights reserved.
  * Copyright (c) 2012      Los Alamos National Security, LLC. All rights reserved.
  * Copyright (c) 2015      Intel, Inc. All rights reserved.
  *
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -131,9 +131,9 @@ PMIX_DECLSPEC  int pmix_argv_append_unique_nosize(char ***argv, const char *arg,
    * array.
    */
 PMIX_DECLSPEC  void pmix_argv_free(char **argv);
-  
+
   /**
-   * Split a string into a NULL-terminated argv array. Do not include empty 
+   * Split a string into a NULL-terminated argv array. Do not include empty
    * strings in result array.
    *
    * @param src_string Input string.
@@ -150,7 +150,7 @@ PMIX_DECLSPEC  void pmix_argv_free(char **argv);
 PMIX_DECLSPEC  char **pmix_argv_split(const char *src_string, int delimiter) __pmix_attribute_malloc__ __pmix_attribute_warn_unused_result__;
 
   /**
-   * Split a string into a NULL-terminated argv array. Include empty 
+   * Split a string into a NULL-terminated argv array. Include empty
    * strings in result array.
    *
    * @param src_string Input string.
@@ -248,7 +248,7 @@ PMIX_DECLSPEC  char **pmix_argv_copy(char **argv) __pmix_attribute_malloc__ __pm
      * free()ed (it is assumed that the argv "owns" the memory that
      * the pointer points to).
      */
-PMIX_DECLSPEC  int pmix_argv_delete(int *argc, char ***argv, 
+PMIX_DECLSPEC  int pmix_argv_delete(int *argc, char ***argv,
                                     int start, int num_to_delete);
 
     /**

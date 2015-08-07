@@ -72,7 +72,7 @@ int pmix_start_listening(struct sockaddr_un *address)
     int flags, rc;
     unsigned int addrlen;
     char *ptr;
-    
+
     /* create a listen socket for incoming connection attempts */
     pmix_server_globals.listen_socket = socket(PF_UNIX, SOCK_STREAM, 0);
     if (pmix_server_globals.listen_socket < 0) {
@@ -85,13 +85,13 @@ int pmix_start_listening(struct sockaddr_un *address)
         printf("%s:%d bind() failed", __FILE__, __LINE__);
         return -1;
     }
-        
+
     /* setup listen backlog to maximum allowed by kernel */
     if (listen(pmix_server_globals.listen_socket, SOMAXCONN) < 0) {
         printf("%s:%d listen() failed", __FILE__, __LINE__);
         return -1;
     }
-        
+
     /* set socket up to be non-blocking, otherwise accept could block */
     if ((flags = fcntl(pmix_server_globals.listen_socket, F_GETFL, 0)) < 0) {
         printf("%s:%d fcntl(F_GETFL) failed", __FILE__, __LINE__);
@@ -144,7 +144,7 @@ int pmix_start_listening(struct sockaddr_un *address)
         }
         pmix_server_globals.listen_thread_active = true;
     }
-    
+
     return 0;
 }
 
@@ -243,7 +243,7 @@ static void* listen_thread(void *obj)
                                             &addrlen);
             if (pending_connection->sd < 0) {
                 PMIX_RELEASE(pending_connection);
-                if (pmix_socket_errno != EAGAIN || 
+                if (pmix_socket_errno != EAGAIN ||
                     pmix_socket_errno != EWOULDBLOCK) {
                     if (EMFILE == pmix_socket_errno) {
                         PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
@@ -264,7 +264,7 @@ static void* listen_thread(void *obj)
             accepted_connections++;
         } while (accepted_connections > 0);
     }
-    
+
  done:
     pmix_server_globals.listen_thread_active = false;
     return NULL;
@@ -273,7 +273,7 @@ static void* listen_thread(void *obj)
 static void listener_cb(int incoming_sd)
 {
     pmix_pending_connection_t *pending_connection;
-    
+
     /* throw it into our event library for processing */
     pmix_output_verbose(8, pmix_globals.debug_output,
                         "listen_cb: pushing new connection %d into evbase",
@@ -290,7 +290,7 @@ static int send_client_response(int sd, int status, pmix_buffer_t *payload)
     int rc;
     pmix_usock_hdr_t hdr;
     pmix_buffer_t buf;
-    
+
     /* pack the status */
     PMIX_CONSTRUCT(&buf, pmix_buffer_t);
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&buf, &status, 1, PMIX_INT))) {
@@ -317,7 +317,7 @@ static int send_client_response(int sd, int status, pmix_buffer_t *payload)
         return rc;
     }
     PMIX_DESTRUCT(&buf);
-    
+
     return PMIX_SUCCESS;
 }
 
@@ -329,7 +329,7 @@ static void connection_handler(int sd, short flags, void* cbdata)
     pmix_pending_connection_t *pnd = (pmix_pending_connection_t*)cbdata;
     pmix_peer_t *peer;
     int rank;
-    
+
     pmix_output_verbose(8, pmix_globals.debug_output,
                         "connection_handler: new connection: %d",
                         pnd->sd);
@@ -371,7 +371,7 @@ pmix_status_t pmix_server_authenticate(int sd, int *out_rank, pmix_peer_t **peer
     size_t csize;
     pmix_buffer_t *bptr;
     bool found;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "RECV CONNECT ACK FROM PEER ON SOCKET %d", sd);
 
@@ -406,7 +406,7 @@ pmix_status_t pmix_server_authenticate(int sd, int *out_rank, pmix_peer_t **peer
 
     /* get the nspace */
     nspace = msg;  // a NULL terminator is in the data
-    
+
     /* get the rank */
     memcpy(&rank, msg+strlen(nspace)+1, sizeof(int));
 
@@ -436,7 +436,7 @@ pmix_status_t pmix_server_authenticate(int sd, int *out_rank, pmix_peer_t **peer
         free(msg);
         return PMIX_ERR_NOT_SUPPORTED;
     }
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "connect-ack version from client matches ours");
 
@@ -482,7 +482,7 @@ pmix_status_t pmix_server_authenticate(int sd, int *out_rank, pmix_peer_t **peer
         PMIX_RELEASE(psave);
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
-    
+
     /* see if there is a credential */
     if (csize < hdr.nbytes) {
         cred = (char*)(msg + csize);
@@ -525,7 +525,7 @@ pmix_status_t pmix_server_authenticate(int sd, int *out_rank, pmix_peer_t **peer
     pmix_bfrop.pack(bptr, (void*)&psave->index, 1, PMIX_INT);
     /* copy any data across */
     pmix_bfrop.copy_payload(bptr, &nptr->server->job_info);
-    
+
     if (NULL == reply) {
         /* let the client know we are ready to go */
         pmix_output_verbose(2, pmix_globals.debug_output,
@@ -540,7 +540,7 @@ pmix_status_t pmix_server_authenticate(int sd, int *out_rank, pmix_peer_t **peer
     } else {
         *reply = bptr;
     }
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "connect-ack from client completed");
 

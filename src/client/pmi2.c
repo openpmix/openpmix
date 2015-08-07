@@ -80,7 +80,7 @@ int PMI2_Init(int *spawned, int *size, int *rank, int *appnum)
             *spawned = 0;
         }
     }
-    
+
     if (NULL != appnum) {
         /* get our appnum */
         if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
@@ -93,7 +93,7 @@ int PMI2_Init(int *spawned, int *size, int *rank, int *appnum)
             *appnum = 0;
         }
     }
-    
+
     return PMI2_SUCCESS;
 }
 
@@ -107,7 +107,7 @@ int PMI2_Initialized(void)
 int PMI2_Finalize(void)
 {
     pmix_status_t rc;
-    
+
     rc = PMIx_Finalize();
     return convert_err(rc);
 }
@@ -115,7 +115,7 @@ int PMI2_Finalize(void)
 int PMI2_Abort(int flag, const char msg[])
 {
     pmix_status_t rc;
-    
+
     rc = PMIx_Abort(flag, msg, NULL, 0);
     return convert_err(rc);
 }
@@ -140,7 +140,7 @@ int PMI2_KVS_Fence(void)
     if (PMIX_SUCCESS != (rc = PMIx_Commit())) {
         return convert_err(rc);
     }
-    
+
     /* we want all data to be collected upon completion */
     rc = PMIx_Fence(NULL, 0, 1);
     return convert_err(rc);
@@ -157,7 +157,7 @@ int PMI2_KVS_Get(const char *jobid, int src_pmi_id,
 {
     pmix_status_t rc;
     pmix_value_t *val;
-    
+
     rc = PMIx_Get(jobid, src_pmi_id, key, &val);
     if (PMIX_SUCCESS == rc && NULL != val) {
         if (PMIX_STRING != val->type) {
@@ -224,7 +224,7 @@ int PMI2_Nameserv_publish(const char service_name[], const PMI_keyval_t *info_pt
 {
     pmix_status_t rc, nvals;
     pmix_info_t info[2];
-    
+
     if (NULL == service_name || NULL == port) {
         return PMI2_ERR_INVALID_ARG;
     }
@@ -233,7 +233,7 @@ int PMI2_Nameserv_publish(const char service_name[], const PMI_keyval_t *info_pt
     info[0].value.type = PMIX_STRING;
     info[0].value.data.string = (char*)port;
     nvals = 1;
-    
+
     /* if provided, add any other value */
     if (NULL != info_ptr) {
         (void)strncpy(info[1].key, info_ptr->key, PMIX_MAX_KEYLEN);
@@ -244,7 +244,7 @@ int PMI2_Nameserv_publish(const char service_name[], const PMI_keyval_t *info_pt
     /* publish the info - PMI-2 doesn't support
      * any scope other than inside our own nspace */
     rc = PMIx_Publish(PMIX_NAMESPACE, PMIX_PERSIST_APP, info, nvals);
-    
+
     return convert_err(rc);
 }
 
@@ -253,17 +253,17 @@ int PMI2_Nameserv_unpublish(const char service_name[],
 {
     char *keys[3];
     pmix_status_t rc;
-    
+
     /* pass the service */
     keys[0] = (char*)service_name;
     keys[1] = NULL;
     keys[2] = NULL;
-    
+
     /* if provided, add any other value */
     if (NULL != info_ptr) {
         keys[1] = info_ptr->key;
     }
-    
+
     rc = PMIx_Unpublish(PMIX_NAMESPACE, keys);
     return convert_err(rc);
 }
@@ -277,7 +277,7 @@ int PMI2_Nameserv_lookup(const char service_name[], const PMI_keyval_t *info_ptr
 
     PMIX_PDATA_CONSTRUCT(&pdata[0]);
     PMIX_PDATA_CONSTRUCT(&pdata[1]);
-    
+
     /* pass the service */
     (void)strncpy(pdata[0].key, service_name, PMIX_MAX_KEYLEN);
     nvals = 1;
@@ -304,7 +304,7 @@ int PMI2_Nameserv_lookup(const char service_name[], const PMI_keyval_t *info_ptr
         PMIX_PDATA_DESTRUCT(&pdata[1]);
         return PMI2_FAIL;
     }
-    
+
     /* return the port */
     (void)strncpy(port, pdata[0].value.data.string, PMIX_MAX_VALLEN);
     PMIX_PDATA_DESTRUCT(&pdata[0]);
@@ -366,7 +366,7 @@ int PMI2_Job_Spawn(int count, const char * cmds[],
     pmix_status_t rc;
     size_t j;
     char *evar;
-    
+
     /* setup the apps */
     PMIX_APP_CREATE(apps, count);
     for (i=0; i < count; i++) {
@@ -456,40 +456,40 @@ static int convert_err(pmix_status_t rc)
     switch(rc) {
     case PMIX_ERR_INVALID_SIZE:
         return PMI2_ERR_INVALID_SIZE;
-        
+
     case PMIX_ERR_INVALID_KEYVALP:
         return PMI2_ERR_INVALID_KEYVALP;
-        
+
     case PMIX_ERR_INVALID_NUM_PARSED:
         return PMI2_ERR_INVALID_NUM_PARSED;
-        
+
     case PMIX_ERR_INVALID_ARGS:
         return PMI2_ERR_INVALID_ARGS;
-        
+
     case PMIX_ERR_INVALID_NUM_ARGS:
         return PMI2_ERR_INVALID_NUM_ARGS;
-        
+
     case PMIX_ERR_INVALID_LENGTH:
         return PMI2_ERR_INVALID_LENGTH;
-        
+
     case PMIX_ERR_INVALID_VAL_LENGTH:
         return PMI2_ERR_INVALID_VAL_LENGTH;
-        
+
     case PMIX_ERR_INVALID_VAL:
         return PMI2_ERR_INVALID_VAL;
-        
+
     case PMIX_ERR_INVALID_KEY_LENGTH:
         return PMI2_ERR_INVALID_KEY_LENGTH;
-        
+
     case PMIX_ERR_INVALID_KEY:
         return PMI2_ERR_INVALID_KEY;
-        
+
     case PMIX_ERR_INVALID_ARG:
         return PMI2_ERR_INVALID_ARG;
-        
+
     case PMIX_ERR_NOMEM:
         return PMI2_ERR_NOMEM;
-        
+
     case PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER:
     case PMIX_ERR_COMM_FAILURE:
     case PMIX_ERR_NOT_IMPLEMENTED:
@@ -516,7 +516,7 @@ static int convert_err(pmix_status_t rc)
     case PMIX_EXISTS:
     case PMIX_ERROR:
         return PMI2_FAIL;
-        
+
     case PMIX_ERR_INIT:
         return PMI2_ERR_INIT;
 

@@ -6,15 +6,15 @@
  * Copyright (c) 2004-2008 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2013-2015 Intel, Inc. All rights reserved
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -100,7 +100,7 @@ PMIX_DECLSPEC int pmix_pointer_array_add(pmix_pointer_array_t *array, void *ptr)
  *
  * @return Error code.  (-1) indicates an error.
  */
-PMIX_DECLSPEC int pmix_pointer_array_set_item(pmix_pointer_array_t *array, 
+PMIX_DECLSPEC int pmix_pointer_array_set_item(pmix_pointer_array_t *array,
                                 int index, void *value);
 
 /**
@@ -112,7 +112,7 @@ PMIX_DECLSPEC int pmix_pointer_array_set_item(pmix_pointer_array_t *array,
  * @return Error code.  NULL indicates an error.
  */
 
-static inline void *pmix_pointer_array_get_item(pmix_pointer_array_t *table, 
+static inline void *pmix_pointer_array_get_item(pmix_pointer_array_t *table,
                                                 int element_index)
 {
     void *p;
@@ -163,10 +163,10 @@ PMIX_DECLSPEC int pmix_pointer_array_set_size(pmix_pointer_array_t *array, int s
  * @return true/false True if element could be reserved
  *                    False if element could not be reserved (e.g., in use).
  *
- * In contrary to array_set, this function does not allow to overwrite 
+ * In contrary to array_set, this function does not allow to overwrite
  * a value, unless the previous value is NULL ( equiv. to free ).
  */
-PMIX_DECLSPEC bool pmix_pointer_array_test_and_set_item (pmix_pointer_array_t *table, 
+PMIX_DECLSPEC bool pmix_pointer_array_test_and_set_item (pmix_pointer_array_t *table,
                                           int index,
                                           void *value);
 
@@ -181,7 +181,7 @@ static inline void pmix_pointer_array_remove_all(pmix_pointer_array_t *array)
     int i;
     if( array->number_free == array->size )
         return;  /* nothing to do here this time (the array is already empty) */
- 
+
     array->lowest_free = 0;
     array->number_free = array->size;
     for(i=0; i<array->size; i++) {

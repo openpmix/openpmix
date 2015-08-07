@@ -10,7 +10,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2012-2013 Los Alamos National Security, Inc.  All rights reserved. 
+ * Copyright (c) 2012-2013 Los Alamos National Security, Inc.  All rights reserved.
  * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
@@ -186,7 +186,7 @@ int pmix_bfrop_open(void)
                        pmix_bfrop_unpack_byte,
                        pmix_bfrop_std_copy,
                        pmix_bfrop_print_byte);
-    
+
     PMIX_REGISTER_TYPE("PMIX_STRING", PMIX_STRING,
                        pmix_bfrop_pack_string,
                        pmix_bfrop_unpack_string,
@@ -296,7 +296,7 @@ int pmix_bfrop_open(void)
                        pmix_bfrop_copy_topo,
                        pmix_bfrop_print_topo);
 #endif
-    
+
     PMIX_REGISTER_TYPE("PMIX_VALUE", PMIX_VALUE,
                        pmix_bfrop_pack_value,
                        pmix_bfrop_unpack_value,
@@ -326,7 +326,7 @@ int pmix_bfrop_open(void)
                        pmix_bfrop_unpack_info,
                        pmix_bfrop_copy_info,
                        pmix_bfrop_print_info);
-    
+
     PMIX_REGISTER_TYPE("PMIX_PDATA", PMIX_PDATA,
                        pmix_bfrop_pack_pdata,
                        pmix_bfrop_unpack_pdata,
@@ -338,13 +338,13 @@ int pmix_bfrop_open(void)
                        pmix_bfrop_unpack_buf,
                        pmix_bfrop_copy_buf,
                        pmix_bfrop_print_buf);
-    
+
     PMIX_REGISTER_TYPE("PMIX_BYTE_OBJECT", PMIX_BYTE_OBJECT,
                        pmix_bfrop_pack_bo,
                        pmix_bfrop_unpack_bo,
                        pmix_bfrop_copy_bo,
                        pmix_bfrop_print_bo);
-    
+
     PMIX_REGISTER_TYPE("PMIX_KVAL", PMIX_KVAL,
                        pmix_bfrop_pack_kval,
                        pmix_bfrop_unpack_kval,

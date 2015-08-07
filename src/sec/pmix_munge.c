@@ -50,14 +50,14 @@ static bool refresh = false;
 static int munge_init(void)
 {
     int rc;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "sec: munge init");
-    
+
     /* attempt to get a credential as a way of checking that
      * the munge server is available - cache the credential
      * for later use */
-    
+
     if (EMUNGE_SUCCESS != (rc = munge_encode(&mycred, NULL, NULL, 0))) {
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "sec: munge failed to create credential: %s",
@@ -85,7 +85,7 @@ static char* create_cred(void)
 {
     int rc;
     char *resp=NULL;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "sec: munge create_cred");
 
@@ -116,7 +116,7 @@ static int validate_cred(pmix_peer_t *peer, char *cred)
     uid_t uid;
     gid_t gid;
     munge_err_t rc;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "sec: munge validate_cred %s", cred);
 

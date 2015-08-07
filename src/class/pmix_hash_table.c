@@ -5,7 +5,7 @@
  * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
@@ -13,9 +13,9 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014-2015 Intel, Inc. All rights reserved
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -40,7 +40,7 @@ static void pmix_hash_table_destruct(pmix_hash_table_t* ht);
 
 
 PMIX_CLASS_INSTANCE(
-    pmix_hash_table_t, 
+    pmix_hash_table_t,
     pmix_object_t,
     pmix_hash_table_construct,
     pmix_hash_table_destruct
@@ -107,7 +107,7 @@ int pmix_hash_table_remove_all(pmix_hash_table_t* ht)
     ht->ht_size -= 1;
     return PMIX_SUCCESS;
 }
- 
+
 /***************************************************************************/
 
 /*
@@ -148,7 +148,7 @@ int pmix_hash_table_get_value_uint32(pmix_hash_table_t* ht, uint32_t key,
 	    *ptr = node->hn_value;
             return PMIX_SUCCESS;
         }
-    } 
+    }
     return PMIX_ERR_NOT_FOUND;
 }
 
@@ -173,9 +173,9 @@ int pmix_hash_table_set_value_uint32(pmix_hash_table_t* ht,
             node->hn_value = value;
             return PMIX_SUCCESS;
         }
-    } 
+    }
 
-    node = (pmix_uint32_hash_node_t*)pmix_list_remove_first(&ht->ht_nodes); 
+    node = (pmix_uint32_hash_node_t*)pmix_list_remove_first(&ht->ht_nodes);
     if(NULL == node) {
         node = PMIX_NEW(pmix_uint32_hash_node_t);
         if(NULL == node)
@@ -210,7 +210,7 @@ int pmix_hash_table_remove_value_uint32(pmix_hash_table_t* ht, uint32_t key)
             ht->ht_size--;
             return PMIX_SUCCESS;
         }
-    } 
+    }
     return PMIX_ERR_NOT_FOUND;
 }
 
@@ -254,7 +254,7 @@ int pmix_hash_table_get_value_uint64(pmix_hash_table_t* ht, uint64_t key,
             *ptr = node->hn_value;
             return PMIX_SUCCESS;
         }
-    } 
+    }
     return PMIX_ERR_NOT_FOUND;
 }
 
@@ -279,9 +279,9 @@ int pmix_hash_table_set_value_uint64(pmix_hash_table_t* ht,
             node->hn_value = value;
             return PMIX_SUCCESS;
         }
-    } 
+    }
 
-    node = (pmix_uint64_hash_node_t*)pmix_list_remove_first(&ht->ht_nodes); 
+    node = (pmix_uint64_hash_node_t*)pmix_list_remove_first(&ht->ht_nodes);
     if(NULL == node) {
         node = PMIX_NEW(pmix_uint64_hash_node_t);
         if(NULL == node) {
@@ -317,7 +317,7 @@ int pmix_hash_table_remove_value_uint64(pmix_hash_table_t* ht, uint64_t key)
             ht->ht_size--;
             return PMIX_SUCCESS;
         }
-    } 
+    }
     return PMIX_ERR_NOT_FOUND;
 }
 
@@ -365,7 +365,7 @@ static inline uint32_t pmix_hash_value(size_t mask, const void *key,
 int pmix_hash_table_get_value_ptr(pmix_hash_table_t* ht, const void* key,
 				  size_t key_size, void **ptr)
 {
-    pmix_list_t* list = ht->ht_table + pmix_hash_value(ht->ht_mask, key, 
+    pmix_list_t* list = ht->ht_table + pmix_hash_value(ht->ht_mask, key,
                                                        key_size);
     pmix_ptr_hash_node_t *node;
 
@@ -384,7 +384,7 @@ int pmix_hash_table_get_value_ptr(pmix_hash_table_t* ht, const void* key,
             *ptr = node->hn_value;
 	    return PMIX_SUCCESS;
         }
-    } 
+    }
     return PMIX_ERR_NOT_FOUND;
 }
 
@@ -411,9 +411,9 @@ int pmix_hash_table_set_value_ptr(pmix_hash_table_t* ht, const void* key,
             node->hn_value = value;
             return PMIX_SUCCESS;
         }
-    } 
+    }
 
-    node = (pmix_ptr_hash_node_t*)pmix_list_remove_first(&ht->ht_nodes); 
+    node = (pmix_ptr_hash_node_t*)pmix_list_remove_first(&ht->ht_nodes);
     if(NULL == node) {
         node = PMIX_NEW(pmix_ptr_hash_node_t);
         if(NULL == node) {
@@ -457,13 +457,13 @@ int pmix_hash_table_remove_value_ptr(pmix_hash_table_t* ht,
             ht->ht_size--;
             return PMIX_SUCCESS;
         }
-    } 
+    }
  return PMIX_ERR_NOT_FOUND;
 }
 
 
-int 
-pmix_hash_table_get_first_key_uint32(pmix_hash_table_t *ht, uint32_t *key, 
+int
+pmix_hash_table_get_first_key_uint32(pmix_hash_table_t *ht, uint32_t *key,
                                      void **value, void **node)
 {
     size_t i;
@@ -471,7 +471,7 @@ pmix_hash_table_get_first_key_uint32(pmix_hash_table_t *ht, uint32_t *key,
 
     /* Go through all the lists and return the first element off the
        first non-empty list */
-    
+
     for (i = 0; i < ht->ht_table_size; ++i) {
         if (pmix_list_get_size(ht->ht_table + i) > 0) {
             list_node = (pmix_uint32_hash_node_t*)
@@ -489,9 +489,9 @@ pmix_hash_table_get_first_key_uint32(pmix_hash_table_t *ht, uint32_t *key,
 }
 
 
-int 
+int
 pmix_hash_table_get_next_key_uint32(pmix_hash_table_t *ht, uint32_t *key,
-                                    void **value, void *in_node, 
+                                    void **value, void *in_node,
                                     void **out_node)
 {
     size_t i;
@@ -534,7 +534,7 @@ pmix_hash_table_get_next_key_uint32(pmix_hash_table_t *ht, uint32_t *key,
 }
 
 
-int 
+int
 pmix_hash_table_get_first_key_uint64(pmix_hash_table_t *ht, uint64_t *key,
                                      void **value, void **node)
 {
@@ -543,7 +543,7 @@ pmix_hash_table_get_first_key_uint64(pmix_hash_table_t *ht, uint64_t *key,
 
     /* Go through all the lists and return the first element off the
        first non-empty list */
-    
+
     for (i = 0; i < ht->ht_table_size; ++i) {
         if (pmix_list_get_size(ht->ht_table + i) > 0) {
             list_node = (pmix_uint64_hash_node_t*)
@@ -561,9 +561,9 @@ pmix_hash_table_get_first_key_uint64(pmix_hash_table_t *ht, uint64_t *key,
 }
 
 
-int 
+int
 pmix_hash_table_get_next_key_uint64(pmix_hash_table_t *ht, uint64_t *key,
-                                    void **value, void *in_node, 
+                                    void **value, void *in_node,
                                     void **out_node)
 {
     size_t i;

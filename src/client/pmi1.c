@@ -47,7 +47,7 @@ int PMI_Init( int *spawned )
     if (PMIX_SUCCESS != PMIx_Init(NULL, NULL)) {
         return PMI_ERR_INIT;
     }
-    
+
     if (NULL == spawned) {
         return PMI_SUCCESS;
     }
@@ -103,7 +103,7 @@ int PMI_KVS_Put(const char kvsname[], const char key[], const char value[])
 int PMI_KVS_Commit(const char kvsname[])
 {
     pmix_status_t rc;
-    
+
     rc = PMIx_Commit();
     return convert_err(rc);
 }
@@ -119,18 +119,18 @@ int PMI_Get_size(int *size)
 {
     pmix_value_t *kv;
     pmix_status_t rc;
-    
+
     if (NULL == size) {
         return PMI_FAIL;
     }
-    
+
     if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
                                  PMIX_JOB_SIZE, &kv)) {
         rc = convert_int(size, kv);
         PMIX_VALUE_RELEASE(kv);
         return convert_err(rc);
     }
-    
+
     return PMI_FAIL;
 }
 
@@ -139,7 +139,7 @@ int PMI_Get_rank(int *rk)
     if (NULL == rk) {
         return PMI_FAIL;
     }
-    
+
     *rk = pmix_globals.rank;
     return PMI_SUCCESS;
 }
@@ -148,11 +148,11 @@ int PMI_Get_universe_size(int *size)
 {
     pmix_value_t *kv;
     pmix_status_t rc;
-    
+
     if (NULL == size) {
         return PMI_FAIL;
     }
-    
+
     if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
                                  PMIX_UNIV_SIZE, &kv)) {
         rc = convert_int(size, kv);
@@ -166,7 +166,7 @@ int PMI_Get_appnum(int *appnum)
 {
     pmix_value_t *kv;
     pmix_status_t rc;
-    
+
     if (NULL != appnum &&
         PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
                                  PMIX_APPNUM, &kv)) {
@@ -174,7 +174,7 @@ int PMI_Get_appnum(int *appnum)
         PMIX_VALUE_RELEASE(kv);
         return convert_err(rc);
     }
-    
+
     return PMI_FAIL;
 }
 
@@ -182,7 +182,7 @@ int PMI_Publish_name(const char service_name[], const char port[])
 {
     pmix_status_t rc;
     pmix_info_t info;
-    
+
     if (NULL == service_name || NULL == port) {
         return convert_err(PMIX_ERR_BAD_PARAM);
     }
@@ -190,11 +190,11 @@ int PMI_Publish_name(const char service_name[], const char port[])
     (void)strncpy(info.key, service_name, PMIX_MAX_KEYLEN);
     info.value.type = PMIX_STRING;
     info.value.data.string = (char*)port;
-    
+
     /* publish the info - PMI-1 doesn't support
      * any scope other than inside our own nspace */
     rc = PMIx_Publish(PMIX_NAMESPACE, PMIX_PERSIST_APP, &info, 1);
-    
+
     return convert_err(rc);
 }
 
@@ -202,11 +202,11 @@ int PMI_Unpublish_name(const char service_name[])
 {
     pmix_status_t rc;
     char *keys[2];
-    
+
     /* pass the service */
     keys[0] = (char*)service_name;
     keys[1] = NULL;
-    
+
     rc = PMIx_Unpublish(PMIX_NAMESPACE, keys);
     return convert_err(rc);
 }
@@ -215,7 +215,7 @@ int PMI_Lookup_name(const char service_name[], char port[])
 {
     pmix_status_t rc;
     pmix_pdata_t pdata;
-    
+
     PMIX_PDATA_CONSTRUCT(&pdata);
 
     /* pass the service */
@@ -231,11 +231,11 @@ int PMI_Lookup_name(const char service_name[], char port[])
         NULL == pdata.value.data.string) {
         return convert_err(PMIX_ERR_NOT_FOUND);
     }
-    
+
     /* return the port */
     (void)strncpy(port, pdata.value.data.string, PMIX_MAX_VALLEN);
     PMIX_PDATA_DESTRUCT(&pdata);
-    
+
     return PMIX_SUCCESS;
 }
 
@@ -271,14 +271,14 @@ int PMI_Get_clique_size(int *size)
 {
     pmix_value_t *kv;
     pmix_status_t rc;
-    
+
     if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
                                  PMIX_LOCAL_SIZE, &kv)) {
         rc = convert_int(size, kv);
         PMIX_VALUE_RELEASE(kv);
         return convert_err(rc);
     }
-    
+
     return PMI_FAIL;
 }
 
@@ -287,7 +287,7 @@ int PMI_Get_clique_ranks(int ranks[], int length)
     pmix_value_t *kv;
     char **rks;
     int i;
-    
+
     if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank, PMIX_LOCAL_PEERS, &kv)) {
         /* kv will contain a string of comma-separated
          * ranks on my node */
@@ -378,7 +378,7 @@ int PMI_Spawn_multiple(int count,
     pmix_status_t rc;
     size_t j;
     char *evar;
-    
+
     /* setup the apps */
     PMIX_APP_CREATE(apps, count);
     for (i=0; i < count; i++) {
@@ -500,40 +500,40 @@ static int convert_err(pmix_status_t rc)
     switch(rc) {
     case PMIX_ERR_INVALID_SIZE:
         return PMI_ERR_INVALID_SIZE;
-        
+
     case PMIX_ERR_INVALID_KEYVALP:
         return PMI_ERR_INVALID_KEYVALP;
-        
+
     case PMIX_ERR_INVALID_NUM_PARSED:
         return PMI_ERR_INVALID_NUM_PARSED;
-        
+
     case PMIX_ERR_INVALID_ARGS:
         return PMI_ERR_INVALID_ARGS;
-        
+
     case PMIX_ERR_INVALID_NUM_ARGS:
         return PMI_ERR_INVALID_NUM_ARGS;
-        
+
     case PMIX_ERR_INVALID_LENGTH:
         return PMI_ERR_INVALID_LENGTH;
-        
+
     case PMIX_ERR_INVALID_VAL_LENGTH:
         return PMI_ERR_INVALID_VAL_LENGTH;
-        
+
     case PMIX_ERR_INVALID_VAL:
         return PMI_ERR_INVALID_VAL;
-        
+
     case PMIX_ERR_INVALID_KEY_LENGTH:
         return PMI_ERR_INVALID_KEY_LENGTH;
-        
+
     case PMIX_ERR_INVALID_KEY:
         return PMI_ERR_INVALID_KEY;
-        
+
     case PMIX_ERR_INVALID_ARG:
         return PMI_ERR_INVALID_ARG;
-        
+
     case PMIX_ERR_NOMEM:
         return PMI_ERR_NOMEM;
-        
+
     case PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER:
     case PMIX_ERR_COMM_FAILURE:
     case PMIX_ERR_NOT_IMPLEMENTED:
@@ -560,7 +560,7 @@ static int convert_err(pmix_status_t rc)
     case PMIX_EXISTS:
     case PMIX_ERROR:
         return PMI_FAIL;
-        
+
     case PMIX_ERR_INIT:
         return PMI_ERR_INIT;
 

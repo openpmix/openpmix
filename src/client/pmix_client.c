@@ -75,7 +75,7 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_usock_hdr_t *
     pmix_proc_t *procs=NULL;
     size_t nprocs, ninfo;
     pmix_info_t *info=NULL;
-    
+
     if (NULL == pmix_globals.errhandler) {
         return;
     }
@@ -87,7 +87,7 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_usock_hdr_t *
         return;
     }
     pstatus = status;
-    
+
     /* unpack the procs that are impacted */
     cnt=1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &nprocs, &cnt, PMIX_SIZE))) {
@@ -102,7 +102,7 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_usock_hdr_t *
             goto error;
         }
     }
-    
+
     /* unpack the info that might have been provided */
     cnt=1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
@@ -117,7 +117,7 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_usock_hdr_t *
             goto error;
         }
     }
-    
+
     pmix_globals.errhandler(pstatus, procs, nprocs, info, ninfo);
 
     /* cleanup */
@@ -130,7 +130,7 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_usock_hdr_t *
     pmix_globals.errhandler(rc, NULL, 0, NULL, 0);
     PMIX_PROC_FREE(procs, nprocs);
     PMIX_INFO_FREE(info, ninfo);
- 
+
 }
 
 
@@ -146,7 +146,7 @@ pmix_client_globals_t pmix_client_globals = {
     .cache_local = NULL,
     .cache_remote = NULL,
 };
-    
+
 /* callback for wait completion */
 static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                         pmix_buffer_t *buf, void *cbdata)
@@ -159,7 +159,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
 
     cb->active = false;
 }
- 
+
 static void setup_globals(void)
 {
     PMIX_CONSTRUCT(&pmix_client_globals.nspaces, pmix_list_t);
@@ -208,7 +208,7 @@ int PMIx_Init(char nspace[], int *rank)
     int rc, debug_level;
     struct sockaddr_un address;
     pmix_nsrec_t *nsptr;
-    
+
     ++pmix_client_globals.init_cntr;
     if (1 < pmix_client_globals.init_cntr) {
         /* since we have been called before, the nspace and
@@ -230,7 +230,7 @@ int PMIx_Init(char nspace[], int *rank)
     if (!pmix_output_init()) {
         return PMIX_ERROR;
     }
-    
+
     /* see if debug is requested */
     if (NULL != (evar = getenv("PMIX_DEBUG"))) {
         debug_level = strtol(evar, NULL, 10);
@@ -244,7 +244,7 @@ int PMIx_Init(char nspace[], int *rank)
     pmix_bfrop_open();
     pmix_usock_init(pmix_client_notify_recv);
     pmix_sec_init();
-    
+
     /* we require the nspace */
     if (NULL == (evar = getenv("PMIX_NAMESPACE"))) {
         /* let the caller know that the server isn't available yet */
@@ -257,7 +257,7 @@ int PMIx_Init(char nspace[], int *rank)
     nsptr = PMIX_NEW(pmix_nsrec_t);
     (void)strncpy(nsptr->nspace, evar, PMIX_MAX_NSLEN);
     pmix_list_append(&pmix_client_globals.nspaces, &nsptr->super);
-    
+
     /* if we don't have a path to the daemon rendezvous point,
      * then we need to return an error */
     if (NULL == (evar = getenv("PMIX_SERVER_URI"))) {
@@ -295,7 +295,7 @@ int PMIx_Init(char nspace[], int *rank)
         *rank = pmix_globals.rank;
     }
     pmix_globals.pindex = -1;
-    
+
     /* create an event base and progress thread for us */
     if (NULL == (pmix_globals.evbase = pmix_start_progress_thread())) {
         return -1;
@@ -374,13 +374,13 @@ int PMIx_Finalize(void)
 
     PMIX_LIST_DESTRUCT(&pmix_client_globals.nspaces);
     PMIX_LIST_DESTRUCT(&pmix_client_globals.pending_requests);
-    
+
     if (0 <= pmix_client_globals.myserver.sd) {
         CLOSE_THE_SOCKET(pmix_client_globals.myserver.sd);
     }
     pmix_bfrop_close();
     pmix_sec_finalize();
-    
+
     pmix_output_close(pmix_globals.debug_output);
     pmix_output_finalize();
     pmix_class_finalize();
@@ -442,7 +442,7 @@ int PMIx_Abort(int flag, const char msg[],
             return rc;
         }
     }
-    
+
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
@@ -463,7 +463,7 @@ int PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
     pmix_status_t rc;
     pmix_kval_t *kv;
     pmix_nsrec_t *ns;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: executing put for key %s type %d",
                         key, val->type);
@@ -519,7 +519,7 @@ int PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
             PMIX_ERROR_LOG(rc);
         }
     }
-    
+
     PMIX_RELEASE(kv);  // maintain accounting
 
     return rc;
@@ -531,7 +531,7 @@ pmix_status_t PMIx_Commit(void)
     pmix_scope_t scope;
     pmix_buffer_t *msgout;
     pmix_cmd_t cmd=PMIX_COMMIT_CMD;
-    
+
     /* if we aren't connected, don't attempt to send */
     if (!pmix_globals.connected) {
         return PMIX_ERR_UNREACH;
@@ -544,7 +544,7 @@ pmix_status_t PMIx_Commit(void)
         PMIX_RELEASE(msgout);
         return rc;
     }
-    
+
     /* if we haven't already done it, ensure we have committed our values */
     if (NULL != pmix_client_globals.cache_local) {
         scope = PMIX_LOCAL;
@@ -574,7 +574,7 @@ pmix_status_t PMIx_Commit(void)
         }
         PMIX_RELEASE(pmix_client_globals.cache_remote);
     }
-    
+
     /* push the message into our event base to send to the server - always
      * send, even if we have nothing to contribute, so the server knows
      * that we contributed whatever we had */
@@ -635,7 +635,7 @@ pmix_status_t PMIx_Resolve_peers(const char *nodename, const char *nspace,
     pmix_nsrec_t *nsptr;
     pmix_nrec_t *nptr;
     size_t i;
-    
+
     /* set the default */
     *procs = NULL;
     *nprocs = 0;
@@ -662,15 +662,15 @@ pmix_status_t PMIx_Resolve_peers(const char *nodename, const char *nspace,
     if (0 == (i = pmix_argv_count(nsps))) {
         /* if we don't already have a record for this nspace,
          * see if we have the data in our local cache */
-        
+
         return PMIX_ERR_NOT_FOUND;
     }
-    
+
     /* create the required storage */
     i = pmix_argv_count(nsps);
     PMIX_PROC_CREATE(*procs, i);
     *nprocs = pmix_argv_count(nsps);
-    
+
     /* transfer the data */
     for (i=0; NULL != nsps[i]; i++) {
         (void)strncpy((*procs)[i].nspace, nsps[i], PMIX_MAX_NSLEN);
@@ -678,7 +678,7 @@ pmix_status_t PMIx_Resolve_peers(const char *nodename, const char *nspace,
     }
     pmix_argv_free(nsps);
     pmix_argv_free(nsprocs);
-    
+
     return PMIX_SUCCESS;
 }
 
@@ -687,7 +687,7 @@ pmix_status_t PMIx_Resolve_nodes(const char *nspace, char **nodelist)
     char **tmp;
     pmix_nsrec_t *nsptr;
     pmix_nrec_t *nptr;
-    
+
     /* set the default */
     *nodelist = NULL;
 
@@ -716,7 +716,7 @@ static int send_connect_ack(int sd)
     pmix_usock_hdr_t hdr;
     size_t sdsize=0, csize=0;
     char *cred = NULL;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: SEND CONNECT ACK");
 
@@ -727,7 +727,7 @@ static int send_connect_ack(int sd)
 
     /* reserve space for the nspace and rank info */
     sdsize = strlen(pmix_globals.nspace) + 1 + sizeof(int);
-    
+
     /* get a credential, if the security system provides one. Not
      * every SPC will do so, thus we must first check */
     if (NULL != pmix_sec.create_cred) {
@@ -763,7 +763,7 @@ static int send_connect_ack(int sd)
     if (NULL != cred) {
         memcpy(msg+csize, cred, strlen(cred));  // leaves last position in msg set to NULL
     }
-    
+
     if (PMIX_SUCCESS != pmix_usock_send_blocking(sd, msg, sdsize)) {
         free(msg);
         if (NULL != cred) {
@@ -790,7 +790,7 @@ static int recv_connect_ack(int sd)
     char *msg = NULL;
     pmix_buffer_t buf;
     char *nspace;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: RECV CONNECT ACK FROM SERVER");
     /* receive the header */
@@ -858,7 +858,7 @@ static int recv_connect_ack(int sd)
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: RECV CONNECT CONFIRMATION AND INITIAL DATA FROM SERVER OF %d BYTES",
                         (int)hdr.nbytes);
-    
+
     /* unpack our index into the server's client array */
     cnt = 1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&buf, &pmix_globals.pindex, &cnt, PMIX_INT))) {
@@ -893,7 +893,7 @@ static int recv_connect_ack(int sd)
 
     /* unpack any info structs provided */
     pmix_client_process_nspace_blob(pmix_globals.nspace, &buf);
-    
+
  cleanup:
     buf.base_ptr = NULL;  // protect data region from double-free
     PMIX_DESTRUCT(&buf);
@@ -1063,7 +1063,7 @@ static int usock_connect(struct sockaddr *addr)
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "usock_peer_try_connect: attempting to connect to server");
-    
+
     addrlen = sizeof(struct sockaddr_un);
     while (retries < PMIX_MAX_RETRIES) {
         retries++;
@@ -1129,7 +1129,7 @@ static int usock_connect(struct sockaddr *addr)
 
     /* mark the connection as made */
     pmix_globals.connected = true;
-    
+
     pmix_usock_set_nonblocking(sd);
     return sd;
 }

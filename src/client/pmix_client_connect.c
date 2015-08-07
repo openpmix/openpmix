@@ -62,7 +62,7 @@ int PMIx_Connect(const pmix_proc_t procs[], size_t nprocs)
 {
     int rc;
     pmix_cb_t *cb;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: connect called");
 
@@ -105,7 +105,7 @@ int PMIx_Connect_nb(const pmix_proc_t procs[], size_t nprocs,
     pmix_cmd_t cmd = PMIX_CONNECTNB_CMD;
     int rc;
     pmix_cb_t *cb;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: connect called");
 
@@ -157,7 +157,7 @@ int PMIx_Disconnect(const pmix_proc_t procs[], size_t nprocs)
 {
     int rc;
     pmix_cb_t *cb;
-     
+
     if (pmix_client_globals.init_cntr <= 0) {
         return PMIX_ERR_INIT;
     }
@@ -196,7 +196,7 @@ int PMIx_Disconnect_nb(const pmix_proc_t procs[], size_t nprocs,
     pmix_cmd_t cmd = PMIX_DISCONNECTNB_CMD;
     int rc;
     pmix_cb_t *cb;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: disconnect called");
 
@@ -237,7 +237,7 @@ int PMIx_Disconnect_nb(const pmix_proc_t procs[], size_t nprocs,
     cb = PMIX_NEW(pmix_cb_t);
     cb->op_cbfunc = cbfunc;
     cb->cbdata = cbdata;
-    
+
     /* push the message into our event base to send to the server */
     PMIX_ACTIVATE_SEND_RECV(&pmix_client_globals.myserver, msg, wait_cbfunc, cb);
 
@@ -255,7 +255,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     int32_t cnt;
     char *nspace;
     pmix_buffer_t *bptr;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:client recv callback activated with %d bytes",
                         (NULL == buf) ? -1 : (int)buf->bytes_used);

@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved. 
+ * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2004-2011 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
@@ -8,9 +8,9 @@
  *                         reserved.
  * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  *
  */
@@ -82,7 +82,7 @@ int pmix_hash_store(pmix_hash_table_t *table,
     if (NULL == (proc_data = lookup_proc(table, id, true))) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
-    
+
      /* see if we already have this key in the data - means we are updating
      * a pre-existing value
      */
@@ -109,7 +109,7 @@ int pmix_hash_fetch(pmix_hash_table_t *table, int rank,
     pmix_output_verbose(10, pmix_globals.debug_output,
                         "HASH:FETCH rank %d key %s",
                         rank, (NULL == key) ? "NULL" : key);
-    
+
     /* NULL keys are not supported */
     if (NULL == key) {
         return PMIX_ERR_BAD_PARAM;
@@ -128,7 +128,7 @@ int pmix_hash_fetch(pmix_hash_table_t *table, int rank,
                             rank);
         return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
     }
-    
+
     /* find the value from within this proc_data object */
     if (NULL == (hv = lookup_keyval(&proc_data->data, key))) {
         pmix_output_verbose(10, pmix_globals.debug_output,
@@ -192,7 +192,7 @@ int pmix_hash_remove_data(pmix_hash_table_t *table,
             }
         }
     }
-    
+
     /* lookup the specified proc */
     id = (uint64_t)rank;
     if (NULL == (proc_data = lookup_proc(table, id, false))) {
@@ -260,6 +260,6 @@ static pmix_proc_data_t* lookup_proc(pmix_hash_table_t *jtable,
         }
         pmix_hash_table_set_value_uint64(jtable, id, proc_data);
     }
-    
+
     return proc_data;
 }

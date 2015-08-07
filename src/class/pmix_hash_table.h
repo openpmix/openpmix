@@ -5,20 +5,20 @@
  * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015      Intel, Inc. All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  *
  */
 
-/** @file 
+/** @file
  *
  *  A hash table that may be indexed with either fixed length
  *  (e.g. uint32_t/uint64_t) or arbitrary size binary key
@@ -41,7 +41,7 @@
 BEGIN_C_DECLS
 
 PMIX_DECLSPEC PMIX_CLASS_DECLARATION(pmix_hash_table_t);
-                           
+
 struct pmix_hash_table_t
 {
     pmix_object_t        super;          /**< subclass of pmix_object_t */
@@ -53,14 +53,14 @@ struct pmix_hash_table_t
 };
 typedef struct pmix_hash_table_t pmix_hash_table_t;
 
-                           
-    
+
+
 /**
  *  Initializes the table size, must be called before using
  *  the table.
  *
  *  @param   table   The input hash table (IN).
- *  @param   size    The size of the table, which will be rounded up 
+ *  @param   size    The size of the table, which will be rounded up
  *                   (if required) to the next highest power of two (IN).
  *  @return  PMIX error code.
  *
@@ -111,7 +111,7 @@ PMIX_DECLSPEC int pmix_hash_table_remove_all(pmix_hash_table_t *ht);
  *
  */
 
-PMIX_DECLSPEC int pmix_hash_table_get_value_uint32(pmix_hash_table_t* table, uint32_t key, 
+PMIX_DECLSPEC int pmix_hash_table_get_value_uint32(pmix_hash_table_t* table, uint32_t key,
 						   void** ptr);
 
 /**
@@ -189,7 +189,7 @@ PMIX_DECLSPEC int pmix_hash_table_remove_value_uint64(pmix_hash_table_t *table, 
  *
  */
 
-PMIX_DECLSPEC int pmix_hash_table_get_value_ptr(pmix_hash_table_t *table, const void* key, 
+PMIX_DECLSPEC int pmix_hash_table_get_value_ptr(pmix_hash_table_t *table, const void* key,
 						size_t keylen, void **ptr);
 
 /**
@@ -243,11 +243,11 @@ PMIX_DECLSPEC int pmix_hash_table_get_first_key_uint32(pmix_hash_table_t *table,
 
 
 /**
- *  Get the next 32 bit key from the hash table, knowing the current key 
+ *  Get the next 32 bit key from the hash table, knowing the current key
  *  @param  table    The hash table pointer (IN)
  *  @param  key      The key (OUT)
  *  @param  value    The value corresponding to this key (OUT)
- *  @param  in_node  The node pointer from previous call to either get_first 
+ *  @param  in_node  The node pointer from previous call to either get_first
                      or get_next (IN)
  *  @param  out_node The pointer to the hash table internal node which stores
  *                   the key-value pair (this is required for subsequent calls
@@ -279,11 +279,11 @@ PMIX_DECLSPEC int pmix_hash_table_get_first_key_uint64(pmix_hash_table_t *table,
 
 
 /**
- *  Get the next 64 bit key from the hash table, knowing the current key 
+ *  Get the next 64 bit key from the hash table, knowing the current key
  *  @param  table    The hash table pointer (IN)
  *  @param  key      The key (OUT)
  *  @param  value    The value corresponding to this key (OUT)
- *  @param  in_node  The node pointer from previous call to either get_first 
+ *  @param  in_node  The node pointer from previous call to either get_first
                      or get_next (IN)
  *  @param  out_node The pointer to the hash table internal node which stores
  *                   the key-value pair (this is required for subsequent calls
@@ -291,7 +291,7 @@ PMIX_DECLSPEC int pmix_hash_table_get_first_key_uint64(pmix_hash_table_t *table,
  *  @return PMIX error code
  *
  */
-    
+
 PMIX_DECLSPEC int pmix_hash_table_get_next_key_uint64(pmix_hash_table_t *table, uint64_t *key,
 				       void **value, void *in_node,
 				       void **out_node);

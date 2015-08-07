@@ -78,7 +78,7 @@ int pmix_sec_init(void)
     int i, j, navail=0;
     char *evar, **options;
     bool exclude;
-    
+
     /* see if the PMIX_SEC_MODE envar has been provided */
     if (NULL != (evar = getenv("PMIX_SECURITY_MODE"))) {
         /* if the leading character is '^', then we are excluding */
@@ -117,7 +117,7 @@ int pmix_sec_init(void)
                 }
                 if (NULL == all[i]) {
                     /* we didn't find one they specified */
-                    pmix_output(0, "Security mode %s is not available", options[j]); 
+                    pmix_output(0, "Security mode %s is not available", options[j]);
                     pmix_argv_free(options);
                     return PMIX_ERR_NOT_FOUND;
                 }
@@ -138,7 +138,7 @@ int pmix_sec_init(void)
         pmix_output(0, "No Security modes are available");
         return PMIX_ERR_NOT_FOUND;
     }
-    
+
     /* now go thru the available modules in order until someone
      * indicates they are able/willing to run */
     for (i=0; i < navail; i++) {

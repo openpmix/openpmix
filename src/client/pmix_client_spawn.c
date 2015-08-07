@@ -63,7 +63,7 @@ int PMIx_Spawn(const pmix_app_t apps[],
 {
     int rc;
     pmix_cb_t *cb;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: spawn called");
 
@@ -80,16 +80,16 @@ int PMIx_Spawn(const pmix_app_t apps[],
     if (NULL != nspace) {
         memset(nspace, 0, PMIX_MAX_NSLEN+1);
     }
-    
+
     /* create a callback object */
     cb = PMIX_NEW(pmix_cb_t);
     cb->active = true;
-    
+
     if (PMIX_SUCCESS != (rc = PMIx_Spawn_nb(apps, napps, spawn_cbfunc, cb))) {
         PMIX_RELEASE(cb);
         return rc;
     }
-    
+
     /* wait for the result */
     PMIX_WAIT_FOR_COMPLETION(cb->active);
     rc = cb->status;
@@ -107,7 +107,7 @@ int PMIx_Spawn_nb(const pmix_app_t apps[], size_t napps,
     pmix_cmd_t cmd = PMIX_SPAWNNB_CMD;
     int rc;
     pmix_cb_t *cb;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: spawn called");
 
@@ -139,7 +139,7 @@ int PMIx_Spawn_nb(const pmix_app_t apps[], size_t napps,
         PMIX_RELEASE(msg);
         return rc;
     }
-    
+
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
@@ -162,14 +162,14 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     char *n2;
     int rc, ret;
     int32_t cnt;
-    
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:client recv callback activated with %d bytes",
                         (NULL == buf) ? -1 : (int)buf->bytes_used);
 
     /* init */
     memset(nspace, 0, PMIX_MAX_NSLEN+1);
-    
+
     /* unpack the returned status */
     cnt = 1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ret, &cnt, PMIX_INT))) {
@@ -188,7 +188,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
         pmix_client_process_nspace_blob(nspace, buf);
         free(n2);
     }
-    
+
     if (NULL != cb->spawn_cbfunc) {
         cb->spawn_cbfunc(ret, nspace, cb->cbdata);
     }
@@ -197,7 +197,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
 static void spawn_cbfunc(int status, char nspace[], void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
-    
+
     cb->status = status;
     if (NULL != nspace) {
         (void)strncpy(cb->nspace, nspace, PMIX_MAX_NSLEN);

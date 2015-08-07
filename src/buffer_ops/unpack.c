@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved. 
+ * Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
  * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
@@ -162,7 +162,7 @@ int pmix_bfrop_unpack_int(pmix_buffer_t *buffer, void *dest,
         /* slow path - types are different sizes */
         UNPACK_SIZE_MISMATCH(int, remote_type, ret);
     }
-    
+
     return ret;
 }
 
@@ -188,7 +188,7 @@ int pmix_bfrop_unpack_sizet(pmix_buffer_t *buffer, void *dest,
         /* slow path - types are different sizes */
         UNPACK_SIZE_MISMATCH(size_t, remote_type, ret);
     }
-    
+
     return ret;
 }
 
@@ -214,7 +214,7 @@ int pmix_bfrop_unpack_pid(pmix_buffer_t *buffer, void *dest,
         /* slow path - types are different sizes */
         UNPACK_SIZE_MISMATCH(pid_t, remote_type, ret);
     }
-    
+
     return ret;
 }
 
@@ -704,7 +704,7 @@ int pmix_bfrop_unpack_buf(pmix_buffer_t *buffer, void *dest,
 
     ptr = (pmix_buffer_t **) dest;
     n = *num_vals;
-    
+
     for (i = 0; i < n; ++i) {
         /* allocate the new object */
         ptr[i] = PMIX_NEW(pmix_buffer_t);
@@ -740,13 +740,13 @@ int pmix_bfrop_unpack_proc(pmix_buffer_t *buffer, void *dest,
     int32_t i, n, m;
     int ret;
     char *tmp;
-    
+
     pmix_output_verbose(20, pmix_globals.debug_output,
                         "pmix_bfrop_unpack: %d procs", *num_vals);
-    
+
     ptr = (pmix_proc_t *) dest;
     n = *num_vals;
-    
+
     for (i = 0; i < n; ++i) {
         pmix_output_verbose(20, pmix_globals.debug_output,
                             "pmix_bfrop_unpack: init proc[%d]", i);
@@ -779,13 +779,13 @@ int pmix_bfrop_unpack_app(pmix_buffer_t *buffer, void *dest,
     int ret;
     int32_t nval;
     char *tmp;
-    
+
     pmix_output_verbose(20, pmix_globals.debug_output,
                         "pmix_bfrop_unpack: %d apps", *num_vals);
 
     ptr = (pmix_app_t *) dest;
     n = *num_vals;
-    
+
     for (i = 0; i < n; ++i) {
         /* initialize the fields */
         ptr[i].cmd = NULL;
@@ -862,7 +862,7 @@ int pmix_bfrop_unpack_kval(pmix_buffer_t *buffer, void *dest,
     pmix_kval_t *ptr;
     int32_t i, n, m;
     int ret;
-    
+
     pmix_output_verbose(20, pmix_globals.debug_output,
                         "pmix_bfrop_unpack: %d kvals", *num_vals);
 
@@ -895,7 +895,7 @@ int pmix_bfrop_unpack_array(pmix_buffer_t *buffer, void *dest,
     pmix_info_array_t *ptr;
     int32_t i, n, m;
     int ret;
-    
+
     pmix_output_verbose(20, pmix_globals.debug_output,
                         "pmix_bfrop_unpack: %d info arrays", *num_vals);
 
@@ -1010,13 +1010,13 @@ int pmix_bfrop_unpack_modex(pmix_buffer_t *buffer, void *dest,
     pmix_modex_data_t *ptr;
     int32_t i, n, m;
     int ret;
-    
+
     pmix_output_verbose(20, pmix_globals.debug_output,
                         "pmix_bfrop_unpack: %d modex", *num_vals);
 
     ptr = (pmix_modex_data_t *) dest;
     n = *num_vals;
-    
+
     for (i = 0; i < n; ++i) {
         memset(&ptr[i], 0, sizeof(pmix_modex_data_t));
         /* unpack the number of bytes */
@@ -1048,13 +1048,13 @@ int pmix_bfrop_unpack_bo(pmix_buffer_t *buffer, void *dest,
     pmix_byte_object_t *ptr;
     int32_t i, n, m;
     int ret;
-    
+
     pmix_output_verbose(20, pmix_globals.debug_output,
                         "pmix_bfrop_unpack: %d byte_object", *num_vals);
 
     ptr = (pmix_byte_object_t *) dest;
     n = *num_vals;
-    
+
     for (i = 0; i < n; ++i) {
         memset(&ptr[i], 0, sizeof(pmix_byte_object_t));
         /* unpack the number of bytes */

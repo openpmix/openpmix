@@ -64,7 +64,7 @@ void pmix_pack_proc_map(pmix_buffer_t *buf,
     pmix_status_t rc;
     pmix_buffer_t buf2;
     size_t i, nnodes;
-    
+
     /* bozo check - need procs for each node */
     if (pmix_argv_count(nodes) != pmix_argv_count(procs)) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
@@ -82,7 +82,7 @@ void pmix_pack_proc_map(pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
-    
+
     for (i=0; i < nnodes; i++) {
         /* pass the complete list of procs on this node */
         kv.key = nodes[i];
@@ -96,7 +96,7 @@ void pmix_pack_proc_map(pmix_buffer_t *buf,
     }
     kv.key = NULL;
     val.data.string = NULL;
-    
+
     /* pass the completed blob */
     kv.key = PMIX_MAP_BLOB;
     val.type = PMIX_BYTE_OBJECT;
@@ -109,7 +109,7 @@ void pmix_pack_proc_map(pmix_buffer_t *buf,
     kv.value = NULL;
     val.data.bo.bytes = NULL;
     val.data.bo.size = 0;
-    
+
  cleanup:
     PMIX_DESTRUCT(&buf2);
     PMIX_DESTRUCT(&kv);
@@ -121,10 +121,10 @@ pmix_status_t pmix_regex_parse_nodes(const char *regexp, char ***names)
 {
     char *tmp, *ptr;
     int rc;
-    
+
     /* set default */
     *names = NULL;
-    
+
     /* protect against bozo */
     if (NULL == regexp) {
         return PMIX_SUCCESS;
@@ -144,7 +144,7 @@ pmix_status_t pmix_regex_parse_nodes(const char *regexp, char ***names)
     }
     *ptr = '\0';
     ++ptr;
-    
+
     /* if it was done by PMIx, use that parser */
     if (0 == strcmp(tmp, "pmix")) {
         if (PMIX_SUCCESS != (rc = pmix_regex_extract_nodes(ptr, names))) {
@@ -163,10 +163,10 @@ pmix_status_t pmix_regex_parse_procs(const char *regexp, char ***procs)
 {
     char *tmp, *ptr;
     int rc;
-    
+
     /* set default */
     *procs = NULL;
-    
+
     /* protect against bozo */
     if (NULL == regexp) {
         return PMIX_SUCCESS;
@@ -186,7 +186,7 @@ pmix_status_t pmix_regex_parse_procs(const char *regexp, char ***procs)
     }
     *ptr = '\0';
     ++ptr;
-    
+
     /* if it was done by PMIx, use that parser */
     if (0 == strcmp(tmp, "pmix")) {
         if (PMIX_SUCCESS != (rc = pmix_regex_extract_ppn(ptr, procs))) {
@@ -212,20 +212,20 @@ static pmix_status_t pmix_regex_extract_nodes(char *regexp, char ***names)
 
     /* set the default */
     *names = NULL;
-    
+
     if (NULL == regexp) {
         return PMIX_SUCCESS;
     }
-    
+
     orig = base = strdup(regexp);
     if (NULL == base) {
         PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
-    
+
     PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
                          "pmix:extract:nodes: checking list: %s", regexp));
-    
+
     do {
         /* Find the base */
         len = strlen(base);
@@ -255,7 +255,7 @@ static pmix_status_t pmix_regex_extract_nodes(char *regexp, char ***names)
             free(orig);
             return PMIX_ERR_BAD_PARAM;
         }
-        
+
         if (found_range) {
             /* If we found a range, get the number of digits in the numbers */
             i++;  /* step over the [ */
@@ -330,9 +330,9 @@ static pmix_status_t pmix_regex_extract_nodes(char *regexp, char ***names)
             base = &base[i];
         }
     } while(more_to_come);
-    
+
     free(orig);
-    
+
     /* All done */
     return ret;
 }
@@ -343,7 +343,7 @@ static pmix_status_t pmix_regex_extract_nodes(char *regexp, char ***names)
  *
  * @param base     The base text of the value name
  * @param *ranges  A pointer to a range. This can contain multiple ranges
- *                 (i.e. "1-3,10" or "5" or "9,0100-0130,250") 
+ *                 (i.e. "1-3,10" or "5" or "9,0100-0130,250")
  * @param ***names An argv array to add the newly discovered values to
  */
 static pmix_status_t regex_parse_value_ranges(char *base, char *ranges,
@@ -352,9 +352,9 @@ static pmix_status_t regex_parse_value_ranges(char *base, char *ranges,
 {
     int i, len, ret;
     char *start, *orig;
-    
+
     /* Look for commas, the separator between ranges */
-    
+
     len = strlen(ranges);
     for (orig = start = ranges, i = 0; i < len; ++i) {
         if (',' == ranges[i]) {
@@ -367,21 +367,21 @@ static pmix_status_t regex_parse_value_ranges(char *base, char *ranges,
             start = ranges + i + 1;
         }
     }
-    
+
     /* Pick up the last range, if it exists */
-    
+
     if (start < orig + len) {
-        
+
         PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
                              "regex:parse:ranges: parse range %s (2)", start));
-        
+
         ret = regex_parse_value_range(base, start, num_digits, suffix, names);
         if (PMIX_SUCCESS != ret) {
             PMIX_ERROR_LOG(ret);
             return ret;
         }
     }
-    
+
     /* All done */
     return PMIX_SUCCESS;
 }
@@ -392,7 +392,7 @@ static pmix_status_t regex_parse_value_ranges(char *base, char *ranges,
  * found to the names argv
  *
  * @param base     The base text of the value name
- * @param *ranges  A pointer to a single range. (i.e. "1-3" or "5") 
+ * @param *ranges  A pointer to a single range. (i.e. "1-3" or "5")
  * @param ***names An argv array to add the newly discovered values to
  */
 static pmix_status_t regex_parse_value_range(char *base, char *range,
@@ -404,7 +404,7 @@ static pmix_status_t regex_parse_value_range(char *base, char *range,
     size_t base_len, len;
     bool found;
     int ret;
-    
+
     if (NULL == base || NULL == range) {
         return PMIX_ERROR;
     }
@@ -414,9 +414,9 @@ static pmix_status_t regex_parse_value_range(char *base, char *range,
     /* Silence compiler warnings; start and end are always assigned
      properly, below */
     start = end = 0;
-    
+
     /* Look for the beginning of the first number */
-    
+
     for (found = false, i = 0; i < len; ++i) {
         if (isdigit((int) range[i])) {
             if (!found) {
@@ -430,17 +430,17 @@ static pmix_status_t regex_parse_value_range(char *base, char *range,
         PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
         return PMIX_ERR_NOT_FOUND;
     }
-    
+
     /* Look for the end of the first number */
-    
+
     for (found = false; i < len; ++i) {
         if (!isdigit(range[i])) {
             break;
         }
     }
-    
+
     /* Was there no range, just a single number? */
-    
+
     if (i >= len) {
         end = start;
         found = true;
@@ -460,9 +460,9 @@ static pmix_status_t regex_parse_value_range(char *base, char *range,
         PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
         return PMIX_ERR_NOT_FOUND;
     }
-    
+
     /* Make strings for all values in the range */
-    
+
     len = base_len + num_digits + 32;
     if (NULL != suffix) {
         len += strlen(suffix);
@@ -496,7 +496,7 @@ static pmix_status_t regex_parse_value_range(char *base, char *range,
         }
     }
     free(str);
-    
+
     /* All done */
     return PMIX_SUCCESS;
 }
@@ -538,7 +538,7 @@ static pmix_status_t pmix_regex_extract_ppn(char *regexp, char ***procs)
         pmix_argv_free(ps);
         ps = NULL;
     }
-    
+
     pmix_argv_free(nds);
     return PMIX_SUCCESS;
 }

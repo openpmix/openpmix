@@ -10,7 +10,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved. 
+ * Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
  * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
@@ -47,7 +47,7 @@ BEGIN_C_DECLS
  */
 #define PMIX_BFROP_DEFAULT_INITIAL_SIZE  128
 /*
- * The default threshold size when we switch from doubling the 
+ * The default threshold size when we switch from doubling the
  * buffer size to addatively increasing it
  */
 #define PMIX_BFROP_DEFAULT_THRESHOLD_SIZE 1024
@@ -152,7 +152,7 @@ BEGIN_C_DECLS
             ret = PMIX_ERR_NOT_FOUND;                                       \
         }                                                                   \
     } while (0)
-        
+
 /* NOTE: do not need to deal with endianness here, as the unpacking of
    the underling sender-side type will do that for us.  Repeat: the
    data in tmpbuf[] is already in host byte order. */
@@ -166,8 +166,8 @@ BEGIN_C_DECLS
         }                                                                   \
         free(tmpbuf);                                                       \
     } while (0)
-            
-            
+
+
 /**
  * Internal struct used for holding registered bfrop functions
  */
@@ -232,10 +232,10 @@ int pmix_bfrop_copy_payload(pmix_buffer_t *dest, pmix_buffer_t *src);
 /*
  * Specialized functions
  */
-PMIX_DECLSPEC    int pmix_bfrop_pack_buffer(pmix_buffer_t *buffer, const void *src, 
+PMIX_DECLSPEC    int pmix_bfrop_pack_buffer(pmix_buffer_t *buffer, const void *src,
                                           int32_t num_vals, pmix_data_type_t type);
 
-PMIX_DECLSPEC    int pmix_bfrop_unpack_buffer(pmix_buffer_t *buffer, void *dst, 
+PMIX_DECLSPEC    int pmix_bfrop_unpack_buffer(pmix_buffer_t *buffer, void *dst,
                                             int32_t *num_vals, pmix_data_type_t type);
 
 /*
