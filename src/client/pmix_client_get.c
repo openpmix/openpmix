@@ -254,7 +254,9 @@ int PMIx_Get_nb(const char *nspace, int rank,
          * the user requested. At this time, there is no way for the
          * key to eventually be found, so all we can do is return
          * the error */
-         PMIX_ERROR_LOG(rc);
+	 pmix_output_verbose(2, pmix_globals.debug_output,
+			     "Error requesting key=%s for rank = %d, namespace = %s\n",
+			     key, rank, nm);
         return rc;
     }
 
