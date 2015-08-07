@@ -20,6 +20,7 @@ static void release_cb(pmix_status_t status, void *cbdata)
 typedef struct {
     int in_progress;
     pmix_value_t *kv;
+    int status;
 } get_cbdata;
 
 static void get_cb(pmix_status_t status, pmix_value_t *kv, void *cbdata)
@@ -29,6 +30,7 @@ static void get_cb(pmix_status_t status, pmix_value_t *kv, void *cbdata)
         pmix_value_xfer(cb->kv, kv);
     }
     cb->in_progress = 0;
+    cb->status = status;
 }
 
 static void add_noise(char *noise_param, char *my_nspace, int my_rank)
@@ -75,9 +77,11 @@ static void add_noise(char *noise_param, char *my_nspace, int my_rank)
     PMIX_VALUE_DESTRUCT(&value);                                                                                    \
 } while (0);
 
-#define GET(dtype, data, ns, rank, fence_num, ind, use_same_keys, blocking) do {                                    \
+#define GET(dtype, data, ns, rank, fence_num, ind, use_same_keys, blocking) do {                        \
     char key[50];                                                                                                   \
     pmix_value_t *val;                                                                                              \
+    get_cbdata cbdata;                                                                                              \
+    cbdata.status = PMIX_SUCCESS;                                                                                   \
     SET_KEY(key, fence_num, ind, use_same_keys);                                                                    \
     TEST_VERBOSE(("%s:%d want to get from %s:%d key %s\n", my_nspace, my_rank, ns, rank, key));                     \
     if (blocking) {                                                                                                 \
@@ -87,12 +91,11 @@ static void add_noise(char *noise_param, char *my_nspace, int my_rank)
         }                                                                                                           \
     } else {                                                                                                        \
         int count;                                                                                                  \
-        get_cbdata cbdata;                                                                                          \
         cbdata.in_progress = 1;                                                                                     \
         PMIX_VALUE_CREATE(val, 1);                                                                                  \
         cbdata.kv = val;                                                                                            \
         if (PMIX_SUCCESS != (rc = PMIx_Get_nb(ns, rank, key, get_cb, (void*)&cbdata))) {                            \
-            TEST_ERROR(("%s:%d: PMIx_Get_nb failed: %d from %s:%d", my_nspace, my_rank, rc, ns, rank));             \
+            TEST_VERBOSE(("%s:%d: PMIx_Get_nb failed: %d from %s:%d", my_nspace, my_rank, rc, ns, rank));           \
             rc = PMIX_ERROR;                                                                                        \
         } else {                                                                                                    \
             count = 0;                                                                                              \
@@ -106,12 +109,15 @@ static void add_noise(char *noise_param, char *my_nspace, int my_rank)
         }                                                                                                           \
     }                                                                                                               \
     if (PMIX_SUCCESS == rc) {                                                                                       \
-        if (NULL == val) {                                                                                          \
-            TEST_ERROR(("%s:%d: PMIx_Get returned NULL value", my_nspace, my_rank));                                \
+        if( PMIX_SUCCESS != cbdata.status ){                                                                        \
+            TEST_VERBOSE(("%s:%d: PMIx_Get_nb failed: %d from %s:%d", my_nspace, my_rank, rc, my_nspace, rank));    \
+            rc = PMIX_ERROR;                                                                                        \
+        } else if (NULL == val) {                                                                                   \
+            TEST_VERBOSE(("%s:%d: PMIx_Get returned NULL value", my_nspace, my_rank));                              \
             rc = PMIX_ERROR;                                                                                        \
         }                                                                                                           \
         else if (val->type != PMIX_VAL_TYPE_ ## dtype || PMIX_VAL_CMP(dtype, PMIX_VAL_FIELD_ ## dtype((val)), data)) {  \
-            TEST_ERROR(("%s:%d: from %s:%d Key %s value or type mismatch,"                                          \
+            TEST_VERBOSE(("%s:%d: from %s:%d Key %s value or type mismatch,"                                        \
                         " want type %d get type %d",                                                                \
                         my_nspace, my_rank, ns, rank, key, PMIX_VAL_TYPE_ ## dtype, val->type));                    \
             rc = PMIX_ERROR;                                                                                        \
