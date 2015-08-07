@@ -2031,6 +2031,7 @@ static void server_message_handler(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr
     if (PMIX_SUCCESS != rc) {
         reply = PMIX_NEW(pmix_buffer_t);
         pmix_bfrop.pack(reply, &rc, 1, PMIX_INT);
+        PMIX_RETAIN(reply);
         PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
         PMIX_RELEASE(reply);
     }
