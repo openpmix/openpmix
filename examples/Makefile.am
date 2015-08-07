@@ -29,7 +29,7 @@ server_SOURCES = \
         server.c
 
 server_LDADD = \
-	$(prefix)/lib/libpmix-server.la 
+	$(prefix)/lib/libpmix_server.la 
 
 client_SOURCES = \
         client.c 
