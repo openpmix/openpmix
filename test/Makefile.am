@@ -27,7 +27,7 @@ AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_buildd
 
 bin_PROGRAMS = pmix_test pmix_client pmix_test_lite pmi_client pmi2_client pmix_regex
 
-check_PROGRAMS = pmix_test pmix_test_lite
+check_PROGRAMS = pmix_test
 
 TESTS = \
 	$(check_PROGRAMS)
