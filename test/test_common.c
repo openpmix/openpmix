@@ -191,9 +191,6 @@ void parse_cmd(int argc, char **argv, test_params *params)
         char *slurm_rank = getenv("SLURM_GTIDS");
         if( NULL != slurm_rank ){
             params->rank = strtol(slurm_rank, NULL, 10);
-        } else {
-            fprintf(stderr, "No rank information was provided\n");
-            exit(1);
         }
     }
 
@@ -202,9 +199,6 @@ void parse_cmd(int argc, char **argv, test_params *params)
         char *nspace = getenv("PMIX_NAMESPACE");
         if( NULL != nspace ){
             params->nspace = strdup(nspace);
-        } else {
-            fprintf(stderr, "No rank information was provided\n");
-            exit(1);
         }
     }
 }
