@@ -188,9 +188,20 @@ void parse_cmd(int argc, char **argv, test_params *params)
 
     // Fix rank if running under SLURM
     if( 0 > params->rank ){
-        char *slurm_rank = getenv("SLURM_GTIDS");
-        if( NULL != slurm_rank ){
-            params->rank = strtol(slurm_rank, NULL, 10);
+        char *ranklist = getenv("SLURM_GTIDS");
+        char *rankno = getenv("SLURM_LOCALID");
+        if( NULL != ranklist && NULL != rankno ){
+            char **argv = pmix_argv_split(ranklist, ',');
+            int i, count = pmix_argv_count(argv);
+            int rankidx = strtol(rankno, NULL, 10);
+            if( rankidx >= count ){
+                fprintf(stderr, "It feels like we are running under SLURM:\n\t"
+                        "SLURM_GTIDS=%s, SLURM_LOCALID=%s\nbut env vars are conflicting\n",
+                        ranklist, rankno);
+                exit(1);
+            }
+            params->rank = strtol(argv[rankidx], NULL, 10);
+            pmix_argv_free(argv);
         }
     }
 

@@ -23,6 +23,7 @@
 #include <stdint.h>
 
 #include "src/class/pmix_list.h"
+#include "src/util/argv.h"
 
 #define TEST_NAMESPACE "smoky_nspace"
 #define TEST_CREDENTIAL "dummy"
