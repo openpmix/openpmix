@@ -73,6 +73,17 @@ pmix_globals_t pmix_globals = {
 };
 pmix_server_globals_t pmix_server_globals;
 
+typedef struct {
+    pmix_object_t super;
+    pmix_event_t ev;
+    pmix_peer_t *peer;
+    pmix_buffer_t *buf;
+    uint32_t tag;
+} pmix_usock_queue_t;
+PMIX_CLASS_INSTANCE(pmix_usock_queue_t,
+                   pmix_object_t,
+                   NULL, NULL);
+
 /* queue a message to be sent to one of our procs - must
  * provide the following params:
  *
@@ -80,35 +91,59 @@ pmix_server_globals_t pmix_server_globals;
  * t - tag to be sent to
  * b - buffer to be sent
  */
+static void _queue_message(int fd, short args, void *cbdata)
+{
+    pmix_usock_queue_t *queue = (pmix_usock_queue_t*)cbdata;
+    pmix_usock_send_t *snd;
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "[%s:%d] queue callback called: reply to %s:%d on tag %d,"
+                        "event_is_active=%d",
+                        __FILE__, __LINE__,
+                        (queue->peer)->info->nptr->nspace,
+                        (queue->peer)->info->rank, (queue->tag),
+                        (queue->peer)->send_ev_active);
+    snd = PMIX_NEW(pmix_usock_send_t);
+    snd->hdr.pindex = pmix_globals.pindex;
+    snd->hdr.tag = (queue->tag);
+    snd->hdr.nbytes = (queue->buf)->bytes_used;
+    snd->data = (queue->buf);
+    /* always start with the header */
+    snd->sdptr = (char*)&snd->hdr;
+    snd->sdbytes = sizeof(pmix_usock_hdr_t);
+
+    /* if there is no message on-deck, put this one there */
+    if (NULL == (queue->peer)->send_msg) {
+        (queue->peer)->send_msg = snd;
+    } else {
+        /* add it to the queue */
+        pmix_list_append(&(queue->peer)->send_queue, &snd->super);
+    }
+    /* ensure the send event is active */
+    if (!(queue->peer)->send_ev_active) {
+        event_add(&(queue->peer)->send_event, 0);
+        (queue->peer)->send_ev_active = true;
+    }
+    PMIX_RELEASE(queue);
+}
+
 #define PMIX_SERVER_QUEUE_REPLY(p, t, b)                                \
     do {                                                                \
-        pmix_usock_send_t *snd;                                         \
+        pmix_usock_queue_t *queue;                                      \
+        queue = PMIX_NEW(pmix_usock_queue_t);                           \
+        queue->peer = (p);                                              \
+        queue->buf  = (b);                                              \
+        queue->tag  = (t);                                              \
         pmix_output_verbose(2, pmix_globals.debug_output,               \
-                            "[%s:%d] queue reply to %s:%d on tag %d",   \
-                            __FILE__, __LINE__,                         \
-                            (p)->info->nptr->nspace,                    \
-                            (p)->info->rank, (t));                      \
-        snd = PMIX_NEW(pmix_usock_send_t);                              \
-        snd->hdr.pindex = pmix_globals.pindex;                          \
-        snd->hdr.tag = (t);                                             \
-        snd->hdr.nbytes = (b)->bytes_used;                              \
-        snd->data = (b);                                                \
-        /* always start with the header */                              \
-        snd->sdptr = (char*)&snd->hdr;                                  \
-        snd->sdbytes = sizeof(pmix_usock_hdr_t);                        \
-                                                                        \
-        /* if there is no message on-deck, put this one there */        \
-        if (NULL == (p)->send_msg) {                                    \
-            (p)->send_msg = snd;                                        \
-        } else {                                                        \
-            /* add it to the queue */                                   \
-            pmix_list_append(&(p)->send_queue, &snd->super);            \
-        }                                                               \
-        /* ensure the send event is active */                           \
-        if (!(p)->send_ev_active) {                                     \
-            event_add(&(p)->send_event, 0);                             \
-            (p)->send_ev_active = true;                                 \
-        }                                                               \
+                        "[%s:%d] queue reply to %s:%d on tag %d,"       \
+                        "event_is_active=%d",                           \
+                        __FILE__, __LINE__,                             \
+                        (queue->peer)->info->nptr->nspace,              \
+                        (queue->peer)->info->rank, (queue->tag),        \
+                        (queue->peer)->send_ev_active);                 \
+        event_assign(&queue->ev, pmix_globals.evbase, -1,               \
+                       EV_WRITE, _queue_message, queue);                \
+        event_priority_set(&queue->ev, 0);                              \
+        event_active(&queue->ev, EV_WRITE, 1);                          \
     } while(0);
 
 static pmix_status_t initialize_server_base(pmix_server_module_t *module)
