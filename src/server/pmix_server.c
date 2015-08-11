@@ -239,24 +239,6 @@ pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     return PMIX_SUCCESS;
 }
 
-pmix_status_t PMIx_get_rendezvous_address(struct sockaddr_un *address, char **path)
-{
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:server get rendezvous address");
-
-    memcpy(address, &myaddress, sizeof(struct sockaddr_un));
-    if (NULL == path) {
-        return PMIX_SUCCESS;
-    }
-    /* return the URI itself */
-    if (NULL != myuri) {
-        *path = strdup(myuri);
-    } else {
-        *path = NULL;
-    }
-    return PMIX_SUCCESS;
-}
-
 static void cleanup_server_state(void)
 {
     int i;
