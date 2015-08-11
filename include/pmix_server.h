@@ -38,7 +38,7 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- * 
+ *
  * $HEADER$
  *
  * PMIx provides a "function-shipping" approach to support for
@@ -270,10 +270,6 @@ pmix_status_t PMIx_server_init(pmix_server_module_t *module,
  * memory usage is released */
 pmix_status_t PMIx_server_finalize(void);
 
-/* retrieve the address and path assigned by the server library for
- * clients to rendezvous with */
-pmix_status_t PMIx_get_rendezvous_address(struct sockaddr_un *address, char **path);
-
 /* given a semicolon-separated list of input values, generate
  * a regex that can be passed down to the client for parsing.
  * The caller is responsible for free'ing the resulting
@@ -346,7 +342,7 @@ pmix_status_t PMIx_server_register_nspace(const char nspace[], int nlocalprocs,
  * Passing the object to the library allows the library to
  * return that object when the client calls "finalize", thus
  * allowing the host server to access the object without
- * performing a lookup. */ 
+ * performing a lookup. */
 pmix_status_t PMIx_server_register_client(const char nspace[], int rank,
                                           uid_t uid, gid_t gid,
                                           void *server_object,
@@ -379,7 +375,7 @@ typedef void (*pmix_dmodex_response_fn_t)(pmix_status_t status,
 pmix_status_t PMIx_server_dmodex_request(const char nspace[], int rank,
                                          pmix_dmodex_response_fn_t cbfunc,
                                          void *cbdata);
- 
+
 /* Report an error to a process for notification via any
  * registered errhandler. The errhandler registration can be
  * called by both the server and the client application. On the
@@ -429,49 +425,6 @@ pmix_status_t PMIx_server_notify_error(pmix_status_t status,
                                        char **payload, size_t *size,
                                        pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-
-/****    Message processing for the "lite" version of the  ****
- ****    server convenience library. Note that we must     ****
- ****    preserve the ability of the local server to       ****
- ****    operate asynchronously - thus, the lite library   ****
- ****    cannot block while waiting for a reply to be      ****
- ****    generated                                         ****/
-
-/* retrieve the size of the PMIx message header so the host
- * server messaging system can read the correct number of bytes.
- * Note that the host will need to provide these bytes separately
- * to the message processor */
-size_t PMIx_message_hdr_size(void);
-
-/* given the header read by the host server, return the number of
- * bytes the client included in the payload of the message so
- * the host server can read them. These bytes will need to be
- * provided separately to the message processor */
-size_t PMIx_message_payload_size(char *hdr);
-
-/* define a callback function by which the convenience library can
- * request that a message be sent via the specified socket. The PMIx
- * header will be included in the provided payload */
-typedef void (*pmix_send_message_cbfunc_t)(int sd, void *srv_obj,
-                                           char *payload, size_t size);
-
-/* given a socket, conduct the client-server authentication protocol
- * to authenticate the requested connection. The function will return
- * PMIX_SUCCESS if the connection is authenticated, and an appropriate
- * PMIx error code if not. If the client is authenticated, it will
- * be sent whatever initial job_info the host server can provide */
-pmix_status_t PMIx_server_authenticate_client(int sd, int *rank,
-                                              pmix_send_message_cbfunc_t snd_msg);
-
-/* process a received PMIx client message, sending any desired return
- * via the provided callback function. Params:
- *
- * sd - the socket where the message was received
- * hdr - the header read by the host server messaging system
- * msg - the payload read by the host server messaging system
- * snd_msg - the function to be called when a reply is to be sent */
-pmix_status_t PMIx_server_process_msg(int sd, char *hdr, char *msg,
-                                      pmix_send_message_cbfunc_t snd_msg);
 
 END_C_DECLS
 

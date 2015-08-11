@@ -14,7 +14,6 @@ server_headers += \
 
 server_sources += \
         src/server/pmix_server.c \
-        src/server/pmix_server_lite.c \
         src/server/pmix_server_ops.c \
         src/server/pmix_server_regex.c \
         src/server/pmix_server_listener.c

@@ -21,7 +21,6 @@
 typedef struct {
     pmix_object_t super;
     int sd;
-    pmix_send_message_cbfunc_t cbfunc;
 } pmix_snd_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_snd_caddy_t);
 

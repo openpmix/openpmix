@@ -1169,13 +1169,9 @@ PMIX_CLASS_INSTANCE(pmix_server_caddy_t,
                    cdcon, cddes);
 
 
-static void pscon(pmix_snd_caddy_t *p)
-{
-    p->cbfunc = NULL;
-}
 PMIX_CLASS_INSTANCE(pmix_snd_caddy_t,
                    pmix_object_t,
-                   pscon, NULL);
+                   NULL, NULL);
 
 static void scadcon(pmix_setup_caddy_t *p)
 {
