@@ -58,7 +58,8 @@ static int lookup_fn(const char nspace[], int rank,
 static int unpublish_fn(const char nspace[], int rank,
                         pmix_data_range_t scope, char **keys,
                         pmix_op_cbfunc_t cbfunc, void *cbdata);
-static int spawn_fn(const pmix_app_t apps[], size_t napps,
+static int spawn_fn(const char nspace[], int rank,
+                    const pmix_app_t apps[], size_t napps,
                     pmix_spawn_cbfunc_t cbfunc, void *cbdata);
 static int connect_fn(const pmix_proc_t procs[], size_t nprocs,
                       pmix_op_cbfunc_t cbfunc, void *cbdata);
@@ -519,7 +520,8 @@ static void spcbfunc(pmix_status_t status, void *cbdata)
     }
 }
 
-static int spawn_fn(const pmix_app_t apps[], size_t napps,
+static int spawn_fn(const char nspace[], int rank,
+                    const pmix_app_t apps[], size_t napps,
                     pmix_spawn_cbfunc_t cbfunc, void *cbdata)
 {
     myxfer_t *x;

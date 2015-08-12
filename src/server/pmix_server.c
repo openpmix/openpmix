@@ -1988,7 +1988,7 @@ static int server_switchyard(pmix_peer_t *peer, uint32_t tag,
 
     if (PMIX_SPAWNNB_CMD == cmd) {
         PMIX_PEER_CADDY(cd, peer, tag);
-        if (PMIX_SUCCESS != (rc = pmix_server_spawn(buf, spawn_cbfunc, cd))) {
+        if (PMIX_SUCCESS != (rc = pmix_server_spawn(peer, buf, spawn_cbfunc, cd))) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(cd);
         }

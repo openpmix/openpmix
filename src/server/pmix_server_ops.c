@@ -1121,7 +1121,8 @@ pmix_status_t pmix_server_unpublish(pmix_peer_t *peer,
     return rc;
 }
 
-pmix_status_t pmix_server_spawn(pmix_buffer_t *buf,
+pmix_status_t pmix_server_spawn(pmix_peer_t *peer,
+                                pmix_buffer_t *buf,
                                 pmix_spawn_cbfunc_t cbfunc,
                                 void *cbdata)
 {
@@ -1152,7 +1153,8 @@ pmix_status_t pmix_server_spawn(pmix_buffer_t *buf,
         }
     }
     /* call the local server */
-    rc = pmix_host_server.spawn(apps, napps, cbfunc, cbdata);
+    rc = pmix_host_server.spawn(peer->info->nptr->nspace, peer->info->rank,
+                                apps, napps, cbfunc, cbdata);
 
  cleanup:
     if (NULL != apps) {

@@ -135,7 +135,7 @@ int dmodex_fn(const char nspace[], int rank,
      * to get the data for one of its clients. We don't
      * have multi-server capability yet, so we'll just
      * respond right away */
-    
+
     if (NULL != cbfunc) {
         cbfunc(PMIX_ERR_NOT_FOUND, NULL, 0, cbdata);
     }
@@ -255,7 +255,8 @@ static void release_cb(pmix_status_t status, void *cbdata)
     free(cb);
 }
 
-int spawn_fn(const pmix_app_t apps[], size_t napps,
+int spawn_fn(const char nspace[], int rank,
+             const pmix_app_t apps[], size_t napps,
              pmix_spawn_cbfunc_t cbfunc, void *cbdata)
 {
     release_cbdata *cb = malloc(sizeof(release_cbdata));

@@ -229,7 +229,8 @@ pmix_status_t pmix_server_unpublish(pmix_peer_t *peer,
                                     pmix_op_cbfunc_t cbfunc,
                                     void *cbdata);
 
-pmix_status_t pmix_server_spawn(pmix_buffer_t *buf,
+pmix_status_t pmix_server_spawn(pmix_peer_t *peer,
+                                pmix_buffer_t *buf,
                                 pmix_spawn_cbfunc_t cbfunc,
                                 void *cbdata);
 

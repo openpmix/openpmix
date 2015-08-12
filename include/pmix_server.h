@@ -182,7 +182,8 @@ typedef pmix_status_t (*pmix_server_unpublish_fn_t)(const char nspace[], int ran
  * been started. An error in starting any application or process in this
  * request shall cause all applications and processes in the request to
  * be terminated, and an error returned to the originating caller */
-typedef pmix_status_t (*pmix_server_spawn_fn_t)(const pmix_app_t apps[], size_t napps,
+typedef pmix_status_t (*pmix_server_spawn_fn_t)(const char nspace[], int rank,
+                                                const pmix_app_t apps[], size_t napps,
                                                 pmix_spawn_cbfunc_t cbfunc, void *cbdata);
 
 /* Record the specified processes as "connected". This means that the resource
