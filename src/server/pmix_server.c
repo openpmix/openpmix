@@ -169,8 +169,8 @@ static pmix_status_t initialize_server_base(pmix_server_module_t *module)
     pmix_pointer_array_init(&pmix_server_globals.clients, 1, INT_MAX, 1);
 
     PMIX_CONSTRUCT(&pmix_server_globals.collectives, pmix_list_t);
-    PMIX_CONSTRUCT(&pmix_server_globals.dmodex, pmix_list_t);
-    PMIX_CONSTRUCT(&pmix_server_globals.localmodex, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_server_globals.remote_pnd, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_server_globals.local_reqs, pmix_list_t);
 
     /* see if debug is requested */
     if (NULL != (evar = getenv("PMIX_DEBUG"))) {
@@ -287,8 +287,8 @@ static void cleanup_server_state(void)
     PMIX_DESTRUCT(&pmix_server_globals.clients);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.nspaces);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.collectives);
-    PMIX_LIST_DESTRUCT(&pmix_server_globals.dmodex);
-    PMIX_LIST_DESTRUCT(&pmix_server_globals.localmodex);
+    PMIX_LIST_DESTRUCT(&pmix_server_globals.remote_pnd);
+    PMIX_LIST_DESTRUCT(&pmix_server_globals.local_reqs);
 
     if (NULL != myuri) {
         free(myuri);
@@ -630,7 +630,7 @@ static void _register_client(int sd, short args, void *cbdata)
     pmix_server_trkr_t *trk;
     pmix_trkr_caddy_t *tcd;
     bool found;
-    pmix_local_modex_caddy_t *lcd, *lcdnext;
+    pmix_dmdx_local_t *lcd, *lcdnext;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:server _register_client for nspace %s rank %d",
@@ -696,37 +696,7 @@ static void _register_client(int sd, short args, void *cbdata)
          * someone has been waiting for a request on a remote proc
          * in one of our nspaces, but we didn't know all the local procs
          * and so couldn't determine the proc was remote */
-        PMIX_LIST_FOREACH_SAFE(lcd, lcdnext, &pmix_server_globals.localmodex, pmix_local_modex_caddy_t) {
-            if (0 != strncmp(nptr->nspace, lcd->nspace, PMIX_MAX_NSLEN)) {
-                continue;
-            }
-            /* is this one of our local ranks? */
-            found = false;
-            PMIX_LIST_FOREACH(info, &nptr->server->ranks, pmix_rank_info_t) {
-                if (info->rank == lcd->rank) {
-                    found = true;
-                    break;
-                }
-            }
-            /* if we found it, then we don't need to do anything as we'll
-             * process the request when this proc commits its modex data */
-            if (!found) {
-                /* remote rank - request dmodex assistance from host server */
-                if (NULL == pmix_host_server.direct_modex) {
-                    /* service isn't available - let the requestor know */
-                    lcd->cbfunc(PMIX_ERR_NOT_FOUND, NULL, 0, lcd->cbdata);
-                    continue;
-                } else {
-                    /* the required server caddy so the callback knows
-                     * how to return the result to the requestor was
-                     * included when we cached this */
-                    pmix_host_server.direct_modex(lcd->nspace, lcd->rank,
-                                                  lcd->cbfunc, lcd->cbdata);
-                }
-                pmix_list_remove_item(&pmix_server_globals.localmodex, &lcd->super);
-                PMIX_RELEASE(lcd);
-            }
-        }
+        pmix_pending_nspace_fix(nptr);
     }
     /* let the caller know we are done */
     if (NULL != cd->opcbfunc) {
@@ -804,7 +774,7 @@ static void _dmodex_req(int sd, short args, void *cbdata)
     pmix_value_t *val;
     char *data;
     size_t sz;
-    pmix_dmodex_caddy_t *dcd;
+    pmix_dmdx_remote_t *dcd;
     int rc;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -825,10 +795,10 @@ static void _dmodex_req(int sd, short args, void *cbdata)
         /* we don't know this namespace yet, and so we obviously
          * haven't received the data from this proc yet - defer
          * the request until we do */
-        dcd = PMIX_NEW(pmix_dmodex_caddy_t);
+        dcd = PMIX_NEW(pmix_dmdx_remote_t);
         PMIX_RETAIN(cd);
         dcd->cd = cd;
-        pmix_list_append(&pmix_server_globals.dmodex, &dcd->super);
+        pmix_list_append(&pmix_server_globals.remote_pnd, &dcd->super);
         cd->active = false;  // ensure the request doesn't hang
         return;
     }
@@ -844,10 +814,10 @@ static void _dmodex_req(int sd, short args, void *cbdata)
     if (NULL == info) {
         /* rank isn't known yet - defer
          * the request until we do */
-        dcd = PMIX_NEW(pmix_dmodex_caddy_t);
+        dcd = PMIX_NEW(pmix_dmdx_remote_t);
         PMIX_RETAIN(cd);
         dcd->cd = cd;
-        pmix_list_append(&pmix_server_globals.dmodex, &dcd->super);
+        pmix_list_append(&pmix_server_globals.remote_pnd, &dcd->super);
         cd->active = false;  // ensure the request doesn't hang
         return;
     }
@@ -857,10 +827,10 @@ static void _dmodex_req(int sd, short args, void *cbdata)
     if (!info->modex_recvd) {
         /* track the request so we can fulfill it once
          * data is recvd */
-        dcd = PMIX_NEW(pmix_dmodex_caddy_t);
+        dcd = PMIX_NEW(pmix_dmdx_remote_t);
         PMIX_RETAIN(cd);
         dcd->cd = cd;
-        pmix_list_append(&pmix_server_globals.dmodex, &dcd->super);
+        pmix_list_append(&pmix_server_globals.remote_pnd, &dcd->super);
         cd->active = false;  // ensure the request doesn't hang
         return;
     }

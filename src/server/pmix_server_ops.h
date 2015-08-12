@@ -105,17 +105,24 @@ PMIX_CLASS_DECLARATION(pmix_notify_caddy_t);
 typedef struct {
     pmix_list_item_t super;
     pmix_setup_caddy_t *cd;
-} pmix_dmodex_caddy_t;
-PMIX_CLASS_DECLARATION(pmix_dmodex_caddy_t);
+} pmix_dmdx_remote_t;
+PMIX_CLASS_DECLARATION(pmix_dmdx_remote_t);
+
+typedef struct {
+    pmix_list_item_t super;
+    pmix_modex_cbfunc_t cbfunc;     // cbfunc to be executed when data is available
+    void *cbdata;
+} pmix_dmdx_request_t;
+PMIX_CLASS_DECLARATION(pmix_dmdx_request_t);
 
 typedef struct {
     pmix_list_item_t super;
     char nspace[PMIX_MAX_NSLEN+1];  // nspace of proc whose data is being requested
     int rank;                       // rank of proc whose data is being requested
-    pmix_modex_cbfunc_t cbfunc;     // cbfunc to be executed when data is available
-    void *cbdata;
-} pmix_local_modex_caddy_t;
-PMIX_CLASS_DECLARATION(pmix_local_modex_caddy_t);
+    pmix_list_t loc_reqs;           // list of pmix_dmdx_request_t elem's keeping track of
+                                    // all local ranks that was interested in this namespase-rank
+} pmix_dmdx_local_t;
+PMIX_CLASS_DECLARATION(pmix_dmdx_local_t);
 
 /* connection support */
 typedef struct {
@@ -130,8 +137,8 @@ typedef struct {
     pmix_list_t nspaces;           // list of pmix_nspace_t for the nspaces we know about
     pmix_pointer_array_t clients;  // array of pmix_peer_t local clients
     pmix_list_t collectives;       // list of active pmix_server_trkr_t
-    pmix_list_t dmodex;            // list of pmix_dmodex_caddy_t awaiting arrival of data
-    pmix_list_t localmodex;        // list of pmix_local_modex_caddy_t awaiting arrival of data
+    pmix_list_t remote_pnd;       // list of pmix_dmdx_remote_t awaiting arrival of data fror servicing remote req's
+    pmix_list_t local_reqs;       // list of pmix_dmdx_local_t awaiting arrival of data from local neighbours
     bool listen_thread_active;     // listen this is running
     int listen_socket;             // socket listener is watching
     int stop_thread[2];            // pipe used to stop listener thread
@@ -182,6 +189,12 @@ int pmix_start_listening(struct sockaddr_un *address);
 void pmix_stop_listening(void);
 
 bool pmix_server_trk_update(pmix_server_trkr_t *trk);
+
+pmix_status_t pmix_pending_request(pmix_nspace_t *nptr, int rank,
+                                   pmix_modex_cbfunc_t cbfunc, void *cbdata);
+void pmix_pending_nspace_fix(pmix_nspace_t *nptr);
+pmix_status_t pmix_pending_resolve(pmix_nspace_t *nptr, int rank, pmix_dmdx_local_t *lcd);
+
 
 pmix_status_t pmix_server_authenticate(int sd, int *out_rank,
                                        pmix_peer_t **peer,
