@@ -59,6 +59,18 @@ pmix_server_module_t pmix_host_server;
 static void dmdx_cbfunc(pmix_status_t status, const char *data,
                         size_t ndata, void *cbdata);
 
+typedef struct {
+    pmix_object_t super;
+    pmix_event_t ev;
+    pmix_status_t status;
+    const char *data;
+    size_t ndata;
+    pmix_dmdx_local_t *lcd;
+} pmix_dmdx_reply_caddy_t;
+PMIX_CLASS_INSTANCE(pmix_dmdx_reply_caddy_t,
+                   pmix_object_t, NULL, NULL);
+
+
 pmix_status_t _satisfy_local_req(pmix_nspace_t *nptr, pmix_rank_info_t *info,
                                   pmix_modex_cbfunc_t cbfunc, void *cbdata)
 {
@@ -807,20 +819,22 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
     return rc;
 }
 
-static void dmdx_cbfunc(pmix_status_t status,
-                        const char *data, size_t ndata,
-                        void *cbdata)
+static void _process_dmdx_reply(int fd, short args, void *cbdata)
 {
-    pmix_dmdx_local_t *lcd = (pmix_dmdx_local_t *)cbdata;
+    pmix_dmdx_reply_caddy_t *caddy = (pmix_dmdx_reply_caddy_t *)cbdata;
     pmix_kval_t *kp;
     pmix_nspace_t *ns, *nptr;
     pmix_rank_info_t *iptr, *info;
     pmix_status_t rc;
 
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                    "[%s:%d] queue dmdx reply from %s:%d",
+                    __FILE__, __LINE__, caddy->lcd->nspace, caddy->lcd->rank);
+
     /* find the nspace object for this client */
     nptr = NULL;
     PMIX_LIST_FOREACH(ns, &pmix_server_globals.nspaces, pmix_nspace_t) {
-        if (0 == strcmp(lcd->nspace, ns->nspace)) {
+        if (0 == strcmp(caddy->lcd->nspace, ns->nspace)) {
             nptr = ns;
             break;
         }
@@ -829,13 +843,13 @@ static void dmdx_cbfunc(pmix_status_t status,
     if (NULL == nptr) {
         /* should be impossible */
         PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
-        status = PMIX_ERR_NOT_FOUND;
+        caddy->status = PMIX_ERR_NOT_FOUND;
         goto cleanup;
     }
     /* and the rank entry for it */
     info = NULL;
     PMIX_LIST_FOREACH(iptr, &nptr->server->ranks, pmix_rank_info_t) {
-        if (iptr->rank == lcd->rank) {
+        if (iptr->rank == caddy->lcd->rank) {
             info = iptr;
             break;
         }
@@ -843,7 +857,7 @@ static void dmdx_cbfunc(pmix_status_t status,
     if (NULL == info) {
         /* create the entry */
         info = PMIX_NEW(pmix_rank_info_t);
-        info->rank = lcd->rank;
+        info->rank = caddy->lcd->rank;
         PMIX_RETAIN(nptr);
         info->nptr = nptr;
         pmix_list_append(&nptr->server->ranks, &info->super);
@@ -853,8 +867,8 @@ static void dmdx_cbfunc(pmix_status_t status,
     kp->key = strdup("modex");
     PMIX_VALUE_CREATE(kp->value, 1);
     kp->value->type = PMIX_BYTE_OBJECT;
-    kp->value->data.bo.bytes = (char*)data;
-    kp->value->data.bo.size = ndata;
+    kp->value->data.bo.bytes = (char*)caddy->data;
+    kp->value->data.bo.size = caddy->ndata;
     /* store it in the appropriate hash */
     if (PMIX_SUCCESS != (rc = pmix_hash_store(&info->nptr->server->remote, info->rank, kp))) {
         PMIX_ERROR_LOG(rc);
@@ -864,8 +878,26 @@ static void dmdx_cbfunc(pmix_status_t status,
 
   cleanup:
     /* always execute the callback to avoid having the client hang */
-    pmix_pending_resolve(nptr, lcd->rank, lcd);
-    PMIX_RELEASE(lcd);
+    pmix_pending_resolve(nptr, caddy->lcd->rank, caddy->lcd);
+    PMIX_RELEASE(caddy->lcd);
+}
+
+static void dmdx_cbfunc(pmix_status_t status,
+                        const char *data, size_t ndata,
+                        void *cbdata)
+{
+    pmix_dmdx_reply_caddy_t *caddy;
+    caddy = PMIX_NEW(pmix_dmdx_reply_caddy_t);
+    caddy->status = status;
+    caddy->data   = data;
+    caddy->ndata  = ndata;
+    caddy->lcd    = (pmix_dmdx_local_t *)cbdata;
+    pmix_output_verbose(2, pmix_globals.debug_output, "[%s:%d] queue dmdx reply %s:%d",
+                        __FILE__, __LINE__, caddy->lcd->nspace, caddy->lcd->rank);
+    event_assign(&caddy->ev, pmix_globals.evbase, -1, EV_WRITE,
+                 _process_dmdx_reply, caddy);
+    event_priority_set(&caddy->ev, 0);
+    event_active(&caddy->ev, EV_WRITE, 1);
 }
 
 pmix_status_t pmix_server_get(pmix_buffer_t *buf,
