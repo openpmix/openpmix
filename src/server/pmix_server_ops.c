@@ -231,16 +231,6 @@ pmix_status_t pmix_pending_request(pmix_nspace_t *nptr, int rank,
      * request for now.
      */
     if( NULL == lcd ){
-        /* check & send request if need/possible */
-        if( nptr->server->all_registered && NULL == info ){
-            if( NULL != pmix_host_server.direct_modex ){
-                pmix_host_server.direct_modex(cd->nspace, cd->rank, dmdx_cbfunc, lcd);
-            } else {
-                /* if we don't have direct modex feature, just respond with "not found" */
-                cbfunc(PMIX_ERR_NOT_FOUND, NULL, 0, cbdata);
-                return PMIX_SUCCESS;
-            }
-        }
         lcd = PMIX_NEW(pmix_dmdx_local_t);
         if( NULL == lcd ){
             return PMIX_ERR_NOMEM;
@@ -249,6 +239,17 @@ pmix_status_t pmix_pending_request(pmix_nspace_t *nptr, int rank,
         lcd->rank = rank;
         PMIX_CONSTRUCT(&lcd->loc_reqs, pmix_list_t);
         pmix_list_append(&pmix_server_globals.local_reqs, &lcd->super);
+
+        /* check & send request if need/possible */
+        if( nptr->server->all_registered && NULL == info ){
+            if( NULL != pmix_host_server.direct_modex ){
+                pmix_host_server.direct_modex(lcd->nspace, lcd->rank, dmdx_cbfunc, lcd);
+            } else {
+                /* if we don't have direct modex feature, just respond with "not found" */
+                cbfunc(PMIX_ERR_NOT_FOUND, NULL, 0, cbdata);
+                return PMIX_SUCCESS;
+            }
+        }
     }
     pmix_dmdx_request_t *req = PMIX_NEW(pmix_dmdx_request_t);
     req->cbfunc = cbfunc;
