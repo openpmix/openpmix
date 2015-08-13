@@ -338,7 +338,6 @@ pmix_status_t pmix_pending_resolve(pmix_nspace_t *nptr, int rank, pmix_dmdx_loca
             }
         }
         pmix_list_remove_item(&pmix_server_globals.local_reqs, (pmix_list_item_t*)lcd);
-        PMIX_RELEASE(lcd);
     }
     return PMIX_SUCCESS;
 }
