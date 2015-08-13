@@ -234,7 +234,7 @@ pmix_status_t pmix_pending_request(pmix_nspace_t *nptr, int rank,
         /* check & send request if need/possible */
         if( nptr->server->all_registered && NULL == info ){
             if( NULL != pmix_host_server.direct_modex ){
-                pmix_host_server.direct_modex(lcd->nspace, lcd->rank, dmdx_cbfunc, lcd);
+                pmix_host_server.direct_modex(cd->nspace, cd->rank, dmdx_cbfunc, lcd);
             } else {
                 /* if we don't have direct modex feature, just respond with "not found" */
                 cbfunc(PMIX_ERR_NOT_FOUND, NULL, 0, cbdata);
@@ -267,7 +267,7 @@ void pmix_pending_nspace_fix(pmix_nspace_t *nptr)
      */
     PMIX_LIST_FOREACH_SAFE(cd, cd_next, &pmix_server_globals.local_reqs, pmix_dmdx_local_t) {
         pmix_rank_info_t *info;
-        bool found;
+        bool found = false;
 
         if (0 != strncmp(nptr->nspace, cd->nspace, PMIX_MAX_NSLEN) ) {
             continue;
@@ -860,7 +860,8 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
         /* should be impossible */
         PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
         caddy->status = PMIX_ERR_NOT_FOUND;
-        goto cleanup;
+        PMIX_RELEASE(caddy);
+        return;
     }
     /* and the rank entry for it */
     info = NULL;
