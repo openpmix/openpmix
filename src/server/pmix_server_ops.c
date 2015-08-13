@@ -113,9 +113,6 @@ pmix_status_t _satisfy_local_req(pmix_nspace_t *nptr, pmix_rank_info_t *info,
     // Local proc shouldn't receive remote portion!
     // In what legal situation can we get here?
 
-    /* first, let's check to see if this data already has been
-     * obtained as a result of a prior direct modex request from
-     * another local peer */
     if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->server->remote, info->rank, "modex", &val)) &&
         NULL != val) {
         /* yes, we have it - pass it down */
@@ -145,6 +142,9 @@ pmix_status_t _satisfy_remote_req(pmix_nspace_t *nptr, int rank,
     char *data;
     size_t sz;
 
+    /* check to see if this data already has been
+     * obtained as a result of a prior direct modex request from
+     * another local peer */
     rc = pmix_hash_fetch(&nptr->server->remote, rank, "modex", &val);
     if (PMIX_SUCCESS == rc && NULL != val) {
         PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
@@ -185,9 +185,24 @@ pmix_status_t pmix_pending_request(pmix_nspace_t *nptr, int rank,
         }
     }
 
-    if( NULL != info ){
+    if (NULL != info) {
+        /* this is a request for info about another local proc */
         rc = _satisfy_local_req(nptr, info, cbfunc, cbdata);
     } else {
+        /* this is a request for info about a remote proc, or
+         * a LOCAL proc that we don't know about yet. Because
+         * we register client's in events, it is always possible
+         * that a client gets launched and issues a "get" before
+         * we finish registering all our local clients. So we
+         * have to consider the case where a request is made for
+         * data about a process that will be local, but hasn't
+         * been registered yet */
+        if (!nptr->server->all_registered) {
+            /* we cannot know if this will be a local or
+             * remote proc, so we have to defer processing
+             * this request until all local clients for this nspace
+             * have been registered */
+        }
         rc = _satisfy_remote_req(nptr, rank, cbfunc, cbdata);
     }
 
@@ -233,12 +248,12 @@ pmix_status_t pmix_pending_request(pmix_nspace_t *nptr, int rank,
         strncpy(lcd->nspace, nptr->nspace, PMIX_MAX_NSLEN);
         lcd->rank = rank;
         PMIX_CONSTRUCT(&lcd->loc_reqs, pmix_list_t);
-        pmix_list_append(&pmix_server_globals.local_reqs, (pmix_list_item_t *)lcd);
+        pmix_list_append(&pmix_server_globals.local_reqs, &lcd->super);
     }
     pmix_dmdx_request_t *req = PMIX_NEW(pmix_dmdx_request_t);
     req->cbfunc = cbfunc;
     req->cbdata = cbdata;
-    pmix_list_append(&lcd->loc_reqs, (pmix_list_item_t *)req);
+    pmix_list_append(&lcd->loc_reqs, &req->super);
     return PMIX_SUCCESS;
 }
 
@@ -247,7 +262,8 @@ void pmix_pending_nspace_fix(pmix_nspace_t *nptr)
     pmix_dmdx_local_t *cd, *cd_next;
 
     /* Now when we know all local ranks, go along request list and ask for remote data
-     * for the non-local ranks.
+     * for the non-local ranks, and resolve all pending requests for local procs
+     * that were waiting for registration to complete
      */
     PMIX_LIST_FOREACH_SAFE(cd, cd_next, &pmix_server_globals.local_reqs, pmix_dmdx_local_t) {
         pmix_rank_info_t *info;
@@ -879,7 +895,7 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
   cleanup:
     /* always execute the callback to avoid having the client hang */
     pmix_pending_resolve(nptr, caddy->lcd->rank, caddy->lcd);
-    PMIX_RELEASE(caddy->lcd);
+    PMIX_RELEASE(caddy);
 }
 
 static void dmdx_cbfunc(pmix_status_t status,
@@ -889,6 +905,10 @@ static void dmdx_cbfunc(pmix_status_t status,
     pmix_dmdx_reply_caddy_t *caddy;
     caddy = PMIX_NEW(pmix_dmdx_reply_caddy_t);
     caddy->status = status;
+    /* we cannot just point to the caller's data as
+     * there is no way to guarantee it remains present
+     * until we service our event thread. So we have
+     * no choice but to copy it */
     caddy->data   = data;
     caddy->ndata  = ndata;
     caddy->lcd    = (pmix_dmdx_local_t *)cbdata;
@@ -944,12 +964,10 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
                         pmix_globals.nspace,
                         pmix_globals.rank, nspace, rank);
     if (NULL == nptr) {
-        /* this is for an nspace we don't know, so give
-         * the host server a chance to find it */
+        /* this is for an nspace we don't know about yet, so
+         * give the host server a chance to tell us about it */
         nptr = PMIX_NEW(pmix_nspace_t);
         (void)strncpy(nptr->nspace, nspace, PMIX_MAX_NSLEN);
-        /* add the server object */
-        nptr->server = NULL;
         pmix_list_append(&pmix_server_globals.nspaces, &nptr->super);
     }
     /* if we don't have any ranks for this job, protect ourselves here */

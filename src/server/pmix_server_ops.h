@@ -120,7 +120,7 @@ typedef struct {
     char nspace[PMIX_MAX_NSLEN+1];  // nspace of proc whose data is being requested
     int rank;                       // rank of proc whose data is being requested
     pmix_list_t loc_reqs;           // list of pmix_dmdx_request_t elem's keeping track of
-                                    // all local ranks that was interested in this namespase-rank
+                                    // all local ranks that are interested in this namespace-rank
 } pmix_dmdx_local_t;
 PMIX_CLASS_DECLARATION(pmix_dmdx_local_t);
 
@@ -137,9 +137,9 @@ typedef struct {
     pmix_list_t nspaces;           // list of pmix_nspace_t for the nspaces we know about
     pmix_pointer_array_t clients;  // array of pmix_peer_t local clients
     pmix_list_t collectives;       // list of active pmix_server_trkr_t
-    pmix_list_t remote_pnd;       // list of pmix_dmdx_remote_t awaiting arrival of data fror servicing remote req's
-    pmix_list_t local_reqs;       // list of pmix_dmdx_local_t awaiting arrival of data from local neighbours
-    bool listen_thread_active;     // listen this is running
+    pmix_list_t remote_pnd;        // list of pmix_dmdx_remote_t awaiting arrival of data fror servicing remote req's
+    pmix_list_t local_reqs;        // list of pmix_dmdx_local_t awaiting arrival of data from local neighbours
+    bool listen_thread_active;     // listen thread is running
     int listen_socket;             // socket listener is watching
     int stop_thread[2];            // pipe used to stop listener thread
 } pmix_server_globals_t;

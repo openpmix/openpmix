@@ -167,7 +167,7 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
     int fence_num = 0;
     char sval[50];
     int put_ind;
-    
+
     if (NULL != params.noise) {
         add_noise(params.noise, my_nspace, my_rank);
     }
@@ -250,7 +250,7 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
                 pcs[i].rank = p->proc.rank;
                 i++;
             }
-            
+
             /* perform fence */
             FENCE(desc->blocking, desc->data_exchange, pcs, npcs);
             if (PMIX_SUCCESS != rc) {
@@ -365,10 +365,12 @@ static int get_local_peers(char *my_nspace, int my_rank, int **_peers, int *coun
     /* get ranks of neighbours on this node */
     if (PMIX_SUCCESS != (rc = PMIx_Get(my_nspace, my_rank, PMIX_LOCAL_PEERS, &val))) {
         TEST_ERROR(("%s:%d: PMIx_Get local peers failed: %d", my_nspace, my_rank, rc));
+        free(peers);
         return rc;
     }
     if (NULL == val) {
         TEST_ERROR(("%s:%d: PMIx_Get local peers returned NULL value", my_nspace, my_rank));
+        free(peers);
         return PMIX_ERROR;
     }
 
@@ -376,6 +378,7 @@ static int get_local_peers(char *my_nspace, int my_rank, int **_peers, int *coun
         TEST_ERROR(("%s:%d: local peers attribute value type mismatch,"
                 " want %d get %d(%d)",
                 my_nspace, my_rank, PMIX_UINT32, val->type));
+        free(peers);
         return PMIX_ERROR;
     }
 
@@ -386,6 +389,7 @@ static int get_local_peers(char *my_nspace, int my_rank, int **_peers, int *coun
         if( *count > npeers ){
             TEST_ERROR(("%s:%d: Bad peer ranks number: should be %d, actual %d (%s)",
                 my_nspace, my_rank, npeers, *count, val->data.string));
+            free(peers);
             return PMIX_ERROR;
         }
         token = strtok_r(str, ",", &sptr);
@@ -394,6 +398,7 @@ static int get_local_peers(char *my_nspace, int my_rank, int **_peers, int *coun
             peers[(*count)++] = strtol(token,&eptr,10);
             if( *eptr != '\0' ){
                 TEST_ERROR(("%s:%d: Bad peer ranks string", my_nspace, my_rank));
+                free(peers);
                 return PMIX_ERROR;
             }
         }
@@ -403,6 +408,7 @@ static int get_local_peers(char *my_nspace, int my_rank, int **_peers, int *coun
     if( *count != npeers ){
         TEST_ERROR(("%s:%d: Bad peer ranks number: should be %d, actual %d (%s)",
                 my_nspace, my_rank, npeers, *count, val->data.string));
+        free(peers);
         return PMIX_ERROR;
     }
     *_peers = peers;

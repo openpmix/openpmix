@@ -171,8 +171,9 @@ int main(int argc, char **argv)
     /* setup the pub data, in case it is used */
     PMIX_CONSTRUCT(&pubdata, pmix_list_t);
 
-    /* see if we were passed the number of procs to run */
-    for (n=1; n < argc; n++) {
+    /* see if we were passed the number of procs to run or
+     * the executable to use */
+    for (n=1; n < (argc-1); n++) {
         if (0 == strcmp("-n", argv[n])) {
             nprocs = strtol(argv[n+1], NULL, 10);
             ++n;  // step over the argument

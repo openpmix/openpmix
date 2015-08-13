@@ -29,6 +29,7 @@ char *pmix_test_output_prepare(const char *fmt, ... )
     va_start( args, fmt );
     memset(output, 0, sizeof(output));
     vsnprintf(output, OUTPUT_MAX - 1, fmt, args);
+    va_end(args);
     return output;
 }
 
@@ -193,14 +194,14 @@ void parse_cmd(int argc, char **argv, test_params *params)
         if( NULL != ranklist && NULL != rankno ){
             char **argv = pmix_argv_split(ranklist, ',');
             int i, count = pmix_argv_count(argv);
-            int rankidx = strtol(rankno, NULL, 10);
+            int rankidx = strtoul(rankno, NULL, 10);
             if( rankidx >= count ){
                 fprintf(stderr, "It feels like we are running under SLURM:\n\t"
                         "SLURM_GTIDS=%s, SLURM_LOCALID=%s\nbut env vars are conflicting\n",
                         ranklist, rankno);
                 exit(1);
             }
-            params->rank = strtol(argv[rankidx], NULL, 10);
+            params->rank = strtoul(argv[rankidx], NULL, 10);
             pmix_argv_free(argv);
         }
     }
@@ -258,7 +259,7 @@ static int parse_token(char *str, int step, int store)
     int i;
     int rank;
     participant_t *proc;
-    
+
     switch (step) {
     case 0:
         if (store) {
@@ -501,6 +502,9 @@ int get_all_ranks_from_namespace(test_params params, char *nspace, pmix_proc_t *
         while (NULL != pch && num != ns_id) {
             base_rank += num_ranks;
             pch = strtok((-1 == num ) ? tmp : NULL, ":");
+            if (NULL == pch) {
+                break;
+            }
             num++;
             num_ranks = (size_t)strtol(pch, NULL, 10);
         }
