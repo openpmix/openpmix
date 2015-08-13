@@ -104,33 +104,6 @@ pmix_status_t _satisfy_local_req(pmix_nspace_t *nptr, pmix_rank_info_t *info,
     }
 
     return PMIX_ERR_NOT_FOUND;
-
-    // WARNING!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    // We won't ever execute this!!!!!!!!!
-    // Is this correct ???????????????????
-
-    // TODO: Do we need this code????
-    // Local proc shouldn't receive remote portion!
-    // In what legal situation can we get here?
-
-    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->server->remote, info->rank, "modex", &val)) &&
-        NULL != val) {
-        /* yes, we have it - pass it down */
-        PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
-        PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
-        pmix_buffer_t *pxfer = &xfer;
-        PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
-        pmix_bfrop.pack(&pbkt, &pxfer, 1, PMIX_BUFFER);
-        xfer.base_ptr = NULL;
-        xfer.bytes_used = 0;
-        PMIX_DESTRUCT(&xfer);
-        PMIX_VALUE_RELEASE(val);
-        PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
-        PMIX_DESTRUCT(&pbkt);
-        /* pass it back */
-        cbfunc(rc, data, sz, cbdata);
-        return rc;
-    }
 }
 
 pmix_status_t _satisfy_remote_req(pmix_nspace_t *nptr, int rank,
