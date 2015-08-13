@@ -170,12 +170,6 @@ pmix_status_t pmix_pending_request(pmix_nspace_t *nptr, int rank,
          * have to consider the case where a request is made for
          * data about a process that will be local, but hasn't
          * been registered yet */
-        if (!nptr->server->all_registered) {
-            /* we cannot know if this will be a local or
-             * remote proc, so we have to defer processing
-             * this request until all local clients for this nspace
-             * have been registered */
-        }
         rc = _satisfy_remote_req(nptr, rank, cbfunc, cbdata);
     }
 
