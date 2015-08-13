@@ -904,13 +904,22 @@ static void dmdx_cbfunc(pmix_status_t status,
                         void *cbdata)
 {
     pmix_dmdx_reply_caddy_t *caddy;
+    char *data_copy = NULL;
     caddy = PMIX_NEW(pmix_dmdx_reply_caddy_t);
     caddy->status = status;
     /* we cannot just point to the caller's data as
      * there is no way to guarantee it remains present
      * until we service our event thread. So we have
-     * no choice but to copy it */
-    caddy->data   = data;
+     * no choice but to copy it.
+     *
+     * artpol NOTE: we can also provide the feature to let RM know
+     * that we are done with the data and let it cleanup buffer itself.
+     * This can be done through one more cbfunc+cbdata that can be passed
+     * here from RM. */
+
+    data_copy = malloc(sizeof(char) * ndata);
+    memcpy(data_copy, data, ndata);
+    caddy->data   = data_copy;
     caddy->ndata  = ndata;
     caddy->lcd    = (pmix_dmdx_local_t *)cbdata;
     pmix_output_verbose(2, pmix_globals.debug_output, "[%s:%d] queue dmdx reply %s:%d",
