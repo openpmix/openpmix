@@ -772,8 +772,8 @@ static void _dmodex_req(int sd, short args, void *cbdata)
     pmix_nspace_t *nptr, *ns;
     pmix_buffer_t pbkt, xfer;
     pmix_value_t *val;
-    char *data;
-    size_t sz;
+    char *data = NULL;
+    size_t sz = 0;
     pmix_dmdx_remote_t *dcd;
     int rc;
 
@@ -841,17 +841,13 @@ static void _dmodex_req(int sd, short args, void *cbdata)
      * may not be a contribution */
     if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->server->myremote, info->rank, "modex", &val)) &&
         NULL != val) {
-        PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
-        PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
-        pmix_buffer_t *pxfer = &xfer;
-        pmix_bfrop.pack(&pbkt, &pxfer, 1, PMIX_BUFFER);
-        xfer.base_ptr = NULL;
-        xfer.bytes_used = 0;
-        PMIX_DESTRUCT(&xfer);
+	data = val->data.bo.bytes;
+	sz = val->data.bo.size;
+	/* protect the data */
+	val->data.bo.bytes = NULL;
+	val->data.bo.size = 0;
         PMIX_VALUE_RELEASE(val);
     }
-    PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
-    PMIX_DESTRUCT(&pbkt);
 
     /* execute the callback */
     cd->cbfunc(rc, data, sz, cd->cbdata);
