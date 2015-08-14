@@ -43,7 +43,7 @@ static int test_spawn_common(char *my_nspace, int my_rank, int blocking)
         int count;
         spawn_cbdata cbdata;
         cbdata.in_progress = 1;
-        memset(cbdata.nspace, 0, PMIX_MAX_NSLEN+1);
+        memset(cbdata.nspace, 0, PMIX_MAX_NSLEN);
         rc = PMIx_Spawn_nb(apps, napps, spawn_cb, (void*)&cbdata);
         if (PMIX_SUCCESS != rc) {
             PMIX_APP_FREE(apps, napps);
