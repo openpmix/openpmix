@@ -198,19 +198,19 @@ pmix_status_t pmix_pending_request(pmix_nspace_t *nptr, int rank,
      * request for now.
      */
     if( NULL == lcd ){
-        lcd = PMIX_NEW(pmix_dmdx_local_t);
-        if( NULL == lcd ){
-            return PMIX_ERR_NOMEM;
-        }
-        strncpy(lcd->nspace, nptr->nspace, PMIX_MAX_NSLEN);
-        lcd->rank = rank;
-        PMIX_CONSTRUCT(&lcd->loc_reqs, pmix_list_t);
-        pmix_list_append(&pmix_server_globals.local_reqs, &lcd->super);
+    lcd = PMIX_NEW(pmix_dmdx_local_t);
+    if( NULL == lcd ){
+        return PMIX_ERR_NOMEM;
+    }
+    strncpy(lcd->nspace, nptr->nspace, PMIX_MAX_NSLEN);
+    lcd->rank = rank;
+    PMIX_CONSTRUCT(&lcd->loc_reqs, pmix_list_t);
+    pmix_list_append(&pmix_server_globals.local_reqs, &lcd->super);
 
-        /* check & send request if need/possible */
+    /* check & send request if need/possible */
         if( nptr->server->all_registered && NULL == info ){
             if( NULL != pmix_host_server.direct_modex ){
-                pmix_host_server.direct_modex(lcd->nspace, lcd->rank, dmdx_cbfunc, lcd);
+        pmix_host_server.direct_modex(lcd->nspace, lcd->rank, dmdx_cbfunc, lcd);
             } else {
                 /* if we don't have direct modex feature, just respond with "not found" */
                 cbfunc(PMIX_ERR_NOT_FOUND, NULL, 0, cbdata);
@@ -807,7 +807,6 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
     pmix_dmdx_reply_caddy_t *caddy = (pmix_dmdx_reply_caddy_t *)cbdata;
     pmix_kval_t *kp;
     pmix_nspace_t *ns, *nptr;
-    pmix_rank_info_t *iptr, *info;
     pmix_status_t rc;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -830,22 +829,6 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
         PMIX_RELEASE(caddy);
         return;
     }
-    /* and the rank entry for it */
-    info = NULL;
-    PMIX_LIST_FOREACH(iptr, &nptr->server->ranks, pmix_rank_info_t) {
-        if (iptr->rank == caddy->lcd->rank) {
-            info = iptr;
-            break;
-        }
-    }
-    if (NULL == info) {
-        /* create the entry */
-        info = PMIX_NEW(pmix_rank_info_t);
-        info->rank = caddy->lcd->rank;
-        PMIX_RETAIN(nptr);
-        info->nptr = nptr;
-        pmix_list_append(&nptr->server->ranks, &info->super);
-    }
 
     kp = PMIX_NEW(pmix_kval_t);
     kp->key = strdup("modex");
@@ -854,7 +837,7 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
     kp->value->data.bo.bytes = (char*)caddy->data;
     kp->value->data.bo.size = caddy->ndata;
     /* store it in the appropriate hash */
-    if (PMIX_SUCCESS != (rc = pmix_hash_store(&info->nptr->server->remote, info->rank, kp))) {
+    if (PMIX_SUCCESS != (rc = pmix_hash_store(&nptr->server->remote, caddy->lcd->rank, kp))) {
         PMIX_ERROR_LOG(rc);
     }
     kp->value->data.bo.bytes = NULL;  // protect the data
