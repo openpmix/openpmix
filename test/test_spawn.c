@@ -40,7 +40,6 @@ static int test_spawn_common(char *my_nspace, int my_rank, int blocking)
             return rc;
         }
     } else {
-        int count;
         spawn_cbdata cbdata;
         cbdata.in_progress = 1;
         memset(cbdata.nspace, 0, PMIX_MAX_NSLEN);
@@ -49,14 +48,7 @@ static int test_spawn_common(char *my_nspace, int my_rank, int blocking)
             PMIX_APP_FREE(apps, napps);
             return rc;
         }
-        count = 0;
-        while(cbdata.in_progress){
-            struct timespec ts;
-            ts.tv_sec = 0;
-            ts.tv_nsec = 100;
-            nanosleep(&ts,NULL);
-            count++;
-        }
+        PMIX_WAIT_FOR_COMPLETION(cbdata.in_progress);
         strncpy(nspace, cbdata.nspace, strlen(cbdata.nspace)+1);
     }
     PMIX_APP_FREE(apps, napps);

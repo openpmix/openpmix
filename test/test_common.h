@@ -24,6 +24,7 @@
 
 #include "src/class/pmix_list.h"
 #include "src/util/argv.h"
+#include "src/usock/usock.h"
 
 #define TEST_NAMESPACE "smoky_nspace"
 #define TEST_CREDENTIAL "dummy"

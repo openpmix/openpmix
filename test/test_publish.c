@@ -61,17 +61,10 @@ static int test_publish(char *my_nspace, int my_rank, int blocking)
     if (blocking) {
         rc = PMIx_Publish(PMIX_UNIVERSAL, PMIX_PERSIST_INDEF, &info, 1);
     } else {
-        int in_progress = 1, count;
+        int in_progress = 1;
         rc = PMIx_Publish_nb(PMIX_UNIVERSAL, PMIX_PERSIST_INDEF, &info, 1, release_cb, &in_progress);
         if (PMIX_SUCCESS == rc) {
-            count = 0;
-            while( in_progress ){
-                struct timespec ts;
-                ts.tv_sec = 0;
-                ts.tv_nsec = 100;
-                nanosleep(&ts,NULL);
-                count++;
-            }
+            PMIX_WAIT_FOR_COMPLETION(in_progress);
         }
     }
     PMIX_INFO_DESTRUCT(&info);
@@ -99,7 +92,6 @@ static int test_lookup(char *my_nspace, int my_rank, int blocking)
         (void)snprintf(keys[0], PMIX_MAX_KEYLEN, "%s:%d", my_nspace, my_rank);
         keys[1] = NULL;
 
-        int count;
         lookup_cbdata cbdata;
         cbdata.in_progress = 1;
         cbdata.npdata = 1;
@@ -111,14 +103,7 @@ static int test_lookup(char *my_nspace, int my_rank, int blocking)
             PMIX_PDATA_DESTRUCT(&pdata);
             return rc;
         }
-        count = 0;
-        while(cbdata.in_progress){
-            struct timespec ts;
-            ts.tv_sec = 0;
-            ts.tv_nsec = 100;
-            nanosleep(&ts,NULL);
-            count++;
-        }
+        PMIX_WAIT_FOR_COMPLETION(cbdata.in_progress);
     }
 
     if (PMIX_STRING != pdata.value.type ||
@@ -147,17 +132,10 @@ static int test_unpublish(char *my_nspace, int my_rank, int blocking)
     if (blocking) {
         rc = PMIx_Unpublish(PMIX_UNIVERSAL, keys);
     } else {
-        int in_progress = 1, count;
+        int in_progress = 1;
         rc = PMIx_Unpublish_nb(PMIX_UNIVERSAL, keys, release_cb, &in_progress);
         if (PMIX_SUCCESS == rc) {
-            count = 0;
-            while( in_progress ){
-                struct timespec ts;
-                ts.tv_sec = 0;
-                ts.tv_nsec = 100;
-                nanosleep(&ts,NULL);
-                count++;
-            }
+            PMIX_WAIT_FOR_COMPLETION(in_progress);
         }
     }
     free(keys[0]);

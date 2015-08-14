@@ -75,16 +75,9 @@ static void set_namespace(int nprocs, char *ranks, char *name)
     info[5].value.type = PMIX_STRING;
     info[5].value.data.string = ppn;
 
-    int in_progress = 1, count, rc;
+    int in_progress = 1, rc;
     if (PMIX_SUCCESS == (rc = PMIx_server_register_nspace(name, nprocs, info, ninfo, release_cb, &in_progress))) {
-        count = 0;
-        while( in_progress ){
-            struct timespec ts;
-            ts.tv_sec = 0;
-            ts.tv_nsec = 100;
-            nanosleep(&ts,NULL);
-            count++;
-        }
+        PMIX_WAIT_FOR_COMPLETION(in_progress);
     }
     PMIX_INFO_FREE(info, ninfo);
 }

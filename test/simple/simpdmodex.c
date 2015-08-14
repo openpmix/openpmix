@@ -35,6 +35,7 @@
 #include "src/buffer_ops/types.h"
 #include "src/util/output.h"
 #include "src/util/printf.h"
+#include "src/usock/usock.h"
 
 static uint32_t nprocs;
 static char nspace[PMIX_MAX_NSLEN+1];
@@ -43,10 +44,10 @@ static uint32_t getcount = 0;
 
 static void opcbfunc(pmix_status_t status, void *cbdata)
 {
-    bool *release = (bool*)cbdata;
+    bool *active = (bool*)cbdata;
 
     pmix_output(0, "%s:%d completed fence_nb", nspace, rank);
-    *release = true;
+    *active = false;
 }
 
 static void valcbfunc(pmix_status_t status,
@@ -94,8 +95,8 @@ int main(int argc, char **argv)
     char *tmp;
     pmix_proc_t proc;
     uint32_t n, num_gets;
-    bool completed;
-    
+    bool active;
+
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(nspace, &rank))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Init failed: %d", nspace, rank, rc);
@@ -111,7 +112,7 @@ int main(int argc, char **argv)
     nprocs = val->data.uint32;
     PMIX_VALUE_RELEASE(val);
     pmix_output(0, "Client %s:%d universe size %d", nspace, rank, nprocs);
-    
+
     /* put a few values */
     (void)asprintf(&tmp, "%s-%d-internal", nspace, rank);
     value.type = PMIX_UINT32;
@@ -153,12 +154,12 @@ int main(int argc, char **argv)
     PMIX_PROC_CONSTRUCT(&proc);
     (void)strncpy(proc.nspace, nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
-    completed = false;
-    if (PMIX_SUCCESS != (rc = PMIx_Fence_nb(&proc, 1, false, opcbfunc, &completed))) {
+    active = true;
+    if (PMIX_SUCCESS != (rc = PMIx_Fence_nb(&proc, 1, false, opcbfunc, &active))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", nspace, rank, rc);
         goto done;
     }
-    
+
     /* get the committed data - ask for someone who doesn't exist as well */
     num_gets = 0;
     for (n=0; n < nprocs; n++) {
@@ -179,12 +180,7 @@ int main(int argc, char **argv)
     }
 
     /* wait for the first fence to finish */
-    while (!completed) {
-        struct timespec ts;
-        ts.tv_sec = 0;
-        ts.tv_nsec = 100000;
-        nanosleep(&ts, NULL);
-    }
+    PMIX_WAIT_FOR_COMPLETION(active);
 
     /* wait for all my "get" calls to complete */
     while (getcount < num_gets) {
