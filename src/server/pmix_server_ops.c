@@ -840,10 +840,9 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
     if (PMIX_SUCCESS != (rc = pmix_hash_store(&nptr->server->remote, caddy->lcd->rank, kp))) {
         PMIX_ERROR_LOG(rc);
     }
-    kp->value->data.bo.bytes = NULL;  // protect the data
     PMIX_RELEASE(kp);  // maintain acctg
 
-  cleanup:
+cleanup:
     /* always execute the callback to avoid having the client hang */
     pmix_pending_resolve(nptr, caddy->lcd->rank, caddy->lcd);
     PMIX_RELEASE(caddy);
