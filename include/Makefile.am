@@ -10,6 +10,8 @@
 
 # Only install the headers if we're in standalone mode
 
+EXTRA_DIST += include/private/autogen/README.txt
+
 if ! PMIX_EMBEDDED_MODE
 include_HEADERS = \
         include/pmix.h \
@@ -28,6 +30,10 @@ include_pmix_autogen_HEADERS = \
         include/pmix/autogen/pmix_config_bottom.h
 nodist_include_pmix_autogen_HEADERS = \
         include/pmix/autogen/config.h
+
+include_pmix_private_autogendir = $(includedir)/private/autogen
+nodist_include_pmix_private_autogen_HEADERS = \
+        include/pmix/private/autogen/config.h
 
 noinst_HEADERS = \
 	include/private/align.h \
