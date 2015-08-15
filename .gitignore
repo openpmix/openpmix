@@ -30,8 +30,6 @@ config/Makefile
 libtool
 config.h
 config.h~
-config.h.in
-config.h.in~
 
 auto.out
 config.out
@@ -49,22 +47,16 @@ config/ltsugar.m4
 config/ltversion.m4
 config/lt~obsolete.m4
 
-include/pmix/pmix_common.h
-
-src/include/pmix_config.h
-src/include/pmix_config.h.in~
-src/include/version.h
-
-src/api/pmix_common.h
-
-src/include/pmix_config.h.in
-
 examples/client
 examples/dmodex
 examples/dynamic
 examples/fault
 examples/pub
 examples/server
+
+include/pmix/pmix_common.h
+include/private/autogen/config.h.in
+include/private/autogen/config.h.in~
 
 test/pmi2_client
 test/pmi_client
