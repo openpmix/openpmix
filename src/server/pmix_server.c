@@ -1932,12 +1932,12 @@ static int server_switchyard(pmix_peer_t *peer, uint32_t tag,
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "recvd FINALIZE");
         /* call the local server, if supported */
-        if (NULL != pmix_host_server.finalized) {
+        if (NULL != pmix_host_server.client_finalized) {
             PMIX_PEER_CADDY(cd, peer, tag);
-            if (PMIX_SUCCESS != (rc = pmix_host_server.finalized(peer->info->nptr->nspace,
-                                                                 peer->info->rank,
-                                                                 peer->info->server_object,
-                                                                 op_cbfunc, cd))) {
+            if (PMIX_SUCCESS != (rc = pmix_host_server.client_finalized(peer->info->nptr->nspace,
+                                                                        peer->info->rank,
+                                                                        peer->info->server_object,
+                                                                        op_cbfunc, cd))) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(cd);
             }

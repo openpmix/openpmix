@@ -13,6 +13,7 @@
 
 #include "cli_stages.h"
 
+pmix_status_t connected(const char nspace[], int rank, void *server_object);
 pmix_status_t finalized(const char nspace[], int rank, void *server_object,
                         pmix_op_cbfunc_t cbfunc, void *cbdata);
 pmix_status_t abort_fn(const char nspace[], int rank,

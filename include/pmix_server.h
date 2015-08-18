@@ -99,12 +99,16 @@ BEGIN_C_DECLS
  * server, which is free to release it upon return from the callback */
 
 
+/* Notify the host server that a client connected to us */
+typedef int (*pmix_server_client_connected_fn_t)(const char nspace[], int rank,
+                                                 void* server_object);
+
 /* Notify the host server that a client called PMIx_Finalize- note
  * that the client will be in a blocked state until the host server
  * executes the callback function, thus allowing the PMIx server support
  * library to release the client */
-typedef pmix_status_t (*pmix_server_finalized_fn_t)(const char nspace[], int rank, void* server_object,
-                                                    pmix_op_cbfunc_t cbfunc, void *cbdata);
+typedef pmix_status_t (*pmix_server_client_finalized_fn_t)(const char nspace[], int rank, void* server_object,
+                                                           pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* A local client called PMIx_Abort - note that the client will be in a blocked
  * state until the host server executes the callback function, thus
@@ -223,7 +227,8 @@ typedef pmix_status_t (*pmix_server_listener_fn_t)(int listening_sd,
                                                    pmix_connection_cbfunc_t cbfunc);
 
 typedef struct pmix_server_module_1_0_0_t {
-    pmix_server_finalized_fn_t        finalized;
+    pmix_server_client_connected_fn_t client_connected;
+    pmix_server_client_finalized_fn_t client_finalized;
     pmix_server_abort_fn_t            abort;
     pmix_server_fencenb_fn_t          fence_nb;
     pmix_server_dmodex_req_fn_t       direct_modex;

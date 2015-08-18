@@ -545,5 +545,14 @@ pmix_status_t pmix_server_authenticate(int sd, int *out_rank, pmix_peer_t **peer
                         "connect-ack from client completed");
 
     *peer = psave;
+    /* let the host server know that this client has connected */
+    if (NULL != pmix_host_server.client_connected) {
+        rc = pmix_host_server.client_connected(psave->info->nptr->nspace,
+                                               psave->info->rank,
+                                               psave->info->server_object);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
+    }
     return rc;
 }

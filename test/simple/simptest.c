@@ -36,6 +36,7 @@
 #include "src/util/argv.h"
 #include "src/buffer_ops/buffer_ops.h"
 
+static pmix_status_t connected(const char nspace[], int rank, void *server_object);
 static pmix_status_t finalized(const char nspace[], int rank, void *server_object,
                                pmix_op_cbfunc_t cbfunc, void *cbdata);
 static pmix_status_t abort_fn(const char nspace[], int rank,
@@ -69,6 +70,7 @@ static pmix_status_t listener_fn(int listening_sd,
                                  pmix_connection_cbfunc_t cbfunc);
 
 static pmix_server_module_t mymodule = {
+    connected,
     finalized,
     abort_fn,
     fencenb_fn,
@@ -329,6 +331,10 @@ static void errhandler(pmix_status_t status,
     pmix_output(0, "SERVER: ERRHANDLER CALLED WITH STATUS %d", status);
 }
 
+static pmix_status_t connected(const char nspace[], int rank, void *server_object)
+{
+    return PMIX_SUCCESS;
+}
 static int finalized(const char nspace[], int rank, void *server_object,
                      pmix_op_cbfunc_t cbfunc, void *cbdata)
 {

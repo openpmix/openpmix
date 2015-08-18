@@ -12,6 +12,7 @@
 #include "src/util/argv.h"
 
 pmix_server_module_t mymodule = {
+    connected,
     finalized,
     abort_fn,
     fencenb_fn,
@@ -71,6 +72,11 @@ PMIX_CLASS_INSTANCE(pmix_test_info_t,
 pmix_list_t *pmix_test_published_list = NULL;
 
 static int finalized_count = 0;
+
+int connected(const char nspace[], int rank, void *server_object)
+{
+    return PMIX_SUCCESS;
+}
 
 int finalized(const char nspace[], int rank, void *server_object,
               pmix_op_cbfunc_t cbfunc, void *cbdata)
