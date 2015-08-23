@@ -75,7 +75,7 @@ int main(int argc, char **argv)
     completed = false;
     
     /* register our errhandler */
-    PMIx_Register_errhandler(notification_fn);
+    PMIx_Register_errhandler(NULL, 0, notification_fn);
     
     /* call fence to sync */
     PMIX_PROC_CONSTRUCT(&proc);

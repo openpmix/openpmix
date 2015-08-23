@@ -169,7 +169,7 @@ int main(int argc, char **argv)
         return rc;
     }
     /* register the errhandler */
-    PMIx_Register_errhandler(errhandler);
+    PMIx_Register_errhandler(NULL, 0, errhandler);
 
     /* setup the pub data, in case it is used */
     PMIX_CONSTRUCT(&pubdata, pmix_list_t);

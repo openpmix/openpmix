@@ -725,8 +725,8 @@ typedef void (*pmix_value_cbfunc_t)(pmix_status_t status,
                                     pmix_value_t *kv, void *cbdata);
 
 /****    COMMON SUPPORT FUNCTIONS    ****/
-/* Register an errhandler to report errors. Two types of errors
- * will be reported:
+/* Register an errhandler to report errors. Three types of errors
+ * can be reported:
  *
  * (a) those that occur within the client library, but are not
  *     reportable via the API itself (e.g., loss of connection to
@@ -737,8 +737,21 @@ typedef void (*pmix_value_cbfunc_t)(pmix_status_t status,
  *     the job or in any connected job, impending failure of hardware
  *     within the job's usage footprint, etc.
  *
+ * (c) system notifications that are made available by the local
+ *     administrators
+ *
+ * By default, only errors that directly affect the process and/or
+ * any process to which it is connected (via the PMIx_Connect call)
+ * will be reported. Options to modify that behavior can be provided
+ * in the info array
+ *
+ * Modification of the notification behavior can be accomplished by
+ * deregistering the current errhandler, and then registering it
+ * using a new set of info values.
+ *
  * See pmix_common.h for a description of the notification function */
-void PMIx_Register_errhandler(pmix_notification_fn_t errhandler);
+void PMIx_Register_errhandler(pmix_info_t info[], size_t ninfo,
+                              pmix_notification_fn_t errhandler);
 
 /* deregister the errhandler */
 void PMIx_Deregister_errhandler(void);

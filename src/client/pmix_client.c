@@ -582,7 +582,8 @@ pmix_status_t PMIx_Commit(void)
     return PMIX_SUCCESS;
 }
 
-void PMIx_Register_errhandler(pmix_notification_fn_t err)
+void PMIx_Register_errhandler(pmix_info_t info[], size_t ninfo,
+                              pmix_notification_fn_t err)
 {
     pmix_globals.errhandler = err;
 }

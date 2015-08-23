@@ -67,6 +67,8 @@ static int connect_fn(const pmix_proc_t procs[], size_t nprocs,
                       pmix_op_cbfunc_t cbfunc, void *cbdata);
 static int disconnect_fn(const pmix_proc_t procs[], size_t nprocs,
                          pmix_op_cbfunc_t cbfunc, void *cbdata);
+static int register_events_fn(const pmix_info_t info[], size_t ninfo,
+                              pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* this example doesn't use a listener function to centralize
  * connection accept support into a single thread. Thus, the
@@ -84,6 +86,7 @@ static pmix_server_module_t mymodule = {
     spawn_fn,
     connect_fn,
     disconnect_fn,
+    register_events_fn,
     NULL
 };
 
@@ -166,7 +169,7 @@ int main(int argc, char **argv)
         return rc;
     }
     /* register the errhandler */
-    PMIx_Register_errhandler(errhandler);
+    PMIx_Register_errhandler(NULL, 0, errhandler);
 
     /* setup the pub data, in case it is used */
     PMIX_CONSTRUCT(&pubdata, pmix_list_t);
@@ -577,6 +580,21 @@ static int disconnect_fn(const pmix_proc_t procs[], size_t nprocs,
                          pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_output(0, "SERVER: DISCONNECT");
+
+    /* in practice, we would pass this request to the local
+     * resource manager for handling */
+
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, cbdata);
+    }
+
+    return PMIX_SUCCESS;
+}
+
+static int register_events_fn(const pmix_info_t info[], size_t ninfo,
+                              pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    pmix_output(0, "SERVER: REGISTER EVENTS");
 
     /* in practice, we would pass this request to the local
      * resource manager for handling */

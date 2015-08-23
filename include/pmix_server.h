@@ -210,6 +210,14 @@ typedef pmix_status_t (*pmix_server_connect_fn_t)(const pmix_proc_t procs[], siz
 typedef pmix_status_t (*pmix_server_disconnect_fn_t)(const pmix_proc_t procs[], size_t nprocs,
                                                      pmix_op_cbfunc_t cbfunc, void *cbdata);
 
+/* Register to receive notifications for the specified events. The resource
+ * manager may have access to events beyond process failure. In cases where
+ * the client application requests to be notified of such events, the request
+ * will be passed to the PMIx server, which in turn shall pass the request to
+ * the resource manager. */
+ typedef pmix_status_t (*pmix_server_register_events_fn_t)(const pmix_info_t info[], size_t ninfo,
+                                                           pmix_op_cbfunc_t cbfunc, void *cbdata);
+ 
 /* Callback function for incoming connection requests from
  * local clients */
 typedef void (*pmix_connection_cbfunc_t)(int incoming_sd);
@@ -239,6 +247,7 @@ typedef struct pmix_server_module_1_0_0_t {
     pmix_server_spawn_fn_t            spawn;
     pmix_server_connect_fn_t          connect;
     pmix_server_disconnect_fn_t       disconnect;
+    pmix_server_register_events_fn_t  register_events;
     pmix_server_listener_fn_t         listener;
 } pmix_server_module_t;
 

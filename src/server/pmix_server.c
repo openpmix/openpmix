@@ -1036,7 +1036,8 @@ pmix_status_t PMIx_server_notify_error(pmix_status_t status,
 
 }
 
-void PMIx_Register_errhandler(pmix_notification_fn_t err)
+void PMIx_Register_errhandler(pmix_info_t info[], size_t ninfo,
+                              pmix_notification_fn_t err)
 {
     pmix_globals.errhandler = err;
 }
