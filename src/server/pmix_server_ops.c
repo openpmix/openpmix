@@ -1104,7 +1104,8 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer,
                                 void *cbdata)
 {
     int32_t cnt;
-    size_t napps;
+    size_t napps, ninfo;
+    pmix_info_t *info=NULL;
     pmix_app_t *apps=NULL;
     pmix_status_t rc;
 
@@ -1112,12 +1113,30 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer,
                         "recvd SPAWN");
 
     if (NULL == pmix_host_server.spawn) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
         return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    /* unpack the number of job-level directives */
+    cnt=1;
+    if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    /* unpack the array of apps */
+    if (0 < ninfo) {
+        PMIX_INFO_CREATE(info, ninfo);
+        cnt=ninfo;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, info, &cnt, PMIX_INFO))) {
+            PMIX_ERROR_LOG(rc);
+            goto cleanup;
+        }
     }
 
     /* unpack the number of apps */
     cnt=1;
     if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &napps, &cnt, PMIX_SIZE))) {
+        PMIX_ERROR_LOG(rc);
         return rc;
     }
     /* unpack the array of apps */
@@ -1131,9 +1150,12 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer,
     }
     /* call the local server */
     rc = pmix_host_server.spawn(peer->info->nptr->nspace, peer->info->rank,
-                                apps, napps, cbfunc, cbdata);
+                                info, ninfo, apps, napps, cbfunc, cbdata);
 
  cleanup:
+    if (NULL != info) {
+        PMIX_INFO_FREE(info, ninfo);
+    }
     if (NULL != apps) {
         PMIX_APP_FREE(apps, napps);
     }

@@ -187,6 +187,7 @@ typedef pmix_status_t (*pmix_server_unpublish_fn_t)(const char nspace[], int ran
  * request shall cause all applications and processes in the request to
  * be terminated, and an error returned to the originating caller */
 typedef pmix_status_t (*pmix_server_spawn_fn_t)(const char nspace[], int rank,
+                                                const pmix_info_t job_info[], size_t ninfo,
                                                 const pmix_app_t apps[], size_t napps,
                                                 pmix_spawn_cbfunc_t cbfunc, void *cbdata);
 

@@ -36,6 +36,7 @@
 #include "src/util/argv.h"
 #include "src/buffer_ops/buffer_ops.h"
 
+static int connected(const char nspace[], int rank, void *server_object);
 static int finalized(const char nspace[], int rank, void *server_object,
                      pmix_op_cbfunc_t cbfunc, void *cbdata);
 static int abort_fn(const char nspace[], int rank,
@@ -59,6 +60,7 @@ static int unpublish_fn(const char nspace[], int rank,
                         pmix_data_range_t scope, char **keys,
                         pmix_op_cbfunc_t cbfunc, void *cbdata);
 static int spawn_fn(const char nspace[], int rank,
+                    const pmix_info_t job_info[], size_t ninfo,
                     const pmix_app_t apps[], size_t napps,
                     pmix_spawn_cbfunc_t cbfunc, void *cbdata);
 static int connect_fn(const pmix_proc_t procs[], size_t nprocs,
@@ -71,6 +73,7 @@ static int disconnect_fn(const pmix_proc_t procs[], size_t nprocs,
  * PMIx server library will spawn its own listener thread */
 
 static pmix_server_module_t mymodule = {
+    connected,
     finalized,
     abort_fn,
     fencenb_fn,
@@ -324,6 +327,13 @@ static void errhandler(pmix_status_t status,
     pmix_output(0, "SERVER: ERRHANDLER CALLED WITH STATUS %d", status);
 }
 
+static int connected(const char nspace[], int rank, void *server_object)
+{
+    pmix_output(0, "SERVER: CONNECTED %s:%d", nspace, rank);
+    return PMIX_SUCCESS;
+
+}
+
 static int finalized(const char nspace[], int rank, void *server_object,
                      pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
@@ -522,6 +532,7 @@ static void spcbfunc(pmix_status_t status, void *cbdata)
 }
 
 static int spawn_fn(const char nspace[], int rank,
+                    const pmix_info_t job_info[], size_t ninfo,
                     const pmix_app_t apps[], size_t napps,
                     pmix_spawn_cbfunc_t cbfunc, void *cbdata)
 {

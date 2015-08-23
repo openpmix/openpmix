@@ -404,7 +404,7 @@ int PMI_Spawn_multiple(int count,
         }
     }
 
-    rc = PMIx_Spawn(apps, count, NULL);
+    rc = PMIx_Spawn(NULL, 0, apps, count, NULL);
     /* tear down the apps array */
     for (i=0; i < count; i++) {
         PMIX_APP_DESTRUCT(&apps[i]);

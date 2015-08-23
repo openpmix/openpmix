@@ -293,8 +293,7 @@ typedef enum {
 typedef enum {
     PMIX_DATA_RANGE_UNDEF = 0,
     PMIX_NAMESPACE,       // data is available to procs in the same nspace only
-    PMIX_UNIVERSAL,       // data available to all
-    PMIX_USER             // data available to all nspaces owned by this user
+    PMIX_SESSION          // data available to all procs in session
 } pmix_data_range_t;
 
 /* define a "persistence" policy for data published by clients */

@@ -57,8 +57,8 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                         pmix_buffer_t *buf, void *cbdata);
 static void spawn_cbfunc(int status, char nspace[], void *cbdata);
 
-int PMIx_Spawn(const pmix_app_t apps[],
-               size_t napps,
+int PMIx_Spawn(const pmix_info_t job_info[], size_t ninfo,
+               const pmix_app_t apps[], size_t napps,
                char nspace[])
 {
     int rc;
@@ -85,7 +85,7 @@ int PMIx_Spawn(const pmix_app_t apps[],
     cb = PMIX_NEW(pmix_cb_t);
     cb->active = true;
 
-    if (PMIX_SUCCESS != (rc = PMIx_Spawn_nb(apps, napps, spawn_cbfunc, cb))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Spawn_nb(job_info, ninfo, apps, napps, spawn_cbfunc, cb))) {
         PMIX_RELEASE(cb);
         return rc;
     }
@@ -97,10 +97,12 @@ int PMIx_Spawn(const pmix_app_t apps[],
         (void)strncpy(nspace, cb->nspace, PMIX_MAX_NSLEN);
     }
     PMIX_RELEASE(cb);
+
     return rc;
 }
 
-int PMIx_Spawn_nb(const pmix_app_t apps[], size_t napps,
+int PMIx_Spawn_nb(const pmix_info_t job_info[], size_t ninfo,
+                  const pmix_app_t apps[], size_t napps,
                   pmix_spawn_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_buffer_t *msg;
@@ -126,6 +128,20 @@ int PMIx_Spawn_nb(const pmix_app_t apps[], size_t napps,
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
+    }
+
+    /* pack the job-level directives */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &ninfo, 1, PMIX_SIZE))) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        return rc;
+    }
+    if (0 < ninfo) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, job_info, ninfo, PMIX_INFO))) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(msg);
+            return rc;
+        }
     }
 
     /* pack the apps */

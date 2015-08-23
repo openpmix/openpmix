@@ -35,11 +35,11 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- * 
+ *
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -69,7 +69,7 @@ BEGIN_C_DECLS
  * currently is NO internal thread safety. */
 
 /* Initialize the PMIx client, returning the namespace assigned
- * to this client's application in the provided character array 
+ * to this client's application in the provided character array
  * (must be of size PMIX_MAX_NSLEN or greater). Passing a parameter
  * of _NULL_ for either or both parameters is allowed if the user
  * wishes solely to initialize the PMIx system and does not require
@@ -202,11 +202,11 @@ pmix_status_t PMIx_Get_nb(const char nspace[], int rank,
  * data has been posted and is available. The non-blocking form will
  * return immediately, executing the callback when the server confirms
  * availability of the data */
-pmix_status_t PMIx_Publish(pmix_data_range_t scope,
+pmix_status_t PMIx_Publish(pmix_data_range_t range,
                            pmix_persistence_t persist,
                            const pmix_info_t info[],
                            size_t ninfo);
-pmix_status_t PMIx_Publish_nb(pmix_data_range_t scope,
+pmix_status_t PMIx_Publish_nb(pmix_data_range_t range,
                               pmix_persistence_t persist,
                               const pmix_info_t info[],
                               size_t ninfo,
@@ -222,7 +222,7 @@ pmix_status_t PMIx_Publish_nb(pmix_data_range_t scope,
  * be found will return with a data type of "PMIX_UNDEF". The function
  * will return SUCCESS if _any_ values can be found, so the caller
  * must check each data element to ensure it was returned.
- * 
+ *
  * The proc field in each pmix_pdata_t struct will contain the
  * nspace/rank of the process that published the data.
  *
@@ -232,7 +232,7 @@ pmix_status_t PMIx_Publish_nb(pmix_data_range_t scope,
  * and return any found items. Thus, the caller is responsible for
  * ensuring that data is published prior to executing a lookup, or
  * for retrying until the requested data is found */
-pmix_status_t PMIx_Lookup(pmix_data_range_t scope,
+pmix_status_t PMIx_Lookup(pmix_data_range_t range,
                           pmix_pdata_t data[], size_t ndata);
 
 /* Non-blocking form of the _PMIx_Lookup_ function. Data for
@@ -242,7 +242,7 @@ pmix_status_t PMIx_Lookup(pmix_data_range_t scope,
  * wait for _all_ requested data before executing the callback
  * (_true_), or to callback once the server returns whatever
  * data is immediately available (_false_) */
-pmix_status_t PMIx_Lookup_nb(pmix_data_range_t scope, int wait, char **keys,
+pmix_status_t PMIx_Lookup_nb(pmix_data_range_t range, int wait, char **keys,
                              pmix_lookup_cbfunc_t cbfunc, void *cbdata);
 
 /* Unpublish data posted by this process using the given keys
@@ -250,32 +250,36 @@ pmix_status_t PMIx_Lookup_nb(pmix_data_range_t scope, int wait, char **keys,
  * the data has been removed by the server. A value of _NULL_
  * for the keys parameter instructs the server to remove
  * _all_ data published by this process within the given range */
-pmix_status_t PMIx_Unpublish(pmix_data_range_t scope, char **keys);
+pmix_status_t PMIx_Unpublish(pmix_data_range_t range, char **keys);
 
 /* Non-blocking form of the _PMIx_Unpublish_ function. The
  * callback function will be executed once the server confirms
  * removal of the specified data. A value of _NULL_
  * for the keys parameter instructs the server to remove
  * _all_ data published by this process within the given range  */
-pmix_status_t PMIx_Unpublish_nb(pmix_data_range_t scope, char **keys,
+pmix_status_t PMIx_Unpublish_nb(pmix_data_range_t range, char **keys,
                                 pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-/* Spawn a new job. The spawned applications are automatically
- * connected to the calling process, and their assigned namespace
+/* Spawn a new job. The assigned namespace of the spawned applications
  * is returned in the nspace parameter - a _NULL_ value in that
  * location indicates that the caller doesn't wish to have the
  * namespace returned. Behavior of individual resource managers
  * may differ, but it is expected that failure of any application
  * process to start will result in termination/cleanup of _all_
  * processes in the newly spawned job and return of an error
- * code to the caller */
-pmix_status_t PMIx_Spawn(const pmix_app_t apps[],
-                         size_t napps, char nspace[]);
+ * code to the caller.
+ *
+ * Job-level directives can be specified in the job_info array
+ */
+pmix_status_t PMIx_Spawn(const pmix_info_t job_info[], size_t ninfo,
+                         const pmix_app_t apps[], size_t napps,
+                         char nspace[]);
 
 /* Non-blocking form of the _PMIx_Spawn_ function. The callback
  * will be executed upon launch of the specified applications,
  * or upon failure to launch any of them. */
-pmix_status_t PMIx_Spawn_nb(const pmix_app_t apps[], size_t napps,
+pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t ninfo,
+                            const pmix_app_t apps[], size_t napps,
                             pmix_spawn_cbfunc_t cbfunc, void *cbdata);
 
 /* Record the specified processes as "connected". Both blocking and non-blocking
@@ -297,7 +301,7 @@ pmix_status_t PMIx_Connect(const pmix_proc_t procs[], size_t nprocs);
 
 pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t nprocs,
                               pmix_op_cbfunc_t cbfunc, void *cbdata);
-                              
+
 /* Disconnect a previously connected set of processes. An error will be returned
  * if the specified set of procs was not previously "connected". As above, a process
  * may be involved in multiple simultaneous disconnect operations. However, a process

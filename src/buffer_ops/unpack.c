@@ -788,13 +788,7 @@ int pmix_bfrop_unpack_app(pmix_buffer_t *buffer, void *dest,
 
     for (i = 0; i < n; ++i) {
         /* initialize the fields */
-        ptr[i].cmd = NULL;
-        ptr[i].argc = 0;
-        ptr[i].argv = NULL;
-        ptr[i].env = NULL;
-        ptr[i].maxprocs = 0;
-        ptr[i].ninfo = 0;
-        ptr[i].info = NULL;
+        PMIX_APP_CONSTRUCT(&ptr[i]);
         /* unpack cmd */
         m=1;
         if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_string(buffer, &ptr[i].cmd, &m, PMIX_STRING))) {
@@ -846,9 +840,9 @@ int pmix_bfrop_unpack_app(pmix_buffer_t *buffer, void *dest,
             return ret;
         }
         if (0 < ptr[i].ninfo) {
-            ptr[i].info = (pmix_info_t*)malloc(ptr[i].ninfo * sizeof(pmix_info_t));
+            PMIX_INFO_CREATE(ptr[i].info, ptr[i].ninfo);
             m = ptr[i].ninfo;
-            if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_info(buffer, &tmp, &m, PMIX_INFO))) {
+            if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_info(buffer, ptr[i].info, &m, PMIX_INFO))) {
                 return ret;
             }
         }

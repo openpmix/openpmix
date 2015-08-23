@@ -37,6 +37,7 @@ pmix_status_t unpublish_fn(const char nspace[], int rank,
                            pmix_data_range_t scope, char **keys,
                            pmix_op_cbfunc_t cbfunc, void *cbdata);
 pmix_status_t spawn_fn(const char nspace[], int rank,
+                       const pmix_info_t job_info[], size_t ninfo,
                        const pmix_app_t apps[], size_t napps,
                        pmix_spawn_cbfunc_t cbfunc, void *cbdata);
 pmix_status_t connect_fn(const pmix_proc_t procs[], size_t nprocs,

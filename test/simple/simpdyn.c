@@ -100,7 +100,7 @@ int main(int argc, char **argv)
         app->info[1].value.data.dval = 12.34;
 
         pmix_output(0, "Client ns %s rank %d: calling PMIx_Spawn", nspace, rank);
-        if (PMIX_SUCCESS != (rc = PMIx_Spawn(app, 1, nsp2))) {
+        if (PMIX_SUCCESS != (rc = PMIx_Spawn(NULL, 0, app, 1, nsp2))) {
             pmix_output(0, "Client ns %s rank %d: PMIx_Spawn failed: %d", nspace, rank, rc);
             goto done;
         }

@@ -262,6 +262,7 @@ static void release_cb(pmix_status_t status, void *cbdata)
 }
 
 int spawn_fn(const char nspace[], int rank,
+             const pmix_info_t job_info[], size_t ninfo,
              const pmix_app_t apps[], size_t napps,
              pmix_spawn_cbfunc_t cbfunc, void *cbdata)
 {

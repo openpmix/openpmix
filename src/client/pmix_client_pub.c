@@ -86,6 +86,7 @@ int PMIx_Publish(pmix_data_range_t scope,
     cb->active = true;
 
     if (PMIX_SUCCESS != (rc = PMIx_Publish_nb(scope, persist, info, ninfo, op_cbfunc, cb))) {
+        PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(cb);
         return rc;
     }
@@ -124,6 +125,7 @@ int PMIx_Publish_nb(pmix_data_range_t scope,
     /* check for bozo cases */
     if (NULL == info) {
         /* nothing to publish */
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return PMIX_ERR_BAD_PARAM;
     }
 
