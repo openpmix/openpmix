@@ -57,7 +57,7 @@ int main(int argc, char **argv)
     pmix_output(0, "Client ns %s rank %d: Running", nspace, rank);
 
     /* get our universe size */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, rank, PMIX_UNIV_SIZE, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, rank, PMIX_UNIV_SIZE, NULL, 0, &val))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get universe size failed: %d", nspace, rank, rc);
         goto done;
     }
@@ -69,7 +69,7 @@ int main(int argc, char **argv)
     PMIX_PROC_CONSTRUCT(&proc);
     (void)strncpy(proc.nspace, nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
-    if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, false))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, NULL, 0))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", nspace, rank, rc);
         goto done;
     }
@@ -92,7 +92,7 @@ int main(int argc, char **argv)
 
     /* call fence again so all procs know the data
      * has been published */
-    if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, false))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, NULL, 0))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", nspace, rank, rc);
         goto done;
     }
@@ -101,7 +101,7 @@ int main(int argc, char **argv)
     if (0 != rank) {
         PMIX_PDATA_CREATE(pdata, 1);
         (void)strncpy(pdata[0].key, "FOOBAR", PMIX_MAX_KEYLEN);
-        if (PMIX_SUCCESS != (rc = PMIx_Lookup(PMIX_GLOBAL, pdata, 1))) {
+        if (PMIX_SUCCESS != (rc = PMIx_Lookup(PMIX_GLOBAL, NULL, 0, pdata, 1))) {
             pmix_output(0, "Client ns %s rank %d: PMIx_Lookup failed: %d", nspace, rank, rc);
             goto done;
         }
@@ -131,7 +131,7 @@ int main(int argc, char **argv)
     }
 
     /* call fence again so rank 0 waits before leaving */
-    if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, false))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, NULL, 0))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", nspace, rank, rc);
         goto done;
     }
@@ -149,7 +149,7 @@ int main(int argc, char **argv)
     }
 
     /* call fence again so everyone waits for rank 0 before leaving */
-    if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, false))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, NULL, 0))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", nspace, rank, rc);
         goto done;
     }

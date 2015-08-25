@@ -76,7 +76,7 @@ int main(int argc, char **argv)
     }
     TEST_VERBOSE((" Client ns %s rank %d: PMIx_Init success", nspace, rank));
 
-    if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, rank,PMIX_UNIV_SIZE,&val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, rank,PMIX_UNIV_SIZE,NULL, 0,&val))) {
         TEST_ERROR(("rank %d: PMIx_Get universe size failed: %d", rank, rc));
         FREE_TEST_PARAMS(params);
         exit(0);

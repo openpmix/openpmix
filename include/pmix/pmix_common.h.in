@@ -160,8 +160,12 @@ BEGIN_C_DECLS
 #define PMIX_TERMINATE_JOB         "pmix.term.job"     // (bool) RM intends to terminate this job
 #define PMIX_TERMINATE_NODE        "pmix.term.node"    // (bool) RM intends to terminate all procs on this node
 #define PMIX_TERMINATE_PROC        "pmix.term.proc"    // (bool) RM intends to terminate just this process
-#define PMIX_ERROR_ACTION_TIMEOUT  "pmix.err.timeout"  // (int) time in sec before RM will execute error response
 
+/* request-related info */
+#define PMIX_COLLECT_DATA          "pmix.collect"      // (bool) collect data and return it at the end of the operation
+#define PMIX_TIMEOUT               "pmix.timeout"      // (int) time in sec before specified operation should time out
+#define PMIX_WAIT                  "pmix.wait"         // (int) caller requests that the server wait until the specified #values are found
+#define PMIX_COLLECTIVE_ALGO       "pmix.calgo"        // (char*) comma-delimited list of algorithms to use for collective
 
 /* attributes used by host server to pass data to the server convenience library - the
  * data will then be parsed and provided to the local clients */
@@ -426,6 +430,7 @@ typedef struct {
 
 /****    PMIX INFO STRUCT    ****/
 typedef struct {
+    bool mandatory;
     char key[PMIX_MAX_KEYLEN+1];  // ensure room for the NULL terminator
     pmix_value_t value;
 } pmix_info_t;
@@ -468,9 +473,10 @@ typedef struct {
         }                                       \
     } while(0);
 
-#define PMIX_INFO_LOAD(m, k, v, t)                      \
+#define PMIX_INFO_LOAD(m, d, k, v, t)                   \
     do {                                                \
     if (NULL != (m)) {                                  \
+        (m)->mandatory = (d);                           \
         (void)strncpy((m)->key, (k), PMIX_MAX_KEYLEN);  \
         pmix_value_load(&((m)->value), (v), (t));       \
     } while(0);
@@ -638,13 +644,21 @@ typedef struct {
 
 /****    CALLBACK FUNCTIONS FOR NON-BLOCKING OPERATIONS    ****/
 
+typedef void (*pmix_release_cbfunc_t)(void *cbdata);
+
 /* define a callback function that is solely used by servers, and
  * not clients, to return modex data in response to "fence" and "get"
  * operations. The returned blob contains the data collected from each
- * server participating in the operation. */
+ * server participating in the operation.
+ *
+ * As the data is "owned" by the host server, provide a secondary
+ * callback function to notify the host server that we are done
+ * with the data so it can be released */
 typedef void (*pmix_modex_cbfunc_t)(pmix_status_t status,
                                     const char *data, size_t ndata,
-                                    void *cbdata);
+                                    void *cbdata,
+                                    pmix_release_cbfunc_t release_fn,
+                                    void *release_cbdata);
 
 /* define a callback function for calls to PMIx_Spawn_nb - the function
  * will be called upon completion of the spawn command. The status

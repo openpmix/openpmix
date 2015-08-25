@@ -130,16 +130,30 @@ typedef pmix_status_t (*pmix_server_abort_fn_t)(const char nspace[], int rank, v
  * The provided data is to be collectively shared with all PMIx
  * servers involved in the fence operation, and returned in the modex
  * cbfunc. A _NULL_ data value indicates that the local procs had
- * no data to contribute */
+ * no data to contribute.
+ *
+ * The array of info structs is used to pass user-requested options to the server.
+ * This can include directives as to the algorithm to be used to execute the
+ * fence operation. The directives are optional _unless_ the _mandatory_ flag
+ * has been set - in such cases, the host RM is required to return an error
+ * if the directive cannot be met. */
 typedef pmix_status_t (*pmix_server_fencenb_fn_t)(const pmix_proc_t procs[], size_t nprocs,
+                                                  const pmix_info_t info[], size_t ninfo,
                                                   char *data, size_t ndata,
                                                   pmix_modex_cbfunc_t cbfunc, void *cbdata);
 
 
 /* Used by the PMIx server to request its local host contact the
  * PMIx server on the remote node that hosts the specified proc to
- * obtain and return a direct modex blob for that proc */
+ * obtain and return a direct modex blob for that proc.
+ *
+ * The array of info structs is used to pass user-requested options to the server.
+ * This can include a timeout to preclude an indefinite wait for data that
+ * may never become available. The directives are optional _unless_ the _mandatory_ flag
+ * has been set - in such cases, the host RM is required to return an error
+ * if the directive cannot be met. */
 typedef pmix_status_t (*pmix_server_dmodex_req_fn_t)(const char nspace[], int rank,
+                                                     const pmix_info_t info[], size_t ninfo,
                                                      pmix_modex_cbfunc_t cbfunc, void *cbdata);
 
 
@@ -163,12 +177,20 @@ typedef pmix_status_t (*pmix_server_publish_fn_t)(const char nspace[], int rank,
  * of string keys along with the range within which the data is expected to have
  * been published. The host server is not required to guarantee support for all
  * PMIx-defined ranges, but should only search data stores within the specified
- * range within the context of the corresponding "publish" API. The wait flag
- * indicates whether the server should wait for all data to become available
- * before executing the callback function, or should callback with whatever
- * data is immediately available. */
+ * range within the context of the corresponding "publish" API.
+ *
+ * The array of info structs is used to pass user-requested options to the server.
+ * This can include a wait flag to indicate that the server should wait for all
+ * data to become available before executing the callback function, or should
+ * immediately callback with whatever data is available. In addition, a timeout
+ * can be specified on the wait to preclude an indefinite wait for data that
+ * may never be published. The directives are optional _unless_ the _mandatory_ flag
+ * has been set - in such cases, the host RM is required to return an error
+ * if the directive cannot be met. */
 typedef pmix_status_t (*pmix_server_lookup_fn_t)(const char nspace[], int rank,
-                                                 pmix_data_range_t scope, int wait, char **keys,
+                                                 pmix_data_range_t scope,
+                                                 const pmix_info_t info[], size_t ninfo,
+                                                 char **keys,
                                                  pmix_lookup_cbfunc_t cbfunc, void *cbdata);
 
 /* Delete data from the data store. The host server will be passed a NULL-terminated array
@@ -185,7 +207,11 @@ typedef pmix_status_t (*pmix_server_unpublish_fn_t)(const char nspace[], int ran
  * support. The callback function is to be executed once all processes have
  * been started. An error in starting any application or process in this
  * request shall cause all applications and processes in the request to
- * be terminated, and an error returned to the originating caller */
+ * be terminated, and an error returned to the originating caller.
+ *
+ * Note that a timeout can be specified in the job_info array to indicate
+ * that failure to start the requested job within the given time should
+ * result in termination to avoid hangs */
 typedef pmix_status_t (*pmix_server_spawn_fn_t)(const char nspace[], int rank,
                                                 const pmix_info_t job_info[], size_t ninfo,
                                                 const pmix_app_t apps[], size_t napps,
@@ -197,8 +223,16 @@ typedef pmix_status_t (*pmix_server_spawn_fn_t)(const char nspace[], int rank,
  * to be called once all participating processes have called connect. Note that
  * a process can only engage in *one* connect operation involving the identical
  * set of procs at a time. However, a process *can* be simultaneously engaged
- * in multiple connect operations, each involving a different set of procs */
+ * in multiple connect operations, each involving a different set of procs
+ *
+ * Note also that this is a collective operation within the client library, and
+ * thus the client will be blocked until all procs participate. Thus, the info
+ * array can be used to pass user directives, including a timeout.
+ * The directives are optional _unless_ the _mandatory_ flag
+ * has been set - in such cases, the host RM is required to return an error
+ * if the directive cannot be met. */
 typedef pmix_status_t (*pmix_server_connect_fn_t)(const pmix_proc_t procs[], size_t nprocs,
+                                                  const pmix_info_t info[], size_t ninfo,
                                                   pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Disconnect a previously connected set of processes. An error should be returned
@@ -206,8 +240,16 @@ typedef pmix_status_t (*pmix_server_connect_fn_t)(const pmix_proc_t procs[], siz
  * may be involved in multiple simultaneous disconnect operations. However, a process
  * is not allowed to reconnect to a set of ranges that has not fully completed
  * disconnect - i.e., you have to fully disconnect before you can reconnect to the
- * same group of processes. */
+ * same group of processes.
+  *
+ * Note also that this is a collective operation within the client library, and
+ * thus the client will be blocked until all procs participate. Thus, the info
+ * array can be used to pass user directives, including a timeout.
+ * The directives are optional _unless_ the _mandatory_ flag
+ * has been set - in such cases, the host RM is required to return an error
+ * if the directive cannot be met. */
 typedef pmix_status_t (*pmix_server_disconnect_fn_t)(const pmix_proc_t procs[], size_t nprocs,
+                                                     const pmix_info_t info[], size_t ninfo,
                                                      pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Register to receive notifications for the specified events. The resource
@@ -253,33 +295,10 @@ typedef struct pmix_server_module_1_0_0_t {
 
 /****    SERVER SUPPORT INIT/FINALIZE FUNCTIONS    ****/
 
-/* Initialize the server support library. The library supports
- * two modes of operation:
- *
- * (a) internal comm - the library will provide all comm
- *     between the server and clients. In this mode, the
- *     caller is only responsible for processing the
- *     data provided in the module callback functions. The
- *     server library will spin off its own progress thread
- *     that will "block" when not actively processing
- *     messages.
- *
- * (b) external comm - the library will provide message
- *     preparation support (e.g., packing/unpacking data),
- *     but all comm between server and clients will be
- *     the responsibility of the caller.
- *
- * Input parameters:
- *
- * module - pointer to a pmix_server_module_t structure
- * containing the caller's callback functions
- *
- * use_internal_comm - boolean that is true if the server
- * library is to use its internal comm system, false if the
- * caller will be providing its own messaging support
- */
-pmix_status_t PMIx_server_init(pmix_server_module_t *module,
-                               int use_internal_comm);
+/* Initialize the server support library, and provide a
+ *  pointer to a pmix_server_module_t structure
+ * containing the caller's callback functions */
+pmix_status_t PMIx_server_init(pmix_server_module_t *module);
 
 /* Finalize the server support library. If internal comm is
  * in-use, the server will shut it down at this time. All
@@ -418,17 +437,6 @@ pmix_status_t PMIx_server_dmodex_request(const char nspace[], int rank,
  * The info array contains any further info the RM can and/or chooses
  * to provide.
  *
- * If the payload and size parameters are non-NULL, then the function
- * will assume that the caller intends to send the message itself. In
- * this situation, the convenience library will simply pack the message
- * for transmission, and return the payload and size in the provided
- * variables (external comm should have been indicated during server_init).
- * The caller will be responsible for thread protection.
- *
- * Otherwise, the convenience library will transmit the message to
- * the identified target processes, and the function call will be
- * internally thread protected.
- *
  * The callback function will be called upon completion of the
  * notify_error function's actions. Note that any messages will
  * have been queued, but may not have been transmitted by this
@@ -438,7 +446,6 @@ pmix_status_t PMIx_server_notify_error(pmix_status_t status,
                                        pmix_proc_t procs[], size_t nprocs,
                                        pmix_proc_t error_procs[], size_t error_nprocs,
                                        pmix_info_t info[], size_t ninfo,
-                                       char **payload, size_t *size,
                                        pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 

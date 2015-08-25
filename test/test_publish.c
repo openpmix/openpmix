@@ -83,7 +83,7 @@ static int test_lookup(char *my_nspace, int my_rank, int blocking)
     (void)snprintf(data, 512, "data from proc %s:%d", my_nspace, my_rank);
 
     if (blocking) {
-        if (PMIX_SUCCESS != (rc = PMIx_Lookup(PMIX_NAMESPACE, &pdata, 1))) {
+        if (PMIX_SUCCESS != (rc = PMIx_Lookup(PMIX_NAMESPACE, NULL, 0, &pdata, 1))) {
             PMIX_PDATA_DESTRUCT(&pdata);
             return rc;
         }
@@ -98,7 +98,7 @@ static int test_lookup(char *my_nspace, int my_rank, int blocking)
         cbdata.pdata = &pdata;
         /* copy the key across */
         (void)strncpy(pdata.key, keys[0], PMIX_MAX_KEYLEN);
-        rc = PMIx_Lookup_nb(PMIX_NAMESPACE, 1, keys, lookup_cb, (void*)&cbdata);
+        rc = PMIx_Lookup_nb(PMIX_NAMESPACE, keys, NULL, 0, lookup_cb, (void*)&cbdata);
         if (PMIX_SUCCESS != rc) {
             PMIX_PDATA_DESTRUCT(&pdata);
             return rc;

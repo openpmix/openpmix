@@ -55,7 +55,7 @@ int main(int argc, char **argv)
     pmix_output(0, "Client ns %s rank %d: Running", nspace, rank);
 
     /* get our universe size */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, rank, PMIX_UNIV_SIZE, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, rank, PMIX_UNIV_SIZE, NULL, 0, &val))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get universe size failed: %d", nspace, rank, rc);
         goto done;
     }
@@ -97,7 +97,7 @@ int main(int argc, char **argv)
     PMIX_PROC_CONSTRUCT(&proc);
     (void)strncpy(proc.nspace, nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
-    if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, true))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, NULL, 0))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", nspace, rank, rc);
         goto done;
     }
@@ -105,7 +105,7 @@ int main(int argc, char **argv)
     /* check the returned data */
     for (n=0; n < nprocs; n++) {
         (void)asprintf(&tmp, "%s-%d-local", nspace, n);
-        if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, n, tmp, &val))) {
+        if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, n, tmp, NULL, 0, &val))) {
             pmix_output(0, "Client ns %s rank %d: PMIx_Get %s failed: %d", nspace, rank, tmp, rc);
             goto done;
         }
@@ -126,7 +126,7 @@ int main(int argc, char **argv)
         free(tmp);
 
         (void)asprintf(&tmp, "%s-%d-remote", nspace, n);
-        if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, n, tmp, &val))) {
+        if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, n, tmp, NULL, 0, &val))) {
             pmix_output(0, "Client ns %s rank %d: PMIx_Get %s failed: %d", nspace, rank, tmp, rc);
             goto done;
         }

@@ -55,14 +55,16 @@
 #include "pmix_client_ops.h"
 
 static pmix_buffer_t* pack_get(const char nspace[], int rank,
-                               const char key[], pmix_cmd_t cmd);
+                               const pmix_info_t info[], size_t ninfo,
+                               pmix_cmd_t cmd);
 static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                          pmix_buffer_t *buf, void *cbdata);
 static void getnb_shortcut(int fd, short flags, void *cbdata);
 static void value_cbfunc(int status, pmix_value_t *kv, void *cbdata);
 
-int PMIx_Get(const char nspace[], int rank,
-             const char key[], pmix_value_t **val)
+int PMIx_Get(const char nspace[], int rank, const char key[],
+             const pmix_info_t info[], size_t ninfo,
+             pmix_value_t **val)
 {
     pmix_cb_t *cb;
     int rc;
@@ -88,7 +90,7 @@ int PMIx_Get(const char nspace[], int rank,
     cb = PMIX_NEW(pmix_cb_t);
     cb->active = true;
 
-    if (PMIX_SUCCESS != (rc = PMIx_Get_nb(nspace, rank, key, value_cbfunc, cb))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get_nb(nspace, rank, key, info, ninfo, value_cbfunc, cb))) {
         PMIX_RELEASE(cb);
         *val = NULL;
         return rc;
@@ -106,8 +108,8 @@ int PMIx_Get(const char nspace[], int rank,
     return rc;
 }
 
-int PMIx_Get_nb(const char *nspace, int rank,
-                const char *key,
+int PMIx_Get_nb(const char *nspace, int rank, const char *key,
+                const pmix_info_t info[], size_t ninfo,
                 pmix_value_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_value_t *val;
@@ -277,8 +279,9 @@ int PMIx_Get_nb(const char *nspace, int rank,
         }
     }
 
-    /* we don't have a pending request, so let's create one */
-    if (NULL == (msg = pack_get(nm, rank, key, PMIX_GETNB_CMD))) {
+    /* we don't have a pending request, so let's create one - don't worry
+     * about packing the key as we return everything from that proc */
+    if (NULL == (msg = pack_get(nm, rank, info, ninfo, PMIX_GETNB_CMD))) {
         return PMIX_ERROR;
     }
 
@@ -311,7 +314,8 @@ static void value_cbfunc(int status, pmix_value_t *kv, void *cbdata)
 }
 
 static pmix_buffer_t* pack_get(const char nspace[], int rank,
-                               const char key[], pmix_cmd_t cmd)
+                               const pmix_info_t info[], size_t ninfo,
+                               pmix_cmd_t cmd)
 {
     pmix_buffer_t *msg;
     int rc;
@@ -335,6 +339,19 @@ static pmix_buffer_t* pack_get(const char nspace[], int rank,
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return NULL;
+    }
+    /* pack the number of info structs */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &ninfo, 1, PMIX_SIZE))) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        return NULL;
+    }
+    if (0 < ninfo) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, info, ninfo, PMIX_INFO))) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(msg);
+            return NULL;
+        }
     }
     return msg;
 }

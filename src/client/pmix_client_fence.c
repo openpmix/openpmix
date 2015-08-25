@@ -55,18 +55,16 @@
 #include "pmix_client_ops.h"
 
 static int unpack_return(pmix_buffer_t *data);
-static int pack_fence(pmix_buffer_t *msg,
-                      pmix_cmd_t cmd,
-                      pmix_proc_t *procs,
-                      size_t nprocs,
-                      int collect_data);
+static int pack_fence(pmix_buffer_t *msg, pmix_cmd_t cmd,
+                      const pmix_proc_t *procs, size_t nprocs,
+                      const pmix_info_t *info, size_t ninfo);
 static void wait_cbfunc(struct pmix_peer_t *pr,
                         pmix_usock_hdr_t *hdr,
                         pmix_buffer_t *buf, void *cbdata);
 static void op_cbfunc(int status, void *cbdata);
 
-int PMIx_Fence(const pmix_proc_t procs[],
-               size_t nprocs, int collect_data)
+int PMIx_Fence(const pmix_proc_t procs[], size_t nprocs,
+               const pmix_info_t info[], size_t ninfo)
 {
     pmix_cb_t *cb;
     int rc;
@@ -90,7 +88,8 @@ int PMIx_Fence(const pmix_proc_t procs[],
     cb->active = true;
 
     /* push the message into our event base to send to the server */
-    if (PMIX_SUCCESS != (rc = PMIx_Fence_nb(procs, nprocs, collect_data, op_cbfunc, cb))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Fence_nb(procs, nprocs, info, ninfo,
+                                            op_cbfunc, cb))) {
         PMIX_RELEASE(cb);
         return rc;
     }
@@ -107,7 +106,7 @@ int PMIx_Fence(const pmix_proc_t procs[],
 }
 
 int PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs,
-                  int collect_data,
+                  const pmix_info_t info[], size_t ninfo,
                   pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_buffer_t *msg;
@@ -146,7 +145,7 @@ int PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs,
     }
 
     msg = PMIX_NEW(pmix_buffer_t);
-    if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, rgs, nrg, collect_data))) {
+    if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, rgs, nrg, info, ninfo))) {
         PMIX_RELEASE(msg);
         return rc;
     }
@@ -183,11 +182,9 @@ static int unpack_return(pmix_buffer_t *data)
     return ret;
 }
 
-static int pack_fence(pmix_buffer_t *msg,
-                      pmix_cmd_t cmd,
-                      pmix_proc_t *procs,
-                      size_t nprocs,
-                      int collect_data)
+static int pack_fence(pmix_buffer_t *msg, pmix_cmd_t cmd,
+                      const pmix_proc_t *procs, size_t nprocs,
+                      const pmix_info_t *info, size_t ninfo)
 {
     int rc;
 
@@ -207,11 +204,19 @@ static int pack_fence(pmix_buffer_t *msg,
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    /* pack the collect_data flag */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &collect_data, 1, PMIX_INT))) {
+    /* pack the number of info */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &ninfo, 1, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
+    /* pack any provided info - may be NULL */
+    if (NULL != info && 0 < ninfo) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, info, ninfo, PMIX_INFO))) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+    }
+
     return PMIX_SUCCESS;
 }
 

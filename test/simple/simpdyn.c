@@ -65,7 +65,7 @@ int main(int argc, char **argv)
     pmix_output(0, "Client ns %s rank %d: Running", nspace, rank);
 
     /* get our universe size */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, rank, PMIX_UNIV_SIZE, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, rank, PMIX_UNIV_SIZE, NULL, 0, &val))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get universe size failed: %d", nspace, rank, rc);
         goto done;
     }
@@ -77,7 +77,7 @@ int main(int argc, char **argv)
     PMIX_PROC_CONSTRUCT(&proc);
     (void)strncpy(proc.nspace, nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
-    if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, false))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, NULL, 0))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", nspace, rank, rc);
         goto done;
     }
@@ -115,7 +115,7 @@ int main(int argc, char **argv)
         }
         /* get their universe size */
         val = NULL;
-        if (PMIX_SUCCESS != (rc = PMIx_Get(nsp2, PMIX_RANK_WILDCARD, PMIX_UNIV_SIZE, &val)) ||
+        if (PMIX_SUCCESS != (rc = PMIx_Get(nsp2, PMIX_RANK_WILDCARD, PMIX_UNIV_SIZE, NULL, 0, &val)) ||
             NULL == val) {
             pmix_output(0, "Client ns %s rank %d: PMIx_Get universe size failed: %d", nspace, rank, rc);
             goto done;
@@ -126,12 +126,12 @@ int main(int argc, char **argv)
     }
 
     /* just cycle the connect/disconnect functions */
-    if (PMIX_SUCCESS != (rc = PMIx_Connect(&proc, 1))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Connect(&proc, 1, NULL, 0))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Connect failed: %d", nspace, rank, rc);
         goto done;
     }
     pmix_output(0, "Client ns %s rank %d: PMIx_Connect succeeded", nspace, rank);
-    if (PMIX_SUCCESS != (rc = PMIx_Disconnect(&proc, 1))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Disconnect(&proc, 1, NULL, 0))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Disonnect failed: %d", nspace, rank, rc);
         goto done;
     }
@@ -177,7 +177,7 @@ int main(int argc, char **argv)
     PMIX_PROC_CONSTRUCT(&proc);
     (void)strncpy(proc.nspace, nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
-    if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, false))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, NULL, 0))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", nspace, rank, rc);
         goto done;
     }

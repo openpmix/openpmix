@@ -29,17 +29,17 @@ int test_cd_common(pmix_proc_t *procs, size_t nprocs, int blocking, int disconne
     int rc;
     if (blocking) {
         if (!disconnect) {
-            rc = PMIx_Connect(procs, nprocs);
+            rc = PMIx_Connect(procs, nprocs, NULL, 0);
         } else {
-            rc = PMIx_Disconnect(procs, nprocs);
+            rc = PMIx_Disconnect(procs, nprocs, NULL, 0);
         }
     } else {
         cd_cbdata cbdata;
         cbdata.in_progress = 1;
         if (!disconnect) {
-            rc = PMIx_Connect_nb(procs, nprocs, cd_cb, (void*)&cbdata);
+            rc = PMIx_Connect_nb(procs, nprocs, NULL, 0, cd_cb, (void*)&cbdata);
         } else {
-            rc = PMIx_Disconnect_nb(procs, nprocs, cd_cb, (void*)&cbdata);
+            rc = PMIx_Disconnect_nb(procs, nprocs, NULL, 0, cd_cb, (void*)&cbdata);
         }
         if (PMIX_SUCCESS == rc) {
             PMIX_WAIT_FOR_COMPLETION(cbdata.in_progress);

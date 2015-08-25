@@ -107,7 +107,7 @@ int main(int argc, char **argv)
     pmix_output(0, "Client ns %s rank %d: Running", nspace, rank);
 
     /* get our universe size */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, rank, PMIX_UNIV_SIZE, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, rank, PMIX_UNIV_SIZE, NULL, 0, &val))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get universe size failed: %d", nspace, rank, rc);
         goto done;
     }
@@ -157,7 +157,7 @@ int main(int argc, char **argv)
     (void)strncpy(proc.nspace, nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
     active = true;
-    if (PMIX_SUCCESS != (rc = PMIx_Fence_nb(&proc, 1, false, opcbfunc, &active))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Fence_nb(&proc, 1, NULL, 0, opcbfunc, &active))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", nspace, rank, rc);
         goto done;
     }
@@ -167,14 +167,14 @@ int main(int argc, char **argv)
     for (n=0; n <= nprocs; n++) {
         (void)asprintf(&tmp, "%s-%d-local", nspace, n);
         if (PMIX_SUCCESS != (rc = PMIx_Get_nb(nspace, n, tmp,
-                                              valcbfunc, tmp))) {
+                                              NULL, 0, valcbfunc, tmp))) {
             pmix_output(0, "Client ns %s rank %d: PMIx_Get %s failed: %d", nspace, n, tmp, rc);
             goto done;
         }
         ++num_gets;
         (void)asprintf(&tmp, "%s-%d-remote", nspace, n);
         if (PMIX_SUCCESS != (rc = PMIx_Get_nb(nspace, n, tmp,
-                                              valcbfunc, tmp))) {
+                                              NULL, 0, valcbfunc, tmp))) {
             pmix_output(0, "Client ns %s rank %d: PMIx_Get %s failed: %d", nspace, n, tmp, rc);
             goto done;
         }
@@ -193,7 +193,7 @@ int main(int argc, char **argv)
     }
 
     /* call fence again so everyone waits before leaving */
-    if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, false))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, NULL, 0))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", nspace, rank, rc);
         goto done;
     }

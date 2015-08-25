@@ -176,6 +176,7 @@ int PMIx_Publish_nb(pmix_data_range_t scope,
 }
 
 int PMIx_Lookup(pmix_data_range_t scope,
+                const pmix_info_t info[], size_t ninfo,
                 pmix_pdata_t pdata[], size_t ndata)
 {
     int rc;
@@ -191,7 +192,7 @@ int PMIx_Lookup(pmix_data_range_t scope,
         return PMIX_ERR_BAD_PARAM;
     }
 
-    /* transfer the info keys to the keys argv array */
+    /* transfer the pdata keys to the keys argv array */
     for (i=0; i < ndata; i++) {
         if ('\0' != pdata[i].key[0]) {
             pmix_argv_append_nosize(&keys, pdata[i].key);
@@ -206,7 +207,9 @@ int PMIx_Lookup(pmix_data_range_t scope,
     cb->nvals = ndata;
     cb->active = true;
 
-    if (PMIX_SUCCESS != (rc = PMIx_Lookup_nb(scope, false, keys, lookup_cbfunc, cb))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Lookup_nb(scope, keys,
+                                             info, ninfo,
+                                             lookup_cbfunc, cb))) {
         PMIX_RELEASE(cb);
         pmix_argv_free(keys);
         return rc;
@@ -222,7 +225,8 @@ int PMIx_Lookup(pmix_data_range_t scope,
     return rc;
 }
 
-int PMIx_Lookup_nb(pmix_data_range_t scope, int wait, char **keys,
+int PMIx_Lookup_nb(pmix_data_range_t range, char **keys,
+                   const pmix_info_t info[], size_t ninfo,
                    pmix_lookup_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_buffer_t *msg;
@@ -251,17 +255,24 @@ int PMIx_Lookup_nb(pmix_data_range_t scope, int wait, char **keys,
         PMIX_RELEASE(msg);
         return rc;
     }
-    /* pack the scope */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &scope, 1, PMIX_DATA_RANGE))) {
+    /* pack the range */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &range, 1, PMIX_DATA_RANGE))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
     }
-    /* pack the wait flag */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &wait, 1, PMIX_INT))) {
+    /* pack the info structs */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &ninfo, 1, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
+    }
+    if (0 < ninfo) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, info, ninfo, PMIX_INFO))) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(msg);
+            return rc;
+        }
     }
     /* pack the keys */
     nkeys = pmix_argv_count(keys);

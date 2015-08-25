@@ -57,7 +57,7 @@ int PMI_Init( int *spawned )
      * making all subsequent "get" operations purely
      * local */
     if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
-                                 PMIX_SPAWNED, &kv)) {
+                                 PMIX_SPAWNED, NULL, 0, &kv)) {
         rc = convert_int(spawned, kv);
         PMIX_VALUE_RELEASE(kv);
         return convert_err(rc);
@@ -112,7 +112,7 @@ int PMI_KVS_Commit(const char kvsname[])
  * data to be collected upon completion */
 int PMI_Barrier(void)
 {
-    return PMIx_Fence(NULL, 0, 1);
+    return PMIx_Fence(NULL, 0, NULL, 0);
 }
 
 int PMI_Get_size(int *size)
@@ -125,7 +125,7 @@ int PMI_Get_size(int *size)
     }
 
     if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
-                                 PMIX_JOB_SIZE, &kv)) {
+                                 PMIX_JOB_SIZE, NULL, 0, &kv)) {
         rc = convert_int(size, kv);
         PMIX_VALUE_RELEASE(kv);
         return convert_err(rc);
@@ -154,7 +154,7 @@ int PMI_Get_universe_size(int *size)
     }
 
     if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
-                                 PMIX_UNIV_SIZE, &kv)) {
+                                 PMIX_UNIV_SIZE, NULL, 0, &kv)) {
         rc = convert_int(size, kv);
         PMIX_VALUE_RELEASE(kv);
         return convert_err(rc);
@@ -169,7 +169,7 @@ int PMI_Get_appnum(int *appnum)
 
     if (NULL != appnum &&
         PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
-                                 PMIX_APPNUM, &kv)) {
+                                 PMIX_APPNUM, NULL, 0, &kv)) {
         rc = convert_int(appnum, kv);
         PMIX_VALUE_RELEASE(kv);
         return convert_err(rc);
@@ -222,7 +222,7 @@ int PMI_Lookup_name(const char service_name[], char port[])
     (void)strncpy(pdata.key, service_name, PMIX_MAX_KEYLEN);
 
     /* PMI-1 doesn't want the nspace back */
-    if (PMIX_SUCCESS != (rc = PMIx_Lookup(PMIX_NAMESPACE, &pdata, 1))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Lookup(PMIX_NAMESPACE, NULL, 0, &pdata, 1))) {
         return convert_err(rc);
     }
 
@@ -273,7 +273,7 @@ int PMI_Get_clique_size(int *size)
     pmix_status_t rc;
 
     if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
-                                 PMIX_LOCAL_SIZE, &kv)) {
+                                 PMIX_LOCAL_SIZE, NULL, 0, &kv)) {
         rc = convert_int(size, kv);
         PMIX_VALUE_RELEASE(kv);
         return convert_err(rc);
@@ -288,7 +288,7 @@ int PMI_Get_clique_ranks(int ranks[], int length)
     char **rks;
     int i;
 
-    if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank, PMIX_LOCAL_PEERS, &kv)) {
+    if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank, PMIX_LOCAL_PEERS, NULL, 0, &kv)) {
         /* kv will contain a string of comma-separated
          * ranks on my node */
         rks = pmix_argv_split(kv->data.string, ',');

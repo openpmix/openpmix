@@ -54,6 +54,8 @@ typedef struct {
     pmix_list_t local_cbs;          // list of pmix_server_caddy_t for sending result to the local participants
     uint32_t nlocal;                // number of local participants
     uint32_t local_cnt;             // number of local participants who have contributed
+    pmix_info_t *info;              // array of info structs
+    size_t ninfo;                   // number of info structs in array
     pmix_collect_t collect_type;    // whether or not data is to be returned at completion
     pmix_modex_cbfunc_t modexcbfunc;
     pmix_op_cbfunc_t op_cbfunc;
@@ -121,6 +123,8 @@ typedef struct {
     int rank;                       // rank of proc whose data is being requested
     pmix_list_t loc_reqs;           // list of pmix_dmdx_request_t elem's keeping track of
                                     // all local ranks that are interested in this namespace-rank
+    pmix_info_t *info;              // array of info structs for this request
+    size_t ninfo;                   // number of info structs
 } pmix_dmdx_local_t;
 PMIX_CLASS_DECLARATION(pmix_dmdx_local_t);
 
@@ -160,16 +164,6 @@ typedef struct {
         (c)->snd = (s);                                                 \
     } while(0);
 
-#define PMIX_MARK_COLLECTIVE_COMPLETE(t, f)             \
-    do {                                                \
-        pmix_trkr_caddy_t *cd;                          \
-        cd = PMIX_NEW(pmix_trkr_caddy_t);               \
-        cd->trk = (t);                                  \
-        event_assign(&cd->ev, pmix_globals.evbase, -1,  \
-                     EV_WRITE, (f), cd);                \
-        event_active(&cd->ev, EV_WRITE, 1);             \
-    } while(0);
-
 #define PMIX_SETUP_COLLECTIVE(c, t)             \
     do {                                        \
         (c) = PMIX_NEW(pmix_trkr_caddy_t);      \
@@ -191,6 +185,7 @@ void pmix_stop_listening(void);
 bool pmix_server_trk_update(pmix_server_trkr_t *trk);
 
 pmix_status_t pmix_pending_request(pmix_nspace_t *nptr, int rank,
+                                   pmix_info_t *info, size_t ninfo,
                                    pmix_modex_cbfunc_t cbfunc, void *cbdata);
 void pmix_pending_nspace_fix(pmix_nspace_t *nptr);
 pmix_status_t pmix_pending_resolve(pmix_nspace_t *nptr, int rank, pmix_dmdx_local_t *lcd);

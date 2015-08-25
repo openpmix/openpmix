@@ -58,7 +58,7 @@ int PMI2_Init(int *spawned, int *size, int *rank, int *appnum)
          * making all subsequent "get" operations purely
          * local */
         if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
-                                     PMIX_UNIV_SIZE, &kv)) {
+                                     PMIX_UNIV_SIZE, NULL, 0, &kv)) {
             rc = convert_int(size, kv);
             PMIX_VALUE_RELEASE(kv);
             return convert_err(rc);
@@ -71,7 +71,7 @@ int PMI2_Init(int *spawned, int *size, int *rank, int *appnum)
     if (NULL != spawned) {
         /* get the spawned flag */
         if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
-                                     PMIX_SPAWNED, &kv)) {
+                                     PMIX_SPAWNED, NULL, 0, &kv)) {
             rc = convert_int(spawned, kv);
             PMIX_VALUE_RELEASE(kv);
             return convert_err(rc);
@@ -84,7 +84,7 @@ int PMI2_Init(int *spawned, int *size, int *rank, int *appnum)
     if (NULL != appnum) {
         /* get our appnum */
         if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
-                                     PMIX_APPNUM, &kv)) {
+                                     PMIX_APPNUM, NULL, 0, &kv)) {
             rc = convert_int(appnum, kv);
             PMIX_VALUE_RELEASE(kv);
             return convert_err(rc);
@@ -142,7 +142,7 @@ int PMI2_KVS_Fence(void)
     }
 
     /* we want all data to be collected upon completion */
-    rc = PMIx_Fence(NULL, 0, 1);
+    rc = PMIx_Fence(NULL, 0, NULL, 0);
     return convert_err(rc);
 }
 
@@ -158,7 +158,7 @@ int PMI2_KVS_Get(const char *jobid, int src_pmi_id,
     pmix_status_t rc;
     pmix_value_t *val;
 
-    rc = PMIx_Get(jobid, src_pmi_id, key, &val);
+    rc = PMIx_Get(jobid, src_pmi_id, key, NULL, 0, &val);
     if (PMIX_SUCCESS == rc && NULL != val) {
         if (PMIX_STRING != val->type) {
             /* this is an error */
@@ -199,7 +199,7 @@ int PMI2_Info_GetJobAttr(const char name[], char value[], int valuelen, int *fou
     pmix_value_t *val;
 
     *found = 0;
-    rc = PMIx_Get(NULL, pmix_globals.rank, name, &val);
+    rc = PMIx_Get(NULL, pmix_globals.rank, name, NULL, 0, &val);
     if (PMIX_SUCCESS == rc && NULL != val) {
         if (PMIX_STRING != val->type) {
             /* this is an error */
@@ -291,7 +291,7 @@ int PMI2_Nameserv_lookup(const char service_name[], const PMI_keyval_t *info_ptr
     }
 
     /* lookup the info */
-    if (PMIX_SUCCESS != (rc = PMIx_Lookup(PMIX_NAMESPACE, pdata, nvals))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Lookup(PMIX_NAMESPACE, NULL, 0, pdata, nvals))) {
         PMIX_PDATA_DESTRUCT(&pdata[0]);
         PMIX_PDATA_DESTRUCT(&pdata[1]);
         return convert_err(rc);
@@ -336,7 +336,7 @@ int PMI2_Job_Connect(const char jobid[], PMI2_Connect_comm_t *conn)
 
     (void)strncpy(proc.nspace, jobid, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
-    rc = PMIx_Connect(&proc, 1);
+    rc = PMIx_Connect(&proc, 1, NULL, 0);
     return convert_err(rc);
 }
 
@@ -347,7 +347,7 @@ int PMI2_Job_Disconnect(const char jobid[])
 
     (void)strncpy(proc.nspace, jobid, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
-    rc = PMIx_Disconnect(&proc, 1);
+    rc = PMIx_Disconnect(&proc, 1, NULL, 0);
     return convert_err(rc);
 }
 

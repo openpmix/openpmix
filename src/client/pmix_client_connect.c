@@ -58,7 +58,8 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                         pmix_buffer_t *buf, void *cbdata);
 static void op_cbfunc(int status, void *cbdata);
 
-int PMIx_Connect(const pmix_proc_t procs[], size_t nprocs)
+int PMIx_Connect(const pmix_proc_t procs[], size_t nprocs,
+                 const pmix_info_t info[], size_t ninfo)
 {
     int rc;
     pmix_cb_t *cb;
@@ -82,7 +83,7 @@ int PMIx_Connect(const pmix_proc_t procs[], size_t nprocs)
     cb->active = true;
 
     /* push the message into our event base to send to the server */
-    if (PMIX_SUCCESS != (rc = PMIx_Connect_nb(procs, nprocs, op_cbfunc, cb))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Connect_nb(procs, nprocs, info, ninfo, op_cbfunc, cb))) {
         PMIX_RELEASE(cb);
         return rc;
     }
@@ -99,6 +100,7 @@ int PMIx_Connect(const pmix_proc_t procs[], size_t nprocs)
 }
 
 int PMIx_Connect_nb(const pmix_proc_t procs[], size_t nprocs,
+                    const pmix_info_t info[], size_t ninfo,
                     pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_buffer_t *msg;
@@ -140,6 +142,20 @@ int PMIx_Connect_nb(const pmix_proc_t procs[], size_t nprocs,
         return rc;
     }
 
+    /* pack the info structs */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &ninfo, 1, PMIX_SIZE))) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        return rc;
+    }
+    if (0 < ninfo) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, info, ninfo, PMIX_INFO))) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(msg);
+            return rc;
+        }
+    }
+
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
@@ -153,7 +169,8 @@ int PMIx_Connect_nb(const pmix_proc_t procs[], size_t nprocs,
     return PMIX_SUCCESS;
 }
 
-int PMIx_Disconnect(const pmix_proc_t procs[], size_t nprocs)
+int PMIx_Disconnect(const pmix_proc_t procs[], size_t nprocs,
+                    const pmix_info_t info[], size_t ninfo)
 {
     int rc;
     pmix_cb_t *cb;
@@ -173,7 +190,7 @@ int PMIx_Disconnect(const pmix_proc_t procs[], size_t nprocs)
     cb = PMIX_NEW(pmix_cb_t);
     cb->active = true;
 
-    if (PMIX_SUCCESS != (rc = PMIx_Disconnect_nb(procs, nprocs, op_cbfunc, cb))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Disconnect_nb(procs, nprocs, info, ninfo, op_cbfunc, cb))) {
         PMIX_RELEASE(cb);
         return rc;
     }
@@ -190,6 +207,7 @@ int PMIx_Disconnect(const pmix_proc_t procs[], size_t nprocs)
 }
 
 int PMIx_Disconnect_nb(const pmix_proc_t procs[], size_t nprocs,
+                       const pmix_info_t info[], size_t ninfo,
                        pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_buffer_t *msg;
@@ -229,6 +247,20 @@ int PMIx_Disconnect_nb(const pmix_proc_t procs[], size_t nprocs,
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, procs, nprocs, PMIX_PROC))) {
         PMIX_ERROR_LOG(rc);
         return rc;
+    }
+
+    /* pack the info structs */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &ninfo, 1, PMIX_SIZE))) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        return rc;
+    }
+    if (0 < ninfo) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, info, ninfo, PMIX_INFO))) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(msg);
+            return rc;
+        }
     }
 
     /* create a callback object as we need to pass it to the

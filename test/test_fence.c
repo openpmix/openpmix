@@ -85,7 +85,7 @@ static void add_noise(char *noise_param, char *my_nspace, int my_rank)
     SET_KEY(key, fence_num, ind, use_same_keys);                                                                    \
     TEST_VERBOSE(("%s:%d want to get from %s:%d key %s", my_nspace, my_rank, ns, rank, key));                     \
     if (blocking) {                                                                                                 \
-        if (PMIX_SUCCESS != (rc = PMIx_Get(ns, rank, key, &val))) {                                                 \
+        if (PMIX_SUCCESS != (rc = PMIx_Get(ns, rank, key, NULL, 0, &val))) {                                                 \
             if( !( rc == PMIX_ERR_NOT_FOUND && ok_notfnd ) ){                                                       \
                 TEST_ERROR(("%s:%d: PMIx_Get failed: %d from %s:%d", my_nspace, my_rank, rc, ns, rank));            \
             }                                                                                                       \
@@ -96,7 +96,7 @@ static void add_noise(char *noise_param, char *my_nspace, int my_rank)
         cbdata.in_progress = 1;                                                                                     \
         PMIX_VALUE_CREATE(val, 1);                                                                                  \
         cbdata.kv = val;                                                                                            \
-        if (PMIX_SUCCESS != (rc = PMIx_Get_nb(ns, rank, key, get_cb, (void*)&cbdata))) {                            \
+        if (PMIX_SUCCESS != (rc = PMIx_Get_nb(ns, rank, key, NULL, 0, get_cb, (void*)&cbdata))) {                            \
             TEST_VERBOSE(("%s:%d: PMIx_Get_nb failed: %d from %s:%d", my_nspace, my_rank, rc, ns, rank));           \
             rc = PMIX_ERROR;                                                                                        \
         } else {                                                                                                    \
@@ -135,10 +135,18 @@ static void add_noise(char *noise_param, char *my_nspace, int my_rank)
 
 #define FENCE(blocking, data_ex, pcs, nprocs) do {                      \
     if( blocking ){                                                                                                 \
-        rc = PMIx_Fence(pcs, nprocs, data_ex);                                                                    \
+        pmix_info_t *info = NULL; \
+        size_t ninfo = 0; \
+        if (data_ex) { \
+            PMIX_INFO_CREATE(info, 1); \
+            (void)strncpy(info->key, PMIX_COLLECT_DATA, PMIX_MAX_KEYLEN); \
+            ninfo = 1; \
+        }   \
+        rc = PMIx_Fence(pcs, nprocs, info, ninfo);                                                                    \
+        PMIX_INFO_FREE(info, ninfo); \
     } else {                                                                                                        \
         int in_progress = 1, count;                                                                                 \
-        if ( PMIX_SUCCESS == (rc = PMIx_Fence_nb(pcs, nprocs, data_ex, release_cb, &in_progress))) {              \
+        if ( PMIX_SUCCESS == (rc = PMIx_Fence_nb(pcs, nprocs, NULL, 0, release_cb, &in_progress))) {              \
             count = 0;                                                                                              \
             while( in_progress ){                                                                                   \
                 struct timespec ts;                                                                                 \
@@ -344,7 +352,7 @@ static int get_local_peers(char *my_nspace, int my_rank, int **_peers, int *coun
     int rc;
 
     /* get number of neighbours on this node */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(my_nspace, my_rank, PMIX_LOCAL_SIZE, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(my_nspace, my_rank, PMIX_LOCAL_SIZE, NULL, 0, &val))) {
         TEST_ERROR(("%s:%d: PMIx_Get local peer # failed: %d", my_nspace, my_rank, rc));
         return rc;
     }
@@ -363,7 +371,7 @@ static int get_local_peers(char *my_nspace, int my_rank, int **_peers, int *coun
     peers = malloc(sizeof(int) * npeers);
 
     /* get ranks of neighbours on this node */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(my_nspace, my_rank, PMIX_LOCAL_PEERS, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(my_nspace, my_rank, PMIX_LOCAL_PEERS, NULL, 0, &val))) {
         TEST_ERROR(("%s:%d: PMIx_Get local peers failed: %d", my_nspace, my_rank, rc));
         free(peers);
         return rc;
@@ -508,7 +516,7 @@ int test_job_fence(test_params params, char *my_nspace, int my_rank)
         }
 
         /* ask for a non-existent key */
-        if (PMIX_SUCCESS == (rc = PMIx_Get(my_nspace, i+params.base_rank, "foobar", &val))) {
+        if (PMIX_SUCCESS == (rc = PMIx_Get(my_nspace, i+params.base_rank, "foobar", NULL, 0, &val))) {
             TEST_ERROR(("%s:%d: PMIx_Get returned success instead of failure",
                         my_nspace, my_rank));
             return PMIX_ERROR;

@@ -114,6 +114,7 @@ int abort_fn(const char nspace[], int rank, void *server_object,
 }
 
 int fencenb_fn(const pmix_proc_t procs[], size_t nprocs,
+               const pmix_info_t info[], size_t ninfo,
                char *data, size_t ndata,
                pmix_modex_cbfunc_t cbfunc, void *cbdata)
 {
@@ -127,12 +128,13 @@ int fencenb_fn(const pmix_proc_t procs[], size_t nprocs,
      * return what we were given */
 
     if (NULL != cbfunc) {
-        cbfunc(PMIX_SUCCESS, data, ndata, cbdata);
+        cbfunc(PMIX_SUCCESS, data, ndata, cbdata, NULL, NULL);
     }
     return PMIX_SUCCESS;
 }
 
 int dmodex_fn(const char nspace[], int rank,
+              const pmix_info_t info[], size_t ninfo,
               pmix_modex_cbfunc_t cbfunc, void *cbdata)
 {
     TEST_VERBOSE(("Getting data for %s:%d", nspace, rank));
@@ -143,7 +145,7 @@ int dmodex_fn(const char nspace[], int rank,
      * respond right away */
 
     if (NULL != cbfunc) {
-        cbfunc(PMIX_ERR_NOT_FOUND, NULL, 0, cbdata);
+        cbfunc(PMIX_ERR_NOT_FOUND, NULL, 0, cbdata, NULL, NULL);
     }
     return PMIX_SUCCESS;
 }
@@ -182,8 +184,8 @@ int publish_fn(const char nspace[], int rank,
     return PMIX_SUCCESS;
 }
 
-int lookup_fn(const char nspace[], int rank,
-              pmix_data_range_t scope, int wait, char **keys,
+int lookup_fn(const char nspace[], int rank, pmix_data_range_t scope,
+              const pmix_info_t info[], size_t ninfo, char **keys,
               pmix_lookup_cbfunc_t cbfunc, void *cbdata)
 {
     size_t i, ndata, ret;
@@ -275,6 +277,7 @@ int spawn_fn(const char nspace[], int rank,
 }
 
 int connect_fn(const pmix_proc_t procs[], size_t nprocs,
+               const pmix_info_t info[], size_t ninfo,
                pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     if (NULL != cbfunc) {
@@ -285,6 +288,7 @@ int connect_fn(const pmix_proc_t procs[], size_t nprocs,
 }
 
 int disconnect_fn(const pmix_proc_t procs[], size_t nprocs,
+                  const pmix_info_t info[], size_t ninfo,
                   pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     if (NULL != cbfunc) {
