@@ -437,11 +437,14 @@ typedef struct {
         memset((m), 0, (n) * sizeof(pmix_info_t));              \
     } while(0);
 
-#define PMIX_INFO_RELEASE(m)                    \
-    do {                                        \
-        PMIX_VALUE_DESTRUCT(&(m)->value);       \
+#define PMIX_INFO_RELEASE(m, n)                 \
+    {                                           \
+        int i = 0;                              \
+        for(i=0; i < n; i++){                   \
+            PMIX_VALUE_DESTRUCT(&(m)->value);   \
+        }                                       \
         free((m));                              \
-    } while(0);
+    }
 
 #define PMIX_INFO_CONSTRUCT(m)                  \
     do {                                        \
@@ -780,12 +783,14 @@ const char* PMIx_Get_version(void);
 #define PMIX_VAL_FIELD_uint16_t(x) ((x)->data.uint16)
 #define PMIX_VAL_FIELD_string(x) ((x)->data.string)
 #define PMIX_VAL_FIELD_float(x) ((x)->data.fval)
+#define PMIX_VAL_FIELD_byte(x) ((x)->data.byte)
 
 #define PMIX_VAL_TYPE_int    PMIX_INT
 #define PMIX_VAL_TYPE_uint32_t PMIX_UINT32
 #define PMIX_VAL_TYPE_uint16_t PMIX_UINT16
 #define PMIX_VAL_TYPE_string PMIX_STRING
 #define PMIX_VAL_TYPE_float  PMIX_FLOAT
+#define PMIX_VAL_TYPE_byte  PMIX_BYTE
 
 #define PMIX_VAL_set_assign(_v, _field, _val )   \
     do {                                                            \
@@ -804,6 +809,7 @@ const char* PMIx_Get_version(void);
 #define PMIX_VAL_SET_uint16_t  PMIX_VAL_set_assign
 #define PMIX_VAL_SET_string  PMIX_VAL_set_strdup
 #define PMIX_VAL_SET_float   PMIX_VAL_set_assign
+#define PMIX_VAL_SET_byte    PMIX_VAL_set_assign
 
 #define PMIX_VAL_SET(_v, _field, _val )   \
     PMIX_VAL_SET_ ## _field(_v, _field, _val)
