@@ -38,18 +38,15 @@
 /* local functions */
 static pmix_status_t convert_int(int *value, pmix_value_t *kv);
 static int convert_err(pmix_status_t rc);
+static pmix_proc_t myproc;
 
 int PMI2_Init(int *spawned, int *size, int *rank, int *appnum)
 {
     pmix_value_t *kv;
     pmix_status_t rc;
 
-    if (PMIX_SUCCESS != PMIx_Init(NULL, NULL)) {
+    if (PMIX_SUCCESS != PMIx_Init(&myproc)) {
         return PMI2_ERR_INIT;
-    }
-
-    if (NULL != rank) {
-        *rank = pmix_globals.rank;
     }
 
     if (NULL != size) {
@@ -57,8 +54,7 @@ int PMI2_Init(int *spawned, int *size, int *rank, int *appnum)
          * down all attributes assigned to the job, thus
          * making all subsequent "get" operations purely
          * local */
-        if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
-                                     PMIX_UNIV_SIZE, NULL, 0, &kv)) {
+        if (PMIX_SUCCESS == PMIx_Get(&myproc, PMIX_UNIV_SIZE, NULL, 0, &kv)) {
             rc = convert_int(size, kv);
             PMIX_VALUE_RELEASE(kv);
             return convert_err(rc);
@@ -70,8 +66,7 @@ int PMI2_Init(int *spawned, int *size, int *rank, int *appnum)
 
     if (NULL != spawned) {
         /* get the spawned flag */
-        if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
-                                     PMIX_SPAWNED, NULL, 0, &kv)) {
+        if (PMIX_SUCCESS == PMIx_Get(&myproc, PMIX_SPAWNED, NULL, 0, &kv)) {
             rc = convert_int(spawned, kv);
             PMIX_VALUE_RELEASE(kv);
             return convert_err(rc);
@@ -83,8 +78,7 @@ int PMI2_Init(int *spawned, int *size, int *rank, int *appnum)
 
     if (NULL != appnum) {
         /* get our appnum */
-        if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
-                                     PMIX_APPNUM, NULL, 0, &kv)) {
+        if (PMIX_SUCCESS == PMIx_Get(&myproc, PMIX_APPNUM, NULL, 0, &kv)) {
             rc = convert_int(appnum, kv);
             PMIX_VALUE_RELEASE(kv);
             return convert_err(rc);
@@ -157,8 +151,11 @@ int PMI2_KVS_Get(const char *jobid, int src_pmi_id,
 {
     pmix_status_t rc;
     pmix_value_t *val;
+    pmix_proc_t proc;
 
-    rc = PMIx_Get(jobid, src_pmi_id, key, NULL, 0, &val);
+    (void)strncpy(proc.nspace, jobid, PMIX_MAX_NSLEN);
+    proc.rank = src_pmi_id;
+    rc = PMIx_Get(&proc, key, NULL, 0, &val);
     if (PMIX_SUCCESS == rc && NULL != val) {
         if (PMIX_STRING != val->type) {
             /* this is an error */
@@ -199,7 +196,7 @@ int PMI2_Info_GetJobAttr(const char name[], char value[], int valuelen, int *fou
     pmix_value_t *val;
 
     *found = 0;
-    rc = PMIx_Get(NULL, pmix_globals.rank, name, NULL, 0, &val);
+    rc = PMIx_Get(&myproc, name, NULL, 0, &val);
     if (PMIX_SUCCESS == rc && NULL != val) {
         if (PMIX_STRING != val->type) {
             /* this is an error */

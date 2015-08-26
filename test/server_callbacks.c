@@ -45,8 +45,8 @@ static void pdes(pmix_test_data_t *p)
 }
 
 PMIX_CLASS_INSTANCE(pmix_test_data_t,
-                          pmix_list_item_t,
-                          pcon, pdes);
+                    pmix_list_item_t,
+                    pcon, pdes);
 
 typedef struct {
     pmix_list_item_t super;
@@ -73,20 +73,20 @@ pmix_list_t *pmix_test_published_list = NULL;
 
 static int finalized_count = 0;
 
-int connected(const char nspace[], int rank, void *server_object)
+int connected(const pmix_proc_t *proc, void *server_object)
 {
     return PMIX_SUCCESS;
 }
 
-int finalized(const char nspace[], int rank, void *server_object,
+int finalized(const pmix_proc_t *proc, void *server_object,
               pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
-    if( CLI_TERM <= cli_info[rank].state ){
-        TEST_ERROR(("double termination of rank %d", rank));
+    if( CLI_TERM <= cli_info[proc->rank].state ){
+        TEST_ERROR(("double termination of rank %d", proc->rank));
         return PMIX_SUCCESS;
     }
-    TEST_VERBOSE(("Rank %d terminated", rank));
-    cli_finalize(&cli_info[rank]);
+    TEST_VERBOSE(("Rank %d terminated", proc->rank));
+    cli_finalize(&cli_info[proc->rank]);
     finalized_count++;
     if (finalized_count == cli_info_cnt) {
         if (NULL != pmix_test_published_list) {
@@ -99,7 +99,7 @@ int finalized(const char nspace[], int rank, void *server_object,
     return PMIX_SUCCESS;
 }
 
-int abort_fn(const char nspace[], int rank, void *server_object,
+int abort_fn(const pmix_proc_t *proc, void *server_object,
              int status, const char msg[],
              pmix_proc_t procs[], size_t nprocs,
              pmix_op_cbfunc_t cbfunc, void *cbdata)
@@ -133,11 +133,11 @@ int fencenb_fn(const pmix_proc_t procs[], size_t nprocs,
     return PMIX_SUCCESS;
 }
 
-int dmodex_fn(const char nspace[], int rank,
+int dmodex_fn(const pmix_proc_t *proc,
               const pmix_info_t info[], size_t ninfo,
               pmix_modex_cbfunc_t cbfunc, void *cbdata)
 {
-    TEST_VERBOSE(("Getting data for %s:%d", nspace, rank));
+    TEST_VERBOSE(("Getting data for %s:%d", proc->nspace, proc->rank));
 
     /* In a perfect world, we should call another server
      * to get the data for one of its clients. We don't
@@ -150,7 +150,7 @@ int dmodex_fn(const char nspace[], int rank,
     return PMIX_SUCCESS;
 }
 
-int publish_fn(const char nspace[], int rank,
+int publish_fn(const pmix_proc_t *proc,
                pmix_data_range_t scope, pmix_persistence_t persist,
                const pmix_info_t info[], size_t ninfo,
                pmix_op_cbfunc_t cbfunc, void *cbdata)
@@ -173,8 +173,8 @@ int publish_fn(const char nspace[], int rank,
             new_info = PMIX_NEW(pmix_test_info_t);
             strncpy(new_info->data.key, info[i].key, strlen(info[i].key)+1);
             pmix_value_xfer(&new_info->data.value, (pmix_value_t*)&info[i].value);
-            new_info->namespace_published = strdup(nspace);
-            new_info->rank_published = rank;
+            new_info->namespace_published = strdup(proc->nspace);
+            new_info->rank_published = proc->rank;
             pmix_list_append(pmix_test_published_list, &new_info->super);
         }
     }
@@ -184,7 +184,7 @@ int publish_fn(const char nspace[], int rank,
     return PMIX_SUCCESS;
 }
 
-int lookup_fn(const char nspace[], int rank, pmix_data_range_t scope,
+int lookup_fn(const pmix_proc_t *proc, pmix_data_range_t scope,
               const pmix_info_t info[], size_t ninfo, char **keys,
               pmix_lookup_cbfunc_t cbfunc, void *cbdata)
 {
@@ -216,7 +216,7 @@ int lookup_fn(const char nspace[], int rank, pmix_data_range_t scope,
     return PMIX_SUCCESS;
 }
 
-int unpublish_fn(const char nspace[], int rank,
+int unpublish_fn(const pmix_proc_t *proc,
                  pmix_data_range_t scope, char **keys,
                  pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
@@ -263,7 +263,7 @@ static void release_cb(pmix_status_t status, void *cbdata)
     free(cb);
 }
 
-int spawn_fn(const char nspace[], int rank,
+int spawn_fn(const pmix_proc_t *proc,
              const pmix_info_t job_info[], size_t ninfo,
              const pmix_app_t apps[], size_t napps,
              pmix_spawn_cbfunc_t cbfunc, void *cbdata)

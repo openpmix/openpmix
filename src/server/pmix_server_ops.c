@@ -192,8 +192,8 @@ pmix_status_t pmix_pending_request(pmix_nspace_t *nptr, int rank,
     /* 2. We were unable to satisfy request right now.
      * Look for existing requests to this namespace/rank */
     PMIX_LIST_FOREACH(cd, &pmix_server_globals.local_reqs, pmix_dmdx_local_t) {
-        if (0 != strncmp(nptr->nspace, cd->nspace, PMIX_MAX_NSLEN) ||
-                rank != cd->rank ) {
+        if (0 != strncmp(nptr->nspace, cd->proc.nspace, PMIX_MAX_NSLEN) ||
+                rank != cd->proc.rank ) {
             continue;
         }
         lcd = cd;
@@ -214,8 +214,8 @@ pmix_status_t pmix_pending_request(pmix_nspace_t *nptr, int rank,
         PMIX_INFO_FREE(info, ninfo);
         return PMIX_ERR_NOMEM;
     }
-    strncpy(lcd->nspace, nptr->nspace, PMIX_MAX_NSLEN);
-    lcd->rank = rank;
+    strncpy(lcd->proc.nspace, nptr->nspace, PMIX_MAX_NSLEN);
+    lcd->proc.rank = rank;
     lcd->info = info;
     lcd->ninfo = ninfo;
     PMIX_CONSTRUCT(&lcd->loc_reqs, pmix_list_t);
@@ -224,8 +224,7 @@ pmix_status_t pmix_pending_request(pmix_nspace_t *nptr, int rank,
     /* check & send request if need/possible */
         if( nptr->server->all_registered && NULL == info ){
             if( NULL != pmix_host_server.direct_modex ){
-                pmix_host_server.direct_modex(lcd->nspace, lcd->rank,
-                                              info, ninfo, dmdx_cbfunc, lcd);
+                pmix_host_server.direct_modex(&lcd->proc, info, ninfo, dmdx_cbfunc, lcd);
             } else {
                 /* if we don't have direct modex feature, just respond with "not found" */
                 cbfunc(PMIX_ERR_NOT_FOUND, NULL, 0, cbdata, NULL, NULL);
@@ -256,12 +255,12 @@ void pmix_pending_nspace_fix(pmix_nspace_t *nptr)
         pmix_rank_info_t *info;
         bool found = false;
 
-        if (0 != strncmp(nptr->nspace, cd->nspace, PMIX_MAX_NSLEN) ) {
+        if (0 != strncmp(nptr->nspace, cd->proc.nspace, PMIX_MAX_NSLEN) ) {
             continue;
         }
 
         PMIX_LIST_FOREACH(info, &nptr->server->ranks, pmix_rank_info_t) {
-            if (info->rank == cd->rank) {
+            if (info->rank == cd->proc.rank) {
                 found = true;
                 break;
             }
@@ -271,7 +270,7 @@ void pmix_pending_nspace_fix(pmix_nspace_t *nptr)
          * corresponding direct modex request */
         if( !found ){
             if( NULL != pmix_host_server.direct_modex ){
-                pmix_host_server.direct_modex(cd->nspace, cd->rank, cd->info, cd->ninfo, dmdx_cbfunc, cd);
+                pmix_host_server.direct_modex(&cd->proc, cd->info, cd->ninfo, dmdx_cbfunc, cd);
             } else {
                 pmix_dmdx_request_t *req, *req_next;
                 PMIX_LIST_FOREACH_SAFE(req, req_next, &cd->loc_reqs, pmix_dmdx_request_t) {
@@ -293,8 +292,8 @@ pmix_status_t pmix_pending_resolve(pmix_nspace_t *nptr, int rank, pmix_dmdx_loca
     /* find corresponding request (if exists) */
     if( NULL == lcd ){
         PMIX_LIST_FOREACH(cd, &pmix_server_globals.local_reqs, pmix_dmdx_local_t) {
-            if (0 != strncmp(nptr->nspace, cd->nspace, PMIX_MAX_NSLEN) ||
-                    rank != cd->rank) {
+            if (0 != strncmp(nptr->nspace, cd->proc.nspace, PMIX_MAX_NSLEN) ||
+                    rank != cd->proc.rank) {
                 continue;
             }
             lcd = cd;
@@ -338,6 +337,7 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
     char *msg;
     size_t nprocs;
     pmix_proc_t *procs = NULL;
+    pmix_proc_t proc;
 
     pmix_output_verbose(2, pmix_globals.debug_output, "recvd ABORT");
 
@@ -369,8 +369,9 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
 
     /* let the local host's server execute it */
     if (NULL != pmix_host_server.abort) {
-        rc = pmix_host_server.abort(peer->info->nptr->nspace, peer->info->rank,
-                                    peer->info->server_object, status, msg,
+        (void)strncpy(proc.nspace, peer->info->nptr->nspace, PMIX_MAX_NSLEN);
+        proc.rank = peer->info->rank;
+        rc = pmix_host_server.abort(&proc, peer->info->server_object, status, msg,
                                     procs, nprocs, cbfunc, cbdata);
     } else {
         rc = PMIX_ERR_NOT_SUPPORTED;
@@ -454,10 +455,10 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
 
     /* see if anyone remote is waiting on this data - could be more than one */
     PMIX_LIST_FOREACH_SAFE(dcd, dcdnext, &pmix_server_globals.remote_pnd, pmix_dmdx_remote_t) {
-        if (0 != strncmp(dcd->cd->nspace, nptr->nspace, PMIX_MAX_NSLEN)) {
+        if (0 != strncmp(dcd->cd->proc.nspace, nptr->nspace, PMIX_MAX_NSLEN)) {
             continue;
         }
-        if (dcd->cd->rank == info->rank) {
+        if (dcd->cd->proc.rank == info->rank) {
            /* we can now fulfill this request - collect the
              * remote/global data from this proc */
             PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
@@ -862,12 +863,13 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                     "[%s:%d] queue dmdx reply from %s:%d",
-                    __FILE__, __LINE__, caddy->lcd->nspace, caddy->lcd->rank);
+                    __FILE__, __LINE__,
+                    caddy->lcd->proc.nspace, caddy->lcd->proc.rank);
 
     /* find the nspace object for this client */
     nptr = NULL;
     PMIX_LIST_FOREACH(ns, &pmix_server_globals.nspaces, pmix_nspace_t) {
-        if (0 == strcmp(caddy->lcd->nspace, ns->nspace)) {
+        if (0 == strcmp(caddy->lcd->proc.nspace, ns->nspace)) {
             nptr = ns;
             break;
         }
@@ -888,14 +890,14 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
     kp->value->data.bo.bytes = (char*)caddy->data;
     kp->value->data.bo.size = caddy->ndata;
     /* store it in the appropriate hash */
-    if (PMIX_SUCCESS != (rc = pmix_hash_store(&nptr->server->remote, caddy->lcd->rank, kp))) {
+    if (PMIX_SUCCESS != (rc = pmix_hash_store(&nptr->server->remote, caddy->lcd->proc.rank, kp))) {
         PMIX_ERROR_LOG(rc);
     }
     PMIX_RELEASE(kp);  // maintain acctg
 
 cleanup:
     /* always execute the callback to avoid having the client hang */
-    pmix_pending_resolve(nptr, caddy->lcd->rank, caddy->lcd);
+    pmix_pending_resolve(nptr, caddy->lcd->proc.rank, caddy->lcd);
 
     /* now call the release function so the host server
      * knows it can release the data */
@@ -920,7 +922,8 @@ static void dmdx_cbfunc(pmix_status_t status,
     caddy->ndata  = ndata;
     caddy->lcd    = (pmix_dmdx_local_t *)cbdata;
     pmix_output_verbose(2, pmix_globals.debug_output, "[%s:%d] queue dmdx reply %s:%d",
-                        __FILE__, __LINE__, caddy->lcd->nspace, caddy->lcd->rank);
+                        __FILE__, __LINE__,
+                        caddy->lcd->proc.nspace, caddy->lcd->proc.rank);
     event_assign(&caddy->ev, pmix_globals.evbase, -1, EV_WRITE,
                  _process_dmdx_reply, caddy);
     event_priority_set(&caddy->ev, 0);
@@ -1014,6 +1017,7 @@ pmix_status_t pmix_server_publish(pmix_peer_t *peer,
     pmix_persistence_t persist;
     size_t i, ninfo;
     pmix_info_t *info = NULL;
+    pmix_proc_t proc;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "recvd PUBLISH");
@@ -1051,8 +1055,9 @@ pmix_status_t pmix_server_publish(pmix_peer_t *peer,
     }
 
     /* call the local server */
-    rc = pmix_host_server.publish(peer->info->nptr->nspace, peer->info->rank,
-                                  scope, persist, info, ninfo, cbfunc, cbdata);
+    (void)strncpy(proc.nspace, peer->info->nptr->nspace, PMIX_MAX_NSLEN);
+    proc.rank = peer->info->rank;
+    rc = pmix_host_server.publish(&proc, scope, persist, info, ninfo, cbfunc, cbdata);
 
  cleanup:
     if (NULL != info) {
@@ -1076,6 +1081,7 @@ pmix_status_t pmix_server_lookup(pmix_peer_t *peer,
     char **keys=NULL, *sptr;
     pmix_info_t *info = NULL;
     size_t ninfo=0;
+    pmix_proc_t proc;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "recvd LOOKUP");
@@ -1127,8 +1133,9 @@ pmix_status_t pmix_server_lookup(pmix_peer_t *peer,
     }
 
     /* call the local server */
-    rc = pmix_host_server.lookup(peer->info->nptr->nspace, peer->info->rank, scope,
-                                 info, ninfo, keys, cbfunc, cbdata);
+    (void)strncpy(proc.nspace, peer->info->nptr->nspace, PMIX_MAX_NSLEN);
+    proc.rank = peer->info->rank;
+    rc = pmix_host_server.lookup(&proc, scope, info, ninfo, keys, cbfunc, cbdata);
 
  cleanup:
     PMIX_INFO_FREE(info, ninfo);
@@ -1145,6 +1152,7 @@ pmix_status_t pmix_server_unpublish(pmix_peer_t *peer,
     pmix_data_range_t scope;
     size_t i, nkeys;
     char **keys=NULL, *sptr;
+    pmix_proc_t proc;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "recvd UNPUBLISH");
@@ -1176,7 +1184,9 @@ pmix_status_t pmix_server_unpublish(pmix_peer_t *peer,
         free(sptr);
     }
     /* call the local server */
-    rc = pmix_host_server.unpublish(peer->info->nptr->nspace, peer->info->rank, scope, keys, cbfunc, cbdata);
+    (void)strncpy(proc.nspace, peer->info->nptr->nspace, PMIX_MAX_NSLEN);
+    proc.rank = peer->info->rank;
+    rc = pmix_host_server.unpublish(&proc, scope, keys, cbfunc, cbdata);
 
  cleanup:
     pmix_argv_free(keys);
@@ -1193,6 +1203,7 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer,
     pmix_info_t *info=NULL;
     pmix_app_t *apps=NULL;
     pmix_status_t rc;
+    pmix_proc_t proc;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "recvd SPAWN");
@@ -1234,8 +1245,9 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer,
         }
     }
     /* call the local server */
-    rc = pmix_host_server.spawn(peer->info->nptr->nspace, peer->info->rank,
-                                info, ninfo, apps, napps, cbfunc, cbdata);
+    (void)strncpy(proc.nspace, peer->info->nptr->nspace, PMIX_MAX_NSLEN);
+    proc.rank = peer->info->rank;
+    rc = pmix_host_server.spawn(&proc, info, ninfo, apps, napps, cbfunc, cbdata);
 
  cleanup:
     if (NULL != info) {
@@ -1403,7 +1415,7 @@ PMIX_CLASS_INSTANCE(pmix_snd_caddy_t,
 
 static void scadcon(pmix_setup_caddy_t *p)
 {
-    memset(p->nspace, 0, sizeof(p->nspace));
+    memset(&p->proc, 0, sizeof(pmix_proc_t));
     p->active = true;
     p->server_object = NULL;
     p->nlocalprocs = 0;
@@ -1476,7 +1488,7 @@ PMIX_CLASS_INSTANCE(pmix_dmdx_request_t,
 
 static void lmcon(pmix_dmdx_local_t *p)
 {
-    memset(p->nspace, 0, PMIX_MAX_NSLEN+1);
+    memset(&p->proc, 0, sizeof(pmix_proc_t));
     p->info = NULL;
     p->ninfo = 0;
 }

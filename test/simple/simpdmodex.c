@@ -38,15 +38,14 @@
 #include "src/usock/usock.h"
 
 static uint32_t nprocs;
-static char nspace[PMIX_MAX_NSLEN+1];
-static int rank;
+static pmix_proc_t myproc;
 static uint32_t getcount = 0;
 
 static void opcbfunc(pmix_status_t status, void *cbdata)
 {
     bool *active = (bool*)cbdata;
 
-    pmix_output(0, "%s:%d completed fence_nb", nspace, rank);
+    pmix_output(0, "%s:%d completed fence_nb", myproc.nspace, myproc.rank);
     *active = false;
 }
 
@@ -58,29 +57,29 @@ static void valcbfunc(pmix_status_t status,
     if (PMIX_SUCCESS == status) {
         if (NULL != strstr(key, "local")) {
             if (PMIX_UINT64 != val->type) {
-                pmix_output(0, "%s:%d: PMIx_Get_nb Key %s returned wrong type: %d", nspace, rank, key, val->type);
+                pmix_output(0, "%s:%d: PMIx_Get_nb Key %s returned wrong type: %d", myproc.nspace, myproc.rank, key, val->type);
                 goto done;
             }
             if (1234 != val->data.uint64) {
-                pmix_output(0, "%s:%d: PMIx_Get_nb Key %s returned wrong value: %d", nspace, rank, key, (int)val->data.uint64);
+                pmix_output(0, "%s:%d: PMIx_Get_nb Key %s returned wrong value: %d", myproc.nspace, myproc.rank, key, (int)val->data.uint64);
                 goto done;
             }
         } else if (NULL != strstr(key, "remote")) {
             if (PMIX_STRING != val->type) {
-                pmix_output(0, "%s:%d: PMIx_Get_nb Key %s returned wrong type: %d", nspace, rank, key, val->type);
+                pmix_output(0, "%s:%d: PMIx_Get_nb Key %s returned wrong type: %d", myproc.nspace, myproc.rank, key, val->type);
                 goto done;
             }
             if (0 != strcmp(val->data.string, "1234")) {
-                pmix_output(0, "%s:%d: PMIx_Get_nb Key %s returned wrong value: %s", nspace, rank, key, val->data.string);
+                pmix_output(0, "%s:%d: PMIx_Get_nb Key %s returned wrong value: %s", myproc.nspace, myproc.rank, key, val->data.string);
                 goto done;
             }
         } else {
-            pmix_output(0, "%s:%d PMIx_Get_nb returned wrong key: %s", nspace, rank, key);
+            pmix_output(0, "%s:%d PMIx_Get_nb returned wrong key: %s", myproc.nspace, myproc.rank, key);
             goto done;
         }
-        pmix_output(0, "%s:%d PMIx_Get_nb Key %s returned correctly", nspace, rank, key);
+        pmix_output(0, "%s:%d PMIx_Get_nb Key %s returned correctly", myproc.nspace, myproc.rank, key);
     } else {
-        pmix_output(0, "%s:%d PMIx_Get_nb Key %s failed", nspace, rank, key);
+        pmix_output(0, "%s:%d PMIx_Get_nb Key %s failed", myproc.nspace, myproc.rank, key);
     }
  done:
     free(key);
@@ -98,82 +97,83 @@ int main(int argc, char **argv)
     bool active;
 
     /* init us */
-    if (PMIX_SUCCESS != (rc = PMIx_Init(nspace, &rank))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Init failed: %d", nspace, rank, rc);
+    if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc))) {
+        pmix_output(0, "Client ns %s rank %d: PMIx_Init failed: %d", myproc.nspace, myproc.rank, rc);
         exit(0);
     }
-    pmix_output(0, "Client ns %s rank %d: Running", nspace, rank);
+    pmix_output(0, "Client ns %s rank %d: Running", myproc.nspace, myproc.rank);
 
     /* get our universe size */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, rank, PMIX_UNIV_SIZE, NULL, 0, &val))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Get universe size failed: %d", nspace, rank, rc);
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_UNIV_SIZE, NULL, 0, &val))) {
+        pmix_output(0, "Client ns %s rank %d: PMIx_Get universe size failed: %d", myproc.nspace, myproc.rank, rc);
         goto done;
     }
     nprocs = val->data.uint32;
     PMIX_VALUE_RELEASE(val);
-    pmix_output(0, "Client %s:%d universe size %d", nspace, rank, nprocs);
+    pmix_output(0, "Client %s:%d universe size %d", myproc.nspace, myproc.rank, nprocs);
 
     /* put a few values */
-    (void)asprintf(&tmp, "%s-%d-internal", nspace, rank);
+    (void)asprintf(&tmp, "%s-%d-internal", myproc.nspace, myproc.rank);
     value.type = PMIX_UINT32;
     value.data.uint32 = 1234;
-    if (PMIX_SUCCESS != (rc = PMIx_Store_internal(nspace, rank, tmp, &value))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Store_internal failed: %d", nspace, rank, rc);
+    if (PMIX_SUCCESS != (rc = PMIx_Store_internal(&myproc, tmp, &value))) {
+        pmix_output(0, "Client ns %s rank %d: PMIx_Store_internal failed: %d", myproc.nspace, myproc.rank, rc);
         goto done;
     }
 
-    (void)asprintf(&tmp, "%s-%d-local", nspace, rank);
+    (void)asprintf(&tmp, "%s-%d-local", myproc.nspace, myproc.rank);
     value.type = PMIX_UINT64;
     value.data.uint64 = 1234;
     if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_LOCAL, tmp, &value))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Put internal failed: %d", nspace, rank, rc);
+        pmix_output(0, "Client ns %s rank %d: PMIx_Put internal failed: %d", myproc.nspace, myproc.rank, rc);
         goto done;
     }
 
-    (void)asprintf(&tmp, "%s-%d-remote", nspace, rank);
+    (void)asprintf(&tmp, "%s-%d-remote", myproc.nspace, myproc.rank);
     value.type = PMIX_STRING;
     value.data.string = "1234";
     if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_REMOTE, tmp, &value))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Put internal failed: %d", nspace, rank, rc);
+        pmix_output(0, "Client ns %s rank %d: PMIx_Put internal failed: %d", myproc.nspace, myproc.rank, rc);
         goto done;
     }
 
     /* introduce a delay by one rank so we can check what happens
      * if a "get" is received prior to data being provided */
-    if (0 == rank) {
+    if (0 == myproc.rank) {
         sleep(2);
     }
 
     /* commit the data to the server */
     if (PMIX_SUCCESS != (rc = PMIx_Commit())) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Commit failed: %d", nspace, rank, rc);
+        pmix_output(0, "Client ns %s rank %d: PMIx_Commit failed: %d", myproc.nspace, myproc.rank, rc);
         goto done;
     }
 
     /* call fence_nb, but don't return any data */
     PMIX_PROC_CONSTRUCT(&proc);
-    (void)strncpy(proc.nspace, nspace, PMIX_MAX_NSLEN);
+    (void)strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
     active = true;
     if (PMIX_SUCCESS != (rc = PMIx_Fence_nb(&proc, 1, NULL, 0, opcbfunc, &active))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", nspace, rank, rc);
+        pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", myproc.nspace, myproc.rank, rc);
         goto done;
     }
 
     /* get the committed data - ask for someone who doesn't exist as well */
     num_gets = 0;
     for (n=0; n < nprocs; n++) {
-        (void)asprintf(&tmp, "%s-%d-local", nspace, n);
-        if (PMIX_SUCCESS != (rc = PMIx_Get_nb(nspace, n, tmp,
+        (void)asprintf(&tmp, "%s-%d-local", myproc.nspace, n);
+        proc.rank = n;
+        if (PMIX_SUCCESS != (rc = PMIx_Get_nb(&proc, tmp,
                                               NULL, 0, valcbfunc, tmp))) {
-            pmix_output(0, "Client ns %s rank %d: PMIx_Get %s failed: %d", nspace, n, tmp, rc);
+            pmix_output(0, "Client ns %s rank %d: PMIx_Get %s failed: %d", myproc.nspace, n, tmp, rc);
             goto done;
         }
         ++num_gets;
-        (void)asprintf(&tmp, "%s-%d-remote", nspace, n);
-        if (PMIX_SUCCESS != (rc = PMIx_Get_nb(nspace, n, tmp,
+        (void)asprintf(&tmp, "%s-%d-remote", myproc.nspace, n);
+        if (PMIX_SUCCESS != (rc = PMIx_Get_nb(&proc, tmp,
                                               NULL, 0, valcbfunc, tmp))) {
-            pmix_output(0, "Client ns %s rank %d: PMIx_Get %s failed: %d", nspace, n, tmp, rc);
+            pmix_output(0, "Client ns %s rank %d: PMIx_Get %s failed: %d", myproc.nspace, n, tmp, rc);
             goto done;
         }
         ++num_gets;
@@ -191,18 +191,19 @@ int main(int argc, char **argv)
     }
 
     /* call fence again so everyone waits before leaving */
+    proc.rank = PMIX_RANK_WILDCARD;
     if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, NULL, 0))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", nspace, rank, rc);
+        pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", myproc.nspace, myproc.rank, rc);
         goto done;
     }
 
  done:
     /* finalize us */
-    pmix_output(0, "Client ns %s rank %d: Finalizing", nspace, rank);
+    pmix_output(0, "Client ns %s rank %d: Finalizing", myproc.nspace, myproc.rank);
     if (PMIX_SUCCESS != (rc = PMIx_Finalize())) {
-        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %d\n", nspace, rank, rc);
+        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %d\n", myproc.nspace, myproc.rank, rc);
     } else {
-        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n", nspace, rank);
+        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n", myproc.nspace, myproc.rank);
     }
     fflush(stderr);
     return(0);

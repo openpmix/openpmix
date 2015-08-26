@@ -32,8 +32,7 @@
 
 #include <pmix.h>
 
-static char nspace[PMIX_MAX_NSLEN+1];
-static int rank;
+static pmix_proc_t myproc;
 
 int main(int argc, char **argv)
 {
@@ -52,32 +51,32 @@ int main(int argc, char **argv)
     gethostname(hostname, 1024);
     
     /* init us */
-    if (PMIX_SUCCESS != (rc = PMIx_Init(nspace, &rank))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Init failed: %d", nspace, rank, rc);
+    if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc))) {
+        pmix_output(0, "Client ns %s rank %d: PMIx_Init failed: %d", myproc.nspace, myproc.rank, rc);
         exit(0);
     }
-    pmix_output(0, "Client ns %s rank %d: Running", nspace, rank);
+    pmix_output(0, "Client ns %s rank %d: Running", myproc.nspace, myproc.rank);
 
     /* get our universe size */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(nspace, rank, PMIX_UNIV_SIZE, NULL, 0, &val))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Get universe size failed: %d", nspace, rank, rc);
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_UNIV_SIZE, NULL, 0, &val))) {
+        pmix_output(0, "Client ns %s rank %d: PMIx_Get universe size failed: %d", myproc.nspace, myproc.rank, rc);
         goto done;
     }
     nprocs = val->data.uint32;
     PMIX_VALUE_RELEASE(val);
-    pmix_output(0, "Client %s:%d universe size %d", nspace, rank, nprocs);
+    pmix_output(0, "Client %s:%d universe size %d", myproc.nspace, myproc.rank, nprocs);
     
     /* call fence to sync */
     PMIX_PROC_CONSTRUCT(&proc);
-    (void)strncpy(proc.nspace, nspace, PMIX_MAX_NSLEN);
+    (void)strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
     if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, NULL, 0))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", nspace, rank, rc);
+        pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", myproc.nspace, myproc.rank, rc);
         goto done;
     }
     
     /* rank=0 calls spawn */
-    if (0 == rank) {
+    if (0 == myproc.rank) {
         PMIX_APP_CREATE(app, 1);
         app->cmd = strdup("gumby");
         app->maxprocs = 2;
@@ -93,75 +92,79 @@ int main(int argc, char **argv)
         app->info[1].value.type = PMIX_DOUBLE;
         app->info[1].value.data.dval = 12.34;
 
-        pmix_output(0, "Client ns %s rank %d: calling PMIx_Spawn", nspace, rank);
+        pmix_output(0, "Client ns %s rank %d: calling PMIx_Spawn", myproc.nspace, myproc.rank);
         if (PMIX_SUCCESS != (rc = PMIx_Spawn(NULL, 0, app, 1, nsp2))) {
-            pmix_output(0, "Client ns %s rank %d: PMIx_Spawn failed: %d", nspace, rank, rc);
+            pmix_output(0, "Client ns %s rank %d: PMIx_Spawn failed: %d", myproc.nspace, myproc.rank, rc);
             goto done;
         }
         PMIX_APP_FREE(app, 1);
 
         /* check to see if we got the expected info back */
         if (0 != strncmp(nsp2, "DYNSPACE", PMIX_MAX_NSLEN)) {
-            pmix_output(0, "Client ns %s rank %d: PMIx_Spawn returned incorrect nspace: %s", nspace, rank, nsp2);
+            pmix_output(0, "Client ns %s rank %d: PMIx_Spawn returned incorrect nspace: %s", myproc.nspace, myproc.rank, nsp2);
             goto done;
         } else {
-            pmix_output(0, "Client ns %s rank %d: PMIx_Spawn succeeded returning nspace: %s", nspace, rank, nsp2);
+            pmix_output(0, "Client ns %s rank %d: PMIx_Spawn succeeded returning nspace: %s", myproc.nspace, myproc.rank, nsp2);
         }
         /* get their universe size */
         val = NULL;
-        if (PMIX_SUCCESS != (rc = PMIx_Get(nsp2, PMIX_RANK_WILDCARD, PMIX_UNIV_SIZE, NULL, 0, &val)) ||
+        (void)strncpy(proc.nspace, nsp2, PMIX_MAX_NSLEN);
+        proc.rank = PMIX_RANK_WILDCARD;
+        if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_UNIV_SIZE, NULL, 0, &val)) ||
             NULL == val) {
-            pmix_output(0, "Client ns %s rank %d: PMIx_Get universe size failed: %d", nspace, rank, rc);
+            pmix_output(0, "Client ns %s rank %d: PMIx_Get universe size failed: %d", myproc.nspace, myproc.rank, rc);
             goto done;
         }
         ntmp = val->data.uint32;
         PMIX_VALUE_RELEASE(val);
-        pmix_output(0, "Client %s:%d universe %s size %d", nspace, rank, nsp2, (int)ntmp);
+        pmix_output(0, "Client %s:%d universe %s size %d", myproc.nspace, myproc.rank, nsp2, (int)ntmp);
     }
 
     /* just cycle the connect/disconnect functions */
+    (void)strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
+    proc.rank = PMIX_RANK_WILDCARD;
     if (PMIX_SUCCESS != (rc = PMIx_Connect(&proc, 1, NULL, 0))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Connect failed: %d", nspace, rank, rc);
+        pmix_output(0, "Client ns %s rank %d: PMIx_Connect failed: %d", myproc.nspace, myproc.rank, rc);
         goto done;
     }
-    pmix_output(0, "Client ns %s rank %d: PMIx_Connect succeeded", nspace, rank);
+    pmix_output(0, "Client ns %s rank %d: PMIx_Connect succeeded", myproc.nspace, myproc.rank);
     if (PMIX_SUCCESS != (rc = PMIx_Disconnect(&proc, 1, NULL, 0))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Disonnect failed: %d", nspace, rank, rc);
+        pmix_output(0, "Client ns %s rank %d: PMIx_Disonnect failed: %d", myproc.nspace, myproc.rank, rc);
         goto done;
     }
-    pmix_output(0, "Client ns %s rank %d: PMIx_Disconnect succeeded", nspace, rank);
+    pmix_output(0, "Client ns %s rank %d: PMIx_Disconnect succeeded", myproc.nspace, myproc.rank);
 
     /* finally, test the resolve functions */
-    if (0 == rank) {
+    if (0 == myproc.rank) {
         if (PMIX_SUCCESS != (rc = PMIx_Resolve_peers(hostname, NULL, &peers, &npeers))) {
-            pmix_output(0, "Client ns %s rank %d: PMIx_Resolve_peers failed for nspace %s: %d", nspace, rank, nsp2, rc);
+            pmix_output(0, "Client ns %s rank %d: PMIx_Resolve_peers failed for nspace %s: %d", myproc.nspace, myproc.rank, nsp2, rc);
             goto done;
         }
         if ((nprocs+ntmp) != npeers) {
-            pmix_output(0, "Client ns %s rank %d: PMIx_Resolve_peers returned incorrect npeers: %d vs %d", nspace, rank, (int)(nprocs+ntmp), (int)npeers);
+            pmix_output(0, "Client ns %s rank %d: PMIx_Resolve_peers returned incorrect npeers: %d vs %d", myproc.nspace, myproc.rank, (int)(nprocs+ntmp), (int)npeers);
             goto done;
         }
-        pmix_output(0, "Client ns %s rank %d: PMIx_Resolve_peers returned %d npeers", nspace, rank, (int)npeers);
+        pmix_output(0, "Client ns %s rank %d: PMIx_Resolve_peers returned %d npeers", myproc.nspace, myproc.rank, (int)npeers);
         if (PMIX_SUCCESS != (rc = PMIx_Resolve_nodes(nsp2, &nodelist))) {
-            pmix_output(0, "Client ns %s rank %d: PMIx_Resolve_nodes failed for nspace %s: %d", nspace, rank, nsp2, rc);
+            pmix_output(0, "Client ns %s rank %d: PMIx_Resolve_nodes failed for nspace %s: %d", myproc.nspace, myproc.rank, nsp2, rc);
             goto done;
         }
-        pmix_output(0, "Client ns %s rank %d: PMIx_Resolve_nodes %s", nspace, rank, nodelist);
+        pmix_output(0, "Client ns %s rank %d: PMIx_Resolve_nodes %s", myproc.nspace, myproc.rank, nodelist);
     } else {
-        if (PMIX_SUCCESS != (rc = PMIx_Resolve_peers(hostname, nspace, &peers, &npeers))) {
-            pmix_output(0, "Client ns %s rank %d: PMIx_Resolve_peers failed for nspace %s: %d", nspace, rank, nspace, rc);
+        if (PMIX_SUCCESS != (rc = PMIx_Resolve_peers(hostname, myproc.nspace, &peers, &npeers))) {
+            pmix_output(0, "Client ns %s rank %d: PMIx_Resolve_peers failed for nspace %s: %d", myproc.nspace, myproc.rank, myproc.nspace, rc);
             goto done;
         }
         if (nprocs != npeers) {
-            pmix_output(0, "Client ns %s rank %d: PMIx_Resolve_peers returned incorrect npeers: %d vs %d", nspace, rank, nprocs, (int)npeers);
+            pmix_output(0, "Client ns %s rank %d: PMIx_Resolve_peers returned incorrect npeers: %d vs %d", myproc.nspace, myproc.rank, nprocs, (int)npeers);
             goto done;
         }
-        pmix_output(0, "Client ns %s rank %d: PMIx_Resolve_peers returned %d npeers", nspace, rank, (int)npeers);
-        if (PMIX_SUCCESS != (rc = PMIx_Resolve_nodes(nspace, &nodelist))) {
-            pmix_output(0, "Client ns %s rank %d: PMIx_Resolve_nodes failed: %d", nspace, rank, rc);
+        pmix_output(0, "Client ns %s rank %d: PMIx_Resolve_peers returned %d npeers", myproc.nspace, myproc.rank, (int)npeers);
+        if (PMIX_SUCCESS != (rc = PMIx_Resolve_nodes(myproc.nspace, &nodelist))) {
+            pmix_output(0, "Client ns %s rank %d: PMIx_Resolve_nodes failed: %d", myproc.nspace, myproc.rank, rc);
             goto done;
         }
-        pmix_output(0, "Client ns %s rank %d: PMIx_Resolve_nodes %s", nspace, rank, nodelist);
+        pmix_output(0, "Client ns %s rank %d: PMIx_Resolve_nodes %s", myproc.nspace, myproc.rank, nodelist);
     }
     PMIX_PROC_FREE(peers, npeers);
     free(nodelist);
@@ -169,20 +172,20 @@ int main(int argc, char **argv)
  done:
     /* call fence to sync */
     PMIX_PROC_CONSTRUCT(&proc);
-    (void)strncpy(proc.nspace, nspace, PMIX_MAX_NSLEN);
+    (void)strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
     if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, NULL, 0))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", nspace, rank, rc);
+        pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", myproc.nspace, myproc.rank, rc);
         goto done;
     }
     
     /* finalize us */
-    pmix_output(0, "Client ns %s rank %d: Finalizing", nspace, rank);
+    pmix_output(0, "Client ns %s rank %d: Finalizing", myproc.nspace, myproc.rank);
     
     if (PMIX_SUCCESS != (rc = PMIx_Finalize())) {
-        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %d\n", nspace, rank, rc);
+        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %d\n", myproc.nspace, myproc.rank, rc);
     } else {
-        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n", nspace, rank);
+        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n", myproc.nspace, myproc.rank);
     }
     fflush(stderr);
     return(0);

@@ -388,7 +388,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
     /* see if we already have this nspace */
     nptr = NULL;
     PMIX_LIST_FOREACH(tmp, &pmix_server_globals.nspaces, pmix_nspace_t) {
-        if (0 == strcmp(tmp->nspace, cd->nspace)) {
+        if (0 == strcmp(tmp->nspace, cd->proc.nspace)) {
             nptr = tmp;
             /* release any existing packed data - we will replace it */
             if (0 < nptr->server->job_info.bytes_used) {
@@ -400,7 +400,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
     }
     if (NULL == nptr) {
         nptr = PMIX_NEW(pmix_nspace_t);
-        (void)strncpy(nptr->nspace, cd->nspace, PMIX_MAX_NSLEN);
+        (void)strncpy(nptr->nspace, cd->proc.nspace, PMIX_MAX_NSLEN);
         nptr->server = PMIX_NEW(pmix_server_nspace_t);
         pmix_list_append(&pmix_server_globals.nspaces, &nptr->super);
     }
@@ -541,7 +541,7 @@ pmix_status_t PMIx_server_register_nspace(const char nspace[], int nlocalprocs,
     size_t i;
 
     cd = PMIX_NEW(pmix_setup_caddy_t);
-    (void)strncpy(cd->nspace, nspace, PMIX_MAX_NSLEN);
+    (void)strncpy(cd->proc.nspace, nspace, PMIX_MAX_NSLEN);
     cd->nlocalprocs = nlocalprocs;
     cd->opcbfunc = cbfunc;
     cd->cbdata = cbdata;
@@ -658,19 +658,19 @@ static void _register_client(int sd, short args, void *cbdata)
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:server _register_client for nspace %s rank %d",
-                        cd->nspace, cd->rank);
+                        cd->proc.nspace, cd->proc.rank);
 
     /* see if we already have this nspace */
     nptr = NULL;
     PMIX_LIST_FOREACH(tmp, &pmix_server_globals.nspaces, pmix_nspace_t) {
-        if (0 == strcmp(tmp->nspace, cd->nspace)) {
+        if (0 == strcmp(tmp->nspace, cd->proc.nspace)) {
             nptr = tmp;
             break;
         }
     }
     if (NULL == nptr) {
         nptr = PMIX_NEW(pmix_nspace_t);
-        (void)strncpy(nptr->nspace, cd->nspace, PMIX_MAX_NSLEN);
+        (void)strncpy(nptr->nspace, cd->proc.nspace, PMIX_MAX_NSLEN);
         /* add the server object */
         nptr->server = PMIX_NEW(pmix_server_nspace_t);
         pmix_list_append(&pmix_server_globals.nspaces, &nptr->super);
@@ -681,7 +681,7 @@ static void _register_client(int sd, short args, void *cbdata)
     info = PMIX_NEW(pmix_rank_info_t);
     PMIX_RETAIN(nptr);
     info->nptr = nptr;
-    info->rank = cd->rank;
+    info->rank = cd->proc.rank;
     info->uid = cd->uid;
     info->gid = cd->gid;
     info->server_object = cd->server_object;
@@ -722,7 +722,7 @@ static void _register_client(int sd, short args, void *cbdata)
     PMIX_RELEASE(cd);
 }
 
-pmix_status_t PMIx_server_register_client(const char nspace[], int rank,
+pmix_status_t PMIx_server_register_client(const pmix_proc_t *proc,
                                           uid_t uid, gid_t gid, void *server_object,
                                           pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
@@ -730,11 +730,11 @@ pmix_status_t PMIx_server_register_client(const char nspace[], int rank,
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:server register client %s:%d",
-                        nspace, rank);
+                        proc->nspace, proc->rank);
 
      cd = PMIX_NEW(pmix_setup_caddy_t);
-    (void)strncpy(cd->nspace, nspace, PMIX_MAX_NSLEN);
-    cd->rank = rank;
+    (void)strncpy(cd->proc.nspace, proc->nspace, PMIX_MAX_NSLEN);
+    cd->proc.rank = proc->rank;
     cd->uid = uid;
     cd->gid = gid;
     cd->server_object = server_object;
@@ -750,19 +750,18 @@ pmix_status_t PMIx_server_register_client(const char nspace[], int rank,
 }
 
 /* setup the envars for a child process */
-pmix_status_t PMIx_server_setup_fork(const char nspace[],
-                                     int rank, char ***env)
+pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char ***env)
 {
     char rankstr[PMIX_MAX_VALLEN+1];
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:server setup_fork for nspace %s rank %d",
-                        nspace, rank);
+                        proc->nspace, proc->rank);
 
     /* pass the nspace */
-    pmix_setenv("PMIX_NAMESPACE", nspace, true, env);
+    pmix_setenv("PMIX_NAMESPACE", proc->nspace, true, env);
     /* pass the rank */
-    (void)snprintf(rankstr, PMIX_MAX_VALLEN, "%d", rank);
+    (void)snprintf(rankstr, PMIX_MAX_VALLEN, "%d", proc->rank);
     pmix_setenv("PMIX_RANK", rankstr, true, env);
     /* pass our rendezvous info */
     pmix_setenv("PMIX_SERVER_URI", myuri, true, env);
@@ -791,14 +790,14 @@ static void _dmodex_req(int sd, short args, void *cbdata)
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "DMODX LOOKING FOR %s:%d",
-                        cd->nspace, cd->rank);
+                        cd->proc.nspace, cd->proc.rank);
     /* this should be one of my clients, but a race condition
      * could cause this request to arrive prior to us having
      * been informed of it - so first check to see if we know
      * about this nspace yet */
     nptr = NULL;
     PMIX_LIST_FOREACH(ns, &pmix_server_globals.nspaces, pmix_nspace_t) {
-        if (0 == strcmp(ns->nspace, cd->nspace)) {
+        if (0 == strcmp(ns->nspace, cd->proc.nspace)) {
             nptr = ns;
             break;
         }
@@ -818,7 +817,7 @@ static void _dmodex_req(int sd, short args, void *cbdata)
     /* see if we have this peer in our list */
     info = NULL;
     PMIX_LIST_FOREACH(iptr, &nptr->server->ranks, pmix_rank_info_t) {
-        if (iptr->rank == cd->rank) {
+        if (iptr->rank == cd->proc.rank) {
             info = iptr;
             break;
         }
@@ -869,24 +868,24 @@ static void _dmodex_req(int sd, short args, void *cbdata)
     cd->active = false;
 }
 
-pmix_status_t PMIx_server_dmodex_request(const char nspace[], int rank,
+pmix_status_t PMIx_server_dmodex_request(const pmix_proc_t *proc,
                                          pmix_dmodex_response_fn_t cbfunc,
                                          void *cbdata)
 {
     pmix_setup_caddy_t *cd;
 
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:server register client %s:%d",
-                        nspace, rank);
-
     /* protect against bozo */
-    if (NULL == cbfunc || NULL == nspace) {
+    if (NULL == cbfunc || NULL == proc) {
         return PMIX_ERR_BAD_PARAM;
     }
 
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:server register client %s:%d",
+                        proc->nspace, proc->rank);
+
     cd = PMIX_NEW(pmix_setup_caddy_t);
-    (void)strncpy(cd->nspace, nspace, PMIX_MAX_NSLEN);
-    cd->rank = rank;
+    (void)strncpy(cd->proc.nspace, proc->nspace, PMIX_MAX_NSLEN);
+    cd->proc.rank = proc->rank;
     cd->cbfunc = cbfunc;
     cd->cbdata = cbdata;
 
@@ -1077,7 +1076,7 @@ static void _store_internal(int sd, short args, void *cbdata)
     cd->active = false;
  }
 
-pmix_status_t PMIx_Store_internal(const char nspace[], int rank,
+pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc,
                                   const char *key, pmix_value_t *val)
 {
     pmix_shift_caddy_t *cd;
@@ -1085,8 +1084,8 @@ pmix_status_t PMIx_Store_internal(const char nspace[], int rank,
 
     /* need to thread shift this request */
     cd = PMIX_NEW(pmix_shift_caddy_t);
-    cd->nspace = nspace;
-    cd->rank = rank;
+    cd->nspace = proc->nspace;
+    cd->rank = proc->rank;
 
     cd->kv = PMIX_NEW(pmix_kval_t);
     cd->kv->key = strdup((char*)key);
@@ -1171,7 +1170,7 @@ static void _get(int sd, short args, void *cbdata)
     cd->active = false;
 }
 
-pmix_status_t PMIx_Get(const char nspace[], int rank,
+pmix_status_t PMIx_Get(const pmix_proc_t *proc,
                        const char key[], pmix_value_t **val)
 {
     pmix_shift_caddy_t *cd;
@@ -1179,7 +1178,8 @@ pmix_status_t PMIx_Get(const char nspace[], int rank,
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: get_nb value for proc %s:%d key %s",
-                        (NULL == nspace) ? "NULL" : nspace, rank,
+                        (NULL == proc) ? "NULL" : proc->nspace,
+                        (NULL == proc) ? -1 : proc->rank,
                         (NULL == key) ? "NULL" : key);
 
     /* protect against bozo input */
@@ -1189,8 +1189,8 @@ pmix_status_t PMIx_Get(const char nspace[], int rank,
 
     /* need to thread shift this request */
     cd = PMIX_NEW(pmix_shift_caddy_t);
-    cd->nspace = nspace;
-    cd->rank = rank;
+    cd->nspace = proc->nspace;
+    cd->rank = proc->rank;
     cd->key = key;
 
     PMIX_THREADSHIFT(cd, _get);
@@ -1994,6 +1994,7 @@ static int server_switchyard(pmix_peer_t *peer, uint32_t tag,
     int32_t cnt;
     pmix_cmd_t cmd;
     pmix_server_caddy_t *cd;
+    pmix_proc_t proc;
 
     /* retrieve the cmd */
     cnt = 1;
@@ -2045,9 +2046,9 @@ static int server_switchyard(pmix_peer_t *peer, uint32_t tag,
         /* call the local server, if supported */
         if (NULL != pmix_host_server.client_finalized) {
             PMIX_PEER_CADDY(cd, peer, tag);
-            if (PMIX_SUCCESS != (rc = pmix_host_server.client_finalized(peer->info->nptr->nspace,
-                                                                        peer->info->rank,
-                                                                        peer->info->server_object,
+            (void)strncpy(proc.nspace, peer->info->nptr->nspace, PMIX_MAX_NSLEN);
+            proc.rank = peer->info->rank;
+            if (PMIX_SUCCESS != (rc = pmix_host_server.client_finalized(&proc, peer->info->server_object,
                                                                         op_cbfunc, cd))) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(cd);

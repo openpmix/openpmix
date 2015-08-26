@@ -153,6 +153,7 @@ int launch_clients(int num_procs, char *binary, char *** client_env, char ***bas
     static int counter = 0;
     static int num_ns = 0;
     char *ns_name;
+    pmix_proc_t proc;
 
     TEST_VERBOSE(("Setting job info"));
     fill_seq_ranks_array(num_procs, counter, &ranks);
@@ -173,13 +174,15 @@ int launch_clients(int num_procs, char *binary, char *** client_env, char ***bas
 
     /* fork/exec the test */
     for (n = 0; n < num_procs; n++) {
-        if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(ns_name, counter, client_env))) {//n
+        (void)strncpy(proc.nspace, ns_name, PMIX_MAX_NSLEN);
+        proc.rank = counter;
+        if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(&proc, client_env))) {//n
             TEST_ERROR(("Server fork setup failed with error %d", rc));
             PMIx_server_finalize();
             cli_kill_all();
             return rc;
         }
-        if (PMIX_SUCCESS != (rc = PMIx_server_register_client(ns_name, counter, myuid, mygid, NULL, NULL, NULL))) {//n
+        if (PMIX_SUCCESS != (rc = PMIx_server_register_client(&proc, myuid, mygid, NULL, NULL, NULL))) {//n
             TEST_ERROR(("Server fork setup failed with error %d", rc));
             PMIx_server_finalize();
             cli_kill_all();

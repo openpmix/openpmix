@@ -100,14 +100,14 @@ BEGIN_C_DECLS
 
 
 /* Notify the host server that a client connected to us */
-typedef int (*pmix_server_client_connected_fn_t)(const char nspace[], int rank,
+typedef int (*pmix_server_client_connected_fn_t)(const pmix_proc_t *proc,
                                                  void* server_object);
 
 /* Notify the host server that a client called PMIx_Finalize- note
  * that the client will be in a blocked state until the host server
  * executes the callback function, thus allowing the PMIx server support
  * library to release the client */
-typedef pmix_status_t (*pmix_server_client_finalized_fn_t)(const char nspace[], int rank, void* server_object,
+typedef pmix_status_t (*pmix_server_client_finalized_fn_t)(const pmix_proc_t *proc, void* server_object,
                                                            pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* A local client called PMIx_Abort - note that the client will be in a blocked
@@ -115,7 +115,7 @@ typedef pmix_status_t (*pmix_server_client_finalized_fn_t)(const char nspace[], 
  * allowing the PMIx server support library to release the client. The
  * array of procs indicates which processes are to be terminated. A NULL
  * indicates that all procs in the client's nspace are to be terminated */
-typedef pmix_status_t (*pmix_server_abort_fn_t)(const char nspace[], int rank, void *server_object,
+typedef pmix_status_t (*pmix_server_abort_fn_t)(const pmix_proc_t *proc, void *server_object,
                                                 int status, const char msg[],
                                                 pmix_proc_t procs[], size_t nprocs,
                                                 pmix_op_cbfunc_t cbfunc, void *cbdata);
@@ -152,7 +152,7 @@ typedef pmix_status_t (*pmix_server_fencenb_fn_t)(const pmix_proc_t procs[], siz
  * may never become available. The directives are optional _unless_ the _mandatory_ flag
  * has been set - in such cases, the host RM is required to return an error
  * if the directive cannot be met. */
-typedef pmix_status_t (*pmix_server_dmodex_req_fn_t)(const char nspace[], int rank,
+typedef pmix_status_t (*pmix_server_dmodex_req_fn_t)(const pmix_proc_t *proc,
                                                      const pmix_info_t info[], size_t ninfo,
                                                      pmix_modex_cbfunc_t cbfunc, void *cbdata);
 
@@ -168,7 +168,7 @@ typedef pmix_status_t (*pmix_server_dmodex_req_fn_t)(const char nspace[], int ra
  * how long the server should retain the data. The nspace/rank of the publishing
  * process is also provided and is expected to be returned on any subsequent
  * lookup request */
-typedef pmix_status_t (*pmix_server_publish_fn_t)(const char nspace[], int rank,
+typedef pmix_status_t (*pmix_server_publish_fn_t)(const pmix_proc_t *proc,
                                                   pmix_data_range_t scope, pmix_persistence_t persist,
                                                   const pmix_info_t info[], size_t ninfo,
                                                   pmix_op_cbfunc_t cbfunc, void *cbdata);
@@ -187,7 +187,7 @@ typedef pmix_status_t (*pmix_server_publish_fn_t)(const char nspace[], int rank,
  * may never be published. The directives are optional _unless_ the _mandatory_ flag
  * has been set - in such cases, the host RM is required to return an error
  * if the directive cannot be met. */
-typedef pmix_status_t (*pmix_server_lookup_fn_t)(const char nspace[], int rank,
+typedef pmix_status_t (*pmix_server_lookup_fn_t)(const pmix_proc_t *proc,
                                                  pmix_data_range_t scope,
                                                  const pmix_info_t info[], size_t ninfo,
                                                  char **keys,
@@ -197,7 +197,7 @@ typedef pmix_status_t (*pmix_server_lookup_fn_t)(const char nspace[], int rank,
  * of string keys along with the range within which the data is expected to have
  * been published. The callback is to be executed upon completion of the delete
  * procedure */
-typedef pmix_status_t (*pmix_server_unpublish_fn_t)(const char nspace[], int rank,
+typedef pmix_status_t (*pmix_server_unpublish_fn_t)(const pmix_proc_t *proc,
                                                     pmix_data_range_t scope, char **keys,
                                                     pmix_op_cbfunc_t cbfunc, void *cbdata);
 
@@ -212,7 +212,7 @@ typedef pmix_status_t (*pmix_server_unpublish_fn_t)(const char nspace[], int ran
  * Note that a timeout can be specified in the job_info array to indicate
  * that failure to start the requested job within the given time should
  * result in termination to avoid hangs */
-typedef pmix_status_t (*pmix_server_spawn_fn_t)(const char nspace[], int rank,
+typedef pmix_status_t (*pmix_server_spawn_fn_t)(const pmix_proc_t *proc,
                                                 const pmix_info_t job_info[], size_t ninfo,
                                                 const pmix_app_t apps[], size_t napps,
                                                 pmix_spawn_cbfunc_t cbfunc, void *cbdata);
@@ -378,7 +378,7 @@ pmix_status_t PMIx_server_register_nspace(const char nspace[], int nlocalprocs,
  * return that object when the client calls "finalize", thus
  * allowing the host server to access the object without
  * performing a lookup. */
-pmix_status_t PMIx_server_register_client(const char nspace[], int rank,
+pmix_status_t PMIx_server_register_client(const pmix_proc_t *proc,
                                           uid_t uid, gid_t gid,
                                           void *server_object,
                                           pmix_op_cbfunc_t cbfunc, void *cbdata);
@@ -388,8 +388,7 @@ pmix_status_t PMIx_server_register_client(const char nspace[], int rank,
  * server. The PMIx client needs some setup information
  * so it can properly connect back to the server. This function
  * will set appropriate environmental variables for this purpose. */
-pmix_status_t PMIx_server_setup_fork(const char nspace[],
-                                     int rank, char ***env);
+pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char ***env);
 
 /* Define a callback function the PMIx server will use to return
  * direct modex requests to the host server. The PMIx server
@@ -407,7 +406,7 @@ typedef void (*pmix_dmodex_response_fn_t)(pmix_status_t status,
  * request into the PMIx server. The PMIx server will return a blob
  * (once it becomes available) via the cbfunc - the host
  * server shall send the blob back to the original requestor */
-pmix_status_t PMIx_server_dmodex_request(const char nspace[], int rank,
+pmix_status_t PMIx_server_dmodex_request(const pmix_proc_t *proc,
                                          pmix_dmodex_response_fn_t cbfunc,
                                          void *cbdata);
 

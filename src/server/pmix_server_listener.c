@@ -371,6 +371,7 @@ pmix_status_t pmix_server_authenticate(int sd, int *out_rank, pmix_peer_t **peer
     size_t csize;
     pmix_buffer_t *bptr;
     bool found;
+    pmix_proc_t proc;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "RECV CONNECT ACK FROM PEER ON SOCKET %d", sd);
@@ -547,9 +548,9 @@ pmix_status_t pmix_server_authenticate(int sd, int *out_rank, pmix_peer_t **peer
     *peer = psave;
     /* let the host server know that this client has connected */
     if (NULL != pmix_host_server.client_connected) {
-        rc = pmix_host_server.client_connected(psave->info->nptr->nspace,
-                                               psave->info->rank,
-                                               psave->info->server_object);
+        (void)strncpy(proc.nspace, psave->info->nptr->nspace, PMIX_MAX_NSLEN);
+        proc.rank = psave->info->rank;
+        rc = pmix_host_server.client_connected(&proc, psave->info->server_object);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
         }

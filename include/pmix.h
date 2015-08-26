@@ -86,7 +86,7 @@ BEGIN_C_DECLS
  * client library is referenced counted, and so multiple calls to PMIx_Init
  * are allowed. Thus, one way to obtain the namespace and rank of the
  * process is to simply call PMIx_Init with non-NULL parameters. */
-pmix_status_t PMIx_Init(char nspace[], int *rank);
+pmix_status_t PMIx_Init(pmix_proc_t *proc);
 
 /* Finalize the PMIx client, closing the connection to the local server.
  * An error code will be returned if, for some reason, the connection
@@ -195,7 +195,7 @@ pmix_status_t PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val);
  *     an error. The timeout parameter can help avoid "hangs" due to programming
  *     errors that prevent the target proc from ever exposing its data.
  */
-pmix_status_t PMIx_Get(const char nspace[], int rank, const char key[],
+pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
                        const pmix_info_t info[], size_t ninfo,
                        pmix_value_t **val);
 
@@ -204,7 +204,7 @@ pmix_status_t PMIx_Get(const char nspace[], int rank, const char key[],
  * callback function will be executed once the specified data has been _PMIx_Put_
  * by the specified rank and retrieved by the local server. The info
  * array is used as described above for the blocking form of this call. */
-pmix_status_t PMIx_Get_nb(const char nspace[], int rank, const char key[],
+pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
                           const pmix_info_t info[], size_t ninfo,
                           pmix_value_cbfunc_t cbfunc, void *cbdata);
 

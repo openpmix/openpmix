@@ -73,8 +73,7 @@ typedef struct {
     pmix_object_t super;
     pmix_event_t ev;
     volatile bool active;
-    char nspace[PMIX_MAX_NSLEN+1];
-    int rank;
+    pmix_proc_t proc;
     uid_t uid;
     gid_t gid;
     void *server_object;
@@ -119,8 +118,7 @@ PMIX_CLASS_DECLARATION(pmix_dmdx_request_t);
 
 typedef struct {
     pmix_list_item_t super;
-    char nspace[PMIX_MAX_NSLEN+1];  // nspace of proc whose data is being requested
-    int rank;                       // rank of proc whose data is being requested
+    pmix_proc_t proc;               // id of proc whose data is being requested
     pmix_list_t loc_reqs;           // list of pmix_dmdx_request_t elem's keeping track of
                                     // all local ranks that are interested in this namespace-rank
     pmix_info_t *info;              // array of info structs for this request

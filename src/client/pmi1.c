@@ -38,13 +38,14 @@
 /* local functions */
 static pmix_status_t convert_int(int *value, pmix_value_t *kv);
 static int convert_err(pmix_status_t rc);
+static pmix_proc_t myproc;
 
 int PMI_Init( int *spawned )
 {
     pmix_value_t *kv;
     pmix_status_t rc;
 
-    if (PMIX_SUCCESS != PMIx_Init(NULL, NULL)) {
+    if (PMIX_SUCCESS != PMIx_Init(&myproc)) {
         return PMI_ERR_INIT;
     }
 
@@ -56,8 +57,7 @@ int PMI_Init( int *spawned )
      * down all attributes assigned to the job, thus
      * making all subsequent "get" operations purely
      * local */
-    if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
-                                 PMIX_SPAWNED, NULL, 0, &kv)) {
+    if (PMIX_SUCCESS == PMIx_Get(&myproc, PMIX_SPAWNED, NULL, 0, &kv)) {
         rc = convert_int(spawned, kv);
         PMIX_VALUE_RELEASE(kv);
         return convert_err(rc);
@@ -124,8 +124,7 @@ int PMI_Get_size(int *size)
         return PMI_FAIL;
     }
 
-    if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
-                                 PMIX_JOB_SIZE, NULL, 0, &kv)) {
+    if (PMIX_SUCCESS == PMIx_Get(&myproc, PMIX_JOB_SIZE, NULL, 0, &kv)) {
         rc = convert_int(size, kv);
         PMIX_VALUE_RELEASE(kv);
         return convert_err(rc);
@@ -153,8 +152,7 @@ int PMI_Get_universe_size(int *size)
         return PMI_FAIL;
     }
 
-    if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
-                                 PMIX_UNIV_SIZE, NULL, 0, &kv)) {
+    if (PMIX_SUCCESS == PMIx_Get(&myproc, PMIX_UNIV_SIZE, NULL, 0, &kv)) {
         rc = convert_int(size, kv);
         PMIX_VALUE_RELEASE(kv);
         return convert_err(rc);
@@ -168,8 +166,7 @@ int PMI_Get_appnum(int *appnum)
     pmix_status_t rc;
 
     if (NULL != appnum &&
-        PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
-                                 PMIX_APPNUM, NULL, 0, &kv)) {
+        PMIX_SUCCESS == PMIx_Get(&myproc, PMIX_APPNUM, NULL, 0, &kv)) {
         rc = convert_int(appnum, kv);
         PMIX_VALUE_RELEASE(kv);
         return convert_err(rc);
@@ -272,8 +269,7 @@ int PMI_Get_clique_size(int *size)
     pmix_value_t *kv;
     pmix_status_t rc;
 
-    if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank,
-                                 PMIX_LOCAL_SIZE, NULL, 0, &kv)) {
+    if (PMIX_SUCCESS == PMIx_Get(&myproc, PMIX_LOCAL_SIZE, NULL, 0, &kv)) {
         rc = convert_int(size, kv);
         PMIX_VALUE_RELEASE(kv);
         return convert_err(rc);
@@ -288,7 +284,7 @@ int PMI_Get_clique_ranks(int ranks[], int length)
     char **rks;
     int i;
 
-    if (PMIX_SUCCESS == PMIx_Get(NULL, pmix_globals.rank, PMIX_LOCAL_PEERS, NULL, 0, &kv)) {
+    if (PMIX_SUCCESS == PMIx_Get(&myproc, PMIX_LOCAL_PEERS, NULL, 0, &kv)) {
         /* kv will contain a string of comma-separated
          * ranks on my node */
         rks = pmix_argv_split(kv->data.string, ',');

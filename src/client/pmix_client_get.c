@@ -54,7 +54,7 @@
 
 #include "pmix_client_ops.h"
 
-static pmix_buffer_t* pack_get(const char nspace[], int rank,
+static pmix_buffer_t* pack_get(char *nspace, int rank,
                                const pmix_info_t info[], size_t ninfo,
                                pmix_cmd_t cmd);
 static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
@@ -62,17 +62,21 @@ static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
 static void getnb_shortcut(int fd, short flags, void *cbdata);
 static void value_cbfunc(int status, pmix_value_t *kv, void *cbdata);
 
-int PMIx_Get(const char nspace[], int rank, const char key[],
+int PMIx_Get(const pmix_proc_t *proc, const char key[],
              const pmix_info_t info[], size_t ninfo,
              pmix_value_t **val)
 {
     pmix_cb_t *cb;
     int rc;
 
+    if (NULL == proc) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: %s:%d getting value for proc %s:%d key %s",
                         pmix_globals.nspace, pmix_globals.rank,
-                        (NULL == nspace) ? "NULL" : nspace, rank,
+                        proc->nspace, proc->rank,
                         (NULL == key) ? "NULL" : key);
 
     if (pmix_client_globals.init_cntr <= 0) {
@@ -90,7 +94,7 @@ int PMIx_Get(const char nspace[], int rank, const char key[],
     cb = PMIX_NEW(pmix_cb_t);
     cb->active = true;
 
-    if (PMIX_SUCCESS != (rc = PMIx_Get_nb(nspace, rank, key, info, ninfo, value_cbfunc, cb))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get_nb(proc, key, info, ninfo, value_cbfunc, cb))) {
         PMIX_RELEASE(cb);
         *val = NULL;
         return rc;
@@ -108,7 +112,7 @@ int PMIx_Get(const char nspace[], int rank, const char key[],
     return rc;
 }
 
-int PMIx_Get_nb(const char *nspace, int rank, const char *key,
+int PMIx_Get_nb(const pmix_proc_t *proc, const char *key,
                 const pmix_info_t info[], size_t ninfo,
                 pmix_value_cbfunc_t cbfunc, void *cbdata)
 {
@@ -119,9 +123,13 @@ int PMIx_Get_nb(const char *nspace, int rank, const char *key,
     char *nm;
     pmix_nsrec_t *ns, *nptr;
 
+    if (NULL == proc) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: get_nb value for proc %s:%d key %s",
-                        (NULL == nspace) ? "NULL" : nspace, rank,
+                        proc->nspace, proc->rank,
                         (NULL == key) ? "NULL" : key);
 
     if (pmix_client_globals.init_cntr <= 0) {
@@ -138,12 +146,12 @@ int PMIx_Get_nb(const char *nspace, int rank, const char *key,
         return PMIX_ERR_BAD_PARAM;
     }
 
-    /* if the nspace is NULL, then the caller is referencing
+    /* if the nspace is empty, then the caller is referencing
      * our own nspace */
-    if (NULL == nspace) {
+    if (0 == strlen(proc->nspace)) {
         nm = pmix_globals.nspace;
     } else {
-        nm = (char*)nspace;
+        nm = (char*)proc->nspace;
     }
 
     /* find the nspace object */
@@ -173,7 +181,7 @@ int PMIx_Get_nb(const char *nspace, int rank, const char *key,
         /* found it - return it via appropriate channel */
         cb = PMIX_NEW(pmix_cb_t);
         (void)strncpy(cb->nspace, nm, PMIX_MAX_NSLEN);
-        cb->rank = rank;
+        cb->rank = proc->rank;
         cb->key = strdup(key);
         cb->value_cbfunc = cbfunc;
         cb->cbdata = cbdata;
@@ -191,7 +199,7 @@ int PMIx_Get_nb(const char *nspace, int rank, const char *key,
         event_active(&(cb->ev), EV_WRITE, 1);
         return PMIX_SUCCESS;
     }
-    if (PMIX_RANK_WILDCARD == rank) {
+    if (PMIX_RANK_WILDCARD == proc->rank) {
         /* can't be anywhere else */
         return PMIX_ERR_NOT_FOUND;
     }
@@ -199,11 +207,11 @@ int PMIx_Get_nb(const char *nspace, int rank, const char *key,
     /* it could still be in the job-data table, only stored under its own
      * rank and not WILDCARD - e.g., this is true of data returned about
      * ourselves during startup */
-    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->data, rank, key, &val))) {
+    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->data, proc->rank, key, &val))) {
         /* found it - return it via appropriate channel */
         cb = PMIX_NEW(pmix_cb_t);
         (void)strncpy(cb->nspace, nm, PMIX_MAX_NSLEN);
-        cb->rank = rank;
+        cb->rank = proc->rank;
         cb->key = strdup(key);
         cb->value_cbfunc = cbfunc;
         cb->cbdata = cbdata;
@@ -224,14 +232,14 @@ int PMIx_Get_nb(const char *nspace, int rank, const char *key,
 
     /* not finding it is not an error - it could be in the
      * modex hash table, so check it */
-    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->modex, rank, key, &val))) {
+    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->modex, proc->rank, key, &val))) {
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "pmix: value retrieved from dstore");
         /* need to push this into the event library to ensure
          * the callback occurs within an event */
         cb = PMIX_NEW(pmix_cb_t);
         (void)strncpy(cb->nspace, nm, PMIX_MAX_NSLEN);
-        cb->rank = rank;
+        cb->rank = proc->rank;
         cb->key = strdup(key);
         cb->value_cbfunc = cbfunc;
         cb->cbdata = cbdata;
@@ -255,7 +263,7 @@ int PMIx_Get_nb(const char *nspace, int rank, const char *key,
          * the error */
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "Error requesting key=%s for rank = %d, namespace = %s\n",
-                            key, rank, nm);
+                            key, proc->rank, nm);
         return rc;
     }
 
@@ -265,12 +273,12 @@ int PMIx_Get_nb(const char *nspace, int rank, const char *key,
      * this nspace:rank. If we do, then no need to ask again as the
      * request will return _all_ data from that proc */
     PMIX_LIST_FOREACH(cb, &pmix_client_globals.pending_requests, pmix_cb_t) {
-        if (0 == strncmp(nm, cb->nspace, PMIX_MAX_NSLEN) && cb->rank == rank) {
+        if (0 == strncmp(nm, cb->nspace, PMIX_MAX_NSLEN) && cb->rank == proc->rank) {
             /* we do have a pending request, but we still need to track this
              * outstanding request so we can satisfy it once the data is returned */
             cb = PMIX_NEW(pmix_cb_t);
             (void)strncpy(cb->nspace, nm, PMIX_MAX_NSLEN);
-            cb->rank = rank;
+            cb->rank = proc->rank;
             cb->key = strdup(key);
             cb->value_cbfunc = cbfunc;
             cb->cbdata = cbdata;
@@ -281,7 +289,7 @@ int PMIx_Get_nb(const char *nspace, int rank, const char *key,
 
     /* we don't have a pending request, so let's create one - don't worry
      * about packing the key as we return everything from that proc */
-    if (NULL == (msg = pack_get(nm, rank, info, ninfo, PMIX_GETNB_CMD))) {
+    if (NULL == (msg = pack_get(nm, proc->rank, info, ninfo, PMIX_GETNB_CMD))) {
         return PMIX_ERROR;
     }
 
@@ -290,7 +298,7 @@ int PMIx_Get_nb(const char *nspace, int rank, const char *key,
      * the return message is recvd */
     cb = PMIX_NEW(pmix_cb_t);
     (void)strncpy(cb->nspace, nm, PMIX_MAX_NSLEN);
-    cb->rank = rank;
+    cb->rank = proc->rank;
     cb->key = strdup(key);
     cb->value_cbfunc = cbfunc;
     cb->cbdata = cbdata;
@@ -313,7 +321,7 @@ static void value_cbfunc(int status, pmix_value_t *kv, void *cbdata)
     cb->active = false;
 }
 
-static pmix_buffer_t* pack_get(const char nspace[], int rank,
+static pmix_buffer_t* pack_get(char *nspace, int rank,
                                const pmix_info_t info[], size_t ninfo,
                                pmix_cmd_t cmd)
 {

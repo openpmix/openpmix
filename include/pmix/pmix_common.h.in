@@ -119,7 +119,6 @@ BEGIN_C_DECLS
 #define PMIX_NODE_RANK             "pmix.nrank"        // (uint16_t) rank on this node spanning all jobs
 #define PMIX_LOCALLDR              "pmix.lldr"         // (uint64_t) opal_identifier of lowest rank on this node within this job
 #define PMIX_APPLDR                "pmix.aldr"         // (uint32_t) lowest rank in this app within this job
-#define PMIX_LOCALITY              "pmix.loc"          // (uint16_t) relative locality of two procs
 
 /* proc location-related info */
 #define PMIX_CPUSET                "pmix.cpuset"       // (char*) hwloc bitmap applied to proc upon launch
@@ -155,17 +154,12 @@ BEGIN_C_DECLS
 #define PMIX_NODE_LIST             "pmix.nlist"        // (char*) comma-delimited list of nodes running procs for this job
 #define PMIX_TOPOLOGY              "pmix.topo"         // (hwloc_topology_t) pointer to the PMIx client's internal topology object
 
-/* fault tolerance-related info */
-#define PMIX_TERMINATE_SESSION     "pmix.term.sess"    // (bool) RM intends to terminate session
-#define PMIX_TERMINATE_JOB         "pmix.term.job"     // (bool) RM intends to terminate this job
-#define PMIX_TERMINATE_NODE        "pmix.term.node"    // (bool) RM intends to terminate all procs on this node
-#define PMIX_TERMINATE_PROC        "pmix.term.proc"    // (bool) RM intends to terminate just this process
-
 /* request-related info */
 #define PMIX_COLLECT_DATA          "pmix.collect"      // (bool) collect data and return it at the end of the operation
 #define PMIX_TIMEOUT               "pmix.timeout"      // (int) time in sec before specified operation should time out
 #define PMIX_WAIT                  "pmix.wait"         // (int) caller requests that the server wait until the specified #values are found
 #define PMIX_COLLECTIVE_ALGO       "pmix.calgo"        // (char*) comma-delimited list of algorithms to use for collective
+#define PMIX_COLLECTIVE_ALGO_REQD  "pmix.calreqd"      // (bool) if true, indicates that the requested choice of algo is mandatory
 
 /* attributes used by host server to pass data to the server convenience library - the
  * data will then be parsed and provided to the local clients */
@@ -430,7 +424,6 @@ typedef struct {
 
 /****    PMIX INFO STRUCT    ****/
 typedef struct {
-    bool mandatory;
     char key[PMIX_MAX_KEYLEN+1];  // ensure room for the NULL terminator
     pmix_value_t value;
 } pmix_info_t;
@@ -785,7 +778,7 @@ const char* PMIx_Get_version(void);
 /* Store some data locally for retrieval by other areas of the
  * proc. This is data that has only internal scope - it will
  * never be "pushed" externally */
- pmix_status_t PMIx_Store_internal(const char nspace[], int rank,
+ pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc,
                                    const char *key, pmix_value_t *val);
 
 

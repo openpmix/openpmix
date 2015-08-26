@@ -77,17 +77,20 @@ static void add_noise(char *noise_param, char *my_nspace, int my_rank)
     PMIX_VALUE_DESTRUCT(&value);                                                                                    \
 } while (0);
 
-#define GET(dtype, data, ns, rank, fence_num, ind, use_same_keys, blocking, ok_notfnd) do {                        \
+#define GET(dtype, data, ns, r, fence_num, ind, use_same_keys, blocking, ok_notfnd) do {                        \
     char key[50];                                                                                                   \
     pmix_value_t *val;                                                                                              \
     get_cbdata cbdata;                                                                                              \
     cbdata.status = PMIX_SUCCESS;                                                                                   \
+    pmix_proc_t foobar; \
     SET_KEY(key, fence_num, ind, use_same_keys);                                                                    \
-    TEST_VERBOSE(("%s:%d want to get from %s:%d key %s", my_nspace, my_rank, ns, rank, key));                     \
+    (void)strncpy(foobar.nspace, ns, PMIX_MAX_NSLEN); \
+    foobar.rank = r; \
+    TEST_VERBOSE(("%s:%d want to get from %s:%d key %s", my_nspace, my_rank, ns, r, key));                     \
     if (blocking) {                                                                                                 \
-        if (PMIX_SUCCESS != (rc = PMIx_Get(ns, rank, key, NULL, 0, &val))) {                                                 \
+        if (PMIX_SUCCESS != (rc = PMIx_Get(&foobar, key, NULL, 0, &val))) {                                                 \
             if( !( rc == PMIX_ERR_NOT_FOUND && ok_notfnd ) ){                                                       \
-                TEST_ERROR(("%s:%d: PMIx_Get failed: %d from %s:%d", my_nspace, my_rank, rc, ns, rank));            \
+                TEST_ERROR(("%s:%d: PMIx_Get failed: %d from %s:%d", my_nspace, my_rank, rc, ns, r));            \
             }                                                                                                       \
             rc = PMIX_ERROR;                                                                                        \
         }                                                                                                           \
@@ -96,8 +99,8 @@ static void add_noise(char *noise_param, char *my_nspace, int my_rank)
         cbdata.in_progress = 1;                                                                                     \
         PMIX_VALUE_CREATE(val, 1);                                                                                  \
         cbdata.kv = val;                                                                                            \
-        if (PMIX_SUCCESS != (rc = PMIx_Get_nb(ns, rank, key, NULL, 0, get_cb, (void*)&cbdata))) {                            \
-            TEST_VERBOSE(("%s:%d: PMIx_Get_nb failed: %d from %s:%d", my_nspace, my_rank, rc, ns, rank));           \
+        if (PMIX_SUCCESS != (rc = PMIx_Get_nb(&foobar, key, NULL, 0, get_cb, (void*)&cbdata))) {                            \
+            TEST_VERBOSE(("%s:%d: PMIx_Get_nb failed: %d from %s:%d", my_nspace, my_rank, rc, ns, r));           \
             rc = PMIX_ERROR;                                                                                        \
         } else {                                                                                                    \
             count = 0;                                                                                              \
@@ -113,7 +116,7 @@ static void add_noise(char *noise_param, char *my_nspace, int my_rank)
     if (PMIX_SUCCESS == rc) {                                                                                       \
         if( PMIX_SUCCESS != cbdata.status ){                                                                        \
             if( !( rc == PMIX_ERR_NOT_FOUND && ok_notfnd ) ){                                                       \
-                TEST_VERBOSE(("%s:%d: PMIx_Get_nb failed: %d from %s:%d", my_nspace, my_rank, rc, my_nspace, rank));\
+                TEST_VERBOSE(("%s:%d: PMIx_Get_nb failed: %d from %s:%d", my_nspace, my_rank, rc, my_nspace, r));\
             }                                                                                                       \
             rc = PMIX_ERROR;                                                                                        \
         } else if (NULL == val) {                                                                                   \
@@ -123,12 +126,12 @@ static void add_noise(char *noise_param, char *my_nspace, int my_rank)
         else if (val->type != PMIX_VAL_TYPE_ ## dtype || PMIX_VAL_CMP(dtype, PMIX_VAL_FIELD_ ## dtype((val)), data)) {  \
             TEST_VERBOSE(("%s:%d: from %s:%d Key %s value or type mismatch,"                                        \
                         " want type %d get type %d",                                                                \
-                        my_nspace, my_rank, ns, rank, key, PMIX_VAL_TYPE_ ## dtype, val->type));                    \
+                        my_nspace, my_rank, ns, r, key, PMIX_VAL_TYPE_ ## dtype, val->type));                    \
             rc = PMIX_ERROR;                                                                                        \
         }                                                                                                           \
     }                                                                                                               \
     if (PMIX_SUCCESS == rc) {                                                                                       \
-        TEST_VERBOSE(("%s:%d: GET OF %s from %s:%d SUCCEEDED", my_nspace, my_rank, key, ns, rank));                 \
+        TEST_VERBOSE(("%s:%d: GET OF %s from %s:%d SUCCEEDED", my_nspace, my_rank, key, ns, r));                 \
         PMIX_VALUE_RELEASE(val);                                                                                    \
     }                                                                                                               \
 } while(0);
@@ -350,9 +353,12 @@ static int get_local_peers(char *my_nspace, int my_rank, int **_peers, int *coun
     char *sptr, *token, *eptr, *str;
     int npeers;
     int rc;
+    pmix_proc_t proc;
 
+    (void)strncpy(proc.nspace, my_nspace, PMIX_MAX_NSLEN);
+    proc.rank = my_rank;
     /* get number of neighbours on this node */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(my_nspace, my_rank, PMIX_LOCAL_SIZE, NULL, 0, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_LOCAL_SIZE, NULL, 0, &val))) {
         TEST_ERROR(("%s:%d: PMIx_Get local peer # failed: %d", my_nspace, my_rank, rc));
         return rc;
     }
@@ -371,7 +377,7 @@ static int get_local_peers(char *my_nspace, int my_rank, int **_peers, int *coun
     peers = malloc(sizeof(int) * npeers);
 
     /* get ranks of neighbours on this node */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(my_nspace, my_rank, PMIX_LOCAL_PEERS, NULL, 0, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, NULL, 0, &val))) {
         TEST_ERROR(("%s:%d: PMIx_Get local peers failed: %d", my_nspace, my_rank, rc));
         free(peers);
         return rc;
@@ -431,6 +437,11 @@ int test_job_fence(test_params params, char *my_nspace, int my_rank)
     int *peers, npeers;
     pmix_value_t value;
     pmix_value_t *val = &value;
+    pmix_proc_t proc;
+
+    (void)strncpy(proc.nspace, my_nspace, PMIX_MAX_NSLEN);
+    proc.rank = my_rank;
+
     for (i=0; i < 3; i++) {
         PUT(int, 12340 + i, PMIX_LOCAL, 100, i, 0);
         if (PMIX_SUCCESS != rc) {
@@ -516,7 +527,8 @@ int test_job_fence(test_params params, char *my_nspace, int my_rank)
         }
 
         /* ask for a non-existent key */
-        if (PMIX_SUCCESS == (rc = PMIx_Get(my_nspace, i+params.base_rank, "foobar", NULL, 0, &val))) {
+        proc.rank = i+params.base_rank;
+        if (PMIX_SUCCESS == (rc = PMIx_Get(&proc, "foobar", NULL, 0, &val))) {
             TEST_ERROR(("%s:%d: PMIx_Get returned success instead of failure",
                         my_nspace, my_rank));
             return PMIX_ERROR;

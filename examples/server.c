@@ -36,10 +36,10 @@
 #include "src/util/argv.h"
 #include "src/buffer_ops/buffer_ops.h"
 
-static int connected(const char nspace[], int rank, void *server_object);
-static int finalized(const char nspace[], int rank, void *server_object,
+static int connected(const pmix_proc_t *proc, void *server_object);
+static int finalized(const pmix_proc_t *proc, void *server_object,
                      pmix_op_cbfunc_t cbfunc, void *cbdata);
-static int abort_fn(const char nspace[], int rank,
+static int abort_fn(const pmix_proc_t *proc,
                     void *server_object,
                     int status, const char msg[],
                     pmix_proc_t procs[], size_t nprocs,
@@ -48,21 +48,21 @@ static int fencenb_fn(const pmix_proc_t procs[], size_t nprocs,
                       const pmix_info_t info[], size_t ninfo,
                       char *data, size_t ndata,
                       pmix_modex_cbfunc_t cbfunc, void *cbdata);
-static int dmodex_fn(const char nspace[], int rank,
+static int dmodex_fn(const pmix_proc_t *proc,
                      const pmix_info_t info[], size_t ninfo,
                      pmix_modex_cbfunc_t cbfunc, void *cbdata);
-static int publish_fn(const char nspace[], int rank,
+static int publish_fn(const pmix_proc_t *proc,
                       pmix_data_range_t scope, pmix_persistence_t persist,
                       const pmix_info_t info[], size_t ninfo,
                       pmix_op_cbfunc_t cbfunc, void *cbdata);
-static int lookup_fn(const char nspace[], int rank,
+static int lookup_fn(const pmix_proc_t *proc,
                      pmix_data_range_t scope,
                      const pmix_info_t info[], size_t ninfo, char **keys,
                      pmix_lookup_cbfunc_t cbfunc, void *cbdata);
-static int unpublish_fn(const char nspace[], int rank,
+static int unpublish_fn(const pmix_proc_t *proc,
                         pmix_data_range_t scope, char **keys,
                         pmix_op_cbfunc_t cbfunc, void *cbdata);
-static int spawn_fn(const char nspace[], int rank,
+static int spawn_fn(const pmix_proc_t *proc,
                     const pmix_info_t job_info[], size_t ninfo,
                     const pmix_app_t apps[], size_t napps,
                     pmix_spawn_cbfunc_t cbfunc, void *cbdata);
@@ -165,6 +165,7 @@ int main(int argc, char **argv)
     gid_t mygid;
     pid_t pid;
     myxfer_t *x;
+    pmix_proc_t proc;
 
     fprintf(stderr, "Running version %s\n", PMIx_Get_version());
 
@@ -183,9 +184,15 @@ int main(int argc, char **argv)
      * the executable to use */
     for (n=1; n < (argc-1); n++) {
         if (0 == strcmp("-n", argv[n])) {
+            if (argc-2 <= n) {
+                exit(1);
+            }
             nprocs = strtol(argv[n+1], NULL, 10);
             ++n;  // step over the argument
         } else if (0 == strcmp("-e", argv[n])) {
+            if (argc-2 <= n) {
+                exit(1);
+            }
             executable = strdup(argv[n+1]);
             ++n;
         }
@@ -225,14 +232,16 @@ int main(int argc, char **argv)
     PMIX_RELEASE(x);
 
     /* fork/exec the test */
+    (void)strncpy(proc.nspace, "foobar", PMIX_MAX_NSLEN);
     for (n = 0; n < nprocs; n++) {
-        if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork("foobar", n, &client_env))) {//n
+        proc.rank = n;
+        if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(&proc, &client_env))) {//n
             fprintf(stderr, "Server fork setup failed with error %d\n", rc);
             PMIx_server_finalize();
             return rc;
         }
         x = PMIX_NEW(myxfer_t);
-        if (PMIX_SUCCESS != (rc = PMIx_server_register_client("foobar", n, myuid, mygid,
+        if (PMIX_SUCCESS != (rc = PMIx_server_register_client(&proc, myuid, mygid,
                                                               NULL, opcbfunc, x))) {
             fprintf(stderr, "Server fork setup failed with error %d\n", rc);
             PMIx_server_finalize();
@@ -335,17 +344,17 @@ static void errhandler(pmix_status_t status,
     pmix_output(0, "SERVER: ERRHANDLER CALLED WITH STATUS %d", status);
 }
 
-static int connected(const char nspace[], int rank, void *server_object)
+static int connected(const pmix_proc_t *proc, void *server_object)
 {
-    pmix_output(0, "SERVER: CONNECTED %s:%d", nspace, rank);
+    pmix_output(0, "SERVER: CONNECTED %s:%d", proc->nspace, proc->rank);
     return PMIX_SUCCESS;
 
 }
 
-static int finalized(const char nspace[], int rank, void *server_object,
+static int finalized(const pmix_proc_t *proc, void *server_object,
                      pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
-    pmix_output(0, "SERVER: FINALIZED %s:%d", nspace, rank);
+    pmix_output(0, "SERVER: FINALIZED %s:%d", proc->nspace, proc->rank);
     --wakeup;
     /* ensure we call the cbfunc so the proc can exit! */
     if (NULL != cbfunc) {
@@ -365,7 +374,7 @@ static void abcbfunc(pmix_status_t status, void *cbdata)
     PMIX_RELEASE(x);
 }
 
-static int abort_fn(const char nspace[], int rank,
+static int abort_fn(const pmix_proc_t *proc,
                     void *server_object,
                     int status, const char msg[],
                     pmix_proc_t procs[], size_t nprocs,
@@ -382,8 +391,8 @@ static int abort_fn(const char nspace[], int rank,
     /* use the myxfer_t object to ensure we release
      * the caller when notification has been queued */
     x = PMIX_NEW(myxfer_t);
-    (void)strncpy(x->caller.nspace, nspace, PMIX_MAX_NSLEN);
-    x->caller.rank = rank;
+    (void)strncpy(x->caller.nspace, proc->nspace, PMIX_MAX_NSLEN);
+    x->caller.rank = proc->rank;
 
     PMIX_INFO_CREATE(x->info, 2);
     (void)strncpy(x->info[0].key, "DARTH", PMIX_MAX_KEYLEN);
@@ -419,7 +428,7 @@ static int fencenb_fn(const pmix_proc_t procs[], size_t nprocs,
 }
 
 
-static int dmodex_fn(const char nspace[], int rank,
+static int dmodex_fn(const pmix_proc_t *proc,
                      const pmix_info_t info[], size_t ninfo,
                      pmix_modex_cbfunc_t cbfunc, void *cbdata)
 {
@@ -434,7 +443,7 @@ static int dmodex_fn(const char nspace[], int rank,
 }
 
 
-static int publish_fn(const char nspace[], int rank,
+static int publish_fn(const pmix_proc_t *proc,
                       pmix_data_range_t scope, pmix_persistence_t persist,
                       const pmix_info_t info[], size_t ninfo,
                       pmix_op_cbfunc_t cbfunc, void *cbdata)
@@ -446,8 +455,8 @@ static int publish_fn(const char nspace[], int rank,
 
     for (n=0; n < ninfo; n++) {
         p = PMIX_NEW(pmix_locdat_t);
-        (void)strncpy(p->pdata.proc.nspace, nspace, PMIX_MAX_NSLEN);
-        p->pdata.proc.rank = rank;
+        (void)strncpy(p->pdata.proc.nspace, proc->nspace, PMIX_MAX_NSLEN);
+        p->pdata.proc.rank = proc->rank;
         (void)strncpy(p->pdata.key, info[n].key, PMIX_MAX_KEYLEN);
         pmix_value_xfer(&p->pdata.value, (pmix_value_t*)&info[n].value);
         pmix_list_append(&pubdata, &p->super);
@@ -459,7 +468,7 @@ static int publish_fn(const char nspace[], int rank,
 }
 
 
-static int lookup_fn(const char nspace[], int rank,
+static int lookup_fn(const pmix_proc_t *proc,
                      pmix_data_range_t scope,
                      const pmix_info_t info[], size_t ninfo, char **keys,
                      pmix_lookup_cbfunc_t cbfunc, void *cbdata)
@@ -509,7 +518,7 @@ static int lookup_fn(const char nspace[], int rank,
 }
 
 
-static int unpublish_fn(const char nspace[], int rank,
+static int unpublish_fn(const pmix_proc_t *proc,
                         pmix_data_range_t scope, char **keys,
                         pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
@@ -542,7 +551,7 @@ static void spcbfunc(pmix_status_t status, void *cbdata)
     }
 }
 
-static int spawn_fn(const char nspace[], int rank,
+static int spawn_fn(const pmix_proc_t *proc,
                     const pmix_info_t job_info[], size_t ninfo,
                     const pmix_app_t apps[], size_t napps,
                     pmix_spawn_cbfunc_t cbfunc, void *cbdata)

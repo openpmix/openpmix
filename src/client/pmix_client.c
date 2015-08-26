@@ -202,24 +202,24 @@ const char* PMIx_Get_version(void)
     return pmix_version_string;
 }
 
-int PMIx_Init(char nspace[], int *rank)
+int PMIx_Init(pmix_proc_t *proc)
 {
     char **uri, *evar;
     int rc, debug_level;
     struct sockaddr_un address;
     pmix_nsrec_t *nsptr;
 
+    if (NULL == proc) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     ++pmix_client_globals.init_cntr;
     if (1 < pmix_client_globals.init_cntr) {
         /* since we have been called before, the nspace and
          * rank should be known. So return them here if
          * requested */
-        if (NULL != nspace) {
-            (void)strncpy(nspace, pmix_globals.nspace, PMIX_MAX_NSLEN);
-        }
-        if (NULL != rank) {
-            *rank = pmix_globals.rank;
-        }
+        (void)strncpy(proc->nspace, pmix_globals.nspace, PMIX_MAX_NSLEN);
+        proc->rank = pmix_globals.rank;
         return PMIX_SUCCESS;
     }
 
@@ -250,9 +250,7 @@ int PMIx_Init(char nspace[], int *rank)
         /* let the caller know that the server isn't available yet */
         return PMIX_ERR_INVALID_NAMESPACE;
     }
-    if (NULL != nspace) {
-        (void)strncpy(nspace, evar, PMIX_MAX_NSLEN);
-    }
+    (void)strncpy(proc->nspace, evar, PMIX_MAX_NSLEN);
     (void)strncpy(pmix_globals.nspace, evar, PMIX_MAX_NSLEN);
     nsptr = PMIX_NEW(pmix_nsrec_t);
     (void)strncpy(nsptr->nspace, evar, PMIX_MAX_NSLEN);
@@ -291,9 +289,7 @@ int PMIx_Init(char nspace[], int *rank)
         return PMIX_ERR_DATA_VALUE_NOT_FOUND;
     }
     pmix_globals.rank = strtol(evar, NULL, 10);
-    if (NULL != rank) {
-        *rank = pmix_globals.rank;
-    }
+    proc->rank = pmix_globals.rank;
     pmix_globals.pindex = -1;
 
     /* create an event base and progress thread for us */
@@ -593,7 +589,7 @@ void PMIx_Deregister_errhandler(void)
    pmix_globals.errhandler = NULL;
 }
 
-pmix_status_t PMIx_Store_internal(const char nspace[], int rank,
+pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc,
                                   const char *key, pmix_value_t *val)
 {
     pmix_nsrec_t *ns, *nsptr;
@@ -612,7 +608,7 @@ pmix_status_t PMIx_Store_internal(const char nspace[], int rank,
 
     ns = NULL;
     PMIX_LIST_FOREACH(nsptr, &pmix_client_globals.nspaces, pmix_nsrec_t) {
-        if (0 == strncmp(nspace, nsptr->nspace, PMIX_MAX_NSLEN)) {
+        if (0 == strncmp(proc->nspace, nsptr->nspace, PMIX_MAX_NSLEN)) {
             ns = nsptr;
             break;
         }
@@ -623,7 +619,7 @@ pmix_status_t PMIx_Store_internal(const char nspace[], int rank,
         return PMIX_ERR_INIT;
     }
 
-    if (PMIX_SUCCESS != (rc = pmix_hash_store(&ns->data, rank, kv))) {
+    if (PMIX_SUCCESS != (rc = pmix_hash_store(&ns->data, proc->rank, kv))) {
         PMIX_ERROR_LOG(rc);
     }
     return rc;
