@@ -179,7 +179,7 @@ void parse_cmd(int argc, char **argv, test_params *params)
             /* pmix_test and pmix_clients are the shell scripts that
              * make sure that actual binary placed in "./.libs" directory
              * is properly linked.
-             * after launch pmix_test you'll found the following process running:
+             * after launch pmix_test you'll find the following process:
              *      <pmix-root-dir>/test/.libs/lt-pmix_test
              *
              * To launch
