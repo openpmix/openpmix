@@ -187,7 +187,6 @@ static void _queue_message(int fd, short args, void *cbdata)
 static pmix_status_t initialize_server_base(pmix_server_module_t *module)
 {
     int debug_level;
-    pid_t pid;
     char *tdir, *evar;
 
     /* initialize the output system */
@@ -199,8 +198,22 @@ static pmix_status_t initialize_server_base(pmix_server_module_t *module)
     memset(&pmix_server_globals, 0, sizeof(pmix_server_globals));
     pmix_server_globals.listen_socket = -1;
 
+    /* look for our namespace, if one was given */
+    if (NULL == (evar = getenv("PMIX_SERVER_NAMESPACE"))) {
+        /* use a fake namespace */
+        (void)strncpy(pmix_globals.nspace, "pmix-server", PMIX_MAX_NSLEN);
+    } else {
+        (void)strncpy(pmix_globals.nspace, evar, PMIX_MAX_NSLEN);
+    }
+    /* look for our rank, if one was given */
+    if (NULL == (evar = getenv("PMIX_SERVER_RANK"))) {
+        /* use our pid */
+        pmix_globals.rank = getpid();
+    } else {
+        pmix_globals.rank = strtol(evar, NULL, 10);
+    }
+
     /* setup the globals */
-    (void)strncpy(pmix_globals.nspace, "pmix-server", PMIX_MAX_NSLEN);
     pmix_globals.debug_output = -1;
     PMIX_CONSTRUCT(&pmix_server_globals.nspaces, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_server_globals.clients, pmix_pointer_array_t);
@@ -231,10 +244,6 @@ static pmix_status_t initialize_server_base(pmix_server_module_t *module)
     pmix_sec_init();
     security_mode = strdup(pmix_sec.name);
 
-    /* setup the path to the daemon rendezvous point, using our
-     * pid as the "rank" */
-    pid = getpid();
-
     /* find the temp dir */
     if (NULL == (tdir = getenv("TMPDIR"))) {
         if (NULL == (tdir = getenv("TEMP"))) {
@@ -246,8 +255,8 @@ static pmix_status_t initialize_server_base(pmix_server_module_t *module)
     /* now set the address */
     memset(&myaddress, 0, sizeof(struct sockaddr_un));
     myaddress.sun_family = AF_UNIX;
-    snprintf(myaddress.sun_path, sizeof(myaddress.sun_path)-1, "%s/pmix-%d", tdir, pid);
-    asprintf(&myuri, "%lu:%s", (unsigned long)pid, myaddress.sun_path);
+    snprintf(myaddress.sun_path, sizeof(myaddress.sun_path)-1, "%s/pmix-%d", tdir, pmix_globals.rank);
+    asprintf(&myuri, "%lu:%s", (unsigned long)pmix_globals.rank, myaddress.sun_path);
 
 
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -1189,8 +1198,13 @@ pmix_status_t PMIx_Get(const pmix_proc_t *proc,
 
     /* need to thread shift this request */
     cd = PMIX_NEW(pmix_shift_caddy_t);
-    cd->nspace = proc->nspace;
-    cd->rank = proc->rank;
+    if (NULL == proc) {
+        cd->nspace = pmix_globals.nspace;
+        cd->rank = pmix_globals.rank;
+    } else {
+        cd->nspace = proc->nspace;
+        cd->rank = proc->rank;
+    }
     cd->key = key;
 
     PMIX_THREADSHIFT(cd, _get);

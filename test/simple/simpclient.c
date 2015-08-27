@@ -38,8 +38,6 @@
 
 int main(int argc, char **argv)
 {
-    char nspace[PMIX_MAX_NSLEN+1];
-    int rank;
     int rc;
     pmix_value_t value;
     pmix_value_t *val = &value;
@@ -52,7 +50,7 @@ int main(int argc, char **argv)
         pmix_output(0, "Client ns %s rank %d: PMIx_Init failed: %d", myproc.nspace, myproc.rank, rc);
         exit(0);
     }
-    pmix_output(0, "Client ns %s rank %d: Running", nspace, rank);
+    pmix_output(0, "Client ns %s rank %d: Running", myproc.nspace, myproc.rank);
 
     /* get our universe size */
     if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_UNIV_SIZE, NULL, 0, &val))) {

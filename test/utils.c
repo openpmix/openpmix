@@ -152,7 +152,6 @@ int launch_clients(int num_procs, char *binary, char *** client_env, char ***bas
     int rc;
     static int counter = 0;
     static int num_ns = 0;
-    char *ns_name;
     pmix_proc_t proc;
 
     TEST_VERBOSE(("Setting job info"));
@@ -162,9 +161,8 @@ int launch_clients(int num_procs, char *binary, char *** client_env, char ***bas
         TEST_ERROR(("fill_seq_ranks_array failed"));
         return PMIX_ERROR;
     }
-    ns_name = (char*)malloc(strlen(TEST_NAMESPACE) + MAX_DIGIT_LEN + 2);
-    sprintf(ns_name, "%s-%d", TEST_NAMESPACE, num_ns);
-    set_namespace(num_procs, ranks, ns_name);
+    (void)snprintf(proc.nspace, PMIX_MAX_NSLEN, "%s-%d", TEST_NAMESPACE, num_ns);
+    set_namespace(num_procs, ranks, proc.nspace);
     if (NULL != ranks) {
         free(ranks);
     }
@@ -174,7 +172,6 @@ int launch_clients(int num_procs, char *binary, char *** client_env, char ***bas
 
     /* fork/exec the test */
     for (n = 0; n < num_procs; n++) {
-        (void)strncpy(proc.nspace, ns_name, PMIX_MAX_NSLEN);
         proc.rank = counter;
         if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(&proc, client_env))) {//n
             TEST_ERROR(("Server fork setup failed with error %d", rc));
@@ -197,7 +194,7 @@ int launch_clients(int num_procs, char *binary, char *** client_env, char ***bas
             return -1;
         }
         cli_info[counter].rank = counter;//n
-        cli_info[counter].ns = strdup(ns_name);
+        cli_info[counter].ns = strdup(proc.nspace);
 
         char **client_argv = pmix_argv_copy(*base_argv);
 
@@ -207,7 +204,7 @@ int launch_clients(int num_procs, char *binary, char *** client_env, char ***bas
         pmix_argv_append_nosize(&client_argv, digit);
 
         pmix_argv_append_nosize(&client_argv, "-s");
-        pmix_argv_append_nosize(&client_argv, ns_name);
+        pmix_argv_append_nosize(&client_argv, proc.nspace);
 
         sprintf(digit, "%d", num_procs);
         pmix_argv_append_nosize(&client_argv, "--ns-size");
@@ -239,6 +236,5 @@ int launch_clients(int num_procs, char *binary, char *** client_env, char ***bas
         counter++;
     }
     num_ns++;
-    free(ns_name);
     return PMIX_SUCCESS;
 }
