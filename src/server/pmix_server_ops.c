@@ -849,8 +849,6 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
 
  cleanup:
     PMIX_PROC_FREE(procs, nprocs);
-    PMIX_INFO_FREE(info, ninfo);
-
     return rc;
 }
 
