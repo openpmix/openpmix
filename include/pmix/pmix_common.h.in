@@ -435,15 +435,6 @@ typedef struct {
         memset((m), 0, (n) * sizeof(pmix_info_t));              \
     } while(0);
 
-#define PMIX_INFO_RELEASE(m, n)                 \
-    {                                           \
-        int i = 0;                              \
-        for(i=0; i < n; i++){                   \
-            PMIX_VALUE_DESTRUCT(&(m)->value);   \
-        }                                       \
-        free((m));                              \
-    }
-
 #define PMIX_INFO_CONSTRUCT(m)                  \
     do {                                        \
         memset((m), 0, sizeof(pmix_info_t));    \
