@@ -136,34 +136,39 @@ static void add_noise(char *noise_param, char *my_nspace, int my_rank)
     }                                                                                                               \
 } while(0);
 
-#define FENCE(blocking, data_ex, pcs, nprocs) do {                      \
-    if( blocking ){                                                                                                 \
-        pmix_info_t *info = NULL; \
-        size_t ninfo = 0; \
-        if (data_ex) { \
-            PMIX_INFO_CREATE(info, 1); \
-            (void)strncpy(info->key, PMIX_COLLECT_DATA, PMIX_MAX_KEYLEN); \
-            ninfo = 1; \
-        }   \
-        rc = PMIx_Fence(pcs, nprocs, info, ninfo);                                                                    \
-        PMIX_INFO_FREE(info, ninfo); \
-    } else {                                                                                                        \
-        int in_progress = 1, count;                                                                                 \
-        if ( PMIX_SUCCESS == (rc = PMIx_Fence_nb(pcs, nprocs, NULL, 0, release_cb, &in_progress))) {              \
-            count = 0;                                                                                              \
-            while( in_progress ){                                                                                   \
-                struct timespec ts;                                                                                 \
-                ts.tv_sec = 0;                                                                                      \
-                ts.tv_nsec = 100;                                                                                   \
-                nanosleep(&ts,NULL);                                                                                \
-                count++;                                                                                            \
-            }                                                                                                       \
-            TEST_VERBOSE(("PMIx_Fence_nb(barrier,collect): free time: %lfs", count*100*1E-9));                      \
-        }                                                                                                           \
-    }                                                                                                               \
-    if (PMIX_SUCCESS == rc) {                                                                                       \
-        TEST_VERBOSE(("%s:%d: Fence successfully completed", my_nspace, my_rank));                                  \
-    }                                                                                                               \
+#define FENCE(blocking, data_ex, pcs, nprocs) do {                              \
+    if( blocking ){                                                             \
+        pmix_info_t *info = NULL;                                               \
+        size_t ninfo = 0;                                                       \
+        if (data_ex) {                                                          \
+            unsigned char value = 1;                                            \
+            PMIX_INFO_CREATE(info, 1);                                          \
+            (void)strncpy(info->key, PMIX_COLLECT_DATA, PMIX_MAX_KEYLEN);       \
+            pmix_value_load(&info->value, &value, PMIX_BYTE);                   \
+            ninfo = 1;                                                          \
+        }                                                                       \
+        rc = PMIx_Fence(pcs, nprocs, info, ninfo);                              \
+        PMIX_INFO_FREE(info, ninfo);                                            \
+    } else {                                                                    \
+        int in_progress = 1, count;                                             \
+        rc = PMIx_Fence_nb(pcs, nprocs, NULL, 0, release_cb, &in_progress);     \
+        if ( PMIX_SUCCESS == rc ) {                                             \
+            count = 0;                                                          \
+            while( in_progress ){                                               \
+                struct timespec ts;                                             \
+                ts.tv_sec = 0;                                                  \
+                ts.tv_nsec = 100;                                               \
+                nanosleep(&ts,NULL);                                            \
+                count++;                                                        \
+            }                                                                   \
+            TEST_VERBOSE(("PMIx_Fence_nb(barrier,collect): free time: %lfs",    \
+                            count*100*1E-9));                                   \
+        }                                                                       \
+    }                                                                           \
+    if (PMIX_SUCCESS == rc) {                                                   \
+        TEST_VERBOSE(("%s:%d: Fence successfully completed",                    \
+                        my_nspace, my_rank));                                   \
+    }                                                                           \
 } while (0);
 
 int test_fence(test_params params, char *my_nspace, int my_rank)
