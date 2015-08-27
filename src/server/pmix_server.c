@@ -1859,6 +1859,12 @@ static void modex_cbfunc(int status, const char *data, size_t ndata, void *cbdat
     PMIX_THREADSHIFT(scd, _mdxcbfunc);
     PMIX_WAIT_FOR_COMPLETION(scd->active);
     PMIX_RELEASE(scd);
+    /* RM relies on us to initiate the cleanup of this buffer.
+     * Since we are waiting for completion, it is safe to do it here.
+     * FIXME: maybe it is better to shift this call to the service
+     *        thread to avoid future errors?
+     */
+     relfn(relcbd);
 }
 
 static void get_cbfunc(int status, const char *data, size_t ndata, void *cbdata,
