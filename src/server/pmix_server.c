@@ -88,7 +88,7 @@ PMIX_CLASS_INSTANCE(pmix_usock_queue_t,
  typedef struct {
     pmix_object_t super;
     pmix_event_t ev;
-    bool active;
+    volatile bool active;
     pmix_status_t status;
     const char *nspace;
     int rank;
@@ -102,10 +102,14 @@ PMIX_CLASS_INSTANCE(pmix_usock_queue_t,
     pmix_value_t *vptr;
     pmix_server_caddy_t *cd;
     pmix_server_trkr_t *tracker;
+    pmix_release_cbfunc_t relfn;
+    void *relcbd;
  } pmix_shift_caddy_t;
 static void scon(pmix_shift_caddy_t *p)
 {
     p->active = false;
+    p->relfn = NULL;
+    p->relcbd = NULL;
 }
 PMIX_CLASS_INSTANCE(pmix_shift_caddy_t,
                     pmix_object_t,
@@ -1834,7 +1838,10 @@ finish_collective:
     PMIX_RELEASE(tracker);
 
     /* we are done */
-    scd->active = false;
+    if (NULL != scd->relfn) {
+        scd->relfn(scd->relcbd);
+    }
+    PMIX_RELEASE(scd);
 }
 static void modex_cbfunc(int status, const char *data, size_t ndata, void *cbdata,
                          pmix_release_cbfunc_t relfn, void *relcbd)
@@ -1856,15 +1863,9 @@ static void modex_cbfunc(int status, const char *data, size_t ndata, void *cbdat
     scd->data = data;
     scd->ndata = ndata;
     scd->tracker = tracker;
+    scd->relfn = relfn;
+    scd->relcbd = relcbd;
     PMIX_THREADSHIFT(scd, _mdxcbfunc);
-    PMIX_WAIT_FOR_COMPLETION(scd->active);
-    PMIX_RELEASE(scd);
-    /* RM relies on us to initiate the cleanup of this buffer.
-     * Since we are waiting for completion, it is safe to do it here.
-     * FIXME: maybe it is better to shift this call to the service
-     *        thread to avoid future errors?
-     */
-     relfn(relcbd);
 }
 
 static void get_cbfunc(int status, const char *data, size_t ndata, void *cbdata,
