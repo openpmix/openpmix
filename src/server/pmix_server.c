@@ -561,11 +561,7 @@ pmix_status_t PMIx_server_register_nspace(const char nspace[], int nlocalprocs,
     /* copy across the info array, if given */
     if (0 < ninfo) {
         cd->ninfo = ninfo;
-        PMIX_INFO_CREATE(cd->info, ninfo);
-        for (i=0; i < ninfo; i++) {
-            (void)strncpy(cd->info[i].key, info[i].key, PMIX_MAX_KEYLEN);
-            pmix_value_xfer(&cd->info[i].value, &info[i].value);
-        }
+	cd->info = info;
     }
 
     /* we have to push this into our event library to avoid

@@ -1424,9 +1424,6 @@ static void scadcon(pmix_setup_caddy_t *p)
 }
 static void scaddes(pmix_setup_caddy_t *p)
 {
-    if (NULL != p->info) {
-        PMIX_INFO_FREE(p->info, p->ninfo);
-    }
 }
 PMIX_CLASS_INSTANCE(pmix_setup_caddy_t,
                     pmix_object_t,
