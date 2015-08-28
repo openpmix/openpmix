@@ -141,10 +141,10 @@ static void add_noise(char *noise_param, char *my_nspace, int my_rank)
         pmix_info_t *info = NULL;                                               \
         size_t ninfo = 0;                                                       \
         if (data_ex) {                                                          \
-            unsigned char value = 1;                                            \
+            bool value = 1;                                            \
             PMIX_INFO_CREATE(info, 1);                                          \
             (void)strncpy(info->key, PMIX_COLLECT_DATA, PMIX_MAX_KEYLEN);       \
-            pmix_value_load(&info->value, &value, PMIX_BYTE);                   \
+            pmix_value_load(&info->value, &value, PMIX_BOOL);                   \
             ninfo = 1;                                                          \
         }                                                                       \
         rc = PMIx_Fence(pcs, nprocs, info, ninfo);                              \
