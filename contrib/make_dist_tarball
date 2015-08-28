@@ -236,11 +236,8 @@ Autoconf: $AC_TARGET_VERSION
 Libtool:  $LT_TARGET_VERSION
 Flex:     $FLEX_TARGET_VERSION
 
-This is *usually* ok, but this script is going to sleep for 5 seconds
-to give you the chance to quit before doing anything.
 ----------------------------------------------------------------------
 EOF
-            sleep 5
         fi
 
     elif test "$result" = "unknown"; then
