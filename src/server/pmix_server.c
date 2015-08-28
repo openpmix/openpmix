@@ -1853,7 +1853,11 @@ static void modex_cbfunc(int status, const char *data, size_t ndata, void *cbdat
                         "server:modex_cbfunc called with %d bytes", (int)ndata);
 
     if (NULL == tracker) {
-        /* nothing to do */
+        /* nothing to do - but be sure to give them
+         * a release if they want it */
+        if (NULL != relfn) {
+            relfn(relcbd);
+        }
         return;
     }
 
@@ -1881,7 +1885,11 @@ static void get_cbfunc(int status, const char *data, size_t ndata, void *cbdata,
     /* no need to thread-shift here as no global data is accessed */
 
     if (NULL == cd) {
-        /* nothing to do */
+        /* nothing to do - but be sure to give them
+         * a release if they want it */
+        if (NULL != relfn) {
+            relfn(relcbd);
+        }
         return;
     }
 
@@ -1905,6 +1913,10 @@ static void get_cbfunc(int status, const char *data, size_t ndata, void *cbdata,
     PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
 
  cleanup:
+    /* if someone wants a release, give it to them */
+    if (NULL != relfn) {
+        relfn(relcbd);
+    }
     PMIX_RELEASE(cd);
 }
 
@@ -1965,7 +1977,7 @@ static void _cnct(int sd, short args, void *cbdata)
     PMIX_RELEASE(tracker);
 
     /* we are done */
-    scd->active = false;
+    PMIX_RELEASE(scd);
 }
 
 static void cnct_cbfunc(int status, void *cbdata)
@@ -1986,8 +1998,6 @@ static void cnct_cbfunc(int status, void *cbdata)
     scd->status = status;
     scd->tracker = tracker;
     PMIX_THREADSHIFT(scd, _mdxcbfunc);
-    PMIX_WAIT_FOR_COMPLETION(scd->active);
-    PMIX_RELEASE(scd);
 }
 
 
