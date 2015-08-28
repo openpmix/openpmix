@@ -181,6 +181,12 @@ int pmix_bfrop_open(void)
     pmix_bfrop_initial_size = 1;
 
     /* Register all the supported types */
+    PMIX_REGISTER_TYPE("PMIX_BOOL", PMIX_BOOL,
+                       pmix_bfrop_pack_bool,
+                       pmix_bfrop_unpack_bool,
+                       pmix_bfrop_std_copy,
+                       pmix_bfrop_print_bool);
+
     PMIX_REGISTER_TYPE("PMIX_BYTE", PMIX_BYTE,
                        pmix_bfrop_pack_byte,
                        pmix_bfrop_unpack_byte,

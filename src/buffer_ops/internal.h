@@ -242,6 +242,8 @@ PMIX_DECLSPEC    int pmix_bfrop_unpack_buffer(pmix_buffer_t *buffer, void *dst,
  * Internal pack functions
  */
 
+int pmix_bfrop_pack_bool(pmix_buffer_t *buffer, const void *src,
+                         int32_t num_vals, pmix_data_type_t type);
 int pmix_bfrop_pack_byte(pmix_buffer_t *buffer, const void *src,
                          int32_t num_vals, pmix_data_type_t type);
 int pmix_bfrop_pack_string(pmix_buffer_t *buffer, const void *src,
@@ -302,6 +304,8 @@ int pmix_bfrop_pack_pdata(pmix_buffer_t *buffer, const void *src,
 /*
  * Internal unpack functions
  */
+int pmix_bfrop_unpack_bool(pmix_buffer_t *buffer, void *dest,
+                           int32_t *num_vals, pmix_data_type_t type);
 int pmix_bfrop_unpack_byte(pmix_buffer_t *buffer, void *dest,
                            int32_t *num_vals, pmix_data_type_t type);
 int pmix_bfrop_unpack_string(pmix_buffer_t *buffer, void *dest,
@@ -398,6 +402,7 @@ int pmix_bfrop_copy_pdata(pmix_pdata_t **dest, pmix_pdata_t *src,
 /*
  * Internal print functions
  */
+int pmix_bfrop_print_bool(char **output, char *prefix, bool *src, pmix_data_type_t type);
 int pmix_bfrop_print_byte(char **output, char *prefix, uint8_t *src, pmix_data_type_t type);
 int pmix_bfrop_print_string(char **output, char *prefix, char *src, pmix_data_type_t type);
 int pmix_bfrop_print_size(char **output, char *prefix, size_t *src, pmix_data_type_t type);

@@ -141,6 +141,40 @@ int pmix_bfrop_unpack_buffer(pmix_buffer_t *buffer, void *dst, int32_t *num_vals
 /* UNPACK GENERIC SYSTEM TYPES */
 
 /*
+ * BOOL
+ */
+int pmix_bfrop_unpack_bool(pmix_buffer_t *buffer, void *dest,
+                           int32_t *num_vals, pmix_data_type_t type)
+{
+    int32_t i, k;
+    uint8_t *src;
+    bool *dst;
+
+    pmix_output_verbose(20, pmix_globals.debug_output, "pmix_bfrop_unpack_bool * %d\n", (int)*num_vals);
+    /* check to see if there's enough data in buffer */
+    if (pmix_bfrop_too_small(buffer, *num_vals)) {
+        return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
+    }
+
+    /* unpack the data */
+    src = (uint8_t*)buffer->unpack_ptr;
+    dst = (bool*)dest;
+
+    for (i=0; i < *num_vals; i++) {
+        if (src[i]) {
+            dst[i] = true;
+        } else {
+            dst[i] = false;
+        }
+    }
+
+    /* update buffer pointer */
+    buffer->unpack_ptr += *num_vals;
+
+    return PMIX_SUCCESS;
+}
+
+/*
  * INT
  */
 int pmix_bfrop_unpack_int(pmix_buffer_t *buffer, void *dest,

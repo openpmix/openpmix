@@ -50,6 +50,32 @@ int pmix_bfrop_print(char **output, char *prefix, void *src, pmix_data_type_t ty
 /*
  * STANDARD PRINT FUNCTIONS FOR SYSTEM TYPES
  */
+int pmix_bfrop_print_bool(char **output, char *prefix, bool *src, pmix_data_type_t type)
+{
+    char *prefx;
+
+    /* deal with NULL prefix */
+    if (NULL == prefix) asprintf(&prefx, " ");
+    else prefx = prefix;
+
+    /* if src is NULL, just print data type and return */
+    if (NULL == src) {
+        asprintf(output, "%sData type: PMIX_BOOL\tValue: NULL pointer", prefx);
+        if (prefx != prefix) {
+            free(prefx);
+        }
+        return PMIX_SUCCESS;
+    }
+
+    asprintf(output, "%sData type: PMIX_BOOL\tValue: %s", prefix,
+             (*src) ? "TRUE" : "FALSE");
+    if (prefx != prefix) {
+        free(prefx);
+    }
+
+    return PMIX_SUCCESS;
+}
+
 int pmix_bfrop_print_byte(char **output, char *prefix, uint8_t *src, pmix_data_type_t type)
 {
     char *prefx;

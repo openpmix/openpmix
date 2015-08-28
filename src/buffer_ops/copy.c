@@ -84,6 +84,10 @@ int pmix_bfrop_std_copy(void **dest, void *src, pmix_data_type_t type)
     uint8_t *val = NULL;
 
     switch(type) {
+    case PMIX_BOOL:
+        datasize = sizeof(bool);
+        break;
+
     case PMIX_INT:
     case PMIX_UINT:
         datasize = sizeof(int);
@@ -169,6 +173,9 @@ int pmix_value_xfer(pmix_value_t *p, pmix_value_t *src)
     /* copy the right field */
     p->type = src->type;
     switch (src->type) {
+    case PMIX_BOOL:
+        p->data.flag = src->data.flag;
+        break;
     case PMIX_BYTE:
         p->data.byte = src->data.byte;
         break;

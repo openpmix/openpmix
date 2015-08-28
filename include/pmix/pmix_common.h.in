@@ -229,6 +229,7 @@ typedef enum {
 /****    PMIX DATA TYPES    ****/
 typedef enum {
     PMIX_UNDEF = 0,
+    PMIX_BOOL,           // converted to/from native true/false to uint8 for pack/unpack 
     PMIX_BYTE,           // a byte of data
     PMIX_STRING,         // NULL-terminated string
     PMIX_SIZE,           // size_t
@@ -356,6 +357,7 @@ typedef struct {
 typedef struct {
     pmix_data_type_t type;
     union {
+        bool flag;
         uint8_t byte;
         char *string;
         size_t size;

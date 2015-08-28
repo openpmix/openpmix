@@ -86,6 +86,38 @@ int pmix_bfrop_pack_buffer(pmix_buffer_t *buffer,
 /* PACK FUNCTIONS FOR GENERIC SYSTEM TYPES */
 
 /*
+ * BOOL
+ */
+int pmix_bfrop_pack_bool(pmix_buffer_t *buffer, const void *src,
+                         int32_t num_vals, pmix_data_type_t type)
+{
+    uint8_t *dst;
+    int32_t i;
+    bool *s = (bool*)src;
+
+    pmix_output_verbose(20, pmix_globals.debug_output, "pmix_bfrop_pack_bool * %d\n", num_vals);
+    /* check to see if buffer needs extending */
+    if (NULL == (dst = (uint8_t*)pmix_bfrop_buffer_extend(buffer, num_vals))) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+
+    /* store the data */
+    for (i=0; i < num_vals; i++) {
+        if (s[i]) {
+            dst[i] = 1;
+        } else {
+            dst[i] = 0;
+        }
+    }
+
+    /* update buffer pointers */
+    buffer->pack_ptr += num_vals;
+    buffer->bytes_used += num_vals;
+
+    return PMIX_SUCCESS;
+}
+
+/*
  * INT
  */
 int pmix_bfrop_pack_int(pmix_buffer_t *buffer, const void *src,
