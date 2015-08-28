@@ -408,6 +408,11 @@ static int pack_val(pmix_buffer_t *buffer,
     int ret;
 
     switch (p->type) {
+    case PMIX_BOOL:
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &p->data.flag, 1, PMIX_BOOL))) {
+            return ret;
+        }
+        break;
     case PMIX_BYTE:
         if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &p->data.byte, 1, PMIX_BYTE))) {
             return ret;

@@ -507,6 +507,11 @@ static int unpack_val(pmix_buffer_t *buffer, pmix_value_t *val)
 
     m = 1;
     switch (val->type) {
+    case PMIX_BOOL:
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_buffer(buffer, &val->data.flag, &m, PMIX_BOOL))) {
+            return ret;
+        }
+        break;
     case PMIX_BYTE:
         if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_buffer(buffer, &val->data.byte, &m, PMIX_BYTE))) {
             return ret;
