@@ -183,24 +183,11 @@ static void _queue_message(int fd, short args, void *cbdata)
     } while(0);
 
 
-static void abort_signal_callback(int signal)
-{
-    pmix_output(0, "OUCH");
-    if (pmix_server_globals.listen_thread_active) {
-        /* ensure we cleanup the rendezvous file */
-        unlink(myaddress.sun_path);
-    }
-}
-
 static pmix_status_t initialize_server_base(pmix_server_module_t *module)
 {
     int debug_level;
     char *tdir, *evar;
-
-    /* point the signal trap to a function that will cleanup */
-    signal(SIGTERM, abort_signal_callback);
-    signal(SIGINT, abort_signal_callback);
-    signal(SIGHUP, abort_signal_callback);
+    pid_t pid;
 
     /* initialize the output system */
     if (!pmix_output_init()) {
@@ -222,9 +209,10 @@ static pmix_status_t initialize_server_base(pmix_server_module_t *module)
         (void)strncpy(pmix_globals.myid.nspace, evar, PMIX_MAX_NSLEN);
     }
     /* look for our rank, if one was given */
+    pid = getpid();
     if (NULL == (evar = getenv("PMIX_SERVER_RANK"))) {
         /* use our pid */
-        pmix_globals.myid.rank = getpid();
+        pmix_globals.myid.rank = pid;
     } else {
         pmix_globals.myid.rank = strtol(evar, NULL, 10);
     }
@@ -265,10 +253,10 @@ static pmix_status_t initialize_server_base(pmix_server_module_t *module)
             }
         }
     }
-    /* now set the address */
+    /* now set the address - we use the pid here to reduce collisions */
     memset(&myaddress, 0, sizeof(struct sockaddr_un));
     myaddress.sun_family = AF_UNIX;
-    snprintf(myaddress.sun_path, sizeof(myaddress.sun_path)-1, "%s/pmix-%d", tdir, pmix_globals.myid.rank);
+    snprintf(myaddress.sun_path, sizeof(myaddress.sun_path)-1, "%s/pmix-%d", tdir, pid);
     asprintf(&myuri, "%s:%lu:%s", pmix_globals.myid.nspace, (unsigned long)pmix_globals.myid.rank, myaddress.sun_path);
 
 
