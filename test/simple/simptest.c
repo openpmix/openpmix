@@ -271,7 +271,6 @@ int main(int argc, char **argv)
         ts.tv_nsec = 100000;
         nanosleep(&ts, NULL);
     }
-
     pmix_argv_free(client_argv);
     pmix_argv_free(client_env);
 

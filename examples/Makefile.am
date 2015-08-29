@@ -27,7 +27,7 @@ server_SOURCES = \
         server.c
 
 server_LDADD = \
-	$(top_builddir)/libpmix_server.la
+	$(top_builddir)/libpmix.la
 
 client_SOURCES = \
         client.c

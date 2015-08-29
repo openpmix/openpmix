@@ -28,6 +28,10 @@
 
 #include <pmix_common.h>
 
+#include "src/buffer_ops/types.h"
+#include "src/class/pmix_hash_table.h"
+#include "src/class/pmix_list.h"
+
 BEGIN_C_DECLS
 
 #define PMIX_MAX_CRED_SIZE  131072   // set max at 128kbytes
@@ -36,14 +40,66 @@ BEGIN_C_DECLS
  * between various parts of the code library. Both the client
  * and server libraries must instance this structure */
 typedef struct {
-    char nspace[PMIX_MAX_NSLEN+1];
-    int rank, pindex;
+    int init_cntr;                       // #times someone called Init - #times called Finalize
+    pmix_proc_t myid;
+    int pindex;
     pmix_event_base_t *evbase;
     int debug_output;
     pmix_notification_fn_t errhandler;
     bool server;
     bool connected;
+    pmix_list_t nspaces;                 // list of pmix_nspace_t for the nspaces we know about
+    pmix_buffer_t *cache_local;          // data PUT by me to local scope
+    pmix_buffer_t *cache_remote;         // data PUT by me to remote scope
 } pmix_globals_t;
+
+/* objects for tracking active nspaces */
+typedef struct {
+    pmix_object_t super;
+    size_t nlocalprocs;
+    bool all_registered;         // all local ranks have been defined
+    pmix_buffer_t job_info;      // packed copy of the job-level info to be delivered to each proc
+    pmix_list_t ranks;           // list of pmix_rank_info_t for connection support of my clients
+    pmix_hash_table_t mylocal;   // hash_table for storing data PUT with local/global scope by my clients
+    pmix_hash_table_t myremote;  // hash_table for storing data PUT with remote/global scope by my clients
+    pmix_hash_table_t remote;    // hash_table for storing data PUT with remote/global scope recvd from remote clients via modex
+} pmix_server_nspace_t;
+PMIX_CLASS_DECLARATION(pmix_server_nspace_t);
+
+typedef struct {
+    pmix_list_item_t super;
+    char nspace[PMIX_MAX_NSLEN+1];
+    pmix_list_t nodes;               // list of pmix_nrec_t nodes that house procs in this nspace
+    pmix_hash_table_t internal;      // hash_table for storing job-level/internal data related to this nspace
+    pmix_hash_table_t modex;         // hash_table of received modex data
+    pmix_server_nspace_t *server;    // isolate these so the client doesn't instantiate them
+} pmix_nspace_t;
+PMIX_CLASS_DECLARATION(pmix_nspace_t);
+
+typedef struct pmix_rank_info_t {
+    pmix_list_item_t super;
+    pmix_nspace_t *nptr;
+    int rank;
+    uid_t uid;
+    gid_t gid;
+    bool modex_recvd;
+    int proc_cnt;              // #clones of this rank we know about
+    void *server_object;       // pointer to rank-specific object provided by server
+} pmix_rank_info_t;
+PMIX_CLASS_DECLARATION(pmix_rank_info_t);
+
+typedef struct {
+    pmix_list_item_t super;
+    char *name;              // name of the node
+    char *procs;             // comma-separated list of proc ranks on that node
+} pmix_nrec_t;
+PMIX_CLASS_DECLARATION(pmix_nrec_t);
+
+/* initialize the pmix_global structure */
+void pmix_globals_init(void);
+
+/*  finalize the pmix_global structure */
+void pmix_globals_finalize(void);
 
 extern pmix_globals_t pmix_globals;
 

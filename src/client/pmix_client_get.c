@@ -75,17 +75,12 @@ int PMIx_Get(const pmix_proc_t *proc, const char key[],
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: %s:%d getting value for proc %s:%d key %s",
-                        pmix_globals.nspace, pmix_globals.rank,
+                        pmix_globals.myid.nspace, pmix_globals.myid.rank,
                         proc->nspace, proc->rank,
                         (NULL == key) ? "NULL" : key);
 
-    if (pmix_client_globals.init_cntr <= 0) {
+    if (pmix_globals.init_cntr <= 0) {
         return PMIX_ERR_INIT;
-    }
-
-    /* if we aren't connected, don't attempt to send */
-    if (!pmix_globals.connected) {
-        return PMIX_ERR_UNREACH;
     }
 
     /* create a callback object as we need to pass it to the
@@ -121,7 +116,7 @@ int PMIx_Get_nb(const pmix_proc_t *proc, const char *key,
     pmix_cb_t *cb;
     int rc;
     char *nm;
-    pmix_nsrec_t *ns, *nptr;
+    pmix_nspace_t *ns, *nptr;
 
     if (NULL == proc) {
         return PMIX_ERR_BAD_PARAM;
@@ -132,13 +127,8 @@ int PMIx_Get_nb(const pmix_proc_t *proc, const char *key,
                         proc->nspace, proc->rank,
                         (NULL == key) ? "NULL" : key);
 
-    if (pmix_client_globals.init_cntr <= 0) {
+    if (pmix_globals.init_cntr <= 0) {
         return PMIX_ERR_INIT;
-    }
-
-    /* if we aren't connected, don't attempt to send */
-    if (!pmix_globals.connected) {
-        return PMIX_ERR_UNREACH;
     }
 
     /* protect against bozo input */
@@ -149,14 +139,14 @@ int PMIx_Get_nb(const pmix_proc_t *proc, const char *key,
     /* if the nspace is empty, then the caller is referencing
      * our own nspace */
     if (0 == strlen(proc->nspace)) {
-        nm = pmix_globals.nspace;
+        nm = pmix_globals.myid.nspace;
     } else {
         nm = (char*)proc->nspace;
     }
 
     /* find the nspace object */
     nptr = NULL;
-    PMIX_LIST_FOREACH(ns, &pmix_client_globals.nspaces, pmix_nsrec_t) {
+    PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_nspace_t) {
         if (0 == strcmp(nm, ns->nspace)) {
             nptr = ns;
             break;
@@ -167,9 +157,9 @@ int PMIx_Get_nb(const pmix_proc_t *proc, const char *key,
          * a chance to learn about it from the server. If the
          * server has never heard of it, the server will return
          * an error */
-         nptr = PMIX_NEW(pmix_nsrec_t);
+         nptr = PMIX_NEW(pmix_nspace_t);
          (void)strncpy(nptr->nspace, nm, PMIX_MAX_NSLEN);
-         pmix_list_append(&pmix_client_globals.nspaces, &nptr->super);
+         pmix_list_append(&pmix_globals.nspaces, &nptr->super);
          /* there is no point in looking for data in this nspace
           * object, so let's just go generate the request */
          goto request;
@@ -177,7 +167,7 @@ int PMIx_Get_nb(const pmix_proc_t *proc, const char *key,
 
     /* the requested data could be in the job-data table, so let's
      * just check there first.  */
-    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->data, PMIX_RANK_WILDCARD, key, &val))) {
+    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->internal, PMIX_RANK_WILDCARD, key, &val))) {
         /* found it - return it via appropriate channel */
         cb = PMIX_NEW(pmix_cb_t);
         (void)strncpy(cb->nspace, nm, PMIX_MAX_NSLEN);
@@ -207,7 +197,7 @@ int PMIx_Get_nb(const pmix_proc_t *proc, const char *key,
     /* it could still be in the job-data table, only stored under its own
      * rank and not WILDCARD - e.g., this is true of data returned about
      * ourselves during startup */
-    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->data, proc->rank, key, &val))) {
+    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->internal, proc->rank, key, &val))) {
         /* found it - return it via appropriate channel */
         cb = PMIX_NEW(pmix_cb_t);
         (void)strncpy(cb->nspace, nm, PMIX_MAX_NSLEN);
@@ -268,8 +258,14 @@ int PMIx_Get_nb(const pmix_proc_t *proc, const char *key,
     }
 
   request:
-    /* if we got here, then we don't have the data for this proc - see if
-     * we already have a request in place with the server for data from
+    /* if we got here, then we don't have the data for this proc. If we
+     * are a server, or we are a client and not connected, then there is
+     * nothing more we can do */
+    if (pmix_globals.server || (!pmix_globals.server && !pmix_globals.connected)) {
+        return PMIX_ERR_NOT_FOUND;
+    }
+
+    /* see if we already have a request in place with the server for data from
      * this nspace:rank. If we do, then no need to ask again as the
      * request will return _all_ data from that proc */
     PMIX_LIST_FOREACH(cb, &pmix_client_globals.pending_requests, pmix_cb_t) {
@@ -374,7 +370,7 @@ static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     int32_t cnt;
     pmix_buffer_t *bptr;
     pmix_kval_t *kp;
-    pmix_nsrec_t *ns, *nptr;
+    pmix_nspace_t *ns, *nptr;
     int rank;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -396,7 +392,7 @@ static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
 
     /* look up the nspace object for this proc */
     nptr = NULL;
-    PMIX_LIST_FOREACH(ns, &pmix_client_globals.nspaces, pmix_nsrec_t) {
+    PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_nspace_t) {
         if (0 == strcmp(cb->nspace, ns->nspace)) {
             nptr = ns;
             break;
@@ -404,9 +400,9 @@ static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     }
     if (NULL == nptr) {
         /* new nspace - setup a record for it */
-        nptr = PMIX_NEW(pmix_nsrec_t);
+        nptr = PMIX_NEW(pmix_nspace_t);
         (void)strncpy(nptr->nspace, cb->nspace, PMIX_MAX_NSLEN);
-        pmix_list_append(&pmix_client_globals.nspaces, &nptr->super);
+        pmix_list_append(&pmix_globals.nspaces, &nptr->super);
     }
 
     if (PMIX_SUCCESS != ret) {

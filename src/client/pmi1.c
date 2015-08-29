@@ -139,7 +139,7 @@ int PMI_Get_rank(int *rk)
         return PMI_FAIL;
     }
 
-    *rk = pmix_globals.rank;
+    *rk = pmix_globals.myid.rank;
     return PMI_SUCCESS;
 }
 
@@ -245,7 +245,7 @@ int PMI_Get_id(char id_str[], int length)
     if (NULL == id_str) {
         return PMI_ERR_INVALID_ARGS;
     }
-    (void)strncpy(id_str, pmix_globals.nspace, length);
+    (void)strncpy(id_str, pmix_globals.myid.nspace, length);
     return PMI_SUCCESS;
 }
 

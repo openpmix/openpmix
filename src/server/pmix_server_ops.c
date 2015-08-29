@@ -610,7 +610,7 @@ static pmix_server_trkr_t* new_tracker(pmix_proc_t *procs,
         trk->pcs[i].rank = procs[i].rank;
         /* is this nspace known to us? */
         nptr = NULL;
-        PMIX_LIST_FOREACH(ns, &pmix_server_globals.nspaces, pmix_nspace_t) {
+        PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_nspace_t) {
             if (0 == strcmp(procs[i].nspace, ns->nspace)) {
                 nptr = ns;
                 break;
@@ -778,7 +778,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
         PMIX_INFO_FREE(info, ninfo);
         info = NULL;
     }
- 
+
     /* add this contributor to the tracker so they get
      * notified when we are done */
     PMIX_RETAIN(cd);
@@ -866,7 +866,7 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
 
     /* find the nspace object for this client */
     nptr = NULL;
-    PMIX_LIST_FOREACH(ns, &pmix_server_globals.nspaces, pmix_nspace_t) {
+    PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_nspace_t) {
         if (0 == strcmp(caddy->lcd->proc.nspace, ns->nspace)) {
             nptr = ns;
             break;
@@ -962,7 +962,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     }
     /* find the nspace object for this client */
     nptr = NULL;
-    PMIX_LIST_FOREACH(ns, &pmix_server_globals.nspaces, pmix_nspace_t) {
+    PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_nspace_t) {
         if (0 == strcmp(nspace, ns->nspace)) {
             nptr = ns;
             break;
@@ -971,8 +971,8 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "%s:%d EXECUTE GET FOR %s:%d",
-                        pmix_globals.nspace,
-                        pmix_globals.rank, nspace, rank);
+                        pmix_globals.myid.nspace,
+                        pmix_globals.myid.rank, nspace, rank);
 
     /* retrieve any provided info structs */
     cnt = 1;
@@ -995,7 +995,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
          * give the host server a chance to tell us about it */
         nptr = PMIX_NEW(pmix_nspace_t);
         (void)strncpy(nptr->nspace, nspace, PMIX_MAX_NSLEN);
-        pmix_list_append(&pmix_server_globals.nspaces, &nptr->super);
+        pmix_list_append(&pmix_globals.nspaces, &nptr->super);
     }
     /* if we don't have any ranks for this job, protect ourselves here */
     if (NULL == nptr->server) {

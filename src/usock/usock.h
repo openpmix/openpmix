@@ -76,45 +76,6 @@ typedef enum {
     PMIX_NOTIFY_CMD
 } pmix_cmd_t;
 
-/*********************************************************/
-/* although the following two object definitions are really
- * only used in the server, they are placed here so that
- * the usock system can save a little memory footprint */
-/*********************************************************/
-/* objects for tracking active nspaces */
-typedef struct {
-    pmix_object_t super;
-    size_t nlocalprocs;
-    bool all_registered;         // all local ranks have been defined
-    pmix_buffer_t job_info;      // packed copy of the job-level info to be delivered to each proc
-    pmix_list_t ranks;           // list of pmix_rank_info_t for connection support of my clients
-    pmix_hash_table_t internal;  // hash_table for storing internal data related to this nspace for my use
-    pmix_hash_table_t mylocal;   // hash_table for storing data PUT with local/global scope by my clients
-    pmix_hash_table_t myremote;  // hash_table for storing data PUT with remote/global scope by my clients
-    pmix_hash_table_t remote;    // hash_table for storing data PUT with remote/global scope recvd from remote clients via modex
-} pmix_server_nspace_t;
-PMIX_CLASS_DECLARATION(pmix_server_nspace_t);
-
-typedef struct {
-    pmix_list_item_t super;
-    char nspace[PMIX_MAX_NSLEN+1];
-    pmix_server_nspace_t *server;   // isolate these so the client doesn't instantiate them
-} pmix_nspace_t;
-PMIX_CLASS_DECLARATION(pmix_nspace_t);
-
-typedef struct pmix_rank_info_t {
-    pmix_list_item_t super;
-    pmix_nspace_t *nptr;
-    int rank;
-    uid_t uid;
-    gid_t gid;
-    bool modex_recvd;
-    int proc_cnt;              // #clones of this rank we know about
-    void *server_object;       // pointer to rank-specific object provided by server
-} pmix_rank_info_t;
-PMIX_CLASS_DECLARATION(pmix_rank_info_t);
-/*********************************************************/
-
 
 /* header for messages */
 typedef struct {

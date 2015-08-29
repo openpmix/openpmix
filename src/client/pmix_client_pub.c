@@ -72,7 +72,7 @@ int PMIx_Publish(pmix_data_range_t scope,
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: publish called");
 
-    if (pmix_client_globals.init_cntr <= 0) {
+    if (pmix_globals.init_cntr <= 0) {
         return PMIX_ERR_INIT;
     }
 
@@ -113,7 +113,7 @@ int PMIx_Publish_nb(pmix_data_range_t scope,
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: publish called");
 
-    if (pmix_client_globals.init_cntr <= 0) {
+    if (pmix_globals.init_cntr <= 0) {
         return PMIX_ERR_INIT;
     }
 
@@ -238,7 +238,7 @@ int PMIx_Lookup_nb(pmix_data_range_t range, char **keys,
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: lookup called");
 
-    if (pmix_client_globals.init_cntr <= 0) {
+    if (pmix_globals.init_cntr <= 0) {
         return PMIX_ERR_INIT;
     }
 
@@ -342,7 +342,7 @@ int PMIx_Unpublish_nb(pmix_data_range_t scope, char **keys,
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: unpublish called");
 
-    if (pmix_client_globals.init_cntr <= 0) {
+    if (pmix_globals.init_cntr <= 0) {
         return PMIX_ERR_INIT;
     }
 

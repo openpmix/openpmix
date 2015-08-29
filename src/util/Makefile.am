@@ -51,31 +51,3 @@ sources += \
         src/util/os_path.c \
         src/util/basename.c \
         src/util/hash.c
-
-server_headers += \
-        src/util/argv.h \
-        src/util/error.h \
-        src/util/printf.h \
-        src/util/output.h \
-        src/util/pmix_environ.h \
-        src/util/crc.h \
-        src/util/progress_threads.h \
-        src/util/fd.h \
-        src/util/timings.h \
-        src/util/os_path.h \
-        src/util/basename.h \
-        src/util/hash.h
-
-server_sources += \
-        src/util/argv.c \
-        src/util/error.c \
-        src/util/printf.c \
-        src/util/output.c \
-        src/util/pmix_environ.c \
-        src/util/crc.c \
-        src/util/progress_threads.c \
-        src/util/fd.c \
-        src/util/os_path.c \
-        src/util/basename.c \
-        src/util/hash.c
-

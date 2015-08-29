@@ -67,7 +67,7 @@ int PMIx_Spawn(const pmix_info_t job_info[], size_t ninfo,
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: spawn called");
 
-    if (pmix_client_globals.init_cntr <= 0) {
+    if (pmix_globals.init_cntr <= 0) {
         return PMIX_ERR_INIT;
     }
 
@@ -113,7 +113,7 @@ int PMIx_Spawn_nb(const pmix_info_t job_info[], size_t ninfo,
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: spawn called");
 
-    if (pmix_client_globals.init_cntr <= 0) {
+    if (pmix_globals.init_cntr <= 0) {
         return PMIX_ERR_INIT;
     }
 

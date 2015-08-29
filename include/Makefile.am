@@ -2,9 +2,9 @@
 # Copyright 2015      Intel, Inc. All rights reserved
 #
 # $COPYRIGHT$
-# 
+#
 # Additional copyrights may follow
-# 
+#
 # $HEADER$
 #
 
@@ -38,8 +38,5 @@ noinst_HEADERS = \
 	include/private/pmix_stdint.h \
 	include/private/prefetch.h \
 	include/private/types.h
-
-server_headers += \
-	include/pmix_server.h
 
 endif ! PMIX_EMBEDDED_MODE

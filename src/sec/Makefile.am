@@ -15,26 +15,11 @@ sources += \
         src/sec/pmix_sec.c \
         src/sec/pmix_native.c
 
-server_headers += \
-        src/sec/pmix_sec.h \
-        src/sec/pmix_native.h
-
-server_sources += \
-        src/sec/pmix_sec.c \
-        src/sec/pmix_native.c
-
-
 if PMIX_WANT_MUNGE
 headers += \
         src/sec/pmix_munge.h
 
 sources += \
-        src/sec/pmix_munge.c
-
-server_headers += \
-        src/sec/pmix_munge.h
-
-server_sources += \
         src/sec/pmix_munge.c
 endif
 
@@ -43,11 +28,5 @@ headers += \
         src/sec/pmix_sasl.h
 
 sources += \
-        src/sec/pmix_sasl.c
-
-server_headers += \
-        src/sec/pmix_sasl.h
-
-server_sources += \
         src/sec/pmix_sasl.c
 endif

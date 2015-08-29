@@ -322,7 +322,7 @@ int PMI2_Job_GetId(char jobid[], int jobid_size)
     if (NULL == jobid) {
         return PMI2_ERR_INVALID_ARGS;
     }
-    (void)strncpy(jobid, pmix_globals.nspace, jobid_size);
+    (void)strncpy(jobid, pmix_globals.myid.nspace, jobid_size);
     return PMI2_SUCCESS;
 }
 

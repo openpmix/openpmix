@@ -31,7 +31,7 @@ pmix_test_SOURCES = $(headers) \
         pmix_test.c test_common.c cli_stages.c server_callbacks.c utils.c
 
 pmix_test_LDADD = \
-	$(top_builddir)/libpmix_server.la
+	$(top_builddir)/libpmix.la
 
 pmi_client_SOURCES = $(headers) \
         pmi_client.c
@@ -55,5 +55,5 @@ pmix_regex_SOURCES = $(headers) \
         pmix_regex.c test_common.c cli_stages.c utils.c
 
 pmix_regex_LDADD = \
-	$(top_builddir)/libpmix_server.la $(top_builddir)/libpmix.la
+	$(top_builddir)/libpmix.la
 

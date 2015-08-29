@@ -72,7 +72,7 @@ int PMIx_Fence(const pmix_proc_t procs[], size_t nprocs,
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: executing fence");
 
-    if (pmix_client_globals.init_cntr <= 0) {
+    if (pmix_globals.init_cntr <= 0) {
         return PMIX_ERR_INIT;
     }
 
@@ -119,7 +119,7 @@ int PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs,
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: fence_nb called");
 
-    if (pmix_client_globals.init_cntr <= 0) {
+    if (pmix_globals.init_cntr <= 0) {
         return PMIX_ERR_INIT;
     }
 
@@ -135,7 +135,7 @@ int PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs,
     /* if we are given a NULL proc, then the caller is referencing
      * all procs within our own nspace */
     if (NULL == procs) {
-        (void)strncpy(rg.nspace, pmix_globals.nspace, PMIX_MAX_NSLEN);
+        (void)strncpy(rg.nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
         rg.rank = PMIX_RANK_WILDCARD;
         rgs = &rg;
         nrg = 1;

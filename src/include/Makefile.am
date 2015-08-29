@@ -24,5 +24,5 @@
 headers += \
         src/include/pmix_globals.h
 
-server_headers += \
-        src/include/pmix_globals.h
+sources += \
+        src/include/pmix_globals.c

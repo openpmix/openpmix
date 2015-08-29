@@ -27,7 +27,7 @@ simptest_SOURCES = \
         simptest.c
 
 simptest_LDADD = \
-	$(top_builddir)/libpmix_server.la
+	$(top_builddir)/libpmix.la
 
 simpclient_SOURCES = \
         simpclient.c

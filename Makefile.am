@@ -34,9 +34,6 @@ if ! PMIX_EMBEDDED_MODE
 dist_pmixdata_DATA += contrib/pmix-valgrind.supp
 endif
 
-server_headers =
-server_sources =
-
 EXTRA_DIST = README INSTALL VERSION LICENSE autogen.sh \
              config/pmix_get_version.sh
 
@@ -57,13 +54,10 @@ include src/client/Makefile.am
 include src/server/Makefile.am
 include src/sec/Makefile.am
 
-lib_LTLIBRARIES = libpmix.la libpmix_server.la
+lib_LTLIBRARIES = libpmix.la
 
 libpmix_la_SOURCES = $(headers) $(sources)
 libpmix_la_LDFLAGS = -version-info $(libpmix_so_version)
-
-libpmix_server_la_SOURCES = $(server_headers) $(server_sources)
-libpmix_server_la_LDFLAGS = -version-info $(libpmix_so_version)
 
 if ! PMIX_EMBEDDED_MODE
 SUBDIRS = . test examples
