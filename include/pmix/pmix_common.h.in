@@ -35,11 +35,11 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- * 
+ *
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -121,7 +121,6 @@ BEGIN_C_DECLS
 #define PMIX_APPLDR                "pmix.aldr"         // (uint32_t) lowest rank in this app within this job
 
 /* proc location-related info */
-#define PMIX_CPUSET                "pmix.cpuset"       // (char*) hwloc bitmap applied to proc upon launch
 /* For PMIX_HOSTNAME, three use-cases exist for PMIx_Get:
  *
  * (a) Specifying a namespace with PMIX_RANK_WILDCARD will return
@@ -209,7 +208,7 @@ typedef enum {
     PMIX_ERR_NO_PERMISSIONS,
     PMIX_ERR_PACK_MISMATCH,
     PMIX_ERR_PACK_FAILURE,
-    
+
     PMIX_ERR_UNPACK_FAILURE,
     PMIX_ERR_UNPACK_INADEQUATE_SPACE,
     PMIX_ERR_TYPE_MISMATCH,
@@ -220,7 +219,7 @@ typedef enum {
     PMIX_ERR_HANDSHAKE_FAILED,
     PMIX_ERR_INVALID_CRED,
     PMIX_EXISTS,
-    
+
     PMIX_ERROR,
     PMIX_SUCCESS
 } pmix_status_t;
@@ -229,7 +228,7 @@ typedef enum {
 /****    PMIX DATA TYPES    ****/
 typedef enum {
     PMIX_UNDEF = 0,
-    PMIX_BOOL,           // converted to/from native true/false to uint8 for pack/unpack 
+    PMIX_BOOL,           // converted to/from native true/false to uint8 for pack/unpack
     PMIX_BYTE,           // a byte of data
     PMIX_STRING,         // NULL-terminated string
     PMIX_SIZE,           // size_t
@@ -284,7 +283,7 @@ typedef enum {
     PMIX_LOCAL,           // share to procs also on this node
     PMIX_REMOTE,          // share with procs not on this node
     PMIX_GLOBAL,          // share with all procs (local + remote)
-} pmix_scope_t; 
+} pmix_scope_t;
 
 /* define a range for data "published" by PMI
  */
@@ -571,7 +570,7 @@ typedef struct {
                 PMIX_INFO_DESTRUCT(&(m)->info[_ii]);            \
             }                                                   \
         }                                                       \
-    } while(0);    
+    } while(0);
 
 #define PMIX_APP_FREE(m, n)                     \
     do {                                        \
@@ -723,7 +722,7 @@ typedef void (*pmix_notification_fn_t)(pmix_status_t status,
 /* define a callback function for calls to PMIx_Get_nb. The status
  * indicates if the requested data was found or not - a pointer to the
  * pmix_value_t structure containing the found data is returned. The
- * pointer will be NULL if the requested data was not found. */ 
+ * pointer will be NULL if the requested data was not found. */
 typedef void (*pmix_value_cbfunc_t)(pmix_status_t status,
                                     pmix_value_t *kv, void *cbdata);
 
