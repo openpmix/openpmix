@@ -913,7 +913,7 @@ static void dmdx_cbfunc(pmix_status_t status,
     caddy = PMIX_NEW(pmix_dmdx_reply_caddy_t);
     caddy->status = status;
     /* point to the callers cbfunc */
-    caddy->relcbfunc - release_fn;
+    caddy->relcbfunc = release_fn;
     caddy->cbdata = release_cbdata;
 
     caddy->data   = data;
