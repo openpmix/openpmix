@@ -125,6 +125,7 @@
 #include <stdlib.h>
 #endif  /* HAVE_STDLIB_H */
 
+#include "include/pmix/rename.h"
 
 BEGIN_C_DECLS
 
