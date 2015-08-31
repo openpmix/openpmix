@@ -11,6 +11,8 @@
  *                         All rights reserved.
  * Copyright (c) 2007-2008 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -99,7 +101,7 @@ static int output(int output_id, const char *format, va_list arglist);
 
 /* global state */
 bool pmix_output_redirected_to_syslog = false;
-int pmix_output_redirected_syslog_pri;
+int pmix_output_redirected_syslog_pri = 0;
 
 /*
  * Local state
