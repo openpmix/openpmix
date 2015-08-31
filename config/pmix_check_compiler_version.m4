@@ -1,15 +1,8 @@
 dnl -*- shell-script -*-
 dnl
-dnl PMIx copyrights:
+dnl Copyright (c) 2009      Oak Ridge National Labs.  All rights reserved.
 dnl Copyright (c) 2013      Intel, Inc. All rights reserved
 dnl
-dnl########################
-dnl This code has been adapted from pmix_setup_cc.m4 in the Open MPI
-dnl code base - per the Open MPI license, all copyrights are retained below.
-dnl
-dnl Copyright (c) 2009      Oak Ridge National Labs.  All rights reserved.
-dnl
-dnl########################
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -21,7 +14,7 @@ dnl
 # PMIX_CHECK_COMPILER_VERSION_ID()
 # ----------------------------------------------------
 # Try to figure out the compiler's name and version to detect cases,
-# where users compile Open MPI with one version and compile the application
+# where users compile PMIx with one version and compile the application
 # with a different compiler.
 #
 AC_DEFUN([PMIX_CHECK_COMPILER_VERSION_ID],
