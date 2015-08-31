@@ -213,7 +213,6 @@ pmix_status_t pmix_pending_request(pmix_nspace_t *nptr, int rank,
         lcd->proc.rank = rank;
         lcd->info = info;
         lcd->ninfo = ninfo;
-        PMIX_CONSTRUCT(&lcd->loc_reqs, pmix_list_t);
         pmix_list_append(&pmix_server_globals.local_reqs, &lcd->super);
 
         /* check & send request if need/possible */
@@ -280,6 +279,7 @@ void pmix_pending_nspace_fix(pmix_nspace_t *nptr)
     }
 }
 
+/* Resolve pending requests to this namespace/rank */
 pmix_status_t pmix_pending_resolve(pmix_nspace_t *nptr, int rank, pmix_dmdx_local_t *lcd)
 {
     pmix_dmdx_local_t *cd;
@@ -296,6 +296,7 @@ pmix_status_t pmix_pending_resolve(pmix_nspace_t *nptr, int rank, pmix_dmdx_loca
         }
     }
 
+    /* If somebody was interested in this rank */
     if( NULL != lcd ){
         /* check if this rank is local */
         pmix_rank_info_t *iptr, *info = NULL;
@@ -306,6 +307,7 @@ pmix_status_t pmix_pending_resolve(pmix_nspace_t *nptr, int rank, pmix_dmdx_loca
             }
         }
 
+        /* satisfy/declare error for all requests to this rank */
         pmix_dmdx_request_t *req;
         PMIX_LIST_FOREACH(req, &lcd->loc_reqs, pmix_dmdx_request_t) {
             int rc;
@@ -315,10 +317,13 @@ pmix_status_t pmix_pending_resolve(pmix_nspace_t *nptr, int rank, pmix_dmdx_loca
                 rc = _satisfy_remote_req(nptr, rank, req->cbfunc, req->cbdata);
             }
             if( PMIX_SUCCESS != rc ){
-                return rc;
+                /* if we can't satisfy this request - respond with error */
+                req->cbfunc(rc, NULL, 0, req->cbdata, NULL, NULL);
             }
         }
+        /* remove all requests to this rank and cleanup the corresponding structure */
         pmix_list_remove_item(&pmix_server_globals.local_reqs, (pmix_list_item_t*)lcd);
+        PMIX_RELEASE(lcd);
     }
     return PMIX_SUCCESS;
 }
@@ -1478,12 +1483,14 @@ PMIX_CLASS_INSTANCE(pmix_dmdx_request_t,
 static void lmcon(pmix_dmdx_local_t *p)
 {
     memset(&p->proc, 0, sizeof(pmix_proc_t));
+    PMIX_CONSTRUCT(&p->loc_reqs, pmix_list_t);
     p->info = NULL;
     p->ninfo = 0;
 }
 static void lmdes(pmix_dmdx_local_t *p)
 {
     PMIX_INFO_FREE(p->info, p->ninfo);
+    PMIX_DESTRUCT(&p->loc_reqs);
 }
 PMIX_CLASS_INSTANCE(pmix_dmdx_local_t,
                     pmix_list_item_t,
