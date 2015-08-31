@@ -571,7 +571,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # final compiler config
     ############################################################################
 
-    pmix_show_subtitle "Compiler flags"
+    pmix_show_subtitle "Set path-related compiler flags"
 
     #
     # This is needed for VPATH builds, so that it will -I the appropriate
@@ -592,14 +592,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     else
         CPPFLAGS='-I$(PMIX_top_srcdir) -I$(PMIX_top_srcdir)/src -I$(PMIX_top_srcdir)/include'" $CPPFLAGS"
     fi
-
-    #
-    # Delayed the substitution of CFLAGS and CXXFLAGS until now because
-    # they may have been modified throughout the course of this script.
-    #
-
-    AC_SUBST(CFLAGS)
-    AC_SUBST(CPPFLAGS)
 
     # pmixdatadir, pmixlibdir, and pmixinclude are essentially the same as
     # pkg*dir, but will always be */pmix.
@@ -663,7 +655,7 @@ else
     WANT_PICKY_COMPILER=0
 fi
 #################### Early development override ####################
-if test "$WANT_PICKY_COMPILER" = "0" -a -z "$enable_picky" -a "$PMIX_DEVEL" = 1; then
+if test "$WANT_PICKY_COMPILER" = "0" -a -z "$enable_picky" -a "$PMIX_DEVEL" = "1"; then
     WANT_PICKY_COMPILER=1
     echo "--> developer override: enable picky compiler by default"
 fi
