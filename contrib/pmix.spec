@@ -5,7 +5,7 @@
 # Copyright (c) 2004-2005 The University of Tennessee and The University
 #                         of Tennessee Research Foundation.  All rights
 #                         reserved.
-# Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+# Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
@@ -14,9 +14,9 @@
 #                         All rights reserved.
 # Copyright (c) 2015      Intel, Inc. All rights reserved.
 # $COPYRIGHT$
-# 
+#
 # Additional copyrights may follow
-# 
+#
 # $HEADER$
 #
 ############################################################################
@@ -153,7 +153,7 @@
 %define _mandir /opt/%{name}/%{version}/man
 # Note that the name "pmix" is hard-coded in
 # opal/mca/installdirs/config for pkgdatadir; there is currently no
-# easy way to have OMPI change this directory name internally.  So we
+# easy way to have PMIx change this directory name internally.  So we
 # just hard-code that name here as well (regardless of the value of
 # %{name} or %{_name}).
 %define _pkgdatadir /opt/%{name}/%{version}/share/pmix
@@ -461,7 +461,7 @@ EOF
 cd /tmp
 
 # Remove installed driver after rpm build finished
-rm -rf $RPM_BUILD_DIR/%{name}-%{version} 
+rm -rf $RPM_BUILD_DIR/%{name}-%{version}
 
 test "x$RPM_BUILD_ROOT" != "x" && rm -rf $RPM_BUILD_ROOT
 
@@ -496,7 +496,7 @@ test "x$RPM_BUILD_ROOT" != "x" && rm -rf $RPM_BUILD_ROOT
 #############################################################################
 
 #
-# All in one RPM 
+# All in one RPM
 #
 # Easy; just list the prefix and then specifically call out the doc
 # files.
@@ -509,7 +509,7 @@ test "x$RPM_BUILD_ROOT" != "x" && rm -rf $RPM_BUILD_ROOT
 %if !%{sysconfdir_in_prefix}
 %{_sysconfdir}
 %endif
-# If %{install_in_opt}, then we're instaling OMPI to
+# If %{install_in_opt}, then we're installing PMIx to
 # /opt/pmix/<version>.  But be sure to also explicitly mention
 # /opt/pmix so that it can be removed by RPM when everything under
 # there is also removed.

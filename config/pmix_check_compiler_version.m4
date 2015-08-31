@@ -55,7 +55,7 @@ int main (int argc, char * argv[])
             CPPFLAGS=$CPPFLAGS_orig
     ])
     AC_DEFINE_UNQUOTED([PMIX_BUILD_PLATFORM_COMPILER_$1], $pmix_cv_compiler_[$1],
-                       [The compiler $lower which OMPI was built with])
+                       [The compiler $lower which PMIx was built with])
 ])dnl
 
 

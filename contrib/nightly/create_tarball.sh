@@ -11,13 +11,14 @@
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
 # Copyright (c) 2006-2015 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2015      Intel, Inc. All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
 #
 # $HEADER$
 #
-# This script is used to create a nightly snapshot tarball of Open MPI.
+# This script is used to create a nightly snapshot tarball of PMIx.
 #
 # $1: scratch root
 # $2: e-mail address for destination

@@ -178,7 +178,7 @@ if expr "$program_transform_name" : 's.^..$' >/dev/null || \
     program_transform_name="s,x,x,"
 fi
 if test "$program_prefix$program_suffix$program_transform_name" != "NONENONEs,x,x," ; then
-    AC_MSG_WARN([*** The Open MPI configure script does not support --program-prefix, --program-suffix or --program-transform-name. Users are recommended to instead use --prefix with a unique directory and make symbolic links as desired for renaming.])
+    AC_MSG_WARN([*** The PMIx configure script does not support --program-prefix, --program-suffix or --program-transform-name. Users are recommended to instead use --prefix with a unique directory and make symbolic links as desired for renaming.])
     AC_MSG_ERROR([*** Cannot continue])
 fi
 
