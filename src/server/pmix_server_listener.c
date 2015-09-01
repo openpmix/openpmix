@@ -298,7 +298,6 @@ static pmix_status_t pmix_server_authenticate(int sd, int *out_rank,
     pmix_rank_info_t *info;
     pmix_peer_t *psave = NULL;
     size_t csize;
-    pmix_buffer_t *bptr;
     bool found;
     pmix_proc_t proc;
 
