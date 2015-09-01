@@ -140,12 +140,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     ############################################################################
     pmix_show_title "Compiler and preprocessor tests"
 
-    ##################################
-    # C compiler characteristics
-    ##################################
-    # Does the compiler support "ident"-like constructs?
-    PMIX_CHECK_IDENT([CC], [CFLAGS], [c], [C])
-
     #
     # Check for some types
     #
