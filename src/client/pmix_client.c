@@ -222,7 +222,7 @@ int PMIx_Init(pmix_proc_t *proc)
     int rc, debug_level;
     struct sockaddr_un address;
     pmix_nspace_t *nsptr;
-    bool active;
+    volatile bool active;
 
     if (NULL == proc) {
         return PMIX_ERR_BAD_PARAM;
