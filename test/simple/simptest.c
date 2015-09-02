@@ -58,7 +58,8 @@ static pmix_status_t lookup_fn(const pmix_proc_t *proc, pmix_data_range_t scope,
                                const pmix_info_t info[], size_t ninfo, char **keys,
                                pmix_lookup_cbfunc_t cbfunc, void *cbdata);
 static pmix_status_t unpublish_fn(const pmix_proc_t *proc,
-                                  pmix_data_range_t scope, char **keys,
+                                  pmix_data_range_t scope,
+                                  const pmix_info_t info[], size_t ninfo, char **keys,
                                   pmix_op_cbfunc_t cbfunc, void *cbdata);
 static pmix_status_t spawn_fn(const pmix_proc_t *proc,
                               const pmix_info_t job_info[], size_t ninfo,
@@ -513,7 +514,8 @@ static int lookup_fn(const pmix_proc_t *proc,
 
 
 static int unpublish_fn(const pmix_proc_t *proc,
-                        pmix_data_range_t scope, char **keys,
+                        pmix_data_range_t scope,
+                        const pmix_info_t info[], size_t ninfo, char **keys,
                         pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_locdat_t *p, *p2;

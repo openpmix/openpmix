@@ -217,25 +217,26 @@ int lookup_fn(const pmix_proc_t *proc, pmix_data_range_t scope,
 }
 
 int unpublish_fn(const pmix_proc_t *proc,
-                 pmix_data_range_t scope, char **keys,
+                 pmix_data_range_t scope,
+                 const pmix_info_t info[], size_t ninfo, char **keys,
                  pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
-    size_t i, ninfo;
-    pmix_test_info_t *info, *next;
+    size_t i;
+    pmix_test_info_t *iptr, *next;
     if (NULL == pmix_test_published_list) {
         return PMIX_ERR_NOT_FOUND;
     }
-    PMIX_LIST_FOREACH_SAFE(info, next, pmix_test_published_list, pmix_test_info_t) {
-        if (1) {// if data posted by this process
+    PMIX_LIST_FOREACH_SAFE(iptr, next, pmix_test_published_list, pmix_test_info_t) {
+        if (1) {  // if data posted by this process
             if (NULL == keys) {
-                pmix_list_remove_item(pmix_test_published_list, &info->super);
-                PMIX_RELEASE(info);
+                pmix_list_remove_item(pmix_test_published_list, &iptr->super);
+                PMIX_RELEASE(iptr);
             } else {
                 ninfo = pmix_argv_count(keys);
                 for (i = 0; i < ninfo; i++) {
-                    if (!strcmp(info->data.key, keys[i])) {
-                        pmix_list_remove_item(pmix_test_published_list, &info->super);
-                        PMIX_RELEASE(info);
+                    if (!strcmp(iptr->data.key, keys[i])) {
+                        pmix_list_remove_item(pmix_test_published_list, &iptr->super);
+                        PMIX_RELEASE(iptr);
                         break;
                     }
                 }
