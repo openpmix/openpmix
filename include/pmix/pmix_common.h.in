@@ -163,6 +163,7 @@ BEGIN_C_DECLS
 #define PMIX_WAIT                  "pmix.wait"         // (int) caller requests that the server wait until the specified #values are found
 #define PMIX_COLLECTIVE_ALGO       "pmix.calgo"        // (char*) comma-delimited list of algorithms to use for collective
 #define PMIX_COLLECTIVE_ALGO_REQD  "pmix.calreqd"      // (bool) if true, indicates that the requested choice of algo is mandatory
+#define PMIX_NOTIFY_COMPLETION     "pmix.notecomp"     // (bool) notify parent process upon termination of child job
 
 /* attributes used by host server to pass data to the server convenience library - the
  * data will then be parsed and provided to the local clients */
