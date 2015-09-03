@@ -1879,7 +1879,7 @@ static void cnct_cbfunc(int status, void *cbdata)
     scd = PMIX_NEW(pmix_shift_caddy_t);
     scd->status = status;
     scd->tracker = tracker;
-    PMIX_THREADSHIFT(scd, _mdxcbfunc);
+    PMIX_THREADSHIFT(scd, _cnct);
 }
 
 

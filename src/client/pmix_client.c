@@ -247,6 +247,8 @@ int PMIx_Init(pmix_proc_t *proc)
     /* get our effective id's */
     pmix_globals.uid = geteuid();
     pmix_globals.gid = getegid();
+    /* default to our internal errhandler */
+    pmix_globals.errhandler = myerrhandler;
 
     /* initialize the output system */
     if (!pmix_output_init()) {
