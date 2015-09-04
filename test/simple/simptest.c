@@ -41,6 +41,7 @@
 #include "src/util/printf.h"
 #include "src/util/argv.h"
 #include "src/buffer_ops/buffer_ops.h"
+#include "src/usock/usock.h"
 
 static pmix_status_t connected(const pmix_proc_t *proc, void *server_object);
 static pmix_status_t finalized(const pmix_proc_t *proc, void *server_object,
@@ -77,8 +78,6 @@ static pmix_status_t disconnect_fn(const pmix_proc_t procs[], size_t nprocs,
                                    pmix_op_cbfunc_t cbfunc, void *cbdata);
 static pmix_status_t register_event_fn(const pmix_info_t info[], size_t ninfo,
                                        pmix_op_cbfunc_t cbfunc, void *cbdata);
-static pmix_status_t listener_fn(int listening_sd,
-                                 pmix_connection_cbfunc_t cbfunc);
 
 static pmix_server_module_t mymodule = {
     connected,
@@ -93,7 +92,7 @@ static pmix_server_module_t mymodule = {
     connect_fn,
     disconnect_fn,
     register_event_fn,
-    listener_fn
+    NULL
 };
 
 typedef struct {
@@ -106,7 +105,7 @@ PMIX_CLASS_INSTANCE(pmix_locdat_t,
 
 typedef struct {
     pmix_object_t super;
-    volatile bool completed;
+    volatile bool active;
     pmix_proc_t caller;
     pmix_info_t *info;
     size_t ninfo;
@@ -118,7 +117,7 @@ static void xfcon(myxfer_t *p)
 {
     p->info = NULL;
     p->ninfo = 0;
-    p->completed = false;
+    p->active = true;
     p->cbfunc = NULL;
     p->spcbfunc = NULL;
     p->cbdata = NULL;
@@ -157,13 +156,11 @@ static void opcbfunc(pmix_status_t status, void *cbdata)
 {
     myxfer_t *x = (myxfer_t*)cbdata;
 
-    x->completed = true;
-    /* release the caller, if necessary - note that
-     * this may result in release of x, so this must
-     * be the last thing we do with it here */
+    /* release the caller, if necessary */
     if (NULL != x->cbfunc) {
         x->cbfunc(PMIX_SUCCESS, x->cbdata);
     }
+    x->active = false;
 }
 
 int main(int argc, char **argv)
@@ -231,7 +228,6 @@ int main(int argc, char **argv)
     tmp = pmix_argv_join(atmp, ',');
     x = PMIX_NEW(myxfer_t);
     set_namespace(nprocs, tmp, "foobar", opcbfunc, x);
-    free(tmp);
 
     /* set common argv and env */
     client_env = pmix_argv_copy(environ);
@@ -243,12 +239,8 @@ int main(int argc, char **argv)
 
     /* if the nspace registration hasn't completed yet,
      * wait for it here */
-    while (!x->completed) {
-        struct timespec ts;
-        ts.tv_sec = 0;
-        ts.tv_nsec = 100000;
-        nanosleep(&ts, NULL);
-    }
+    PMIX_WAIT_FOR_COMPLETION(x->active);
+    free(tmp);
     PMIX_RELEASE(x);
 
     /* fork/exec the test */
@@ -269,12 +261,7 @@ int main(int argc, char **argv)
         }
         /* don't fork/exec the client until we know it is registered
          * so we avoid a potential race condition in the server */
-        while (!x->completed) {
-            struct timespec ts;
-            ts.tv_sec = 0;
-            ts.tv_nsec = 100000;
-            nanosleep(&ts, NULL);
-        }
+        PMIX_WAIT_FOR_COMPLETION(x->active);
         PMIX_RELEASE(x);
         pid = fork();
         if (pid < 0) {
@@ -630,12 +617,6 @@ static int disconnect_fn(const pmix_proc_t procs[], size_t nprocs,
 
 static pmix_status_t register_event_fn(const pmix_info_t info[], size_t ninfo,
                                        pmix_op_cbfunc_t cbfunc, void *cbdata)
-{
-    return PMIX_SUCCESS;
-}
-
-static int listener_fn(int listening_sd,
-                       pmix_connection_cbfunc_t cbfunc)
 {
     return PMIX_SUCCESS;
 }
