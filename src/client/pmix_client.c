@@ -149,6 +149,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     cb->active = false;
 }
 
+/* callback to receive job info */
 static void job_data(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                      pmix_buffer_t *buf, void *cbdata)
 {
@@ -325,17 +326,19 @@ int PMIx_Init(pmix_proc_t *proc)
         return -1;
     }
 
-    /* connect to the server - returns job info if successful */
+    /* setup an object to track server connection */
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.active = true;
+    /* connect to the server - returns job info if successful */
     if (PMIX_SUCCESS != (rc = connect_to_server(&address, &cb))){
         PMIX_DESTRUCT(&cb);
         return rc;
     }
     PMIX_WAIT_FOR_COMPLETION(cb.active);
+    rc = cb.status;
     PMIX_DESTRUCT(&cb);
 
-    return PMIX_SUCCESS;
+    return rc;
 }
 
 int PMIx_Initialized(void)
@@ -771,9 +774,20 @@ static int recv_connect_ack(int sd)
 {
     int reply;
     int rc;
+    struct timeval tv, save;
+    pmix_socklen_t sz;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: RECV CONNECT ACK FROM SERVER");
+
+    /* get the current timeout value so we can reset to it */
+    sz = sizeof(save);
+    getsockopt(sd, SOL_SOCKET, SO_RCVTIMEO, (void*)&save, &sz);
+
+    /* set a timeout on the blocking recv so we don't hang */
+    tv.tv_sec  = 2;
+    tv.tv_usec = 0;
+    setsockopt(sd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
     /* receive the status reply */
     rc = pmix_usock_recv_blocking(sd, (char*)&reply, sizeof(int));
@@ -803,6 +817,9 @@ static int recv_connect_ack(int sd)
         PMIX_ERROR_LOG(rc);
         return rc;
     }
+
+    /* return the socket to normal */
+    setsockopt(sd, SOL_SOCKET, SO_RCVTIMEO, &save, sz);
 
     return PMIX_SUCCESS;
 }

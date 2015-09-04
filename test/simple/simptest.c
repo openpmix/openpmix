@@ -24,11 +24,17 @@
 
 #include <private/autogen/config.h>
 #include <pmix_server.h>
+#include <private/types.h>
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <time.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <errno.h>
+#include <signal.h>
+#include PMIX_EVENT_HEADER
 
 #include "src/util/pmix_environ.h"
 #include "src/util/output.h"
@@ -127,14 +133,25 @@ PMIX_CLASS_INSTANCE(myxfer_t,
                     pmix_object_t,
                     xfcon, xfdes);
 
+typedef struct {
+    pmix_list_item_t super;
+    pid_t pid;
+} wait_tracker_t;
+PMIX_CLASS_INSTANCE(wait_tracker_t,
+                    pmix_list_item_t,
+                    NULL, NULL);
+
 static volatile int wakeup;
 static pmix_list_t pubdata;
+static pmix_event_t handler;
+static pmix_list_t children;
 
 static void set_namespace(int nprocs, char *ranks, char *nspace,
                           pmix_op_cbfunc_t cbfunc, myxfer_t *x);
 static void errhandler(pmix_status_t status,
                        pmix_proc_t procs[], size_t nprocs,
                        pmix_info_t info[], size_t ninfo);
+static void wait_signal_callback(int fd, short event, void *arg);
 
 static void opcbfunc(pmix_status_t status, void *cbdata)
 {
@@ -160,6 +177,7 @@ int main(int argc, char **argv)
     pid_t pid;
     myxfer_t *x;
     pmix_proc_t proc;
+    wait_tracker_t *child;
 
     /* smoke test */
     if (PMIX_SUCCESS != 0) {
@@ -179,6 +197,12 @@ int main(int argc, char **argv)
 
     /* setup the pub data, in case it is used */
     PMIX_CONSTRUCT(&pubdata, pmix_list_t);
+
+    /* setup to see sigchld on the forked tests */
+    PMIX_CONSTRUCT(&children, pmix_list_t);
+    event_assign(&handler, pmix_globals.evbase, SIGCHLD,
+                 EV_SIGNAL|EV_PERSIST,wait_signal_callback, &handler);
+    event_add(&handler, NULL);
 
     /* see if we were passed the number of procs to run or
      * the executable to use */
@@ -258,6 +282,9 @@ int main(int argc, char **argv)
             PMIx_server_finalize();
             return -1;
         }
+        child = PMIX_NEW(wait_tracker_t);
+        child->pid = pid;
+        pmix_list_append(&children, &child->super);
 
         if (pid == 0) {
             execve(executable, client_argv, client_env);
@@ -613,4 +640,39 @@ static int listener_fn(int listening_sd,
     return PMIX_SUCCESS;
 }
 
+static void wait_signal_callback(int fd, short event, void *arg)
+{
+    pmix_event_t *sig = (pmix_event_t*) arg;
+    int status;
+    pid_t pid;
+    wait_tracker_t *t2;
+
+    if (SIGCHLD != event_get_signal(sig)) {
+        return;
+    }
+
+    /* we can have multiple children leave but only get one
+     * sigchild callback, so reap all the waitpids until we
+     * don't get anything valid back */
+    while (1) {
+        pid = waitpid(-1, &status, WNOHANG);
+        if (-1 == pid && EINTR == errno) {
+            /* try it again */
+            continue;
+        }
+        /* if we got garbage, then nothing we can do */
+        if (pid <= 0) {
+            return;
+        }
+
+        /* we are already in an event, so it is safe to access the list */
+        PMIX_LIST_FOREACH(t2, &children, wait_tracker_t) {
+            if (pid == t2->pid) {
+                /* found it! */
+                --wakeup;
+                break;
+            }
+        }
+    }
+}
 
