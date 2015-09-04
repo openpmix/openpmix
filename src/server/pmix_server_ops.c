@@ -1005,7 +1005,6 @@ pmix_status_t pmix_server_publish(pmix_peer_t *peer,
     }
     /* we will be adding one for the user id */
     einfo = ninfo + 1;
-    pmix_output(0, "SERVER PUBLISH GOT %d INFO", (int)ninfo);
     PMIX_INFO_CREATE(info, einfo);
     /* unpack the array of info objects */
     if (0 < ninfo) {
@@ -1022,7 +1021,6 @@ pmix_status_t pmix_server_publish(pmix_peer_t *peer,
     /* call the local server */
     (void)strncpy(proc.nspace, peer->info->nptr->nspace, PMIX_MAX_NSLEN);
     proc.rank = peer->info->rank;
-    pmix_output(0, "server passing %d values up", (int)einfo);
     rc = pmix_host_server.publish(&proc, info, einfo, cbfunc, cbdata);
 
  cleanup:
