@@ -1081,7 +1081,6 @@ pmix_status_t pmix_server_lookup(pmix_peer_t *peer,
     PMIX_INFO_CREATE(info, einfo);
     /* unpack the array of info objects */
     if (0 < ninfo) {
-        PMIX_INFO_CREATE(info, ninfo);
         cnt=ninfo;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, info, &cnt, PMIX_INFO))) {
             PMIX_ERROR_LOG(rc);
@@ -1155,7 +1154,6 @@ pmix_status_t pmix_server_unpublish(pmix_peer_t *peer,
     PMIX_INFO_CREATE(info, einfo);
     /* unpack the array of info objects */
     if (0 < ninfo) {
-        PMIX_INFO_CREATE(info, ninfo);
         cnt=ninfo;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, info, &cnt, PMIX_INFO))) {
             PMIX_ERROR_LOG(rc);
