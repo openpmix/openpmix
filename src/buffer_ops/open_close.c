@@ -50,7 +50,7 @@ int pmix_bfrop_initial_size = 0;
 int pmix_bfrop_threshold_size = 0;
 pmix_pointer_array_t pmix_bfrop_types = {{0}};
 pmix_data_type_t pmix_bfrop_num_reg_types = {0};
-pmix_bfrop_buffer_type_t default_buf_type = PMIX_BFROP_BUFFER_NON_DESC;
+static pmix_bfrop_buffer_type_t pmix_default_buf_type = PMIX_BFROP_BUFFER_NON_DESC;
 
 pmix_bfrop_t pmix_bfrop = {
     pmix_bfrop_pack,
@@ -67,7 +67,7 @@ pmix_bfrop_t pmix_bfrop = {
 static void pmix_buffer_construct (pmix_buffer_t* buffer)
 {
     /** set the default buffer type */
-    buffer->type = default_buf_type;
+    buffer->type = pmix_default_buf_type;
 
     /* Make everything NULL to begin with */
     buffer->base_ptr = buffer->pack_ptr = buffer->unpack_ptr = NULL;
@@ -168,9 +168,9 @@ int pmix_bfrop_open(void)
      * and performance
      */
 #if PMIX_ENABLE_DEBUG
-    default_buf_type = PMIX_BFROP_BUFFER_FULLY_DESC;
+    pmix_default_buf_type = PMIX_BFROP_BUFFER_FULLY_DESC;
 #else
-    default_buf_type = PMIX_BFROP_BUFFER_NON_DESC;
+    pmix_default_buf_type = PMIX_BFROP_BUFFER_NON_DESC;
 #endif
 
     /* Setup the types array */
