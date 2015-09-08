@@ -115,7 +115,7 @@ int pmix_usock_set_blocking(int sd)
  * A blocking send on a non-blocking socket. Used to send the small amount of connection
  * information that identifies the peers endpoint.
  */
-int pmix_usock_send_blocking(int sd, char *ptr, size_t size)
+pmix_status_t pmix_usock_send_blocking(int sd, char *ptr, size_t size)
 {
     size_t cnt = 0;
     int retval;
@@ -146,7 +146,7 @@ int pmix_usock_send_blocking(int sd, char *ptr, size_t size)
  * A blocking recv on a non-blocking socket. Used to receive the small amount of connection
  * information that identifies the peers endpoint.
  */
-int pmix_usock_recv_blocking(int sd, char *data, size_t size)
+pmix_status_t pmix_usock_recv_blocking(int sd, char *data, size_t size)
 {
     size_t cnt = 0;
 
