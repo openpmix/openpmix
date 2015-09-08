@@ -293,7 +293,6 @@ static pmix_status_t pmix_server_authenticate(int sd, int *out_rank,
 {
     char *msg, *nspace, *version, *cred;
     pmix_status_t rc;
-    int ret;
     int rank;
     pmix_usock_hdr_t hdr;
     pmix_nspace_t *nptr, *tmp;
