@@ -144,7 +144,7 @@ if (defined($pages_branch_arg)) {
 # generate new nroff man pages.
 chdir("$tmpdir/source/man");
 foreach my $file (@markdown_files) {
-    doit(0, "../config/md2nroff.pl --source $file", "loop2-md2nroff");
+    doit(0, "../contrib/md2nroff.pl --source $file", "loop2-md2nroff");
 
     # Did we generate a new man page?  If so, we need to "git add" it.
     my $man_file = basename($file);
