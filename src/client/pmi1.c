@@ -229,8 +229,12 @@ int PMI_Lookup_name(const char service_name[], char port[])
         return convert_err(PMIX_ERR_NOT_FOUND);
     }
 
-    /* return the port */
-    (void)strncpy(port, pdata.value.data.string, PMIX_MAX_VALLEN);
+    /* return the port - sadly, this API doesn't tell us
+     * the size of the port array, and so there is a
+     * potential we could overrun it. As this feature
+     * isn't widely supported in PMI-1, try being
+     * conservative */
+    (void)strncpy(port, pdata.value.data.string, PMIX_MAX_KEYLEN);
     PMIX_PDATA_DESTRUCT(&pdata);
 
     return PMIX_SUCCESS;
@@ -260,7 +264,7 @@ int PMI_Get_id_length_max(int *length)
     if (NULL == length) {
         return PMI_ERR_INVALID_VAL_LENGTH;
     }
-    *length = PMIX_MAX_VALLEN;
+    *length = PMIX_MAX_KEYLEN;
     return PMI_SUCCESS;
 }
 
@@ -327,7 +331,9 @@ int PMI_KVS_Get_value_length_max(int *length)
     if (NULL == length) {
         return PMI_ERR_INVALID_VAL_LENGTH;
     }
-    *length = PMIX_MAX_VALLEN;
+    /* don't give them an enormous size of some implementations
+     * immediately malloc a data block for their use */
+    *length = 4096;
     return PMI_SUCCESS;
 }
 

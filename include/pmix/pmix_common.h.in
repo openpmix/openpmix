@@ -80,7 +80,6 @@ BEGIN_C_DECLS
 
 /* define maximum value and key sizes */
 #define PMIX_MAX_NSLEN     255
-#define PMIX_MAX_VALLEN   1023
 #define PMIX_MAX_KEYLEN    511
 
 /* define a *wildcard* value for requests involving rank */
@@ -307,6 +306,7 @@ typedef enum {
 /* define a "persistence" policy for data published by clients */
 typedef enum {
     PMIX_PERSIST_INDEF = 0,   // retain until specifically deleted
+    PMIX_PERSIST_FIRST_READ,  // delete upon first access
     PMIX_PERSIST_PROC,        // retain until publishing process terminates
     PMIX_PERSIST_APP,         // retain until application terminates
     PMIX_PERSIST_SESSION      // retain until session/allocation terminates

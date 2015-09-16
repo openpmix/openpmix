@@ -15,8 +15,8 @@ use Getopt::Long;
 use File::Temp;
 
 my $repo_arg;
-my $source_branch_arg;
-my $pages_branch_arg;
+my $source_branch_arg = "master";
+my $pages_branch_arg = "gh-pages";
 my $logfile_dir_arg = "/tmp";
 my $verbose_arg;
 my $help_arg;
@@ -29,11 +29,22 @@ my $ok = Getopt::Long::GetOptions("repo=s" => \$repo_arg,
                                   "verbose" => \$verbose_arg,
                                   );
 
+if (!$ok || $help_arg) {
+    print "Invalid command line argument.\n\n"
+        if (!$ok);
+    print "Options:
+  --help | -h      Print this message
+  --repo           Git repo to be updated
+  --source-branch  Branch containing source files (default: master)
+  --pages-branch   Branch where man pages are to be output (default: gh-pages)
+  --logfile-dir    Directory where execution log is to be written (default: /tmp)
+  --verbose        Print debug info during execution\n";
+    exit($ok ? 0 : 1);
+}
+
 # Sanity checks
 die "Must specify a git repo"
     if (!defined($repo_arg));
-die "Must specify a git source branch"
-    if (!defined($source_branch_arg));
 
 #####################################################################
 
