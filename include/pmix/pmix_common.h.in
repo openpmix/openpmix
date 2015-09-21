@@ -174,6 +174,7 @@ BEGIN_C_DECLS
 #define PMIX_PROC_DATA             "pmix.pdata"        // (pmix_value_array_t) starts with rank, then contains more data
 #define PMIX_NODE_MAP              "pmix.nmap"         // (char*) regex of nodes containing procs for this job
 #define PMIX_PROC_MAP              "pmix.pmap"         // (char*) regex describing procs on each node within this job
+#define PMIX_ANL_MAP               "pmix.anlmap"       // (char*) process mapping in ANL notation (used in PMI-1/PMI-2)
 
 /* attributes used internally to communicate data from the server to the client */
 #define PMIX_PROC_BLOB             "pmix.pblob"        // (pmix_byte_object_t) packed blob of process data
@@ -468,13 +469,11 @@ typedef struct {
         }                                       \
     } while(0);
 
-#define PMIX_INFO_LOAD(m, d, k, v, t)                   \
-    do {                                                \
+#define PMIX_INFO_LOAD(m, k, v, t)                      \
     if (NULL != (m)) {                                  \
-        (m)->mandatory = (d);                           \
         (void)strncpy((m)->key, (k), PMIX_MAX_KEYLEN);  \
         pmix_value_load(&((m)->value), (v), (t));       \
-    } while(0);
+    }
 
 
 /****    PMIX LOOKUP RETURN STRUCT    ****/
