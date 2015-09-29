@@ -49,6 +49,9 @@ int PMI2_Init(int *spawned, int *size, int *rank, int *appnum)
         return PMI2_ERR_INIT;
     }
 
+	/* get the rank */
+	*rank = myproc.rank;
+
     if (NULL != size) {
         /* get the universe size - this will likely pull
          * down all attributes assigned to the job, thus
