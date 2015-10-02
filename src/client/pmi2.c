@@ -185,9 +185,26 @@ int PMI2_KVS_Get(const char *jobid, int src_pmi_id,
 
 int PMI2_Info_GetNodeAttr(const char name[], char value[], int valuelen, int *found, int waitfor)
 {
-    /* translate the provided name to the equivalent PMIx
-     * attribute name */
-    return PMI2_FAIL;
+    pmix_status_t rc;
+    pmix_value_t *val;
+
+    *found = 0;
+    rc = PMIx_Get(&myproc, name, NULL, 0, &val);
+    if (PMIX_SUCCESS == rc && NULL != val) {
+        if (PMIX_STRING != val->type) {
+            /* this is an error */
+            PMIX_VALUE_RELEASE(val);
+            return PMI2_FAIL;
+        }
+        if (NULL != val->data.string) {
+            (void)strncpy(value, val->data.string, valuelen);
+            *found = 1;
+        }
+        PMIX_VALUE_RELEASE(val);
+    } else if (PMIX_ERR_NOT_FOUND == rc) {
+        rc = PMIX_SUCCESS;
+    }
+    return convert_err(rc);
 }
 
 /* push info at the PMIX_LOCAL scope */
