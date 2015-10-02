@@ -49,8 +49,8 @@ int PMI2_Init(int *spawned, int *size, int *rank, int *appnum)
         return PMI2_ERR_INIT;
     }
 
-	/* get the rank */
-	*rank = myproc.rank;
+    /* get the rank */
+    *rank = myproc.rank;
 
     if (NULL != size) {
         /* get the universe size - this will likely pull
@@ -60,7 +60,9 @@ int PMI2_Init(int *spawned, int *size, int *rank, int *appnum)
         if (PMIX_SUCCESS == PMIx_Get(&myproc, PMIX_UNIV_SIZE, NULL, 0, &kv)) {
             rc = convert_int(size, kv);
             PMIX_VALUE_RELEASE(kv);
-            return convert_err(rc);
+            if (PMIX_SUCCESS != rc) {
+                goto error;
+            }
         } else {
             /* cannot continue without this info */
             return PMI2_ERR_INIT;
@@ -72,7 +74,9 @@ int PMI2_Init(int *spawned, int *size, int *rank, int *appnum)
         if (PMIX_SUCCESS == PMIx_Get(&myproc, PMIX_SPAWNED, NULL, 0, &kv)) {
             rc = convert_int(spawned, kv);
             PMIX_VALUE_RELEASE(kv);
-            return convert_err(rc);
+            if (PMIX_SUCCESS != rc) {
+                goto error;
+            }
         } else {
             /* if not found, default to not spawned */
             *spawned = 0;
@@ -84,7 +88,9 @@ int PMI2_Init(int *spawned, int *size, int *rank, int *appnum)
         if (PMIX_SUCCESS == PMIx_Get(&myproc, PMIX_APPNUM, NULL, 0, &kv)) {
             rc = convert_int(appnum, kv);
             PMIX_VALUE_RELEASE(kv);
-            return convert_err(rc);
+            if (PMIX_SUCCESS != rc) {
+                goto error;
+            }
         } else {
             /* if not found, default to 0 */
             *appnum = 0;
@@ -92,6 +98,9 @@ int PMI2_Init(int *spawned, int *size, int *rank, int *appnum)
     }
 
     return PMI2_SUCCESS;
+
+error:
+    return convert_err(rc);
 }
 
 int PMI2_Initialized(void)
