@@ -166,7 +166,7 @@ int PMI2_KVS_Get(const char *jobid, int src_pmi_id,
     pmix_proc_t proc;
 
     (void)strncpy(proc.nspace, (jobid ? jobid : myproc.nspace), sizeof(myproc.nspace));
-    proc.rank = src_pmi_id;
+    proc.rank = (src_pmi_id == PMI2_ID_NULL ? myproc.rank : src_pmi_id);
     rc = PMIx_Get(&proc, key, NULL, 0, &val);
     if (PMIX_SUCCESS == rc && NULL != val) {
         if (PMIX_STRING != val->type) {
