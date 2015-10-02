@@ -454,6 +454,9 @@ static pmix_status_t convert_int(int *value, pmix_value_t *kv)
     case PMIX_SIZE:
         *value = kv->data.size;
         break;
+    case PMIX_BOOL:
+        *value = kv->data.flag;
+        break;
     default:
         /* not an integer type */
         return PMIX_ERR_BAD_PARAM;
