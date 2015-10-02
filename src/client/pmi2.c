@@ -220,6 +220,8 @@ int PMI2_Info_GetJobAttr(const char name[], char value[], int valuelen, int *fou
             *found = 1;
         }
         PMIX_VALUE_RELEASE(val);
+    } else if (PMIX_ERR_NOT_FOUND == rc) {
+        rc = PMIX_SUCCESS;
     }
     return convert_err(rc);
 }
