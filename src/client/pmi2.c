@@ -165,7 +165,7 @@ int PMI2_KVS_Get(const char *jobid, int src_pmi_id,
     pmix_value_t *val;
     pmix_proc_t proc;
 
-    (void)strncpy(proc.nspace, jobid, PMIX_MAX_NSLEN);
+    (void)strncpy(proc.nspace, (jobid ? jobid : myproc.nspace), sizeof(myproc.nspace));
     proc.rank = src_pmi_id;
     rc = PMIx_Get(&proc, key, NULL, 0, &val);
     if (PMIX_SUCCESS == rc && NULL != val) {
@@ -354,7 +354,7 @@ int PMI2_Job_GetId(char jobid[], int jobid_size)
     if (NULL == jobid) {
         return PMI2_ERR_INVALID_ARGS;
     }
-    (void)strncpy(jobid, pmix_globals.myid.nspace, jobid_size);
+    (void)strncpy(jobid, myproc.nspace, jobid_size);
     return PMI2_SUCCESS;
 }
 
@@ -363,7 +363,7 @@ int PMI2_Job_Connect(const char jobid[], PMI2_Connect_comm_t *conn)
     pmix_status_t rc;
     pmix_proc_t proc;
 
-    (void)strncpy(proc.nspace, jobid, PMIX_MAX_NSLEN);
+    (void)strncpy(proc.nspace, (jobid ? jobid : myproc.nspace), sizeof(myproc.nspace));
     proc.rank = PMIX_RANK_WILDCARD;
     rc = PMIx_Connect(&proc, 1, NULL, 0);
     return convert_err(rc);
@@ -374,7 +374,7 @@ int PMI2_Job_Disconnect(const char jobid[])
     pmix_status_t rc;
     pmix_proc_t proc;
 
-    (void)strncpy(proc.nspace, jobid, PMIX_MAX_NSLEN);
+    (void)strncpy(proc.nspace, (jobid ? jobid : myproc.nspace), sizeof(myproc.nspace));
     proc.rank = PMIX_RANK_WILDCARD;
     rc = PMIx_Disconnect(&proc, 1, NULL, 0);
     return convert_err(rc);
