@@ -109,7 +109,7 @@ typedef struct PMI2_Connect_comm {
   - appnum - which executable is this on the mpiexec commandline
 
   Return values:
-  Returns 'MPI_SUCCESS' on success and an MPI error code on failure.
+  Returns 'PMI2_SUCCESS' on success and an PMI error code on failure.
 
   Notes:
   Initialize PMI for this process group. The value of spawned indicates whether
@@ -123,7 +123,7 @@ int PMI2_Init(int *spawned, int *size, int *rank, int *appnum);
   PMI2_Finalize - finalize the Process Manager Interface
 
   Return values:
-  Returns 'MPI_SUCCESS' on success and an MPI error code on failure.
+  Returns 'PMI2_SUCCESS' on success and an PMI error code on failure.
 
   Notes:
   Finalize PMI for this job.
@@ -175,7 +175,7 @@ int PMI2_Abort(int flag, const char msg[]);
   - errors - array of errors for each command
 
   Return values:
-  Returns 'MPI_SUCCESS' on success and an MPI error code on failure.
+  Returns 'PMI2_SUCCESS' on success and an PMI error code on failure.
 
   Notes:
   This function spawns a set of processes into a new job.  The 'count'
@@ -211,7 +211,7 @@ int PMI2_Job_Spawn(int count, const char * cmds[],
   . jobid - the job id of this job
 
   Return values:
-  Returns 'MPI_SUCCESS' on success and an MPI error code on failure.
+  Returns 'PMI2_SUCCESS' on success and an PMI error code on failure.
 
 @*/
 int PMI2_Job_GetId(char jobid[], int jobid_size);
@@ -245,7 +245,7 @@ int PMI2_Info_GetSize(int* size);
     the remote job
 
   Return values:
-  Returns 'MPI_SUCCESS' on success and an MPI error code on failure.
+  Returns 'PMI2_SUCCESS' on success and an PMI error code on failure.
 
   Notes:
   This just "registers" the other parallel job as part of a parallel
@@ -265,7 +265,7 @@ int PMI2_Job_Connect(const char jobid[], PMI2_Connect_comm_t *conn);
   . jobid - job id of the job to connect to
 
   Return values:
-  Returns 'MPI_SUCCESS' on success and an MPI error code on failure.
+  Returns 'PMI2_SUCCESS' on success and an PMI error code on failure.
 
 @*/
 int PMI2_Job_Disconnect(const char jobid[]);
@@ -278,7 +278,7 @@ int PMI2_Job_Disconnect(const char jobid[]);
   - value - value
 
   Return values:
-  Returns 'MPI_SUCCESS' on success and an MPI error code on failure.
+  Returns 'PMI2_SUCCESS' on success and an PMI error code on failure.
 
   Notes:
   If multiple PMI2_KVS_Put calls are made with the same key between
@@ -292,7 +292,7 @@ int PMI2_KVS_Put(const char key[], const char value[]);
   PMI2_KVS_Fence - commit all PMI2_KVS_Put calls made before this fence
 
   Return values:
-  Returns 'MPI_SUCCESS' on success and an MPI error code on failure.
+  Returns 'PMI2_SUCCESS' on success and an PMI error code on failure.
 
   Notes:
   This is a collective call across the job.  It has semantics that are
@@ -328,7 +328,7 @@ int PMI2_KVS_Fence(void);
     than maxvalue, the negative of the required length is returned
 
   Return values:
-  Returns 'MPI_SUCCESS' on success and an MPI error code on failure.
+  Returns 'PMI2_SUCCESS' on success and an PMI error code on failure.
 
 @*/
 int PMI2_KVS_Get(const char *jobid, int src_pmi_id, const char key[], char value [], int maxvalue, int *vallen);
@@ -348,7 +348,7 @@ int PMI2_KVS_Get(const char *jobid, int src_pmi_id, const char key[], char value
   - found - non-zero indicates that the attribute was found
 
   Return values:
-  Returns 'MPI_SUCCESS' on success and an MPI error code on failure.
+  Returns 'PMI2_SUCCESS' on success and an PMI error code on failure.
 
   Notes:
   This provides a way, when combined with PMI2_Info_PutNodeAttr, for
@@ -387,7 +387,7 @@ int PMI2_Info_GetNodeAttr(const char name[], char value[], int valuelen, int *fo
   - found - non-zero if attribute was found
 
   Return values:
-  Returns 'MPI_SUCCESS' on success and an MPI error code on failure.
+  Returns 'PMI2_SUCCESS' on success and an PMI error code on failure.
 
   Notes:
   Notice that, unlike PMI2_Info_GetNodeAttr, this function does not
@@ -416,7 +416,7 @@ int PMI2_Info_GetNodeAttrIntArray(const char name[], int array[], int arraylen, 
   - value - the value of the attribute
 
   Return values:
-  Returns 'MPI_SUCCESS' on success and an MPI error code on failure.
+  Returns 'PMI2_SUCCESS' on success and an PMI error code on failure.
 
   Notes:
   For example, it might be used to share segment ids with other
@@ -438,7 +438,7 @@ int PMI2_Info_PutNodeAttr(const char name[], const char value[]);
   - found - non-zero indicates that the attribute was found
 
   Return values:
-  Returns 'MPI_SUCCESS' on success and an MPI error code on failure.
+  Returns 'PMI2_SUCCESS' on success and an PMI error code on failure.
 
 @*/
 int PMI2_Info_GetJobAttr(const char name[], char value[], int valuelen, int *found);
@@ -457,7 +457,7 @@ int PMI2_Info_GetJobAttr(const char name[], char value[], int valuelen, int *fou
   - found - non-zero if attribute was found
 
   Return values:
-  Returns 'MPI_SUCCESS' on success and an MPI error code on failure.
+  Returns 'PMI2_SUCCESS' on success and an PMI error code on failure.
 
   Predefined array attribute names:
 
@@ -517,7 +517,7 @@ int PMI2_Info_GetJobAttrIntArray(const char name[], int array[], int arraylen, i
   - port - string representing the port on which to contact the service
 
   Return values:
-  Returns 'MPI_SUCCESS' on success and an MPI error code on failure.
+  Returns 'PMI2_SUCCESS' on success and an PMI error code on failure.
 
 @*/
 int PMI2_Nameserv_publish(const char service_name[], const PMI_keyval_t *info_ptr, const char port[]);
@@ -534,7 +534,7 @@ int PMI2_Nameserv_publish(const char service_name[], const PMI_keyval_t *info_pt
   . port - string representing the port on which to contact the service
 
   Return values:
-  Returns 'MPI_SUCCESS' on success and an MPI error code on failure.
+  Returns 'PMI2_SUCCESS' on success and an PMI error code on failure.
 
 @*/
 int PMI2_Nameserv_lookup(const char service_name[], const PMI_keyval_t *info_ptr,
@@ -547,7 +547,7 @@ int PMI2_Nameserv_lookup(const char service_name[], const PMI_keyval_t *info_ptr
   - info_ptr -
 
   Return values:
-  Returns 'MPI_SUCCESS' on success and an MPI error code on failure.
+  Returns 'PMI2_SUCCESS' on success and an PMI error code on failure.
 
 @*/
 int PMI2_Nameserv_unpublish(const char service_name[],
