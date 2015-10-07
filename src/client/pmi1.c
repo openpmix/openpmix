@@ -77,7 +77,10 @@ int PMI_Initialized(PMI_BOOL *initialized)
 
 int PMI_Finalize(void)
 {
-    return PMIx_Finalize();
+    pmix_status_t rc;
+
+    rc = PMIx_Finalize();
+    return convert_err(rc);
 }
 
 int PMI_Abort(int flag, const char msg[])
@@ -342,7 +345,7 @@ int PMI_Get_id(char id_str[], int length)
     if (NULL == id_str) {
         return PMI_ERR_INVALID_ARGS;
     }
-    (void)strncpy(id_str, pmix_globals.myid.nspace, length);
+    (void) strncpy(id_str, myproc.nspace, length);
     return PMI_SUCCESS;
 }
 
@@ -357,7 +360,7 @@ int PMI_Get_id_length_max(int *length)
     if (NULL == length) {
         return PMI_ERR_INVALID_VAL_LENGTH;
     }
-    *length = PMIX_MAX_KEYLEN;
+    *length = PMIX_MAX_NSLEN;
     return PMI_SUCCESS;
 }
 
