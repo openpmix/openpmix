@@ -406,6 +406,33 @@ int PMI2_Job_GetId(char jobid[], int jobid_size)
     return PMI2_SUCCESS;
 }
 
+int PMI2_Job_GetRank(int *rank)
+{
+    if (NULL == rank) {
+        return PMI2_ERR_INVALID_ARGS;
+    }
+    *rank = myproc.rank;
+    return PMI2_SUCCESS;
+}
+
+int PMI2_Info_GetSize(int *size)
+{
+    pmix_value_t *val;
+    pmix_status_t rc;
+
+    if (NULL == size) {
+        return PMI2_ERR_INVALID_ARGS;
+    }
+
+    if (PMIX_SUCCESS == PMIx_Get(&myproc, PMIX_LOCAL_SIZE, NULL, 0, &val)) {
+        rc = convert_int(size, val);
+        PMIX_VALUE_RELEASE(val);
+        return convert_err(rc);
+    }
+
+    return PMI2_FAIL;
+}
+
 int PMI2_Job_Connect(const char jobid[], PMI2_Connect_comm_t *conn)
 {
     pmix_status_t rc;
