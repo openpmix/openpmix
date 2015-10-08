@@ -37,11 +37,24 @@
 #include "src/util/error.h"
 #include "src/util/output.h"
 
+#define PMI_MAX_ID_LEN       PMIX_MAX_NSLEN  /* Maximim size of PMI process group ID */
+#define PMI_MAX_KEY_LEN      PMIX_MAX_KEYLEN /* Maximum size of a PMI key */
+#define PMI_MAX_KVSNAME_LEN  PMIX_MAX_NSLEN  /* Maximum size of KVS name */
+#define PMI_MAX_VAL_LEN      4096            /* Maximum size of a PMI value */
+
+#define PMI_CHECK() \
+	do {                     \
+        if (!pmi_init) {     \
+            return PMI_FAIL; \
+        }                    \
+    } while (0)
+
 /* local functions */
 static pmix_status_t convert_int(int *value, pmix_value_t *kv);
 static int convert_err(pmix_status_t rc);
 static pmix_proc_t myproc;
 static bool data_commited = false;
+static int pmi_init = 0;
 
 int PMI_Init(int *spawned)
 {
@@ -65,27 +78,38 @@ int PMI_Init(int *spawned)
             *spawned = 0;
         }
     }
+    pmi_init = 1;
 
     return PMI_SUCCESS;
 }
 
 int PMI_Initialized(PMI_BOOL *initialized)
 {
-    *initialized = (PMI_BOOL) PMIx_Initialized();
+    if (NULL == initialized) {
+        return PMI_ERR_INVALID_ARG;
+    }
+
+    *initialized = (PMIx_Initialized() ? PMI_TRUE : PMI_FALSE);
+
     return PMI_SUCCESS;
 }
 
 int PMI_Finalize(void)
 {
-    pmix_status_t rc;
+    pmix_status_t rc = PMIX_SUCCESS;
 
+    PMI_CHECK();
+
+    pmi_init = 0;
     rc = PMIx_Finalize();
     return convert_err(rc);
 }
 
 int PMI_Abort(int flag, const char msg[])
 {
-    pmix_status_t rc;
+    pmix_status_t rc = PMIX_SUCCESS;
+
+    PMI_CHECK();
 
     rc = PMIx_Abort(flag, msg, NULL, 0);
     return convert_err(rc);
@@ -95,8 +119,20 @@ int PMI_Abort(int flag, const char msg[])
  * provided kvsname as we only put into our own nspace */
 int PMI_KVS_Put(const char kvsname[], const char key[], const char value[])
 {
-    pmix_status_t rc;
+    pmix_status_t rc = PMIX_SUCCESS;
     pmix_value_t val;
+
+    PMI_CHECK();
+
+    if ((kvsname == NULL) || (strlen(kvsname) > PMI_MAX_KVSNAME_LEN)) {
+        return PMI_ERR_INVALID_KVS;
+    }
+    if ((key == NULL) || (strlen(key) >PMI_MAX_KEY_LEN)) {
+        return PMI_ERR_INVALID_KEY;
+    }
+    if ((value == NULL) || (strlen(value) > PMI_MAX_VAL_LEN)) {
+        return PMI_ERR_INVALID_VAL;
+    }
 
     pmix_output_verbose(2, pmix_globals.debug_output,
             "PMI_KVS_Put: KVS=%s, key=%s value=%s", kvsname, key, value);
@@ -110,7 +146,13 @@ int PMI_KVS_Put(const char kvsname[], const char key[], const char value[])
 /* KVS_Commit */
 int PMI_KVS_Commit(const char kvsname[])
 {
-    pmix_status_t rc;
+    pmix_status_t rc = PMIX_SUCCESS;
+
+    PMI_CHECK();
+
+    if ((kvsname == NULL) || (strlen(kvsname) > PMI_MAX_KVSNAME_LEN)) {
+        return PMI_ERR_INVALID_KVS;
+    }
 
     pmix_output_verbose(2, pmix_globals.debug_output, "PMI_KVS_Commit: KVS=%s",
             kvsname);
@@ -123,12 +165,24 @@ int PMI_KVS_Commit(const char kvsname[])
 
 int PMI_KVS_Get( const char kvsname[], const char key[], char value[], int length)
 {
+    pmix_status_t rc = PMIX_SUCCESS;
     pmix_value_t *val;
     uint32_t i;
     static pmix_proc_t proc;
     uint32_t procnum;
     proc = myproc;
-    int rc;
+
+    PMI_CHECK();
+
+    if ((kvsname == NULL) || (strlen(kvsname) > PMI_MAX_KVSNAME_LEN)) {
+        return PMI_ERR_INVALID_KVS;
+    }
+    if ((key == NULL) || (strlen(key) >PMI_MAX_KEY_LEN)) {
+        return PMI_ERR_INVALID_KEY;
+    }
+    if (value == NULL) {
+        return PMI_ERR_INVALID_VAL;
+    }
 
     pmix_output_verbose(2, pmix_globals.debug_output,
             "PMI_KVS_Get: KVS=%s, key=%s value=%s", kvsname, key, value);
@@ -193,9 +247,12 @@ int PMI_KVS_Get( const char kvsname[], const char key[], char value[], int lengt
  * data to be collected upon completion */
 int PMI_Barrier(void)
 {
+    pmix_status_t rc = PMIX_SUCCESS;
     pmix_info_t buf;
-    int rc, ninfo = 0;
+    int ninfo = 0;
     pmix_info_t *info = NULL;
+
+    PMI_CHECK();
 
     if (data_commited) {
         bool val = 1;
@@ -214,11 +271,13 @@ int PMI_Barrier(void)
 
 int PMI_Get_size(int *size)
 {
+    pmix_status_t rc = PMIX_SUCCESS;
     pmix_value_t *val;
-    pmix_status_t rc;
+
+    PMI_CHECK();
 
     if (NULL == size) {
-        return PMI_FAIL;
+        return PMI_ERR_INVALID_ARG;
     }
 
     if (PMIX_SUCCESS == PMIx_Get(&myproc, PMIX_JOB_SIZE, NULL, 0, &val)) {
@@ -232,8 +291,10 @@ int PMI_Get_size(int *size)
 
 int PMI_Get_rank(int *rk)
 {
+    PMI_CHECK();
+
     if (NULL == rk) {
-        return PMI_FAIL;
+        return PMI_ERR_INVALID_ARG;
     }
 
     *rk = myproc.rank;
@@ -242,11 +303,13 @@ int PMI_Get_rank(int *rk)
 
 int PMI_Get_universe_size(int *size)
 {
+    pmix_status_t rc = PMIX_SUCCESS;
     pmix_value_t *val;
-    pmix_status_t rc;
+
+    PMI_CHECK();
 
     if (NULL == size) {
-        return PMI_FAIL;
+        return PMI_ERR_INVALID_ARG;
     }
 
     if (PMIX_SUCCESS == PMIx_Get(&myproc, PMIX_UNIV_SIZE, NULL, 0, &val)) {
@@ -259,8 +322,10 @@ int PMI_Get_universe_size(int *size)
 
 int PMI_Get_appnum(int *appnum)
 {
+    pmix_status_t rc = PMIX_SUCCESS;
     pmix_value_t *val;
-    pmix_status_t rc;
+
+    PMI_CHECK();
 
     if (NULL != appnum &&
         PMIX_SUCCESS == PMIx_Get(&myproc, PMIX_APPNUM, NULL, 0, &val)) {
@@ -274,12 +339,15 @@ int PMI_Get_appnum(int *appnum)
 
 int PMI_Publish_name(const char service_name[], const char port[])
 {
-    pmix_status_t rc;
+    pmix_status_t rc = PMIX_SUCCESS;
     pmix_info_t info;
 
+    PMI_CHECK();
+
     if (NULL == service_name || NULL == port) {
-        return convert_err(PMIX_ERR_BAD_PARAM);
+        return PMI_ERR_INVALID_ARG;
     }
+
     /* pass the service/port */
     (void) strncpy(info.key, service_name, PMIX_MAX_KEYLEN);
     info.value.type = PMIX_STRING;
@@ -294,8 +362,14 @@ int PMI_Publish_name(const char service_name[], const char port[])
 
 int PMI_Unpublish_name(const char service_name[])
 {
-    pmix_status_t rc;
+    pmix_status_t rc = PMIX_SUCCESS;
     char *keys[2];
+
+    PMI_CHECK();
+
+    if (NULL == service_name) {
+        return PMI_ERR_INVALID_ARG;
+    }
 
     /* pass the service */
     keys[0] = (char*) service_name;
@@ -307,8 +381,14 @@ int PMI_Unpublish_name(const char service_name[])
 
 int PMI_Lookup_name(const char service_name[], char port[])
 {
-    pmix_status_t rc;
+    pmix_status_t rc = PMIX_SUCCESS;
     pmix_pdata_t pdata;
+
+    PMI_CHECK();
+
+    if (NULL == service_name || NULL == port) {
+        return PMI_ERR_INVALID_ARG;
+    }
 
     PMIX_PDATA_CONSTRUCT(&pdata);
 
@@ -341,33 +421,50 @@ int PMI_Get_id(char id_str[], int length)
     /* we already obtained our nspace during PMI_Init,
      * so all we have to do here is return it */
 
+    PMI_CHECK();
+
     /* bozo check */
     if (NULL == id_str) {
         return PMI_ERR_INVALID_ARGS;
     }
+    if (length < PMI_MAX_ID_LEN) {
+        return PMI_ERR_INVALID_LENGTH;
+    }
+
     (void) strncpy(id_str, myproc.nspace, length);
     return PMI_SUCCESS;
 }
 
 int PMI_Get_kvs_domain_id(char id_str[], int length)
 {
+    PMI_CHECK();
+
     /* same as PMI_Get_id */
     return PMI_Get_id(id_str, length);
 }
 
 int PMI_Get_id_length_max(int *length)
 {
+    PMI_CHECK();
+
     if (NULL == length) {
         return PMI_ERR_INVALID_VAL_LENGTH;
     }
-    *length = PMIX_MAX_NSLEN;
+
+    *length = PMI_MAX_ID_LEN;
     return PMI_SUCCESS;
 }
 
 int PMI_Get_clique_size(int *size)
 {
+    pmix_status_t rc = PMIX_SUCCESS;
     pmix_value_t *val;
-    pmix_status_t rc;
+
+    PMI_CHECK();
+
+    if (NULL == size) {
+        return PMI_ERR_INVALID_ARGS;
+    }
 
     if (PMIX_SUCCESS == PMIx_Get(&myproc, PMIX_LOCAL_SIZE, NULL, 0, &val)) {
         rc = convert_int(size, val);
@@ -383,6 +480,12 @@ int PMI_Get_clique_ranks(int ranks[], int length)
     pmix_value_t *val;
     char **rks;
     int i;
+
+    PMI_CHECK();
+
+    if (NULL == ranks) {
+        return PMI_ERR_INVALID_ARGS;
+    }
 
     if (PMIX_SUCCESS == PMIx_Get(&myproc, PMIX_LOCAL_PEERS, NULL, 0, &val)) {
         /* kv will contain a string of comma-separated
@@ -400,36 +503,47 @@ int PMI_Get_clique_ranks(int ranks[], int length)
 
 int PMI_KVS_Get_my_name(char kvsname[], int length)
 {
+    PMI_CHECK();
+
     /* same as PMI_Get_id */
     return PMI_Get_id(kvsname, length);
 }
 
 int PMI_KVS_Get_name_length_max(int *length)
 {
+    PMI_CHECK();
+
     if (NULL == length) {
-        return PMI_ERR_INVALID_VAL_LENGTH;
+        return PMI_ERR_INVALID_ARG;
     }
-    *length = PMIX_MAX_NSLEN;
+
+    *length = PMI_MAX_KVSNAME_LEN;
     return PMI_SUCCESS;
 }
 
 int PMI_KVS_Get_key_length_max(int *length)
 {
+    PMI_CHECK();
+
     if (NULL == length) {
-        return PMI_ERR_INVALID_VAL_LENGTH;
+        return PMI_ERR_INVALID_ARG;
     }
-    *length = PMIX_MAX_KEYLEN;
+
+    *length = PMI_MAX_KEY_LEN;
     return PMI_SUCCESS;
 }
 
 int PMI_KVS_Get_value_length_max(int *length)
 {
+    PMI_CHECK();
+
     if (NULL == length) {
-        return PMI_ERR_INVALID_VAL_LENGTH;
+        return PMI_ERR_INVALID_ARG;
     }
+
     /* don't give them an enormous size of some implementations
      * immediately malloc a data block for their use */
-    *length = 4096;
+    *length = PMI_MAX_VAL_LEN;
     return PMI_SUCCESS;
 }
 
@@ -471,11 +585,17 @@ int PMI_Spawn_multiple(int count,
                        const PMI_keyval_t preput_keyval_vector[],
                        int errors[])
 {
+    pmix_status_t rc = PMIX_SUCCESS;
     pmix_app_t *apps;
     int i, k;
-    pmix_status_t rc;
     size_t j;
     char *evar;
+
+    PMI_CHECK();
+
+    if (NULL == cmds) {
+        return PMI_ERR_INVALID_ARG;
+    }
 
     /* setup the apps */
     PMIX_APP_CREATE(apps, count);
