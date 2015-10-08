@@ -62,6 +62,7 @@ static int test_item5(void);
 static int test_item6(void);
 static int test_item7(void);
 static int test_item8(void);
+/* several sequence of fences is a buggy case for pmix v1.0 (see https://github.com/open-mpi/pmix/issues/37) */
 static int test_item9(void);
 
 static int spawned, size, rank, appnum;
@@ -155,6 +156,7 @@ int main(int argc, char **argv)
 static int test_item1(void)
 {
     int rc = 0;
+    int val = 0;
 
     log_info("spawned=%d size=%d rank=%d appnum=%d\n", spawned, size, rank, appnum);
 
@@ -170,8 +172,21 @@ static int test_item1(void)
     }
 
     log_info("jobid=%s\n", jobid);
-
     log_assert(memcmp(jobid, __FUNCTION__, sizeof(__FUNCTION__)), "");
+
+    val = random_value(10, 100);
+    if (PMI2_SUCCESS != (rc = PMI2_Job_GetRank(&val))) {
+        log_fatal("PMI2_Job_GetRank failed: %d\n", rc);
+        return rc;
+    }
+    log_assert(rank == val, "");
+
+    val = -1;
+    if (PMI2_SUCCESS != (rc = PMI2_Info_GetSize(&val))) {
+        log_fatal("PMI2_Info_GetSize failed: %d\n", rc);
+        return rc;
+    }
+    log_assert(0 < val, "");
 
     return rc;
 }
