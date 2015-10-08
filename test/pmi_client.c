@@ -30,10 +30,10 @@ static int _verbose = 1;
             exit(rc);    \
     } while (0)
 
-#define log_error(fmt, ...) \
+#define log_error(fmt) \
     do {                                                     \
         if (_verbose > 1)                          \
-            fprintf(stderr, "ERROR " fmt, ##__VA_ARGS__);    \
+            fprintf(stderr, "ERROR " fmt);    \
     } while (0)
 
 #define log_info(fmt, ...) \
@@ -338,7 +338,7 @@ static int test_item6(void)
     int rc = 0;
     char nspace[100];
 
-    log_error("pmix does no support this functionality\n");
+    log_error("pmix does not support this functionality\n");
     return rc;
     if (0 == rank) {
         if (PMI_SUCCESS != (rc = PMI_KVS_Create(nspace, sizeof(nspace)))) {
