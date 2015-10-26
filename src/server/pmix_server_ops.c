@@ -123,6 +123,7 @@ pmix_status_t pmix_pending_request(pmix_nspace_t *nptr, int rank,
     pmix_rank_info_t *iptr;
     pmix_hash_table_t *ht;
     pmix_status_t rc;
+    bool is_local = false;
 
     /* 1. Try to satisfy the request right now */
 
@@ -132,6 +133,7 @@ pmix_status_t pmix_pending_request(pmix_nspace_t *nptr, int rank,
         if (iptr->rank == rank) {
             /* in case it is known local rank - check local table */
             ht = &nptr->server->mylocal;
+            is_local = true;
             break;
         }
     }
@@ -175,7 +177,7 @@ pmix_status_t pmix_pending_request(pmix_nspace_t *nptr, int rank,
         pmix_list_append(&pmix_server_globals.local_reqs, &lcd->super);
 
         /* check & send request if need/possible */
-        if (nptr->server->all_registered && NULL == info) {
+        if (nptr->server->all_registered && !is_local) {
             if (NULL != pmix_host_server.direct_modex) {
                 pmix_host_server.direct_modex(&lcd->proc, info, ninfo, dmdx_cbfunc, lcd);
             } else {
