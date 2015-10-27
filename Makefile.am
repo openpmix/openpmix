@@ -37,7 +37,7 @@ endif
 
 man_MANS = \
         man/man3/pmix_init.3 \
-        man/man3/pmix_finalized.3 \
+        man/man3/pmix_finalize.3 \
         man/man3/pmix_initialized.3 \
         man/man3/pmix_abort.3 \
         man/man3/pmix_put.3 \
