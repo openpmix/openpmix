@@ -89,12 +89,4 @@ A list of the current PMIx attributes, and the type of their associated data val
 
 # SEE ALSO
 
-[`pmix`(7)](pmix.7.html),
-[`fi_getinfo`(3)](fi_getinfo.3.html),
-[`fi_endpoint`(3)](fi_endpoint.3.html),
-[`fi_domain`(3)](fi_domain.3.html),
-[`fi_av`(3)](fi_av.3.html),
-[`fi_eq`(3)](fi_eq.3.html),
-[`fi_cq`(3)](fi_cq.3.html),
-[`fi_cntr`(3)](fi_cntr.3.html),
-[`fi_mr`(3)](fi_mr.3.html)
+[`pmix`(7)](pmix.7.html)
