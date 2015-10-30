@@ -13,7 +13,7 @@
 
 #include <private/autogen/config.h>
 #include <pmix/rename.h>
-#include <pmix_common.h>
+#include <pmix/pmix_common.h>
 #include <pmix_server.h>
 #include "src/usock/usock.h"
 #include "src/util/hash.h"
