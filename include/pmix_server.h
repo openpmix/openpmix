@@ -308,8 +308,13 @@ typedef struct pmix_server_module_1_0_0_t {
 
 /* Initialize the server support library, and provide a
  *  pointer to a pmix_server_module_t structure
- * containing the caller's callback functions */
-pmix_status_t PMIx_server_init(pmix_server_module_t *module);
+ * containing the caller's callback functions. The
+ * array of pmix_info_t structs is used to pass
+ * additional info that may be required by the server
+ * when initializing - e.g., a user/group ID to set
+ * on the rendezvous file for the Unix Domain Socket */
+pmix_status_t PMIx_server_init(pmix_server_module_t *module,
+                               pmix_info_t info[], size_t ninfo);
 
 /* Finalize the server support library. If internal comm is
  * in-use, the server will shut it down at this time. All

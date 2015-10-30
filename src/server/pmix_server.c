@@ -21,7 +21,7 @@
 #include <private/pmix_socket_errno.h>
 
 #include <pmix_server.h>
-#include <pmix_common.h>
+#include <pmix/pmix_common.h>
 #include "src/include/pmix_globals.h"
 
 #ifdef HAVE_STRING_H
@@ -44,6 +44,7 @@
 #include <sys/types.h>
 #endif
 #include <ctype.h>
+#include <sys/stat.h>
 #include PMIX_EVENT_HEADER
 
 #include "src/util/argv.h"
@@ -269,17 +270,18 @@ static pmix_status_t initialize_server_base(pmix_server_module_t *module)
     snprintf(myaddress.sun_path, sizeof(myaddress.sun_path)-1, "%s/pmix-%d", tdir, pid);
     asprintf(&myuri, "%s:%lu:%s", pmix_globals.myid.nspace, (unsigned long)pmix_globals.myid.rank, myaddress.sun_path);
 
-
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:server constructed uri %s", myuri);
 
     return PMIX_SUCCESS;
 }
 
-pmix_status_t PMIx_server_init(pmix_server_module_t *module)
+pmix_status_t PMIx_server_init(pmix_server_module_t *module,
+                               pmix_info_t info[], size_t ninfo)
 {
     pmix_usock_posted_recv_t *req;
     pmix_status_t rc;
+    size_t n;
 
     ++pmix_globals.init_cntr;
     if (1 < pmix_globals.init_cntr) {
@@ -299,6 +301,19 @@ pmix_status_t PMIx_server_init(pmix_server_module_t *module)
     /* create an event base and progress thread for us */
     if (NULL == (pmix_globals.evbase = pmix_start_progress_thread())) {
         return PMIX_ERR_INIT;
+    }
+    /* check the info keys for a directive about the uid/gid
+     * to be set for the rendezvous file */
+    if (NULL != info) {
+        for (n=0; n < ninfo; n++) {
+            if (0 == strcmp(info[n].key, PMIX_USERID)) {
+                /* the userid is in the uint32_t storage */
+                chown(myaddress.sun_path, info[n].value.data.uint32, -1);
+            } else if (0 == strcmp(info[n].key, PMIX_GRPID)) {
+                /* the grpid is in the uint32_t storage */
+                chown(myaddress.sun_path, -1, info[n].value.data.uint32);
+            }
+        }
     }
 
     /* setup the wildcard recv for inbound messages from clients */

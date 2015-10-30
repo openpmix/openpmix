@@ -20,9 +20,8 @@ include_HEADERS = \
         include/pmi2.h
 include_pmixdir = $(includedir)/pmix
 include_pmix_HEADERS = \
-	include/pmix/rename.h
-nodist_include_pmix_HEADERS = \
-	include/pmix/pmix_common.h
+    include/pmix/rename.h \
+    include/pmix/pmix_common.h
 
 include_pmix_autogendir = $(includedir)/pmix/autogen
 include_pmix_autogen_HEADERS = \
