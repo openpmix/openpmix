@@ -54,7 +54,6 @@ examples/fault
 examples/pub
 examples/server
 
-include/pmix/pmix_common.h
 include/private/autogen/config.h.in
 include/private/autogen/config.h.in~
 
