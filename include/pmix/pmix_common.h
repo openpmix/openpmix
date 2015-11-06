@@ -56,6 +56,25 @@
 #include <sys/time.h> /* for struct timeval */
 #endif
 
+#ifndef PMIX_CONFIG_H
+
+/* ensure we have the version info available for external users */
+/* #undef PMIX_MAJOR_VERSION */
+/* #undef PMIX_MINOR_VERSION */
+/* #undef PMIX_RELEASE_VERSION */
+
+#endif
+
+/* #undef BEGIN_C_DECLS */
+/* #undef END_C_DECLS */
+#if defined(c_plusplus) || defined(__cplusplus)
+# define BEGIN_C_DECLS extern "C" {
+# define END_C_DECLS }
+#else
+#define BEGIN_C_DECLS          /* empty */
+#define END_C_DECLS            /* empty */
+#endif
+
 BEGIN_C_DECLS
 
 /****  PMIX CONSTANTS    ****/
@@ -162,10 +181,31 @@ BEGIN_C_DECLS
 #define PMIX_PROC_BLOB             "pmix.pblob"        // (pmix_byte_object_t) packed blob of process data
 #define PMIX_MAP_BLOB              "pmix.mblob"        // (pmix_byte_object_t) packed blob of process location
 
+/* error handler registration  and notification info keys */
+#define PMIX_ERROR_GROUP_COMM_FAIL "pmix.errgroup.commfail" /* bool - set true to get comm fail errors notification */
+#define PMIX_ERROR_GROUP_ABORT     "pmix.errgroup.abort"    /* bool -set true to get comm abort errors notification */
+#define PMIX_ERROR_GROUP_MIGRATE   "pmix.errgroup.migrate"  /* bool -set true to get migrate errors notification  */
+#define PMIX_ERROR_GROUP_RESOURCE  "pmix.errgroup.resource" /* bool -set true to get resource errors notification */
+#define PMIX_ERROR_GROUP_SPAWN     "pmix.errgroup.spawn"    /* bool - set true to get spawn errors notification */
+#define PMIX_ERROR_GROUP_NODE      "pmix.errgroup.node"     /* bool -set true to get node status errors */
+#define PMIX_ERROR_GROUP_LOCAL     "pmix.errgroup.local"    /* bool set true to get notified of all errors at local node */
+#define PMIX_ERROR_GROUP_GENERAL   "pmix.errgroup.gen"      /* bool set true to get notified af general errors not in any category */
+
+#define PMIX_ERROR_SCOPE           "pmix.errscope"      /* int (enum pmix_error_scope_t) scope of errors to be notified*/
+#define PMIX_ERROR_NAME            "pmix.errname"       /* array of ints (enum pmix_status_t) what error or errors to be notified
+                                                           (value of key PMIX_ERROR_GROUP
+                                                           should be NULL or set to PMIX_SPECIFIC_ERROR).*/
+#define PMIX_ERROR_PROC_NAME       "pmix.errproc.name"   /* value type (pmix_proc_t*) Name of erroring process */
+#define PMIX_ERROR_NODE_NAME       "pmix.errnode.name"   /* name of the node that is in error or which reported the error.*/
+#define PMIX_ERROR_SEVERITY        "pmix.errseverity"    /* the severity of the notified (reported) error */
+
+/* Question : do we need to have  a key that specifies who to notify or can the client be
+   expected to fill the proc list by itself?? */
+#define PMIX_ERROR_NOTIFY_OP       "pmix.errnotify.op"    /* int (enum pmix_notify_op_t) what processes to notify*/
 
 /****    PMIX ERROR CONSTANTS    ****/
 /* PMIx errors are always negative, with 0 reserved for success */
-#define PMIX_ERROR_MIN  -42  // set equal to number of non-zero entries in enum
+#define PMIX_ERROR_MIN  -49  // set equal to number of non-zero entries in enum
 
 typedef enum {
     PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER = PMIX_ERROR_MIN,
@@ -211,7 +251,13 @@ typedef enum {
     PMIX_ERR_HANDSHAKE_FAILED,
     PMIX_ERR_INVALID_CRED,
     PMIX_EXISTS,
-
+    PMIX_ERR_SERVER_FAILED_REQUEST,
+    PMIX_ERR_PROC_ABORTING,
+    PMIX_ERR_PROC_REQUESTED_ABORT,
+    PMIX_ERR_PROC_ABORTED,
+    PMIX_ERR_PROC_MIGRATE,
+    PMIX_ERR_PROC_CHECKPOINT,
+    PMIX_ERR_PROC_RESTART,
     PMIX_ERR_SILENT,
     PMIX_ERROR,
     PMIX_SUCCESS

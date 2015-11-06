@@ -116,6 +116,7 @@ typedef struct {
     int test_spawn;
     int test_connect;
     int test_resolve_peers;
+    int test_error;
 } test_params;
 
 #define INIT_TEST_PARAMS(params) do { \

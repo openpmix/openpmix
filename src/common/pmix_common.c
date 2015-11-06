@@ -16,6 +16,8 @@
 #include <pmix.h>
 #include <pmix/pmix_common.h>
 #include <pmix_server.h>
+#include "src/client/pmix_client_ops.h"
+#include "src/server/pmix_server_ops.h"
 #include "src/include/pmix_globals.h"
 
 void PMIx_Register_errhandler(pmix_info_t info[], size_t ninfo,
@@ -23,14 +25,42 @@ void PMIx_Register_errhandler(pmix_info_t info[], size_t ninfo,
                               pmix_errhandler_reg_cbfunc_t cbfunc,
                               void *cbdata)
 {
-    /* common err handler registration to be added */
+    /* common err handler registration */
+    if(pmix_globals.server)  {
+        /* PMIX server: store the error handler, process info keys and call
+                    cbfunc with reference to the errhandler */
+        pmix_server_register_errhandler(info, ninfo,
+                                        errhandler,
+                                        cbfunc,cbdata);
+        pmix_output(0, "registering server err handler");
+    }
+   else {
+        /* PMIX client: store the error handler, process info keys & call pmix_server_register_for_events,
+                    and call cbfunc with reference to the errhandler */
+         pmix_client_register_errhandler(info, ninfo,
+                                        errhandler,
+                                        cbfunc, cbdata);
+         pmix_output(0, "registering client err handler");
+    }
 }
 
 void PMIx_Deregister_errhandler(int errhandler_ref,
-                                 pmix_op_cbfunc_t cbfunc,
-                                 void *cbdata)
+                                pmix_op_cbfunc_t cbfunc,
+                                void *cbdata)
 {
-    /* common err handler deregistration goes here */
+    /* common err handler registration */
+    if(pmix_globals.server)  {
+        /* PMIX server: store the error handler, process info keys and call
+                    cbfunc with reference to the errhandler */
+        pmix_server_deregister_errhandler(errhandler_ref,cbfunc,cbdata);
+        pmix_output(0, "deregistering server err handler");
+    }
+    else {
+        /* PMIX client: store the error handler, process info keys & call pmix_server_register_for_events,
+                    and call cbfunc with reference to the errhandler */
+        pmix_client_deregister_errhandler(errhandler_ref, cbfunc, cbdata);
+        pmix_output(0, "deregistering client err handler");
+    }
 }
 
 pmix_status_t PMIx_Notify_error(pmix_status_t status,
@@ -39,6 +69,17 @@ pmix_status_t PMIx_Notify_error(pmix_status_t status,
                                 pmix_info_t info[], size_t ninfo,
                                 pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
-    /* common err notify goes here */
-   return PMIX_SUCCESS;
+    int rc;
+    if(pmix_globals.server) {
+        rc = pmix_server_notify_error (status, procs, nprocs, error_procs,
+                                       error_nprocs, info, ninfo,
+                                        cbfunc, cbdata);
+        pmix_output(0, "pmix_server_notify_error error =%d, rc=%d", status, rc);
+    } else {
+        rc = pmix_client_notify_error (status, procs, nprocs, error_procs,
+                                       error_nprocs, info, ninfo,
+                                       cbfunc, cbdata);
+        pmix_output(0, "pmix_client_notify_error error =%d, rc=%d", status, rc);
+    }
+    return rc;
 }
