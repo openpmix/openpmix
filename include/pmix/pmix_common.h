@@ -56,25 +56,6 @@
 #include <sys/time.h> /* for struct timeval */
 #endif
 
-#ifndef PMIX_CONFIG_H
-
-/* ensure we have the version info available for external users */
-/* #undef PMIX_MAJOR_VERSION */
-/* #undef PMIX_MINOR_VERSION */
-/* #undef PMIX_RELEASE_VERSION */
-
-#endif
-
-/* #undef BEGIN_C_DECLS */
-/* #undef END_C_DECLS */
-#if defined(c_plusplus) || defined(__cplusplus)
-# define BEGIN_C_DECLS extern "C" {
-# define END_C_DECLS }
-#else
-#define BEGIN_C_DECLS          /* empty */
-#define END_C_DECLS            /* empty */
-#endif
-
 BEGIN_C_DECLS
 
 /****  PMIX CONSTANTS    ****/
