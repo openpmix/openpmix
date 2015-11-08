@@ -144,6 +144,7 @@ typedef struct {
     params.fences = NULL;             \
     params.noise = NULL;              \
     params.ns_dist = NULL;            \
+    params.test_error = 0;            \
 } while (0)
 
 #define FREE_TEST_PARAMS(params) do { \

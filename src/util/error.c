@@ -229,6 +229,8 @@ pmix_status_t pmix_add_errhandler(pmix_notification_fn_t err,
         pmix_value_xfer(&errreg->info[i].value, &info[i].value);
     }
     *index = pmix_pointer_array_add (&pmix_globals.errregs, errreg);
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix_add_errhandler index =%d", *index);
     if (-1 == *index)
         rc = PMIX_ERROR;
     return rc;
@@ -256,7 +258,7 @@ void pmix_get_errorgroup ( pmix_status_t status, char *pmix_error_group)
         case PMIX_ERR_TIMEOUT:
         case PMIX_ERR_PACK_FAILURE:
         case PMIX_ERR_UNPACK_FAILURE:
-            strcpy(pmix_error_group, PMIX_ERROR_GROUP_COMM_FAIL);
+            strcpy(pmix_error_group, PMIX_ERROR_GROUP_COMM);
             break;
         case PMIX_ERR_OUT_OF_RESOURCE:
         case PMIX_ERR_RESOURCE_BUSY:

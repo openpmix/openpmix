@@ -970,6 +970,9 @@ static void _notify_error(int sd, short args, void *cbdata)
     pmix_peer_t *peer;
     pmix_regevents_info_t *reginfoptr;
     bool notify = false;
+    pmix_output_verbose(0, pmix_globals.debug_output,
+                        "pmix_server: _notify_error notifying client of error %d",
+                        cd->status);
     /* pack the command */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(cd->buf, &cmd, 1, PMIX_CMD))) {
         PMIX_ERROR_LOG(rc);
@@ -1015,32 +1018,34 @@ static void _notify_error(int sd, short args, void *cbdata)
         reginfoptr = NULL;
         PMIX_LIST_FOREACH(reginfoptr, &pmix_server_globals.client_eventregs, pmix_regevents_info_t) {
            if (reginfoptr->peer == peer) {
-                break;
-            }
-        }
-        if (NULL != reginfoptr) {
-            /* check if the client has registered for this error  by parsing the info keys*/
-            if (reginfoptr->ninfo) {
+                /* check if the client has registered for this error  by parsing the info keys*/
                 notify = match_error_registration(reginfoptr, cd);
+                pmix_output_verbose(2, pmix_globals.debug_output,
+                                    "pmix_server _notify_error - match error registration returned notify =%d ", notify);
             }
-            else {
-                /* when the client does not specify what errors to be notified, PMIX server sends
-                  it to every process in the list specified by resource manager */
-                for (j=0; j < cd->nprocs; j++) {
-                    if (0 != strncmp(peer->info->nptr->nspace, cd->procs[j].nspace, PMIX_MAX_NSLEN)) {
-                        continue;
-                    }
-                    if (PMIX_RANK_WILDCARD == cd->procs[j].rank ||
-                               cd->procs[j].rank == peer->info->rank) {
-                        notify = true;
-                        break;
-                    }
+            if(notify)
+                break;
+        }
+        if (!notify) {
+            /* when the client does not specify what errors to be notified, PMIX server sends
+               it to every process in the list specified by resource manager */
+            for (j=0; j < cd->nprocs; j++) {
+                if (0 != strncmp(peer->info->nptr->nspace, cd->procs[j].nspace, PMIX_MAX_NSLEN)) {
+                    continue;
+                }
+                if (PMIX_RANK_WILDCARD == cd->procs[j].rank ||
+                    cd->procs[j].rank == peer->info->rank) {
+                    notify = true;
+                    break;
                 }
             }
-            if (notify) {
-                PMIX_RETAIN(cd->buf);
-                PMIX_SERVER_QUEUE_REPLY(peer, 0, cd->buf);
-            }
+        }
+        if (notify) {
+            pmix_output_verbose(2, pmix_globals.debug_output,
+                                "pmix_server: _notify_error - notifying process rank %d error %d",
+                                 peer->info->rank, cd->status);
+            PMIX_RETAIN(cd->buf);
+            PMIX_SERVER_QUEUE_REPLY(peer, 0, cd->buf);
         }
     }
   cleanup:
@@ -1084,6 +1089,9 @@ pmix_status_t pmix_server_notify_error(pmix_status_t status,
     }
     cd->cbfunc = cbfunc;
     cd->cbdata = cbdata;
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix_server_notify_error status =%d, nprocs = %d, ninfo =%d",
+                         status, nprocs, ninfo);
 
     /* we have to push this into our event library to avoid
      * potential threading issues */
@@ -1101,11 +1109,14 @@ static void reg_errhandler(int sd, short args, void *cbdata)
     /* check if this handler is already registered if so return error */
    if (PMIX_SUCCESS ==  pmix_lookup_errhandler (cd->err, &index)) {
         /* complete request with error status and  return its original reference */
-        pmix_output (0, "pmix_server_register_errhandler error - hdlr already registered index = %d", index);
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                           "pmix_server_register_errhandler error - hdlr already registered index = %d",
+                           index);
         cd->cbfunc.errregcbfn (PMIX_EXISTS, index, cd->cbdata);
     } else {
          rc = pmix_add_errhandler (cd->err, cd->info, cd->ninfo, &index);
-         pmix_output (0, "pmix_server_register_errhandler - success index =%d", index);
+         pmix_output_verbose(2, pmix_globals.debug_output,
+                             "pmix_server_register_errhandler - success index =%d", index);
          cd->cbfunc.errregcbfn (rc, index, cd->cbdata);
     }
     cd->active = false;
@@ -1125,7 +1136,8 @@ void pmix_server_register_errhandler(pmix_info_t info[], size_t ninfo,
     cd->err = errhandler;
     cd->cbfunc.errregcbfn = cbfunc;
     cd->cbdata = cbdata;
-    pmix_output (0, "pmix_server_register_errhandler shifting to server thread");
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix_server_register_errhandler shifting to server thread");
     PMIX_THREADSHIFT(cd, reg_errhandler);
 }
 

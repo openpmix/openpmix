@@ -159,8 +159,6 @@ int main(int argc, char **argv)
 
     if( !test_terminated() ){
         TEST_ERROR(("Test exited by a timeout!"));
-        PMIx_Notify_error(PMIX_ERR_TIMEOUT, NULL, 0, NULL, 0, NULL, 0, op_callbk, NULL);
-        sleep(1);
         cli_kill_all();
         test_fail = 1;
     }
