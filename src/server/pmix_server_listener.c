@@ -144,11 +144,13 @@ pmix_status_t pmix_start_listening(struct sockaddr_un *address)
             close(pmix_server_globals.stop_thread[1]);
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
-        /* fork off the listener thread */
+
+	pmix_server_globals.listen_thread_active = true;
+
+	/* fork off the listener thread */
         if (0 > pthread_create(&engine, NULL, listen_thread, NULL)) {
             return PMIX_ERROR;
         }
-        pmix_server_globals.listen_thread_active = true;
     }
 
     return PMIX_SUCCESS;
