@@ -445,8 +445,8 @@ void pmix_usock_process_msg(int fd, short flags, void *cbdata)
                     rcv->cbfunc(msg->peer, &msg->hdr, &buf, rcv->cbdata);
                 }
                 PMIX_DESTRUCT(&buf);  // free's the msg data
-                /* also done with the recv, if not a wildcard */
-                if (UINT32_MAX != rcv->tag) {
+                /* also done with the recv, if not a wildcard or the error tag*/
+                if (UINT32_MAX != rcv->tag && 0 != rcv->tag) {
                     pmix_list_remove_item(&pmix_usock_globals.posted_recvs, &rcv->super);
                     PMIX_RELEASE(rcv);
                 }
@@ -457,7 +457,7 @@ void pmix_usock_process_msg(int fd, short flags, void *cbdata)
     }
 
     /* we get here if no matching recv was found - this is an error */
-    pmix_output(0, "UNEXPECTED MESSAGE");
+    pmix_output(0, "UNEXPECTED MESSAGE tag =%d", msg->hdr.tag);
     PMIX_RELEASE(msg);
     PMIX_REPORT_ERROR(PMIX_ERROR);
 }

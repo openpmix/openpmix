@@ -162,10 +162,26 @@ BEGIN_C_DECLS
 #define PMIX_PROC_BLOB             "pmix.pblob"        // (pmix_byte_object_t) packed blob of process data
 #define PMIX_MAP_BLOB              "pmix.mblob"        // (pmix_byte_object_t) packed blob of process location
 
+/* error handler registration  and notification info keys */
+#define PMIX_ERROR_NAME            "pmix.errname"           /* enum pmix_status_t specific error to be notified */
+#define PMIX_ERROR_GROUP_COMM      "pmix.errgroup.comm"     /* bool - set true to get comm  errors notification */
+#define PMIX_ERROR_GROUP_ABORT     "pmix.errgroup.abort"    /* bool -set true to get abort errors notification */
+#define PMIX_ERROR_GROUP_MIGRATE   "pmix.errgroup.migrate"  /* bool -set true to get migrate errors notification  */
+#define PMIX_ERROR_GROUP_RESOURCE  "pmix.errgroup.resource" /* bool -set true to get resource errors notification */
+#define PMIX_ERROR_GROUP_SPAWN     "pmix.errgroup.spawn"    /* bool - set true to get spawn errors notification */
+#define PMIX_ERROR_GROUP_NODE      "pmix.errgroup.node"     /* bool -set true to get node status errors */
+#define PMIX_ERROR_GROUP_LOCAL     "pmix.errgroup.local"    /* bool set true to get local errors */
+#define PMIX_ERROR_GROUP_GENERAL   "pmix.errgroup.gen"      /* bool set true to get notified af generic errors */
+
+/* error notification keys */
+#define PMIX_ERROR_SCOPE           "pmix.errscope"      /* int (enum pmix_scope_t) scope of error notification*/
+#define PMIX_ERROR_NODE_NAME       "pmix.errnode.name"   /* name of the node that is in error or which reported the error.*/
+#define PMIX_ERROR_SEVERITY        "pmix.errseverity"    /* the severity of the notified (reported) error */
+
 
 /****    PMIX ERROR CONSTANTS    ****/
 /* PMIx errors are always negative, with 0 reserved for success */
-#define PMIX_ERROR_MIN  -42  // set equal to number of non-zero entries in enum
+#define PMIX_ERROR_MIN  -49  // set equal to number of non-zero entries in enum
 
 typedef enum {
     PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER = PMIX_ERROR_MIN,
@@ -211,7 +227,13 @@ typedef enum {
     PMIX_ERR_HANDSHAKE_FAILED,
     PMIX_ERR_INVALID_CRED,
     PMIX_EXISTS,
-
+    PMIX_ERR_SERVER_FAILED_REQUEST,
+    PMIX_ERR_PROC_ABORTING,
+    PMIX_ERR_PROC_REQUESTED_ABORT,
+    PMIX_ERR_PROC_ABORTED,
+    PMIX_ERR_PROC_MIGRATE,
+    PMIX_ERR_PROC_CHECKPOINT,
+    PMIX_ERR_PROC_RESTART,
     PMIX_ERR_SILENT,
     PMIX_ERROR,
     PMIX_SUCCESS

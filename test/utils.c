@@ -142,6 +142,9 @@ void set_client_argv(test_params *params, char ***argv)
     if (params->test_resolve_peers) {
         pmix_argv_append_nosize(argv, "--test-resolve-peers");
     }
+    if (params->test_error) {
+        pmix_argv_append_nosize(argv, "--test-error");
+    }
 }
 
 int launch_clients(int num_procs, char *binary, char *** client_env, char ***base_argv)
