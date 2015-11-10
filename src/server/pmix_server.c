@@ -304,6 +304,20 @@ pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     if (NULL == (pmix_globals.evbase = pmix_start_progress_thread())) {
         return PMIX_ERR_INIT;
     }
+
+    /* setup the wildcard recv for inbound messages from clients */
+    req = PMIX_NEW(pmix_usock_posted_recv_t);
+    req->tag = UINT32_MAX;
+    req->cbfunc = server_message_handler;
+    /* add it to the end of the list of recvs */
+    pmix_list_append(&pmix_usock_globals.posted_recvs, &req->super);
+
+    /* start listening */
+    if (PMIX_SUCCESS != pmix_start_listening(&myaddress)) {
+        PMIx_server_finalize();
+        return PMIX_ERR_INIT;
+    }
+
     /* check the info keys for a directive about the uid/gid
      * to be set for the rendezvous file, and any info we
      * need to provide to every client */
@@ -331,19 +345,6 @@ pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         kv.key = NULL;
         kv.value = NULL;
         PMIX_DESTRUCT(&kv);
-    }
-
-    /* setup the wildcard recv for inbound messages from clients */
-    req = PMIX_NEW(pmix_usock_posted_recv_t);
-    req->tag = UINT32_MAX;
-    req->cbfunc = server_message_handler;
-    /* add it to the end of the list of recvs */
-    pmix_list_append(&pmix_usock_globals.posted_recvs, &req->super);
-
-    /* start listening */
-    if (PMIX_SUCCESS != pmix_start_listening(&myaddress)) {
-        PMIx_server_finalize();
-        return PMIX_ERR_INIT;
     }
 
     return PMIX_SUCCESS;
