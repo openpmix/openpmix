@@ -381,6 +381,13 @@ pmix_status_t PMIx_server_register_nspace(const char nspace[], int nlocalprocs,
                                           pmix_info_t info[], size_t ninfo,
                                           pmix_op_cbfunc_t cbfunc, void *cbdata);
 
+/* Deregister an nspace and purge all objects relating to
+ * it, including any client info from that nspace. This is
+ * intended to support persistent PMIx servers by providing
+ * an opportunity for the host RM to tell the PMIx server
+ * library to release all memory for a completed job */
+void PMIx_server_deregister_nspace(const char nspace[]);
+
 /* Register a client process with the PMIx server library. The
  * expected user ID and group ID of the child process helps the
  * server library to properly authenticate clients as they connect
@@ -398,6 +405,12 @@ pmix_status_t PMIx_server_register_client(const pmix_proc_t *proc,
                                           uid_t uid, gid_t gid,
                                           void *server_object,
                                           pmix_op_cbfunc_t cbfunc, void *cbdata);
+
+/* Deregister a client and purge all data relating to it. The
+ * deregister_nspace API will automatically delete all client
+ * info for that nspace - this API is therefore intended solely
+ * for use in exception cases */
+void PMIx_server_deregister_client(const pmix_proc_t *proc);
 
 /* Setup the environment of a child process to be forked
  * by the host so it can correctly interact with the PMIx
