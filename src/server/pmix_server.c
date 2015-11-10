@@ -1090,7 +1090,7 @@ pmix_status_t pmix_server_notify_error(pmix_status_t status,
     cd->cbfunc = cbfunc;
     cd->cbdata = cbdata;
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix_server_notify_error status =%d, nprocs = %d, ninfo =%d",
+                        "pmix_server_notify_error status =%d, nprocs = %lu, ninfo =%lu",
                          status, nprocs, ninfo);
 
     /* we have to push this into our event library to avoid

@@ -76,18 +76,17 @@ pmix_status_t PMIx_Notify_error(pmix_status_t status,
 {
     int rc;
     if(pmix_globals.server) {
-        pmix_output_verbose(0, pmix_globals.debug_output,
-                            "pmix_server_notify_error error =%d, rc=%d", status, rc);
         rc = pmix_server_notify_error (status, procs, nprocs, error_procs,
                                        error_nprocs, info, ninfo,
                                         cbfunc, cbdata);
-
-    } else {
         pmix_output_verbose(0, pmix_globals.debug_output,
-                            "pmix_client_notify_error error =%d, rc=%d", status, rc);
+                            "pmix_server_notify_error error =%d, rc=%d", status, rc);
+    } else {
         rc = pmix_client_notify_error (status, procs, nprocs, error_procs,
                                        error_nprocs, info, ninfo,
                                        cbfunc, cbdata);
+        pmix_output_verbose(0, pmix_globals.debug_output,
+                            "pmix_client_notify_error error =%d, rc=%d", status, rc);
     }
     return rc;
 }

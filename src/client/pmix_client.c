@@ -77,7 +77,8 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_usock_hdr_t *
     size_t nprocs, ninfo;
     pmix_info_t *info=NULL;
     pmix_cmd_t cmd;
-    pmix_output(0, "pmix:client_notify_recv - processing error");
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                         "pmix:client_notify_recv - processing error");
     if (0 == pmix_pointer_array_get_size(&pmix_globals.errregs)) {
         return;
     }
@@ -1166,6 +1167,7 @@ static void regevents_cbfunc(struct pmix_peer_t *peer, pmix_usock_hdr_t *hdr,
         return;
     }
     /* unpack the status code */
+    cnt = 1;
     if ((PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ret, &cnt, PMIX_INT))) ||
                          (PMIX_SUCCESS != ret)) {
         PMIX_ERROR_LOG(rc);
@@ -1213,7 +1215,7 @@ void pmix_client_register_errhandler(pmix_info_t info[], size_t ninfo,
             /* To do: need to determine if the client needs to process the info keys before passing it to
                server */
             pmix_output_verbose(10, pmix_globals.debug_output,
-                        "pmix: register errhandler - added index=%d, ninfo =%d", index, ninfo);
+                        "pmix: register errhandler - added index=%d, ninfo =%lu", index, ninfo);
             msg = PMIX_NEW(pmix_buffer_t);
             if (PMIX_SUCCESS != (rc = pack_regevents(msg, PMIX_REGEVENTS_CMD, info, ninfo))) {
                 pmix_output_verbose(2, pmix_globals.debug_output,
@@ -1244,7 +1246,7 @@ static void deregevents_cbfunc(struct pmix_peer_t *peer, pmix_usock_hdr_t *hdr,
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
     pmix_status_t rc;
-    int ret, cnt;
+    int ret, cnt =1;
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: deregevents_cbfunc  recvd");
 

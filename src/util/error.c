@@ -137,6 +137,8 @@ const char* PMIx_Error_string(pmix_status_t errnum)
         return "PROC-ABORT-REQUESTED";
     case PMIX_ERR_PROC_ABORTED:
         return "PROC-ABORTED";
+    case PMIX_ERR_SILENT:
+        return "SILENT_ERROR";
     case PMIX_ERROR:
         return "ERROR";
     case PMIX_SUCCESS:

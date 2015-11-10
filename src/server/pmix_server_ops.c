@@ -961,7 +961,8 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
     size_t ninfo;
     pmix_regevents_info_t *reginfo;
 
-    pmix_output(0,"recvd register events");
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "recvd register events");
 
     if (NULL == pmix_host_server.register_events) {
         return PMIX_ERR_NOT_SUPPORTED;
@@ -981,7 +982,6 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
             goto cleanup;
         }
     }
-    pmix_output(0,"server register events: ninfo =%d", ninfo);
     /* store the event registration info so we can call the registered
        client when the server notifies the event */
     reginfo = PMIX_NEW(pmix_regevents_info_t);
@@ -994,18 +994,19 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
     PMIX_RETAIN(peer);
     reginfo->peer = peer;
     pmix_list_append(&pmix_server_globals.client_eventregs, &reginfo->super);
-    pmix_output(0,"server register events: calling host server reg events");
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "server register events: calling host server reg events");
     /* call the local server */
     if(PMIX_SUCCESS != (rc = pmix_host_server.register_events(reginfo->info,
                              reginfo->ninfo, cbfunc, cbdata)))
     {
 
-        /* call the callback fn with error status */
-        //cbfunc(rc, cbdata);
-        pmix_output(0,"server register events: host server reg events returned rc =%d", rc);
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                             "server register events: host server reg events returned rc =%d", rc);
     }
 cleanup:
-    pmix_output(0,"server register events: ninfo =%d rc =%d", ninfo, rc);
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "server register events: ninfo =%lu rc =%d", ninfo, rc);
     PMIX_INFO_FREE(info, ninfo);
     return rc;
 }
