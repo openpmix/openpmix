@@ -4,12 +4,12 @@ Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
 Copyright (c) 2004-2005 The University of Tennessee and The University
                         of Tennessee Research Foundation.  All rights
                         reserved.
-Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
                         University of Stuttgart.  All rights reserved.
 Copyright (c) 2004-2005 The Regents of the University of California.
                         All rights reserved.
 Copyright (c) 2008-2015 Cisco Systems, Inc.  All rights reserved.
-Copyright (c) 2013      Intel, Inc. All rights reserved.
+Copyright (c) 2013-2015 Intel, Inc. All rights reserved.
 $COPYRIGHT$
 
 Additional copyrights may follow
@@ -24,7 +24,7 @@ This file is a *very* short overview of building and installing
 the PMIx library.  Much more information is available on the
 PMIx web site (e.g., see the FAQ section):
 
-    http://www.open-mpi.org/projects/pmix
+    http://pmix.github.io/pmix/master
 
 
 Developer Builds
@@ -34,10 +34,10 @@ If you have checked out a DEVELOPER'S COPY of PMIx (i.e., you checked
 out from Git), you should read the HACKING file before attempting to
 build PMIx.  You must then run:
 
-shell$ ./autogen.pl
+shell$ ./autogen.sh
 
 You will need very recent versions of GNU Autoconf, Automake, and
-Libtool.  If autogen.pl fails, read the HACKING file.  If anything
+Libtool.  If autogen.sh fails, read the HACKING file.  If anything
 else fails, read the HACKING file.  Finally, we suggest reading the
 HACKING file.
 
@@ -61,8 +61,8 @@ all" as a user with write permissions in the build tree, and a
 separate "make install" as a user with write permissions to the
 install tree.
 
-Compiling support for various networks or other specific hardware may
-require additional command ling flags when running configure.  See the
+Compiling support for specific compilers and environments may
+require additional command line flags when running configure.  See the
 README file for more details.  Note that VPATH builds are fully
 supported.  For example:
 

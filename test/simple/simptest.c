@@ -501,7 +501,7 @@ static int lookup_fn(const pmix_proc_t *proc, char **keys,
     pmix_locdat_t *p, *p2;
     pmix_list_t results;
     size_t i, n;
-    pmix_pdata_t *pd;
+    pmix_pdata_t *pd = NULL;
     pmix_status_t ret = PMIX_ERR_NOT_FOUND;
 
     pmix_output(0, "SERVER: LOOKUP");

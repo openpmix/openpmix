@@ -76,6 +76,7 @@ nroff:
 
 EXTRA_DIST += README INSTALL VERSION LICENSE autogen.sh \
              config/pmix_get_version.sh $(man_MANS) \
+             contrib/platform/optimized \
              test/test_common.h test/cli_stages.h \
              test/server_callbacks.h test/test_fence.h \
              test/test_publish.h test/test_resolve_peers.h \

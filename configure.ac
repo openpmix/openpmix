@@ -41,6 +41,10 @@ AC_CONFIG_AUX_DIR(./config)
 # -I in ACLOCAL_AMFLAGS in the top-level Makefile.am.
 AC_CONFIG_MACRO_DIR(./config)
 
+# Get our platform support file.  This has to be done very, very early
+# because it twiddles random bits of autoconf
+PMIX_LOAD_PLATFORM
+
 # setup configure options (e.g., show_title and friends)
 PMIX_CONFIGURE_SETUP
 pmix_show_title "Configuring PMIx"

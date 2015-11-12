@@ -15,7 +15,7 @@ Copyright (c) 2007      Myricom, Inc.  All rights reserved.
 Copyright (c) 2008      IBM Corporation.  All rights reserved.
 Copyright (c) 2010      Oak Ridge National Labs.  All rights reserved.
 Copyright (c) 2011      University of Houston. All rights reserved.
-Copyright (c) 2013      Intel, Inc. All rights reserved
+Copyright (c) 2013-2015 Intel, Inc. All rights reserved
 $COPYRIGHT$
 
 Additional copyrights may follow
@@ -28,64 +28,51 @@ When submitting questions and problems, be sure to include as much
 extra information as possible.  This web page details all the
 information that we request in order to provide assistance:
 
-     http://www.open-mpi.org/community/help/
+     http://pmix.github.io/master/community/help/
 
 The best way to report bugs, send comments, or ask questions is to
-sign up on the user's and/or developer's mailing list (for user-level
-and developer-level questions; when in doubt, send to the user's
-list):
+sign up on the PMIx mailing list, which is hosted by GoogleGroups:
 
-        pmix-users@open-mpi.org
-        pmix-devel@open-mpi.org
+        pmix@googlegroups.com
 
-Because of spam, only subscribers are allowed to post to these lists
+Because of spam, only subscribers are allowed to post to this list
 (ensure that you subscribe with and post from exactly the same e-mail
 address -- joe@example.com is considered different than
-joe@mycomputer.example.com!).  Visit these pages to subscribe to the
-lists:
+joe@mycomputer.example.com!).  You can subscribe to the list here:
 
-     http://www.open-mpi.org/mailman/listinfo.cgi/pmix-users
-     http://www.open-mpi.org/mailman/listinfo.cgi/pmix-devel
+     https://groups.google.com/d/forum/pmix
 
 Thanks for your time.
 
 ===========================================================================
 
-Much, much more information is also available in the PMIx FAQ:
+More information is available in the PMIx FAQ:
 
-    http://www.open-mpi.org/faq/
+    http://pmix.github.io/master/faq/
+
+We are in early days, so please be patient - info will grow as questions
+are addressed.
 
 ===========================================================================
 
 The following abbreviated list of release notes applies to this code
-base as of this writing (11 November 2013):
+base as of this writing (12 November 2015):
 
 General notes
 -------------
 
 - The majority of PMIx's documentation is here in this file, the
   included man pages, and on the web site FAQ
-  (http://www.open-mpi.org/projects/pmix).  This will eventually be supplemented
-  with cohesive installation and user documentation files.
-
-- Note that PMIx documentation uses the word "component"
-  frequently; the word "plugin" is probably more familiar to most
-  users.  As such, end users can probably completely substitute the
-  word "plugin" wherever you see "component" in our documentation.
-  For what it's worth, we use the word "component" for historical
-  reasons, mainly because it is part of our acronyms and internal API
-  functionc calls.
+  (http://pmix.github.io/master/faq).  This will eventually be
+  supplemented with cohesive installation and user documentation files.
 
 - Systems that have been tested are:
   - Linux (various flavors/distros), 32 bit, with gcc
-  - Linux (various flavors/distros), 64 bit (x86), with gcc, Absoft,
-    Intel, and Portland (*)
-  - OS X (10.5, 10.6, 10.7), 32 and 64 bit (x86_64), with gcc and
-    Absoft compilers (*)
+  - Linux (various flavors/distros), 64 bit (x86), with gcc, Intel,
+    and Portland (*)
+  - OS X (10.7 and above), 32 and 64 bit (x86_64), with gcc (*)
 
-  (*) Be sure to read the Compiler Notes, below.
-
-Compiler Notes
+(*) Compiler Notes
 --------------
 
 - The Portland Group compilers prior to version 7.0 require the
@@ -130,79 +117,32 @@ INSTALLATION OPTIONS
   files in <directory>/include, its libraries in <directory>/lib, etc.
 
 --disable-shared
-  By default, libmpi is built as a shared library, and all components
-  are built as dynamic shared objects (DSOs).  This switch disables
+  By default, libpmix is built as a shared library.  This switch disables
   this default; it is really only useful when used with
   --enable-static.  Specifically, this option does *not* imply
   --enable-static; enabling static libraries and disabling shared
   libraries are two independent options.
 
 --enable-static
-  Build libmpi as a static library, and statically link in all
-  components.  Note that this option does *not* imply
+  Build libpmix as a static library.  Note that this option does *not* imply
   --disable-shared; enabling static libraries and disabling shared
   libraries are two independent options.
-
---enable-dlopen
-  Build all of PMIx's components as standalone Dynamic Shared
-  Objects (DSO's) that are loaded at run-time.  The opposite of this
-  option, --disable-dlopen, causes two things:
-
-  1. All of PMIx's components will be built as part of PMIx's
-     normal libraries (e.g., libmpi).
-  2. PMIx will not attempt to open any DSO's at run-time.
-
-  Note that this option does *not* imply that PMIx's libraries will be
-  built as static objects (e.g., libmpi.a).  It only specifies the
-  location of PMIx's components: standalone DSOs or folded into the
-  PMIx libraries.  You can control whether PMIx's libraries
-  are build as static or dynamic via --enable|disable-static and
-  --enable|disable-shared.
 
 --with-platform=FILE
   Load configure options for the build from FILE.  Options on the
   command line that are not in FILE are also used.  Options on the
   command line and in FILE are replaced by what is in FILE.
 
-MISCELLANEOUS SUPPORT LIBRARIES
-
---with-libltdl[=VALUE]
-  This option specifies where to find the GNU Libtool libltdl support
-  library.  The following VALUEs are permitted:
-
-    internal:    Use PMIx's internal copy of libltdl.
-    external:    Use an external libltdl installation (rely on default
-                 compiler and linker paths to find it)
-    <no value>:  Same as "internal".
-    <directory>: Specify the location of a specific libltdl
-                 installation to use
-
-  By default (or if --with-libltdl is specified with no VALUE), PMIx
-  will build and use the copy of libltdl that it has in its source
-  tree.  However, if the VALUE is "external", PMIx will look for
-  the relevant libltdl header file and library in default compiler /
-  linker locations.  Or, VALUE can be a directory tree where the
-  libltdl header file and library can be found.  This option allows
-  operating systems to include PMIx and use their default libltdl
-  installation instead of PMIx's bundled libltdl.
-
-  Note that this option is ignored if --disable-dlopen is specified.
-
---with-threads=value
-  Since thread support is only partially tested, it is disabled by
-  default.  To enable threading, use "--with-threads=posix".  This is
-  most useful when combined with --enable-mpi-thread-multiple.
-
 Once PMIx has been built and installed, it is safe to run "make
 clean" and/or remove the entire build tree.
 
 VPATH and parallel builds are fully supported.
 
-Generally speaking, the only thing that users need to do to use Open
-MPI <prefix>/lib is in their LD_LIBRARY_PATH.  Users may need to ensure to set
-LD_LIBRARY_PATH in their shell setup files (e.g., .bashrc, .cshrc)
-so that non-interactive rsh/ssh-based logins will be able to find the
-PMIx library.
+Generally speaking, the only thing that users need to do to use PMIx
+is ensure that <prefix>/lib is in their LD_LIBRARY_PATH.  Users may
+need to ensure to set LD_LIBRARY_PATH in their shell setup files (e.g.,
+.bashrc, .cshrc) so that non-interactive rsh/ssh-based logins will
+be able to find the PMIx library.
 
 ===========================================================================
 
@@ -236,22 +176,10 @@ major, minor, release, and an optional quantifier.
     functionality. The minor number is always included in the version
     number:
 
-    o Even minor release numbers are part of "super-stable"
-      release series (e.g., v1.4.0). Releases in super stable series
-      are well-tested, time-tested, and mature. Such releases are
-      recommended for production sites. Changes between subsequent
-      releases in super stable series are expected to be fairly small.
-    o Odd minor release numbers are part of "feature" release
-      series (e.g., 1.3.7). Releases in feature releases are
-      well-tested, but they are not necessarily time-tested or as
-      mature as super stable releases. Changes between subsequent
-      releases in feature series may be large.
-
   * Release: The release number is the third integer in the version
     string (e.g., v1.2.3). Changes in the release number typically
     indicate a bug fix in the code base and/or end-user
-    functionality. If the release number is 0, it is omitted from the
-    version number (e.g., v1.2 has a release number of 0).
+    functionality.
 
   * Quantifier: PMIx version numbers sometimes have an arbitrary
     string affixed to the end of the version number. Common strings
@@ -267,7 +195,7 @@ major, minor, release, and an optional quantifier.
       indicating the number of the release candidate (e.g., v1.2.3rc4
       indicates the 4th release candidate of version 1.2.3).
 
-Althought the major, minor, and release values (and optional
+Although the major, minor, and release values (and optional
 quantifiers) are reported in PMIx nightly snapshot tarballs, the
 filenames of these snapshot tarballs follow a slightly different
 convention.
@@ -339,14 +267,14 @@ Application Binary Interface (ABI) Compatibility
 
 PMIx provides forward ABI compatibility in all versions of a given
 feature release series and its corresponding
-super stable series.  For example, on a single platform, an MPI
+super stable series.  For example, on a single platform, an pmix
 application linked against PMIx v1.3.2 shared libraries can be
 updated to point to the shared libraries in any successive v1.3.x or
 v1.4 release and still work properly (e.g., via the LD_LIBRARY_PATH
 environment variable or other operating system mechanism).
 
 PMIx reserves the right to break ABI compatibility at new feature
-release series.  For example, the same MPI application from above
+release series.  For example, the same pmix application from above
 (linked against PMIx v1.3.2 shared libraries) will *not* work with
 PMIx v1.5 shared libraries.
 
@@ -358,7 +286,7 @@ Common Questions
 Many common questions about building and using PMIx are answered
 on the FAQ:
 
-    http://www.open-mpi.org/faq/
+    http://pmix.github.io/master/faq/
 
 ===========================================================================
 
@@ -372,24 +300,16 @@ When submitting questions and problems, be sure to include as much
 extra information as possible.  This web page details all the
 information that we request in order to provide assistance:
 
-     http://www.open-mpi.org/community/help/
+     http://pmix.github.io/master/community/help/
 
-User-level questions and comments should generally be sent to the
-user's mailing list (users@open-mpi.org).  Because of spam, only
+Questions and comments should generally be sent to the PMIx mailing
+list (pmix@googlegroups.com).  Because of spam, only
 subscribers are allowed to post to this list (ensure that you
 subscribe with and post from *exactly* the same e-mail address --
 joe@example.com is considered different than
 joe@mycomputer.example.com!).  Visit this page to subscribe to the
 user's list:
 
-     http://www.open-mpi.org/mailman/listinfo.cgi/pmix-users
-
-Developer-level bug reports, questions, and comments should generally
-be sent to the developer's mailing list (devel@open-mpi.org).  Please
-do not post the same question to both lists.  As with the user's list,
-only subscribers are allowed to post to the developer's list.  Visit
-the following web page to subscribe:
-
-     http://www.open-mpi.org/mailman/listinfo.cgi/pmix-devel
+     https://groups.google.com/d/forum/pmix
 
 Make today an PMIx day!

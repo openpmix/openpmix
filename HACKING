@@ -9,7 +9,7 @@ Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
 Copyright (c) 2004-2005 The Regents of the University of California.
                         All rights reserved.
 Copyright (c) 2008-2015 Cisco Systems, Inc.  All rights reserved.
-Copyright (c) 2013      Intel, Inc. All rights reserved.
+Copyright (c) 2013-2015 Intel, Inc. All rights reserved.
 $COPYRIGHT$
 
 Additional copyrights may follow
@@ -34,9 +34,6 @@ present in all Git checkouts) in your source tree, and therefore
 activates a number of developer-only debugging features in the PMIx
 code base.
 
-The same debugging features are activated if you build in a Git or
-Mercurial clone (with the hidden ".git" or ".hg" meta directory).
-
 By definition, debugging builds will perform [much] slower than
 optimized builds of PMIx.  You should *NOT* conduct timing tests
 or try to run production performance numbers with debugging builds.
@@ -47,7 +44,7 @@ developer's checkout, you have three main options:
 1. Use the "--with-platform=optimized" switch to configure.  This is
    the preferred (and probably easiest) method.  For example:
 
-     shell$ git clone git@github.com:open-mpi/pmix.git
+     shell$ git clone git@github.com:pmix/master.git pmix
      shell$ cd pmix
      shell$ ./autogen.pl
      shell$ mkdir build
@@ -60,7 +57,7 @@ developer's checkout, you have three main options:
    directory than the source tree -- one where the .git subdirectory
    is not present.  For example:
 
-     shell$ git clone git@github.com:open-mpi/pmix.git
+     shell$ git clone git@github.com:pmix/master.git pmix
      shell$ cd pmix
      shell$ ./autogen.pl
      shell$ mkdir build
@@ -95,11 +92,11 @@ If you are building PMIx from a developer's tree, you must first
 install fairly recent versions of the GNU tools Autoconf, Automake,
 and Libtool (and possibly GNU m4, because recent versions of Autoconf
 have specific GNU m4 version requirements).  The specific versions
-required depend on if you are using the trunk or a release branch (and
+required depend on if you are using the master or a release branch (and
 which release branch you are using).  The specific versions can be
 found at:
 
-  http://www.open-mpi.org/source/building.php
+  http://pmix.github.io/master/source/building
 
 You can check what versions of the autotools you have installed with
 the following:
@@ -208,38 +205,23 @@ NOTE: On MacOS/X, the default "libtool" program is different than the
    m4, Autoconf and Automake build and install very quickly; Libtool will
    take a minute or two.
 
-5. You can now run PMIx’s top-level "autogen.pl" script.  This script
+5. You can now run PMIx’s top-level "autogen.sh" script.  This script
    will invoke the GNU Autoconf, Automake, and Libtool commands in the
-   proper order and setup to run pmix's top-level "configure" script.
+   proper order and setup to run PMIx's top-level "configure" script.
 
-   Running autogen.pl may take a few minutes, depending on your
-   system.  It's not very exciting to watch.  :-)
-
-   If you have a multi-processor system, enabling the multi-threaded
-   behavior in Automake 1.11 (or newer) can result in autogen.pl
-   running faster.  Do this by setting the AUTOMAKE_JOBS environment
-   variable to the number of processors (threads) that you want it to
-   use before invoking autogen.pl.  For example (you can again put
-   this in your shell startup files):
-
-       # For bash/sh:
-       export AUTOMAKE_JOBS=4
-       # For csh/tcsh:
-       set AUTOMAKE_JOBS 4
-
-   5a. You generally need to run autogen.pl whenever the top-level
+   5a. You generally need to run autogen.sh only when the top-level
        file "configure.ac" changes, or any files in the config/ or
        <project>/config/ directories change (these directories are
        where a lot of "include" files for PMI’xs configure script
        live).
 
-   5b. You do *NOT* need to re-run autogen.pl if you modify a
+   5b. You do *NOT* need to re-run autogen.sh if you modify a
        Makefile.am.
 
 Use of Flex
 ===========
 
-Flex may be used during the cpmixlation of a developer's checkout (it is
+Flex may be used during the compilation of a developer's checkout (it is
 not used to build official distribution tarballs).  Other flavors of
 lex are *not* supported: given the choice of making parsing code
 portable between all flavors of lex and doing more interesting work on
@@ -249,9 +231,9 @@ Note that no testing has been performed to see what the minimum
 version of Flex is required by PMIx.  We suggest that you use
 v2.5.35 at the earliest.
 
-Note that the flex-generated code generates some cpmixler warnings on
+Note that the flex-generated code generates some compiler warnings on
 some platforms, but the warnings do not seem to be consistent or
-uniform on all platforms, cpmixlers, and flex versions.  As such, we
+uniform on all platforms, compilers, and flex versions.  As such, we
 have done little to try to remove those warnings.
 
 If you do not have Flex installed, it can be downloaded from the

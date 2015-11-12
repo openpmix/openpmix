@@ -663,7 +663,7 @@ int pmix_bfrop_print_pdata(char **output, char *prefix,
 
     pmix_bfrop_print_proc(&tmp1, NULL, &src->proc, PMIX_PROC);
     pmix_bfrop_print_value(&tmp2, NULL, &src->value, PMIX_VALUE);
-    asprintf(output, "%sPROC: %s KEY: %s %s", prefix, tmp1, src->key,
+    asprintf(output, "%s  %s  KEY: %s %s", prefix, tmp1, src->key,
              (NULL == tmp2) ? "NULL" : tmp2);
     if (NULL != tmp1) {
         free(tmp1);
@@ -689,6 +689,13 @@ int pmix_bfrop_print_app(char **output, char *prefix,
 int pmix_bfrop_print_proc(char **output, char *prefix,
                            pmix_proc_t *src, pmix_data_type_t type)
 {
+    char *prefx;
+
+    /* deal with NULL prefix */
+    if (NULL == prefix) asprintf(&prefx, " ");
+    else prefx = prefix;
+
+    asprintf(output, "%sPROC: %s:%d", prefx, src->nspace, src->rank);
     return PMIX_SUCCESS;
 }
 
