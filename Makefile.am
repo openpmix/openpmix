@@ -74,7 +74,7 @@ nroff:
 	    contrib/md2nroff.pl --source=$$source.md; \
 	done
 
-EXTRA_DIST += README INSTALL VERSION LICENSE autogen.sh \
+EXTRA_DIST += AUTHORS README INSTALL VERSION LICENSE autogen.sh \
              config/pmix_get_version.sh $(man_MANS) \
              contrib/platform/optimized \
              test/test_common.h test/cli_stages.h \
