@@ -63,7 +63,7 @@ libpmix_la_SOURCES = $(headers) $(sources)
 libpmix_la_LDFLAGS = -version-info $(libpmix_so_version)
 
 if ! PMIX_EMBEDDED_MODE
-SUBDIRS = . test examples
+SUBDIRS = . test
 pmixdir = $(pmixincludedir)/$(subdir)
 nobase_pmix_HEADERS = $(headers)
 endif
@@ -80,7 +80,9 @@ EXTRA_DIST += AUTHORS README INSTALL VERSION LICENSE autogen.sh \
              test/test_common.h test/cli_stages.h \
              test/server_callbacks.h test/test_fence.h \
              test/test_publish.h test/test_resolve_peers.h \
-             test/test_spawn.h test/utils.h test/test_cd.h
+             test/test_spawn.h test/utils.h test/test_cd.h \
+             examples/client.c examples/dmodex.c examples/dynamic.c \
+             examples/fault.c examples/pub.c examples/server.c
 
 
 dist-hook:
