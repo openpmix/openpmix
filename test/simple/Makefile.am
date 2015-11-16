@@ -23,7 +23,7 @@ AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_buildd
 
 check_PROGRAMS = simptest simpclient simppub simpdyn simpft simpdmodex
 
-TESTS = simptest
+# TESTS = simptest
 
 simptest_SOURCES = \
         simptest.c
