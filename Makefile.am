@@ -82,7 +82,7 @@ EXTRA_DIST += AUTHORS README INSTALL VERSION LICENSE autogen.sh \
              test/test_publish.h test/test_resolve_peers.h \
              test/test_spawn.h test/utils.h test/test_cd.h \
              examples/client.c examples/dmodex.c examples/dynamic.c \
-             examples/fault.c examples/pub.c examples/server.c
+             examples/fault.c examples/pub.c
 
 
 dist-hook:
