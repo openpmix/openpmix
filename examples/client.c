@@ -23,8 +23,6 @@
  *
  */
 
-#include <pmix/autogen/config.h>
-
 #define _GNU_SOURCE
 #include <stdbool.h>
 #include <stdio.h>

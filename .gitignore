@@ -9,6 +9,8 @@ Makefile.in
 *.deps
 *.dirstamp
 .DS_Store
+*.log
+*.trs
 
 # http://www.gnu.org/software/autoconf
 
