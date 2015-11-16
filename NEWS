@@ -25,6 +25,12 @@ Master (not on release branches yet)
 
 
 
+1.1.1
+-----
+- Fix an issue where the example and test programs
+  were incorrectly being installed. Thanks to Orion
+  Poplawski for reporting it
+
 1.1.0
 -----
 - major update of APIs to reflect comments received from 1.0.0
