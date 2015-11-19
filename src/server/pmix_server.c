@@ -693,12 +693,10 @@ static void _execute_collective(int sd, short args, void *cbdata)
                     pmix_bfrop.pack(&rankbuf, &info->rank, 1, PMIX_INT);
                     PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
                     PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
+                    PMIX_VALUE_RELEASE(val);
                     pmix_buffer_t *pxfer = &xfer;
                     pmix_bfrop.pack(&rankbuf, &pxfer, 1, PMIX_BUFFER);
-                    xfer.base_ptr = NULL;
-                    xfer.bytes_used = 0;
                     PMIX_DESTRUCT(&xfer);
-                    PMIX_VALUE_RELEASE(val);
                     /* now pack this proc's contribution into the bucket */
                     pmix_buffer_t *pdatabuf = &rankbuf;
                     pmix_bfrop.pack(&databuf, &pdatabuf, 1, PMIX_BUFFER);

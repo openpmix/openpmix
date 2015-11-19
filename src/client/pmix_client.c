@@ -919,9 +919,6 @@ void pmix_client_process_nspace_blob(const char *nspace, pmix_buffer_t *bptr)
             bo = &(kptr->value->data.bo);
             PMIX_CONSTRUCT(&buf2, pmix_buffer_t);
             PMIX_LOAD_BUFFER(&buf2, bo->bytes, bo->size);
-            /* protect the data */
-            kptr->value->data.bo.bytes = NULL;
-            kptr->value->data.bo.size = 0;
             PMIX_RELEASE(kptr);
             /* start by unpacking the rank */
             cnt = 1;
@@ -958,9 +955,6 @@ void pmix_client_process_nspace_blob(const char *nspace, pmix_buffer_t *bptr)
             bo = &(kptr->value->data.bo);
             PMIX_CONSTRUCT(&buf2, pmix_buffer_t);
             PMIX_LOAD_BUFFER(&buf2, bo->bytes, bo->size);
-            /* protect the data */
-            kptr->value->data.bo.bytes = NULL;
-            kptr->value->data.bo.size = 0;
             PMIX_RELEASE(kptr);
             /* start by unpacking the number of nodes */
             cnt = 1;
