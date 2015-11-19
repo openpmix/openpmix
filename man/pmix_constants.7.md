@@ -72,20 +72,6 @@ A list of the current PMIx attributes, and the type of their associated data val
 *PMIX_ERROR*
 : A general error code - an error occurred, but no specific reason can be provided.
 
-*fi_rma - Remote Memory Access*
-: RMA transfers are one-sided operations that read or write data
-  directly to a remote memory region.  Other than defining the
-  appropriate memory region, RMA operations do not require interaction
-  at the target side for the data transfer to complete.
-
-*fi_atomic - Atomic*
-: Atomic operations can perform one of several operations on a remote
-  memory region.  Atomic operations include well-known functionality,
-  such as atomic-add and compare-and-swap, plus several other
-  pre-defined calls.  Unlike other data transfer interfaces, atomic
-  operations are aware of the data formatting at the target memory
-  region.
-
 
 # SEE ALSO
 

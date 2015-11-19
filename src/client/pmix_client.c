@@ -228,16 +228,14 @@ int PMIx_Init(pmix_proc_t *proc)
     pmix_nspace_t *nsptr;
     pmix_cb_t cb;
 
-    if (NULL == proc) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-
     if (0 < pmix_globals.init_cntr) {
         /* since we have been called before, the nspace and
          * rank should be known. So return them here if
          * requested */
-        (void)strncpy(proc->nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
-        proc->rank = pmix_globals.myid.rank;
+        if (NULL != proc) {
+            (void)strncpy(proc->nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
+            proc->rank = pmix_globals.myid.rank;
+        }
         return PMIX_SUCCESS;
     }
 
@@ -281,7 +279,9 @@ int PMIx_Init(pmix_proc_t *proc)
         pmix_class_finalize();
         return PMIX_ERR_INVALID_NAMESPACE;
     }
-    (void)strncpy(proc->nspace, evar, PMIX_MAX_NSLEN);
+    if (NULL != proc) {
+        (void)strncpy(proc->nspace, evar, PMIX_MAX_NSLEN);
+    }
     (void)strncpy(pmix_globals.myid.nspace, evar, PMIX_MAX_NSLEN);
     nsptr = PMIX_NEW(pmix_nspace_t);
     (void)strncpy(nsptr->nspace, evar, PMIX_MAX_NSLEN);
@@ -336,7 +336,9 @@ int PMIx_Init(pmix_proc_t *proc)
         return PMIX_ERR_DATA_VALUE_NOT_FOUND;
     }
     pmix_globals.myid.rank = strtol(evar, NULL, 10);
-    proc->rank = pmix_globals.myid.rank;
+    if (NULL != proc) {
+        proc->rank = pmix_globals.myid.rank;
+    }
     pmix_globals.pindex = -1;
 
     /* setup the support */
@@ -530,11 +532,69 @@ int PMIx_Abort(int flag, const char msg[],
     return PMIX_SUCCESS;
 }
 
-pmix_status_t PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
+static void _putfn(int sd, short args, void *cbdata)
 {
+    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
     pmix_status_t rc;
     pmix_kval_t *kv;
     pmix_nspace_t *ns;
+
+    /* setup to xfer the data */
+    kv = PMIX_NEW(pmix_kval_t);
+    kv->key = strdup(cb->key);  // need to copy as the input belongs to the user
+    kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+    rc = pmix_value_xfer(kv->value, cb->value);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto done;
+    }
+    /* put it in our own modex hash table in case something
+     * internal to us wants it - our nsrecord is always
+     * first on the list */
+    if (NULL == (ns = (pmix_nspace_t*)pmix_list_get_first(&pmix_globals.nspaces))) {
+        /* shouldn't be possible */
+        goto done;
+    }
+    if (PMIX_SUCCESS != (rc = pmix_hash_store(&ns->modex, pmix_globals.myid.rank, kv))) {
+        PMIX_ERROR_LOG(rc);
+    }
+
+    /* pack the cache that matches the scope - global scope needs
+     * to go into both local and remote caches */
+    if (PMIX_LOCAL == cb->scope || PMIX_GLOBAL == cb->scope) {
+        if (NULL == pmix_globals.cache_local) {
+            pmix_globals.cache_local = PMIX_NEW(pmix_buffer_t);
+        }
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "pmix: put %s data for key %s in local cache",
+                            cb->key, (PMIX_GLOBAL == cb->scope) ? "global" : "local");
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(pmix_globals.cache_local, kv, 1, PMIX_KVAL))) {
+            PMIX_ERROR_LOG(rc);
+        }
+    }
+
+    if (PMIX_REMOTE == cb->scope || PMIX_GLOBAL == cb->scope) {
+        if (NULL == pmix_globals.cache_remote) {
+            pmix_globals.cache_remote = PMIX_NEW(pmix_buffer_t);
+        }
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "pmix: put %s data for key %s in remote cache",
+                            cb->key, (PMIX_GLOBAL == cb->scope) ? "global" : "remote");
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(pmix_globals.cache_remote, kv, 1, PMIX_KVAL))) {
+            PMIX_ERROR_LOG(rc);
+        }
+    }
+
+  done:
+    PMIX_RELEASE(kv);  // maintain accounting
+    cb->pstatus = rc;
+    cb->active = false;
+}
+
+pmix_status_t PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
+{
+    pmix_cb_t *cb;
+    pmix_status_t rc;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: executing put for key %s type %d",
@@ -544,65 +604,84 @@ pmix_status_t PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
         return PMIX_ERR_INIT;
     }
 
-    /* setup to xfer the data */
-    kv = PMIX_NEW(pmix_kval_t);
-    kv->key = strdup((char*)key);
-    kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
-    rc = pmix_value_xfer(kv->value, val);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(kv);
-        return rc;
-    }
-    /* put it in our own modex hash table in case something
-     * internal to us wants it - our nsrecord is always
-     * first on the list */
-    if (NULL == (ns = (pmix_nspace_t*)pmix_list_get_first(&pmix_globals.nspaces))) {
-        /* shouldn't be possible */
-        PMIX_RELEASE(kv);
-        return PMIX_ERR_INIT;
-    }
-    if (PMIX_SUCCESS != (rc = pmix_hash_store(&ns->modex, pmix_globals.myid.rank, kv))) {
-        PMIX_ERROR_LOG(rc);
-    }
+    /* create a callback object */
+    cb = PMIX_NEW(pmix_cb_t);
+    cb->active = true;
+    cb->scope = scope;
+    cb->key = (char*)key;
+    cb->value = val;
 
-    /* pack the cache that matches the scope - global scope needs
-     * to go into both local and remote caches */
-    if (PMIX_LOCAL == scope || PMIX_GLOBAL == scope) {
-        if (NULL == pmix_globals.cache_local) {
-            pmix_globals.cache_local = PMIX_NEW(pmix_buffer_t);
-        }
-        pmix_output_verbose(2, pmix_globals.debug_output,
-                            "pmix: put %s data for key %s in local cache",
-                            key, (PMIX_GLOBAL == scope) ? "global" : "local");
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(pmix_globals.cache_local, kv, 1, PMIX_KVAL))) {
-            PMIX_ERROR_LOG(rc);
-        }
-    }
+    /* pass this into the event library for thread protection */
+    PMIX_THREAD_SHIFT(cb, _putfn);
 
-    if (PMIX_REMOTE == scope || PMIX_GLOBAL == scope) {
-        if (NULL == pmix_globals.cache_remote) {
-            pmix_globals.cache_remote = PMIX_NEW(pmix_buffer_t);
-        }
-        pmix_output_verbose(2, pmix_globals.debug_output,
-                            "pmix: put %s data for key %s in remote cache",
-                            key, (PMIX_GLOBAL == scope) ? "global" : "remote");
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(pmix_globals.cache_remote, kv, 1, PMIX_KVAL))) {
-            PMIX_ERROR_LOG(rc);
-        }
-    }
-
-    PMIX_RELEASE(kv);  // maintain accounting
+    /* wait for the result */
+    PMIX_WAIT_FOR_COMPLETION(cb->active);
+    rc = cb->pstatus;
+    PMIX_RELEASE(cb);
 
     return rc;
 }
 
-pmix_status_t PMIx_Commit(void)
+static void _commitfn(int sd, short args, void *cbdata)
 {
+    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
     pmix_status_t rc;
     pmix_scope_t scope;
     pmix_buffer_t *msgout;
     pmix_cmd_t cmd=PMIX_COMMIT_CMD;
+
+    msgout = PMIX_NEW(pmix_buffer_t);
+    /* pack the cmd */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msgout, &cmd, 1, PMIX_CMD))) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msgout);
+        goto done;
+    }
+
+    /* if we haven't already done it, ensure we have committed our values */
+    if (NULL != pmix_globals.cache_local) {
+        scope = PMIX_LOCAL;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msgout, &scope, 1, PMIX_SCOPE))) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(msgout);
+            goto done;
+        }
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msgout, &pmix_globals.cache_local, 1, PMIX_BUFFER))) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(msgout);
+            goto done;
+        }
+        PMIX_RELEASE(pmix_globals.cache_local);
+    }
+    if (NULL != pmix_globals.cache_remote) {
+        scope = PMIX_REMOTE;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msgout, &scope, 1, PMIX_SCOPE))) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(msgout);
+            goto done;
+        }
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msgout, &pmix_globals.cache_remote, 1, PMIX_BUFFER))) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(msgout);
+            goto done;
+        }
+        PMIX_RELEASE(pmix_globals.cache_remote);
+    }
+
+    /* push the message into our event base to send to the server - always
+     * send, even if we have nothing to contribute, so the server knows
+     * that we contributed whatever we had */
+    PMIX_ACTIVATE_SEND_RECV(&pmix_client_globals.myserver, msgout, NULL, NULL);
+
+  done:
+    cb->pstatus = rc;
+    cb->active = false;
+}
+
+pmix_status_t PMIx_Commit(void)
+{
+    pmix_cb_t *cb;
+    pmix_status_t rc;
 
     /* if we are a server, or we aren't connected, don't attempt to send */
     if (pmix_globals.server) {
@@ -612,70 +691,37 @@ pmix_status_t PMIx_Commit(void)
         return PMIX_ERR_UNREACH;
     }
 
-    msgout = PMIX_NEW(pmix_buffer_t);
-    /* pack the cmd */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msgout, &cmd, 1, PMIX_CMD))) {
-        PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(msgout);
-        return rc;
-    }
+    /* create a callback object */
+    cb = PMIX_NEW(pmix_cb_t);
+    cb->active = true;
 
-    /* if we haven't already done it, ensure we have committed our values */
-    if (NULL != pmix_globals.cache_local) {
-        scope = PMIX_LOCAL;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msgout, &scope, 1, PMIX_SCOPE))) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(msgout);
-            return rc;
-        }
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msgout, &pmix_globals.cache_local, 1, PMIX_BUFFER))) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(msgout);
-            return rc;
-        }
-        PMIX_RELEASE(pmix_globals.cache_local);
-    }
-    if (NULL != pmix_globals.cache_remote) {
-        scope = PMIX_REMOTE;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msgout, &scope, 1, PMIX_SCOPE))) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(msgout);
-            return rc;
-        }
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msgout, &pmix_globals.cache_remote, 1, PMIX_BUFFER))) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(msgout);
-            return rc;
-        }
-        PMIX_RELEASE(pmix_globals.cache_remote);
-    }
+    /* pass this into the event library for thread protection */
+    PMIX_THREAD_SHIFT(cb, _commitfn);
 
-    /* push the message into our event base to send to the server - always
-     * send, even if we have nothing to contribute, so the server knows
-     * that we contributed whatever we had */
-    PMIX_ACTIVATE_SEND_RECV(&pmix_client_globals.myserver, msgout, NULL, NULL);
-    return PMIX_SUCCESS;
+    /* wait for the result */
+    PMIX_WAIT_FOR_COMPLETION(cb->active);
+    rc = cb->pstatus;
+    PMIX_RELEASE(cb);
+
+    return rc;
 }
 
-pmix_status_t PMIx_Resolve_peers(const char *nodename, const char *nspace,
-                                 pmix_proc_t **procs, size_t *nprocs)
+static void _peersfn(int sd, short args, void *cbdata)
 {
+    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+    pmix_status_t rc;
     char **nsprocs=NULL, **nsps=NULL, **tmp;
     pmix_nspace_t *nsptr;
     pmix_nrec_t *nptr;
     size_t i;
 
-    /* set the default */
-    *procs = NULL;
-    *nprocs = 0;
-
     /* cycle across our known nspaces */
     tmp = NULL;
     PMIX_LIST_FOREACH(nsptr, &pmix_globals.nspaces, pmix_nspace_t) {
-        if (NULL == nspace || 0 == strcmp(nsptr->nspace, nspace)) {
+        if (0 == strncmp(nsptr->nspace, cb->nspace, PMIX_MAX_NSLEN)) {
             /* cycle across the nodes in this nspace */
             PMIX_LIST_FOREACH(nptr, &nsptr->nodes, pmix_nrec_t) {
-                if (0 == strcmp(nodename, nptr->name)) {
+                if (0 == strcmp(cb->key, nptr->name)) {
                     /* add the contribution from this node */
                     tmp = pmix_argv_split(nptr->procs, ',');
                     for (i=0; NULL != tmp[i]; i++) {
@@ -689,41 +735,71 @@ pmix_status_t PMIx_Resolve_peers(const char *nodename, const char *nspace,
         }
     }
     if (0 == (i = pmix_argv_count(nsps))) {
-        /* if we don't already have a record for this nspace,
-         * see if we have the data in our local cache */
-
-        return PMIX_ERR_NOT_FOUND;
+        /* we don't know this nspace */
+        rc = PMIX_ERR_NOT_FOUND;
+        goto done;
     }
 
     /* create the required storage */
-    i = pmix_argv_count(nsps);
-    PMIX_PROC_CREATE(*procs, i);
-    *nprocs = pmix_argv_count(nsps);
+    PMIX_PROC_CREATE(cb->procs, i);
+    cb->nvals = pmix_argv_count(nsps);
 
     /* transfer the data */
     for (i=0; NULL != nsps[i]; i++) {
-        (void)strncpy((*procs)[i].nspace, nsps[i], PMIX_MAX_NSLEN);
-        (*procs)[i].rank = strtol(nsprocs[i], NULL, 10);
+        (void)strncpy(cb->procs[i].nspace, nsps[i], PMIX_MAX_NSLEN);
+        cb->procs[i].rank = strtol(nsprocs[i], NULL, 10);
     }
     pmix_argv_free(nsps);
     pmix_argv_free(nsprocs);
+    rc = PMIX_SUCCESS;
 
-    return PMIX_SUCCESS;
+  done:
+    cb->pstatus = rc;
+    cb->active = false;
 }
 
-pmix_status_t PMIx_Resolve_nodes(const char *nspace, char **nodelist)
+pmix_status_t PMIx_Resolve_peers(const char *nodename, const char *nspace,
+                                 pmix_proc_t **procs, size_t *nprocs)
 {
+    pmix_cb_t *cb;
+    pmix_status_t rc;
+
+    /* create a callback object */
+    cb = PMIX_NEW(pmix_cb_t);
+    cb->active = true;
+    cb->key = (char*)nodename;
+    if (NULL != nspace) {
+        (void)strncpy(cb->nspace, nspace, PMIX_MAX_NSLEN);
+    }
+
+    /* pass this into the event library for thread protection */
+    PMIX_THREAD_SHIFT(cb, _peersfn);
+
+    /* wait for the result */
+    PMIX_WAIT_FOR_COMPLETION(cb->active);
+    rc = cb->pstatus;
+    /* transfer the result */
+    *procs = cb->procs;
+    *nprocs = cb->nvals;
+
+    /* cleanup */
+    PMIX_RELEASE(cb);
+
+    return rc;
+}
+
+static void _nodesfn(int sd, short args, void *cbdata)
+{
+    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+    pmix_status_t rc;
     char **tmp;
     pmix_nspace_t *nsptr;
     pmix_nrec_t *nptr;
 
-    /* set the default */
-    *nodelist = NULL;
-
     /* cycle across our known nspaces */
     tmp = NULL;
     PMIX_LIST_FOREACH(nsptr, &pmix_globals.nspaces, pmix_nspace_t) {
-        if (NULL == nspace || 0 == strcmp(nsptr->nspace, nspace)) {
+        if (0 == strncmp(nsptr->nspace, cb->nspace, PMIX_MAX_NSLEN)) {
             /* cycle across the nodes in this nspace */
             PMIX_LIST_FOREACH(nptr, &nsptr->nodes, pmix_nrec_t) {
                 pmix_argv_append_unique_nosize(&tmp, nptr->name, false);
@@ -731,11 +807,39 @@ pmix_status_t PMIx_Resolve_nodes(const char *nspace, char **nodelist)
         }
     }
     if (NULL == tmp) {
-        return PMIX_ERR_NOT_FOUND;
+        rc = PMIX_ERR_NOT_FOUND;
+    } else {
+        cb->key = pmix_argv_join(tmp, ',');
+        pmix_argv_free(tmp);
+        rc = PMIX_SUCCESS;
     }
-    *nodelist = pmix_argv_join(tmp, ',');
-    pmix_argv_free(tmp);
-    return PMIX_SUCCESS;
+
+    cb->pstatus = rc;
+    cb->active = false;
+}
+
+pmix_status_t PMIx_Resolve_nodes(const char *nspace, char **nodelist)
+{
+    pmix_cb_t *cb;
+    pmix_status_t rc;
+
+    /* create a callback object */
+    cb = PMIX_NEW(pmix_cb_t);
+    cb->active = true;
+    if (NULL != nspace) {
+        (void)strncpy(cb->nspace, nspace, PMIX_MAX_NSLEN);
+    }
+
+    /* pass this into the event library for thread protection */
+    PMIX_THREAD_SHIFT(cb, _nodesfn);
+
+    /* wait for the result */
+    PMIX_WAIT_FOR_COMPLETION(cb->active);
+    rc = cb->pstatus;
+    *nodelist = cb->key;
+    PMIX_RELEASE(cb);
+
+    return rc;
 }
 
 
@@ -919,9 +1023,6 @@ void pmix_client_process_nspace_blob(const char *nspace, pmix_buffer_t *bptr)
             bo = &(kptr->value->data.bo);
             PMIX_CONSTRUCT(&buf2, pmix_buffer_t);
             PMIX_LOAD_BUFFER(&buf2, bo->bytes, bo->size);
-            /* protect the data */
-            kptr->value->data.bo.bytes = NULL;
-            kptr->value->data.bo.size = 0;
             PMIX_RELEASE(kptr);
             /* start by unpacking the rank */
             cnt = 1;
@@ -958,9 +1059,6 @@ void pmix_client_process_nspace_blob(const char *nspace, pmix_buffer_t *bptr)
             bo = &(kptr->value->data.bo);
             PMIX_CONSTRUCT(&buf2, pmix_buffer_t);
             PMIX_LOAD_BUFFER(&buf2, bo->bytes, bo->size);
-            /* protect the data */
-            kptr->value->data.bo.bytes = NULL;
-            kptr->value->data.bo.size = 0;
             PMIX_RELEASE(kptr);
             /* start by unpacking the number of nodes */
             cnt = 1;
