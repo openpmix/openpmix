@@ -62,7 +62,18 @@ static pmix_buffer_t* pack_get(char *nspace, int rank,
 static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                          pmix_buffer_t *buf, void *cbdata);
 static void getnb_shortcut(int fd, short flags, void *cbdata);
+
 static void value_cbfunc(int status, pmix_value_t *kv, void *cbdata);
+
+/* get_nb thread shift structure */
+typedef struct {
+    pmix_cb_t *cb;
+    const pmix_info_t *info;
+    size_t ninfo;
+    volatile int active;
+    pmix_status_t rc;
+} get_request_caddy_t;
+static void getnb_request(int fd, short flags, void *cbdata);
 
 int PMIx_Get(const pmix_proc_t *proc, const char key[],
              const pmix_info_t info[], size_t ninfo,
@@ -114,7 +125,6 @@ pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char *key,
                           pmix_value_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_value_t *val;
-    pmix_buffer_t *msg;
     pmix_cb_t *cb;
     pmix_status_t rc;
     char *nm;
@@ -280,44 +290,31 @@ pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char *key,
             return PMIX_ERR_NOT_FOUND;
         }
     }
-    /* see if we already have a request in place with the server for data from
-     * this nspace:rank. If we do, then no need to ask again as the
-     * request will return _all_ data from that proc */
-    PMIX_LIST_FOREACH(cb, &pmix_client_globals.pending_requests, pmix_cb_t) {
-        if (0 == strncmp(nm, cb->nspace, PMIX_MAX_NSLEN) && cb->rank == proc->rank) {
-            /* we do have a pending request, but we still need to track this
-             * outstanding request so we can satisfy it once the data is returned */
-            cb = PMIX_NEW(pmix_cb_t);
-            (void)strncpy(cb->nspace, nm, PMIX_MAX_NSLEN);
-            cb->rank = proc->rank;
-            cb->key = strdup(key);
-            cb->value_cbfunc = cbfunc;
-            cb->cbdata = cbdata;
-            pmix_list_append(&pmix_client_globals.pending_requests, &cb->super);
-            return PMIX_SUCCESS;
-        }
-    }
 
-    /* we don't have a pending request, so let's create one - don't worry
-     * about packing the key as we return everything from that proc */
-    if (NULL == (msg = pack_get(nm, proc->rank, info, ninfo, PMIX_GETNB_CMD))) {
-        return PMIX_ERROR;
-    }
-
-    /* create a callback object as we need to pass it to the
-     * recv routine so we know which callback to use when
-     * the return message is recvd */
+    /* Now we need to thread shift to the service
+     * thread for request processing */
     cb = PMIX_NEW(pmix_cb_t);
     (void)strncpy(cb->nspace, nm, PMIX_MAX_NSLEN);
     cb->rank = proc->rank;
     cb->key = strdup(key);
     cb->value_cbfunc = cbfunc;
     cb->cbdata = cbdata;
-    pmix_list_append(&pmix_client_globals.pending_requests, &cb->super);
 
-    /* push the message into our event base to send to the server */
-    PMIX_ACTIVATE_SEND_RECV(&pmix_client_globals.myserver, msg, getnb_cbfunc, cb);
-    return PMIX_SUCCESS;
+    get_request_caddy_t *data = calloc(1, sizeof(get_request_caddy_t));
+    data->cb = cb;
+    data->info = info;
+    data->ninfo = ninfo;
+    data->active = 1;
+    /* activate the event */
+    event_assign(&(cb->ev), pmix_globals.evbase, -1,
+         EV_WRITE, getnb_request, data);
+    event_active(&(cb->ev), EV_WRITE, 1);
+
+    PMIX_WAIT_FOR_COMPLETION(data->active);
+    rc = data->rc;
+    free(data);
+
+    return rc;
 }
 
 static void value_cbfunc(int status, pmix_value_t *kv, void *cbdata)
@@ -519,4 +516,45 @@ static void getnb_shortcut(int fd, short flags, void *cbdata)
     }
     PMIX_VALUE_DESTRUCT(&val);
     PMIX_RELEASE(cb);
+}
+
+static void getnb_request(int fd, short flags, void *cbdata)
+{
+    get_request_caddy_t *data = (get_request_caddy_t *)cbdata;
+    pmix_cb_t *cb;
+    pmix_buffer_t *msg;
+
+    /* We are optimistic */
+    data->rc = PMIX_SUCCESS;
+
+    /* see if we already have a request in place with the server for data from
+     * this nspace:rank. If we do, then no need to ask again as the
+     * request will return _all_ data from that proc */
+    PMIX_LIST_FOREACH(cb, &pmix_client_globals.pending_requests, pmix_cb_t) {
+        if (0 == strncmp(cb->nspace, data->cb->nspace, PMIX_MAX_NSLEN) && cb->rank == data->cb->rank) {
+            /* we do have a pending request, but we still need to track this
+             * outstanding request so we can satisfy it once the data is returned */
+            pmix_list_append(&pmix_client_globals.pending_requests, &data->cb->super);
+            goto exit;
+        }
+    }
+
+    /* we don't have a pending request, so let's create one - don't worry
+     * about packing the key as we return everything from that proc */
+    msg = pack_get(data->cb->nspace, data->cb->rank, data->info, data->ninfo, PMIX_GETNB_CMD);
+    if (NULL == msg) {
+        data->rc = PMIX_ERROR;
+        goto exit;
+    }
+
+    /* create a callback object as we need to pass it to the
+     * recv routine so we know which callback to use when
+     * the return message is recvd */
+    pmix_list_append(&pmix_client_globals.pending_requests, &data->cb->super);
+
+    /* push the message into our event base to send to the server */
+    PMIX_ACTIVATE_SEND_RECV(&pmix_client_globals.myserver, msg, getnb_cbfunc, data->cb);
+
+exit:
+    data->active = 0;
 }
