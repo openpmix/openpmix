@@ -228,16 +228,14 @@ int PMIx_Init(pmix_proc_t *proc)
     pmix_nspace_t *nsptr;
     pmix_cb_t cb;
 
-    if (NULL == proc) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-
     if (0 < pmix_globals.init_cntr) {
         /* since we have been called before, the nspace and
          * rank should be known. So return them here if
          * requested */
-        (void)strncpy(proc->nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
-        proc->rank = pmix_globals.myid.rank;
+        if (NULL != proc) {
+            (void)strncpy(proc->nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
+            proc->rank = pmix_globals.myid.rank;
+        }
         return PMIX_SUCCESS;
     }
 
@@ -281,7 +279,9 @@ int PMIx_Init(pmix_proc_t *proc)
         pmix_class_finalize();
         return PMIX_ERR_INVALID_NAMESPACE;
     }
-    (void)strncpy(proc->nspace, evar, PMIX_MAX_NSLEN);
+    if (NULL != proc) {
+        (void)strncpy(proc->nspace, evar, PMIX_MAX_NSLEN);
+    }
     (void)strncpy(pmix_globals.myid.nspace, evar, PMIX_MAX_NSLEN);
     nsptr = PMIX_NEW(pmix_nspace_t);
     (void)strncpy(nsptr->nspace, evar, PMIX_MAX_NSLEN);
@@ -336,7 +336,9 @@ int PMIx_Init(pmix_proc_t *proc)
         return PMIX_ERR_DATA_VALUE_NOT_FOUND;
     }
     pmix_globals.myid.rank = strtol(evar, NULL, 10);
-    proc->rank = pmix_globals.myid.rank;
+    if (NULL != proc) {
+        proc->rank = pmix_globals.myid.rank;
+    }
     pmix_globals.pindex = -1;
 
     /* setup the support */
