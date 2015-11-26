@@ -38,7 +38,17 @@
 
 BEGIN_C_DECLS
 
-#define PMIX_MAX_CRED_SIZE  131072   // set max at 128kbytes
+#define PMIX_MAX_CRED_SIZE  131072           // set max at 128kbytes
+#define PMIX_MAX_ERROR_REGISTRATIONS    5    // maximum number of error handlers that can be registered
+
+/* define a structure for tracking error registrations */
+typedef struct {
+    pmix_object_t super;
+    pmix_notification_fn_t errhandler; /* registered err handler callback fn */
+    pmix_info_t *info;                 /* error info keys registered with the handler */
+    size_t ninfo;                      /* size of info */
+} pmix_error_reg_info_t;
+PMIX_CLASS_DECLARATION(pmix_error_reg_info_t);
 
 /* define a global construct that includes values that must be shared
  * between various parts of the code library. Both the client
@@ -51,7 +61,7 @@ typedef struct {
     int pindex;
     pmix_event_base_t *evbase;
     int debug_output;
-    pmix_notification_fn_t errhandler;
+    pmix_pointer_array_t errregs;        // my error handler registrations.
     bool server;
     bool connected;
     pmix_list_t nspaces;                 // list of pmix_nspace_t for the nspaces we know about

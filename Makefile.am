@@ -59,12 +59,14 @@ include src/common/Makefile.am
 
 if PMIX_EMBEDDED_MODE
 noinst_LTLIBRARIES = libpmix.la
+libpmix_la_SOURCES = $(headers) $(sources)
+libpmix_la_LDFLAGS =
 else
 lib_LTLIBRARIES = libpmix.la
-endif
-
 libpmix_la_SOURCES = $(headers) $(sources)
 libpmix_la_LDFLAGS = -version-info $(libpmix_so_version)
+endif
+
 
 if ! PMIX_EMBEDDED_MODE
 SUBDIRS = . test examples

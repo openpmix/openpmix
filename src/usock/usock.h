@@ -76,7 +76,9 @@ typedef enum {
     PMIX_SPAWNNB_CMD,
     PMIX_CONNECTNB_CMD,
     PMIX_DISCONNECTNB_CMD,
-    PMIX_NOTIFY_CMD
+    PMIX_NOTIFY_CMD,
+    PMIX_REGEVENTS_CMD,
+    PMIX_DEREGEVENTS_CMD,
 } pmix_cmd_t;
 
 
@@ -177,6 +179,8 @@ typedef struct {
     pmix_value_cbfunc_t value_cbfunc;
     pmix_lookup_cbfunc_t lookup_cbfunc;
     pmix_spawn_cbfunc_t spawn_cbfunc;
+    pmix_errhandler_reg_cbfunc_t errreg_cbfunc;
+    int errhandler_ref;
     void *cbdata;
     char nspace[PMIX_MAX_NSLEN+1];
     int rank;
