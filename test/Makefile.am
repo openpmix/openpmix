@@ -21,7 +21,7 @@
 
 SUBDIRS = simple
 
-headers = test_common.h cli_stages.h server_callbacks.h utils.h test_fence.h test_publish.h test_spawn.h test_cd.h test_resolve_peers.h
+headers = test_common.h cli_stages.h server_callbacks.h utils.h test_fence.h test_publish.h test_spawn.h test_cd.h test_resolve_peers.h test_error.h
 
 AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/src/api
 
@@ -48,7 +48,7 @@ pmi2_client_LDADD = \
 	$(top_builddir)/libpmix.la
 
 pmix_client_SOURCES = $(headers) \
-        pmix_client.c test_fence.c test_common.c test_publish.c test_spawn.c test_cd.c test_resolve_peers.c
+        pmix_client.c test_fence.c test_common.c test_publish.c test_spawn.c test_cd.c test_resolve_peers.c test_error.c
 pmix_client_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 pmix_client_LDADD = \
 	$(top_builddir)/libpmix.la
