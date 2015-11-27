@@ -184,6 +184,8 @@ typedef struct {
     char *nsp;
     pmix_value_t *value;
     pmix_proc_t *procs;
+    pmix_info_t *info;
+    size_t ninfo;
     size_t nvals;
 } pmix_cb_t;
 PMIX_CLASS_DECLARATION(pmix_cb_t);

@@ -275,6 +275,8 @@ static void cbcon(pmix_cb_t *p)
     p->nsp = NULL;
     p->value = NULL;
     p->procs = NULL;
+    p->info = NULL;
+    p->ninfo = 0;
     p->nvals = 0;
 }
 static void cbdes(pmix_cb_t *p)
@@ -288,6 +290,9 @@ static void cbdes(pmix_cb_t *p)
     }
     if (NULL != p->procs) {
         PMIX_PROC_FREE(p->procs, p->nvals);
+    }
+    if (NULL != p->info) {
+        PMIX_INFO_FREE(p->info, p->ninfo);
     }
 }
 PMIX_CLASS_INSTANCE(pmix_cb_t,
