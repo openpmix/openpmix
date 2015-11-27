@@ -181,7 +181,6 @@ typedef struct {
     char nspace[PMIX_MAX_NSLEN+1];
     int rank;
     char *key;
-    char *nsp;
     pmix_value_t *value;
     pmix_proc_t *procs;
     pmix_info_t *info;

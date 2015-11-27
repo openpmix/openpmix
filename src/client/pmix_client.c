@@ -541,8 +541,7 @@ static void _putfn(int sd, short args, void *cbdata)
 
     /* setup to xfer the data */
     kv = PMIX_NEW(pmix_kval_t);
-    kv->key = cb->key;
-    cb->key = NULL;  // protect the data
+    kv->key = strdup(cb->key);  // need to copy as the input belongs to the user
     kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
     rc = pmix_value_xfer(kv->value, cb->value);
     if (PMIX_SUCCESS != rc) {
@@ -719,7 +718,7 @@ static void _peersfn(int sd, short args, void *cbdata)
     /* cycle across our known nspaces */
     tmp = NULL;
     PMIX_LIST_FOREACH(nsptr, &pmix_globals.nspaces, pmix_nspace_t) {
-        if (NULL == cb->nsp || 0 == strcmp(nsptr->nspace, cb->nsp)) {
+        if (0 == strncmp(nsptr->nspace, cb->nspace, PMIX_MAX_NSLEN)) {
             /* cycle across the nodes in this nspace */
             PMIX_LIST_FOREACH(nptr, &nsptr->nodes, pmix_nrec_t) {
                 if (0 == strcmp(cb->key, nptr->name)) {
@@ -769,7 +768,9 @@ pmix_status_t PMIx_Resolve_peers(const char *nodename, const char *nspace,
     cb = PMIX_NEW(pmix_cb_t);
     cb->active = true;
     cb->key = (char*)nodename;
-    cb->nsp = (char*)nspace;
+    if (NULL != nspace) {
+        (void)strncpy(cb->nspace, nspace, PMIX_MAX_NSLEN);
+    }
 
     /* pass this into the event library for thread protection */
     PMIX_THREAD_SHIFT(cb, _peersfn);
@@ -777,9 +778,10 @@ pmix_status_t PMIx_Resolve_peers(const char *nodename, const char *nspace,
     /* wait for the result */
     PMIX_WAIT_FOR_COMPLETION(cb->active);
     rc = cb->pstatus;
-    /* protect the incoming data */
-    cb->key = NULL;
-    cb->nsp = NULL;
+    /* transfer the result */
+    *procs = cb->procs;
+    *nprocs = cb->nvals;
+
     /* cleanup */
     PMIX_RELEASE(cb);
 
@@ -797,7 +799,7 @@ static void _nodesfn(int sd, short args, void *cbdata)
     /* cycle across our known nspaces */
     tmp = NULL;
     PMIX_LIST_FOREACH(nsptr, &pmix_globals.nspaces, pmix_nspace_t) {
-        if (NULL == cb->nsp || 0 == strcmp(nsptr->nspace, cb->nsp)) {
+        if (0 == strncmp(nsptr->nspace, cb->nspace, PMIX_MAX_NSLEN)) {
             /* cycle across the nodes in this nspace */
             PMIX_LIST_FOREACH(nptr, &nsptr->nodes, pmix_nrec_t) {
                 pmix_argv_append_unique_nosize(&tmp, nptr->name, false);
@@ -824,7 +826,9 @@ pmix_status_t PMIx_Resolve_nodes(const char *nspace, char **nodelist)
     /* create a callback object */
     cb = PMIX_NEW(pmix_cb_t);
     cb->active = true;
-    cb->nsp = (char*)nspace;
+    if (NULL != nspace) {
+        (void)strncpy(cb->nspace, nspace, PMIX_MAX_NSLEN);
+    }
 
     /* pass this into the event library for thread protection */
     PMIX_THREAD_SHIFT(cb, _nodesfn);
@@ -833,8 +837,6 @@ pmix_status_t PMIx_Resolve_nodes(const char *nspace, char **nodelist)
     PMIX_WAIT_FOR_COMPLETION(cb->active);
     rc = cb->pstatus;
     *nodelist = cb->key;
-    cb->key = NULL;  // protect the data
-    cb->nsp = NULL;
     PMIX_RELEASE(cb);
 
     return rc;

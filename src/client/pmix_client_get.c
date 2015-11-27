@@ -137,7 +137,8 @@ pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char *key,
     /* thread-shift so we can check global objects */
     cb = PMIX_NEW(pmix_cb_t);
     cb->active = true;
-    cb->procs = (pmix_proc_t*)proc;
+    (void)strncpy(cb->nspace, proc->nspace, PMIX_MAX_NSLEN);
+    cb->rank = proc->rank;
     cb->key = (char*)key;
     cb->info = (pmix_info_t*)info;
     cb->ninfo = ninfo;
@@ -241,7 +242,7 @@ static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     /* look up the nspace object for this proc */
     nptr = NULL;
     PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_nspace_t) {
-        if (0 == strcmp(cb->nspace, ns->nspace)) {
+        if (0 == strncmp(cb->nspace, ns->nspace, PMIX_MAX_NSLEN)) {
             nptr = ns;
             break;
         }
@@ -313,10 +314,6 @@ static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     /* we obviously processed this one, so remove it from the
      * list of pending requests */
     pmix_list_remove_item(&pmix_client_globals.pending_requests, &cb->super);
-    /* protect the data */
-    cb->procs = NULL;
-    cb->key = NULL;
-    cb->info = NULL;
     PMIX_RELEASE(cb);
 
     /* now search any pending requests to see if they can be met */
@@ -346,12 +343,17 @@ static void _getnbfn(int fd, short flags, void *cbdata)
     pmix_nspace_t *ns, *nptr;
     size_t n;
 
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix: getnbfn value for proc %s:%d key %s",
+                        cb->nspace, cb->rank,
+                        (NULL == cb->key) ? "NULL" : cb->key);
+
     /* if the nspace is empty, then the caller is referencing
      * our own nspace */
-    if (0 == strlen(cb->procs->nspace)) {
+    if (0 == strlen(cb->nspace)) {
         nm = pmix_globals.myid.nspace;
     } else {
-        nm = (char*)cb->procs->nspace;
+        nm = (char*)cb->nspace;
     }
 
     /* find the nspace object */
@@ -385,20 +387,12 @@ static void _getnbfn(int fd, short flags, void *cbdata)
         if (NULL != val) {
             PMIX_VALUE_RELEASE(val);
         }
-        /* protect the data */
-        cb->procs = NULL;
-        cb->key = NULL;
-        cb->info = NULL;
         PMIX_RELEASE(cb);
         return;
     }
-    if (PMIX_RANK_WILDCARD == cb->procs->rank) {
+    if (PMIX_RANK_WILDCARD == cb->rank) {
         /* can't be anywhere else */
         cb->value_cbfunc(PMIX_ERR_NOT_FOUND, NULL, cb->cbdata);
-        /* protect the data */
-        cb->procs = NULL;
-        cb->key = NULL;
-        cb->info = NULL;
         PMIX_RELEASE(cb);
         return;
     }
@@ -406,7 +400,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
     /* it could still be in the job-data table, only stored under its own
      * rank and not WILDCARD - e.g., this is true of data returned about
      * ourselves during startup */
-    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->internal, cb->procs->rank, cb->key, &val))) {
+    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->internal, cb->rank, cb->key, &val))) {
         /* found it - we are in an event, so we can
          * just execute the callback */
         cb->value_cbfunc(rc, val, cb->cbdata);
@@ -414,17 +408,13 @@ static void _getnbfn(int fd, short flags, void *cbdata)
         if (NULL != val) {
             PMIX_VALUE_RELEASE(val);
         }
-        /* protect the data */
-        cb->procs = NULL;
-        cb->key = NULL;
-        cb->info = NULL;
         PMIX_RELEASE(cb);
         return;
     }
 
     /* not finding it is not an error - it could be in the
      * modex hash table, so check it */
-    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->modex, cb->procs->rank, cb->key, &val))) {
+    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->modex, cb->rank, cb->key, &val))) {
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "pmix: value retrieved from dstore");
         /* found it - we are in an event, so we can
@@ -434,10 +424,6 @@ static void _getnbfn(int fd, short flags, void *cbdata)
         if (NULL != val) {
             PMIX_VALUE_RELEASE(val);
         }
-        /* protect the data */
-        cb->procs = NULL;
-        cb->key = NULL;
-        cb->info = NULL;
         PMIX_RELEASE(cb);
         return;
     } else if (PMIX_ERR_NOT_FOUND == rc) {
@@ -447,7 +433,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
          * the error */
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "Error requesting key=%s for rank = %d, namespace = %s",
-                            cb->key, cb->procs->rank, nm);
+                            cb->key, cb->rank, nm);
         cb->value_cbfunc(rc, NULL, cb->cbdata);
         /* protect the data */
         cb->procs = NULL;
@@ -463,10 +449,6 @@ static void _getnbfn(int fd, short flags, void *cbdata)
      * nothing more we can do */
     if (pmix_globals.server || (!pmix_globals.server && !pmix_globals.connected)) {
         cb->value_cbfunc(PMIX_ERR_NOT_FOUND, NULL, cb->cbdata);
-        /* protect the data */
-        cb->procs = NULL;
-        cb->key = NULL;
-        cb->info = NULL;
         PMIX_RELEASE(cb);
         return;
     }
@@ -479,12 +461,8 @@ static void _getnbfn(int fd, short flags, void *cbdata)
             /* they don't want us to try and retrieve it */
             pmix_output_verbose(2, pmix_globals.debug_output,
                                 "PMIx_Get key=%s for rank = %d, namespace = %s was not found - request was optional",
-                                cb->key, cb->procs->rank, nm);
+                                cb->key, cb->rank, nm);
             cb->value_cbfunc(PMIX_ERR_NOT_FOUND, NULL, cb->cbdata);
-            /* protect the data */
-            cb->procs = NULL;
-            cb->key = NULL;
-            cb->info = NULL;
             PMIX_RELEASE(cb);
             return;
         }
@@ -508,10 +486,6 @@ static void _getnbfn(int fd, short flags, void *cbdata)
     msg = pack_get(nm, cb->rank, cb->info, cb->ninfo, PMIX_GETNB_CMD);
     if (NULL == msg) {
         cb->value_cbfunc(PMIX_ERROR, NULL, cb->cbdata);
-        /* protect the data */
-        cb->procs = NULL;
-        cb->key = NULL;
-        cb->info = NULL;
         PMIX_RELEASE(cb);
         return;
     }

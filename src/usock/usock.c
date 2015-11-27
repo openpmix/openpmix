@@ -272,7 +272,6 @@ static void cbcon(pmix_cb_t *p)
     memset(p->nspace, 0, PMIX_MAX_NSLEN+1);
     p->rank = -1;
     p->key = NULL;
-    p->nsp = NULL;
     p->value = NULL;
     p->procs = NULL;
     p->info = NULL;
@@ -282,18 +281,6 @@ static void cbcon(pmix_cb_t *p)
 static void cbdes(pmix_cb_t *p)
 {
     PMIX_DESTRUCT(&p->data);
-    if (NULL != p->key) {
-        free(p->key);
-    }
-    if (NULL != p->nsp) {
-        free(p->nsp);
-    }
-    if (NULL != p->procs) {
-        PMIX_PROC_FREE(p->procs, p->nvals);
-    }
-    if (NULL != p->info) {
-        PMIX_INFO_FREE(p->info, p->ninfo);
-    }
 }
 PMIX_CLASS_INSTANCE(pmix_cb_t,
                    pmix_list_item_t,
