@@ -273,13 +273,14 @@ static void cbcon(pmix_cb_t *p)
     p->rank = -1;
     p->key = NULL;
     p->value = NULL;
+    p->procs = NULL;
+    p->info = NULL;
+    p->ninfo = 0;
+    p->nvals = 0;
 }
 static void cbdes(pmix_cb_t *p)
 {
     PMIX_DESTRUCT(&p->data);
-    if (NULL != p->key) {
-        free(p->key);
-    }
 }
 PMIX_CLASS_INSTANCE(pmix_cb_t,
                    pmix_list_item_t,
