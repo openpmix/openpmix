@@ -5,6 +5,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.
  *                         All rights reserved.
+ *
  * $COPYRIGHT$
  */
 
@@ -137,6 +138,15 @@ typedef struct {
 } pmix_pending_connection_t;
 PMIX_CLASS_DECLARATION(pmix_pending_connection_t);
 
+/* event/error registration book keeping */
+typedef struct {
+    pmix_list_item_t super;
+    pmix_peer_t *peer;
+    pmix_info_t *info;
+    size_t ninfo;
+} pmix_regevents_info_t;
+PMIX_CLASS_DECLARATION(pmix_regevents_info_t);
+
 typedef struct {
     pmix_pointer_array_t clients;           // array of pmix_peer_t local clients
     pmix_list_t collectives;                // list of active pmix_server_trkr_t
@@ -146,6 +156,7 @@ typedef struct {
     int listen_socket;                      // socket listener is watching
     int stop_thread[2];                     // pipe used to stop listener thread
     pmix_buffer_t gdata;                    // cache of data given to me for passing to all clients
+    pmix_list_t client_eventregs;           // list of registered events per client.
 } pmix_server_globals_t;
 
 #define PMIX_PEER_CADDY(c, p, t)                \
@@ -246,6 +257,23 @@ pmix_status_t pmix_server_notify_error(pmix_status_t status,
                                        pmix_proc_t error_procs[], size_t error_nprocs,
                                        pmix_info_t info[], size_t ninfo,
                                        pmix_op_cbfunc_t cbfunc, void *cbdata);
+
+pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
+                                 pmix_buffer_t *buf,
+                                 pmix_op_cbfunc_t cbfunc,
+                                 void *cbdata);
+
+pmix_status_t pmix_server_deregister_events(pmix_peer_t *peer,
+                                          pmix_buffer_t *buf,
+                                          pmix_op_cbfunc_t cbfunc,
+                                          void *cbdata);
+
+pmix_status_t pmix_server_notify_error_client(pmix_peer_t *peer,
+                                              pmix_buffer_t *buf,
+                                              pmix_op_cbfunc_t cbfunc,
+                                              void *cbdata);
+
+void regevents_cbfunc (pmix_status_t status, void *cbdata);
 
 extern pmix_server_module_t pmix_host_server;
 extern pmix_server_globals_t pmix_server_globals;
