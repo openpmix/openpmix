@@ -668,12 +668,6 @@ else
     AC_MSG_RESULT([no])
     WANT_DEBUG=0
 fi
-#################### Early development override ####################
-if test "$WANT_DEBUG" = "0" && test -z "$enable_debug" && test "$PMIX_DEVEL" = "1"; then
-    WANT_DEBUG=1
-    echo "--> developer override: enable debugging code by default"
-fi
-#################### Early development override ####################
 if test "$WANT_DEBUG" = "0"; then
     CFLAGS="-DNDEBUG $CFLAGS"
     CXXFLAGS="-DNDEBUG $CXXFLAGS"
