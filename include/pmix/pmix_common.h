@@ -437,6 +437,16 @@ typedef struct {
         }                                               \
     } while(0);
 
+/* expose a function that is resolved in the
+ * PMIx library, but part of a header that
+ * includes internal functions - so we don't
+ * want to expose the entire header here
+ */
+extern void pmix_value_load(pmix_value_t *v, void *data,
+                            pmix_data_type_t type);
+
+
+
 
 /****    PMIX INFO STRUCT    ****/
 typedef struct {

@@ -169,6 +169,8 @@ typedef struct {
     pmix_event_t ev;
     volatile bool active;
     int status;
+    pmix_status_t pstatus;
+    pmix_scope_t scope;
     pmix_buffer_t data;
     pmix_usock_cbfunc_t cbfunc;
     pmix_op_cbfunc_t op_cbfunc;
@@ -180,9 +182,21 @@ typedef struct {
     int rank;
     char *key;
     pmix_value_t *value;
+    pmix_proc_t *procs;
+    pmix_info_t *info;
+    size_t ninfo;
     size_t nvals;
 } pmix_cb_t;
 PMIX_CLASS_DECLARATION(pmix_cb_t);
+
+/* an internal macro for shifting incoming requests
+ * to the internal event thread */
+#define PMIX_THREAD_SHIFT(c, f)                             \
+    do {                                                    \
+       event_assign(&((c)->ev), pmix_globals.evbase, -1,    \
+                          EV_WRITE, (f), (c));              \
+        event_active(&((c)->ev), EV_WRITE, 1);              \
+    } while(0);
 
 typedef struct {
     pmix_object_t super;

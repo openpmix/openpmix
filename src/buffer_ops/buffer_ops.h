@@ -68,6 +68,8 @@ PMIX_DECLSPEC pmix_status_t pmix_value_unload(pmix_value_t *kv, void **data,
         (b)->bytes_allocated = (s);                     \
         (b)->pack_ptr = ((char*)(b)->base_ptr) + (s);   \
         (b)->unpack_ptr = (b)->base_ptr;                \
+        (d) = NULL;                                     \
+        (s) = 0;                                        \
     } while(0);
 
 #define PMIX_UNLOAD_BUFFER(b, d, s)             \
