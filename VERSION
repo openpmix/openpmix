@@ -48,7 +48,20 @@ date="Nov 15, 2015"
 
 # The shared library version of each of PMIx's public libraries.
 # These versions are maintained in accordance with the "Library
-# Interface Versions" chapter from the GNU Libtool documentation.
+# Interface Versions" chapter from the GNU Libtool documentation:
+#
+# - If the library source code has changed at all since the last
+#   update, then increment revision (`c:r:a' becomes `c:r+1:a').
+#
+# - If any interfaces have been added, removed, or changed since
+#   the last update, increment current, and set revision to 0.
+#
+# - If any interfaces have been added since the last public release,
+#   then increment age.
+#
+# - If any interfaces have been removed since the last public release,
+#   then set age to 0.
+#
 # All changes in these version numbers are dictated by the PMIx
 # release managers (not individual developers).  Notes:
 
