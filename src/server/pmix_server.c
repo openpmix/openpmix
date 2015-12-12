@@ -557,6 +557,13 @@ static void _register_nspace(int sd, short args, void *cbdata)
                 goto release;
             }
             PMIX_DESTRUCT(&buf2);
+#if !PMIX_HAVE_HWLOC
+        } else if (0 == strcmp(cd->info[i].key, PMIX_LOCAL_TOPO) ||
+                   0 == strcmp(cd->info[i].key, PMIX_NET_TOPO)) {
+            /* if we weren't built with hwloc support, then we
+             * don't know how to deal with these */
+            continue;
+#endif
         } else {
             /* just a value relating to the entire job */
             kv.key = cd->info[i].key;
