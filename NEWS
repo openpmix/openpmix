@@ -24,12 +24,27 @@ Master (not on release branches yet)
 ------------------------------------
 
 
+1.1.2
+-----
+- Provide a check for hwloc support - if not found, then
+  don't pass any topology info down to the client as it
+  won't know how to unpack it anyway.
+- Fix a few places where thread safety wasn't provided
+- Fix several issues identified by Paul Hargrove:
+    * PMIx_Init(NULL) is supported
+    * Incomplete PMIx_constants man page had some lingering cruft
+    * Missing prototype for pmix_value_load
+- Fix race condition in PMIx_Get/PMIx_Get_nb
+- Fix double-free error in pmix_server_commit.
+- Fix PMIX_LOAD_BUFFER to be safe.
+
 
 1.1.1
 -----
 - Fix an issue where the example and test programs
   were incorrectly being installed. Thanks to Orion
   Poplawski for reporting it
+
 
 1.1.0
 -----
