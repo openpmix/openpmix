@@ -29,7 +29,7 @@
 BEGIN_C_DECLS
 
 #define PMIX_ERROR_LOG(r)                                               \
-    do {                                                                \
+     do {                                                               \
         if (PMIX_ERR_SILENT != (r)) {                                   \
             pmix_output(0, "PMIX ERROR: %s in file %s at line %d",      \
                         PMIx_Error_string((r)), __FILE__, __LINE__);    \
@@ -45,6 +45,17 @@ BEGIN_C_DECLS
 PMIX_DECLSPEC void pmix_errhandler_invoke(pmix_status_t status,
                                           pmix_proc_t procs[], size_t nprocs,
                                           pmix_info_t info[], size_t ninfo);
+
+PMIX_DECLSPEC pmix_status_t pmix_lookup_errhandler(pmix_notification_fn_t err,
+                                                   int *index);
+
+PMIX_DECLSPEC pmix_status_t pmix_add_errhandler(pmix_notification_fn_t err,
+                                                pmix_info_t *info, int ninfo,
+                                                int *index);
+
+PMIX_DECLSPEC pmix_status_t pmix_remove_errhandler(int errhandler_ref);
+
+PMIX_DECLSPEC void pmix_get_errorgroup ( pmix_status_t status, char *pmix_error_group);
 
 END_C_DECLS
 

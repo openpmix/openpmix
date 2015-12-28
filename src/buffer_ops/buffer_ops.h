@@ -59,6 +59,7 @@ PMIX_DECLSPEC void pmix_value_load(pmix_value_t *v, void *data,
                                    pmix_data_type_t type);
 PMIX_DECLSPEC pmix_status_t pmix_value_unload(pmix_value_t *kv, void **data,
                                               size_t *sz, pmix_data_type_t type);
+PMIX_DECLSPEC bool pmix_value_cmp(pmix_value_t *p, pmix_value_t *p1);
 
 
 #define PMIX_LOAD_BUFFER(b, d, s)                       \
