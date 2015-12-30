@@ -1124,8 +1124,8 @@ void pmix_client_process_nspace_blob(const char *nspace, pmix_buffer_t *bptr)
             PMIX_DESTRUCT(&buf2);  // releases the original kptr data
         } else {
             /* this is job-level data, so just add it to that hash_table
-             * with the wildcard rank */
-            if (PMIX_SUCCESS != (rc = pmix_hash_store(&nsptr->internal, PMIX_RANK_WILDCARD, kptr))) {
+             * with the universal rank identifier as PMIX_RANK_ZERO */
+            if (PMIX_SUCCESS != (rc = pmix_hash_store(&nsptr->internal, PMIX_RANK_ZERO, kptr))) {
                 PMIX_ERROR_LOG(rc);
             }
             /* maintain accounting - but note that the kptr remains
