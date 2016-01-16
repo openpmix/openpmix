@@ -74,16 +74,6 @@ int PMIx_Get(const pmix_proc_t *proc, const char key[],
     pmix_cb_t *cb;
     int rc;
 
-    if (NULL == proc) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix: %s:%d getting value for proc %s:%d key %s",
-                        pmix_globals.myid.nspace, pmix_globals.myid.rank,
-                        proc->nspace, proc->rank,
-                        (NULL == key) ? "NULL" : key);
-
     if (pmix_globals.init_cntr <= 0) {
         return PMIX_ERR_INIT;
     }
@@ -115,30 +105,60 @@ pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char *key,
                           pmix_value_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_cb_t *cb;
-
-    if (NULL == proc) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix: get_nb value for proc %s:%d key %s",
-                        proc->nspace, proc->rank,
-                        (NULL == key) ? "NULL" : key);
+    int rank;
+    char *nm;
 
     if (pmix_globals.init_cntr <= 0) {
         return PMIX_ERR_INIT;
     }
 
-    /* protect against bozo input */
-    if (NULL == key) {
+    /* if the proc is NULL, then the caller is assuming
+     * that the key is universally unique within the caller's
+     * own nspace. This most likely indicates that the code
+     * was originally written for a legacy version of PMI.
+     *
+     * If the key is NULL, then the caller wants all
+     * data from the specified proc. Again, this likely
+     * indicates use of a legacy version of PMI.
+     *
+     * Either case is supported. However, we don't currently
+     * support the case where -both- values are NULL */
+    if (NULL == proc && NULL == key) {
         return PMIX_ERR_BAD_PARAM;
     }
+
+    /* if the key is NULL, the rank cannot be WILDCARD as
+     * we cannot return all info from every rank */
+    if (NULL != proc && PMIX_RANK_WILDCARD == proc->rank && NULL == key) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* if the given proc param is NULL, or the nspace is
+     * empty, then the caller is referencing our own nspace */
+    if (NULL == proc || 0 == strlen(proc->nspace)) {
+        nm = pmix_globals.myid.nspace;
+    } else {
+        nm = (char*)proc->nspace;
+    }
+
+    /* if the proc param is NULL, then we are seeking a key that
+     * must be globally unique, so communicate this to the hash
+     * functions with the UNDEF rank */
+    if (NULL == proc) {
+        rank = PMIX_RANK_UNDEF;
+    } else {
+        rank = proc->rank;
+    }
+
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix: get_nb value for proc %s:%d key %s",
+                        nm, rank, (NULL == key) ? "NULL" : key);
 
     /* thread-shift so we can check global objects */
     cb = PMIX_NEW(pmix_cb_t);
     cb->active = true;
-    (void)strncpy(cb->nspace, proc->nspace, PMIX_MAX_NSLEN);
-    cb->rank = proc->rank;
+    (void)strncpy(cb->nspace, nm, PMIX_MAX_NSLEN);
+    cb->rank = rank;
     cb->key = (char*)key;
     cb->info = (pmix_info_t*)info;
     cb->ninfo = ninfo;
@@ -338,28 +358,21 @@ static void _getnbfn(int fd, short flags, void *cbdata)
     pmix_cb_t *cbret;
     pmix_buffer_t *msg;
     pmix_value_t *val;
+    pmix_info_t *info, *iptr;
+    pmix_pointer_array_t results;
     pmix_status_t rc;
-    char *nm;
     pmix_nspace_t *ns, *nptr;
-    size_t n;
+    size_t n, nvals;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: getnbfn value for proc %s:%d key %s",
                         cb->nspace, cb->rank,
                         (NULL == cb->key) ? "NULL" : cb->key);
 
-    /* if the nspace is empty, then the caller is referencing
-     * our own nspace */
-    if (0 == strlen(cb->nspace)) {
-        nm = pmix_globals.myid.nspace;
-    } else {
-        nm = (char*)cb->nspace;
-    }
-
     /* find the nspace object */
     nptr = NULL;
     PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_nspace_t) {
-        if (0 == strcmp(nm, ns->nspace)) {
+        if (0 == strcmp(cb->nspace, ns->nspace)) {
             nptr = ns;
             break;
         }
@@ -370,11 +383,103 @@ static void _getnbfn(int fd, short flags, void *cbdata)
          * server has never heard of it, the server will return
          * an error */
          nptr = PMIX_NEW(pmix_nspace_t);
-         (void)strncpy(nptr->nspace, nm, PMIX_MAX_NSLEN);
+         (void)strncpy(nptr->nspace, cb->nspace, PMIX_MAX_NSLEN);
          pmix_list_append(&pmix_globals.nspaces, &nptr->super);
          /* there is no point in looking for data in this nspace
           * object, so let's just go generate the request */
          goto request;
+    }
+
+    /* if the key is NULL, then we have to check both the job-data
+     * and the modex tables. If we don't yet have the modex data,
+     * then we are going to have to go get it. So let's check that
+     * case first */
+     if (NULL == cb->key) {
+        PMIX_CONSTRUCT(&results, pmix_pointer_array_t);
+        pmix_pointer_array_init(&results, 2, INT_MAX, 1);
+        nvals = 0;
+        /* if the rank is WILDCARD, then they want all the job-level info,
+         * so no need to check the modex */
+        if (PMIX_RANK_WILDCARD != cb->rank) {
+            if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->modex, cb->rank, NULL, &val))) {
+                pmix_output_verbose(2, pmix_globals.debug_output,
+                                    "pmix: value retrieved from dstore");
+                /* since we didn't provide them with a key, the hash function
+                 * must return the results in the pmix_info_array field of the
+                 * value */
+                if (PMIX_INFO_ARRAY != val->type) {
+                    /* this is an error */
+                    PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                    cb->value_cbfunc(PMIX_ERR_BAD_PARAM, NULL, cb->cbdata);
+                    PMIX_RELEASE(cb);
+                    return;
+                }
+                /* save the results */
+                info = (pmix_info_t*)val->data.array.array;
+                for (n=0; n < val->data.array.size; n++) {
+                    pmix_pointer_array_add(&results, &info[n]);
+                    ++nvals;
+                }
+                val->data.array.array = NULL;  // protect the data
+                val->data.array.size = 0;
+                /* cleanup */
+                if (NULL != val) {
+                    PMIX_VALUE_RELEASE(val);
+                }
+            } else {
+                /* if we didn't find a modex for this rank, then we need
+                 * to go get it. Recall that the NULL==key scenario only
+                 * pertains to cases where legacy PMI methods are being
+                 * employed. Thus, the caller wants -all- information for
+                 * the specified rank, not just the job-level info. */
+                 goto request;
+            }
+        }
+        /* now get any data from the job-level info */
+        if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->internal, PMIX_RANK_WILDCARD, NULL, &val))) {
+            /* since we didn't provide them with a key, the hash function
+             * must return the results in the pmix_info_array field of the
+             * value */
+            if (PMIX_INFO_ARRAY != val->type) {
+                /* this is an error */
+                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                cb->value_cbfunc(PMIX_ERR_BAD_PARAM, NULL, cb->cbdata);
+                PMIX_RELEASE(cb);
+                return;
+            }
+            /* save the results */
+            info = (pmix_info_t*)val->data.array.array;
+            for (n=0; n < val->data.array.size; n++) {
+                pmix_pointer_array_add(&results, &info[n]);
+                ++nvals;
+            }
+            val->data.array.array = NULL;  // protect the data
+            val->data.array.size = 0;
+            /* cleanup */
+            if (NULL != val) {
+                PMIX_VALUE_RELEASE(val);
+            }
+        }
+        /* now let's package up the results */
+        PMIX_VALUE_CREATE(val, 1);
+        val->type = PMIX_INFO_ARRAY;
+        val->data.array.size = nvals;
+        PMIX_INFO_CREATE(iptr, nvals);
+        val->data.array.array = (struct pmix_info *)iptr;
+        for (n=0; n < (size_t)results.size && n < nvals; n++) {
+            if (NULL != (info = (pmix_info_t*)pmix_pointer_array_get_item(&results, n))) {
+                (void)strncpy(iptr[n].key, info->key, PMIX_MAX_KEYLEN);
+                pmix_value_xfer(&iptr[n].value, &info->value);
+                PMIX_INFO_FREE(info, 1);
+            }
+        }
+        /* done with results array */
+        PMIX_DESTRUCT(&results);
+        /* return the result to the caller */
+        cb->value_cbfunc(PMIX_SUCCESS, val, cb->cbdata);
+        PMIX_VALUE_FREE(val, 1);
+        PMIX_RELEASE(cb);
+        return;
     }
 
     /* the requested data could be in the job-data table, so let's
@@ -433,7 +538,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
          * the error */
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "Error requesting key=%s for rank = %d, namespace = %s",
-                            cb->key, cb->rank, nm);
+                            cb->key, cb->rank, cb->nspace);
         cb->value_cbfunc(rc, NULL, cb->cbdata);
         /* protect the data */
         cb->procs = NULL;
@@ -461,7 +566,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
             /* they don't want us to try and retrieve it */
             pmix_output_verbose(2, pmix_globals.debug_output,
                                 "PMIx_Get key=%s for rank = %d, namespace = %s was not found - request was optional",
-                                cb->key, cb->rank, nm);
+                                cb->key, cb->rank, cb->nspace);
             cb->value_cbfunc(PMIX_ERR_NOT_FOUND, NULL, cb->cbdata);
             PMIX_RELEASE(cb);
             return;
@@ -472,7 +577,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
      * this nspace:rank. If we do, then no need to ask again as the
      * request will return _all_ data from that proc */
     PMIX_LIST_FOREACH(cbret, &pmix_client_globals.pending_requests, pmix_cb_t) {
-        if (0 == strncmp(cbret->nspace, nm, PMIX_MAX_NSLEN) &&
+        if (0 == strncmp(cbret->nspace, cb->nspace, PMIX_MAX_NSLEN) &&
             cbret->rank == cb->rank) {
             /* we do have a pending request, but we still need to track this
              * outstanding request so we can satisfy it once the data is returned */
@@ -483,7 +588,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
 
     /* we don't have a pending request, so let's create one - don't worry
      * about packing the key as we return everything from that proc */
-    msg = pack_get(nm, cb->rank, cb->info, cb->ninfo, PMIX_GETNB_CMD);
+    msg = pack_get(cb->nspace, cb->rank, cb->info, cb->ninfo, PMIX_GETNB_CMD);
     if (NULL == msg) {
         cb->value_cbfunc(PMIX_ERROR, NULL, cb->cbdata);
         PMIX_RELEASE(cb);

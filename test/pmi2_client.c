@@ -44,7 +44,7 @@ static int _verbose = 1;
 #define log_assert(e, msg) \
     do {                                                                \
         if (!(e)) {                                                     \
-            log_fatal("%s at %s:%d\n", msg, __FUNCTION__, __LINE__);    \
+            log_fatal("%s at %s:%d\n", msg, __func__, __LINE__);    \
             rc = -1;                                                    \
         }                                                               \
     } while (0)
@@ -165,14 +165,14 @@ static int test_item1(void)
     log_assert(rank >= 0, "");
     log_assert(rank < size, "");
 
-    sprintf(jobid, "%s", __FUNCTION__);
+    sprintf(jobid, "%s", __func__);
     if (PMI2_SUCCESS != (rc = PMI2_Job_GetId(jobid, sizeof(jobid)))) {
         log_fatal("PMI2_Job_GetId failed: %d\n", rc);
         return rc;
     }
 
     log_info("jobid=%s\n", jobid);
-    log_assert(memcmp(jobid, __FUNCTION__, sizeof(__FUNCTION__)), "");
+    log_assert(memcmp(jobid, __func__, sizeof(__func__)), "");
 
     val = random_value(10, 100);
     if (PMI2_SUCCESS != (rc = PMI2_Job_GetRank(&val))) {
@@ -298,7 +298,7 @@ static int test_item6(void)
     int rc = 0;
     char val[PMI2_MAX_VALLEN];
     int len;
-    const char *tkey = __FUNCTION__;
+    const char *tkey = __func__;
     const char *tval = __FILE__;
 
     if (PMI2_SUCCESS != (rc = PMI2_KVS_Put(tkey, tval))) {

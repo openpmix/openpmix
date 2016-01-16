@@ -67,33 +67,28 @@ int pmix_hash_store(pmix_hash_table_t *table,
 {
     pmix_proc_data_t *proc_data;
     uint64_t id;
-    pmix_kval_t *kv;
 
     pmix_output_verbose(10, pmix_globals.debug_output,
                         "HASH:STORE rank %d key %s",
                         rank, kin->key);
 
-    if (PMIX_RANK_WILDCARD == rank) {
+    if (PMIX_RANK_UNDEF == rank) {
         id = UINT64_MAX;
     } else {
         id = (uint64_t)rank;
     }
 
     /* lookup the proc data object for this proc - create
-     * it if we don't */
+     * it if we don't already have it */
     if (NULL == (proc_data = lookup_proc(table, id, true))) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
-     /* see if we already have this key in the data - means we are updating
-     * a pre-existing value
-     */
-    kv = lookup_keyval(&proc_data->data, kin->key);
-    if (NULL != kv) {
-        pmix_list_remove_item(&proc_data->data, &kv->super);
-        PMIX_RELEASE(kv);
-    }
-    /* store the new value */
+    /* add the new value - note that if the user is updating
+     * a value, the ordering of the stored blobs will cause
+     * an update to eventually occur. In other words, the
+     * receiving process will first unpack the "old" data,
+     * and then unpack the update and overwrite it */
     PMIX_RETAIN(kin);
     pmix_list_append(&proc_data->data, &kin->super);
 
@@ -112,12 +107,7 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, int rank,
                         "HASH:FETCH rank %d key %s",
                         rank, (NULL == key) ? "NULL" : key);
 
-    /* NULL keys are not supported */
-    if (NULL == key) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-
-    if (PMIX_RANK_WILDCARD == rank) {
+    if (PMIX_RANK_UNDEF == rank) {
         id = UINT64_MAX;
     } else {
         id = (uint64_t)rank;
@@ -131,17 +121,24 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, int rank,
         return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
     }
 
-    /* find the value from within this proc_data object */
-    if (NULL == (hv = lookup_keyval(&proc_data->data, key))) {
-        pmix_output_verbose(10, pmix_globals.debug_output,
-                            "HASH:FETCH data for key %s not found", key);
-        return PMIX_ERR_NOT_FOUND;
-    }
+    /* if the key is NULL, then the user wants -all- data
+     * put by the specified rank */
+    if (NULL == key) {
+        /* we will return the data as an array of pmix_info_t
+         * in the kvs pmix_value_t */
 
-    /* create the copy */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)kvs, hv->value, PMIX_VALUE))) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
+    } else {
+        /* find the value from within this proc_data object */
+        if (NULL == (hv = lookup_keyval(&proc_data->data, key))) {
+            pmix_output_verbose(10, pmix_globals.debug_output,
+                                "HASH:FETCH data for key %s not found", key);
+            return PMIX_ERR_NOT_FOUND;
+        }
+        /* create the copy */
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)kvs, hv->value, PMIX_VALUE))) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
     }
 
     return PMIX_SUCCESS;
@@ -150,6 +147,7 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, int rank,
 int pmix_hash_remove_data(pmix_hash_table_t *table,
                           int rank, const char *key)
 {
+    pmix_status_t rc = PMIX_SUCCESS;
     pmix_proc_data_t *proc_data;
     pmix_kval_t *kv;
     uint64_t id;
@@ -157,11 +155,11 @@ int pmix_hash_remove_data(pmix_hash_table_t *table,
 
     /* if the rank is wildcard, we want to apply this to
      * all rank entries */
-    if (PMIX_RANK_WILDCARD == rank) {
+    if (PMIX_RANK_UNDEF == rank) {
         id = UINT64_MAX;
-        if (PMIX_SUCCESS == pmix_hash_table_get_first_key_uint64(table, &id,
-                                                                 (void**)&proc_data,
-                                                                 (void**)&node)) {
+        rc = pmix_hash_table_get_first_key_uint64(table, &id,
+                (void**)&proc_data, (void**)&node);
+        while (PMIX_SUCCESS == rc) {
             if (NULL != proc_data) {
                 if (NULL == key) {
                     PMIX_RELEASE(proc_data);
@@ -175,23 +173,8 @@ int pmix_hash_remove_data(pmix_hash_table_t *table,
                     }
                 }
             }
-            while (PMIX_SUCCESS == pmix_hash_table_get_next_key_uint64(table, &id,
-                                                                       (void**)&proc_data,
-                                                                       node, (void**)&node)) {
-                if (NULL != proc_data) {
-                    if (NULL == key) {
-                        PMIX_RELEASE(proc_data);
-                    } else {
-                        PMIX_LIST_FOREACH(kv, &proc_data->data, pmix_kval_t) {
-                            if (0 == strcmp(key, kv->key)) {
-                                pmix_list_remove_item(&proc_data->data, &kv->super);
-                                PMIX_RELEASE(kv);
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
+            rc = pmix_hash_table_get_next_key_uint64(table, &id,
+                    (void**)&proc_data, node, (void**)&node);
         }
     }
 

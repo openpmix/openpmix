@@ -1,6 +1,5 @@
-/* include/pmix/pmix_common.h.  Generated from pmix_common.h.in by configure.  */
 /*
- * Copyright (c) 2013-2014 Intel, Inc. All rights reserved
+ * Copyright (c) 2013-2015 Intel, Inc. All rights reserved
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -64,8 +63,18 @@ BEGIN_C_DECLS
 #define PMIX_MAX_NSLEN     255
 #define PMIX_MAX_KEYLEN    511
 
-/* define a *wildcard* value for requests involving rank */
-#define PMIX_RANK_WILDCARD -1
+/* define a value for requests for job-level data
+ * where the info itself isn't associated with any
+ * specific rank, or when a request involves
+ * a rank that isn't known - e.g., when someone requests
+ * info thru one of the legacy interfaces where the rank
+ * is typically encoded into the key itself since there is
+ * no rank parameter in the API itself */
+#define PMIX_RANK_UNDEF     INT32_MAX
+/* define a value to indicate that the user wants the
+ * data for the given key from every rank that posted
+ * that key */
+#define PMIX_RANK_WILDCARD  INT32_MAX-1
 
 /* define a set of "standard" PMIx attributes that can
  * be queried. Implementations (and users) are free to extend as
@@ -79,31 +88,31 @@ BEGIN_C_DECLS
 #define PMIX_ATTR_UNDEF      NULL
 
 /* identification attributes */
-#define PMIX_USERID                "pmix.euid"         // (uint32_t) effective user id
-#define PMIX_GRPID                 "pmix.egid"         // (uint32_t) effective group id
+#define PMIX_USERID                "pmix.euid"              // (uint32_t) effective user id
+#define PMIX_GRPID                 "pmix.egid"              // (uint32_t) effective group id
 
 /* general proc-level attributes */
-#define PMIX_CPUSET                "pmix.cpuset"       // (char*) hwloc bitmap applied to proc upon launch
-#define PMIX_CREDENTIAL            "pmix.cred"         // (char*) security credential assigned to proc
-#define PMIX_SPAWNED               "pmix.spawned"      // (bool) true if this proc resulted from a call to PMIx_Spawn
-#define PMIX_ARCH                  "pmix.arch"         // (uint32_t) datatype architecture flag
+#define PMIX_CPUSET                "pmix.cpuset"            // (char*) hwloc bitmap applied to proc upon launch
+#define PMIX_CREDENTIAL            "pmix.cred"              // (char*) security credential assigned to proc
+#define PMIX_SPAWNED               "pmix.spawned"           // (bool) true if this proc resulted from a call to PMIx_Spawn
+#define PMIX_ARCH                  "pmix.arch"              // (uint32_t) datatype architecture flag
 
 /* scratch directory locations for use by applications */
-#define PMIX_TMPDIR                "pmix.tmpdir"       // (char*) top-level tmp dir assigned to session
-#define PMIX_NSDIR                 "pmix.nsdir"        // (char*) sub-tmpdir assigned to namespace
-#define PMIX_PROCDIR               "pmix.pdir"         // (char*) sub-nsdir assigned to proc
+#define PMIX_TMPDIR                "pmix.tmpdir"            // (char*) top-level tmp dir assigned to session
+#define PMIX_NSDIR                 "pmix.nsdir"             // (char*) sub-tmpdir assigned to namespace
+#define PMIX_PROCDIR               "pmix.pdir"              // (char*) sub-nsdir assigned to proc
 
 /* information about relative ranks as assigned by the RM */
-#define PMIX_JOBID                 "pmix.jobid"        // (char*) jobid assigned by scheduler
-#define PMIX_APPNUM                "pmix.appnum"       // (uint32_t) app number within the job
-#define PMIX_RANK                  "pmix.rank"         // (uint32_t) process rank within the job
-#define PMIX_GLOBAL_RANK           "pmix.grank"        // (uint32_t) rank spanning across all jobs in this session
-#define PMIX_APP_RANK              "pmix.apprank"      // (uint32_t) rank within this app
-#define PMIX_NPROC_OFFSET          "pmix.offset"       // (uint32_t) starting global rank of this job
-#define PMIX_LOCAL_RANK            "pmix.lrank"        // (uint16_t) rank on this node within this job
-#define PMIX_NODE_RANK             "pmix.nrank"        // (uint16_t) rank on this node spanning all jobs
-#define PMIX_LOCALLDR              "pmix.lldr"         // (uint64_t) opal_identifier of lowest rank on this node within this job
-#define PMIX_APPLDR                "pmix.aldr"         // (uint32_t) lowest rank in this app within this job
+#define PMIX_JOBID                 "pmix.jobid"             // (char*) jobid assigned by scheduler
+#define PMIX_APPNUM                "pmix.appnum"            // (uint32_t) app number within the job
+#define PMIX_RANK                  "pmix.rank"              // (uint32_t) process rank within the job
+#define PMIX_GLOBAL_RANK           "pmix.grank"             // (uint32_t) rank spanning across all jobs in this session
+#define PMIX_APP_RANK              "pmix.apprank"           // (uint32_t) rank within this app
+#define PMIX_NPROC_OFFSET          "pmix.offset"            // (uint32_t) starting global rank of this job
+#define PMIX_LOCAL_RANK            "pmix.lrank"             // (uint16_t) rank on this node within this job
+#define PMIX_NODE_RANK             "pmix.nrank"             // (uint16_t) rank on this node spanning all jobs
+#define PMIX_LOCALLDR              "pmix.lldr"              // (uint64_t) opal_identifier of lowest rank on this node within this job
+#define PMIX_APPLDR                "pmix.aldr"              // (uint32_t) lowest rank in this app within this job
 
 /* proc location-related info */
 /* For PMIX_HOSTNAME, three use-cases exist for PMIx_Get:
@@ -117,55 +126,90 @@ BEGIN_C_DECLS
  *     for this use-case
  *
  * (c) Specifying a namespace and a rank will return the name of the
- *     host this proc is on
+ *     host that proc is on
  */
-#define PMIX_HOSTNAME              "pmix.hname"        // (char*) see above comment
-#define PMIX_NODEID                "pmix.nodeid"       // (uint32_t) node identifier
-#define PMIX_LOCAL_PEERS           "pmix.lpeers"       // (char*) comma-delimited string of ranks on this node within the specified nspace
-#define PMIX_LOCAL_CPUSETS         "pmix.lcpus"        // (char*) colon-delimited cpusets of local peers within the specified nspace
-#define PMIX_PROC_URI              "pmix.puri"         // (char*) URI containing contact info for proc
+#define PMIX_HOSTNAME              "pmix.hname"             // (char*) see above comment
+#define PMIX_NODEID                "pmix.nodeid"            // (uint32_t) node identifier
+#define PMIX_LOCAL_PEERS           "pmix.lpeers"            // (char*) comma-delimited string of ranks on this node within the specified nspace
+#define PMIX_LOCAL_CPUSETS         "pmix.lcpus"             // (char*) colon-delimited cpusets of local peers within the specified nspace
+#define PMIX_PROC_URI              "pmix.puri"              // (char*) URI containing contact info for proc
 
 /* size info */
-#define PMIX_UNIV_SIZE             "pmix.univ.size"    // (uint32_t) #procs in this nspace
-#define PMIX_JOB_SIZE              "pmix.job.size"     // (uint32_t) #procs in this job
-#define PMIX_LOCAL_SIZE            "pmix.local.size"   // (uint32_t) #procs in this job on this node
-#define PMIX_NODE_SIZE             "pmix.node.size"    // (uint32_t) #procs across all jobs on this node
-#define PMIX_MAX_PROCS             "pmix.max.size"     // (uint32_t) max #procs for this job
+#define PMIX_UNIV_SIZE             "pmix.univ.size"         // (uint32_t) #procs in this nspace
+#define PMIX_JOB_SIZE              "pmix.job.size"          // (uint32_t) #procs in this job
+#define PMIX_LOCAL_SIZE            "pmix.local.size"        // (uint32_t) #procs in this job on this node
+#define PMIX_NODE_SIZE             "pmix.node.size"         // (uint32_t) #procs across all jobs on this node
+#define PMIX_MAX_PROCS             "pmix.max.size"          // (uint32_t) max #procs for this job
 
 /* topology info */
-#define PMIX_NET_TOPO              "pmix.ntopo"        // (char*) xml-representation of network topology
-#define PMIX_LOCAL_TOPO            "pmix.ltopo"        // (char*) xml-representation of local node topology
-#define PMIX_NODE_LIST             "pmix.nlist"        // (char*) comma-delimited list of nodes running procs for this job
-#define PMIX_TOPOLOGY              "pmix.topo"         // (hwloc_topology_t) pointer to the PMIx client's internal topology object
+#define PMIX_NET_TOPO              "pmix.ntopo"             // (char*) xml-representation of network topology
+#define PMIX_LOCAL_TOPO            "pmix.ltopo"             // (char*) xml-representation of local node topology
+#define PMIX_NODE_LIST             "pmix.nlist"             // (char*) comma-delimited list of nodes running procs for this job
+#define PMIX_TOPOLOGY              "pmix.topo"              // (hwloc_topology_t) pointer to the PMIx client's internal topology object
 
 /* request-related info */
-#define PMIX_COLLECT_DATA          "pmix.collect"      // (bool) collect data and return it at the end of the operation
-#define PMIX_TIMEOUT               "pmix.timeout"      // (int) time in sec before specified operation should time out
-#define PMIX_WAIT                  "pmix.wait"         // (int) caller requests that the server wait until at least the specified
-                                                       //       #values are found (0 => all and is the default)
-#define PMIX_COLLECTIVE_ALGO       "pmix.calgo"        // (char*) comma-delimited list of algorithms to use for collective
-#define PMIX_COLLECTIVE_ALGO_REQD  "pmix.calreqd"      // (bool) if true, indicates that the requested choice of algo is mandatory
-#define PMIX_NOTIFY_COMPLETION     "pmix.notecomp"     // (bool) notify parent process upon termination of child job
-#define PMIX_RANGE                 "pmix.range"        // (int) pmix_data_range_t value for calls to publish/lookup/unpublish
-#define PMIX_PERSISTENCE           "pmix.persist"      // (int) pmix_persistence_t value for calls to publish
-#define PMIX_OPTIONAL              "pmix.optional"     // (bool) look only in the immediate data store for the requested value - do
-                                                       //        not request data from the server if not found
+#define PMIX_COLLECT_DATA          "pmix.collect"           // (bool) collect data and return it at the end of the operation
+#define PMIX_TIMEOUT               "pmix.timeout"           // (int) time in sec before specified operation should time out
+#define PMIX_WAIT                  "pmix.wait"              // (int) caller requests that the server wait until at least the specified
+                                                            //       #values are found (0 => all and is the default)
+#define PMIX_COLLECTIVE_ALGO       "pmix.calgo"             // (char*) comma-delimited list of algorithms to use for collective
+#define PMIX_COLLECTIVE_ALGO_REQD  "pmix.calreqd"           // (bool) if true, indicates that the requested choice of algo is mandatory
+#define PMIX_NOTIFY_COMPLETION     "pmix.notecomp"          // (bool) notify parent process upon termination of child job
+#define PMIX_RANGE                 "pmix.range"             // (int) pmix_data_range_t value for calls to publish/lookup/unpublish
+#define PMIX_PERSISTENCE           "pmix.persist"           // (int) pmix_persistence_t value for calls to publish
+#define PMIX_OPTIONAL              "pmix.optional"          // (bool) look only in the immediate data store for the requested value - do
+                                                            //        not request data from the server if not found
 
 /* attributes used by host server to pass data to the server convenience library - the
  * data will then be parsed and provided to the local clients */
-#define PMIX_PROC_DATA             "pmix.pdata"        // (pmix_value_array_t) starts with rank, then contains more data
-#define PMIX_NODE_MAP              "pmix.nmap"         // (char*) regex of nodes containing procs for this job
-#define PMIX_PROC_MAP              "pmix.pmap"         // (char*) regex describing procs on each node within this job
-#define PMIX_ANL_MAP               "pmix.anlmap"       // (char*) process mapping in ANL notation (used in PMI-1/PMI-2)
+#define PMIX_PROC_DATA             "pmix.pdata"             // (pmix_value_array_t) starts with rank, then contains more data
+#define PMIX_NODE_MAP              "pmix.nmap"              // (char*) regex of nodes containing procs for this job
+#define PMIX_PROC_MAP              "pmix.pmap"              // (char*) regex describing procs on each node within this job
+#define PMIX_ANL_MAP               "pmix.anlmap"            // (char*) process mapping in ANL notation (used in PMI-1/PMI-2)
 
 /* attributes used internally to communicate data from the server to the client */
-#define PMIX_PROC_BLOB             "pmix.pblob"        // (pmix_byte_object_t) packed blob of process data
-#define PMIX_MAP_BLOB              "pmix.mblob"        // (pmix_byte_object_t) packed blob of process location
+#define PMIX_PROC_BLOB             "pmix.pblob"             // (pmix_byte_object_t) packed blob of process data
+#define PMIX_MAP_BLOB              "pmix.mblob"             // (pmix_byte_object_t) packed blob of process location
 
+/* error handler registration  and notification info keys */
+#define PMIX_ERROR_NAME            "pmix.errname"           // enum pmix_status_t specific error to be notified
+#define PMIX_ERROR_GROUP_COMM      "pmix.errgroup.comm"     // bool - set true to get comm  errors notification
+#define PMIX_ERROR_GROUP_ABORT     "pmix.errgroup.abort"    // bool -set true to get abort errors notification
+#define PMIX_ERROR_GROUP_MIGRATE   "pmix.errgroup.migrate"  // bool -set true to get migrate errors notification
+#define PMIX_ERROR_GROUP_RESOURCE  "pmix.errgroup.resource" // bool -set true to get resource errors notification
+#define PMIX_ERROR_GROUP_SPAWN     "pmix.errgroup.spawn"    // bool - set true to get spawn errors notification
+#define PMIX_ERROR_GROUP_NODE      "pmix.errgroup.node"     // bool -set true to get node status errors
+#define PMIX_ERROR_GROUP_LOCAL     "pmix.errgroup.local"    // bool set true to get local errors
+#define PMIX_ERROR_GROUP_GENERAL   "pmix.errgroup.gen"      // bool set true to get notified af generic errors
+#define PMIX_ERROR_HANDLER_ID      "pmix.errhandler.id"     // int - errhandler reference id of notification being reported
+
+/* error notification keys */
+#define PMIX_ERROR_SCOPE           "pmix.errscope"          // int (enum pmix_scope_t) scope of error notification
+#define PMIX_ERROR_NODE_NAME       "pmix.errnode.name"      // name of the node that is in error or which reported the error.
+#define PMIX_ERROR_SEVERITY        "pmix.errseverity"       // the severity of the notified (reported) error
+
+/* attributes used to describe "spawm" attributes */
+#define PMIX_PERSONALITY           "pmix.pers"              // (char*) name of personality to use
+#define PMIX_HOST                  "pmix.host"              // (char*) comma-delimited list of hosts to use for spawned procs
+#define PMIX_HOSTFILE              "pmix.hostfile"          // (char*) hostfile to use for spawned procs
+#define PMIX_ADD_HOST              "pmix.addhost"           // (char*) comma-delimited list of hosts to add to allocation
+#define PMIX_ADD_HOSTFILE          "pmix.addhostfile"       // (char*) hostfile to add to existing allocation
+#define PMIX_PREFIX                "pmix.prefix"            // (char*) prefix to use for starting spawned procs
+#define PMIX_WDIR                  "pmix.wdir"              // (char*) working directory for spawned procs
+#define PMIX_MAPPER                "pmix.mapper"            // (char*) mapper to use for placing spawned procs
+#define PMIX_DISPLAY_MAP           "pmix.dispmap"           // (bool) display process map upon spawn
+#define PMIX_PPR                   "pmix.ppr"               // (char*) #procs to spawn on each identified resource
+#define PMIX_MAPBY                 "pmix.mapby"             // (char*) mapping policy
+#define PMIX_RANKBY                "pmix.rankby"            // (char*) ranking policy
+#define PMIX_BINDTO                "pmix.bindto"            // (char*) binding policy
+#define PMIX_PRELOAD_BIN           "pmix.preloadbin"        // (bool) preload binaries
+#define PMIX_PRELOAD_FILES         "pmix.preloadfiles"      // (char*) comma-delimited list of files to pre-position
+#define PMIX_NON_PMI               "pmix.nonpmi"            // (bool) spawned procs will not call PMIx_Init
+#define PMIX_STDIN_TGT             "pmix.stdin"             // (uint32_t) spawned proc rank that is to receive stdin
 
 /****    PMIX ERROR CONSTANTS    ****/
 /* PMIx errors are always negative, with 0 reserved for success */
-#define PMIX_ERROR_MIN  -42  // set equal to number of non-zero entries in enum
+#define PMIX_ERROR_MIN  -50  // set equal to number of non-zero entries in enum
 
 typedef enum {
     PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER = PMIX_ERROR_MIN,
@@ -212,8 +256,17 @@ typedef enum {
     PMIX_ERR_INVALID_CRED,
     PMIX_EXISTS,
 
+    PMIX_ERR_SERVER_FAILED_REQUEST,
+    PMIX_ERR_PROC_ABORTING,
+    PMIX_ERR_PROC_REQUESTED_ABORT,
+    PMIX_ERR_PROC_ABORTED,
+    PMIX_ERR_PROC_MIGRATE,
+    PMIX_ERR_PROC_CHECKPOINT,
+    PMIX_ERR_PROC_RESTART,
+    PMIX_ERR_DEBUGGER_RELEASE,
     PMIX_ERR_SILENT,
     PMIX_ERROR,
+
     PMIX_SUCCESS
 } pmix_status_t;
 
@@ -297,14 +350,14 @@ typedef enum {
 } pmix_persistence_t;
 
 /****    PMIX BYTE OBJECT    ****/
-typedef struct {
+typedef struct pmix_byte_object {
     char *bytes;
     size_t size;
 } pmix_byte_object_t;
 
 
 /****    PMIX PROC OBJECT    ****/
-typedef struct {
+typedef struct pmix_proc {
     char nspace[PMIX_MAX_NSLEN+1];
     int rank;
 } pmix_proc_t;
@@ -336,18 +389,18 @@ typedef struct {
 
 
 /****    PMIX VALUE STRUCT    ****/
-struct pmix_info_t;
+struct pmix_info;
 
-typedef struct {
+typedef struct pmix_info_array {
     size_t size;
-    struct pmix_info_t *array;
+    struct pmix_info *array;
 } pmix_info_array_t;
 /* NOTE: operations can supply a collection of values under
  * a single key by passing a pmix_value_t containing an
  * array of type PMIX_INFO_ARRAY, with each array element
  * containing its own pmix_info_t object */
 
-typedef struct {
+typedef struct pmix_value {
     pmix_data_type_t type;
     union {
         bool flag;
@@ -449,7 +502,7 @@ extern void pmix_value_load(pmix_value_t *v, void *data,
 
 
 /****    PMIX INFO STRUCT    ****/
-typedef struct {
+typedef struct pmix_info {
     char key[PMIX_MAX_KEYLEN+1];  // ensure room for the NULL terminator
     pmix_value_t value;
 } pmix_info_t;
@@ -491,7 +544,7 @@ typedef struct {
 
 
 /****    PMIX LOOKUP RETURN STRUCT    ****/
-typedef struct {
+typedef struct pmix_pdata {
     pmix_proc_t proc;
     char key[PMIX_MAX_KEYLEN+1];  // ensure room for the NULL terminator
     pmix_value_t value;
@@ -543,7 +596,7 @@ typedef struct {
 
 
 /****    PMIX APP STRUCT    ****/
-typedef struct {
+typedef struct pmix_app {
     char *cmd;
     int argc;
     char **argv;
@@ -607,7 +660,7 @@ typedef struct {
     } while(0);
 
 /****    PMIX MODEX STRUCT    ****/
-typedef struct {
+typedef struct pmix_modex_data {
     char nspace[PMIX_MAX_NSLEN+1];
     int rank;
     uint8_t *blob;
@@ -737,7 +790,11 @@ typedef void (*pmix_lookup_cbfunc_t)(pmix_status_t status,
  * on a per-RM basis.
  *
  * On the server side, the notification function is used to inform the host
- * server of a detected error in the PMIx subsystem and/or client */
+ * server of a detected error in the PMIx subsystem and/or client
+ *
+ * The errhandler_ref is included as the first pmix_info_t in the returned
+ * array for embedded scenarios where the notification callback is to a switchyard
+ */
 typedef void (*pmix_notification_fn_t)(pmix_status_t status,
                                        pmix_proc_t procs[], size_t nprocs,
                                        pmix_info_t info[], size_t ninfo);
@@ -747,9 +804,9 @@ typedef void (*pmix_notification_fn_t)(pmix_status_t status,
  * an integer reference assigned to the errhandler by PMIX, this reference
  * must be used to deregister the err handler. A ptr to the original
  * cbdata is returned. */
-typedef void (*pmix_errhandler_reg_cbfunc_t) (pmix_status_t status,
-                                              int errhandler_ref,
-                                              void *cbdata);
+typedef void (*pmix_errhandler_reg_cbfunc_t)(pmix_status_t status,
+                                             int errhandler_ref,
+                                             void *cbdata);
 
 /* define a callback function for calls to PMIx_Get_nb. The status
  * indicates if the requested data was found or not - a pointer to the

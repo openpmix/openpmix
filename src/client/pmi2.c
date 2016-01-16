@@ -65,7 +65,7 @@ int PMI2_Init(int *spawned, int *size, int *rank, int *appnum)
 
     /* getting internal key requires special rank value */
     memcpy(&proc, &myproc, sizeof(myproc));
-    proc.rank = PMIX_RANK_WILDCARD;
+    proc.rank = PMIX_RANK_UNDEF;
 
     if (NULL != size) {
         /* get the universe size - this will likely pull
@@ -206,9 +206,11 @@ int PMI2_KVS_Get(const char *jobid, int src_pmi_id,
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_value_t *val;
     pmix_proc_t proc;
-    uint32_t procnum = 0;
 
     PMI2_CHECK();
+
+    /* set default */
+    *vallen = 0;
 
     if ((NULL == key) || (NULL == value)) {
         return PMI2_ERR_INVALID_ARG;
@@ -219,37 +221,25 @@ int PMI2_KVS_Get(const char *jobid, int src_pmi_id,
 
     (void)strncpy(proc.nspace, (jobid ? jobid : myproc.nspace), PMIX_MAX_NSLEN);
     if (src_pmi_id == PMI2_ID_NULL) {
-        proc.rank = PMIX_RANK_WILDCARD;
-        if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_JOB_SIZE, NULL, 0, &val))) {
-            return  convert_err(rc);
-        }
-        procnum = val->data.uint32;
-        PMIX_VALUE_RELEASE(val);
-        proc.rank = 0;
+        /* the rank is UNDEF */
+        proc.rank = PMIX_RANK_UNDEF;
     } else {
         proc.rank = src_pmi_id;
     }
 
-    do {
-        rc = PMIx_Get(&proc, key, NULL, 0, &val);
-        if (PMIX_SUCCESS == rc && NULL != val) {
-            if (PMIX_STRING != val->type) {
-                /* this is an error */
-                PMIX_VALUE_RELEASE(val);
-                return PMI2_FAIL;
-            }
-            if (NULL != val->data.string) {
-                (void)strncpy(value, val->data.string, maxvalue);
-                *vallen = strlen(val->data.string);
-            }
+    rc = PMIx_Get(&proc, key, NULL, 0, &val);
+    if (PMIX_SUCCESS == rc && NULL != val) {
+        if (PMIX_STRING != val->type) {
+            /* this is an error */
             PMIX_VALUE_RELEASE(val);
-            break;
-        } else if (PMIX_ERR_NOT_FOUND == rc) {
-            proc.rank++;
-        } else {
-            break;
+            return PMI2_FAIL;
         }
-    } while (proc.rank < (int)procnum);
+        if (NULL != val->data.string) {
+            (void)strncpy(value, val->data.string, maxvalue);
+            *vallen = strlen(val->data.string);
+        }
+        PMIX_VALUE_RELEASE(val);
+    }
 
     return convert_err(rc);
 }
@@ -316,7 +306,7 @@ int PMI2_Info_GetJobAttr(const char name[], char value[], int valuelen, int *fou
 
     /* getting internal key requires special rank value */
     memcpy(&proc, &myproc, sizeof(myproc));
-    proc.rank = PMIX_RANK_WILDCARD;
+    proc.rank = PMIX_RANK_UNDEF;
 
     *found = 0;
     rc = PMIx_Get(&proc, name, NULL, 0, &val);

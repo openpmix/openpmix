@@ -34,14 +34,6 @@
 #include "src/util/argv.h"
 #include "src/buffer_ops/internal.h"
 
-#if PMIX_CC_USE_PRAGMA_IDENT
-#pragma ident PMIX_VERSION
-#elif PMIX_CC_USE_IDENT
-#ident PMIX_VERSION
-#endif
-const char pmix_version_string[] = PMIX_VERSION;
-
-
 /**
  * globals
  */
@@ -403,6 +395,8 @@ pmix_status_t pmix_bfrop_close(void)
 void pmix_value_load(pmix_value_t *v, void *data,
                      pmix_data_type_t type)
 {
+    pmix_byte_object_t *bo;
+
     v->type = type;
     if (NULL == data) {
         /* just set the fields to zero */
@@ -466,8 +460,9 @@ void pmix_value_load(pmix_value_t *v, void *data,
             memcpy(&(v->data.tv), data, sizeof(struct timeval));
             break;
         case PMIX_BYTE_OBJECT:
-            v->data.bo.bytes = data;
-            memcpy(&(v->data.bo.size), data, sizeof(size_t));
+            bo = (pmix_byte_object_t*)data;
+            v->data.bo.bytes = bo->bytes;
+            memcpy(&(v->data.bo.size), &bo->size, sizeof(size_t));
             break;
         case PMIX_TIME:
         case PMIX_HWLOC_TOPO:

@@ -27,6 +27,8 @@ pmix_server_module_t mymodule = {
     spawn_fn,
     connect_fn,
     disconnect_fn,
+    regevents_fn,
+    deregevents_fn,
     NULL
 };
 
@@ -300,3 +302,22 @@ int disconnect_fn(const pmix_proc_t procs[], size_t nprocs,
     return PMIX_SUCCESS;
 }
 
+int regevents_fn (const pmix_info_t info[], size_t ninfo,
+                  pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    TEST_VERBOSE ((" pmix host server regevents_fn called "));
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, cbdata);
+    }
+    return PMIX_SUCCESS;
+}
+
+int deregevents_fn (const pmix_info_t info[], size_t ninfo,
+                  pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    TEST_VERBOSE ((" pmix host server deregevents_fn called "));
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, cbdata);
+    }
+    return PMIX_SUCCESS;
+}

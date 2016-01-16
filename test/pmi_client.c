@@ -45,7 +45,7 @@ static int _verbose = 1;
 #define log_assert(e, msg) \
     do {                                                                \
         if (!(e)) {                                                     \
-            log_fatal("%s at %s:%d\n", msg, __FUNCTION__, __LINE__);    \
+            log_fatal("%s at %s:%d\n", msg, __func__, __LINE__);    \
             rc = -1;                                                    \
         }                                                               \
     } while (0)
@@ -191,32 +191,32 @@ static int test_item1(void)
         log_assert(sizeof(jobid) == val, "Check PMIX_MAX_NSLEN value in pmix_common.h");
     }
 
-    sprintf(jobid, "%s", __FUNCTION__);
+    sprintf(jobid, "%s", __func__);
     if (PMI_SUCCESS != (rc = PMI_Get_id(jobid, sizeof(jobid)))) {
         log_fatal("PMI_Get_id failed: %d\n", rc);
         return rc;
     }
 
     log_info("jobid=%s\n", jobid);
-    log_assert(memcmp(jobid, __FUNCTION__, sizeof(__FUNCTION__)), "");
+    log_assert(memcmp(jobid, __func__, sizeof(__func__)), "");
 
-    sprintf(jobid, "%s", __FUNCTION__);
+    sprintf(jobid, "%s", __func__);
     if (PMI_SUCCESS != (rc = PMI_Get_kvs_domain_id(jobid, sizeof(jobid)))) {
         log_fatal("PMI_Get_kvs_domain_id failed: %d\n", rc);
         return rc;
     }
 
     log_info("PMI_Get_kvs_domain_id=%s\n", jobid);
-    log_assert(memcmp(jobid, __FUNCTION__, sizeof(__FUNCTION__)), "");
+    log_assert(memcmp(jobid, __func__, sizeof(__func__)), "");
 
-    sprintf(jobid, "%s", __FUNCTION__);
+    sprintf(jobid, "%s", __func__);
     if (PMI_SUCCESS != (rc = PMI_KVS_Get_my_name(jobid, sizeof(jobid)))) {
         log_fatal("PMI_KVS_Get_my_name failed: %d\n", rc);
         return rc;
     }
 
     log_info("PMI_KVS_Get_my_name=%s\n", jobid);
-    log_assert(memcmp(jobid, __FUNCTION__, sizeof(__FUNCTION__)), "");
+    log_assert(memcmp(jobid, __func__, sizeof(__func__)), "");
 
     return rc;
 }
@@ -345,7 +345,7 @@ static int test_item7(void)
 {
     int rc = 0;
     char val[100];
-    const char *tkey = __FUNCTION__;
+    const char *tkey = __func__;
     const char *tval = __FILE__;
 
     if (PMI_SUCCESS != (rc = PMI_KVS_Put(jobid, tkey, tval))) {
