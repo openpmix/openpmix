@@ -283,7 +283,7 @@ int test_fence(test_params params, char *my_nspace, int my_rank)
             pmix_proc_t *ranks;
             size_t nranks;
             PMIX_LIST_FOREACH_SAFE(p, next, desc->participants, participant_t) {
-                if (-1 == p->proc.rank) {
+                if (PMIX_RANK_WILDCARD == p->proc.rank) {
                     rc = get_all_ranks_from_namespace(params, p->proc.nspace, &ranks, &nranks);
                     if (PMIX_SUCCESS != rc) {
                         TEST_ERROR(("%s:%d: Can't parse --ns-dist value in order to get ranks for namespace %s", my_nspace, my_rank, p->proc.nspace));

@@ -221,7 +221,7 @@ int main(int argc, char **argv)
         }
     }
     if (NULL == executable) {
-        executable = strdup("simpclient");
+        executable = strdup("./simpclient");
     }
 
     /* we have a single namespace for all clients */

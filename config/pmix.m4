@@ -20,6 +20,8 @@ dnl Copyright (c) 2011-2013 NVIDIA Corporation.  All rights reserved.
 dnl Copyright (c) 2013-2015 Intel, Inc. All rights reserved
 dnl Copyright (c) 2015      Research Organization for Information Science
 dnl                         and Technology (RIST). All rights reserved.
+dnl Copyright (c) 2016      Mellanox Technologies, Inc.
+dnl                         All rights reserved.
 dnl
 dnl $COPYRIGHT$
 dnl
@@ -580,7 +582,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         # rather than have successive assignments to these shell
         # variables, lest the $(foo) names try to get evaluated here.
         # Yuck!
-        CPPFLAGS='-I$(PMIX_top_srcdir) -I$(PMIX_top_builddir) -I$(PMIX_top_srcdir)/src -I$(PMIX_top_srcdir)/include -I$(PMIX_top_builddir)/include'" $CPPFLAGS"
+        CPPFLAGS='-I$(PMIX_top_builddir) -I$(PMIX_top_srcdir) -I$(PMIX_top_srcdir)/src -I$(PMIX_top_builddir)/include -I$(PMIX_top_srcdir)/include'" $CPPFLAGS"
     else
         CPPFLAGS='-I$(PMIX_top_srcdir) -I$(PMIX_top_srcdir)/src -I$(PMIX_top_srcdir)/include'" $CPPFLAGS"
     fi

@@ -116,6 +116,7 @@ typedef struct {
     int test_spawn;
     int test_connect;
     int test_resolve_peers;
+    int test_error;
 } test_params;
 
 #define INIT_TEST_PARAMS(params) do { \
@@ -143,6 +144,7 @@ typedef struct {
     params.fences = NULL;             \
     params.noise = NULL;              \
     params.ns_dist = NULL;            \
+    params.test_error = 0;            \
 } while (0)
 
 #define FREE_TEST_PARAMS(params) do { \
