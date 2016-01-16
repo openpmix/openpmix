@@ -141,6 +141,12 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
     info = peer->info;
     nptr = info->nptr;
 
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "%s:%d EXECUTE COMMIT FOR %s:%d",
+                        pmix_globals.myid.nspace,
+                        pmix_globals.myid.rank,
+                        nptr->nspace, info->rank);
+
     /* this buffer will contain one or more buffers, each
      * representing a different scope. These need to be locally
      * stored separately so we can provide required data based
@@ -805,7 +811,7 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer,
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    /* unpack the array of apps */
+    /* unpack the array of directives */
     if (0 < ninfo) {
         PMIX_INFO_CREATE(info, ninfo);
         cnt=ninfo;

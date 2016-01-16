@@ -124,6 +124,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "Client ns %s rank %d: PMIx_Store_internal failed: %d\n", myproc.nspace, myproc.rank, rc);
         goto done;
     }
+    free(tmp);
 
     (void)asprintf(&tmp, "%s-%d-local", myproc.nspace, myproc.rank);
     value.type = PMIX_UINT64;
@@ -132,6 +133,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "Client ns %s rank %d: PMIx_Put internal failed: %d\n", myproc.nspace, myproc.rank, rc);
         goto done;
     }
+    free(tmp);
 
     (void)asprintf(&tmp, "%s-%d-remote", myproc.nspace, myproc.rank);
     value.type = PMIX_STRING;
@@ -140,9 +142,11 @@ int main(int argc, char **argv)
         fprintf(stderr, "Client ns %s rank %d: PMIx_Put internal failed: %d\n", myproc.nspace, myproc.rank, rc);
         goto done;
     }
+    free(tmp);
 
     /* introduce a delay by one rank so we can check what happens
      * if a "get" is received prior to data being provided */
+
     if (0 == myproc.rank) {
         sleep(2);
     }
