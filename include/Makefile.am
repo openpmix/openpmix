@@ -1,5 +1,5 @@
 #
-# Copyright 2015      Intel, Inc. All rights reserved
+# Copyright 2015-2016 Intel, Inc. All rights reserved
 #
 # $COPYRIGHT$
 #
@@ -25,8 +25,7 @@ headers += \
         include/private/pmix_socket_errno.h \
         include/private/pmix_stdint.h \
         include/private/prefetch.h \
-        include/private/types.h \
-        include/private/autogen/config.h
+        include/private/types.h
 include_pmixdir = $(includedir)/pmix
 include_pmix_HEADERS = \
     include/pmix/rename.h \
@@ -37,6 +36,7 @@ include_pmix_autogen_HEADERS = \
         include/pmix/autogen/pmix_config_top.h \
         include/pmix/autogen/pmix_config_bottom.h
 nodist_include_pmix_autogen_HEADERS = \
-        include/pmix/autogen/config.h
+        include/pmix/autogen/config.h \
+        include/private/autogen/config.h
 
 endif ! PMIX_EMBEDDED_MODE
