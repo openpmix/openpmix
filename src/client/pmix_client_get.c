@@ -377,9 +377,10 @@ static void _getnbfn(int fd, short flags, void *cbdata)
          goto request;
     }
 
-    /* the requested data could be in the job-data table, so let's
-     * just check there first.  */
-    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->internal, PMIX_RANK_WILDCARD, cb->key, &val))) {
+    /* always check job-data at the beginning
+     * the requested data could be in the job-data table, so let's
+     * just check there first. */
+    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->internal, PMIX_RANK_ZERO, cb->key, &val))) {
         /* found it - we are in an event, so we can
          * just execute the callback */
         cb->value_cbfunc(rc, val, cb->cbdata);
@@ -390,7 +391,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
         PMIX_RELEASE(cb);
         return;
     }
-    if (PMIX_RANK_WILDCARD == cb->rank) {
+    if (PMIX_RANK_ZERO == cb->rank) {
         /* can't be anywhere else */
         cb->value_cbfunc(PMIX_ERR_NOT_FOUND, NULL, cb->cbdata);
         PMIX_RELEASE(cb);

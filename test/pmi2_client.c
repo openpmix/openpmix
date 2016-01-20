@@ -91,7 +91,8 @@ int main(int argc, char **argv)
         return rc;
     }
 
-    if (!ti || 1 == ti) {
+    /* this test should be always run */
+    if (1) {
         rc = test_item1();
         ret += (rc ? 1 : 0);
         log_info("TI1  : %s\n", (rc ? "FAIL" : "PASS"));
@@ -156,7 +157,6 @@ int main(int argc, char **argv)
 static int test_item1(void)
 {
     int rc = 0;
-    int val = 0;
 
     log_info("spawned=%d size=%d rank=%d appnum=%d\n", spawned, size, rank, appnum);
 
@@ -174,6 +174,16 @@ static int test_item1(void)
     log_info("jobid=%s\n", jobid);
     log_assert(memcmp(jobid, __FUNCTION__, sizeof(__FUNCTION__)), "");
 
+    return rc;
+}
+
+static int test_item2(void)
+{
+    int rc = 0;
+    int val = 0;
+
+    log_assert(PMI2_Initialized(), "");
+
     val = random_value(10, 100);
     if (PMI2_SUCCESS != (rc = PMI2_Job_GetRank(&val))) {
         log_fatal("PMI2_Job_GetRank failed: %d\n", rc);
@@ -187,15 +197,6 @@ static int test_item1(void)
         return rc;
     }
     log_assert(0 < val, "");
-
-    return rc;
-}
-
-static int test_item2(void)
-{
-    int rc = 0;
-
-    log_assert(PMI2_Initialized(), "");
 
     return rc;
 }

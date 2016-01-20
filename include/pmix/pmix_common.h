@@ -66,6 +66,7 @@ BEGIN_C_DECLS
 
 /* define a *wildcard* value for requests involving rank */
 #define PMIX_RANK_WILDCARD -1
+#define PMIX_RANK_ZERO     -2
 
 /* define a set of "standard" PMIx attributes that can
  * be queried. Implementations (and users) are free to extend as
