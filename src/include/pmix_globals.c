@@ -45,7 +45,6 @@ pmix_globals_t pmix_globals = {
     .pindex = 0,
     .evbase = NULL,
     .debug_output = -1,
-    .errhandler = NULL,
     .server = false,
     .connected = false,
     .cache_local = NULL,
@@ -57,6 +56,7 @@ void pmix_globals_init(void)
 {
     memset(&pmix_globals.myid, 0, sizeof(pmix_proc_t));
     PMIX_CONSTRUCT(&pmix_globals.nspaces, pmix_list_t);
+    pmix_pointer_array_init(&pmix_globals.errregs, 1, PMIX_MAX_ERROR_REGISTRATIONS, 1);
 }
 
 void pmix_globals_finalize(void)
@@ -155,3 +155,18 @@ static void info_des(pmix_rank_info_t *info)
 PMIX_CLASS_INSTANCE(pmix_rank_info_t,
                     pmix_list_item_t,
                     info_con, info_des);
+
+static void errcon(pmix_error_reg_info_t *p)
+{
+    p->errhandler = NULL;
+    p->info = NULL;
+    p->ninfo = 0;
+}
+static void errdes(pmix_error_reg_info_t *p)
+{
+    p->errhandler = NULL;
+   // PMIX_INFO_FREE(p->info, p->ninfo);
+}
+PMIX_CLASS_INSTANCE(pmix_error_reg_info_t,
+                    pmix_object_t,
+                    errcon, errdes);
