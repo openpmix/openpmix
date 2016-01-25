@@ -580,6 +580,20 @@ static void _getnbfn(int fd, short flags, void *cbdata)
         }
     }
 
+    /* do not force dmodex logic for non-specific ranks
+     * let return not found status instead of doing fence with
+     * data exchange. User can make a decision to do such call getting
+     * not found status
+     */
+    if (PMIX_RANK_UNDEF == cb->rank || PMIX_RANK_WILDCARD == cb->rank) {
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "PMIx_Get key=%s for rank = %d, namespace = %s was not found locally - do not request a server",
+                            cb->key, cb->rank, cb->nspace);
+        cb->value_cbfunc(PMIX_ERR_NOT_FOUND, NULL, cb->cbdata);
+        PMIX_RELEASE(cb);
+        return;
+    }
+
     /* see if we already have a request in place with the server for data from
      * this nspace:rank. If we do, then no need to ask again as the
      * request will return _all_ data from that proc */
