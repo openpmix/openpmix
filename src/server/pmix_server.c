@@ -1842,23 +1842,23 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
     pmix_server_caddy_t *cd;
     char *nspace;
     int rank;
-    pmix_status_t rc;
+    pmix_status_t rc = PMIX_SUCCESS;
     int32_t cnt = 1;
     char byte;
 
-    PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
     if (PMIX_SUCCESS != scd->status) {
         rc = scd->status;
         goto finish_collective;
     }
 
-    /* pass the blobs being returned */
-    PMIX_LOAD_BUFFER(&xfer, scd->data, scd->ndata);
-
     if (PMIX_COLLECT_INVALID == tracker->collect_type) {
         rc = PMIX_ERR_INVALID_ARG;
         goto finish_collective;
     }
+
+    /* pass the blobs being returned */
+    PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
+    PMIX_LOAD_BUFFER(&xfer, scd->data, scd->ndata);
 
     /* if data was returned, unpack and store it */
     while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&xfer, &byte, &cnt, PMIX_BYTE))) {
@@ -1966,15 +1966,6 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
     }
 
 finish_collective:
-    /* Protect data from being free'd because RM pass
-     * the pointer that is set to the middle of some
-     * buffer (the case with SLURM).
-     * RM is responsible on the release of the buffer
-     */
-    xfer.base_ptr = NULL;
-    xfer.bytes_used = 0;
-    PMIX_DESTRUCT(&xfer);
-
     /* setup the reply, starting with the returned status */
     reply = PMIX_NEW(pmix_buffer_t);
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &rc, 1, PMIX_INT))) {
@@ -1992,6 +1983,15 @@ finish_collective:
     }
 
   cleanup:
+    /* Protect data from being free'd because RM pass
+     * the pointer that is set to the middle of some
+     * buffer (the case with SLURM).
+     * RM is responsible on the release of the buffer
+     */
+    xfer.base_ptr = NULL;
+    xfer.bytes_used = 0;
+    PMIX_DESTRUCT(&xfer);
+
     PMIX_RELEASE(reply);  // maintain accounting
     pmix_list_remove_item(&pmix_server_globals.collectives, &tracker->super);
     PMIX_RELEASE(tracker);
