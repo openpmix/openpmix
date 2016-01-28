@@ -215,6 +215,20 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
         return rc;
     }
 
+    /* do not force dmodex logic for non-specific ranks
+     * let return not found status instead of doing fence with
+     * data exchange. User can make a decision to do such call getting
+     * not found status
+     */
+    if (PMIX_RANK_UNDEF == rank || PMIX_RANK_WILDCARD == rank) {
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "%s:%d not found data for namespace = %s, rank = %d "
+                            "(do not request resource manager server for non-specified rank)",
+                            pmix_globals.myid.nspace,
+                            pmix_globals.myid.rank, nspace, rank);
+        return PMIX_ERR_NOT_FOUND;
+    }
+
     /* If we get here, then we don't have the data at this time. Check
      * to see if we already have a pending request for the data - if
      * we do, then we can just wait for it to arrive */
@@ -548,4 +562,3 @@ static void dmdx_cbfunc(pmix_status_t status,
     event_priority_set(&caddy->ev, 0);
     event_active(&caddy->ev, EV_WRITE, 1);
 }
-
