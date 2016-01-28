@@ -56,16 +56,16 @@
 
 #include "pmix_client_ops.h"
 
-static pmix_buffer_t* pack_get(char *nspace, int rank,
+static pmix_buffer_t* _pack_get(char *nspace, int rank,
                                const pmix_info_t info[], size_t ninfo,
                                pmix_cmd_t cmd);
 
 static void _getnbfn(int sd, short args, void *cbdata);
 
-static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
+static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                          pmix_buffer_t *buf, void *cbdata);
 
-static void value_cbfunc(int status, pmix_value_t *kv, void *cbdata);
+static void _value_cbfunc(int status, pmix_value_t *kv, void *cbdata);
 
 int PMIx_Get(const pmix_proc_t *proc, const char key[],
              const pmix_info_t info[], size_t ninfo,
@@ -83,7 +83,7 @@ int PMIx_Get(const pmix_proc_t *proc, const char key[],
      * the return message is recvd */
     cb = PMIX_NEW(pmix_cb_t);
     cb->active = true;
-    if (PMIX_SUCCESS != (rc = PMIx_Get_nb(proc, key, info, ninfo, value_cbfunc, cb))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get_nb(proc, key, info, ninfo, _value_cbfunc, cb))) {
         PMIX_RELEASE(cb);
         return rc;
     }
@@ -169,7 +169,7 @@ pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char *key,
     return PMIX_SUCCESS;
 }
 
-static void value_cbfunc(int status, pmix_value_t *kv, void *cbdata)
+static void _value_cbfunc(int status, pmix_value_t *kv, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
     pmix_status_t rc;
@@ -183,7 +183,7 @@ static void value_cbfunc(int status, pmix_value_t *kv, void *cbdata)
     cb->active = false;
 }
 
-static pmix_buffer_t* pack_get(char *nspace, int rank,
+static pmix_buffer_t* _pack_get(char *nspace, int rank,
                                const pmix_info_t info[], size_t ninfo,
                                pmix_cmd_t cmd)
 {
@@ -229,7 +229,7 @@ static pmix_buffer_t* pack_get(char *nspace, int rank,
 /* this callback is coming from the usock recv, and thus
  * is occurring inside of our progress thread - hence, no
  * need to thread shift */
-static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
+static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                          pmix_buffer_t *buf, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
@@ -238,18 +238,19 @@ static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     pmix_value_t *val = NULL;
     int32_t cnt;
     pmix_buffer_t *bptr;
-    pmix_kval_t *kp;
     pmix_nspace_t *ns, *nptr;
     int rank;
+    int cur_rank;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: get_nb callback recvd");
+
     if (NULL == cb) {
         /* nothing we can do */
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return;
     }
-    // cache the rank
+    /* cache the rank */
     rank = cb->rank;
 
     /* unpack the status */
@@ -282,31 +283,36 @@ static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
      * unpack and store it in the modex - this could consist
      * of buffers from multiple scopes */
     cnt = 1;
-    while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(buf, &bptr, &cnt, PMIX_BUFFER))) {
+    while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(buf, &cur_rank, &cnt, PMIX_INT))) {
+        pmix_kval_t *cur_kval;
+
         cnt = 1;
-        kp = PMIX_NEW(pmix_kval_t);
-        while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bptr, kp, &cnt, PMIX_KVAL))) {
-            pmix_output_verbose(2, pmix_globals.debug_output,
-                                "pmix: unpacked key %s", kp->key);
-            if (PMIX_SUCCESS != (rc = pmix_hash_store(&nptr->modex, cb->rank, kp))) {
-                PMIX_ERROR_LOG(rc);
-            }
-            if (NULL != cb->key && 0 == strcmp(cb->key, kp->key)) {
-                pmix_output_verbose(2, pmix_globals.debug_output,
-                                    "pmix: found requested value");
-                if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)&val, kp->value, PMIX_VALUE))) {
-                    PMIX_ERROR_LOG(rc);
-                    PMIX_RELEASE(kp);
-                    val = NULL;
-                    goto done;
-                }
-            }
-            PMIX_RELEASE(kp); // maintain acctg - hash_store does a retain
+        if (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(buf, &bptr, &cnt, PMIX_BUFFER))) {
             cnt = 1;
-            kp = PMIX_NEW(pmix_kval_t);
+            cur_kval = PMIX_NEW(pmix_kval_t);
+            while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bptr, cur_kval, &cnt, PMIX_KVAL))) {
+                pmix_output_verbose(2, pmix_globals.debug_output,
+                                    "pmix: unpacked key %s", cur_kval->key);
+                if (PMIX_SUCCESS != (rc = pmix_hash_store(&nptr->modex, cur_rank, cur_kval))) {
+                    PMIX_ERROR_LOG(rc);
+                }
+                if (NULL != cb->key && 0 == strcmp(cb->key, cur_kval->key)) {
+                    pmix_output_verbose(2, pmix_globals.debug_output,
+                                        "pmix: found requested value");
+                    if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)&val, cur_kval->value, PMIX_VALUE))) {
+                        PMIX_ERROR_LOG(rc);
+                        PMIX_RELEASE(cur_kval);
+                        val = NULL;
+                        goto done;
+                    }
+                }
+                PMIX_RELEASE(cur_kval); // maintain acctg - hash_store does a retain
+                cnt = 1;
+                cur_kval = PMIX_NEW(pmix_kval_t);
+            }
+            cnt = 1;
+            PMIX_RELEASE(cur_kval);
         }
-        cnt = 1;
-        PMIX_RELEASE(kp);
         PMIX_RELEASE(bptr);  // free's the data region
         if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
             PMIX_ERROR_LOG(rc);
@@ -407,7 +413,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
                 /* since we didn't provide them with a key, the hash function
                  * must return the results in the pmix_info_array field of the
                  * value */
-                if (PMIX_INFO_ARRAY != val->type) {
+                if (NULL == val || PMIX_INFO_ARRAY != val->type) {
                     /* this is an error */
                     PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                     cb->value_cbfunc(PMIX_ERR_BAD_PARAM, NULL, cb->cbdata);
@@ -440,7 +446,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
             /* since we didn't provide them with a key, the hash function
              * must return the results in the pmix_info_array field of the
              * value */
-            if (PMIX_INFO_ARRAY != val->type) {
+            if (NULL == val || PMIX_INFO_ARRAY != val->type) {
                 /* this is an error */
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                 cb->value_cbfunc(PMIX_ERR_BAD_PARAM, NULL, cb->cbdata);
@@ -588,7 +594,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
 
     /* we don't have a pending request, so let's create one - don't worry
      * about packing the key as we return everything from that proc */
-    msg = pack_get(cb->nspace, cb->rank, cb->info, cb->ninfo, PMIX_GETNB_CMD);
+    msg = _pack_get(cb->nspace, cb->rank, cb->info, cb->ninfo, PMIX_GETNB_CMD);
     if (NULL == msg) {
         cb->value_cbfunc(PMIX_ERROR, NULL, cb->cbdata);
         PMIX_RELEASE(cb);
@@ -601,5 +607,5 @@ static void _getnbfn(int fd, short flags, void *cbdata)
     pmix_list_append(&pmix_client_globals.pending_requests, &cb->super);
 
     /* push the message into our event base to send to the server */
-    PMIX_ACTIVATE_SEND_RECV(&pmix_client_globals.myserver, msg, getnb_cbfunc, cb);
+    PMIX_ACTIVATE_SEND_RECV(&pmix_client_globals.myserver, msg, _getnb_cbfunc, cb);
 }

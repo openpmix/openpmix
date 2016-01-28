@@ -1846,6 +1846,9 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
     int32_t cnt = 1;
     char byte;
 
+    /* pass the blobs being returned */
+    PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
+
     if (PMIX_SUCCESS != scd->status) {
         rc = scd->status;
         goto finish_collective;
@@ -1856,8 +1859,6 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
         goto finish_collective;
     }
 
-    /* pass the blobs being returned */
-    PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
     PMIX_LOAD_BUFFER(&xfer, scd->data, scd->ndata);
 
     /* if data was returned, unpack and store it */
