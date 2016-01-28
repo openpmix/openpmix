@@ -98,48 +98,127 @@ int pmix_hash_store(pmix_hash_table_t *table,
 pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, int rank,
                               const char *key, pmix_value_t **kvs)
 {
+    pmix_status_t rc = PMIX_SUCCESS;
     pmix_proc_data_t *proc_data;
     pmix_kval_t *hv;
     uint64_t id;
-    pmix_status_t rc;
+    char *node;
 
     pmix_output_verbose(10, pmix_globals.debug_output,
                         "HASH:FETCH rank %d key %s",
                         rank, (NULL == key) ? "NULL" : key);
 
     if (PMIX_RANK_UNDEF == rank) {
-        id = UINT64_MAX;
+        /* PMIX_RANK_UNDEF should return following statuses
+         * PMIX_ERR_PROC_ENTRY_NOT_FOUND | PMIX_SUCCESS
+         * special logic is basing on these statuses on a client and a server */
+        rc = pmix_hash_table_get_first_key_uint64(table, &id,
+                (void**)&proc_data, (void**)&node);
+        if (PMIX_SUCCESS != rc) {
+            pmix_output_verbose(10, pmix_globals.debug_output,
+                                "HASH:FETCH proc data for rank %d not found",
+                                rank);
+            return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
+        }
     } else {
+        /* specified rank can return following statuses
+         * PMIX_ERR_PROC_ENTRY_NOT_FOUND | PMIX_ERR_NOT_FOUND | PMIX_SUCCESS
+         * special logic is basing on these statuses on a client and a server */
         id = (uint64_t)rank;
     }
 
-    /* lookup the proc data object for this proc */
-    if (NULL == (proc_data = lookup_proc(table, id, false))) {
-        pmix_output_verbose(10, pmix_globals.debug_output,
-                            "HASH:FETCH proc data for rank %d not found",
-                            rank);
+    while (PMIX_SUCCESS == rc) {
+        proc_data = lookup_proc(table, id, false);
+        if (NULL == proc_data) {
+            pmix_output_verbose(10, pmix_globals.debug_output,
+                                "HASH:FETCH proc data for rank %d not found",
+                                rank);
+            return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
+        }
+
+        /* if the key is NULL, then the user wants -all- data
+         * put by the specified rank */
+        if (NULL == key) {
+            /* we will return the data as an array of pmix_info_t
+             * in the kvs pmix_value_t */
+
+        } else {
+            /* find the value from within this proc_data object */
+            hv = lookup_keyval(&proc_data->data, key);
+            if (hv) {
+                /* create the copy */
+                if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)kvs, hv->value, PMIX_VALUE))) {
+                    PMIX_ERROR_LOG(rc);
+                    return rc;
+                }
+                return PMIX_SUCCESS;
+            } else if (PMIX_RANK_UNDEF != rank) {
+                pmix_output_verbose(10, pmix_globals.debug_output,
+                                    "HASH:FETCH data for key %s not found", key);
+                return PMIX_ERR_NOT_FOUND;
+            }
+        }
+
+        rc = pmix_hash_table_get_next_key_uint64(table, &id,
+                (void**)&proc_data, node, (void**)&node);
+        if (PMIX_SUCCESS != rc) {
+            pmix_output_verbose(10, pmix_globals.debug_output,
+                                "HASH:FETCH data for key %s not found", key);
+            return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
+        }
+    }
+
+    return rc;
+}
+
+pmix_status_t pmix_hash_fetch_by_key(pmix_hash_table_t *table, const char *key,
+                                     int *rank, pmix_value_t **kvs, void **last)
+{
+    pmix_status_t rc = PMIX_SUCCESS;
+    pmix_proc_data_t *proc_data;
+    pmix_kval_t *hv;
+    uint64_t id;
+    char *node;
+    static const char *key_r = NULL;
+
+    if (key == NULL && (node = *last) == NULL) {
         return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
     }
 
-    /* if the key is NULL, then the user wants -all- data
-     * put by the specified rank */
-    if (NULL == key) {
-        /* we will return the data as an array of pmix_info_t
-         * in the kvs pmix_value_t */
-
+    if (key) {
+        rc = pmix_hash_table_get_first_key_uint64(table, &id,
+                (void**)&proc_data, (void**)&node);
+        key_r = key;
     } else {
-        /* find the value from within this proc_data object */
-        if (NULL == (hv = lookup_keyval(&proc_data->data, key))) {
-            pmix_output_verbose(10, pmix_globals.debug_output,
-                                "HASH:FETCH data for key %s not found", key);
-            return PMIX_ERR_NOT_FOUND;
-        }
+        rc = pmix_hash_table_get_next_key_uint64(table, &id,
+                (void**)&proc_data, node, (void**)&node);
+    }
+
+    pmix_output_verbose(10, pmix_globals.debug_output,
+                        "HASH:FETCH key %s",
+                        (NULL == key_r) ? "NULL" : key_r);
+
+    if (PMIX_SUCCESS != rc) {
+        pmix_output_verbose(10, pmix_globals.debug_output,
+                            "HASH:FETCH proc data for key %s not found",
+                            key_r);
+        return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
+    }
+
+    /* find the value from within this proc_data object */
+    hv = lookup_keyval(&proc_data->data, key_r);
+    if (hv) {
         /* create the copy */
         if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)kvs, hv->value, PMIX_VALUE))) {
             PMIX_ERROR_LOG(rc);
             return rc;
         }
+    } else {
+        return PMIX_ERR_NOT_FOUND;
     }
+
+    *rank = (int)id;
+    *last = node;
 
     return PMIX_SUCCESS;
 }
