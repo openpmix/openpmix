@@ -33,7 +33,10 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, int rank,
                               const char *key, pmix_value_t **kvs);
 
 /* Fetch the value for a specified key from within
- * the given hash_table */
+ * the given hash_table
+ * It gets the next portion of data from table, where matching key.
+ * To get the first data from table, function is called with key parameter as string.
+ * Remaining data from table are obtained by calling function with a null pointer for the key parameter.*/
 pmix_status_t pmix_hash_fetch_by_key(pmix_hash_table_t *table, const char *key,
                                      int *rank, pmix_value_t **kvs, void **last);
 

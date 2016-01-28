@@ -195,8 +195,8 @@ pmix_status_t pmix_hash_fetch_by_key(pmix_hash_table_t *table, const char *key,
     }
 
     pmix_output_verbose(10, pmix_globals.debug_output,
-                        "HASH:FETCH key %s",
-                        (NULL == key_r) ? "NULL" : key_r);
+                        "HASH:FETCH BY KEY rank %d key %s",
+                        (int)id, (NULL == key_r) ? "NULL" : key_r);
 
     if (PMIX_SUCCESS != rc) {
         pmix_output_verbose(10, pmix_globals.debug_output,
