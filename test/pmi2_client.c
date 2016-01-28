@@ -79,8 +79,6 @@ int main(int argc, char **argv)
     srand(time(NULL));
     str = getenv("VERBOSE");
     _verbose = (str ? atoi(str) : _verbose);
-    str = getenv("LEGACY");
-    _legacy = (str ? atoi(str) : _legacy);
 
     spawned = random_value(10, 20);
     size = random_value(10, 20);
@@ -91,7 +89,11 @@ int main(int argc, char **argv)
         return rc;
     }
 
-    if (!ti || 1 == ti) {
+    str = getenv("PMIX_NAMESPACE");
+    _legacy = (str ? 0 : 1);
+
+    /* this test should be always run */
+    if (1) {
         rc = test_item1();
         ret += (rc ? 1 : 0);
         log_info("TI1  : %s\n", (rc ? "FAIL" : "PASS"));
@@ -156,7 +158,6 @@ int main(int argc, char **argv)
 static int test_item1(void)
 {
     int rc = 0;
-    int val = 0;
 
     log_info("spawned=%d size=%d rank=%d appnum=%d\n", spawned, size, rank, appnum);
 
@@ -174,6 +175,16 @@ static int test_item1(void)
     log_info("jobid=%s\n", jobid);
     log_assert(memcmp(jobid, __func__, sizeof(__func__)), "");
 
+    return rc;
+}
+
+static int test_item2(void)
+{
+    int rc = 0;
+    int val = 0;
+
+    log_assert(PMI2_Initialized(), "");
+
     val = random_value(10, 100);
     if (PMI2_SUCCESS != (rc = PMI2_Job_GetRank(&val))) {
         log_fatal("PMI2_Job_GetRank failed: %d\n", rc);
@@ -187,15 +198,6 @@ static int test_item1(void)
         return rc;
     }
     log_assert(0 < val, "");
-
-    return rc;
-}
-
-static int test_item2(void)
-{
-    int rc = 0;
-
-    log_assert(PMI2_Initialized(), "");
 
     return rc;
 }
@@ -217,14 +219,19 @@ static int test_item3(void)
     };
     const char **ptr = tkeys;
 
+    if (_legacy || !_legacy) {
+        log_error("PMIx and SLURM/PMI2 does not set Job Attributes (Do not mark test as failed)\n");
+        return rc;
+    }
+
     while (*ptr) {
         if (PMI2_SUCCESS != (rc = PMI2_Info_GetJobAttr(*ptr, val, sizeof(val), &found))) {
             log_fatal("PMI2_Info_GetJobAttr: [%s] %d\n", *ptr, rc);
             return rc;
         }
         log_info("key=%s value=%s found=%d\n", *ptr, (found ? val : "N/A"), found);
-        if (!_legacy) {
-            log_assert(!found, "Check test. Probably PMIx has a new functionality");
+        if (!_legacy && !found) {
+            log_error("PMIx does not set: %s (Do not mark test as failed)\n", *ptr);
         }
         ptr++;
     }
@@ -247,7 +254,8 @@ static int test_item4(void)
     };
     const char **ptr = tkeys;
 
-    if (_legacy) {
+    if (_legacy || !_legacy) {
+        log_error("PMIx and SLURM/PMI2 does not set Node Attributes (Do not mark test as failed)\n");
         return rc;
     }
 
@@ -257,8 +265,8 @@ static int test_item4(void)
             return rc;
         }
         log_info("key=%s value=%s found=%d\n", *ptr, (found ? val : "N/A"), found);
-        if (!_legacy) {
-            log_assert(!found, "Check test. Probably PMIx has a new functionality");
+        if (!_legacy && !found) {
+            log_error("PMIx does not set: %s (Do not mark test as failed)\n", *ptr);
         }
         ptr++;
     }
@@ -306,17 +314,15 @@ static int test_item6(void)
         return rc;
     }
 
-    if (PMI2_SUCCESS != (rc = PMI2_KVS_Get(NULL, PMI2_ID_NULL, tkey, val, sizeof(val), &len))) {
-        log_fatal("PMI2_KVS_Get %d\n", rc);
-        return rc;
+    /* expected result: return error status */
+    rc = PMI2_KVS_Get(NULL, PMI2_ID_NULL, tkey, val, sizeof(val), &len);
+    if (PMI2_SUCCESS == rc) {
+        log_info("tkey=%s tval=%s val=%s len=%d\n", tkey, tval, val, len);
+        log_error("PMI2_KVS_Get should not find data w/o commit\n");
+        return 1;
     }
 
-    log_info("tkey=%s tval=%s val=%s len=%d\n", tkey, tval, val, len);
-
-    log_assert((int)strlen(tval) == len, "value does not meet expectation");
-    log_assert(!strcmp(tval, val), "value does not meet expectation");
-
-    return rc;
+    return 0;
 }
 
 static int test_item7(void)
@@ -337,12 +343,16 @@ static int test_item7(void)
                 return rc;
             }
         }
+    }
 
-        if (PMI2_SUCCESS != (rc = PMI2_KVS_Fence())) {
-            log_fatal("PMI2_KVS_Fence %d\n", rc);
-            return rc;
-        }
+    if (PMI2_SUCCESS != (rc = PMI2_KVS_Fence())) {
+        log_fatal("PMI2_KVS_Fence %d\n", rc);
+        return rc;
+    }
 
+    for (i = 0; i < size; i++) {
+        sprintf(tkey, "KEY-%d", i);
+        sprintf(tval, "VALUE-%d", i);
         if (PMI2_SUCCESS != (rc = PMI2_KVS_Get(jobid, i, tkey, val, sizeof(val), &len))) {
             log_fatal("PMI2_KVS_Get [%s=?] %d\n", tkey, rc);
             return rc;
@@ -375,12 +385,16 @@ static int test_item8(void)
                 return rc;
             }
         }
+    }
 
-        if (PMI2_SUCCESS != (rc = PMI2_KVS_Fence())) {
-            log_fatal("PMI2_KVS_Fence %d\n", rc);
-            return rc;
-        }
+    if (PMI2_SUCCESS != (rc = PMI2_KVS_Fence())) {
+        log_fatal("PMI2_KVS_Fence %d\n", rc);
+        return rc;
+    }
 
+    for (i = 0; i < size; i++) {
+        sprintf(tkey, "KEY-%d", i);
+        sprintf(tval, "VALUE-%d", i);
         if (PMI2_SUCCESS != (rc = PMI2_KVS_Get(jobid, PMI2_ID_NULL, tkey, val, sizeof(val), &len))) {
             log_fatal("PMI2_KVS_Get [%s=?] %d\n", tkey, rc);
             return rc;
@@ -401,8 +415,8 @@ static int test_item9(void)
     int i, j, r;
     char symb, symb_start = 'a';
     int fence_cnt;
-    int fence_num = random_value(2, 10);
-    int keys_per_fence = random_value(10, 100);
+    int fence_num = 5;
+    int keys_per_fence = 50;
     int val_size = random_value(10, PMI2_MAX_VALLEN / 10);
     int keys_total = 0;
 
@@ -423,16 +437,16 @@ static int test_item9(void)
                 symb = 'a';
             }
             if (PMI2_SUCCESS != (rc = PMI2_KVS_Put(key, val))) {
-                log_fatal("PMI2_KVS_Put [%s=%s] %d\n", key, val, rc);
+                log_fatal("%d : PMI2_KVS_Put [%s=%s] %d\n", rank, key, val, rc);
                 return rc;
             }
-            log_info("PMI2_KVS_Put [rank=%d %s] %d\n", rank, key, rc);
+            log_info("%d : PMI2_KVS_Put [%s=%s] %d\n", rank, key, val, rc);
         }
         symb_start = symb;
         keys_total += keys_per_fence;
 
         if (PMI2_SUCCESS != (rc = PMI2_KVS_Fence())) {
-            log_fatal("PMI2_KVS_Fence %d\n", rc);
+            log_fatal("%d : PMI2_KVS_Fence %d\n", rank, rc);
             return rc;
         }
 
@@ -445,11 +459,11 @@ static int test_item9(void)
                 sprintf(key, "RANK%d-key-%d", r, i);
 
                 if (PMI2_SUCCESS != (rc = PMI2_KVS_Get(jobid, r, key, val, sizeof(val), &len))) {
-                    log_fatal("PMI2_KVS_Get [%s=?] %d\n", key, rc);
+                    log_fatal("%d : PMI2_KVS_Get [%s=?] %d\n", rank, key, rc);
                     return rc;
                 }
 
-                log_info("PMI2_KVS_Get [rank=%d %s] %d\n", rank, key, rc);
+                log_info("%d : PMI2_KVS_Get from %d [%s=%s] %d\n", r, rank, key, val, rc);
 
                 if (len != val_size) {
                     log_fatal("%d: failure on rank %d, key #%d: len mismatch:"
