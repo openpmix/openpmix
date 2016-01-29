@@ -59,6 +59,7 @@ include src/client/Makefile.am
 include src/server/Makefile.am
 include src/sec/Makefile.am
 include src/sm/Makefile.am
+include src/dstore/Makefile.am
 include src/common/Makefile.am
 
 if PMIX_EMBEDDED_MODE
