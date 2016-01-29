@@ -151,7 +151,7 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, int rank,
                     PMIX_ERROR_LOG(rc);
                     return rc;
                 }
-                return PMIX_SUCCESS;
+                break;
             } else if (PMIX_RANK_UNDEF != rank) {
                 pmix_output_verbose(10, pmix_globals.debug_output,
                                     "HASH:FETCH data for key %s not found", key);
@@ -185,6 +185,10 @@ pmix_status_t pmix_hash_fetch_by_key(pmix_hash_table_t *table, const char *key,
         return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
     }
 
+    if (key == NULL && key_r == NULL) {
+        return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
+    }
+
     if (key) {
         rc = pmix_hash_table_get_first_key_uint64(table, &id,
                 (void**)&proc_data, (void**)&node);
@@ -196,7 +200,7 @@ pmix_status_t pmix_hash_fetch_by_key(pmix_hash_table_t *table, const char *key,
 
     pmix_output_verbose(10, pmix_globals.debug_output,
                         "HASH:FETCH BY KEY rank %d key %s",
-                        (int)id, (NULL == key_r) ? "NULL" : key_r);
+                        (int)id, key_r);
 
     if (PMIX_SUCCESS != rc) {
         pmix_output_verbose(10, pmix_globals.debug_output,
