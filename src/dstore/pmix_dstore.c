@@ -165,6 +165,10 @@ int pmix_dstore_store(pmix_buffer_t *buf)
     int cnt;
     ns_seg_info_t ns_info;
 
+    if (NULL == buf) {
+        return PMIX_ERROR;
+    }
+
     cnt = 1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &nspace, &cnt, PMIX_STRING))) {
         PMIX_ERROR_LOG(rc);
@@ -176,6 +180,7 @@ int pmix_dstore_store(pmix_buffer_t *buf)
         PMIX_ERROR_LOG(rc);
         return rc;
     }
+
     PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
                          "%s:%d:%s: for %s:%d", __FILE__, __LINE__, __func__, nspace, rank));
 
@@ -239,8 +244,6 @@ int pmix_dstore_store(pmix_buffer_t *buf)
 
 int pmix_dstore_fetch(char *nspace, int rank, char *key, pmix_value_t **kvs)
 {
-    PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
-                         "%s:%d:%s: for %s:%d look for key %s", __FILE__, __LINE__, __func__, nspace, rank, key));
     ns_seg_info_t *ns_info = NULL;
     int rc;
     ns_track_elem_t *elem;
@@ -250,6 +253,15 @@ int pmix_dstore_fetch(char *nspace, int rank, char *key, pmix_value_t **kvs)
     uint8_t *addr;
     pmix_buffer_t buffer;
     pmix_value_t val;
+
+    if (NULL == key || PMIX_RANK_UNDEF == rank) {
+        PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
+                             "dstore: Does not support passed parameters"));
+        return PMIX_ERROR;
+    }
+
+    PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
+                         "%s:%d:%s: for %s:%d look for key %s", __FILE__, __LINE__, __func__, nspace, rank, key));
 
     /* set shared lock */
     flock(lockfd, LOCK_SH);
@@ -380,8 +392,9 @@ int pmix_dstore_fetch(char *nspace, int rank, char *key, pmix_value_t **kvs)
             buffer.base_ptr = NULL;
             buffer.bytes_used = 0;
             PMIX_DESTRUCT(&buffer);
-            rc = pmix_bfrop.copy((void**)kvs, &val, PMIX_VALUE);
-            rc = PMIX_SUCCESS;
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)kvs, &val, PMIX_VALUE))) {
+                PMIX_ERROR_LOG(rc);
+            }
             break;
         } else {
             char ckey[PMIX_MAX_KEYLEN+1] = {0};
