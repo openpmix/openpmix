@@ -63,6 +63,9 @@ static const char pmix_version_string[] = PMIX_VERSION;
 #include "src/util/progress_threads.h"
 #include "src/usock/usock.h"
 #include "src/sec/pmix_sec.h"
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+#include "src/dstore/pmix_dstore.h"
+#endif /* PMIX_ENABLE_DSTORE */
 
 #include "pmix_client_ops.h"
 
@@ -363,6 +366,11 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc)
     pmix_globals.pindex = -1;
 
     /* setup the support */
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+    if (PMIX_SUCCESS != (rc = pmix_dstore_init(1))) {
+        return rc;
+    }
+#endif /* PMIX_ENABLE_DSTORE */
     pmix_bfrop_open();
     pmix_usock_init(pmix_client_notify_recv);
     pmix_sec_init();
@@ -473,6 +481,9 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(void)
 #endif
     pmix_bfrop_close();
     pmix_sec_finalize();
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+    pmix_dstore_finalize();
+#endif /* PMIX_ENABLE_DSTORE */
 
     pmix_globals_finalize();
 
