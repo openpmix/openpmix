@@ -8,11 +8,16 @@
  * $HEADER$
  */
 
+#ifndef PMIX_DSTORE_H
+#define PMIX_DSTORE_H
+
 #include "src/class/pmix_list.h"
 #include "src/util/error.h"
 
 #include "src/sm/pmix_sm.h"
 #include "src/buffer_ops/types.h"
+
+BEGIN_C_DECLS
 
 #define INITIAL_SEG_SIZE 4096
 #define NS_META_SEG_SIZE (1<<22)
@@ -75,3 +80,7 @@ int pmix_dstore_init(int is_cli);
 int pmix_dstore_finalize(void);
 int pmix_dstore_store(pmix_buffer_t *buf);
 int pmix_dstore_fetch(char *nspace, int rank, char *key, pmix_value_t **kvs);
+
+END_C_DECLS
+
+#endif /* PMIX_DSTORE_H */
