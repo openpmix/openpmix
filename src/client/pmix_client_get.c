@@ -61,11 +61,12 @@ static pmix_buffer_t* pack_get(char *nspace, int rank,
                                pmix_cmd_t cmd);
 
 static void _getnbfn(int sd, short args, void *cbdata);
+static void _getnb_cbtimeoutfunc(int sd, short args, void *cbdata);
 
-static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
-                         pmix_buffer_t *buf, void *cbdata);
+static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
+                          pmix_buffer_t *buf, void *cbdata);
 
-static void value_cbfunc(int status, pmix_value_t *kv, void *cbdata);
+static void _value_cbfunc(int status, pmix_value_t *kv, void *cbdata);
 
 int PMIx_Get(const pmix_proc_t *proc, const char key[],
              const pmix_info_t info[], size_t ninfo,
@@ -83,7 +84,7 @@ int PMIx_Get(const pmix_proc_t *proc, const char key[],
      * the return message is recvd */
     cb = PMIX_NEW(pmix_cb_t);
     cb->active = true;
-    if (PMIX_SUCCESS != (rc = PMIx_Get_nb(proc, key, info, ninfo, value_cbfunc, cb))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get_nb(proc, key, info, ninfo, _value_cbfunc, cb))) {
         PMIX_RELEASE(cb);
         return rc;
     }
@@ -169,7 +170,7 @@ pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char *key,
     return PMIX_SUCCESS;
 }
 
-static void value_cbfunc(int status, pmix_value_t *kv, void *cbdata)
+static void _value_cbfunc(int status, pmix_value_t *kv, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
     pmix_status_t rc;
@@ -229,8 +230,8 @@ static pmix_buffer_t* pack_get(char *nspace, int rank,
 /* this callback is coming from the usock recv, and thus
  * is occurring inside of our progress thread - hence, no
  * need to thread shift */
-static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
-                         pmix_buffer_t *buf, void *cbdata)
+static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
+                          pmix_buffer_t *buf, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
     pmix_cb_t *cb2;
@@ -249,7 +250,13 @@ static void getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return;
     }
-    // cache the rank
+
+    /* remove event in case timeout is set for PMIx_Get_nb() call */
+    if (event_initialized(&cb->ev)) {
+        event_del(&cb->ev);
+    }
+
+    /* cache the rank */
     rank = cb->rank;
 
     /* unpack the status */
@@ -573,6 +580,20 @@ static void _getnbfn(int fd, short flags, void *cbdata)
         }
     }
 
+    /* do not force dmodex logic for non-specific ranks
+     * let return not found status instead of doing fence with
+     * data exchange. User can make a decision to do such call getting
+     * not found status
+     */
+    if (PMIX_RANK_UNDEF == cb->rank || PMIX_RANK_WILDCARD == cb->rank) {
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "PMIx_Get key=%s for rank = %d, namespace = %s was not found locally - do not request a server",
+                            cb->key, cb->rank, cb->nspace);
+        cb->value_cbfunc(PMIX_ERR_NOT_FOUND, NULL, cb->cbdata);
+        PMIX_RELEASE(cb);
+        return;
+    }
+
     /* see if we already have a request in place with the server for data from
      * this nspace:rank. If we do, then no need to ask again as the
      * request will return _all_ data from that proc */
@@ -595,11 +616,48 @@ static void _getnbfn(int fd, short flags, void *cbdata)
         return;
     }
 
+    /* set timeout event in case the user request it
+     */
+    for (n=0; n < cb->ninfo; n++) {
+        if (0 == strcmp(cb->info[n].key, PMIX_TIMEOUT) &&
+            cb->info[n].value.data.integer >= 0) {
+            struct timeval tv;                                              \
+
+            pmix_output_verbose(2, pmix_globals.debug_output,
+                                "PMIx_Get key=%s for rank = %d, namespace = %s set timeout = %d",
+                                cb->key, cb->rank, cb->nspace, cb->info[n].value.data.integer);
+            event_assign(&cb->ev, pmix_globals.evbase, -1, 0, _getnb_cbtimeoutfunc, cb);     \
+            tv.tv_sec = cb->info[n].value.data.integer;                                                \
+            tv.tv_usec = 0;                                                 \
+            PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,              \
+                                 "defining timer event: %ld sec %ld usec at %s:%d", \
+                                 (long)tv.tv_sec, (long)tv.tv_usec,         \
+                                 __FILE__, __LINE__));                      \
+            event_add(&cb->ev, &tv);                                        \
+        }
+    }
+
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
     pmix_list_append(&pmix_client_globals.pending_requests, &cb->super);
 
     /* push the message into our event base to send to the server */
-    PMIX_ACTIVATE_SEND_RECV(&pmix_client_globals.myserver, msg, getnb_cbfunc, cb);
+    PMIX_ACTIVATE_SEND_RECV(&pmix_client_globals.myserver, msg, _getnb_cbfunc, cb);
+}
+
+static void _getnb_cbtimeoutfunc(int fd, short flags, void *cbdata)
+{
+    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix: _getnb_cbtimeoutfunc value for proc %s:%d key %s",
+                        cb->nspace, cb->rank,
+                        (NULL == cb->key) ? "NULL" : cb->key);
+
+    cb->value_cbfunc(PMIX_ERR_TIMEOUT, NULL, cb->cbdata);
+    /* do following because in case original call is PMIx_Get()
+     * we do not want to process it in _getnb_cbfunc() */
+    cb->cbdata = NULL;
+    cb->value_cbfunc = NULL;
 }
