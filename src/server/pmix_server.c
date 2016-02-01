@@ -55,6 +55,9 @@
 #include "src/util/progress_threads.h"
 #include "src/usock/usock.h"
 #include "src/sec/pmix_sec.h"
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+#include "src/dstore/pmix_dstore.h"
+#endif /* PMIX_ENABLE_DSTORE */
 
 #include "pmix_server_ops.h"
 
@@ -285,6 +288,12 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         return rc;
     }
 
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+    if (PMIX_SUCCESS != (rc = pmix_dstore_init(0))) {
+        return rc;
+    }
+#endif /* PMIX_ENABLE_DSTORE */
+
     /* and the usock system */
     pmix_usock_init(NULL);
 
@@ -399,6 +408,10 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     }
 
     pmix_usock_finalize();
+
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+    pmix_dstore_finalize();
+#endif /* PMIX_ENABLE_DSTORE */
 
     /* cleanup the rendezvous file */
     unlink(myaddress.sun_path);
