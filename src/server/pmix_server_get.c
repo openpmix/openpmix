@@ -83,8 +83,8 @@ PMIX_CLASS_INSTANCE(pmix_dmdx_reply_caddy_t,
 static void dmdx_cbfunc(pmix_status_t status, const char *data,
                         size_t ndata, void *cbdata,
                         pmix_release_cbfunc_t relfn, void *relcbdata);
-static pmix_status_t _satisfy_request(pmix_hash_table_t *ht, int rank,
-                                      pmix_modex_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t _satisfy_request(pmix_nspace_t *ns, int rank,
+                                      pmix_modex_cbfunc_t cbfunc, void *cbdata, bool *scope);
 static pmix_status_t create_local_tracker(char nspace[], int rank,
                                           pmix_info_t info[], size_t ninfo,
                                           pmix_modex_cbfunc_t cbfunc,
@@ -115,8 +115,6 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     pmix_info_t *info=NULL;
     size_t ninfo=0;
     pmix_dmdx_local_t *lcd;
-    pmix_rank_info_t *iptr;
-    pmix_hash_table_t *ht;
     bool local;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -191,24 +189,8 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
         return rc;
     }
 
-    /* Since we know about all the local clients in this nspace,
-     * let's first try to satisfy the request with any available data.
-     * By default, we assume we are looking for data from a remote
-     * client, and then check to see if this is one of my local
-     * clients - if so, then we look in that hash table */
-    ht = &nptr->server->remote;
-    local = false;
-    PMIX_LIST_FOREACH(iptr, &nptr->server->ranks, pmix_rank_info_t) {
-        if (iptr->rank == rank) {
-            /* it is known local client - check the local table */
-            ht = &nptr->server->mylocal;
-            local = true;
-            break;
-        }
-    }
-
     /* see if we already have this data */
-    rc = _satisfy_request(ht, rank, cbfunc, cbdata);
+    rc = _satisfy_request(nptr, rank, cbfunc, cbdata, &local);
     if( PMIX_SUCCESS == rc ){
         /* request was successfully satisfied */
         PMIX_INFO_FREE(info, ninfo);
@@ -369,8 +351,8 @@ void pmix_pending_nspace_requests(pmix_nspace_t *nptr)
     }
 }
 
-static pmix_status_t _satisfy_request(pmix_hash_table_t *ht, int rank,
-                                      pmix_modex_cbfunc_t cbfunc, void *cbdata)
+static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, int rank,
+                                      pmix_modex_cbfunc_t cbfunc, void *cbdata, bool *scope)
 {
     pmix_status_t rc;
     pmix_value_t *val;
@@ -380,6 +362,28 @@ static pmix_status_t _satisfy_request(pmix_hash_table_t *ht, int rank,
     int found = 0;
     pmix_buffer_t xfer, pbkt, *xptr;
     void *last;
+    pmix_hash_table_t *ht;
+    pmix_rank_info_t *iptr;
+
+    /* Since we know about all the local clients in this nspace,
+     * let's first try to satisfy the request with any available data.
+     * By default, we assume we are looking for data from a remote
+     * client, and then check to see if this is one of my local
+     * clients - if so, then we look in that hash table */
+    ht = &nptr->server->remote;
+    if (scope) {
+        *scope = false;
+    }
+    PMIX_LIST_FOREACH(iptr, &nptr->server->ranks, pmix_rank_info_t) {
+        if (iptr->rank == rank) {
+            /* it is known local client - check the local table */
+            ht = &nptr->server->mylocal;
+            if (scope) {
+                *scope = true;
+            }
+            break;
+        }
+    }
 
     /* check to see if this data already has been
      * obtained as a result of a prior direct modex request from
@@ -455,23 +459,10 @@ pmix_status_t pmix_pending_resolve(pmix_nspace_t *nptr, int rank,
             }
         } else if (NULL != nptr) {
             /* if we've got the blob - try to satisfy requests */
-            pmix_hash_table_t *ht;
-            pmix_rank_info_t *iptr;
-
-            /* by default we are looking for the remote data */
-            ht = &nptr->server->remote;
-            /* check if this rank is local */
-            PMIX_LIST_FOREACH(iptr, &nptr->server->ranks, pmix_rank_info_t) {
-                if (iptr->rank == rank) {
-                    ht = &nptr->server->mylocal;
-                    break;
-                }
-            }
-
             /* run through all the requests to this rank */
             PMIX_LIST_FOREACH(req, &lcd->loc_reqs, pmix_dmdx_request_t) {
                 pmix_status_t rc;
-                rc = _satisfy_request(ht, rank, req->cbfunc, req->cbdata);
+                rc = _satisfy_request(nptr, rank, req->cbfunc, req->cbdata, NULL);
                 if( PMIX_SUCCESS != rc ){
                     /* if we can't satisfy this particular request (missing key?) */
                     req->cbfunc(rc, NULL, 0, req->cbdata, NULL, NULL);
