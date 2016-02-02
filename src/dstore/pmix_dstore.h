@@ -78,8 +78,8 @@ PMIX_CLASS_DECLARATION(ns_track_elem_t);
 
 int pmix_dstore_init(int is_cli);
 int pmix_dstore_finalize(void);
-int pmix_dstore_store(pmix_buffer_t *buf);
-int pmix_dstore_fetch(char *nspace, int rank, char *key, pmix_value_t **kvs);
+int pmix_dstore_store(const char *nspace, int rank, pmix_kval_t *kv);
+int pmix_dstore_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs);
 
 END_C_DECLS
 
