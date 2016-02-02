@@ -1846,6 +1846,9 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
     int32_t cnt = 1;
     char byte;
 
+    /* pass the blobs being returned */
+    PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
+
     if (PMIX_SUCCESS != scd->status) {
         rc = scd->status;
         goto finish_collective;
@@ -1856,8 +1859,6 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
         goto finish_collective;
     }
 
-    /* pass the blobs being returned */
-    PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
     PMIX_LOAD_BUFFER(&xfer, scd->data, scd->ndata);
 
     /* if data was returned, unpack and store it */
@@ -2069,6 +2070,9 @@ static void get_cbfunc(pmix_status_t status, const char *data, size_t ndata, voi
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "server:get_cbfunc reply being sent to %s:%d",
                         cd->peer->info->nptr->nspace, cd->peer->info->rank);
+    pmix_output_hexdump(5, pmix_globals.debug_output,
+            reply->base_ptr, (reply->bytes_used < 256 ? reply->bytes_used : 256));
+
     PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
 
  cleanup:
