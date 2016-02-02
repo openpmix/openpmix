@@ -29,7 +29,7 @@ static seg_desc_t *_attach_new_segment(segment_type type, char *nsname, uint32_t
 static int _update_ns_elem(ns_track_elem_t *ns_elem, ns_seg_info_t *info);
 static int _put_ns_info_to_initial_segment(const char *nspace, pmix_sm_seg_t *metaseg, pmix_sm_seg_t *dataseg);
 static ns_seg_info_t *_get_ns_info_from_initial_segment(const char *nspace);
-static ns_track_elem_t *_get_track_elem_for_namespace(char *nspace);
+static ns_track_elem_t *_get_track_elem_for_namespace(const char *nspace);
 static rank_meta_info *_get_rank_meta_info(int rank, seg_desc_t *segdesc);
 static uint8_t *_get_data_region_by_offset(seg_desc_t *segdesc, size_t offset);
 static void _update_initial_segment_info(void);
@@ -155,30 +155,17 @@ int pmix_dstore_finalize(void)
 }
 
 
-int pmix_dstore_store(pmix_buffer_t *buf)
+int pmix_dstore_store(const char *nspace, int rank, pmix_kval_t *kv)
 {
     int rc;
     size_t i;
     ns_track_elem_t *elem;
-    char *nspace;
-    int rank;
     int cnt;
+    pmix_buffer_t pbkt, xfer;
     ns_seg_info_t ns_info;
 
-    if (NULL == buf) {
+    if (NULL == kv) {
         return PMIX_ERROR;
-    }
-
-    cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &nspace, &cnt, PMIX_STRING))) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-    /* unpack the rank */
-    cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &rank, &cnt, PMIX_INT))) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
     }
 
     PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
@@ -235,14 +222,25 @@ int pmix_dstore_store(pmix_buffer_t *buf)
 
     /* Now we know info about meta segment for this namespace. If meta segment
      * is not empty, then we look for data for the target rank. If they present, replace it. */
-    rc = _store_data_for_rank(elem, rank, buf);
+    PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+    PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
+    PMIX_LOAD_BUFFER(&xfer, kv->value->data.bo.bytes, kv->value->data.bo.size);
+    pmix_buffer_t *pxfer = &xfer;
+    pmix_bfrop.pack(&pbkt, &pxfer, 1, PMIX_BUFFER);
+    xfer.base_ptr = NULL;
+    xfer.bytes_used = 0;
+
+    rc = _store_data_for_rank(elem, rank, &pbkt);
+
+    PMIX_DESTRUCT(&xfer);
+    PMIX_DESTRUCT(&pbkt);
 
     /* unset lock */
     flock(lockfd, LOCK_UN);
     return rc;
 }
 
-int pmix_dstore_fetch(char *nspace, int rank, char *key, pmix_value_t **kvs)
+int pmix_dstore_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs)
 {
     ns_seg_info_t *ns_info = NULL;
     int rc;
@@ -723,12 +721,13 @@ static ns_seg_info_t *_get_ns_info_from_initial_segment(const char *nspace)
     return elem;
 }
 
-static ns_track_elem_t *_get_track_elem_for_namespace(char *nspace)
+static ns_track_elem_t *_get_track_elem_for_namespace(const char *nspace)
 {
-    PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
-                         "%s:%d:%s: nspace %s", __FILE__, __LINE__, __func__, nspace));
     int rc;
     ns_track_elem_t *new_elem = NULL;
+
+    PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
+                         "%s:%d:%s: nspace %s", __FILE__, __LINE__, __func__, nspace));
 
     /* check if this namespace is already being tracked to avoid duplicating data. */
     PMIX_LIST_FOREACH(new_elem, &namespace_info_list, ns_track_elem_t) {
