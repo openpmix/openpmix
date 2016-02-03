@@ -11,7 +11,7 @@ jenkins_test_cov=${jenkins_test_cov:="yes"}
 jenkins_test_comments=${jenkins_test_comments:="no"}
 jenkins_test_vg=${jenkins_test_vg:="no"}
 
-timeout_exe=${timout_exe:="timeout -s SIGKILL 10m"}
+timeout_exe=${timout_exe:="timeout -s SIGKILL 1m"}
 
 # prepare to run from command line w/o jenkins
 if [ -z "$WORKSPACE" ]; then
@@ -170,7 +170,7 @@ function on_exit
 function check_result()
 {
     set +e
-    eval $2
+    eval $timeout_exe $2
     ret=$?
     set -e
     if [ $ret -gt 0 ]; then
@@ -323,27 +323,27 @@ if [ -n "$JENKINS_RUN_TESTS" -a "$JENKINS_RUN_TESTS" -ne "0" ]; then
     test_id=1
     # 1 blocking fence with data exchange among all processes from two namespaces:
     test_exec='./pmix_test -n 4 --ns-dist 3:1 --fence "[db | 0:0-2;1:3]"'
-    check_result "blocking fence w/ data all" $test_exec
+    check_result "blocking fence w/ data all" "$test_exec"
     test_exec='./pmix_test -n 4 --ns-dist 3:1 --fence "[db | 0:;1:3]"'
-    check_result "blocking fence w/ data all" $test_exec
+    check_result "blocking fence w/ data all" "$test_exec"
     test_exec='./pmix_test -n 4 --ns-dist 3:1 --fence "[db | 0:;1:]"'
-    check_result "blocking fence w/ data all" $test_exec
+    check_result "blocking fence w/ data all" "$test_exec"
 
     # 1 non-blocking fence without data exchange among processes from the 1st namespace
     test_exec='./pmix_test -n 4 --ns-dist 3:1 --fence "[0:]"'
-    check_result "non-blocking fence w/o data" $test_exec
+    check_result "non-blocking fence w/o data" "$test_exec"
 
     # blocking fence without data exchange among processes from the 1st namespace
     test_exec='./pmix_test -n 4 --ns-dist 3:1 --fence "[b | 0:]"'
-    check_result "blocking fence w/ data" $test_exec
+    check_result "blocking fence w/ data" "$test_exec"
 
     # non-blocking fence with data exchange among processes from the 1st namespace. Ranks 0, 1 from ns 0 are sleeping for 2 sec before doing fence test.
     test_exec='./pmix_test -n 4 --ns-dist 3:1 --fence "[d | 0:]" --noise "[0:0,1]"'
-    check_result "non-blocking fence w/ data" $test_exec
+    check_result "non-blocking fence w/ data" "$test_exec"
 
     # blocking fence with data exchange across processes from the same namespace.
     test_exec='./pmix_test -n 4 --job-fence -c'
-    check_result "blocking fence w/ data on the same nspace" $test_exec
+    check_result "blocking fence w/ data on the same nspace" "$test_exec"
 
     # 3 fences: 1 - non-blocking without data exchange across processes from ns 0,
     # 2 - non-blocking across processes 0 and 1 from ns 0 and process 3 from ns 1,
@@ -354,19 +354,19 @@ if [ -n "$JENKINS_RUN_TESTS" -a "$JENKINS_RUN_TESTS" -ne "0" ]; then
 
     # test publish/lookup/unpublish functionality.
     test_exec='./pmix_test -n 2 --test-publish'
-    check_result "publish" $test_exec
+    check_result "publish" "$test_exec"
 
     # test spawn functionality.
     test_exec='./pmix_test -n 2 --test-spawn'
-    check_result "spawn" $test_exec
+    check_result "spawn" "$test_exec"
 
     # test connect/disconnect between processes from the same namespace.
     test_exec='./pmix_test -n 2 --test-connect'
-    check_result "connect" $test_exec
+    check_result "connect" "$test_exec"
 
     # resolve peers from different namespaces.
     test_exec='./pmix_test -n 5 --test-resolve-peers --ns-dist "1:2:2"'
-    check_result "resolve peers" $test_exec
+    check_result "resolve peers" "$test_exec"
 
     # run valgrind
     if [ "$jenkins_test_vg" = "yes" ]; then 
