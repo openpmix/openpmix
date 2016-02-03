@@ -62,8 +62,9 @@ static int test_item5(void);
 static int test_item6(void);
 static int test_item7(void);
 static int test_item8(void);
-/* several sequence of fences is a buggy case for pmix v1.0 (see https://github.com/open-mpi/pmix/issues/37) */
 static int test_item9(void);
+/* several sequence of fences is a buggy case for pmix v1.0 (see https://github.com/open-mpi/pmix/issues/37) */
+static int test_item10(void);
 
 static int spawned, size, rank, appnum;
 static char jobid[100];
@@ -147,6 +148,12 @@ int main(int argc, char **argv)
         log_info("TI9  : %s\n", (rc ? "FAIL" : "PASS"));
     }
 
+    if (!ti || 10 == ti) {
+        rc = test_item10();
+        ret += (rc ? 1 : 0);
+        log_info("TI10  : %s\n", (rc ? "FAIL" : "PASS"));
+    }
+
     if (PMI2_SUCCESS != (rc = PMI2_Finalize())) {
         log_fatal("PMI2_Finalize failed: %d\n", rc);
         return rc;
@@ -220,7 +227,7 @@ static int test_item3(void)
     const char **ptr = tkeys;
 
     if (_legacy || !_legacy) {
-        log_error("PMIx and SLURM/PMI2 does not set Job Attributes (Do not mark test as failed)\n");
+        log_error("%s\n", "PMIx and SLURM/PMI2 does not set Job Attributes (Do not mark test as failed)");
         return rc;
     }
 
@@ -255,7 +262,7 @@ static int test_item4(void)
     const char **ptr = tkeys;
 
     if (_legacy || !_legacy) {
-        log_error("PMIx and SLURM/PMI2 does not set Node Attributes (Do not mark test as failed)\n");
+        log_error("%s\n", "PMIx and SLURM/PMI2 does not set Node Attributes (Do not mark test as failed)");
         return rc;
     }
 
@@ -318,7 +325,7 @@ static int test_item6(void)
     rc = PMI2_KVS_Get(NULL, PMI2_ID_NULL, tkey, val, sizeof(val), &len);
     if (PMI2_SUCCESS == rc) {
         log_info("tkey=%s tval=%s val=%s len=%d\n", tkey, tval, val, len);
-        log_error("PMI2_KVS_Get should not find data w/o commit\n");
+        log_error("%s\n", "PMI2_KVS_Get should not find data w/o commit");
         return 1;
     }
 
@@ -326,6 +333,41 @@ static int test_item6(void)
 }
 
 static int test_item7(void)
+{
+    int rc = 0;
+    char val[PMI2_MAX_VALLEN];
+    int len;
+    char tkey[PMI2_MAX_VALLEN];
+    char tval[PMI2_MAX_VALLEN];
+
+    sprintf(tkey, "KEY-%d", rank);
+    sprintf(tval, "VALUE-%d", rank);
+    if (PMI2_SUCCESS != (rc = PMI2_KVS_Put(tkey, tval))) {
+        log_fatal("PMI2_KVS_Put %d\n", rc);
+        return rc;
+    }
+
+    if (PMI2_SUCCESS != (rc = PMI2_KVS_Fence())) {
+        log_fatal("PMI2_KVS_Fence %d\n", rc);
+        return rc;
+    }
+
+    /* expected result: return error status */
+    rc = PMI2_KVS_Get(jobid, rank, tkey, val, sizeof(val), &len);
+    if (PMI2_SUCCESS != rc) {
+        log_fatal("PMI2_KVS_Get [%s=?] %d\n", tkey, rc);
+        return rc;
+    }
+
+    log_info("tkey=%s tval=%s val=%s len=%d\n", tkey, tval, val, len);
+
+    log_assert((int)strlen(tval) == len, "value does not meet expectation");
+    log_assert(!strcmp(tval, val), "value does not meet expectation");
+
+    return 0;
+}
+
+static int test_item8(void)
 {
     int rc = 0;
     int len;
@@ -367,7 +409,7 @@ static int test_item7(void)
     return rc;
 }
 
-static int test_item8(void)
+static int test_item9(void)
 {
     int rc = 0;
     int len;
@@ -409,7 +451,7 @@ static int test_item8(void)
     return rc;
 }
 
-static int test_item9(void)
+static int test_item10(void)
 {
     int rc = 0;
     int i, j, r;
