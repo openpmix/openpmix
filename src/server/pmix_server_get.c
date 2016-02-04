@@ -365,7 +365,8 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, int rank,
     int found = 0;
     pmix_buffer_t xfer, pbkt, *xptr;
     void *last;
-    pmix_hash_table_t *ht;
+    pmix_hash_table_t *hts[3];
+    pmix_hash_table_t **htptr;
     pmix_rank_info_t *iptr;
     bool local;
 
@@ -374,16 +375,24 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, int rank,
      * By default, we assume we are looking for data from a remote
      * client, and then check to see if this is one of my local
      * clients - if so, then we look in that hash table */
-    ht = &nptr->server->remote;
-    local = false;
-    PMIX_LIST_FOREACH(iptr, &nptr->server->ranks, pmix_rank_info_t) {
-        if (iptr->rank == rank) {
-            /* it is known local client - check the local table */
-            ht = &nptr->server->mylocal;
-            local = true;
-            break;
+    memset(hts, 0, sizeof(hts));
+    if (PMIX_RANK_UNDEF == rank) {
+        local = true;
+        hts[0] = &nptr->server->remote;
+        hts[1] = &nptr->server->mylocal;
+    } else {
+        local = false;
+        hts[0] = &nptr->server->remote;
+        PMIX_LIST_FOREACH(iptr, &nptr->server->ranks, pmix_rank_info_t) {
+            if (iptr->rank == rank) {
+                /* it is known local client - check the local table */
+                hts[0] = &nptr->server->mylocal;
+                local = true;
+                break;
+            }
         }
     }
+
     if (scope) {
         *scope = local;
     }
@@ -392,47 +401,51 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, int rank,
      * obtained as a result of a prior direct modex request from
      * a remote peer, or due to data from a local client
      * having been committed */
-    cur_rank = rank;
-    if (PMIX_RANK_UNDEF == rank) {
-        rc = pmix_hash_fetch_by_key(ht, "modex", &cur_rank, &val, &last);
-    } else {
-        rc = pmix_hash_fetch(ht, cur_rank, "modex", &val);
-    }
+    htptr = hts;
     PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
-    while (PMIX_SUCCESS == rc) {
-        if (NULL != val) {
-#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
-            pmix_kval_t *kv;
-
-            /* setup to xfer the data */
-            kv = PMIX_NEW(pmix_kval_t);
-            kv->key = strdup("modex");
-            kv->value = (pmix_value_t *)malloc(sizeof(pmix_value_t));
-            rc = pmix_value_xfer(kv->value, val);
-            if (PMIX_SUCCESS != (rc = pmix_dstore_store(nptr->nspace, cur_rank, kv))) {
-                    PMIX_ERROR_LOG(rc);
-            }
-            PMIX_RELEASE(kv);
-#else
-            pmix_bfrop.pack(&pbkt, &cur_rank, 1, PMIX_INT);
-            /* the client is expecting this to arrive as a byte object
-             * containing a buffer, so package it accordingly */
-            PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
-            xptr = &xfer;
-            PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
-            pmix_bfrop.pack(&pbkt, &xptr, 1, PMIX_BUFFER);
-            xfer.base_ptr = NULL; // protect the passed data
-            xfer.bytes_used = 0;
-            PMIX_DESTRUCT(&xfer);
-#endif /* PMIX_ENABLE_DSTORE */
-            PMIX_VALUE_RELEASE(val);
-            found++;
-        }
+    while (*htptr) {
+        cur_rank = rank;
         if (PMIX_RANK_UNDEF == rank) {
-            rc = pmix_hash_fetch_by_key(ht, NULL, &cur_rank, &val, &last);
+            rc = pmix_hash_fetch_by_key(*htptr, "modex", &cur_rank, &val, &last);
         } else {
-            break;
+            rc = pmix_hash_fetch(*htptr, cur_rank, "modex", &val);
         }
+        while (PMIX_SUCCESS == rc) {
+            if (NULL != val) {
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+                pmix_kval_t *kv;
+
+                /* setup to xfer the data */
+                kv = PMIX_NEW(pmix_kval_t);
+                kv->key = strdup("modex");
+                kv->value = (pmix_value_t *)malloc(sizeof(pmix_value_t));
+                rc = pmix_value_xfer(kv->value, val);
+                if (PMIX_SUCCESS != (rc = pmix_dstore_store(nptr->nspace, cur_rank, kv))) {
+                        PMIX_ERROR_LOG(rc);
+                }
+                PMIX_RELEASE(kv);
+#else
+                pmix_bfrop.pack(&pbkt, &cur_rank, 1, PMIX_INT);
+                /* the client is expecting this to arrive as a byte object
+                 * containing a buffer, so package it accordingly */
+                PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
+                xptr = &xfer;
+                PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
+                pmix_bfrop.pack(&pbkt, &xptr, 1, PMIX_BUFFER);
+                xfer.base_ptr = NULL; // protect the passed data
+                xfer.bytes_used = 0;
+                PMIX_DESTRUCT(&xfer);
+#endif /* PMIX_ENABLE_DSTORE */
+                PMIX_VALUE_RELEASE(val);
+                found++;
+            }
+            if (PMIX_RANK_UNDEF == rank) {
+                rc = pmix_hash_fetch_by_key(*htptr, NULL, &cur_rank, &val, &last);
+            } else {
+                break;
+            }
+        }
+        htptr++;
     }
     PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
     PMIX_DESTRUCT(&pbkt);
