@@ -72,11 +72,7 @@ int pmix_hash_store(pmix_hash_table_t *table,
                         "HASH:STORE rank %d key %s",
                         rank, kin->key);
 
-    if (PMIX_RANK_UNDEF == rank) {
-        id = UINT64_MAX;
-    } else {
-        id = (uint64_t)rank;
-    }
+    id = (uint64_t)rank;
 
     /* lookup the proc data object for this proc - create
      * it if we don't already have it */
@@ -108,6 +104,8 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, int rank,
                         "HASH:FETCH rank %d key %s",
                         rank, (NULL == key) ? "NULL" : key);
 
+    id = (uint64_t)rank;
+
     if (PMIX_RANK_UNDEF == rank) {
         /* PMIX_RANK_UNDEF should return following statuses
          * PMIX_ERR_PROC_ENTRY_NOT_FOUND | PMIX_SUCCESS
@@ -124,7 +122,6 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, int rank,
         /* specified rank can return following statuses
          * PMIX_ERR_PROC_ENTRY_NOT_FOUND | PMIX_ERR_NOT_FOUND | PMIX_SUCCESS
          * special logic is basing on these statuses on a client and a server */
-        id = (uint64_t)rank;
     }
 
     while (PMIX_SUCCESS == rc) {
@@ -236,10 +233,11 @@ int pmix_hash_remove_data(pmix_hash_table_t *table,
     uint64_t id;
     char *node;
 
+    id = (uint64_t)rank;
+
     /* if the rank is wildcard, we want to apply this to
      * all rank entries */
     if (PMIX_RANK_UNDEF == rank) {
-        id = UINT64_MAX;
         rc = pmix_hash_table_get_first_key_uint64(table, &id,
                 (void**)&proc_data, (void**)&node);
         while (PMIX_SUCCESS == rc) {
@@ -262,7 +260,6 @@ int pmix_hash_remove_data(pmix_hash_table_t *table,
     }
 
     /* lookup the specified proc */
-    id = (uint64_t)rank;
     if (NULL == (proc_data = lookup_proc(table, id, false))) {
         /* no data for this proc */
         return PMIX_SUCCESS;
