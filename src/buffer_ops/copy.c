@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2016 Intel, Inc. All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
@@ -343,6 +343,7 @@ int pmix_bfrop_copy_info(pmix_info_t **dest, pmix_info_t *src,
 {
     *dest = (pmix_info_t*)malloc(sizeof(pmix_info_t));
     (void)strncpy((*dest)->key, src->key, PMIX_MAX_KEYLEN);
+    (*dest)->required = src->required;
     return pmix_value_xfer(&(*dest)->value, &src->value);
 }
 

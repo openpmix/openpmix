@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015 Intel, Inc. All rights reserved
+ * Copyright (c) 2013-2016 Intel, Inc. All rights reserved
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -504,6 +504,7 @@ extern void pmix_value_load(pmix_value_t *v, void *data,
 /****    PMIX INFO STRUCT    ****/
 typedef struct {
     char key[PMIX_MAX_KEYLEN+1];  // ensure room for the NULL terminator
+    bool required;                // defaults to optional (i.e., required=false)
     pmix_value_t value;
 } pmix_info_t;
 
@@ -541,7 +542,10 @@ typedef struct {
         (void)strncpy((m)->key, (k), PMIX_MAX_KEYLEN);  \
         pmix_value_load(&((m)->value), (v), (t));       \
     } while(0);
-
+#define PMIX_INFO_REQUIRED(m)       \
+    (m)->required = true;
+#define PMIX_INFO_OPTIONAL(m)       \
+    (m)->required = false;
 
 /****    PMIX LOOKUP RETURN STRUCT    ****/
 typedef struct {

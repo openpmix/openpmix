@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2011-2013 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2016 Intel, Inc. All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.
@@ -561,6 +561,10 @@ int pmix_bfrop_pack_info(pmix_buffer_t *buffer, const void *src,
         /* pack key */
         foo = info[i].key;
         if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &foo, 1, PMIX_STRING))) {
+            return ret;
+        }
+        /* pack required flag */
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_bool(buffer, &info[i].required, 1, PMIX_BOOL))) {
             return ret;
         }
         /* pack the type */
