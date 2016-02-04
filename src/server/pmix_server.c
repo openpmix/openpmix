@@ -5,7 +5,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
- * Copyright (c) 2015      Mellanox Technologies, Inc.
+ * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * $COPYRIGHT$
  *
@@ -14,11 +14,11 @@
  * $HEADER$
  */
 
-#include <private/autogen/config.h>
-#include <pmix/rename.h>
-#include <private/types.h>
-#include <private/pmix_stdint.h>
-#include <private/pmix_socket_errno.h>
+#include <src/include/pmix_config.h>
+
+#include <src/include/types.h>
+#include <src/include/pmix_stdint.h>
+#include <src/include/pmix_socket_errno.h>
 
 #include <pmix_server.h>
 #include <pmix/pmix_common.h>
@@ -80,63 +80,6 @@ PMIX_CLASS_INSTANCE(pmix_usock_queue_t,
                    pmix_object_t,
                    NULL, NULL);
 
-/* define a caddy for thread-shifting operations when
- * the host server executes a callback to us */
- typedef struct {
-    pmix_object_t super;
-    pmix_event_t ev;
-    volatile bool active;
-    pmix_status_t status;
-    const char *nspace;
-    int rank;
-    const char *data;
-    size_t ndata;
-    const char *key;
-    pmix_info_t *info;
-    size_t ninfo;
-    pmix_notification_fn_t err;
-    pmix_kval_t *kv;
-    pmix_value_t *vptr;
-    pmix_server_caddy_t *cd;
-    pmix_server_trkr_t *tracker;
-    union {
-       pmix_release_cbfunc_t relfn;
-       pmix_errhandler_reg_cbfunc_t errregcbfn;
-       pmix_op_cbfunc_t opcbfn;
-    }cbfunc;
-    void *cbdata;
-    int ref;
- } pmix_shift_caddy_t;
-static void scon(pmix_shift_caddy_t *p)
-{
-    p->active = false;
-    p->kv = NULL;
-    p->cbfunc.relfn = NULL;
-    p->cbfunc.errregcbfn = NULL;
-    p->cbfunc.opcbfn = NULL;
-    p->cbdata = NULL;
-}
-static void scdes(pmix_shift_caddy_t *p)
-{
-    if (NULL != p->kv) {
-        PMIX_RELEASE(p->kv);
-    }
-}
-PMIX_CLASS_INSTANCE(pmix_shift_caddy_t,
-                    pmix_object_t,
-                    scon, scdes);
-
-
- #define PMIX_THREADSHIFT(r, c)                       \
- do {                                                 \
-    (r)->active = true;                               \
-    event_assign(&((r)->ev), pmix_globals.evbase,     \
-                 -1, EV_WRITE, (c), (r));             \
-    event_priority_set(&((r)->ev), 0);                \
-    event_active(&((r)->ev), EV_WRITE, 1);            \
-} while(0);
-
-
 /* queue a message to be sent to one of our procs - must
  * provide the following params:
  *
@@ -193,7 +136,7 @@ static void _queue_message(int fd, short args, void *cbdata)
                        EV_WRITE, _queue_message, queue);                \
         event_priority_set(&queue->ev, 0);                              \
         event_active(&queue->ev, EV_WRITE, 1);                          \
-    } while(0);
+    } while (0)
 
 
 static pmix_status_t initialize_server_base(pmix_server_module_t *module)
@@ -284,8 +227,8 @@ static pmix_status_t initialize_server_base(pmix_server_module_t *module)
     return PMIX_SUCCESS;
 }
 
-pmix_status_t PMIx_server_init(pmix_server_module_t *module,
-                               pmix_info_t info[], size_t ninfo)
+PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
+                                           pmix_info_t info[], size_t ninfo)
 {
     pmix_usock_posted_recv_t *req;
     pmix_status_t rc;
@@ -406,7 +349,7 @@ static void cleanup_server_state(void)
     pmix_class_finalize();
 }
 
-pmix_status_t PMIx_server_finalize(void)
+PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
 {
     if (1 != pmix_globals.init_cntr) {
         --pmix_globals.init_cntr;
@@ -607,9 +550,9 @@ static void _register_nspace(int sd, short args, void *cbdata)
 }
 
 /* setup the data for a job */
-pmix_status_t PMIx_server_register_nspace(const char nspace[], int nlocalprocs,
-                                          pmix_info_t info[], size_t ninfo,
-                                          pmix_op_cbfunc_t cbfunc, void *cbdata)
+PMIX_EXPORT pmix_status_t PMIx_server_register_nspace(const char nspace[], int nlocalprocs,
+                                                      pmix_info_t info[], size_t ninfo,
+                                                      pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_setup_caddy_t *cd;
 
@@ -651,7 +594,7 @@ static void _deregister_nspace(int sd, short args, void *cbdata)
     PMIX_RELEASE(cd);
 }
 
-void PMIx_server_deregister_nspace(const char nspace[])
+PMIX_EXPORT void PMIx_server_deregister_nspace(const char nspace[])
 {
     pmix_setup_caddy_t *cd;
 
@@ -822,9 +765,9 @@ static void _register_client(int sd, short args, void *cbdata)
     PMIX_RELEASE(cd);
 }
 
-pmix_status_t PMIx_server_register_client(const pmix_proc_t *proc,
-                                          uid_t uid, gid_t gid, void *server_object,
-                                          pmix_op_cbfunc_t cbfunc, void *cbdata)
+PMIX_EXPORT pmix_status_t PMIx_server_register_client(const pmix_proc_t *proc,
+                                                      uid_t uid, gid_t gid, void *server_object,
+                                                      pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_setup_caddy_t *cd;
 
@@ -882,7 +825,7 @@ static void _deregister_client(int sd, short args, void *cbdata)
     PMIX_RELEASE(cd);
 }
 
-void PMIx_server_deregister_client(const pmix_proc_t *proc)
+PMIX_EXPORT void PMIx_server_deregister_client(const pmix_proc_t *proc)
 {
     pmix_setup_caddy_t *cd;
 
@@ -900,7 +843,7 @@ void PMIx_server_deregister_client(const pmix_proc_t *proc)
 }
 
 /* setup the envars for a child process */
-pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char ***env)
+PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char ***env)
 {
     char rankstr[128];
 
@@ -1018,9 +961,9 @@ static void _dmodex_req(int sd, short args, void *cbdata)
     cd->active = false;
 }
 
-pmix_status_t PMIx_server_dmodex_request(const pmix_proc_t *proc,
-                                         pmix_dmodex_response_fn_t cbfunc,
-                                         void *cbdata)
+PMIX_EXPORT pmix_status_t PMIx_server_dmodex_request(const pmix_proc_t *proc,
+                                                     pmix_dmodex_response_fn_t cbfunc,
+                                                     void *cbdata)
 {
     pmix_setup_caddy_t *cd;
 
@@ -1346,8 +1289,8 @@ static void _store_internal(int sd, short args, void *cbdata)
     cd->active = false;
  }
 
-pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc,
-                                  const char *key, pmix_value_t *val)
+PMIX_EXPORT pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc,
+                                              const char *key, pmix_value_t *val)
 {
     pmix_shift_caddy_t *cd;
     pmix_status_t rc;
@@ -1381,7 +1324,7 @@ pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc,
 
 #define PMIX_MAX_NODE_PREFIX        50
 
-pmix_status_t PMIx_generate_regex(const char *input, char **regexp)
+PMIX_EXPORT pmix_status_t PMIx_generate_regex(const char *input, char **regexp)
 {
     char *vptr, *vsave;
     char prefix[PMIX_MAX_NODE_PREFIX];
@@ -1595,7 +1538,7 @@ pmix_status_t PMIx_generate_regex(const char *input, char **regexp)
     return PMIX_SUCCESS;
 }
 
-pmix_status_t PMIx_generate_ppn(const char *input, char **regexp)
+PMIX_EXPORT pmix_status_t PMIx_generate_ppn(const char *input, char **regexp)
 {
     char **ppn, **npn;
     int i, j, start, end;

@@ -5,7 +5,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
- * Copyright (c) 2015      Mellanox Technologies, Inc.
+ * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * $COPYRIGHT$
  *
@@ -14,10 +14,10 @@
  * $HEADER$
  */
 
-#include <private/autogen/config.h>
-#include <pmix/rename.h>
-#include <private/types.h>
-#include <private/pmix_stdint.h>
+#include <src/include/pmix_config.h>
+
+#include <src/include/types.h>
+#include <src/include/pmix_stdint.h>
 
 #include <pmix.h>
 
@@ -65,8 +65,8 @@ static void wait_cbfunc(struct pmix_peer_t *pr,
                         pmix_buffer_t *buf, void *cbdata);
 static void op_cbfunc(int status, void *cbdata);
 
-int PMIx_Fence(const pmix_proc_t procs[], size_t nprocs,
-               const pmix_info_t info[], size_t ninfo)
+PMIX_EXPORT int PMIx_Fence(const pmix_proc_t procs[], size_t nprocs,
+                           const pmix_info_t info[], size_t ninfo)
 {
     pmix_cb_t *cb;
     int rc;
@@ -107,9 +107,9 @@ int PMIx_Fence(const pmix_proc_t procs[], size_t nprocs,
     return rc;
 }
 
-int PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs,
-                  const pmix_info_t info[], size_t ninfo,
-                  pmix_op_cbfunc_t cbfunc, void *cbdata)
+PMIX_EXPORT int PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs,
+                              const pmix_info_t info[], size_t ninfo,
+                              pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_FENCENB_CMD;

@@ -23,8 +23,8 @@
 /** @file:
  *
  */
-#include <private/autogen/config.h>
-#include <pmix/rename.h>
+#include <src/include/pmix_config.h>
+
 #include <pmix/pmix_common.h>
 
 #ifdef HAVE_STRING_H
@@ -392,8 +392,8 @@ pmix_status_t pmix_bfrop_close(void)
 }
 
 /**** UTILITY SUPPORT ****/
-void pmix_value_load(pmix_value_t *v, void *data,
-                     pmix_data_type_t type)
+PMIX_EXPORT void pmix_value_load(pmix_value_t *v, void *data,
+                                 pmix_data_type_t type)
 {
     pmix_byte_object_t *bo;
 

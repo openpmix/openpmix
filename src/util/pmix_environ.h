@@ -30,8 +30,8 @@
 #ifndef PMIX_ENVIRON_H
 #define PMIX_ENVIRON_H
 
-#include <private/autogen/config.h>
-#include <pmix/rename.h>
+#include <src/include/pmix_config.h>
+
 
 #ifdef HAVE_CRT_EXTERNS_H
 #include <crt_externs.h>

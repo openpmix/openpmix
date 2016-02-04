@@ -22,7 +22,7 @@
  * $HEADER$
  *
  */
-#include <private/autogen/config.h>
+#include <src/include/pmix_config.h>
 #include <pmix.h>
 
 #include <stdio.h>
@@ -190,6 +190,12 @@ int main(int argc, char **argv)
 
     TEST_VERBOSE(("Client ns %s rank %d: PASSED", myproc.nspace, myproc.rank));
     PMIx_Deregister_errhandler(1, op_callbk, NULL);
+
+    /* In case of direct modex we want to delay Finalize
+       until everybody has finished. Otherwise some processes
+       will fail to get data from others who already exited */
+    PMIx_Fence(NULL, 0, NULL, 0);
+
     /* finalize us */
     TEST_VERBOSE(("Client ns %s rank %d: Finalizing", myproc.nspace, myproc.rank));
     if (PMIX_SUCCESS != (rc = PMIx_Finalize())) {

@@ -1,11 +1,11 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2015 Intel, Inc.  All rights reserved.
- * Copyright (c) 2014-2015 Research Organization for Information Science
+ * Copyright (c) 2014-2016 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2016 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
- * Copyright (c) 2015      Mellanox Technologies, Inc.
+ * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * $COPYRIGHT$
  *
@@ -14,11 +14,11 @@
  * $HEADER$
  */
 
-#include <private/autogen/config.h>
-#include <pmix/rename.h>
-#include <private/types.h>
-#include <private/pmix_stdint.h>
-#include <private/pmix_socket_errno.h>
+#include <src/include/pmix_config.h>
+
+#include <src/include/types.h>
+#include <src/include/pmix_stdint.h>
+#include <src/include/pmix_socket_errno.h>
 
 #include <pmix.h>
 
@@ -67,11 +67,11 @@ static const char pmix_version_string[] = PMIX_VERSION;
 
 #define PMIX_MAX_RETRIES 10
 
-static int usock_connect(struct sockaddr *address);
+static pmix_status_t usock_connect(struct sockaddr *address, int *fd);
 static void myerrhandler(pmix_status_t status,
                          pmix_proc_t procs[], size_t nprocs,
                          pmix_info_t info[], size_t ninfo)
-{
+ {
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:client default errhandler activated");
 }
@@ -189,17 +189,16 @@ static void job_data(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
 
 static pmix_status_t connect_to_server(struct sockaddr_un *address, void *cbdata)
 {
-    int rc;
+    int sd;
     pmix_status_t ret;
     pmix_cmd_t cmd = PMIX_REQ_CMD;
     pmix_buffer_t *req;
 
-    rc = usock_connect((struct sockaddr *)address);
-    if( rc < 0 ){
-        PMIX_ERROR_LOG((pmix_status_t)rc);
-        return (pmix_status_t)rc;
+    if (PMIX_SUCCESS != (ret=usock_connect((struct sockaddr *)address, &sd))) {
+        PMIX_ERROR_LOG(ret);
+        return ret;
     }
-    pmix_client_globals.myserver.sd = rc;
+    pmix_client_globals.myserver.sd = sd;
     /* setup recv event */
     event_assign(&pmix_client_globals.myserver.recv_event,
                  pmix_globals.evbase,
@@ -231,12 +230,12 @@ static pmix_status_t connect_to_server(struct sockaddr_un *address, void *cbdata
     return PMIX_SUCCESS;
 }
 
-const char* PMIx_Get_version(void)
+PMIX_EXPORT const char* PMIx_Get_version(void)
 {
     return pmix_version_string;
 }
 
-int PMIx_Init(pmix_proc_t *proc)
+PMIX_EXPORT int PMIx_Init(pmix_proc_t *proc)
 {
     char **uri, *evar;
     int rc, debug_level;
@@ -403,7 +402,7 @@ int PMIx_Init(pmix_proc_t *proc)
     return rc;
 }
 
-int PMIx_Initialized(void)
+PMIX_EXPORT int PMIx_Initialized(void)
 {
     if (0 < pmix_globals.init_cntr) {
         return true;
@@ -411,7 +410,7 @@ int PMIx_Initialized(void)
     return false;
 }
 
-pmix_status_t PMIx_Finalize(void)
+PMIX_EXPORT pmix_status_t PMIx_Finalize(void)
 {
     pmix_buffer_t *msg;
     pmix_cb_t *cb;
@@ -482,7 +481,7 @@ pmix_status_t PMIx_Finalize(void)
     return PMIX_SUCCESS;
 }
 
-int PMIx_Abort(int flag, const char msg[],
+PMIX_EXPORT int PMIx_Abort(int flag, const char msg[],
                pmix_proc_t procs[], size_t nprocs)
 {
     pmix_buffer_t *bfr;
@@ -611,7 +610,7 @@ static void _putfn(int sd, short args, void *cbdata)
     cb->active = false;
 }
 
-pmix_status_t PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
+PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
 {
     pmix_cb_t *cb;
     pmix_status_t rc;
@@ -632,7 +631,7 @@ pmix_status_t PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
     cb->value = val;
 
     /* pass this into the event library for thread protection */
-    PMIX_THREAD_SHIFT(cb, _putfn);
+    PMIX_THREADSHIFT(cb, _putfn);
 
     /* wait for the result */
     PMIX_WAIT_FOR_COMPLETION(cb->active);
@@ -698,7 +697,7 @@ static void _commitfn(int sd, short args, void *cbdata)
     cb->active = false;
 }
 
-pmix_status_t PMIx_Commit(void)
+PMIX_EXPORT pmix_status_t PMIx_Commit(void)
 {
     pmix_cb_t *cb;
     pmix_status_t rc;
@@ -716,7 +715,7 @@ pmix_status_t PMIx_Commit(void)
     cb->active = true;
 
     /* pass this into the event library for thread protection */
-    PMIX_THREAD_SHIFT(cb, _commitfn);
+    PMIX_THREADSHIFT(cb, _commitfn);
 
     /* wait for the result */
     PMIX_WAIT_FOR_COMPLETION(cb->active);
@@ -778,8 +777,9 @@ static void _peersfn(int sd, short args, void *cbdata)
     cb->active = false;
 }
 
-pmix_status_t PMIx_Resolve_peers(const char *nodename, const char *nspace,
-                                 pmix_proc_t **procs, size_t *nprocs)
+PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename,
+                                             const char *nspace,
+                                             pmix_proc_t **procs, size_t *nprocs)
 {
     pmix_cb_t *cb;
     pmix_status_t rc;
@@ -793,7 +793,7 @@ pmix_status_t PMIx_Resolve_peers(const char *nodename, const char *nspace,
     }
 
     /* pass this into the event library for thread protection */
-    PMIX_THREAD_SHIFT(cb, _peersfn);
+    PMIX_THREADSHIFT(cb, _peersfn);
 
     /* wait for the result */
     PMIX_WAIT_FOR_COMPLETION(cb->active);
@@ -838,7 +838,7 @@ static void _nodesfn(int sd, short args, void *cbdata)
     cb->active = false;
 }
 
-pmix_status_t PMIx_Resolve_nodes(const char *nspace, char **nodelist)
+PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const char *nspace, char **nodelist)
 {
     pmix_cb_t *cb;
     pmix_status_t rc;
@@ -851,7 +851,7 @@ pmix_status_t PMIx_Resolve_nodes(const char *nspace, char **nodelist)
     }
 
     /* pass this into the event library for thread protection */
-    PMIX_THREAD_SHIFT(cb, _nodesfn);
+    PMIX_THREADSHIFT(cb, _nodesfn);
 
     /* wait for the result */
     PMIX_WAIT_FOR_COMPLETION(cb->active);
@@ -1158,8 +1158,8 @@ void pmix_client_process_nspace_blob(const char *nspace, pmix_buffer_t *bptr)
     PMIX_RELEASE(kptr);
 }
 
-static int usock_connect(struct sockaddr *addr)
-{
+ static pmix_status_t usock_connect(struct sockaddr *addr, int *fd)
+ {
     int sd=-1;
     pmix_status_t rc;
     pmix_socklen_t addrlen = 0;
@@ -1219,13 +1219,13 @@ static int usock_connect(struct sockaddr *addr)
     /* send our identity and any authentication credentials to the server */
     if (PMIX_SUCCESS != (rc = send_connect_ack(sd))) {
         CLOSE_THE_SOCKET(sd);
-        return sd;
+        return rc;
     }
 
     /* do whatever handshake is required */
     if (PMIX_SUCCESS != (rc = recv_connect_ack(sd))) {
         CLOSE_THE_SOCKET(sd);
-        return sd;
+        return rc;
     }
 
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -1236,7 +1236,8 @@ static int usock_connect(struct sockaddr *addr)
 
     pmix_usock_set_nonblocking(sd);
 
-    return sd;
+    *fd = sd;
+    return PMIX_SUCCESS;
 }
 
 static pmix_status_t pack_regevents (pmix_buffer_t *msg, pmix_cmd_t cmd,

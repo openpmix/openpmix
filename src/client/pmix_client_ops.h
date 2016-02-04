@@ -10,8 +10,8 @@
 #ifndef PMIX_CLIENT_OPS_H
 #define PMIX_CLIENT_OPS_H
 
-#include <private/autogen/config.h>
-#include <pmix/rename.h>
+#include <src/include/pmix_config.h>
+
 
 #include "src/buffer_ops/buffer_ops.h"
 #include "src/class/pmix_hash_table.h"

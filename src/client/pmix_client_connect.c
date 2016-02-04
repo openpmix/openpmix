@@ -5,6 +5,9 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
+ * Copyright (c) 2016      Mellanox Technologies, Inc.
+ *                         All rights reserved.
+ *
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -12,10 +15,10 @@
  * $HEADER$
  */
 
-#include <private/autogen/config.h>
-#include <pmix/rename.h>
-#include <private/types.h>
-#include <private/pmix_stdint.h>
+#include <src/include/pmix_config.h>
+
+#include <src/include/types.h>
+#include <src/include/pmix_stdint.h>
 
 #include <pmix.h>
 
@@ -58,8 +61,8 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                         pmix_buffer_t *buf, void *cbdata);
 static void op_cbfunc(int status, void *cbdata);
 
-int PMIx_Connect(const pmix_proc_t procs[], size_t nprocs,
-                 const pmix_info_t info[], size_t ninfo)
+PMIX_EXPORT int PMIx_Connect(const pmix_proc_t procs[], size_t nprocs,
+                             const pmix_info_t info[], size_t ninfo)
 {
     int rc;
     pmix_cb_t *cb;
@@ -99,9 +102,9 @@ int PMIx_Connect(const pmix_proc_t procs[], size_t nprocs,
     return rc;
 }
 
-pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t nprocs,
-                              const pmix_info_t info[], size_t ninfo,
-                              pmix_op_cbfunc_t cbfunc, void *cbdata)
+PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t nprocs,
+                                          const pmix_info_t info[], size_t ninfo,
+                                          pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_CONNECTNB_CMD;
@@ -169,8 +172,8 @@ pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t nprocs,
     return PMIX_SUCCESS;
 }
 
-int PMIx_Disconnect(const pmix_proc_t procs[], size_t nprocs,
-                    const pmix_info_t info[], size_t ninfo)
+PMIX_EXPORT int PMIx_Disconnect(const pmix_proc_t procs[], size_t nprocs,
+                                const pmix_info_t info[], size_t ninfo)
 {
     int rc;
     pmix_cb_t *cb;
@@ -206,9 +209,9 @@ int PMIx_Disconnect(const pmix_proc_t procs[], size_t nprocs,
     return rc;
 }
 
-pmix_status_t PMIx_Disconnect_nb(const pmix_proc_t procs[], size_t nprocs,
-                                 const pmix_info_t info[], size_t ninfo,
-                                 pmix_op_cbfunc_t cbfunc, void *cbdata)
+PMIX_EXPORT pmix_status_t PMIx_Disconnect_nb(const pmix_proc_t procs[], size_t nprocs,
+                                             const pmix_info_t info[], size_t ninfo,
+                                             pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_DISCONNECTNB_CMD;

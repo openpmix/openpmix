@@ -64,8 +64,8 @@
 #ifndef PMIX_OUTPUT_H_
 #define PMIX_OUTPUT_H_
 
-#include <private/autogen/config.h>
-#include <pmix/rename.h>
+#include <src/include/pmix_config.h>
+
 
 #ifdef HAVE_STDARG_H
 #include <stdarg.h>

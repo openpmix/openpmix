@@ -17,7 +17,7 @@
 #ifndef TEST_COMMON_H
 #define TEST_COMMON_H
 
-#include <private/autogen/config.h>
+#include <src/include/pmix_config.h>
 #include <pmix/pmix_common.h>
 
 #include <stdio.h>
