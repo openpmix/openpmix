@@ -365,7 +365,7 @@ int PMIx_Init(pmix_proc_t *proc)
 
     /* setup the support */
 #if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
-    if (PMIX_SUCCESS != (rc = pmix_dstore_init(1))) {
+    if (PMIX_SUCCESS != (rc = pmix_dstore_init())) {
         return rc;
     }
 #endif /* PMIX_ENABLE_DSTORE */
