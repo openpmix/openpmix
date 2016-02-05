@@ -42,7 +42,7 @@ void pmix_sm_finalize(void)
     return ;
 }
 
-int segment_create(pmix_sm_seg_t *sm_seg, const char *file_name, size_t size)
+int pmix_sm_segment_create(pmix_sm_seg_t *sm_seg, const char *file_name, size_t size)
 {
     if (!pmix_sm.segment_create) {
         return PMIX_ERR_NOT_SUPPORTED;
@@ -51,7 +51,7 @@ int segment_create(pmix_sm_seg_t *sm_seg, const char *file_name, size_t size)
     return pmix_sm.segment_create(sm_seg, file_name, size);
 }
 
-int segment_attach(pmix_sm_seg_t *sm_seg)
+int pmix_sm_segment_attach(pmix_sm_seg_t *sm_seg)
 {
     if (!pmix_sm.segment_attach) {
         return PMIX_ERR_NOT_SUPPORTED;
@@ -60,7 +60,7 @@ int segment_attach(pmix_sm_seg_t *sm_seg)
     return pmix_sm.segment_attach(sm_seg);
 }
 
-int segment_detach(pmix_sm_seg_t *sm_seg)
+int pmix_sm_segment_detach(pmix_sm_seg_t *sm_seg)
 {
     if (!pmix_sm.segment_detach) {
         return PMIX_ERR_NOT_SUPPORTED;
@@ -69,7 +69,7 @@ int segment_detach(pmix_sm_seg_t *sm_seg)
     return pmix_sm.segment_detach(sm_seg);
 }
 
-int segment_unlink(pmix_sm_seg_t *sm_seg)
+int pmix_sm_segment_unlink(pmix_sm_seg_t *sm_seg)
 {
     if (!pmix_sm.segment_unlink) {
         return PMIX_ERR_NOT_SUPPORTED;

@@ -493,9 +493,9 @@ static void _delete_sm_desc(seg_desc_t *desc)
         tmp = desc->next;
         /* detach & unlink from current desc */
         if (desc->seg_info.seg_cpid == getpid()) {
-            segment_unlink(&desc->seg_info);
+            pmix_sm_segment_unlink(&desc->seg_info);
         }
-        segment_detach(&desc->seg_info);
+        pmix_sm_segment_detach(&desc->seg_info);
         free(desc);
         desc = tmp;
     }
@@ -541,7 +541,7 @@ static seg_desc_t *_create_new_segment(segment_type type, char *nsname, uint32_t
     new_seg->id = id;
     new_seg->next = NULL;
     new_seg->type = type;
-    rc = segment_create(&new_seg->seg_info, file_name, size);
+    rc = pmix_sm_segment_create(&new_seg->seg_info, file_name, size);
     if (PMIX_SUCCESS != rc) {
         free(new_seg);
         new_seg = NULL;
@@ -578,7 +578,7 @@ static seg_desc_t *_attach_new_segment(segment_type type, char *nsname, uint32_t
             PMIX_ERROR_LOG(rc);
             return NULL;
     }
-    rc = segment_attach(&new_seg->seg_info);
+    rc = pmix_sm_segment_attach(&new_seg->seg_info);
     if (PMIX_SUCCESS != rc) {
         free(new_seg);
         new_seg = NULL;
