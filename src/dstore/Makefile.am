@@ -8,7 +8,9 @@
 
 
 headers += \
-        src/dstore/pmix_dstore.h
+        src/dstore/pmix_dstore.h \
+        src/dstore/pmix_esh.h
 
 sources += \
-        src/dstore/pmix_dstore.c
+        src/dstore/pmix_dstore.c \
+        src/dstore/pmix_esh.c
