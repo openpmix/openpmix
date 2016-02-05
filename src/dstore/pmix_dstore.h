@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2016 Mellanox Technologies, Inc.
+ * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * $COPYRIGHT$
  *
@@ -11,75 +11,70 @@
 #ifndef PMIX_DSTORE_H
 #define PMIX_DSTORE_H
 
-#include "src/class/pmix_list.h"
-#include "src/util/error.h"
+#include <private/autogen/config.h>
+#include <pmix/rename.h>
 
-#include "src/sm/pmix_sm.h"
-#include "src/buffer_ops/types.h"
+#include <pmix/pmix_common.h>
+#include "src/buffer_ops/buffer_ops.h"
+
 
 BEGIN_C_DECLS
 
-#define INITIAL_SEG_SIZE 4096
-#define NS_META_SEG_SIZE (1<<22)
-#define NS_DATA_SEG_SIZE (1<<22)
-
-typedef enum {
-    INITIAL_SEGMENT,
-    NS_META_SEGMENT,
-    NS_DATA_SEGMENT
-} segment_type;
-
-/* initial segment format:
- * size_t num_elems;
- * int full; //indicate to client that it needs to attach to the next segment
- * ns_seg_info_t ns_seg_info[max_ns_num];
- */
-
-typedef struct {
-    char ns_name[PMIX_MAX_NSLEN+1];
-    size_t num_meta_seg;/* read by clients to attach to this number of segments. */
-    size_t num_data_seg;
-} ns_seg_info_t;
-
-/* meta segment format:
- * size_t num_elems;
- * rank_meta_info meta_info[max_meta_elems];
- */
-
-typedef struct {
-    size_t rank;
-    size_t offset;
-    size_t count;
-} rank_meta_info;
-
-/* this structs are used to store information about
- * shared segments addresses locally at each process,
- * so they are common for different types of segments
- * and don't have a specific content (namespace's info,
- * rank's meta info, ranks's data). */
-
-typedef struct seg_desc_t seg_desc_t;
-struct seg_desc_t {
-    segment_type type;
-    pmix_sm_seg_t seg_info;
-    uint32_t id;
-    seg_desc_t *next;
-};
-
-typedef struct {
-    pmix_list_item_t super;
-    char ns_name[PMIX_MAX_NSLEN+1];
-    size_t num_meta_seg;
-    size_t num_data_seg;
-    seg_desc_t *meta_seg;
-    seg_desc_t *data_seg;
-} ns_track_elem_t;
-PMIX_CLASS_DECLARATION(ns_track_elem_t);
 
 int pmix_dstore_init(void);
-int pmix_dstore_finalize(void);
+void pmix_dstore_finalize(void);
 int pmix_dstore_store(const char *nspace, int rank, pmix_kval_t *kv);
 int pmix_dstore_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs);
+
+/**
+ * Initialize the module. Returns an error if the module cannot
+ * run, success if it can and wants to be used.
+ */
+typedef int (*pmix_dstore_base_module_init_fn_t)(void);
+
+/**
+ * Finalize the module. Tear down any allocated storage, disconnect
+ * from any system support.
+ */
+typedef int (*pmix_dstore_base_module_fini_fn_t)(void);
+
+/**
+* store key/value pair in datastore.
+*
+* @param nspace   namespace string
+*
+* @param rank     rank.
+*
+* @param kv       key/value pair.
+*
+* @return PMIX_SUCCESS on success.
+*/
+typedef int (*pmix_dstore_base_module_store_fn_t)(const char *nspace, int rank, pmix_kval_t *kv);
+
+/**
+* fetch value in datastore.
+*
+* @param nspace   namespace string
+*
+* @param rank     rank.
+*
+* @param key      key.
+*
+* @return kvs(key/value pair) and PMIX_SUCCESS on success.
+*/
+typedef int (*pmix_dstrore_base_module_fetch_fn_t)(const char *nspace, int rank, const char *key, pmix_value_t **kvs);
+
+
+/**
+* structure for dstore modules
+*/
+typedef struct {
+    const char *name;
+    pmix_dstore_base_module_init_fn_t        init;
+    pmix_dstore_base_module_fini_fn_t        finalize;
+    pmix_dstore_base_module_store_fn_t       store;
+    pmix_dstrore_base_module_fetch_fn_t      fetch;
+} pmix_dstore_base_module_t;
 
 END_C_DECLS
 
