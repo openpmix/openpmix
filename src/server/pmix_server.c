@@ -290,7 +290,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     }
 
 #if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
-    if (PMIX_SUCCESS != (rc = pmix_dstore_init(0))) {
+    if (PMIX_SUCCESS != (rc = pmix_dstore_init())) {
         return rc;
     }
 #endif /* PMIX_ENABLE_DSTORE */

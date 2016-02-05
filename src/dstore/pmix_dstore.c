@@ -75,10 +75,13 @@ PMIX_CLASS_INSTANCE(ns_track_elem_t,
                     pmix_list_item_t,
                     ncon, ndes);
 
-static int is_client;
+static inline int _is_server(void)
+{
+    return (pmix_globals.server);
+}
 
 
-int pmix_dstore_init(int is_cli)
+int pmix_dstore_init(void)
 {
     int rc;
     seg_desc_t *seg;
@@ -95,7 +98,6 @@ int pmix_dstore_init(int is_cli)
     PMIX_CONSTRUCT(&namespace_info_list, pmix_list_t);
     global_sm_seg_first = NULL;
     global_sm_seg_last = NULL;
-    is_client = is_cli;
     tmp_dir = strdup(pmix_tmp_directory());
     _set_constants_from_env();
     max_ns_num = (initial_segment_size - sizeof(size_t) - sizeof(int))/sizeof(ns_seg_info_t);
@@ -106,7 +108,7 @@ int pmix_dstore_init(int is_cli)
      * simultaneously.*/
     lockfile_name = malloc(256);
     snprintf(lockfile_name, 256, "%s/dstore_sm.lock", tmp_dir);
-    if (0 == is_client) {
+    if (_is_server()) {
         lockfd = open(lockfile_name, O_CREAT | O_RDWR | O_EXCL, 0600);
         /* if previous launch was crashed, the lockfile might not be deleted and unlocked,
          * so we delete it and create a new one. */
@@ -122,7 +124,7 @@ int pmix_dstore_init(int is_cli)
         return PMIX_ERROR;
     }
 
-    if (0 == is_client) {
+    if (_is_server()) {
         seg = _create_new_segment(INITIAL_SEGMENT, NULL, 0);
     } else {
         seg = _attach_new_segment(INITIAL_SEGMENT, NULL, 0);
@@ -146,7 +148,7 @@ int pmix_dstore_finalize(void)
         free(tmp_dir);
     }
     close(lockfd);
-    if (0 == is_client) {
+    if (_is_server()) {
         unlink(lockfile_name);
     }
     free(lockfile_name);
@@ -581,7 +583,7 @@ static int _update_ns_elem(ns_track_elem_t *ns_elem, ns_seg_info_t *info)
 
     /* synchronize number of meta segments for the target namespace. */
     for (i = ns_elem->num_meta_seg; i < info->num_meta_seg; i++) {
-        if (0 == is_client) {
+        if (_is_server()) {
             seg = _create_new_segment(NS_META_SEGMENT, info->ns_name, i);
         } else {
             seg = _attach_new_segment(NS_META_SEGMENT, info->ns_name, i);
@@ -607,7 +609,7 @@ static int _update_ns_elem(ns_track_elem_t *ns_elem, ns_seg_info_t *info)
     }
     /* synchronize number of data segments for the target namespace. */
     for (i = ns_elem->num_data_seg; i < info->num_data_seg; i++) {
-        if (0 == is_client) {
+        if (_is_server()) {
             seg = _create_new_segment(NS_DATA_SEGMENT, info->ns_name, i);
             offs = sizeof(size_t);//shift on offset field itself
             memcpy(seg->seg_info.seg_base_addr, &offs, sizeof(size_t));
