@@ -29,21 +29,21 @@
 #endif /* MAP_ANONYMOUS and MAP_ANON */
 
 
-static int _segment_create(pmix_sm_seg_t *sm_seg, const char *file_name, size_t size);
-static int _segment_attach(pmix_sm_seg_t *sm_seg);
-static int _segment_detach(pmix_sm_seg_t *sm_seg);
-static int _segment_unlink(pmix_sm_seg_t *sm_seg);
+static int _mmap_segment_create(pmix_sm_seg_t *sm_seg, const char *file_name, size_t size);
+static int _mmap_segment_attach(pmix_sm_seg_t *sm_seg);
+static int _mmap_segment_detach(pmix_sm_seg_t *sm_seg);
+static int _mmap_segment_unlink(pmix_sm_seg_t *sm_seg);
 
 pmix_sm_base_module_t pmix_sm_mmap_module = {
     "mmap",
-    _segment_create,
-    _segment_attach,
-    _segment_detach,
-    _segment_unlink
+    _mmap_segment_create,
+    _mmap_segment_attach,
+    _mmap_segment_detach,
+    _mmap_segment_unlink
 };
 
 
-int _segment_create(pmix_sm_seg_t *sm_seg, const char *file_name, size_t size)
+int _mmap_segment_create(pmix_sm_seg_t *sm_seg, const char *file_name, size_t size)
 {
     int rc;
     void *seg_addr;
@@ -95,7 +95,7 @@ out:
     return rc;
 }
 
-int _segment_attach(pmix_sm_seg_t *sm_seg)
+int _mmap_segment_attach(pmix_sm_seg_t *sm_seg)
 {
     if (-1 == (sm_seg->seg_id = open(sm_seg->seg_name, O_RDWR))) {
         return PMIX_ERROR;
@@ -124,7 +124,7 @@ int _segment_attach(pmix_sm_seg_t *sm_seg)
     return PMIX_SUCCESS;
 }
 
-int _segment_detach(pmix_sm_seg_t *sm_seg)
+int _mmap_segment_detach(pmix_sm_seg_t *sm_seg)
 {
     int rc = PMIX_SUCCESS;
 
@@ -140,7 +140,7 @@ int _segment_detach(pmix_sm_seg_t *sm_seg)
     return rc;
 }
 
-int _segment_unlink(pmix_sm_seg_t *sm_seg)
+int _mmap_segment_unlink(pmix_sm_seg_t *sm_seg)
 {
     if (-1 == unlink(sm_seg->seg_name)) {
         pmix_output_verbose(2, pmix_globals.debug_output,
