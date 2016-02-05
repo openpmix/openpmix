@@ -14,6 +14,7 @@
 
 #include "src/buffer_ops/buffer_ops.h"
 #include "src/util/pmix_environ.h"
+#include "src/util/hash.h"
 #include "src/sm/pmix_sm.h"
 
 #include "pmix_dstore.h"
@@ -36,6 +37,7 @@ static void _update_initial_segment_info(void);
 static void _set_constants_from_env(void);
 static void _delete_sm_desc(seg_desc_t *desc);
 static int _pmix_getpagesize(void);
+static inline uint32_t _get_univ_size(const char *nspace);
 
 seg_desc_t *global_sm_seg_first, *global_sm_seg_last;
 static pmix_list_t namespace_info_list;
@@ -251,8 +253,10 @@ int pmix_dstore_fetch(const char *nspace, int rank, const char *key, pmix_value_
     uint8_t *addr;
     pmix_buffer_t buffer;
     pmix_value_t val;
+    uint32_t nprocs;
+    int cur_rank;
 
-    if (NULL == key || PMIX_RANK_UNDEF == rank) {
+    if (NULL == key) {
         PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
                              "dstore: Does not support passed parameters"));
         return PMIX_ERROR;
@@ -260,6 +264,18 @@ int pmix_dstore_fetch(const char *nspace, int rank, const char *key, pmix_value_
 
     PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
                          "%s:%d:%s: for %s:%d look for key %s", __FILE__, __LINE__, __func__, nspace, rank, key));
+
+    if (kvs) {
+        *kvs = NULL;
+    }
+
+    if (PMIX_RANK_UNDEF == rank) {
+        nprocs = _get_univ_size(nspace);
+        cur_rank = -1;
+    } else {
+        nprocs = 1;
+        cur_rank = rank;
+    }
 
     /* set shared lock */
     flock(lockfd, LOCK_SH);
@@ -312,100 +328,97 @@ int pmix_dstore_fetch(const char *nspace, int rank, const char *key, pmix_value_
     /* now we know info about meta segment for this namespace. */
     meta_seg = elem->meta_seg;
     data_seg = elem->data_seg;
-    /* Then we look for the rank meta info in the shared meta segment. */
-    rinfo = _get_rank_meta_info(rank, meta_seg);
-    if (NULL == rinfo) {
-        PMIX_OUTPUT_VERBOSE((0, pmix_globals.debug_output,
-                    "%s:%d:%s:  no data for this rank is found in the shared memory. rank %d", __FILE__, __LINE__, __func__, rank));
-        /* no data for this rank is found in the shared memory. */
-        /* unset lock */
-        flock(lockfd, LOCK_UN);
-        return PMIX_ERROR;
-    }
-    addr = _get_data_region_by_offset(data_seg, rinfo->offset);
-    if (NULL == addr) {
-        PMIX_ERROR_LOG(PMIX_ERROR);
-        /* unset lock */
-        flock(lockfd, LOCK_UN);
-        return PMIX_ERROR;
-    }
-    kval_cnt = rinfo->count;
-    rc = PMIX_ERROR;
 
-    while (0 < kval_cnt) {
-        /* data is stored in the following format:
-         * key[PMIX_MAX_KEYLEN+1]
-         * size_t size
-         * byte buffer containing pmix_value, should be loaded to pmix_buffer_t and unpacked.
-         * next kval pair
-         * .....
-         * EXTENSION slot which has key = EXTENSION_SLOT and a size_t value for offset to next data address for this process.
-         */
-        if (0 == strncmp(addr, "INVALIDATED", PMIX_MAX_KEYLEN+1)) {
-            PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
-                        "%s:%d:%s: for rank %s:%d, skip INVALIDATED region", __FILE__, __LINE__, __func__, nspace, rank));
-            /*skip it */
-            size_t size = *(size_t *)(addr + PMIX_MAX_KEYLEN + 1);
-            /* go to next item, updating address */
-            addr += KVAL_SIZE(size);
-        } else if (0 == strncmp(addr, "EXTENSION_SLOT", PMIX_MAX_KEYLEN+1)) {
-            size_t offset = *(size_t *)(addr + PMIX_MAX_KEYLEN + 1 + sizeof(size_t));
-            PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
-                        "%s:%d:%s: for rank %s:%d, reached EXTENSION_SLOT with %lu value", __FILE__, __LINE__, __func__, nspace, rank, offset));
-            if (0 < offset) {
+    while (nprocs--) {
+        if (PMIX_RANK_UNDEF == rank) {
+            cur_rank++;
+        }
+        /* Then we look for the rank meta info in the shared meta segment. */
+        rinfo = _get_rank_meta_info(cur_rank, meta_seg);
+        if (NULL == rinfo) {
+            PMIX_OUTPUT_VERBOSE((0, pmix_globals.debug_output,
+                        "%s:%d:%s:  no data for this rank is found in the shared memory. rank %d", __FILE__, __LINE__, __func__, cur_rank));
+            rc = PMIX_ERR_PROC_ENTRY_NOT_FOUND;
+            continue;
+        }
+        addr = _get_data_region_by_offset(data_seg, rinfo->offset);
+        if (NULL == addr) {
+            PMIX_ERROR_LOG(PMIX_ERROR);
+            rc = PMIX_ERR_PROC_ENTRY_NOT_FOUND;
+            continue;
+        }
+        kval_cnt = rinfo->count;
+
+        while (0 < kval_cnt) {
+            /* data is stored in the following format:
+             * key[PMIX_MAX_KEYLEN+1]
+             * size_t size
+             * byte buffer containing pmix_value, should be loaded to pmix_buffer_t and unpacked.
+             * next kval pair
+             * .....
+             * EXTENSION slot which has key = EXTENSION_SLOT and a size_t value for offset to next data address for this process.
+             */
+            if (0 == strncmp(addr, "INVALIDATED", PMIX_MAX_KEYLEN+1)) {
+                PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
+                            "%s:%d:%s: for rank %s:%d, skip INVALIDATED region", __FILE__, __LINE__, __func__, nspace, cur_rank));
+                /*skip it */
+                size_t size = *(size_t *)(addr + PMIX_MAX_KEYLEN + 1);
                 /* go to next item, updating address */
-                addr = _get_data_region_by_offset(data_seg, offset);
-                if (NULL == addr) {
-                    /* report problem and return */
-                    PMIX_ERROR_LOG(PMIX_ERROR);
-                    /* unset lock */
-                    flock(lockfd, LOCK_UN);
-                    return PMIX_ERROR;
+                addr += KVAL_SIZE(size);
+            } else if (0 == strncmp(addr, "EXTENSION_SLOT", PMIX_MAX_KEYLEN+1)) {
+                size_t offset = *(size_t *)(addr + PMIX_MAX_KEYLEN + 1 + sizeof(size_t));
+                PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
+                            "%s:%d:%s: for rank %s:%d, reached EXTENSION_SLOT with %lu value", __FILE__, __LINE__, __func__, nspace, cur_rank, offset));
+                if (0 < offset) {
+                    /* go to next item, updating address */
+                    addr = _get_data_region_by_offset(data_seg, offset);
+                    if (NULL == addr) {
+                        /* report problem and return */
+                        PMIX_ERROR_LOG(PMIX_ERROR);
+                        rc = PMIX_ERROR;
+                        goto done;
+                    }
+                } else {
+                    /* no more data for this rank */
+                    PMIX_OUTPUT_VERBOSE((0, pmix_globals.debug_output,
+                                "%s:%d:%s:  no more data for this rank is found in the shared memory. rank %d key %s not found", __FILE__, __LINE__, __func__, cur_rank, key));
+                    break;
                 }
-            } else {
-                /* no more data for this rank */
-                PMIX_OUTPUT_VERBOSE((0, pmix_globals.debug_output,
-                            "%s:%d:%s:  no more data for this rank is found in the shared memory. rank %d key %s not found", __FILE__, __LINE__, __func__, rank, key));
-                break;
-            }
-        } else if (0 == strncmp(addr, key, PMIX_MAX_KEYLEN+1)) {
-            PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
-                        "%s:%d:%s: for rank %s:%d, found target key %s", __FILE__, __LINE__, __func__, nspace, rank, key));
-            /* target key is found, get value */
-            size_t size = *(size_t *)(addr + PMIX_MAX_KEYLEN + 1);
-            addr += PMIX_MAX_KEYLEN + 1 + sizeof(size_t);
-            PMIX_CONSTRUCT(&buffer, pmix_buffer_t);
-            PMIX_LOAD_BUFFER(&buffer, addr, size);
-            int cnt = 1;
-            /* unpack value for this key from the buffer. */
-            PMIX_VALUE_CONSTRUCT(&val);
-            if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&buffer, &val, &cnt, PMIX_VALUE))) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_DESTRUCT(&buffer);
+            } else if (0 == strncmp(addr, key, PMIX_MAX_KEYLEN+1)) {
+                PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
+                            "%s:%d:%s: for rank %s:%d, found target key %s", __FILE__, __LINE__, __func__, nspace, cur_rank, key));
+                /* target key is found, get value */
+                size_t size = *(size_t *)(addr + PMIX_MAX_KEYLEN + 1);
+                addr += PMIX_MAX_KEYLEN + 1 + sizeof(size_t);
+                PMIX_CONSTRUCT(&buffer, pmix_buffer_t);
+                PMIX_LOAD_BUFFER(&buffer, addr, size);
+                int cnt = 1;
+                /* unpack value for this key from the buffer. */
+                PMIX_VALUE_CONSTRUCT(&val);
+                if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&buffer, &val, &cnt, PMIX_VALUE))) {
+                    PMIX_ERROR_LOG(rc);
+                } else if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)kvs, &val, PMIX_VALUE))) {
+                    PMIX_ERROR_LOG(rc);
+                }
                 PMIX_VALUE_DESTRUCT(&val);
-                /* unset lock */
-                flock(lockfd, LOCK_UN);
-                return rc;
+                buffer.base_ptr = NULL;
+                buffer.bytes_used = 0;
+                PMIX_DESTRUCT(&buffer);
+                goto done;
+            } else {
+                char ckey[PMIX_MAX_KEYLEN+1] = {0};
+                strncpy(ckey, addr, PMIX_MAX_KEYLEN+1);
+                size_t size = *(size_t *)(addr + PMIX_MAX_KEYLEN + 1);
+                PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
+                            "%s:%d:%s: for rank %s:%d, skip key %s look for key %s", __FILE__, __LINE__, __func__, nspace, cur_rank, ckey, key));
+                /* go to next item, updating address */
+                addr += KVAL_SIZE(size);
+                kval_cnt--;
             }
-            buffer.base_ptr = NULL;
-            buffer.bytes_used = 0;
-            PMIX_DESTRUCT(&buffer);
-            if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)kvs, &val, PMIX_VALUE))) {
-                PMIX_ERROR_LOG(rc);
-            }
-            break;
-        } else {
-            char ckey[PMIX_MAX_KEYLEN+1] = {0};
-            strncpy(ckey, addr, PMIX_MAX_KEYLEN+1);
-            size_t size = *(size_t *)(addr + PMIX_MAX_KEYLEN + 1);
-            PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
-                        "%s:%d:%s: for rank %s:%d, skip key %s look for key %s", __FILE__, __LINE__, __func__, nspace, rank, ckey, key));
-            /* go to next item, updating address */
-            addr += KVAL_SIZE(size);
-            kval_cnt--;
         }
     }
 
+done:
     /* unset lock */
     flock(lockfd, LOCK_UN);
     return rc;
@@ -1290,4 +1303,28 @@ static int _store_data_for_rank(ns_track_elem_t *ns_info, int rank, pmix_buffer_
     }
 
     return rc;
+}
+
+static inline uint32_t _get_univ_size(const char *nspace)
+{
+    pmix_value_t *val = NULL;
+    uint32_t nprocs = 0;
+    pmix_nspace_t *ns, *nptr;
+
+    nptr = NULL;
+    PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_nspace_t) {
+        if (0 == strcmp(nspace, ns->nspace)) {
+            nptr = ns;
+            break;
+        }
+    }
+
+    if (nptr && (PMIX_SUCCESS == pmix_hash_fetch(&nptr->internal, PMIX_RANK_WILDCARD, PMIX_UNIV_SIZE, &val))) {
+        if (val->type == PMIX_UINT32) {
+            nprocs = val->data.uint32;
+        }
+        PMIX_VALUE_RELEASE(val);
+    }
+
+    return nprocs;
 }
