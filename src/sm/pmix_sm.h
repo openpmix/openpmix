@@ -35,10 +35,12 @@ typedef struct pmix_sm_seg_t {
     char seg_name[PMIX_PATH_MAX];
 } pmix_sm_seg_t;
 
-int segment_create(pmix_sm_seg_t *sm_seg, const char *file_name, size_t size);
-int segment_attach(pmix_sm_seg_t *sm_seg);
-int segment_detach(pmix_sm_seg_t *sm_seg);
-int segment_unlink(pmix_sm_seg_t *sm_seg);
+int pmix_sm_init(void);
+void pmix_sm_finalize(void);
+int pmix_sm_segment_create(pmix_sm_seg_t *sm_seg, const char *file_name, size_t size);
+int pmix_sm_segment_attach(pmix_sm_seg_t *sm_seg);
+int pmix_sm_segment_detach(pmix_sm_seg_t *sm_seg);
+int pmix_sm_segment_unlink(pmix_sm_seg_t *sm_seg);
 
 static inline void _segment_ds_reset(pmix_sm_seg_t *sm_seg)
 {
@@ -108,9 +110,6 @@ typedef struct {
     pmix_sm_base_module_unlink_fn_t          segment_unlink;
 } pmix_sm_base_module_t;
 
-/* initialize and finalize the shared memory system */
-int pmix_sm_init(void);
-void pmix_sm_finalize(void);
 
 END_C_DECLS
 
