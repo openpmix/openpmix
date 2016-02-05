@@ -76,7 +76,7 @@ typedef struct {
 } ns_track_elem_t;
 PMIX_CLASS_DECLARATION(ns_track_elem_t);
 
-int pmix_dstore_init(int is_cli);
+int pmix_dstore_init(void);
 int pmix_dstore_finalize(void);
 int pmix_dstore_store(const char *nspace, int rank, pmix_kval_t *kv);
 int pmix_dstore_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs);
