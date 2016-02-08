@@ -107,7 +107,7 @@ int _esh_init(void)
     int rc;
     seg_desc_t *seg;
 
-    PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
+    PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
                          "%s:%d:%s", __FILE__, __LINE__, __func__));
 
     rc = pmix_sm_init();
@@ -160,7 +160,7 @@ int _esh_init(void)
 
 int _esh_finalize(void)
 {
-    PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
+    PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
                          "%s:%d:%s", __FILE__, __LINE__, __func__));
 
     _delete_sm_desc(global_sm_seg_first);
@@ -191,7 +191,7 @@ int _esh_store(const char *nspace, int rank, pmix_kval_t *kv)
         return PMIX_ERROR;
     }
 
-    PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
+    PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
                          "%s:%d:%s: for %s:%d", __FILE__, __LINE__, __func__, nspace, rank));
 
     /* set exclusive lock */
@@ -278,12 +278,12 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
     int cur_rank;
 
     if (NULL == key) {
-        PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
+        PMIX_OUTPUT_VERBOSE((7, pmix_globals.debug_output,
                              "dstore: Does not support passed parameters"));
         return PMIX_ERROR;
     }
 
-    PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
+    PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
                          "%s:%d:%s: for %s:%d look for key %s", __FILE__, __LINE__, __func__, nspace, rank, key));
 
     if (kvs) {
@@ -320,7 +320,7 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
     ns_info = _get_ns_info_from_initial_segment(nspace);
     if (NULL == ns_info) {
         /* no data for this namespace is found in the shared memory. */
-        PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
+        PMIX_OUTPUT_VERBOSE((7, pmix_globals.debug_output,
                     "%s:%d:%s:  no data for ns %s is found in the shared memory.", __FILE__, __LINE__, __func__, nspace));
         /* unset lock */
         flock(lockfd, LOCK_UN);
@@ -357,7 +357,7 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
         /* Then we look for the rank meta info in the shared meta segment. */
         rinfo = _get_rank_meta_info(cur_rank, meta_seg);
         if (NULL == rinfo) {
-            PMIX_OUTPUT_VERBOSE((0, pmix_globals.debug_output,
+            PMIX_OUTPUT_VERBOSE((7, pmix_globals.debug_output,
                         "%s:%d:%s:  no data for this rank is found in the shared memory. rank %d", __FILE__, __LINE__, __func__, cur_rank));
             rc = PMIX_ERR_PROC_ENTRY_NOT_FOUND;
             continue;
@@ -404,7 +404,7 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
                     }
                 } else {
                     /* no more data for this rank */
-                    PMIX_OUTPUT_VERBOSE((0, pmix_globals.debug_output,
+                    PMIX_OUTPUT_VERBOSE((7, pmix_globals.debug_output,
                                 "%s:%d:%s:  no more data for this rank is found in the shared memory. rank %d key %s not found", __FILE__, __LINE__, __func__, cur_rank, key));
                     break;
                 }
@@ -515,12 +515,14 @@ static int _pmix_getpagesize(void)
 
 static seg_desc_t *_create_new_segment(segment_type type, char *nsname, uint32_t id)
 {
-    PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
-                         "%s:%d:%s: segment type %d, nspace %s, id %u", __FILE__, __LINE__, __func__, type, nsname, id));
     int rc;
     char file_name[PMIX_PATH_MAX];
     size_t size;
     seg_desc_t *new_seg = NULL;
+
+    PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
+                         "%s:%d:%s: segment type %d, nspace %s, id %u", __FILE__, __LINE__, __func__, type, nsname, id));
+
     switch (type) {
         case INITIAL_SEGMENT:
             size = initial_segment_size;
@@ -557,14 +559,16 @@ static seg_desc_t *_create_new_segment(segment_type type, char *nsname, uint32_t
 
 static seg_desc_t *_attach_new_segment(segment_type type, char *nsname, uint32_t id)
 {
-    PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
-                         "%s:%d:%s: segment type %d, nspace %s, id %u", __FILE__, __LINE__, __func__, type, nsname, id));
     int rc;
     seg_desc_t *new_seg = NULL;
     new_seg = (seg_desc_t*)malloc(sizeof(seg_desc_t));
     new_seg->id = id;
     new_seg->next = NULL;
     new_seg->type = type;
+
+    PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
+                         "%s:%d:%s: segment type %d, nspace %s, id %u", __FILE__, __LINE__, __func__, type, nsname, id));
+
     switch (type) {
         case INITIAL_SEGMENT:
             new_seg->seg_info.seg_size = initial_segment_size;
@@ -681,12 +685,13 @@ static seg_desc_t *extend_segment(seg_desc_t *segdesc, char *nspace)
 
 static int _put_ns_info_to_initial_segment(const char *nspace, pmix_sm_seg_t *metaseg, pmix_sm_seg_t *dataseg)
 {
-    PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
-                         "%s:%d:%s", __FILE__, __LINE__, __func__));
     ns_seg_info_t elem;
     size_t num_elems;
     num_elems = *((size_t*)(global_sm_seg_last->seg_info.seg_base_addr));
     seg_desc_t *last_seg = global_sm_seg_last;
+
+    PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
+                         "%s:%d:%s", __FILE__, __LINE__, __func__));
 
     if (max_ns_num == num_elems) {
         if (NULL == (last_seg = extend_segment(last_seg, NULL))) {
@@ -764,7 +769,7 @@ static ns_track_elem_t *_get_track_elem_for_namespace(const char *nspace)
 {
     ns_track_elem_t *new_elem = NULL;
 
-    PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
+    PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
                          "%s:%d:%s: nspace %s", __FILE__, __LINE__, __func__, nspace));
 
     /* check if this namespace is already being tracked to avoid duplicating data. */
@@ -772,13 +777,13 @@ static ns_track_elem_t *_get_track_elem_for_namespace(const char *nspace)
         if (0 == strncmp(nspace, new_elem->ns_name, PMIX_MAX_NSLEN+1)) {
             /* data for this namespace should be already stored in shared memory region. */
             /* so go and just put new data. */
-            PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
+            PMIX_OUTPUT_VERBOSE((7, pmix_globals.debug_output,
                         "%s:%d:%s: found nspace %s in the track list", __FILE__, __LINE__, __func__, nspace));
             return new_elem;
         }
     }
 
-    PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
+    PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
                          "%s:%d:%s: create new object for nspace %s", __FILE__, __LINE__, __func__, nspace));
     /* create shared memory regions for this namespace and store its info locally
      * to operate with address and detach/unlink afterwards. */
@@ -1166,7 +1171,7 @@ static int pmix_sm_store(ns_track_elem_t *ns_info, int rank, pmix_kval_t *kval, 
                     PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
                                 "%s:%d:%s: for rank %d, replace flag %d mark key %s regions as invalidated. put new data at the end.", __FILE__, __LINE__, __func__, rank, data_exist, kval->key));
                 } else {
-                    PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
+                    PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
                                 "%s:%d:%s: for rank %d, replace flag %d replace data for key %s type %d in place", __FILE__, __LINE__, __func__, rank, data_exist, kval->key, kval->value->type));
                     /* replace old data with new one. */
                     addr += PMIX_MAX_KEYLEN + 1;
@@ -1243,8 +1248,6 @@ static int pmix_sm_store(ns_track_elem_t *ns_info, int rank, pmix_kval_t *kval, 
 
 static int _store_data_for_rank(ns_track_elem_t *ns_info, int rank, pmix_buffer_t *buf)
 {
-    PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
-                         "%s:%d:%s: for rank %d", __FILE__, __LINE__, __func__, rank));
     int rc;
     int32_t cnt;
 
@@ -1255,6 +1258,9 @@ static int _store_data_for_rank(ns_track_elem_t *ns_info, int rank, pmix_buffer_
     rank_meta_info *rinfo = NULL;
     size_t num_elems, free_offset, new_free_offset;
     int data_exist;
+
+    PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
+                         "%s:%d:%s: for rank %d", __FILE__, __LINE__, __func__, rank));
 
     metadesc = ns_info->meta_seg;
     datadesc = ns_info->data_seg;
