@@ -240,7 +240,6 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     pmix_status_t rc, ret;
     pmix_value_t *val = NULL;
     int32_t cnt;
-    pmix_buffer_t *bptr;
     pmix_nspace_t *ns, *nptr;
     int rank;
     int cur_rank;
@@ -255,6 +254,7 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     }
     /* cache the rank */
     rank = cb->rank;
+    cur_rank = rank;
 
     /* unpack the status */
     cnt = 1;
@@ -291,6 +291,7 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     cnt = 1;
     while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(buf, &cur_rank, &cnt, PMIX_INT))) {
         pmix_kval_t *cur_kval;
+        pmix_buffer_t *bptr;
 
         cnt = 1;
         if (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(buf, &bptr, &cnt, PMIX_BUFFER))) {

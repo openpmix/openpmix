@@ -106,10 +106,12 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, int rank,
 
     id = (uint64_t)rank;
 
+    /* - PMIX_RANK_UNDEF should return following statuses
+     * PMIX_ERR_PROC_ENTRY_NOT_FOUND | PMIX_SUCCESS
+     * - specified rank can return following statuses
+     * PMIX_ERR_PROC_ENTRY_NOT_FOUND | PMIX_ERR_NOT_FOUND | PMIX_SUCCESS
+     * special logic is basing on these statuses on a client and a server */
     if (PMIX_RANK_UNDEF == rank) {
-        /* PMIX_RANK_UNDEF should return following statuses
-         * PMIX_ERR_PROC_ENTRY_NOT_FOUND | PMIX_SUCCESS
-         * special logic is basing on these statuses on a client and a server */
         rc = pmix_hash_table_get_first_key_uint64(table, &id,
                 (void**)&proc_data, (void**)&node);
         if (PMIX_SUCCESS != rc) {
@@ -118,10 +120,6 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, int rank,
                                 rank);
             return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
         }
-    } else {
-        /* specified rank can return following statuses
-         * PMIX_ERR_PROC_ENTRY_NOT_FOUND | PMIX_ERR_NOT_FOUND | PMIX_SUCCESS
-         * special logic is basing on these statuses on a client and a server */
     }
 
     while (PMIX_SUCCESS == rc) {
