@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2015 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2016 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.
@@ -246,7 +246,7 @@ int PMI2_KVS_Get(const char *jobid, int src_pmi_id,
 
     rc = PMIx_Get(&proc, key, NULL, 0, &val);
     if (PMIX_SUCCESS == rc && NULL != val) {
-        if (PMIX_STRING != val->type) {
+        if (PMIX_STRING != PMIX_GET_TYPE(val->type)) {
             rc = PMIX_ERROR;
         } else if (NULL != val->data.string) {
             (void)strncpy(value, val->data.string, maxvalue);
@@ -280,7 +280,7 @@ int PMI2_Info_GetNodeAttr(const char name[], char value[], int valuelen, int *fo
     *found = 0;
     rc = PMIx_Get(&myproc, name, info, 1, &val);
     if (PMIX_SUCCESS == rc && NULL != val) {
-        if (PMIX_STRING != val->type) {
+        if (PMIX_STRING != PMIX_GET_TYPE(val->type)) {
             rc = PMIX_ERROR;
         } else if (NULL != val->data.string) {
             (void)strncpy(value, val->data.string, valuelen);
@@ -341,7 +341,7 @@ int PMI2_Info_GetJobAttr(const char name[], char value[], int valuelen, int *fou
     *found = 0;
     rc = PMIx_Get(&proc, name, info, 1, &val);
     if (PMIX_SUCCESS == rc && NULL != val) {
-        if (PMIX_STRING != val->type) {
+        if (PMIX_STRING != PMIX_GET_TYPE(val->type)) {
             rc = PMIX_ERROR;
         } else if (NULL != val->data.string) {
             (void)strncpy(value, val->data.string, valuelen);
@@ -456,7 +456,7 @@ int PMI2_Nameserv_lookup(const char service_name[], const PMI_keyval_t *info_ptr
     }
 
     /* should have received a string back */
-    if (PMIX_STRING != pdata[0].value.type ||
+    if (PMIX_STRING != PMIX_GET_TYPE(pdata[0].value.type) ||
         NULL == pdata[0].value.data.string) {
         PMIX_PDATA_DESTRUCT(&pdata[0]);
         PMIX_PDATA_DESTRUCT(&pdata[1]);
@@ -621,7 +621,7 @@ int PMI2_Job_Spawn(int count, const char * cmds[],
 
 static pmix_status_t convert_int(int *value, pmix_value_t *kv)
 {
-    switch(kv->type) {
+    switch(PMIX_GET_TYPE(kv->type)) {
     case PMIX_INT:
         *value = kv->data.integer;
         break;

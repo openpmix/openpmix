@@ -412,7 +412,7 @@ static int pack_val(pmix_buffer_t *buffer,
 {
     int ret;
 
-    switch (p->type) {
+    switch (PMIX_GET_TYPE(p->type)) {
     case PMIX_BOOL:
         if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &p->data.flag, 1, PMIX_BOOL))) {
             return ret;
@@ -561,10 +561,6 @@ int pmix_bfrop_pack_info(pmix_buffer_t *buffer, const void *src,
         /* pack key */
         foo = info[i].key;
         if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_string(buffer, &foo, 1, PMIX_STRING))) {
-            return ret;
-        }
-        /* pack required flag */
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_bool(buffer, &info[i].required, 1, PMIX_BOOL))) {
             return ret;
         }
         /* pack the type */
