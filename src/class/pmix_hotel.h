@@ -58,6 +58,7 @@
 #include "src/class/pmix_object.h"
 #include PMIX_EVENT_HEADER
 #include <pmix/rename.h>
+#include "src/util/output.h"
 
 BEGIN_C_DECLS
 
