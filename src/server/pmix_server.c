@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2015 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2016 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2015 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
@@ -245,6 +245,8 @@ static pmix_status_t initialize_server_base(pmix_server_module_t *module)
     PMIX_CONSTRUCT(&pmix_server_globals.local_reqs, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_server_globals.client_eventregs, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_server_globals.gdata, pmix_buffer_t);
+    PMIX_CONSTRUCT(&pmix_server_globals.notifications, pmix_ring_buffer_t);
+    pmix_ring_buffer_init(&pmix_server_globals.notifications, 256);
 
     /* see if debug is requested */
     if (NULL != (evar = getenv("PMIX_DEBUG"))) {
@@ -1125,33 +1127,32 @@ static bool match_error_registration(pmix_regevents_info_t *reginfoptr, pmix_not
 static void _notify_error(int sd, short args, void *cbdata)
 {
     pmix_notify_caddy_t *cd = (pmix_notify_caddy_t*)cbdata;
+    pmix_notify_caddy_t *rbout;
     pmix_status_t rc;
     pmix_cmd_t cmd = PMIX_NOTIFY_CMD;
-    int i;
-    size_t j;
-    pmix_peer_t *peer;
     pmix_regevents_info_t *reginfoptr;
-    bool notify, notifyall;
 
-    pmix_output_verbose(0, pmix_globals.debug_output,
+    pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix_server: _notify_error notifying client of error %d",
                         cd->status);
-
     /* pack the command */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(cd->buf, &cmd, 1, PMIX_CMD))) {
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
+
     /* pack the status */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(cd->buf, &cd->status, 1, PMIX_INT))) {
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
+
     /* pack the error procs */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(cd->buf, &cd->error_nprocs, 1, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
+
     if (0 < cd->error_nprocs) {
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(cd->buf, cd->error_procs, cd->error_nprocs, PMIX_PROC))) {
             PMIX_ERROR_LOG(rc);
@@ -1159,74 +1160,37 @@ static void _notify_error(int sd, short args, void *cbdata)
         }
     }
 
+
     /* pack the info */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(cd->buf, &cd->ninfo, 1, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
-    if (0 < cd->ninfo) {
+
+   if (0 < cd->ninfo) {
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(cd->buf, cd->info, cd->ninfo, PMIX_INFO))) {
             PMIX_ERROR_LOG(rc);
             goto cleanup;
         }
     }
 
-    /* if the RM gave us a NULL proc list, then we are notifying everyone */
-    if (NULL == cd->procs) {
-        notifyall = true;
-    } else {
-        notifyall = false;
+
+    /* we cannot know if everyone who wants this notice has had a chance
+     * to register for it - the notice may be coming too early. So cache
+     * the message until all local procs have received it, or it ages to
+     * the point where it gets pushed out by more recent events */
+    PMIX_RETAIN(cd);
+    rbout = pmix_ring_buffer_push(&pmix_server_globals.notifications, cd);
+
+   /* if an older event was bumped, release it */
+    if (NULL != rbout) {
+        PMIX_RELEASE(rbout);
     }
 
-    /* cycle across our connected clients and send the message to
+    /* cycle across our registered events and send the message to
      * any within the specified proc array */
-    for (i=0; i < pmix_server_globals.clients.size; i++) {
-        if (NULL == (peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, i))) {
-            continue;
-        }
-        if (!notifyall) {
-            /* check to see if this proc matches that of one in the specified array */
-            notify = false;
-            for (j=0; j < cd->nprocs; j++) {
-                if (0 != strncmp(peer->info->nptr->nspace, cd->procs[j].nspace, PMIX_MAX_NSLEN)) {
-                    continue;
-                }
-                if (PMIX_RANK_WILDCARD == cd->procs[j].rank ||
-                    cd->procs[j].rank == peer->info->rank) {
-                    notify = true;
-                    break;
-                }
-            }
-            if (!notify) {
-                /* if we are not notifying everyone, and this proc isn't to
-                 * be notified, then just continue the main loop */
-                continue;
-            }
-        }
-
-        /* get the client's error registration and check if client
-         * requested notification of this error */
-        reginfoptr = NULL;
-        notify = false;
-        PMIX_LIST_FOREACH(reginfoptr, &pmix_server_globals.client_eventregs, pmix_regevents_info_t) {
-           if (reginfoptr->peer == peer) {
-                /* check if the client has registered for this error
-                 * by parsing the info keys */
-                notify = match_error_registration(reginfoptr, cd);
-                pmix_output_verbose(2, pmix_globals.debug_output,
-                                    "pmix_server _notify_error - match error registration returned notify =%d ", notify);
-            }
-            if (notify) {
-                break;
-            }
-        }
-        if (notify) {
-            pmix_output_verbose(2, pmix_globals.debug_output,
-                                "pmix_server: _notify_error - notifying process rank %d error %d",
-                                 peer->info->rank, cd->status);
-            PMIX_RETAIN(cd->buf);
-            PMIX_SERVER_QUEUE_REPLY(peer, 0, cd->buf);
-        }
+    PMIX_LIST_FOREACH(reginfoptr, &pmix_server_globals.client_eventregs, pmix_regevents_info_t) {
+       pmix_server_check_notifications(reginfoptr, cd);
     }
 
   cleanup:
@@ -1234,7 +1198,7 @@ static void _notify_error(int sd, short args, void *cbdata)
     if (NULL != cd->cbfunc) {
         cd->cbfunc(rc, cd->cbdata);
     }
-    PMIX_RELEASE(cd);
+   PMIX_RELEASE(cd);
 }
 
 pmix_status_t pmix_server_notify_error(pmix_status_t status,
@@ -1244,15 +1208,36 @@ pmix_status_t pmix_server_notify_error(pmix_status_t status,
                                 pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_notify_caddy_t *cd;
+    size_t n;
 
     cd = PMIX_NEW(pmix_notify_caddy_t);
     cd->status = status;
-    cd->procs = procs;
-    cd->nprocs = nprocs;
-    cd->error_procs = error_procs;
-    cd->error_nprocs = error_nprocs;
-    cd->info = info;
-    cd->ninfo = ninfo;
+    /* have to copy the info here as we may have to cache this
+     * notification until procs have a chance to register for it */
+    if (NULL != procs) {
+        cd->nprocs = nprocs;
+        PMIX_PROC_CREATE(cd->procs, cd->nprocs);
+        for (n=0; n < cd->nprocs; n++) {
+            (void)strncpy(cd->procs[n].nspace, procs[n].nspace, PMIX_MAX_NSLEN);
+            cd->procs[n].rank = procs[n].rank;
+        }
+    }
+    if (NULL != error_procs) {
+        cd->error_nprocs = error_nprocs;
+        PMIX_PROC_CREATE(cd->error_procs, cd->error_nprocs);
+        for (n=0; n < cd->error_nprocs; n++) {
+            (void)strncpy(cd->error_procs[n].nspace, error_procs[n].nspace, PMIX_MAX_NSLEN);
+            cd->error_procs[n].rank = error_procs[n].rank;
+        }
+    }
+    if (NULL != info) {
+        cd->ninfo = ninfo;
+        PMIX_INFO_CREATE(cd->info, cd->ninfo);
+        for (n=0; n < cd->ninfo; n++) {
+            PMIX_INFO_LOAD(&cd->info[n], info[n].key,
+                           &info[n].value.data, info[n].value.type);
+        }
+    }
     cd->cbfunc = cbfunc;
     cd->cbdata = cbdata;
 
@@ -1266,26 +1251,69 @@ pmix_status_t pmix_server_notify_error(pmix_status_t status,
     return PMIX_SUCCESS;
 }
 
+void pmix_server_check_notifications(pmix_regevents_info_t *reginfo,
+                                     pmix_notify_caddy_t *cd)
+{
+    bool notify;
+    size_t j;
+
+    /* if the RM gave us a NULL proc list, then we are notifying everyone */
+    if (NULL != cd->procs) {
+         /* check to see if this proc matches that of one in the specified array */
+        notify = false;
+        for (j=0; j < cd->nprocs; j++) {
+            if (0 != strncmp(reginfo->peer->info->nptr->nspace, cd->procs[j].nspace, PMIX_MAX_NSLEN)) {
+                continue;
+            }
+            if (PMIX_RANK_WILDCARD == cd->procs[j].rank ||
+                cd->procs[j].rank == reginfo->peer->info->rank) {
+                notify = true;
+                break;
+            }
+        }
+        if (!notify) {
+            /* if we are not notifying everyone, and this proc isn't to
+             * be notified, so just return */
+            return;
+        }
+    }
+    /* check if the client has registered for this error
+     * by parsing the info keys */
+    if (match_error_registration(reginfo, cd)) {
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "pmix_server: check notifications - notifying process rank %d error %d",
+                             reginfo->peer->info->rank, cd->status);
+        PMIX_RETAIN(cd->buf);
+        PMIX_SERVER_QUEUE_REPLY(reginfo->peer, 0, cd->buf);
+    }
+
+}
+
 static void reg_errhandler(int sd, short args, void *cbdata)
 {
     int index = 0;
     pmix_status_t rc;
     pmix_shift_caddy_t *cd = (pmix_shift_caddy_t*)cbdata;
+    pmix_notify_caddy_t *rb;
 
     /* check if this handler is already registered if so return error */
-   if (PMIX_SUCCESS == pmix_lookup_errhandler(cd->err, &index)) {
-        /* complete request with error status and  return its original reference */
+    if (PMIX_EXISTS == (rc = pmix_lookup_errhandler(cd->info, cd->ninfo, &index))) {
+        /* complete request with error status and return its original reference */
         pmix_output_verbose(2, pmix_globals.debug_output,
                            "pmix_server_register_errhandler error - hdlr already registered index = %d",
                            index);
-        cd->cbfunc.errregcbfn(PMIX_EXISTS, index, cd->cbdata);
     } else {
          rc = pmix_add_errhandler(cd->err, cd->info, cd->ninfo, &index);
          pmix_output_verbose(2, pmix_globals.debug_output,
                              "pmix_server_register_errhandler - success index =%d", index);
-         cd->cbfunc.errregcbfn(rc, index, cd->cbdata);
     }
-    cd->active = false;
+    /* cycle across any cached notifications and see if any are
+     * pending for us and match this description */
+
+    /* acknowledge the registration so the caller can release
+     * their data */
+    cd->cbfunc.errregcbfn(rc, index, cd->cbdata);
+
     PMIX_RELEASE(cd);
 }
 

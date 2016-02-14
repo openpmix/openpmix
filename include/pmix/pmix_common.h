@@ -173,7 +173,7 @@ BEGIN_C_DECLS
 
 /* error handler registration  and notification info keys */
 #define PMIX_ERROR_NAME            "pmix.errname"           // enum pmix_status_t specific error to be notified
-#define PMIX_ERROR_GROUP_COMM      "pmix.errgroup.comm"     // bool - set true to get comm  errors notification
+#define PMIX_ERROR_GROUP_COMM      "pmix.errgroup.comm"     // bool - set true to get comm errors notification
 #define PMIX_ERROR_GROUP_ABORT     "pmix.errgroup.abort"    // bool -set true to get abort errors notification
 #define PMIX_ERROR_GROUP_MIGRATE   "pmix.errgroup.migrate"  // bool -set true to get migrate errors notification
 #define PMIX_ERROR_GROUP_RESOURCE  "pmix.errgroup.resource" // bool -set true to get resource errors notification
@@ -209,7 +209,7 @@ BEGIN_C_DECLS
 
 /****    PMIX ERROR CONSTANTS    ****/
 /* PMIx errors are always negative, with 0 reserved for success */
-#define PMIX_ERROR_MIN  -50  // set equal to number of non-zero entries in enum
+#define PMIX_ERROR_MIN  -52  // set equal to number of non-zero entries in enum
 
 typedef enum {
     PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER = PMIX_ERROR_MIN,
@@ -267,6 +267,8 @@ typedef enum {
     PMIX_ERR_SILENT,
     PMIX_ERROR,
 
+    PMIX_ERR_GRP_FOUND,
+    PMIX_ERR_DFLT_FOUND,
     PMIX_SUCCESS
 } pmix_status_t;
 
@@ -298,6 +300,9 @@ typedef enum {
     PMIX_TIMEVAL,
     PMIX_TIME,
 
+    PMIX_STATUS,            // needs to be tracked separately from integer for those times
+                            // when we are embedded and it needs to be converted to the
+                            // host error definitions
     PMIX_HWLOC_TOPO,
     PMIX_VALUE,
     PMIX_INFO_ARRAY,
@@ -421,6 +426,7 @@ typedef struct {
         float fval;
         double dval;
         struct timeval tv;
+        pmix_status_t status;
         pmix_info_array_t array;
         pmix_byte_object_t bo;
     } data;
