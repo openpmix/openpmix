@@ -495,8 +495,7 @@ typedef struct {
  * includes internal functions - so we don't
  * want to expose the entire header here
  */
-extern void pmix_value_load(pmix_value_t *v, void *data,
-                            pmix_data_type_t type);
+void pmix_value_load(pmix_value_t *v, void *data, pmix_data_type_t type);
 
 
 
@@ -918,8 +917,8 @@ const char* PMIx_Get_version(void);
 /* Store some data locally for retrieval by other areas of the
  * proc. This is data that has only internal scope - it will
  * never be "pushed" externally */
- pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc,
-                                   const char *key, pmix_value_t *val);
+pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc,
+                                  const char *key, pmix_value_t *val);
 
 
 /* Key-Value pair management macros */

@@ -23,7 +23,7 @@
 #include "src/server/pmix_server_ops.h"
 #include "src/include/pmix_globals.h"
 
-void PMIx_Register_errhandler(pmix_info_t info[], size_t ninfo,
+PMIX_EXPORT void PMIx_Register_errhandler(pmix_info_t info[], size_t ninfo,
                               pmix_notification_fn_t errhandler,
                               pmix_errhandler_reg_cbfunc_t cbfunc,
                               void *cbdata)
@@ -50,7 +50,7 @@ void PMIx_Register_errhandler(pmix_info_t info[], size_t ninfo,
     }
 }
 
-void PMIx_Deregister_errhandler(int errhandler_ref,
+PMIX_EXPORT void PMIx_Deregister_errhandler(int errhandler_ref,
                                 pmix_op_cbfunc_t cbfunc,
                                 void *cbdata)
 {
@@ -71,7 +71,7 @@ void PMIx_Deregister_errhandler(int errhandler_ref,
     }
 }
 
-pmix_status_t PMIx_Notify_error(pmix_status_t status,
+PMIX_EXPORT pmix_status_t PMIx_Notify_error(pmix_status_t status,
                                 pmix_proc_t procs[], size_t nprocs,
                                 pmix_proc_t error_procs[], size_t error_nprocs,
                                 pmix_info_t info[], size_t ninfo,

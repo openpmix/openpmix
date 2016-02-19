@@ -288,8 +288,8 @@ static pmix_status_t initialize_server_base(pmix_server_module_t *module)
     return PMIX_SUCCESS;
 }
 
-pmix_status_t PMIx_server_init(pmix_server_module_t *module,
-                               pmix_info_t info[], size_t ninfo)
+PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
+                                           pmix_info_t info[], size_t ninfo)
 {
     pmix_usock_posted_recv_t *req;
     pmix_status_t rc;
@@ -416,7 +416,7 @@ static void cleanup_server_state(void)
     pmix_class_finalize();
 }
 
-pmix_status_t PMIx_server_finalize(void)
+PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
 {
     if (1 != pmix_globals.init_cntr) {
         --pmix_globals.init_cntr;
@@ -621,9 +621,9 @@ static void _register_nspace(int sd, short args, void *cbdata)
 }
 
 /* setup the data for a job */
-pmix_status_t PMIx_server_register_nspace(const char nspace[], int nlocalprocs,
-                                          pmix_info_t info[], size_t ninfo,
-                                          pmix_op_cbfunc_t cbfunc, void *cbdata)
+PMIX_EXPORT pmix_status_t PMIx_server_register_nspace(const char nspace[], int nlocalprocs,
+                                                      pmix_info_t info[], size_t ninfo,
+                                                      pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_setup_caddy_t *cd;
 
@@ -665,7 +665,7 @@ static void _deregister_nspace(int sd, short args, void *cbdata)
     PMIX_RELEASE(cd);
 }
 
-void PMIx_server_deregister_nspace(const char nspace[])
+PMIX_EXPORT void PMIx_server_deregister_nspace(const char nspace[])
 {
     pmix_setup_caddy_t *cd;
 
@@ -836,9 +836,9 @@ static void _register_client(int sd, short args, void *cbdata)
     PMIX_RELEASE(cd);
 }
 
-pmix_status_t PMIx_server_register_client(const pmix_proc_t *proc,
-                                          uid_t uid, gid_t gid, void *server_object,
-                                          pmix_op_cbfunc_t cbfunc, void *cbdata)
+PMIX_EXPORT pmix_status_t PMIx_server_register_client(const pmix_proc_t *proc,
+                                                      uid_t uid, gid_t gid, void *server_object,
+                                                      pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_setup_caddy_t *cd;
 
@@ -896,7 +896,7 @@ static void _deregister_client(int sd, short args, void *cbdata)
     PMIX_RELEASE(cd);
 }
 
-void PMIx_server_deregister_client(const pmix_proc_t *proc)
+PMIX_EXPORT void PMIx_server_deregister_client(const pmix_proc_t *proc)
 {
     pmix_setup_caddy_t *cd;
 
@@ -914,7 +914,7 @@ void PMIx_server_deregister_client(const pmix_proc_t *proc)
 }
 
 /* setup the envars for a child process */
-pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char ***env)
+PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char ***env)
 {
     char rankstr[128];
 
@@ -1032,9 +1032,9 @@ static void _dmodex_req(int sd, short args, void *cbdata)
     cd->active = false;
 }
 
-pmix_status_t PMIx_server_dmodex_request(const pmix_proc_t *proc,
-                                         pmix_dmodex_response_fn_t cbfunc,
-                                         void *cbdata)
+PMIX_EXPORT pmix_status_t PMIx_server_dmodex_request(const pmix_proc_t *proc,
+                                                     pmix_dmodex_response_fn_t cbfunc,
+                                                     void *cbdata)
 {
     pmix_setup_caddy_t *cd;
 
@@ -1360,8 +1360,8 @@ static void _store_internal(int sd, short args, void *cbdata)
     cd->active = false;
  }
 
-pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc,
-                                  const char *key, pmix_value_t *val)
+PMIX_EXPORT pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc,
+                                              const char *key, pmix_value_t *val)
 {
     pmix_shift_caddy_t *cd;
     pmix_status_t rc;
@@ -1395,7 +1395,7 @@ pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc,
 
 #define PMIX_MAX_NODE_PREFIX        50
 
-pmix_status_t PMIx_generate_regex(const char *input, char **regexp)
+PMIX_EXPORT pmix_status_t PMIx_generate_regex(const char *input, char **regexp)
 {
     char *vptr, *vsave;
     char prefix[PMIX_MAX_NODE_PREFIX];
@@ -1609,7 +1609,7 @@ pmix_status_t PMIx_generate_regex(const char *input, char **regexp)
     return PMIX_SUCCESS;
 }
 
-pmix_status_t PMIx_generate_ppn(const char *input, char **regexp)
+PMIX_EXPORT pmix_status_t PMIx_generate_ppn(const char *input, char **regexp)
 {
     char **ppn, **npn;
     int i, j, start, end;
