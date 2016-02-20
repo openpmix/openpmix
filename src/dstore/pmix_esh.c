@@ -108,6 +108,27 @@ static inline int _is_server(void)
     return (pmix_globals.server);
 }
 
+static inline const char *_unique_id(void)
+{
+    static const char *str = NULL;
+    if (!str) {
+        /* see: pmix_server.c initialize_server_base() 
+         * to get format of uri
+         */
+        if (_is_server()) {
+            static char buf[100];
+            snprintf(buf, sizeof(buf) - 1, "pmix-%d", getpid());
+            str = buf;
+        } else {
+            str = getenv("PMIX_SERVER_URI");
+            if (str) {
+                str = strrchr(str, '/');
+            }
+            str = (str ? str + 1 : "$$$");
+        }
+    }
+    return str;
+}
 
 int _esh_init(void)
 {
@@ -135,7 +156,7 @@ int _esh_init(void)
      * This situation is quite often, especially in case of direct modex when clients might ask for data
      * simultaneously.*/
     _lockfile_name = malloc(256);
-    snprintf(_lockfile_name, 256, "%s/dstore_sm.lock", _tmp_dir);
+    snprintf(_lockfile_name, 256, "%s/%s_dstore_sm.lock", _tmp_dir, _unique_id());
     if (_is_server()) {
         _lockfd = open(_lockfile_name, O_CREAT | O_RDWR | O_EXCL, 0600);
         /* if previous launch was crashed, the lockfile might not be deleted and unlocked,
@@ -311,7 +332,7 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
     flock(_lockfd, LOCK_SH);
 
     /* First of all, we go through all initial segments and look at their field.
-     * If itâ€™s 1, then generate name of next initial segment incrementing id by one and attach to it.
+     * If it’s 1, then generate name of next initial segment incrementing id by one and attach to it.
      * We need this step to synchronize initial shared segments with our local track list.
      * Then we look for the target namespace in all initial segments.
      * If it is found, we get numbers of meta & data segments and
@@ -544,15 +565,15 @@ static seg_desc_t *_create_new_segment(segment_type type, char *nsname, uint32_t
     switch (type) {
         case INITIAL_SEGMENT:
             size = _initial_segment_size;
-            snprintf(file_name, PMIX_PATH_MAX, "%s/initial-pmix_shared-segment-%u", _tmp_dir, id);
+            snprintf(file_name, PMIX_PATH_MAX, "%s/%s_initial-pmix_shared-segment-%u", _tmp_dir, _unique_id(), id);
             break;
         case NS_META_SEGMENT:
             size = _meta_segment_size;
-            snprintf(file_name, PMIX_PATH_MAX, "%s/smseg-%s-%u", _tmp_dir, nsname, id);
+            snprintf(file_name, PMIX_PATH_MAX, "%s/%s_smseg-%s-%u", _tmp_dir, _unique_id(), nsname, id);
             break;
         case NS_DATA_SEGMENT:
             size = _data_segment_size;
-            snprintf(file_name, PMIX_PATH_MAX, "%s/smdataseg-%s-%d", _tmp_dir, nsname, id);
+            snprintf(file_name, PMIX_PATH_MAX, "%s/%s_smdataseg-%s-%d", _tmp_dir, _unique_id(), nsname, id);
             break;
         default:
             PMIX_ERROR_LOG(PMIX_ERROR);
@@ -591,15 +612,15 @@ static seg_desc_t *_attach_new_segment(segment_type type, char *nsname, uint32_t
     switch (type) {
         case INITIAL_SEGMENT:
             new_seg->seg_info.seg_size = _initial_segment_size;
-            snprintf(new_seg->seg_info.seg_name, PMIX_PATH_MAX, "%s/initial-pmix_shared-segment-%u", _tmp_dir, id);
+            snprintf(new_seg->seg_info.seg_name, PMIX_PATH_MAX, "%s/%s_initial-pmix_shared-segment-%u", _tmp_dir, _unique_id(), id);
             break;
         case NS_META_SEGMENT:
             new_seg->seg_info.seg_size = _meta_segment_size;
-            snprintf(new_seg->seg_info.seg_name, PMIX_PATH_MAX, "%s/smseg-%s-%u", _tmp_dir, nsname, id);
+            snprintf(new_seg->seg_info.seg_name, PMIX_PATH_MAX, "%s/%s_smseg-%s-%u", _tmp_dir, _unique_id(), nsname, id);
             break;
         case NS_DATA_SEGMENT:
             new_seg->seg_info.seg_size = _data_segment_size;
-            snprintf(new_seg->seg_info.seg_name, PMIX_PATH_MAX, "%s/smdataseg-%s-%d", _tmp_dir, nsname, id);
+            snprintf(new_seg->seg_info.seg_name, PMIX_PATH_MAX, "%s/%s_smdataseg-%s-%d", _tmp_dir, _unique_id(), nsname, id);
             break;
         default:
             PMIX_ERROR_LOG(PMIX_ERROR);
@@ -697,7 +718,7 @@ static seg_desc_t *extend_segment(seg_desc_t *segdesc, char *nspace)
         tmp = tmp->next;
     }
     /* create another segment, the old one is full. */
-    seg = _create_new_segment(segdesc->type, nspace, tmp->id+1);
+    seg = _create_new_segment(segdesc->type, nspace, tmp->id + 1);
     if (NULL == seg) {
         PMIX_ERROR_LOG(PMIX_ERROR);
         return NULL;
