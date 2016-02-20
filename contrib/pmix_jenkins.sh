@@ -204,7 +204,7 @@ if [ "$jenkins_test_build" = "yes" ]; then
         autogen_script=./autogen.pl
     fi
 
-    configure_args=--with-libevent=$libevent_dir
+    configure_args="--with-libevent=$libevent_dir"
 
     # build pmix
     $autogen_script 
@@ -313,9 +313,13 @@ if [ -n "$JENKINS_RUN_TESTS" -a "$JENKINS_RUN_TESTS" -ne "0" ]; then
     echo "Checking for tests ..."
     
     run_tap=$WORKSPACE/run_test.tap
-    make $make_opt || exit 12
-
     rm -rf $run_tap
+
+    # build pmix
+    $autogen_script
+    echo ./configure --prefix=$pmix_dir $configure_args --disable-visibility | bash -xeE
+    make $make_opt install
+
     cd $WORKSPACE/test
 
     echo "1..11" > $run_tap
