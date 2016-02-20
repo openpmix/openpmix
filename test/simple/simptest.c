@@ -526,10 +526,12 @@ static int lookup_fn(const pmix_proc_t *proc, char **keys,
         PMIX_PDATA_CREATE(pd, n);
         for (i=0; i < n; i++) {
             p = (pmix_locdat_t*)pmix_list_remove_first(&results);
-            (void)strncpy(pd[i].proc.nspace, p->pdata.proc.nspace, PMIX_MAX_NSLEN);
-            pd[i].proc.rank = p->pdata.proc.rank;
-            (void)strncpy(pd[i].key, p->pdata.key, PMIX_MAX_KEYLEN);
-            pmix_value_xfer(&pd[i].value, &p->pdata.value);
+            if (p) {
+                (void)strncpy(pd[i].proc.nspace, p->pdata.proc.nspace, PMIX_MAX_NSLEN);
+                pd[i].proc.rank = p->pdata.proc.rank;
+                (void)strncpy(pd[i].key, p->pdata.key, PMIX_MAX_KEYLEN);
+                pmix_value_xfer(&pd[i].value, &p->pdata.value);
+            }
         }
     }
     PMIX_LIST_DESTRUCT(&results);

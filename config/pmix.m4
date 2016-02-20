@@ -707,6 +707,26 @@ AC_DEFINE_UNQUOTED([PMIX_WANT_PRETTY_PRINT_STACKTRACE],
                    [if want pretty-print stack trace feature])
 
 #
+# Do we want the shared memory datastore usage?
+#
+
+AC_MSG_CHECKING([if want special dstore usage])
+AC_ARG_ENABLE([dstore],
+              [AC_HELP_STRING([--enable-dstore],
+                              [Using special datastore (default: disabled)])])
+if test "$enable_dstore" = "yes" ; then
+    AC_MSG_RESULT([yes])
+    WANT_DSTORE=1
+else
+    AC_MSG_RESULT([no])
+    WANT_DSTORE=0
+fi
+AC_DEFINE_UNQUOTED([PMIX_ENABLE_DSTORE],
+                   [$WANT_DSTORE],
+                   [if want special dstore feature])
+AM_CONDITIONAL([WANT_DSTORE],[test "x$enable_dstore" = "xyes"])
+
+#
 # Ident string
 #
 AC_MSG_CHECKING([if want ident string])
