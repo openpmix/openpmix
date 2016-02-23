@@ -511,7 +511,7 @@ static pmix_status_t unpack_val(pmix_buffer_t *buffer, pmix_value_t *val)
     pmix_status_t ret;
 
     m = 1;
-    switch (val->type) {
+    switch (PMIX_GET_TYPE(val->type)) {
     case PMIX_BOOL:
         if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_buffer(buffer, &val->data.flag, &m, PMIX_BOOL))) {
             return ret;
@@ -672,11 +672,6 @@ int pmix_bfrop_unpack_info(pmix_buffer_t *buffer, void *dest,
         }
         (void)strncpy(ptr[i].key, tmp, PMIX_MAX_KEYLEN);
         free(tmp);
-        /* unpack the required flag */
-        m=1;
-        if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_bool(buffer, &ptr[i].required, &m, PMIX_BOOL))) {
-            return ret;
-        }
         /* unpack value - since the value structure is statically-defined
          * instead of a pointer in this struct, we directly unpack it to
          * avoid the malloc */

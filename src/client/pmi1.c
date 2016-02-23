@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2015 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2016 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.
@@ -64,7 +64,6 @@ int PMI_Init(int *spawned)
     pmix_value_t *val;
     pmix_proc_t proc;
     pmix_info_t info[1];
-    bool  val_optinal = 1;
 
     if (PMIX_SUCCESS != PMIx_Init(&myproc)) {
         return PMI_ERR_INIT;
@@ -78,7 +77,7 @@ int PMI_Init(int *spawned)
      * PMIX_OPTIONAL - expect that these keys should be available on startup
      */
     PMIX_INFO_CONSTRUCT(&info[0]);
-    PMIX_INFO_LOAD(&info[0], PMIX_OPTIONAL, &val_optinal, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[0], PMIX_OPTIONAL, NULL, PMIX_BOOL);
 
     if (NULL != spawned) {
         /* get the spawned flag */
@@ -93,6 +92,7 @@ int PMI_Init(int *spawned)
             *spawned = 0;
         }
     }
+    PMIX_INFO_DESTRUCT(&info[0]);
     pmi_init = 1;
 
     rc = PMIX_SUCCESS;
@@ -209,7 +209,7 @@ int PMI_KVS_Get( const char kvsname[], const char key[], char value[], int lengt
 
     rc = PMIx_Get(&proc, key, NULL, 0, &val);
     if (PMIX_SUCCESS == rc && NULL != val) {
-        if (PMIX_STRING != val->type) {
+        if (PMIX_STRING != PMIX_GET_TYPE(val->type)) {
             rc = PMIX_ERROR;
         } else if (NULL != val->data.string) {
             (void)strncpy(value, val->data.string, length);
@@ -418,7 +418,7 @@ int PMI_Lookup_name(const char service_name[], char port[])
     }
 
     /* should have received a string back */
-    if (PMIX_STRING != pdata.value.type || NULL == pdata.value.data.string) {
+    if (PMIX_STRING != PMIX_GET_TYPE(pdata.value.type)|| NULL == pdata.value.data.string) {
         return convert_err(PMIX_ERR_NOT_FOUND);
     }
 
@@ -695,7 +695,7 @@ int PMI_Get_options(char *str, int *length)
 /* internal function */
 static pmix_status_t convert_int(int *value, pmix_value_t *kv)
 {
-    switch (kv->type) {
+    switch (PMIX_GET_TYPE(kv->type)) {
     case PMIX_INT:
         *value = kv->data.integer;
         break;

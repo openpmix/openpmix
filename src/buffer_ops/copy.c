@@ -85,7 +85,7 @@ int pmix_bfrop_std_copy(void **dest, void *src, pmix_data_type_t type)
     size_t datasize;
     uint8_t *val = NULL;
 
-    switch(type) {
+    switch(PMIX_GET_TYPE(type)) {
     case PMIX_BOOL:
         datasize = sizeof(bool);
         break;
@@ -166,11 +166,11 @@ int pmix_bfrop_copy_string(char **dest, char *src, pmix_data_type_t type)
 
     return PMIX_SUCCESS;
 }
-/* compare function for pmix_value_t*/
+/* compare function for pmix_value_t */
 bool pmix_value_cmp(pmix_value_t *p, pmix_value_t *p1)
 {
     bool rc = false;
-    switch (p->type) {
+    switch (PMIX_GET_TYPE(p->type)) {
         case PMIX_BOOL:
             rc = (p->data.flag == p1->data.flag);
             break;
@@ -225,7 +225,7 @@ pmix_status_t pmix_value_xfer(pmix_value_t *p, pmix_value_t *src)
 
     /* copy the right field */
     p->type = src->type;
-    switch (src->type) {
+    switch (PMIX_GET_TYPE(p->type)) {
     case PMIX_BOOL:
         p->data.flag = src->data.flag;
         break;
@@ -343,7 +343,6 @@ int pmix_bfrop_copy_info(pmix_info_t **dest, pmix_info_t *src,
 {
     *dest = (pmix_info_t*)malloc(sizeof(pmix_info_t));
     (void)strncpy((*dest)->key, src->key, PMIX_MAX_KEYLEN);
-    (*dest)->required = src->required;
     return pmix_value_xfer(&(*dest)->value, &src->value);
 }
 

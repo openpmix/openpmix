@@ -272,45 +272,92 @@ typedef enum {
 
 
 /****    PMIX DATA TYPES    ****/
-typedef enum {
-    PMIX_UNDEF = 0,
-    PMIX_BOOL,           // converted to/from native true/false to uint8 for pack/unpack
-    PMIX_BYTE,           // a byte of data
-    PMIX_STRING,         // NULL-terminated string
-    PMIX_SIZE,           // size_t
-    PMIX_PID,            // OS-pid
+/* the data types will share storage with flags as
+ * defined below. Therefore, the maximum data type
+ # value is capped at 256 */
+#define PMIX_UNDEF           0
+#define PMIX_BOOL            1          // converted to/from native true/false to uint8 for pack/unpack
+#define PMIX_BYTE            2          // a byte of data
+#define PMIX_STRING          3          // NULL-terminated string
+#define PMIX_SIZE            4          // size_t
+#define PMIX_PID             5          // OS-pid
 
-    PMIX_INT,
-    PMIX_INT8,
-    PMIX_INT16,
-    PMIX_INT32,
-    PMIX_INT64,
+#define PMIX_INT             6
+#define PMIX_INT8            7
+#define PMIX_INT16           8
+#define PMIX_INT32           9
+#define PMIX_INT64          10
 
-    PMIX_UINT,
-    PMIX_UINT8,
-    PMIX_UINT16,
-    PMIX_UINT32,
-    PMIX_UINT64,
+#define PMIX_UINT           11
+#define PMIX_UINT8          12
+#define PMIX_UINT16         13
+#define PMIX_UINT32         14
+#define PMIX_UINT64         15
 
-    PMIX_FLOAT,
-    PMIX_DOUBLE,
+#define PMIX_FLOAT          16
+#define PMIX_DOUBLE         17
 
-    PMIX_TIMEVAL,
-    PMIX_TIME,
+#define PMIX_TIMEVAL        18
+#define PMIX_TIME           19
 
-    PMIX_HWLOC_TOPO,
-    PMIX_VALUE,
-    PMIX_INFO_ARRAY,
-    PMIX_PROC,
-    PMIX_APP,
-    PMIX_INFO,
-    PMIX_PDATA,
-    PMIX_BUFFER,
-    PMIX_BYTE_OBJECT,
-    PMIX_KVAL,
-    PMIX_MODEX,
-    PMIX_PERSIST
-} pmix_data_type_t;
+#define PMIX_HWLOC_TOPO     20
+#define PMIX_VALUE          21
+#define PMIX_INFO_ARRAY     22
+#define PMIX_PROC           23
+#define PMIX_APP            24
+#define PMIX_INFO           25
+#define PMIX_PDATA          26
+#define PMIX_BUFFER         27
+#define PMIX_BYTE_OBJECT    28
+#define PMIX_KVAL           29
+#define PMIX_MODEX          30
+#define PMIX_PERSIST        31
+typedef uint32_t pmix_data_type_t;
+
+/* define flags that can be used to direct
+ * behavior of a pmix_info_t - e.g., by
+ # declaring it as required instead of optional.
+ * These are bit fields to allow multiple flags
+ * to be set at the same time - thus, they
+ * are limited to 24 as only 24-bits of
+ * storage are available in the pmix_data_type_t */
+#define PMIX_REQUIRED       0x00000100
+
+
+/* provide a set of macros for setting and
+ * retrieving the data value type and the
+ * behavior flags. As the type field is
+ * 32-bit, we have to adjust the macros
+ * for endianness */
+#ifdef WORDS_BIGENDIAN
+/* the data type will be in the upper byte
+ * of the addressed space */
+#define PMIX_GET_TYPE(x) \
+    ((((x) & 0xff000000) >> 24) & 0x00000ff)  // protect against sign extension
+#define PMIX_SET_TYPE(x, t) \
+    (x) |= ((t) << 24)
+#define PMIX_GET_FLAGS(x) \
+    ((x) & 0x00ffffff)
+#else
+/* the data type is in the lowest byte of
+ * the addressed space */
+#define PMIX_GET_TYPE(x) \
+    ((x) & 0x000000ff)
+#define PMIX_SET_TYPE(x, t) \
+    (x) |= (t)
+#define PMIX_GET_FLAGS(x) \
+    ((x) & 0xffffff00)
+#endif
+/* the flag macros are not affected by
+ * endianness as the data is always stored
+ * in a consistent manner */
+#define PMIX_TEST_FLAG(x, f) \
+    ((x) & (f))
+#define PMIX_SET_FLAG(x, f) \
+    (x) |= (f)
+#define PMIX_UNSET_FLAG(x, f) \
+    (x) &= ~(f)
+
 
 /* define a scope for data "put" by PMI per the following:
  *
@@ -504,7 +551,6 @@ extern void pmix_value_load(pmix_value_t *v, void *data,
 /****    PMIX INFO STRUCT    ****/
 typedef struct {
     char key[PMIX_MAX_KEYLEN+1];  // ensure room for the NULL terminator
-    bool required;                // defaults to optional (i.e., required=false)
     pmix_value_t value;
 } pmix_info_t;
 
@@ -543,9 +589,9 @@ typedef struct {
         pmix_value_load(&((m)->value), (v), (t));       \
     } while(0);
 #define PMIX_INFO_REQUIRED(m)       \
-    (m)->required = true;
+    PMIX_SET_FLAG((m)->value.type, PMIX_REQUIRED)
 #define PMIX_INFO_OPTIONAL(m)       \
-    (m)->required = false;
+    PMIX_UNSET_FLAG((m)->value.type, PMIX_REQUIRED)
 
 /****    PMIX LOOKUP RETURN STRUCT    ****/
 typedef struct {

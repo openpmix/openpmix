@@ -640,7 +640,7 @@ pmix_status_t PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: executing put for key %s type %d",
-                        key, val->type);
+                        key, PMIX_GET_TYPE(val->type));
 
     if (pmix_globals.init_cntr <= 0) {
         return PMIX_ERR_INIT;

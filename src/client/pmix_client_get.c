@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2015 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2016 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2015 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
@@ -429,7 +429,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
                 /* since we didn't provide them with a key, the hash function
                  * must return the results in the pmix_info_array field of the
                  * value */
-                if (NULL == val || PMIX_INFO_ARRAY != val->type) {
+                if (NULL == val || PMIX_INFO_ARRAY != PMIX_GET_TYPE(val->type)) {
                     /* this is an error */
                     PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                     cb->value_cbfunc(PMIX_ERR_BAD_PARAM, NULL, cb->cbdata);
@@ -462,7 +462,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
             /* since we didn't provide them with a key, the hash function
              * must return the results in the pmix_info_array field of the
              * value */
-            if (NULL == val || PMIX_INFO_ARRAY != val->type) {
+            if (NULL == val || PMIX_INFO_ARRAY != PMIX_GET_TYPE(val->type)) {
                 /* this is an error */
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                 cb->value_cbfunc(PMIX_ERR_BAD_PARAM, NULL, cb->cbdata);

@@ -545,7 +545,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
             }
         } else if (0 == strcmp(cd->info[i].key, PMIX_PROC_DATA)) {
             /* an array of data pertaining to a specific proc */
-            if (PMIX_INFO_ARRAY != cd->info[i].value.type) {
+            if (PMIX_INFO_ARRAY != PMIX_GET_TYPE(cd->info[i].value.type)) {
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                 goto release;
             }

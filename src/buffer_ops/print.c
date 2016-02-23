@@ -551,89 +551,90 @@ int pmix_bfrop_print_value(char **output, char *prefix,
     char *prefx;
 
     /* deal with NULL prefix */
-    if (NULL == prefix) asprintf(&prefx, " ");
-    else prefx = prefix;
+    if (NULL == prefix) {
+        asprintf(&prefx, " PMIX_VALUE: Flags: %x ", PMIX_GET_FLAGS(type));
+    } else {
+        asprintf(&prefx, "%sPMIX_VALUE: Flags: %x ", prefix, PMIX_GET_FLAGS(type));
+    }
 
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
         asprintf(output, "%sData type: PMIX_VALUE\tValue: NULL pointer", prefx);
-        if (prefx != prefix) {
-            free(prefx);
-        }
+        free(prefx);
         return PMIX_SUCCESS;
     }
 
-    switch (src->type) {
+    switch (PMIX_GET_TYPE(src->type)) {
     case PMIX_BYTE:
-        asprintf(output, "%sPMIX_VALUE: Data type: PMIX_BYTE\tValue: %x",
+        asprintf(output, "%sData type: PMIX_BYTE\tValue: %x",
                  prefx, src->data.byte);
         break;
     case PMIX_STRING:
-        asprintf(output, "%sPMIX_VALUE: Data type: PMIX_STRING\tValue: %s",
+        asprintf(output, "%sData type: PMIX_STRING\tValue: %s",
                  prefx, src->data.string);
         break;
     case PMIX_SIZE:
-        asprintf(output, "%sPMIX_VALUE: Data type: PMIX_SIZE\tValue: %lu",
+        asprintf(output, "%sData type: PMIX_SIZE\tValue: %lu",
                  prefx, (unsigned long)src->data.size);
         break;
     case PMIX_PID:
-        asprintf(output, "%sPMIX_VALUE: Data type: PMIX_PID\tValue: %lu",
+        asprintf(output, "%sData type: PMIX_PID\tValue: %lu",
                  prefx, (unsigned long)src->data.pid);
         break;
     case PMIX_INT:
-        asprintf(output, "%sPMIX_VALUE: Data type: PMIX_INT\tValue: %d",
+        asprintf(output, "%sData type: PMIX_INT\tValue: %d",
                  prefx, src->data.integer);
         break;
     case PMIX_INT8:
-        asprintf(output, "%sPMIX_VALUE: Data type: PMIX_INT8\tValue: %d",
+        asprintf(output, "%sData type: PMIX_INT8\tValue: %d",
                  prefx, (int)src->data.int8);
         break;
     case PMIX_INT16:
-        asprintf(output, "%sPMIX_VALUE: Data type: PMIX_INT16\tValue: %d",
+        asprintf(output, "%sData type: PMIX_INT16\tValue: %d",
                  prefx, (int)src->data.int16);
         break;
     case PMIX_INT32:
-        asprintf(output, "%sPMIX_VALUE: Data type: PMIX_INT32\tValue: %d",
+        asprintf(output, "%sData type: PMIX_INT32\tValue: %d",
                  prefx, src->data.int32);
         break;
     case PMIX_INT64:
-        asprintf(output, "%sPMIX_VALUE: Data type: PMIX_INT64\tValue: %ld",
+        asprintf(output, "%sData type: PMIX_INT64\tValue: %ld",
                  prefx, (long)src->data.int64);
         break;
     case PMIX_UINT:
-        asprintf(output, "%sPMIX_VALUE: Data type: PMIX_UINT\tValue: %u",
+        asprintf(output, "%sData type: PMIX_UINT\tValue: %u",
                  prefx, src->data.uint);
         break;
     case PMIX_UINT8:
-        asprintf(output, "%sPMIX_VALUE: Data type: PMIX_UINT8\tValue: %u",
+        asprintf(output, "%sData type: PMIX_UINT8\tValue: %u",
                  prefx, (unsigned int)src->data.uint8);
         break;
     case PMIX_UINT16:
-        asprintf(output, "%sPMIX_VALUE: Data type: PMIX_UINT16\tValue: %u",
+        asprintf(output, "%sData type: PMIX_UINT16\tValue: %u",
                  prefx, (unsigned int)src->data.uint16);
         break;
     case PMIX_UINT32:
-        asprintf(output, "%sPMIX_VALUE: Data type: PMIX_UINT32\tValue: %u",
+        asprintf(output, "%sData type: PMIX_UINT32\tValue: %u",
                  prefx, src->data.uint32);
         break;
     case PMIX_UINT64:
-        asprintf(output, "%sPMIX_VALUE: Data type: PMIX_UINT64\tValue: %lu",
+        asprintf(output, "%sData type: PMIX_UINT64\tValue: %lu",
                  prefx, (unsigned long)src->data.uint64);
         break;
     case PMIX_FLOAT:
-        asprintf(output, "%sPMIX_VALUE: Data type: PMIX_FLOAT\tValue: %f",
+        asprintf(output, "%sData type: PMIX_FLOAT\tValue: %f",
                  prefx, src->data.fval);
         break;
     case PMIX_DOUBLE:
-        asprintf(output, "%sPMIX_VALUE: Data type: PMIX_DOUBLE\tValue: %f",
+        asprintf(output, "%sData type: PMIX_DOUBLE\tValue: %f",
                  prefx, src->data.dval);
         break;
     case PMIX_TIMEVAL:
-        asprintf(output, "%sPMIX_VALUE: Data type: PMIX_TIMEVAL\tValue: %ld.%06ld", prefx,
+        asprintf(output, "%sData type: PMIX_TIMEVAL\tValue: %ld.%06ld", prefx,
                  (long)src->data.tv.tv_sec, (long)src->data.tv.tv_usec);
         break;
     default:
-        asprintf(output, "%sPMIX_VALUE: Data type: UNKNOWN\tValue: UNPRINTABLE", prefx);
+        asprintf(output, "%sData type: UNKNOWN\tValue: UNPRINTABLE", prefx);
         break;
     }
     if (prefx != prefix) {
@@ -648,8 +649,8 @@ int pmix_bfrop_print_info(char **output, char *prefix,
     char *tmp;
 
     pmix_bfrop_print_value(&tmp, NULL, &src->value, PMIX_VALUE);
-    asprintf(output, "%sKEY: %s REQD: %s %s", prefix, src->key,
-             src->required ? "Y" : "N", (NULL == tmp) ? "PMIX_VALUE: NULL" : tmp);
+    asprintf(output, "%sKEY: %s %s", prefix, src->key,
+             (NULL == tmp) ? "PMIX_VALUE: NULL" : tmp);
     if (NULL != tmp) {
         free(tmp);
     }
