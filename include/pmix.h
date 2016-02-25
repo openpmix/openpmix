@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015 Intel, Inc. All rights reserved
+ * Copyright (c) 2013-2016 Intel, Inc. All rights reserved
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -48,6 +48,8 @@
 
 #include <pmix/autogen/config.h>
 
+#include <stdlib.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
 #ifdef HAVE_SYS_TIME_H
