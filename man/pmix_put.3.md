@@ -14,7 +14,7 @@ PMIx_Put - Push a value into the client's namespace
 {% highlight c %}
 #include <pmix.h>
 
-pmix_status_t PMIx_Init(pmix_scope_t scope, const char key[], pmix_value_t *val);
+pmix\_status\_t PMIx\_Init(pmix\_scope\_t scope, const char key[], pmix\_value\_t *val);
 
 {% endhighlight %}
 
@@ -23,27 +23,27 @@ pmix_status_t PMIx_Init(pmix_scope_t scope, const char key[], pmix_value_t *val)
 *scope*
 : Defines a scope for data "put" by PMI per the following:
 
-    * PMI_LOCAL - the data is intended only for other application
+(a) PMI_LOCAL - the data is intended only for other application
                   processes on the same node. Data marked in this way
                   will not be included in data packages sent to remote requestors
-    * PMI_REMOTE - the data is intended solely for applications processes on
+(b) PMI_REMOTE - the data is intended solely for application processes on
                    remote nodes. Data marked in this way will not be shared with
                    other processes on the same node
-    * PMI_GLOBAL - the data is to be shared with all other requesting processes,
+(c) PMI_GLOBAL - the data is to be shared with all other requesting processes,
                    regardless of location
 
 *key*
-String key identifying the information. This can be either one of the PMIx defined
+: String key identifying the information. This can be either one of the PMIx defined
 attributes, or a user-defined value
 
 *val*
-Pointer to a pmix_value_t structure containing the data to be pushed along with the type
+: Pointer to a pmix\_value\_t structure containing the data to be pushed along with the type
 of the provided data.
 
 # DESCRIPTION
 
 Push a value into the client's namespace. The client library will cache
-the information locally until _PMIx_Commit_ is called. The provided scope
+the information locally until _PMIx\_Commit_ is called. The provided scope
 value is passed to the local PMIx server, which will distribute the data
 as directed.
 
@@ -58,7 +58,7 @@ PMIx errno values are defined in `pmix_common.h`.
 
 # NOTES
 
-See 'pmix_common.h' for definition of the pmix_value_t structure.
+See 'pmix\_common.h' for definition of the pmix\_value\_t structure.
 
 # SEE ALSO
 [`PMIx_Constants`(7)](pmix_constants.7.html),

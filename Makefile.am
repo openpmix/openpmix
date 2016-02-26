@@ -42,6 +42,8 @@ man_MANS = \
         man/man3/pmix_abort.3 \
         man/man3/pmix_put.3 \
         man/man3/pmix_commit.3 \
+        man/man3/pmix_fence.3 \
+        man/man3/pmix_get.3 \
         man/man7/pmix.7 \
         man/man7/pmix_constants.7
 

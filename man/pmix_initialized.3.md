@@ -7,7 +7,7 @@ tagline: PMIx Programmer's Manual
 
 # NAME
 
-PMIx_Initialized - Check if  _PMIx_Init_ has been called
+PMIx\_Initialized - Check if  _PMIx\_Init_ has been called
 
 # SYNOPSIS
 
