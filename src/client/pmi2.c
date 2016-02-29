@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2015 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2016 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.
@@ -16,11 +16,6 @@
 #include <pmix/rename.h>
 #include <private/types.h>
 
-#include <pmix.h>
-#include <pmi2.h>
-
-#include "src/include/pmix_globals.h"
-
 #ifdef HAVE_STRING_H
 #include <string.h>
 #endif
@@ -32,10 +27,14 @@
 #endif
 #include PMIX_EVENT_HEADER
 
+#include <pmi2.h>
+#include <pmix.h>
+
 #include "src/buffer_ops/buffer_ops.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
+#include "src/include/pmix_globals.h"
 
 
 #define PMI2_CHECK() \
@@ -50,6 +49,7 @@ static pmix_status_t convert_int(int *value, pmix_value_t *kv);
 static int convert_err(pmix_status_t rc);
 static pmix_proc_t myproc;
 static int pmi2_init = 0;
+static bool commit_reqd = false;
 
 int PMI2_Init(int *spawned, int *size, int *rank, int *appnum)
 {
@@ -159,6 +159,151 @@ int PMI2_Abort(int flag, const char msg[])
     return convert_err(rc);
 }
 
+int PMI2_Job_Spawn(int count, const char * cmds[],
+                   int argcs[], const char ** argvs[],
+                   const int maxprocs[],
+                   const int info_keyval_sizes[],
+                   const PMI_keyval_t *info_keyval_vectors[],
+                   int preput_keyval_size,
+                   const PMI_keyval_t *preput_keyval_vector[],
+                   char jobId[], int jobIdSize,
+                   int errors[])
+{
+    pmix_status_t rc = PMIX_SUCCESS;
+    pmix_app_t *apps;
+    int i, k;
+    size_t j;
+    char *evar;
+
+    PMI2_CHECK();
+
+    if (NULL == cmds) {
+        return PMI2_ERR_INVALID_ARGS;
+    }
+
+    /* setup the apps */
+    PMIX_APP_CREATE(apps, count);
+    for (i=0; i < count; i++) {
+        apps[i].cmd = strdup(cmds[i]);
+        apps[i].maxprocs = maxprocs[i];
+        apps[i].argv = pmix_argv_copy((char**)argvs[i]);
+        apps[i].argc = pmix_argv_count(apps[i].argv);
+        apps[i].ninfo = info_keyval_sizes[i];
+        apps[i].info = (pmix_info_t*)malloc(apps[i].ninfo * sizeof(pmix_info_t));
+        /* copy the info objects */
+        for (j=0; j < apps[i].ninfo; j++) {
+            (void)strncpy(apps[i].info[j].key, info_keyval_vectors[i][j].key, PMIX_MAX_KEYLEN);
+            apps[i].info[j].value.type = PMIX_STRING;
+            apps[i].info[j].value.data.string = strdup(info_keyval_vectors[i][j].val);
+        }
+        /* push the preput values into the apps environ */
+        for (k=0; k < preput_keyval_size; k++) {
+            (void)asprintf(&evar, "%s=%s", preput_keyval_vector[j]->key, preput_keyval_vector[j]->val);
+            pmix_argv_append_nosize(&apps[i].env, evar);
+            free(evar);
+        }
+    }
+
+    rc = PMIx_Spawn(NULL, 0, apps, count, NULL);
+    /* tear down the apps array */
+    for (i=0; i < count; i++) {
+        PMIX_APP_DESTRUCT(&apps[i]);
+    }
+    free(apps);
+    if (NULL != errors) {
+        for (i=0; i < count; i++) {
+            errors[i] = convert_err(rc);
+        }
+    }
+
+    return convert_err(rc);
+}
+
+int PMI2_Job_GetId(char jobid[], int jobid_size)
+{
+    /* we already obtained our nspace during pmi2_init,
+     * so all we have to do here is return it */
+
+    PMI2_CHECK();
+
+    /* bozo check */
+    if (NULL == jobid) {
+        return PMI2_ERR_INVALID_ARGS;
+    }
+    (void)strncpy(jobid, myproc.nspace, jobid_size);
+    return PMI2_SUCCESS;
+}
+
+int PMI2_Job_GetRank(int *rank)
+{
+    PMI2_CHECK();
+
+    if (NULL == rank) {
+        return PMI2_ERR_INVALID_ARGS;
+    }
+    *rank = myproc.rank;
+    return PMI2_SUCCESS;
+}
+
+int PMI2_Info_GetSize(int *size)
+{
+    pmix_status_t rc = PMIX_ERROR;
+    pmix_value_t *val;
+    pmix_info_t info[1];
+    bool  val_optinal = 1;
+
+    PMI2_CHECK();
+
+    if (NULL == size) {
+        return PMI2_ERR_INVALID_ARGS;
+    }
+
+    /* set controlling parameters
+     * PMIX_OPTIONAL - expect that these keys should be available on startup
+     */
+    PMIX_INFO_CONSTRUCT(&info[0]);
+    PMIX_INFO_LOAD(&info[0], PMIX_OPTIONAL, &val_optinal, PMIX_BOOL);
+
+    if (PMIX_SUCCESS == PMIx_Get(&myproc, PMIX_LOCAL_SIZE, info, 1, &val)) {
+        rc = convert_int(size, val);
+        PMIX_VALUE_RELEASE(val);
+    }
+
+    PMIX_INFO_DESTRUCT(&info[0]);
+
+    return convert_err(rc);
+}
+
+int PMI2_Job_Connect(const char jobid[], PMI2_Connect_comm_t *conn)
+{
+    pmix_status_t rc = PMIX_SUCCESS;
+    pmix_proc_t proc;
+
+    PMI2_CHECK();
+
+    if (NULL == conn) {
+        return PMI2_ERR_INVALID_ARGS;
+    }
+
+    (void)strncpy(proc.nspace, (jobid ? jobid : myproc.nspace), sizeof(myproc.nspace));
+    proc.rank = PMIX_RANK_WILDCARD;
+    rc = PMIx_Connect(&proc, 1, NULL, 0);
+    return convert_err(rc);
+}
+
+int PMI2_Job_Disconnect(const char jobid[])
+{
+    pmix_status_t rc = PMIX_SUCCESS;
+    pmix_proc_t proc;
+
+    PMI2_CHECK();
+
+    (void)strncpy(proc.nspace, (jobid ? jobid : myproc.nspace), sizeof(myproc.nspace));
+    proc.rank = PMIX_RANK_WILDCARD;
+    rc = PMIx_Disconnect(&proc, 1, NULL, 0);
+    return convert_err(rc);
+}
+
 /* KVS_Put - we default to PMIX_GLOBAL scope */
 int PMI2_KVS_Put(const char key[], const char value[])
 {
@@ -176,7 +321,9 @@ int PMI2_KVS_Put(const char key[], const char value[])
 
     val.type = PMIX_STRING;
     val.data.string = (char*)value;
-    rc = PMIx_Put(PMIX_GLOBAL, key, &val);
+    if (PMIX_SUCCESS == (rc = PMIx_Put(PMIX_GLOBAL, key, &val))) {
+        commit_reqd = true;
+    }
     return convert_err(rc);
 }
 
@@ -192,6 +339,7 @@ int PMI2_KVS_Fence(void)
     if (PMIX_SUCCESS != (rc = PMIx_Commit())) {
         return convert_err(rc);
     }
+    commit_reqd = false;
 
     /* we want all data to be collected upon completion */
     {
@@ -226,6 +374,10 @@ int PMI2_KVS_Get(const char *jobid, int src_pmi_id,
 
     PMI2_CHECK();
 
+    if (commit_reqd) {
+        /* they didn't commit after a put */
+        return PMI2_FAIL;
+    }
     /* set default */
     *vallen = 0;
 
@@ -294,6 +446,12 @@ int PMI2_Info_GetNodeAttr(const char name[], char value[], int valuelen, int *fo
     PMIX_INFO_DESTRUCT(&info[0]);
 
     return convert_err(rc);
+}
+
+int PMI2_Info_GetNodeAttrIntArray(const char name[], int array[],
+                                  int arraylen, int *outlen, int *found)
+{
+    return PMI2_FAIL;
 }
 
 /* push info at the PMIX_LOCAL scope */
@@ -394,32 +552,6 @@ int PMI2_Nameserv_publish(const char service_name[], const PMI_keyval_t *info_pt
     return convert_err(rc);
 }
 
-int PMI2_Nameserv_unpublish(const char service_name[],
-                           const PMI_keyval_t *info_ptr)
-{
-    pmix_status_t rc = PMIX_SUCCESS;
-    char *keys[3];
-
-    PMI2_CHECK();
-
-    if (NULL == service_name || NULL == info_ptr) {
-        return PMI2_ERR_INVALID_ARG;
-    }
-
-    /* pass the service */
-    keys[0] = (char*)service_name;
-    keys[1] = NULL;
-    keys[2] = NULL;
-
-    /* if provided, add any other value */
-    if (NULL != info_ptr) {
-        keys[1] = info_ptr->key;
-    }
-
-    rc = PMIx_Unpublish(keys, NULL, 0);
-    return convert_err(rc);
-}
-
 int PMI2_Nameserv_lookup(const char service_name[], const PMI_keyval_t *info_ptr,
                          char port[], int portLen)
 {
@@ -474,151 +606,33 @@ int PMI2_Nameserv_lookup(const char service_name[], const PMI_keyval_t *info_ptr
     return PMI2_SUCCESS;
 }
 
-int PMI2_Job_GetId(char jobid[], int jobid_size)
-{
-    /* we already obtained our nspace during pmi2_init,
-     * so all we have to do here is return it */
-
-    PMI2_CHECK();
-
-    /* bozo check */
-    if (NULL == jobid) {
-        return PMI2_ERR_INVALID_ARGS;
-    }
-    (void)strncpy(jobid, myproc.nspace, jobid_size);
-    return PMI2_SUCCESS;
-}
-
-int PMI2_Job_GetRank(int *rank)
-{
-    PMI2_CHECK();
-
-    if (NULL == rank) {
-        return PMI2_ERR_INVALID_ARGS;
-    }
-    *rank = myproc.rank;
-    return PMI2_SUCCESS;
-}
-
-int PMI2_Info_GetSize(int *size)
-{
-    pmix_status_t rc = PMIX_ERROR;
-    pmix_value_t *val;
-    pmix_info_t info[1];
-    bool  val_optinal = 1;
-
-    PMI2_CHECK();
-
-    if (NULL == size) {
-        return PMI2_ERR_INVALID_ARGS;
-    }
-
-    /* set controlling parameters
-     * PMIX_OPTIONAL - expect that these keys should be available on startup
-     */
-    PMIX_INFO_CONSTRUCT(&info[0]);
-    PMIX_INFO_LOAD(&info[0], PMIX_OPTIONAL, &val_optinal, PMIX_BOOL);
-
-    if (PMIX_SUCCESS == PMIx_Get(&myproc, PMIX_LOCAL_SIZE, info, 1, &val)) {
-        rc = convert_int(size, val);
-        PMIX_VALUE_RELEASE(val);
-    }
-
-    PMIX_INFO_DESTRUCT(&info[0]);
-
-    return convert_err(rc);
-}
-
-int PMI2_Job_Connect(const char jobid[], PMI2_Connect_comm_t *conn)
+int PMI2_Nameserv_unpublish(const char service_name[],
+                           const PMI_keyval_t *info_ptr)
 {
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_proc_t proc;
+    char *keys[3];
 
     PMI2_CHECK();
 
-    if (NULL == conn) {
-        return PMI2_ERR_INVALID_ARGS;
+    if (NULL == service_name || NULL == info_ptr) {
+        return PMI2_ERR_INVALID_ARG;
     }
 
-    (void)strncpy(proc.nspace, (jobid ? jobid : myproc.nspace), sizeof(myproc.nspace));
-    proc.rank = PMIX_RANK_WILDCARD;
-    rc = PMIx_Connect(&proc, 1, NULL, 0);
+    /* pass the service */
+    keys[0] = (char*)service_name;
+    keys[1] = NULL;
+    keys[2] = NULL;
+
+    /* if provided, add any other value */
+    if (NULL != info_ptr) {
+        keys[1] = info_ptr->key;
+    }
+
+    rc = PMIx_Unpublish(keys, NULL, 0);
     return convert_err(rc);
 }
 
-int PMI2_Job_Disconnect(const char jobid[])
-{
-    pmix_status_t rc = PMIX_SUCCESS;
-    pmix_proc_t proc;
-
-    PMI2_CHECK();
-
-    (void)strncpy(proc.nspace, (jobid ? jobid : myproc.nspace), sizeof(myproc.nspace));
-    proc.rank = PMIX_RANK_WILDCARD;
-    rc = PMIx_Disconnect(&proc, 1, NULL, 0);
-    return convert_err(rc);
-}
-
-int PMI2_Job_Spawn(int count, const char * cmds[],
-                   int argcs[], const char ** argvs[],
-                   const int maxprocs[],
-                   const int info_keyval_sizes[],
-                   const PMI_keyval_t *info_keyval_vectors[],
-                   int preput_keyval_size,
-                   const PMI_keyval_t *preput_keyval_vector[],
-                   char jobId[], int jobIdSize,
-                   int errors[])
-{
-    pmix_status_t rc = PMIX_SUCCESS;
-    pmix_app_t *apps;
-    int i, k;
-    size_t j;
-    char *evar;
-
-    PMI2_CHECK();
-
-    if (NULL == cmds) {
-        return PMI2_ERR_INVALID_ARGS;
-    }
-
-    /* setup the apps */
-    PMIX_APP_CREATE(apps, count);
-    for (i=0; i < count; i++) {
-        apps[i].cmd = strdup(cmds[i]);
-        apps[i].maxprocs = maxprocs[i];
-        apps[i].argv = pmix_argv_copy((char**)argvs[i]);
-        apps[i].argc = pmix_argv_count(apps[i].argv);
-        apps[i].ninfo = info_keyval_sizes[i];
-        apps[i].info = (pmix_info_t*)malloc(apps[i].ninfo * sizeof(pmix_info_t));
-        /* copy the info objects */
-        for (j=0; j < apps[i].ninfo; j++) {
-            (void)strncpy(apps[i].info[j].key, info_keyval_vectors[i][j].key, PMIX_MAX_KEYLEN);
-            apps[i].info[j].value.type = PMIX_STRING;
-            apps[i].info[j].value.data.string = strdup(info_keyval_vectors[i][j].val);
-        }
-        /* push the preput values into the apps environ */
-        for (k=0; k < preput_keyval_size; k++) {
-            (void)asprintf(&evar, "%s=%s", preput_keyval_vector[j]->key, preput_keyval_vector[j]->val);
-            pmix_argv_append_nosize(&apps[i].env, evar);
-            free(evar);
-        }
-    }
-
-    rc = PMIx_Spawn(NULL, 0, apps, count, NULL);
-    /* tear down the apps array */
-    for (i=0; i < count; i++) {
-        PMIX_APP_DESTRUCT(&apps[i]);
-    }
-    free(apps);
-    if (NULL != errors) {
-        for (i=0; i < count; i++) {
-            errors[i] = convert_err(rc);
-        }
-    }
-
-    return convert_err(rc);
-}
-
+/****    CONVERSION ROUTINES    ****/
 static pmix_status_t convert_int(int *value, pmix_value_t *kv)
 {
     switch(kv->type) {
