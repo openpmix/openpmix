@@ -299,6 +299,7 @@ typedef struct {
     gid_t gid;                           // my effective gid
     int pindex;
     pmix_event_base_t *evbase;
+    bool external_evbase;
     int debug_output;
     pmix_pointer_array_t errregs;        // my error handler registrations.
     bool server;

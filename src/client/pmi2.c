@@ -59,7 +59,7 @@ PMIX_EXPORT int PMI2_Init(int *spawned, int *size, int *rank, int *appnum)
     pmix_info_t info[1];
     bool  val_optinal = 1;
 
-    if (PMIX_SUCCESS != PMIx_Init(&myproc)) {
+    if (PMIX_SUCCESS != PMIx_Init(&myproc, NULL, 0)) {
         return PMI2_ERR_INIT;
     }
 
@@ -145,7 +145,7 @@ PMIX_EXPORT int PMI2_Finalize(void)
     PMI2_CHECK();
 
     pmi2_init = 0;
-    rc = PMIx_Finalize();
+    rc = PMIx_Finalize(NULL, 0);
     return convert_err(rc);
 }
 

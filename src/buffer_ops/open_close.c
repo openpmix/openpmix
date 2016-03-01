@@ -369,6 +369,12 @@ pmix_status_t pmix_bfrop_open(void)
                        pmix_bfrop_copy_persist,
                        pmix_bfrop_print_persist);
 
+    PMIX_REGISTER_TYPE("PMIX_POINTER", PMIX_POINTER,
+                       pmix_bfrop_pack_ptr,
+                       pmix_bfrop_unpack_ptr,
+                       pmix_bfrop_std_copy,
+                       pmix_bfrop_print_ptr);
+
     /* All done */
     pmix_bfrop_initialized = true;
     return PMIX_SUCCESS;
@@ -472,6 +478,9 @@ PMIX_EXPORT void pmix_value_load(pmix_value_t *v, void *data,
             bo = (pmix_byte_object_t*)data;
             v->data.bo.bytes = bo->bytes;
             memcpy(&(v->data.bo.size), &bo->size, sizeof(size_t));
+            break;
+        case PMIX_POINTER:
+            memcpy(&(v->data.ptr), data, sizeof(void*));
             break;
         case PMIX_TIME:
         case PMIX_HWLOC_TOPO:
@@ -593,6 +602,10 @@ pmix_status_t pmix_value_unload(pmix_value_t *kv, void **data,
                 *data = NULL;
                 *sz = 0;
             }
+            break;
+        case PMIX_POINTER:
+            memcpy(*data, &(kv->data.ptr), sizeof(void*));
+            *sz = sizeof(void*);
             break;
         case PMIX_TIME:
         case PMIX_HWLOC_TOPO:

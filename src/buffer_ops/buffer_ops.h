@@ -11,7 +11,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2012      Los Alamos National Security, Inc. All rights reserved.
- * Copyright (c) 2013-2015 Intel, Inc. All rights reserved
+ * Copyright (c) 2013-2016 Intel, Inc. All rights reserved
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
@@ -42,12 +42,12 @@ BEGIN_C_DECLS
  * of places throughout the code base - transferring a value to
  * another pmix_value_t structure
  */
-PMIX_DECLSPEC pmix_status_t pmix_value_xfer(pmix_value_t *kv, pmix_value_t *src);
-PMIX_DECLSPEC void pmix_value_load(pmix_value_t *v, void *data,
+pmix_status_t pmix_value_xfer(pmix_value_t *kv, pmix_value_t *src);
+void pmix_value_load(pmix_value_t *v, void *data,
                                    pmix_data_type_t type);
-PMIX_DECLSPEC pmix_status_t pmix_value_unload(pmix_value_t *kv, void **data,
+pmix_status_t pmix_value_unload(pmix_value_t *kv, void **data,
                                               size_t *sz, pmix_data_type_t type);
-PMIX_DECLSPEC bool pmix_value_cmp(pmix_value_t *p, pmix_value_t *p1);
+bool pmix_value_cmp(pmix_value_t *p, pmix_value_t *p1);
 
 
 #define PMIX_LOAD_BUFFER(b, d, s)                       \
@@ -245,12 +245,12 @@ typedef pmix_status_t (*pmix_bfrop_copy_payload_fn_t)(pmix_buffer_t *dest,
  * structure gets loaded, so we provide an "open" call that is
  * executed as part of the program startup.
  */
-PMIX_DECLSPEC pmix_status_t pmix_bfrop_open(void);
+pmix_status_t pmix_bfrop_open(void);
 
 /**
  * BFROP finalize function
  */
-PMIX_DECLSPEC pmix_status_t pmix_bfrop_close(void);
+pmix_status_t pmix_bfrop_close(void);
 
 
 /**
@@ -306,7 +306,7 @@ struct pmix_bfrop_t {
 };
 typedef struct pmix_bfrop_t pmix_bfrop_t;
 
-PMIX_DECLSPEC extern pmix_bfrop_t pmix_bfrop;  /* holds bfrop function pointers */
+extern pmix_bfrop_t pmix_bfrop;  /* holds bfrop function pointers */
 
 END_C_DECLS
 

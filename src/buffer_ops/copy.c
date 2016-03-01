@@ -140,6 +140,10 @@ int pmix_bfrop_std_copy(void **dest, void *src, pmix_data_type_t type)
         datasize = sizeof(pmix_status_t);
         break;
 
+    case PMIX_POINTER:
+        datasize = sizeof(char*);
+        break;
+
     default:
         return PMIX_ERR_UNKNOWN_DATA_TYPE;
     }
@@ -321,6 +325,9 @@ pmix_status_t pmix_value_xfer(pmix_value_t *p, pmix_value_t *src)
             p->data.bo.bytes = NULL;
             p->data.bo.size = 0;
         }
+        break;
+    case PMIX_POINTER:
+        memcpy(&p->data.ptr, &src->data.ptr, sizeof(void*));
         break;
     default:
         pmix_output(0, "COPY-PMIX-VALUE: UNSUPPORTED TYPE %d", (int)src->type);

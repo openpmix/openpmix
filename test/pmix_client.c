@@ -13,7 +13,7 @@
  *                         All rights reserved.
  * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
- * Copyright (c) 2013-2015 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2016 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -82,7 +82,7 @@ int main(int argc, char **argv)
     }
 
     /* init us */
-    if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
         TEST_ERROR(("Client ns %s rank %d: PMIx_Init failed: %d", params.nspace, params.rank, rc));
         FREE_TEST_PARAMS(params);
         exit(0);
@@ -192,7 +192,7 @@ int main(int argc, char **argv)
     PMIx_Deregister_errhandler(1, op_callbk, NULL);
     /* finalize us */
     TEST_VERBOSE(("Client ns %s rank %d: Finalizing", myproc.nspace, myproc.rank));
-    if (PMIX_SUCCESS != (rc = PMIx_Finalize())) {
+    if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {
         TEST_ERROR(("Client ns %s rank %d:PMIx_Finalize failed: %d", myproc.nspace, myproc.rank, rc));
     } else {
         TEST_VERBOSE(("Client ns %s rank %d:PMIx_Finalize successfully completed", myproc.nspace, myproc.rank));

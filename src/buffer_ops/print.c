@@ -31,8 +31,8 @@
 
 #include "src/buffer_ops/internal.h"
 
-int pmix_bfrop_print(char **output, char *prefix, void *src, pmix_data_type_t type)
-{
+ int pmix_bfrop_print(char **output, char *prefix, void *src, pmix_data_type_t type)
+ {
     pmix_bfrop_type_info_t *info;
 
     /* check for error */
@@ -52,8 +52,8 @@ int pmix_bfrop_print(char **output, char *prefix, void *src, pmix_data_type_t ty
 /*
  * STANDARD PRINT FUNCTIONS FOR SYSTEM TYPES
  */
-int pmix_bfrop_print_bool(char **output, char *prefix, bool *src, pmix_data_type_t type)
-{
+ int pmix_bfrop_print_bool(char **output, char *prefix, bool *src, pmix_data_type_t type)
+ {
     char *prefx;
 
     /* deal with NULL prefix */
@@ -568,14 +568,15 @@ int pmix_bfrop_print_status(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
+
 /* PRINT FUNCTIONS FOR GENERIC PMIX TYPES */
 
 /*
  * PMIX_VALUE
  */
-int pmix_bfrop_print_value(char **output, char *prefix,
-                           pmix_value_t *src, pmix_data_type_t type)
-{
+ int pmix_bfrop_print_value(char **output, char *prefix,
+                            pmix_value_t *src, pmix_data_type_t type)
+ {
     char *prefx;
 
     /* deal with NULL prefix */
@@ -592,79 +593,79 @@ int pmix_bfrop_print_value(char **output, char *prefix,
     }
 
     switch (src->type) {
-    case PMIX_BYTE:
+        case PMIX_BYTE:
         asprintf(output, "%sPMIX_VALUE: Data type: PMIX_BYTE\tValue: %x",
                  prefx, src->data.byte);
         break;
-    case PMIX_STRING:
+        case PMIX_STRING:
         asprintf(output, "%sPMIX_VALUE: Data type: PMIX_STRING\tValue: %s",
                  prefx, src->data.string);
         break;
-    case PMIX_SIZE:
+        case PMIX_SIZE:
         asprintf(output, "%sPMIX_VALUE: Data type: PMIX_SIZE\tValue: %lu",
                  prefx, (unsigned long)src->data.size);
         break;
-    case PMIX_PID:
+        case PMIX_PID:
         asprintf(output, "%sPMIX_VALUE: Data type: PMIX_PID\tValue: %lu",
                  prefx, (unsigned long)src->data.pid);
         break;
-    case PMIX_INT:
+        case PMIX_INT:
         asprintf(output, "%sPMIX_VALUE: Data type: PMIX_INT\tValue: %d",
                  prefx, src->data.integer);
         break;
-    case PMIX_INT8:
+        case PMIX_INT8:
         asprintf(output, "%sPMIX_VALUE: Data type: PMIX_INT8\tValue: %d",
                  prefx, (int)src->data.int8);
         break;
-    case PMIX_INT16:
+        case PMIX_INT16:
         asprintf(output, "%sPMIX_VALUE: Data type: PMIX_INT16\tValue: %d",
                  prefx, (int)src->data.int16);
         break;
-    case PMIX_INT32:
+        case PMIX_INT32:
         asprintf(output, "%sPMIX_VALUE: Data type: PMIX_INT32\tValue: %d",
                  prefx, src->data.int32);
         break;
-    case PMIX_INT64:
+        case PMIX_INT64:
         asprintf(output, "%sPMIX_VALUE: Data type: PMIX_INT64\tValue: %ld",
                  prefx, (long)src->data.int64);
         break;
-    case PMIX_UINT:
+        case PMIX_UINT:
         asprintf(output, "%sPMIX_VALUE: Data type: PMIX_UINT\tValue: %u",
                  prefx, src->data.uint);
         break;
-    case PMIX_UINT8:
+        case PMIX_UINT8:
         asprintf(output, "%sPMIX_VALUE: Data type: PMIX_UINT8\tValue: %u",
                  prefx, (unsigned int)src->data.uint8);
         break;
-    case PMIX_UINT16:
+        case PMIX_UINT16:
         asprintf(output, "%sPMIX_VALUE: Data type: PMIX_UINT16\tValue: %u",
                  prefx, (unsigned int)src->data.uint16);
         break;
-    case PMIX_UINT32:
+        case PMIX_UINT32:
         asprintf(output, "%sPMIX_VALUE: Data type: PMIX_UINT32\tValue: %u",
                  prefx, src->data.uint32);
         break;
-    case PMIX_UINT64:
+        case PMIX_UINT64:
         asprintf(output, "%sPMIX_VALUE: Data type: PMIX_UINT64\tValue: %lu",
                  prefx, (unsigned long)src->data.uint64);
         break;
-    case PMIX_FLOAT:
+        case PMIX_FLOAT:
         asprintf(output, "%sPMIX_VALUE: Data type: PMIX_FLOAT\tValue: %f",
                  prefx, src->data.fval);
         break;
-    case PMIX_DOUBLE:
+        case PMIX_DOUBLE:
         asprintf(output, "%sPMIX_VALUE: Data type: PMIX_DOUBLE\tValue: %f",
                  prefx, src->data.dval);
         break;
-    case PMIX_TIMEVAL:
+        case PMIX_TIMEVAL:
         asprintf(output, "%sPMIX_VALUE: Data type: PMIX_TIMEVAL\tValue: %ld.%06ld", prefx,
                  (long)src->data.tv.tv_sec, (long)src->data.tv.tv_usec);
         break;
-    case PMIX_STATUS:
+        case PMIX_STATUS:
         asprintf(output, "%sPMIX_VALUE: Data type: PMIX_STATUS\tValue: %s", prefx,
                  PMIx_Error_string(src->data.status));
         break;
-    default:
+        default:
         asprintf(output, "%sPMIX_VALUE: Data type: UNKNOWN\tValue: UNPRINTABLE", prefx);
         break;
     }
@@ -689,7 +690,7 @@ int pmix_bfrop_print_info(char **output, char *prefix,
 }
 
 int pmix_bfrop_print_pdata(char **output, char *prefix,
-                          pmix_pdata_t *src, pmix_data_type_t type)
+                           pmix_pdata_t *src, pmix_data_type_t type)
 {
     char *tmp1, *tmp2;
 
@@ -719,7 +720,7 @@ int pmix_bfrop_print_app(char **output, char *prefix,
 }
 
 int pmix_bfrop_print_proc(char **output, char *prefix,
-                           pmix_proc_t *src, pmix_data_type_t type)
+                          pmix_proc_t *src, pmix_data_type_t type)
 {
     char *prefx;
 
@@ -785,7 +786,7 @@ static void print_hwloc_obj(char **output, char *prefix,
     /* print the cpusets - apparently, some new HWLOC types don't
      * have cpusets, so protect ourselves here
      */
-    if (NULL != obj->cpuset) {
+     if (NULL != obj->cpuset) {
         hwloc_bitmap_snprintf(string, PMIX_HWLOC_MAX_STRING, obj->cpuset);
         asprintf(&tmp2, "%s%sCpuset:  %s", tmp, pfx, string);
         free(tmp);
@@ -899,6 +900,23 @@ int pmix_bfrop_print_bo(char **output, char *prefix,
     }
 
     asprintf(output, "%sData type: PMIX_BYTE_OBJECT\tSize: %ld", prefx, (long)src->size);
+    if (prefx != prefix) {
+        free(prefx);
+    }
+
+    return PMIX_SUCCESS;
+}
+
+int pmix_bfrop_print_ptr(char **output, char *prefix,
+                         void *src, pmix_data_type_t type)
+{
+    char *prefx;
+
+    /* deal with NULL prefix */
+    if (NULL == prefix) asprintf(&prefx, " ");
+    else prefx = prefix;
+
+    asprintf(output, "%sData type: PMIX_POINTER\tAddress: %p", prefx, src);
     if (prefx != prefix) {
         free(prefx);
     }

@@ -78,7 +78,7 @@ typedef struct {
         including overhead -- packed in the buffer) */
     size_t bytes_used;
 } pmix_buffer_t;
-PMIX_DECLSPEC PMIX_CLASS_DECLARATION (pmix_buffer_t);
+PMIX_CLASS_DECLARATION (pmix_buffer_t);
 
 /* these classes are required by the regex code shared
  * between the client and server implementations - it
@@ -88,7 +88,7 @@ typedef struct {
     int start;
     int cnt;
 } pmix_regex_range_t;
-PMIX_DECLSPEC PMIX_CLASS_DECLARATION(pmix_regex_range_t);
+PMIX_CLASS_DECLARATION(pmix_regex_range_t);
 
 typedef struct {
     /* list object */
@@ -98,7 +98,7 @@ typedef struct {
     int num_digits;
     pmix_list_t ranges;
 } pmix_regex_value_t;
-PMIX_DECLSPEC PMIX_CLASS_DECLARATION(pmix_regex_value_t);
+PMIX_CLASS_DECLARATION(pmix_regex_value_t);
 
 END_C_DECLS
 

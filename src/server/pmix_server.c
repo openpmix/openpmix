@@ -1237,7 +1237,6 @@ static void reg_errhandler(int sd, short args, void *cbdata)
     int index = 0;
     pmix_status_t rc;
     pmix_shift_caddy_t *cd = (pmix_shift_caddy_t*)cbdata;
-    pmix_notify_caddy_t *rb;
 
     /* check if this handler is already registered if so return error */
     if (PMIX_EXISTS == (rc = pmix_lookup_errhandler(cd->info, cd->ninfo, &index))) {
@@ -1255,7 +1254,9 @@ static void reg_errhandler(int sd, short args, void *cbdata)
 
     /* acknowledge the registration so the caller can release
      * their data */
-    cd->cbfunc.errregcbfn(rc, index, cd->cbdata);
+    if (NULL != cd->cbfunc.errregcbfn) {
+        cd->cbfunc.errregcbfn(rc, index, cd->cbdata);
+    }
 
     PMIX_RELEASE(cd);
 }
@@ -2260,23 +2261,19 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
     if (PMIX_ABORT_CMD == cmd) {
         PMIX_PEER_CADDY(cd, peer, tag);
         if (PMIX_SUCCESS != (rc = pmix_server_abort(peer, buf, op_cbfunc, cd))) {
-            PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(cd);
         }
         return rc;
     }
 
     if (PMIX_COMMIT_CMD == cmd) {
-        if (PMIX_SUCCESS != (rc = pmix_server_commit(peer, buf))) {
-            PMIX_ERROR_LOG(rc);
-        }
+        rc = pmix_server_commit(peer, buf);
         return rc;
     }
 
     if (PMIX_FENCENB_CMD == cmd) {
         PMIX_PEER_CADDY(cd, peer, tag);
         if (PMIX_SUCCESS != (rc = pmix_server_fence(cd, buf, modex_cbfunc, op_cbfunc))) {
-            PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(cd);
         }
         return rc;
@@ -2285,7 +2282,6 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
     if (PMIX_GETNB_CMD == cmd) {
         PMIX_PEER_CADDY(cd, peer, tag);
         if (PMIX_SUCCESS != (rc = pmix_server_get(buf, get_cbfunc, cd))) {
-            PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(cd);
         }
         return rc;
@@ -2301,7 +2297,6 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
             proc.rank = peer->info->rank;
             if (PMIX_SUCCESS != (rc = pmix_host_server.client_finalized(&proc, peer->info->server_object,
                                                                         op_cbfunc, cd))) {
-                PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(cd);
             }
         }
@@ -2318,7 +2313,6 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
     if (PMIX_PUBLISHNB_CMD == cmd) {
         PMIX_PEER_CADDY(cd, peer, tag);
         if (PMIX_SUCCESS != (rc = pmix_server_publish(peer, buf, op_cbfunc, cd))) {
-            PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(cd);
         }
         return rc;
@@ -2328,7 +2322,6 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
     if (PMIX_LOOKUPNB_CMD == cmd) {
         PMIX_PEER_CADDY(cd, peer, tag);
         if (PMIX_SUCCESS != (rc = pmix_server_lookup(peer, buf, lookup_cbfunc, cd))) {
-            PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(cd);
         }
         return rc;
@@ -2338,7 +2331,6 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
     if (PMIX_UNPUBLISHNB_CMD == cmd) {
         PMIX_PEER_CADDY(cd, peer, tag);
         if (PMIX_SUCCESS != (rc = pmix_server_unpublish(peer, buf, op_cbfunc, cd))) {
-            PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(cd);
         }
         return rc;
@@ -2348,7 +2340,6 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
     if (PMIX_SPAWNNB_CMD == cmd) {
         PMIX_PEER_CADDY(cd, peer, tag);
         if (PMIX_SUCCESS != (rc = pmix_server_spawn(peer, buf, spawn_cbfunc, cd))) {
-            PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(cd);
         }
         return rc;
@@ -2358,7 +2349,6 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
     if (PMIX_CONNECTNB_CMD == cmd) {
         PMIX_PEER_CADDY(cd, peer, tag);
         if (PMIX_SUCCESS != (rc = pmix_server_connect(cd, buf, false, cnct_cbfunc))) {
-            PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(cd);
         }
         return rc;
@@ -2367,7 +2357,6 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
     if (PMIX_DISCONNECTNB_CMD == cmd) {
         PMIX_PEER_CADDY(cd, peer, tag);
         if (PMIX_SUCCESS != (rc = pmix_server_connect(cd, buf, true, cnct_cbfunc))) {
-            PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(cd);
         }
         return rc;
@@ -2376,7 +2365,6 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
     if (PMIX_REGEVENTS_CMD == cmd) {
         PMIX_PEER_CADDY(cd, peer, tag);
         if (PMIX_SUCCESS != (rc = pmix_server_register_events(peer, buf, regevents_cbfunc, cd))) {
-            PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(cd);
         }
         return rc;
@@ -2384,16 +2372,13 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
     if (PMIX_DEREGEVENTS_CMD == cmd) {
         PMIX_PEER_CADDY(cd, peer, tag);
         if (PMIX_SUCCESS != (rc = pmix_server_deregister_events(peer, buf, deregevents_cbfunc, cd))) {
-            PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(cd);
         }
         return rc;
     }
     if (PMIX_NOTIFY_CMD == cmd) {
         PMIX_PEER_CADDY(cd, peer, tag);
-        if (PMIX_SUCCESS != (rc = pmix_server_notify_error_client(peer, buf, notifyerror_cbfunc, cd))) {
-            PMIX_ERROR_LOG(rc);
-        }
+        rc = pmix_server_notify_error_client(peer, buf, notifyerror_cbfunc, cd);
         return rc;
     }
     return PMIX_ERR_NOT_SUPPORTED;
