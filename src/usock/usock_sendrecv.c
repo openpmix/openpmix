@@ -36,7 +36,6 @@
 #include <sys/types.h>
 #endif
 
-#include "src/class/pmix_pointer_array.h"
 #include "src/include/pmix_globals.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/error.h"

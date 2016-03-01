@@ -987,6 +987,7 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
     size_t ninfo, n;
     pmix_regevents_info_t *reginfo;
     pmix_notify_caddy_t *cd;
+    int i;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "recvd register events");
@@ -1031,8 +1032,8 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
     }
 
     /* check if any matching notifications have been cached */
-    for (n=0; n < pmix_server_globals.notifications.size; n++) {
-        if (NULL == (cd = (pmix_notify_caddy_t*)pmix_ring_buffer_poke(&pmix_server_globals.notifications, n))) {
+    for (i=0; i < pmix_server_globals.notifications.size; i++) {
+        if (NULL == (cd = (pmix_notify_caddy_t*)pmix_ring_buffer_poke(&pmix_server_globals.notifications, i))) {
             break;
         }
        pmix_server_check_notifications(reginfo, cd);
