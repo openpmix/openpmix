@@ -57,9 +57,9 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                         pmix_buffer_t *buf, void *cbdata);
 static void spawn_cbfunc(int status, char nspace[], void *cbdata);
 
-int PMIx_Spawn(const pmix_info_t job_info[], size_t ninfo,
-               const pmix_app_t apps[], size_t napps,
-               char nspace[])
+PMIX_EXPORT int PMIx_Spawn(const pmix_info_t job_info[], size_t ninfo,
+                           const pmix_app_t apps[], size_t napps,
+                           char nspace[])
 {
     int rc;
     pmix_cb_t *cb;
@@ -101,9 +101,9 @@ int PMIx_Spawn(const pmix_info_t job_info[], size_t ninfo,
     return rc;
 }
 
-pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t ninfo,
-                            const pmix_app_t apps[], size_t napps,
-                            pmix_spawn_cbfunc_t cbfunc, void *cbdata)
+PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t ninfo,
+                                        const pmix_app_t apps[], size_t napps,
+                                        pmix_spawn_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_SPAWNNB_CMD;

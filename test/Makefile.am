@@ -19,13 +19,20 @@
 # $HEADER$
 #
 
+if !WANT_HIDDEN
+# these tests use interanl symbols
+# use --disable-visibility
 SUBDIRS = simple
+endif
 
 headers = test_common.h cli_stages.h server_callbacks.h utils.h test_fence.h test_publish.h test_spawn.h test_cd.h test_resolve_peers.h test_error.h
 
 AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/src/api
 
-noinst_PROGRAMS = pmix_test pmix_client pmi_client pmi2_client pmix_regex
+noinst_PROGRAMS = pmi_client pmi2_client
+if !WANT_HIDDEN
+noinst_PROGRAMS += pmix_test pmix_client pmix_regex
+endif
 
 pmix_test_SOURCES = $(headers) \
         pmix_test.c test_common.c cli_stages.c server_callbacks.c utils.c

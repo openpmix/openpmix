@@ -206,12 +206,11 @@
 #endif
 
 #ifndef PMIX_DECLSPEC
+#define PMIX_DECLSPEC
 #  if PMIX_C_HAVE_VISIBILITY
-#    define PMIX_DECLSPEC           __pmix_attribute_visibility__("default")
-#    define PMIX_MODULE_DECLSPEC    __pmix_attribute_visibility__("default")
+#    define PMIX_EXPORT           __pmix_attribute_visibility__("default")
 #  else
-#    define PMIX_DECLSPEC
-#    define PMIX_MODULE_DECLSPEC
+#    define PMIX_EXPORT
 #  endif
 #endif
 
