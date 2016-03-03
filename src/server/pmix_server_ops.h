@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2015      Intel, Inc. All rights reserved
+ * Copyright (c) 2015-2016 Intel, Inc. All rights reserved
  * Copyright (c) 2015      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.
@@ -15,55 +15,10 @@
 #include <private/autogen/config.h>
 #include <pmix/rename.h>
 #include <pmix/pmix_common.h>
+#include <src/class/pmix_ring_buffer.h>
 #include <pmix_server.h>
 #include "src/usock/usock.h"
 #include "src/util/hash.h"
-
-/* define an object for moving a send
- * request into the server's event base */
-typedef struct {
-    pmix_object_t super;
-    int sd;
-} pmix_snd_caddy_t;
-PMIX_CLASS_DECLARATION(pmix_snd_caddy_t);
-
-
-/* define an object for moving a send
- * request into the server's event base */
-typedef struct {
-    pmix_list_item_t super;
-    pmix_usock_hdr_t hdr;
-    pmix_peer_t *peer;
-    pmix_snd_caddy_t snd;
-} pmix_server_caddy_t;
-PMIX_CLASS_DECLARATION(pmix_server_caddy_t);
-
-typedef enum {
-    PMIX_COLLECT_INVALID = -1,
-    PMIX_COLLECT_NO,
-    PMIX_COLLECT_YES,
-    PMIX_COLLECT_MAX
-} pmix_collect_t;
-
-/* define a tracker for collective operations */
-typedef struct {
-    pmix_list_item_t super;
-    pmix_cmd_t type;
-    pmix_proc_t *pcs;               // copy of the original array of participants
-    size_t   npcs;                  // number of procs in the array
-    volatile bool active;           // flag for waiting for completion
-    bool def_complete;              // all local procs have been registered and the trk definition is complete
-    pmix_list_t ranks;              // list of pmix_rank_info_t of the local participants
-    pmix_list_t local_cbs;          // list of pmix_server_caddy_t for sending result to the local participants
-    uint32_t nlocal;                // number of local participants
-    uint32_t local_cnt;             // number of local participants who have contributed
-    pmix_info_t *info;              // array of info structs
-    size_t ninfo;                   // number of info structs in array
-    pmix_collect_t collect_type;    // whether or not data is to be returned at completion
-    pmix_modex_cbfunc_t modexcbfunc;
-    pmix_op_cbfunc_t op_cbfunc;
-} pmix_server_trkr_t;
-PMIX_CLASS_DECLARATION(pmix_server_trkr_t);
 
 typedef struct {
     pmix_object_t super;
@@ -134,7 +89,7 @@ typedef struct {
     pmix_object_t super;
     pmix_event_t ev;
     int sd;
-    struct sockaddr addr;
+    struct sockaddr_storage addr;
 } pmix_pending_connection_t;
 PMIX_CLASS_DECLARATION(pmix_pending_connection_t);
 
@@ -157,6 +112,7 @@ typedef struct {
     int stop_thread[2];                     // pipe used to stop listener thread
     pmix_buffer_t gdata;                    // cache of data given to me for passing to all clients
     pmix_list_t client_eventregs;           // list of registered events per client.
+    pmix_ring_buffer_t notifications;       // ring buffer of pending notifications
 } pmix_server_globals_t;
 
 #define PMIX_PEER_CADDY(c, p, t)                \
@@ -272,6 +228,8 @@ pmix_status_t pmix_server_notify_error_client(pmix_peer_t *peer,
                                               pmix_buffer_t *buf,
                                               pmix_op_cbfunc_t cbfunc,
                                               void *cbdata);
+void pmix_server_check_notifications(pmix_regevents_info_t *reginfo,
+                                     pmix_notify_caddy_t *cd);
 
 void regevents_cbfunc (pmix_status_t status, void *cbdata);
 

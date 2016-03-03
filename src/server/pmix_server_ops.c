@@ -986,6 +986,8 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
     pmix_info_t *info = NULL;
     size_t ninfo, n;
     pmix_regevents_info_t *reginfo;
+    pmix_notify_caddy_t *cd;
+    int i;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "recvd register events");
@@ -1023,13 +1025,20 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "server register events: calling host server reg events");
     /* call the local server */
-    if(PMIX_SUCCESS != (rc = pmix_host_server.register_events(reginfo->info,
-                             reginfo->ninfo, cbfunc, cbdata)))
-    {
-
+    if (PMIX_SUCCESS != (rc = pmix_host_server.register_events(reginfo->info,
+                                    reginfo->ninfo, cbfunc, cbdata))) {
         pmix_output_verbose(2, pmix_globals.debug_output,
                              "server register events: host server reg events returned rc =%d", rc);
     }
+
+    /* check if any matching notifications have been cached */
+    for (i=0; i < pmix_server_globals.notifications.size; i++) {
+        if (NULL == (cd = (pmix_notify_caddy_t*)pmix_ring_buffer_poke(&pmix_server_globals.notifications, i))) {
+            break;
+        }
+       pmix_server_check_notifications(reginfo, cd);
+   }
+
 cleanup:
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "server register events: ninfo =%lu rc =%d", ninfo, rc);
@@ -1225,6 +1234,15 @@ static void ncon(pmix_notify_caddy_t *p)
 }
 static void ndes(pmix_notify_caddy_t *p)
 {
+    if (NULL != p->procs) {
+        PMIX_PROC_FREE(p->procs, p->nprocs);
+    }
+    if (NULL != p->error_procs) {
+        PMIX_PROC_FREE(p->error_procs, p->error_nprocs);
+    }
+    if (NULL != p->info) {
+        PMIX_INFO_FREE(p->info, p->ninfo);
+    }
     if (NULL != p->buf) {
         PMIX_RELEASE(p->buf);
     }
@@ -1232,6 +1250,7 @@ static void ndes(pmix_notify_caddy_t *p)
 PMIX_CLASS_INSTANCE(pmix_notify_caddy_t,
                     pmix_object_t,
                     ncon, ndes);
+
 
 PMIX_CLASS_INSTANCE(pmix_trkr_caddy_t,
                     pmix_object_t,

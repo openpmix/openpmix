@@ -500,6 +500,20 @@ int pmix_bfrop_unpack_time(pmix_buffer_t *buffer, void *dest,
 }
 
 
+int pmix_bfrop_unpack_status(pmix_buffer_t *buffer, void *dest,
+                             int32_t *num_vals, pmix_data_type_t type)
+{
+     pmix_output_verbose(20, pmix_globals.debug_output, "pmix_bfrop_unpack_status * %d\n", (int)*num_vals);
+    /* check to see if there's enough data in buffer */
+    if (pmix_bfrop_too_small(buffer, (*num_vals)*(sizeof(pmix_status_t)))) {
+        return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
+    }
+
+    /* unpack the data */
+    return pmix_bfrop_unpack_int32(buffer, dest, num_vals, PMIX_INT32);
+}
+
+
 /* UNPACK FUNCTIONS FOR GENERIC PMIX TYPES */
 
 /*

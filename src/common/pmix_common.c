@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2015 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2016 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -83,13 +83,13 @@ PMIX_EXPORT pmix_status_t PMIx_Notify_error(pmix_status_t status,
         rc = pmix_server_notify_error(status, procs, nprocs, error_procs,
                                       error_nprocs, info, ninfo,
                                        cbfunc, cbdata);
-        pmix_output_verbose(0, pmix_globals.debug_output,
+        pmix_output_verbose(2, pmix_globals.debug_output,
                             "pmix_server_notify_error error =%d, rc=%d", status, rc);
     } else {
         rc = pmix_client_notify_error(status, procs, nprocs, error_procs,
                                       error_nprocs, info, ninfo,
                                       cbfunc, cbdata);
-        pmix_output_verbose(0, pmix_globals.debug_output,
+        pmix_output_verbose(2, pmix_globals.debug_output,
                             "pmix_client_notify_error error =%d, rc=%d", status, rc);
     }
     return rc;

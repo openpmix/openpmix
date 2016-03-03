@@ -11,7 +11,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2012-2013 Los Alamos National Security, Inc.  All rights reserved.
- * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2016 Intel, Inc. All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
@@ -289,6 +289,12 @@ pmix_status_t pmix_bfrop_open(void)
                        pmix_bfrop_std_copy,
                        pmix_bfrop_print_time);
 
+    PMIX_REGISTER_TYPE("PMIX_STATUS", PMIX_STATUS,
+                       pmix_bfrop_pack_status,
+                       pmix_bfrop_unpack_status,
+                       pmix_bfrop_std_copy,
+                       pmix_bfrop_print_status);
+
 #if PMIX_HAVE_HWLOC
     PMIX_REGISTER_TYPE("PMIX_HWLOC_TOPO", PMIX_HWLOC_TOPO,
                        pmix_bfrop_pack_topo,
@@ -459,6 +465,9 @@ PMIX_EXPORT void pmix_value_load(pmix_value_t *v, void *data,
         case PMIX_TIMEVAL:
             memcpy(&(v->data.tv), data, sizeof(struct timeval));
             break;
+        case PMIX_STATUS:
+            memcpy(&(v->data.status), data, sizeof(pmix_status_t));
+            break;
         case PMIX_BYTE_OBJECT:
             bo = (pmix_byte_object_t*)data;
             v->data.bo.bytes = bo->bytes;
@@ -571,6 +580,10 @@ pmix_status_t pmix_value_unload(pmix_value_t *kv, void **data,
         case PMIX_TIMEVAL:
             memcpy(*data, &(kv->data.tv), sizeof(struct timeval));
             *sz = sizeof(struct timeval);
+            break;
+        case PMIX_STATUS:
+            memcpy(*data, &(kv->data.status), sizeof(pmix_status_t));
+            *sz = sizeof(pmix_status_t);
             break;
         case PMIX_BYTE_OBJECT:
             if (NULL != kv->data.bo.bytes && 0 < kv->data.bo.size) {

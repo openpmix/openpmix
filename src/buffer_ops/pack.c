@@ -406,6 +406,26 @@ int pmix_bfrop_pack_time(pmix_buffer_t *buffer, const void *src,
 }
 
 
+/* STATUS */
+int pmix_bfrop_pack_status(pmix_buffer_t *buffer, const void *src,
+                           int32_t num_vals, pmix_data_type_t type)
+{
+    int ret = PMIX_SUCCESS;
+    int32_t i;
+    pmix_status_t *ssrc = (pmix_status_t *)src;
+    int32_t status;
+
+    for (i = 0; i < num_vals; ++i) {
+        status = (int32_t)ssrc[i];
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_int32(buffer, &status, 1, PMIX_INT32))) {
+            return ret;
+        }
+    }
+
+    return PMIX_SUCCESS;
+}
+
+
 /* PACK FUNCTIONS FOR GENERIC PMIX TYPES */
 static int pack_val(pmix_buffer_t *buffer,
                     pmix_value_t *p)
@@ -500,6 +520,11 @@ static int pack_val(pmix_buffer_t *buffer,
         break;
     case PMIX_TIMEVAL:
         if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &p->data.tv, 1, PMIX_TIMEVAL))) {
+            return ret;
+        }
+        break;
+    case PMIX_STATUS:
+        if (PMIX_SUCCESS != (ret = pmix_bfrop_pack_buffer(buffer, &p->data.status, 1, PMIX_STATUS))) {
             return ret;
         }
         break;
