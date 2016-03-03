@@ -95,7 +95,7 @@ AC_DEFUN([_PMIX_CHECK_COMPILER_VENDOR], [
 
     # Fujitsu
     AS_IF([test "$pmix_check_compiler_vendor_result" = "unknown"],
-          [PMIX_IF_IFELSE([defined(__FUJITSU)], 
+          [PMIX_IF_IFELSE([defined(__FUJITSU)],
                [pmix_check_compiler_vendor_result="fujitsu"])])
 
     # GNU
