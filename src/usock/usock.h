@@ -87,6 +87,7 @@ typedef struct {
     pmix_list_item_t super;
     pmix_event_t ev;
     volatile bool active;
+    bool checked;
     int status;
     pmix_status_t pstatus;
     pmix_scope_t scope;

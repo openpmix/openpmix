@@ -393,7 +393,7 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, int rank,
         }
     }
 
-    if (scope) {
+    if (NULL != scope) {
         *scope = local;
     }
 
@@ -403,7 +403,7 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, int rank,
      * having been committed */
     htptr = hts;
     PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
-    while (*htptr) {
+    while (NULL != *htptr) {
         cur_rank = rank;
         if (PMIX_RANK_UNDEF == rank) {
             rc = pmix_hash_fetch_by_key(*htptr, "modex", &cur_rank, &val, &last);
@@ -426,7 +426,6 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, int rank,
                 PMIX_RELEASE(kv);
 #else
                 pmix_buffer_t xfer, *xptr;
-
                 pmix_bfrop.pack(&pbkt, &cur_rank, 1, PMIX_INT);
                 /* the client is expecting this to arrive as a byte object
                  * containing a buffer, so package it accordingly */

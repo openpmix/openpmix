@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2014 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2016 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * $COPYRIGHT$
@@ -422,6 +422,7 @@ static int test_item9(void)
         sprintf(tkey, "KEY-%d", i);
         sprintf(tval, "VALUE-%d", i);
         if (i == rank) {
+            log_info("Rank %d executing Put of key %s\n", rank, tkey);
             if (PMI2_SUCCESS != (rc = PMI2_KVS_Put(tkey, tval))) {
                 log_fatal("PMI2_KVS_Put [%s=%s] %d\n", tkey, tval, rc);
                 return rc;
@@ -429,6 +430,7 @@ static int test_item9(void)
         }
     }
 
+    log_info("Rank %d executing Fence\n", rank);
     if (PMI2_SUCCESS != (rc = PMI2_KVS_Fence())) {
         log_fatal("PMI2_KVS_Fence %d\n", rc);
         return rc;
@@ -437,6 +439,7 @@ static int test_item9(void)
     for (i = 0; i < size; i++) {
         sprintf(tkey, "KEY-%d", i);
         sprintf(tval, "VALUE-%d", i);
+        log_info("Rank %d executing Get of key %s\n", rank, tkey);
         if (PMI2_SUCCESS != (rc = PMI2_KVS_Get(jobid, PMI2_ID_NULL, tkey, val, sizeof(val), &len))) {
             log_fatal("PMI2_KVS_Get [%s=?] %d\n", tkey, rc);
             return rc;

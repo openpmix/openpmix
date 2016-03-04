@@ -412,7 +412,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
      * and the modex tables. If we don't yet have the modex data,
      * then we are going to have to go get it. So let's check that
      * case first */
-     if (NULL == cb->key) {
+    if (NULL == cb->key) {
         PMIX_CONSTRUCT(&results, pmix_pointer_array_t);
         pmix_pointer_array_init(&results, 2, INT_MAX, 1);
         nvals = 0;
@@ -425,7 +425,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
             if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->modex, cb->rank, NULL, &val))) {
 #endif /* PMIX_ENABLE_DSTORE */
                 pmix_output_verbose(2, pmix_globals.debug_output,
-                                    "pmix: value retrieved from dstore");
+                                    "pmix_get[%d]: value retrieved from dstore", __LINE__);
                 /* since we didn't provide them with a key, the hash function
                  * must return the results in the pmix_info_array field of the
                  * value */
@@ -547,7 +547,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
     if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->modex, cb->rank, cb->key, &val))) {
 #endif /* PMIX_ENABLE_DSTORE */
         pmix_output_verbose(2, pmix_globals.debug_output,
-                            "pmix: value retrieved from dstore");
+                            "pmix_get[%d]: value retrieved from dstore", __LINE__);
         /* found it - we are in an event, so we can
          * just execute the callback */
         cb->value_cbfunc(rc, val, cb->cbdata);
@@ -559,19 +559,25 @@ static void _getnbfn(int fd, short flags, void *cbdata)
         return;
     } else if (PMIX_ERR_NOT_FOUND == rc) {
         /* we have the modex data from this proc, but didn't find the key
-         * the user requested. At this time, there is no way for the
-         * key to eventually be found, so all we can do is return
-         * the error */
+         * the user requested. It's possible someone pushed something since
+         * we got this data, so let's ask the server for an update. However,
+         * we do have to protect against an infinite loop! */
+        if (cb->checked) {
+            pmix_output_verbose(2, pmix_globals.debug_output,
+                                "Error requesting key=%s for rank = %d, namespace = %s",
+                                cb->key, cb->rank, cb->nspace);
+            cb->value_cbfunc(rc, NULL, cb->cbdata);
+            /* protect the data */
+            cb->procs = NULL;
+            cb->key = NULL;
+            cb->info = NULL;
+            PMIX_RELEASE(cb);
+            return;
+        }
         pmix_output_verbose(2, pmix_globals.debug_output,
-                            "Error requesting key=%s for rank = %d, namespace = %s",
+                            "Unable to locally satisfy request for key=%s for rank = %d, namespace = %s",
                             cb->key, cb->rank, cb->nspace);
-        cb->value_cbfunc(rc, NULL, cb->cbdata);
-        /* protect the data */
-        cb->procs = NULL;
-        cb->key = NULL;
-        cb->info = NULL;
-        PMIX_RELEASE(cb);
-        return;
+        cb->checked = true; // flag that we are going to check this again
     }
 
   request:
@@ -625,7 +631,6 @@ static void _getnbfn(int fd, short flags, void *cbdata)
      * recv routine so we know which callback to use when
      * the return message is recvd */
     pmix_list_append(&pmix_client_globals.pending_requests, &cb->super);
-
     /* push the message into our event base to send to the server */
     PMIX_ACTIVATE_SEND_RECV(&pmix_client_globals.myserver, msg, _getnb_cbfunc, cb);
 }

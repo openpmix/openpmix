@@ -67,6 +67,7 @@ int pmix_hash_store(pmix_hash_table_t *table,
 {
     pmix_proc_data_t *proc_data;
     uint64_t id;
+    pmix_kval_t *hv;
 
     pmix_output_verbose(10, pmix_globals.debug_output,
                         "HASH:STORE rank %d key %s",
@@ -80,11 +81,14 @@ int pmix_hash_store(pmix_hash_table_t *table,
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
-    /* add the new value - note that if the user is updating
-     * a value, the ordering of the stored blobs will cause
-     * an update to eventually occur. In other words, the
-     * receiving process will first unpack the "old" data,
-     * and then unpack the update and overwrite it */
+    /* see if we already have this key-value */
+    hv = lookup_keyval(&proc_data->data, kin->key);
+    if (NULL != hv) {
+        /* yes we do - so remove the current value
+         * and replace it */
+        pmix_list_remove_item(&proc_data->data, &hv->super);
+        PMIX_RELEASE(hv);
+    }
     PMIX_RETAIN(kin);
     pmix_list_append(&proc_data->data, &kin->super);
 
@@ -140,7 +144,7 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, int rank,
         } else {
             /* find the value from within this proc_data object */
             hv = lookup_keyval(&proc_data->data, key);
-            if (hv) {
+            if (NULL != hv) {
                 /* create the copy */
                 if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)kvs, hv->value, PMIX_VALUE))) {
                     PMIX_ERROR_LOG(rc);

@@ -262,6 +262,7 @@ PMIX_CLASS_INSTANCE(pmix_usock_posted_recv_t,
 static void cbcon(pmix_cb_t *p)
 {
     p->active = false;
+    p->checked = false;
     PMIX_CONSTRUCT(&p->data, pmix_buffer_t);
     p->cbfunc = NULL;
     p->op_cbfunc = NULL;
