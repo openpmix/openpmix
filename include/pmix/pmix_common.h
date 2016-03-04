@@ -54,6 +54,7 @@
 #ifdef HAVE_SYS_TIME_H
 #include <sys/time.h> /* for struct timeval */
 #endif
+#include <event.h>
 
 BEGIN_C_DECLS
 
@@ -86,6 +87,10 @@ BEGIN_C_DECLS
  * by the resource manager as opposed to the application. Thus,
  * these keys are RESERVED */
 #define PMIX_ATTR_UNDEF      NULL
+
+/* initialization attributes */
+#define PMIX_EVENT_BASE            "pmix.evbase"            // (struct event_base *) pointer to libevent event_base to use in place
+                                                            // of the internal progress thread
 
 /* identification attributes */
 #define PMIX_USERID                "pmix.euid"              // (uint32_t) effective user id
@@ -159,6 +164,8 @@ BEGIN_C_DECLS
 #define PMIX_PERSISTENCE           "pmix.persist"           // (int) pmix_persistence_t value for calls to publish
 #define PMIX_OPTIONAL              "pmix.optional"          // (bool) look only in the immediate data store for the requested value - do
                                                             //        not request data from the server if not found
+#define PMIX_EMBED_BARRIER         "pmix.embed.barrier"     // (bool) execute a blocking fence operation before executing the
+                                                            //        specified operation
 
 /* attributes used by host server to pass data to the server convenience library - the
  * data will then be parsed and provided to the local clients */
@@ -314,7 +321,8 @@ typedef enum {
     PMIX_BYTE_OBJECT,
     PMIX_KVAL,
     PMIX_MODEX,
-    PMIX_PERSIST
+    PMIX_PERSIST,
+    PMIX_POINTER
 } pmix_data_type_t;
 
 /* define a scope for data "put" by PMI per the following:
@@ -429,6 +437,7 @@ typedef struct {
         pmix_status_t status;
         pmix_info_array_t array;
         pmix_byte_object_t bo;
+        void *ptr;
     } data;
 } pmix_value_t;
 /* allocate and initialize a specified number of value structs */

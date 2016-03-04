@@ -5,7 +5,7 @@
  * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
@@ -13,9 +13,9 @@
  * Copyright (c) 2015      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -160,7 +160,7 @@ static inline void* pmix_ptr_ltop( uint64_t value )
 
 #if defined(WORDS_BIGENDIAN) || !defined(HAVE_UNIX_BYTESWAP)
 static inline uint16_t pmix_swap_bytes2(uint16_t val) __pmix_attribute_const__;
-static inline uint16_t pmix_swap_bytes2(uint16_t val) 
+static inline uint16_t pmix_swap_bytes2(uint16_t val)
 {
     union { uint16_t bigval;
             uint8_t  arrayval[2];
@@ -205,7 +205,7 @@ static inline uint64_t pmix_swap_bytes8(uint64_t val)
     r.arrayval[5] = w.arrayval[2];
     r.arrayval[6] = w.arrayval[1];
     r.arrayval[7] = w.arrayval[0];
-    
+
     return r.bigval;
 }
 

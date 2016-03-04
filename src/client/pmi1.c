@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2015 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2016 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.
@@ -66,7 +66,7 @@ PMIX_EXPORT int PMI_Init(int *spawned)
     pmix_info_t info[1];
     bool  val_optinal = 1;
 
-    if (PMIX_SUCCESS != PMIx_Init(&myproc)) {
+    if (PMIX_SUCCESS != PMIx_Init(&myproc, NULL, 0)) {
         return PMI_ERR_INIT;
     }
 
@@ -121,7 +121,7 @@ PMIX_EXPORT int PMI_Finalize(void)
     PMI_CHECK();
 
     pmi_init = 0;
-    rc = PMIx_Finalize();
+    rc = PMIx_Finalize(NULL, 0);
     return convert_err(rc);
 }
 

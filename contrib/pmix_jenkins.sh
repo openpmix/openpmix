@@ -43,7 +43,7 @@ function check_commands
     for pat in $(echo $test_list); do
         echo -n "checking $pat "
         if [[ $cmd =~ jenkins\:.*no${pat}.* ]]; then
-            echo disabling 
+            echo disabling
             eval "jenkins_test_${pat}=no"
         elif [[ $cmd =~ jenkins\:.*${pat}.* ]]; then
             echo enabling
@@ -207,7 +207,7 @@ if [ "$jenkins_test_build" = "yes" ]; then
     configure_args="--with-libevent=$libevent_dir"
 
     # build pmix
-    $autogen_script 
+    $autogen_script
     echo ./configure --prefix=$pmix_dir $configure_args | bash -xeE
     make $make_opt install
     jenkins_build_passed=1
@@ -269,8 +269,8 @@ if [ "$jenkins_test_src_rpm" = "yes" ]; then
     echo "Checking for rpm ..."
 
     # check distclean
-    make $make_opt distclean 
-    $autogen_script 
+    make $make_opt distclean
+    $autogen_script
     echo ./configure --prefix=$pmix_dir $configure_args | bash -xeE || exit 11
 
     if [ -x /usr/bin/dpkg-buildpackage ]; then
@@ -283,7 +283,7 @@ if [ "$jenkins_test_src_rpm" = "yes" ]; then
         make_dist_args="--highok --distdir=$tarball_dir --greekonly"
 
         for arg in no-git-update dirtyok verok; do
-            if grep $arg contrib/make_tarball 2>&1 > /dev/null; then 
+            if grep $arg contrib/make_tarball 2>&1 > /dev/null; then
                 make_dist_args="$make_dist_args --${arg}"
             fi
         done
@@ -311,7 +311,7 @@ fi
 cd $WORKSPACE
 if [ -n "$JENKINS_RUN_TESTS" -a "$JENKINS_RUN_TESTS" -ne "0" ]; then
     echo "Checking for tests ..."
-    
+
     run_tap=$WORKSPACE/run_test.tap
     rm -rf $run_tap
 
@@ -373,7 +373,7 @@ if [ -n "$JENKINS_RUN_TESTS" -a "$JENKINS_RUN_TESTS" -ne "0" ]; then
     check_result "resolve peers" "$test_exec"
 
     # run valgrind
-    if [ "$jenkins_test_vg" = "yes" ]; then 
+    if [ "$jenkins_test_vg" = "yes" ]; then
         set +e
         module load tools/valgrind
 

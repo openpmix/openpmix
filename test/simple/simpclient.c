@@ -49,7 +49,7 @@ int main(int argc, char **argv)
     int cnt, j;
 
     /* init us */
-    if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Init failed: %d", myproc.nspace, myproc.rank, rc);
         exit(rc);
     }
@@ -157,7 +157,7 @@ int main(int argc, char **argv)
  done:
     /* finalize us */
     pmix_output(0, "Client ns %s rank %d: Finalizing", myproc.nspace, myproc.rank);
-    if (PMIX_SUCCESS != (rc = PMIx_Finalize())) {
+    if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {
         fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %d\n", myproc.nspace, myproc.rank, rc);
     } else {
         fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n", myproc.nspace, myproc.rank);

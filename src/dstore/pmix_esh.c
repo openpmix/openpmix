@@ -112,7 +112,7 @@ static inline const char *_unique_id(void)
 {
     static const char *str = NULL;
     if (!str) {
-        /* see: pmix_server.c initialize_server_base() 
+        /* see: pmix_server.c initialize_server_base()
          * to get format of uri
          */
         if (_is_server()) {

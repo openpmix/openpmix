@@ -8,4 +8,4 @@
 #
 
 sources += \
-        src/common/pmix_common.c 
+        src/common/pmix_common.c
