@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2016 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * $COPYRIGHT$
@@ -15,7 +15,8 @@
 
 #include "cli_stages.h"
 
-pmix_status_t connected(const pmix_proc_t *proc, void *server_object);
+pmix_status_t connected(const pmix_proc_t *proc, void *server_object,
+                        pmix_op_cbfunc_t cbfunc, void *cbdata);
 pmix_status_t finalized(const pmix_proc_t *proc, void *server_object,
                         pmix_op_cbfunc_t cbfunc, void *cbdata);
 pmix_status_t abort_fn(const pmix_proc_t *proc,
@@ -49,10 +50,11 @@ pmix_status_t connect_fn(const pmix_proc_t procs[], size_t nprocs,
 pmix_status_t disconnect_fn(const pmix_proc_t procs[], size_t nprocs,
                             const pmix_info_t info[], size_t ninfo,
                             pmix_op_cbfunc_t cbfunc, void *cbdata);
-pmix_status_t regevents_fn(const pmix_info_t info[], size_t ninfo,
-                            pmix_op_cbfunc_t cbfunc, void *cbdata);
-pmix_status_t deregevents_fn(const pmix_info_t info[], size_t ninfo,
+pmix_status_t regevents_fn(pmix_status_t *codes, size_t ncodes,
+                           const pmix_info_t info[], size_t ninfo,
                            pmix_op_cbfunc_t cbfunc, void *cbdata);
+pmix_status_t deregevents_fn(pmix_status_t *codes, size_t ncodes,
+                             pmix_op_cbfunc_t cbfunc, void *cbdata);
 extern pmix_server_module_t mymodule;
 
 #endif

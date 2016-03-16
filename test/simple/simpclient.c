@@ -38,15 +38,52 @@
 
 #define MAXCNT 2
 
+static volatile bool completed = false;
+static pmix_proc_t myproc;
+
+static void notification_fn(size_t evhdlr_registration_id,
+                            pmix_status_t status,
+                            const pmix_proc_t *source,
+                            pmix_info_t info[], size_t ninfo,
+                            pmix_info_t results[], size_t nresults,
+                            pmix_event_notification_cbfunc_fn_t cbfunc,
+                            void *cbdata)
+{
+    pmix_output(0, "Client %s:%d NOTIFIED with status %s", myproc.nspace, myproc.rank, PMIx_Error_string(status));
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, NULL, 0, NULL, NULL, cbdata);
+    }
+    completed = true;
+}
+
+static void errhandler_reg_callbk(pmix_status_t status,
+                                  size_t errhandler_ref,
+                                  void *cbdata)
+{
+    volatile bool *active = (volatile bool*)cbdata;
+
+    pmix_output(0, "Client: ERRHANDLER REGISTRATION CALLBACK CALLED WITH STATUS %d, ref=%lu",
+                status, (unsigned long)errhandler_ref);
+    *active = false;
+}
+
 int main(int argc, char **argv)
 {
     int rc;
     pmix_value_t value;
     pmix_value_t *val = &value;
     char *tmp;
-    pmix_proc_t proc, myproc;
+    pmix_proc_t proc;
     uint32_t nprocs, n;
     int cnt, j;
+    bool doabort = false;
+    volatile bool active;
+
+    if (1 < argc) {
+        if (0 == strcmp("-abort", argv[1])) {
+            doabort = true;
+        }
+    }
 
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
@@ -54,6 +91,14 @@ int main(int argc, char **argv)
         exit(rc);
     }
     pmix_output(0, "Client ns %s rank %d: Running", myproc.nspace, myproc.rank);
+
+    /* register our errhandler */
+    active = true;
+    PMIx_Register_event_handler(NULL, 0, NULL, 0,
+                                notification_fn, errhandler_reg_callbk, (void*)&active);
+    while (active) {
+        usleep(10);
+    }
 
     /* get our universe size */
     if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_UNIV_SIZE, NULL, 0, &val))) {
@@ -150,6 +195,17 @@ int main(int argc, char **argv)
                 pmix_output(0, "Client ns %s rank %d cnt %d: PMIx_Get %s returned correct", myproc.nspace, myproc.rank, j, tmp);
                 PMIX_VALUE_RELEASE(val);
                 free(tmp);
+            }
+        }
+    }
+
+    /* if requested and our rank is 0, call abort */
+    if (doabort) {
+        if (0 == myproc.rank) {
+            PMIx_Abort(PMIX_ERR_PROC_REQUESTED_ABORT, "CALLING ABORT", NULL, 0);
+        } else {
+            while(!completed) {
+                usleep(10);
             }
         }
     }

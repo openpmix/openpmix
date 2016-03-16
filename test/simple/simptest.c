@@ -13,7 +13,7 @@
  *                         All rights reserved.
  * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
- * Copyright (c) 2013-2015 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2016 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
@@ -46,7 +46,8 @@
 #include "src/buffer_ops/buffer_ops.h"
 #include "src/usock/usock.h"
 
-static pmix_status_t connected(const pmix_proc_t *proc, void *server_object);
+static pmix_status_t connected(const pmix_proc_t *proc, void *server_object,
+                               pmix_op_cbfunc_t cbfunc, void *cbdata);
 static pmix_status_t finalized(const pmix_proc_t *proc, void *server_object,
                                pmix_op_cbfunc_t cbfunc, void *cbdata);
 static pmix_status_t abort_fn(const pmix_proc_t *proc, void *server_object,
@@ -79,23 +80,32 @@ static pmix_status_t connect_fn(const pmix_proc_t procs[], size_t nprocs,
 static pmix_status_t disconnect_fn(const pmix_proc_t procs[], size_t nprocs,
                                    const pmix_info_t info[], size_t ninfo,
                                    pmix_op_cbfunc_t cbfunc, void *cbdata);
-static pmix_status_t register_event_fn(const pmix_info_t info[], size_t ninfo,
+static pmix_status_t register_event_fn(pmix_status_t *codes, size_t ncodes,
+                                       const pmix_info_t info[], size_t ninfo,
                                        pmix_op_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t deregister_events(pmix_status_t *codes, size_t ncodes,
+                                       pmix_op_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t notify_event(pmix_status_t code,
+                                  const pmix_proc_t *source,
+                                  pmix_data_range_t range,
+                                  pmix_info_t info[], size_t ninfo,
+                                  pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 static pmix_server_module_t mymodule = {
-    connected,
-    finalized,
-    abort_fn,
-    fencenb_fn,
-    dmodex_fn,
-    publish_fn,
-    lookup_fn,
-    unpublish_fn,
-    spawn_fn,
-    connect_fn,
-    disconnect_fn,
-    register_event_fn,
-    NULL
+    .client_connected = connected,
+    .client_finalized = finalized,
+    .abort = abort_fn,
+    .fence_nb = fencenb_fn,
+    .direct_modex = dmodex_fn,
+    .publish = publish_fn,
+    .lookup = lookup_fn,
+    .unpublish = unpublish_fn,
+    .spawn = spawn_fn,
+    .connect = connect_fn,
+    .disconnect = disconnect_fn,
+    .register_events = register_event_fn,
+    .deregister_events = deregister_events,
+    .notify_event = notify_event
 };
 
 typedef struct {
@@ -150,13 +160,16 @@ static pmix_list_t children;
 
 static void set_namespace(int nprocs, char *ranks, char *nspace,
                           pmix_op_cbfunc_t cbfunc, myxfer_t *x);
-static void errhandler(pmix_status_t status,
-                       pmix_proc_t procs[], size_t nprocs,
-                       pmix_info_t info[], size_t ninfo);
+static void errhandler(size_t evhdlr_registration_id,
+                       pmix_status_t status,
+                       const pmix_proc_t *source,
+                       pmix_info_t info[], size_t ninfo,
+                       pmix_info_t results[], size_t nresults,
+                       pmix_event_notification_cbfunc_fn_t cbfunc,
+                       void *cbdata);
 static void wait_signal_callback(int fd, short event, void *arg);
-static void op_callbk(pmix_status_t status, void *cbdata);
 static void errhandler_reg_callbk (pmix_status_t status,
-                                   int errhandler_ref,
+                                   size_t errhandler_ref,
                                    void *cbdata);
 
 static void opcbfunc(pmix_status_t status, void *cbdata)
@@ -175,7 +188,7 @@ int main(int argc, char **argv)
     char **client_env=NULL;
     char **client_argv=NULL;
     char *tmp, **atmp, *executable=NULL;
-    int rc, nprocs=1, n;
+    int rc, nprocs=1, n, k;
     uid_t myuid;
     gid_t mygid;
     pid_t pid;
@@ -197,7 +210,8 @@ int main(int argc, char **argv)
         return rc;
     }
     /* register the errhandler */
-    PMIx_Register_errhandler(NULL, 0, errhandler, errhandler_reg_callbk, NULL);
+    PMIx_Register_event_handler(NULL, 0, NULL, 0,
+                                errhandler, errhandler_reg_callbk, NULL);
 
     /* setup the pub data, in case it is used */
     PMIX_CONSTRUCT(&pubdata, pmix_list_t);
@@ -218,7 +232,10 @@ int main(int argc, char **argv)
         } else if (0 == strcmp("-e", argv[n]) &&
                    NULL != argv[n+1]) {
             executable = strdup(argv[n+1]);
-            ++n;
+            for (k=n+2; NULL != argv[k]; k++) {
+                pmix_argv_append_nosize(&client_argv, argv[k]);
+            }
+            n += k;
         }
     }
     if (NULL == executable) {
@@ -238,7 +255,7 @@ int main(int argc, char **argv)
 
     /* set common argv and env */
     client_env = pmix_argv_copy(environ);
-    pmix_argv_append_nosize(&client_argv, executable);
+    pmix_argv_prepend_nosize(&client_argv, executable);
 
     wakeup = nprocs;
     myuid = getuid();
@@ -298,7 +315,7 @@ int main(int argc, char **argv)
     pmix_argv_free(client_env);
 
     /* deregister the errhandler */
-    PMIx_Deregister_errhandler(0, op_callbk, NULL);
+    PMIx_Deregister_event_handler(0, NULL, NULL);
 
     /* release any pub data */
     PMIX_LIST_DESTRUCT(&pubdata);
@@ -353,29 +370,31 @@ static void set_namespace(int nprocs, char *ranks, char *nspace,
                                 cbfunc, x);
 }
 
-static void errhandler(pmix_status_t status,
-                       pmix_proc_t procs[], size_t nprocs,
-                       pmix_info_t info[], size_t ninfo)
+static void errhandler(size_t evhdlr_registration_id,
+                       pmix_status_t status,
+                       const pmix_proc_t *source,
+                       pmix_info_t info[], size_t ninfo,
+                       pmix_info_t results[], size_t nresults,
+                       pmix_event_notification_cbfunc_fn_t cbfunc,
+                       void *cbdata)
 {
     pmix_output(0, "SERVER: ERRHANDLER CALLED WITH STATUS %d", status);
 }
 
-static void op_callbk(pmix_status_t status,
-                      void *cbdata)
-{
-    pmix_output(0, "SERVER: OP CALLBACK CALLED WITH STATUS %d", status);
-}
-
 static void errhandler_reg_callbk (pmix_status_t status,
-                                   int errhandler_ref,
+                                   size_t errhandler_ref,
                                    void *cbdata)
 {
-    pmix_output(0, "SERVER: ERRHANDLER REGISTRATION CALLBACK CALLED WITH STATUS %d, ref=%d",
-                status, errhandler_ref);
+    pmix_output(0, "SERVER: ERRHANDLER REGISTRATION CALLBACK CALLED WITH STATUS %d, ref=%lu",
+                status, (unsigned long)errhandler_ref);
 }
 
-static pmix_status_t connected(const pmix_proc_t *proc, void *server_object)
+static pmix_status_t connected(const pmix_proc_t *proc, void *server_object,
+                               pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, cbdata);
+    }
     return PMIX_SUCCESS;
 }
 static pmix_status_t finalized(const pmix_proc_t *proc, void *server_object,
@@ -403,15 +422,19 @@ static void abcbfunc(pmix_status_t status, void *cbdata)
 }
 
 static pmix_status_t abort_fn(const pmix_proc_t *proc,
-                    void *server_object,
-                    int status, const char msg[],
-                    pmix_proc_t procs[], size_t nprocs,
-                    pmix_op_cbfunc_t cbfunc, void *cbdata)
+                              void *server_object,
+                              int status, const char msg[],
+                              pmix_proc_t procs[], size_t nprocs,
+                              pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_status_t rc;
     myxfer_t *x;
 
-    pmix_output(0, "SERVER: ABORT on %s:%d", procs[0].nspace, procs[0].rank);
+    if (NULL != procs) {
+        pmix_output(0, "SERVER: ABORT on %s:%d", procs[0].nspace, procs[0].rank);
+    } else {
+        pmix_output(0, "SERVER: ABORT OF ALL PROCS IN NSPACE %s", proc->nspace);
+    }
 
     /* instead of aborting the specified procs, notify them
      * (if they have registered their errhandler) */
@@ -432,9 +455,10 @@ static pmix_status_t abort_fn(const pmix_proc_t *proc,
     x->cbfunc = cbfunc;
     x->cbdata = cbdata;
 
-    if (PMIX_SUCCESS != (rc = PMIx_Notify_error(status, procs, nprocs,
-                                                       &x->caller, 1, x->info, 2,
-                                                       abcbfunc, x))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Notify_event(status, &x->caller,
+                                                PMIX_RANGE_NAMESPACE,
+                                                x->info, 2,
+                                                abcbfunc, x))) {
         pmix_output(0, "SERVER: FAILED NOTIFY ERROR %d", (int)rc);
     }
 
@@ -606,8 +630,8 @@ static pmix_status_t spawn_fn(const pmix_proc_t *proc,
 
 
 static pmix_status_t connect_fn(const pmix_proc_t procs[], size_t nprocs,
-                      const pmix_info_t info[], size_t ninfo,
-                      pmix_op_cbfunc_t cbfunc, void *cbdata)
+                                const pmix_info_t info[], size_t ninfo,
+                                pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_output(0, "SERVER: CONNECT");
 
@@ -623,8 +647,8 @@ static pmix_status_t connect_fn(const pmix_proc_t procs[], size_t nprocs,
 
 
 static pmix_status_t disconnect_fn(const pmix_proc_t procs[], size_t nprocs,
-                         const pmix_info_t info[], size_t ninfo,
-                         pmix_op_cbfunc_t cbfunc, void *cbdata)
+                                   const pmix_info_t info[], size_t ninfo,
+                                   pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_output(0, "SERVER: DISCONNECT");
 
@@ -638,8 +662,24 @@ static pmix_status_t disconnect_fn(const pmix_proc_t procs[], size_t nprocs,
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t register_event_fn(const pmix_info_t info[], size_t ninfo,
+static pmix_status_t register_event_fn(pmix_status_t *codes, size_t ncodes,
+                                       const pmix_info_t info[], size_t ninfo,
                                        pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t deregister_events(pmix_status_t *codes, size_t ncodes,
+                                       pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t notify_event(pmix_status_t code,
+                                  const pmix_proc_t *source,
+                                  pmix_data_range_t range,
+                                  pmix_info_t info[], size_t ninfo,
+                                  pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     return PMIX_SUCCESS;
 }

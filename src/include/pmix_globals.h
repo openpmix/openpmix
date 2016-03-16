@@ -35,11 +35,14 @@
 #include "src/buffer_ops/types.h"
 #include "src/class/pmix_hash_table.h"
 #include "src/class/pmix_list.h"
+#include "src/event/pmix_event.h"
 
 BEGIN_C_DECLS
 
-#define PMIX_MAX_CRED_SIZE  131072              // set max at 128kbytes
-#define PMIX_MAX_ERROR_REGISTRATIONS    128     // maximum number of error handlers that can be registered
+/* some limits */
+#define PMIX_MAX_CRED_SIZE      131072              // set max at 128kbytes
+#define PMIX_MAX_ERR_CONSTANT   INT_MIN
+
 
 /****   ENUM DEFINITIONS    ****/
 /* define a command type for communicating to the
@@ -186,16 +189,6 @@ typedef struct pmix_peer_t {
 PMIX_CLASS_DECLARATION(pmix_peer_t);
 
 
-/* define a structure for tracking error registrations */
-typedef struct {
-    pmix_object_t super;
-    bool sglhdlr;                      // registers a specific error status handler
-    pmix_notification_fn_t errhandler; /* registered err handler callback fn */
-    pmix_info_t *info;                 /* error info keys registered with the handler */
-    size_t ninfo;                      /* size of info */
-} pmix_error_reg_info_t;
-PMIX_CLASS_DECLARATION(pmix_error_reg_info_t);
-
 typedef struct {
     pmix_list_item_t super;
     char *name;              // name of the node
@@ -249,6 +242,8 @@ PMIX_CLASS_DECLARATION(pmix_server_trkr_t);
     pmix_event_t ev;
     volatile bool active;
     pmix_status_t status;
+    pmix_status_t *codes;
+    size_t ncodes;
     const char *nspace;
     int rank;
     const char *data;
@@ -256,20 +251,30 @@ PMIX_CLASS_DECLARATION(pmix_server_trkr_t);
     const char *key;
     pmix_info_t *info;
     size_t ninfo;
-    pmix_notification_fn_t err;
+    pmix_notification_fn_t evhdlr;
     pmix_kval_t *kv;
     pmix_value_t *vptr;
     pmix_server_caddy_t *cd;
     pmix_server_trkr_t *tracker;
+    bool enviro;
     union {
        pmix_release_cbfunc_t relfn;
-       pmix_errhandler_reg_cbfunc_t errregcbfn;
+       pmix_evhdlr_reg_cbfunc_t evregcbfn;
        pmix_op_cbfunc_t opcbfn;
+       pmix_evhdlr_reg_cbfunc_t errregcbfn;
     }cbfunc;
     void *cbdata;
-    int ref;
+    size_t ref;
  } pmix_shift_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_shift_caddy_t);
+
+/* define a very simple caddy for dealing with pmix_info_t
+ * objects when transferring portions of arrays */
+typedef struct {
+    pmix_list_item_t super;
+    pmix_info_t *info;
+} pmix_info_caddy_t;
+PMIX_CLASS_DECLARATION(pmix_info_caddy_t);
 
 #define PMIX_THREADSHIFT(r, c)                       \
  do {                                                 \
@@ -301,7 +306,7 @@ typedef struct {
     pmix_event_base_t *evbase;
     bool external_evbase;
     int debug_output;
-    pmix_pointer_array_t errregs;        // my error handler registrations.
+    pmix_events_t events;                // my event handler registrations.
     bool server;
     bool connected;
     pmix_list_t nspaces;                 // list of pmix_nspace_t for the nspaces we know about

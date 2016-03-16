@@ -13,7 +13,7 @@
  *                         All rights reserved.
  * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
- * Copyright (c) 2013-2015 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2016 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.
@@ -92,7 +92,8 @@ int main(int argc, char **argv)
         return rc;
     }
     /* register the errhandler */
-    PMIx_Register_errhandler(NULL, 0, errhandler, errhandler_reg_callbk, NULL);
+    PMIx_Register_event_handler(NULL, 0, NULL, 0,
+                                errhandler, errhandler_reg_callbk, NULL);
 
     order[CLI_UNINIT] = CLI_FORKED;
     order[CLI_FORKED] = CLI_FIN;
@@ -178,7 +179,7 @@ int main(int argc, char **argv)
     pmix_argv_free(client_env);
 
     /* deregister the errhandler */
-    PMIx_Deregister_errhandler(0, op_callbk, NULL);
+    PMIx_Deregister_event_handler(0, op_callbk, NULL);
 
     cli_wait_all(1.0);
 

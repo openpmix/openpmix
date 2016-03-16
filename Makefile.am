@@ -11,7 +11,7 @@
 #                         All rights reserved.
 # Copyright (c) 2006-2015 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2012-2013 Los Alamos National Security, Inc.  All rights reserved.
-# Copyright (c) 2013-2015 Intel, Inc. All rights reserved
+# Copyright (c) 2013-2016 Intel, Inc. All rights reserved
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -57,7 +57,7 @@ include src/usock/Makefile.am
 include src/client/Makefile.am
 include src/server/Makefile.am
 include src/sec/Makefile.am
-include src/common/Makefile.am
+include src/event/Makefile.am
 
 if WANT_DSTORE
 include src/sm/Makefile.am

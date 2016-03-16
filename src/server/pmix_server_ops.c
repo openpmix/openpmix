@@ -984,18 +984,35 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
 {
     int32_t cnt;
     pmix_status_t rc;
+    pmix_status_t *codes = NULL;
     pmix_info_t *info = NULL;
-    size_t ninfo, n;
+    size_t ninfo, ncodes, n, k;
     pmix_regevents_info_t *reginfo;
+    pmix_peer_events_info_t *prev;
     pmix_notify_caddy_t *cd;
     int i;
+    bool enviro_events = false;
+    bool found;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "recvd register events");
 
-    if (NULL == pmix_host_server.register_events) {
-        return PMIX_ERR_NOT_SUPPORTED;
+    /* unpack the number of codes */
+    cnt=1;
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ncodes, &cnt, PMIX_SIZE))) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
     }
+    /* unpack the array of codes */
+    if (0 < ncodes) {
+        codes = (pmix_status_t*)malloc(ncodes * sizeof(pmix_status_t));
+        cnt=ncodes;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, codes, &cnt, PMIX_STATUS))) {
+            PMIX_ERROR_LOG(rc);
+            goto cleanup;
+        }
+    }
+
     /* unpack the number of info objects */
     cnt=1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
@@ -1011,59 +1028,181 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
             goto cleanup;
         }
     }
-    /* store the event registration info so we can call the registered
-       client when the server notifies the event */
-    reginfo = PMIX_NEW(pmix_regevents_info_t);
-    PMIX_INFO_CREATE (reginfo->info, ninfo);
-    reginfo->ninfo = ninfo;
+
+    /* see if they asked for enviro events */
     for (n=0; n < ninfo; n++) {
-        memcpy(reginfo->info[n].key, info[n].key, PMIX_MAX_KEYLEN);
-        pmix_value_xfer(&reginfo->info[n].value, &info[n].value);
-    }
-    PMIX_RETAIN(peer);
-    reginfo->peer = peer;
-    pmix_list_append(&pmix_server_globals.client_eventregs, &reginfo->super);
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "server register events: calling host server reg events");
-    /* call the local server */
-    if (PMIX_SUCCESS != (rc = pmix_host_server.register_events(reginfo->info,
-                                    reginfo->ninfo, cbfunc, cbdata))) {
-        pmix_output_verbose(2, pmix_globals.debug_output,
-                             "server register events: host server reg events returned rc =%d", rc);
+        if (0 == strcmp(info[n].key, PMIX_EVENT_ENVIRO_LEVEL)) {
+            if (PMIX_UNDEF == info[n].value.type ||
+                (PMIX_BOOL == info[n].value.type && info[n].value.data.flag)) {
+                enviro_events = true;
+            }
+            break;
+        }
     }
 
+    /* if they asked for enviro events, and our host doesn't support
+     * register_events, then we cannot meet the request */
+    if (enviro_events && NULL == pmix_host_server.register_events) {
+        enviro_events = false;
+        rc = PMIX_ERR_NOT_SUPPORTED;
+        goto cleanup;
+    }
+
+    /* store the event registration info so we can call the registered
+     * client when the server notifies the event */
+    k=0;
+    do {
+        found = false;
+        PMIX_LIST_FOREACH(reginfo, &pmix_server_globals.events, pmix_regevents_info_t) {
+            if (NULL == codes) {
+                if (PMIX_MAX_ERR_CONSTANT == reginfo->code) {
+                    /* both are default handlers */
+                    found = true;
+                    break;
+                } else {
+                    continue;
+                }
+            } else {
+                if (PMIX_MAX_ERR_CONSTANT == reginfo->code) {
+                    continue;
+                } else if (codes[k] == reginfo->code) {
+                    found = true;
+                    break;
+                }
+            }
+        }
+        if (found) {
+            /* found it - add this peer if we don't already have it */
+            found = false;
+            PMIX_LIST_FOREACH(prev, &reginfo->peers, pmix_peer_events_info_t) {
+                if (prev->peer == peer) {
+                    /* already have it */
+                    rc = PMIX_SUCCESS;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                /* get here if we don't already have this peer */
+                prev = PMIX_NEW(pmix_peer_events_info_t);
+                PMIX_RETAIN(peer);
+                prev->peer = peer;
+                prev->enviro_events = enviro_events;
+                pmix_list_append(&reginfo->peers, &prev->super);
+                found = true;
+            }
+        } else {
+            /* if we get here, then we didn't find an existing registration for this code */
+            reginfo = PMIX_NEW(pmix_regevents_info_t);
+            if (NULL == codes) {
+                reginfo->code = PMIX_MAX_ERR_CONSTANT;
+            } else {
+                reginfo->code = codes[k];
+            }
+            pmix_list_append(&pmix_server_globals.events, &reginfo->super);
+            prev = PMIX_NEW(pmix_peer_events_info_t);
+            PMIX_RETAIN(peer);
+            prev->peer = peer;
+            prev->enviro_events = enviro_events;
+            pmix_list_append(&reginfo->peers, &prev->super);
+        }
+        ++k;
+    } while (k < ncodes);
+
+    /* if they asked for enviro events, call the local server */
+    if (enviro_events) {
+        if (PMIX_SUCCESS != (rc = pmix_host_server.register_events(codes, ncodes, info, ninfo, cbfunc, cbdata))) {
+            pmix_output_verbose(2, pmix_globals.debug_output,
+                                 "server register events: host server reg events returned rc =%d", rc);
+        } else {
+            goto check;
+        }
+    }
+
+cleanup:
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "server register events: ninfo =%lu rc =%d", ninfo, rc);
+    /* be sure to execute the callback */
+    if (NULL != cbfunc) {
+        cbfunc(rc, cbdata);
+    }
+    if (NULL != info) {
+        PMIX_INFO_FREE(info, ninfo);
+    }
+    if (PMIX_SUCCESS != rc) {
+        if (!enviro_events) {
+            if (NULL != codes) {
+                free(codes);
+            }
+        }
+        return rc;
+    }
+
+  check:
     /* check if any matching notifications have been cached */
     for (i=0; i < pmix_server_globals.notifications.size; i++) {
         if (NULL == (cd = (pmix_notify_caddy_t*)pmix_ring_buffer_poke(&pmix_server_globals.notifications, i))) {
             break;
         }
-       pmix_server_check_notifications(reginfo, cd);
-   }
+        found = false;
+        if (NULL == codes) {
+            /* they registered a default event handler - always matches */
+            found = true;
+        } else {
+            for (k=0; k < ncodes; k++) {
+                if (codes[k] == cd->status) {
+                    found = true;
+                    break;
+                }
+            }
+        }
+        if (found) {
+           /* have a match - notify */
+            PMIX_RETAIN(cd->buf);
+            PMIX_SERVER_QUEUE_REPLY(peer, 0, cd->buf);
+        }
+    }
+    if (!enviro_events) {
+        if (NULL != codes) {
+            free(codes);
+        }
+    }
 
-cleanup:
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "server register events: ninfo =%lu rc =%d", ninfo, rc);
-    PMIX_INFO_FREE(info, ninfo);
-    return rc;
+    return PMIX_SUCCESS;
 }
 
 pmix_status_t pmix_server_deregister_events(pmix_peer_t *peer,
-                                          pmix_buffer_t *buf,
-                                          pmix_op_cbfunc_t cbfunc,
-                                          void *cbdata)
+                                            pmix_buffer_t *buf,
+                                            pmix_op_cbfunc_t cbfunc,
+                                            void *cbdata)
 {
     int32_t cnt;
-    pmix_status_t rc;
+    pmix_status_t rc, *codes = NULL, *cdptr, maxcode = PMIX_MAX_ERR_CONSTANT;
     pmix_info_t *info = NULL;
-    size_t ninfo;
+    size_t ninfo, ncodes, ncds, n;
     pmix_regevents_info_t *reginfo = NULL;
     pmix_regevents_info_t *reginfo_next;
+    pmix_peer_events_info_t *prev;
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "recvd deregister events");
 
-    if (NULL == pmix_host_server.register_events) {
-        return PMIX_ERR_NOT_SUPPORTED;
+    /* unpack the number of codes */
+    cnt=1;
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ncodes, &cnt, PMIX_SIZE))) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
     }
+    /* unpack the array of codes */
+    if (0 < ncodes) {
+        codes = (pmix_status_t*)malloc(ncodes * sizeof(pmix_status_t));
+        cnt=ncodes;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, codes, &cnt, PMIX_STATUS))) {
+            PMIX_ERROR_LOG(rc);
+            goto cleanup;
+        }
+    }
+
     /* unpack the number of info objects */
     cnt=1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
@@ -1079,75 +1218,121 @@ pmix_status_t pmix_server_deregister_events(pmix_peer_t *peer,
             goto cleanup;
         }
     }
-    /* delete the stored event registration info */
-    PMIX_LIST_FOREACH_SAFE(reginfo, reginfo_next,
-                            &pmix_server_globals.client_eventregs, pmix_regevents_info_t) {
-        /* TO DO: For now assume there is one reginfo per peer, we need to revisit this
-           to match info keys too, inorder to support multiple event reg requests per process */
-        if(reginfo->peer == peer) {
-            pmix_list_remove_item (&pmix_server_globals.client_eventregs,  &reginfo->super);
-            PMIX_RELEASE(reginfo);
-            break;
+
+    /* find the event registration info so we can delete them */
+    if (NULL == codes) {
+        cdptr = &maxcode;
+        ncds = 1;
+    } else {
+        cdptr = codes;
+        ncds = ncodes;
+    }
+
+    for (n=0; n < ncds; n++) {
+        PMIX_LIST_FOREACH_SAFE(reginfo, reginfo_next, &pmix_server_globals.events, pmix_regevents_info_t) {
+            if (cdptr[n] == reginfo->code) {
+                /* found it - remove this peer from the list */
+                PMIX_LIST_FOREACH(prev, &reginfo->peers, pmix_peer_events_info_t) {
+                    if (prev->peer == peer) {
+                        /* found it */
+                        pmix_list_remove_item(&reginfo->peers, &prev->super);
+                        PMIX_RELEASE(prev);
+                        break;
+                    }
+                }
+                /* if all of the peers for this code are now gone, then remove it */
+                if (0 == pmix_list_get_size(&reginfo->peers)) {
+                    pmix_list_remove_item(&pmix_server_globals.events, &reginfo->super);
+                    /* if this was registered with the host, then deregister it */
+                    PMIX_RELEASE(reginfo);
+                }
+            }
         }
     }
-    /* call the local server */
-    rc = pmix_host_server.deregister_events(info, ninfo, cbfunc, cbdata);
+
 
 cleanup:
-    PMIX_INFO_FREE(info, ninfo);
+    if (NULL != codes) {
+        free(codes);
+    }
+    if (NULL != info) {
+        PMIX_INFO_FREE(info, ninfo);
+    }
     return rc;
 }
 
-pmix_status_t pmix_server_notify_error_client(pmix_peer_t *peer,
-                                              pmix_buffer_t *buf,
-                                              pmix_op_cbfunc_t cbfunc,
-                                              void *cbdata)
+
+static void local_cbfunc(pmix_status_t status, void *cbdata)
+{
+    pmix_notify_caddy_t *cd = (pmix_notify_caddy_t*)cbdata;
+
+    if (NULL != cd->cbfunc) {
+        cd->cbfunc(status, cd->cbdata);
+    }
+    PMIX_RELEASE(cd);
+}
+
+pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer,
+                                                  pmix_buffer_t *buf,
+                                                  pmix_op_cbfunc_t cbfunc,
+                                                  void *cbdata)
 {
     int32_t cnt;
-    pmix_status_t rc, status;
-    pmix_info_t *info = NULL;
-    size_t ninfo, nprocs;
-    pmix_proc_t *procs = NULL;
+    pmix_status_t rc;
+    pmix_notify_caddy_t *cd;
+
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "recvd  notify error from client");
+                        "recvd event notification from client");
+
+    if (NULL == pmix_host_server.notify_event) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    cd = PMIX_NEW(pmix_notify_caddy_t);
+    cd->cbfunc = cbfunc;
+    cd->cbdata = cbdata;
+    /* set the source */
+    (void)strncpy(cd->source.nspace, peer->info->nptr->nspace, PMIX_MAX_NSLEN);
+    cd->source.rank = peer->info->rank;
+
     /* unpack status */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &status, &cnt, PMIX_INT))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &cd->status, &cnt, PMIX_INT))) {
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
-    /* unpack procs */
+
+    /* unpack the range */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &nprocs, &cnt, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &cd->range, &cnt, PMIX_DATA_RANGE))) {
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
-    if ( 0 < nprocs) {
-        PMIX_PROC_CREATE(procs, nprocs);
-        cnt = nprocs;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, procs, &cnt, PMIX_PROC))) {
-            PMIX_ERROR_LOG(rc);
-            goto exit;
-        }
-    }
+
     /* unpack the info keys */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &cd->ninfo, &cnt, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
-    if (0 < ninfo) {
-        PMIX_INFO_CREATE(info, ninfo);
-        cnt = ninfo;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, info, &cnt, PMIX_INFO))) {
+    if (0 < cd->ninfo) {
+        PMIX_INFO_CREATE(cd->info, cd->ninfo);
+        cnt = cd->ninfo;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, cd->info, &cnt, PMIX_INFO))) {
             PMIX_ERROR_LOG(rc);
             goto exit;
         }
     }
-    pmix_errhandler_invoke(status, procs, nprocs, info, ninfo);
-exit:
-    PMIX_PROC_FREE(procs, nprocs);
-    PMIX_INFO_FREE(info, ninfo);
+
+    /* when we receive an event from a client, we just pass it to
+     * our host RM for distribution - if any targeted recipients
+     * are local to us, the host RM will let us know */
+    pmix_host_server.notify_event(cd->status, &cd->source, cd->range,
+                                  cd->info, cd->ninfo, local_cbfunc, cd);
+    return PMIX_SUCCESS;
+
+  exit:
+    PMIX_RELEASE(cd);
     cbfunc(rc, cbdata);
     return rc;
 }
@@ -1225,22 +1410,16 @@ PMIX_CLASS_INSTANCE(pmix_setup_caddy_t,
 static void ncon(pmix_notify_caddy_t *p)
 {
     p->active = true;
-    p->procs = NULL;
-    p->nprocs = 0;
-    p->error_procs = NULL;
-    p->error_nprocs = 0;
+    memset(p->source.nspace, 0, PMIX_MAX_NSLEN+1);
+    p->source.rank = PMIX_RANK_UNDEF;
+    p->range = PMIX_RANGE_UNDEF;
+    p->nondefault = false;
     p->info = NULL;
     p->ninfo = 0;
     p->buf = PMIX_NEW(pmix_buffer_t);
 }
 static void ndes(pmix_notify_caddy_t *p)
 {
-    if (NULL != p->procs) {
-        PMIX_PROC_FREE(p->procs, p->nprocs);
-    }
-    if (NULL != p->error_procs) {
-        PMIX_PROC_FREE(p->error_procs, p->error_nprocs);
-    }
     if (NULL != p->info) {
         PMIX_INFO_FREE(p->info, p->ninfo);
     }
@@ -1294,17 +1473,28 @@ PMIX_CLASS_INSTANCE(pmix_dmdx_local_t,
 PMIX_CLASS_INSTANCE(pmix_pending_connection_t,
                     pmix_object_t,
                     NULL, NULL);
-static void regcon(pmix_regevents_info_t *p)
+
+static void prevcon(pmix_peer_events_info_t *p)
 {
     p->peer = NULL;
-    p->info = NULL;
-    p->ninfo = 0;
+}
+static void prevdes(pmix_peer_events_info_t *p)
+{
+    if (NULL != p->peer) {
+        PMIX_RELEASE(p->peer);
+    }
+}
+PMIX_CLASS_INSTANCE(pmix_peer_events_info_t,
+                    pmix_list_item_t,
+                    prevcon, prevdes);
+
+static void regcon(pmix_regevents_info_t *p)
+{
+    PMIX_CONSTRUCT(&p->peers, pmix_list_t);
 }
 static void regdes(pmix_regevents_info_t *p)
 {
-    if(NULL != p->peer)
-        PMIX_RELEASE(p->peer);
-    PMIX_INFO_FREE(p->info, p->ninfo);
+    PMIX_LIST_DESTRUCT(&p->peers);
 }
 PMIX_CLASS_INSTANCE(pmix_regevents_info_t,
                     pmix_list_item_t,
@@ -1336,3 +1526,7 @@ static void ldes(pmix_listener_t *p)
 PMIX_CLASS_INSTANCE(pmix_listener_t,
                     pmix_list_item_t,
                     lcon, ldes);
+
+PMIX_CLASS_INSTANCE(pmix_usock_queue_t,
+                   pmix_object_t,
+                   NULL, NULL);

@@ -1,3 +1,4 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2013-2016 Intel, Inc. All rights reserved
  *
@@ -90,38 +91,38 @@ BEGIN_C_DECLS
 #define PMIX_ATTR_UNDEF      NULL
 
 /* initialization attributes */
-#define PMIX_EVENT_BASE            "pmix.evbase"            // (struct event_base *) pointer to libevent event_base to use in place
-                                                            // of the internal progress thread
+#define PMIX_EVENT_BASE                     "pmix.evbase"           // (struct event_base *) pointer to libevent event_base to use in place
+                                                                    //                       of the internal progress thread
 
 /* identification attributes */
-#define PMIX_USERID                "pmix.euid"              // (uint32_t) effective user id
-#define PMIX_GRPID                 "pmix.egid"              // (uint32_t) effective group id
+#define PMIX_USERID                         "pmix.euid"             // (uint32_t) effective user id
+#define PMIX_GRPID                          "pmix.egid"             // (uint32_t) effective group id
 
 /* attributes for the rendezvous socket  */
-#define PMIX_SOCKET_MODE           "pmix.sockmode"          // (uint32_t) POSIX mode_t (9 bits valid)
+#define PMIX_SOCKET_MODE                    "pmix.sockmode"         // (uint32_t) POSIX mode_t (9 bits valid)
 
 /* general proc-level attributes */
-#define PMIX_CPUSET                "pmix.cpuset"            // (char*) hwloc bitmap applied to proc upon launch
-#define PMIX_CREDENTIAL            "pmix.cred"              // (char*) security credential assigned to proc
-#define PMIX_SPAWNED               "pmix.spawned"           // (bool) true if this proc resulted from a call to PMIx_Spawn
-#define PMIX_ARCH                  "pmix.arch"              // (uint32_t) datatype architecture flag
+#define PMIX_CPUSET                         "pmix.cpuset"           // (char*) hwloc bitmap applied to proc upon launch
+#define PMIX_CREDENTIAL                     "pmix.cred"             // (char*) security credential assigned to proc
+#define PMIX_SPAWNED                        "pmix.spawned"          // (bool) true if this proc resulted from a call to PMIx_Spawn
+#define PMIX_ARCH                           "pmix.arch"             // (uint32_t) datatype architecture flag
 
 /* scratch directory locations for use by applications */
-#define PMIX_TMPDIR                "pmix.tmpdir"            // (char*) top-level tmp dir assigned to session
-#define PMIX_NSDIR                 "pmix.nsdir"             // (char*) sub-tmpdir assigned to namespace
-#define PMIX_PROCDIR               "pmix.pdir"              // (char*) sub-nsdir assigned to proc
+#define PMIX_TMPDIR                         "pmix.tmpdir"           // (char*) top-level tmp dir assigned to session
+#define PMIX_NSDIR                          "pmix.nsdir"            // (char*) sub-tmpdir assigned to namespace
+#define PMIX_PROCDIR                        "pmix.pdir"             // (char*) sub-nsdir assigned to proc
 
 /* information about relative ranks as assigned by the RM */
-#define PMIX_JOBID                 "pmix.jobid"             // (char*) jobid assigned by scheduler
-#define PMIX_APPNUM                "pmix.appnum"            // (uint32_t) app number within the job
-#define PMIX_RANK                  "pmix.rank"              // (uint32_t) process rank within the job
-#define PMIX_GLOBAL_RANK           "pmix.grank"             // (uint32_t) rank spanning across all jobs in this session
-#define PMIX_APP_RANK              "pmix.apprank"           // (uint32_t) rank within this app
-#define PMIX_NPROC_OFFSET          "pmix.offset"            // (uint32_t) starting global rank of this job
-#define PMIX_LOCAL_RANK            "pmix.lrank"             // (uint16_t) rank on this node within this job
-#define PMIX_NODE_RANK             "pmix.nrank"             // (uint16_t) rank on this node spanning all jobs
-#define PMIX_LOCALLDR              "pmix.lldr"              // (uint64_t) opal_identifier of lowest rank on this node within this job
-#define PMIX_APPLDR                "pmix.aldr"              // (uint32_t) lowest rank in this app within this job
+#define PMIX_JOBID                          "pmix.jobid"            // (char*) jobid assigned by scheduler
+#define PMIX_APPNUM                         "pmix.appnum"           // (uint32_t) app number within the job
+#define PMIX_RANK                           "pmix.rank"             // (uint32_t) process rank within the job
+#define PMIX_GLOBAL_RANK                    "pmix.grank"            // (uint32_t) rank spanning across all jobs in this session
+#define PMIX_APP_RANK                       "pmix.apprank"          // (uint32_t) rank within this app
+#define PMIX_NPROC_OFFSET                   "pmix.offset"           // (uint32_t) starting global rank of this job
+#define PMIX_LOCAL_RANK                     "pmix.lrank"            // (uint16_t) rank on this node within this job
+#define PMIX_NODE_RANK                      "pmix.nrank"            // (uint16_t) rank on this node spanning all jobs
+#define PMIX_LOCALLDR                       "pmix.lldr"             // (uint64_t) opal_identifier of lowest rank on this node within this job
+#define PMIX_APPLDR                         "pmix.aldr"             // (uint32_t) lowest rank in this app within this job
 
 /* proc location-related info */
 /* For PMIX_HOSTNAME, three use-cases exist for PMIx_Get:
@@ -137,86 +138,85 @@ BEGIN_C_DECLS
  * (c) Specifying a namespace and a rank will return the name of the
  *     host that proc is on
  */
-#define PMIX_HOSTNAME              "pmix.hname"             // (char*) see above comment
-#define PMIX_NODEID                "pmix.nodeid"            // (uint32_t) node identifier
-#define PMIX_LOCAL_PEERS           "pmix.lpeers"            // (char*) comma-delimited string of ranks on this node within the specified nspace
-#define PMIX_LOCAL_CPUSETS         "pmix.lcpus"             // (char*) colon-delimited cpusets of local peers within the specified nspace
-#define PMIX_PROC_URI              "pmix.puri"              // (char*) URI containing contact info for proc
+#define PMIX_HOSTNAME                       "pmix.hname"            // (char*) see above comment
+#define PMIX_NODEID                         "pmix.nodeid"           // (uint32_t) node identifier
+#define PMIX_LOCAL_PEERS                    "pmix.lpeers"           // (char*) comma-delimited string of ranks on this node within the specified nspace
+#define PMIX_LOCAL_CPUSETS                  "pmix.lcpus"            // (char*) colon-delimited cpusets of local peers within the specified nspace
+#define PMIX_PROC_URI                       "pmix.puri"             // (char*) URI containing contact info for proc
 
 /* size info */
-#define PMIX_UNIV_SIZE             "pmix.univ.size"         // (uint32_t) #procs in this nspace
-#define PMIX_JOB_SIZE              "pmix.job.size"          // (uint32_t) #procs in this job
-#define PMIX_LOCAL_SIZE            "pmix.local.size"        // (uint32_t) #procs in this job on this node
-#define PMIX_NODE_SIZE             "pmix.node.size"         // (uint32_t) #procs across all jobs on this node
-#define PMIX_MAX_PROCS             "pmix.max.size"          // (uint32_t) max #procs for this job
+#define PMIX_UNIV_SIZE                      "pmix.univ.size"        // (uint32_t) #procs in this nspace
+#define PMIX_JOB_SIZE                       "pmix.job.size"         // (uint32_t) #procs in this job
+#define PMIX_APP_SIZE                       "pmix.app.size"         // (uint32_t) #procs in this application
+#define PMIX_LOCAL_SIZE                     "pmix.local.size"       // (uint32_t) #procs in this job on this node
+#define PMIX_NODE_SIZE                      "pmix.node.size"        // (uint32_t) #procs across all jobs on this node
+#define PMIX_MAX_PROCS                      "pmix.max.size"         // (uint32_t) max #procs for this job
 
 /* topology info */
-#define PMIX_NET_TOPO              "pmix.ntopo"             // (char*) xml-representation of network topology
-#define PMIX_LOCAL_TOPO            "pmix.ltopo"             // (char*) xml-representation of local node topology
-#define PMIX_NODE_LIST             "pmix.nlist"             // (char*) comma-delimited list of nodes running procs for this job
-#define PMIX_TOPOLOGY              "pmix.topo"              // (hwloc_topology_t) pointer to the PMIx client's internal topology object
+#define PMIX_NET_TOPO                       "pmix.ntopo"            // (char*) xml-representation of network topology
+#define PMIX_LOCAL_TOPO                     "pmix.ltopo"            // (char*) xml-representation of local node topology
+#define PMIX_NODE_LIST                      "pmix.nlist"            // (char*) comma-delimited list of nodes running procs for this job
+#define PMIX_TOPOLOGY                       "pmix.topo"             // (hwloc_topology_t) pointer to the PMIx client's internal topology object
 
 /* request-related info */
-#define PMIX_COLLECT_DATA          "pmix.collect"           // (bool) collect data and return it at the end of the operation
-#define PMIX_TIMEOUT               "pmix.timeout"           // (int) time in sec before specified operation should time out
-#define PMIX_WAIT                  "pmix.wait"              // (int) caller requests that the server wait until at least the specified
-                                                            //       #values are found (0 => all and is the default)
-#define PMIX_COLLECTIVE_ALGO       "pmix.calgo"             // (char*) comma-delimited list of algorithms to use for collective
-#define PMIX_COLLECTIVE_ALGO_REQD  "pmix.calreqd"           // (bool) if true, indicates that the requested choice of algo is mandatory
-#define PMIX_NOTIFY_COMPLETION     "pmix.notecomp"          // (bool) notify parent process upon termination of child job
-#define PMIX_RANGE                 "pmix.range"             // (int) pmix_data_range_t value for calls to publish/lookup/unpublish
-#define PMIX_PERSISTENCE           "pmix.persist"           // (int) pmix_persistence_t value for calls to publish
-#define PMIX_OPTIONAL              "pmix.optional"          // (bool) look only in the immediate data store for the requested value - do
-                                                            //        not request data from the server if not found
-#define PMIX_EMBED_BARRIER         "pmix.embed.barrier"     // (bool) execute a blocking fence operation before executing the
-                                                            //        specified operation
+#define PMIX_COLLECT_DATA                   "pmix.collect"          // (bool) collect data and return it at the end of the operation
+#define PMIX_TIMEOUT                        "pmix.timeout"          // (int) time in sec before specified operation should time out
+#define PMIX_WAIT                           "pmix.wait"             // (int) caller requests that the server wait until at least the specified
+                                                                    //       #values are found (0 => all and is the default)
+#define PMIX_COLLECTIVE_ALGO                "pmix.calgo"            // (char*) comma-delimited list of algorithms to use for collective
+#define PMIX_COLLECTIVE_ALGO_REQD           "pmix.calreqd"          // (bool) if true, indicates that the requested choice of algo is mandatory
+#define PMIX_NOTIFY_COMPLETION              "pmix.notecomp"         // (bool) notify parent process upon termination of child job
+#define PMIX_RANGE                          "pmix.range"            // (int) pmix_data_range_t value for calls to publish/lookup/unpublish
+#define PMIX_PERSISTENCE                    "pmix.persist"          // (int) pmix_persistence_t value for calls to publish
+#define PMIX_OPTIONAL                       "pmix.optional"         // (bool) look only in the immediate data store for the requested value - do
+                                                                    //        not request data from the server if not found
+#define PMIX_EMBED_BARRIER                  "pmix.embed.barrier"    // (bool) execute a blocking fence operation before executing the
+                                                                    //        specified operation
 
 /* attributes used by host server to pass data to the server convenience library - the
  * data will then be parsed and provided to the local clients */
-#define PMIX_PROC_DATA             "pmix.pdata"             // (pmix_value_array_t) starts with rank, then contains more data
-#define PMIX_NODE_MAP              "pmix.nmap"              // (char*) regex of nodes containing procs for this job
-#define PMIX_PROC_MAP              "pmix.pmap"              // (char*) regex describing procs on each node within this job
-#define PMIX_ANL_MAP               "pmix.anlmap"            // (char*) process mapping in ANL notation (used in PMI-1/PMI-2)
+#define PMIX_PROC_DATA                      "pmix.pdata"            // (pmix_value_array_t) starts with rank, then contains more data
+#define PMIX_NODE_MAP                       "pmix.nmap"             // (char*) regex of nodes containing procs for this job
+#define PMIX_PROC_MAP                       "pmix.pmap"             // (char*) regex describing procs on each node within this job
+#define PMIX_ANL_MAP                        "pmix.anlmap"           // (char*) process mapping in ANL notation (used in PMI-1/PMI-2)
 
 /* attributes used internally to communicate data from the server to the client */
-#define PMIX_PROC_BLOB             "pmix.pblob"             // (pmix_byte_object_t) packed blob of process data
-#define PMIX_MAP_BLOB              "pmix.mblob"             // (pmix_byte_object_t) packed blob of process location
+#define PMIX_PROC_BLOB                      "pmix.pblob"            // (pmix_byte_object_t) packed blob of process data
+#define PMIX_MAP_BLOB                       "pmix.mblob"            // (pmix_byte_object_t) packed blob of process location
 
-/* error handler registration  and notification info keys */
-#define PMIX_ERROR_NAME            "pmix.errname"           // enum pmix_status_t specific error to be notified
-#define PMIX_ERROR_GROUP_COMM      "pmix.errgroup.comm"     // bool - set true to get comm errors notification
-#define PMIX_ERROR_GROUP_ABORT     "pmix.errgroup.abort"    // bool -set true to get abort errors notification
-#define PMIX_ERROR_GROUP_MIGRATE   "pmix.errgroup.migrate"  // bool -set true to get migrate errors notification
-#define PMIX_ERROR_GROUP_RESOURCE  "pmix.errgroup.resource" // bool -set true to get resource errors notification
-#define PMIX_ERROR_GROUP_SPAWN     "pmix.errgroup.spawn"    // bool - set true to get spawn errors notification
-#define PMIX_ERROR_GROUP_NODE      "pmix.errgroup.node"     // bool -set true to get node status errors
-#define PMIX_ERROR_GROUP_LOCAL     "pmix.errgroup.local"    // bool set true to get local errors
-#define PMIX_ERROR_GROUP_GENERAL   "pmix.errgroup.gen"      // bool set true to get notified af generic errors
-#define PMIX_ERROR_HANDLER_ID      "pmix.errhandler.id"     // int - errhandler reference id of notification being reported
+/* event handler registration and notification info keys */
+#define PMIX_EVENT_HDLR_NAME                "pmix.evname"           // (char*) string name identifying this handler
+#define PMIX_EVENT_JOB_LEVEL                "pmix.evjob"            // (bool) register for job-specific events only
+#define PMIX_EVENT_ENVIRO_LEVEL             "pmix.evenv"            // (bool) register for environment events only
+#define PMIX_EVENT_ORDER_PREPEND            "pmix.evprepend"        // (bool) prepend this handler to the precedence list
+#define PMIX_EVENT_CUSTOM_RANGE             "pmix.evrange"          // (pmix_proc_t*) array of pmix_proc_t defining range of event notification
+#define PMIX_EVENT_AFFECTED_PROCS           "pmix.evaffected"       // (pmix_proc_t*) array of pmix_proc_t defining affected procs
+#define PMIX_EVENT_NON_DEFAULT              "pmix.evnondef"         // (bool) event is not to be delivered to default event handlers
+ /* fault tolerance-related events */
+ #define PMIX_EVENT_TERMINATE_SESSION       "pmix.evterm.sess"      // (bool) RM intends to terminate session
+ #define PMIX_EVENT_TERMINATE_JOB           "pmix.evterm.job"       // (bool) RM intends to terminate this job
+ #define PMIX_EVENT_TERMINATE_NODE          "pmix.evterm.node"      // (bool) RM intends to terminate all procs on this node
+ #define PMIX_EVENT_TERMINATE_PROC          "pmix.evterm.proc"      // (bool) RM intends to terminate just this process
+ #define PMIX_EVENT_ACTION_TIMEOUT          "pmix.evtimeout"        // (int) time in sec before RM will execute error response
 
-/* error notification keys */
-#define PMIX_ERROR_SCOPE           "pmix.errscope"          // int (enum pmix_scope_t) scope of error notification
-#define PMIX_ERROR_NODE_NAME       "pmix.errnode.name"      // name of the node that is in error or which reported the error.
-#define PMIX_ERROR_SEVERITY        "pmix.errseverity"       // the severity of the notified (reported) error
-
-/* attributes used to describe "spawm" attributes */
-#define PMIX_PERSONALITY           "pmix.pers"              // (char*) name of personality to use
-#define PMIX_HOST                  "pmix.host"              // (char*) comma-delimited list of hosts to use for spawned procs
-#define PMIX_HOSTFILE              "pmix.hostfile"          // (char*) hostfile to use for spawned procs
-#define PMIX_ADD_HOST              "pmix.addhost"           // (char*) comma-delimited list of hosts to add to allocation
-#define PMIX_ADD_HOSTFILE          "pmix.addhostfile"       // (char*) hostfile to add to existing allocation
-#define PMIX_PREFIX                "pmix.prefix"            // (char*) prefix to use for starting spawned procs
-#define PMIX_WDIR                  "pmix.wdir"              // (char*) working directory for spawned procs
-#define PMIX_MAPPER                "pmix.mapper"            // (char*) mapper to use for placing spawned procs
-#define PMIX_DISPLAY_MAP           "pmix.dispmap"           // (bool) display process map upon spawn
-#define PMIX_PPR                   "pmix.ppr"               // (char*) #procs to spawn on each identified resource
-#define PMIX_MAPBY                 "pmix.mapby"             // (char*) mapping policy
-#define PMIX_RANKBY                "pmix.rankby"            // (char*) ranking policy
-#define PMIX_BINDTO                "pmix.bindto"            // (char*) binding policy
-#define PMIX_PRELOAD_BIN           "pmix.preloadbin"        // (bool) preload binaries
-#define PMIX_PRELOAD_FILES         "pmix.preloadfiles"      // (char*) comma-delimited list of files to pre-position
-#define PMIX_NON_PMI               "pmix.nonpmi"            // (bool) spawned procs will not call PMIx_Init
-#define PMIX_STDIN_TGT             "pmix.stdin"             // (uint32_t) spawned proc rank that is to receive stdin
+/* attributes used to describe "spawn" attributes */
+#define PMIX_PERSONALITY                    "pmix.pers"              // (char*) name of personality to use
+#define PMIX_HOST                           "pmix.host"              // (char*) comma-delimited list of hosts to use for spawned procs
+#define PMIX_HOSTFILE                       "pmix.hostfile"          // (char*) hostfile to use for spawned procs
+#define PMIX_ADD_HOST                       "pmix.addhost"           // (char*) comma-delimited list of hosts to add to allocation
+#define PMIX_ADD_HOSTFILE                   "pmix.addhostfile"       // (char*) hostfile to add to existing allocation
+#define PMIX_PREFIX                         "pmix.prefix"            // (char*) prefix to use for starting spawned procs
+#define PMIX_WDIR                           "pmix.wdir"              // (char*) working directory for spawned procs
+#define PMIX_MAPPER                         "pmix.mapper"            // (char*) mapper to use for placing spawned procs
+#define PMIX_DISPLAY_MAP                    "pmix.dispmap"           // (bool) display process map upon spawn
+#define PMIX_PPR                            "pmix.ppr"               // (char*) #procs to spawn on each identified resource
+#define PMIX_MAPBY                          "pmix.mapby"             // (char*) mapping policy
+#define PMIX_RANKBY                         "pmix.rankby"            // (char*) ranking policy
+#define PMIX_BINDTO                         "pmix.bindto"            // (char*) binding policy
+#define PMIX_PRELOAD_BIN                    "pmix.preloadbin"        // (bool) preload binaries
+#define PMIX_PRELOAD_FILES                  "pmix.preloadfiles"      // (char*) comma-delimited list of files to pre-position
+#define PMIX_NON_PMI                        "pmix.nonpmi"            // (bool) spawned procs will not call PMIx_Init
+#define PMIX_STDIN_TGT                      "pmix.stdin"             // (uint32_t) spawned proc rank that is to receive stdin
 
 /****    PMIX ERROR CONSTANTS    ****/
 /* PMIx errors are always negative, with 0 reserved for success */
@@ -264,6 +264,7 @@ typedef int pmix_status_t;
 #define PMIX_EVENT_NO_ACTION_TAKEN              (PMIX_ERR_BASE - 30)
 #define PMIX_EVENT_PARTIAL_ACTION_TAKEN         (PMIX_ERR_BASE - 31)
 #define PMIX_EVENT_ACTION_DEFERRED              (PMIX_ERR_BASE - 32)
+#define PMIX_EVENT_ACTION_COMPLETE              (PMIX_ERR_BASE - 33)
 
 
 /* define a starting point for PMIx internal error codes
@@ -346,9 +347,13 @@ typedef enum {
  */
 #define PMIX_DATA_RANGE PMIX_UINT
 typedef enum {
-    PMIX_DATA_RANGE_UNDEF = 0,
-    PMIX_NAMESPACE,       // data is available to procs in the same nspace only
-    PMIX_SESSION          // data available to all procs in session
+    PMIX_RANGE_UNDEF = 0,
+    PMIX_RANGE_RM,          // data is intended for the host resource manager
+    PMIX_RANGE_LOCAL,       // available on local node only
+    PMIX_RANGE_NAMESPACE,   // data is available to procs in the same nspace only
+    PMIX_RANGE_SESSION,     // data available to all procs in session
+    PMIX_RANGE_GLOBAL,      // data available to all procs
+    PMIX_RANGE_CUSTOM       // range is specified in a pmix_info_t
 } pmix_data_range_t;
 
 /* define a "persistence" policy for data published by clients */
@@ -503,12 +508,13 @@ typedef struct pmix_value {
         }                                               \
     } while (0)
 
-/* expose a function that is resolved in the
+/* expose two functions that are resolved in the
  * PMIx library, but part of a header that
- * includes internal functions - so we don't
+ * includes internal functions - we don't
  * want to expose the entire header here
  */
 void pmix_value_load(pmix_value_t *v, void *data, pmix_data_type_t type);
+pmix_status_t pmix_value_xfer(pmix_value_t *kv, pmix_value_t *src);
 
 
 
@@ -554,6 +560,13 @@ struct pmix_info_t {
         (void)strncpy((m)->key, (k), PMIX_MAX_KEYLEN);  \
         pmix_value_load(&((m)->value), (v), (t));       \
     } while (0)
+#define PMIX_INFO_XFER(d, s)                                \
+    do {                                                    \
+        (void)strncpy((d)->key, (s)->key, PMIX_MAX_KEYLEN); \
+        (d)->required = (s)->required;                      \
+        pmix_value_xfer(&(d)->value, &(s)->value);          \
+    } while(0)
+
 #define PMIX_INFO_REQUIRED(m)       \
     (m)->required = true;
 #define PMIX_INFO_OPTIONAL(m)       \
@@ -767,31 +780,55 @@ typedef void (*pmix_lookup_cbfunc_t)(pmix_status_t status,
                                      pmix_pdata_t data[], size_t ndata,
                                      void *cbdata);
 
-/* define a callback function for the errhandler. Upon receipt of an
- * error notification, PMIx will execute the specified notification
+/* define a callback by which an event handler can notify the PMIx library
+ * that it has completed its response to the notification. The handler
+ * is _required_ to execute this callback so the library can determine
+ * if additional handlers need to be called. The handler shall return
+ * PMIX_SUCCESS if no further action is required. The return status
+ * of each event handler and any returned pmix_info_t structures
+ * will be added to the array of pmix_info_t passed to any subsequent
+ * event handlers to help guide their operation.
+ *
+ * If non-NULL, the provided callback function will be called to allow
+ * the event handler to release the provided info array.
+ */
+typedef void (*pmix_event_notification_cbfunc_fn_t)(pmix_status_t status,
+                                                    pmix_info_t *results, size_t nresults,
+                                                    pmix_op_cbfunc_t cbfunc, void *thiscbdata,
+                                                    void *notification_cbdata);
+
+/* define a callback function for the event handler. Upon receipt of an
+ * event notification, PMIx will execute the specified notification
  * callback function, providing:
  *
- * status - the error that occurred
- * procs -  the nspace and ranks of the affected processes. A NULL
- *          value indicates that the error occurred in the PMIx
- *          client library within this process itself
- * nprocs - the number of procs in the provided array
- * info - any additional info provided regarding the error.
- * ninfo - the number of info objects in the provided array
+ * evhdlr_registration_id - the returned registration number of
+ *                          the event handler being called
+ * status - the event that occurred
+ * source - the nspace and rank of the process that generated
+ *          the event. If the source is the resource manager,
+ *          then the nspace will be empty and the rank will
+ *          be PMIX_RANK_UNDEF
+ * info - any additional info provided regarding the event.
+ * ninfo - the number of info objects in the info array
+ * results - any provided results from event handlers called
+ *           prior to this one.
+ * nresults - number of info objects in the results array
+ * cbfunc - the function to be called upon completion of the handler
+ * cbdata - pointer to be returned in the completion cbfunc
  *
  * Note that different resource managers may provide differing levels
- * of support for error notification to application processes. Thus, the
- * info array may be NULL or may contain detailed information of the error.
+ * of support for event notification to application processes. Thus, the
+ * info array may be NULL or may contain detailed information of the event.
  * It is the responsibility of the application to parse any provided info array
  * for defined key-values if it so desires.
  *
  * Possible uses of the pmix_info_t object include:
  *
  * - for the RM to alert the process as to planned actions, such as
- *   to abort the session, in response to the reported error
+ *   to abort the session, in response to the reported event
  *
  * - provide a timeout for alternative action to occur, such as for
- *   the application to request an alternate response to the error
+ *   the application to request an alternate response to the event
  *
  * For example, the RM might alert the application to the failure of
  * a node that resulted in termination of several processes, and indicate
@@ -806,23 +843,24 @@ typedef void (*pmix_lookup_cbfunc_t)(pmix_status_t status,
  * on a per-RM basis.
  *
  * On the server side, the notification function is used to inform the host
- * server of a detected error in the PMIx subsystem and/or client
- *
- * The errhandler_ref is included as the first pmix_info_t in the returned
- * array for embedded scenarios where the notification callback is to a switchyard
+ * server of a detected event in the PMIx subsystem and/or client
  */
-typedef void (*pmix_notification_fn_t)(pmix_status_t status,
-                                       pmix_proc_t procs[], size_t nprocs,
-                                       pmix_info_t info[], size_t ninfo);
+typedef void (*pmix_notification_fn_t)(size_t evhdlr_registration_id,
+                                       pmix_status_t status,
+                                       const pmix_proc_t *source,
+                                       pmix_info_t info[], size_t ninfo,
+                                       pmix_info_t *results, size_t nresults,
+                                       pmix_event_notification_cbfunc_fn_t cbfunc,
+                                       void *cbdata);
 
-/* define a callback function for calls to PMIx_Register_errhandler. The
- * status indicates if the request was successful or not, errhandler_ref is
- * an integer reference assigned to the errhandler by PMIX, this reference
+/* define a callback function for calls to PMIx_Register_evhdlr. The
+ * status indicates if the request was successful or not, evhdlr_ref is
+ * an integer reference assigned to the event handler by PMIx, this reference
  * must be used to deregister the err handler. A ptr to the original
  * cbdata is returned. */
-typedef void (*pmix_errhandler_reg_cbfunc_t)(pmix_status_t status,
-                                             int errhandler_ref,
-                                             void *cbdata);
+typedef void (*pmix_evhdlr_reg_cbfunc_t)(pmix_status_t status,
+                                         size_t evhdlr_ref,
+                                         void *cbdata);
 
 /* define a callback function for calls to PMIx_Get_nb. The status
  * indicates if the requested data was found or not - a pointer to the
@@ -832,89 +870,86 @@ typedef void (*pmix_value_cbfunc_t)(pmix_status_t status,
                                     pmix_value_t *kv, void *cbdata);
 
 /****    COMMON SUPPORT FUNCTIONS    ****/
-/* Register an errhandler to report errors. Three types of errors
+/* Register an event handler to report events. Three types of events
  * can be reported:
  *
  * (a) those that occur within the client library, but are not
  *     reportable via the API itself (e.g., loss of connection to
- *     the server). These errors typically occur during behind-the-scenes
+ *     the server). These events typically occur during behind-the-scenes
  *     non-blocking operations.
  *
- * (b) job-related errors such as the failure of another process in
+ * (b) job-related events such as the failure of another process in
  *     the job or in any connected job, impending failure of hardware
  *     within the job's usage footprint, etc.
  *
  * (c) system notifications that are made available by the local
  *     administrators
  *
- * By default, only errors that directly affect the process and/or
+ * By default, only events that directly affect the process and/or
  * any process to which it is connected (via the PMIx_Connect call)
  * will be reported. Options to modify that behavior can be provided
  * in the info array
  *
  * Both the client application and the resource manager can register
- * err handlers for specific errors. PMIx client/server calls the registered
- * err handler upon receiving error notify notification (via PMIx_Notify_error)
+ * err handlers for specific events. PMIx client/server calls the registered
+ * err handler upon receiving event notify notification (via PMIx_Notify_event)
  * from the other end (Resource Manager/Client application).
  *
- * Multiple err handlers can be registered for different errors. PMIX returns
+ * Multiple err handlers can be registered for different events. PMIX returns
  * an integer reference to each register handler in the callback fn. The caller
- * must retain the reference in order to deregister the errhandler.
+ * must retain the reference in order to deregister the evhdlr.
  * Modification of the notification behavior can be accomplished by
- * deregistering the current errhandler, and then registering it
+ * deregistering the current evhdlr, and then registering it
  * using a new set of info values.
  *
  * See pmix_common.h for a description of the notification function */
-void PMIx_Register_errhandler(pmix_info_t info[], size_t ninfo,
-                              pmix_notification_fn_t errhandler,
-                              pmix_errhandler_reg_cbfunc_t cbfunc,
-                              void *cbdata);
+void PMIx_Register_event_handler(pmix_status_t codes[], size_t ncodes,
+                                 pmix_info_t info[], size_t ninfo,
+                                 pmix_notification_fn_t evhdlr,
+                                 pmix_evhdlr_reg_cbfunc_t cbfunc,
+                                 void *cbdata);
 
-/* deregister the errhandler
- * errhandler_ref is the reference returned by PMIx for the errhandler
- * to pmix_errhandler_reg_cbfunc_t */
-void PMIx_Deregister_errhandler(int errhandler_ref,
-                                pmix_op_cbfunc_t cbfunc,
-                                void *cbdata);
-/* Report an error to a process for notification via any
- * registered errhandler. The errhandler registration can be
+/* Deregister an event handler
+ * evhdlr_ref is the reference returned by PMIx from the call to
+ * PMIx_Register_event_handler. If non-NULL, the provided cbfunc
+ * will be called to confirm removal of the designated handler */
+void PMIx_Deregister_event_handler(size_t evhdlr_ref,
+                                   pmix_op_cbfunc_t cbfunc,
+                                   void *cbdata);
+
+/* Report an event to a process for notification via any
+ * registered evhdlr. The evhdlr registration can be
  * called by both the server and the client application. On the
- * server side, the errhandler is used to report errors detected
+ * server side, the evhdlr is used to report events detected
  * by PMIx to the host server for handling. On the client side,
- * the errhandler is used to notify the process of errors
+ * the evhdlr is used to notify the process of events
  * reported by the server - e.g., the failure of another process.
  *
  * This function allows the host server to direct the server
- * convenience library to notify all indicated local procs of
- * an error. The error can be local, or anywhere in the cluster.
- * The status indicates the error being reported.
+ * convenience library to notify all registered local procs of
+ * an event. The event can be local, or anywhere in the cluster.
+ * The status indicates the event being reported.
  *
  * The client application can also call this function to notify the
- * resource manager of an error it encountered. It can request the host
- * server to notify the indicated processes about the error.
+ * resource manager of an event it encountered. It can request the host
+ * server to notify the indicated processes about the event.
  *
- * The first array  of procs informs the server library as to which
- * processes should be alerted - e.g., the processes that are in
- * a directly-affected job or are connected to one that is affected.
- * Passing a NULL for this array will indicate that all local procs
- * are to be notified.
- *
- * The second array identifies the processes that will be impacted
- * by the error. This could consist of a single process, or a number
+ * The array of procs identifies the processes that will be impacted
+ * by the event. This could consist of a single process, or a number
  * of processes.
  *
  * The info array contains any further info the RM can and/or chooses
  * to provide.
  *
  * The callback function will be called upon completion of the
- * notify_error function's actions. Note that any messages will
+ * notify_event function's actions. Note that any messages will
  * have been queued, but may not have been transmitted by this
  * time. Note that the caller is required to maintain the input
  * data until the callback function has been executed!
 */
-pmix_status_t PMIx_Notify_error(pmix_status_t status,
-                                pmix_proc_t procs[], size_t nprocs,
-                                pmix_proc_t error_procs[], size_t error_nprocs,
+pmix_status_t PMIx_Notify_event(pmix_status_t status,
+                                const pmix_proc_t *source,
+                                pmix_data_range_t range,
                                 pmix_info_t info[], size_t ninfo,
                                 pmix_op_cbfunc_t cbfunc, void *cbdata);
 

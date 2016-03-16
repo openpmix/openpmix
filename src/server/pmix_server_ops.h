@@ -49,10 +49,9 @@ typedef struct {
     pmix_event_t ev;
     volatile bool active;
     pmix_status_t status;
-    pmix_proc_t *procs;
-    size_t nprocs;
-    pmix_proc_t *error_procs;
-    size_t error_nprocs;
+    pmix_proc_t source;
+    pmix_data_range_t range;
+    bool nondefault;
     pmix_info_t *info;
     size_t ninfo;
     pmix_buffer_t *buf;
@@ -98,8 +97,14 @@ PMIX_CLASS_DECLARATION(pmix_pending_connection_t);
 typedef struct {
     pmix_list_item_t super;
     pmix_peer_t *peer;
-    pmix_info_t *info;
-    size_t ninfo;
+    bool enviro_events;
+} pmix_peer_events_info_t;
+PMIX_CLASS_DECLARATION(pmix_peer_events_info_t);
+
+typedef struct {
+    pmix_list_item_t super;
+    pmix_list_t peers;              // list of pmix_prevents_info_t
+    int code;
 } pmix_regevents_info_t;
 PMIX_CLASS_DECLARATION(pmix_regevents_info_t);
 
@@ -128,9 +133,18 @@ typedef struct {
     pmix_list_t listeners;                  // list of pmix_listener_t
     int stop_thread[2];                     // pipe used to stop listener thread
     pmix_buffer_t gdata;                    // cache of data given to me for passing to all clients
-    pmix_list_t client_eventregs;           // list of registered events per client.
+    pmix_list_t events;                     // list of pmix_regevents_info_t registered events
     pmix_ring_buffer_t notifications;       // ring buffer of pending notifications
 } pmix_server_globals_t;
+
+typedef struct {
+    pmix_object_t super;
+    pmix_event_t ev;
+    pmix_peer_t *peer;
+    pmix_buffer_t *buf;
+    uint32_t tag;
+} pmix_usock_queue_t;
+PMIX_CLASS_DECLARATION(pmix_usock_queue_t);
 
 #define PMIX_PEER_CADDY(c, p, t)                \
     do {                                        \
@@ -162,6 +176,30 @@ typedef struct {
         event_active(&((c)->ev), EV_WRITE, 1);                  \
     } while (0)
 
+
+/* queue a message to be sent to one of our procs - must
+ * provide the following params:
+ *
+ * t - tag to be sent to
+ * b - buffer to be sent
+ */
+#define PMIX_SERVER_QUEUE_REPLY(p, t, b)                                \
+    do {                                                                \
+        pmix_usock_queue_t *queue;                                      \
+        queue = PMIX_NEW(pmix_usock_queue_t);                           \
+        queue->peer = (p);                                              \
+        queue->buf  = (b);                                              \
+        queue->tag  = (t);                                              \
+        pmix_output_verbose(2, pmix_globals.debug_output,               \
+                        "[%s:%d] queue reply to %s:%d on tag %d",       \
+                        __FILE__, __LINE__,                             \
+                        (queue->peer)->info->nptr->nspace,              \
+                        (queue->peer)->info->rank, (queue->tag));       \
+        event_assign(&queue->ev, pmix_globals.evbase, -1,               \
+                       EV_WRITE, pmix_server_queue_message, queue);     \
+        event_priority_set(&queue->ev, 0);                              \
+        event_active(&queue->ev, EV_WRITE, 1);                          \
+    } while (0)
 
 pmix_status_t pmix_start_listening(pmix_listener_t *lt);
 void pmix_stop_listening(void);
@@ -216,15 +254,6 @@ void pmix_pack_proc_map(pmix_buffer_t *buf,
 pmix_status_t pmix_regex_parse_nodes(const char *regexp, char ***names);
 pmix_status_t pmix_regex_parse_procs(const char *regexp, char ***procs);
 
-void pmix_server_register_errhandler(pmix_info_t info[], size_t ninfo,
-                                     pmix_notification_fn_t errhandler,
-                                     pmix_errhandler_reg_cbfunc_t cbfunc,
-                                     void *cbdata);
-
-void pmix_server_deregister_errhandler(int errhandler_ref,
-                                       pmix_op_cbfunc_t cbfunc,
-                                       void *cbdata);
-
 pmix_status_t pmix_server_notify_error(pmix_status_t status,
                                        pmix_proc_t procs[], size_t nprocs,
                                        pmix_proc_t error_procs[], size_t error_nprocs,
@@ -232,25 +261,22 @@ pmix_status_t pmix_server_notify_error(pmix_status_t status,
                                        pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
-                                 pmix_buffer_t *buf,
-                                 pmix_op_cbfunc_t cbfunc,
-                                 void *cbdata);
-
-pmix_status_t pmix_server_deregister_events(pmix_peer_t *peer,
                                           pmix_buffer_t *buf,
                                           pmix_op_cbfunc_t cbfunc,
                                           void *cbdata);
 
-pmix_status_t pmix_server_notify_error_client(pmix_peer_t *peer,
-                                              pmix_buffer_t *buf,
-                                              pmix_op_cbfunc_t cbfunc,
-                                              void *cbdata);
-void pmix_server_check_notifications(pmix_regevents_info_t *reginfo,
-                                     pmix_notify_caddy_t *cd);
+pmix_status_t pmix_server_deregister_events(pmix_peer_t *peer,
+                                            pmix_buffer_t *buf,
+                                            pmix_op_cbfunc_t cbfunc,
+                                            void *cbdata);
 
-void regevents_cbfunc (pmix_status_t status, void *cbdata);
-
+pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer,
+                                                  pmix_buffer_t *buf,
+                                                  pmix_op_cbfunc_t cbfunc,
+                                                  void *cbdata);
 void pmix_server_execute_collective(int sd, short args, void *cbdata);
+
+void pmix_server_queue_message(int fd, short args, void *cbdata);
 
 extern pmix_server_module_t pmix_host_server;
 extern pmix_server_globals_t pmix_server_globals;
