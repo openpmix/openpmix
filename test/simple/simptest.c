@@ -90,6 +90,14 @@ static pmix_status_t notify_event(pmix_status_t code,
                                   pmix_data_range_t range,
                                   pmix_info_t info[], size_t ninfo,
                                   pmix_op_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t query_fn(pmix_proc_t *proct,
+                              pmix_info_t *info, size_t ninfo,
+                              pmix_info_t *directives, size_t ndir,
+                              pmix_info_cbfunc_t cbfunc,
+                              void *cbdata);
+static void tool_connect_fn(pmix_info_t *info, size_t ninfo,
+                            pmix_tool_connection_cbfunc_t cbfunc,
+                            void *cbdata);
 
 static pmix_server_module_t mymodule = {
     .client_connected = connected,
@@ -105,7 +113,9 @@ static pmix_server_module_t mymodule = {
     .disconnect = disconnect_fn,
     .register_events = register_event_fn,
     .deregister_events = deregister_events,
-    .notify_event = notify_event
+    .notify_event = notify_event,
+    .query = query_fn,
+    .tool_connected = tool_connect_fn
 };
 
 typedef struct {
@@ -195,6 +205,7 @@ int main(int argc, char **argv)
     myxfer_t *x;
     pmix_proc_t proc;
     wait_tracker_t *child;
+    pmix_info_t info;
 
     /* smoke test */
     if (PMIX_SUCCESS != 0) {
@@ -204,11 +215,15 @@ int main(int argc, char **argv)
 
     fprintf(stderr, "Testing version %s\n", PMIx_Get_version());
 
-    /* setup the server library */
-    if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, NULL, 0))) {
+    /* setup the server library and tell it to support tool connections */
+    PMIX_INFO_CONSTRUCT(&info);
+    (void)strncpy(info.key, PMIX_SERVER_TOOL_SUPPORT, PMIX_MAX_KEYLEN);
+    if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, &info, 1))) {
         fprintf(stderr, "Init failed with error %d\n", rc);
         return rc;
     }
+    PMIX_INFO_DESTRUCT(&info);
+
     /* register the errhandler */
     PMIx_Register_event_handler(NULL, 0, NULL, 0,
                                 errhandler, errhandler_reg_callbk, NULL);
@@ -666,6 +681,9 @@ static pmix_status_t register_event_fn(pmix_status_t *codes, size_t ncodes,
                                        const pmix_info_t info[], size_t ninfo,
                                        pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, cbdata);
+    }
     return PMIX_SUCCESS;
 }
 
@@ -682,6 +700,52 @@ static pmix_status_t notify_event(pmix_status_t code,
                                   pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     return PMIX_SUCCESS;
+}
+
+typedef struct query_data_t {
+    pmix_info_t *data;
+    size_t ndata;
+} query_data_t;
+
+static pmix_status_t query_fn(pmix_proc_t *proct,
+                              pmix_info_t *info, size_t ninfo,
+                              pmix_info_t *directives, size_t ndirs,
+                              pmix_info_cbfunc_t cbfunc,
+                              void *cbdata)
+{
+    size_t n;
+
+    pmix_output(0, "SERVER: QUERY");
+
+    if (NULL == cbfunc) {
+        return PMIX_ERROR;
+    }
+    /* keep this simple */
+    for (n=0; n < ninfo; n++) {
+        info[n].value.type = PMIX_STRING;
+        if (0 > asprintf(&info[n].value.data.string, "%d", (int)n)) {
+            return PMIX_ERROR;
+        }
+    }
+    cbfunc(PMIX_SUCCESS, info, ninfo, cbdata, NULL, NULL);
+    return PMIX_SUCCESS;
+}
+
+static void tool_connect_fn(pmix_info_t *info, size_t ninfo,
+                            pmix_tool_connection_cbfunc_t cbfunc,
+                            void *cbdata)
+{
+    pmix_proc_t proc;
+
+    pmix_output(0, "SERVER: TOOL CONNECT");
+
+    /* just pass back an arbitrary nspace */
+    (void)strncpy(proc.nspace, "TOOL", PMIX_MAX_NSLEN);
+    proc.rank = 0;
+
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, &proc, cbdata);
+    }
 }
 
 static void wait_signal_callback(int fd, short event, void *arg)

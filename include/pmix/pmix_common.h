@@ -43,6 +43,8 @@
  *
  * Additional copyrights may follow
  *
+ * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ *
  * $HEADER$
  */
 
@@ -101,6 +103,9 @@ BEGIN_C_DECLS
 /* initialization attributes */
 #define PMIX_EVENT_BASE                     "pmix.evbase"           // (struct event_base *) pointer to libevent event_base to use in place
                                                                     //                       of the internal progress thread
+#define PMIX_SERVER_TOOL_SUPPORT            "pmix.srvr.tool"        // (bool) The host RM wants to declare itself as willing to
+                                                                    //        accept tool connection requests
+#define PMIX_SERVER_PIDINFO                 "pmix.srvr.pidinfo"     // (uint32_t) pid of the target server
 
 /* identification attributes */
 #define PMIX_USERID                         "pmix.euid"             // (uint32_t) effective user id
@@ -201,12 +206,12 @@ BEGIN_C_DECLS
 #define PMIX_EVENT_CUSTOM_RANGE             "pmix.evrange"          // (pmix_proc_t*) array of pmix_proc_t defining range of event notification
 #define PMIX_EVENT_AFFECTED_PROCS           "pmix.evaffected"       // (pmix_proc_t*) array of pmix_proc_t defining affected procs
 #define PMIX_EVENT_NON_DEFAULT              "pmix.evnondef"         // (bool) event is not to be delivered to default event handlers
- /* fault tolerance-related events */
- #define PMIX_EVENT_TERMINATE_SESSION       "pmix.evterm.sess"      // (bool) RM intends to terminate session
- #define PMIX_EVENT_TERMINATE_JOB           "pmix.evterm.job"       // (bool) RM intends to terminate this job
- #define PMIX_EVENT_TERMINATE_NODE          "pmix.evterm.node"      // (bool) RM intends to terminate all procs on this node
- #define PMIX_EVENT_TERMINATE_PROC          "pmix.evterm.proc"      // (bool) RM intends to terminate just this process
- #define PMIX_EVENT_ACTION_TIMEOUT          "pmix.evtimeout"        // (int) time in sec before RM will execute error response
+/* fault tolerance-related events */
+#define PMIX_EVENT_TERMINATE_SESSION        "pmix.evterm.sess"      // (bool) RM intends to terminate session
+#define PMIX_EVENT_TERMINATE_JOB            "pmix.evterm.job"       // (bool) RM intends to terminate this job
+#define PMIX_EVENT_TERMINATE_NODE           "pmix.evterm.node"      // (bool) RM intends to terminate all procs on this node
+#define PMIX_EVENT_TERMINATE_PROC           "pmix.evterm.proc"      // (bool) RM intends to terminate just this process
+#define PMIX_EVENT_ACTION_TIMEOUT           "pmix.evtimeout"        // (int) time in sec before RM will execute error response
 
 /* attributes used to describe "spawn" attributes */
 #define PMIX_PERSONALITY                    "pmix.pers"              // (char*) name of personality to use
@@ -226,6 +231,15 @@ BEGIN_C_DECLS
 #define PMIX_PRELOAD_FILES                  "pmix.preloadfiles"      // (char*) comma-delimited list of files to pre-position
 #define PMIX_NON_PMI                        "pmix.nonpmi"            // (bool) spawned procs will not call PMIx_Init
 #define PMIX_STDIN_TGT                      "pmix.stdin"             // (uint32_t) spawned proc rank that is to receive stdin
+#define PMIX_FWD_STDIN                      "pmix.fwd.stdin"         // (bool) forward my stdin to the designated proc
+#define PMIX_FWD_STDOUT                     "pmix.fwd.stdout"        // (bool) forward stdout from spawned procs to me
+#define PMIX_FWD_STDERR                     "pmix.fwd.stderr"        // (bool) forward stderr from spawned procs to me
+
+/* query attributes */
+#define PMIX_QUERY_NAMESPACES               "pmix.qry.ns"            // (char*) request a comma-delimited list of active nspaces
+#define PMIX_QUERY_JOB_STATUS               "pmix.qry.jst"           // (pmix_status_t) status of a specified currently executing job
+#define PMIX_QUERY_QUEUE_LIST               "pmix.qry.qlst"          // (char*) request a comma-delimited list of scheduler queues
+#define PMIX_QUERY_QUEUE_STATUS             "pmix.qry.qst"           // (TBD) status of a specified scheduler queue
 
 /****    PMIX ERROR CONSTANTS    ****/
 /* PMIx errors are always negative, with 0 reserved for success */
@@ -274,6 +288,8 @@ typedef int pmix_status_t;
 #define PMIX_EVENT_PARTIAL_ACTION_TAKEN         (PMIX_ERR_BASE - 31)
 #define PMIX_EVENT_ACTION_DEFERRED              (PMIX_ERR_BASE - 32)
 #define PMIX_EVENT_ACTION_COMPLETE              (PMIX_ERR_BASE - 33)
+/* used by the query system */
+#define PMIX_QUERY_PARTIAL_SUCCESS              (PMIX_ERR_BASE - 34)
 
 
 /* define a starting point for PMIx internal error codes
@@ -286,7 +302,6 @@ typedef int pmix_status_t;
  * be based on the PMIX_EXTERNAL_ERR_BASE constant and -not- a
  * specific value as the value of the constant may change */
 #define PMIX_EXTERNAL_ERR_BASE           -2000
-
 
 /****    PMIX DATA TYPES    ****/
 typedef enum {
@@ -877,6 +892,16 @@ typedef void (*pmix_evhdlr_reg_cbfunc_t)(pmix_status_t status,
  * pointer will be NULL if the requested data was not found. */
 typedef void (*pmix_value_cbfunc_t)(pmix_status_t status,
                                     pmix_value_t *kv, void *cbdata);
+
+/* define a callback function for calls to PMIx_Query. The status
+ * indicates if requested data was found or not - an array of
+ * pmix_info_t will contain the key/value pairs. */
+typedef void (*pmix_info_cbfunc_t)(pmix_status_t status,
+                                   pmix_info_t *info, size_t ninfo,
+                                   void *cbdata,
+                                   pmix_release_cbfunc_t release_fn,
+                                   void *release_cbdata);
+
 
 /****    COMMON SUPPORT FUNCTIONS    ****/
 /* Register an event handler to report events. Three types of events
