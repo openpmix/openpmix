@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015 Intel, Inc. All rights reserved
+ * Copyright (c) 2013-2016 Intel, Inc. All rights reserved
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -54,6 +54,7 @@
 #ifdef HAVE_SYS_TIME_H
 #include <sys/time.h> /* for struct timeval */
 #endif
+#include <event.h>
 
 BEGIN_C_DECLS
 
@@ -86,6 +87,10 @@ BEGIN_C_DECLS
  * by the resource manager as opposed to the application. Thus,
  * these keys are RESERVED */
 #define PMIX_ATTR_UNDEF      NULL
+
+/* initialization attributes */
+#define PMIX_EVENT_BASE            "pmix.evbase"            // (struct event_base *) pointer to libevent event_base to use in place
+                                                            // of the internal progress thread
 
 /* identification attributes */
 #define PMIX_USERID                "pmix.euid"              // (uint32_t) effective user id
@@ -159,6 +164,8 @@ BEGIN_C_DECLS
 #define PMIX_PERSISTENCE           "pmix.persist"           // (int) pmix_persistence_t value for calls to publish
 #define PMIX_OPTIONAL              "pmix.optional"          // (bool) look only in the immediate data store for the requested value - do
                                                             //        not request data from the server if not found
+#define PMIX_EMBED_BARRIER         "pmix.embed.barrier"     // (bool) execute a blocking fence operation before executing the
+                                                            //        specified operation
 
 /* attributes used by host server to pass data to the server convenience library - the
  * data will then be parsed and provided to the local clients */
@@ -173,7 +180,7 @@ BEGIN_C_DECLS
 
 /* error handler registration  and notification info keys */
 #define PMIX_ERROR_NAME            "pmix.errname"           // enum pmix_status_t specific error to be notified
-#define PMIX_ERROR_GROUP_COMM      "pmix.errgroup.comm"     // bool - set true to get comm  errors notification
+#define PMIX_ERROR_GROUP_COMM      "pmix.errgroup.comm"     // bool - set true to get comm errors notification
 #define PMIX_ERROR_GROUP_ABORT     "pmix.errgroup.abort"    // bool -set true to get abort errors notification
 #define PMIX_ERROR_GROUP_MIGRATE   "pmix.errgroup.migrate"  // bool -set true to get migrate errors notification
 #define PMIX_ERROR_GROUP_RESOURCE  "pmix.errgroup.resource" // bool -set true to get resource errors notification
@@ -209,7 +216,7 @@ BEGIN_C_DECLS
 
 /****    PMIX ERROR CONSTANTS    ****/
 /* PMIx errors are always negative, with 0 reserved for success */
-#define PMIX_ERROR_MIN  -50  // set equal to number of non-zero entries in enum
+#define PMIX_ERROR_MIN  -52  // set equal to number of non-zero entries in enum
 
 typedef enum {
     PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER = PMIX_ERROR_MIN,
@@ -267,6 +274,8 @@ typedef enum {
     PMIX_ERR_SILENT,
     PMIX_ERROR,
 
+    PMIX_ERR_GRP_FOUND,
+    PMIX_ERR_DFLT_FOUND,
     PMIX_SUCCESS
 } pmix_status_t;
 
@@ -298,6 +307,9 @@ typedef enum {
     PMIX_TIMEVAL,
     PMIX_TIME,
 
+    PMIX_STATUS,            // needs to be tracked separately from integer for those times
+                            // when we are embedded and it needs to be converted to the
+                            // host error definitions
     PMIX_HWLOC_TOPO,
     PMIX_VALUE,
     PMIX_INFO_ARRAY,
@@ -309,7 +321,8 @@ typedef enum {
     PMIX_BYTE_OBJECT,
     PMIX_KVAL,
     PMIX_MODEX,
-    PMIX_PERSIST
+    PMIX_PERSIST,
+    PMIX_POINTER
 } pmix_data_type_t;
 
 /* define a scope for data "put" by PMI per the following:
@@ -389,11 +402,11 @@ typedef struct {
 
 
 /****    PMIX VALUE STRUCT    ****/
-struct pmix_info_t;
+struct pmix_info_s;
 
 typedef struct {
     size_t size;
-    struct pmix_info_t *array;
+    struct pmix_info_s *array;
 } pmix_info_array_t;
 /* NOTE: operations can supply a collection of values under
  * a single key by passing a pmix_value_t containing an
@@ -421,10 +434,21 @@ typedef struct {
         float fval;
         double dval;
         struct timeval tv;
+        pmix_status_t status;
         pmix_info_array_t array;
         pmix_byte_object_t bo;
+        void *ptr;
     } data;
 } pmix_value_t;
+
+
+/****    PMIX INFO STRUCT    ****/
+typedef struct pmix_info_s {
+    char key[PMIX_MAX_KEYLEN+1];  // ensure room for the NULL terminator
+    bool required;                // defaults to optional (i.e., required=false)
+    pmix_value_t value;
+} pmix_info_t;
+
 /* allocate and initialize a specified number of value structs */
 #define PMIX_VALUE_CREATE(m, n)                                         \
     do {                                                                \
@@ -495,17 +519,8 @@ typedef struct {
  * includes internal functions - so we don't
  * want to expose the entire header here
  */
-extern void pmix_value_load(pmix_value_t *v, void *data,
-                            pmix_data_type_t type);
+void pmix_value_load(pmix_value_t *v, void *data, pmix_data_type_t type);
 
-
-
-
-/****    PMIX INFO STRUCT    ****/
-typedef struct {
-    char key[PMIX_MAX_KEYLEN+1];  // ensure room for the NULL terminator
-    pmix_value_t value;
-} pmix_info_t;
 
 /* utility macros for working with pmix_info_t structs */
 #define PMIX_INFO_CREATE(m, n)                                  \
@@ -541,7 +556,10 @@ typedef struct {
         (void)strncpy((m)->key, (k), PMIX_MAX_KEYLEN);  \
         pmix_value_load(&((m)->value), (v), (t));       \
     } while(0);
-
+#define PMIX_INFO_REQUIRED(m)       \
+    (m)->required = true;
+#define PMIX_INFO_OPTIONAL(m)       \
+    (m)->required = false;
 
 /****    PMIX LOOKUP RETURN STRUCT    ****/
 typedef struct {
@@ -914,8 +932,8 @@ const char* PMIx_Get_version(void);
 /* Store some data locally for retrieval by other areas of the
  * proc. This is data that has only internal scope - it will
  * never be "pushed" externally */
- pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc,
-                                   const char *key, pmix_value_t *val);
+pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc,
+                                  const char *key, pmix_value_t *val);
 
 
 /* Key-Value pair management macros */
