@@ -48,14 +48,6 @@
 
 #include <pmix/autogen/config.h>
 
-#include <stdlib.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <string.h>
-#ifdef HAVE_SYS_TIME_H
-#include <sys/time.h> /* for struct timeval */
-#endif
-
 /* Symbol transforms */
 #include <pmix/rename.h>
 

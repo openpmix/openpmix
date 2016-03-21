@@ -34,8 +34,6 @@
 
 #include "src/util/argv.h"
 
-#include <pmix.h>
-
 #define ARGSIZE 128
 
 

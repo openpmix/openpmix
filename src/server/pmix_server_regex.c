@@ -20,7 +20,6 @@
 #include <src/include/types.h>
 #include <src/include/pmix_stdint.h>
 
-#include <pmix.h>
 #include "src/include/pmix_globals.h"
 
 #ifdef HAVE_STRING_H
