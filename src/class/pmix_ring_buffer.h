@@ -25,7 +25,7 @@
 #ifndef PMIX_RING_BUFFER_H
 #define PMIX_RING_BUFFER_H
 
-#include <private/autogen/config.h>
+#include <src/include/pmix_config.h>
 
 #include "src/class/pmix_object.h"
 #include "src/util/output.h"

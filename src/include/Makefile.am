@@ -29,6 +29,7 @@ sources += \
 
 if ! PMIX_EMBEDDED_MODE
 headers += \
+        src/include/pmix_config.h \
         src/include/align.h \
         src/include/hash_string.h \
         src/include/pmix_socket_errno.h \

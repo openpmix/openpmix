@@ -12,8 +12,8 @@
  * $HEADER$
  */
 
-#include <private/autogen/config.h>
-#include <pmix/rename.h>
+#include <src/include/pmix_config.h>
+
 #include <src/include/types.h>
 
 #ifdef HAVE_STRING_H

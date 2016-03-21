@@ -24,8 +24,8 @@
 #ifndef PMIX_BFROP_INTERNAL_H_
 #define PMIX_BFROP_INTERNAL_H_
 
-#include <private/autogen/config.h>
-#include <pmix/rename.h>
+#include <src/include/pmix_config.h>
+
 
 #ifdef HAVE_SYS_TIME_H
 #include <sys/time.h> /* for struct timeval */

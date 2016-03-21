@@ -118,14 +118,13 @@
 #ifndef PMIX_OBJECT_H
 #define PMIX_OBJECT_H
 
-#include <private/autogen/config.h>
+#include <src/include/pmix_config.h>
 
 #include <assert.h>
 #ifdef HAVE_STDLIB_H
 #include <stdlib.h>
 #endif  /* HAVE_STDLIB_H */
 
-#include "include/pmix/rename.h"
 
 BEGIN_C_DECLS
 

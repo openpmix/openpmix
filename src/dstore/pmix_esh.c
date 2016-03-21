@@ -12,7 +12,7 @@
 #include <sys/stat.h>
 #include <sys/file.h>
 
-#include <private/autogen/config.h>
+#include <src/include/pmix_config.h>
 #include <pmix/pmix_common.h>
 #include "src/include/pmix_globals.h"
 

@@ -24,7 +24,7 @@
  *
  */
 
-#include <private/autogen/config.h>
+#include <src/include/pmix_config.h>
 #include <pmix_server.h>
 #include <src/include/types.h>
 

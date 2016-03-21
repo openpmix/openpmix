@@ -34,7 +34,7 @@
 #ifndef PMIX_HASH_TABLE_H
 #define PMIX_HASH_TABLE_H
 
-#include <private/autogen/config.h>
+#include <src/include/pmix_config.h>
 #include <src/include/prefetch.h>
 
 #ifdef HAVE_STDINT_H

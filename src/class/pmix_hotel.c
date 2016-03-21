@@ -9,7 +9,7 @@
  * $HEADER$
  */
 
-#include <private/autogen/config.h>
+#include <src/include/pmix_config.h>
 
 #include <stdio.h>
 #include <stddef.h>

@@ -20,8 +20,8 @@
 #ifndef PMIX_GLOBALS_H
 #define PMIX_GLOBALS_H
 
-#include <private/autogen/config.h>
-#include <pmix/rename.h>
+#include <src/include/pmix_config.h>
+
 #include <src/include/types.h>
 
 #include <unistd.h>
