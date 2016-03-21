@@ -56,8 +56,8 @@ examples/fault
 examples/pub
 examples/server
 
-include/private/autogen/config.h.in
-include/private/autogen/config.h.in~
+src/include/private/autogen/config.h.in
+src/include/private/autogen/config.h.in~
 
 test/pmi2_client
 test/pmi_client
