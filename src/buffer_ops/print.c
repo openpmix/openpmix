@@ -11,6 +11,9 @@
  *                         All rights reserved.
  * Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
  * Copyright (c) 2014-2016 Intel, Inc. All rights reserved.
+ * Copyright (c) 2016      Mellanox Technologies, Inc.
+ *                         All rights reserved.
+ *
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -20,7 +23,7 @@
 
 #include <private/autogen/config.h>
 #include <pmix/rename.h>
-#include <private/pmix_stdint.h>
+#include <src/include/pmix_stdint.h>
 
 #include <stdio.h>
 #ifdef HAVE_TIME_H

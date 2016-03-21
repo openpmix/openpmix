@@ -52,8 +52,8 @@
 #define PMIX_HOTEL_H
 
 #include <private/autogen/config.h>
-#include "private/types.h"
-#include "private/prefetch.h"
+#include "src/include/types.h"
+#include "src/include/prefetch.h"
 #include "pmix/pmix_common.h"
 #include "src/class/pmix_object.h"
 #include PMIX_EVENT_HEADER

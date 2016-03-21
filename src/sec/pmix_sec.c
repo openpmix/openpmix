@@ -1,6 +1,9 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2015      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2016      Mellanox Technologies, Inc.
+ *                         All rights reserved.
+ *
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -10,8 +13,8 @@
 
 #include <private/autogen/config.h>
 #include <pmix/rename.h>
-#include <private/types.h>
-#include <private/pmix_stdint.h>
+#include <src/include/types.h>
+#include <src/include/pmix_stdint.h>
 
 #include <pmix/pmix_common.h>
 #include "src/include/pmix_globals.h"

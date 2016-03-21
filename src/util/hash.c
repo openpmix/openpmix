@@ -9,6 +9,9 @@
  * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2016      Mellanox Technologies, Inc.
+ *                         All rights reserved.
+ *
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -19,8 +22,8 @@
 
 #include <private/autogen/config.h>
 #include <pmix/rename.h>
-#include <private/pmix_stdint.h>
-#include <private/hash_string.h>
+#include <src/include/pmix_stdint.h>
+#include <src/include/hash_string.h>
 
 #include <string.h>
 

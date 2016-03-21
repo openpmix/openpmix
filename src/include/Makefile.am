@@ -26,3 +26,14 @@ headers += \
 
 sources += \
         src/include/pmix_globals.c
+
+if ! PMIX_EMBEDDED_MODE
+headers += \
+        src/include/align.h \
+        src/include/hash_string.h \
+        src/include/pmix_socket_errno.h \
+        src/include/pmix_stdint.h \
+        src/include/prefetch.h \
+        src/include/types.h
+endif ! PMIX_EMBEDDED_MODE
+        

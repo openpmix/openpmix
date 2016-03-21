@@ -5,6 +5,9 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
+ * Copyright (c) 2016      Mellanox Technologies, Inc.
+ *                         All rights reserved.
+ *
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -14,8 +17,8 @@
 
 #include <private/autogen/config.h>
 #include <pmix/rename.h>
-#include <private/types.h>
-#include <private/pmix_stdint.h>
+#include <src/include/types.h>
+#include <src/include/pmix_stdint.h>
 
 #include <pmix.h>
 
@@ -151,11 +154,11 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
         return rc;
     }
     if (0 < napps) {
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, apps, napps, PMIX_APP))) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(msg);
-            return rc;
-        }
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, apps, napps, PMIX_APP))) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        return rc;
+    }
     }
 
     /* create a callback object as we need to pass it to the

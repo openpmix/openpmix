@@ -16,9 +16,9 @@
 
 #include <private/autogen/config.h>
 #include <pmix/rename.h>
-#include <private/types.h>
-#include <private/pmix_stdint.h>
-#include <private/pmix_socket_errno.h>
+#include <src/include/types.h>
+#include <src/include/pmix_stdint.h>
+#include <src/include/pmix_socket_errno.h>
 
 #include "src/include/pmix_globals.h"
 

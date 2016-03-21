@@ -19,13 +19,6 @@ include_HEADERS = \
         include/pmi.h \
         include/pmi2.h
 
-headers += \
-        include/private/align.h \
-        include/private/hash_string.h \
-        include/private/pmix_socket_errno.h \
-        include/private/pmix_stdint.h \
-        include/private/prefetch.h \
-        include/private/types.h
 include_pmixdir = $(includedir)/pmix
 include_pmix_HEADERS = \
     include/pmix/rename.h \

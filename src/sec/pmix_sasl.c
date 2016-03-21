@@ -5,6 +5,9 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
+ * Copyright (c) 2016      Mellanox Technologies, Inc.
+ *                         All rights reserved.
+ *
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -14,8 +17,8 @@
 
 #include <private/autogen/config.h>
 #include <pmix/rename.h>
-#include <private/types.h>
-#include <private/pmix_stdint.h>
+#include <src/include/types.h>
+#include <src/include/pmix_stdint.h>
 #include <private/pmix_socket_errno.h>
 
 #include "src/include/pmix_globals.h"
@@ -73,7 +76,7 @@ static int sasl_init(void)
 {
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "sec: sasl init");
-
+    
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
