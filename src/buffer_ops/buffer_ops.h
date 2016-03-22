@@ -59,7 +59,7 @@ bool pmix_value_cmp(pmix_value_t *p, pmix_value_t *p1);
         (b)->unpack_ptr = (b)->base_ptr;                \
         (d) = NULL;                                     \
         (s) = 0;                                        \
-    } while(0);
+    } while (0)
 
 #define PMIX_UNLOAD_BUFFER(b, d, s)             \
     do {                                        \
@@ -70,7 +70,7 @@ bool pmix_value_cmp(pmix_value_t *p, pmix_value_t *p1);
         (b)->bytes_allocated = 0;               \
         (b)->pack_ptr = NULL;                   \
         (b)->unpack_ptr = NULL;                 \
-    } while (0);
+    } while (0)
 
 
 /**

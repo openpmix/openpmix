@@ -277,7 +277,7 @@ PMIX_CLASS_DECLARATION(pmix_shift_caddy_t);
     event_assign(&((r)->ev), pmix_globals.evbase,     \
                  -1, EV_WRITE, (c), (r));             \
     event_active(&((r)->ev), EV_WRITE, 1);            \
-} while(0);
+} while (0)
 
 
 #define PMIX_WAIT_FOR_COMPLETION(a)             \
@@ -285,7 +285,7 @@ PMIX_CLASS_DECLARATION(pmix_shift_caddy_t);
         while ((a)) {                           \
             usleep(10);                         \
         }                                       \
-    } while (0);
+    } while (0)
 
 
 /****    GLOBAL STORAGE    ****/

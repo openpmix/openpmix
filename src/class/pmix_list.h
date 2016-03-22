@@ -175,7 +175,7 @@ typedef struct pmix_list_t pmix_list_t;
             PMIX_RELEASE(it);                                    \
         }                                                       \
         PMIX_DESTRUCT(list);                                     \
-    } while(0);
+    } while (0)
 
 #define PMIX_LIST_RELEASE(list)                                 \
     do {                                                        \
@@ -184,7 +184,7 @@ typedef struct pmix_list_t pmix_list_t;
             PMIX_RELEASE(it);                                    \
         }                                                       \
         PMIX_RELEASE(list);                                      \
-    } while(0);
+    } while (0)
 
 
 /**

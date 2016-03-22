@@ -121,7 +121,7 @@ typedef struct {
         (c)->hdr.tag = (t);                     \
         PMIX_RETAIN((p));                       \
         (c)->peer = (p);                        \
-    } while(0);
+    } while (0)
 
 #define PMIX_SND_CADDY(c, h, s)                                         \
     do {                                                                \
@@ -129,13 +129,13 @@ typedef struct {
         (void)memcpy(&(c)->hdr, &(h), sizeof(pmix_usock_hdr_t));        \
         PMIX_RETAIN((s));                                               \
         (c)->snd = (s);                                                 \
-    } while(0);
+    } while (0)
 
 #define PMIX_SETUP_COLLECTIVE(c, t)             \
     do {                                        \
         (c) = PMIX_NEW(pmix_trkr_caddy_t);      \
         (c)->trk = (t);                         \
-    } while(0);
+    } while (0)
 
 #define PMIX_EXECUTE_COLLECTIVE(c, t, f)                        \
     do {                                                        \
@@ -143,7 +143,7 @@ typedef struct {
         event_assign(&((c)->ev), pmix_globals.evbase, -1,       \
                      EV_WRITE, (f), (c));                       \
         event_active(&((c)->ev), EV_WRITE, 1);                  \
-    } while(0);
+    } while (0)
 
 
 int pmix_start_listening(struct sockaddr_un *address);
