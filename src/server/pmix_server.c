@@ -140,7 +140,7 @@ static void _queue_message(int fd, short args, void *cbdata)
                        EV_WRITE, _queue_message, queue);                \
         event_priority_set(&queue->ev, 0);                              \
         event_active(&queue->ev, EV_WRITE, 1);                          \
-    } while(0);
+    } while (0)
 
 
 static pmix_status_t initialize_server_base(pmix_server_module_t *module)

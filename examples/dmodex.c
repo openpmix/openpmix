@@ -43,7 +43,7 @@ static uint32_t getcount = 0;
         while ((a)) {                           \
             usleep(10);                         \
         }                                       \
-    } while (0);
+    } while (0)
 
 static void opcbfunc(pmix_status_t status, void *cbdata)
 {

@@ -378,17 +378,17 @@ typedef struct {
     do {                                                        \
         (m) = (pmix_proc_t*)malloc((n) * sizeof(pmix_proc_t));  \
         memset((m), 0, (n) * sizeof(pmix_proc_t));              \
-    } while(0);
+    } while (0)
 
 #define PMIX_PROC_RELEASE(m)                    \
     do {                                        \
         PMIX_PROC_FREE((m));                    \
-    } while(0);
+    } while (0)
 
 #define PMIX_PROC_CONSTRUCT(m)                  \
     do {                                        \
         memset((m), 0, sizeof(pmix_proc_t));    \
-    } while(0);
+    } while (0)
 
 #define PMIX_PROC_DESTRUCT(m)
 
@@ -397,7 +397,7 @@ typedef struct {
         if (NULL != (m)) {                      \
             free((m));                          \
         }                                       \
-    } while(0);
+    } while (0)
 
 
 
@@ -449,21 +449,21 @@ typedef struct {
         for (_ii=0; _ii < (int)(n); _ii++) {                            \
             (m)[_ii].type = PMIX_UNDEF;                                 \
         }                                                               \
-    } while(0);
+    } while (0)
 
 /* release a single pmix_value_t struct, including its data */
 #define PMIX_VALUE_RELEASE(m)                                           \
     do {                                                                \
         PMIX_VALUE_DESTRUCT((m));                                       \
         free((m));                                                      \
-    } while(0);
+    } while (0)
 
 /* initialize a single value struct */
 #define PMIX_VALUE_CONSTRUCT(m)                 \
     do {                                        \
         memset((m), 0, sizeof(pmix_value_t));   \
         (m)->type = PMIX_UNDEF;                 \
-    } while(0);
+    } while (0)
 
 /* release the memory in the value struct data field */
 #define PMIX_VALUE_DESTRUCT(m)                                          \
@@ -492,7 +492,7 @@ typedef struct {
             }                                                           \
             free(_p);                                                   \
         }                                                               \
-    } while(0);
+    } while (0)
 
 #define PMIX_VALUE_FREE(m, n)                           \
     do {                                                \
@@ -503,7 +503,7 @@ typedef struct {
             }                                           \
             free((m));                                  \
         }                                               \
-    } while(0);
+    } while (0)
 
 /* expose a function that is resolved in the
  * PMIx library, but part of a header that
@@ -527,18 +527,18 @@ typedef struct {
     do {                                                        \
         (m) = (pmix_info_t*)malloc((n) * sizeof(pmix_info_t));  \
         memset((m), 0, (n) * sizeof(pmix_info_t));              \
-    } while(0);
+    } while (0)
 
 #define PMIX_INFO_CONSTRUCT(m)                  \
     do {                                        \
         memset((m), 0, sizeof(pmix_info_t));    \
         (m)->value.type = PMIX_UNDEF;           \
-    } while(0);
+    } while (0)
 
 #define PMIX_INFO_DESTRUCT(m) \
     do {                                        \
         PMIX_VALUE_DESTRUCT(&(m)->value);       \
-    } while(0);
+    } while (0)
 
 #define PMIX_INFO_FREE(m, n)                    \
     do {                                        \
@@ -549,13 +549,13 @@ typedef struct {
             }                                   \
             free((m));                          \
         }                                       \
-    } while(0);
+    } while (0)
 
 #define PMIX_INFO_LOAD(m, k, v, t)                      \
     do {                                                \
         (void)strncpy((m)->key, (k), PMIX_MAX_KEYLEN);  \
         pmix_value_load(&((m)->value), (v), (t));       \
-    } while(0);
+    } while (0)
 #define PMIX_INFO_REQUIRED(m)       \
     (m)->required = true;
 #define PMIX_INFO_OPTIONAL(m)       \
@@ -573,24 +573,24 @@ typedef struct {
     do {                                                                \
         (m) = (pmix_pdata_t*)malloc((n) * sizeof(pmix_pdata_t));        \
         memset((m), 0, (n) * sizeof(pmix_pdata_t));                     \
-    } while(0);
+    } while (0)
 
 #define PMIX_PDATA_RELEASE(m)                   \
     do {                                        \
         PMIX_VALUE_DESTRUCT(&(m)->value);       \
         free((m));                              \
-    } while(0);
+    } while (0)
 
 #define PMIX_PDATA_CONSTRUCT(m)                 \
     do {                                        \
         memset((m), 0, sizeof(pmix_pdata_t));   \
         (m)->value.type = PMIX_UNDEF;           \
-    } while(0);
+    } while (0)
 
 #define PMIX_PDATA_DESTRUCT(m)                  \
     do {                                        \
         PMIX_VALUE_DESTRUCT(&(m)->value);       \
-    } while(0);
+    } while (0)
 
 #define PMIX_PDATA_FREE(m, n)                           \
     do {                                                \
@@ -601,7 +601,7 @@ typedef struct {
             }                                           \
             free((m));                                  \
         }                                               \
-    } while(0);
+    } while (0)
 
 #define PMIX_PDATA_LOAD(m, p, k, v, t)                                  \
     do {                                                                \
@@ -610,7 +610,7 @@ typedef struct {
         (m)->proc.rank = (p)->rank;                                     \
         (void)strncpy((m)->key, (k), PMIX_MAX_KEYLEN);                  \
         pmix_value_load(&((m)->value), (v), (t));                       \
-    } while(0);
+    } while (0)
 
 
 /****    PMIX APP STRUCT    ****/
@@ -628,18 +628,18 @@ typedef struct {
     do {                                                        \
         (m) = (pmix_app_t*)malloc((n) * sizeof(pmix_app_t));    \
         memset((m), 0, (n) * sizeof(pmix_app_t));               \
-    } while(0);
+    } while (0)
 
 #define PMIX_APP_RELEASE(m)                     \
     do {                                        \
         PMIX_APP_DESTRUCT((m));                 \
         free((m));                              \
-    } while(0);
+    } while (0)
 
 #define PMIX_APP_CONSTRUCT(m)                   \
     do {                                        \
         memset((m), 0, sizeof(pmix_app_t));     \
-    } while(0);
+    } while (0)
 
 #define PMIX_APP_DESTRUCT(m)                                    \
     do {                                                        \
@@ -664,7 +664,7 @@ typedef struct {
                 PMIX_INFO_DESTRUCT(&(m)->info[_ii]);            \
             }                                                   \
         }                                                       \
-    } while(0);
+    } while (0)
 
 #define PMIX_APP_FREE(m, n)                     \
     do {                                        \
@@ -675,7 +675,7 @@ typedef struct {
             }                                   \
             free((m));                          \
         }                                       \
-    } while(0);
+    } while (0)
 
 /****    PMIX MODEX STRUCT    ****/
 typedef struct {
@@ -689,25 +689,25 @@ typedef struct {
     do {                                                                \
         (m) = (pmix_modex_data_t*)malloc((n) * sizeof(pmix_modex_data_t)); \
         memset((m), 0, (n) * sizeof(pmix_modex_data_t));                \
-    } while(0);
+    } while (0)
 
 #define PMIX_MODEX_RELEASE(m)                   \
     do {                                        \
         PMIX_MODEX_DESTRUCT((m));               \
         free((m));                              \
-    } while(0);
+    } while (0)
 
 #define PMIX_MODEX_CONSTRUCT(m)                         \
     do {                                                \
         memset((m), 0, sizeof(pmix_modex_data_t));      \
-    } while(0);
+    } while (0)
 
 #define PMIX_MODEX_DESTRUCT(m)                  \
     do {                                        \
         if (NULL != (m)->blob) {                \
             free((m)->blob);                    \
         }                                       \
-    } while(0);
+    } while (0)
 
 #define PMIX_MODEX_FREE(m, n)                           \
     do {                                                \
@@ -718,7 +718,7 @@ typedef struct {
             }                                           \
             free((m));                                  \
         }                                               \
-    } while(0);
+    } while (0)
 
 
 /****    CALLBACK FUNCTIONS FOR NON-BLOCKING OPERATIONS    ****/
@@ -959,13 +959,13 @@ pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc,
     do {                                                            \
         (_v)->type = PMIX_VAL_TYPE_ ## _field;                      \
         PMIX_VAL_FIELD_ ## _field((_v)) = _val;                     \
-    } while(0);
+    } while (0)
 
 #define PMIX_VAL_set_strdup(_v, _field, _val )       \
     do {                                                                \
         (_v)->type = PMIX_VAL_TYPE_ ## _field;                          \
         PMIX_VAL_FIELD_ ## _field((_v)) = strdup(_val);                 \
-    } while(0);
+    } while (0)
 
 #define PMIX_VAL_SET_int        PMIX_VAL_set_assign
 #define PMIX_VAL_SET_uint32_t   PMIX_VAL_set_assign

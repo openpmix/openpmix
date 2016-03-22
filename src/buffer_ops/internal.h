@@ -212,7 +212,7 @@ PMIX_CLASS_DECLARATION(pmix_bfrop_type_info_t);
     _info->odti_print_fn = (pmix_bfrop_print_fn_t)(pr) ;            \
     pmix_pointer_array_set_item(&pmix_bfrop_types, (t), _info);     \
     ++pmix_bfrop_num_reg_types;                                     \
-} while(0);
+} while (0)
 
 /*
  * Implementations of API functions

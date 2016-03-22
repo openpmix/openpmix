@@ -34,7 +34,7 @@
         pmix_output(0, "PMIX ERROR: %s in file %s at line %d",      \
                     PMIx_Error_string((r)), __FILE__, __LINE__);    \
     }                                                               \
-}while(0);
+} while (0)
 
 #define PMIX_REPORT_ERROR(e)  \
 pmix_errhandler_invoke(e, NULL, 0, NULL, 0)

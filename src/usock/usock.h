@@ -136,7 +136,7 @@ PMIX_CLASS_DECLARATION(pmix_timer_t);
         pmix_output_verbose(10, pmix_globals.debug_output,              \
                             "event_assign returned %d", rc);            \
         event_active(&((ms)->ev), EV_WRITE, 1);                         \
-    } while(0);
+    } while (0)
 
 #define PMIX_ACTIVATE_POST_MSG(ms)                                      \
     do {                                                                \
@@ -146,7 +146,7 @@ PMIX_CLASS_DECLARATION(pmix_timer_t);
         event_assign(&((ms)->ev), pmix_globals.evbase, -1,              \
                      EV_WRITE, pmix_usock_process_msg, (ms));           \
         event_active(&((ms)->ev), EV_WRITE, 1);                         \
-    } while(0);
+    } while (0)
 
 #define CLOSE_THE_SOCKET(socket)                \
     do {                                        \
@@ -155,7 +155,7 @@ PMIX_CLASS_DECLARATION(pmix_timer_t);
             close(socket);                      \
             socket = -1;                        \
         }                                       \
-    } while(0)
+    } while (0)
 
 
 #define PMIX_TIMER_EVENT(s, f, d)                                       \
@@ -172,7 +172,7 @@ PMIX_CLASS_DECLARATION(pmix_timer_t);
                              (long)tv.tv_sec, (long)tv.tv_usec,         \
                              __FILE__, __LINE__));                      \
         event_add(&tm->ev, &tv);                                        \
-    }while(0);                                                          \
+    } while (0)
 
 
 /* usock common variables */
