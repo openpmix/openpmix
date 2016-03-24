@@ -18,6 +18,9 @@
  *                         All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2016      Mellanox Technologies, Inc.
+ *                         All rights reserved.
+ *
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -29,9 +32,9 @@
 #ifndef USOCK_H
 #define USOCK_H
 
-#include <private/autogen/config.h>
-#include <pmix/rename.h>
-#include <private/types.h>
+#include <src/include/pmix_config.h>
+
+#include <src/include/types.h>
 #include <pmix/pmix_common.h>
 
 #ifdef HAVE_UNISTD_H

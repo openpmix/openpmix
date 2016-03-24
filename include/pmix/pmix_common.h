@@ -54,7 +54,6 @@
 #ifdef HAVE_SYS_TIME_H
 #include <sys/time.h> /* for struct timeval */
 #endif
-#include <event.h>
 
 BEGIN_C_DECLS
 

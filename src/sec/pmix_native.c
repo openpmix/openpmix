@@ -8,8 +8,8 @@
  * $HEADER$
  */
 
-#include <private/autogen/config.h>
-#include <pmix/rename.h>
+#include <src/include/pmix_config.h>
+
 #include <pmix/pmix_common.h>
 
 #include "src/include/pmix_globals.h"

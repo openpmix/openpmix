@@ -14,6 +14,8 @@
  * Copyright (c) 2013-2016 Intel, Inc. All rights reserved
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2016      Mellanox Technologies, Inc.
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -29,9 +31,9 @@
 #ifndef PMIX_BFROP_H_
 #define PMIX_BFROP_H_
 
-#include <private/autogen/config.h>
-#include <pmix/rename.h>
-#include <private/types.h>
+#include <src/include/pmix_config.h>
+
+#include <src/include/types.h>
 
 #include "src/include/pmix_globals.h"
 #include "src/buffer_ops/types.h"

@@ -67,7 +67,7 @@
 #ifndef PMIX_LIST_H
 #define PMIX_LIST_H
 
-#include <private/autogen/config.h>
+#include <src/include/pmix_config.h>
 #include <stdio.h>
 #include <stdlib.h>
 #if HAVE_STDBOOL_H

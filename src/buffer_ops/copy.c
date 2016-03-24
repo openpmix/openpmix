@@ -19,8 +19,8 @@
  * $HEADER$
  */
 
-#include <private/autogen/config.h>
-#include <pmix/rename.h>
+#include <src/include/pmix_config.h>
+
 
 #include "src/util/argv.h"
 #include "src/util/error.h"

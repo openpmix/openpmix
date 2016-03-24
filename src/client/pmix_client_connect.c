@@ -5,6 +5,9 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
+ * Copyright (c) 2016      Mellanox Technologies, Inc.
+ *                         All rights reserved.
+ *
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -12,10 +15,10 @@
  * $HEADER$
  */
 
-#include <private/autogen/config.h>
-#include <pmix/rename.h>
-#include <private/types.h>
-#include <private/pmix_stdint.h>
+#include <src/include/pmix_config.h>
+
+#include <src/include/types.h>
+#include <src/include/pmix_stdint.h>
 
 #include <pmix.h>
 

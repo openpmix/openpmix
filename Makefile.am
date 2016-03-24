@@ -77,8 +77,7 @@ endif
 
 if ! PMIX_EMBEDDED_MODE
 SUBDIRS = . test examples
-pmixdir = $(pmixincludedir)/$(subdir)
-nobase_pmix_HEADERS = $(headers)
+noinst_HEADERS = $(headers)
 endif
 
 nroff:

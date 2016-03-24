@@ -105,7 +105,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # becomes the "main" config header file.  Any AC-CONFIG-HEADERS
     # after that (pmix/config.h) will only have selective #defines
     # replaced, not the entire file.
-    AC_CONFIG_HEADERS(pmix_config_prefix[include/private/autogen/config.h])
+    AC_CONFIG_HEADERS(pmix_config_prefix[src/include/private/autogen/config.h])
     AC_CONFIG_HEADERS(pmix_config_prefix[include/pmix/autogen/config.h])
 
     # What prefix are we using?
