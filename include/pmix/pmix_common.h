@@ -49,6 +49,8 @@
 #include <pmix/autogen/config.h>
 #include <pmix/rename.h>
 
+#include <stdbool.h>
+#include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
 #ifdef HAVE_SYS_TIME_H
