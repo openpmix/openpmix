@@ -10,7 +10,7 @@
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
 # Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
-# Copyright (c) 2013-2015 Intel, Inc. All rights reserved
+# Copyright (c) 2013-2016 Intel, Inc. All rights reserved
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -43,4 +43,8 @@ headers += \
 #noinst_include_private_autogen_HEADERS = \
 #        src/include/private/autogen/config.h
 endif ! PMIX_EMBEDDED_MODE
-        
+
+if WANT_INSTALL_HEADERS
+headers += \
+    src/include/private/autogen/config.h
+endif
