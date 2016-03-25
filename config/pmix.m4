@@ -610,12 +610,15 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
 AC_DEFUN([PMIX_DEFINE_ARGS],[
     # Embedded mode, or standalone?
+    AC_MSG_CHECKING([if embedded mode is enabled])
     AC_ARG_ENABLE([embedded-mode],
         [AC_HELP_STRING([--enable-embedded-mode],
                 [Using --enable-embedded-mode causes PMIx to skip a few configure checks and install nothing.  It should only be used when building PMIx within the scope of a larger package.])])
     AS_IF([test ! -z "$enable_embedded_mode" && test "$enable_embedded_mode" = "yes"],
-          [pmix_mode=embedded],
-          [pmix_mode=standalone])
+          [pmix_mode=embedded
+           AC_MSG_RESULT([yes])],
+          [pmix_mode=standalone
+           AC_MSG_RESULT([no])])
 
     # Change the symbol prefix?
     AC_ARG_WITH([pmix-symbol-prefix],
