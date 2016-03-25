@@ -1,5 +1,7 @@
 #
 # Copyright 2015-2016 Intel, Inc. All rights reserved
+# Copyright (c) 2016      Mellanox Technologies, Inc.
+#                         All rights reserved.
 #
 # $COPYRIGHT$
 #
@@ -22,12 +24,5 @@ include_pmixdir = $(includedir)/pmix
 include_pmix_HEADERS = \
     include/pmix/rename.h \
     include/pmix/pmix_common.h
-
-include_pmix_autogendir = $(includedir)/pmix/autogen
-include_pmix_autogen_HEADERS = \
-        include/pmix/autogen/pmix_config_top.h \
-        include/pmix/autogen/pmix_config_bottom.h
-nodist_include_pmix_autogen_HEADERS = \
-        include/pmix/autogen/config.h
 
 endif ! PMIX_EMBEDDED_MODE

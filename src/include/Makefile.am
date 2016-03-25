@@ -18,8 +18,6 @@
 # $HEADER$
 #
 
-EXTRA_DIST += src/include/private/autogen/README.txt
-
 # This makefile.am does not stand on its own - it is included from
 # src/Makefile.am
 
@@ -39,9 +37,6 @@ headers += \
         src/include/prefetch.h \
         src/include/types.h
 
-#include_private_autogendir = $(includedir)/private/autogen
-#noinst_include_private_autogen_HEADERS = \
-#        src/include/private/autogen/config.h
 endif ! PMIX_EMBEDDED_MODE
 
 if WANT_INSTALL_HEADERS

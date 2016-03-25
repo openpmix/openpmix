@@ -101,12 +101,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_MSG_CHECKING([for pmix directory prefix])
     AC_MSG_RESULT(m4_ifval([$1], pmix_config_prefix, [(none)]))
 
-    # Note that private/config.h *MUST* be listed first so that it
-    # becomes the "main" config header file.  Any AC-CONFIG-HEADERS
-    # after that (pmix/config.h) will only have selective #defines
-    # replaced, not the entire file.
     AC_CONFIG_HEADERS(pmix_config_prefix[src/include/private/autogen/config.h])
-    AC_CONFIG_HEADERS(pmix_config_prefix[include/pmix/autogen/config.h])
 
     # What prefix are we using?
     AC_MSG_CHECKING([for pmix symbol prefix])
@@ -127,14 +122,17 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # pmix names
     AH_TEMPLATE([PMIX_SYM_TRANSFORM], [Whether we need to re-define all the pmix public symbols or not])
     AS_IF([test "$pmix_symbol_prefix_value" = "pmix_"],
-          [AC_DEFINE([PMIX_SYM_TRANSFORM], [0])],
-          [AC_DEFINE([PMIX_SYM_TRANSFORM], [1])])
+          [AC_DEFINE([PMIX_SYM_TRANSFORM], [0]) CFLAGS="$CFLAGS -DPMIX_SYM_TRANSFORM=0"],
+          [AC_DEFINE([PMIX_SYM_TRANSFORM], [1]) CFLAGS="$CFLAGS -DPMIX_SYM_TRANSFORM=1"])
 
     # GCC specifics.
     if test "x$GCC" = "xyes"; then
         PMIX_GCC_CFLAGS="-Wall -Wmissing-prototypes -Wundef"
         PMIX_GCC_CFLAGS="$PMIX_GCC_CFLAGS -Wpointer-arith -Wcast-align"
     fi
+
+    CFLAGS="$CFLAGS -DPMIX_SYM_PREFIX=$pmix_symbol_prefix_value"
+	CFLAGS="$CFLAGS -DPMIX_SYM_PREFIX_CAPS=$pmix_symbol_prefix_value_caps"
 
     ############################################################################
     # Check for compilers and preprocessors

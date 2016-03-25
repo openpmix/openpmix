@@ -101,11 +101,11 @@ AH_TOP([/* -*- c -*-
 #ifndef PMIX_CONFIG_H
 #define PMIX_CONFIG_H
 
-#include <pmix/autogen/pmix_config_top.h>
+#include <src/include/private/autogen/pmix_config_top.h>
 
 ])
 AH_BOTTOM([
-#include <pmix/autogen/pmix_config_bottom.h>
+#include <src/include/private/autogen/pmix_config_bottom.h>
 #endif /* PMIX_CONFIG_H */
 ])
 
