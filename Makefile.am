@@ -68,15 +68,21 @@ if PMIX_EMBEDDED_MODE
 noinst_LTLIBRARIES = libpmix.la
 libpmix_la_SOURCES = $(headers) $(sources)
 libpmix_la_LDFLAGS =
+
 else
+
 lib_LTLIBRARIES = libpmix.la
 libpmix_la_SOURCES = $(headers) $(sources)
 libpmix_la_LDFLAGS = -version-info $(libpmix_so_version)
+SUBDIRS = . test examples
 endif
 
+if WANT_INSTALL_HEADERS
+pmixdir = $(pmixincludedir)/$(subdir)
+nobase_pmix_HEADERS = $(headers)
 
-if ! PMIX_EMBEDDED_MODE
-SUBDIRS = . test examples
+else
+
 noinst_HEADERS = $(headers)
 endif
 

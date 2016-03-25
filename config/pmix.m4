@@ -691,6 +691,22 @@ AC_ARG_ENABLE(debug-symbols,
                              [Disable adding compiler flags to enable debugging symbols if --enable-debug is specified.  For non-debugging builds, this flag has no effect.]))
 
 #
+# Do we want to install the internal devel headers?
+#
+AC_MSG_CHECKING([if want to install project-internal header files])
+AC_ARG_WITH(devel-headers,
+    AC_HELP_STRING([--with-devel-headers],
+                   [normal PMIx users/applications do not need this (pmix.h and friends are ALWAYS installed).  Developer headers are only necessary for authors doing deeper integration (default: disabled).]))
+if test "$with_devel_headers" = "yes"; then
+    AC_MSG_RESULT([yes])
+    WANT_INSTALL_HEADERS=1
+else
+    AC_MSG_RESULT([no])
+    WANT_INSTALL_HEADERS=0
+fi
+AM_CONDITIONAL(WANT_INSTALL_HEADERS, test "$WANT_INSTALL_HEADERS" = 1)
+
+#
 # Do we want the pretty-print stack trace feature?
 #
 
