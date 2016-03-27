@@ -92,6 +92,8 @@ BEGIN_C_DECLS
 /* initialization attributes */
 #define PMIX_EVENT_BASE            "pmix.evbase"            // (struct event_base *) pointer to libevent event_base to use in place
                                                             // of the internal progress thread
+#define PMIX_SERVER_TOOL_SUPPORT   "pmix.srvr.tool"         // (bool) The host RM wants to declare itself as willing to
+                                                            // accept tool connection requests
 
 /* identification attributes */
 #define PMIX_USERID                "pmix.euid"              // (uint32_t) effective user id
@@ -217,6 +219,9 @@ BEGIN_C_DECLS
 #define PMIX_PRELOAD_FILES         "pmix.preloadfiles"      // (char*) comma-delimited list of files to pre-position
 #define PMIX_NON_PMI               "pmix.nonpmi"            // (bool) spawned procs will not call PMIx_Init
 #define PMIX_STDIN_TGT             "pmix.stdin"             // (uint32_t) spawned proc rank that is to receive stdin
+#define PMIX_FWD_STDIN             "pmix.fwd.stdin"         // (bool) forward my stdin to the designated proc
+#define PMIX_FWD_STDOUT            "pmix.fwd.stdout"        // (bool) forward stdout from spawned procs to me
+#define PMIX_FWD_STDERR            "pmix.fwd.stderr"        // (bool) forward stderr from spawned procs to me
 
 /****    PMIX ERROR CONSTANTS    ****/
 /* PMIx errors are always negative, with 0 reserved for success */
@@ -276,7 +281,6 @@ typedef int pmix_status_t;
  * be based on the PMIX_EXTERNAL_ERR_BASE constant and -not- a
  * specific value as the value of the constant may change */
 #define PMIX_EXTERNAL_ERR_BASE           -2000
-
 
 /****    PMIX DATA TYPES    ****/
 typedef enum {
@@ -830,6 +834,16 @@ typedef void (*pmix_errhandler_reg_cbfunc_t)(pmix_status_t status,
  * pointer will be NULL if the requested data was not found. */
 typedef void (*pmix_value_cbfunc_t)(pmix_status_t status,
                                     pmix_value_t *kv, void *cbdata);
+
+/* define a callback function for calls to PMIx_Query. The status
+ * indicates if requested data was found or not - an array of
+ * pmix_info_t will contain the key/value pairs. */
+typedef void (*pmix_info_cbfunc_t)(pmix_status_t status,
+                                   pmix_info_t *info, size_t ninfo,
+                                   void *cbdata,
+                                   pmix_release_cbfunc_t release_fn,
+                                   void *release_cbdata);
+
 
 /****    COMMON SUPPORT FUNCTIONS    ****/
 /* Register an errhandler to report errors. Three types of errors

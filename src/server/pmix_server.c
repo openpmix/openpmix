@@ -285,7 +285,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     }
 
     /* check the info keys for a directive about the uid/gid
-     * to be set for the rendezvous file */
+     * to be set for the rendezvous file, and for indication
+     * of willingness to support tool connections */
     if (NULL != info) {
         for (n=0; n < ninfo; n++) {
             if (0 == strcmp(info[n].key, PMIX_USERID)) {
@@ -305,6 +306,14 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
                 PMIX_LIST_FOREACH(lt, &pmix_server_globals.listeners, pmix_listener_t) {
                     lt->mode = info[n].value.data.uint32;
                 }
+            } else if (0 == strcmp(info[n].key, PMIX_SERVER_TOOL_SUPPORT)) {
+                /** IBM **
+                 * This is where you need to setup a listening
+                 * address and store it in the /tmp/pmix.nodename.tool
+                 * file, where nodename = the local hostname. You will
+                 * then need to call pmix_start_listening(&thataddress)
+                 */
+                pmix_server_globals.tool_connections_allowed = true;
             }
         }
     }

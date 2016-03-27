@@ -1291,9 +1291,21 @@ PMIX_CLASS_INSTANCE(pmix_dmdx_local_t,
                     pmix_list_item_t,
                     lmcon, lmdes);
 
+static void pccon(pmix_pending_connection_t *p)
+{
+    p->msg = NULL;
+    memset(p->nspace, 0, PMIX_MAX_NSLEN+1);
+}
+static void pcdes(pmix_pending_connection_t *p)
+{
+    if (NULL != p->msg) {
+        free(p->msg);
+    }
+}
 PMIX_CLASS_INSTANCE(pmix_pending_connection_t,
                     pmix_object_t,
-                    NULL, NULL);
+                    pccon, pcdes);
+
 static void regcon(pmix_regevents_info_t *p)
 {
     p->peer = NULL;
