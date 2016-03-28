@@ -46,7 +46,6 @@
 #ifndef PMIx_COMMON_H
 #define PMIx_COMMON_H
 
-#include <pmix/autogen/config.h>
 #include <pmix/rename.h>
 
 #include <stdbool.h>
@@ -57,7 +56,11 @@
 #include <sys/time.h> /* for struct timeval */
 #endif
 
-BEGIN_C_DECLS
+
+#if defined(c_plusplus) || defined(__cplusplus)
+extern "C" {
+#endif
+
 
 /****  PMIX CONSTANTS    ****/
 
@@ -997,5 +1000,8 @@ pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc,
 #define PMIX_VAL_FREE(_v) \
      PMIx_free_value_data(_v)
 
-END_C_DECLS
+#if defined(c_plusplus) || defined(__cplusplus)
+}
+#endif
+
 #endif

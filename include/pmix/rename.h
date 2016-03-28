@@ -5,10 +5,10 @@
 #ifndef PMIX_RENAME_H
 #define PMIX_RENAME_H
 
-#include <pmix/autogen/config.h>
 
-
-BEGIN_C_DECLS
+#if defined(c_plusplus) || defined(__cplusplus)
+extern "C" {
+#endif
 
 
 /* Only enact these defines if we're actually renaming the symbols
@@ -419,6 +419,9 @@ BEGIN_C_DECLS
 
 #endif /* PMIX_SYM_TRANSFORM */
 
-END_C_DECLS
+#if defined(c_plusplus) || defined(__cplusplus)
+}
+#endif
+
 
 #endif /* PMIX_RENAME_H */

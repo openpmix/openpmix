@@ -224,10 +224,10 @@
    including stdint.h */
 #define __STDC_LIMIT_MACROS
 #endif
-#include <pmix/autogen/config.h>
+#include <src/include/private/autogen/config.h>
 #include <stdint.h>
 #else
-#include <pmix/autogen/pmix_stdint.h>
+#include <src/include/pmix_stdint.h>
 #endif
 
 /***********************************************************************
@@ -425,4 +425,3 @@ typedef PMIX_PTRDIFF_TYPE ptrdiff_t;
 
 #endif /* PMIX_BUILDING */
 #endif /* PMIX_CONFIG_BOTTOM_H */
-
