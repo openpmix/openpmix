@@ -1,7 +1,7 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2014-2016 Intel, Inc.  All rights reserved.
- * Copyright (c) 2014-2015 Research Organization for Information Science
+ * Copyright (c) 2014-2016 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
@@ -71,7 +71,7 @@
 
 #define PMIX_MAX_RETRIES 10
 
- static int usock_connect(struct sockaddr *address);
+static pmix_status_t usock_connect(struct sockaddr *address, int *fd);
  static void myerrhandler(pmix_status_t status,
                           pmix_proc_t procs[], size_t nprocs,
                           pmix_info_t info[], size_t ninfo)
@@ -193,17 +193,16 @@ static void job_data(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
 
 static pmix_status_t connect_to_server(struct sockaddr_un *address, void *cbdata)
 {
-    int rc;
+    int sd;
     pmix_status_t ret;
     pmix_cmd_t cmd = PMIX_REQ_CMD;
     pmix_buffer_t *req;
 
-    rc = usock_connect((struct sockaddr *)address);
-    if( rc < 0 ){
-        PMIX_ERROR_LOG((pmix_status_t)rc);
-        return (pmix_status_t)rc;
+    if (PMIX_SUCCESS != (ret=usock_connect((struct sockaddr *)address, &sd))) {
+        PMIX_ERROR_LOG(ret);
+        return ret;
     }
-    pmix_client_globals.myserver.sd = rc;
+    pmix_client_globals.myserver.sd = sd;
     /* setup recv event */
     event_assign(&pmix_client_globals.myserver.recv_event,
                  pmix_globals.evbase,
@@ -1221,7 +1220,7 @@ void pmix_client_process_nspace_blob(const char *nspace, pmix_buffer_t *bptr)
      PMIX_RELEASE(kptr);
  }
 
- static int usock_connect(struct sockaddr *addr)
+ static pmix_status_t usock_connect(struct sockaddr *addr, int *fd)
  {
     int sd=-1;
     pmix_status_t rc;
@@ -1282,13 +1281,13 @@ void pmix_client_process_nspace_blob(const char *nspace, pmix_buffer_t *bptr)
     /* send our identity and any authentication credentials to the server */
     if (PMIX_SUCCESS != (rc = send_connect_ack(sd))) {
         CLOSE_THE_SOCKET(sd);
-        return sd;
+        return rc;
     }
 
     /* do whatever handshake is required */
     if (PMIX_SUCCESS != (rc = recv_connect_ack(sd))) {
         CLOSE_THE_SOCKET(sd);
-        return sd;
+        return rc;
     }
 
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -1299,7 +1298,8 @@ void pmix_client_process_nspace_blob(const char *nspace, pmix_buffer_t *bptr)
 
     pmix_usock_set_nonblocking(sd);
 
-    return sd;
+    *fd = sd;
+    return PMIX_SUCCESS;
 }
 
 static pmix_status_t pack_regevents (pmix_buffer_t *msg, pmix_cmd_t cmd,
