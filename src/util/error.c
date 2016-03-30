@@ -240,7 +240,6 @@ pmix_status_t pmix_lookup_errhandler(pmix_info_t info[], size_t ninfo,
     int i, idflt=-1, igrp=-1;
     pmix_error_reg_info_t *errreg;
     size_t sz, n;
-    char errgrp[PMIX_MAX_KEYLEN];
     bool exact_given = false;
     int given = -1;
     pmix_status_t status;
