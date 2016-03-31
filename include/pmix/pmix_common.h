@@ -364,14 +364,14 @@ typedef enum {
 } pmix_persistence_t;
 
 /****    PMIX BYTE OBJECT    ****/
-typedef struct {
+typedef struct pmix_byte_object {
     char *bytes;
     size_t size;
 } pmix_byte_object_t;
 
 
 /****    PMIX PROC OBJECT    ****/
-typedef struct {
+typedef struct pmix_proc {
     char nspace[PMIX_MAX_NSLEN+1];
     int rank;
 } pmix_proc_t;
@@ -403,18 +403,18 @@ typedef struct {
 
 
 /****    PMIX VALUE STRUCT    ****/
-struct pmix_info_t;
+struct pmix_info;
 
-typedef struct {
+typedef struct pmix_info_array {
     size_t size;
-    struct pmix_info_t *array;
+    struct pmix_info *array;
 } pmix_info_array_t;
 /* NOTE: operations can supply a collection of values under
  * a single key by passing a pmix_value_t containing an
  * array of type PMIX_INFO_ARRAY, with each array element
  * containing its own pmix_info_t object */
 
-typedef struct {
+typedef struct pmix_value {
     pmix_data_type_t type;
     union {
         bool flag;
@@ -517,7 +517,7 @@ void pmix_value_load(pmix_value_t *v, void *data, pmix_data_type_t type);
 
 
 /****    PMIX INFO STRUCT    ****/
-typedef struct {
+typedef struct pmix_info {
     char key[PMIX_MAX_KEYLEN+1];  // ensure room for the NULL terminator
     bool required;                // defaults to optional (i.e., required=false)
     pmix_value_t value;
@@ -563,7 +563,7 @@ typedef struct {
     (m)->required = false;
 
 /****    PMIX LOOKUP RETURN STRUCT    ****/
-typedef struct {
+typedef struct pmix_pdata {
     pmix_proc_t proc;
     char key[PMIX_MAX_KEYLEN+1];  // ensure room for the NULL terminator
     pmix_value_t value;
@@ -615,7 +615,7 @@ typedef struct {
 
 
 /****    PMIX APP STRUCT    ****/
-typedef struct {
+typedef struct pmix_app {
     char *cmd;
     int argc;
     char **argv;
@@ -679,7 +679,7 @@ typedef struct {
     } while (0)
 
 /****    PMIX MODEX STRUCT    ****/
-typedef struct {
+typedef struct pmix_modex_data {
     char nspace[PMIX_MAX_NSLEN+1];
     int rank;
     uint8_t *blob;

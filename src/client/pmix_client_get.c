@@ -487,7 +487,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
         val->type = PMIX_INFO_ARRAY;
         val->data.array.size = nvals;
         PMIX_INFO_CREATE(iptr, nvals);
-        val->data.array.array = (struct pmix_info_t*)iptr;
+        val->data.array.array = (struct pmix_info *)iptr;
         for (n=0; n < (size_t)results.size && n < nvals; n++) {
             if (NULL != (info = (pmix_info_t*)pmix_pointer_array_get_item(&results, n))) {
                 (void)strncpy(iptr[n].key, info->key, PMIX_MAX_KEYLEN);

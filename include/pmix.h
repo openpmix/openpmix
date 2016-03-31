@@ -55,7 +55,7 @@
 #include <pmix/pmix_common.h>
 
 
- BEGIN_C_DECLS
+BEGIN_C_DECLS
 
 /****    PMIX API    ****/
 
@@ -406,5 +406,5 @@
  * when done with it */
  pmix_status_t PMIx_Resolve_nodes(const char *nspace, char **nodelist);
 
- END_C_DECLS
+END_C_DECLS
 #endif
