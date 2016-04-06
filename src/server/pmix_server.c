@@ -147,6 +147,7 @@ static pmix_status_t initialize_server_base(pmix_server_module_t *module)
 {
     int debug_level;
     char *tdir, *evar;
+    char *pmix_pid;
     pid_t pid;
 
     /* initialize the output system */
@@ -223,7 +224,16 @@ static pmix_status_t initialize_server_base(pmix_server_module_t *module)
     /* now set the address - we use the pid here to reduce collisions */
     memset(&myaddress, 0, sizeof(struct sockaddr_un));
     myaddress.sun_family = AF_UNIX;
-    snprintf(myaddress.sun_path, sizeof(myaddress.sun_path)-1, "%s/pmix-%d", tdir, pid);
+    asprintf(&pmix_pid, "pmix-%d", pid);
+    // Last resort: if the above set temporary directory name plus the pmix-PID
+    // string (plus the '/' separator) are too long for sun_path (UNIX_PATH_MAX = 108),
+    // resort back to the shortest possible temporary directory name...
+    // *Cough*, *Cough* Thanks OSX, when local machine name is loooong...
+    if ((strlen(tdir) + strlen(pmix_pid) + 1) > sizeof(myaddress.sun_path)-1) {
+        tdir = "/tmp";
+    }
+    snprintf(myaddress.sun_path, sizeof(myaddress.sun_path)-1, "%s/%s", tdir, pmix_pid);
+    free(pmix_pid);
     asprintf(&myuri, "%s:%lu:%s", pmix_globals.myid.nspace, (unsigned long)pmix_globals.myid.rank, myaddress.sun_path);
 
 
