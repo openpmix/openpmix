@@ -2,7 +2,7 @@
  * Copyright (c) 2014-2016 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
- * Copyright (c) 2015      Research Organization for Information Science
+ * Copyright (c) 2015-2016 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
@@ -120,9 +120,10 @@ exit:
     return ret;
 }
 
-static int read_bytes(int sd, char **buf, size_t *remain)
+static pmix_status_t read_bytes(int sd, char **buf, size_t *remain)
 {
-    int ret = PMIX_SUCCESS, rc;
+    pmix_status_t ret = PMIX_SUCCESS;
+    int rc;
     char *ptr = *buf;
 
     /* read until all bytes recvd or error */
@@ -276,7 +277,7 @@ void pmix_usock_send_handler(int sd, short flags, void *cbdata)
 
 void pmix_usock_recv_handler(int sd, short flags, void *cbdata)
 {
-    int rc;
+    pmix_status_t rc;
     pmix_peer_t *peer = (pmix_peer_t*)cbdata;
     pmix_usock_recv_t *msg = NULL;
 
