@@ -220,7 +220,7 @@ static int test_item3(void)
     const char **ptr = tkeys;
 
     if (_legacy || !_legacy) {
-        log_error("PMIx and SLURM/PMI2 does not set Job Attributes (Do not mark test as failed)\n");
+        log_error("PMIx and SLURM/PMI2 does not set Job Attributes %s\n", "(Do not mark test as failed)");
         return rc;
     }
 
@@ -255,7 +255,7 @@ static int test_item4(void)
     const char **ptr = tkeys;
 
     if (_legacy || !_legacy) {
-        log_error("PMIx and SLURM/PMI2 does not set Node Attributes (Do not mark test as failed)\n");
+        log_error("PMIx and SLURM/PMI2 does not set Node Attributes %s\n", "(Do not mark test as failed)");
         return rc;
     }
 
@@ -318,7 +318,7 @@ static int test_item6(void)
     rc = PMI2_KVS_Get(NULL, PMI2_ID_NULL, tkey, val, sizeof(val), &len);
     if (PMI2_SUCCESS == rc) {
         log_info("tkey=%s tval=%s val=%s len=%d\n", tkey, tval, val, len);
-        log_error("PMI2_KVS_Get should not find data w/o commit\n");
+        log_error("PMI2_KVS_Get should not find data %s\n", "w/o commit");
         return 1;
     }
 

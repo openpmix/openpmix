@@ -98,15 +98,8 @@ int main(int argc, char **argv)
     (void)strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
     PMIX_INFO_CREATE(info, 1);
-<<<<<<< HEAD
-    flag = true;
-    PMIX_INFO_LOAD(info, PMIX_COLLECT_DATA, &flag, PMIX_BOOL)
-||||||| merged common ancestors
-    (void)strncpy(info->key, PMIX_COLLECT_DATA, PMIX_MAX_KEYLEN);
-=======
     flag = true;
     PMIX_INFO_LOAD(info, PMIX_COLLECT_DATA, &flag, PMIX_BOOL);
->>>>>>> cmr/updates3
     if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, info, 1))) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Fence failed: %d\n", myproc.nspace, myproc.rank, rc);
         goto done;

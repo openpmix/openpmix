@@ -39,9 +39,6 @@ headers += \
         src/include/prefetch.h \
         src/include/types.h
 
-#include_private_autogendir = $(includedir)/private/autogen
-#noinst_include_private_autogen_HEADERS = \
-#        src/include/private/autogen/config.h
 endif ! PMIX_EMBEDDED_MODE
 
 if WANT_INSTALL_HEADERS
