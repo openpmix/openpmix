@@ -105,7 +105,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # becomes the "main" config header file.  Any AC-CONFIG-HEADERS
     # after that (pmix/config.h) will only have selective #defines
     # replaced, not the entire file.
-    AC_CONFIG_HEADERS(pmix_config_prefix[include/private/autogen/config.h])
+    AC_CONFIG_HEADERS(pmix_config_prefix[src/include/private/autogen/config.h])
     AC_CONFIG_HEADERS(pmix_config_prefix[include/pmix/autogen/config.h])
 
     # What prefix are we using?
@@ -610,12 +610,15 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
 AC_DEFUN([PMIX_DEFINE_ARGS],[
     # Embedded mode, or standalone?
+    AC_MSG_CHECKING([if embedded mode is enabled])
     AC_ARG_ENABLE([embedded-mode],
         [AC_HELP_STRING([--enable-embedded-mode],
                 [Using --enable-embedded-mode causes PMIx to skip a few configure checks and install nothing.  It should only be used when building PMIx within the scope of a larger package.])])
     AS_IF([test ! -z "$enable_embedded_mode" && test "$enable_embedded_mode" = "yes"],
-          [pmix_mode=embedded],
-          [pmix_mode=standalone])
+          [pmix_mode=embedded
+           AC_MSG_RESULT([yes])],
+          [pmix_mode=standalone
+           AC_MSG_RESULT([no])])
 
     # Change the symbol prefix?
     AC_ARG_WITH([pmix-symbol-prefix],
@@ -686,6 +689,22 @@ AC_DEFINE_UNQUOTED(PMIX_ENABLE_DEBUG, $WANT_DEBUG,
 AC_ARG_ENABLE(debug-symbols,
               AC_HELP_STRING([--disable-debug-symbols],
                              [Disable adding compiler flags to enable debugging symbols if --enable-debug is specified.  For non-debugging builds, this flag has no effect.]))
+
+#
+# Do we want to install the internal devel headers?
+#
+AC_MSG_CHECKING([if want to install project-internal header files])
+AC_ARG_WITH(devel-headers,
+    AC_HELP_STRING([--with-devel-headers],
+                   [normal PMIx users/applications do not need this (pmix.h and friends are ALWAYS installed).  Developer headers are only necessary for authors doing deeper integration (default: disabled).]))
+if test "$with_devel_headers" = "yes"; then
+    AC_MSG_RESULT([yes])
+    WANT_INSTALL_HEADERS=1
+else
+    AC_MSG_RESULT([no])
+    WANT_INSTALL_HEADERS=0
+fi
+AM_CONDITIONAL(WANT_INSTALL_HEADERS, test "$WANT_INSTALL_HEADERS" = 1)
 
 #
 # Do we want the pretty-print stack trace feature?

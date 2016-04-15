@@ -1,17 +1,20 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2015 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2016 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2016      Mellanox Technologies, Inc.
+ *                         All rights reserved.
+ *
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
  *
  * $HEADER$
  */
-#include <private/autogen/config.h>
-#include <pmix/rename.h>
-#include <private/types.h>
-#include <private/pmix_stdint.h>
-#include <private/pmix_socket_errno.h>
+#include <src/include/pmix_config.h>
+
+#include <src/include/types.h>
+#include <src/include/pmix_stdint.h>
+#include <src/include/pmix_socket_errno.h>
 
 #include <pmix.h>
 #include <pmix/pmix_common.h>
@@ -23,7 +26,7 @@
 #include "src/server/pmix_server_ops.h"
 #include "src/include/pmix_globals.h"
 
-void PMIx_Register_errhandler(pmix_info_t info[], size_t ninfo,
+PMIX_EXPORT void PMIx_Register_errhandler(pmix_info_t info[], size_t ninfo,
                               pmix_notification_fn_t errhandler,
                               pmix_errhandler_reg_cbfunc_t cbfunc,
                               void *cbdata)
@@ -50,7 +53,7 @@ void PMIx_Register_errhandler(pmix_info_t info[], size_t ninfo,
     }
 }
 
-void PMIx_Deregister_errhandler(int errhandler_ref,
+PMIX_EXPORT void PMIx_Deregister_errhandler(int errhandler_ref,
                                 pmix_op_cbfunc_t cbfunc,
                                 void *cbdata)
 {
@@ -71,7 +74,7 @@ void PMIx_Deregister_errhandler(int errhandler_ref,
     }
 }
 
-pmix_status_t PMIx_Notify_error(pmix_status_t status,
+PMIX_EXPORT pmix_status_t PMIx_Notify_error(pmix_status_t status,
                                 pmix_proc_t procs[], size_t nprocs,
                                 pmix_proc_t error_procs[], size_t error_nprocs,
                                 pmix_info_t info[], size_t ninfo,

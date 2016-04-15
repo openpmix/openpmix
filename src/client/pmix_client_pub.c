@@ -5,6 +5,9 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
+ * Copyright (c) 2016      Mellanox Technologies, Inc.
+ *                         All rights reserved.
+ *
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -12,10 +15,10 @@
  * $HEADER$
  */
 
-#include <private/autogen/config.h>
-#include <pmix/rename.h>
-#include <private/types.h>
-#include <private/pmix_stdint.h>
+#include <src/include/pmix_config.h>
+
+#include <src/include/types.h>
+#include <src/include/pmix_stdint.h>
 
 #include <pmix.h>
 
@@ -61,8 +64,8 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
 static void lookup_cbfunc(int status, pmix_pdata_t pdata[], size_t ndata,
                           void *cbdata);
 
-pmix_status_t PMIx_Publish(const pmix_info_t info[],
-                           size_t ninfo)
+PMIX_EXPORT pmix_status_t PMIx_Publish(const pmix_info_t info[],
+                                       size_t ninfo)
 {
     pmix_status_t rc;
     pmix_cb_t *cb;
@@ -97,8 +100,8 @@ pmix_status_t PMIx_Publish(const pmix_info_t info[],
     return rc;
 }
 
-pmix_status_t PMIx_Publish_nb(const pmix_info_t info[], size_t ninfo,
-                              pmix_op_cbfunc_t cbfunc, void *cbdata)
+PMIX_EXPORT pmix_status_t PMIx_Publish_nb(const pmix_info_t info[], size_t ninfo,
+                                          pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_PUBLISHNB_CMD;
@@ -166,8 +169,8 @@ pmix_status_t PMIx_Publish_nb(const pmix_info_t info[], size_t ninfo,
     return PMIX_SUCCESS;
 }
 
-int PMIx_Lookup(pmix_pdata_t pdata[], size_t ndata,
-                const pmix_info_t info[], size_t ninfo)
+PMIX_EXPORT int PMIx_Lookup(pmix_pdata_t pdata[], size_t ndata,
+                            const pmix_info_t info[], size_t ninfo)
 {
     int rc;
     pmix_cb_t *cb;
@@ -214,8 +217,9 @@ int PMIx_Lookup(pmix_pdata_t pdata[], size_t ndata,
     return rc;
 }
 
-pmix_status_t PMIx_Lookup_nb(char **keys, const pmix_info_t info[], size_t ninfo,
-                             pmix_lookup_cbfunc_t cbfunc, void *cbdata)
+PMIX_EXPORT pmix_status_t PMIx_Lookup_nb(char **keys,
+                                         const pmix_info_t info[], size_t ninfo,
+                                         pmix_lookup_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_LOOKUPNB_CMD;
@@ -292,7 +296,8 @@ pmix_status_t PMIx_Lookup_nb(char **keys, const pmix_info_t info[], size_t ninfo
     return PMIX_SUCCESS;
 }
 
-int PMIx_Unpublish(char **keys, const pmix_info_t info[], size_t ninfo)
+PMIX_EXPORT int PMIx_Unpublish(char **keys,
+                               const pmix_info_t info[], size_t ninfo)
 {
     int rc;
     pmix_cb_t *cb;
@@ -320,8 +325,9 @@ int PMIx_Unpublish(char **keys, const pmix_info_t info[], size_t ninfo)
     return rc;
 }
 
-pmix_status_t PMIx_Unpublish_nb(char **keys, const pmix_info_t info[], size_t ninfo,
-                                pmix_op_cbfunc_t cbfunc, void *cbdata)
+PMIX_EXPORT pmix_status_t PMIx_Unpublish_nb(char **keys,
+                                            const pmix_info_t info[], size_t ninfo,
+                                            pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_UNPUBLISHNB_CMD;

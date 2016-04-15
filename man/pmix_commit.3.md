@@ -7,14 +7,14 @@ tagline: PMIx Programmer's Manual
 
 # NAME
 
-PMIx_Commit - Push all previously _PMIx_Put_ values to the local PMIx server.
+PMIx\_Commit - Push all previously _PMIx\_Put_ values to the local PMIx server.
 
 # SYNOPSIS
 
 {% highlight c %}
 #include <pmix.h>
 
-pmix_status_t PMIx_Commit(void);
+pmix\_status\_t PMIx_Commit(void);
 
 {% endhighlight %}
 

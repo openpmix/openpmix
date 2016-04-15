@@ -9,6 +9,9 @@
  * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2016      Mellanox Technologies, Inc.
+ *                         All rights reserved.
+ *
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -17,10 +20,10 @@
  *
  */
 
-#include <private/autogen/config.h>
-#include <pmix/rename.h>
-#include <private/pmix_stdint.h>
-#include <private/hash_string.h>
+#include <src/include/pmix_config.h>
+
+#include <src/include/pmix_stdint.h>
+#include <src/include/hash_string.h>
 
 #include <string.h>
 
@@ -67,16 +70,13 @@ int pmix_hash_store(pmix_hash_table_t *table,
 {
     pmix_proc_data_t *proc_data;
     uint64_t id;
+    pmix_kval_t *hv;
 
     pmix_output_verbose(10, pmix_globals.debug_output,
                         "HASH:STORE rank %d key %s",
                         rank, kin->key);
 
-    if (PMIX_RANK_UNDEF == rank) {
-        id = UINT64_MAX;
-    } else {
-        id = (uint64_t)rank;
-    }
+    id = (uint64_t)rank;
 
     /* lookup the proc data object for this proc - create
      * it if we don't already have it */
@@ -84,11 +84,14 @@ int pmix_hash_store(pmix_hash_table_t *table,
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
-    /* add the new value - note that if the user is updating
-     * a value, the ordering of the stored blobs will cause
-     * an update to eventually occur. In other words, the
-     * receiving process will first unpack the "old" data,
-     * and then unpack the update and overwrite it */
+    /* see if we already have this key-value */
+    hv = lookup_keyval(&proc_data->data, kin->key);
+    if (NULL != hv) {
+        /* yes we do - so remove the current value
+         * and replace it */
+        pmix_list_remove_item(&proc_data->data, &hv->super);
+        PMIX_RELEASE(hv);
+    }
     PMIX_RETAIN(kin);
     pmix_list_append(&proc_data->data, &kin->super);
 
@@ -108,10 +111,14 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, int rank,
                         "HASH:FETCH rank %d key %s",
                         rank, (NULL == key) ? "NULL" : key);
 
+    id = (uint64_t)rank;
+
+    /* - PMIX_RANK_UNDEF should return following statuses
+     * PMIX_ERR_PROC_ENTRY_NOT_FOUND | PMIX_SUCCESS
+     * - specified rank can return following statuses
+     * PMIX_ERR_PROC_ENTRY_NOT_FOUND | PMIX_ERR_NOT_FOUND | PMIX_SUCCESS
+     * special logic is basing on these statuses on a client and a server */
     if (PMIX_RANK_UNDEF == rank) {
-        /* PMIX_RANK_UNDEF should return following statuses
-         * PMIX_ERR_PROC_ENTRY_NOT_FOUND | PMIX_SUCCESS
-         * special logic is basing on these statuses on a client and a server */
         rc = pmix_hash_table_get_first_key_uint64(table, &id,
                 (void**)&proc_data, (void**)&node);
         if (PMIX_SUCCESS != rc) {
@@ -120,11 +127,6 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, int rank,
                                 rank);
             return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
         }
-    } else {
-        /* specified rank can return following statuses
-         * PMIX_ERR_PROC_ENTRY_NOT_FOUND | PMIX_ERR_NOT_FOUND | PMIX_SUCCESS
-         * special logic is basing on these statuses on a client and a server */
-        id = (uint64_t)rank;
     }
 
     while (PMIX_SUCCESS == rc) {
@@ -145,7 +147,7 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, int rank,
         } else {
             /* find the value from within this proc_data object */
             hv = lookup_keyval(&proc_data->data, key);
-            if (hv) {
+            if (NULL != hv) {
                 /* create the copy */
                 if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)kvs, hv->value, PMIX_VALUE))) {
                     PMIX_ERROR_LOG(rc);
@@ -236,10 +238,11 @@ int pmix_hash_remove_data(pmix_hash_table_t *table,
     uint64_t id;
     char *node;
 
+    id = (uint64_t)rank;
+
     /* if the rank is wildcard, we want to apply this to
      * all rank entries */
     if (PMIX_RANK_UNDEF == rank) {
-        id = UINT64_MAX;
         rc = pmix_hash_table_get_first_key_uint64(table, &id,
                 (void**)&proc_data, (void**)&node);
         while (PMIX_SUCCESS == rc) {
@@ -262,7 +265,6 @@ int pmix_hash_remove_data(pmix_hash_table_t *table,
     }
 
     /* lookup the specified proc */
-    id = (uint64_t)rank;
     if (NULL == (proc_data = lookup_proc(table, id, false))) {
         /* no data for this proc */
         return PMIX_SUCCESS;

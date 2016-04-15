@@ -147,14 +147,15 @@
 #endif
 
 #ifndef PMIX_DECLSPEC
+# define PMIX_DECLSPEC
 #ifdef PMIX_C_HAVE_VISIBILITY
 # if PMIX_C_HAVE_VISIBILITY
-#  define PMIX_DECLSPEC __attribute__((__visibility__("default")))
+#  define PMIX_EXPORT __attribute__((__visibility__("default")))
 # else
-#  define PMIX_DECLSPEC
+#  define PMIX_EXPORT
 # endif
 #else
-# define PMIX_DECLSPEC
+# define PMIX_EXPORT
 #endif
 #endif
 
