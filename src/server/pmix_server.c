@@ -636,7 +636,7 @@ PMIX_EXPORT void PMIx_server_deregister_nspace(const char nspace[])
     PMIX_THREADSHIFT(cd, _deregister_nspace);
 }
 
-static void _execute_collective(int sd, short args, void *cbdata)
+void pmix_server_execute_collective(int sd, short args, void *cbdata)
 {
     pmix_trkr_caddy_t *tcd = (pmix_trkr_caddy_t*)cbdata;
     pmix_server_trkr_t *trk = tcd->trk;
@@ -775,7 +775,7 @@ static void _register_client(int sd, short args, void *cbdata)
                  * we don't want to block someone
                  * here, so kick any completed trackers into a
                  * new event for processing */
-                PMIX_EXECUTE_COLLECTIVE(tcd, trk, _execute_collective);
+                PMIX_EXECUTE_COLLECTIVE(tcd, trk, pmix_server_execute_collective);
             }
         }
         /* also check any pending local modex requests to see if
