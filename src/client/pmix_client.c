@@ -1201,10 +1201,17 @@ void pmix_client_process_nspace_blob(const char *nspace, pmix_buffer_t *bptr)
                                     "connection to server aborted by OS - retrying");
                 CLOSE_THE_SOCKET(sd);
                 continue;
+            } else {
+                pmix_output_verbose(2, pmix_globals.debug_output,
+                                    "Connect failed: %s (%d)", strerror(pmix_socket_errno),
+                                    pmix_socket_errno);
+                CLOSE_THE_SOCKET(sd);
+                continue;
             }
+        } else {
+            /* otherwise, the connect succeeded - so break out of the loop */
+            break;
         }
-        /* otherwise, the connect succeeded - so break out of the loop */
-        break;
     }
 
     if (retries == PMIX_MAX_RETRIES || sd < 0){
