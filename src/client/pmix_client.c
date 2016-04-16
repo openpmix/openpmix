@@ -1371,7 +1371,6 @@ static void deregevents_cbfunc(struct pmix_peer_t *peer, pmix_usock_hdr_t *hdr,
                         "pmix: deregevents_cbfunc  recvd");
 
     if ((NULL == cb) || (NULL == cb->op_cbfunc)) {
-        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return;
     }
     /* unpack the status code */
