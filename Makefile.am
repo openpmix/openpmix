@@ -42,6 +42,8 @@ man_MANS = \
         man/man3/pmix_abort.3 \
         man/man3/pmix_put.3 \
         man/man3/pmix_commit.3 \
+        man/man3/pmix_fence.3 \
+        man/man3/pmix_get.3 \
         man/man7/pmix.7 \
         man/man7/pmix_constants.7
 
@@ -59,17 +61,24 @@ include src/common/Makefile.am
 
 if PMIX_EMBEDDED_MODE
 noinst_LTLIBRARIES = libpmix.la
-else
-lib_LTLIBRARIES = libpmix.la
-endif
+libpmix_la_SOURCES = $(headers) $(sources)
+libpmix_la_LDFLAGS =
 
+else
+
+lib_LTLIBRARIES = libpmix.la
 libpmix_la_SOURCES = $(headers) $(sources)
 libpmix_la_LDFLAGS = -version-info $(libpmix_so_version)
-
-if ! PMIX_EMBEDDED_MODE
 SUBDIRS = . test examples
+endif
+
+if WANT_INSTALL_HEADERS
 pmixdir = $(pmixincludedir)/$(subdir)
 nobase_pmix_HEADERS = $(headers)
+
+else
+
+noinst_HEADERS = $(headers)
 endif
 
 nroff:

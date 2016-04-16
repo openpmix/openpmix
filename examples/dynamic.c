@@ -45,12 +45,13 @@ int main(int argc, char **argv)
     uint32_t nprocs;
     char nsp2[PMIX_MAX_NSLEN+1];
     pmix_app_t *app;
-    char hostname[1024];
+    char hostname[1024], dir[1024];
     pmix_proc_t *peers;
     size_t npeers, ntmp=0;
     char *nodelist;
 
     gethostname(hostname, 1024);
+    getcwd(dir, 1024);
 
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc))) {
@@ -80,14 +81,12 @@ int main(int argc, char **argv)
     /* rank=0 calls spawn */
     if (0 == myproc.rank) {
         PMIX_APP_CREATE(app, 1);
-        app->cmd = strdup("gumby");
+        (void)asprintf(&app->cmd, "%s/client", dir);
         app->maxprocs = 2;
-        app->argc = 3;
-        app->argv = (char**)malloc(4 * sizeof(char*));
-        app->argv[0] = strdup("gumby");
-        app->argv[1] = strdup("-n");
-        app->argv[2] = strdup("2");
-        app->argv[3] = NULL;
+        app->argc = 1;
+        app->argv = (char**)malloc(2 * sizeof(char*));
+        (void)asprintf(&app->argv[0], "%s/client", dir);
+        app->argv[1] = NULL;
         app->env = (char**)malloc(2 * sizeof(char*));
         app->env[0] = strdup("PMIX_ENV_VALUE=3");
         app->env[1] = NULL;
@@ -106,13 +105,6 @@ int main(int argc, char **argv)
         }
         PMIX_APP_FREE(app, 1);
 
-        /* check to see if we got the expected info back */
-        if (0 != strncmp(nsp2, "DYNSPACE", PMIX_MAX_NSLEN)) {
-            fprintf(stderr, "Client ns %s rank %d: PMIx_Spawn returned incorrect nspace: %s\n", myproc.nspace, myproc.rank, nsp2);
-            goto done;
-        } else {
-            fprintf(stderr, "Client ns %s rank %d: PMIx_Spawn succeeded returning nspace: %s\n", myproc.nspace, myproc.rank, nsp2);
-        }
         /* get their universe size */
         val = NULL;
         (void)strncpy(proc.nspace, nsp2, PMIX_MAX_NSLEN);

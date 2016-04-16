@@ -14,8 +14,8 @@ PMIx_Abort - Abort the specified processes
 {% highlight c %}
 #include <pmix.h>
 
-pmix_status_t PMIx_Abort(int status, const char msg[],
-                         pmix_proc_t procs[], size_t nprocs);
+pmix\_status\_t PMIx\_Abort(int status, const char msg[],
+                         pmix\_proc\_t procs[], size_t nprocs);
 
 {% endhighlight %}
 
@@ -28,13 +28,11 @@ pmix_status_t PMIx_Abort(int status, const char msg[],
 : A string message to be displayed
 
 *procs*
-: An array of pmix_proc_t structures defining the processes to be aborted. A _NULL_
-for the proc array indicates that all processes in the caller's
-nspace are to be aborted. A wildcard value for the rank in any structure indicates
-that all processes in that nspace are to be aborted.
+: An array of pmix\_proc\_t structures defining the processes to be aborted. A _NULL_ for the proc array indicates that all processes in the caller's
+nspace are to be aborted. A wildcard value for the rank in any structure indicates that all processes in that nspace are to be aborted.
 
 *nprocs*
-: Number of pmix_proc_t structures in the _procs_ array
+: Number of pmix\_proc\_t structures in the _procs_ array
 
 
 # DESCRIPTION

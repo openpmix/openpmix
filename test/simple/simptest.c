@@ -24,9 +24,9 @@
  *
  */
 
-#include <private/autogen/config.h>
+#include <src/include/pmix_config.h>
 #include <pmix_server.h>
-#include <private/types.h>
+#include <src/include/types.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -221,7 +221,7 @@ int main(int argc, char **argv)
         }
     }
     if (NULL == executable) {
-        executable = strdup("simpclient");
+        executable = strdup("./simpclient");
     }
 
     /* we have a single namespace for all clients */
