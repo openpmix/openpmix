@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2016 Intel, Inc. All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
@@ -296,7 +296,7 @@ pmix_status_t pmix_value_xfer(pmix_value_t *p, pmix_value_t *src)
     case PMIX_INFO_ARRAY:
         p->data.array.size = src->data.array.size;
         if (0 < src->data.array.size) {
-            p->data.array.array = (struct pmix_info *)malloc(src->data.array.size * sizeof(pmix_info_t));
+            p->data.array.array = (pmix_info_t*)malloc(src->data.array.size * sizeof(pmix_info_t));
             p1 = (pmix_info_t*)p->data.array.array;
             s1 = (pmix_info_t*)src->data.array.array;
             memcpy(p1, s1, src->data.array.size * sizeof(pmix_info_t));
@@ -400,7 +400,7 @@ int pmix_bfrop_copy_array(pmix_info_array_t **dest,
 
     *dest = (pmix_info_array_t*)malloc(sizeof(pmix_info_array_t));
     (*dest)->size = src->size;
-    (*dest)->array = (struct pmix_info *)malloc(src->size * sizeof(pmix_info_t));
+    (*dest)->array = (pmix_info_t*)malloc(src->size * sizeof(pmix_info_t));
     d1 = (pmix_info_t*)(*dest)->array;
     s1 = (pmix_info_t*)src->array;
     memcpy(d1, s1, src->size * sizeof(pmix_info_t));
