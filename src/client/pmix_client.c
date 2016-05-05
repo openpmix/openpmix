@@ -7,6 +7,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -235,10 +236,11 @@ PMIX_EXPORT const char* PMIx_Get_version(void)
     return pmix_version_string;
 }
 
-PMIX_EXPORT int PMIx_Init(pmix_proc_t *proc)
+PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc)
 {
     char **uri, *evar;
-    int rc, debug_level;
+    pmix_status_t rc;
+    int debug_level;
     struct sockaddr_un address;
     pmix_nspace_t *nsptr;
     pmix_cb_t cb;
@@ -481,7 +483,7 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(void)
     return PMIX_SUCCESS;
 }
 
-PMIX_EXPORT int PMIx_Abort(int flag, const char msg[],
+PMIX_EXPORT pmix_status_t PMIx_Abort(int flag, const char msg[],
                pmix_proc_t procs[], size_t nprocs)
 {
     pmix_buffer_t *bfr;
