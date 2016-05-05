@@ -13,7 +13,7 @@
  * Copyright (c) 2014-2016 Intel, Inc. All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
- *
+ * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -34,7 +34,7 @@
 
 #include "src/buffer_ops/internal.h"
 
- int pmix_bfrop_print(char **output, char *prefix, void *src, pmix_data_type_t type)
+ pmix_status_t pmix_bfrop_print(char **output, char *prefix, void *src, pmix_data_type_t type)
  {
     pmix_bfrop_type_info_t *info;
 
@@ -55,7 +55,7 @@
 /*
  * STANDARD PRINT FUNCTIONS FOR SYSTEM TYPES
  */
- int pmix_bfrop_print_bool(char **output, char *prefix, bool *src, pmix_data_type_t type)
+ pmix_status_t pmix_bfrop_print_bool(char **output, char *prefix, bool *src, pmix_data_type_t type)
  {
     char *prefx;
 
@@ -81,7 +81,7 @@
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_byte(char **output, char *prefix, uint8_t *src, pmix_data_type_t type)
+pmix_status_t pmix_bfrop_print_byte(char **output, char *prefix, uint8_t *src, pmix_data_type_t type)
 {
     char *prefx;
 
@@ -106,7 +106,7 @@ int pmix_bfrop_print_byte(char **output, char *prefix, uint8_t *src, pmix_data_t
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_string(char **output, char *prefix, char *src, pmix_data_type_t type)
+pmix_status_t pmix_bfrop_print_string(char **output, char *prefix, char *src, pmix_data_type_t type)
 {
     char *prefx;
 
@@ -131,7 +131,7 @@ int pmix_bfrop_print_string(char **output, char *prefix, char *src, pmix_data_ty
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_size(char **output, char *prefix, size_t *src, pmix_data_type_t type)
+pmix_status_t pmix_bfrop_print_size(char **output, char *prefix, size_t *src, pmix_data_type_t type)
 {
     char *prefx;
 
@@ -156,7 +156,7 @@ int pmix_bfrop_print_size(char **output, char *prefix, size_t *src, pmix_data_ty
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_pid(char **output, char *prefix, pid_t *src, pmix_data_type_t type)
+pmix_status_t pmix_bfrop_print_pid(char **output, char *prefix, pid_t *src, pmix_data_type_t type)
 {
     char *prefx;
 
@@ -180,7 +180,7 @@ int pmix_bfrop_print_pid(char **output, char *prefix, pid_t *src, pmix_data_type
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_int(char **output, char *prefix, int *src, pmix_data_type_t type)
+pmix_status_t pmix_bfrop_print_int(char **output, char *prefix, int *src, pmix_data_type_t type)
 {
     char *prefx;
 
@@ -205,7 +205,7 @@ int pmix_bfrop_print_int(char **output, char *prefix, int *src, pmix_data_type_t
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_uint(char **output, char *prefix, int *src, pmix_data_type_t type)
+pmix_status_t pmix_bfrop_print_uint(char **output, char *prefix, uint *src, pmix_data_type_t type)
 {
     char *prefx;
 
@@ -230,7 +230,7 @@ int pmix_bfrop_print_uint(char **output, char *prefix, int *src, pmix_data_type_
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_uint8(char **output, char *prefix, uint8_t *src, pmix_data_type_t type)
+pmix_status_t pmix_bfrop_print_uint8(char **output, char *prefix, uint8_t *src, pmix_data_type_t type)
 {
     char *prefx;
 
@@ -255,7 +255,7 @@ int pmix_bfrop_print_uint8(char **output, char *prefix, uint8_t *src, pmix_data_
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_uint16(char **output, char *prefix, uint16_t *src, pmix_data_type_t type)
+pmix_status_t pmix_bfrop_print_uint16(char **output, char *prefix, uint16_t *src, pmix_data_type_t type)
 {
     char *prefx;
 
@@ -280,7 +280,7 @@ int pmix_bfrop_print_uint16(char **output, char *prefix, uint16_t *src, pmix_dat
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_uint32(char **output, char *prefix,
+pmix_status_t pmix_bfrop_print_uint32(char **output, char *prefix,
                             uint32_t *src, pmix_data_type_t type)
 {
     char *prefx;
@@ -306,7 +306,7 @@ int pmix_bfrop_print_uint32(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_int8(char **output, char *prefix,
+pmix_status_t pmix_bfrop_print_int8(char **output, char *prefix,
                           int8_t *src, pmix_data_type_t type)
 {
     char *prefx;
@@ -332,7 +332,7 @@ int pmix_bfrop_print_int8(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_int16(char **output, char *prefix,
+pmix_status_t pmix_bfrop_print_int16(char **output, char *prefix,
                            int16_t *src, pmix_data_type_t type)
 {
     char *prefx;
@@ -358,7 +358,7 @@ int pmix_bfrop_print_int16(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_int32(char **output, char *prefix, int32_t *src, pmix_data_type_t type)
+pmix_status_t pmix_bfrop_print_int32(char **output, char *prefix, int32_t *src, pmix_data_type_t type)
 {
     char *prefx;
 
@@ -382,7 +382,7 @@ int pmix_bfrop_print_int32(char **output, char *prefix, int32_t *src, pmix_data_
 
     return PMIX_SUCCESS;
 }
-int pmix_bfrop_print_uint64(char **output, char *prefix,
+pmix_status_t pmix_bfrop_print_uint64(char **output, char *prefix,
                             uint64_t *src,
                             pmix_data_type_t type)
 {
@@ -409,7 +409,7 @@ int pmix_bfrop_print_uint64(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_int64(char **output, char *prefix,
+pmix_status_t pmix_bfrop_print_int64(char **output, char *prefix,
                            int64_t *src,
                            pmix_data_type_t type)
 {
@@ -436,7 +436,7 @@ int pmix_bfrop_print_int64(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_float(char **output, char *prefix,
+pmix_status_t pmix_bfrop_print_float(char **output, char *prefix,
                            float *src, pmix_data_type_t type)
 {
     char *prefx;
@@ -462,7 +462,7 @@ int pmix_bfrop_print_float(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_double(char **output, char *prefix,
+pmix_status_t pmix_bfrop_print_double(char **output, char *prefix,
                             double *src, pmix_data_type_t type)
 {
     char *prefx;
@@ -488,7 +488,7 @@ int pmix_bfrop_print_double(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_time(char **output, char *prefix,
+pmix_status_t pmix_bfrop_print_time(char **output, char *prefix,
                           time_t *src, pmix_data_type_t type)
 {
     char *prefx;
@@ -518,7 +518,7 @@ int pmix_bfrop_print_time(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_timeval(char **output, char *prefix,
+pmix_status_t pmix_bfrop_print_timeval(char **output, char *prefix,
                              struct timeval *src, pmix_data_type_t type)
 {
     char *prefx;
@@ -545,7 +545,7 @@ int pmix_bfrop_print_timeval(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_status(char **output, char *prefix,
+pmix_status_t pmix_bfrop_print_status(char **output, char *prefix,
                             pmix_status_t *src, pmix_data_type_t type)
 {
     char *prefx;
@@ -577,7 +577,7 @@ int pmix_bfrop_print_status(char **output, char *prefix,
 /*
  * PMIX_VALUE
  */
- int pmix_bfrop_print_value(char **output, char *prefix,
+ pmix_status_t pmix_bfrop_print_value(char **output, char *prefix,
                             pmix_value_t *src, pmix_data_type_t type)
  {
     char *prefx;
@@ -678,7 +678,7 @@ int pmix_bfrop_print_status(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_info(char **output, char *prefix,
+pmix_status_t pmix_bfrop_print_info(char **output, char *prefix,
                           pmix_info_t *src, pmix_data_type_t type)
 {
     char *tmp;
@@ -692,7 +692,7 @@ int pmix_bfrop_print_info(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_pdata(char **output, char *prefix,
+pmix_status_t pmix_bfrop_print_pdata(char **output, char *prefix,
                            pmix_pdata_t *src, pmix_data_type_t type)
 {
     char *tmp1, *tmp2;
@@ -710,19 +710,19 @@ int pmix_bfrop_print_pdata(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_buf(char **output, char *prefix,
+pmix_status_t pmix_bfrop_print_buf(char **output, char *prefix,
                          pmix_buffer_t *src, pmix_data_type_t type)
 {
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_app(char **output, char *prefix,
+pmix_status_t pmix_bfrop_print_app(char **output, char *prefix,
                          pmix_app_t *src, pmix_data_type_t type)
 {
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_proc(char **output, char *prefix,
+pmix_status_t pmix_bfrop_print_proc(char **output, char *prefix,
                           pmix_proc_t *src, pmix_data_type_t type)
 {
     char *prefx;
@@ -735,13 +735,13 @@ int pmix_bfrop_print_proc(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_kval(char **output, char *prefix,
+pmix_status_t pmix_bfrop_print_kval(char **output, char *prefix,
                           pmix_kval_t *src, pmix_data_type_t type)
 {
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_array(char **output, char *prefix,
+pmix_status_t pmix_bfrop_print_array(char **output, char *prefix,
                            pmix_info_array_t *src, pmix_data_type_t type)
 {
     size_t j;
@@ -837,7 +837,7 @@ static void print_hwloc_obj(char **output, char *prefix,
     *output = tmp2;
 }
 
-int pmix_bfrop_print_topo(char **output, char *prefix,
+pmix_status_t pmix_bfrop_print_topo(char **output, char *prefix,
                           hwloc_topology_t src, pmix_data_type_t type)
 {
     hwloc_obj_t obj;
@@ -853,13 +853,13 @@ int pmix_bfrop_print_topo(char **output, char *prefix,
 
 #endif
 
-int pmix_bfrop_print_modex(char **output, char *prefix,
+pmix_status_t pmix_bfrop_print_modex(char **output, char *prefix,
                            pmix_modex_data_t *src, pmix_data_type_t type)
 {
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_persist(char **output, char *prefix, pmix_persistence_t *src, pmix_data_type_t type)
+pmix_status_t pmix_bfrop_print_persist(char **output, char *prefix, pmix_persistence_t *src, pmix_data_type_t type)
 {
     char *prefx;
 
@@ -884,7 +884,7 @@ int pmix_bfrop_print_persist(char **output, char *prefix, pmix_persistence_t *sr
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_bo(char **output, char *prefix,
+pmix_status_t pmix_bfrop_print_bo(char **output, char *prefix,
                         pmix_byte_object_t *src, pmix_data_type_t type)
 {
     char *prefx;
@@ -910,7 +910,7 @@ int pmix_bfrop_print_bo(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-int pmix_bfrop_print_ptr(char **output, char *prefix,
+pmix_status_t pmix_bfrop_print_ptr(char **output, char *prefix,
                          void *src, pmix_data_type_t type)
 {
     char *prefx;
