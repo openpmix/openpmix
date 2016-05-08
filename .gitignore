@@ -79,6 +79,7 @@ test/simple/simppub
 test/simple/simpdmodex
 test/simple/simpft
 test/simple/simpdyn
+test/simple/test_pmix
 
 # coverity
 cov-int
