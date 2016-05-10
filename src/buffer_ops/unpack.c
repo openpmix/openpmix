@@ -975,7 +975,7 @@ pmix_status_t pmix_bfrop_unpack_array(pmix_buffer_t *buffer, void *dest,
             return ret;
         }
         if (0 < ptr[i].size) {
-            ptr[i].array = (struct pmix_info *)malloc(ptr[i].size * sizeof(pmix_info_t));
+            ptr[i].array = (pmix_info_t*)malloc(ptr[i].size * sizeof(pmix_info_t));
             m=ptr[i].size;
             if (PMIX_SUCCESS != (ret = pmix_bfrop_unpack_value(buffer, ptr[i].array, &m, PMIX_INFO))) {
                 return ret;
