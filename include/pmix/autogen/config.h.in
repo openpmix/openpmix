@@ -3,6 +3,7 @@
  * Copyright © 2009-2014 Inria.  All rights reserved.
  * Copyright © 2009-2012 Université Bordeaux
  * Copyright © 2009-2011 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * See COPYING in top-level directory.
  */
 
@@ -180,6 +181,7 @@
 #undef PMIX_SYM_PREFIX_CAPS
 
 /* ensure we have the version info available for external users */
+#undef PMIX_VERSION
 #undef PMIX_MAJOR_VERSION
 #undef PMIX_MINOR_VERSION
 #undef PMIX_RELEASE_VERSION
