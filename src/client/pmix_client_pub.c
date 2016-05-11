@@ -18,7 +18,7 @@
 #include <src/include/pmix_config.h>
 
 #include <src/include/types.h>
-#include <src/include/pmix_stdint.h>
+#include <pmix/autogen/pmix_stdint.h>
 
 #include <pmix.h>
 
