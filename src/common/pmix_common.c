@@ -65,6 +65,10 @@ PMIX_EXPORT void PMIx_Deregister_errhandler(int errhandler_ref,
         return;
     }
 
+    if (errhandler_ref < 0) {
+        return;
+    }
+
     /* common err handler registration */
     if (pmix_globals.server) {
         /* PMIX server: store the error handler, process info keys and call
