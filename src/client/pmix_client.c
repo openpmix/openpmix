@@ -1303,8 +1303,8 @@ static void regevents_cbfunc(struct pmix_peer_t *peer, pmix_usock_hdr_t *hdr,
     /* unpack the status code */
     cnt = 1;
     if ((PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ret, &cnt, PMIX_INT))) ||
-                         (PMIX_SUCCESS != ret)) {
-        PMIX_ERROR_LOG(rc);
+                         (PMIX_SUCCESS != ret)) {   
+        /* This is not an actual error since the server may not support registration events */ 
         /* remove the err handler and call the error handler reg completion callback fn.*/
         rc = pmix_remove_errhandler(cb->errhandler_ref);
         /* call the callback with error */

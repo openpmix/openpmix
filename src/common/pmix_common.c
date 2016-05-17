@@ -3,6 +3,7 @@
  * Copyright (c) 2014-2016 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2016      IBM Corporation, All rights reserved.
  *
  * $COPYRIGHT$
  *
@@ -62,6 +63,10 @@ PMIX_EXPORT void PMIx_Deregister_errhandler(int errhandler_ref,
                                 void *cbdata)
 {
     if (pmix_globals.init_cntr <= 0) {
+        return;
+    }
+
+    if (errhandler_ref < 0) {
         return;
     }
 
