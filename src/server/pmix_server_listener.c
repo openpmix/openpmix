@@ -429,21 +429,22 @@ static pmix_status_t pmix_server_authenticate(int sd, int *out_rank,
     }
 
     /* see if there is a credential */
-    if (csize < hdr.nbytes) {
+    if (csize < hdr.nbytes)
         cred = (char*)(msg + csize);
-        if (NULL != cred && NULL != pmix_sec.validate_cred) {
-            if (PMIX_SUCCESS != (rc = pmix_sec.validate_cred(psave, cred))) {
-                pmix_output_verbose(2, pmix_globals.debug_output,
-                                    "validation of client credential failed");
-                free(msg);
-                pmix_pointer_array_set_item(&pmix_server_globals.clients, psave->index, NULL);
-                PMIX_RELEASE(psave);
-                /* send an error reply to the client */
-                goto error;
-            }
+    else
+        cred = NULL;
+    if (NULL != pmix_sec.validate_cred) {
+        if (PMIX_SUCCESS != (rc = pmix_sec.validate_cred(psave, cred))) {
             pmix_output_verbose(2, pmix_globals.debug_output,
-                                "client credential validated");
+                                "validation of client credential failed");
+            free(msg);
+            pmix_pointer_array_set_item(&pmix_server_globals.clients, psave->index, NULL);
+            PMIX_RELEASE(psave);
+            /* send an error reply to the client */
+            goto error;
         }
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "client credential validated");
     }
     free(msg);
 
