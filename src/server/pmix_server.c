@@ -18,7 +18,7 @@
 #include <src/include/pmix_config.h>
 
 #include <src/include/types.h>
-#include <src/include/pmix_stdint.h>
+#include <pmix/autogen/pmix_stdint.h>
 #include <src/include/pmix_socket_errno.h>
 
 #include <pmix_server.h>
@@ -639,7 +639,8 @@ PMIX_EXPORT void PMIx_server_deregister_nspace(const char nspace[])
     PMIX_THREADSHIFT(cd, _deregister_nspace);
 }
 
- void pmix_server_execute_collective(int sd, short args, void *cbdata) {
+void pmix_server_execute_collective(int sd, short args, void *cbdata)
+{
     pmix_trkr_caddy_t *tcd = (pmix_trkr_caddy_t*)cbdata;
     pmix_server_trkr_t *trk = tcd->trk;
     char *data = NULL;
