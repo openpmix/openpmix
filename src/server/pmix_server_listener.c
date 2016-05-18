@@ -295,6 +295,42 @@ static void listener_cb(int incoming_sd)
     event_active(&pending_connection->ev, EV_WRITE, 1);
 }
 
+/* Parse init-ack message:
+ *    NSPACE<0><rank>VERSION<0>[CRED<0>]
+ */
+static pmix_status_t parse_connect_ack (char *msg, int len,
+                                        char **nspace, int *rank,
+                                        char **version, char **cred)
+{
+    if (strnlen (msg, len) < len) {
+        *nspace = msg;
+        msg += strlen(*nspace) + 1;
+        len -= strlen(*nspace) + 1;
+    } else
+        return PMIX_ERR_BAD_PARAM;
+
+    if (sizeof(int) <= len) {
+        *rank = *(int *)msg;
+        msg += sizeof(int);
+        len -= sizeof(int);
+    } else
+        return PMIX_ERR_BAD_PARAM;
+
+    if (strnlen (msg, len) < len) {
+        *version = msg;
+        msg += strlen(*version) + 1;
+        len -= strlen(*version) + 1;
+    } else
+        return PMIX_ERR_BAD_PARAM;
+
+    if (strnlen (msg, len) < len)
+        *cred = msg;
+    else
+        *cred = NULL;
+
+    return PMIX_SUCCESS;
+}
+
 /*  Receive the peer's identification info from a newly
  *  connected socket and verify the expected response.
  */
@@ -341,44 +377,22 @@ static pmix_status_t pmix_server_authenticate(int sd, int *out_rank,
         return PMIX_ERR_UNREACH;
     }
 
-    /* get the nspace */
-    nspace = msg;  // a NULL terminator is in the data
-
-    /* get the rank */
-    memcpy(&rank, msg+strlen(nspace)+1, sizeof(int));
+    if (PMIX_SUCCESS != (rc = parse_connect_ack (msg, hdr.nbytes, &nspace,
+                                                 &rank, &version, &cred))) {
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "error parsing connect-ack from client ON SOCKET %d", sd);
+        free(msg);
+        return rc;
+    }
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "connect-ack recvd from peer %s:%d",
-                        nspace, rank);
+                        "connect-ack recvd from peer %s:%d:%s",
+                        nspace, rank, version);
 
     /* do not check the version - we only retain it at this
      * time in case we need to check it at some future date.
      * For now, our intent is to retain backward compatibility
      * and so we will assume that all versions are compatible. */
-    csize = strlen(nspace)+1+sizeof(int);
-    version = (char*)(msg+csize);
-    csize += strlen(version) + 1;  // position ourselves before modifiying version
-#if 0
-    /* find the first '.' */
-    ptr = strchr(version, '.');
-    if (NULL != ptr) {
-        ++ptr;
-        /* stop it at the second '.', if present */
-        if (NULL != (ptr = strchr(ptr, '.'))) {
-            *ptr = '\0';
-        }
-    }
-    if (0 != strcmp(version, myversion)) {
-        pmix_output_verbose(2, pmix_globals.debug_output,
-                            "pmix:server client/server PMIx versions mismatch - server %s client %s",
-                            myversion, version);
-        free(msg);
-        return PMIX_ERR_NOT_SUPPORTED;
-    }
-
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "connect-ack version from client matches ours");
-#endif
 
     /* see if we know this nspace */
     nptr = NULL;
@@ -429,10 +443,6 @@ static pmix_status_t pmix_server_authenticate(int sd, int *out_rank,
     }
 
     /* see if there is a credential */
-    if (csize < hdr.nbytes)
-        cred = (char*)(msg + csize);
-    else
-        cred = NULL;
     if (NULL != pmix_sec.validate_cred) {
         if (PMIX_SUCCESS != (rc = pmix_sec.validate_cred(psave, cred))) {
             pmix_output_verbose(2, pmix_globals.debug_output,
