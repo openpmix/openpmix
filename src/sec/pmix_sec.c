@@ -61,12 +61,6 @@
 #define PMIX_SEC_NAVAIL  3
 
 static pmix_sec_base_module_t *all[] = {
-#if PMIX_HAVE_MUNGE
-    /* Start the array with the least heavy option, if available */
-    &pmix_munge_module,
-#endif
-
-    /* Our native module should always be the lowest priority */
     &pmix_native_module,
 
     /* Always end the array with a NULL */
