@@ -45,7 +45,10 @@ pmix_pointer_array_t pmix_bfrop_types = {{0}};
 pmix_data_type_t pmix_bfrop_num_reg_types = PMIX_UNDEF;
 static pmix_bfrop_buffer_type_t pmix_default_buf_type = PMIX_BFROP_BUFFER_NON_DESC;
 
-pmix_bfrop_t pmix_bfrop = {
+PMIX_EXPORT pmix_status_t pmix_bfrop_open(void);
+PMIX_EXPORT pmix_status_t pmix_bfrop_close(void);
+
+PMIX_EXPORT pmix_bfrop_t pmix_bfrop = {
     pmix_bfrop_pack,
     pmix_bfrop_unpack,
     pmix_bfrop_copy,
