@@ -302,6 +302,62 @@ static void listener_cb(int incoming_sd)
     activate_pending(incoming_sd);
 }
 
+static pmix_status_t lookup_nspace (const char *nspace, pmix_nspace_t **np)
+{
+    pmix_nspace_t *nptr = NULL;
+
+    PMIX_LIST_FOREACH(nptr, &pmix_globals.nspaces, pmix_nspace_t) {
+        if (0 == strcmp(nptr->nspace, nspace)) {
+            *np = nptr;
+            return PMIX_SUCCESS;
+        }
+    }
+    return PMIX_ERR_NOT_FOUND;
+}
+
+static pmix_status_t lookup_rank_info (pmix_nspace_t *nptr, int rank,
+                                       pmix_rank_info_t **rip)
+{
+    pmix_rank_info_t *info;
+    PMIX_LIST_FOREACH(info, &nptr->server->ranks, pmix_rank_info_t) {
+        if (info->rank == rank) {
+            *rip = info;
+            return PMIX_SUCCESS;
+        }
+    }
+    return PMIX_ERR_NOT_FOUND;
+}
+
+static pmix_status_t add_peer (const char *nspace, int rank, int sd,
+                               pmix_peer_t **pp)
+{
+    pmix_nspace_t *nptr;
+    pmix_rank_info_t *info;
+    pmix_peer_t *peer = NULL;
+    pmix_status_t rc;
+    int index;
+
+    if (PMIX_SUCCESS != (rc = lookup_nspace (nspace, &nptr))
+              || PMIX_SUCCESS != (rc = lookup_rank_info (nptr, rank, &info)))
+        return rc;
+
+    /* a peer can connect on multiple sockets since it can fork/exec
+     * a child that also calls PMIx_Init, so add it here if necessary.
+     * Create the tracker for this peer */
+    peer = PMIX_NEW(pmix_peer_t);
+    PMIX_RETAIN(info);
+    peer->info = info;
+    info->proc_cnt++; /* increase number of processes on this rank */
+    peer->sd = sd;
+    peer->index = pmix_pointer_array_add(&pmix_server_globals.clients, peer);
+    if (0 > peer->index) {
+        PMIX_RELEASE(peer);
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+    *pp = peer;
+    return PMIX_SUCCESS;
+}
+
 /* Parse init-ack message:
  *    NSPACE<0><rank>VERSION<0>[CRED<0>]
  */
@@ -348,10 +404,7 @@ static pmix_status_t pmix_server_authenticate(int sd, int *out_rank,
     pmix_status_t rc;
     int rank;
     pmix_usock_hdr_t hdr;
-    pmix_nspace_t *nptr, *tmp;
-    pmix_rank_info_t *info;
     pmix_peer_t *psave = NULL;
-    bool found;
     pmix_proc_t proc;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -400,53 +453,13 @@ static pmix_status_t pmix_server_authenticate(int sd, int *out_rank,
      * For now, our intent is to retain backward compatibility
      * and so we will assume that all versions are compatible. */
 
-    /* see if we know this nspace */
-    nptr = NULL;
-    PMIX_LIST_FOREACH(tmp, &pmix_globals.nspaces, pmix_nspace_t) {
-        if (0 == strcmp(tmp->nspace, nspace)) {
-            nptr = tmp;
-            break;
-        }
-    }
-    if (NULL == nptr) {
-        /* we don't know this namespace, reject it */
-        free(msg);
-        /* send an error reply to the client */
-        rc = PMIX_ERR_NOT_FOUND;
-        goto error;
-    }
-
-    /* see if we have this peer in our list */
-    info = NULL;
-    found = false;
-    PMIX_LIST_FOREACH(info, &nptr->server->ranks, pmix_rank_info_t) {
-        if (info->rank == rank) {
-            found = true;
-            break;
-        }
-    }
-    if (!found) {
-        /* rank unknown, reject it */
-        free(msg);
-        /* send an error reply to the client */
-        rc = PMIX_ERR_NOT_FOUND;
+    /* see if we know this nspace:rank
+     * then create tracker for peer */
+    if (PMIX_SUCCESS != (rc = add_peer (nspace, rank, sd, &psave))) {
+        free (msg);
         goto error;
     }
     *out_rank = rank;
-    /* a peer can connect on multiple sockets since it can fork/exec
-     * a child that also calls PMIx_Init, so add it here if necessary.
-     * Create the tracker for this peer */
-    psave = PMIX_NEW(pmix_peer_t);
-    PMIX_RETAIN(info);
-    psave->info = info;
-    info->proc_cnt++; /* increase number of processes on this rank */
-    psave->sd = sd;
-    if (0 > (psave->index = pmix_pointer_array_add(&pmix_server_globals.clients, psave))) {
-        free(msg);
-        PMIX_RELEASE(psave);
-        /* probably cannot send an error reply if we are out of memory */
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    }
 
     /* see if there is a credential */
     if (NULL != pmix_sec.validate_cred) {
