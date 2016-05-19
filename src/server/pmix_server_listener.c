@@ -202,9 +202,9 @@ static void activate_pending(int sd)
     /* throw it into our event library for processing */
     pending_connection = PMIX_NEW(pmix_pending_connection_t);
     pending_connection->sd = sd;
-    event_assign(&pending_connection->ev, pmix_globals.evbase, -1,
-                 EV_WRITE, connection_handler, pending_connection);
-    event_active(&pending_connection->ev, EV_WRITE, 1);
+    event_assign(&pending_connection->ev, pmix_globals.evbase, sd,
+                 EV_READ, connection_handler, pending_connection);
+    event_add(&pending_connection->ev, NULL);
 }
 
 static void* listen_thread(void *obj)
