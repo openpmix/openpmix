@@ -195,10 +195,21 @@ void pmix_stop_listening(void)
     return;
 }
 
+static void activate_pending(int sd)
+{
+    pmix_pending_connection_t *pending_connection;
+
+    /* throw it into our event library for processing */
+    pending_connection = PMIX_NEW(pmix_pending_connection_t);
+    pending_connection->sd = sd;
+    event_assign(&pending_connection->ev, pmix_globals.evbase, -1,
+                 EV_WRITE, connection_handler, pending_connection);
+    event_active(&pending_connection->ev, EV_WRITE, 1);
+}
+
 static void* listen_thread(void *obj)
 {
-    int rc, max, accepted_connections;
-    pmix_pending_connection_t *pending_connection;
+    int rc, max, accepted_connections, sd;
     struct timeval timeout;
     fd_set readfds;
 
@@ -255,13 +266,8 @@ static void* listen_thread(void *obj)
              * process the connection here as it takes too long, and so the
              * OS might start rejecting connections due to timeout.
              */
-            pending_connection = PMIX_NEW(pmix_pending_connection_t);
-            event_assign(&pending_connection->ev, pmix_globals.evbase, -1,
-                         EV_WRITE, connection_handler, pending_connection);
-            pending_connection->sd = accept(pmix_server_globals.listen_socket,
-                                            NULL, NULL);
-            if (pending_connection->sd < 0) {
-                PMIX_RELEASE(pending_connection);
+            sd = accept(pmix_server_globals.listen_socket, NULL, NULL);
+            if (sd < 0) {
                 if (pmix_socket_errno != EAGAIN ||
                     pmix_socket_errno != EWOULDBLOCK) {
                     if (EMFILE == pmix_socket_errno) {
@@ -277,9 +283,8 @@ static void* listen_thread(void *obj)
 
             pmix_output_verbose(8, pmix_globals.debug_output,
                                 "listen_thread: new connection: (%d, %d)",
-                                pending_connection->sd, pmix_socket_errno);
-            /* activate the event */
-            event_active(&pending_connection->ev, EV_WRITE, 1);
+                                sd, pmix_socket_errno);
+            activate_pending(sd);
             accepted_connections++;
         } while (accepted_connections > 0);
     }
@@ -291,17 +296,10 @@ static void* listen_thread(void *obj)
 
 static void listener_cb(int incoming_sd)
 {
-    pmix_pending_connection_t *pending_connection;
-
-    /* throw it into our event library for processing */
     pmix_output_verbose(8, pmix_globals.debug_output,
                         "listen_cb: pushing new connection %d into evbase",
                         incoming_sd);
-    pending_connection = PMIX_NEW(pmix_pending_connection_t);
-    pending_connection->sd = incoming_sd;
-    event_assign(&pending_connection->ev, pmix_globals.evbase, -1,
-                 EV_WRITE, connection_handler, pending_connection);
-    event_active(&pending_connection->ev, EV_WRITE, 1);
+    activate_pending(incoming_sd);
 }
 
 /* Parse init-ack message:
