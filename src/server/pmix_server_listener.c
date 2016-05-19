@@ -198,7 +198,6 @@ void pmix_stop_listening(void)
 static void* listen_thread(void *obj)
 {
     int rc, max, accepted_connections;
-    socklen_t addrlen = sizeof(struct sockaddr_storage);
     pmix_pending_connection_t *pending_connection;
     struct timeval timeout;
     fd_set readfds;
@@ -260,8 +259,7 @@ static void* listen_thread(void *obj)
             event_assign(&pending_connection->ev, pmix_globals.evbase, -1,
                          EV_WRITE, connection_handler, pending_connection);
             pending_connection->sd = accept(pmix_server_globals.listen_socket,
-                                            (struct sockaddr*)&(pending_connection->addr),
-                                            &addrlen);
+                                            NULL, NULL);
             if (pending_connection->sd < 0) {
                 PMIX_RELEASE(pending_connection);
                 if (pmix_socket_errno != EAGAIN ||
