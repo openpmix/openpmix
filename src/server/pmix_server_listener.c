@@ -302,6 +302,14 @@ static void listener_cb(int incoming_sd)
     activate_pending(incoming_sd);
 }
 
+PMIX_EXPORT pmix_status_t PMIx_server_register_client_fd(const pmix_proc_t *proc, int fd)
+{
+    pmix_output_verbose(8, pmix_globals.debug_output,
+                        "register_client_fd %s:%d fd=%d",
+                        proc->nspace, proc->rank, fd);
+    activate_pending(fd);
+}
+
 static pmix_status_t lookup_nspace (const char *nspace, pmix_nspace_t **np)
 {
     pmix_nspace_t *nptr = NULL;
