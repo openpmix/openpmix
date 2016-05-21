@@ -721,10 +721,12 @@ void pmix_server_execute_collective(int sd, short args, void *cbdata)
 static void _register_client(int sd, short args, void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t*)cbdata;
-    pmix_rank_info_t *info;
+    pmix_rank_info_t *info, *iptr, *iptr2;
     pmix_nspace_t *nptr, *tmp;
     pmix_server_trkr_t *trk;
     pmix_trkr_caddy_t *tcd;
+    bool all_def;
+    size_t i;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:server _register_client for nspace %s rank %d",
@@ -770,8 +772,49 @@ static void _register_client(int sd, short args, void *cbdata)
             if (trk->def_complete) {
                 continue;
             }
+            /* see if any of our procs are involved - the tracker will
+             * have been created because a callback was received, but
+             * no rank info will have been entered since the clients
+             * had not yet been registered. Thus, we couldn't enter rank
+             * objects into the tracker as we didn't know which
+             * of the ranks were local */
+            for (i=0; i < trk->npcs; i++) {
+                if (0 != strncmp(cd->proc.nspace, trk->pcs[i].nspace, PMIX_MAX_NSLEN)) {
+                    continue;
+                }
+                /* need to check if this rank is one of mine */
+                PMIX_LIST_FOREACH(iptr, &nptr->server->ranks, pmix_rank_info_t) {
+                    if (PMIX_RANK_WILDCARD == trk->pcs[i].rank ||
+                        iptr->rank == trk->pcs[i].rank) {
+                        /* add a tracker for this proc - don't need more than
+                         * the nspace pointer and rank */
+                        iptr2 = PMIX_NEW(pmix_rank_info_t);
+                        PMIX_RETAIN(info->nptr);
+                        iptr2->nptr = info->nptr;
+                        iptr2->rank = info->rank;
+                        pmix_list_append(&trk->ranks, &iptr2->super);
+                        /* track the count */
+                        ++trk->nlocal;
+                    }
+                }
+            }
+            /* we need to know if this tracker is now complete - the only
+             * way to do this is to check if all participating
+             * nspaces are fully registered */
+            all_def = true;
+            /* search all the involved procs - fortunately, this
+             * list is usually very small */
+            PMIX_LIST_FOREACH(iptr, &trk->ranks, pmix_rank_info_t) {
+                if (!iptr->nptr->server->all_registered) {
+                    /* nope */
+                    all_def = false;
+                    break;
+                }
+            }
+            /* update this tracker's status */
+            trk->def_complete = all_def;
             /* is this now completed? */
-            if (pmix_list_get_size(&trk->local_cbs) == trk->nlocal) {
+            if (trk->def_complete && pmix_list_get_size(&trk->local_cbs) == trk->nlocal) {
                 /* it did, so now we need to process it
                  * we don't want to block someone
                  * here, so kick any completed trackers into a
