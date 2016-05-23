@@ -291,6 +291,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
             } else if (0 == strcmp(info[n].key, PMIX_GRPID)) {
                /* the grpid is in the uint32_t storage */
                 sockgid = info[n].value.data.uint32;
+            } else if (0 == strcmp(info[n].key, PMIX_SOCKET_MODE)) {
+                sockmode = info[n].value.data.uint32 & 0777;
             }
         }
     }
@@ -316,6 +318,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
             if (0 == strcmp(info[n].key, PMIX_USERID))
                 continue;
             if (0 == strcmp(info[n].key, PMIX_GRPID))
+                continue;
+            if (0 == strcmp(info[n].key, PMIX_SOCKET_MODE))
                 continue;
             /* store and pass along to every client */
             kv.key = info[n].key;
