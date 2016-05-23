@@ -71,7 +71,8 @@ static pthread_t engine;
 /*
  * start listening on our rendezvous file
  */
-pmix_status_t pmix_start_listening(struct sockaddr_un *address)
+pmix_status_t pmix_start_listening(struct sockaddr_un *address,
+                                   mode_t mode, uid_t sockuid, gid_t sockgid)
 {
     int flags;
     pmix_status_t rc;
@@ -90,27 +91,32 @@ pmix_status_t pmix_start_listening(struct sockaddr_un *address)
         printf("%s:%d bind() failed\n", __FILE__, __LINE__);
         return PMIX_ERROR;
     }
+    /* chown as required */
+    if (0 != chown(address->sun_path, sockuid, sockgid)) {
+        pmix_output(0, "CANNOT CHOWN socket %s: %s", address->sun_path, strerror (errno));
+        goto sockerror;
+    }
     /* set the mode as required */
-    if (0 != chmod(address->sun_path, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH)) {
-        pmix_output(0, "CANNOT CHMOD %s", address->sun_path);
-        return PMIX_ERROR;
+    if (0 != chmod(address->sun_path, mode)) {
+        pmix_output(0, "CANNOT CHMOD socket %s: %s", address->sun_path, strerror (errno));
+        goto sockerror;
     }
 
     /* setup listen backlog to maximum allowed by kernel */
     if (listen(pmix_server_globals.listen_socket, SOMAXCONN) < 0) {
         printf("%s:%d listen() failed\n", __FILE__, __LINE__);
-        return PMIX_ERROR;
+        goto sockerror;
     }
 
     /* set socket up to be non-blocking, otherwise accept could block */
     if ((flags = fcntl(pmix_server_globals.listen_socket, F_GETFL, 0)) < 0) {
         printf("%s:%d fcntl(F_GETFL) failed\n", __FILE__, __LINE__);
-        return PMIX_ERROR;
+        goto sockerror;
     }
     flags |= O_NONBLOCK;
     if (fcntl(pmix_server_globals.listen_socket, F_SETFL, flags) < 0) {
         printf("%s:%d fcntl(F_SETFL) failed\n", __FILE__, __LINE__);
-        return PMIX_ERROR;
+        goto sockerror;
     }
 
     /* setup my version for validating connections - we
@@ -156,6 +162,11 @@ pmix_status_t pmix_start_listening(struct sockaddr_un *address)
     }
 
     return PMIX_SUCCESS;
+
+sockerror:
+    (void)close(pmix_server_globals.listen_socket);
+    pmix_server_globals.listen_socket = -1;
+    return PMIX_ERROR;
 }
 
 void pmix_stop_listening(void)
