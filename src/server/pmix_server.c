@@ -251,6 +251,9 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     pmix_status_t rc;
     size_t n;
     pmix_kval_t kv;
+    uid_t sockuid = -1;
+    gid_t sockgid = -1;
+    mode_t sockmode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH;
 
     ++pmix_globals.init_cntr;
     if (1 < pmix_globals.init_cntr) {
@@ -284,10 +287,12 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         for (n=0; n < ninfo; n++) {
             if (0 == strcmp(info[n].key, PMIX_USERID)) {
                 /* the userid is in the uint32_t storage */
-                chown(myaddress.sun_path, info[n].value.data.uint32, -1);
+                sockuid = info[n].value.data.uint32;
             } else if (0 == strcmp(info[n].key, PMIX_GRPID)) {
                /* the grpid is in the uint32_t storage */
-                chown(myaddress.sun_path, -1, info[n].value.data.uint32);
+                sockgid = info[n].value.data.uint32;
+            } else if (0 == strcmp(info[n].key, PMIX_SOCKET_MODE)) {
+                sockmode = info[n].value.data.uint32 & 0777;
             }
         }
     }
@@ -300,32 +305,29 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     pmix_list_append(&pmix_usock_globals.posted_recvs, &req->super);
 
     /* start listening */
-    if (PMIX_SUCCESS != pmix_start_listening(&myaddress)) {
+    if (PMIX_SUCCESS != pmix_start_listening(&myaddress, sockmode, sockuid, sockgid)) {
         PMIx_server_finalize();
         return PMIX_ERR_INIT;
     }
 
-    /* check the info keys for a directive about the uid/gid
-     * to be set for the rendezvous file, and any info we
+    /* check the info keys for info we
      * need to provide to every client */
     if (NULL != info) {
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
         for (n=0; n < ninfo; n++) {
-            if (0 == strcmp(info[n].key, PMIX_USERID)) {
-                /* the userid is in the uint32_t storage */
-                chown(myaddress.sun_path, info[n].value.data.uint32, -1);
-            } else if (0 == strcmp(info[n].key, PMIX_GRPID)) {
-                /* the grpid is in the uint32_t storage */
-                chown(myaddress.sun_path, -1, info[n].value.data.uint32);
-            } else {
-                /* store and pass along to every client */
-                kv.key = info[n].key;
-                kv.value = &info[n].value;
-                if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&pmix_server_globals.gdata, &kv, 1, PMIX_KVAL))) {
-                    PMIX_ERROR_LOG(rc);
-                    PMIX_DESTRUCT(&kv);
-                    return rc;
-                }
+            if (0 == strcmp(info[n].key, PMIX_USERID))
+                continue;
+            if (0 == strcmp(info[n].key, PMIX_GRPID))
+                continue;
+            if (0 == strcmp(info[n].key, PMIX_SOCKET_MODE))
+                continue;
+            /* store and pass along to every client */
+            kv.key = info[n].key;
+            kv.value = &info[n].value;
+            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&pmix_server_globals.gdata, &kv, 1, PMIX_KVAL))) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_DESTRUCT(&kv);
+                return rc;
             }
         }
         /* protect the incoming data */

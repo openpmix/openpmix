@@ -12,6 +12,7 @@
 
 #include <pmix/pmix_common.h>
 
+#include "src/include/pmix_socket_errno.h"
 #include "src/include/pmix_globals.h"
 #include "src/util/argv.h"
 #include "src/util/output.h"
@@ -27,14 +28,13 @@
 
 static int native_init(void);
 static void native_finalize(void);
-static char* create_cred(void);
 static pmix_status_t validate_cred(pmix_peer_t *peer, char *cred);
 
 pmix_sec_base_module_t pmix_native_module = {
     "native",
     native_init,
     native_finalize,
-    create_cred,
+    NULL,
     NULL,
     validate_cred,
     NULL
@@ -53,56 +53,43 @@ static void native_finalize(void)
                         "sec: native finalize");
 }
 
-static char* create_cred(void)
-{
-    char *cred;
-
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "sec: native create_cred");
-
-    /* print them and return the string */
-    (void)asprintf(&cred, "%lu:%lu", (unsigned long)pmix_globals.uid,
-                   (unsigned long)pmix_globals.gid);
-
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "sec: using credential %s", cred);
-
-    return cred;
-}
-
 static pmix_status_t validate_cred(pmix_peer_t *peer, char *cred)
 {
-    uid_t uid;
-    gid_t gid;
-    char **vals;
+    struct ucred ucred;
+    socklen_t crlen = sizeof (ucred);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "sec: native validate_cred %s", cred);
+                        "sec: native validate_cred %s", cred ? cred : "NULL");
 
-    /* parse the inbound string */
-    vals = pmix_argv_split(cred, ':');
-    if (2 != pmix_argv_count(vals)) {
-        pmix_argv_free(vals);
+    /* Ignore received 'cred' and validate ucred for socket instead.
+     */
+
+    if (getsockopt (peer->sd, SOL_SOCKET, SO_PEERCRED, &ucred, &crlen) < 0) {
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "sec: getsockopt SO_PEERCRED failed: %s",
+			    strerror (pmix_socket_errno));
         return PMIX_ERR_INVALID_CRED;
     }
 
     /* check uid */
-    uid = strtoul(vals[0], NULL, 10);
-    if (uid != peer->info->uid) {
-        pmix_argv_free(vals);
+    if (ucred.uid != peer->info->uid) {
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "sec: socket cred contains invalid uid %u",
+			    ucred.uid);
         return PMIX_ERR_INVALID_CRED;
     }
 
-    /* check guid */
-    gid = strtoul(vals[1], NULL, 10);
-    if (gid != peer->info->gid) {
-        pmix_argv_free(vals);
+    /* check gid */
+    if (ucred.gid != peer->info->gid) {
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "sec: socket cred contains invalid gid %u",
+			    ucred.gid);
         return PMIX_ERR_INVALID_CRED;
     }
-    pmix_argv_free(vals);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "sec: native credential valid");
+                        "sec: native credential %u:%u valid",
+			ucred.uid, ucred.gid);
     return PMIX_SUCCESS;
 }
 
