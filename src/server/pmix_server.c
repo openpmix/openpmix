@@ -143,13 +143,33 @@ static void _queue_message(int fd, short args, void *cbdata)
         event_active(&queue->ev, EV_WRITE, 1);                          \
     } while (0)
 
-
-static pmix_status_t initialize_server_base(pmix_server_module_t *module)
+static int generate_sockname(char *buf, int len, pid_t pid)
 {
+    char *tdir;
+
+    /* find the temp dir */
+    if (NULL == (tdir = getenv("PMIX_SERVER_TMPDIR"))) {
+        if (NULL == (tdir = getenv("TMPDIR"))) {
+            if (NULL == (tdir = getenv("TEMP"))) {
+                if (NULL == (tdir = getenv("TMP"))) {
+                    tdir = "/tmp";
+                }
+            }
+        }
+    }
+    // If the above set temporary directory name plus the pmix-PID string
+    // plus the '/' separator are too long, just fail, so the caller
+    // may provide the user with a proper help... *Cough*, *Cough* OSX...
+    return snprintf(buf, len, "%s/pmix-%d", tdir, pid);
+}
+
+static pmix_status_t initialize_server_base(pmix_server_module_t *module,
+                                            char *sockname)
+{
+    const int pathlen = sizeof(myaddress.sun_path);
     int debug_level;
-    char *tdir, *evar;
+    char *evar;
     pid_t pid;
-    char * pmix_pid;
 
     /* initialize the output system */
     if (!pmix_output_init()) {
@@ -211,32 +231,18 @@ static pmix_status_t initialize_server_base(pmix_server_module_t *module)
     pmix_sec_init();
     security_mode = strdup(pmix_sec.name);
 
-    /* find the temp dir */
-    if (NULL == (tdir = getenv("PMIX_SERVER_TMPDIR"))) {
-        if (NULL == (tdir = getenv("TMPDIR"))) {
-            if (NULL == (tdir = getenv("TEMP"))) {
-                if (NULL == (tdir = getenv("TMP"))) {
-                    tdir = "/tmp";
-                }
-            }
-        }
-    }
-
-    /* now set the address - we use the pid here to reduce collisions */
-    memset(&myaddress, 0, sizeof(struct sockaddr_un));
+    /* now set the address */
+    memset(&myaddress, 0, sizeof (struct sockaddr_un));
     myaddress.sun_family = AF_UNIX;
-    asprintf(&pmix_pid, "pmix-%d", pid);
-    // If the above set temporary directory name plus the pmix-PID string
-    // plus the '/' separator are too long, just fail, so the caller
-    // may provide the user with a proper help... *Cough*, *Cough* OSX...
-    if ((strlen(tdir) + strlen(pmix_pid) + 1) > sizeof(myaddress.sun_path)-1) {
-        free(pmix_pid);
-        return PMIX_ERR_INVALID_LENGTH;
+    if (NULL != sockname) {
+        if (snprintf(myaddress.sun_path, pathlen, "%s", sockname) >= pathlen)
+            return PMIX_ERR_INVALID_LENGTH;
+    } else {
+        if (generate_sockname(myaddress.sun_path, pathlen, pid) >= pathlen)
+            return PMIX_ERR_INVALID_LENGTH;
     }
-    snprintf(myaddress.sun_path, sizeof(myaddress.sun_path)-1, "%s/%s", tdir, pmix_pid);
-    free(pmix_pid);
-    asprintf(&myuri, "%s:%lu:%s", pmix_globals.myid.nspace, (unsigned long)pmix_globals.myid.rank, myaddress.sun_path);
-
+    asprintf(&myuri, "%s:%lu:%s", pmix_globals.myid.nspace,
+            (unsigned long)pmix_globals.myid.rank, myaddress.sun_path);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:server constructed uri %s", myuri);
@@ -254,6 +260,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     uid_t sockuid = -1;
     gid_t sockgid = -1;
     mode_t sockmode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH;
+    char *sockname = NULL;
+    bool nosock = false;
 
     ++pmix_globals.init_cntr;
     if (1 < pmix_globals.init_cntr) {
@@ -263,7 +271,29 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:server init called");
 
-    if (0 != (rc = initialize_server_base(module))) {
+    /* check the info keys for a directive about the uid/gid
+     * to be set for the rendezvous file */
+    if (NULL != info) {
+        for (n=0; n < ninfo; n++) {
+            if (0 == strcmp(info[n].key, PMIX_USERID)) {
+                /* the userid is in the uint32_t storage */
+                sockuid = info[n].value.data.uint32;
+            } else if (0 == strcmp(info[n].key, PMIX_GRPID)) {
+               /* the grpid is in the uint32_t storage */
+                sockgid = info[n].value.data.uint32;
+            } else if (0 == strcmp(info[n].key, PMIX_SOCKET_MODE)) {
+                sockmode = info[n].value.data.uint32 & 0777;
+            } else if (0 == strcmp(info[n].key, PMIX_SOCKET_FILENAME)) {
+                sockname = info[n].value.data.string;
+            } else if (0 == strcmp(info[n].key, PMIX_SOCKET_SUPPRESS)) {
+                /* if nosock, bind/listening is suppressed only,
+                 * the URI still contains the (nonexistent) filename */
+                nosock = info[n].value.data.flag;
+            }
+        }
+    }
+
+    if (0 != (rc = initialize_server_base(module, sockname))) {
         return rc;
     }
 
@@ -281,22 +311,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         return PMIX_ERR_INIT;
     }
 
-    /* check the info keys for a directive about the uid/gid
-     * to be set for the rendezvous file */
-    if (NULL != info) {
-        for (n=0; n < ninfo; n++) {
-            if (0 == strcmp(info[n].key, PMIX_USERID)) {
-                /* the userid is in the uint32_t storage */
-                sockuid = info[n].value.data.uint32;
-            } else if (0 == strcmp(info[n].key, PMIX_GRPID)) {
-               /* the grpid is in the uint32_t storage */
-                sockgid = info[n].value.data.uint32;
-            } else if (0 == strcmp(info[n].key, PMIX_SOCKET_MODE)) {
-                sockmode = info[n].value.data.uint32 & 0777;
-            }
-        }
-    }
-
     /* setup the wildcard recv for inbound messages from clients */
     req = PMIX_NEW(pmix_usock_posted_recv_t);
     req->tag = UINT32_MAX;
@@ -305,9 +319,11 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     pmix_list_append(&pmix_usock_globals.posted_recvs, &req->super);
 
     /* start listening */
-    if (PMIX_SUCCESS != pmix_start_listening(&myaddress, sockmode, sockuid, sockgid)) {
-        PMIx_server_finalize();
-        return PMIX_ERR_INIT;
+    if (!nosock) {
+        if (PMIX_SUCCESS != pmix_start_listening(&myaddress, sockmode, sockuid, sockgid)) {
+            PMIx_server_finalize();
+            return PMIX_ERR_INIT;
+        }
     }
 
     /* check the info keys for info we
@@ -320,6 +336,10 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
             if (0 == strcmp(info[n].key, PMIX_GRPID))
                 continue;
             if (0 == strcmp(info[n].key, PMIX_SOCKET_MODE))
+                continue;
+            if (0 == strcmp(info[n].key, PMIX_SOCKET_FILENAME))
+                continue;
+            if (0 == strcmp(info[n].key, PMIX_SOCKET_SUPPRESS))
                 continue;
             /* store and pass along to every client */
             kv.key = info[n].key;
