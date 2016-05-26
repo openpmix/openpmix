@@ -351,14 +351,6 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     memset(&address, 0, sizeof(struct sockaddr_un));
     address.sun_family = AF_UNIX;
     snprintf(address.sun_path, sizeof(address.sun_path)-1, "%s", uri[2]);
-    /* if the rendezvous file doesn't exist, that's an error */
-    if (0 != access(uri[2], R_OK)) {
-        pmix_argv_free(uri);
-        pmix_output_close(pmix_globals.debug_output);
-        pmix_output_finalize();
-        pmix_class_finalize();
-        return PMIX_ERR_NOT_FOUND;
-    }
     pmix_argv_free(uri);
 
     /* we also require our rank */
