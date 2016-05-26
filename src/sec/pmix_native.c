@@ -81,11 +81,11 @@ static pmix_status_t validate_cred(pmix_peer_t *peer, char *cred)
         return PMIX_ERR_INVALID_CRED;
     }
 #if defined(HAVE_STRUCT_UCRED_UID)
-    euid = ucred.cr_uid;
-    gid = ucred.cr_gid;
-#else
     euid = ucred.uid;
     gid = ucred.gid;
+#else
+    euid = ucred.cr_uid;
+    gid = ucred.cr_gid;
 #endif
 
 #elif defined(HAVE_GETPEEREID)
