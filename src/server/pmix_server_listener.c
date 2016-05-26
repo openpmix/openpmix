@@ -313,28 +313,28 @@ static pmix_status_t parse_connect_ack (char *msg, int len,
                                         char **nspace, int *rank,
                                         char **version, char **cred)
 {
-    if (strnlen (msg, len) < len) {
+    if ((int)strnlen (msg, len) < len) {
         *nspace = msg;
         msg += strlen(*nspace) + 1;
         len -= strlen(*nspace) + 1;
     } else
         return PMIX_ERR_BAD_PARAM;
 
-    if (sizeof(int) <= len) {
+    if ((int)sizeof(int) <= len) {
         *rank = *(int *)msg;
         msg += sizeof(int);
         len -= sizeof(int);
     } else
         return PMIX_ERR_BAD_PARAM;
 
-    if (strnlen (msg, len) < len) {
+    if ((int)strnlen (msg, len) < len) {
         *version = msg;
         msg += strlen(*version) + 1;
         len -= strlen(*version) + 1;
     } else
         return PMIX_ERR_BAD_PARAM;
 
-    if (strnlen (msg, len) < len)
+    if ((int)strnlen (msg, len) < len)
         *cred = msg;
     else
         *cred = NULL;
@@ -355,7 +355,6 @@ static pmix_status_t pmix_server_authenticate(int sd, int *out_rank,
     pmix_nspace_t *nptr, *tmp;
     pmix_rank_info_t *info;
     pmix_peer_t *psave = NULL;
-    size_t csize;
     bool found;
     pmix_proc_t proc;
 

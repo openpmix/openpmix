@@ -243,7 +243,6 @@ pmix_status_t pmix_lookup_errhandler(pmix_info_t info[], size_t ninfo,
     bool exact_given = false;
     int given = -1;
     pmix_status_t status;
-    char *grp;
 
     /* scan the incoming specification to see if it is a general errhandler,
      * a group errhandler, or an error handler for a specific status. Only
@@ -261,7 +260,6 @@ pmix_status_t pmix_lookup_errhandler(pmix_info_t info[], size_t ninfo,
             } else if (0 == strcmp(info[n].key, "pmix.errgroup")) {
                 /* this is a group errhandler */
                 given = 2;
-                grp = info[n].value.data.string;
                 break;
             }
         }
