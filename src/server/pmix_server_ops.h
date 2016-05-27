@@ -88,8 +88,8 @@ PMIX_CLASS_DECLARATION(pmix_dmdx_local_t);
 typedef struct {
     pmix_object_t super;
     pmix_event_t ev;
+    pmix_proc_t proc;
     int sd;
-    struct sockaddr_storage addr;
 } pmix_pending_connection_t;
 PMIX_CLASS_DECLARATION(pmix_pending_connection_t);
 

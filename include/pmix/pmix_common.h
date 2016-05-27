@@ -99,6 +99,8 @@ BEGIN_C_DECLS
 
 /* attributes for the rendezvous socket  */
 #define PMIX_SOCKET_MODE           "pmix.sockmode"          // (uint32_t) POSIX mode_t (9 bits valid)
+#define PMIX_SOCKET_FILENAME       "pmix.sockname"          // (char*) filename to use for socket
+#define PMIX_SOCKET_SUPPRESS       "pmix.nosock"            // (bool) suppress creation/listening on socket
 
 /* general proc-level attributes */
 #define PMIX_CPUSET                "pmix.cpuset"            // (char*) hwloc bitmap applied to proc upon launch

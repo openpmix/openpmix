@@ -192,18 +192,16 @@ static void job_data(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     cb->active = false;
 }
 
-static pmix_status_t connect_to_server(struct sockaddr_un *address, void *cbdata)
+static pmix_status_t setup_server(int sd, void *cbdata)
 {
-    int sd;
     pmix_status_t ret;
     pmix_cmd_t cmd = PMIX_REQ_CMD;
     pmix_buffer_t *req;
 
-    if (PMIX_SUCCESS != (ret=usock_connect((struct sockaddr *)address, &sd))) {
-        PMIX_ERROR_LOG(ret);
-        return ret;
-    }
+    /* mark the connection as made */
+    pmix_globals.connected = true;
     pmix_client_globals.myserver.sd = sd;
+
     /* setup recv event */
     event_assign(&pmix_client_globals.myserver.recv_event,
                  pmix_globals.evbase,
@@ -244,7 +242,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
                           pmix_info_t info[], size_t ninfo)
 {
     char **uri, *evar;
-    int rc, debug_level;
+    int rc, debug_level, sd;
     struct sockaddr_un address;
     pmix_nspace_t *nsptr;
     pmix_cb_t cb;
@@ -353,14 +351,6 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     memset(&address, 0, sizeof(struct sockaddr_un));
     address.sun_family = AF_UNIX;
     snprintf(address.sun_path, sizeof(address.sun_path)-1, "%s", uri[2]);
-    /* if the rendezvous file doesn't exist, that's an error */
-    if (0 != access(uri[2], R_OK)) {
-        pmix_argv_free(uri);
-        pmix_output_close(pmix_globals.debug_output);
-        pmix_output_finalize();
-        pmix_class_finalize();
-        return PMIX_ERR_NOT_FOUND;
-    }
     pmix_argv_free(uri);
 
     /* we also require our rank */
@@ -404,8 +394,18 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     /* setup an object to track server connection */
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.active = true;
+
     /* connect to the server - returns job info if successful */
-    if (PMIX_SUCCESS != (rc = connect_to_server(&address, &cb))){
+    if (NULL != (evar = getenv("PMIX_SERVER_FD"))) {
+        sd = strtoul(evar, NULL, 10);
+        unsetenv("PMIX_SERVER_FD");
+    } else {
+        rc = usock_connect((struct sockaddr *)&address, &sd);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
+    }
+    if (PMIX_SUCCESS != rc || PMIX_SUCCESS != (rc = setup_server (sd, &cb))) {
         PMIX_DESTRUCT(&cb);
         pmix_stop_progress_thread(pmix_globals.evbase);
         pmix_sec_finalize();
@@ -1312,9 +1312,6 @@ void pmix_client_process_nspace_blob(const char *nspace, pmix_buffer_t *bptr)
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "sock_peer_try_connect: Connection across to server succeeded");
-
-    /* mark the connection as made */
-    pmix_globals.connected = true;
 
     pmix_usock_set_nonblocking(sd);
 

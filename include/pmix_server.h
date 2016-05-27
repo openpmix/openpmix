@@ -387,6 +387,12 @@ pmix_status_t PMIx_server_register_client(const pmix_proc_t *proc,
                                           void *server_object,
                                           pmix_op_cbfunc_t cbfunc, void *cbdata);
 
+/* Register a "pre-connected" socket for the specified client.
+ * The resource manager must arrange for this fd to remain open
+ * across fork/exec when the client is started, and for
+ * PMIX_SERVER_FD=fd to be set in the client's environment. */
+pmix_status_t PMIx_server_register_client_fd(const pmix_proc_t *proc, int fd);
+
 /* Deregister a client and purge all data relating to it. The
  * deregister_nspace API will automatically delete all client
  * info for that nspace - this API is therefore intended solely

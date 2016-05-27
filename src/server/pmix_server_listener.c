@@ -195,11 +195,27 @@ void pmix_stop_listening(void)
     return;
 }
 
+static void activate_pending(int sd, const pmix_proc_t *proc)
+{
+    pmix_pending_connection_t *pending_connection;
+
+    /* throw it into our event library for processing */
+    pending_connection = PMIX_NEW(pmix_pending_connection_t);
+    pending_connection->sd = sd;
+    if (proc) {
+        pending_connection->proc.rank = proc->rank;
+        strncpy (pending_connection->proc.nspace, proc->nspace, PMIX_MAX_NSLEN);
+    } else {
+        pending_connection->proc.rank = PMIX_RANK_UNDEF;
+    }
+    event_assign(&pending_connection->ev, pmix_globals.evbase, sd,
+                 EV_READ, connection_handler, pending_connection);
+    event_add(&pending_connection->ev, NULL);
+}
+
 static void* listen_thread(void *obj)
 {
-    int rc, max, accepted_connections;
-    socklen_t addrlen = sizeof(struct sockaddr_storage);
-    pmix_pending_connection_t *pending_connection;
+    int rc, max, accepted_connections, sd;
     struct timeval timeout;
     fd_set readfds;
 
@@ -256,14 +272,8 @@ static void* listen_thread(void *obj)
              * process the connection here as it takes too long, and so the
              * OS might start rejecting connections due to timeout.
              */
-            pending_connection = PMIX_NEW(pmix_pending_connection_t);
-            event_assign(&pending_connection->ev, pmix_globals.evbase, -1,
-                         EV_WRITE, connection_handler, pending_connection);
-            pending_connection->sd = accept(pmix_server_globals.listen_socket,
-                                            (struct sockaddr*)&(pending_connection->addr),
-                                            &addrlen);
-            if (pending_connection->sd < 0) {
-                PMIX_RELEASE(pending_connection);
+            sd = accept(pmix_server_globals.listen_socket, NULL, NULL);
+            if (sd < 0) {
                 if (pmix_socket_errno != EAGAIN ||
                     pmix_socket_errno != EWOULDBLOCK) {
                     if (EMFILE == pmix_socket_errno) {
@@ -279,9 +289,8 @@ static void* listen_thread(void *obj)
 
             pmix_output_verbose(8, pmix_globals.debug_output,
                                 "listen_thread: new connection: (%d, %d)",
-                                pending_connection->sd, pmix_socket_errno);
-            /* activate the event */
-            event_active(&pending_connection->ev, EV_WRITE, 1);
+                                sd, pmix_socket_errno);
+            activate_pending(sd, NULL);
             accepted_connections++;
         } while (accepted_connections > 0);
     }
@@ -293,17 +302,74 @@ static void* listen_thread(void *obj)
 
 static void listener_cb(int incoming_sd)
 {
-    pmix_pending_connection_t *pending_connection;
-
-    /* throw it into our event library for processing */
     pmix_output_verbose(8, pmix_globals.debug_output,
                         "listen_cb: pushing new connection %d into evbase",
                         incoming_sd);
-    pending_connection = PMIX_NEW(pmix_pending_connection_t);
-    pending_connection->sd = incoming_sd;
-    event_assign(&pending_connection->ev, pmix_globals.evbase, -1,
-                 EV_WRITE, connection_handler, pending_connection);
-    event_active(&pending_connection->ev, EV_WRITE, 1);
+    activate_pending(incoming_sd, NULL);
+}
+
+PMIX_EXPORT pmix_status_t PMIx_server_register_client_fd(const pmix_proc_t *proc, int fd)
+{
+    pmix_output_verbose(8, pmix_globals.debug_output,
+                        "register_client_fd %s:%d fd=%d",
+                        proc->nspace, proc->rank, fd);
+    activate_pending(fd, proc);
+}
+
+static pmix_status_t lookup_nspace (const char *nspace, pmix_nspace_t **np)
+{
+    pmix_nspace_t *nptr = NULL;
+
+    PMIX_LIST_FOREACH(nptr, &pmix_globals.nspaces, pmix_nspace_t) {
+        if (0 == strcmp(nptr->nspace, nspace)) {
+            *np = nptr;
+            return PMIX_SUCCESS;
+        }
+    }
+    return PMIX_ERR_NOT_FOUND;
+}
+
+static pmix_status_t lookup_rank_info (pmix_nspace_t *nptr, int rank,
+                                       pmix_rank_info_t **rip)
+{
+    pmix_rank_info_t *info;
+    PMIX_LIST_FOREACH(info, &nptr->server->ranks, pmix_rank_info_t) {
+        if (info->rank == rank) {
+            *rip = info;
+            return PMIX_SUCCESS;
+        }
+    }
+    return PMIX_ERR_NOT_FOUND;
+}
+
+static pmix_status_t add_peer (const char *nspace, int rank, int sd,
+                               pmix_peer_t **pp)
+{
+    pmix_nspace_t *nptr;
+    pmix_rank_info_t *info;
+    pmix_peer_t *peer = NULL;
+    pmix_status_t rc;
+    int index;
+
+    if (PMIX_SUCCESS != (rc = lookup_nspace (nspace, &nptr))
+              || PMIX_SUCCESS != (rc = lookup_rank_info (nptr, rank, &info)))
+        return rc;
+
+    /* a peer can connect on multiple sockets since it can fork/exec
+     * a child that also calls PMIx_Init, so add it here if necessary.
+     * Create the tracker for this peer */
+    peer = PMIX_NEW(pmix_peer_t);
+    PMIX_RETAIN(info);
+    peer->info = info;
+    info->proc_cnt++; /* increase number of processes on this rank */
+    peer->sd = sd;
+    peer->index = pmix_pointer_array_add(&pmix_server_globals.clients, peer);
+    if (0 > peer->index) {
+        PMIX_RELEASE(peer);
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+    *pp = peer;
+    return PMIX_SUCCESS;
 }
 
 /* Parse init-ack message:
@@ -352,10 +418,7 @@ static pmix_status_t pmix_server_authenticate(int sd, int *out_rank,
     pmix_status_t rc;
     int rank;
     pmix_usock_hdr_t hdr;
-    pmix_nspace_t *nptr, *tmp;
-    pmix_rank_info_t *info;
     pmix_peer_t *psave = NULL;
-    bool found;
     pmix_proc_t proc;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -404,53 +467,13 @@ static pmix_status_t pmix_server_authenticate(int sd, int *out_rank,
      * For now, our intent is to retain backward compatibility
      * and so we will assume that all versions are compatible. */
 
-    /* see if we know this nspace */
-    nptr = NULL;
-    PMIX_LIST_FOREACH(tmp, &pmix_globals.nspaces, pmix_nspace_t) {
-        if (0 == strcmp(tmp->nspace, nspace)) {
-            nptr = tmp;
-            break;
-        }
-    }
-    if (NULL == nptr) {
-        /* we don't know this namespace, reject it */
-        free(msg);
-        /* send an error reply to the client */
-        rc = PMIX_ERR_NOT_FOUND;
-        goto error;
-    }
-
-    /* see if we have this peer in our list */
-    info = NULL;
-    found = false;
-    PMIX_LIST_FOREACH(info, &nptr->server->ranks, pmix_rank_info_t) {
-        if (info->rank == rank) {
-            found = true;
-            break;
-        }
-    }
-    if (!found) {
-        /* rank unknown, reject it */
-        free(msg);
-        /* send an error reply to the client */
-        rc = PMIX_ERR_NOT_FOUND;
+    /* see if we know this nspace:rank
+     * then create tracker for peer */
+    if (PMIX_SUCCESS != (rc = add_peer (nspace, rank, sd, &psave))) {
+        free (msg);
         goto error;
     }
     *out_rank = rank;
-    /* a peer can connect on multiple sockets since it can fork/exec
-     * a child that also calls PMIx_Init, so add it here if necessary.
-     * Create the tracker for this peer */
-    psave = PMIX_NEW(pmix_peer_t);
-    PMIX_RETAIN(info);
-    psave->info = info;
-    info->proc_cnt++; /* increase number of processes on this rank */
-    psave->sd = sd;
-    if (0 > (psave->index = pmix_pointer_array_add(&pmix_server_globals.clients, psave))) {
-        free(msg);
-        PMIX_RELEASE(psave);
-        /* probably cannot send an error reply if we are out of memory */
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    }
 
     /* see if there is a credential */
     if (NULL != pmix_sec.validate_cred) {
@@ -536,23 +559,30 @@ static void connection_handler(int sd, short flags, void* cbdata)
 {
     pmix_pending_connection_t *pnd = (pmix_pending_connection_t*)cbdata;
     pmix_peer_t *peer;
+    pmix_status_t rc;
     int rank;
 
     pmix_output_verbose(8, pmix_globals.debug_output,
                         "connection_handler: new connection: %d",
                         pnd->sd);
 
-    /* ensure the socket is in blocking mode */
-    pmix_usock_set_blocking(pnd->sd);
-
-    /* receive identifier info from the client and authenticate it - the
-     * function will lookup and return the peer object if the connection
-     * is successfully authenticated */
-    if (PMIX_SUCCESS != pmix_server_authenticate(pnd->sd, &rank, &peer)) {
+    if (pnd->proc.rank == PMIX_RANK_UNDEF) {
+        /* receive identifier info from the client and authenticate it - the
+         * function will lookup and return the peer object if the connection
+         * is successfully authenticated */
+        pmix_usock_set_blocking(pnd->sd);
+        rc = pmix_server_authenticate(pnd->sd, &rank, &peer);
+        pmix_usock_set_nonblocking(pnd->sd);
+    } else {
+        /* nspace:rank were registered by server for pre-connected socket,
+           so auth can be skipped and peer can looked up/added directly */
+        rc = add_peer (pnd->proc.nspace, pnd->proc.rank, pnd->sd, &peer);
+    }
+    if (PMIX_SUCCESS != rc) {
         CLOSE_THE_SOCKET(pnd->sd);
+        PMIX_RELEASE(pnd);
         return;
     }
-    pmix_usock_set_nonblocking(pnd->sd);
 
     /* start the events for this client */
     event_assign(&peer->recv_event, pmix_globals.evbase, pnd->sd,
