@@ -187,7 +187,9 @@ void pmix_stop_listening(void)
      * case the thread is blocked in a call to select for
      * a long time */
     i=1;
-    write(pmix_server_globals.stop_thread[1], &i, sizeof(int));
+    if (0 > write(pmix_server_globals.stop_thread[1], &i, sizeof(int))) {
+        return;
+    }
     /* wait for thread to exit */
     pthread_join(engine, NULL);
     /* close the socket to remove the connection point */
