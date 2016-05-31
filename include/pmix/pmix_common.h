@@ -220,68 +220,62 @@ BEGIN_C_DECLS
 
 /****    PMIX ERROR CONSTANTS    ****/
 /* PMIx errors are always negative, with 0 reserved for success */
-#define PMIX_ERROR_MIN  -52  // set equal to number of non-zero entries in enum
+#define PMIX_ERR_BASE                   0
 
-typedef enum {
-    PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER = PMIX_ERROR_MIN,
-    PMIX_ERR_COMM_FAILURE,
-    PMIX_ERR_NOT_IMPLEMENTED,
-    PMIX_ERR_NOT_SUPPORTED,
-    PMIX_ERR_NOT_FOUND,
-    PMIX_ERR_SERVER_NOT_AVAIL,
-    PMIX_ERR_INVALID_NAMESPACE,
-    PMIX_ERR_INVALID_SIZE,
-    PMIX_ERR_INVALID_KEYVALP,
-    PMIX_ERR_INVALID_NUM_PARSED,
+typedef int pmix_status_t;
 
-    PMIX_ERR_INVALID_ARGS,
-    PMIX_ERR_INVALID_NUM_ARGS,
-    PMIX_ERR_INVALID_LENGTH,
-    PMIX_ERR_INVALID_VAL_LENGTH,
-    PMIX_ERR_INVALID_VAL,
-    PMIX_ERR_INVALID_KEY_LENGTH,
-    PMIX_ERR_INVALID_KEY,
-    PMIX_ERR_INVALID_ARG,
-    PMIX_ERR_NOMEM,
-    PMIX_ERR_INIT,
+#define PMIX_SUCCESS                            (PMIX_ERR_BASE)
+#define PMIX_ERROR                              (PMIX_ERR_BASE -  1)    // general error
+/* debugger release flag */
+#define PMIX_ERR_DEBUGGER_RELEASE               (PMIX_ERR_BASE -  2)
+/* fault tolerance */
+#define PMIX_ERR_PROC_RESTART                   (PMIX_ERR_BASE -  3)
+#define PMIX_ERR_PROC_CHECKPOINT                (PMIX_ERR_BASE -  4)
+#define PMIX_ERR_PROC_MIGRATE                   (PMIX_ERR_BASE -  5)
+#define PMIX_ERR_UPDATE_ENDPOINTS               (PMIX_ERR_BASE -  6)
+/* abort */
+#define PMIX_ERR_PROC_ABORTED                   (PMIX_ERR_BASE -  7)
+#define PMIX_ERR_PROC_REQUESTED_ABORT           (PMIX_ERR_BASE -  8)
+#define PMIX_ERR_PROC_ABORTING                  (PMIX_ERR_BASE -  9)
+/* communication failures */
+#define PMIX_ERR_UNREACH                        (PMIX_ERR_BASE - 10)
+#define PMIX_ERR_LOST_CONNECTION_TO_SERVER      (PMIX_ERR_BASE - 11)
+#define PMIX_ERR_LOST_PEER_CONNECTION           (PMIX_ERR_BASE - 12)
+#define PMIX_ERR_LOST_CONNECTION_TO_CLIENT      (PMIX_ERR_BASE - 13)
+/* operational */
+#define PMIX_ERR_NO_PERMISSIONS                 (PMIX_ERR_BASE - 14)
+#define PMIX_ERR_TIMEOUT                        (PMIX_ERR_BASE - 15)
+#define PMIX_ERR_WOULD_BLOCK                    (PMIX_ERR_BASE - 16)
+#define PMIX_EXISTS                             (PMIX_ERR_BASE - 17)
+#define PMIX_ERR_SERVER_FAILED_REQUEST          (PMIX_ERR_BASE - 18)
+#define PMIX_ERR_NOT_SUPPORTED                  (PMIX_ERR_BASE - 19)
+#define PMIX_ERR_NOT_FOUND                      (PMIX_ERR_BASE - 20)
+#define PMIX_ERR_BAD_PARAM                      (PMIX_ERR_BASE - 21)
+#define PMIX_ERR_DATA_VALUE_NOT_FOUND           (PMIX_ERR_BASE - 22)
+#define PMIX_ERR_OUT_OF_RESOURCE                (PMIX_ERR_BASE - 23)
+#define PMIX_ERR_INVALID_NAMESPACE              (PMIX_ERR_BASE - 24)
+#define PMIX_ERR_INVALID_SIZE                   (PMIX_ERR_BASE - 25)
+#define PMIX_ERR_INIT                           (PMIX_ERR_BASE - 26)
+#define PMIX_ERR_EVENT_REGISTRATION             (PMIX_ERR_BASE - 27)
+/* system failures */
+#define PMIX_ERR_NODE_DOWN                      (PMIX_ERR_BASE - 28)
+#define PMIX_ERR_NODE_OFFLINE                   (PMIX_ERR_BASE - 29)
+/* used by event handlers */
+#define PMIX_EVENT_NO_ACTION_TAKEN              (PMIX_ERR_BASE - 30)
+#define PMIX_EVENT_PARTIAL_ACTION_TAKEN         (PMIX_ERR_BASE - 31)
+#define PMIX_EVENT_ACTION_DEFERRED              (PMIX_ERR_BASE - 32)
 
-    PMIX_ERR_DATA_VALUE_NOT_FOUND,
-    PMIX_ERR_OUT_OF_RESOURCE,
-    PMIX_ERR_RESOURCE_BUSY,
-    PMIX_ERR_BAD_PARAM,
-    PMIX_ERR_IN_ERRNO,
-    PMIX_ERR_UNREACH,
-    PMIX_ERR_TIMEOUT,
-    PMIX_ERR_NO_PERMISSIONS,
-    PMIX_ERR_PACK_MISMATCH,
-    PMIX_ERR_PACK_FAILURE,
 
-    PMIX_ERR_UNPACK_FAILURE,
-    PMIX_ERR_UNPACK_INADEQUATE_SPACE,
-    PMIX_ERR_TYPE_MISMATCH,
-    PMIX_ERR_PROC_ENTRY_NOT_FOUND,
-    PMIX_ERR_UNKNOWN_DATA_TYPE,
-    PMIX_ERR_WOULD_BLOCK,
-    PMIX_ERR_READY_FOR_HANDSHAKE,
-    PMIX_ERR_HANDSHAKE_FAILED,
-    PMIX_ERR_INVALID_CRED,
-    PMIX_EXISTS,
+/* define a starting point for PMIx internal error codes
+ * that are never exposed outside the library */
+#define PMIX_INTERNAL_ERR_BASE          -1000
 
-    PMIX_ERR_SERVER_FAILED_REQUEST,
-    PMIX_ERR_PROC_ABORTING,
-    PMIX_ERR_PROC_REQUESTED_ABORT,
-    PMIX_ERR_PROC_ABORTED,
-    PMIX_ERR_PROC_MIGRATE,
-    PMIX_ERR_PROC_CHECKPOINT,
-    PMIX_ERR_PROC_RESTART,
-    PMIX_ERR_DEBUGGER_RELEASE,
-    PMIX_ERR_SILENT,
-    PMIX_ERROR,
-
-    PMIX_ERR_GRP_FOUND,
-    PMIX_ERR_DFLT_FOUND,
-    PMIX_SUCCESS
-} pmix_status_t;
+/* define a starting point for user-level defined error
+ * constants - negative values larger than this are guaranteed
+ * not to conflict with PMIx values. Definitions should always
+ * be based on the PMIX_EXTERNAL_ERR_BASE constant and -not- a
+ * specific value as the value of the constant may change */
+#define PMIX_EXTERNAL_ERR_BASE           -2000
 
 
 /****    PMIX DATA TYPES    ****/

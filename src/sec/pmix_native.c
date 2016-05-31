@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2016 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -15,6 +15,7 @@
 #include "src/include/pmix_socket_errno.h"
 #include "src/include/pmix_globals.h"
 #include "src/util/argv.h"
+#include "src/util/error.h"
 #include "src/util/output.h"
 #include "src/usock/usock.h"
 
