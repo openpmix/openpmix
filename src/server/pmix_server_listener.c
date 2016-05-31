@@ -63,7 +63,7 @@
 
 // local functions for connection support
 static void* listen_thread(void *obj);
-static void listener_cb(int incoming_sd);
+static void listener_cb(int incoming_sd, void *cbdata);
 static void connection_handler(int incoming_sd, short flags, void* cbdata);
 static char *myversion = NULL;
 static pthread_t engine;
@@ -71,50 +71,58 @@ static pthread_t engine;
 /*
  * start listening on our rendezvous file
  */
-pmix_status_t pmix_start_listening(struct sockaddr_un *address,
-                                   mode_t mode, uid_t sockuid, gid_t sockgid)
+pmix_status_t pmix_start_listening(pmix_listener_t *lt)
 {
     int flags;
     pmix_status_t rc;
     socklen_t addrlen;
     char *ptr;
+    struct sockaddr_un *address = &lt->address;
 
     /* create a listen socket for incoming connection attempts */
-    pmix_server_globals.listen_socket = socket(PF_UNIX, SOCK_STREAM, 0);
-    if (pmix_server_globals.listen_socket < 0) {
+    lt->socket = socket(PF_UNIX, SOCK_STREAM, 0);
+    if (lt->socket < 0) {
         printf("%s:%d socket() failed\n", __FILE__, __LINE__);
         return PMIX_ERROR;
     }
 
     addrlen = sizeof(struct sockaddr_un);
-    if (bind(pmix_server_globals.listen_socket, (struct sockaddr*)address, addrlen) < 0) {
+    if (bind(lt->socket, (struct sockaddr*)address, addrlen) < 0) {
         printf("%s:%d bind() failed\n", __FILE__, __LINE__);
         return PMIX_ERROR;
     }
     /* chown as required */
-    if (0 != chown(address->sun_path, sockuid, sockgid)) {
-        pmix_output(0, "CANNOT CHOWN socket %s: %s", address->sun_path, strerror (errno));
-        goto sockerror;
+    if (lt->owner_given) {
+        if (0 != chown(address->sun_path, lt->owner, -1)) {
+            pmix_output(0, "CANNOT CHOWN socket %s: %s", address->sun_path, strerror (errno));
+            goto sockerror;
+        }
+    }
+    if (lt->group_given) {
+        if (0 != chown(address->sun_path, -1, lt->group)) {
+            pmix_output(0, "CANNOT CHOWN socket %s: %s", address->sun_path, strerror (errno));
+            goto sockerror;
+        }
     }
     /* set the mode as required */
-    if (0 != chmod(address->sun_path, mode)) {
+    if (0 != chmod(address->sun_path, lt->mode)) {
         pmix_output(0, "CANNOT CHMOD socket %s: %s", address->sun_path, strerror (errno));
         goto sockerror;
     }
 
     /* setup listen backlog to maximum allowed by kernel */
-    if (listen(pmix_server_globals.listen_socket, SOMAXCONN) < 0) {
+    if (listen(lt->socket, SOMAXCONN) < 0) {
         printf("%s:%d listen() failed\n", __FILE__, __LINE__);
         goto sockerror;
     }
 
     /* set socket up to be non-blocking, otherwise accept could block */
-    if ((flags = fcntl(pmix_server_globals.listen_socket, F_GETFL, 0)) < 0) {
+    if ((flags = fcntl(lt->socket, F_GETFL, 0)) < 0) {
         printf("%s:%d fcntl(F_GETFL) failed\n", __FILE__, __LINE__);
         goto sockerror;
     }
     flags |= O_NONBLOCK;
-    if (fcntl(pmix_server_globals.listen_socket, F_SETFL, flags) < 0) {
+    if (fcntl(lt->socket, F_SETFL, flags) < 0) {
         printf("%s:%d fcntl(F_SETFL) failed\n", __FILE__, __LINE__);
         goto sockerror;
     }
@@ -135,10 +143,10 @@ pmix_status_t pmix_start_listening(struct sockaddr_un *address,
     /* if the server will listen for us, then ask it to do so now */
     rc = PMIX_ERR_NOT_SUPPORTED;
     if (NULL != pmix_host_server.listener) {
-        rc = pmix_host_server.listener(pmix_server_globals.listen_socket, listener_cb);
+        rc = pmix_host_server.listener(lt->socket, listener_cb, (void*)lt);
     }
 
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_SUCCESS != rc && !pmix_server_globals.listen_thread_active) {
         /*** spawn internal listener thread */
         if (0 > pipe(pmix_server_globals.stop_thread)) {
             PMIX_ERROR_LOG(PMIX_ERR_IN_ERRNO);
@@ -164,14 +172,15 @@ pmix_status_t pmix_start_listening(struct sockaddr_un *address,
     return PMIX_SUCCESS;
 
 sockerror:
-    (void)close(pmix_server_globals.listen_socket);
-    pmix_server_globals.listen_socket = -1;
+    (void)close(lt->socket);
+    lt->socket = -1;
     return PMIX_ERROR;
 }
 
 void pmix_stop_listening(void)
 {
     int i;
+    pmix_listener_t *lt;
 
     pmix_output_verbose(8, pmix_globals.debug_output,
                         "listen_thread: shutdown");
@@ -192,8 +201,11 @@ void pmix_stop_listening(void)
     }
     /* wait for thread to exit */
     pthread_join(engine, NULL);
-    /* close the socket to remove the connection point */
-    CLOSE_THE_SOCKET(pmix_server_globals.listen_socket);
+    /* close the sockets to remove the connection points */
+    PMIX_LIST_FOREACH(lt, &pmix_server_globals.listeners, pmix_listener_t) {
+        CLOSE_THE_SOCKET(lt->socket);
+        lt->socket = -1;
+    }
     return;
 }
 
@@ -204,14 +216,18 @@ static void* listen_thread(void *obj)
     pmix_pending_connection_t *pending_connection;
     struct timeval timeout;
     fd_set readfds;
+    pmix_listener_t *lt;
 
     pmix_output_verbose(8, pmix_globals.debug_output,
                         "listen_thread: active");
 
     while (pmix_server_globals.listen_thread_active) {
         FD_ZERO(&readfds);
-        FD_SET(pmix_server_globals.listen_socket, &readfds);
-        max = pmix_server_globals.listen_socket;
+        max = -1;
+        PMIX_LIST_FOREACH(lt, &pmix_server_globals.listeners, pmix_listener_t) {
+            FD_SET(lt->socket, &readfds);
+            max = (lt->socket > max) ? lt->socket : max;
+        }
         /* add the stop_thread fd */
         FD_SET(pmix_server_globals.stop_thread[0], &readfds);
         max = (pmix_server_globals.stop_thread[0] > max) ? pmix_server_globals.stop_thread[0] : max;
@@ -240,51 +256,55 @@ static void* listen_thread(void *obj)
          */
         do {
             accepted_connections = 0;
-            /* according to the man pages, select replaces the given descriptor
-             * set with a subset consisting of those descriptors that are ready
-             * for the specified operation - in this case, a read. So we need to
-             * first check to see if this file descriptor is included in the
-             * returned subset
-             */
-            if (0 == FD_ISSET(pmix_server_globals.listen_socket, &readfds)) {
-                /* this descriptor is not included */
-                continue;
-            }
+            PMIX_LIST_FOREACH(lt, &pmix_server_globals.listeners, pmix_listener_t) {
 
-            /* this descriptor is ready to be read, which means a connection
-             * request has been received - so harvest it. All we want to do
-             * here is accept the connection and push the info onto the event
-             * library for subsequent processing - we don't want to actually
-             * process the connection here as it takes too long, and so the
-             * OS might start rejecting connections due to timeout.
-             */
-            pending_connection = PMIX_NEW(pmix_pending_connection_t);
-            event_assign(&pending_connection->ev, pmix_globals.evbase, -1,
-                         EV_WRITE, connection_handler, pending_connection);
-            pending_connection->sd = accept(pmix_server_globals.listen_socket,
-                                            (struct sockaddr*)&(pending_connection->addr),
-                                            &addrlen);
-            if (pending_connection->sd < 0) {
-                PMIX_RELEASE(pending_connection);
-                if (pmix_socket_errno != EAGAIN ||
-                    pmix_socket_errno != EWOULDBLOCK) {
-                    if (EMFILE == pmix_socket_errno) {
-                        PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
-                    } else {
-                        pmix_output(0, "listen_thread: accept() failed: %s (%d).",
-                                    strerror(pmix_socket_errno), pmix_socket_errno);
-                    }
-                    goto done;
+                /* according to the man pages, select replaces the given descriptor
+                 * set with a subset consisting of those descriptors that are ready
+                 * for the specified operation - in this case, a read. So we need to
+                 * first check to see if this file descriptor is included in the
+                 * returned subset
+                 */
+                if (0 == FD_ISSET(lt->socket, &readfds)) {
+                    /* this descriptor is not included */
+                    continue;
                 }
-                continue;
-            }
 
-            pmix_output_verbose(8, pmix_globals.debug_output,
-                                "listen_thread: new connection: (%d, %d)",
-                                pending_connection->sd, pmix_socket_errno);
-            /* activate the event */
-            event_active(&pending_connection->ev, EV_WRITE, 1);
-            accepted_connections++;
+                /* this descriptor is ready to be read, which means a connection
+                 * request has been received - so harvest it. All we want to do
+                 * here is accept the connection and push the info onto the event
+                 * library for subsequent processing - we don't want to actually
+                 * process the connection here as it takes too long, and so the
+                 * OS might start rejecting connections due to timeout.
+                 */
+                pending_connection = PMIX_NEW(pmix_pending_connection_t);
+                pending_connection->protocol = lt->protocol_type;
+                event_assign(&pending_connection->ev, pmix_globals.evbase, -1,
+                             EV_WRITE, connection_handler, pending_connection);
+                pending_connection->sd = accept(lt->socket,
+                                                (struct sockaddr*)&(pending_connection->addr),
+                                                &addrlen);
+                if (pending_connection->sd < 0) {
+                    PMIX_RELEASE(pending_connection);
+                    if (pmix_socket_errno != EAGAIN ||
+                        pmix_socket_errno != EWOULDBLOCK) {
+                        if (EMFILE == pmix_socket_errno) {
+                            PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
+                        } else {
+                            pmix_output(0, "listen_thread: accept() failed: %s (%d).",
+                                        strerror(pmix_socket_errno), pmix_socket_errno);
+                        }
+                        goto done;
+                    }
+                    continue;
+                }
+
+                pmix_output_verbose(8, pmix_globals.debug_output,
+                                    "listen_thread: new connection: (%d, %d)",
+                                    pending_connection->sd, pmix_socket_errno);
+                /* activate the event */
+                event_active(&pending_connection->ev, EV_WRITE, 1);
+                accepted_connections++;
+            }
         } while (accepted_connections > 0);
     }
 
@@ -293,9 +313,10 @@ static void* listen_thread(void *obj)
     return NULL;
 }
 
-static void listener_cb(int incoming_sd)
+static void listener_cb(int incoming_sd, void *cbdata)
 {
     pmix_pending_connection_t *pending_connection;
+    pmix_listener_t *lt = (pmix_listener_t*)cbdata;
 
     /* throw it into our event library for processing */
     pmix_output_verbose(8, pmix_globals.debug_output,
@@ -303,6 +324,7 @@ static void listener_cb(int incoming_sd)
                         incoming_sd);
     pending_connection = PMIX_NEW(pmix_pending_connection_t);
     pending_connection->sd = incoming_sd;
+    pending_connection->protocol = lt->protocol_type;
     event_assign(&pending_connection->ev, pmix_globals.evbase, -1,
                  EV_WRITE, connection_handler, pending_connection);
     event_active(&pending_connection->ev, EV_WRITE, 1);
@@ -347,7 +369,8 @@ static pmix_status_t parse_connect_ack (char *msg, int len,
 /*  Receive the peer's identification info from a newly
  *  connected socket and verify the expected response.
  */
-static pmix_status_t pmix_server_authenticate(int sd, int *out_rank,
+static pmix_status_t pmix_server_authenticate(int sd, uint16_t protocol,
+                                              int *out_rank,
                                               pmix_peer_t **peer)
 {
     char *msg, *nspace, *version, *cred;
@@ -550,7 +573,8 @@ static void connection_handler(int sd, short flags, void* cbdata)
     /* receive identifier info from the client and authenticate it - the
      * function will lookup and return the peer object if the connection
      * is successfully authenticated */
-    if (PMIX_SUCCESS != pmix_server_authenticate(pnd->sd, &rank, &peer)) {
+    if (PMIX_SUCCESS != pmix_server_authenticate(pnd->sd, pnd->protocol,
+                                                 &rank, &peer)) {
         CLOSE_THE_SOCKET(pnd->sd);
         return;
     }

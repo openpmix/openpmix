@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015 Intel, Inc. All rights reserved
+ * Copyright (c) 2013-2016 Intel, Inc. All rights reserved
  * Copyright (c) 2015      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
@@ -253,7 +253,7 @@ typedef pmix_status_t (*pmix_server_disconnect_fn_t)(const pmix_proc_t procs[], 
 
 /* Callback function for incoming connection requests from
  * local clients */
-typedef void (*pmix_connection_cbfunc_t)(int incoming_sd);
+typedef void (*pmix_connection_cbfunc_t)(int incoming_sd, void *cbdata);
 
 /* Register a socket the host server can monitor for connection
  * requests, harvest them, and then call our internal callback
@@ -266,7 +266,8 @@ typedef void (*pmix_connection_cbfunc_t)(int incoming_sd);
  * will cause the internal PMIx server to spawn its own listener
  * thread */
 typedef pmix_status_t (*pmix_server_listener_fn_t)(int listening_sd,
-                                                   pmix_connection_cbfunc_t cbfunc);
+                                                   pmix_connection_cbfunc_t cbfunc,
+                                                   void *cbdata);
 
 typedef struct pmix_server_module_1_0_0_t {
     pmix_server_client_connected_fn_t  client_connected;
