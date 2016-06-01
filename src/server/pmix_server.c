@@ -225,7 +225,9 @@ static pmix_status_t initialize_server_base(pmix_server_module_t *module)
     /* now set the address - we use the pid here to reduce collisions */
     memset(&myaddress, 0, sizeof(struct sockaddr_un));
     myaddress.sun_family = AF_UNIX;
-    asprintf(&pmix_pid, "pmix-%d", pid);
+    if (0 > asprintf(&pmix_pid, "pmix-%d", pid)) {
+        return PMIX_ERR_NOMEM;
+    }
     // If the above set temporary directory name plus the pmix-PID string
     // plus the '/' separator are too long, just fail, so the caller
     // may provide the user with a proper help... *Cough*, *Cough* OSX...
@@ -235,7 +237,10 @@ static pmix_status_t initialize_server_base(pmix_server_module_t *module)
     }
     snprintf(myaddress.sun_path, sizeof(myaddress.sun_path)-1, "%s/%s", tdir, pmix_pid);
     free(pmix_pid);
-    asprintf(&myuri, "%s:%lu:%s", pmix_globals.myid.nspace, (unsigned long)pmix_globals.myid.rank, myaddress.sun_path);
+    if (0 > asprintf(&myuri, "%s:%lu:%s", pmix_globals.myid.nspace,
+                     (unsigned long)pmix_globals.myid.rank, myaddress.sun_path)) {
+        return PMIX_ERR_NOMEM;
+    }
 
 
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -1585,7 +1590,9 @@ PMIX_EXPORT pmix_status_t PMIx_generate_regex(const char *input, char **regexp)
         if (0 == pmix_list_get_size(&vreg->ranges)) {
             if (NULL != vreg->prefix) {
                 /* solitary value */
-                asprintf(&tmp, "%s", vreg->prefix);
+                if (0 > asprintf(&tmp, "%s", vreg->prefix)) {
+                    return PMIX_ERR_NOMEM;
+                }
                 pmix_argv_append_nosize(&regexargs, tmp);
                 free(tmp);
             }
@@ -1594,16 +1601,24 @@ PMIX_EXPORT pmix_status_t PMIx_generate_regex(const char *input, char **regexp)
         }
         /* start the regex for this value with the prefix */
         if (NULL != vreg->prefix) {
-            asprintf(&tmp, "%s[%d:", vreg->prefix, vreg->num_digits);
+            if (0 > asprintf(&tmp, "%s[%d:", vreg->prefix, vreg->num_digits)) {
+                return PMIX_ERR_NOMEM;
+            }
         } else {
-            asprintf(&tmp, "[%d:", vreg->num_digits);
+            if (0 > asprintf(&tmp, "[%d:", vreg->num_digits)) {
+                return PMIX_ERR_NOMEM;
+            }
         }
         /* add the ranges */
         while (NULL != (range = (pmix_regex_range_t*)pmix_list_remove_first(&vreg->ranges))) {
             if (1 == range->cnt) {
-                asprintf(&tmp2, "%s%d,", tmp, range->start);
+                if (0 > asprintf(&tmp2, "%s%d,", tmp, range->start)) {
+                    return PMIX_ERR_NOMEM;
+                }
             } else {
-                asprintf(&tmp2, "%s%d-%d,", tmp, range->start, range->start + range->cnt - 1);
+                if (0 > asprintf(&tmp2, "%s%d-%d,", tmp, range->start, range->start + range->cnt - 1)) {
+                    return PMIX_ERR_NOMEM;
+                }
             }
             free(tmp);
             tmp = tmp2;
@@ -1613,7 +1628,9 @@ PMIX_EXPORT pmix_status_t PMIx_generate_regex(const char *input, char **regexp)
         tmp[strlen(tmp)-1] = ']';
         if (NULL != vreg->suffix) {
             /* add in the suffix, if provided */
-            asprintf(&tmp2, "%s%s", tmp, vreg->suffix);
+            if (0 > asprintf(&tmp2, "%s%s", tmp, vreg->suffix)) {
+                return PMIX_ERR_NOMEM;
+            }
             free(tmp);
             tmp = tmp2;
         }
@@ -1624,7 +1641,9 @@ PMIX_EXPORT pmix_status_t PMIx_generate_regex(const char *input, char **regexp)
 
     /* assemble final result */
     tmp = pmix_argv_join(regexargs, ',');
-    asprintf(regexp, "pmix[%s]", tmp);
+    if (0 > asprintf(regexp, "pmix[%s]", tmp)) {
+        return PMIX_ERR_NOMEM;
+    }
     free(tmp);
 
     /* cleanup */
@@ -1725,9 +1744,13 @@ PMIX_EXPORT pmix_status_t PMIx_generate_ppn(const char *input, char **regexp)
     PMIX_LIST_FOREACH(vreg, &nodes, pmix_regex_value_t) {
         while (NULL != (rng = (pmix_regex_range_t*)pmix_list_remove_first(&vreg->ranges))) {
             if (1 == rng->cnt) {
-                asprintf(&tmp2, "%s%d,", tmp, rng->start);
+                if (0 > asprintf(&tmp2, "%s%d,", tmp, rng->start)) {
+                    return PMIX_ERR_NOMEM;
+                }
             } else {
-                asprintf(&tmp2, "%s%d-%d,", tmp, rng->start, rng->start + rng->cnt - 1);
+                if (0 > asprintf(&tmp2, "%s%d-%d,", tmp, rng->start, rng->start + rng->cnt - 1)) {
+                    return PMIX_ERR_NOMEM;
+                }
             }
             free(tmp);
             tmp = tmp2;
