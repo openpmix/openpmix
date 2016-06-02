@@ -41,6 +41,7 @@
 #endif
 
 #include "src/util/pmix_environ.h"
+#include "src/util/error.h"
 #include "src/util/output.h"
 
 /*

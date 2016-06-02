@@ -33,6 +33,7 @@
 #endif
 
 #include "src/util/argv.h"
+#include "src/util/error.h"
 #include "src/buffer_ops/internal.h"
 
 /**

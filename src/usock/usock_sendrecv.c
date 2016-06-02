@@ -145,7 +145,7 @@ static pmix_status_t send_bytes(int sd, char **buf, size_t *remain)
             pmix_output(0, "pmix_usock_msg_send_bytes: write failed: %s (%d) [sd = %d]",
                         strerror(pmix_socket_errno),
                         pmix_socket_errno, sd);
-            ret = PMIX_ERR_COMM_FAILURE;
+            ret = PMIX_ERR_UNREACH;
             goto exit;
         }
         /* update location */
