@@ -65,8 +65,6 @@
 pmix_server_globals_t pmix_server_globals = {{{0}}};
 
 // local variables
-static char *myuri = NULL;
-static struct sockaddr_un myaddress;
 static char *security_mode = NULL;
 
 // local functions for connection support
@@ -150,6 +148,7 @@ static pmix_status_t initialize_server_base(pmix_server_module_t *module)
     char *tdir, *evar;
     pid_t pid;
     char * pmix_pid;
+    pmix_listener_t *listener;
 
     /* initialize the output system */
     if (!pmix_output_init()) {
@@ -158,7 +157,6 @@ static pmix_status_t initialize_server_base(pmix_server_module_t *module)
     /* setup the globals */
     pmix_globals_init();
     memset(&pmix_server_globals, 0, sizeof(pmix_server_globals));
-    pmix_server_globals.listen_socket = -1;
 
     /* mark that I am a server */
     pmix_globals.server = true;
@@ -191,6 +189,7 @@ static pmix_status_t initialize_server_base(pmix_server_module_t *module)
     PMIX_CONSTRUCT(&pmix_server_globals.client_eventregs, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_server_globals.gdata, pmix_buffer_t);
     PMIX_CONSTRUCT(&pmix_server_globals.notifications, pmix_ring_buffer_t);
+    PMIX_CONSTRUCT(&pmix_server_globals.listeners, pmix_list_t);
     pmix_ring_buffer_init(&pmix_server_globals.notifications, 256);
 
     /* see if debug is requested */
@@ -222,29 +221,30 @@ static pmix_status_t initialize_server_base(pmix_server_module_t *module)
         }
     }
 
-    /* now set the address - we use the pid here to reduce collisions */
-    memset(&myaddress, 0, sizeof(struct sockaddr_un));
-    myaddress.sun_family = AF_UNIX;
-    if (0 > asprintf(&pmix_pid, "pmix-%d", pid)) {
+    /* for now, just setup the v1.1 series rendezvous point
+     * we use the pid to reduce collisions */
+    if (0 > asprintf(&pmix_pid, "%s/pmix-%d", tdir, pid)) {
         return PMIX_ERR_NOMEM;
     }
-    // If the above set temporary directory name plus the pmix-PID string
-    // plus the '/' separator are too long, just fail, so the caller
-    // may provide the user with a proper help... *Cough*, *Cough* OSX...
-    if ((strlen(tdir) + strlen(pmix_pid) + 1) > sizeof(myaddress.sun_path)-1) {
+    if ((strlen(pmix_pid) + 1) > sizeof(listener->address.sun_path)-1) {
         free(pmix_pid);
         return PMIX_ERR_INVALID_LENGTH;
     }
-    snprintf(myaddress.sun_path, sizeof(myaddress.sun_path)-1, "%s/%s", tdir, pmix_pid);
-    free(pmix_pid);
-    if (0 > asprintf(&myuri, "%s:%lu:%s", pmix_globals.myid.nspace,
-                     (unsigned long)pmix_globals.myid.rank, myaddress.sun_path)) {
+
+    listener = PMIX_NEW(pmix_listener_t);
+    snprintf(listener->address.sun_path, sizeof(listener->address.sun_path)-1, "%s", pmix_pid);
+    if (0 > asprintf(&listener->uri, "%s:%lu:%s", pmix_globals.myid.nspace,
+                    (unsigned long)pmix_globals.myid.rank, listener->address.sun_path)) {
+        free(pmix_pid);
         return PMIX_ERR_NOMEM;
     }
-
+    listener->varname = strdup("PMIX_SERVER_URI");
+    listener->protocol_type = 1;
+    pmix_list_append(&pmix_server_globals.listeners, &listener->super);
+    free(pmix_pid);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:server constructed uri %s", myuri);
+                        "pmix:server constructed uri %s", listener->uri);
 
     return PMIX_SUCCESS;
 }
@@ -256,9 +256,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     pmix_status_t rc;
     size_t n;
     pmix_kval_t kv;
-    uid_t sockuid = -1;
-    gid_t sockgid = -1;
-    mode_t sockmode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH;
+    pmix_listener_t *lt;
 
     ++pmix_globals.init_cntr;
     if (1 < pmix_globals.init_cntr) {
@@ -292,12 +290,21 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         for (n=0; n < ninfo; n++) {
             if (0 == strcmp(info[n].key, PMIX_USERID)) {
                 /* the userid is in the uint32_t storage */
-                sockuid = info[n].value.data.uint32;
+                PMIX_LIST_FOREACH(lt, &pmix_server_globals.listeners, pmix_listener_t) {
+                    lt->owner = info[n].value.data.uint32;
+                    lt->owner_given = true;
+                }
             } else if (0 == strcmp(info[n].key, PMIX_GRPID)) {
                /* the grpid is in the uint32_t storage */
-                sockgid = info[n].value.data.uint32;
+                PMIX_LIST_FOREACH(lt, &pmix_server_globals.listeners, pmix_listener_t) {
+                    lt->group = info[n].value.data.uint32;
+                    lt->group_given = true;
+                }
             } else if (0 == strcmp(info[n].key, PMIX_SOCKET_MODE)) {
-                sockmode = info[n].value.data.uint32 & 0777;
+                /* socket mode is in the uint32_t storage */
+                PMIX_LIST_FOREACH(lt, &pmix_server_globals.listeners, pmix_listener_t) {
+                    lt->mode = info[n].value.data.uint32;
+                }
             }
         }
     }
@@ -310,9 +317,11 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     pmix_list_append(&pmix_usock_globals.posted_recvs, &req->super);
 
     /* start listening */
-    if (PMIX_SUCCESS != pmix_start_listening(&myaddress, sockmode, sockuid, sockgid)) {
-        PMIx_server_finalize();
-        return PMIX_ERR_INIT;
+    PMIX_LIST_FOREACH(lt, &pmix_server_globals.listeners, pmix_listener_t) {
+        if (PMIX_SUCCESS != pmix_start_listening(lt)) {
+            PMIx_server_finalize();
+            return PMIX_ERR_INIT;
+        }
     }
 
     /* check the info keys for info we
@@ -360,10 +369,8 @@ static void cleanup_server_state(void)
     PMIX_LIST_DESTRUCT(&pmix_server_globals.local_reqs);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.client_eventregs);
     PMIX_DESTRUCT(&pmix_server_globals.gdata);
+    PMIX_LIST_DESTRUCT(&pmix_server_globals.listeners);
 
-    if (NULL != myuri) {
-        free(myuri);
-    }
     if (NULL != security_mode) {
         free(security_mode);
     }
@@ -400,18 +407,11 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     libevent_global_shutdown();
 #endif
 
-    if (0 <= pmix_server_globals.listen_socket) {
-        CLOSE_THE_SOCKET(pmix_server_globals.listen_socket);
-    }
-
     pmix_usock_finalize();
 
 #if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
     pmix_dstore_finalize();
 #endif /* PMIX_ENABLE_DSTORE */
-
-    /* cleanup the rendezvous file */
-    unlink(myaddress.sun_path);
 
     cleanup_server_state();
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -923,6 +923,7 @@ PMIX_EXPORT void PMIx_server_deregister_client(const pmix_proc_t *proc)
 PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char ***env)
 {
     char rankstr[128];
+    pmix_listener_t *lt;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:server setup_fork for nspace %s rank %d",
@@ -934,7 +935,9 @@ PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char *
     (void)snprintf(rankstr, 127, "%d", proc->rank);
     pmix_setenv("PMIX_RANK", rankstr, true, env);
     /* pass our rendezvous info */
-    pmix_setenv("PMIX_SERVER_URI", myuri, true, env);
+    PMIX_LIST_FOREACH(lt, &pmix_server_globals.listeners, pmix_listener_t) {
+        pmix_setenv(lt->varname, lt->uri, true, env);
+    }
     /* pass our active security mode */
     pmix_setenv("PMIX_SECURITY_MODE", security_mode, true, env);
 

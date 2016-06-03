@@ -1309,3 +1309,30 @@ static void regdes(pmix_regevents_info_t *p)
 PMIX_CLASS_INSTANCE(pmix_regevents_info_t,
                     pmix_list_item_t,
                     regcon, regdes);
+
+static void lcon(pmix_listener_t *p)
+{
+    memset(&p->address, 0, sizeof(struct sockaddr_un));
+    p->address.sun_family = AF_UNIX;
+    p->socket = -1;
+    p->varname = NULL;
+    p->uri = NULL;
+    p->owner_given = false;
+    p->group_given = false;
+    p->mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH;
+}
+static void ldes(pmix_listener_t *p)
+{
+    if (0 <= p->socket) {
+        CLOSE_THE_SOCKET(p->socket);
+    }
+    if (NULL != p->varname) {
+        free(p->varname);
+    }
+    if (NULL != p->uri) {
+        free(p->uri);
+    }
+}
+PMIX_CLASS_INSTANCE(pmix_listener_t,
+                    pmix_list_item_t,
+                    lcon, ldes);

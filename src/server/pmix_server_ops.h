@@ -88,6 +88,7 @@ PMIX_CLASS_DECLARATION(pmix_dmdx_local_t);
 typedef struct {
     pmix_object_t super;
     pmix_event_t ev;
+    uint16_t protocol;
     int sd;
     struct sockaddr_storage addr;
 } pmix_pending_connection_t;
@@ -102,13 +103,29 @@ typedef struct {
 } pmix_regevents_info_t;
 PMIX_CLASS_DECLARATION(pmix_regevents_info_t);
 
+/* listener objects */
+typedef struct pmix_listener_t {
+    pmix_list_item_t super;
+    uint16_t protocol_type;
+    int socket;
+    struct sockaddr_un address;
+    char *varname;
+    char *uri;
+    uint32_t owner;
+    bool owner_given;
+    uint32_t group;
+    bool group_given;
+    uint32_t mode;
+} pmix_listener_t;
+PMIX_CLASS_DECLARATION(pmix_listener_t);
+
 typedef struct {
     pmix_pointer_array_t clients;           // array of pmix_peer_t local clients
     pmix_list_t collectives;                // list of active pmix_server_trkr_t
     pmix_list_t remote_pnd;                 // list of pmix_dmdx_remote_t awaiting arrival of data fror servicing remote req's
     pmix_list_t local_reqs;                 // list of pmix_dmdx_local_t awaiting arrival of data from local neighbours
     volatile bool listen_thread_active;     // listen thread is running
-    int listen_socket;                      // socket listener is watching
+    pmix_list_t listeners;                  // list of pmix_listener_t
     int stop_thread[2];                     // pipe used to stop listener thread
     pmix_buffer_t gdata;                    // cache of data given to me for passing to all clients
     pmix_list_t client_eventregs;           // list of registered events per client.
@@ -146,8 +163,7 @@ typedef struct {
     } while (0)
 
 
-pmix_status_t pmix_start_listening(struct sockaddr_un *address,
-		                   mode_t mode, uid_t sockuid, gid_t sockgid);
+pmix_status_t pmix_start_listening(pmix_listener_t *lt);
 void pmix_stop_listening(void);
 
 bool pmix_server_trk_update(pmix_server_trkr_t *trk);
