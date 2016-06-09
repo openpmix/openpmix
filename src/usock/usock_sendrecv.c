@@ -101,9 +101,10 @@ static void lost_connection(pmix_peer_t *peer, pmix_status_t err)
         }
          /* remove this proc from the list of ranks for this nspace */
          pmix_list_remove_item(&(peer->info->nptr->server->ranks), &(peer->info->super));
-         PMIX_RELEASE(peer->info);
          /* reduce the number of local procs */
          --peer->info->nptr->server->nlocalprocs;
+         /* now decrease the refcount - might actually free the object */
+         PMIX_RELEASE(peer->info);
          /* do some cleanup as the client has left us */
          pmix_pointer_array_set_item(&pmix_server_globals.clients,
                                      peer->index, NULL);
