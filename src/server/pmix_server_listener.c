@@ -1,7 +1,7 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2014-2016 Intel, Inc.  All rights reserved.
- * Copyright (c) 2014-2015 Research Organization for Information Science
+ * Copyright (c) 2014-2016 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
@@ -329,7 +329,7 @@ static pmix_status_t parse_connect_ack (char *msg, int len,
 
     PMIX_STRNLEN(msglen, msg, len);
     if (msglen <= len) {
-        *rank = *(int *)msg;
+        memcpy(rank, msg, sizeof(int));
         msg += sizeof(int);
         len -= sizeof(int);
     } else {
