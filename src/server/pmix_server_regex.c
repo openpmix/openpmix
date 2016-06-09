@@ -529,6 +529,8 @@ static pmix_status_t pmix_regex_extract_ppn(char *regexp, char ***procs)
                 end = strtol(t, NULL, 10);
                 for (k=start; k <= end; k++) {
                     if (0 > asprintf(&t, "%d", k)) {
+                        pmix_argv_free(nds);
+                        pmix_argv_free(rngs);
                         return PMIX_ERR_NOMEM;
                     }
                     pmix_argv_append_nosize(&ps, t);

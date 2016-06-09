@@ -150,7 +150,6 @@ const char* PMIx_Error_string(pmix_status_t errnum)
             return "ERROR STRING NOT FOUND";
 
     }
-    return "ERROR STRING NOT FOUND";
 }
 
 void pmix_errhandler_invoke(pmix_status_t status,
@@ -236,10 +235,9 @@ void pmix_errhandler_invoke(pmix_status_t status,
 pmix_status_t pmix_lookup_errhandler(pmix_info_t info[], size_t ninfo,
                                      int *index)
 {
-    int i, idflt=-1, igrp=-1;
+    int i, idflt=-1;
     pmix_error_reg_info_t *errreg;
     size_t sz, n;
-    bool exact_given = false;
     int given = -1;
     pmix_status_t status;
 
@@ -258,8 +256,7 @@ pmix_status_t pmix_lookup_errhandler(pmix_info_t info[], size_t ninfo,
                 break;
             } else if (0 == strcmp(info[n].key, "pmix.errgroup")) {
                 /* this is a group errhandler */
-                given = 2;
-                break;
+                return PMIX_ERR_GRP_FOUND;
             }
         }
     }
@@ -299,22 +296,7 @@ pmix_status_t pmix_lookup_errhandler(pmix_info_t info[], size_t ninfo,
                     }
                 }
             }
-        } else if (2 == given && !errreg->sglhdlr) {
-            /* this registration is for a group, so check that case */
-
         }
-    }
-
-    /* if we get here, then no match was found. If they
-     * gave us a specific error, then we have to return not_found */
-    if (exact_given) {
-        return PMIX_ERR_NOT_FOUND;
-    }
-
-    /* If we have a group match, then that takes precedence */
-    if (0 <= igrp) {
-        *index = igrp;
-        return PMIX_ERR_GRP_FOUND;
     }
 
     /* if we found a default errhandler, then use it */

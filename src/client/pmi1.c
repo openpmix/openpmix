@@ -649,6 +649,10 @@ PMIX_EXPORT int PMI_Spawn_multiple(int count,
         /* push the preput values into the apps environ */
         for (k = 0; k < preput_keyval_size; k++) {
             if (0 > asprintf(&evar, "%s=%s", preput_keyval_vector[k].key, preput_keyval_vector[k].val)) {
+                for (i = 0; i < count; i++) {
+                    PMIX_APP_DESTRUCT(&apps[i]);
+                }
+                free(apps);
                 return PMIX_ERR_NOMEM;
             }
             pmix_argv_append_nosize(&apps[i].env, evar);
