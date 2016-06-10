@@ -39,6 +39,8 @@
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
+ * 
+ * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  *
  * $HEADER$
  */
@@ -94,6 +96,7 @@ BEGIN_C_DECLS
                                                             // of the internal progress thread
 #define PMIX_SERVER_TOOL_SUPPORT   "pmix.srvr.tool"         // (bool) The host RM wants to declare itself as willing to
                                                             // accept tool connection requests
+#define PMIX_SERVER_PIDINFO        "pmix.srvr.pidinfo"
 
 /* identification attributes */
 #define PMIX_USERID                "pmix.euid"              // (uint32_t) effective user id
@@ -270,6 +273,11 @@ typedef int pmix_status_t;
 #define PMIX_EVENT_PARTIAL_ACTION_TAKEN         (PMIX_ERR_BASE - 31)
 #define PMIX_EVENT_ACTION_DEFERRED              (PMIX_ERR_BASE - 32)
 
+#define PMIX_ERR_OPERATION_IN_PROGRESS          (PMIX_ERR_BASE - 33)
+#define PMIX_ERR_NOMEM                          (PMIX_ERR_BASE - 34)
+#define PMIX_ERR_INVALID_ARGS                   (PMIX_ERR_BASE - 36)
+#define PMIX_ERR_SERVER_NOT_AVAIL               (PMIX_ERR_BASE - 37)
+#define PMIX_ERR_INVALID_KEY                    (PMIX_ERR_BASE - 38)
 
 /* define a starting point for PMIx internal error codes
  * that are never exposed outside the library */
