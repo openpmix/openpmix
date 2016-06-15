@@ -58,6 +58,7 @@ include src/client/Makefile.am
 include src/server/Makefile.am
 include src/sec/Makefile.am
 include src/common/Makefile.am
+include src/tool/Makefile.am
 
 if WANT_DSTORE
 include src/sm/Makefile.am

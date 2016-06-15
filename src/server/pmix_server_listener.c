@@ -87,6 +87,7 @@ pmix_status_t pmix_start_listening(pmix_listener_t *lt)
         return PMIX_ERROR;
     }
 
+
     addrlen = sizeof(struct sockaddr_un);
     if (bind(lt->socket, (struct sockaddr*)address, addrlen) < 0) {
         printf("%s:%d bind() failed\n", __FILE__, __LINE__);
@@ -162,13 +163,16 @@ pmix_status_t pmix_start_listening(pmix_listener_t *lt)
             close(pmix_server_globals.stop_thread[1]);
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
-        /* fork off the listener thread */
-        pmix_server_globals.listen_thread_active = true;
+        
+	/* fork off the listener thread */
         if (0 > pthread_create(&engine, NULL, listen_thread, NULL)) {
-            pmix_server_globals.listen_thread_active = false;
             return PMIX_ERROR;
         }
+	
+        pmix_server_globals.listen_thread_active = true;
+	
     }
+    
 
     return PMIX_SUCCESS;
 
@@ -206,8 +210,7 @@ void pmix_stop_listening(void)
     PMIX_LIST_FOREACH(lt, &pmix_server_globals.listeners, pmix_listener_t) {
         CLOSE_THE_SOCKET(lt->socket);
         lt->socket = -1;
-    }
-    return;
+    } 
 }
 
 static void* listen_thread(void *obj)
@@ -221,6 +224,7 @@ static void* listen_thread(void *obj)
 
     pmix_output_verbose(8, pmix_globals.debug_output,
                         "listen_thread: active");
+
 
     while (pmix_server_globals.listen_thread_active) {
         FD_ZERO(&readfds);
@@ -331,6 +335,251 @@ static void listener_cb(int incoming_sd, void *cbdata)
     event_active(&pending_connection->ev, EV_WRITE, 1);
 }
 
+/* process the callback with tool connection info */
+static void process_cbfunc(int sd, short args, void *cbdata)
+{
+    pmix_pending_connection_t *pnd = (pmix_pending_connection_t*)cbdata;
+    pmix_nspace_t *nptr;
+    pmix_rank_info_t *info;
+    int rc;
+
+    /* if the request failed, then reject the request - that
+     * will be the requestor's signal we aren't accepting it */
+    if (PMIX_SUCCESS != pnd->status) {
+        /* send an error reply to the client */
+        if (PMIX_SUCCESS != (rc = pmix_usock_send_blocking(pnd->sd, (char*)&pnd->status, sizeof(int)))) {
+            PMIX_ERROR_LOG(rc);
+        }
+        PMIX_RELEASE(pnd);
+        return;
+    }
+
+    pmix_usock_set_nonblocking(pnd->sd);
+
+    /* add this nspace to our pool */
+    nptr = PMIX_NEW(pmix_nspace_t);
+    (void)strncpy(nptr->nspace, pnd->nspace, PMIX_MAX_NSLEN);
+    nptr->server = PMIX_NEW(pmix_server_nspace_t);
+    pmix_list_append(&pmix_globals.nspaces, &nptr->super);
+    /* add this tool rank to the nspace */
+    info = PMIX_NEW(pmix_rank_info_t);
+    PMIX_RETAIN(nptr);
+    info->nptr = nptr;
+    info->rank = 0;
+    pmix_list_append(&nptr->server->ranks, &info->super);
+
+    /* setup a peer object for this tool */
+    pmix_peer_t *peer = PMIX_NEW(pmix_peer_t);
+    PMIX_RETAIN(info);
+    peer->info = info;
+    peer->proc_cnt = 1;
+    peer->sd = pnd -> sd;
+    if (0 > (peer->index = pmix_pointer_array_add(&pmix_server_globals.clients, peer))) {
+        PMIX_RELEASE(pnd);
+        PMIX_RELEASE(peer);
+        pmix_list_remove_item(&pmix_globals.nspaces, &nptr->super);
+        PMIX_RELEASE(nptr);  // will release the info object
+        /* probably cannot send an error reply if we are out of memory */
+        return;
+    }
+
+    /* start the events for this client */
+    event_assign(&peer->recv_event, pmix_globals.evbase, pnd->sd,
+                 EV_READ|EV_PERSIST, pmix_usock_recv_handler, peer);
+    event_add(&peer->recv_event, NULL);
+    peer->recv_ev_active = true;
+    event_assign(&peer->send_event, pmix_globals.evbase, pnd->sd,
+                 EV_WRITE|EV_PERSIST, pmix_usock_send_handler, peer);
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:server tool %s:%d has connected on socket %d",
+                        peer->info->nptr->nspace, peer->info->rank, peer->sd);
+}
+
+/* receive a callback from the host RM with an nspace
+ * for a connecting tool */
+static void cnct_cbfunc(pmix_status_t status,
+                        char *nspace, void *cbdata)
+{
+    pmix_pending_connection_t *pnd = (pmix_pending_connection_t*)cbdata;
+    pmix_info_t info[14];
+    int i,ninfo = 0;
+    char hostname[PMIX_MAX_NSLEN+1];
+    char * nodemap_regex, *procmap_regex;
+    pmix_info_array_t info_array;
+
+    gethostname(hostname, PMIX_MAX_NSLEN);
+
+    /* save the nspace and status */
+    pnd->status = status;
+    (void)strncpy(pnd->nspace, nspace, PMIX_MAX_NSLEN);
+    
+    /* Send nspace, rank and status back to the tool. */
+    pmix_usock_send_blocking(pnd->sd, (char *)&pnd->status, sizeof(pmix_status_t));
+    if(pnd -> status != PMIX_SUCCESS)
+      return;
+
+    pmix_usock_send_blocking(pnd->sd, (char*)nspace, PMIX_MAX_NSLEN+1);
+    pmix_usock_send_blocking(pnd->sd, (char*)&pmix_globals.myid.rank, sizeof(pmix_globals.myid.rank));
+
+    /* need to thread-shift this into our context */
+    event_assign(&pnd->ev, pmix_globals.evbase, -1,
+                 EV_WRITE, process_cbfunc, pnd);
+    event_active(&pnd->ev, EV_WRITE, 1);
+
+    /*
+     * Setup all the info that would normally be set by the RM
+     */
+
+#if 0
+/*
+ * JOBID doesn't make much sense unless RM can tell us what job we are part of, but RM 
+ * maybe didn't create us
+ */
+    memcpy(info[ninfo].key, PMIX_JOBID, sizeof(info[ninfo].key));
+    info[ninfo].value.data.string = strdup(nspace->name);
+    info[ninfo].value.type = PMIX_STRING;
+    ninfo++;
+#endif
+
+    memcpy(info[ninfo].key, PMIX_NPROC_OFFSET, sizeof(info[ninfo].key));
+    info[ninfo].value.data.uint32 = 0;
+    info[ninfo].value.type = PMIX_UINT32;
+    ninfo++;
+
+    PMIx_generate_regex(hostname, &nodemap_regex);
+
+    memcpy(info[ninfo].key, PMIX_NODE_MAP, sizeof(info[ninfo].key));
+    info[ninfo].value.data.string = nodemap_regex;
+    info[ninfo].value.type = PMIX_STRING;
+    ninfo++;
+
+    PMIx_generate_ppn("0", &procmap_regex);
+
+    memcpy(info[ninfo].key, PMIX_PROC_MAP, sizeof(info[ninfo].key));
+    info[ninfo].value.data.string = procmap_regex;
+    info[ninfo].value.type = PMIX_STRING;
+    ninfo++;
+
+#if 0
+/*
+ * RM would have to provide this
+ */
+    memcpy(info[ninfo].key, PMIX_NODEID, sizeof(info[ninfo].key));
+    info[ninfo].value.data.uint32= 0;
+    info[ninfo].value.type = PMIX_UINT32;
+    ninfo++;
+#endif
+
+    memcpy(info[ninfo].key, PMIX_NODE_SIZE, sizeof(info[ninfo].key));
+    info[ninfo].value.data.uint32 = 1;
+    info[ninfo].value.type = PMIX_UINT32;
+    ninfo++;
+
+    memcpy(info[ninfo].key, PMIX_LOCAL_PEERS, sizeof(info[ninfo].key));
+    info[ninfo].value.data.string = strdup("0");
+    info[ninfo].value.type = PMIX_STRING;
+    ninfo++;
+#if 0
+/*
+ * No way to know (even RM would not know this)
+ */
+    memcpy(info[ninfo].key, PMIX_LOCAL_CPUSETS, sizeof(info[ninfo].key));
+    info[ninfo].value.data.string = strdup("0");
+    info[ninfo].value.type = PMIX_STRING;
+    ninfo++;
+#endif
+    memcpy(info[ninfo].key, PMIX_LOCALLDR, sizeof(info[ninfo].key));
+    info[ninfo].value.data.uint32 = 0;
+    info[ninfo].value.type = PMIX_UINT32;
+    ninfo++;
+
+    memcpy(info[ninfo].key, PMIX_UNIV_SIZE, sizeof(info[ninfo].key));
+    info[ninfo].value.data.uint32 = 1;
+    info[ninfo].value.type = PMIX_UINT32;
+    ninfo++;
+/*
+ * The settings of JOB_SIZE and LOCAL_SIZE are questionable.  There could be lots of 
+ * other processes in this "job", but we don't know what "job" this process is part of
+ * Maybe it is better to not set anything for these rather than using "1"?
+ */
+    memcpy(info[ninfo].key, PMIX_JOB_SIZE, sizeof(info[ninfo].key));
+    info[ninfo].value.data.uint32 = 1;
+    info[ninfo].value.type = PMIX_UINT32;
+    ninfo++;
+
+    memcpy(info[ninfo].key, PMIX_LOCAL_SIZE, sizeof(info[ninfo].key));
+    info[ninfo].value.data.uint32 = 1;
+    info[ninfo].value.type = PMIX_UINT32;
+    ninfo++;
+
+/*
+ * Don't know how this is used.  If it is used to decide how many processes
+ * you may spawn, then the RM will have to provide this
+ */
+#if 0
+    memcpy(info[ninfo].key, PMIX_MAX_PROCS, sizeof(info[ninfo].key));
+    info[ninfo].value.data.uint32 = 1;
+    info[ninfo].value.type = PMIX_UINT32;
+    ninfo++;
+#endif
+
+    info_array.array= (pmix_info_t*) malloc(sizeof(info[0]) * 8);
+
+    memcpy(info[ninfo].key, PMIX_PROC_DATA, PMIX_MAX_KEYLEN);
+    info[ninfo].value.data.array = info_array;
+    info[ninfo].value.type = PMIX_INFO_ARRAY;
+    
+    i = 0;
+
+    memcpy(info_array.array[i].key, PMIX_RANK, PMIX_MAX_KEYLEN);
+    info_array.array[i].value.data.integer = 0;
+    info_array.array[i].value.type = PMIX_INT;
+    i++;
+
+    memcpy(info_array.array[i].key, PMIX_APPNUM, PMIX_MAX_KEYLEN);
+    info_array.array[i].value.data.uint32 = 0;
+    info_array.array[i].value.type = PMIX_UINT32;
+    i++;
+
+    memcpy(info_array.array[i].key, PMIX_APPLDR, PMIX_MAX_KEYLEN);
+    info_array.array[i].value.data.uint32 = 0;
+    info_array.array[i].value.type = PMIX_UINT32;
+    i++;
+
+    memcpy(info_array.array[i].key, PMIX_GLOBAL_RANK, PMIX_MAX_KEYLEN);
+    info_array.array[i].value.data.uint32 = 0;
+    info_array.array[i].value.type = PMIX_UINT32;
+    i++;
+
+    memcpy(info_array.array[i].key ,PMIX_APP_RANK, PMIX_MAX_KEYLEN);
+    info_array.array[i].value.data.uint32 = 0;
+    info_array.array[i].value.type = PMIX_UINT32;
+    i++;
+/*
+ * More really fuzzy settings that are probably incorrect
+ */
+    memcpy(info_array.array[i].key, PMIX_LOCAL_RANK, PMIX_MAX_KEYLEN);
+    info_array.array[i].value.data.uint16 = 0;
+    info_array.array[i].value.type = PMIX_UINT16;
+    i++;
+
+    memcpy(info_array.array[i].key, PMIX_NODE_RANK, PMIX_MAX_KEYLEN);
+    info_array.array[i].value.data.uint16 = 0;
+    info_array.array[i].value.type = PMIX_UINT16;
+    i++;
+
+    memcpy(info_array.array[i].key, PMIX_HOSTNAME, PMIX_MAX_KEYLEN);
+    info_array.array[i].value.data.string = strdup(hostname);
+    info_array.array[i].value.type = PMIX_STRING;
+    i++;
+
+    info_array.size = i;
+    info[ninfo].value.data.size = i;
+    ninfo++;
+
+    PMIx_server_register_nspace(nspace, 1, info, ninfo, NULL, NULL);
+}
+
 /* Parse init-ack message:
  *    NSPACE<0><rank>VERSION<0>[CRED<0>]
  */
@@ -393,9 +642,16 @@ static pmix_status_t pmix_server_authenticate(int sd, uint16_t protocol,
     pmix_peer_t *psave = NULL;
     bool found;
     pmix_proc_t proc;
+    pmix_pending_connection_t *pnd = PMIX_NEW(pmix_pending_connection_t);
+
+    memset(pnd, 0, sizeof(pmix_pending_connection_t));
+    
+    pnd -> sd = sd;
+
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "RECV CONNECT ACK FROM PEER ON SOCKET %d", sd);
+                        "RECV CONNECT ACK FROM PEER ON SOCKET %d",
+                        sd);
 
     /* ensure all is zero'd */
     memset(&hdr, 0, sizeof(pmix_usock_hdr_t));
@@ -418,11 +674,11 @@ static pmix_status_t pmix_server_authenticate(int sd, uint16_t protocol,
     if (PMIX_SUCCESS != pmix_usock_recv_blocking(sd, msg, hdr.nbytes)) {
         /* unable to complete the recv */
         pmix_output_verbose(2, pmix_globals.debug_output,
-                            "unable to complete recv of connect-ack with client ON SOCKET %d", sd);
+                            "unable to complete recv of connect-ack with client ON SOCKET %d",
+                            sd);
         free(msg);
         return PMIX_ERR_UNREACH;
     }
-
     if (PMIX_SUCCESS != (rc = parse_connect_ack (msg, hdr.nbytes, &nspace,
                                                  &rank, &version, &cred))) {
         pmix_output_verbose(2, pmix_globals.debug_output,
@@ -430,6 +686,35 @@ static pmix_status_t pmix_server_authenticate(int sd, uint16_t protocol,
         free(msg);
         return rc;
     }
+    
+    pmix_globals.myid.rank = rank;
+    /* for connections, the tag in the header tells us if the
+     * caller is a client process or a tool seeking to connect.
+     * If the latter, then the tool will not know its nspace/rank
+     * and we will need to provide it */
+    if (0 != hdr.tag) {
+        /* this is a tool requesting connection - does this
+         * server support that operation? */
+        if (NULL == pmix_host_server.tool_connected) {
+            /* reject the request */
+            free(msg);
+            /* send an error reply to the requestor */
+            rc = PMIX_ERR_NOT_SUPPORTED;
+            goto error;
+        }
+        /* request an nspace for this requestor - it will
+         * automatically be assigned rank=0 */
+          pnd->msg = msg;
+        pmix_host_server.tool_connected(NULL, 0, (pmix_tool_connection_cbfunc_t) cnct_cbfunc, pnd);
+        return PMIX_ERR_OPERATION_IN_PROGRESS;
+    }
+
+    /* get the nspace */
+    nspace = msg;  // a NULL terminator is in the data
+
+    /* get the rank */
+    memcpy(&rank, msg+strlen(nspace)+1, sizeof(int));
+
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "connect-ack recvd from peer %s:%d:%s",
@@ -480,7 +765,7 @@ static pmix_status_t pmix_server_authenticate(int sd, uint16_t protocol,
     PMIX_RETAIN(info);
     psave->info = info;
     info->proc_cnt++; /* increase number of processes on this rank */
-    psave->sd = sd;
+    psave->sd = pnd -> sd;
     if (0 > (psave->index = pmix_pointer_array_add(&pmix_server_globals.clients, psave))) {
         free(msg);
         PMIX_RELEASE(psave);
@@ -573,7 +858,7 @@ static void connection_handler(int sd, short flags, void* cbdata)
     pmix_pending_connection_t *pnd = (pmix_pending_connection_t*)cbdata;
     pmix_peer_t *peer;
     int rank;
-
+    pmix_status_t status;
     pmix_output_verbose(8, pmix_globals.debug_output,
                         "connection_handler: new connection: %d",
                         pnd->sd);
@@ -581,14 +866,17 @@ static void connection_handler(int sd, short flags, void* cbdata)
     /* ensure the socket is in blocking mode */
     pmix_usock_set_blocking(pnd->sd);
 
-    /* receive identifier info from the client and authenticate it - the
+    /* 
+     * Receive identifier info from the client and authenticate it - the
      * function will lookup and return the peer object if the connection
      * is successfully authenticated */
-    if (PMIX_SUCCESS != pmix_server_authenticate(pnd->sd, pnd->protocol,
-                                                 &rank, &peer)) {
-        CLOSE_THE_SOCKET(pnd->sd);
+    if (PMIX_SUCCESS != (status = pmix_server_authenticate(pnd->sd, pnd->protocol,
+                                                 &rank, &peer))) {
+        if(status != PMIX_ERR_OPERATION_IN_PROGRESS)
+	CLOSE_THE_SOCKET(pnd->sd);
         return;
     }
+    
     pmix_usock_set_nonblocking(pnd->sd);
 
     /* start the events for this client */

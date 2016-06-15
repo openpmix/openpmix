@@ -90,6 +90,9 @@ typedef struct {
     pmix_event_t ev;
     uint16_t protocol;
     int sd;
+    char nspace[PMIX_MAX_NSLEN+1];
+    char *msg;
+    pmix_status_t status;
     struct sockaddr_storage addr;
 } pmix_pending_connection_t;
 PMIX_CLASS_DECLARATION(pmix_pending_connection_t);
@@ -130,6 +133,7 @@ typedef struct {
     pmix_buffer_t gdata;                    // cache of data given to me for passing to all clients
     pmix_list_t client_eventregs;           // list of registered events per client.
     pmix_ring_buffer_t notifications;       // ring buffer of pending notifications
+    bool tool_connections_allowed; 
 } pmix_server_globals_t;
 
 #define PMIX_PEER_CADDY(c, p, t)                \

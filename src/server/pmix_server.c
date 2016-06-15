@@ -157,7 +157,7 @@ static pmix_status_t initialize_server_base(pmix_server_module_t *module)
     /* setup the globals */
     pmix_globals_init();
     memset(&pmix_server_globals, 0, sizeof(pmix_server_globals));
-
+    
     /* mark that I am a server */
     pmix_globals.server = true;
 
@@ -256,8 +256,11 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     pmix_status_t rc;
     size_t n;
     pmix_kval_t kv;
-    pmix_listener_t *lt;
+    pmix_listener_t *lt;	
+    int myhostnamelen = 10;
+    char myhostname[myhostnamelen];
 
+    
     ++pmix_globals.init_cntr;
     if (1 < pmix_globals.init_cntr) {
         return PMIX_SUCCESS;
@@ -285,7 +288,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     }
 
     /* check the info keys for a directive about the uid/gid
-     * to be set for the rendezvous file */
+     * to be set for the rendezvous file, and for indication
+     * of willingness to support tool connections */
     if (NULL != info) {
         for (n=0; n < ninfo; n++) {
             if (0 == strcmp(info[n].key, PMIX_USERID)) {
@@ -294,17 +298,39 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
                     lt->owner = info[n].value.data.uint32;
                     lt->owner_given = true;
                 }
-            } else if (0 == strcmp(info[n].key, PMIX_GRPID)) {
+            } 
+	    else if (0 == strcmp(info[n].key, PMIX_GRPID)) {
                /* the grpid is in the uint32_t storage */
                 PMIX_LIST_FOREACH(lt, &pmix_server_globals.listeners, pmix_listener_t) {
                     lt->group = info[n].value.data.uint32;
                     lt->group_given = true;
-                }
+		}
             } else if (0 == strcmp(info[n].key, PMIX_SOCKET_MODE)) {
                 /* socket mode is in the uint32_t storage */
                 PMIX_LIST_FOREACH(lt, &pmix_server_globals.listeners, pmix_listener_t) {
                     lt->mode = info[n].value.data.uint32;
-                }
+                } 
+	    } else if (0 == strcmp(info[n].key, PMIX_SERVER_TOOL_SUPPORT)) {
+                 /* This is where we need to setup a listening
+                 * address and store it in the /tmp/pmix.nodename.tool
+                 * file, where nodename = the local hostname. We will
+                 * then need to call pmix_start_listening(&thataddress)
+                 */ 
+		
+                pmix_listener_t *tl = PMIX_NEW(pmix_listener_t);
+                memset(tl, 0, sizeof(pmix_listener_t));
+		
+		memset(&tl->address, 0, sizeof(struct sockaddr_un));
+		tl -> address.sun_family = AF_UNIX;
+		tl -> mode = ACCESSPERMS;
+
+		/* Get up to 10 chars of hostname.*/
+		gethostname(myhostname, myhostnamelen);
+                snprintf(tl->address.sun_path, sizeof(tl->address.sun_path) - 1, "/tmp/pmix.%s.%d", myhostname, getpid());
+                
+		pmix_server_globals.tool_connections_allowed = true;
+		pmix_list_append(&pmix_server_globals.listeners, tl);
+           
             }
         }
     }
@@ -388,6 +414,7 @@ static void cleanup_server_state(void)
 
 PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
 {
+    
     if (1 != pmix_globals.init_cntr) {
         --pmix_globals.init_cntr;
         return PMIX_SUCCESS;
@@ -406,7 +433,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
 #ifdef HAVE_LIBEVENT_GLOBAL_SHUTDOWN
     libevent_global_shutdown();
 #endif
-
+    
     pmix_usock_finalize();
 
 #if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
