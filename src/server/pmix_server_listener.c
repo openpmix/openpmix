@@ -163,17 +163,16 @@ pmix_status_t pmix_start_listening(pmix_listener_t *lt)
             close(pmix_server_globals.stop_thread[1]);
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
-        /* fork off the listener thread */
-	if(!pmix_server_globals.listen_thread_active) {
-            if (0 > pthread_create(&engine, NULL, listen_thread, NULL)) {
-                pmix_server_globals.listen_thread_active = false;
-                return PMIX_ERROR;
-            }
-	    else {
-                pmix_server_globals.listen_thread_active = true;
-	    }
-	}
+        
+	/* fork off the listener thread */
+        if (0 > pthread_create(&engine, NULL, listen_thread, NULL)) {
+            return PMIX_ERROR;
+        }
+	
+        pmix_server_globals.listen_thread_active = true;
+	
     }
+    
 
     return PMIX_SUCCESS;
 
