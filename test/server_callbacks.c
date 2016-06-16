@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2016 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.
@@ -17,20 +17,19 @@
 #include "src/util/argv.h"
 
 pmix_server_module_t mymodule = {
-    connected,
-    finalized,
-    abort_fn,
-    fencenb_fn,
-    dmodex_fn,
-    publish_fn,
-    lookup_fn,
-    unpublish_fn,
-    spawn_fn,
-    connect_fn,
-    disconnect_fn,
-    regevents_fn,
-    deregevents_fn,
-    NULL
+    .client_connected = connected,
+    .client_finalized = finalized,
+    .abort = abort_fn,
+    .fence_nb = fencenb_fn,
+    .direct_modex = dmodex_fn,
+    .publish = publish_fn,
+    .lookup = lookup_fn,
+    .unpublish = unpublish_fn,
+    .spawn = spawn_fn,
+    .connect = connect_fn,
+    .disconnect = disconnect_fn,
+    .register_events = regevents_fn,
+    .deregister_events = deregevents_fn
 };
 
 typedef struct {
@@ -80,8 +79,12 @@ pmix_list_t *pmix_test_published_list = NULL;
 
 static int finalized_count = 0;
 
-pmix_status_t connected(const pmix_proc_t *proc, void *server_object)
+pmix_status_t connected(const pmix_proc_t *proc, void *server_object,
+                        pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, cbdata);
+    }
     return PMIX_SUCCESS;
 }
 
@@ -303,8 +306,9 @@ pmix_status_t disconnect_fn(const pmix_proc_t procs[], size_t nprocs,
     return PMIX_SUCCESS;
 }
 
-pmix_status_t regevents_fn (const pmix_info_t info[], size_t ninfo,
-                  pmix_op_cbfunc_t cbfunc, void *cbdata)
+pmix_status_t regevents_fn (pmix_status_t *codes, size_t ncodes,
+                           const pmix_info_t info[], size_t ninfo,
+                           pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     TEST_VERBOSE ((" pmix host server regevents_fn called "));
     if (NULL != cbfunc) {
@@ -313,8 +317,8 @@ pmix_status_t regevents_fn (const pmix_info_t info[], size_t ninfo,
     return PMIX_SUCCESS;
 }
 
-pmix_status_t deregevents_fn (const pmix_info_t info[], size_t ninfo,
-                  pmix_op_cbfunc_t cbfunc, void *cbdata)
+pmix_status_t deregevents_fn (pmix_status_t *codes, size_t ncodes,
+                             pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     TEST_VERBOSE ((" pmix host server deregevents_fn called "));
     if (NULL != cbfunc) {

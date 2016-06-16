@@ -534,6 +534,16 @@ static pmix_status_t pmix_server_authenticate(int sd, uint16_t protocol,
         }
     }
 
+    /* let the host server know that this client has connected */
+    if (NULL != pmix_host_server.client_connected) {
+        (void)strncpy(proc.nspace, psave->info->nptr->nspace, PMIX_MAX_NSLEN);
+        proc.rank = psave->info->rank;
+        rc = pmix_host_server.client_connected(&proc, psave->info->server_object,
+                                               NULL, NULL);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
+    }
     /* send the client's array index */
     if (PMIX_SUCCESS != (rc = pmix_usock_send_blocking(sd, (char*)&psave->index, sizeof(int)))) {
         PMIX_ERROR_LOG(rc);
@@ -546,15 +556,6 @@ static pmix_status_t pmix_server_authenticate(int sd, uint16_t protocol,
                         "connect-ack from client completed");
 
     *peer = psave;
-    /* let the host server know that this client has connected */
-    if (NULL != pmix_host_server.client_connected) {
-        (void)strncpy(proc.nspace, psave->info->nptr->nspace, PMIX_MAX_NSLEN);
-        proc.rank = psave->info->rank;
-        rc = pmix_host_server.client_connected(&proc, psave->info->server_object);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-        }
-    }
     return rc;
 
   error:

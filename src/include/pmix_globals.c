@@ -57,8 +57,7 @@ void pmix_globals_init(void)
 {
     memset(&pmix_globals.myid, 0, sizeof(pmix_proc_t));
     PMIX_CONSTRUCT(&pmix_globals.nspaces, pmix_list_t);
-    PMIX_CONSTRUCT(&pmix_globals.errregs, pmix_pointer_array_t);
-    pmix_pointer_array_init(&pmix_globals.errregs, 16, PMIX_MAX_ERROR_REGISTRATIONS, 16);
+    PMIX_CONSTRUCT(&pmix_globals.events, pmix_events_t);
 }
 
 void pmix_globals_finalize(void)
@@ -70,7 +69,7 @@ void pmix_globals_finalize(void)
     if (NULL != pmix_globals.cache_remote) {
         PMIX_RELEASE(pmix_globals.cache_remote);
     }
-    PMIX_DESTRUCT(&pmix_globals.errregs);
+    PMIX_DESTRUCT(&pmix_globals.events);
 }
 
 
@@ -159,32 +158,25 @@ PMIX_CLASS_INSTANCE(pmix_rank_info_t,
                     pmix_list_item_t,
                     info_con, info_des);
 
-static void errcon(pmix_error_reg_info_t *p)
-{
-    p->sglhdlr = false;
-    p->errhandler = NULL;
-    p->info = NULL;
-    p->ninfo = 0;
-}
-static void errdes(pmix_error_reg_info_t *p)
-{
-    p->errhandler = NULL;
-    if (NULL != p->info) {
-        PMIX_INFO_FREE(p->info, p->ninfo);
-    }
-}
-PMIX_CLASS_INSTANCE(pmix_error_reg_info_t,
-                    pmix_object_t,
-                    errcon, errdes);
-
 static void scon(pmix_shift_caddy_t *p)
 {
     p->active = false;
+    p->codes = NULL;
+    p->ncodes = 0;
+    p->nspace = NULL;
+    p->data = NULL;
+    p->ndata = 0;
+    p->info = NULL;
+    p->ninfo = 0;
+    p->evhdlr = NULL;
     p->kv = NULL;
+    p->vptr = NULL;
+    p->cd = NULL;
+    p->tracker = NULL;
+    p->enviro = false;
     p->cbfunc.relfn = NULL;
-    p->cbfunc.errregcbfn = NULL;
-    p->cbfunc.opcbfn = NULL;
     p->cbdata = NULL;
+    p->ref = 0;
 }
 static void scdes(pmix_shift_caddy_t *p)
 {
@@ -195,3 +187,7 @@ static void scdes(pmix_shift_caddy_t *p)
 PMIX_CLASS_INSTANCE(pmix_shift_caddy_t,
                     pmix_object_t,
                     scon, scdes);
+
+PMIX_CLASS_INSTANCE(pmix_info_caddy_t,
+                    pmix_list_item_t,
+                    NULL, NULL);

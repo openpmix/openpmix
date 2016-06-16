@@ -82,9 +82,12 @@ BEGIN_C_DECLS
  * server, which is free to release it upon return from the callback */
 
 
-/* Notify the host server that a client connected to us */
-typedef pmix_status_t (*pmix_server_client_connected_fn_t)(const pmix_proc_t *proc,
-                                                           void* server_object);
+/* Notify the host server that a client connected to us - note
+ * that the client will be in a blocked state until the host server
+ * executes the callback function, thus allowing the PMIx server support
+ * library to release the client */
+typedef pmix_status_t (*pmix_server_client_connected_fn_t)(const pmix_proc_t *proc, void* server_object,
+                                                           pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Notify the host server that a client called PMIx_Finalize - note
  * that the client will be in a blocked state until the host server
@@ -235,21 +238,37 @@ typedef pmix_status_t (*pmix_server_disconnect_fn_t)(const pmix_proc_t procs[], 
                                                      pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Register to receive notifications for the specified events. The resource
- * manager may have access to events beyond process failure. The client
- * application requests to be notified of such events by registering a
- * err handler(s) for the events. The PMIx client shall pass the request
- * to the PMIx server, which in turn shall pass the request to
- * the resource manager by calling the register events function. */
- typedef pmix_status_t (*pmix_server_register_events_fn_t)(const pmix_info_t info[], size_t ninfo,
+ * manager is _required_ to pass along to the local PMIx server all events
+ * that directly relate to a registered namespace. However, the RM may have
+ * access to events beyond those - e.g., environmental events. The PMIx server
+ * will register to receive environmental events that match specific PMIx
+ * event codes. If the host RM supports such notifications, it will need to
+ * translate its own internal event codes to fit into a corresponding PMIx event
+ * code - any specific info beyond that can be passed in via the pmix_info_t
+ * upon notification.
+ *
+ * The info array included in this API is reserved for possible future directives
+ * to further steer notification.
+ */
+ typedef pmix_status_t (*pmix_server_register_events_fn_t)(pmix_status_t *codes, size_t ncodes,
+                                                           const pmix_info_t info[], size_t ninfo,
                                                            pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-/* Deregister to receive notifications for the specified events that
- * the client application has registered for previously. When the client
- * application deregisters the err handler forevents, PMIX client passes the
- * deregister request to PMIx server which in turn passes the request to the
- * resource manager by calling deregister events function.*/
- typedef pmix_status_t (*pmix_server_deregister_events_fn_t)(const pmix_info_t info[], size_t ninfo,
-                                                           pmix_op_cbfunc_t cbfunc, void *cbdata);
+/* Deregister to receive notifications for the specified environmental events
+ * for which the PMIx server has previously registered. The host RM remains
+ * required to notify of any job-related events */
+ typedef pmix_status_t (*pmix_server_deregister_events_fn_t)(pmix_status_t *codes, size_t ncodes,
+                                                             pmix_op_cbfunc_t cbfunc, void *cbdata);
+
+/* Notify the specified processes of an event generated either by
+ * the PMIx server itself, or by one of its local clients. The process
+ * generating the event is provided in the source parameter. */
+typedef pmix_status_t (*pmix_server_notify_event_fn_t)(pmix_status_t code,
+                                                       const pmix_proc_t *source,
+                                                       pmix_data_range_t range,
+                                                       pmix_info_t info[], size_t ninfo,
+                                                       pmix_op_cbfunc_t cbfunc, void *cbdata);
+
 
 /* Callback function for incoming connection requests from
  * local clients */
@@ -269,21 +288,22 @@ typedef pmix_status_t (*pmix_server_listener_fn_t)(int listening_sd,
                                                    pmix_connection_cbfunc_t cbfunc,
                                                    void *cbdata);
 
-typedef struct pmix_server_module_1_0_0_t {
-    pmix_server_client_connected_fn_t  client_connected;
-    pmix_server_client_finalized_fn_t  client_finalized;
-    pmix_server_abort_fn_t             abort;
-    pmix_server_fencenb_fn_t           fence_nb;
-    pmix_server_dmodex_req_fn_t        direct_modex;
-    pmix_server_publish_fn_t           publish;
-    pmix_server_lookup_fn_t            lookup;
-    pmix_server_unpublish_fn_t         unpublish;
-    pmix_server_spawn_fn_t             spawn;
-    pmix_server_connect_fn_t           connect;
-    pmix_server_disconnect_fn_t        disconnect;
-    pmix_server_register_events_fn_t   register_events;
-    pmix_server_deregister_events_fn_t deregister_events;
-    pmix_server_listener_fn_t          listener;
+typedef struct pmix_server_module_2_0_0_t {
+    pmix_server_client_connected_fn_t   client_connected;
+    pmix_server_client_finalized_fn_t   client_finalized;
+    pmix_server_abort_fn_t              abort;
+    pmix_server_fencenb_fn_t            fence_nb;
+    pmix_server_dmodex_req_fn_t         direct_modex;
+    pmix_server_publish_fn_t            publish;
+    pmix_server_lookup_fn_t             lookup;
+    pmix_server_unpublish_fn_t          unpublish;
+    pmix_server_spawn_fn_t              spawn;
+    pmix_server_connect_fn_t            connect;
+    pmix_server_disconnect_fn_t         disconnect;
+    pmix_server_register_events_fn_t    register_events;
+    pmix_server_deregister_events_fn_t  deregister_events;
+    pmix_server_notify_event_fn_t       notify_event;
+    pmix_server_listener_fn_t           listener;
 } pmix_server_module_t;
 
 /****    SERVER SUPPORT INIT/FINALIZE FUNCTIONS    ****/
@@ -368,7 +388,8 @@ pmix_status_t PMIx_server_register_nspace(const char nspace[], int nlocalprocs,
  * intended to support persistent PMIx servers by providing
  * an opportunity for the host RM to tell the PMIx server
  * library to release all memory for a completed job */
-void PMIx_server_deregister_nspace(const char nspace[]);
+void PMIx_server_deregister_nspace(const char nspace[],
+                                   pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Register a client process with the PMIx server library. The
  * expected user ID and group ID of the child process helps the
@@ -392,7 +413,8 @@ pmix_status_t PMIx_server_register_client(const pmix_proc_t *proc,
  * deregister_nspace API will automatically delete all client
  * info for that nspace - this API is therefore intended solely
  * for use in exception cases */
-void PMIx_server_deregister_client(const pmix_proc_t *proc);
+void PMIx_server_deregister_client(const pmix_proc_t *proc,
+                                   pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Setup the environment of a child process to be forked
  * by the host so it can correctly interact with the PMIx

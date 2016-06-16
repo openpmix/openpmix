@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2015      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2016 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
@@ -61,15 +61,19 @@ void cli_kill_all(void);
 
 bool test_terminated(void);
 
-void errhandler(pmix_status_t status,
-                pmix_proc_t procs[], size_t nprocs,
-                pmix_info_t info[], size_t ninfo);
+void errhandler(size_t evhdlr_registration_id,
+                pmix_status_t status,
+                const pmix_proc_t *source,
+                pmix_info_t info[], size_t ninfo,
+                pmix_info_t results[], size_t nresults,
+                pmix_event_notification_cbfunc_fn_t cbfunc,
+                void *cbdata);
 
 void op_callbk(pmix_status_t status,
                void *cbdata);
 
 void errhandler_reg_callbk (pmix_status_t status,
-                            int errhandler_ref,
+                            size_t errhandler_ref,
                             void *cbdata);
 
 

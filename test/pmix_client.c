@@ -41,9 +41,12 @@
 #include "test_error.h"
 
 
-static void errhandler(pmix_status_t status,
-                pmix_proc_t procs[], size_t nprocs,
-                pmix_info_t info[], size_t ninfo)
+static void errhandler(size_t evhdlr_registration_id,
+                       pmix_status_t status,
+                       const pmix_proc_t *source,
+                       pmix_info_t info[], size_t ninfo,
+                       pmix_event_notification_cbfunc_fn_t cbfunc,
+                       void *cbdata)
 {
     TEST_ERROR(("PMIX client: Error handler with status = %d", status))
 }
@@ -55,11 +58,11 @@ static void op_callbk(pmix_status_t status,
 }
 
 static void errhandler_reg_callbk (pmix_status_t status,
-                            int errhandler_ref,
-                            void *cbdata)
+                                   size_t errhandler_ref,
+                                   void *cbdata)
 {
-    TEST_VERBOSE(("PMIX client ERRHANDLER REGISTRATION CALLBACK CALLED WITH STATUS %d, ref=%d",
-                  status, errhandler_ref));
+    TEST_VERBOSE(("PMIX client ERRHANDLER REGISTRATION CALLBACK CALLED WITH STATUS %d, ref=%lu",
+                  status, (unsigned long)errhandler_ref));
 }
 
 int main(int argc, char **argv)
@@ -87,7 +90,7 @@ int main(int argc, char **argv)
         FREE_TEST_PARAMS(params);
         exit(0);
     }
-    PMIx_Register_errhandler(NULL, 0, errhandler, errhandler_reg_callbk, NULL);
+    PMIx_Register_event_handler(NULL, 0, NULL, 0, errhandler, errhandler_reg_callbk, NULL);
     if (myproc.rank != params.rank) {
         TEST_ERROR(("Client ns %s Rank returned in PMIx_Init %d does not match to rank from command line %d.", myproc.nspace, myproc.rank, params.rank));
         FREE_TEST_PARAMS(params);
@@ -189,7 +192,7 @@ int main(int argc, char **argv)
     }
 
     TEST_VERBOSE(("Client ns %s rank %d: PASSED", myproc.nspace, myproc.rank));
-    PMIx_Deregister_errhandler(1, op_callbk, NULL);
+    PMIx_Deregister_event_handler(1, op_callbk, NULL);
 
     /* In case of direct modex we want to delay Finalize
        until everybody has finished. Otherwise some processes

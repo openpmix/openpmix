@@ -68,6 +68,7 @@ static void lost_connection(pmix_peer_t *peer, pmix_status_t err)
         peer->recv_msg = NULL;
     }
     CLOSE_THE_SOCKET(peer->sd);
+
     if (pmix_globals.server) {
         /* if I am a server, then we need to ensure that
          * we properly account for the loss of this client
@@ -113,8 +114,10 @@ static void lost_connection(pmix_peer_t *peer, pmix_status_t err)
         /* if I am a client, there is only
          * one connection we can have */
         pmix_globals.connected = false;
+         /* set the public error status */
+        err = PMIX_ERR_LOST_CONNECTION_TO_SERVER;
     }
-    PMIX_REPORT_ERROR(err);
+    PMIX_REPORT_EVENT(err);
 }
 
 static pmix_status_t send_bytes(int sd, char **buf, size_t *remain)
@@ -531,5 +534,5 @@ void pmix_usock_process_msg(int fd, short flags, void *cbdata)
     /* we get here if no matching recv was found - this is an error */
     pmix_output(0, "UNEXPECTED MESSAGE tag =%d", msg->hdr.tag);
     PMIX_RELEASE(msg);
-    PMIX_REPORT_ERROR(PMIX_ERROR);
+    PMIX_REPORT_EVENT(PMIX_ERROR);
 }
