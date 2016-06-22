@@ -267,7 +267,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     }
 
 #if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
-    if (PMIX_SUCCESS != (rc = pmix_dstore_init())) {
+    if (PMIX_SUCCESS != (rc = pmix_dstore_init(info, ninfo))) {
         return rc;
     }
 #endif /* PMIX_ENABLE_DSTORE */
@@ -451,7 +451,6 @@ static void cleanup_server_state(void)
 
 PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
 {
-
     if (1 != pmix_globals.init_cntr) {
         --pmix_globals.init_cntr;
         return PMIX_SUCCESS;
@@ -633,6 +632,13 @@ static void _register_nspace(int sd, short args, void *cbdata)
         }
     }
     /* do not destruct the kv object - no memory leak will result */
+
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+    if (0 > pmix_dstore_nspace_add(cd->proc.nspace)) {
+        PMIX_ERROR_LOG(rc);
+        goto release;
+    }
+#endif
 
  release:
     if (NULL != nodes) {
@@ -1019,6 +1025,11 @@ PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char *
     }
     /* pass our active security mode */
     pmix_setenv("PMIX_SECURITY_MODE", security_mode, true, env);
+
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+    /* pass dstore path to files */
+    pmix_dstore_patch_env(env);
+#endif
 
     return PMIX_SUCCESS;
 }
