@@ -22,6 +22,10 @@ BEGIN_C_DECLS
 
 #define PMIX_SHMEM_DS_ID_INVALID -1
 
+typedef enum {
+    PMIX_SM_RONLY,
+    PMIX_SM_RW
+} pmix_sm_access_mode_t;
 
 typedef struct pmix_sm_seg_t {
     /* pid of the shared memory segment creator */
@@ -38,7 +42,7 @@ typedef struct pmix_sm_seg_t {
 int pmix_sm_init(void);
 void pmix_sm_finalize(void);
 int pmix_sm_segment_create(pmix_sm_seg_t *sm_seg, const char *file_name, size_t size);
-int pmix_sm_segment_attach(pmix_sm_seg_t *sm_seg);
+int pmix_sm_segment_attach(pmix_sm_seg_t *sm_seg, pmix_sm_access_mode_t sm_mode);
 int pmix_sm_segment_detach(pmix_sm_seg_t *sm_seg);
 int pmix_sm_segment_unlink(pmix_sm_seg_t *sm_seg);
 
@@ -76,7 +80,7 @@ typedef int (*pmix_sm_base_module_segment_create_fn_t)(pmix_sm_seg_t *sm_seg, co
 * @return        base address of shared memory segment on success. returns
 *                NULL otherwise.
 */
-typedef int (*pmix_sm_base_module_segment_attach_fn_t)(pmix_sm_seg_t *sm_seg);
+typedef int (*pmix_sm_base_module_segment_attach_fn_t)(pmix_sm_seg_t *sm_seg, pmix_sm_access_mode_t sm_mode);
 
 /**
 * detach from an existing shared memory segment.
