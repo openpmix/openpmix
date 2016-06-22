@@ -51,13 +51,13 @@ int pmix_sm_segment_create(pmix_sm_seg_t *sm_seg, const char *file_name, size_t 
     return pmix_sm.segment_create(sm_seg, file_name, size);
 }
 
-int pmix_sm_segment_attach(pmix_sm_seg_t *sm_seg)
+int pmix_sm_segment_attach(pmix_sm_seg_t *sm_seg, pmix_sm_access_mode_t sm_mode)
 {
     if (!pmix_sm.segment_attach) {
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
-    return pmix_sm.segment_attach(sm_seg);
+    return pmix_sm.segment_attach(sm_seg, sm_mode);
 }
 
 int pmix_sm_segment_detach(pmix_sm_seg_t *sm_seg)

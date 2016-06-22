@@ -367,8 +367,11 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc)
 
     /* setup the support */
 #if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
-    if (PMIX_SUCCESS != (rc = pmix_dstore_init())) {
-        return rc;
+    if (PMIX_SUCCESS != (rc = pmix_dstore_init(NULL, 0))) {
+        pmix_output_close(pmix_globals.debug_output);
+        pmix_output_finalize();
+        pmix_class_finalize();
+        return PMIX_ERR_DATA_VALUE_NOT_FOUND;
     }
 #endif /* PMIX_ENABLE_DSTORE */
     pmix_bfrop_open();
