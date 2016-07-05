@@ -6,6 +6,8 @@
  * Copyright (c) 2015      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  */
 
@@ -201,7 +203,8 @@ PMIX_CLASS_DECLARATION(pmix_usock_queue_t);
         event_active(&queue->ev, EV_WRITE, 1);                          \
     } while (0)
 
-pmix_status_t pmix_start_listening(pmix_listener_t *lt);
+pmix_status_t pmix_prepare_listening(pmix_listener_t *lt, bool *need_listener);
+pmix_status_t pmix_start_listening(void);
 void pmix_stop_listening(void);
 
 bool pmix_server_trk_update(pmix_server_trkr_t *trk);
