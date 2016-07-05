@@ -72,7 +72,7 @@ static pthread_t engine;
 /*
  * start listening on our rendezvous file
  */
-pmix_status_t pmix_start_listening(pmix_listener_t *lt)
+pmix_status_t pmix_prepare_listening(pmix_listener_t *lt, bool *need_listener)
 {
     int flags;
     pmix_status_t rc;
@@ -154,26 +154,7 @@ pmix_status_t pmix_start_listening(pmix_listener_t *lt)
     }
 
     if (PMIX_SUCCESS != rc && !pmix_server_globals.listen_thread_active) {
-        /*** spawn internal listener thread */
-        if (0 > pipe(pmix_server_globals.stop_thread)) {
-            PMIX_ERROR_LOG(PMIX_ERR_IN_ERRNO);
-            return PMIX_ERR_OUT_OF_RESOURCE;
-        }
-        /* Make sure the pipe FDs are set to close-on-exec so that
-           they don't leak into children */
-        if (pmix_fd_set_cloexec(pmix_server_globals.stop_thread[0]) != PMIX_SUCCESS ||
-            pmix_fd_set_cloexec(pmix_server_globals.stop_thread[1]) != PMIX_SUCCESS) {
-            PMIX_ERROR_LOG(PMIX_ERR_IN_ERRNO);
-            close(pmix_server_globals.stop_thread[0]);
-            close(pmix_server_globals.stop_thread[1]);
-            return PMIX_ERR_OUT_OF_RESOURCE;
-        }
-        /* fork off the listener thread */
-        pmix_server_globals.listen_thread_active = true;
-        if (0 > pthread_create(&engine, NULL, listen_thread, NULL)) {
-            pmix_server_globals.listen_thread_active = false;
-            return PMIX_ERROR;
-        }
+        *need_listener = true;
     }
 
     return PMIX_SUCCESS;
@@ -182,6 +163,31 @@ sockerror:
     (void)close(lt->socket);
     lt->socket = -1;
     return PMIX_ERROR;
+}
+
+pmix_status_t pmix_start_listening() {
+    /*** spawn internal listener thread */
+    if (0 > pipe(pmix_server_globals.stop_thread)) {
+        PMIX_ERROR_LOG(PMIX_ERR_IN_ERRNO);
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+    /* Make sure the pipe FDs are set to close-on-exec so that
+       they don't leak into children */
+    if (pmix_fd_set_cloexec(pmix_server_globals.stop_thread[0]) != PMIX_SUCCESS ||
+        pmix_fd_set_cloexec(pmix_server_globals.stop_thread[1]) != PMIX_SUCCESS) {
+        PMIX_ERROR_LOG(PMIX_ERR_IN_ERRNO);
+        close(pmix_server_globals.stop_thread[0]);
+        close(pmix_server_globals.stop_thread[1]);
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+    /* fork off the listener thread */
+    pmix_server_globals.listen_thread_active = true;
+    if (0 > pthread_create(&engine, NULL, listen_thread, NULL)) {
+        pmix_server_globals.listen_thread_active = false;
+        return PMIX_ERROR;
+    }
+
+    return PMIX_SUCCESS;
 }
 
 void pmix_stop_listening(void)

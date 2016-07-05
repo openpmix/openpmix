@@ -1,7 +1,7 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2014-2016 Intel, Inc.  All rights reserved.
- * Copyright (c) 2014-2015 Research Organization for Information Science
+ * Copyright (c) 2014-2016 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
@@ -227,6 +227,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     size_t n;
     pmix_kval_t kv;
     pmix_listener_t *lt;
+    bool need_listener;
 
     ++pmix_globals.init_cntr;
     if (1 < pmix_globals.init_cntr) {
@@ -287,8 +288,15 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     pmix_list_append(&pmix_usock_globals.posted_recvs, &req->super);
 
     /* start listening */
+    need_listener = false;
     PMIX_LIST_FOREACH(lt, &pmix_server_globals.listeners, pmix_listener_t) {
-        if (PMIX_SUCCESS != pmix_start_listening(lt)) {
+        if (PMIX_SUCCESS != pmix_prepare_listening(lt, &need_listener)) {
+            PMIx_server_finalize();
+            return PMIX_ERR_INIT;
+        }
+    }
+    if (need_listener) {
+        if (PMIX_SUCCESS != pmix_start_listening()) {
             PMIx_server_finalize();
             return PMIX_ERR_INIT;
         }
