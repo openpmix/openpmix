@@ -17,7 +17,7 @@
 #include <src/include/pmix_config.h>
 
 
-#include "src/buffer_ops/buffer_ops.h"
+#include "src/mca/bfrops/bfrops.h"
 #include "src/class/pmix_hash_table.h"
 
 BEGIN_C_DECLS

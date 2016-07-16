@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2015 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2016 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2015 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
@@ -18,7 +18,7 @@
 #include <src/include/pmix_config.h>
 
 #include <src/include/types.h>
-#include <pmix/autogen/pmix_stdint.h>
+#include <src/include/pmix_stdint.h>
 
 #include <pmix.h>
 
@@ -46,13 +46,11 @@
 #include PMIX_EVENT_HEADER
 
 #include "src/class/pmix_list.h"
-#include "src/buffer_ops/buffer_ops.h"
+#include "src/mca/bfrops/bfrops.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
-#include "src/util/progress_threads.h"
 #include "src/usock/usock.h"
-#include "src/sec/pmix_sec.h"
 
 #include "pmix_client_ops.h"
 
@@ -130,29 +128,29 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
 
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
+    if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->pack(msg, &cmd, 1, PMIX_CMD))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
 
     /* pack the number of procs */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &nprocs, 1, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->pack(msg, &nprocs, 1, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, procs, nprocs, PMIX_PROC))) {
+    if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->pack(msg, procs, nprocs, PMIX_PROC))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
 
     /* pack the info structs */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &ninfo, 1, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->pack(msg, &ninfo, 1, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
     }
     if (0 < ninfo) {
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, info, ninfo, PMIX_INFO))) {
+        if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->pack(msg, info, ninfo, PMIX_INFO))) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
             return rc;
@@ -173,7 +171,7 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Disconnect(const pmix_proc_t procs[], size_t nprocs,
-                                const pmix_info_t info[], size_t ninfo)
+                                          const pmix_info_t info[], size_t ninfo)
 {
     pmix_status_t rc;
     pmix_cb_t *cb;
@@ -237,29 +235,29 @@ PMIX_EXPORT pmix_status_t PMIx_Disconnect_nb(const pmix_proc_t procs[], size_t n
 
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
+    if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->pack(msg, &cmd, 1, PMIX_CMD))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
 
     /* pack the number of procs */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &nprocs, 1, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->pack(msg, &nprocs, 1, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, procs, nprocs, PMIX_PROC))) {
+    if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->pack(msg, procs, nprocs, PMIX_PROC))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
 
     /* pack the info structs */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &ninfo, 1, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->pack(msg, &ninfo, 1, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
     }
     if (0 < ninfo) {
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, info, ninfo, PMIX_INFO))) {
+        if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->pack(msg, info, ninfo, PMIX_INFO))) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
             return rc;
@@ -298,17 +296,17 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
 
     /* unpack the returned status */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ret, &cnt, PMIX_INT))) {
+    if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->unpack(buf, &ret, &cnt, PMIX_INT))) {
         PMIX_ERROR_LOG(rc);
         ret = rc;
     }
     /* connect has to also pass back data from all nspace's involved in
      * the operation, including our own. Each will come as a buffer */
     cnt = 1;
-    while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(buf, &bptr, &cnt, PMIX_BUFFER))) {
+    while (PMIX_SUCCESS == (rc = pmix_globals.mypeer->comm.bfrops->unpack(buf, &bptr, &cnt, PMIX_BUFFER))) {
         /* unpack the nspace for this blob */
         cnt = 1;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(bptr, &nspace, &cnt, PMIX_STRING))) {
+        if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->unpack(bptr, &nspace, &cnt, PMIX_STRING))) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(bptr);
             continue;

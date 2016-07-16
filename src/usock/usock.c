@@ -6,7 +6,6 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -17,7 +16,7 @@
 #include <src/include/pmix_config.h>
 
 #include <src/include/types.h>
-#include <pmix/autogen/pmix_stdint.h>
+#include <src/include/pmix_stdint.h>
 #include <src/include/pmix_socket_errno.h>
 
 #include "src/include/pmix_globals.h"
@@ -42,7 +41,7 @@
 #include <sys/types.h>
 #endif
 
-#include "src/buffer_ops/buffer_ops.h"
+#include "src/mca/bfrops/bfrops.h"
 #include "src/util/output.h"
 
 #include "usock.h"
@@ -78,6 +77,7 @@ void pmix_usock_finalize(void)
     PMIX_LIST_DESTRUCT(&pmix_usock_globals.posted_recvs);
 }
 
+
 pmix_status_t pmix_usock_set_nonblocking(int sd)
 {
     int flags;
@@ -96,7 +96,7 @@ pmix_status_t pmix_usock_set_nonblocking(int sd)
     return PMIX_SUCCESS;
 }
 
-pmix_status_t  pmix_usock_set_blocking(int sd)
+int pmix_usock_set_blocking(int sd)
 {
     int flags;
      /* setup the socket as non-blocking */

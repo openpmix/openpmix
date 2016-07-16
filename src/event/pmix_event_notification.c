@@ -8,14 +8,17 @@
  * $HEADER$
  */
 #include <src/include/pmix_config.h>
-#include <pmix/rename.h>
+#include <src/include/rename.h>
 
 #include <pmix.h>
-#include <pmix/pmix_common.h>
+#include <pmix_common.h>
 #include <pmix_server.h>
 
 #include "src/util/error.h"
 #include "src/util/output.h"
+
+#include "src/mca/bfrops/bfrops.h"
+#include "src/runtime/pmix_rte.h"
 
 #include "src/client/pmix_client_ops.h"
 #include "src/server/pmix_server_ops.h"
@@ -44,7 +47,7 @@ PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status,
 {
     int rc;
 
-    if (pmix_globals.server) {
+    if (PMIX_PROC_SERVER == pmix_globals.proc_type) {
         rc = notify_client_of_event(status, source, range,
                                     info, ninfo,
                                     cbfunc, cbdata);
@@ -62,7 +65,7 @@ PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status,
     return rc;
 }
 
-static void notify_event_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
+static void notify_event_cbfunc(struct pmix_peer_t *peer, pmix_usock_hdr_t *hdr,
                                 pmix_buffer_t *buf, void *cbdata)
 {
     pmix_status_t rc, ret;
@@ -70,7 +73,7 @@ static void notify_event_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
 
     /* unpack the status */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ret, &cnt, PMIX_STATUS))) {
+    if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->unpack(buf, &ret, &cnt, PMIX_STATUS))) {
         PMIX_ERROR_LOG(rc);
         ret = rc;
     }
@@ -102,29 +105,29 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
     msg = PMIX_NEW(pmix_buffer_t);
 
     /* pack the command */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
+    if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->pack(msg, &cmd, 1, PMIX_CMD))) {
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
     /* pack the status */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &status, 1, PMIX_STATUS))) {
+    if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->pack(msg, &status, 1, PMIX_STATUS))) {
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
     /* no need to pack the source as it is us */
 
     /* pack the range */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &range, 1, PMIX_DATA_RANGE))) {
+    if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->pack(msg, &range, 1, PMIX_DATA_RANGE))) {
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
     /* pack the info */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &ninfo, 1, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->pack(msg, &ninfo, 1, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
     if (0 < ninfo) {
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, info, ninfo, PMIX_INFO))) {
+        if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->pack(msg, info, ninfo, PMIX_INFO))) {
             PMIX_ERROR_LOG(rc);
             goto cleanup;
         }
@@ -158,6 +161,77 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
     PMIX_RELEASE(msg);
     /* we were unable to send anything, so we just return the error */
     return rc;
+}
+
+static void _notify_complete(pmix_status_t status, void *cbdata)
+{
+    pmix_event_chain_t *chain = (pmix_event_chain_t*)cbdata;
+    PMIX_RELEASE(chain);
+}
+
+void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_usock_hdr_t *hdr,
+                             pmix_buffer_t *buf, void *cbdata)
+{
+    pmix_status_t rc;
+    int32_t cnt;
+    pmix_cmd_t cmd;
+    pmix_event_chain_t *chain;
+
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:client_notify_recv - processing event");
+
+    /* start the local notification chain */
+    chain = PMIX_NEW(pmix_event_chain_t);
+    chain->final_cbfunc = _notify_complete;
+    chain->final_cbdata = chain;
+
+    cnt=1;
+    if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->unpack(buf, &cmd, &cnt, PMIX_CMD))) {
+        PMIX_ERROR_LOG(rc);
+        goto error;
+    }
+    /* unpack the status */
+    cnt=1;
+    if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->unpack(buf, &chain->status, &cnt, PMIX_INT))) {
+        PMIX_ERROR_LOG(rc);
+        goto error;
+    }
+
+    /* unpack the source of the event */
+    cnt=1;
+    if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->unpack(buf, &chain->source, &cnt, PMIX_PROC))) {
+        PMIX_ERROR_LOG(rc);
+        goto error;
+    }
+
+    /* unpack the info that might have been provided */
+    cnt=1;
+    if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->unpack(buf, &chain->ninfo, &cnt, PMIX_SIZE))) {
+        PMIX_ERROR_LOG(rc);
+        goto error;
+    }
+    if (0 < chain->ninfo) {
+        PMIX_INFO_CREATE(chain->info, chain->ninfo);
+        cnt = chain->ninfo;
+         if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->unpack(buf, chain->info, &cnt, PMIX_INFO))) {
+            PMIX_ERROR_LOG(rc);
+            goto error;
+        }
+    }
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "[%s:%d] pmix:client_notify_recv - processing event %d, calling errhandler",
+                        pmix_globals.myid.nspace, pmix_globals.myid.rank, chain->status);
+
+    pmix_invoke_local_event_hdlr(chain);
+    return;
+
+  error:
+    /* we always need to return */
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:client_notify_recv - unpack error status =%d, calling def errhandler", rc);
+    chain = PMIX_NEW(pmix_event_chain_t);
+    chain->status = rc;
+    pmix_invoke_local_event_hdlr(chain);
 }
 
 
@@ -394,6 +468,47 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
     return;
 }
 
+pmix_status_t pmix_event_pack_notification(struct pmix_peer_t *pr,
+                                           struct pmix_notify_caddy_t *ncd,
+                                           pmix_buffer_t *buf)
+{
+    pmix_cmd_t cmd = PMIX_NOTIFY_CMD;
+    pmix_status_t rc;
+    pmix_notify_caddy_t *cd = (pmix_notify_caddy_t*)ncd;
+    pmix_peer_t *peer = (pmix_peer_t*)pr;
+
+    /* pack the command */
+    if (PMIX_SUCCESS != (rc = peer->comm.bfrops->pack(buf, &cmd, 1, PMIX_CMD))) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    /* pack the status */
+    if (PMIX_SUCCESS != (rc = peer->comm.bfrops->pack(buf, &cd->status, 1, PMIX_INT))) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    /* pack the source */
+    if (PMIX_SUCCESS != (rc = peer->comm.bfrops->pack(buf, &cd->source, 1, PMIX_PROC))) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    /* pack any info */
+    if (PMIX_SUCCESS != (rc = peer->comm.bfrops->pack(buf, &cd->ninfo, 1, PMIX_SIZE))) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    if (0 < cd->ninfo) {
+        if (PMIX_SUCCESS != (rc = peer->comm.bfrops->pack(buf, cd->info, cd->ninfo, PMIX_INFO))) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+    }
+    return PMIX_SUCCESS;
+}
 
 static void _notify_client_event(int sd, short args, void *cbdata)
 {
@@ -401,6 +516,8 @@ static void _notify_client_event(int sd, short args, void *cbdata)
     pmix_notify_caddy_t *rbout;
     pmix_regevents_info_t *reginfoptr;
     pmix_peer_events_info_t *pr;
+    pmix_buffer_t *buf;
+    pmix_status_t rc;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix_server: _notify_error notifying clients of error %d",
@@ -433,8 +550,16 @@ static void _notify_client_event(int sd, short args, void *cbdata)
                 pmix_output_verbose(2, pmix_globals.debug_output,
                                     "pmix_server: notifying client %s:%d",
                                     pr->peer->info->nptr->nspace, pr->peer->info->rank);
-                PMIX_RETAIN(cd->buf);
-                PMIX_SERVER_QUEUE_REPLY(pr->peer, 0, cd->buf);
+                /* sadly, we need to pack this for each client as we cannot know
+                 * in advance the bfrops module of the client */
+                buf = PMIX_NEW(pmix_buffer_t);
+                if (PMIX_SUCCESS != (rc = pmix_event_pack_notification(pr->peer,
+                                                                       (struct pmix_notify_caddy_t*)cd, buf))) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_RELEASE(buf);
+                    continue;
+                }
+                PMIX_SERVER_QUEUE_REPLY(pr->peer, 0, buf);
             }
         }
     }
@@ -461,8 +586,6 @@ static pmix_status_t notify_client_of_event(pmix_status_t status,
                                             pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_notify_caddy_t *cd;
-    pmix_cmd_t cmd = PMIX_NOTIFY_CMD;
-    pmix_status_t rc;
     size_t n;
 
     cd = PMIX_NEW(pmix_notify_caddy_t);
@@ -485,42 +608,15 @@ static pmix_status_t notify_client_of_event(pmix_status_t status,
         }
     }
 
-    /* pack the command */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(cd->buf, &cmd, 1, PMIX_CMD))) {
-        PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(cd);
-        return rc;
-    }
-
-    /* pack the status */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(cd->buf, &status, 1, PMIX_INT))) {
-        PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(cd);
-        return rc;
-    }
-
-    /* pack the source */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(cd->buf, source, 1, PMIX_PROC))) {
-        PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(cd);
-        return rc;
-    }
-
-    /* pack any info */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(cd->buf, &ninfo, 1, PMIX_SIZE))) {
-        PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(cd);
-        return rc;
-    }
-
+    /* we need to copy the info across as we need to retain the event
+     * for later registrations */
+    cd->ninfo = ninfo;
     if (0 < ninfo) {
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(cd->buf, info, ninfo, PMIX_INFO))) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(cd);
-            return rc;
+        PMIX_INFO_CREATE(cd->info, ninfo);
+        for (n=0; n < ninfo; n++) {
+            PMIX_INFO_XFER(&cd->info[n], &info[n]);
         }
     }
-
     /* track the eventual callback info */
     cd->cbfunc = cbfunc;
     cd->cbdata = cbdata;
@@ -535,6 +631,8 @@ static pmix_status_t notify_client_of_event(pmix_status_t status,
     return PMIX_SUCCESS;
 }
 
+
+/****    INSTANCE EVENT OBJECTS    ****/
 static void sevcon(pmix_single_event_t *p)
 {
     p->name = NULL;

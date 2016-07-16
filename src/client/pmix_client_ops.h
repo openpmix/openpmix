@@ -13,7 +13,7 @@
 #include <src/include/pmix_config.h>
 
 
-#include "src/buffer_ops/buffer_ops.h"
+#include "src/mca/bfrops/bfrops.h"
 #include "src/class/pmix_hash_table.h"
 #include "src/usock/usock.h"
 

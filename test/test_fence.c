@@ -11,7 +11,6 @@
  */
 
 #include "test_fence.h"
-#include "src/buffer_ops/buffer_ops.h"
 
 static void release_cb(pmix_status_t status, void *cbdata)
 {

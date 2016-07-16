@@ -31,7 +31,6 @@
 #include <time.h>
 
 #include "src/class/pmix_object.h"
-#include "src/buffer_ops/types.h"
 #include "test_common.h"
 #include "test_fence.h"
 #include "test_publish.h"

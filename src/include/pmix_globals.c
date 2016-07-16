@@ -13,13 +13,18 @@
  * $HEADER$
  */
 
-/* THIS FILE IS INCLUDED SOLELY TO INSTANTIATE AND INIT/FINALIZE THE GLOBAL CLASSES */
+/* THIS FILE IS INCLUDED SOLELY TO INSTANTIATE THE GLOBAL CLASSES */
 
 #include <src/include/pmix_config.h>
 
 #include <src/include/types.h>
-#include <pmix/autogen/pmix_stdint.h>
+#include <src/include/pmix_stdint.h>
 #include <src/include/pmix_socket_errno.h>
+
+#include "src/mca/base/pmix_mca_base_framework.h"
+#include "src/mca/bfrops/base/base.h"
+#include "src/mca/psec/base/base.h"
+#include "src/util/error.h"
 
 #include "src/include/pmix_globals.h"
 
@@ -36,41 +41,8 @@
 #include <ctype.h>
 #include PMIX_EVENT_HEADER
 
-#include "src/buffer_ops/types.h"
 #include "src/class/pmix_hash_table.h"
 #include "src/class/pmix_list.h"
-
-
-pmix_globals_t pmix_globals = {
-    .init_cntr = 0,
-    .pindex = 0,
-    .evbase = NULL,
-    .debug_output = -1,
-    .server = false,
-    .connected = false,
-    .cache_local = NULL,
-    .cache_remote = NULL
-};
-
-
-void pmix_globals_init(void)
-{
-    memset(&pmix_globals.myid, 0, sizeof(pmix_proc_t));
-    PMIX_CONSTRUCT(&pmix_globals.nspaces, pmix_list_t);
-    PMIX_CONSTRUCT(&pmix_globals.events, pmix_events_t);
-}
-
-void pmix_globals_finalize(void)
-{
-    PMIX_LIST_DESTRUCT(&pmix_globals.nspaces);
-    if (NULL != pmix_globals.cache_local) {
-        PMIX_RELEASE(pmix_globals.cache_local);
-    }
-    if (NULL != pmix_globals.cache_remote) {
-        PMIX_RELEASE(pmix_globals.cache_remote);
-    }
-    PMIX_DESTRUCT(&pmix_globals.events);
-}
 
 
 static void nscon(pmix_nspace_t *p)
@@ -118,7 +90,9 @@ static void sncon(pmix_server_nspace_t *p)
 {
     p->nlocalprocs = 0;
     p->all_registered = false;
-    PMIX_CONSTRUCT(&p->job_info, pmix_buffer_t);
+    p->info = NULL;
+    p->ninfo = 0;
+    p->job_info = NULL;
     PMIX_CONSTRUCT(&p->ranks, pmix_list_t);
     PMIX_CONSTRUCT(&p->mylocal, pmix_hash_table_t);
     pmix_hash_table_init(&p->mylocal, 16);
@@ -129,7 +103,12 @@ static void sncon(pmix_server_nspace_t *p)
 }
 static void sndes(pmix_server_nspace_t *p)
 {
-    PMIX_DESTRUCT(&p->job_info);
+    if (NULL != p->info) {
+        PMIX_INFO_FREE(p->info, p->ninfo);
+    }
+    if (NULL != p->job_info) {
+        PMIX_RELEASE(p->job_info);
+    }
     PMIX_LIST_DESTRUCT(&p->ranks);
     PMIX_DESTRUCT(&p->mylocal);
     PMIX_DESTRUCT(&p->myremote);
@@ -141,6 +120,7 @@ PMIX_CLASS_INSTANCE(pmix_server_nspace_t,
 
 static void info_con(pmix_rank_info_t *info)
 {
+    info->peer = NULL;
     info->gid = info->uid = 0;
     info->nptr = NULL;
     info->rank = PMIX_RANK_WILDCARD;
@@ -150,6 +130,9 @@ static void info_con(pmix_rank_info_t *info)
 }
 static void info_des(pmix_rank_info_t *info)
 {
+    if (NULL != info->peer) {
+        PMIX_RELEASE(info->peer);
+    }
     if (NULL!= info->nptr) {
         PMIX_RELEASE(info->nptr);
     }

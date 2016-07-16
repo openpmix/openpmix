@@ -22,13 +22,17 @@
 #define PMIX_EVENT_H
 
 #include <src/include/pmix_config.h>
-#include <pmix/rename.h>
+#include PMIX_SYMBOL_RENAME
 
-#include <pmix/pmix_common.h>
+#include <pmix_common.h>
 #include "src/class/pmix_list.h"
 #include "src/util/output.h"
 
  BEGIN_C_DECLS
+
+/* forward declaration */
+struct pmix_peer_t;
+struct pmix_notify_caddy_t;
 
 /* define an object for tracking event handlers focused on a
  * single status code */
@@ -113,7 +117,12 @@ PMIX_CLASS_DECLARATION(pmix_event_chain_t);
 /* invoke the error handler that is registered against the given
  * status, passing it the provided info on the procs that were
  * affected, plus any additional info provided by the server */
- void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain);
+void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain);
+
+/* pack an event notification for a specific target peer */
+pmix_status_t pmix_event_pack_notification(struct pmix_peer_t *peer,
+                                           struct pmix_notify_caddy_t *cd,
+                                           pmix_buffer_t *buf);
 
 #define PMIX_REPORT_EVENT(e)                        \
     do {                                            \

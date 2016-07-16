@@ -60,7 +60,7 @@ else
 fi
 
 greekonly=0
-autogen_args=
+autogen_args=--force
 config_args=
 distdir=".."
 for i in "$@"; do
@@ -270,7 +270,7 @@ make_tarball() {
     #
     echo "*** Running autogen $autogen_args..."
     rm -f success
-    (./autogen.sh $autogen_args 2>&1 && touch success) | tee auto.out
+    (./autogen.pl $autogen_args 2>&1 && touch success) | tee auto.out
     if test ! -f success; then
         echo "Autogen failed.  Aborting"
         exit 1
