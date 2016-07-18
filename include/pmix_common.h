@@ -3,6 +3,7 @@
  * Copyright (c) 2013-2016 Intel, Inc. All rights reserved
  * Copyright (c) 2016      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -43,7 +44,6 @@
  *
  * Additional copyrights may follow
  *
- * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  *
  * $HEADER$
  */
@@ -107,7 +107,8 @@ typedef uint32_t pmix_rank_t;
  * these keys are RESERVED */
 #define PMIX_ATTR_UNDEF      NULL
 
-/* initialization attributes */
+/****    INITIALIZATION ATTRIBUTES - NOT STORED OR FETCHABLE    ****/
+
 #define PMIX_EVENT_BASE                     "pmix.evbase"           // (struct event_base *) pointer to libevent event_base to use in place
                                                                     //                       of the internal progress thread
 #define PMIX_SERVER_TOOL_SUPPORT            "pmix.srvr.tool"        // (bool) The host RM wants to declare itself as willing to
@@ -122,20 +123,17 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_CONNECT_TO_SYSTEM              "pmix.cnct.sys"         // (bool) The requestor requires that a connection be made only to
                                                                     //        a local system-level PMIx server
 #define PMIX_CONNECT_SYSTEM_FIRST           "pmix.cnct.sys.first"   // (bool) Preferentially look for a system-level PMIx server first
+#define PMIX_SOCKET_MODE                    "pmix.sockmode"         // (uint32_t) POSIX mode_t (9 bits valid) for the rendezvous socket
+
+/********************************************************/
+
+
+/****   KEYS REFERENCED USING PMIX_RANK_WILDCARD    ****/
 
 /* identification attributes */
 #define PMIX_USERID                         "pmix.euid"             // (uint32_t) effective user id
 #define PMIX_GRPID                          "pmix.egid"             // (uint32_t) effective group id
 #define PMIX_DSTPATH                        "pmix.dstpath"          // (char*) path to dstore files
-
-/* attributes for the rendezvous socket  */
-#define PMIX_SOCKET_MODE                    "pmix.sockmode"         // (uint32_t) POSIX mode_t (9 bits valid)
-
-/* general proc-level attributes */
-#define PMIX_CPUSET                         "pmix.cpuset"           // (char*) hwloc bitmap applied to proc upon launch
-#define PMIX_CREDENTIAL                     "pmix.cred"             // (char*) security credential assigned to proc
-#define PMIX_SPAWNED                        "pmix.spawned"          // (bool) true if this proc resulted from a call to PMIx_Spawn
-#define PMIX_ARCH                           "pmix.arch"             // (uint32_t) datatype architecture flag
 
 /* scratch directory locations for use by applications */
 #define PMIX_TMPDIR                         "pmix.tmpdir"           // (char*) top-level tmp dir assigned to session
@@ -165,22 +163,91 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_LOCAL_CPUSETS                  "pmix.lcpus"            // (char*) colon-delimited cpusets of local peers within the specified nspace
 #define PMIX_PROC_URI                       "pmix.puri"             // (char*) URI containing contact info for proc
 
+/* job-level information assigned by the RM */
+#define PMIX_JOBID                          "pmix.jobid"            // (char*) jobid (corresponding to nspace) assigned by scheduler
+#define PMIX_NPROC_OFFSET                   "pmix.offset"           // (uint32_t) starting global rank of the specified nspace
+#define PMIX_NODE_LIST                      "pmix.nlist"            // (char*) comma-delimited list of nodes running procs for the specified nspace
+#define PMIX_ALLOCATED_NODELIST             "pmix.alist"            // (char*) comma-delimited list of all nodes in this allocation regardless of
+                                                                    //           whether or not they currently host procs.
 /* size info */
-#define PMIX_UNIV_SIZE                      "pmix.univ.size"        // (uint32_t) #procs in this nspace
-#define PMIX_JOB_SIZE                       "pmix.job.size"         // (uint32_t) #procs in this job
-#define PMIX_JOB_NUM_APPS                   "pmix.job.napps"        // (uint32_t) #apps in this job
-#define PMIX_APP_SIZE                       "pmix.app.size"         // (uint32_t) #procs in this application
-#define PMIX_LOCAL_SIZE                     "pmix.local.size"       // (uint32_t) #procs in this job on this node
-#define PMIX_NODE_SIZE                      "pmix.node.size"        // (uint32_t) #procs across all jobs on this node
-#define PMIX_MAX_PROCS                      "pmix.max.size"         // (uint32_t) max #procs for this job
+#define PMIX_UNIV_SIZE                      "pmix.univ.size"        // (uint32_t) #procs in the given nspace
+#define PMIX_JOB_SIZE                       "pmix.job.size"         // (uint32_t) #procs in the given nspace
+#define PMIX_JOB_NUM_APPS                   "pmix.job.napps"        // (uint32_t) #apps in the given nspace
+#define PMIX_MAX_PROCS                      "pmix.max.size"         // (uint32_t) max #procs for the given nspace
+
+
+/* application-level information
+ *      NOTE: requires qualifying PMIX_APP_NUM key specifying
+ *            which application is being queried
+ */
+#define PMIX_APPLDR                         "pmix.aldr"             // (uint32_t) lowest rank in an app within the specified nspace
+#define PMIX_APP_SIZE                       "pmix.app.size"         // (uint32_t) #procs in the application
+
+
+/* node-related information
+ *      NOTE: requires qualifying PMIX_NODEID key specifying
+ *            which node is being queried
+ */
+#define PMIX_LOCALLDR                       "pmix.lldr"             // (uint64_t) lowest rank on node within the given nspace
+#define PMIX_LOCAL_PEERS                    "pmix.lpeers"           // (char*) comma-delimited string of ranks on the node within the specified nspace
+#define PMIX_LOCAL_CPUSETS                  "pmix.lcpus"            // (char*) colon-delimited cpusets of procs on the node within the specified nspace
+#define PMIX_LOCAL_SIZE                     "pmix.local.size"       // (uint32_t) #procs on the node within the specified nspace
+#define PMIX_NODE_SIZE                      "pmix.node.size"        // (uint32_t) #procs across all nspaces on the node (nspace in request is ignored)
+#define PMIX_LOCAL_TOPO                     "pmix.ltopo"            // (char*) xml-representation of node hardware topology
 
 /* topology info */
-#define PMIX_NET_TOPO                       "pmix.ntopo"            // (char*) xml-representation of network topology
-#define PMIX_LOCAL_TOPO                     "pmix.ltopo"            // (char*) xml-representation of local node topology
-#define PMIX_NODE_LIST                      "pmix.nlist"            // (char*) comma-delimited list of nodes running procs for this job
+#define PMIX_NET_TOPO                       "pmix.ntopo"            // (char*) xml-representation of network topology for the specified nspace
 #define PMIX_TOPOLOGY                       "pmix.topo"             // (hwloc_topology_t) pointer to the PMIx client's internal topology object
 
-/* request-related info */
+/********************************************************/
+
+
+/****    KEYS REFERENCED BY SPECIFIC RANK    ****/
+
+/* scratch directory locations for use by applications */
+#define PMIX_PROCDIR                        "pmix.pdir"             // (char*) sub-nsdir assigned to specified proc
+
+/* general proc-level attributes */
+#define PMIX_CPUSET                         "pmix.cpuset"           // (char*) hwloc bitmap applied to the given proc upon launch
+#define PMIX_CREDENTIAL                     "pmix.cred"             // (char*) security credential assigned to the given proc
+#define PMIX_SPAWNED                        "pmix.spawned"          // (bool) true if the given proc resulted from a call to PMIx_Spawn
+#define PMIX_ARCH                           "pmix.arch"             // (uint32_t) datatype architecture flag for the given proc
+
+/* rank-related attributes */
+#define PMIX_APPNUM                         "pmix.appnum"           // (uint32_t) app number of the specified process within its nspace
+#define PMIX_RANK                           "pmix.rank"             // (uint32_t) process rank within its nspace
+#define PMIX_GLOBAL_RANK                    "pmix.grank"            // (uint32_t) rank spanning across all nspaces in this session
+#define PMIX_APP_RANK                       "pmix.apprank"          // (uint32_t) proc rank within the its app
+#define PMIX_LOCAL_RANK                     "pmix.lrank"            // (uint16_t) proc rank on its node within its nspace
+#define PMIX_NODE_RANK                      "pmix.nrank"            // (uint16_t) proc rank on its node spanning all jobs
+
+/* proc location-related info */
+#define PMIX_HOSTNAME                       "pmix.hname"            // (char*) name of the host the specified proc is on
+#define PMIX_NODEID                         "pmix.nodeid"           // (uint32_t) node identifier where the specified proc is located
+#define PMIX_PROC_URI                       "pmix.puri"             // (char*) URI containing contact info for proc
+
+ /********************************************************/
+
+
+
+/****    INTERNALLY USED KEYS FOR PASSING INFO FROM HOST RESOURCE MANAGER     ****/
+/****                     TO LOCAL PMIX SERVER                                ****/
+/****     data will then be parsed and can be accessed using above keys       ****/
+/****     thus, these keys are not stored and not retrievable by user         ****/
+#define PMIX_PROC_DATA                      "pmix.pdata"            // (pmix_value_array_t) starts with rank, then contains more data
+#define PMIX_NODE_MAP                       "pmix.nmap"             // (char*) regex of nodes containing procs for this job
+#define PMIX_PROC_MAP                       "pmix.pmap"             // (char*) regex describing procs on each node within this job
+#define PMIX_ANL_MAP                        "pmix.anlmap"           // (char*) process mapping in ANL notation (used in PMI-1/PMI-2)
+#define PMIX_PROC_BLOB                      "pmix.pblob"            // (pmix_byte_object_t) packed blob of process data
+#define PMIX_MAP_BLOB                       "pmix.mblob"            // (pmix_byte_object_t) packed blob of process location
+
+/********************************************************/
+
+
+
+/****    KEYS USED FOR REQUESTS/DIRECTIVES    ****/
+
+/* Request-related directives */
 #define PMIX_COLLECT_DATA                   "pmix.collect"          // (bool) collect data and return it at the end of the operation
 #define PMIX_TIMEOUT                        "pmix.timeout"          // (int) time in sec before specified operation should time out
 #define PMIX_WAIT                           "pmix.wait"             // (int) caller requests that the server wait until at least the specified
@@ -194,19 +261,7 @@ typedef uint32_t pmix_rank_t;
                                                                     //        not request data from the server if not found
 #define PMIX_EMBED_BARRIER                  "pmix.embed.barrier"    // (bool) execute a blocking fence operation before executing the
                                                                     //        specified operation
-
-/* attributes used by host server to pass data to the server convenience library - the
- * data will then be parsed and provided to the local clients */
-#define PMIX_PROC_DATA                      "pmix.pdata"            // (pmix_value_array_t) starts with rank, then contains more data
-#define PMIX_NODE_MAP                       "pmix.nmap"             // (char*) regex of nodes containing procs for this job
-#define PMIX_PROC_MAP                       "pmix.pmap"             // (char*) regex describing procs on each node within this job
-#define PMIX_ANL_MAP                        "pmix.anlmap"           // (char*) process mapping in ANL notation (used in PMI-1/PMI-2)
-
-/* attributes used internally to communicate data from the server to the client */
-#define PMIX_PROC_BLOB                      "pmix.pblob"            // (pmix_byte_object_t) packed blob of process data
-#define PMIX_MAP_BLOB                       "pmix.mblob"            // (pmix_byte_object_t) packed blob of process location
-
-/* event handler registration and notification info keys */
+/* Event handler registration and notification info keys */
 #define PMIX_EVENT_HDLR_NAME                "pmix.evname"           // (char*) string name identifying this handler
 #define PMIX_EVENT_JOB_LEVEL                "pmix.evjob"            // (bool) register for job-specific events only
 #define PMIX_EVENT_ENVIRO_LEVEL             "pmix.evenv"            // (bool) register for environment events only
@@ -226,7 +281,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_EVENT_TERMINATE_PROC           "pmix.evterm.proc"      // (bool) RM intends to terminate just this process
 #define PMIX_EVENT_ACTION_TIMEOUT           "pmix.evtimeout"        // (int) time in sec before RM will execute error response
 
-/* attributes used to describe "spawn" attributes */
+/* "Spawn" directives */
 #define PMIX_PERSONALITY                    "pmix.pers"              // (char*) name of personality to use
 #define PMIX_HOST                           "pmix.host"              // (char*) comma-delimited list of hosts to use for spawned procs
 #define PMIX_HOSTFILE                       "pmix.hostfile"          // (char*) hostfile to use for spawned procs
@@ -249,7 +304,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_FWD_STDERR                     "pmix.fwd.stderr"        // (bool) forward stderr from spawned procs to me
 #define PMIX_DEBUGGER_DAEMONS               "pmix.debugger"          // (bool) spawned app consists of debugger daemons
 
-/* query attributes */
+/* Query directives */
 #define PMIX_QUERY_NAMESPACES               "pmix.qry.ns"            // (char*) request a comma-delimited list of active nspaces
 #define PMIX_QUERY_JOB_STATUS               "pmix.qry.jst"           // (pmix_status_t) status of a specified currently executing job
 #define PMIX_QUERY_QUEUE_LIST               "pmix.qry.qlst"          // (char*) request a comma-delimited list of scheduler queues
@@ -303,7 +358,12 @@ typedef uint8_t pmix_proc_state_t;
 #define PMIX_PROC_STATE_FAILED_TO_LAUNCH        (PMIX_PROC_STATE_ERROR + 11)  /* unable to launch process */
 
 
+ /********************************************************/
+
+
+
 /****    PMIX ERROR CONSTANTS    ****/
+
 /* PMIx errors are always negative, with 0 reserved for success */
 #define PMIX_ERR_BASE                   0
 

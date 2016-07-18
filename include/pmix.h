@@ -198,6 +198,10 @@ extern "C" {
  * (a) PMIX_TIMEOUT - maximum time for the get to execute before declaring
  *     an error. The timeout parameter can help avoid "hangs" due to programming
  *     errors that prevent the target proc from ever exposing its data.
+ * (b) Information qualifying the keys being requested. For example, if requesting
+ *     the number of processes in a given application (PMIX_APP_SIZE), the
+ *     PMIX_APP_NUM key (with a value of the app number being queried) should be
+ *     provided in the info array
  */
  pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
                         const pmix_info_t info[], size_t ninfo,
