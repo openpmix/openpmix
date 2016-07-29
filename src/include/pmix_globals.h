@@ -30,9 +30,10 @@
 #endif
 #include PMIX_EVENT_HEADER
 
-#include <pmix/pmix_common.h>
+#include <pmix_common.h>
 
-#include "src/buffer_ops/types.h"
+#include "src/mca/bfrops/bfrops.h"
+#include "src/mca/psec/psec.h"
 #include "src/class/pmix_hash_table.h"
 #include "src/class/pmix_list.h"
 #include "src/event/pmix_event.h"
@@ -50,33 +51,31 @@ BEGIN_C_DECLS
 #define PMIX_CMD PMIX_UINT32
 
 /* define some commands */
-typedef enum {
-    PMIX_REQ_CMD,
-    PMIX_ABORT_CMD,
-    PMIX_COMMIT_CMD,
-    PMIX_FENCENB_CMD,
-    PMIX_GETNB_CMD,
-    PMIX_FINALIZE_CMD,
-    PMIX_PUBLISHNB_CMD,
-    PMIX_LOOKUPNB_CMD,
-    PMIX_UNPUBLISHNB_CMD,
-    PMIX_SPAWNNB_CMD,
-    PMIX_CONNECTNB_CMD,
-    PMIX_DISCONNECTNB_CMD,
-    PMIX_NOTIFY_CMD,
-    PMIX_REGEVENTS_CMD,
-    PMIX_DEREGEVENTS_CMD,
-    PMIX_QUERY_CMD
-} pmix_cmd_t;
+typedef uint8_t pmix_cmd_t;
+#define PMIX_REQ_CMD             0
+#define PMIX_ABORT_CMD           1
+#define PMIX_COMMIT_CMD          2
+#define PMIX_FENCENB_CMD         3
+#define PMIX_GETNB_CMD           4
+#define PMIX_FINALIZE_CMD        5
+#define PMIX_PUBLISHNB_CMD       6
+#define PMIX_LOOKUPNB_CMD        7
+#define PMIX_UNPUBLISHNB_CMD     8
+#define PMIX_SPAWNNB_CMD         9
+#define PMIX_CONNECTNB_CMD      10
+#define PMIX_DISCONNECTNB_CMD   11
+#define PMIX_NOTIFY_CMD         12
+#define PMIX_REGEVENTS_CMD      13
+#define PMIX_DEREGEVENTS_CMD    14
+#define PMIX_QUERY_CMD          15
 
 /* define a set of flags to direct collection
  * of data during operations */
-typedef enum {
-    PMIX_COLLECT_INVALID = -1,
-    PMIX_COLLECT_NO,
-    PMIX_COLLECT_YES,
-    PMIX_COLLECT_MAX
-} pmix_collect_t;
+typedef uint8_t pmix_collect_t;
+#define PMIX_COLLECT_INVALID    0
+#define PMIX_COLLECT_NO         1
+#define PMIX_COLLECT_YES        2
+#define PMIX_COLLECT_MAX        3
 
 
 /****    MESSAGING STRUCTURES    ****/
@@ -86,16 +85,6 @@ typedef struct {
     uint32_t tag;
     size_t nbytes;
 } pmix_usock_hdr_t;
-
-/* internally used object for transferring data
- * to/from the server and for storing in the
- * hash tables */
-typedef struct {
-    pmix_list_item_t super;
-    char *key;
-    pmix_value_t *value;
-} pmix_kval_t;
-PMIX_CLASS_DECLARATION(pmix_kval_t);
 
 // forward declaration
 struct pmix_peer_t;
@@ -137,7 +126,9 @@ typedef struct {
     pmix_object_t super;
     size_t nlocalprocs;
     bool all_registered;         // all local ranks have been defined
-    pmix_buffer_t job_info;      // packed copy of the job-level info to be delivered to each proc
+    pmix_info_t *info;           // copy of the job-level info to be delivered to each proc
+    size_t ninfo;
+    pmix_buffer_t *job_info;     // packed version of the job-level info for passing to procs of this nspace
     pmix_list_t ranks;           // list of pmix_rank_info_t for connection support of my clients
     pmix_hash_table_t mylocal;   // hash_table for storing data PUT with local/global scope by my clients
     pmix_hash_table_t myremote;  // hash_table for storing data PUT with remote/global scope by my clients
@@ -157,6 +148,7 @@ PMIX_CLASS_DECLARATION(pmix_nspace_t);
 
 typedef struct pmix_rank_info_t {
     pmix_list_item_t super;
+    struct pmix_peer_t *peer;
     pmix_nspace_t *nptr;
     int rank;
     uid_t uid;
@@ -166,6 +158,14 @@ typedef struct pmix_rank_info_t {
     void *server_object;       // pointer to rank-specific object provided by server
 } pmix_rank_info_t;
 PMIX_CLASS_DECLARATION(pmix_rank_info_t);
+
+/* object for tracking the communication-related characteristics
+ * of a given peer */
+typedef struct pmix_peer_comm_t {
+    pmix_bfrop_buffer_type_t type;
+    pmix_bfrops_module_t *bfrops;
+    pmix_psec_module_t *sec;
+} pmix_peer_comm_t;
 
 /* object for tracking peers - each peer can have multiple
  * connections. This can occur if the initial app executes
@@ -186,6 +186,7 @@ typedef struct pmix_peer_t {
     pmix_list_t send_queue;      /**< list of messages to send */
     pmix_usock_send_t *send_msg; /**< current send in progress */
     pmix_usock_recv_t *recv_msg; /**< current recv in progress */
+    pmix_peer_comm_t comm;
 } pmix_peer_t;
 PMIX_CLASS_DECLARATION(pmix_peer_t);
 
@@ -235,6 +236,7 @@ PMIX_CLASS_DECLARATION(pmix_query_caddy_t);
 typedef struct {
     pmix_list_item_t super;
     pmix_cmd_t type;
+    bool hybrid;                    // true if participating procs are from more than one nspace
     pmix_proc_t *pcs;               // copy of the original array of participants
     size_t   npcs;                  // number of procs in the array
     volatile bool active;           // flag for waiting for completion
@@ -309,6 +311,13 @@ PMIX_CLASS_DECLARATION(pmix_info_caddy_t);
         }                                       \
     } while (0)
 
+/* define a process type */
+typedef enum {
+    PMIX_PROC_UNDEF,
+    PMIX_PROC_CLIENT,
+    PMIX_PROC_SERVER,
+    PMIX_PROC_TOOL
+} pmix_proc_type_t;
 
 /****    GLOBAL STORAGE    ****/
 /* define a global construct that includes values that must be shared
@@ -317,6 +326,7 @@ PMIX_CLASS_DECLARATION(pmix_info_caddy_t);
 typedef struct {
     int init_cntr;                       // #times someone called Init - #times called Finalize
     pmix_proc_t myid;
+    pmix_peer_t *mypeer;                 // my own peer object
     uid_t uid;                           // my effective uid
     gid_t gid;                           // my effective gid
     int pindex;
@@ -324,19 +334,13 @@ typedef struct {
     bool external_evbase;
     int debug_output;
     pmix_events_t events;                // my event handler registrations.
-    bool server;
+    pmix_proc_type_t proc_type;          // what type of process am I (client, server, tool)
     bool connected;
     pmix_list_t nspaces;                 // list of pmix_nspace_t for the nspaces we know about
     pmix_buffer_t *cache_local;          // data PUT by me to local scope
     pmix_buffer_t *cache_remote;         // data PUT by me to remote scope
 } pmix_globals_t;
 
-
-/* initialize the pmix_global structure */
-void pmix_globals_init(void);
-
-/*  finalize the pmix_global structure */
-void pmix_globals_finalize(void);
 
 extern pmix_globals_t pmix_globals;
 

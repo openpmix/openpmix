@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2015 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2016 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2015 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
@@ -18,7 +18,7 @@
 #include <src/include/pmix_config.h>
 
 #include <src/include/types.h>
-#include <pmix/autogen/pmix_stdint.h>
+#include <src/include/pmix_stdint.h>
 #include <src/include/pmix_socket_errno.h>
 
 #include <pmix_server.h>
@@ -46,14 +46,12 @@
 #include PMIX_EVENT_HEADER
 
 #include "src/class/pmix_list.h"
-#include "src/buffer_ops/buffer_ops.h"
+#include "src/mca/bfrops/bfrops.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
-#include "src/util/progress_threads.h"
 #include "src/usock/usock.h"
-#include "src/sec/pmix_sec.h"
 #if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
 #include "src/dstore/pmix_dstore.h"
 #endif /* PMIX_ENABLE_DSTORE */
@@ -87,7 +85,7 @@ PMIX_CLASS_INSTANCE(pmix_dmdx_reply_caddy_t,
 static void dmdx_cbfunc(pmix_status_t status, const char *data,
                         size_t ndata, void *cbdata,
                         pmix_release_cbfunc_t relfn, void *relcbdata);
-static pmix_status_t _satisfy_request(pmix_nspace_t *ns, int rank,
+static pmix_status_t _satisfy_request(pmix_nspace_t *ns, int rank, pmix_peer_t *peer,
                                       pmix_modex_cbfunc_t cbfunc, void *cbdata, bool *scope);
 static pmix_status_t create_local_tracker(char nspace[], int rank,
                                           pmix_info_t info[], size_t ninfo,
@@ -110,6 +108,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
                               pmix_modex_cbfunc_t cbfunc,
                               void *cbdata)
 {
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t*)cbdata;
     int32_t cnt;
     pmix_status_t rc;
     int rank;
@@ -129,27 +128,27 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
 
     /* retrieve the nspace and rank of the requested proc */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &cptr, &cnt, PMIX_STRING))) {
+    if (PMIX_SUCCESS != (rc = cd->peer->comm.bfrops->unpack(buf, &cptr, &cnt, PMIX_STRING))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
     (void)strncpy(nspace, cptr, PMIX_MAX_NSLEN);
     free(cptr);
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &rank, &cnt, PMIX_INT))) {
+    if (PMIX_SUCCESS != (rc = cd->peer->comm.bfrops->unpack(buf, &rank, &cnt, PMIX_INT))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
     /* retrieve any provided info structs */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = cd->peer->comm.bfrops->unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
     if (0 < ninfo) {
         PMIX_INFO_CREATE(info, ninfo);
         cnt = ninfo;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, info, &cnt, PMIX_INFO))) {
+        if (PMIX_SUCCESS != (rc = cd->peer->comm.bfrops->unpack(buf, info, &cnt, PMIX_INFO))) {
             PMIX_ERROR_LOG(rc);
             PMIX_INFO_FREE(info, ninfo);
             return rc;
@@ -194,7 +193,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     }
 
     /* see if we already have this data */
-    rc = _satisfy_request(nptr, rank, cbfunc, cbdata, &local);
+    rc = _satisfy_request(nptr, rank, cd->peer, cbfunc, cbdata, &local);
     if( PMIX_SUCCESS == rc ){
         /* request was successfully satisfied */
         PMIX_INFO_FREE(info, ninfo);
@@ -267,6 +266,8 @@ static pmix_status_t create_local_tracker(char nspace[], int rank,
     pmix_dmdx_local_t *lcd, *cd;
     pmix_dmdx_request_t *req;
     pmix_status_t rc;
+    pmix_nspace_t *nptr, *tmp;
+    pmix_rank_info_t *rinfo, *tinfo;
 
     /* define default */
     *ld = NULL;
@@ -306,6 +307,32 @@ static pmix_status_t create_local_tracker(char nspace[], int rank,
     /* track this specific requestor so we return the
      * data to them */
     req = PMIX_NEW(pmix_dmdx_request_t);
+    /* find the peer object */
+    nptr = NULL;
+    PMIX_LIST_FOREACH(tmp, &pmix_globals.nspaces, pmix_nspace_t) {
+        if (0 == strcmp(tmp->nspace, nspace)) {
+            nptr = tmp;
+            break;
+        }
+    }
+    if (NULL == nptr) {
+        /* we don't know this namespace, should never happen */
+        PMIX_RELEASE(req);
+        return PMIX_ERR_NOT_FOUND;
+    }
+    /* see if we have this peer in our list */
+    rinfo = NULL;
+    PMIX_LIST_FOREACH(tinfo, &nptr->server->ranks, pmix_rank_info_t) {
+        if (tinfo->rank == rank) {
+            rinfo = tinfo;
+            break;
+        }
+    }
+    if (NULL == info) {
+        /* we don't know this rank, should never happen */
+        return PMIX_ERR_NOT_FOUND;
+    }
+    req->peer = rinfo->peer;
     req->cbfunc = cbfunc;
     req->cbdata = cbdata;
     pmix_list_append(&lcd->loc_reqs, &req->super);
@@ -355,7 +382,7 @@ void pmix_pending_nspace_requests(pmix_nspace_t *nptr)
     }
 }
 
-static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, int rank,
+static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, int rank, pmix_peer_t *peer,
                                       pmix_modex_cbfunc_t cbfunc, void *cbdata, bool *scope)
 {
     pmix_status_t rc;
@@ -403,7 +430,7 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, int rank,
      * a remote peer, or due to data from a local client
      * having been committed */
     htptr = hts;
-    PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+    pmix_bfrops_base_construct_buffer(peer, &pbkt);
     while (NULL != *htptr) {
         cur_rank = rank;
         if (PMIX_RANK_UNDEF == rank) {
@@ -427,13 +454,13 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, int rank,
                 PMIX_RELEASE(kv);
 #else
                 pmix_buffer_t xfer, *xptr;
-                pmix_bfrop.pack(&pbkt, &cur_rank, 1, PMIX_INT);
+                peer->comm.bfrops->pack(&pbkt, &cur_rank, 1, PMIX_INT);
                 /* the client is expecting this to arrive as a byte object
                  * containing a buffer, so package it accordingly */
-                PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
+                pmix_bfrops_base_construct_buffer(peer, &xfer);
                 xptr = &xfer;
                 PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
-                pmix_bfrop.pack(&pbkt, &xptr, 1, PMIX_BUFFER);
+                peer->comm.bfrops->pack(&pbkt, &xptr, 1, PMIX_BUFFER);
                 xfer.base_ptr = NULL; // protect the passed data
                 xfer.bytes_used = 0;
                 PMIX_DESTRUCT(&xfer);
@@ -494,7 +521,7 @@ pmix_status_t pmix_pending_resolve(pmix_nspace_t *nptr, int rank,
             /* run through all the requests to this rank */
             PMIX_LIST_FOREACH(req, &lcd->loc_reqs, pmix_dmdx_request_t) {
                 pmix_status_t rc;
-                rc = _satisfy_request(nptr, rank, req->cbfunc, req->cbdata, NULL);
+                rc = _satisfy_request(nptr, rank, req->peer, req->cbfunc, req->cbdata, NULL);
                 if( PMIX_SUCCESS != rc ){
                     /* if we can't satisfy this particular request (missing key?) */
                     req->cbfunc(rc, NULL, 0, req->cbdata, NULL, NULL);

@@ -18,7 +18,7 @@
 #include <src/include/pmix_config.h>
 
 #include <src/include/types.h>
-#include <pmix/autogen/pmix_stdint.h>
+#include <src/include/pmix_stdint.h>
 
 #include <pmix.h>
 
@@ -46,14 +46,12 @@
 #include PMIX_EVENT_HEADER
 
 #include "src/class/pmix_list.h"
-#include "src/buffer_ops/buffer_ops.h"
+#include "src/mca/bfrops/bfrops.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/hash.h"
 #include "src/util/output.h"
-#include "src/util/progress_threads.h"
 #include "src/usock/usock.h"
-#include "src/sec/pmix_sec.h"
 #if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
 #include "src/dstore/pmix_dstore.h"
 #endif /* PMIX_ENABLE_DSTORE */
@@ -180,7 +178,7 @@ static void _value_cbfunc(pmix_status_t status, pmix_value_t *kv, void *cbdata)
 
     cb->status = status;
     if (PMIX_SUCCESS == status) {
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)&cb->value, kv, PMIX_VALUE))) {
+        if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->copy((void**)&cb->value, kv, PMIX_VALUE))) {
             PMIX_ERROR_LOG(rc);
         }
     }
@@ -197,31 +195,31 @@ static pmix_buffer_t* _pack_get(char *nspace, int rank,
     /* nope - see if we can get it */
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the get cmd */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
+    if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->pack(msg, &cmd, 1, PMIX_CMD))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return NULL;
     }
     /* pack the request information - we'll get the entire blob
      * for this proc, so we don't need to pass the key */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &nspace, 1, PMIX_STRING))) {
+    if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->pack(msg, &nspace, 1, PMIX_STRING))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return NULL;
     }
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &rank, 1, PMIX_INT))) {
+    if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->pack(msg, &rank, 1, PMIX_INT))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return NULL;
     }
     /* pack the number of info structs */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &ninfo, 1, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->pack(msg, &ninfo, 1, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return NULL;
     }
     if (0 < ninfo) {
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, info, ninfo, PMIX_INFO))) {
+        if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->pack(msg, info, ninfo, PMIX_INFO))) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
             return NULL;
@@ -259,7 +257,7 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
 
     /* unpack the status */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ret, &cnt, PMIX_INT))) {
+    if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->unpack(buf, &ret, &cnt, PMIX_INT))) {
         PMIX_ERROR_LOG(rc);
         return;
     }
@@ -290,15 +288,15 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
      * unpack and store it in the modex - this could consist
      * of buffers from multiple scopes */
     cnt = 1;
-    while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(buf, &cur_rank, &cnt, PMIX_INT))) {
+    while (PMIX_SUCCESS == (rc = pmix_globals.mypeer->comm.bfrops->unpack(buf, &cur_rank, &cnt, PMIX_INT))) {
         pmix_kval_t *cur_kval;
         pmix_buffer_t *bptr;
 
         cnt = 1;
-        if (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(buf, &bptr, &cnt, PMIX_BUFFER))) {
+        if (PMIX_SUCCESS == (rc = pmix_globals.mypeer->comm.bfrops->unpack(buf, &bptr, &cnt, PMIX_BUFFER))) {
             cnt = 1;
             cur_kval = PMIX_NEW(pmix_kval_t);
-            while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bptr, cur_kval, &cnt, PMIX_KVAL))) {
+            while (PMIX_SUCCESS == (rc = pmix_globals.mypeer->comm.bfrops->unpack(bptr, cur_kval, &cnt, PMIX_KVAL))) {
                 pmix_output_verbose(2, pmix_globals.debug_output,
                                     "pmix: unpacked key %s", cur_kval->key);
                 if (PMIX_SUCCESS != (rc = pmix_hash_store(&nptr->modex, cur_rank, cur_kval))) {
@@ -307,7 +305,7 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                 if (NULL != cb->key && 0 == strcmp(cb->key, cur_kval->key)) {
                     pmix_output_verbose(2, pmix_globals.debug_output,
                                         "pmix: found requested value");
-                    if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)&val, cur_kval->value, PMIX_VALUE))) {
+                    if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->copy((void**)&val, cur_kval->value, PMIX_VALUE))) {
                         PMIX_ERROR_LOG(rc);
                         PMIX_RELEASE(cur_kval);
                         val = NULL;
@@ -585,7 +583,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
     /* if we got here, then we don't have the data for this proc. If we
      * are a server, or we are a client and not connected, then there is
      * nothing more we can do */
-    if (pmix_globals.server || (!pmix_globals.server && !pmix_globals.connected)) {
+    if (PMIX_PROC_SERVER == pmix_globals.proc_type || !pmix_globals.connected) {
         cb->value_cbfunc(PMIX_ERR_NOT_FOUND, NULL, cb->cbdata);
         PMIX_RELEASE(cb);
         return;

@@ -13,17 +13,16 @@
 #include <src/include/pmix_config.h>
 
 #include <src/include/types.h>
-#include <pmix/autogen/pmix_stdint.h>
+#include <src/include/pmix_stdint.h>
 #include <src/include/pmix_socket_errno.h>
 
 #include <pmix.h>
-#include <pmix/pmix_common.h>
+#include <pmix_common.h>
 #include <pmix_server.h>
 
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
-#include "src/buffer_ops/buffer_ops.h"
 #include "src/usock/usock.h"
 
 #include "src/client/pmix_client_ops.h"
@@ -103,7 +102,7 @@ static void query_cbfunc(struct pmix_peer_t *peer,
 
     /* unpack the status */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &results->status, &cnt, PMIX_STATUS))) {
+    if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->unpack(buf, &results->status, &cnt, PMIX_STATUS))) {
         PMIX_ERROR_LOG(rc);
         goto complete;
     }
@@ -113,14 +112,14 @@ static void query_cbfunc(struct pmix_peer_t *peer,
 
     /* unpack any returned data */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &results->ninfo, &cnt, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->unpack(buf, &results->ninfo, &cnt, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         goto complete;
     }
     if (0 < results->ninfo) {
         PMIX_INFO_CREATE(results->info, results->ninfo);
         cnt = results->ninfo;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, results->info, &cnt, PMIX_INFO))) {
+        if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->unpack(buf, results->info, &cnt, PMIX_INFO))) {
             PMIX_ERROR_LOG(rc);
             goto complete;
         }
@@ -159,7 +158,7 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_info_t info[], size_t ninfo,
 
     /* if we are the server, then we just issue the query and
      * return the response */
-    if (pmix_globals.server) {
+    if (PMIX_PROC_SERVER == pmix_globals.proc_type) {
             if (NULL == pmix_host_server.query) {
                 /* nothing we can do */
                 return PMIX_ERR_NOT_SUPPORTED;
@@ -175,33 +174,33 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_info_t info[], size_t ninfo,
         cd = PMIX_NEW(pmix_query_caddy_t);
         cd->cbfunc = cbfunc;
         cd->cbdata = cbdata;
-        msg = PMIX_NEW(pmix_buffer_t);
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
+        msg = pmix_bfrops_base_create_buffer(pmix_globals.mypeer);
+        if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->pack(msg, &cmd, 1, PMIX_CMD))) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
             PMIX_RELEASE(cd);
             return rc;
         }
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &ninfo, 1, PMIX_SIZE))) {
+        if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->pack(msg, &ninfo, 1, PMIX_SIZE))) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
             PMIX_RELEASE(cd);
             return rc;
         }
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, info, ninfo, PMIX_INFO))) {
+        if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->pack(msg, info, ninfo, PMIX_INFO))) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
             PMIX_RELEASE(cd);
             return rc;
         }
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &ndirectives, 1, PMIX_SIZE))) {
+        if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->pack(msg, &ndirectives, 1, PMIX_SIZE))) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
             PMIX_RELEASE(cd);
             return rc;
         }
         if (0 < ndirectives) {
-            if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, directives, ndirectives, PMIX_INFO))) {
+            if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->pack(msg, directives, ndirectives, PMIX_INFO))) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(msg);
                 PMIX_RELEASE(cd);
@@ -235,7 +234,7 @@ static void wait_cbfunc(pmix_status_t status,
     for (n=0; n < nresults; n++) {
         for (m=0; m < cd->ninfo; m++) {
             if (0 == strncmp(results[n].key, cd->info[m].key, PMIX_MAX_KEYLEN)) {
-                if (PMIX_SUCCESS != (rc = pmix_value_xfer(&cd->info[m].value, &results[n].value))) {
+                if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->value_xfer(&cd->info[m].value, &results[n].value))) {
                     cd->status = rc;
                     goto complete;
                 }

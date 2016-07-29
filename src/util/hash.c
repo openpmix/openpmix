@@ -6,7 +6,7 @@
  *                         reserved.
  * Copyright (c) 2011-2014 Los Alamos National Security, LLC.  All rights
  *                         reserved.
- * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2016 Intel, Inc. All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
@@ -22,7 +22,7 @@
 
 #include <src/include/pmix_config.h>
 
-#include <pmix/autogen/pmix_stdint.h>
+#include <src/include/pmix_stdint.h>
 #include <src/include/hash_string.h>
 
 #include <string.h>
@@ -30,7 +30,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/class/pmix_hash_table.h"
 #include "src/class/pmix_pointer_array.h"
-#include "src/buffer_ops/buffer_ops.h"
+#include "src/mca/bfrops/bfrops.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
 
@@ -149,7 +149,7 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, int rank,
             hv = lookup_keyval(&proc_data->data, key);
             if (NULL != hv) {
                 /* create the copy */
-                if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)kvs, hv->value, PMIX_VALUE))) {
+                if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->copy((void**)kvs, hv->value, PMIX_VALUE))) {
                     PMIX_ERROR_LOG(rc);
                     return rc;
                 }
@@ -215,7 +215,7 @@ pmix_status_t pmix_hash_fetch_by_key(pmix_hash_table_t *table, const char *key,
     hv = lookup_keyval(&proc_data->data, key_r);
     if (hv) {
         /* create the copy */
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)kvs, hv->value, PMIX_VALUE))) {
+        if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->comm.bfrops->copy((void**)kvs, hv->value, PMIX_VALUE))) {
             PMIX_ERROR_LOG(rc);
             return rc;
         }

@@ -30,7 +30,7 @@
 #include <pmi2.h>
 #include <pmix.h>
 
-#include "src/buffer_ops/buffer_ops.h"
+#include "src/mca/bfrops/bfrops.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/output.h"

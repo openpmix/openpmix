@@ -32,7 +32,6 @@
 #include <time.h>
 
 #include "src/class/pmix_object.h"
-#include "src/buffer_ops/types.h"
 #include "src/util/output.h"
 #include "src/util/printf.h"
 
@@ -45,7 +44,7 @@ int main(int argc, char **argv)
 
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_tool_init(&myproc, NULL, 0))) {
-        fprintf(stderr, "PMIx_tool_init failed: %d\n", rc);
+        fprintf(stderr, "PMIx_tool_init failed: %s[%d]\n", PMIx_Error_string(rc), rc);
         exit(rc);
     }
     pmix_output(0, "Tool ns %s rank %d: Running", myproc.nspace, myproc.rank);

@@ -16,7 +16,7 @@
 #include <src/include/pmix_config.h>
 
 #include <src/include/types.h>
-#include <pmix/autogen/pmix_stdint.h>
+#include <src/include/pmix_stdint.h>
 #include <src/include/pmix_socket_errno.h>
 
 #ifdef HAVE_STRING_H
@@ -69,7 +69,7 @@ static void lost_connection(pmix_peer_t *peer, pmix_status_t err)
     }
     CLOSE_THE_SOCKET(peer->sd);
 
-    if (pmix_globals.server) {
+    if (PMIX_PROC_SERVER == pmix_globals.proc_type) {
         /* if I am a server, then we need to ensure that
          * we properly account for the loss of this client
          * from any local collectives in which it was
@@ -114,7 +114,11 @@ static void lost_connection(pmix_peer_t *peer, pmix_status_t err)
         /* if I am a client, there is only
          * one connection we can have */
         pmix_globals.connected = false;
-         /* set the public error status */
+        /* if we are finalizing, just ignore it */
+        if (0 == pmix_globals.init_cntr) {
+            return;
+        }
+        /* set the public error status */
         err = PMIX_ERR_LOST_CONNECTION_TO_SERVER;
     }
     PMIX_REPORT_EVENT(err);
@@ -225,10 +229,11 @@ void pmix_usock_send_handler(int sd, short flags, void *cbdata)
     pmix_status_t rc;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "sock:send_handler SENDING TO PEER %s:%d tag %d with %s msg",
+                        "sock:send_handler SENDING TO PEER %s:%d tag %u with %s msg",
                         peer->info->nptr->nspace, peer->info->rank,
                         (NULL == msg) ? UINT_MAX : msg->hdr.tag,
                         (NULL == msg) ? "NULL" : "NON-NULL");
+
     if (NULL != msg) {
         if (!msg->hdr_sent) {
             pmix_output_verbose(2, pmix_globals.debug_output,

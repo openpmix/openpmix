@@ -18,7 +18,7 @@
 #include <src/include/pmix_config.h>
 
 #include <src/include/types.h>
-#include <pmix/autogen/pmix_stdint.h>
+#include <src/include/pmix_stdint.h>
 #include <src/include/pmix_socket_errno.h>
 
 #include <pmix_server.h>
@@ -46,14 +46,12 @@
 #include PMIX_EVENT_HEADER
 
 #include "src/class/pmix_list.h"
-#include "src/buffer_ops/buffer_ops.h"
+#include "src/mca/bfrops/bfrops.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
-#include "src/util/progress_threads.h"
 #include "src/usock/usock.h"
-#include "src/sec/pmix_sec.h"
 
 #include "pmix_server_ops.h"
 
@@ -74,17 +72,17 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
 
     /* unpack the status */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &status, &cnt, PMIX_INT))) {
+    if (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, &status, &cnt, PMIX_INT))) {
         return rc;
     }
     /* unpack the message */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &msg, &cnt, PMIX_STRING))) {
+    if (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, &msg, &cnt, PMIX_STRING))) {
         return rc;
     }
     /* unpack the number of procs */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &nprocs, &cnt, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, &nprocs, &cnt, PMIX_SIZE))) {
         return rc;
     }
 
@@ -93,7 +91,7 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
     if (0 < nprocs) {
         PMIX_PROC_CREATE(procs, nprocs);
         cnt = nprocs;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, procs, &cnt, PMIX_PROC))) {
+        if (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, procs, &cnt, PMIX_PROC))) {
             return rc;
         }
     }
@@ -153,7 +151,7 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
      * stored separately so we can provide required data based
      * on the requestor's location */
     cnt = 1;
-    while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(buf, &scope, &cnt, PMIX_SCOPE))) {
+    while (PMIX_SUCCESS == (rc = peer->comm.bfrops->unpack(buf, &scope, &cnt, PMIX_SCOPE))) {
         if (PMIX_LOCAL == scope) {
             ht = &nptr->server->mylocal;
         } else if (PMIX_REMOTE == scope) {
@@ -165,7 +163,7 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
         }
         /* unpack and store the blob */
         cnt = 1;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &b2, &cnt, PMIX_BUFFER))) {
+        if (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, &b2, &cnt, PMIX_BUFFER))) {
             PMIX_ERROR_LOG(rc);
             return rc;
         }
@@ -336,6 +334,7 @@ static pmix_server_trkr_t* new_tracker(pmix_proc_t *procs,
     size_t i;
     bool all_def;
     pmix_nspace_t *nptr, *ns;
+    char *nspace = NULL;
 
     pmix_output_verbose(5, pmix_globals.debug_output,
                         "new_tracker called with %d procs", (int)nprocs);
@@ -361,6 +360,15 @@ static pmix_server_trkr_t* new_tracker(pmix_proc_t *procs,
 
     all_def = true;
     for (i=0; i < nprocs; i++) {
+        if (!trk->hybrid) {
+            if (NULL == nspace) {
+                nspace = strdup(procs[i].nspace);
+            } else {
+                if (0 != strncmp(procs[i].nspace, nspace, PMIX_MAX_NSLEN)) {
+                    trk->hybrid = true;
+                }
+            }
+        }
         (void)strncpy(trk->pcs[i].nspace, procs[i].nspace, PMIX_MAX_NSLEN);
         trk->pcs[i].rank = procs[i].rank;
         /* is this nspace known to us? */
@@ -435,6 +443,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
     pmix_value_t *val;
     pmix_info_t *info = NULL;
     size_t ninfo=0, n;
+    pmix_bfrops_module_t *bfrops;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "recvd FENCE");
@@ -446,7 +455,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
 
     /* unpack the number of procs */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &nprocs, &cnt, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = cd->peer->comm.bfrops->unpack(buf, &nprocs, &cnt, PMIX_SIZE))) {
         return rc;
     }
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -461,20 +470,20 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
     PMIX_PROC_CREATE(procs, nprocs);
     /* unpack the procs */
     cnt = nprocs;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, procs, &cnt, PMIX_PROC))) {
+    if (PMIX_SUCCESS != (rc = cd->peer->comm.bfrops->unpack(buf, procs, &cnt, PMIX_PROC))) {
         goto cleanup;
     }
 
     /* unpack the number of provided info structs */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = cd->peer->comm.bfrops->unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
         return rc;
     }
     if (0 < ninfo) {
         PMIX_INFO_CREATE(info, ninfo);
         /* unpack the info */
         cnt = ninfo;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, info, &cnt, PMIX_INFO))) {
+        if (PMIX_SUCCESS != (rc = cd->peer->comm.bfrops->unpack(buf, info, &cnt, PMIX_INFO))) {
             goto cleanup;
         }
         /* see if we are to collect data - we don't internally care
@@ -555,43 +564,67 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
          * participating! And only take data intended for remote
          * distribution */
 
-        PMIX_CONSTRUCT(&bucket, pmix_buffer_t);
+        if (trk->hybrid) {
+            bfrops = pmix_globals.mypeer->comm.bfrops;
+            pmix_bfrops_base_construct_buffer(pmix_globals.mypeer, &bucket);
+        } else {
+            bfrops = cd->peer->comm.bfrops;
+            pmix_bfrops_base_construct_buffer(cd->peer, &bucket);
+        }
 
         assert( PMIX_COLLECT_MAX < UCHAR_MAX );
         unsigned char tmp = (unsigned char)trk->collect_type;
-        pmix_bfrop.pack(&bucket, &tmp, 1, PMIX_BYTE);
+        bfrops->pack(&bucket, &tmp, 1, PMIX_BYTE);
 
         if (PMIX_COLLECT_YES == trk->collect_type) {
             pmix_buffer_t databuf;
-            PMIX_CONSTRUCT(&databuf, pmix_buffer_t);
+            if (trk->hybrid) {
+                pmix_bfrops_base_construct_buffer(pmix_globals.mypeer, &databuf);
+            } else {
+                pmix_bfrops_base_construct_buffer(cd->peer, &databuf);
+            }
             pmix_output_verbose(2, pmix_globals.debug_output,
                                 "fence - assembling data");
             PMIX_LIST_FOREACH(rkinfo, &trk->ranks, pmix_rank_info_t) {
                 pmix_buffer_t rankbuf;
-                PMIX_CONSTRUCT(&rankbuf, pmix_buffer_t);
+                if (trk->hybrid) {
+                    pmix_bfrops_base_construct_buffer(pmix_globals.mypeer, &rankbuf);
+                } else {
+                    pmix_bfrops_base_construct_buffer(cd->peer, &rankbuf);
+                }
                 /* get any remote contribution - note that there
                  * may not be a contribution */
                 if (PMIX_SUCCESS == pmix_hash_fetch(&rkinfo->nptr->server->myremote, rkinfo->rank, "modex", &val) &&
                     NULL != val) {
                     /* pack the proc so we know the source */
                     char *foobar = rkinfo->nptr->nspace;
-                    pmix_bfrop.pack(&rankbuf, &foobar, 1, PMIX_STRING);
-                    pmix_bfrop.pack(&rankbuf, &rkinfo->rank, 1, PMIX_INT);
-                    PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
-                    PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
+                    bfrops->pack(&rankbuf, &foobar, 1, PMIX_STRING);
+                    bfrops->pack(&rankbuf, &rkinfo->rank, 1, PMIX_INT);
+                    /* the modex data is always committed in the peer's form.
+                     * so if this is a hybrid operation, we need to re-pack the
+                     * data into the server's form */
+                    if (trk->hybrid) {
+                        /* repack the returned modex data */
+                        assert(0);  // reminder to complete this
+                        pmix_bfrops_base_construct_buffer(pmix_globals.mypeer, &xfer);
+                    } else {
+                        /* just transfer it across */
+                        pmix_bfrops_base_construct_buffer(cd->peer, &xfer);
+                        PMIX_LOAD_BUFFER(&xfer, val->data.bo.bytes, val->data.bo.size);
+                    }
                     PMIX_VALUE_RELEASE(val);
                     pmix_buffer_t *pxfer = &xfer;
-                    pmix_bfrop.pack(&rankbuf, &pxfer, 1, PMIX_BUFFER);
+                    bfrops->pack(&rankbuf, &pxfer, 1, PMIX_BUFFER);
                     PMIX_DESTRUCT(&xfer);
                     /* now pack this proc's contribution into the bucket */
                     pmix_buffer_t *pdatabuf = &rankbuf;
-                    pmix_bfrop.pack(&databuf, &pdatabuf, 1, PMIX_BUFFER);
+                    bfrops->pack(&databuf, &pdatabuf, 1, PMIX_BUFFER);
                 }
                 PMIX_DESTRUCT(&rankbuf);
             }
             // TODO: we have multiple data movings while only one is actually need
             pmix_buffer_t *pbkt = &databuf;
-            pmix_bfrop.pack(&bucket, &pbkt, 1, PMIX_BUFFER);
+            bfrops->pack(&bucket, &pbkt, 1, PMIX_BUFFER);
             PMIX_DESTRUCT(&databuf);
         }
 
@@ -627,13 +660,13 @@ pmix_status_t pmix_server_publish(pmix_peer_t *peer,
 
     /* unpack the effective user id */
     cnt=1;
-    if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &uid, &cnt, PMIX_UINT32))) {
+    if  (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, &uid, &cnt, PMIX_UINT32))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
     /* unpack the number of info objects */
     cnt=1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -643,7 +676,7 @@ pmix_status_t pmix_server_publish(pmix_peer_t *peer,
     /* unpack the array of info objects */
     if (0 < ninfo) {
         cnt=ninfo;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, info, &cnt, PMIX_INFO))) {
+        if (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, info, &cnt, PMIX_INFO))) {
             PMIX_ERROR_LOG(rc);
             goto cleanup;
         }
@@ -684,20 +717,20 @@ pmix_status_t pmix_server_lookup(pmix_peer_t *peer,
 
     /* unpack the effective user id */
     cnt=1;
-    if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &uid, &cnt, PMIX_UINT32))) {
+    if  (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, &uid, &cnt, PMIX_UINT32))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
     /* unpack the number of keys */
     cnt=1;
-    if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &nkeys, &cnt, PMIX_SIZE))) {
+    if  (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, &nkeys, &cnt, PMIX_SIZE))) {
          PMIX_ERROR_LOG(rc);
         return rc;
     }
     /* unpack the array of keys */
     for (i=0; i < nkeys; i++) {
         cnt=1;
-        if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &sptr, &cnt, PMIX_STRING))) {
+        if  (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, &sptr, &cnt, PMIX_STRING))) {
             PMIX_ERROR_LOG(rc);
             goto cleanup;
         }
@@ -706,7 +739,7 @@ pmix_status_t pmix_server_lookup(pmix_peer_t *peer,
     }
     /* unpack the number of info objects */
     cnt=1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -716,7 +749,7 @@ pmix_status_t pmix_server_lookup(pmix_peer_t *peer,
     /* unpack the array of info objects */
     if (0 < ninfo) {
         cnt=ninfo;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, info, &cnt, PMIX_INFO))) {
+        if (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, info, &cnt, PMIX_INFO))) {
             PMIX_ERROR_LOG(rc);
             goto cleanup;
         }
@@ -757,20 +790,20 @@ pmix_status_t pmix_server_unpublish(pmix_peer_t *peer,
 
     /* unpack the effective user id */
     cnt=1;
-    if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &uid, &cnt, PMIX_UINT32))) {
+    if  (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, &uid, &cnt, PMIX_UINT32))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
     /* unpack the number of keys */
     cnt=1;
-    if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &nkeys, &cnt, PMIX_SIZE))) {
+    if  (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, &nkeys, &cnt, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
     /* unpack the keys */
     for (i=0; i < nkeys; i++) {
         cnt=1;
-        if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &sptr, &cnt, PMIX_STRING))) {
+        if  (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, &sptr, &cnt, PMIX_STRING))) {
             PMIX_ERROR_LOG(rc);
             goto cleanup;
         }
@@ -779,7 +812,7 @@ pmix_status_t pmix_server_unpublish(pmix_peer_t *peer,
     }
     /* unpack the number of info objects */
     cnt=1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -789,7 +822,7 @@ pmix_status_t pmix_server_unpublish(pmix_peer_t *peer,
     /* unpack the array of info objects */
     if (0 < ninfo) {
         cnt=ninfo;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, info, &cnt, PMIX_INFO))) {
+        if (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, info, &cnt, PMIX_INFO))) {
             PMIX_ERROR_LOG(rc);
             goto cleanup;
         }
@@ -830,7 +863,7 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer,
 
     /* unpack the number of job-level directives */
     cnt=1;
-    if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
+    if  (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -838,7 +871,7 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer,
     if (0 < ninfo) {
         PMIX_INFO_CREATE(info, ninfo);
         cnt=ninfo;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, info, &cnt, PMIX_INFO))) {
+        if (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, info, &cnt, PMIX_INFO))) {
             PMIX_ERROR_LOG(rc);
             goto cleanup;
         }
@@ -846,7 +879,7 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer,
 
     /* unpack the number of apps */
     cnt=1;
-    if  (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &napps, &cnt, PMIX_SIZE))) {
+    if  (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, &napps, &cnt, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -854,7 +887,7 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer,
     if (0 < napps) {
         PMIX_APP_CREATE(apps, napps);
         cnt=napps;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, apps, &cnt, PMIX_APP))) {
+        if (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, apps, &cnt, PMIX_APP))) {
             PMIX_ERROR_LOG(rc);
             goto cleanup;
         }
@@ -898,7 +931,7 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
 
     /* unpack the number of procs */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &nprocs, &cnt, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = cd->peer->comm.bfrops->unpack(buf, &nprocs, &cnt, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -915,21 +948,21 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
     /* unpack the procs */
     PMIX_PROC_CREATE(procs, nprocs);
     cnt = nprocs;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, procs, &cnt, PMIX_PROC))) {
+    if (PMIX_SUCCESS != (rc = cd->peer->comm.bfrops->unpack(buf, procs, &cnt, PMIX_PROC))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
 
     /* unpack the number of provided info structs */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = cd->peer->comm.bfrops->unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
         return rc;
     }
     if (0 < ninfo) {
         PMIX_INFO_CREATE(info, ninfo);
         /* unpack the info */
         cnt = ninfo;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, info, &cnt, PMIX_INFO))) {
+        if (PMIX_SUCCESS != (rc = cd->peer->comm.bfrops->unpack(buf, info, &cnt, PMIX_INFO))) {
             goto cleanup;
         }
     }
@@ -993,13 +1026,14 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
     int i;
     bool enviro_events = false;
     bool found;
+    pmix_buffer_t *reply;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "recvd register events");
 
     /* unpack the number of codes */
     cnt=1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ncodes, &cnt, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, &ncodes, &cnt, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -1007,7 +1041,7 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
     if (0 < ncodes) {
         codes = (pmix_status_t*)malloc(ncodes * sizeof(pmix_status_t));
         cnt=ncodes;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, codes, &cnt, PMIX_STATUS))) {
+        if (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, codes, &cnt, PMIX_STATUS))) {
             PMIX_ERROR_LOG(rc);
             goto cleanup;
         }
@@ -1015,7 +1049,7 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
 
     /* unpack the number of info objects */
     cnt=1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, &ninfo, &cnt, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -1023,7 +1057,7 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
     if (0 < ninfo) {
         PMIX_INFO_CREATE(info, ninfo);
         cnt=ninfo;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, info, &cnt, PMIX_INFO))) {
+        if (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, info, &cnt, PMIX_INFO))) {
             PMIX_ERROR_LOG(rc);
             goto cleanup;
         }
@@ -1157,8 +1191,13 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
         }
         if (found) {
            /* have a match - notify */
-            PMIX_RETAIN(cd->buf);
-            PMIX_SERVER_QUEUE_REPLY(peer, 0, cd->buf);
+            reply = PMIX_NEW(pmix_buffer_t);
+            if (PMIX_SUCCESS != (rc = pmix_event_pack_notification(peer, (struct pmix_notify_caddy_t*)cd, reply))) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(reply);
+                continue;
+            }
+            PMIX_SERVER_QUEUE_REPLY(peer, 0, reply);
         }
     }
     if (!enviro_events) {
@@ -1186,7 +1225,7 @@ void pmix_server_deregister_events(pmix_peer_t *peer,
 
     /* unpack the number of codes */
     cnt=1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ncodes, &cnt, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, &ncodes, &cnt, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         return;
     }
@@ -1194,7 +1233,7 @@ void pmix_server_deregister_events(pmix_peer_t *peer,
     if (0 < ncodes) {
         codes = (pmix_status_t*)malloc(ncodes * sizeof(pmix_status_t));
         cnt=ncodes;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, codes, &cnt, PMIX_STATUS))) {
+        if (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, codes, &cnt, PMIX_STATUS))) {
             PMIX_ERROR_LOG(rc);
             goto cleanup;
         }
@@ -1277,28 +1316,28 @@ pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer,
 
     /* unpack status */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &cd->status, &cnt, PMIX_INT))) {
+    if (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, &cd->status, &cnt, PMIX_INT))) {
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
 
     /* unpack the range */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &cd->range, &cnt, PMIX_DATA_RANGE))) {
+    if (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, &cd->range, &cnt, PMIX_DATA_RANGE))) {
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
 
     /* unpack the info keys */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &cd->ninfo, &cnt, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, &cd->ninfo, &cnt, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
     if (0 < cd->ninfo) {
         PMIX_INFO_CREATE(cd->info, cd->ninfo);
         cnt = cd->ninfo;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, cd->info, &cnt, PMIX_INFO))) {
+        if (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, cd->info, &cnt, PMIX_INFO))) {
             PMIX_ERROR_LOG(rc);
             goto exit;
         }
@@ -1338,7 +1377,7 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer,
     cd->cbdata = cbdata;
     /* unpack the number of info */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &cd->ninfo, &cnt, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, &cd->ninfo, &cnt, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
@@ -1346,7 +1385,7 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer,
     if (0 < cd->ninfo) {
         PMIX_INFO_CREATE(cd->info, cd->ninfo);
         cnt = cd->ninfo;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, cd->info, &cnt, PMIX_INFO))) {
+        if (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, cd->info, &cnt, PMIX_INFO))) {
             PMIX_ERROR_LOG(rc);
             goto exit;
         }
@@ -1354,14 +1393,14 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer,
 
     /* unpack any directives */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &cd->ndirs, &cnt, PMIX_SIZE))) {
+    if (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, &cd->ndirs, &cnt, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
     if (0 < cd->ndirs) {
         PMIX_INFO_CREATE(cd->directives, cd->ndirs);
         cnt = cd->ndirs;
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, cd->directives, &cnt, PMIX_INFO))) {
+        if (PMIX_SUCCESS != (rc = peer->comm.bfrops->unpack(buf, cd->directives, &cnt, PMIX_INFO))) {
             PMIX_ERROR_LOG(rc);
             goto exit;
         }
@@ -1391,6 +1430,7 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer,
 static void tcon(pmix_server_trkr_t *t)
 {
     t->pcs = NULL;
+    t->hybrid = false;
     t->npcs = 0;
     t->active = true;
     t->def_complete = false;
@@ -1466,15 +1506,11 @@ static void ncon(pmix_notify_caddy_t *p)
     p->nondefault = false;
     p->info = NULL;
     p->ninfo = 0;
-    p->buf = PMIX_NEW(pmix_buffer_t);
 }
 static void ndes(pmix_notify_caddy_t *p)
 {
     if (NULL != p->info) {
         PMIX_INFO_FREE(p->info, p->ninfo);
-    }
-    if (NULL != p->buf) {
-        PMIX_RELEASE(p->buf);
     }
 }
 PMIX_CLASS_INSTANCE(pmix_notify_caddy_t,
@@ -1525,11 +1561,23 @@ static void pccon(pmix_pending_connection_t *p)
     memset(p->nspace, 0, PMIX_MAX_NSLEN+1);
     p->info = NULL;
     p->ninfo = 0;
+    p->bfrop = NULL;
+    p->sec = NULL;
+    p->cred = NULL;
 }
 static void pcdes(pmix_pending_connection_t *p)
 {
     if (NULL != p->info) {
         PMIX_INFO_FREE(p->info, p->ninfo);
+    }
+    if (NULL != p->bfrop) {
+        free(p->bfrop);
+    }
+    if (NULL != p->sec) {
+        free(p->sec);
+    }
+    if (NULL != p->cred) {
+        free(p->cred);
     }
 }
 PMIX_CLASS_INSTANCE(pmix_pending_connection_t,

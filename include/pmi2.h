@@ -12,7 +12,7 @@
 #define PMI2_MAX_ATTRVALUE 1024
 #define PMI2_ID_NULL -1
 
-#if defined(__cplusplus)
+#if defined(c_plusplus) || defined(__cplusplus)
 extern "C" {
 #endif
 
@@ -555,7 +555,7 @@ int PMI2_Nameserv_unpublish(const char service_name[],
 
 
 
-#if defined(__cplusplus)
+#if defined(c_plusplus) || defined(__cplusplus)
 }
 #endif
 

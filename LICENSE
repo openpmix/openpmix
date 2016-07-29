@@ -1,6 +1,6 @@
 Most files in this release are marked with the copyrights of the
 organizations who have edited them.  The copyrights below are in no
-particular order and generally reflect members of the Open MPI core
+particular order and generally reflect members of the PMIX core
 team who have contributed code that may or may not have been ported
 to PMIx. Per the terms of that LICENSE, we include the list here.
 The copyrights for code used under license from other parties
@@ -55,7 +55,7 @@ Additional copyrights may follow
 $HEADER$
 
 The following LICENSE pertains to both PMIx and any code ported
-from Open MPI.
+from PMIX.
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are

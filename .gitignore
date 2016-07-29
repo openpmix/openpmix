@@ -38,6 +38,7 @@ config.out
 dist.out
 
 config/ar-lib
+config/autogen_found_items.m4
 config/compile
 config/config.guess
 config/config.sub
@@ -48,6 +49,7 @@ config/ltoptions.m4
 config/ltsugar.m4
 config/ltversion.m4
 config/lt~obsolete.m4
+config/ylwrap
 
 examples/client
 examples/dmodex
@@ -58,6 +60,17 @@ examples/tool
 
 include/pmix/autogen/config.h.in
 include/pmix/autogen/config.h.in~
+
+src/include/frameworks.h
+src/mca/*/base/static-components.h
+
+src/mca/installdirs/config/install_dirs.h
+
+src/include/pmix_config.h
+src/include/pmix_config.h.in
+src/include/pmix_config.h.in~
+src/util/keyval/keyval_lex.c
+src/util/show_help_lex.c
 
 test/pmi2_client
 test/pmi_client

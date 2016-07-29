@@ -32,7 +32,6 @@
 #include <time.h>
 
 #include "src/class/pmix_object.h"
-#include "src/buffer_ops/types.h"
 #include "src/util/output.h"
 #include "src/util/printf.h"
 
@@ -156,8 +155,8 @@ int main(int argc, char **argv)
                 proc.rank = n;
                 (void)asprintf(&tmp, "%s-%d-local-%d", myproc.nspace, n, j);
                 if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, tmp, NULL, 0, &val))) {
-                    pmix_output(0, "Client ns %s rank %d cnt %d: PMIx_Get %s failed: %d", myproc.nspace, myproc.rank, j, tmp, rc);
-                    continue;
+                    pmix_output(0, "Client ns %s rank %d cnt %d: PMIx_Get %s failed: %s[%d]", myproc.nspace, myproc.rank, j, tmp, PMIx_Error_string(rc), rc);
+                    exit(1);
                 }
                 if (PMIX_UINT64 != val->type) {
                     pmix_output(0, "Client ns %s rank %d cnt %d: PMIx_Get %s returned wrong type: %d", myproc.nspace, myproc.rank, j, tmp, val->type);

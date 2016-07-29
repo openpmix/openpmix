@@ -43,7 +43,6 @@
 #include "src/util/output.h"
 #include "src/util/printf.h"
 #include "src/util/argv.h"
-#include "src/buffer_ops/buffer_ops.h"
 #include "src/usock/usock.h"
 
 static pmix_status_t connected(const pmix_proc_t *proc, void *server_object,
@@ -206,6 +205,7 @@ int main(int argc, char **argv)
     pmix_proc_t proc;
     wait_tracker_t *child;
     pmix_info_t info;
+    struct timespec ts;
 
     /* smoke test */
     if (PMIX_SUCCESS != 0) {
@@ -256,6 +256,8 @@ int main(int argc, char **argv)
     if (NULL == executable) {
         executable = strdup("./simpclient");
     }
+
+    fprintf(stderr, "TESTING PROGRAM: %s\n", executable);
 
     /* we have a single namespace for all clients */
     atmp = NULL;
@@ -321,11 +323,15 @@ int main(int argc, char **argv)
 
     /* hang around until the client(s) finalize */
     while (0 < wakeup) {
-        struct timespec ts;
         ts.tv_sec = 0;
         ts.tv_nsec = 100000;
         nanosleep(&ts, NULL);
     }
+    /* give the PMIx server library a little time to complete
+     * the finalize handshake with the last client */
+    ts.tv_sec = 1;
+    nanosleep(&ts, NULL);
+    /* cleanup */
     pmix_argv_free(client_argv);
     pmix_argv_free(client_env);
 

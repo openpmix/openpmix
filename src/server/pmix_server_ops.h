@@ -16,7 +16,12 @@
 
 #include <src/include/pmix_config.h>
 
-#include <pmix/pmix_common.h>
+ #include <unistd.h>
+ #ifdef HAVE_SYS_TYPES_H
+ #include <sys/types.h>
+ #endif
+
+#include <pmix_common.h>
 #include <src/class/pmix_ring_buffer.h>
 #include <pmix_server.h>
 #include "src/usock/usock.h"
@@ -57,7 +62,6 @@ typedef struct {
     bool nondefault;
     pmix_info_t *info;
     size_t ninfo;
-    pmix_buffer_t *buf;
     pmix_op_cbfunc_t cbfunc;
     void *cbdata;
 } pmix_notify_caddy_t;
@@ -71,6 +75,7 @@ PMIX_CLASS_DECLARATION(pmix_dmdx_remote_t);
 
 typedef struct {
     pmix_list_item_t super;
+    pmix_peer_t *peer;              // the requestor
     pmix_modex_cbfunc_t cbfunc;     // cbfunc to be executed when data is available
     void *cbdata;
 } pmix_dmdx_request_t;
@@ -90,7 +95,7 @@ PMIX_CLASS_DECLARATION(pmix_dmdx_local_t);
 typedef uint16_t pmix_listener_protocol_t;
 #define PMIX_PROTOCOL_V1        0
 #define PMIX_PROTOCOL_TOOL      1
-#define PMIX_PROTOCOL V2        2
+#define PMIX_PROTOCOL_V2        2
 
 /* connection support */
 typedef struct {
@@ -103,6 +108,12 @@ typedef struct {
     size_t ninfo;
     pmix_status_t status;
     struct sockaddr_storage addr;
+    char *bfrop;
+    char *sec;
+    pmix_bfrop_buffer_type_t buffer_type;
+    char *cred;
+    uid_t uid;
+    gid_t gid;
 } pmix_pending_connection_t;
 PMIX_CLASS_DECLARATION(pmix_pending_connection_t);
 
@@ -145,7 +156,7 @@ typedef struct {
     volatile bool listen_thread_active;     // listen thread is running
     pmix_list_t listeners;                  // list of pmix_listener_t
     int stop_thread[2];                     // pipe used to stop listener thread
-    pmix_buffer_t gdata;                    // cache of data given to me for passing to all clients
+    pmix_list_t gdata;                      // list of pmix_kval_t data given to me for passing to all clients
     pmix_list_t events;                     // list of pmix_regevents_info_t registered events
     pmix_ring_buffer_t notifications;       // ring buffer of pending notifications
     bool tool_connections_allowed;
@@ -264,7 +275,8 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
                                   pmix_buffer_t *buf, bool disconnect,
                                   pmix_op_cbfunc_t cbfunc);
 
-void pmix_pack_proc_map(pmix_buffer_t *buf,
+void pmix_pack_proc_map(pmix_peer_t *peer,
+                        pmix_buffer_t *buf,
                         char **nodes, char **procs);
 pmix_status_t pmix_regex_parse_nodes(const char *regexp, char ***names);
 pmix_status_t pmix_regex_parse_procs(const char *regexp, char ***procs);

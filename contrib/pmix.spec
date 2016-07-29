@@ -152,7 +152,7 @@
 %define _includedir /opt/%{name}/%{version}/include
 %define _mandir /opt/%{name}/%{version}/man
 # Note that the name "pmix" is hard-coded in
-# opal/mca/installdirs/config for pkgdatadir; there is currently no
+# pmix/mca/installdirs/config for pkgdatadir; there is currently no
 # easy way to have PMIx change this directory name internally.  So we
 # just hard-code that name here as well (regardless of the value of
 # %{name} or %{_name}).
@@ -545,7 +545,7 @@ test "x$RPM_BUILD_ROOT" != "x" && rm -rf $RPM_BUILD_ROOT
   fields in case %{name} is overridden.
 
 * Mon Jun 24 2013 Igor Ivanov <Igor.Ivanov@itseez.com>
-- Add Open SHMEM parallel programming library as part of Open MPI
+- Add Open SHMEM parallel programming library as part of PMIX
 
 * Tue Dec 11 2012 Jeff Squyres <jsquyres@cisco.com>
 - Re-release 1.6.0-1.6.3 SRPMs (with new SRPM Release numbers) with
@@ -601,7 +601,7 @@ test "x$RPM_BUILD_ROOT" != "x" && rm -rf $RPM_BUILD_ROOT
   building the sub-packages.
 - When building the sub-packages, ensure that devel.files also picks
   up the F90 module.
-- Hard-code the directory name "openmpi" into _pkglibdir (vs. using
+- Hard-code the directory name "pmix" into _pkglibdir (vs. using
   %{name}) because the OMPI code base has it hard-coded as well.
   Thanks to Jim Kusznir for noticing the problem.
 

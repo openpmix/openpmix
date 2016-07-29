@@ -50,7 +50,7 @@
 
 /* prototypes for the PMI interface in MPICH2 */
 
-#if defined(__cplusplus)
+#if defined(c_plusplus) || defined(__cplusplus)
 extern "C" {
 #endif
 
@@ -822,7 +822,7 @@ Notes:
 @*/
 int PMI_Get_options(char *str, int *length);
 
-#if defined(__cplusplus)
+#if defined(c_plusplus) || defined(__cplusplus)
 }
 #endif
 
