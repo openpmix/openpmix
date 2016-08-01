@@ -69,8 +69,8 @@ typedef enum {
 #define PMIX_VAR_IS_SETTABLE(var) (!!((var).mbv_flags & PMIX_MCA_BASE_VAR_FLAG_SETTABLE))
 #define PMIX_VAR_IS_DEPRECATED(var) (!!((var).mbv_flags & PMIX_MCA_BASE_VAR_FLAG_DEPRECATED))
 
-extern const char *var_type_names[];
-extern const size_t var_type_sizes[];
+extern const char *pmix_var_type_names[];
+extern const size_t pmix_var_type_sizes[];
 extern bool pmix_mca_base_var_initialized;
 
 /**

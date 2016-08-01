@@ -67,6 +67,12 @@ static void errhandler_reg_callbk(pmix_status_t status,
     *active = false;
 }
 
+static void opcbfunc(pmix_status_t status, void *cbdata)
+{
+    volatile bool *active = (volatile bool*)cbdata;
+    *active = false;
+}
+
 int main(int argc, char **argv)
 {
     int rc;
@@ -78,6 +84,7 @@ int main(int argc, char **argv)
     int cnt, j;
     bool doabort = false;
     volatile bool active;
+    pmix_info_t info;
 
     if (1 < argc) {
         if (0 == strcmp("-abort", argv[1])) {
@@ -101,7 +108,9 @@ int main(int argc, char **argv)
     }
 
     /* get our universe size */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_UNIV_SIZE, NULL, 0, &val))) {
+    (void)strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
+    proc.rank = PMIX_RANK_WILDCARD;
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_UNIV_SIZE, NULL, 0, &val))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get universe size failed: %d", myproc.nspace, myproc.rank, rc);
         goto done;
     }
@@ -198,6 +207,18 @@ int main(int argc, char **argv)
             }
         }
     }
+
+    /* log something */
+    PMIX_INFO_CONSTRUCT(&info);
+    (void)strncpy(info.key, "foobar", PMIX_MAX_KEYLEN);
+    info.value.type = PMIX_BOOL;
+    info.value.data.flag = true;
+    active = true;
+    PMIx_Log_nb(&info, 1, NULL, 0, opcbfunc, (void*)&active);
+    while (active) {
+        usleep(10);
+    }
+    PMIX_INFO_DESTRUCT(&info);
 
     /* if requested and our rank is 0, call abort */
     if (doabort) {

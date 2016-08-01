@@ -33,8 +33,8 @@
 
 static int _esh_init(pmix_info_t info[], size_t ninfo);
 static int _esh_finalize(void);
-static int _esh_store(const char *nspace, int rank, pmix_kval_t *kv);
-static int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs);
+static int _esh_store(const char *nspace, pmix_rank_t rank, pmix_kval_t *kv);
+static int _esh_fetch(const char *nspace, pmix_rank_t rank, const char *key, pmix_value_t **kvs);
 static int _esh_patch_env(char ***env);
 static int _esh_nspace(const char *nspace);
 
@@ -58,14 +58,14 @@ pmix_dstore_base_module_t pmix_dstore_esh_module = {
 #define EXT_SLOT_SIZE (PMIX_MAX_KEYLEN + 1 + 2*sizeof(size_t)) /* in ext slot new offset will be stored in case if new data were added for the same process during next commit */
 #define KVAL_SIZE(size) (PMIX_MAX_KEYLEN + 1 + sizeof(size_t) + size)
 
-static int _store_data_for_rank(ns_track_elem_t *ns_info, int rank, pmix_buffer_t *buf);
+static int _store_data_for_rank(ns_track_elem_t *ns_info, pmix_rank_t rank, pmix_buffer_t *buf);
 static seg_desc_t *_create_new_segment(segment_type type, char *nsname, uint32_t id);
 static seg_desc_t *_attach_new_segment(segment_type type, char *nsname, uint32_t id);
 static int _update_ns_elem(ns_track_elem_t *ns_elem, ns_seg_info_t *info);
 static int _put_ns_info_to_initial_segment(const char *nspace, pmix_sm_seg_t *metaseg, pmix_sm_seg_t *dataseg);
 static ns_seg_info_t *_get_ns_info_from_initial_segment(const char *nspace);
 static ns_track_elem_t *_get_track_elem_for_namespace(const char *nspace);
-static rank_meta_info *_get_rank_meta_info(int rank, seg_desc_t *segdesc);
+static rank_meta_info *_get_rank_meta_info(pmix_rank_t rank, seg_desc_t *segdesc);
 static uint8_t *_get_data_region_by_offset(seg_desc_t *segdesc, size_t offset);
 static void _update_initial_segment_info(void);
 static void _set_constants_from_env(void);
@@ -283,7 +283,7 @@ int _esh_finalize(void)
 }
 
 
-int _esh_store(const char *nspace, int rank, pmix_kval_t *kv)
+int _esh_store(const char *nspace, pmix_rank_t rank, pmix_kval_t *kv)
 {
     int rc;
     ns_track_elem_t *elem;
@@ -295,7 +295,7 @@ int _esh_store(const char *nspace, int rank, pmix_kval_t *kv)
     }
 
     PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
-                         "%s:%d:%s: for %s:%d",
+                         "%s:%d:%s: for %s:%u",
                          __FILE__, __LINE__, __func__, nspace, rank));
 
     /* set exclusive lock */
@@ -367,7 +367,7 @@ int _esh_store(const char *nspace, int rank, pmix_kval_t *kv)
     return rc;
 }
 
-int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs)
+int _esh_fetch(const char *nspace, pmix_rank_t rank, const char *key, pmix_value_t **kvs)
 {
     ns_seg_info_t *ns_info = NULL;
     int rc;
@@ -379,7 +379,7 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
     pmix_buffer_t buffer;
     pmix_value_t val;
     uint32_t nprocs;
-    int cur_rank;
+    pmix_rank_t cur_rank;
 
     if (NULL == key) {
         PMIX_OUTPUT_VERBOSE((7, pmix_globals.debug_output,
@@ -388,7 +388,7 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
     }
 
     PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
-                         "%s:%d:%s: for %s:%d look for key %s",
+                         "%s:%d:%s: for %s:%u look for key %s",
                          __FILE__, __LINE__, __func__, nspace, rank, key));
 
     if (kvs) {
@@ -397,7 +397,7 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
 
     if (PMIX_RANK_UNDEF == rank) {
         nprocs = _get_univ_size(nspace);
-        cur_rank = -1;
+        cur_rank = PMIX_RANK_UNDEF;
     } else {
         nprocs = 1;
         cur_rank = rank;
@@ -464,7 +464,7 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
         rinfo = _get_rank_meta_info(cur_rank, meta_seg);
         if (NULL == rinfo) {
             PMIX_OUTPUT_VERBOSE((7, pmix_globals.debug_output,
-                        "%s:%d:%s:  no data for this rank is found in the shared memory. rank %d",
+                        "%s:%d:%s:  no data for this rank is found in the shared memory. rank %u",
                         __FILE__, __LINE__, __func__, cur_rank));
             rc = PMIX_ERR_PROC_ENTRY_NOT_FOUND;
             continue;
@@ -491,7 +491,7 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
              */
             if (0 == strncmp((const char *)addr, ESH_REGION_INVALIDATED, PMIX_MAX_KEYLEN+1)) {
                 PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
-                            "%s:%d:%s: for rank %s:%d, skip %s region",
+                            "%s:%d:%s: for rank %s:%u, skip %s region",
                             __FILE__, __LINE__, __func__, nspace, cur_rank, ESH_REGION_INVALIDATED));
                 /*skip it */
                 size_t size = *(size_t *)(addr + PMIX_MAX_KEYLEN + 1);
@@ -500,7 +500,7 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
             } else if (0 == strncmp((const char *)addr, ESH_REGION_EXTENSION, PMIX_MAX_KEYLEN+1)) {
                 size_t offset = *(size_t *)(addr + PMIX_MAX_KEYLEN + 1 + sizeof(size_t));
                 PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
-                            "%s:%d:%s: for rank %s:%d, reached %s with %lu value",
+                            "%s:%d:%s: for rank %s:%u, reached %s with %lu value",
                             __FILE__, __LINE__, __func__, nspace, cur_rank, ESH_REGION_EXTENSION, offset));
                 if (0 < offset) {
                     /* go to next item, updating address */
@@ -514,13 +514,13 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
                 } else {
                     /* no more data for this rank */
                     PMIX_OUTPUT_VERBOSE((7, pmix_globals.debug_output,
-                                "%s:%d:%s:  no more data for this rank is found in the shared memory. rank %d key %s not found",
+                                "%s:%d:%s:  no more data for this rank is found in the shared memory. rank %u key %s not found",
                                 __FILE__, __LINE__, __func__, cur_rank, key));
                     break;
                 }
             } else if (0 == strncmp((const char *)addr, key, PMIX_MAX_KEYLEN+1)) {
                 PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
-                            "%s:%d:%s: for rank %s:%d, found target key %s",
+                            "%s:%d:%s: for rank %s:%u, found target key %s",
                             __FILE__, __LINE__, __func__, nspace, cur_rank, key));
                 /* target key is found, get value */
                 size_t size = *(size_t *)(addr + PMIX_MAX_KEYLEN + 1);
@@ -545,7 +545,7 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
                 strncpy(ckey, (const char *)addr, PMIX_MAX_KEYLEN+1);
                 size_t size = *(size_t *)(addr + PMIX_MAX_KEYLEN + 1);
                 PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
-                            "%s:%d:%s: for rank %s:%d, skip key %s look for key %s", __FILE__, __LINE__, __func__, nspace, cur_rank, ckey, key));
+                            "%s:%d:%s: for rank %s:%u, skip key %s look for key %s", __FILE__, __LINE__, __func__, nspace, cur_rank, ckey, key));
                 /* go to next item, updating address */
                 addr += KVAL_SIZE(size);
                 kval_cnt--;
@@ -1000,7 +1000,7 @@ static ns_track_elem_t *_get_track_elem_for_namespace(const char *nspace)
     return new_elem;
 }
 
-static rank_meta_info *_get_rank_meta_info(int rank, seg_desc_t *segdesc)
+static rank_meta_info *_get_rank_meta_info(pmix_rank_t rank, seg_desc_t *segdesc)
 {
     size_t i;
     rank_meta_info *elem = NULL;
@@ -1021,7 +1021,7 @@ static rank_meta_info *_get_rank_meta_info(int rank, seg_desc_t *segdesc)
             num_elems = *((size_t*)(tmp->seg_info.seg_base_addr));
             for (i = 0; i < num_elems; i++) {
                 cur_elem = (rank_meta_info*)((uint8_t*)(tmp->seg_info.seg_base_addr) + sizeof(size_t) + i * sizeof(rank_meta_info));
-                if (rank == (int)cur_elem->rank) {
+                if (rank == cur_elem->rank) {
                     elem = cur_elem;
                     break;
                 }
@@ -1277,7 +1277,7 @@ static size_t put_data_to_the_end(ns_track_elem_t *ns_info, seg_desc_t *dataseg,
     return global_offset;
 }
 
-static int pmix_sm_store(ns_track_elem_t *ns_info, int rank, pmix_kval_t *kval, rank_meta_info **rinfo, int data_exist)
+static int pmix_sm_store(ns_track_elem_t *ns_info, pmix_rank_t rank, pmix_kval_t *kval, rank_meta_info **rinfo, int data_exist)
 {
     size_t offset, size, kval_cnt;
     pmix_buffer_t *buffer;
@@ -1286,7 +1286,7 @@ static int pmix_sm_store(ns_track_elem_t *ns_info, int rank, pmix_kval_t *kval, 
     uint8_t *addr;
 
     PMIX_OUTPUT_VERBOSE((2, pmix_globals.debug_output,
-                         "%s:%d:%s: for rank %d, replace flag %d",
+                         "%s:%d:%s: for rank %u, replace flag %d",
                          __FILE__, __LINE__, __func__, rank, data_exist));
 
     datadesc = ns_info->data_seg;
@@ -1361,7 +1361,7 @@ static int pmix_sm_store(ns_track_elem_t *ns_info, int rank, pmix_kval_t *kval, 
                 offset = *(size_t *)(addr + PMIX_MAX_KEYLEN + 1 + sizeof(size_t));
                 if (0 < offset) {
                     PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
-                                "%s:%d:%s: for rank %d, replace flag %d %s is filled with %lu value",
+                                "%s:%d:%s: for rank %u, replace flag %d %s is filled with %lu value",
                                 __FILE__, __LINE__, __func__, rank, data_exist, ESH_REGION_EXTENSION, offset));
                     /* go to next item, updating address */
                     addr = _get_data_region_by_offset(datadesc, offset);
@@ -1375,7 +1375,7 @@ static int pmix_sm_store(ns_track_elem_t *ns_info, int rank, pmix_kval_t *kval, 
                 }
             } else if (0 == strncmp((const char *)addr, kval->key, PMIX_MAX_KEYLEN+1)) {
                 PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
-                            "%s:%d:%s: for rank %d, replace flag %d found target key %s",
+                            "%s:%d:%s: for rank %u, replace flag %d found target key %s",
                             __FILE__, __LINE__, __func__, rank, data_exist, kval->key));
                 /* target key is found, compare value sizes */
                 size_t cur_size = *(size_t *)(addr + PMIX_MAX_KEYLEN + 1);
@@ -1389,11 +1389,11 @@ static int pmix_sm_store(ns_track_elem_t *ns_info, int rank, pmix_kval_t *kval, 
                     /* go to next item, updating address */
                     addr += KVAL_SIZE(cur_size);
                     PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
-                                "%s:%d:%s: for rank %d, replace flag %d mark key %s regions as invalidated. put new data at the end.",
+                                "%s:%d:%s: for rank %u, replace flag %d mark key %s regions as invalidated. put new data at the end.",
                                 __FILE__, __LINE__, __func__, rank, data_exist, kval->key));
                 } else {
                     PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
-                                "%s:%d:%s: for rank %d, replace flag %d replace data for key %s type %d in place",
+                                "%s:%d:%s: for rank %u, replace flag %d replace data for key %s type %d in place",
                                 __FILE__, __LINE__, __func__, rank, data_exist, kval->key, kval->value->type));
                     /* replace old data with new one. */
                     addr += PMIX_MAX_KEYLEN + 1;
@@ -1409,7 +1409,7 @@ static int pmix_sm_store(ns_track_elem_t *ns_info, int rank, pmix_kval_t *kval, 
                 char ckey[PMIX_MAX_KEYLEN+1] = {0};
                 strncpy(ckey, (const char *)addr, PMIX_MAX_KEYLEN+1);
                 PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
-                            "%s:%d:%s: for rank %d, replace flag %d skip %s key, look for %s key",
+                            "%s:%d:%s: for rank %u, replace flag %d skip %s key, look for %s key",
                             __FILE__, __LINE__, __func__, rank, data_exist, ckey, kval->key));
                 /* Skip it: key is "INVALIDATED" or key is valid but different from target one. */
                 if (0 != strncmp(ESH_REGION_INVALIDATED, ckey, PMIX_MAX_KEYLEN+1)) {
@@ -1442,7 +1442,7 @@ static int pmix_sm_store(ns_track_elem_t *ns_info, int rank, pmix_kval_t *kval, 
              */
             if (0 == strncmp((const char *)addr, ESH_REGION_EXTENSION, PMIX_MAX_KEYLEN+1)) {
                 PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
-                            "%s:%d:%s: for rank %d, replace flag %d %s should be filled with offset %lu value",
+                            "%s:%d:%s: for rank %u, replace flag %d %s should be filled with offset %lu value",
                             __FILE__, __LINE__, __func__, rank, data_exist, ESH_REGION_EXTENSION, offset));
                 memcpy(addr + PMIX_MAX_KEYLEN + 1 + sizeof(size_t), &offset, sizeof(size_t));
             } else {
@@ -1461,7 +1461,7 @@ static int pmix_sm_store(ns_track_elem_t *ns_info, int rank, pmix_kval_t *kval, 
                 }
             }
             PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
-                        "%s:%d:%s: for rank %d, replace flag %d item not found ext slot empty, put key %s to the end",
+                        "%s:%d:%s: for rank %u, replace flag %d item not found ext slot empty, put key %s to the end",
                         __FILE__, __LINE__, __func__, rank, data_exist, kval->key));
         }
     }
@@ -1471,7 +1471,7 @@ static int pmix_sm_store(ns_track_elem_t *ns_info, int rank, pmix_kval_t *kval, 
     return rc;
 }
 
-static int _store_data_for_rank(ns_track_elem_t *ns_info, int rank, pmix_buffer_t *buf)
+static int _store_data_for_rank(ns_track_elem_t *ns_info, pmix_rank_t rank, pmix_buffer_t *buf)
 {
     int rc;
     int32_t cnt;
@@ -1485,7 +1485,7 @@ static int _store_data_for_rank(ns_track_elem_t *ns_info, int rank, pmix_buffer_
     int data_exist;
 
     PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
-                         "%s:%d:%s: for rank %d", __FILE__, __LINE__, __func__, rank));
+                         "%s:%d:%s: for rank %u", __FILE__, __LINE__, __func__, rank));
 
     metadesc = ns_info->meta_seg;
     datadesc = ns_info->data_seg;

@@ -56,7 +56,7 @@ void pmix_dstore_finalize(void)
     return ;
 }
 
-int pmix_dstore_store(const char *nspace, int rank, pmix_kval_t *kv)
+int pmix_dstore_store(const char *nspace, pmix_rank_t rank, pmix_kval_t *kv)
 {
     if (!pmix_dstore.store) {
         return PMIX_ERR_NOT_SUPPORTED;
@@ -65,7 +65,8 @@ int pmix_dstore_store(const char *nspace, int rank, pmix_kval_t *kv)
     return pmix_dstore.store(nspace, rank, kv);
 }
 
-int pmix_dstore_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs)
+int pmix_dstore_fetch(const char *nspace, pmix_rank_t rank,
+                      const char *key, pmix_value_t **kvs)
 {
     if (!pmix_dstore.fetch) {
         return PMIX_ERR_NOT_SUPPORTED;

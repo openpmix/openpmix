@@ -95,7 +95,7 @@ typedef enum {
     PMIX_MCA_BASE_VAR_TYPE_MAX
 } pmix_mca_base_var_type_t;
 
-extern const char *var_type_names[];
+extern const char *pmix_var_type_names[];
 
 /**
  * Source of an MCA variable's value
