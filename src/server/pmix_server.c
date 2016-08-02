@@ -65,6 +65,7 @@ pmix_server_globals_t pmix_server_globals = {{{0}}};
 static char *myuri = NULL;
 static struct sockaddr_un myaddress;
 static char *security_mode = NULL;
+static char *mytmpdir = NULL;
 
 // local functions for connection support
 static void server_message_handler(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
@@ -206,12 +207,12 @@ static pmix_status_t initialize_server_base(pmix_server_module_t *module)
     security_mode = strdup(pmix_sec.name);
 
     /* find the temp dir */
-    if (NULL == (tdir = getenv("PMIX_SERVER_TMPDIR"))) {
-        if (NULL == (tdir = getenv("TMPDIR"))) {
-            if (NULL == (tdir = getenv("TEMP"))) {
-                if (NULL == (tdir = getenv("TMP"))) {
-                    tdir = "/tmp";
-                }
+    if (NULL != mytmpdir) {
+        tdir = mytmpdir;
+    } else if (NULL == (tdir = getenv("TMPDIR"))) {
+        if (NULL == (tdir = getenv("TEMP"))) {
+            if (NULL == (tdir = getenv("TMP"))) {
+                tdir = "/tmp";
             }
         }
     }
@@ -286,6 +287,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
                 sockgid = info[n].value.data.uint32;
             } else if (0 == strcmp(info[n].key, PMIX_SOCKET_MODE)) {
                 sockmode = info[n].value.data.uint32 & 0777;
+            } else if (0 == strcmp(info[n].key, PMIX_SERVER_TMPDIR)) {
+                mytmpdir = strdup(info[n].value.data.string);
             }
         }
     }
@@ -354,6 +357,9 @@ static void cleanup_server_state(void)
     }
     if (NULL != security_mode) {
         free(security_mode);
+    }
+    if (NULL != mytmpdir) {
+        free(mytmpdir);
     }
 
     pmix_bfrop_close();
