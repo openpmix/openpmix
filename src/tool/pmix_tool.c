@@ -64,7 +64,7 @@ extern pmix_client_globals_t pmix_client_globals;
 #include "src/util/error.h"
 #include "src/util/hash.h"
 #include "src/util/output.h"
-#include "src/util/progress_threads.h"
+#include "src/runtime/pmix_progress_threads.h"
 #include "src/usock/usock.h"
 #include "src/sec/pmix_sec.h"
 #include "src/include/pmix_globals.h"
@@ -325,7 +325,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
 
     if (!pmix_globals.external_evbase) {
         /* create an event base and progress thread for us */
-        if (NULL == (pmix_globals.evbase = pmix_start_progress_thread())) {
+        if (NULL == (pmix_globals.evbase = pmix_progress_thread_init(NULL))) {
             pmix_sec_finalize();
             pmix_usock_finalize();
             pmix_bfrop_close();
@@ -339,7 +339,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
 
     /* connect to the server */
     if (PMIX_SUCCESS != (rc = connect_to_server(&address))) {
-        pmix_stop_progress_thread(pmix_globals.evbase);
+        pmix_progress_thread_finalize(NULL);
         pmix_sec_finalize();
         pmix_usock_finalize();
         pmix_bfrop_close();
@@ -368,7 +368,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     }
     if (NULL == nsptr) {
         /* should never happen */
-        pmix_stop_progress_thread(pmix_globals.evbase);
+        pmix_progress_thread_finalize(NULL);
         pmix_sec_finalize();
         pmix_usock_finalize();
         pmix_bfrop_close();
@@ -621,7 +621,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
                         "pmix:tool finalize called");
 
     if (!pmix_globals.external_evbase) {
-        pmix_stop_progress_thread(pmix_globals.evbase);
+        pmix_progress_thread_finalize(NULL);
     }
 
     pmix_usock_finalize();
