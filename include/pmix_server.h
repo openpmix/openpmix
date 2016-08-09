@@ -81,7 +81,6 @@ BEGIN_C_DECLS
  * by the host server via callback function is owned by the host
  * server, which is free to release it upon return from the callback */
 
-
 /* Notify the host server that a client connected to us - note
  * that the client will be in a blocked state until the host server
  * executes the callback function, thus allowing the PMIx server support

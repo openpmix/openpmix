@@ -34,7 +34,7 @@ static pmix_dstore_base_module_t *all[] = {
 
 pmix_dstore_base_module_t pmix_dstore = {0};
 
-int pmix_dstore_init(void)
+int pmix_dstore_init(pmix_info_t info[], size_t ninfo)
 {
     pmix_dstore = *all[0];
 
@@ -42,14 +42,16 @@ int pmix_dstore_init(void)
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
-    return pmix_dstore.init();
+    return pmix_dstore.init(info, ninfo);
 }
 
 void pmix_dstore_finalize(void)
 {
     if (!pmix_dstore.finalize) {
-        pmix_dstore.finalize();
+        return ;
     }
+
+    pmix_dstore.finalize();
 
     return ;
 }
@@ -70,4 +72,20 @@ int pmix_dstore_fetch(const char *nspace, int rank, const char *key, pmix_value_
     }
 
     return pmix_dstore.fetch(nspace, rank, key, kvs);
+}
+
+int pmix_dstore_patch_env(char ***env)
+{
+    if (!pmix_dstore.patch_env) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+    return pmix_dstore.patch_env(env);
+}
+
+int pmix_dstore_nspace_add(const char *nspace)
+{
+    if (!pmix_dstore.nspace) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+    return pmix_dstore.nspace(nspace);
 }
