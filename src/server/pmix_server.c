@@ -245,6 +245,23 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:server init called");
 
+    /* Check for the info keys that are not dependent from
+     * initialize_server_base() and even may be needed there */
+    if (NULL != info) {
+        for (n=0; n < ninfo; n++) {
+            if (0 == strcmp(info[n].key, PMIX_SERVER_TMPDIR)) {
+                mytmpdir = strdup(info[n].value.data.string);
+                break;
+            } else if (0 == strcmp(info[n].key, PMIX_SERVER_TOOL_SUPPORT)) {
+                /* defer processing to ensure we pickup any tmpdir
+                 * directives before setting location */
+                tool_support = true;
+            } else if (0 == strcmp(info[n].key, PMIX_SYSTEM_TMPDIR)) {
+                systmpdir = strdup(info[n].value.data.string);
+            }
+        }
+    }
+
     if (0 != (rc = initialize_server_base(module))) {
         return rc;
     }
@@ -264,8 +281,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     }
 
     /* check the info keys for a directive about the uid/gid
-     * to be set for the rendezvous file, and for indication
-     * of willingness to support tool connections */
+     * to be set for the rendezvous file */
     if (NULL != info) {
         for (n=0; n < ninfo; n++) {
             if (0 == strcmp(info[n].key, PMIX_USERID)) {
@@ -291,14 +307,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
                 PMIX_LIST_FOREACH(lt, &pmix_server_globals.listeners, pmix_listener_t) {
                     lt->mode = info[n].value.data.uint32;
                 }
-            } else if (0 == strcmp(info[n].key, PMIX_SERVER_TOOL_SUPPORT)) {
-                /* defer processing to ensure we pickup any tmpdir
-                 * directives before setting location */
-                tool_support = true;
-            } else if (0 == strcmp(info[n].key, PMIX_SERVER_TMPDIR)) {
-                mytmpdir = strdup(info[n].value.data.string);
-            } else if (0 == strcmp(info[n].key, PMIX_SYSTEM_TMPDIR)) {
-                systmpdir = strdup(info[n].value.data.string);
             }
         }
     }
