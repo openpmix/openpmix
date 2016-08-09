@@ -18,11 +18,11 @@
 #include <src/include/pmix_config.h>
 
 #include <src/include/types.h>
-#include <pmix/autogen/pmix_stdint.h>
+#include <src/include/pmix_stdint.h>
 #include <src/include/pmix_socket_errno.h>
 
 #include <pmix_server.h>
-#include <pmix/pmix_common.h>
+#include <pmix_common.h>
 #include "src/include/pmix_globals.h"
 
 #ifdef HAVE_STRING_H
@@ -52,7 +52,7 @@
 #include "src/util/error.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
-#include "src/util/progress_threads.h"
+#include "src/runtime/pmix_progress_threads.h"
 #include "src/usock/usock.h"
 #include "src/sec/pmix_sec.h"
 #if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
@@ -276,7 +276,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     pmix_usock_init(NULL);
 
     /* create an event base and progress thread for us */
-    if (NULL == (pmix_globals.evbase = pmix_start_progress_thread())) {
+    if (NULL == (pmix_globals.evbase = pmix_progress_thread_init(NULL))) {
         return PMIX_ERR_INIT;
     }
 
@@ -464,7 +464,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
         pmix_stop_listening();
     }
 
-    pmix_stop_progress_thread(pmix_globals.evbase);
+    pmix_progress_thread_finalize(NULL);
     event_base_free(pmix_globals.evbase);
 #ifdef HAVE_LIBEVENT_GLOBAL_SHUTDOWN
     libevent_global_shutdown();
