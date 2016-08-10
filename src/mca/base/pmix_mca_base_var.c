@@ -680,16 +680,22 @@ static int int_from_string(const char *src, pmix_mca_base_var_enum_t *enumerator
 
     /* Check for an integer value */
     value = strtoull (src, &tmp, 0);
-    is_int = tmp[0] == '\0';
+    if (tmp[0] == '\0') {
+        is_int = true;
+    } else {
+        is_int = false;
+    }
 
     if (!is_int && tmp != src) {
         switch (tmp[0]) {
         case 'G':
         case 'g':
-            value <<= 10;
+            value <<= 30;
+            break;
         case 'M':
         case 'm':
-            value <<= 10;
+            value <<= 20;
+            break;
         case 'K':
         case 'k':
             value <<= 10;
@@ -1330,6 +1336,9 @@ static int register_variable (const char *project_name, const char *framework_na
 #endif
 
     if (flags & PMIX_MCA_BASE_VAR_FLAG_SYNONYM) {
+        if (synonym_for < 0) {
+            return PMIX_ERR_BAD_PARAM;
+        }
         original = pmix_pointer_array_get_item (&pmix_mca_base_vars, synonym_for);
         if (NULL == original) {
             /* Attempting to create a synonym for a non-existent variable. probably a

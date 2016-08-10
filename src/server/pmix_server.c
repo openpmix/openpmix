@@ -249,14 +249,15 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
      * initialize_server_base() and even may be needed there */
     if (NULL != info) {
         for (n=0; n < ninfo; n++) {
-            if (0 == strcmp(info[n].key, PMIX_SERVER_TMPDIR)) {
+            if (0 == strcmp(info[n].key, PMIX_SERVER_TMPDIR) &&
+                NULL == mytmpdir) {
                 mytmpdir = strdup(info[n].value.data.string);
-                break;
             } else if (0 == strcmp(info[n].key, PMIX_SERVER_TOOL_SUPPORT)) {
                 /* defer processing to ensure we pickup any tmpdir
                  * directives before setting location */
                 tool_support = true;
-            } else if (0 == strcmp(info[n].key, PMIX_SYSTEM_TMPDIR)) {
+            } else if (0 == strcmp(info[n].key, PMIX_SYSTEM_TMPDIR) &&
+                       NULL == systmpdir) {
                 systmpdir = strdup(info[n].value.data.string);
             }
         }

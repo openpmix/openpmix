@@ -272,11 +272,7 @@ static int group_register (const char *project_name, const char *framework_name,
     }
 
     if (NULL != framework_name && NULL != component_name) {
-        if (component_name) {
-            parent_id = group_register (project_name, framework_name, NULL, NULL);
-        } else if (framework_name && project_name) {
-            parent_id = group_register (project_name, NULL, NULL, NULL);
-        }
+        parent_id = group_register (project_name, framework_name, NULL, NULL);
     }
 
     /* build the group name */
