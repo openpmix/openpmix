@@ -183,6 +183,8 @@ static void job_data(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
      * unpack it to maintain sequence */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &nspace, &cnt, PMIX_STRING))) {
         PMIX_ERROR_LOG(rc);
+        cb->status = PMIX_ERROR;
+        cb->active = false;
         return;
     }
     /* decode it */
