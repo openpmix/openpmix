@@ -86,9 +86,10 @@ PMIX_CLASS_INSTANCE(pmix_dmdx_reply_caddy_t,
 static void dmdx_cbfunc(pmix_status_t status, const char *data,
                         size_t ndata, void *cbdata,
                         pmix_release_cbfunc_t relfn, void *relcbdata);
-static pmix_status_t _satisfy_request(pmix_nspace_t *ns, int rank,
+static pmix_status_t _satisfy_request(pmix_nspace_t *ns, pmix_rank_t rank,
+                                      pmix_server_caddy_t *cd,
                                       pmix_modex_cbfunc_t cbfunc, void *cbdata, bool *scope);
-static pmix_status_t create_local_tracker(char nspace[], int rank,
+static pmix_status_t create_local_tracker(char nspace[], pmix_rank_t rank,
                                           pmix_info_t info[], size_t ninfo,
                                           pmix_modex_cbfunc_t cbfunc,
                                           void *cbdata,
@@ -101,7 +102,9 @@ static pmix_status_t create_local_tracker(char nspace[], int rank,
 static void relfn(void *cbdata)
 {
     char *data = (char*)cbdata;
-    free(data);
+    if (NULL != data) {
+        free(data);
+    }
 }
 
 
@@ -109,9 +112,10 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
                               pmix_modex_cbfunc_t cbfunc,
                               void *cbdata)
 {
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t*)cbdata;
     int32_t cnt;
     pmix_status_t rc;
-    int rank;
+    pmix_rank_t rank;
     char *cptr;
     char nspace[PMIX_MAX_NSLEN+1];
     pmix_nspace_t *ns, *nptr;
@@ -119,6 +123,9 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     size_t ninfo=0;
     pmix_dmdx_local_t *lcd;
     bool local;
+    pmix_buffer_t pbkt;
+    char *data;
+    size_t sz;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "recvd GET");
@@ -135,7 +142,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     (void)strncpy(nspace, cptr, PMIX_MAX_NSLEN);
     free(cptr);
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &rank, &cnt, PMIX_INT))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &rank, &cnt, PMIX_PROC_RANK))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -165,9 +172,11 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     }
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "%s:%d EXECUTE GET FOR %s:%d",
+                        "%s:%d EXECUTE GET FOR %s:%d ON BEHALF OF %s:%d",
                         pmix_globals.myid.nspace,
-                        pmix_globals.myid.rank, nspace, rank);
+                        pmix_globals.myid.rank, nspace, rank,
+                        cd->peer->info->nptr->nspace,
+                        cd->peer->info->rank);
 
     if (NULL == nptr || NULL == nptr->server) {
         /* this is for an nspace we don't know about yet, so
@@ -176,6 +185,20 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
         rc = create_local_tracker(nspace, rank, info, ninfo,
                                   cbfunc, cbdata, &lcd);
         return rc;
+    }
+
+    /* if the rank is wildcard, then they are asking for the job-level
+     * info for this nspace - provide it */
+    if (PMIX_RANK_WILDCARD == rank) {
+        PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+        pmix_bfrop.pack(&pbkt, &rank, 1, PMIX_PROC_RANK);
+        /* the client is expecting this to arrive as a byte object
+         * containing a buffer, so package it accordingly */
+        pmix_bfrop.pack(&pbkt, &nptr->server->job_info, 1, PMIX_BUFFER);
+        PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
+        PMIX_DESTRUCT(&pbkt);
+        cbfunc(PMIX_SUCCESS, data, sz, cbdata, relfn, data);
+        return PMIX_SUCCESS;
     }
 
     /* We have to wait for all local clients to be registered before
@@ -193,25 +216,11 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     }
 
     /* see if we already have this data */
-    rc = _satisfy_request(nptr, rank, cbfunc, cbdata, &local);
+    rc = _satisfy_request(nptr, rank, cd, cbfunc, cbdata, &local);
     if( PMIX_SUCCESS == rc ){
         /* request was successfully satisfied */
         PMIX_INFO_FREE(info, ninfo);
         return rc;
-    }
-
-    /* do not force dmodex logic for non-specific ranks
-     * let return not found status instead of doing fence with
-     * data exchange. User can make a decision to do such call getting
-     * not found status
-     */
-    if (PMIX_RANK_UNDEF == rank || PMIX_RANK_WILDCARD == rank) {
-        pmix_output_verbose(2, pmix_globals.debug_output,
-                            "%s:%d not found data for namespace = %s, rank = %d "
-                            "(do not request resource manager server for non-specified rank)",
-                            pmix_globals.myid.nspace,
-                            pmix_globals.myid.rank, nspace, rank);
-        return PMIX_ERR_NOT_FOUND;
     }
 
     /* If we get here, then we don't have the data at this time. Check
@@ -257,7 +266,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     return rc;
 }
 
-static pmix_status_t create_local_tracker(char nspace[], int rank,
+static pmix_status_t create_local_tracker(char nspace[], pmix_rank_t rank,
                                           pmix_info_t info[], size_t ninfo,
                                           pmix_modex_cbfunc_t cbfunc,
                                           void *cbdata,
@@ -354,16 +363,18 @@ void pmix_pending_nspace_requests(pmix_nspace_t *nptr)
     }
 }
 
-static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, int rank,
-                                      pmix_modex_cbfunc_t cbfunc, void *cbdata, bool *scope)
+static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, pmix_rank_t rank,
+                                      pmix_server_caddy_t *cd,
+                                      pmix_modex_cbfunc_t cbfunc,
+                                      void *cbdata, bool *scope)
 {
     pmix_status_t rc;
     pmix_value_t *val;
     char *data;
     size_t sz;
-    int cur_rank;
+    pmix_rank_t cur_rank;
     int found = 0;
-    pmix_buffer_t pbkt;
+    pmix_buffer_t pbkt, *pbptr;
     void *last;
     pmix_hash_table_t *hts[3];
     pmix_hash_table_t **htptr;
@@ -403,6 +414,29 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, int rank,
      * having been committed */
     htptr = hts;
     PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+
+    /* if they are asking about a rank from an nspace different
+     * from their own, then include a copy of the job-level info */
+    if (NULL != cd &&
+        0 != strncmp(nptr->nspace, cd->peer->info->nptr->nspace, PMIX_MAX_NSLEN)) {
+        cur_rank = PMIX_RANK_WILDCARD;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&pbkt, &cur_rank, 1, PMIX_PROC_RANK))) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_DESTRUCT(&pbkt);
+            cbfunc(rc, NULL, 0, cbdata, NULL, NULL);
+            return rc;
+        }
+        /* the client is expecting this to arrive as a byte object
+         * containing a buffer, so package it accordingly */
+        pbptr = &nptr->server->job_info;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&pbkt, &pbptr, 1, PMIX_BUFFER))) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_DESTRUCT(&pbkt);
+            cbfunc(rc, NULL, 0, cbdata, NULL, NULL);
+            return rc;
+        }
+    }
+
     while (NULL != *htptr) {
         cur_rank = rank;
         if (PMIX_RANK_UNDEF == rank) {
@@ -426,7 +460,7 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, int rank,
                 PMIX_RELEASE(kv);
 #else
                 pmix_buffer_t xfer, *xptr;
-                pmix_bfrop.pack(&pbkt, &cur_rank, 1, PMIX_INT);
+                pmix_bfrop.pack(&pbkt, &cur_rank, 1, PMIX_PROC_RANK);
                 /* the client is expecting this to arrive as a byte object
                  * containing a buffer, so package it accordingly */
                 PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
@@ -461,7 +495,7 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, int rank,
 }
 
 /* Resolve pending requests to this namespace/rank */
-pmix_status_t pmix_pending_resolve(pmix_nspace_t *nptr, int rank,
+pmix_status_t pmix_pending_resolve(pmix_nspace_t *nptr, pmix_rank_t rank,
                                    pmix_status_t status, pmix_dmdx_local_t *lcd)
 {
     pmix_dmdx_local_t *cd;
@@ -493,7 +527,7 @@ pmix_status_t pmix_pending_resolve(pmix_nspace_t *nptr, int rank,
             /* run through all the requests to this rank */
             PMIX_LIST_FOREACH(req, &lcd->loc_reqs, pmix_dmdx_request_t) {
                 pmix_status_t rc;
-                rc = _satisfy_request(nptr, rank, req->cbfunc, req->cbdata, NULL);
+                rc = _satisfy_request(nptr, rank, NULL, req->cbfunc, req->cbdata, NULL);
                 if( PMIX_SUCCESS != rc ){
                     /* if we can't satisfy this particular request (missing key?) */
                     req->cbfunc(rc, NULL, 0, req->cbdata, NULL, NULL);
@@ -516,7 +550,7 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
     pmix_status_t rc;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                    "[%s:%d] process dmdx reply from %s:%d",
+                    "[%s:%d] process dmdx reply from %s:%u",
                     __FILE__, __LINE__,
                     caddy->lcd->proc.nspace, caddy->lcd->proc.rank);
 
@@ -597,7 +631,7 @@ static void dmdx_cbfunc(pmix_status_t status,
     caddy->ndata  = ndata;
     caddy->lcd    = (pmix_dmdx_local_t *)cbdata;
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "[%s:%d] queue dmdx reply for %s:%d",
+                        "[%s:%d] queue dmdx reply for %s:%u",
                         __FILE__, __LINE__,
                         caddy->lcd->proc.nspace, caddy->lcd->proc.rank);
     event_assign(&caddy->ev, pmix_globals.evbase, -1, EV_WRITE,

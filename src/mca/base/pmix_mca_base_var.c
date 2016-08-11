@@ -79,7 +79,7 @@ static int pmix_mca_base_var_count = 0;
 
 static pmix_hash_table_t pmix_mca_base_var_index_hash;
 
-const char *var_type_names[] = {
+const char *pmix_var_type_names[] = {
     "int",
     "unsigned_int",
     "unsigned_long",
@@ -91,7 +91,7 @@ const char *var_type_names[] = {
     "double"
 };
 
-const size_t var_type_sizes[] = {
+const size_t pmix_var_type_sizes[] = {
     sizeof (int),
     sizeof (unsigned),
     sizeof (unsigned long),
@@ -103,7 +103,7 @@ const size_t var_type_sizes[] = {
     sizeof (double)
 };
 
-const char *var_source_names[] = {
+const char *pmix_pmix_var_source_names[] = {
     "default",
     "command line",
     "environment",
@@ -806,7 +806,7 @@ int pmix_mca_base_var_set_value (int vari, const void *value, size_t size, pmix_
     }
 
     if (PMIX_MCA_BASE_VAR_TYPE_STRING != var->mbv_type && PMIX_MCA_BASE_VAR_TYPE_VERSION_STRING != var->mbv_type) {
-        memmove (var->mbv_storage, value, var_type_sizes[var->mbv_type]);
+        memmove (var->mbv_storage, value, pmix_var_type_sizes[var->mbv_type]);
     } else {
         var_set_string (var, (char *) value);
     }
@@ -1921,7 +1921,7 @@ static char *source_name(pmix_mca_base_var_t *var)
         return strdup ("unknown(!!)");
     }
 
-    return strdup (var_source_names[var->mbv_source]);
+    return strdup (pmix_pmix_var_source_names[var->mbv_source]);
 }
 
 static int var_value_string (pmix_mca_base_var_t *var, char **value_string)
@@ -2153,7 +2153,7 @@ int pmix_mca_base_var_dump(int vari, char ***out, pmix_mca_base_var_dump_type_t 
         /* Is this variable deprecated? */
         asprintf(out[0] + line++, "%sdeprecated:%s", tmp, PMIX_VAR_IS_DEPRECATED(var[0]) ? "yes" : "no");
 
-        asprintf(out[0] + line++, "%stype:%s", tmp, var_type_names[var->mbv_type]);
+        asprintf(out[0] + line++, "%stype:%s", tmp, pmix_var_type_names[var->mbv_type]);
 
         /* Does this parameter have any synonyms or is it a synonym? */
         if (PMIX_VAR_IS_SYNONYM(var[0])) {
@@ -2184,7 +2184,7 @@ int pmix_mca_base_var_dump(int vari, char ***out, pmix_mca_base_var_dump_type_t 
         asprintf (out[0], "%s \"%s\" (current value: \"%s\", data source: %s, level: %d %s, type: %s",
                   PMIX_VAR_IS_DEFAULT_ONLY(var[0]) ? "informational" : "parameter",
                   full_name, value_string, source_string, var->mbv_info_lvl + 1,
-                  info_lvl_strings[var->mbv_info_lvl], var_type_names[var->mbv_type]);
+                  info_lvl_strings[var->mbv_info_lvl], pmix_var_type_names[var->mbv_type]);
 
         tmp = out[0][0];
         if (PMIX_VAR_IS_DEPRECATED(var[0])) {

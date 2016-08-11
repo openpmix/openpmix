@@ -60,9 +60,12 @@ examples/tool
 include/pmix/autogen/config.h.in
 include/pmix/autogen/config.h.in~
 
+src/include/pmix_config.h
 src/include/pmix_config.h.in
 src/include/pmix_config.h.in~
 src/include/frameworks.h
+
+src/mca/pinstalldirs/config/pinstall_dirs.h
 
 test/pmi2_client
 test/pmi_client
