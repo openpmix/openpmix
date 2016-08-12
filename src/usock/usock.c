@@ -303,12 +303,16 @@ PMIX_CLASS_INSTANCE(pmix_usock_sr_t,
 static void pcon(pmix_peer_t *p)
 {
     p->info = NULL;
+    p->proc_cnt = 0;
+    p->server_object = NULL;
+    p->index = 0;
     p->sd = -1;
     p->send_ev_active = false;
     p->recv_ev_active = false;
     PMIX_CONSTRUCT(&p->send_queue, pmix_list_t);
     p->send_msg = NULL;
     p->recv_msg = NULL;
+    memset(&p->compat, 0, sizeof(p->compat));
 }
 static void pdes(pmix_peer_t *p)
 {

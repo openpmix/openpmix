@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2016 Intel, Inc.  All rights reserved.
  *
  * NOTE: THE MUNGE CLIENT LIBRARY (libmunge) IS LICENSED AS LGPL
  *
@@ -17,7 +17,6 @@
 #include "src/include/pmix_globals.h"
 #include "src/util/argv.h"
 #include "src/util/output.h"
-#include "src/usock/usock.h"
 
 #include <unistd.h>
 #ifdef HAVE_SYS_TYPES_H
@@ -25,7 +24,7 @@
 #endif
 #include <munge.h>
 
-#include "pmix_sec.h"
+#include "src/mca/psec/psec.h"
 #include "pmix_munge.h"
 
 static int munge_init(void);
@@ -33,7 +32,7 @@ static void munge_finalize(void);
 static char* create_cred(void);
 static int validate_cred(pmix_peer_t *peer, char *cred);
 
-pmix_sec_base_module_t pmix_munge_module = {
+pmix_psec_module_t pmix_munge_module = {
     "munge",
     munge_init,
     munge_finalize,
@@ -52,7 +51,7 @@ static int munge_init(void)
     int rc;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "sec: munge init");
+                        "psec: munge init");
 
     /* attempt to get a credential as a way of checking that
      * the munge server is available - cache the credential
@@ -60,7 +59,7 @@ static int munge_init(void)
 
     if (EMUNGE_SUCCESS != (rc = munge_encode(&mycred, NULL, NULL, 0))) {
         pmix_output_verbose(2, pmix_globals.debug_output,
-                            "sec: munge failed to create credential: %s",
+                            "psec: munge failed to create credential: %s",
                             munge_strerror(rc));
         return PMIX_ERR_SERVER_NOT_AVAIL;
     }
@@ -72,7 +71,7 @@ static int munge_init(void)
 static void munge_finalize(void)
 {
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "sec: munge finalize");
+                        "psec: munge finalize");
     if (initialized) {
         if (NULL != mycred) {
             free(mycred);
@@ -87,7 +86,7 @@ static char* create_cred(void)
     char *resp=NULL;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "sec: munge create_cred");
+                        "psec: munge create_cred");
 
     if (initialized) {
         if (!refresh) {
@@ -101,7 +100,7 @@ static char* create_cred(void)
             }
             if (EMUNGE_SUCCESS != (rc = munge_encode(&mycred, NULL, NULL, 0))) {
                 pmix_output_verbose(2, pmix_globals.debug_output,
-                                    "sec: munge failed to create credential: %s",
+                                    "psec: munge failed to create credential: %s",
                                     munge_strerror(rc));
                 return NULL;
             }
@@ -118,12 +117,12 @@ static int validate_cred(pmix_peer_t *peer, char *cred)
     munge_err_t rc;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "sec: munge validate_cred %s", cred ? cred : "NULL");
+                        "psec: munge validate_cred %s", cred ? cred : "NULL");
 
     /* parse the inbound string */
     if (EMUNGE_SUCCESS != (rc = munge_decode(cred, NULL, NULL, NULL, &uid, &gid))) {
         pmix_output_verbose(2, pmix_globals.debug_output,
-                            "sec: munge failed to decode credential: %s",
+                            "psec: munge failed to decode credential: %s",
                             munge_strerror(rc));
         return PMIX_ERR_INVALID_CRED;
     }
@@ -139,7 +138,7 @@ static int validate_cred(pmix_peer_t *peer, char *cred)
     }
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "sec: munge credential valid");
+                        "psec: munge credential valid");
     return PMIX_SUCCESS;
 }
 

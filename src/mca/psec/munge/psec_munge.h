@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2016 Intel, Inc.  All rights reserved.
  *
  * $COPYRIGHT$
  *
@@ -16,7 +16,7 @@ BEGIN_C_DECLS
 #include <src/include/pmix_config.h>
 
 
-extern pmix_sec_base_module_t pmix_munge_module;
+extern pmix_psec_module_t pmix_munge_module;
 
 END_C_DECLS
 

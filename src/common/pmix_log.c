@@ -73,7 +73,7 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
 
     /* if we are the server, then we just log and
      * return the response */
-    if (pmix_globals.server) {
+    if (PMIX_PROC_SERVER == pmix_globals.proc_type) {
             if (NULL == pmix_host_server.log) {
                 /* nothing we can do */
                 return PMIX_ERR_NOT_SUPPORTED;
