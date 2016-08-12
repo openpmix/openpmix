@@ -55,18 +55,10 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-#ifdef HAVE_TIME_H
 #include <time.h>
-#endif
-#ifdef HAVE_SYS_TIME_H
 #include <sys/time.h> /* for struct timeval */
-#endif
-#ifdef HAVE_UNISTD_H
 #include <unistd.h> /* for uid_t and gid_t */
-#endif
-#ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h> /* for uid_t and gid_t */
-#endif
 
 #if defined(c_plusplus) || defined(__cplusplus)
 extern "C" {
