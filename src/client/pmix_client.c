@@ -191,6 +191,7 @@ static void job_data(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     pmix_client_process_nspace_blob(pmix_globals.myid.nspace, buf);
     cb->status = PMIX_SUCCESS;
     cb->active = false;
+    free(nspace);
 }
 
 static pmix_status_t connect_to_server(struct sockaddr_un *address, void *cbdata)
@@ -684,6 +685,13 @@ PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope, const char key[], pmix_va
 
     if (pmix_globals.init_cntr <= 0) {
         return PMIX_ERR_INIT;
+    }
+
+    /* if the key has a "pmix" prefix, then we must reject it
+     * as this violates our namespace reservation and the
+     * data will not be retrievable */
+    if (0 == strncmp(key, "pmix", strlen("pmix"))) {
+        return PMIX_ERR_BAD_PARAM;
     }
 
     /* create a callback object */

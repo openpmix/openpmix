@@ -307,6 +307,11 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                 }
                 free(nspace);
                 pmix_client_process_nspace_blob(cb->nspace, bptr);
+
+                /* Check if what we are looking for is in this blob */
+
+                pmix_hash_fetch(&nptr->internal, rank, cb->key, &val);
+
             } else {
                 cnt = 1;
                 cur_kval = PMIX_NEW(pmix_kval_t);
@@ -338,7 +343,6 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
         if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc &&
             PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
-            rc = PMIX_ERR_SILENT; // avoid error-logging twice
             break;
         }
     }
