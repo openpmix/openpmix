@@ -91,6 +91,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     if test "$?" != "0"; then
         AC_MSG_ERROR([Cannot continue])
     fi
+    AC_MSG_RESULT([$PMIX_MAJOR_VERSION])
     AC_SUBST(PMIX_MAJOR_VERSION)
     AC_DEFINE_UNQUOTED([PMIX_MAJOR_VERSION], [$PMIX_MAJOR_VERSION],
                        [The library major version is always available, contrary to VERSION])
@@ -100,6 +101,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     if test "$?" != "0"; then
         AC_MSG_ERROR([Cannot continue])
     fi
+    AC_MSG_RESULT([$PMIX_MINOR_VERSION])
     AC_SUBST(PMIX_MINOR_VERSION)
     AC_DEFINE_UNQUOTED([PMIX_MINOR_VERSION], [$PMIX_MINOR_VERSION],
                        [The library minor version is always available, contrary to VERSION])
@@ -109,6 +111,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     if test "$?" != "0"; then
         AC_MSG_ERROR([Cannot continue])
     fi
+    AC_MSG_RESULT([$PMIX_RELEASE_VERSION])
     AC_SUBST(PMIX_RELEASE_VERSION)
     AC_DEFINE_UNQUOTED([PMIX_RELEASE_VERSION], [$PMIX_RELEASE_VERSION],
                        [The library release version is always available, contrary to VERSION])
