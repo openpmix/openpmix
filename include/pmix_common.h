@@ -177,7 +177,9 @@ typedef uint32_t pmix_rank_t;
 
 /* request-related info */
 #define PMIX_COLLECT_DATA                   "pmix.collect"          // (bool) collect data and return it at the end of the operation
-#define PMIX_TIMEOUT                        "pmix.timeout"          // (int) time in sec before specified operation should time out
+#define PMIX_TIMEOUT                        "pmix.timeout"          // (int) time in sec before specified operation should time out (0 => infinite)
+#define PMIX_IMMEDIATE                      "pmix.immediate"        // (bool) specified operation should immediately return an error if requested
+                                                                    //        data cannot be found - do not request it from the host RM
 #define PMIX_WAIT                           "pmix.wait"             // (int) caller requests that the server wait until at least the specified
                                                                     //       #values are found (0 => all and is the default)
 #define PMIX_COLLECTIVE_ALGO                "pmix.calgo"            // (char*) comma-delimited list of algorithms to use for collective
