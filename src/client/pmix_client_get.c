@@ -242,7 +242,9 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     int32_t cnt;
     pmix_nspace_t *ns, *nptr;
     pmix_rank_t rank;
+#if (PMIX_ENABLE_DSTORE != 1)
     pmix_rank_t cur_rank;
+#endif
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: get_nb callback recvd");
@@ -254,7 +256,6 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     }
     /* cache the rank */
     rank = cb->rank;
-    cur_rank = rank;
 
     /* unpack the status */
     cnt = 1;
@@ -282,12 +283,13 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
         goto done;
     }
 
-#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+#if (PMIX_ENABLE_DSTORE == 1)
     rc = pmix_dstore_fetch(nptr->nspace, cb->rank, cb->key, &val);
 #else
     /* we received the entire blob for this process, so
      * unpack and store it in the modex - this could consist
      * of buffers from multiple scopes */
+    cur_rank = rank;
     cnt = 1;
     while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(buf, &cur_rank, &cnt, PMIX_PROC_RANK))) {
         pmix_kval_t *cur_kval;
