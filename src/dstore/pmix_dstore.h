@@ -15,7 +15,7 @@
 #include <src/include/pmix_config.h>
 
 
-#include <pmix/pmix_common.h>
+#include <pmix_common.h>
 #include "src/buffer_ops/buffer_ops.h"
 
 

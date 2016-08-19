@@ -47,6 +47,7 @@
 #include <ctype.h>
 #include <sys/stat.h>
 #include PMIX_EVENT_HEADER
+#include PMIX_EVENT2_THREAD_HEADER
 
 #include "src/util/argv.h"
 #include "src/util/error.h"
@@ -299,6 +300,9 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
 
     /* and the usock system */
     pmix_usock_init(NULL);
+
+    /* tell the event library we need thread support */
+    pmix_event_use_threads();
 
     /* create an event base and progress thread for us */
     if (NULL == (pmix_globals.evbase = pmix_progress_thread_init(NULL))) {

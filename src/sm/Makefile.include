@@ -9,9 +9,9 @@
 #
 
 headers += \
-        src/sm/pmix_sm.h \
-        src/sm/pmix_mmap.h
+        sm/pmix_sm.h \
+        sm/pmix_mmap.h
 
 sources += \
-        src/sm/pmix_sm.c \
-        src/sm/pmix_mmap.c
+        sm/pmix_sm.c \
+        sm/pmix_mmap.c
