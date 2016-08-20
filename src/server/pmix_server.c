@@ -380,8 +380,12 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
                 free(pmix_pid);
                 return PMIX_ERR_INVALID_LENGTH;
             }
+            pmix_output_verbose(2, pmix_globals.debug_output,
+                                "%s:%d dropping system tool at %s",
+                                pmix_globals.myid.nspace,
+                                pmix_globals.myid.rank, pmix_pid);
             /* create the listener for this point */
-            pmix_listener_t *tl = PMIX_NEW(pmix_listener_t);
+            tl = PMIX_NEW(pmix_listener_t);
             tl -> address.sun_family = AF_UNIX;
             tl->protocol = PMIX_PROTOCOL_TOOL;
             snprintf(tl->address.sun_path, sizeof(tl->address.sun_path) - 1, "%s", pmix_pid);
@@ -409,6 +413,10 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
                 free(pmix_pid);
                 return PMIX_ERR_INVALID_LENGTH;
             }
+            pmix_output_verbose(2, pmix_globals.debug_output,
+                                "%s:%d dropping session tool at %s",
+                                pmix_globals.myid.nspace,
+                                pmix_globals.myid.rank, pmix_pid);
             /* create the listener for this point */
             tl = PMIX_NEW(pmix_listener_t);
             tl -> address.sun_family = AF_UNIX;
@@ -650,12 +658,12 @@ static void _register_nspace(int sd, short args, void *cbdata)
         } else if (0 == strcmp(cd->info[i].key, PMIX_PROC_DATA)) {
             /* an array of data pertaining to a specific proc */
             if (PMIX_DATA_ARRAY != cd->info[i].value.type ||
-                PMIX_INFO != cd->info[i].value.data.darray.type) {
+                PMIX_INFO != cd->info[i].value.data.darray->type) {
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                 goto release;
             }
-            size = cd->info[i].value.data.darray.size;
-            iptr = (pmix_info_t*)cd->info[i].value.data.darray.array;
+            size = cd->info[i].value.data.darray->size;
+            iptr = (pmix_info_t*)cd->info[i].value.data.darray->array;
             PMIX_CONSTRUCT(&buf2, pmix_buffer_t);
             /* first element of the array must be the rank */
             if (0 != strcmp(iptr[0].key, PMIX_RANK)) {

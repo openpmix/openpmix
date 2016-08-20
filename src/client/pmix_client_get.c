@@ -413,11 +413,11 @@ static pmix_status_t process_val(pmix_value_t *val,
     }
     /* save the results */
     if (PMIX_DATA_ARRAY == val->type) {
-        info = (pmix_info_t*)val->data.darray.array;
-        nsize = val->data.darray.size;
+        info = (pmix_info_t*)val->data.darray->array;
+        nsize = val->data.darray->size;
     } else {
-        info = (pmix_info_t*)val->data.array.array;
-        nsize = val->data.array.size;
+        info = (pmix_info_t*)val->data.array->array;
+        nsize = val->data.array->size;
     }
     nvals = 0;
     for (n=0; n < nsize; n++) {
@@ -427,11 +427,11 @@ static pmix_status_t process_val(pmix_value_t *val,
         ++nvals;
     }
     if (PMIX_DATA_ARRAY == val->type) {
-        val->data.darray.array = NULL;  // protect the data
-        val->data.darray.size = 0;
+        val->data.darray->array = NULL;  // protect the data
+        val->data.darray->size = 0;
     } else {
-        val->data.array.array = NULL;
-        val->data.array.size = 0;
+        val->data.array->array = NULL;
+        val->data.array->size = 0;
     }
     /* increment the number of values */
     (*num_vals) += nvals;
@@ -530,10 +530,10 @@ static void _getnbfn(int fd, short flags, void *cbdata)
         /* now let's package up the results */
         PMIX_VALUE_CREATE(val, 1);
         val->type = PMIX_DATA_ARRAY;
-        val->data.darray.type = PMIX_INFO;
-        val->data.darray.size = nvals;
+        val->data.darray->type = PMIX_INFO;
+        val->data.darray->size = nvals;
         PMIX_INFO_CREATE(iptr, nvals);
-        val->data.darray.array = (void*)iptr;
+        val->data.darray->array = (void*)iptr;
         for (n=0; n < (size_t)results.size && n < nvals; n++) {
             if (NULL != (info = (pmix_info_t*)pmix_pointer_array_get_item(&results, n))) {
                 (void)strncpy(iptr[n].key, info->key, PMIX_MAX_KEYLEN);
