@@ -11,7 +11,7 @@
 #                         All rights reserved.
 # Copyright (c) 2006-2015 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2012-2013 Los Alamos National Security, Inc.  All rights reserved.
-# Copyright (c) 2013-2015 Intel, Inc. All rights reserved
+# Copyright (c) 2013-2016 Intel, Inc. All rights reserved
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -33,7 +33,7 @@ EXTRA_DIST =
 dist_pmixdata_DATA =
 if ! PMIX_EMBEDDED_MODE
 dist_pmixdata_DATA += contrib/pmix-valgrind.supp
-endif
+
 
 man_MANS = \
         man/man3/pmix_init.3 \
@@ -46,6 +46,7 @@ man_MANS = \
         man/man3/pmix_get.3 \
         man/man7/pmix.7 \
         man/man7/pmix_constants.7
+endif
 
 include config/Makefile.am
 include include/Makefile.am
