@@ -58,6 +58,7 @@ examples/server
 
 include/pmix/autogen/config.h.in
 include/pmix/autogen/config.h.in~
+include/pmix_version.h
 
 test/pmi2_client
 test/pmi_client
