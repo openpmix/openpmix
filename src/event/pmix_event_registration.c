@@ -8,7 +8,6 @@
  * $HEADER$
  */
 #include <src/include/pmix_config.h>
-#include <pmix/rename.h>
 
 #include <pmix.h>
 #include <pmix/pmix_common.h>

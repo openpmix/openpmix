@@ -3,6 +3,7 @@
  * Copyright (c) 2013-2016 Intel, Inc. All rights reserved
  * Copyright (c) 2016      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -43,16 +44,11 @@
  *
  * Additional copyrights may follow
  *
- * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- *
  * $HEADER$
  */
 
 #ifndef PMIx_COMMON_H
 #define PMIx_COMMON_H
-
-#include <pmix/autogen/config.h>
-#include <pmix/rename.h>
 
 #include <stdbool.h>
 #include <stdlib.h>
@@ -67,8 +63,11 @@
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h> /* for uid_t and gid_t */
 #endif
+#include <pmix_version.h>
 
-BEGIN_C_DECLS
+#if defined(c_plusplus) || defined(__cplusplus)
+extern "C" {
+#endif
 
 /****  PMIX CONSTANTS    ****/
 
@@ -1074,5 +1073,8 @@ pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc,
 #define PMIX_VAL_FREE(_v) \
      PMIx_free_value_data(_v)
 
-END_C_DECLS
+#if defined(c_plusplus) || defined(__cplusplus)
+}
+#endif
+
 #endif

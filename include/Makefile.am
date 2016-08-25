@@ -22,7 +22,6 @@ include_HEADERS = \
 
 include_pmixdir = $(includedir)/pmix
 include_pmix_HEADERS = \
-    include/pmix/rename.h \
     include/pmix/pmix_common.h
 
 include_pmix_autogendir = $(includedir)/pmix/autogen

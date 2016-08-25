@@ -22,7 +22,6 @@
 #define PMIX_EVENT_H
 
 #include <src/include/pmix_config.h>
-#include <pmix/rename.h>
 
 #include <pmix/pmix_common.h>
 #include "src/class/pmix_list.h"
