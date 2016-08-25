@@ -787,7 +787,6 @@ fi
 AC_DEFINE_UNQUOTED([PMIX_ENABLE_DSTORE],
                    [$WANT_DSTORE],
                    [if want shared memory dstore feature])
-AM_CONDITIONAL([WANT_DSTORE],[test "x$enable_dstore" != "xno"])
 
 #
 # Ident string
@@ -847,6 +846,7 @@ AC_DEFUN([PMIX_DO_AM_CONDITIONALS],[
         AM_CONDITIONAL([PMIX_COMPILE_TIMING], [test "$WANT_TIMING" = "1"])
         AM_CONDITIONAL([PMIX_WANT_MUNGE], [test "$pmix_munge_support" = "1"])
         AM_CONDITIONAL([PMIX_WANT_SASL], [test "$pmix_sasl_support" = "1"])
+        AM_CONDITIONAL([WANT_DSTORE],[test "x$enable_dstore" != "xno"])
     ])
     pmix_did_am_conditionals=yes
 ])dnl
