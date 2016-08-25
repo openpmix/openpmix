@@ -86,7 +86,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_MSG_RESULT([$PMIX_VERSION])
 
     # Save the breakdown the version information
-    AC_MSG_CHECKING([for pmix major version])
     PMIX_MAJOR_VERSION="`$PMIX_top_srcdir/config/pmix_get_version.sh $PMIX_top_srcdir/VERSION --major`"
     if test "$?" != "0"; then
         AC_MSG_ERROR([Cannot continue])
@@ -95,10 +94,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_DEFINE_UNQUOTED([PMIX_MAJOR_VERSION], ["$PMIX_MAJOR_VERSION"],
                        [The library major version is always available, contrary to VERSION])
 
-    AC_DEFINE_UNQUOTED([PMIX_VERSION_MAJOR], [${PMIX_MAJOR_VERSION}L],
-                       [The library major version as integer])
-
-    AC_MSG_CHECKING([for pmix minor version])
     PMIX_MINOR_VERSION="`$PMIX_top_srcdir/config/pmix_get_version.sh $PMIX_top_srcdir/VERSION --minor`"
     if test "$?" != "0"; then
         AC_MSG_ERROR([Cannot continue])
@@ -107,10 +102,12 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_DEFINE_UNQUOTED([PMIX_MINOR_VERSION], ["$PMIX_MINOR_VERSION"],
                        [The library minor version is always available, contrary to VERSION])
 
-    AC_DEFINE_UNQUOTED([PMIX_VERSION_MINOR], [${PMIX_MINOR_VERSION}L],
-                       [The library minor version as integer])
+    pmixmajor=${PMIX_MAJOR_VERSION}L
+    pmixminor=${PMIX_MINOR_VERSION}L
+    AC_SUBST(pmixmajor)
+    AC_SUBST(pmixminor)
+    AC_CONFIG_FILES(pmix_config_prefix[include/pmix_version.h])
 
-    AC_MSG_CHECKING([for pmix release version])
     PMIX_RELEASE_VERSION="`$PMIX_top_srcdir/config/pmix_get_version.sh $PMIX_top_srcdir/VERSION --release`"
     if test "$?" != "0"; then
         AC_MSG_ERROR([Cannot continue])
@@ -780,17 +777,17 @@ AC_MSG_CHECKING([if want shared memory dstore usage])
 AC_ARG_ENABLE([dstore],
               [AC_HELP_STRING([--disable-dstore],
                               [Using shared memory datastore (default: enabled)])])
-if test "$enable_dstore" != "no" ; then
-    AC_MSG_RESULT([yes])
-    WANT_DSTORE=1
-else
+if test "$enable_dstore" == "no" ; then
     AC_MSG_RESULT([no])
     WANT_DSTORE=0
+else
+    AC_MSG_RESULT([yes])
+    WANT_DSTORE=1
 fi
 AC_DEFINE_UNQUOTED([PMIX_ENABLE_DSTORE],
                    [$WANT_DSTORE],
                    [if want shared memory dstore feature])
-AM_CONDITIONAL([WANT_DSTORE],[test "x$enable_dstore" = "xyes"])
+AM_CONDITIONAL([WANT_DSTORE],[test "x$enable_dstore" != "xno"])
 
 #
 # Ident string

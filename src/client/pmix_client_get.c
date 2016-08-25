@@ -243,7 +243,9 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     int32_t cnt;
     pmix_nspace_t *ns, *nptr;
     int rank;
+#if (PMIX_ENABLE_DSTORE != 1)
     int cur_rank;
+#endif
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: get_nb callback recvd");
@@ -255,7 +257,6 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     }
     /* cache the rank */
     rank = cb->rank;
-    cur_rank = rank;
 
     /* unpack the status */
     cnt = 1;
@@ -290,6 +291,7 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
      * unpack and store it in the modex - this could consist
      * of buffers from multiple scopes */
     cnt = 1;
+    cur_rank = rank;
     while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(buf, &cur_rank, &cnt, PMIX_INT))) {
         pmix_kval_t *cur_kval;
         pmix_buffer_t *bptr;
