@@ -14,9 +14,9 @@
 AC_DEFUN([MCA_pmix_pinstalldirs_config_PRIORITY], [0])
 
 AC_DEFUN([MCA_pmix_pinstalldirs_config_COMPILE_MODE], [
-    AC_MSG_CHECKING([for MCA component $2:$3 compile mode])
-    $4="static"
-    AC_MSG_RESULT([$$4])
+    AC_MSG_CHECKING([for MCA component $1:$2 compile mode])
+    $3="static"
+    AC_MSG_RESULT([$$3])
 ])
 
 

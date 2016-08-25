@@ -15,9 +15,9 @@ AC_DEFUN([MCA_pmix_pdl_pdlopen_PRIORITY], [80])
 # Force this component to compile in static-only mode
 #
 AC_DEFUN([MCA_pmix_pdl_pdlopen_COMPILE_MODE], [
-    AC_MSG_CHECKING([for MCA component $2:$3 compile mode])
-    $4="static"
-    AC_MSG_RESULT([$$4])
+    AC_MSG_CHECKING([for MCA component $1:$2 compile mode])
+    $3="static"
+    AC_MSG_RESULT([$$3])
 ])
 
 # MCA_pdl_pdlopen_CONFIG([action-if-can-compile],
