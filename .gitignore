@@ -60,6 +60,7 @@ examples/tool
 
 include/pmix/autogen/config.h.in
 include/pmix/autogen/config.h.in~
+include/pmix_version.h
 
 src/include/pmix_config.h
 src/include/pmix_config.h.in

@@ -17,7 +17,9 @@ include_HEADERS = \
         pmix_server.h \
         pmi.h \
         pmi2.h \
-        pmix_tool.h \
-        pmix_version.h
+        pmix_tool.h
+
+nodist_include_HEADERS = \
+    pmix_version.h
 
 endif ! PMIX_EMBEDDED_MODE
