@@ -32,5 +32,7 @@ include_pmix_autogen_HEADERS = \
         include/pmix/autogen/pmix_stdint.h
 nodist_include_pmix_autogen_HEADERS = \
         include/pmix/autogen/config.h
+nodist_include_HEADERS = \
+    include/pmix_version.h
 
 endif ! PMIX_EMBEDDED_MODE
