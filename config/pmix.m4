@@ -839,7 +839,6 @@ fi
 AC_DEFINE_UNQUOTED([PMIX_ENABLE_DSTORE],
                  [$WANT_DSTORE],
                  [if want shared memory dstore feature])
-AM_CONDITIONAL([WANT_DSTORE],[test "x$enable_dstore" != "xno"])
 
 #
 
