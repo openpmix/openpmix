@@ -575,7 +575,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
     /* do not destruct the kv object - no memory leak will result */
 
 #if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
-    if (0 > pmix_dstore_nspace_add(cd->proc.nspace)) {
+    if (PMIX_SUCCESS != (rc = pmix_dstore_nspace_add(cd->proc.nspace, cd->info, cd->ninfo))) {
         PMIX_ERROR_LOG(rc);
         goto release;
     }
@@ -622,8 +622,9 @@ static void _deregister_nspace(int sd, short args, void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t*)cbdata;
     pmix_nspace_t *nptr;
-    int i;
+    pmix_status_t rc = PMIX_SUCCESS;
     pmix_peer_t *peer;
+    int i;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:server _deregister_nspace %s",
@@ -654,6 +655,15 @@ static void _deregister_nspace(int sd, short args, void *cbdata)
         }
     }
 
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+    if (0 > (rc = pmix_dstore_nspace_del(cd->proc.nspace))) {
+        PMIX_ERROR_LOG(rc);
+    }
+#endif
+
+    if (NULL != cd->opcbfunc) {
+        cd->opcbfunc(rc, cd->cbdata);
+    }
     PMIX_RELEASE(cd);
 }
 
@@ -965,6 +975,7 @@ PMIX_EXPORT void PMIx_server_deregister_client(const pmix_proc_t *proc)
 PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char ***env)
 {
     char rankstr[128];
+    pmix_status_t rc;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:server setup_fork for nspace %s rank %d",
@@ -982,7 +993,10 @@ PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char *
 
 #if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
     /* pass dstore path to files */
-    pmix_dstore_patch_env(env);
+    if (PMIX_SUCCESS != (rc = pmix_dstore_patch_env(proc->nspace, env))) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
 #endif
 
     return PMIX_SUCCESS;
