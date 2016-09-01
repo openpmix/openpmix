@@ -1045,6 +1045,19 @@ static void _dmodex_req(int sd, short args, void *cbdata)
         return;
     }
 
+    /* They are asking for job level data for this process */
+    if (cd->proc.rank == PMIX_RANK_WILDCARD) {
+       
+       data = nptr->server->job_info.base_ptr;
+       sz = nptr->server->job_info.bytes_used;
+
+       /* execute the callback */
+       cd->cbfunc(PMIX_SUCCESS, data, sz, cd->cbdata);
+       cd->active = false;
+           
+       return;
+    }
+
     /* see if we have this peer in our list */
     info = NULL;
     PMIX_LIST_FOREACH(iptr, &nptr->server->ranks, pmix_rank_info_t) {
