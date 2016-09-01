@@ -672,7 +672,6 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
  *   }
  */
 
-#endif
 #ifdef HAVE_LIBEVENT_GLOBAL_SHUTDOWN
     libevent_global_shutdown();
 #endif
