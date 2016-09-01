@@ -632,6 +632,24 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     PMIX_DESTRUCT(&pmix_client_globals.myserver);
     PMIX_LIST_DESTRUCT(&pmix_client_globals.pending_requests);
 
+    if (0 <= pmix_client_globals.myserver.sd) {
+        CLOSE_THE_SOCKET(pmix_client_globals.myserver.sd);
+    }
+/*
+ * This  is already done inside of pmix_progress_thread_finalize above
+ *
+ *   if (!pmix_globals.external_evbase) {
+ *      event_base_free(pmix_globals.evbase);
+ *   }
+ */
+
+#endif
+#ifdef HAVE_LIBEVENT_GLOBAL_SHUTDOWN
+    libevent_global_shutdown();
+#endif
+    pmix_bfrop_close();
+    pmix_sec_finalize();
+
     if (NULL != mytmpdir) {
         free(mytmpdir);
     }
