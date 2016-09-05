@@ -221,7 +221,7 @@ int _esh_init(pmix_info_t info[], size_t ninfo)
     _global_sm_seg_first = NULL;
     _global_sm_seg_last = NULL;
     _set_constants_from_env();
-    _max_ns_num = (_initial_segment_size - sizeof(size_t) - sizeof(int)) / sizeof(ns_seg_info_t);
+    _max_ns_num = (_initial_segment_size - sizeof(size_t) * 2) / sizeof(ns_seg_info_t);
     _max_meta_elems = (_meta_segment_size - sizeof(size_t)) / sizeof(rank_meta_info);
 
     if (_is_server()){
@@ -904,8 +904,8 @@ static int _put_ns_info_to_initial_segment(const char *nspace, pmix_sm_seg_t *me
             return PMIX_ERROR;
         }
         /* mark previous segment as full */
-        int full = 1;
-        memcpy((uint8_t*)(_global_sm_seg_last->seg_info.seg_base_addr + sizeof(size_t)), &full, sizeof(int));
+        size_t full = 1;
+        memcpy((uint8_t*)(_global_sm_seg_last->seg_info.seg_base_addr + sizeof(size_t)), &full, sizeof(size_t));
         _global_sm_seg_last = last_seg;
         memset(_global_sm_seg_last->seg_info.seg_base_addr, 0, _initial_segment_size);
     }
@@ -913,7 +913,7 @@ static int _put_ns_info_to_initial_segment(const char *nspace, pmix_sm_seg_t *me
     strncpy(elem.ns_name, nspace, sizeof(elem.ns_name)-1);
     elem.num_meta_seg = 1;
     elem.num_data_seg = 1;
-    memcpy((uint8_t*)(_global_sm_seg_last->seg_info.seg_base_addr) + sizeof(size_t) + sizeof(int) + num_elems * sizeof(ns_seg_info_t),
+    memcpy((uint8_t*)(_global_sm_seg_last->seg_info.seg_base_addr) + sizeof(size_t) * 2 + num_elems * sizeof(ns_seg_info_t),
             &elem, sizeof(ns_seg_info_t));
     num_elems++;
     memcpy((uint8_t*)(_global_sm_seg_last->seg_info.seg_base_addr), &num_elems, sizeof(size_t));
@@ -932,7 +932,7 @@ static void _update_initial_segment_info(void)
     /* go through all global segments */
     do {
         /* check if current segment was marked as full but no more next segment is in the chain */
-        if (NULL == tmp->next && 1 == *((int*)((uint8_t*)(tmp->seg_info.seg_base_addr) + sizeof(size_t)))) {
+        if (NULL == tmp->next && 1 == *((size_t*)((uint8_t*)(tmp->seg_info.seg_base_addr) + sizeof(size_t)))) {
             tmp->next = _attach_new_segment(INITIAL_SEGMENT, NULL, tmp->id+1);
         }
         tmp = tmp->next;
@@ -960,7 +960,7 @@ static ns_seg_info_t *_get_ns_info_from_initial_segment(const char *nspace)
     do {
         num_elems = *((size_t*)(tmp->seg_info.seg_base_addr));
         for (i = 0; i < num_elems; i++) {
-            cur_elem = (ns_seg_info_t*)((uint8_t*)(tmp->seg_info.seg_base_addr) + sizeof(size_t) + sizeof(int) + i * sizeof(ns_seg_info_t));
+            cur_elem = (ns_seg_info_t*)((uint8_t*)(tmp->seg_info.seg_base_addr) + sizeof(size_t) * 2 + i * sizeof(ns_seg_info_t));
             if (0 == (rc = strncmp(cur_elem->ns_name, nspace, strlen(nspace)+1))) {
                 break;
             }
