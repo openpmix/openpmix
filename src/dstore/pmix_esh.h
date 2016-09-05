@@ -33,7 +33,7 @@ typedef enum {
 
 /* initial segment format:
  * size_t num_elems;
- * int full; //indicate to client that it needs to attach to the next segment
+ * size_t full; //indicate to client that it needs to attach to the next segment
  * ns_seg_info_t ns_seg_info[max_ns_num];
  */
 
