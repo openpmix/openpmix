@@ -137,6 +137,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_TMPDIR                         "pmix.tmpdir"           // (char*) top-level tmp dir assigned to session
 #define PMIX_NSDIR                          "pmix.nsdir"            // (char*) sub-tmpdir assigned to namespace
 #define PMIX_PROCDIR                        "pmix.pdir"             // (char*) sub-nsdir assigned to proc
+#define PMIX_TDIR_RMCLEAN                   "pmix.tdir.rmclean"     // (bool)  Resource Manager will clean session directories
 
 /* information about relative ranks as assigned by the RM */
 #define PMIX_JOBID                          "pmix.jobid"            // (char*) jobid assigned by scheduler
