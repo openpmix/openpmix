@@ -199,10 +199,11 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
          * give the host server a chance to tell us about it */
         rc = create_local_tracker(nspace, rank, info, ninfo,
                                   cbfunc, cbdata, &lcd);
-/*
- * Its possible there are no local processes on this host, so lets ask 
- * for this explicitly.   
- */
+        /*
+         * Its possible there are no local processes on this 
+         * host, so lets ask for this explicitly.  There can
+         * be a timing issue here if this information shows 
+         * up on its own, but I believe we handle it ok.  */
         if( NULL != pmix_host_server.direct_modex ){
                 pmix_host_server.direct_modex(&lcd->proc, info, ninfo, dmdx_cbfunc, lcd);
         }
@@ -467,7 +468,9 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, pmix_rank_t rank,
             cbfunc(rc, NULL, 0, cbdata, NULL, NULL);
             return rc;
         }    
-	if (rank == PMIX_RANK_WILDCARD) found++;
+	if (rank == PMIX_RANK_WILDCARD) {
+            found++;
+        }
     }
 
     while (NULL != *htptr) {
