@@ -52,7 +52,6 @@
 #include "src/util/hash.h"
 #include "src/util/output.h"
 #include "src/usock/usock.h"
-#include "src/sec/pmix_sec.h"
 
 #include "pmix_client_ops.h"
 

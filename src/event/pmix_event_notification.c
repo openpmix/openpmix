@@ -44,7 +44,7 @@ PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status,
 {
     int rc;
 
-    if (pmix_globals.server) {
+    if (PMIX_PROC_SERVER == pmix_globals.proc_type) {
         rc = notify_client_of_event(status, source, range,
                                     info, ninfo,
                                     cbfunc, cbdata);

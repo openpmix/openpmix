@@ -117,11 +117,6 @@ PMIX_CLASS_INSTANCE(ns_track_elem_t,
                     pmix_list_item_t,
                     ncon, ndes);
 
-static inline int _is_server(void)
-{
-    return (pmix_globals.server);
-}
-
 static inline const char *_unique_id(void)
 {
     static const char *str = NULL;
@@ -129,7 +124,7 @@ static inline const char *_unique_id(void)
         /* see: pmix_server.c initialize_server_base()
          * to get format of uri
          */
-        if (_is_server()) {
+        if (PMIX_PROC_SERVER == pmix_globals.proc_type) {
             static char buf[100];
             snprintf(buf, sizeof(buf) - 1, "pmix-%d", getpid());
             str = buf;
@@ -154,7 +149,7 @@ int _esh_init(pmix_info_t info[], size_t ninfo)
                          "%s:%d:%s", __FILE__, __LINE__, __func__));
 
     /* find the temp dir */
-    if (_is_server()) {
+    if (PMIX_PROC_SERVER == pmix_globals.proc_type) {
         /* scan incoming info for directives */
         if (NULL != info) {
             for (n=0; n < ninfo; n++) {
@@ -224,7 +219,7 @@ int _esh_init(pmix_info_t info[], size_t ninfo)
     _max_ns_num = (_initial_segment_size - sizeof(size_t) - sizeof(int)) / sizeof(ns_seg_info_t);
     _max_meta_elems = (_meta_segment_size - sizeof(size_t)) / sizeof(rank_meta_info);
 
-    if (_is_server()){
+    if (PMIX_PROC_SERVER == pmix_globals.proc_type) {
         return PMIX_SUCCESS;
     }
     else {
@@ -264,7 +259,7 @@ int _esh_finalize(void)
     PMIX_LIST_DESTRUCT(&_namespace_info_list);
 
     close(_lockfd);
-    if (_is_server()) {
+    if (PMIX_PROC_SERVER == pmix_globals.proc_type) {
         if (NULL != _lockfile_name) {
             unlink(_lockfile_name);
         }
@@ -742,7 +737,7 @@ static seg_desc_t *_create_new_segment(segment_type type, char *nsname, uint32_t
             new_seg = NULL;
             PMIX_ERROR_LOG(rc);
         }
-        if (setjobuid && _is_server()){
+        if (setjobuid && PMIX_PROC_SERVER == pmix_globals.proc_type) {
             if (chown(file_name, (uid_t) jobuid, (gid_t) -1) < 0){
                 PMIX_ERROR_LOG(PMIX_ERROR);
             }
@@ -813,7 +808,7 @@ static int _update_ns_elem(ns_track_elem_t *ns_elem, ns_seg_info_t *info)
 
     /* synchronize number of meta segments for the target namespace. */
     for (i = ns_elem->num_meta_seg; i < info->num_meta_seg; i++) {
-        if (_is_server()) {
+        if (PMIX_PROC_SERVER == pmix_globals.proc_type) {
             seg = _create_new_segment(NS_META_SEGMENT, info->ns_name, i);
         } else {
             seg = _attach_new_segment(NS_META_SEGMENT, info->ns_name, i);
@@ -839,7 +834,7 @@ static int _update_ns_elem(ns_track_elem_t *ns_elem, ns_seg_info_t *info)
     }
     /* synchronize number of data segments for the target namespace. */
     for (i = ns_elem->num_data_seg; i < info->num_data_seg; i++) {
-        if (_is_server()) {
+        if (PMIX_PROC_SERVER == pmix_globals.proc_type) {
             seg = _create_new_segment(NS_DATA_SEGMENT, info->ns_name, i);
             if (seg) {
                 offs = sizeof(size_t);//shift on offset field itself

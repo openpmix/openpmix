@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2016 Intel, Inc.  All rights reserved.
  *
  * $COPYRIGHT$
  *
@@ -14,11 +14,11 @@
 #include <src/include/pmix_config.h>
 
 
-#include "src/sec/pmix_sec.h"
+#include "src/mca/psec/psec.h"
 
 BEGIN_C_DECLS
 
-extern pmix_sec_base_module_t pmix_native_module;
+extern pmix_psec_module_t pmix_native_module;
 
 END_C_DECLS
 
