@@ -792,19 +792,18 @@ static pmix_status_t recv_connect_ack(int sd)
     /* get the returned status from the security handshake */
     pmix_usock_recv_blocking(sd, (char*)&reply, sizeof(pmix_status_t));
     if (PMIX_SUCCESS != reply) {
-        return reply;
-    }
-
-    /* see if they want us to do the handshake */
-    if (PMIX_ERR_READY_FOR_HANDSHAKE == reply) {
-        if (NULL == pmix_globals.mypeer->compat.psec->client_handshake) {
-            return PMIX_ERR_HANDSHAKE_FAILED;
-        }
-        if (PMIX_SUCCESS != (reply = pmix_globals.mypeer->compat.psec->client_handshake(sd))) {
-            return reply;
+        /* see if they want us to do the handshake */
+        if (PMIX_ERR_READY_FOR_HANDSHAKE == reply) {
+            if (NULL == pmix_globals.mypeer->compat.psec->client_handshake) {
+                return PMIX_ERR_HANDSHAKE_FAILED;
             }
-    } else if (PMIX_SUCCESS != reply) {
-        return reply;
+            if (PMIX_SUCCESS != (reply = pmix_globals.mypeer->compat.psec->client_handshake(sd))) {
+                return reply;
+            }
+            /* if the handshake succeeded, then fall thru to the next step */
+        } else {
+            return reply;
+        }
     }
 
     if (sockopt) {

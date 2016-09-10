@@ -397,13 +397,14 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     need_listener = false;
     PMIX_LIST_FOREACH(lt, &pmix_server_globals.listeners, pmix_listener_t) {
         if (PMIX_SUCCESS != pmix_prepare_listening(lt, &need_listener)) {
+            pmix_show_help("help-pmix-server.txt", "listener-failed-start", true, lt->address.sun_path);
             PMIx_server_finalize();
             return PMIX_ERR_INIT;
         }
     }
     if (need_listener) {
         if (PMIX_SUCCESS != pmix_start_listening()) {
-            pmix_show_help("help-pmix-server.txt", "listener-failed-start", true, tl->address.sun_path);
+            pmix_show_help("help-pmix-server.txt", "listener-thread-start", true);
             PMIx_server_finalize();
             return PMIX_ERR_INIT;
         }
