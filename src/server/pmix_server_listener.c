@@ -781,6 +781,10 @@ static pmix_status_t pmix_server_authenticate(pmix_pending_connection_t *pnd,
      * a child that also calls PMIx_Init, so add it here if necessary.
      * Create the tracker for this peer */
     psave = PMIX_NEW(pmix_peer_t);
+    if (NULL == psave) {
+        rc = PMIX_ERR_NOMEM;
+        goto error;
+    }
     PMIX_RETAIN(info);
     psave->info = info;
     info->proc_cnt++; /* increase number of processes on this rank */
@@ -835,10 +839,8 @@ static pmix_status_t pmix_server_authenticate(pmix_pending_connection_t *pnd,
         rc = PMIX_SUCCESS;
         if (PMIX_SUCCESS != (rc = pmix_usock_send_blocking(pnd->sd, (char*)&rc, sizeof(int)))) {
             PMIX_ERROR_LOG(rc);
-            if (NULL != psave) {
-                pmix_pointer_array_set_item(&pmix_server_globals.clients, psave->index, NULL);
-                PMIX_RELEASE(psave);
-            }
+            pmix_pointer_array_set_item(&pmix_server_globals.clients, psave->index, NULL);
+            PMIX_RELEASE(psave);
             return rc;
         }
     } else if (NULL != pmix_globals.mypeer->compat.psec->server_handshake) {
@@ -847,18 +849,14 @@ static pmix_status_t pmix_server_authenticate(pmix_pending_connection_t *pnd,
         rc = PMIX_ERR_READY_FOR_HANDSHAKE;
         if (PMIX_SUCCESS != (rc = pmix_usock_send_blocking(pnd->sd, (char*)&rc, sizeof(int)))) {
             PMIX_ERROR_LOG(rc);
-            if (NULL != psave) {
-                pmix_pointer_array_set_item(&pmix_server_globals.clients, psave->index, NULL);
-                PMIX_RELEASE(psave);
-            }
+            pmix_pointer_array_set_item(&pmix_server_globals.clients, psave->index, NULL);
+            PMIX_RELEASE(psave);
             return rc;
         }
         if (PMIX_SUCCESS != (rc = pmix_globals.mypeer->compat.psec->server_handshake(psave))) {
             PMIX_ERROR_LOG(rc);
-            if (NULL != psave) {
-                pmix_pointer_array_set_item(&pmix_server_globals.clients, psave->index, NULL);
-                PMIX_RELEASE(psave);
-            }
+            pmix_pointer_array_set_item(&pmix_server_globals.clients, psave->index, NULL);
+            PMIX_RELEASE(psave);
             return rc;
         }
         pmix_output_verbose(2, pmix_globals.debug_output,

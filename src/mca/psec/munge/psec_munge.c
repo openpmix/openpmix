@@ -16,6 +16,7 @@
 
 #include "src/include/pmix_globals.h"
 #include "src/util/argv.h"
+#include "src/util/error.h"
 #include "src/util/output.h"
 
 #include <unistd.h>
@@ -25,7 +26,7 @@
 #include <munge.h>
 
 #include "src/mca/psec/psec.h"
-#include "pmix_munge.h"
+#include "psec_munge.h"
 
 static int munge_init(void);
 static void munge_finalize(void);
