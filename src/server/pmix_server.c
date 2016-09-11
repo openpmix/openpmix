@@ -173,8 +173,11 @@ static pmix_status_t initialize_server_base(pmix_server_module_t *module)
     }
 
     /* for now, just setup the v1.1 series rendezvous point
-     * we use the pid to reduce collisions */
-    if (0 > asprintf(&pmix_pid, "%s/pmix-%d", tdir, mypid)) {
+     * - use userid to avoid situation where user with other UID but same PID 
+     *   has created the usock and terminate abnormally and we have no way to
+     *   remove the file
+     * - use the pid to reduce collisions */
+    if (0 > asprintf(&pmix_pid, "%s/pmix-%d.%d", tdir, getuid(), mypid)) {
         return PMIX_ERR_NOMEM;
     }
 
