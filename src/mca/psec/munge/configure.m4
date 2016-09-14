@@ -26,7 +26,7 @@ AC_DEFUN([MCA_pmix_psec_munge_CONFIG],[
                                 [Search for munge libraries in DIR ])])
 
     psec_munge_support=0
-    if test "$with_munge" != "no"; then
+    if test ! -z "$with_munge" && test "$with_munge" != "no"; then
         AC_MSG_CHECKING([for munge in])
         if test -n "$with_munge" && test "$with_munge" != "yes"; then
             if test -d $with_munge/include/munge; then
