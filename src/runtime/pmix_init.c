@@ -35,6 +35,8 @@
 #include PMIX_EVENT_HEADER
 #include "event2/thread.h"
 
+#include <pmix_rename.h>
+
 #include "src/util/output.h"
 #include "src/util/show_help.h"
 #include "src/mca/base/base.h"
@@ -60,7 +62,10 @@ const char pmix_version_string[] = PMIX_IDENT_STRING;
 
 int pmix_initialized = 0;
 bool pmix_init_called = false;
-pmix_globals_t pmix_globals = {
+/* we have to export the pmix_globals object so
+ * all plugins can access it. However, it is included
+ * in the pmix_rename.h file for external protection */
+PMIX_EXPORT pmix_globals_t pmix_globals = {
     .init_cntr = 0,
     .mypeer = NULL,
     .proc_type = PMIX_PROC_UNDEF,
@@ -163,6 +168,10 @@ int pmix_rte_init(pmix_proc_type_t type,
     }
     /* create our peer object */
     pmix_globals.mypeer = PMIX_NEW(pmix_peer_t);
+    if (NULL == pmix_globals.mypeer) {
+        ret = PMIX_ERR_NOMEM;
+        goto return_error;
+    }
 
     /* scan incoming info for directives */
     if (NULL != info) {
@@ -198,6 +207,11 @@ int pmix_rte_init(pmix_proc_type_t type,
     }
     param = getenv("PMIX_SEC_MODULE");  // if directive was given, use it
     pmix_globals.mypeer->compat.psec = pmix_psec_base_assign_module(param);
+    if (NULL == pmix_globals.mypeer->compat.psec) {
+        ret = PMIX_ERR_NOT_SUPPORTED;
+        error = "no psec module";
+        goto return_error;
+    }
 
     /* tell libevent that we need thread support */
     pmix_event_use_threads();

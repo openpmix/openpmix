@@ -60,9 +60,8 @@ examples/fault
 examples/pub
 examples/tool
 
-include/pmix/autogen/config.h.in
-include/pmix/autogen/config.h.in~
 include/pmix_version.h
+include/pmix_rename.h
 
 src/include/pmix_config.h
 src/include/pmix_config.h.in

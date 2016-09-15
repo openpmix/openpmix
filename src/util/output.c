@@ -317,7 +317,7 @@ void pmix_output_close(int output_id)
 /*
  * Main function to send output to a stream
  */
-void pmix_output(int output_id, const char *format, ...)
+PMIX_EXPORT void pmix_output(int output_id, const char *format, ...)
 {
     if (output_id >= 0 && output_id < PMIX_OUTPUT_MAX_STREAMS) {
         va_list arglist;
@@ -331,7 +331,7 @@ void pmix_output(int output_id, const char *format, ...)
 /*
  * Send a message to a stream if the verbose level is high enough
  */
-void pmix_output_verbose(int level, int output_id, const char *format, ...)
+ PMIX_EXPORT void pmix_output_verbose(int level, int output_id, const char *format, ...)
 {
     if (output_id >= 0 && output_id < PMIX_OUTPUT_MAX_STREAMS &&
         info[output_id].ldi_verbose_level >= level) {
