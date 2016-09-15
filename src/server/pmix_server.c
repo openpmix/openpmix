@@ -23,6 +23,8 @@
 
 #include <pmix_server.h>
 #include <pmix_common.h>
+#include <pmix_rename.h>
+
 #include "src/include/pmix_globals.h"
 
 #ifdef HAVE_STRING_H
