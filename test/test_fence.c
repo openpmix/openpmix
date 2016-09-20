@@ -364,7 +364,7 @@ static int get_local_peers(char *my_nspace, int my_rank, pmix_rank_t **_peers, p
     pmix_proc_t proc;
 
     (void)strncpy(proc.nspace, my_nspace, PMIX_MAX_NSLEN);
-    proc.rank = my_rank;
+    proc.rank = PMIX_RANK_WILDCARD;
     /* get number of neighbours on this node */
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_LOCAL_SIZE, NULL, 0, &val))) {
         TEST_ERROR(("%s:%d: PMIx_Get local peer # failed: %d", my_nspace, my_rank, rc));
