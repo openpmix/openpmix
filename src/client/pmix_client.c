@@ -500,12 +500,12 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
                              "pmix:client finalize sync received");
      }
 
+     PMIX_DESTRUCT(&pmix_client_globals.myserver);
      if (!pmix_globals.external_evbase) {
          pmix_stop_progress_thread(pmix_globals.evbase);
      }
 
      pmix_usock_finalize();
-     PMIX_DESTRUCT(&pmix_client_globals.myserver);
      PMIX_LIST_DESTRUCT(&pmix_client_globals.pending_requests);
 
      if (0 <= pmix_client_globals.myserver.sd) {
