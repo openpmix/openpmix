@@ -1380,6 +1380,7 @@ static int _put_ns_info_to_initial_segment(const ns_map_data_t *ns_map, pmix_sm_
                          "%s:%d:%s", __FILE__, __LINE__, __func__));
 
     if (_max_ns_num == num_elems) {
+        num_elems = 0;
         if (NULL == (last_seg = extend_segment(last_seg, ns_map))) {
             PMIX_ERROR_LOG(PMIX_ERROR);
             return PMIX_ERROR;
