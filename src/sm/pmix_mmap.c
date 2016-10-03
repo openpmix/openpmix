@@ -17,9 +17,9 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#include <private/autogen/config.h>
 #include <pmix/pmix_common.h>
 #include "src/include/pmix_globals.h"
+#include "src/util/output.h"
 
 #include "pmix_sm.h"
 #include "pmix_mmap.h"

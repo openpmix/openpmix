@@ -11,9 +11,7 @@
 #ifndef PMIX_SM_MMAP_H
 #define PMIX_SM_MMAP_H
 
-#include <private/autogen/config.h>
-#include <pmix/rename.h>
-
+#include <src/include/pmix_config.h>
 #include "pmix_sm.h"
 
 BEGIN_C_DECLS
