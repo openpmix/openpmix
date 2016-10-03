@@ -11,9 +11,8 @@
 #ifndef PMIX_SM_H
 #define PMIX_SM_H
 
-#include <private/autogen/config.h>
-#include <pmix/rename.h>
-
+#include <pmix/pmix_common.h>
+#include <src/include/pmix_config.h>
 
 BEGIN_C_DECLS
 
