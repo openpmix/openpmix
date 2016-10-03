@@ -895,6 +895,7 @@ static int _put_ns_info_to_initial_segment(const char *nspace, pmix_sm_seg_t *me
                          "%s:%d:%s", __FILE__, __LINE__, __func__));
 
     if (_max_ns_num == num_elems) {
+        num_elems = 0;
         if (NULL == (last_seg = extend_segment(last_seg, NULL))) {
             PMIX_ERROR_LOG(PMIX_ERROR);
             return PMIX_ERROR;
