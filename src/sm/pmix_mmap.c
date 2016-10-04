@@ -45,10 +45,10 @@ pmix_sm_base_module_t pmix_sm_mmap_module = {
 
 int _mmap_segment_create(pmix_sm_seg_t *sm_seg, const char *file_name, size_t size)
 {
-    int rc;
-    void *seg_addr;
+    int rc = PMIX_SUCCESS;
+    void *seg_addr = MAP_FAILED;
     pid_t my_pid = getpid();
-    rc = PMIX_SUCCESS;
+
     _segment_ds_reset(sm_seg);
     /* enough space is available, so create the segment */
     if (-1 == (sm_seg->seg_id = open(file_name, O_CREAT | O_RDWR, 0600))) {

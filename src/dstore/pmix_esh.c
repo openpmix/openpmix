@@ -369,6 +369,9 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
             continue;
         }
         kval_cnt = rinfo->count;
+        /* TODO: probably PMIX_ERR_NOT_FOUND is a better way but
+         * setting to one initiates wrong next logic for unknown reason */
+        rc = PMIX_ERROR;
 
         while (0 < kval_cnt) {
             /* data is stored in the following format:
@@ -536,16 +539,19 @@ static seg_desc_t *_create_new_segment(segment_type type, char *nsname, uint32_t
             return NULL;
     }
     new_seg = (seg_desc_t*)malloc(sizeof(seg_desc_t));
-    new_seg->id = id;
-    new_seg->next = NULL;
-    new_seg->type = type;
-    rc = pmix_sm_segment_create(&new_seg->seg_info, file_name, size);
-    if (PMIX_SUCCESS != rc) {
-        free(new_seg);
-        new_seg = NULL;
-        PMIX_ERROR_LOG(rc);
+    if (new_seg) {
+        new_seg->id = id;
+        new_seg->next = NULL;
+        new_seg->type = type;
+        rc = pmix_sm_segment_create(&new_seg->seg_info, file_name, size);
+        if (PMIX_SUCCESS == rc) {
+            memset(new_seg->seg_info.seg_base_addr, 0, size);
+        } else {
+            free(new_seg);
+            new_seg = NULL;
+            PMIX_ERROR_LOG(rc);
+        }
     }
-    memset(new_seg->seg_info.seg_base_addr, 0, size);
     return new_seg;
 }
 
@@ -835,13 +841,22 @@ static rank_meta_info *_get_rank_meta_info(int rank, seg_desc_t *segdesc)
 
 static int set_rank_meta_info(ns_track_elem_t *ns_info, rank_meta_info *rinfo)
 {
-    PMIX_OUTPUT_VERBOSE((2, pmix_globals.debug_output,
-                         "%s:%d:%s: nspace %s, add rank %lu offset %lu count %lu meta info", __FILE__, __LINE__, __func__, ns_info->ns_name, rinfo->rank, rinfo->offset, rinfo->count));
     /* it's claimed that there is still no meta info for this rank stored */
     seg_desc_t *tmp;
     size_t num_elems, rel_offset;
     int id, count;
     rank_meta_info *cur_elem;
+
+    if (!ns_info || !rinfo) {
+        PMIX_ERROR_LOG(PMIX_ERROR);
+        return PMIX_ERROR;
+    }
+
+    PMIX_OUTPUT_VERBOSE((2, pmix_globals.debug_output,
+                         "%s:%d:%s: nspace %s, add rank %lu offset %lu count %lu meta info",
+                         __FILE__, __LINE__, __func__,
+                         ns_info->ns_name, rinfo->rank, rinfo->offset, rinfo->count));
+
     tmp = ns_info->meta_seg;
     if (1 == direct_mode) {
         /* get the last meta segment to put new rank_meta_info at the end. */
@@ -1308,6 +1323,9 @@ static int _store_data_for_rank(ns_track_elem_t *ns_info, int rank, pmix_buffer_
          * */
         rc = put_empty_ext_slot(ns_info->data_seg);
         if (PMIX_SUCCESS != rc) {
+            if (NULL != rinfo) {
+                free(rinfo);
+            }
             PMIX_ERROR_LOG(rc);
             return rc;
         }
