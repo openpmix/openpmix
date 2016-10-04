@@ -11,9 +11,7 @@
 #ifndef PMIX_DSTORE_ESH_H
 #define PMIX_DSTORE_ESH_H
 
-#include <private/autogen/config.h>
-#include <pmix/rename.h>
-
+#include <src/include/pmix_config.h>
 #include "pmix_dstore.h"
 #include "src/sm/pmix_sm.h"
 
