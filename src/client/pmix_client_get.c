@@ -54,6 +54,9 @@
 #include "src/util/progress_threads.h"
 #include "src/usock/usock.h"
 #include "src/sec/pmix_sec.h"
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+#include "src/dstore/pmix_dstore.h"
+#endif /* PMIX_ENABLE_DSTORE */
 
 #include "pmix_client_ops.h"
 
@@ -280,6 +283,9 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
         goto done;
     }
 
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+    rc = pmix_dstore_fetch(nptr->nspace, cb->rank, cb->key, &val);
+#else
     /* we received the entire blob for this process, so
      * unpack and store it in the modex - this could consist
      * of buffers from multiple scopes */
@@ -327,8 +333,9 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     } else {
         rc = PMIX_SUCCESS;
     }
+#endif /* PMIX_ENABLE_DSTORE */
 
- done:
+done:
     /* if a callback was provided, execute it */
     if (NULL != cb && NULL != cb->value_cbfunc) {
         if (NULL == val) {
@@ -349,7 +356,11 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
         if (0 == strncmp(nptr->nspace, cb->nspace, PMIX_MAX_NSLEN) && cb->rank == rank) {
            /* we have the data - see if we can find the key */
             val = NULL;
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+            rc = pmix_dstore_fetch(nptr->nspace, rank, cb->key, &val);
+#else
             rc = pmix_hash_fetch(&nptr->modex, rank, cb->key, &val);
+#endif /* PMIX_ENABLE_DSTORE */
             cb->value_cbfunc(rc, val, cb->cbdata);
             if (NULL != val) {
                 PMIX_VALUE_RELEASE(val);
@@ -409,7 +420,11 @@ static void _getnbfn(int fd, short flags, void *cbdata)
         /* if the rank is WILDCARD, then they want all the job-level info,
          * so no need to check the modex */
         if (PMIX_RANK_WILDCARD != cb->rank) {
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+            if (PMIX_SUCCESS == (rc = pmix_dstore_fetch(nptr->nspace, cb->rank, NULL, &val))) {
+#else
             if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->modex, cb->rank, NULL, &val))) {
+#endif /* PMIX_ENABLE_DSTORE */
                 pmix_output_verbose(2, pmix_globals.debug_output,
                                     "pmix_get[%d]: value retrieved from dstore", __LINE__);
                 /* since we didn't provide them with a key, the hash function
@@ -527,7 +542,11 @@ static void _getnbfn(int fd, short flags, void *cbdata)
 
     /* not finding it is not an error - it could be in the
      * modex hash table, so check it */
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+    if (PMIX_SUCCESS == (rc = pmix_dstore_fetch(nptr->nspace, cb->rank, cb->key, &val))) {
+#else
     if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->modex, cb->rank, cb->key, &val))) {
+#endif /* PMIX_ENABLE_DSTORE */
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "pmix_get[%d]: value retrieved from dstore", __LINE__);
         /* found it - we are in an event, so we can
