@@ -365,7 +365,7 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, int rank,
     size_t sz;
     int cur_rank;
     int found = 0;
-    pmix_buffer_t xfer, pbkt, *xptr;
+    pmix_buffer_t pbkt;
     void *last;
     pmix_hash_table_t *hts[3];
     pmix_hash_table_t **htptr;
@@ -427,6 +427,7 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, int rank,
             }
             PMIX_RELEASE(kv);
 #else
+                pmix_buffer_t xfer, *xptr;
 
                 pmix_bfrop.pack(&pbkt, &cur_rank, 1, PMIX_INT);
                 /* the client is expecting this to arrive as a byte object
