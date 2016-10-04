@@ -336,6 +336,7 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
         }
         if (PMIX_ERR_WOULD_BLOCK == rc) {
             /* the callback will provide our response */
+            PMIX_RELEASE(cd);
             return;
         }
         goto ack;
@@ -365,6 +366,7 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
     }
     if (PMIX_ERR_WOULD_BLOCK == rc) {
         /* the callback will provide our response */
+        PMIX_RELEASE(cd);
         return;
     }
     goto ack;
@@ -394,7 +396,8 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
     goto ack;
     }
     if (PMIX_ERR_WOULD_BLOCK == rc) {
-            /* the callback will provide our response */
+        /* the callback will provide our response */
+        PMIX_RELEASE(cd);
         return;
     }
 
