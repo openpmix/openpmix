@@ -172,7 +172,7 @@ int _esh_init(pmix_info_t info[], size_t ninfo)
                      */
                     if(_base_path != NULL)
                         free(_base_path);
-                    _base_path = strdup((char*)info[n].value.data.ptr);
+                    _base_path = strdup((char*)info[n].value.data.string);
                     continue;
                 }
                 if (0 == strcmp(PMIX_SERVER_TMPDIR, info[n].key)) {
