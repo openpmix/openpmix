@@ -60,6 +60,11 @@ include src/server/Makefile.am
 include src/sec/Makefile.am
 include src/common/Makefile.am
 
+if WANT_DSTORE
+include src/sm/Makefile.am
+include src/dstore/Makefile.am
+endif
+
 if PMIX_EMBEDDED_MODE
 noinst_LTLIBRARIES = libpmix.la
 libpmix_la_SOURCES = $(headers) $(sources)

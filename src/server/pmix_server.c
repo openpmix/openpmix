@@ -55,6 +55,9 @@
 #include "src/util/progress_threads.h"
 #include "src/usock/usock.h"
 #include "src/sec/pmix_sec.h"
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+#include "src/dstore/pmix_dstore.h"
+#endif /* PMIX_ENABLE_DSTORE */
 
 #include "pmix_server_ops.h"
 
@@ -70,6 +73,7 @@ static char *mytmpdir = NULL;
 // local functions for connection support
 static void server_message_handler(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                                    pmix_buffer_t *buf, void *cbdata);
+static inline int _my_client(const char *nspace, int rank);
 
 typedef struct {
     pmix_object_t super;
@@ -285,6 +289,12 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         return rc;
     }
 
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+    if (PMIX_SUCCESS != (rc = pmix_dstore_init(info, ninfo))) {
+        return rc;
+    }
+#endif /* PMIX_ENABLE_DSTORE */
+
     /* and the usock system */
     pmix_usock_init(NULL);
 
@@ -399,6 +409,10 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     }
 
     pmix_usock_finalize();
+
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+    pmix_dstore_finalize();
+#endif /* PMIX_ENABLE_DSTORE */
 
     /* cleanup the rendezvous file */
     unlink(myaddress.sun_path);
@@ -560,6 +574,13 @@ static void _register_nspace(int sd, short args, void *cbdata)
     }
     /* do not destruct the kv object - no memory leak will result */
 
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+    if (PMIX_SUCCESS != (rc = pmix_dstore_nspace_add(cd->proc.nspace, cd->info, cd->ninfo))) {
+        PMIX_ERROR_LOG(rc);
+        goto release;
+    }
+#endif
+
  release:
     if (NULL != nodes) {
         pmix_argv_free(nodes);
@@ -601,8 +622,9 @@ static void _deregister_nspace(int sd, short args, void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t*)cbdata;
     pmix_nspace_t *nptr;
-    int i;
+    pmix_status_t rc = PMIX_SUCCESS;
     pmix_peer_t *peer;
+    int i;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:server _deregister_nspace %s",
@@ -633,6 +655,15 @@ static void _deregister_nspace(int sd, short args, void *cbdata)
         }
     }
 
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+    if (0 > (rc = pmix_dstore_nspace_del(cd->proc.nspace))) {
+        PMIX_ERROR_LOG(rc);
+    }
+#endif
+
+    if (NULL != cd->opcbfunc) {
+        cd->opcbfunc(rc, cd->cbdata);
+    }
     PMIX_RELEASE(cd);
 }
 
@@ -944,6 +975,7 @@ PMIX_EXPORT void PMIx_server_deregister_client(const pmix_proc_t *proc)
 PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char ***env)
 {
     char rankstr[128];
+    pmix_status_t rc;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:server setup_fork for nspace %s rank %d",
@@ -958,6 +990,14 @@ PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char *
     pmix_setenv("PMIX_SERVER_URI", myuri, true, env);
     /* pass our active security mode */
     pmix_setenv("PMIX_SECURITY_MODE", security_mode, true, env);
+
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+    /* pass dstore path to files */
+    if (PMIX_SUCCESS != (rc = pmix_dstore_patch_env(proc->nspace, env))) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+#endif
 
     return PMIX_SUCCESS;
 }
@@ -1989,15 +2029,24 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
             /* there may be multiple blobs for this rank, each from a different scope */
             cnt = 1;
             while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bptr, &bpscope, &cnt, PMIX_BUFFER))) {
+                /* don't store blobs to the sm dstore from local clients */
+                if (_my_client(nptr->nspace, rank)) {
+                    continue;
+                }
                 pmix_kval_t *kp = PMIX_NEW(pmix_kval_t);
                 kp->key = strdup("modex");
                 PMIX_VALUE_CREATE(kp->value, 1);
                 kp->value->type = PMIX_BYTE_OBJECT;
                 PMIX_UNLOAD_BUFFER(bpscope, kp->value->data.bo.bytes, kp->value->data.bo.size);
                 /* store it in the appropriate hash */
-               if (PMIX_SUCCESS != (rc = pmix_hash_store(&nptr->server->remote, rank, kp))) {
+                if (PMIX_SUCCESS != (rc = pmix_hash_store(&nptr->server->remote, rank, kp))) {
                     PMIX_ERROR_LOG(rc);
                 }
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+                if (PMIX_SUCCESS != (rc = pmix_dstore_store(nptr->nspace, rank, kp))) {
+                    PMIX_ERROR_LOG(rc);
+                }
+#endif /* PMIX_ENABLE_DSTORE */
                 PMIX_RELEASE(kp);  // maintain acctg
             }  // while bpscope
             if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
@@ -2471,4 +2520,22 @@ static void server_message_handler(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr
         pmix_bfrop.pack(reply, &rc, 1, PMIX_INT);
         PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
     }
+}
+
+static inline int _my_client(const char *nspace, int rank)
+{
+    pmix_peer_t *peer;
+    int i;
+    int local = 0;
+
+    for (i = 0; i < pmix_server_globals.clients.size; i++) {
+        if (NULL != (peer = (pmix_peer_t *)pmix_pointer_array_get_item(&pmix_server_globals.clients, i))) {
+            if (0 == strcmp(peer->info->nptr->nspace, nspace) && peer->info->rank == rank) {
+                local = 1;
+                break;
+            }
+        }
+    }
+
+    return local;
 }

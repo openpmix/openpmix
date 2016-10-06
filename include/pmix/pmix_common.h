@@ -92,6 +92,7 @@ extern "C" {
 /* identification attributes */
 #define PMIX_USERID                "pmix.euid"              // (uint32_t) effective user id
 #define PMIX_GRPID                 "pmix.egid"              // (uint32_t) effective group id
+#define PMIX_DSTPATH               "pmix.dstpath"           // (char*) path to dstore files
 
 /* attributes for the rendezvous socket  */
 #define PMIX_SOCKET_MODE           "pmix.sockmode"          // (uint32_t) POSIX mode_t (9 bits valid)
