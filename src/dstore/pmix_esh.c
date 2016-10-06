@@ -101,6 +101,7 @@ static char setjobuid = 0;
 static int _direct_mode = 0;
 
 static void ncon(ns_track_elem_t *p) {
+    memset(p->ns_name, 0, sizeof(p->ns_name));
     p->meta_seg = NULL;
     p->data_seg = NULL;
     p->num_meta_seg = 0;
@@ -325,7 +326,8 @@ int _esh_store(const char *nspace, int rank, pmix_kval_t *kv)
     /* If a new element was just created, we need to create corresponding meta and
      * data segments and update corresponding element's fields. */
     if (NULL == elem->meta_seg || NULL == elem->data_seg) {
-        strncpy(ns_info.ns_name, nspace, PMIX_MAX_NSLEN+1);
+        memset(ns_info.ns_name, 0, sizeof(ns_info.ns_name));
+        strncpy(ns_info.ns_name, nspace, sizeof(ns_info.ns_name)-1);
         ns_info.num_meta_seg = 1;
         ns_info.num_data_seg = 1;
         rc = _update_ns_elem(elem, &ns_info);
@@ -583,7 +585,9 @@ static int _esh_nspace(const char *nspace)
     }
 
     if (stat(_nspace_path, &st) == -1){
-        mkdir(_nspace_path, 0770);
+        if (0 != mkdir(_nspace_path, 0770)) {
+            return PMIX_ERROR;
+        }
     }
 
     if (setjobuid) {
@@ -905,7 +909,8 @@ static int _put_ns_info_to_initial_segment(const char *nspace, pmix_sm_seg_t *me
         _global_sm_seg_last = last_seg;
         memset(_global_sm_seg_last->seg_info.seg_base_addr, 0, _initial_segment_size);
     }
-    strncpy(elem.ns_name, nspace, PMIX_MAX_NSLEN+1);
+    memset(elem.ns_name, 0, sizeof(elem.ns_name));
+    strncpy(elem.ns_name, nspace, sizeof(elem.ns_name)-1);
     elem.num_meta_seg = 1;
     elem.num_data_seg = 1;
     memcpy((uint8_t*)(_global_sm_seg_last->seg_info.seg_base_addr) + sizeof(size_t) + sizeof(int) + num_elems * sizeof(ns_seg_info_t),
@@ -996,7 +1001,7 @@ static ns_track_elem_t *_get_track_elem_for_namespace(const char *nspace)
     /* create shared memory regions for this namespace and store its info locally
      * to operate with address and detach/unlink afterwards. */
     new_elem = PMIX_NEW(ns_track_elem_t);
-    strncpy(new_elem->ns_name, nspace, PMIX_MAX_NSLEN+1);
+    strncpy(new_elem->ns_name, nspace, sizeof(new_elem->ns_name)-1);
 
     pmix_list_append(&_namespace_info_list, &new_elem->super);
 
