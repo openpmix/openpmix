@@ -1,6 +1,8 @@
 # -*- shell-script -*-
 #
 # Copyright (c) 2009-2015 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2016      Research Organization for Information Science
+#                         and Technology (RIST). All rights reserved.
 #
 # $COPYRIGHT$
 #
