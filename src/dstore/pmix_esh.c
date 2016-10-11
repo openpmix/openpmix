@@ -530,7 +530,7 @@ int _esh_init(pmix_info_t info[], size_t ninfo)
 {
     int rc;
     size_t n;
-    char *tmp;
+    char *dstor_tmpdir = NULL;
     size_t tbl_idx;
     struct stat st = {0};
     ns_map_data_t *ns_map = NULL;
@@ -552,6 +552,11 @@ int _esh_init(pmix_info_t info[], size_t ninfo)
     }
 
     _set_constants_from_env();
+
+    if (NULL != _base_path) {
+        free(_base_path);
+        _base_path = NULL;
+    }
 
     /* find the temp dir */
     if (PMIX_PROC_SERVER == pmix_globals.proc_type) {
@@ -576,33 +581,29 @@ int _esh_init(pmix_info_t info[], size_t ninfo)
                      *
                      * PMIX_DSTPATH has higher priority than PMIX_SERVER_TMPDIR
                      */
-                    if(_base_path != NULL)
-                        free(_base_path);
-                    _base_path = strdup((char*)info[n].value.data.ptr);
+                    dstor_tmpdir = (char*)info[n].value.data.ptr;
                     continue;
                 }
                 if (0 == strcmp(PMIX_SERVER_TMPDIR, info[n].key)) {
-                    if (NULL ==_base_path) {
-                        _base_path = strdup((char*)info[n].value.data.string);
+                    if (NULL == dstor_tmpdir) {
+                        dstor_tmpdir = (char*)info[n].value.data.string;
                     }
                     continue;
                 }
             }
         }
 
-        if (NULL ==_base_path) {
-            if (NULL == (_base_path = strdup(getenv("TMPDIR")))) {
-                if (NULL == (_base_path = strdup(getenv("TEMP")))) {
-                    if (NULL == (_base_path = strdup(getenv("TMP")))) {
-                        _base_path = strdup("/tmp");
+        if (NULL == dstor_tmpdir) {
+            if (NULL == (dstor_tmpdir = getenv("TMPDIR"))) {
+                if (NULL == (dstor_tmpdir = getenv("TEMP"))) {
+                    if (NULL == (dstor_tmpdir = getenv("TMP"))) {
+                        dstor_tmpdir = "/tmp";
                     }
                 }
             }
         }
 
-        tmp = _base_path;
-        asprintf(&_base_path, "%s/pmix_dstor_%d", tmp, getpid());
-        free(tmp);
+        asprintf(&_base_path, "%s/pmix_dstor_%d", dstor_tmpdir, getpid());
         if (NULL == _base_path) {
             PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
             return PMIX_ERR_OUT_OF_RESOURCE;
@@ -625,8 +626,13 @@ int _esh_init(pmix_info_t info[], size_t ninfo)
     }
     /* for clients */
     else {
-        if (NULL == (_base_path = strdup(getenv(PMIX_DSTORE_ESH_BASE_PATH)))){
+        if (NULL == (dstor_tmpdir = getenv(PMIX_DSTORE_ESH_BASE_PATH))){
             rc = PMIX_ERR_BAD_PARAM;
+            PMIX_ERROR_LOG(rc);
+            goto err_exit;
+        }
+        if (NULL == (_base_path = strdup(dstor_tmpdir))) {
+            rc = PMIX_ERR_OUT_OF_RESOURCE;
             PMIX_ERROR_LOG(rc);
             goto err_exit;
         }
