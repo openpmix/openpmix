@@ -1001,7 +1001,7 @@ int _esh_fetch(const char *nspace, pmix_rank_t rank, const char *key, pmix_value
                 goto done;
             } else {
                 char ckey[PMIX_MAX_KEYLEN+1] = {0};
-                strncpy(ckey, (const char *)addr, PMIX_MAX_KEYLEN+1);
+                strncpy(ckey, (const char *)addr, PMIX_MAX_KEYLEN);
                 size_t size;
                 memcpy(&size, addr + PMIX_MAX_KEYLEN + 1, sizeof(size_t));
                 PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
