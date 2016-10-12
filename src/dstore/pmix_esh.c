@@ -616,7 +616,7 @@ int _esh_init(pmix_info_t info[], size_t ninfo)
                      *
                      * PMIX_DSTPATH has higher priority than PMIX_SERVER_TMPDIR
                      */
-                    dstor_tmpdir = (char*)info[n].value.data.ptr;
+                    dstor_tmpdir = strdup((char*)info[n].value.data.string);
                     continue;
                 }
                 if (0 == strcmp(PMIX_SERVER_TMPDIR, info[n].key)) {
