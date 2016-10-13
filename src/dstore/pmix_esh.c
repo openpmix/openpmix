@@ -445,10 +445,8 @@ static inline int _esh_jobuid_tbl_search(uid_t jobuid, size_t *tbl_idx)
             return PMIX_SUCCESS;
         }
     }
-    
-    rc = PMIX_ERR_NOT_FOUND;
-    PMIX_ERROR_LOG(rc);
-    return rc;
+
+    return PMIX_ERR_NOT_FOUND;
 }
 
 static inline int _esh_session_tbl_add(size_t *tbl_idx)
