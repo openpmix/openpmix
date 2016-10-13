@@ -1439,8 +1439,9 @@ static int _update_ns_elem(ns_track_elem_t *ns_elem, ns_seg_info_t *info)
                          __FILE__, __LINE__, __func__));
 
     if (NULL == (ns_map =_esh_session_map_search(info->ns_map.name))) {
-        PMIX_ERROR_LOG(PMIX_ERROR);
-        return PMIX_ERROR;
+        rc = PMIX_ERR_NOT_AVAILABLE;
+        PMIX_ERROR_LOG(rc);
+        return rc;
     }
 
     tmp = ns_elem->meta_seg;
@@ -1454,14 +1455,20 @@ static int _update_ns_elem(ns_track_elem_t *ns_elem, ns_seg_info_t *info)
     for (i = ns_elem->num_meta_seg; i < info->num_meta_seg; i++) {
         if (PMIX_PROC_SERVER == pmix_globals.proc_type) {
             seg = _create_new_segment(NS_META_SEGMENT, &info->ns_map, i);
+            if (NULL == seg) {
+                rc = PMIX_ERR_OUT_OF_RESOURCE;
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
         } else {
             seg = _attach_new_segment(NS_META_SEGMENT, &info->ns_map, i);
+            if (NULL == seg) {
+                rc = PMIX_ERR_NOT_AVAILABLE;
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
         }
-        if (NULL == seg) {
-            rc = PMIX_ERROR;
-            PMIX_ERROR_LOG(rc);
-            return rc;
-        }
+
         if (NULL == tmp) {
             ns_elem->meta_seg = seg;
         } else {
@@ -1481,18 +1488,22 @@ static int _update_ns_elem(ns_track_elem_t *ns_elem, ns_seg_info_t *info)
     for (i = ns_elem->num_data_seg; i < info->num_data_seg; i++) {
         if (PMIX_PROC_SERVER == pmix_globals.proc_type) {
             seg = _create_new_segment(NS_DATA_SEGMENT, &info->ns_map, i);
-            if (seg) {
-                offs = sizeof(size_t);//shift on offset field itself
-                memcpy(seg->seg_info.seg_base_addr, &offs, sizeof(size_t));
+            if (NULL == seg) {
+                rc = PMIX_ERR_OUT_OF_RESOURCE;
+                PMIX_ERROR_LOG(rc);
+                return rc;
             }
+            offs = sizeof(size_t);//shift on offset field itself
+            memcpy(seg->seg_info.seg_base_addr, &offs, sizeof(size_t));
         } else {
             seg = _attach_new_segment(NS_DATA_SEGMENT, &info->ns_map, i);
+            if (NULL == seg) {
+                rc = PMIX_ERR_NOT_AVAILABLE;
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
         }
-        if (NULL == seg) {
-            rc = PMIX_ERROR;
-            PMIX_ERROR_LOG(rc);
-            return rc;
-        }
+
         if (NULL == tmp) {
             ns_elem->data_seg = seg;
         } else {
