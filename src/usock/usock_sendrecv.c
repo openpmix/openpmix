@@ -126,6 +126,7 @@ static void lost_connection(pmix_peer_t *peer, pmix_status_t err)
                     if (0 == pmix_list_get_size(&reginfoptr->peers)) {
                         pmix_list_remove_item(&pmix_server_globals.events, &reginfoptr->super);
                         PMIX_RELEASE(reginfoptr);
+                        break;
                     }
                 }
              }
