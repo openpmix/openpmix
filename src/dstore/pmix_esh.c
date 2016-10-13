@@ -1112,23 +1112,23 @@ done:
 
 static int _esh_patch_env(const char *nspace, char ***env)
 {
-    pmix_status_t rc;
+    pmix_status_t rc = PMIX_SUCCESS;
     ns_map_data_t *ns_map = NULL;
 
     if (NULL == _esh_session_map_search) {
-        rc = PMIX_ERROR;
+        rc = PMIX_ERR_NOT_AVAILABLE;
         PMIX_ERROR_LOG(rc);
         return rc;
     }
 
     if (NULL == (ns_map =_esh_session_map_search(nspace))) {
-        rc = PMIX_ERROR;
+        rc = PMIX_ERR_NOT_AVAILABLE;
         PMIX_ERROR_LOG(rc);
         return rc;
     }
 
     if ((NULL == _base_path) || (strlen(_base_path) == 0)){
-        rc = PMIX_ERROR;
+        rc = PMIX_ERR_NOT_AVAILABLE;
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -1136,10 +1136,8 @@ static int _esh_patch_env(const char *nspace, char ***env)
     if(PMIX_SUCCESS != (rc = pmix_setenv(PMIX_DSTORE_ESH_BASE_PATH,
                                         _ESH_SESSION_path(ns_map->tbl_idx), true, env))){
         PMIX_ERROR_LOG(rc);
-        return rc;
     }
-
-    return PMIX_SUCCESS;
+    return rc;
 }
 
 static int _esh_nspace_add(const char *nspace, pmix_info_t info[], size_t ninfo)
