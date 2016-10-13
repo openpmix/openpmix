@@ -560,23 +560,28 @@ static inline int _esh_session_init(size_t idx, ns_map_data_t *m, size_t jobuid,
             }
         }
         if (setjobuid > 0){
-            if (chown(s->nspace_path, (uid_t) jobuid, (gid_t) -1) < 0){
+            if (0 > chown(s->nspace_path, (uid_t) jobuid, (gid_t) -1)){
                 rc = PMIX_ERROR;
                 PMIX_ERROR_LOG(rc);
                 return rc;
             }
-            if (chown(s->lockfile, (uid_t) jobuid, (gid_t) -1) < 0) {
+            if (0 > chown(s->lockfile, (uid_t) jobuid, (gid_t) -1)) {
                 rc = PMIX_ERROR;
                 PMIX_ERROR_LOG(rc);
                 return rc;
             }
-            if (0 != chmod(s->lockfile, S_IRUSR | S_IWGRP | S_IRGRP)) {
+            if (0 > chmod(s->lockfile, S_IRUSR | S_IWGRP | S_IRGRP)) {
                 rc = PMIX_ERROR;
                 PMIX_ERROR_LOG(rc);
                 return rc;
             }
         }
         seg = _create_new_segment(INITIAL_SEGMENT, m, 0);
+        if( NULL == seg ){
+            rc = PMIX_ERR_OUT_OF_RESOURCE;
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
     }
     else {
         s->lockfd = open(s->lockfile, O_RDONLY);
@@ -586,16 +591,16 @@ static inline int _esh_session_init(size_t idx, ns_map_data_t *m, size_t jobuid,
             return rc;
         }
         seg = _attach_new_segment(INITIAL_SEGMENT, m, 0);
-    }
-    if (NULL != seg) {
-        s->sm_seg_first = seg;
-        s->sm_seg_last = s->sm_seg_first;
-        return PMIX_SUCCESS;
+        if( NULL == seg ){
+            rc = PMIX_ERR_OUT_OF_RESOURCE;
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
     }
 
-    rc = PMIX_ERR_OUT_OF_RESOURCE;
-    PMIX_ERROR_LOG(rc);
-    return rc;
+    s->sm_seg_first = seg;
+    s->sm_seg_last = s->sm_seg_first;
+    return PMIX_SUCCESS;
 }
 
 static inline void _esh_session_release(session_t *s)
