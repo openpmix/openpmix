@@ -434,7 +434,6 @@ static inline int _esh_jobuid_tbl_search(uid_t jobuid, size_t *tbl_idx)
 {
     size_t idx, size;
     session_t *session_tbl = NULL;
-    pmix_status_t rc = PMIX_SUCCESS;
 
     size = pmix_value_array_get_size(_session_array);
     session_tbl = PMIX_VALUE_ARRAY_GET_BASE(_session_array, session_t);
@@ -822,7 +821,7 @@ int _esh_store(const char *nspace, pmix_rank_t rank, pmix_kval_t *kv)
                          "%s:%d:%s: for %s:%u",
                          __FILE__, __LINE__, __func__, nspace, rank));
 
-    if (NULL == (ns_map =_esh_session_map_search(nspace))) {
+    if (NULL == (ns_map = _esh_session_map_search(nspace))) {
         rc = PMIX_ERROR;
         PMIX_ERROR_LOG(rc);
         return rc;
@@ -910,10 +909,14 @@ err_exit:
     return rc;
 }
 
+/*
+ * See return codes description for the corresponding function
+ * in pmix_dstore.h
+ */
 int _esh_fetch(const char *nspace, pmix_rank_t rank, const char *key, pmix_value_t **kvs)
 {
     ns_seg_info_t *ns_info = NULL;
-    int rc = PMIX_ERROR, lock_rc;
+    pmix_status_t rc = PMIX_ERROR, lock_rc;
     ns_track_elem_t *elem;
     rank_meta_info *rinfo = NULL;
     size_t kval_cnt;
@@ -924,20 +927,28 @@ int _esh_fetch(const char *nspace, pmix_rank_t rank, const char *key, pmix_value
     uint32_t nprocs;
     pmix_rank_t cur_rank;
     ns_map_data_t *ns_map = NULL;
+    bool all_ranks_found = true;
+    bool key_found = false;
 
     if (NULL == key) {
         PMIX_OUTPUT_VERBOSE((7, pmix_globals.debug_output,
                              "dstore: Does not support passed parameters"));
-        return PMIX_ERROR;
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        return rc;
     }
 
     PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
                          "%s:%d:%s: for %s:%u look for key %s",
                          __FILE__, __LINE__, __func__, nspace, rank, key));
 
-    if (NULL == (ns_map =_esh_session_map_search(nspace))) {
-        PMIX_ERROR_LOG(PMIX_ERROR);
-        return PMIX_ERROR;
+    if (NULL == (ns_map = _esh_session_map_search(nspace))) {
+        /* This call is issued from the the client.
+         * client must have the session, otherwise the error is fatal.
+         */
+        rc = PMIX_ERR_FATAL;
+        PMIX_ERROR_LOG(rc);
+        return rc;
     }
 
     if (kvs) {
@@ -952,8 +963,11 @@ int _esh_fetch(const char *nspace, pmix_rank_t rank, const char *key, pmix_value
         cur_rank = rank;
     }
 
-    /* set shared lock */
+    /* grab shared lock */
     if (PMIX_SUCCESS != (lock_rc = _ESH_RDLOCK(_ESH_SESSION_lockfd(ns_map->tbl_idx)))) {
+        /* Something wrong with the lock. The error is fatal */
+        rc = PMIX_ERR_FATAL;
+        PMIX_ERROR_LOG(lock_rc);
         return lock_rc;
     }
 
@@ -972,34 +986,35 @@ int _esh_fetch(const char *nspace, pmix_rank_t rank, const char *key, pmix_value
     /* first update local information about initial segments. they can be extended, so then we need to attach to new segments. */
     _update_initial_segment_info(ns_map);
 
-    rc = PMIX_ERROR;
-    /* get information about shared segments per this namespace from the initial segment. */
-
-    //pmix_output(0, "%s:%d:%s: ns %s %s",__FILE__, __LINE__, __func__, nspace, ns_map->name);
-
     ns_info = _get_ns_info_from_initial_segment(ns_map);
     if (NULL == ns_info) {
         /* no data for this namespace is found in the shared memory. */
         PMIX_OUTPUT_VERBOSE((7, pmix_globals.debug_output,
                     "%s:%d:%s:  no data for ns %s is found in the shared memory.",
                     __FILE__, __LINE__, __func__, ns_map->name));
+        rc = PMIX_ERR_PROC_ENTRY_NOT_FOUND;
         goto done;
     }
 
     /* get ns_track_elem_t object for the target namespace from the local track list. */
     elem = _get_track_elem_for_namespace(ns_map);
     if (NULL == elem) {
+        /* Shouldn't happen! */
+        rc = PMIX_ERR_FATAL;
+        PMIX_ERROR_LOG(rc);
         goto done;
     }
+
     /* need to update tracker:
      * attach to shared memory regions for this namespace and store its info locally
      * to operate with address and detach/unlink afterwards. */
     rc = _update_ns_elem(elem, ns_info);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
         goto done;
     }
 
-    /* now we know info about meta segment for this namespace. */
+    /* Now we have the data from meta segment for this namespace. */
     meta_seg = elem->meta_seg;
     data_seg = elem->data_seg;
 
@@ -1007,34 +1022,38 @@ int _esh_fetch(const char *nspace, pmix_rank_t rank, const char *key, pmix_value
         if (PMIX_RANK_UNDEF == rank) {
             cur_rank++;
         }
-        /* Then we look for the rank meta info in the shared meta segment. */
+        /* Get the rank meta info in the shared meta segment. */
         rinfo = _get_rank_meta_info(cur_rank, meta_seg);
         if (NULL == rinfo) {
             PMIX_OUTPUT_VERBOSE((7, pmix_globals.debug_output,
                         "%s:%d:%s:  no data for this rank is found in the shared memory. rank %u",
                         __FILE__, __LINE__, __func__, cur_rank));
-            rc = PMIX_ERR_PROC_ENTRY_NOT_FOUND;
+            all_ranks_found = false;
             continue;
         }
         addr = _get_data_region_by_offset(data_seg, rinfo->offset);
         if (NULL == addr) {
-            PMIX_ERROR_LOG(PMIX_ERROR);
-            rc = PMIX_ERR_PROC_ENTRY_NOT_FOUND;
-            continue;
+            /* This means that meta-info is broken - error is fatal */
+            rc = PMIX_ERR_FATAL;
+            PMIX_ERROR_LOG(rc);
+            goto done;
         }
         kval_cnt = rinfo->count;
-        /* TODO: probably PMIX_ERR_NOT_FOUND is a better way but
-         * setting to one initiates wrong next logic for unknown reason */
-        rc = PMIX_ERROR;
 
+        rc = PMIX_SUCCESS;
         while (0 < kval_cnt) {
             /* data is stored in the following format:
-             * key[PMIX_MAX_KEYLEN+1]
-             * size_t size
-             * byte buffer containing pmix_value, should be loaded to pmix_buffer_t and unpacked.
-             * next kval pair
-             * .....
-             * EXTENSION slot which has key = EXTENSION_SLOT and a size_t value for offset to next data address for this process.
+             * key_val_pair {
+             *     char key[PMIX_MAX_KEYLEN+1];
+             *     size_t size;
+             *     byte_t byte[size]; // should be loaded to pmix_buffer_t and unpacked.
+             * };
+             * segment_format {
+             *     key_val_pair kv_array[n];
+             *     EXTENSION slot;
+             * }
+             * EXTENSION slot which has key = EXTENSION_SLOT and a size_t value for offset 
+             * to next data address for this process.
              */
             if (0 == strncmp((const char *)addr, ESH_REGION_INVALIDATED, PMIX_MAX_KEYLEN+1)) {
                 PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
@@ -1055,6 +1074,8 @@ int _esh_fetch(const char *nspace, pmix_rank_t rank, const char *key, pmix_value
                     /* go to next item, updating address */
                     addr = _get_data_region_by_offset(data_seg, offset);
                     if (NULL == addr) {
+                        /* This shouldn't happen - error is fatal */
+                        rc = PMIX_ERR_FATAL;
                         PMIX_ERROR_LOG(rc);
                         goto done;
                     }
@@ -1080,13 +1101,17 @@ int _esh_fetch(const char *nspace, pmix_rank_t rank, const char *key, pmix_value
                 PMIX_VALUE_CONSTRUCT(&val);
                 if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&buffer, &val, &cnt, PMIX_VALUE))) {
                     PMIX_ERROR_LOG(rc);
-                } else if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)kvs, &val, PMIX_VALUE))) {
+                    goto done;
+                }
+                if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)kvs, &val, PMIX_VALUE))) {
                     PMIX_ERROR_LOG(rc);
+                    goto done;
                 }
                 PMIX_VALUE_DESTRUCT(&val);
                 buffer.base_ptr = NULL;
                 buffer.bytes_used = 0;
                 PMIX_DESTRUCT(&buffer);
+                key_found = true;
                 goto done;
             } else {
                 char ckey[PMIX_MAX_KEYLEN+1] = {0};
@@ -1105,8 +1130,26 @@ int _esh_fetch(const char *nspace, pmix_rank_t rank, const char *key, pmix_value
 done:
     /* unset lock */
     if (PMIX_SUCCESS != (lock_rc = _ESH_UNLOCK(_ESH_SESSION_lockfd(ns_map->tbl_idx)))) {
-        return lock_rc;
+        PMIX_ERROR_LOG(lock_rc);
     }
+
+    if( rc != PMIX_SUCCESS ){
+        return rc;
+    }
+
+    if( key_found ){
+        /* the key is found - nothing to do */
+        return PMIX_SUCCESS;
+    }
+
+    if( !all_ranks_found ){
+        /* Not all ranks was found - need to request 
+         * all of them and search again
+         */
+        rc = PMIX_ERR_PROC_ENTRY_NOT_FOUND;
+        return rc;
+    }
+    rc = PMIX_ERR_NOT_FOUND;
     return rc;
 }
 
@@ -1121,7 +1164,7 @@ static int _esh_patch_env(const char *nspace, char ***env)
         return rc;
     }
 
-    if (NULL == (ns_map =_esh_session_map_search(nspace))) {
+    if (NULL == (ns_map = _esh_session_map_search(nspace))) {
         rc = PMIX_ERR_NOT_AVAILABLE;
         PMIX_ERROR_LOG(rc);
         return rc;
@@ -1204,7 +1247,7 @@ static int _esh_nspace_del(const char *nspace)
     PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
         "%s:%d:%s delete nspace `%s`", __FILE__, __LINE__, __func__, nspace));
 
-    if (NULL == (ns_map_data =_esh_session_map_search(nspace))) {
+    if (NULL == (ns_map_data = _esh_session_map_search(nspace))) {
         rc = PMIX_ERR_NOT_AVAILABLE;
         PMIX_ERROR_LOG(rc);
         return rc;
@@ -1438,7 +1481,7 @@ static int _update_ns_elem(ns_track_elem_t *ns_elem, ns_seg_info_t *info)
                          "%s:%d:%s",
                          __FILE__, __LINE__, __func__));
 
-    if (NULL == (ns_map =_esh_session_map_search(info->ns_map.name))) {
+    if (NULL == (ns_map = _esh_session_map_search(info->ns_map.name))) {
         rc = PMIX_ERR_NOT_AVAILABLE;
         PMIX_ERROR_LOG(rc);
         return rc;
@@ -1821,8 +1864,8 @@ static uint8_t *_get_data_region_by_offset(seg_desc_t *segdesc, size_t offset)
             dataaddr = tmp->seg_info.seg_base_addr + rel_offset;
         }
         tmp = tmp->next;
-    }
-    while (NULL != tmp && NULL == dataaddr);
+    } while (NULL != tmp && NULL == dataaddr);
+
     return dataaddr;
 }
 
