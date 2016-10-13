@@ -3,6 +3,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2016      Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -616,6 +617,9 @@ int _esh_init(pmix_info_t info[], size_t ninfo)
                      *
                      * PMIX_DSTPATH has higher priority than PMIX_SERVER_TMPDIR
                      */
+                    if (NULL != dstor_tmpdir) {
+                        free(dstor_tmpdir);
+                    }
                     dstor_tmpdir = strdup((char*)info[n].value.data.string);
                     continue;
                 }
@@ -1511,7 +1515,7 @@ static ns_seg_info_t *_get_ns_info_from_initial_segment(const ns_map_data_t *ns_
 
 static ns_track_elem_t *_get_track_elem_for_namespace(ns_map_data_t *ns_map)
 {
-    ns_track_elem_t *new_elem = NULL;    
+    ns_track_elem_t *new_elem = NULL;
     size_t size = pmix_value_array_get_size(_ns_track_array);
 
     PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,

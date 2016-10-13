@@ -39,12 +39,12 @@ int main(int argc, char **argv)
     pmix_info_t *info;
     pmix_app_t *app;
     size_t ninfo, napps;
-    
+
     /* check for user directives - this would include:
      * - a flag indicating we want to attach to a specified application
      * - application info if we are launching a new app
      */
-    
+
     /* init us - if a PMIx server pid was provided, then pass it along */
     if (0 < server_pid) {
         ninfo = 1;
@@ -100,11 +100,11 @@ int main(int argc, char **argv)
         PMIx_Spawn(NULL, 0, app, napps, dspace);
         /* cleanup */
         PMIX_APP_FREE(app, napps);
-        
+
         /* this is where a debugger tool would wait until the debug operation is complete */
     }
 
-    
+
  done:
     PMIx_tool_finalize(NULL, 0);
 
@@ -141,7 +141,7 @@ static int attach_to_running_job(char *nspace)
 
     /* if not found, then we have an error */
     PMIX_INFO_FREE(info, ninfo);
-    
+
     /* get the proctable for this nspace */
     ninfo = 1;
     PMIX_INFO_CREATE(info, ninfo);
@@ -172,7 +172,7 @@ static int attach_to_running_job(char *nspace)
      *     int exit_code;
      *     pmix_proc_state_t state;
      */
-    
+
     /* this is where a debugger tool would process the proctable to
      * create whatever blob it needs to provide to its daemons */
     PMIX_INFO_FREE(info, ninfo);

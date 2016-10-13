@@ -871,7 +871,6 @@ static pmix_status_t send_connect_ack(int sd)
     pmix_usock_hdr_t hdr;
     size_t sdsize=0, csize=0;
     char *cred = NULL;
-    char *bfrop;
     char *sec;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
