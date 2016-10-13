@@ -30,7 +30,7 @@
 
 
 static int _mmap_segment_create(pmix_sm_seg_t *sm_seg, const char *file_name, size_t size);
-static int _mmap_segment_attach(pmix_sm_seg_t *sm_seg);
+static int _mmap_segment_attach(pmix_sm_seg_t *sm_seg, pmix_sm_access_mode_t sm_mode);
 static int _mmap_segment_detach(pmix_sm_seg_t *sm_seg);
 static int _mmap_segment_unlink(pmix_sm_seg_t *sm_seg);
 
@@ -95,14 +95,22 @@ out:
     return rc;
 }
 
-int _mmap_segment_attach(pmix_sm_seg_t *sm_seg)
+int _mmap_segment_attach(pmix_sm_seg_t *sm_seg, pmix_sm_access_mode_t sm_mode)
 {
-    if (-1 == (sm_seg->seg_id = open(sm_seg->seg_name, O_RDWR))) {
+    mode_t mode = O_RDWR;
+    int mmap_prot = PROT_READ | PROT_WRITE;
+
+    if (sm_mode == PMIX_SM_RONLY) {
+        mode = O_RDONLY;
+        mmap_prot = PROT_READ;
+    }
+
+    if (-1 == (sm_seg->seg_id = open(sm_seg->seg_name, mode))) {
         return PMIX_ERROR;
     }
     if (MAP_FAILED == (sm_seg->seg_base_addr = (unsigned char *)
                 mmap(NULL, sm_seg->seg_size,
-                    PROT_READ | PROT_WRITE, MAP_SHARED,
+                    mmap_prot, MAP_SHARED,
                     sm_seg->seg_id, 0))) {
         /* mmap failed, so close the file and return NULL - no error check
          * here because we are already in an error path...

@@ -8,11 +8,14 @@
  * $HEADER$
  */
 
+#define _GNU_SOURCE
+#include <stdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/file.h>
 
 #include <src/include/pmix_config.h>
+#include <pmix_server.h>
 #include <pmix/pmix_common.h>
 #include "src/include/pmix_globals.h"
 
@@ -28,17 +31,21 @@
 #include "pmix_esh.h"
 
 
-static int _esh_init(void);
+static int _esh_init(pmix_info_t info[], size_t ninfo);
 static int _esh_finalize(void);
 static int _esh_store(const char *nspace, int rank, pmix_kval_t *kv);
 static int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs);
+static int _esh_patch_env(char ***env);
+static int _esh_nspace(const char *nspace);
 
 pmix_dstore_base_module_t pmix_dstore_esh_module = {
     "esh",
     _esh_init,
     _esh_finalize,
     _esh_store,
-    _esh_fetch
+    _esh_fetch,
+    _esh_patch_env,
+    _esh_nspace,
 };
 
 #define ESH_REGION_EXTENSION        "EXTENSION_SLOT"
@@ -69,7 +76,7 @@ static inline uint32_t _get_univ_size(const char *nspace);
 static seg_desc_t *_global_sm_seg_first;
 static seg_desc_t *_global_sm_seg_last;
 static pmix_list_t _namespace_info_list;
-static char *_tmp_dir = NULL;
+static char *_base_path = NULL;
 static size_t _initial_segment_size = 0;
 static size_t _max_ns_num;
 static size_t _meta_segment_size = 0;
@@ -77,6 +84,9 @@ static size_t _max_meta_elems;
 static size_t _data_segment_size = 0;
 static int _lockfd;
 static char *_lockfile_name;
+static char *_nspace_path = NULL;
+static uid_t jobuid;
+static char setjobuid = 0;
 
 /* If _direct_mode is set, it means that we use linear search
  * along the array of rank meta info objects inside a meta segment
@@ -130,13 +140,72 @@ static inline const char *_unique_id(void)
     return str;
 }
 
-int _esh_init(void)
+int _esh_init(pmix_info_t info[], size_t ninfo)
 {
     int rc;
     seg_desc_t *seg;
+    size_t n;
 
     PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
                          "%s:%d:%s", __FILE__, __LINE__, __func__));
+
+    /* find the temp dir */
+    if (_is_server()) {
+        /* scan incoming info for directives */
+        if (NULL != info) {
+            for (n=0; n < ninfo; n++) {
+                if (0 == strcmp(PMIX_USERID, info[n].key)) {
+                    jobuid = info[n].value.data.uint32;
+                    setjobuid = 1;
+                    continue;
+                }
+                if (0 == strcmp(PMIX_DSTPATH, info[n].key)) {
+                    /* PMIX_DSTPATH is the way for RM to customize the
+                     * place where shared memory files are placed.
+                     * We need this for the following reasons:
+                     * - disk usage: files can be relatively large and the system may
+                     *   have a small common temp directory.
+                     * - performance: system may have a fast IO device (i.e. burst buffer)
+                     *   for the local usage.
+                     *
+                     * PMIX_DSTPATH has higher priority than PMIX_SERVER_TMPDIR
+                     */
+                    if(_base_path != NULL)
+                        free(_base_path);
+                    _base_path = strdup((char*)info[n].value.data.string);
+                    continue;
+                }
+                if (0 == strcmp(PMIX_SERVER_TMPDIR, info[n].key)) {
+                    if (NULL ==_base_path) {
+                        _base_path = strdup((char*)info[n].value.data.string);
+                    }
+                    continue;
+                }
+            }
+        }
+
+        if (NULL ==_base_path) {
+            if (NULL == (_base_path = getenv("TMPDIR"))) {
+                if (NULL == (_base_path = getenv("TEMP"))) {
+                    if (NULL == (_base_path = getenv("TMP"))) {
+                        _base_path = "/tmp";
+                    }
+                }
+            }
+        }
+    }
+    /* for clients */
+    else {
+        if (NULL == (_base_path = getenv(PMIX_DSTORE_ESH_BASE_PATH))){
+            PMIX_ERROR_LOG(PMIX_ERROR);
+            return PMIX_ERROR;
+        }
+
+        if (0 > asprintf(&_nspace_path, "%s/%s", _base_path, pmix_globals.myid.nspace)) {
+            PMIX_ERROR_LOG(PMIX_ERROR);
+            return PMIX_ERROR;
+        }
+    }
 
     rc = pmix_sm_init();
     if (PMIX_SUCCESS != rc) {
@@ -147,42 +216,38 @@ int _esh_init(void)
     PMIX_CONSTRUCT(&_namespace_info_list, pmix_list_t);
     _global_sm_seg_first = NULL;
     _global_sm_seg_last = NULL;
-    _tmp_dir = strdup(pmix_tmp_directory());
     _set_constants_from_env();
     _max_ns_num = (_initial_segment_size - sizeof(size_t) - sizeof(int)) / sizeof(ns_seg_info_t);
     _max_meta_elems = (_meta_segment_size - sizeof(size_t)) / sizeof(rank_meta_info);
 
-    /* create a lock file to prevent clients from reading while server is writing to the shared memory.
-     * This situation is quite often, especially in case of direct modex when clients might ask for data
-     * simultaneously.*/
-    _lockfile_name = malloc(256);
-    snprintf(_lockfile_name, 256, "%s/%s_dstore_sm.lock", _tmp_dir, _unique_id());
-    if (_is_server()) {
-        _lockfd = open(_lockfile_name, O_CREAT | O_RDWR | O_EXCL, 0600);
-        /* if previous launch was crashed, the lockfile might not be deleted and unlocked,
-         * so we delete it and create a new one. */
-        if (-1 == _lockfd) {
-            unlink(_lockfile_name);
-            _lockfd = open(_lockfile_name, O_CREAT | O_RDWR, 0600);
-        }
-    } else {
-        _lockfd = open(_lockfile_name, O_RDWR);
-    }
-    if (-1 == _lockfd) {
-        PMIX_ERROR_LOG(PMIX_ERROR);
-        return PMIX_ERROR;
-    }
-
-    if (_is_server()) {
-        seg = _create_new_segment(INITIAL_SEGMENT, NULL, 0);
-    } else {
-        seg = _attach_new_segment(INITIAL_SEGMENT, NULL, 0);
-    }
-    if (NULL != seg) {
-        _global_sm_seg_first = seg;
-        _global_sm_seg_last = _global_sm_seg_first;
+    if (_is_server()){
         return PMIX_SUCCESS;
     }
+    else {
+        /* create a lock file to prevent clients from reading while server is writing to the shared memory.
+        * This situation is quite often, especially in case of direct modex when clients might ask for data
+        * simultaneously.*/
+        if(0 > asprintf(&_lockfile_name, "%s/%s_dstore_sm.lock",
+                        _nspace_path, _unique_id())) {
+            PMIX_ERROR_LOG(PMIX_ERROR);
+            return PMIX_ERROR;
+        }
+        _lockfd = open(_lockfile_name, O_RDONLY);
+
+        if (-1 == _lockfd) {
+            PMIX_ERROR_LOG(PMIX_ERROR);
+            return PMIX_ERROR;
+        }
+
+        seg = _attach_new_segment(INITIAL_SEGMENT, NULL, 0);
+
+        if (NULL != seg) {
+            _global_sm_seg_first = seg;
+            _global_sm_seg_last = _global_sm_seg_first;
+            return PMIX_SUCCESS;
+        }
+    }
+
     return PMIX_ERROR;
 }
 
@@ -193,14 +258,24 @@ int _esh_finalize(void)
 
     _delete_sm_desc(_global_sm_seg_first);
     PMIX_LIST_DESTRUCT(&_namespace_info_list);
-    if (NULL != _tmp_dir) {
-        free(_tmp_dir);
-    }
+
     close(_lockfd);
     if (_is_server()) {
-        unlink(_lockfile_name);
+        if (NULL != _lockfile_name) {
+            unlink(_lockfile_name);
+        }
+        if (NULL != _nspace_path) {
+            rmdir(_nspace_path);
+        }
     }
-    free(_lockfile_name);
+
+    if (NULL != _lockfile_name) {
+        free(_lockfile_name);
+    }
+
+    if (NULL != _nspace_path) {
+        free(_nspace_path);
+    }
 
     pmix_sm_finalize();
 
@@ -484,6 +559,74 @@ done:
     return rc;
 }
 
+static int _esh_patch_env(char ***env)
+{
+    if ((_base_path == NULL) || (strlen(_base_path) == 0)){
+        PMIX_ERROR_LOG(PMIX_ERROR);
+        return PMIX_ERROR;
+    }
+
+    return pmix_setenv(PMIX_DSTORE_ESH_BASE_PATH, _base_path, true, env);
+}
+
+static int _esh_nspace(const char *nspace)
+{
+    struct stat st = {0};
+    seg_desc_t *seg;
+
+    if (0 > asprintf(&_nspace_path, "%s/%s", _base_path, nspace)) {
+        PMIX_ERROR_LOG(PMIX_ERROR);
+        return PMIX_ERROR;
+    }
+
+    if (stat(_nspace_path, &st) == -1){
+        mkdir(_nspace_path, 0770);
+    }
+
+    if (setjobuid) {
+        if (chown(_nspace_path, (uid_t) jobuid, (gid_t) -1) < 0){
+            PMIX_ERROR_LOG(PMIX_ERROR);
+        }
+    }
+
+    if (0 > asprintf(&_lockfile_name, "%s/%s_dstore_sm.lock", _nspace_path, _unique_id())) {
+        PMIX_ERROR_LOG(PMIX_ERROR);
+        return PMIX_ERROR;
+    }
+
+    _lockfd = open(_lockfile_name, O_CREAT | O_RDWR | O_EXCL, 0600);
+    /* if previous launch was crashed, the lockfile might not be deleted and unlocked,
+     * so we delete it and create a new one. */
+    if (-1 == _lockfd) {
+        unlink(_lockfile_name);
+        _lockfd = open(_lockfile_name, O_CREAT | O_RDWR, 0600);
+    }
+
+    if ( setjobuid && (_lockfd != -1)) {
+        if (chown(_lockfile_name, (uid_t) jobuid, (gid_t) -1) < 0) {
+            PMIX_ERROR_LOG(PMIX_ERROR);
+            return PMIX_ERROR;
+        }
+        /* set the mode as required */
+        if (0 != chmod(_lockfile_name, S_IRUSR | S_IWGRP | S_IRGRP)) {
+            PMIX_ERROR_LOG(PMIX_ERROR);
+            return PMIX_ERROR;
+        }
+    }
+
+    seg = _create_new_segment(INITIAL_SEGMENT, NULL, 0);
+
+    if (NULL == seg) {
+        PMIX_ERROR_LOG(PMIX_ERROR);
+        return PMIX_ERROR;
+    }
+
+    _global_sm_seg_first = seg;
+    _global_sm_seg_last = _global_sm_seg_first;
+
+    return PMIX_SUCCESS;
+}
+
 static void _set_constants_from_env()
 {
     char *str;
@@ -565,15 +708,15 @@ static seg_desc_t *_create_new_segment(segment_type type, char *nsname, uint32_t
     switch (type) {
         case INITIAL_SEGMENT:
             size = _initial_segment_size;
-            snprintf(file_name, PMIX_PATH_MAX, "%s/%s_initial-pmix_shared-segment-%u", _tmp_dir, _unique_id(), id);
+            snprintf(file_name, PMIX_PATH_MAX, "%s/%s_initial-pmix_shared-segment-%u", _nspace_path, _unique_id(), id);
             break;
         case NS_META_SEGMENT:
             size = _meta_segment_size;
-            snprintf(file_name, PMIX_PATH_MAX, "%s/%s_smseg-%s-%u", _tmp_dir, _unique_id(), nsname, id);
+            snprintf(file_name, PMIX_PATH_MAX, "%s/%s_smseg-%s-%u", _nspace_path, _unique_id(), nsname, id);
             break;
         case NS_DATA_SEGMENT:
             size = _data_segment_size;
-            snprintf(file_name, PMIX_PATH_MAX, "%s/%s_smdataseg-%s-%d", _tmp_dir, _unique_id(), nsname, id);
+            snprintf(file_name, PMIX_PATH_MAX, "%s/%s_smdataseg-%s-%d", _nspace_path, _unique_id(), nsname, id);
             break;
         default:
             PMIX_ERROR_LOG(PMIX_ERROR);
@@ -591,6 +734,15 @@ static seg_desc_t *_create_new_segment(segment_type type, char *nsname, uint32_t
             free(new_seg);
             new_seg = NULL;
             PMIX_ERROR_LOG(rc);
+        }
+        if (setjobuid && _is_server()){
+            if (chown(file_name, (uid_t) jobuid, (gid_t) -1) < 0){
+                PMIX_ERROR_LOG(PMIX_ERROR);
+            }
+            /* set the mode as required */
+            if (0 != chmod(file_name, S_IRUSR | S_IRGRP | S_IWGRP )) {
+                PMIX_ERROR_LOG(PMIX_ERROR);
+            }
         }
     }
     return new_seg;
@@ -612,21 +764,21 @@ static seg_desc_t *_attach_new_segment(segment_type type, char *nsname, uint32_t
     switch (type) {
         case INITIAL_SEGMENT:
             new_seg->seg_info.seg_size = _initial_segment_size;
-            snprintf(new_seg->seg_info.seg_name, PMIX_PATH_MAX, "%s/%s_initial-pmix_shared-segment-%u", _tmp_dir, _unique_id(), id);
+            snprintf(new_seg->seg_info.seg_name, PMIX_PATH_MAX, "%s/%s_initial-pmix_shared-segment-%u", _nspace_path, _unique_id(), id);
             break;
         case NS_META_SEGMENT:
             new_seg->seg_info.seg_size = _meta_segment_size;
-            snprintf(new_seg->seg_info.seg_name, PMIX_PATH_MAX, "%s/%s_smseg-%s-%u", _tmp_dir, _unique_id(), nsname, id);
+            snprintf(new_seg->seg_info.seg_name, PMIX_PATH_MAX, "%s/%s_smseg-%s-%u", _nspace_path, _unique_id(), nsname, id);
             break;
         case NS_DATA_SEGMENT:
             new_seg->seg_info.seg_size = _data_segment_size;
-            snprintf(new_seg->seg_info.seg_name, PMIX_PATH_MAX, "%s/%s_smdataseg-%s-%d", _tmp_dir, _unique_id(), nsname, id);
+            snprintf(new_seg->seg_info.seg_name, PMIX_PATH_MAX, "%s/%s_smdataseg-%s-%d", _nspace_path, _unique_id(), nsname, id);
             break;
         default:
             PMIX_ERROR_LOG(PMIX_ERROR);
             return NULL;
     }
-    rc = pmix_sm_segment_attach(&new_seg->seg_info);
+    rc = pmix_sm_segment_attach(&new_seg->seg_info, PMIX_SM_RONLY);
     if (PMIX_SUCCESS != rc) {
         free(new_seg);
         new_seg = NULL;
