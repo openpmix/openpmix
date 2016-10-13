@@ -16,6 +16,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/file.h>
+#include <errno.h>
 
 #include <src/include/pmix_config.h>
 #include <pmix_server.h>
@@ -58,13 +59,47 @@ pmix_dstore_base_module_t pmix_dstore_esh_module = {
 #define ESH_ENV_NS_DATA_SEG_SIZE    "NS_DATA_SEG_SIZE"
 #define ESH_ENV_LINEAR              "SM_USE_LINEAR_SEARCH"
 
-#define _ESH_LOCK(lockfd, operation) \
-do{ \
-    struct flock fl = {0}; \
-    fl.l_type = operation; \
-    fl.l_whence = SEEK_SET; \
-    fcntl(lockfd, F_SETLKW, &fl); \
-}while(0)
+#define _ESH_LOCK(lockfd, operation)                        \
+__extension__ ({                                            \
+    pmix_status_t ret = PMIX_SUCCESS;                       \
+    int i;                                                  \
+    struct flock fl = {0};                                  \
+    fl.l_type = operation;                                  \
+    fl.l_whence = SEEK_SET;                                 \
+    for(i = 0; i < 10; i++) {                               \
+        if( 0 > fcntl(lockfd, F_SETLKW, &fl) ) {            \
+            switch( errno ){                                \
+                case EINTR:                                 \
+                    continue;                               \
+                case ENOENT:                                \
+                case EINVAL:                                \
+                    ret = PMIX_ERR_NOT_FOUND;               \
+                    break;                                  \
+                case EBADF:                                 \
+                    ret = PMIX_ERR_BAD_PARAM;               \
+                    break;                                  \
+                case EDEADLK:                               \
+                case EFAULT:                                \
+                case ENOLCK:                                \
+                    ret = PMIX_ERR_RESOURCE_BUSY;           \
+                    break;                                  \
+                default:                                    \
+                    ret = PMIX_ERROR;                       \
+                    break;                                  \
+            }                                               \
+        }                                                   \
+        break;                                              \
+    }                                                       \
+    if (ret) {                                              \
+        pmix_output(0, "%s %d:%s lock failed: %s",          \
+            __FILE__, __LINE__, __func__, strerror(errno)); \
+    }                                                       \
+    ret;                                                    \
+})
+
+#define _ESH_WRLOCK(lockfd) _ESH_LOCK(lockfd, F_WRLCK)
+#define _ESH_RDLOCK(lockfd) _ESH_LOCK(lockfd, F_RDLCK)
+#define _ESH_UNLOCK(lockfd) _ESH_LOCK(lockfd, F_UNLCK)
 
 #define EXT_SLOT_SIZE (PMIX_MAX_KEYLEN + 1 + 2*sizeof(size_t)) /* in ext slot new offset will be stored in case if new data were added for the same process during next commit */
 #define KVAL_SIZE(size) (PMIX_MAX_KEYLEN + 1 + sizeof(size_t) + size)
@@ -296,7 +331,7 @@ int _esh_finalize(void)
 
 int _esh_store(const char *nspace, int rank, pmix_kval_t *kv)
 {
-    int rc;
+    int rc = PMIX_ERROR, lock_rc;
     ns_track_elem_t *elem;
     pmix_buffer_t pbkt, xfer;
     ns_seg_info_t ns_info;
@@ -310,7 +345,9 @@ int _esh_store(const char *nspace, int rank, pmix_kval_t *kv)
                          __FILE__, __LINE__, __func__, nspace, rank));
 
     /* set exclusive lock */
-    _ESH_LOCK(_lockfd, _ESH_LOCK_EX);
+    if (PMIX_SUCCESS != (rc = _ESH_WRLOCK(_lockfd))) {
+        return rc;
+    }
 
     /* First of all, we go through local track list (list of ns_track_elem_t structures)
      * and look for an element for the target namespace.
@@ -326,7 +363,9 @@ int _esh_store(const char *nspace, int rank, pmix_kval_t *kv)
     if (NULL == elem) {
         PMIX_ERROR_LOG(PMIX_ERROR);
         /* unset lock */
-        _ESH_LOCK(_lockfd, _ESH_LOCK_UN);
+        if (PMIX_SUCCESS != (lock_rc = _ESH_UNLOCK(_lockfd))) {
+            return lock_rc;
+        }
         return PMIX_ERROR;
     }
 
@@ -340,7 +379,9 @@ int _esh_store(const char *nspace, int rank, pmix_kval_t *kv)
         if (PMIX_SUCCESS != rc || NULL == elem->meta_seg || NULL == elem->data_seg) {
             PMIX_ERROR_LOG(rc);
             /* unset lock */
-            _ESH_LOCK(_lockfd, _ESH_LOCK_UN);
+            if (PMIX_SUCCESS != (lock_rc = _ESH_UNLOCK(_lockfd))) {
+                return lock_rc;
+            }
             return PMIX_ERROR;
         }
 
@@ -353,7 +394,9 @@ int _esh_store(const char *nspace, int rank, pmix_kval_t *kv)
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             /* unset lock */
-            _ESH_LOCK(_lockfd, _ESH_LOCK_UN);
+            if (PMIX_SUCCESS != (lock_rc = _ESH_UNLOCK(_lockfd))) {
+                return lock_rc;
+            }
             return rc;
         }
     }
@@ -374,14 +417,16 @@ int _esh_store(const char *nspace, int rank, pmix_kval_t *kv)
     PMIX_DESTRUCT(&pbkt);
 
     /* unset lock */
-    _ESH_LOCK(_lockfd, _ESH_LOCK_UN);
+    if (PMIX_SUCCESS != (lock_rc = _ESH_UNLOCK(_lockfd))) {
+        return lock_rc;
+    }
     return rc;
 }
 
 int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs)
 {
     ns_seg_info_t *ns_info = NULL;
-    int rc;
+    int rc = PMIX_ERROR, lock_rc;
     ns_track_elem_t *elem;
     rank_meta_info *rinfo = NULL;
     size_t kval_cnt;
@@ -415,7 +460,9 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
     }
 
     /* set shared lock */
-    _ESH_LOCK(_lockfd, _ESH_LOCK_SH);
+    if (PMIX_SUCCESS != (lock_rc = _ESH_RDLOCK(_lockfd))) {
+        return lock_rc;
+    }
 
     /* First of all, we go through all initial segments and look at their field.
      * If it’s 1, then generate name of next initial segment incrementing id by one and attach to it.
@@ -440,7 +487,9 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
                     "%s:%d:%s:  no data for ns %s is found in the shared memory.",
                     __FILE__, __LINE__, __func__, nspace));
         /* unset lock */
-        _ESH_LOCK(_lockfd, _ESH_LOCK_UN);
+        if (PMIX_SUCCESS != (lock_rc = _ESH_UNLOCK(_lockfd))) {
+            return lock_rc;
+        }
         return PMIX_ERROR;
     }
 
@@ -449,7 +498,9 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
     if (NULL == elem) {
         PMIX_ERROR_LOG(PMIX_ERROR);
         /* unset lock */
-        _ESH_LOCK(_lockfd, _ESH_LOCK_UN);
+        if (PMIX_SUCCESS != (lock_rc = _ESH_UNLOCK(_lockfd))) {
+            return lock_rc;
+        }
         return PMIX_ERROR;
     }
     /* need to update tracker:
@@ -459,7 +510,9 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(PMIX_ERROR);
         /* unset lock */
-        _ESH_LOCK(_lockfd, _ESH_LOCK_UN);
+        if (PMIX_SUCCESS != (lock_rc = _ESH_UNLOCK(_lockfd))) {
+            return lock_rc;
+        }
         return PMIX_ERROR;
     }
 
@@ -566,7 +619,9 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
 
 done:
     /* unset lock */
-    _ESH_LOCK(_lockfd, _ESH_LOCK_UN);
+    if (PMIX_SUCCESS != (lock_rc = _ESH_UNLOCK(_lockfd))) {
+        return lock_rc;
+    }
     return rc;
 }
 
