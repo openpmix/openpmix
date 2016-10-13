@@ -808,7 +808,7 @@ int _esh_finalize(void)
 
 int _esh_store(const char *nspace, pmix_rank_t rank, pmix_kval_t *kv)
 {
-    pmix_status_t rc = PMIX_SUCCESS;
+    pmix_status_t rc = PMIX_SUCCESS, tmp_rc;
     ns_track_elem_t *elem;
     pmix_buffer_t pbkt, xfer;
     ns_seg_info_t ns_info;
@@ -899,14 +899,13 @@ int _esh_store(const char *nspace, pmix_rank_t rank, pmix_kval_t *kv)
     /* unset lock */
     if (PMIX_SUCCESS != (rc = _ESH_UNLOCK(_ESH_SESSION_lockfd(ns_map->tbl_idx)))) {
         PMIX_ERROR_LOG(rc);
-        goto err_exit;
     }
     return rc;
 
 err_exit:
     /* unset lock */
-    if (PMIX_SUCCESS != (rc = _ESH_UNLOCK(_ESH_SESSION_lockfd(ns_map->tbl_idx)))) {
-        PMIX_ERROR_LOG(rc);
+    if (PMIX_SUCCESS != (tmp_rc = _ESH_UNLOCK(_ESH_SESSION_lockfd(ns_map->tbl_idx)))) {
+        PMIX_ERROR_LOG(tmp_rc);
     }
     return rc;
 }
