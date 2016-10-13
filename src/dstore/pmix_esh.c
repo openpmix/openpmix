@@ -1356,21 +1356,20 @@ static seg_desc_t *_create_new_segment(segment_type type, const ns_map_data_t *n
         new_seg->next = NULL;
         new_seg->type = type;
         rc = pmix_sm_segment_create(&new_seg->seg_info, file_name, size);
-        if (PMIX_SUCCESS == rc) {
-            memset(new_seg->seg_info.seg_base_addr, 0, size);
-        } else {
+        if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             goto err_exit;
         }
+        memset(new_seg->seg_info.seg_base_addr, 0, size);
 
         if (_setjobuid > 0){
-            rc = PMIX_ERROR;
-            if (chown(file_name, (uid_t) _jobuid, (gid_t) -1) < 0){
+            rc = PMIX_ERR_PERM;
+            if (0 > chown(file_name, (uid_t) _jobuid, (gid_t) -1)){
                 PMIX_ERROR_LOG(rc);
                 goto err_exit;
             }
             /* set the mode as required */
-            if (0 != chmod(file_name, S_IRUSR | S_IRGRP | S_IWGRP )) {
+            if (0 > chmod(file_name, S_IRUSR | S_IRGRP | S_IWGRP )) {
                 PMIX_ERROR_LOG(rc);
                 goto err_exit;
             }
