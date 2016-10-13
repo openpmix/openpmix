@@ -351,17 +351,6 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     }
 #endif /* PMIX_ENABLE_DSTORE */
 
-    if (!pmix_globals.external_evbase) {
-        /* tell the event library we need thread support */
-        pmix_event_use_threads();
-
-        /* create an event base and progress thread for us */
-        if (NULL == (pmix_globals.evbase = pmix_progress_thread_init(NULL))) {
-            return -1;
-
-        }
-    }
-
     /* setup an object to track server connection */
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.active = true;
