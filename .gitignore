@@ -69,6 +69,9 @@ src/include/pmix_config.h.in~
 src/include/frameworks.h
 
 src/mca/pinstalldirs/config/pinstall_dirs.h
+src/mca/pdl/base/static-components.h
+src/mca/pinstalldirs/base/static-components.h
+src/util/show_help_lex.c
 
 test/pmi2_client
 test/pmi_client
