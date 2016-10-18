@@ -2,7 +2,7 @@
  * Copyright (c) 2014-2015 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
- * Copyright (c) 2015      Research Organization for Information Science
+ * Copyright (c) 2015-2016 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
@@ -50,6 +50,14 @@
 /* instance usock globals */
 pmix_usock_globals_t pmix_usock_globals = {{{0}}};
 
+/* define a tracker for collective operations */
+typedef struct {
+    pmix_object_t super;
+    pmix_event_t ev;
+    volatile bool active;           // flag for waiting for completion
+    pmix_list_t *list;              // list to be destructed
+} pmix_list_destruct_caddy_t;
+
 void pmix_usock_init(pmix_usock_cbfunc_t cbfunc)
 {
     pmix_usock_posted_recv_t *req;
@@ -73,9 +81,24 @@ void pmix_usock_init(pmix_usock_cbfunc_t cbfunc)
     }
 }
 
+static PMIX_CLASS_INSTANCE(pmix_list_destruct_caddy_t,
+                           pmix_object_t,
+                           NULL, NULL);
+
+static void _list_destruct(int sd, short args, void *cbdata)
+{
+   pmix_list_destruct_caddy_t *cd = (pmix_list_destruct_caddy_t *)cbdata;
+   PMIX_LIST_DESTRUCT(cd->list);
+   cd->active = false;
+}
+
 void pmix_usock_finalize(void)
 {
-    PMIX_LIST_DESTRUCT(&pmix_usock_globals.posted_recvs);
+    pmix_list_destruct_caddy_t cd;
+    PMIX_CONSTRUCT(&cd, pmix_list_destruct_caddy_t);
+    cd.list = &pmix_usock_globals.posted_recvs;
+    PMIX_THREADSHIFT(&cd, _list_destruct);
+    PMIX_WAIT_FOR_COMPLETION(cd.active);
 }
 
 pmix_status_t pmix_usock_set_nonblocking(int sd)
