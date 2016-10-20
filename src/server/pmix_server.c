@@ -1633,6 +1633,7 @@ static void _spcb(int sd, short args, void *cbdata)
     pmix_nspace_t *nptr, *ns;
     pmix_buffer_t *reply;
     pmix_status_t rc;
+    char          *msg;
 
     /* setup the reply with the returned status */
     reply = PMIX_NEW(pmix_buffer_t);
@@ -1653,8 +1654,11 @@ static void _spcb(int sd, short args, void *cbdata)
             }
         }
         if (NULL == nptr) {
-            /* shouldn't happen */
-            PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+            /* This can happen if there are no processes from this 
+             * namespace running on this host.  In this case just 
+             * pack the name of the namespace because we need that. */
+            msg = cd->nspace;
+            pmix_bfrop.pack(reply, &msg, 1, PMIX_STRING);
         } else {
             pmix_bfrop.copy_payload(reply, &nptr->server->job_info);
         }
