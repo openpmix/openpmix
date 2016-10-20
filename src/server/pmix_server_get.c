@@ -125,6 +125,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     bool local;
     bool localonly = false;
     pmix_buffer_t pbkt;
+    pmix_buffer_t *tbuf;
     char *data;
     size_t sz, n;
 
@@ -217,7 +218,9 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
         pmix_bfrop.pack(&pbkt, &rank, 1, PMIX_PROC_RANK);
         /* the client is expecting this to arrive as a byte object
          * containing a buffer, so package it accordingly */
-        pmix_bfrop.pack(&pbkt, &nptr->server->job_info, 1, PMIX_BUFFER);
+         
+        tbuf = &nptr->server->job_info;
+        pmix_bfrop.pack(&pbkt, &tbuf, 1, PMIX_BUFFER);
         PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
         PMIX_DESTRUCT(&pbkt);
         cbfunc(PMIX_SUCCESS, data, sz, cbdata, relfn, data);
