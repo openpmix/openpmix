@@ -30,7 +30,7 @@ int pmix_dstore_store(const char *nspace, pmix_rank_t rank, pmix_kval_t *kv);
  * Return codes:
  * - PMIX_ERR_BAD_PARAM - bad parameters - can't proceed.
  * - PMIX_ERR_FATAL - fatal error
- * - PMIX_ERR_NOT_FOUND - we have the BLOB for the process but the 
+ * - PMIX_ERR_NOT_FOUND - we have the BLOB for the process but the
  *   requested key wasn't found there
  * - PMIX_ERR_PROC_ENTRY_NOT_FOUND - the BLOB for the process wasn't
  *   found - need to request it from the server.

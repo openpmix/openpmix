@@ -79,4 +79,3 @@ PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, psec, "PMIx Security Operations",
 PMIX_CLASS_INSTANCE(pmix_psec_base_active_module_t,
                     pmix_list_item_t,
                     NULL, NULL);
-

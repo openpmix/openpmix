@@ -123,4 +123,3 @@ static pmix_status_t validate_cred(pmix_peer_t *peer, char *cred)
                         euid, gid);
     return PMIX_SUCCESS;
 }
-

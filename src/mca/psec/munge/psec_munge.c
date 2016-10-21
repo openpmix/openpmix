@@ -142,4 +142,3 @@ static int validate_cred(pmix_peer_t *peer, char *cred)
                         "psec: munge credential valid");
     return PMIX_SUCCESS;
 }
-

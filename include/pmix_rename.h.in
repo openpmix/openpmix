@@ -72,4 +72,3 @@
 #define pmix_output_verbose            @PMIX_RENAME@pmix_output_verbose
 
 #endif
-
