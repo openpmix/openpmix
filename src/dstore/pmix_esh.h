@@ -24,10 +24,6 @@ BEGIN_C_DECLS
 
 #define PMIX_DSTORE_ESH_BASE_PATH "PMIX_DSTORE_ESH_BASE_PATH"
 
-#define _ESH_LOCK_EX F_WRLCK
-#define _ESH_LOCK_SH F_RDLCK
-#define _ESH_LOCK_UN F_UNLCK
-
 /* this structs are used to store information about
  * shared segments addresses locally at each process,
  * so they are common for different types of segments
