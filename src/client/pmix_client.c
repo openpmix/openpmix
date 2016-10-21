@@ -456,6 +456,8 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
 
     pmix_bfrop_close();
 
+    pmix_class_finalize();
+
     return PMIX_SUCCESS;
 }
 
