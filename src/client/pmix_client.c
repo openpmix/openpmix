@@ -445,16 +445,18 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
                              "pmix:client finalize sync received");
     }
 
+    PMIX_DESTRUCT(&pmix_client_globals.myserver);
     pmix_rte_finalize();
 
-     PMIX_DESTRUCT(&pmix_client_globals.myserver);
-     PMIX_LIST_DESTRUCT(&pmix_client_globals.pending_requests);
+    PMIX_LIST_DESTRUCT(&pmix_client_globals.pending_requests);
 
-     if (0 <= pmix_client_globals.myserver.sd) {
+    if (0 <= pmix_client_globals.myserver.sd) {
         CLOSE_THE_SOCKET(pmix_client_globals.myserver.sd);
     }
 
     pmix_bfrop_close();
+
+    pmix_class_finalize();
 
     return PMIX_SUCCESS;
 }
