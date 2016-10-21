@@ -54,6 +54,8 @@ config/ylwrap
 config/autogen_found_items.m4
 
 examples/client
+examples/debugger
+examples/debuggerd
 examples/dmodex
 examples/dynamic
 examples/fault

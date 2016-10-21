@@ -11,7 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007      Voltaire. All rights reserved.
  * Copyright (c) 2012      Los Alamos National Security, LLC. All rights reserved.
- * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2016 Intel, Inc.  All rights reserved.
  *
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
@@ -209,7 +209,7 @@ static char **pmix_argv_split_inter(const char *src_string, int delimiter,
 
     else if ('\0' == *p) {
       if (PMIX_SUCCESS != pmix_argv_append(&argc, &argv, src_string))
-	return NULL;
+        return NULL;
       src_string = p;
       continue;
     }
@@ -219,14 +219,14 @@ static char **pmix_argv_split_inter(const char *src_string, int delimiter,
     else if (arglen > (ARGSIZE - 1)) {
         argtemp = (char*) malloc(arglen + 1);
       if (NULL == argtemp)
-	return NULL;
+        return NULL;
 
       strncpy(argtemp, src_string, arglen);
       argtemp[arglen] = '\0';
 
       if (PMIX_SUCCESS != pmix_argv_append(&argc, &argv, argtemp)) {
-	free(argtemp);
-	return NULL;
+        free(argtemp);
+        return NULL;
       }
 
       free(argtemp);
@@ -239,7 +239,7 @@ static char **pmix_argv_split_inter(const char *src_string, int delimiter,
       arg[arglen] = '\0';
 
       if (PMIX_SUCCESS != pmix_argv_append(&argc, &argv, arg))
-	return NULL;
+        return NULL;
     }
 
     src_string = p + 1;

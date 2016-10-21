@@ -13,6 +13,7 @@
 #include <pmix_server.h>
 #include <pmix_common.h>
 #include "src/include/pmix_globals.h"
+#include "src/client/pmix_client_ops.h"
 #include "src/class/pmix_value_array.h"
 #include "src/util/error.h"
 #include "src/buffer_ops/internal.h"
