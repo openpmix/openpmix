@@ -284,7 +284,32 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     }
 
 #if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
-    rc = pmix_dstore_fetch(nptr->nspace, cb->rank, cb->key, &val);
+    rc = PMIX_ERR_PROC_ENTRY_NOT_FOUND;
+    if ((0 == strncmp(pmix_globals.myid.nspace, nptr->nspace, PMIX_MAX_NSLEN + 1)) &&
+        ((pmix_globals.myid.rank == cb->rank) || (PMIX_RANK_UNDEF == cb->rank))){
+        /* if we asking the data about this or undefined process -
+           check local hash table first. All the data passed through
+           PMIx_Put settle down there */
+        rc = pmix_hash_fetch(&nptr->modex, pmix_globals.myid.rank, cb->key, &val);
+        assert( (PMIX_SUCCESS == rc) || (PMIX_ERR_PROC_ENTRY_NOT_FOUND == rc) || 
+                (PMIX_ERR_NOT_FOUND == rc) ); 
+        if( PMIX_SUCCESS != rc ){
+            if(pmix_globals.myid.rank == cb->rank){
+                rc = PMIX_ERR_NOT_FOUND;
+            }
+        }
+        /* in else case we supposed to get PMIX_ERR_PROC_ENTRY_NOT_FOUND because
+           we don't push data from the remote processes into the dstore */
+    }
+    /* try to take it from dstore */
+    if( PMIX_ERR_PROC_ENTRY_NOT_FOUND == rc ){
+        /* Two option possible here:
+           - we asking the key from UNDEF process and local proc
+             haven't pushed this data
+           - we askin the key from the particular process which is not us.
+         */
+        rc = pmix_dstore_fetch(nptr->nspace, cb->rank, cb->key, &val);
+    }
 #else
     /* we received the entire blob for this process, so
      * unpack and store it in the modex - this could consist
