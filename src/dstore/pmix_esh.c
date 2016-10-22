@@ -717,23 +717,23 @@ int _esh_init(pmix_info_t info[], size_t ninfo)
             }
         }
 
-        asprintf(&_base_path, "%s/pmix_dstor_%d", dstor_tmpdir, getpid());
-        if (NULL == _base_path) {
+        rc = asprintf(&_base_path, "%s/pmix_dstor_%d", dstor_tmpdir, getpid());
+        if ((0 > rc) || (NULL == _base_path)) {
             rc = PMIX_ERR_OUT_OF_RESOURCE;
             PMIX_ERROR_LOG(rc);
             goto err_exit;
         }
 
-        if (stat(_base_path, &st) == -1){
-            if (0 != mkdir(_base_path, 0770)) {
-                rc = PMIX_ERROR;
+        if (0 > stat(_base_path, &st)){
+            if (0 > mkdir(_base_path, 0770)) {
+                rc = PMIX_ERR_NO_PERMISSIONS;
                 PMIX_ERROR_LOG(rc);
                 goto err_exit;
             }
         }
         if (_setjobuid > 0) {
             if (chown(_base_path, (uid_t) _jobuid, (gid_t) -1) < 0){
-                rc = PMIX_ERROR;
+                rc = PMIX_ERR_NO_PERMISSIONS;
                 PMIX_ERROR_LOG(rc);
                 goto err_exit;
             }
