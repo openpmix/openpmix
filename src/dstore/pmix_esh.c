@@ -280,6 +280,12 @@ static inline int _esh_tbls_init(void)
     pmix_status_t rc = PMIX_SUCCESS;
     size_t idx;
 
+    /* initial settings */
+    _ns_track_array = NULL;
+    _session_array = NULL;
+    _ns_map_array = NULL;
+
+    /* Setup namespace tracking array */
     if (NULL == (_ns_track_array = PMIX_NEW(pmix_value_array_t))) {
         rc = PMIX_ERR_OUT_OF_RESOURCE;
         PMIX_ERROR_LOG(rc);
@@ -290,6 +296,7 @@ static inline int _esh_tbls_init(void)
         goto err_exit;
     }
 
+    /* Setup sessions table */
     if (NULL == (_session_array = PMIX_NEW(pmix_value_array_t))){
         rc = PMIX_ERR_OUT_OF_RESOURCE;
         PMIX_ERROR_LOG(rc);
@@ -307,6 +314,7 @@ static inline int _esh_tbls_init(void)
         memset(pmix_value_array_get_item(_session_array, idx), 0, sizeof(session_t));
     }
 
+    /* Setup namespace map array */
     if (NULL == (_ns_map_array = PMIX_NEW(pmix_value_array_t))) {
         rc = PMIX_ERR_OUT_OF_RESOURCE;
         PMIX_ERROR_LOG(rc);
@@ -324,7 +332,17 @@ static inline int _esh_tbls_init(void)
         _esh_session_map_clean(pmix_value_array_get_item(_ns_map_array, idx));
     }
 
+    return PMIX_SUCCESS;
 err_exit:
+    if (NULL != _ns_track_array) {
+        PMIX_RELEASE(_ns_track_array);
+    }
+    if (NULL != _session_array) {
+        PMIX_RELEASE(_session_array);
+    }
+    if (NULL != _ns_map_array) {
+        PMIX_RELEASE(_ns_map_array);
+    }
     return rc;
 }
 
