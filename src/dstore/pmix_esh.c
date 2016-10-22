@@ -1207,7 +1207,7 @@ static int _esh_nspace_del(const char *nspace)
         "%s:%d:%s delete nspace `%s`", __FILE__, __LINE__, __func__, nspace));
 
     if (NULL == (ns_map_data =_esh_session_map_search(nspace))) {
-        rc = PMIX_ERROR;
+        rc = PMIX_ERR_NOT_FOUND;
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -1230,7 +1230,7 @@ static int _esh_nspace_del(const char *nspace)
     if(ns_map_data->track_idx >= 0) {
         trk = pmix_value_array_get_item(_ns_track_array, ns_map_data->track_idx);
         if((ns_map_data->track_idx + 1) > (int)pmix_value_array_get_size(_ns_track_array)) {
-            rc = PMIX_ERROR;
+            rc = PMIX_ERR_NOT_FOUND;
             PMIX_ERROR_LOG(rc);
             goto exit;
         }
