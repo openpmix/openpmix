@@ -229,34 +229,50 @@ static inline int _esh_dir_del(const char *path)
     char name[PMIX_PATH_MAX];
 
     dir = opendir(path);
-    if (dir != NULL) {
-        while (NULL != (d_ptr = readdir(dir))) {
-            snprintf(name, PMIX_PATH_MAX, "%s/%s", path, d_ptr->d_name);
-
-            if (lstat(name, &st) < 0){
-                rc = PMIX_ERR_BAD_PARAM;
-                PMIX_ERROR_LOG(rc);
-                return rc;
-            }
-
-            if(S_ISDIR(st.st_mode)) {
-                if(strcmp(d_ptr->d_name, ".") && strcmp(d_ptr->d_name, "..")) {
-                    _esh_dir_del(name);
-                }
-            }
-            else {
-                unlink(name);
-            }
-        }
-        closedir(dir);
-    }
-    else {
-        rc = PMIX_ERROR;
+    if (NULL == dir) {
+        rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         return rc;
     }
 
-    return rmdir(path);
+    while (NULL != (d_ptr = readdir(dir))) {
+        snprintf(name, PMIX_PATH_MAX, "%s/%s", path, d_ptr->d_name);
+        if ( 0 > lstat(name, &st) ){
+            /* No fatal error here - just log this event 
+             * we will hit the error later at rmdir. Keep trying ...
+             */
+            PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+            continue;
+        }
+
+        if(S_ISDIR(st.st_mode)) {
+            if(strcmp(d_ptr->d_name, ".") && strcmp(d_ptr->d_name, "..")) {
+                rc = _esh_dir_del(name);
+                if( PMIX_SUCCESS != rc ){
+                    /* No fatal error here - just log this event 
+                     * we will hit the error later at rmdir. Keep trying ...
+                     */
+                    PMIX_ERROR_LOG(rc);
+                }
+            }
+        }
+        else {
+            if( 0 > unlink(name) ){
+                /* No fatal error here - just log this event 
+                 * we will hit the error later at rmdir. Keep trying ...
+                 */
+                PMIX_ERROR_LOG(PMIX_ERR_NO_PERMISSIONS);
+            }
+        }
+    }
+    closedir(dir);
+
+    /* remove the top dir */
+    if( 0 > rmdir(path) ){
+        rc = PMIX_ERR_NO_PERMISSIONS;
+        PMIX_ERROR_LOG(rc);
+    }
+    return rc;
 }
 
 static inline int _esh_tbls_init(void)
