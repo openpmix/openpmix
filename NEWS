@@ -23,8 +23,8 @@ current release as well as the "stable" bug fix release branch.
 
 1.2.0
 -----
-- Add shared memory data storage (dstore) option. Default: disabled
-  Configure option: --enable-dstore
+- Add shared memory data storage (dstore) option. Default: enabled
+  Configure option: --disable-dstore
 
 
 1.1.5
