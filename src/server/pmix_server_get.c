@@ -125,6 +125,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     bool local;
     bool localonly = false;
     pmix_buffer_t pbkt;
+    pmix_buffer_t *tbuf;
     char *data;
     size_t sz, n;
 
@@ -199,7 +200,15 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
          * give the host server a chance to tell us about it */
         rc = create_local_tracker(nspace, rank, info, ninfo,
                                   cbfunc, cbdata, &lcd);
-        return rc;
+        /*
+         * Its possible there are no local processes on this 
+         * host, so lets ask for this explicitly.  There can
+         * be a timing issue here if this information shows 
+         * up on its own, but I believe we handle it ok.  */
+        if( NULL != pmix_host_server.direct_modex ){
+                pmix_host_server.direct_modex(&lcd->proc, info, ninfo, dmdx_cbfunc, lcd);
+        }
+        return (rc == PMIX_ERR_NOT_FOUND ? PMIX_SUCCESS : rc);
     }
 
     /* if the rank is wildcard, then they are asking for the job-level
@@ -209,7 +218,9 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
         pmix_bfrop.pack(&pbkt, &rank, 1, PMIX_PROC_RANK);
         /* the client is expecting this to arrive as a byte object
          * containing a buffer, so package it accordingly */
-        pmix_bfrop.pack(&pbkt, &nptr->server->job_info, 1, PMIX_BUFFER);
+         
+        tbuf = &nptr->server->job_info;
+        pmix_bfrop.pack(&pbkt, &tbuf, 1, PMIX_BUFFER);
         PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
         PMIX_DESTRUCT(&pbkt);
         cbfunc(PMIX_SUCCESS, data, sz, cbdata, relfn, data);
@@ -414,6 +425,8 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, pmix_rank_t rank,
         local = true;
         hts[0] = &nptr->server->remote;
         hts[1] = &nptr->server->mylocal;
+    } else if (PMIX_RANK_WILDCARD == rank) {
+        hts[0] = NULL;
     } else {
         local = false;
         hts[0] = &nptr->server->remote;
@@ -440,8 +453,8 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, pmix_rank_t rank,
 
     /* if they are asking about a rank from an nspace different
      * from their own, then include a copy of the job-level info */
-    if (NULL != cd &&
-        0 != strncmp(nptr->nspace, cd->peer->info->nptr->nspace, PMIX_MAX_NSLEN)) {
+    if (rank == PMIX_RANK_WILDCARD || (NULL != cd &&
+        0 != strncmp(nptr->nspace, cd->peer->info->nptr->nspace, PMIX_MAX_NSLEN))) {
         cur_rank = PMIX_RANK_WILDCARD;
         if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&pbkt, &cur_rank, 1, PMIX_PROC_RANK))) {
             PMIX_ERROR_LOG(rc);
@@ -457,6 +470,9 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, pmix_rank_t rank,
             PMIX_DESTRUCT(&pbkt);
             cbfunc(rc, NULL, 0, cbdata, NULL, NULL);
             return rc;
+        }    
+	if (rank == PMIX_RANK_WILDCARD) {
+            found++;
         }
     }
 
@@ -587,10 +603,14 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
     }
 
     if (NULL == nptr) {
-        /* should be impossible */
-        PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
-        caddy->status = PMIX_ERR_NOT_FOUND;
-        goto cleanup;
+/*
+ * We may not have this namespace because someone asked about this namespace
+ * but there are not processses from it running on this host
+ */
+        nptr = PMIX_NEW(pmix_nspace_t);
+        (void)strncpy(nptr->nspace, caddy->lcd->proc.nspace, PMIX_MAX_NSLEN);
+        nptr->server = PMIX_NEW(pmix_server_nspace_t);
+        pmix_list_append(&pmix_globals.nspaces, &nptr->super);
     }
 
     /* if the request was successfully satisfied, then store the data
@@ -601,28 +621,33 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
      * will let the pmix_pending_resolve function go ahead and retrieve
      * it from the hash table */
     if (PMIX_SUCCESS == caddy->status) {
-        kp = PMIX_NEW(pmix_kval_t);
-        kp->key = strdup("modex");
-        PMIX_VALUE_CREATE(kp->value, 1);
-        kp->value->type = PMIX_BYTE_OBJECT;
-        /* we don't know if the host is going to save this data
-         * or not, so we have to copy it - the client is expecting
-         * this to arrive as a byte object containing a buffer, so
-         * package it accordingly */
-        kp->value->data.bo.bytes = malloc(caddy->ndata);
-        memcpy(kp->value->data.bo.bytes, caddy->data, caddy->ndata);
-        kp->value->data.bo.size = caddy->ndata;
-        /* store it in the appropriate hash */
-        if (PMIX_SUCCESS != (rc = pmix_hash_store(&nptr->server->remote, caddy->lcd->proc.rank, kp))) {
-            PMIX_ERROR_LOG(rc);
+        if (caddy->lcd->proc.rank == PMIX_RANK_WILDCARD) {
+            void * where = malloc(caddy->ndata);
+            memcpy(where, caddy->data, caddy->ndata); 
+            PMIX_LOAD_BUFFER(&nptr->server->job_info, where, caddy->ndata);
+        } else {
+            kp = PMIX_NEW(pmix_kval_t);
+            kp->key = strdup("modex");
+            PMIX_VALUE_CREATE(kp->value, 1);
+            kp->value->type = PMIX_BYTE_OBJECT;
+            /* we don't know if the host is going to save this data
+             * or not, so we have to copy it - the client is expecting
+             * this to arrive as a byte object containing a buffer, so
+             * package it accordingly */
+            kp->value->data.bo.bytes = malloc(caddy->ndata);
+            memcpy(kp->value->data.bo.bytes, caddy->data, caddy->ndata);
+            kp->value->data.bo.size = caddy->ndata;
+            /* store it in the appropriate hash */
+            if (PMIX_SUCCESS != (rc = pmix_hash_store(&nptr->server->remote, caddy->lcd->proc.rank, kp))) {
+                PMIX_ERROR_LOG(rc);
+            }
+            PMIX_RELEASE(kp);  // maintain acctg
         }
-        PMIX_RELEASE(kp);  // maintain acctg
     }
 
     /* always execute the callback to avoid having the client hang */
     pmix_pending_resolve(nptr, caddy->lcd->proc.rank, caddy->status, caddy->lcd);
 
-cleanup:
     /* now call the release function so the host server
      * knows it can release the data */
     if (NULL != caddy->relcbfunc) {

@@ -309,6 +309,11 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                 }
                 free(nspace);
                 pmix_client_process_nspace_blob(cb->nspace, bptr);
+
+                /* Check if the key is in this blob */
+
+                pmix_hash_fetch(&nptr->internal, cb->rank, cb->key, &val);
+		
             } else {
                 cnt = 1;
                 cur_kval = PMIX_NEW(pmix_kval_t);
