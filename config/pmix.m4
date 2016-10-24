@@ -762,21 +762,21 @@ AC_DEFINE_UNQUOTED([PMIX_WANT_PRETTY_PRINT_STACKTRACE],
 # Do we want the shared memory datastore usage?
 #
 
-AC_MSG_CHECKING([if want special dstore usage])
+AC_MSG_CHECKING([if want shared memory datastore])
 AC_ARG_ENABLE([dstore],
-              [AC_HELP_STRING([--enable-dstore],
-                              [Using special datastore (default: disabled)])])
-if test "$enable_dstore" = "yes" ; then
-    AC_MSG_RESULT([yes])
-    WANT_DSTORE=1
-else
+              [AC_HELP_STRING([--disable-dstore],
+                              [Using shared memory datastore (default: enabled)])])
+if test "$enable_dstore" == "no" ; then
     AC_MSG_RESULT([no])
     WANT_DSTORE=0
+else
+    AC_MSG_RESULT([yes])
+    WANT_DSTORE=1
 fi
 AC_DEFINE_UNQUOTED([PMIX_ENABLE_DSTORE],
                    [$WANT_DSTORE],
-                   [if want special dstore feature])
-AM_CONDITIONAL([WANT_DSTORE],[test "x$enable_dstore" = "xyes"])
+                   [if want shared memory dstore feature])
+AM_CONDITIONAL([WANT_DSTORE],[test "x$enable_dstore" != "xno"])
 
 #
 # Ident string
@@ -835,6 +835,7 @@ AC_DEFUN([PMIX_DO_AM_CONDITIONALS],[
         AM_CONDITIONAL([PMIX_COMPILE_TIMING], [test "$WANT_TIMING" = "1"])
         AM_CONDITIONAL([PMIX_WANT_MUNGE], [test "$pmix_munge_support" = "1"])
         AM_CONDITIONAL([PMIX_WANT_SASL], [test "$pmix_sasl_support" = "1"])
+        AM_CONDITIONAL([WANT_DSTORE],[test "x$enable_dstore" != "xno"])
     ])
     pmix_did_am_conditionals=yes
 ])dnl
