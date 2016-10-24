@@ -224,36 +224,55 @@ static inline int _esh_dir_del(const char *path)
     DIR *dir;
     struct dirent *d_ptr;
     struct stat st;
+    pmix_status_t rc = PMIX_SUCCESS;
 
     char name[PMIX_PATH_MAX];
 
     dir = opendir(path);
-    if (dir != NULL) {
-        while (NULL != (d_ptr = readdir(dir))) {
-            snprintf(name, PMIX_PATH_MAX, "%s/%s", path, d_ptr->d_name);
+    if (NULL == dir) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
 
-            if (lstat(name, &st) < 0){
-                PMIX_ERROR_LOG(PMIX_ERROR);
-                return PMIX_ERROR;
-            }
+    while (NULL != (d_ptr = readdir(dir))) {
+        snprintf(name, PMIX_PATH_MAX, "%s/%s", path, d_ptr->d_name);
+        if ( 0 > lstat(name, &st) ){
+            /* No fatal error here - just log this event 
+             * we will hit the error later at rmdir. Keep trying ...
+             */
+            PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+            continue;
+        }
 
-            if(S_ISDIR(st.st_mode)) {
-                if(strcmp(d_ptr->d_name, ".") && strcmp(d_ptr->d_name, "..")) {
-                    _esh_dir_del(name);
+        if(S_ISDIR(st.st_mode)) {
+            if(strcmp(d_ptr->d_name, ".") && strcmp(d_ptr->d_name, "..")) {
+                rc = _esh_dir_del(name);
+                if( PMIX_SUCCESS != rc ){
+                    /* No fatal error here - just log this event 
+                     * we will hit the error later at rmdir. Keep trying ...
+                     */
+                    PMIX_ERROR_LOG(rc);
                 }
             }
-            else {
-                unlink(name);
+        }
+        else {
+            if( 0 > unlink(name) ){
+                /* No fatal error here - just log this event 
+                 * we will hit the error later at rmdir. Keep trying ...
+                 */
+                PMIX_ERROR_LOG(PMIX_ERR_NO_PERMISSIONS);
             }
         }
-        closedir(dir);
     }
-    else {
-        PMIX_ERROR_LOG(PMIX_ERROR);
-        return PMIX_ERROR;
-    }
+    closedir(dir);
 
-    return rmdir(path);
+    /* remove the top dir */
+    if( 0 > rmdir(path) ){
+        rc = PMIX_ERR_NO_PERMISSIONS;
+        PMIX_ERROR_LOG(rc);
+    }
+    return rc;
 }
 
 static inline int _esh_tbls_init(void)
@@ -261,6 +280,12 @@ static inline int _esh_tbls_init(void)
     pmix_status_t rc = PMIX_SUCCESS;
     size_t idx;
 
+    /* initial settings */
+    _ns_track_array = NULL;
+    _session_array = NULL;
+    _ns_map_array = NULL;
+
+    /* Setup namespace tracking array */
     if (NULL == (_ns_track_array = PMIX_NEW(pmix_value_array_t))) {
         rc = PMIX_ERR_OUT_OF_RESOURCE;
         PMIX_ERROR_LOG(rc);
@@ -271,34 +296,53 @@ static inline int _esh_tbls_init(void)
         goto err_exit;
     }
 
+    /* Setup sessions table */
     if (NULL == (_session_array = PMIX_NEW(pmix_value_array_t))){
-            rc = PMIX_ERR_OUT_OF_RESOURCE;
+        rc = PMIX_ERR_OUT_OF_RESOURCE;
+        PMIX_ERROR_LOG(rc);
+        goto err_exit;
     }
     if (PMIX_SUCCESS != (rc = pmix_value_array_init(_session_array, sizeof(session_t)))) {
+        PMIX_ERROR_LOG(rc);
         goto err_exit;
     }
     if (PMIX_SUCCESS != (rc = pmix_value_array_set_size(_session_array, ESH_INIT_SESSION_TBL_SIZE))) {
+        PMIX_ERROR_LOG(rc);
         goto err_exit;
     }
     for (idx = 0; idx < ESH_INIT_SESSION_TBL_SIZE; idx++) {
         memset(pmix_value_array_get_item(_session_array, idx), 0, sizeof(session_t));
     }
 
+    /* Setup namespace map array */
     if (NULL == (_ns_map_array = PMIX_NEW(pmix_value_array_t))) {
         rc = PMIX_ERR_OUT_OF_RESOURCE;
+        PMIX_ERROR_LOG(rc);
+        goto err_exit;
     }
     if (PMIX_SUCCESS != (rc = pmix_value_array_init(_ns_map_array, sizeof(ns_map_t)))) {
+        PMIX_ERROR_LOG(rc);
         goto err_exit;
     }
     if (PMIX_SUCCESS != (rc = pmix_value_array_set_size(_ns_map_array, ESH_INIT_NS_MAP_TBL_SIZE))) {
+        PMIX_ERROR_LOG(rc);
         goto err_exit;
     }
     for (idx = 0; idx < ESH_INIT_NS_MAP_TBL_SIZE; idx++) {
         _esh_session_map_clean(pmix_value_array_get_item(_ns_map_array, idx));
     }
 
-
+    return PMIX_SUCCESS;
 err_exit:
+    if (NULL != _ns_track_array) {
+        PMIX_RELEASE(_ns_track_array);
+    }
+    if (NULL != _session_array) {
+        PMIX_RELEASE(_session_array);
+    }
+    if (NULL != _ns_map_array) {
+        PMIX_RELEASE(_ns_map_array);
+    }
     return rc;
 }
 
@@ -404,7 +448,8 @@ static inline int _esh_jobuid_tbl_search(uid_t jobuid, size_t *tbl_idx)
             return PMIX_SUCCESS;
         }
     }
-    return PMIX_ERROR;
+
+    return PMIX_ERR_NOT_FOUND;
 }
 
 static inline int _esh_session_tbl_add(size_t *tbl_idx)
@@ -413,6 +458,7 @@ static inline int _esh_session_tbl_add(size_t *tbl_idx)
     size_t size = pmix_value_array_get_size(_session_array);
     session_t *s_tbl = PMIX_VALUE_ARRAY_GET_BASE(_session_array, session_t);
     session_t *new_sesion;
+    pmix_status_t rc = PMIX_SUCCESS;
 
     for(idx = 0; idx < size; idx ++) {
         if (0 == s_tbl[idx].in_use) {
@@ -423,7 +469,9 @@ static inline int _esh_session_tbl_add(size_t *tbl_idx)
     }
 
     if (NULL == (new_sesion = pmix_value_array_get_item(_session_array, idx))) {
-        return PMIX_ERR_OUT_OF_RESOURCE;
+        rc = PMIX_ERR_OUT_OF_RESOURCE;
+        PMIX_ERROR_LOG(rc);
+        return rc;
     }
     s_tbl[idx].in_use = 1;
     *tbl_idx = idx;
@@ -471,10 +519,12 @@ static inline int _esh_session_init(size_t idx, ns_map_data_t *m, size_t jobuid,
     struct stat st = {0};
     seg_desc_t *seg = NULL;
     session_t *s = &(PMIX_VALUE_ARRAY_GET_ITEM(_session_array, session_t, idx));
+    pmix_status_t rc = PMIX_SUCCESS;
 
     if (NULL == s) {
-        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-        return PMIX_ERR_BAD_PARAM;
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        return rc;
     }
 
     s->jobuid = jobuid;
@@ -484,8 +534,9 @@ static inline int _esh_session_init(size_t idx, ns_map_data_t *m, size_t jobuid,
     * This situation is quite often, especially in case of direct modex when clients might ask for data
     * simultaneously.*/
     if(0 > asprintf(&s->lockfile, "%s/dstore_sm.lock", s->nspace_path)) {
-        PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
-        return PMIX_ERR_OUT_OF_RESOURCE;
+        rc = PMIX_ERR_OUT_OF_RESOURCE;
+        PMIX_ERROR_LOG(rc);
+        return rc;
     }
     PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
         "%s:%d:%s _lockfile_name: %s", __FILE__, __LINE__, __func__, s->lockfile));
@@ -493,8 +544,9 @@ static inline int _esh_session_init(size_t idx, ns_map_data_t *m, size_t jobuid,
     if ( _is_server() ) {
         if (stat(s->nspace_path, &st) == -1){
             if (0 != mkdir(s->nspace_path, 0770)) {
-                PMIX_ERROR_LOG(PMIX_ERROR);
-                return PMIX_ERROR;
+                rc = PMIX_ERROR;
+                PMIX_ERROR_LOG(rc);
+                return rc;
             }
         }
         s->lockfd = open(s->lockfile, O_CREAT | O_RDWR | O_EXCL, 0600);
@@ -505,41 +557,53 @@ static inline int _esh_session_init(size_t idx, ns_map_data_t *m, size_t jobuid,
             unlink(s->lockfile);
             s->lockfd = open(s->lockfile, O_CREAT | O_RDWR, 0600);
             if (s->lockfd < 0) {
-                PMIX_ERROR_LOG(PMIX_ERROR);
-                return PMIX_ERROR;
+                rc = PMIX_ERROR;
+                PMIX_ERROR_LOG(rc);
+                return rc;
             }
         }
         if (setjobuid > 0){
-            if (chown(s->nspace_path, (uid_t) jobuid, (gid_t) -1) < 0){
-                PMIX_ERROR_LOG(PMIX_ERROR);
-                return PMIX_ERROR;
+            if (0 > chown(s->nspace_path, (uid_t) jobuid, (gid_t) -1)){
+                rc = PMIX_ERROR;
+                PMIX_ERROR_LOG(rc);
+                return rc;
             }
-            if (chown(s->lockfile, (uid_t) jobuid, (gid_t) -1) < 0) {
-                PMIX_ERROR_LOG(PMIX_ERROR);
-                return PMIX_ERROR;
+            if (0 > chown(s->lockfile, (uid_t) jobuid, (gid_t) -1)) {
+                rc = PMIX_ERROR;
+                PMIX_ERROR_LOG(rc);
+                return rc;
             }
-            if (0 != chmod(s->lockfile, S_IRUSR | S_IWGRP | S_IRGRP)) {
-                PMIX_ERROR_LOG(PMIX_ERROR);
-                return PMIX_ERROR;
+            if (0 > chmod(s->lockfile, S_IRUSR | S_IWGRP | S_IRGRP)) {
+                rc = PMIX_ERROR;
+                PMIX_ERROR_LOG(rc);
+                return rc;
             }
         }
         seg = _create_new_segment(INITIAL_SEGMENT, m, 0);
+        if( NULL == seg ){
+            rc = PMIX_ERR_OUT_OF_RESOURCE;
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
     }
     else {
         s->lockfd = open(s->lockfile, O_RDONLY);
         if (-1 == s->lockfd) {
-            PMIX_ERROR_LOG(PMIX_ERROR);
-            return PMIX_ERROR;
+            rc = PMIX_ERROR;
+            PMIX_ERROR_LOG(rc);
+            return rc;
         }
         seg = _attach_new_segment(INITIAL_SEGMENT, m, 0);
-    }
-    if (NULL != seg) {
-        s->sm_seg_first = seg;
-        s->sm_seg_last = s->sm_seg_first;
-        return PMIX_SUCCESS;
+        if( NULL == seg ){
+            rc = PMIX_ERR_OUT_OF_RESOURCE;
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
     }
 
-    return PMIX_ERR_OUT_OF_RESOURCE;
+    s->sm_seg_first = seg;
+    s->sm_seg_last = s->sm_seg_first;
+    return PMIX_SUCCESS;
 }
 
 static inline void _esh_session_release(session_t *s)
@@ -568,7 +632,7 @@ static inline void _esh_session_release(session_t *s)
 
 int _esh_init(pmix_info_t info[], size_t ninfo)
 {
-    int rc;
+    pmix_status_t rc;
     size_t n;
     char *dstor_tmpdir = NULL;
     size_t tbl_idx;
@@ -582,6 +646,7 @@ int _esh_init(pmix_info_t info[], size_t ninfo)
     _setjobuid = 0;
 
     if (PMIX_SUCCESS != (rc = _esh_tbls_init())) {
+        PMIX_ERROR_LOG(rc);
         goto err_exit;
     }
 
@@ -619,10 +684,20 @@ int _esh_init(pmix_info_t info[], size_t ninfo)
                      *
                      * PMIX_DSTPATH has higher priority than PMIX_SERVER_TMPDIR
                      */
+                    if( PMIX_STRING != info[n].value.type ){
+                        rc = PMIX_ERR_BAD_PARAM;
+                        PMIX_ERROR_LOG(rc);
+                        goto err_exit;
+                    }
                     dstor_tmpdir = (char*)info[n].value.data.string;
                     continue;
                 }
                 if (0 == strcmp(PMIX_SERVER_TMPDIR, info[n].key)) {
+                    if( PMIX_STRING != info[n].value.type ){
+                        rc = PMIX_ERR_BAD_PARAM;
+                        PMIX_ERROR_LOG(rc);
+                        goto err_exit;
+                    }
                     if (NULL == dstor_tmpdir) {
                         dstor_tmpdir = (char*)info[n].value.data.string;
                     }
@@ -642,20 +717,23 @@ int _esh_init(pmix_info_t info[], size_t ninfo)
         }
 
         rc = asprintf(&_base_path, "%s/pmix_dstor_%d", dstor_tmpdir, getpid());
-        if ( (rc < 0) && (NULL == _base_path) ) {
-            PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
-            return PMIX_ERR_OUT_OF_RESOURCE;
+        if ((0 > rc) || (NULL == _base_path)) {
+            rc = PMIX_ERR_OUT_OF_RESOURCE;
+            PMIX_ERROR_LOG(rc);
+            goto err_exit;
         }
 
-        if (stat(_base_path, &st) == -1){
-            if (0 != mkdir(_base_path, 0770)) {
-                PMIX_ERROR_LOG(PMIX_ERROR);
+        if (0 > stat(_base_path, &st)){
+            if (0 > mkdir(_base_path, 0770)) {
+                rc = PMIX_ERR_NO_PERMISSIONS;
+                PMIX_ERROR_LOG(rc);
                 goto err_exit;
             }
         }
         if (_setjobuid > 0) {
             if (chown(_base_path, (uid_t) _jobuid, (gid_t) -1) < 0){
-                PMIX_ERROR_LOG(PMIX_ERROR);
+                rc = PMIX_ERR_NO_PERMISSIONS;
+                PMIX_ERROR_LOG(rc);
                 goto err_exit;
             }
         }
@@ -686,23 +764,24 @@ int _esh_init(pmix_info_t info[], size_t ninfo)
     ns_map = _esh_session_map(pmix_globals.myid.nspace, tbl_idx);
     if (NULL == ns_map) {
         rc = PMIX_ERR_OUT_OF_RESOURCE;
+        PMIX_ERROR_LOG(rc);
         goto err_exit;
     }
 
     if (PMIX_SUCCESS != (rc =_esh_session_init(tbl_idx, ns_map, _jobuid, _setjobuid))) {
+        PMIX_ERROR_LOG(rc);
         goto err_exit;
     }
 
     return PMIX_SUCCESS;
 err_exit:
-    pmix_output(0, "Cannot initialize dstore/esh component");
     return rc;
 }
 
 int _esh_finalize(void)
 {
     struct stat st = {0};
-    pmix_status_t rc;
+    pmix_status_t rc = PMIX_SUCCESS;
 
     PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
                          "%s:%d:%s", __FILE__, __LINE__, __func__));
@@ -717,7 +796,7 @@ int _esh_finalize(void)
         if(_is_server()) {
             if (lstat(_base_path, &st) >= 0){
                 if (PMIX_SUCCESS != (rc = _esh_dir_del(_base_path))) {
-                    PMIX_ERROR_LOG(PMIX_ERROR);
+                    PMIX_ERROR_LOG(rc);
                 }
             }
         }
@@ -725,12 +804,12 @@ int _esh_finalize(void)
         _base_path = NULL;
     }
 
-    return PMIX_SUCCESS;
+    return rc;
 }
 
 int _esh_store(const char *nspace, int rank, pmix_kval_t *kv)
 {
-    int rc = PMIX_ERROR, lock_rc;
+    pmix_status_t rc = PMIX_SUCCESS, tmp_rc;
     ns_track_elem_t *elem;
     pmix_buffer_t pbkt, xfer;
     ns_seg_info_t ns_info;
@@ -744,13 +823,15 @@ int _esh_store(const char *nspace, int rank, pmix_kval_t *kv)
                          "%s:%d:%s: for %s:%d",
                          __FILE__, __LINE__, __func__, nspace, rank));
 
-    if (NULL == (ns_map =_esh_session_map_search(nspace))) {
-        PMIX_ERROR_LOG(PMIX_ERROR);
-        return PMIX_ERROR;
+    if (NULL == (ns_map = _esh_session_map_search(nspace))) {
+        rc = PMIX_ERROR;
+        PMIX_ERROR_LOG(rc);
+        return rc;
     }
 
     /* set exclusive lock */
     if (PMIX_SUCCESS != (rc = _ESH_WRLOCK(_ESH_SESSION_lockfd(ns_map->tbl_idx)))) {
+        PMIX_ERROR_LOG(rc);
         return rc;
     }
 
@@ -766,6 +847,7 @@ int _esh_store(const char *nspace, int rank, pmix_kval_t *kv)
 
     elem = _get_track_elem_for_namespace(ns_map);
     if (NULL == elem) {
+        rc = PMIX_ERR_OUT_OF_RESOURCE;
         PMIX_ERROR_LOG(rc);
         goto err_exit;
     }
@@ -791,6 +873,7 @@ int _esh_store(const char *nspace, int rank, pmix_kval_t *kv)
         /* put ns's shared segments info to the global meta segment. */
         rc = _put_ns_info_to_initial_segment(ns_map, &elem->meta_seg->seg_info, &elem->data_seg->seg_info);
         if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
             goto err_exit;
         }
     }
@@ -806,28 +889,36 @@ int _esh_store(const char *nspace, int rank, pmix_kval_t *kv)
     xfer.bytes_used = 0;
 
     rc = _store_data_for_rank(elem, rank, &pbkt);
-
     PMIX_DESTRUCT(&xfer);
     PMIX_DESTRUCT(&pbkt);
 
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto err_exit;
+    }
+
     /* unset lock */
-    if (PMIX_SUCCESS != (lock_rc = _ESH_UNLOCK(_ESH_SESSION_lockfd(ns_map->tbl_idx)))) {
-        return lock_rc;
+    if (PMIX_SUCCESS != (rc = _ESH_UNLOCK(_ESH_SESSION_lockfd(ns_map->tbl_idx)))) {
+        PMIX_ERROR_LOG(rc);
     }
     return rc;
 
 err_exit:
     /* unset lock */
-    if (PMIX_SUCCESS != (lock_rc = _ESH_UNLOCK(_ESH_SESSION_lockfd(ns_map->tbl_idx)))) {
-        return lock_rc;
+    if (PMIX_SUCCESS != (tmp_rc = _ESH_UNLOCK(_ESH_SESSION_lockfd(ns_map->tbl_idx)))) {
+        PMIX_ERROR_LOG(tmp_rc);
     }
     return rc;
 }
 
+/*
+ * See return codes description for the corresponding function
+ * in pmix_dstore.h
+ */
 int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs)
 {
     ns_seg_info_t *ns_info = NULL;
-    int rc = PMIX_ERROR, lock_rc;
+    pmix_status_t rc = PMIX_ERROR, lock_rc;
     ns_track_elem_t *elem;
     rank_meta_info *rinfo = NULL;
     size_t kval_cnt;
@@ -838,20 +929,28 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
     uint32_t nprocs;
     int cur_rank;
     ns_map_data_t *ns_map = NULL;
+    bool all_ranks_found = true;
+    bool key_found = false;
 
     if (NULL == key) {
         PMIX_OUTPUT_VERBOSE((7, pmix_globals.debug_output,
                              "dstore: Does not support passed parameters"));
-        return PMIX_ERROR;
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        return rc;
     }
 
     PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
                          "%s:%d:%s: for %s:%d look for key %s",
                          __FILE__, __LINE__, __func__, nspace, rank, key));
 
-    if (NULL == (ns_map =_esh_session_map_search(nspace))) {
-        PMIX_ERROR_LOG(PMIX_ERROR);
-        return PMIX_ERROR;
+    if (NULL == (ns_map = _esh_session_map_search(nspace))) {
+        /* This call is issued from the the client.
+         * client must have the session, otherwise the error is fatal.
+         */
+        rc = PMIX_ERROR;
+        PMIX_ERROR_LOG(rc);
+        return rc;
     }
 
     if (kvs) {
@@ -866,8 +965,11 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
         cur_rank = rank;
     }
 
-    /* set shared lock */
+    /* grab shared lock */
     if (PMIX_SUCCESS != (lock_rc = _ESH_RDLOCK(_ESH_SESSION_lockfd(ns_map->tbl_idx)))) {
+        /* Something wrong with the lock. The error is fatal */
+        rc = PMIX_ERROR;
+        PMIX_ERROR_LOG(lock_rc);
         return lock_rc;
     }
 
@@ -886,34 +988,35 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
     /* first update local information about initial segments. they can be extended, so then we need to attach to new segments. */
     _update_initial_segment_info(ns_map);
 
-    rc = PMIX_ERROR;
-    /* get information about shared segments per this namespace from the initial segment. */
-
-    //pmix_output(0, "%s:%d:%s: ns %s %s",__FILE__, __LINE__, __func__, nspace, ns_map->name);
-
     ns_info = _get_ns_info_from_initial_segment(ns_map);
     if (NULL == ns_info) {
         /* no data for this namespace is found in the shared memory. */
         PMIX_OUTPUT_VERBOSE((7, pmix_globals.debug_output,
                     "%s:%d:%s:  no data for ns %s is found in the shared memory.",
                     __FILE__, __LINE__, __func__, ns_map->name));
+        rc = PMIX_ERR_PROC_ENTRY_NOT_FOUND;
         goto done;
     }
 
     /* get ns_track_elem_t object for the target namespace from the local track list. */
     elem = _get_track_elem_for_namespace(ns_map);
     if (NULL == elem) {
+        /* Shouldn't happen! */
+        rc = PMIX_ERROR;
+        PMIX_ERROR_LOG(rc);
         goto done;
     }
+
     /* need to update tracker:
      * attach to shared memory regions for this namespace and store its info locally
      * to operate with address and detach/unlink afterwards. */
     rc = _update_ns_elem(elem, ns_info);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
         goto done;
     }
 
-    /* now we know info about meta segment for this namespace. */
+    /* Now we have the data from meta segment for this namespace. */
     meta_seg = elem->meta_seg;
     data_seg = elem->data_seg;
 
@@ -921,34 +1024,38 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
         if (PMIX_RANK_UNDEF == rank) {
             cur_rank++;
         }
-        /* Then we look for the rank meta info in the shared meta segment. */
+        /* Get the rank meta info in the shared meta segment. */
         rinfo = _get_rank_meta_info(cur_rank, meta_seg);
         if (NULL == rinfo) {
             PMIX_OUTPUT_VERBOSE((7, pmix_globals.debug_output,
                         "%s:%d:%s:  no data for this rank is found in the shared memory. rank %d",
                         __FILE__, __LINE__, __func__, cur_rank));
-            rc = PMIX_ERR_PROC_ENTRY_NOT_FOUND;
+            all_ranks_found = false;
             continue;
         }
         addr = _get_data_region_by_offset(data_seg, rinfo->offset);
         if (NULL == addr) {
-            PMIX_ERROR_LOG(PMIX_ERROR);
-            rc = PMIX_ERR_PROC_ENTRY_NOT_FOUND;
-            continue;
+            /* This means that meta-info is broken - error is fatal */
+            rc = PMIX_ERROR;
+            PMIX_ERROR_LOG(rc);
+            goto done;
         }
         kval_cnt = rinfo->count;
-        /* TODO: probably PMIX_ERR_NOT_FOUND is a better way but
-         * setting to one initiates wrong next logic for unknown reason */
-        rc = PMIX_ERROR;
 
+        rc = PMIX_SUCCESS;
         while (0 < kval_cnt) {
             /* data is stored in the following format:
-             * key[PMIX_MAX_KEYLEN+1]
-             * size_t size
-             * byte buffer containing pmix_value, should be loaded to pmix_buffer_t and unpacked.
-             * next kval pair
-             * .....
-             * EXTENSION slot which has key = EXTENSION_SLOT and a size_t value for offset to next data address for this process.
+             * key_val_pair {
+             *     char key[PMIX_MAX_KEYLEN+1];
+             *     size_t size;
+             *     byte_t byte[size]; // should be loaded to pmix_buffer_t and unpacked.
+             * };
+             * segment_format {
+             *     key_val_pair kv_array[n];
+             *     EXTENSION slot;
+             * }
+             * EXTENSION slot which has key = EXTENSION_SLOT and a size_t value for offset 
+             * to next data address for this process.
              */
             if (0 == strncmp((const char *)addr, ESH_REGION_INVALIDATED, PMIX_MAX_KEYLEN+1)) {
                 PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
@@ -969,6 +1076,8 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
                     /* go to next item, updating address */
                     addr = _get_data_region_by_offset(data_seg, offset);
                     if (NULL == addr) {
+                        /* This shouldn't happen - error is fatal */
+                        rc = PMIX_ERROR;
                         PMIX_ERROR_LOG(rc);
                         goto done;
                     }
@@ -994,13 +1103,17 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
                 PMIX_VALUE_CONSTRUCT(&val);
                 if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(&buffer, &val, &cnt, PMIX_VALUE))) {
                     PMIX_ERROR_LOG(rc);
-                } else if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)kvs, &val, PMIX_VALUE))) {
+                    goto done;
+                }
+                if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)kvs, &val, PMIX_VALUE))) {
                     PMIX_ERROR_LOG(rc);
+                    goto done;
                 }
                 PMIX_VALUE_DESTRUCT(&val);
                 buffer.base_ptr = NULL;
                 buffer.bytes_used = 0;
                 PMIX_DESTRUCT(&buffer);
+                key_found = true;
                 goto done;
             } else {
                 char ckey[PMIX_MAX_KEYLEN+1] = {0};
@@ -1019,43 +1132,62 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
 done:
     /* unset lock */
     if (PMIX_SUCCESS != (lock_rc = _ESH_UNLOCK(_ESH_SESSION_lockfd(ns_map->tbl_idx)))) {
-        return lock_rc;
+        PMIX_ERROR_LOG(lock_rc);
     }
+
+    if( rc != PMIX_SUCCESS ){
+        return rc;
+    }
+
+    if( key_found ){
+        /* the key is found - nothing to do */
+        return PMIX_SUCCESS;
+    }
+
+    if( !all_ranks_found ){
+        /* Not all ranks was found - need to request 
+         * all of them and search again
+         */
+        rc = PMIX_ERR_PROC_ENTRY_NOT_FOUND;
+        return rc;
+    }
+    rc = PMIX_ERR_NOT_FOUND;
     return rc;
 }
 
 static int _esh_patch_env(const char *nspace, char ***env)
 {
-    pmix_status_t rc;
+    pmix_status_t rc = PMIX_SUCCESS;
     ns_map_data_t *ns_map = NULL;
 
     if (NULL == _esh_session_map_search) {
-        PMIX_ERROR_LOG(PMIX_ERROR);
-        return PMIX_ERROR;
+        rc = PMIX_ERR_NOT_FOUND;
+        PMIX_ERROR_LOG(rc);
+        return rc;
     }
 
-    if (NULL == (ns_map =_esh_session_map_search(nspace))) {
-        PMIX_ERROR_LOG(PMIX_ERROR);
-        return PMIX_ERROR;
+    if (NULL == (ns_map = _esh_session_map_search(nspace))) {
+        rc = PMIX_ERR_NOT_FOUND;
+        PMIX_ERROR_LOG(rc);
+        return rc;
     }
 
     if ((NULL == _base_path) || (strlen(_base_path) == 0)){
-        PMIX_ERROR_LOG(PMIX_ERROR);
-        return PMIX_ERROR;
+        rc = PMIX_ERR_NOT_FOUND;
+        PMIX_ERROR_LOG(rc);
+        return rc;
     }
 
     if(PMIX_SUCCESS != (rc = pmix_setenv(PMIX_DSTORE_ESH_BASE_PATH,
                                         _ESH_SESSION_path(ns_map->tbl_idx), true, env))){
         PMIX_ERROR_LOG(rc);
-        return rc;
     }
-
-    return PMIX_SUCCESS;
+    return rc;
 }
 
 static int _esh_nspace_add(const char *nspace, pmix_info_t info[], size_t ninfo)
 {
-    int rc;
+    pmix_status_t rc;
     size_t tbl_idx;
     uid_t jobuid = _jobuid;
     char setjobuid = _setjobuid;
@@ -1076,21 +1208,28 @@ static int _esh_nspace_add(const char *nspace, pmix_info_t info[], size_t ninfo)
 
         rc = _esh_session_tbl_add(&tbl_idx);
         if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
             return rc;
         }
         ns_map = _esh_session_map(nspace, tbl_idx);
         if (NULL == ns_map) {
-            return PMIX_ERROR;
+            rc = PMIX_ERROR;
+            PMIX_ERROR_LOG(rc);
+            return rc;
         }
 
         if (PMIX_SUCCESS != (rc =_esh_session_init(tbl_idx, ns_map, jobuid, setjobuid))) {
+            rc = PMIX_ERROR;
+            PMIX_ERROR_LOG(rc);
             return rc;
         }
     }
     else {
         ns_map = _esh_session_map(nspace, tbl_idx);
         if (NULL == ns_map) {
-            return PMIX_ERROR;
+            rc = PMIX_ERROR;
+            PMIX_ERROR_LOG(rc);
+            return rc;
         }
     }
 
@@ -1110,9 +1249,10 @@ static int _esh_nspace_del(const char *nspace)
     PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
         "%s:%d:%s delete nspace `%s`", __FILE__, __LINE__, __func__, nspace));
 
-    if (NULL == (ns_map_data =_esh_session_map_search(nspace))) {
-        PMIX_ERROR_LOG(PMIX_ERROR);
-        return PMIX_ERROR;
+    if (NULL == (ns_map_data = _esh_session_map_search(nspace))) {
+        rc = PMIX_ERR_NOT_FOUND;
+        PMIX_ERROR_LOG(rc);
+        return rc;
     }
 
     size = pmix_value_array_get_size(_ns_map_array);
@@ -1133,8 +1273,9 @@ static int _esh_nspace_del(const char *nspace)
     if(ns_map_data->track_idx >= 0) {
         trk = pmix_value_array_get_item(_ns_track_array, ns_map_data->track_idx);
         if((ns_map_data->track_idx + 1) > (int)pmix_value_array_get_size(_ns_track_array)) {
-            PMIX_ERROR_LOG(PMIX_ERROR);
-            return PMIX_ERROR;
+            rc = PMIX_ERR_NOT_FOUND;
+            PMIX_ERROR_LOG(rc);
+            goto exit;
         }
         PMIX_DESTRUCT(trk);
     }
@@ -1148,7 +1289,7 @@ static int _esh_nspace_del(const char *nspace)
             "%s:%d:%s delete session for jobuid: %d", __FILE__, __LINE__, __func__, session_tbl[ns_map_data->tbl_idx].jobuid));
         _esh_session_release(&session_tbl[ns_map_data->tbl_idx]);
      }
-
+exit:
     return rc;
 }
 
@@ -1225,7 +1366,7 @@ static int _pmix_getpagesize(void)
 
 static seg_desc_t *_create_new_segment(segment_type type, const ns_map_data_t *ns_map, uint32_t id)
 {
-    int rc;
+    pmix_status_t rc;
     char file_name[PMIX_PATH_MAX];
     size_t size;
     seg_desc_t *new_seg = NULL;
@@ -1260,36 +1401,37 @@ static seg_desc_t *_create_new_segment(segment_type type, const ns_map_data_t *n
         new_seg->next = NULL;
         new_seg->type = type;
         rc = pmix_sm_segment_create(&new_seg->seg_info, file_name, size);
-        if (PMIX_SUCCESS == rc) {
-            memset(new_seg->seg_info.seg_base_addr, 0, size);
-        } else {
-            free(new_seg);
-            new_seg = NULL;
+        if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            goto err_exit;
         }
+        memset(new_seg->seg_info.seg_base_addr, 0, size);
+
         if (_setjobuid > 0){
-            rc = PMIX_SUCCESS;
-            if (chown(file_name, (uid_t) _jobuid, (gid_t) -1) < 0){
-                PMIX_ERROR_LOG(PMIX_ERROR);
-                rc = PMIX_ERROR;
+            rc = PMIX_ERR_NO_PERMISSIONS;
+            if (0 > chown(file_name, (uid_t) _jobuid, (gid_t) -1)){
+                PMIX_ERROR_LOG(rc);
+                goto err_exit;
             }
             /* set the mode as required */
-            if (0 != chmod(file_name, S_IRUSR | S_IRGRP | S_IWGRP )) {
-                PMIX_ERROR_LOG(PMIX_ERROR);
-                rc = PMIX_ERROR;
-            }
-            if (rc != PMIX_SUCCESS) {
-                free(new_seg);
-                new_seg = NULL;
+            if (0 > chmod(file_name, S_IRUSR | S_IRGRP | S_IWGRP )) {
+                PMIX_ERROR_LOG(rc);
+                goto err_exit;
             }
         }
     }
     return new_seg;
+
+err_exit:
+    if( NULL != new_seg ){
+        free(new_seg);
+    }
+    return NULL;
 }
 
 static seg_desc_t *_attach_new_segment(segment_type type, const ns_map_data_t *ns_map, uint32_t id)
 {
-    int rc;
+    pmix_status_t rc;
     seg_desc_t *new_seg = NULL;
     new_seg = (seg_desc_t*)malloc(sizeof(seg_desc_t));
     new_seg->id = id;
@@ -1335,14 +1477,16 @@ static int _update_ns_elem(ns_track_elem_t *ns_elem, ns_seg_info_t *info)
     seg_desc_t *seg, *tmp = NULL;
     size_t i, offs;
     ns_map_data_t *ns_map = NULL;
+    pmix_status_t rc;
 
     PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
                          "%s:%d:%s",
                          __FILE__, __LINE__, __func__));
 
-    if (NULL == (ns_map =_esh_session_map_search(info->ns_map.name))) {
-        PMIX_ERROR_LOG(PMIX_ERROR);
-        return PMIX_ERROR;
+    if (NULL == (ns_map = _esh_session_map_search(info->ns_map.name))) {
+        rc = PMIX_ERR_NOT_FOUND;
+        PMIX_ERROR_LOG(rc);
+        return rc;
     }
 
     tmp = ns_elem->meta_seg;
@@ -1356,12 +1500,20 @@ static int _update_ns_elem(ns_track_elem_t *ns_elem, ns_seg_info_t *info)
     for (i = ns_elem->num_meta_seg; i < info->num_meta_seg; i++) {
         if (_is_server()) {
             seg = _create_new_segment(NS_META_SEGMENT, &info->ns_map, i);
+            if (NULL == seg) {
+                rc = PMIX_ERR_OUT_OF_RESOURCE;
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
         } else {
             seg = _attach_new_segment(NS_META_SEGMENT, &info->ns_map, i);
+            if (NULL == seg) {
+                rc = PMIX_ERR_NOT_FOUND;
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
         }
-        if (NULL == seg) {
-            return PMIX_ERROR;
-        }
+
         if (NULL == tmp) {
             ns_elem->meta_seg = seg;
         } else {
@@ -1381,16 +1533,22 @@ static int _update_ns_elem(ns_track_elem_t *ns_elem, ns_seg_info_t *info)
     for (i = ns_elem->num_data_seg; i < info->num_data_seg; i++) {
         if (_is_server()) {
             seg = _create_new_segment(NS_DATA_SEGMENT, &info->ns_map, i);
-            if (seg) {
-                offs = sizeof(size_t);//shift on offset field itself
-                memcpy(seg->seg_info.seg_base_addr, &offs, sizeof(size_t));
+            if (NULL == seg) {
+                rc = PMIX_ERR_OUT_OF_RESOURCE;
+                PMIX_ERROR_LOG(rc);
+                return rc;
             }
+            offs = sizeof(size_t);//shift on offset field itself
+            memcpy(seg->seg_info.seg_base_addr, &offs, sizeof(size_t));
         } else {
             seg = _attach_new_segment(NS_DATA_SEGMENT, &info->ns_map, i);
+            if (NULL == seg) {
+                rc = PMIX_ERR_NOT_FOUND;
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
         }
-        if (NULL == seg) {
-            return PMIX_ERROR;
-        }
+
         if (NULL == tmp) {
             ns_elem->data_seg = seg;
         } else {
@@ -1428,6 +1586,7 @@ static int _put_ns_info_to_initial_segment(const ns_map_data_t *ns_map, pmix_sm_
     size_t num_elems;
     num_elems = *((size_t*)(_ESH_SESSION_sm_seg_last(ns_map->tbl_idx)->seg_info.seg_base_addr));
     seg_desc_t *last_seg = _ESH_SESSION_sm_seg_last(ns_map->tbl_idx);
+    pmix_status_t rc;
 
     PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
                          "%s:%d:%s", __FILE__, __LINE__, __func__));
@@ -1435,8 +1594,9 @@ static int _put_ns_info_to_initial_segment(const ns_map_data_t *ns_map, pmix_sm_
     if (_max_ns_num == num_elems) {
         num_elems = 0;
         if (NULL == (last_seg = extend_segment(last_seg, ns_map))) {
-            PMIX_ERROR_LOG(PMIX_ERROR);
-            return PMIX_ERROR;
+            rc = PMIX_ERROR;
+            PMIX_ERROR_LOG(rc);
+            return rc;
         }
         /* mark previous segment as full */
         size_t full = 1;
@@ -1479,7 +1639,7 @@ static void _update_initial_segment_info(const ns_map_data_t *ns_map)
 /* this function will be used by clients to get ns data from the initial segment and add them to the tracker list */
 static ns_seg_info_t *_get_ns_info_from_initial_segment(const ns_map_data_t *ns_map)
 {
-    int rc;
+    pmix_status_t rc;
     size_t i;
     seg_desc_t *tmp;
     ns_seg_info_t *elem, *cur_elem;
@@ -1706,8 +1866,8 @@ static uint8_t *_get_data_region_by_offset(seg_desc_t *segdesc, size_t offset)
             dataaddr = tmp->seg_info.seg_base_addr + rel_offset;
         }
         tmp = tmp->next;
-    }
-    while (NULL != tmp && NULL == dataaddr);
+    } while (NULL != tmp && NULL == dataaddr);
+
     return dataaddr;
 }
 
@@ -1737,6 +1897,7 @@ static int put_empty_ext_slot(seg_desc_t *dataseg)
     global_offset = get_free_offset(dataseg);
     rel_offset = global_offset % _data_segment_size;
     if (rel_offset + EXT_SLOT_SIZE > _data_segment_size) {
+        PMIX_ERROR_LOG(PMIX_ERROR);
         return PMIX_ERROR;
     }
     addr = _get_data_region_by_offset(dataseg, global_offset);
@@ -1824,7 +1985,7 @@ static int pmix_sm_store(ns_track_elem_t *ns_info, int rank, pmix_kval_t *kval, 
 {
     size_t offset, size, kval_cnt;
     pmix_buffer_t *buffer;
-    int rc;
+    pmix_status_t rc;
     seg_desc_t *datadesc;
     uint8_t *addr;
 
@@ -2018,7 +2179,7 @@ static int pmix_sm_store(ns_track_elem_t *ns_info, int rank, pmix_kval_t *kval, 
 
 static int _store_data_for_rank(ns_track_elem_t *ns_info, int rank, pmix_buffer_t *buf)
 {
-    int rc;
+    pmix_status_t rc;
     int32_t cnt;
 
     pmix_buffer_t *bptr;
@@ -2036,8 +2197,9 @@ static int _store_data_for_rank(ns_track_elem_t *ns_info, int rank, pmix_buffer_
     datadesc = ns_info->data_seg;
 
     if (NULL == datadesc || NULL == metadesc) {
-        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-        return PMIX_ERROR;
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        return rc;
     }
 
     num_elems = *((size_t*)(metadesc->seg_info.seg_base_addr));
@@ -2065,6 +2227,7 @@ static int _store_data_for_rank(ns_track_elem_t *ns_info, int rank, pmix_buffer_
                                 "pmix: unpacked key %s", kp->key);
             if (PMIX_SUCCESS != (rc = pmix_sm_store(ns_info, rank, kp, &rinfo, data_exist))) {
                 PMIX_ERROR_LOG(rc);
+                return rc;
             }
             PMIX_RELEASE(kp); // maintain acctg - hash_store does a retain
             cnt = 1;
@@ -2080,6 +2243,7 @@ static int _store_data_for_rank(ns_track_elem_t *ns_info, int rank, pmix_buffer_
     }
     if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
         PMIX_ERROR_LOG(rc);
+        /* TODO: should we error-exit here? */
     } else {
         rc = PMIX_SUCCESS;
     }
