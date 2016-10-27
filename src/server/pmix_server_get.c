@@ -620,8 +620,15 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
     if (PMIX_SUCCESS == caddy->status) {
         if (caddy->lcd->proc.rank == PMIX_RANK_WILDCARD) {
             void * where = malloc(caddy->ndata);
-            memcpy(where, caddy->data, caddy->ndata); 
-            PMIX_LOAD_BUFFER(&nptr->server->job_info, where, caddy->ndata);
+            if (where) {
+               memcpy(where, caddy->data, caddy->ndata); 
+               PMIX_LOAD_BUFFER(&nptr->server->job_info, where, caddy->ndata);
+            } else {
+ 	       /* The data was stored, so hate to change caddy->status just because
+                * we could not store it locally.
+                */
+               PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            }
         } else {
             kp = PMIX_NEW(pmix_kval_t);
             kp->key = strdup("modex");
@@ -632,11 +639,18 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
              * this to arrive as a byte object containing a buffer, so
              * package it accordingly */
             kp->value->data.bo.bytes = malloc(caddy->ndata);
-            memcpy(kp->value->data.bo.bytes, caddy->data, caddy->ndata);
-            kp->value->data.bo.size = caddy->ndata;
-            /* store it in the appropriate hash */
-            if (PMIX_SUCCESS != (rc = pmix_hash_store(&nptr->server->remote, caddy->lcd->proc.rank, kp))) {
-                PMIX_ERROR_LOG(rc);
+            if (kp->value->data.bo.bytes) {
+                memcpy(kp->value->data.bo.bytes, caddy->data, caddy->ndata);
+                kp->value->data.bo.size = caddy->ndata;
+                /* store it in the appropriate hash */
+                if (PMIX_SUCCESS != (rc = pmix_hash_store(&nptr->server->remote, caddy->lcd->proc.rank, kp))) {
+                    PMIX_ERROR_LOG(rc);
+                }
+            } else {
+ 	       /* The data was stored, so hate to change caddy->status just because
+                * we could not store it locally.
+                */
+               PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
             }
             PMIX_RELEASE(kp);  // maintain acctg
         }
