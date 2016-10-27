@@ -578,8 +578,8 @@ static void _getnbfn(int fd, short flags, void *cbdata)
            check local hash table first. All the data passed through
            PMIx_Put settle down there */
         rc = pmix_hash_fetch(&nptr->modex, pmix_globals.myid.rank, cb->key, &val);
-        assert( (PMIX_SUCCESS == rc) || (PMIX_ERR_PROC_ENTRY_NOT_FOUND == rc) || 
-                (PMIX_ERR_NOT_FOUND == rc) ); 
+        assert( (PMIX_SUCCESS == rc) || (PMIX_ERR_PROC_ENTRY_NOT_FOUND == rc) ||
+                (PMIX_ERR_NOT_FOUND == rc) );
         if( PMIX_SUCCESS != rc ){
             if(pmix_globals.myid.rank == cb->rank){
                 rc = PMIX_ERR_NOT_FOUND;
