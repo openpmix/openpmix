@@ -1838,21 +1838,25 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
             /* there may be multiple blobs for this rank, each from a different scope */
             cnt = 1;
             while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bptr, &bpscope, &cnt, PMIX_BUFFER))) {
+#if !(defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1))
                 /* don't store blobs to the sm dstore from local clients */
                 if (_my_client(nptr->nspace, rank)) {
                     continue;
                 }
+#endif
                 pmix_kval_t *kp = PMIX_NEW(pmix_kval_t);
                 kp->key = strdup("modex");
                 PMIX_VALUE_CREATE(kp->value, 1);
                 kp->value->type = PMIX_BYTE_OBJECT;
                 PMIX_UNLOAD_BUFFER(bpscope, kp->value->data.bo.bytes, kp->value->data.bo.size);
-                /* store it in the appropriate hash */
-                if (PMIX_SUCCESS != (rc = pmix_hash_store(&nptr->server->remote, rank, kp))) {
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+                /* store the date in the dstore */
+                if (PMIX_SUCCESS != (rc = pmix_dstore_store(nptr->nspace, rank, kp))) {
                     PMIX_ERROR_LOG(rc);
                 }
-#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
-                if (PMIX_SUCCESS != (rc = pmix_dstore_store(nptr->nspace, rank, kp))) {
+#else
+                /* store it in the appropriate hash */
+                if (PMIX_SUCCESS != (rc = pmix_hash_store(&nptr->server->remote, rank, kp))) {
                     PMIX_ERROR_LOG(rc);
                 }
 #endif /* PMIX_ENABLE_DSTORE */
