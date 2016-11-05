@@ -181,6 +181,8 @@ int main(int argc, char **argv)
     pmi_fence( !direct_modex );
     fence_time += GET_TS - start;
 
+
+
     for (cnt=0; cnt < key_count; cnt++) {
         int i;
 
@@ -290,18 +292,45 @@ int main(int argc, char **argv)
                 cum_put_rem_time = 0, 
                 cum_commit_time = 0, 
                 cum_fence_time = 0;
+
+        double  min_get_loc_time = get_loc_time / get_loc_cnt,
+                max_get_loc_time = get_loc_time / get_loc_cnt,
+                min_get_rem_time = get_rem_time / get_rem_cnt,
+                max_get_rem_time = get_rem_time / get_rem_cnt;
+        int min_get_loc_idx = 0, max_get_loc_idx = 0;
+        int min_get_rem_idx = 0, max_get_rem_idx = 0;
+
         char c_get_ltime[128], c_get_rtime[128], c_get_ttime[128];
         char c_put_ltime[128], c_put_rtime[128];
         int i;
         for(i = 0; i < nproc; i++){
+            double val;
             sprintf(key, "PMIX_PERF_total_time.%d", i);
             cum_total_time += pmi_get_double(i, key);
 
             sprintf(key, "PMIX_PERF_get_loc_time.%d", i);
-            cum_get_loc_time += pmi_get_double(i, key);
+            val = pmi_get_double(i, key);
+            cum_get_loc_time += val;
+            if( min_get_loc_time > val ){
+                min_get_loc_time = val;
+                min_get_loc_idx = i;
+            }
+            if( max_get_loc_time < val ){
+                max_get_loc_time = val;
+                max_get_loc_idx = i;
+            }
 
             sprintf(key, "PMIX_PERF_get_rem_time.%d", i);
-            cum_get_rem_time += pmi_get_double(i, key);
+            val = pmi_get_double(i, key);
+            cum_get_rem_time += val;
+            if( min_get_rem_time > val ){
+                min_get_rem_time = val;
+                min_get_rem_idx = i;
+            }
+            if( max_get_rem_time < val ){
+                max_get_rem_time = val;
+                max_get_rem_idx = i;
+            }
 
             sprintf(key, "PMIX_PERF_get_time.%d", i);
             cum_get_time += pmi_get_double(i, key);
@@ -354,8 +383,26 @@ int main(int argc, char **argv)
                 c_get_ttime, 
                 c_put_ltime, c_put_rtime,
                 cum_commit_time / nproc, cum_fence_time / nproc);
-    }
+        fprintf(stderr,"get:           min loc %lf rem %lf (loc: %d, rem: %d)\n",
+                min_get_loc_time, min_get_rem_time, min_get_loc_idx, min_get_rem_idx);
+        fprintf(stderr,"get:           max loc %lf rem %lf (loc: %d, rem: %d)\n",
+                max_get_loc_time, max_get_rem_time, max_get_loc_idx, max_get_rem_idx);
 
+
+        /* debug printout */
+/*
+        for(i = 0; i < nproc; i++){
+            double val;
+            printf("%d: ", i);
+            sprintf(key, "PMIX_PERF_get_loc_time.%d", i);
+            printf("local = %lf ", pmi_get_double(i, key));
+
+            sprintf(key, "PMIX_PERF_get_rem_time.%d", i);
+            printf("remote = %lf\n", pmi_get_double(i, key));
+        }
+*/
+    }
+    
     pmi_fini();
 
     return 0;
