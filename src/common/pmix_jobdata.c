@@ -268,6 +268,15 @@ static inline pmix_status_t _job_data_store(const char *nspace, void *cbdata)
                 nrec->procs = strdup(kv.value->data.string);
                 /* split the list of procs so we can store their
                  * individual location data */
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+                if (PMIX_SUCCESS != (rc = _add_key_for_rank(PMIX_RANK_WILDCARD, &kv, cb))) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_DESTRUCT(&kv);
+                    PMIX_DESTRUCT(&buf2);
+                    pmix_argv_free(procs);
+                    goto exit;
+                }
+#else
                 procs = pmix_argv_split(nrec->procs, ',');
                 for (j=0; NULL != procs[j]; j++) {
                     /* store the hostname for each proc - again, this is
@@ -290,6 +299,7 @@ static inline pmix_status_t _job_data_store(const char *nspace, void *cbdata)
                     PMIX_RELEASE(kp2);
                 }
                 pmix_argv_free(procs);
+#endif
                 PMIX_DESTRUCT(&kv);
             }
             /* cleanup */
@@ -307,6 +317,12 @@ static inline pmix_status_t _job_data_store(const char *nspace, void *cbdata)
     }
     /* need to release the leftover kptr */
     PMIX_RELEASE(kptr);
+
+    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+    rc = PMIX_SUCCESS;
 
 #if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
     if (NULL != cb->dstore_fn) {

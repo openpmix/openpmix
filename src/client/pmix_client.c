@@ -720,11 +720,26 @@ static void _peersfn(int sd, short args, void *cbdata)
     pmix_status_t rc;
     char **nsprocs=NULL, **nsps=NULL, **tmp;
     pmix_nspace_t *nsptr;
+#if !(defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1))
     pmix_nrec_t *nptr;
+#endif
     size_t i;
 
     /* cycle across our known nspaces */
     tmp = NULL;
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+    if (PMIX_SUCCESS == (rc = pmix_dstore_fetch(cb->nspace, PMIX_RANK_WILDCARD,
+                      cb->key, &cb->value))) {
+
+        tmp = pmix_argv_split(cb->value->data.string, ',');
+        for (i=0; NULL != tmp[i]; i++) {
+            pmix_argv_append_nosize(&nsps, cb->nspace);
+            pmix_argv_append_nosize(&nsprocs, tmp[i]);
+        }
+        pmix_argv_free(tmp);
+        tmp = NULL;
+    }
+#else
     PMIX_LIST_FOREACH(nsptr, &pmix_globals.nspaces, pmix_nspace_t) {
         if (0 == strncmp(nsptr->nspace, cb->nspace, PMIX_MAX_NSLEN)) {
             /* cycle across the nodes in this nspace */
@@ -742,6 +757,7 @@ static void _peersfn(int sd, short args, void *cbdata)
             }
         }
     }
+#endif
     if (0 == (i = pmix_argv_count(nsps))) {
         /* we don't know this nspace */
         rc = PMIX_ERR_NOT_FOUND;
