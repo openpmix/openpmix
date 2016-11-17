@@ -59,6 +59,7 @@
 #endif /* PMIX_ENABLE_DSTORE */
 
 #include "pmix_client_ops.h"
+#include "src/include/pmix_jobdata.h"
 
 static pmix_buffer_t* _pack_get(char *nspace, int rank,
                                const pmix_info_t info[], size_t ninfo,
@@ -484,7 +485,11 @@ static void _getnbfn(int fd, short flags, void *cbdata)
             }
         }
         /* now get any data from the job-level info */
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+        if (PMIX_SUCCESS == (rc = pmix_dstore_fetch(nptr->nspace, PMIX_RANK_WILDCARD, NULL, &val))) {
+#else
         if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->internal, PMIX_RANK_WILDCARD, NULL, &val))) {
+#endif
             /* since we didn't provide them with a key, the hash function
              * must return the results in the pmix_info_array field of the
              * value */
@@ -532,7 +537,11 @@ static void _getnbfn(int fd, short flags, void *cbdata)
 
     /* the requested data could be in the job-data table, so let's
      * just check there first.  */
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+    if (PMIX_SUCCESS == (rc = pmix_dstore_fetch(nptr->nspace, PMIX_RANK_WILDCARD, cb->key, &val))) {
+#else
     if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->internal, PMIX_RANK_WILDCARD, cb->key, &val))) {
+#endif
         /* found it - we are in an event, so we can
          * just execute the callback */
         cb->value_cbfunc(rc, val, cb->cbdata);
@@ -553,7 +562,11 @@ static void _getnbfn(int fd, short flags, void *cbdata)
     /* it could still be in the job-data table, only stored under its own
      * rank and not WILDCARD - e.g., this is true of data returned about
      * ourselves during startup */
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+    if (PMIX_SUCCESS == (rc = pmix_dstore_fetch(nptr->nspace, cb->rank, cb->key, &val))) {
+#else
     if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->internal, cb->rank, cb->key, &val))) {
+#endif
         /* found it - we are in an event, so we can
          * just execute the callback */
         cb->value_cbfunc(rc, val, cb->cbdata);
