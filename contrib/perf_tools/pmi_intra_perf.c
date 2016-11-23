@@ -121,12 +121,16 @@ int main(int argc, char **argv)
     int cnt;
     int *local_ranks, local_cnt;
     int *remote_ranks, remote_cnt;
-    double start, get_loc_time = 0, get_rem_time = 0, put_loc_time = 0, put_rem_time = 0, commit_time = 0, fence_time = 0;
+    double start, total_start, get_loc_time = 0, get_rem_time = 0, put_loc_time = 0,
+            put_rem_time = 0, commit_time = 0, fence_time = 0, init_time = 0, total_time = 0;
     int get_loc_cnt = 0, get_rem_cnt = 0, put_loc_cnt = 0, put_rem_cnt = 0;
 
     parse_options(argc, argv);
 
+    total_start = GET_TS;
+    start = GET_TS;
     pmi_init(&rank, &nproc);
+    init_time += GET_TS - start;
     
     pmi_get_local_ranks(&local_ranks, &local_cnt);
     remote_cnt = nproc - local_cnt;
@@ -244,6 +248,7 @@ int main(int argc, char **argv)
         }
     }
 
+    total_time = GET_TS - total_start;
 
     if( debug_on ){
         fprintf(stderr,"%d: get: total %lf avg loc %lf rem %lf all %lf ; put: %lf %lf commit: %lf fence %lf\n",
@@ -256,7 +261,7 @@ int main(int argc, char **argv)
     
     /* Out of the perf path - send our results to rank 0 using same PMI */ 
     char key[128];
-    sprintf(key, "PMIX_PERF_total_time.%d", rank);
+    sprintf(key, "PMIX_PERF_get_total_time.%d", rank);
     pmi_put_double(key, get_rem_time + get_loc_time);
 
     sprintf(key, "PMIX_PERF_get_loc_time.%d", rank);
@@ -280,23 +285,37 @@ int main(int argc, char **argv)
     sprintf(key, "PMIX_PERF_fence_time.%d", rank);
     pmi_put_double(key, fence_time);
 
+    sprintf(key, "PMIX_PERF_init_time.%d", rank);
+    pmi_put_double(key, init_time);
+
+    sprintf(key, "PMIX_PERF_total_time.%d", rank);
+    pmi_put_double(key, total_time);
+
     pmi_commit();
     pmi_fence( 1 );
 
     if( rank == 0 ){
-        double  cum_total_time = 0,
+        double  cum_get_total_time = 0,
                 cum_get_loc_time = 0,
                 cum_get_rem_time = 0,
                 cum_get_time = 0,
+                cum_put_total_time = 0,
                 cum_put_loc_time = 0,
                 cum_put_rem_time = 0, 
                 cum_commit_time = 0, 
-                cum_fence_time = 0;
+                cum_fence_time = 0,
+                cum_init_time = 0,
+                cum_total_time = 0;
 
         double  min_get_loc_time = get_loc_time / get_loc_cnt,
                 max_get_loc_time = get_loc_time / get_loc_cnt,
                 min_get_rem_time = get_rem_time / get_rem_cnt,
-                max_get_rem_time = get_rem_time / get_rem_cnt;
+                max_get_rem_time = get_rem_time / get_rem_cnt,
+                min_init_time = init_time,
+                max_init_time = init_time,
+                min_total_time = total_time,
+                max_total_time = total_time;
+
         int min_get_loc_idx = 0, max_get_loc_idx = 0;
         int min_get_rem_idx = 0, max_get_rem_idx = 0;
 
@@ -305,8 +324,8 @@ int main(int argc, char **argv)
         int i;
         for(i = 0; i < nproc; i++){
             double val;
-            sprintf(key, "PMIX_PERF_total_time.%d", i);
-            cum_total_time += pmi_get_double(i, key);
+            sprintf(key, "PMIX_PERF_get_total_time.%d", i);
+            cum_get_total_time += pmi_get_double(i, key);
 
             sprintf(key, "PMIX_PERF_get_loc_time.%d", i);
             val = pmi_get_double(i, key);
@@ -346,8 +365,27 @@ int main(int argc, char **argv)
 
             sprintf(key, "PMIX_PERF_fence_time.%d", i);
             cum_fence_time += pmi_get_double(i, key);
-        }
 
+            sprintf(key, "PMIX_PERF_init_time.%d", i);
+            val = pmi_get_double(i, key);
+            cum_init_time += val;
+            if (min_init_time > val) {
+                min_init_time = val;
+            }
+            if (max_init_time < val) {
+                max_init_time = val;
+            }
+
+            sprintf(key, "PMIX_PERF_total_time.%d", i);
+            val = pmi_get_double(i, key);
+            cum_total_time += val;
+            if (min_total_time > val) {
+                min_total_time = val;
+            }
+            if (max_total_time < val) {
+                max_total_time = val;
+            }
+        }
 
         if( get_loc_cnt ){
             sprintf(c_get_ltime,"%lf", cum_get_loc_time / nproc);
@@ -368,25 +406,31 @@ int main(int argc, char **argv)
 
         if( put_loc_cnt ){
             sprintf(c_put_ltime,"%lf", cum_put_loc_time / nproc);
+            cum_put_total_time += cum_put_loc_time;
         } else {
             sprintf(c_put_ltime,"--------");
         }
         if( put_rem_cnt ){
             sprintf(c_put_rtime,"%lf", cum_put_rem_time / nproc);
+            cum_put_total_time += cum_put_rem_time;
         } else {
             sprintf(c_put_rtime,"--------");
         }
 
-        fprintf(stderr,"get: total %lf avg loc %s rem %s all %s ; put: loc %s rem %s ; commit: %lf ; fence %lf\n",
-                cum_total_time / nproc, 
-                c_get_ltime, c_get_rtime,
-                c_get_ttime, 
-                c_put_ltime, c_put_rtime,
-                cum_commit_time / nproc, cum_fence_time / nproc);
+        fprintf(stderr,"init: %lf; put: %lf; commit: %lf; fence: %lf; get: %lf; total: %lf\n",
+                cum_init_time / nproc,
+                cum_put_total_time / nproc,
+                cum_commit_time / nproc, cum_fence_time / nproc,
+                cum_get_total_time / nproc,
+                cum_total_time / nproc);
+        fprintf(stderr,"init:          max %lf min %lf\n",  max_init_time, min_init_time);
+        fprintf(stderr,"put:           loc %s rem %s\n", c_put_ltime, c_put_rtime);
+        fprintf(stderr,"get:           loc %s rem %s all %s\n", c_get_ltime, c_get_rtime, c_get_ttime);
         fprintf(stderr,"get:           min loc %lf rem %lf (loc: %d, rem: %d)\n",
                 min_get_loc_time, min_get_rem_time, min_get_loc_idx, min_get_rem_idx);
         fprintf(stderr,"get:           max loc %lf rem %lf (loc: %d, rem: %d)\n",
                 max_get_loc_time, max_get_rem_time, max_get_loc_idx, max_get_rem_idx);
+        fprintf(stderr,"total:         max %lf min %lf\n", max_total_time, min_total_time);
 
 
         /* debug printout */
