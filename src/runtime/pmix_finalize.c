@@ -35,6 +35,7 @@
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/pif/base/base.h"
 #include "src/mca/pinstalldirs/base/base.h"
+#include "src/mca/pnet/base/base.h"
 #include "src/mca/psec/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/dstore/pmix_dstore.h"
@@ -80,6 +81,9 @@ void pmix_rte_finalize(void)
 
     /* close the security framework */
     (void)pmix_mca_base_framework_close(&pmix_psec_base_framework);
+
+    /* close the pnet framework */
+    (void)pmix_mca_base_framework_close(&pmix_pnet_base_framework);
 
     /* finalize the mca */
     /* Clear out all the registered MCA params */

@@ -60,6 +60,7 @@ examples/dmodex
 examples/dynamic
 examples/fault
 examples/pub
+examples/server
 examples/tool
 
 include/pmix_version.h

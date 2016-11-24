@@ -32,6 +32,7 @@ typedef struct {
     pmix_object_t super;
     pmix_event_t ev;
     volatile bool active;
+    char *nspace;
     pmix_status_t status;
     pmix_proc_t proc;
     uid_t uid;
@@ -42,6 +43,7 @@ typedef struct {
     size_t ninfo;
     pmix_op_cbfunc_t opcbfunc;
     pmix_dmodex_response_fn_t cbfunc;
+    pmix_setup_application_cbfunc_t setupcbfunc;
     void *cbdata;
 } pmix_setup_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_setup_caddy_t);
