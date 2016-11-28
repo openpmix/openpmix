@@ -13,6 +13,8 @@
 #include <unistd.h>
 #include <time.h>
 #include <getopt.h>
+#include <limits.h>
+#include <string.h>
 
 #include "pmi.h"
 
@@ -112,6 +114,40 @@ int store_double(char *name, double val)
     
 }
 
+int get_mem_usage(double *_pss, double *_rss) {
+    char data[PATH_MAX];
+    FILE *smaps;
+    double pss = 0.0, rss = 0.0;
+    char *line = NULL;
+    size_t size = 0;
+    pid_t pid = getpid();
+
+    *_pss = 0.0;
+    *_rss = 0.0;
+
+    memset(data, 0, sizeof(data));
+    snprintf(data, sizeof(data), "/proc/%d/smaps", pid);
+
+    if (NULL == (smaps = fopen(data, "r"))) {
+        return -1;
+    }
+
+    while ((size = getline(&line, &size, smaps)) != -1) {
+        if (0 == strncmp(line, "Pss", strlen("Pss"))) {
+            sscanf(line, "Pss: %lf", &pss);
+            *_pss += pss;
+        }
+        if (0 == strncmp(line, "Rss", strlen("Pss"))) {
+            sscanf(line, "Rss: %lf", &rss);
+            *_rss += pss;
+        }
+    }
+    free(line);
+    fclose(smaps);
+
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     int rc;
@@ -124,6 +160,7 @@ int main(int argc, char **argv)
     double start, total_start, get_loc_time = 0, get_rem_time = 0, put_loc_time = 0,
             put_rem_time = 0, commit_time = 0, fence_time = 0, init_time = 0, total_time = 0;
     int get_loc_cnt = 0, get_rem_cnt = 0, put_loc_cnt = 0, put_rem_cnt = 0;
+    double mem_pss = 0.0, mem_rss = 0.0;
 
     parse_options(argc, argv);
 
@@ -250,6 +287,11 @@ int main(int argc, char **argv)
 
     total_time = GET_TS - total_start;
 
+    if (0 != get_mem_usage(&mem_pss, &mem_rss)) {
+        fprintf(stderr, "Rank %d: error get memory usage", rank);
+        abort();
+    }
+
     if( debug_on ){
         fprintf(stderr,"%d: get: total %lf avg loc %lf rem %lf all %lf ; put: %lf %lf commit: %lf fence %lf\n",
                 rank, (get_loc_time + get_rem_time), 
@@ -291,6 +333,12 @@ int main(int argc, char **argv)
     sprintf(key, "PMIX_PERF_total_time.%d", rank);
     pmi_put_double(key, total_time);
 
+    sprintf(key, "PMIX_PERF_mem_pss.%d", rank);
+    pmi_put_double(key, mem_pss);
+
+    sprintf(key, "PMIX_PERF_mem_rss.%d", rank);
+    pmi_put_double(key, mem_rss);
+
     pmi_commit();
     pmi_fence( 1 );
 
@@ -305,7 +353,8 @@ int main(int argc, char **argv)
                 cum_commit_time = 0, 
                 cum_fence_time = 0,
                 cum_init_time = 0,
-                cum_total_time = 0;
+                cum_total_time = 0,
+                cum_mem_pss = 0.0;
 
         double  min_get_loc_time = get_loc_time / get_loc_cnt,
                 max_get_loc_time = get_loc_time / get_loc_cnt,
@@ -314,7 +363,9 @@ int main(int argc, char **argv)
                 min_init_time = init_time,
                 max_init_time = init_time,
                 min_total_time = total_time,
-                max_total_time = total_time;
+                max_total_time = total_time,
+                min_mem_pss = mem_pss,
+                max_mem_pss = 0.0;
 
         int min_get_loc_idx = 0, max_get_loc_idx = 0;
         int min_get_rem_idx = 0, max_get_rem_idx = 0;
@@ -385,6 +436,16 @@ int main(int argc, char **argv)
             if (max_total_time < val) {
                 max_total_time = val;
             }
+
+            sprintf(key, "PMIX_PERF_mem_pss.%d", i);
+            val = pmi_get_double(i, key);
+            cum_mem_pss += val;
+            if (min_mem_pss > val) {
+                min_mem_pss = val;
+            }
+            if (max_mem_pss < val) {
+                max_mem_pss = val;
+            }
         }
 
         if( get_loc_cnt ){
@@ -431,6 +492,8 @@ int main(int argc, char **argv)
         fprintf(stderr,"get:           max loc %lf rem %lf (loc: %d, rem: %d)\n",
                 max_get_loc_time, max_get_rem_time, max_get_loc_idx, max_get_rem_idx);
         fprintf(stderr,"total:         max %lf min %lf\n", max_total_time, min_total_time);
+        fprintf(stderr,"mem:           loc %0.2lf rem %0.2lf min %0.2lf max %0.2lf total %0.2lf Kb\n",
+                mem_pss, cum_mem_pss / nproc, min_mem_pss, max_mem_pss, cum_mem_pss);
 
 
         /* debug printout */
