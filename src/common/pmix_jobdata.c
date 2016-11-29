@@ -2,6 +2,7 @@
 /*
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2016      Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -134,9 +135,9 @@ static inline pmix_status_t _job_data_store(const char *nspace, void *cbdata)
     pmix_kval_t *kptr, *kp2, kv;
     int32_t cnt;
     size_t nnodes;
-    uint32_t i, j;
+    uint32_t i;
     pmix_nrec_t *nrec, *nr2;
-    char **procs;
+    char **procs = NULL;
     pmix_byte_object_t *bo;
     pmix_buffer_t buf2;
     int rank;
