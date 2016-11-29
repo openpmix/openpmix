@@ -65,6 +65,7 @@
 #if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
 #include "src/dstore/pmix_dstore.h"
 #endif /* PMIX_ENABLE_DSTORE */
+#include "src/include/pmix_jobdata.h"
 
 #include "pmix_server_ops.h"
 
@@ -518,9 +519,14 @@ static void _register_nspace(int sd, short args, void *cbdata)
     pmix_info_t *iptr;
     pmix_value_t val;
     char *msg;
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+    pmix_buffer_t *jobdata = PMIX_NEW(pmix_buffer_t);
+    char *nspace = NULL;
+    int32_t cnt;
+#endif
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:server _register_nspace");
+                        "pmix:server _register_nspace %s", cd->proc.nspace);
 
     /* see if we already have this nspace */
     nptr = NULL;
@@ -647,6 +653,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
             /* just a value relating to the entire job */
             kv.key = cd->info[i].key;
             kv.value = &cd->info[i].value;
+
             if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&nptr->server->job_info, &kv, 1, PMIX_KVAL))) {
                 PMIX_ERROR_LOG(rc);
                 pmix_list_remove_item(&pmix_globals.nspaces, &nptr->super);
@@ -662,6 +669,20 @@ static void _register_nspace(int sd, short args, void *cbdata)
         PMIX_ERROR_LOG(rc);
         goto release;
     }
+    pmix_bfrop.copy_payload(jobdata, &nptr->server->job_info);
+    pmix_bfrop.copy_payload(jobdata, &pmix_server_globals.gdata);
+
+    /* unpack the nspace - we don't really need it, but have to
+    * unpack it to maintain sequence */
+    cnt = 1;
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(jobdata, &nspace, &cnt, PMIX_STRING))) {
+        PMIX_ERROR_LOG(rc);
+        goto release;
+    }
+    if (PMIX_SUCCESS != (rc = pmix_job_data_dstore_store(cd->proc.nspace, jobdata))) {
+        PMIX_ERROR_LOG(rc);
+        goto release;
+    }
 #endif
 
  release:
@@ -674,6 +695,14 @@ static void _register_nspace(int sd, short args, void *cbdata)
     if (NULL != cd->opcbfunc) {
         cd->opcbfunc(rc, cd->cbdata);
     }
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+    if (NULL != nspace) {
+        free(nspace);
+    }
+    if (NULL != jobdata) {
+        PMIX_RELEASE(jobdata);
+    }
+#endif
     PMIX_RELEASE(cd);
 }
 
@@ -2196,8 +2225,17 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
 
     if (PMIX_REQ_CMD == cmd) {
         reply = PMIX_NEW(pmix_buffer_t);
+
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+        char *msg = peer->info->nptr->nspace;
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &msg, 1, PMIX_STRING))) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+#else
         pmix_bfrop.copy_payload(reply, &(peer->info->nptr->server->job_info));
         pmix_bfrop.copy_payload(reply, &(pmix_server_globals.gdata));
+#endif
         PMIX_SERVER_QUEUE_REPLY(peer, tag, reply);
         return PMIX_SUCCESS;
     }
