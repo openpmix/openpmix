@@ -287,7 +287,8 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
 
 #if (defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1))
     if (PMIX_SUCCESS != (rc = pmix_dstore_fetch(nptr->nspace, cb->rank, cb->key, &val))){
-        PMIX_ERROR_LOG(rc);
+        /* DO NOT error log this status - it is perfectly okay
+         * for a key not to be found */
         goto done;
     }
 #else
@@ -318,7 +319,7 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
                 /* Check if the key is in this blob */
 
                 pmix_hash_fetch(&nptr->internal, cb->rank, cb->key, &val);
-		
+
             } else {
                 cnt = 1;
                 cur_kval = PMIX_NEW(pmix_kval_t);
