@@ -535,6 +535,20 @@ static void _getnbfn(int fd, short flags, void *cbdata)
         return;
     }
 
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->internal, cb->rank, cb->key, &val))) {
+        /* found it - we are in an event, so we can
+         * just execute the callback */
+        cb->value_cbfunc(rc, val, cb->cbdata);
+        /* cleanup */
+        if (NULL != val) {
+            PMIX_VALUE_RELEASE(val);
+        }
+        PMIX_RELEASE(cb);
+        return;
+    }
+#endif
+
     /* the requested data could be in the job-data table, so let's
      * just check there first.  */
 #if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
