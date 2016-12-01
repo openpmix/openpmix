@@ -719,8 +719,8 @@ static void _peersfn(int sd, short args, void *cbdata)
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
     pmix_status_t rc;
     char **nsprocs=NULL, **nsps=NULL, **tmp;
-    pmix_nspace_t *nsptr;
 #if !(defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1))
+    pmix_nspace_t *nsptr;
     pmix_nrec_t *nptr;
 #endif
     size_t i;
