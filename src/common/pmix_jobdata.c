@@ -136,6 +136,9 @@ static inline pmix_status_t _job_data_store(const char *nspace, void *cbdata)
     int32_t cnt;
     size_t nnodes;
     uint32_t i;
+#if !(defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1))
+    uint32_t j;
+#endif
     pmix_nrec_t *nrec, *nr2;
     char **procs = NULL;
     pmix_byte_object_t *bo;
