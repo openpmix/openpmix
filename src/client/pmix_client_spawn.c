@@ -210,7 +210,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
         if (NULL != n2) {
             (void)strncpy(nspace, n2, PMIX_MAX_NSLEN);
 #if !(defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1))
-            /* extract and process any proc-related info for this nspace */            
+            /* extract and process any proc-related info for this nspace */
             pmix_job_data_htable_store(nspace, buf);
 #endif
             free(n2);
@@ -232,4 +232,3 @@ static void spawn_cbfunc(pmix_status_t status, char nspace[], void *cbdata)
     }
     cb->active = false;
 }
-

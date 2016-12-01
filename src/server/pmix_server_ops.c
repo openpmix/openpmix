@@ -175,7 +175,7 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
             PMIX_ERROR_LOG(rc);
             return rc;
         }
-        
+
         /* create the new data storage */
         kp = PMIX_NEW(pmix_kval_t);
         kp->key = strdup("modex");
