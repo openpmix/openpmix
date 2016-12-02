@@ -200,9 +200,9 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
         rc = create_local_tracker(nspace, rank, info, ninfo,
                                   cbfunc, cbdata, &lcd);
         /*
-         * Its possible there are no local processes on this 
+         * Its possible there are no local processes on this
          * host, so lets ask for this explicitly.  There can
-         * be a timing issue here if this information shows 
+         * be a timing issue here if this information shows
          * up on its own, but I believe we handle it ok.  */
         if( NULL != pmix_host_server.direct_modex ){
                 pmix_host_server.direct_modex(&lcd->proc, info, ninfo, dmdx_cbfunc, lcd);
@@ -467,8 +467,8 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, pmix_rank_t rank,
             PMIX_DESTRUCT(&pbkt);
             cbfunc(rc, NULL, 0, cbdata, NULL, NULL);
             return rc;
-        }    
-	if (rank == PMIX_RANK_WILDCARD) {
+        }
+        if (rank == PMIX_RANK_WILDCARD) {
             found++;
         }
     }
@@ -621,10 +621,10 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
         if (caddy->lcd->proc.rank == PMIX_RANK_WILDCARD) {
             void * where = malloc(caddy->ndata);
             if (where) {
-               memcpy(where, caddy->data, caddy->ndata); 
+               memcpy(where, caddy->data, caddy->ndata);
                PMIX_LOAD_BUFFER(&nptr->server->job_info, where, caddy->ndata);
             } else {
- 	       /* The data was stored, so hate to change caddy->status just because
+               /* The data was stored, so hate to change caddy->status just because
                 * we could not store it locally.
                 */
                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
@@ -647,7 +647,7 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
                     PMIX_ERROR_LOG(rc);
                 }
             } else {
- 	       /* The data was stored, so hate to change caddy->status just because
+               /* The data was stored, so hate to change caddy->status just because
                 * we could not store it locally.
                 */
                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
@@ -698,4 +698,3 @@ static void dmdx_cbfunc(pmix_status_t status,
     event_priority_set(&caddy->ev, 0);
     event_active(&caddy->ev, EV_WRITE, 1);
 }
-
