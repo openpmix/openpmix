@@ -41,26 +41,6 @@
 #include "src/class/pmix_list.h"
 
 
-void pmix_globals_init(void)
-{
-    memset(&pmix_globals.myid, 0, sizeof(pmix_proc_t));
-    PMIX_CONSTRUCT(&pmix_globals.nspaces, pmix_list_t);
-    PMIX_CONSTRUCT(&pmix_globals.events, pmix_events_t);
-}
-
-void pmix_globals_finalize(void)
-{
-    PMIX_LIST_DESTRUCT(&pmix_globals.nspaces);
-    if (NULL != pmix_globals.cache_local) {
-        PMIX_RELEASE(pmix_globals.cache_local);
-    }
-    if (NULL != pmix_globals.cache_remote) {
-        PMIX_RELEASE(pmix_globals.cache_remote);
-    }
-    PMIX_DESTRUCT(&pmix_globals.events);
-}
-
-
 static void nscon(pmix_nspace_t *p)
 {
     memset(p->nspace, 0, PMIX_MAX_NSLEN);

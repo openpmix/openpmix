@@ -638,7 +638,6 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     if (NULL != systmpdir) {
         free(systmpdir);
     }
-    pmix_globals_finalize();
     pmix_class_finalize();
 
     return PMIX_SUCCESS;
