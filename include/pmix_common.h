@@ -267,6 +267,10 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_LOG_STDOUT                     "pmix.log.stdout"        // (bool) log data to stdout
 #define PMIX_LOG_SYSLOG                     "pmix.log.syslog"        // (bool) log data to syslog - defaults to ERROR priority unless
                                                                      //        modified by directive
+/* debugger attributes */
+#define PMIX_SPAWN_UNDER_DEBUGGER           "pmix.dbg.pause"         // (bool) job is being spawned under debugger - instruct it to pause on start
+#define PMIX_JOB_BEING_DEBUGGED             "pmix.dbg.job"           // (char*) nspace of the job to be debugged - the RM/PMIx server are
+                                                                     //     to provide the job-level info of that job to each debugger daemon
 
 /****    PROCESS STATE DEFINITIONS    ****/
 typedef uint8_t pmix_proc_state_t;
