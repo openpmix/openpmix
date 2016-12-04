@@ -371,12 +371,6 @@ typedef struct {
 } pmix_globals_t;
 
 
-/* initialize the pmix_global structure */
-void pmix_globals_init(void);
-
-/*  finalize the pmix_global structure */
-void pmix_globals_finalize(void);
-
 extern pmix_globals_t pmix_globals;
 
 END_C_DECLS
