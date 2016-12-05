@@ -1711,6 +1711,7 @@ static rank_meta_info *_get_rank_meta_info(int rank, seg_desc_t *segdesc)
     size_t num_elems, rel_offset;
     int id;
     rank_meta_info *cur_elem;
+    size_t rcount = rank == PMIX_RANK_WILDCARD ? 0 : rank + 1;
 
     PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
                          "%s:%d:%s",
@@ -1724,7 +1725,7 @@ static rank_meta_info *_get_rank_meta_info(int rank, seg_desc_t *segdesc)
             num_elems = *((size_t*)(tmp->seg_info.seg_base_addr));
             for (i = 0; i < num_elems; i++) {
                 cur_elem = (rank_meta_info*)((uint8_t*)(tmp->seg_info.seg_base_addr) + sizeof(size_t) + i * sizeof(rank_meta_info));
-                if (rank == (int)cur_elem->rank) {
+                if (rcount == cur_elem->rank) {
                     elem = cur_elem;
                     break;
                 }
@@ -1735,8 +1736,8 @@ static rank_meta_info *_get_rank_meta_info(int rank, seg_desc_t *segdesc)
     } else {
         /* directly compute index of meta segment (id) and relative offset (rel_offset)
          * inside this segment for fast lookup a rank_meta_info object for the requested rank. */
-        id = rank/_max_meta_elems;
-        rel_offset = (rank%_max_meta_elems) * sizeof(rank_meta_info) + sizeof(size_t);
+        id = rcount/_max_meta_elems;
+        rel_offset = (rcount%_max_meta_elems) * sizeof(rank_meta_info) + sizeof(size_t);
         /* go through all existing meta segments for this namespace.
          * Stop at id number if it exists. */
         while (NULL != tmp->next && 0 != id) {
@@ -1762,11 +1763,14 @@ static int set_rank_meta_info(ns_track_elem_t *ns_info, rank_meta_info *rinfo)
     size_t num_elems, rel_offset;
     int id, count;
     rank_meta_info *cur_elem;
+    size_t rcount;
 
     if (!ns_info || !rinfo) {
         PMIX_ERROR_LOG(PMIX_ERROR);
         return PMIX_ERROR;
     }
+
+    rcount = rinfo->rank == PMIX_RANK_WILDCARD ? 0 : rinfo->rank + 1;
 
     PMIX_OUTPUT_VERBOSE((2, pmix_globals.debug_output,
                          "%s:%d:%s: nspace %s, add rank %lu offset %lu count %lu meta info",
@@ -1810,8 +1814,9 @@ static int set_rank_meta_info(ns_track_elem_t *ns_info, rank_meta_info *rinfo)
     } else {
         /* directly compute index of meta segment (id) and relative offset (rel_offset)
          * inside this segment for fast lookup a rank_meta_info object for the requested rank. */
-        id = rinfo->rank/_max_meta_elems;
-        rel_offset = (rinfo->rank % _max_meta_elems) * sizeof(rank_meta_info) + sizeof(size_t);
+
+        id = rcount/_max_meta_elems;
+        rel_offset = (rcount % _max_meta_elems) * sizeof(rank_meta_info) + sizeof(size_t);
         count = id;
         /* go through all existing meta segments for this namespace.
          * Stop at id number if it exists. */
