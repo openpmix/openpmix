@@ -551,26 +551,28 @@ static void _getnbfn(int fd, short flags, void *cbdata)
 
     /* the requested data could be in the job-data table, so let's
      * just check there first.  */
+    if (0 == strncmp(cb->key, "pmix", 4)) {
 #if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
-    if (PMIX_SUCCESS == (rc = pmix_dstore_fetch(nptr->nspace, PMIX_RANK_WILDCARD, cb->key, &val))) {
+        if (PMIX_SUCCESS == (rc = pmix_dstore_fetch(nptr->nspace, PMIX_RANK_WILDCARD, cb->key, &val))) {
 #else
-    if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->internal, PMIX_RANK_WILDCARD, cb->key, &val))) {
+        if (PMIX_SUCCESS == (rc = pmix_hash_fetch(&nptr->internal, PMIX_RANK_WILDCARD, cb->key, &val))) {
 #endif
-        /* found it - we are in an event, so we can
-         * just execute the callback */
-        cb->value_cbfunc(rc, val, cb->cbdata);
-        /* cleanup */
-        if (NULL != val) {
-            PMIX_VALUE_RELEASE(val);
+            /* found it - we are in an event, so we can
+             * just execute the callback */
+            cb->value_cbfunc(rc, val, cb->cbdata);
+            /* cleanup */
+            if (NULL != val) {
+                PMIX_VALUE_RELEASE(val);
+            }
+            PMIX_RELEASE(cb);
+            return;
         }
-        PMIX_RELEASE(cb);
-        return;
-    }
-    if (PMIX_RANK_WILDCARD == cb->rank) {
-        /* can't be anywhere else */
-        cb->value_cbfunc(PMIX_ERR_NOT_FOUND, NULL, cb->cbdata);
-        PMIX_RELEASE(cb);
-        return;
+        if (PMIX_RANK_WILDCARD == cb->rank) {
+            /* can't be anywhere else */
+            cb->value_cbfunc(PMIX_ERR_NOT_FOUND, NULL, cb->cbdata);
+            PMIX_RELEASE(cb);
+            return;
+        }
     }
 
     /* it could still be in the job-data table, only stored under its own
