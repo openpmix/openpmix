@@ -569,18 +569,17 @@ typedef struct pmix_proc_info {
 
 
 /****    PMIX VALUE STRUCT    ****/
+typedef struct pmix_info_t pmix_info_t;
+
 typedef struct pmix_data_array {
     pmix_data_type_t type;
     size_t size;
     void *array;
 } pmix_data_array_t;
 
-/**** DEPRECATED ****/
-struct pmix_info;
-
 typedef struct pmix_info_array {
     size_t size;
-    struct pmix_info *array;
+    pmix_info_t *array;
 } pmix_info_array_t;
 /********************/
 
@@ -754,11 +753,11 @@ pmix_status_t pmix_value_xfer(pmix_value_t *kv, pmix_value_t *src);
 
 
 /****    PMIX INFO STRUCT    ****/
-typedef struct pmix_info {
+struct pmix_info_t {
     char key[PMIX_MAX_KEYLEN+1];    // ensure room for the NULL terminator
     pmix_info_directives_t flags;   // bit-mask of flags
     pmix_value_t value;
-} pmix_info_t;
+};
 
 /* utility macros for working with pmix_info_t structs */
 #define PMIX_INFO_CREATE(m, n)                                  \
