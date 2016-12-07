@@ -17,7 +17,7 @@ dnl Copyright (c) 2009      Los Alamos National Security, LLC.  All rights
 dnl                         reserved.
 dnl Copyright (c) 2009-2011 Oak Ridge National Labs.  All rights reserved.
 dnl Copyright (c) 2011-2013 NVIDIA Corporation.  All rights reserved.
-dnl Copyright (c) 2013-2015 Intel, Inc. All rights reserved
+dnl Copyright (c) 2013-2016 Intel, Inc.  All rights reserved.
 dnl Copyright (c) 2015-2016 Research Organization for Information Science
 dnl                         and Technology (RIST). All rights reserved.
 dnl Copyright (c) 2016      Mellanox Technologies, Inc.
@@ -313,7 +313,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     AC_CHECK_HEADERS([arpa/inet.h \
                       fcntl.h ifaddrs.h inttypes.h libgen.h \
-                      net/if.h net/uio.h netinet/in.h \
+                      net/uio.h netinet/in.h \
                       stdint.h stddef.h \
                       stdlib.h string.h strings.h \
                       sys/ioctl.h sys/param.h \
@@ -326,6 +326,38 @@ AC_DEFUN([PMIX_SETUP_CORE],[
                       ioLib.h sockLib.h hostLib.h limits.h \
                       sys/statfs.h sys/statvfs.h \
                       netdb.h ucred.h])
+
+    AC_CHECK_HEADERS([sys/mount.h], [], [],
+                     [AC_INCLUDES_DEFAULT
+                      #if HAVE_SYS_PARAM_H
+                      #include <sys/param.h>
+                      #endif
+                      ])
+
+    AC_CHECK_HEADERS([sys/sysctl.h], [], [],
+                     [AC_INCLUDES_DEFAULT
+                      #if HAVE_SYS_PARAM_H
+                      #include <sys/param.h>
+                      #endif
+                      ])
+
+    # Needed to work around Darwin requiring sys/socket.h for
+    # net/if.h
+    AC_CHECK_HEADERS([net/if.h], [], [],
+                     [#include <stdio.h>
+                      #if STDC_HEADERS
+                      # include <stdlib.h>
+                      # include <stddef.h>
+                      #else
+                      # if HAVE_STDLIB_H
+                      #  include <stdlib.h>
+                      # endif
+                      #endif
+                      #if HAVE_SYS_SOCKET_H
+                      # include <sys/socket.h>
+                      #endif
+                      ])
+
 
     # Note that sometimes we have <stdbool.h>, but it doesn't work (e.g.,
     # have both Portland and GNU installed; using pgcc will find GNU's
@@ -926,4 +958,3 @@ AC_DEFUN([PMIX_DO_AM_CONDITIONALS],[
     ])
     pmix_did_am_conditionals=yes
 ])dnl
-
