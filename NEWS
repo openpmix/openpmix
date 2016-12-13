@@ -25,6 +25,11 @@ current release as well as the "stable" bug fix release branch.
 -----
 - Add shared memory data storage (dstore) option. Default: enabled
   Configure option: --disable-dstore
+- PMIx_Commit performance improvements
+- Disable errhandler support
+- Keep job info in the shared memory dstore
+- PMIx_Get performance and memory improvements
+
 
 
 1.1.5
