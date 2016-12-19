@@ -19,7 +19,7 @@
 # Copyright (c) 2012      Oracle and/or its affiliates.  All rights reserved.
 # Copyright (c) 2013      Mellanox Technologies, Inc.
 #                         All rights reserved.
-# Copyright (c) 2014-2015 Intel, Inc. All rights reserved
+# Copyright (c) 2014-2016 Intel, Inc.  All rights reserved.
 # Copyright (c) 2016      IBM Corporation.  All rights reserved.
 # Copyright (c) 2016      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
@@ -218,7 +218,8 @@ AC_SUBST([CONFIGURE_DEPENDENCIES], ['$(top_srcdir)/VERSION'])
 . $srcdir/VERSION
 AC_SUBST([libpmix_so_version])
 
-AC_CONFIG_FILES(pmix_config_prefix[examples/Makefile]
+AC_CONFIG_FILES(pmix_config_prefix[contrib/Makefile]
+                pmix_config_prefix[examples/Makefile]
                 pmix_config_prefix[man/Makefile]
                 pmix_config_prefix[test/Makefile]
                 pmix_config_prefix[test/simple/Makefile])

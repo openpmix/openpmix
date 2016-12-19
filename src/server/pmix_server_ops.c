@@ -54,7 +54,6 @@
 #include "src/util/error.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
-#include "src/usock/usock.h"
 
 #include "pmix_server_ops.h"
 
@@ -1010,7 +1009,7 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
     pmix_notify_caddy_t *cd;
     int i;
     bool enviro_events = false;
-    bool found;
+    bool found, matched;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "recvd register events");
@@ -1174,7 +1173,25 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
             }
         }
         if (found) {
-           /* have a match - notify */
+           /* if we were given specific targets, check if this is one */
+            if (NULL != cd->targets) {
+                matched = false;
+                for (n=0; n < cd->ntargets; n++) {
+                    if (0 != strncmp(peer->info->nptr->nspace, cd->targets[n].nspace, PMIX_MAX_NSLEN)) {
+                        continue;
+                    }
+                    if (PMIX_RANK_WILDCARD == cd->targets[n].rank ||
+                        peer->info->rank == cd->targets[n].rank) {
+                        matched = true;
+                        break;
+                    }
+                }
+                if (!matched) {
+                    /* do not notify this one */
+                    continue;
+                }
+            }
+           /* all matches - notify */
             PMIX_RETAIN(cd->buf);
             PMIX_SERVER_QUEUE_REPLY(peer, 0, cd->buf);
         }
@@ -1320,6 +1337,20 @@ pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer,
             PMIX_ERROR_LOG(rc);
             goto exit;
         }
+    }
+
+    /* check the range directive - if it is LOCAL, then we just
+     * process it ourselves. Otherwise, it needs to go up to our
+     * host for dissemination */
+    if (PMIX_RANGE_LOCAL == cd->range) {
+        if (PMIX_SUCCESS != (rc = pmix_server_notify_client_of_event(cd->status,
+                                                                     &cd->source,
+                                                                     cd->range,
+                                                                     cd->info, cd->ninfo,
+                                                                     local_cbfunc, cd))) {
+            goto exit;
+        }
+        return PMIX_SUCCESS;
     }
 
     /* when we receive an event from a client, we just pass it to
@@ -1537,6 +1568,8 @@ static void ncon(pmix_notify_caddy_t *p)
     memset(p->source.nspace, 0, PMIX_MAX_NSLEN+1);
     p->source.rank = PMIX_RANK_UNDEF;
     p->range = PMIX_RANGE_UNDEF;
+    p->targets = NULL;
+    p->ntargets = 0;
     p->nondefault = false;
     p->info = NULL;
     p->ninfo = 0;
@@ -1546,6 +1579,9 @@ static void ndes(pmix_notify_caddy_t *p)
 {
     if (NULL != p->info) {
         PMIX_INFO_FREE(p->info, p->ninfo);
+    }
+    if (NULL != p->targets) {
+        free(p->targets);
     }
     if (NULL != p->buf) {
         PMIX_RELEASE(p->buf);
@@ -1594,34 +1630,6 @@ PMIX_CLASS_INSTANCE(pmix_dmdx_local_t,
                     pmix_list_item_t,
                     lmcon, lmdes);
 
-static void pccon(pmix_pending_connection_t *p)
-{
-    memset(p->nspace, 0, PMIX_MAX_NSLEN+1);
-    p->info = NULL;
-    p->ninfo = 0;
-    p->bfrop = NULL;
-    p->psec = NULL;
-    p->cred = NULL;
-}
-static void pcdes(pmix_pending_connection_t *p)
-{
-    if (NULL != p->info) {
-        PMIX_INFO_FREE(p->info, p->ninfo);
-    }
-    if (NULL != p->bfrop) {
-        free(p->bfrop);
-    }
-    if (NULL != p->psec) {
-        free(p->psec);
-    }
-    if (NULL != p->cred) {
-        free(p->cred);
-    }
-}
-PMIX_CLASS_INSTANCE(pmix_pending_connection_t,
-                    pmix_object_t,
-                    pccon, pcdes);
-
 static void prevcon(pmix_peer_events_info_t *p)
 {
     p->peer = NULL;
@@ -1647,38 +1655,3 @@ static void regdes(pmix_regevents_info_t *p)
 PMIX_CLASS_INSTANCE(pmix_regevents_info_t,
                     pmix_list_item_t,
                     regcon, regdes);
-
-static void lcon(pmix_listener_t *p)
-{
-    memset(&p->address, 0, sizeof(struct sockaddr_un));
-    p->address.sun_family = AF_UNIX;
-    p->socket = -1;
-    p->varname = NULL;
-    p->uri = NULL;
-    p->owner_given = false;
-    p->group_given = false;
-    p->mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH;
-}
-static void ldes(pmix_listener_t *p)
-{
-    if (0 <= p->socket) {
-        CLOSE_THE_SOCKET(p->socket);
-    }
-    /* cleanup the rendezvous file */
-    if (0 == access(p->address.sun_path, F_OK)) {
-        unlink(p->address.sun_path);
-    }
-    if (NULL != p->varname) {
-        free(p->varname);
-    }
-    if (NULL != p->uri) {
-        free(p->uri);
-    }
-}
-PMIX_CLASS_INSTANCE(pmix_listener_t,
-                    pmix_list_item_t,
-                    lcon, ldes);
-
-PMIX_CLASS_INSTANCE(pmix_usock_queue_t,
-                   pmix_object_t,
-                   NULL, NULL);

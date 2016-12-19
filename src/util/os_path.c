@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2015      Intel, Inc. All rights reserved.
+ * Copyright (c) 2015-2016 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -55,15 +55,15 @@ char *pmix_os_path(bool relative, ...)
     va_end(ap);
 
     if (0 == num_elements) { /* must be looking for a simple answer */
-    	path = (char *)malloc(3);
+        path = (char *)malloc(3);
         path[0] = '\0';
-    	if (relative) {
-    	    strcpy(path, ".");
+        if (relative) {
+            strcpy(path, ".");
             strcat(path, path_sep);
-    	} else {
-    	    strcpy(path, path_sep);
-    	}
-    	return(path);
+        } else {
+            strcpy(path, path_sep);
+        }
+        return(path);
     }
 
     /* setup path with enough room for the string terminator, the elements, and
@@ -74,7 +74,7 @@ char *pmix_os_path(bool relative, ...)
     }
 
     if (total_length > PMIX_PATH_MAX) {  /* path length is too long - reject it */
-    	return(NULL);
+        return(NULL);
     }
 
     path = (char *)malloc(total_length);
@@ -89,13 +89,13 @@ char *pmix_os_path(bool relative, ...)
 
     va_start(ap, relative);
     if( NULL != (element = va_arg(ap, char*)) ) {
-    	if (path_sep[0] != element[0]) {
+        if (path_sep[0] != element[0]) {
             strcat(path, path_sep);
         }
         strcat(path, element);
     }
     while (NULL != (element=va_arg(ap, char*))) {
-    	if (path_sep[0] != element[0]) {
+        if (path_sep[0] != element[0]) {
             strcat(path, path_sep);
         }
         strcat(path, element);

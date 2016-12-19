@@ -115,8 +115,8 @@ static int open_components(pmix_mca_base_framework_t *framework)
                              "mca: base: components_open: found loaded component %s",
                              component->pmix_mca_component_name);
 
-	if (NULL != component->pmix_mca_open_component) {
-	    /* Call open if register didn't call it already */
+        if (NULL != component->pmix_mca_open_component) {
+            /* Call open if register didn't call it already */
             ret = component->pmix_mca_open_component();
 
             if (PMIX_SUCCESS == ret) {
@@ -125,37 +125,37 @@ static int open_components(pmix_mca_base_framework_t *framework)
                                      "component %s open function successful",
                                      component->pmix_mca_component_name);
             } else {
-		if (PMIX_ERR_NOT_AVAILABLE != ret) {
-		    /* If the component returns PMIX_ERR_NOT_AVAILABLE,
-		       it's a cue to "silently ignore me" -- it's not a
-		       failure, it's just a way for the component to say
-		       "nope!".
+                if (PMIX_ERR_NOT_AVAILABLE != ret) {
+                    /* If the component returns PMIX_ERR_NOT_AVAILABLE,
+                       it's a cue to "silently ignore me" -- it's not a
+                       failure, it's just a way for the component to say
+                       "nope!".
 
-		       Otherwise, however, display an error.  We may end
-		       up displaying this twice, but it may go to separate
-		       streams.  So better to be redundant than to not
-		       display the error in the stream where it was
-		       expected. */
+                       Otherwise, however, display an error.  We may end
+                       up displaying this twice, but it may go to separate
+                       streams.  So better to be redundant than to not
+                       display the error in the stream where it was
+                       expected. */
 
-		    if (pmix_mca_base_component_show_load_errors) {
-			pmix_output_verbose (PMIX_MCA_BASE_VERBOSE_ERROR, output_id,
+                    if (pmix_mca_base_component_show_load_errors) {
+                        pmix_output_verbose (PMIX_MCA_BASE_VERBOSE_ERROR, output_id,
                                              "mca: base: components_open: component %s "
                                              "/ %s open function failed",
                                              component->pmix_mca_type_name,
                                              component->pmix_mca_component_name);
-		    }
-		    pmix_output_verbose (PMIX_MCA_BASE_VERBOSE_COMPONENT, output_id,
+                    }
+                    pmix_output_verbose (PMIX_MCA_BASE_VERBOSE_COMPONENT, output_id,
                                          "mca: base: components_open: "
                                          "component %s open function failed",
                                          component->pmix_mca_component_name);
-		}
+                }
 
                 pmix_mca_base_component_close (component, output_id);
 
-		pmix_list_remove_item (components, &cli->super);
-		PMIX_RELEASE(cli);
-	    }
-	}
+                pmix_list_remove_item (components, &cli->super);
+                PMIX_RELEASE(cli);
+            }
+        }
     }
 
     /* All done */

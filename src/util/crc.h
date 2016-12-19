@@ -12,7 +12,7 @@
  * Copyright (c) 2009      IBM Corporation.  All rights reserved.
  * Copyright (c) 2009      Los Alamos National Security, LLC.  All rights
  *                         reserved.
- * Copyright (c) 2015      Intel, Inc. All rights reserved.
+ * Copyright (c) 2015-2016 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -114,7 +114,7 @@ pmix_csum16 (const void *  source, size_t csumlen)
     register uint32_t csum = 0;
 
     while (csumlen > 1) {
-	    csum += *src++;
+            csum += *src++;
         csumlen -= 2;
     }
     /* Add leftover byte, if any */
@@ -183,4 +183,3 @@ pmix_uicrc(const void *  source, size_t crclen)
 END_C_DECLS
 
 #endif
-

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2016 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -15,6 +15,13 @@ typedef struct {
     int in_progress;
     int status;
 } cd_cbdata;
+
+#define PMIX_WAIT_FOR_COMPLETION(a)             \
+    do {                                        \
+        while ((a)) {                           \
+            usleep(10);                         \
+        }                                       \
+    } while (0)
 
 static void cd_cb(pmix_status_t status, void *cbdata)
 {

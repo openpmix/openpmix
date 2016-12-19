@@ -1250,7 +1250,6 @@ static int _esh_nspace_del(const char *nspace)
 
     if (NULL == (ns_map_data = _esh_session_map_search(nspace))) {
         rc = PMIX_ERR_NOT_AVAILABLE;
-        PMIX_ERROR_LOG(rc);
         return rc;
     }
 
@@ -2114,7 +2113,7 @@ static int pmix_sm_store(ns_track_elem_t *ns_info, pmix_rank_t rank, pmix_kval_t
                 }
             } else {
                 char ckey[PMIX_MAX_KEYLEN+1] = {0};
-                strncpy(ckey, (const char *)addr, strlen(addr)+1);
+                strncpy(ckey, (const char *)addr, strlen((char*)addr)+1);
                 PMIX_OUTPUT_VERBOSE((10, pmix_globals.debug_output,
                             "%s:%d:%s: for rank %u, replace flag %d skip %s key, look for %s key",
                             __FILE__, __LINE__, __func__, rank, data_exist, ckey, kval->key));

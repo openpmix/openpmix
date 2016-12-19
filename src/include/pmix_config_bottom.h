@@ -13,7 +13,7 @@
  * Copyright (c) 2009-2011 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2013      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2013-2015 Intel, Inc. All rights reserved
+ * Copyright (c) 2013-2016 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -390,11 +390,11 @@ typedef PMIX_PTRDIFF_TYPE ptrdiff_t;
 #include <sys/param.h>
 #endif
 #if defined(PATH_MAX)
-#define PMIX_PATH_MAX	(PATH_MAX + 1)
+#define PMIX_PATH_MAX   (PATH_MAX + 1)
 #elif defined(_POSIX_PATH_MAX)
-#define PMIX_PATH_MAX	(_POSIX_PATH_MAX + 1)
+#define PMIX_PATH_MAX   (_POSIX_PATH_MAX + 1)
 #else
-#define PMIX_PATH_MAX	256
+#define PMIX_PATH_MAX   256
 #endif
 
 #if defined(MAXHOSTNAMELEN)
@@ -578,4 +578,3 @@ typedef PMIX_PTRDIFF_TYPE ptrdiff_t;
 
 #endif /* PMIX_BUILDING */
 #endif /* PMIX_CONFIG_BOTTOM_H */
-

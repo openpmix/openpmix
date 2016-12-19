@@ -502,10 +502,10 @@ void pmix_output_finalize(void)
         free (output_prefix);
         free (output_dir);
         if(NULL != temp_str) {
-	    free(temp_str);
-	    temp_str = NULL;
-	    temp_str_len = 0;
-	}
+            free(temp_str);
+            temp_str = NULL;
+            temp_str_len = 0;
+        }
         PMIX_DESTRUCT(&verbose);
     }
 }
@@ -780,20 +780,20 @@ static void free_descriptor(int output_id)
     output_desc_t *ldi;
 
     if (output_id >= 0 && output_id < PMIX_OUTPUT_MAX_STREAMS &&
-	info[output_id].ldi_used && info[output_id].ldi_enabled) {
-	ldi = &info[output_id];
+        info[output_id].ldi_used && info[output_id].ldi_enabled) {
+        ldi = &info[output_id];
 
-	if (-1 != ldi->ldi_fd) {
-	    close(ldi->ldi_fd);
-	}
-	ldi->ldi_used = false;
+        if (-1 != ldi->ldi_fd) {
+            close(ldi->ldi_fd);
+        }
+        ldi->ldi_used = false;
 
-	/* If we strduped a prefix, suffix, or syslog ident, free it */
+        /* If we strduped a prefix, suffix, or syslog ident, free it */
 
-	if (NULL != ldi->ldi_prefix) {
-	    free(ldi->ldi_prefix);
-	}
-	ldi->ldi_prefix = NULL;
+        if (NULL != ldi->ldi_prefix) {
+            free(ldi->ldi_prefix);
+        }
+        ldi->ldi_prefix = NULL;
 
     if (NULL != ldi->ldi_suffix) {
         free(ldi->ldi_suffix);
@@ -801,14 +801,14 @@ static void free_descriptor(int output_id)
     ldi->ldi_suffix = NULL;
 
     if (NULL != ldi->ldi_file_suffix) {
-	    free(ldi->ldi_file_suffix);
-	}
-	ldi->ldi_file_suffix = NULL;
+            free(ldi->ldi_file_suffix);
+        }
+        ldi->ldi_file_suffix = NULL;
 
-	if (NULL != ldi->ldi_syslog_ident) {
-	    free(ldi->ldi_syslog_ident);
-	}
-	ldi->ldi_syslog_ident = NULL;
+        if (NULL != ldi->ldi_syslog_ident) {
+            free(ldi->ldi_syslog_ident);
+        }
+        ldi->ldi_syslog_ident = NULL;
     }
 }
 
