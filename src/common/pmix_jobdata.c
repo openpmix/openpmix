@@ -80,7 +80,7 @@ static bool compress_string(char *instring,
 
     /* fold the uncompressed length into the buffer */
     memcpy(ptr, &inlen, sizeof(uint32_t));
-    ptr += 4;
+    ptr += sizeof(uint32_t);
     /* bring over the compressed data */
     memcpy(ptr, tmp, outlen-sizeof(uint32_t));
     free(tmp);
