@@ -586,7 +586,7 @@ static bool compress_string(char *instring,
     /* allocate 4 bytes beyond the size reqd by zlib so we
      * can pass the size of the uncompressed string to the
      * decompress side */
-    outlen = len - strm.avail_out + 4;
+    outlen = len - strm.avail_out + sizeof(uint32_t);
     ptr = (uint8_t*)malloc(outlen);
     if (NULL == ptr) {
         free(tmp);
@@ -596,14 +596,14 @@ static bool compress_string(char *instring,
     *nbytes = outlen;
 
     /* fold the uncompressed length into the buffer */
-    memcpy(ptr, &inlen, 4);
+    memcpy(ptr, &inlen, sizeof(uint32_t));
     ptr += 4;
     /* bring over the compressed data */
-    memcpy(ptr, tmp, outlen-4);
+    memcpy(ptr, tmp, outlen-sizeof(uint32_t));
     free(tmp);
     pmix_output_verbose(10, pmix_globals.debug_output,
                         "JOBDATA COMPRESS INPUT STRING OF LEN %d OUTPUT SIZE %lu",
-                        inlen, outlen-4);
+                        inlen, outlen-sizeof(uint32_t));
     return true;  // we did the compression
 }
 #else

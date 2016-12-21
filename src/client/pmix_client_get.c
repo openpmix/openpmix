@@ -89,7 +89,7 @@ static void uncompress_string(char **outstring, uint8_t *inbytes, size_t len)
     *outstring = NULL;
 
     /* the first 4 bytes contains the uncompressed size */
-    memcpy(&len2, inbytes, 4);
+    memcpy(&len2, inbytes, sizeof(uint32_t));
 
     pmix_output_verbose(10, pmix_globals.debug_output,
                         "DECOMPRESSING INPUT OF LEN %lu OUTPUT %d", len, len2);
@@ -108,7 +108,7 @@ static void uncompress_string(char **outstring, uint8_t *inbytes, size_t len)
         return;
     }
     strm.avail_in = len;
-    strm.next_in = (uint8_t*)(inbytes + 4);
+    strm.next_in = (uint8_t*)(inbytes + sizeof(uint32_t));
     strm.avail_out = len2;
     strm.next_out = (uint8_t*)dest;
 
