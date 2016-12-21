@@ -126,7 +126,7 @@ static inline size_t pmix_value_array_get_size(pmix_value_array_t* array)
  *  return the new size.
  */
 
-int pmix_value_array_set_size(pmix_value_array_t* array, size_t size);
+PMIX_EXPORT int pmix_value_array_set_size(pmix_value_array_t* array, size_t size);
 
 
 /**
@@ -278,4 +278,3 @@ static inline int pmix_value_array_remove_item(pmix_value_array_t *array, size_t
 END_C_DECLS
 
 #endif
-
