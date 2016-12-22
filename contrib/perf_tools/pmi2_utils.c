@@ -15,7 +15,7 @@
  *
  */
 
-/* This code was taken from Open MPI project, file 
+/* This code was taken from Open MPI project, file
    opal/mca/pmix/base/pmix_base_fns.c
 */
 

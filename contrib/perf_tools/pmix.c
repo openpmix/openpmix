@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
+ * Copyright (c) 2016      Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -139,7 +140,7 @@ void pmi_fence(int collect)
     PMIX_PROC_CONSTRUCT(&proc);
     (void)strncpy(proc.nspace, this_proc.nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
-    
+
     if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, info, ninfo))) {
         fprintf(stderr,  "Client ns %s rank %d: PMIx_Fence failed: %d",
                 this_proc.nspace, this_proc.rank, rc);

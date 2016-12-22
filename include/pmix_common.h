@@ -765,7 +765,7 @@ typedef struct pmix_value {
  * includes internal functions - we don't
  * want to expose the entire header here
  */
-void pmix_value_load(pmix_value_t *v, void *data, pmix_data_type_t type);
+void pmix_value_load(pmix_value_t *v, const void *data, pmix_data_type_t type);
 pmix_status_t pmix_value_xfer(pmix_value_t *kv, pmix_value_t *src);
 pmix_status_t pmix_argv_append_nosize(char ***argv, const char *arg);
 pmix_status_t pmix_setenv(const char *name, const char *value,
