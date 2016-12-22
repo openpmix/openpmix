@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2013      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2014      Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2016 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  * Additional copyrights may follow
  *
@@ -11,7 +11,7 @@
  *
  */
 
-/* This code was taken from Open MPI project, file 
+/* This code was taken from Open MPI project, file
    opal/mca/pmix/s2/pmi2_pmap_parser.c
 */
 

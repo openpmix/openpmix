@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
+ * Copyright (c) 2016      Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -111,7 +112,7 @@ int store_double(char *name, double val)
 {
     char buf[128];
     sprintf(buf,"%lf",val);
-    
+
 }
 
 int get_mem_usage(double *_pss, double *_rss) {
@@ -168,7 +169,7 @@ int main(int argc, char **argv)
     start = GET_TS;
     pmi_init(&rank, &nproc);
     init_time += GET_TS - start;
-    
+
     pmi_get_local_ranks(&local_ranks, &local_cnt);
     remote_cnt = nproc - local_cnt;
     if( remote_cnt ){
@@ -294,14 +295,14 @@ int main(int argc, char **argv)
 
     if( debug_on ){
         fprintf(stderr,"%d: get: total %lf avg loc %lf rem %lf all %lf ; put: %lf %lf commit: %lf fence %lf\n",
-                rank, (get_loc_time + get_rem_time), 
+                rank, (get_loc_time + get_rem_time),
                 get_loc_time/get_loc_cnt, get_rem_time/get_rem_cnt,
                 (get_loc_time + get_rem_time)/(get_loc_cnt + get_rem_cnt),
                 put_loc_time/put_loc_cnt, put_rem_time/put_rem_cnt,
                 commit_time, fence_time);
     }
-    
-    /* Out of the perf path - send our results to rank 0 using same PMI */ 
+
+    /* Out of the perf path - send our results to rank 0 using same PMI */
     char key[128];
     sprintf(key, "PMIX_PERF_get_total_time.%d", rank);
     pmi_put_double(key, get_rem_time + get_loc_time);
@@ -349,8 +350,8 @@ int main(int argc, char **argv)
                 cum_get_time = 0,
                 cum_put_total_time = 0,
                 cum_put_loc_time = 0,
-                cum_put_rem_time = 0, 
-                cum_commit_time = 0, 
+                cum_put_rem_time = 0,
+                cum_commit_time = 0,
                 cum_fence_time = 0,
                 cum_init_time = 0,
                 cum_total_time = 0,
@@ -509,7 +510,7 @@ int main(int argc, char **argv)
         }
 */
     }
-    
+
     pmi_fini();
 
     return 0;

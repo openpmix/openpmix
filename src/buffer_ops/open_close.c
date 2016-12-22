@@ -462,7 +462,8 @@ pmix_status_t pmix_bfrop_close(void)
 }
 
 /**** UTILITY SUPPORT ****/
-PMIX_EXPORT void pmix_value_load(pmix_value_t *v, void *data,
+PMIX_EXPORT void pmix_value_load(pmix_value_t *v,
+                                 const void *data,
                                  pmix_data_type_t type)
 {
     pmix_byte_object_t *bo;
@@ -746,4 +747,3 @@ pmix_status_t pmix_value_unload(pmix_value_t *kv, void **data,
     }
     return rc;
 }
-
