@@ -16,7 +16,7 @@ dnl Copyright (c) 2012      Los Alamos National Security, LLC. All rights
 dnl                         reserved.
 dnl Copyright (c) 2015      Research Organization for Information Science
 dnl                         and Technology (RIST). All rights reserved.
-dnl Copyright (c) 2015      Intel, Inc. All rights reserved
+dnl Copyright (c) 2015-2016 Intel, Inc.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -72,7 +72,7 @@ AC_DEFUN([PMIX_SETUP_CC],[
     if test "$WANT_DEBUG" = "1" && test "$enable_debug_symbols" != "no" ; then
         CFLAGS="$CFLAGS -g"
 
-        PMIX_UNIQ(CFLAGS)
+        PMIX_FLAGS_UNIQ(CFLAGS)
         AC_MSG_WARN([-g has been added to CFLAGS (--enable-debug)])
     fi
 
@@ -138,7 +138,7 @@ AC_DEFUN([PMIX_SETUP_CC],[
         fi
 
         CFLAGS="$CFLAGS_orig $add"
-        PMIX_UNIQ(CFLAGS)
+        PMIX_FLAGS_UNIQ(CFLAGS)
         AC_MSG_WARN([$add has been added to CFLAGS (--enable-picky)])
         unset add
     fi
@@ -188,7 +188,7 @@ AC_DEFUN([PMIX_SETUP_CC],[
         fi
         CFLAGS="$CFLAGS_orig$add"
 
-        PMIX_UNIQ(CFLAGS)
+        PMIX_FLAGS_UNIQ(CFLAGS)
         AC_MSG_WARN([$add has been added to CFLAGS])
         unset add
     fi
@@ -217,7 +217,7 @@ AC_DEFUN([PMIX_SETUP_CC],[
         fi
 
         CFLAGS="${CFLAGS_orig}${add}"
-        PMIX_UNIQ([CFLAGS])
+        PMIX_FLAGS_UNIQ([CFLAGS])
         if test "$add" != "" ; then
             AC_MSG_WARN([$add has been added to CFLAGS])
         fi
