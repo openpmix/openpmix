@@ -442,9 +442,8 @@ done:
                     PMIX_VALUE_RELEASE(val);
                     val = NULL;
                 } else {
-                    free(val->data.bo.bytes);
-                    val->type = PMIX_STRING;
-                    val->data.string = tmp;
+                    PMIX_VALUE_DESTRUCT(val);
+                    PMIX_VAL_ASSIGN(val, string, tmp);
                 }
             }
         }
@@ -663,9 +662,8 @@ static void _getnbfn(int fd, short flags, void *cbdata)
                 PMIX_VALUE_RELEASE(val);
                 val = NULL;
             } else {
-                free(val->data.bo.bytes);
-                val->type = PMIX_STRING;
-                val->data.string = tmp;
+                PMIX_VALUE_DESTRUCT(val);
+                PMIX_VAL_ASSIGN(val, string, tmp);
             }
         }
         /* found it - we are in an event, so we can
@@ -698,9 +696,8 @@ static void _getnbfn(int fd, short flags, void *cbdata)
                     PMIX_VALUE_RELEASE(val);
                     val = NULL;
                 } else {
-                    free(val->data.bo.bytes);
-                    val->type = PMIX_STRING;
-                    val->data.string = tmp;
+                    PMIX_VALUE_DESTRUCT(val);
+                    PMIX_VAL_ASSIGN(val, string, tmp);
                 }
             }
             /* found it - we are in an event, so we can
@@ -761,9 +758,8 @@ static void _getnbfn(int fd, short flags, void *cbdata)
                 PMIX_VALUE_RELEASE(val);
                 val = NULL;
             } else {
-                free(val->data.string);
-                val->type = PMIX_STRING;
-                val->data.string = tmp;
+                PMIX_VALUE_DESTRUCT(val);
+                PMIX_VAL_ASSIGN(val, string, tmp);
             }
         }
         /* found it - we are in an event, so we can
