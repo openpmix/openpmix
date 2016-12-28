@@ -3,6 +3,9 @@
  * Copyright (c) 2013-2016 Intel, Inc. All rights reserved
  * Copyright (c) 2016      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016      Mellanox Technologies, Inc.
+ *                         All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -42,8 +45,6 @@
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
- *
- * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  *
  * $HEADER$
  */
@@ -682,7 +683,8 @@ typedef struct pmix_value {
             if (NULL != (m)->data.string) {                                     \
                 free((m)->data.string);                                         \
             }                                                                   \
-        } else if (PMIX_BYTE_OBJECT == (m)->type) {                             \
+        } else if ((PMIX_BYTE_OBJECT == (m)->type) ||                           \
+                   (PMIX_COMPRESSED_STRING == (m)->type)) {                     \
             if (NULL != (m)->data.bo.bytes) {                                   \
                 free((m)->data.bo.bytes);                                       \
             }                                                                   \
@@ -1364,6 +1366,9 @@ pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc,
 #define PMIX_VAL_CMP_string     PMIX_VAL_cmp_ptr
 #define PMIX_VAL_CMP_byte       PMIX_VAL_cmp_val
 #define PMIX_VAL_CMP_flag       PMIX_VAL_cmp_val
+
+#define PMIX_VAL_ASSIGN(_v, _field, _val) \
+    PMIX_VAL_set_assign(_v, _field, _val)
 
 #define PMIX_VAL_CMP(_field, _val1, _val2) \
     PMIX_VAL_CMP_ ## _field(_val1, _val2)
