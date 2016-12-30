@@ -31,6 +31,14 @@
 
 BEGIN_C_DECLS
 
+/* define a limit for storing raw strings */
+#define PMIX_STRING_LIMIT  512
+
+/* define a macro for quickly checking if a string exceeds the
+ * compression limit */
+#define PMIX_STRING_SIZE_CHECK(s) \
+    (PMIX_STRING == (s)->type && NULL != (s)->data.string && PMIX_STRING_LIMIT < strlen((s)->data.string))
+
 /**
  * Compress a string into a byte object using Zlib
  */
