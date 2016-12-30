@@ -220,8 +220,7 @@ static inline pmix_status_t _job_data_store(const char *nspace, void *cbdata)
             while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(&buf2, kp2, &cnt, PMIX_KVAL))) {
                 /* if the value contains a string that is longer than the
                  * limit, then compress it */
-                if (PMIX_STRING == kp2->value->type &&
-                    PMIX_STRING_LIMIT < strlen(kp2->value->data.string)) {
+                if (PMIX_STRING_SIZE_CHECK(kp2->value)) {
                     if (pmix_util_compress_string(kp2->value->data.string, &tmp, &len)) {
                         if (NULL == tmp) {
                             PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
@@ -272,8 +271,7 @@ static inline pmix_status_t _job_data_store(const char *nspace, void *cbdata)
                 }
                 /* if the value contains a string that is longer than the
                  * limit, then compress it */
-                if (PMIX_STRING == kv.value->type &&
-                    PMIX_STRING_LIMIT < strlen(kv.value->data.string)) {
+                if (PMIX_STRING_SIZE_CHECK(kv.value)) {
                     if (pmix_util_compress_string(kv.value->data.string, &tmp, &len)) {
                         if (NULL == tmp) {
                             PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
@@ -349,8 +347,7 @@ static inline pmix_status_t _job_data_store(const char *nspace, void *cbdata)
         } else {
             /* if the value contains a string that is longer than the
              * limit, then compress it */
-            if (PMIX_STRING == kptr->value->type &&
-                PMIX_STRING_LIMIT < strlen(kptr->value->data.string)) {
+            if (PMIX_STRING_SIZE_CHECK(kptr->value)) {
                 if (pmix_util_compress_string(kptr->value->data.string, &tmp, &len)) {
                     if (NULL == tmp) {
                         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);

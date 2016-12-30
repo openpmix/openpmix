@@ -562,8 +562,7 @@ static void _putfn(int sd, short args, void *cbdata)
     kv = PMIX_NEW(pmix_kval_t);
     kv->key = strdup(cb->key);  // need to copy as the input belongs to the user
     kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
-    if (PMIX_STRING == cb->value->type &&
-        PMIX_STRING_LIMIT < strlen(cb->value->data.string)) {
+    if (PMIX_STRING_SIZE_CHECK(cb->value)) {
         /* compress large strings */
         if (pmix_util_compress_string(cb->value->data.string, &tmp, &len)) {
             if (NULL == tmp) {
