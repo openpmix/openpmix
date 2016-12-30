@@ -64,6 +64,7 @@
 #include "src/buffer_ops/buffer_ops.h"
 #include "src/event/pmix_event.h"
 #include "src/util/argv.h"
+#include "src/util/compress.h"
 #include "src/util/error.h"
 #include "src/util/hash.h"
 #include "src/util/output.h"
@@ -548,73 +549,6 @@ PMIX_EXPORT pmix_status_t PMIx_Abort(int flag, const char msg[],
      return PMIX_SUCCESS;
  }
 
-#if PMIX_HAVE_ZLIB
-static bool compress_string(char *instring,
-                            uint8_t **outbytes,
-                            size_t *nbytes)
-{
-    z_stream strm;
-    size_t len, outlen;
-    uint8_t *tmp, *ptr;
-    uint32_t inlen;
-
-    /* set default output */
-    *outbytes = NULL;
-
-    /* setup the stream */
-    inlen = strlen(instring);
-    memset (&strm, 0, sizeof (strm));
-    deflateInit (&strm, 9);
-
-    /* get an upper bound on the required output storage */
-    len = deflateBound(&strm, inlen);
-    if (NULL == (tmp = (uint8_t*)malloc(len))) {
-        *outbytes = NULL;
-        return false;
-    }
-    strm.next_in = (uint8_t*)instring;
-    strm.avail_in = strlen(instring);
-
-    /* allocating the upper bound guarantees zlib will
-     * always successfully compress into the available space */
-    strm.avail_out = len;
-    strm.next_out = tmp;
-
-    deflate (&strm, Z_FINISH);
-    deflateEnd (&strm);
-
-    /* allocate 4 bytes beyond the size reqd by zlib so we
-     * can pass the size of the uncompressed string to the
-     * decompress side */
-    outlen = len - strm.avail_out + sizeof(uint32_t);
-    ptr = (uint8_t*)malloc(outlen);
-    if (NULL == ptr) {
-        free(tmp);
-        return false;
-    }
-    *outbytes = ptr;
-    *nbytes = outlen;
-
-    /* fold the uncompressed length into the buffer */
-    memcpy(ptr, &inlen, sizeof(uint32_t));
-    ptr += sizeof(uint32_t);
-    /* bring over the compressed data */
-    memcpy(ptr, tmp, outlen-sizeof(uint32_t));
-    free(tmp);
-    pmix_output_verbose(10, pmix_globals.debug_output,
-                        "JOBDATA COMPRESS INPUT STRING OF LEN %d OUTPUT SIZE %lu",
-                        inlen, outlen-sizeof(uint32_t));
-    return true;  // we did the compression
-}
-#else
-static bool compress_string(char *instring,
-                            uint8_t **outbytes,
-                            size_t *nbytes)
-{
-    return false;  // we did not compress
-}
-#endif
-
 static void _putfn(int sd, short args, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
@@ -631,7 +565,7 @@ static void _putfn(int sd, short args, void *cbdata)
     if (PMIX_STRING == cb->value->type &&
         PMIX_STRING_LIMIT < strlen(cb->value->data.string)) {
         /* compress large strings */
-        if (compress_string(cb->value->data.string, &tmp, &len)) {
+        if (pmix_util_compress_string(cb->value->data.string, &tmp, &len)) {
             if (NULL == tmp) {
                 PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                 rc = PMIX_ERR_NOMEM;

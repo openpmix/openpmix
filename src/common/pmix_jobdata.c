@@ -18,11 +18,9 @@
 #include "src/util/error.h"
 #include "src/buffer_ops/internal.h"
 #include "src/util/argv.h"
+#include "src/util/compress.h"
 #include "src/util/hash.h"
 #include "src/include/pmix_jobdata.h"
-#ifdef HAVE_ZLIB_H
-#include <zlib.h>
-#endif
 
 #if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
 #include "src/dstore/pmix_dstore.h"
@@ -31,72 +29,6 @@
 static inline int _add_key_for_rank(pmix_rank_t rank, pmix_kval_t *kv, void *cbdata);
 static inline pmix_status_t _job_data_store(const char *nspace, void *cbdata);
 
-#ifdef HAVE_ZLIB_H
-static bool compress_string(char *instring,
-                            uint8_t **outbytes,
-                            size_t *nbytes)
-{
-    z_stream strm;
-    size_t len, outlen;
-    uint8_t *tmp, *ptr;
-    uint32_t inlen;
-
-    /* set default output */
-    *outbytes = NULL;
-
-    /* setup the stream */
-    inlen = strlen(instring);
-    memset (&strm, 0, sizeof (strm));
-    deflateInit (&strm, 9);
-
-    /* get an upper bound on the required output storage */
-    len = deflateBound(&strm, inlen);
-    if (NULL == (tmp = (uint8_t*)malloc(len))) {
-        *outbytes = NULL;
-        return false;
-    }
-    strm.next_in = (uint8_t*)instring;
-    strm.avail_in = strlen(instring);
-
-    /* allocating the upper bound guarantees zlib will
-     * always successfully compress into the available space */
-    strm.avail_out = len;
-    strm.next_out = tmp;
-
-    deflate (&strm, Z_FINISH);
-    deflateEnd (&strm);
-
-    /* allocate 4 bytes beyond the size reqd by zlib so we
-     * can pass the size of the uncompressed string to the
-     * decompress side */
-    outlen = len - strm.avail_out + sizeof(uint32_t);
-    ptr = (uint8_t*)malloc(outlen);
-    if (NULL == ptr) {
-        free(tmp);
-        return false;
-    }
-    *outbytes = ptr;
-    *nbytes = outlen;
-
-    /* fold the uncompressed length into the buffer */
-    memcpy(ptr, &inlen, sizeof(uint32_t));
-    ptr += sizeof(uint32_t);
-    /* bring over the compressed data */
-    memcpy(ptr, tmp, outlen-sizeof(uint32_t));
-    free(tmp);
-    pmix_output_verbose(10, pmix_globals.debug_output,
-                        "JOBDATA COMPRESS INPUT STRING OF LEN %d OUTPUT SIZE %lu",
-                        inlen, outlen-sizeof(uint32_t));
-    return true;  // we did the compression
-}
-#else
-static bool compress_string(char *instring,
-                            uint8_t **outbytes,
-                            size_t *nbytes)
-{
-    return false;  // we did not compress
-}
-#endif
 
 static inline int _add_key_for_rank(pmix_rank_t rank, pmix_kval_t *kv, void *cbdata)
 {
@@ -290,7 +222,7 @@ static inline pmix_status_t _job_data_store(const char *nspace, void *cbdata)
                  * limit, then compress it */
                 if (PMIX_STRING == kp2->value->type &&
                     PMIX_STRING_LIMIT < strlen(kp2->value->data.string)) {
-                    if (compress_string(kp2->value->data.string, &tmp, &len)) {
+                    if (pmix_util_compress_string(kp2->value->data.string, &tmp, &len)) {
                         if (NULL == tmp) {
                             PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                             rc = PMIX_ERR_NOMEM;
@@ -342,7 +274,7 @@ static inline pmix_status_t _job_data_store(const char *nspace, void *cbdata)
                  * limit, then compress it */
                 if (PMIX_STRING == kv.value->type &&
                     PMIX_STRING_LIMIT < strlen(kv.value->data.string)) {
-                    if (compress_string(kv.value->data.string, &tmp, &len)) {
+                    if (pmix_util_compress_string(kv.value->data.string, &tmp, &len)) {
                         if (NULL == tmp) {
                             PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                             rc = PMIX_ERR_NOMEM;
@@ -419,7 +351,7 @@ static inline pmix_status_t _job_data_store(const char *nspace, void *cbdata)
              * limit, then compress it */
             if (PMIX_STRING == kptr->value->type &&
                 PMIX_STRING_LIMIT < strlen(kptr->value->data.string)) {
-                if (compress_string(kptr->value->data.string, &tmp, &len)) {
+                if (pmix_util_compress_string(kptr->value->data.string, &tmp, &len)) {
                     if (NULL == tmp) {
                         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                         rc = PMIX_ERR_NOMEM;
