@@ -182,6 +182,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_LOCAL_PROCS                    "pmix.lprocs"           // (pmix_proc_t array) array of pmix_proc_t of procs on the specified node
 #define PMIX_LOCAL_CPUSETS                  "pmix.lcpus"            // (char*) colon-delimited cpusets of local peers within the specified nspace
 #define PMIX_PROC_URI                       "pmix.puri"             // (char*) URI containing contact info for proc
+#define PMIX_LOCALITY                       "pmix.loc"              // (uint16_t) relative locality of two procs
 
 /* size info */
 #define PMIX_UNIV_SIZE                      "pmix.univ.size"        // (uint32_t) #procs in this nspace
@@ -193,11 +194,18 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_MAX_PROCS                      "pmix.max.size"         // (uint32_t) max #procs for this job
 #define PMIX_NUM_NODES                      "pmix.num.nodes"        // (uint32_t) #nodes in this nspace
 
+/* Memory info */
+#define PMIX_AVAIL_PHYS_MEMORY              "pmix.pmem"             // (uint64_t) total available physical memory on this node
+#define PMIX_DAEMON_MEMORY                  "pmix.dmn.mem"          // (float) Mbytes of memory currently used by daemon
+#define PMIX_CLIENT_AVG_MEMORY              "pmix.cl.mem.avg"       // (float) Average Mbytes of memory used by client processes
+
 /* topology info */
 #define PMIX_NET_TOPO                       "pmix.ntopo"            // (char*) xml-representation of network topology
 #define PMIX_LOCAL_TOPO                     "pmix.ltopo"            // (char*) xml-representation of local node topology
 #define PMIX_NODE_LIST                      "pmix.nlist"            // (char*) comma-delimited list of nodes running procs for this job
 #define PMIX_TOPOLOGY                       "pmix.topo"             // (hwloc_topology_t) pointer to the PMIx client's internal topology object
+#define PMIX_TOPOLOGY_SIGNATURE             "pmix.toposig"          // (char*) topology signature string
+#define PMIX_LOCALITY_STRING                "pmix.locstr"           // (char*) string describing a proc's location
 
 /* request-related info */
 #define PMIX_COLLECT_DATA                   "pmix.collect"          // (bool) collect data and return it at the end of the operation
@@ -287,12 +295,15 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_QUERY_DEBUG_SUPPORT            "pmix.qry.debug"         // return a comma-delimited list of supported debug attributes
 #define PMIX_QUERY_MEMORY_USAGE             "pmix.qry.mem"           // return info on memory usage for the procs indicated in the qualifiers
 #define PMIX_QUERY_LOCAL_ONLY               "pmix.qry.local"         // constrain the query to local information only
+#define PMIX_QUERY_REPORT_AVG               "pmix.qry.avg"           // report average values
+#define PMIX_QUERY_REPORT_MINMAX            "pmix.qry.minmax"        // report minimum and maximum value
 
 /* log attributes */
-#define PMIX_LOG_STDERR                     "pmix.log.stderr"        // (bool) log data to stderr
-#define PMIX_LOG_STDOUT                     "pmix.log.stdout"        // (bool) log data to stdout
-#define PMIX_LOG_SYSLOG                     "pmix.log.syslog"        // (bool) log data to syslog - defaults to ERROR priority unless
-                                                                     //        modified by directive
+#define PMIX_LOG_STDERR                    "pmix.log.stderr"         // (char*) log string to stderr
+#define PMIX_LOG_STDOUT                    "pmix.log.stdout"         // (char*) log string to stdout
+#define PMIX_LOG_SYSLOG                    "pmix.log.syslog"         // (char*) log data to syslog - defaults to ERROR priority unless
+#define PMIX_LOG_MSG                       "pmix.log.msg"            // (pmix_byte_object_t) message blob to be sent somewhere
+
 /* debugger attributes */
 #define PMIX_DEBUG_STOP_ON_EXEC             "pmix.dbg.exec"          // (bool) job is being spawned under debugger - instruct it to pause on start
 #define PMIX_DEBUG_STOP_IN_INIT             "pmix.dbg.init"          // (bool) instruct job to stop during PMIx init
