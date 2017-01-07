@@ -286,8 +286,8 @@ static void _register_nspace(int sd, short args, void *cbdata)
     pmix_info_t *iptr;
     pmix_value_t val;
     char *msg;
-    bool nodata = false;
 #if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
+    bool nodata = false;
     pmix_buffer_t *jobdata = PMIX_NEW(pmix_buffer_t);
     char *nspace = NULL;
     int32_t cnt;
@@ -337,8 +337,10 @@ static void _register_nspace(int sd, short args, void *cbdata)
                             cd->info[i].key);
 
         if (0 == strcmp(cd->info[i].key, PMIX_REGISTER_NODATA)) {
+#if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
             /* we don't want to save any job data for this nspace */
             nodata = true;
+#endif
             /* free anything that was previously stored */
             PMIX_DESTRUCT(&nptr->server->job_info);
             PMIX_CONSTRUCT(&nptr->server->job_info, pmix_buffer_t);

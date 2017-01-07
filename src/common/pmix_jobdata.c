@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2016      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2016-2017 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -269,21 +269,6 @@ static inline pmix_status_t _job_data_store(const char *nspace, void *cbdata)
                     PMIX_DESTRUCT(&kv);
                     goto exit;
                 }
-                /* if the value contains a string that is longer than the
-                 * limit, then compress it */
-                if (PMIX_STRING_SIZE_CHECK(kv.value)) {
-                    if (pmix_util_compress_string(kv.value->data.string, &tmp, &len)) {
-                        if (NULL == tmp) {
-                            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-                            rc = PMIX_ERR_NOMEM;
-                            goto exit;
-                        }
-                        kv.value->type = PMIX_COMPRESSED_STRING;
-                        free(kv.value->data.string);
-                        kv.value->data.bo.bytes = (char*)tmp;
-                        kv.value->data.bo.size = len;
-                    }
-                }
                 /* the name of the node is in the key, and the value is
                  * a comma-delimited list of procs on that node. See if we already
                  * have this node */
@@ -297,6 +282,12 @@ static inline pmix_status_t _job_data_store(const char *nspace, void *cbdata)
                 if (NULL == nrec) {
                     /* Create a node record and store that list */
                     nrec = PMIX_NEW(pmix_nrec_t);
+                    if (NULL == nrec) {
+                        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                        PMIX_DESTRUCT(&buf2);
+                        PMIX_DESTRUCT(&kv);
+                        goto exit;
+                    }
                     nrec->name = strdup(kv.key);
                     pmix_list_append(&nsptr->nodes, &nrec->super);
                 } else {
