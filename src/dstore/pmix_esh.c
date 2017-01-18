@@ -61,62 +61,61 @@ pmix_dstore_base_module_t pmix_dstore_esh_module = {
 #define ESH_ENV_NS_DATA_SEG_SIZE    "NS_DATA_SEG_SIZE"
 #define ESH_ENV_LINEAR              "SM_USE_LINEAR_SEARCH"
 
-#define ESH_MIN_KEY_LEN             (sizeof(ESH_REGION_INVALIDATED) + 1)
-
 #define EXT_SLOT_SIZE(key) (strlen(key) + 1 + 2*sizeof(size_t)) /* in ext slot new offset will be stored in case if new data were added for the same process during next commit */
 
 #define ESH_KEY_SIZE(key, size)                             \
 __extension__ ({                                            \
-    size_t len = sizeof(size_t) + size;                     \
-    size_t kname_len = strlen(key) + 1;                     \
-    len += (kname_len < ESH_MIN_KEY_LEN) ?                  \
-        ESH_MIN_KEY_LEN : kname_len;                        \
+    size_t len = strlen(key) + 1 + sizeof(size_t) + size;   \
     len;                                                    \
 })
 
 #define ESH_KV_SIZE(addr)                                   \
 __extension__ ({                                            \
     size_t sz;                                              \
-    memcpy(&sz, addr, sizeof(size_t));                      \
+    memcpy(&sz, addr + ESH_KNAME_LEN(ESH_KNAME_PTR(addr)),  \
+        sizeof(size_t));                                    \
+    sz += ESH_KNAME_LEN(ESH_KNAME_PTR(addr)) +              \
+        sizeof(size_t);                                     \
     sz;                                                     \
 })
 
 #define ESH_KNAME_PTR(addr)                                 \
 __extension__ ({                                            \
-    char *name_ptr = (char *)addr + sizeof(size_t);         \
+    char *name_ptr = (char *)addr;                          \
     name_ptr;                                               \
 })
 
 #define ESH_KNAME_LEN(key)                                  \
 __extension__ ({                                            \
-    size_t kname_len = strlen(key) + 1;                     \
-    size_t len = (kname_len < ESH_MIN_KEY_LEN) ?            \
-    ESH_MIN_KEY_LEN : kname_len;                            \
+    size_t len = strlen((char*)key) + 1;                           \
     len;                                                    \
 })
 
 #define ESH_DATA_PTR(addr)                                  \
 __extension__ ({                                            \
-    size_t kname_len = ESH_KNAME_LEN(ESH_KNAME_PTR(addr));  \
-    uint8_t *data_ptr = addr + sizeof(size_t) + kname_len;  \
+    uint8_t *data_ptr =                                     \
+        addr +                                              \
+        sizeof(size_t) +                                    \
+        ESH_KNAME_LEN(ESH_KNAME_PTR(addr));                 \
     data_ptr;                                               \
 })
 
-#define ESH_DATA_SIZE(addr, data_ptr)                       \
+#define ESH_DATA_SIZE(addr)                       \
 __extension__ ({                                            \
-    size_t sz = ESH_KV_SIZE(addr);                          \
-    size_t data_size = sz - (data_ptr - addr);              \
+    size_t data_size;                                       \
+    memcpy(&data_size,                                      \
+        addr + ESH_KNAME_LEN(ESH_KNAME_PTR(addr)),          \
+        sizeof(size_t));                                    \
     data_size;                                              \
 })
 
 #define ESH_PUT_KEY(addr, key, buffer, size)                \
 __extension__ ({                                            \
-    size_t sz = ESH_KEY_SIZE(key, size);                    \
-    memcpy(addr, &sz, sizeof(size_t));                      \
-    memset(addr + sizeof(size_t), 0, ESH_KNAME_LEN(key));   \
-    strncpy((char *)addr + sizeof(size_t),                  \
-            key, ESH_KNAME_LEN(key));                       \
-    memcpy(addr + sizeof(size_t) + ESH_KNAME_LEN(key),      \
+    size_t sz = size;                                       \
+    memset(addr, 0, ESH_KNAME_LEN(key));                    \
+    strncpy((char *)addr, key, ESH_KNAME_LEN(key));         \
+    memcpy(addr + ESH_KNAME_LEN(key), &sz, sizeof(size_t)); \
+    memcpy(addr + ESH_KNAME_LEN(key) + sizeof(size_t),      \
             buffer, size);                                  \
 })
 
@@ -1148,7 +1147,7 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
                             __FILE__, __LINE__, __func__, nspace, cur_rank, key));
                 /* target key is found, get value */
                 uint8_t *data_ptr = ESH_DATA_PTR(addr);
-                size_t data_size = ESH_DATA_SIZE(addr, data_ptr);
+                size_t data_size = ESH_DATA_SIZE(addr);
                 PMIX_CONSTRUCT(&buffer, pmix_buffer_t);
                 PMIX_LOAD_BUFFER(&buffer, data_ptr, data_size);
                 int cnt = 1;
@@ -2126,10 +2125,14 @@ static int pmix_sm_store(ns_track_elem_t *ns_info, int rank, pmix_kval_t *kval, 
                             "%s:%d:%s: for rank %d, replace flag %d found target key %s",
                             __FILE__, __LINE__, __func__, rank, data_exist, kval->key));
                 /* target key is found, compare value sizes */
-                if (ESH_DATA_SIZE(addr, ESH_DATA_PTR(addr)) != size) {
-                //if (1) { /* if we want to test replacing values for existing keys. */
+                if (ESH_DATA_SIZE(addr) != size) {
+                    /* changing current key name to INVALIDATED, changing the size of data to retain the offset. */
+                    size_t old_data_size = ESH_DATA_SIZE(addr);
+                    int diff_size = ESH_KNAME_LEN(addr) - ESH_KNAME_LEN(ESH_REGION_INVALIDATED);
+                    size_t new_size = old_data_size + diff_size;
+
                     /* invalidate current value and store another one at the end of data region. */
-                    strncpy(ESH_KNAME_PTR(addr), ESH_REGION_INVALIDATED, ESH_KNAME_LEN(ESH_REGION_INVALIDATED));
+                    ESH_PUT_KEY(addr, ESH_REGION_INVALIDATED, addr, new_size);
                     /* decrementing count, it will be incremented back when we add a new value for this key at the end of region. */
                     (*rinfo)->count--;
                     kval_cnt--;
@@ -2143,7 +2146,7 @@ static int pmix_sm_store(ns_track_elem_t *ns_info, int rank, pmix_kval_t *kval, 
                                 "%s:%d:%s: for rank %d, replace flag %d replace data for key %s type %d in place",
                                 __FILE__, __LINE__, __func__, rank, data_exist, kval->key, kval->value->type));
                     /* replace old data with new one. */
-                    memset(ESH_DATA_PTR(addr), 0, ESH_DATA_SIZE(addr, ESH_DATA_PTR(addr)));
+                    memset(ESH_DATA_PTR(addr), 0, ESH_DATA_SIZE(addr));
                     memcpy(ESH_DATA_PTR(addr), buffer->base_ptr, size);
                     addr += ESH_KV_SIZE(addr);
                     add_to_the_end = 0;
