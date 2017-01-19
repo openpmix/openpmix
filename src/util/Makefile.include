@@ -28,6 +28,7 @@ LEX_OUTPUT_ROOT = lex.pmix_show_help_yy
 # Source code files
 
 headers += \
+        util/alfg.h \
         util/argv.h \
         util/error.h \
         util/printf.h \
@@ -52,6 +53,7 @@ headers += \
         util/compress.h
 
 sources += \
+        util/alfg.c \
         util/argv.c \
         util/error.c \
         util/printf.c \

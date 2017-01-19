@@ -21,8 +21,8 @@
  * $HEADER$
  *
  */
-#ifndef PMIX_PSEC_BASE_H_
-#define PMIX_PSEC_BASE_H_
+#ifndef PMIX_PNET_BASE_H_
+#define PMIX_PNET_BASE_H_
 
 #include <src/include/pmix_config.h>
 
@@ -34,11 +34,12 @@
 #include <string.h>
 #endif
 
+#include "src/class/pmix_list.h"
 #include "src/class/pmix_pointer_array.h"
 #include "src/mca/mca.h"
 #include "src/mca/base/pmix_mca_base_framework.h"
 
-#include "src/mca/psec/psec.h"
+#include "src/mca/pnet/pnet.h"
 
 
 BEGIN_C_DECLS
@@ -46,48 +47,44 @@ BEGIN_C_DECLS
 /*
  * MCA Framework
  */
-extern pmix_mca_base_framework_t pmix_psec_base_framework;
+extern pmix_mca_base_framework_t pmix_pnet_base_framework;
 /**
- * PSEC select function
+ * PNET select function
  *
  * Cycle across available components and construct the list
  * of active modules
  */
-pmix_status_t pmix_psec_base_select(void);
+pmix_status_t pmix_pnet_base_select(void);
 
 /**
  * Track an active component / module
  */
-struct pmix_psec_base_active_module_t {
+struct pmix_pnet_base_active_module_t {
     pmix_list_item_t super;
     int pri;
-    pmix_psec_module_t *module;
-    pmix_psec_base_component_t *component;
+    pmix_pnet_module_t *module;
+    pmix_pnet_base_component_t *component;
 };
-typedef struct pmix_psec_base_active_module_t pmix_psec_base_active_module_t;
-PMIX_CLASS_DECLARATION(pmix_psec_base_active_module_t);
+typedef struct pmix_pnet_base_active_module_t pmix_pnet_base_active_module_t;
+PMIX_CLASS_DECLARATION(pmix_pnet_base_active_module_t);
 
 
 /* framework globals */
-struct pmix_psec_globals_t {
+struct pmix_pnet_globals_t {
   pmix_list_t actives;
   bool initialized;
 };
-typedef struct pmix_psec_globals_t pmix_psec_globals_t;
+typedef struct pmix_pnet_globals_t pmix_pnet_globals_t;
 
-extern pmix_psec_globals_t pmix_psec_globals;
+extern pmix_pnet_globals_t pmix_pnet_globals;
 
-PMIX_EXPORT char* pmix_psec_base_get_available_modules(void);
-PMIX_EXPORT pmix_status_t pmix_psec_base_assign_module(struct pmix_peer_t *peer,
-                                                       const char *options);
-PMIX_EXPORT pmix_status_t pmix_psec_base_create_cred(struct pmix_peer_t *peer,
-                                                     pmix_listener_protocol_t protocol,
-                                                     char **cred, size_t *len);
-PMIX_EXPORT pmix_status_t pmix_psec_base_client_handshake(struct pmix_peer_t *peer, int sd);
-PMIX_EXPORT pmix_status_t pmix_psec_base_validate_connection(struct pmix_peer_t *peer,
-                                                             pmix_listener_protocol_t protocol,
-                                                             char *cred, size_t len);
-
+pmix_status_t pmix_pnet_base_setup_app(char *nspace, pmix_list_t *ilist);
+pmix_status_t pmix_pnet_base_setup_local_network(char *nspace,
+                                                 pmix_info_t info[],
+                                                 size_t ninfo);
+pmix_status_t pmix_pnet_base_setup_fork(const pmix_proc_t *peer, char ***env);
+void pmix_pnet_base_child_finalized(pmix_peer_t *peer);
+void pmix_pnet_base_local_app_finalized(char *nspace);
 
 END_C_DECLS
 
