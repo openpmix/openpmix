@@ -11,7 +11,7 @@
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
 # Copyright (c) 2006-2015 Cisco Systems, Inc.  All rights reserved.
-# Copyright (c) 2015      Intel, Inc. All rights reserved.
+# Copyright (c) 2015-2017 Intel, Inc.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -175,34 +175,39 @@ do_command "git clone $giturl pmix"
 cd pmix
 do_command "git checkout $gitbranch"
 
-# Find the "git describe" string for this branch (remove a leading "pmix-"
-# prefix, if there is one).
-describe=`git describe --tags --always | sed -e s/^pmix-//`
+# Nightly tarballs are named in this format:
+# pmix-${BRANCHNAME}-${YYYYMMDDHHMM}-${SHORTHASH}.tar.${COMPRESSION}
+timestamp=`date '+%Y%m%d%H%M'`
+githash=`git log -n 1 '--pretty=format:%h'`
+version="$gitbranch-$timestamp-$githash"
 if test -n "$debug"; then
-    echo "** found $gitbranch describe: $describe"
+    echo "*** This snapshot version: $version"
 fi
-version=$describe
 
 # if there's a $destdir/latest_snapshot.txt, see if anything has
-# happened since the describe listed in that file
+# happened since the version listed in that file
 if test -f "$destdir/latest_snapshot.txt"; then
-    snapshot_describe=`cat $destdir/latest_snapshot.txt`
+    snapshot_version=`cat $destdir/latest_snapshot.txt`
     if test -n "$debug"; then
-        echo "** last snapshot describe: $snapshot_describe"
+    echo "*** Last snapshot version: $snapshot_version"
     fi
 
     # Do we need a new snapshot?
-    if test "$describe" = "$snapshot_describe"; then
-        if test -n "$debug"; then
-            echo "** git $gitbranch describe is same as latest_snapshot -- not doing anything"
-        fi
-        # Since we didn't do anything, there's no point in leaving the clone we
-        # just created
-        cd ..
-        rm -rf $clone_root
+    # Snip the timestamp out of the versions and compare just
+    # ${BRANCHNAME}-${SHORTHASH}.
+    compare_version="$gitbranch-$githash"
+    compare_snapshot_version=`echo $snapshot_version | perl -p -e 's/^(.+?)-(\d+)-(.*+)$/$1-$3/'`
+    if test "$compare_version" = "$compare_snapshot_version"; then
+    if test -n "$debug"; then
+        echo "*** Our branch/git hash is the same as the last snapshot -- not doing anything"
+    fi
+    # Since we didn't do anything, there's no point in leaving the clone we
+    # just created
+    cd ..
+    rm -rf $clone_root
 
-        # All done... nothing to see here...
-        exit 0
+    # All done... nothing to see here...
+    exit 0
     fi
 fi
 
@@ -211,10 +216,10 @@ if test -n "$debug"; then
 fi
 
 # Ensure that VERSION is set to indicate that it wants a snapshot, and
-# insert the actual value that we want (so that pmix_get_version.sh
+# insert the actual value that we want (so that ompi_get_version.sh
 # will report exactly that version).
-sed -e 's/^repo_rev=.*/repo_rev='$describe/ \
-    -e 's/^tarball_version=.*/tarball_version='$describe/ \
+sed -e 's/^repo_rev=.*/repo_rev='$githash/ \
+    -e 's/^tarball_version=.*/tarball_version='$version/ \
     VERSION > VERSION.new
 cp -f VERSION.new VERSION
 rm -f VERSION.new
