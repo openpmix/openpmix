@@ -18,7 +18,7 @@ dnl                         reserved.
 dnl Copyright (c) 2009-2011 Oak Ridge National Labs.  All rights reserved.
 dnl Copyright (c) 2011-2013 NVIDIA Corporation.  All rights reserved.
 dnl Copyright (c) 2013-2016 Intel, Inc. All rights reserved
-dnl Copyright (c) 2015      Research Organization for Information Science
+dnl Copyright (c) 2015-2017 Research Organization for Information Science
 dnl                         and Technology (RIST). All rights reserved.
 dnl Copyright (c) 2016      Mellanox Technologies, Inc.
 dnl                         All rights reserved.
@@ -500,7 +500,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # Darwin doesn't need -lm, as it's a symlink to libSystem.dylib
     PMIX_SEARCH_LIBS_CORE([ceil], [m])
 
-    AC_CHECK_FUNCS([asprintf snprintf vasprintf vsnprintf strsignal socketpair strncpy_s usleep statfs statvfs getpeereid getpeerucred strnlen])
+    AC_CHECK_FUNCS([asprintf snprintf vasprintf vsnprintf strsignal socketpair strncpy_s usleep statfs statvfs getpeereid getpeerucred strnlen posix_fallocate])
 
     # On some hosts, htonl is a define, so the AC_CHECK_FUNC will get
     # confused.  On others, it's in the standard library, but stubbed with
