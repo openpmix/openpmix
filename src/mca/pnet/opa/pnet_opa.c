@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2016 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2017 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  *
  * $COPYRIGHT$
@@ -161,17 +161,11 @@ static pmix_status_t setup_app(char *nspace, pmix_list_t *ilist)
     char *string_key, *cs_env;
     int fd_rand;
     size_t bytes_read;
-    struct stat buf;
     pmix_kval_t *kv;
 
     /* put the number here - or else create an appropriate string. this just needs to
      * eventually be a string variable
      */
-    if(0 != stat("/dev/urandom", &buf)) {
-        /* file doesn't exist! */
-        transports_use_rand(unique_key);
-    }
-
     if(-1 == (fd_rand = open("/dev/urandom", O_RDONLY))) {
         transports_use_rand(unique_key);
     } else {
