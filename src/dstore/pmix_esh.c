@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2015-2016 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2016      Research Organization for Information Science
+ * Copyright (c) 2016-2017 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2017 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
@@ -289,12 +289,14 @@ static void ncon(ns_track_elem_t *p) {
     p->data_seg = NULL;
     p->num_meta_seg = 0;
     p->num_data_seg = 0;
+    p->in_use = true;
 }
 
 static void ndes(ns_track_elem_t *p) {
     _delete_sm_desc(p->meta_seg);
     _delete_sm_desc(p->data_seg);
     memset(&p->ns_map, 0, sizeof(p->ns_map));
+    p->in_use = false;
 }
 
 PMIX_CLASS_INSTANCE(ns_track_elem_t,
@@ -588,8 +590,21 @@ static inline void _esh_sessions_cleanup(void)
 
 static inline void _esh_ns_track_cleanup(void)
 {
+    int size;
+    ns_track_elem_t *ns_trk;
+
     if (NULL == _ns_track_array) {
         return;
+    }
+
+    size = pmix_value_array_get_size(_ns_track_array);
+    ns_trk = PMIX_VALUE_ARRAY_GET_BASE(_ns_track_array, ns_track_elem_t);
+
+    for (int i = 0; i < size; i++) {
+        ns_track_elem_t *trk = ns_trk + i;
+        if (trk->in_use) {
+            PMIX_DESTRUCT(trk);
+        }
     }
 
     PMIX_RELEASE(_ns_track_array);
