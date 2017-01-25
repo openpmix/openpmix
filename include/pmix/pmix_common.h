@@ -121,6 +121,7 @@ extern "C" {
 #define PMIX_NODE_RANK             "pmix.nrank"             // (uint16_t) rank on this node spanning all jobs
 #define PMIX_LOCALLDR              "pmix.lldr"              // (uint32_t) opal_identifier of lowest rank on this node within this job
 #define PMIX_APPLDR                "pmix.aldr"              // (uint32_t) lowest rank in this app within this job
+#define PMIX_SESSION_ID            "pmix.session.id"        // (uint32_t) session identifier
 
 /* proc location-related info */
 /* For PMIX_HOSTNAME, three use-cases exist for PMIx_Get:
