@@ -935,17 +935,14 @@ int _esh_store(const char *nspace, pmix_rank_t rank, pmix_kval_t *kv)
 
     /* Now we know info about meta segment for this namespace. If meta segment
      * is not empty, then we look for data for the target rank. If they present, replace it. */
-    PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
     PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
     PMIX_LOAD_BUFFER(&xfer, kv->value->data.bo.bytes, kv->value->data.bo.size);
-    pmix_buffer_t *pxfer = &xfer;
-    pmix_bfrop.pack(&pbkt, &pxfer, 1, PMIX_BUFFER);
+
+    rc = _store_data_for_rank(elem, rank, &xfer);
+
     xfer.base_ptr = NULL;
     xfer.bytes_used = 0;
-
-    rc = _store_data_for_rank(elem, rank, &pbkt);
     PMIX_DESTRUCT(&xfer);
-    PMIX_DESTRUCT(&pbkt);
 
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
@@ -2208,9 +2205,7 @@ static int pmix_sm_store(ns_track_elem_t *ns_info, pmix_rank_t rank, pmix_kval_t
 static int _store_data_for_rank(ns_track_elem_t *ns_info, pmix_rank_t rank, pmix_buffer_t *buf)
 {
     pmix_status_t rc;
-    int32_t cnt;
 
-    pmix_buffer_t *bptr;
     pmix_kval_t *kp;
     seg_desc_t *metadesc, *datadesc;
 
@@ -2245,30 +2240,20 @@ static int _store_data_for_rank(ns_track_elem_t *ns_info, pmix_rank_t rank, pmix
      * so unpack these buffers, and then unpack kvals from each modex buffer,
      * storing them in the shared memory dstore.
      */
-    cnt = 1;
     free_offset = get_free_offset(datadesc);
-    while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(buf, &bptr, &cnt, PMIX_BUFFER))) {
-        cnt = 1;
-        kp = PMIX_NEW(pmix_kval_t);
-        while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bptr, kp, &cnt, PMIX_KVAL))) {
-            pmix_output_verbose(2, pmix_globals.debug_output,
-                                "pmix: unpacked key %s", kp->key);
-            if (PMIX_SUCCESS != (rc = pmix_sm_store(ns_info, rank, kp, &rinfo, data_exist))) {
-                PMIX_ERROR_LOG(rc);
-                return rc;
-            }
-            PMIX_RELEASE(kp); // maintain acctg - hash_store does a retain
-            cnt = 1;
-            kp = PMIX_NEW(pmix_kval_t);
-        }
-        cnt = 1;
-        PMIX_RELEASE(kp);
-        PMIX_RELEASE(bptr);  // free's the data region
-        if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+    kp = PMIX_NEW(pmix_kval_t);
+    while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(buf, kp, &(int){1}, PMIX_KVAL))) {
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "pmix: unpacked key %s", kp->key);
+        if (PMIX_SUCCESS != (rc = pmix_sm_store(ns_info, rank, kp, &rinfo, data_exist))) {
             PMIX_ERROR_LOG(rc);
-            break;
+            return rc;
         }
+        PMIX_RELEASE(kp); // maintain acctg - hash_store does a retain
+        kp = PMIX_NEW(pmix_kval_t);
     }
+    PMIX_RELEASE(kp);
+
     if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
         PMIX_ERROR_LOG(rc);
         /* TODO: should we error-exit here? */
