@@ -1101,8 +1101,6 @@ int _esh_store(const char *nspace, pmix_rank_t rank, pmix_kval_t *kv)
 
     rc = _store_data_for_rank(elem, rank, &xfer);
 
-    xfer.base_ptr = NULL;
-    xfer.bytes_used = 0;
     PMIX_DESTRUCT(&xfer);
 
     if (PMIX_SUCCESS != rc) {
