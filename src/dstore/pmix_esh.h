@@ -24,6 +24,23 @@ BEGIN_C_DECLS
 
 #define PMIX_DSTORE_ESH_BASE_PATH "PMIX_DSTORE_ESH_BASE_PATH"
 
+#define PTHREAD_LOCK_ENABLE 1
+#define FCNTL_LOCK_ENABLE   0
+
+#if defined(PTHREAD_LOCK_ENABLE) || defined(FCNTL_LOCK_ENABLE)
+#if (PTHREAD_LOCK_ENABLE == 1)
+#undef FCNTL_LOCK_ENABLE
+#define PTHREAD_LOCK
+#else
+#undef PTHREAD_LOCK_ENABLE
+#define FCNTL_LOCK
+#endif
+#elif !(defined(PTHREAD_LOCK_ENABLE) || defined(FCNTL_LOCK_ENABLE))
+#error not enabled any one type of locking
+#else
+#define PTHREAD_LOCK
+#endif
+
 /* this structs are used to store information about
  * shared segments addresses locally at each process,
  * so they are common for different types of segments
@@ -47,12 +64,17 @@ struct seg_desc_t {
 typedef struct ns_map_data_s ns_map_data_t;
 typedef struct session_s session_t;
 typedef struct ns_map_s ns_map_t;
+typedef struct rwlock_map_s rwlock_map_t;
 
 struct session_s {
     int in_use;
     uid_t jobuid;
     char *nspace_path;
     char *lockfile;
+#ifdef PTHREAD_LOCK
+    pmix_sm_seg_t *rwlock_seg;
+    pthread_rwlock_t *rwlock;
+#endif
     int lockfd;
     seg_desc_t *sm_seg_first;
     seg_desc_t *sm_seg_last;
