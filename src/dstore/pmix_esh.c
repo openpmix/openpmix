@@ -3,7 +3,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2016      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2016-2017 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -574,12 +574,6 @@ static inline int _esh_session_init(size_t idx, ns_map_data_t *m, size_t jobuid,
     session_t *s = &(PMIX_VALUE_ARRAY_GET_ITEM(_session_array, session_t, idx));
     pmix_status_t rc = PMIX_SUCCESS;
 
-    if (NULL == s) {
-        rc = PMIX_ERR_BAD_PARAM;
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-
     s->jobuid = jobuid;
     s->nspace_path = strdup(_base_path);
 
@@ -866,7 +860,7 @@ int _esh_store(const char *nspace, pmix_rank_t rank, pmix_kval_t *kv)
 {
     pmix_status_t rc = PMIX_SUCCESS, tmp_rc;
     ns_track_elem_t *elem;
-    pmix_buffer_t pbkt, xfer;
+    pmix_buffer_t xfer;
     ns_seg_info_t ns_info;
     ns_map_data_t *ns_map = NULL;
 
@@ -2247,6 +2241,9 @@ static int _store_data_for_rank(ns_track_elem_t *ns_info, pmix_rank_t rank, pmix
                             "pmix: unpacked key %s", kp->key);
         if (PMIX_SUCCESS != (rc = pmix_sm_store(ns_info, rank, kp, &rinfo, data_exist))) {
             PMIX_ERROR_LOG(rc);
+            if (NULL != rinfo) {
+                free(rinfo);
+            }
             return rc;
         }
         PMIX_RELEASE(kp); // maintain acctg - hash_store does a retain
