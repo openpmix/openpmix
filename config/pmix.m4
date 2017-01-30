@@ -594,6 +594,14 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     PMIX_MUNGE_CONFIG
 
+    ##################################
+    # Dstore Locking
+    ##################################
+
+    pmix_show_title "Dstore Locking"
+
+    PMIX_CHECK_DSTOR_LOCK
+
     ############################################################################
     # final compiler config
     ############################################################################
@@ -777,6 +785,22 @@ AC_DEFINE_UNQUOTED([PMIX_ENABLE_DSTORE],
                    [$WANT_DSTORE],
                    [if want shared memory dstore feature])
 AM_CONDITIONAL([WANT_DSTORE],[test "x$enable_dstore" != "xno"])
+
+#
+# Use pthread-based locking
+#
+DSTORE_PTHREAD_LOCK="1"
+AC_MSG_CHECKING([if want dstore pthread-based locking])
+AC_ARG_ENABLE([dstore-pthlck],
+              [AC_HELP_STRING([--disable-dstore-pthlck],
+                              [Disable pthread-based lockig in dstor (default: enabled)])])
+if test "$enable_dstore_pthlck" == "no" ; then
+    AC_MSG_RESULT([no])
+    DSTORE_PTHREAD_LOCK="0"
+else
+    AC_MSG_RESULT([yes])
+    DSTORE_PTHREAD_LOCK="1"
+fi
 
 #
 # Ident string

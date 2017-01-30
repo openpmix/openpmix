@@ -34,11 +34,11 @@
 #include "pmix_dstore.h"
 #include "pmix_esh.h"
 
-#ifdef FCNTL_LOCK
+#ifdef ESH_FCNTL_LOCK
 #include <fcntl.h>
 #endif
 
-#ifdef PTHREAD_LOCK
+#ifdef ESH_PTHREAD_LOCK
 #include <pthread.h>
 #endif
 
@@ -126,7 +126,7 @@ __extension__ ({                                            \
             buffer, size);                                  \
 })
 
-#ifdef PTHREAD_LOCK
+#ifdef ESH_PTHREAD_LOCK
 #define _ESH_LOCK(rwlock, operation)                        \
 __extension__ ({                                            \
     pmix_status_t ret = PMIX_SUCCESS;                       \
@@ -162,7 +162,7 @@ __extension__ ({                                            \
 })
 #endif
 
-#ifdef FCNTL_LOCK
+#ifdef ESH_FCNTL_LOCK
 #define _ESH_LOCK(lockfd, operation)                        \
 __extension__ ({                                            \
     pmix_status_t ret = PMIX_SUCCESS;                       \
@@ -260,13 +260,13 @@ ns_map_data_t * (*_esh_session_map_search)(const char *nspace) = NULL;
 #define _ESH_SESSION_sm_seg_last(tbl_idx)  (PMIX_VALUE_ARRAY_GET_BASE(_session_array, session_t)[tbl_idx].sm_seg_last)
 #define _ESH_SESSION_ns_info(tbl_idx)      (PMIX_VALUE_ARRAY_GET_BASE(_session_array, session_t)[tbl_idx].ns_info)
 
-#ifdef PTHREAD_LOCK
+#ifdef ESH_PTHREAD_LOCK
 #define _ESH_SESSION_pthread_rwlock(tbl_idx) (PMIX_VALUE_ARRAY_GET_BASE(_session_array, session_t)[tbl_idx].rwlock)
 #define _ESH_SESSION_pthread_seg(tbl_idx)   (PMIX_VALUE_ARRAY_GET_BASE(_session_array, session_t)[tbl_idx].rwlock_seg)
 #define _ESH_SESSION_lock(tbl_idx)         _ESH_SESSION_pthread_rwlock(tbl_idx)
 #endif
 
-#ifdef FCNTL_LOCK
+#ifdef ESH_FCNTL_LOCK
 #define _ESH_SESSION_lockfd(tbl_idx)       (PMIX_VALUE_ARRAY_GET_BASE(_session_array, session_t)[tbl_idx].lockfd)
 #define _ESH_SESSION_lock(tbl_idx)         _ESH_SESSION_lockfd(tbl_idx)
 #endif
@@ -308,7 +308,7 @@ static inline void _esh_session_map_clean(ns_map_t *m) {
     m->data.track_idx = -1;
 }
 
-#ifdef PTHREAD_LOCK
+#ifdef ESH_PTHREAD_LOCK
 static inline int _rwlock_init(size_t idx, char *lockfile) {
     pmix_status_t rc = PMIX_SUCCESS;
     size_t size = _lock_segment_size;
@@ -342,6 +342,14 @@ static inline int _rwlock_init(size_t idx, char *lockfile) {
             pthread_rwlockattr_destroy(&attr);
             return rc;
         }
+#ifdef HAVE_PTHREAD_SETKIND
+        if (0 != pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP)) {
+            rc = PMIX_ERR_INIT;
+            pmix_sm_segment_detach(_ESH_SESSION_pthread_seg(idx));
+            pthread_rwlockattr_destroy(&attr);
+            return rc;
+        }
+#endif
         if (0 != pthread_rwlock_init(_ESH_SESSION_pthread_rwlock(idx), &attr)) {
             rc = PMIX_ERR_INIT;
             pmix_sm_segment_detach(_ESH_SESSION_pthread_seg(idx));
@@ -791,7 +799,7 @@ static inline int _esh_session_init(size_t idx, ns_map_data_t *m, size_t jobuid,
         }
     }
 
-#ifdef PTHREAD_LOCK
+#ifdef ESH_PTHREAD_LOCK
     if ( PMIX_SUCCESS != (rc = _rwlock_init(m->tbl_idx, s->lockfile))) {
         PMIX_ERROR_LOG(rc);
         return rc;
@@ -823,7 +831,7 @@ static inline void _esh_session_release(session_t *s)
         }
         free(s->nspace_path);
     }
-#ifdef PTHREAD_LOCK
+#ifdef ESH_PTHREAD_LOCK
     _rwlock_release(s);
 #endif
     memset ((char *) s, 0, sizeof(*s));
