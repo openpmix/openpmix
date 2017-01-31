@@ -35,6 +35,7 @@ EXTRA_DIST = \
 	pmix_check_package.m4 \
 	pmix_check_vendor.m4 \
 	pmix_check_visibility.m4 \
+	pmix_check_lock.m4 \
 	pmix_config_subdir.m4 \
 	pmix_ensure_contains_optflags.m4 \
 	pmix_functions.m4 \
