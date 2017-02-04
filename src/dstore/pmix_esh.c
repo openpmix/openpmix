@@ -2146,7 +2146,7 @@ static size_t put_data_to_the_end(ns_track_elem_t *ns_info, seg_desc_t *dataseg,
         /* create a new data segment. */
         tmp = extend_segment(tmp, &ns_info->ns_map);
         if (NULL == tmp) {
-            PMIX_ERROR_LOG(PMIX_ERROR);
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
             offset = 0; /* offset cannot be 0 in normal case, so we use this value to indicate a problem. */
             return offset;
         }
@@ -2154,11 +2154,11 @@ static size_t put_data_to_the_end(ns_track_elem_t *ns_info, seg_desc_t *dataseg,
         /* update_ns_info_in_initial_segment */
         ns_seg_info_t *elem = _get_ns_info_from_initial_segment(&ns_info->ns_map);
         if (NULL == elem) {
-            PMIX_ERROR_LOG(PMIX_ERROR);
-            return PMIX_ERROR;
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            offset = 0; /* offset cannot be 0 in normal case, so we use this value to indicate a problem. */
+            return offset;
         }
         elem->num_data_seg++;
-
         offset = sizeof(size_t);
     }
     global_offset = offset + id * _data_segment_size;
