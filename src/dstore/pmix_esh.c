@@ -222,7 +222,7 @@ static void _update_initial_segment_info(const ns_map_data_t *ns_map);
 static void _set_constants_from_env(void);
 static void _delete_sm_desc(seg_desc_t *desc);
 static int _pmix_getpagesize(void);
-static inline uint32_t _get_univ_size(const char *nspace);
+static inline ssize_t _get_univ_size(const char *nspace);
 
 static inline ns_map_data_t * _esh_session_map_search_server(const char *nspace);
 static inline ns_map_data_t * _esh_session_map_search_client(const char *nspace);
@@ -1130,7 +1130,7 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
     uint8_t *addr;
     pmix_buffer_t buffer;
     pmix_value_t val;
-    uint32_t nprocs;
+    size_t nprocs;
     int cur_rank;
     ns_map_data_t *ns_map = NULL;
     bool all_ranks_found = true;
@@ -1162,7 +1162,12 @@ int _esh_fetch(const char *nspace, int rank, const char *key, pmix_value_t **kvs
     }
 
     if (PMIX_RANK_UNDEF == rank) {
-        nprocs = _get_univ_size(ns_map->name);
+        ssize_t _nprocs = _get_univ_size(ns_map->name);
+        if( 0 > _nprocs ){
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        nprocs = (size_t) _nprocs;
         cur_rank = -1;
     } else {
         nprocs = 1;
@@ -2456,26 +2461,23 @@ static int _store_data_for_rank(ns_track_elem_t *ns_info, int rank, pmix_buffer_
     return rc;
 }
 
-static inline uint32_t _get_univ_size(const char *nspace)
+static inline ssize_t _get_univ_size(const char *nspace)
 {
-    pmix_value_t *val = NULL;
-    uint32_t nprocs = 0;
-    pmix_nspace_t *ns, *nptr;
+    ssize_t nprocs = 0;
+    pmix_value_t *val;
+    int rc;
 
-    nptr = NULL;
-    PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_nspace_t) {
-        if (0 == strcmp(nspace, ns->nspace)) {
-            nptr = ns;
-            break;
-        }
+    rc = _esh_fetch(nspace, PMIX_RANK_WILDCARD, PMIX_UNIV_SIZE, &val);
+    if( PMIX_SUCCESS != rc ) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
     }
-
-    if (nptr && (PMIX_SUCCESS == pmix_hash_fetch(&nptr->internal, PMIX_RANK_WILDCARD, PMIX_UNIV_SIZE, &val))) {
-        if (val->type == PMIX_UINT32) {
-            nprocs = val->data.uint32;
-        }
-        PMIX_VALUE_RELEASE(val);
+    if( val->type != PMIX_UINT32 ){
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        return rc;
     }
-
+    nprocs = (ssize_t)val->data.uint32;
+    PMIX_VALUE_RELEASE(val);
     return nprocs;
 }
