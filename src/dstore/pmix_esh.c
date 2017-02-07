@@ -70,7 +70,7 @@ pmix_dstore_base_module_t pmix_dstore_esh_module = {
 #define ESH_ENV_NS_DATA_SEG_SIZE    "NS_DATA_SEG_SIZE"
 #define ESH_ENV_LINEAR              "SM_USE_LINEAR_SEARCH"
 
-#define ESH_MIN_KEY_LEN             (sizeof(ESH_REGION_INVALIDATED) + 1)
+#define ESH_MIN_KEY_LEN             (sizeof(ESH_REGION_INVALIDATED))
 
 
 #define ESH_KEY_SIZE(key, size)                             \
