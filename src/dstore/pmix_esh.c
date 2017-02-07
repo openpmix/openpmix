@@ -72,24 +72,6 @@ pmix_dstore_base_module_t pmix_dstore_esh_module = {
 
 #define ESH_MIN_KEY_LEN             (sizeof(ESH_REGION_INVALIDATED))
 
-
-#define ESH_KEY_SIZE(key, size)                             \
-__extension__ ({                                            \
-    size_t len = sizeof(size_t) + size;                     \
-    size_t kname_len = strlen(key) + 1;                     \
-    len += (kname_len < ESH_MIN_KEY_LEN) ?                  \
-        ESH_MIN_KEY_LEN : kname_len;                        \
-    len;                                                    \
-})
-
-/* in ext slot new offset will be stored in case if 
- * new data were added for the same process during 
- * next commit 
- */
-#define EXT_SLOT_SIZE()                                     \
-    (ESH_KEY_SIZE(ESH_REGION_EXTENSION, sizeof(size_t)))
-
-
 #define ESH_KV_SIZE(addr)                                   \
 __extension__ ({                                            \
     size_t sz;                                              \
@@ -124,6 +106,20 @@ __extension__ ({                                            \
     size_t data_size = sz - (data_ptr - addr);              \
     data_size;                                              \
 })
+
+#define ESH_KEY_SIZE(key, size)                             \
+__extension__ ({                                            \
+    size_t len = sizeof(size_t) + ESH_KNAME_LEN(key) + size;\
+    len;                                                    \
+})
+
+/* in ext slot new offset will be stored in case if
+ * new data were added for the same process during
+ * next commit
+ */
+#define EXT_SLOT_SIZE()                                     \
+    (ESH_KEY_SIZE(ESH_REGION_EXTENSION, sizeof(size_t)))
+
 
 #define ESH_PUT_KEY(addr, key, buffer, size)                \
 __extension__ ({                                            \
