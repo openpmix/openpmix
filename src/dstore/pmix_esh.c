@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2015-2016 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2016      Research Organization for Information Science
+ * Copyright (c) 2016-2017 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2017 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
@@ -289,12 +289,14 @@ static void ncon(ns_track_elem_t *p) {
     p->data_seg = NULL;
     p->num_meta_seg = 0;
     p->num_data_seg = 0;
+    p->in_use = true;
 }
 
 static void ndes(ns_track_elem_t *p) {
     _delete_sm_desc(p->meta_seg);
     _delete_sm_desc(p->data_seg);
     memset(&p->ns_map, 0, sizeof(p->ns_map));
+    p->in_use = false;
 }
 
 PMIX_CLASS_INSTANCE(ns_track_elem_t,
@@ -588,8 +590,21 @@ static inline void _esh_sessions_cleanup(void)
 
 static inline void _esh_ns_track_cleanup(void)
 {
+    int size;
+    ns_track_elem_t *ns_trk;
+
     if (NULL == _ns_track_array) {
         return;
+    }
+
+    size = pmix_value_array_get_size(_ns_track_array);
+    ns_trk = PMIX_VALUE_ARRAY_GET_BASE(_ns_track_array, ns_track_elem_t);
+
+    for (int i = 0; i < size; i++) {
+        ns_track_elem_t *trk = ns_trk + i;
+        if (trk->in_use) {
+            PMIX_DESTRUCT(trk);
+        }
     }
 
     PMIX_RELEASE(_ns_track_array);
@@ -1086,8 +1101,6 @@ int _esh_store(const char *nspace, pmix_rank_t rank, pmix_kval_t *kv)
 
     rc = _store_data_for_rank(elem, rank, &xfer);
 
-    xfer.base_ptr = NULL;
-    xfer.bytes_used = 0;
     PMIX_DESTRUCT(&xfer);
 
     if (PMIX_SUCCESS != rc) {
@@ -2177,7 +2190,7 @@ static size_t put_data_to_the_end(ns_track_elem_t *ns_info, seg_desc_t *dataseg,
 static int pmix_sm_store(ns_track_elem_t *ns_info, pmix_rank_t rank, pmix_kval_t *kval, rank_meta_info **rinfo, int data_exist)
 {
     size_t offset, size, kval_cnt;
-    pmix_buffer_t *buffer;
+    pmix_buffer_t buffer;
     pmix_status_t rc;
     seg_desc_t *datadesc;
     uint8_t *addr;
@@ -2188,24 +2201,23 @@ static int pmix_sm_store(ns_track_elem_t *ns_info, pmix_rank_t rank, pmix_kval_t
 
     datadesc = ns_info->data_seg;
     /* pack value to the buffer */
-    buffer = PMIX_NEW(pmix_buffer_t);
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(buffer, kval->value, 1, PMIX_VALUE))) {
-        PMIX_RELEASE(buffer);
+    PMIX_CONSTRUCT(&buffer, pmix_buffer_t);
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(&buffer, kval->value, 1, PMIX_VALUE))) {
         PMIX_ERROR_LOG(rc);
-        return rc;
+        goto exit;
     }
-    size = buffer->bytes_used;
+    size = buffer.bytes_used;
 
     if (0 == data_exist) {
         /* there is no data blob for this rank yet, so add it. */
         size_t free_offset;
         free_offset = get_free_offset(datadesc);
-        offset = put_data_to_the_end(ns_info, datadesc, kval->key, buffer->base_ptr, size);
+        offset = put_data_to_the_end(ns_info, datadesc, kval->key, buffer.base_ptr, size);
         if (0 == offset) {
             /* this is an error */
-            PMIX_RELEASE(buffer);
-            PMIX_ERROR_LOG(PMIX_ERROR);
-            return PMIX_ERROR;
+            rc = PMIX_ERROR;
+            PMIX_ERROR_LOG(rc);
+            goto exit;
         }
         /* if it's the first time when we put data for this rank, then *rinfo == NULL,
          * and even if segment was extended, and data was put into the next segment,
@@ -2231,9 +2243,9 @@ static int pmix_sm_store(ns_track_elem_t *ns_info, pmix_rank_t rank, pmix_kval_t
         /* there is data blob for this rank */
         addr = _get_data_region_by_offset(datadesc, (*rinfo)->offset);
         if (NULL == addr) {
-            PMIX_RELEASE(buffer);
-            PMIX_ERROR_LOG(PMIX_ERROR);
-            return rc;
+            rc = PMIX_ERROR;
+            PMIX_ERROR_LOG(rc);
+            goto exit;
         }
         /* go through previous data region and find key matches.
          * If one is found, then mark this kval as invalidated.
@@ -2260,9 +2272,9 @@ static int pmix_sm_store(ns_track_elem_t *ns_info, pmix_rank_t rank, pmix_kval_t
                     /* go to next item, updating address */
                     addr = _get_data_region_by_offset(datadesc, offset);
                     if (NULL == addr) {
-                        PMIX_RELEASE(buffer);
-                        PMIX_ERROR_LOG(PMIX_ERROR);
-                        return rc;
+                        rc = PMIX_ERROR;
+                        PMIX_ERROR_LOG(rc);
+                        goto exit;
                     }
                 } else {
                     /* should not be, we should be out of cycle when this happens */
@@ -2290,7 +2302,7 @@ static int pmix_sm_store(ns_track_elem_t *ns_info, pmix_rank_t rank, pmix_kval_t
                                 __FILE__, __LINE__, __func__, rank, data_exist, kval->key, kval->value->type));
                     /* replace old data with new one. */
                     memset(ESH_DATA_PTR(addr), 0, ESH_DATA_SIZE(addr, ESH_DATA_PTR(addr)));
-                    memcpy(ESH_DATA_PTR(addr), buffer->base_ptr, size);
+                    memcpy(ESH_DATA_PTR(addr), buffer.base_ptr, size);
                     addr += ESH_KV_SIZE(addr);
                     add_to_the_end = 0;
                     break;
@@ -2316,11 +2328,11 @@ static int pmix_sm_store(ns_track_elem_t *ns_info, pmix_rank_t rank, pmix_kval_t
             (*rinfo)->count++;
             free_offset = get_free_offset(datadesc);
             /* add to the end */
-            offset = put_data_to_the_end(ns_info, datadesc, kval->key, buffer->base_ptr, size);
+            offset = put_data_to_the_end(ns_info, datadesc, kval->key, buffer.base_ptr, size);
             if (0 == offset) {
-                PMIX_RELEASE(buffer);
-                PMIX_ERROR_LOG(PMIX_ERROR);
-                return PMIX_ERROR;
+                rc = PMIX_ERROR;
+                PMIX_ERROR_LOG(rc);
+                goto exit;
             }
             /* we just reached the end of data for the target rank, and there can be two cases:
              * (1) - we are in the middle of data segment; data for this rank is separated from
@@ -2349,9 +2361,8 @@ static int pmix_sm_store(ns_track_elem_t *ns_info, pmix_rank_t rank, pmix_kval_t
                         __FILE__, __LINE__, __func__, rank, data_exist, kval->key));
         }
     }
-    buffer->base_ptr = NULL;
-    buffer->bytes_used = 0;
-    PMIX_RELEASE(buffer);
+exit:
+    PMIX_DESTRUCT(&buffer);
     return rc;
 }
 
