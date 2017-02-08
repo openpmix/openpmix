@@ -5,7 +5,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
- * Copyright (c) 2016      Mellanox Technologies, Inc.
+ * Copyright (c) 2016-2017 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
@@ -189,12 +189,11 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
             if (PMIX_SUCCESS != (rc = pmix_dstore_store(nptr->nspace, info->rank, kp))) {
                 PMIX_ERROR_LOG(rc);
             }
-            PMIX_RELEASE(kp);
 
-            kp = PMIX_NEW(pmix_kval_t);
-            kp->key = strdup("modex");
-            PMIX_VALUE_CREATE(kp->value, 1);
-            kp->value->type = PMIX_BYTE_OBJECT;
+            /* restore the buffer for subsequent processing */
+            PMIX_LOAD_BUFFER(b2, kp->value->data.bo.bytes, kp->value->data.bo.size);
+            kp->value->data.bo.bytes = NULL;
+            kp->value->data.bo.size = 0;
         }
 #endif /* PMIX_ENABLE_DSTORE */
 
