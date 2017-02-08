@@ -2137,7 +2137,15 @@ static size_t put_data_to_the_end(ns_track_elem_t *ns_info, seg_desc_t *dataseg,
 		sizeof(size_t) + strlen(key) + 1 + sizeof(size_t) + size + EXT_SLOT_SIZE());
         return offset;
     }
-    if (offset + ESH_KEY_SIZE(key, size) + EXT_SLOT_SIZE() > _data_segment_size)  {
+
+    /* check the corner case that was observed at large scales:
+     * https://github.com/pmix/master/pull/282#issuecomment-277454198
+     * 
+     * if last time we stopped exactly on the border of the segment
+     * new segment wasn't allocated to us but (global_offset % _data_segment_size) == 0
+     * so if offset is 0 here - we need to allocate the segment as well
+     */
+    if ( (0 == offset) || ( (offset + ESH_KEY_SIZE(key, size) + EXT_SLOT_SIZE()) > _data_segment_size) ) {
         id++;
         /* create a new data segment. */
         tmp = extend_segment(tmp, &ns_info->ns_map);
