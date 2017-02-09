@@ -2455,7 +2455,7 @@ static int _store_data_for_rank(ns_track_elem_t *ns_info, int rank, pmix_buffer_
          * */
         rc = put_empty_ext_slot(ns_info->data_seg);
         if (PMIX_SUCCESS != rc) {
-            if (NULL != rinfo) {
+            if ((0 == data_exist) && NULL != rinfo) {
                 free(rinfo);
             }
             PMIX_ERROR_LOG(rc);
