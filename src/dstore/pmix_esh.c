@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2016 Mellanox Technologies, Inc.
+ * Copyright (c) 2015-2017 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
@@ -68,13 +68,19 @@ pmix_dstore_base_module_t pmix_dstore_esh_module = {
 #define ESH_ENV_NS_DATA_SEG_SIZE    "NS_DATA_SEG_SIZE"
 #define ESH_ENV_LINEAR              "SM_USE_LINEAR_SEARCH"
 
-#define EXT_SLOT_SIZE(key) (strlen(key) + 1 + 2*sizeof(size_t)) /* in ext slot new offset will be stored in case if new data were added for the same process during next commit */
-
 #define ESH_KEY_SIZE(key, size)                             \
 __extension__ ({                                            \
     size_t len = strlen(key) + 1 + sizeof(size_t) + size;   \
     len;                                                    \
 })
+
+/* in ext slot new offset will be stored in case if
+ * new data were added for the same process during
+ * next commit
+ */
+#define EXT_SLOT_SIZE()                                     \
+    (ESH_KEY_SIZE(ESH_REGION_EXTENSION, sizeof(size_t)))
+
 
 #define ESH_KV_SIZE(addr)                                   \
 __extension__ ({                                            \
@@ -94,7 +100,7 @@ __extension__ ({                                            \
 
 #define ESH_KNAME_LEN(key)                                  \
 __extension__ ({                                            \
-    size_t len = strlen((char*)key) + 1;                           \
+    size_t len = strlen((char*)key) + 1;                    \
     len;                                                    \
 })
 
@@ -2105,7 +2111,7 @@ static int put_empty_ext_slot(seg_desc_t *dataseg)
     uint8_t *addr;
     global_offset = get_free_offset(dataseg);
     rel_offset = global_offset % _data_segment_size;
-    if (rel_offset + EXT_SLOT_SIZE(ESH_REGION_EXTENSION) > _data_segment_size) {
+    if (rel_offset + EXT_SLOT_SIZE() > _data_segment_size) {
         PMIX_ERROR_LOG(PMIX_ERROR);
         return PMIX_ERROR;
     }
@@ -2113,7 +2119,7 @@ static int put_empty_ext_slot(seg_desc_t *dataseg)
     ESH_PUT_KEY(addr, ESH_REGION_EXTENSION, (void*)&val, sizeof(size_t));
 
     /* update offset at the beginning of current segment */
-    data_ended = rel_offset + EXT_SLOT_SIZE(ESH_REGION_EXTENSION);
+    data_ended = rel_offset + EXT_SLOT_SIZE();
     addr = (uint8_t*)(addr - rel_offset);
     memcpy(addr, &data_ended, sizeof(size_t));
     return PMIX_SUCCESS;
@@ -2140,15 +2146,23 @@ static size_t put_data_to_the_end(ns_track_elem_t *ns_info, seg_desc_t *dataseg,
     offset = global_offset % _data_segment_size;
 
     /* We should provide additional space at the end of segment to place EXTENSION_SLOT to have an ability to enlarge data for this rank.*/
-    if (sizeof(size_t) + ESH_KEY_SIZE(key, size) + EXT_SLOT_SIZE(key) > _data_segment_size) {
+    if (sizeof(size_t) + ESH_KEY_SIZE(key, size) + EXT_SLOT_SIZE() > _data_segment_size) {
         /* this is an error case: segment is so small that cannot place evem a single key-value pair.
          * warn a user about it and fail. */
         offset = 0; /* offset cannot be 0 in normal case, so we use this value to indicate a problem. */
         pmix_output(0, "PLEASE set NS_DATA_SEG_SIZE to value which is larger when %lu.",
-                sizeof(size_t) + strlen(key) + 1 + sizeof(size_t) + size + EXT_SLOT_SIZE(key));
+		sizeof(size_t) + strlen(key) + 1 + sizeof(size_t) + size + EXT_SLOT_SIZE());
         return offset;
     }
-    if (offset + ESH_KEY_SIZE(key, size) + EXT_SLOT_SIZE(key) > _data_segment_size)  {
+
+    /* check the corner case that was observed at large scales:
+     * https://github.com/pmix/master/pull/282#issuecomment-277454198
+     * 
+     * if last time we stopped exactly on the border of the segment
+     * new segment wasn't allocated to us but (global_offset % _data_segment_size) == 0
+     * so if offset is 0 here - we need to allocate the segment as well
+     */
+    if ( (0 == offset) || ( (offset + ESH_KEY_SIZE(key, size) + EXT_SLOT_SIZE()) > _data_segment_size) ) {
         id++;
         /* create a new data segment. */
         tmp = extend_segment(tmp, &ns_info->ns_map);
