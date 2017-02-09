@@ -255,9 +255,11 @@ static pmix_value_array_t *_ns_map_array = NULL;
 static pmix_value_array_t *_ns_track_array = NULL;
 
 ns_map_data_t * (*_esh_session_map_search)(const char *nspace) = NULL;
+int (*_esh_lock_init)(size_t idx) = NULL;
 
 #define _ESH_SESSION_path(tbl_idx)         (PMIX_VALUE_ARRAY_GET_BASE(_session_array, session_t)[tbl_idx].nspace_path)
 #define _ESH_SESSION_lockfile(tbl_idx)     (PMIX_VALUE_ARRAY_GET_BASE(_session_array, session_t)[tbl_idx].lockfile)
+#define _ESH_SESSION_setjobuid(tbl_idx)    (PMIX_VALUE_ARRAY_GET_BASE(_session_array, session_t)[tbl_idx].setjobuid)
 #define _ESH_SESSION_jobuid(tbl_idx)       (PMIX_VALUE_ARRAY_GET_BASE(_session_array, session_t)[tbl_idx].jobuid)
 #define _ESH_SESSION_sm_seg_first(tbl_idx) (PMIX_VALUE_ARRAY_GET_BASE(_session_array, session_t)[tbl_idx].sm_seg_first)
 #define _ESH_SESSION_sm_seg_last(tbl_idx)  (PMIX_VALUE_ARRAY_GET_BASE(_session_array, session_t)[tbl_idx].sm_seg_last)
@@ -308,8 +310,51 @@ static inline void _esh_session_map_clean(ns_map_t *m) {
     m->data.track_idx = -1;
 }
 
+#ifdef ESH_FCNTL_LOCK
+static inline int _flock_init(size_t idx) {
+    pmix_status_t rc = PMIX_SUCCESS;
+
+    if (PMIX_PROC_SERVER == pmix_globals.proc_type) {
+        _ESH_SESSION_lock(idx) = open(_ESH_SESSION_lockfile(idx), O_CREAT | O_RDWR | O_EXCL, 0600);
+
+        /* if previous launch was crashed, the lockfile might not be deleted and unlocked,
+         * so we delete it and create a new one. */
+        if (_ESH_SESSION_lock(idx) < 0) {
+            unlink(_ESH_SESSION_lockfile(idx));
+            _ESH_SESSION_lock(idx) = open(_ESH_SESSION_lockfile(idx), O_CREAT | O_RDWR, 0600);
+            if (_ESH_SESSION_lock(idx) < 0) {
+                rc = PMIX_ERROR;
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
+        }
+        if (_ESH_SESSION_setjobuid(idx) > 0) {
+            if (0 > chown(_ESH_SESSION_lockfile(idx), (uid_t) _ESH_SESSION_jobuid(idx), (gid_t) -1)) {
+                rc = PMIX_ERROR;
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
+            if (0 > chmod(_ESH_SESSION_lockfile(idx), S_IRUSR | S_IWGRP | S_IRGRP)) {
+                rc = PMIX_ERROR;
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
+        }
+    }
+    else {
+        _ESH_SESSION_lock(idx) = open(_ESH_SESSION_lockfile(idx), O_RDONLY);
+        if (-1 == _ESH_SESSION_lock(idx)) {
+            rc = PMIX_ERROR;
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+    }
+    return rc;
+}
+#endif
+
 #ifdef ESH_PTHREAD_LOCK
-static inline int _rwlock_init(size_t idx, char *lockfile) {
+static inline int _rwlock_init(size_t idx) {
     pmix_status_t rc = PMIX_SUCCESS;
     size_t size = _lock_segment_size;
     pthread_rwlockattr_t attr;
@@ -325,10 +370,23 @@ static inline int _rwlock_init(size_t idx, char *lockfile) {
     }
 
     if (PMIX_PROC_SERVER == pmix_globals.proc_type) {
-        if (PMIX_SUCCESS != (rc = pmix_sm_segment_create(_ESH_SESSION_pthread_seg(idx), lockfile, size))) {
+        if (PMIX_SUCCESS != (rc = pmix_sm_segment_create(_ESH_SESSION_pthread_seg(idx), _ESH_SESSION_lockfile(idx), size))) {
             return rc;
         }
         memset(_ESH_SESSION_pthread_seg(idx)->seg_base_addr, 0, size);
+        if (_ESH_SESSION_setjobuid(idx) > 0) {
+            if (0 > chown(_ESH_SESSION_lockfile(idx), (uid_t) _ESH_SESSION_jobuid(idx), (gid_t) -1)){
+                rc = PMIX_ERROR;
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
+            /* set the mode as required */
+            if (0 > chmod(_ESH_SESSION_lockfile(idx), S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP )) {
+                rc = PMIX_ERROR;
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
+        }
         _ESH_SESSION_pthread_rwlock(idx) = (pthread_rwlock_t *)_ESH_SESSION_pthread_seg(idx)->seg_base_addr;
 
         if (0 != pthread_rwlockattr_init(&attr)) {
@@ -364,7 +422,7 @@ static inline int _rwlock_init(size_t idx, char *lockfile) {
     }
     else {
         _ESH_SESSION_pthread_seg(idx)->seg_size = size;
-        snprintf(_ESH_SESSION_pthread_seg(idx)->seg_name, PMIX_PATH_MAX, "%s", lockfile);
+        snprintf(_ESH_SESSION_pthread_seg(idx)->seg_name, PMIX_PATH_MAX, "%s", _ESH_SESSION_lockfile(idx));
         if (PMIX_SUCCESS != (rc = pmix_sm_segment_attach(_ESH_SESSION_pthread_seg(idx), PMIX_SM_RW))) {
             return rc;
         }
@@ -732,6 +790,7 @@ static inline int _esh_session_init(size_t idx, ns_map_data_t *m, size_t jobuid,
     session_t *s = &(PMIX_VALUE_ARRAY_GET_ITEM(_session_array, session_t, idx));
     pmix_status_t rc = PMIX_SUCCESS;
 
+    s->setjobuid = setjobuid;
     s->jobuid = jobuid;
     s->nspace_path = strdup(_base_path);
 
@@ -754,31 +813,8 @@ static inline int _esh_session_init(size_t idx, ns_map_data_t *m, size_t jobuid,
                 return rc;
             }
         }
-        s->lockfd = open(s->lockfile, O_CREAT | O_RDWR | O_EXCL, 0600);
-
-        /* if previous launch was crashed, the lockfile might not be deleted and unlocked,
-         * so we delete it and create a new one. */
-        if (s->lockfd < 0) {
-            unlink(s->lockfile);
-            s->lockfd = open(s->lockfile, O_CREAT | O_RDWR, 0600);
-            if (s->lockfd < 0) {
-                rc = PMIX_ERROR;
-                PMIX_ERROR_LOG(rc);
-                return rc;
-            }
-        }
-        if (setjobuid > 0){
-            if (0 > chown(s->nspace_path, (uid_t) jobuid, (gid_t) -1)){
-                rc = PMIX_ERROR;
-                PMIX_ERROR_LOG(rc);
-                return rc;
-            }
-            if (0 > chown(s->lockfile, (uid_t) jobuid, (gid_t) -1)) {
-                rc = PMIX_ERROR;
-                PMIX_ERROR_LOG(rc);
-                return rc;
-            }
-            if (0 > chmod(s->lockfile, S_IRUSR | S_IWGRP | S_IRGRP)) {
+        if (s->setjobuid > 0){
+            if (0 > chown(s->nspace_path, (uid_t) s->jobuid, (gid_t) -1)){
                 rc = PMIX_ERROR;
                 PMIX_ERROR_LOG(rc);
                 return rc;
@@ -792,12 +828,6 @@ static inline int _esh_session_init(size_t idx, ns_map_data_t *m, size_t jobuid,
         }
     }
     else {
-        s->lockfd = open(s->lockfile, O_RDONLY);
-        if (-1 == s->lockfd) {
-            rc = PMIX_ERROR;
-            PMIX_ERROR_LOG(rc);
-            return rc;
-        }
         seg = _attach_new_segment(INITIAL_SEGMENT, m, 0);
         if( NULL == seg ){
             rc = PMIX_ERR_OUT_OF_RESOURCE;
@@ -806,12 +836,16 @@ static inline int _esh_session_init(size_t idx, ns_map_data_t *m, size_t jobuid,
         }
     }
 
-#ifdef ESH_PTHREAD_LOCK
-    if ( PMIX_SUCCESS != (rc = _rwlock_init(m->tbl_idx, s->lockfile))) {
+    if (NULL == _esh_lock_init) {
+        rc = PMIX_ERR_INIT;
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-#endif
+    if ( PMIX_SUCCESS != (rc = _esh_lock_init(m->tbl_idx))) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
     s->sm_seg_first = seg;
     s->sm_seg_last = s->sm_seg_first;
     return PMIX_SUCCESS;
@@ -858,6 +892,13 @@ int _esh_init(pmix_info_t info[], size_t ninfo)
 
     _jobuid = getuid();
     _setjobuid = 0;
+
+#ifdef ESH_PTHREAD_LOCK
+    _esh_lock_init = _rwlock_init;
+#endif
+#ifdef ESH_FCNTL_LOCK
+    _esh_lock_init = _flock_init;
+#endif
 
     if (PMIX_SUCCESS != (rc = _esh_tbls_init())) {
         PMIX_ERROR_LOG(rc);

@@ -63,6 +63,7 @@ typedef struct ns_map_s ns_map_t;
 struct session_s {
     int in_use;
     uid_t jobuid;
+    char setjobuid;
     char *nspace_path;
     char *lockfile;
 #ifdef ESH_PTHREAD_LOCK
