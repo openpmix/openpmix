@@ -1659,9 +1659,10 @@ static seg_desc_t *_create_new_segment(segment_type type, const ns_map_data_t *n
         }
         memset(new_seg->seg_info.seg_base_addr, 0, size);
 
-        if (_setjobuid > 0){
+
+        if (_ESH_SESSION_setjobuid(ns_map->tbl_idx) > 0){
             rc = PMIX_ERR_PERM;
-            if (0 > chown(file_name, (uid_t) _jobuid, (gid_t) -1)){
+            if (0 > chown(file_name, (uid_t) _ESH_SESSION_jobuid(ns_map->tbl_idx), (gid_t) -1)){
                 PMIX_ERROR_LOG(rc);
                 goto err_exit;
             }
