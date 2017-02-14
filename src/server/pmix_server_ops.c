@@ -895,7 +895,7 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
 {
     int32_t cnt;
     pmix_status_t rc;
-    pmix_proc_t *procs;
+    pmix_proc_t *procs = NULL;
     size_t nprocs;
     pmix_server_trkr_t *trk;
     pmix_info_t *info = NULL;
@@ -915,7 +915,7 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
     cnt = 1;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &nprocs, &cnt, PMIX_SIZE))) {
         PMIX_ERROR_LOG(rc);
-        return rc;
+        goto cleanup;
     }
     /* there must be at least one proc - we do not allow the client
      * to send us NULL proc as the server has no idea what to do
@@ -924,7 +924,8 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
      * spans all procs in that namespace */
     if (nprocs < 1) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-        return PMIX_ERR_BAD_PARAM;
+        rc = PMIX_ERR_BAD_PARAM;
+        goto cleanup;
     }
 
     /* unpack the procs */
@@ -932,7 +933,7 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
     cnt = nprocs;
     if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, procs, &cnt, PMIX_PROC))) {
         PMIX_ERROR_LOG(rc);
-        return rc;
+        goto cleanup;
     }
 
     /* unpack the number of provided info structs */
@@ -969,7 +970,7 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
 
     /* add this contributor to the tracker so they get
      * notified when we are done */
-    PMIX_RETAIN(cd);
+    PMIX_RETAIN(cd);  // prevent the caddy from being released when we return
     pmix_list_append(&trk->local_cbs, &cd->super);
     /* if all local contributions have been received,
      * let the local host's server know that we are at the
@@ -986,10 +987,13 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
         rc = PMIX_SUCCESS;
     }
 
- cleanup:
-    PMIX_PROC_FREE(procs, nprocs);
-    PMIX_INFO_FREE(info, ninfo);
-    PMIX_RELEASE(cd);
+  cleanup:
+    if (NULL != procs) {
+        PMIX_PROC_FREE(procs, nprocs);
+    }
+    if (NULL != info) {
+        PMIX_INFO_FREE(info, ninfo);
+    }
     return rc;
 }
 
