@@ -4,6 +4,8 @@
  * Copyright (c) 2016-2017 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2017 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2017      Los Alamos National Security, LLC. All rights
+ *                         reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -2171,9 +2173,8 @@ static int put_empty_ext_slot(seg_desc_t *dataseg)
 
 static size_t put_data_to_the_end(ns_track_elem_t *ns_info, seg_desc_t *dataseg, char *key, void *buffer, size_t size)
 {
-    size_t offset;
+    size_t offset, id = 0;
     seg_desc_t *tmp;
-    int id = 0;
     size_t global_offset, data_ended;
     uint8_t *addr;
 
@@ -2189,19 +2190,20 @@ static size_t put_data_to_the_end(ns_track_elem_t *ns_info, seg_desc_t *dataseg,
     global_offset = get_free_offset(dataseg);
     offset = global_offset % _data_segment_size;
 
-    /* We should provide additional space at the end of segment to place EXTENSION_SLOT to have an ability to enlarge data for this rank.*/
-    if (sizeof(size_t) + ESH_KEY_SIZE(key, size) + EXT_SLOT_SIZE() > _data_segment_size) {
+    /* We should provide additional space at the end of segment to
+     * place EXTENSION_SLOT to have an ability to enlarge data for this rank.*/
+    if ((sizeof(size_t) + ESH_KEY_SIZE(key, size) + EXT_SLOT_SIZE()) > _data_segment_size) {
         /* this is an error case: segment is so small that cannot place evem a single key-value pair.
          * warn a user about it and fail. */
         offset = 0; /* offset cannot be 0 in normal case, so we use this value to indicate a problem. */
         pmix_output(0, "PLEASE set NS_DATA_SEG_SIZE to value which is larger when %lu.",
-		sizeof(size_t) + strlen(key) + 1 + sizeof(size_t) + size + EXT_SLOT_SIZE());
+                    sizeof(size_t) + strlen(key) + 1 + sizeof(size_t) + size + EXT_SLOT_SIZE());
         return offset;
     }
 
     /* check the corner case that was observed at large scales:
      * https://github.com/pmix/master/pull/282#issuecomment-277454198
-     * 
+     *
      * if last time we stopped exactly on the border of the segment
      * new segment wasn't allocated to us but (global_offset % _data_segment_size) == 0
      * so if offset is 0 here - we need to allocate the segment as well
