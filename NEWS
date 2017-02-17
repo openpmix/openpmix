@@ -20,7 +20,7 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to the
 current release as well as the "stable" bug fix release branch.
 
-1.2.0 (rc1)
+1.2.1
 -----
 - dstore: Fix data corruption bug in key overwrite cases
 - dstore: Performance and scalability fixes
