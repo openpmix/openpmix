@@ -45,7 +45,7 @@ tarball_version=
 
 # The date when this release was created
 
-date="Feb 10, 2017"
+date="Feb 21, 2017"
 
 # The shared library version of each of PMIx's public libraries.
 # These versions are maintained in accordance with the "Library
