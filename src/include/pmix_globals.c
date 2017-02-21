@@ -2,6 +2,7 @@
 /*
  * Copyright (c) 2014-2017 Intel, Inc. All rights reserved.
  * Copyright (c) 2014-2017 Research Organization for Information Science
+ * Copyright (c) 2014-2017 Intel, Inc.  All rights reserved.
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
@@ -256,6 +257,8 @@ static void qcon(pmix_query_caddy_t *p)
 {
     p->queries = NULL;
     p->nqueries = 0;
+    p->info = NULL;
+    p->ninfo = 0;
     p->cbfunc = NULL;
     p->cbdata = NULL;
     p->relcbfunc = NULL;

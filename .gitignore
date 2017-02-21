@@ -53,6 +53,7 @@ config/lt~obsolete.m4
 config/ylwrap
 config/autogen_found_items.m4
 
+examples/alloc
 examples/client
 examples/debugger
 examples/debuggerd
