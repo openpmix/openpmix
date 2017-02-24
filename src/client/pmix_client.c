@@ -390,7 +390,6 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc)
         pmix_output_finalize();
         pmix_class_finalize();
         return -1;
-
     }
 
     /* setup an object to track server connection */
