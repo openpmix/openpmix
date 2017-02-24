@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015      Intel, Inc. All rights reserved.
+ * Copyright (c) 2015-2017 Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -16,6 +16,7 @@
 #include "src/buffer_ops/buffer_ops.h"
 #include "src/class/pmix_hash_table.h"
 #include "src/usock/usock.h"
+#include "src/threads/threads.h"
 
 BEGIN_C_DECLS
 
@@ -40,6 +41,8 @@ pmix_status_t pmix_client_notify_error(pmix_status_t status,
                                        pmix_proc_t error_procs[], size_t error_nprocs,
                                        pmix_info_t info[], size_t ninfo,
                                        pmix_op_cbfunc_t cbfunc, void *cbdata);
+
+PMIX_EXPORT extern pmix_mutex_t pmix_client_bootstrap_mutex;
 
 END_C_DECLS
 

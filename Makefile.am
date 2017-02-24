@@ -56,6 +56,8 @@ include src/buffer_ops/Makefile.am
 include src/util/Makefile.am
 include src/usock/Makefile.am
 include src/client/Makefile.am
+include src/atomics/Makefile.am
+include src/threads/Makefile.am
 include src/server/Makefile.am
 include src/sec/Makefile.am
 include src/common/Makefile.am
