@@ -11,7 +11,7 @@
 #                         All rights reserved.
 # Copyright (c) 2006-2016 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2012-2013 Los Alamos National Security, Inc.  All rights reserved.
-# Copyright (c) 2013-2016 Intel, Inc. All rights reserved
+# Copyright (c) 2013-2017 Intel, Inc. All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -24,6 +24,7 @@
 ACLOCAL_AMFLAGS = -I ./config
 
 SUBDIRS = \
+	atomics/asm \
 	util/keyval \
     mca/base \
     $(MCA_pmix_FRAMEWORKS_SUBDIRS) \
@@ -32,6 +33,7 @@ SUBDIRS = \
     $(MCA_pmix_FRAMEWORK_COMPONENT_DSO_SUBDIRS)
 
 DIST_SUBDIRS = \
+	atomics/asm \
 	util/keyval \
     mca/base \
     $(MCA_pmix_FRAMEWORKS_SUBDIRS) \
@@ -61,6 +63,8 @@ libpmix_la_LDFLAGS = -version-info $(libpmix_so_version)
 
 endif !PMIX_EMBEDDED_MODE
 
+include atomics/sys/Makefile.include
+include threads/Makefile.include
 include class/Makefile.include
 include event/Makefile.include
 include include/Makefile.include
