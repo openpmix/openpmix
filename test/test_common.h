@@ -119,6 +119,7 @@ typedef struct {
     int test_error;
     char *key_replace;
     int test_internal;
+    char *gds_mode;
 } test_params;
 
 #define INIT_TEST_PARAMS(params) do { \
@@ -149,6 +150,7 @@ typedef struct {
     params.test_error = 0;            \
     params.key_replace = NULL;        \
     params.test_internal = 0;         \
+    params.gds_mode = NULL;           \
 } while (0)
 
 #define FREE_TEST_PARAMS(params) do { \
