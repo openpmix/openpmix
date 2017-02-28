@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2015-2016 Intel, Inc. All rights reserved
+ * Copyright (c) 2015-2017 Intel, Inc. All rights reserved.
  * Copyright (c) 2015      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.
@@ -132,9 +132,9 @@ typedef struct {
 #define PMIX_EXECUTE_COLLECTIVE(c, t, f)                        \
     do {                                                        \
         PMIX_SETUP_COLLECTIVE(c, t);                            \
-        event_assign(&((c)->ev), pmix_globals.evbase, -1,       \
-                     EV_WRITE, (f), (c));                       \
-        event_active(&((c)->ev), EV_WRITE, 1);                  \
+        pmix_event_assign(&((c)->ev), pmix_globals.evbase, -1,  \
+                          EV_WRITE, (f), (c));                  \
+        pmix_event_active(&((c)->ev), EV_WRITE, 1);             \
     } while (0)
 
 

@@ -1,3 +1,4 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
@@ -328,12 +329,12 @@ typedef struct {
 } pmix_info_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_info_caddy_t);
 
-#define PMIX_THREADSHIFT(r, c)                       \
- do {                                                 \
-    (r)->active = true;                               \
-    event_assign(&((r)->ev), pmix_globals.evbase,     \
-                 -1, EV_WRITE, (c), (r));             \
-    event_active(&((r)->ev), EV_WRITE, 1);            \
+#define PMIX_THREADSHIFT(r, c)                              \
+ do {                                                       \
+    (r)->active = true;                                     \
+    pmix_event_assign(&((r)->ev), pmix_globals.evbase,      \
+                      -1, EV_WRITE, (c), (r));              \
+    pmix_event_active(&((r)->ev), EV_WRITE, 1);             \
 } while (0)
 
 
