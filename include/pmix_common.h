@@ -300,6 +300,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_QUERY_LOCAL_ONLY               "pmix.qry.local"         // constrain the query to local information only
 #define PMIX_QUERY_REPORT_AVG               "pmix.qry.avg"           // report average values
 #define PMIX_QUERY_REPORT_MINMAX            "pmix.qry.minmax"        // report minimum and maximum value
+#define PMIX_QUERY_ALLOC_STATUS             "pmix.query.alloc"       // (char*) string identifier of the allocation whose status
+                                                                     //         is being requested
 
 /* log attributes */
 #define PMIX_LOG_STDERR                    "pmix.log.stderr"         // (char*) log string to stderr
@@ -323,8 +325,23 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_UNSET_ENVAR                    "pmix.unset.envar"      // (char*) unset envar specified in string
 
 /* attributes relating to allocations */
+#define PMIX_ALLOC_ID                       "pmix.alloc.id"         // (char*) provide a string identifier for this allocation request
+                                                                    //         which can later be used to query status of the request
 #define PMIX_TIME_REMAINING                 "pmix.time.remaining"   // (uint32_t) get number of seconds remaining in allocation
-
+#define PMIX_ALLOC_NUM_NODES                "pmix.alloc.nnodes"     // (uint64_t) number of nodes
+#define PMIX_ALLOC_NODE_LIST                "pmix.alloc.nlist"      // (char*) regex of specific nodes
+#define PMIX_ALLOC_NUM_CPUS                 "pmix.alloc.ncpus"      // (uint64_t) number of cpus
+#define PMIX_ALLOC_NUM_CPU_LIST             "pmix.alloc.ncpulist"   // (char*) regex of #cpus for each node
+#define PMIX_ALLOC_CPU_LIST                 "pmix.alloc.cpulist"    // (char*) regex of specific cpus indicating the cpus involved.
+#define PMIX_ALLOC_MEM_SIZE                 "pmix.alloc.msize"      // (float) number of Mbytes
+#define PMIX_ALLOC_NETWORK                  "pmix.alloc.net"        // (array) array of pmix_info_t describing network resources. If not
+                                                                    //         given as part of an info struct that identifies the
+                                                                    //         impacted nodes, then the description will be applied
+                                                                    //         across all nodes in the requestor's allocation
+#define PMIX_ALLOC_NETWORK_ID               "pmix.alloc.netid"      // (char*) name of network
+#define PMIX_ALLOC_BANDWIDTH                "pmix.alloc.bw"         // (float) Mbits/sec
+#define PMIX_ALLOC_NETWORK_QOS              "pmix.alloc.netqos"     // (char*) quality of service level
+#define PMIX_ALLOC_TIME                     "pmix.alloc.time"       // (uint32_t) time in seconds
 
 /****    PROCESS STATE DEFINITIONS    ****/
 typedef uint8_t pmix_proc_state_t;
@@ -388,7 +405,8 @@ typedef int pmix_status_t;
 #define PMIX_ERR_LOST_CONNECTION_TO_CLIENT      (PMIX_ERR_BASE - 13)
 /* used by the query system */
 #define PMIX_QUERY_PARTIAL_SUCCESS              (PMIX_ERR_BASE - 14)
-
+/* request responses */
+#define PMIX_NOTIFY_ALLOC_COMPLETE              (PMIX_ERR_BASE - 15)
 
 /* define a starting point for operational error constants so
  * we avoid renumbering when making additions */
@@ -490,9 +508,13 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_PROC_RANK          40
 #define PMIX_QUERY              41
 #define PMIX_COMPRESSED_STRING  42  // string compressed with zlib
+#define PMIX_ALLOC_DIRECTIVE    43
 /**** DEPRECATED ****/
-#define PMIX_INFO_ARRAY         43
+#define PMIX_INFO_ARRAY         44
 /********************/
+
+/* define a boundary for implementers so they can add their own data types */
+#define PMIX_DATA_TYPE_MAX     500
 
 
 /* define a scope for data "put" by PMI per the following:
@@ -535,6 +557,22 @@ typedef uint8_t pmix_persistence_t;
  * command directives via pmix_info_t arrays */
 typedef uint32_t pmix_info_directives_t;
 #define PMIX_INFO_REQD          0x0001
+
+
+/* define a set of directives for allocation requests */
+typedef uint8_t pmix_alloc_directive_t;
+#define PMIX_ALLOC_NEW          1  // new allocation is being requested. The resulting allocation will be
+                                   // disjoint (i.e., not connected in a job sense) from the requesting allocation
+#define PMIX_ALLOC_EXTEND       2  // extend the existing allocation, either in time or as additional resources
+#define PMIX_ALLOC_RELEASE      3  // release part of the existing allocation. Attributes in the accompanying
+                                   // pmix\_info\_t array may be used to specify permanent release of the
+                                   // identified resources, or "lending" of those resources for some period
+                                   // of time.
+#define PMIX_ALLOC_REAQUIRE     4  // reacquire resources that were previously "lent" back to the scheduler
+
+/* define a value boundary beyond which implementers are free
+ * to define their own directive values */
+#define PMIX_ALLOC_EXTERNAL     128
 
 
 /****    PMIX BYTE OBJECT    ****/
@@ -1324,6 +1362,7 @@ pmix_status_t PMIx_Notify_event(pmix_status_t status,
  * - pmix_data_range_t   (PMIX_DATA_RANGE)
  * - pmix_info_directives_t   (PMIX_INFO_DIRECTIVES)
  * - pmix_data_type_t   (PMIX_DATA_TYPE)
+ * - pmix_alloc_directive_t  (PMIX_ALLOC_DIRECTIVE)
  */
 const char* PMIx_Error_string(pmix_status_t status);
 const char* PMIx_Proc_state_string(pmix_proc_state_t state);
@@ -1332,7 +1371,7 @@ const char* PMIx_Persistence_string(pmix_persistence_t persist);
 const char* PMIx_Data_range_string(pmix_data_range_t range);
 const char* PMIx_Info_directives_string(pmix_info_directives_t directives);
 const char* PMIx_Data_type_string(pmix_data_type_t type);
-
+const char* PMIx_Alloc_directive_string(pmix_alloc_directive_t directive);
 
 /* Get the PMIx version string. Note that the provided string is
  * statically defined and must NOT be free'd  */
