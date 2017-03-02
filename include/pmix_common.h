@@ -385,54 +385,90 @@ typedef uint8_t pmix_proc_state_t;
 
 typedef int pmix_status_t;
 
-#define PMIX_SUCCESS                            (PMIX_ERR_BASE)
-#define PMIX_ERROR                              (PMIX_ERR_BASE -  1)    // general error
+/* v1.x error values - must be fixed in place for backward
+ * compatability. Note that some number of these have been
+ * deprecated and may not be returned by v2.x and above
+ * clients or servers. However, they must always be
+ * at least defined to ensure older codes will compile */
+#define PMIX_SUCCESS                                 0
+#define PMIX_ERROR                                  -1          // general error
+#define PMIX_ERR_SILENT                             -2          // internal-only
 /* debugger release flag */
-#define PMIX_ERR_DEBUGGER_RELEASE               (PMIX_ERR_BASE -  2)
+#define PMIX_ERR_DEBUGGER_RELEASE                   -3
 /* fault tolerance */
-#define PMIX_ERR_PROC_RESTART                   (PMIX_ERR_BASE -  3)
-#define PMIX_ERR_PROC_CHECKPOINT                (PMIX_ERR_BASE -  4)
-#define PMIX_ERR_PROC_MIGRATE                   (PMIX_ERR_BASE -  5)
-#define PMIX_ERR_UPDATE_ENDPOINTS               (PMIX_ERR_BASE -  6)
+#define PMIX_ERR_PROC_RESTART                       -4
+#define PMIX_ERR_PROC_CHECKPOINT                    -5
+#define PMIX_ERR_PROC_MIGRATE                       -6
 /* abort */
-#define PMIX_ERR_PROC_ABORTED                   (PMIX_ERR_BASE -  7)
-#define PMIX_ERR_PROC_REQUESTED_ABORT           (PMIX_ERR_BASE -  8)
-#define PMIX_ERR_PROC_ABORTING                  (PMIX_ERR_BASE -  9)
+#define PMIX_ERR_PROC_ABORTED                       -7
+#define PMIX_ERR_PROC_REQUESTED_ABORT               -8
+#define PMIX_ERR_PROC_ABORTING                      -9
 /* communication failures */
-#define PMIX_ERR_UNREACH                        (PMIX_ERR_BASE - 10)
-#define PMIX_ERR_LOST_CONNECTION_TO_SERVER      (PMIX_ERR_BASE - 11)
-#define PMIX_ERR_LOST_PEER_CONNECTION           (PMIX_ERR_BASE - 12)
-#define PMIX_ERR_LOST_CONNECTION_TO_CLIENT      (PMIX_ERR_BASE - 13)
+#define PMIX_ERR_SERVER_FAILED_REQUEST              -10
+#define PMIX_EXISTS                                 -11
+#define PMIX_ERR_INVALID_CRED                       -12         // internal-only
+#define PMIX_ERR_HANDSHAKE_FAILED                   -13         // internal-only
+#define PMIX_ERR_READY_FOR_HANDSHAKE                -14         // internal-only
+#define PMIX_ERR_WOULD_BLOCK                        -15
+#define PMIX_ERR_UNKNOWN_DATA_TYPE                  -16         // internal-only
+#define PMIX_ERR_PROC_ENTRY_NOT_FOUND               -17         // internal-only
+#define PMIX_ERR_TYPE_MISMATCH                      -18         // internal-only
+#define PMIX_ERR_UNPACK_INADEQUATE_SPACE            -19         // internal-only
+#define PMIX_ERR_UNPACK_FAILURE                     -20         // internal-only
+#define PMIX_ERR_PACK_FAILURE                       -21         // internal-only
+#define PMIX_ERR_PACK_MISMATCH                      -22         // internal-only
+#define PMIX_ERR_NO_PERMISSIONS                     -23
+#define PMIX_ERR_TIMEOUT                            -24
+#define PMIX_ERR_UNREACH                            -25
+#define PMIX_ERR_IN_ERRNO                           -26         // internal-only
+#define PMIX_ERR_BAD_PARAM                          -27
+#define PMIX_ERR_RESOURCE_BUSY                      -28         // internal-only
+#define PMIX_ERR_OUT_OF_RESOURCE                    -29
+#define PMIX_ERR_DATA_VALUE_NOT_FOUND               -30
+#define PMIX_ERR_INIT                               -31
+#define PMIX_ERR_NOMEM                              -32         // internal-only
+#define PMIX_ERR_INVALID_ARG                        -33         // internal-only
+#define PMIX_ERR_INVALID_KEY                        -34         // internal-only
+#define PMIX_ERR_INVALID_KEY_LENGTH                 -35         // internal-only
+#define PMIX_ERR_INVALID_VAL                        -36         // internal-only
+#define PMIX_ERR_INVALID_VAL_LENGTH                 -37         // internal-only
+#define PMIX_ERR_INVALID_LENGTH                     -38         // internal-only
+#define PMIX_ERR_INVALID_NUM_ARGS                   -39         // internal-only
+#define PMIX_ERR_INVALID_ARGS                       -40         // internal-only
+#define PMIX_ERR_INVALID_NUM_PARSED                 -41         // internal-only
+#define PMIX_ERR_INVALID_KEYVALP                    -42         // internal-only
+#define PMIX_ERR_INVALID_SIZE                       -43
+#define PMIX_ERR_INVALID_NAMESPACE                  -44
+#define PMIX_ERR_SERVER_NOT_AVAIL                   -45         // internal-only
+#define PMIX_ERR_NOT_FOUND                          -46
+#define PMIX_ERR_NOT_SUPPORTED                      -47
+#define PMIX_ERR_NOT_IMPLEMENTED                    -48
+#define PMIX_ERR_COMM_FAILURE                       -49
+#define PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER     -50         // internal-only
+
+/* define a starting point for v2.x error values */
+#define PMIX_ERR_V2X_BASE                   -100
+
+/* v2.x communication errors */
+#define PMIX_ERR_LOST_CONNECTION_TO_SERVER      (PMIX_ERR_V2X_BASE - 1)
+#define PMIX_ERR_LOST_PEER_CONNECTION           (PMIX_ERR_V2X_BASE - 2)
+#define PMIX_ERR_LOST_CONNECTION_TO_CLIENT      (PMIX_ERR_V2X_BASE - 3)
 /* used by the query system */
-#define PMIX_QUERY_PARTIAL_SUCCESS              (PMIX_ERR_BASE - 14)
-/* request responses */
-#define PMIX_NOTIFY_ALLOC_COMPLETE              (PMIX_ERR_BASE - 15)
+#define PMIX_QUERY_PARTIAL_SUCCESS              (PMIX_ERR_V2X_BASE - 4)
+#define PMIX_NOTIFY_ALLOC_COMPLETE              (PMIX_ERR_V2X_BASE - 5)
 
 /* define a starting point for operational error constants so
  * we avoid renumbering when making additions */
-#define PMIX_ERR_OP_BASE    -100
+#define PMIX_ERR_OP_BASE    PMIX_ERR_V2X_BASE-30
 
 /* operational */
-#define PMIX_ERR_NO_PERMISSIONS                 (PMIX_ERR_OP_BASE -  1)
-#define PMIX_ERR_TIMEOUT                        (PMIX_ERR_OP_BASE -  2)
-#define PMIX_ERR_WOULD_BLOCK                    (PMIX_ERR_OP_BASE -  3)
-#define PMIX_EXISTS                             (PMIX_ERR_OP_BASE -  4)
-#define PMIX_ERR_SERVER_FAILED_REQUEST          (PMIX_ERR_OP_BASE -  5)
-#define PMIX_ERR_NOT_SUPPORTED                  (PMIX_ERR_OP_BASE -  6)
-#define PMIX_ERR_NOT_FOUND                      (PMIX_ERR_OP_BASE -  7)
-#define PMIX_ERR_BAD_PARAM                      (PMIX_ERR_OP_BASE -  8)
-#define PMIX_ERR_DATA_VALUE_NOT_FOUND           (PMIX_ERR_OP_BASE -  9)
-#define PMIX_ERR_OUT_OF_RESOURCE                (PMIX_ERR_OP_BASE - 10)
-#define PMIX_ERR_INVALID_NAMESPACE              (PMIX_ERR_OP_BASE - 11)
-#define PMIX_ERR_INVALID_SIZE                   (PMIX_ERR_OP_BASE - 12)
-#define PMIX_ERR_INIT                           (PMIX_ERR_OP_BASE - 13)
 #define PMIX_ERR_EVENT_REGISTRATION             (PMIX_ERR_OP_BASE - 14)
 #define PMIX_ERR_JOB_TERMINATED                 (PMIX_ERR_OP_BASE - 15)
-
+#define PMIX_ERR_UPDATE_ENDPOINTS               (PMIX_ERR_OP_BASE - 16)
 
 /* define a starting point for system error constants so
  * we avoid renumbering when making additions */
-#define PMIX_ERR_SYS_BASE    -200
+#define PMIX_ERR_SYS_BASE    PMIX_ERR_OP_BASE-100
 
 /* system failures */
 #define PMIX_ERR_NODE_DOWN                      (PMIX_ERR_SYS_BASE -  1)
@@ -441,7 +477,7 @@ typedef int pmix_status_t;
 
 /* define a starting point for event handler error constants so
  * we avoid renumbering when making additions */
-#define PMIX_ERR_EVHDLR_BASE    -300
+#define PMIX_ERR_EVHDLR_BASE    PMIX_ERR_SYS_BASE-100
 
 /* used by event handlers */
 #define PMIX_EVENT_NO_ACTION_TAKEN              (PMIX_ERR_EVHDLR_BASE -  1)
