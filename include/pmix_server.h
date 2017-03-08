@@ -329,6 +329,7 @@ typedef pmix_status_t (*pmix_server_alloc_fn_t)(const pmix_proc_t *client,
                                                 pmix_info_cbfunc_t cbfunc, void *cbdata);
 
 typedef struct pmix_server_module_2_0_0_t {
+    /* v1x interfaces */
     pmix_server_client_connected_fn_t   client_connected;
     pmix_server_client_finalized_fn_t   client_finalized;
     pmix_server_abort_fn_t              abort;
@@ -342,8 +343,9 @@ typedef struct pmix_server_module_2_0_0_t {
     pmix_server_disconnect_fn_t         disconnect;
     pmix_server_register_events_fn_t    register_events;
     pmix_server_deregister_events_fn_t  deregister_events;
-    pmix_server_notify_event_fn_t       notify_event;
     pmix_server_listener_fn_t           listener;
+    /* v2x interfaces */
+    pmix_server_notify_event_fn_t       notify_event;
     pmix_server_query_fn_t              query;
     pmix_server_tool_connection_fn_t    tool_connected;
     pmix_server_log_fn_t                log;
