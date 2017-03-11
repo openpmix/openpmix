@@ -551,8 +551,12 @@ int parse_replace(char *replace_param, int store, int *key_num) {
     while(NULL != pch) {
         pch++;
         ech = strchr(pch, ',');
-        if (NULL != ech || (strlen(pch) > 0)) {
-            snprintf(tmp_str, ech - pch + 1, "%s", pch);
+        if (strlen(pch) > 0) {
+            if (NULL != ech) {
+                snprintf(tmp_str, ech - pch + 1, "%s", pch);
+            } else {
+                snprintf(tmp_str, strlen(pch) + 1, "%s", pch);
+            }
             if ((0 == is_digit(tmp_str)) || ((atoi(tmp_str) + 1) > cnt)) {
                 ret = 1;
                 break;
