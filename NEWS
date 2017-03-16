@@ -20,12 +20,16 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to the
 current release as well as the "stable" bug fix release branch.
 
-1.2.2 -- TBD
------------------------
+1.2.2 -- 21 March 2017 (Tentative)
+----------------------
+- Compiler fix for Sun/Oracle CC (PR #322)
+- Fix missing include (PR #326)
+- Improve error checking around posix_fallocate (PR #329)
+- Fix possible memory corruption (PR #331)
 
 
-1.2.1
------
+1.2.1 -- 21 Feb. 2017
+----------------------
 - dstore: Fix data corruption bug in key overwrite cases
 - dstore: Performance and scalability fixes
 - sm: Use posix_fallocate() before mmap
@@ -33,8 +37,8 @@ current release as well as the "stable" bug fix release branch.
 - dstore: Fix extension slot size allocation (Issue #280)
 
 
-1.2.0
------
+1.2.0 -- 14 Dec. 2016
+----------------------
 - Add shared memory data storage (dstore) option. Default: enabled
   Configure option: --disable-dstore
 - PMIx_Commit performance improvements
