@@ -20,7 +20,11 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to the
 current release as well as the "stable" bug fix release branch.
 
-1.2.2 -- 21 March 2017 (Tentative)
+1.2.3 -- TBD
+----------------------
+
+
+1.2.2 -- 21 March 2017
 ----------------------
 - Compiler fix for Sun/Oracle CC (PR #322)
 - Fix missing include (PR #326)
