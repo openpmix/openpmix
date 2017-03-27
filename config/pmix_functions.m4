@@ -280,7 +280,7 @@ for val in ${$1}; do
     # http://www.open-mpi.org/community/lists/devel/2012/08/11362.php).
 
     case $val in
-    -Xclang|-Xcclinker)
+    -Xclang|-Xg)
             pmix_found=0
             pmix_i=`expr $pmix_count + 1`
             ;;
@@ -368,7 +368,7 @@ AC_DEFUN([PMIX_FLAGS_UNIQ],[
         # https://github.com/open-mpi/ompi/issues/324).
 
         case $val in
-        -Xclang|-XCClinker)
+        -Xclang|-Xg)
                 pmix_found=0
                 pmix_i=`expr $pmix_count + 1`
                 ;;
