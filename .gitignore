@@ -60,6 +60,7 @@ examples/debuggerd
 examples/dmodex
 examples/dynamic
 examples/fault
+examples/jctrl
 examples/pub
 examples/server
 examples/tool
