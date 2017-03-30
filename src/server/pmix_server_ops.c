@@ -7,7 +7,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2017 IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1222,6 +1222,7 @@ static void scadcon(pmix_setup_caddy_t *p)
     p->nlocalprocs = 0;
     p->info = NULL;
     p->ninfo = 0;
+    p->opcbfunc = NULL;
     p->cbfunc = NULL;
     p->cbdata = NULL;
 }
