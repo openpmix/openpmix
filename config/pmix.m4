@@ -983,15 +983,15 @@ fi
 # Install backward compatibility support for PMI-1 and PMI-2
 #
 AC_MSG_CHECKING([if want backward compatibility for PMI-1 and PMI-2])
-AC_ARG_ENABLE(pmix-backward-compatibility,
-              AC_HELP_STRING([--enable-pmix-backward-compatibility],
+AC_ARG_ENABLE(pmi-backward-compatibility,
+              AC_HELP_STRING([--enable-pmi-backward-compatibility],
                              [enable PMIx support for PMI-1 and PMI-2 (default: enabled)]))
-if test "$enable_pmix_backward_compatibility" = "no"; then
+if test "$enable_pmi_backward_compatibility" = "no"; then
     AC_MSG_RESULT([no])
-    WANT_PMIX_BACKWARD=0
+    WANT_PMI_BACKWARD=0
 else
     AC_MSG_RESULT([yes])
-    WANT_PMIX_BACKWARD=1
+    WANT_PMI_BACKWARD=1
 fi
 
 AM_CONDITIONAL([WANT_INSTALL_HEADERS], [test $WANT_INSTALL_HEADERS -eq 1])
@@ -1009,7 +1009,7 @@ AC_DEFUN([PMIX_DO_AM_CONDITIONALS],[
         AM_CONDITIONAL([WANT_DSTORE], [test "x$enable_dstore" != "xno"])
         AM_CONDITIONAL([WANT_PRIMARY_HEADERS], [test "x$pmix_install_primary_headers" = "xyes"])
         AM_CONDITIONAL(WANT_INSTALL_HEADERS, test "$WANT_INSTALL_HEADERS" = 1)
-        AM_CONDITIONAL(WANT_PMIX_BACKWARD, test "$WANT_PMIX_BACKWARD" = 1)
+        AM_CONDITIONAL(WANT_PMI_BACKWARD, test "$WANT_PMI_BACKWARD" = 1)
     ])
     pmix_did_am_conditionals=yes
 ])dnl
