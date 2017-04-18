@@ -325,27 +325,50 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
             cnt = 1;
             cur_kval = PMIX_NEW(pmix_kval_t);
             while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bptr, cur_kval, &cnt, PMIX_KVAL))) {
-                pmix_output_verbose(2, pmix_globals.debug_output,
-                                    "pmix: unpacked key %s", cur_kval->key);
-                if (PMIX_SUCCESS != (rc = pmix_hash_store(&nptr->modex, cur_rank, cur_kval))) {
+
+            /* if the rank is WILDCARD, then this is an nspace blob */
+            if (PMIX_RANK_WILDCARD == cur_rank) {
+                char *nspace;
+                /* unpack the nspace - we don't really need it, but have to
+                 * unpack it to maintain sequence */
+                cnt = 1;
+                if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(bptr, &nspace, &cnt, PMIX_STRING))) {
                     PMIX_ERROR_LOG(rc);
+                    return;
                 }
-                if (NULL != cb->key && 0 == strcmp(cb->key, cur_kval->key)) {
-                    pmix_output_verbose(2, pmix_globals.debug_output,
-                                        "pmix: found requested value");
-                    if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)&val, cur_kval->value, PMIX_VALUE))) {
-                        PMIX_ERROR_LOG(rc);
-                        PMIX_RELEASE(cur_kval);
-                        val = NULL;
-                        goto done;
-                    }
-                }
-                PMIX_RELEASE(cur_kval); // maintain acctg - hash_store does a retain
+                free(nspace);
+                pmix_client_process_nspace_blob(cb->nspace, bptr);
+
+                /* Check if the key is in this blob */
+
+                pmix_hash_fetch(&nptr->internal, cb->rank, cb->key, &val);
+
+            } else {
                 cnt = 1;
                 cur_kval = PMIX_NEW(pmix_kval_t);
+                while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(bptr, cur_kval, &cnt, PMIX_KVAL))) {
+                    pmix_output_verbose(2, pmix_globals.debug_output,
+                                    "pmix: unpacked key %s", cur_kval->key);
+                    if (PMIX_SUCCESS != (rc = pmix_hash_store(&nptr->modex, cur_rank, cur_kval))) {
+                        PMIX_ERROR_LOG(rc);
+                    }
+                
+                    if (NULL != cb->key && 0 == strcmp(cb->key, cur_kval->key)) {
+                        if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)&val, cur_kval->value, PMIX_VALUE))) {
+                            PMIX_ERROR_LOG(rc);
+                            PMIX_RELEASE(cur_kval);
+                            val = NULL;
+                            goto done;
+                        }
+                    }
+                    PMIX_RELEASE(cur_kval); // maintain acctg - hash_store does a retain
+                    cnt = 1;
+                    cur_kval = PMIX_NEW(pmix_kval_t);
+                }
+                cnt = 1;
+                PMIX_RELEASE(cur_kval);
             }
-            cnt = 1;
-            PMIX_RELEASE(cur_kval);
+            }
         }
         PMIX_RELEASE(bptr);  // free's the data region
         if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
