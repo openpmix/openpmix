@@ -179,6 +179,8 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_CHECK_TYPES(uint32_t)
     AC_CHECK_TYPES(int64_t)
     AC_CHECK_TYPES(uint64_t)
+    AC_CHECK_TYPES(__int128)
+    AC_CHECK_TYPES(uint128_t)
     AC_CHECK_TYPES(long long)
 
     AC_CHECK_TYPES(intptr_t)
@@ -301,6 +303,17 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     PMIX_CHECK_ATTRIBUTES
     PMIX_CHECK_COMPILER_VERSION_ID
+
+    ##################################
+    # Assembler Configuration
+    ##################################
+
+    pmix_show_subtitle "Assembler"
+
+    AM_PROG_AS
+    AC_PATH_PROG(PERL, perl, perl)
+    PMIX_CONFIG_ASM
+
 
     ##################################
     # Header files
@@ -618,6 +631,28 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_C_BIGENDIAN
     PMIX_CHECK_BROKEN_QSORT
 
+    #
+    # Check out what thread support we have
+    #
+    PMIX_CONFIG_THREADS
+
+    CFLAGS="$CFLAGS $THREAD_CFLAGS"
+    CPPFLAGS="$CPPFLAGS $THREAD_CPPFLAGS"
+    CXXFLAGS="$CXXFLAGS $THREAD_CXXFLAGS"
+    CXXCPPFLAGS="$CXXCPPFLAGS $THREAD_CXXCPPFLAGS"
+    LDFLAGS="$LDFLAGS $THREAD_LDFLAGS"
+    LIBS="$LIBS $THREAD_LIBS"
+
+    #
+    # What is the local equivalent of "ln -s"
+    #
+
+    AC_PROG_LN_S
+
+    AC_PROG_GREP
+    AC_PROG_EGREP
+
+
     ##################################
     # Visibility
     ##################################
@@ -708,6 +743,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         pmix_config_prefix[Makefile]
         pmix_config_prefix[config/Makefile]
         pmix_config_prefix[include/Makefile]
+        pmix_config_prefix[src/atomics/asm/Makefile]
         pmix_config_prefix[src/Makefile]
         pmix_config_prefix[src/util/keyval/Makefile]
         pmix_config_prefix[src/mca/base/Makefile]
