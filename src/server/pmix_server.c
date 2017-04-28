@@ -1018,7 +1018,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_dmodex_request(const pmix_proc_t *proc,
     }
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:server register client %s:%d",
+                        "pmix:server dmodex request%s:%d",
                         proc->nspace, proc->rank);
 
     cd = PMIX_NEW(pmix_setup_caddy_t);
