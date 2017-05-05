@@ -238,6 +238,79 @@ static void evhandler_reg_callbk(pmix_status_t status,
     *active = status;
 }
 
+typedef struct {
+    pmix_info_t *info;
+    size_t ninfo;
+} mydata_t;
+
+static void release_info(pmix_status_t status, void *cbdata)
+{
+    mydata_t *cd = (mydata_t*)cbdata;
+    PMIX_INFO_FREE(cd->info, cd->ninfo);
+    free(cd);
+}
+
+static void _check_for_notify(pmix_info_t info[], size_t ninfo)
+{
+    mydata_t *cd;
+    size_t n, m=0;
+    pmix_info_t *model=NULL, *library=NULL, *vers=NULL, *tmod=NULL;
+
+    for (n=0; n < ninfo; n++) {
+        if (0 == strncmp(info[n].key, PMIX_PROGRAMMING_MODEL, PMIX_MAX_KEYLEN)) {
+            /* we need to generate an event indicating that
+             * a programming model has been declared */
+            model = &info[n];
+            ++m;
+        } else if (0 == strncmp(info[n].key, PMIX_MODEL_LIBRARY_NAME, PMIX_MAX_KEYLEN)) {
+            library = &info[n];
+            ++m;
+        } else if (0 == strncmp(info[n].key, PMIX_MODEL_LIBRARY_VERSION, PMIX_MAX_KEYLEN)) {
+            vers = &info[n];
+            ++m;
+        } else if (0 == strncmp(info[n].key, PMIX_THREADING_MODEL, PMIX_MAX_KEYLEN)) {
+            tmod = &info[n];
+            ++m;
+        }
+    }
+    if (0 < m) {
+        /* notify anyone listening that a model has been declared */
+        cd = (mydata_t*)malloc(sizeof(mydata_t));
+        if (NULL == cd) {
+            /* nothing we can do */
+            return;
+        }
+        PMIX_INFO_CREATE(cd->info, m+1);
+        if (NULL == cd->info) {
+            free(cd);
+            return;
+        }
+        cd->ninfo = m+1;
+        n = 0;
+        if (NULL != model) {
+            PMIX_INFO_XFER(&cd->info[n], model);
+            ++n;
+        }
+        if (NULL != library) {
+            PMIX_INFO_XFER(&cd->info[n], library);
+            ++n;
+        }
+        if (NULL != vers) {
+            PMIX_INFO_XFER(&cd->info[n], vers);
+            ++n;
+        }
+        if (NULL != tmod) {
+            PMIX_INFO_XFER(&cd->info[n], tmod);
+            ++n;
+        }
+        /* mark that it is not to go to any default handlers */
+        PMIX_INFO_LOAD(&cd->info[n], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
+        PMIx_Notify_event(PMIX_MODEL_DECLARED,
+                          &pmix_globals.myid, PMIX_RANGE_PROC_LOCAL,
+                          cd->info, cd->ninfo, release_info, (void*)cd);
+    }
+}
+
 PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
                                     pmix_info_t info[], size_t ninfo)
 {
@@ -266,6 +339,12 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
          if (NULL != proc) {
             (void)strncpy(proc->nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
             proc->rank = pmix_globals.myid.rank;
+        }
+        /* we also need to check the info keys to see if something need
+         * be done with them - e.g., to notify another library that we
+         * also have called init */
+        if (NULL != info) {
+            _check_for_notify(info, ninfo);
         }
         ++pmix_globals.init_cntr;
         pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
@@ -395,6 +474,11 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         PMIX_WAIT_FOR_COMPLETION(waiting_for_debugger);
     }
     PMIX_INFO_DESTRUCT(&ginfo);
+
+    /* check to see if we need to notify anyone */
+    if (NULL != info) {
+        _check_for_notify(info, ninfo);
+    }
 
     pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
 
