@@ -249,9 +249,9 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_shift_caddy_t,
                                 pmix_object_t,
                                 scon, scdes);
 
-PMIX_CLASS_INSTANCE(pmix_info_caddy_t,
-                    pmix_list_item_t,
-                    NULL, NULL);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_info_caddy_t,
+                                pmix_list_item_t,
+                                NULL, NULL);
 
 static void qcon(pmix_query_caddy_t *p)
 {
@@ -280,6 +280,6 @@ static void jdcon(pmix_job_data_caddy_t *p)
 #endif
 }
 
-PMIX_CLASS_INSTANCE(pmix_job_data_caddy_t,
-                    pmix_object_t,
-                    jdcon, NULL);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_job_data_caddy_t,
+                                pmix_object_t,
+                                jdcon, NULL);
