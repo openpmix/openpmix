@@ -42,6 +42,8 @@
 #define PMIX_MIPS           0070
 #define PMIX_ARM            0100
 #define PMIX_ARM64          0101
+#define PMIX_S390           0110
+#define PMIX_S390X          0111
 #define PMIX_BUILTIN_SYNC   0200
 #define PMIX_BUILTIN_GCC    0202
 #define PMIX_BUILTIN_NO     0203
