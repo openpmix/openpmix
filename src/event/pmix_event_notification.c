@@ -229,6 +229,8 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
             PMIX_RELEASE(cb);
             goto cleanup;
         }
+    } else {
+        cbfunc(PMIX_SUCCESS, cbdata);
     }
 
     /* now notify any matching registered callbacks we have */
