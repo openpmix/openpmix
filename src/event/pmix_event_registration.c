@@ -912,11 +912,10 @@ static void dereg_event_hdlr(int sd, short args, void *cbdata)
         }
     }
     /* if we get here, then the registration could not be found */
-    if (NULL != cd->cbfunc.opcbfn) {
-        cd->cbfunc.opcbfn(PMIX_ERR_NOT_FOUND, cd->cbdata);
+    if (NULL != msg) {
+        PMIX_RELEASE(msg);
     }
-    PMIX_RELEASE(cd);
-    return;
+    goto cleanup;
 
   report:
     if (NULL != msg) {
