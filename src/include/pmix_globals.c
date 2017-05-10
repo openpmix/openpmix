@@ -76,6 +76,7 @@ static void pcon(pmix_peer_t *p)
     p->server_object = NULL;
     p->index = 0;
     p->sd = -1;
+    p->finalized = false;
     p->send_ev_active = false;
     p->recv_ev_active = false;
     PMIX_CONSTRUCT(&p->send_queue, pmix_list_t);
