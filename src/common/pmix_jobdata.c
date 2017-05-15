@@ -3,6 +3,7 @@
  * Copyright (c) 2016-2017 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2017 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2017      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -93,7 +94,8 @@ static inline int _rank_key_dstore_store(void *cbdata)
         tmp = &(PMIX_VALUE_ARRAY_GET_ITEM(cb->bufs, pmix_buffer_t, i));
         rank = 0 == i ? PMIX_RANK_WILDCARD : i - 1;
         PMIX_UNLOAD_BUFFER(tmp, kv->value->data.bo.bytes, kv->value->data.bo.size);
-        if (PMIX_SUCCESS != (rc = cb->dstore_fn(cb->nsptr->nspace, rank, kv))) {
+        if (kv->value->data.bo.bytes && 
+        (PMIX_SUCCESS != (rc = cb->dstore_fn(cb->nsptr->nspace, rank, kv)))) {
             PMIX_ERROR_LOG(rc);
             goto exit;
         }
