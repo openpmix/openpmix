@@ -65,6 +65,7 @@ static void lost_connection(pmix_peer_t *peer, pmix_status_t err)
     pmix_ptl_posted_recv_t *rcv;
     pmix_buffer_t buf;
     pmix_ptl_hdr_t hdr;
+    bool notify = true;
 
     /* stop all events */
     if (peer->recv_ev_active) {
@@ -139,6 +140,9 @@ static void lost_connection(pmix_peer_t *peer, pmix_status_t err)
                 }
              }
          }
+         if (peer->finalized) {
+             notify = false;
+         }
          PMIX_RELEASE(peer);
      } else {
         /* if I am a client, there is only
@@ -164,7 +168,9 @@ static void lost_connection(pmix_peer_t *peer, pmix_status_t err)
         }
         PMIX_DESTRUCT(&buf);
     }
-    PMIX_REPORT_EVENT(err, _notify_complete);
+    if (notify) {
+        PMIX_REPORT_EVENT(err, _notify_complete);
+    }
 }
 
 static pmix_status_t send_msg(int sd, pmix_ptl_send_t *msg)

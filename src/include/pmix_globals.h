@@ -172,6 +172,7 @@ typedef struct pmix_peer_t {
     void *server_object;
     int index;
     int sd;
+    bool finalized;
     pmix_event_t send_event;        /**< registration with event thread for send events */
     bool send_ev_active;
     pmix_event_t recv_event;        /**< registration with event thread for recv events */
