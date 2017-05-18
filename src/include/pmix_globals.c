@@ -71,6 +71,7 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_cb_t,
 
 static void pcon(pmix_peer_t *p)
 {
+    p->finalized = false;
     p->info = NULL;
     p->proc_cnt = 0;
     p->server_object = NULL;

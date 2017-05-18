@@ -167,6 +167,7 @@ typedef struct pmix_personality_t {
  * by the socket, not the process nspace/rank */
 typedef struct pmix_peer_t {
     pmix_object_t super;
+    bool finalized;
     pmix_rank_info_t *info;
     int proc_cnt;
     void *server_object;
