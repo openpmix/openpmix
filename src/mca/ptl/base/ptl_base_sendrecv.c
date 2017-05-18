@@ -65,6 +65,7 @@ static void lost_connection(pmix_peer_t *peer, pmix_status_t err)
     pmix_ptl_posted_recv_t *rcv;
     pmix_buffer_t buf;
     pmix_ptl_hdr_t hdr;
+    bool notify = true;
 
     /* stop all events */
     if (peer->recv_ev_active) {
@@ -137,8 +138,15 @@ static void lost_connection(pmix_peer_t *peer, pmix_status_t err)
                         break;
                     }
                 }
-             }
-         }
+            }
+        }
+        if (peer->finalized) {
+            /* if this peer already called finalize, then
+             * we are just seeing their connection go away
+             * when they terminate - so do not generate
+             * an event */
+            notify = false;
+        }
          PMIX_RELEASE(peer);
      } else {
         /* if I am a client, there is only
@@ -163,8 +171,14 @@ static void lost_connection(pmix_peer_t *peer, pmix_status_t err)
             }
         }
         PMIX_DESTRUCT(&buf);
+        /* if I called finalize, then don't generate an event */
+        if (pmix_globals.mypeer->finalized) {
+            notify = false;
+        }
     }
-    PMIX_REPORT_EVENT(err, _notify_complete);
+    if (notify) {
+        PMIX_REPORT_EVENT(err, _notify_complete);
+    }
 }
 
 static pmix_status_t send_msg(int sd, pmix_ptl_send_t *msg)

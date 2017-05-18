@@ -2222,6 +2222,8 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
     if (PMIX_FINALIZE_CMD == cmd) {
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "recvd FINALIZE");
+        /* mark that this peer called finalize */
+        peer->finalized = true;
         /* call the local server, if supported */
         if (NULL != pmix_host_server.client_finalized) {
             PMIX_PEER_CADDY(cd, peer, tag);

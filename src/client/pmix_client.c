@@ -516,6 +516,9 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:client finalize called");
 
+    /* mark that I called finalize */
+    pmix_globals.mypeer->finalized = true;
+
     if ( 0 <= pmix_client_globals.myserver.sd ) {
         /* check to see if we are supposed to execute a
          * blocking fence prior to actually finalizing */
