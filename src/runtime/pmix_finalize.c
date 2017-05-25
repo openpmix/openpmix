@@ -114,6 +114,7 @@ void pmix_rte_finalize(void)
         PMIX_RELEASE(pmix_globals.cache_remote);
     }
     PMIX_DESTRUCT(&pmix_globals.events);
+    PMIX_LIST_DESTRUCT(&pmix_globals.cached_events);
 
     /* now safe to release the event base */
     if (!pmix_globals.external_evbase) {
