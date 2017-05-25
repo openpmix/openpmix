@@ -101,6 +101,7 @@ test/simple/simpft
 test/simple/simpdyn
 test/simple/test_pmix
 test/simple/simptool
+test/simple/simpdie
 
 # coverity
 cov-int

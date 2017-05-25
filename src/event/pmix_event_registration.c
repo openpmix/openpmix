@@ -234,6 +234,8 @@ static pmix_status_t _add_hdlr(pmix_rshift_caddy_t *cd, pmix_list_t *xfer)
             active->code = PMIX_MAX_ERR_CONSTANT;
             active->nregs = 1;
             pmix_list_append(&pmix_globals.events.actives, &active->super);
+            /* ensure we register it */
+            need_register = true;
         }
     } else {
         for (n=0; n < cd->ncodes; n++) {

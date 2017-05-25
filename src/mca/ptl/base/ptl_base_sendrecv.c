@@ -41,6 +41,7 @@
 
 #include "src/class/pmix_pointer_array.h"
 #include "src/include/pmix_globals.h"
+#include "src/client/pmix_client_ops.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/error.h"
 
@@ -65,7 +66,6 @@ static void lost_connection(pmix_peer_t *peer, pmix_status_t err)
     pmix_ptl_posted_recv_t *rcv;
     pmix_buffer_t buf;
     pmix_ptl_hdr_t hdr;
-    bool notify = true;
 
     /* stop all events */
     if (peer->recv_ev_active) {
@@ -140,14 +140,14 @@ static void lost_connection(pmix_peer_t *peer, pmix_status_t err)
                 }
             }
         }
-        if (peer->finalized) {
+        if (!peer->finalized) {
             /* if this peer already called finalize, then
              * we are just seeing their connection go away
              * when they terminate - so do not generate
-             * an event */
-            notify = false;
+             * an event. If not, then we do */
+            PMIX_REPORT_EVENT(err, peer, PMIX_RANGE_NAMESPACE, _notify_complete);
         }
-         PMIX_RELEASE(peer);
+        PMIX_RELEASE(peer);
      } else {
         /* if I am a client, there is only
          * one connection we can have */
@@ -172,12 +172,9 @@ static void lost_connection(pmix_peer_t *peer, pmix_status_t err)
         }
         PMIX_DESTRUCT(&buf);
         /* if I called finalize, then don't generate an event */
-        if (pmix_globals.mypeer->finalized) {
-            notify = false;
+        if (!pmix_globals.mypeer->finalized) {
+            PMIX_REPORT_EVENT(err, &pmix_client_globals.myserver, PMIX_RANGE_LOCAL, _notify_complete);
         }
-    }
-    if (notify) {
-        PMIX_REPORT_EVENT(err, _notify_complete);
     }
 }
 
@@ -648,8 +645,8 @@ void pmix_ptl_base_process_msg(int fd, short flags, void *cbdata)
      * that is an error */
     if (PMIX_PTL_TAG_DYNAMIC <= msg->hdr.tag) {
         pmix_output(0, "UNEXPECTED MESSAGE tag = %d", msg->hdr.tag);
+        PMIX_REPORT_EVENT(PMIX_ERROR, msg->peer, PMIX_RANGE_NAMESPACE, _notify_complete);
         PMIX_RELEASE(msg);
-        PMIX_REPORT_EVENT(PMIX_ERROR, _notify_complete);
         return;
     }
 
