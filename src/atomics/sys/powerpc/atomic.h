@@ -13,6 +13,7 @@
  * Copyright (c) 2010      IBM Corporation.  All rights reserved.
  * Copyright (c) 2015-2016 Los Alamos National Security, LLC. All rights
  *                         reserved.
+ * Copyright (c) 2017      Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -27,12 +28,12 @@
  * On powerpc ...
  */
 
-#define MB()  __asm__ __volatile__ ("sync" : : : "memory")
-#define RMB() __asm__ __volatile__ ("lwsync" : : : "memory")
-#define WMB() __asm__ __volatile__ ("eieio" : : : "memory")
-#define ISYNC() __asm__ __volatile__ ("isync" : : : "memory")
-#define SMP_SYNC  "sync \n\t"
-#define SMP_ISYNC "\n\tisync"
+#define PMIXMB()  __asm__ __volatile__ ("sync" : : : "memory")
+#define PMIXRMB() __asm__ __volatile__ ("lwsync" : : : "memory")
+#define PMIXWMB() __asm__ __volatile__ ("eieio" : : : "memory")
+#define PMIXISYNC() __asm__ __volatile__ ("isync" : : : "memory")
+#define PMIXSMP_SYNC  "sync \n\t"
+#define PMIXSMP_ISYNC "\n\tisync"
 
 
 /**********************************************************************
@@ -71,27 +72,27 @@
 static inline
 void pmix_atomic_mb(void)
 {
-    MB();
+    PMIXMB();
 }
 
 
 static inline
 void pmix_atomic_rmb(void)
 {
-    RMB();
+    PMIXRMB();
 }
 
 
 static inline
 void pmix_atomic_wmb(void)
 {
-    RMB();
+    PMIXRMB();
 }
 
 static inline
 void pmix_atomic_isync(void)
 {
-    ISYNC();
+    PMIXISYNC();
 }
 
 #elif PMIX_XLC_INLINE_ASSEMBLY /* end PMIX_GCC_INLINE_ASSEMBLY */

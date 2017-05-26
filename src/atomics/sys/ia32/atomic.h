@@ -15,6 +15,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
+ * Copyright (c) 2017      Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -29,8 +30,8 @@
  * On ia32, we use cmpxchg.
  */
 
-#define SMPLOCK "lock; "
-#define MB() __asm__ __volatile__("": : :"memory")
+#define PMIXSMPLOCK "lock; "
+#define PMIXMB() __asm__ __volatile__("": : :"memory")
 
 
 /**********************************************************************
@@ -60,19 +61,19 @@
 
 static inline void pmix_atomic_mb(void)
 {
-    MB();
+    PMIXMB();
 }
 
 
 static inline void pmix_atomic_rmb(void)
 {
-    MB();
+    PMIXMB();
 }
 
 
 static inline void pmix_atomic_wmb(void)
 {
-    MB();
+    PMIXMB();
 }
 
 static inline void pmix_atomic_isync(void)
@@ -95,7 +96,7 @@ static inline int pmix_atomic_cmpset_32(volatile int32_t *addr,
 {
    unsigned char ret;
    __asm__ __volatile__ (
-                       SMPLOCK "cmpxchgl %3,%2   \n\t"
+                       PMIXSMPLOCK "cmpxchgl %3,%2   \n\t"
                                "sete     %0      \n\t"
                        : "=qm" (ret), "+a" (oldval), "+m" (*addr)
                        : "q"(newval)
@@ -139,15 +140,15 @@ static inline int pmix_atomic_cmpset_64(volatile int64_t *addr,
     unsigned char ret;
 
     __asm__ __volatile__(
-		    "push %%ebx            \n\t"
+                    "push %%ebx            \n\t"
                     "movl %4, %%ebx        \n\t"
-		    SMPLOCK "cmpxchg8b (%1)  \n\t"
-		    "sete %0               \n\t"
-		    "pop %%ebx             \n\t"
-		    : "=qm"(ret)
-		    : "D"(addr), "a"(ll_low(oldval)), "d"(ll_high(oldval)),
-		      "r"(ll_low(newval)), "c"(ll_high(newval))
-		    : "cc", "memory", "ebx");
+                    SMPLOCK "cmpxchg8b (%1)  \n\t"
+                    "sete %0               \n\t"
+                    "pop %%ebx             \n\t"
+                    : "=qm"(ret)
+                    : "D"(addr), "a"(ll_low(oldval)), "d"(ll_high(oldval)),
+                      "r"(ll_low(newval)), "c"(ll_high(newval))
+                    : "cc", "memory", "ebx");
     return (int) ret;
 }
 #endif /* if 0 */
@@ -162,14 +163,14 @@ static inline int pmix_atomic_cmpset_64(volatile int64_t *addr,
 #define PMIX_HAVE_ATOMIC_SWAP_32 1
 
 static inline int32_t pmix_atomic_swap_32( volatile int32_t *addr,
-					   int32_t newval)
+                                           int32_t newval)
 {
     int32_t oldval;
 
     __asm__ __volatile__("xchg %1, %0" :
-			 "=r" (oldval), "=m" (*addr) :
-			 "0" (newval), "m" (*addr) :
-			 "memory");
+                         "=r" (oldval), "=m" (*addr) :
+                         "0" (newval), "m" (*addr) :
+                         "memory");
     return oldval;
 }
 
@@ -189,7 +190,7 @@ static inline int32_t pmix_atomic_add_32(volatile int32_t* v, int i)
 {
     int ret = i;
    __asm__ __volatile__(
-                        SMPLOCK "xaddl %1,%0"
+                        PMIXSMPLOCK "xaddl %1,%0"
                         :"+m" (*v), "+r" (ret)
                         :
                         :"memory", "cc"
@@ -209,7 +210,7 @@ static inline int32_t pmix_atomic_sub_32(volatile int32_t* v, int i)
 {
     int ret = -i;
    __asm__ __volatile__(
-                        SMPLOCK "xaddl %1,%0"
+                        PMIXSMPLOCK "xaddl %1,%0"
                         :"+m" (*v), "+r" (ret)
                         :
                         :"memory", "cc"

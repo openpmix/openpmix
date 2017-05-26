@@ -30,8 +30,8 @@
  */
 
 
-#define SMPLOCK "lock; "
-#define MB() __asm__ __volatile__("": : :"memory")
+#define PMIXSMPLOCK "lock; "
+#define PMIXMB() __asm__ __volatile__("": : :"memory")
 
 
 /**********************************************************************
@@ -54,19 +54,19 @@
 
 static inline void pmix_atomic_mb(void)
 {
-    MB();
+    PMIXMB();
 }
 
 
 static inline void pmix_atomic_rmb(void)
 {
-    MB();
+    PMIXMB();
 }
 
 
 static inline void pmix_atomic_wmb(void)
 {
-    MB();
+    PMIXMB();
 }
 
 static inline void pmix_atomic_isync(void)
@@ -88,7 +88,7 @@ static inline int pmix_atomic_cmpset_32( volatile int32_t *addr,
 {
    unsigned char ret;
    __asm__ __volatile__ (
-                       SMPLOCK "cmpxchgl %3,%2   \n\t"
+                       PMIXSMPLOCK "cmpxchgl %3,%2   \n\t"
                                "sete     %0      \n\t"
                        : "=qm" (ret), "+a" (oldval), "+m" (*addr)
                        : "q"(newval)
@@ -109,7 +109,7 @@ static inline int pmix_atomic_cmpset_64( volatile int64_t *addr,
 {
    unsigned char ret;
    __asm__ __volatile__ (
-                       SMPLOCK "cmpxchgq %3,%2   \n\t"
+                       PMIXSMPLOCK "cmpxchgq %3,%2   \n\t"
                                "sete     %0      \n\t"
                        : "=qm" (ret), "+a" (oldval), "+m" (*((volatile long*)addr))
                        : "q"(newval)
@@ -134,7 +134,7 @@ static inline int pmix_atomic_cmpset_128 (volatile pmix_int128_t *addr, pmix_int
     /* cmpxchg16b compares the value at the address with eax:edx (low:high). if the values are
      * the same the contents of ebx:ecx are stores at the address. in all cases the value stored
      * at the address is returned in eax:edx. */
-    __asm__ __volatile__ (SMPLOCK "cmpxchg16b (%%rsi)   \n\t"
+    __asm__ __volatile__ (PMIXSMPLOCK "cmpxchg16b (%%rsi)   \n\t"
                                   "sete     %0      \n\t"
                           : "=qm" (ret)
                           : "S" (addr), "b" (((int64_t *)&newval)[0]), "c" (((int64_t *)&newval)[1]),
@@ -205,7 +205,7 @@ static inline int32_t pmix_atomic_add_32(volatile int32_t* v, int i)
 {
     int ret = i;
    __asm__ __volatile__(
-                        SMPLOCK "xaddl %1,%0"
+                        PMIXSMPLOCK "xaddl %1,%0"
                         :"+m" (*v), "+r" (ret)
                         :
                         :"memory", "cc"
@@ -226,7 +226,7 @@ static inline int64_t pmix_atomic_add_64(volatile int64_t* v, int64_t i)
 {
     int64_t ret = i;
    __asm__ __volatile__(
-                        SMPLOCK "xaddq %1,%0"
+                        PMIXSMPLOCK "xaddq %1,%0"
                         :"+m" (*v), "+r" (ret)
                         :
                         :"memory", "cc"
@@ -247,7 +247,7 @@ static inline int32_t pmix_atomic_sub_32(volatile int32_t* v, int i)
 {
     int ret = -i;
    __asm__ __volatile__(
-                        SMPLOCK "xaddl %1,%0"
+                        PMIXSMPLOCK "xaddl %1,%0"
                         :"+m" (*v), "+r" (ret)
                         :
                         :"memory", "cc"
@@ -268,7 +268,7 @@ static inline int64_t pmix_atomic_sub_64(volatile int64_t* v, int64_t i)
 {
     int64_t ret = -i;
    __asm__ __volatile__(
-                        SMPLOCK "xaddq %1,%0"
+                        PMIXSMPLOCK "xaddq %1,%0"
                         :"+m" (*v), "+r" (ret)
                         :
                         :"memory", "cc"

@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2017      Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -22,15 +23,15 @@
 
 /* BWB - FIX ME! */
 #ifdef __linux__
-#define MB() __asm__ __volatile__(".set mips2; sync; .set mips0": : :"memory")
-#define RMB() __asm__ __volatile__(".set mips2; sync; .set mips0": : :"memory")
-#define WMB() __asm__ __volatile__(".set mips2; sync; .set mips0": : :"memory")
-#define SMP_SYNC ".set mips2; sync; .set mips0"
+#define PMIXMB() __asm__ __volatile__(".set mips2; sync; .set mips0": : :"memory")
+#define PMIXRMB() __asm__ __volatile__(".set mips2; sync; .set mips0": : :"memory")
+#define PMIXWMB() __asm__ __volatile__(".set mips2; sync; .set mips0": : :"memory")
+#define PMIXSMP_SYNC ".set mips2; sync; .set mips0"
 #else
-#define MB() __asm__ __volatile__("sync": : :"memory")
-#define RMB() __asm__ __volatile__("sync": : :"memory")
-#define WMB() __asm__ __volatile__("sync": : :"memory")
-#define SMP_SYNC "sync"
+#define PMIXMB() __asm__ __volatile__("sync": : :"memory")
+#define PMIXRMB() __asm__ __volatile__("sync": : :"memory")
+#define PMIXWMB() __asm__ __volatile__("sync": : :"memory")
+#define PMIXSMP_SYNC "sync"
 #endif
 
 
@@ -57,21 +58,21 @@
 static inline
 void pmix_atomic_mb(void)
 {
-    MB();
+    PMIXMB();
 }
 
 
 static inline
 void pmix_atomic_rmb(void)
 {
-    RMB();
+    PMIXRMB();
 }
 
 
 static inline
 void pmix_atomic_wmb(void)
 {
-    WMB();
+    PMIXWMB();
 }
 
 static inline
@@ -108,7 +109,7 @@ static inline int pmix_atomic_cmpset_32(volatile int32_t *addr,
 #endif
                          /* note: ret will be 0 if failed, 1 if succeeded */
                          "beqz   $1, 1b         \n" /* if 0 jump back to 1b */
-			 "nop                   \n" /* fill delay slots */
+                         "nop                   \n" /* fill delay slots */
                          "2:                    \n"
                          ".set reorder          \n"
                          : "=&r"(ret), "=m"(*addr)
@@ -157,7 +158,7 @@ static inline int pmix_atomic_cmpset_64(volatile int64_t *addr,
                          "scd    $1, %2         \n\t" /* store tmp in *addr */
                          /* note: ret will be 0 if failed, 1 if succeeded */
                          "beqz   $1, 1b         \n\t" /* if 0 jump back to 1b */
-			 "nop                   \n\t" /* fill delay slot */
+                         "nop                   \n\t" /* fill delay slot */
                          "2:                    \n\t"
                          ".set reorder          \n"
                          : "=&r" (ret), "=m" (*addr)
