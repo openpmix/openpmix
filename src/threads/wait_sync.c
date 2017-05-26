@@ -17,14 +17,14 @@
 static pmix_mutex_t wait_sync_lock = PMIX_MUTEX_STATIC_INIT;
 static pmix_wait_sync_t* wait_sync_list = NULL;
 
-#define WAIT_SYNC_PASS_OWNERSHIP(who)                  \
+#define PMIX_WAIT_SYNC_PASS_OWNERSHIP(who)                  \
     do {                                               \
         pthread_mutex_lock( &(who)->lock);             \
         pthread_cond_signal( &(who)->condition );      \
         pthread_mutex_unlock( &(who)->lock);           \
     } while(0)
 
-int sync_wait_mt(pmix_wait_sync_t *sync)
+int pmix_sync_wait_mt(pmix_wait_sync_t *sync)
 {
     /* Don't stop if the waiting synchronization is completed. We avoid the
      * race condition around the release of the synchronization using the
@@ -94,7 +94,7 @@ int sync_wait_mt(pmix_wait_sync_t *sync)
     if( sync == wait_sync_list ) {
         wait_sync_list = (sync == sync->next) ? NULL : sync->next;
         if( NULL != wait_sync_list )
-            WAIT_SYNC_PASS_OWNERSHIP(wait_sync_list);
+            PMIX_WAIT_SYNC_PASS_OWNERSHIP(wait_sync_list);
     }
     pmix_mutex_unlock(&wait_sync_lock);
 
