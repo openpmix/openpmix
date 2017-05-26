@@ -14,6 +14,7 @@
  * Copyright (c) 2010      ARM ltd.  All rights reserved.
  * Copyright (c) 2016      Los Alamos National Security, LLC. All rights
  *                         reserved.
+ * Copyright (c) 2017      Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -40,9 +41,9 @@
 #define PMIX_HAVE_ATOMIC_ADD_64 1
 #define PMIX_HAVE_ATOMIC_SUB_64 1
 
-#define MB()  __asm__ __volatile__ ("dmb sy" : : : "memory")
-#define RMB() __asm__ __volatile__ ("dmb ld" : : : "memory")
-#define WMB() __asm__ __volatile__ ("dmb st" : : : "memory")
+#define PMIXMB()  __asm__ __volatile__ ("dmb sy" : : : "memory")
+#define PMIXRMB() __asm__ __volatile__ ("dmb ld" : : : "memory")
+#define PMIXWMB() __asm__ __volatile__ ("dmb st" : : : "memory")
 
 /**********************************************************************
  *
@@ -52,17 +53,17 @@
 
 static inline void pmix_atomic_mb (void)
 {
-    MB();
+    PMIXMB();
 }
 
 static inline void pmix_atomic_rmb (void)
 {
-    RMB();
+    PMIXRMB();
 }
 
 static inline void pmix_atomic_wmb (void)
 {
-    WMB();
+    PMIXWMB();
 }
 
 static inline void pmix_atomic_isync (void)

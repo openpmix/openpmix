@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2017      Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,7 +25,7 @@
  */
 
 
-#define MB() __asm__ __volatile__("mf": : :"memory")
+#define PMIXMB() __asm__ __volatile__("mf": : :"memory")
 
 
 /**********************************************************************
@@ -46,19 +47,19 @@
 
 static inline void pmix_atomic_mb(void)
 {
-    MB();
+    PMIXMB();
 }
 
 
 static inline void pmix_atomic_rmb(void)
 {
-    MB();
+    PMIXMB();
 }
 
 
 static inline void pmix_atomic_wmb(void)
 {
-    MB();
+    PMIXMB();
 }
 
 static inline void pmix_atomic_isync(void)

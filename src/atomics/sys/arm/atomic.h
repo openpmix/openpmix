@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2010      IBM Corporation.  All rights reserved.
  * Copyright (c) 2010      ARM ltd.  All rights reserved.
+ * Copyright (c) 2017      Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -36,27 +37,27 @@
 #define PMIX_HAVE_ATOMIC_MEM_BARRIER 1
 /* use the DMB instruction if available... */
 
-#define MB()  __asm__ __volatile__ ("dmb" : : : "memory")
-#define RMB() __asm__ __volatile__ ("dmb" : : : "memory")
-#define WMB() __asm__ __volatile__ ("dmb" : : : "memory")
+#define PMIXMB()  __asm__ __volatile__ ("dmb" : : : "memory")
+#define PMIXRMB() __asm__ __volatile__ ("dmb" : : : "memory")
+#define PMIXWMB() __asm__ __volatile__ ("dmb" : : : "memory")
 
 #elif (PMIX_ASM_ARM_VERSION == 6)
 
 #define PMIX_HAVE_ATOMIC_MEM_BARRIER 1
 /* ...or the v6-specific equivalent... */
 
-#define MB()  __asm__ __volatile__ ("mcr p15, 0, r0, c7, c10, 5" : : : "memory")
-#define RMB() MB()
-#define WMB() MB()
+#define PMIXMB()  __asm__ __volatile__ ("mcr p15, 0, r0, c7, c10, 5" : : : "memory")
+#define PMIXRMB() MB()
+#define PMIXWMB() MB()
 
 #else
 
 #define PMIX_HAVE_ATOMIC_MEM_BARRIER 1
 /* ...otherwise use the Linux kernel-provided barrier */
 
-#define MB() (*((void (*)(void))(0xffff0fa0)))()
-#define RMB() MB()
-#define WMB() MB()
+#define PMIXMB() (*((void (*)(void))(0xffff0fa0)))()
+#define PMIXRMB() MB()
+#define PMIXWMB() MB()
 
 #endif
 
@@ -71,21 +72,21 @@
 static inline
 void pmix_atomic_mb(void)
 {
-    MB();
+    PMIXMB();
 }
 
 
 static inline
 void pmix_atomic_rmb(void)
 {
-    RMB();
+    PMIXRMB();
 }
 
 
 static inline
 void pmix_atomic_wmb(void)
 {
-    WMB();
+    PMIXWMB();
 }
 
 static inline
