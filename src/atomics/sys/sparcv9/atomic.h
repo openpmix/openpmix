@@ -12,6 +12,7 @@
  * Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserverd.
  * Copyright (c) 2016      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2017      Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -26,9 +27,9 @@
  * On sparc v9, use casa and casxa (compare and swap) instructions.
  */
 
-#define ASI_P "0x80"
+#define PMIXASI_P "0x80"
 
-#define MEMBAR(type) __asm__  __volatile__ ("membar " type : : : "memory")
+#define PMIXMEMBAR(type) __asm__  __volatile__ ("membar " type : : : "memory")
 
 
 /**********************************************************************
@@ -52,19 +53,19 @@
 
 static inline void pmix_atomic_mb(void)
 {
-    MEMBAR("#LoadLoad | #LoadStore | #StoreStore | #StoreLoad");
+    PMIXMEMBAR("#LoadLoad | #LoadStore | #StoreStore | #StoreLoad");
 }
 
 
 static inline void pmix_atomic_rmb(void)
 {
-    MEMBAR("#LoadLoad");
+    PMIXMEMBAR("#LoadLoad");
 }
 
 
 static inline void pmix_atomic_wmb(void)
 {
-    MEMBAR("#StoreStore");
+    PMIXMEMBAR("#StoreStore");
 }
 
 static inline void pmix_atomic_isync(void)
@@ -95,7 +96,7 @@ static inline int pmix_atomic_cmpset_32( volatile int32_t *addr,
 
    int32_t ret = newval;
 
-   __asm__ __volatile__("casa [%1] " ASI_P ", %2, %0"
+   __asm__ __volatile__("casa [%1] " PMIXASI_P ", %2, %0"
                       : "+r" (ret)
                       : "r" (addr), "r" (oldval));
    return (ret == oldval);
@@ -136,7 +137,7 @@ static inline int pmix_atomic_cmpset_64( volatile int64_t *addr,
      */
    int64_t ret = newval;
 
-   __asm__ __volatile__("casxa [%1] " ASI_P ", %2, %0"
+   __asm__ __volatile__("casxa [%1] " PMIXASI_P ", %2, %0"
                       : "+r" (ret)
                       : "r" (addr), "r" (oldval));
    return (ret == oldval);
@@ -160,7 +161,7 @@ static inline int pmix_atomic_cmpset_64( volatile int64_t *addr,
     __asm__ __volatile__(
                        "ldx %0, %%g1               \n\t" /* g1 = ret */
                        "ldx %2, %%g2               \n\t" /* g2 = oldval */
-                       "casxa [%1] " ASI_P ", %%g2, %%g1 \n\t"
+                       "casxa [%1] " PMIXASI_P ", %%g2, %%g1 \n\t"
                        "stx %%g1, %0               \n"
                        : "+m"(ret)
                        : "r"(addr), "m"(oldval)

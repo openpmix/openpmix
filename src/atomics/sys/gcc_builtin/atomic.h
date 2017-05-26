@@ -62,7 +62,7 @@ static inline void pmix_atomic_wmb(void)
     __atomic_thread_fence (__ATOMIC_RELEASE);
 }
 
-#define MB() pmix_atomic_mb()
+#define PMIXMB() pmix_atomic_mb()
 
 /**********************************************************************
  *
