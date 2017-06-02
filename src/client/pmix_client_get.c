@@ -7,7 +7,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2017 IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -190,7 +190,9 @@ static void _value_cbfunc(pmix_status_t status, pmix_value_t *kv, void *cbdata)
     if (PMIX_SUCCESS == status) {
         if (PMIX_SUCCESS != (rc = pmix_bfrop.copy((void**)&cb->value, kv, PMIX_VALUE))) {
             PMIX_ERROR_LOG(rc);
+            cb->status = rc;
         }
+        PMIXRMB();
     }
     cb->active = false;
 }
