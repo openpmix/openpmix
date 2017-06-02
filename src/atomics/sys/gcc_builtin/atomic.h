@@ -16,6 +16,7 @@
  * Copyright (c) 2016      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2017      Intel, Inc. All rights reserved.
+ * Copyright (c) 2017      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -63,6 +64,8 @@ static inline void pmix_atomic_wmb(void)
 }
 
 #define PMIXMB() pmix_atomic_mb()
+#define PMIXRMB() pmix_atomic_rmb()
+#define PMIXWMB() pmix_atomic_wmb()
 
 /**********************************************************************
  *
