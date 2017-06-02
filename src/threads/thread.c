@@ -20,11 +20,11 @@
  * $HEADER$
  */
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 
 #include "src/threads/threads.h"
 #include "src/threads/tsd.h"
-#include "pmix_common.h"
+#include "pmix/pmix_common.h"
 
 bool pmix_debug_threads = false;
 

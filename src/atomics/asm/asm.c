@@ -17,7 +17,7 @@
  * $HEADER$
  */
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 
 #include "src/atomics/sys/atomic.h"
 #include "src/atomics/sys/architecture.h"

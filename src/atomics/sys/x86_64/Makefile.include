@@ -22,5 +22,5 @@
 # This makefile.am does not stand on its own - it is included from pmix/include/Makefile.am
 
 headers += \
-	atomics/sys/x86_64/atomic.h \
-	atomics/sys/x86_64/timer.h
+	src/atomics/sys/x86_64/atomic.h \
+	src/atomics/sys/x86_64/timer.h

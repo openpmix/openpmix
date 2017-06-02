@@ -36,7 +36,7 @@
  * available.
  */
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 
 #include <pthread.h>
 #include <errno.h>

@@ -47,32 +47,15 @@ atomic-asm.S: generated/@PMIX_ASM_FILE@
 	    eval $$cmd ; \
 	fi
 
-if PMIX_HAVE_ASM_FILE
-nodist_libasm_la_SOURCES = atomic-asm.S
-libasm_la_DEPENDENCIES = generated/@PMIX_ASM_FILE@
-else
-nodist_libasm_la_SOURCES =
-libasm_la_DEPENDENCIES =
-endif
+# if PMIX_HAVE_ASM_FILE
+# nodist_libasm_la_SOURCES = atomic-asm.S
+# libasm_la_DEPENDENCIES = generated/@PMIX_ASM_FILE@
+# else
+# nodist_libasm_la_SOURCES =
+# libasm_la_DEPENDENCIES =
+# endif
 
-noinst_LTLIBRARIES = libasm.la
-dist_libasm_la_SOURCES = asm.c
-
-EXTRA_DIST	= \
-	asm-data.txt \
-	generate-asm.pl \
-	generate-all-asm.pl \
-	base/aix.conf \
-	base/default.conf \
-	base/X86_64.asm \
-	base/ARM.asm \
-	base/IA32.asm \
-	base/IA64.asm \
-	base/MIPS.asm \
-	base/POWERPC32.asm \
-	base/POWERPC64.asm \
-	base/SPARCV9_32.asm \
-	base/SPARCV9_64.asm
+# dist_libasm_la_SOURCES = asm.c
 
 ######################################################################
 

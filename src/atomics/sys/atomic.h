@@ -52,10 +52,10 @@
 #ifndef PMIX_SYS_ATOMIC_H
 #define PMIX_SYS_ATOMIC_H 1
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 
 #include "src/atomics/sys/architecture.h"
-#include "src/include/pmix_stdint.h"
+#include "include/pmix/autogen/pmix_stdint.h"
 
 /* do some quick #define cleanup in cases where we are doing
    testing... */

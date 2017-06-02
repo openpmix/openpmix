@@ -23,7 +23,7 @@
 #ifndef PMIX_CONDITION_SPINLOCK_H
 #define PMIX_CONDITION_SPINLOCK_H
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 #ifdef HAVE_SYS_TIME_H
 #include <sys/time.h>
 #endif

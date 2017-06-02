@@ -173,6 +173,7 @@ struct pmix_class_t {
 #else
 #define PMIX_PMIX_STATIC_INIT(BASE_CLASS) { PMIX_CLASS(BASE_CLASS), 1 }
 #endif
+#define PMIX_OBJ_STATIC_INIT(BASE_CLASS) PMIX_PMIX_STATIC_INIT(BASE_CLASS)
 
 /**
  * Base object.

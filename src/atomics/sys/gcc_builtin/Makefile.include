@@ -23,4 +23,4 @@
 # This makefile.am does not stand on its own - it is included from pmix/include/Makefile.am
 
 headers += \
-	atomics/sys/gcc_builtin/atomic.h
+	src/atomics/sys/gcc_builtin/atomic.h

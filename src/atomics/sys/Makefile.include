@@ -26,19 +26,19 @@
 # This makefile.include does not stand on its own - it is included from src/Makefile.am
 
 headers += \
-	atomics/sys/architecture.h \
-	atomics/sys/atomic.h \
-	atomics/sys/atomic_impl.h \
-	atomics/sys/timer.h \
-        atomics/sys/cma.h
+	src/atomics/sys/architecture.h \
+	src/atomics/sys/atomic.h \
+	src/atomics/sys/atomic_impl.h \
+	src/atomics/sys/timer.h \
+        src/atomics/sys/cma.h
 
-include atomics/sys/x86_64/Makefile.include
-include atomics/sys/arm/Makefile.include
-include atomics/sys/arm64/Makefile.include
-include atomics/sys/ia32/Makefile.include
-include atomics/sys/ia64/Makefile.include
-include atomics/sys/mips/Makefile.include
-include atomics/sys/powerpc/Makefile.include
-include atomics/sys/sparcv9/Makefile.include
-include atomics/sys/sync_builtin/Makefile.include
-include atomics/sys/gcc_builtin/Makefile.include
+include src/atomics/sys/x86_64/Makefile.include
+include src/atomics/sys/arm/Makefile.include
+include src/atomics/sys/arm64/Makefile.include
+include src/atomics/sys/ia32/Makefile.include
+include src/atomics/sys/ia64/Makefile.include
+include src/atomics/sys/mips/Makefile.include
+include src/atomics/sys/powerpc/Makefile.include
+include src/atomics/sys/sparcv9/Makefile.include
+include src/atomics/sys/sync_builtin/Makefile.include
+include src/atomics/sys/gcc_builtin/Makefile.include

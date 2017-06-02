@@ -27,7 +27,7 @@
 #ifndef  PMIX_MUTEX_H
 #define  PMIX_MUTEX_H 1
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 
 #include "src/threads/thread_usage.h"
 

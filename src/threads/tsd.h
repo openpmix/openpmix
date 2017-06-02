@@ -16,11 +16,11 @@
 #ifndef PMIX_THREADS_TSD_H
 #define PMIX_THREADS_TSD_H
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 
 #include <pthread.h>
 
-#include "pmix_common.h"
+#include "pmix/pmix_common.h"
 
 BEGIN_C_DECLS
 

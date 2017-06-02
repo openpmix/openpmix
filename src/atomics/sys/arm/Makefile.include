@@ -20,5 +20,5 @@
 # This makefile.am does not stand on its own - it is included from src/atomics/sys/include/Makefile.include
 
 headers += \
-       atomics/sys/arm/atomic.h \
-       atomics/sys/arm/timer.h
+       src/atomics//sys/arm/atomic.h \
+       src/atomics//sys/arm/timer.h

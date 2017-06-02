@@ -24,7 +24,7 @@
 #ifndef PMIX_THREAD_H
 #define PMIX_THREAD_H 1
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 
 #include <pthread.h>
 #include <signal.h>
