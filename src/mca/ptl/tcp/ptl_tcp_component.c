@@ -687,6 +687,9 @@ static void connection_handler(int sd, short args, void *cbdata)
     pmix_rank_info_t *info;
     pmix_proc_t proc;
 
+    /* acquire the object */
+    PMIX_ACQUIRE_OBJECT(pnd);
+
     pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
                         "ptl:tcp:connection_handler: new connection: %d",
                         pnd->sd);
@@ -1041,6 +1044,9 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     pmix_rank_info_t *info;
     int rc;
     uint32_t u32;
+
+    /* acquire the object */
+    PMIX_ACQUIRE_OBJECT(cd);
 
     /* send this status so they don't hang */
     u32 = ntohl(cd->status);
