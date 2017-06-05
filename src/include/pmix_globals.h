@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2014-2016 Intel, Inc. All rights reserved.
+ * Copyright (c) 2017      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -32,6 +33,7 @@
 
 #include <pmix/pmix_common.h>
 
+#include "src/atomics/sys/atomic.h"
 #include "src/buffer_ops/types.h"
 #include "src/class/pmix_hash_table.h"
 #include "src/class/pmix_list.h"
@@ -304,6 +306,7 @@ PMIX_CLASS_DECLARATION(pmix_job_data_caddy_t);
         while ((a)) {                           \
             usleep(10);                         \
         }                                       \
+        PMIXWMB();                              \
     } while (0)
 
 

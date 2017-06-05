@@ -61,6 +61,7 @@ static const char pmix_version_string[] = PMIX_VERSION;
 #include "src/util/hash.h"
 #include "src/util/output.h"
 #include "src/util/progress_threads.h"
+#include "src/threads/threads.h"
 #include "src/usock/usock.h"
 #include "src/sec/pmix_sec.h"
 #if defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1)
@@ -157,6 +158,7 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_usock_hdr_t *
 
 
 pmix_client_globals_t pmix_client_globals = {{{0}}};
+pmix_mutex_t pmix_client_bootstrap_mutex = PMIX_MUTEX_STATIC_INIT;
 
 /* callback for wait completion */
 static void wait_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
@@ -256,6 +258,8 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc)
         return PMIX_ERR_BAD_PARAM;
     }
 
+    pmix_mutex_lock(&pmix_client_bootstrap_mutex);
+
     if (0 < pmix_globals.init_cntr) {
         /* since we have been called before, the nspace and
          * rank should be known. So return them here if
@@ -265,10 +269,12 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc)
             proc->rank = pmix_globals.myid.rank;
         }
         ++pmix_globals.init_cntr;
+        pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
         return PMIX_SUCCESS;
     }
     /* if we don't see the required info, then we cannot init */
     if (NULL == getenv("PMIX_NAMESPACE")) {
+        pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
         return PMIX_ERR_INVALID_NAMESPACE;
     }
 
@@ -285,6 +291,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc)
     pmix_add_errhandler(myerrhandler, NULL, 0, &errhandler_ref);
     /* initialize the output system */
     if (!pmix_output_init()) {
+        pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
         return PMIX_ERROR;
     }
 
@@ -304,6 +311,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc)
         pmix_output_close(pmix_globals.debug_output);
         pmix_output_finalize();
         pmix_class_finalize();
+        pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
         return PMIX_ERR_INVALID_NAMESPACE;
     }
     if (NULL != proc) {
@@ -321,6 +329,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc)
         pmix_output_close(pmix_globals.debug_output);
         pmix_output_finalize();
         pmix_class_finalize();
+        pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
         return PMIX_ERR_SERVER_NOT_AVAIL;
     }
     uri = pmix_argv_split(evar, ':');
@@ -329,6 +338,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc)
         pmix_output_close(pmix_globals.debug_output);
         pmix_output_finalize();
         pmix_class_finalize();
+        pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
         return PMIX_ERROR;
     }
 
@@ -350,6 +360,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc)
         pmix_output_close(pmix_globals.debug_output);
         pmix_output_finalize();
         pmix_class_finalize();
+        pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
         return PMIX_ERR_NOT_FOUND;
     }
     pmix_argv_free(uri);
@@ -360,6 +371,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc)
         pmix_output_close(pmix_globals.debug_output);
         pmix_output_finalize();
         pmix_class_finalize();
+        pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
         return PMIX_ERR_DATA_VALUE_NOT_FOUND;
     }
     pmix_globals.myid.rank = strtol(evar, NULL, 10);
@@ -374,6 +386,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc)
         pmix_output_close(pmix_globals.debug_output);
         pmix_output_finalize();
         pmix_class_finalize();
+        pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
         return PMIX_ERR_DATA_VALUE_NOT_FOUND;
     }
 #endif /* PMIX_ENABLE_DSTORE */
@@ -389,8 +402,8 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc)
         pmix_output_close(pmix_globals.debug_output);
         pmix_output_finalize();
         pmix_class_finalize();
+        pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
         return -1;
-
     }
 
     /* setup an object to track server connection */
@@ -406,6 +419,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc)
         pmix_output_close(pmix_globals.debug_output);
         pmix_output_finalize();
         pmix_class_finalize();
+        pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
         return rc;
     }
     PMIX_WAIT_FOR_COMPLETION(cb.active);
@@ -415,14 +429,19 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc)
     if (PMIX_SUCCESS == rc) {
         pmix_globals.init_cntr++;
     }
+    pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
     return rc;
 }
 
 PMIX_EXPORT int PMIx_Initialized(void)
 {
+    pmix_mutex_lock(&pmix_client_bootstrap_mutex);
+
     if (0 < pmix_globals.init_cntr) {
+        pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
         return true;
     }
+    pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
     return false;
 }
 
@@ -433,8 +452,10 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(void)
     pmix_cmd_t cmd = PMIX_FINALIZE_CMD;
     pmix_status_t rc;
 
+    pmix_mutex_lock(&pmix_client_bootstrap_mutex);
     if (1 != pmix_globals.init_cntr) {
         --pmix_globals.init_cntr;
+        pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
         return PMIX_SUCCESS;
     }
     pmix_globals.init_cntr = 0;
@@ -443,6 +464,8 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(void)
                         "pmix:client finalize called");
 
     if ( 0 <= pmix_client_globals.myserver.sd ) {
+        pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
+
         /* setup a cmd message to notify the PMIx
          * server that we are normally terminating */
         msg = PMIX_NEW(pmix_buffer_t);
@@ -470,6 +493,9 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(void)
         PMIX_RELEASE(cb);
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "pmix:client finalize sync received");
+    }
+    else {
+        pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
     }
 
     pmix_stop_progress_thread(pmix_globals.evbase);
@@ -511,14 +537,18 @@ PMIX_EXPORT pmix_status_t PMIx_Abort(int flag, const char msg[],
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:client abort called");
 
+    pmix_mutex_lock(&pmix_client_bootstrap_mutex);
     if (pmix_globals.init_cntr <= 0) {
+        pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
         return PMIX_ERR_INIT;
     }
 
     /* if we aren't connected, don't attempt to send */
     if (!pmix_globals.connected) {
+        pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
         return PMIX_ERR_UNREACH;
     }
+    pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
 
     /* create a buffer to hold the message */
     bfr = PMIX_NEW(pmix_buffer_t);
@@ -639,9 +669,12 @@ PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope, const char key[], pmix_va
                         "pmix: executing put for key %s type %d",
                         key, val->type);
 
+    pmix_mutex_lock(&pmix_client_bootstrap_mutex);
     if (pmix_globals.init_cntr <= 0) {
+        pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
         return PMIX_ERR_INIT;
     }
+    pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
 
     /* create a callback object */
     cb = PMIX_NEW(pmix_cb_t);
@@ -722,17 +755,22 @@ PMIX_EXPORT pmix_status_t PMIx_Commit(void)
     pmix_cb_t *cb;
     pmix_status_t rc;
 
+    pmix_mutex_lock(&pmix_client_bootstrap_mutex);
     if (pmix_globals.init_cntr <= 0) {
+        pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
         return PMIX_ERR_INIT;
     }
 
     /* if we are a server, or we aren't connected, don't attempt to send */
     if (pmix_globals.server) {
+        pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
         return PMIX_SUCCESS;  // not an error
     }
     if (!pmix_globals.connected) {
+        pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
         return PMIX_ERR_UNREACH;
     }
+    pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
 
     /* create a callback object */
     cb = PMIX_NEW(pmix_cb_t);
@@ -824,9 +862,12 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename,
     pmix_cb_t *cb;
     pmix_status_t rc;
 
+    pmix_mutex_lock(&pmix_client_bootstrap_mutex);
     if (pmix_globals.init_cntr <= 0) {
+        pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
         return PMIX_ERR_INIT;
     }
+    pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
 
     /* create a callback object */
     cb = PMIX_NEW(pmix_cb_t);
@@ -887,9 +928,12 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const char *nspace, char **nodelist
     pmix_cb_t *cb;
     pmix_status_t rc;
 
+    pmix_mutex_lock(&pmix_client_bootstrap_mutex);
     if (pmix_globals.init_cntr <= 0) {
+        pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
         return PMIX_ERR_INIT;
     }
+    pmix_mutex_unlock(&pmix_client_bootstrap_mutex);
 
     /* create a callback object */
     cb = PMIX_NEW(pmix_cb_t);
