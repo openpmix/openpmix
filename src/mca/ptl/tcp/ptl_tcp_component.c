@@ -720,7 +720,7 @@ static void connection_handler(int sd, short args, void *cbdata)
         PMIX_RELEASE(pnd);
         return;
     }
-    if (PMIX_SUCCESS != pmix_ptl_base_recv_blocking(pnd->sd, msg, hdr.nbytes)) {
+    if (PMIX_SUCCESS != (rc = pmix_ptl_base_recv_blocking(pnd->sd, msg, hdr.nbytes))) {
         /* unable to complete the recv */
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "ptl:tcp:connection_handler unable to complete recv of connect-ack with client ON SOCKET %d",
@@ -975,7 +975,7 @@ static void connection_handler(int sd, short args, void *cbdata)
 
     /* tell the client all is good */
     u32 = htonl(PMIX_SUCCESS);
-    if (PMIX_SUCCESS != pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(uint32_t))) {
+    if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(uint32_t)))) {
         PMIX_ERROR_LOG(rc);
         info->proc_cnt--;
         PMIX_RELEASE(info);
@@ -1027,7 +1027,8 @@ static void connection_handler(int sd, short args, void *cbdata)
 
   error:
     /* send an error reply to the client */
-    if (PMIX_SUCCESS != pmix_ptl_base_send_blocking(pnd->sd, (char*)&rc, sizeof(int))) {
+    u32 = htonl(rc);
+    if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(int)))) {
         PMIX_ERROR_LOG(rc);
         CLOSE_THE_SOCKET(pnd->sd);
     }
