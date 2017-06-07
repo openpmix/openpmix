@@ -9,7 +9,7 @@ Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
 Copyright (c) 2004-2005 The Regents of the University of California.
                         All rights reserved.
 Copyright (c) 2008-2015 Cisco Systems, Inc.  All rights reserved.
-Copyright (c) 2013-2015 Intel, Inc. All rights reserved.
+Copyright (c) 2013-2017 Intel, Inc. All rights reserved.
 $COPYRIGHT$
 
 Additional copyrights may follow
@@ -44,7 +44,7 @@ developer's checkout, you have three main options:
 1. Use the "--with-platform=optimized" switch to configure.  This is
    the preferred (and probably easiest) method.  For example:
 
-     shell$ git clone git@github.com:pmix/master.git pmix
+     shell$ git clone git@github.com:pmix/pmix.git pmix
      shell$ cd pmix
      shell$ ./autogen.pl
      shell$ mkdir build
@@ -57,7 +57,7 @@ developer's checkout, you have three main options:
    directory than the source tree -- one where the .git subdirectory
    is not present.  For example:
 
-     shell$ git clone git@github.com:pmix/master.git pmix
+     shell$ git clone git@github.com:pmix/pmix.git pmix
      shell$ cd pmix
      shell$ ./autogen.pl
      shell$ mkdir build
@@ -96,7 +96,7 @@ required depend on if you are using the master or a release branch (and
 which release branch you are using).  The specific versions can be
 found at:
 
-  http://pmix.github.io/master/source/building
+  http://pmix.github.io/pmix/source/building
 
 You can check what versions of the autotools you have installed with
 the following:
