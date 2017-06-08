@@ -142,6 +142,7 @@ PMIX_CLASS_INSTANCE(pmix_ptl_send_t,
 
 static void rcon(pmix_ptl_recv_t *p)
 {
+    p->peer = NULL;
     memset(&p->hdr, 0, sizeof(pmix_ptl_hdr_t));
     p->hdr.tag = UINT32_MAX;
     p->hdr.nbytes = 0;
@@ -150,9 +151,15 @@ static void rcon(pmix_ptl_recv_t *p)
     p->rdptr = NULL;
     p->rdbytes = 0;
 }
+static void rdes(pmix_ptl_recv_t *p)
+{
+    if (NULL != p->peer) {
+        PMIX_RELEASE(p->peer);
+    }
+}
 PMIX_CLASS_INSTANCE(pmix_ptl_recv_t,
                     pmix_list_item_t,
-                    rcon, NULL);
+                    rcon, rdes);
 
 static void prcon(pmix_ptl_posted_recv_t *p)
 {
