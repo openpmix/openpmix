@@ -20,7 +20,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2017 IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -136,6 +136,7 @@ PMIX_CLASS_DECLARATION(pmix_timer_t);
                           EV_WRITE, pmix_usock_send_recv, (ms));        \
         pmix_output_verbose(10, pmix_globals.debug_output,              \
                             "event_assign returned %d", rc);            \
+        PMIX_POST_OBJECT(d);                                            \
         event_active(&((ms)->ev), EV_WRITE, 1);                         \
     } while (0)
 
@@ -146,6 +147,7 @@ PMIX_CLASS_DECLARATION(pmix_timer_t);
                             __FILE__, __LINE__);                        \
         event_assign(&((ms)->ev), pmix_globals.evbase, -1,              \
                      EV_WRITE, pmix_usock_process_msg, (ms));           \
+        PMIX_POST_OBJECT(ms);                                           \
         event_active(&((ms)->ev), EV_WRITE, 1);                         \
     } while (0)
 
