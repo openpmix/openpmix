@@ -87,7 +87,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
     pmix_cb_t *cb;
     pmix_status_t rc;
 
-    PMIX_WAIT_THREAD(&pmix_global_lock);
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -124,7 +124,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char *key,
     int rank;
     char *nm;
 
-    PMIX_WAIT_THREAD(&pmix_global_lock);
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
