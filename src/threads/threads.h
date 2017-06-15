@@ -99,6 +99,7 @@ typedef struct {
             pmix_output(0, "Thread obtained %s:%d",             \
                         __FILE__, __LINE__);                    \
         }                                                       \
+        PMIX_ACQUIRE_OBJECT(lck);                               \
         (lck)->active = true;                                   \
     } while(0)
 #else
@@ -108,6 +109,7 @@ typedef struct {
         while ((lck)->active) {                                 \
             pmix_condition_wait(&(lck)->cond, &(lck)->mutex);   \
         }                                                       \
+        PMIX_ACQUIRE_OBJECT(lck);                               \
         (lck)->active = true;                                   \
     } while(0)
 #endif
@@ -128,6 +130,7 @@ typedef struct {
             pmix_output(0, "Thread obtained %s:%d",             \
                         __FILE__, __LINE__);                    \
         }                                                       \
+        PMIX_ACQUIRE_OBJECT(lck);                               \
         pmix_mutex_unlock(&(lck)->mutex);                       \
     } while(0)
 #else
@@ -137,6 +140,7 @@ typedef struct {
         while ((lck)->active) {                                 \
             pmix_condition_wait(&(lck)->cond, &(lck)->mutex);   \
         }                                                       \
+        PMIX_ACQUIRE_OBJECT(lck);                               \
         pmix_mutex_unlock(&(lck)->mutex);                       \
     } while(0)
 #endif
@@ -150,6 +154,7 @@ typedef struct {
                         __FILE__, __LINE__);            \
         }                                               \
         (lck)->active = false;                          \
+        PMIX_POST_OBJECT(lck);                  \
         pmix_condition_broadcast(&(lck)->cond);         \
         pmix_mutex_unlock(&(lck)->mutex);               \
     } while(0)
@@ -157,6 +162,7 @@ typedef struct {
 #define PMIX_RELEASE_THREAD(lck)                \
     do {                                        \
         (lck)->active = false;                  \
+        PMIX_POST_OBJECT(lck);                  \
         pmix_condition_broadcast(&(lck)->cond); \
         pmix_mutex_unlock(&(lck)->mutex);       \
     } while(0)
@@ -165,8 +171,11 @@ typedef struct {
 
 #define PMIX_WAKEUP_THREAD(lck)                 \
     do {                                        \
+        pmix_mutex_lock(&(lck)->mutex);         \
         (lck)->active = false;                  \
+        PMIX_POST_OBJECT(lck);                  \
         pmix_condition_broadcast(&(lck)->cond); \
+        pmix_mutex_unlock(&(lck)->mutex);       \
     } while(0)
 
 

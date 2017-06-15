@@ -70,7 +70,7 @@ PMIX_EXPORT pmix_status_t PMIx_Connect(const pmix_proc_t procs[], size_t nprocs,
     pmix_status_t rc;
     pmix_cb_t *cb;
 
-    PMIX_WAIT_THREAD(&pmix_global_lock);
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: connect called");
@@ -118,7 +118,7 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
     pmix_status_t rc;
     pmix_cb_t *cb;
 
-    PMIX_WAIT_THREAD(&pmix_global_lock);
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: connect called");
@@ -193,7 +193,7 @@ PMIX_EXPORT pmix_status_t PMIx_Disconnect(const pmix_proc_t procs[], size_t npro
     pmix_status_t rc;
     pmix_cb_t *cb;
 
-    PMIX_WAIT_THREAD(&pmix_global_lock);
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_INIT;
@@ -236,7 +236,7 @@ PMIX_EXPORT pmix_status_t PMIx_Disconnect_nb(const pmix_proc_t procs[], size_t n
     pmix_status_t rc;
     pmix_cb_t *cb;
 
-    PMIX_WAIT_THREAD(&pmix_global_lock);
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: disconnect called");

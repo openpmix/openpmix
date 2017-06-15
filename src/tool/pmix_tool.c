@@ -158,7 +158,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     pmix_nspace_t *nptr, *nsptr;
     char hostname[PMIX_MAX_NSLEN];
 
-    PMIX_WAIT_THREAD(&pmix_global_lock);
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
     if (NULL == proc) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -489,19 +489,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     return rc;
 }
 
-/* callback for wait completion */
-static void wait_cbfunc(struct pmix_peer_t *pr,
-                        pmix_ptl_hdr_t *hdr,
-                        pmix_buffer_t *buf, void *cbdata)
-{
-    pmix_lock_t *lock = (pmix_lock_t*)cbdata;
-
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:tool wait_cbfunc received");
-
-    PMIX_WAKEUP_THREAD(lock);
-}
-
 typedef struct {
     pmix_lock_t lock;
     pmix_event_t ev;
@@ -533,6 +520,7 @@ static void finwait_cbfunc(struct pmix_peer_t *pr,
                         "pmix:tool finwait_cbfunc received");
     if (tev->active) {
         tev->active = false;
+        pmix_event_del(&tev->ev);  // stop the timer
         PMIX_WAKEUP_THREAD(&tev->lock);
     }
 }
@@ -545,11 +533,14 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     pmix_tool_timeout_t tev;
     struct timeval tv = {2, 0};
 
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     if (1 != pmix_globals.init_cntr) {
         --pmix_globals.init_cntr;
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_SUCCESS;
     }
     pmix_globals.init_cntr = 0;
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:tool finalize called");
@@ -577,7 +568,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     PMIX_POST_OBJECT(&tev);
     pmix_event_add(&tev.ev, &tv);
     if (PMIX_SUCCESS != (rc = pmix_ptl.send_recv(pmix_client_globals.myserver, msg,
-                                                 wait_cbfunc, (void*)&tev))){
+                                                 finwait_cbfunc, (void*)&tev))){
         return rc;
     }
 
