@@ -328,7 +328,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    if (0 < pmix_globals.init_cntr || PMIX_PROC_SERVER == pmix_globals.proc_type) {
+    if (0 < pmix_globals.init_cntr || PMIX_PROC_IS_SERVER) {
         /* since we have been called before, the nspace and
          * rank should be known. So return them here if
          * requested */
@@ -336,14 +336,14 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
             (void)strncpy(proc->nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
             proc->rank = pmix_globals.myid.rank;
         }
+        ++pmix_globals.init_cntr;
         /* we also need to check the info keys to see if something need
          * be done with them - e.g., to notify another library that we
          * also have called init */
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
         if (NULL != info) {
             _check_for_notify(info, ninfo);
         }
-        ++pmix_globals.init_cntr;
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_SUCCESS;
     }
     /* if we don't see the required info, then we cannot init */
@@ -453,12 +453,12 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* lood for a debugger attach key */
     (void)strncpy(wildcard.nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
     wildcard.rank = PMIX_RANK_WILDCARD;
     PMIX_INFO_LOAD(&ginfo, PMIX_IMMEDIATE, NULL, PMIX_BOOL);
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
     if (PMIX_SUCCESS == PMIx_Get(&wildcard, PMIX_DEBUG_STOP_IN_INIT, &ginfo, 1, &val)) {
         PMIX_VALUE_FREE(val, 1); // cleanup memory
         /* if the value was found, then we need to wait for debugger attach here */
@@ -466,16 +466,11 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         PMIX_CONSTRUCT_LOCK(&reglock);
         PMIx_Register_event_handler(&code, 1, NULL, 0,
                                     notification_fn, NULL, (void*)&reglock);
-        PMIX_ACQUIRE_THREAD(&pmix_global_lock);
         /* wait for it to arrive */
         PMIX_WAIT_THREAD(&reglock);
         PMIX_DESTRUCT_LOCK(&reglock);
-    } else {
-        PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     }
     PMIX_INFO_DESTRUCT(&ginfo);
-
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* check to see if we need to notify anyone */
     if (NULL != info) {
@@ -550,7 +545,8 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
     pmix_globals.init_cntr = 0;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:client finalize called");
+                        "%s:%d pmix:client finalize called",
+                        pmix_globals.myid.nspace, pmix_globals.myid.rank);
 
     /* mark that I called finalize */
     pmix_globals.mypeer->finalized = true;
@@ -589,7 +585,8 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
 
 
         pmix_output_verbose(2, pmix_globals.debug_output,
-                             "pmix:client sending finalize sync to server");
+                             "%s:%d pmix:client sending finalize sync to server",
+                             pmix_globals.myid.nspace, pmix_globals.myid.rank);
 
         /* setup a timer to protect ourselves should the server be unable
          * to answer for some reason */
@@ -613,7 +610,8 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
         }
 
         pmix_output_verbose(2, pmix_globals.debug_output,
-                             "pmix:client finalize sync received");
+                             "%s:%d pmix:client finalize sync received",
+                             pmix_globals.myid.nspace, pmix_globals.myid.rank);
     }
 
     if (!pmix_globals.external_evbase) {

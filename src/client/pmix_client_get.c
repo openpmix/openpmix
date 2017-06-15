@@ -626,8 +626,8 @@ static void _getnbfn(int fd, short flags, void *cbdata)
         rc = pmix_dstore_fetch(cb->nspace, cb->rank, cb->key, &val);
 #endif
         if( PMIX_SUCCESS != rc && !my_nspace ){
-            /* we are asking about the job-level info from other
-             * namespace. It seems tha we don't have it - go and
+            /* we are asking about the job-level info from another
+             * namespace. It seems that we don't have it - go and
              * ask server
              */
             goto request;
@@ -693,12 +693,12 @@ static void _getnbfn(int fd, short flags, void *cbdata)
         goto respond;
     }
 
-request:
+  request:
     /* if we got here, then we don't have the data for this proc. If we
      * are a server, or we are a client and not connected, then there is
      * nothing more we can do */
-    if (PMIX_PROC_SERVER == pmix_globals.proc_type ||
-        (PMIX_PROC_SERVER != pmix_globals.proc_type && !pmix_globals.connected)) {
+    if (PMIX_PROC_IS_SERVER ||
+        (!PMIX_PROC_IS_SERVER && !pmix_globals.connected)) {
         rc = PMIX_ERR_NOT_FOUND;
         goto respond;
     }
@@ -706,13 +706,14 @@ request:
     /* we also have to check the user's directives to see if they do not want
      * us to attempt to retrieve it from the server */
     for (n=0; n < cb->ninfo; n++) {
-        if (0 == strcmp(cb->info[n].key, PMIX_OPTIONAL) &&
+        if ((0 == strcmp(cb->info[n].key, PMIX_OPTIONAL) || (0 == strcmp(cb->info[n].key, PMIX_IMMEDIATE))) &&
             (PMIX_UNDEF == cb->info[n].value.type || cb->info[n].value.data.flag)) {
             /* they don't want us to try and retrieve it */
             pmix_output_verbose(2, pmix_globals.debug_output,
                                 "PMIx_Get key=%s for rank = %d, namespace = %s was not found - request was optional",
                                 cb->key, cb->rank, cb->nspace);
             rc = PMIX_ERR_NOT_FOUND;
+            val = NULL;
             goto respond;
         }
     }
