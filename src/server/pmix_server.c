@@ -205,7 +205,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
                 kv.key = NULL;
                 kv.value = NULL;
                 PMIX_DESTRUCT(&kv);
-                PMIx_server_finalize();
+                PMIX_RELEASE_THREAD(&pmix_global_lock);
                 return rc;
             }
         }
@@ -1161,13 +1161,8 @@ PMIX_EXPORT pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc,
         return rc;
     }
 
-    if (PMIX_PROC_SERVER == pmix_globals.proc_type) {
-        PMIX_THREADSHIFT(cd, _store_internal);
-        PMIX_WAIT_THREAD(&cd->lock);
-    } else {
-        cd->lock.active = false;
-        _store_internal(0, 0, cd);
-    }
+    PMIX_THREADSHIFT(cd, _store_internal);
+    PMIX_WAIT_THREAD(&cd->lock);
     rc = cd->status;
     PMIX_RELEASE(cd);
 
@@ -1737,7 +1732,7 @@ static void _spcb(int sd, short args, void *cbdata)
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(reply, &cd->status, 1, PMIX_STATUS))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(cd->cd);
-        PMIX_RELEASE_THREAD(&cd->lock);
+        PMIX_WAKEUP_THREAD(&cd->lock);
         return;
     }
     if (PMIX_SUCCESS == cd->status) {
