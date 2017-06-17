@@ -963,7 +963,7 @@ PMIX_EXPORT void PMIx_Deregister_event_handler(size_t event_hdlr_ref,
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
-        if (NULL == cbfunc) {
+        if (NULL != cbfunc) {
             cbfunc(PMIX_ERR_INIT, cbdata);
         }
         return;

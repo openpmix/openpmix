@@ -842,7 +842,7 @@ static int make_string(char **out, char **no_newline_string, output_desc_t *ldi,
 static int output(int output_id, const char *format, va_list arglist)
 {
     int rc = PMIX_SUCCESS;
-    char *str, *out = NULL;
+    char *str=NULL, *out = NULL;
     output_desc_t *ldi;
 
     /* Setup */
