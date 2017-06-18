@@ -355,6 +355,24 @@ PMIX_CLASS_DECLARATION(pmix_info_caddy_t);
         PMIX_ACQUIRE_OBJECT((a));               \
     } while (0)
 
+typedef struct {
+    pmix_object_t super;
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    pmix_status_t status;
+    pmix_proc_t source;
+    pmix_data_range_t range;
+    pmix_proc_t *targets;
+    size_t ntargets;
+    bool nondefault;
+    pmix_info_t *info;
+    size_t ninfo;
+    pmix_buffer_t *buf;
+    pmix_op_cbfunc_t cbfunc;
+    void *cbdata;
+} pmix_notify_caddy_t;
+PMIX_CLASS_DECLARATION(pmix_notify_caddy_t);
+
 
 /****    GLOBAL STORAGE    ****/
 /* define a global construct that includes values that must be shared

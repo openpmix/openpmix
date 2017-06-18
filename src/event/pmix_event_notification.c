@@ -60,7 +60,7 @@ PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status,
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
 
-    if (PMIX_PROC_SERVER == pmix_globals.proc_type) {
+    if (PMIX_PROC_IS_SERVER) {
         rc = pmix_server_notify_client_of_event(status, source, range,
                                                 info, ninfo,
                                                 cbfunc, cbdata);
@@ -187,12 +187,11 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
         cd->source.rank = source->rank;
     }
     cd->range = range;
-
-    /* check for directives */
-    if (NULL != info) {
+    if (0 < chain->ninfo) {
         cd->ninfo = chain->ninfo;
         PMIX_INFO_CREATE(cd->info, cd->ninfo);
-        for (n=0; n < chain->ninfo; n++) {
+       /* need to copy the info */
+        for (n=0; n < cd->ninfo; n++) {
             PMIX_INFO_XFER(&cd->info[n], &chain->info[n]);
             if (0 == strncmp(cd->info[n].key, PMIX_EVENT_NON_DEFAULT, PMIX_MAX_KEYLEN)) {
                 cd->nondefault = true;
@@ -217,6 +216,7 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
             }
         }
     }
+
     /* add to our cache */
     rbout = pmix_ring_buffer_push(&pmix_globals.notifications, cd);
     /* if an older event was bumped, release it */
@@ -300,6 +300,7 @@ static void progress_local_event_hdlr(pmix_status_t status,
             ++cnt;
         }
     }
+
     /* save this handler's returned status */
     if (NULL != chain->evhdlr->name) {
         (void)strncpy(newinfo[cnt].key, chain->evhdlr->name, PMIX_MAX_KEYLEN);
