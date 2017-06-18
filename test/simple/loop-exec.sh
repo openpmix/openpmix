@@ -1,6 +1,6 @@
 #!/bin/bash
 
-loops=2000
+loops=20000
 #loops=2
 
 TIMEOUT="timeout --preserve-status -k 32 30"
@@ -12,7 +12,7 @@ TIMEOUT=""
 VALGRIND_OPTS=""
 #VALGRIND_OPTS="valgrind --track-origins=yes"
 
-cmd="${TIMEOUT} ./simptest -n 2"
+cmd="${TIMEOUT} ./simptest -n 20"
 
 #export PMIX_DEBUG=2
 #export PMIX_MCA_ptl=tcp
