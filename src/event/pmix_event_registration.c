@@ -68,6 +68,7 @@ PMIX_CLASS_INSTANCE(pmix_rshift_caddy_t,
                     pmix_object_t,
                     rscon, rsdes);
 
+static void check_cached_events(pmix_rshift_caddy_t *cd);
 
 static void regevents_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
                              pmix_buffer_t *buf, void *cbdata)
@@ -108,6 +109,9 @@ static void regevents_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
     if (NULL != cd && NULL != cd->evregcbfn) {
         cd->evregcbfn(ret, index, cd->cbdata);
     }
+    /* check this event against anything in our cache */
+    check_cached_events(cd);
+
     /* release any info we brought along as they are
      * internally generated and not provided by the caller */
     if (NULL!= rb->info) {
@@ -149,6 +153,7 @@ static void reg_cbfunc(pmix_status_t status, void *cbdata)
         /* pass back our local index */
         cd->evregcbfn(rc, index, cd->cbdata);
     }
+
     /* release any info we brought along as they are
      * internally generated and not provided by the caller */
     if (NULL!= rb->info) {
@@ -326,24 +331,91 @@ static pmix_status_t _add_hdlr(pmix_rshift_caddy_t *cd, pmix_list_t *xfer)
     return PMIX_SUCCESS;
 }
 
+static void check_cached_events(pmix_rshift_caddy_t *cd)
+{
+    size_t i, n;
+    pmix_notify_caddy_t *ncd;
+    bool found, matched;
+    pmix_event_chain_t *chain;
+
+    for (i=0; i < (size_t)pmix_globals.notifications.size; i++) {
+        if (NULL == (ncd = (pmix_notify_caddy_t*)pmix_ring_buffer_poke(&pmix_globals.notifications, i))) {
+            continue;
+        }
+        found = false;
+        if (NULL == cd->codes) {
+            /* they registered a default event handler - always matches */
+            found = true;
+        } else {
+            for (n=0; n < cd->ncodes; n++) {
+                if (cd->codes[n] == ncd->status) {
+                    found = true;
+                    break;
+                }
+            }
+        }
+        if (found) {
+           /* if we were given specific targets, check if we are one */
+            if (NULL != ncd->targets) {
+                matched = false;
+                for (n=0; n < ncd->ntargets; n++) {
+                    if (0 != strncmp(pmix_globals.myid.nspace, ncd->targets[n].nspace, PMIX_MAX_NSLEN)) {
+                        continue;
+                    }
+                    if (PMIX_RANK_WILDCARD == ncd->targets[n].rank ||
+                        pmix_globals.myid.rank == ncd->targets[n].rank) {
+                        matched = true;
+                        break;
+                    }
+                }
+                if (!matched) {
+                    /* do not notify this one */
+                    continue;
+                }
+            }
+           /* all matches - notify */
+            chain = PMIX_NEW(pmix_event_chain_t);
+            chain->status = ncd->status;
+            (void)strncpy(chain->source.nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
+            chain->source.rank = pmix_globals.myid.rank;
+            /* we already left space for evhandler name plus
+             * a callback object when we cached the notification */
+            chain->ninfo = ncd->ninfo;
+            PMIX_INFO_CREATE(chain->info, chain->ninfo);
+            if (0 < cd->ninfo) {
+                /* need to copy the info */
+                for (n=0; n < ncd->ninfo; n++) {
+                    PMIX_INFO_XFER(&chain->info[n], &ncd->info[n]);
+                    if (0 == strncmp(chain->info[n].key, PMIX_EVENT_NON_DEFAULT, PMIX_MAX_KEYLEN)) {
+                        chain->nondefault = true;
+                    }
+                }
+            }
+            /* we don't want this chain to propagate, so indicate it
+             * should only be run as a single-shot */
+            chain->endchain = true;
+            /* now notify any matching registered callbacks we have */
+            pmix_invoke_local_event_hdlr(chain);
+        }
+    }
+}
+
 static void reg_event_hdlr(int sd, short args, void *cbdata)
 {
     pmix_rshift_caddy_t *cd = (pmix_rshift_caddy_t*)cbdata;
-    size_t index = 0, n, i;
+    size_t index = 0, n;
     pmix_status_t rc;
     pmix_event_hdlr_t *evhdlr, *ev;
     uint8_t location = PMIX_EVENT_ORDER_NONE;
     char *name = NULL, *locator = NULL;
     bool firstoverall=false, lastoverall=false;
-    bool found, matched;
+    bool found;
     pmix_list_t xfer;
     pmix_info_caddy_t *ixfer;
     void *cbobject = NULL;
     pmix_data_range_t range = PMIX_RANGE_UNDEF;
     pmix_proc_t *parray = NULL;
     size_t nprocs;
-    pmix_notify_caddy_t *ncd;
-    pmix_event_chain_t *chain;
 
     /* need to acquire the object from its originating thread */
     PMIX_ACQUIRE_OBJECT(cd);
@@ -681,63 +753,7 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
     }
 
     /* check if any matching notifications have been cached */
-    for (i=0; i < (size_t)pmix_globals.notifications.size; i++) {
-        if (NULL == (ncd = (pmix_notify_caddy_t*)pmix_ring_buffer_poke(&pmix_globals.notifications, i))) {
-            break;
-        }
-        found = false;
-        if (NULL == cd->codes) {
-            /* they registered a default event handler - always matches */
-            found = true;
-        } else {
-            for (n=0; n < cd->ncodes; n++) {
-                if (cd->codes[n] == ncd->status) {
-                    found = true;
-                    break;
-                }
-            }
-        }
-        if (found) {
-           /* if we were given specific targets, check if we are one */
-            if (NULL != ncd->targets) {
-                matched = false;
-                for (n=0; n < ncd->ntargets; n++) {
-                    if (0 != strncmp(pmix_globals.myid.nspace, ncd->targets[n].nspace, PMIX_MAX_NSLEN)) {
-                        continue;
-                    }
-                    if (PMIX_RANK_WILDCARD == ncd->targets[n].rank ||
-                        pmix_globals.myid.rank == ncd->targets[n].rank) {
-                        matched = true;
-                        break;
-                    }
-                }
-                if (!matched) {
-                    /* do not notify this one */
-                    continue;
-                }
-            }
-           /* all matches - notify */
-            chain = PMIX_NEW(pmix_event_chain_t);
-            chain->status = ncd->status;
-            (void)strncpy(chain->source.nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
-            chain->source.rank = pmix_globals.myid.rank;
-            /* we already left space for evhandler name plus
-             * a callback object when we cached the notification */
-            chain->ninfo = ncd->ninfo;
-            PMIX_INFO_CREATE(chain->info, chain->ninfo);
-            if (0 < cd->ninfo) {
-                /* need to copy the info */
-                for (n=0; n < ncd->ninfo; n++) {
-                    PMIX_INFO_XFER(&chain->info[n], &ncd->info[n]);
-                }
-            }
-            /* we don't want this chain to propagate, so indicate it
-             * should only be run as a single-shot */
-            chain->endchain = true;
-            /* now notify any matching registered callbacks we have */
-            pmix_invoke_local_event_hdlr(chain);
-        }
-    }
+    check_cached_events(cd);
 
     /* all done */
     PMIX_RELEASE(cd);
