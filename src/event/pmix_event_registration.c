@@ -109,8 +109,10 @@ static void regevents_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
     if (NULL != cd && NULL != cd->evregcbfn) {
         cd->evregcbfn(ret, index, cd->cbdata);
     }
-    /* check this event against anything in our cache */
-    check_cached_events(cd);
+    if (NULL != cd) {
+        /* check this event against anything in our cache */
+        check_cached_events(cd);
+    }
 
     /* release any info we brought along as they are
      * internally generated and not provided by the caller */
