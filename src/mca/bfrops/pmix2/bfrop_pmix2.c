@@ -44,6 +44,7 @@ static pmix_status_t register_type(const char *name,
                                    pmix_bfrop_unpack_fn_t unpack,
                                    pmix_bfrop_copy_fn_t copy,
                                    pmix_bfrop_print_fn_t print);
+static const char* data_type_string(pmix_data_type_t type);
 
 pmix_bfrops_module_t pmix_bfrops_pmix2_module = {
     .version = "pmix2",
@@ -58,7 +59,8 @@ pmix_bfrops_module_t pmix_bfrops_pmix2_module = {
     .value_load = pmix_bfrops_base_value_load,
     .value_unload = pmix_bfrops_base_value_unload,
     .value_cmp = pmix_bfrops_base_value_cmp,
-    .register_type = register_type
+    .register_type = register_type,
+    .data_type_string = data_type_string
 };
 
 static pmix_status_t init(void)
@@ -438,4 +440,9 @@ static pmix_status_t register_type(const char *name, pmix_data_type_t type,
                        copy, print,
                        &mca_bfrops_pmix2_component.types);
     return PMIX_SUCCESS;
+}
+
+static const char* data_type_string(pmix_data_type_t type)
+{
+    return pmix_bfrops_base_data_type_string(&mca_bfrops_pmix2_component.types, type);
 }

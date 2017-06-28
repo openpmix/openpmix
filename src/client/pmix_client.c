@@ -363,7 +363,6 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         if (NULL != info) {
             _check_for_notify(info, ninfo);
         }
-        ++pmix_globals.init_cntr;
         return PMIX_SUCCESS;
     }
     /* if we don't see the required info, then we cannot init */

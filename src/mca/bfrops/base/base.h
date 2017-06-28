@@ -236,7 +236,9 @@ pmix_status_t pmix_bfrops_stub_register_type(struct pmix_peer_t *peer,
                                              pmix_bfrop_unpack_fn_t unpack,
                                              pmix_bfrop_copy_fn_t copy,
                                              pmix_bfrop_print_fn_t print);
-const char* pmix_bfrops_stub_data_type_string(struct pmix_peer_t *peer,
+
+/* data type string function */
+const char* pmix_bfrops_base_data_type_string(pmix_pointer_array_t *regtypes,
                                               pmix_data_type_t type);
 
 /*

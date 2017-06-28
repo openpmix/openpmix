@@ -1063,3 +1063,16 @@ pmix_status_t pmix_bfrop_get_data_type(pmix_buffer_t *buffer, pmix_data_type_t *
 
     return PMIX_SUCCESS;
 }
+
+const char* pmix_bfrops_base_data_type_string(pmix_pointer_array_t *regtypes,
+                                              pmix_data_type_t type)
+{
+    pmix_bfrop_type_info_t *info;
+
+    /* Lookup the object for this type and call it */
+    if (NULL == (info = (pmix_bfrop_type_info_t*)pmix_pointer_array_get_item(regtypes, type))) {
+        return NULL;
+    }
+
+    return info->odti_name;
+}
