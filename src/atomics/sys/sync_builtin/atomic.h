@@ -13,6 +13,7 @@
  * Copyright (c) 2011      Sandia National Laboratories. All rights reserved.
  * Copyright (c) 2014-2016 Los Alamos National Security, LLC. All rights
  *                         reserved.
+ * Copyright (c) 2017      Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -45,7 +46,7 @@ static inline void pmix_atomic_wmb(void)
     __sync_synchronize();
 }
 
-#define MB() pmix_atomic_mb()
+#define PMIXMB() pmix_atomic_mb()
 
 /**********************************************************************
  *
