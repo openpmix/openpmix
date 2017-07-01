@@ -518,7 +518,7 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, pmix_rank_t rank,
     pmix_byte_object_t bo;
     char *data = NULL;
     size_t sz = 0;
-    pmix_scope_t scope;
+    pmix_scope_t scope = PMIX_SCOPE_UNDEF;
 
     /* check to see if this data already has been
      * obtained as a result of a prior direct modex request from
@@ -532,10 +532,7 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, pmix_rank_t rank,
      * the data will have been stored under our GDS */
     if (0 < nptr->nlocalprocs) {
         *local = true;
-        if (PMIX_RANK_WILDCARD == rank) {
-            /* use undefined scope */
-            scope = PMIX_SCOPE_UNDEF;
-        } else {
+        if (PMIX_RANK_WILDCARD != rank) {
             /* see if the requested rank is local */
             PMIX_LIST_FOREACH(iptr, &nptr->ranks, pmix_rank_info_t) {
                 if (rank == iptr->pname.rank) {
@@ -544,31 +541,31 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, pmix_rank_t rank,
                 }
             }
             if (PMIX_LOCAL == scope) {
-                /* must have found a local rank */
+                /* must have found a local rank
+                 * we need the personality module for a client from this
+                 * nspace, but it doesn't matter which one as they all
+                 * must use the same GDS module. We don't know the GDS
+                 * module, however, until _after_ the first local client
+                 * connects to us. Since the nspace of the requestor may
+                 * not match the nspace of the proc whose info is being
+                 * requested, we cannot be sure this will have occurred.
+                 * So we have to loop again to see if someone has connected */
+                peer = NULL;
+                PMIX_LIST_FOREACH(iptr, &nptr->ranks, pmix_rank_info_t) {
+                    if (0 <= iptr->peerid) {
+                        peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, iptr->peerid);
+                        break;
+                    }
+                }
+                if (NULL == peer) {
+                    /* nobody has connected yet, so this request needs to be held */
+                    return PMIX_ERR_NOT_FOUND;
+                }
             } else {
                 /* this must be a remote rank */
                 scope = PMIX_REMOTE;
                 peer = pmix_globals.mypeer;
             }
-        }
-        /* we need the personality module for a client from this
-         * nspace, but it doesn't matter which one as they all
-         * must use the same GDS module. We don't know the GDS
-         * module, however, until _after_ the first local client
-         * connects to us. Since the nspace of the requestor may
-         * not match the nspace of the proc whose info is being
-         * requested, we cannot be sure this will have occurred.
-         * So we have to loop again to see if someone has connected */
-        peer = NULL;
-        PMIX_LIST_FOREACH(iptr, &nptr->ranks, pmix_rank_info_t) {
-            if (0 <= iptr->peerid) {
-                peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, iptr->peerid);
-                break;
-            }
-        }
-        if (NULL == peer) {
-            /* nobody has connected yet, so this request needs to be held */
-            return PMIX_ERR_NOT_FOUND;
         }
     } else {
         *local = false;
@@ -579,8 +576,8 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, pmix_rank_t rank,
     /* if they are asking about a rank from an nspace different
      * from their own, or they gave a rank of "wildcard", then
      * include a copy of the job-level info */
-    if (PMIX_RANK_WILDCARD == rank || (NULL != cd &&
-        0 != strncmp(nptr->nspace, cd->peer->info->pname.nspace, PMIX_MAX_NSLEN))) {
+    if (PMIX_RANK_WILDCARD == rank ||
+        0 != strncmp(nptr->nspace, cd->peer->info->pname.nspace, PMIX_MAX_NSLEN)) {
         proc.rank = PMIX_RANK_WILDCARD;
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         /* this data is requested by a local client, so give the gds the option
@@ -682,6 +679,7 @@ pmix_status_t pmix_pending_resolve(pmix_nspace_t *nptr, pmix_rank_t rank,
 {
     pmix_dmdx_local_t *cd, *ptr;
     pmix_dmdx_request_t *req;
+    pmix_server_caddy_t *scd;
 
     /* find corresponding request (if exists) */
     if (NULL == lcd) {
@@ -712,14 +710,20 @@ pmix_status_t pmix_pending_resolve(pmix_nspace_t *nptr, pmix_rank_t rank,
     } else if (NULL != nptr) {
         /* if we've got the blob - try to satisfy requests */
         /* run through all the requests to this rank */
+        /* this info is going back to one of our peers, so provide a server
+         * caddy with our peer in it so the data gets packed correctly */
+        scd = PMIX_NEW(pmix_server_caddy_t);
+        PMIX_RETAIN(pmix_globals.mypeer);
+        scd->peer = pmix_globals.mypeer;
         PMIX_LIST_FOREACH(req, &ptr->loc_reqs, pmix_dmdx_request_t) {
             pmix_status_t rc;
-            rc = _satisfy_request(nptr, rank, NULL, req->cbfunc, req->cbdata, NULL);
+            rc = _satisfy_request(nptr, rank, scd, req->cbfunc, req->cbdata, NULL);
             if( PMIX_SUCCESS != rc ){
                 /* if we can't satisfy this particular request (missing key?) */
                 req->cbfunc(rc, NULL, 0, req->cbdata, NULL, NULL);
             }
         }
+        PMIX_RELEASE(scd);
     }
     /* remove all requests to this rank and cleanup the corresponding structure */
     pmix_list_remove_item(&pmix_server_globals.local_reqs, (pmix_list_item_t*)ptr);

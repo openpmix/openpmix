@@ -134,7 +134,12 @@ void pmix_bfrops_base_value_load(pmix_value_t *v, const void *data,
             break;
         case PMIX_BYTE_OBJECT:
             bo = (pmix_byte_object_t*)data;
-            v->data.bo.bytes = bo->bytes;
+            v->data.bo.bytes = (char*)malloc(bo->size);
+            if (NULL == v->data.bo.bytes) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                return;
+            }
+            memcpy(v->data.bo.bytes, bo->bytes, bo->size);
             memcpy(&(v->data.bo.size), &bo->size, sizeof(size_t));
             break;
         case PMIX_PERSIST:

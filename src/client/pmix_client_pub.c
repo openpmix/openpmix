@@ -522,6 +522,11 @@ static void wait_cbfunc(struct pmix_peer_t *pr,
                         "pmix:client recv callback activated with %d bytes",
                         (NULL == buf) ? -1 : (int)buf->bytes_used);
 
+    if (NULL == buf) {
+        rc = PMIX_ERR_BAD_PARAM;
+        goto report;
+    }
+
     /* unpack the returned status */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver,
@@ -529,6 +534,8 @@ static void wait_cbfunc(struct pmix_peer_t *pr,
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
     }
+
+  report:
     if (NULL != cb->cbfunc.opfn) {
         cb->cbfunc.opfn(rc, cb->cbdata);
     }
@@ -551,7 +558,7 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr,
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
     pmix_status_t rc, ret;
     int32_t cnt;
-    pmix_pdata_t *pdata;
+    pmix_pdata_t *pdata = NULL;
     size_t ndata;
 
     PMIX_ACQUIRE_OBJECT(cb);
@@ -564,6 +571,10 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr,
         /* nothing we can do with this */
         PMIX_RELEASE(cb);
         return;
+    }
+    if (NULL == buf) {
+        rc = PMIX_ERR_BAD_PARAM;
+        goto report;
     }
 
     /* set the defaults */
@@ -608,13 +619,16 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr,
         }
     }
 
+  report:
     if (NULL != cb->cbfunc.lookupfn) {
         cb->cbfunc.lookupfn(rc, pdata, ndata, cb->cbdata);
     }
 
  cleanup:
     /* cleanup */
-    PMIX_PDATA_FREE(pdata, ndata);
+    if (NULL != pdata) {
+        PMIX_PDATA_FREE(pdata, ndata);
+    }
 
     PMIX_RELEASE(cb);
 }

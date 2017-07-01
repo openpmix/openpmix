@@ -148,6 +148,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     if (PMIX_SUCCESS != pmix_ptl_base_start_listening(info, ninfo)) {
         pmix_show_help("help-pmix-server.txt", "listener-thread-start", true);
         PMIx_server_finalize();
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_INIT;
     }
 
@@ -155,6 +156,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
     if (NULL == pmix_globals.mypeer->nptr->compat.bfrops) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
     /* and set our buffer type */
@@ -164,6 +166,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     pmix_globals.mypeer->nptr->compat.psec = pmix_psec_base_assign_module(NULL);
     if (NULL == pmix_globals.mypeer->nptr->compat.psec) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
 
@@ -171,6 +174,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     pmix_globals.mypeer->nptr->compat.ptl = pmix_ptl_base_assign_module();
     if (NULL == pmix_globals.mypeer->nptr->compat.ptl) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
 
@@ -179,6 +183,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     pmix_globals.mypeer->nptr->compat.gds = pmix_gds_base_assign_module(&ginfo, 1);
     if (NULL == pmix_globals.mypeer->nptr->compat.gds) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
 
@@ -968,8 +973,8 @@ static void _dmodex_req(int sd, short args, void *cbdata)
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t*)cbdata;
     pmix_rank_info_t *info, *iptr;
     pmix_nspace_t *nptr, *ns;
-    char *data;
-    size_t sz;
+    char *data = NULL;
+    size_t sz = 0;
     pmix_dmdx_remote_t *dcd;
     pmix_status_t rc;
     pmix_buffer_t pbkt;
@@ -1012,18 +1017,16 @@ static void _dmodex_req(int sd, short args, void *cbdata)
     /* They are asking for job level data for this process */
     if (cd->proc.rank == PMIX_RANK_WILDCARD) {
         /* fetch the job-level info for this nspace */
-        data = NULL;
-        sz = 0;
         /* this is going to a remote peer, so inform the gds
          * that we need an actual copy of the data */
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &cd->proc;
         cb.scope = PMIX_REMOTE;
         cb.copy = true;
+        PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
         if (PMIX_SUCCESS == rc) {
             /* assemble the provided data into a byte object */
-            PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
             PMIX_LIST_FOREACH(kv, &cb.kvs, pmix_kval_t) {
                 PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &pbkt, kv, 1, PMIX_KVAL);
                 if (PMIX_SUCCESS != rc) {
@@ -1032,8 +1035,6 @@ static void _dmodex_req(int sd, short args, void *cbdata)
                     goto cleanup;
                 }
             }
-            PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
-            PMIX_DESTRUCT(&pbkt);
         }
         PMIX_DESTRUCT(&cb);
         PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
@@ -1080,8 +1081,6 @@ static void _dmodex_req(int sd, short args, void *cbdata)
     }
 
     /* collect the remote/global data from this proc */
-    data = NULL;
-    sz = 0;
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.proc = &cd->proc;
     cb.scope = PMIX_REMOTE;
@@ -1381,12 +1380,7 @@ PMIX_EXPORT pmix_status_t PMIx_generate_regex(const char *input, char **regexp)
         /* if no ranges, then just add the name */
         if (0 == pmix_list_get_size(&vreg->ranges)) {
             if (NULL != vreg->prefix) {
-                /* solitary value */
-                if (0 > asprintf(&tmp, "%s", vreg->prefix)) {
-                    return PMIX_ERR_NOMEM;
-                }
                 pmix_argv_append_nosize(&regexargs, tmp);
-                free(tmp);
             }
             PMIX_RELEASE(vreg);
             continue;

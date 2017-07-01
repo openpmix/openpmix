@@ -419,6 +419,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     /* create a pmix_nspace_t object for our peer */
     nsptr = PMIX_NEW(pmix_nspace_t);
     if (NULL == nsptr){
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_NOMEM;
     }
     nsptr->nspace = strdup(evar);
@@ -438,6 +439,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     /* setup a rank_info object for us */
     pmix_globals.mypeer->info = PMIX_NEW(pmix_rank_info_t);
     if (NULL == pmix_globals.mypeer->info) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_NOMEM;
     }
     pmix_globals.mypeer->info->pname.nspace = strdup(proc->nspace);
@@ -449,6 +451,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     evar = getenv("PMIX_BFROPS_MODE");
     pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(evar);
     if (NULL == pmix_globals.mypeer->nptr->compat.bfrops) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_INIT;
     }
     /* the server will be using the same */
@@ -1172,6 +1175,7 @@ static void _resolve_peers(int sd, short args, void *cbdata)
             cb->procs = procs;
             cb->nprocs = nprocs;
             rc = PMIX_SUCCESS;
+            pmix_argv_free(ptr);
             goto complete;
         }
     }
