@@ -1510,7 +1510,7 @@ pmix_status_t pmix_bfrops_base_unpack_darray(pmix_buffer_t *buffer, void *dest,
                 }
                 break;
             case PMIX_POINTER:
-                ptr[i].array = (void*)malloc(m * sizeof(void*));
+                ptr[i].array = (char*)malloc(m * sizeof(char*));
                 if (NULL == ptr[i].array) {
                     return PMIX_ERR_NOMEM;
                 }

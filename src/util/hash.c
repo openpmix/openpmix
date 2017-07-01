@@ -76,6 +76,10 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
                         "HASH:STORE rank %d key %s",
                         rank, (NULL == kin) ? "NULL KVAL" : kin->key);
 
+    if (NULL == kin) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     id = (uint64_t)rank;
 
     /* lookup the proc data object for this proc - create

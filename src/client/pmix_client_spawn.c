@@ -221,6 +221,11 @@ static void wait_cbfunc(struct pmix_peer_t *pr,
     /* init */
     memset(nspace, 0, PMIX_MAX_NSLEN+1);
 
+    if (NULL == buf) {
+        ret = PMIX_ERR_BAD_PARAM;
+        goto report;
+    }
+
     /* unpack the returned status */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver,
@@ -253,10 +258,10 @@ static void wait_cbfunc(struct pmix_peer_t *pr,
         }
     }
 
+  report:
     if (NULL != cb->cbfunc.spawnfn) {
         cb->cbfunc.spawnfn(ret, nspace, cb->cbdata);
     }
-    cb->cbdata = NULL;
     PMIX_RELEASE(cb);
 }
 

@@ -555,7 +555,7 @@ static pmix_status_t register_info(pmix_peer_t *peer,
     pmix_rank_t rank;
     char **procs = NULL, **nodes = NULL;
     size_t n, j, size;
-    pmix_status_t rc;
+    pmix_status_t rc = PMIX_SUCCESS;
     pmix_info_t *iptr;
     pmix_buffer_t buf2;
     pmix_kval_t kv, *kvptr;
@@ -1100,9 +1100,12 @@ static pmix_status_t hash_store(const pmix_proc_t *proc,
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "[%s:%d] gds:hash:hash_store for proc [%s:%d] key %s scope %s",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank,
-                        proc->nspace, proc->rank,
-                        (NULL == kv->key) ? "NULL" : kv->key,
+                        proc->nspace, proc->rank, kv->key,
                         PMIx_Scope_string(scope));
+
+    if (NULL == kv->key) {
+        return PMIX_ERR_BAD_PARAM;
+    }
 
     /* find the hash table for this nspace */
     trk = NULL;

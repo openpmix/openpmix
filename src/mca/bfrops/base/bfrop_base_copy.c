@@ -631,7 +631,7 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
             pd = (pmix_pdata_t*)p->array;
             sd = (pmix_pdata_t*)src->array;
             for (n=0; n < src->size; n++) {
-                PMIX_PDATA_LOAD(&pd[n], &sd[n].proc, sd[n].key, &sd[n].value, sd[n].value.type);
+                PMIX_PDATA_LOAD(&pd[n], &sd[n].proc, sd[n].key, &sd[n].value.data.flag, sd[n].value.type);
             }
             break;
         case PMIX_BUFFER:
