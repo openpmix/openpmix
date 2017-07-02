@@ -586,6 +586,7 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, pmix_rank_t rank,
         cb.proc = &proc;
         cb.scope = PMIX_INTERNAL;
         cb.copy = false;
+        peer = pmix_globals.mypeer;
         PMIX_GDS_FETCH_KV(rc, peer, &cb);
         if (PMIX_SUCCESS == rc) {
             /* assemble the provided data into a byte object */

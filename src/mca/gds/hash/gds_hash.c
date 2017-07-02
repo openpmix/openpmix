@@ -1040,7 +1040,6 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                     PMIX_RELEASE(kp2);
                     PMIX_DESTRUCT(&kv);
                     PMIX_DESTRUCT(&buf2);
-                    pmix_argv_free(procs);
                     return rc;
                 }
                 PMIX_RELEASE(kp2);

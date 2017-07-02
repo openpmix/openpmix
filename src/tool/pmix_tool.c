@@ -369,6 +369,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return rc;
     }
     PMIX_RELEASE(kptr); // maintain accounting
 

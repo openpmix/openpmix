@@ -347,6 +347,11 @@ static void wait_cbfunc(struct pmix_peer_t *pr,
                         "pmix:client recv callback activated with %d bytes",
                         (NULL == buf) ? -1 : (int)buf->bytes_used);
 
+    if (NULL == buf) {
+        ret = PMIX_ERR_BAD_PARAM;
+        goto report;
+    }
+
     /* unpack the returned status */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver,
@@ -391,6 +396,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr,
         ret = rc;
     }
 
+  report:
     if (NULL != cb->cbfunc.opfn) {
         cb->cbfunc.opfn(ret, cb->cbdata);
     }
