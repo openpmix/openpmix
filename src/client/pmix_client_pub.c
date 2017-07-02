@@ -559,7 +559,7 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr,
     pmix_status_t rc, ret;
     int32_t cnt;
     pmix_pdata_t *pdata = NULL;
-    size_t ndata;
+    size_t ndata = 0;
 
     PMIX_ACQUIRE_OBJECT(cb);
 
