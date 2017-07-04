@@ -38,6 +38,7 @@
 #include "src/mca/pif/base/base.h"
 #include "src/mca/pinstalldirs/base/base.h"
 #include "src/mca/pnet/base/base.h"
+#include "src/mca/preg/base/base.h"
 #include "src/mca/psec/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include PMIX_EVENT_HEADER
@@ -69,6 +70,9 @@ void pmix_rte_finalize(void)
         return;
     }
 
+
+    /* close preg */
+    (void)pmix_mca_base_framework_close(&pmix_preg_base_framework);
 
     /* cleanup communications */
     (void)pmix_mca_base_framework_close(&pmix_ptl_base_framework);

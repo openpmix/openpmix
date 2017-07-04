@@ -38,6 +38,7 @@
 #include "src/util/hash.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
+#include "src/mca/preg/preg.h"
 
 #include "src/mca/gds/base/base.h"
 #include "gds_hash.h"
@@ -399,7 +400,7 @@ pmix_status_t hash_cache_job_info(struct pmix_nspace_t *ns,
     for (n=0; n < ninfo; n++) {
         if (0 == strcmp(info[n].key, PMIX_NODE_MAP)) {
             /* parse the regex to get the argv array of node names */
-            if (PMIX_SUCCESS != (rc = pmix_regex_parse_nodes(info[n].value.data.string, &nodes))) {
+            if (PMIX_SUCCESS != (rc = pmix_preg.parse_nodes(info[n].value.data.string, &nodes))) {
                 PMIX_ERROR_LOG(rc);
                 goto release;
             }
@@ -413,7 +414,7 @@ pmix_status_t hash_cache_job_info(struct pmix_nspace_t *ns,
             }
         } else if (0 == strcmp(info[n].key, PMIX_PROC_MAP)) {
             /* parse the regex to get the argv array containing proc ranks on each node */
-            if (PMIX_SUCCESS != (rc = pmix_regex_parse_procs(info[n].value.data.string, &procs))) {
+            if (PMIX_SUCCESS != (rc = pmix_preg.parse_procs(info[n].value.data.string, &procs))) {
                 PMIX_ERROR_LOG(rc);
                 goto release;
             }
@@ -548,6 +549,79 @@ pmix_status_t hash_cache_job_info(struct pmix_nspace_t *ns,
     return rc;
 }
 
+/* we need to pass three things to the client:
+ *
+ * (a) the list of nodes involved in this nspace
+ *
+ * (b) the hostname for each proc in this nspace
+ *
+ * (c) the list of procs on each node for reverse lookup
+ */
+static pmix_status_t pmix_pack_proc_map(struct pmix_peer_t *pr,
+                                        pmix_buffer_t *buf,
+                                        char **nodes, char **procs)
+{
+    pmix_peer_t *peer = (pmix_peer_t*)pr;
+    pmix_kval_t kv;
+    pmix_value_t val;
+    pmix_status_t rc;
+    pmix_buffer_t buf2;
+    size_t i, nnodes;
+
+    /* bozo check - need procs for each node */
+    if (pmix_argv_count(nodes) != pmix_argv_count(procs)) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    PMIX_CONSTRUCT(&buf2, pmix_buffer_t);
+    PMIX_CONSTRUCT(&kv, pmix_kval_t);
+    kv.value = &val;
+
+    /* pass the number of nodes involved in this namespace */
+    nnodes = pmix_argv_count(nodes);
+    PMIX_BFROPS_PACK(rc, peer, &buf2, &nnodes, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto cleanup;
+    }
+
+    for (i=0; i < nnodes; i++) {
+        /* pass the complete list of procs on this node */
+        kv.key = nodes[i];
+        val.type = PMIX_STRING;
+        val.data.string = procs[i];
+        PMIX_BFROPS_PACK(rc, peer, &buf2, &kv, 1, PMIX_KVAL);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            kv.key = NULL;
+            val.data.string = NULL;
+            goto cleanup;
+        }
+    }
+    kv.key = NULL;
+    val.data.string = NULL; // we didn't strdup it, so don't release it
+
+    /* pass the completed blob */
+    kv.key = PMIX_MAP_BLOB;
+    val.type = PMIX_BYTE_OBJECT;
+    PMIX_UNLOAD_BUFFER(&buf2, val.data.bo.bytes, val.data.bo.size);
+    PMIX_BFROPS_PACK(rc, peer, buf, &kv, 1, PMIX_KVAL);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+    }
+    kv.key = NULL;
+    if (NULL != val.data.bo.bytes) {
+        free(val.data.bo.bytes);
+    }
+    kv.value = NULL;
+
+ cleanup:
+    PMIX_DESTRUCT(&buf2);
+    PMIX_DESTRUCT(&kv);
+    return rc;
+}
+
 static pmix_status_t register_info(pmix_peer_t *peer,
                                    pmix_nspace_t *ns,
                                    pmix_buffer_t *reply)
@@ -574,7 +648,7 @@ static pmix_status_t register_info(pmix_peer_t *peer,
 
         if (0 == strcmp(ns->jobinfo[n].key, PMIX_NODE_MAP)) {
             /* parse the regex to get the argv array of node names */
-            if (PMIX_SUCCESS != (rc = pmix_regex_parse_nodes(ns->jobinfo[n].value.data.string, &nodes))) {
+            if (PMIX_SUCCESS != (rc = pmix_preg.parse_nodes(ns->jobinfo[n].value.data.string, &nodes))) {
                 PMIX_ERROR_LOG(rc);
                 continue;
             }
@@ -593,7 +667,7 @@ static pmix_status_t register_info(pmix_peer_t *peer,
             }
         } else if (0 == strcmp(ns->jobinfo[n].key, PMIX_PROC_MAP)) {
             /* parse the regex to get the argv array containing proc ranks on each node */
-            if (PMIX_SUCCESS != (rc = pmix_regex_parse_procs(ns->jobinfo[n].value.data.string, &procs))) {
+            if (PMIX_SUCCESS != (rc = pmix_preg.parse_procs(ns->jobinfo[n].value.data.string, &procs))) {
                 PMIX_ERROR_LOG(rc);
                 continue;
             }

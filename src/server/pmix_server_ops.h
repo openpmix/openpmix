@@ -178,12 +178,6 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
                                   pmix_buffer_t *buf, bool disconnect,
                                   pmix_op_cbfunc_t cbfunc);
 
-pmix_status_t pmix_pack_proc_map(struct pmix_peer_t *pr,
-                                 pmix_buffer_t *buf,
-                                 char **nodes, char **procs);
-pmix_status_t pmix_regex_parse_nodes(const char *regexp, char ***names);
-pmix_status_t pmix_regex_parse_procs(const char *regexp, char ***procs);
-
 pmix_status_t pmix_server_notify_error(pmix_status_t status,
                                        pmix_proc_t procs[], size_t nprocs,
                                        pmix_proc_t error_procs[], size_t error_nprocs,
