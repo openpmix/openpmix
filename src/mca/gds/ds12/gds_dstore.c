@@ -45,6 +45,7 @@
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/hash.h"
+#include "src/mca/preg/preg.h"
 
 #include "src/mca/gds/base/base.h"
 #include "gds_dstore.h"
@@ -3247,7 +3248,7 @@ static pmix_status_t dstore_register_job_info(struct pmix_peer_t *pr,
                 }
             } else if (0 == strcmp(ns->jobinfo[n].key, PMIX_NODE_MAP)) {
                 /* parse the regex to get the argv array of node names */
-                if (PMIX_SUCCESS != (rc = pmix_regex_parse_nodes(ns->jobinfo[n].value.data.string, &nodes))) {
+                if (PMIX_SUCCESS != (rc = pmix_preg.parse_nodes(ns->jobinfo[n].value.data.string, &nodes))) {
                     PMIX_ERROR_LOG(rc);
                     return rc;
                 }
@@ -3261,7 +3262,7 @@ static pmix_status_t dstore_register_job_info(struct pmix_peer_t *pr,
                 }
             } else if (0 == strcmp(ns->jobinfo[n].key, PMIX_PROC_MAP)) {
                 /* parse the regex to get the argv array containing proc ranks on each node */
-                if (PMIX_SUCCESS != (rc = pmix_regex_parse_procs(ns->jobinfo[n].value.data.string, &procs))) {
+                if (PMIX_SUCCESS != (rc = pmix_preg.parse_procs(ns->jobinfo[n].value.data.string, &procs))) {
                     PMIX_ERROR_LOG(rc);
                     return rc;
                 }
