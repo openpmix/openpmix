@@ -26,6 +26,7 @@
 #include <unistd.h>
 #include <stdint.h>
 
+#include "src/include/pmix_globals.h"
 #include "src/class/pmix_list.h"
 #include "src/util/argv.h"
 
@@ -269,6 +270,7 @@ typedef struct {
                 nanosleep(&ts,NULL);                                                                                \
                 count++;                                                                                            \
             }                                                                                                       \
+            PMIX_ACQUIRE_OBJECT(&cbdata);                                                                            \
         }                                                                                                           \
     }                                                                                                               \
     if (PMIX_SUCCESS == rc) {                                                                                       \
