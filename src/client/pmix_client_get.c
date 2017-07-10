@@ -426,14 +426,15 @@ static void timeout(int fd, short flags, void *cbdata)
     PMIX_RELEASE(cb);
 }
 
-static pmix_status_t process_values(pmix_value_t **v, pmix_list_t *kvs)
+static pmix_status_t process_values(pmix_value_t **v, pmix_cb_t *cb)
 {
+    pmix_list_t *kvs = &cb->kvs;
     pmix_kval_t *kv;
     pmix_value_t *val;
     pmix_info_t *info;
     size_t ninfo, n;
 
-    if (1 == pmix_list_get_size(kvs)) {
+    if (NULL != cb->key && 1 == pmix_list_get_size(kvs)) {
         kv = (pmix_kval_t*)pmix_list_get_first(kvs);
         *v = kv->value;
         kv->value = NULL;  // protect the value
@@ -530,7 +531,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
         cb->copy = true;
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
         if (PMIX_SUCCESS == rc) {
-            rc = process_values(&val, &cb->kvs);
+            rc = process_values(&val, cb);
             goto respond;
         }
     }
@@ -555,7 +556,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
                 goto respond;
             }
         }
-        rc = process_values(&val, &cb->kvs);
+        rc = process_values(&val, cb);
         goto respond;
     } else {
         cb->proc = &proc;
@@ -566,7 +567,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
             goto request;
         }
         /* return whatever we found */
-        rc = process_values(&val, &cb->kvs);
+        rc = process_values(&val, cb);
     }
 
   respond:
