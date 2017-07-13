@@ -524,16 +524,13 @@ static void _getnbfn(int fd, short flags, void *cbdata)
         }
     }
 
-    /* if we are looking for data from ourselves, then
-     * check the internal storage first */
-    if (proc.rank == pmix_globals.myid.rank) {
-        cb->proc = &proc;
-        cb->copy = true;
-        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
-        if (PMIX_SUCCESS == rc) {
-            rc = process_values(&val, cb);
-            goto respond;
-        }
+    /* check the internal storage first */
+    cb->proc = &proc;
+    cb->copy = true;
+    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
+    if (PMIX_SUCCESS == rc) {
+        rc = process_values(&val, cb);
+        goto respond;
     }
 
     /* if the key is NULL or starts with "pmix", then they are looking
