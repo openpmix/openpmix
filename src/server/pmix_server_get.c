@@ -531,7 +531,9 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, pmix_rank_t rank,
      * the corresponding GDS to retrieve the data. Otherwise,
      * the data will have been stored under our GDS */
     if (0 < nptr->nlocalprocs) {
-        *local = true;
+        if (local) {
+            *local = true;
+        }
         if (PMIX_RANK_WILDCARD != rank) {
             /* see if the requested rank is local */
             PMIX_LIST_FOREACH(iptr, &nptr->ranks, pmix_rank_info_t) {
@@ -563,12 +565,17 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, pmix_rank_t rank,
                 }
             } else {
                 /* this must be a remote rank */
+                if (local) {
+                    *local = false;
+                }
                 scope = PMIX_REMOTE;
                 peer = pmix_globals.mypeer;
             }
         }
     } else {
-        *local = false;
+        if (local) {
+            *local = false;
+        }
         peer = pmix_globals.mypeer;
         scope = PMIX_REMOTE;
     }
@@ -631,7 +638,7 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, pmix_rank_t rank,
         cb.proc = &proc;
         cb.scope = scope;
         cb.copy = false;
-        PMIX_GDS_FETCH_KV(rc, peer, &cb);
+        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
         if (PMIX_SUCCESS == rc) {
             found = true;
             /* assemble the provided data into a byte object */
@@ -669,6 +676,12 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, pmix_rank_t rank,
         /* pass it back */
         cbfunc(rc, data, sz, cbdata, relfn, data);
         return rc;
+    }
+
+    if ((PMIX_LOCAL == scope) && !found) {
+        /* pass PMIX_ERR_NOT_FOUND for local request if it's not found*/
+        cbfunc(PMIX_ERR_NOT_FOUND, NULL, 0, cbdata, NULL, NULL);
+        return PMIX_SUCCESS;
     }
 
     return PMIX_ERR_NOT_FOUND;
@@ -817,10 +830,12 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
                 peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, rinfo->peerid);
             }
             PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+
             PMIX_LOAD_BUFFER(pmix_globals.mypeer, &pbkt, caddy->data, caddy->ndata);
             /* unpack and store it*/
+            kv = PMIX_NEW(pmix_kval_t);
             cnt = 1;
-            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &pbkt, &kv, &cnt, PMIX_KVAL);
+            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &pbkt, kv, &cnt, PMIX_KVAL);
             while (PMIX_SUCCESS == rc) {
                 PMIX_GDS_STORE_KV(rc, peer, &caddy->lcd->proc, PMIX_REMOTE, kv);
                 if (PMIX_SUCCESS != rc) {
@@ -828,9 +843,19 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
                     caddy->status = rc;
                     goto complete;
                 }
+                PMIX_RELEASE(kv);
+                kv = PMIX_NEW(pmix_kval_t);
+                cnt = 1;
+                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &pbkt, kv, &cnt, PMIX_KVAL);
             }
+            PMIX_RELEASE(kv);
             pbkt.base_ptr = NULL;  // protect the data
             PMIX_DESTRUCT(&pbkt);
+            if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+                PMIX_ERROR_LOG(rc);
+                caddy->status = rc;
+                goto complete;
+            }
         }
         PMIX_LIST_DESTRUCT(&nspaces);
     }

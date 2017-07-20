@@ -394,7 +394,7 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
             /* fetch the data from my peer module - since we are passing
              * it back to the user, we need a copy of it */
             cb->copy = true;
-            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
+            PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, cb);
             if (PMIX_SUCCESS == rc) {
                 if (1 != pmix_list_get_size(&cb->kvs)) {
                     rc = PMIX_ERR_INVALID_VAL;
@@ -524,16 +524,13 @@ static void _getnbfn(int fd, short flags, void *cbdata)
         }
     }
 
-    /* if we are looking for data from ourselves, then
-     * check the internal storage first */
-    if (proc.rank == pmix_globals.myid.rank) {
-        cb->proc = &proc;
-        cb->copy = true;
-        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
-        if (PMIX_SUCCESS == rc) {
-            rc = process_values(&val, cb);
-            goto respond;
-        }
+    /* check the internal storage first */
+    cb->proc = &proc;
+    cb->copy = true;
+    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
+    if (PMIX_SUCCESS == rc) {
+        rc = process_values(&val, cb);
+        goto respond;
     }
 
     /* if the key is NULL or starts with "pmix", then they are looking

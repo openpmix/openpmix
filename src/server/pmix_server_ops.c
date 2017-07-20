@@ -183,7 +183,7 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
         cnt = 1;
         PMIX_BFROPS_UNPACK(rc, peer, &b2, kp, &cnt, PMIX_KVAL);
         while (PMIX_SUCCESS == rc) {
-            if( PMIX_LOCAL == scope ){
+            if( PMIX_LOCAL == scope || PMIX_GLOBAL == scope){
                 PMIX_GDS_STORE_KV(rc, peer, &proc, scope, kp);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
@@ -191,7 +191,8 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
                     PMIX_DESTRUCT(&b2);
                     return rc;
                 }
-            } else {
+            }
+            if (PMIX_REMOTE == scope || PMIX_GLOBAL == scope) {
                 PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, scope, kp);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
