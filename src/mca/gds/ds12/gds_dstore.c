@@ -2848,8 +2848,6 @@ static pmix_status_t dstore_store_modex(struct pmix_nspace_t *nspace,
     pmix_kval_t *kv;
     pmix_peer_t *peer;
 
-    return PMIX_SUCCESS;
-
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "[%s:%d] gds:dstore:store_modex for nspace %s",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank,
@@ -2895,7 +2893,7 @@ static pmix_status_t dstore_store_modex(struct pmix_nspace_t *nspace,
     while (PMIX_SUCCESS == rc) {
         /* don't store blobs to the sm dstore from local clients */
         if (_my_client(proc.nspace, proc.rank)) {
-            continue;
+            break;
         }
         /* store this in the hash table */
         PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, PMIX_REMOTE, kv);

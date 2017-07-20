@@ -391,10 +391,10 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
            /* we have the data for this proc - see if we can find the key */
             cb->proc = &proc;
             cb->scope = PMIX_SCOPE_UNDEF;
-            /* fetch the data from my peer module - since we are passing
+            /* fetch the data from server peer module - since it is passing
              * it back to the user, we need a copy of it */
             cb->copy = true;
-            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
+            PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, cb);
             if (PMIX_SUCCESS == rc) {
                 if (1 != pmix_list_get_size(&cb->kvs)) {
                     rc = PMIX_ERR_INVALID_VAL;
