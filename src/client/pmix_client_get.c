@@ -270,11 +270,8 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
     pmix_status_t rc, ret;
     pmix_value_t *val = NULL;
     int32_t cnt;
-    pmix_proc_t proc, proct;
-    pmix_byte_object_t bo;
-    pmix_buffer_t pbkt;
+    pmix_proc_t proc;
     pmix_kval_t *kv;
-    pmix_peer_t *peer;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: get_nb callback recvd");
@@ -302,82 +299,9 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
     if (PMIX_SUCCESS != ret) {
         goto done;
     }
-
-    /* the incoming payload is provided as a set of packed
-     * byte objects, one for each rank. A pmix_proc_t is the first
-     * entry in the byte object. If the rank=PMIX_RANK_WILDCARD,
-     * then that byte object contains job level info
-     * for the provided nspace. Otherwise, the byte
-     * object contains the pmix_kval_t's that were "put" by the
-     * referenced process */
-    cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver,
-                       buf, &bo, &cnt, PMIX_BYTE_OBJECT);
-    while (PMIX_SUCCESS == rc) {
-        /* setup the byte object for unpacking */
-        PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
-        PMIX_LOAD_BUFFER(pmix_client_globals.myserver,
-                         &pbkt, bo.bytes, bo.size);
-        /* unpack the id of the providing process */
-        cnt = 1;
-        PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver,
-                           &pbkt, &proct, &cnt, PMIX_PROC);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            goto done;
-        }
-        /* if the rank is WILDCARD, then the byte object contains
-         * job-level data. Note that we can get job-level data
-         * for a "get" request that referenced a specific non-wildcard
-         * rank - this happens in the case where the nspace is
-         * different than that of the requestor. We may also be
-         * in a situation where the data for -all- ranks on a
-         * remote node is being returned by a request for data
-         * from only one of them - this can occur as an optimization.
-         * So we have to check the rank here as it may not match the rank of
-         * the requestor */
-        if (PMIX_RANK_WILDCARD == proct.rank) {
-            peer = pmix_client_globals.myserver;  // job-level data is accessed via the server module
-        } else {
-            peer = pmix_globals.mypeer;   // all other data is stored on my peer module
-        }
-        cnt = 1;
-        kv = PMIX_NEW(pmix_kval_t);
-        PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver,
-                           &pbkt, kv, &cnt, PMIX_KVAL);
-        while (PMIX_SUCCESS == rc) {
-            /* let the GDS component for this peer store it - if
-             * the kval contains shmem connection info, then the
-             * component will know what to do about it (or else
-             * we selected the wrong component for this peer!) */
-            PMIX_GDS_STORE_KV(rc, peer, &proct, PMIX_INTERNAL, kv);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE(kv);
-                PMIX_DESTRUCT(&pbkt);
-                goto done;
-            }
-            PMIX_RELEASE(kv);  // maintain accounting
-            /* get the next one */
-            kv = PMIX_NEW(pmix_kval_t);
-            cnt = 1;
-            PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver,
-                               &pbkt, kv, &cnt, PMIX_KVAL);
-        }
-        PMIX_RELEASE(kv);  // maintain accounting
-        if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_DESTRUCT(&pbkt);
-            goto done;
-        }
-        PMIX_DESTRUCT(&pbkt);
-        /* get the next one */
-        cnt = 1;
-        PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver,
-                           buf, &bo, &cnt, PMIX_BYTE_OBJECT);
-        }
-    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
-        PMIX_ERROR_LOG(rc);
+    PMIX_GDS_ACCEPT_KVS_RESP(rc, pmix_client_globals.myserver, buf);
+    if (PMIX_SUCCESS != rc) {
+        goto done;
     }
 
   done:
