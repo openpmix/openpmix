@@ -2483,13 +2483,8 @@ inline pmix_status_t _dstore_fetch(const char *nspace, pmix_rank_t rank, const c
                     PMIX_ERROR_LOG(rc);
                     goto done;
                 }
-
                 strncpy(info[kval_cnt - 1].key, ESH_KNAME_PTR(addr), ESH_KNAME_LEN((char *)addr));
-                PMIX_BFROPS_COPY(rc, pmix_globals.mypeer, (void**)&(info[kval_cnt - 1]), &val, PMIX_VALUE);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    goto done;
-                }
+                pmix_value_xfer(&info[kval_cnt - 1].value, &val);
                 PMIX_VALUE_DESTRUCT(&val);
                 buffer.base_ptr = NULL;
                 buffer.bytes_used = 0;
@@ -2549,9 +2544,6 @@ done:
 
     if( rc != PMIX_SUCCESS ){
         if( NULL == key ) {
-            if( NULL != kval ) {
-                PMIX_VALUE_RELEASE(kval);
-            }
             if( NULL != info ) {
                 PMIX_INFO_FREE(info, ninfo);
             }
@@ -2591,19 +2583,36 @@ static pmix_status_t dstore_fetch(const pmix_proc_t *proc,
     rc = _dstore_fetch(proc->nspace, proc->rank, key, &val);
     if (PMIX_SUCCESS == rc) {
         if( NULL == key ) {
-            if (PMIX_DATA_ARRAY != val->type ||
-                NULL == val->data.darray ||
-                PMIX_INFO != val->data.darray->type) {
-                PMIX_ERROR_LOG(PMIX_ERR_INVALID_VAL);
-                PMIX_VALUE_RELEASE(val);
-                return PMIX_ERR_INVALID_VAL;
+            pmix_info_t *info;
+            size_t n, ninfo;
+
+            if (NULL == val->data.darray ||
+                PMIX_INFO != val->data.darray->type ||
+                0 == val->data.darray->size) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+                return PMIX_ERR_NOT_FOUND;
             }
-            PMIX_INFO_UNLOAD(rc, val, kvs);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_VALUE_RELEASE(val);
-                return rc;
+            info = (pmix_info_t*)val->data.darray->array;
+            ninfo = val->data.darray->size;
+
+            for (n = 0; n < ninfo; n++){
+                kv = PMIX_NEW(pmix_kval_t);
+                if (NULL == kv) {
+                    rc = PMIX_ERR_NOMEM;
+                    PMIX_VALUE_RELEASE(val);
+                    return rc;
+                }
+                kv->key = strdup(info[n].key);
+                PMIX_VALUE_XFER(rc, kv->value, &info[n].value);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_RELEASE(kv);
+                    PMIX_VALUE_RELEASE(val);
+                    return rc;
+                }
+                pmix_list_append(kvs, &kv->super);
             }
+
             return PMIX_SUCCESS;
         }
         /* just return the value */
@@ -2839,8 +2848,6 @@ static pmix_status_t dstore_store_modex(struct pmix_nspace_t *nspace,
     pmix_kval_t *kv;
     pmix_peer_t *peer;
 
-    return PMIX_SUCCESS;
-
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "[%s:%d] gds:dstore:store_modex for nspace %s",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank,
@@ -2886,7 +2893,7 @@ static pmix_status_t dstore_store_modex(struct pmix_nspace_t *nspace,
     while (PMIX_SUCCESS == rc) {
         /* don't store blobs to the sm dstore from local clients */
         if (_my_client(proc.nspace, proc.rank)) {
-            continue;
+            break;
         }
         /* store this in the hash table */
         PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, PMIX_REMOTE, kv);
