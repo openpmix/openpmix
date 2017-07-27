@@ -2403,6 +2403,7 @@ inline pmix_status_t _dstore_fetch(const char *nspace, pmix_rank_t rank, const c
             if (NULL == kval) {
                 return PMIX_ERR_NOMEM;
             }
+            PMIX_VALUE_CONSTRUCT(kval);
 
             ninfo = kval_cnt;
             PMIX_INFO_CREATE(info, ninfo);
@@ -2411,7 +2412,6 @@ inline pmix_status_t _dstore_fetch(const char *nspace, pmix_rank_t rank, const c
                 goto done;
             }
 
-            PMIX_VALUE_CONSTRUCT(kval);
             kval->type = PMIX_DATA_ARRAY;
             kval->data.darray = (pmix_data_array_t*)malloc(sizeof(pmix_data_array_t));
             if (NULL == kval->data.darray) {
@@ -2549,6 +2549,7 @@ done:
             if( NULL != info ) {
                 PMIX_INFO_FREE(info, ninfo);
             }
+            PMIX_VALUE_RELEASE(kval);
         }
         return rc;
     }
