@@ -2304,8 +2304,10 @@ inline pmix_status_t _dstore_fetch(const char *nspace, pmix_rank_t rank, const c
         return rc;
     }
 
-    if (kvs) {
-        *kvs = NULL;
+    if (NULL == kvs) {
+        rc = PMIX_ERR_FATAL;
+        PMIX_ERROR_LOG(rc);
+        return rc;
     }
 
     if (PMIX_RANK_UNDEF == rank) {
