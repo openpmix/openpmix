@@ -835,7 +835,6 @@ static inline ns_map_data_t * _esh_session_map_search_client(const char *nspace)
 
 static inline int _esh_session_init(size_t idx, ns_map_data_t *m, size_t jobuid, int setjobuid)
 {
-    struct stat st = {0};
     seg_desc_t *seg = NULL;
     session_t *s = &(PMIX_VALUE_ARRAY_GET_ITEM(_session_array, session_t, idx));
     pmix_status_t rc = PMIX_SUCCESS;
@@ -856,8 +855,10 @@ static inline int _esh_session_init(size_t idx, ns_map_data_t *m, size_t jobuid,
         "%s:%d:%s _lockfile_name: %s", __FILE__, __LINE__, __func__, s->lockfile));
 
     if (PMIX_PROC_SERVER == pmix_globals.proc_type) {
-        if (stat(s->nspace_path, &st) == -1){
-            if (0 != mkdir(s->nspace_path, 0770)) {
+        if (0 != mkdir(s->nspace_path, 0770)) {
+            if (EEXIST != errno) {
+                pmix_output(0, "session init: can not create session directory \"%s\": %s",
+                    s->nspace_path, strerror(errno));
                 rc = PMIX_ERROR;
                 PMIX_ERROR_LOG(rc);
                 return rc;
@@ -1937,7 +1938,6 @@ static pmix_status_t dstore_init(pmix_info_t info[], size_t ninfo)
     size_t n;
     char *dstor_tmpdir = NULL;
     size_t tbl_idx;
-    struct stat st = {0};
     ns_map_data_t *ns_map = NULL;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
@@ -2043,9 +2043,9 @@ static pmix_status_t dstore_init(pmix_info_t info[], size_t ninfo)
             goto err_exit;
         }
 
-        if (0 > stat(_base_path, &st)){
-            if (0 > mkdir(_base_path, 0770)) {
-                rc = PMIX_ERR_NO_PERMISSIONS;
+        if (0 != mkdir(_base_path, 0770)) {
+            if (EEXIST != errno) {
+                rc = PMIX_ERROR;
                 PMIX_ERROR_LOG(rc);
                 goto err_exit;
             }
