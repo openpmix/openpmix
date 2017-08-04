@@ -926,25 +926,6 @@ AC_DEFINE_UNQUOTED([PMIX_WANT_PRETTY_PRINT_STACKTRACE],
                    [if want pretty-print stack trace feature])
 
 #
-# Do we want the shared memory datastore usage?
-#
-
-AC_MSG_CHECKING([if want shared memory datastore])
-AC_ARG_ENABLE([dstore],
-              [AC_HELP_STRING([--disable-dstore],
-                              [Using shared memory datastore (default: enabled)])])
-if test "$enable_dstore" == "no" ; then
-    AC_MSG_RESULT([no])
-    WANT_DSTORE=0
-else
-    AC_MSG_RESULT([yes])
-    WANT_DSTORE=1
-fi
-AC_DEFINE_UNQUOTED([PMIX_ENABLE_DSTORE],
-                 [$WANT_DSTORE],
-                 [if want shared memory dstore feature])
-
-#
 # Use pthread-based locking
 #
 DSTORE_PTHREAD_LOCK="1"
@@ -952,7 +933,7 @@ AC_MSG_CHECKING([if want dstore pthread-based locking])
 AC_ARG_ENABLE([dstore-pthlck],
               [AC_HELP_STRING([--disable-dstore-pthlck],
                               [Disable pthread-based lockig in dstor (default: enabled)])])
-if test "$enable_dstore_pthlck" == "no" ; then
+if test "$enable_dstore_pthlck" = "no" ; then
     AC_MSG_RESULT([no])
     DSTORE_PTHREAD_LOCK="0"
 else
