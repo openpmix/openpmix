@@ -745,7 +745,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         pmix_config_prefix[Makefile]
         pmix_config_prefix[config/Makefile]
         pmix_config_prefix[include/Makefile]
-        pmix_config_prefix[src/atomics/asm/Makefile]
         pmix_config_prefix[src/Makefile]
         pmix_config_prefix[src/util/keyval/Makefile]
         pmix_config_prefix[src/mca/base/Makefile]
