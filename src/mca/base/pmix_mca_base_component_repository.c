@@ -15,7 +15,7 @@
  *                         reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2016      Intel, Inc. All rights reserved.
+ * Copyright (c) 2016-2017 Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -179,9 +179,12 @@ static int file_exists(const char *filename, const char *ext)
 
 int pmix_mca_base_component_repository_add (const char *path)
 {
+    int rc=PMIX_SUCCESS;
+
 #if PMIX_HAVE_PDL_SUPPORT
     char *path_to_use = NULL, *dir, *ctx;
     const char sep[] = {PMIX_ENV_SEP, '\0'};
+    bool found_one = false;
 
     if (NULL == path) {
         /* nothing to do */
@@ -200,16 +203,38 @@ int pmix_mca_base_component_repository_add (const char *path)
             dir = pmix_mca_base_system_default_path;
         }
 
-        if (0 != pmix_pdl_foreachfile(dir, process_repository_item, NULL)) {
-            break;
+        rc = pmix_pdl_foreachfile(dir, process_repository_item, NULL);
+        if (PMIX_SUCCESS == rc) {
+            found_one = true;
         }
     } while (NULL != (dir = strtok_r (NULL, sep, &ctx)));
 
     free (path_to_use);
 
+    if (found_one) {
+        return PMIX_SUCCESS;
+    } else {
+        /* we were unable to find even one available directory
+         * in this search path. This typically means that the
+         * user has pointed us to an incorrect location. We
+         * cannot use show_help as the show_help file is quite
+         * likely also not going to be found, so let's print
+         * a helpful error message as we know we are going
+         * to exit out in this case */
+        fprintf(stderr, "\n-------------------------------------------------------\n");
+        fprintf(stderr, "No usable directories were found in the provided path\n");
+        fprintf(stderr, "when searching for available plugins. This usually indicates\n");
+        fprintf(stderr, "that the PMIx installation was moved, or the PMIX_INSTALL_PREFIX\n");
+        fprintf(stderr, "environmental variable or \"mca_base_component_path\"\n");
+        fprintf(stderr, "MCA parameter is set and pointing to an incorrect or \n");
+        fprintf(stderr, "non-existent location.\n\n");
+        fprintf(stderr, "Please correct the situation and try again.\n");
+        fprintf(stderr, "-------------------------------------------------------\n\n");
+        rc = PMIX_ERR_SILENT;
+    }
 #endif /* PMIX_HAVE_PDL_SUPPORT */
 
-    return PMIX_SUCCESS;
+    return rc;
 }
 
 
