@@ -60,6 +60,13 @@
 #include <sys/time.h> /* for struct timeval */
 #include <unistd.h> /* for uid_t and gid_t */
 #include <sys/types.h> /* for uid_t and gid_t */
+
+#ifdef PMIX_HAVE_VISIBILITY
+#define PMIX_EXPORT __attribute__((__visibility__("default")))
+#else
+#define PMIX_EXPORT
+#endif
+
 #include <pmix_rename.h>
 #include <pmix_version.h>
 
@@ -1532,19 +1539,19 @@ typedef void (*pmix_info_cbfunc_t)(pmix_status_t status,
  * using a new set of info values.
  *
  * See pmix_common.h for a description of the notification function */
-void PMIx_Register_event_handler(pmix_status_t codes[], size_t ncodes,
-                                 pmix_info_t info[], size_t ninfo,
-                                 pmix_notification_fn_t evhdlr,
-                                 pmix_evhdlr_reg_cbfunc_t cbfunc,
-                                 void *cbdata);
+PMIX_EXPORT void PMIx_Register_event_handler(pmix_status_t codes[], size_t ncodes,
+                                             pmix_info_t info[], size_t ninfo,
+                                             pmix_notification_fn_t evhdlr,
+                                             pmix_evhdlr_reg_cbfunc_t cbfunc,
+                                             void *cbdata);
 
 /* Deregister an event handler
  * evhdlr_ref is the reference returned by PMIx from the call to
  * PMIx_Register_event_handler. If non-NULL, the provided cbfunc
  * will be called to confirm removal of the designated handler */
-void PMIx_Deregister_event_handler(size_t evhdlr_ref,
-                                   pmix_op_cbfunc_t cbfunc,
-                                   void *cbdata);
+PMIX_EXPORT void PMIx_Deregister_event_handler(size_t evhdlr_ref,
+                                               pmix_op_cbfunc_t cbfunc,
+                                               void *cbdata);
 
 /* Report an event to a process for notification via any
  * registered evhdlr. The evhdlr registration can be
@@ -1576,11 +1583,11 @@ void PMIx_Deregister_event_handler(size_t evhdlr_ref,
  * time. Note that the caller is required to maintain the input
  * data until the callback function has been executed!
 */
-pmix_status_t PMIx_Notify_event(pmix_status_t status,
-                                const pmix_proc_t *source,
-                                pmix_data_range_t range,
-                                pmix_info_t info[], size_t ninfo,
-                                pmix_op_cbfunc_t cbfunc, void *cbdata);
+PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status,
+                                            const pmix_proc_t *source,
+                                            pmix_data_range_t range,
+                                            pmix_info_t info[], size_t ninfo,
+                                            pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Provide a string representation for several types of value. Note
  * that the provided string is statically defined and must NOT be
@@ -1594,24 +1601,24 @@ pmix_status_t PMIx_Notify_event(pmix_status_t status,
  * - pmix_data_type_t   (PMIX_DATA_TYPE)
  * - pmix_alloc_directive_t  (PMIX_ALLOC_DIRECTIVE)
  */
-const char* PMIx_Error_string(pmix_status_t status);
-const char* PMIx_Proc_state_string(pmix_proc_state_t state);
-const char* PMIx_Scope_string(pmix_scope_t scope);
-const char* PMIx_Persistence_string(pmix_persistence_t persist);
-const char* PMIx_Data_range_string(pmix_data_range_t range);
-const char* PMIx_Info_directives_string(pmix_info_directives_t directives);
-const char* PMIx_Data_type_string(pmix_data_type_t type);
-const char* PMIx_Alloc_directive_string(pmix_alloc_directive_t directive);
+PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t status);
+PMIX_EXPORT const char* PMIx_Proc_state_string(pmix_proc_state_t state);
+PMIX_EXPORT const char* PMIx_Scope_string(pmix_scope_t scope);
+PMIX_EXPORT const char* PMIx_Persistence_string(pmix_persistence_t persist);
+PMIX_EXPORT const char* PMIx_Data_range_string(pmix_data_range_t range);
+PMIX_EXPORT const char* PMIx_Info_directives_string(pmix_info_directives_t directives);
+PMIX_EXPORT const char* PMIx_Data_type_string(pmix_data_type_t type);
+PMIX_EXPORT const char* PMIx_Alloc_directive_string(pmix_alloc_directive_t directive);
 
 /* Get the PMIx version string. Note that the provided string is
  * statically defined and must NOT be free'd  */
-const char* PMIx_Get_version(void);
+PMIX_EXPORT const char* PMIx_Get_version(void);
 
 /* Store some data locally for retrieval by other areas of the
  * proc. This is data that has only internal scope - it will
  * never be "pushed" externally */
-pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc,
-                                  const char *key, pmix_value_t *val);
+PMIX_EXPORT pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc,
+                                              const char *key, pmix_value_t *val);
 
 
 /**
@@ -1665,9 +1672,9 @@ pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc,
  * status_code = PMIx_Data_pack(buffer, &src, 1, PMIX_INT32);
  * @endcode
  */
-pmix_status_t PMIx_Data_pack(pmix_data_buffer_t *buffer,
-                             void *src, int32_t num_vals,
-                             pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t PMIx_Data_pack(pmix_data_buffer_t *buffer,
+                                         void *src, int32_t num_vals,
+                                         pmix_data_type_t type);
 
 /**
  * Unpack values from a buffer.
@@ -1761,9 +1768,9 @@ pmix_status_t PMIx_Data_pack(pmix_data_buffer_t *buffer,
  *
  * @endcode
  */
-pmix_status_t PMIx_Data_unpack(pmix_data_buffer_t *buffer, void *dest,
-                               int32_t *max_num_values,
-                               pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t PMIx_Data_unpack(pmix_data_buffer_t *buffer, void *dest,
+                                           int32_t *max_num_values,
+                                           pmix_data_type_t type);
 
 /**
  * Copy a data value from one location to another.
@@ -1788,7 +1795,8 @@ pmix_status_t PMIx_Data_unpack(pmix_data_buffer_t *buffer, void *dest,
  * @retval PMIX_ERROR(s) An appropriate error code.
  *
  */
-pmix_status_t PMIx_Data_copy(void **dest, void *src, pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t PMIx_Data_copy(void **dest, void *src,
+                                         pmix_data_type_t type);
 
 /**
  * Print a data value.
@@ -1801,8 +1809,8 @@ pmix_status_t PMIx_Data_copy(void **dest, void *src, pmix_data_type_t type);
  *
  * @retval PMIX_ERROR(s) An appropriate error code.
  */
-pmix_status_t PMIx_Data_print(char **output, char *prefix,
-                              void *src, pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t PMIx_Data_print(char **output, char *prefix,
+                                          void *src, pmix_data_type_t type);
 
 /**
  * Copy a payload from one buffer to another
@@ -1813,8 +1821,8 @@ pmix_status_t PMIx_Data_print(char **output, char *prefix,
  * source buffer's payload will remain intact, as will any pre-existing
  * payload in the destination's buffer.
  */
-pmix_status_t PMIx_Data_copy_payload(pmix_data_buffer_t *dest,
-                                     pmix_data_buffer_t *src);
+PMIX_EXPORT pmix_status_t PMIx_Data_copy_payload(pmix_data_buffer_t *dest,
+                                                 pmix_data_buffer_t *src);
 
 
 /* Key-Value pair management macros */
