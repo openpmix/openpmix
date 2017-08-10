@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2016 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2017 Intel, Inc. All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation, All rights reserved.
@@ -27,7 +27,7 @@
 #include "src/server/pmix_server_ops.h"
 #include "src/include/pmix_globals.h"
 
-PMIX_EXPORT void PMIx_Register_errhandler(pmix_info_t info[], size_t ninfo,
+void PMIx_Register_errhandler(pmix_info_t info[], size_t ninfo,
                               pmix_notification_fn_t errhandler,
                               pmix_errhandler_reg_cbfunc_t cbfunc,
                               void *cbdata)
@@ -37,7 +37,7 @@ PMIX_EXPORT void PMIx_Register_errhandler(pmix_info_t info[], size_t ninfo,
     }
 }
 
-PMIX_EXPORT void PMIx_Deregister_errhandler(int errhandler_ref,
+void PMIx_Deregister_errhandler(int errhandler_ref,
                                 pmix_op_cbfunc_t cbfunc,
                                 void *cbdata)
 {
@@ -46,7 +46,7 @@ PMIX_EXPORT void PMIx_Deregister_errhandler(int errhandler_ref,
     }
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Notify_error(pmix_status_t status,
+pmix_status_t PMIx_Notify_error(pmix_status_t status,
                                 pmix_proc_t procs[], size_t nprocs,
                                 pmix_proc_t error_procs[], size_t error_nprocs,
                                 pmix_info_t info[], size_t ninfo,

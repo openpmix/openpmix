@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2016 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2017 Intel, Inc. All rights reserved.
  * Copyright (c) 2014-2016 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
@@ -242,12 +242,12 @@ static pmix_status_t connect_to_server(struct sockaddr_un *address, void *cbdata
     return PMIX_SUCCESS;
 }
 
-PMIX_EXPORT const char* PMIx_Get_version(void)
+const char* PMIx_Get_version(void)
 {
     return pmix_version_string;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc)
+pmix_status_t PMIx_Init(pmix_proc_t *proc)
 {
     char **uri, *evar;
     pmix_status_t rc;
@@ -422,7 +422,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc)
     return rc;
 }
 
-PMIX_EXPORT int PMIx_Initialized(void)
+int PMIx_Initialized(void)
 {
     if (0 < pmix_globals.init_cntr) {
         return true;
@@ -430,7 +430,7 @@ PMIX_EXPORT int PMIx_Initialized(void)
     return false;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Finalize(void)
+pmix_status_t PMIx_Finalize(void)
 {
     pmix_buffer_t *msg;
     pmix_cb_t *cb;
@@ -504,8 +504,8 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(void)
     return PMIX_SUCCESS;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Abort(int flag, const char msg[],
-               pmix_proc_t procs[], size_t nprocs)
+pmix_status_t PMIx_Abort(int flag, const char msg[],
+                         pmix_proc_t procs[], size_t nprocs)
 {
     pmix_buffer_t *bfr;
     pmix_cmd_t cmd = PMIX_ABORT_CMD;
@@ -639,7 +639,7 @@ static void _putfn(int sd, short args, void *cbdata)
     cb->active = false;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
+pmix_status_t PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
 {
     pmix_cb_t *cb;
     pmix_status_t rc;
@@ -731,7 +731,7 @@ static void _commitfn(int sd, short args, void *cbdata)
     cb->active = false;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Commit(void)
+pmix_status_t PMIx_Commit(void)
 {
     pmix_cb_t *cb;
     pmix_status_t rc;
@@ -836,9 +836,9 @@ static void _peersfn(int sd, short args, void *cbdata)
     cb->active = false;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename,
-                                             const char *nspace,
-                                             pmix_proc_t **procs, size_t *nprocs)
+pmix_status_t PMIx_Resolve_peers(const char *nodename,
+                                 const char *nspace,
+                                 pmix_proc_t **procs, size_t *nprocs)
 {
     pmix_cb_t *cb;
     pmix_status_t rc;
@@ -906,7 +906,7 @@ static void _nodesfn(int sd, short args, void *cbdata)
     cb->active = false;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const char *nspace, char **nodelist)
+pmix_status_t PMIx_Resolve_nodes(const char *nspace, char **nodelist)
 {
     pmix_cb_t *cb;
     pmix_status_t rc;
@@ -1204,8 +1204,8 @@ static void regevents_cbfunc(struct pmix_peer_t *peer, pmix_usock_hdr_t *hdr,
     /* unpack the status code */
     cnt = 1;
     if ((PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ret, &cnt, PMIX_INT))) ||
-                         (PMIX_SUCCESS != ret)) {   
-        /* This is not an actual error since the server may not support registration events */ 
+                         (PMIX_SUCCESS != ret)) {
+        /* This is not an actual error since the server may not support registration events */
         /* remove the err handler and call the error handler reg completion callback fn.*/
         rc = pmix_remove_errhandler(cb->errhandler_ref);
         /* call the callback with error */
