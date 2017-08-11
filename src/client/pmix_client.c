@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2016 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2017 Intel, Inc. All rights reserved.
  * Copyright (c) 2014-2016 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
@@ -505,7 +505,7 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(void)
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Abort(int flag, const char msg[],
-               pmix_proc_t procs[], size_t nprocs)
+                                     pmix_proc_t procs[], size_t nprocs)
 {
     pmix_buffer_t *bfr;
     pmix_cmd_t cmd = PMIX_ABORT_CMD;
@@ -1204,8 +1204,8 @@ static void regevents_cbfunc(struct pmix_peer_t *peer, pmix_usock_hdr_t *hdr,
     /* unpack the status code */
     cnt = 1;
     if ((PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &ret, &cnt, PMIX_INT))) ||
-                         (PMIX_SUCCESS != ret)) {   
-        /* This is not an actual error since the server may not support registration events */ 
+                         (PMIX_SUCCESS != ret)) {
+        /* This is not an actual error since the server may not support registration events */
         /* remove the err handler and call the error handler reg completion callback fn.*/
         rc = pmix_remove_errhandler(cb->errhandler_ref);
         /* call the callback with error */
