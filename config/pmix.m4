@@ -668,7 +668,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     AC_CONFIG_FILES(
         pmix_config_prefix[Makefile]
-        pmix_config_prefix[src/atomics/asm/Makefile]
         )
 
     # Success
@@ -905,4 +904,3 @@ AC_DEFUN([PMIX_DO_AM_CONDITIONALS],[
     ])
     pmix_did_am_conditionals=yes
 ])dnl
-
