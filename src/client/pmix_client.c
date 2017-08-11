@@ -242,12 +242,12 @@ static pmix_status_t connect_to_server(struct sockaddr_un *address, void *cbdata
     return PMIX_SUCCESS;
 }
 
-const char* PMIx_Get_version(void)
+PMIX_EXPORT const char* PMIx_Get_version(void)
 {
     return pmix_version_string;
 }
 
-pmix_status_t PMIx_Init(pmix_proc_t *proc)
+PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc)
 {
     char **uri, *evar;
     pmix_status_t rc;
@@ -422,7 +422,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc)
     return rc;
 }
 
-int PMIx_Initialized(void)
+PMIX_EXPORT int PMIx_Initialized(void)
 {
     if (0 < pmix_globals.init_cntr) {
         return true;
@@ -430,7 +430,7 @@ int PMIx_Initialized(void)
     return false;
 }
 
-pmix_status_t PMIx_Finalize(void)
+PMIX_EXPORT pmix_status_t PMIx_Finalize(void)
 {
     pmix_buffer_t *msg;
     pmix_cb_t *cb;
@@ -504,8 +504,8 @@ pmix_status_t PMIx_Finalize(void)
     return PMIX_SUCCESS;
 }
 
-pmix_status_t PMIx_Abort(int flag, const char msg[],
-                         pmix_proc_t procs[], size_t nprocs)
+PMIX_EXPORT pmix_status_t PMIx_Abort(int flag, const char msg[],
+                                     pmix_proc_t procs[], size_t nprocs)
 {
     pmix_buffer_t *bfr;
     pmix_cmd_t cmd = PMIX_ABORT_CMD;
@@ -639,7 +639,7 @@ static void _putfn(int sd, short args, void *cbdata)
     cb->active = false;
 }
 
-pmix_status_t PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
+PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
 {
     pmix_cb_t *cb;
     pmix_status_t rc;
@@ -731,7 +731,7 @@ static void _commitfn(int sd, short args, void *cbdata)
     cb->active = false;
 }
 
-pmix_status_t PMIx_Commit(void)
+PMIX_EXPORT pmix_status_t PMIx_Commit(void)
 {
     pmix_cb_t *cb;
     pmix_status_t rc;
@@ -836,9 +836,9 @@ static void _peersfn(int sd, short args, void *cbdata)
     cb->active = false;
 }
 
-pmix_status_t PMIx_Resolve_peers(const char *nodename,
-                                 const char *nspace,
-                                 pmix_proc_t **procs, size_t *nprocs)
+PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename,
+                                             const char *nspace,
+                                             pmix_proc_t **procs, size_t *nprocs)
 {
     pmix_cb_t *cb;
     pmix_status_t rc;
@@ -906,7 +906,7 @@ static void _nodesfn(int sd, short args, void *cbdata)
     cb->active = false;
 }
 
-pmix_status_t PMIx_Resolve_nodes(const char *nspace, char **nodelist)
+PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const char *nspace, char **nodelist)
 {
     pmix_cb_t *cb;
     pmix_status_t rc;
