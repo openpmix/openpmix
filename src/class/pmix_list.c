@@ -30,7 +30,7 @@
 static void pmix_list_item_construct(pmix_list_item_t*);
 static void pmix_list_item_destruct(pmix_list_item_t*);
 
-PMIX_CLASS_INSTANCE(
+PMIX_EXPORT PMIX_CLASS_INSTANCE(
     pmix_list_item_t,
     pmix_object_t,
     pmix_list_item_construct,
