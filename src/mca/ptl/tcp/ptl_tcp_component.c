@@ -590,7 +590,13 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
         fprintf(fp, "%s.%d:%s\n", pmix_globals.myid.nspace, pmix_globals.myid.rank, lt->uri);
         fclose(fp);
         /* set the file mode */
-        chmod(mca_ptl_tcp_component.system_filename, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+        if (0 != chmod(mca_ptl_tcp_component.system_filename, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)) {
+            PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
+            CLOSE_THE_SOCKET(lt->socket);
+            free(mca_ptl_tcp_component.system_filename);
+            mca_ptl_tcp_component.system_filename = NULL;
+            goto sockerror;
+        }
     }
     if (session_tool) {
         FILE *fp;
@@ -616,7 +622,13 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
         fprintf(fp, "%s.%d:%s\n", pmix_globals.myid.nspace, pmix_globals.myid.rank, lt->uri);
         fclose(fp);
         /* set the file mode */
-        chmod(mca_ptl_tcp_component.session_filename, S_IRUSR | S_IWUSR | S_IRGRP);
+        if (0 != chmod(mca_ptl_tcp_component.session_filename, S_IRUSR | S_IWUSR | S_IRGRP)) {
+            PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
+            CLOSE_THE_SOCKET(lt->socket);
+            free(mca_ptl_tcp_component.system_filename);
+            mca_ptl_tcp_component.system_filename = NULL;
+            goto sockerror;
+        }
     }
 
     /* we need listener thread support */
@@ -1082,10 +1094,9 @@ static void connection_handler(int sd, short args, void *cbdata)
 
     /* set the gds module to match this peer */
     PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, gds, PMIX_STRING);
-    free(msg);
+    free(msg);  // can now release the data buffer
     peer->nptr->compat.gds = pmix_gds_base_assign_module(&ginfo, 1);
     if (NULL == peer->nptr->compat.gds) {
-        free(msg);
         info->proc_cnt--;
         PMIX_RELEASE(info);
         pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->index, NULL);
