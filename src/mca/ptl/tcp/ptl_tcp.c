@@ -590,7 +590,7 @@ static pmix_status_t send_connect_ack(int sd)
     sec = pmix_globals.mypeer->compat.psec->name;
 
     /* set the number of bytes to be read beyond the header */
-    hdr.nbytes = sdsize + strlen(PMIX_VERSION) + 1 + strlen(sec) + 1 + len;  // must NULL terminate the strings!
+    hdr.nbytes = sdsize + strlen(PMIX_VERSION) + 1 + strlen(sec) + 1 + sizeof(uint32_t) + len;  // must NULL terminate the strings!
 
     /* create a space for our message */
     sdsize = (sizeof(hdr) + hdr.nbytes);
