@@ -13,6 +13,8 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2017 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2017      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1075,12 +1077,12 @@ static void connection_handler(int sd, short args, void *cbdata)
         /* send an error reply to the client */
         goto error;
     }
-    free(msg);
     /* and the buffer type to match */
     peer->nptr->compat.type = bftype;
 
     /* set the gds module to match this peer */
     PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, gds, PMIX_STRING);
+    free(msg);
     peer->nptr->compat.gds = pmix_gds_base_assign_module(&ginfo, 1);
     if (NULL == peer->nptr->compat.gds) {
         free(msg);
