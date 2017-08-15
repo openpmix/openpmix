@@ -116,8 +116,8 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
                                      pmix_info_t *info, size_t ninfo)
 {
     char *evar, **uri, *suri;
-    char *filename, *nspace;
-    pmix_rank_t rank;
+    char *filename, *nspace=NULL;
+    pmix_rank_t rank = PMIX_RANK_WILDCARD;
     char *p, *p2;
     int sd, rc;
     size_t n;
@@ -176,6 +176,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
 
         /* go ahead and try to connect */
         if (PMIX_SUCCESS != (rc = try_connect(&sd))) {
+            free(nspace);
             return rc;
         }
         goto complete;
@@ -210,6 +211,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "ptl:tcp:tool getting connection info from %s",
                                 mca_ptl_tcp_component.super.uri);
+            nspace = NULL;
             rc = parse_uri_file(&mca_ptl_tcp_component.super.uri[6], &suri, &nspace, &rank);
             if (PMIX_SUCCESS != rc) {
                 return PMIX_ERR_UNREACH;
@@ -222,6 +224,9 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
                             mca_ptl_tcp_component.super.uri);
         /* go ahead and try to connect */
         if (PMIX_SUCCESS != (rc = try_connect(&sd))) {
+            if (NULL != nspace) {
+                free(nspace);
+            }
             return rc;
         }
         goto complete;
@@ -248,6 +253,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
             if (PMIX_SUCCESS == try_connect(&sd)) {
                 goto complete;
             }
+            free(nspace);
         }
     }
 
@@ -270,11 +276,15 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "ptl:tcp:tool searching for given session server %s",
                             filename);
+        nspace = NULL;
         rc = df_search(mca_ptl_tcp_component.system_tmpdir,
                        filename, &sd, &nspace, &rank);
         free(filename);
         if (PMIX_SUCCESS == rc) {
             goto complete;
+        }
+        if (NULL != nspace) {
+            free(nspace);
         }
         /* since they gave us a specific pid and we couldn't
          * connect to it, return an error */
@@ -292,10 +302,14 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:tcp:tool searching for session server %s",
                         filename);
+    nspace = NULL;
     rc = df_search(mca_ptl_tcp_component.system_tmpdir,
                    filename, &sd, &nspace, &rank);
     free(filename);
     if (PMIX_SUCCESS != rc) {
+        if (NULL != nspace){
+            free(nspace);
+        }
         return PMIX_ERR_UNREACH;
     }
 
@@ -303,6 +317,11 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "sock_peer_try_connect: Connection across to server succeeded");
 
+    /* do a final bozo check */
+    if (NULL == nspace || PMIX_RANK_WILDCARD == rank) {
+        CLOSE_THE_SOCKET(sd);
+        return PMIX_ERR_UNREACH;
+    }
     /* mark the connection as made */
     pmix_globals.connected = true;
     pmix_client_globals.myserver->sd = sd;
@@ -316,9 +335,11 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
     }
     if (NULL == pmix_client_globals.myserver->nptr->nspace) {
         pmix_client_globals.myserver->nptr->nspace = nspace;
+    } else {
+        free(nspace);
     }
     if (NULL == pmix_client_globals.myserver->info->pname.nspace) {
-        pmix_client_globals.myserver->info->pname.nspace = strdup(nspace);
+        pmix_client_globals.myserver->info->pname.nspace = strdup(pmix_client_globals.myserver->nptr->nspace);
     }
     pmix_client_globals.myserver->info->pname.rank = rank;
 
@@ -889,6 +910,7 @@ static pmix_status_t df_search(char *dirname, char *prefix,
                     closedir(cur_dirp);
                     return PMIX_SUCCESS;
                 }
+                free(nsp);
             }
         }
     }
