@@ -203,7 +203,7 @@ static pmix_status_t pack_fence(pmix_buffer_t *msg, pmix_cmd_t cmd,
     pmix_status_t rc;
 
     /* pack the cmd */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_COMMAND))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }

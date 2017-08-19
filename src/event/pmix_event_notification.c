@@ -124,7 +124,7 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
         msg = PMIX_NEW(pmix_buffer_t);
 
         /* pack the command */
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_COMMAND))) {
             PMIX_ERROR_LOG(rc);
             goto cleanup;
         }
@@ -973,7 +973,7 @@ pmix_status_t pmix_server_notify_client_of_event(pmix_status_t status,
     }
 
     /* pack the command */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(cd->buf, &cmd, 1, PMIX_CMD))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(cd->buf, &cmd, 1, PMIX_COMMAND))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(cd);
         return rc;

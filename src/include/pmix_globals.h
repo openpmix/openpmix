@@ -50,9 +50,6 @@ BEGIN_C_DECLS
 
 
 /****   ENUM DEFINITIONS    ****/
-/* define a command type for communicating to the
- * pmix server */
-#define PMIX_CMD PMIX_UINT32
 
 /* define some commands */
 typedef enum {

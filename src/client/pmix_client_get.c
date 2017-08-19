@@ -214,7 +214,7 @@ static pmix_buffer_t* _pack_get(char *nspace, pmix_rank_t rank,
     /* nope - see if we can get it */
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the get cmd */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_COMMAND))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return NULL;
