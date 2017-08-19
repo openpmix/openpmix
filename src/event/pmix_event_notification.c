@@ -126,7 +126,7 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
         msg = PMIX_NEW(pmix_buffer_t);
 
         /* pack the command */
-        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_CMD);
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             goto cleanup;
@@ -856,7 +856,7 @@ static void _notify_client_event(int sd, short args, void *cbdata)
                         continue;
                     }
                     /* pack the command */
-                    PMIX_BFROPS_PACK(rc, pr->peer, bfr, &cmd, 1, PMIX_CMD);
+                    PMIX_BFROPS_PACK(rc, pr->peer, bfr, &cmd, 1, PMIX_COMMAND);
                     if (PMIX_SUCCESS != rc) {
                         PMIX_ERROR_LOG(rc);
                         PMIX_RELEASE(bfr);
