@@ -102,7 +102,7 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
         cd->cbfunc.opcbfn = cbfunc;
         cd->cbdata = cbdata;
         msg = PMIX_NEW(pmix_buffer_t);
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_COMMAND))) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
             PMIX_RELEASE(cd);

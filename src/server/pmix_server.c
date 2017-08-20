@@ -2310,7 +2310,7 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
 
     /* retrieve the cmd */
     cnt = 1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &cmd, &cnt, PMIX_CMD))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &cmd, &cnt, PMIX_COMMAND))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }

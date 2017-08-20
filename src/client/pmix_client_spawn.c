@@ -139,7 +139,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
 
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_COMMAND))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;

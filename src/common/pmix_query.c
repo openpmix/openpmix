@@ -142,7 +142,7 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
         cd->cbfunc = cbfunc;
         cd->cbdata = cbdata;
         msg = PMIX_NEW(pmix_buffer_t);
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_COMMAND))) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
             PMIX_RELEASE(cd);
@@ -210,7 +210,7 @@ PMIX_EXPORT pmix_status_t PMIx_Allocation_request_nb(pmix_alloc_directive_t dire
 
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_COMMAND))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;

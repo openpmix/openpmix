@@ -101,7 +101,7 @@ static void pmix_tool_notify_recv(struct pmix_peer_t *peer,
     chain->final_cbdata = chain;
 
     cnt=1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &cmd, &cnt, PMIX_CMD))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &cmd, &cnt, PMIX_COMMAND))) {
         PMIX_ERROR_LOG(rc);
         goto error;
     }
@@ -549,7 +549,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
      * server that we are normally terminating */
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_COMMAND))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;

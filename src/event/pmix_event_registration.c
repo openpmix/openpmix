@@ -176,7 +176,7 @@ static pmix_status_t _send_to_server(pmix_rshift_caddy_t *rcd)
 
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_COMMAND))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -815,7 +815,7 @@ static void dereg_event_hdlr(int sd, short args, void *cbdata)
      * to remove my registration */
     if (!PMIX_PROC_IS_SERVER) {
         msg = PMIX_NEW(pmix_buffer_t);
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_COMMAND))) {
             PMIX_RELEASE(msg);
             goto cleanup;
         }

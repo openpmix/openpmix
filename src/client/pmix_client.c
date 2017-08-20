@@ -111,7 +111,7 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer,
     chain->final_cbdata = chain;
 
     cnt=1;
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &cmd, &cnt, PMIX_CMD))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.unpack(buf, &cmd, &cnt, PMIX_COMMAND))) {
         PMIX_ERROR_LOG(rc);
         goto error;
     }
@@ -429,7 +429,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
      * transaction because some systems cannot handle very large
      * blocking operations and error out if we try them. */
      req = PMIX_NEW(pmix_buffer_t);
-     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(req, &cmd, 1, PMIX_CMD))) {
+     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(req, &cmd, 1, PMIX_COMMAND))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(req);
         PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -577,7 +577,7 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
          * server that we are normally terminating */
         msg = PMIX_NEW(pmix_buffer_t);
         /* pack the cmd */
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_CMD))) {
+        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &cmd, 1, PMIX_COMMAND))) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
             return rc;
@@ -672,7 +672,7 @@ PMIX_EXPORT pmix_status_t PMIx_Abort(int flag, const char msg[],
     /* create a buffer to hold the message */
     bfr = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(bfr, &cmd, 1, PMIX_CMD))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(bfr, &cmd, 1, PMIX_COMMAND))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(bfr);
         return rc;
@@ -857,7 +857,7 @@ static void _commitfn(int sd, short args, void *cbdata)
 
     msgout = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msgout, &cmd, 1, PMIX_CMD))) {
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msgout, &cmd, 1, PMIX_COMMAND))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msgout);
         goto done;

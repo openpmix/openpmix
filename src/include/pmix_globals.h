@@ -50,33 +50,29 @@ BEGIN_C_DECLS
 
 
 /****   ENUM DEFINITIONS    ****/
-/* define a command type for communicating to the
- * pmix server */
-#define PMIX_CMD PMIX_UINT32
 
 /* define some commands */
-typedef enum {
-    PMIX_REQ_CMD,
-    PMIX_ABORT_CMD,
-    PMIX_COMMIT_CMD,
-    PMIX_FENCENB_CMD,
-    PMIX_GETNB_CMD,
-    PMIX_FINALIZE_CMD,
-    PMIX_PUBLISHNB_CMD,
-    PMIX_LOOKUPNB_CMD,
-    PMIX_UNPUBLISHNB_CMD,
-    PMIX_SPAWNNB_CMD,
-    PMIX_CONNECTNB_CMD,
-    PMIX_DISCONNECTNB_CMD,
-    PMIX_NOTIFY_CMD,
-    PMIX_REGEVENTS_CMD,
-    PMIX_DEREGEVENTS_CMD,
-    PMIX_QUERY_CMD,
-    PMIX_LOG_CMD,
-    PMIX_ALLOC_CMD,
-    PMIX_JOB_CONTROL_CMD,
-    PMIX_MONITOR_CMD
-} pmix_cmd_t;
+typedef uint8_t pmix_cmd_t;
+#define PMIX_REQ_CMD             0
+#define PMIX_ABORT_CMD           1
+#define PMIX_COMMIT_CMD          2
+#define PMIX_FENCENB_CMD         3
+#define PMIX_GETNB_CMD           4
+#define PMIX_FINALIZE_CMD        5
+#define PMIX_PUBLISHNB_CMD       6
+#define PMIX_LOOKUPNB_CMD        7
+#define PMIX_UNPUBLISHNB_CMD     8
+#define PMIX_SPAWNNB_CMD         9
+#define PMIX_CONNECTNB_CMD      10
+#define PMIX_DISCONNECTNB_CMD   11
+#define PMIX_NOTIFY_CMD         12
+#define PMIX_REGEVENTS_CMD      13
+#define PMIX_DEREGEVENTS_CMD    14
+#define PMIX_QUERY_CMD          15
+#define PMIX_LOG_CMD            16
+#define PMIX_ALLOC_CMD          17
+#define PMIX_JOB_CONTROL_CMD    18
+#define PMIX_MONITOR_CMD        19
 
 /* provide a "pretty-print" function for cmds */
 const char* pmix_command_string(pmix_cmd_t cmd);
