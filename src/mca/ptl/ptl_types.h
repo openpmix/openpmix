@@ -228,6 +228,7 @@ PMIX_CLASS_DECLARATION(pmix_listener_t);
 #define PMIX_SERVER_QUEUE_REPLY(p, t, b)                                                \
     do {                                                                                \
         pmix_ptl_send_t *snd;                                                           \
+        uint32_t nbytes;                                                                \
         pmix_output_verbose(5, pmix_globals.debug_output,                               \
                             "[%s:%d] queue callback called: reply to %s:%d on tag %d size %d",  \
                             __FILE__, __LINE__,                                         \
@@ -236,7 +237,8 @@ PMIX_CLASS_DECLARATION(pmix_listener_t);
         snd = PMIX_NEW(pmix_ptl_send_t);                                                \
         snd->hdr.pindex = htonl(pmix_globals.pindex);                                   \
         snd->hdr.tag = htonl(t);                                                        \
-        snd->hdr.nbytes = htonl((b)->bytes_used);                                       \
+        nbytes = (b)->bytes_used;                                                       \
+        snd->hdr.nbytes = htonl(nbytes);                                                \
         snd->data = (b);                                                                \
         /* always start with the header */                                              \
         snd->sdptr = (char*)&snd->hdr;                                                  \
