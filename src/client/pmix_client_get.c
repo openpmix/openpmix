@@ -427,6 +427,8 @@ static void infocb(pmix_status_t status,
                             rc = PMIX_ERR_NOMEM;
                             PMIX_VALUE_FREE(kv, 1);
                             kv = NULL;
+                        } else {
+                            rc = PMIX_SUCCESS;
                         }
                     } else {
                         rc = pmix_value_xfer(kv, &info[0].value);
@@ -532,7 +534,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
                  * ask server
                  */
                 goto request;
-            } else {
+            } else if (NULL != cb->key) {
                 /* if immediate was given, then we are being directed to
                  * check with the server even though the caller is looking for
                  * job-level info. In some cases, a server may elect not
@@ -556,6 +558,8 @@ static void _getnbfn(int fd, short flags, void *cbdata)
                     return;
                 }
                 /* we should have had this info, so respond with the error */
+                goto respond;
+            } else {
                 goto respond;
             }
         }
