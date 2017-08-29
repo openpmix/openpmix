@@ -47,15 +47,13 @@
 
 #include "src/mca/ptl/base/base.h"
 
-static uint32_t current_tag = PMIX_PTL_TAG_DYNAMIC;
-
 static void _notify_complete(pmix_status_t status, void *cbdata)
 {
     pmix_event_chain_t *chain = (pmix_event_chain_t*)cbdata;
     PMIX_RELEASE(chain);
 }
 
-static void lost_connection(pmix_peer_t *peer, pmix_status_t err)
+void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
 {
     pmix_server_trkr_t *trk;
     pmix_server_caddy_t *rinfo, *rnext;
@@ -355,7 +353,7 @@ void pmix_ptl_base_send_handler(int sd, short flags, void *cbdata)
             peer->send_ev_active = false;
             PMIX_RELEASE(msg);
             peer->send_msg = NULL;
-            lost_connection(peer, rc);
+            pmix_ptl_base_lost_connection(peer, rc);
             /* ensure we post the modified peer object before another thread
              * picks it back up */
             PMIX_POST_OBJECT(peer);
@@ -537,7 +535,7 @@ void pmix_ptl_base_recv_handler(int sd, short flags, void *cbdata)
         PMIX_RELEASE(peer->recv_msg);
         peer->recv_msg = NULL;
     }
-    lost_connection(peer, PMIX_ERR_UNREACH);
+    pmix_ptl_base_lost_connection(peer, PMIX_ERR_UNREACH);
     /* ensure we post the modified peer object before another thread
      * picks it back up */
     PMIX_POST_OBJECT(peer);
@@ -613,11 +611,11 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
     }
 
     /* take the next tag in the sequence */
-    current_tag++;
-    if (UINT32_MAX == current_tag ) {
-        current_tag = PMIX_PTL_TAG_DYNAMIC;
+    pmix_ptl_globals.current_tag++;
+    if (UINT32_MAX == pmix_ptl_globals.current_tag ) {
+        pmix_ptl_globals.current_tag = PMIX_PTL_TAG_DYNAMIC;
     }
-    tag = current_tag;
+    tag = pmix_ptl_globals.current_tag;
 
     if (NULL != ms->cbfunc) {
         /* if a callback msg is expected, setup a recv for it */

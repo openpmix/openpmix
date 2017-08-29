@@ -2963,7 +2963,7 @@ static inline int _collect_key_for_rank(pmix_peer_t *peer, pmix_rank_t rank, pmi
 
     if ((cur_rank + 1) <= size) {
         tmp = &(PMIX_VALUE_ARRAY_GET_ITEM(rank_kv_bufs, pmix_buffer_t, cur_rank));
-        PMIX_BFROPS_PACK(rc, peer, tmp, kv, 1, PMIX_KVAL);
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, tmp, kv, 1, PMIX_KVAL);
         return rc;
     }
     if (PMIX_SUCCESS != (rc = pmix_value_array_set_size(rank_kv_bufs, cur_rank + 1))) {
@@ -2974,7 +2974,7 @@ static inline int _collect_key_for_rank(pmix_peer_t *peer, pmix_rank_t rank, pmi
         tmp = &(PMIX_VALUE_ARRAY_GET_ITEM(rank_kv_bufs, pmix_buffer_t, i));
         PMIX_CONSTRUCT(tmp, pmix_buffer_t);
     }
-    PMIX_BFROPS_PACK(rc, peer, tmp, kv, 1, PMIX_KVAL);
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, tmp, kv, 1, PMIX_KVAL);
 
     return rc;
 }

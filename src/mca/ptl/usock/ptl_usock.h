@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2016      Intel, Inc. All rights reserved.
+ * Copyright (c) 2016-2017 Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -41,6 +41,10 @@ typedef struct {
 extern pmix_ptl_usock_component_t mca_ptl_usock_component;
 
 extern pmix_ptl_module_t pmix_ptl_usock_module;
+
+void pmix_usock_send_handler(int sd, short args, void *cbdata);
+
+void pmix_usock_recv_handler(int sd, short args, void *cbdata);
 
 END_C_DECLS
 

@@ -139,20 +139,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     memset(&pmix_host_server, 0, sizeof(pmix_server_module_t));
     pmix_host_server = *module;
 
-    /* setup the wildcard recv for inbound messages from clients */
-    req = PMIX_NEW(pmix_ptl_posted_recv_t);
-    req->tag = UINT32_MAX;
-    req->cbfunc = server_message_handler;
-    /* add it to the end of the list of recvs */
-    pmix_list_append(&pmix_ptl_globals.posted_recvs, &req->super);
-
-    if (PMIX_SUCCESS != pmix_ptl_base_start_listening(info, ninfo)) {
-        pmix_show_help("help-pmix-server.txt", "listener-thread-start", true);
-        PMIx_server_finalize();
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return PMIX_ERR_INIT;
-    }
-
     /* assign our internal bfrops module */
     pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
     if (NULL == pmix_globals.mypeer->nptr->compat.bfrops) {
@@ -291,6 +277,21 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     rinfo->gid = pmix_globals.gid;
     PMIX_RETAIN(pmix_globals.mypeer->info);
     pmix_client_globals.myserver->info = pmix_globals.mypeer->info;
+
+    /* setup the wildcard recv for inbound messages from clients */
+    req = PMIX_NEW(pmix_ptl_posted_recv_t);
+    req->tag = UINT32_MAX;
+    req->cbfunc = server_message_handler;
+    /* add it to the end of the list of recvs */
+    pmix_list_append(&pmix_ptl_globals.posted_recvs, &req->super);
+
+    /* start listening for connections */
+    if (PMIX_SUCCESS != pmix_ptl_base_start_listening(info, ninfo)) {
+        pmix_show_help("help-pmix-server.txt", "listener-thread-start", true);
+        PMIx_server_finalize();
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return PMIX_ERR_INIT;
+    }
 
     ++pmix_globals.init_cntr;
     PMIX_RELEASE_THREAD(&pmix_global_lock);
