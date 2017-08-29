@@ -248,7 +248,6 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     int32_t cnt;
     pmix_nspace_t *ns, *nptr;
     int rank;
-    int cur_rank;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: get_nb callback recvd");
@@ -260,7 +259,6 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     }
     /* cache the rank */
     rank = cb->rank;
-    cur_rank = rank;
 
     /* unpack the status */
     cnt = 1;
@@ -296,8 +294,8 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
            check local hash table first. All the data passed through
            PMIx_Put settle down there */
         rc = pmix_hash_fetch(&nptr->modex, pmix_globals.myid.rank, cb->key, &val);
-        assert( (PMIX_SUCCESS == rc) || (PMIX_ERR_PROC_ENTRY_NOT_FOUND == rc) || 
-                (PMIX_ERR_NOT_FOUND == rc) ); 
+        assert( (PMIX_SUCCESS == rc) || (PMIX_ERR_PROC_ENTRY_NOT_FOUND == rc) ||
+                (PMIX_ERR_NOT_FOUND == rc) );
         if( PMIX_SUCCESS != rc ){
             if(pmix_globals.myid.rank == cb->rank){
                 rc = PMIX_ERR_NOT_FOUND;
@@ -319,6 +317,7 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_usock_hdr_t *hdr,
     /* we received the entire blob for this process, so
      * unpack and store it in the modex - this could consist
      * of buffers from multiple scopes */
+    int cur_rank;
     cnt = 1;
     while (PMIX_SUCCESS == (rc = pmix_bfrop.unpack(buf, &cur_rank, &cnt, PMIX_INT))) {
         pmix_kval_t *cur_kval;
