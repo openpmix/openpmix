@@ -363,6 +363,10 @@ pmix_status_t pmix1_bfrop_store_data_type(pmix_buffer_t *buffer, pmix_data_type_
 
 pmix_status_t pmix1_bfrop_get_data_type(pmix_buffer_t *buffer, pmix_data_type_t *type);
 
+int pmix1_v2_to_v1_datatype(pmix_data_type_t v2type);
+
+pmix_data_type_t pmix1_v1_to_v2_datatype(int v1type);
+
 END_C_DECLS
 
 #endif

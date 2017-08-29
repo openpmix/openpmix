@@ -398,7 +398,7 @@ static const char* data_type_string(pmix_data_type_t type)
     return info->odti_name;
 }
 
-pmix_status_t pmix1_bfrop_store_data_type(pmix_buffer_t *buffer, pmix_data_type_t type)
+int pmix1_v2_to_v1_datatype(pmix_data_type_t v2type)
 {
     int v1type;
 
@@ -406,7 +406,7 @@ pmix_status_t pmix1_bfrop_store_data_type(pmix_buffer_t *buffer, pmix_data_type_
         /* if I am a server, then I'm passing the data type to
          * a PMIx v1 compatible client. The data type was redefined
          * in v2, and so we have to do some conversions here */
-        switch(type) {
+        switch(v2type) {
             case 20:
                 /* the client thinks this is simply an int */
                 v1type = 6;
@@ -427,41 +427,43 @@ pmix_status_t pmix1_bfrop_store_data_type(pmix_buffer_t *buffer, pmix_data_type_
             case 29:
             case 30:
                 /* shift up one */
-                v1type = type + 1;
+                v1type = v2type + 1;
                 break;
 
             default:
-                v1type = type;
+                v1type = v2type;
         }
     }
+    return v1type;
+}
+
+pmix_status_t pmix1_bfrop_store_data_type(pmix_buffer_t *buffer, pmix_data_type_t type)
+{
+    int v1type;
+
+    v1type = pmix1_v2_to_v1_datatype(type);
 
     return pmix1_bfrop_pack_datatype(buffer, &v1type, 1, PMIX_INT);
 }
 
-pmix_status_t pmix1_bfrop_get_data_type(pmix_buffer_t *buffer, pmix_data_type_t *type)
+pmix_data_type_t pmix1_v1_to_v2_datatype(int v1type)
 {
-    int32_t n=1;
-    int v1type;
-    pmix_status_t rc;
+    pmix_data_type_t v2type = PMIX_UNDEF;
 
     if (PMIX_PROC_IS_SERVER) {
         /* if I am a server, then I'm getting the data type that was given to
          * me by a PMIx v1 compatible client. The data type was redefined
          * in v2, and so we have to do some conversions here */
-        rc = pmix1_bfrop_unpack_datatype(buffer, &v1type, &n, PMIX_INT);
-        if (PMIX_SUCCESS != rc) {
-            return rc;
-        }
+
         switch(v1type) {
             case 20:
                 /* the client thinks this is PMIX_HWLOC_TOPO, which we don't support */
-                rc = PMIX_ERR_NOT_SUPPORTED;
+                v2type = PMIX_UNDEF;
                 break;
 
             case 22:
                 /* the client thinks this is PMIX_INFO_ARRAY */
-                *type = PMIX_INFO_ARRAY;
-                rc = PMIX_SUCCESS;
+                v2type = PMIX_INFO_ARRAY;
                 break;
 
             case 23:
@@ -474,19 +476,28 @@ pmix_status_t pmix1_bfrop_get_data_type(pmix_buffer_t *buffer, pmix_data_type_t 
             case 30:
             case 31:
                 /* shift down one */
-                v1type--;
-                *type = v1type;
-                rc = PMIX_SUCCESS;
+                v2type = v1type - 1;
                 break;
 
             default:
-                *type = v1type;
-                rc = PMIX_SUCCESS;
+                v2type = v1type;
         }
-        return rc;
+    }
+    return v2type;
+}
+
+pmix_status_t pmix1_bfrop_get_data_type(pmix_buffer_t *buffer, pmix_data_type_t *type)
+{
+    int32_t n=1;
+    int v1type;
+    pmix_status_t rc;
+
+    rc = pmix1_bfrop_unpack_datatype(buffer, &v1type, &n, PMIX_INT);
+    if (PMIX_SUCCESS == rc) {
+        *type = pmix1_v1_to_v2_datatype(v1type);
     }
 
-    return PMIX_ERR_NOT_SUPPORTED;
+    return rc;
 }
 
 void pmix1_bfrop_value_load(pmix_value_t *v, const void *data,
