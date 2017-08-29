@@ -691,6 +691,7 @@ pmix_status_t pmix1_bfrop_unpack_value(pmix_buffer_t *buffer, void *dest,
     pmix_value_t *ptr;
     int32_t i, m, n;
     pmix_status_t ret;
+    int v1type;
 
     ptr = (pmix_value_t *) dest;
     n = *num_vals;
@@ -698,9 +699,13 @@ pmix_status_t pmix1_bfrop_unpack_value(pmix_buffer_t *buffer, void *dest,
     for (i = 0; i < n; ++i) {
         /* unpack the type */
         m=1;
-        if (PMIX_SUCCESS != (ret = pmix1_bfrop_unpack_int(buffer, &ptr[i].type, &m, PMIX_INT))) {
+        if (PMIX_SUCCESS != (ret = pmix1_bfrop_unpack_int(buffer, &v1type, &m, PMIX_INT))) {
             return ret;
         }
+        /* convert the type - unfortunately, v1.2 directly packed the int instead of
+         * using the store_data_type function. This means we lose the translation!
+         * So get it here */
+        ptr[i].type = pmix1_v1_to_v2_datatype(v1type);
         /* unpack value */
         if (PMIX_SUCCESS != (ret = unpack_val(buffer, &ptr[i])) ) {
             return ret;
@@ -716,6 +721,7 @@ pmix_status_t pmix1_bfrop_unpack_info(pmix_buffer_t *buffer, void *dest,
     int32_t i, n, m;
     pmix_status_t ret;
     char *tmp;
+    int v1type;
 
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
                         "pmix1_bfrop_unpack: %d info", *num_vals);
@@ -741,9 +747,13 @@ pmix_status_t pmix1_bfrop_unpack_info(pmix_buffer_t *buffer, void *dest,
          * instead of a pointer in this struct, we directly unpack it to
          * avoid the malloc */
         m=1;
-        if (PMIX_SUCCESS != (ret = pmix1_bfrop_unpack_int(buffer, &ptr[i].value.type, &m, PMIX_INT))) {
+        if (PMIX_SUCCESS != (ret = pmix1_bfrop_unpack_int(buffer, &v1type, &m, PMIX_INT))) {
             return ret;
         }
+        /* convert the type - unfortunately, v1.2 directly packed the int instead of
+         * using the store_data_type function. This means we lose the translation!
+         * So get it here */
+        ptr[i].value.type = pmix1_v1_to_v2_datatype(v1type);
         pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
                             "pmix1_bfrop_unpack: info type %d", ptr[i].value.type);
         m=1;
@@ -761,6 +771,7 @@ pmix_status_t pmix1_bfrop_unpack_pdata(pmix_buffer_t *buffer, void *dest,
     int32_t i, n, m;
     pmix_status_t ret;
     char *tmp;
+    int v1type;
 
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
                         "pmix1_bfrop_unpack: %d pdata", *num_vals);
@@ -790,9 +801,13 @@ pmix_status_t pmix1_bfrop_unpack_pdata(pmix_buffer_t *buffer, void *dest,
          * instead of a pointer in this struct, we directly unpack it to
          * avoid the malloc */
         m=1;
-        if (PMIX_SUCCESS != (ret = pmix1_bfrop_unpack_int(buffer, &ptr[i].value.type, &m, PMIX_INT))) {
+        if (PMIX_SUCCESS != (ret = pmix1_bfrop_unpack_int(buffer, &v1type, &m, PMIX_INT))) {
             return ret;
         }
+        /* convert the type - unfortunately, v1.2 directly packed the int instead of
+         * using the store_data_type function. This means we lose the translation!
+         * So get it here */
+        ptr[i].value.type = pmix1_v1_to_v2_datatype(v1type);
         pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
                             "pmix1_bfrop_unpack: pdata type %d", ptr[i].value.type);
         m=1;

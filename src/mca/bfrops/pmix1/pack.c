@@ -548,12 +548,16 @@ pmix_status_t pmix1_bfrop_pack_value(pmix_buffer_t *buffer, const void *src,
     pmix_value_t *ptr;
     int32_t i;
     pmix_status_t ret;
+    int v1type;
 
     ptr = (pmix_value_t *) src;
 
     for (i = 0; i < num_vals; ++i) {
-        /* pack the type */
-        if (PMIX_SUCCESS != (ret = pmix1_bfrop_store_data_type(buffer, ptr[i].type))) {
+        /* pack the type - unfortunately, v1.2 directly packed the int instead of
+         * using the store_data_type function. This means we lose the translation!
+         * So get it here */
+        v1type = pmix1_v2_to_v1_datatype(ptr[i].type);
+        if (PMIX_SUCCESS != (ret = pmix1_bfrop_pack_int(buffer, &v1type, 1, PMIX_INT))) {
             return ret;
         }
         /* now pack the right field */
@@ -573,6 +577,7 @@ pmix_status_t pmix1_bfrop_pack_info(pmix_buffer_t *buffer, const void *src,
     int32_t i;
     pmix_status_t ret;
     char *foo;
+    int v1type;
 
     info = (pmix_info_t *) src;
 
@@ -582,8 +587,11 @@ pmix_status_t pmix1_bfrop_pack_info(pmix_buffer_t *buffer, const void *src,
         if (PMIX_SUCCESS != (ret = pmix1_bfrop_pack_string(buffer, &foo, 1, PMIX_STRING))) {
             return ret;
         }
-        /* pack the type */
-        if (PMIX_SUCCESS != (ret = pmix1_bfrop_pack_int(buffer, &info[i].value.type, 1, PMIX_INT))) {
+        /* pack the type - unfortunately, v1.2 directly packed the int instead of
+         * using the store_data_type function. This means we lose the translation!
+         * So get it here */
+        v1type = pmix1_v2_to_v1_datatype(info[i].value.type);
+        if (PMIX_SUCCESS != (ret = pmix1_bfrop_pack_int(buffer, &v1type, 1, PMIX_INT))) {
             return ret;
         }
         /* pack value */
@@ -601,6 +609,7 @@ pmix_status_t pmix1_bfrop_pack_pdata(pmix_buffer_t *buffer, const void *src,
     int32_t i;
     pmix_status_t ret;
     char *foo;
+    int v1type;
 
     pdata = (pmix_pdata_t *) src;
 
@@ -614,8 +623,11 @@ pmix_status_t pmix1_bfrop_pack_pdata(pmix_buffer_t *buffer, const void *src,
         if (PMIX_SUCCESS != (ret = pmix1_bfrop_pack_string(buffer, &foo, 1, PMIX_STRING))) {
             return ret;
         }
-        /* pack the type */
-        if (PMIX_SUCCESS != (ret = pmix1_bfrop_pack_int(buffer, &pdata[i].value.type, 1, PMIX_INT))) {
+        /* pack the type - unfortunately, v1.2 directly packed the int instead of
+         * using the store_data_type function. This means we lose the translation!
+         * So get it here */
+        v1type = pmix1_v2_to_v1_datatype(pdata[i].value.type);
+        if (PMIX_SUCCESS != (ret = pmix1_bfrop_pack_int(buffer, &v1type, 1, PMIX_INT))) {
             return ret;
         }
         /* pack value */
@@ -737,7 +749,7 @@ pmix_status_t pmix1_bfrop_pack_kval(pmix_buffer_t *buffer, const void *src,
             return ret;
         }
         /* pack the value */
-        if (PMIX_SUCCESS != (ret = pmix1_bfrop_pack_value(buffer, ptr[i].value, 1, PMIX_INT))) {
+        if (PMIX_SUCCESS != (ret = pmix1_bfrop_pack_value(buffer, ptr[i].value, 1, ptr[i].value->type))) {
             return ret;
         }
     }
