@@ -106,7 +106,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
                         __FILE__, __LINE__);
 
     /* if we are not a client, there is nothing we can do */
-    if (!PMIX_PROC_IS_CLIENT) {
+    if (!PMIX_PROC_IS_CLIENT(pmix_globals.mypeer)) {
         return PMIX_ERR_NOT_SUPPORTED;
     }
 

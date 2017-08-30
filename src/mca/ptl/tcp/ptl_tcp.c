@@ -134,7 +134,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
 
     /* if I am a client, then we need to look for the appropriate
      * connection info in the environment */
-    if (PMIX_PROC_IS_CLIENT) {
+    if (PMIX_PROC_IS_CLIENT(pmix_globals.mypeer)) {
         if (NULL == (evar = getenv("PMIX_SERVER_URI2"))) {
             /* not us */
             return PMIX_ERR_NOT_SUPPORTED;
@@ -590,7 +590,7 @@ static pmix_status_t send_connect_ack(int sd)
                         "pmix:tcp SEND CONNECT ACK");
 
     /* if we are a server, then we shouldn't be here */
-    if (PMIX_PROC_IS_SERVER) {
+    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
@@ -613,7 +613,7 @@ static pmix_status_t send_connect_ack(int sd)
     /* allow space for a marker indicating client vs tool */
     sdsize = 1;
 
-    if (PMIX_PROC_IS_CLIENT) {
+    if (PMIX_PROC_IS_CLIENT(pmix_globals.mypeer)) {
         flag = 0;
         /* reserve space for our nspace and rank info */
         sdsize += strlen(pmix_globals.myid.nspace) + 1 + sizeof(int);
@@ -689,7 +689,7 @@ static pmix_status_t send_connect_ack(int sd)
     memcpy(msg+csize, &flag, 1);
     csize += 1;
 
-    if (PMIX_PROC_IS_CLIENT) {
+    if (PMIX_PROC_IS_CLIENT(pmix_globals.mypeer)) {
         /* if we are a client, provide our nspace/rank */
         memcpy(msg+csize, pmix_globals.myid.nspace, strlen(pmix_globals.myid.nspace));
         csize += strlen(pmix_globals.myid.nspace)+1;
@@ -772,7 +772,7 @@ static pmix_status_t recv_connect_ack(int sd)
     }
     reply = ntohl(u32);
 
-    if (PMIX_PROC_IS_CLIENT) {
+    if (PMIX_PROC_IS_CLIENT(pmix_globals.mypeer)) {
         /* see if they want us to do the handshake */
         if (PMIX_ERR_READY_FOR_HANDSHAKE == reply) {
             PMIX_PSEC_CLIENT_HANDSHAKE(rc, pmix_client_globals.myserver, sd);

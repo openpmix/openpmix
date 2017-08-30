@@ -402,7 +402,7 @@ int pmix1_v2_to_v1_datatype(pmix_data_type_t v2type)
 {
     int v1type;
 
-    if (PMIX_PROC_IS_SERVER) {
+    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
         /* if I am a server, then I'm passing the data type to
          * a PMIx v1 compatible client. The data type was redefined
          * in v2, and so we have to do some conversions here */
@@ -450,7 +450,7 @@ pmix_data_type_t pmix1_v1_to_v2_datatype(int v1type)
 {
     pmix_data_type_t v2type = PMIX_UNDEF;
 
-    if (PMIX_PROC_IS_SERVER) {
+    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
         /* if I am a server, then I'm getting the data type that was given to
          * me by a PMIx v1 compatible client. The data type was redefined
          * in v2, and so we have to do some conversions here */
