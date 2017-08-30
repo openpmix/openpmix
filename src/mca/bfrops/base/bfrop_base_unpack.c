@@ -56,7 +56,6 @@ static pmix_status_t pmix_bfrops_base_unpack_buffer(pmix_pointer_array_t *regtyp
         /* if the data types don't match, then return an error */
         if (type != local_type) {
             pmix_output(0, "PMIX bfrop:unpack: got type %d when expecting type %d", local_type, type);
-            assert(0);
             return PMIX_ERR_PACK_MISMATCH;
         }
     }

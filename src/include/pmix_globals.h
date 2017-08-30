@@ -111,14 +111,16 @@ typedef uint16_t pmix_proc_type_t;
 #define PMIX_PROC_SERVER    0x0002
 #define PMIX_PROC_TOOL      0x0004
 #define PMIX_PROC_V1        0x0008
-#define PMIX_PROC_V2        0x0010
+#define PMIX_PROC_V20       0x0010
+#define PMIX_PROC_V21       0x0020
 
 /* defins some convenience macros for testing proc type */
 #define PMIX_PROC_IS_CLIENT(p)      (PMIX_PROC_CLIENT & (p)->proc_type)
 #define PMIX_PROC_IS_SERVER(p)      (PMIX_PROC_SERVER & (p)->proc_type)
 #define PMIX_PROC_IS_TOOL(p)        (PMIX_PROC_TOOL & (p)->proc_type)
 #define PMIX_PROC_IS_V1(p)          (PMIX_PROC_V1 & (p)->proc_type)
-#define PMIX_PROC_IS_V2(p)          (PMIX_PROC_V2 & (p)->proc_type)
+#define PMIX_PROC_IS_V20(p)         (PMIX_PROC_V20 & (p)->proc_type)
+#define PMIX_PROC_IS_V21(p)         (PMIX_PROC_V21 & (p)->proc_type)
 
 
 /****    PEER STRUCTURES    ****/

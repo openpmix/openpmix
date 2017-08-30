@@ -763,6 +763,7 @@ static void connection_handler(int sd, short args, void *cbdata)
     pmix_rank_info_t *info;
     pmix_proc_t proc;
     pmix_info_t ginfo;
+    pmix_proc_type_t proc_type;
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(pnd);
@@ -941,10 +942,12 @@ static void connection_handler(int sd, short args, void *cbdata)
 
     if (0 == strncmp(version, "2.0", 3)) {
         /* the 2.0 release handshake ends with the version string */
-        bfrops = NULL;
+        proc_type = PMIX_PROC_V20;
+        bfrops = "pmix2";
         bftype = pmix_bfrops_globals.default_type;  // we can't know any better
-        gds = NULL;
+        gds = "hash";
     } else {
+        proc_type = PMIX_PROC_V21;
         /* extract the name of the bfrops module they used */
         PMIX_STRNLEN(msglen, mg, cnt);
         if (msglen < cnt) {
@@ -1020,6 +1023,8 @@ static void connection_handler(int sd, short args, void *cbdata)
         pnd->info[n].value.type = PMIX_UINT32;
         pnd->info[n].value.data.uint32 = pnd->gid;
         ++n;
+        /* pass along the proc_type */
+        pnd->proc_type = proc_type;
         /* pass along the bfrop, buffer_type, and sec fields so
          * we can assign them once we create a peer object */
         if (NULL != sec) {
@@ -1084,8 +1089,8 @@ static void connection_handler(int sd, short args, void *cbdata)
         PMIX_RELEASE(pnd);
         return;
     }
-    /* mark that this peer is v2 */
-    peer->proc_type = PMIX_PROC_CLIENT | PMIX_PROC_V2;
+    /* mark that this peer is a client of the given type */
+    peer->proc_type = PMIX_PROC_CLIENT | proc_type;
     /* add in the nspace pointer */
     PMIX_RETAIN(nptr);
     peer->nptr = nptr;
@@ -1303,7 +1308,7 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     /* setup a peer object for this tool */
     pmix_peer_t *peer = PMIX_NEW(pmix_peer_t);
     /* mark the peer proc type */
-    peer->proc_type = PMIX_PROC_TOOL | PMIX_PROC_V2;
+    peer->proc_type = PMIX_PROC_TOOL | pnd->proc_type;
     /* add in the nspace pointer */
     PMIX_RETAIN(nptr);
     peer->nptr = nptr;

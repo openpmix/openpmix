@@ -179,6 +179,7 @@ typedef struct {
     size_t len;
     uid_t uid;
     gid_t gid;
+    pmix_proc_type_t proc_type;
 } pmix_pending_connection_t;
 PMIX_CLASS_DECLARATION(pmix_pending_connection_t);
 
