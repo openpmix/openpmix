@@ -660,18 +660,6 @@ static pmix_status_t send_connect_ack(int sd)
     memcpy(msg+csize, sec, strlen(sec));
     csize += strlen(sec)+1;
 
-    /* provide our active bfrops module */
-    memcpy(msg+csize, bfrops, strlen(bfrops));
-    csize += strlen(bfrops)+1;
-
-    /* provide the bfrops type */
-    memcpy(msg+csize, &bftype, sizeof(bftype));
-    csize += sizeof(bftype);
-
-    /* provide the gds module */
-    memcpy(msg+csize, gds, strlen(gds));
-    csize += strlen(gds)+1;
-
     /* load the length of the credential - we put this in uint32_t
      * format as that is a fixed size, and convert to network
      * byte order for heterogeneity */
@@ -713,6 +701,18 @@ static pmix_status_t send_connect_ack(int sd)
     /* provide our version */
     memcpy(msg+csize, PMIX_VERSION, strlen(PMIX_VERSION));
     csize += strlen(PMIX_VERSION)+1;
+
+    /* provide our active bfrops module */
+    memcpy(msg+csize, bfrops, strlen(bfrops));
+    csize += strlen(bfrops)+1;
+
+    /* provide the bfrops type */
+    memcpy(msg+csize, &bftype, sizeof(bftype));
+    csize += sizeof(bftype);
+
+    /* provide the gds module */
+    memcpy(msg+csize, gds, strlen(gds));
+    csize += strlen(gds)+1;
 
     /* send the entire message across */
     if (PMIX_SUCCESS != pmix_ptl_base_send_blocking(sd, msg, sdsize)) {

@@ -174,7 +174,8 @@ int pmix_rte_init(pmix_proc_type_t type,
         ret = PMIX_ERR_NOMEM;
         goto return_error;
     }
-    pmix_globals.mypeer->proc_type = type;
+    /* whatever our declared proc type, we are definitely v2 */
+    pmix_globals.mypeer->proc_type = type | PMIX_PROC_V2;
     /* create an nspace object for ourselves - we will
      * fill in the nspace name later */
     pmix_globals.mypeer->nptr = PMIX_NEW(pmix_nspace_t);

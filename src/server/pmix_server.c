@@ -2103,8 +2103,7 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-   // pmix_output_verbose(2, pmix_globals.debug_output,
-                        pmix_output(0,
+    pmix_output_verbose(2, pmix_globals.debug_output,
                         "recvd pmix cmd %d from %s:%u",
                         cmd, peer->info->pname.nspace, peer->info->pname.rank);
 
@@ -2134,16 +2133,18 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
 
     if (PMIX_COMMIT_CMD == cmd) {
         rc = pmix_server_commit(peer, buf);
-        reply = PMIX_NEW(pmix_buffer_t);
-        if (NULL == reply) {
-            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-            return PMIX_ERR_NOMEM;
+        if (PMIX_PROC_IS_V2(peer)) {
+            reply = PMIX_NEW(pmix_buffer_t);
+            if (NULL == reply) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                return PMIX_ERR_NOMEM;
+            }
+            PMIX_BFROPS_PACK(rc, peer, reply, &rc, 1, PMIX_STATUS);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
+            PMIX_SERVER_QUEUE_REPLY(peer, tag, reply);
         }
-        PMIX_BFROPS_PACK(rc, peer, reply, &rc, 1, PMIX_STATUS);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-        }
-        PMIX_SERVER_QUEUE_REPLY(peer, tag, reply);
         return PMIX_SUCCESS; // don't reply twice
     }
 
