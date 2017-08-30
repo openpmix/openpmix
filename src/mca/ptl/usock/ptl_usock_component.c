@@ -513,6 +513,9 @@ static void connection_handler(int sd, short args, void *cbdata)
         rc = PMIX_ERR_NOMEM;
         goto error;
     }
+    /* mark it as being a v1 type */
+    psave->proc_type = PMIX_PROC_CLIENT | PMIX_PROC_V1;
+    /* add the nspace tracker */
     PMIX_RETAIN(nptr);
     psave->nptr = nptr;
     PMIX_RETAIN(info);

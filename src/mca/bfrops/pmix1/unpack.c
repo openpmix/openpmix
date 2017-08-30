@@ -886,6 +886,13 @@ pmix_status_t pmix1_bfrop_unpack_proc(pmix_buffer_t *buffer, void *dest,
         if (PMIX_SUCCESS != (ret = pmix1_bfrop_unpack_int(buffer, &ptr[i].rank, &m, PMIX_INT))) {
             return ret;
         }
+        /* we have to do some conversion here as the definition of rank
+         * changed from INT32 to UINT32 */
+        if (INT32_MAX == ptr[i].rank) {
+            ptr[i].rank = PMIX_RANK_UNDEF;
+        } else if (INT32_MAX-1 == ptr[i].rank) {
+            ptr[i].rank = PMIX_RANK_WILDCARD;
+        }
     }
     return PMIX_SUCCESS;
 }
