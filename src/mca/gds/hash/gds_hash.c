@@ -1604,9 +1604,11 @@ static pmix_status_t assemb_kvs_req(const pmix_proc_t *proc,
     pmix_server_caddy_t *cd = (pmix_server_caddy_t*)cbdata;
     pmix_kval_t *kv;
 
-    PMIX_BFROPS_PACK(rc, cd->peer, buf, proc, 1, PMIX_PROC);
-    if (PMIX_SUCCESS != rc) {
-        return rc;
+    if (PMIX_PROC_IS_V2(cd->peer)) {
+        PMIX_BFROPS_PACK(rc, cd->peer, buf, proc, 1, PMIX_PROC);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
     }
     PMIX_LIST_FOREACH(kv, kvs, pmix_kval_t) {
         PMIX_BFROPS_PACK(rc, cd->peer, buf, kv, 1, PMIX_KVAL);
