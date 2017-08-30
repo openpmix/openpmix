@@ -641,20 +641,20 @@ pmix_status_t pmix1_bfrop_pack_pdata(pmix_buffer_t *buffer, const void *src,
 pmix_status_t pmix1_bfrop_pack_buf(pmix_buffer_t *buffer, const void *src,
                                    int32_t num_vals, pmix_data_type_t type)
 {
-    pmix_buffer_t **ptr;
+    pmix_buffer_t *ptr;
     int32_t i;
     pmix_status_t ret;
 
-    ptr = (pmix_buffer_t **) src;
+    ptr = (pmix_buffer_t *) src;
 
     for (i = 0; i < num_vals; ++i) {
         /* pack the number of bytes */
-        if (PMIX_SUCCESS != (ret = pmix1_bfrop_pack_sizet(buffer, &ptr[i]->bytes_used, 1, PMIX_SIZE))) {
+        if (PMIX_SUCCESS != (ret = pmix1_bfrop_pack_sizet(buffer, &ptr[i].bytes_used, 1, PMIX_SIZE))) {
             return ret;
         }
         /* pack the bytes */
-        if (0 < ptr[i]->bytes_used) {
-            if (PMIX_SUCCESS != (ret = pmix1_bfrop_pack_byte(buffer, ptr[i]->base_ptr, ptr[i]->bytes_used, PMIX_BYTE))) {
+        if (0 < ptr[i].bytes_used) {
+            if (PMIX_SUCCESS != (ret = pmix1_bfrop_pack_byte(buffer, ptr[i].base_ptr, ptr[i].bytes_used, PMIX_BYTE))) {
                 return ret;
             }
         }

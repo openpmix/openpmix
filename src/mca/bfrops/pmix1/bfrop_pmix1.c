@@ -417,6 +417,11 @@ int pmix1_v2_to_v1_datatype(pmix_data_type_t v2type)
                 v1type = 22;
                 break;
 
+            case 40:
+                /* proc rank is just an int in v1 */
+                v1type = 6;
+                break;
+
             case 22:
             case 23:
             case 24:

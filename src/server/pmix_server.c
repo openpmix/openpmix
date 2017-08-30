@@ -1765,7 +1765,7 @@ static void get_cbfunc(pmix_status_t status, const char *data, size_t ndata, voi
     pmix_status_t rc;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "server:get_cbfunc called with %d elements", (int)ndata);
+                        "server:get_cbfunc called with %d bytes", (int)ndata);
 
     /* no need to thread-shift here as no global data is accessed */
 
@@ -1800,7 +1800,7 @@ static void get_cbfunc(pmix_status_t status, const char *data, size_t ndata, voi
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "server:get_cbfunc reply being sent to %s:%u",
                         cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
-    pmix_output_hexdump(5, pmix_globals.debug_output,
+    pmix_output_hexdump(10, pmix_globals.debug_output,
                         reply->base_ptr, (reply->bytes_used < 256 ? reply->bytes_used : 256));
 
     PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
