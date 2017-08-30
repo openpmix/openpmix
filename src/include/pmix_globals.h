@@ -105,17 +105,20 @@ typedef enum {
 } pmix_collect_t;
 
 /* define a process type */
-typedef enum {
-    PMIX_PROC_UNDEF,
-    PMIX_PROC_CLIENT,
-    PMIX_PROC_SERVER,
-    PMIX_PROC_TOOL
-} pmix_proc_type_t;
+typedef uint16_t pmix_proc_type_t;
+#define PMIX_PROC_UNDEF     0x0000
+#define PMIX_PROC_CLIENT    0x0001
+#define PMIX_PROC_SERVER    0x0002
+#define PMIX_PROC_TOOL      0x0004
+#define PMIX_PROC_V1        0x0008
+#define PMIX_PROC_V2        0x0010
 
 /* defins some convenience macros for testing proc type */
-#define PMIX_PROC_IS_CLIENT     (PMIX_PROC_CLIENT == pmix_globals.proc_type)
-#define PMIX_PROC_IS_SERVER     (PMIX_PROC_SERVER == pmix_globals.proc_type)
-#define PMIX_PROC_IS_TOOL       (PMIX_PROC_TOOL == pmix_globals.proc_type)
+#define PMIX_PROC_IS_CLIENT(p)      (PMIX_PROC_CLIENT & (p)->proc_type)
+#define PMIX_PROC_IS_SERVER(p)      (PMIX_PROC_SERVER & (p)->proc_type)
+#define PMIX_PROC_IS_TOOL(p)        (PMIX_PROC_TOOL & (p)->proc_type)
+#define PMIX_PROC_IS_V1(p)          (PMIX_PROC_V1 & (p)->proc_type)
+#define PMIX_PROC_IS_V2(p)          (PMIX_PROC_V2 & (p)->proc_type)
 
 
 /****    PEER STRUCTURES    ****/
@@ -181,6 +184,7 @@ typedef struct pmix_peer_t {
     pmix_object_t super;
     pmix_nspace_t *nptr;            // point to the nspace object for this process
     pmix_rank_info_t *info;
+    pmix_proc_type_t proc_type;
     int proc_cnt;
     int index;                      // index into the local clients array on the server
     int sd;
@@ -369,7 +373,6 @@ typedef struct {
     int init_cntr;                      // #times someone called Init - #times called Finalize
     pmix_proc_t myid;
     pmix_peer_t *mypeer;                // my own peer object
-    pmix_proc_type_t proc_type;
     uid_t uid;                          // my effective uid
     gid_t gid;                          // my effective gid
     int pindex;
