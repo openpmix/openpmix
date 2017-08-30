@@ -943,7 +943,7 @@ static void connection_handler(int sd, short args, void *cbdata)
     if (0 == strncmp(version, "2.0", 3)) {
         /* the 2.0 release handshake ends with the version string */
         proc_type = PMIX_PROC_V20;
-        bfrops = "pmix2";
+        bfrops = "v20";
         bftype = pmix_bfrops_globals.default_type;  // we can't know any better
         gds = "hash";
     } else {
@@ -1101,7 +1101,6 @@ static void connection_handler(int sd, short args, void *cbdata)
     if (0 > (peer->index = pmix_pointer_array_add(&pmix_server_globals.clients, peer))) {
         free(msg);
         info->proc_cnt--;
-        PMIX_RELEASE(info);
         PMIX_RELEASE(peer);
         /* probably cannot send an error reply if we are out of memory */
         CLOSE_THE_SOCKET(pnd->sd);
@@ -1115,7 +1114,6 @@ static void connection_handler(int sd, short args, void *cbdata)
     if (NULL == peer->nptr->compat.psec) {
         free(msg);
         info->proc_cnt--;
-        PMIX_RELEASE(info);
         pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->index, NULL);
         PMIX_RELEASE(peer);
         /* send an error reply to the client */
@@ -1127,7 +1125,6 @@ static void connection_handler(int sd, short args, void *cbdata)
     if (NULL == peer->nptr->compat.bfrops) {
         free(msg);
         info->proc_cnt--;
-        PMIX_RELEASE(info);
         pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->index, NULL);
         PMIX_RELEASE(peer);
         /* send an error reply to the client */
@@ -1142,7 +1139,6 @@ static void connection_handler(int sd, short args, void *cbdata)
     peer->nptr->compat.gds = pmix_gds_base_assign_module(&ginfo, 1);
     if (NULL == peer->nptr->compat.gds) {
         info->proc_cnt--;
-        PMIX_RELEASE(info);
         pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->index, NULL);
         PMIX_RELEASE(peer);
         /* send an error reply to the client */
@@ -1160,7 +1156,6 @@ static void connection_handler(int sd, short args, void *cbdata)
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "validation of client connection failed");
         info->proc_cnt--;
-        PMIX_RELEASE(info);
         pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->index, NULL);
         PMIX_RELEASE(peer);
         /* send an error reply to the client */
@@ -1175,7 +1170,6 @@ static void connection_handler(int sd, short args, void *cbdata)
     if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(uint32_t)))) {
         PMIX_ERROR_LOG(rc);
         info->proc_cnt--;
-        PMIX_RELEASE(info);
         pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->index, NULL);
         PMIX_RELEASE(peer);
         CLOSE_THE_SOCKET(pnd->sd);
@@ -1187,7 +1181,6 @@ static void connection_handler(int sd, short args, void *cbdata)
       if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(uint32_t)))) {
           PMIX_ERROR_LOG(rc);
           info->proc_cnt--;
-          PMIX_RELEASE(info);
           pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->index, NULL);
           PMIX_RELEASE(peer);
           goto error;

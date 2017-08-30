@@ -61,6 +61,25 @@ BEGIN_C_DECLS
 struct pmix_peer_t;
 struct pmix_ptl_module_t;
 
+/* define a process type */
+typedef uint16_t pmix_proc_type_t;
+#define PMIX_PROC_UNDEF     0x0000
+#define PMIX_PROC_CLIENT    0x0001
+#define PMIX_PROC_SERVER    0x0002
+#define PMIX_PROC_TOOL      0x0004
+#define PMIX_PROC_V1        0x0008
+#define PMIX_PROC_V20       0x0010
+#define PMIX_PROC_V21       0x0020
+
+/* defins some convenience macros for testing proc type */
+#define PMIX_PROC_IS_CLIENT(p)      (PMIX_PROC_CLIENT & (p)->proc_type)
+#define PMIX_PROC_IS_SERVER(p)      (PMIX_PROC_SERVER & (p)->proc_type)
+#define PMIX_PROC_IS_TOOL(p)        (PMIX_PROC_TOOL & (p)->proc_type)
+#define PMIX_PROC_IS_V1(p)          (PMIX_PROC_V1 & (p)->proc_type)
+#define PMIX_PROC_IS_V20(p)         (PMIX_PROC_V20 & (p)->proc_type)
+#define PMIX_PROC_IS_V21(p)         (PMIX_PROC_V21 & (p)->proc_type)
+
+
 /****    MESSAGING STRUCTURES    ****/
 typedef uint32_t pmix_ptl_tag_t;
 /* define a range of "reserved" tags - these

@@ -25,9 +25,9 @@
 BEGIN_C_DECLS
 
 /* the component must be visible data for the linker to find it */
- PMIX_EXPORT extern pmix_bfrops_base_component_t mca_bfrops_pmix2_component;
+ PMIX_EXPORT extern pmix_bfrops_base_component_t mca_bfrops_v21_component;
 
-extern pmix_bfrops_module_t pmix_bfrops_pmix2_module;
+extern pmix_bfrops_module_t pmix_bfrops_pmix21_module;
 
 END_C_DECLS
 
