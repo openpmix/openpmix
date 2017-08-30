@@ -19,7 +19,10 @@
 # $HEADER$
 #
 
-headers = bfrop_pmix1.h
+headers = \
+        bfrop_pmix1.h \
+        internal.h
+
 sources = \
         bfrop_pmix1_component.c \
         bfrop_pmix1.c \
