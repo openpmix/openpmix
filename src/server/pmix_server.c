@@ -2133,7 +2133,7 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
 
     if (PMIX_COMMIT_CMD == cmd) {
         rc = pmix_server_commit(peer, buf);
-        if (PMIX_PROC_IS_V2(peer)) {
+        if (!PMIX_PROC_IS_V1(peer)) {
             reply = PMIX_NEW(pmix_buffer_t);
             if (NULL == reply) {
                 PMIX_ERROR_LOG(PMIX_ERR_NOMEM);

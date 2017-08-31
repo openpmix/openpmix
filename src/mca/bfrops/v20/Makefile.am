@@ -11,7 +11,7 @@
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
 # Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
-# Copyright (c) 2013-2017 Intel, Inc.  All rights reserved.
+# Copyright (c) 2013-2017 Intel, Inc. All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -19,29 +19,22 @@
 # $HEADER$
 #
 
-headers = \
-        bfrop_pmix1.h \
-        internal.h
-
+headers = bfrop_pmix20.h
 sources = \
-        bfrop_pmix1_component.c \
-        bfrop_pmix1.c \
-        pack.c \
-        unpack.c \
-        copy.c \
-        print.c
+        bfrop_pmix20_component.c \
+        bfrop_pmix20.c
 
 # Make the output library in this directory, and name it either
 # mca_<type>_<name>.la (for DSO builds) or libmca_<type>_<name>.la
 # (for static builds).
 
-if MCA_BUILD_pmix_bfrops_pmix1_DSO
+if MCA_BUILD_pmix_bfrops_v20_DSO
 lib =
 lib_sources =
-component = mca_bfrops_pmix1.la
+component = mca_bfrops_v20.la
 component_sources = $(headers) $(sources)
 else
-lib = libmca_bfrops_pmix1.la
+lib = libmca_bfrops_v20.la
 lib_sources = $(headers) $(sources)
 component =
 component_sources =
@@ -49,9 +42,9 @@ endif
 
 mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component)
-mca_bfrops_pmix1_la_SOURCES = $(component_sources)
-mca_bfrops_pmix1_la_LDFLAGS = -module -avoid-version
+mca_bfrops_v20_la_SOURCES = $(component_sources)
+mca_bfrops_v20_la_LDFLAGS = -module -avoid-version
 
 noinst_LTLIBRARIES = $(lib)
-libmca_bfrops_pmix1_la_SOURCES = $(lib_sources)
-libmca_bfrops_pmix1_la_LDFLAGS = -module -avoid-version
+libmca_bfrops_v20_la_SOURCES = $(lib_sources)
+libmca_bfrops_v20_la_LDFLAGS = -module -avoid-version

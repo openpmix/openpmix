@@ -546,7 +546,7 @@ static void connection_handler(int sd, short args, void *cbdata)
         goto error;
     }
     /* we need the v1.2 bfrops module */
-    nptr->compat.bfrops = pmix_bfrops_base_assign_module("pmix1");
+    nptr->compat.bfrops = pmix_bfrops_base_assign_module("v12");
     if (NULL == nptr->compat.bfrops) {
         free(msg);
         info->proc_cnt--;
@@ -559,7 +559,8 @@ static void connection_handler(int sd, short args, void *cbdata)
     /* we have no way of knowing their buffer type, so take our default */
     nptr->compat.type = pmix_bfrops_globals.default_type;
 
-    /* take the highest priority gds module - they can handle both dstore and hash */
+    /* take the highest priority gds module - in the absence of any info,
+     * we assume they can handle both dstore and hash */
     nptr->compat.gds = pmix_gds_base_assign_module(NULL, 0);
     if (NULL == nptr->compat.gds) {
         free(msg);

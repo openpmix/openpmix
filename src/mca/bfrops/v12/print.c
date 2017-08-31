@@ -31,10 +31,10 @@
 #endif
 
 #include "src/mca/bfrops/base/base.h"
-#include "bfrop_pmix1.h"
+#include "bfrop_v12.h"
 #include "internal.h"
 
-pmix_status_t pmix1_bfrop_print(char **output, char *prefix, void *src, pmix_data_type_t type)
+pmix_status_t pmix12_bfrop_print(char **output, char *prefix, void *src, pmix_data_type_t type)
 {
     pmix_bfrop_type_info_t *info;
 
@@ -45,7 +45,7 @@ pmix_status_t pmix1_bfrop_print(char **output, char *prefix, void *src, pmix_dat
 
     /* Lookup the print function for this type and call it */
 
-    if(NULL == (info = (pmix_bfrop_type_info_t*)pmix_pointer_array_get_item(&mca_bfrops_pmix1_component.types, type))) {
+    if(NULL == (info = (pmix_bfrop_type_info_t*)pmix_pointer_array_get_item(&mca_bfrops_v12_component.types, type))) {
         return PMIX_ERR_UNKNOWN_DATA_TYPE;
     }
 
@@ -55,7 +55,7 @@ pmix_status_t pmix1_bfrop_print(char **output, char *prefix, void *src, pmix_dat
 /*
  * STANDARD PRINT FUNCTIONS FOR SYSTEM TYPES
  */
-pmix_status_t pmix1_bfrop_print_bool(char **output, char *prefix, bool *src, pmix_data_type_t type)
+pmix_status_t pmix12_bfrop_print_bool(char **output, char *prefix, bool *src, pmix_data_type_t type)
 {
     char *prefx;
 
@@ -91,7 +91,7 @@ pmix_status_t pmix1_bfrop_print_bool(char **output, char *prefix, bool *src, pmi
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_byte(char **output, char *prefix, uint8_t *src, pmix_data_type_t type)
+pmix_status_t pmix12_bfrop_print_byte(char **output, char *prefix, uint8_t *src, pmix_data_type_t type)
 {
     char *prefx;
 
@@ -125,7 +125,7 @@ pmix_status_t pmix1_bfrop_print_byte(char **output, char *prefix, uint8_t *src, 
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_string(char **output, char *prefix, char *src, pmix_data_type_t type)
+pmix_status_t pmix12_bfrop_print_string(char **output, char *prefix, char *src, pmix_data_type_t type)
 {
     char *prefx;
 
@@ -159,7 +159,7 @@ pmix_status_t pmix1_bfrop_print_string(char **output, char *prefix, char *src, p
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_size(char **output, char *prefix, size_t *src, pmix_data_type_t type)
+pmix_status_t pmix12_bfrop_print_size(char **output, char *prefix, size_t *src, pmix_data_type_t type)
 {
     char *prefx;
 
@@ -193,7 +193,7 @@ pmix_status_t pmix1_bfrop_print_size(char **output, char *prefix, size_t *src, p
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_pid(char **output, char *prefix, pid_t *src, pmix_data_type_t type)
+pmix_status_t pmix12_bfrop_print_pid(char **output, char *prefix, pid_t *src, pmix_data_type_t type)
 {
     char *prefx;
 
@@ -226,7 +226,7 @@ pmix_status_t pmix1_bfrop_print_pid(char **output, char *prefix, pid_t *src, pmi
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_int(char **output, char *prefix, int *src, pmix_data_type_t type)
+pmix_status_t pmix12_bfrop_print_int(char **output, char *prefix, int *src, pmix_data_type_t type)
 {
     char *prefx;
 
@@ -260,7 +260,7 @@ pmix_status_t pmix1_bfrop_print_int(char **output, char *prefix, int *src, pmix_
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_uint(char **output, char *prefix, uint *src, pmix_data_type_t type)
+pmix_status_t pmix12_bfrop_print_uint(char **output, char *prefix, uint *src, pmix_data_type_t type)
 {
     char *prefx;
 
@@ -294,7 +294,7 @@ pmix_status_t pmix1_bfrop_print_uint(char **output, char *prefix, uint *src, pmi
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_uint8(char **output, char *prefix, uint8_t *src, pmix_data_type_t type)
+pmix_status_t pmix12_bfrop_print_uint8(char **output, char *prefix, uint8_t *src, pmix_data_type_t type)
 {
     char *prefx;
 
@@ -328,7 +328,7 @@ pmix_status_t pmix1_bfrop_print_uint8(char **output, char *prefix, uint8_t *src,
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_uint16(char **output, char *prefix, uint16_t *src, pmix_data_type_t type)
+pmix_status_t pmix12_bfrop_print_uint16(char **output, char *prefix, uint16_t *src, pmix_data_type_t type)
 {
     char *prefx;
 
@@ -362,7 +362,7 @@ pmix_status_t pmix1_bfrop_print_uint16(char **output, char *prefix, uint16_t *sr
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_uint32(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_uint32(char **output, char *prefix,
                             uint32_t *src, pmix_data_type_t type)
 {
     char *prefx;
@@ -397,7 +397,7 @@ pmix_status_t pmix1_bfrop_print_uint32(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_int8(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_int8(char **output, char *prefix,
                           int8_t *src, pmix_data_type_t type)
 {
     char *prefx;
@@ -432,7 +432,7 @@ pmix_status_t pmix1_bfrop_print_int8(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_int16(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_int16(char **output, char *prefix,
                            int16_t *src, pmix_data_type_t type)
 {
     char *prefx;
@@ -467,7 +467,7 @@ pmix_status_t pmix1_bfrop_print_int16(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_int32(char **output, char *prefix, int32_t *src, pmix_data_type_t type)
+pmix_status_t pmix12_bfrop_print_int32(char **output, char *prefix, int32_t *src, pmix_data_type_t type)
 {
     char *prefx;
 
@@ -500,7 +500,7 @@ pmix_status_t pmix1_bfrop_print_int32(char **output, char *prefix, int32_t *src,
 
     return PMIX_SUCCESS;
 }
-pmix_status_t pmix1_bfrop_print_uint64(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_uint64(char **output, char *prefix,
                             uint64_t *src,
                             pmix_data_type_t type)
 {
@@ -536,7 +536,7 @@ pmix_status_t pmix1_bfrop_print_uint64(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_int64(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_int64(char **output, char *prefix,
                            int64_t *src,
                            pmix_data_type_t type)
 {
@@ -572,7 +572,7 @@ pmix_status_t pmix1_bfrop_print_int64(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_float(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_float(char **output, char *prefix,
                            float *src, pmix_data_type_t type)
 {
     char *prefx;
@@ -607,7 +607,7 @@ pmix_status_t pmix1_bfrop_print_float(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_double(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_double(char **output, char *prefix,
                             double *src, pmix_data_type_t type)
 {
     char *prefx;
@@ -642,7 +642,7 @@ pmix_status_t pmix1_bfrop_print_double(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_time(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_time(char **output, char *prefix,
                           time_t *src, pmix_data_type_t type)
 {
     char *prefx;
@@ -681,7 +681,7 @@ pmix_status_t pmix1_bfrop_print_time(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_timeval(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_timeval(char **output, char *prefix,
                              struct timeval *src, pmix_data_type_t type)
 {
     char *prefx;
@@ -722,7 +722,7 @@ pmix_status_t pmix1_bfrop_print_timeval(char **output, char *prefix,
 /*
  * PMIX_VALUE
  */
-pmix_status_t pmix1_bfrop_print_value(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_value(char **output, char *prefix,
                            pmix_value_t *src, pmix_data_type_t type)
 {
     char *prefx;
@@ -831,13 +831,13 @@ pmix_status_t pmix1_bfrop_print_value(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_info(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_info(char **output, char *prefix,
                           pmix_info_t *src, pmix_data_type_t type)
 {
     char *tmp;
     int rc;
 
-    pmix1_bfrop_print_value(&tmp, NULL, &src->value, PMIX_VALUE);
+    pmix12_bfrop_print_value(&tmp, NULL, &src->value, PMIX_VALUE);
     rc = asprintf(output, "%sKEY: %s %s", prefix, src->key,
                   (NULL == tmp) ? "PMIX_VALUE: NULL" : tmp);
     if (NULL != tmp) {
@@ -849,14 +849,14 @@ pmix_status_t pmix1_bfrop_print_info(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_pdata(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_pdata(char **output, char *prefix,
                           pmix_pdata_t *src, pmix_data_type_t type)
 {
     char *tmp1, *tmp2;
     int rc;
 
-    pmix1_bfrop_print_proc(&tmp1, NULL, &src->proc, PMIX_PROC);
-    pmix1_bfrop_print_value(&tmp2, NULL, &src->value, PMIX_VALUE);
+    pmix12_bfrop_print_proc(&tmp1, NULL, &src->proc, PMIX_PROC);
+    pmix12_bfrop_print_value(&tmp2, NULL, &src->value, PMIX_VALUE);
     rc = asprintf(output, "%s  %s  KEY: %s %s", prefix, tmp1, src->key,
                  (NULL == tmp2) ? "NULL" : tmp2);
     if (NULL != tmp1) {
@@ -871,19 +871,19 @@ pmix_status_t pmix1_bfrop_print_pdata(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_buf(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_buf(char **output, char *prefix,
                          pmix_buffer_t *src, pmix_data_type_t type)
 {
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_app(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_app(char **output, char *prefix,
                          pmix_app_t *src, pmix_data_type_t type)
 {
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_proc(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_proc(char **output, char *prefix,
                            pmix_proc_t *src, pmix_data_type_t type)
 {
     char *prefx;
@@ -903,13 +903,13 @@ pmix_status_t pmix1_bfrop_print_proc(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_kval(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_kval(char **output, char *prefix,
                           pmix_kval_t *src, pmix_data_type_t type)
 {
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_array(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_array(char **output, char *prefix,
                            pmix_info_array_t *src, pmix_data_type_t type)
 {
     size_t j;
@@ -926,7 +926,7 @@ pmix_status_t pmix1_bfrop_print_array(char **output, char *prefix,
     s1 = (pmix_info_t*)src->array;
 
     for (j=0; j < src->size; j++) {
-        pmix1_bfrop_print_info(&tmp2, pfx, &s1[j], PMIX_INFO);
+        pmix12_bfrop_print_info(&tmp2, pfx, &s1[j], PMIX_INFO);
         if (0 > asprintf(&tmp3, "%s%s", tmp, tmp2)) {
             free(tmp);
             free(tmp2);
@@ -940,13 +940,13 @@ pmix_status_t pmix1_bfrop_print_array(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_modex(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_modex(char **output, char *prefix,
                            pmix_modex_data_t *src, pmix_data_type_t type)
 {
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_persist(char **output, char *prefix, pmix_persistence_t *src, pmix_data_type_t type)
+pmix_status_t pmix12_bfrop_print_persist(char **output, char *prefix, pmix_persistence_t *src, pmix_data_type_t type)
 {
     char *prefx;
 
@@ -980,7 +980,7 @@ pmix_status_t pmix1_bfrop_print_persist(char **output, char *prefix, pmix_persis
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_bo(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_bo(char **output, char *prefix,
                                   pmix_byte_object_t *src, pmix_data_type_t type)
 {
     char *prefx;
@@ -1015,67 +1015,67 @@ pmix_status_t pmix1_bfrop_print_bo(char **output, char *prefix,
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix1_bfrop_print_scope(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_scope(char **output, char *prefix,
                                       pmix_scope_t *src, pmix_data_type_t type)
 {
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
-pmix_status_t pmix1_bfrop_print_status(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_status(char **output, char *prefix,
                                        pmix_status_t *src, pmix_data_type_t type)
 {
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
-pmix_status_t pmix1_bfrop_print_ptr(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_ptr(char **output, char *prefix,
                                     void *src, pmix_data_type_t type)
 {
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
-pmix_status_t pmix1_bfrop_print_cmd(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_cmd(char **output, char *prefix,
                                     void *src, pmix_data_type_t type)
 {
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
-pmix_status_t pmix1_bfrop_print_info_directives(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_info_directives(char **output, char *prefix,
                                                 void *src, pmix_data_type_t type)
 {
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
-pmix_status_t pmix1_bfrop_print_datatype(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_datatype(char **output, char *prefix,
                                          pmix_data_type_t *src, pmix_data_type_t type)
 {
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
-pmix_status_t pmix1_bfrop_print_proc_state(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_proc_state(char **output, char *prefix,
                                            pmix_data_type_t *src, pmix_data_type_t type)
 {
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
-pmix_status_t pmix1_bfrop_print_darray(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_darray(char **output, char *prefix,
                                        pmix_data_array_t *src, pmix_data_type_t type)
 {
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
-pmix_status_t pmix1_bfrop_print_proc_info(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_proc_info(char **output, char *prefix,
                                           pmix_proc_info_t *src, pmix_data_type_t type)
 {
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
-pmix_status_t pmix1_bfrop_print_query(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_query(char **output, char *prefix,
                                       pmix_query_t *src, pmix_data_type_t type)
 {
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
-pmix_status_t pmix1_bfrop_print_rank(char **output, char *prefix,
+pmix_status_t pmix12_bfrop_print_rank(char **output, char *prefix,
                                      pmix_rank_t *src, pmix_data_type_t type)
 {
     return PMIX_ERR_NOT_SUPPORTED;

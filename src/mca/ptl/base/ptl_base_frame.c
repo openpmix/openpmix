@@ -190,6 +190,7 @@ static void pccon(pmix_pending_connection_t *p)
     p->gds = NULL;
     p->ptl = NULL;
     p->cred = NULL;
+    p->proc_type = PMIX_PROC_UNDEF;
 }
 static void pcdes(pmix_pending_connection_t *p)
 {

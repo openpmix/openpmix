@@ -33,13 +33,13 @@
 
 #include <pmix_common.h>
 
-#include "src/mca/bfrops/bfrops.h"
 #include "src/class/pmix_hash_table.h"
 #include "src/class/pmix_list.h"
 #include "src/class/pmix_ring_buffer.h"
 #include "src/event/pmix_event.h"
 #include "src/threads/threads.h"
 
+#include "src/mca/bfrops/bfrops.h"
 #include "src/mca/gds/gds.h"
 #include "src/mca/psec/psec.h"
 #include "src/mca/ptl/ptl.h"
@@ -103,23 +103,6 @@ typedef enum {
     PMIX_COLLECT_YES,
     PMIX_COLLECT_MAX
 } pmix_collect_t;
-
-/* define a process type */
-typedef uint16_t pmix_proc_type_t;
-#define PMIX_PROC_UNDEF     0x0000
-#define PMIX_PROC_CLIENT    0x0001
-#define PMIX_PROC_SERVER    0x0002
-#define PMIX_PROC_TOOL      0x0004
-#define PMIX_PROC_V1        0x0008
-#define PMIX_PROC_V2        0x0010
-
-/* defins some convenience macros for testing proc type */
-#define PMIX_PROC_IS_CLIENT(p)      (PMIX_PROC_CLIENT & (p)->proc_type)
-#define PMIX_PROC_IS_SERVER(p)      (PMIX_PROC_SERVER & (p)->proc_type)
-#define PMIX_PROC_IS_TOOL(p)        (PMIX_PROC_TOOL & (p)->proc_type)
-#define PMIX_PROC_IS_V1(p)          (PMIX_PROC_V1 & (p)->proc_type)
-#define PMIX_PROC_IS_V2(p)          (PMIX_PROC_V2 & (p)->proc_type)
-
 
 /****    PEER STRUCTURES    ****/
 
