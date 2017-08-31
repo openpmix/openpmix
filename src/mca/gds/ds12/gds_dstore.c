@@ -2408,7 +2408,8 @@ static pmix_status_t _dstore_fetch(const char *nspace, pmix_rank_t rank,
         if ((NULL == key) && (kval_cnt > 0)) {
             kval = (pmix_value_t*)malloc(sizeof(pmix_value_t));
             if (NULL == kval) {
-                return PMIX_ERR_NOMEM;
+                rc = PMIX_ERR_NOMEM;
+                goto done;
             }
             PMIX_VALUE_CONSTRUCT(kval);
 

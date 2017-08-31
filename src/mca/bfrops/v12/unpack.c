@@ -162,29 +162,29 @@ pmix_status_t pmix12_bfrop_unpack_buffer(pmix_buffer_t *buffer, void *dst, int32
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output, "pmix12_bfrop_unpack_buffer( %p, %p, %lu, %d )\n",
                    (void*)buffer, dst, (long unsigned int)*num_vals, (int)type);
 
+    /* some v1 types are simply declared differently */
+    switch (type) {
+        case PMIX_COMMAND:
+            v1type = PMIX_UINT32;
+            break;
+        case PMIX_SCOPE:
+        case PMIX_DATA_RANGE:
+            v1type = PMIX_UINT;
+            break;
+        case PMIX_PROC_RANK:
+        case PMIX_PERSIST:
+            v1type = PMIX_INT;
+            break;
+        default:
+            v1type = type;
+    }
+
     /** Unpack the declared data type */
     if (PMIX_BFROP_BUFFER_FULLY_DESC == buffer->type) {
         if (PMIX_SUCCESS != (rc = pmix12_bfrop_get_data_type(buffer, &local_type))) {
             PMIX_ERROR_LOG(rc);
             return rc;
         }
-        /* some v1 types are simply declared differently */
-        switch (type) {
-            case PMIX_COMMAND:
-                v1type = PMIX_UINT32;
-                break;
-            case PMIX_SCOPE:
-            case PMIX_DATA_RANGE:
-                v1type = PMIX_UINT;
-                break;
-            case PMIX_PROC_RANK:
-            case PMIX_PERSIST:
-                v1type = PMIX_INT;
-                break;
-            default:
-                v1type = type;
-        }
-
         /* if the data types don't match, then return an error */
         if (v1type != local_type) {
             pmix_output(0, "PMIX bfrop:unpack: got type %d when expecting type %d", local_type, v1type);

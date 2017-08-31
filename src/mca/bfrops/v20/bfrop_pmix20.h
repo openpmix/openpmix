@@ -17,8 +17,8 @@
  * $HEADER$
  */
 
-#ifndef PMIX_BFROPS_PMIX2_H
-#define PMIX_BFROPS_PMIX2_H
+#ifndef PMIX20_BFROPS_H
+#define PMIX20_BFROPS_H
 
 #include "src/mca/bfrops/bfrops.h"
 
@@ -31,4 +31,4 @@ extern pmix_bfrops_module_t pmix_bfrops_pmix20_module;
 
 END_C_DECLS
 
-#endif /* PMIX_BFROPS_PMIX2_H */
+#endif /* PMIX20_BFROPS_H */

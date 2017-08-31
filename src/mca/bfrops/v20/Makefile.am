@@ -19,10 +19,17 @@
 # $HEADER$
 #
 
-headers = bfrop_pmix20.h
+headers = \
+		bfrop_pmix20.h \
+		internal.h
+
 sources = \
         bfrop_pmix20_component.c \
-        bfrop_pmix20.c
+        bfrop_pmix20.c \
+        copy.c \
+        pack.c \
+        print.c \
+        unpack.c
 
 # Make the output library in this directory, and name it either
 # mca_<type>_<name>.la (for DSO builds) or libmca_<type>_<name>.la

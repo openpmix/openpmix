@@ -400,7 +400,7 @@ static const char* data_type_string(pmix_data_type_t type)
 
 int pmix12_v2_to_v1_datatype(pmix_data_type_t v2type)
 {
-    int v1type;
+    int v1type = PMIX_UNDEF;
 
     if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
         /* if I am a server, then I'm passing the data type to

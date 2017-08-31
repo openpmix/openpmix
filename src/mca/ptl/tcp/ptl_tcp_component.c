@@ -1027,9 +1027,7 @@ static void connection_handler(int sd, short args, void *cbdata)
         pnd->proc_type = proc_type;
         /* pass along the bfrop, buffer_type, and sec fields so
          * we can assign them once we create a peer object */
-        if (NULL != sec) {
-            pnd->psec = strdup(sec);
-        }
+        pnd->psec = strdup(sec);
         if (NULL != bfrops) {
             pnd->bfrops = strdup(bfrops);
         }
