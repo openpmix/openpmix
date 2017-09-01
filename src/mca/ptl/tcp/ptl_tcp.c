@@ -51,6 +51,7 @@
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/os_path.h"
+#include "src/mca/bfrops/base/base.h"
 
 #include "src/mca/ptl/base/base.h"
 #include "ptl_tcp.h"
@@ -135,12 +136,34 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
     /* if I am a client, then we need to look for the appropriate
      * connection info in the environment */
     if (PMIX_PROC_IS_CLIENT(pmix_globals.mypeer)) {
-        if (NULL == (evar = getenv("PMIX_SERVER_URI2"))) {
+        if (NULL != (evar = getenv("PMIX_SERVER_URI21"))) {
+            /* we are talking to a v2.1 server */
+            pmix_client_globals.myserver->proc_type = PMIX_PROC_SERVER | PMIX_PROC_V21;
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "V21 SERVER DETECTED");
+            /* must use the v21 bfrops module */
+            pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module("v21");
+            if (NULL == pmix_globals.mypeer->nptr->compat.bfrops) {
+                return PMIX_ERR_INIT;
+            }
+        } else if (NULL != (evar = getenv("PMIX_SERVER_URI2"))) {
+            /* we are talking to a v2.0 server */
+            pmix_client_globals.myserver->proc_type = PMIX_PROC_SERVER | PMIX_PROC_V20;
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "V20 SERVER DETECTED");
+            /* must use the v20 bfrops module */
+            pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module("v20");
+            if (NULL == pmix_globals.mypeer->nptr->compat.bfrops) {
+                return PMIX_ERR_INIT;
+            }
+        } else {
             /* not us */
             return PMIX_ERR_NOT_SUPPORTED;
         }
+        /* the server will be using the same bfrops as us */
+        pmix_client_globals.myserver->nptr->compat.bfrops = pmix_globals.mypeer->nptr->compat.bfrops;
 
-        /* the URI consists of  elements:
+        /* the URI consists of the following elements:
         *    - server nspace.rank
         *    - ptl rendezvous URI
         */
@@ -442,6 +465,24 @@ static pmix_status_t parse_uri_file(char *filename,
         fclose(fp);
         return PMIX_ERR_UNREACH;
     }
+    /* see if this file contains the server's version */
+    p2 = pmix_getline(fp);
+    if (NULL == p2) {
+        pmix_client_globals.myserver->proc_type = PMIX_PROC_SERVER | PMIX_PROC_V20;
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "V20 SERVER DETECTED");
+    } else if (0 == strncmp(p2, "v2.1", strlen("v2.1"))) {
+        pmix_client_globals.myserver->proc_type = PMIX_PROC_SERVER | PMIX_PROC_V21;
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "V21 SERVER DETECTED");
+    } else {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "UNKNOWN SERVER VERSION DETECTED: %s", p2);
+    }
+    if (NULL != p2) {
+        free(p2);
+    }
+
     fclose(fp);
     /* up to the first ';' is the server nspace/rank */
     if (NULL == (p = strchr(srvr, ';'))) {

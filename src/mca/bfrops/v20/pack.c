@@ -67,6 +67,7 @@ pmix_status_t pmix20_bfrop_pack_buffer(pmix_buffer_t *buffer,
                                      const void *src, int32_t num_vals,
                                      pmix_data_type_t type)
 {
+    pmix_data_type_t v20type;
     pmix_status_t rc;
     pmix_bfrop_type_info_t *info;
 
@@ -74,20 +75,29 @@ pmix_status_t pmix20_bfrop_pack_buffer(pmix_buffer_t *buffer,
                         "pmix20_bfrop_pack_buffer( %p, %p, %lu, %d )\n",
                         (void*)buffer, src, (long unsigned int)num_vals, (int)type);
 
+    /* some v20 types are simply declared differently */
+    switch (type) {
+        case PMIX_COMMAND:
+            v20type = PMIX_UINT32;
+            break;
+        default:
+            v20type = type;
+    }
+
     /* Pack the declared data type */
     if (PMIX_BFROP_BUFFER_FULLY_DESC == buffer->type) {
-        if (PMIX_SUCCESS != (rc = pmix20_bfrop_store_data_type(buffer, type))) {
+        if (PMIX_SUCCESS != (rc = pmix20_bfrop_store_data_type(buffer, v20type))) {
             return rc;
         }
     }
 
     /* Lookup the pack function for this type and call it */
 
-    if (NULL == (info = (pmix_bfrop_type_info_t*)pmix_pointer_array_get_item(&mca_bfrops_v20_component.types, type))) {
+    if (NULL == (info = (pmix_bfrop_type_info_t*)pmix_pointer_array_get_item(&mca_bfrops_v20_component.types, v20type))) {
         return PMIX_ERR_PACK_FAILURE;
     }
 
-    return info->odti_pack_fn(buffer, src, num_vals, type);
+    return info->odti_pack_fn(buffer, src, num_vals, v20type);
 }
 
 
@@ -711,20 +721,20 @@ pmix_status_t pmix20_bfrop_pack_pdata(pmix_buffer_t *buffer, const void *src,
 pmix_status_t pmix20_bfrop_pack_buf(pmix_buffer_t *buffer, const void *src,
                                   int32_t num_vals, pmix_data_type_t type)
 {
-    pmix_buffer_t **ptr;
+    pmix_buffer_t *ptr;
     int32_t i;
     pmix_status_t ret;
 
-    ptr = (pmix_buffer_t **) src;
+    ptr = (pmix_buffer_t *) src;
 
     for (i = 0; i < num_vals; ++i) {
         /* pack the number of bytes */
-        if (PMIX_SUCCESS != (ret = pmix20_bfrop_pack_sizet(buffer, &ptr[i]->bytes_used, 1, PMIX_SIZE))) {
+        if (PMIX_SUCCESS != (ret = pmix20_bfrop_pack_sizet(buffer, &ptr[i].bytes_used, 1, PMIX_SIZE))) {
             return ret;
         }
         /* pack the bytes */
-        if (0 < ptr[i]->bytes_used) {
-            if (PMIX_SUCCESS != (ret = pmix20_bfrop_pack_byte(buffer, ptr[i]->base_ptr, ptr[i]->bytes_used, PMIX_BYTE))) {
+        if (0 < ptr[i].bytes_used) {
+            if (PMIX_SUCCESS != (ret = pmix20_bfrop_pack_byte(buffer, ptr[i].base_ptr, ptr[i].bytes_used, PMIX_BYTE))) {
                 return ret;
             }
         }
