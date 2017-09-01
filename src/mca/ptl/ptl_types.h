@@ -219,10 +219,12 @@ typedef struct pmix_listener_t {
 } pmix_listener_t;
 PMIX_CLASS_DECLARATION(pmix_listener_t);
 
+/* provide a backdoor to the framework output for debugging */
+PMIX_EXPORT extern int pmix_ptl_base_output;
 
 #define PMIX_ACTIVATE_POST_MSG(ms)                                      \
     do {                                                                \
-        pmix_output_verbose(5, pmix_globals.debug_output,               \
+        pmix_output_verbose(5, pmix_ptl_base_output,                    \
                             "[%s:%d] post msg",                         \
                             __FILE__, __LINE__);                        \
         pmix_event_assign(&((ms)->ev), pmix_globals.evbase, -1,         \
@@ -249,7 +251,7 @@ PMIX_CLASS_DECLARATION(pmix_listener_t);
     do {                                                                                \
         pmix_ptl_send_t *snd;                                                           \
         uint32_t nbytes;                                                                \
-        pmix_output_verbose(5, pmix_globals.debug_output,                               \
+        pmix_output_verbose(5, pmix_ptl_base_output,                                    \
                             "[%s:%d] queue callback called: reply to %s:%d on tag %d size %d",  \
                             __FILE__, __LINE__,                                         \
                             (p)->info->pname.nspace,                                    \

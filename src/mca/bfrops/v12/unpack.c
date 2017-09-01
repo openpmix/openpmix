@@ -173,6 +173,7 @@ pmix_status_t pmix12_bfrop_unpack_buffer(pmix_buffer_t *buffer, void *dst, int32
             break;
         case PMIX_PROC_RANK:
         case PMIX_PERSIST:
+        case PMIX_STATUS:
             v1type = PMIX_INT;
             break;
         default:
