@@ -25,6 +25,8 @@
 #include <src/include/pmix_config.h>
 
 #include "src/util/error.h"
+#include "src/include/pmix_globals.h"
+#include "src/client/pmix_client_ops.h"
 #include "src/mca/bfrops/base/base.h"
 #include "bfrop_pmix20.h"
 #include "internal.h"
@@ -416,22 +418,20 @@ static const char* data_type_string(pmix_data_type_t type)
 
 pmix_data_type_t pmix20_v21_to_v20_datatype(pmix_data_type_t v21type)
 {
-    pmix_data_type_t v20type = PMIX_UNDEF;
+    pmix_data_type_t v20type;
 
-    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
-        /* if I am a server, then I'm passing the data type to
-         * a PMIx v1 compatible client. The data type was redefined
-         * in v2, and so we have to do some conversions here */
-        switch(v21type) {
-            case PMIX_COMMAND:
-                /* the client unfortunately didn't separate these out,
-                 * but instead set them to PMIX_UINT32 */
-                v20type = PMIX_UINT32;
-                break;
+    /* iI'm passing the data type to
+     * a PMIx v20 compatible client. The data type was redefined
+     * in v21, and so we have to do some conversions here */
+    switch(v21type) {
+        case PMIX_COMMAND:
+            /* the peer unfortunately didn't separate these out,
+             * but instead set them to PMIX_UINT32 */
+            v20type = PMIX_UINT32;
+            break;
 
-            default:
-                v20type = v21type;
-        }
+        default:
+            v20type = v21type;
     }
     return v20type;
 }
@@ -441,7 +441,6 @@ pmix_status_t pmix20_bfrop_store_data_type(pmix_buffer_t *buffer, pmix_data_type
     pmix_data_type_t v20type;
 
     v20type = pmix20_v21_to_v20_datatype(type);
-
     return pmix20_bfrop_pack_datatype(buffer, &v20type, 1, PMIX_DATA_TYPE);
 }
 

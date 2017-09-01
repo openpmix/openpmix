@@ -2792,7 +2792,7 @@ static pmix_status_t dstore_assign_module(pmix_info_t *info, size_t ninfo,
     size_t n, m;
     char **options;
 
-    *priority = -1;
+    *priority = 20;
     if (NULL != info) {
         for (n=0; n < ninfo; n++) {
             if (0 == strncmp(info[n].key, PMIX_GDS_MODULE, PMIX_MAX_KEYLEN)) {

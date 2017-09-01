@@ -912,6 +912,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char *
     char rankstr[128];
     pmix_listener_t *lt;
     pmix_status_t rc;
+    char **varnames;
+    int n;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     if (pmix_globals.init_cntr <= 0) {
@@ -932,15 +934,17 @@ PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char *
     /* pass our rendezvous info */
     PMIX_LIST_FOREACH(lt, &pmix_ptl_globals.listeners, pmix_listener_t) {
         if (NULL != lt->uri && NULL != lt->varname) {
-            pmix_setenv(lt->varname, lt->uri, true, env);
+            varnames = pmix_argv_split(lt->varname, ':');
+            for (n=0; NULL != varnames[n]; n++) {
+                pmix_setenv(varnames[n], lt->uri, true, env);
+            }
+            pmix_argv_free(varnames);
         }
     }
     /* pass our active security modules */
     pmix_setenv("PMIX_SECURITY_MODE", security_mode, true, env);
     /* pass our available ptl modules */
     pmix_setenv("PMIX_PTL_MODULE", ptl_mode, true, env);
-    /* pass our available bfrop modes */
-    pmix_setenv("PMIX_BFROP_MODULE", bfrops_mode, true, env);
     /* pass the type of buffer we are using */
     if (PMIX_BFROP_BUFFER_FULLY_DESC == pmix_globals.mypeer->nptr->compat.type) {
         pmix_setenv("PMIX_BFROP_BUFFER_TYPE", "PMIX_BFROP_BUFFER_FULLY_DESC", true, env);

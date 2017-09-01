@@ -52,6 +52,7 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/include/pmix_globals.h"
 #include "src/include/pmix_socket_errno.h"
+#include "src/mca/bfrops/base/base.h"
 #include "src/mca/psec/base/base.h"
 
 #include "src/mca/ptl/base/base.h"
@@ -122,6 +123,15 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
         PMIX_ERROR_LOG(PMIX_ERROR);
         return PMIX_ERROR;
     }
+    /* definitely a v1 server */
+    pmix_client_globals.myserver->proc_type = PMIX_PROC_SERVER | PMIX_PROC_V1;
+    /* must use the v12 bfrops module */
+    pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module("v12");
+    if (NULL == pmix_globals.mypeer->nptr->compat.bfrops) {
+        return PMIX_ERR_INIT;
+    }
+    /* the server will be using the same */
+    pmix_client_globals.myserver->nptr->compat.bfrops = pmix_globals.mypeer->nptr->compat.bfrops;
 
     /* set the server nspace */
     if (NULL == pmix_client_globals.myserver->info) {

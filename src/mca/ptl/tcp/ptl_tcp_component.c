@@ -482,7 +482,7 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
     }
 
     lt = PMIX_NEW(pmix_listener_t);
-    lt->varname = strdup("PMIX_SERVER_URI2");
+    lt->varname = strdup("PMIX_SERVER_URI2:PMIX_SERVER_URI21");
     lt->protocol = PMIX_PROTOCOL_V2;
     lt->ptl = (struct pmix_ptl_module_t*)&pmix_ptl_tcp_module;
     lt->cbfunc = connection_handler;
@@ -587,7 +587,9 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
         }
 
         /* output my nspace and rank plus the URI */
-        fprintf(fp, "%s.%d:%s\n", pmix_globals.myid.nspace, pmix_globals.myid.rank, lt->uri);
+        fprintf(fp, "%s\n", lt->uri);
+        /* add a flag that indicates we accept v2.1 protocols */
+        fprintf(fp, "%s\n", PMIX_VERSION);
         fclose(fp);
         /* set the file mode */
         if (0 != chmod(mca_ptl_tcp_component.system_filename, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)) {
@@ -618,8 +620,10 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
             goto sockerror;
         }
 
-        /* output my nspace and rank plus the URI */
-        fprintf(fp, "%s.%d:%s\n", pmix_globals.myid.nspace, pmix_globals.myid.rank, lt->uri);
+        /* output my URI */
+        fprintf(fp, "%s\n", lt->uri);
+        /* add a flag that indicates we accept v2.1 protocols */
+        fprintf(fp, "%s\n", PMIX_VERSION);
         fclose(fp);
         /* set the file mode */
         if (0 != chmod(mca_ptl_tcp_component.session_filename, S_IRUSR | S_IWUSR | S_IRGRP)) {

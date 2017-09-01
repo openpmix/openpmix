@@ -400,44 +400,42 @@ static const char* data_type_string(pmix_data_type_t type)
 
 int pmix12_v2_to_v1_datatype(pmix_data_type_t v2type)
 {
-    int v1type = PMIX_UNDEF;
+    int v1type;
 
-    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
-        /* if I am a server, then I'm passing the data type to
-         * a PMIx v1 compatible client. The data type was redefined
-         * in v2, and so we have to do some conversions here */
-        switch(v2type) {
-            case 20:
-                /* the client thinks this is simply an int */
-                v1type = 6;
-                break;
+    /* I'm passing the data type to
+     * a PMIx v1 compatible peer. The data type was redefined
+     * in v2, and so we have to do some conversions here */
+    switch(v2type) {
+        case 20:
+            /* the client thinks this is simply an int */
+            v1type = 6;
+            break;
 
-            case 44:
-                /* the client thinks this is PMIX_INFO_ARRAY */
-                v1type = 22;
-                break;
+        case 44:
+            /* the client thinks this is PMIX_INFO_ARRAY */
+            v1type = 22;
+            break;
 
-            case 40:
-                /* proc rank is just an int in v1 */
-                v1type = 6;
-                break;
+        case 40:
+            /* proc rank is just an int in v1 */
+            v1type = 6;
+            break;
 
-            case 22:
-            case 23:
-            case 24:
-            case 25:
-            case 26:
-            case 27:
-            case 28:
-            case 29:
-            case 30:
-                /* shift up one */
-                v1type = v2type + 1;
-                break;
+        case 22:
+        case 23:
+        case 24:
+        case 25:
+        case 26:
+        case 27:
+        case 28:
+        case 29:
+        case 30:
+            /* shift up one */
+            v1type = v2type + 1;
+            break;
 
-            default:
-                v1type = v2type;
-        }
+        default:
+            v1type = v2type;
     }
     return v1type;
 }
@@ -453,40 +451,38 @@ pmix_status_t pmix12_bfrop_store_data_type(pmix_buffer_t *buffer, pmix_data_type
 
 pmix_data_type_t pmix12_v1_to_v2_datatype(int v1type)
 {
-    pmix_data_type_t v2type = PMIX_UNDEF;
+    pmix_data_type_t v2type;
 
-    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
-        /* if I am a server, then I'm getting the data type that was given to
-         * me by a PMIx v1 compatible client. The data type was redefined
-         * in v2, and so we have to do some conversions here */
+    /* I'm getting the data type that was given to
+     * me by a PMIx v1 compatible peer. The data type was redefined
+     * in v2, and so we have to do some conversions here */
 
-        switch(v1type) {
-            case 20:
-                /* the client thinks this is PMIX_HWLOC_TOPO, which we don't support */
-                v2type = PMIX_UNDEF;
-                break;
+    switch(v1type) {
+        case 20:
+            /* the peer thinks this is PMIX_HWLOC_TOPO, which we don't support */
+            v2type = PMIX_UNDEF;
+            break;
 
-            case 22:
-                /* the client thinks this is PMIX_INFO_ARRAY */
-                v2type = PMIX_INFO_ARRAY;
-                break;
+        case 22:
+            /* the peer thinks this is PMIX_INFO_ARRAY */
+            v2type = PMIX_INFO_ARRAY;
+            break;
 
-            case 23:
-            case 24:
-            case 25:
-            case 26:
-            case 27:
-            case 28:
-            case 29:
-            case 30:
-            case 31:
-                /* shift down one */
-                v2type = v1type - 1;
-                break;
+        case 23:
+        case 24:
+        case 25:
+        case 26:
+        case 27:
+        case 28:
+        case 29:
+        case 30:
+        case 31:
+            /* shift down one */
+            v2type = v1type - 1;
+            break;
 
-            default:
-                v2type = v1type;
-        }
+        default:
+            v2type = v1type;
     }
     return v2type;
 }
