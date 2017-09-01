@@ -68,24 +68,42 @@ pmix_status_t pmix12_bfrop_pack_buffer(pmix_buffer_t *buffer,
 {
     pmix_status_t rc;
     pmix_bfrop_type_info_t *info;
+    int v1type;
 
     pmix_output_verbose(20, pmix_globals.debug_output, "pmix12_bfrop_pack_buffer( %p, %p, %lu, %d )\n",
                    (void*)buffer, src, (long unsigned int)num_vals, (int)type);
 
+    /* some v1 types are simply declared differently */
+    switch (type) {
+        case PMIX_COMMAND:
+            v1type = PMIX_UINT32;
+            break;
+        case PMIX_SCOPE:
+        case PMIX_DATA_RANGE:
+            v1type = PMIX_UINT;
+            break;
+        case PMIX_PROC_RANK:
+        case PMIX_PERSIST:
+            v1type = PMIX_INT;
+            break;
+        default:
+            v1type = type;
+    }
+
     /* Pack the declared data type */
     if (PMIX_BFROP_BUFFER_FULLY_DESC == buffer->type) {
-        if (PMIX_SUCCESS != (rc = pmix12_bfrop_store_data_type(buffer, type))) {
+        if (PMIX_SUCCESS != (rc = pmix12_bfrop_store_data_type(buffer, v1type))) {
             return rc;
         }
     }
 
     /* Lookup the pack function for this type and call it */
 
-    if (NULL == (info = (pmix_bfrop_type_info_t*)pmix_pointer_array_get_item(&mca_bfrops_v12_component.types, type))) {
+    if (NULL == (info = (pmix_bfrop_type_info_t*)pmix_pointer_array_get_item(&mca_bfrops_v12_component.types, v1type))) {
         return PMIX_ERR_PACK_FAILURE;
     }
 
-    return info->odti_pack_fn(buffer, src, num_vals, type);
+    return info->odti_pack_fn(buffer, src, num_vals, v1type);
 }
 
 

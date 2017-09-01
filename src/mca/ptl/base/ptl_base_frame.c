@@ -55,6 +55,7 @@
 
 /* Instantiate the global vars */
 pmix_ptl_globals_t pmix_ptl_globals = {{{0}}};
+int pmix_ptl_base_output = -1;
 
 static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
 {
@@ -89,6 +90,8 @@ static pmix_status_t pmix_ptl_close(void)
 
 static pmix_status_t pmix_ptl_open(pmix_mca_base_open_flag_t flags)
 {
+    pmix_status_t rc;
+
     /* initialize globals */
     pmix_ptl_globals.initialized = true;
     PMIX_CONSTRUCT(&pmix_ptl_globals.actives, pmix_list_t);
@@ -99,7 +102,9 @@ static pmix_status_t pmix_ptl_open(pmix_mca_base_open_flag_t flags)
     pmix_ptl_globals.current_tag = PMIX_PTL_TAG_DYNAMIC;
 
     /* Open up all available components */
-    return pmix_mca_base_framework_components_open(&pmix_ptl_base_framework, flags);
+    rc = pmix_mca_base_framework_components_open(&pmix_ptl_base_framework, flags);
+    pmix_ptl_base_output = pmix_ptl_base_framework.framework_output;
+    return rc;
 }
 
 PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, ptl, "PMIx Transfer Layer",

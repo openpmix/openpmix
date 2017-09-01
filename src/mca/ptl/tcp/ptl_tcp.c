@@ -345,7 +345,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
     }
 
   complete:
-    pmix_output_verbose(2, pmix_globals.debug_output,
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "sock_peer_try_connect: Connection across to server succeeded");
 
     /* do a final bozo check */
