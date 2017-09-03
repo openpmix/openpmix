@@ -949,7 +949,7 @@ static void connection_handler(int sd, short args, void *cbdata)
         proc_type = PMIX_PROC_V20;
         bfrops = "v20";
         bftype = pmix_bfrops_globals.default_type;  // we can't know any better
-        gds = "hash";
+        gds = NULL;
     } else {
         proc_type = PMIX_PROC_V21;
         /* extract the name of the bfrops module they used */
@@ -1136,9 +1136,14 @@ static void connection_handler(int sd, short args, void *cbdata)
     peer->nptr->compat.type = bftype;
 
     /* set the gds module to match this peer */
-    PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, gds, PMIX_STRING);
+    if (NULL != gds) {
+        PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, gds, PMIX_STRING);
+        peer->nptr->compat.gds = pmix_gds_base_assign_module(&ginfo, 1);
+        PMIX_INFO_DESTRUCT(&ginfo);
+    } else {
+        peer->nptr->compat.gds = pmix_gds_base_assign_module(NULL, 0);
+    }
     free(msg);  // can now release the data buffer
-    peer->nptr->compat.gds = pmix_gds_base_assign_module(&ginfo, 1);
     if (NULL == peer->nptr->compat.gds) {
         info->proc_cnt--;
         pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->index, NULL);
