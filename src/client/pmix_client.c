@@ -487,7 +487,6 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         pmix_client_globals.myserver->nptr->compat.gds = pmix_gds_base_assign_module(NULL, 0);
     }
     if (NULL == pmix_client_globals.myserver->nptr->compat.gds) {
-        PMIX_INFO_DESTRUCT(&ginfo);
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_INIT;
     }
