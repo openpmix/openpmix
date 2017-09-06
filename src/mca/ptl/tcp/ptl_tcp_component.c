@@ -553,14 +553,14 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
     } else if (AF_INET6 == mca_ptl_tcp_component.connection.ss_family) {
         prefix = "tcp6://";
         myport = ntohs(((struct sockaddr_in6*) &mca_ptl_tcp_component.connection)->sin6_port);
-    inet_ntop(AF_INET6, &((struct sockaddr_in6*) &mca_ptl_tcp_component.connection)->sin6_addr,
-              myconnhost, PMIX_MAXHOSTNAMELEN);
+        inet_ntop(AF_INET6, &((struct sockaddr_in6*) &mca_ptl_tcp_component.connection)->sin6_addr,
+                  myconnhost, PMIX_MAXHOSTNAMELEN);
     } else {
         goto sockerror;
     }
 
-    asprintf(&lt->uri, "%s.%d;%s%s:%d", pmix_globals.myid.nspace, pmix_globals.myid.rank, prefix, myconnhost, myport);
-    if (NULL == lt->uri) {
+    rc = asprintf(&lt->uri, "%s.%d;%s%s:%d", pmix_globals.myid.nspace, pmix_globals.myid.rank, prefix, myconnhost, myport);
+    if (0 > rc || NULL == lt->uri) {
         CLOSE_THE_SOCKET(lt->socket);
         goto sockerror;
     }
@@ -753,7 +753,7 @@ static void connection_handler(int sd, short args, void *cbdata)
     pmix_pending_connection_t *pnd = (pmix_pending_connection_t*)cbdata;
     pmix_ptl_hdr_t hdr;
     pmix_peer_t *peer;
-    pmix_rank_t rank;
+    pmix_rank_t rank=0;
     pmix_status_t rc;
     char *msg, *mg, *version;
     char *sec, *bfrops, *gds;
