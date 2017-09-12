@@ -492,7 +492,7 @@ static void _deregister_nspace(int sd, short args, void *cbdata)
 
     /* release the caller */
     if (NULL != cd->opcbfunc) {
-        cd->opcbfunc(PMIX_SUCCESS, cd->cbdata);
+        cd->opcbfunc(rc, cd->cbdata);
     }
     PMIX_RELEASE(cd);
 }
