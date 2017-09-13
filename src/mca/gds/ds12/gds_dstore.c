@@ -287,8 +287,6 @@ pmix_gds_base_module_t pmix_ds12_module = {
     .del_nspace = dstore_del_nspace,
 };
 
-static pmix_value_array_t *rank_kv_bufs = NULL;
-
 static char *_base_path = NULL;
 static size_t _initial_segment_size = 0;
 static size_t _max_ns_num;
@@ -906,7 +904,11 @@ static inline void _esh_session_release(session_t *s)
     }
 
     _delete_sm_desc(s->sm_seg_first);
-    close(s->lockfd);
+    /* if the lock fd was somehow set, then we
+     * need to close it */
+    if (0 != s->lockfd) {
+        close(s->lockfd);
+    }
 
     if (NULL != s->lockfile) {
         if(PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
