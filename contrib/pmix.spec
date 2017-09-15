@@ -196,7 +196,7 @@ Version: $VERSION
 Release: 1%{?dist}
 License: BSD
 Group: Development/Libraries
-Source: pmix-%{version}.tar.$EXTENSION
+Source0: https://github.com/pmix/pmix/releases/download/v%{version}/pmix-%{version}.tar.bz2
 Packager: %{?_packager:%{_packager}}%{!?_packager:%{_vendor}}
 Vendor: %{?_vendorinfo:%{_vendorinfo}}%{!?_vendorinfo:%{_vendor}}
 Distribution: %{?_distribution:%{_distribution}}%{!?_distribution:%{_vendor}}
