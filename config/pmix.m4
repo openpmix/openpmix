@@ -763,6 +763,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_CONFIG_FILES(
         pmix_config_prefix[Makefile]
         pmix_config_prefix[config/Makefile]
+        pmix_config_prefix[etc/Makefile]
         pmix_config_prefix[include/Makefile]
         pmix_config_prefix[src/Makefile]
         pmix_config_prefix[src/util/keyval/Makefile]
