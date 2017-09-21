@@ -1641,7 +1641,7 @@ static int pmix_sm_store(ns_track_elem_t *ns_info, pmix_rank_t rank, pmix_kval_t
     datadesc = ns_info->data_seg;
     /* pack value to the buffer */
     PMIX_CONSTRUCT(&buffer, pmix_buffer_t);
-    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buffer, kval->value, 1, PMIX_VALUE);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, &buffer, kval->value, 1, PMIX_VALUE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto exit;
@@ -2513,12 +2513,12 @@ static pmix_status_t _dstore_fetch(const char *nspace, pmix_rank_t rank,
                 int cnt = 1;
                 /* unpack value for this key from the buffer. */
                 PMIX_VALUE_CONSTRUCT(&val);
-                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &buffer, &val, &cnt, PMIX_VALUE);
+                PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, &buffer, &val, &cnt, PMIX_VALUE);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
                     goto done;
                 }
-                PMIX_BFROPS_COPY(rc, pmix_globals.mypeer, (void**)kvs, &val, PMIX_VALUE);
+                PMIX_BFROPS_COPY(rc, pmix_client_globals.myserver, (void**)kvs, &val, PMIX_VALUE);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
                     goto done;
@@ -3004,6 +3004,9 @@ static pmix_status_t dstore_register_job_info(struct pmix_peer_t *pr,
                         peer->info->pname.nspace, peer->info->pname.rank);
 
     if (0 == ns->ndelivered) { // don't store twice
+        pmix_client_globals.myserver->nptr->compat.type = peer->nptr->compat.type;
+        pmix_client_globals.myserver->nptr->compat.bfrops = peer->nptr->compat.bfrops;
+
         (void)strncpy(proc.nspace, ns->nspace, PMIX_MAX_NSLEN);
         proc.rank = PMIX_RANK_WILDCARD;
         rc = _store_job_info(&proc);
