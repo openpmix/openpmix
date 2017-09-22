@@ -951,7 +951,7 @@ DSTORE_PTHREAD_LOCK="1"
 AC_MSG_CHECKING([if want dstore pthread-based locking])
 AC_ARG_ENABLE([dstore-pthlck],
               [AC_HELP_STRING([--disable-dstore-pthlck],
-                              [Disable pthread-based lockig in dstor (default: enabled)])])
+                              [Disable pthread-based locking in dstor (default: enabled)])])
 if test "$enable_dstore_pthlck" = "no" ; then
     AC_MSG_RESULT([no])
     DSTORE_PTHREAD_LOCK="0"
