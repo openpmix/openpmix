@@ -95,6 +95,7 @@ test/test-suite.log
 test/pmix_regex
 test/simple/simptest
 test/simple/simpclient
+test/simple/simplegacy
 test/simple/simppub
 test/simple/simpdmodex
 test/simple/simpft
