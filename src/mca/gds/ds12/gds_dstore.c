@@ -2954,42 +2954,72 @@ static pmix_status_t _store_job_info(pmix_proc_t *proc)
     pmix_cb_t cb;
     pmix_kval_t *kv;
     pmix_buffer_t buf;
-    pmix_kval_t *kv2 = NULL;
+    pmix_kval_t *kv2 = NULL, *kvp;
     pmix_status_t rc = PMIX_SUCCESS;
 
-    kv2 = PMIX_NEW(pmix_kval_t);
-    PMIX_VALUE_CREATE(kv2->value, 1);
-    kv2->value->type = PMIX_BYTE_OBJECT;
-
-    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    kvp = PMIX_NEW(pmix_kval_t);
+    PMIX_VALUE_CREATE(kvp->value, 1);
+    kvp->value->type = PMIX_BYTE_OBJECT;
+
     cb.proc = proc;
     cb.scope = PMIX_INTERNAL;
     cb.copy = false;
 
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
     if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
+        if (rc == PMIX_ERR_PROC_ENTRY_NOT_FOUND) {
+            /* there is no error if no data for job info */
+            rc = PMIX_SUCCESS;
+        }
         goto exit;
     }
 
-    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
     PMIX_LIST_FOREACH(kv, &cb.kvs, pmix_kval_t) {
-        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, kv, 1, PMIX_KVAL);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            goto exit;
+      if (!PMIX_PROC_IS_V21(_client_peer()) && 0 != strncmp("pmix.", kv->key, 4) &&
+                kv->value->type == PMIX_DATA_ARRAY) {
+            pmix_info_t *info;
+            size_t size, i;
+            info = kv->value->data.darray->array;
+            size = kv->value->data.darray->size;
+
+            for (i = 0; i < size; i++) {
+                if (0 == strcmp(PMIX_LOCAL_PEERS, info[i].key)) {
+                    kv2 = PMIX_NEW(pmix_kval_t);
+                    kv2->key = strdup(kv->key);
+                    PMIX_VALUE_XFER(rc, kv2->value, &info[i].value);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_ERROR_LOG(rc);
+                        PMIX_RELEASE(kv2);
+                        goto exit;
+                    }
+                    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, kv2, 1, PMIX_KVAL);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_ERROR_LOG(rc);
+                        PMIX_RELEASE(kv2);
+                        goto exit;
+                    }
+                    PMIX_RELEASE(kv2);
+                }
+            }
+        } else {
+            PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, kv, 1, PMIX_KVAL);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                goto exit;
+            }
         }
     }
-    PMIX_UNLOAD_BUFFER(&buf, kv2->value->data.bo.bytes, kv2->value->data.bo.size);
 
-    if (PMIX_SUCCESS != (rc = _dstore_store(proc->nspace, proc->rank, kv2))) {
+    PMIX_UNLOAD_BUFFER(&buf, kvp->value->data.bo.bytes, kvp->value->data.bo.size);
+    if (PMIX_SUCCESS != (rc = _dstore_store(proc->nspace, proc->rank, kvp))) {
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
 
 exit:
-    PMIX_RELEASE(kv2);
+    PMIX_RELEASE(kvp);
     PMIX_DESTRUCT(&cb);
     PMIX_DESTRUCT(&buf);
     return rc;
@@ -3068,6 +3098,7 @@ static void _client_compat_save(pmix_peer_t *peer)
         _clients_peer->nptr = nptr;
     }
     _clients_peer->nptr->compat = peer->nptr->compat;
+    _clients_peer->proc_type = peer->proc_type;
 }
 
 static inline pmix_peer_t * _client_peer(void)

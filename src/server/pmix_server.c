@@ -1916,13 +1916,23 @@ static void _cnct(int sd, short args, void *cbdata)
                     }
                 }
                 PMIX_DESTRUCT(&cb);
-                PMIX_UNLOAD_BUFFER(&pbkt, bo.bytes, bo.size);
-                PMIX_BFROPS_PACK(rc, cd->peer, reply, &bo, 1, PMIX_BYTE_OBJECT);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    PMIX_RELEASE(reply);
-                    PMIX_DESTRUCT(&pbkt);
-                    goto cleanup;
+                if (PMIX_PROC_IS_V21(cd->peer)) {
+                    PMIX_UNLOAD_BUFFER(&pbkt, bo.bytes, bo.size);
+                    PMIX_BFROPS_PACK(rc, cd->peer, reply, &bo, 1, PMIX_BYTE_OBJECT);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_ERROR_LOG(rc);
+                        PMIX_RELEASE(reply);
+                        PMIX_DESTRUCT(&pbkt);
+                        goto cleanup;
+                    }
+                } else {
+                    PMIX_BFROPS_PACK(rc, cd->peer, reply, &pbkt, 1, PMIX_BUFFER);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_ERROR_LOG(rc);
+                        PMIX_RELEASE(reply);
+                        PMIX_DESTRUCT(&pbkt);
+                        goto cleanup;
+                    }
                 }
                 PMIX_DESTRUCT(&pbkt);
             }
