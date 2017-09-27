@@ -502,28 +502,6 @@ static inline void _rwlock_release(session_t *s) {
 }
 #endif
 
-static inline const char *_unique_id(void)
-{
-    static const char *str = NULL;
-    if (!str) {
-        /* see: pmix_server.c initialize_server_base()
-         * to get format of uri
-         */
-        if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
-            static char buf[100];
-            snprintf(buf, sizeof(buf) - 1, "pmix-%d", getpid());
-            str = buf;
-        } else {
-            str = getenv("PMIX_SERVER_URI");
-            if (str) {
-                str = strrchr(str, '/');
-            }
-            str = (str ? str + 1 : "$$$");
-        }
-    }
-    return str;
-}
-
 static inline int _esh_dir_del(const char *path)
 {
     DIR *dir;
