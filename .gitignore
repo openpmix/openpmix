@@ -55,6 +55,7 @@ config/autogen_found_items.m4
 
 examples/alloc
 examples/client
+examples/client2
 examples/debugger
 examples/debuggerd
 examples/dmodex
