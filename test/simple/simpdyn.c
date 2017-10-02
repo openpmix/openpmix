@@ -46,12 +46,13 @@ int main(int argc, char **argv)
     pmix_value_t *val = &value;
     pmix_proc_t proc;
     uint32_t nprocs;
-    char nsp2[PMIX_MAX_NSLEN+1];
+    char nsp2[PMIX_MAX_NSLEN+1], nsp3[PMIX_MAX_NSLEN+1];
     pmix_app_t *app;
     char hostname[PMIX_MAXHOSTNAMELEN];
     pmix_proc_t *peers;
     size_t npeers, ntmp=0;
     char *nodelist;
+    pmix_rank_t newrank;
 
     gethostname(hostname, sizeof(hostname));
 
@@ -128,12 +129,13 @@ int main(int argc, char **argv)
     }
 
     /* just cycle the connect/disconnect functions */
-    if (PMIX_SUCCESS != (rc = PMIx_Connect(&proc, 1, NULL, 0))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Connect(&proc, 1, NULL, 0, nsp3, &newrank))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Connect failed: %d", myproc.nspace, myproc.rank, rc);
         goto done;
     }
-    pmix_output(0, "Client ns %s rank %d: PMIx_Connect succeeded", myproc.nspace, myproc.rank);
-    if (PMIX_SUCCESS != (rc = PMIx_Disconnect(&proc, 1, NULL, 0))) {
+    pmix_output(0, "Client ns %s rank %d: PMIx_Connect succeeded - %s:%d",
+                myproc.nspace, myproc.rank, nsp3, newrank);
+    if (PMIX_SUCCESS != (rc = PMIx_Disconnect(nsp3, NULL, 0))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Disonnect failed: %d", myproc.nspace, myproc.rank, rc);
         goto done;
     }

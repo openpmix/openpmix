@@ -665,9 +665,9 @@ void pmix_server_execute_collective(int sd, short args, void *cbdata)
     } else if (PMIX_CONNECTNB_CMD == trk->type) {
         pmix_host_server.connect(trk->pcs, trk->npcs,
                                  trk->info, trk->ninfo,
-                                 trk->op_cbfunc, trk);
+                                 trk->cnct_cbfunc, trk);
     } else if (PMIX_DISCONNECTNB_CMD == trk->type) {
-        pmix_host_server.disconnect(trk->pcs, trk->npcs,
+        pmix_host_server.disconnect(trk->pname.nspace,
                                     trk->info, trk->ninfo,
                                     trk->op_cbfunc, trk);
     } else {
@@ -1831,31 +1831,41 @@ static void _cnct(int sd, short args, void *cbdata)
     int i;
     pmix_server_caddy_t *cd;
     char **nspaces=NULL;
-    bool found;
+    bool found, xchg;
     pmix_proc_t proc;
     pmix_cb_t cb;
     pmix_kval_t *kptr;
+    pmix_nspace_t *nsptr = NULL;
+    size_t n;
 
     PMIX_ACQUIRE_OBJECT(scd);
 
-    if (PMIX_CONNECTNB_CMD == tracker->type) {
-      /* find the unique nspaces that are participating */
-      PMIX_LIST_FOREACH(cd, &tracker->local_cbs, pmix_server_caddy_t) {
-          if (NULL == nspaces) {
-              pmix_argv_append_nosize(&nspaces, cd->peer->info->pname.nspace);
-          } else {
-              found = false;
-              for (i=0; NULL != nspaces[i]; i++) {
-                  if (0 == strcmp(nspaces[i], cd->peer->info->pname.nspace)) {
-                      found = true;
-                      break;
-                  }
-              }
-              if (!found) {
-                  pmix_argv_append_nosize(&nspaces, cd->peer->info->pname.nspace);
-              }
-          }
-      }
+    /* see if this connect request was to return a new nspace/rank, or
+     * was just an exchange of info */
+    xchg = false;
+    for (n=0; n < tracker->ninfo; n++) {
+        if (0 == strncmp(tracker->info[n].key, PMIX_CONNECT_XCHG_ONLY, PMIX_MAX_KEYLEN)) {
+            xchg = true;
+            break;
+        }
+    }
+
+    /* find the unique nspaces that are participating */
+    PMIX_LIST_FOREACH(cd, &tracker->local_cbs, pmix_server_caddy_t) {
+        if (NULL == nspaces) {
+            pmix_argv_append_nosize(&nspaces, cd->peer->info->pname.nspace);
+        } else {
+            found = false;
+            for (i=0; NULL != nspaces[i]; i++) {
+                if (0 == strcmp(nspaces[i], cd->peer->info->pname.nspace)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                pmix_argv_append_nosize(&nspaces, cd->peer->info->pname.nspace);
+            }
+        }
     }
 
     /* loop across all local procs in the tracker, sending them the reply */
@@ -1867,13 +1877,35 @@ static void _cnct(int sd, short args, void *cbdata)
             rc = PMIX_ERR_NOMEM;
             goto cleanup;
         }
+        /* start with the status */
         PMIX_BFROPS_PACK(rc, cd->peer, reply, &scd->status, 1, PMIX_STATUS);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(reply);
             goto cleanup;
         }
-        if (PMIX_CONNECTNB_CMD == tracker->type) {
+        if (PMIX_SUCCESS == scd->status) {
+            if (!xchg) {
+                if (NULL == nsptr) {
+                    /* we have to track this nspace */
+                    nsptr = PMIX_NEW(pmix_nspace_t);
+                    nsptr->nspace = strdup(scd->pname.nspace);
+                    nsptr->all_registered = true;
+                    /* we already counted the number of local procs */
+                    nsptr->nlocalprocs = pmix_list_get_size(&tracker->local_cbs);
+                    pmix_list_append(&pmix_server_globals.nspaces, &nsptr->super);
+                }
+                /* if success, then provide the new nspace/rank */
+                (void)strncpy(proc.nspace, scd->pname.nspace, PMIX_MAX_NSLEN);
+                proc.rank = scd->pname.rank;
+                PMIX_BFROPS_PACK(rc, cd->peer, reply, &proc, 1, PMIX_PROC);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_RELEASE(reply);
+                    goto cleanup;
+                }
+            }
+
             /* loop across all participating nspaces and include their
              * job-related info */
             for (i=0; NULL != nspaces[i]; i++) {
@@ -1966,13 +1998,87 @@ static void _cnct(int sd, short args, void *cbdata)
     PMIX_RELEASE(scd);
 }
 
-static void cnct_cbfunc(pmix_status_t status, void *cbdata)
+static void cnct_cbfunc(pmix_status_t status,
+                        char nspace[], int rank,
+                        void *cbdata)
 {
     pmix_server_trkr_t *tracker = (pmix_server_trkr_t*)cbdata;
     pmix_shift_caddy_t *scd;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "server:cnct_cbfunc called");
+                        "server:cnct_cbfunc called with nspace %s",
+                        (NULL == nspace) ? "NULL" : nspace);
+
+    if (NULL == tracker) {
+        /* nothing to do */
+        return;
+    }
+
+    /* need to thread-shift this callback as it accesses global data */
+    scd = PMIX_NEW(pmix_shift_caddy_t);
+    if (NULL == scd) {
+        /* nothing we can do */
+        return;
+    }
+    scd->status = status;
+    if (NULL != nspace) {
+        scd->pname.nspace = strdup(nspace);
+    }
+    scd->pname.rank = rank;
+    scd->tracker = tracker;
+    PMIX_THREADSHIFT(scd, _cnct);
+}
+
+static void _discnct(int sd, short args, void *cbdata)
+{
+    pmix_shift_caddy_t *scd = (pmix_shift_caddy_t*)cbdata;
+    pmix_server_trkr_t *tracker = scd->tracker;
+    pmix_buffer_t *reply;
+    pmix_status_t rc;
+    pmix_server_caddy_t *cd;
+
+    PMIX_ACQUIRE_OBJECT(scd);
+
+    /* loop across all local procs in the tracker, sending them the reply */
+    PMIX_LIST_FOREACH(cd, &tracker->local_cbs, pmix_server_caddy_t) {
+        /* setup the reply */
+        reply = PMIX_NEW(pmix_buffer_t);
+        if (NULL == reply) {
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            rc = PMIX_ERR_NOMEM;
+            goto cleanup;
+        }
+        /* return the status */
+        PMIX_BFROPS_PACK(rc, cd->peer, reply, &scd->status, 1, PMIX_STATUS);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(reply);
+            goto cleanup;
+        }
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "server:cnct_cbfunc reply being sent to %s:%u",
+                            cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
+        PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
+    }
+
+  cleanup:
+    /* cleanup the tracker -- the host RM is responsible for
+     * telling us when to remove the nspace from our data */
+    pmix_list_remove_item(&pmix_server_globals.collectives, &tracker->super);
+    PMIX_RELEASE(tracker);
+
+    /* we are done */
+    PMIX_RELEASE(scd);
+}
+
+static void discnct_cbfunc(pmix_status_t status, void *cbdata)
+{
+    pmix_server_trkr_t *tracker = (pmix_server_trkr_t*)cbdata;
+    pmix_shift_caddy_t *scd;
+
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "server:discnct_cbfunc called on nspace %s",
+                        (NULL == tracker) ? "NULL" : tracker->pname.nspace);
 
     if (NULL == tracker) {
         /* nothing to do */
@@ -1987,8 +2093,9 @@ static void cnct_cbfunc(pmix_status_t status, void *cbdata)
     }
     scd->status = status;
     scd->tracker = tracker;
-    PMIX_THREADSHIFT(scd, _cnct);
+    PMIX_THREADSHIFT(scd, _discnct);
 }
+
 
 static void regevents_cbfunc(pmix_status_t status, void *cbdata)
 {
@@ -2269,14 +2376,14 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
 
     if (PMIX_CONNECTNB_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        rc = pmix_server_connect(cd, buf, false, cnct_cbfunc);
+        rc = pmix_server_connect(cd, buf, cnct_cbfunc);
         PMIX_RELEASE(cd);
         return rc;
     }
 
     if (PMIX_DISCONNECTNB_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        rc = pmix_server_connect(cd, buf, true, cnct_cbfunc);
+        rc = pmix_server_disconnect(cd, buf, discnct_cbfunc);
         PMIX_RELEASE(cd);
         return rc;
     }

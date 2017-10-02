@@ -175,8 +175,12 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer,
                                 void *cbdata);
 
 pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
-                                  pmix_buffer_t *buf, bool disconnect,
-                                  pmix_op_cbfunc_t cbfunc);
+                                  pmix_buffer_t *buf,
+                                  pmix_connect_cbfunc_t cbfunc);
+
+pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd,
+                                     pmix_buffer_t *buf,
+                                     pmix_op_cbfunc_t cbfunc);
 
 pmix_status_t pmix_server_notify_error(pmix_status_t status,
                                        pmix_proc_t procs[], size_t nprocs,

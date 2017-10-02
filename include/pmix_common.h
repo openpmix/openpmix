@@ -190,6 +190,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_TDIR_RMCLEAN                   "pmix.tdir.rmclean"     // (bool)  Resource Manager will clean session directories
 
 /* information about relative ranks as assigned by the RM */
+#define PMIX_CLUSTER_ID                     "pmix.clid"             // (char*) a string name for the cluster this proc is executing on
 #define PMIX_PROCID                         "pmix.procid"           // (pmix_proc_t) process identifier
 #define PMIX_NSPACE                         "pmix.nspace"           // (char*) nspace of a job
 #define PMIX_JOBID                          "pmix.jobid"            // (char*) jobid assigned by scheduler
@@ -359,6 +360,18 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_JOB_CONTINUOUS                 "pmix.continuous"       // (bool) application is continuous, all failed procs should
                                                                         //        be immediately restarted
 #define PMIX_MAX_RESTARTS                   "pmix.maxrestarts"      // (uint32_t) max number of times to restart a job
+
+
+/* connect attributes */
+#define PMIX_CONNECT_NOTIFY_EACH            "pmix.cnct.each"        // (bool) notify the other participants of the connection by event
+                                                                    //        each time a process connects
+#define PMIX_CONNECT_NOTIFY_REQ             "pmix.cnct.req"         // (bool) notify all other participants that they are requested to
+                                                                    //        connect
+#define PMIX_CONNECT_OPTIONAL               "pmix.cnt.opt"          // (bool) participation is optional - do not return error if procs
+                                                                    //        terminate without having connected
+#define PMIX_CONNECT_XCHG_ONLY              "pmix.cnt.xchg"         // (bool) provide participants with job-level info for all participating
+                                                                    //        nspaces, but do not assign a new nspace or rank
+#define PMIX_CONNECT_ID                     "pmix.cnt.id"           // (char*) an application-provided string identifier for a PMIx_Connect operation.
 
 
 /* query attributes */
@@ -598,6 +611,8 @@ typedef int pmix_status_t;
 #define PMIX_ERR_UPDATE_ENDPOINTS               (PMIX_ERR_OP_BASE - 16)
 #define PMIX_MODEL_DECLARED                     (PMIX_ERR_OP_BASE - 17)
 #define PMIX_GDS_ACTION_COMPLETE                (PMIX_ERR_OP_BASE - 18)
+#define PMIX_PROC_HAS_CONNECTED                 (PMIX_ERR_OP_BASE - 19)
+#define PMIX_CONNECT_REQUESTED                  (PMIX_ERR_OP_BASE - 20)
 
 /* define a starting point for system error constants so
  * we avoid renumbering when making additions */
@@ -837,6 +852,39 @@ typedef struct pmix_proc {
             free((m));                          \
         }                                       \
     } while (0)
+
+#define PMIX_PROC_LOAD(m, n, r)                             \
+    do {                                                    \
+        PMIX_PROC_CONSTRUCT((m));                           \
+        (void)strncpy((m)->nspace, (n), PMIX_MAX_NSLEN);    \
+        (m)->rank = (r);                                    \
+    } while(0)
+
+#define PMIX_MULTICLUSTER_NSPACE_CONSTRUCT(t, c, n)                         \
+    do {                                                                    \
+        size_t _len;                                                        \
+        memset((t), 0, PMIX_MAX_NSLEN+1);                                   \
+        _len = strlen((c));                                                 \
+        if ((_len + strlen((n))) < PMIX_MAX_NSLEN) {                        \
+            (void)strncpy((t), (c), PMIX_MAX_NSLEN);                        \
+            (t)[_len] = ':';                                                \
+            (void)strncpy(&(t)[_len+1], (n), PMIX_MAX_NSLEN - _len - 1);    \
+        }                                                                   \
+    } while(0)
+
+#define PMIX_MULTICLUSTER_NSPACE_PARSE(t, c, n)             \
+    do {                                                    \
+        size_t _n, _j;                                      \
+        for (_n=0; '\0' != (t)[_n] && ':' != (t)[_n] &&     \
+             _n <= PMIX_MAX_NSLEN; _n++) {                  \
+            (c)[_n] = (t)[_n];                              \
+        }                                                   \
+        _n++;                                               \
+        for (_j=0; _n <= PMIX_MAX_NSLEN &&                  \
+             '\0' != (t)[_n]; _n++, _j++) {                 \
+            (n)[_j] = (t)[_n];                              \
+        }                                                   \
+    } while(0)
 
 
 /****    PMIX PROC INFO STRUCT    ****/
@@ -1436,6 +1484,18 @@ typedef void (*pmix_modex_cbfunc_t)(pmix_status_t status,
  * the receiver must copy it if it needs to be retained */
 typedef void (*pmix_spawn_cbfunc_t)(pmix_status_t status,
                                     char nspace[], void *cbdata);
+
+/* define a callback function for calls to PMIx_Connect_nb - the function
+ * will be called upon completion of the command. The status will indicate
+ * whether or not the connect operation succeeded. The nspace will contain
+ * the new identity assigned by the host RM to the specified group of
+ * processes, and the rank will be the rank of this process within that new
+ * group. Note that the returned nspace value may be
+ * released by the library upon return from the callback function, so
+ * the receiver must copy it if it needs to be retained */
+typedef void (*pmix_connect_cbfunc_t)(pmix_status_t status,
+                                      char nspace[], int rank,
+                                      void *cbdata);
 
 /* define a callback for common operations that simply return
  * a status. Examples include the non-blocking versions of
