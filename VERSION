@@ -77,3 +77,5 @@ date="Unreleased developer copy"
 # format.
 
 libpmix_so_version=2:3:0
+libpmi_so_version=1:0:0
+libpmi2_so_version=1:0:0
