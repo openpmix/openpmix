@@ -76,3 +76,5 @@ date="Nov 09, 2016"
 # format.
 
 libpmix_so_version=3:1:1
+libpmi_so_version=1:0:0
+libpmi2_so_version=1:0:0
