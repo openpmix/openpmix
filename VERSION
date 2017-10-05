@@ -76,3 +76,5 @@ date="Jul 14, 2017"
 # format.
 
 libpmix_so_version=0:0:0
+libpmi_so_version=0:0:0
+libpmi2_so_version=0:0:0
