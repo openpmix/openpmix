@@ -30,7 +30,7 @@ current release as well as the "stable" bug fix release branch.
 - Coverity fix - TOCTOU (PR #465)
 - automake 1.13 configure fix (PR #486)
 - Update RPM spec file (rpmbuild -ta, and --rebuild fixes) (PR #523)
-
+- Support singletons in PMI-1/PMI-2 (PR #537)
 
 1.2.3 -- 24 Aug. 2017
 ----------------------
