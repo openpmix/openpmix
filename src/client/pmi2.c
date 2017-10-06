@@ -62,7 +62,7 @@ PMIX_EXPORT int PMI2_Init(int *spawned, int *size, int *rank, int *appnum)
     pmix_proc_t proc = myproc;
     proc.rank = PMIX_RANK_WILDCARD;
 
-    if (PMIX_SUCCESS != PMIx_Init(&myproc, NULL, 0)) {
+    if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
         /* if we didn't see a PMIx server (e.g., missing envar),
          * then allow us to run as a singleton */
         if (PMIX_ERR_INVALID_NAMESPACE == rc) {
