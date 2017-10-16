@@ -77,6 +77,13 @@ src/include/frameworks.h
 src/mca/pinstalldirs/config/pinstall_dirs.h
 src/mca/pdl/base/static-components.h
 src/mca/pinstalldirs/base/static-components.h
+
+src/tools/pevent/pevent
+src/tools/pinfo/pinfo
+src/tools/plookup/plookup
+src/tools/pps/pps
+src/tools/ptop/ptop
+
 src/util/show_help_lex.c
 src/util/keyval/keyval_lex.c
 
