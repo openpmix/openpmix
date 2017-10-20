@@ -38,7 +38,8 @@ headers += \
         include/types.h \
         include/pmix_config_top.h \
         include/pmix_config_bottom.h \
-        include/pmix_portable_platform.h
+        include/pmix_portable_platform.h \
+        include/frameworks.h
 
 endif ! PMIX_EMBEDDED_MODE
 
