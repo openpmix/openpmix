@@ -69,8 +69,7 @@ int main(int argc, char *argv[])
     int ret = 0;
     bool acted = false;
     bool want_all = false;
-    char **app_env = NULL, **global_env = NULL;
-    int i, len;
+    int i;
     pmix_pointer_array_t mca_types;
     pmix_pointer_array_t component_map;
     pmix_info_component_map_t *map;
@@ -122,23 +121,6 @@ int main(int argc, char *argv[])
 
     if (PMIX_SUCCESS != (ret = pmix_info_init(argc, argv, pmix_info_cmd_line))) {
         return ret;
-    }
-
-    /* Get MCA parameters, if any */
-
-   /* putenv() all the stuff that we got back from env (in case the
-     * user specified some --mca params on the command line).  This
-     * creates a memory leak, but that's unfortunately how putenv()
-     * works.  :-(
-     */
-
-    len = pmix_argv_count(app_env);
-    for (i = 0; i < len; ++i) {
-        putenv(app_env[i]);
-    }
-    len = pmix_argv_count(global_env);
-    for (i = 0; i < len; ++i) {
-        putenv(global_env[i]);
     }
 
     /* setup the mca_types array */
@@ -210,13 +192,6 @@ int main(int argc, char *argv[])
 
 
     /* All done */
-
-    if (NULL != app_env) {
-        pmix_argv_free(app_env);
-    }
-    if (NULL != global_env) {
-        pmix_argv_free(global_env);
-    }
     pmix_info_close_components();
     PMIX_RELEASE(pmix_info_cmd_line);
     PMIX_DESTRUCT(&mca_types);
