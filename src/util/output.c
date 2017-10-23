@@ -143,6 +143,7 @@ bool pmix_output_init(void)
         }
     }
     str = getenv("PMIX_OUTPUT_SYSLOG_PRI");
+#ifdef HAVE_SYSLOG_H
     if (NULL != str) {
         if (0 == strcasecmp(str, "info")) {
             pmix_output_redirected_syslog_pri = LOG_INFO;
@@ -156,6 +157,7 @@ bool pmix_output_init(void)
     } else {
         pmix_output_redirected_syslog_pri = LOG_ERR;
     }
+#endif
 
     str = getenv("PMIX_OUTPUT_SYSLOG_IDENT");
     if (NULL != str) {
