@@ -333,7 +333,10 @@ void pmix_info_show_path(const char *type, const char *value)
     pretty = strdup(type);
     pretty[0] = toupper(pretty[0]);
 
-    asprintf(&path, "path:%s", type);
+    if (0 > asprintf(&path, "path:%s", type)) {
+        free(pretty);
+        return;
+    }
     pmix_info_out(pretty, path, value);
     free(pretty);
     free(path);
@@ -583,7 +586,9 @@ void pmix_info_do_type(pmix_cmd_line_t *pmix_info_cmd_line)
                 (void) pmix_mca_base_var_group_get(var->mbv_group_index, &group);
                 for (j = 0 ; strings[j] ; ++j) {
                     if (0 == j && pmix_info_pretty) {
-                        asprintf (&message, "MCA %s", group->group_framework);
+                        if (0 > asprintf (&message, "MCA %s", group->group_framework)) {
+                            continue;
+                        }
                         pmix_info_out(message, message, strings[j]);
                         free(message);
                     } else {
@@ -642,7 +647,9 @@ static void pmix_info_show_mca_group_params(const pmix_mca_base_var_group_t *gro
 
     const pmix_mca_base_var_group_t *curr_group = NULL;
     char *component_msg = NULL;
-    asprintf(&component_msg, " %s", group_component);
+    if (0 > asprintf(&component_msg, " %s", group_component)) {
+        return;
+    }
 
     for (i = 0 ; i < count ; ++i) {
         ret = pmix_mca_base_var_get(variables[i], &var);
@@ -653,9 +660,11 @@ static void pmix_info_show_mca_group_params(const pmix_mca_base_var_group_t *gro
         }
 
         if (pmix_info_pretty && curr_group != group) {
-            asprintf(&message, "MCA%s %s%s", requested ? "" : " (-)",
-                     group->group_framework,
-                     component_msg ? component_msg : "");
+            if (0 > asprintf(&message, "MCA%s %s%s", requested ? "" : " (-)",
+                             group->group_framework,
+                             component_msg ? component_msg : "")) {
+                continue;
+            }
             pmix_info_out(message, message, "---------------------------------------------------");
             free(message);
             curr_group = group;
@@ -668,9 +677,11 @@ static void pmix_info_show_mca_group_params(const pmix_mca_base_var_group_t *gro
 
         for (j = 0 ; strings[j] ; ++j) {
             if (0 == j && pmix_info_pretty) {
-                asprintf (&message, "MCA%s %s%s", requested ? "" : " (-)",
-                          group->group_framework,
-                          component_msg ? component_msg : "");
+                if (0 > asprintf (&message, "MCA%s %s%s", requested ? "" : " (-)",
+                                  group->group_framework,
+                                  component_msg ? component_msg : "")) {
+                    continue;
+                }
                 pmix_info_out(message, message, strings[j]);
                 free(message);
             } else {
@@ -681,8 +692,10 @@ static void pmix_info_show_mca_group_params(const pmix_mca_base_var_group_t *gro
         if (!pmix_info_pretty) {
             /* generate an entry indicating whether this variable is disabled or not. if the
              * format in mca_base_var/pvar.c changes this needs to be changed as well */
-            asprintf (&message, "mca:%s:%s:param:%s:disabled:%s", group->group_framework,
-                      group_component, var->mbv_full_name, requested ? "false" : "true");
+            if (0 > asprintf (&message, "mca:%s:%s:param:%s:disabled:%s", group->group_framework,
+                              group_component, var->mbv_full_name, requested ? "false" : "true")) {
+                continue;
+            }
             pmix_info_out("", "", message);
             free (message);
         }
@@ -832,8 +845,13 @@ void pmix_info_out(const char *pretty_message, const char *plain_message, const 
 
     if (pmix_info_pretty && NULL != pretty_message) {
         if (centerpoint > (int)strlen(pretty_message)) {
-            asprintf(&spaces, "%*s", centerpoint -
-                     (int)strlen(pretty_message), " ");
+            if (0 > asprintf(&spaces, "%*s", centerpoint -
+                             (int)strlen(pretty_message), " ")) {
+                if (NULL != v_to_free) {
+                    free(v_to_free);
+                }
+                return;
+            }
         } else {
             spaces = strdup("");
 #if PMIX_ENABLE_DEBUG
@@ -846,9 +864,19 @@ void pmix_info_out(const char *pretty_message, const char *plain_message, const 
         }
         max_value_width = screen_width - strlen(spaces) - strlen(pretty_message) - 2;
         if (0 < strlen(pretty_message)) {
-            asprintf(&filler, "%s%s: ", spaces, pretty_message);
+            if (0 > asprintf(&filler, "%s%s: ", spaces, pretty_message)) {
+                if (NULL != v_to_free) {
+                    free(v_to_free);
+                }
+                return;
+            }
         } else {
-            asprintf(&filler, "%s  ", spaces);
+            if (0 > asprintf(&filler, "%s  ", spaces)) {
+                if (NULL != v_to_free) {
+                    free(v_to_free);
+                }
+                return;
+            }
         }
         free(spaces);
         spaces = NULL;
@@ -858,7 +886,12 @@ void pmix_info_out(const char *pretty_message, const char *plain_message, const 
                 printf("%s%s\n", filler, v);
                 break;
             } else {
-                asprintf(&spaces, "%*s", centerpoint + 2, " ");
+                if (0 > asprintf(&spaces, "%*s", centerpoint + 2, " ")) {
+                    if (NULL != v_to_free) {
+                        free(v_to_free);
+                    }
+                    return;
+                }
 
                 /* Work backwards to find the first space before
                  * max_value_width
@@ -940,7 +973,9 @@ void pmix_info_out_int(const char *pretty_message,
 {
     char *valstr;
 
-    asprintf(&valstr, "%d", (int)value);
+    if (0 > asprintf(&valstr, "%d", (int)value)) {
+        return;
+    }
     pmix_info_out(pretty_message, plain_message, valstr);
     free(valstr);
 }
@@ -1028,16 +1063,26 @@ static void pmix_info_show_failed_component(const pmix_mca_base_component_reposi
     char *message, *content;
 
     if (pmix_info_pretty) {
-        asprintf(&message, "MCA %s", ri->ri_type);
-        asprintf(&content, "%s (failed to load) %s", ri->ri_name, error_msg);
+        if (0 > asprintf(&message, "MCA %s", ri->ri_type)) {
+            return;
+        }
+        if (0 > asprintf(&content, "%s (failed to load) %s", ri->ri_name, error_msg)) {
+            free(message);
+            return;
+        }
 
         pmix_info_out(message, NULL, content);
 
         free(message);
         free(content);
     } else {
-        asprintf(&message, "mca:%s:%s:failed", ri->ri_type, ri->ri_name);
-        asprintf(&content, "%s", error_msg);
+        if (0 > asprintf(&message, "mca:%s:%s:failed", ri->ri_type, ri->ri_name)) {
+            return;
+        }
+        if (0 > asprintf(&content, "%s", error_msg)) {
+            free(message);
+            return;
+        }
 
         pmix_info_out(NULL, message, content);
 
@@ -1090,12 +1135,21 @@ void pmix_info_show_mca_version(const pmix_mca_base_component_t* component,
                                                    component->pmix_mca_component_release_version,
                                                    "", "");
     if (pmix_info_pretty) {
-        asprintf(&message, "MCA %s", component->pmix_mca_type_name);
+        if (0 > asprintf(&message, "MCA %s", component->pmix_mca_type_name)) {
+            return;
+        }
         printed = false;
-        asprintf(&content, "%s (", component->pmix_mca_component_name);
+        if (0 > asprintf(&content, "%s (", component->pmix_mca_component_name)) {
+            free(message);
+            return;
+        }
 
         if (want_mca) {
-            asprintf(&tmp, "%sMCA v%s", content, mca_version);
+            if (0 > asprintf(&tmp, "%sMCA v%s", content, mca_version)) {
+                free(message);
+                free(content);
+                return;
+            }
             free(content);
             content = tmp;
             printed = true;
@@ -1103,11 +1157,19 @@ void pmix_info_show_mca_version(const pmix_mca_base_component_t* component,
 
         if (want_type) {
             if (printed) {
-                asprintf(&tmp, "%s, ", content);
+                if (0 > asprintf(&tmp, "%s, ", content)) {
+                    free(message);
+                    free(content);
+                    return;
+                }
                 free(content);
                 content = tmp;
             }
-            asprintf(&tmp, "%sAPI v%s", content, api_version);
+            if (0 > asprintf(&tmp, "%sAPI v%s", content, api_version)) {
+                free(message);
+                free(content);
+                return;
+            }
             free(content);
             content = tmp;
             printed = true;
@@ -1115,17 +1177,29 @@ void pmix_info_show_mca_version(const pmix_mca_base_component_t* component,
 
         if (want_component) {
             if (printed) {
-                asprintf(&tmp, "%s, ", content);
+                if (0 > asprintf(&tmp, "%s, ", content)) {
+                    free(message);
+                    free(content);
+                    return;
+                }
                 free(content);
                 content = tmp;
             }
-            asprintf(&tmp, "%sComponent v%s", content, component_version);
+            if (0 > asprintf(&tmp, "%sComponent v%s", content, component_version)) {
+                free(message);
+                free(content);
+                return;
+            }
             free(content);
             content = tmp;
             printed = true;
         }
         if (NULL != content) {
-            asprintf(&tmp, "%s)", content);
+            if (0 > asprintf(&tmp, "%s)", content)) {
+                free(message);
+                free(content);
+                return;
+            }
             free(content);
         } else {
             tmp = NULL;
@@ -1138,19 +1212,30 @@ void pmix_info_show_mca_version(const pmix_mca_base_component_t* component,
         }
 
     } else {
-        asprintf(&message, "mca:%s:%s:version", component->pmix_mca_type_name, component->pmix_mca_component_name);
+        if (0 > asprintf(&message, "mca:%s:%s:version", component->pmix_mca_type_name, component->pmix_mca_component_name)) {
+            return;
+        }
         if (want_mca) {
-            asprintf(&tmp, "mca:%s", mca_version);
+            if (0 > asprintf(&tmp, "mca:%s", mca_version)) {
+                free(message);
+                return;
+            }
             pmix_info_out(NULL, message, tmp);
             free(tmp);
         }
         if (want_type) {
-            asprintf(&tmp, "api:%s", api_version);
+            if (0 > asprintf(&tmp, "api:%s", api_version)) {
+                free(message);
+                return;
+            }
             pmix_info_out(NULL, message, tmp);
             free(tmp);
         }
         if (want_component) {
-            asprintf(&tmp, "component:%s", component_version);
+            if (0 > asprintf(&tmp, "component:%s", component_version)) {
+                free(message);
+                return;
+            }
             pmix_info_out(NULL, message, tmp);
             free(tmp);
         }
@@ -1183,7 +1268,10 @@ char *pmix_info_make_version_str(const char *scope,
         snprintf(temp, BUFSIZ - 1, "%d.%d.%d", major, minor, release);
         str = strdup(temp);
         if (NULL != greek) {
-            asprintf(&tmp, "%s%s", str, greek);
+            if (0 > asprintf(&tmp, "%s%s", str, greek)) {
+                free(str);
+                return NULL;
+            }
             free(str);
             str = tmp;
         }
@@ -1210,7 +1298,9 @@ void pmix_info_show_pmix_version(const char *scope)
 {
     char *tmp, *tmp2;
 
-    asprintf(&tmp, "%s:version:full", pmix_info_type_pmix);
+    if (0 > asprintf(&tmp, "%s:version:full", pmix_info_type_pmix)) {
+        return;
+    }
     tmp2 = pmix_info_make_version_str(scope,
                                       PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,
                                       PMIX_RELEASE_VERSION,
@@ -1219,10 +1309,14 @@ void pmix_info_show_pmix_version(const char *scope)
     pmix_info_out("PMIX", tmp, tmp2);
     free(tmp);
     free(tmp2);
-    asprintf(&tmp, "%s:version:repo", pmix_info_type_pmix);
+    if (0 > asprintf(&tmp, "%s:version:repo", pmix_info_type_pmix)) {
+        return;
+    }
     pmix_info_out("PMIX repo revision", tmp, PMIX_REPO_REV);
     free(tmp);
-    asprintf(&tmp, "%s:version:release_date", pmix_info_type_pmix);
+    if (0 > asprintf(&tmp, "%s:version:release_date", pmix_info_type_pmix)) {
+        return;
+    }
     pmix_info_out("PMIX release date", tmp, PMIX_RELEASE_DATE);
     free(tmp);
 }
