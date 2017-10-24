@@ -15,7 +15,9 @@
  *                         reserved.
  * Copyright (c) 2011-2012 University of Houston. All rights reserved.
  * Copyright (c) 2016-2017 Intel, Inc. All rights reserved.
- * Copyright (c) 2017 IBM Corporation.  All rights reserved.
+ * Copyright (c) 2017      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2017      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1101,7 +1103,7 @@ void pmix_info_show_mca_version(const pmix_mca_base_component_t* component,
     bool want_mca = false;
     bool want_type = false;
     bool want_component = false;
-    char *message, *content;
+    char *message = NULL, *content = NULL;
     char *mca_version;
     char *api_version;
     char *component_version;
@@ -1136,21 +1138,17 @@ void pmix_info_show_mca_version(const pmix_mca_base_component_t* component,
                                                    "", "");
     if (pmix_info_pretty) {
         if (0 > asprintf(&message, "MCA %s", component->pmix_mca_type_name)) {
-            return;
+            goto exit;
         }
         printed = false;
         if (0 > asprintf(&content, "%s (", component->pmix_mca_component_name)) {
-            free(message);
-            return;
+            goto exit;
         }
 
         if (want_mca) {
             if (0 > asprintf(&tmp, "%sMCA v%s", content, mca_version)) {
-                free(message);
-                free(content);
-                return;
+                goto exit;
             }
-            free(content);
             content = tmp;
             printed = true;
         }
@@ -1158,17 +1156,13 @@ void pmix_info_show_mca_version(const pmix_mca_base_component_t* component,
         if (want_type) {
             if (printed) {
                 if (0 > asprintf(&tmp, "%s, ", content)) {
-                    free(message);
-                    free(content);
-                    return;
+                    goto exit;
                 }
                 free(content);
                 content = tmp;
             }
             if (0 > asprintf(&tmp, "%sAPI v%s", content, api_version)) {
-                free(message);
-                free(content);
-                return;
+                goto exit;
             }
             free(content);
             content = tmp;
@@ -1178,17 +1172,13 @@ void pmix_info_show_mca_version(const pmix_mca_base_component_t* component,
         if (want_component) {
             if (printed) {
                 if (0 > asprintf(&tmp, "%s, ", content)) {
-                    free(message);
-                    free(content);
-                    return;
+                    goto exit;
                 }
                 free(content);
                 content = tmp;
             }
             if (0 > asprintf(&tmp, "%sComponent v%s", content, component_version)) {
-                free(message);
-                free(content);
-                return;
+                goto exit;
             }
             free(content);
             content = tmp;
@@ -1196,52 +1186,45 @@ void pmix_info_show_mca_version(const pmix_mca_base_component_t* component,
         }
         if (NULL != content) {
             if (0 > asprintf(&tmp, "%s)", content)) {
-                free(message);
-                free(content);
-                return;
+                goto exit;
             }
-            free(content);
         } else {
             tmp = NULL;
         }
 
         pmix_info_out(message, NULL, tmp);
-        free(message);
         if (NULL != tmp) {
             free(tmp);
         }
 
     } else {
         if (0 > asprintf(&message, "mca:%s:%s:version", component->pmix_mca_type_name, component->pmix_mca_component_name)) {
-            return;
+            goto exit;
         }
         if (want_mca) {
             if (0 > asprintf(&tmp, "mca:%s", mca_version)) {
-                free(message);
-                return;
+                goto exit;
             }
             pmix_info_out(NULL, message, tmp);
             free(tmp);
         }
         if (want_type) {
             if (0 > asprintf(&tmp, "api:%s", api_version)) {
-                free(message);
-                return;
+                goto exit;
             }
             pmix_info_out(NULL, message, tmp);
             free(tmp);
         }
         if (want_component) {
             if (0 > asprintf(&tmp, "component:%s", component_version)) {
-                free(message);
-                return;
+                goto exit;
             }
             pmix_info_out(NULL, message, tmp);
             free(tmp);
         }
-        free(message);
     }
 
+exit:
     if (NULL != mca_version) {
         free(mca_version);
     }
@@ -1250,6 +1233,12 @@ void pmix_info_show_mca_version(const pmix_mca_base_component_t* component,
     }
     if (NULL != component_version) {
         free(component_version);
+    }
+    if (NULL != message) {
+        free(message);
+    }
+    if (NULL != content) {
+        free(content);
     }
 }
 
