@@ -1102,9 +1102,121 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer,
     return rc;
 }
 
+pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd,
+                                     pmix_buffer_t *buf,
+                                     pmix_op_cbfunc_t cbfunc)
+{
+    int32_t cnt;
+    pmix_status_t rc;
+    pmix_info_t *info = NULL;
+    size_t ninfo;
+    pmix_server_trkr_t *trk;
+    char *nptr;
+    pmix_proc_t proc;
+    pmix_nspace_t *nsptr, *nspace;
+
+    if (NULL == pmix_host_server.disconnect) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    /* unpack the nspace they want to be disconnected from */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &nptr, &cnt, PMIX_STRING);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto cleanup;
+    }
+    memset(proc.nspace, 0, PMIX_MAX_NSLEN+1);
+    (void)strncpy(proc.nspace, nptr, PMIX_MAX_NSLEN);
+    proc.rank = PMIX_RANK_WILDCARD;
+    free(nptr);
+
+    /* unpack the number of provided info structs */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &ninfo, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    if (0 < ninfo) {
+        PMIX_INFO_CREATE(info, ninfo);
+        if (NULL == info) {
+            rc = PMIX_ERR_NOMEM;
+            goto cleanup;
+        }
+        /* unpack the info */
+        cnt = ninfo;
+        PMIX_BFROPS_UNPACK(rc, cd->peer, buf, info, &cnt, PMIX_INFO);
+        if (PMIX_SUCCESS != rc) {
+            goto cleanup;
+        }
+    }
+
+    /* we must already know about this nspace, so find its record */
+    nspace = NULL;
+    PMIX_LIST_FOREACH(nsptr, &pmix_server_globals.nspaces, pmix_nspace_t) {
+        if (0 == strncmp(nsptr->nspace, proc.nspace, PMIX_MAX_NSLEN)) {
+            nspace = nsptr;
+            break;
+        }
+    }
+    if (NULL == nspace) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+        goto cleanup;
+    }
+
+    /* find/create the local tracker for this operation */
+    if (NULL == (trk = get_tracker(&proc, 1, PMIX_DISCONNECTNB_CMD))) {
+        /* we don't have this tracker yet, so get a new one */
+        if (NULL == (trk = new_tracker(&proc, 1, PMIX_DISCONNECTNB_CMD))) {
+            /* only if a bozo error occurs */
+            PMIX_ERROR_LOG(PMIX_ERROR);
+            /* DO NOT HANG */
+            if (NULL != cbfunc) {
+                cbfunc(PMIX_ERROR, cd);
+            }
+            rc = PMIX_ERROR;
+            goto cleanup;
+        }
+        trk->nlocal = nspace->nlocalprocs;
+        trk->op_cbfunc = cbfunc;
+    }
+    (void)strncpy(trk->pname.nspace, proc.nspace, PMIX_MAX_NSLEN);
+    trk->pname.rank = PMIX_RANK_WILDCARD;
+
+    /* if the info keys have not been provided yet, pass
+     * them along here */
+    if (NULL == trk->info && NULL != info) {
+        trk->info = info;
+        trk->ninfo = ninfo;
+        info = NULL;
+        ninfo = 0;
+    }
+
+    /* add this contributor to the tracker so they get
+     * notified when we are done */
+    PMIX_RETAIN(cd);  // prevent the caddy from being released when we return
+    pmix_list_append(&trk->local_cbs, &cd->super);
+    /* if all local contributions have been received,
+     * let the local host's server know that we are at the
+     * "fence" point - they will callback once the [dis]connect
+     * across all participants has been completed */
+    if (trk->def_complete &&
+        pmix_list_get_size(&trk->local_cbs) == trk->nlocal) {
+        rc = pmix_host_server.disconnect(trk->pname.nspace, trk->info, trk->ninfo, cbfunc, trk);
+    } else {
+        rc = PMIX_SUCCESS;
+    }
+
+  cleanup:
+    if (NULL != info) {
+        PMIX_INFO_FREE(info, ninfo);
+    }
+    return rc;
+}
+
 pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
-                                  pmix_buffer_t *buf, bool disconnect,
-                                  pmix_op_cbfunc_t cbfunc)
+                                  pmix_buffer_t *buf,
+                                  pmix_connect_cbfunc_t cbfunc)
 {
     int32_t cnt;
     pmix_status_t rc;
@@ -1112,15 +1224,13 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
     pmix_info_t *info = NULL;
     size_t nprocs, ninfo;
     pmix_server_trkr_t *trk;
-    pmix_cmd_t type = PMIX_CONNECTNB_CMD;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "recvd CONNECT from peer %s:%d",
                         cd->peer->info->pname.nspace,
                         cd->peer->info->pname.rank);
 
-    if ((disconnect && NULL == pmix_host_server.disconnect) ||
-        (!disconnect && NULL == pmix_host_server.connect)) {
+    if (NULL == pmix_host_server.connect) {
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
@@ -1176,23 +1286,21 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
     }
 
     /* find/create the local tracker for this operation */
-    if (disconnect) {
-        type = PMIX_DISCONNECTNB_CMD;
-    }
-    if (NULL == (trk = get_tracker(procs, nprocs, type))) {
+    if (NULL == (trk = get_tracker(procs, nprocs, PMIX_CONNECTNB_CMD))) {
         /* we don't have this tracker yet, so get a new one */
-        if (NULL == (trk = new_tracker(procs, nprocs, type))) {
+        if (NULL == (trk = new_tracker(procs, nprocs, PMIX_CONNECTNB_CMD))) {
             /* only if a bozo error occurs */
             PMIX_ERROR_LOG(PMIX_ERROR);
             /* DO NOT HANG */
             if (NULL != cbfunc) {
-                cbfunc(PMIX_ERROR, cd);
+                cbfunc(PMIX_ERROR, NULL, PMIX_RANK_UNDEF, cd);
             }
             rc = PMIX_ERROR;
             goto cleanup;
         }
-        trk->op_cbfunc = cbfunc;
+        trk->cnct_cbfunc = cbfunc;
     }
+
     /* if the info keys have not been provided yet, pass
      * them along here */
     if (NULL == trk->info && NULL != info) {
@@ -1212,11 +1320,7 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
      * across all participants has been completed */
     if (trk->def_complete &&
         pmix_list_get_size(&trk->local_cbs) == trk->nlocal) {
-        if (disconnect) {
-            rc = pmix_host_server.disconnect(trk->pcs, trk->npcs, trk->info, trk->ninfo, cbfunc, trk);
-        } else {
-            rc = pmix_host_server.connect(trk->pcs, trk->npcs, trk->info, trk->ninfo, cbfunc, trk);
-        }
+        rc = pmix_host_server.connect(trk->pcs, trk->npcs, trk->info, trk->ninfo, cbfunc, trk);
     } else {
         rc = PMIX_SUCCESS;
     }
@@ -2053,6 +2157,8 @@ pmix_status_t pmix_server_monitor(pmix_peer_t *peer,
 /*****    INSTANCE SERVER LIBRARY CLASSES    *****/
 static void tcon(pmix_server_trkr_t *t)
 {
+    memset(t->pname.nspace, 0, PMIX_MAX_NSLEN+1);
+    t->pname.rank = PMIX_RANK_UNDEF;
     t->pcs = NULL;
     t->npcs = 0;
     PMIX_CONSTRUCT_LOCK(&t->lock);
@@ -2066,6 +2172,7 @@ static void tcon(pmix_server_trkr_t *t)
     t->collect_type = PMIX_COLLECT_INVALID;
     t->modexcbfunc = NULL;
     t->op_cbfunc = NULL;
+    t->cnct_cbfunc = NULL;
 }
 static void tdes(pmix_server_trkr_t *t)
 {

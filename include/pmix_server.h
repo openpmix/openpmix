@@ -198,38 +198,48 @@ typedef pmix_status_t (*pmix_server_spawn_fn_t)(const pmix_proc_t *proc,
                                                 const pmix_app_t apps[], size_t napps,
                                                 pmix_spawn_cbfunc_t cbfunc, void *cbdata);
 
-/* Record the specified processes as "connected". This means that the resource
- * manager should treat the failure of any process in the specified group as
- * a reportable event, and take appropriate action. The callback function is
- * to be called once all participating processes have called connect. Note that
- * a process can only engage in *one* connect operation involving the identical
- * set of procs at a time. However, a process *can* be simultaneously engaged
- * in multiple connect operations, each involving a different set of procs
+/* Record the specified processes as "connected". This means that:
  *
- * Note also that this is a collective operation within the client library, and
- * thus the client will be blocked until all procs participate. Thus, the info
- * array can be used to pass user directives, including a timeout.
- * The directives are optional _unless_ the _mandatory_ flag
- * has been set - in such cases, the host RM is required to return an error
- * if the directive cannot be met. */
+ * (a) the resource manager should treat the specified group as
+ *     a group when reporting events.
+ *
+ * (b) processes can address the group by the newly assigned nspace
+ *     when passing requests
+ *
+ * As in the case of the fence operation, the info array can be used to pass
+ * user-level directives regarding the algorithm to be used for the collective
+ * operation involved in the "connect", timeout constraints, and other options
+ * available from the host RM.
+ *
+ * The callback function will be called once the operation is complete. Any
+ * participant that fails to call "connect" prior to terminating will cause the
+ * operation to return a "failed" status to all other participants. This
+ * is the default behavior in the absence of any provided directive.
+ *
+ * Some additional info keys are provided for this operation:
+ *
+ * (a) PMIX_CONNECT_NOTIFY_EACH: generate a local event notification using
+ *     the PMIX_PROC_HAS_CONNECTED event each time a process connects
+ *
+ * (b) PMIX_CONNECT_NOTIFY_REQ: notify each of the indicated procs that
+ *     they are requested to connect using the PMIX_CONNECT_REQUESTED event
+ *
+ * (c) PMIX_CONNECT_OPTIONAL: participation is optional - do not return
+ *     error if procs terminate without having connected
+ */
 typedef pmix_status_t (*pmix_server_connect_fn_t)(const pmix_proc_t procs[], size_t nprocs,
                                                   const pmix_info_t info[], size_t ninfo,
-                                                  pmix_op_cbfunc_t cbfunc, void *cbdata);
+                                                  pmix_connect_cbfunc_t cbfunc, void *cbdata);
 
-/* Disconnect a previously connected set of processes. An error should be returned
- * if the specified set of procs was not previously "connected". As above, a process
- * may be involved in multiple simultaneous disconnect operations. However, a process
- * is not allowed to reconnect to a set of ranges that has not fully completed
- * disconnect - i.e., you have to fully disconnect before you can reconnect to the
- * same group of processes.
-  *
- * Note also that this is a collective operation within the client library, and
- * thus the client will be blocked until all procs participate. Thus, the info
- * array can be used to pass user directives, including a timeout.
- * The directives are optional _unless_ the _mandatory_ flag
- * has been set - in such cases, the host RM is required to return an error
- * if the directive cannot be met. */
-typedef pmix_status_t (*pmix_server_disconnect_fn_t)(const pmix_proc_t procs[], size_t nprocs,
+/* Disconnect this process from a specified nspace. An error will be returned
+ * if the specified nspace is not recognized. The info array is used as above.
+ *
+ * Processes that terminate while connected to other processes will generate a
+ * "termination error" event that will be reported to any process in the connected
+ * group that has registered for such events. Calls to "disconnect" that include the
+ * PMIX_CONNECT_NOTIFY_EACH info key will cause other processes in the nspace to receive
+ * an event notification of the disconnect, if they are registered for such events. */
+typedef pmix_status_t (*pmix_server_disconnect_fn_t)(const char nspace[],
                                                      const pmix_info_t info[], size_t ninfo,
                                                      pmix_op_cbfunc_t cbfunc, void *cbdata);
 

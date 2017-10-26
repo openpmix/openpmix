@@ -14,70 +14,74 @@
 typedef struct {
     int in_progress;
     int status;
+    pmix_proc_t pname;
 } cd_cbdata;
 
 static void cd_cb(pmix_status_t status, void *cbdata)
 {
     cd_cbdata *cb = (cd_cbdata*)cbdata;
 
-    cb->in_progress = 0;
     cb->status = status;
+    cb->in_progress = 0;
 }
 
-int test_cd_common(pmix_proc_t *procs, size_t nprocs, int blocking, int disconnect)
+static void cnct_cb(pmix_status_t status,
+                    char nspace[], int rank,
+                    void *cbdata)
 {
-    int rc;
-    if (blocking) {
-        if (!disconnect) {
-            rc = PMIx_Connect(procs, nprocs, NULL, 0);
-        } else {
-            rc = PMIx_Disconnect(procs, nprocs, NULL, 0);
-        }
-    } else {
-        cd_cbdata cbdata;
-        cbdata.in_progress = 1;
-        if (!disconnect) {
-            rc = PMIx_Connect_nb(procs, nprocs, NULL, 0, cd_cb, (void*)&cbdata);
-        } else {
-            rc = PMIx_Disconnect_nb(procs, nprocs, NULL, 0, cd_cb, (void*)&cbdata);
-        }
-        if (PMIX_SUCCESS == rc) {
-            PMIX_WAIT_FOR_COMPLETION(cbdata.in_progress);
-            rc = cbdata.status;
-        }
+    cd_cbdata *cb = (cd_cbdata*)cbdata;
+
+    if (NULL != nspace) {
+        (void)strncpy(cb->pname.nspace, nspace, PMIX_MAX_NSLEN);
     }
-    /* the host server callback currently returns PMIX_EXISTS status for checking purposes */
-    if (PMIX_EXISTS == rc) {
-        rc = PMIX_SUCCESS;
-    }
-    return rc;
+    cb->pname.rank = rank;
+    cb->status = status;
+    cb->in_progress = 0;
 }
 
 int test_connect_disconnect(char *my_nspace, int my_rank)
 {
     int rc;
     pmix_proc_t proc;
+    char nspace[PMIX_MAX_NSLEN+1];
+    pmix_rank_t newrank;
+    cd_cbdata cbdata;
+
     (void)strncpy(proc.nspace, my_nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
-    rc = test_cd_common(&proc, 1, 1, 0);
+
+    rc = PMIx_Connect(&proc, 1, NULL, 0, nspace, &newrank);
     if (PMIX_SUCCESS != rc) {
         TEST_ERROR(("%s:%d: Connect blocking test failed.", my_nspace, my_rank));
         return PMIX_ERROR;
     }
-    TEST_VERBOSE(("%s:%d: Connect blocking test succeded.", my_nspace, my_rank));
-    rc = test_cd_common(&proc, 1, 1, 1);
+    TEST_VERBOSE(("%s:%d: Connect blocking test succeded to nspace %s.", my_nspace, my_rank, nspace));
+
+    rc = PMIx_Disconnect(nspace, NULL, 0);
     if (PMIX_SUCCESS != rc) {
         TEST_ERROR(("%s:%d: Disconnect blocking test failed.", my_nspace, my_rank));
         return PMIX_ERROR;
     }
     TEST_VERBOSE(("%s:%d: Disconnect blocking test succeded.", my_nspace, my_rank));
-    rc = test_cd_common(&proc, 1, 0, 0);
+
+    cbdata.in_progress = 1;
+    rc = PMIx_Connect_nb(&proc, 1, NULL, 0, cnct_cb, &cbdata);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_WAIT_FOR_COMPLETION(cbdata.in_progress);
+        rc = cbdata.status;
+    }
     if (PMIX_SUCCESS != rc) {
         TEST_ERROR(("%s:%d: Connect non-blocking test failed.", my_nspace, my_rank));
         return PMIX_ERROR;
     }
     TEST_VERBOSE(("%s:%d: Connect non-blocking test succeded.", my_nspace, my_rank));
-    rc = test_cd_common(&proc, 1, 0, 1);
+
+    cbdata.in_progress = 1;
+    rc = PMIx_Disconnect_nb(nspace, NULL, 0, cd_cb, &cbdata);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_WAIT_FOR_COMPLETION(cbdata.in_progress);
+        rc = cbdata.status;
+    }
     if (PMIX_SUCCESS != rc) {
         TEST_ERROR(("%s:%d: Disconnect non-blocking test failed.", my_nspace, my_rank));
         return PMIX_ERROR;

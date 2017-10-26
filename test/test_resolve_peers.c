@@ -61,6 +61,7 @@ int test_resolve_peers(char *my_nspace, int my_rank, test_params params)
     int ns_num;
     char nspace[PMIX_MAX_NSLEN+1];
     pmix_proc_t procs[2];
+    pmix_proc_t pname;
 
     /* first resolve peers from the own namespace. */
     rc = resolve_nspace(my_nspace, params, my_nspace, my_rank);
@@ -98,7 +99,7 @@ int test_resolve_peers(char *my_nspace, int my_rank, test_params params)
         procs[1].rank = PMIX_RANK_WILDCARD;
 
         /* make a connection between processes from own namespace and processes from this namespace. */
-        rc = test_cd_common(procs, 2, 1, 0);
+        rc = PMIx_Connect(procs, 2, NULL, 0, pname.nspace, &pname.rank);
         if (PMIX_SUCCESS == rc) {
             TEST_VERBOSE(("%s:%d: Connect to %s succeeded %s.", my_nspace, my_rank, nspace));
         } else {
@@ -111,12 +112,12 @@ int test_resolve_peers(char *my_nspace, int my_rank, test_params params)
         if (PMIX_SUCCESS == rc) {
             TEST_VERBOSE(("%s:%d: Resolve peers succeeded for ns %s\n", my_nspace, my_rank, nspace));
         } else {
-            test_cd_common(procs, 2, 1, 1);
+            PMIx_Disconnect(pname.nspace, NULL, 0);
             break;
         }
 
         /* disconnect from the processes of this namespace. */
-        rc = test_cd_common(procs, 2, 1, 0);
+        rc = PMIx_Disconnect(pname.nspace, NULL, 0);
         if (PMIX_SUCCESS == rc) {
             TEST_VERBOSE(("%s:%d: Disconnect from %s succeeded %s.", my_nspace, my_rank, nspace));
         } else {

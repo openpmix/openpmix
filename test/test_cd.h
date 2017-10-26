@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2017 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -14,4 +14,3 @@
 #include "test_common.h"
 
 int test_connect_disconnect(char *my_nspace, int my_rank);
-int test_cd_common(pmix_proc_t *procs, size_t nprocs, int blocking, int disconnect);
