@@ -68,6 +68,7 @@ examples/tool
 
 include/pmix_version.h
 include/pmix_rename.h
+include/pmix_common.h
 
 src/include/pmix_config.h
 src/include/pmix_config.h.in
