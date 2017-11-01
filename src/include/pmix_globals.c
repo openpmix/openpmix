@@ -113,6 +113,7 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_rank_info_t,
 static void pcon(pmix_peer_t *p)
 {
     p->proc_type = PMIX_PROC_UNDEF;
+    p->protocol = PMIX_PROTOCOL_UNDEF;
     p->finalized = false;
     p->info = NULL;
     p->proc_cnt = 0;
@@ -240,14 +241,18 @@ static void qcon(pmix_query_caddy_t *p)
     p->ntargets = 0;
     p->info = NULL;
     p->ninfo = 0;
+    PMIX_BYTE_OBJECT_CONSTRUCT(&p->bo);
     p->cbfunc = NULL;
     p->valcbfunc = NULL;
     p->cbdata = NULL;
     p->relcbfunc = NULL;
+    p->credcbfunc = NULL;
+    p->validcbfunc = NULL;
 }
 static void qdes(pmix_query_caddy_t *p)
 {
     PMIX_DESTRUCT_LOCK(&p->lock);
+    PMIX_BYTE_OBJECT_DESTRUCT(&p->bo);
 }
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_query_caddy_t,
                                 pmix_object_t,

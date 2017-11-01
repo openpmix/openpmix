@@ -71,26 +71,28 @@ PMIX_CLASS_DECLARATION(pmix_namelist_t);
 typedef uint8_t pmix_cmd_t;
 
 /* define some commands */
-#define PMIX_REQ_CMD             0
-#define PMIX_ABORT_CMD           1
-#define PMIX_COMMIT_CMD          2
-#define PMIX_FENCENB_CMD         3
-#define PMIX_GETNB_CMD           4
-#define PMIX_FINALIZE_CMD        5
-#define PMIX_PUBLISHNB_CMD       6
-#define PMIX_LOOKUPNB_CMD        7
-#define PMIX_UNPUBLISHNB_CMD     8
-#define PMIX_SPAWNNB_CMD         9
-#define PMIX_CONNECTNB_CMD      10
-#define PMIX_DISCONNECTNB_CMD   11
-#define PMIX_NOTIFY_CMD         12
-#define PMIX_REGEVENTS_CMD      13
-#define PMIX_DEREGEVENTS_CMD    14
-#define PMIX_QUERY_CMD          15
-#define PMIX_LOG_CMD            16
-#define PMIX_ALLOC_CMD          17
-#define PMIX_JOB_CONTROL_CMD    18
-#define PMIX_MONITOR_CMD        19
+#define PMIX_REQ_CMD                 0
+#define PMIX_ABORT_CMD               1
+#define PMIX_COMMIT_CMD              2
+#define PMIX_FENCENB_CMD             3
+#define PMIX_GETNB_CMD               4
+#define PMIX_FINALIZE_CMD            5
+#define PMIX_PUBLISHNB_CMD           6
+#define PMIX_LOOKUPNB_CMD            7
+#define PMIX_UNPUBLISHNB_CMD         8
+#define PMIX_SPAWNNB_CMD             9
+#define PMIX_CONNECTNB_CMD          10
+#define PMIX_DISCONNECTNB_CMD       11
+#define PMIX_NOTIFY_CMD             12
+#define PMIX_REGEVENTS_CMD          13
+#define PMIX_DEREGEVENTS_CMD        14
+#define PMIX_QUERY_CMD              15
+#define PMIX_LOG_CMD                16
+#define PMIX_ALLOC_CMD              17
+#define PMIX_JOB_CONTROL_CMD        18
+#define PMIX_MONITOR_CMD            19
+#define PMIX_GET_CREDENTIAL_CMD     20
+#define PMIX_VALIDATE_CRED_CMD      21
 
 /* provide a "pretty-print" function for cmds */
 const char* pmix_command_string(pmix_cmd_t cmd);
@@ -166,6 +168,7 @@ typedef struct pmix_peer_t {
     pmix_nspace_t *nptr;            // point to the nspace object for this process
     pmix_rank_info_t *info;
     pmix_proc_type_t proc_type;
+    pmix_listener_protocol_t protocol;
     int proc_cnt;
     int index;                      // index into the local clients array on the server
     int sd;
@@ -203,9 +206,12 @@ typedef struct {
     size_t ntargets;
     pmix_info_t *info;
     size_t ninfo;
+    pmix_byte_object_t bo;
     pmix_info_cbfunc_t cbfunc;
     pmix_value_cbfunc_t valcbfunc;
     pmix_release_cbfunc_t relcbfunc;
+    pmix_credential_cbfunc_t credcbfunc;
+    pmix_validation_cbfunc_t validcbfunc;
     void *cbdata;
 } pmix_query_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_query_caddy_t);

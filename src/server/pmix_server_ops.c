@@ -2158,6 +2158,129 @@ pmix_status_t pmix_server_monitor(pmix_peer_t *peer,
     return rc;
 }
 
+pmix_status_t pmix_server_get_credential(pmix_peer_t *peer,
+                                         pmix_buffer_t *buf,
+                                         pmix_credential_cbfunc_t cbfunc,
+                                         void *cbdata)
+{
+    int32_t cnt;
+    pmix_status_t rc;
+    pmix_query_caddy_t *cd;
+    pmix_proc_t proc;
+
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "recvd get credential request from client");
+
+    if (NULL == pmix_host_server.get_credential) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    cd = PMIX_NEW(pmix_query_caddy_t);
+    if (NULL == cd) {
+        return PMIX_ERR_NOMEM;
+    }
+    cd->cbdata = cbdata;
+
+    /* unpack the number of directives */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &cd->ninfo, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+    /* unpack the directives */
+    if (0 < cd->ninfo) {
+        PMIX_INFO_CREATE(cd->info, cd->ninfo);
+        cnt = cd->ninfo;
+        PMIX_BFROPS_UNPACK(rc, peer, buf, cd->info, &cnt, PMIX_INFO);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto exit;
+        }
+    }
+
+    /* setup the requesting peer name */
+    (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    proc.rank = peer->info->pname.rank;
+
+    /* ask the host to execute the request */
+    if (PMIX_SUCCESS != (rc = pmix_host_server.get_credential(&proc, cd->info, cd->ninfo,
+                                                              cbfunc, cd))) {
+        goto exit;
+    }
+    return PMIX_SUCCESS;
+
+  exit:
+    PMIX_RELEASE(cd);
+    return rc;
+}
+
+pmix_status_t pmix_server_validate_credential(pmix_peer_t *peer,
+                                              pmix_buffer_t *buf,
+                                              pmix_validation_cbfunc_t cbfunc,
+                                              void *cbdata)
+{
+    int32_t cnt;
+    pmix_status_t rc;
+    pmix_query_caddy_t *cd;
+    pmix_proc_t proc;
+
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "recvd validate credential request from client");
+
+    if (NULL == pmix_host_server.validate_credential) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    cd = PMIX_NEW(pmix_query_caddy_t);
+    if (NULL == cd) {
+        return PMIX_ERR_NOMEM;
+    }
+    cd->cbdata = cbdata;
+
+    /* unpack the credential */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &cd->bo, &cnt, PMIX_BYTE_OBJECT);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+
+    /* unpack the number of directives */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &cd->ninfo, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+    /* unpack the directives */
+    if (0 < cd->ninfo) {
+        PMIX_INFO_CREATE(cd->info, cd->ninfo);
+        cnt = cd->ninfo;
+        PMIX_BFROPS_UNPACK(rc, peer, buf, cd->info, &cnt, PMIX_INFO);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto exit;
+        }
+    }
+
+    /* setup the requesting peer name */
+    (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    proc.rank = peer->info->pname.rank;
+
+    /* ask the host to execute the request */
+    if (PMIX_SUCCESS != (rc = pmix_host_server.validate_credential(&proc, &cd->bo,
+                                                                   cd->info, cd->ninfo,
+                                                                   cbfunc, cd))) {
+        goto exit;
+    }
+    return PMIX_SUCCESS;
+
+  exit:
+    PMIX_RELEASE(cd);
+    return rc;
+}
+
 /*****    INSTANCE SERVER LIBRARY CLASSES    *****/
 static void tcon(pmix_server_trkr_t *t)
 {

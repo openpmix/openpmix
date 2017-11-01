@@ -176,9 +176,9 @@ PMIX_CLASS_DECLARATION(pmix_ptl_queue_t);
 
 /* define listener protocol types */
 typedef uint16_t pmix_listener_protocol_t;
-#define PMIX_PROTOCOL_V1        0       // legacy usock
-#define PMIX_PROTOCOL_V2        1       // tcp
-#define PMIX_PROTOCOL_V3        2       // updated usock
+#define PMIX_PROTOCOL_UNDEF     0
+#define PMIX_PROTOCOL_V1        1       // legacy usock
+#define PMIX_PROTOCOL_V2        2       // tcp
 
 /* connection support */
 typedef struct {
