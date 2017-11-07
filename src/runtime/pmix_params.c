@@ -139,6 +139,12 @@ pmix_status_t pmix_register_params(void)
                                   PMIX_INFO_LVL_1, PMIX_MCA_BASE_VAR_SCOPE_ALL,
                                   &pmix_client_globals.spawn_verbose);
 
+    (void) pmix_mca_base_var_register ("pmix", "pmix", "client", "event_verbose",
+                                  "Verbosity for eventt spawn operations",
+                                  PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                                  PMIX_INFO_LVL_1, PMIX_MCA_BASE_VAR_SCOPE_ALL,
+                                  &pmix_client_globals.event_verbose);
+
     (void) pmix_mca_base_var_register ("pmix", "pmix", "client", "base_verbose",
                                   "Verbosity for basic client operations",
                                   PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
@@ -175,6 +181,12 @@ pmix_status_t pmix_register_params(void)
                                   PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
                                   PMIX_INFO_LVL_1, PMIX_MCA_BASE_VAR_SCOPE_ALL,
                                   &pmix_server_globals.spawn_verbose);
+
+    (void) pmix_mca_base_var_register ("pmix", "pmix", "server", "event_verbose",
+                                  "Verbosity for server event operations",
+                                  PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                                  PMIX_INFO_LVL_1, PMIX_MCA_BASE_VAR_SCOPE_ALL,
+                                  &pmix_server_globals.event_verbose);
 
     (void) pmix_mca_base_var_register ("pmix", "pmix", "server", "base_verbose",
                                   "Verbosity for basic server operations",
