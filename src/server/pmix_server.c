@@ -164,6 +164,12 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         pmix_output_set_verbosity(pmix_server_globals.spawn_output,
                                   pmix_server_globals.spawn_verbose);
     }
+    if (0 < pmix_server_globals.event_verbose) {
+        /* set default output */
+        pmix_server_globals.event_output = pmix_output_open(NULL);
+        pmix_output_set_verbosity(pmix_server_globals.event_output,
+                                  pmix_server_globals.event_verbose);
+    }
     /* setup the base verbosity */
     if (0 < pmix_server_globals.base_verbose) {
         /* set default output */

@@ -37,6 +37,9 @@ typedef struct {
     // verbosity for client spawn operations
     int spawn_output;
     int spawn_verbose;
+    // verbosity for client event operations
+    int event_output;
+    int event_verbose;
     // verbosity for basic client functions
     int base_output;
     int base_verbose;

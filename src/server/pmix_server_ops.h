@@ -122,6 +122,9 @@ typedef struct {
     // verbosity for server spawn operations
     int spawn_output;
     int spawn_verbose;
+    // verbosity for server event operations
+    int event_output;
+    int event_verbose;
     // verbosity for basic server functions
     int base_output;
     int base_verbose;

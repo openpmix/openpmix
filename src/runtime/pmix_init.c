@@ -192,6 +192,12 @@ int pmix_rte_init(pmix_proc_type_t type,
         pmix_output_set_verbosity(pmix_client_globals.spawn_output,
                                   pmix_client_globals.spawn_verbose);
     }
+    if (0 < pmix_client_globals.event_verbose) {
+        /* set default output */
+        pmix_client_globals.event_output = pmix_output_open(NULL);
+        pmix_output_set_verbosity(pmix_client_globals.event_output,
+                                  pmix_client_globals.event_verbose);
+    }
 
     /* get our effective id's */
     pmix_globals.uid = geteuid();
