@@ -941,6 +941,7 @@ static pmix_status_t send_connect_ack(int sd)
     pmix_usock_hdr_t hdr;
     size_t sdsize=0, csize=0;
     char *cred = NULL;
+    uint8_t flag;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: SEND CONNECT ACK");
@@ -963,7 +964,7 @@ static pmix_status_t send_connect_ack(int sd)
         csize = strlen(cred) + 1;  // must NULL terminate the string!
     }
     /* set the number of bytes to be read beyond the header */
-    hdr.nbytes = sdsize + strlen(PMIX_VERSION) + 1 + csize;  // must NULL terminate the VERSION string!
+    hdr.nbytes = sdsize + strlen(PMIX_VERSION) + 1 + csize + 1;  // must NULL terminate the VERSION string!
 
     /* create a space for our message */
     sdsize = (sizeof(hdr) + hdr.nbytes);
@@ -987,7 +988,15 @@ static pmix_status_t send_connect_ack(int sd)
     csize += strlen(PMIX_VERSION)+1;
     if (NULL != cred) {
         memcpy(msg+csize, cred, strlen(cred));  // leaves last position in msg set to NULL
+        csize += strlen(cred) + 1;
     }
+    /* add in our buffer type - fully described or not */
+#if PMIX_ENABLE_DEBUG
+    flag = 2;   // fully described
+#else
+    flag = 1;
+#endif
+    memcpy(msg+csize, &flag, 1);
 
     if (PMIX_SUCCESS != pmix_usock_send_blocking(sd, msg, sdsize)) {
         free(msg);
