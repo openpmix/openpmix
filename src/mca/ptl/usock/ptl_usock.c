@@ -293,7 +293,7 @@ static pmix_status_t send_connect_ack(int sd)
     }
 
     /* set the number of bytes to be read beyond the header */
-    hdr.nbytes = sdsize + strlen(PMIX_VERSION) + 1 + len;  // must NULL terminate the VERSION string!
+    hdr.nbytes = sdsize + strlen(PMIX_VERSION) + 1 + len + 1;  // must NULL terminate the VERSION string!
 
     /* create a space for our message */
     sdsize = (sizeof(hdr) + hdr.nbytes);
@@ -317,7 +317,10 @@ static pmix_status_t send_connect_ack(int sd)
     csize += strlen(PMIX_VERSION)+1;
     if (NULL != cred) {
         memcpy(msg+csize, cred, strlen(cred));  // leaves last position in msg set to NULL
+        csize += strlen(cred) + 1;
     }
+    /* provide our buffer type */
+    memcpy(msg+csize, &pmix_globals.mypeer->nptr->compat.type, 1);
 
     if (PMIX_SUCCESS != pmix_ptl_base_send_blocking(sd, msg, sdsize)) {
         free(msg);

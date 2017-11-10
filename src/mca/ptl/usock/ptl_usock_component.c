@@ -354,7 +354,7 @@ static void listener_cb(int incoming_sd, void *cbdata)
  */
 static pmix_status_t parse_connect_ack (char *msg, unsigned int len,
                                         char **nspace, unsigned int *rank,
-                                        char **version, char **cred)
+                                        char **version, char **cred, uint8_t *btype)
 {
     unsigned int msglen;
 
@@ -386,10 +386,18 @@ static pmix_status_t parse_connect_ack (char *msg, unsigned int len,
     }
 
     PMIX_STRNLEN(msglen, msg, len);
-    if (msglen < len)
-        *cred = msg;
-    else {
+    if (msglen < len) {
+        *cred = strdup(msg);
+        msg += strlen(*cred) + 1;
+        len -= strlen(*cred) + 1;
+    } else {
         *cred = NULL;
+    }
+
+    if (0 < len) {
+        *btype = msg[0];
+    } else {
+        *btype = 0;
     }
 
     return PMIX_SUCCESS;
@@ -399,7 +407,7 @@ static pmix_status_t parse_connect_ack (char *msg, unsigned int len,
 static void connection_handler(int sd, short args, void *cbdata)
 {
     pmix_pending_connection_t *pnd = (pmix_pending_connection_t*)cbdata;
-    char *msg, *nspace, *version, *cred;
+    char *msg, *nspace, *version, *cred=NULL;
     pmix_status_t rc;
     unsigned int rank;
     pmix_usock_hdr_t hdr;
@@ -409,6 +417,9 @@ static void connection_handler(int sd, short args, void *cbdata)
     bool found;
     pmix_proc_t proc;
     size_t len;
+    uint8_t btype;
+    char **vers;
+    int major, minor, rel;
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(pnd);
@@ -450,7 +461,7 @@ static void connection_handler(int sd, short args, void *cbdata)
     }
 
     if (PMIX_SUCCESS != (rc = parse_connect_ack(msg, hdr.nbytes, &nspace,
-                                                &rank, &version, &cred))) {
+                                                &rank, &version, &cred, &btype))) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "error parsing connect-ack from client ON SOCKET %d", pnd->sd);
         free(msg);
@@ -463,10 +474,25 @@ static void connection_handler(int sd, short args, void *cbdata)
                         "connect-ack recvd from peer %s:%d:%s on socket %d",
                         nspace, rank, version, pnd->sd);
 
-    /* do not check the version - we only retain it at this
-     * time in case we need to check it at some future date.
-     * For now, our intent is to retain backward compatibility
-     * and so we will assume that all versions are compatible. */
+    /* check the version - we do NOT support anything less than
+     * v1.2.5 */
+    vers = pmix_argv_split(version, '.');
+    major = strtol(vers[0], NULL, 10);
+    minor = strtol(vers[1], NULL, 10);
+    rel = strtol(vers[2], NULL, 10);
+    if (1 == major && (2 != minor || 5 > rel)) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "connection request from client of unsupported version %s", version);
+        pmix_argv_free(vers);
+        free(msg);
+        if (NULL != cred) {
+            free(cred);
+        }
+        CLOSE_THE_SOCKET(pnd->sd);
+        PMIX_RELEASE(pnd);
+        return;
+    }
+    pmix_argv_free(vers);
 
     /* see if we know this nspace */
     nptr = NULL;
@@ -520,6 +546,9 @@ static void connection_handler(int sd, short args, void *cbdata)
     psave->sd = pnd->sd;
     if (0 > (psave->index = pmix_pointer_array_add(&pmix_server_globals.clients, psave))) {
         free(msg);
+        if (NULL != cred) {
+            free(cred);
+        }
         info->proc_cnt--;
         PMIX_RELEASE(info);
         PMIX_RELEASE(psave);
@@ -552,8 +581,8 @@ static void connection_handler(int sd, short args, void *cbdata)
        /* send an error reply to the client */
         goto error;
     }
-    /* we have no way of knowing their buffer type, so take our default */
-    nptr->compat.type = pmix_bfrops_globals.default_type;
+    /* set the buffer type */
+    nptr->compat.type = btype;
 
     /* take the highest priority gds module - in the absence of any info,
      * we assume they can handle both dstore and hash */
@@ -586,6 +615,9 @@ static void connection_handler(int sd, short args, void *cbdata)
                             "validation of client credentials failed: %s",
                             PMIx_Error_string(rc));
         free(msg);
+        if (NULL != cred) {
+            free(cred);
+        }
         info->proc_cnt--;
         PMIX_RELEASE(info);
         pmix_pointer_array_set_item(&pmix_server_globals.clients, psave->index, NULL);
@@ -642,6 +674,9 @@ static void connection_handler(int sd, short args, void *cbdata)
     return;
 
   error:
+    if (NULL != cred) {
+        free(cred);
+    }
     /* send an error reply to the client */
     if (PMIX_SUCCESS != pmix_ptl_base_send_blocking(pnd->sd, (char*)&rc, sizeof(int))) {
         PMIX_ERROR_LOG(rc);
