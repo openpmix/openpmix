@@ -52,7 +52,7 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/include/pmix_globals.h"
 #include "src/include/pmix_socket_errno.h"
-#include "src/mca/psec/psec.h"
+#include "src/mca/psec/base/base.h"
 
 #include "src/mca/ptl/base/base.h"
 #include "ptl_usock.h"
@@ -116,8 +116,12 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
     }
 
     /* set the server nspace */
-    pmix_client_globals.myserver->info = PMIX_NEW(pmix_rank_info_t);
-    pmix_client_globals.myserver->info->nptr = PMIX_NEW(pmix_nspace_t);
+    if (NULL == pmix_client_globals.myserver->info) {
+        pmix_client_globals.myserver->info = PMIX_NEW(pmix_rank_info_t);
+    }
+    if (NULL == pmix_client_globals.myserver->info->nptr) {
+        pmix_client_globals.myserver->info->nptr = PMIX_NEW(pmix_nspace_t);
+    }
     (void)strncpy(pmix_client_globals.myserver->info->nptr->nspace, uri[0], PMIX_MAX_NSLEN);
 
     /* set the server rank */
@@ -189,13 +193,15 @@ static pmix_status_t send_recv(struct pmix_peer_t *peer,
                                void *cbdata)
 {
     pmix_ptl_sr_t *ms;
+    pmix_peer_t *pr = (pmix_peer_t*)peer;
 
     pmix_output_verbose(5, pmix_globals.debug_output,
                         "[%s:%d] post send to server",
                         __FILE__, __LINE__);
 
     ms = PMIX_NEW(pmix_ptl_sr_t);
-    ms->peer = peer;
+    PMIX_RETAIN(pr);
+    ms->peer = pr;
     ms->bfr = bfr;
     ms->cbfunc = cbfunc;
     ms->cbdata = cbdata;
@@ -215,7 +221,7 @@ static pmix_status_t send_oneway(struct pmix_peer_t *peer,
      * peer's send queue */
     q = PMIX_NEW(pmix_ptl_queue_t);
     PMIX_RETAIN(pr);
-    q->peer = peer;
+    q->peer = pr;
     q->buf = bfr;
     q->tag = tag;
     PMIX_THREADSHIFT(q, pmix_ptl_base_send);
@@ -228,8 +234,9 @@ static pmix_status_t send_connect_ack(int sd)
     char *msg;
     pmix_usock_hdr_t hdr;
     size_t sdsize=0, csize=0, len;
-    char *cred = NULL;
+    char *cred = NULL, *bfrops, *gds, *sec;
     pmix_status_t rc;
+    uint8_t flag;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: SEND CONNECT ACK");
@@ -249,8 +256,24 @@ static pmix_status_t send_connect_ack(int sd)
         return rc;
     }
 
+    /* we use the v2.0 bfrops "module" */
+    bfrops = "v20";
+
+    /* determine whether dstore is enabled or not */
+#if PMIX_ENABLE_DSTORE
+    gds = "ds12";
+#else
+    gds = "hash";
+#endif
+
+    /* get our security modules */
+    sec = pmix_psec_base_get_available_modules();
+
     /* set the number of bytes to be read beyond the header */
-    hdr.nbytes = sdsize + strlen(PMIX_VERSION) + 1 + len;  // must NULL terminate the VERSION string!
+    hdr.nbytes = sdsize + strlen(PMIX_VERSION) + 1 + len + 1 + \
+                 (strlen(sec) + 1) + \
+                 (strlen(bfrops) + 1) + 1 + \
+                 (strlen(gds) + 1);  // must NULL terminate the strings!
 
     /* create a space for our message */
     sdsize = (sizeof(hdr) + hdr.nbytes);
@@ -258,6 +281,7 @@ static pmix_status_t send_connect_ack(int sd)
         if (NULL != cred) {
             free(cred);
         }
+        free(sec);
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
     memset(msg, 0, sdsize);
@@ -266,27 +290,53 @@ static pmix_status_t send_connect_ack(int sd)
     csize=0;
     memcpy(msg, &hdr, sizeof(pmix_usock_hdr_t));
     csize += sizeof(pmix_usock_hdr_t);
+    /* pass our nspace */
     memcpy(msg+csize, pmix_globals.myid.nspace, strlen(pmix_globals.myid.nspace));
     csize += strlen(pmix_globals.myid.nspace)+1;
+    /* pass our rank */
     memcpy(msg+csize, &pmix_globals.myid.rank, sizeof(int));
     csize += sizeof(int);
+    /* pass our version */
     memcpy(msg+csize, PMIX_VERSION, strlen(PMIX_VERSION));
     csize += strlen(PMIX_VERSION)+1;
+    /* pass our credential */
     if (NULL != cred) {
         memcpy(msg+csize, cred, strlen(cred));  // leaves last position in msg set to NULL
+        csize += strlen(cred) + 1;
+        free(cred);
+    } else {
+        csize += 1;
     }
+
+    /* NOTE: v2.0 servers will stop reading here - the remaining
+     * values are passed to support cross-version operations against
+     * a v2.1 or higher server */
+
+    /* pass our security modules */
+    memcpy(msg+csize, sec, strlen(sec));
+    csize += strlen(sec) + 1;
+    free(sec);
+
+    /* pass our bfrops module */
+    memcpy(msg+csize, bfrops, strlen(bfrops));
+    csize += strlen(bfrops) + 1;
+    /* add in our buffer type - fully described or not */
+#if PMIX_ENABLE_DEBUG
+    flag = 2;   // fully described
+#else
+    flag = 1;   // non-described
+#endif
+    memcpy(msg+csize, &flag, 1);
+    csize += 1;
+    /* tell them our gds module */
+    memcpy(msg+csize, gds, strlen(gds));
+
 
     if (PMIX_SUCCESS != pmix_ptl_base_send_blocking(sd, msg, sdsize)) {
         free(msg);
-        if (NULL != cred) {
-            free(cred);
-        }
         return PMIX_ERR_UNREACH;
     }
     free(msg);
-    if (NULL != cred) {
-        free(cred);
-    }
     return PMIX_SUCCESS;
 }
 
