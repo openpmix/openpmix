@@ -939,8 +939,9 @@ static pmix_status_t send_connect_ack(int sd)
 {
     char *msg;
     pmix_usock_hdr_t hdr;
-    size_t sdsize=0, csize=0;
-    char *cred = NULL;
+    size_t sdsize=0, csize=0, len=0;
+    char *cred = NULL, *bfrops, *gds;
+    uint8_t flag;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: SEND CONNECT ACK");
@@ -960,10 +961,25 @@ static pmix_status_t send_connect_ack(int sd)
             /* an error occurred - we cannot continue */
             return PMIX_ERR_INVALID_CRED;
         }
-        csize = strlen(cred) + 1;  // must NULL terminate the string!
+        len = strlen(cred);
     }
+
+    /* we use the v1.2 bfrops "module" */
+    bfrops = "v12";
+
+    /* determine whether dstore is enabled or not */
+#if PMIX_ENABLE_DSTORE
+    gds = "ds12";
+#else
+    gds = "hash";
+#endif
+
     /* set the number of bytes to be read beyond the header */
-    hdr.nbytes = sdsize + strlen(PMIX_VERSION) + 1 + csize;  // must NULL terminate the VERSION string!
+    hdr.nbytes = sdsize + (strlen(PMIX_VERSION) + 1) + \
+                (len + 1) + \
+                (strlen(pmix_sec.name) + 1) + \
+                (strlen(bfrops) + 1) + 1 + \
+                (strlen(gds) + 1);  // must NULL terminate the strings!
 
     /* create a space for our message */
     sdsize = (sizeof(hdr) + hdr.nbytes);
@@ -979,15 +995,43 @@ static pmix_status_t send_connect_ack(int sd)
     csize=0;
     memcpy(msg, &hdr, sizeof(pmix_usock_hdr_t));
     csize += sizeof(pmix_usock_hdr_t);
+    /* pass our nspace */
     memcpy(msg+csize, pmix_globals.myid.nspace, strlen(pmix_globals.myid.nspace));
     csize += strlen(pmix_globals.myid.nspace)+1;
+    /* pass our rank */
     memcpy(msg+csize, &pmix_globals.myid.rank, sizeof(int));
     csize += sizeof(int);
+    /* pass our version */
     memcpy(msg+csize, PMIX_VERSION, strlen(PMIX_VERSION));
     csize += strlen(PMIX_VERSION)+1;
+    /* pass our credential */
     if (NULL != cred) {
         memcpy(msg+csize, cred, strlen(cred));  // leaves last position in msg set to NULL
+        csize += strlen(cred) + 1;
+    } else {
+        csize += 1;
     }
+    /* NOTE: v1.x servers will stop reading here - the remaining
+     * values are passed to support cross-version operations against
+     * a v2.1 or higher server */
+
+    /* pass our security "module" */
+    memcpy(msg+csize, pmix_sec.name, strlen(pmix_sec.name));
+    csize += strlen(pmix_sec.name) + 1;
+
+    /* we use the v1.2 bfrops "module" */
+    memcpy(msg+csize, bfrops, strlen(bfrops));
+    csize += strlen(bfrops) + 1;
+    /* add in our buffer type - fully described or not */
+#if PMIX_ENABLE_DEBUG
+    flag = 2;   // fully described
+#else
+    flag = 1;   // non-described
+#endif
+    memcpy(msg+csize, &flag, 1);
+    csize += 1;
+    /* tell them our gds module */
+    memcpy(msg+csize, gds, strlen(gds));
 
     if (PMIX_SUCCESS != pmix_usock_send_blocking(sd, msg, sdsize)) {
         free(msg);
