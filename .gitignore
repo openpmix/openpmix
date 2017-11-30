@@ -62,6 +62,7 @@ examples/dmodex
 examples/dynamic
 examples/fault
 examples/jctrl
+examples/pmix1client
 examples/pub
 examples/server
 examples/tool
