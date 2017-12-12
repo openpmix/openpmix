@@ -20,9 +20,15 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to the
 current release as well as the "stable" bug fix release branch.
 
+1.2.6 -- TBD
+----------------------
+
+
 1.2.5 -- TBD
 ----------------------
 - Fix cross-version issue when v1.2 client interacts with v2.1 server (PR #564)
+- Update client connection for cross-version support (PR #591)
+- Fix write memory barrier ASM for PowerPC (PR #606)
 
 
 1.2.4 -- 13 Oct. 2017
