@@ -350,6 +350,70 @@ typedef pmix_status_t (*pmix_server_monitor_fn_t)(const pmix_proc_t *requestor,
                                                   const pmix_info_t directives[], size_t ndirs,
                                                   pmix_info_cbfunc_t cbfunc, void *cbdata);
 
+/* Request a credential from the host SMS
+ * Input values include:
+ *
+ * proc - pointer to a pmix_proc_t identifier of the process on whose behalf
+ *        the request is being made (i.e., the client originating the request)
+ *
+ * directives - an array of pmix_info_t structures containing directives pertaining
+ *              to the request. This will typically include any pmix_info_t structs
+ *              passed by the requesting client, but may also include directives
+ *              required by (or available from) the PMIx server implementation - e.g.,
+ *              the effective user and group ID's of the requesting process.
+ *
+ * ndirs - number of pmix_info_t structures in the directives array
+ *
+ * cbfunc - the pmix_credential_cbfunc_t function to be called upon completion
+ *          of the request
+ *
+ * cbdata - pointer to an object to be returned when cbfunc is called
+ *
+ * Returned values:
+ * PMIX_SUCCESS - indicates that the request is being processed by the host system
+ *                management stack. The response will be coming in the provided
+ *                callback function.
+ *
+ * Any other value indicates an appropriate error condition. The callback function
+ * will _not_ be called in such cases.
+ */
+typedef pmix_status_t (*pmix_server_get_cred_fn_t)(const pmix_proc_t *proc,
+                                                   const pmix_info_t directives[], size_t ndirs,
+                                                   pmix_credential_cbfunc_t cbfunc, void *cbdata);
+
+/* Request validation of a credential from the host SMS
+ * Input values include:
+ *
+ * proc - pointer to a pmix_proc_t identifier of the process on whose behalf
+ *        the request is being made (i.e., the client issuing the request)
+ *
+ * cred - pointer to a pmix_byte_object_t containing the provided credential
+ *
+ * directives - an array of pmix_info_t structures containing directives pertaining
+ *              to the request. This will typically include any pmix_info_t structs
+ *              passed by the requesting client, but may also include directives
+ *              used by the PMIx server implementation
+ *
+ * ndirs - number of pmix_info_t structures in the directives array
+ *
+ * cbfunc - the pmix_validation_cbfunc_t function to be called upon completion
+ *          of the request
+ *
+ * cbdata - pointer to an object to be returned when cbfunc is called
+ *
+ * Returned values:
+ * PMIX_SUCCESS - indicates that the request is being processed by the host system
+ *                management stack. The response will be coming in the provided
+ *                callback function.
+ *
+ * Any other value indicates an appropriate error condition. The callback function
+ * will _not_ be called in such cases.
+ */
+typedef pmix_status_t (*pmix_server_validate_cred_fn_t)(const pmix_proc_t *proc,
+                                                        const pmix_byte_object_t *cred,
+                                                        const pmix_info_t directives[], size_t ndirs,
+                                                        pmix_validation_cbfunc_t cbfunc, void *cbdata);
+
 typedef struct pmix_server_module_2_0_0_t {
     /* v1x interfaces */
     pmix_server_client_connected_fn_t   client_connected;
@@ -374,6 +438,9 @@ typedef struct pmix_server_module_2_0_0_t {
     pmix_server_alloc_fn_t              allocate;
     pmix_server_job_control_fn_t        job_control;
     pmix_server_monitor_fn_t            monitor;
+    /* v3x interfaces */
+    pmix_server_get_cred_fn_t           get_credential;
+    pmix_server_validate_cred_fn_t      validate_credential;
 } pmix_server_module_t;
 
 /****    SERVER SUPPORT INIT/FINALIZE FUNCTIONS    ****/

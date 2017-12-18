@@ -2228,6 +2228,114 @@ static void query_cbfunc(pmix_status_t status,
     PMIX_RELEASE(cd);
 }
 
+static void cred_cbfunc(pmix_status_t status,
+                        pmix_byte_object_t *credential,
+                        pmix_info_t info[], size_t ninfo,
+                        void *cbdata)
+{
+    pmix_query_caddy_t *qcd = (pmix_query_caddy_t*)cbdata;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t*)qcd->cbdata;
+    pmix_buffer_t *reply;
+    pmix_status_t rc;
+
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:get credential callback with status %d", status);
+
+    reply = PMIX_NEW(pmix_buffer_t);
+    if (NULL == reply) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        PMIX_RELEASE(cd);
+        return;
+    }
+
+    /* pack the status */
+    PMIX_BFROPS_PACK(rc, cd->peer, reply, &status, 1, PMIX_STATUS);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto complete;
+    }
+
+    if (PMIX_SUCCESS == status) {
+        /* pack the returned credential */
+        PMIX_BFROPS_PACK(rc, cd->peer, reply, credential, 1, PMIX_BYTE_OBJECT);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto complete;
+        }
+
+        /* pack any returned data */
+        PMIX_BFROPS_PACK(rc, cd->peer, reply, &ninfo, 1, PMIX_SIZE);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto complete;
+        }
+        if (0 < ninfo) {
+            PMIX_BFROPS_PACK(rc, cd->peer, reply, info, ninfo, PMIX_INFO);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
+        }
+    }
+
+  complete:
+    // send reply
+    PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
+    // cleanup
+    if (NULL != qcd->info) {
+        PMIX_INFO_FREE(qcd->info, qcd->ninfo);
+    }
+    PMIX_RELEASE(qcd);
+    PMIX_RELEASE(cd);
+}
+
+static void validate_cbfunc(pmix_status_t status,
+                            pmix_info_t info[], size_t ninfo,
+                            void *cbdata)
+{
+    pmix_query_caddy_t *qcd = (pmix_query_caddy_t*)cbdata;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t*)qcd->cbdata;
+    pmix_buffer_t *reply;
+    pmix_status_t rc;
+
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:validate credential callback with status %d", status);
+
+    reply = PMIX_NEW(pmix_buffer_t);
+    if (NULL == reply) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        PMIX_RELEASE(cd);
+        return;
+    }
+    PMIX_BFROPS_PACK(rc, cd->peer, reply, &status, 1, PMIX_STATUS);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto complete;
+    }
+    /* pack any returned data */
+    PMIX_BFROPS_PACK(rc, cd->peer, reply, &ninfo, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto complete;
+    }
+    if (0 < ninfo) {
+        PMIX_BFROPS_PACK(rc, cd->peer, reply, info, ninfo, PMIX_INFO);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
+    }
+
+  complete:
+    // send reply
+    PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
+    // cleanup
+    if (NULL != qcd->info) {
+        PMIX_INFO_FREE(qcd->info, qcd->ninfo);
+    }
+    PMIX_RELEASE(qcd);
+    PMIX_RELEASE(cd);
+}
+
+
 /* the switchyard is the primary message handling function. It's purpose
  * is to take incoming commands (packed into a buffer), unpack them,
  * and then call the corresponding host server's function to execute
@@ -2464,6 +2572,18 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
     if (PMIX_MONITOR_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
         rc = pmix_server_monitor(peer, buf, query_cbfunc, cd);
+        return rc;
+    }
+
+    if (PMIX_GET_CREDENTIAL_CMD == cmd) {
+        PMIX_GDS_CADDY(cd, peer, tag);
+        rc = pmix_server_get_credential(peer, buf, cred_cbfunc, cd);
+        return rc;
+    }
+
+    if (PMIX_VALIDATE_CRED_CMD == cmd) {
+        PMIX_GDS_CADDY(cd, peer, tag);
+        rc = pmix_server_validate_credential(peer, buf, validate_cbfunc, cd);
         return rc;
     }
 

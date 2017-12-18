@@ -567,6 +567,72 @@ PMIX_EXPORT pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pm
         PMIX_INFO_DESTRUCT(&_in);                                           \
     } while(0)
 
+
+/* Request a credential from the PMIx server/SMS.
+ * Input values include:
+ *
+ * info - an array of pmix_info_t structures containing any directives the
+ *        caller may wish to pass. Typical usage might include:
+ *            PMIX_TIMEOUT - how long to wait (in seconds) for a credential
+ *                           before timing out and returning an error
+ *            PMIX_CRED_TYPE - a prioritized, comma-delimited list of desired
+ *                             credential types for use in environments where
+ *                             multiple authentication mechanisms may be
+ *                             available
+ *
+ * ninfo - number of elements in the info array
+ *
+ * cbfunc - the pmix_credential_cbfunc_t function to be called upon completion
+ *          of the request
+ *
+ * cbdata - pointer to an object to be returned when cbfunc is called
+ *
+ * Returned values:
+ * PMIX_SUCCESS - indicates that the request has been successfully communicated to
+ *                the local PMIx server. The response will be coming in the provided
+ *                callback function.
+ *
+ * Any other value indicates an appropriate error condition. The callback function
+ * will _not_ be called in such cases.
+ */
+PMIX_EXPORT pmix_status_t PMIx_Get_credential(const pmix_info_t info[], size_t ninfo,
+                                              pmix_credential_cbfunc_t cbfunc, void *cbdata);
+
+
+/* Request validation of a credential by the PMIx server/SMS
+ * Input values include:
+ *
+ * cred - pointer to a pmix_byte_object_t containing the credential
+ *
+ * info - an array of pmix_info_t structures containing any directives the
+ *        caller may wish to pass. Typical usage might include:
+ *            PMIX_TIMEOUT - how long to wait (in seconds) for validation
+ *                           before timing out and returning an error
+ *            PMIX_USERID - the expected effective userid of the credential
+ *                          to be validated
+ *            PMIX_GROUPID - the expected effective group id of the credential
+ *                          to be validated
+ *
+ * ninfo - number of elements in the info array
+ *
+ * cbfunc - the pmix_validation_cbfunc_t function to be called upon completion
+ *          of the request
+ *
+ * cbdata - pointer to an object to be returned when cbfunc is called
+ *
+ * Returned values:
+ * PMIX_SUCCESS - indicates that the request has been successfully communicated to
+ *                the local PMIx server. The response will be coming in the provided
+ *                callback function.
+ *
+ * Any other value indicates an appropriate error condition. The callback function
+ * will _not_ be called in such cases.
+ */
+PMIX_EXPORT pmix_status_t PMIx_Validate_credential(const pmix_byte_object_t *cred,
+                                                   const pmix_info_t info[], size_t ninfo,
+                                                   pmix_validation_cbfunc_t cbfunc, void *cbdata);
+
+
 #if defined(c_plusplus) || defined(__cplusplus)
 }
 #endif

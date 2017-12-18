@@ -163,6 +163,8 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
         }
         /* the server will be using the same bfrops as us */
         pmix_client_globals.myserver->nptr->compat.bfrops = pmix_globals.mypeer->nptr->compat.bfrops;
+        /* mark that we are using the V2 protocol */
+        pmix_globals.mypeer->protocol = PMIX_PROTOCOL_V2;
 
         /* the URI consists of the following elements:
         *    - server nspace.rank
@@ -692,8 +694,8 @@ static pmix_status_t send_connect_ack(int sd)
 {
     char *msg;
     pmix_ptl_hdr_t hdr;
-    size_t sdsize=0, csize=0, len;
-    char *cred = NULL;
+    size_t sdsize=0, csize=0;
+    pmix_byte_object_t cred;
     char *sec, *bfrops, *gds;
     pmix_bfrop_buffer_type_t bftype;
     pmix_status_t rc;
@@ -707,6 +709,7 @@ static pmix_status_t send_connect_ack(int sd)
 
     /* if we are a server, then we shouldn't be here */
     if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
+        pmix_output(0, "OUCH: %d", __LINE__);
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
@@ -720,9 +723,11 @@ static pmix_status_t send_connect_ack(int sd)
      * local PMIx server, if known. Now use that module to
      * get a credential, if the security system provides one. Not
      * every psec module will do so, thus we must first check */
-    PMIX_PSEC_CREATE_CRED(rc, pmix_client_globals.myserver,
-                          PMIX_PROTOCOL_V2, &cred, &len);
+    PMIX_BYTE_OBJECT_CONSTRUCT(&cred);
+    PMIX_PSEC_CREATE_CRED(rc, pmix_globals.mypeer,
+                          NULL, 0, NULL, 0, &cred);
     if (PMIX_SUCCESS != rc) {
+        pmix_output(0, "OUCH: %d", __LINE__);
         return rc;
     }
 
@@ -754,14 +759,12 @@ static pmix_status_t send_connect_ack(int sd)
     /* set the number of bytes to be read beyond the header */
     hdr.nbytes = sdsize + strlen(PMIX_VERSION) + 1 + strlen(sec) + 1 \
                 + strlen(bfrops) + 1 + sizeof(bftype) \
-                + strlen(gds) + 1 + sizeof(uint32_t) + len;  // must NULL terminate the strings!
+                + strlen(gds) + 1 + sizeof(uint32_t) + cred.size;  // must NULL terminate the strings!
 
     /* create a space for our message */
     sdsize = (sizeof(hdr) + hdr.nbytes);
     if (NULL == (msg = (char*)malloc(sdsize))) {
-        if (NULL != cred) {
-            free(cred);
-        }
+        PMIX_BYTE_OBJECT_DESTRUCT(&cred);
         free(sec);
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
@@ -779,14 +782,15 @@ static pmix_status_t send_connect_ack(int sd)
     /* load the length of the credential - we put this in uint32_t
      * format as that is a fixed size, and convert to network
      * byte order for heterogeneity */
-    u32 = htonl((uint32_t)len);
+    u32 = htonl((uint32_t)cred.size);
     memcpy(msg+csize, &u32, sizeof(uint32_t));
     csize += sizeof(uint32_t);
     /* load the credential */
     if (0 < u32) {
-        memcpy(msg+csize, cred, len);
-        csize += len;
+        memcpy(msg+csize, cred.bytes, cred.size);
+        csize += cred.size;
     }
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
 
     /* load our process type - this is a single byte,
      * so no worry about heterogeneity here */
@@ -833,15 +837,9 @@ static pmix_status_t send_connect_ack(int sd)
     /* send the entire message across */
     if (PMIX_SUCCESS != pmix_ptl_base_send_blocking(sd, msg, sdsize)) {
         free(msg);
-        if (NULL != cred) {
-            free(cred);
-        }
         return PMIX_ERR_UNREACH;
     }
     free(msg);
-    if (NULL != cred) {
-        free(cred);
-    }
     return PMIX_SUCCESS;
 }
 

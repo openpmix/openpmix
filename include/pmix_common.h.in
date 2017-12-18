@@ -482,6 +482,14 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_MONITOR_FILE_DROPS             "pmix.monitor.fdrop"    // (uint32_t) number of file checks that can be missed before
                                                                     //            generating the event
 
+/* security attributes */
+#define PMIX_CRED_TYPE                      "pmix.sec.ctype"        //  when passed in PMIx_Get_credential, a prioritized,
+                                                                    // comma-delimited list of desired credential types for use
+                                                                    // in environments where multiple authentication mechanisms
+                                                                    // may be available. When returned in a callback function, a
+                                                                    // string identifier of the credential type
+
+
 /****    PROCESS STATE DEFINITIONS    ****/
 typedef uint8_t pmix_proc_state_t;
 #define PMIX_PROC_STATE_UNDEF                    0  /* undefined process state */
@@ -770,6 +778,12 @@ typedef struct pmix_byte_object {
     char *bytes;
     size_t size;
 } pmix_byte_object_t;
+#define PMIX_BYTE_OBJECT_CONSTRUCT(m)   \
+    do {                                \
+        (m)->bytes = NULL;              \
+        (m)->size = 0;                  \
+    } while(0)
+
 #define PMIX_BYTE_OBJECT_DESTRUCT(m)    \
     do {                                \
         if (NULL != (m)->bytes) {       \
@@ -1618,6 +1632,75 @@ typedef void (*pmix_info_cbfunc_t)(pmix_status_t status,
                                    void *cbdata,
                                    pmix_release_cbfunc_t release_fn,
                                    void *release_cbdata);
+
+/* Define a callback function to return a requested security credential.
+ * Returned values include:
+ *
+ * status - PMIX_SUCCESS if a credential could be assigned as requested, or
+ *          else an appropriate error code indicating the problem
+ *
+ * credential - pointer to an allocated pmix_byte_object_t containing the
+ *              credential (as a opaque blob) and its size. Ownership of
+ *              the credential is transferred to the receiving function - thus,
+ *              responsibility for releasing the memory lies outside the
+ *              PMIx library.
+ *
+ * info - an array of pmix_info_t structures provided by the system to pass
+ *        any additional information about the credential - e.g., the identity
+ *        of the issuing agent. The info array is owned by the PMIx library
+ *        and is not to be released or altered by the receiving party. Note that
+ *        this array is not related to the pmix_info_t structures possibly
+ *        provided in the call to PMIx_Get_credential.
+ *
+ *        Information provided by the issuing agent can subsequently be used
+ *        by the application for a variety of purposes. Examples include:
+ *            - checking identified authorizations to determine what
+ *              requests/operations are feasible as a means to steering
+ *              workflows
+ *            - compare the credential type to that of the local SMS for
+ *              compatibility
+ *
+ * ninfo - number of elements in the info array
+ *
+ * cbdata - the caller's provided void* object
+ *
+ * NOTE: the credential is opaque and therefore understandable only by
+ *       a service compatible with the issuer.
+ */
+typedef void (*pmix_credential_cbfunc_t)(pmix_status_t status,
+                                         pmix_byte_object_t *credential,
+                                         pmix_info_t info[], size_t ninfo,
+                                         void *cbdata);
+
+
+/* Define a validation callback function to indicate if a provided
+ * credential is valid, and any corresponding information regarding
+ * authorizations and other security matters
+ * Returned values include:
+ *
+ * status - PMIX_SUCCESS if the provided credential is valid. An appropriate
+ *          error code indicating the issue if the credential is rejected.
+ *
+ * info - an array of pmix_info_t structures provided by the system to pass
+ *        any additional information about the authentication - e.g., the
+ *        effective userid and group id of the certificate holder, and any
+ *        related authorizations. The info array is owned by the PMIx library
+ *        and is not to be released or altered by the receiving party. Note that
+ *        this array is not related to the pmix_info_t structures possibly
+ *        provided in the call to PMIx_Validate_credential.
+ *
+ *        The precise contents of the array will depend on the host SMS and
+ *        its associated security system. At the minimum, it is expected (but
+ *        not required) that the array will contain entries for the PMIX_USERID
+ *        and PMIX_GROUPID of the client described in the credential.
+ *
+ * ninfo - number of elements in the info array
+ *
+ * cbdata - the caller's provided void* object
+ */
+typedef void (*pmix_validation_cbfunc_t)(pmix_status_t status,
+                                         pmix_info_t info[], size_t ninfo,
+                                         void *cbdata);
 
 
 /****    COMMON SUPPORT FUNCTIONS    ****/

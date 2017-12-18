@@ -243,6 +243,16 @@ pmix_status_t pmix_server_monitor(pmix_peer_t *peer,
                                   pmix_info_cbfunc_t cbfunc,
                                   void *cbdata);
 
+pmix_status_t pmix_server_get_credential(pmix_peer_t *peer,
+                                         pmix_buffer_t *buf,
+                                         pmix_credential_cbfunc_t cbfunc,
+                                         void *cbdata);
+
+pmix_status_t pmix_server_validate_credential(pmix_peer_t *peer,
+                                              pmix_buffer_t *buf,
+                                              pmix_validation_cbfunc_t cbfunc,
+                                              void *cbdata);
+
 pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer,
                                                   pmix_buffer_t *buf,
                                                   pmix_op_cbfunc_t cbfunc,
