@@ -74,8 +74,12 @@ if WANT_PMI_BACKWARD
 lib_LTLIBRARIES += libpmi.la libpmi2.la
 libpmi_la_SOURCES = $(headers) $(sources)
 libpmi_la_LDFLAGS = -version-info $(libpmi_so_version)
+libpmi_la_LIBADD = $(libpmix_la_LIBADD)
+libpmi_la_DEPENDENCIES = $(libpmi_la_LIBADD)
 libpmi2_la_SOURCES = $(headers) $(sources)
 libpmi2_la_LDFLAGS = -version-info $(libpmi2_so_version)
+libpmi2_la_LIBADD = $(libpmix_la_LIBADD)
+libpmi2_la_DEPENDENCIES = $(libpmi2_la_LIBADD)
 endif
 
 endif !PMIX_EMBEDDED_MODE
