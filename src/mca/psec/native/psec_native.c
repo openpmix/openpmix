@@ -73,6 +73,9 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer,
     gid_t egid;
     char *tmp, *ptr;
 
+    /* ensure initialization */
+    PMIX_BYTE_OBJECT_CONSTRUCT(cred);
+
     /* we may be responding to a local request for a credential, so
      * see if they specified a mechanism */
     if (NULL != directives && 0 < ndirs) {

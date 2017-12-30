@@ -66,6 +66,9 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer,
                                  pmix_info_t **info, size_t *ninfo,
                                  pmix_byte_object_t *cred)
 {
+    /* ensure initialization */
+    PMIX_BYTE_OBJECT_CONSTRUCT(cred);
+
     return PMIX_SUCCESS;
 }
 

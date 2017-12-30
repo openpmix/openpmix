@@ -25,6 +25,7 @@
 #endif
 #include <munge.h>
 
+#include "src/threads/threads.h"
 #include "src/mca/psec/psec.h"
 #include "psec_munge.h"
 
@@ -47,6 +48,7 @@ pmix_psec_module_t pmix_munge_module = {
     .validate_cred = validate_cred
 };
 
+static pmix_lock_t lock;
 static char *mycred = NULL;
 static bool initialized = false;
 static bool refresh = false;
@@ -58,6 +60,9 @@ static pmix_status_t munge_init(void)
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "psec: munge init");
 
+    PMIX_CONSTRUCT_LOCK(&lock);
+    lock.active = false;
+
     /* attempt to get a credential as a way of checking that
      * the munge server is available - cache the credential
      * for later use */
@@ -68,6 +73,7 @@ static pmix_status_t munge_init(void)
                             munge_strerror(rc));
         return PMIX_ERR_SERVER_NOT_AVAIL;
     }
+
     initialized = true;
 
     return PMIX_SUCCESS;
@@ -75,6 +81,8 @@ static pmix_status_t munge_init(void)
 
 static void munge_finalize(void)
 {
+    PMIX_ACQUIRE_THREAD(&lock);
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "psec: munge finalize");
     if (initialized) {
@@ -83,6 +91,8 @@ static void munge_finalize(void)
             mycred = NULL;
         }
     }
+    PMIX_RELEASE_THREAD(&lock);
+    PMIX_DESTRUCT_LOCK(&lock);
 }
 
 static pmix_status_t create_cred(struct pmix_peer_t *peer,
@@ -95,8 +105,13 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer,
     char **types;
     size_t n, m;
 
+    PMIX_ACQUIRE_THREAD(&lock);
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "psec: munge create_cred");
+
+    /* ensure initialization */
+    PMIX_BYTE_OBJECT_CONSTRUCT(cred);
 
     /* if we are responding to a local request to create a credential,
      * then see if they specified a mechanism */
@@ -115,6 +130,7 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer,
                 }
                 pmix_argv_free(types);
                 if (!takeus) {
+                    PMIX_RELEASE_THREAD(&lock);
                     return PMIX_ERR_NOT_SUPPORTED;
                 }
             }
@@ -136,7 +152,8 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer,
                 pmix_output_verbose(2, pmix_globals.debug_output,
                                     "psec: munge failed to create credential: %s",
                                     munge_strerror(rc));
-                return NULL;
+                PMIX_RELEASE_THREAD(&lock);
+                return PMIX_ERR_NOT_SUPPORTED;
             }
             cred->bytes = strdup(mycred);
             cred->size = strlen(mycred) + 1;
@@ -146,11 +163,13 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer,
         /* mark that this came from us */
         PMIX_INFO_CREATE(*info, 1);
         if (NULL == *info) {
+            PMIX_RELEASE_THREAD(&lock);
             return PMIX_ERR_NOMEM;
         }
         *ninfo = 1;
         PMIX_INFO_LOAD(info[0], PMIX_CRED_TYPE, "munge", PMIX_STRING);
     }
+    PMIX_RELEASE_THREAD(&lock);
     return PMIX_SUCCESS;
 }
 
