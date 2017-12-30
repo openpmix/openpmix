@@ -40,13 +40,11 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer,
                                    const pmix_byte_object_t *cred);
 
 pmix_psec_module_t pmix_munge_module = {
-    "munge",
-    munge_init,
-    munge_finalize,
-    create_cred,
-    NULL,
-    validate_cred,
-    NULL
+    .name = "munge",
+    .init = munge_init,
+    .finalize = munge_finalize,
+    .create_cred = create_cred,
+    .validate_cred = validate_cred
 };
 
 static char *mycred = NULL;
