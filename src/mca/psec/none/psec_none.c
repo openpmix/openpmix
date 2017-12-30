@@ -1,6 +1,8 @@
 /*
  * Copyright (c) 2015-2017 Intel, Inc. All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2017      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  *
  * $COPYRIGHT$
  *
@@ -29,6 +31,10 @@
 
 static pmix_status_t none_init(void);
 static void none_finalize(void);
+static pmix_status_t create_cred(struct pmix_peer_t *peer,
+                                 const pmix_info_t directives[], size_t ndirs,
+                                 pmix_info_t **info, size_t *ninfo,
+                                 pmix_byte_object_t *cred);
 static pmix_status_t validate_cred(struct pmix_peer_t *peer,
                                    const pmix_info_t directives[], size_t ndirs,
                                    pmix_info_t **info, size_t *ninfo,
@@ -38,6 +44,7 @@ pmix_psec_module_t pmix_none_module = {
     .name = "none",
     .init = none_init,
     .finalize = none_finalize,
+    .create_cred = create_cred,
     .validate_cred = validate_cred
 };
 
@@ -52,6 +59,14 @@ static void none_finalize(void)
 {
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "psec: none finalize");
+}
+
+static pmix_status_t create_cred(struct pmix_peer_t *peer,
+                                 const pmix_info_t directives[], size_t ndirs,
+                                 pmix_info_t **info, size_t *ninfo,
+                                 pmix_byte_object_t *cred)
+{
+    return PMIX_SUCCESS;
 }
 
 static pmix_status_t validate_cred(struct pmix_peer_t *peer,
