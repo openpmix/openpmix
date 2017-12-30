@@ -1,7 +1,8 @@
 /*
  * Copyright (c) 2015-2017 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- *
+ * Copyright (c) 2017      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -187,8 +188,8 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer,
 
 #elif defined(HAVE_GETPEEREID)
         pmix_output_verbose(2, pmix_globals.debug_output,
-                            "psec:native checking getpeereid on socket %d for peer credentials", sd);
-        if (0 != getpeereid(sd, &euid, &egid)) {
+                            "psec:native checking getpeereid on socket %d for peer credentials", pr->sd);
+        if (0 != getpeereid(pr->sd, &euid, &egid)) {
             pmix_output_verbose(2, pmix_globals.debug_output,
                                 "psec: getsockopt getpeereid failed: %s",
                                 strerror (pmix_socket_errno));
