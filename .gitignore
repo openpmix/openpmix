@@ -112,6 +112,7 @@ test/simple/simpdyn
 test/simple/test_pmix
 test/simple/simptool
 test/simple/simpdie
+test/simple/simptimeout
 
 # coverity
 cov-int

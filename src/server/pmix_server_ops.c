@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2017 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
  * Copyright (c) 2014-2017 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
@@ -452,6 +452,24 @@ static pmix_server_trkr_t* new_tracker(pmix_proc_t *procs,
     return trk;
 }
 
+static void fence_timeout(int sd, short args, void *cbdata)
+{
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t*)cbdata;
+
+    pmix_output_verbose(2, pmix_server_globals.fence_output,
+                        "ALERT: fence timeout fired");
+
+    /* execute the provided callback function with the error */
+    if (NULL != cd->trk->modexcbfunc) {
+        cd->trk->modexcbfunc(PMIX_ERR_TIMEOUT, NULL, 0, cd->trk, NULL, NULL);
+        return;  // the cbfunc will have cleaned up the tracker
+    }
+    cd->event_active = false;
+    /* remove it from the list */
+    pmix_list_remove_item(&cd->trk->local_cbs, &cd->super);
+    PMIX_RELEASE(cd);
+}
+
 pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
                                 pmix_buffer_t *buf,
                                 pmix_modex_cbfunc_t modexcbfunc,
@@ -472,6 +490,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
     pmix_byte_object_t bo;
     pmix_info_t *info = NULL;
     size_t ninfo=0, n;
+    struct timeval tv = {0, 0};
 
     pmix_output_verbose(2, pmix_server_globals.fence_output,
                         "recvd FENCE");
@@ -526,12 +545,13 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
         if (PMIX_SUCCESS != rc) {
             goto cleanup;
         }
-        /* see if we are to collect data - we don't internally care
+        /* see if we are to collect data or enforce a timeout - we don't internally care
          * about any other directives */
         for (n=0; n < ninfo; n++) {
             if (0 == strcmp(info[n].key, PMIX_COLLECT_DATA)) {
                 collect_data = true;
-                break;
+            } else if (0 == strncmp(info[n].key, PMIX_TIMEOUT, PMIX_MAX_KEYLEN)) {
+                tv.tv_sec = info[n].value.data.uint32;
             }
         }
     }
@@ -588,6 +608,15 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
     /* add this contributor to the tracker so they get
      * notified when we are done */
     pmix_list_append(&trk->local_cbs, &cd->super);
+    /* if a timeout was specified, set it */
+    if (0 < tv.tv_sec) {
+        PMIX_RETAIN(trk);
+        cd->trk = trk;
+        pmix_event_evtimer_set(pmix_globals.evbase, &cd->ev,
+                               fence_timeout, cd);
+        pmix_event_evtimer_add(&cd->ev, &tv);
+        cd->event_active = true;
+    }
 
     /* if all local contributions have been received,
      * let the local host's server know that we are at the
@@ -677,6 +706,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
         /* now unload the blob and pass it upstairs */
         PMIX_UNLOAD_BUFFER(&bucket, data, sz);
         PMIX_DESTRUCT(&bucket);
+        pmix_output(0, "UPCALL FENCE");
         pmix_host_server.fence_nb(trk->pcs, trk->npcs,
                                   trk->info, trk->ninfo,
                                   data, sz, trk->modexcbfunc, trk);
@@ -1221,6 +1251,24 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd,
     return rc;
 }
 
+static void connect_timeout(int sd, short args, void *cbdata)
+{
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t*)cbdata;
+
+    pmix_output_verbose(2, pmix_server_globals.connect_output,
+                        "ALERT: connect timeout fired");
+
+    /* execute the provided callback function with the error */
+    if (NULL != cd->trk->cnct_cbfunc) {
+        cd->trk->cnct_cbfunc(PMIX_ERR_TIMEOUT, NULL, PMIX_RANK_UNDEF, cd->trk);
+        return;  // the cbfunc will have cleaned up the tracker
+    }
+    cd->event_active = false;
+    /* remove it from the list */
+    pmix_list_remove_item(&cd->trk->local_cbs, &cd->super);
+    PMIX_RELEASE(cd);
+}
+
 pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
                                   pmix_buffer_t *buf,
                                   pmix_connect_cbfunc_t cbfunc)
@@ -1229,8 +1277,9 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
     pmix_status_t rc;
     pmix_proc_t *procs = NULL;
     pmix_info_t *info = NULL;
-    size_t nprocs, ninfo;
+    size_t nprocs, ninfo, n;
     pmix_server_trkr_t *trk;
+    struct timeval tv = {0, 0};
 
     pmix_output_verbose(2, pmix_server_globals.connect_output,
                         "recvd CONNECT from peer %s:%d",
@@ -1290,6 +1339,13 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
         if (PMIX_SUCCESS != rc) {
             goto cleanup;
         }
+        /* check for a timeout */
+        for (n=0; n < ninfo; n++) {
+            if (0 == strncmp(info[n].key, PMIX_TIMEOUT, PMIX_MAX_KEYLEN)) {
+                tv.tv_sec = info[n].value.data.uint32;
+                break;
+            }
+        }
     }
 
     /* find/create the local tracker for this operation */
@@ -1321,6 +1377,16 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
      * notified when we are done */
     PMIX_RETAIN(cd);  // prevent the caddy from being released when we return
     pmix_list_append(&trk->local_cbs, &cd->super);
+    /* if a timeout was specified, set it */
+    if (0 < tv.tv_sec) {
+        PMIX_RETAIN(trk);
+        cd->trk = trk;
+        pmix_event_evtimer_set(pmix_globals.evbase, &cd->ev,
+                               connect_timeout, cd);
+        pmix_event_evtimer_add(&cd->ev, &tv);
+        cd->event_active = true;
+    }
+
     /* if all local contributions have been received,
      * let the local host's server know that we are at the
      * "fence" point - they will callback once the [dis]connect
@@ -2321,10 +2387,19 @@ PMIX_CLASS_INSTANCE(pmix_server_trkr_t,
 
 static void cdcon(pmix_server_caddy_t *cd)
 {
+    memset(&cd->ev, 0, sizeof(pmix_event_t));
+    cd->event_active = false;
+    cd->trk = NULL;
     cd->peer = NULL;
 }
 static void cddes(pmix_server_caddy_t *cd)
 {
+    if (cd->event_active) {
+        pmix_event_del(&cd->ev);
+    }
+    if (NULL != cd->trk) {
+        PMIX_RELEASE(cd->trk);
+    }
     if (NULL != cd->peer) {
         PMIX_RELEASE(cd->peer);
     }
@@ -2408,9 +2483,24 @@ PMIX_CLASS_INSTANCE(pmix_dmdx_remote_t,
                     pmix_list_item_t,
                     dmcon, dmdes);
 
+static void dmrqcon(pmix_dmdx_request_t *p)
+{
+    memset(&p->ev, 0, sizeof(pmix_event_t));
+    p->event_active = false;
+    p->lcd = NULL;
+}
+static void dmrqdes(pmix_dmdx_request_t *p)
+{
+    if (p->event_active) {
+        pmix_event_del(&p->ev);
+    }
+    if (NULL != p->lcd) {
+        PMIX_RELEASE(p->lcd);
+    }
+}
 PMIX_CLASS_INSTANCE(pmix_dmdx_request_t,
                     pmix_list_item_t,
-                    NULL, NULL);
+                    dmrqcon, dmrqdes);
 
 static void lmcon(pmix_dmdx_local_t *p)
 {

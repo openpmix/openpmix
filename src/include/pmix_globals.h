@@ -10,7 +10,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2014-2017 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -185,16 +185,6 @@ typedef struct pmix_peer_t {
 PMIX_CLASS_DECLARATION(pmix_peer_t);
 
 
-/* define an object for moving a send
- * request into the server's event base
- * - instanced in pmix_server_ops.c */
-typedef struct {
-    pmix_list_item_t super;
-    pmix_ptl_hdr_t hdr;
-    pmix_peer_t *peer;
-} pmix_server_caddy_t;
-PMIX_CLASS_DECLARATION(pmix_server_caddy_t);
-
 /* caddy for query requests */
 typedef struct {
     pmix_object_t super;
@@ -241,6 +231,20 @@ typedef struct {
     pmix_connect_cbfunc_t cnct_cbfunc;
 } pmix_server_trkr_t;
 PMIX_CLASS_DECLARATION(pmix_server_trkr_t);
+
+/* define an object for moving a send
+ * request into the server's event base and
+ * dealing with some request timeouts
+ * - instanced in pmix_server_ops.c */
+typedef struct {
+    pmix_list_item_t super;
+    pmix_event_t ev;
+    bool event_active;
+    pmix_server_trkr_t *trk;
+    pmix_ptl_hdr_t hdr;
+    pmix_peer_t *peer;
+} pmix_server_caddy_t;
+PMIX_CLASS_DECLARATION(pmix_server_caddy_t);
 
 /****    THREAD-RELATED    ****/
  /* define a caddy for thread-shifting operations */
