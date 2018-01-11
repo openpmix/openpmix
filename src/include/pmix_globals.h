@@ -419,6 +419,8 @@ typedef struct {
     pmix_gds_base_module_t *mygds;
 } pmix_globals_t;
 
+/* provide access to a function to cleanup epilogs */
+PMIX_EXPORT void pmix_execute_epilog(pmix_epilog_t *ep);
 
 PMIX_EXPORT extern pmix_globals_t pmix_globals;
 PMIX_EXPORT extern pmix_lock_t pmix_global_lock;
