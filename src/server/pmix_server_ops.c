@@ -2085,9 +2085,9 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer,
     pmix_query_caddy_t *cd;
     pmix_proc_t proc;
     size_t n;
-    bool recurse, leave_topdir, duplicate;
+    bool recurse = false, leave_topdir = false, duplicate;
     pmix_list_t cachedirs, cachefiles;
-    pmix_epilog_t *epi;
+    pmix_epilog_t *epi = NULL;
     pmix_cleanup_file_t *cf, *cf2;
     pmix_cleanup_dir_t *cdir, *cdir2;
 
@@ -2132,8 +2132,6 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer,
                 epi = &peer->epilog;
             }
         }
-    } else {
-        epi = NULL;  // do not allow epilog requests
     }
 
     /* unpack the number of info objects */

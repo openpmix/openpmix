@@ -337,7 +337,7 @@ void pmix_execute_epilog(pmix_epilog_t *epi)
         rc = stat(cf->path, &statbuf);
         if (0 != rc) {
             pmix_output_verbose(10, pmix_globals.debug_output,
-                                "File %s failed to stat: %s", cf->path, strerror(rc));
+                                "File %s failed to stat: %d", cf->path, rc);
             continue;
         }
         if (statbuf.st_uid != epi->uid ||
@@ -352,7 +352,7 @@ void pmix_execute_epilog(pmix_epilog_t *epi)
         rc = unlink(cf->path);
         if (0 != rc) {
             pmix_output_verbose(10, pmix_globals.debug_output,
-                                "File %s failed to unlink: %s", cf->path, strerror(rc));
+                                "File %s failed to unlink: %d", cf->path, rc);
         }
         pmix_list_remove_item(&epi->cleanup_files, &cf->super);
         PMIX_RELEASE(cf);
@@ -366,7 +366,7 @@ void pmix_execute_epilog(pmix_epilog_t *epi)
         rc = stat(cd->path, &statbuf);
         if (0 != rc) {
             pmix_output_verbose(10, pmix_globals.debug_output,
-                                "Directory %s failed to stat: %s", cd->path, strerror(rc));
+                                "Directory %s failed to stat: %d", cd->path, rc);
             continue;
         }
         if (statbuf.st_uid != epi->uid ||
@@ -431,12 +431,16 @@ static void dirpath_destroy(char *path, pmix_cleanup_dir_t *cd, pmix_epilog_t *e
          */
         filenm = pmix_os_path(false, path, ep->d_name, NULL);
 
-        /* if this path is it to be ignored, then do so */
+        /* if this path is to be ignored, then do so */
         PMIX_LIST_FOREACH(cf, &epi->ignores, pmix_cleanup_file_t) {
             if (0 == strcmp(cf->path, filenm)) {
                 free(filenm);
-                continue;
+                filenm = NULL;
+                break;
             }
+        }
+        if (NULL == filenm) {
+            continue;
         }
 
         /* Check to see if it is a directory */
