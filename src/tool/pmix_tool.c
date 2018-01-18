@@ -245,7 +245,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     PMIX_VALUE_CREATE(kptr->value, 1);
     kptr->value->type = PMIX_STRING;
     kptr->value->data.string = strdup(nsptr->nspace);
-    if (PMIX_SUCCESS != (rc = pmix_hash_store(&nsptr->internal, pmix_globals.myid.rank, kptr))) {
+    if (PMIX_SUCCESS != (rc = pmix_hash_store(&nsptr->internal, PMIX_RANK_WILDCARD, kptr))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
@@ -271,7 +271,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     PMIX_VALUE_CREATE(kptr->value, 1);
     kptr->value->type = PMIX_UINT32;
     kptr->value->data.uint32 = 0;
-    if (PMIX_SUCCESS != (rc = pmix_hash_store(&nsptr->internal, pmix_globals.myid.rank, kptr))) {
+    if (PMIX_SUCCESS != (rc = pmix_hash_store(&nsptr->internal, PMIX_RANK_WILDCARD, kptr))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
@@ -284,7 +284,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     PMIX_VALUE_CREATE(kptr->value, 1);
     kptr->value->type = PMIX_UINT32;
     kptr->value->data.uint32 = 1;
-    if (PMIX_SUCCESS != (rc = pmix_hash_store(&nsptr->internal, pmix_globals.myid.rank, kptr))) {
+    if (PMIX_SUCCESS != (rc = pmix_hash_store(&nsptr->internal, PMIX_RANK_WILDCARD, kptr))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
@@ -297,7 +297,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     PMIX_VALUE_CREATE(kptr->value, 1);
     kptr->value->type = PMIX_STRING;
     kptr->value->data.string = strdup("0");
-    if (PMIX_SUCCESS != (rc = pmix_hash_store(&nsptr->internal, pmix_globals.myid.rank, kptr))) {
+    if (PMIX_SUCCESS != (rc = pmix_hash_store(&nsptr->internal, PMIX_RANK_WILDCARD, kptr))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
@@ -310,7 +310,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     PMIX_VALUE_CREATE(kptr->value, 1);
     kptr->value->type = PMIX_UINT32;
     kptr->value->data.uint32 = 0;
-    if (PMIX_SUCCESS != (rc = pmix_hash_store(&nsptr->internal, pmix_globals.myid.rank, kptr))) {
+    if (PMIX_SUCCESS != (rc = pmix_hash_store(&nsptr->internal, PMIX_RANK_WILDCARD, kptr))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE_THREAD(&pmix_global_lock);
     }
@@ -322,7 +322,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     PMIX_VALUE_CREATE(kptr->value, 1);
     kptr->value->type = PMIX_UINT32;
     kptr->value->data.uint32 = 1;
-    if (PMIX_SUCCESS != (rc = pmix_hash_store(&nsptr->internal, pmix_globals.myid.rank, kptr))) {
+    if (PMIX_SUCCESS != (rc = pmix_hash_store(&nsptr->internal, PMIX_RANK_WILDCARD, kptr))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
@@ -335,7 +335,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     PMIX_VALUE_CREATE(kptr->value, 1);
     kptr->value->type = PMIX_UINT32;
     kptr->value->data.uint32 = 1;
-    if (PMIX_SUCCESS != (rc = pmix_hash_store(&nsptr->internal, pmix_globals.myid.rank, kptr))) {
+    if (PMIX_SUCCESS != (rc = pmix_hash_store(&nsptr->internal, PMIX_RANK_WILDCARD, kptr))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
@@ -348,7 +348,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     PMIX_VALUE_CREATE(kptr->value, 1);
     kptr->value->type = PMIX_UINT32;
     kptr->value->data.uint32 = 1;
-    if (PMIX_SUCCESS != (rc = pmix_hash_store(&nsptr->internal, pmix_globals.myid.rank, kptr))) {
+    if (PMIX_SUCCESS != (rc = pmix_hash_store(&nsptr->internal, PMIX_RANK_WILDCARD, kptr))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
@@ -362,7 +362,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     PMIX_VALUE_CREATE(kptr->value, 1);
     kptr->value->type = PMIX_UINT32;
     kptr->value->data.uint32 = 1;
-    if (PMIX_SUCCESS != (rc = pmix_hash_store(&nsptr->internal, pmix_globals.myid.rank, kptr))) {
+    if (PMIX_SUCCESS != (rc = pmix_hash_store(&nsptr->internal, PMIX_RANK_WILDCARD, kptr))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
@@ -464,7 +464,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
      PMIX_VALUE_CREATE(kptr->value, 1);
      kptr->value->type = PMIX_STRING;
      kptr->value->data.string = strdup(hostname);
-     if (PMIX_SUCCESS != (rc = pmix_hash_store(&nsptr->internal, pmix_globals.myid.rank, kptr))) {
+     if (PMIX_SUCCESS != (rc = pmix_hash_store(&nsptr->internal, PMIX_RANK_WILDCARD, kptr))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
@@ -478,7 +478,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     PMIX_VALUE_CREATE(kptr->value, 1);
     kptr->value->type = PMIX_STRING;
     kptr->value->data.string = strdup("0");
-    if (PMIX_SUCCESS != (rc = pmix_hash_store(&nsptr->internal, pmix_globals.myid.rank, kptr))) {
+    if (PMIX_SUCCESS != (rc = pmix_hash_store(&nsptr->internal, PMIX_RANK_WILDCARD, kptr))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
