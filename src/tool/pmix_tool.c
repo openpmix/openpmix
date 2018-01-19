@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2017 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
  * Copyright (c) 2014-2016 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
@@ -155,7 +155,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
 {
     pmix_kval_t *kptr;
     pmix_status_t rc;
-    pmix_nspace_t *nptr, *nsptr;
+    pmix_nspace_t *nsptr;
     char hostname[PMIX_MAX_NSLEN];
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
