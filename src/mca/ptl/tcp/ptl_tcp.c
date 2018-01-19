@@ -14,6 +14,7 @@
  * Copyright (c) 2011-2013 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2013-2017 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2018      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -535,7 +536,9 @@ static pmix_status_t try_connect(int *sd)
 
     /* establish the connection */
     if (PMIX_SUCCESS != (rc = pmix_ptl_base_connect(&mca_ptl_tcp_component.connection, len, sd))) {
-        PMIX_ERROR_LOG(rc);
+    /* Do not be noisy about this.  It is normal to try and fail different
+       connection methods until we find the right one */
+//        PMIX_ERROR_LOG(rc);
         return rc;
     }
 
