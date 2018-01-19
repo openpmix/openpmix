@@ -13,6 +13,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2017 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2018      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1171,12 +1172,14 @@ static void process_cbfunc(int sd, short args, void *cbdata)
 
     /* add this tool rank to the nspace */
     info = PMIX_NEW(pmix_rank_info_t);
-    (void)strncpy(info->nptr->nspace, cd->proc.nspace, PMIX_MAX_NSLEN);
-    info->rank = 0;
     /* add this nspace to our pool */
     nptr = PMIX_NEW(pmix_nspace_t);
     info->nptr = nptr;
+    (void)strncpy(info->nptr->nspace, cd->proc.nspace, PMIX_MAX_NSLEN);
+    info->rank = 0;
     (void)strncpy(nptr->nspace, cd->proc.nspace, PMIX_MAX_NSLEN);
+    nptr->server = PMIX_NEW(pmix_server_nspace_t);
+
     pmix_list_append(&pmix_globals.nspaces, &nptr->super);
     /* need to include the uid/gid for validation */
     info->uid = pnd->uid;
