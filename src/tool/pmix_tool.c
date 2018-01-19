@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2017 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
  * Copyright (c) 2014-2016 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
@@ -323,9 +323,15 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
             return rc;
         }
     }
-    /* Success, so copy the nspace and rank */
+    /* Success, so copy the nspace and rank to the proc struct they gave us */
     (void)strncpy(proc->nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
     proc->rank = pmix_globals.myid.rank;
+    /* and into our own peer object */
+    if (NULL == pmix_globals.mypeer->nptr->nspace) {
+        pmix_globals.mypeer->nptr->nspace = strdup(proc->nspace);
+    }
+    (void)strncpy(pmix_globals.mypeer->info->pname.nspace, proc->nspace, PMIX_MAX_NSLEN);
+    pmix_globals.mypeer->info->pname.rank = proc->rank;
 
     /* increment our init reference counter */
     pmix_globals.init_cntr++;
