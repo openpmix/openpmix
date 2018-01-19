@@ -7,7 +7,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -223,21 +223,15 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     (void)strncpy(proc->nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
     proc->rank = pmix_globals.myid.rank;
 
+    nsptr = PMIX_NEW(pmix_nspace_t);
+    (void)strncpy(nsptr->nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
+    nsptr->server = PMIX_NEW(pmix_server_nspace_t);
+    pmix_list_append(&pmix_globals.nspaces, &nsptr->super);
+
     /* now finish the initialization by filling our local
      * datastore with typical job-related info. No point
      * in having the server generate these as we are
      * obviously a singleton, and so the values are well-known */
-    nsptr = NULL;
-    PMIX_LIST_FOREACH(nptr, &pmix_globals.nspaces, pmix_nspace_t) {
-        if (0 == strncmp(pmix_globals.myid.nspace, nptr->nspace, PMIX_MAX_NSLEN)) {
-            nsptr = nptr;
-            break;
-        }
-    }
-    if (NULL == nsptr) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return PMIX_ERR_NOT_FOUND;
-    }
 
     /* the jobid is just our nspace */
     kptr = PMIX_NEW(pmix_kval_t);
