@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2017 Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
  * Copyright (c) 2014-2017 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
@@ -203,11 +203,22 @@ static void wait_cbfunc(struct pmix_peer_t *pr,
     PMIX_ACQUIRE_OBJECT(cb);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:client recv callback activated with %d bytes",
+                        "pmix:client spawn callback activated with %d bytes",
                         (NULL == buf) ? -1 : (int)buf->bytes_used);
 
     /* init */
     memset(nspace, 0, PMIX_MAX_NSLEN+1);
+
+    if (NULL == buf) {
+        ret = PMIX_ERR_BAD_PARAM;
+        goto report;
+    }
+    /* a zero-byte buffer indicates that this recv is being
+     * completed due to a lost connection */
+    if (PMIX_BUFFER_IS_EMPTY(buf)) {
+        ret = PMIX_ERR_UNREACH;
+        goto report;
+    }
 
     /* unpack the returned status */
     cnt = 1;
@@ -223,7 +234,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr,
             ret = rc;
         }
         pmix_output_verbose(1, pmix_globals.debug_output,
-                        "pmix:client recv '%s'", n2);
+                        "pmix:client spawned %s", n2);
 
         if (NULL != n2) {
             (void)strncpy(nspace, n2, PMIX_MAX_NSLEN);
@@ -235,6 +246,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr,
         }
     }
 
+  report:
     if (NULL != cb->spawn_cbfunc) {
         cb->spawn_cbfunc(ret, nspace, cb->cbdata);
     }

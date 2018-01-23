@@ -95,7 +95,17 @@ static void pmix_tool_notify_recv(struct pmix_peer_t *peer,
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:tool_notify_recv - processing event");
 
-      /* start the local notification chain */
+    if (NULL == buf) {
+        return;
+    }
+
+    /* a zero-byte buffer indicates that this recv is being
+     * completed due to a lost connection */
+    if (PMIX_BUFFER_IS_EMPTY(buf)) {
+        return;
+    }
+
+    /* start the local notification chain */
     chain = PMIX_NEW(pmix_event_chain_t);
     chain->final_cbfunc = _notify_complete;
     chain->final_cbdata = chain;

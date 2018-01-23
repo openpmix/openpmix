@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2017 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
  * Copyright (c) 2014-2017 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
@@ -1156,11 +1156,19 @@ static void _store_internal(int sd, short args, void *cbdata)
         }
     }
     if (NULL == ns) {
-        /* shouldn't be possible */
-        cd->status = PMIX_ERR_NOT_FOUND;
-    } else {
-        cd->status = pmix_hash_store(&ns->internal, cd->rank, cd->kv);
+        /* we may not know this nspace, but we can create it */
+        ns = PMIX_NEW(pmix_nspace_t);
+        if (NULL == ns) {
+            cd->status = PMIX_ERR_NOMEM;
+        } else {
+            (void)strncpy(ns->nspace, cd->nspace, PMIX_MAX_NSLEN);
+            /* add the server object */
+            ns->server = PMIX_NEW(pmix_server_nspace_t);
+            pmix_list_append(&pmix_globals.nspaces, &ns->super);
+        }
     }
+    cd->status = pmix_hash_store(&ns->internal, cd->rank, cd->kv);
+
     if (cd->lock.active) {
         PMIX_WAKEUP_THREAD(&cd->lock);
     }
