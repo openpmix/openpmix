@@ -119,6 +119,8 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     pmix_cmd_t cmd = PMIX_SPAWNNB_CMD;
     pmix_status_t rc;
     pmix_cb_t *cb;
+    pmix_info_t *spinfo;
+    size_t spninfo, n;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -145,19 +147,40 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
         return rc;
     }
 
-    /* pack the job-level directives */
-    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &ninfo, 1, PMIX_SIZE))) {
+    /* always add one directive that indicates whether the requestor
+     * is a tool or client */
+    spninfo = ninfo + 1;
+    PMIX_INFO_CREATE(spinfo, spninfo);
+    if (NULL == spinfo) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
+        return PMIX_ERR_NOMEM;
+    }
+    /* copy the info across */
+    for (n=0; n < ninfo; n++) {
+        PMIX_INFO_XFER(&spinfo[n], (pmix_info_t*)&job_info[n]);
+    }
+    /* add the directive to the end */
+    if (PMIX_PROC_IS_TOOL) {
+        PMIX_INFO_LOAD(&spinfo[ninfo], PMIX_REQUESTOR_IS_TOOL, NULL, PMIX_BOOL);
+    } else {
+        PMIX_INFO_LOAD(&spinfo[ninfo], PMIX_REQUESTOR_IS_CLIENT, NULL, PMIX_BOOL);
+    }
+
+    /* pack the job-level directives */
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &spninfo, 1, PMIX_SIZE))) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        PMIX_INFO_FREE(spinfo, spninfo);
         return rc;
     }
-    if (0 < ninfo) {
-        if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, job_info, ninfo, PMIX_INFO))) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(msg);
-            return rc;
-        }
+    if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, spinfo, spninfo, PMIX_INFO))) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        PMIX_INFO_FREE(spinfo, spninfo);
+        return rc;
     }
+    PMIX_INFO_FREE(spinfo, spninfo);
 
     /* pack the apps */
     if (PMIX_SUCCESS != (rc = pmix_bfrop.pack(msg, &napps, 1, PMIX_SIZE))) {
