@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2017 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * Copyright (c) 2015-2016 Research Organization for Information Science
@@ -47,6 +47,8 @@
 #include "usock.h"
 
 static uint32_t current_tag = 1;  // 0 is reserved for system purposes
+
+#define PMIX_MAX_MSG_SIZE   16777216  // 16MBytes
 
 static void lost_connection(pmix_peer_t *peer, pmix_status_t err)
 {
@@ -378,10 +380,17 @@ void pmix_usock_recv_handler(int sd, short flags, void *cbdata)
                 peer->recv_msg->rdptr = NULL;
                 peer->recv_msg->rdbytes = 0;
             } else {
+                if (PMIX_MAX_MSG_SIZE < peer->recv_msg->hdr.nbytes) {
+                    pmix_output(0, "%s:%d Attempt to receive message that is too large:\n  Size: %lu\n  Max:   %lu",
+                                pmix_globals.myid.nspace, pmix_globals.myid.rank,
+                                (unsigned long)peer->recv_msg->hdr.nbytes,
+                                (unsigned long)PMIX_MAX_MSG_SIZE);
+                    goto err_close;
+                }
+                /* allocate the data region */
                 pmix_output_verbose(2, pmix_globals.debug_output,
                                     "usock:recv:handler allocate data region of size %lu",
                                     (unsigned long)peer->recv_msg->hdr.nbytes);
-                /* allocate the data region */
                 peer->recv_msg->data = (char*)malloc(peer->recv_msg->hdr.nbytes);
                 memset(peer->recv_msg->data, 0, peer->recv_msg->hdr.nbytes);
                 /* point to it */
