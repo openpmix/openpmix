@@ -12,7 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
- * Copyright (c) 2016-2017 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2016-2018 Intel, Inc. All rights reserved.
  * Copyright (c) 2017      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
@@ -607,11 +607,11 @@ static void connection_handler(int sd, short args, void *cbdata)
 
     /* start the events for this client */
     pmix_event_assign(&psave->recv_event, pmix_globals.evbase, pnd->sd,
-                      EV_READ|EV_PERSIST, pmix_ptl_base_recv_handler, psave);
+                      EV_READ|EV_PERSIST, pmix_usock_recv_handler, psave);
     pmix_event_add(&psave->recv_event, NULL);
     psave->recv_ev_active = true;
     pmix_event_assign(&psave->send_event, pmix_globals.evbase, pnd->sd,
-                      EV_WRITE|EV_PERSIST, pmix_ptl_base_send_handler, psave);
+                      EV_WRITE|EV_PERSIST, pmix_usock_send_handler, psave);
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "pmix:server client %s:%u has connected on socket %d",
                         psave->info->nptr->nspace, psave->info->rank, psave->sd);
