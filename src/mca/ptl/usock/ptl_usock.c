@@ -528,19 +528,14 @@ void pmix_usock_send_handler(int sd, short flags, void *cbdata)
 
     if (NULL != msg) {
         if (!msg->hdr_sent) {
-            nbytes = msg->hdr.nbytes;
-            if (PMIX_PROC_IS_SERVER) {
             /* we have to convert the header back to host-byte order */
-                msg->hdr.pindex = ntohl(msg->hdr.pindex);
-                msg->hdr.tag = ntohl(msg->hdr.tag);
-                msg->hdr.nbytes = ntohl(nbytes);
-                nbytes = msg->hdr.nbytes;
-            }
+            msg->hdr.pindex = ntohl(msg->hdr.pindex);
+            msg->hdr.tag = ntohl(msg->hdr.tag);
+            nbytes = msg->hdr.nbytes;
+            msg->hdr.nbytes = ntohl(nbytes);
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "usock:send_handler SENDING HEADER WITH MSG IDX %d TAG %d SIZE %lu",
                                 msg->hdr.pindex, msg->hdr.tag, (unsigned long)msg->hdr.nbytes);
-            msg->sdptr = (char*)&msg->hdr;
-            msg->sdbytes = nbytes;
             if (PMIX_SUCCESS == (rc = send_bytes(peer->sd, &msg->sdptr, &msg->sdbytes))) {
                 /* header is completely sent */
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,

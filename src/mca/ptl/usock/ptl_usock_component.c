@@ -465,10 +465,14 @@ static void connection_handler(int sd, short args, void *cbdata)
                         "connect-ack recvd from peer %s:%d:%s on socket %d",
                         nspace, rank, version, pnd->sd);
 
-    /* do not check the version - we only retain it at this
-     * time in case we need to check it at some future date.
-     * For now, our intent is to retain backward compatibility
-     * and so we will assume that all versions are compatible. */
+    /* much as we would like to support it, we cannot support
+     * v1.x clients as too many data types have changed, and
+     * v2.0 lacks the necessary flexibility to support it */
+    if (0 == strncmp(version, "1.", 2)) {
+        free(msg);
+        rc = PMIX_ERR_NOT_SUPPORTED;
+        goto error;
+    }
 
     /* see if we know this nspace */
     nptr = NULL;
