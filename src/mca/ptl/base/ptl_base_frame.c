@@ -53,7 +53,7 @@
 
 #include "src/mca/ptl/base/static-components.h"
 
-#define PMIX_MAX_MSG_SIZE   2097152  // 2MBytes
+#define PMIX_MAX_MSG_SIZE   16
 
 /* Instantiate the global vars */
 pmix_ptl_globals_t pmix_ptl_globals = {{{0}}};
@@ -74,12 +74,12 @@ static int max_msg_size = PMIX_MAX_MSG_SIZE;
 static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
 {
     (void) pmix_mca_base_var_register("pmix", "ptl", "base", "max_msg_size",
-                                      "Maximum allowed message size",
+                                      "Maximum allowed message size (in MBytes)",
                                       PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
                                       PMIX_INFO_LVL_2,
                                       PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                       &max_msg_size);
-    pmix_ptl_globals.max_msg_size = max_msg_size;
+    pmix_ptl_globals.max_msg_size = max_msg_size * 1024 * 1024;
 
     return PMIX_SUCCESS;
 }
