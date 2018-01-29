@@ -24,7 +24,7 @@ current release as well as the "stable" bug fix release branch.
 ----------------------
 
 
-1.2.5 -- TBD
+1.2.5 -- 1 Feb 2018
 ----------------------
 - Fix cross-version issue when v1.2 client interacts with v2.1 server (PR #564)
 - Update client connection for cross-version support (PR #591)
