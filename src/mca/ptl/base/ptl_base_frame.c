@@ -69,7 +69,7 @@ pmix_ptl_API_t pmix_ptl = {
     .stop_listening = pmix_ptl_base_stop_listening
 };
 
-static int max_msg_size = PMIX_MAX_MSG_SIZE;
+static size_t max_msg_size = PMIX_MAX_MSG_SIZE;
 
 static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
 {
