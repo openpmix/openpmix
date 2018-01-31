@@ -3,6 +3,7 @@
  * Copyright (c) 2016-2017 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2017 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2018      IBM Corporation. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -347,7 +348,7 @@ static inline pmix_status_t _job_data_store(const char *nspace, void *cbdata)
                 }
                 pmix_argv_free(procs);
 #endif
-                PMIX_DESTRUCT(&kv);
+            //    PMIX_DESTRUCT(&kv);
             }
             /* cleanup */
             PMIX_DESTRUCT(&buf2);
