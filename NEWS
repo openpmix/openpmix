@@ -20,14 +20,26 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to the
 current release as well as the "stable" bug fix release branch.
 
-2.0.3 -- 18 Jan 2018
+2.0.3 -- 1 Feb 2018
 ----------------------
 - Fix event notification so all sides of multi-library get notified
   of other library's existence
 - Update syslog protection to support Mac High Sierra OS
-- Update usock component to support cross-version operations
+- Remove usock component - unable to support v1.x clients due
+  to datatype differences
 - Cleanup security handshake
 - Cleanup separation of PMI-1/2 libraries and PMIx symbols
+- Protect against overly-large messages
+- Update data buffer APIs to support cross-version operations
+- Protect receive callbacks from NULL and/or empty buffers as this
+  can occur when the peer on a connection disappears.
+- Fix tool connection search so it properly descends into the directory
+  tree while searching for the server's contact file.
+- Fix store_local so it doesn't reject a new nspace as that can happen
+  when working with tools
+- Ensure we always complete PMIx_Finalize - don't return if something
+  goes wrong in the middle of the procedure
+- Fix several tool connection issues
 
 
 2.0.2 -- 19 Oct 2017

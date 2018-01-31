@@ -13,7 +13,7 @@
  * Copyright (c) 2011-2014 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011-2013 Los Alamos National Security, LLC.  All rights
  *                         reserved.
- * Copyright (c) 2013-2017 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2018 Intel, Inc. All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -819,8 +819,9 @@ static pmix_status_t df_search(char *dirname, char *prefix,
     char *suri, *nsp, *newdir;
     pmix_rank_t rk;
     pmix_status_t rc;
+    struct stat buf;
     DIR *cur_dirp;
-    struct dirent * dir_entry;
+    struct dirent *dir_entry;
 
     if (NULL == (cur_dirp = opendir(dirname))) {
         return PMIX_ERR_NOT_FOUND;
@@ -836,9 +837,13 @@ static pmix_status_t df_search(char *dirname, char *prefix,
             0 == strcmp(dir_entry->d_name, "..")) {
             continue;
         }
+        newdir = pmix_os_path(false, dirname, dir_entry->d_name, NULL);
+        if (-1 == stat(newdir, &buf)) {
+            free(newdir);
+            continue;
+        }
         /* if it is a directory, down search */
-        if (DT_DIR == dir_entry->d_type) {
-            newdir = pmix_os_path(false, dirname, dir_entry->d_name, NULL);
+        if (S_ISDIR(buf.st_mode)) {
             rc = df_search(newdir, prefix, sd, nspace, rank);
             free(newdir);
             if (PMIX_SUCCESS == rc) {
@@ -847,22 +852,14 @@ static pmix_status_t df_search(char *dirname, char *prefix,
             }
             continue;
         }
-        /* if it isn't a regular file, ignore it */
-        if (DT_REG != dir_entry->d_type) {
-            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                "pmix:tcp: ignoring %s", dir_entry->d_name);
-            continue;
-        }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "pmix:tcp: checking %s vs %s", dir_entry->d_name, prefix);
         /* see if it starts with our prefix */
         if (0 == strncmp(dir_entry->d_name, prefix, strlen(prefix))) {
             /* try to read this file */
-            newdir = pmix_os_path(false, dirname, dir_entry->d_name, NULL);
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "pmix:tcp: reading file %s", newdir);
             rc = parse_uri_file(newdir, &suri, &nsp, &rk);
-            free(newdir);
             if (PMIX_SUCCESS == rc) {
                 if (NULL != mca_ptl_tcp_component.super.uri) {
                     free(mca_ptl_tcp_component.super.uri);
@@ -875,11 +872,13 @@ static pmix_status_t df_search(char *dirname, char *prefix,
                     (*nspace) = nsp;
                     *rank = rk;
                     closedir(cur_dirp);
+                    free(newdir);
                     return PMIX_SUCCESS;
                 }
                 free(nsp);
             }
         }
+        free(newdir);
     }
     closedir(cur_dirp);
     return PMIX_ERR_NOT_FOUND;
