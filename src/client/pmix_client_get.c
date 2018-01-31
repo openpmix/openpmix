@@ -7,7 +7,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -261,9 +261,7 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
     int32_t cnt;
     pmix_nspace_t *ns, *nptr;
     pmix_proc_t proc;
-#if (PMIX_ENABLE_DSTORE != 1)
     pmix_rank_t cur_rank;
-#endif
     char *tmp;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -311,13 +309,6 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
         goto done;
     }
 
-#if (defined(PMIX_ENABLE_DSTORE) && (PMIX_ENABLE_DSTORE == 1))
-    if (PMIX_SUCCESS != (rc = pmix_dstore_fetch(nptr->nspace, cb->rank, cb->key, &val))){
-        /* DO NOT error log this status - it is perfectly okay
-         * for a key not to be found */
-        goto done;
-    }
-#else
     /* we received the entire blob for this process, so
      * unpack and store it in the modex - this could consist
      * of buffers from multiple scopes */
@@ -387,7 +378,6 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
     } else {
         rc = PMIX_SUCCESS;
     }
-#endif /* PMIX_ENABLE_DSTORE */
 
 done:
     /* if a callback was provided, execute it */
