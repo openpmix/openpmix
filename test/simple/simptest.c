@@ -295,7 +295,9 @@ int main(int argc, char **argv)
     bool cross_version = false;
     bool usock = true;
     bool hwloc = false;
+#if PMIX_HAVE_HWLOC
     char *hwloc_file = NULL;
+#endif
     volatile int active;
     pmix_status_t code;
 
@@ -333,6 +335,7 @@ int main(int argc, char **argv)
         } else if (0 == strcmp("-u", argv[n])) {
             /* enable usock */
             usock = false;
+#if PMIX_HAVE_HWLOC
         } else if (0 == strcmp("-hwloc", argv[n]) ||
                    0 == strcmp("--hwloc", argv[n])) {
             /* test hwloc support */
@@ -346,6 +349,7 @@ int main(int argc, char **argv)
             hwloc_file = strdup(argv[n+1]);
             hwloc = true;
             ++n;
+#endif
         } else if (0 == strcmp("-h", argv[n])) {
             /* print the options and exit */
             fprintf(stderr, "usage: simptest <options>\n");

@@ -31,7 +31,7 @@
 #include "src/util/name_fns.h"
 #include "src/util/printf.h"
 
-#define PMIX_PRINT_NAME_ARGS_MAX_SIZE   50
+#define PMIX_PRINT_NAME_ARGS_MAX_SIZE   300
 #define PMIX_PRINT_NAME_ARG_NUM_BUFS    16
 
 #define PMIX_SCHEMA_DELIMITER_CHAR      '.'

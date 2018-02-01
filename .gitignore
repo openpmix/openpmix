@@ -52,6 +52,10 @@ config/ltversion.m4
 config/lt~obsolete.m4
 config/ylwrap
 config/autogen_found_items.m4
+config/py-compile
+
+bindings/python/pmix.c
+bindings/python/*.so
 
 examples/alloc
 examples/client
@@ -88,6 +92,11 @@ src/tools/ptop/ptop
 
 src/util/show_help_lex.c
 src/util/keyval/keyval_lex.c
+
+bindings/python/src/_pypmix.so
+bindings/python/src/libpypmix.so
+bindings/python/src/pypmix.py
+bindings/python/src/pypmix_wrap.c
 
 test/pmi2_client
 test/pmi_client
