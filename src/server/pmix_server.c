@@ -7,7 +7,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1251,7 +1251,6 @@ PMIX_EXPORT pmix_status_t PMIx_generate_regex(const char *input, char **regexp)
         len = strlen(vptr);
         startnum = -1;
         memset(prefix, 0, PMIX_MAX_NODE_PREFIX);
-        numdigits = 0;
         for (i=0, j=0; i < len; i++) {
             if (!isalpha(vptr[i])) {
                 /* found a non-alpha char */
@@ -1265,7 +1264,6 @@ PMIX_EXPORT pmix_status_t PMIx_generate_regex(const char *input, char **regexp)
                 /* count the size of the numeric field - but don't
                  * add the digits to the prefix
                  */
-                numdigits++;
                 if (startnum < 0) {
                     /* okay, this defines end of the prefix */
                     startnum = i;
@@ -1292,8 +1290,10 @@ PMIX_EXPORT pmix_status_t PMIx_generate_regex(const char *input, char **regexp)
         vnum = strtol(&vptr[startnum], &sfx, 10);
         if (NULL != sfx) {
             suffix = strdup(sfx);
+            numdigits = (int)(sfx - &vptr[startnum]);
         } else {
             suffix = NULL;
+            numdigits = (int)strlen(&vptr[startnum]);
         }
         /* is this value already on our list? */
         found = false;
