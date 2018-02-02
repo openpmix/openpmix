@@ -32,6 +32,8 @@ current release as well as the "stable" bug fix release branch.
 - Enable support for remote tool connections (PR #540, #542)
 - Cleanup libevent configure logi to support default install paths (PR #541)
 - Debounce "unreachable" notifications for tools when they disconnect (PR #544)
+- Enable the regex generator to support node names that include multiple
+  sets of numbers
 
 
 2.0.3 -- 1 Feb 2018
