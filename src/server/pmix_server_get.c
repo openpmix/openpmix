@@ -860,7 +860,7 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
          * processes from it running on this host - so just record it
          * so we know we have the data for any future requests */
         nptr = PMIX_NEW(pmix_nspace_t);
-        (void)strncpy(nptr->nspace, caddy->lcd->proc.nspace, PMIX_MAX_NSLEN);
+        nptr->nspace = strdup(caddy->lcd->proc.nspace);
         /* add to the list */
         pmix_list_append(&pmix_server_globals.nspaces, &nptr->super);
     }
