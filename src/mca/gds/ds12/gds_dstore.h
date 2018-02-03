@@ -68,8 +68,10 @@ struct session_s {
     char *nspace_path;
     char *lockfile;
 #ifdef ESH_PTHREAD_LOCK
-    pmix_pshmem_seg_t *rwlock_seg;
-    pthread_rwlock_t *rwlock;
+    pmix_pshmem_seg_t *lock_seg;
+    pthread_mutex_t *lock;
+    uint32_t num_locks, num_forked, num_procs;
+    uint32_t lock_idx;
 #endif
     int lockfd;
     seg_desc_t *sm_seg_first;
