@@ -333,7 +333,13 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     if (NULL == pmix_globals.mypeer->nptr->nspace) {
         pmix_globals.mypeer->nptr->nspace = strdup(proc->nspace);
     }
-    (void)strncpy(pmix_globals.mypeer->info->pname.nspace, proc->nspace, PMIX_MAX_NSLEN);
+    /* setup a rank_info object for us */
+    pmix_globals.mypeer->info = PMIX_NEW(pmix_rank_info_t);
+    if (NULL == pmix_globals.mypeer->info) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return PMIX_ERR_NOMEM;
+    }
+    pmix_globals.mypeer->info->pname.nspace = strdup(proc->nspace);
     pmix_globals.mypeer->info->pname.rank = proc->rank;
 
     /* increment our init reference counter */
