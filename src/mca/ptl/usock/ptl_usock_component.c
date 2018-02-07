@@ -682,7 +682,7 @@ static void connection_handler(int sd, short args, void *cbdata)
      * record it here for future use */
     nptr->compat.ptl = &pmix_ptl_usock_module;
 
-    /* validate the connection */
+    /* validate the connection - the macro will send the status result to the client */
     PMIX_PSEC_VALIDATE_CONNECTION(rc, psave, NULL, 0, NULL, 0, &cred);
     /* now done with the msg */
     free(msg);

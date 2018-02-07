@@ -13,7 +13,7 @@
  * Copyright (c) 2011-2014 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011-2013 Los Alamos National Security, LLC.  All rights
  *                         reserved.
- * Copyright (c) 2013-2017 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2018 Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -232,6 +232,8 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
             }
         }
     }
+    /* mark that we are using the V2 protocol */
+    pmix_globals.mypeer->protocol = PMIX_PROTOCOL_V2;
     gethostname(myhost, sizeof(myhost));
     /* if we were given a URI via MCA param, then look no further */
     if (NULL != mca_ptl_tcp_component.super.uri) {
@@ -530,14 +532,17 @@ static pmix_status_t parse_uri_file(char *filename,
         pmix_client_globals.myserver->proc_type = PMIX_PROC_SERVER | PMIX_PROC_V20;
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "V20 SERVER DETECTED");
+        pmix_client_globals.myserver->protocol = PMIX_PROTOCOL_V2;
     } else if (0 == strncmp(p2, "v2.1", strlen("v2.1")) ||
                0 == strncmp(p2, "2.1", strlen("2.1"))) {
         pmix_client_globals.myserver->proc_type = PMIX_PROC_SERVER | PMIX_PROC_V21;
+        pmix_client_globals.myserver->protocol = PMIX_PROTOCOL_V2;
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "V21 SERVER DETECTED");
     } else if (0 == strncmp(p2, "3", strlen("3")) ||
                0 == strncmp(p2, "v3", strlen("v3"))) {
         pmix_client_globals.myserver->proc_type = PMIX_PROC_SERVER | PMIX_PROC_V3;
+        pmix_client_globals.myserver->protocol = PMIX_PROTOCOL_V2;
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "V3 SERVER DETECTED");
     } else {
@@ -663,7 +668,7 @@ static pmix_status_t try_connect(int *sd)
   retry:
     /* establish the connection */
     if (PMIX_SUCCESS != (rc = pmix_ptl_base_connect(&mca_ptl_tcp_component.connection, len, sd))) {
-        PMIX_ERROR_LOG(rc);
+        /* do not error log - might just be a stale connection point */
         return rc;
     }
 
@@ -709,7 +714,6 @@ static pmix_status_t send_connect_ack(int sd)
 
     /* if we are a server, then we shouldn't be here */
     if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
-        pmix_output(0, "OUCH: %d", __LINE__);
         return PMIX_ERR_NOT_SUPPORTED;
     }
 

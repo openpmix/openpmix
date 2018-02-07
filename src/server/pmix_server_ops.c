@@ -706,7 +706,6 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
         /* now unload the blob and pass it upstairs */
         PMIX_UNLOAD_BUFFER(&bucket, data, sz);
         PMIX_DESTRUCT(&bucket);
-        pmix_output(0, "UPCALL FENCE");
         pmix_host_server.fence_nb(trk->pcs, trk->npcs,
                                   trk->info, trk->ninfo,
                                   data, sz, trk->modexcbfunc, trk);

@@ -161,6 +161,7 @@ PMIX_CLASS_INSTANCE(myxfer_t,
 
 typedef struct {
     pmix_list_item_t super;
+    int exit_code;
     pid_t pid;
 } wait_tracker_t;
 PMIX_CLASS_INSTANCE(wait_tracker_t,
@@ -456,6 +457,15 @@ int main(int argc, char **argv)
         nanosleep(&ts, NULL);
     }
 
+    /* see if anyone exited with non-zero status */
+    n=0;
+    PMIX_LIST_FOREACH(child, &children, wait_tracker_t) {
+        if (0 != child->exit_code) {
+            fprintf(stderr, "Child %d exited with status %d - test FAILED\n", n, child->exit_code);
+            goto done;
+        }
+        ++n;
+    }
     /* try notifying ourselves */
     ninfo = 3;
     PMIX_INFO_CREATE(info, ninfo);
@@ -472,11 +482,15 @@ int main(int argc, char **argv)
     }
     PMIX_INFO_FREE(info, ninfo);
 
+  done:
     /* deregister the event handlers */
     PMIx_Deregister_event_handler(0, NULL, NULL);
 
     /* release any pub data */
     PMIX_LIST_DESTRUCT(&pubdata);
+
+    /* release the child tracker */
+    PMIX_LIST_DESTRUCT(&children);
 
     /* finalize the server library */
     if (PMIX_SUCCESS != (rc = PMIx_server_finalize())) {
@@ -955,6 +969,7 @@ static void wait_signal_callback(int fd, short event, void *arg)
         /* we are already in an event, so it is safe to access the list */
         PMIX_LIST_FOREACH(t2, &children, wait_tracker_t) {
             if (pid == t2->pid) {
+                t2->exit_code = status;
                 /* found it! */
                 if (0 != status && 0 == exit_code) {
                     exit_code = status;
