@@ -11,7 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007-2012 Los Alamos National Security, LLC.
  *                         All rights reserved.
- * Copyright (c) 2014-2017 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -208,6 +208,14 @@ PMIX_EXPORT const char* pmix_command_string(pmix_cmd_t cmd)
             return "DEREGISTER EVENT HANDLER";
         case PMIX_QUERY_CMD:
             return "QUERY";
+        case PMIX_LOG_CMD:
+            return "LOG";
+        case PMIX_ALLOC_CMD:
+            return "ALLOCATE";
+        case PMIX_JOB_CONTROL_CMD:
+            return "JOB CONTROL";
+        case PMIX_MONITOR_CMD:
+            return "MONITOR";
         default:
             return "UNKNOWN";
     }
