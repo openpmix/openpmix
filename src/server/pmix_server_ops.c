@@ -1103,6 +1103,7 @@ static void spcbfunc(pmix_status_t status,
             }
         }
     }
+
     /* cleanup the caddy */
     if (NULL != cd->info) {
         PMIX_INFO_FREE(cd->info, cd->ninfo);

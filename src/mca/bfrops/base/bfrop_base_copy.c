@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2018 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
@@ -636,7 +636,7 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
             pd = (pmix_pdata_t*)p->array;
             sd = (pmix_pdata_t*)src->array;
             for (n=0; n < src->size; n++) {
-                PMIX_PDATA_LOAD(&pd[n], &sd[n].proc, sd[n].key, &sd[n].value.data.flag, sd[n].value.type);
+                PMIX_PDATA_XFER(&pd[n], &sd[n]);
             }
             break;
         case PMIX_BUFFER:

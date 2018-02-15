@@ -59,7 +59,7 @@ typedef struct {
 /*
  * Plog interfaces
  */
-extern pmix_plog_smtp_component_t mca_plog_smtp_component;
+PMIX_EXPORT extern pmix_plog_smtp_component_t mca_plog_smtp_component;
 extern pmix_plog_module_t pmix_plog_smtp_module;
 
 END_C_DECLS

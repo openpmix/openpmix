@@ -319,7 +319,7 @@ typedef uint32_t pmix_rank_t;
 /* attributes used by host server to pass data to the server convenience library - the
  * data will then be parsed and provided to the local clients */
 #define PMIX_REGISTER_NODATA                "pmix.reg.nodata"       // (bool) Registration is for nspace only, do not copy job data
-#define PMIX_PROC_DATA                      "pmix.pdata"            // (pmix_data_array_t) starts with rank, then contains more data
+#define PMIX_PROC_DATA                      "pmix.pdata"            // (pmix_data_array_t*) starts with rank, then contains more data
 #define PMIX_NODE_MAP                       "pmix.nmap"             // (char*) regex of nodes containing procs for this job
 #define PMIX_PROC_MAP                       "pmix.pmap"             // (char*) regex describing procs on each node within this job
 #define PMIX_ANL_MAP                        "pmix.anlmap"           // (char*) process mapping in ANL notation (used in PMI-1/PMI-2)
@@ -405,7 +405,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_JOB_CONTINUOUS                 "pmix.continuous"       // (bool) application is continuous, all failed procs should
                                                                         //        be immediately restarted
 #define PMIX_MAX_RESTARTS                   "pmix.maxrestarts"      // (uint32_t) max number of times to restart a job
-#define PMIX_FWD_STDIN                      "pmix.fwd.stdin"        // (bool) forward the stdin from this process to the spawned processes
+#define PMIX_FWD_STDIN                      "pmix.fwd.stdin"        // (bool) forward the stdin from this process to the target processes
 #define PMIX_FWD_STDOUT                     "pmix.fwd.stdout"       // (bool) forward stdout from the spawned processes to this process (typically used by a tool)
 #define PMIX_FWD_STDERR                     "pmix.fwd.stderr"       // (bool) forward stderr from the spawned processes to this process (typically used by a tool)
 #define PMIX_FWD_STDDIAG                    "pmix.fwd.stddiag"      // (bool) if a diagnostic channel exists, forward any output on it
@@ -430,9 +430,9 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_QUERY_QUEUE_LIST               "pmix.qry.qlst"         // (char*) request a comma-delimited list of scheduler queues
 #define PMIX_QUERY_QUEUE_STATUS             "pmix.qry.qst"          // (TBD) status of a specified scheduler queue
 #define PMIX_QUERY_PROC_TABLE               "pmix.qry.ptable"       // (char*) input nspace of job whose info is being requested
-                                                                    //         returns (pmix_data_array_t) an array of pmix_proc_info_t
+                                                                    //         returns (pmix_data_array_t*) an array of pmix_proc_info_t
 #define PMIX_QUERY_LOCAL_PROC_TABLE         "pmix.qry.lptable"      // (char*) input nspace of job whose info is being requested
-                                                                    //         returns (pmix_data_array_t) an array of pmix_proc_info_t for
+                                                                    //         returns (pmix_data_array_t*) an array of pmix_proc_info_t for
                                                                     //         procs in job on same node
 #define PMIX_QUERY_AUTHORIZATIONS           "pmix.qry.auths"        // (bool) return operations tool is authorized to perform
 #define PMIX_QUERY_SPAWN_SUPPORT            "pmix.qry.spawn"        // (bool) return a comma-delimited list of supported spawn attributes
@@ -514,14 +514,40 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_ALLOC_NUM_CPU_LIST             "pmix.alloc.ncpulist"   // (char*) regex of #cpus for each node
 #define PMIX_ALLOC_CPU_LIST                 "pmix.alloc.cpulist"    // (char*) regex of specific cpus indicating the cpus involved.
 #define PMIX_ALLOC_MEM_SIZE                 "pmix.alloc.msize"      // (float) number of Mbytes
-#define PMIX_ALLOC_NETWORK                  "pmix.alloc.net"        // (array) array of pmix_info_t describing network resources. If not
-                                                                    //         given as part of an info struct that identifies the
-                                                                    //         impacted nodes, then the description will be applied
-                                                                    //         across all nodes in the requestor's allocation
-#define PMIX_ALLOC_NETWORK_ID               "pmix.alloc.netid"      // (char*) name of network
+#define PMIX_ALLOC_NETWORK                  "pmix.alloc.net"        // (pmix_data_array_t*) Array of pmix_info_t describing
+                                                                    //         network resource request. This must include at least:
+                                                                    //           * PMIX_ALLOC_NETWORK_ID
+                                                                    //           * PMIX_ALLOC_NETWORK_TYPE
+                                                                    //           * PMIX_ALLOC_NETWORK_ENDPTS
+                                                                    //         plus whatever other descriptors are desired
+#define PMIX_ALLOC_NETWORK_ID               "pmix.alloc.netid"      // (char*) key to be used when accessing this requested network allocation. The
+                                                                    //         allocation will be returned/stored as a pmix_data_array_t of
+                                                                    //         pmix_info_t indexed by this key and containing at least one
+                                                                    //         entry with the same key and the allocated resource description.
+                                                                    //         The type of the included value depends upon the network
+                                                                    //         support. For example, a TCP allocation might consist of a
+                                                                    //         comma-delimited string of socket ranges such as
+                                                                    //         "32000-32100,33005,38123-38146". Additional entries will consist
+                                                                    //         of any provided resource request directives, along with their
+                                                                    //         assigned values. Examples include:
+                                                                    //           * PMIX_ALLOC_NETWORK_TYPE - the type of resources provided
+                                                                    //           * PMIX_ALLOC_NETWORK_PLANE - if applicable, what plane the
+                                                                    //               resources were assigned from
+                                                                    //           * PMIX_ALLOC_NETWORK_QOS - the assigned QoS
+                                                                    //           * PMIX_ALLOC_BANDWIDTH - the allocated bandwidth
+                                                                    //           * PMIX_ALLOC_NETWORK_SEC_KEY - a security key for the requested
+                                                                    //               network allocation
+                                                                    //         NOTE: the assigned values may differ from those requested,
+                                                                    //         especially if the "required" flag was not set in the request
 #define PMIX_ALLOC_BANDWIDTH                "pmix.alloc.bw"         // (float) Mbits/sec
 #define PMIX_ALLOC_NETWORK_QOS              "pmix.alloc.netqos"     // (char*) quality of service level
-#define PMIX_ALLOC_TIME                     "pmix.alloc.time"       // (uint32_t) time in seconds
+#define PMIX_ALLOC_TIME                     "pmix.alloc.time"       // (uint32_t) time in seconds that the allocation shall remain valid
+#define PMIX_ALLOC_NETWORK_TYPE             "pmix.alloc.nettype"    // (char*) type of desired transport (e.g., tcp, udp)
+#define PMIX_ALLOC_NETWORK_PLANE            "pmix.alloc.netplane"   // (char*) id string for the NIC (aka plane) to be used for this allocation
+                                                                    //         (e.g., CIDR for Ethernet)
+#define PMIX_ALLOC_NETWORK_ENDPTS           "pmix.alloc.endpts"     // (size_t) number of endpoints to allocate
+#define PMIX_ALLOC_NETWORK_SEC_KEY          "pmix.alloc.nsec"       // (pmix_byte_object_t) network security key
+
 
 /* job control attributes */
 #define PMIX_JOB_CTRL_ID                    "pmix.jctrl.id"         // (char*) provide a string identifier for this request
@@ -575,11 +601,13 @@ typedef uint32_t pmix_rank_t;
                                                                     //            generating the event
 
 /* security attributes */
-#define PMIX_CRED_TYPE                      "pmix.sec.ctype"        //  when passed in PMIx_Get_credential, a prioritized,
+#define PMIX_CRED_TYPE                      "pmix.sec.ctype"        // (char*) when passed in PMIx_Get_credential, a prioritized,
                                                                     // comma-delimited list of desired credential types for use
                                                                     // in environments where multiple authentication mechanisms
                                                                     // may be available. When returned in a callback function, a
                                                                     // string identifier of the credential type
+#define PMIX_CRYPTO_KEY                     "pmix.sec.key"          // (pmix_byte_object_t) blob containing crypto key
+
 
 /* IO Forwarding Attributes */
 #define PMIX_IOF_CACHE_SIZE                 "pmix.iof.csize"        // (uint32_t) requested size of the server cache in bytes for each specified channel.
@@ -872,6 +900,7 @@ typedef uint8_t pmix_data_range_t;
 #define PMIX_RANGE_GLOBAL       5   // data available to all procs
 #define PMIX_RANGE_CUSTOM       6   // range is specified in a pmix_info_t
 #define PMIX_RANGE_PROC_LOCAL   7   // restrict range to the local proc
+#define PMIX_RANGE_INVALID   UINT8_MAX
 
 /* define a "persistence" policy for data published by clients */
 typedef uint8_t pmix_persistence_t;
@@ -880,6 +909,7 @@ typedef uint8_t pmix_persistence_t;
 #define PMIX_PERSIST_PROC           2   // retain until publishing process terminates
 #define PMIX_PERSIST_APP            3   // retain until application terminates
 #define PMIX_PERSIST_SESSION        4   // retain until session/allocation terminates
+#define PMIX_PERSIST_INVALID   UINT8_MAX
 
 /* define a set of bit-mask flags for specifying behavior of
  * command directives via pmix_info_t arrays */
@@ -1377,6 +1407,40 @@ typedef struct pmix_value {
             (m) = NULL;                                 \
         }                                               \
     } while (0)
+
+#define PMIX_VALUE_GET_NUMBER(s, m, n, t)               \
+    do {                                                \
+        (s) = PMIX_SUCCESS;                             \
+        if (PMIX_SIZE == (m)->type) {                   \
+            (n) = (t)((m)->data.size);                  \
+        } else if (PMIX_INT == (m)->type) {             \
+            (n) = (t)((m)->data.integer);               \
+        } else if (PMIX_INT8 == (m)->type) {            \
+            (n) = (t)((m)->data.int8);                  \
+        } else if (PMIX_INT16 == (m)->type) {           \
+            (n) = (t)((m)->data.int16);                 \
+        } else if (PMIX_INT32 == (m)->type) {           \
+            (n) = (t)((m)->data.int32);                 \
+        } else if (PMIX_INT64 == (m)->type) {           \
+            (n) = (t)((m)->data.int64);                 \
+        } else if (PMIX_UINT == (m)->type) {            \
+            (n) = (t)((m)->data.uint);                  \
+        } else if (PMIX_UINT8 == (m)->type) {           \
+            (n) = (t)((m)->data.uint8);                 \
+        } else if (PMIX_UINT16 == (m)->type) {          \
+            (n) = (t)((m)->data.uint16);                \
+        } else if (PMIX_UINT32 == (m)->type) {          \
+            (n) = (t)((m)->data.uint32);                \
+        } else if (PMIX_UINT64 == (m)->type) {          \
+            (n) = (t)((m)->data.uint64);                \
+        } else if (PMIX_FLOAT == (m)->type) {           \
+            (n) = (t)((m)->data.fval);                  \
+        } else if (PMIX_DOUBLE == (m)->type) {          \
+            (n) = (t)((m)->data.dval);                  \
+        } else {                                        \
+            (s) = PMIX_ERR_BAD_PARAM;                   \
+        }                                               \
+    } while(0)
 
 /* expose some functions that are resolved in the
  * PMIx library, but part of a header that

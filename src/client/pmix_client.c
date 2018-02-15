@@ -288,7 +288,9 @@ static void notification_fn(size_t evhdlr_registration_id,
         }
         /* if the object wasn't returned, then that is an error */
         if (NULL == lock) {
-            fprintf(stderr, "LOCK WASN'T RETURNED IN RELEASE CALLBACK\n");
+            pmix_output_verbose(2, pmix_client_globals.base_output,
+                                "event handler %s failed to return object",
+                                (NULL == name) ? "NULL" : name);
             /* let the event handler progress */
             if (NULL != cbfunc) {
                 cbfunc(PMIX_SUCCESS, NULL, 0, NULL, NULL, cbdata);

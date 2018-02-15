@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2015-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2015-2018 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -361,6 +361,7 @@ pmix_value_cmp_t pmix_bfrops_base_value_cmp(pmix_value_t *p,
                                             pmix_value_t *p1)
 {
     pmix_value_cmp_t rc = PMIX_VALUE1_GREATER;
+    int ret;
 
     if (p->type != p1->type) {
         return rc;
@@ -457,10 +458,10 @@ pmix_value_cmp_t pmix_bfrops_base_value_cmp(pmix_value_t *p,
                 if (NULL == p1->data.envar.envar) {
                     return PMIX_VALUE1_GREATER;
                 }
-                rc = strcmp(p->data.envar.envar, p1->data.envar.envar);
-                if (rc < 0) {
+                ret = strcmp(p->data.envar.envar, p1->data.envar.envar);
+                if (ret < 0) {
                     return PMIX_VALUE2_GREATER;
-                } else if (0 < rc) {
+                } else if (0 < ret) {
                     return PMIX_VALUE1_GREATER;
                 }
             } else if (NULL != p1->data.envar.envar) {
@@ -473,10 +474,10 @@ pmix_value_cmp_t pmix_bfrops_base_value_cmp(pmix_value_t *p,
                 if (NULL == p1->data.envar.value) {
                     return PMIX_VALUE1_GREATER;
                 }
-                rc = strcmp(p->data.envar.value, p1->data.envar.value);
-                if (rc < 0) {
+                ret = strcmp(p->data.envar.value, p1->data.envar.value);
+                if (ret < 0) {
                     return PMIX_VALUE2_GREATER;
-                } else if (0 < rc) {
+                } else if (0 < ret) {
                     return PMIX_VALUE1_GREATER;
                 }
             } else if (NULL != p1->data.envar.value) {

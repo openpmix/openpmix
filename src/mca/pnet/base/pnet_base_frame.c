@@ -46,11 +46,13 @@
 /* Instantiate the global vars */
 pmix_pnet_globals_t pmix_pnet_globals = {{{0}}};
 pmix_pnet_API_module_t pmix_pnet = {
-    .setup_app = pmix_pnet_base_setup_app,
+    .allocate = pmix_pnet_base_allocate,
     .setup_local_network = pmix_pnet_base_setup_local_network,
     .setup_fork = pmix_pnet_base_setup_fork,
     .child_finalized = pmix_pnet_base_child_finalized,
-    .local_app_finalized = pmix_pnet_base_local_app_finalized
+    .local_app_finalized = pmix_pnet_base_local_app_finalized,
+    .deregister_nspace = pmix_pnet_base_deregister_nspace,
+    .collect_inventory = pmix_pnet_base_collect_inventory
 };
 
 static pmix_status_t pmix_pnet_close(void)
