@@ -1361,6 +1361,7 @@ static void _setup_app(int sd, short args, void *cbdata)
         PMIX_LIST_FOREACH(kv, &ilist, pmix_kval_t) {
             PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buffer, kv, 1, PMIX_KVAL);
             if (PMIX_SUCCESS != rc) {
+                PMIX_DESTRUCT(&blob);
                 PMIX_RELEASE(fcd);
                 fcd = NULL;
                 goto depart;
@@ -1368,6 +1369,7 @@ static void _setup_app(int sd, short args, void *cbdata)
         }
         PMIX_INFO_CREATE(fcd->info, 1);
         if (NULL == fcd->info) {
+            PMIX_DESTRUCT(&blob);
             PMIX_RELEASE(fcd);
             fcd = NULL;
             goto depart;

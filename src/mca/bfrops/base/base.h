@@ -11,7 +11,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
- * Copyright (c) 2014-2017 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
@@ -381,6 +381,8 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_alloc_directive(pmix_buffer_t *b
                                                                 int32_t num_vals, pmix_data_type_t type);
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_iof_channel(pmix_buffer_t *buffer, const void *src,
                                                             int32_t num_vals, pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_envar(pmix_buffer_t *buffer, const void *src,
+                                                      int32_t num_vals, pmix_data_type_t type);
 
 /*
 * "Standard" unpack functions
@@ -470,6 +472,8 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_alloc_directive(pmix_buffer_t 
                                                                   int32_t *num_vals, pmix_data_type_t type);
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_iof_channel(pmix_buffer_t *buffer, void *dest,
                                                               int32_t *num_vals, pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_envar(pmix_buffer_t *buffer, void *dest,
+                                                        int32_t *num_vals, pmix_data_type_t type);
 /**** DEPRECATED ****/
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_array(pmix_buffer_t *buffer, void *dest,
                                                         int32_t *num_vals, pmix_data_type_t type);
@@ -530,6 +534,9 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
                                                        pmix_data_type_t type);
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_query(pmix_query_t **dest,
                                                       pmix_query_t *src,
+                                                      pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_envar(pmix_envar_t **dest,
+                                                      pmix_envar_t *src,
                                                       pmix_data_type_t type);
 /**** DEPRECATED ****/
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_array(pmix_info_array_t **dest,
@@ -644,6 +651,9 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_alloc_directive(char **output, 
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_iof_channel(char **output, char *prefix,
                                                             pmix_iof_channel_t *src,
                                                             pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_envar(char **output, char *prefix,
+                                                       pmix_envar_t *src,
+                                                       pmix_data_type_t type);
 
 /*
  * Common helper functions
