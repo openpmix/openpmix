@@ -75,7 +75,7 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
 {
     (void) pmix_mca_base_var_register("pmix", "ptl", "base", "max_msg_size",
                                       "Maximum allowed message size (in MBytes)",
-                                      PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                                      PMIX_MCA_BASE_VAR_TYPE_SIZE_T, NULL, 0, 0,
                                       PMIX_INFO_LVL_2,
                                       PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                       &max_msg_size);
