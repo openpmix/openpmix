@@ -20,8 +20,11 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to the
 current release as well as the "stable" bug fix release branch.
 
-2.0.3 -- 1 Feb 2018
+2.0.3 -- 23 Feb 2018
 ----------------------
+**** NOTE: PMIx_Get in PMIx v2.x will fail when requesting information
+**** on any process whose nspace has not yet been registered with the
+**** PMIx server
 - Fix event notification so all sides of multi-library get notified
   of other library's existence
 - Update syslog protection to support Mac High Sierra OS
@@ -40,6 +43,7 @@ current release as well as the "stable" bug fix release branch.
 - Ensure we always complete PMIx_Finalize - don't return if something
   goes wrong in the middle of the procedure
 - Fix several tool connection issues
+- Fix a mismatch in data type on an MCA param
 
 
 2.0.2 -- 19 Oct 2017
