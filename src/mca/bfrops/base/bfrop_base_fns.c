@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2015-2017 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2018 Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -49,6 +49,7 @@ void pmix_bfrops_base_value_load(pmix_value_t *v, const void *data,
 {
     pmix_byte_object_t *bo;
     pmix_proc_info_t *pi;
+    pmix_envar_t *envar;
 
     v->type = type;
     if (NULL == data) {
@@ -174,6 +175,16 @@ void pmix_bfrops_base_value_load(pmix_value_t *v, const void *data,
         case PMIX_POINTER:
             memcpy(&(v->data.ptr), data, sizeof(void*));
             break;
+        case PMIX_ENVAR:
+            envar = (pmix_envar_t*)data;
+            if (NULL != envar->envar) {
+                v->data.envar.envar = strdup(envar->envar);
+            }
+            if (NULL != envar->value) {
+                v->data.envar.value = strdup(envar->value);
+            }
+            v->data.envar.separator = envar->separator;
+            break;
         default:
             /* silence warnings */
             break;
@@ -187,6 +198,7 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv,
                                             size_t *sz)
 {
     pmix_status_t rc;
+    pmix_envar_t *envar;
 
     rc = PMIX_SUCCESS;
     if (NULL == data ||
@@ -304,6 +316,21 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv,
             memcpy(*data, &(kv->data.ptr), sizeof(void*));
             *sz = sizeof(void*);
             break;
+        case PMIX_ENVAR:
+            PMIX_ENVAR_CREATE(envar, 1);
+            if (NULL == envar) {
+                return PMIX_ERR_NOMEM;
+            }
+            if (NULL != kv->data.envar.envar) {
+                envar->envar = strdup(kv->data.envar.envar);
+            }
+            if (NULL != kv->data.envar.value) {
+                envar->value = strdup(kv->data.envar.value);
+            }
+            envar->separator = kv->data.envar.separator;
+            *data = envar;
+            *sz = sizeof(pmix_envar_t);
+            break;
         default:
             /* silence warnings */
             rc = PMIX_ERROR;
@@ -398,15 +425,57 @@ pmix_value_cmp_t pmix_bfrops_base_value_cmp(pmix_value_t *p,
             }
             break;
         case PMIX_COMPRESSED_STRING:
-            if (p->data.bo.size != p1->data.bo.size) {
-                return false;
+            if (p->data.bo.size > p1->data.bo.size) {
+                return PMIX_VALUE2_GREATER;
             } else {
-                return true;
+                return PMIX_VALUE1_GREATER;
             }
+            break;
         case PMIX_STATUS:
             if (p->data.status == p1->data.status) {
                 rc = PMIX_EQUAL;
             }
+            break;
+        case PMIX_ENVAR:
+            if (NULL != p->data.envar.envar) {
+                if (NULL == p1->data.envar.envar) {
+                    return PMIX_VALUE1_GREATER;
+                }
+                rc = strcmp(p->data.envar.envar, p1->data.envar.envar);
+                if (rc < 0) {
+                    return PMIX_VALUE2_GREATER;
+                } else if (0 < rc) {
+                    return PMIX_VALUE1_GREATER;
+                }
+            } else if (NULL != p1->data.envar.envar) {
+                /* we know value1->envar had to be NULL */
+                return PMIX_VALUE2_GREATER;
+            }
+
+            /* if both are NULL or are equal, then check value */
+            if (NULL != p->data.envar.value) {
+                if (NULL == p1->data.envar.value) {
+                    return PMIX_VALUE1_GREATER;
+                }
+                rc = strcmp(p->data.envar.value, p1->data.envar.value);
+                if (rc < 0) {
+                    return PMIX_VALUE2_GREATER;
+                } else if (0 < rc) {
+                    return PMIX_VALUE1_GREATER;
+                }
+            } else if (NULL != p1->data.envar.value) {
+                /* we know value1->value had to be NULL */
+                return PMIX_VALUE2_GREATER;
+            }
+
+            /* finally, check separator */
+            if (p->data.envar.separator < p1->data.envar.separator) {
+                return PMIX_VALUE2_GREATER;
+            }
+            if (p1->data.envar.separator < p->data.envar.separator) {
+                return PMIX_VALUE1_GREATER;
+            }
+            rc = PMIX_EQUAL;
             break;
         default:
             pmix_output(0, "COMPARE-PMIX-VALUE: UNSUPPORTED TYPE %d", (int)p->type);
@@ -431,6 +500,7 @@ pmix_status_t pmix_bfrops_base_value_xfer(pmix_value_t *p,
     pmix_modex_data_t *pm, *sm;
     pmix_proc_info_t *pi, *si;
     pmix_query_t *pq, *sq;
+    pmix_envar_t *pe, *se;
 
     /* copy the right field */
     p->type = src->type;
@@ -926,6 +996,23 @@ pmix_status_t pmix_bfrops_base_value_xfer(pmix_value_t *p,
                     }
                 }
                 break;
+            case PMIX_ENVAR:
+                PMIX_ENVAR_CREATE(p->data.darray->array, src->data.darray->size);
+                if (NULL == p->data.darray->array) {
+                    return PMIX_ERR_NOMEM;
+                }
+                pe = (pmix_envar_t*)p->data.darray->array;
+                se = (pmix_envar_t*)src->data.darray->array;
+                for (n=0; n < src->data.darray->size; n++) {
+                    if (NULL != se[n].envar) {
+                        pe[n].envar = strdup(se[n].envar);
+                    }
+                    if (NULL != se[n].value) {
+                        pe[n].value = strdup(se[n].value);
+                    }
+                    pe[n].separator = se[n].separator;
+                }
+                break;
             default:
                 return PMIX_ERR_UNKNOWN_DATA_TYPE;
         }
@@ -933,6 +1020,17 @@ pmix_status_t pmix_bfrops_base_value_xfer(pmix_value_t *p,
     case PMIX_POINTER:
         memcpy(&p->data.ptr, &src->data.ptr, sizeof(void*));
         break;
+    case PMIX_ENVAR:
+        PMIX_ENVAR_CONSTRUCT(&p->data.envar);
+        if (NULL != src->data.envar.envar) {
+            p->data.envar.envar = strdup(src->data.envar.envar);
+        }
+        if (NULL != src->data.envar.value) {
+            p->data.envar.value = strdup(src->data.envar.value);
+        }
+        p->data.envar.separator = src->data.envar.separator;
+        break;
+
     /**** DEPRECATED ****/
     case PMIX_INFO_ARRAY:
         p->data.array->size = src->data.array->size;

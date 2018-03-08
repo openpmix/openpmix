@@ -422,19 +422,22 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_DEBUG_WAIT_FOR_NOTIFY          "pmix.dbg.notify"       // (bool) block at desired point until receiving debugger release notification
 #define PMIX_DEBUG_JOB                      "pmix.dbg.job"          // (char*) nspace of the job to be debugged - the RM/PMIx server are
 #define PMIX_DEBUG_WAITING_FOR_NOTIFY       "pmix.dbg.waiting"      // (bool) job to be debugged is waiting for a release
-#define PMIX_PREPEND_LD_PRELOAD             "pmix.prepend.preload"  // (char*) prepend the named library to any existing
-                                                                    //         LD_PRELOAD directive
-#define PMIX_APPEND_LD_PRELOAD              "pmix.append.preload"   // (char*) append the named library to any existing
-                                                                    //         LD_PRELOAD directive
 
 
 /* Resource Manager identification */
 #define PMIX_RM_NAME                        "pmix.rm.name"          // (char*) string name of the resource manager
 #define PMIX_RM_VERSION                     "pmix.rm.version"       // (char*) RM version string
 
-/* attributes for setting envars */
-#define PMIX_SET_ENVAR                      "pmix.set.envar"        // (char*) string "key=value" value shall be put into the environment
-#define PMIX_UNSET_ENVAR                    "pmix.unset.envar"      // (char*) unset envar specified in string
+/* environmental variable operation attributes */
+#define PMIX_SET_ENVAR                      "pmix.envar.set"          // (pmix_envar_t*) set the envar to the given value,
+                                                                      //                 overwriting any pre-existing one
+#define PMIX_UNSET_ENVAR                    "pmix.envar.unset"        // (char*) unset the envar, if present
+#define PMIX_PREPEND_ENVAR                  "pmix.envar.prepnd"       // (pmix_envar_t*) prepend the given value to the
+                                                                      //                 specified envar using the separator
+                                                                      //                 character, creating the envar if it doesn't already exist
+#define PMIX_APPEND_ENVAR                   "pmix.envar.appnd"        // (pmix_envar_t*) append the given value to the specified
+                                                                      //                 envar using the separator character,
+                                                                      //                 creating the envar if it doesn't already exist
 
 /* attributes relating to allocations */
 #define PMIX_ALLOC_ID                       "pmix.alloc.id"         // (char*) provide a string identifier for this allocation request
@@ -753,6 +756,7 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_INFO_ARRAY         44
 /****            ****/
 #define PMIX_IOF_CHANNEL        45
+#define PMIX_ENVAR              46
 /********************/
 
 /* define a boundary for implementers so they can add their own data types */
@@ -878,6 +882,62 @@ typedef struct pmix_byte_object {
     } while(0)
 
 
+/****    PMIX ENVAR STRUCT   ****/
+/* Provide a structure for specifying environment variable modifications
+ * Standard environment variables (e.g., PATH, LD_LIBRARY_PATH, and LD_PRELOAD)
+ * take multiple arguments separated by delimiters. Unfortunately, the delimiters
+ * depend upon the variable itself - some use semi-colons, some colons, etc. Thus,
+ * the operation requires not only the name of the variable to be modified and
+ * the value to be inserted, but also the separator to be used when composing
+ * the aggregate value
+ */
+typedef struct {
+    char *envar;
+    char *value;
+    char separator;
+} pmix_envar_t;
+
+#define PMIX_ENVAR_CREATE(m, n)                                     \
+    do {                                                            \
+        (m) = (pmix_envar_t*)calloc((n) , sizeof(pmix_envar_t));    \
+    } while (0)
+#define PMIX_ENVAR_FREE(m, n)                       \
+    do {                                            \
+        size_t _k;                                  \
+        if (NULL != (m)) {                          \
+            for (_k=0; _k < (n); _k++) {            \
+               PMIX_ENVAR_DESTRUCT(&(m)[_k]);       \
+            }                                       \
+            free((m));                              \
+        }                                           \
+    } while (0)
+#define PMIX_ENVAR_CONSTRUCT(m)        \
+    do {                               \
+        (m)->envar = NULL;             \
+        (m)->value = NULL;             \
+        (m)->separator = '\0';         \
+    } while(0)
+#define PMIX_ENVAR_DESTRUCT(m)         \
+    do {                               \
+        if (NULL != (m)->envar) {      \
+            free((m)->envar);          \
+        }                              \
+        if (NULL != (m)->value) {      \
+            free((m)->value);          \
+        }                              \
+    } while(0)
+#define PMIX_ENVAR_LOAD(m, e, v, s)    \
+    do {                               \
+        if (NULL != (e)) {             \
+            (m)->envar = strdup(e);    \
+        }                              \
+        if (NULL != (v)) {             \
+            (m)->value = strdup(v);    \
+        }                              \
+        (m)->separator = (s);          \
+    } while(0)
+
+
 /****    PMIX DATA BUFFER    ****/
 typedef struct pmix_data_buffer {
     /** Start of my memory */
@@ -994,9 +1054,9 @@ typedef struct pmix_proc_info {
         (m) = (pmix_proc_info_t*)calloc((n) , sizeof(pmix_proc_info_t));    \
     } while (0)
 
-#define PMIX_PROC_INFO_RELEASE(m)   \
-    do {                            \
-        PMIX_PROC_INFO_FREE((m));   \
+#define PMIX_PROC_INFO_RELEASE(m)      \
+    do {                               \
+        PMIX_PROC_INFO_FREE((m), 1);   \
     } while (0)
 
 #define PMIX_PROC_INFO_CONSTRUCT(m)                 \
@@ -1080,6 +1140,7 @@ typedef struct pmix_value {
         pmix_data_array_t *darray;
         void *ptr;
         pmix_alloc_directive_t adir;
+        pmix_envar_t envar;
         /**** DEPRECATED ****/
         pmix_info_array_t *array;
         /********************/
@@ -1190,6 +1251,8 @@ typedef struct pmix_value {
             }                                                                       \
             free(_p);                                                               \
         /********************/                                                      \
+        } else if (PMIX_ENVAR == (m)->type) {                                       \
+            PMIX_ENVAR_DESTRUCT(&(m)->data.envar);                                  \
         }                                                                           \
     } while (0)
 

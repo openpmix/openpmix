@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2017 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2018 Intel, Inc. All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
@@ -699,7 +699,7 @@ static pmix_status_t resolve_nodes(const char *nspace,
     pmix_proc_t proc;
 
     cb = PMIX_NEW(pmix_cb_t);
-    cb->pname.nspace = strdup(nspace);
+    cb->pname.nspace = (char*)nspace;
 
     PMIX_THREADSHIFT(cb, _resolve_nodes);
 

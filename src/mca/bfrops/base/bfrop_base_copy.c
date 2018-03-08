@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2014-2017 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
@@ -403,6 +403,7 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
     pmix_modex_data_t *pm, *sm;
     pmix_proc_info_t *pi, *si;
     pmix_query_t *pq, *sq;
+    pmix_envar_t *pe, *se;
 
     p = (pmix_data_array_t*)calloc(1, sizeof(pmix_data_array_t));
     if (NULL == p) {
@@ -823,6 +824,24 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
                 }
             }
             break;
+        case PMIX_ENVAR:
+            PMIX_ENVAR_CREATE(p->array, src->size);
+            if (NULL == p->array) {
+                free(p);
+                return PMIX_ERR_NOMEM;
+            }
+            pe = (pmix_envar_t*)p->array;
+            se = (pmix_envar_t*)src->array;
+            for (n=0; n < src->size; n++) {
+                if (NULL != se[n].envar) {
+                    pe[n].envar = strdup(se[n].envar);
+                }
+                if (NULL != se[n].value) {
+                    pe[n].value = strdup(se[n].value);
+                }
+                pe[n].separator = se[n].separator;
+            }
+            break;
         default:
             free(p);
             return PMIX_ERR_UNKNOWN_DATA_TYPE;
@@ -877,3 +896,21 @@ pmix_status_t pmix_bfrops_base_copy_array(pmix_info_array_t **dest,
     return PMIX_SUCCESS;
 }
 /*******************/
+
+pmix_status_t pmix_bfrops_base_copy_envar(pmix_envar_t **dest,
+                                          pmix_envar_t *src,
+                                          pmix_data_type_t type)
+{
+    *dest = (pmix_envar_t*)malloc(sizeof(pmix_envar_t));
+    if (NULL == (*dest)) {
+        return PMIX_ERR_NOMEM;
+    }
+    if (NULL != src->envar) {
+        (*dest)->envar = strdup(src->envar);
+    }
+    if (NULL != src->value) {
+        (*dest)->value = strdup(src->value);
+    }
+    (*dest)->separator = src->separator;
+    return PMIX_SUCCESS;
+}
