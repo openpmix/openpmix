@@ -147,6 +147,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_CONNECT_RETRY_DELAY            "pmix.tool.retry"       // (uint32_t) time in seconds between connection attempts
 #define PMIX_TOOL_DO_NOT_CONNECT            "pmix.tool.nocon"       // (bool) the tool wants to use internal PMIx support, but does
                                                                     //        not want to connect to a PMIx server
+                                                                    //        from the specified processes to this tool
 
 /* identification attributes */
 #define PMIX_USERID                         "pmix.euid"             // (uint32_t) effective user id
@@ -220,7 +221,9 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_LOCAL_CPUSETS                  "pmix.lcpus"            // (char*) colon-delimited cpusets of local peers within the specified nspace
 #define PMIX_PROC_URI                       "pmix.puri"             // (char*) URI containing contact info for proc
 #define PMIX_LOCALITY                       "pmix.loc"              // (uint16_t) relative locality of two procs
-#define PMIX_PARENT_ID                      "pmix.parent"           // (pmix_proc_t) process identifier of my parent process
+#define PMIX_PARENT_ID                      "pmix.parent"           // (pmix_proc_t*) identifier of the process that called PMIx_Spawn
+                                                                    //                to launch this proc's application
+
 
 /* size info */
 #define PMIX_UNIV_SIZE                      "pmix.univ.size"        // (uint32_t) #procs in this nspace
@@ -324,7 +327,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_EVENT_WANT_TERMINATION         "pmix.evterm"           // (bool) indicates that the handler has determined that the application should be terminated
 
 
-/* attributes used to describe "spawn" attributes */
+/* attributes used to describe "spawn" directives */
 #define PMIX_PERSONALITY                    "pmix.pers"             // (char*) name of personality to use
 #define PMIX_HOST                           "pmix.host"             // (char*) comma-delimited list of hosts to use for spawned procs
 #define PMIX_HOSTFILE                       "pmix.hostfile"         // (char*) hostfile to use for spawned procs
@@ -341,10 +344,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_PRELOAD_BIN                    "pmix.preloadbin"       // (bool) preload binaries
 #define PMIX_PRELOAD_FILES                  "pmix.preloadfiles"     // (char*) comma-delimited list of files to pre-position
 #define PMIX_NON_PMI                        "pmix.nonpmi"           // (bool) spawned procs will not call PMIx_Init
-#define PMIX_STDIN_TGT                      "pmix.stdin"            // (uint32_t) spawned proc rank that is to receive stdin
-#define PMIX_FWD_STDIN                      "pmix.fwd.stdin"        // (bool) forward my stdin to the designated proc
-#define PMIX_FWD_STDOUT                     "pmix.fwd.stdout"       // (bool) forward stdout from spawned procs to me
-#define PMIX_FWD_STDERR                     "pmix.fwd.stderr"       // (bool) forward stderr from spawned procs to me
+#define PMIX_STDIN_TGT                      "pmix.stdin"            // (pmix_proc_t) proc that is to receive stdin
+                                                                    //               (PMIX_RANK_WILDCARD = all in given nspace)
 #define PMIX_DEBUGGER_DAEMONS               "pmix.debugger"         // (bool) spawned app consists of debugger daemons
 #define PMIX_COSPAWN_APP                    "pmix.cospawn"          // (bool) designated app is to be spawned as a disconnected
                                                                     //        job - i.e., not part of the "comm_world" of the job
@@ -364,6 +365,11 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_JOB_CONTINUOUS                 "pmix.continuous"       // (bool) application is continuous, all failed procs should
                                                                         //        be immediately restarted
 #define PMIX_MAX_RESTARTS                   "pmix.maxrestarts"      // (uint32_t) max number of times to restart a job
+#define PMIX_FWD_STDIN                      "pmix.fwd.stdin"        // (bool) forward the stdin from this process to the spawned processes
+#define PMIX_FWD_STDOUT                     "pmix.fwd.stdout"       // (bool) forward stdout from the spawned processes to this process (typically used by a tool)
+#define PMIX_FWD_STDERR                     "pmix.fwd.stderr"       // (bool) forward stderr from the spawned processes to this process (typically used by a tool)
+#define PMIX_FWD_STDDIAG                    "pmix.fwd.stddiag"      // (bool) if a diagnostic channel exists, forward any output on it
+                                                                    //        from the spawned processes to this process (typically used by a tool)
 
 
 /* connect attributes */
@@ -416,6 +422,11 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_DEBUG_WAIT_FOR_NOTIFY          "pmix.dbg.notify"       // (bool) block at desired point until receiving debugger release notification
 #define PMIX_DEBUG_JOB                      "pmix.dbg.job"          // (char*) nspace of the job to be debugged - the RM/PMIx server are
 #define PMIX_DEBUG_WAITING_FOR_NOTIFY       "pmix.dbg.waiting"      // (bool) job to be debugged is waiting for a release
+#define PMIX_PREPEND_LD_PRELOAD             "pmix.prepend.preload"  // (char*) prepend the named library to any existing
+                                                                    //         LD_PRELOAD directive
+#define PMIX_APPEND_LD_PRELOAD              "pmix.append.preload"   // (char*) append the named library to any existing
+                                                                    //         LD_PRELOAD directive
+
 
 /* Resource Manager identification */
 #define PMIX_RM_NAME                        "pmix.rm.name"          // (char*) string name of the resource manager
@@ -501,6 +512,26 @@ typedef uint32_t pmix_rank_t;
                                                                     // may be available. When returned in a callback function, a
                                                                     // string identifier of the credential type
 
+/* IO Forwarding Attributes */
+#define PMIX_IOF_CACHE_SIZE        "pmix.iof.csize"       // (uint32_t) requested size of the server cache in bytes for each specified channel.
+                                                          //            By default, the server is allowed (but not required) to drop
+                                                          //            all bytes received beyond the max size
+#define PMIX_IOF_DROP_OLDEST       "pmix.iof.old"         // (bool) in an overflow situation, drop the oldest bytes to make room in the cache
+#define PMIX_IOF_DROP_NEWEST       "pmix.iof.new"         // (bool) in an overflow situation, drop any new bytes received until room becomes
+                                                          //        available in the cache (default)
+#define PMIX_IOF_BUFFERING_SIZE    "pmix.iof.bsize"       // (uint32_t) basically controls grouping of IO on the specified channel(s) to
+                                                          //            avoid being called every time a bit of IO arrives. The library
+                                                          //            will execute the callback whenever the specified number of bytes
+                                                          //            becomes available. Any remaining buffered data will be "flushed"
+                                                          //            upon call to deregister the respective channel
+#define PMIX_IOF_BUFFERING_TIME    "pmix.iof.btime"       // (uint32_t) max time in seconds to buffer IO before delivering it. Used in conjunction
+                                                          //            with buffering size, this prevents IO from being held indefinitely
+                                                          //            while waiting for another payload to arrive
+#define PMIX_IOF_COMPLETE          "pmix.iof.cmp"         // (bool) indicates whether or not the specified IO channel has been closed
+                                                          //        by the source
+#define PMIX_IOF_PUSH_STDIN        "pmix.iof.stdin"       // (bool) Used by a tool to request that the PMIx library collect
+                                                          //        the tool's stdin and forward it to the procs specified in
+                                                          //        the PMIx_IOF_push call
 
 /****    PROCESS STATE DEFINITIONS    ****/
 typedef uint8_t pmix_proc_state_t;
@@ -720,6 +751,8 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_ALLOC_DIRECTIVE    43
 /**** DEPRECATED ****/
 #define PMIX_INFO_ARRAY         44
+/****            ****/
+#define PMIX_IOF_CHANNEL        45
 /********************/
 
 /* define a boundary for implementers so they can add their own data types */
@@ -786,11 +819,32 @@ typedef uint8_t pmix_alloc_directive_t;
 #define PMIX_ALLOC_EXTERNAL     128
 
 
+/* define a set of bit-mask flags for specifying IO
+ * forwarding channels. These can be OR'd together
+ * to reference multiple channels */
+typedef uint16_t pmix_iof_channel_t;
+#define PMIX_FWD_NO_CHANNELS        0x0000
+#define PMIX_FWD_STDIN_CHANNEL      0x0001
+#define PMIX_FWD_STDOUT_CHANNEL     0x0002
+#define PMIX_FWD_STDERR_CHANNEL     0x0004
+#define PMIX_FWD_STDDIAG_CHANNEL    0x0008
+#define PMIX_FWD_ALL_CHANNELS       0x00ff
+
+
 /****    PMIX BYTE OBJECT    ****/
 typedef struct pmix_byte_object {
     char *bytes;
     size_t size;
 } pmix_byte_object_t;
+
+#define PMIX_BYTE_OBJECT_CREATE(m, n)   \
+    do {                                \
+        (m) = (pmix_byte_object_t*)malloc((n) * sizeof(pmix_byte_object_t));   \
+        if (NULL != (m)) {                                                     \
+            memset((m), 0, (n)*sizeof(pmix_byte_object_t));                    \
+        }                                                                      \
+    } while(0)
+
 #define PMIX_BYTE_OBJECT_CONSTRUCT(m)   \
     do {                                \
         (m)->bytes = NULL;              \
@@ -1629,14 +1683,19 @@ typedef void (*pmix_notification_fn_t)(size_t evhdlr_registration_id,
                                        pmix_event_notification_cbfunc_fn_t cbfunc,
                                        void *cbdata);
 
-/* define a callback function for calls to PMIx_Register_evhdlr. The
- * status indicates if the request was successful or not, evhdlr_ref is
- * an integer reference assigned to the event handler by PMIx, this reference
- * must be used to deregister the err handler. A ptr to the original
- * cbdata is returned. */
-typedef void (*pmix_evhdlr_reg_cbfunc_t)(pmix_status_t status,
-                                         size_t evhdlr_ref,
-                                         void *cbdata);
+/* define a callback function for calls to register handlers, e.g., event
+ * notification and IOF requests
+ *
+ * status - PMIX_SUCCESS or an appropriate error constant
+ *
+ * refid - reference identifier assigned to the handler by PMIx,
+ *         used to deregister the handler
+ *
+ * cbdata - object provided to the registration call
+ */
+typedef void (*pmix_hdlr_reg_cbfunc_t)(pmix_status_t status,
+                                       size_t refid,
+                                       void *cbdata);
 
 /* define a callback function for calls to PMIx_Get_nb. The status
  * indicates if the requested data was found or not - a pointer to the
@@ -1761,7 +1820,7 @@ typedef void (*pmix_validation_cbfunc_t)(pmix_status_t status,
 PMIX_EXPORT void PMIx_Register_event_handler(pmix_status_t codes[], size_t ncodes,
                                              pmix_info_t info[], size_t ninfo,
                                              pmix_notification_fn_t evhdlr,
-                                             pmix_evhdlr_reg_cbfunc_t cbfunc,
+                                             pmix_hdlr_reg_cbfunc_t cbfunc,
                                              void *cbdata);
 
 /* Deregister an event handler
@@ -1819,6 +1878,7 @@ PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status,
  * - pmix_info_directives_t   (PMIX_INFO_DIRECTIVES)
  * - pmix_data_type_t   (PMIX_DATA_TYPE)
  * - pmix_alloc_directive_t  (PMIX_ALLOC_DIRECTIVE)
+ * - pmix_iof_channel_t  (PMIX_IOF_CHANNEL)
  */
 PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t status);
 PMIX_EXPORT const char* PMIx_Proc_state_string(pmix_proc_state_t state);
@@ -1828,6 +1888,7 @@ PMIX_EXPORT const char* PMIx_Data_range_string(pmix_data_range_t range);
 PMIX_EXPORT const char* PMIx_Info_directives_string(pmix_info_directives_t directives);
 PMIX_EXPORT const char* PMIx_Data_type_string(pmix_data_type_t type);
 PMIX_EXPORT const char* PMIx_Alloc_directive_string(pmix_alloc_directive_t directive);
+PMIX_EXPORT const char* PMIx_IOF_channel_string(pmix_iof_channel_t channel);
 
 /* Get the PMIx version string. Note that the provided string is
  * statically defined and must NOT be free'd  */
