@@ -1727,7 +1727,7 @@ static void _spcb(int sd, short args, void *cbdata)
     PMIX_SERVER_QUEUE_REPLY(cd->cd->peer, cd->cd->hdr.tag, reply);
     /* cleanup */
     PMIX_RELEASE(cd->cd);
-    PMIX_WAKEUP_THREAD(&cd->lock);
+    PMIX_RELEASE(cd);
 }
 
 static void spawn_cbfunc(pmix_status_t status, char *nspace, void *cbdata)
@@ -1741,8 +1741,6 @@ static void spawn_cbfunc(pmix_status_t status, char *nspace, void *cbdata)
     cd->cd = (pmix_server_caddy_t*)cbdata;;
 
     PMIX_THREADSHIFT(cd, _spcb);
-    PMIX_WAIT_THREAD(&cd->lock);
-    PMIX_RELEASE(cd);
 }
 
 static void lookup_cbfunc(pmix_status_t status, pmix_pdata_t pdata[], size_t ndata,
