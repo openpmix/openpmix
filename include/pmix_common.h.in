@@ -154,13 +154,24 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_GRPID                          "pmix.egid"             // (uint32_t) effective group id
 #define PMIX_DSTPATH                        "pmix.dstpath"          // (char*) path to dstore files
 #define PMIX_VERSION_INFO                   "pmix.version"          // (char*) PMIx version of contactor
+#define PMIX_REQUESTOR_IS_TOOL              "pmix.req.tool"         // (bool) requesting process is a tool
+#define PMIX_REQUESTOR_IS_CLIENT            "pmix.req.client"       // (bool) requesting process is a client process
+
+/* model attributes */
 #define PMIX_PROGRAMMING_MODEL              "pmix.pgm.model"        // (char*) programming model being initialized (e.g., "MPI" or "OpenMP")
 #define PMIX_MODEL_LIBRARY_NAME             "pmix.mdl.name"         // (char*) programming model implementation ID (e.g., "OpenMPI" or "MPICH")
 #define PMIX_MODEL_LIBRARY_VERSION          "pmix.mld.vrs"          // (char*) programming model version string (e.g., "2.1.1")
 #define PMIX_THREADING_MODEL                "pmix.threads"          // (char*) threading model used (e.g., "pthreads")
-#define PMIX_REQUESTOR_IS_TOOL              "pmix.req.tool"         // (bool) requesting process is a tool
-#define PMIX_REQUESTOR_IS_CLIENT            "pmix.req.client"       // (bool) requesting process is a client process
-
+#define PMIX_MODEL_NUM_THREADS              "pmix.mdl.nthrds"       // (uint64_t) number of active threads being used by the model
+#define PMIX_MODEL_NUM_CPUS                 "pmix.mdl.ncpu"         // (uint64_t) number of cpus being used by the model
+#define PMIX_MODEL_CPU_TYPE                 "pmix.mdl.cputype"      // (char*) granularity - "hwthread", "core", etc.
+#define PMIX_MODEL_PHASE_NAME               "pmix.mdl.phase"        // (char*) user-assigned name for a phase in the application execution - e.g.,
+                                                                    //         "cfd reduction"
+#define PMIX_MODEL_PHASE_TYPE               "pmix.mdl.ptype"        // (char*) type of phase being executed - e.g., "matrix multiply"
+#define PMIX_MODEL_AFFINITY_POLICY          "pmix.mdl.tap"          // (char*) thread affinity policy - e.g.:
+                                                                    //           "master" (thread co-located with master thread),
+                                                                    //           "close" (thread located on cpu close to master thread)
+                                                                    //           "spread" (threads load-balanced across available cpus)
 
 /* attributes for the USOCK rendezvous socket  */
 #define PMIX_USOCK_DISABLE                  "pmix.usock.disable"    // (bool) disable legacy usock support
@@ -672,6 +683,9 @@ typedef int pmix_status_t;
 #define PMIX_GDS_ACTION_COMPLETE                (PMIX_ERR_OP_BASE - 18)
 #define PMIX_PROC_HAS_CONNECTED                 (PMIX_ERR_OP_BASE - 19)
 #define PMIX_CONNECT_REQUESTED                  (PMIX_ERR_OP_BASE - 20)
+#define PMIX_MODEL_RESOURCES                    (PMIX_ERR_OP_BASE - 21)     // model resource usage has changed
+#define PMIX_OPENMP_PARALLEL_ENTERED            (PMIX_ERR_OP_BASE - 22)     // an OpenMP parallel region has been entered
+#define PMIX_OPENMP_PARALLEL_EXITED             (PMIX_ERR_OP_BASE - 23)     // an OpenMP parallel region has completed
 
 /* define a starting point for system error constants so
  * we avoid renumbering when making additions */
