@@ -333,7 +333,8 @@ static pmix_status_t store_map(pmix_hash_table_t *ht,
     }
 
     /* store the comma-delimited list of nodes hosting
-     * procs in this nspace */
+     * procs in this nspace in case someone using PMIx v2
+     * requests it */
     kp2 = PMIX_NEW(pmix_kval_t);
     kp2->key = strdup(PMIX_NODE_LIST);
     kp2->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
@@ -397,6 +398,19 @@ pmix_status_t hash_cache_job_info(struct pmix_nspace_t *ns,
     ht = &trk->internal;
     for (n=0; n < ninfo; n++) {
         if (0 == strcmp(info[n].key, PMIX_NODE_MAP)) {
+            /* store the node map itself since that is
+             * what v3 uses */
+            kp2 = PMIX_NEW(pmix_kval_t);
+            kp2->key = strdup(PMIX_NODE_MAP);
+            kp2->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+            kp2->value->type = PMIX_STRING;
+            kp2->value->data.string = strdup(info[n].value.data.string);
+            if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, kp2))) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(kp2);
+                return rc;
+            }
+
             /* parse the regex to get the argv array of node names */
             if (PMIX_SUCCESS != (rc = pmix_preg.parse_nodes(info[n].value.data.string, &nodes))) {
                 PMIX_ERROR_LOG(rc);
@@ -658,7 +672,8 @@ static pmix_status_t hash_register_job_info(struct pmix_peer_t *pr,
     pmix_status_t rc;
     pmix_hash_trkr_t *trk, *t2;
 
-    if (!PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
+    if (!PMIX_PROC_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
         /* this function is only available on servers */
         PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
         return PMIX_ERR_NOT_SUPPORTED;
@@ -758,7 +773,8 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                         "[%s:%u] pmix:gds:hash store job info for nspace %s",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank, nspace);
 
-    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
+    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
         /* this function is NOT available on servers */
         PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
         return PMIX_ERR_NOT_SUPPORTED;
@@ -1044,10 +1060,10 @@ static pmix_status_t hash_store(const pmix_proc_t *proc,
     pmix_kval_t *kp;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
-                        "[%s:%d] gds:hash:hash_store for proc [%s:%d] key %s scope %s",
+                        "[%s:%d] gds:hash:hash_store for proc [%s:%d] key %s type %s scope %s",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank,
                         proc->nspace, proc->rank, kv->key,
-                        PMIx_Scope_string(scope));
+                        PMIx_Data_type_string(kv->value->type), PMIx_Scope_string(scope));
 
     if (NULL == kv->key) {
         return PMIX_ERR_BAD_PARAM;

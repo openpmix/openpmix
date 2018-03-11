@@ -282,6 +282,12 @@ pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer,
                                                   void *cbdata);
 void pmix_server_execute_collective(int sd, short args, void *cbdata);
 
+pmix_status_t pmix_server_initialize(void);
+
+void pmix_server_message_handler(struct pmix_peer_t *pr,
+                                 pmix_ptl_hdr_t *hdr,
+                                 pmix_buffer_t *buf, void *cbdata);
+
 PMIX_EXPORT extern pmix_server_module_t pmix_host_server;
 PMIX_EXPORT extern pmix_server_globals_t pmix_server_globals;
 

@@ -56,6 +56,12 @@ BEGIN_C_DECLS
 #define PMIX_PNET_SETUP_APP                 "pmix.pnet.setapp"      // (pmix_byte_object_t) blob containing info to be given to
                                                                     //      pnet framework on remote nodes
 
+#define PMIX_INFO_OP_COMPLETE    0x80000000
+#define PMIX_INFO_OP_COMPLETED(m)            \
+    ((pmix_info_t*)(m))->flags |= PMIX_INFO_OP_COMPLETE
+#define PMIX_INFO_OP_IS_COMPLETE(m)          \
+    ((m)->flags & PMIX_INFO_OP_COMPLETE)
+
 /* define an internal-only process name that has
  * a dynamically-sized nspace field to save memory */
 typedef struct {
@@ -168,6 +174,8 @@ typedef struct {
     pmix_personality_t compat;
     pmix_epilog_t epilog;       // things to do upon termination of all local clients
                                 // from this nspace
+    pmix_list_t setup_data;     // list of pmix_kval_t containing info structs having blobs
+                                // for setting up the local node for this nspace/application
 } pmix_nspace_t;
 PMIX_CLASS_DECLARATION(pmix_nspace_t);
 
@@ -382,14 +390,6 @@ PMIX_CLASS_DECLARATION(pmix_cb_t);
 } while (0)
 
 
-#define PMIX_WAIT_FOR_COMPLETION(a)             \
-    do {                                        \
-        while ((a)) {                           \
-            usleep(10);                         \
-        }                                       \
-        PMIX_ACQUIRE_OBJECT((a));               \
-    } while (0)
-
 typedef struct {
     pmix_object_t super;
     pmix_event_t ev;
@@ -397,9 +397,28 @@ typedef struct {
     pmix_status_t status;
     pmix_proc_t source;
     pmix_data_range_t range;
+    /* For notification, we use the targets field to track
+     * any custom range of procs that are to receive the
+     * event.
+     */
     pmix_proc_t *targets;
     size_t ntargets;
+    /* When generating a notification, the originator can
+     * specify the range of procs affected by this event.
+     * For example, when creating a JOB_TERMINATED event,
+     * the RM can specify the nspace of the job that has
+     * ended, thus allowing users to provide a different
+     * callback object based on the nspace being monitored.
+     * We use the "affected" field to track these values
+     * when processing the event chain.
+     */
+    pmix_proc_t *affected;
+    size_t naffected;
+    /* track if the event generator stipulates that default
+     * event handlers are/are not to be given the event */
     bool nondefault;
+    /* carry along any other provided info so the individual
+     * handlers can look at it */
     pmix_info_t *info;
     size_t ninfo;
     pmix_buffer_t *buf;
