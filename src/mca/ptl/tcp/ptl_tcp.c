@@ -54,6 +54,7 @@
 #include "src/util/os_path.h"
 #include "src/util/show_help.h"
 #include "src/mca/bfrops/base/base.h"
+#include "src/mca/gds/gds.h"
 
 #include "src/mca/ptl/base/base.h"
 #include "ptl_tcp.h"
@@ -114,7 +115,7 @@ static pmix_status_t try_connect(char *uri, int *sd, pmix_info_t info[], size_t 
 static pmix_status_t df_search(char *dirname, char *prefix,
                                pmix_info_t info[], size_t ninfo,
                                int *sd, char **nspace,
-                               pmix_rank_t *rank);
+                               pmix_rank_t *rank, char **uri);
 
 static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
                                      pmix_info_t *info, size_t ninfo)
@@ -134,6 +135,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
     pmix_info_caddy_t *kv;
     pmix_info_t *iptr = NULL;
     size_t niptr = 0;
+    pmix_kval_t *urikv = NULL;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:tcp: connecting to server");
@@ -183,6 +185,11 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
         pmix_client_globals.myserver->nptr->compat.bfrops = pmix_globals.mypeer->nptr->compat.bfrops;
         /* mark that we are using the V2 (i.e., tcp) protocol */
         pmix_globals.mypeer->protocol = PMIX_PROTOCOL_V2;
+        /* save the URI for storage */
+        urikv = PMIX_NEW(pmix_kval_t);
+        urikv->key = strdup(PMIX_SERVER_URI);
+        PMIX_VALUE_CREATE(urikv->value, 1);
+        PMIX_VALUE_LOAD(urikv->value, evar, PMIX_STRING);
 
         /* the URI consists of the following elements:
         *    - server nspace.rank
@@ -387,6 +394,12 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
             }
             return rc;
         }
+        /* save the URI for storage */
+        urikv = PMIX_NEW(pmix_kval_t);
+        urikv->key = strdup(PMIX_SERVER_URI);
+        PMIX_VALUE_CREATE(urikv->value, 1);
+        PMIX_VALUE_LOAD(urikv->value, suri, PMIX_STRING);
+        /* cleanup */
         free(suri);
         suri = NULL;
         if (NULL != rendfile) {
@@ -419,6 +432,12 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
                 goto complete;
             }
         }
+        /* save the URI for storage */
+        urikv = PMIX_NEW(pmix_kval_t);
+        urikv->key = strdup(PMIX_SERVER_URI);
+        PMIX_VALUE_CREATE(urikv->value, 1);
+        PMIX_VALUE_LOAD(urikv->value, suri, PMIX_STRING);
+        /* cleanup */
         if (NULL != nspace) {
             free(nspace);
         }
@@ -451,10 +470,18 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
                             filename);
         nspace = NULL;
         rc = df_search(mca_ptl_tcp_component.system_tmpdir,
-                       filename, iptr, niptr, &sd, &nspace, &rank);
+                       filename, iptr, niptr, &sd, &nspace, &rank, &suri);
         free(filename);
         if (PMIX_SUCCESS == rc) {
+            /* save the URI for storage */
+            urikv = PMIX_NEW(pmix_kval_t);
+            urikv->key = strdup(PMIX_SERVER_URI);
+            PMIX_VALUE_CREATE(urikv->value, 1);
+            PMIX_VALUE_LOAD(urikv->value, suri, PMIX_STRING);
             goto complete;
+        }
+        if (NULL != suri) {
+            free(suri);
         }
         if (NULL != nspace) {
             free(nspace);
@@ -483,10 +510,18 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
                             filename);
         nspace = NULL;
         rc = df_search(mca_ptl_tcp_component.system_tmpdir,
-                       filename, iptr, niptr, &sd, &nspace, &rank);
+                       filename, iptr, niptr, &sd, &nspace, &rank, &suri);
         free(filename);
         if (PMIX_SUCCESS == rc) {
+            /* save the URI for storage */
+            urikv = PMIX_NEW(pmix_kval_t);
+            urikv->key = strdup(PMIX_SERVER_URI);
+            PMIX_VALUE_CREATE(urikv->value, 1);
+            PMIX_VALUE_LOAD(urikv->value, suri, PMIX_STRING);
             goto complete;
+        }
+        if (NULL != suri) {
+            free(suri);
         }
         if (NULL != nspace) {
             free(nspace);
@@ -519,9 +554,14 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
             /* go ahead and try to connect */
             if (PMIX_SUCCESS == try_connect(suri, &sd, iptr, niptr)) {
                 /* don't free nspace - we will use it below */
-            if (NULL != iptr) {
-                PMIX_INFO_FREE(iptr, niptr);
-            }
+                if (NULL != iptr) {
+                    PMIX_INFO_FREE(iptr, niptr);
+                }
+                /* save the URI for storage */
+                urikv = PMIX_NEW(pmix_kval_t);
+                urikv->key = strdup(PMIX_SERVER_URI);
+                PMIX_VALUE_CREATE(urikv->value, 1);
+                PMIX_VALUE_LOAD(urikv->value, suri, PMIX_STRING);
                 goto complete;
             }
             free(nspace);
@@ -562,7 +602,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
                         filename);
     nspace = NULL;
     rc = df_search(mca_ptl_tcp_component.system_tmpdir,
-                   filename, iptr, niptr, &sd, &nspace, &rank);
+                   filename, iptr, niptr, &sd, &nspace, &rank, &suri);
     free(filename);
     if (PMIX_SUCCESS != rc) {
         if (NULL != nspace){
@@ -576,6 +616,11 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
         }
         return PMIX_ERR_UNREACH;
     }
+    /* save the URI for storage */
+    urikv = PMIX_NEW(pmix_kval_t);
+    urikv->key = strdup(PMIX_SERVER_URI);
+    PMIX_VALUE_CREATE(urikv->value, 1);
+    PMIX_VALUE_LOAD(urikv->value, suri, PMIX_STRING);
     if (NULL != iptr) {
         PMIX_INFO_FREE(iptr, niptr);
     }
@@ -620,6 +665,11 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
         pmix_client_globals.myserver->info->pname.nspace = strdup(pmix_client_globals.myserver->nptr->nspace);
         pmix_client_globals.myserver->info->pname.rank = rank;
     }
+    /* store the URI for subsequent lookups */
+    PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
+                      &pmix_globals.myid, PMIX_INTERNAL,
+                      urikv);
+    PMIX_RELEASE(urikv);  // maintain accounting
 
     pmix_ptl_base_set_nonblocking(sd);
 
@@ -1309,7 +1359,7 @@ static pmix_status_t recv_connect_ack(int sd, uint8_t myflag)
 static pmix_status_t df_search(char *dirname, char *prefix,
                                pmix_info_t info[], size_t ninfo,
                                int *sd, char **nspace,
-                               pmix_rank_t *rank)
+                               pmix_rank_t *rank, char **uri)
 {
     char *suri, *nsp, *newdir;
     pmix_rank_t rk;
@@ -1339,7 +1389,7 @@ static pmix_status_t df_search(char *dirname, char *prefix,
         }
         /* if it is a directory, down search */
         if (S_ISDIR(buf.st_mode)) {
-            rc = df_search(newdir, prefix, info, ninfo, sd, nspace, rank);
+            rc = df_search(newdir, prefix, info, ninfo, sd, nspace, rank, uri);
             free(newdir);
             if (PMIX_SUCCESS == rc) {
                 closedir(cur_dirp);
@@ -1363,7 +1413,7 @@ static pmix_status_t df_search(char *dirname, char *prefix,
                     (*nspace) = nsp;
                     *rank = rk;
                     closedir(cur_dirp);
-                    free(suri);
+                    *uri = suri;
                     free(newdir);
                     return PMIX_SUCCESS;
                 }
