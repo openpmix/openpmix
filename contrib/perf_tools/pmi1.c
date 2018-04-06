@@ -184,7 +184,7 @@ void pmi_get_key_loc(int rank, char *key_name, int **key_val, int *key_size)
     pmi_get_key_rem(rank, key_name, key_val, key_size);
 }
 
-float pmi_get_double(int rank, char *key)
+double pmi_get_double(int rank, char *key)
 {
     int rc;
     char *tmp = calloc(vallen_max, sizeof(char));
