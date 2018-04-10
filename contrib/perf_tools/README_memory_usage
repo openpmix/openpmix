@@ -1,0 +1,46 @@
+This code allow you to get memory usage of mpi process and the daemon.
+The infomation come from /proc/pid/status(VmRss VmSize, etc)  & /proc/pid/smaps(Rss & Pss) & /proc/pid/maps (read/write memory: mapwr)
+
+#Build
+    $ gcc be_true.c memory.c -o be_true
+    $ mpicc check_memory.c memory.c -o check_memory
+
+#Usage
+
+    $ ./be_true
+    $ mpirun -np 4 ./check_memory
+
+    Print information for both mpi process and daemon:
+        long VmSize;
+        long VmRss;
+        int Rss;
+        int Pss;
+        int mapwr;
+
+        #output infomation format is
+        Rank,VmRSS(status),VmSize,Rss(smaps),Pss,Ppid,pVmRSS(status),pVmSize,pRss(smaps),pPss,mapwr,pmapwr,key
+
+#processing test results
+Run result_process.py can process results, include statistis calculation of mean / std, also detect outier
+(1) Data saved in memory_info.csv by sbatch_slurm.sh
+    Table columns are:
+    "Rank,VmRSS(status),VmSize,Rss(smaps),Pss,Ppid,pVmRSS(status),pVmSize,pRss(smaps),pPss,mapwr,pmapwr,key"
+
+(2)Also generate scatter/boxplot figures for mpi_process_pss, daemon_pss.
+
+# more info http://man7.org/linux/man-pages/man5/proc.5.html
+#           https://en.wikipedia.org/wiki/Proportional_set_size
+
+mapwr -  all the read/write memory for the process, from
+
+PSS – This is the most valuable column. It adds together the unique memory (USS)
+and a proportion of shared memory derived by dividing total shared memory by the
+number of other processes sharing that memory. Thus it will give you an accurate
+representation of how much actual physical memory is being used per process, with
+shared memory truly represented as shared. Think of it as physical memory.
+
+RSS – Resident Set Size, which is the amount of shared memory plus unshared memory
+used by each process. If any processes share memory, this will overreport the amount
+of memory actually used, because the same shared memory will be counted more than once,
+appearing again in each other process that shares the same memory. Thus it is an unreliable
+number, especially when high-memory processes have a lot of forks.
