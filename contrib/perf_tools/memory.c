@@ -21,7 +21,7 @@ int ppid, Ppid;
 
 /* sum of RSS/PSS from /proc/pid/smaps */
 int RssSum, PssSum, pRssSum, pPssSum;
-int mapwr, pmapwr;
+int mapwr, libs_mem, ompi_libs_mem, anonymous_mem, pmapwr, plibs_mem, pompi_libs_mem, panonymous_mem;
 /* parent Vmrss/vmsize */
 long pVmRSS, pVmSize;
 
@@ -181,35 +181,63 @@ void maps_wr(int pid)
     char line[256];
 
     char* search_result;
+    char* search_result1;
+    char* search_result2;
+    char* search_result3;
     char* token;
 
     char *start, *end;
     long sum=0, temp=0;
+    long sum_lib=0, sum_ompi=0, sum_anom=0;
     /* get info line by line, only care line with rw-p, sub start addr - end addr */
     while (fgets(line, sizeof(line), procfile))
     {
         search_result = strstr(line, "rw-p");
-        if (search_result != NULL)
+        search_result1 = strstr(line, "lib");
+        search_result2 = strstr(line, "ompi");
+        search_result3 = strstr(line, "00000000");
+        if ( (search_result != NULL) )
         {
             token = strtok(line, " ");
             start = strtok(token, "-");
             token = strtok(NULL, "-");
             temp = (strtol(token, &end,16) - strtol(start, *end,16))/1024;
             sum = sum +temp;
+            if ( search_result1 != NULL )
+            {
+                sum_lib = sum_lib + temp;
+            }
+            if ( search_result2 != NULL )
+            {
+                sum_ompi = sum_ompi + temp;
+            }
+            if ( search_result3 != NULL )
+            {
+                sum_anom = sum_anom +temp;
+            }
         }
     }
     if(pid==0)
     {
         mapwr = sum;
+        libs_mem = sum_lib;
+        ompi_libs_mem = sum_ompi;
+        anonymous_mem = sum_anom;
     }
     else
     {
         pmapwr =sum;
+        plibs_mem = sum_lib;
+        pompi_libs_mem = sum_ompi;
+        panonymous_mem = sum_anom;
     }
     fclose(procfile);
 }
 
 void print_info()
 {
-    printf("%6d,  %6ld, %6ld, %6d, %6d, %6d, %6ld, %6ld, %6d, %6d, %6d, %6d, MEM_info\n", rank, meminfo.VmRss, meminfo.VmSize, RssSum, PssSum, Ppid, pVmRSS, pVmSize, pRssSum, pPssSum, mapwr, pmapwr);
+    printf("%6d,  %6ld, %6ld, %6d, %6d, %6d, %6ld, %6ld, %6d, %6d, %6d, %6d, %6d, %6d, %6d, %6d, %6d, %6d, %6d, %6d, MEM_info\n",
+            rank, meminfo.VmRss, meminfo.VmSize, RssSum, PssSum, Ppid, pVmRSS, pVmSize, pRssSum, pPssSum,
+            mapwr, libs_mem, ompi_libs_mem, anonymous_mem, mapwr-anonymous_mem,
+            pmapwr, plibs_mem, pompi_libs_mem, panonymous_mem, pmapwr - panonymous_mem);
 }

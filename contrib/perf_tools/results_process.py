@@ -10,7 +10,7 @@ f.close()
 f = open("selected.csv","w")
 
 #insert table title
-f.write("Rank,VmRSS(status),VmSize,Rss(smaps),Pss,Ppid,pVmRSS(status),pVmSize,pRss(smaps),pPss,mapwr,pmapwr,meminfo\n")
+f.write("Rank,VmRSS(status),VmSize,Rss(smaps),Pss,Ppid,pVmRSS(status),pVmSize,pRss(smaps),pPss,mapwr,LibsMem,OmpiLibsMem,AnonymousMem,NotAnonymousMem,pmapwr,pLibsMem,pOmpiLibsMem,pAnonymousMem,pNotAnonymousMem,meminfo\n")
 
 #Select lines with key value MEM_info
 for line in lines:
@@ -58,18 +58,18 @@ plt.xlabel('Mpi Rank', fontsize=14, color='blue')
 #red dashes, blue squares
 #plt.plot(data["Pss"], 'r--', data["pPss"], 'bs')
 plt.plot(data["Rank"], data["Pss"], 'rs')
-plt.savefig('Mpi_process_pss.pdf')
+plt.savefig('Mpi_process_pss.pdf',bbox_inches='tight')
 
 plt.figure()
 data.boxplot(column=["Pss"])
-plt.savefig('Mpi_process_pss_boxplot.pdf')
+plt.savefig('Mpi_process_pss_boxplot.pdf',bbox_inches='tight')
 
 plt.figure()
 plt.ylabel('Daemon memory usage Pss(KB)', fontsize=14, color='blue')
 plt.xlabel('Child Mpi Rank', fontsize=14, color='blue')
 #red dashes, blue squares
 plt.plot(data["Rank"],data["pPss"], 'rs')
-plt.savefig('Daemon_pss.pdf')
+plt.savefig('Daemon_pss.pdf',bbox_inches='tight')
 
 plt.figure()
 data.boxplot(column=["pPss"])
@@ -79,19 +79,41 @@ plt.figure()
 plt.ylabel('Mpi process w/r memory usage(KB)', fontsize=14, color='blue')
 plt.xlabel('Mpi Rank', fontsize=14, color='blue')
 plt.plot(data["Rank"], data["mapwr"], 'rs')
-plt.savefig('Mpi_process_mapwr.pdf')
+plt.plot(data["Rank"], data["AnonymousMem"], 'bs')
+plt.legend(['w/r memory', 'AnonymousMem'], loc='center left', bbox_to_anchor=(1, 0.5))
+plt.savefig('Mpi_process_mapwr.pdf',bbox_inches='tight')
 
 plt.figure()
 data.boxplot(column=["mapwr"])
-plt.savefig('Mpi_process_mapwr_boxplot.pdf')
+data.boxplot(column=["AnonymousMem"])
+plt.legend(['w/r memory', 'AnonymousMem'], loc='center left', bbox_to_anchor=(1, 0.5))
+plt.savefig('Mpi_process_mapwr_boxplot.pdf',bbox_inches='tight')
 
 plt.figure()
 plt.ylabel('Daemon memory w/r usage(KB)', fontsize=14, color='blue')
 plt.xlabel('Child Mpi Rank', fontsize=14, color='blue')
 #red dashes, blue squares
 plt.plot(data["Rank"],data["pmapwr"], 'rs')
-plt.savefig('Daemon_pmapwr.pdf')
+plt.plot(data["Rank"],data["pAnonymousMem"], 'bs')
+plt.legend(['w/r memory', 'AnonymousMem'], loc='center left', bbox_to_anchor=(1, 0.5))
+plt.savefig('Daemon_pmapwr.pdf',bbox_inches='tight')
 
 plt.figure()
 data.boxplot(column=["pmapwr"])
-plt.savefig('Daemon_pmapwr_boxplot.pdf')
+data.boxplot(column=["pAnonymousMem"])
+plt.legend(['w/r memory', 'AnonymousMem'], loc='center left', bbox_to_anchor=(1, 0.5))
+plt.savefig('Daemon_pmapwr_boxplot.pdf',bbox_inches='tight')
+
+plt.figure()
+plt.ylabel('Process/Daemon libs w/r memory usage(KB)', fontsize=14, color='blue')
+plt.xlabel('Child Mpi Rank', fontsize=14, color='blue')
+#red dashes, blue squares
+plt.plot(data["Rank"],data["LibsMem"], 'r*')
+plt.plot(data["Rank"],data["OmpiLibsMem"], 'b*')
+plt.plot(data["Rank"],data["NotAnonymousMem"], 'g*')
+plt.plot(data["Rank"],data["pLibsMem"], 'r+')
+plt.plot(data["Rank"],data["pOmpiLibsMem"], 'b+')
+plt.plot(data["Rank"],data["pNotAnonymousMem"], 'g+')
+
+plt.legend(['LibsMem', 'OmpiLibsMem', 'NotAnonymousMem', 'pLibsMem', 'pOmpiLibsMem', 'pNotAnonymousMem'], loc='center left', bbox_to_anchor=(1, 0.5))
+plt.savefig('Libs_mapwr.pdf',bbox_inches='tight')
