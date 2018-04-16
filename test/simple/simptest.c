@@ -130,6 +130,14 @@ PMIX_CLASS_INSTANCE(pmix_locdat_t,
                     pmix_list_item_t,
                     NULL, NULL);
 
+#define PMIX_WAIT_FOR_COMPLETION(a)             \
+    do {                                        \
+        while ((a)) {                           \
+            usleep(10);                         \
+        }                                       \
+        PMIX_ACQUIRE_OBJECT((a));               \
+    } while (0)
+
 typedef struct {
     pmix_object_t super;
     volatile bool active;

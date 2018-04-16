@@ -1310,5 +1310,5 @@ pmix_status_t pmix_bfrops_base_pack_envar(pmix_buffer_t *buffer, const void *src
             return ret;
         }
     }
-    return pmix_bfrops_base_pack_int16(buffer, src, num_vals, PMIX_UINT16);
+    return PMIX_SUCCESS;
 }

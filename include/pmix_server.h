@@ -326,7 +326,24 @@ typedef void (*pmix_server_tool_connection_fn_t)(pmix_info_t *info, size_t ninfo
                                                  pmix_tool_connection_cbfunc_t cbfunc,
                                                  void *cbdata);
 
-/* Log data on behalf of a client */
+/* Log data on behalf of a client. Calls to the host thru this
+ * function must _NOT_ call the PMIx_Log API as this will
+ * trigger an infinite loop. Instead, the implementation must
+ * perform one of three operations:
+ *
+ * (a) transfer the data+directives to a "gateway" server
+ *     where they can be logged. Gateways are designated
+ *     servers on nodes (typically service nodes) where
+ *     centralized logging is supported. The data+directives
+ *     may be passed to the PMIx_Log API once arriving at
+ *     that destination.
+ *
+ * (b) transfer the data to a logging channel outside of
+ *     PMIx, but directly supported by the host
+ *
+ * (c) return an error to the caller indicating that the
+ *     requested action is not supported
+ */
 typedef void (*pmix_server_log_fn_t)(const pmix_proc_t *client,
                                      const pmix_info_t data[], size_t ndata,
                                      const pmix_info_t directives[], size_t ndirs,

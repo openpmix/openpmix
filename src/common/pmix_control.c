@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2017 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
@@ -127,16 +127,11 @@ PMIX_EXPORT pmix_status_t PMIx_Job_control_nb(const pmix_proc_t targets[], size_
         return PMIX_ERR_INIT;
     }
 
-    /* if we aren't connected, don't attempt to send */
-    if (!PMIX_PROC_IS_SERVER(pmix_globals.mypeer) && !pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return PMIX_ERR_UNREACH;
-    }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
-
     /* if we are the server, then we just issue the request and
      * return the response */
-    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
+    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
         if (NULL == pmix_host_server.job_control) {
             /* nothing we can do */
             return PMIX_ERR_NOT_SUPPORTED;
@@ -149,6 +144,13 @@ PMIX_EXPORT pmix_status_t PMIx_Job_control_nb(const pmix_proc_t targets[], size_
                                           cbfunc, cbdata);
         return rc;
     }
+
+    /* we need to send, so check for connection */
+    if (!pmix_globals.connected) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return PMIX_ERR_UNREACH;
+    }
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* if we are a client, then relay this request to the server */
     msg = PMIX_NEW(pmix_buffer_t);
@@ -237,16 +239,11 @@ PMIX_EXPORT pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pm
         return PMIX_ERR_INIT;
     }
 
-    /* if we aren't connected, don't attempt to send */
-    if (!PMIX_PROC_IS_SERVER(pmix_globals.mypeer) && !pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return PMIX_ERR_UNREACH;
-    }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
-
     /* if we are the server, then we just issue the request and
      * return the response */
-    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
+    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
         if (NULL == pmix_host_server.monitor) {
             /* nothing we can do */
             return PMIX_ERR_NOT_SUPPORTED;
@@ -257,6 +254,13 @@ PMIX_EXPORT pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pm
                                       directives, ndirs, cbfunc, cbdata);
         return rc;
     }
+
+    /* we need to send, so check for connection */
+    if (!pmix_globals.connected) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return PMIX_ERR_UNREACH;
+    }
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* if we are a client, then relay this request to the server */
     msg = PMIX_NEW(pmix_buffer_t);

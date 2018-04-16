@@ -11,7 +11,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
- * Copyright (c) 2014-2017 Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
@@ -78,7 +78,9 @@ typedef struct pmix_pnet_globals_t pmix_pnet_globals_t;
 
 PMIX_EXPORT extern pmix_pnet_globals_t pmix_pnet_globals;
 
-PMIX_EXPORT pmix_status_t pmix_pnet_base_setup_app(char *nspace, pmix_list_t *ilist);
+PMIX_EXPORT pmix_status_t pmix_pnet_base_setup_app(char *nspace,
+                                                   pmix_info_t info[], size_t ninfo,
+                                                   pmix_list_t *ilist);
 PMIX_EXPORT pmix_status_t pmix_pnet_base_setup_local_network(char *nspace,
                                                              pmix_info_t info[],
                                                              size_t ninfo);

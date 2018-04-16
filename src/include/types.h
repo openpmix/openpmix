@@ -232,6 +232,8 @@ typedef struct event pmix_event_t;
 
 #define pmix_event_base_free(b) event_base_free(b)
 
+#define pmix_event_free(x) event_free(x)
+
 #define pmix_event_base_loopbreak(b) event_base_loopbreak(b)
 
 #define pmix_event_base_loopexit(b) event_base_loopexit(b, NULL)

@@ -37,6 +37,7 @@
 #include "src/mca/gds/base/base.h"
 #include "src/mca/pif/base/base.h"
 #include "src/mca/pinstalldirs/base/base.h"
+#include "src/mca/plog/base/base.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/mca/preg/base/base.h"
 #include "src/mca/psec/base/base.h"
@@ -70,6 +71,9 @@ void pmix_rte_finalize(void)
         return;
     }
 
+
+    /* close plog */
+    (void)pmix_mca_base_framework_close(&pmix_plog_base_framework);
 
     /* close preg */
     (void)pmix_mca_base_framework_close(&pmix_preg_base_framework);
