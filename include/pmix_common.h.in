@@ -117,18 +117,6 @@ typedef uint32_t pmix_rank_t;
  *
  */
 
-/****  PMIX ENVIRONMENTAL PARAMETERS  ****/
-/* There are a few environmental parameters used by PMIx for
- * various operations. While there is no "definition" of them
- * as values, we do record them here for informational purposes.
- *
- * PMIX_LAUNCHER_PAUSE_FOR_TOOL - if set to non-zero value, instructs
- * launchers (e.g., "prun") to stop prior to spawning the application until
- * a tool can connect with further instructions. This envar will be
- * set by the tool and is _not_ intended for the direct use of users.
- *
- */
-
 /* define a set of "standard" PMIx attributes that can
  * be queried. Implementations (and users) are free to extend as
  * desired, so the get functions need to be capable
