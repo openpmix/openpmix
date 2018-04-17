@@ -32,7 +32,7 @@ BEGIN_C_DECLS
  * Plog interfaces
  */
 
-extern pmix_plog_base_component_t mca_plog_default_component;
+PMIX_EXPORT extern pmix_plog_base_component_t mca_plog_default_component;
 extern pmix_plog_module_t pmix_plog_default_module;
 
 END_C_DECLS

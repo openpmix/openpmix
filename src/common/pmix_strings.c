@@ -121,6 +121,8 @@ PMIX_EXPORT const char* PMIx_Persistence_string(pmix_persistence_t persist)
             return "RETAIN UNTIL APPLICATION OF PUBLISHING PROCESS TERMINATES";
         case PMIX_PERSIST_SESSION:
             return "RETAIN UNTIL ALLOCATION OF PUBLISHING PROCESS TERMINATES";
+        case PMIX_PERSIST_INVALID:
+            return "INVALID";
         default:
             return "UNKNOWN PERSISTENCE";
     }
@@ -145,6 +147,8 @@ PMIX_EXPORT const char* PMIx_Data_range_string(pmix_data_range_t range)
             return "AVAIL AS SPECIFIED IN DIRECTIVES";
         case PMIX_RANGE_PROC_LOCAL:
             return "AVAIL ON LOCAL PROC ONLY";
+        case PMIX_RANGE_INVALID:
+            return "INVALID";
         default:
             return "UNKNOWN";
     }

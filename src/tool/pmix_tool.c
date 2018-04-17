@@ -200,7 +200,7 @@ static void pmix_tool_notify_recv(struct pmix_peer_t *peer,
     pmix_invoke_local_event_hdlr(chain);
     return;
 
-  error:
+    error:
     /* we always need to return */
     pmix_output_verbose(2, pmix_client_globals.event_output,
                         "pmix:tool_notify_recv - unpack error status =%d, calling def errhandler", rc);
@@ -208,7 +208,6 @@ static void pmix_tool_notify_recv(struct pmix_peer_t *peer,
     chain->status = rc;
     pmix_invoke_local_event_hdlr(chain);
 }
-
 
 static void tool_iof_handler(struct pmix_peer_t *pr,
                              pmix_ptl_hdr_t *hdr,
@@ -675,6 +674,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
             PMIX_IOF_READ_ACTIVATE(&stdinev);
         }
     }
+
     /* increment our init reference counter */
     pmix_globals.init_cntr++;
 

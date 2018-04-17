@@ -749,7 +749,6 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
             mca_ptl_tcp_component.nspace_filename = NULL;
             goto sockerror;
         }
-
     }
 
     /* we need listener thread support */

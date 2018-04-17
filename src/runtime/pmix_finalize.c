@@ -84,9 +84,6 @@ void pmix_rte_finalize(void)
     /* close the security framework */
     (void)pmix_mca_base_framework_close(&pmix_psec_base_framework);
 
-    /* close the pnet framework */
-    (void)pmix_mca_base_framework_close(&pmix_pnet_base_framework);
-
     /* close bfrops */
     (void)pmix_mca_base_framework_close(&pmix_bfrops_base_framework);
 

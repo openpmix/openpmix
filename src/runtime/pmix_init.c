@@ -300,16 +300,6 @@ int pmix_rte_init(pmix_proc_type_t type,
         return ret;
     }
 
-    /* open the pnet and select the active modules for this environment */
-    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_pnet_base_framework, 0))) {
-        error = "pmix_pnet_base_open";
-        goto return_error;
-    }
-    if (PMIX_SUCCESS != (ret = pmix_pnet_base_select())) {
-        error = "pmix_pnet_base_select";
-        goto return_error;
-    }
-
     /* open the preg and select the active plugins */
     if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_preg_base_framework, 0)) ) {
         error = "pmix_preg_base_open";

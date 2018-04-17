@@ -21,7 +21,8 @@
 
 AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/include -I$(top_builddir)/include/pmix
 
-noinst_PROGRAMS = simptest simpclient simppub simpdyn simpft simpdmodex test_pmix simptool simpdie simplegacy simptimeout
+noinst_PROGRAMS = simptest simpclient simppub simpdyn simpft simpdmodex \
+                  test_pmix simptool simpdie simplegacy simptimeout gwtest gwclient
 
 simptest_SOURCES = \
         simptest.c
@@ -87,4 +88,16 @@ simptimeout_SOURCES = \
         simptimeout.c
 simptimeout_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 simptimeout_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
+gwtest_SOURCES = \
+        gwtest.c
+gwtest_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+gwtest_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
+gwclient_SOURCES = \
+        gwclient.c
+gwclient_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+gwclient_LDADD = \
     $(top_builddir)/src/libpmix.la

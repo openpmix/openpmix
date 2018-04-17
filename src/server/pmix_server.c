@@ -60,7 +60,7 @@
 #include "src/mca/base/base.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/pinstalldirs/base/base.h"
-#include "src/mca/pnet/pnet.h"
+#include "src/mca/pnet/base/base.h"
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/runtime/pmix_rte.h"
 #include "src/mca/bfrops/base/base.h"
@@ -187,6 +187,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         PMIX_SOCKET_MODE,
         PMIX_SERVER_TOOL_SUPPORT,
         PMIX_SERVER_SYSTEM_SUPPORT,
+        PMIX_SERVER_GATEWAY,
         NULL
     };
     char *evar;
@@ -363,6 +364,14 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     PMIX_RETAIN(pmix_globals.mypeer->info);
     pmix_client_globals.myserver->info = pmix_globals.mypeer->info;
 
+    /* open the pnet framework and select the active modules for this environment */
+    if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pnet_base_framework, 0))) {
+        return rc;
+    }
+    if (PMIX_SUCCESS != (rc = pmix_pnet_base_select())) {
+        return rc;
+    }
+
     /* setup the wildcard recv for inbound messages from clients */
     req = PMIX_NEW(pmix_ptl_posted_recv_t);
     req->tag = UINT32_MAX;
@@ -472,6 +481,10 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     if (NULL != gds_mode) {
         free(gds_mode);
     }
+
+    /* close the pnet framework */
+    (void)pmix_mca_base_framework_close(&pmix_pnet_base_framework);
+
     pmix_rte_finalize();
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
@@ -590,7 +603,13 @@ static void _deregister_nspace(int sd, short args, void *cbdata)
                         "pmix:server _deregister_nspace %s",
                         cd->proc.nspace);
 
-    /* see if we already have this nspace */
+    /* release any job-level messaging resources */
+    pmix_pnet.deregister_nspace(cd->proc.nspace);
+
+    /* let our local storage clean up */
+    PMIX_GDS_DEL_NSPACE(rc, cd->proc.nspace);
+
+    /* release this nspace */
     PMIX_LIST_FOREACH(tmp, &pmix_server_globals.nspaces, pmix_nspace_t) {
         if (0 == strcmp(tmp->nspace, cd->proc.nspace)) {
             pmix_list_remove_item(&pmix_server_globals.nspaces, &tmp->super);
@@ -598,12 +617,6 @@ static void _deregister_nspace(int sd, short args, void *cbdata)
             break;
         }
     }
-
-    /* let our local storage clean up */
-    PMIX_GDS_DEL_NSPACE(rc, cd->proc.nspace);
-
-    /* release any job-level messaging resources */
-    pmix_pnet.local_app_finalized(cd->proc.nspace);
 
     /* release the caller */
     if (NULL != cd->opcbfunc) {
@@ -1375,9 +1388,9 @@ static void _setup_app(int sd, short args, void *cbdata)
     PMIX_CONSTRUCT(&ilist, pmix_list_t);
 
     /* pass to the network libraries */
-    if (PMIX_SUCCESS != (rc = pmix_pnet.setup_app(cd->nspace,
-                                                  cd->info, cd->ninfo,
-                                                  &ilist))) {
+    if (PMIX_SUCCESS != (rc = pmix_pnet.allocate(cd->nspace,
+                                                 cd->info, cd->ninfo,
+                                                 &ilist))) {
         goto depart;
     }
 
