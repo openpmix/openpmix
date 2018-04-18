@@ -540,25 +540,25 @@ static pmix_status_t allocate(pmix_nspace_t *nptr,
                         if (NULL == avail) {
                             continue;
                         }
-                        /* setup to track the assignment */
-                        trk = PMIX_NEW(tcp_port_tracker_t);
-                        if (NULL == trk) {
-                            pmix_argv_free(reqs);
-                            return PMIX_ERR_NOMEM;
-                        }
-                        trk->nspace = strdup(nptr->nspace);
-                        PMIX_RETAIN(avail);
-                        trk->src = avail;
-                        pmix_list_append(&allocations, &trk->super);
-                        rc = process_request(nptr, idkey, ports_per_node, trk, &mylist);
-                        if (PMIX_SUCCESS != rc) {
-                            /* return the allocated ports */
-                            pmix_list_remove_item(&allocations, &trk->super);
-                            PMIX_RELEASE(trk);
-                            return rc;
-                        }
-                        allocated = true;
                     }
+                    /* setup to track the assignment */
+                    trk = PMIX_NEW(tcp_port_tracker_t);
+                    if (NULL == trk) {
+                        pmix_argv_free(reqs);
+                        return PMIX_ERR_NOMEM;
+                    }
+                    trk->nspace = strdup(nptr->nspace);
+                    PMIX_RETAIN(avail);
+                    trk->src = avail;
+                    pmix_list_append(&allocations, &trk->super);
+                    rc = process_request(nptr, idkey, ports_per_node, trk, &mylist);
+                    if (PMIX_SUCCESS != rc) {
+                        /* return the allocated ports */
+                        pmix_list_remove_item(&allocations, &trk->super);
+                        PMIX_RELEASE(trk);
+                        return rc;
+                    }
+                    allocated = true;
                 }
             } else {
                 avail = (tcp_available_ports_t*)pmix_list_get_first(&available);
@@ -695,7 +695,8 @@ static pmix_status_t setup_local_network(pmix_nspace_t *nptr,
                     PMIX_BFROPS_VALUE_XFER(rc, pmix_globals.mypeer,
                                            &jinfo[m].value, kv->value);
                     /* if this is the ID key, save it */
-                    if (0 == strncmp(kv->key, PMIX_ALLOC_NETWORK_ID, PMIX_MAX_KEYLEN)) {
+                    if (NULL == idkey &&
+                        0 == strncmp(kv->key, PMIX_ALLOC_NETWORK_ID, PMIX_MAX_KEYLEN)) {
                         idkey = strdup(kv->value->data.string);
                     }
                     ++m;
@@ -729,6 +730,9 @@ static pmix_status_t setup_local_network(pmix_nspace_t *nptr,
                 PMIX_INFO_DESTRUCT(&stinfo);
             }
         }
+    }
+    if (NULL != idkey) {
+        free(idkey);
     }
     return PMIX_SUCCESS;
 }

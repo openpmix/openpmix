@@ -94,7 +94,7 @@ static pmix_status_t allocate(pmix_nspace_t *nptr,
                               pmix_list_t *ilist)
 {
     pmix_kval_t *kv;
-    bool seckey;
+    bool seckey = false;
     pmix_list_t mylist;
     size_t n, nreqs=0;
     pmix_info_t *requests = NULL;
@@ -319,7 +319,8 @@ static pmix_status_t setup_local_network(pmix_nspace_t *nptr,
                    PMIX_BFROPS_VALUE_XFER(rc, pmix_globals.mypeer,
                                           &jinfo[m].value, kv->value);
                        /* if this is the ID key, save it */
-                   if (0 == strncmp(kv->key, PMIX_ALLOC_NETWORK_ID, PMIX_MAX_KEYLEN)) {
+                   if (NULL == idkey &&
+                       0 == strncmp(kv->key, PMIX_ALLOC_NETWORK_ID, PMIX_MAX_KEYLEN)) {
                        idkey = strdup(kv->value->data.string);
                    }
                    ++m;
@@ -354,7 +355,9 @@ static pmix_status_t setup_local_network(pmix_nspace_t *nptr,
            }
        }
     }
-
+    if (NULL != idkey) {
+        free(idkey);
+    }
     return PMIX_SUCCESS;
 }
 

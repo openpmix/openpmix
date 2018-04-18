@@ -366,9 +366,11 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
 
     /* open the pnet framework and select the active modules for this environment */
     if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pnet_base_framework, 0))) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
     if (PMIX_SUCCESS != (rc = pmix_pnet_base_select())) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
 

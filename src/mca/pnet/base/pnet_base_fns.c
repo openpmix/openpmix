@@ -76,10 +76,10 @@ pmix_status_t pmix_pnet_base_allocate(char *nspace,
                     if (PMIX_SUCCESS == (rc = active->module->allocate(nptr, NULL, ilist))) {
                         break;
                     }
-                }
-                if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
-                    /* true error */
-                    return rc;
+                    if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
+                        /* true error */
+                        return rc;
+                    }
                 }
             }
         } else {
@@ -90,10 +90,10 @@ pmix_status_t pmix_pnet_base_allocate(char *nspace,
                         if (PMIX_SUCCESS == (rc = active->module->allocate(nptr, &info[n], ilist))) {
                             break;
                         }
-                    }
-                    if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
-                        /* true error */
-                        return rc;
+                        if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
+                            /* true error */
+                            return rc;
+                        }
                     }
                 }
             }
@@ -395,6 +395,7 @@ static void cicbfunc(pmix_status_t status,
     }
     /* now call the requestor back */
     lock->cbfunc(ret, lock->info, lock->ninfo, lock->cbdata, cirelease, lock);
+    PMIX_RELEASE_THREAD(&lock->lock);
     return;
 
   error:
@@ -496,16 +497,23 @@ pmix_status_t pmix_pnet_base_harvest_envars(char **incvars, char **excvars,
                 cs_env = strdup(environ[i]);
                 kv = PMIX_NEW(pmix_kval_t);
                 if (NULL == kv) {
+                    free(cs_env);
                     return PMIX_ERR_OUT_OF_RESOURCE;
                 }
                 kv->key = strdup(PMIX_SET_ENVAR);
                 kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
                 if (NULL == kv->value) {
                     PMIX_RELEASE(kv);
+                    free(cs_env);
                     return PMIX_ERR_OUT_OF_RESOURCE;
                 }
                 kv->value->type = PMIX_ENVAR;
                 string_key = strchr(cs_env, '=');
+                if (NULL == string_key) {
+                    free(cs_env);
+                    PMIX_RELEASE(kv);
+                    return PMIX_ERR_BAD_PARAM;
+                }
                 *string_key = '\0';
                 ++string_key;
                 PMIX_ENVAR_LOAD(&kv->value->data.envar, cs_env, string_key, ':');
