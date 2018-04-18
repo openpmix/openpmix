@@ -161,6 +161,7 @@ PMIX_CLASS_DECLARATION(pmix_cleanup_dir_t);
 typedef struct {
     pmix_list_item_t super;
     char *nspace;
+    pmix_rank_t nprocs;          // num procs in this nspace
     size_t nlocalprocs;
     bool all_registered;         // all local ranks have been defined
     bool version_stored;         // the version string used by this nspace has been stored

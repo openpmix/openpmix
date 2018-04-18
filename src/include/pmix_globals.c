@@ -99,6 +99,7 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_cleanup_dir_t,
 static void nscon(pmix_nspace_t *p)
 {
     p->nspace = NULL;
+    p->nprocs = 0;
     p->nlocalprocs = 0;
     p->all_registered = false;
     p->version_stored = false;
