@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2017 Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
@@ -63,6 +63,7 @@ static void query_cbfunc(struct pmix_peer_t *peer,
     PMIX_BFROPS_UNPACK(rc, peer, buf, &results->status, &cnt, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        results->status = rc;
         goto complete;
     }
     if (PMIX_SUCCESS != results->status) {
@@ -74,6 +75,7 @@ static void query_cbfunc(struct pmix_peer_t *peer,
     PMIX_BFROPS_UNPACK(rc, peer, buf, &results->ninfo, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        results->status = rc;
         goto complete;
     }
     if (0 < results->ninfo) {
@@ -82,6 +84,7 @@ static void query_cbfunc(struct pmix_peer_t *peer,
         PMIX_BFROPS_UNPACK(rc, peer, buf, results->info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            results->status = rc;
             goto complete;
         }
     }
@@ -115,20 +118,16 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
         return PMIX_ERR_INIT;
     }
 
-    /* if we aren't connected, don't attempt to send */
-    if (!PMIX_PROC_IS_SERVER(pmix_globals.mypeer) && !pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return PMIX_ERR_UNREACH;
-    }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
-
     if (0 == nqueries || NULL == queries) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_BAD_PARAM;
     }
 
     /* if we are the server, then we just issue the query and
      * return the response */
-    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
+    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
         if (NULL == pmix_host_server.query) {
             /* nothing we can do */
             return PMIX_ERR_NOT_SUPPORTED;
@@ -138,44 +137,51 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
         pmix_host_server.query(&pmix_globals.myid,
                                queries, nqueries,
                                cbfunc, cbdata);
-        rc = PMIX_SUCCESS;
-    } else {
-        /* if we are a client, then relay this request to the server */
-        cd = PMIX_NEW(pmix_query_caddy_t);
-        cd->cbfunc = cbfunc;
-        cd->cbdata = cbdata;
-        msg = PMIX_NEW(pmix_buffer_t);
-        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                         msg, &cmd, 1, PMIX_COMMAND);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(msg);
-            PMIX_RELEASE(cd);
-            return rc;
-        }
-        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                         msg, &nqueries, 1, PMIX_SIZE);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(msg);
-            PMIX_RELEASE(cd);
-            return rc;
-        }
-        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                         msg, queries, nqueries, PMIX_QUERY);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(msg);
-            PMIX_RELEASE(cd);
-            return rc;
-        }
-        pmix_output_verbose(2, pmix_globals.debug_output,
-                            "pmix:query sending to server");
-        PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver,
-                           msg, query_cbfunc, (void*)cd);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_RELEASE(cd);
-        }
+        return PMIX_SUCCESS;
+    }
+
+    /* if we aren't connected, don't attempt to send */
+    if (!pmix_globals.connected) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return PMIX_ERR_UNREACH;
+    }
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
+
+    /* if we are a client, then relay this request to the server */
+    cd = PMIX_NEW(pmix_query_caddy_t);
+    cd->cbfunc = cbfunc;
+    cd->cbdata = cbdata;
+    msg = PMIX_NEW(pmix_buffer_t);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
+                     msg, &cmd, 1, PMIX_COMMAND);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        PMIX_RELEASE(cd);
+        return rc;
+    }
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
+                     msg, &nqueries, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        PMIX_RELEASE(cd);
+        return rc;
+    }
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
+                     msg, queries, nqueries, PMIX_QUERY);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        PMIX_RELEASE(cd);
+        return rc;
+    }
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:query sending to server");
+    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver,
+                       msg, query_cbfunc, (void*)cd);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(cd);
     }
     return rc;
 }
@@ -192,13 +198,18 @@ PMIX_EXPORT pmix_status_t PMIx_Allocation_request_nb(pmix_alloc_directive_t dire
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: allocate called");
 
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+
     if (pmix_globals.init_cntr <= 0) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_INIT;
     }
 
     /* if we are the server, then we just issue the request and
      * return the response */
-    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
+    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
         if (NULL == pmix_host_server.allocate) {
             /* nothing we can do */
             return PMIX_ERR_NOT_SUPPORTED;
@@ -216,8 +227,10 @@ PMIX_EXPORT pmix_status_t PMIx_Allocation_request_nb(pmix_alloc_directive_t dire
 
     /* if we aren't connected, don't attempt to send */
     if (!pmix_globals.connected) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_UNREACH;
     }
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */

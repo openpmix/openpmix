@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2013-2018 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  *
@@ -468,6 +468,9 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
  * has been completed. The data array must be maintained until
  * the callback is provided
  */
+PMIX_EXPORT pmix_status_t PMIx_Log(const pmix_info_t data[], size_t ndata,
+                                   const pmix_info_t directives[], size_t ndirs);
+
 PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
                                       const pmix_info_t directives[], size_t ndirs,
                                       pmix_op_cbfunc_t cbfunc, void *cbdata);

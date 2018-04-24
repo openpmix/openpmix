@@ -326,7 +326,24 @@ typedef void (*pmix_server_tool_connection_fn_t)(pmix_info_t *info, size_t ninfo
                                                  pmix_tool_connection_cbfunc_t cbfunc,
                                                  void *cbdata);
 
-/* Log data on behalf of a client */
+/* Log data on behalf of a client. Calls to the host thru this
+ * function must _NOT_ call the PMIx_Log API as this will
+ * trigger an infinite loop. Instead, the implementation must
+ * perform one of three operations:
+ *
+ * (a) transfer the data+directives to a "gateway" server
+ *     where they can be logged. Gateways are designated
+ *     servers on nodes (typically service nodes) where
+ *     centralized logging is supported. The data+directives
+ *     may be passed to the PMIx_Log API once arriving at
+ *     that destination.
+ *
+ * (b) transfer the data to a logging channel outside of
+ *     PMIx, but directly supported by the host
+ *
+ * (c) return an error to the caller indicating that the
+ *     requested action is not supported
+ */
 typedef void (*pmix_server_log_fn_t)(const pmix_proc_t *client,
                                      const pmix_info_t data[], size_t ndata,
                                      const pmix_info_t directives[], size_t ndirs,
@@ -662,12 +679,13 @@ typedef void (*pmix_setup_application_cbfunc_t)(pmix_status_t status,
                                                 pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Provide a function by which the resource manager can request
- * any application-specific environmental variables prior to
- * launch of an application. For example, network libraries may
- * opt to provide security credentials for the application. This
- * is defined as a non-blocking operation in case network
- * libraries need to perform some action before responding. The
- * returned env will be distributed along with the application */
+ * any application-specific environmental variables, resource
+ * assignments, and/or other data prior to launch of an application.
+ * For example, network libraries may opt to provide security
+ * credentials for the application. This is defined as a non-blocking
+ * operation in case network libraries need to perform some action
+ * before responding. Any returned env will be distributed along
+ * with the application */
 PMIX_EXPORT pmix_status_t PMIx_server_setup_application(const char nspace[],
                                                         pmix_info_t info[], size_t ninfo,
                                                         pmix_setup_application_cbfunc_t cbfunc, void *cbdata);
@@ -676,6 +694,13 @@ PMIX_EXPORT pmix_status_t PMIx_server_setup_application(const char nspace[],
  * any application-specific operations prior to spawning local
  * clients of a given application. For example, a network library
  * might need to setup the local driver for "instant on" addressing.
+ * Data provided in the info array will be stored in the job-info
+ * region for the nspace. Operations included in the info array
+ * will be cached until the server calls PMIx_server_setup_fork,
+ * thereby indicating that local clients of this nspace will exist.
+ * Operations indicated by the provided data will only be executed
+ * for the first local client - i.e., they will only be executed
+ * once for a given nspace
  */
 PMIX_EXPORT pmix_status_t PMIx_server_setup_local_support(const char nspace[],
                                                           pmix_info_t info[], size_t ninfo,
@@ -712,6 +737,16 @@ PMIX_EXPORT pmix_status_t PMIx_server_IOF_deliver(const pmix_proc_t *source,
                                                   const pmix_byte_object_t *bo,
                                                   const pmix_info_t info[], size_t ninfo,
                                                   pmix_op_cbfunc_t cbfunc, void *cbdata);
+
+/* Collect inventory of local resources. If the PMIX_MASTER_SERVER
+ * attribute is passed, and the plugin for a particular resource
+ * is capable of obtaining a global map of its resources, then
+ * only that server shall grab it - all other plugins for
+ * that resource will ignore the request. This is a non-blocking
+ * API as it may involve somewhat lengthy operations to obtain
+ * the requested information */
+PMIX_EXPORT pmix_status_t PMIx_server_collect_inventory(pmix_info_t directives[], size_t ndirs,
+                                                        pmix_info_cbfunc_t cbfunc, void *cbdata);
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }

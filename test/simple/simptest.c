@@ -130,6 +130,14 @@ PMIX_CLASS_INSTANCE(pmix_locdat_t,
                     pmix_list_item_t,
                     NULL, NULL);
 
+#define PMIX_WAIT_FOR_COMPLETION(a)             \
+    do {                                        \
+        while ((a)) {                           \
+            usleep(10);                         \
+        }                                       \
+        PMIX_ACQUIRE_OBJECT((a));               \
+    } while (0)
+
 typedef struct {
     pmix_object_t super;
     volatile bool active;
@@ -321,11 +329,12 @@ int main(int argc, char **argv)
     }
 
     /* setup the server library and tell it to support tool connections */
-    ninfo = 2;
+    ninfo = 3;
     PMIX_INFO_CREATE(info, ninfo);
     PMIX_INFO_LOAD(&info[0], PMIX_SERVER_TOOL_SUPPORT, NULL, PMIX_BOOL);
     PMIX_INFO_LOAD(&info[1], PMIX_USOCK_DISABLE, &usock, PMIX_BOOL);
-    if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, info, 2))) {
+    PMIX_INFO_LOAD(&info[2], PMIX_SERVER_GATEWAY, NULL, PMIX_BOOL);
+    if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, info, ninfo))) {
         fprintf(stderr, "Init failed with error %d\n", rc);
         return rc;
     }

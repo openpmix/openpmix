@@ -37,6 +37,7 @@
 #include "src/mca/gds/base/base.h"
 #include "src/mca/pif/base/base.h"
 #include "src/mca/pinstalldirs/base/base.h"
+#include "src/mca/plog/base/base.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/mca/preg/base/base.h"
 #include "src/mca/psec/base/base.h"
@@ -71,6 +72,9 @@ void pmix_rte_finalize(void)
     }
 
 
+    /* close plog */
+    (void)pmix_mca_base_framework_close(&pmix_plog_base_framework);
+
     /* close preg */
     (void)pmix_mca_base_framework_close(&pmix_preg_base_framework);
 
@@ -79,9 +83,6 @@ void pmix_rte_finalize(void)
 
     /* close the security framework */
     (void)pmix_mca_base_framework_close(&pmix_psec_base_framework);
-
-    /* close the pnet framework */
-    (void)pmix_mca_base_framework_close(&pmix_pnet_base_framework);
 
     /* close bfrops */
     (void)pmix_mca_base_framework_close(&pmix_bfrops_base_framework);
