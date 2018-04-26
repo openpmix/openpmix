@@ -67,6 +67,10 @@ void parse_options(int argc, char **argv)
         switch (c) {
         case 's':
             key_size = atoi(optarg);
+            /* Make sure that we transform it to int as
+             * this is what will be the key value type
+             */
+            key_size = key_size / 4 + !!(key_size % 4);
             break;
         case 'c':
             key_count = atoi(optarg);
