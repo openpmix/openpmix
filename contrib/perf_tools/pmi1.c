@@ -99,6 +99,11 @@ void pmi_get_local_ranks(int **local_ranks, int *local_cnt)
     *local_cnt = nlranks;
 }
 
+void pmi_get_shmem_size(char *is_avail, size_t *size)
+{
+    *is_avail = 0;
+}
+
 void pmi_put_key_rem(char *key, int *key_val, int key_size)
 {
     int rc;
