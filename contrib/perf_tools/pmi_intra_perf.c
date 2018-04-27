@@ -185,6 +185,12 @@ int main(int argc, char **argv)
 
     pmi_get_shmem_size(&have_shmem, &shmem_job_info);
 
+    /*
+     * Make sure that no other rank started publishing keys in the dstore
+     * before we finished with shmem size screening
+     */
+    pmi_fence( 0 );
+
     if( 0 == rank && debug_on ){
         int i;
         fprintf(stderr,"%d: local ranks: ", rank);
