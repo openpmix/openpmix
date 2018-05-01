@@ -3177,3 +3177,26 @@ static void regdes(pmix_regevents_info_t *p)
 PMIX_CLASS_INSTANCE(pmix_regevents_info_t,
                     pmix_list_item_t,
                     regcon, regdes);
+
+static void ilcon(pmix_inventory_rollup_t *p)
+{
+    PMIX_CONSTRUCT_LOCK(&p->lock);
+    p->lock.active = false;
+    p->status = PMIX_SUCCESS;
+    p->requests = 0;
+    p->replies = 0;
+    PMIX_CONSTRUCT(&p->payload, pmix_list_t);
+    p->info = NULL;
+    p->ninfo = 0;
+    p->cbfunc = NULL;
+    p->infocbfunc = NULL;
+    p->cbdata = NULL;
+}
+static void ildes(pmix_inventory_rollup_t *p)
+{
+    PMIX_DESTRUCT_LOCK(&p->lock);
+    PMIX_LIST_DESTRUCT(&p->payload);
+}
+PMIX_CLASS_INSTANCE(pmix_inventory_rollup_t,
+                    pmix_object_t,
+                    ilcon, ildes);

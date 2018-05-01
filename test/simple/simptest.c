@@ -40,6 +40,10 @@
 #include <signal.h>
 #include PMIX_EVENT_HEADER
 
+#if PMIX_HAVE_HWLOC
+#include <src/hwloc/hwloc-internal.h>
+#endif
+
 #include "src/class/pmix_list.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/output.h"
@@ -208,6 +212,23 @@ static void opcbfunc(pmix_status_t status, void *cbdata)
     x->active = false;
 }
 
+static void infocbfunc(pmix_status_t status,
+                       pmix_info_t *info, size_t ninfo,
+                       void *cbdata,
+                       pmix_release_cbfunc_t release_fn,
+                       void *release_cbdata)
+{
+    volatile int *active = (volatile int*)cbdata;
+
+    /* we don't have any place to send this, so for test
+     * purposes only, let's push it back down for processing */
+
+    if (NULL != release_fn) {
+        release_fn(release_cbdata);
+    }
+    *active = status;
+}
+
 /* this is an event notification function that we explicitly request
  * be called when the PMIX_MODEL_DECLARED notification is issued.
  * We could catch it in the general event notification function and test
@@ -273,6 +294,8 @@ int main(int argc, char **argv)
     size_t ninfo;
     bool cross_version = false;
     bool usock = true;
+    bool hwloc = false;
+    char *hwloc_file = NULL;
     volatile int active;
     pmix_status_t code;
 
@@ -310,6 +333,19 @@ int main(int argc, char **argv)
         } else if (0 == strcmp("-u", argv[n])) {
             /* enable usock */
             usock = false;
+        } else if (0 == strcmp("-hwloc", argv[n]) ||
+                   0 == strcmp("--hwloc", argv[n])) {
+            /* test hwloc support */
+            hwloc = true;
+        } else if (0 == strcmp("-hwloc-file", argv[n]) ||
+                   0 == strcmp("--hwloc-file", argv[n])) {
+            if (NULL == argv[n+1]) {
+                fprintf(stderr, "The --hwloc-file option requires an argument\n");
+                exit(1);
+            }
+            hwloc_file = strdup(argv[n+1]);
+            hwloc = true;
+            ++n;
         } else if (0 == strcmp("-h", argv[n])) {
             /* print the options and exit */
             fprintf(stderr, "usage: simptest <options>\n");
@@ -317,6 +353,8 @@ int main(int argc, char **argv)
             fprintf(stderr, "    -e foo   Name of the client executable to run (default: simpclient\n");
             fprintf(stderr, "    -x       Test cross-version support\n");
             fprintf(stderr, "    -u       Enable legacy usock support\n");
+            fprintf(stderr, "    -hwloc   Test hwloc support\n");
+            fprintf(stderr, "    -hwloc-file FILE   Use file to import topology\n");
             exit(0);
         }
     }
@@ -328,12 +366,44 @@ int main(int argc, char **argv)
         exit(1);
     }
 
+#if !PMIX_HAVE_HWLOC
+    if (hwloc) {
+        fprintf(stderr, "PMIx was not configured with HWLOC support - cannot continue\n");
+        exit(1);
+    }
+#endif
+
     /* setup the server library and tell it to support tool connections */
+#if PMIX_HAVE_HWLOC
+    if (hwloc) {
+#if HWLOC_API_VERSION < 0x20000
+        ninfo = 4;
+#else
+        ninfo = 5;
+#endif
+    } else {
+        ninfo = 3;
+    }
+#else
     ninfo = 3;
+#endif
+
     PMIX_INFO_CREATE(info, ninfo);
     PMIX_INFO_LOAD(&info[0], PMIX_SERVER_TOOL_SUPPORT, NULL, PMIX_BOOL);
     PMIX_INFO_LOAD(&info[1], PMIX_USOCK_DISABLE, &usock, PMIX_BOOL);
     PMIX_INFO_LOAD(&info[2], PMIX_SERVER_GATEWAY, NULL, PMIX_BOOL);
+#if PMIX_HAVE_HWLOC
+    if (hwloc) {
+        if (NULL != hwloc_file) {
+            PMIX_INFO_LOAD(&info[3], PMIX_TOPOLOGY_FILE, hwloc_file, PMIX_STRING);
+        } else {
+            PMIX_INFO_LOAD(&info[3], PMIX_TOPOLOGY, NULL, PMIX_STRING);
+        }
+#if HWLOC_API_VERSION >= 0x20000
+        PMIX_INFO_LOAD(&info[4], PMIX_HWLOC_SHARE_TOPO, NULL, PMIX_BOOL);
+#endif
+    }
+#endif
     if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, info, ninfo))) {
         fprintf(stderr, "Init failed with error %d\n", rc);
         return rc;
@@ -399,6 +469,18 @@ int main(int argc, char **argv)
     wakeup = nprocs;
     myuid = getuid();
     mygid = getgid();
+
+    /* collect our inventory */
+    active = -1;
+    fprintf(stderr, "Collecting inventory\n");
+    if (PMIX_SUCCESS != (rc = PMIx_server_collect_inventory(NULL, 0, infocbfunc, (void*)&active))) {
+        fprintf(stderr, "Collect inventory failed: %d\n", rc);
+        goto done;
+    }
+    while (-1 == active) {
+        usleep(10);
+    }
+    fprintf(stderr, "Inventory collected: %d\n", active);
 
     /* if the nspace registration hasn't completed yet,
      * wait for it here */

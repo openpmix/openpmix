@@ -59,9 +59,10 @@ static void child_finalized(pmix_peer_t *peer);
 static void local_app_finalized(pmix_nspace_t *nptr);
 static void deregister_nspace(pmix_nspace_t *nptr);
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
-                                       pmix_info_cbfunc_t cbfunc, void *cbdata);
+                                       pmix_inventory_cbfunc_t cbfunc, void *cbdata);
 
 pmix_pnet_module_t pmix_test_module = {
+    .name = "test",
     .init = test_init,
     .finalize = test_finalize,
     .allocate = allocate,
@@ -425,7 +426,7 @@ static void deregister_nspace(pmix_nspace_t *nptr)
 }
 
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
-                                       pmix_info_cbfunc_t cbfunc, void *cbdata)
+                                       pmix_inventory_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_output(0, "pnet:test COLLECT INVENTORY");
     return PMIX_ERR_NOT_SUPPORTED;

@@ -44,6 +44,7 @@
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
 #include "src/mca/preg/preg.h"
+#include "src/hwloc/hwloc-internal.h"
 
 #include "src/mca/pnet/pnet.h"
 #include "src/mca/pnet/base/base.h"
@@ -64,9 +65,10 @@ static void child_finalized(pmix_peer_t *peer);
 static void local_app_finalized(pmix_nspace_t *nptr);
 static void deregister_nspace(pmix_nspace_t *nptr);
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
-                                       pmix_info_cbfunc_t cbfunc, void *cbdata);
+                                       pmix_inventory_cbfunc_t cbfunc, void *cbdata);
 
 pmix_pnet_module_t pmix_opa_module = {
+    .name = "opa",
     .init = opa_init,
     .finalize = opa_finalize,
     .allocate = allocate,
@@ -341,7 +343,98 @@ static void deregister_nspace(pmix_nspace_t *nptr)
 }
 
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
-                                       pmix_info_cbfunc_t cbfunc, void *cbdata)
+                                       pmix_inventory_cbfunc_t cbfunc, void *cbdata)
 {
-    return PMIX_ERR_NOT_SUPPORTED;
+    pmix_inventory_rollup_t *cd = (pmix_inventory_rollup_t*)cbdata;
+    hwloc_obj_t obj;
+    unsigned n;
+    pmix_status_t rc;
+    pmix_kval_t *kv;
+    pmix_buffer_t bucket, pbkt;
+    bool found = false;
+    pmix_byte_object_t pbo;
+    char nodename[PMIX_MAXHOSTNAMELEN], *foo;
+
+    if (NULL == pmix_hwloc_topology) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    /* setup the bucket - we will pass the results as a blob */
+    PMIX_CONSTRUCT(&bucket, pmix_buffer_t);
+    /* pack our node name */
+    gethostname(nodename, sizeof(nodename));
+    foo = &nodename[0];
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &bucket, &foo, 1, PMIX_STRING);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_DESTRUCT(&bucket);
+        return rc;
+    }
+
+    /* search the topology for OPA devices */
+    obj = hwloc_get_next_osdev(pmix_hwloc_topology, NULL);
+    while (NULL != obj) {
+        if (obj->attr->osdev.type != HWLOC_OBJ_OSDEV_OPENFABRICS ||
+            0 != strncmp(obj->name, "hfi", 3)) {
+            obj = hwloc_get_next_osdev(pmix_hwloc_topology, obj);
+            continue;
+        }
+        found = true;
+        pmix_output(0, "NAME %s INFOS %u", (NULL == obj->name) ? "NULL" : obj->name, obj->infos_count);
+        /* pack the name of the device */
+        PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &pbkt, &obj->name, 1, PMIX_STRING);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_DESTRUCT(&pbkt);
+            PMIX_DESTRUCT(&bucket);
+            return rc;
+        }
+        /* pack each descriptive object */
+        for (n=0; n < obj->infos_count; n++) {
+            pmix_output(0, "\tName: %s Value: %s", obj->infos[n].name, obj->infos[n].value);
+            PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &pbkt, &obj->infos[n].name, 1, PMIX_STRING);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_DESTRUCT(&pbkt);
+                PMIX_DESTRUCT(&bucket);
+                return rc;
+            }
+            PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &pbkt, &obj->infos[n].value, 1, PMIX_STRING);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_DESTRUCT(&pbkt);
+                PMIX_DESTRUCT(&bucket);
+                return rc;
+            }
+        }
+        /* extract the resulting blob - this is a device unit */
+        PMIX_UNLOAD_BUFFER(&pbkt, pbo.bytes, pbo.size);
+        /* now load that into the blob */
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &bucket, &pbo, 1, PMIX_BYTE_OBJECT);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_BYTE_OBJECT_DESTRUCT(&pbo);
+            PMIX_DESTRUCT(&bucket);
+            return rc;
+        }
+        obj = hwloc_get_next_osdev(pmix_hwloc_topology, obj);
+    }
+
+    /* if we found any devices, then return the blob */
+    if (!found) {
+        PMIX_DESTRUCT(&bucket);
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+
+    /* extract the resulting blob */
+    PMIX_UNLOAD_BUFFER(&bucket, pbo.bytes, pbo.size);
+    kv = PMIX_NEW(pmix_kval_t);
+    kv->key = strdup(PMIX_PNET_OPA_BLOB);
+    PMIX_VALUE_CREATE(kv->value, 1);
+    pmix_value_load(kv->value, &pbo, PMIX_BYTE_OBJECT);
+    PMIX_BYTE_OBJECT_DESTRUCT(&pbo);
+    pmix_list_append(&cd->payload, &kv->super);
+
+    return PMIX_SUCCESS;
 }

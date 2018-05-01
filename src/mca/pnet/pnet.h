@@ -4,6 +4,7 @@
  *
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2018      Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -32,6 +33,7 @@
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/base/pmix_mca_base_framework.h"
 #include "src/include/pmix_globals.h"
+#include "src/server/pmix_server_ops.h"
 
 BEGIN_C_DECLS
 
@@ -98,10 +100,26 @@ typedef void (*pmix_pnet_base_module_dregister_nspace_fn_t)(pmix_nspace_t *nptr)
 
 
 /**
- * Request that the module report local inventory for its network type
+ * Request that the module report local inventory for its network type.
+ *
+ * If the operation can be performed immediately, then the module should just
+ * add the inventory (as pmix_kval_t's) to the provided object's list and
+ * return PMIX_SUCCESS.
+ *
+ * If the module needs to perform some non-atomic operation
+ * (e.g., query a fabric manager), then it should shift to its own internal
+ * thread, return PMIX_ERR_OPERATION_IN_PROGRESS, and execute the provided
+ * callback function when the operation is completed.
+ *
+ * If there is no inventory to report, then just return PMIX_SUCCESS.
+ *
+ * If the module should be providing inventory but encounters an error,
+ * then immediately return an error code if the error is immediately detected,
+ * or execute the callback function with an error code if it is detected later.
  */
 typedef pmix_status_t (*pmix_pnet_base_module_collect_inventory_fn_t)(pmix_info_t directives[], size_t ndirs,
-                                                                      pmix_info_cbfunc_t cbfunc, void *cbdata);
+                                                                      pmix_inventory_cbfunc_t cbfunc,
+                                                                      void *cbdata);
 /**
  * Base structure for a PNET module
  */
@@ -135,7 +153,8 @@ typedef pmix_status_t (*pmix_pnet_base_API_setup_fork_fn_t)(const pmix_proc_t *p
 typedef void (*pmix_pnet_base_API_local_app_finalized_fn_t)(char *nspace);
 typedef void (*pmix_pnet_base_API_deregister_nspace_fn_t)(char *nspace);
 typedef void (*pmix_pnet_base_API_collect_inventory_fn_t)(pmix_info_t directives[], size_t ndirs,
-                                                          pmix_info_cbfunc_t cbfunc, void *cbdata);
+                                                          pmix_inventory_cbfunc_t cbfunc,
+                                                          void *cbdata);
 
 /**
  * Base structure for a PNET API

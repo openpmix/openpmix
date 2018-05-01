@@ -66,6 +66,28 @@ typedef struct {
 } pmix_setup_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_setup_caddy_t);
 
+/* define a callback function returning inventory */
+typedef void (*pmix_inventory_cbfunc_t)(pmix_status_t status,
+                                        pmix_list_t *inventory,
+                                        void *cbdata);
+
+/* define an object for rolling up the inventory*/
+typedef struct {
+    pmix_object_t super;
+    pmix_lock_t lock;
+    pmix_event_t ev;
+    pmix_status_t status;
+    int requests;
+    int replies;
+    pmix_list_t payload;   // list of pmix_kval_t containing the replies
+    pmix_info_t *info;
+    size_t ninfo;
+    pmix_inventory_cbfunc_t cbfunc;
+    pmix_info_cbfunc_t infocbfunc;
+    void *cbdata;
+} pmix_inventory_rollup_t;
+PMIX_CLASS_DECLARATION(pmix_inventory_rollup_t);
+
 typedef struct {
     pmix_list_item_t super;
     pmix_setup_caddy_t *cd;
@@ -117,6 +139,7 @@ typedef struct {
     pmix_list_t events;                     // list of pmix_regevents_info_t registered events
     pmix_hotel_t iof;                       // IO to be forwarded to clients
     bool tool_connections_allowed;
+    char *tmpdir;                           // temporary directory for this server
     // verbosity for server get operations
     int get_output;
     int get_verbose;
