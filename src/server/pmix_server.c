@@ -67,6 +67,7 @@
 #include "src/mca/gds/base/base.h"
 #include "src/mca/preg/preg.h"
 #include "src/mca/ptl/base/base.h"
+#include "src/hwloc/hwloc-internal.h"
 
 /* the server also needs access to client operations
  * as it can, and often does, behave as a client */
@@ -180,6 +181,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     size_t n, m;
     pmix_kval_t *kv;
     bool protect, nspace_given = false, rank_given = false;
+    bool topology_req = false;
     pmix_info_t ginfo;
     char *protected[] = {
         PMIX_USERID,
@@ -208,8 +210,16 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
                 if (PMIX_INFO_TRUE(&info[n])) {
                     ptype |= PMIX_PROC_GATEWAY;
                 }
-                break;
+            } else if (0 == strncmp(info[n].key, PMIX_SERVER_TMPDIR, PMIX_MAX_KEYLEN)) {
+                pmix_server_globals.tmpdir = strdup(info[n].value.data.string);
             }
+        }
+    }
+    if (NULL == pmix_server_globals.tmpdir) {
+        if (NULL == (evar = getenv("PMIX_SERVER_TMPDIR"))) {
+            pmix_server_globals.tmpdir = strdup(pmix_tmp_directory());
+        } else {
+            pmix_server_globals.tmpdir = strdup(evar);
         }
     }
 
@@ -289,37 +299,41 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
             if (0 == strncmp(info[n].key, PMIX_SERVER_NSPACE, PMIX_MAX_KEYLEN)) {
                 (void)strncpy(pmix_globals.myid.nspace, info[n].value.data.string, PMIX_MAX_NSLEN);
                 nspace_given = true;
-                continue;
-            }
-            if (0 == strncmp(info[n].key, PMIX_SERVER_RANK, PMIX_MAX_KEYLEN)) {
+            } else if (0 == strncmp(info[n].key, PMIX_SERVER_RANK, PMIX_MAX_KEYLEN)) {
                 pmix_globals.myid.rank = info[n].value.data.rank;
                 rank_given = true;
-                continue;
-            }
-            /* check the list of protected keys */
-            protect = false;
-            for (m=0; NULL != protected[m]; m++) {
-                if (0 == strcmp(info[n].key, protected[m])) {
-                    protect = true;
-                    break;
+            } else if (0 == strncmp(info[n].key, PMIX_TOPOLOGY, PMIX_MAX_KEYLEN) ||
+                       0 == strncmp(info[n].key, PMIX_TOPOLOGY_XML, PMIX_MAX_KEYLEN) ||
+                       0 == strncmp(info[n].key, PMIX_TOPOLOGY_FILE, PMIX_MAX_KEYLEN) ||
+                       0 == strncmp(info[n].key, PMIX_HWLOC_XML_V1, PMIX_MAX_KEYLEN) ||
+                       0 == strncmp(info[n].key, PMIX_HWLOC_XML_V2, PMIX_MAX_KEYLEN)) {
+                topology_req = true;
+            } else {
+                /* check the list of protected keys */
+                protect = false;
+                for (m=0; NULL != protected[m]; m++) {
+                    if (0 == strcmp(info[n].key, protected[m])) {
+                        protect = true;
+                        break;
+                    }
                 }
+                if (protect) {
+                    continue;
+                }
+                /* store and pass along to every client */
+                kv = PMIX_NEW(pmix_kval_t);
+                kv->key = strdup(info[n].key);
+                PMIX_VALUE_CREATE(kv->value, 1);
+                PMIX_BFROPS_VALUE_XFER(rc, pmix_globals.mypeer,
+                                       kv->value, &info[n].value);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_RELEASE(kv);
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_RELEASE_THREAD(&pmix_global_lock);
+                    return rc;
+                }
+                pmix_list_append(&pmix_server_globals.gdata, &kv->super);
             }
-            if (protect) {
-                continue;
-            }
-            /* store and pass along to every client */
-            kv = PMIX_NEW(pmix_kval_t);
-            kv->key = strdup(info[n].key);
-            PMIX_VALUE_CREATE(kv->value, 1);
-            PMIX_BFROPS_VALUE_XFER(rc, pmix_globals.mypeer,
-                                   kv->value, &info[n].value);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_RELEASE(kv);
-                PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE_THREAD(&pmix_global_lock);
-                return rc;
-            }
-            pmix_list_append(&pmix_server_globals.gdata, &kv->super);
         }
     }
 
@@ -372,6 +386,14 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     if (PMIX_SUCCESS != (rc = pmix_pnet_base_select())) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
+    }
+
+    /* if requested, setup the topology */
+    if (topology_req) {
+        if (PMIX_SUCCESS != (rc = pmix_hwloc_get_topology(info, ninfo))) {
+            PMIX_RELEASE_THREAD(&pmix_global_lock);
+            return rc;
+        }
     }
 
     /* setup the wildcard recv for inbound messages from clients */
@@ -467,6 +489,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
         pmix_execute_epilog(&ns->epilog);
     }
     PMIX_LIST_DESTRUCT(&pmix_server_globals.nspaces);
+
+    pmix_hwloc_cleanup();
 
     if (NULL != security_mode) {
         free(security_mode);
@@ -1669,6 +1693,125 @@ pmix_status_t PMIx_server_IOF_deliver(const pmix_proc_t *source,
     cd->opcbfunc = cbfunc;
     cd->cbdata = cbdata;
     PMIX_THREADSHIFT(cd, _iofdeliver);
+    return PMIX_SUCCESS;
+}
+
+static void cirelease(void *cbdata)
+{
+    pmix_inventory_rollup_t *rollup = (pmix_inventory_rollup_t*)cbdata;
+    if (NULL != rollup->info) {
+        PMIX_INFO_FREE(rollup->info, rollup->ninfo);
+    }
+    PMIX_RELEASE(rollup);
+}
+
+static void clct_complete(pmix_status_t status,
+                          pmix_list_t *inventory,
+                          void *cbdata)
+{
+    pmix_inventory_rollup_t *cd = (pmix_inventory_rollup_t*)cbdata;
+    pmix_kval_t *kv;
+    size_t n;
+    pmix_status_t rc;
+
+    PMIX_ACQUIRE_THREAD(&cd->lock);
+
+    /* collect the results */
+    if (NULL != inventory) {
+        while (NULL != (kv = (pmix_kval_t*)pmix_list_remove_first(inventory))) {
+            pmix_list_append(&cd->payload, &kv->super);
+        }
+    }
+    if (PMIX_SUCCESS != status && PMIX_SUCCESS == cd->status) {
+        cd->status = status;
+    }
+    /* see if we are done */
+    cd->replies++;
+    if (cd->replies == cd->requests) {
+        /* no need to continue tracking the input directives */
+        cd->info = NULL;
+        cd->ninfo = 0;
+        if (NULL != cd->infocbfunc) {
+            /* convert the list to an array of pmix_info_t */
+            cd->ninfo = pmix_list_get_size(&cd->payload);
+            if (0 < cd->ninfo) {
+                PMIX_INFO_CREATE(cd->info, cd->ninfo);
+                if (NULL == cd->info) {
+                    cd->status = PMIX_ERR_NOMEM;
+                    cd->ninfo = 0;
+                    PMIX_RELEASE_THREAD(&cd->lock);
+                    goto error;
+                }
+                /* transfer the results */
+                n=0;
+                PMIX_LIST_FOREACH(kv, &cd->payload, pmix_kval_t) {
+                    (void)strncpy(cd->info[n].key, kv->key, PMIX_MAX_KEYLEN);
+                    rc = pmix_value_xfer(&cd->info[n].value, kv->value);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_INFO_FREE(cd->info, cd->ninfo);
+                        cd->status = rc;
+                        break;
+                    }
+                    ++n;
+                }
+            }
+            /* now call the requestor back */
+            PMIX_RELEASE_THREAD(&cd->lock);
+            cd->infocbfunc(cd->status, cd->info, cd->ninfo, cd->cbdata, cirelease, cd);
+            return;
+        }
+    }
+    /* continue to wait */
+    PMIX_RELEASE_THREAD(&cd->lock);
+    return;
+
+  error:
+    /* let them know */
+    if (NULL != cd->infocbfunc) {
+        cd->infocbfunc(cd->status, NULL, 0, cd->cbdata, NULL, NULL);
+    }
+    PMIX_RELEASE(cd);
+
+
+}
+static void clct(int sd, short args, void *cbdata)
+{
+    pmix_inventory_rollup_t *cd = (pmix_inventory_rollup_t*)cbdata;
+
+
+    /* we only have one source at this time */
+    cd->requests = 1;
+
+    /* collect the pnet inventory */
+    pmix_pnet.collect_inventory(cd->info, cd->ninfo,
+                                clct_complete, cd);
+
+    return;
+}
+
+pmix_status_t PMIx_server_collect_inventory(pmix_info_t directives[], size_t ndirs,
+                                            pmix_info_cbfunc_t cbfunc, void *cbdata)
+{
+    pmix_inventory_rollup_t *cd;
+
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+    if (pmix_globals.init_cntr <= 0) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return PMIX_ERR_INIT;
+    }
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
+
+    /* need to threadshift this request */
+    cd = PMIX_NEW(pmix_inventory_rollup_t);
+    if (NULL == cd) {
+        return PMIX_ERR_NOMEM;
+    }
+    cd->info = directives;
+    cd->ninfo = ndirs;
+    cd->infocbfunc = cbfunc;
+    cd->cbdata = cbdata;
+    PMIX_THREADSHIFT(cd, clct);
+
     return PMIX_SUCCESS;
 }
 

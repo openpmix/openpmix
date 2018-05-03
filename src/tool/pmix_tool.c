@@ -63,6 +63,7 @@
 #include "src/util/error.h"
 #include "src/util/hash.h"
 #include "src/util/output.h"
+#include "src/util/pmix_environ.h"
 #include "src/util/show_help.h"
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/runtime/pmix_rte.h"
@@ -390,6 +391,26 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         }
     }
 
+    /* if we are a launcher, then we also need to act as a server,
+     * so setup the server-related structures here */
+    if (PMIX_PROC_LAUNCHER == ptype) {
+        if (PMIX_SUCCESS != (rc = pmix_server_initialize())) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE_THREAD(&pmix_global_lock);
+            return rc;
+        }
+        /* setup the function pointers */
+        memset(&pmix_host_server, 0, sizeof(pmix_server_module_t));
+        /* setup our tmpdir */
+        if (NULL == pmix_server_globals.tmpdir) {
+            if (NULL == (evar = getenv("PMIX_SERVER_TMPDIR"))) {
+                pmix_server_globals.tmpdir = strdup(pmix_tmp_directory());
+            } else {
+                pmix_server_globals.tmpdir = strdup(evar);
+            }
+        }
+    }
+
     /* setup the runtime - this init's the globals,
      * opens and initializes the required frameworks */
     if (PMIX_SUCCESS != (rc = pmix_rte_init(ptype, info, ninfo,
@@ -403,18 +424,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         (void)strncpy(pmix_globals.myid.nspace, nspace, PMIX_MAX_NSLEN);
         free(nspace);
         pmix_globals.myid.rank = rank;
-    }
-
-    /* if we are a launcher, then we also need to act as a server,
-     * so setup the server-related structures here */
-    if (PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
-        if (PMIX_SUCCESS != (rc = pmix_server_initialize())) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
-            return rc;
-        }
-        /* setup the function pointers */
-        memset(&pmix_host_server, 0, sizeof(pmix_server_module_t));
     }
 
     /* setup the IO Forwarding recv */

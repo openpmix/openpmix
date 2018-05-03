@@ -293,128 +293,47 @@ void pmix_pnet_base_deregister_nspace(char *nspace)
     return;
 }
 
-typedef struct {
-    pmix_list_item_t super;
-    pmix_info_t *info;
-    size_t ninfo;
-    pmix_release_cbfunc_t release_fn;
-    void *release_cbdata;
-} pmix_inventory_payload_t;
-static void ipcon(pmix_inventory_payload_t *p)
-{
-    p->info = NULL;
-    p->ninfo = 0;
-    p->release_fn = NULL;
-    p->release_cbdata = NULL;
-}
-static PMIX_CLASS_INSTANCE(pmix_inventory_payload_t,
-                           pmix_list_item_t,
-                           ipcon, NULL);
-
-typedef struct {
-    pmix_object_t super;
-    pmix_lock_t lock;
-    int requests;
-    int replies;
-    pmix_info_t *info;
-    size_t ninfo;
-    pmix_list_t payload;   // list of pmix_inventory_payload_t containing the replies
-    pmix_info_cbfunc_t cbfunc;
-    void *cbdata;
-} pmix_pnet_inventory_lock_t;
-static void ilcon(pmix_pnet_inventory_lock_t *p)
-{
-    PMIX_CONSTRUCT_LOCK(&p->lock);
-    p->requests = 0;
-    p->replies = 0;
-    PMIX_CONSTRUCT(&p->payload, pmix_list_t);
-}
-static void ildes(pmix_pnet_inventory_lock_t *p)
-{
-    PMIX_DESTRUCT_LOCK(&p->lock);
-    if (NULL != p->info) {
-        PMIX_INFO_FREE(p->info, p->ninfo);
-    }
-    PMIX_LIST_DESTRUCT(&p->payload);
-}
-static PMIX_CLASS_INSTANCE(pmix_pnet_inventory_lock_t,
-                           pmix_object_t,
-                           ilcon, ildes);
-
-static void cirelease(void *cbdata)
-{
-    pmix_pnet_inventory_lock_t *lock = (pmix_pnet_inventory_lock_t*)cbdata;
-    PMIX_RELEASE_THREAD(&lock->lock);
-    PMIX_RELEASE(lock);
-}
-
 static void cicbfunc(pmix_status_t status,
-                     pmix_info_t *info, size_t ninfo,
-                     void *cbdata,
-                     pmix_release_cbfunc_t release_fn,
-                     void *release_cbdata)
+                     pmix_list_t *inventory,
+                     void *cbdata)
 {
-    pmix_pnet_inventory_lock_t *lock = (pmix_pnet_inventory_lock_t*)cbdata;
-    pmix_inventory_payload_t *pyload;
-    pmix_status_t ret;
-    size_t n;
+    pmix_inventory_rollup_t *rollup = (pmix_inventory_rollup_t*)cbdata;
+    pmix_kval_t *kv;
 
-    PMIX_ACQUIRE_THREAD(&lock->lock);
-    /* transfer the returned values */
-    pyload = PMIX_NEW(pmix_inventory_payload_t);
-    if (NULL == pyload) {
-        ret = PMIX_ERR_NOMEM;
-        goto error;
+    PMIX_ACQUIRE_THREAD(&rollup->lock);
+    /* check if they had an error */
+    if (PMIX_SUCCESS != status && PMIX_SUCCESS == rollup->status) {
+        rollup->status = status;
     }
-    pyload->info = info;
-    pyload->ninfo = ninfo;
-    pyload->release_fn = release_fn;
-    pyload->release_cbdata = release_cbdata;
-    pmix_list_append(&lock->payload, &pyload->super);
-    lock->ninfo += ninfo;
-    lock->replies++;
-    if (lock->replies < lock->requests) {
-        PMIX_RELEASE_THREAD(&lock->lock);
+    /* transfer the inventory */
+    if (NULL != inventory) {
+        while (NULL != (kv = (pmix_kval_t*)pmix_list_remove_first(inventory))) {
+            pmix_list_append(&rollup->payload, &kv->super);
+        }
+    }
+    /* record that we got a reply */
+    rollup->replies++;
+    /* see if all have replied */
+    if (rollup->replies < rollup->requests) {
+        /* nope - need to wait */
+        PMIX_RELEASE_THREAD(&rollup->lock);
         return;
     }
 
     /* if we get here, then collection is complete */
-    ret = PMIX_SUCCESS;
-
-    /* construct the reply info array */
-    PMIX_INFO_CREATE(lock->info, lock->ninfo);
-    if (NULL == lock->info) {
-        ret = PMIX_ERR_NOMEM;
-        goto error;
+    PMIX_RELEASE_THREAD(&rollup->lock);
+    if (NULL != rollup->cbfunc) {
+        rollup->cbfunc(rollup->status, &rollup->payload, rollup->cbdata);
     }
-    /* transfer the results */
-    n=0;
-    PMIX_LIST_FOREACH(pyload, &lock->payload, pmix_inventory_payload_t) {
-        memcpy(&lock->info[n], pyload->info, sizeof(pmix_info_t));
-        ++n;
-    }
-    /* now call the requestor back */
-    lock->cbfunc(ret, lock->info, lock->ninfo, lock->cbdata, cirelease, lock);
-    PMIX_RELEASE_THREAD(&lock->lock);
+    PMIX_RELEASE(rollup);
     return;
-
-  error:
-    /* cycle across the collected payloads and let
-     * providers release them */
-    PMIX_LIST_FOREACH(pyload, &lock->payload, pmix_inventory_payload_t) {
-        if (NULL != pyload->release_fn) {
-            pyload->release_fn(pyload->release_cbdata);
-        }
-    }
-    PMIX_RELEASE_THREAD(&lock->lock);
-    PMIX_RELEASE(lock);
 }
 
 void pmix_pnet_base_collect_inventory(pmix_info_t directives[], size_t ndirs,
-                                      pmix_info_cbfunc_t cbfunc, void *cbdata)
+                                      pmix_inventory_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_pnet_base_active_module_t *active;
-    pmix_pnet_inventory_lock_t *mylock;
+    pmix_inventory_rollup_t *myrollup;
     pmix_status_t rc;
 
     /* we cannot block here as each plugin could take some time to
@@ -427,54 +346,60 @@ void pmix_pnet_base_collect_inventory(pmix_info_t directives[], size_t ndirs,
     if (!pmix_pnet_globals.initialized) {
         /* need to call them back so they know */
         if (NULL != cbfunc) {
-            cbfunc(PMIX_ERR_INIT, NULL, 0, cbdata, NULL, NULL);
+            cbfunc(PMIX_ERR_INIT, NULL, cbdata);
         }
         return;
     }
-    /* create the lock */
-    mylock = PMIX_NEW(pmix_pnet_inventory_lock_t);
-    if (NULL == mylock) {
+    /* create the rollup object */
+    myrollup = PMIX_NEW(pmix_inventory_rollup_t);
+    if (NULL == myrollup) {
         /* need to call them back so they know */
         if (NULL != cbfunc) {
-            cbfunc(PMIX_ERR_NOMEM, NULL, 0, cbdata, NULL, NULL);
+            cbfunc(PMIX_ERR_NOMEM, NULL, cbdata);
         }
         return;
     }
+    myrollup->cbfunc = cbfunc;
+    myrollup->cbdata = cbdata;
 
     /* hold the lock until all active modules have been called
      * to avoid race condition where replies come in before
      * the requests counter has been fully updated */
-    PMIX_ACQUIRE_THREAD(&mylock->lock);
+    PMIX_ACQUIRE_THREAD(&myrollup->lock);
 
     PMIX_LIST_FOREACH(active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
         if (NULL != active->module->collect_inventory) {
-            rc = active->module->collect_inventory(directives, ndirs, cicbfunc, &mylock);
+            pmix_output_verbose(5, pmix_pnet_base_framework.framework_output,
+                                "COLLECTING %s", active->module->name);
+            rc = active->module->collect_inventory(directives, ndirs, cicbfunc, (void*)myrollup);
+            /* if they return success, then the values were
+             * placed directly on the payload - nothing
+             * to wait for here */
             if (PMIX_ERR_OPERATION_IN_PROGRESS == rc) {
-                mylock->requests++;
+                myrollup->requests++;
+            } else if (PMIX_SUCCESS != rc &&
+                       PMIX_ERR_TAKE_NEXT_OPTION != rc &&
+                       PMIX_ERR_NOT_SUPPORTED != rc) {
+                /* a true error - we need to wait for
+                 * all pending requests to complete
+                 * and then notify the caller of the error */
+                if (PMIX_SUCCESS == myrollup->status) {
+                    myrollup->status = rc;
+                }
             }
         }
     }
-    if (0 == mylock->requests) {
-        /* there will be no replies */
+    if (0 == myrollup->requests) {
+        /* report back */
+        PMIX_RELEASE_THREAD(&myrollup->lock);
         if (NULL != cbfunc) {
-            cbfunc(PMIX_SUCCESS, NULL, 0, cbdata, NULL, NULL);
+            cbfunc(myrollup->status, &myrollup->payload, cbdata);
         }
-    } else {
-        PMIX_INFO_CREATE(mylock->info, mylock->requests);
-        if (NULL == mylock->info) {
-            /* better let them know */
-            if (NULL != cbfunc) {
-                cbfunc(PMIX_ERR_NOMEM, NULL, 0, cbdata, NULL, NULL);
-            }
-        } else {
-            mylock->ninfo = mylock->requests;
-            PMIX_RELEASE_THREAD(&mylock->lock);
-            return;
-        }
+        PMIX_RELEASE(myrollup);
+        return;
     }
 
-    PMIX_RELEASE_THREAD(&mylock->lock);
-    PMIX_RELEASE(mylock);
+    PMIX_RELEASE_THREAD(&myrollup->lock);
     return;
 }
 

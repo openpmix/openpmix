@@ -728,6 +728,14 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     PMIX_LIBEVENT_CONFIG
 
     ##################################
+    # HWLOC
+    ##################################
+    pmix_show_title "HWLOC"
+
+    PMIX_HWLOC_CONFIG
+
+
+    ##################################
     # ZLIB COMPRESSION
     ##################################
     pmix_show_title "ZLIB"

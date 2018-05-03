@@ -205,6 +205,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_TCP_DISABLE_IPV4               "pmix.tcp.disipv4"      // (bool) true to disable IPv4 family
 #define PMIX_TCP_DISABLE_IPV6               "pmix.tcp.disipv6"      // (bool) true to disable IPv6 family
 
+
 /* attributes for GDS */
 #define PMIX_GDS_MODULE                     "pmix.gds.mod"          // (char*) comma-delimited string of desired modules
 
@@ -252,6 +253,7 @@ typedef uint32_t pmix_rank_t;
                                                                     //                to launch this proc's application
 #define PMIX_EXIT_CODE                      "pmix.exit.code"        // (int) exit code returned when proc terminated
 
+
 /* size info */
 #define PMIX_UNIV_SIZE                      "pmix.univ.size"        // (uint32_t) #procs in this nspace
 #define PMIX_JOB_SIZE                       "pmix.job.size"         // (uint32_t) #procs in this job
@@ -262,16 +264,20 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_MAX_PROCS                      "pmix.max.size"         // (uint32_t) max #procs for this job
 #define PMIX_NUM_NODES                      "pmix.num.nodes"        // (uint32_t) #nodes in this nspace
 
+
 /* Memory info */
 #define PMIX_AVAIL_PHYS_MEMORY              "pmix.pmem"             // (uint64_t) total available physical memory on this node
 #define PMIX_DAEMON_MEMORY                  "pmix.dmn.mem"          // (float) Mbytes of memory currently used by daemon
 #define PMIX_CLIENT_AVG_MEMORY              "pmix.cl.mem.avg"       // (float) Average Mbytes of memory used by client processes
+
 
 /* topology info */
 #define PMIX_NET_TOPO                       "pmix.ntopo"            // (char*) xml-representation of network topology
 #define PMIX_LOCAL_TOPO                     "pmix.ltopo"            // (char*) xml-representation of local node topology
 #define PMIX_NODE_LIST                      "pmix.nlist"            // (char*) comma-delimited list of nodes running procs for this job
 #define PMIX_TOPOLOGY                       "pmix.topo"             // (hwloc_topology_t) pointer to the PMIx client's internal topology object
+#define PMIX_TOPOLOGY_XML                   "pmix.topo.xml"         // (char*) XML-based description of topology
+#define PMIX_TOPOLOGY_FILE                  "pmix.topo.file"        // (char*) full path to file containing XML topology description
 #define PMIX_TOPOLOGY_SIGNATURE             "pmix.toposig"          // (char*) topology signature string
 #define PMIX_LOCALITY_STRING                "pmix.locstr"           // (char*) string describing a proc's location
 #define PMIX_HWLOC_SHMEM_ADDR               "pmix.hwlocaddr"        // (size_t) address of HWLOC shared memory segment
@@ -279,6 +285,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_HWLOC_SHMEM_FILE               "pmix.hwlocfile"        // (char*) path to HWLOC shared memory file
 #define PMIX_HWLOC_XML_V1                   "pmix.hwlocxml1"        // (char*) XML representation of local topology using HWLOC v1.x format
 #define PMIX_HWLOC_XML_V2                   "pmix.hwlocxml2"        // (char*) XML representation of local topology using HWLOC v2.x format
+#define PMIX_HWLOC_SHARE_TOPO               "pmix.hwlocsh"          // (bool) Share the HWLOC topology via shared memory
+#define PMIX_HWLOC_HOLE_KIND                "pmix.hwlocholek"       // (char*) Kind of VM "hole" HWLOC should use for shared memory
 
 
 /* request-related info */
