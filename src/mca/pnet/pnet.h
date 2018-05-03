@@ -150,7 +150,6 @@ typedef pmix_status_t (*pmix_pnet_base_API_setup_local_net_fn_t)(char *nspace,
                                                                  size_t ninfo);
 typedef pmix_status_t (*pmix_pnet_base_API_setup_fork_fn_t)(const pmix_proc_t *peer, char ***env);
 
-typedef void (*pmix_pnet_base_API_local_app_finalized_fn_t)(char *nspace);
 typedef void (*pmix_pnet_base_API_deregister_nspace_fn_t)(char *nspace);
 typedef void (*pmix_pnet_base_API_collect_inventory_fn_t)(pmix_info_t directives[], size_t ndirs,
                                                           pmix_inventory_cbfunc_t cbfunc,
@@ -168,7 +167,7 @@ typedef struct {
     pmix_pnet_base_API_setup_local_net_fn_t         setup_local_network;
     pmix_pnet_base_API_setup_fork_fn_t              setup_fork;
     pmix_pnet_base_module_child_finalized_fn_t      child_finalized;
-    pmix_pnet_base_API_local_app_finalized_fn_t     local_app_finalized;
+    pmix_pnet_base_module_local_app_finalized_fn_t  local_app_finalized;
     pmix_pnet_base_API_deregister_nspace_fn_t       deregister_nspace;
     pmix_pnet_base_API_collect_inventory_fn_t       collect_inventory;
 } pmix_pnet_API_module_t;

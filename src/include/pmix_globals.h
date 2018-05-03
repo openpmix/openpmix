@@ -167,6 +167,7 @@ typedef struct {
     bool version_stored;         // the version string used by this nspace has been stored
     pmix_buffer_t *jobbkt;       // packed version of jobinfo
     size_t ndelivered;           // count of #local clients that have received the jobinfo
+    size_t nfinalized;           // count of #local clients that have finalized
     pmix_list_t ranks;           // list of pmix_rank_info_t for connection support of my clients
     /* all members of an nspace are required to have the
      * same personality, but it can differ between nspaces.

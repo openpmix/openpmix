@@ -2884,30 +2884,16 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
                             "recvd FINALIZE");
         /* mark that this peer called finalize */
         peer->finalized = true;
-        /* call the local server, if supported */
-        if (NULL != pmix_host_server.client_finalized) {
-            PMIX_GDS_CADDY(cd, peer, tag);
-            (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
-            proc.rank = peer->info->pname.rank;
-            /* since the client is finalizing, remove them from any event
-             * registrations they may still have on our list */
-            PMIX_LIST_FOREACH(reginfo, &pmix_server_globals.events, pmix_regevents_info_t) {
-                PMIX_LIST_FOREACH(prev, &reginfo->peers, pmix_peer_events_info_t) {
-                    if (prev->peer == peer) {
-                        pmix_list_remove_item(&reginfo->peers, &prev->super);
-                        PMIX_RELEASE(prev);
-                        break;
-                    }
+        peer->nptr->nfinalized++;
+        /* since the client is finalizing, remove them from any event
+         * registrations they may still have on our list */
+        PMIX_LIST_FOREACH(reginfo, &pmix_server_globals.events, pmix_regevents_info_t) {
+            PMIX_LIST_FOREACH(prev, &reginfo->peers, pmix_peer_events_info_t) {
+                if (prev->peer == peer) {
+                    pmix_list_remove_item(&reginfo->peers, &prev->super);
+                    PMIX_RELEASE(prev);
+                    break;
                 }
-            }
-            /* now tell the host server */
-            if (PMIX_SUCCESS != (rc = pmix_host_server.client_finalized(&proc, peer->info->server_object,
-                                                                        op_cbfunc, cd))) {
-                PMIX_RELEASE(cd);
-            } else {
-                /* don't reply to them ourselves - we will do so when the host
-                 * server calls us back */
-                return rc;
             }
         }
         /* turn off the recv event - we shouldn't hear anything
@@ -2918,6 +2904,25 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
         }
         /* let the network libraries cleanup */
         pmix_pnet.child_finalized(peer);
+        /* if all the local clients for this app have finalized, then notify
+         * the network libraries */
+        if (peer->nptr->nlocalprocs == peer->nptr->nfinalized) {
+            pmix_pnet.local_app_finalized(peer->nptr);
+        }
+        /* call the local server, if supported */
+        if (NULL != pmix_host_server.client_finalized) {
+            PMIX_GDS_CADDY(cd, peer, tag);
+            (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+            proc.rank = peer->info->pname.rank;
+            /* now tell the host server */
+            if (PMIX_SUCCESS == (rc = pmix_host_server.client_finalized(&proc, peer->info->server_object,
+                                                                        op_cbfunc, cd))) {
+                /* don't reply to them ourselves - we will do so when the host
+                 * server calls us back */
+                return rc;
+            }
+            PMIX_RELEASE(cd);
+        }
         return rc;
     }
 
