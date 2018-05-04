@@ -221,30 +221,16 @@ void pmix_pnet_base_child_finalized(pmix_peer_t *peer)
     return;
 }
 
-void pmix_pnet_base_local_app_finalized(char *nspace)
+void pmix_pnet_base_local_app_finalized(pmix_nspace_t *nptr)
 {
     pmix_pnet_base_active_module_t *active;
-    pmix_nspace_t *nptr, *ns;
 
     if (!pmix_pnet_globals.initialized) {
         return;
     }
 
     /* protect against bozo inputs */
-    if (NULL == nspace) {
-        return;
-    }
-
-    /* find this nspace object */
-    nptr = NULL;
-    PMIX_LIST_FOREACH(ns, &pmix_server_globals.nspaces, pmix_nspace_t) {
-        if (0 == strcmp(ns->nspace, nspace)) {
-            nptr = ns;
-            break;
-        }
-    }
     if (NULL == nptr) {
-        /* nothing we can do */
         return;
     }
 

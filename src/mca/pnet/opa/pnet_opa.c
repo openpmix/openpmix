@@ -329,16 +329,21 @@ static pmix_status_t setup_fork(pmix_nspace_t *nptr,
 
 static void child_finalized(pmix_peer_t *peer)
 {
-
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet:opa child finalized");
 }
 
 static void local_app_finalized(pmix_nspace_t *nptr)
 {
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet:opa app finalized");
 
 }
 
 static void deregister_nspace(pmix_nspace_t *nptr)
 {
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet:opa deregister nspace");
 
 }
 
@@ -354,6 +359,9 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
     bool found = false;
     pmix_byte_object_t pbo;
     char nodename[PMIX_MAXHOSTNAMELEN], *foo;
+
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet:opa collect inventory");
 
     if (NULL == pmix_hwloc_topology) {
         return PMIX_ERR_NOT_SUPPORTED;

@@ -752,7 +752,8 @@ static pmix_status_t setup_fork(pmix_nspace_t *nptr,
  * have anything we need to do */
 static void child_finalized(pmix_peer_t *peer)
 {
-
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet:tcp child finalized");
 }
 
 /* when all local clients for a given job finalize, the server
@@ -761,7 +762,8 @@ static void child_finalized(pmix_peer_t *peer)
  * We don't have anything we need to do */
 static void local_app_finalized(pmix_nspace_t *nptr)
 {
-
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet:tcp app finalized");
 }
 
 /* when the job completes, the scheduler calls the "deregister nspace"
