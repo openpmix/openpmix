@@ -463,7 +463,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         return PMIX_SUCCESS;
     }
     /* if we don't see the required info, then we cannot init */
-    if (NULL == getenv("PMIX_NAMESPACE")) {
+    if (NULL == (evar = getenv("PMIX_NAMESPACE"))) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_INVALID_NAMESPACE;
     }
@@ -516,8 +516,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
                                   pmix_client_globals.base_verbose);
     }
 
-    /* we require our nspace, which we previously checked for existence */
-    evar = getenv("PMIX_NAMESPACE");
+    /* we require our nspace */
     if (NULL != proc) {
         (void)strncpy(proc->nspace, evar, PMIX_MAX_NSLEN);
     }
