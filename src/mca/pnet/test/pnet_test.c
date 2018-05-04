@@ -264,6 +264,9 @@ static pmix_status_t setup_local_network(pmix_nspace_t *nptr,
 
     /* get the list of nodes in this job - returns a regex */
     pmix_output(0, "pnet:test setup_local_network NSPACE %s", (NULL == nptr) ? "NULL" : nptr->nspace);
+    if (NULL == nptr) {
+        return PMIX_SUCCESS;
+    }
     pmix_preg.resolve_nodes(nptr->nspace, &nodestring);
     if (NULL == nodestring) {
         return PMIX_SUCCESS;

@@ -278,7 +278,7 @@ pmix_status_t pmix_hwloc_get_topology(pmix_info_t *info, size_t ninfo)
             }
         } else if (0 == strncmp(info[n].key, PMIX_HWLOC_SHARE_TOPO, PMIX_MAX_KEYLEN)) {
             share_topo = PMIX_INFO_TRUE(&info[n]);
-            share_reqd = PMIX_INFO_REQUIRED(&info[n]);
+            share_reqd = PMIX_INFO_IS_REQUIRED(&info[n]);
         } else if (0 == strncmp(info[n].key, PMIX_HWLOC_HOLE_KIND, PMIX_MAX_KEYLEN)) {
 #if HWLOC_API_VERSION >= 0x20000
             if (0 == strcasecmp(info[n].value.data.string, "none")) {
@@ -322,11 +322,6 @@ pmix_status_t pmix_hwloc_get_topology(pmix_info_t *info, size_t ninfo)
         kp2->key = strdup(PMIX_HWLOC_XML_V1);
         PMIX_VALUE_LOAD(kp2->value, xml, PMIX_STRING);
         hwloc_free_xmlbuffer(pmix_hwloc_topology, xml);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(kp2);
-            return rc;
-        }
         pmix_list_append(&pmix_server_globals.gdata, &kp2->super);
     }
     if (save_xml_v2) {
@@ -343,11 +338,7 @@ pmix_status_t pmix_hwloc_get_topology(pmix_info_t *info, size_t ninfo)
         }
         kp2->key = strdup(PMIX_HWLOC_XML_V1);
         PMIX_VALUE_LOAD(kp2->value, xml, PMIX_STRING);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(kp2);
-            return rc;
-        }
+        hwloc_free_xmlbuffer(pmix_hwloc_topology, xml);
         pmix_list_append(&pmix_server_globals.gdata, &kp2->super);
 #else
         if (save_xml_v2_reqd) {
