@@ -52,7 +52,8 @@ pmix_pnet_API_module_t pmix_pnet = {
     .child_finalized = pmix_pnet_base_child_finalized,
     .local_app_finalized = pmix_pnet_base_local_app_finalized,
     .deregister_nspace = pmix_pnet_base_deregister_nspace,
-    .collect_inventory = pmix_pnet_base_collect_inventory
+    .collect_inventory = pmix_pnet_base_collect_inventory,
+    .deliver_inventory = pmix_pnet_base_deliver_inventory
 };
 
 static pmix_status_t pmix_pnet_close(void)

@@ -66,6 +66,9 @@ static void local_app_finalized(pmix_nspace_t *nptr);
 static void deregister_nspace(pmix_nspace_t *nptr);
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
                                        pmix_inventory_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
+                                       pmix_info_t directives[], size_t ndirs,
+                                       pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 pmix_pnet_module_t pmix_opa_module = {
     .name = "opa",
@@ -77,7 +80,8 @@ pmix_pnet_module_t pmix_opa_module = {
     .child_finalized = child_finalized,
     .local_app_finalized = local_app_finalized,
     .deregister_nspace = deregister_nspace,
-    .collect_inventory = collect_inventory
+    .collect_inventory = collect_inventory,
+    .deliver_inventory = deliver_inventory
 };
 
 static pmix_status_t opa_init(void)
@@ -388,7 +392,6 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
             continue;
         }
         found = true;
-        pmix_output(0, "NAME %s INFOS %u", (NULL == obj->name) ? "NULL" : obj->name, obj->infos_count);
         /* pack the name of the device */
         PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &pbkt, &obj->name, 1, PMIX_STRING);
@@ -400,7 +403,6 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
         }
         /* pack each descriptive object */
         for (n=0; n < obj->infos_count; n++) {
-            pmix_output(0, "\tName: %s Value: %s", obj->infos[n].name, obj->infos[n].value);
             PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &pbkt, &obj->infos[n].name, 1, PMIX_STRING);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
@@ -445,4 +447,14 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
     pmix_list_append(&cd->payload, &kv->super);
 
     return PMIX_SUCCESS;
+}
+
+static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
+                                       pmix_info_t directives[], size_t ndirs,
+                                       pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet:opa deliver inventory");
+
+    return PMIX_ERR_NOT_SUPPORTED;
 }

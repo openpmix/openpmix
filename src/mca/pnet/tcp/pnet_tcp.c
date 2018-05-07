@@ -60,6 +60,9 @@ static void local_app_finalized(pmix_nspace_t *nptr);
 static void deregister_nspace(pmix_nspace_t *nptr);
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
                                        pmix_inventory_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
+                                       pmix_info_t directives[], size_t ndirs,
+                                       pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 pmix_pnet_module_t pmix_tcp_module = {
     .name = "tcp",
@@ -71,7 +74,8 @@ pmix_pnet_module_t pmix_tcp_module = {
     .child_finalized = child_finalized,
     .local_app_finalized = local_app_finalized,
     .deregister_nspace = deregister_nspace,
-    .collect_inventory = collect_inventory
+    .collect_inventory = collect_inventory,
+    .deliver_inventory = deliver_inventory
 };
 
 /* local tracker objects */
@@ -991,4 +995,14 @@ static pmix_status_t process_request(pmix_nspace_t *nptr,
         pmix_list_append(ilist, &kv->super);
     }
     return PMIX_SUCCESS;
+}
+
+static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
+                                       pmix_info_t directives[], size_t ndirs,
+                                       pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet:tcp deliver inventory");
+
+    return PMIX_ERR_NOT_SUPPORTED;
 }

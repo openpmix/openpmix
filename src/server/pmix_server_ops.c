@@ -3190,6 +3190,7 @@ static void ilcon(pmix_inventory_rollup_t *p)
     p->ninfo = 0;
     p->cbfunc = NULL;
     p->infocbfunc = NULL;
+    p->opcbfunc = NULL;
     p->cbdata = NULL;
 }
 static void ildes(pmix_inventory_rollup_t *p)

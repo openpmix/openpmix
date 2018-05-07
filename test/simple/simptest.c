@@ -139,11 +139,13 @@ PMIX_CLASS_INSTANCE(pmix_locdat_t,
 typedef struct {
     pmix_object_t super;
     mylock_t lock;
+    pmix_event_t ev;
     pmix_proc_t caller;
     pmix_info_t *info;
     size_t ninfo;
     pmix_op_cbfunc_t cbfunc;
     pmix_spawn_cbfunc_t spcbfunc;
+    pmix_release_cbfunc_t relcbfunc;
     void *cbdata;
 } myxfer_t;
 static void xfcon(myxfer_t *p)
@@ -208,6 +210,16 @@ static void opcbfunc(pmix_status_t status, void *cbdata)
     DEBUG_WAKEUP_THREAD(&x->lock);
 }
 
+
+static void dlcbfunc(int sd, short flags, void *cbdata)
+{
+    myxfer_t *x = (myxfer_t*)cbdata;
+
+    pmix_output(0, "INVENTORY READY FOR DELIVERY");
+
+    PMIx_server_deliver_inventory(x->info, x->ninfo, NULL, 0, opcbfunc, (void*)x);
+}
+
 static void infocbfunc(pmix_status_t status,
                        pmix_info_t *info, size_t ninfo,
                        void *cbdata,
@@ -215,9 +227,23 @@ static void infocbfunc(pmix_status_t status,
                        void *release_cbdata)
 {
     mylock_t *lock = (mylock_t*)cbdata;
+    myxfer_t *x;
+    size_t n;
+
+    pmix_output(0, "INVENTORY RECEIVED");
 
     /* we don't have any place to send this, so for test
-     * purposes only, let's push it back down for processing */
+     * purposes only, let's push it back down for processing.
+     * Note: it must be thread-shifted first as we are in
+     * the callback event thread of the underlying PMIx
+     * server */
+    x = PMIX_NEW(myxfer_t);
+    x->ninfo = ninfo;
+    PMIX_INFO_CREATE(x->info, x->ninfo);
+    for (n=0; n < ninfo; n++) {
+        PMIX_INFO_XFER(&x->info[n], &info[n]);
+    }
+    PMIX_THREADSHIFT(x, dlcbfunc);
 
     if (NULL != release_fn) {
         release_fn(release_cbdata);

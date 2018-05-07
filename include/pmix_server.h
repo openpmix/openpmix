@@ -738,15 +738,25 @@ PMIX_EXPORT pmix_status_t PMIx_server_IOF_deliver(const pmix_proc_t *source,
                                                   const pmix_info_t info[], size_t ninfo,
                                                   pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-/* Collect inventory of local resources. If the PMIX_MASTER_SERVER
- * attribute is passed, and the plugin for a particular resource
- * is capable of obtaining a global map of its resources, then
- * only that server shall grab it - all other plugins for
- * that resource will ignore the request. This is a non-blocking
+/* Collect inventory of local resources. This is a non-blocking
  * API as it may involve somewhat lengthy operations to obtain
- * the requested information */
+ * the requested information. Servers designated as "gateways"
+ * and whose plugins support collection of infrastructure info
+ * (e.g., switch and fabric topology, connectivity maps) shall
+ * return that information - plugins on non-gateway servers
+ * shall only return the node-local inventory. */
 PMIX_EXPORT pmix_status_t PMIx_server_collect_inventory(pmix_info_t directives[], size_t ndirs,
                                                         pmix_info_cbfunc_t cbfunc, void *cbdata);
+
+/* Deliver collected inventory for archiving by the corresponding
+ * plugins. Typically executed on a "gateway" associated with the
+ * system scheduler to enable use of inventory information by the
+ * the scheduling algorithm. May also be used on compute nodes to
+ * store a broader picture of the system for access by applications,
+ * if desired */
+PMIX_EXPORT pmix_status_t PMIx_server_deliver_inventory(pmix_info_t info[], size_t ninfo,
+                                                        pmix_info_t directives[], size_t ndirs,
+                                                        pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }
