@@ -55,7 +55,7 @@ static pmix_status_t setup_local_network(pmix_nspace_t *nptr,
                                          size_t ninfo);
 static pmix_status_t setup_fork(pmix_nspace_t *nptr,
                                 const pmix_proc_t *peer, char ***env);
-static void child_finalized(pmix_peer_t *peer);
+static void child_finalized(pmix_proc_t *peer);
 static void local_app_finalized(pmix_nspace_t *nptr);
 static void deregister_nspace(pmix_nspace_t *nptr);
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
@@ -750,7 +750,7 @@ static pmix_status_t setup_fork(pmix_nspace_t *nptr,
 /* when a local client finalizes, the server gives us a chance
  * to do any required local cleanup for that peer. We don't
  * have anything we need to do */
-static void child_finalized(pmix_peer_t *peer)
+static void child_finalized(pmix_proc_t *peer)
 {
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                         "pnet:tcp child finalized");

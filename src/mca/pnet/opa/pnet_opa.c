@@ -61,7 +61,7 @@ static pmix_status_t setup_local_network(pmix_nspace_t *nptr,
 static pmix_status_t setup_fork(pmix_nspace_t *nptr,
                                 const pmix_proc_t *proc,
                                 char ***env);
-static void child_finalized(pmix_peer_t *peer);
+static void child_finalized(pmix_proc_t *peer);
 static void local_app_finalized(pmix_nspace_t *nptr);
 static void deregister_nspace(pmix_nspace_t *nptr);
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
@@ -327,7 +327,7 @@ static pmix_status_t setup_fork(pmix_nspace_t *nptr,
     return PMIX_SUCCESS;
 }
 
-static void child_finalized(pmix_peer_t *peer)
+static void child_finalized(pmix_proc_t *peer)
 {
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                         "pnet:opa child finalized");
