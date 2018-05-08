@@ -997,6 +997,7 @@ static void _deregister_client(int sd, short args, void *cbdata)
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t*)cbdata;
     pmix_rank_info_t *info;
     pmix_nspace_t *nptr, *tmp;
+    pmix_peer_t *peer;
 
     PMIX_ACQUIRE_OBJECT(cd);
 
@@ -1019,6 +1020,33 @@ static void _deregister_client(int sd, short args, void *cbdata)
     /* find and remove this client */
     PMIX_LIST_FOREACH(info, &nptr->ranks, pmix_rank_info_t) {
         if (info->pname.rank == cd->proc.rank) {
+            /* if this client failed to call finalize, we still need
+             * to restore any allocations that were given to it */
+            if (NULL == (peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, info->peerid))) {
+                /* this peer never connected, and hence it won't finalize,
+                 * so account for it here */
+                nptr->nfinalized++;
+                /* even if they never connected, resources were allocated
+                 * to them, so we need to ensure they are properly released */
+                pmix_pnet.child_finalized(&cd->proc);
+            } else if (!peer->finalized) {
+                /* this peer connected to us, but is being deregistered
+                 * without having finalized. This usually means an
+                 * abnormal termination that was picked up by
+                 * our host prior to our seeing the connection drop.
+                 * It is also possible that we missed the dropped
+                 * connection, so mark the peer as finalized so
+                 * we don't duplicate account for it and take care
+                 * of it here */
+                peer->finalized = true;
+                nptr->nfinalized++;
+                /* resources may have been allocated to them, so
+                 * ensure they get cleaned up */
+                pmix_pnet.child_finalized(&cd->proc);
+            }
+            if (nptr->nlocalprocs == nptr->nfinalized) {
+                pmix_pnet.local_app_finalized(nptr);
+            }
             pmix_list_remove_item(&nptr->ranks, &info->super);
             PMIX_RELEASE(info);
             break;
@@ -2901,13 +2929,6 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
         if (peer->recv_ev_active) {
             pmix_event_del(&peer->recv_event);
             peer->recv_ev_active = false;
-        }
-        /* let the network libraries cleanup */
-        pmix_pnet.child_finalized(peer);
-        /* if all the local clients for this app have finalized, then notify
-         * the network libraries */
-        if (peer->nptr->nlocalprocs == peer->nptr->nfinalized) {
-            pmix_pnet.local_app_finalized(peer->nptr);
         }
         /* call the local server, if supported */
         if (NULL != pmix_host_server.client_finalized) {

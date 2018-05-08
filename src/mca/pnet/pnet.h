@@ -84,7 +84,7 @@ typedef pmix_status_t (*pmix_pnet_base_module_setup_fork_fn_t)(pmix_nspace_t *np
  * Provide an opportunity for the local network library to cleanup when a
  * local application process terminates
  */
-typedef void (*pmix_pnet_base_module_child_finalized_fn_t)(pmix_peer_t *peer);
+typedef void (*pmix_pnet_base_module_child_finalized_fn_t)(pmix_proc_t *peer);
 
 /**
  * Provide  an opportunity for the local network library to cleanup after

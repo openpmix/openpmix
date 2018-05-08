@@ -198,7 +198,7 @@ pmix_status_t pmix_pnet_base_setup_fork(const pmix_proc_t *proc, char ***env)
     return PMIX_SUCCESS;
 }
 
-void pmix_pnet_base_child_finalized(pmix_peer_t *peer)
+void pmix_pnet_base_child_finalized(pmix_proc_t *peer)
 {
     pmix_pnet_base_active_module_t *active;
 
