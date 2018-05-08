@@ -1029,20 +1029,25 @@ static void _deregister_client(int sd, short args, void *cbdata)
                 /* even if they never connected, resources were allocated
                  * to them, so we need to ensure they are properly released */
                 pmix_pnet.child_finalized(&cd->proc);
-            } else if (!peer->finalized) {
-                /* this peer connected to us, but is being deregistered
-                 * without having finalized. This usually means an
-                 * abnormal termination that was picked up by
-                 * our host prior to our seeing the connection drop.
-                 * It is also possible that we missed the dropped
-                 * connection, so mark the peer as finalized so
-                 * we don't duplicate account for it and take care
-                 * of it here */
-                peer->finalized = true;
-                nptr->nfinalized++;
+            } else {
+                if (!peer->finalized) {
+                    /* this peer connected to us, but is being deregistered
+                     * without having finalized. This usually means an
+                     * abnormal termination that was picked up by
+                     * our host prior to our seeing the connection drop.
+                     * It is also possible that we missed the dropped
+                     * connection, so mark the peer as finalized so
+                     * we don't duplicate account for it and take care
+                     * of it here */
+                    peer->finalized = true;
+                    nptr->nfinalized++;
+                }
                 /* resources may have been allocated to them, so
-                 * ensure they get cleaned up */
-                pmix_pnet.child_finalized(&cd->proc);
+                 * ensure they get cleaned up - this isn't true
+                 * for tools, so don't clean them up */
+                if (!PMIX_PROC_IS_TOOL(peer)) {
+                    pmix_pnet.child_finalized(&cd->proc);
+                }
             }
             if (nptr->nlocalprocs == nptr->nfinalized) {
                 pmix_pnet.local_app_finalized(nptr);
