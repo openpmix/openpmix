@@ -81,7 +81,7 @@ src/mca/pdl/base/static-components.h
 src/mca/pinstalldirs/base/static-components.h
 
 src/tools/pevent/pevent
-src/tools/pinfo/pinfo
+src/tools/pmix_info/pmix_info
 src/tools/plookup/plookup
 src/tools/pps/pps
 src/tools/ptop/ptop
