@@ -361,7 +361,7 @@ void pmix_pnet_base_collect_inventory(pmix_info_t directives[], size_t ndirs,
             /* if they return success, then the values were
              * placed directly on the payload - nothing
              * to wait for here */
-            if (PMIX_ERR_OPERATION_IN_PROGRESS == rc) {
+            if (PMIX_OPERATION_IN_PROGRESS == rc) {
                 myrollup->requests++;
             } else if (PMIX_SUCCESS != rc &&
                        PMIX_ERR_TAKE_NEXT_OPTION != rc &&

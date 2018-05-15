@@ -38,6 +38,13 @@ PMIX_EXPORT void pmix_value_load(pmix_value_t *v, const void *data,
     pmix_bfrops_base_value_load(v, data, type);
 }
 
+PMIX_EXPORT pmix_status_t pmix_value_unload(pmix_value_t *kv,
+                                            void **data,
+                                            size_t *sz)
+{
+    return pmix_bfrops_base_value_unload(kv, data, sz);
+}
+
 PMIX_EXPORT pmix_status_t pmix_value_xfer(pmix_value_t *dest,
                                           pmix_value_t *src)
 {
