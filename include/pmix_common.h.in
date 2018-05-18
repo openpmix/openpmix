@@ -541,7 +541,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_ALLOC_NETWORK_TYPE             "pmix.alloc.nettype"    // (char*) type of desired transport (e.g., tcp, udp)
 #define PMIX_ALLOC_NETWORK_PLANE            "pmix.alloc.netplane"   // (char*) id string for the NIC (aka plane) to be used for this allocation
                                                                     //         (e.g., CIDR for Ethernet)
-#define PMIX_ALLOC_NETWORK_ENDPTS           "pmix.alloc.endpts"     // (size_t) number of endpoints to allocate
+#define PMIX_ALLOC_NETWORK_ENDPTS           "pmix.alloc.endpts"     // (size_t) number of endpoints to allocate per process
+#define PMIX_ALLOC_NETWORK_ENDPTS_NODE      "pmix.alloc.endpts.nd"  // (size_t) number of endpoints to allocate per node
 #define PMIX_ALLOC_NETWORK_SEC_KEY          "pmix.alloc.nsec"       // (pmix_byte_object_t) network security key
 
 
