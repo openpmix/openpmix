@@ -19,26 +19,21 @@
 # $HEADER$
 #
 
-python_PYTHON = setup.py client.py server.py cpmix.pxd pmix.pyx
+helpers = setup.py client.py server.py cpmix.pxd pmix.pyx
 
 if WANT_PYTHON_BINDINGS
 
-bin_PROGRAM = pmix.c
-
-pmix.c: $(python_PYTHON)
-	CFLAGS="-I$(top_builddir)/include" \
-	LDFLAGS="-L$(DESTDIR)$(libdir)" \
-	$(PYTHON) setup.py build_ext -i
-	test -z "$(DESTDIR)$(libdir)/python/site-packages" || $(MKDIR_P) "$(DESTDIR)$(libdir)/python/site-packages"
-	cp pmix*.so $(DESTDIR)$(libdir)/python/site-packages
-	cp build/*/pmix.o $(DESTDIR)$(libdir)/python/site-packages
-
-install: pmix.c
+install-exec-local: $(helpers)
+	$(PYTHON) setup.py build_ext --include-dirs="$(top_builddir)/include" --library-dirs="$(DESTDIR)$(libdir)" --user
+	$(PYTHON) setup.py install --prefix="$(DESTDIR)$(prefix)"
 
 uninstall-hook:
-	rm -rf $(DESTDIR)/$(libdir)/python
+	rm -f $(pythondir)/pmix*.so
+	rm -f $(pythondir)/pypmix-*.egg-info
 
-clean:
-	rm -rf *.o build pmix.c
+CLEANFILES += pmix.c
+
+clean-local:
+	rm -rf build
 
 endif
