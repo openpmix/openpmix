@@ -415,8 +415,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     /* start listening for connections */
     if (PMIX_SUCCESS != pmix_ptl_base_start_listening(info, ninfo)) {
         pmix_show_help("help-pmix-server.txt", "listener-thread-start", true);
-        PMIx_server_finalize();
         PMIX_RELEASE_THREAD(&pmix_global_lock);
+        PMIx_server_finalize();
         return PMIX_ERR_INIT;
     }
 
