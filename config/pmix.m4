@@ -1144,12 +1144,27 @@ else
 fi
 
 AM_CONDITIONAL([WANT_PYTHON_BINDINGS], [test $WANT_PYTHON_BINDINGS -eq 1])
-AM_PATH_PYTHON([2.7], [$python_happy=1], [$python_happy=0])
-if test "$WANT_PYTHON_BINDINGS" = "1" && test "$python_happy" = "0"; then
-    AC_MSG_WARN([Python bindings were enabled, but no suitable])
-    AC_MSG_WARN([interpreter was found. PMIx requires at least])
-    AC_MSG_WARN([Python v2.7 to provide Python bindings])
-    AC_MSG_ERROR([Cannot continue])
+
+if test "$WANT_PYTHON_BINDINGS" = "1"; then
+    AM_PATH_PYTHON([2.7], [python_happy=1], [python_happy=0])
+    if test "$python_happy" = "0"; then
+        AC_MSG_WARN([Python bindings were enabled, but no suitable])
+        AC_MSG_WARN([interpreter was found. PMIx requires at least])
+        AC_MSG_WARN([Python v2.7 to provide Python bindings])
+        AC_MSG_ERROR([Cannot continue])
+    fi
+
+    AC_MSG_CHECKING([if Cython package installed])
+    have_cython=esyscmd(config/pmix_check_cython.py)
+    if test "$have_cython" = "0"; then
+        AC_MSG_RESULT([yes])
+    else
+        AC_MSG_RESULT([no])
+        AC_MSG_WARN([Python bindings were enabled, but the Cython])
+        AC_MSG_WARN([package was not found. PMIx Python bindings])
+        AC_MSG_WARN([require that the Cython package be installed])
+        AC_MSG_ERROR([Cannot continue])
+    fi
 fi
 
 ])dnl
