@@ -120,6 +120,32 @@ typedef void (*pmix_pnet_base_module_dregister_nspace_fn_t)(pmix_nspace_t *nptr)
 typedef pmix_status_t (*pmix_pnet_base_module_collect_inventory_fn_t)(pmix_info_t directives[], size_t ndirs,
                                                                       pmix_inventory_cbfunc_t cbfunc,
                                                                       void *cbdata);
+
+/**
+ * Deliver inventory for archiving by corresponding modules
+ *
+ * Modules are to search the provided inventory to identify
+ * entries provided by their remote peers, and then store that
+ * information in a manner that can be queried/retrieved by
+ * the host RM and/or scheduler. If the operation can be
+ * performed immediately (e.g., storing the information in
+ * the local hash table), then the module should just perform
+ * that operation and return the appropriate status.
+ *
+ * If the module needs to perform some non-atomic operation
+ * (e.g., storing the information in a non-local DHT), then
+ * it should shift to its own internal thread, return
+ * PMIX_ERR_OPERATION_IN_PROGRESS, and execute the provided
+ * callback function when the operation is completed.
+ *
+ * If there is no relevant inventory to archive, then the module
+ * should just return PMIX_SUCCESS;
+ */
+typedef pmix_status_t (*pmix_pnet_base_module_deliver_inventory_fn_t)(pmix_info_t info[], size_t ninfo,
+                                                                      pmix_info_t directives[], size_t ndirs,
+                                                                      pmix_op_cbfunc_t cbfunc, void *cbdata);
+
+
 /**
  * Base structure for a PNET module
  */
@@ -135,6 +161,7 @@ typedef struct {
     pmix_pnet_base_module_local_app_finalized_fn_t  local_app_finalized;
     pmix_pnet_base_module_dregister_nspace_fn_t     deregister_nspace;
     pmix_pnet_base_module_collect_inventory_fn_t    collect_inventory;
+    pmix_pnet_base_module_deliver_inventory_fn_t    deliver_inventory;
 } pmix_pnet_module_t;
 
 
@@ -154,6 +181,9 @@ typedef void (*pmix_pnet_base_API_deregister_nspace_fn_t)(char *nspace);
 typedef void (*pmix_pnet_base_API_collect_inventory_fn_t)(pmix_info_t directives[], size_t ndirs,
                                                           pmix_inventory_cbfunc_t cbfunc,
                                                           void *cbdata);
+typedef void (*pmix_pnet_base_API_deliver_inventory_fn_t)(pmix_info_t info[], size_t ninfo,
+                                                          pmix_info_t directives[], size_t ndirs,
+                                                          pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /**
  * Base structure for a PNET API
@@ -170,6 +200,7 @@ typedef struct {
     pmix_pnet_base_module_local_app_finalized_fn_t  local_app_finalized;
     pmix_pnet_base_API_deregister_nspace_fn_t       deregister_nspace;
     pmix_pnet_base_API_collect_inventory_fn_t       collect_inventory;
+    pmix_pnet_base_API_deliver_inventory_fn_t       deliver_inventory;
 } pmix_pnet_API_module_t;
 
 

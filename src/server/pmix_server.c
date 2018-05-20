@@ -1848,6 +1848,80 @@ pmix_status_t PMIx_server_collect_inventory(pmix_info_t directives[], size_t ndi
     return PMIX_SUCCESS;
 }
 
+static void dlinv_complete(pmix_status_t status, void *cbdata)
+{
+    pmix_shift_caddy_t *cd = (pmix_shift_caddy_t*)cbdata;
+
+    /* take the lock */
+    PMIX_ACQUIRE_THREAD(&cd->lock);
+
+    /* increment number of replies */
+    cd->ndata++;  // reuse field in shift_caddy
+    /* update status, if necessary */
+    if (PMIX_SUCCESS != status && PMIX_SUCCESS == cd->status) {
+        cd->status = status;
+    }
+    if (cd->ncodes == cd->ndata) {
+        /* we are done - let the caller know */
+        PMIX_RELEASE_THREAD(&cd->lock);
+        if (NULL != cd->cbfunc.opcbfn) {
+            cd->cbfunc.opcbfn(cd->status, cd->cbdata);
+        }
+        PMIX_RELEASE(cd);
+        return;
+    }
+
+    PMIX_RELEASE_THREAD(&cd->lock);
+    return;
+}
+
+
+static void dlinv(int sd, short args, void *cbdata)
+{
+    pmix_shift_caddy_t *cd = (pmix_shift_caddy_t*)cbdata;
+
+    /* only have one place to deliver inventory
+     * at this time */
+    cd->ncodes = 1;  // reuse field in shift_caddy
+
+    pmix_pnet.deliver_inventory(cd->info, cd->ninfo,
+                                cd->directives, cd->ndirs,
+                                dlinv_complete, cd);
+
+    return;
+
+}
+pmix_status_t PMIx_server_deliver_inventory(pmix_info_t info[], size_t ninfo,
+                                            pmix_info_t directives[], size_t ndirs,
+                                            pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    pmix_shift_caddy_t *cd;
+
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+    if (pmix_globals.init_cntr <= 0) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return PMIX_ERR_INIT;
+    }
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
+
+    /* need to threadshift this request */
+    cd = PMIX_NEW(pmix_shift_caddy_t);
+    if (NULL == cd) {
+        return PMIX_ERR_NOMEM;
+    }
+    cd->lock.active = false;
+    cd->info = info;
+    cd->ninfo = ninfo;
+    cd->directives = directives;
+    cd->ndirs = ndirs;
+    cd->cbfunc.opcbfn = cbfunc;
+    cd->cbdata = cbdata;
+    PMIX_THREADSHIFT(cd, dlinv);
+
+    return PMIX_SUCCESS;
+
+}
+
 /****    THE FOLLOWING CALLBACK FUNCTIONS ARE USED BY THE HOST SERVER    ****
  ****    THEY THEREFORE CAN OCCUR IN EITHER THE HOST SERVER'S THREAD     ****
  ****    CONTEXT, OR IN OUR OWN THREAD CONTEXT IF THE CALLBACK OCCURS    ****

@@ -84,6 +84,7 @@ typedef struct {
     size_t ninfo;
     pmix_inventory_cbfunc_t cbfunc;
     pmix_info_cbfunc_t infocbfunc;
+    pmix_op_cbfunc_t opcbfunc;
     void *cbdata;
 } pmix_inventory_rollup_t;
 PMIX_CLASS_DECLARATION(pmix_inventory_rollup_t);
