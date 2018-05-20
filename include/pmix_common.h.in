@@ -777,6 +777,8 @@ typedef int pmix_status_t;
 #define PMIX_OPENMP_PARALLEL_EXITED             (PMIX_ERR_OP_BASE - 23)     // an OpenMP parallel region has completed
 #define PMIX_LAUNCH_DIRECTIVE                   (PMIX_ERR_OP_BASE - 24)
 #define PMIX_LAUNCHER_READY                     (PMIX_ERR_OP_BASE - 25)
+#define PMIX_OPERATION_IN_PROGRESS              (PMIX_ERR_OP_BASE - 26)
+
 
 /* define a starting point for system error constants so
  * we avoid renumbering when making additions */
@@ -1091,7 +1093,21 @@ typedef struct pmix_data_buffer {
         (m)->bytes_allocated = 0;           \
         (m)->bytes_used = 0;                \
     } while (0)
+#define PMIX_DATA_BUFFER_LOAD(b, d, s)          \
+    do {                                        \
+        (b)->base_ptr = (char*)(d);             \
+        (b)->pack_ptr = (b)->base_ptr + (s);    \
+        (b)->unpack_ptr = (b)->base_ptr;        \
+        (b)->bytes_allocated = (s);             \
+        (b)->bytes_used = (s);                  \
+    } while(0)
 
+#define PMIX_DATA_BUFFER_UNLOAD(b, d, s)    \
+    do {                                    \
+        (d) = (b)->base_ptr;                \
+        (s) = (b)->bytes_used;              \
+        (b)->base_ptr = NULL;               \
+    } while(0)
 
 /****    PMIX PROC OBJECT    ****/
 typedef struct pmix_proc {
@@ -1448,6 +1464,10 @@ typedef struct pmix_value {
 void pmix_value_load(pmix_value_t *v, const void *data, pmix_data_type_t type);
 #define PMIX_VALUE_LOAD(v, d, t) \
     pmix_value_load((v), (d), (t))
+
+pmix_status_t pmix_value_unload(pmix_value_t *kv, void **data, size_t *sz);
+#define PMIX_VALUE_UNLOAD(r, k, d, s)      \
+    (r) = pmix_value_unload((k), (d), (s))
 
 pmix_status_t pmix_value_xfer(pmix_value_t *kv, pmix_value_t *src);
 #define PMIX_VALUE_XFER(r, v, s)                                \
