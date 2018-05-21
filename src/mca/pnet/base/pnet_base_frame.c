@@ -73,6 +73,9 @@ static pmix_status_t pmix_pnet_close(void)
     }
     PMIX_DESTRUCT(&pmix_pnet_globals.actives);
 
+    PMIX_LIST_DESTRUCT(&pmix_pnet_globals.jobs);
+    PMIX_LIST_DESTRUCT(&pmix_pnet_globals.nodes);
+
     return pmix_mca_base_framework_components_close(&pmix_pnet_base_framework, NULL);
 }
 
@@ -81,6 +84,8 @@ static pmix_status_t pmix_pnet_open(pmix_mca_base_open_flag_t flags)
     /* initialize globals */
     pmix_pnet_globals.initialized = true;
     PMIX_CONSTRUCT(&pmix_pnet_globals.actives, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_pnet_globals.jobs, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_pnet_globals.nodes, pmix_list_t);
 
     /* Open up all available components */
     return pmix_mca_base_framework_components_open(&pmix_pnet_base_framework, flags);
@@ -93,3 +98,64 @@ PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pnet, "PMIx Network Operations",
 PMIX_CLASS_INSTANCE(pmix_pnet_base_active_module_t,
                     pmix_list_item_t,
                     NULL, NULL);
+
+static void lpcon(pmix_pnet_local_procs_t *p)
+{
+    p->nspace = NULL;
+    p->ranks = NULL;
+    p->np = 0;
+}
+static void lpdes(pmix_pnet_local_procs_t *p)
+{
+    if (NULL != p->nspace) {
+        free(p->nspace);
+    }
+    if (NULL != p->ranks) {
+        free(p->ranks);
+    }
+}
+PMIX_CLASS_INSTANCE(pmix_pnet_local_procs_t,
+                    pmix_list_item_t,
+                    lpcon, lpdes);
+
+static void ndcon(pmix_pnet_node_t *p)
+{
+    p->name = NULL;
+    PMIX_CONSTRUCT(&p->local_jobs, pmix_list_t);
+}
+static void nddes(pmix_pnet_node_t *p)
+{
+    if (NULL != p->name) {
+        free(p->name);
+    }
+    PMIX_LIST_DESTRUCT(&p->local_jobs);
+}
+PMIX_CLASS_INSTANCE(pmix_pnet_node_t,
+                    pmix_list_item_t,
+                    ndcon, nddes);
+
+static void jcon(pmix_pnet_job_t *p)
+{
+    p->nspace = NULL;
+    PMIX_CONSTRUCT(&p->nodes, pmix_pointer_array_t);
+    pmix_pointer_array_init(&p->nodes, 1, INT_MAX, 1);
+}
+static void jdes(pmix_pnet_job_t *p)
+{
+    int n;
+    pmix_pnet_node_t *nd;
+
+    if (NULL != p->nspace) {
+        free(p->nspace);
+    }
+    for (n=0; n < p->nodes.size; n++) {
+        if (NULL != (nd = (pmix_pnet_node_t*)pmix_pointer_array_get_item(&p->nodes, n))) {
+            pmix_pointer_array_set_item(&p->nodes, n, NULL);
+            PMIX_RELEASE(nd);
+        }
+    }
+    PMIX_DESTRUCT(&p->nodes);
+}
+PMIX_CLASS_INSTANCE(pmix_pnet_job_t,
+                    pmix_list_item_t,
+                    jcon, jdes);
