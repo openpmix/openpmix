@@ -1,7 +1,7 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
- * Copyright (c) 2017      Research Organization for Information Science
+ * Copyright (c) 2017-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
@@ -61,6 +61,9 @@ static void rscon(pmix_rshift_caddy_t *p)
 }
 static void rsdes(pmix_rshift_caddy_t *p)
 {
+    if (0 < p->ncodes) {
+        free(p->codes);
+    }
     if (NULL != p->cd) {
         PMIX_RELEASE(p->cd);
     }

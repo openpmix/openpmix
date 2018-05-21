@@ -1,7 +1,7 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2014-2018 Intel, Inc.  All rights reserved.
- * Copyright (c) 2014-2017 Research Organization for Information Science
+ * Copyright (c) 2014-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
@@ -243,6 +243,7 @@ static void job_data(struct pmix_peer_t *pr,
     PMIX_GDS_STORE_JOB_INFO(cb->status,
                             pmix_client_globals.myserver,
                             nspace, buf);
+    free(nspace);
     cb->status = PMIX_SUCCESS;
     PMIX_POST_OBJECT(cb);
     PMIX_WAKEUP_THREAD(&cb->lock);
@@ -428,7 +429,6 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
 {
     char *evar;
     pmix_status_t rc;
-    pmix_nspace_t *nsptr;
     pmix_cb_t cb;
     pmix_buffer_t *req;
     pmix_cmd_t cmd = PMIX_REQ_CMD;
@@ -521,14 +521,8 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         (void)strncpy(proc->nspace, evar, PMIX_MAX_NSLEN);
     }
     (void)strncpy(pmix_globals.myid.nspace, evar, PMIX_MAX_NSLEN);
-    /* create a pmix_nspace_t object for our peer */
-    nsptr = PMIX_NEW(pmix_nspace_t);
-    if (NULL == nsptr){
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return PMIX_ERR_NOMEM;
-    }
-    nsptr->nspace = strdup(evar);
-    pmix_globals.mypeer->nptr = nsptr;
+    /* set the global pmix_nspace_t object for our peer */
+    pmix_globals.mypeer->nptr->nspace = strdup(evar);
 
     /* we also require our rank */
     if (NULL == (evar = getenv("PMIX_RANK"))) {
@@ -842,6 +836,7 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
             PMIX_RELEASE(peer);
         }
     }
+    PMIX_DESTRUCT(&pmix_client_globals.peers);
 
     if (0 <= pmix_client_globals.myserver->sd) {
         CLOSE_THE_SOCKET(pmix_client_globals.myserver->sd);
