@@ -68,10 +68,35 @@ struct pmix_pnet_base_active_module_t {
 typedef struct pmix_pnet_base_active_module_t pmix_pnet_base_active_module_t;
 PMIX_CLASS_DECLARATION(pmix_pnet_base_active_module_t);
 
+typedef struct {
+    pmix_list_item_t super;
+    char *nspace;
+    pmix_rank_t *ranks;
+    size_t np;
+} pmix_pnet_local_procs_t;
+PMIX_CLASS_DECLARATION(pmix_pnet_local_procs_t);
+
+typedef struct {
+    pmix_list_item_t super;
+    size_t index;
+    char *name;
+    pmix_list_t local_jobs;
+} pmix_pnet_node_t;
+PMIX_CLASS_DECLARATION(pmix_pnet_node_t);
+
+typedef struct {
+    pmix_list_item_t super;
+    char *nspace;
+    pmix_pointer_array_t nodes;
+} pmix_pnet_job_t;
+PMIX_CLASS_DECLARATION(pmix_pnet_job_t);
+
 /* framework globals */
 struct pmix_pnet_globals_t {
   pmix_list_t actives;
   bool initialized;
+  pmix_list_t jobs;
+  pmix_list_t nodes;
 };
 typedef struct pmix_pnet_globals_t pmix_pnet_globals_t;
 

@@ -107,9 +107,13 @@ static pmix_status_t allocate(pmix_nspace_t *nptr,
     uint64_t unique_key = 12345;
     pmix_buffer_t buf;
     pmix_status_t rc;
+    pmix_pnet_job_t *jptr, *job;
+    pmix_pnet_node_t *nd;
+    pmix_pnet_local_procs_t *lptr, *lp;
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                        "pnet:test:allocate for nspace %s", nptr->nspace);
+                        "pnet:test:allocate for nspace %s key %s",
+                        nptr->nspace, info->key);
 
     /* if I am not the gateway, then ignore this call - should never
      * happen, but check to be safe */
@@ -136,8 +140,7 @@ static pmix_status_t allocate(pmix_nspace_t *nptr,
         PMIX_ENVAR_LOAD(&kv->value->data.envar, "PMIX_TEST_ENVAR", "1", ':');
         pmix_list_append(ilist, &kv->super);
         return PMIX_SUCCESS;
-    } else if (0 != strncmp(info->key, PMIX_ALLOC_NETWORK, PMIX_MAX_KEYLEN)) {
-        /* not a network allocation request */
+    } else if (0 != strncmp(info->key, PMIX_ALLOC_NETWORK_ID, PMIX_MAX_KEYLEN)) {
         return PMIX_SUCCESS;
     }
 
@@ -152,9 +155,8 @@ static pmix_status_t allocate(pmix_nspace_t *nptr,
         NULL == info->value.data.darray ||
         PMIX_INFO != info->value.data.darray->type ||
         NULL == info->value.data.darray->array) {
-        /* they made an error */
-        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-        return PMIX_ERR_BAD_PARAM;
+        /* just process something for test */
+        goto process;
     }
     requests = (pmix_info_t*)info->value.data.darray->array;
     nreqs = info->value.data.darray->size;
@@ -173,9 +175,10 @@ static pmix_status_t allocate(pmix_nspace_t *nptr,
            }
        }
 
-    /* we at least require an attribute key for the response */
+  process:
+    /* if they didn't give us a test key, just create one */
     if (NULL == idkey) {
-        return PMIX_ERR_BAD_PARAM;
+        idkey = "TESTKEY";
     }
 
     /* must include the idkey */
@@ -213,6 +216,35 @@ static pmix_status_t allocate(pmix_nspace_t *nptr,
         memcpy(kv->value->data.bo.bytes, &unique_key, sizeof(uint64_t));
         kv->value->data.bo.size = sizeof(uint64_t);
         pmix_list_append(&mylist, &kv->super);
+    }
+
+    /* find the info on this job, if available */
+    job = NULL;
+    PMIX_LIST_FOREACH(jptr, &pmix_pnet_globals.jobs, pmix_pnet_job_t) {
+        if (0 == strcmp(jptr->nspace, nptr->nspace)) {
+            job = jptr;
+            break;
+        }
+    }
+    if (NULL != job) {
+        pmix_output(0, "ALLOCATE RESOURCES FOR JOB %s", job->nspace);
+        for (n=0; (int)n < job->nodes.size; n++) {
+            if (NULL == (nd = (pmix_pnet_node_t*)pmix_pointer_array_get_item(&job->nodes, n))) {
+                continue;
+            }
+            lp = NULL;
+            PMIX_LIST_FOREACH(lptr, &nd->local_jobs, pmix_pnet_local_procs_t) {
+                if (0 == strcmp(job->nspace, lptr->nspace)) {
+                    lp = lptr;
+                    break;
+                }
+            }
+            if (NULL == lp) {
+                pmix_output(0, "\t NODE %s 0 RANKS", nd->name);
+            } else {
+                pmix_output(0, "\tNODE %s %d RANKS", nd->name, (int)lp->np);
+            }
+        }
     }
 
     n = pmix_list_get_size(&mylist);

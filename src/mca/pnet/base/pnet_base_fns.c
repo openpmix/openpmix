@@ -19,12 +19,16 @@
 #include "src/include/pmix_globals.h"
 
 #include "src/class/pmix_list.h"
+#include "src/mca/preg/preg.h"
+#include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/pmix_environ.h"
 #include "src/server/pmix_server_ops.h"
 
 #include "src/mca/pnet/base/base.h"
 
+
+static pmix_status_t process_maps(char *nspace, char *nregex, char *pregex);
 
 /* NOTE: a tool (e.g., prun) may call this function to
  * harvest local envars for inclusion in a call to
@@ -38,6 +42,7 @@ pmix_status_t pmix_pnet_base_allocate(char *nspace,
     pmix_status_t rc;
     pmix_nspace_t *nptr, *ns;
     size_t n;
+    char *nregex, *pregex;
 
     if (!pmix_pnet_globals.initialized) {
         return PMIX_ERR_INIT;
@@ -86,6 +91,29 @@ pmix_status_t pmix_pnet_base_allocate(char *nspace,
                 }
             }
         } else {
+            /* check for description of the node and proc maps */
+            nregex = NULL;
+            pregex = NULL;
+            for (n=0; n < ninfo; n++) {
+                if (0 == strncmp(info[n].key, PMIX_NODE_MAP, PMIX_MAX_KEYLEN)) {
+                    nregex = info[n].value.data.string;
+                } else if (0 == strncmp(info[n].key, PMIX_PROC_MAP, PMIX_MAX_KEYLEN)) {
+                    pregex = info[n].value.data.string;
+                }
+            }
+            if (NULL != nregex && NULL != pregex) {
+                /* assemble the pnet node and proc descriptions
+                 * NOTE: this will eventually be folded into the
+                 * new shared memory system, but we do it here
+                 * as the pnet plugins need the information and
+                 * the host will not have registered the clients
+                 * and nspace prior to calling allocate
+                 */
+                rc = process_maps(nspace, nregex, pregex);
+                if (PMIX_SUCCESS != rc) {
+                    return rc;
+                }
+            }
             /* process the allocation request */
             for (n=0; n < ninfo; n++) {
                 PMIX_LIST_FOREACH(active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
@@ -554,5 +582,105 @@ pmix_status_t pmix_pnet_base_harvest_envars(char **incvars, char **excvars,
             }
         }
     }
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t process_maps(char *nspace, char *nregex, char *pregex)
+{
+    char **nodes, **procs, **ranks;
+    pmix_status_t rc;
+    size_t m, n;
+    pmix_pnet_job_t *jptr, *job;
+    pmix_pnet_node_t *nd, *ndptr;
+    pmix_pnet_local_procs_t *lp;
+    bool needcheck;
+
+    /* parse the regex to get the argv array of node names */
+    if (PMIX_SUCCESS != (rc = pmix_preg.parse_nodes(nregex, &nodes))) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    /* parse the regex to get the argv array of proc ranks on each node */
+    if (PMIX_SUCCESS != (rc = pmix_preg.parse_procs(pregex, &procs))) {
+        PMIX_ERROR_LOG(rc);
+        pmix_argv_free(nodes);
+        return rc;
+    }
+
+    /* see if we already know about this job */
+    job = NULL;
+    if (0 < pmix_list_get_size(&pmix_pnet_globals.jobs)) {
+        PMIX_LIST_FOREACH(jptr, &pmix_pnet_globals.jobs, pmix_pnet_job_t) {
+            if (0 == strcmp(nspace, jptr->nspace)) {
+                job = jptr;
+                break;
+            }
+        }
+    }
+    if (NULL == job) {
+        job = PMIX_NEW(pmix_pnet_job_t);
+        job->nspace = strdup(nspace);
+        pmix_list_append(&pmix_pnet_globals.jobs, &job->super);
+    }
+
+    if (0 < pmix_list_get_size(&pmix_pnet_globals.nodes)) {
+        needcheck = true;
+    } else {
+        needcheck = false;
+    }
+    for (n=0; NULL != nodes[n]; n++) {
+        if (needcheck) {
+            /* check and see if we already have data for this node */
+            nd = NULL;
+            PMIX_LIST_FOREACH(ndptr, &pmix_pnet_globals.nodes, pmix_pnet_node_t) {
+                if (0 == strcmp(nodes[n], nd->name)) {
+                    nd = ndptr;
+                    break;
+                }
+            }
+            if (NULL == nd) {
+                nd = PMIX_NEW(pmix_pnet_node_t);
+                nd->name = strdup(nodes[n]);
+                pmix_list_append(&pmix_pnet_globals.nodes, &nd->super);
+                /* add this node to the job */
+                PMIX_RETAIN(nd);
+                nd->index = pmix_pointer_array_add(&job->nodes, nd);
+            }
+        } else {
+            nd = PMIX_NEW(pmix_pnet_node_t);
+            nd->name = strdup(nodes[n]);
+            pmix_list_append(&pmix_pnet_globals.nodes, &nd->super);
+            /* add this node to the job */
+            PMIX_RETAIN(nd);
+            nd->index = pmix_pointer_array_add(&job->nodes, nd);
+        }
+        /* check and see if we already have this job on this node */
+        PMIX_LIST_FOREACH(lp, &nd->local_jobs, pmix_pnet_local_procs_t) {
+            if (0 == strcmp(nspace, lp->nspace)) {
+                /* we assume that the input replaces the prior
+                 * list of ranks */
+                pmix_list_remove_item(&nd->local_jobs, &lp->super);
+                PMIX_RELEASE(lp);
+                break;
+            }
+        }
+        /* track the local procs */
+        lp = PMIX_NEW(pmix_pnet_local_procs_t);
+        lp->nspace = strdup(nspace);
+        /* separate out the procs - they are a comma-delimited list
+         * of rank values */
+        ranks = pmix_argv_split(procs[n], ',');
+        lp->np = pmix_argv_count(ranks);
+        lp->ranks = (pmix_rank_t*)malloc(lp->np * sizeof(pmix_rank_t));
+        for (m=0; m < lp->np; m++) {
+            lp->ranks[m] = strtoul(ranks[m], NULL, 10);
+        }
+        pmix_list_append(&nd->local_jobs, &lp->super);
+        pmix_argv_free(ranks);
+    }
+
+    pmix_argv_free(nodes);
+    pmix_argv_free(procs);
     return PMIX_SUCCESS;
 }
