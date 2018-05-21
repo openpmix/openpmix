@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2007-2008 Cisco Systems, Inc.  All rights reserved.
  *
- * Copyright (c) 2015      Research Organization for Information Science
+ * Copyright (c) 2015-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018      Intel, Inc. All rights reserved.
  * $COPYRIGHT$
@@ -108,7 +108,7 @@ typedef void (*pmix_pnet_base_module_dregister_nspace_fn_t)(pmix_nspace_t *nptr)
  *
  * If the module needs to perform some non-atomic operation
  * (e.g., query a fabric manager), then it should shift to its own internal
- * thread, return PMIX_ERR_OPERATION_IN_PROGRESS, and execute the provided
+ * thread, return PMIX_OPERATION_IN_PROGRESS, and execute the provided
  * callback function when the operation is completed.
  *
  * If there is no inventory to report, then just return PMIX_SUCCESS.
@@ -135,7 +135,7 @@ typedef pmix_status_t (*pmix_pnet_base_module_collect_inventory_fn_t)(pmix_info_
  * If the module needs to perform some non-atomic operation
  * (e.g., storing the information in a non-local DHT), then
  * it should shift to its own internal thread, return
- * PMIX_ERR_OPERATION_IN_PROGRESS, and execute the provided
+ * PMIX_OPERATION_IN_PROGRESS, and execute the provided
  * callback function when the operation is completed.
  *
  * If there is no relevant inventory to archive, then the module

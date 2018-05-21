@@ -3,6 +3,8 @@
  * Copyright (c) 2015-2018 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2018      Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  *
  * $COPYRIGHT$
  *
@@ -464,7 +466,7 @@ void pmix_pnet_base_deliver_inventory(pmix_info_t info[], size_t ninfo,
             rc = active->module->deliver_inventory(info, ninfo, directives, ndirs, dlcbfunc, (void*)myrollup);
             /* if they return success, then the values were
              * immediately archived - nothing to wait for here */
-            if (PMIX_ERR_OPERATION_IN_PROGRESS == rc) {
+            if (PMIX_OPERATION_IN_PROGRESS == rc) {
                 myrollup->requests++;
             } else if (PMIX_SUCCESS != rc &&
                        PMIX_ERR_TAKE_NEXT_OPTION != rc &&
