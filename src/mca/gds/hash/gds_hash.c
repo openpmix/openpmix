@@ -1,6 +1,8 @@
 /*
  * Copyright (c) 2015-2018 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2018      Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  *
  * $COPYRIGHT$
  *
@@ -135,8 +137,11 @@ static void htdes(pmix_hash_trkr_t *p)
     if (NULL != p->nptr) {
         PMIX_RELEASE(p->nptr);
     }
+    pmix_hash_remove_data(&p->internal, PMIX_RANK_WILDCARD, NULL);
     PMIX_DESTRUCT(&p->internal);
+    pmix_hash_remove_data(&p->remote, PMIX_RANK_WILDCARD, NULL);
     PMIX_DESTRUCT(&p->remote);
+    pmix_hash_remove_data(&p->local, PMIX_RANK_WILDCARD, NULL);
     PMIX_DESTRUCT(&p->local);
 }
 static PMIX_CLASS_INSTANCE(pmix_hash_trkr_t,
@@ -1109,8 +1114,10 @@ static pmix_status_t hash_store(const pmix_proc_t *proc,
             }
             if (PMIX_SUCCESS != (rc = pmix_hash_store(&trk->internal, proc->rank, kp))) {
                 PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(kp);
                 return rc;
             }
+            PMIX_RELEASE(kp);  // maintain accounting
         }
     }
 
