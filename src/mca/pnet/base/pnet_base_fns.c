@@ -634,7 +634,7 @@ static pmix_status_t process_maps(char *nspace, char *nregex, char *pregex)
             /* check and see if we already have data for this node */
             nd = NULL;
             PMIX_LIST_FOREACH(ndptr, &pmix_pnet_globals.nodes, pmix_pnet_node_t) {
-                if (0 == strcmp(nodes[n], nd->name)) {
+                if (0 == strcmp(nodes[n], ndptr->name)) {
                     nd = ndptr;
                     break;
                 }
