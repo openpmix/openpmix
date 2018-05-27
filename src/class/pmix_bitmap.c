@@ -123,7 +123,7 @@ pmix_bitmap_set_bit(pmix_bitmap_t *bm, int bit)
          out of range. We don't throw any error here, because this is
          valid and we simply expand the bitmap */
 
-        new_size = (int)(((size_t)index / bm->array_size + 1 ) * bm->array_size);
+        new_size = index + 1;
         if( new_size > bm->max_size )
             new_size = bm->max_size;
 
