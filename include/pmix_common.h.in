@@ -626,6 +626,9 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_IOF_PUSH_STDIN                 "pmix.iof.stdin"        // (bool) Used by a tool to request that the PMIx library collect
                                                                     //        the tool's stdin and forward it to the procs specified in
                                                                     //        the PMIx_IOF_push call
+#define PMIX_IOF_TAG_OUTPUT                 "pmix.iof.tag"          // (bool) Tag output with the channel it comes from
+#define PMIX_IOF_TIMESTAMP_OUTPUT           "pmix.iof.ts"           // (bool) Timestamp output
+#define PMIX_IOF_XML_OUTPUT                 "pmix.iof.xml"          // (bool) Format output in XML
 
 
 /* Attributes for controlling contents of application setup data */
