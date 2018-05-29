@@ -121,6 +121,9 @@ static pmix_status_t allocate(pmix_nspace_t *nptr,
         return PMIX_SUCCESS;
     }
 
+    if (NULL == info) {
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
     /* check directives to see if a crypto key and/or
      * network resource allocations requested */
     PMIX_CONSTRUCT(&mylist, pmix_list_t);
