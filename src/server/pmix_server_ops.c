@@ -2995,6 +2995,7 @@ static void tcon(pmix_server_trkr_t *t)
     t->modexcbfunc = NULL;
     t->op_cbfunc = NULL;
     t->cnct_cbfunc = NULL;
+    t->hybrid = false;
 }
 static void tdes(pmix_server_trkr_t *t)
 {
