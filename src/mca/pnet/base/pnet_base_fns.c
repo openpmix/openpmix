@@ -595,9 +595,12 @@ static pmix_status_t process_maps(char *nspace, char *nregex, char *pregex)
     pmix_pnet_local_procs_t *lp;
     bool needcheck;
 
+    PMIX_ACQUIRE_THREAD(&pmix_pnet_globals.lock);
+
     /* parse the regex to get the argv array of node names */
     if (PMIX_SUCCESS != (rc = pmix_preg.parse_nodes(nregex, &nodes))) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
         return rc;
     }
 
@@ -605,6 +608,7 @@ static pmix_status_t process_maps(char *nspace, char *nregex, char *pregex)
     if (PMIX_SUCCESS != (rc = pmix_preg.parse_procs(pregex, &procs))) {
         PMIX_ERROR_LOG(rc);
         pmix_argv_free(nodes);
+        PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
         return rc;
     }
 
@@ -682,5 +686,7 @@ static pmix_status_t process_maps(char *nspace, char *nregex, char *pregex)
 
     pmix_argv_free(nodes);
     pmix_argv_free(procs);
+
+    PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
     return PMIX_SUCCESS;
 }

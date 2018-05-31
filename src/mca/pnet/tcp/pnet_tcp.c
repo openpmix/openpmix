@@ -78,9 +78,16 @@ pmix_pnet_module_t pmix_tcp_module = {
     .deliver_inventory = deliver_inventory
 };
 
+typedef struct {
+    pmix_list_item_t super;
+    char *device;
+    char *address;
+} tcp_device_t;
+
 /* local tracker objects */
 typedef struct {
     pmix_list_item_t super;
+    pmix_list_t devices;
     char *type;
     char *plane;
     char **ports;
@@ -94,15 +101,33 @@ typedef struct {
     tcp_available_ports_t *src;  // source of the allocated ports
 } tcp_port_tracker_t;
 
-
 static pmix_list_t allocations, available;
 static pmix_status_t process_request(pmix_nspace_t *nptr,
                                      char *idkey, int ports_per_node,
                                      tcp_port_tracker_t *trk,
                                      pmix_list_t *ilist);
 
+static void dcon(tcp_device_t *p)
+{
+    p->device = NULL;
+    p->address = NULL;
+}
+static void ddes(tcp_device_t *p)
+{
+    if (NULL != p->device) {
+        free(p->device);
+    }
+    if (NULL != p->address) {
+        free(p->address);
+    }
+}
+static PMIX_CLASS_INSTANCE(tcp_device_t,
+                           pmix_list_item_t,
+                           dcon, ddes);
+
 static void tacon(tcp_available_ports_t *p)
 {
+    PMIX_CONSTRUCT(&p->devices, pmix_list_t);
     p->type = NULL;
     p->plane = NULL;
     p->ports = NULL;
@@ -110,6 +135,7 @@ static void tacon(tcp_available_ports_t *p)
 }
 static void tades(tcp_available_ports_t *p)
 {
+    PMIX_LIST_DESTRUCT(&p->devices);
     if (NULL != p->type) {
         free(p->type);
     }
@@ -1005,8 +1031,107 @@ static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
                                        pmix_info_t directives[], size_t ndirs,
                                        pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
+    pmix_buffer_t bkt, pbkt;
+    size_t n;
+    int32_t cnt;
+    char *hostname, *device, *address;
+    pmix_byte_object_t pbo;
+    pmix_pnet_node_t *nd, *ndptr;
+    pmix_pnet_resource_t *lt, *lst;
+    tcp_available_ports_t *prts;
+    tcp_device_t *res;
+    pmix_status_t rc;
+
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                         "pnet:tcp deliver inventory");
 
-    return PMIX_ERR_NOT_SUPPORTED;
+    for (n=0; n < ninfo; n++) {
+        if (0 == strncmp(info[n].key, PMIX_TCP_INVENTORY_KEY, PMIX_MAX_KEYLEN)) {
+            /* this is our inventory in the form of a blob */
+            PMIX_LOAD_BUFFER(pmix_globals.mypeer, &bkt,
+                             info[n].value.data.bo.bytes,
+                             info[n].value.data.bo.size);
+            /* first is the host this came from */
+            cnt = 1;
+            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
+                               &bkt, &hostname, &cnt, PMIX_STRING);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                /* must _not_ destruct bkt as we don't
+                 * own the bytes! */
+                return rc;
+            }
+            /* do we already have this node? */
+            nd = NULL;
+            PMIX_LIST_FOREACH(ndptr, &pmix_pnet_globals.nodes, pmix_pnet_node_t) {
+                if (0 == strcmp(hostname, ndptr->name)) {
+                    nd = ndptr;
+                    break;
+                }
+            }
+            if (NULL == nd) {
+                nd = PMIX_NEW(pmix_pnet_node_t);
+                nd->name = strdup(hostname);
+                pmix_list_append(&pmix_pnet_globals.nodes, &nd->super);
+            }
+            /* does this node already have a TCP entry? */
+            lst = NULL;
+            PMIX_LIST_FOREACH(lt, &nd->resources, pmix_pnet_resource_t) {
+                if (0 == strcmp(lt->name, "tcp")) {
+                    lst = lt;
+                    break;
+                }
+            }
+            if (NULL == lst) {
+                lst = PMIX_NEW(pmix_pnet_resource_t);
+                lst->name = strdup("tcp");
+                pmix_list_append(&nd->resources, &lst->super);
+            }
+            /* this is a list of ports and devices */
+            prts = PMIX_NEW(tcp_available_ports_t);
+            pmix_list_append(&lst->resources, &prts->super);
+            /* cycle across any provided interfaces */
+            cnt = 1;
+            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
+                               &bkt, &pbo, &cnt, PMIX_BYTE_OBJECT);
+            while (PMIX_SUCCESS == rc) {
+                /* load the byte object for unpacking */
+                PMIX_LOAD_BUFFER(pmix_globals.mypeer, &pbkt, pbo.bytes, pbo.size);
+                /* unpack the name of the device */
+                cnt = 1;
+                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
+                                   &pbkt, &device, &cnt, PMIX_STRING);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_DATA_BUFFER_DESTRUCT(&pbkt);
+                    /* must _not_ destruct bkt as we don't
+                     * own the bytes! */
+                    return rc;
+                }
+                /* unpack the address */
+                cnt = 1;
+                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
+                                   &pbkt, &address, &cnt, PMIX_STRING);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_DATA_BUFFER_DESTRUCT(&pbkt);
+                    /* must _not_ destruct bkt as we don't
+                     * own the bytes! */
+                    return rc;
+                }
+                /* store this on the node */
+                res = PMIX_NEW(tcp_device_t);
+                res->device = device;
+                res->address = address;
+                pmix_list_append(&prts->devices, &res->super);
+                PMIX_DATA_BUFFER_DESTRUCT(&pbkt);
+                cnt = 1;
+                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
+                                   &bkt, &pbo, &cnt, PMIX_BYTE_OBJECT);
+            }
+            PMIX_DATA_BUFFER_DESTRUCT(&bkt);
+        }
+    }
+
+    return PMIX_SUCCESS;
 }
