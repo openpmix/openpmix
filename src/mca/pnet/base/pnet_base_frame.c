@@ -44,7 +44,7 @@
 #include "src/mca/pnet/base/static-components.h"
 
 /* Instantiate the global vars */
-pmix_pnet_globals_t pmix_pnet_globals = {{{0}}};
+pmix_pnet_globals_t pmix_pnet_globals = {{0}};
 pmix_pnet_API_module_t pmix_pnet = {
     .allocate = pmix_pnet_base_allocate,
     .setup_local_network = pmix_pnet_base_setup_local_network,
@@ -77,6 +77,7 @@ static pmix_status_t pmix_pnet_close(void)
     PMIX_LIST_DESTRUCT(&pmix_pnet_globals.jobs);
     PMIX_LIST_DESTRUCT(&pmix_pnet_globals.nodes);
 
+    PMIX_DESTRUCT_LOCK(&pmix_pnet_globals.lock);
     return pmix_mca_base_framework_components_close(&pmix_pnet_base_framework, NULL);
 }
 
@@ -84,6 +85,7 @@ static pmix_status_t pmix_pnet_open(pmix_mca_base_open_flag_t flags)
 {
     /* initialize globals */
     pmix_pnet_globals.initialized = true;
+    PMIX_CONSTRUCT_LOCK(&pmix_pnet_globals.lock);
     PMIX_CONSTRUCT(&pmix_pnet_globals.actives, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_pnet_globals.jobs, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_pnet_globals.nodes, pmix_list_t);
@@ -123,6 +125,7 @@ static void ndcon(pmix_pnet_node_t *p)
 {
     p->name = NULL;
     PMIX_CONSTRUCT(&p->local_jobs, pmix_list_t);
+    PMIX_CONSTRUCT(&p->resources, pmix_list_t);
 }
 static void nddes(pmix_pnet_node_t *p)
 {
@@ -130,6 +133,7 @@ static void nddes(pmix_pnet_node_t *p)
         free(p->name);
     }
     PMIX_LIST_DESTRUCT(&p->local_jobs);
+    PMIX_LIST_DESTRUCT(&p->resources);
 }
 PMIX_CLASS_INSTANCE(pmix_pnet_node_t,
                     pmix_list_item_t,
@@ -160,3 +164,19 @@ static void jdes(pmix_pnet_job_t *p)
 PMIX_CLASS_INSTANCE(pmix_pnet_job_t,
                     pmix_list_item_t,
                     jcon, jdes);
+
+static void rcon(pmix_pnet_resource_t *p)
+{
+    p->name = NULL;
+    PMIX_CONSTRUCT(&p->resources, pmix_list_t);
+}
+static void rdes(pmix_pnet_resource_t *p)
+{
+    if (NULL != p->name) {
+        free(p->name);
+    }
+    PMIX_LIST_DESTRUCT(&p->resources);
+}
+PMIX_CLASS_INSTANCE(pmix_pnet_resource_t,
+                    pmix_list_item_t,
+                    rcon, rdes);
