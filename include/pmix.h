@@ -507,6 +507,9 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
  *   lieue of preemption. A corresponding ability to "reacquire" resources
  *   previously released is included.
  */
+PMIX_EXPORT pmix_status_t PMIx_Allocation_request(pmix_alloc_directive_t directive,
+                                                  pmix_info_t *info, size_t ninfo);
+
 PMIX_EXPORT pmix_status_t PMIx_Allocation_request_nb(pmix_alloc_directive_t directive,
                                                      pmix_info_t *info, size_t ninfo,
                                                      pmix_info_cbfunc_t cbfunc, void *cbdata);
@@ -525,6 +528,9 @@ PMIX_EXPORT pmix_status_t PMIx_Allocation_request_nb(pmix_alloc_directive_t dire
  * when the callback function completes - this will be used to release
  * any provided pmix_info_t array.
  */
+PMIX_EXPORT pmix_status_t PMIx_Job_control(const pmix_proc_t targets[], size_t ntargets,
+                                           const pmix_info_t directives[], size_t ndirs);
+
 PMIX_EXPORT pmix_status_t PMIx_Job_control_nb(const pmix_proc_t targets[], size_t ntargets,
                                               const pmix_info_t directives[], size_t ndirs,
                                               pmix_info_cbfunc_t cbfunc, void *cbdata);
@@ -556,6 +562,9 @@ PMIX_EXPORT pmix_status_t PMIx_Job_control_nb(const pmix_proc_t targets[], size_
  *
  * Note: a process can send a heartbeat to the server using the PMIx_Heartbeat
  * macro provided below*/
+PMIX_EXPORT pmix_status_t PMIx_Process_monitor(const pmix_info_t *monitor, pmix_status_t error,
+                                               const pmix_info_t directives[], size_t ndirs);
+
 PMIX_EXPORT pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pmix_status_t error,
                                                   const pmix_info_t directives[], size_t ndirs,
                                                   pmix_info_cbfunc_t cbfunc, void *cbdata);
