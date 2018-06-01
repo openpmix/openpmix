@@ -173,7 +173,7 @@ PMIX_EXPORT pmix_status_t PMIx_Job_control_nb(const pmix_proc_t targets[], size_
     }
     /* remember, the targets can be NULL to indicate that the operation
      * is to be done against all members of our nspace */
-    if (0 < ntargets) {
+    if (NULL != targets && 0 < ntargets) {
         /* pack the targets */
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
                          msg, targets, ntargets, PMIX_PROC);
@@ -192,7 +192,7 @@ PMIX_EXPORT pmix_status_t PMIx_Job_control_nb(const pmix_proc_t targets[], size_
         PMIX_RELEASE(msg);
         return rc;
     }
-    if (0 < ndirs) {
+    if (NULL != directives && 0 < ndirs) {
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
                          msg, directives, ndirs, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
