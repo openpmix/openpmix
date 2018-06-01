@@ -1072,11 +1072,6 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
         return PMIX_SUCCESS;
     }
     pmix_globals.init_cntr = 0;
-    /* if we are not connected, then we are done */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return PMIX_SUCCESS;
-    }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -1088,47 +1083,49 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     PMIX_DESTRUCT(&pmix_client_globals.iof_stdout);
     PMIX_DESTRUCT(&pmix_client_globals.iof_stderr);
 
-    /* setup a cmd message to notify the PMIx
-     * server that we are normally terminating */
-    msg = PMIX_NEW(pmix_buffer_t);
-    /* pack the cmd */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &cmd, 1, PMIX_COMMAND);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(msg);
-        return rc;
-    }
+    /* if we are connected, then disconnect */
+    if (pmix_globals.connected) {
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "pmix:tool sending finalize sync to server");
 
+        /* setup a cmd message to notify the PMIx
+         * server that we are normally terminating */
+        msg = PMIX_NEW(pmix_buffer_t);
+        /* pack the cmd */
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
+                         msg, &cmd, 1, PMIX_COMMAND);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(msg);
+            return rc;
+        }
+        /* setup a timer to protect ourselves should the server be unable
+         * to answer for some reason */
+        PMIX_CONSTRUCT_LOCK(&tev.lock);
+        pmix_event_assign(&tev.ev, pmix_globals.evbase, -1, 0,
+                          fin_timeout, &tev);
+        tev.active = true;
+        PMIX_POST_OBJECT(&tev);
+        pmix_event_add(&tev.ev, &tv);
+        PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg,
+                           finwait_cbfunc, (void*)&tev);
+        if (PMIX_SUCCESS != rc) {
+            if (tev.active) {
+                pmix_event_del(&tev.ev);
+            }
+            return rc;
+        }
 
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:tool sending finalize sync to server");
-
-    /* setup a timer to protect ourselves should the server be unable
-     * to answer for some reason */
-    PMIX_CONSTRUCT_LOCK(&tev.lock);
-    pmix_event_assign(&tev.ev, pmix_globals.evbase, -1, 0,
-                      fin_timeout, &tev);
-    tev.active = true;
-    PMIX_POST_OBJECT(&tev);
-    pmix_event_add(&tev.ev, &tv);
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg,
-                       finwait_cbfunc, (void*)&tev);
-    if (PMIX_SUCCESS != rc) {
+        /* wait for the ack to return */
+        PMIX_WAIT_THREAD(&tev.lock);
+        PMIX_DESTRUCT_LOCK(&tev.lock);
         if (tev.active) {
             pmix_event_del(&tev.ev);
         }
-        return rc;
-    }
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "pmix:tool finalize sync received");
 
-    /* wait for the ack to return */
-    PMIX_WAIT_THREAD(&tev.lock);
-    PMIX_DESTRUCT_LOCK(&tev.lock);
-    if (tev.active) {
-        pmix_event_del(&tev.ev);
     }
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:tool finalize sync received");
 
     if (!pmix_globals.external_evbase) {
         /* stop the progress thread, but leave the event base
