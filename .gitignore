@@ -69,6 +69,7 @@ examples/fault
 examples/jctrl
 examples/pmix1client
 examples/pub
+examples/pubi
 examples/server
 examples/tool
 
