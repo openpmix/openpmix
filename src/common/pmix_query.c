@@ -24,6 +24,7 @@
 #include "src/threads/threads.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
+#include "src/util/name_fns.h"
 #include "src/util/output.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/ptl/ptl.h"
@@ -183,6 +184,58 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(cd);
     }
+    return rc;
+}
+
+static void acb(pmix_status_t status,
+                pmix_info_t *info, size_t ninfo,
+                void *cbdata,
+                pmix_release_cbfunc_t release_fn,
+                void *release_cbdata)
+{
+    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+    cb->status = status;
+    if (NULL != release_fn) {
+        release_fn(release_cbdata);
+    }
+    PMIX_WAKEUP_THREAD(&cb->lock);
+}
+
+PMIX_EXPORT pmix_status_t PMIx_Allocation_request(pmix_alloc_directive_t directive,
+                                                  pmix_info_t *info, size_t ninfo)
+{
+    pmix_cb_t cb;
+    pmix_status_t rc;
+
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+
+    if (pmix_globals.init_cntr <= 0) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return PMIX_ERR_INIT;
+    }
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
+
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "%s pmix:allocate", PMIX_NAME_PRINT(&pmix_globals.myid));
+
+    /* create a callback object as we need to pass it to the
+     * recv routine so we know which callback to use when
+     * the return message is recvd */
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    if (PMIX_SUCCESS != (rc = PMIx_Allocation_request_nb(directive, info, ninfo,
+                                                         acb, &cb))) {
+        PMIX_DESTRUCT(&cb);
+        return rc;
+    }
+
+    /* wait for the operation to complete */
+    PMIX_WAIT_THREAD(&cb.lock);
+    rc = cb.status;
+    PMIX_DESTRUCT(&cb);
+
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:allocate completed");
+
     return rc;
 }
 
