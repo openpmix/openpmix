@@ -996,6 +996,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         }
         PMIX_RELEASE(kptr); // maintain accounting
     }
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* if we are acting as a server, then start listening */
     if (PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
@@ -1009,12 +1010,10 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         /* start listening for connections */
         if (PMIX_SUCCESS != pmix_ptl_base_start_listening(info, ninfo)) {
             pmix_show_help("help-pmix-server.txt", "listener-thread-start", true);
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
             return PMIX_ERR_INIT;
         }
     }
 
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
     return rc;
 }
 

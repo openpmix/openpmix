@@ -2218,21 +2218,31 @@ pmix_status_t pmix_server_alloc(pmix_peer_t *peer,
     return rc;
 }
 
+typedef struct {
+    pmix_list_item_t super;
+    pmix_epilog_t *epi;
+} pmix_srvr_epi_caddy_t;
+static PMIX_CLASS_INSTANCE(pmix_srvr_epi_caddy_t,
+                           pmix_list_item_t,
+                           NULL, NULL);
+
 pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer,
                                    pmix_buffer_t *buf,
                                    pmix_info_cbfunc_t cbfunc,
                                    void *cbdata)
 {
-    int32_t cnt;
+    int32_t cnt, m;
     pmix_status_t rc;
     pmix_query_caddy_t *cd;
+    pmix_nspace_t *nptr, *tmp;
+    pmix_peer_t *pr;
     pmix_proc_t proc;
     size_t n;
     bool recurse = false, leave_topdir = false, duplicate;
-    pmix_list_t cachedirs, cachefiles;
-    pmix_epilog_t *epi = NULL;
-    pmix_cleanup_file_t *cf, *cf2;
-    pmix_cleanup_dir_t *cdir, *cdir2;
+    pmix_list_t cachedirs, cachefiles, ignorefiles, epicache;
+    pmix_srvr_epi_caddy_t *epicd = NULL;
+    pmix_cleanup_file_t *cf, *cf2, *cfptr;
+    pmix_cleanup_dir_t *cdir, *cdir2, *cdirptr;
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "recvd job control request from client");
@@ -2265,14 +2275,52 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer,
     }
 
     /* check targets to find proper place to put any epilog requests */
+    PMIX_CONSTRUCT(&epicache, pmix_list_t);
     if (NULL == cd->targets) {
-        epi = &peer->nptr->epilog;
-    } else if (1 == cd->ntargets) {
-        if (0 == strncmp(cd->targets[0].nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN)) {
-            if (PMIX_RANK_WILDCARD == cd->targets[0].rank) {
-                epi = &peer->nptr->epilog;
+        epicd = PMIX_NEW(pmix_srvr_epi_caddy_t);
+        epicd->epi = &peer->nptr->epilog;
+        pmix_list_append(&epicache, &epicd->super);
+    } else {
+        for (n=0; n < cd->ntargets; n++) {
+            /* find the nspace of this proc */
+            nptr = NULL;
+            PMIX_LIST_FOREACH(tmp, &pmix_server_globals.nspaces, pmix_nspace_t) {
+                if (0 == strcmp(tmp->nspace, cd->targets[n].nspace)) {
+                    nptr = tmp;
+                    break;
+                }
+            }
+            if (NULL == nptr) {
+                nptr = PMIX_NEW(pmix_nspace_t);
+                if (NULL == nptr) {
+                    rc = PMIX_ERR_NOMEM;
+                    goto exit;
+                }
+                nptr->nspace = strdup(cd->targets[n].nspace);
+                pmix_list_append(&pmix_server_globals.nspaces, &nptr->super);
+            }
+            /* if the rank is wildcard, then we use the epilog for the nspace */
+            if (PMIX_RANK_WILDCARD == cd->targets[n].rank) {
+                epicd = PMIX_NEW(pmix_srvr_epi_caddy_t);
+                epicd->epi = &nptr->epilog;
+                pmix_list_append(&epicache, &epicd->super);
             } else {
-                epi = &peer->epilog;
+                /* we need to find the precise peer - we can only
+                 * do cleanup for a local client */
+                for (m=0; m < pmix_server_globals.clients.size; m++) {
+                    if (NULL == (pr = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, m))) {
+                        continue;
+                    }
+                    if (0 != strncmp(pr->info->pname.nspace, cd->targets[n].nspace, PMIX_MAX_NSLEN)) {
+                        continue;
+                    }
+                    if (pr->info->pname.rank == cd->targets[n].rank) {
+                        epicd = PMIX_NEW(pmix_srvr_epi_caddy_t);
+                        epicd->epi = &pr->epilog;
+                        pmix_list_append(&epicache, &epicd->super);
+                        break;
+                    }
+                }
             }
         }
     }
@@ -2299,16 +2347,12 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer,
      * that request ourselves */
     PMIX_CONSTRUCT(&cachedirs, pmix_list_t);
     PMIX_CONSTRUCT(&cachefiles, pmix_list_t);
+    PMIX_CONSTRUCT(&ignorefiles, pmix_list_t);
+
     cnt = 0;  // track how many infos are cleanup related
     for (n=0; n < cd->ninfo; n++) {
         if (0 == strncmp(cd->info[n].key, PMIX_REGISTER_CLEANUP, PMIX_MAX_KEYLEN)) {
             ++cnt;
-            /* see if we allow epilog requests */
-            if (NULL == epi) {
-                /* return an error */
-                rc = PMIX_ERR_BAD_PARAM;
-                goto exit;
-            }
             if (PMIX_STRING != cd->info[n].value.type ||
                 NULL == cd->info[n].value.data.string) {
                 /* return an error */
@@ -2325,12 +2369,6 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer,
             pmix_list_append(&cachefiles, &cf->super);
         } else if (0 == strncmp(cd->info[n].key, PMIX_REGISTER_CLEANUP_DIR, PMIX_MAX_KEYLEN)) {
             ++cnt;
-            /* see if we allow epilog requests */
-            if (NULL == epi) {
-                /* return an error */
-                rc = PMIX_ERR_BAD_PARAM;
-                goto exit;
-            }
             if (PMIX_STRING != cd->info[n].value.type ||
                 NULL == cd->info[n].value.data.string) {
                 /* return an error */
@@ -2346,12 +2384,6 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer,
             cdir->path = strdup(cd->info[n].value.data.string);
             pmix_list_append(&cachedirs, &cdir->super);
         } else if (0 == strncmp(cd->info[n].key, PMIX_CLEANUP_RECURSIVE, PMIX_MAX_KEYLEN)) {
-            /* see if we allow epilog requests */
-            if (NULL == epi) {
-                /* return an error */
-                rc = PMIX_ERR_BAD_PARAM;
-                goto exit;
-            }
             recurse = PMIX_INFO_TRUE(&cd->info[n]);
             ++cnt;
         } else if (0 == strncmp(cd->info[n].key, PMIX_CLEANUP_IGNORE, PMIX_MAX_KEYLEN)) {
@@ -2361,104 +2393,111 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer,
                 rc = PMIX_ERR_BAD_PARAM;
                 goto exit;
             }
-            /* see if we allow epilog requests */
-            if (NULL == epi) {
+            cf = PMIX_NEW(pmix_cleanup_file_t);
+            if (NULL == cf) {
                 /* return an error */
-                rc = PMIX_ERR_BAD_PARAM;
+                rc = PMIX_ERR_NOMEM;
                 goto exit;
             }
-            /* scan the list of ignores for any duplicate */
-            duplicate = false;
-            PMIX_LIST_FOREACH(cf, &epi->ignores, pmix_cleanup_file_t) {
-                if (0 == strcmp(cf->path, cd->info[n].value.data.string)) {
-                    /* we can drop this request */
-                    duplicate = true;
-                    break;
-                }
-            }
-            if (!duplicate) {
-                cf = PMIX_NEW(pmix_cleanup_file_t);
-                if (NULL == cf) {
-                    /* return an error */
-                    rc = PMIX_ERR_NOMEM;
-                    goto exit;
-                }
-                cf->path = strdup(cd->info[n].value.data.string);
-                pmix_list_append(&epi->ignores, &cf->super);
-            }
+            cf->path = strdup(cd->info[n].value.data.string);
+            pmix_list_append(&ignorefiles, &cf->super);
             ++cnt;
         } else if (0 == strncmp(cd->info[n].key, PMIX_CLEANUP_LEAVE_TOPDIR, PMIX_MAX_KEYLEN)) {
-            /* see if we allow epilog requests */
-            if (NULL == epi) {
-                /* return an error */
-                rc = PMIX_ERR_BAD_PARAM;
-                goto exit;
-            }
             leave_topdir = PMIX_INFO_TRUE(&cd->info[n]);
             ++cnt;
         }
     }
     if (0 < cnt) {
-        while (NULL != (cdir = (pmix_cleanup_dir_t*)pmix_list_remove_first(&cachedirs))) {
-            /* scan the existing list of directories for any duplicate */
-            PMIX_LIST_FOREACH(cdir2, &epi->cleanup_dirs, pmix_cleanup_dir_t) {
-                if (0 == strcmp(cdir2->path, cdir->path)) {
-                    /* duplicate - check for difference in flags per RFC
-                     * precedence rules */
-                    if (!cdir->recurse && recurse) {
-                        cdir->recurse = recurse;
-                    }
-                    if (!cdir->leave_topdir && leave_topdir) {
-                        cdir->leave_topdir = leave_topdir;
-                    }
-                    PMIX_RELEASE(cdir);
-                    cdir = NULL;
-                    break;
-                }
-            }
-            if (NULL != cdir) {
-                /* check for conflict with ignore */
-                PMIX_LIST_FOREACH(cf, &epi->ignores, pmix_cleanup_file_t) {
-                    if (0 == strcmp(cf->path, cdir->path)) {
-                        /* return an error */
-                        rc = PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES;
-                        PMIX_LIST_DESTRUCT(&cachedirs);
-                        PMIX_LIST_DESTRUCT(&cachefiles);
-                        goto exit;
+        /* handle any ignore directives first */
+        PMIX_LIST_FOREACH(cf, &ignorefiles, pmix_cleanup_file_t) {
+            PMIX_LIST_FOREACH(epicd, &epicache, pmix_srvr_epi_caddy_t) {
+                /* scan the existing list of files for any duplicate */
+                duplicate = false;
+                PMIX_LIST_FOREACH(cf2, &epicd->epi->cleanup_files, pmix_cleanup_file_t) {
+                    if (0 == strcmp(cf2->path, cf->path)) {
+                        duplicate = true;
+                        break;
                     }
                 }
-                cdir->recurse = recurse;
-                cdir->leave_topdir = leave_topdir;
-                /* just append it to the end of the list */
-                pmix_list_append(&epi->cleanup_dirs, &cdir->super);
+                if (!duplicate) {
+                    /* append it to the end of the list */
+                    cfptr = PMIX_NEW(pmix_cleanup_file_t);
+                    cfptr->path = strdup(cf->path);
+                    pmix_list_append(&epicd->epi->ignores, &cf->super);
+                }
             }
         }
-        PMIX_DESTRUCT(&cachedirs);
-        while (NULL != (cf = (pmix_cleanup_file_t*)pmix_list_remove_first(&cachefiles))) {
-            /* scan the existing list of files for any duplicate */
-            PMIX_LIST_FOREACH(cf2, &epi->cleanup_files, pmix_cleanup_file_t) {
-                if (0 == strcmp(cf2->path, cf->path)) {
-                    PMIX_RELEASE(cf);
-                    cf = NULL;
-                    break;
-                }
-            }
-            if (NULL != cf) {
-                /* check for conflict with ignore */
-                PMIX_LIST_FOREACH(cf2, &epi->ignores, pmix_cleanup_file_t) {
-                    if (0 == strcmp(cf->path, cf2->path)) {
-                        /* return an error */
-                        rc = PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES;
-                        PMIX_LIST_DESTRUCT(&cachedirs);
-                        PMIX_LIST_DESTRUCT(&cachefiles);
-                        goto exit;
+        PMIX_LIST_DESTRUCT(&ignorefiles);
+        /* now look at the directories */
+        PMIX_LIST_FOREACH(cdir, &cachedirs, pmix_cleanup_dir_t) {
+            PMIX_LIST_FOREACH(epicd, &epicache, pmix_srvr_epi_caddy_t) {
+                /* scan the existing list of directories for any duplicate */
+                duplicate = false;
+                PMIX_LIST_FOREACH(cdir2, &epicd->epi->cleanup_dirs, pmix_cleanup_dir_t) {
+                    if (0 == strcmp(cdir2->path, cdir->path)) {
+                        /* duplicate - check for difference in flags per RFC
+                         * precedence rules */
+                        if (!cdir->recurse && recurse) {
+                            cdir->recurse = recurse;
+                        }
+                        if (!cdir->leave_topdir && leave_topdir) {
+                            cdir->leave_topdir = leave_topdir;
+                        }
+                        duplicate = true;
+                        break;
                     }
                 }
-                /* just append it to the end of the list */
-                pmix_list_append(&epi->cleanup_files, &cf->super);
+                if (!duplicate) {
+                    /* check for conflict with ignore */
+                    PMIX_LIST_FOREACH(cf, &epicd->epi->ignores, pmix_cleanup_file_t) {
+                        if (0 == strcmp(cf->path, cdir->path)) {
+                            /* return an error */
+                            rc = PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES;
+                            PMIX_LIST_DESTRUCT(&cachedirs);
+                            PMIX_LIST_DESTRUCT(&cachefiles);
+                            PMIX_LIST_DESTRUCT(&epicache);
+                            goto exit;
+                        }
+                    }
+                    /* append it to the end of the list */
+                    cdirptr = PMIX_NEW(pmix_cleanup_dir_t);
+                    cdirptr->path = strdup(cdir->path);
+                    cdirptr->recurse = recurse;
+                    cdirptr->leave_topdir = leave_topdir;
+                    pmix_list_append(&epicd->epi->cleanup_dirs, &cdirptr->super);
+                }
             }
         }
-        PMIX_DESTRUCT(&cachefiles);
+        PMIX_LIST_DESTRUCT(&cachedirs);
+        PMIX_LIST_FOREACH(cf, &cachefiles, pmix_cleanup_file_t) {
+            PMIX_LIST_FOREACH(epicd, &epicache, pmix_srvr_epi_caddy_t) {
+                /* scan the existing list of files for any duplicate */
+                duplicate = false;
+                PMIX_LIST_FOREACH(cf2, &epicd->epi->cleanup_files, pmix_cleanup_file_t) {
+                    if (0 == strcmp(cf2->path, cf->path)) {
+                        duplicate = true;
+                        break;
+                    }
+                }
+                if (!duplicate) {
+                    /* check for conflict with ignore */
+                    PMIX_LIST_FOREACH(cf2, &epicd->epi->ignores, pmix_cleanup_file_t) {
+                        if (0 == strcmp(cf->path, cf2->path)) {
+                            /* return an error */
+                            rc = PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES;
+                            PMIX_LIST_DESTRUCT(&cachedirs);
+                            PMIX_LIST_DESTRUCT(&cachefiles);
+                            goto exit;
+                        }
+                    }
+                    /* append it to the end of the list */
+                    cfptr = PMIX_NEW(pmix_cleanup_file_t);
+                    cfptr->path = strdup(cf->path);
+                    pmix_list_append(&epicd->epi->cleanup_files, &cfptr->super);
+                }
+            }
+        }
+        PMIX_LIST_DESTRUCT(&cachefiles);
         if (cnt == (int)cd->ninfo) {
             /* nothing more to do */
             if (NULL != cbfunc) {
