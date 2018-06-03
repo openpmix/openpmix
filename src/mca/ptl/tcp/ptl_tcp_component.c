@@ -762,7 +762,7 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
     }
     /* if we are a tool and connected, then register any rendezvous files for cleanup */
     if (PMIX_PROC_IS_TOOL(pmix_globals.mypeer) && pmix_globals.connected) {
-        char **clnup = NULL, *cptr;
+        char **clnup = NULL, *cptr = NULL;
         pmix_info_t dir;
         if (NULL != mca_ptl_tcp_component.nspace_filename) {
             pmix_argv_append_nosize(&clnup, mca_ptl_tcp_component.nspace_filename);
@@ -772,12 +772,12 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
         }
         if (NULL != clnup) {
             cptr = pmix_argv_join(clnup, ',');
+            pmix_argv_free(clnup);
+            PMIX_INFO_LOAD(&dir, PMIX_REGISTER_CLEANUP, cptr, PMIX_STRING);
+            free(cptr);
+            PMIx_Job_control_nb(&pmix_globals.myid, 1, &dir, 1, NULL, NULL);
+            PMIX_INFO_DESTRUCT(&dir);
         }
-        pmix_argv_free(clnup);
-        PMIX_INFO_LOAD(&dir, PMIX_REGISTER_CLEANUP, cptr, PMIX_STRING);
-        free(cptr);
-        PMIx_Job_control_nb(&pmix_globals.myid, 1, &dir, 1, NULL, NULL);
-        PMIX_INFO_DESTRUCT(&dir);
     }
 
     /* we need listener thread support */
