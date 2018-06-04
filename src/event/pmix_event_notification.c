@@ -1110,6 +1110,7 @@ pmix_status_t pmix_server_notify_client_of_event(pmix_status_t status,
             }
         }
     }
+
     /*
      * If the range is PMIX_RANGE_NAMESPACE, then they should not have set a
      * PMIX_EVENT_CUSTOM_RANGE info object or at least we should ignore it

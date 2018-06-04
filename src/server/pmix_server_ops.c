@@ -1546,9 +1546,12 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
     bool found, matched;
     pmix_buffer_t *relay;
     pmix_cmd_t cmd = PMIX_NOTIFY_CMD;
+    pmix_proc_t *affected = NULL;
+    size_t naffected = 0;
 
     pmix_output_verbose(2, pmix_server_globals.event_output,
-                        "recvd register events");
+                        "recvd register events for peer %s:%d",
+                        peer->info->pname.nspace, peer->info->pname.rank);
 
     /* unpack the number of codes */
     cnt=1;
@@ -1594,11 +1597,18 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
         }
     }
 
-    /* see if they asked for enviro events */
+    /* check the directives */
     for (n=0; n < ninfo; n++) {
-        if (0 == strcmp(info[n].key, PMIX_EVENT_ENVIRO_LEVEL)) {
+        if (0 == strncmp(info[n].key, PMIX_EVENT_ENVIRO_LEVEL, PMIX_MAX_KEYLEN)) {
             enviro_events = PMIX_INFO_TRUE(&info[n]);
-            break;
+        } else if (0 == strncmp(info[n].key, PMIX_EVENT_AFFECTED_PROC, PMIX_MAX_KEYLEN)) {
+            naffected = 1;
+            PMIX_PROC_CREATE(affected, naffected);
+            memcpy(affected, info[n].value.data.proc, sizeof(pmix_proc_t));
+        } else if (0 == strncmp(info[n].key, PMIX_EVENT_AFFECTED_PROCS, PMIX_MAX_KEYLEN)) {
+            naffected = info[n].value.data.darray->size;
+            PMIX_PROC_CREATE(affected, naffected);
+            memcpy(affected, info[n].value.data.darray->array, naffected * sizeof(pmix_proc_t));
         }
     }
 
@@ -1748,6 +1758,9 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
         if (NULL != codes) {
             free(codes);
         }
+        if (NULL != affected) {
+            PMIX_PROC_FREE(affected, naffected);
+        }
         return rc;
     }
 
@@ -1759,8 +1772,10 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
         }
         found = false;
         if (NULL == codes) {
-            /* they registered a default event handler - always matches */
-            found = true;
+            if (!cd->nondefault) {
+                /* they registered a default event handler - always matches */
+                found = true;
+            }
         } else {
             for (k=0; k < ncodes; k++) {
                 if (codes[k] == cd->status) {
@@ -1769,69 +1784,75 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
                 }
             }
         }
-        if (found) {
-           /* if we were given specific targets, check if this is one */
-            if (NULL != cd->targets) {
-                matched = false;
-                for (n=0; n < cd->ntargets; n++) {
-                    if (0 != strncmp(peer->info->pname.nspace, cd->targets[n].nspace, PMIX_MAX_NSLEN)) {
-                        continue;
-                    }
-                    /* if the source of the event is the same peer just registered, then ignore it
-                     * as the event notification system will have already locally
-                     * processed it */
-                    if (0 == strncmp(peer->info->pname.nspace, cd->source.nspace, PMIX_MAX_NSLEN) &&
-                        peer->info->pname.rank == cd->source.rank) {
-                        continue;
-                    }
-                    if (PMIX_RANK_WILDCARD == cd->targets[n].rank ||
-                        peer->info->pname.rank == cd->targets[n].rank) {
-                        matched = true;
-                        break;
-                    }
-                }
-                if (!matched) {
-                    /* do not notify this one */
+        if (!found) {
+            continue;
+        }
+       /* if we were given specific targets, check if this is one */
+        if (NULL != cd->targets) {
+            matched = false;
+            for (n=0; n < cd->ntargets; n++) {
+                if (0 != strncmp(peer->info->pname.nspace, cd->targets[n].nspace, PMIX_MAX_NSLEN)) {
                     continue;
                 }
-            }
-            /* all matches - notify */
-            relay = PMIX_NEW(pmix_buffer_t);
-            if (NULL == relay) {
-                /* nothing we can do */
-                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-                return PMIX_ERR_NOMEM;
-            }
-            /* pack the info data stored in the event */
-            PMIX_BFROPS_PACK(rc, peer, relay, &cmd, 1, PMIX_COMMAND);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                break;
-            }
-            PMIX_BFROPS_PACK(rc, peer, relay, &cd->status, 1, PMIX_STATUS);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                break;
-            }
-            PMIX_BFROPS_PACK(rc, peer, relay, &cd->source, 1, PMIX_PROC);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                break;
-            }
-            PMIX_BFROPS_PACK(rc, peer, relay, &cd->ninfo, 1, PMIX_SIZE);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                break;
-            }
-            if (0 < cd->ninfo) {
-                PMIX_BFROPS_PACK(rc, peer, relay, cd->info, cd->ninfo, PMIX_INFO);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
+                /* if the source of the event is the same peer just registered, then ignore it
+                 * as the event notification system will have already locally
+                 * processed it */
+                if (0 == strncmp(peer->info->pname.nspace, cd->source.nspace, PMIX_MAX_NSLEN) &&
+                    peer->info->pname.rank == cd->source.rank) {
+                    continue;
+                }
+                if (PMIX_RANK_WILDCARD == cd->targets[n].rank ||
+                    peer->info->pname.rank == cd->targets[n].rank) {
+                    matched = true;
                     break;
                 }
             }
-            PMIX_SERVER_QUEUE_REPLY(peer, 0, relay);
+            if (!matched) {
+                /* do not notify this one */
+                continue;
+            }
         }
+        /* if they specified affected proc(s) they wanted to know about, check */
+        if (!pmix_notify_check_affected(cd->affected, cd->naffected,
+                                        affected, naffected)) {
+            continue;
+        }
+        /* all matches - notify */
+        relay = PMIX_NEW(pmix_buffer_t);
+        if (NULL == relay) {
+            /* nothing we can do */
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            return PMIX_ERR_NOMEM;
+        }
+        /* pack the info data stored in the event */
+        PMIX_BFROPS_PACK(rc, peer, relay, &cmd, 1, PMIX_COMMAND);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+        PMIX_BFROPS_PACK(rc, peer, relay, &cd->status, 1, PMIX_STATUS);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+        PMIX_BFROPS_PACK(rc, peer, relay, &cd->source, 1, PMIX_PROC);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+        PMIX_BFROPS_PACK(rc, peer, relay, &cd->ninfo, 1, PMIX_SIZE);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+        if (0 < cd->ninfo) {
+            PMIX_BFROPS_PACK(rc, peer, relay, cd->info, cd->ninfo, PMIX_INFO);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                break;
+            }
+        }
+        PMIX_SERVER_QUEUE_REPLY(peer, 0, relay);
     }
     if (!enviro_events) {
         if (NULL != codes) {
