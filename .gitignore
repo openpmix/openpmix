@@ -114,6 +114,7 @@ test/pmix_test_lite.log
 test/pmix_test_lite.trs
 test/test-suite.log
 test/pmix_regex
+test/simple/quietclient
 test/simple/simptest
 test/simple/simpclient
 test/simple/simplegacy
@@ -125,6 +126,7 @@ test/simple/test_pmix
 test/simple/simptool
 test/simple/simpdie
 test/simple/simptimeout
+test/simple/stability
 test/simple/gwclient
 test/simple/gwtest
 
