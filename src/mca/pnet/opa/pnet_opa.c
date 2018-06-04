@@ -354,6 +354,7 @@ static void deregister_nspace(pmix_nspace_t *nptr)
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
                                        pmix_inventory_cbfunc_t cbfunc, void *cbdata)
 {
+#if PMIX_HAVE_HWLOC
     pmix_inventory_rollup_t *cd = (pmix_inventory_rollup_t*)cbdata;
     hwloc_obj_t obj;
     unsigned n;
@@ -445,6 +446,9 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
     pmix_value_load(kv->value, &pbo, PMIX_BYTE_OBJECT);
     PMIX_BYTE_OBJECT_DESTRUCT(&pbo);
     pmix_list_append(&cd->payload, &kv->super);
+#else
+    return PMIX_ERR_TAKE_NEXT_OPTION;
+#endif
 
     return PMIX_SUCCESS;
 }
