@@ -1602,10 +1602,20 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
         if (0 == strncmp(info[n].key, PMIX_EVENT_ENVIRO_LEVEL, PMIX_MAX_KEYLEN)) {
             enviro_events = PMIX_INFO_TRUE(&info[n]);
         } else if (0 == strncmp(info[n].key, PMIX_EVENT_AFFECTED_PROC, PMIX_MAX_KEYLEN)) {
+            if (NULL != affected) {
+                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                rc = PMIX_ERR_BAD_PARAM;
+                goto cleanup;
+            }
             naffected = 1;
             PMIX_PROC_CREATE(affected, naffected);
             memcpy(affected, info[n].value.data.proc, sizeof(pmix_proc_t));
         } else if (0 == strncmp(info[n].key, PMIX_EVENT_AFFECTED_PROCS, PMIX_MAX_KEYLEN)) {
+            if (NULL != affected) {
+                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                rc = PMIX_ERR_BAD_PARAM;
+                goto cleanup;
+            }
             naffected = info[n].value.data.darray->size;
             PMIX_PROC_CREATE(affected, naffected);
             memcpy(affected, info[n].value.data.darray->array, naffected * sizeof(pmix_proc_t));
@@ -1822,7 +1832,8 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
         if (NULL == relay) {
             /* nothing we can do */
             PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-            return PMIX_ERR_NOMEM;
+            rc = PMIX_ERR_NOMEM;
+            break;
         }
         /* pack the info data stored in the event */
         PMIX_BFROPS_PACK(rc, peer, relay, &cmd, 1, PMIX_COMMAND);
@@ -1859,8 +1870,11 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
             free(codes);
         }
     }
+    if (NULL != affected) {
+        PMIX_PROC_FREE(affected, naffected);
+    }
 
-    return PMIX_SUCCESS;
+    return rc;
 }
 
 void pmix_server_deregister_events(pmix_peer_t *peer,
