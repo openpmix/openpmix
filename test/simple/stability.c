@@ -393,6 +393,21 @@ int main(int argc, char **argv)
             }
             ++n;
         }
+
+        /* deregister the clients */
+        for (n = 0; n < nprocs; n++) {
+            proc.rank = n;
+            DEBUG_CONSTRUCT_LOCK(&mylock);
+            PMIx_server_deregister_client(&proc, opcbfunc, &mylock);
+            DEBUG_WAIT_THREAD(&mylock);
+            DEBUG_DESTRUCT_LOCK(&mylock);
+        }
+        /* deregister the nspace */
+        DEBUG_CONSTRUCT_LOCK(&mylock);
+        PMIx_server_deregister_nspace(proc.nspace, opcbfunc, &mylock);
+        DEBUG_WAIT_THREAD(&mylock);
+        DEBUG_DESTRUCT_LOCK(&mylock);
+
         PMIX_LIST_DESTRUCT(&children);
         PMIX_CONSTRUCT(&children, pmix_list_t);
     }
