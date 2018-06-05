@@ -272,6 +272,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
+    PMIX_INFO_DESTRUCT(&ginfo);
 
     /* copy needed parts over to the client_globals.myserver field
      * so that calls into client-side functions will use our peer */
@@ -507,16 +508,26 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     if (NULL != gds_mode) {
         free(gds_mode);
     }
-
+    if (NULL != pmix_server_globals.tmpdir) {
+        free(pmix_server_globals.tmpdir);
+    }
     /* close the pnet framework */
     (void)pmix_mca_base_framework_close(&pmix_pnet_base_framework);
 
+
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
+    PMIX_DESTRUCT_LOCK(&pmix_global_lock);
+
     pmix_rte_finalize();
+    if (NULL != pmix_globals.mypeer) {
+        PMIX_RELEASE(pmix_globals.mypeer);
+    }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:server finalize complete");
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
-    PMIX_DESTRUCT_LOCK(&pmix_global_lock);
+
+    /* finalize the class/object system */
+    pmix_class_finalize();
 
     return PMIX_SUCCESS;
 }

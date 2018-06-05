@@ -847,7 +847,14 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
 
 
     pmix_rte_finalize();
+    if (NULL != pmix_globals.mypeer) {
+        PMIX_RELEASE(pmix_globals.mypeer);
+    }
+
     PMIX_RELEASE_THREAD(&pmix_global_lock);
+
+    /* finalize the class/object system */
+    pmix_class_finalize();
 
     return PMIX_SUCCESS;
 }
