@@ -1467,7 +1467,17 @@ static pmix_status_t nspace_add(const char *nspace,
 
 static pmix_status_t nspace_del(const char *nspace)
 {
-    /* we don't need to do anything here */
+    pmix_hash_trkr_t *t;
+
+    /* find the hash table for this nspace */
+    PMIX_LIST_FOREACH(t, &myhashes, pmix_hash_trkr_t) {
+        if (0 == strcmp(nspace, t->ns)) {
+            /* release it */
+            pmix_list_remove_item(&myhashes, &t->super);
+            PMIX_RELEASE(t);
+            break;
+        }
+    }
     return PMIX_SUCCESS;
 }
 
