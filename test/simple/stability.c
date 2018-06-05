@@ -224,7 +224,7 @@ int main(int argc, char **argv)
     pmix_info_t *info;
     size_t ninfo;
     mylock_t mylock;
-    int ncycles=1, m;
+    int ncycles=1, m, delay=0;
 
     /* smoke test */
     if (PMIX_SUCCESS != 0) {
@@ -256,6 +256,10 @@ int main(int argc, char **argv)
                    0 == strcmp("--reps", argv[n])) &&
                    NULL != argv[n+1]) {
             ncycles = strtol(argv[n+1], NULL, 10);
+        } else if ((0 == strcmp("-sleep", argv[n]) ||
+                   0 == strcmp("--sleep", argv[n])) &&
+                   NULL != argv[n+1]) {
+            delay = strtol(argv[n+1], NULL, 10);
         } else if (0 == strcmp("-h", argv[n])) {
             /* print the options and exit */
             fprintf(stderr, "usage: simptest <options>\n");
@@ -397,19 +401,21 @@ int main(int argc, char **argv)
         /* deregister the clients */
         for (n = 0; n < nprocs; n++) {
             proc.rank = n;
-            DEBUG_CONSTRUCT_LOCK(&mylock);
-            PMIx_server_deregister_client(&proc, opcbfunc, &mylock);
-            DEBUG_WAIT_THREAD(&mylock);
-            DEBUG_DESTRUCT_LOCK(&mylock);
+            x = PMIX_NEW(myxfer_t);
+            PMIx_server_deregister_client(&proc, opcbfunc, x);
+            DEBUG_WAIT_THREAD(&x->lock);
+            PMIX_RELEASE(x);
         }
         /* deregister the nspace */
-        DEBUG_CONSTRUCT_LOCK(&mylock);
-        PMIx_server_deregister_nspace(proc.nspace, opcbfunc, &mylock);
-        DEBUG_WAIT_THREAD(&mylock);
-        DEBUG_DESTRUCT_LOCK(&mylock);
+        x = PMIX_NEW(myxfer_t);
+        PMIx_server_deregister_nspace(proc.nspace, opcbfunc, x);
+        DEBUG_WAIT_THREAD(&x->lock);
+        PMIX_RELEASE(x);
 
         PMIX_LIST_DESTRUCT(&children);
         PMIX_CONSTRUCT(&children, pmix_list_t);
+
+        sleep(delay);
     }
 
   done:
