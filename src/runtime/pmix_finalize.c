@@ -118,7 +118,4 @@ void pmix_rte_finalize(void)
         (void)pmix_progress_thread_stop(NULL);
     }
 
-    /* finalize the class/object system */
-    pmix_class_finalize();
-
 }

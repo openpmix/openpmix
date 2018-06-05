@@ -1169,7 +1169,12 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
 
     /* shutdown services */
     pmix_rte_finalize();
+    if (NULL != pmix_globals.mypeer) {
+        PMIX_RELEASE(pmix_globals.mypeer);
+    }
 
+    /* finalize the class/object system */
+    pmix_class_finalize();
     return PMIX_SUCCESS;
 }
 
