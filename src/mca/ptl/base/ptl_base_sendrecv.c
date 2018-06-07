@@ -110,8 +110,8 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
                         trk->modexcbfunc(PMIX_ERR_LOST_CONNECTION_TO_CLIENT, NULL, 0, trk, NULL, NULL);
                     }
                 } else if (PMIX_CONNECTNB_CMD == trk->type) {
-                    if (NULL != trk->cnct_cbfunc) {
-                        trk->cnct_cbfunc(PMIX_ERR_LOST_CONNECTION_TO_CLIENT, NULL, PMIX_RANK_WILDCARD, trk);
+                    if (NULL != trk->op_cbfunc) {
+                        trk->op_cbfunc(PMIX_ERR_LOST_CONNECTION_TO_CLIENT, trk);
                     }
                 } else if (PMIX_DISCONNECTNB_CMD == trk->type) {
                     if (NULL != trk->op_cbfunc) {
