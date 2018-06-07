@@ -1865,18 +1865,6 @@ typedef void (*pmix_modex_cbfunc_t)(pmix_status_t status,
 typedef void (*pmix_spawn_cbfunc_t)(pmix_status_t status,
                                     char nspace[], void *cbdata);
 
-/* define a callback function for calls to PMIx_Connect_nb - the function
- * will be called upon completion of the command. The status will indicate
- * whether or not the connect operation succeeded. The nspace will contain
- * the new identity assigned by the host RM to the specified group of
- * processes, and the rank will be the rank of this process within that new
- * group. Note that the returned nspace value may be
- * released by the library upon return from the callback function, so
- * the receiver must copy it if it needs to be retained */
-typedef void (*pmix_connect_cbfunc_t)(pmix_status_t status,
-                                      char nspace[], int rank,
-                                      void *cbdata);
-
 /* define a callback for common operations that simply return
  * a status. Examples include the non-blocking versions of
  * Fence, Connect, and Disconnect */
