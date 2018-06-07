@@ -14,7 +14,7 @@
  * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2018 Intel, Inc. All rights reserved.
- * Copyright (c) 2015      Research Organization for Information Science
+ * Copyright (c) 2015-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
@@ -425,6 +425,8 @@ int main(int argc, char **argv)
     /* release any pub data */
     PMIX_LIST_DESTRUCT(&pubdata);
 
+    free(executable);
+
     /* finalize the server library */
     if (PMIX_SUCCESS != (rc = PMIx_server_finalize())) {
         fprintf(stderr, "Finalize failed with error %d\n", rc);
@@ -580,7 +582,7 @@ static pmix_status_t fencenb_fn(const pmix_proc_t procs[], size_t nprocs,
 {
     /* pass the provided data back to each participating proc */
     if (NULL != cbfunc) {
-        cbfunc(PMIX_SUCCESS, data, ndata, cbdata, NULL, NULL);
+        cbfunc(PMIX_SUCCESS, data, ndata, cbdata, free, data);
     }
     return PMIX_SUCCESS;
 }
