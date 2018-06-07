@@ -1265,27 +1265,44 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd,
     int32_t cnt;
     pmix_status_t rc;
     pmix_info_t *info = NULL;
-    size_t ninfo;
+    size_t nprocs, ninfo;
     pmix_server_trkr_t *trk;
-    char *nptr;
-    pmix_proc_t proc;
-    pmix_nspace_t *nsptr, *nspace;
+    pmix_proc_t *procs = NULL;
 
     if (NULL == pmix_host_server.disconnect) {
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
-    /* unpack the nspace they want to be disconnected from */
+    /* unpack the number of procs */
     cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &nptr, &cnt, PMIX_STRING);
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &nprocs, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
-    memset(proc.nspace, 0, PMIX_MAX_NSLEN+1);
-    (void)strncpy(proc.nspace, nptr, PMIX_MAX_NSLEN);
-    proc.rank = PMIX_RANK_WILDCARD;
-    free(nptr);
+    /* there must be at least one proc - we do not allow the client
+     * to send us NULL proc as the server has no idea what to do
+     * with that situation. Instead, the client should at least send
+     * us their own namespace for the use-case where the connection
+     * spans all procs in that namespace */
+    if (nprocs < 1) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        rc = PMIX_ERR_BAD_PARAM;
+        goto cleanup;
+    }
+
+    /* unpack the procs */
+    PMIX_PROC_CREATE(procs, nprocs);
+    if (NULL == procs) {
+        rc = PMIX_ERR_NOMEM;
+        goto cleanup;
+    }
+    cnt = nprocs;
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, procs, &cnt, PMIX_PROC);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto cleanup;
+    }
 
     /* unpack the number of provided info structs */
     cnt = 1;
@@ -1307,23 +1324,10 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd,
         }
     }
 
-    /* we must already know about this nspace, so find its record */
-    nspace = NULL;
-    PMIX_LIST_FOREACH(nsptr, &pmix_server_globals.nspaces, pmix_nspace_t) {
-        if (0 == strncmp(nsptr->nspace, proc.nspace, PMIX_MAX_NSLEN)) {
-            nspace = nsptr;
-            break;
-        }
-    }
-    if (NULL == nspace) {
-        PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
-        goto cleanup;
-    }
-
     /* find/create the local tracker for this operation */
-    if (NULL == (trk = get_tracker(&proc, 1, PMIX_DISCONNECTNB_CMD))) {
+    if (NULL == (trk = get_tracker(procs, nprocs, PMIX_DISCONNECTNB_CMD))) {
         /* we don't have this tracker yet, so get a new one */
-        if (NULL == (trk = new_tracker(&proc, 1, PMIX_DISCONNECTNB_CMD))) {
+        if (NULL == (trk = new_tracker(procs, nprocs, PMIX_DISCONNECTNB_CMD))) {
             /* only if a bozo error occurs */
             PMIX_ERROR_LOG(PMIX_ERROR);
             /* DO NOT HANG */
@@ -1333,11 +1337,8 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd,
             rc = PMIX_ERROR;
             goto cleanup;
         }
-        trk->nlocal = nspace->nlocalprocs;
         trk->op_cbfunc = cbfunc;
     }
-    (void)strncpy(trk->pname.nspace, proc.nspace, PMIX_MAX_NSLEN);
-    trk->pname.rank = PMIX_RANK_WILDCARD;
 
     /* if the info keys have not been provided yet, pass
      * them along here */
@@ -1358,7 +1359,7 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd,
      * across all participants has been completed */
     if (trk->def_complete &&
         pmix_list_get_size(&trk->local_cbs) == trk->nlocal) {
-        rc = pmix_host_server.disconnect(trk->pname.nspace, trk->info, trk->ninfo, cbfunc, trk);
+        rc = pmix_host_server.disconnect(trk->pcs, trk->npcs, trk->info, trk->ninfo, cbfunc, trk);
     } else {
         rc = PMIX_SUCCESS;
     }
@@ -1378,8 +1379,8 @@ static void connect_timeout(int sd, short args, void *cbdata)
                         "ALERT: connect timeout fired");
 
     /* execute the provided callback function with the error */
-    if (NULL != cd->trk->cnct_cbfunc) {
-        cd->trk->cnct_cbfunc(PMIX_ERR_TIMEOUT, NULL, PMIX_RANK_UNDEF, cd->trk);
+    if (NULL != cd->trk->op_cbfunc) {
+        cd->trk->op_cbfunc(PMIX_ERR_TIMEOUT, cd->trk);
         return;  // the cbfunc will have cleaned up the tracker
     }
     cd->event_active = false;
@@ -1390,7 +1391,7 @@ static void connect_timeout(int sd, short args, void *cbdata)
 
 pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
                                   pmix_buffer_t *buf,
-                                  pmix_connect_cbfunc_t cbfunc)
+                                  pmix_op_cbfunc_t cbfunc)
 {
     int32_t cnt;
     pmix_status_t rc;
@@ -1475,12 +1476,12 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
             PMIX_ERROR_LOG(PMIX_ERROR);
             /* DO NOT HANG */
             if (NULL != cbfunc) {
-                cbfunc(PMIX_ERROR, NULL, PMIX_RANK_UNDEF, cd);
+                cbfunc(PMIX_ERROR, cd);
             }
             rc = PMIX_ERROR;
             goto cleanup;
         }
-        trk->cnct_cbfunc = cbfunc;
+        trk->op_cbfunc = cbfunc;
     }
 
     /* if the info keys have not been provided yet, pass
@@ -3068,7 +3069,6 @@ static void tcon(pmix_server_trkr_t *t)
     t->collect_type = PMIX_COLLECT_INVALID;
     t->modexcbfunc = NULL;
     t->op_cbfunc = NULL;
-    t->cnct_cbfunc = NULL;
     t->hybrid = false;
 }
 static void tdes(pmix_server_trkr_t *t)

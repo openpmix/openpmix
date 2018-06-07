@@ -235,7 +235,7 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer,
 
 pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
                                   pmix_buffer_t *buf,
-                                  pmix_connect_cbfunc_t cbfunc);
+                                  pmix_op_cbfunc_t cbfunc);
 
 pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd,
                                      pmix_buffer_t *buf,

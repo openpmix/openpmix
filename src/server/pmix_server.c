@@ -832,9 +832,9 @@ void pmix_server_execute_collective(int sd, short args, void *cbdata)
     } else if (PMIX_CONNECTNB_CMD == trk->type) {
         pmix_host_server.connect(trk->pcs, trk->npcs,
                                  trk->info, trk->ninfo,
-                                 trk->cnct_cbfunc, trk);
+                                 trk->op_cbfunc, trk);
     } else if (PMIX_DISCONNECTNB_CMD == trk->type) {
-        pmix_host_server.disconnect(trk->pname.nspace,
+        pmix_host_server.disconnect(trk->pcs, trk->npcs,
                                     trk->info, trk->ninfo,
                                     trk->op_cbfunc, trk);
     } else {
@@ -2417,24 +2417,12 @@ static void _cnct(int sd, short args, void *cbdata)
     int i;
     pmix_server_caddy_t *cd;
     char **nspaces=NULL;
-    bool found, xchg;
+    bool found;
     pmix_proc_t proc;
     pmix_cb_t cb;
     pmix_kval_t *kptr;
-    pmix_nspace_t *nsptr = NULL;
-    size_t n;
 
     PMIX_ACQUIRE_OBJECT(scd);
-
-    /* see if this connect request was to return a new nspace/rank, or
-     * was just an exchange of info */
-    xchg = false;
-    for (n=0; n < tracker->ninfo; n++) {
-        if (0 == strncmp(tracker->info[n].key, PMIX_CONNECT_XCHG_ONLY, PMIX_MAX_KEYLEN)) {
-            xchg = true;
-            break;
-        }
-    }
 
     /* find the unique nspaces that are participating */
     PMIX_LIST_FOREACH(cd, &tracker->local_cbs, pmix_server_caddy_t) {
@@ -2471,27 +2459,6 @@ static void _cnct(int sd, short args, void *cbdata)
             goto cleanup;
         }
         if (PMIX_SUCCESS == scd->status) {
-            if (!xchg) {
-                if (NULL == nsptr) {
-                    /* we have to track this nspace */
-                    nsptr = PMIX_NEW(pmix_nspace_t);
-                    nsptr->nspace = strdup(scd->pname.nspace);
-                    nsptr->all_registered = true;
-                    /* we already counted the number of local procs */
-                    nsptr->nlocalprocs = pmix_list_get_size(&tracker->local_cbs);
-                    pmix_list_append(&pmix_server_globals.nspaces, &nsptr->super);
-                }
-                /* if success, then provide the new nspace/rank */
-                (void)strncpy(proc.nspace, scd->pname.nspace, PMIX_MAX_NSLEN);
-                proc.rank = scd->pname.rank;
-                PMIX_BFROPS_PACK(rc, cd->peer, reply, &proc, 1, PMIX_PROC);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    PMIX_RELEASE(reply);
-                    goto cleanup;
-                }
-            }
-
             /* loop across all participating nspaces and include their
              * job-related info */
             for (i=0; NULL != nspaces[i]; i++) {
@@ -2584,16 +2551,13 @@ static void _cnct(int sd, short args, void *cbdata)
     PMIX_RELEASE(scd);
 }
 
-static void cnct_cbfunc(pmix_status_t status,
-                        char nspace[], int rank,
-                        void *cbdata)
+static void cnct_cbfunc(pmix_status_t status, void *cbdata)
 {
     pmix_server_trkr_t *tracker = (pmix_server_trkr_t*)cbdata;
     pmix_shift_caddy_t *scd;
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
-                        "server:cnct_cbfunc called with nspace %s",
-                        (NULL == nspace) ? "NULL" : nspace);
+                        "server:cnct_cbfunc called");
 
     if (NULL == tracker) {
         /* nothing to do */
@@ -2607,10 +2571,6 @@ static void cnct_cbfunc(pmix_status_t status,
         return;
     }
     scd->status = status;
-    if (NULL != nspace) {
-        scd->pname.nspace = strdup(nspace);
-    }
-    scd->pname.rank = rank;
     scd->tracker = tracker;
     PMIX_THREADSHIFT(scd, _cnct);
 }
