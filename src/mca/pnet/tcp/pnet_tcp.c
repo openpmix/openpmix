@@ -1130,6 +1130,28 @@ static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
                                    &bkt, &pbo, &cnt, PMIX_BYTE_OBJECT);
             }
             PMIX_DATA_BUFFER_DESTRUCT(&bkt);
+            if (5 < pmix_output_get_verbosity(pmix_pnet_base_framework.framework_output)) {
+                /* dump the resulting node resources */
+                pmix_output(0, "TCP resources for node: %s", nd->name);
+                PMIX_LIST_FOREACH(lt, &nd->resources, pmix_pnet_resource_t) {
+                    if (0 == strcmp(lt->name, "tcp")) {
+                        PMIX_LIST_FOREACH(prts, &lt->resources, tcp_available_ports_t) {
+                            device = NULL;
+                            if (NULL != prts->ports) {
+                                device = pmix_argv_join(prts->ports, ',');
+                            }
+                            pmix_output(0, "\tPorts: %s", (NULL == device) ? "UNSPECIFIED" : device);
+                            if (NULL != device) {
+                                free(device);
+                            }
+                            PMIX_LIST_FOREACH(res, &prts->devices, tcp_device_t) {
+                                pmix_output(0, "\tDevice: %s", res->device);
+                                pmix_output(0, "\tAddress: %s", res->address);
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
