@@ -419,6 +419,7 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
+pmix_output(0, "%s:%d", __FILE__, __LINE__);
     /* setup the bucket - we will pass the results as a blob */
     PMIX_CONSTRUCT(&bucket, pmix_buffer_t);
     /* pack our node name */
@@ -430,10 +431,14 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
         PMIX_DESTRUCT(&bucket);
         return rc;
     }
+    pmix_output(0, "%s:%d", __FILE__, __LINE__);
 
     /* search the topology for OPA devices */
     obj = hwloc_get_next_osdev(pmix_hwloc_topology, NULL);
+    pmix_output(0, "%s:%d", __FILE__, __LINE__);
     while (NULL != obj) {
+        pmix_output(0, "%s:%d", __FILE__, __LINE__);
+        pmix_output(0, "NAME %s", obj->name);
         if (obj->attr->osdev.type != HWLOC_OBJ_OSDEV_OPENFABRICS ||
             0 != strncmp(obj->name, "hfi", 3)) {
             obj = hwloc_get_next_osdev(pmix_hwloc_topology, obj);
