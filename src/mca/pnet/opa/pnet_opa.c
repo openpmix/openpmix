@@ -419,7 +419,6 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
-pmix_output(0, "%s:%d", __FILE__, __LINE__);
     /* setup the bucket - we will pass the results as a blob */
     PMIX_CONSTRUCT(&bucket, pmix_buffer_t);
     /* pack our node name */
@@ -431,14 +430,10 @@ pmix_output(0, "%s:%d", __FILE__, __LINE__);
         PMIX_DESTRUCT(&bucket);
         return rc;
     }
-    pmix_output(0, "%s:%d", __FILE__, __LINE__);
 
     /* search the topology for OPA devices */
     obj = hwloc_get_next_osdev(pmix_hwloc_topology, NULL);
-    pmix_output(0, "%s:%d", __FILE__, __LINE__);
     while (NULL != obj) {
-        pmix_output(0, "%s:%d", __FILE__, __LINE__);
-        pmix_output(0, "NAME %s", obj->name);
         if (obj->attr->osdev.type != HWLOC_OBJ_OSDEV_OPENFABRICS ||
             0 != strncmp(obj->name, "hfi", 3)) {
             obj = hwloc_get_next_osdev(pmix_hwloc_topology, obj);
@@ -543,6 +538,7 @@ static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
     for (n=0; n < ninfo; n++) {
         if (0 == strncmp(info[n].key, PMIX_OPA_INVENTORY_KEY, PMIX_MAX_KEYLEN)) {
             /* this is our inventory in the form of a blob */
+            PMIX_CONSTRUCT(&bkt,pmix_buffer_t);
             PMIX_LOAD_BUFFER(pmix_globals.mypeer, &bkt,
                              info[n].value.data.bo.bytes,
                              info[n].value.data.bo.size);
@@ -588,6 +584,7 @@ static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
                                &bkt, &pbo, &cnt, PMIX_BYTE_OBJECT);
             while (PMIX_SUCCESS == rc) {
                 /* load the blob for unpacking */
+                PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
                 PMIX_LOAD_BUFFER(pmix_globals.mypeer, &pbkt,
                                  pbo.bytes, pbo.size);
 
