@@ -28,7 +28,8 @@
 
 #if 0
 #if PMIX_WANT_OPAMGT
-#include "opamgt.h"
+#include <opamgt/opamgt.h>
+#include <opamgt/opamgt_sa.h>
 #endif
 #endif
 
@@ -244,6 +245,10 @@ static pmix_status_t allocate(pmix_nspace_t *nptr,
 
     envars = false;
     seckeys = false;
+
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet:opa:allocate for nspace %s", nptr->nspace);
+
     if (NULL == info) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
@@ -401,7 +406,6 @@ static void deregister_nspace(pmix_nspace_t *nptr)
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
                                        pmix_inventory_cbfunc_t cbfunc, void *cbdata)
 {
-#if PMIX_HAVE_HWLOC
     pmix_inventory_rollup_t *cd = (pmix_inventory_rollup_t*)cbdata;
     hwloc_obj_t obj;
     unsigned n;
@@ -415,10 +419,6 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                         "pnet:opa collect inventory");
 
-    if (NULL == pmix_hwloc_topology) {
-        return PMIX_ERR_NOT_SUPPORTED;
-    }
-
     /* setup the bucket - we will pass the results as a blob */
     PMIX_CONSTRUCT(&bucket, pmix_buffer_t);
     /* pack our node name */
@@ -429,6 +429,11 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
         PMIX_ERROR_LOG(rc);
         PMIX_DESTRUCT(&bucket);
         return rc;
+    }
+
+#if PMIX_HAVE_HWLOC
+    if (NULL == pmix_hwloc_topology) {
+        goto query;
     }
 
     /* search the topology for OPA devices */
@@ -495,6 +500,29 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
         obj = hwloc_get_next_osdev(pmix_hwloc_topology, obj);
     }
 
+  query:
+#if 0
+#if PMIX_WANT_OPAMGT
+    if (PMIX_PROC_IS_GATEWAY(pmix_globals.mypeer)) {
+        /* collect the switch information from the FM */
+        OMGT_STATUS_T status = OMGT_STATUS_SUCCESS;
+        struct omgt_port * port = NULL;
+        omgt_sa_selector_t selector;
+
+        /* create a session */
+        status = omgt_open_port_by_num(&port, 1 /* hfi */, 1 /* port */, NULL);
+        if (OMGT_STATUS_SUCCESS != status) {
+            pmix_output_verbose(1, pmix_pnet_base_framework.framework_output,
+                                "Unable to open port to FM");
+            goto complete;
+        }
+        /* specify how and what we want to query by */
+        selector.InputType = InputTypeLid;
+        selector.InputValue.PortInfoRecord.Lid = 1;
+
+    }
+#endif
+#endif
     /* if we found any devices, then return the blob */
     if (!found) {
         PMIX_DESTRUCT(&bucket);
@@ -509,9 +537,34 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
     pmix_value_load(kv->value, &pbo, PMIX_BYTE_OBJECT);
     PMIX_BYTE_OBJECT_DESTRUCT(&pbo);
     pmix_list_append(&cd->payload, &kv->super);
-#else
-    return PMIX_ERR_TAKE_NEXT_OPTION;
+
+#else  // have_hwloc
+#if 0
+#if PMIX_WANT_OPAMGT
+    if (PMIX_PROC_IS_GATEWAY(pmix_globals.mypeer)) {
+        /* query the FM for the inventory */
+    }
+
+  complete:
+    /* if we found any devices, then return the blob */
+    if (!found) {
+        PMIX_DESTRUCT(&bucket);
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+
+    /* extract the resulting blob */
+    PMIX_UNLOAD_BUFFER(&bucket, pbo.bytes, pbo.size);
+    kv = PMIX_NEW(pmix_kval_t);
+    kv->key = strdup(PMIX_OPA_INVENTORY_KEY);
+    PMIX_VALUE_CREATE(kv->value, 1);
+    pmix_value_load(kv->value, &pbo, PMIX_BYTE_OBJECT);
+    PMIX_BYTE_OBJECT_DESTRUCT(&pbo);
+    pmix_list_append(&cd->payload, &kv->super);
+
 #endif
+#endif
+    return PMIX_ERR_TAKE_NEXT_OPTION;
+#endif  // have_hwloc
 
     return PMIX_SUCCESS;
 }
@@ -538,6 +591,7 @@ static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
     for (n=0; n < ninfo; n++) {
         if (0 == strncmp(info[n].key, PMIX_OPA_INVENTORY_KEY, PMIX_MAX_KEYLEN)) {
             /* this is our inventory in the form of a blob */
+            PMIX_CONSTRUCT(&bkt,pmix_buffer_t);
             PMIX_LOAD_BUFFER(pmix_globals.mypeer, &bkt,
                              info[n].value.data.bo.bytes,
                              info[n].value.data.bo.size);
@@ -583,6 +637,7 @@ static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
                                &bkt, &pbo, &cnt, PMIX_BYTE_OBJECT);
             while (PMIX_SUCCESS == rc) {
                 /* load the blob for unpacking */
+                PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
                 PMIX_LOAD_BUFFER(pmix_globals.mypeer, &pbkt,
                                  pbo.bytes, pbo.size);
 

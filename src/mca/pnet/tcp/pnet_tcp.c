@@ -599,6 +599,9 @@ static pmix_status_t allocate(pmix_nspace_t *nptr,
                     allocated = true;
                 }
             } else {
+                pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                                    "pnet:tcp:allocate allocating %d ports/node for nspace %s",
+                                    ports_per_node, nptr->nspace);
                 avail = (tcp_available_ports_t*)pmix_list_get_first(&available);
                 if (NULL != avail) {
                     /* setup to track the assignment */
