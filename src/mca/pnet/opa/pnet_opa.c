@@ -245,6 +245,10 @@ static pmix_status_t allocate(pmix_nspace_t *nptr,
 
     envars = false;
     seckeys = false;
+
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet:opa:allocate for nspace %s", nptr->nspace);
+
     if (NULL == info) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
