@@ -1127,7 +1127,8 @@ static void connection_handler(int sd, short args, void *cbdata)
     } else {
         if (0 == strncmp(version, "2.1", 3)) {
             proc_type = proc_type | PMIX_PROC_V21;
-        } else if (0 == strncmp(version, "3", 1)) {
+        } else if (0 == strncmp(version, "3", 1) ||
+                   0 == strncmp(version, "4", 1)) {
             proc_type = proc_type | PMIX_PROC_V3;
         } else {
             free(msg);
