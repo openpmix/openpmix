@@ -82,7 +82,7 @@ int main(int argc, char **argv)
         } else if (PMIX_BYTE_OBJECT == info[n].value.type) {
             memcpy(seckey, info[n].value.data.bo.bytes, info[n].value.data.bo.size);
             pmix_output(0, "\tKey: %s sec key: %ld.%ld",
-                        info[n].key, seckey[0], seckey[1]);
+                        info[n].key, (long int)seckey[0], (long int)seckey[1]);
         }
     }
     PMIX_VALUE_RELEASE(val);

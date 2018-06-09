@@ -200,6 +200,8 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
         return "LAUNCH-DIRECTIVE";
     case PMIX_LAUNCHER_READY:
         return "LAUNCHER-READY";
+    case PMIX_OPERATION_IN_PROGRESS:
+        return "OPERATION-IN-PROGRESS";
 
 
     case PMIX_ERR_NODE_DOWN:
@@ -226,8 +228,6 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
         return "PMIX_ERR_VALUE_OUT_OF_BOUNDS";
     case PMIX_ERR_PERM:
         return "PMIX_ERR_PERM";
-    case PMIX_ERR_OPERATION_IN_PROGRESS:
-        return "OPERATION-IN-PROGRESS";
     case PMIX_ERR_NETWORK_NOT_PARSEABLE:
         return "PMIX_ERR_NETWORK_NOT_PARSEABLE";
     case PMIX_ERR_FILE_OPEN_FAILURE:

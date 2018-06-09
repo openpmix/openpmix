@@ -21,8 +21,11 @@
 
 AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/include -I$(top_builddir)/include/pmix
 
+headers = simptest.h
+
 noinst_PROGRAMS = simptest simpclient simppub simpdyn simpft simpdmodex \
-                  test_pmix simptool simpdie simplegacy simptimeout gwtest gwclient
+                  test_pmix simptool simpdie simplegacy simptimeout \
+                  gwtest gwclient stability quietclient
 
 simptest_SOURCES = \
         simptest.c
@@ -100,4 +103,16 @@ gwclient_SOURCES = \
         gwclient.c
 gwclient_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 gwclient_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
+stability_SOURCES = \
+        stability.c
+stability_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+stability_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
+quietclient_SOURCES = \
+        quietclient.c
+quietclient_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+quietclient_LDADD = \
     $(top_builddir)/src/libpmix.la

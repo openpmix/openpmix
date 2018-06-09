@@ -13,7 +13,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2018 Intel, Inc.  All rights reserved.
- * Copyright (c) 2017      Research Organization for Information Science
+ * Copyright (c) 2017-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
@@ -233,8 +233,12 @@ static pmix_status_t component_open(void)
 
     /* check for environ-based directives
      * on system tmpdir to use */
-    if (NULL != (tdir = getenv("PMIX_SERVER_TMPDIR"))) {
-        mca_ptl_tcp_component.session_tmpdir = strdup(tdir);
+    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
+        mca_ptl_tcp_component.session_tmpdir = strdup(pmix_server_globals.tmpdir);
+    } else {
+        if (NULL != (tdir = getenv("PMIX_SERVER_TMPDIR"))) {
+            mca_ptl_tcp_component.session_tmpdir = strdup(tdir);
+        }
     }
 
     if (NULL != (tdir = getenv("PMIX_SYSTEM_TMPDIR"))) {
@@ -279,6 +283,12 @@ pmix_status_t component_close(void)
         unlink(urifile);
         free(urifile);
         urifile = NULL;
+    }
+    if (NULL != mca_ptl_tcp_component.session_tmpdir) {
+        free(mca_ptl_tcp_component.session_tmpdir);
+    }
+    if (NULL != mca_ptl_tcp_component.system_tmpdir) {
+        free(mca_ptl_tcp_component.system_tmpdir);
     }
     return PMIX_SUCCESS;
 }
@@ -750,6 +760,25 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
             goto sockerror;
         }
     }
+    /* if we are a tool and connected, then register any rendezvous files for cleanup */
+    if (PMIX_PROC_IS_TOOL(pmix_globals.mypeer) && pmix_globals.connected) {
+        char **clnup = NULL, *cptr = NULL;
+        pmix_info_t dir;
+        if (NULL != mca_ptl_tcp_component.nspace_filename) {
+            pmix_argv_append_nosize(&clnup, mca_ptl_tcp_component.nspace_filename);
+        }
+        if (NULL != mca_ptl_tcp_component.session_filename) {
+            pmix_argv_append_nosize(&clnup, mca_ptl_tcp_component.session_filename);
+        }
+        if (NULL != clnup) {
+            cptr = pmix_argv_join(clnup, ',');
+            pmix_argv_free(clnup);
+            PMIX_INFO_LOAD(&dir, PMIX_REGISTER_CLEANUP, cptr, PMIX_STRING);
+            free(cptr);
+            PMIx_Job_control_nb(&pmix_globals.myid, 1, &dir, 1, NULL, NULL);
+            PMIX_INFO_DESTRUCT(&dir);
+        }
+    }
 
     /* we need listener thread support */
     *need_listener = true;
@@ -1098,7 +1127,8 @@ static void connection_handler(int sd, short args, void *cbdata)
     } else {
         if (0 == strncmp(version, "2.1", 3)) {
             proc_type = proc_type | PMIX_PROC_V21;
-        } else if (0 == strncmp(version, "3", 1)) {
+        } else if (0 == strncmp(version, "3", 1) ||
+                   0 == strncmp(version, "4", 1)) {
             proc_type = proc_type | PMIX_PROC_V3;
         } else {
             free(msg);
@@ -1651,6 +1681,7 @@ static void process_cbfunc(int sd, short args, void *cbdata)
         /* probably cannot send an error reply if we are out of memory */
         return;
     }
+    info->peerid = peer->index;
 
     /* start the events for this tool */
     pmix_event_assign(&peer->recv_event, pmix_globals.evbase, peer->sd,

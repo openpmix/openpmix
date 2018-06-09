@@ -175,7 +175,7 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
              *                that component was very quick, and therefore
              *                done atomically. No callback will be issued
              *
-             * PMIX_ERR_OPERATION_IN_PROGRESS - indicates that the plugin
+             * PMIX_OPERATION_IN_PROGRESS - indicates that the plugin
              *                expects to execute the desired logging request,
              *                but must do so asynchronously. The provided
              *                callback _must_ be executed upon completion
@@ -213,7 +213,7 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
             } else if (PMIX_ERR_NOT_AVAILABLE == rc ||
                        PMIX_ERR_TAKE_NEXT_OPTION == rc) {
                 mycount->nreqs--;
-            } else if (PMIX_ERR_OPERATION_IN_PROGRESS == rc) {
+            } else if (PMIX_OPERATION_IN_PROGRESS == rc) {
                 /* even though the operation hasn't completed,
                  * we still treat this as a completed request */
                 mycount->status = PMIX_SUCCESS;

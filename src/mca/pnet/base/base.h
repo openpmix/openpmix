@@ -66,13 +66,46 @@ struct pmix_pnet_base_active_module_t {
     pmix_pnet_base_component_t *component;
 };
 typedef struct pmix_pnet_base_active_module_t pmix_pnet_base_active_module_t;
-PMIX_CLASS_DECLARATION(pmix_pnet_base_active_module_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pnet_base_active_module_t);
 
+typedef struct {
+    pmix_list_item_t super;
+    char *nspace;
+    pmix_rank_t *ranks;
+    size_t np;
+} pmix_pnet_local_procs_t;
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pnet_local_procs_t);
+
+typedef struct {
+    pmix_list_item_t super;
+    char *name;
+    pmix_list_t resources;
+}pmix_pnet_resource_t;
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pnet_resource_t);
+
+typedef struct {
+    pmix_list_item_t super;
+    size_t index;
+    char *name;
+    pmix_list_t local_jobs;    // list of pmix_pnet_local_procs_t
+    pmix_list_t resources;     // list of pmix_pnet_resource_t
+} pmix_pnet_node_t;
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pnet_node_t);
+
+typedef struct {
+    pmix_list_item_t super;
+    char *nspace;
+    pmix_pointer_array_t nodes;
+} pmix_pnet_job_t;
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pnet_job_t);
 
 /* framework globals */
 struct pmix_pnet_globals_t {
-  pmix_list_t actives;
-  bool initialized;
+    pmix_lock_t lock;
+    pmix_list_t actives;
+    bool initialized;
+    pmix_list_t jobs;
+    pmix_list_t nodes;
 };
 typedef struct pmix_pnet_globals_t pmix_pnet_globals_t;
 
@@ -85,11 +118,15 @@ PMIX_EXPORT pmix_status_t pmix_pnet_base_setup_local_network(char *nspace,
                                                              pmix_info_t info[],
                                                              size_t ninfo);
 PMIX_EXPORT pmix_status_t pmix_pnet_base_setup_fork(const pmix_proc_t *peer, char ***env);
-PMIX_EXPORT void pmix_pnet_base_child_finalized(pmix_peer_t *peer);
-PMIX_EXPORT void pmix_pnet_base_local_app_finalized(char *nspace);
+PMIX_EXPORT void pmix_pnet_base_child_finalized(pmix_proc_t *peer);
+PMIX_EXPORT void pmix_pnet_base_local_app_finalized(pmix_nspace_t *nptr);
 PMIX_EXPORT void pmix_pnet_base_deregister_nspace(char *nspace);
 PMIX_EXPORT void pmix_pnet_base_collect_inventory(pmix_info_t directives[], size_t ndirs,
-                                                  pmix_info_cbfunc_t cbfunc, void *cbdata);
+                                                  pmix_inventory_cbfunc_t cbfunc,
+                                                  void *cbdata);
+PMIX_EXPORT void pmix_pnet_base_deliver_inventory(pmix_info_t info[], size_t ninfo,
+                                                  pmix_info_t directives[], size_t ndirs,
+                                                  pmix_op_cbfunc_t cbfunc, void *cbdata);
 PMIX_EXPORT pmix_status_t pmix_pnet_base_harvest_envars(char **incvars, char **excvars,
                                                         pmix_list_t *ilist);
 

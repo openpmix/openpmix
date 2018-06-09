@@ -76,8 +76,8 @@ static pmix_status_t spawn_fn(const pmix_proc_t *proc,
                               pmix_spawn_cbfunc_t cbfunc, void *cbdata);
 static pmix_status_t connect_fn(const pmix_proc_t procs[], size_t nprocs,
                                 const pmix_info_t info[], size_t ninfo,
-                                pmix_connect_cbfunc_t cbfunc, void *cbdata);
-static pmix_status_t disconnect_fn(const char nspace[],
+                                pmix_op_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t disconnect_fn(const pmix_proc_t procs[], size_t nprocs,
                                    const pmix_info_t info[], size_t ninfo,
                                    pmix_op_cbfunc_t cbfunc, void *cbdata);
 static pmix_status_t register_event_fn(pmix_status_t *codes, size_t ncodes,
@@ -171,6 +171,7 @@ PMIX_CLASS_INSTANCE(pmix_locdat_t,
 typedef struct {
     pmix_object_t super;
     mylock_t lock;
+    pmix_status_t status;
     pmix_proc_t caller;
     pmix_info_t *info;
     size_t ninfo;
@@ -232,6 +233,7 @@ static void opcbfunc(pmix_status_t status, void *cbdata)
 {
     myxfer_t *x = (myxfer_t*)cbdata;
 
+    x->status = status;
     /* release the caller, if necessary */
     if (NULL != x->cbfunc) {
         x->cbfunc(PMIX_SUCCESS, x->cbdata);
@@ -247,6 +249,7 @@ static void sacbfunc(pmix_status_t status,
     myxfer_t *x = (myxfer_t*)provided_cbdata;
     size_t n;
 
+    x->status = status;
     if (NULL != info) {
         x->ninfo = ninfo;
         PMIX_INFO_CREATE(x->info, x->ninfo);
@@ -257,6 +260,30 @@ static void sacbfunc(pmix_status_t status,
     }
     if (NULL != cbfunc) {
         cbfunc(PMIX_SUCCESS, cbdata);
+    }
+    DEBUG_WAKEUP_THREAD(&x->lock);
+}
+
+static void infocbfunc(pmix_status_t status,
+                       pmix_info_t *info, size_t ninfo,
+                       void *cbdata,
+                       pmix_release_cbfunc_t release_fn,
+                       void *release_cbdata)
+{
+    myxfer_t *x = (myxfer_t*)cbdata;
+    size_t n;
+
+    x->status = status;
+    if (NULL != info) {
+        x->ninfo = ninfo;
+        PMIX_INFO_CREATE(x->info, x->ninfo);
+        for (n=0; n < ninfo; n++) {
+            /* copy the data across */
+            PMIX_INFO_XFER(&x->info[n], &info[n]);
+        }
+    }
+    if (NULL != release_fn) {
+        release_fn(release_cbdata);
     }
     DEBUG_WAKEUP_THREAD(&x->lock);
 }
@@ -331,6 +358,37 @@ int main(int argc, char **argv)
 
     /* setup the pub data, in case it is used */
     PMIX_CONSTRUCT(&pubdata, pmix_list_t);
+
+    /* collect the inventory */
+    x = PMIX_NEW(myxfer_t);
+    rc = PMIx_server_collect_inventory(NULL, 0, infocbfunc, (void*)x);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stderr, "Collect inventory failed: %s\n", PMIx_Error_string(rc));
+        PMIX_RELEASE(x);
+        exit(1);
+    }
+    DEBUG_WAIT_THREAD(&x->lock);
+    if (PMIX_SUCCESS != x->status) {
+        fprintf(stderr, "Collect inventory failed: %s\n", PMIx_Error_string(x->status));
+        PMIX_RELEASE(x);
+        exit(1);
+    }
+    DEBUG_DESTRUCT_LOCK(&x->lock);
+    /* pass the info down */
+    DEBUG_CONSTRUCT_LOCK(&x->lock);
+    rc = PMIx_server_deliver_inventory(x->info, x->ninfo, NULL, 0, opcbfunc, x);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stderr, "Deliver inventory failed: %s\n", PMIx_Error_string(rc));
+        PMIX_RELEASE(x);
+        exit(1);
+    }
+    DEBUG_WAIT_THREAD(&x->lock);
+    if (PMIX_SUCCESS != x->status) {
+        fprintf(stderr, "Deliver inventory failed: %s\n", PMIx_Error_string(x->status));
+        PMIX_RELEASE(x);
+        exit(1);
+    }
+    PMIX_RELEASE(x);
 
     /* setup to see sigchld on the forked tests */
     PMIX_CONSTRUCT(&children, pmix_list_t);
@@ -839,26 +897,24 @@ static int numconnects = 0;
 
 static pmix_status_t connect_fn(const pmix_proc_t procs[], size_t nprocs,
                                 const pmix_info_t info[], size_t ninfo,
-                                pmix_connect_cbfunc_t cbfunc, void *cbdata)
+                                pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_output(0, "SERVER: CONNECT");
-    char nspace[PMIX_MAX_NSLEN+1];
 
     /* in practice, we would pass this request to the local
      * resource manager for handling */
 
-    (void)snprintf(nspace, PMIX_MAX_NSLEN, "NEW%d", numconnects);
     numconnects++;
 
     if (NULL != cbfunc) {
-        cbfunc(PMIX_SUCCESS, nspace, 0, cbdata);
+        cbfunc(PMIX_SUCCESS, cbdata);
     }
 
     return PMIX_SUCCESS;
 }
 
 
-static pmix_status_t disconnect_fn(const char nspace[],
+static pmix_status_t disconnect_fn(const pmix_proc_t procs[], size_t nprocs,
                                    const pmix_info_t info[], size_t ninfo,
                                    pmix_op_cbfunc_t cbfunc, void *cbdata)
 {

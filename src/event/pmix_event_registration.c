@@ -1,7 +1,7 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
- * Copyright (c) 2017      Research Organization for Information Science
+ * Copyright (c) 2017-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
@@ -40,6 +40,8 @@
     size_t ncodes;
     pmix_info_t *info;
     size_t ninfo;
+    pmix_proc_t *affected;
+    size_t naffected;
     pmix_notification_fn_t evhdlr;
     pmix_hdlr_reg_cbfunc_t evregcbfn;
     void *cbdata;
@@ -55,12 +57,17 @@ static void rscon(pmix_rshift_caddy_t *p)
     p->ncodes = 0;
     p->info = NULL;
     p->ninfo = 0;
+    p->affected = NULL;
+    p->naffected = 0;
     p->evhdlr = NULL;
     p->evregcbfn = NULL;
     p->cbdata = NULL;
 }
 static void rsdes(pmix_rshift_caddy_t *p)
 {
+    if (0 < p->ncodes) {
+        free(p->codes);
+    }
     if (NULL != p->cd) {
         PMIX_RELEASE(p->cd);
     }
@@ -359,8 +366,10 @@ static void check_cached_events(pmix_rshift_caddy_t *cd)
         }
         found = false;
         if (NULL == cd->codes) {
-            /* they registered a default event handler - always matches */
-            found = true;
+            if (!ncd->nondefault) {
+                /* they registered a default event handler - always matches */
+                found = true;
+            }
         } else {
             for (n=0; n < cd->ncodes; n++) {
                 if (cd->codes[n] == ncd->status) {
@@ -390,6 +399,11 @@ static void check_cached_events(pmix_rshift_caddy_t *cd)
                 continue;
             }
         }
+       /* if they specified affected proc(s) they wanted to know about, check */
+       if (!pmix_notify_check_affected(cd->affected, cd->naffected,
+                                       ncd->affected, ncd->naffected)) {
+           continue;
+       }
        /* create the chain */
         chain = PMIX_NEW(pmix_event_chain_t);
         chain->status = ncd->status;
@@ -447,8 +461,8 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
     pmix_info_caddy_t *ixfer;
     void *cbobject = NULL;
     pmix_data_range_t range = PMIX_RANGE_UNDEF;
-    pmix_proc_t *parray = NULL, *affected = NULL;
-    size_t nprocs = 0, naffected = 0;
+    pmix_proc_t *parray = NULL;
+    size_t nprocs = 0;
 
     /* need to acquire the object from its originating thread */
     PMIX_ACQUIRE_OBJECT(cd);
@@ -503,11 +517,11 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
                 parray = (pmix_proc_t*)cd->info[n].value.data.darray->array;
                 nprocs = cd->info[n].value.data.darray->size;
             } else if (0 == strncmp(cd->info[n].key, PMIX_EVENT_AFFECTED_PROC, PMIX_MAX_KEYLEN)) {
-                affected = cd->info[n].value.data.proc;
-                naffected = 1;
+                cd->affected = cd->info[n].value.data.proc;
+                cd->naffected = 1;
             } else if (0 == strncmp(cd->info[n].key, PMIX_EVENT_AFFECTED_PROCS, PMIX_MAX_KEYLEN)) {
-                affected = (pmix_proc_t*)cd->info[n].value.data.darray->array;
-                naffected = cd->info[n].value.data.darray->size;
+                cd->affected = (pmix_proc_t*)cd->info[n].value.data.darray->array;
+                cd->naffected = cd->info[n].value.data.darray->size;
             } else {
                 ixfer = PMIX_NEW(pmix_info_caddy_t);
                 ixfer->info = &cd->info[n];
@@ -551,16 +565,16 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
             }
             memcpy(evhdlr->rng.procs, parray, nprocs * sizeof(pmix_proc_t));
         }
-        if (NULL != affected && 0 < naffected) {
-            evhdlr->naffected = naffected;
-            PMIX_PROC_CREATE(evhdlr->affected, naffected);
+        if (NULL != cd->affected && 0 < cd->naffected) {
+            evhdlr->naffected = cd->naffected;
+            PMIX_PROC_CREATE(evhdlr->affected, cd->naffected);
             if (NULL == evhdlr->affected) {
                 index = UINT_MAX;
                 rc = PMIX_ERR_EVENT_REGISTRATION;
                 PMIX_RELEASE(evhdlr);
                 goto ack;
             }
-            memcpy(evhdlr->affected, affected, naffected * sizeof(pmix_proc_t));
+            memcpy(evhdlr->affected, cd->affected, cd->naffected * sizeof(pmix_proc_t));
         }
         evhdlr->evhdlr = cd->evhdlr;
         evhdlr->cbobject = cbobject;
@@ -636,16 +650,16 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
         }
         memcpy(evhdlr->rng.procs, parray, nprocs * sizeof(pmix_proc_t));
     }
-    if (NULL != affected && 0 < naffected) {
-        evhdlr->naffected = naffected;
-        PMIX_PROC_CREATE(evhdlr->affected, naffected);
+    if (NULL != cd->affected && 0 < cd->naffected) {
+        evhdlr->naffected = cd->naffected;
+        PMIX_PROC_CREATE(evhdlr->affected, cd->naffected);
         if (NULL == evhdlr->affected) {
             index = UINT_MAX;
             rc = PMIX_ERR_EVENT_REGISTRATION;
             PMIX_RELEASE(evhdlr);
             goto ack;
         }
-        memcpy(evhdlr->affected, affected, naffected * sizeof(pmix_proc_t));
+        memcpy(evhdlr->affected, cd->affected, cd->naffected * sizeof(pmix_proc_t));
     }
     evhdlr->evhdlr = cd->evhdlr;
     evhdlr->cbobject = cbobject;

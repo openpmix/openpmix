@@ -222,6 +222,7 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
             } else if (0 == strncmp(cd->info[n].key, PMIX_EVENT_AFFECTED_PROC, PMIX_MAX_KEYLEN)) {
                 PMIX_PROC_CREATE(cd->affected, 1);
                 if (NULL == cd->affected) {
+                    rc = PMIX_ERR_NOMEM;
                     goto cleanup;
                 }
                 cd->naffected = 1;
@@ -229,6 +230,7 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
                 /* need to do the same for chain so it can be correctly processed */
                 PMIX_PROC_CREATE(chain->affected, 1);
                 if (NULL == chain->affected) {
+                    rc = PMIX_ERR_NOMEM;
                     goto cleanup;
                 }
                 chain->naffected = 1;
@@ -238,6 +240,7 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
                 PMIX_PROC_CREATE(cd->affected, cd->naffected);
                 if (NULL == cd->affected) {
                     cd->naffected = 0;
+                    rc = PMIX_ERR_NOMEM;
                     goto cleanup;
                 }
                 memcpy(cd->affected, cd->info[n].value.data.darray->array, cd->naffected * sizeof(pmix_proc_t));
@@ -246,6 +249,7 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
                 PMIX_PROC_CREATE(chain->affected, chain->naffected);
                 if (NULL == chain->affected) {
                     chain->naffected = 0;
+                    rc = PMIX_ERR_NOMEM;
                     goto cleanup;
                 }
                 memcpy(chain->affected, cd->info[n].value.data.darray->array, chain->naffected * sizeof(pmix_proc_t));
@@ -292,7 +296,9 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
   cleanup:
     pmix_output_verbose(2, pmix_client_globals.event_output,
                         "client: notifying server - unable to send");
-    PMIX_RELEASE(msg);
+    if (NULL != msg) {
+        PMIX_RELEASE(msg);
+    }
     /* we were unable to send anything, so we just return the error */
     return rc;
 }
@@ -1104,6 +1110,7 @@ pmix_status_t pmix_server_notify_client_of_event(pmix_status_t status,
             }
         }
     }
+
     /*
      * If the range is PMIX_RANGE_NAMESPACE, then they should not have set a
      * PMIX_EVENT_CUSTOM_RANGE info object or at least we should ignore it

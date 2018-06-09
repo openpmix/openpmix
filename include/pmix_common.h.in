@@ -1,7 +1,7 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2013-2018 Intel, Inc. All rights reserved.
- * Copyright (c) 2016-2017 Research Organization for Information Science
+ * Copyright (c) 2016-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2016-2017 Mellanox Technologies, Inc.
@@ -205,6 +205,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_TCP_DISABLE_IPV4               "pmix.tcp.disipv4"      // (bool) true to disable IPv4 family
 #define PMIX_TCP_DISABLE_IPV6               "pmix.tcp.disipv6"      // (bool) true to disable IPv6 family
 
+
 /* attributes for GDS */
 #define PMIX_GDS_MODULE                     "pmix.gds.mod"          // (char*) comma-delimited string of desired modules
 
@@ -252,6 +253,7 @@ typedef uint32_t pmix_rank_t;
                                                                     //                to launch this proc's application
 #define PMIX_EXIT_CODE                      "pmix.exit.code"        // (int) exit code returned when proc terminated
 
+
 /* size info */
 #define PMIX_UNIV_SIZE                      "pmix.univ.size"        // (uint32_t) #procs in this nspace
 #define PMIX_JOB_SIZE                       "pmix.job.size"         // (uint32_t) #procs in this job
@@ -262,16 +264,20 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_MAX_PROCS                      "pmix.max.size"         // (uint32_t) max #procs for this job
 #define PMIX_NUM_NODES                      "pmix.num.nodes"        // (uint32_t) #nodes in this nspace
 
+
 /* Memory info */
 #define PMIX_AVAIL_PHYS_MEMORY              "pmix.pmem"             // (uint64_t) total available physical memory on this node
 #define PMIX_DAEMON_MEMORY                  "pmix.dmn.mem"          // (float) Mbytes of memory currently used by daemon
 #define PMIX_CLIENT_AVG_MEMORY              "pmix.cl.mem.avg"       // (float) Average Mbytes of memory used by client processes
+
 
 /* topology info */
 #define PMIX_NET_TOPO                       "pmix.ntopo"            // (char*) xml-representation of network topology
 #define PMIX_LOCAL_TOPO                     "pmix.ltopo"            // (char*) xml-representation of local node topology
 #define PMIX_NODE_LIST                      "pmix.nlist"            // (char*) comma-delimited list of nodes running procs for this job
 #define PMIX_TOPOLOGY                       "pmix.topo"             // (hwloc_topology_t) pointer to the PMIx client's internal topology object
+#define PMIX_TOPOLOGY_XML                   "pmix.topo.xml"         // (char*) XML-based description of topology
+#define PMIX_TOPOLOGY_FILE                  "pmix.topo.file"        // (char*) full path to file containing XML topology description
 #define PMIX_TOPOLOGY_SIGNATURE             "pmix.toposig"          // (char*) topology signature string
 #define PMIX_LOCALITY_STRING                "pmix.locstr"           // (char*) string describing a proc's location
 #define PMIX_HWLOC_SHMEM_ADDR               "pmix.hwlocaddr"        // (size_t) address of HWLOC shared memory segment
@@ -279,6 +285,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_HWLOC_SHMEM_FILE               "pmix.hwlocfile"        // (char*) path to HWLOC shared memory file
 #define PMIX_HWLOC_XML_V1                   "pmix.hwlocxml1"        // (char*) XML representation of local topology using HWLOC v1.x format
 #define PMIX_HWLOC_XML_V2                   "pmix.hwlocxml2"        // (char*) XML representation of local topology using HWLOC v2.x format
+#define PMIX_HWLOC_SHARE_TOPO               "pmix.hwlocsh"          // (bool) Share the HWLOC topology via shared memory
+#define PMIX_HWLOC_HOLE_KIND                "pmix.hwlocholek"       // (char*) Kind of VM "hole" HWLOC should use for shared memory
 
 
 /* request-related info */
@@ -533,7 +541,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_ALLOC_NETWORK_TYPE             "pmix.alloc.nettype"    // (char*) type of desired transport (e.g., tcp, udp)
 #define PMIX_ALLOC_NETWORK_PLANE            "pmix.alloc.netplane"   // (char*) id string for the NIC (aka plane) to be used for this allocation
                                                                     //         (e.g., CIDR for Ethernet)
-#define PMIX_ALLOC_NETWORK_ENDPTS           "pmix.alloc.endpts"     // (size_t) number of endpoints to allocate
+#define PMIX_ALLOC_NETWORK_ENDPTS           "pmix.alloc.endpts"     // (size_t) number of endpoints to allocate per process
+#define PMIX_ALLOC_NETWORK_ENDPTS_NODE      "pmix.alloc.endpts.nd"  // (size_t) number of endpoints to allocate per node
 #define PMIX_ALLOC_NETWORK_SEC_KEY          "pmix.alloc.nsec"       // (pmix_byte_object_t) network security key
 
 
@@ -617,6 +626,9 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_IOF_PUSH_STDIN                 "pmix.iof.stdin"        // (bool) Used by a tool to request that the PMIx library collect
                                                                     //        the tool's stdin and forward it to the procs specified in
                                                                     //        the PMIx_IOF_push call
+#define PMIX_IOF_TAG_OUTPUT                 "pmix.iof.tag"          // (bool) Tag output with the channel it comes from
+#define PMIX_IOF_TIMESTAMP_OUTPUT           "pmix.iof.ts"           // (bool) Timestamp output
+#define PMIX_IOF_XML_OUTPUT                 "pmix.iof.xml"          // (bool) Format output in XML
 
 
 /* Attributes for controlling contents of application setup data */
@@ -768,6 +780,8 @@ typedef int pmix_status_t;
 #define PMIX_OPENMP_PARALLEL_EXITED             (PMIX_ERR_OP_BASE - 23)     // an OpenMP parallel region has completed
 #define PMIX_LAUNCH_DIRECTIVE                   (PMIX_ERR_OP_BASE - 24)
 #define PMIX_LAUNCHER_READY                     (PMIX_ERR_OP_BASE - 25)
+#define PMIX_OPERATION_IN_PROGRESS              (PMIX_ERR_OP_BASE - 26)
+
 
 /* define a starting point for system error constants so
  * we avoid renumbering when making additions */
@@ -1082,7 +1096,21 @@ typedef struct pmix_data_buffer {
         (m)->bytes_allocated = 0;           \
         (m)->bytes_used = 0;                \
     } while (0)
+#define PMIX_DATA_BUFFER_LOAD(b, d, s)          \
+    do {                                        \
+        (b)->base_ptr = (char*)(d);             \
+        (b)->pack_ptr = (b)->base_ptr + (s);    \
+        (b)->unpack_ptr = (b)->base_ptr;        \
+        (b)->bytes_allocated = (s);             \
+        (b)->bytes_used = (s);                  \
+    } while(0)
 
+#define PMIX_DATA_BUFFER_UNLOAD(b, d, s)    \
+    do {                                    \
+        (d) = (b)->base_ptr;                \
+        (s) = (b)->bytes_used;              \
+        (b)->base_ptr = NULL;               \
+    } while(0)
 
 /****    PMIX PROC OBJECT    ****/
 typedef struct pmix_proc {
@@ -1297,92 +1325,7 @@ typedef struct pmix_value {
     } while (0)
 
 /* release the memory in the value struct data field */
-#define PMIX_VALUE_DESTRUCT(m)                                                      \
-    do {                                                                            \
-        size_t _n;                                                                  \
-        if (PMIX_STRING == (m)->type) {                                             \
-            if (NULL != (m)->data.string) {                                         \
-                free((m)->data.string);                                             \
-                (m)->data.string = NULL;                                            \
-            }                                                                       \
-        } else if ((PMIX_BYTE_OBJECT == (m)->type) ||                               \
-                   (PMIX_COMPRESSED_STRING == (m)->type)) {                         \
-            if (NULL != (m)->data.bo.bytes) {                                       \
-                free((m)->data.bo.bytes);                                           \
-                (m)->data.bo.bytes = NULL;                                          \
-                (m)->data.bo.size = 0;                                              \
-            }                                                                       \
-        } else if (PMIX_DATA_ARRAY == (m)->type) {                                  \
-            if (NULL != (m)->data.darray && NULL != (m)->data.darray->array) {      \
-                if (PMIX_STRING == (m)->data.darray->type) {                        \
-                    char **_str = (char**)(m)->data.darray->array;                  \
-                    for (_n=0; _n < (m)->data.darray->size; _n++) {                 \
-                        if (NULL != _str[_n]) {                                     \
-                            free(_str[_n]);                                         \
-                        }                                                           \
-                    }                                                               \
-                } else if (PMIX_PROC_INFO == (m)->data.darray->type) {              \
-                    pmix_proc_info_t *_info =                                       \
-                                (pmix_proc_info_t*)(m)->data.darray->array;         \
-                    for (_n=0; _n < (m)->data.darray->size; _n++) {                 \
-                        PMIX_PROC_INFO_DESTRUCT(&_info[_n]);                        \
-                    }                                                               \
-                } else if (PMIX_INFO == (m)->data.darray->type) {                   \
-                    pmix_info_t *_info =                                            \
-                                (pmix_info_t*)(m)->data.darray->array;              \
-                    for (_n=0; _n < (m)->data.darray->size; _n++) {                 \
-                        /* cannot use info destruct as that loops back */           \
-                        if (PMIX_STRING == _info[_n].value.type) {                  \
-                            if (NULL != _info[_n].value.data.string) {              \
-                                free(_info[_n].value.data.string);                  \
-                            }                                                       \
-                        } else if (PMIX_BYTE_OBJECT == _info[_n].value.type) {      \
-                            if (NULL != _info[_n].value.data.bo.bytes) {            \
-                                free(_info[_n].value.data.bo.bytes);                \
-                            }                                                       \
-                        } else if (PMIX_PROC_INFO == _info[_n].value.type) {        \
-                            PMIX_PROC_INFO_DESTRUCT(_info[_n].value.data.pinfo);    \
-                        }                                                           \
-                    }                                                               \
-                } else if (PMIX_BYTE_OBJECT == (m)->data.darray->type) {            \
-                    pmix_byte_object_t *_obj =                                      \
-                                (pmix_byte_object_t*)(m)->data.darray->array;       \
-                    for (_n=0; _n < (m)->data.darray->size; _n++) {                 \
-                        if (NULL != _obj[_n].bytes) {                               \
-                            free(_obj[_n].bytes);                                   \
-                        }                                                           \
-                    }                                                               \
-                }                                                                   \
-                free((m)->data.darray->array);                                      \
-                (m)->data.darray->array = NULL;                                     \
-                (m)->data.darray->size = 0;                                         \
-            }                                                                       \
-            if (NULL != (m)->data.darray) {                                         \
-                free((m)->data.darray);                                             \
-                (m)->data.darray = NULL;                                            \
-            }                                                                       \
-        /**** DEPRECATED ****/                                                      \
-        } else if (PMIX_INFO_ARRAY == (m)->type) {                                  \
-            pmix_info_t *_p = (pmix_info_t*)((m)->data.array->array);               \
-            for (_n=0; _n < (m)->data.array->size; _n++) {                          \
-                if (PMIX_STRING == _p[_n].value.type) {                             \
-                    if (NULL != _p[_n].value.data.string) {                         \
-                        free(_p[_n].value.data.string);                             \
-                    }                                                               \
-                } else if (PMIX_BYTE_OBJECT == _p[_n].value.type) {                 \
-                    if (NULL != _p[_n].value.data.bo.bytes) {                       \
-                        free(_p[_n].value.data.bo.bytes);                           \
-                    }                                                               \
-                } else if (PMIX_PROC_INFO == _p[_n].value.type) {                   \
-                    PMIX_PROC_INFO_DESTRUCT(_p[_n].value.data.pinfo);               \
-                }                                                                   \
-            }                                                                       \
-            free(_p);                                                               \
-        /********************/                                                      \
-        } else if (PMIX_ENVAR == (m)->type) {                                       \
-            PMIX_ENVAR_DESTRUCT(&(m)->data.envar);                                  \
-        }                                                                           \
-    } while (0)
+#define PMIX_VALUE_DESTRUCT(m) pmix_value_destruct(m)
 
 #define PMIX_VALUE_FREE(m, n)                           \
     do {                                                \
@@ -1439,6 +1382,10 @@ typedef struct pmix_value {
 void pmix_value_load(pmix_value_t *v, const void *data, pmix_data_type_t type);
 #define PMIX_VALUE_LOAD(v, d, t) \
     pmix_value_load((v), (d), (t))
+
+pmix_status_t pmix_value_unload(pmix_value_t *kv, void **data, size_t *sz);
+#define PMIX_VALUE_UNLOAD(r, k, d, s)      \
+    (r) = pmix_value_unload((k), (d), (s))
 
 pmix_status_t pmix_value_xfer(pmix_value_t *kv, pmix_value_t *src);
 #define PMIX_VALUE_XFER(r, v, s)                                \
@@ -1505,6 +1452,7 @@ struct pmix_info_t {
         if (NULL != (k)) {                                  \
             (void)strncpy((m)->key, (k), PMIX_MAX_KEYLEN);  \
         }                                                   \
+        (m)->flags = 0;                                     \
         pmix_value_load(&((m)->value), (v), (t));           \
     } while (0)
 #define PMIX_INFO_XFER(d, s)                                    \
@@ -1831,18 +1779,6 @@ typedef void (*pmix_modex_cbfunc_t)(pmix_status_t status,
  * the receiver must copy it if it needs to be retained */
 typedef void (*pmix_spawn_cbfunc_t)(pmix_status_t status,
                                     char nspace[], void *cbdata);
-
-/* define a callback function for calls to PMIx_Connect_nb - the function
- * will be called upon completion of the command. The status will indicate
- * whether or not the connect operation succeeded. The nspace will contain
- * the new identity assigned by the host RM to the specified group of
- * processes, and the rank will be the rank of this process within that new
- * group. Note that the returned nspace value may be
- * released by the library upon return from the callback function, so
- * the receiver must copy it if it needs to be retained */
-typedef void (*pmix_connect_cbfunc_t)(pmix_status_t status,
-                                      char nspace[], int rank,
-                                      void *cbdata);
 
 /* define a callback for common operations that simply return
  * a status. Examples include the non-blocking versions of
@@ -2454,6 +2390,81 @@ PMIX_EXPORT pmix_status_t PMIx_Data_copy_payload(pmix_data_buffer_t *dest,
 
 #define PMIX_VAL_FREE(_v) \
      PMIx_free_value_data(_v)
+
+static inline void pmix_value_destruct(pmix_value_t * m) {
+    size_t _n;
+    if (PMIX_STRING == (m)->type) {
+        if (NULL != (m)->data.string) {
+            free((m)->data.string);
+            (m)->data.string = NULL;
+        }
+    } else if ((PMIX_BYTE_OBJECT == (m)->type) ||
+               (PMIX_COMPRESSED_STRING == (m)->type)) {
+        if (NULL != (m)->data.bo.bytes) {
+            free((m)->data.bo.bytes);
+            (m)->data.bo.bytes = NULL;
+            (m)->data.bo.size = 0;
+        }
+    } else if (PMIX_DATA_ARRAY == (m)->type) {
+        if (NULL != (m)->data.darray && NULL != (m)->data.darray->array) {
+            if (PMIX_STRING == (m)->data.darray->type) {
+                char **_str = (char**)(m)->data.darray->array;
+                for (_n=0; _n < (m)->data.darray->size; _n++) {
+                    if (NULL != _str[_n]) {
+                        free(_str[_n]);
+                    }
+                }
+            } else if (PMIX_PROC_INFO == (m)->data.darray->type) {
+                pmix_proc_info_t *_info =
+                            (pmix_proc_info_t*)(m)->data.darray->array;
+                for (_n=0; _n < (m)->data.darray->size; _n++) {
+                    PMIX_PROC_INFO_DESTRUCT(&_info[_n]);
+                }
+            } else if (PMIX_INFO == (m)->data.darray->type) {
+                pmix_info_t *_info =
+                            (pmix_info_t*)(m)->data.darray->array;
+                for (_n=0; _n < (m)->data.darray->size; _n++) {
+                    pmix_value_destruct(&_info[_n].value);
+                }
+            } else if (PMIX_BYTE_OBJECT == (m)->data.darray->type) {
+                pmix_byte_object_t *_obj =
+                            (pmix_byte_object_t*)(m)->data.darray->array;
+                for (_n=0; _n < (m)->data.darray->size; _n++) {
+                    if (NULL != _obj[_n].bytes) {
+                        free(_obj[_n].bytes);
+                    }
+                }
+            }
+            free((m)->data.darray->array);
+            (m)->data.darray->array = NULL;
+            (m)->data.darray->size = 0;
+        }
+        if (NULL != (m)->data.darray) {
+            free((m)->data.darray);
+            (m)->data.darray = NULL;
+        }
+    /**** DEPRECATED ****/
+    } else if (PMIX_INFO_ARRAY == (m)->type) {
+        pmix_info_t *_p = (pmix_info_t*)((m)->data.array->array);
+        for (_n=0; _n < (m)->data.array->size; _n++) {
+            if (PMIX_STRING == _p[_n].value.type) {
+                if (NULL != _p[_n].value.data.string) {
+                    free(_p[_n].value.data.string);
+                }
+            } else if (PMIX_BYTE_OBJECT == _p[_n].value.type) {
+                if (NULL != _p[_n].value.data.bo.bytes) {
+                    free(_p[_n].value.data.bo.bytes);
+                }
+            } else if (PMIX_PROC_INFO == _p[_n].value.type) {
+                PMIX_PROC_INFO_DESTRUCT(_p[_n].value.data.pinfo);
+            }
+        }
+        free(_p);
+    /********************/
+    } else if (PMIX_ENVAR == (m)->type) {
+        PMIX_ENVAR_DESTRUCT(&(m)->data.envar);
+    }
+}
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }

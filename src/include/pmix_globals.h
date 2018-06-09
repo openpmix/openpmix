@@ -167,6 +167,7 @@ typedef struct {
     bool version_stored;         // the version string used by this nspace has been stored
     pmix_buffer_t *jobbkt;       // packed version of jobinfo
     size_t ndelivered;           // count of #local clients that have received the jobinfo
+    size_t nfinalized;           // count of #local clients that have finalized
     pmix_list_t ranks;           // list of pmix_rank_info_t for connection support of my clients
     /* all members of an nspace are required to have the
      * same personality, but it can differ between nspaces.
@@ -294,7 +295,6 @@ typedef struct {
     pmix_collect_t collect_type;    // whether or not data is to be returned at completion
     pmix_modex_cbfunc_t modexcbfunc;
     pmix_op_cbfunc_t op_cbfunc;
-    pmix_connect_cbfunc_t cnct_cbfunc;
 } pmix_server_trkr_t;
 PMIX_CLASS_DECLARATION(pmix_server_trkr_t);
 
@@ -362,7 +362,6 @@ typedef struct {
         pmix_value_cbfunc_t valuefn;
         pmix_lookup_cbfunc_t lookupfn;
         pmix_spawn_cbfunc_t spawnfn;
-        pmix_connect_cbfunc_t cnctfn;
         pmix_hdlr_reg_cbfunc_t hdlrregfn;
     } cbfunc;
     size_t errhandler_ref;

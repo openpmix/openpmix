@@ -1,6 +1,8 @@
 /*
  * Copyright (c) 2015-2018 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2018      Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  *
  * $COPYRIGHT$
  *
@@ -135,8 +137,11 @@ static void htdes(pmix_hash_trkr_t *p)
     if (NULL != p->nptr) {
         PMIX_RELEASE(p->nptr);
     }
+    pmix_hash_remove_data(&p->internal, PMIX_RANK_WILDCARD, NULL);
     PMIX_DESTRUCT(&p->internal);
+    pmix_hash_remove_data(&p->remote, PMIX_RANK_WILDCARD, NULL);
     PMIX_DESTRUCT(&p->remote);
+    pmix_hash_remove_data(&p->local, PMIX_RANK_WILDCARD, NULL);
     PMIX_DESTRUCT(&p->local);
 }
 static PMIX_CLASS_INSTANCE(pmix_hash_trkr_t,
@@ -327,7 +332,7 @@ static pmix_status_t store_map(pmix_hash_table_t *ht,
                 pmix_argv_free(procs);
                 return rc;
             }
-            PMIX_RELEASE(kp2);
+            PMIX_RELEASE(kp2);  // maintain acctg
         }
         pmix_argv_free(procs);
     }
@@ -345,6 +350,7 @@ static pmix_status_t store_map(pmix_hash_table_t *ht,
         PMIX_RELEASE(kp2);
         return rc;
     }
+    PMIX_RELEASE(kp2);  // maintain acctg
 
     return PMIX_SUCCESS;
 }
@@ -410,6 +416,7 @@ pmix_status_t hash_cache_job_info(struct pmix_nspace_t *ns,
                 PMIX_RELEASE(kp2);
                 return rc;
             }
+            PMIX_RELEASE(kp2);  // maintain acctg
 
             /* parse the regex to get the argv array of node names */
             if (PMIX_SUCCESS != (rc = pmix_preg.parse_nodes(info[n].value.data.string, &nodes))) {
@@ -527,6 +534,7 @@ pmix_status_t hash_cache_job_info(struct pmix_nspace_t *ns,
                 PMIX_RELEASE(kp2);
                 goto release;
             }
+            PMIX_RELEASE(kp2);  // maintain acctg
             /* if this is the job size, then store it */
             if (0 == strncmp(info[n].key, PMIX_JOB_SIZE, PMIX_MAX_KEYLEN)) {
                 nptr->nprocs = info[n].value.data.uint32;
@@ -556,6 +564,7 @@ pmix_status_t hash_cache_job_info(struct pmix_nspace_t *ns,
                 PMIX_RELEASE(kp2);
                 break;
             }
+            PMIX_RELEASE(kp2);  // maintain acctg
         }
         trk->gdata_added = true;
     }
@@ -931,7 +940,7 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                         PMIX_DESTRUCT(&buf2);
                         return rc;
                     }
-                    PMIX_RELEASE(kp2);
+                    PMIX_RELEASE(kp2);  // maintain acctg
                 } else {
                     /* nope - so add this by itself */
                     kp2 = PMIX_NEW(pmix_kval_t);
@@ -963,7 +972,7 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                         PMIX_DESTRUCT(&buf2);
                         return rc;
                     }
-                    PMIX_RELEASE(kp2);
+                    PMIX_RELEASE(kp2);  // maintain acctg
                 }
                 /* split the list of procs so we can store their
                  * individual location data */
@@ -986,7 +995,7 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                         pmix_argv_free(procs);
                         return rc;
                     }
-                    PMIX_RELEASE(kp2);
+                    PMIX_RELEASE(kp2);  // maintain acctg
                 }
                 pmix_argv_free(procs);
                 PMIX_DESTRUCT(&kv);
@@ -1007,7 +1016,7 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                     PMIX_DESTRUCT(&buf2);
                     return rc;
                 }
-                PMIX_RELEASE(kp2);
+                PMIX_RELEASE(kp2);  // maintain acctg
             }
             /* cleanup */
             PMIX_DESTRUCT(&buf2);
@@ -1109,8 +1118,10 @@ static pmix_status_t hash_store(const pmix_proc_t *proc,
             }
             if (PMIX_SUCCESS != (rc = pmix_hash_store(&trk->internal, proc->rank, kp))) {
                 PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(kp);
                 return rc;
             }
+            PMIX_RELEASE(kp);  // maintain accounting
         }
     }
 
@@ -1460,7 +1471,17 @@ static pmix_status_t nspace_add(const char *nspace,
 
 static pmix_status_t nspace_del(const char *nspace)
 {
-    /* we don't need to do anything here */
+    pmix_hash_trkr_t *t;
+
+    /* find the hash table for this nspace */
+    PMIX_LIST_FOREACH(t, &myhashes, pmix_hash_trkr_t) {
+        if (0 == strcmp(nspace, t->ns)) {
+            /* release it */
+            pmix_list_remove_item(&myhashes, &t->super);
+            PMIX_RELEASE(t);
+            break;
+        }
+    }
     return PMIX_SUCCESS;
 }
 

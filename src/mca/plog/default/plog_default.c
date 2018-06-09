@@ -146,5 +146,5 @@ static pmix_status_t mylog(const pmix_proc_t *source,
                          directives, ndirs,
                          localcbfn, (void*)cd);
 
-    return PMIX_ERR_OPERATION_IN_PROGRESS;
+    return PMIX_OPERATION_IN_PROGRESS;
 }

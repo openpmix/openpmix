@@ -63,6 +63,7 @@
 #include "src/util/error.h"
 #include "src/util/hash.h"
 #include "src/util/output.h"
+#include "src/util/pmix_environ.h"
 #include "src/util/show_help.h"
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/runtime/pmix_rte.h"
@@ -390,6 +391,26 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         }
     }
 
+    /* if we are a launcher, then we also need to act as a server,
+     * so setup the server-related structures here */
+    if (PMIX_PROC_LAUNCHER == ptype) {
+        if (PMIX_SUCCESS != (rc = pmix_server_initialize())) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE_THREAD(&pmix_global_lock);
+            return rc;
+        }
+        /* setup the function pointers */
+        memset(&pmix_host_server, 0, sizeof(pmix_server_module_t));
+        /* setup our tmpdir */
+        if (NULL == pmix_server_globals.tmpdir) {
+            if (NULL == (evar = getenv("PMIX_SERVER_TMPDIR"))) {
+                pmix_server_globals.tmpdir = strdup(pmix_tmp_directory());
+            } else {
+                pmix_server_globals.tmpdir = strdup(evar);
+            }
+        }
+    }
+
     /* setup the runtime - this init's the globals,
      * opens and initializes the required frameworks */
     if (PMIX_SUCCESS != (rc = pmix_rte_init(ptype, info, ninfo,
@@ -403,18 +424,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         (void)strncpy(pmix_globals.myid.nspace, nspace, PMIX_MAX_NSLEN);
         free(nspace);
         pmix_globals.myid.rank = rank;
-    }
-
-    /* if we are a launcher, then we also need to act as a server,
-     * so setup the server-related structures here */
-    if (PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
-        if (PMIX_SUCCESS != (rc = pmix_server_initialize())) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
-            return rc;
-        }
-        /* setup the function pointers */
-        memset(&pmix_host_server, 0, sizeof(pmix_server_module_t));
     }
 
     /* setup the IO Forwarding recv */
@@ -987,6 +996,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         }
         PMIX_RELEASE(kptr); // maintain accounting
     }
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* if we are acting as a server, then start listening */
     if (PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
@@ -1000,12 +1010,10 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         /* start listening for connections */
         if (PMIX_SUCCESS != pmix_ptl_base_start_listening(info, ninfo)) {
             pmix_show_help("help-pmix-server.txt", "listener-thread-start", true);
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
             return PMIX_ERR_INIT;
         }
     }
 
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
     return rc;
 }
 
@@ -1063,11 +1071,6 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
         return PMIX_SUCCESS;
     }
     pmix_globals.init_cntr = 0;
-    /* if we are not connected, then we are done */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return PMIX_SUCCESS;
-    }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -1079,47 +1082,49 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     PMIX_DESTRUCT(&pmix_client_globals.iof_stdout);
     PMIX_DESTRUCT(&pmix_client_globals.iof_stderr);
 
-    /* setup a cmd message to notify the PMIx
-     * server that we are normally terminating */
-    msg = PMIX_NEW(pmix_buffer_t);
-    /* pack the cmd */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &cmd, 1, PMIX_COMMAND);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(msg);
-        return rc;
-    }
+    /* if we are connected, then disconnect */
+    if (pmix_globals.connected) {
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "pmix:tool sending finalize sync to server");
 
+        /* setup a cmd message to notify the PMIx
+         * server that we are normally terminating */
+        msg = PMIX_NEW(pmix_buffer_t);
+        /* pack the cmd */
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
+                         msg, &cmd, 1, PMIX_COMMAND);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(msg);
+            return rc;
+        }
+        /* setup a timer to protect ourselves should the server be unable
+         * to answer for some reason */
+        PMIX_CONSTRUCT_LOCK(&tev.lock);
+        pmix_event_assign(&tev.ev, pmix_globals.evbase, -1, 0,
+                          fin_timeout, &tev);
+        tev.active = true;
+        PMIX_POST_OBJECT(&tev);
+        pmix_event_add(&tev.ev, &tv);
+        PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg,
+                           finwait_cbfunc, (void*)&tev);
+        if (PMIX_SUCCESS != rc) {
+            if (tev.active) {
+                pmix_event_del(&tev.ev);
+            }
+            return rc;
+        }
 
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:tool sending finalize sync to server");
-
-    /* setup a timer to protect ourselves should the server be unable
-     * to answer for some reason */
-    PMIX_CONSTRUCT_LOCK(&tev.lock);
-    pmix_event_assign(&tev.ev, pmix_globals.evbase, -1, 0,
-                      fin_timeout, &tev);
-    tev.active = true;
-    PMIX_POST_OBJECT(&tev);
-    pmix_event_add(&tev.ev, &tv);
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg,
-                       finwait_cbfunc, (void*)&tev);
-    if (PMIX_SUCCESS != rc) {
+        /* wait for the ack to return */
+        PMIX_WAIT_THREAD(&tev.lock);
+        PMIX_DESTRUCT_LOCK(&tev.lock);
         if (tev.active) {
             pmix_event_del(&tev.ev);
         }
-        return rc;
-    }
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "pmix:tool finalize sync received");
 
-    /* wait for the ack to return */
-    PMIX_WAIT_THREAD(&tev.lock);
-    PMIX_DESTRUCT_LOCK(&tev.lock);
-    if (tev.active) {
-        pmix_event_del(&tev.ev);
     }
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:tool finalize sync received");
 
     if (!pmix_globals.external_evbase) {
         /* stop the progress thread, but leave the event base
@@ -1164,7 +1169,12 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
 
     /* shutdown services */
     pmix_rte_finalize();
+    if (NULL != pmix_globals.mypeer) {
+        PMIX_RELEASE(pmix_globals.mypeer);
+    }
 
+    /* finalize the class/object system */
+    pmix_class_finalize();
     return PMIX_SUCCESS;
 }
 
