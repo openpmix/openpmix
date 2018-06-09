@@ -1823,15 +1823,16 @@ static void clct(int sd, short args, void *cbdata)
     pmix_inventory_rollup_t *cd = (pmix_inventory_rollup_t*)cbdata;
     pmix_status_t rc;
 
+#if PMIX_HAVE_HWLOC
     /* if we don't know our topology, we better get it now */
     if (NULL == pmix_hwloc_topology) {
-        pmix_output(0, "COLLECTING TOPOLOGY");
         if (PMIX_SUCCESS != (rc = pmix_hwloc_get_topology(NULL, 0))) {
             PMIX_ERROR_LOG(rc);
             return;
         }
-        pmix_output(0, "TOPOLOGY INITIALIZED %s", (NULL == pmix_hwloc_topology) ? "NULL" : "NON-NULL");
     }
+#endif
+
     /* we only have one source at this time */
     cd->requests = 1;
 
