@@ -272,6 +272,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
+    PMIX_INFO_DESTRUCT(&ginfo);
 
     /* copy needed parts over to the client_globals.myserver field
      * so that calls into client-side functions will use our peer */
@@ -507,16 +508,26 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     if (NULL != gds_mode) {
         free(gds_mode);
     }
-
+    if (NULL != pmix_server_globals.tmpdir) {
+        free(pmix_server_globals.tmpdir);
+    }
     /* close the pnet framework */
     (void)pmix_mca_base_framework_close(&pmix_pnet_base_framework);
 
+
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
+    PMIX_DESTRUCT_LOCK(&pmix_global_lock);
+
     pmix_rte_finalize();
+    if (NULL != pmix_globals.mypeer) {
+        PMIX_RELEASE(pmix_globals.mypeer);
+    }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:server finalize complete");
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
-    PMIX_DESTRUCT_LOCK(&pmix_global_lock);
+
+    /* finalize the class/object system */
+    pmix_class_finalize();
 
     return PMIX_SUCCESS;
 }
@@ -1964,6 +1975,61 @@ static void op_cbfunc(pmix_status_t status, void *cbdata)
     PMIX_RELEASE(cd);
 }
 
+static void connection_cleanup(int sd, short args, void *cbdata)
+{
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t*)cbdata;
+
+    pmix_ptl_base_lost_connection(cd->peer, PMIX_SUCCESS);
+    /* cleanup the caddy */
+    PMIX_RELEASE(cd);
+}
+
+static void op_cbfunc2(pmix_status_t status, void *cbdata)
+{
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t*)cbdata;
+    pmix_buffer_t *reply;
+    pmix_status_t rc;
+
+    /* no need to thread-shift here as no global data is
+     * being accessed */
+
+    /* setup the reply with the returned status */
+    if (NULL == (reply = PMIX_NEW(pmix_buffer_t))) {
+        PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
+        PMIX_RELEASE(cd);
+        return;
+    }
+    PMIX_BFROPS_PACK(rc, cd->peer, reply, &status, 1, PMIX_STATUS);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(reply);
+        PMIX_RELEASE(cd);
+        return;
+    }
+
+    /* the function that created the server_caddy did a
+     * retain on the peer, so we don't have to worry about
+     * it still being present - send a copy to the originator */
+    PMIX_PTL_SEND_ONEWAY(rc, cd->peer, reply, cd->hdr.tag);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(reply);
+    }
+
+    /* ensure that we know the peer has finalized else we
+     * will generate an event - yes, it should have been
+     * done, but it is REALLY important that it be set */
+    cd->peer->finalized = true;
+    /* cleanup any lingering references to this peer - note
+     * that we cannot call the lost_connection function
+     * directly as we need the connection to still
+     * exist for the message (queued above) to be
+     * sent. So we push this into an event, thus
+     * ensuring that it will "fire" after the message
+     * event has completed */
+    PMIX_THREADSHIFT(cd, connection_cleanup);
+}
+
 static void _spcb(int sd, short args, void *cbdata)
 {
     pmix_shift_caddy_t *cd = (pmix_shift_caddy_t*)cbdata;
@@ -3009,21 +3075,39 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
             pmix_event_del(&peer->recv_event);
             peer->recv_ev_active = false;
         }
+        PMIX_GDS_CADDY(cd, peer, tag);
         /* call the local server, if supported */
         if (NULL != pmix_host_server.client_finalized) {
-            PMIX_GDS_CADDY(cd, peer, tag);
             (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
             proc.rank = peer->info->pname.rank;
             /* now tell the host server */
             if (PMIX_SUCCESS == (rc = pmix_host_server.client_finalized(&proc, peer->info->server_object,
-                                                                        op_cbfunc, cd))) {
+                                                                        op_cbfunc2, cd))) {
                 /* don't reply to them ourselves - we will do so when the host
                  * server calls us back */
                 return rc;
             }
-            PMIX_RELEASE(cd);
+            /* if the call doesn't succeed (e.g., they provided the stub
+             * but return NOT_SUPPORTED), then the callback function
+             * won't be called, but we still need to cleanup
+             * any lingering references to this peer and answer
+             * the client. Thus, we call the callback function ourselves
+             * in this case */
+            op_cbfunc2(PMIX_SUCCESS, cd);
+            /* return SUCCESS as the cbfunc generated the return msg
+             * and released the cd object */
+            return PMIX_SUCCESS;
         }
-        return rc;
+        /* if the host doesn't provide a client_finalized function,
+         * we still need to ensure that we cleanup any lingering
+         * references to this peer. We use the callback function
+         * here as well to ensure the client gets its required
+         * response and that we delay before cleaning up the
+         * connection*/
+        op_cbfunc2(PMIX_SUCCESS, cd);
+        /* return SUCCESS as the cbfunc generated the return msg
+         * and released the cd object */
+        return PMIX_SUCCESS;
     }
 
 
