@@ -14,7 +14,7 @@
  * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2018 Intel, Inc. All rights reserved.
- * Copyright (c) 2015      Research Organization for Information Science
+ * Copyright (c) 2015-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
@@ -82,8 +82,8 @@ static pmix_status_t spawn_fn(const pmix_proc_t *proc,
                               pmix_spawn_cbfunc_t cbfunc, void *cbdata);
 static pmix_status_t connect_fn(const pmix_proc_t procs[], size_t nprocs,
                                 const pmix_info_t info[], size_t ninfo,
-                                pmix_connect_cbfunc_t cbfunc, void *cbdata);
-static pmix_status_t disconnect_fn(const char nspace[],
+                                pmix_op_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t disconnect_fn(const pmix_proc_t procs[], size_t nprocs,
                                    const pmix_info_t info[], size_t ninfo,
                                    pmix_op_cbfunc_t cbfunc, void *cbdata);
 static pmix_status_t register_event_fn(pmix_status_t *codes, size_t ncodes,
@@ -425,6 +425,8 @@ int main(int argc, char **argv)
     /* release any pub data */
     PMIX_LIST_DESTRUCT(&pubdata);
 
+    free(executable);
+
     /* finalize the server library */
     if (PMIX_SUCCESS != (rc = PMIx_server_finalize())) {
         fprintf(stderr, "Finalize failed with error %d\n", rc);
@@ -580,7 +582,7 @@ static pmix_status_t fencenb_fn(const pmix_proc_t procs[], size_t nprocs,
 {
     /* pass the provided data back to each participating proc */
     if (NULL != cbfunc) {
-        cbfunc(PMIX_SUCCESS, data, ndata, cbdata, NULL, NULL);
+        cbfunc(PMIX_SUCCESS, data, ndata, cbdata, free, data);
     }
     return PMIX_SUCCESS;
 }
@@ -733,25 +735,23 @@ static int numconnects = 0;
 
 static pmix_status_t connect_fn(const pmix_proc_t procs[], size_t nprocs,
                                 const pmix_info_t info[], size_t ninfo,
-                                pmix_connect_cbfunc_t cbfunc, void *cbdata)
+                                pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
-    char nspace[PMIX_MAX_NSLEN+1];
 
     /* in practice, we would pass this request to the local
      * resource manager for handling */
 
-    (void)snprintf(nspace, PMIX_MAX_NSLEN, "NEW%d", numconnects);
     numconnects++;
 
     if (NULL != cbfunc) {
-        cbfunc(PMIX_SUCCESS, nspace, 0, cbdata);
+        cbfunc(PMIX_SUCCESS, cbdata);
     }
 
     return PMIX_SUCCESS;
 }
 
 
-static pmix_status_t disconnect_fn(const char nspace[],
+static pmix_status_t disconnect_fn(const pmix_proc_t procs[], size_t nprocs,
                                    const pmix_info_t info[], size_t ninfo,
                                    pmix_op_cbfunc_t cbfunc, void *cbdata)
 {

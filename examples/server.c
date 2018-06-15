@@ -80,8 +80,8 @@ static pmix_status_t spawn_fn(const pmix_proc_t *proc,
                               pmix_spawn_cbfunc_t cbfunc, void *cbdata);
 static pmix_status_t connect_fn(const pmix_proc_t procs[], size_t nprocs,
                                 const pmix_info_t info[], size_t ninfo,
-                                pmix_connect_cbfunc_t cbfunc, void *cbdata);
-static pmix_status_t disconnect_fn(const char nspace[],
+                                pmix_op_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t disconnect_fn(const pmix_proc_t procs[], size_t nprocs,
                                    const pmix_info_t info[], size_t ninfo,
                                    pmix_op_cbfunc_t cbfunc, void *cbdata);
 static pmix_status_t register_event_fn(pmix_status_t *codes, size_t ncodes,
@@ -748,7 +748,7 @@ static pmix_status_t spawn_fn(const pmix_proc_t *proc,
 
 static pmix_status_t connect_fn(const pmix_proc_t procs[], size_t nprocs,
                                 const pmix_info_t info[], size_t ninfo,
-                                pmix_connect_cbfunc_t cbfunc, void *cbdata)
+                                pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_output(0, "SERVER: CONNECT");
 
@@ -756,14 +756,14 @@ static pmix_status_t connect_fn(const pmix_proc_t procs[], size_t nprocs,
      * resource manager for handling */
 
     if (NULL != cbfunc) {
-        cbfunc(PMIX_SUCCESS, "FOOBAR", 1, cbdata);
+        cbfunc(PMIX_SUCCESS, cbdata);
     }
 
     return PMIX_SUCCESS;
 }
 
 
-static pmix_status_t disconnect_fn(const char nspace[],
+static pmix_status_t disconnect_fn(const pmix_proc_t procs[], size_t nprocs,
                                    const pmix_info_t info[], size_t ninfo,
                                    pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
