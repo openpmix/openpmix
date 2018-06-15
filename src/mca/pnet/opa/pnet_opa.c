@@ -27,7 +27,6 @@
 #include <time.h>
 
 #if PMIX_WANT_OPAMGT
-#include <opamgt/iba/ib_sa_records.h>
 #include <opamgt/opamgt.h>
 #include <opamgt/opamgt_sa.h>
 #endif
