@@ -289,8 +289,8 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     pmix_kval_t *kptr;
     pmix_status_t rc;
     char hostname[PMIX_MAX_NSLEN];
-    char *evar, *nspace;
-    pmix_rank_t rank;
+    char *evar, *nspace = NULL;
+    pmix_rank_t rank = PMIX_RANK_UNDEF;
     bool gdsfound, do_not_connect = false;
     bool nspace_given = false;
     bool nspace_in_enviro = false;
