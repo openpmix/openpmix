@@ -330,6 +330,15 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
             } else if (0 == strncmp(info[n].key, PMIX_TOOL_DO_NOT_CONNECT, PMIX_MAX_KEYLEN)) {
                 do_not_connect = PMIX_INFO_TRUE(&info[n]);
             } else if (0 == strncmp(info[n].key, PMIX_TOOL_NSPACE, PMIX_MAX_KEYLEN)) {
+                if (NULL != nspace) {
+                    /* cannot define it twice */
+                    free(nspace);
+                    if (gdsfound) {
+                        PMIX_INFO_DESTRUCT(&ginfo);
+                    }
+                    PMIX_RELEASE_THREAD(&pmix_global_lock);
+                    return PMIX_ERR_BAD_PARAM;
+                }
                 nspace = strdup(info[n].value.data.string);
                 nspace_given = true;
             } else if (0 == strncmp(info[n].key, PMIX_TOOL_RANK, PMIX_MAX_KEYLEN)) {
@@ -347,6 +356,12 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         (!nspace_given && rank_given)) {
         /* can't have one and not the other */
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        if (NULL != nspace) {
+            free(nspace);
+        }
+        if (gdsfound) {
+            PMIX_INFO_DESTRUCT(&ginfo);
+        }
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_BAD_PARAM;
     }
@@ -380,6 +395,12 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
             /* this is an error - we can't have one and not
              * the other */
             PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            if (NULL != nspace) {
+                free(nspace);
+            }
+            if (gdsfound) {
+                PMIX_INFO_DESTRUCT(&ginfo);
+            }
             PMIX_RELEASE_THREAD(&pmix_global_lock);
             return PMIX_ERR_BAD_PARAM;
         }
@@ -390,6 +411,12 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     if (PMIX_PROC_LAUNCHER == ptype) {
         if (PMIX_SUCCESS != (rc = pmix_server_initialize())) {
             PMIX_ERROR_LOG(rc);
+            if (NULL != nspace) {
+                free(nspace);
+            }
+            if (gdsfound) {
+                PMIX_INFO_DESTRUCT(&ginfo);
+            }
             PMIX_RELEASE_THREAD(&pmix_global_lock);
             return rc;
         }
@@ -410,6 +437,12 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     if (PMIX_SUCCESS != (rc = pmix_rte_init(ptype, info, ninfo,
                                             pmix_tool_notify_recv))) {
         PMIX_ERROR_LOG(rc);
+        if (NULL != nspace) {
+            free(nspace);
+        }
+        if (gdsfound) {
+            PMIX_INFO_DESTRUCT(&ginfo);
+        }
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
@@ -434,18 +467,27 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     pmix_pointer_array_init(&pmix_client_globals.peers, 1, INT_MAX, 1);
     pmix_client_globals.myserver = PMIX_NEW(pmix_peer_t);
     if (NULL == pmix_client_globals.myserver) {
+        if (gdsfound) {
+            PMIX_INFO_DESTRUCT(&ginfo);
+        }
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_NOMEM;
     }
     pmix_client_globals.myserver->nptr = PMIX_NEW(pmix_nspace_t);
     if (NULL == pmix_client_globals.myserver->nptr) {
         PMIX_RELEASE(pmix_client_globals.myserver);
+        if (gdsfound) {
+            PMIX_INFO_DESTRUCT(&ginfo);
+        }
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_NOMEM;
     }
     pmix_client_globals.myserver->info = PMIX_NEW(pmix_rank_info_t);
     if (NULL == pmix_client_globals.myserver->info) {
         PMIX_RELEASE(pmix_client_globals.myserver);
+        if (gdsfound) {
+            PMIX_INFO_DESTRUCT(&ginfo);
+        }
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_NOMEM;
     }
@@ -460,6 +502,9 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         /* setup a rank_info object for us */
         pmix_globals.mypeer->info = PMIX_NEW(pmix_rank_info_t);
         if (NULL == pmix_globals.mypeer->info) {
+            if (gdsfound) {
+                PMIX_INFO_DESTRUCT(&ginfo);
+            }
             PMIX_RELEASE_THREAD(&pmix_global_lock);
             return PMIX_ERR_NOMEM;
         }
@@ -470,6 +515,9 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         /* select our bfrops compat module */
         pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
         if (NULL == pmix_globals.mypeer->nptr->compat.bfrops) {
+            if (gdsfound) {
+                PMIX_INFO_DESTRUCT(&ginfo);
+            }
             PMIX_RELEASE_THREAD(&pmix_global_lock);
             return PMIX_ERR_INIT;
         }
@@ -483,6 +531,9 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     evar = getenv("PMIX_SECURITY_MODE");
     pmix_globals.mypeer->nptr->compat.psec = pmix_psec_base_assign_module(evar);
     if (NULL == pmix_globals.mypeer->nptr->compat.psec) {
+        if (gdsfound) {
+            PMIX_INFO_DESTRUCT(&ginfo);
+        }
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_INIT;
     }
