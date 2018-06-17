@@ -57,7 +57,7 @@
 #include <stdbool.h>
 
 #include "src/atomics/sys/architecture.h"
-#include "pmix_stdint.h"
+#include "src/include/pmix_stdint.h"
 
 /* do some quick #define cleanup in cases where we are doing
    testing... */
