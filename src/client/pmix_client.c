@@ -148,9 +148,9 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer,
         goto error;
     }
 
-    /* we always leave space for a callback object */
-    chain->ninfo = ninfo + 1;
-    PMIX_INFO_CREATE(chain->info, chain->ninfo);
+    /* we always leave space for event hdlr name and a callback object */
+    chain->nallocated = ninfo + 2;
+    PMIX_INFO_CREATE(chain->info, chain->nallocated);
     if (NULL == chain->info) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         PMIX_RELEASE(chain);
@@ -158,6 +158,7 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer,
     }
 
     if (0 < ninfo) {
+        chain->ninfo = ninfo;
         cnt = ninfo;
         PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver,
                            buf, chain->info, &cnt, PMIX_INFO);
@@ -174,8 +175,6 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer,
             }
         }
     }
-    /* now put the callback object tag in the last element */
-    PMIX_INFO_LOAD(&chain->info[ninfo], PMIX_EVENT_RETURN_OBJECT, NULL, PMIX_POINTER);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "[%s:%d] pmix:client_notify_recv - processing event %d, calling errhandler",
