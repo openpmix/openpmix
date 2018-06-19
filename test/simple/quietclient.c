@@ -23,6 +23,18 @@
  *
  */
 
+/******    FUNCTIONS TESTED    ****/
+/*
+ * PMIx_Init
+ * PMIx_Get
+ * PMIx_Register_event_handler
+ * PMIx_Store_internal
+ * PMIx_Put
+ * PMIx_Commit
+ * PMIx_Fence
+ * PMIx_Finalize
+ */
+
 #include <src/include/pmix_config.h>
 #include <pmix.h>
 
