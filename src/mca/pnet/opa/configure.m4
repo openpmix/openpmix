@@ -65,16 +65,20 @@ AC_DEFUN([MCA_pmix_pnet_opa_CONFIG],[
            AS_IF([test ! -z "$with_opamgt_libdir" && test "$with_opamgt_libdir" != "yes"],
                  [pmix_check_opamgt_libdir="$with_opamgt_libdir"])
 
-           PMIX_CHECK_PACKAGE([pnet_opamgt],
-                              [opamgt.h],
-                              [opamgt],
-                              [omgt_query_sa],
-                              [],
-                              [$pmix_check_opamgt_dir],
-                              [$pmix_check_opamgt_libdir],
-                              [pmix_check_opamgt_happy="yes"],
-                              [pmix_check_opamgt_happy="no"])],
-          [pmix_check_opamgt_happy="no"])
+           # no easy way to check this, so let's ensure that the
+           # full opamgt install was done, including the iba support
+           AS_IF([test ! -d "$pmix_check_opamgt_dir/iba" -o test ! -f "$pmix_check_opamgt_dir/iba/vpi.h"],
+                 [pmix_check_opamgt_happy="no"],
+                 [PMIX_CHECK_PACKAGE([pnet_opamgt],
+                                     [opamgt.h],
+                                     [opamgt],
+                                     [omgt_query_sa],
+                                     [],
+                                     [$pmix_check_opamgt_dir],
+                                     [$pmix_check_opamgt_libdir],
+                                     [pmix_check_opamgt_happy="yes"],
+                                     [pmix_check_opamgt_happy="no"])])
+           ])
 
     pnet_opa_CFLAGS="$pnet_opa_CFLAGS $pnet_opamgt_CFLAGS"
     pnet_opa_CPPFLAGS="$pnet_opa_CPPFLAGS $pnet_opamgt_CPPFLAGS"
