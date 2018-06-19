@@ -271,12 +271,15 @@ pmix_status_t component_close(void)
 {
     if (NULL != mca_ptl_tcp_component.system_filename) {
         unlink(mca_ptl_tcp_component.system_filename);
+        free(mca_ptl_tcp_component.system_filename);
     }
     if (NULL != mca_ptl_tcp_component.session_filename) {
         unlink(mca_ptl_tcp_component.session_filename);
+        free(mca_ptl_tcp_component.session_filename);
     }
     if (NULL != mca_ptl_tcp_component.nspace_filename) {
         unlink(mca_ptl_tcp_component.nspace_filename);
+        free(mca_ptl_tcp_component.nspace_filename);
     }
     if (NULL != urifile) {
         /* remove the file */
