@@ -60,6 +60,7 @@
 #include "src/util/os_path.h"
 #include "src/util/parse_options.h"
 #include "src/util/pif.h"
+#include "src/util/pmix_environ.h"
 #include "src/util/show_help.h"
 #include "src/util/strnlen.h"
 #include "src/common/pmix_iof.h"
@@ -238,26 +239,21 @@ static pmix_status_t component_open(void)
     } else {
         if (NULL != (tdir = getenv("PMIX_SERVER_TMPDIR"))) {
             mca_ptl_tcp_component.session_tmpdir = strdup(tdir);
+        } else {
+            mca_ptl_tcp_component.session_tmpdir = strdup(pmix_tmp_directory());
         }
     }
 
-    if (NULL != (tdir = getenv("PMIX_SYSTEM_TMPDIR"))) {
-        mca_ptl_tcp_component.system_tmpdir = strdup(tdir);
-    }
-
-    if (NULL == (tdir = getenv("TMPDIR"))) {
-        if (NULL == (tdir = getenv("TEMP"))) {
-            if (NULL == (tdir = getenv("TMP"))) {
-                tdir = "/tmp";
-            }
+    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
+        mca_ptl_tcp_component.system_tmpdir = strdup(pmix_server_globals.system_tmpdir);
+    } else {
+        if (NULL != (tdir = getenv("PMIX_SYSTEM_TMPDIR"))) {
+            mca_ptl_tcp_component.system_tmpdir = strdup(tdir);
+        } else {
+            mca_ptl_tcp_component.system_tmpdir = strdup(pmix_tmp_directory());
         }
     }
-    if (NULL == mca_ptl_tcp_component.session_tmpdir) {
-        mca_ptl_tcp_component.session_tmpdir = strdup(tdir);
-    }
-    if (NULL == mca_ptl_tcp_component.system_tmpdir) {
-        mca_ptl_tcp_component.system_tmpdir = strdup(tdir);
-    }
+
     if (NULL != mca_ptl_tcp_component.report_uri &&
         0 != strcmp(mca_ptl_tcp_component.report_uri, "-") &&
         0 != strcmp(mca_ptl_tcp_component.report_uri, "+")) {

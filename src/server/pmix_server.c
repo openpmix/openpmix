@@ -212,6 +212,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
                 }
             } else if (0 == strncmp(info[n].key, PMIX_SERVER_TMPDIR, PMIX_MAX_KEYLEN)) {
                 pmix_server_globals.tmpdir = strdup(info[n].value.data.string);
+            } else if (0 == strncmp(info[n].key, PMIX_SYSTEM_TMPDIR, PMIX_MAX_KEYLEN)) {
+                pmix_server_globals.system_tmpdir = strdup(info[n].value.data.string);
             }
         }
     }
@@ -220,6 +222,13 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
             pmix_server_globals.tmpdir = strdup(pmix_tmp_directory());
         } else {
             pmix_server_globals.tmpdir = strdup(evar);
+        }
+    }
+    if (NULL == pmix_server_globals.system_tmpdir) {
+        if (NULL == (evar = getenv("PMIX_SYSTEM_TMPDIR"))) {
+            pmix_server_globals.system_tmpdir = strdup(pmix_tmp_directory());
+        } else {
+            pmix_server_globals.system_tmpdir = strdup(evar);
         }
     }
 
