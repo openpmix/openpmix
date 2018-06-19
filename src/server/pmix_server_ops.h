@@ -141,6 +141,7 @@ typedef struct {
     pmix_hotel_t iof;                       // IO to be forwarded to clients
     bool tool_connections_allowed;
     char *tmpdir;                           // temporary directory for this server
+    char *system_tmpdir;                    // system tmpdir
     // verbosity for server get operations
     int get_output;
     int get_verbose;
