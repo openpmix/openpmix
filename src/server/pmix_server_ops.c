@@ -1265,6 +1265,8 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
     bool found, matched;
     pmix_buffer_t *relay;
     pmix_cmd_t cmd = PMIX_NOTIFY_CMD;
+    pmix_proc_t *affected = NULL;
+    size_t naffected = 0;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "recvd register events");
@@ -1313,11 +1315,28 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
         }
     }
 
-    /* see if they asked for enviro events */
+    /* check the directives */
     for (n=0; n < ninfo; n++) {
-        if (0 == strcmp(info[n].key, PMIX_EVENT_ENVIRO_LEVEL)) {
+        if (0 == strncmp(info[n].key, PMIX_EVENT_ENVIRO_LEVEL, PMIX_MAX_KEYLEN)) {
             enviro_events = PMIX_INFO_TRUE(&info[n]);
-            break;
+        } else if (0 == strncmp(info[n].key, PMIX_EVENT_AFFECTED_PROC, PMIX_MAX_KEYLEN)) {
+            if (NULL != affected) {
+                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                rc = PMIX_ERR_BAD_PARAM;
+                goto cleanup;
+            }
+            naffected = 1;
+            PMIX_PROC_CREATE(affected, naffected);
+            memcpy(affected, info[n].value.data.proc, sizeof(pmix_proc_t));
+        } else if (0 == strncmp(info[n].key, PMIX_EVENT_AFFECTED_PROCS, PMIX_MAX_KEYLEN)) {
+            if (NULL != affected) {
+                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                rc = PMIX_ERR_BAD_PARAM;
+                goto cleanup;
+            }
+            naffected = info[n].value.data.darray->size;
+            PMIX_PROC_CREATE(affected, naffected);
+            memcpy(affected, info[n].value.data.darray->array, naffected * sizeof(pmix_proc_t));
         }
     }
 
@@ -1467,6 +1486,9 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
         if (NULL != codes) {
             free(codes);
         }
+        if (NULL != affected) {
+            PMIX_PROC_FREE(affected, naffected);
+        }
         return rc;
     }
 
@@ -1514,6 +1536,11 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
                     continue;
                 }
             }
+            /* if they specified affected proc(s) they wanted to know about, check */
+            if (!pmix_notify_check_affected(cd->affected, cd->naffected,
+                                            affected, naffected)) {
+                continue;
+            }
             /* all matches - notify */
             relay = PMIX_NEW(pmix_buffer_t);
             if (NULL == relay) {
@@ -1556,6 +1583,9 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
         if (NULL != codes) {
             free(codes);
         }
+    }
+    if (NULL != affected) {
+        PMIX_PROC_FREE(affected, naffected);
     }
 
     return PMIX_SUCCESS;
