@@ -234,7 +234,8 @@ static pmix_status_t component_open(void)
 
     /* check for environ-based directives
      * on system tmpdir to use */
-    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
+    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer) ||
+        PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
         mca_ptl_tcp_component.session_tmpdir = strdup(pmix_server_globals.tmpdir);
     } else {
         if (NULL != (tdir = getenv("PMIX_SERVER_TMPDIR"))) {
@@ -244,7 +245,8 @@ static pmix_status_t component_open(void)
         }
     }
 
-    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
+    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer) ||
+        PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
         mca_ptl_tcp_component.system_tmpdir = strdup(pmix_server_globals.system_tmpdir);
     } else {
         if (NULL != (tdir = getenv("PMIX_SYSTEM_TMPDIR"))) {
