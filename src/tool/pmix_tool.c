@@ -349,9 +349,28 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
                 fwd_stdin = true;
             } else if (0 == strncmp(info[n].key, PMIX_LAUNCHER, PMIX_MAX_KEYLEN)) {
                 ptype = PMIX_PROC_LAUNCHER;
+            } else if (0 == strncmp(info[n].key, PMIX_SERVER_TMPDIR, PMIX_MAX_KEYLEN)) {
+                pmix_server_globals.tmpdir = strdup(info[n].value.data.string);
+            } else if (0 == strncmp(info[n].key, PMIX_SYSTEM_TMPDIR, PMIX_MAX_KEYLEN)) {
+                pmix_server_globals.system_tmpdir = strdup(info[n].value.data.string);
             }
         }
     }
+    if (NULL == pmix_server_globals.tmpdir) {
+        if (NULL == (evar = getenv("PMIX_SERVER_TMPDIR"))) {
+            pmix_server_globals.tmpdir = strdup(pmix_tmp_directory());
+        } else {
+            pmix_server_globals.tmpdir = strdup(evar);
+        }
+    }
+    if (NULL == pmix_server_globals.system_tmpdir) {
+        if (NULL == (evar = getenv("PMIX_SYSTEM_TMPDIR"))) {
+            pmix_server_globals.system_tmpdir = strdup(pmix_tmp_directory());
+        } else {
+            pmix_server_globals.system_tmpdir = strdup(evar);
+        }
+    }
+
     if ((nspace_given && !rank_given) ||
         (!nspace_given && rank_given)) {
         /* can't have one and not the other */
@@ -422,14 +441,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         }
         /* setup the function pointers */
         memset(&pmix_host_server, 0, sizeof(pmix_server_module_t));
-        /* setup our tmpdir */
-        if (NULL == pmix_server_globals.tmpdir) {
-            if (NULL == (evar = getenv("PMIX_SERVER_TMPDIR"))) {
-                pmix_server_globals.tmpdir = strdup(pmix_tmp_directory());
-            } else {
-                pmix_server_globals.tmpdir = strdup(evar);
-            }
-        }
     }
 
     /* setup the runtime - this init's the globals,
