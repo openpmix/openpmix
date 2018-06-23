@@ -8,6 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2018      Cisco Systems, Inc.  All rights reserved
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1830,10 +1831,10 @@ static void clct_complete(pmix_status_t status,
 static void clct(int sd, short args, void *cbdata)
 {
     pmix_inventory_rollup_t *cd = (pmix_inventory_rollup_t*)cbdata;
-    pmix_status_t rc;
 
 #if PMIX_HAVE_HWLOC
     /* if we don't know our topology, we better get it now */
+    pmix_status_t rc;
     if (NULL == pmix_hwloc_topology) {
         if (PMIX_SUCCESS != (rc = pmix_hwloc_get_topology(NULL, 0))) {
             PMIX_ERROR_LOG(rc);
