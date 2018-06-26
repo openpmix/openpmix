@@ -2912,14 +2912,17 @@ static pmix_status_t dstore_del_nspace(const char* nspace)
         PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
                              "%s:%d:%s delete session for jobuid: %d",
                              __FILE__, __LINE__, __func__, session_tbl[session_tbl_idx].jobuid));
-        trk = pmix_value_array_get_item(_ns_track_array, dstor_track_idx);
-        if((dstor_track_idx + 1) > (int)pmix_value_array_get_size(_ns_track_array)) {
-            rc = PMIX_ERR_VALUE_OUT_OF_BOUNDS;
-            PMIX_ERROR_LOG(rc);
-            goto exit;
-        }
-        if (true == trk->in_use) {
-            PMIX_DESTRUCT(trk);
+        size = pmix_value_array_get_size(_ns_track_array);
+        if (size && (dstor_track_idx >= 0)) {
+            if((dstor_track_idx + 1) > size) {
+                rc = PMIX_ERR_VALUE_OUT_OF_BOUNDS;
+                PMIX_ERROR_LOG(rc);
+                goto exit;
+            }
+            trk = pmix_value_array_get_item(_ns_track_array, dstor_track_idx);
+            if (true == trk->in_use) {
+                PMIX_DESTRUCT(trk);
+            }
         }
         _esh_session_release(&session_tbl[session_tbl_idx]);
      }
