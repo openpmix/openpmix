@@ -32,6 +32,7 @@ current release as well as the "stable" bug fix release branch.
   shared memory region upon first connection
 - Fix potential deadlock in PMIx_server_init in an error case
 - Fix uninitialized variable
+- Fix several memory and file descriptor leaks
 
 
 2.1.1 -- 5 Mar 2018
