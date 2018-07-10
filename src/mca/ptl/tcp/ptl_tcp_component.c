@@ -60,6 +60,7 @@
 #include "src/util/os_path.h"
 #include "src/util/parse_options.h"
 #include "src/util/pif.h"
+#include "src/util/pmix_environ.h"
 #include "src/util/show_help.h"
 #include "src/util/strnlen.h"
 #include "src/common/pmix_iof.h"
@@ -233,31 +234,28 @@ static pmix_status_t component_open(void)
 
     /* check for environ-based directives
      * on system tmpdir to use */
-    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
+    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer) ||
+        PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
         mca_ptl_tcp_component.session_tmpdir = strdup(pmix_server_globals.tmpdir);
     } else {
         if (NULL != (tdir = getenv("PMIX_SERVER_TMPDIR"))) {
             mca_ptl_tcp_component.session_tmpdir = strdup(tdir);
+        } else {
+            mca_ptl_tcp_component.session_tmpdir = strdup(pmix_tmp_directory());
         }
     }
 
-    if (NULL != (tdir = getenv("PMIX_SYSTEM_TMPDIR"))) {
-        mca_ptl_tcp_component.system_tmpdir = strdup(tdir);
-    }
-
-    if (NULL == (tdir = getenv("TMPDIR"))) {
-        if (NULL == (tdir = getenv("TEMP"))) {
-            if (NULL == (tdir = getenv("TMP"))) {
-                tdir = "/tmp";
-            }
+    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer) ||
+        PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
+        mca_ptl_tcp_component.system_tmpdir = strdup(pmix_server_globals.system_tmpdir);
+    } else {
+        if (NULL != (tdir = getenv("PMIX_SYSTEM_TMPDIR"))) {
+            mca_ptl_tcp_component.system_tmpdir = strdup(tdir);
+        } else {
+            mca_ptl_tcp_component.system_tmpdir = strdup(pmix_tmp_directory());
         }
     }
-    if (NULL == mca_ptl_tcp_component.session_tmpdir) {
-        mca_ptl_tcp_component.session_tmpdir = strdup(tdir);
-    }
-    if (NULL == mca_ptl_tcp_component.system_tmpdir) {
-        mca_ptl_tcp_component.system_tmpdir = strdup(tdir);
-    }
+
     if (NULL != mca_ptl_tcp_component.report_uri &&
         0 != strcmp(mca_ptl_tcp_component.report_uri, "-") &&
         0 != strcmp(mca_ptl_tcp_component.report_uri, "+")) {
@@ -271,12 +269,15 @@ pmix_status_t component_close(void)
 {
     if (NULL != mca_ptl_tcp_component.system_filename) {
         unlink(mca_ptl_tcp_component.system_filename);
+        free(mca_ptl_tcp_component.system_filename);
     }
     if (NULL != mca_ptl_tcp_component.session_filename) {
         unlink(mca_ptl_tcp_component.session_filename);
+        free(mca_ptl_tcp_component.session_filename);
     }
     if (NULL != mca_ptl_tcp_component.nspace_filename) {
         unlink(mca_ptl_tcp_component.nspace_filename);
+        free(mca_ptl_tcp_component.nspace_filename);
     }
     if (NULL != urifile) {
         /* remove the file */
@@ -1125,10 +1126,11 @@ static void connection_handler(int sd, short args, void *cbdata)
         bftype = pmix_bfrops_globals.default_type;  // we can't know any better
         gds = NULL;
     } else {
-        if (0 == strncmp(version, "2.1", 3)) {
+        int major;
+        major = strtoul(version, NULL, 10);
+        if (2 == major) {
             proc_type = proc_type | PMIX_PROC_V21;
-        } else if (0 == strncmp(version, "3", 1) ||
-                   0 == strncmp(version, "4", 1)) {
+        } else if (3 <= major) {
             proc_type = proc_type | PMIX_PROC_V3;
         } else {
             free(msg);

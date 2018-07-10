@@ -12,6 +12,8 @@
 # Copyright (c) 2006-2010 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2012-2013 Los Alamos National Security, Inc.  All rights reserved.
 # Copyright (c) 2013-2018 Intel, Inc.  All rights reserved.
+# Copyright (c) 2018      Research Organization for Information Science
+#                         and Technology (RIST).  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -24,8 +26,8 @@ helpers = setup.py client.py server.py cpmix.pxd pmix.pyx
 if WANT_PYTHON_BINDINGS
 
 install-exec-local: $(helpers)
-	$(PYTHON) setup.py build_ext --include-dirs="$(top_builddir)/include" --library-dirs="$(DESTDIR)$(libdir)" --user
-	$(PYTHON) setup.py install --prefix="$(DESTDIR)$(prefix)"
+	$(PYTHON) $(top_srcdir)/bindings/python/setup.py build_ext --include-dirs="$(top_builddir)/include" --library-dirs="$(DESTDIR)$(libdir)" --user
+	$(PYTHON) $(top_srcdir)/bindings/python/setup.py install --prefix="$(DESTDIR)$(prefix)"
 
 uninstall-hook:
 	rm -f $(pythondir)/pmix*.so

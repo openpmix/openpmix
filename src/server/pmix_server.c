@@ -8,6 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2018      Cisco Systems, Inc.  All rights reserved
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -212,6 +213,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
                 }
             } else if (0 == strncmp(info[n].key, PMIX_SERVER_TMPDIR, PMIX_MAX_KEYLEN)) {
                 pmix_server_globals.tmpdir = strdup(info[n].value.data.string);
+            } else if (0 == strncmp(info[n].key, PMIX_SYSTEM_TMPDIR, PMIX_MAX_KEYLEN)) {
+                pmix_server_globals.system_tmpdir = strdup(info[n].value.data.string);
             }
         }
     }
@@ -220,6 +223,13 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
             pmix_server_globals.tmpdir = strdup(pmix_tmp_directory());
         } else {
             pmix_server_globals.tmpdir = strdup(evar);
+        }
+    }
+    if (NULL == pmix_server_globals.system_tmpdir) {
+        if (NULL == (evar = getenv("PMIX_SYSTEM_TMPDIR"))) {
+            pmix_server_globals.system_tmpdir = strdup(pmix_tmp_directory());
+        } else {
+            pmix_server_globals.system_tmpdir = strdup(evar);
         }
     }
 
@@ -1822,6 +1832,16 @@ static void clct(int sd, short args, void *cbdata)
 {
     pmix_inventory_rollup_t *cd = (pmix_inventory_rollup_t*)cbdata;
 
+#if PMIX_HAVE_HWLOC
+    /* if we don't know our topology, we better get it now */
+    pmix_status_t rc;
+    if (NULL == pmix_hwloc_topology) {
+        if (PMIX_SUCCESS != (rc = pmix_hwloc_get_topology(NULL, 0))) {
+            PMIX_ERROR_LOG(rc);
+            return;
+        }
+    }
+#endif
 
     /* we only have one source at this time */
     cd->requests = 1;

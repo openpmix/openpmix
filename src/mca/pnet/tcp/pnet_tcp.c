@@ -599,6 +599,13 @@ static pmix_status_t allocate(pmix_nspace_t *nptr,
                     allocated = true;
                 }
             } else {
+                pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                                    "pnet:tcp:allocate allocating %d ports/node for nspace %s",
+                                    ports_per_node, nptr->nspace);
+                if (0 == ports_per_node) {
+                    /* nothing to allocate */
+                    return PMIX_ERR_TAKE_NEXT_OPTION;
+                }
                 avail = (tcp_available_ports_t*)pmix_list_get_first(&available);
                 if (NULL != avail) {
                     /* setup to track the assignment */
@@ -888,6 +895,8 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
             prefix = "tcp6://";
             inet_ntop(AF_INET6, &((struct sockaddr_in6*) &my_ss)->sin6_addr,
                       myconnhost, PMIX_MAXHOSTNAMELEN);
+        } else {
+            continue;
         }
         (void)snprintf(uri, 2048, "%s%s", prefix, myconnhost);
         pmix_output_verbose(2, pmix_pnet_base_framework. framework_output,

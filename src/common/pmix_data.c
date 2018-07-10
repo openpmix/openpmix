@@ -137,12 +137,6 @@ static pmix_peer_t* find_peer(const pmix_proc_t *proc)
         return pmix_client_globals.myserver;
     }
 
-    /* if the target is another member of my nspace, then
-     * they must be using the same version */
-    if (0 == strncmp(proc->nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN)) {
-        return pmix_globals.mypeer;
-    }
-
     /* try to get the library version of this peer - the result will be
      * cached, so we will only have to retrieve it once */
     (void)strncpy(wildcard.nspace, proc->nspace, PMIX_MAX_NSLEN);

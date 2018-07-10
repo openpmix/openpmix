@@ -1155,7 +1155,7 @@ if test "$WANT_PYTHON_BINDINGS" = "1"; then
     fi
 
     AC_MSG_CHECKING([if Cython package installed])
-    have_cython=esyscmd(config/pmix_check_cython.py)
+    have_cython=`$srcdir/config/pmix_check_cython.py 2> /dev/null`
     if test "$have_cython" = "0"; then
         AC_MSG_RESULT([yes])
     else
