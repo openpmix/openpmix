@@ -150,12 +150,15 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
                 }
             }
         }
-        if (!PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
+        if (PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
+            /* only connection I can lose is to my server, so mark it */
+            pmix_globals.connected = false;
+        } else {
             /* cleanup any sensors that are monitoring them */
             pmix_psensor.stop(peer, NULL);
         }
 
-        if (!peer->finalized && !PMIX_PROC_IS_TOOL(peer)) {
+        if (!peer->finalized && !PMIX_PROC_IS_TOOL(peer) && !pmix_globals.mypeer->finalized) {
             /* if this peer already called finalize, then
              * we are just seeing their connection go away
              * when they terminate - so do not generate

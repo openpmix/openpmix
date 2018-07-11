@@ -1195,7 +1195,7 @@ static void wait_signal_callback(int fd, short event, void *arg)
                     exit_code = t2->exit_code;
                 }
                 --wakeup;
-                break;
+                return;
             }
         }
     }

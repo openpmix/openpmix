@@ -88,8 +88,7 @@ def harvest_constants(options, src, constants, definitions):
             if ";" in value:
                 value = value[:-1]
                 # check for bool type - must be converted to bint
-                if "bool" in value:
-                    value.replace("bool ", "bint ")
+                value = value.replace("bool ", "bint ")
                 # a single-line API might have a "void" arg
                 # Python doesn't accept "void" as an arg, so
                 # we have to "snip" it out
@@ -101,14 +100,14 @@ def harvest_constants(options, src, constants, definitions):
                 newapi = [value]
                 apis.append(newapi)
             else:
+                value = value.replace("bool ", "bint ")
                 newapi = [value]
                 apirunning = True
                 while apirunning:
                     n += 1
                     value = lines[n].strip()
                     # check for bool type - must be converted to bint
-                    if "bool" in value:
-                        value.replace("bool ", "bint ")
+                    value = value.replace("bool ", "bint ")
                     if ";" in value:
                         apirunning = False
                         value = value[:-1]
@@ -124,10 +123,36 @@ def harvest_constants(options, src, constants, definitions):
             # 3. function definitions - by PMIx convention, these
             #    always have an "fn_t" in the name
             #
-            # Start by addressing the first - detectable by
+            # 4. enum definitions
+            #
+            # start with the fourth option by looking for "enum"
+            if "enum" in myline:
+                # each line after this one should contain a name
+                # so we just assign a value sequentially.
+                counter = 0
+                n += 1
+                value = lines[n].strip()
+                if ',' in value:
+                    value = value[:-1]
+                while '}' not in value and n < len(lines):
+                    tokens[0] = value
+                    tokens[1] = str(counter)
+                    counter += 1
+                    nconsts.append([tokens[0], tokens[1]])
+                    if len(tokens[0]) > nconstlen:
+                        nconstlen = len(tokens[0])
+                    n += 1
+                    value = lines[n].strip()
+                    if ',' in value:
+                        value = value[:-1]
+                # the termination line contains the type name
+                # for this enum - declare it as integer here
+                value = "typedef int " + value[2:]
+                typedefs.append([value])
+            # now address the first option - detectable by
             # having a semi-colon at the end of the line and
             # no "fn_t" or "cbfunc_t" in it
-            if ";" in myline and not "fn_t" in myline and not "cbfunc_t" in myline:
+            elif ";" in myline and not "fn_t" in myline and not "cbfunc_t" in myline:
                 value = myline[:-1]
                 # check for bool type - must be converted to bint
                 if "bool" in value:

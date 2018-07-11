@@ -106,6 +106,11 @@ typedef uint8_t pmix_cmd_t;
 #define PMIX_VALIDATE_CRED_CMD      21
 #define PMIX_IOF_PULL_CMD           22
 #define PMIX_IOF_PUSH_CMD           23
+#define PMIX_GROUP_CONSTRUCT_CMD    24
+#define PMIX_GROUP_JOIN_CMD         25
+#define PMIX_GROUP_INVITE_CMD       26
+#define PMIX_GROUP_LEAVE_CMD        27
+#define PMIX_GROUP_DESTRUCT_CMD     28
 
 /* provide a "pretty-print" function for cmds */
 const char* pmix_command_string(pmix_cmd_t cmd);
@@ -278,6 +283,7 @@ PMIX_CLASS_DECLARATION(pmix_query_caddy_t);
  * - instanced in pmix_server_ops.c */
 typedef struct {
     pmix_list_item_t super;
+    char *id;                       // string identifier for the collective
     pmix_cmd_t type;
     pmix_proc_t pname;
     bool hybrid;                    // true if participating procs are from more than one nspace
@@ -295,6 +301,7 @@ typedef struct {
     pmix_collect_t collect_type;    // whether or not data is to be returned at completion
     pmix_modex_cbfunc_t modexcbfunc;
     pmix_op_cbfunc_t op_cbfunc;
+    void *cbdata;
 } pmix_server_trkr_t;
 PMIX_CLASS_DECLARATION(pmix_server_trkr_t);
 

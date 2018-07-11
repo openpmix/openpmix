@@ -39,7 +39,7 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
 PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status,
                                             const pmix_proc_t *source,
                                             pmix_data_range_t range,
-                                            pmix_info_t info[], size_t ninfo,
+                                            const pmix_info_t info[], size_t ninfo,
                                             pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     int rc;
@@ -55,13 +55,16 @@ PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status,
     if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer) &&
         !PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
+
         pmix_output_verbose(2, pmix_server_globals.event_output,
                             "pmix_server_notify_event source = %s:%d event_status = %s",
                             (NULL == source) ? "UNKNOWN" : source->nspace,
                             (NULL == source) ? PMIX_RANK_WILDCARD : source->rank, PMIx_Error_string(status));
+
         rc = pmix_server_notify_client_of_event(status, source, range,
                                                 info, ninfo,
                                                 cbfunc, cbdata);
+
         if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
             PMIX_ERROR_LOG(rc);
         }
@@ -808,7 +811,7 @@ static void _notify_client_event(int sd, short args, void *cbdata)
      * against our registrations */
     chain = PMIX_NEW(pmix_event_chain_t);
     chain->status = cd->status;
-    pmix_strncpy(chain->source.nspace, cd->source.nspace, PMIX_MAX_NSLEN);
+    (void)strncpy(chain->source.nspace, cd->source.nspace, PMIX_MAX_NSLEN);
     chain->source.rank = cd->source.rank;
     /* we always leave space for a callback object and
      * the evhandler name. */
@@ -855,7 +858,6 @@ static void _notify_client_event(int sd, short args, void *cbdata)
         PMIX_RELEASE(chain);
         return;
     }
-
 
     holdcd = false;
     if (PMIX_RANGE_PROC_LOCAL != cd->range) {
@@ -1005,6 +1007,9 @@ pmix_status_t pmix_server_notify_client_of_event(pmix_status_t status,
         for (n=0; n < ninfo; n++) {
             if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_PROXY) &&
                 PMIX_CHECK_PROCID(info[n].value.data.proc, &pmix_globals.myid)) {
+                return PMIX_OPERATION_SUCCEEDED;
+            }
+            if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_INTERNAL_NOTIFY)) {
                 return PMIX_OPERATION_SUCCEEDED;
             }
         }

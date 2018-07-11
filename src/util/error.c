@@ -208,6 +208,27 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
     case PMIX_ERR_INVALID_OPERATION:
         return "INVALID-OPERATION";
 
+    case PMIX_GROUP_INVITED:
+        return "GROUP-INVITED";
+    case PMIX_GROUP_LEFT:
+        return "GROUP-LEFT";
+    case PMIX_GROUP_INVITE_ACCEPTED:
+        return "GROUP-INVITE-ACCEPTED";
+    case PMIX_GROUP_INVITE_DECLINED:
+        return "GROUP-INVITE-DECLINED";
+    case PMIX_GROUP_INVITE_FAILED:
+        return "GROUP-INVITE-FAILED";
+    case PMIX_GROUP_MEMBERSHIP_UPDATE:
+        return "GROUP-MEMBERSHIP-UPDATE";
+    case PMIX_GROUP_CONSTRUCT_ABORT:
+        return "GROUP-CONSTRUCT-ABORT";
+    case PMIX_GROUP_CONSTRUCT_COMPLETE:
+        return "GROUP-CONSTRUCT-COMPLETE";
+    case PMIX_GROUP_LEADER_SELECTED:
+        return "GROUP-LEADER-SELECTED";
+    case PMIX_GROUP_LEADER_FAILED:
+        return "GROUP-LEADER-FAILED";
+
     case PMIX_ERR_NODE_DOWN:
         return "NODE-DOWN";
     case PMIX_ERR_NODE_OFFLINE:
