@@ -205,6 +205,12 @@ PMIX_EXPORT extern pmix_bfrops_globals_t pmix_bfrops_globals;
         free(tmpbuf);                                                       \
     } while (0)
 
+/* for backwards compatibility */
+typedef struct pmix_info_array {
+    size_t size;
+    pmix_info_t *array;
+} pmix_info_array_t;
+
 
 /**
  * Internal struct used for holding registered bfrop functions
@@ -496,9 +502,6 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_string(char **dest, char *src,
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_value(pmix_value_t **dest,
                                                       pmix_value_t *src,
                                                       pmix_data_type_t type);
-PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_array(pmix_info_array_t **dest,
-                                                      pmix_info_array_t *src,
-                                                      pmix_data_type_t type);
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_proc(pmix_proc_t **dest,
                                                      pmix_proc_t *src,
                                                      pmix_data_type_t type);
@@ -537,10 +540,6 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_query(pmix_query_t **dest,
                                                       pmix_data_type_t type);
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_envar(pmix_envar_t **dest,
                                                       pmix_envar_t *src,
-                                                      pmix_data_type_t type);
-/**** DEPRECATED ****/
-PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_array(pmix_info_array_t **dest,
-                                                      pmix_info_array_t *src,
                                                       pmix_data_type_t type);
 
 /*
@@ -596,8 +595,6 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_status(char **output, char *pre
 
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_value(char **output, char *prefix,
                                                        pmix_value_t *src, pmix_data_type_t type);
-PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_array(char **output, char *prefix,
-                                                       pmix_info_array_t *src, pmix_data_type_t type);
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_proc(char **output, char *prefix,
                                                       pmix_proc_t *src, pmix_data_type_t type);
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_app(char **output, char *prefix,

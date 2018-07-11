@@ -26,6 +26,7 @@ helpers = setup.py client.py server.py cpmix.pxd pmix.pyx
 if WANT_PYTHON_BINDINGS
 
 install-exec-local: $(helpers)
+	$(PYTHON) $(top_srcdir)/bindings/python/construct.py --src="$(top_builddir)/include"
 	$(PYTHON) $(top_srcdir)/bindings/python/setup.py build_ext --include-dirs="$(top_builddir)/include" --library-dirs="$(DESTDIR)$(libdir)" --user
 	$(PYTHON) $(top_srcdir)/bindings/python/setup.py install --prefix="$(DESTDIR)$(prefix)"
 
