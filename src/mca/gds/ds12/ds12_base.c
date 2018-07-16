@@ -22,6 +22,7 @@
 #include "src/mca/common/dstore/dstore_common.h"
 #include "ds12_base.h"
 #include "ds12_lock.h"
+#include "src/mca/common/dstore/gds_dstore.h"
 
 static pmix_common_dstore_ctx_t *ds12_ctx;
 
@@ -94,7 +95,7 @@ static pmix_status_t ds12_fetch(const pmix_proc_t *proc,
 
 static pmix_status_t ds12_setup_fork(const pmix_proc_t *peer, char ***env)
 {
-    return pmix_common_dstor_setup_fork(ds12_ctx, peer, env);
+    return pmix_common_dstor_setup_fork(ds12_ctx, PMIX_DSTORE_ESH_BASE_PATH, peer, env);
 }
 
 static pmix_status_t ds12_add_nspace(const char *nspace,

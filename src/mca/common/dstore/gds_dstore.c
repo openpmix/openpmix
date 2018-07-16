@@ -318,7 +318,7 @@ static inline int _esh_jobuid_tbl_search(pmix_common_dstore_ctx_t *ds_ctx,
                                          uid_t jobuid, size_t *tbl_idx);
 static inline int _esh_session_tbl_add(pmix_common_dstore_ctx_t *ds_ctx, size_t *tbl_idx);
 static int _esh_session_init(pmix_common_dstore_ctx_t *ds_ctx, size_t idx, ns_map_data_t *m,
-                             size_t jobuid, int setjobuid);
+                             uint32_t local_size, size_t jobuid, int setjobuid);
 static void _esh_session_release(pmix_common_dstore_ctx_t *ds_ctx, size_t idx);
 static inline void _esh_ns_track_cleanup(pmix_common_dstore_ctx_t *ds_ctx);
 static inline void _esh_sessions_cleanup(pmix_common_dstore_ctx_t *ds_ctx);
@@ -337,8 +337,6 @@ static pmix_status_t _dstore_store_nolock(pmix_common_dstore_ctx_t *ds_ctx,
 static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
                                    const char *nspace, pmix_rank_t rank,
                                    const char *key, pmix_value_t **kvs);
-
-static pmix_peer_t *_clients_peer = NULL;
 
 ns_map_data_t * (*_esh_session_map_search)(const char *nspace) = NULL;
 
@@ -722,7 +720,7 @@ static inline ns_map_data_t * _esh_session_map_search_client(pmix_common_dstore_
 }
 
 static int _esh_session_init(pmix_common_dstore_ctx_t *ds_ctx, size_t idx, ns_map_data_t *m,
-                             size_t jobuid, int setjobuid)
+                             uint32_t local_size, size_t jobuid, int setjobuid)
 {
     seg_desc_t *seg = NULL;
     session_t *s = &(PMIX_VALUE_ARRAY_GET_ITEM(ds_ctx->session_array, session_t, idx));
@@ -766,8 +764,8 @@ static int _esh_session_init(pmix_common_dstore_ctx_t *ds_ctx, size_t idx, ns_ma
     }
 
     /* init dstore lock */
-    s->lock = ds_ctx->lock_cbs->init(ds_ctx->base_path, ds_ctx->jobuid,
-                                     ds_ctx->setjobuid);
+    s->lock = ds_ctx->lock_cbs->init(ds_ctx->base_path, local_size,
+                                     ds_ctx->jobuid, ds_ctx->setjobuid);
     if (NULL == s->lock) {
         rc = PMIX_ERR_INIT;
         PMIX_ERROR_LOG(rc);
@@ -1887,6 +1885,7 @@ pmix_common_dstore_ctx_t *pmix_common_dstor_init(pmix_common_lock_callbacks_t *l
     }
 
     _set_constants_from_env(ds_ctx);
+    ds_ctx->ds_name = strdup(ds_name);
 
     /* find the temp dir */
     if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
@@ -1943,7 +1942,6 @@ pmix_common_dstore_ctx_t *pmix_common_dstor_init(pmix_common_lock_callbacks_t *l
             }
         }
 
-        ds_ctx->ds_name = strdup(ds_name);
         rc = asprintf(&ds_ctx->base_path, "%s/pmix_dstor_%s_%d", dstor_tmpdir,
                       ds_ctx->ds_name, getpid());
         if ((0 > rc) || (NULL == ds_ctx->base_path)) {
@@ -1971,7 +1969,27 @@ pmix_common_dstore_ctx_t *pmix_common_dstor_init(pmix_common_lock_callbacks_t *l
     }
     /* for clients */
     else {
-        if (NULL == (dstor_tmpdir = getenv(PMIX_DSTORE_ESH_BASE_PATH))){
+        char *env_name = NULL;
+        int ds_ver = 0;
+
+        sscanf(ds_ctx->ds_name, "ds%d", &ds_ver);
+        if (0 == ds_ver) {
+            rc = PMIX_ERR_INIT;
+            PMIX_ERROR_LOG(rc);
+            goto err_exit;
+        }
+        if (0 > asprintf(&env_name, PMIX_DSTORE_VER_BASE_PATH_FMT, ds_ver)) {
+             rc = PMIX_ERR_NOMEM;
+             PMIX_ERROR_LOG(rc);
+             goto err_exit;
+        }
+        dstor_tmpdir = getenv(env_name);
+        free(env_name);
+
+        if (NULL == dstor_tmpdir) {
+            dstor_tmpdir = getenv(PMIX_DSTORE_ESH_BASE_PATH);
+        }
+        if (NULL == dstor_tmpdir){
             rc = PMIX_ERR_NOT_AVAILABLE; // simply disqualify ourselves
             goto err_exit;
         }
@@ -1996,7 +2014,7 @@ pmix_common_dstore_ctx_t *pmix_common_dstor_init(pmix_common_lock_callbacks_t *l
         goto err_exit;
     }
 
-    if (PMIX_SUCCESS != (rc =_esh_session_init(ds_ctx, tbl_idx, ns_map,
+    if (PMIX_SUCCESS != (rc =_esh_session_init(ds_ctx, tbl_idx, ns_map, 0,
                                                ds_ctx->jobuid, ds_ctx->setjobuid))) {
         PMIX_ERROR_LOG(rc);
         goto err_exit;
@@ -2033,14 +2051,16 @@ void pmix_common_dstor_finalize(pmix_common_dstore_ctx_t *ds_ctx)
         free(ds_ctx->base_path);
         ds_ctx->base_path = NULL;
     }
-    if (NULL != _clients_peer) {
-        PMIX_RELEASE(_clients_peer->nptr);
-        PMIX_RELEASE(_clients_peer);
+    if (NULL != ds_ctx->clients_peer) {
+        PMIX_RELEASE(ds_ctx->clients_peer->nptr);
+        PMIX_RELEASE(ds_ctx->clients_peer);
     }
     /* close the pshmem framework */
     if( PMIX_SUCCESS != (rc = pmix_mca_base_framework_close(&pmix_pshmem_base_framework)) ) {
         PMIX_ERROR_LOG(rc);
     }
+    free(ds_ctx->ds_name);
+    free(ds_ctx->base_path);
 }
 
 static pmix_status_t _dstore_store_nolock(pmix_common_dstore_ctx_t *ds_ctx,
@@ -2568,7 +2588,7 @@ pmix_status_t pmix_common_dstor_fetch(pmix_common_dstore_ctx_t *ds_ctx,
     return rc;
 }
 
-pmix_status_t pmix_common_dstor_setup_fork(pmix_common_dstore_ctx_t *ds_ctx,
+pmix_status_t pmix_common_dstor_setup_fork(pmix_common_dstore_ctx_t *ds_ctx, const char *base_path_env,
                                            const pmix_proc_t *peer, char ***env)
 {
     pmix_status_t rc = PMIX_SUCCESS;
@@ -2595,11 +2615,12 @@ pmix_status_t pmix_common_dstor_setup_fork(pmix_common_dstore_ctx_t *ds_ctx,
         return rc;
     }
 
-    if(PMIX_SUCCESS != (rc = pmix_setenv(PMIX_DSTORE_ESH_BASE_PATH,
+    if(PMIX_SUCCESS != (rc = pmix_setenv(base_path_env,
                                         _ESH_SESSION_path(ds_ctx->session_array, ns_map->tbl_idx),
                                          true, env))){
         PMIX_ERROR_LOG(rc);
     }
+
     return rc;
 }
 
@@ -2612,6 +2633,7 @@ pmix_status_t pmix_common_dstor_add_nspace(pmix_common_dstore_ctx_t *ds_ctx,
     char setjobuid = ds_ctx->setjobuid;
     size_t n;
     ns_map_data_t *ns_map = NULL;
+    uint32_t local_size = 0;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "gds: dstore add nspace");
@@ -2621,6 +2643,10 @@ pmix_status_t pmix_common_dstor_add_nspace(pmix_common_dstore_ctx_t *ds_ctx,
             if (0 == strcmp(PMIX_USERID, info[n].key)) {
                 jobuid = info[n].value.data.uint32;
                 setjobuid = 1;
+                continue;
+            }
+            if (0 == strcmp(PMIX_LOCAL_SIZE, info[n].key)) {
+                local_size = info[n].value.data.uint32;
                 continue;
             }
         }
@@ -2641,7 +2667,7 @@ pmix_status_t pmix_common_dstor_add_nspace(pmix_common_dstore_ctx_t *ds_ctx,
         }
 
         if (PMIX_SUCCESS != (rc =_esh_session_init(ds_ctx, tbl_idx, ns_map,
-                                                   jobuid, setjobuid))) {
+                                                   local_size, jobuid, setjobuid))) {
             rc = PMIX_ERROR;
             PMIX_ERROR_LOG(rc);
             return rc;
@@ -2735,6 +2761,17 @@ pmix_status_t pmix_common_dstor_assign_module(pmix_common_dstore_ctx_t *ds_ctx,
                     if (0 == strcmp(options[m], "ds12")) {
                         /* they specifically asked for us */
                         *priority = 100;
+                        break;
+                    }
+                    if (0 == strcmp(options[m], "ds21")) {
+                        /* they specifically asked for us */
+                        *priority = 120;
+                        break;
+                    }
+                    if ((0 == strcmp(options[m], "dstore")) &&
+                                    (0 == strcmp("ds21", ds_ctx->ds_name))) {
+                        /* they specifically asked for us */
+                        *priority = 60;
                         break;
                     }
                     if (0 == strcmp(options[m], "dstore")) {
@@ -3039,7 +3076,7 @@ static void _client_compat_save(pmix_common_dstore_ctx_t *ds_ctx, pmix_peer_t *p
 {
     pmix_nspace_t *nptr = NULL;
 
-    if (NULL == _clients_peer) {
+    if (NULL == ds_ctx->clients_peer) {
         ds_ctx->clients_peer = PMIX_NEW(pmix_peer_t);
         nptr = PMIX_NEW(pmix_nspace_t);
         ds_ctx->clients_peer->nptr = nptr;

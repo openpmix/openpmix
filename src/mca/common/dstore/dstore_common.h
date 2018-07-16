@@ -22,7 +22,8 @@
 
 typedef void* pmix_common_dstor_lock_ctx_t;
 
-typedef pmix_common_dstor_lock_ctx_t (*pmix_common_dstor_lock_init_fn_t)(const char *base_path, uid_t uid, bool setuid);
+typedef pmix_common_dstor_lock_ctx_t (*pmix_common_dstor_lock_init_fn_t)(const char *base_path,
+                                                    uint32_t size, uid_t uid, bool setuid);
 typedef void (*pmix_common_dstor_lock_finalize_fn_t)(pmix_common_dstor_lock_ctx_t ctx);
 typedef pmix_status_t (*pmix_common_dstor_lock_rd_get_fn_t)(pmix_common_dstor_lock_ctx_t ctx);
 typedef pmix_status_t (*pmix_common_dstor_lock_rd_rel_fn_t)(pmix_common_dstor_lock_ctx_t ctx);
@@ -46,7 +47,7 @@ void pmix_common_dstor_finalize(pmix_common_dstore_ctx_t *ds_ctx);
 pmix_status_t pmix_common_dstor_add_nspace(pmix_common_dstore_ctx_t *ds_ctx,
                                 const char *nspace, pmix_info_t info[], size_t ninfo);
 pmix_status_t pmix_common_dstor_del_nspace(pmix_common_dstore_ctx_t *ds_ctx, const char* nspace);
-pmix_status_t pmix_common_dstor_setup_fork(pmix_common_dstore_ctx_t *ds_ctx,
+pmix_status_t pmix_common_dstor_setup_fork(pmix_common_dstore_ctx_t *ds_ctx, const char *base_path_env,
                                            const pmix_proc_t *peer, char ***env);
 pmix_status_t pmix_common_dstor_cache_job_info(pmix_common_dstore_ctx_t *ds_ctx,
                                 struct pmix_nspace_t *ns,
