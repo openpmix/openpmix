@@ -65,7 +65,8 @@ typedef struct {
     int lockfd;
 } ds12_lock_fcntl_ctx_t;
 
-pmix_common_dstor_lock_ctx_t *pmix_gds_ds12_lock_init(const char *base_path, uid_t uid, bool setuid)
+pmix_common_dstor_lock_ctx_t *pmix_gds_ds12_lock_init(const char *base_path,  uint32_t size,
+                                                      uid_t uid, bool setuid)
 {
     ds12_lock_fcntl_ctx_t *lock_ctx = NULL;
 
