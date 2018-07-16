@@ -23,12 +23,24 @@
 # $HEADER$
 #
 
+AM_CPPFLAGS = -DGDS_DS_VER=12
+
 headers = \
-        gds_dstore.h
+        gds_dstore.h \
+        ds21_lock.h
 
 sources = \
         gds_dstore.c \
+        ds12_lock.c \
         gds_dstore_component.c
+
+if DSTORE_PTHREAD_LOCK
+sources += ds12_lock_pthread.c
+else
+if DSTORE_FCNTL_LOCK
+sources += ds12_lock_fcntl.c
+endif
+endif
 
 # Make the output library in this directory, and name it either
 # mca_<type>_<name>.la (for DSO builds) or libmca_<type>_<name>.la
