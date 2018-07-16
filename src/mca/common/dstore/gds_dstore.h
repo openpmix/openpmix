@@ -9,8 +9,8 @@
  * $HEADER$
  */
 
-#ifndef PMIX_DS12_H
-#define PMIX_DS12_H
+#ifndef PMIX_DSTORE_H
+#define PMIX_DSTORE_H
 
 #include <src/include/pmix_config.h>
 
@@ -29,6 +29,7 @@ BEGIN_C_DECLS
 #define NS_DATA_SEG_SIZE (1<<22)
 
 #define PMIX_DSTORE_ESH_BASE_PATH "PMIX_DSTORE_ESH_BASE_PATH"
+#define PMIX_DSTORE_VER_BASE_PATH_FMT "PMIX_DSTORE_%d_BASE_PATH"
 
 typedef struct ns_map_data_s ns_map_data_t;
 typedef struct session_s session_t;
