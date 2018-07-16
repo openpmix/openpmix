@@ -23,21 +23,19 @@
 # $HEADER$
 #
 
-AM_CPPFLAGS = -DGDS_DS_VER=12
-
 headers = \
-        gds_dstore.h \
+        ds12_base.h \
         ds21_lock.h
 
 sources = \
-        gds_dstore.c \
+        ds12_base.c \
         ds12_lock.c \
         gds_dstore_component.c
 
-if DSTORE_PTHREAD_LOCK
+if HAVE_DSTORE_PTHREAD_LOCK
 sources += ds12_lock_pthread.c
 else
-if DSTORE_FCNTL_LOCK
+if HAVE_DSTORE_FCNTL_LOCK
 sources += ds12_lock_fcntl.c
 endif
 endif
@@ -61,7 +59,8 @@ endif
 mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component)
 mca_gds_ds12_la_SOURCES = $(component_sources)
-mca_gds_ds12_la_LDFLAGS = -module -avoid-version
+mca_gds_ds12_la_LDFLAGS = -module -avoid-version \
+    $(PMIX_TOP_BUILDDIR)/src/mca/common/dstore/libmca_common_dstore.la
 
 noinst_LTLIBRARIES = $(lib)
 libmca_gds_ds12_la_SOURCES = $(lib_sources)
