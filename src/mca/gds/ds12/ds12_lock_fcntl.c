@@ -16,7 +16,7 @@
 #include <src/include/pmix_config.h>
 #include <pmix_common.h>
 
-#include "src/mca/common/pmix_common_dstore.h"
+#include "src/mca/common/dstore/dstore_common.h"
 #include "src/mca/pshmem/pshmem.h"
 
 #include "src/util/error.h"

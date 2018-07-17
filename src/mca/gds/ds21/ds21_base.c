@@ -22,7 +22,7 @@
 #include "src/mca/common/dstore/dstore_common.h"
 #include "ds21_base.h"
 #include "ds21_lock.h"
-#include "src/mca/common/dstore/gds_dstore.h"
+#include "src/mca/common/dstore/dstore_base.h"
 
 static pmix_common_dstore_ctx_t *ds21_ctx;
 

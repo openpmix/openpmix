@@ -52,7 +52,7 @@
 #include "src/mca/gds/base/base.h"
 #include "src/mca/pshmem/base/base.h"
 #include "dstore_common.h"
-#include "gds_dstore.h"
+#include "dstore_base.h"
 
 #define ESH_REGION_EXTENSION        "EXTENSION_SLOT"
 #define ESH_REGION_INVALIDATED      "INVALIDATED"
