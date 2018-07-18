@@ -36,6 +36,7 @@
 #include "src/util/output.h"
 
 #include "ds12_lock.h"
+#include "src/mca/common/dstore/dstore_segment.h"
 
 #define _ESH_12_PTHREAD_LOCK(rwlock, func)                  \
 __pmix_attribute_extension__ ({                             \
@@ -65,22 +66,11 @@ typedef struct {
     pthread_rwlock_t *rwlock;
 } ds12_lock_pthread_ctx_t;
 
-static int _pmix_getpagesize(void)
-{
-#if defined(_SC_PAGESIZE )
-    return sysconf(_SC_PAGESIZE);
-#elif defined(_SC_PAGE_SIZE)
-    return sysconf(_SC_PAGE_SIZE);
-#else
-    return 65536; /* safer to overestimate than under */
-#endif
-}
-
-pmix_common_dstor_lock_ctx_t pmix_gds_ds12_lock_init(const char *base_path, uint32_t local_size,
-                                                     uid_t uid, bool setuid)
+pmix_common_dstor_lock_ctx_t pmix_gds_ds12_lock_init(const char *base_path, const char *name,
+                                                     uint32_t local_size, uid_t uid, bool setuid)
 {
     ds12_lock_pthread_ctx_t *lock_ctx = NULL;
-    size_t size = _pmix_getpagesize();
+    size_t size = pmix_common_dstor_getpagesize();
     pmix_status_t rc = PMIX_SUCCESS;
     pthread_rwlockattr_t attr;
 

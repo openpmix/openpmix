@@ -23,6 +23,7 @@ BEGIN_C_DECLS
 #include <src/include/pmix_config.h>
 #include "src/class/pmix_value_array.h"
 #include "dstore_common.h"
+#include "dstore_segment.h"
 
 #define INITIAL_SEG_SIZE 4096
 #define NS_META_SEG_SIZE (1<<22)
@@ -34,7 +35,6 @@ BEGIN_C_DECLS
 typedef struct ns_map_data_s ns_map_data_t;
 typedef struct session_s session_t;
 typedef struct ns_map_s ns_map_t;
-typedef struct seg_desc_t seg_desc_t;
 
 typedef ns_map_data_t * (*session_map_search_fn_t)(pmix_common_dstore_ctx_t *ds_ctx,
                                                    const char *nspace);
@@ -52,33 +52,23 @@ struct pmix_common_dstore_ctx_s {
     pmix_common_lock_callbacks_t *lock_cbs;
 
     size_t initial_segment_size;
-    size_t max_ns_num;
     size_t meta_segment_size;
-    size_t max_meta_elems;
     size_t data_segment_size;
     size_t lock_segment_size;
-    int direct_mode;
+
+    size_t max_ns_num;
+    size_t max_meta_elems;
+
     session_map_search_fn_t session_map_search;
     pmix_peer_t *clients_peer;
-};
-
-/* this structs are used to store information about
- * shared segments addresses locally at each process,
- * so they are common for different types of segments
- * and don't have a specific content (namespace's info,
- * rank's meta info, ranks's data). */
-
-typedef enum {
-    INITIAL_SEGMENT,
-    NS_META_SEGMENT,
-    NS_DATA_SEGMENT
-} segment_type;
-
-struct seg_desc_t {
-    segment_type type;
-    pmix_pshmem_seg_t seg_info;
-    uint32_t id;
-    seg_desc_t *next;
+    /* If _direct_mode is set, it means that we use linear search
+     * along the array of rank meta info objects inside a meta segment
+     * to find the requested rank. Otherwise,  we do a fast lookup
+     * based on rank and directly compute offset.
+     * This mode is called direct because it's effectively used in
+     * sparse communication patterns when direct modex is usually used.
+     */
+    int direct_mode;
 };
 
 struct session_s {
@@ -86,8 +76,8 @@ struct session_s {
     uid_t jobuid;
     char setjobuid;
     char *nspace_path;
-    seg_desc_t *sm_seg_first;
-    seg_desc_t *sm_seg_last;
+    pmix_dstore_seg_desc_t *sm_seg_first;
+    pmix_dstore_seg_desc_t *sm_seg_last;
 };
 
 struct ns_map_data_s {
@@ -130,8 +120,8 @@ typedef struct {
     ns_map_data_t ns_map;
     size_t num_meta_seg;
     size_t num_data_seg;
-    seg_desc_t *meta_seg;
-    seg_desc_t *data_seg;
+    pmix_dstore_seg_desc_t *meta_seg;
+    pmix_dstore_seg_desc_t *data_seg;
     bool in_use;
 } ns_track_elem_t;
 
