@@ -86,7 +86,6 @@ struct session_s {
     uid_t jobuid;
     char setjobuid;
     char *nspace_path;
-    pmix_common_dstor_lock_ctx_t lock;
     seg_desc_t *sm_seg_first;
     seg_desc_t *sm_seg_last;
 };
@@ -95,6 +94,7 @@ struct ns_map_data_s {
     char name[PMIX_MAX_NSLEN+1];
     size_t tbl_idx;
     int track_idx;
+    pmix_common_dstor_lock_ctx_t lock;
 };
 
 struct ns_map_s {
