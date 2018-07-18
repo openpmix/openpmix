@@ -13,12 +13,14 @@ AM_CPPFLAGS = $(LTDLINCL)
 
 headers = \
         dstore_common.h \
-        dstore_base.h
+        dstore_base.h \
+        dstore_segment.h
 
 # Source files
 
 sources = \
-        dstore_base.c
+        dstore_base.c \
+        dstore_segment.c
 
 lib_LTLIBRARIES =
 noinst_LTLIBRARIES =
