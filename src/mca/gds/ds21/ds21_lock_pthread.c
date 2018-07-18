@@ -31,6 +31,7 @@
 #include "src/util/output.h"
 
 #include "ds21_lock.h"
+#include "src/mca/common/dstore/dstore_segment.h"
 
 typedef struct {
     char *lockfile;
@@ -39,17 +40,6 @@ typedef struct {
     uint32_t num_locks;
     uint32_t lock_idx;
 } ds21_lock_pthread_ctx_t;
-
-static int _pmix_getpagesize(void)
-{
-#if defined(_SC_PAGESIZE )
-    return sysconf(_SC_PAGESIZE);
-#elif defined(_SC_PAGE_SIZE)
-    return sysconf(_SC_PAGE_SIZE);
-#else
-    return 65536; /* safer to overestimate than under */
-#endif
-}
 
 #define _GET_MUTEX_PTR(lsize, seg_ptr) \
     ((pthread_mutex_t*)(seg_ptr + sizeof(lsize) + sizeof(int32_t)*lsize))
@@ -60,15 +50,15 @@ static int _pmix_getpagesize(void)
 #define _GET_SIZE_PTR(seg_ptr) \
     ((uint32_t*)(seg_ptr))
 
-pmix_common_dstor_lock_ctx_t pmix_gds_ds21_lock_init(const char *base_path,  uint32_t local_size,
-                                                     uid_t uid, bool setuid)
+pmix_common_dstor_lock_ctx_t pmix_gds_ds21_lock_init(const char *base_path, const char * name,
+                                                     uint32_t local_size, uid_t uid, bool setuid)
 {
     ds21_lock_pthread_ctx_t *lock_ctx = NULL;
     pmix_status_t rc = PMIX_SUCCESS;
     pthread_mutexattr_t attr;
     size_t size;
     uint32_t i;
-    int page_size = _pmix_getpagesize();
+    int page_size = pmix_common_dstor_getpagesize();
     uint32_t *local_size_ptr = NULL;
 
     lock_ctx = (ds21_lock_pthread_ctx_t*)malloc(sizeof(ds21_lock_pthread_ctx_t));
