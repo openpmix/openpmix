@@ -75,7 +75,7 @@ pmix_dstore_seg_desc_t *pmix_common_dstor_create_new_lock_seg(const char *base_p
                          __FILE__, __LINE__, __func__, PMIX_DSTORE_NS_LOCK_SEGMENT,
                          name, id));
 
-    snprintf(file_name, PMIX_PATH_MAX, "%s/smdataseg-%s-%d", base_path, name, id);
+    snprintf(file_name, PMIX_PATH_MAX, "%s/smlockseg-%s", base_path, name);
     new_seg = (pmix_dstore_seg_desc_t*)malloc(sizeof(pmix_dstore_seg_desc_t));
     if (new_seg) {
             new_seg->id = id;
@@ -112,7 +112,7 @@ pmix_dstore_seg_desc_t *pmix_common_dstor_create_new_lock_seg(const char *base_p
 }
 
 pmix_dstore_seg_desc_t *pmix_common_dstor_attach_new_lock_seg(const char *base_path,
-                                                 const char *name, uint32_t id)
+                                                 size_t size, const char *name, uint32_t id)
 {
     pmix_status_t rc;
     pmix_dstore_seg_desc_t *new_seg = NULL;
@@ -120,14 +120,15 @@ pmix_dstore_seg_desc_t *pmix_common_dstor_attach_new_lock_seg(const char *base_p
     new_seg->id = id;
     new_seg->next = NULL;
     new_seg->type = PMIX_DSTORE_NS_LOCK_SEGMENT;
+    new_seg->seg_info.seg_size = size;
 
     PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
-                         "%s:%d:%s: segment type %d, nspace %s, id %u",
+                         "%s:%d:%s: segment type %d, name %s, id %u",
                          __FILE__, __LINE__, __func__, new_seg->type, name, id));
 
-    snprintf(new_seg->seg_info.seg_name, PMIX_PATH_MAX, "%s/smdataseg-%s-%d",
-             base_path, name, id);
-    rc = pmix_pshmem.segment_attach(&new_seg->seg_info, PMIX_PSHMEM_RONLY);
+    snprintf(new_seg->seg_info.seg_name, PMIX_PATH_MAX, "%s/smlockseg-%s",
+             base_path, name);
+    rc = pmix_pshmem.segment_attach(&new_seg->seg_info, PMIX_PSHMEM_RW);
     if (PMIX_SUCCESS != rc) {
         free(new_seg);
         new_seg = NULL;

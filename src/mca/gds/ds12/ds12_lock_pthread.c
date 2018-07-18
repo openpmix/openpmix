@@ -66,24 +66,31 @@ typedef struct {
     pthread_rwlock_t *rwlock;
 } ds12_lock_pthread_ctx_t;
 
-pmix_common_dstor_lock_ctx_t pmix_gds_ds12_lock_init(const char *base_path, const char *name,
-                                                     uint32_t local_size, uid_t uid, bool setuid)
+pmix_status_t pmix_gds_ds12_lock_init(pmix_common_dstor_lock_ctx_t *ctx, const char *base_path,
+                                      const char * name, uint32_t local_size, uid_t uid, bool setuid)
 {
-    ds12_lock_pthread_ctx_t *lock_ctx = NULL;
     size_t size = pmix_common_dstor_getpagesize();
     pmix_status_t rc = PMIX_SUCCESS;
     pthread_rwlockattr_t attr;
+    ds12_lock_pthread_ctx_t *lock_ctx = (ds12_lock_pthread_ctx_t*)ctx;
+
+    if (*ctx != NULL) {
+        return PMIX_SUCCESS;
+    }
 
     lock_ctx = (ds12_lock_pthread_ctx_t*)malloc(sizeof(ds12_lock_pthread_ctx_t));
     if (NULL == lock_ctx) {
-        PMIX_ERROR_LOG(PMIX_ERR_INIT);
+        rc = PMIX_ERR_INIT;
+        PMIX_ERROR_LOG(rc);
         goto error;
     }
     memset(lock_ctx, 0, sizeof(ds12_lock_pthread_ctx_t));
+    *ctx = (pmix_common_dstor_lock_ctx_t*)lock_ctx;
 
     lock_ctx->segment = (pmix_pshmem_seg_t *)malloc(sizeof(pmix_pshmem_seg_t));
     if (NULL == lock_ctx->segment) {
-        PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
+        rc = PMIX_ERR_OUT_OF_RESOURCE;
+        PMIX_ERROR_LOG(rc);
         goto error;
     }
 
@@ -91,7 +98,8 @@ pmix_common_dstor_lock_ctx_t pmix_gds_ds12_lock_init(const char *base_path, cons
      * to the shared memory. This situation is quite often, especially in case of
      * direct modex when clients might ask for data simultaneously. */
     if(0 > asprintf(&lock_ctx->lockfile, "%s/dstore_sm.lock", base_path)) {
-        PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
+        rc = PMIX_ERR_OUT_OF_RESOURCE;
+        PMIX_ERROR_LOG(rc);
         goto error;
     }
     PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
@@ -106,24 +114,28 @@ pmix_common_dstor_lock_ctx_t pmix_gds_ds12_lock_init(const char *base_path, cons
         memset(lock_ctx->segment->seg_base_addr, 0, size);
         if (0 != setuid) {
             if (0 > chown(lock_ctx->lockfile, (uid_t) uid, (gid_t) -1)){
-                PMIX_ERROR_LOG(PMIX_ERROR);
+                rc = PMIX_ERROR;
+                PMIX_ERROR_LOG(rc);
                 goto error;
             }
             /* set the mode as required */
             if (0 > chmod(lock_ctx->lockfile, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP )) {
-                PMIX_ERROR_LOG(PMIX_ERROR);
+                rc = PMIX_ERROR;
+                PMIX_ERROR_LOG(rc);
                 goto error;
             }
         }
         lock_ctx->rwlock = (pthread_rwlock_t *)lock_ctx->segment->seg_base_addr;
 
         if (0 != pthread_rwlockattr_init(&attr)) {
-            PMIX_ERROR_LOG(PMIX_ERR_INIT);
+            rc = PMIX_ERROR;
+            PMIX_ERROR_LOG(rc);
             goto error;
         }
         if (0 != pthread_rwlockattr_setpshared(&attr, PTHREAD_PROCESS_SHARED)) {
             pthread_rwlockattr_destroy(&attr);
-            PMIX_ERROR_LOG(PMIX_ERR_INIT);
+            rc = PMIX_ERR_INIT;
+            PMIX_ERROR_LOG(rc);
             goto error;
         }
 #ifdef HAVE_PTHREAD_SETKIND
@@ -156,7 +168,7 @@ pmix_common_dstor_lock_ctx_t pmix_gds_ds12_lock_init(const char *base_path, cons
         lock_ctx->rwlock = (pthread_rwlock_t *)lock_ctx->segment->seg_base_addr;
     }
 
-    return (pmix_common_dstor_lock_ctx_t)lock_ctx;
+    return PMIX_SUCCESS;
 
 error:
     if (NULL != lock_ctx) {
@@ -172,15 +184,16 @@ error:
             free(lock_ctx->lockfile);
         }
         free(lock_ctx);
-        lock_ctx = NULL;
+        *ctx = (pmix_common_dstor_lock_ctx_t*)NULL;
     }
-    return NULL;
+
+    return rc;
 }
 
-void pmix_ds12_lock_finalize(pmix_common_dstor_lock_ctx_t lock_ctx)
+void pmix_ds12_lock_finalize(pmix_common_dstor_lock_ctx_t *lock_ctx)
 {
     ds12_lock_pthread_ctx_t *pthread_lock =
-            (ds12_lock_pthread_ctx_t*)lock_ctx;
+            (ds12_lock_pthread_ctx_t*)*lock_ctx;
 
     if (NULL == pthread_lock) {
         PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
@@ -206,6 +219,7 @@ void pmix_ds12_lock_finalize(pmix_common_dstor_lock_ctx_t lock_ctx)
     pthread_lock->segment = NULL;
     pthread_lock->rwlock = NULL;
     free(pthread_lock);
+    *lock_ctx = NULL;
 }
 
 pmix_status_t pmix_ds12_lock_rd_get(pmix_common_dstor_lock_ctx_t lock_ctx)
