@@ -312,8 +312,9 @@ static inline ns_map_data_t * _esh_session_map_search_server(pmix_common_dstore_
 static inline ns_map_data_t * _esh_session_map_search_client(pmix_common_dstore_ctx_t *ds_ctx,
                                                              const char *nspace);
 static inline ns_map_data_t * _esh_session_map(pmix_common_dstore_ctx_t *ds_ctx,
-                                               const char *nspace, size_t tbl_idx);
-static inline void _esh_session_map_clean(ns_map_t *m);
+                                               const char *nspace, uint32_t local_size,
+                                               size_t tbl_idx);
+static inline void _esh_session_map_clean(pmix_common_dstore_ctx_t *ds_ctx, ns_map_t *m);
 static inline int _esh_jobuid_tbl_search(pmix_common_dstore_ctx_t *ds_ctx,
                                          uid_t jobuid, size_t *tbl_idx);
 static inline int _esh_session_tbl_add(pmix_common_dstore_ctx_t *ds_ctx, size_t *tbl_idx);
@@ -339,9 +340,6 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
                                    const char *key, pmix_value_t **kvs);
 
 ns_map_data_t * (*_esh_session_map_search)(const char *nspace) = NULL;
-
-#define _ESH_SESSION_lock(session_array, tbl_idx) \
-    (PMIX_VALUE_ARRAY_GET_BASE(session_array, session_t)[tbl_idx].lock)
 
 #define _ESH_SESSION_path(session_array, tbl_idx) \
     (PMIX_VALUE_ARRAY_GET_BASE(session_array, session_t)[tbl_idx].nspace_path)
@@ -403,7 +401,13 @@ PMIX_CLASS_INSTANCE(ns_track_elem_t,
                     pmix_value_array_t,
                     ncon, ndes);
 
-static inline void _esh_session_map_clean(ns_map_t *m) {
+static inline void _esh_session_map_clean(pmix_common_dstore_ctx_t *ds_ctx, ns_map_t *m) {
+    if (m->in_use) {
+        if (NULL != m->data.lock) {
+            /* finalize dstore lock */
+            ds_ctx->lock_cbs->finalize(m->data.lock);
+        }
+    }
     memset(m, 0, sizeof(*m));
     m->data.track_idx = -1;
 }
@@ -517,7 +521,7 @@ static inline int _esh_tbls_init(pmix_common_dstore_ctx_t *ds_ctx)
         goto err_exit;
     }
     for (idx = 0; idx < ESH_INIT_NS_MAP_TBL_SIZE; idx++) {
-        _esh_session_map_clean(pmix_value_array_get_item(ds_ctx->ns_map_array, idx));
+        _esh_session_map_clean(ds_ctx, pmix_value_array_get_item(ds_ctx->ns_map_array, idx));
     }
 
     return PMIX_SUCCESS;
@@ -548,8 +552,9 @@ static inline void _esh_ns_map_cleanup(pmix_common_dstore_ctx_t *ds_ctx)
     ns_map = PMIX_VALUE_ARRAY_GET_BASE(ds_ctx->ns_map_array, ns_map_t);
 
     for (idx = 0; idx < size; idx++) {
-        if(ns_map[idx].in_use)
-            _esh_session_map_clean(&ns_map[idx]);
+        if(ns_map[idx].in_use) {
+            _esh_session_map_clean(ds_ctx, &ns_map[idx]);
+        }
     }
 
     PMIX_RELEASE(ds_ctx->ns_map_array);
@@ -602,11 +607,12 @@ static inline void _esh_ns_track_cleanup(pmix_common_dstore_ctx_t *ds_ctx)
 }
 
 static inline ns_map_data_t * _esh_session_map(pmix_common_dstore_ctx_t *ds_ctx,
-                                               const char *nspace, size_t tbl_idx)
+                                               const char *nspace, uint32_t local_size,
+                                               size_t tbl_idx)
 {
     size_t map_idx;
     size_t size = pmix_value_array_get_size(ds_ctx->ns_map_array);
-    ns_map_t *ns_map = PMIX_VALUE_ARRAY_GET_BASE(ds_ctx->ns_map_array, ns_map_t);;
+    ns_map_t *ns_map = PMIX_VALUE_ARRAY_GET_BASE(ds_ctx->ns_map_array, ns_map_t);
     ns_map_t *new_map = NULL;
 
     if (NULL == nspace) {
@@ -619,6 +625,14 @@ static inline ns_map_data_t * _esh_session_map(pmix_common_dstore_ctx_t *ds_ctx,
             ns_map[map_idx].in_use = true;
             pmix_strncpy(ns_map[map_idx].data.name, nspace, sizeof(ns_map[map_idx].data.name)-1);
             ns_map[map_idx].data.tbl_idx = tbl_idx;
+
+            /* init dstore lock */
+            ns_map[map_idx].data.lock = ds_ctx->lock_cbs->init(ds_ctx->base_path, local_size,
+                                             ds_ctx->jobuid, ds_ctx->setjobuid);
+            if (NULL == ns_map[map_idx].data.lock) {
+                PMIX_ERROR_LOG(PMIX_ERROR);
+                return NULL;
+            }
             return  &ns_map[map_idx].data;
         }
     }
@@ -628,10 +642,17 @@ static inline ns_map_data_t * _esh_session_map(pmix_common_dstore_ctx_t *ds_ctx,
         return NULL;
     }
 
-    _esh_session_map_clean(new_map);
+    _esh_session_map_clean(ds_ctx, new_map);
     new_map->in_use = true;
     new_map->data.tbl_idx = tbl_idx;
     pmix_strncpy(new_map->data.name, nspace, sizeof(new_map->data.name)-1);
+    /* init dstore lock */
+    new_map->data.lock = ds_ctx->lock_cbs->init(ds_ctx->base_path, local_size,
+                                     ds_ctx->jobuid, ds_ctx->setjobuid);
+    if (NULL == new_map->data.lock) {
+        PMIX_ERROR_LOG(PMIX_ERROR);
+        return NULL;
+    }
 
     return  &new_map->data;
 }
@@ -716,7 +737,7 @@ static inline ns_map_data_t * _esh_session_map_search_client(pmix_common_dstore_
                 return &ns_map[idx].data;
         }
     }
-    return _esh_session_map(ds_ctx, nspace, 0);
+    return _esh_session_map(ds_ctx, nspace, 0, 0);
 }
 
 static int _esh_session_init(pmix_common_dstore_ctx_t *ds_ctx, size_t idx, ns_map_data_t *m,
@@ -762,16 +783,6 @@ static int _esh_session_init(pmix_common_dstore_ctx_t *ds_ctx, size_t idx, ns_ma
             return rc;
         }
     }
-
-    /* init dstore lock */
-    s->lock = ds_ctx->lock_cbs->init(ds_ctx->base_path, local_size,
-                                     ds_ctx->jobuid, ds_ctx->setjobuid);
-    if (NULL == s->lock) {
-        rc = PMIX_ERR_INIT;
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-
     s->sm_seg_first = seg;
     s->sm_seg_last = s->sm_seg_first;
     return PMIX_SUCCESS;
@@ -793,10 +804,6 @@ static void _esh_session_release(pmix_common_dstore_ctx_t *ds_ctx, size_t idx)
         }
         free(s->nspace_path);
     }
-
-    /* finalize dstore lock */
-    ds_ctx->lock_cbs->finalize(s->lock);
-
     memset ((char *) s, 0, sizeof(*s));
 }
 
@@ -2007,7 +2014,14 @@ pmix_common_dstore_ctx_t *pmix_common_dstor_init(pmix_common_lock_callbacks_t *l
         goto err_exit;
     }
 
-    ns_map = _esh_session_map(ds_ctx, pmix_globals.myid.nspace, tbl_idx);
+    char *nspace = NULL;
+    /* if we don't see the required info, then we cannot init */
+    if (NULL == (nspace = getenv("PMIX_NAMESPACE"))) {
+        rc = PMIX_ERR_INVALID_NAMESPACE;
+        PMIX_ERROR_LOG(rc);
+        goto err_exit;
+    }
+    ns_map = _esh_session_map(ds_ctx, nspace, 0, tbl_idx);
     if (NULL == ns_map) {
         rc = PMIX_ERR_OUT_OF_RESOURCE;
         PMIX_ERROR_LOG(rc);
@@ -2178,7 +2192,7 @@ pmix_status_t pmix_common_dstor_store(pmix_common_dstore_ctx_t *ds_ctx,
     }
 
     /* set exclusive lock */
-    rc = ds_ctx->lock_cbs->wr_lock(_ESH_SESSION_lock(ds_ctx->session_array, ns_map->tbl_idx));
+    rc = ds_ctx->lock_cbs->wr_lock(ns_map->lock);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto exit;
@@ -2191,7 +2205,7 @@ pmix_status_t pmix_common_dstor_store(pmix_common_dstore_ctx_t *ds_ctx,
     }
 
     /* unset lock */
-    rc = ds_ctx->lock_cbs->wr_unlock(_ESH_SESSION_lock(ds_ctx->session_array, ns_map->tbl_idx));
+    rc = ds_ctx->lock_cbs->wr_unlock(ns_map->lock);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto exit;
@@ -2270,7 +2284,7 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
     }
 
     /* grab shared lock */
-    lock_rc = ds_ctx->lock_cbs->rd_lock(_ESH_SESSION_lock(ds_ctx->session_array, ns_map->tbl_idx));
+    lock_rc = ds_ctx->lock_cbs->rd_lock(ns_map->lock);
     if (PMIX_SUCCESS != lock_rc) {
         /* Something wrong with the lock. The error is fatal */
         rc = PMIX_ERR_FATAL;
@@ -2493,7 +2507,7 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
 
 done:
     /* unset lock */
-    lock_rc = ds_ctx->lock_cbs->rd_unlock(_ESH_SESSION_lock(ds_ctx->session_array, ns_map->tbl_idx));
+    lock_rc = ds_ctx->lock_cbs->rd_unlock(ns_map->lock);
     if (PMIX_SUCCESS != lock_rc) {
         PMIX_ERROR_LOG(lock_rc);
     }
@@ -2659,7 +2673,7 @@ pmix_status_t pmix_common_dstor_add_nspace(pmix_common_dstore_ctx_t *ds_ctx,
             PMIX_ERROR_LOG(rc);
             return rc;
         }
-        ns_map = _esh_session_map(ds_ctx, nspace, tbl_idx);
+        ns_map = _esh_session_map(ds_ctx, nspace, local_size, tbl_idx);
         if (NULL == ns_map) {
             rc = PMIX_ERROR;
             PMIX_ERROR_LOG(rc);
@@ -2674,7 +2688,7 @@ pmix_status_t pmix_common_dstor_add_nspace(pmix_common_dstore_ctx_t *ds_ctx,
         }
     }
     else {
-        ns_map = _esh_session_map(ds_ctx, nspace, tbl_idx);
+        ns_map = _esh_session_map(ds_ctx, nspace, local_size, tbl_idx);
         if (NULL == ns_map) {
             rc = PMIX_ERROR;
             PMIX_ERROR_LOG(rc);
@@ -2713,7 +2727,7 @@ pmix_status_t pmix_common_dstor_del_nspace(pmix_common_dstore_ctx_t *ds_ctx, con
         if (ns_map[map_idx].in_use &&
                         (ns_map[map_idx].data.tbl_idx == ns_map_data->tbl_idx)) {
             if (0 == strcmp(ns_map[map_idx].data.name, nspace)) {
-                _esh_session_map_clean(&ns_map[map_idx]);
+                _esh_session_map_clean(ds_ctx, &ns_map[map_idx]);
                 continue;
             }
             in_use++;
@@ -3014,7 +3028,7 @@ pmix_status_t pmix_common_dstor_register_job_info(pmix_common_dstore_ctx_t *ds_c
         }
 
         /* set exclusive lock */
-        rc = ds_ctx->lock_cbs->wr_lock(_ESH_SESSION_lock(ds_ctx->session_array, ns_map->tbl_idx));
+        rc = ds_ctx->lock_cbs->wr_lock(ns_map->lock);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             return rc;
@@ -3035,7 +3049,7 @@ pmix_status_t pmix_common_dstor_register_job_info(pmix_common_dstore_ctx_t *ds_c
             }
         }
         /* unset lock */
-        rc = ds_ctx->lock_cbs->wr_unlock(_ESH_SESSION_lock(ds_ctx->session_array, ns_map->tbl_idx));
+        rc = ds_ctx->lock_cbs->wr_unlock(ns_map->lock);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             return rc;
