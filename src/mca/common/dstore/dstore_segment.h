@@ -64,6 +64,6 @@ void pmix_common_dstor_delete_sm_desc(pmix_dstore_seg_desc_t *desc);
 pmix_dstore_seg_desc_t *pmix_common_dstor_create_new_lock_seg(const char *base_path, size_t size,
                         const char *name, uint32_t id, uid_t uid, bool setuid);
 pmix_dstore_seg_desc_t *pmix_common_dstor_attach_new_lock_seg(const char *base_path,
-                        const char *name, uint32_t id);
+                        size_t size, const char *name, uint32_t id);
 
 #endif // DSTORE_SEGMENT_H

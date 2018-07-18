@@ -16,9 +16,10 @@
 
 #include "src/mca/common/dstore/dstore_common.h"
 
-pmix_common_dstor_lock_ctx_t pmix_gds_ds21_lock_init(const char *base_path, const char * name,
-                                                     uint32_t local_size, uid_t uid, bool setuid);
-void pmix_ds21_lock_finalize(pmix_common_dstor_lock_ctx_t lock_ctx);
+pmix_status_t pmix_gds_ds21_lock_init(pmix_common_dstor_lock_ctx_t *lock_ctx,
+                                      const char *base_path,  const char *name,
+                                      uint32_t local_size, uid_t uid, bool setuid);
+void pmix_ds21_lock_finalize(pmix_common_dstor_lock_ctx_t *lock_ctx);
 pmix_status_t pmix_ds21_lock_rd_get(pmix_common_dstor_lock_ctx_t lock_ctx);
 pmix_status_t pmix_ds21_lock_wr_get(pmix_common_dstor_lock_ctx_t lock_ctx);
 pmix_status_t pmix_ds21_lock_rd_rel(pmix_common_dstor_lock_ctx_t lock_ctx);

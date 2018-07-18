@@ -334,6 +334,9 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
 
 ns_map_data_t * (*_esh_session_map_search)(const char *nspace) = NULL;
 
+#define _ESH_SESSION_lock(session_array, tbl_idx) \
+    (PMIX_VALUE_ARRAY_GET_BASE(session_array, session_t)[tbl_idx].lock)
+
 #define _ESH_SESSION_path(session_array, tbl_idx) \
     (PMIX_VALUE_ARRAY_GET_BASE(session_array, session_t)[tbl_idx].nspace_path)
 
@@ -365,6 +368,14 @@ ns_map_data_t * (*_esh_session_map_search)(const char *nspace) = NULL;
 #define _ESH_SESSION_lock(tbl_idx)         _ESH_SESSION_lockfd(tbl_idx)
 #endif
 
+#define _ESH_LOCK(ds_ctx, session_id, operation)                               \
+__extension__ ({                                                               \
+    pmix_status_t rc = PMIX_SUCCESS;                                           \
+    rc = ds_ctx->lock_cbs->operation(_ESH_SESSION_lock(ds_ctx->session_array,  \
+                                                    session_id));              \
+    rc;                                                                        \
+})
+
 static void ncon(ns_track_elem_t *p) {
     memset(&p->ns_map, 0, sizeof(p->ns_map));
     p->meta_seg = NULL;
@@ -386,12 +397,6 @@ PMIX_CLASS_INSTANCE(ns_track_elem_t,
                     ncon, ndes);
 
 static inline void _esh_session_map_clean(pmix_common_dstore_ctx_t *ds_ctx, ns_map_t *m) {
-    if (m->in_use) {
-        if (NULL != m->data.lock) {
-            /* finalize dstore lock */
-            ds_ctx->lock_cbs->finalize(m->data.lock);
-        }
-    }
     memset(m, 0, sizeof(*m));
     m->data.track_idx = -1;
 }
@@ -609,14 +614,6 @@ static inline ns_map_data_t * _esh_session_map(pmix_common_dstore_ctx_t *ds_ctx,
             ns_map[map_idx].in_use = true;
             strncpy(ns_map[map_idx].data.name, nspace, sizeof(ns_map[map_idx].data.name)-1);
             ns_map[map_idx].data.tbl_idx = tbl_idx;
-
-            /* init dstore lock */
-            ns_map[map_idx].data.lock = ds_ctx->lock_cbs->init(ds_ctx->base_path, nspace,
-                                             local_size, ds_ctx->jobuid, ds_ctx->setjobuid);
-            if (NULL == ns_map[map_idx].data.lock) {
-                PMIX_ERROR_LOG(PMIX_ERROR);
-                return NULL;
-            }
             return  &ns_map[map_idx].data;
         }
     }
@@ -630,13 +627,7 @@ static inline ns_map_data_t * _esh_session_map(pmix_common_dstore_ctx_t *ds_ctx,
     new_map->in_use = true;
     new_map->data.tbl_idx = tbl_idx;
     strncpy(new_map->data.name, nspace, sizeof(new_map->data.name)-1);
-    /* init dstore lock */
-    new_map->data.lock = ds_ctx->lock_cbs->init(ds_ctx->base_path, nspace, local_size,
-                                     ds_ctx->jobuid, ds_ctx->setjobuid);
-    if (NULL == new_map->data.lock) {
-        PMIX_ERROR_LOG(PMIX_ERROR);
-        return NULL;
-    }
+
     return  &new_map->data;
 }
 
@@ -669,9 +660,7 @@ static inline int _esh_session_tbl_add(pmix_common_dstore_ctx_t *ds_ctx, size_t 
 
     for(idx = 0; idx < size; idx ++) {
         if (0 == s_tbl[idx].in_use) {
-            s_tbl[idx].in_use = 1;
-            *tbl_idx = idx;
-            return PMIX_SUCCESS;
+            goto done;
         }
     }
 
@@ -680,6 +669,8 @@ static inline int _esh_session_tbl_add(pmix_common_dstore_ctx_t *ds_ctx, size_t 
         PMIX_ERROR_LOG(rc);
         return rc;
     }
+
+done:
     s_tbl[idx].in_use = 1;
     *tbl_idx = idx;
 
@@ -769,6 +760,7 @@ static int _esh_session_init(pmix_common_dstore_ctx_t *ds_ctx, size_t idx, ns_ma
     }
     s->sm_seg_first = seg;
     s->sm_seg_last = s->sm_seg_first;
+
     return PMIX_SUCCESS;
 }
 
@@ -781,6 +773,8 @@ static void _esh_session_release(pmix_common_dstore_ctx_t *ds_ctx, size_t idx)
     }
 
     pmix_common_dstor_delete_sm_desc(s->sm_seg_first);
+
+    ds_ctx->lock_cbs->finalize(&_ESH_SESSION_lock(ds_ctx->session_array, idx));
 
     if (NULL != s->nspace_path) {
         if(PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
@@ -1859,6 +1853,12 @@ pmix_common_dstore_ctx_t *pmix_common_dstor_init(pmix_common_lock_callbacks_t *l
         PMIX_ERROR_LOG(rc);
         goto err_exit;
     }
+    /* lock init */
+    ds_ctx->lock_cbs->init(&_ESH_SESSION_lock(ds_ctx->session_array, tbl_idx), ds_ctx->base_path, nspace, 1, ds_ctx->jobuid, ds_ctx->setjobuid);
+    if (NULL == _ESH_SESSION_lock(ds_ctx->session_array, tbl_idx)) {
+        PMIX_ERROR_LOG(rc);
+        goto err_exit;
+    }
     ns_map = _esh_session_map(ds_ctx, nspace, 0, tbl_idx);
     if (NULL == ns_map) {
         rc = PMIX_ERR_OUT_OF_RESOURCE;
@@ -1866,7 +1866,7 @@ pmix_common_dstore_ctx_t *pmix_common_dstor_init(pmix_common_lock_callbacks_t *l
         goto err_exit;
     }
 
-    if (PMIX_SUCCESS != (rc =_esh_session_init(ds_ctx, tbl_idx, ns_map, 0,
+    if (PMIX_SUCCESS != (rc =_esh_session_init(ds_ctx, tbl_idx, ns_map, 1,
                                                ds_ctx->jobuid, ds_ctx->setjobuid))) {
         PMIX_ERROR_LOG(rc);
         goto err_exit;
@@ -2030,7 +2030,7 @@ pmix_status_t pmix_common_dstor_store(pmix_common_dstore_ctx_t *ds_ctx,
     }
 
     /* set exclusive lock */
-    rc = ds_ctx->lock_cbs->wr_lock(ns_map->lock);
+    rc = _ESH_LOCK(ds_ctx, ns_map->tbl_idx, wr_lock);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto exit;
@@ -2043,7 +2043,7 @@ pmix_status_t pmix_common_dstor_store(pmix_common_dstore_ctx_t *ds_ctx,
     }
 
     /* unset lock */
-    rc = ds_ctx->lock_cbs->wr_unlock(ns_map->lock);
+    rc = _ESH_LOCK(ds_ctx, ns_map->tbl_idx, wr_unlock);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto exit;
@@ -2122,7 +2122,7 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
     }
 
     /* grab shared lock */
-    lock_rc = ds_ctx->lock_cbs->rd_lock(ns_map->lock);
+    lock_rc = _ESH_LOCK(ds_ctx, ns_map->tbl_idx, rd_lock);
     if (PMIX_SUCCESS != lock_rc) {
         /* Something wrong with the lock. The error is fatal */
         rc = PMIX_ERR_FATAL;
@@ -2345,7 +2345,7 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
 
 done:
     /* unset lock */
-    lock_rc = ds_ctx->lock_cbs->rd_unlock(ns_map->lock);
+    lock_rc = _ESH_LOCK(ds_ctx, ns_map->tbl_idx, rd_unlock);
     if (PMIX_SUCCESS != lock_rc) {
         PMIX_ERROR_LOG(lock_rc);
     }
@@ -2532,6 +2532,15 @@ pmix_status_t pmix_common_dstor_add_nspace(pmix_common_dstore_ctx_t *ds_ctx,
             PMIX_ERROR_LOG(rc);
             return rc;
         }
+    }
+
+    /* lock init */
+    ds_ctx->lock_cbs->init(&_ESH_SESSION_lock(ds_ctx->session_array, tbl_idx),
+                           ds_ctx->base_path, nspace, local_size, ds_ctx->jobuid,
+                           ds_ctx->setjobuid);
+    if (NULL == _ESH_SESSION_lock(ds_ctx->session_array, tbl_idx)) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
     }
 
     return PMIX_SUCCESS;
@@ -2866,7 +2875,7 @@ pmix_status_t pmix_common_dstor_register_job_info(pmix_common_dstore_ctx_t *ds_c
         }
 
         /* set exclusive lock */
-        rc = ds_ctx->lock_cbs->wr_lock(ns_map->lock);
+        rc = _ESH_LOCK(ds_ctx, ns_map->tbl_idx, wr_lock);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             return rc;
@@ -2887,7 +2896,7 @@ pmix_status_t pmix_common_dstor_register_job_info(pmix_common_dstore_ctx_t *ds_c
             }
         }
         /* unset lock */
-        rc = ds_ctx->lock_cbs->wr_unlock(ns_map->lock);
+        rc = _ESH_LOCK(ds_ctx, ns_map->tbl_idx, wr_unlock);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             return rc;

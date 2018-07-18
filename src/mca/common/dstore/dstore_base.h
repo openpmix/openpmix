@@ -77,14 +77,14 @@ struct session_s {
     char setjobuid;
     char *nspace_path;
     pmix_dstore_seg_desc_t *sm_seg_first;
-    pmix_dstore_seg_desc_t *sm_seg_last;
+    pmix_dstore_seg_desc_t *sm_seg_last;   
+    pmix_common_dstor_lock_ctx_t lock;
 };
 
 struct ns_map_data_s {
     char name[PMIX_MAX_NSLEN+1];
     size_t tbl_idx;
     int track_idx;
-    pmix_common_dstor_lock_ctx_t lock;
 };
 
 struct ns_map_s {
@@ -124,6 +124,11 @@ typedef struct {
     pmix_dstore_seg_desc_t *data_seg;
     bool in_use;
 } ns_track_elem_t;
+
+typedef struct {
+    pmix_list_item_t super;
+    pmix_common_dstor_lock_ctx_t *lock;
+} lock_track_item_t;
 
 END_C_DECLS
 

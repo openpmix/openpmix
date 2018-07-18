@@ -22,9 +22,10 @@
 
 typedef void* pmix_common_dstor_lock_ctx_t;
 
-typedef pmix_common_dstor_lock_ctx_t (*pmix_common_dstor_lock_init_fn_t)(const char *base_path,  const char *name,
-                                                                         uint32_t local_size, uid_t uid, bool setuid);
-typedef void (*pmix_common_dstor_lock_finalize_fn_t)(pmix_common_dstor_lock_ctx_t ctx);
+typedef pmix_status_t (*pmix_common_dstor_lock_init_fn_t)(pmix_common_dstor_lock_ctx_t *ctx,
+                                                const char *base_path,  const char *name,
+                                                uint32_t local_size, uid_t uid, bool setuid);
+typedef void (*pmix_common_dstor_lock_finalize_fn_t)(pmix_common_dstor_lock_ctx_t *ctx);
 typedef pmix_status_t (*pmix_common_dstor_lock_rd_get_fn_t)(pmix_common_dstor_lock_ctx_t ctx);
 typedef pmix_status_t (*pmix_common_dstor_lock_rd_rel_fn_t)(pmix_common_dstor_lock_ctx_t ctx);
 typedef pmix_status_t (*pmix_common_dstor_lock_wr_get_fn_t)(pmix_common_dstor_lock_ctx_t ctx);
