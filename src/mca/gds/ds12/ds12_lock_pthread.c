@@ -201,6 +201,11 @@ void pmix_ds12_lock_finalize(pmix_common_dstor_lock_ctx_t lock_ctx)
         return;
     }
 
+    if (NULL == pthread_lock->segment) {
+        PMIX_ERROR_LOG(PMIX_ERROR);
+        return;
+    }
+
     /* detach & unlink from current desc */
     if (pthread_lock->segment->seg_cpid == getpid()) {
         pmix_pshmem.segment_unlink(pthread_lock->segment);
