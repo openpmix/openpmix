@@ -31,7 +31,7 @@
 #include "src/util/error.h"
 #include "src/util/output.h"
 
-#include "ds21_lock.h"
+#include "gds_ds21_lock.h"
 #include "src/mca/common/dstore/dstore_segment.h"
 
 typedef struct {

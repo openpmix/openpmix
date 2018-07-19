@@ -13,7 +13,7 @@
 
 #include "src/mca/common/dstore/dstore_common.h"
 
-#include "ds21_lock.h"
+#include "gds_ds21_lock.h"
 
 pmix_common_lock_callbacks_t pmix_ds21_lock_module = {
     .init = pmix_gds_ds21_lock_init,

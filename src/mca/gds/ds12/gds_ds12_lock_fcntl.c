@@ -36,7 +36,7 @@
 #include "src/util/error.h"
 #include "src/util/output.h"
 
-#include "ds12_lock.h"
+#include "gds_ds12_lock.h"
 
 #define _ESH_12_FCNTL_LOCK(lockfd, operation)               \
 __pmix_attribute_extension__ ({                             \
