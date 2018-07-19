@@ -25,7 +25,7 @@
 
 headers = \
         ds12_base.h \
-        ds21_lock.h
+        ds12_lock.h
 
 sources = \
         ds12_base.c \
