@@ -27,7 +27,7 @@ noinst_LTLIBRARIES =
 comp_inst = libmca_common_dstore.la
 comp_noinst = libmca_common_dstore_noinst.la
 
-if MCA_BUILD_pmix_gds_ds12_DSO
+if MCA_BUILD_pmix_common_dstore_DSO
 lib_LTLIBRARIES += $(comp_inst)
 else
 noinst_LTLIBRARIES += $(comp_noinst)
@@ -45,3 +45,14 @@ if WANT_INSTALL_HEADERS
 pmixdir = $(pmixincludedir)/$(subdir)
 pmix_HEADERS = $(headers)
 endif
+
+all-local:
+	if test -z "$(lib_LTLIBRARIES)"; then \
+		rm -f "$(comp_inst)"; \
+		$(LN_S) "$(comp_noinst)" "$(comp_inst)"; \
+	fi
+
+clean-local:
+	if test -z "$(lib_LTLIBRARIES)"; then \
+		rm -f "$(comp_inst)"; \
+	fi
