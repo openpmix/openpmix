@@ -20,8 +20,8 @@
 #include "src/mca/gds/base/base.h"
 
 #include "src/mca/common/dstore/dstore_common.h"
-#include "ds12_base.h"
-#include "ds12_lock.h"
+#include "gds_ds12_base.h"
+#include "gds_ds12_lock.h"
 #include "src/mca/common/dstore/dstore_base.h"
 
 static pmix_common_dstore_ctx_t *ds12_ctx;
