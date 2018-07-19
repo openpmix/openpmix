@@ -23,7 +23,7 @@ release=3
 # The only requirement is that it must be entirely printable ASCII
 # characters and have no white space.
 
-greek=a1
+greek=rc1
 
 # If repo_rev is empty, then the repository version number will be
 # obtained during "make dist" via the "git describe --tags --always"
@@ -75,6 +75,6 @@ date="Jul 14, 2017"
 # Version numbers are described in the Libtool current:revision:age
 # format.
 
-libpmix_so_version=3:12:1
+libpmix_so_version=3:13:1
 libpmi_so_version=1:0:0
 libpmi2_so_version=1:0:0
