@@ -140,7 +140,6 @@ typedef uint32_t pmix_rank_t;
                                                                     //        client rendezvous points and contact info
 #define PMIX_SYSTEM_TMPDIR                  "pmix.sys.tmpdir"       // (char*) temp directory for this system, where PMIx
                                                                     //        server will place tool rendezvous points and contact info
-#define PMIX_REGISTER_NODATA                "pmix.reg.nodata"       // (bool) Registration is for nspace only, do not copy job data
 #define PMIX_SERVER_ENABLE_MONITORING       "pmix.srv.monitor"      // (bool) Enable PMIx internal monitoring by server
 #define PMIX_SERVER_NSPACE                  "pmix.srv.nspace"       // (char*) Name of the nspace to use for this server
 #define PMIX_SERVER_RANK                    "pmix.srv.rank"         // (pmix_rank_t) Rank of this server
@@ -274,7 +273,6 @@ typedef uint32_t pmix_rank_t;
 /* topology info */
 #define PMIX_NET_TOPO                       "pmix.ntopo"            // (char*) xml-representation of network topology
 #define PMIX_LOCAL_TOPO                     "pmix.ltopo"            // (char*) xml-representation of local node topology
-#define PMIX_NODE_LIST                      "pmix.nlist"            // (char*) comma-delimited list of nodes running procs for this job
 #define PMIX_TOPOLOGY                       "pmix.topo"             // (hwloc_topology_t) pointer to the PMIx client's internal topology object
 #define PMIX_TOPOLOGY_XML                   "pmix.topo.xml"         // (char*) XML-based description of topology
 #define PMIX_TOPOLOGY_FILE                  "pmix.topo.file"        // (char*) full path to file containing XML topology description
@@ -1226,7 +1224,6 @@ typedef struct pmix_proc_info {
 
 
 /****    PMIX VALUE STRUCT    ****/
-typedef struct pmix_info_t pmix_info_t;
 
 typedef struct pmix_data_array {
     pmix_data_type_t type;
@@ -1244,15 +1241,11 @@ typedef struct pmix_data_array {
         PMIX_DATA_ARRAY_CONSTRUCT((m), (n), (t));                         \
     } while(0)
 
-typedef struct pmix_info_array {
-    size_t size;
-    pmix_info_t *array;
-} pmix_info_array_t;
 /********************/
 
 /* NOTE: operations can supply a collection of values under
- * a single key by passing a pmix_value_t containing an
- * array of type PMIX_INFO_ARRAY, with each array element
+ * a single key by passing a pmix_value_t containing a
+ * data array of type PMIX_INFO, with each array element
  * containing its own pmix_info_t object */
 
 typedef struct pmix_value {
@@ -1290,9 +1283,6 @@ typedef struct pmix_value {
         void *ptr;
         pmix_alloc_directive_t adir;
         pmix_envar_t envar;
-        /**** DEPRECATED ****/
-        pmix_info_array_t *array;
-        /********************/
     } data;
 } pmix_value_t;
 /* allocate and initialize a specified number of value structs */
@@ -1412,11 +1402,11 @@ pmix_status_t pmix_setenv(const char *name, const char *value,
     (r) = pmix_setenv((a), (b), true, (c))
 
 /****    PMIX INFO STRUCT    ****/
-struct pmix_info_t {
+typedef struct pmix_info {
     char key[PMIX_MAX_KEYLEN+1];    // ensure room for the NULL terminator
     pmix_info_directives_t flags;   // bit-mask of flags
     pmix_value_t value;
-};
+} pmix_info_t;
 
 /* utility macros for working with pmix_info_t structs */
 #define PMIX_INFO_CREATE(m, n)                                  \
@@ -2443,24 +2433,6 @@ static inline void pmix_value_destruct(pmix_value_t * m) {
             free((m)->data.darray);
             (m)->data.darray = NULL;
         }
-    /**** DEPRECATED ****/
-    } else if (PMIX_INFO_ARRAY == (m)->type) {
-        pmix_info_t *_p = (pmix_info_t*)((m)->data.array->array);
-        for (_n=0; _n < (m)->data.array->size; _n++) {
-            if (PMIX_STRING == _p[_n].value.type) {
-                if (NULL != _p[_n].value.data.string) {
-                    free(_p[_n].value.data.string);
-                }
-            } else if (PMIX_BYTE_OBJECT == _p[_n].value.type) {
-                if (NULL != _p[_n].value.data.bo.bytes) {
-                    free(_p[_n].value.data.bo.bytes);
-                }
-            } else if (PMIX_PROC_INFO == _p[_n].value.type) {
-                PMIX_PROC_INFO_DESTRUCT(_p[_n].value.data.pinfo);
-            }
-        }
-        free(_p);
-    /********************/
     } else if (PMIX_ENVAR == (m)->type) {
         PMIX_ENVAR_DESTRUCT(&(m)->data.envar);
     }

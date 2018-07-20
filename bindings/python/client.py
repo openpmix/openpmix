@@ -3,16 +3,18 @@
 from pmix import *
 
 def main():
-    try:
-        foo = PMIxClient()
-    except:
-        print("FAILED TO CREATE CLIENT")
+    foo = PMIxClient()
+    print("Testing PMIx ", foo.get_version())
+    info = {PMIX_PROGRAMMING_MODEL: 'TEST', PMIX_MODEL_LIBRARY_NAME: "PMIX"}
+    my_result = foo.init(info)
+    print("Init result ", my_result)
+    if 0 != my_result:
+        print("FAILED TO INIT")
         exit(1)
-    print("MYVERS ", foo.get_version())
-    print("INITD ", foo.initialized())
-    dict = {'FOOBAR': 'VAR', 'BLAST': 7}
-    my_result = foo.init(dict)
-    print("MYRES ", my_result)
+    # try getting something
 
+    # finalize
+    info = {}
+    foo.finalize(info)
 if __name__ == '__main__':
     main()

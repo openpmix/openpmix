@@ -57,6 +57,8 @@ config/py-compile
 bindings/python/pmix.c
 bindings/python/*.so
 bindings/python/build/
+bindings/python/pmix_constants.pxd
+bindings/python/pmix_constants.pxi
 
 examples/alloc
 examples/client

@@ -2920,7 +2920,7 @@ static pmix_status_t dstore_del_nspace(const char* nspace)
                              __FILE__, __LINE__, __func__, session_tbl[session_tbl_idx].jobuid));
         size = pmix_value_array_get_size(_ns_track_array);
         if (size && (dstor_track_idx >= 0)) {
-            if((dstor_track_idx + 1) > size) {
+            if((dstor_track_idx + 1) > (int)size) {
                 rc = PMIX_ERR_VALUE_OUT_OF_BOUNDS;
                 PMIX_ERROR_LOG(rc);
                 goto exit;
