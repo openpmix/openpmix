@@ -1670,7 +1670,7 @@ static inline ssize_t _get_univ_size(pmix_common_dstore_ctx_t *ds_ctx, const cha
     return nprocs;
 }
 
-pmix_status_t pmix_common_dstor_cache_job_info(pmix_common_dstore_ctx_t *ds_ctx,
+PMIX_EXPORT pmix_status_t pmix_common_dstor_cache_job_info(pmix_common_dstore_ctx_t *ds_ctx,
                                 struct pmix_namespace_t *ns,
                                 pmix_info_t info[], size_t ninfo)
 {
@@ -1880,7 +1880,7 @@ err_exit:
     return NULL;
 }
 
-void pmix_common_dstor_finalize(pmix_common_dstore_ctx_t *ds_ctx)
+PMIX_EXPORT void pmix_common_dstor_finalize(pmix_common_dstore_ctx_t *ds_ctx)
 {
     struct stat st = {0};
     pmix_status_t rc = PMIX_SUCCESS;
@@ -1996,7 +1996,7 @@ exit:
     return rc;
 }
 
-pmix_status_t pmix_common_dstor_store(pmix_common_dstore_ctx_t *ds_ctx,
+PMIX_EXPORT pmix_status_t pmix_common_dstor_store(pmix_common_dstore_ctx_t *ds_ctx,
                                 const pmix_proc_t *proc,
                                 pmix_scope_t scope,
                                 pmix_kval_t *kv)
@@ -2380,7 +2380,7 @@ done:
     return rc;
 }
 
-pmix_status_t pmix_common_dstor_fetch(pmix_common_dstore_ctx_t *ds_ctx,
+PMIX_EXPORT pmix_status_t pmix_common_dstor_fetch(pmix_common_dstore_ctx_t *ds_ctx,
                                                     const pmix_proc_t *proc,
                                                     pmix_scope_t scope, bool copy,
                                                     const char *key,
@@ -2442,7 +2442,7 @@ pmix_status_t pmix_common_dstor_fetch(pmix_common_dstore_ctx_t *ds_ctx,
     return rc;
 }
 
-pmix_status_t pmix_common_dstor_setup_fork(pmix_common_dstore_ctx_t *ds_ctx, const char *base_path_env,
+PMIX_EXPORT pmix_status_t pmix_common_dstor_setup_fork(pmix_common_dstore_ctx_t *ds_ctx, const char *base_path_env,
                                            const pmix_proc_t *peer, char ***env)
 {
     pmix_status_t rc = PMIX_SUCCESS;
@@ -2478,7 +2478,7 @@ pmix_status_t pmix_common_dstor_setup_fork(pmix_common_dstore_ctx_t *ds_ctx, con
     return rc;
 }
 
-pmix_status_t pmix_common_dstor_add_nspace(pmix_common_dstore_ctx_t *ds_ctx,
+PMIX_EXPORT pmix_status_t pmix_common_dstor_add_nspace(pmix_common_dstore_ctx_t *ds_ctx,
                                 const char *nspace, pmix_info_t info[], size_t ninfo)
 {
     pmix_status_t rc;
@@ -2548,7 +2548,7 @@ pmix_status_t pmix_common_dstor_add_nspace(pmix_common_dstore_ctx_t *ds_ctx,
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix_common_dstor_del_nspace(pmix_common_dstore_ctx_t *ds_ctx, const char* nspace)
+PMIX_EXPORT pmix_status_t pmix_common_dstor_del_nspace(pmix_common_dstore_ctx_t *ds_ctx, const char* nspace)
 {
     pmix_status_t rc = PMIX_SUCCESS;
     size_t map_idx, size;
@@ -2608,7 +2608,7 @@ exit:
     return rc;
 }
 
-pmix_status_t pmix_common_dstor_assign_module(pmix_common_dstore_ctx_t *ds_ctx,
+PMIX_EXPORT pmix_status_t pmix_common_dstor_assign_module(pmix_common_dstore_ctx_t *ds_ctx,
                                 pmix_info_t *info, size_t ninfo,
                                 int *priority)
 {
@@ -2682,7 +2682,7 @@ static inline int _my_client(const char *nspace, pmix_rank_t rank)
  * host has received data from some other peer. It therefore
  * always contains data solely from remote procs, and we
  * shall store it accordingly */
-pmix_status_t pmix_common_dstor_store_modex(pmix_common_dstore_ctx_t *ds_ctx,
+PMIX_EXPORT pmix_status_t pmix_common_dstor_store_modex(pmix_common_dstore_ctx_t *ds_ctx,
                                 struct pmix_namespace_t *nspace,
                                 pmix_list_t *cbs,
                                 pmix_byte_object_t *bo)
@@ -2848,7 +2848,7 @@ exit:
     return rc;
 }
 
-pmix_status_t pmix_common_dstor_register_job_info(pmix_common_dstore_ctx_t *ds_ctx,
+PMIX_EXPORT pmix_status_t pmix_common_dstor_register_job_info(pmix_common_dstore_ctx_t *ds_ctx,
                                 struct pmix_peer_t *pr,
                                 pmix_buffer_t *reply)
 {
@@ -2916,7 +2916,7 @@ pmix_status_t pmix_common_dstor_register_job_info(pmix_common_dstore_ctx_t *ds_c
     return rc;
 }
 
-pmix_status_t pmix_common_dstor_store_job_info(pmix_common_dstore_ctx_t *ds_ctx,
+PMIX_EXPORT pmix_status_t pmix_common_dstor_store_job_info(pmix_common_dstore_ctx_t *ds_ctx,
                                 const char *nspace,
                                 pmix_buffer_t *job_data)
 {

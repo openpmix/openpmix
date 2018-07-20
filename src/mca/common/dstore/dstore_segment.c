@@ -43,7 +43,7 @@ static size_t _initial_segment_size;
 static size_t _meta_segment_size;
 static size_t _data_segment_size;
 
-int pmix_common_dstor_getpagesize(void)
+PMIX_EXPORT int pmix_common_dstor_getpagesize(void)
 {
 #if defined(_SC_PAGESIZE )
     return sysconf(_SC_PAGESIZE);
@@ -54,7 +54,7 @@ int pmix_common_dstor_getpagesize(void)
 #endif
 }
 
-void pmix_common_dstor_init_segment_info(size_t initial_segment_size,
+PMIX_EXPORT void pmix_common_dstor_init_segment_info(size_t initial_segment_size,
                                     size_t meta_segment_size,
                                     size_t data_segment_size)
 {
@@ -63,7 +63,7 @@ void pmix_common_dstor_init_segment_info(size_t initial_segment_size,
     _data_segment_size = data_segment_size;
 }
 
-pmix_dstore_seg_desc_t *pmix_common_dstor_create_new_lock_seg(const char *base_path, size_t size,
+PMIX_EXPORT pmix_dstore_seg_desc_t *pmix_common_dstor_create_new_lock_seg(const char *base_path, size_t size,
                                                  const char *name, uint32_t id, uid_t uid, bool setuid)
 {
     pmix_status_t rc;
@@ -111,7 +111,7 @@ pmix_dstore_seg_desc_t *pmix_common_dstor_create_new_lock_seg(const char *base_p
 
 }
 
-pmix_dstore_seg_desc_t *pmix_common_dstor_attach_new_lock_seg(const char *base_path,
+PMIX_EXPORT pmix_dstore_seg_desc_t *pmix_common_dstor_attach_new_lock_seg(const char *base_path,
                                                  size_t size, const char *name, uint32_t id)
 {
     pmix_status_t rc;
@@ -137,7 +137,7 @@ pmix_dstore_seg_desc_t *pmix_common_dstor_attach_new_lock_seg(const char *base_p
     return new_seg;
 }
 
-pmix_dstore_seg_desc_t *pmix_common_dstor_create_new_segment(pmix_dstore_segment_type type,
+PMIX_EXPORT pmix_dstore_seg_desc_t *pmix_common_dstor_create_new_segment(pmix_dstore_segment_type type,
                         const char *base_path, const char *name, uint32_t id,
                         uid_t uid, bool setuid)
 {
@@ -202,7 +202,7 @@ err_exit:
     return NULL;
 }
 
-pmix_dstore_seg_desc_t *pmix_common_dstor_attach_new_segment(pmix_dstore_segment_type type, const char *base_path,
+PMIX_EXPORT pmix_dstore_seg_desc_t *pmix_common_dstor_attach_new_segment(pmix_dstore_segment_type type, const char *base_path,
                                                  const char *name, uint32_t id)
 {
     pmix_status_t rc;
@@ -246,7 +246,7 @@ pmix_dstore_seg_desc_t *pmix_common_dstor_attach_new_segment(pmix_dstore_segment
     return new_seg;
 }
 
-pmix_dstore_seg_desc_t *pmix_common_dstor_extend_segment(pmix_dstore_seg_desc_t *segdesc, const char *base_path,
+PMIX_EXPORT pmix_dstore_seg_desc_t *pmix_common_dstor_extend_segment(pmix_dstore_seg_desc_t *segdesc, const char *base_path,
                                              const char *name, uid_t uid, bool setuid)
 {
     pmix_dstore_seg_desc_t *tmp, *seg;
@@ -266,7 +266,7 @@ pmix_dstore_seg_desc_t *pmix_common_dstor_extend_segment(pmix_dstore_seg_desc_t 
     return seg;
 }
 
-void pmix_common_dstor_delete_sm_desc(pmix_dstore_seg_desc_t *desc)
+PMIX_EXPORT void pmix_common_dstor_delete_sm_desc(pmix_dstore_seg_desc_t *desc)
 {
     pmix_dstore_seg_desc_t *tmp;
 
