@@ -80,15 +80,21 @@ static void ldes(lock_item_t *p) {
     uint32_t i;
 
     if(PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
-        unlink(p->lockfile);
+        if (p->lockfile) {
+            unlink(p->lockfile);
+        }
         for(i = 0; i < p->num_locks * 2; i++) {
             if (0 != pthread_mutex_destroy(&p->mutex[i])) {
                 PMIX_ERROR_LOG(PMIX_ERROR);
             }
         }
     }
-    free(p->lockfile);
-    pmix_common_dstor_delete_sm_desc(p->seg_desc);
+    if (p->lockfile) {
+        free(p->lockfile);
+    }
+    if (p->seg_desc) {
+        pmix_common_dstor_delete_sm_desc(p->seg_desc);
+    }
 }
 
 PMIX_CLASS_INSTANCE(lock_item_t,
@@ -219,14 +225,7 @@ pmix_status_t pmix_gds_ds21_lock_init(pmix_common_dstor_lock_ctx_t *ctx, const c
 
 error:
     if (NULL != lock_item) {
-        if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
-            if (lock_item->mutex) {
-                for(i = 0; i < lock_item->num_locks * 2; i++) {
-                    pthread_mutex_destroy(&lock_item->mutex[i]);
-                }
-            }
-        }
-        pmix_common_dstor_delete_sm_desc(lock_item->seg_desc);
+        pmix_list_remove_item(lock_tracker, &lock_item->super);
         PMIX_RELEASE(lock_item);
         lock_item = NULL;
     }
