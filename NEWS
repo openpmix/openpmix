@@ -21,6 +21,16 @@ example, a bug might be fixed in the master, and then moved to the
 current release as well as the "stable" bug fix release branch.
 
 
+3.0.1 -- TBD
+----------------------
+**** DEPRECATION WARNING: The pmix_info_array_t struct was
+**** initially marked for deprecation in the v2.x series.
+**** We failed to provide clear warning at that time. This
+**** therefore serves as warning of intended removal of
+**** pmix_info_array_t in the future v4 release series.
+- Add numeric version field to pmix_version.h
+
+
 3.0.0 -- 6 July 2018
 ------------------------------------
 **** NOTE: This release implements the complete PMIX v3.0 Standard
