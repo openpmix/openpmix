@@ -194,8 +194,7 @@ pmix_status_t pmix_gds_ds21_lock_init(pmix_common_dstor_lock_ctx_t *ctx, const c
         size = pmix_common_dstor_getpagesize();
         lock_item->seg_desc = pmix_common_dstor_attach_new_lock_seg(base_path, size, name, 0);
         if (NULL == lock_item->seg_desc) {
-            rc = PMIX_ERR_OUT_OF_RESOURCE;
-            PMIX_ERROR_LOG(rc);
+            rc = PMIX_ERR_NOT_FOUND;
             goto error;
         }
         seg_hdr = (segment_hdr_t*)lock_item->seg_desc->seg_info.seg_base_addr;
@@ -216,7 +215,6 @@ pmix_status_t pmix_gds_ds21_lock_init(pmix_common_dstor_lock_ctx_t *ctx, const c
 
         if (false == idx_found) {
             rc = PMIX_ERR_NOT_FOUND;
-            PMIX_ERROR_LOG(rc);
             goto error;
         }
     }
@@ -240,7 +238,6 @@ void pmix_ds21_lock_finalize(pmix_common_dstor_lock_ctx_t *lock_ctx)
     pmix_list_t *lock_tracker = &((lock_ctx_t*)*lock_ctx)->lock_traker;
 
     if (NULL == lock_tracker) {
-        PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
         return;
     }
 

@@ -18,6 +18,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/util/error.h"
 #include "src/mca/gds/base/base.h"
+#include "src/util/argv.h"
 
 #include "src/mca/common/dstore/dstore_common.h"
 #include "gds_ds21_base.h"
@@ -46,7 +47,32 @@ static void ds21_finalize(void)
 static pmix_status_t ds21_assign_module(pmix_info_t *info, size_t ninfo,
                                         int *priority)
 {
-    return pmix_common_dstor_assign_module(ds21_ctx, info, ninfo, priority);
+    size_t n, m;
+    char **options;
+
+    *priority = 20;
+    if (NULL != info) {
+        for (n=0; n < ninfo; n++) {
+            if (0 == strncmp(info[n].key, PMIX_GDS_MODULE, PMIX_MAX_KEYLEN)) {
+                options = pmix_argv_split(info[n].value.data.string, ',');
+                for (m=0; NULL != options[m]; m++) {
+                    if (0 == strcmp(options[m], "ds21")) {
+                        /* they specifically asked for us */
+                        *priority = 120;
+                        break;
+                    }
+                    if (0 == strcmp(options[m], "dstore")) {
+                        *priority = 60;
+                        break;
+                    }
+                }
+                pmix_argv_free(options);
+                break;
+            }
+        }
+    }
+
+    return PMIX_SUCCESS;
 }
 
 static pmix_status_t ds21_cache_job_info(struct pmix_nspace_t *ns,

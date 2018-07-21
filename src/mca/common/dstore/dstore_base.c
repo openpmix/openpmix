@@ -1854,9 +1854,8 @@ pmix_common_dstore_ctx_t *pmix_common_dstor_init(pmix_common_lock_callbacks_t *l
         goto err_exit;
     }
     /* lock init */
-    ds_ctx->lock_cbs->init(&_ESH_SESSION_lock(ds_ctx->session_array, tbl_idx), ds_ctx->base_path, nspace, 1, ds_ctx->jobuid, ds_ctx->setjobuid);
-    if (NULL == _ESH_SESSION_lock(ds_ctx->session_array, tbl_idx)) {
-        PMIX_ERROR_LOG(rc);
+    rc = ds_ctx->lock_cbs->init(&_ESH_SESSION_lock(ds_ctx->session_array, tbl_idx), ds_ctx->base_path, nspace, 1, ds_ctx->jobuid, ds_ctx->setjobuid);
+    if (rc != PMIX_SUCCESS) {
         goto err_exit;
     }
     ns_map = _esh_session_map(ds_ctx, nspace, 0, tbl_idx);
@@ -2604,58 +2603,6 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_del_nspace(pmix_common_dstore_ctx_t 
      }
 exit:
     return rc;
-}
-
-PMIX_EXPORT pmix_status_t pmix_common_dstor_assign_module(pmix_common_dstore_ctx_t *ds_ctx,
-                                pmix_info_t *info, size_t ninfo,
-                                int *priority)
-{
-    size_t n, m;
-    char **options;
-
-    *priority = 20;
-    if (NULL != info) {
-        for (n=0; n < ninfo; n++) {
-            if (0 == strncmp(info[n].key, PMIX_GDS_MODULE, PMIX_MAX_KEYLEN)) {
-                options = pmix_argv_split(info[n].value.data.string, ',');
-                for (m=0; NULL != options[m]; m++) {
-                    if (0 == strcmp(options[m], "ds12")) {
-                        /* they specifically asked for us */
-                        *priority = 100;
-                        break;
-                    }
-                    if (0 == strcmp(options[m], "ds21")) {
-                        /* they specifically asked for us */
-                        *priority = 120;
-                        break;
-                    }
-                    if ((0 == strcmp(options[m], "dstore")) &&
-                                    (0 == strcmp("ds21", ds_ctx->ds_name))) {
-                        /* they specifically asked for us */
-                        *priority = 60;
-                        break;
-                    }
-                    if (0 == strcmp(options[m], "dstore")) {
-                        /* they are asking for any dstore module - we
-                         * take an intermediate priority in case another
-                         * dstore is more modern than us */
-                        *priority = 50;
-                        break;
-                    }
-                }
-                pmix_argv_free(options);
-                break;
-            }
-        }
-    }
-
-#if 0
-    if PMIX_GDS_MODULE != "ds12"
-        *proirity = 0;
-    else PMIX_GDS_MODULE == "ds12" || !PMIX_GDS_MODULE
-        *priority = -1;
-#endif
-    return PMIX_SUCCESS;
 }
 
 static inline int _my_client(const char *nspace, pmix_rank_t rank)
