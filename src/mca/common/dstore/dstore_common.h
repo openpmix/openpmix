@@ -69,9 +69,6 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_fetch(pmix_common_dstore_ctx_t *ds_c
                                 const char *key,
                                 pmix_info_t info[], size_t ninfo,
                                 pmix_list_t *kvs);
-PMIX_EXPORT pmix_status_t pmix_common_dstor_assign_module(pmix_common_dstore_ctx_t *ds_ctx,
-                                pmix_info_t *info, size_t ninfo,
-                                int *priority);
 PMIX_EXPORT pmix_status_t pmix_common_dstor_store_modex(pmix_common_dstore_ctx_t *ds_ctx,
                                 struct pmix_nspace_t *nspace,
                                 pmix_list_t *cbs,
