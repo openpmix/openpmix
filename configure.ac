@@ -44,7 +44,7 @@ m4_include([config/autogen_found_items.m4])
 
 AC_INIT([pmix],
         [m4_normalize(esyscmd([config/pmix_get_version.sh VERSION --tarball]))],
-        [http://pmix.github.io/master], [pmix])
+        [https://github.com/pmix/pmix/issues], [pmix])
 AC_PREREQ(2.69)
 AC_CONFIG_AUX_DIR(./config)
 # Note that this directory must *exactly* match what was specified via
