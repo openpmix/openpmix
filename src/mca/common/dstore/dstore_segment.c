@@ -132,7 +132,6 @@ PMIX_EXPORT pmix_dstore_seg_desc_t *pmix_common_dstor_attach_new_lock_seg(const 
     if (PMIX_SUCCESS != rc) {
         free(new_seg);
         new_seg = NULL;
-        PMIX_ERROR_LOG(rc);
     }
     return new_seg;
 }
