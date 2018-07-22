@@ -601,6 +601,24 @@ int main(int argc, char **argv)
     DEBUG_DESTRUCT_LOCK(&globallock);
     PMIX_INFO_FREE(info, ninfo);
 
+#if 0
+    fprintf(stderr, "TEST NONDEFAULT NOTIFICATION\n");
+    /* verify that notifications don't recirculate */
+    ninfo = 1;
+    PMIX_INFO_CREATE(info, ninfo);
+     /* mark that it is not to go to any default handlers */
+    PMIX_INFO_LOAD(&info[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
+    PMIx_Notify_event(PMIX_ERR_DEBUGGER_RELEASE,
+                      &pmix_globals.myid, PMIX_RANGE_LOCAL,
+                      info, ninfo, NULL, NULL);
+    PMIX_INFO_FREE(info, ninfo);
+    /* wait a little in case we get notified */
+    for (ninfo=0; ninfo < 100000; ninfo++) {
+        struct timespec t = {0, 100};
+        nanosleep(&t, NULL);
+    }
+#endif
+
   done:
     /* deregister the event handlers */
     PMIx_Deregister_event_handler(0, NULL, NULL);
@@ -679,6 +697,12 @@ static void errhandler(size_t evhdlr_registration_id,
                        void *cbdata)
 {
     pmix_output(0, "SERVER: ERRHANDLER CALLED WITH STATUS %d", status);
+    /* we must NOT tell the event handler state machine that we
+     * are the last step as that will prevent it from notifying
+     * anyone else that might be listening for declarations */
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, NULL, 0, NULL, NULL, cbdata);
+    }
 }
 
 static void errhandler_reg_callbk (pmix_status_t status,
