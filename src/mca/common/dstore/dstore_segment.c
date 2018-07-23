@@ -95,7 +95,7 @@ PMIX_EXPORT pmix_dstore_seg_desc_t *pmix_common_dstor_create_new_lock_seg(const 
                     goto err_exit;
                 }
                 /* set the mode as required */
-                if (0 > chmod(file_name, S_IRUSR | S_IRGRP | S_IWGRP )) {
+                if (0 > chmod(file_name, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP )) {
                     PMIX_ERROR_LOG(rc);
                     goto err_exit;
                 }
