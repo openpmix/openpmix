@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2015-2018 Intel, Inc. All rights reserved.
- * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
  * Copyright (c) 2016-2017 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
@@ -2804,7 +2804,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_register_job_info(pmix_common_dstore
     char *msg;
     pmix_status_t rc;
     pmix_proc_t proc;
-    pmix_rank_info_t *rinfo;
+    pmix_rank_t rank;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "[%s:%d] gds:dstore:register_job_info for peer [%s:%d]",
@@ -2836,9 +2836,9 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_register_job_info(pmix_common_dstore
             return rc;
         }
 
-        PMIX_LIST_FOREACH(rinfo, &ns->ranks, pmix_rank_info_t) {
-            proc.rank = rinfo->pname.rank;
-            rc = _store_job_info(ds_ctx, ns_map, &proc);
+        for (rank=0; rank < ns->nprocs; rank++) {
+            proc.rank = rank;
+            rc = _store_job_info(&proc);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 return rc;
