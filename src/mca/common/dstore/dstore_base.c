@@ -2838,7 +2838,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_register_job_info(pmix_common_dstore
 
         for (rank=0; rank < ns->nprocs; rank++) {
             proc.rank = rank;
-            rc = _store_job_info(&proc);
+            rc = _store_job_info(ds_ctx, ns_map, &proc);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 return rc;
