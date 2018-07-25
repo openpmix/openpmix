@@ -24,19 +24,19 @@
 #
 
 headers = \
-        ds12_base.h \
-        ds12_lock.h
+        gds_ds12_base.h \
+        gds_ds12_lock.h
 
 sources = \
-        ds12_base.c \
-        ds12_lock.c \
-        gds_dstore_component.c
+        gds_ds12_base.c \
+        gds_ds12_lock.c \
+        gds_ds12_component.c
 
 if HAVE_DSTORE_PTHREAD_LOCK
-sources += ds12_lock_pthread.c
+sources += gds_ds12_lock_pthread.c
 else
 if HAVE_DSTORE_FCNTL_LOCK
-sources += ds12_lock_fcntl.c
+sources += gds_ds12_lock_fcntl.c
 endif
 endif
 

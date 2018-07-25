@@ -35,7 +35,7 @@
 #include "src/util/error.h"
 #include "src/util/output.h"
 
-#include "ds12_lock.h"
+#include "gds_ds12_lock.h"
 #include "src/mca/common/dstore/dstore_segment.h"
 
 #define _ESH_12_PTHREAD_LOCK(rwlock, func)                  \

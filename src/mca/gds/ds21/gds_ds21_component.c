@@ -12,8 +12,8 @@
  *                         All rights reserved.
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
- * Copyright (c) 2016-2017 Intel, Inc. All rights reserved.
- * Copyright (c) 2017      Mellanox Technologies, Inc.
+ * Copyright (c) 2016-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2017-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * $COPYRIGHT$
  *
@@ -31,9 +31,9 @@
 #include <src/include/pmix_config.h>
 #include "pmix_common.h"
 
-
+#include "src/include/pmix_globals.h"
 #include "src/mca/gds/gds.h"
-#include "ds12_base.h"
+#include "gds_ds21_base.h"
 
 static pmix_status_t component_open(void);
 static pmix_status_t component_close(void);
@@ -43,12 +43,12 @@ static pmix_status_t component_query(pmix_mca_base_module_t **module, int *prior
  * Instantiate the public struct with all of our public information
  * and pointers to our public functions in it
  */
-pmix_gds_base_component_t mca_gds_ds12_component = {
+pmix_gds_base_component_t mca_gds_ds21_component = {
     .base = {
         PMIX_GDS_BASE_VERSION_1_0_0,
 
         /* Component name and version */
-        .pmix_mca_component_name = "ds12",
+        .pmix_mca_component_name = "ds21",
         PMIX_MCA_BASE_MAKE_VERSION(component,
                                    PMIX_MAJOR_VERSION,
                                    PMIX_MINOR_VERSION,
@@ -74,8 +74,8 @@ static int component_open(void)
 
 static int component_query(pmix_mca_base_module_t **module, int *priority)
 {
-    *priority = 20;
-    *module = (pmix_mca_base_module_t *)&pmix_ds12_module;
+    *priority = 30;
+    *module = (pmix_mca_base_module_t *)&pmix_ds21_module;
     return PMIX_SUCCESS;
 }
 
