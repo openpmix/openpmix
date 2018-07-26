@@ -405,7 +405,9 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
                                        pmix_inventory_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_inventory_rollup_t *cd = (pmix_inventory_rollup_t*)cbdata;
+#if PMIX_HAVE_HWLOC
     hwloc_obj_t obj;
+#endif
     unsigned n;
     pmix_status_t rc;
     pmix_kval_t *kv;
