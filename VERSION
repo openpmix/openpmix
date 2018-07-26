@@ -78,3 +78,10 @@ date="Jul 14, 2017"
 libpmix_so_version=3:20:1
 libpmi_so_version=1:0:0
 libpmi2_so_version=1:0:0
+
+# "Common" components install standalone libraries that are run-time
+# # linked by one or more components.  So they need to be versioned as
+# # well.  Yuck; this somewhat breaks the
+# # components-don't-affect-the-build-system abstraction.
+#
+libmca_pmix_common_dstore_so_version=0:0:0
