@@ -26,8 +26,8 @@ sources = \
 
 lib_LTLIBRARIES =
 noinst_LTLIBRARIES =
-comp_inst = libmca_pmix_common_dstore.la
-comp_noinst = libmca_pmix_common_dstore_noinst.la
+comp_inst = libmca_common_dstore.la
+comp_noinst = libmca_common_dstore_noinst.la
 
 if MCA_BUILD_pmix_common_dstore_DSO
 lib_LTLIBRARIES += $(comp_inst)
@@ -35,9 +35,9 @@ else
 noinst_LTLIBRARIES += $(comp_noinst)
 endif
 
-libmca_pmix_common_dstore_la_SOURCES = $(headers) $(sources)
-libmca_pmix_common_dstore_la_LDFLAGS = -version-info $(libmca_pmix_common_dstore_so_version)
-libmca_pmix_common_dstore_noinst_la_SOURCES = $(headers) $(sources)
+libmca_common_dstore_la_SOURCES = $(headers) $(sources)
+libmca_common_dstore_la_LDFLAGS = -version-info $(libmca_common_dstore_so_version)
+libmca_common_dstore_noinst_la_SOURCES = $(headers) $(sources)
 
 # Conditionally install the header files
 
