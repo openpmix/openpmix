@@ -48,6 +48,7 @@ struct pmix_dstore_seg_desc_t {
 };
 
 PMIX_EXPORT int pmix_common_dstor_getpagesize(void);
+PMIX_EXPORT size_t pmix_common_dstor_getcacheblocksize(void);
 PMIX_EXPORT void pmix_common_dstor_init_segment_info(size_t initial_segment_size,
                         size_t meta_segment_size,
                         size_t data_segment_size);
