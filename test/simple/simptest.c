@@ -299,8 +299,6 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    fprintf(stderr, "Testing version %s\n", PMIx_Get_version());
-
     /* see if we were passed the number of procs to run or
      * the executable to use */
     for (n=1; n < argc; n++) {
@@ -340,6 +338,8 @@ int main(int argc, char **argv)
         fprintf(stderr, "Cross-version testing requires at least two clients\n");
         exit(1);
     }
+
+    fprintf(stderr, "Testing version %s\n", PMIx_Get_version());
 
     /* setup the server library and tell it to support tool connections */
     ninfo = 2;
@@ -1022,8 +1022,15 @@ static void wait_signal_callback(int fd, short event, void *arg)
         PMIX_LIST_FOREACH(t2, &children, wait_tracker_t) {
             if (pid == t2->pid) {
                 /* found it! */
-                if (0 != status && 0 == exit_code) {
-                    exit_code = status;
+                if (WIFEXITED(status)) {
+                    t2->exit_code = WEXITSTATUS(status);
+                } else {
+                    if (WIFSIGNALED(status)) {
+                        t2->exit_code = WTERMSIG(status) + 128;
+                    }
+                }
+                if (0 != t2->exit_code && 0 == exit_code) {
+                    exit_code = t2->exit_code;
                 }
                 --wakeup;
                 break;
