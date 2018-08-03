@@ -1,50 +1,12 @@
-from posix.types cimport pid_t, uid_t, gid_t
-from posix.time cimport timeval
-
-cdef extern from "time.h" nogil:
-    ctypedef int time_t
-    time_t time(time_t*)
-
-cdef extern from "<stdint.h>" nogil:
-
-    # 7.18.1 Integer types
-    # 7.18.1.1 Exact-width integer types
-    ctypedef   signed char  int8_t
-    ctypedef   signed short int16_t
-    ctypedef   signed int   int32_t
-    ctypedef   signed long  int64_t
-    ctypedef unsigned char  uint8_t
-    ctypedef unsigned short uint16_t
-    ctypedef unsigned int   uint32_t
-    ctypedef unsigned long long uint64_t
-    # 7.18.1.4 Integer types capable of holding object pointers
-    ctypedef ssize_t intptr_t
-    ctypedef  size_t uintptr_t
-
-    # 7.18.2 Limits of specified-width integer types
-    # 7.18.2.1 Limits of exact-width integer types
-    int8_t   INT8_MIN
-    int16_t  INT16_MIN
-    int32_t  INT32_MIN
-    int64_t  INT64_MIN
-    int8_t   INT8_MAX
-    int16_t  INT16_MAX
-    int32_t  INT32_MAX
-    int64_t  INT64_MAX
-    uint8_t  UINT8_MAX
-    uint16_t UINT16_MAX
-    uint32_t UINT32_MAX
-    uint64_t UINT64_MAX
-    # size_t
-    size_t SIZE_MAX
+from posix.types cimport *
+from posix.time cimport *
+from libc.stdint cimport *
 
 #file: cpmix.pxd
 
 cdef extern from "pmix_common.h":
-    cdef int PMIX_MAX_KEYLEN "PMIX_MAX_KEYLEN"
-    cdef int PMIX_MAX_NSLEN "PMIX_MAX_NSLEN"
-    const int CPMIX_MAX_NSLEN = 256
-    const int CPMIX_MAX_KEYLEN = 512
+    cdef int _PMIX_MAX_KEYLEN "PMIX_MAX_KEYLEN"
+    cdef int _PMIX_MAX_NSLEN "PMIX_MAX_NSLEN"
 
     ctypedef unsigned int pmix_rank_t
 
@@ -54,220 +16,220 @@ cdef extern from "pmix_common.h":
     cdef pmix_rank_t PMIX_RANK_INVALID "PMIX_RANK_INVALID"
 
     # Attributes
-    cdef const char* PMIX_EVENT_BASE "PMIX_EVENT_BASE"
-    cdef const char* PMIX_SERVER_TOOL_SUPPORT "PMIX_SERVER_TOOL_SUPPORT"
-    cdef const char* PMIX_SERVER_REMOTE_CONNECTIONS "PMIX_SERVER_REMOTE_CONNECTIONS"
-    cdef const char* PMIX_SERVER_SYSTEM_SUPPORT "PMIX_SERVER_SYSTEM_SUPPORT"
-    cdef const char* PMIX_SERVER_TMPDIR "PMIX_SERVER_TMPDIR"
-    cdef const char* PMIX_SYSTEM_TMPDIR "PMIX_SYSTEM_TMPDIR"
-    cdef const char* PMIX_SERVER_ENABLE_MONITORING "PMIX_SERVER_ENABLE_MONITORING"
-    cdef const char* PMIX_SERVER_NSPACE "PMIX_SERVER_NSPACE"
-    cdef const char* PMIX_SERVER_RANK "PMIX_SERVER_RANK"
-    cdef const char* PMIX_SERVER_GATEWAY "PMIX_SERVER_GATEWAY"
+    cdef const char* PMIX_EVENT_BASE_DEFINE "PMIX_EVENT_BASE"
+    cdef const char* PMIX_SERVER_TOOL_SUPPORT_DEFINE "PMIX_SERVER_TOOL_SUPPORT"
+    cdef const char* PMIX_SERVER_REMOTE_CONNECTIONS_DEFINE "PMIX_SERVER_REMOTE_CONNECTIONS"
+    cdef const char* PMIX_SERVER_SYSTEM_SUPPORT_DEFINE "PMIX_SERVER_SYSTEM_SUPPORT"
+    cdef const char* PMIX_SERVER_TMPDIR_DEFINE "PMIX_SERVER_TMPDIR"
+    cdef const char* PMIX_SYSTEM_TMPDIR_DEFINE "PMIX_SYSTEM_TMPDIR"
+    cdef const char* PMIX_SERVER_ENABLE_MONITORING_DEFINE "PMIX_SERVER_ENABLE_MONITORING"
+    cdef const char* PMIX_SERVER_NSPACE_DEFINE "PMIX_SERVER_NSPACE"
+    cdef const char* PMIX_SERVER_RANK_DEFINE "PMIX_SERVER_RANK"
+    cdef const char* PMIX_SERVER_GATEWAY_DEFINE "PMIX_SERVER_GATEWAY"
 
-    cdef const char* PMIX_TOOL_NSPACE "PMIX_TOOL_NSPACE"
-    cdef const char* PMIX_TOOL_RANK "PMIX_TOOL_RANK"
-    cdef const char* PMIX_SERVER_PIDINFO "PMIX_SERVER_PIDINFO"
-    cdef const char* PMIX_CONNECT_TO_SYSTEM "PMIX_CONNECT_TO_SYSTEM"
-    cdef const char* PMIX_CONNECT_SYSTEM_FIRST "PMIX_CONNECT_SYSTEM_FIRST"
-    cdef const char* PMIX_SERVER_URI "PMIX_SERVER_URI"
-    cdef const char* PMIX_SERVER_HOSTNAME "PMIX_SERVER_HOSTNAME"
-    cdef const char* PMIX_CONNECT_MAX_RETRIES "PMIX_CONNECT_MAX_RETRIES"
-    cdef const char* PMIX_CONNECT_RETRY_DELAY "PMIX_CONNECT_RETRY_DELAY"
-    cdef const char* PMIX_TOOL_DO_NOT_CONNECT "PMIX_TOOL_DO_NOT_CONNECT"
-    cdef const char* PMIX_RECONNECT_SERVER "PMIX_RECONNECT_SERVER"
-    cdef const char* PMIX_LAUNCHER "PMIX_LAUNCHER"
+    cdef const char* PMIX_TOOL_NSPACE_DEFINE "PMIX_TOOL_NSPACE"
+    cdef const char* PMIX_TOOL_RANK_DEFINE "PMIX_TOOL_RANK"
+    cdef const char* PMIX_SERVER_PIDINFO_DEFINE "PMIX_SERVER_PIDINFO"
+    cdef const char* PMIX_CONNECT_TO_SYSTEM_DEFINE "PMIX_CONNECT_TO_SYSTEM"
+    cdef const char* PMIX_CONNECT_SYSTEM_FIRST_DEFINE "PMIX_CONNECT_SYSTEM_FIRST"
+    cdef const char* PMIX_SERVER_URI_DEFINE "PMIX_SERVER_URI"
+    cdef const char* PMIX_SERVER_HOSTNAME_DEFINE "PMIX_SERVER_HOSTNAME"
+    cdef const char* PMIX_CONNECT_MAX_RETRIES_DEFINE "PMIX_CONNECT_MAX_RETRIES"
+    cdef const char* PMIX_CONNECT_RETRY_DELAY_DEFINE "PMIX_CONNECT_RETRY_DELAY"
+    cdef const char* PMIX_TOOL_DO_NOT_CONNECT_DEFINE "PMIX_TOOL_DO_NOT_CONNECT"
+    cdef const char* PMIX_RECONNECT_SERVER_DEFINE "PMIX_RECONNECT_SERVER"
+    cdef const char* PMIX_LAUNCHER_DEFINE "PMIX_LAUNCHER"
 
-    cdef const char* PMIX_USERID "PMIX_USERID"
-    cdef const char* PMIX_GRPID "PMIX_GRPID"
-    cdef const char* PMIX_DSTPATH "PMIX_DSTPATH"
-    cdef const char* PMIX_VERSION_INFO "PMIX_VERSION_INFO"
-    cdef const char* PMIX_REQUESTOR_IS_TOOL "PMIX_REQUESTOR_IS_TOOL"
-    cdef const char* PMIX_REQUESTOR_IS_CLIENT "PMIX_REQUESTOR_IS_CLIENT"
+    cdef const char* PMIX_USERID_DEFINE "PMIX_USERID"
+    cdef const char* PMIX_GRPID_DEFINE "PMIX_GRPID"
+    cdef const char* PMIX_DSTPATH_DEFINE "PMIX_DSTPATH"
+    cdef const char* PMIX_VERSION_INFO_DEFINE "PMIX_VERSION_INFO"
+    cdef const char* PMIX_REQUESTOR_IS_TOOL_DEFINE "PMIX_REQUESTOR_IS_TOOL"
+    cdef const char* PMIX_REQUESTOR_IS_CLIENT_DEFINE "PMIX_REQUESTOR_IS_CLIENT"
 
-    cdef const char* PMIX_PROGRAMMING_MODEL "PMIX_PROGRAMMING_MODEL"
-    cdef const char* PMIX_MODEL_LIBRARY_NAME "PMIX_MODEL_LIBRARY_NAME"
-    cdef const char* PMIX_MODEL_LIBRARY_VERSION "PMIX_MODEL_LIBRARY_VERSION"
-    cdef const char* PMIX_THREADING_MODEL "PMIX_THREADING_MODEL"
-    cdef const char* PMIX_MODEL_NUM_THREADS "PMIX_MODEL_NUM_THREADS"
-    cdef const char* PMIX_MODEL_NUM_CPUS "PMIX_MODEL_NUM_CPUS"
-    cdef const char* PMIX_MODEL_CPU_TYPE "PMIX_MODEL_CPU_TYPE"
-    cdef const char* PMIX_MODEL_PHASE_NAME "PMIX_MODEL_PHASE_NAME"
-    cdef const char* PMIX_MODEL_PHASE_TYPE "PMIX_MODEL_PHASE_TYPE"
-    cdef const char* PMIX_MODEL_AFFINITY_POLICY "PMIX_MODEL_AFFINITY_POLICY"
+    cdef const char* PMIX_PROGRAMMING_MODEL_DEFINE "PMIX_PROGRAMMING_MODEL"
+    cdef const char* PMIX_MODEL_LIBRARY_NAME_DEFINE "PMIX_MODEL_LIBRARY_NAME"
+    cdef const char* PMIX_MODEL_LIBRARY_VERSION_DEFINE "PMIX_MODEL_LIBRARY_VERSION"
+    cdef const char* PMIX_THREADING_MODEL_DEFINE "PMIX_THREADING_MODEL"
+    cdef const char* PMIX_MODEL_NUM_THREADS_DEFINE "PMIX_MODEL_NUM_THREADS"
+    cdef const char* PMIX_MODEL_NUM_CPUS_DEFINE "PMIX_MODEL_NUM_CPUS"
+    cdef const char* PMIX_MODEL_CPU_TYPE_DEFINE "PMIX_MODEL_CPU_TYPE"
+    cdef const char* PMIX_MODEL_PHASE_NAME_DEFINE "PMIX_MODEL_PHASE_NAME"
+    cdef const char* PMIX_MODEL_PHASE_TYPE_DEFINE "PMIX_MODEL_PHASE_TYPE"
+    cdef const char* PMIX_MODEL_AFFINITY_POLICY_DEFINE "PMIX_MODEL_AFFINITY_POLICY"
 
-    cdef const char* PMIX_USOCK_DISABLE "PMIX_USOCK_DISABLE"
-    cdef const char* PMIX_SOCKET_MODE "PMIX_SOCKET_MODE"
-    cdef const char* PMIX_SINGLE_LISTENER "PMIX_SINGLE_LISTENER"
+    cdef const char* PMIX_USOCK_DISABLE_DEFINE "PMIX_USOCK_DISABLE"
+    cdef const char* PMIX_SOCKET_MODE_DEFINE "PMIX_SOCKET_MODE"
+    cdef const char* PMIX_SINGLE_LISTENER_DEFINE "PMIX_SINGLE_LISTENER"
 
-    cdef const char* PMIX_TCP_REPORT_URI "PMIX_TCP_REPORT_URI"
-    cdef const char* PMIX_TCP_URI "PMIX_TCP_URI"
-    cdef const char* PMIX_TCP_IF_INCLUDE "PMIX_TCP_IF_INCLUDE"
-    cdef const char* PMIX_TCP_IF_EXCLUDE "PMIX_TCP_IF_EXCLUDE"
-    cdef const char* PMIX_TCP_IPV4_PORT "PMIX_TCP_IPV4_PORT"
-    cdef const char* PMIX_TCP_IPV6_PORT "PMIX_TCP_IPV6_PORT"
-    cdef const char* PMIX_TCP_DISABLE_IPV4 "PMIX_TCP_DISABLE_IPV4"
-    cdef const char* PMIX_TCP_DISABLE_IPV6 "PMIX_TCP_DISABLE_IPV6"
+    cdef const char* PMIX_TCP_REPORT_URI_DEFINE "PMIX_TCP_REPORT_URI"
+    cdef const char* PMIX_TCP_URI_DEFINE "PMIX_TCP_URI"
+    cdef const char* PMIX_TCP_IF_INCLUDE_DEFINE "PMIX_TCP_IF_INCLUDE"
+    cdef const char* PMIX_TCP_IF_EXCLUDE_DEFINE "PMIX_TCP_IF_EXCLUDE"
+    cdef const char* PMIX_TCP_IPV4_PORT_DEFINE "PMIX_TCP_IPV4_PORT"
+    cdef const char* PMIX_TCP_IPV6_PORT_DEFINE "PMIX_TCP_IPV6_PORT"
+    cdef const char* PMIX_TCP_DISABLE_IPV4_DEFINE "PMIX_TCP_DISABLE_IPV4"
+    cdef const char* PMIX_TCP_DISABLE_IPV6_DEFINE "PMIX_TCP_DISABLE_IPV6"
 
-    cdef const char* PMIX_GDS_MODULE "PMIX_GDS_MODULE"
+    cdef const char* PMIX_GDS_MODULE_DEFINE "PMIX_GDS_MODULE"
 
-    cdef const char* PMIX_CPUSET "PMIX_CPUSET"
-    cdef const char* PMIX_CREDENTIAL "PMIX_CREDENTIAL"
-    cdef const char* PMIX_SPAWNED "PMIX_SPAWNED"
-    cdef const char* PMIX_ARCH "PMIX_ARCH"
+    cdef const char* PMIX_CPUSET_DEFINE "PMIX_CPUSET"
+    cdef const char* PMIX_CREDENTIAL_DEFINE "PMIX_CREDENTIAL"
+    cdef const char* PMIX_SPAWNED_DEFINE "PMIX_SPAWNED"
+    cdef const char* PMIX_ARCH_DEFINE "PMIX_ARCH"
 
-    cdef const char* PMIX_TMPDIR "PMIX_TMPDIR"
-    cdef const char* PMIX_NSDIR "PMIX_NSDIR"
-    cdef const char* PMIX_PROCDIR "PMIX_PROCDIR"
-    cdef const char* PMIX_TDIR_RMCLEAN "PMIX_TDIR_RMCLEAN"
+    cdef const char* PMIX_TMPDIR_DEFINE "PMIX_TMPDIR"
+    cdef const char* PMIX_NSDIR_DEFINE "PMIX_NSDIR"
+    cdef const char* PMIX_PROCDIR_DEFINE "PMIX_PROCDIR"
+    cdef const char* PMIX_TDIR_RMCLEAN_DEFINE "PMIX_TDIR_RMCLEAN"
 
-    cdef const char* PMIX_CLUSTER_ID "PMIX_CLUSTER_ID"
-    cdef const char* PMIX_PROCID "PMIX_PROCID"
-    cdef const char* PMIX_NSPACE "PMIX_NSPACE"
-    cdef const char* PMIX_JOBID "PMIX_JOBID"
-    cdef const char* PMIX_APPNUM "PMIX_APPNUM"
-    cdef const char* PMIX_RANK "PMIX_RANK"
-    cdef const char* PMIX_GLOBAL_RANK "PMIX_GLOBAL_RANK"
-    cdef const char* PMIX_APP_RANK "PMIX_APP_RANK"
-    cdef const char* PMIX_NPROC_OFFSET "PMIX_NPROC_OFFSET"
-    cdef const char* PMIX_LOCAL_RANK "PMIX_LOCAL_RANK"
-    cdef const char* PMIX_NODE_RANK "PMIX_NODE_RANK"
-    cdef const char* PMIX_LOCALLDR "PMIX_LOCALLDR"
-    cdef const char* PMIX_APPLDR "PMIX_APPLDR"
-    cdef const char* PMIX_PROC_PID "PMIX_PROC_PID"
-    cdef const char* PMIX_SESSION_ID "PMIX_SESSION_ID"
-    cdef const char* PMIX_NODE_LIST "PMIX_NODE_LIST"
-    cdef const char* PMIX_ALLOCATED_NODELIST "PMIX_ALLOCATED_NODELIST"
-    cdef const char* PMIX_HOSTNAME "PMIX_HOSTNAME"
-    cdef const char* PMIX_NODEID "PMIX_NODEID"
-    cdef const char* PMIX_LOCAL_PEERS "PMIX_LOCAL_PEERS"
-    cdef const char* PMIX_LOCAL_PROCS "PMIX_LOCAL_PROCS"
-    cdef const char* PMIX_LOCAL_CPUSETS "PMIX_LOCAL_CPUSETS"
-    cdef const char* PMIX_PROC_URI "PMIX_PROC_URI"
-    cdef const char* PMIX_LOCALITY "PMIX_LOCALITY"
-    cdef const char* PMIX_PARENT_ID "PMIX_PARENT_ID"
-    cdef const char* PMIX_EXIT_CODE "PMIX_EXIT_CODE"
+    cdef const char* PMIX_CLUSTER_ID_DEFINE "PMIX_CLUSTER_ID"
+    cdef const char* PMIX_PROCID_DEFINE "PMIX_PROCID"
+    cdef const char* PMIX_NSPACE_DEFINE "PMIX_NSPACE"
+    cdef const char* PMIX_JOBID_DEFINE "PMIX_JOBID"
+    cdef const char* PMIX_APPNUM_DEFINE "PMIX_APPNUM"
+    cdef const char* PMIX_RANK_DEFINE "PMIX_RANK"
+    cdef const char* PMIX_GLOBAL_RANK_DEFINE "PMIX_GLOBAL_RANK"
+    cdef const char* PMIX_APP_RANK_DEFINE "PMIX_APP_RANK"
+    cdef const char* PMIX_NPROC_OFFSET_DEFINE "PMIX_NPROC_OFFSET"
+    cdef const char* PMIX_LOCAL_RANK_DEFINE "PMIX_LOCAL_RANK"
+    cdef const char* PMIX_NODE_RANK_DEFINE "PMIX_NODE_RANK"
+    cdef const char* PMIX_LOCALLDR_DEFINE "PMIX_LOCALLDR"
+    cdef const char* PMIX_APPLDR_DEFINE "PMIX_APPLDR"
+    cdef const char* PMIX_PROC_PID_DEFINE "PMIX_PROC_PID"
+    cdef const char* PMIX_SESSION_ID_DEFINE "PMIX_SESSION_ID"
+    cdef const char* PMIX_NODE_LIST_DEFINE "PMIX_NODE_LIST"
+    cdef const char* PMIX_ALLOCATED_NODELIST_DEFINE "PMIX_ALLOCATED_NODELIST"
+    cdef const char* PMIX_HOSTNAME_DEFINE "PMIX_HOSTNAME"
+    cdef const char* PMIX_NODEID_DEFINE "PMIX_NODEID"
+    cdef const char* PMIX_LOCAL_PEERS_DEFINE "PMIX_LOCAL_PEERS"
+    cdef const char* PMIX_LOCAL_PROCS_DEFINE "PMIX_LOCAL_PROCS"
+    cdef const char* PMIX_LOCAL_CPUSETS_DEFINE "PMIX_LOCAL_CPUSETS"
+    cdef const char* PMIX_PROC_URI_DEFINE "PMIX_PROC_URI"
+    cdef const char* PMIX_LOCALITY_DEFINE "PMIX_LOCALITY"
+    cdef const char* PMIX_PARENT_ID_DEFINE "PMIX_PARENT_ID"
+    cdef const char* PMIX_EXIT_CODE_DEFINE "PMIX_EXIT_CODE"
 
-    cdef const char* PMIX_UNIV_SIZE "PMIX_UNIV_SIZE"
-    cdef const char* PMIX_JOB_SIZE "PMIX_JOB_SIZE"
-    cdef const char* PMIX_JOB_NUM_APPS "PMIX_JOB_NUM_APPS"
-    cdef const char* PMIX_APP_SIZE "PMIX_APP_SIZE"
-    cdef const char* PMIX_LOCAL_SIZE "PMIX_LOCAL_SIZE"
-    cdef const char* PMIX_NODE_SIZE "PMIX_NODE_SIZE"
-    cdef const char* PMIX_MAX_PROCS "PMIX_MAX_PROCS"
-    cdef const char* PMIX_NUM_NODES "PMIX_NUM_NODES"
+    cdef const char* PMIX_UNIV_SIZE_DEFINE "PMIX_UNIV_SIZE"
+    cdef const char* PMIX_JOB_SIZE_DEFINE "PMIX_JOB_SIZE"
+    cdef const char* PMIX_JOB_NUM_APPS_DEFINE "PMIX_JOB_NUM_APPS"
+    cdef const char* PMIX_APP_SIZE_DEFINE "PMIX_APP_SIZE"
+    cdef const char* PMIX_LOCAL_SIZE_DEFINE "PMIX_LOCAL_SIZE"
+    cdef const char* PMIX_NODE_SIZE_DEFINE "PMIX_NODE_SIZE"
+    cdef const char* PMIX_MAX_PROCS_DEFINE "PMIX_MAX_PROCS"
+    cdef const char* PMIX_NUM_NODES_DEFINE "PMIX_NUM_NODES"
 
-    cdef const char* PMIX_AVAIL_PHYS_MEMORY "PMIX_AVAIL_PHYS_MEMORY"
-    cdef const char* PMIX_DAEMON_MEMORY "PMIX_DAEMON_MEMORY"
-    cdef const char* PMIX_CLIENT_AVG_MEMORY "PMIX_CLIENT_AVG_MEMORY"
+    cdef const char* PMIX_AVAIL_PHYS_MEMORY_DEFINE "PMIX_AVAIL_PHYS_MEMORY"
+    cdef const char* PMIX_DAEMON_MEMORY_DEFINE "PMIX_DAEMON_MEMORY"
+    cdef const char* PMIX_CLIENT_AVG_MEMORY_DEFINE "PMIX_CLIENT_AVG_MEMORY"
 
-    cdef const char* PMIX_NET_TOPO "PMIX_NET_TOPO"
-    cdef const char* PMIX_LOCAL_TOPO "PMIX_LOCAL_TOPO"
-    cdef const char* PMIX_TOPOLOGY "PMIX_TOPOLOGY"
-    cdef const char* PMIX_TOPOLOGY_XML "PMIX_TOPOLOGY_XML"
-    cdef const char* PMIX_TOPOLOGY_FILE "PMIX_TOPOLOGY_FILE"
-    cdef const char* PMIX_TOPOLOGY_SIGNATURE "PMIX_TOPOLOGY_SIGNATURE"
-    cdef const char* PMIX_LOCALITY_STRING "PMIX_LOCALITY_STRING"
-    cdef const char* PMIX_HWLOC_SHMEM_ADDR "PMIX_HWLOC_SHMEM_ADDR"
-    cdef const char* PMIX_HWLOC_SHMEM_SIZE "PMIX_HWLOC_SHMEM_SIZE"
-    cdef const char* PMIX_HWLOC_SHMEM_FILE "PMIX_HWLOC_SHMEM_FILE"
-    cdef const char* PMIX_HWLOC_XML_V1 "PMIX_HWLOC_XML_V1"
-    cdef const char* PMIX_HWLOC_XML_V2 "PMIX_HWLOC_XML_V2"
-    cdef const char* PMIX_HWLOC_SHARE_TOPO "PMIX_HWLOC_SHARE_TOPO"
-    cdef const char* PMIX_HWLOC_HOLE_KIND "PMIX_HWLOC_HOLE_KIND"
+    cdef const char* PMIX_NET_TOPO_DEFINE "PMIX_NET_TOPO"
+    cdef const char* PMIX_LOCAL_TOPO_DEFINE "PMIX_LOCAL_TOPO"
+    cdef const char* PMIX_TOPOLOGY_DEFINE "PMIX_TOPOLOGY"
+    cdef const char* PMIX_TOPOLOGY_XML_DEFINE "PMIX_TOPOLOGY_XML"
+    cdef const char* PMIX_TOPOLOGY_FILE_DEFINE "PMIX_TOPOLOGY_FILE"
+    cdef const char* PMIX_TOPOLOGY_SIGNATURE_DEFINE "PMIX_TOPOLOGY_SIGNATURE"
+    cdef const char* PMIX_LOCALITY_STRING_DEFINE "PMIX_LOCALITY_STRING"
+    cdef const char* PMIX_HWLOC_SHMEM_ADDR_DEFINE "PMIX_HWLOC_SHMEM_ADDR"
+    cdef const char* PMIX_HWLOC_SHMEM_SIZE_DEFINE "PMIX_HWLOC_SHMEM_SIZE"
+    cdef const char* PMIX_HWLOC_SHMEM_FILE_DEFINE "PMIX_HWLOC_SHMEM_FILE"
+    cdef const char* PMIX_HWLOC_XML_V1_DEFINE "PMIX_HWLOC_XML_V1"
+    cdef const char* PMIX_HWLOC_XML_V2_DEFINE "PMIX_HWLOC_XML_V2"
+    cdef const char* PMIX_HWLOC_SHARE_TOPO_DEFINE "PMIX_HWLOC_SHARE_TOPO"
+    cdef const char* PMIX_HWLOC_HOLE_KIND_DEFINE "PMIX_HWLOC_HOLE_KIND"
 
-    cdef const char* PMIX_COLLECT_DATA "PMIX_COLLECT_DATA"
-    cdef const char* PMIX_TIMEOUT "PMIX_TIMEOUT"
-    cdef const char* PMIX_IMMEDIATE "PMIX_IMMEDIATE"
-    cdef const char* PMIX_WAIT "PMIX_WAIT"
-    cdef const char* PMIX_COLLECTIVE_ALGO "PMIX_COLLECTIVE_ALGO"
-    cdef const char* PMIX_COLLECTIVE_ALGO_REQD "PMIX_COLLECTIVE_ALGO_REQD"
-    cdef const char* PMIX_NOTIFY_COMPLETION "PMIX_NOTIFY_COMPLETION"
-    cdef const char* PMIX_RANGE "PMIX_RANGE"
-    cdef const char* PMIX_PERSISTENCE "PMIX_PERSISTENCE"
-    cdef const char* PMIX_DATA_SCOPE "PMIX_DATA_SCOPE"
-    cdef const char* PMIX_OPTIONAL "PMIX_OPTIONAL"
-    cdef const char* PMIX_EMBED_BARRIER "PMIX_EMBED_BARRIER"
-    cdef const char* PMIX_JOB_TERM_STATUS "PMIX_JOB_TERM_STATUS"
-    cdef const char* PMIX_PROC_STATE_STATUS "PMIX_PROC_STATE_STATUS"
+    cdef const char* PMIX_COLLECT_DATA_DEFINE "PMIX_COLLECT_DATA"
+    cdef const char* PMIX_TIMEOUT_DEFINE "PMIX_TIMEOUT"
+    cdef const char* PMIX_IMMEDIATE_DEFINE "PMIX_IMMEDIATE"
+    cdef const char* PMIX_WAIT_DEFINE "PMIX_WAIT"
+    cdef const char* PMIX_COLLECTIVE_ALGO_DEFINE "PMIX_COLLECTIVE_ALGO"
+    cdef const char* PMIX_COLLECTIVE_ALGO_REQD_DEFINE "PMIX_COLLECTIVE_ALGO_REQD"
+    cdef const char* PMIX_NOTIFY_COMPLETION_DEFINE "PMIX_NOTIFY_COMPLETION"
+    cdef const char* PMIX_RANGE_DEFINE "PMIX_RANGE"
+    cdef const char* PMIX_PERSISTENCE_DEFINE "PMIX_PERSISTENCE"
+    cdef const char* PMIX_DATA_SCOPE_DEFINE "PMIX_DATA_SCOPE"
+    cdef const char* PMIX_OPTIONAL_DEFINE "PMIX_OPTIONAL"
+    cdef const char* PMIX_EMBED_BARRIER_DEFINE "PMIX_EMBED_BARRIER"
+    cdef const char* PMIX_JOB_TERM_STATUS_DEFINE "PMIX_JOB_TERM_STATUS"
+    cdef const char* PMIX_PROC_STATE_STATUS_DEFINE "PMIX_PROC_STATE_STATUS"
 
     # internal attributes
-    cdef const char* PMIX_REGISTER_NODATA "PMIX_REGISTER_NODATA"
-    cdef const char* PMIX_PROC_DATA "PMIX_PROC_DATA"
-    cdef const char* PMIX_NODE_MAP "PMIX_NODE_MAP"
-    cdef const char* PMIX_PROC_MAP "PMIX_PROC_MAP"
-    cdef const char* PMIX_ANL_MAP "PMIX_ANL_MAP"
-    cdef const char* PMIX_APP_MAP_TYPE "PMIX_APP_MAP_TYPE"
-    cdef const char* PMIX_APP_MAP_REGEX "PMIX_APP_MAP_REGEX"
-    cdef const char* PMIX_PROC_BLOB "PMIX_PROC_BLOB"
-    cdef const char* PMIX_MAP_BLOB "PMIX_MAP_BLOB"
+    cdef const char* PMIX_REGISTER_NODATA_DEFINE "PMIX_REGISTER_NODATA"
+    cdef const char* PMIX_PROC_DATA_DEFINE "PMIX_PROC_DATA"
+    cdef const char* PMIX_NODE_MAP_DEFINE "PMIX_NODE_MAP"
+    cdef const char* PMIX_PROC_MAP_DEFINE "PMIX_PROC_MAP"
+    cdef const char* PMIX_ANL_MAP_DEFINE "PMIX_ANL_MAP"
+    cdef const char* PMIX_APP_MAP_TYPE_DEFINE "PMIX_APP_MAP_TYPE"
+    cdef const char* PMIX_APP_MAP_REGEX_DEFINE "PMIX_APP_MAP_REGEX"
+    cdef const char* PMIX_PROC_BLOB_DEFINE "PMIX_PROC_BLOB"
+    cdef const char* PMIX_MAP_BLOB_DEFINE "PMIX_MAP_BLOB"
 
     # event handler registration and notification
-    cdef const char* PMIX_EVENT_HDLR_NAME "PMIX_EVENT_HDLR_NAME"
-    cdef const char* PMIX_EVENT_JOB_LEVEL "PMIX_EVENT_JOB_LEVEL"
-    cdef const char* PMIX_EVENT_ENVIRO_LEVEL "PMIX_EVENT_ENVIRO_LEVEL"
-    cdef const char* PMIX_EVENT_HDLR_FIRST "PMIX_EVENT_HDLR_FIRST"
-    cdef const char* PMIX_EVENT_HDLR_LAST "PMIX_EVENT_HDLR_LAST"
-    cdef const char* PMIX_EVENT_HDLR_FIRST_IN_CATEGORY "PMIX_EVENT_HDLR_FIRST_IN_CATEGORY"
-    cdef const char* PMIX_EVENT_HDLR_LAST_IN_CATEGORY "PMIX_EVENT_HDLR_LAST_IN_CATEGORY"
-    cdef const char* PMIX_EVENT_HDLR_BEFORE "PMIX_EVENT_HDLR_BEFORE"
-    cdef const char* PMIX_EVENT_HDLR_AFTER "PMIX_EVENT_HDLR_AFTER"
-    cdef const char* PMIX_EVENT_HDLR_PREPEND "PMIX_EVENT_HDLR_PREPEND"
-    cdef const char* PMIX_EVENT_HDLR_APPEND "PMIX_EVENT_HDLR_APPEND"
-    cdef const char* PMIX_EVENT_CUSTOM_RANGE "PMIX_EVENT_CUSTOM_RANGE"
-    cdef const char* PMIX_EVENT_AFFECTED_PROC "PMIX_EVENT_AFFECTED_PROC"
-    cdef const char* PMIX_EVENT_AFFECTED_PROCS "PMIX_EVENT_AFFECTED_PROCS"
-    cdef const char* PMIX_EVENT_NON_DEFAULT "PMIX_EVENT_NON_DEFAULT"
-    cdef const char* PMIX_EVENT_RETURN_OBJECT "PMIX_EVENT_RETURN_OBJECT"
-    cdef const char* PMIX_EVENT_DO_NOT_CACHE "PMIX_EVENT_DO_NOT_CACHE"
-    cdef const char* PMIX_EVENT_SILENT_TERMINATION "PMIX_EVENT_SILENT_TERMINATION"
+    cdef const char* PMIX_EVENT_HDLR_NAME_DEFINE "PMIX_EVENT_HDLR_NAME"
+    cdef const char* PMIX_EVENT_JOB_LEVEL_DEFINE "PMIX_EVENT_JOB_LEVEL"
+    cdef const char* PMIX_EVENT_ENVIRO_LEVEL_DEFINE "PMIX_EVENT_ENVIRO_LEVEL"
+    cdef const char* PMIX_EVENT_HDLR_FIRST_DEFINE "PMIX_EVENT_HDLR_FIRST"
+    cdef const char* PMIX_EVENT_HDLR_LAST_DEFINE "PMIX_EVENT_HDLR_LAST"
+    cdef const char* PMIX_EVENT_HDLR_FIRST_IN_CATEGORY_DEFINE "PMIX_EVENT_HDLR_FIRST_IN_CATEGORY"
+    cdef const char* PMIX_EVENT_HDLR_LAST_IN_CATEGORY_DEFINE "PMIX_EVENT_HDLR_LAST_IN_CATEGORY"
+    cdef const char* PMIX_EVENT_HDLR_BEFORE_DEFINE "PMIX_EVENT_HDLR_BEFORE"
+    cdef const char* PMIX_EVENT_HDLR_AFTER_DEFINE "PMIX_EVENT_HDLR_AFTER"
+    cdef const char* PMIX_EVENT_HDLR_PREPEND_DEFINE "PMIX_EVENT_HDLR_PREPEND"
+    cdef const char* PMIX_EVENT_HDLR_APPEND_DEFINE "PMIX_EVENT_HDLR_APPEND"
+    cdef const char* PMIX_EVENT_CUSTOM_RANGE_DEFINE "PMIX_EVENT_CUSTOM_RANGE"
+    cdef const char* PMIX_EVENT_AFFECTED_PROC_DEFINE "PMIX_EVENT_AFFECTED_PROC"
+    cdef const char* PMIX_EVENT_AFFECTED_PROCS_DEFINE "PMIX_EVENT_AFFECTED_PROCS"
+    cdef const char* PMIX_EVENT_NON_DEFAULT_DEFINE "PMIX_EVENT_NON_DEFAULT"
+    cdef const char* PMIX_EVENT_RETURN_OBJECT_DEFINE "PMIX_EVENT_RETURN_OBJECT"
+    cdef const char* PMIX_EVENT_DO_NOT_CACHE_DEFINE "PMIX_EVENT_DO_NOT_CACHE"
+    cdef const char* PMIX_EVENT_SILENT_TERMINATION_DEFINE "PMIX_EVENT_SILENT_TERMINATION"
 
     # fault tolerance events
-    cdef const char* PMIX_EVENT_TERMINATE_SESSION "PMIX_EVENT_TERMINATE_SESSION"
-    cdef const char* PMIX_EVENT_TERMINATE_JOB "PMIX_EVENT_TERMINATE_JOB"
-    cdef const char* PMIX_EVENT_TERMINATE_NODE "PMIX_EVENT_TERMINATE_NODE"
-    cdef const char* PMIX_EVENT_TERMINATE_PROC "PMIX_EVENT_TERMINATE_PROC"
-    cdef const char* PMIX_EVENT_ACTION_TIMEOUT "PMIX_EVENT_ACTION_TIMEOUT"
-    cdef const char* PMIX_EVENT_NO_TERMINATION "PMIX_EVENT_NO_TERMINATION"
-    cdef const char* PMIX_EVENT_WANT_TERMINATION "PMIX_EVENT_WANT_TERMINATION"
+    cdef const char* PMIX_EVENT_TERMINATE_SESSION_DEFINE "PMIX_EVENT_TERMINATE_SESSION"
+    cdef const char* PMIX_EVENT_TERMINATE_JOB_DEFINE "PMIX_EVENT_TERMINATE_JOB"
+    cdef const char* PMIX_EVENT_TERMINATE_NODE_DEFINE "PMIX_EVENT_TERMINATE_NODE"
+    cdef const char* PMIX_EVENT_TERMINATE_PROC_DEFINE "PMIX_EVENT_TERMINATE_PROC"
+    cdef const char* PMIX_EVENT_ACTION_TIMEOUT_DEFINE "PMIX_EVENT_ACTION_TIMEOUT"
+    cdef const char* PMIX_EVENT_NO_TERMINATION_DEFINE "PMIX_EVENT_NO_TERMINATION"
+    cdef const char* PMIX_EVENT_WANT_TERMINATION_DEFINE "PMIX_EVENT_WANT_TERMINATION"
 
     # attributes used to describe "spawn" directives
-    cdef const char* PMIX_PERSONALITY "PMIX_PERSONALITY"
-    cdef const char* PMIX_HOST "PMIX_HOST"
-    cdef const char* PMIX_HOSTFILE "PMIX_HOSTFILE"
-    cdef const char* PMIX_ADD_HOST "PMIX_ADD_HOST"
-    cdef const char* PMIX_ADD_HOSTFILE "PMIX_ADD_HOSTFILE"
-    cdef const char* PMIX_PREFIX "PMIX_PREFIX"
-    cdef const char* PMIX_WDIR "PMIX_WDIR"
-    cdef const char* PMIX_MAPPER "PMIX_MAPPER"
-    cdef const char* PMIX_DISPLAY_MAP "PMIX_DISPLAY_MAP"
-    cdef const char* PMIX_PPR "PMIX_PPR"
-    cdef const char* PMIX_MAPBY "PMIX_MAPBY"
-    cdef const char* PMIX_RANKBY "PMIX_RANKBY"
-    cdef const char* PMIX_BINDTO "PMIX_BINDTO"
-    cdef const char* PMIX_PRELOAD_BIN "PMIX_PRELOAD_BIN"
-    cdef const char* PMIX_PRELOAD_FILES "PMIX_PRELOAD_FILES"
-    cdef const char* PMIX_NON_PMI "PMIX_NON_PMI"
-    cdef const char* PMIX_STDIN_TGT "PMIX_STDIN_TGT"
-    cdef const char* PMIX_DEBUGGER_DAEMONS "PMIX_DEBUGGER_DAEMONS"
-    cdef const char* PMIX_COSPAWN_APP "PMIX_COSPAWN_APP"
-    cdef const char* PMIX_SET_SESSION_CWD "PMIX_SET_SESSION_CWD"
-    cdef const char* PMIX_TAG_OUTPUT "PMIX_TAG_OUTPUT"
-    cdef const char* PMIX_TIMESTAMP_OUTPUT "PMIX_TIMESTAMP_OUTPUT"
-    cdef const char* PMIX_MERGE_STDERR_STDOUT "PMIX_MERGE_STDERR_STDOUT"
-    cdef const char* PMIX_OUTPUT_TO_FILE "PMIX_OUTPUT_TO_FILE"
-    cdef const char* PMIX_INDEX_ARGV "PMIX_INDEX_ARGV"
-    cdef const char* PMIX_CPUS_PER_PROC "PMIX_CPUS_PER_PROC"
-    cdef const char* PMIX_NO_PROCS_ON_HEAD "PMIX_NO_PROCS_ON_HEAD"
-    cdef const char* PMIX_NO_OVERSUBSCRIBE "PMIX_NO_OVERSUBSCRIBE"
-    cdef const char* PMIX_REPORT_BINDINGS "PMIX_REPORT_BINDINGS"
-    cdef const char* PMIX_CPU_LIST "PMIX_CPU_LIST"
-    cdef const char* PMIX_JOB_RECOVERABLE "PMIX_JOB_RECOVERABLE"
-    cdef const char* PMIX_MAX_RESTARTS "PMIX_MAX_RESTARTS"
-    cdef const char* PMIX_FWD_STDIN "PMIX_FWD_STDIN"
-    cdef const char* PMIX_FWD_STDOUT "PMIX_FWD_STDOUT"
-    cdef const char* PMIX_FWD_STDERR "PMIX_FWD_STDERR"
-    cdef const char* PMIX_FWD_STDDIAG "PMIX_FWD_STDDIAG"
+    cdef const char* PMIX_PERSONALITY_DEFINE "PMIX_PERSONALITY"
+    cdef const char* PMIX_HOST_DEFINE "PMIX_HOST"
+    cdef const char* PMIX_HOSTFILE_DEFINE "PMIX_HOSTFILE"
+    cdef const char* PMIX_ADD_HOST_DEFINE "PMIX_ADD_HOST"
+    cdef const char* PMIX_ADD_HOSTFILE_DEFINE "PMIX_ADD_HOSTFILE"
+    cdef const char* PMIX_PREFIX_DEFINE "PMIX_PREFIX"
+    cdef const char* PMIX_WDIR_DEFINE "PMIX_WDIR"
+    cdef const char* PMIX_MAPPER_DEFINE "PMIX_MAPPER"
+    cdef const char* PMIX_DISPLAY_MAP_DEFINE "PMIX_DISPLAY_MAP"
+    cdef const char* PMIX_PPR_DEFINE "PMIX_PPR"
+    cdef const char* PMIX_MAPBY_DEFINE "PMIX_MAPBY"
+    cdef const char* PMIX_RANKBY_DEFINE "PMIX_RANKBY"
+    cdef const char* PMIX_BINDTO_DEFINE "PMIX_BINDTO"
+    cdef const char* PMIX_PRELOAD_BIN_DEFINE "PMIX_PRELOAD_BIN"
+    cdef const char* PMIX_PRELOAD_FILES_DEFINE "PMIX_PRELOAD_FILES"
+    cdef const char* PMIX_NON_PMI_DEFINE "PMIX_NON_PMI"
+    cdef const char* PMIX_STDIN_TGT_DEFINE "PMIX_STDIN_TGT"
+    cdef const char* PMIX_DEBUGGER_DAEMONS_DEFINE "PMIX_DEBUGGER_DAEMONS"
+    cdef const char* PMIX_COSPAWN_APP_DEFINE "PMIX_COSPAWN_APP"
+    cdef const char* PMIX_SET_SESSION_CWD_DEFINE "PMIX_SET_SESSION_CWD"
+    cdef const char* PMIX_TAG_OUTPUT_DEFINE "PMIX_TAG_OUTPUT"
+    cdef const char* PMIX_TIMESTAMP_OUTPUT_DEFINE "PMIX_TIMESTAMP_OUTPUT"
+    cdef const char* PMIX_MERGE_STDERR_STDOUT_DEFINE "PMIX_MERGE_STDERR_STDOUT"
+    cdef const char* PMIX_OUTPUT_TO_FILE_DEFINE "PMIX_OUTPUT_TO_FILE"
+    cdef const char* PMIX_INDEX_ARGV_DEFINE "PMIX_INDEX_ARGV"
+    cdef const char* PMIX_CPUS_PER_PROC_DEFINE "PMIX_CPUS_PER_PROC"
+    cdef const char* PMIX_NO_PROCS_ON_HEAD_DEFINE "PMIX_NO_PROCS_ON_HEAD"
+    cdef const char* PMIX_NO_OVERSUBSCRIBE_DEFINE "PMIX_NO_OVERSUBSCRIBE"
+    cdef const char* PMIX_REPORT_BINDINGS_DEFINE "PMIX_REPORT_BINDINGS"
+    cdef const char* PMIX_CPU_LIST_DEFINE "PMIX_CPU_LIST"
+    cdef const char* PMIX_JOB_RECOVERABLE_DEFINE "PMIX_JOB_RECOVERABLE"
+    cdef const char* PMIX_MAX_RESTARTS_DEFINE "PMIX_MAX_RESTARTS"
+    cdef const char* PMIX_FWD_STDIN_DEFINE "PMIX_FWD_STDIN"
+    cdef const char* PMIX_FWD_STDOUT_DEFINE "PMIX_FWD_STDOUT"
+    cdef const char* PMIX_FWD_STDERR_DEFINE "PMIX_FWD_STDERR"
+    cdef const char* PMIX_FWD_STDDIAG_DEFINE "PMIX_FWD_STDDIAG"
 
     # query attributes
     cdef const char* PMIX_QUERY_NAMESPACES "PMIX_QUERY_NAMESPACES"
@@ -661,7 +623,7 @@ cdef extern from "pmix_common.h":
         size_t bytes_used
 
     ctypedef struct pmix_proc_t:
-        char nspace[CPMIX_MAX_NSLEN]
+        char nspace[256]
         pmix_rank_t rank
 
     ctypedef struct pmix_proc_info_t:
@@ -717,13 +679,13 @@ cdef extern from "pmix_common.h":
         pmix_info_array_t *array
 
     ctypedef struct pmix_info_t:
-        char key[CPMIX_MAX_KEYLEN]
+        char key[512]
         pmix_info_directives_t flags
         pmix_value_t value
 
     ctypedef struct pmix_pdata_t:
         pmix_proc_t proc
-        char key[CPMIX_MAX_KEYLEN]
+        char key[512]
         pmix_value_t value
 
     ctypedef struct pmix_app_t:
@@ -741,7 +703,7 @@ cdef extern from "pmix_common.h":
         size_t nqual
 
     ctypedef struct pmix_modex_data:
-        char nspace[CPMIX_MAX_NSLEN]
+        char nspace[256]
         int rank
         uint8_t *blob
         size_t size
@@ -831,12 +793,11 @@ cdef extern from "pmix_common.h":
     pmix_status_t PMIx_Data_copy_payload(pmix_data_buffer_t *dest,
                                          pmix_data_buffer_t *src)
 
-
 cdef extern from "pmix.h":
     int PMIx_Initialized()
     const char* PMIx_Get_version()
     pmix_status_t PMIx_Init(pmix_proc_t* myproc, pmix_info_t* info, size_t ninfo)
-
+    pmix_status_t PMIx_Finalize(pmix_info_t* info, size_t ninfo)
 
 cdef extern from "pmix_server.h":
     # Callback function definitions

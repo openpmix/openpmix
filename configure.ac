@@ -19,7 +19,7 @@
 # Copyright (c) 2012      Oracle and/or its affiliates.  All rights reserved.
 # Copyright (c) 2013      Mellanox Technologies, Inc.
 #                         All rights reserved.
-# Copyright (c) 2014-2017 Intel, Inc. All rights reserved.
+# Copyright (c) 2014-2018 Intel, Inc.  All rights reserved.
 # Copyright (c) 2016      IBM Corporation.  All rights reserved.
 # Copyright (c) 2016-2018 Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
@@ -44,7 +44,7 @@ m4_include([config/autogen_found_items.m4])
 
 AC_INIT([pmix],
         [m4_normalize(esyscmd([config/pmix_get_version.sh VERSION --tarball]))],
-        [http://pmix.github.io/master], [pmix])
+        [https://github.com/pmix/pmix/issues], [pmix])
 AC_PREREQ(2.69)
 AC_CONFIG_AUX_DIR(./config)
 # Note that this directory must *exactly* match what was specified via
@@ -245,6 +245,7 @@ AC_SUBST([CONFIGURE_DEPENDENCIES], ['$(top_srcdir)/VERSION'])
 AC_SUBST([libpmix_so_version])
 AC_SUBST([libpmi_so_version])
 AC_SUBST([libpmi2_so_version])
+AC_SUBST([libmca_common_dstore_so_version])
 
 AC_CONFIG_FILES(pmix_config_prefix[contrib/Makefile]
                 pmix_config_prefix[examples/Makefile]
@@ -255,3 +256,5 @@ AC_CONFIG_FILES(pmix_config_prefix[contrib/Makefile]
 pmix_show_title "Configuration complete"
 
 AC_OUTPUT
+
+PMIX_SUMMARY_PRINT

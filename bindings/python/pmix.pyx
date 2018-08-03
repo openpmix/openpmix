@@ -1,55 +1,22 @@
 #file: pmix.pyx
 
-from cpmix cimport *
-from libc.string cimport memset,strncpy
+from libc.string cimport memset,strncpy, strdup
 from libc.stdlib cimport malloc, free
+from libc.string cimport memcpy
+from ctypes import addressof, c_int
+from cython.operator import address
 
-cdef class PMIxProc:
-    cdef pmix_proc_t proc
-    def __init__(self, n, r):
-        strncpy(self.proc.nspace, n, PMIX_MAX_NSLEN)
-        self.proc.rank = r
+# pull in all the constant definitions - we
+# store them in a separate file for neatness
+include "pmix_constants.pxi"
+include "pmix.pxi"
 
-    # define properties in the normal Python way
-    @property
-    def nspace(self):
-        return self.proc.nspace
-
-    @nspace.setter
-    def nspace(self,n):
-        strncpy(self.proc.nspace, n, PMIX_MAX_NSLEN)
-
-    @property
-    def rank(self):
-        return self.proc.rank
-
-    @rank.setter
-    def rank(self,r):
-        self.proc.rank = r
-
-cdef class pyOpCbfunc:
-    cdef pmix_op_cbfunc_t cbfunc
-    cdef void* cbdata
-    def __cinit__(self):
-        self.cbfunc = NULL
-        self.cbdata = NULL
-
-    cdef setFn(self, pmix_op_cbfunc_t fn):
-        self.cbfunc = fn
-        return
-
-    cdef setCbd(self, void *cbd):
-        self.cbdata = cbd
-        return
-
-def convert_value(val):
-    pass
 
 cdef class PMIxClient:
     cdef pmix_proc_t myproc;
     def __init__(self):
         memset(self.myproc.nspace, 0, sizeof(self.myproc.nspace))
-        self.myproc.rank = PMIX_RANK_UNDEF
+        self.myproc.rank = <uint32_t>PMIX_RANK_UNDEF
 
     def initialized(self):
         return PMIx_Initialized()
@@ -63,19 +30,33 @@ cdef class PMIxClient:
     # @keyvals [INPUT]
     #          - a dictionary of key-value pairs
     def init(self, keyvals):
+        cdef bytes pykey
         cdef pmix_info_t info
         cdef size_t ninfo
+        cdef size_t klen
+        cdef const char *pykeyptr
+        # Convert any provided dictionary to an array of pmix_info_t
         kvkeys = list(keyvals.keys())
-        for key in kvkeys:
-            strncpy(info.key, str.encode(key), PMIX_MAX_KEYLEN)
-    #        self.__convert_value(keyvals[key])
-            print "INFO ", info.key
-        ninfo = 1
-        return PMIx_Init(&self.myproc, &info, ninfo)
+        klen = len(kvkeys)
+        try:
+            inarray = PMIxInfoArray(klen)
+        except:
+            print("Unable to create info array")
+            return -1
+        inarray.load(keyvals)
+        print(keyvals)
+        return PMIx_Init(&self.myproc, inarray.array, klen)
+
+    # Finalize the client library
+    def finalize(self, keyvals):
+        cdef pmix_info_t info
+        cdef size_t ninfo = 0
+        return PMIx_Finalize(NULL, ninfo)
+
     # private function to convert key-value tuple
     # to pmix_info_t
-    def __convert_value(self, inval):
-        pass
+    def __convert_value(self, char* dest, char* src):
+        strncpy(dest, src, 511)
 
 pmixservermodule = {}
 def setmodulefn(k, f):
@@ -84,7 +65,7 @@ def setmodulefn(k, f):
     if k not in permitted:
         raise KeyError
     if not k in pmixservermodule:
-        print "SETTING MODULE FN FOR ", k
+        print("SETTING MODULE FN FOR ", k)
         pmixservermodule[k] = f
 
 cdef class PMIxServer:
@@ -113,24 +94,25 @@ cdef class PMIxServer:
     #            implementations
     def init(self, keyvals, map):
         cdef pmix_info_t *info = NULL
+        cdef size_t ninfo = 0
+        # Convert any provided dictionary to an array of pmix_info_t
         if keyvals is not None and 0 < len(keyvals):
-            info = <pmix_info_t *>malloc(len(keyvals) * sizeof(pmix_info_t))
+            ninfo = len(keyvals)
+            info = <pmix_info_t *>malloc(ninfo * sizeof(pmix_info_t))
             if not info:
                 raise MemoryError()
-            kvkeys = list(keyvals.keys())
-            for key in kvkeys:
-                strncpy(info.key, str.encode(key), PMIX_MAX_KEYLEN)
-        #        self.__convert_value(keyvals[key])
-                print "INFO ", info.key
+         #   pyinfoarray_to_pmix(keyvals, info, ninfo)
+            for n in range(ninfo):
+                print("INFO[" + n + "] " + info[n].key + "\n")
         if map is None or 0 == len(map):
-            print "SERVER REQUIRES AT LEAST ONE MODULE FUNCTION TO OPERATE"
+            print("SERVER REQUIRES AT LEAST ONE MODULE FUNCTION TO OPERATE")
             return PMIX_ERR_INIT
         kvkeys = list(map.keys())
         for key in kvkeys:
             try:
                 setmodulefn(key, map[key])
             except KeyError:
-                print "SERVER MODULE FUNCTION ", key, " IS NOT RECOGNIZED"
+                print("SERVER MODULE FUNCTION ", key, " IS NOT RECOGNIZED")
                 return PMIX_ERR_INIT
         return PMIx_server_init(&self.myserver, NULL, 0)
 
@@ -141,23 +123,15 @@ cdef class PMIxServer:
         # convert the args into the necessary C-arguments
         pass
 
-    # private function to convert key-value tuple
-    # to pmix_info_t
-    def __convert_value(self, inval):
-        pass
-
 cdef void client_connected(pmix_proc_t *proc, void *server_object,
-                           pmix_op_cbfunc_t cbfunc, void *cbdata):
-    print "CLIENT CONNECTED", proc.nspace, proc.rank
+                           pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
     keys = pmixservermodule.keys()
     if 'clientconnected' in keys:
-        p = pyOpCbfunc()
-        p.setFn(cbfunc)
-        p.setCbd(cbdata)
-        pname = PMIxProc(proc.nspace, proc.rank)
+    #    args = pmixproc_to_py(proc)
         args = {}
-        args['proc'] = pname
-        args['callback'] = p
-        pmixservermodule['clientconnected'](args)
+        rc = pmixservermodule['clientconnected'](args)
+    else:
+        rc = PMIX_ERR_NOT_SUPPORTED
+    cbfunc(rc, cbdata)
     return
 

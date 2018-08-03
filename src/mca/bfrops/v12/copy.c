@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2014-2017 Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2018 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
@@ -227,8 +227,6 @@ pmix_value_cmp_t pmix12_bfrop_value_cmp(pmix_value_t *p, pmix_value_t *p1)
 /* COPY FUNCTIONS FOR GENERIC PMIX TYPES */
 pmix_status_t pmix12_bfrop_value_xfer(pmix_value_t *p, pmix_value_t *src)
 {
-    pmix_info_t *p1, *s1;
-
     /* copy the right field */
     p->type = src->type;
     switch (src->type) {
@@ -300,22 +298,7 @@ pmix_status_t pmix12_bfrop_value_xfer(pmix_value_t *p, pmix_value_t *src)
         p->data.tv.tv_usec = src->data.tv.tv_usec;
         break;
     case PMIX_INFO_ARRAY:
-        p->data.array = (pmix_info_array_t*)malloc(sizeof(pmix_info_array_t));
-        if (NULL == p->data.array) {
-            return PMIX_ERR_NOMEM;
-        }
-        p->data.array->size = src->data.array->size;
-        if (0 < src->data.array->size) {
-            p->data.array->array = (pmix_info_t*)malloc(src->data.array->size * sizeof(pmix_info_t));
-            if (NULL == p->data.array->array) {
-                free(p->data.array);
-                return PMIX_ERR_NOMEM;
-            }
-            p1 = (pmix_info_t*)p->data.array->array;
-            s1 = (pmix_info_t*)src->data.array->array;
-            memcpy(p1, s1, src->data.array->size * sizeof(pmix_info_t));
-        }
-        break;
+        return PMIX_ERR_NOT_SUPPORTED;
     case PMIX_BYTE_OBJECT:
         if (NULL != src->data.bo.bytes && 0 < src->data.bo.size) {
             p->data.bo.bytes = malloc(src->data.bo.size);

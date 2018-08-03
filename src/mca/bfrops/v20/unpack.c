@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
- * Copyright (c) 2014-2017 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2018 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
@@ -756,12 +756,11 @@ pmix_status_t pmix20_bfrop_unpack_status(pmix_buffer_t *buffer, void *dest,
             break;
         /**** DEPRECATED ****/
         case PMIX_INFO_ARRAY:
-            /* this field is now a pointer, so we must allocate storage for it */
-            val->data.array = (pmix_info_array_t*)malloc(sizeof(pmix_info_array_t));
-            if (NULL == val->data.array) {
-                return PMIX_ERR_NOMEM;
-            }
-            if (PMIX_SUCCESS != (ret = pmix20_bfrop_unpack_buffer(buffer, val->data.array, &m, PMIX_INFO_ARRAY))) {
+            /* we don't know anything about info array's so we
+             * have to convert this to a data array */
+            PMIX_DATA_ARRAY_CREATE(val->data.darray, m, PMIX_INFO);
+            /* unpack into it */
+            if (PMIX_SUCCESS != (ret = pmix20_bfrop_unpack_buffer(buffer, &val->data.darray->array, &m, PMIX_INFO_ARRAY))) {
                 return ret;
             }
             break;
