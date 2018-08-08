@@ -304,7 +304,7 @@ static int test_item5(void)
     };
     const char **ptr = tkeys;
 
-    if (_legacy || !_legacy) {
+    if (!_legacy) {
         log_error("PMIx and SLURM/PMI1 do not set 'PMI_process_mapping' %s\n", "(Do not mark test as failed)");
         return rc;
     }

@@ -219,7 +219,7 @@ static int test_item3(void)
     };
     const char **ptr = tkeys;
 
-    if (_legacy || !_legacy) {
+    if (!_legacy) {
         log_error("PMIx and SLURM/PMI2 does not set Job Attributes %s\n", "(Do not mark test as failed)");
         return rc;
     }
@@ -254,7 +254,7 @@ static int test_item4(void)
     };
     const char **ptr = tkeys;
 
-    if (_legacy || !_legacy) {
+    if (!_legacy) {
         log_error("PMIx and SLURM/PMI2 does not set Node Attributes %s\n", "(Do not mark test as failed)");
         return rc;
     }
