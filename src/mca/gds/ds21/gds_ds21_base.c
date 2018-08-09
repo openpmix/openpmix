@@ -23,6 +23,7 @@
 #include "src/mca/common/dstore/dstore_common.h"
 #include "gds_ds21_base.h"
 #include "gds_ds21_lock.h"
+#include "gds_ds21_file.h"
 #include "src/mca/common/dstore/dstore_base.h"
 
 static pmix_common_dstore_ctx_t *ds21_ctx;
@@ -31,7 +32,9 @@ static pmix_status_t ds21_init(pmix_info_t info[], size_t ninfo)
 {
     pmix_status_t rc = PMIX_SUCCESS;
 
-    ds21_ctx = pmix_common_dstor_init(&pmix_ds21_lock_module, "ds21", info, ninfo);
+    ds21_ctx = pmix_common_dstor_init("ds21", info, ninfo,
+                                      &pmix_ds21_lock_module,
+                                      &pmix_ds21_file_module);
     if (NULL == ds21_ctx) {
         rc = PMIX_ERR_INIT;
     }
