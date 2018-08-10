@@ -25,7 +25,7 @@ def main():
         print("FAILED TO CREATE SERVER")
         exit(1)
     print("Testing server version ", foo.get_version())
-    args = {'FOOBAR': 'VAR', 'BLAST': 7}
+    args = {'FOOBAR': ('VAR', 'string'), 'BLAST': (7, 'size')}
     map = {'clientconnected': clientconnected}
     my_result = foo.init(args, map)
     while True:
