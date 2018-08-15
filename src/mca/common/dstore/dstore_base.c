@@ -1304,6 +1304,20 @@ static int pmix_sm_store(pmix_common_dstore_ctx_t *ds_ctx, ns_track_elem_t *ns_i
             size_t free_offset;
             (*rinfo)->count++;
             free_offset = get_free_offset(ds_ctx, datadesc);
+            /* Remove trailing extention slot if we are continuing same rank data */
+            if (PMIX_DS_KEY_IS_EXTSLOT(ds_ctx, addr)){
+                pmix_dstore_seg_desc_t *ldesc = datadesc;
+                uint8_t *segstart;
+                while (NULL != ldesc->next) {
+                    ldesc = ldesc->next;
+                }
+                segstart = ldesc->seg_info.seg_base_addr;
+                if( addr > segstart && free_offset == (addr - segstart + PMIX_DS_KV_SIZE(ds_ctx, addr))) {
+                    size_t new_offset = addr - segstart;
+                    memcpy(segstart, &new_offset, sizeof(size_t));
+                    free_offset = new_offset;
+                }
+            }
             /* add to the end */
             offset = put_data_to_the_end(ds_ctx, ns_info, datadesc, kval->key, buffer.base_ptr, size);
             if (0 == offset) {
