@@ -1060,7 +1060,6 @@ static int put_empty_ext_slot(pmix_common_dstore_ctx_t *ds_ctx, pmix_dstore_seg_
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-
     /* update offset at the beginning of current segment */
     data_ended = rel_offset + PMIX_DS_SLOT_SIZE(ds_ctx);
     addr = (uint8_t*)(addr - rel_offset);
@@ -1304,6 +1303,65 @@ static int pmix_sm_store(pmix_common_dstore_ctx_t *ds_ctx, ns_track_elem_t *ns_i
             size_t free_offset;
             (*rinfo)->count++;
             free_offset = get_free_offset(ds_ctx, datadesc);
+
+            /*
+             * Remove trailing extention slot if we are continuing
+             * same ranks data.
+             *
+             * When keys are stored individually through _store_data_for_rank
+             * an empty extention slot is placed every time.
+             *
+             * This is required because there is no information about whether or not the next key
+             * will belong to the same rank.
+             *
+             * As the result EACH keys stored with _store_data_for_rank is
+             * followed by extension slot. This slows down search and increases
+             * the memory footprint.
+             *
+             * The following code tries to deal with such one-key-at-a-time
+             * situation by:
+             *  - checking if the last key-value for this rank is an extention
+             *    slot
+             *  - If this is the case - checks if this key-value pair is the
+             *    last one at the moment and can be safely deleted.
+             *  - if it is - current segment's offset pointer is decreased by
+             *    the size of the extention slot key-value effectively removing
+             *    it from the dstor
+             */
+            if (PMIX_DS_KEY_IS_EXTSLOT(ds_ctx, addr)){
+                /* Find the last data segment */
+                pmix_dstore_seg_desc_t *ldesc = datadesc;
+                uint8_t *segstart;
+                size_t offs_past_extslot = 0;
+                size_t offs_cur_segment = 0;
+                while (NULL != ldesc->next) {
+                    ldesc = ldesc->next;
+                }
+
+                /* Calculate the offset of the end of the extension slot */
+                offs_cur_segment = free_offset % ds_ctx->data_segment_size;
+                segstart = ldesc->seg_info.seg_base_addr;
+                offs_past_extslot = (addr + PMIX_DS_KV_SIZE(ds_ctx, addr)) - segstart;
+
+                /* We can erase extension slot if:
+                 *  - address of the ext slot belongs to the occupied part of the
+                 *    last segment
+                 *  - local offset within the segment is equal to the local
+                 *    offset of the end of extension slot
+                 */
+                if( ( (addr > segstart) && (addr < (segstart + offs_cur_segment)) )
+                     && (offs_cur_segment == offs_past_extslot) ) {
+                    /* Calculate a new free offset that doesn't account this
+                     * extension slot */
+                    size_t new_offset = addr - segstart;
+                    /* Rewrite segment's offset information to exclude
+                     * extension slot */
+                    memcpy(segstart, &new_offset, sizeof(size_t));
+                    /* Recalculate free_offset */
+                    free_offset = get_free_offset(ds_ctx, datadesc);
+                }
+            }
+
             /* add to the end */
             offset = put_data_to_the_end(ds_ctx, ns_info, datadesc, kval->key, buffer.base_ptr, size);
             if (0 == offset) {
@@ -2541,8 +2599,6 @@ static pmix_status_t _dstor_store_modex_cb(pmix_common_dstore_ctx_t *ds_ctx,
             PMIX_DESTRUCT(&pbkt);
             return rc;
         }
-
-        printf("Pack key = %s\n", kv->key);
 
         /* place the key to the to be provided to _dstore_store_nolock */
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &tmp, kv, 1, PMIX_KVAL);
