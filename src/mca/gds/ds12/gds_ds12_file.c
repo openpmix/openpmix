@@ -122,9 +122,40 @@ static size_t pmix_ds12_slot_size(void)
     return EXT_SLOT_SIZE_V12();
 }
 
-static void pmix_ds12_put_key(uint8_t *addr, char *key, void *buf, size_t size)
+static int pmix_ds12_put_key(uint8_t *addr, char *key, void *buf, size_t size)
 {
     ESH_PUT_KEY_V12(addr, key, buf, size);
+    return PMIX_SUCCESS;
+}
+
+static int pmix_ds12_is_invalid(uint8_t *addr)
+{
+    int ret = (0 == strncmp(ESH_REGION_INVALIDATED, ESH_KNAME_PTR_V12(addr),
+                            ESH_KNAME_LEN_V12(ESH_KNAME_PTR_V12(addr))));
+    return ret;
+}
+
+static void pmix_ds12_set_invalid(uint8_t *addr)
+{
+    strncpy(ESH_KNAME_PTR_V12(addr), ESH_REGION_INVALIDATED,
+            ESH_KNAME_LEN_V12(ESH_REGION_INVALIDATED));
+}
+
+static int pmix_ds12_is_ext_slot(uint8_t *addr)
+{
+    int ret;
+    ret = (0 == strncmp(ESH_REGION_EXTENSION, ESH_KNAME_PTR_V12(addr),
+                        ESH_KNAME_LEN_V12(ESH_KNAME_PTR_V12(addr))));
+    return ret;
+}
+
+static int pmix_ds12_kname_match(uint8_t *addr, const char *key, size_t key_hash)
+{
+    int ret = 0;
+
+    ret =  (0 == strncmp(ESH_KNAME_PTR_V12(addr),
+                         key, ESH_KNAME_LEN_V12(key)));
+    return ret;
 }
 
 pmix_common_dstore_file_cbs_t pmix_ds12_file_module = {
@@ -136,5 +167,10 @@ pmix_common_dstore_file_cbs_t pmix_ds12_file_module = {
     .data_size = pmix_ds12_data_size,
     .key_size = pmix_ds12_key_size,
     .slot_size = pmix_ds12_slot_size,
-    .put_key = pmix_ds12_put_key
+    .put_key = pmix_ds12_put_key,
+    .is_invalid = pmix_ds12_is_invalid,
+    .is_extslot = pmix_ds12_is_ext_slot,
+    .set_invalid = pmix_ds12_set_invalid,
+    .key_hash = NULL,
+    .key_match = pmix_ds12_kname_match
 };

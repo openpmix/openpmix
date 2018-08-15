@@ -1137,10 +1137,6 @@ static size_t put_data_to_the_end(pmix_common_dstore_ctx_t *ds_ctx, ns_track_ele
         return 0;
     }
 
-    //pmix_output(0, "0 %s key_size %lu (+%lu)", key, ds_ctx->file_cbs->key_size(key, size), size);
-    //pmix_output(0, "1 %s key_size %lu (+%lu)", key, PMIX_DS_KEY_SIZE(ds_ctx, key, size), size);
-    //pmix_output(0, "2 %s key_size %lu (+%lu)", key, ds_ctx->file_cbs->key_size(key, size), size);
-
     /* update offset at the beginning of current segment */
     data_ended = offset + PMIX_DS_KEY_SIZE(ds_ctx, key, size);
     addr = (uint8_t*)(tmp->seg_info.seg_base_addr);
@@ -1237,8 +1233,7 @@ static int pmix_sm_store(pmix_common_dstore_ctx_t *ds_ctx, ns_track_elem_t *ns_i
              * .....
              * extension slot which has key = EXTENSION_SLOT and a size_t value for offset to next data address for this process.
              */
-            if (0 == strncmp(PMIX_DS_KNAME_PTR(ds_ctx, addr), ESH_REGION_EXTENSION,
-                             PMIX_DS_KNAME_LEN(ds_ctx, ESH_REGION_EXTENSION))) {
+            if(PMIX_DS_KEY_IS_EXTSLOT(ds_ctx, addr)) {
                 memcpy(&offset, PMIX_DS_DATA_PTR(ds_ctx, addr), sizeof(size_t));
                 if (0 < offset) {
                     PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
@@ -1265,9 +1260,7 @@ static int pmix_sm_store(pmix_common_dstore_ctx_t *ds_ctx, ns_track_elem_t *ns_i
                 if (PMIX_DS_DATA_SIZE(ds_ctx, addr, PMIX_DS_DATA_PTR(ds_ctx, addr)) != size) {
                 //if (1) { /* if we want to test replacing values for existing keys. */
                     /* invalidate current value and store another one at the end of data region. */
-                    pmix_strncpy(PMIX_DS_KNAME_PTR(ds_ctx, addr), ESH_REGION_INVALIDATED,
-                            PMIX_DS_KNAME_LEN(ds_ctx, ESH_REGION_INVALIDATED));
-
+                    PMIX_DS_KEY_SET_INVALID(ds_ctx, addr);
                     /* decrementing count, it will be incremented back when we add a new value for this key at the end of region. */
                     (*rinfo)->count--;
                     kval_cnt--;
@@ -1294,8 +1287,7 @@ static int pmix_sm_store(pmix_common_dstore_ctx_t *ds_ctx, ns_track_elem_t *ns_i
                             __FILE__, __LINE__, __func__, rank, data_exist,
                             PMIX_DS_KNAME_PTR(ds_ctx, addr), kval->key));
                 /* Skip it: key is "INVALIDATED" or key is valid but different from target one. */
-                if (0 != strncmp(ESH_REGION_INVALIDATED, PMIX_DS_KNAME_PTR(ds_ctx, addr),
-                                 PMIX_DS_KNAME_LEN(ds_ctx, PMIX_DS_KNAME_PTR(ds_ctx, addr)))) {
+                if (!PMIX_DS_KEY_IS_INVALID(ds_ctx, addr)) {
                     /* count only valid items */
                     kval_cnt--;
                 }
@@ -1322,8 +1314,7 @@ static int pmix_sm_store(pmix_common_dstore_ctx_t *ds_ctx, ns_track_elem_t *ns_i
              * data for different ranks, and that's why next element is EXTENSION_SLOT.
              * We put new data to the end of data region and just update EXTENSION_SLOT value by new offset.
              */
-            if (0 == strncmp(PMIX_DS_KNAME_PTR(ds_ctx, addr), ESH_REGION_EXTENSION,
-                             PMIX_DS_KNAME_LEN(ds_ctx, ESH_REGION_EXTENSION))) {
+            if (PMIX_DS_KEY_IS_EXTSLOT(ds_ctx, addr)) {
                 PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
                             "%s:%d:%s: for rank %u, replace flag %d %s should be filled with offset %lu value",
                             __FILE__, __LINE__, __func__, rank, data_exist, ESH_REGION_EXTENSION, offset));
@@ -1888,6 +1879,7 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
     bool key_found = false;
     pmix_info_t *info = NULL;
     size_t ninfo;
+    size_t keyhash = 0;
 
     PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
                          "%s:%d:%s: for %s:%u look for key %s",
@@ -1989,6 +1981,10 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
     meta_seg = elem->meta_seg;
     data_seg = elem->data_seg;
 
+    if( NULL != key ) {
+        keyhash = PMIX_DS_KEY_HASH(ds_ctx, key);
+    }
+
     while (nprocs--) {
         /* Get the rank meta info in the shared meta segment. */
         rinfo = _get_rank_meta_info(ds_ctx, cur_rank, meta_seg);
@@ -2051,16 +2047,14 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
              * EXTENSION slot which has key = EXTENSION_SLOT and a size_t value for offset
              * to next data address for this process.
              */
-            if (0 == strncmp(PMIX_DS_KNAME_PTR(ds_ctx, addr), ESH_REGION_INVALIDATED,
-                             PMIX_DS_KNAME_LEN(ds_ctx, ESH_REGION_INVALIDATED))) {
+            if (PMIX_DS_KEY_IS_INVALID(ds_ctx, addr)) {
                 PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
                             "%s:%d:%s: for rank %s:%u, skip %s region",
                             __FILE__, __LINE__, __func__, nspace, cur_rank, ESH_REGION_INVALIDATED));
                 /* skip it
                  * go to next item, updating address */
                 addr += PMIX_DS_KV_SIZE(ds_ctx, addr);
-            } else if (0 == strncmp(PMIX_DS_KNAME_PTR(ds_ctx, addr), ESH_REGION_EXTENSION,
-                                    PMIX_DS_KNAME_LEN(ds_ctx, ESH_REGION_EXTENSION))) {
+            } else if (PMIX_DS_KEY_IS_EXTSLOT(ds_ctx, addr)) {
                 size_t offset;
                 memcpy(&offset, PMIX_DS_DATA_PTR(ds_ctx, addr), sizeof(size_t));
                 PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
@@ -2112,8 +2106,7 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
 
                 kval_cnt--;
                 addr += PMIX_DS_KV_SIZE(ds_ctx, addr);
-            } else if (0 == strncmp(PMIX_DS_KNAME_PTR(ds_ctx, addr), key,
-                                    PMIX_DS_KNAME_LEN(ds_ctx, key))) {
+            } else if (PMIX_DS_KEY_MATCH(ds_ctx, addr, key, keyhash)) {
                 PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
                             "%s:%d:%s: for rank %s:%u, found target key %s",
                             __FILE__, __LINE__, __func__, nspace, cur_rank, key));
