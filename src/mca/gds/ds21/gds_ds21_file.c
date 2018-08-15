@@ -17,29 +17,31 @@
 #include "src/mca/common/dstore/dstore_file.h"
 #include "gds_ds21_file.h"
 
+/* TODO: adapt to size_t size */
+#define ESH_REGION_EXTENSION_FLG    0x8000000000000000
+#define ESH_REGION_INVALIDATED_FLG  0x4000000000000000
+#define ESH_REGION_SIZE_MASK        0x3FFFFFFFFFFFFFFF
+
 #define ESH_KV_SIZE_V21(addr)                               \
 __extension__ ({                                            \
     size_t sz;                                              \
     memcpy(&sz, addr, sizeof(size_t));                      \
-    sz;                                                     \
+    /* drop flags in lsb's */                               \
+    (sz & ESH_REGION_SIZE_MASK);                            \
 })
 
 #define ESH_KNAME_PTR_V21(addr)                             \
-    ((char *)addr + sizeof(size_t))
+    ((char *)addr + 2 * sizeof(size_t))
 
 #define ESH_KNAME_LEN_V21(key)                              \
-__extension__ ({                                            \
-    size_t kname_len = strlen(key) + 1;                     \
-    size_t len = (kname_len < ESH_MIN_KEY_LEN) ?            \
-    ESH_MIN_KEY_LEN : kname_len;                            \
-    len;                                                    \
-})
+    (strlen(key) + 1)
 
 #define ESH_DATA_PTR_V21(addr)                              \
 __extension__ ({                                            \
-    size_t kname_len =                                      \
-        ESH_KNAME_LEN_V21(ESH_KNAME_PTR_V21(addr));         \
-    uint8_t *data_ptr = addr + sizeof(size_t) + kname_len;  \
+    char *key_ptr = ESH_KNAME_PTR_V21(addr);                \
+    size_t kname_len = ESH_KNAME_LEN_V21(key_ptr);          \
+    uint8_t *data_ptr =                                     \
+        addr + (key_ptr - (char*)addr) + kname_len;         \
     data_ptr;                                               \
 })
 
@@ -51,34 +53,61 @@ __extension__ ({                                            \
 })
 
 #define ESH_KEY_SIZE_V21(key, size)                         \
-    (sizeof(size_t) + ESH_KNAME_LEN_V21((char*)key) + size)
+    (2 * sizeof(size_t) + ESH_KNAME_LEN_V21((char*)key) + size)
 
 /* in ext slot new offset will be stored in case if
  * new data were added for the same process during
  * next commit
  */
 #define EXT_SLOT_SIZE_V21()                                 \
-    (ESH_KEY_SIZE_V21(ESH_REGION_EXTENSION, sizeof(size_t)))
+    (ESH_KEY_SIZE_V21("", sizeof(size_t)))
 
+static int pmix_ds21_is_invalid(uint8_t *addr)
+{
+    size_t sz;
+    memcpy(&sz, addr, sizeof(size_t));
+    return (sz & ESH_REGION_INVALIDATED_FLG);
+}
 
-#define ESH_PUT_KEY_V21(addr, key, buffer, size)            \
-__extension__ ({                                            \
-    size_t sz = ESH_KEY_SIZE_V21(key, size);                \
-    memcpy(addr, &sz, sizeof(size_t));                      \
-    memset(addr + sizeof(size_t), 0,                        \
-        ESH_KNAME_LEN_V21(key));                            \
-    strncpy((char *)addr + sizeof(size_t),                  \
-            key, ESH_KNAME_LEN_V21(key));                   \
-    memcpy(addr + sizeof(size_t) + ESH_KNAME_LEN_V21(key),  \
-            buffer, size);                                  \
-})
+static void pmix_ds21_set_invalid(uint8_t *addr)
+{
+    size_t sz;
+    memcpy(&sz, addr, sizeof(size_t));
+    sz |= ESH_REGION_INVALIDATED_FLG;
+    memcpy(addr, &sz, sizeof(size_t));
+}
+
+static int pmix_ds21_is_ext_slot(uint8_t *addr)
+{
+    size_t sz;
+    memcpy(&sz, addr, sizeof(size_t));
+    return !!(sz & ESH_REGION_EXTENSION_FLG);
+}
+
+static size_t pmix_ds21_key_hash(const char *key)
+{
+    size_t hash = 0;
+    int i;
+    for(i=0; key[i]; i++) {
+        hash += key[i];
+    }
+    return hash;
+}
+
+static int pmix_ds21_kname_match(uint8_t *addr, const char *key, size_t key_hash)
+{
+    int ret = 0;
+    size_t hash;
+    memcpy(&hash, (char*)addr + sizeof(size_t), sizeof(size_t));
+    if( key_hash != hash ) {
+        return ret;
+    }
+    return (0 == strncmp(ESH_KNAME_PTR_V21(addr), key, ESH_KNAME_LEN_V21(key)));
+}
 
 static size_t pmix_ds21_kval_size(uint8_t *key)
 {
-    size_t size;
-
-    memcpy(&size, key, sizeof(size_t));
-    return size;
+    return ESH_KV_SIZE_V21(key); ;
 }
 
 static char* pmix_ds21_key_name_ptr(uint8_t *addr)
@@ -111,9 +140,28 @@ static size_t pmix_ds21_slot_size(void)
     return EXT_SLOT_SIZE_V21();
 }
 
-static void pmix_ds21_put_key(uint8_t *addr, char *key, void *buf, size_t size)
+static int pmix_ds21_put_key(uint8_t *addr, char *key,
+                              void* buffer, size_t size)
 {
-    ESH_PUT_KEY_V21(addr, key, buf, size);
+    size_t flag = 0;
+    size_t hash = 0;
+    char *addr_ch = (char*)addr;
+    if( !strcmp(key, ESH_REGION_EXTENSION) ) {
+        /* we have a flag for this special key */
+        key = "";
+        flag |= ESH_REGION_EXTENSION_FLG;
+    }
+    size_t sz = ESH_KEY_SIZE_V21(key, size);
+    if( ESH_REGION_SIZE_MASK < sz ) {
+        return PMIX_ERROR;
+    }
+    sz |= flag;
+    memcpy(addr_ch, &sz, sizeof(size_t));
+    hash = pmix_ds21_key_hash(key);
+    memcpy(addr_ch + sizeof(size_t), &hash, sizeof(size_t));
+    strncpy(addr_ch + 2 * sizeof(size_t), key, ESH_KNAME_LEN_V21(key));
+    memcpy(ESH_DATA_PTR_V21(addr), buffer, size);
+    return PMIX_SUCCESS;
 }
 
 pmix_common_dstore_file_cbs_t pmix_ds21_file_module = {
@@ -125,5 +173,10 @@ pmix_common_dstore_file_cbs_t pmix_ds21_file_module = {
     .data_size = pmix_ds21_data_size,
     .key_size = pmix_ds21_key_size,
     .slot_size = pmix_ds21_slot_size,
-    .put_key = pmix_ds21_put_key
+    .put_key = pmix_ds21_put_key,
+    .is_invalid = pmix_ds21_is_invalid,
+    .is_extslot = pmix_ds21_is_ext_slot,
+    .set_invalid = pmix_ds21_set_invalid,
+    .key_hash = pmix_ds21_key_hash,
+    .key_match = pmix_ds21_kname_match
 };
