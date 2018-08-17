@@ -2537,10 +2537,8 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer,
         PMIX_LIST_DESTRUCT(&cachefiles);
         if (cnt == (int)cd->ninfo) {
             /* nothing more to do */
-            if (NULL != cbfunc) {
-                cbfunc(PMIX_SUCCESS, NULL, 0, cd->cbdata, NULL, NULL);
-            }
-            return PMIX_SUCCESS;
+            rc = PMIX_SUCCESS;
+            goto exit;
         }
     }
 
