@@ -342,4 +342,67 @@ typedef struct {
     }                                                                           \
 } while (0)
 
+/* Key-Value pair management macros */
+// TODO: add all possible types/fields here.
+
+#define PMIX_VAL_FIELD_int(x)       ((x)->data.integer)
+#define PMIX_VAL_FIELD_uint32_t(x)  ((x)->data.uint32)
+#define PMIX_VAL_FIELD_uint16_t(x)  ((x)->data.uint16)
+#define PMIX_VAL_FIELD_string(x)    ((x)->data.string)
+#define PMIX_VAL_FIELD_float(x)     ((x)->data.fval)
+#define PMIX_VAL_FIELD_byte(x)      ((x)->data.byte)
+#define PMIX_VAL_FIELD_flag(x)      ((x)->data.flag)
+
+#define PMIX_VAL_TYPE_int      PMIX_INT
+#define PMIX_VAL_TYPE_uint32_t PMIX_UINT32
+#define PMIX_VAL_TYPE_uint16_t PMIX_UINT16
+#define PMIX_VAL_TYPE_string   PMIX_STRING
+#define PMIX_VAL_TYPE_float    PMIX_FLOAT
+#define PMIX_VAL_TYPE_byte     PMIX_BYTE
+#define PMIX_VAL_TYPE_flag     PMIX_BOOL
+
+#define PMIX_VAL_set_assign(_v, _field, _val )   \
+    do {                                                            \
+        (_v)->type = PMIX_VAL_TYPE_ ## _field;                      \
+        PMIX_VAL_FIELD_ ## _field((_v)) = _val;                     \
+    } while (0)
+
+#define PMIX_VAL_set_strdup(_v, _field, _val )       \
+    do {                                                                \
+        (_v)->type = PMIX_VAL_TYPE_ ## _field;                          \
+        PMIX_VAL_FIELD_ ## _field((_v)) = strdup(_val);                 \
+    } while (0)
+
+#define PMIX_VAL_SET_int        PMIX_VAL_set_assign
+#define PMIX_VAL_SET_uint32_t   PMIX_VAL_set_assign
+#define PMIX_VAL_SET_uint16_t   PMIX_VAL_set_assign
+#define PMIX_VAL_SET_string     PMIX_VAL_set_strdup
+#define PMIX_VAL_SET_float      PMIX_VAL_set_assign
+#define PMIX_VAL_SET_byte       PMIX_VAL_set_assign
+#define PMIX_VAL_SET_flag       PMIX_VAL_set_assign
+
+#define PMIX_VAL_SET(_v, _field, _val )   \
+    PMIX_VAL_SET_ ## _field(_v, _field, _val)
+
+#define PMIX_VAL_cmp_val(_val1, _val2)      ((_val1) != (_val2))
+#define PMIX_VAL_cmp_float(_val1, _val2)    (((_val1)>(_val2))?(((_val1)-(_val2))>0.000001):(((_val2)-(_val1))>0.000001))
+#define PMIX_VAL_cmp_ptr(_val1, _val2)      strncmp(_val1, _val2, strlen(_val1)+1)
+
+#define PMIX_VAL_CMP_int        PMIX_VAL_cmp_val
+#define PMIX_VAL_CMP_uint32_t   PMIX_VAL_cmp_val
+#define PMIX_VAL_CMP_uint16_t   PMIX_VAL_cmp_val
+#define PMIX_VAL_CMP_float      PMIX_VAL_cmp_float
+#define PMIX_VAL_CMP_string     PMIX_VAL_cmp_ptr
+#define PMIX_VAL_CMP_byte       PMIX_VAL_cmp_val
+#define PMIX_VAL_CMP_flag       PMIX_VAL_cmp_val
+
+#define PMIX_VAL_ASSIGN(_v, _field, _val) \
+    PMIX_VAL_set_assign(_v, _field, _val)
+
+#define PMIX_VAL_CMP(_field, _val1, _val2) \
+    PMIX_VAL_CMP_ ## _field(_val1, _val2)
+
+#define PMIX_VAL_FREE(_v) \
+     PMIx_free_value_data(_v)
+
 #endif // TEST_COMMON_H

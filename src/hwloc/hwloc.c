@@ -82,7 +82,7 @@ static int set_flags(hwloc_topology_t topo, unsigned int flags)
     }
     return PMIX_SUCCESS;
 }
-#endif
+#endif // have_hwloc
 
 pmix_status_t pmix_hwloc_get_topology(pmix_info_t *info, size_t ninfo)
 {

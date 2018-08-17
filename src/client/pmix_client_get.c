@@ -618,7 +618,8 @@ static void _getnbfn(int fd, short flags, void *cbdata)
                     val = NULL;
                 } else {
                     PMIX_VALUE_DESTRUCT(val);
-                    PMIX_VAL_ASSIGN(val, string, tmp);
+                    val->data.string = tmp;
+                    val->type = PMIX_STRING;
                 }
             }
         }

@@ -111,31 +111,6 @@ pmix_status_t pmix_value_xfer(pmix_value_t *kv, pmix_value_t *src);
     } while(0)
 
 
-#define PMIX_INFO_UNLOAD(r, v, l)                              \
-    do {                                                       \
-        pmix_info_t *_info;                                    \
-        size_t _n, _ninfo;                                     \
-        pmix_kval_t *_kv;                                      \
-        _info = (pmix_info_t*)(v)->data.darray->array;         \
-        _ninfo = (v)->data.darray->size;                       \
-        for (_n = 0; _n < _ninfo; _n++){                       \
-            _kv = PMIX_NEW(pmix_kval_t);                       \
-            if (NULL == _kv) {                                 \
-                (r) = PMIX_ERR_NOMEM;                          \
-                break;                                         \
-            }                                                  \
-            if (NULL != _info[_n].key) {                       \
-                _kv->key = strdup(_info[_n].key);              \
-            }                                                  \
-            PMIX_VALUE_XFER((r), _kv->value, &_info[_n].value);\
-            if (PMIX_SUCCESS != (r)) {                         \
-                PMIX_RELEASE(_kv);                             \
-                break;                                         \
-            }                                                  \
-            pmix_list_append((l), &_kv->super);                \
-        }                                                      \
-    } while(0)
-
 #define PMIX_PDATA_LOAD(m, p, k, v, t)                                      \
     do {                                                                    \
         if (NULL != (m)) {                                                  \
@@ -298,75 +273,22 @@ char **pmix_argv_copy(char **argv);
 #define PMIX_ARGV_COPY(a, b) \
     (a) = pmix_argv_copy(b)
 
+/*
+ * Set an environmenal paramter in an env array
+ *
+ * @retval r Return pmix_status_t status
+ *
+ * @param a Name of the environmental param
+ *
+ * @param b String value of the environmental param
+ *
+ * @param c Address of the NULL-terminated env array
+ */
 pmix_status_t pmix_setenv(const char *name, const char *value,
                           bool overwrite, char ***env);
 #define PMIX_SETENV(r, a, b, c) \
     (r) = pmix_setenv((a), (b), true, (c))
 
-
-/*****   DEPRECATED    *****/
-/* Key-Value pair management macros */
-// TODO: add all possible types/fields here.
-
-#define PMIX_VAL_FIELD_int(x)       ((x)->data.integer)
-#define PMIX_VAL_FIELD_uint32_t(x)  ((x)->data.uint32)
-#define PMIX_VAL_FIELD_uint16_t(x)  ((x)->data.uint16)
-#define PMIX_VAL_FIELD_string(x)    ((x)->data.string)
-#define PMIX_VAL_FIELD_float(x)     ((x)->data.fval)
-#define PMIX_VAL_FIELD_byte(x)      ((x)->data.byte)
-#define PMIX_VAL_FIELD_flag(x)      ((x)->data.flag)
-
-#define PMIX_VAL_TYPE_int      PMIX_INT
-#define PMIX_VAL_TYPE_uint32_t PMIX_UINT32
-#define PMIX_VAL_TYPE_uint16_t PMIX_UINT16
-#define PMIX_VAL_TYPE_string   PMIX_STRING
-#define PMIX_VAL_TYPE_float    PMIX_FLOAT
-#define PMIX_VAL_TYPE_byte     PMIX_BYTE
-#define PMIX_VAL_TYPE_flag     PMIX_BOOL
-
-#define PMIX_VAL_set_assign(_v, _field, _val )   \
-    do {                                                            \
-        (_v)->type = PMIX_VAL_TYPE_ ## _field;                      \
-        PMIX_VAL_FIELD_ ## _field((_v)) = _val;                     \
-    } while (0)
-
-#define PMIX_VAL_set_strdup(_v, _field, _val )       \
-    do {                                                                \
-        (_v)->type = PMIX_VAL_TYPE_ ## _field;                          \
-        PMIX_VAL_FIELD_ ## _field((_v)) = strdup(_val);                 \
-    } while (0)
-
-#define PMIX_VAL_SET_int        PMIX_VAL_set_assign
-#define PMIX_VAL_SET_uint32_t   PMIX_VAL_set_assign
-#define PMIX_VAL_SET_uint16_t   PMIX_VAL_set_assign
-#define PMIX_VAL_SET_string     PMIX_VAL_set_strdup
-#define PMIX_VAL_SET_float      PMIX_VAL_set_assign
-#define PMIX_VAL_SET_byte       PMIX_VAL_set_assign
-#define PMIX_VAL_SET_flag       PMIX_VAL_set_assign
-
-#define PMIX_VAL_SET(_v, _field, _val )   \
-    PMIX_VAL_SET_ ## _field(_v, _field, _val)
-
-#define PMIX_VAL_cmp_val(_val1, _val2)      ((_val1) != (_val2))
-#define PMIX_VAL_cmp_float(_val1, _val2)    (((_val1)>(_val2))?(((_val1)-(_val2))>0.000001):(((_val2)-(_val1))>0.000001))
-#define PMIX_VAL_cmp_ptr(_val1, _val2)      strncmp(_val1, _val2, strlen(_val1)+1)
-
-#define PMIX_VAL_CMP_int        PMIX_VAL_cmp_val
-#define PMIX_VAL_CMP_uint32_t   PMIX_VAL_cmp_val
-#define PMIX_VAL_CMP_uint16_t   PMIX_VAL_cmp_val
-#define PMIX_VAL_CMP_float      PMIX_VAL_cmp_float
-#define PMIX_VAL_CMP_string     PMIX_VAL_cmp_ptr
-#define PMIX_VAL_CMP_byte       PMIX_VAL_cmp_val
-#define PMIX_VAL_CMP_flag       PMIX_VAL_cmp_val
-
-#define PMIX_VAL_ASSIGN(_v, _field, _val) \
-    PMIX_VAL_set_assign(_v, _field, _val)
-
-#define PMIX_VAL_CMP(_field, _val1, _val2) \
-    PMIX_VAL_CMP_ ## _field(_val1, _val2)
-
-#define PMIX_VAL_FREE(_v) \
-     PMIx_free_value_data(_v)
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }
