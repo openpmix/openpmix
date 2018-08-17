@@ -3,7 +3,7 @@
  * Copyright (c) 2011-2012 Los Alamos National Security, LLC.  All rights
  *                         reserved.
   *
- * Copyright (c) 2017      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2017-2018 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,7 +30,7 @@
 #include "src/util/output.h"
 #include "src/util/show_help.h"
 #include "src/include/pmix_globals.h"
-#include "src/mca/ptl/ptl.h"
+#include "src/mca/ptl/base/base.h"
 
 #include "src/mca/psensor/base/base.h"
 #include "psensor_heartbeat.h"
@@ -158,6 +158,7 @@ static void add_tracker(int sd, short flags, void *cbdata)
     /* setup the timer event */
     pmix_event_evtimer_set(pmix_psensor_base.evbase, &ft->ev,
                            check_heartbeat, ft);
+    pmix_output(0, "SETTING TIMER FOR %d SEC", ft->tv.tv_sec);
     pmix_event_evtimer_add(&ft->ev, &ft->tv);
     ft->event_active = true;
 }
@@ -168,6 +169,7 @@ static pmix_status_t heartbeat_start(pmix_peer_t *requestor, pmix_status_t error
 {
     pmix_heartbeat_trkr_t *ft;
     size_t n;
+    pmix_ptl_posted_recv_t *rcv;
 
     PMIX_OUTPUT_VERBOSE((1, pmix_psensor_base_framework.framework_output,
                          "[%s:%d] checking heartbeat monitoring for requestor %s:%d",
@@ -200,6 +202,17 @@ static pmix_status_t heartbeat_start(pmix_peer_t *requestor, pmix_status_t error
         /* didn't specify a sample rate, or what should be sampled */
         PMIX_RELEASE(ft);
         return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* if the recv hasn't been posted, so so now */
+    if (!mca_psensor_heartbeat_component.recv_active) {
+        /* setup to receive heartbeats */
+        rcv = PMIX_NEW(pmix_ptl_posted_recv_t);
+        rcv->tag = PMIX_PTL_TAG_HEARTBEAT;
+        rcv->cbfunc = pmix_psensor_heartbeat_recv_beats;
+        /* add it to the beginning of the list of recvs */
+        pmix_list_prepend(&pmix_ptl_globals.posted_recvs, &rcv->super);
+        mca_psensor_heartbeat_component.recv_active = true;
     }
 
     /* need to push into our event base to add this to our trackers */
@@ -241,7 +254,7 @@ static pmix_status_t heartbeat_stop(pmix_peer_t *requestor, char *id)
     cd->requestor = requestor;
     cd->id = strdup(id);
 
-    /* need to push into our event base to add this to our trackers */
+    /* need to push into our event base to remove this from our trackers */
     pmix_event_assign(&cd->ev, pmix_psensor_base.evbase, -1,
                       EV_WRITE, del_tracker, cd);
     PMIX_POST_OBJECT(cd);

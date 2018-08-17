@@ -107,6 +107,15 @@ test/simple/simptool
 test/simple/simpdie
 test/simple/quietclient
 test/simple/stability
+<<<<<<< HEAD
+||||||| parent of baa3c3ff... Implement job control and sensor APIs
+test/simple/gwclient
+test/simple/gwtest
+=======
+test/simple/gwclient
+test/simple/gwtest
+test/simple/simpjctrl
+>>>>>>> baa3c3ff... Implement job control and sensor APIs
 
 # coverity
 cov-int
