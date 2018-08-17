@@ -158,7 +158,6 @@ static void add_tracker(int sd, short flags, void *cbdata)
     /* setup the timer event */
     pmix_event_evtimer_set(pmix_psensor_base.evbase, &ft->ev,
                            check_heartbeat, ft);
-    pmix_output(0, "SETTING TIMER FOR %d SEC", ft->tv.tv_sec);
     pmix_event_evtimer_add(&ft->ev, &ft->tv);
     ft->event_active = true;
 }
