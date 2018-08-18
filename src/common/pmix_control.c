@@ -334,6 +334,7 @@ PMIX_EXPORT pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pm
 
     /* sanity check */
     if (NULL == monitor) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_BAD_PARAM;
     }
 
