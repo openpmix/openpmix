@@ -129,6 +129,7 @@ test/simple/simptimeout
 test/simple/stability
 test/simple/gwclient
 test/simple/gwtest
+test/simple/simpjctrl
 
 # coverity
 cov-int
