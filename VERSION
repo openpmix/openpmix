@@ -75,6 +75,6 @@ date="Mar 10, 2018"
 # Version numbers are described in the Libtool current:revision:age
 # format.
 
-libpmix_so_version=4:0:2
+libpmix_so_version=4:1:2
 libpmi_so_version=1:0:0
 libpmi2_so_version=1:0:0
