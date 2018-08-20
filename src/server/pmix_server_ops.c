@@ -2568,7 +2568,7 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer,
         PMIX_LIST_DESTRUCT(&cachefiles);
         if (cnt == (int)cd->ninfo) {
             /* nothing more to do */
-            rc = PMIX_SUCCESS;
+            rc = PMIX_OPERATION_SUCCEEDED;
             goto exit;
         }
     }
