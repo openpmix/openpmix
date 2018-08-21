@@ -21,6 +21,11 @@ example, a bug might be fixed in the master, and then moved to the
 current release as well as the "stable" bug fix release branch.
 
 
+2.1.4 -- TBD
+----------------------
+- Updated configury to silence warnings on older compilers
+
+
 2.1.3 -- 23 Aug 2018
 ----------------------
 - Fixed memory corruption bug in event notification
