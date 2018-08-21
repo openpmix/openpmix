@@ -856,6 +856,7 @@ static void _deregister_client(int sd, short args, void *cbdata)
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t*)cbdata;
     pmix_rank_info_t *info;
     pmix_nspace_t *nptr, *tmp;
+    pmix_peer_t *peer;
 
     PMIX_ACQUIRE_OBJECT(cd);
 
@@ -878,6 +879,9 @@ static void _deregister_client(int sd, short args, void *cbdata)
     /* find and remove this client */
     PMIX_LIST_FOREACH(info, &nptr->ranks, pmix_rank_info_t) {
         if (info->pname.rank == cd->proc.rank) {
+            if (NULL != (peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, info->peerid))) {
+                pmix_psensor.stop(peer, NULL);
+            }
             pmix_list_remove_item(&nptr->ranks, &info->super);
             PMIX_RELEASE(info);
             break;
