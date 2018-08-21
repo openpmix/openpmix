@@ -15,7 +15,7 @@
 
 major=3
 minor=0
-release=1
+release=2
 
 # greek is used for alpha or beta release tags.  If it is non-empty,
 # it will be appended to the version number.  It does not have to be
@@ -75,6 +75,6 @@ date="Mar 10, 2018"
 # Version numbers are described in the Libtool current:revision:age
 # format.
 
-libpmix_so_version=4:1:2
+libpmix_so_version=4:2:2
 libpmi_so_version=1:0:0
 libpmi2_so_version=1:0:0

@@ -21,6 +21,13 @@ example, a bug might be fixed in the master, and then moved to the
 current release as well as the "stable" bug fix release branch.
 
 
+3.0.2 -- TBD
+----------------------
+- Ensure we cleanup any active sensors when a peer departs. Allow the
+  heartbeat monitor to "reset" if a process stops beating and subsequently
+  returns
+
+
 3.0.1 -- 23 Aug 2018
 ----------------------
 **** DEPRECATION WARNING: The pmix_info_array_t struct was
