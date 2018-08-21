@@ -28,6 +28,10 @@
 #include <fcntl.h>
 #endif
 
+#ifdef HAVE_SYS_AUXV_H
+#include <sys/auxv.h>
+#endif
+
 #include <pmix_common.h>
 
 #include "src/include/pmix_globals.h"
@@ -52,6 +56,21 @@ PMIX_EXPORT int pmix_common_dstor_getpagesize(void)
 #else
     return 65536; /* safer to overestimate than under */
 #endif
+}
+
+PMIX_EXPORT size_t pmix_common_dstor_getcacheblocksize(void)
+{
+    size_t cache_line = 0;
+
+#if defined(_SC_LEVEL1_DCACHE_LINESIZE)
+    cache_line = sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
+#endif
+#if (defined(HAVE_SYS_AUXV_H)) && (defined(AT_DCACHEBSIZE))
+    if (0 == cache_line) {
+        cache_line = getauxval(AT_DCACHEBSIZE);
+    }
+#endif
+    return cache_line;
 }
 
 PMIX_EXPORT void pmix_common_dstor_init_segment_info(size_t initial_segment_size,
