@@ -309,7 +309,6 @@ static void check_heartbeat(int fd, short dummy, void *cbdata)
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
         }
-        return;
     } else {
         PMIX_OUTPUT_VERBOSE((1, pmix_psensor_base_framework.framework_output,
                              "[%s:%d] sensor:check_heartbeat detected %d beats for proc %s:%d",
