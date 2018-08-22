@@ -24,7 +24,6 @@
 #include "src/threads/threads.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
-#include "src/util/name_fns.h"
 #include "src/util/output.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/ptl/ptl.h"
@@ -109,59 +108,6 @@ static void query_cbfunc(struct pmix_peer_t *peer,
     PMIX_RELEASE(cd);
 }
 
-static void acb(pmix_status_t status,
-                pmix_info_t *info, size_t ninfo,
-                void *cbdata,
-                pmix_release_cbfunc_t release_fn,
-                void *release_cbdata)
-{
-    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
-    cb->status = status;
-    if (NULL != release_fn) {
-        release_fn(release_cbdata);
-    }
-    PMIX_WAKEUP_THREAD(&cb->lock);
-}
-
-PMIX_EXPORT pmix_status_t PMIx_Job_control(const pmix_proc_t targets[], size_t ntargets,
-                                           const pmix_info_t directives[], size_t ndirs)
-{
-    pmix_cb_t cb;
-    pmix_status_t rc;
-
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return PMIX_ERR_INIT;
-    }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
-
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "%s pmix:job_ctrl", PMIX_NAME_PRINT(&pmix_globals.myid));
-
-    /* create a callback object as we need to pass it to the
-     * recv routine so we know which callback to use when
-     * the return message is recvd */
-    PMIX_CONSTRUCT(&cb, pmix_cb_t);
-    if (PMIX_SUCCESS != (rc = PMIx_Job_control_nb(targets, ntargets,
-                                                  directives, ndirs,
-                                                  acb, &cb))) {
-        PMIX_DESTRUCT(&cb);
-        return rc;
-    }
-
-    /* wait for the operation to complete */
-    PMIX_WAIT_THREAD(&cb.lock);
-    rc = cb.status;
-    PMIX_DESTRUCT(&cb);
-
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:job_ctrl completed");
-
-    return rc;
-}
-
 PMIX_EXPORT pmix_status_t PMIx_Job_control_nb(const pmix_proc_t targets[], size_t ntargets,
                                               const pmix_info_t directives[], size_t ndirs,
                                               pmix_info_cbfunc_t cbfunc, void *cbdata)
@@ -183,8 +129,7 @@ PMIX_EXPORT pmix_status_t PMIx_Job_control_nb(const pmix_proc_t targets[], size_
 
     /* if we are the server, then we just issue the request and
      * return the response */
-    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer) &&
-        !PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
+    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         if (NULL == pmix_host_server.job_control) {
             /* nothing we can do */
@@ -274,45 +219,6 @@ PMIX_EXPORT pmix_status_t PMIx_Job_control_nb(const pmix_proc_t targets[], size_
     return rc;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Process_monitor(const pmix_info_t *monitor, pmix_status_t error,
-                                               const pmix_info_t directives[], size_t ndirs)
-{
-    pmix_cb_t cb;
-    pmix_status_t rc;
-
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return PMIX_ERR_INIT;
-    }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
-
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "%s pmix:monitor", PMIX_NAME_PRINT(&pmix_globals.myid));
-
-    /* create a callback object as we need to pass it to the
-     * recv routine so we know which callback to use when
-     * the return message is recvd */
-    PMIX_CONSTRUCT(&cb, pmix_cb_t);
-    if (PMIX_SUCCESS != (rc = PMIx_Process_monitor_nb(monitor, error,
-                                                      directives, ndirs,
-                                                      acb, &cb))) {
-        PMIX_DESTRUCT(&cb);
-        return rc;
-    }
-
-    /* wait for the operation to complete */
-    PMIX_WAIT_THREAD(&cb.lock);
-    rc = cb.status;
-    PMIX_DESTRUCT(&cb);
-
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:monitor completed");
-
-    return rc;
-}
-
 PMIX_EXPORT pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pmix_status_t error,
                                                   const pmix_info_t directives[], size_t ndirs,
                                                   pmix_info_cbfunc_t cbfunc, void *cbdata)
@@ -340,8 +246,7 @@ PMIX_EXPORT pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pm
 
     /* if we are the server, then we just issue the request and
      * return the response */
-    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer) &&
-        !PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
+    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         if (NULL == pmix_host_server.monitor) {
             /* nothing we can do */

@@ -24,8 +24,8 @@ AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_buildd
 headers = simptest.h
 
 noinst_PROGRAMS = simptest simpclient simppub simpdyn simpft simpdmodex \
-                  test_pmix simptool simpdie simplegacy stability quietclient
-                  test_pmix simptool simpdie simplegacy simptimeout \
+                  test_pmix simptool simpdie simplegacy stability quietclient \
+                  test_pmix simptool simpdie simplegacy \
                   stability quietclient simpjctrl
 
 simptest_SOURCES = $(headers) \
