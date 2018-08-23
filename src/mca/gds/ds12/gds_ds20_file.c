@@ -106,7 +106,7 @@ static size_t pmix_ds20_key_size(char *addr, size_t data_size)
     return ESH_KEY_SIZE_V20(addr, data_size);
 }
 
-static size_t pmix_ds20_slot_size(void)
+static size_t pmix_ds20_ext_slot_size(void)
 {
     return EXT_SLOT_SIZE_V20();
 }
@@ -156,7 +156,7 @@ pmix_common_dstore_file_cbs_t pmix_ds20_file_module = {
     .data_ptr = pmix_ds20_data_ptr,
     .data_size = pmix_ds20_data_size,
     .key_size = pmix_ds20_key_size,
-    .slot_size = pmix_ds20_slot_size,
+    .ext_slot_size = pmix_ds20_ext_slot_size,
     .put_key = pmix_ds20_put_key,
     .is_invalid = pmix_ds20_is_invalid,
     .is_extslot = pmix_ds20_is_ext_slot,

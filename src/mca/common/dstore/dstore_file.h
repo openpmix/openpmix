@@ -7,7 +7,7 @@ typedef size_t (*pmix_common_dstore_key_name_len_fn)(char *key);
 typedef uint8_t* (*pmix_common_dstore_data_ptr_fn)(uint8_t *addr);
 typedef size_t (*pmix_common_dstore_data_size_fn)(uint8_t *addr, uint8_t* data_ptr);
 typedef size_t (*pmix_common_dstore_key_size_fn)(char *key, size_t data_size);
-typedef size_t (*pmix_common_dstore_slot_size_fn)(void);
+typedef size_t (*pmix_common_dstore_ext_slot_size_fn)(void);
 typedef int (*pmix_common_dstore_put_key_fn)(uint8_t *addr, char *key, void *buf,
                                               size_t size);
 typedef int (*pmix_common_dstore_is_invalid_fn)(uint8_t *addr);
@@ -25,7 +25,7 @@ typedef struct {
     pmix_common_dstore_data_ptr_fn data_ptr;
     pmix_common_dstore_data_size_fn data_size;
     pmix_common_dstore_key_size_fn key_size;
-    pmix_common_dstore_slot_size_fn slot_size;
+    pmix_common_dstore_ext_slot_size_fn ext_slot_size;
     pmix_common_dstore_put_key_fn put_key;
     pmix_common_dstore_is_invalid_fn is_invalid;
     pmix_common_dstore_is_extslot_fn is_extslot;
@@ -108,8 +108,8 @@ __extension__ ({                                     \
 #define PMIX_DS_SLOT_SIZE(ctx)                                      \
 __extension__ ({                                     \
     size_t __size = 0;                                              \
-    if ((ctx)->file_cbs && (ctx)->file_cbs->slot_size) {            \
-        __size = (ctx)->file_cbs->slot_size();                      \
+    if ((ctx)->file_cbs && (ctx)->file_cbs->ext_slot_size) {            \
+        __size = (ctx)->file_cbs->ext_slot_size();                      \
     }                                                               \
     __size;                                                         \
 })
