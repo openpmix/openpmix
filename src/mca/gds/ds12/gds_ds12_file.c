@@ -117,7 +117,7 @@ static size_t pmix_ds12_key_size(char *addr, size_t data_size)
     return ESH_KEY_SIZE_V12(addr, data_size);
 }
 
-static size_t pmix_ds12_slot_size(void)
+static size_t pmix_ds12_ext_slot_size(void)
 {
     return EXT_SLOT_SIZE_V12();
 }
@@ -166,7 +166,7 @@ pmix_common_dstore_file_cbs_t pmix_ds12_file_module = {
     .data_ptr = pmix_ds12_data_ptr,
     .data_size = pmix_ds12_data_size,
     .key_size = pmix_ds12_key_size,
-    .slot_size = pmix_ds12_slot_size,
+    .ext_slot_size = pmix_ds12_ext_slot_size,
     .put_key = pmix_ds12_put_key,
     .is_invalid = pmix_ds12_is_invalid,
     .is_extslot = pmix_ds12_is_ext_slot,
