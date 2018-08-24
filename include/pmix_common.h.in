@@ -602,6 +602,8 @@ typedef int pmix_status_t;
 #define PMIX_ERR_UPDATE_ENDPOINTS               (PMIX_ERR_OP_BASE - 16)
 #define PMIX_MODEL_DECLARED                     (PMIX_ERR_OP_BASE - 17)
 #define PMIX_GDS_ACTION_COMPLETE                (PMIX_ERR_OP_BASE - 18)
+/* gap created by v3 definitions */
+#define PMIX_OPERATION_SUCCEEDED                (PMIX_ERR_OP_BASE - 27)
 
 /* define a starting point for system error constants so
  * we avoid renumbering when making additions */
