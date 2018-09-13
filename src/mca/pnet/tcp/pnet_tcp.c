@@ -332,6 +332,10 @@ static pmix_status_t allocate(pmix_nspace_t *nptr,
     if (0 == strncmp(info->key, PMIX_SETUP_APP_ENVARS, PMIX_MAX_KEYLEN) ||
         0 == strncmp(info->key, PMIX_SETUP_APP_ALL, PMIX_MAX_KEYLEN)) {
         if (NULL != mca_pnet_tcp_component.include) {
+        pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                            "pnet: tcp harvesting envars %s excluding %s",
+                            (NULL == mca_pnet_tcp_component.incparms) ? "NONE" : mca_pnet_tcp_component.incparms,
+                            (NULL == mca_pnet_tcp_component.excparms) ? "NONE" : mca_pnet_tcp_component.excparms);
             rc = pmix_pnet_base_harvest_envars(mca_pnet_tcp_component.include,
                                                mca_pnet_tcp_component.exclude,
                                                ilist);
@@ -635,6 +639,8 @@ static pmix_status_t allocate(pmix_nspace_t *nptr,
     }
 
     if (seckey) {
+        pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                            "pnet:tcp: generate seckey");
         generate_key(unique_key);
         kv = PMIX_NEW(pmix_kval_t);
         if (NULL == kv) {
@@ -785,6 +791,8 @@ static pmix_status_t setup_local_network(pmix_nspace_t *nptr,
 static pmix_status_t setup_fork(pmix_nspace_t *nptr,
                                 const pmix_proc_t *peer, char ***env)
 {
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet:tcp:setup_fork");
     return PMIX_SUCCESS;
 }
 
@@ -851,6 +859,9 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
     bool found = false;
     pmix_byte_object_t pbo;
     pmix_kval_t *kv;
+
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet:tcp:collect_inventory");
 
     /* setup the bucket - we will pass the results as a blob */
     PMIX_CONSTRUCT(&bucket, pmix_buffer_t);

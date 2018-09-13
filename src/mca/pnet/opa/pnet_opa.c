@@ -261,6 +261,8 @@ static pmix_status_t allocate(pmix_nspace_t *nptr,
     }
 
     if (seckeys) {
+        pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                            "pnet: opa providing seckeys");
         /* put the number here - or else create an appropriate string. this just needs to
          * eventually be a string variable
          */
@@ -311,6 +313,10 @@ static pmix_status_t allocate(pmix_nspace_t *nptr,
     }
 
     if (envars) {
+        pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                            "pnet: opa harvesting envars %s excluding %s",
+                            (NULL == mca_pnet_opa_component.incparms) ? "NONE" : mca_pnet_opa_component.incparms,
+                            (NULL == mca_pnet_opa_component.excparms) ? "NONE" : mca_pnet_opa_component.excparms);
         /* harvest envars to pass along */
         if (NULL != mca_pnet_opa_component.include) {
             rc = pmix_pnet_base_harvest_envars(mca_pnet_opa_component.include,
@@ -334,6 +340,9 @@ static pmix_status_t setup_local_network(pmix_nspace_t *nptr,
     size_t n;
     pmix_kval_t *kv;
 
+
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet: opa setup_local_network");
 
     if (NULL != info) {
         for (n=0; n < ninfo; n++) {
@@ -366,6 +375,9 @@ static pmix_status_t setup_fork(pmix_nspace_t *nptr,
                                 char ***env)
 {
     pmix_kval_t *kv, *next;
+
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet: opa setup fork");
 
     /* if there are any cached nspace prep blobs, execute them,
      * ensuring that we only do so once per nspace - note that
