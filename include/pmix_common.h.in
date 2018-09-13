@@ -762,6 +762,7 @@ typedef int pmix_status_t;
 /* monitoring */
 #define PMIX_MONITOR_HEARTBEAT_ALERT            (PMIX_ERR_V2X_BASE -  9)
 #define PMIX_MONITOR_FILE_ALERT                 (PMIX_ERR_V2X_BASE - 10)
+#define PMIX_PROC_TERMINATED                    (PMIX_ERR_V2X_BASE - 11)
 
 /* define a starting point for operational error constants so
  * we avoid renumbering when making additions */
@@ -783,7 +784,6 @@ typedef int pmix_status_t;
 #define PMIX_OPERATION_IN_PROGRESS              (PMIX_ERR_OP_BASE - 26)
 #define PMIX_OPERATION_SUCCEEDED                (PMIX_ERR_OP_BASE - 27)
 /* gap for group codes */
-#define PMIX_PROC_TERMINATED                    (PMIX_ERR_OP_BASE - 38)
 
 
 /* define a starting point for system error constants so
