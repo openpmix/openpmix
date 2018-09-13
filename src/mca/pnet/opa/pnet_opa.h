@@ -20,6 +20,8 @@ BEGIN_C_DECLS
 
 typedef struct {
     pmix_pnet_base_component_t super;
+    char *incparms;
+    char *excparms;
     char **include;
     char **exclude;
 } pmix_pnet_opa_component_t;
