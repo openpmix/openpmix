@@ -107,6 +107,18 @@ static void log_fn(const pmix_proc_t *client,
                    const pmix_info_t data[], size_t ndata,
                    const pmix_info_t directives[], size_t ndirs,
                    pmix_op_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t alloc_fn(const pmix_proc_t *client,
+                              pmix_alloc_directive_t directive,
+                              const pmix_info_t data[], size_t ndata,
+                              pmix_info_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t jctrl_fn(const pmix_proc_t *requestor,
+                              const pmix_proc_t targets[], size_t ntargets,
+                              const pmix_info_t directives[], size_t ndirs,
+                              pmix_info_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t mon_fn(const pmix_proc_t *requestor,
+                            const pmix_info_t *monitor, pmix_status_t error,
+                            const pmix_info_t directives[], size_t ndirs,
+                            pmix_info_cbfunc_t cbfunc, void *cbdata);
 
 static pmix_server_module_t mymodule = {
     .client_connected = connected,
@@ -125,7 +137,10 @@ static pmix_server_module_t mymodule = {
     .notify_event = notify_event,
     .query = query_fn,
     .tool_connected = tool_connect_fn,
-    .log = log_fn
+    .log = log_fn,
+    .allocate = alloc_fn,
+    .job_control = jctrl_fn,
+    .monitor = mon_fn
 };
 
 typedef struct {
@@ -302,6 +317,17 @@ static void model_registration_callback(pmix_status_t status,
     DEBUG_WAKEUP_THREAD(lock);
 }
 
+static void set_handler_default(int sig)
+{
+    struct sigaction act;
+
+    act.sa_handler = SIG_DFL;
+    act.sa_flags = 0;
+    sigemptyset(&act.sa_mask);
+
+    sigaction(sig, &act, (struct sigaction *)0);
+}
+
 int main(int argc, char **argv)
 {
     char **client_env=NULL;
@@ -330,8 +356,6 @@ int main(int argc, char **argv)
         fprintf(stderr, "ERROR IN COMPUTING CONSTANTS: PMIX_SUCCESS = %d\n", PMIX_SUCCESS);
         exit(1);
     }
-
-    fprintf(stderr, "Testing version %s\n", PMIx_Get_version());
 
     /* see if we were passed the number of procs to run or
      * the executable to use */
@@ -400,6 +424,8 @@ int main(int argc, char **argv)
         exit(1);
     }
 #endif
+
+    fprintf(stderr, "Testing version %s\n", PMIx_Get_version());
 
     /* setup the server library and tell it to support tool connections */
 #if PMIX_HAVE_HWLOC
@@ -555,14 +581,22 @@ int main(int argc, char **argv)
             PMIx_server_finalize();
             return -1;
         }
-        child = PMIX_NEW(wait_tracker_t);
-        child->pid = pid;
-        pmix_list_append(&children, &child->super);
-
         if (pid == 0) {
+            sigset_t sigs;
+            set_handler_default(SIGTERM);
+            set_handler_default(SIGINT);
+            set_handler_default(SIGHUP);
+            set_handler_default(SIGPIPE);
+            set_handler_default(SIGCHLD);
+            sigprocmask(0, 0, &sigs);
+            sigprocmask(SIG_UNBLOCK, &sigs, 0);
             execve(executable, client_argv, client_env);
             /* Does not return */
             exit(0);
+        } else {
+            child = PMIX_NEW(wait_tracker_t);
+            child->pid = pid;
+            pmix_list_append(&children, &child->super);
         }
     }
     free(executable);
@@ -581,8 +615,7 @@ int main(int argc, char **argv)
     n=0;
     PMIX_LIST_FOREACH(child, &children, wait_tracker_t) {
         if (0 != child->exit_code) {
-            fprintf(stderr, "Child %d exited with status %d - test FAILED\n", n, child->exit_code);
-            goto done;
+            fprintf(stderr, "Child %d [%d] exited with status %d - test FAILED\n", n, child->pid, child->exit_code);
         }
         ++n;
     }
@@ -1033,7 +1066,8 @@ static pmix_status_t notify_event(pmix_status_t code,
                                   pmix_info_t info[], size_t ninfo,
                                   pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
-    return PMIX_SUCCESS;
+    pmix_output(0, "SERVER: NOTIFY EVENT");
+    return PMIX_OPERATION_SUCCEEDED;
 }
 
 typedef struct query_data_t {
@@ -1097,6 +1131,31 @@ static void log_fn(const pmix_proc_t *client,
     }
 }
 
+static pmix_status_t alloc_fn(const pmix_proc_t *client,
+                              pmix_alloc_directive_t directive,
+                              const pmix_info_t data[], size_t ndata,
+                              pmix_info_cbfunc_t cbfunc, void *cbdata)
+{
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t jctrl_fn(const pmix_proc_t *requestor,
+                              const pmix_proc_t targets[], size_t ntargets,
+                              const pmix_info_t directives[], size_t ndirs,
+                              pmix_info_cbfunc_t cbfunc, void *cbdata)
+{
+    return PMIX_OPERATION_SUCCEEDED;
+}
+
+static pmix_status_t mon_fn(const pmix_proc_t *requestor,
+                            const pmix_info_t *monitor, pmix_status_t error,
+                            const pmix_info_t directives[], size_t ndirs,
+                            pmix_info_cbfunc_t cbfunc, void *cbdata)
+{
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+
+
 static void wait_signal_callback(int fd, short event, void *arg)
 {
     pmix_event_t *sig = (pmix_event_t*) arg;
@@ -1125,14 +1184,21 @@ static void wait_signal_callback(int fd, short event, void *arg)
         /* we are already in an event, so it is safe to access the list */
         PMIX_LIST_FOREACH(t2, &children, wait_tracker_t) {
             if (pid == t2->pid) {
-                t2->exit_code = status;
                 /* found it! */
-                if (0 != status && 0 == exit_code) {
-                    exit_code = status;
+                if (WIFEXITED(status)) {
+                    t2->exit_code = WEXITSTATUS(status);
+                } else {
+                    if (WIFSIGNALED(status)) {
+                        t2->exit_code = WTERMSIG(status) + 128;
+                    }
+                }
+                if (0 != t2->exit_code && 0 == exit_code) {
+                    exit_code = t2->exit_code;
                 }
                 --wakeup;
-                break;
+                return;
             }
         }
     }
+    fprintf(stderr, "ENDLOOP\n");
 }

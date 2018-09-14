@@ -39,13 +39,6 @@ typedef struct {
 
     char *lockfile;
     pmix_dstore_seg_desc_t *seg_desc;
-    /*
-     * Lock segment format:
-     * 1. Segment size             sizeof(size_t)
-     * 2. local_size:              sizeof(uint32_t)
-     * 3. Array of in use indexes: sizeof(int32_t)*local_size
-     * 4. Double array of locks:   sizeof(pthread_mutex_t)*local_size*2
-     */
     pthread_mutex_t *mutex;
     uint32_t num_locks;
     uint32_t lock_idx;
@@ -57,16 +50,31 @@ typedef struct {
 
 typedef pmix_list_t ds21_lock_pthread_ctx_t;
 
+/*
+ * Lock segment format:
+ * 1. Segment size             sizeof(size_t)
+ * 2. local_size:              sizeof(uint32_t)
+ * 3. Align size               sizeof(size_t)
+ * 4. Offset of mutexes        sizeof(size_t)
+ * 5. Array of in use indexes: sizeof(int32_t)*local_size
+ * 6. Double array of locks:   sizeof(pthread_mutex_t)*local_size*2
+ */
 typedef struct {
    size_t   seg_size;
    uint32_t num_locks;
+   size_t   align_size;
+   size_t   mutex_offs;
 } segment_hdr_t;
 
-#define _GET_IDX_PTR(seg_ptr) \
-    ((int32_t*)(seg_ptr + sizeof(uint32_t)*3 + sizeof(size_t)))
+#define _GET_IDX_ARR_PTR(seg_ptr) \
+    ((int32_t*)((char*)seg_ptr + sizeof(segment_hdr_t)))
 
-#define _GET_MUTEX_PTR(seg_ptr, idx_num) \
-    ((pthread_mutex_t*)(seg_ptr + sizeof(uint32_t)*3 + sizeof(size_t) + sizeof(int32_t) * idx_num))
+#define _GET_MUTEX_ARR_PTR(seg_hdr) \
+    ((pthread_mutex_t*)((char*)seg_hdr + seg_hdr->mutex_offs))
+
+#define _GET_MUTEX_PTR(seg_hdr, idx) \
+    ((pthread_mutex_t*)((char*)seg_hdr + seg_hdr->mutex_offs + seg_hdr->align_size * (idx)))
+
 
 static void ncon(lock_item_t *p) {
     p->lockfile = NULL;
@@ -80,11 +88,13 @@ static void ldes(lock_item_t *p) {
     uint32_t i;
 
     if(PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
+        segment_hdr_t *seg_hdr = (segment_hdr_t *)p->seg_desc->seg_info.seg_base_addr;
         if (p->lockfile) {
             unlink(p->lockfile);
         }
         for(i = 0; i < p->num_locks * 2; i++) {
-            if (0 != pthread_mutex_destroy(&p->mutex[i])) {
+            pthread_mutex_t *mutex = _GET_MUTEX_PTR(seg_hdr, i);
+            if (0 != pthread_mutex_destroy(mutex)) {
                 PMIX_ERROR_LOG(PMIX_ERROR);
             }
         }
@@ -140,9 +150,22 @@ pmix_status_t pmix_gds_ds21_lock_init(pmix_common_dstor_lock_ctx_t *ctx, const c
         "%s:%d:%s local_size %d", __FILE__, __LINE__, __func__, local_size));
 
     if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
-        size = ((sizeof(uint32_t) + /* local_size */
-                sizeof(int32_t) * local_size + /* array of inuse flag */
-                2 * local_size * sizeof(pthread_mutex_t)) /* array of mutexes */
+        size_t seg_align_size;
+        size_t seg_hdr_size;
+
+        if (0 != (seg_align_size = pmix_common_dstor_getcacheblocksize())) {
+            seg_align_size = (sizeof(pthread_mutex_t) / seg_align_size + 1)
+                    * seg_align_size;
+        } else {
+            seg_align_size = sizeof(pthread_mutex_t);
+        }
+
+        seg_hdr_size = ((sizeof(segment_hdr_t)
+                        + sizeof(int32_t) * local_size)
+                        / seg_align_size + 1) * seg_align_size;
+
+        size = ((seg_hdr_size
+                + 2 * local_size * seg_align_size) /* array of mutexes */
                 / page_size + 1) * page_size;
 
         lock_item->seg_desc = pmix_common_dstor_create_new_lock_seg(base_path,
@@ -165,16 +188,19 @@ pmix_status_t pmix_gds_ds21_lock_init(pmix_common_dstor_lock_ctx_t *ctx, const c
             goto error;
         }
 
-        lock_item->lockfile = strdup(lock_item->seg_desc->seg_info.seg_name);
-        lock_item->num_locks = local_size;
-        lock_item->mutex = _GET_MUTEX_PTR(lock_item->seg_desc->seg_info.seg_base_addr,
-                                         local_size);
         segment_hdr_t *seg_hdr = (segment_hdr_t*)lock_item->seg_desc->seg_info.seg_base_addr;
         seg_hdr->num_locks = local_size;
         seg_hdr->seg_size = size;
+        seg_hdr->align_size = seg_align_size;
+        seg_hdr->mutex_offs = seg_hdr_size;
+
+        lock_item->lockfile = strdup(lock_item->seg_desc->seg_info.seg_name);
+        lock_item->num_locks = local_size;
+        lock_item->mutex = _GET_MUTEX_ARR_PTR(seg_hdr);
 
         for(i = 0; i < local_size * 2; i++) {
-            if (0 != pthread_mutex_init(&lock_item->mutex[i], &attr)) {
+            pthread_mutex_t *mutex = _GET_MUTEX_PTR(seg_hdr, i);
+            if (0 != pthread_mutex_init(mutex, &attr)) {
                 pthread_mutexattr_destroy(&attr);
                 rc = PMIX_ERR_INIT;
                 PMIX_ERROR_LOG(rc);
@@ -198,15 +224,25 @@ pmix_status_t pmix_gds_ds21_lock_init(pmix_common_dstor_lock_ctx_t *ctx, const c
             goto error;
         }
         seg_hdr = (segment_hdr_t*)lock_item->seg_desc->seg_info.seg_base_addr;
+
+        if (seg_hdr->seg_size > size) {
+            size = seg_hdr->seg_size;
+            pmix_common_dstor_delete_sm_desc(lock_item->seg_desc);
+            lock_item->seg_desc = pmix_common_dstor_attach_new_lock_seg(base_path, size, name, 0);
+            if (NULL == lock_item->seg_desc) {
+                rc = PMIX_ERR_NOT_FOUND;
+                goto error;
+            }
+        }
+
         lock_item->num_locks = seg_hdr->num_locks;
-        lock_idx_ptr = _GET_IDX_PTR(lock_item->seg_desc->seg_info.seg_base_addr);
+        lock_idx_ptr = _GET_IDX_ARR_PTR(seg_hdr);
+        lock_item->mutex = _GET_MUTEX_ARR_PTR(seg_hdr);
 
         for (i = 0; i < lock_item->num_locks; i++) {
             int32_t expected = 0;
             if (pmix_atomic_compare_exchange_strong_32(&lock_idx_ptr[i], &expected, 1)) {
                 lock_item->lock_idx = i;
-                lock_item->mutex = _GET_MUTEX_PTR(lock_item->seg_desc->seg_info.seg_base_addr,
-                                                 lock_item->num_locks);
                 lock_item->lockfile = strdup(lock_item->seg_desc->seg_info.seg_name);
                 idx_found = true;
                 break;
@@ -257,10 +293,10 @@ pmix_status_t pmix_ds21_lock_wr_get(pmix_common_dstor_lock_ctx_t lock_ctx)
 {
     lock_item_t *lock_item;
     pmix_list_t *lock_tracker = &((lock_ctx_t*)lock_ctx)->lock_traker;
-    pthread_mutex_t *locks;
     uint32_t num_locks;
     uint32_t i;
     pmix_status_t rc;
+    segment_hdr_t *seg_hdr;
 
     if (NULL == lock_tracker) {
         rc = PMIX_ERR_NOT_FOUND;
@@ -269,8 +305,8 @@ pmix_status_t pmix_ds21_lock_wr_get(pmix_common_dstor_lock_ctx_t lock_ctx)
     }
 
     PMIX_LIST_FOREACH(lock_item, lock_tracker, lock_item_t) {
-        locks = lock_item->mutex;
         num_locks = lock_item->num_locks;
+        seg_hdr = (segment_hdr_t *)lock_item->seg_desc->seg_info.seg_base_addr;
 
          /* Lock the "signalling" lock first to let clients know that
          * server is going to get a write lock.
@@ -278,7 +314,8 @@ pmix_status_t pmix_ds21_lock_wr_get(pmix_common_dstor_lock_ctx_t lock_ctx)
          * so this loop should be relatively dast.
          */
         for (i = 0; i < num_locks; i++) {
-            if (0 != pthread_mutex_lock(&locks[2*i])) {
+            pthread_mutex_t *mutex = _GET_MUTEX_PTR(seg_hdr, 2*i);
+            if (0 != pthread_mutex_lock(mutex)) {
                 return PMIX_ERROR;
             }
         }
@@ -290,7 +327,8 @@ pmix_status_t pmix_ds21_lock_wr_get(pmix_common_dstor_lock_ctx_t lock_ctx)
          * locks will be done
          */
         for(i = 0; i < num_locks; i++) {
-            if (0 != pthread_mutex_lock(&locks[2*i + 1])) {
+            pthread_mutex_t *mutex = _GET_MUTEX_PTR(seg_hdr, 2*i + 1);
+            if (0 != pthread_mutex_lock(mutex)) {
                 return PMIX_ERROR;
             }
         }
@@ -302,10 +340,10 @@ pmix_status_t pmix_ds21_lock_wr_rel(pmix_common_dstor_lock_ctx_t lock_ctx)
 {
     lock_item_t *lock_item;
     pmix_list_t *lock_tracker = &((lock_ctx_t*)lock_ctx)->lock_traker;
-    pthread_mutex_t *locks;
     uint32_t num_locks;
     uint32_t i;
     pmix_status_t rc;
+    segment_hdr_t *seg_hdr;
 
     if (NULL == lock_tracker) {
         rc = PMIX_ERR_NOT_FOUND;
@@ -314,16 +352,16 @@ pmix_status_t pmix_ds21_lock_wr_rel(pmix_common_dstor_lock_ctx_t lock_ctx)
     }
 
     PMIX_LIST_FOREACH(lock_item, lock_tracker, lock_item_t) {
-        locks = lock_item->mutex;
+        seg_hdr = (segment_hdr_t *)lock_item->seg_desc->seg_info.seg_base_addr;
         num_locks = lock_item->num_locks;
 
         /* Lock the second lock first to ensure that all procs will see
          * that we are trying to grab the main one */
         for(i=0; i<num_locks; i++) {
-            if (0 != pthread_mutex_unlock(&locks[2*i])) {
+            if (0 != pthread_mutex_unlock(_GET_MUTEX_PTR(seg_hdr, 2*i))) {
                 return PMIX_ERROR;
             }
-            if (0 != pthread_mutex_unlock(&locks[2*i + 1])) {
+            if (0 != pthread_mutex_unlock(_GET_MUTEX_PTR(seg_hdr, 2*i + 1))) {
                 return PMIX_ERROR;
             }
         }
@@ -336,9 +374,9 @@ pmix_status_t pmix_ds21_lock_rd_get(pmix_common_dstor_lock_ctx_t lock_ctx)
 {
     lock_item_t *lock_item;
     pmix_list_t *lock_tracker = &((lock_ctx_t*)lock_ctx)->lock_traker;
-    pthread_mutex_t *locks;
     uint32_t idx;
     pmix_status_t rc;
+    segment_hdr_t *seg_hdr;
 
     if (NULL == lock_tracker) {
         rc = PMIX_ERR_NOT_FOUND;
@@ -347,25 +385,25 @@ pmix_status_t pmix_ds21_lock_rd_get(pmix_common_dstor_lock_ctx_t lock_ctx)
     }
 
     lock_item = (lock_item_t*)pmix_list_get_first(lock_tracker);
-
-    locks = lock_item->mutex;
     idx = lock_item->lock_idx;
+    seg_hdr = (segment_hdr_t *)lock_item->seg_desc->seg_info.seg_base_addr;
 
     /* This mutex is only used to acquire the next one,
      * this is a barrier that server is using to let clients
      * know that it is going to grab the write lock
      */
-    if (0 != pthread_mutex_lock(&locks[2 * idx])) {
+
+    if (0 != pthread_mutex_lock(_GET_MUTEX_PTR(seg_hdr, 2*idx))) {
         return PMIX_ERROR;
     }
 
     /* Now grab the main lock */
-    if (0 != pthread_mutex_lock(&locks[2*idx + 1])) {
+    if (0 != pthread_mutex_lock(_GET_MUTEX_PTR(seg_hdr, 2*idx + 1))) {
         return PMIX_ERROR;
     }
 
     /* Once done - release signalling lock */
-    if (0 != pthread_mutex_unlock(&locks[2*idx])) {
+    if (0 != pthread_mutex_unlock(_GET_MUTEX_PTR(seg_hdr, 2*idx))) {
         return PMIX_ERROR;
     }
 
@@ -377,8 +415,8 @@ pmix_status_t pmix_ds21_lock_rd_rel(pmix_common_dstor_lock_ctx_t lock_ctx)
     lock_item_t *lock_item;
     pmix_list_t *lock_tracker = &((lock_ctx_t*)lock_ctx)->lock_traker;
     pmix_status_t rc;
-    pthread_mutex_t *locks;
     uint32_t idx;
+    segment_hdr_t *seg_hdr;
 
     if (NULL == lock_tracker) {
         rc = PMIX_ERR_NOT_FOUND;
@@ -387,12 +425,11 @@ pmix_status_t pmix_ds21_lock_rd_rel(pmix_common_dstor_lock_ctx_t lock_ctx)
     }
 
     lock_item = (lock_item_t*)pmix_list_get_first(lock_tracker);
-
-    locks = lock_item->mutex;
+    seg_hdr = (segment_hdr_t *)lock_item->seg_desc->seg_info.seg_base_addr;
     idx = lock_item->lock_idx;
 
     /* Release the main lock */
-    if (0 != pthread_mutex_unlock(&locks[2*idx + 1])) {
+    if (0 != pthread_mutex_unlock(_GET_MUTEX_PTR(seg_hdr, 2*idx + 1))) {
         return PMIX_SUCCESS;
     }
 

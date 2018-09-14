@@ -251,16 +251,19 @@ static pmix_status_t allocate(pmix_nspace_t *nptr,
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
-    if (0 == strncmp(info->key, PMIX_SETUP_APP_ENVARS, PMIX_MAX_KEYLEN)) {
+    if (PMIX_CHECK_KEY(info, PMIX_SETUP_APP_ENVARS)) {
         envars = PMIX_INFO_TRUE(info);
-    } else if (0 == strncmp(info->key, PMIX_SETUP_APP_ALL, PMIX_MAX_KEYLEN)) {
+    } else if (PMIX_CHECK_KEY(info, PMIX_SETUP_APP_ALL)) {
         envars = PMIX_INFO_TRUE(info);
         seckeys = PMIX_INFO_TRUE(info);
-    } else if (0 == strncmp(info->key, PMIX_SETUP_APP_NONENVARS, PMIX_MAX_KEYLEN)) {
+    } else if (PMIX_CHECK_KEY(info, PMIX_SETUP_APP_NONENVARS) ||
+               PMIX_CHECK_KEY(info, PMIX_ALLOC_NETWORK_SEC_KEY)) {
         seckeys = PMIX_INFO_TRUE(info);
     }
 
     if (seckeys) {
+        pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                            "pnet: opa providing seckeys");
         /* put the number here - or else create an appropriate string. this just needs to
          * eventually be a string variable
          */
@@ -311,6 +314,10 @@ static pmix_status_t allocate(pmix_nspace_t *nptr,
     }
 
     if (envars) {
+        pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                            "pnet: opa harvesting envars %s excluding %s",
+                            (NULL == mca_pnet_opa_component.incparms) ? "NONE" : mca_pnet_opa_component.incparms,
+                            (NULL == mca_pnet_opa_component.excparms) ? "NONE" : mca_pnet_opa_component.excparms);
         /* harvest envars to pass along */
         if (NULL != mca_pnet_opa_component.include) {
             rc = pmix_pnet_base_harvest_envars(mca_pnet_opa_component.include,
@@ -335,6 +342,9 @@ static pmix_status_t setup_local_network(pmix_nspace_t *nptr,
     pmix_kval_t *kv;
 
 
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet: opa setup_local_network");
+
     if (NULL != info) {
         for (n=0; n < ninfo; n++) {
             if (0 == strncmp(info[n].key, PMIX_PNET_OPA_BLOB, PMIX_MAX_KEYLEN)) {
@@ -353,6 +363,14 @@ static pmix_status_t setup_local_network(pmix_nspace_t *nptr,
                     return PMIX_ERR_NOMEM;
                 }
                 pmix_value_xfer(kv->value, &info[n].value);
+                if (PMIX_ENVAR == kv->value->type) {
+                    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                                        "pnet:opa:setup_local_network adding %s=%s to environment",
+                                        kv->value->data.envar.envar, kv->value->data.envar.value);
+                } else {
+                    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                                        "pnet:opa:setup_local_network loading blob");
+                }
                 pmix_list_append(&nptr->setup_data, &kv->super);
             }
         }
@@ -366,6 +384,9 @@ static pmix_status_t setup_fork(pmix_nspace_t *nptr,
                                 char ***env)
 {
     pmix_kval_t *kv, *next;
+
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet: opa setup fork");
 
     /* if there are any cached nspace prep blobs, execute them,
      * ensuring that we only do so once per nspace - note that
