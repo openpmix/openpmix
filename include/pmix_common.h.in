@@ -115,6 +115,9 @@ typedef uint32_t pmix_rank_t;
  * a tool can connect with further instructions. This envar will be
  * set by the tool and is _not_ intended for the direct use of users.
  *
+ * PMIX_LAUNCHER_RENDEZVOUS_FILE - if set, contains the full pathname
+ * of a file the launcher is to write that contains its connection info.
+ * Works in addition to anything else the launcher may output.
  */
 
 /* define a set of "standard" PMIx attributes that can
@@ -163,6 +166,7 @@ typedef uint32_t pmix_rank_t;
                                                                     //        from the specified processes to this tool
 #define PMIX_RECONNECT_SERVER               "pmix.cnct.recon"       // (bool) tool is requesting to change server connections
 #define PMIX_LAUNCHER                       "pmix.tool.launcher"    // (bool) tool is a launcher and needs rendezvous files created
+#define PMIX_LAUNCHER_RENDEZVOUS_FILE       "pmix.tool.lncrnd"      // (char*) Pathname of file where connection info is to be stored
 
 /* identification attributes */
 #define PMIX_USERID                         "pmix.euid"             // (uint32_t) effective user id
