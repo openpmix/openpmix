@@ -718,7 +718,7 @@ static void connection_handler(int sd, short args, void *cbdata)
 
     /* let the host server know that this client has connected */
     if (NULL != pmix_host_server.client_connected) {
-        (void)strncpy(proc.nspace, psave->info->pname.nspace, PMIX_MAX_NSLEN);
+        pmix_strncpy(proc.nspace, psave->info->pname.nspace, PMIX_MAX_NSLEN);
         proc.rank = psave->info->pname.rank;
         rc = pmix_host_server.client_connected(&proc, psave->info->server_object, NULL, NULL);
         if (PMIX_SUCCESS != rc) {

@@ -1151,15 +1151,22 @@ typedef struct pmix_proc {
         }                                       \
     } while (0)
 
+#define PMIX_PROC_LOAD(m, n, r)                             \
+    do {                                                    \
+        PMIX_PROC_CONSTRUCT((m));                           \
+        pmix_strncpy((m)->nspace, (n), PMIX_MAX_NSLEN);    \
+        (m)->rank = (r);                                    \
+    } while(0)
+
 #define PMIX_MULTICLUSTER_NSPACE_CONSTRUCT(t, c, n)                         \
     do {                                                                    \
         size_t _len;                                                        \
         memset((t), 0, PMIX_MAX_NSLEN+1);                                   \
         _len = strlen((c));                                                 \
         if ((_len + strlen((n))) < PMIX_MAX_NSLEN) {                        \
-            (void)strncpy((t), (c), PMIX_MAX_NSLEN);                        \
+            pmix_strncpy((t), (c), PMIX_MAX_NSLEN);                         \
             (t)[_len] = ':';                                                \
-            (void)strncpy(&(t)[_len+1], (n), PMIX_MAX_NSLEN - _len - 1);    \
+            pmix_strncpy(&(t)[_len+1], (n), PMIX_MAX_NSLEN - _len);         \
         }                                                                   \
     } while(0)
 
@@ -2466,6 +2473,36 @@ static inline void pmix_value_destruct(pmix_value_t * m) {
         PMIX_ENVAR_DESTRUCT(&(m)->data.envar);
     }
 }
+
+/**
+ * Provide a safe version of strncpy that doesn't generate
+ * a ton of spurious warnings. Note that not every environment
+ * provides nice string functions, and we aren't concerned about
+ * max performance here
+ *
+ * @param dest Destination string.
+ * @param src Source string.
+ * @param len Size of the dest array - 1
+ *
+ */
+static inline void pmix_strncpy(char *dest, const char *src, size_t len)
+{
+    size_t i, k;
+    char *new_dest = dest;
+
+    /* use an algorithm that also protects against
+     * non-NULL-terminated src strings */
+    for (i=0, k=0; i <= len; ++i, ++src, ++new_dest) {
+        ++k;
+        *new_dest = *src;
+        if ('\0' == *src) {
+            break;
+        }
+    }
+    dest[k-1] = '\0';
+}
+
+#include <pmix_extend.h>
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }

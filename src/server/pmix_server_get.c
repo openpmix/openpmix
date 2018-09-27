@@ -148,7 +148,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    (void)strncpy(nspace, cptr, PMIX_MAX_NSLEN);
+    pmix_strncpy(nspace, cptr, PMIX_MAX_NSLEN);
     free(cptr);
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &rank, &cnt, PMIX_PROC_RANK);
@@ -282,7 +282,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
          * for it, so there is no guarantee we have it */
         data = NULL;
         sz = 0;
-        (void)strncpy(proc.nspace, nspace, PMIX_MAX_NSLEN);
+        pmix_strncpy(proc.nspace, nspace, PMIX_MAX_NSLEN);
         proc.rank = PMIX_RANK_WILDCARD;
         /* if we have local procs for this nspace, then we
          * can retrieve the info from that GDS. Otherwise,
@@ -490,7 +490,7 @@ static pmix_status_t create_local_tracker(char nspace[], pmix_rank_t rank,
     if (NULL == lcd){
         return PMIX_ERR_NOMEM;
     }
-    strncpy(lcd->proc.nspace, nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(lcd->proc.nspace, nspace, PMIX_MAX_NSLEN);
     lcd->proc.rank = rank;
     lcd->info = info;
     lcd->ninfo = ninfo;
@@ -584,7 +584,7 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
      * a remote peer, or due to data from a local client
      * having been committed */
     PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
-    (void)strncpy(proc.nspace, nptr->nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, nptr->nspace, PMIX_MAX_NSLEN);
 
     /* if we have local clients of this nspace, then we use
      * the corresponding GDS to retrieve the data. Otherwise,
@@ -931,7 +931,7 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
                     PMIX_DESTRUCT(&cb);
                     goto complete;
                 }
-                (void)strncpy(cb.proc->nspace, nm->ns->nspace, PMIX_MAX_NSLEN);
+                pmix_strncpy(cb.proc->nspace, nm->ns->nspace, PMIX_MAX_NSLEN);
                 cb.proc->rank = PMIX_RANK_WILDCARD;
                 cb.scope = PMIX_INTERNAL;
                 cb.copy = false;

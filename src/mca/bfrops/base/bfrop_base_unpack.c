@@ -836,7 +836,7 @@ pmix_status_t pmix_bfrops_base_unpack_info(pmix_buffer_t *buffer, void *dest,
         if (NULL == tmp) {
             return PMIX_ERROR;
         }
-        (void)strncpy(ptr[i].key, tmp, PMIX_MAX_KEYLEN);
+        pmix_strncpy(ptr[i].key, tmp, PMIX_MAX_KEYLEN);
         free(tmp);
         /* unpack the directives */
         m=1;
@@ -890,7 +890,7 @@ pmix_status_t pmix_bfrops_base_unpack_pdata(pmix_buffer_t *buffer, void *dest,
             PMIX_ERROR_LOG(PMIX_ERROR);
             return PMIX_ERROR;
         }
-        (void)strncpy(ptr[i].key, tmp, PMIX_MAX_KEYLEN);
+        pmix_strncpy(ptr[i].key, tmp, PMIX_MAX_KEYLEN);
         free(tmp);
         /* unpack value - since the value structure is statically-defined
          * instead of a pointer in this struct, we directly unpack it to
@@ -982,7 +982,7 @@ pmix_status_t pmix_bfrops_base_unpack_proc(pmix_buffer_t *buffer, void *dest,
             PMIX_ERROR_LOG(PMIX_ERROR);
             return PMIX_ERROR;
         }
-        (void)strncpy(ptr[i].nspace, tmp, PMIX_MAX_NSLEN);
+        pmix_strncpy(ptr[i].nspace, tmp, PMIX_MAX_NSLEN);
         free(tmp);
         /* unpack the rank */
         m=1;

@@ -16,7 +16,7 @@
  *                         reserved.
  * Copyright (c) 2015-2016 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2016-2017 Intel, Inc. All rights reserved.
+ * Copyright (c) 2016-2018 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -218,7 +218,7 @@ int pmix_ifaddrtoname(const char* if_addr, char* if_name, int length)
                 memcpy (&ipv4, r->ai_addr, r->ai_addrlen);
 
                 if (inaddr->sin_addr.s_addr == ipv4.sin_addr.s_addr) {
-                    strncpy(if_name, intf->if_name, length);
+                    pmix_strncpy(if_name, intf->if_name, length-1);
                     freeaddrinfo (res);
                     return PMIX_SUCCESS;
                 }
@@ -226,7 +226,7 @@ int pmix_ifaddrtoname(const char* if_addr, char* if_name, int length)
             else {
                 if (IN6_ARE_ADDR_EQUAL(&((struct sockaddr_in6*) &intf->if_addr)->sin6_addr,
                     &((struct sockaddr_in6*) r->ai_addr)->sin6_addr)) {
-                    strncpy(if_name, intf->if_name, length);
+                    pmix_strncpy(if_name, intf->if_name, length-1);
                     freeaddrinfo (res);
                     return PMIX_SUCCESS;
                 }
@@ -493,7 +493,7 @@ int pmix_ifindextoname(int if_index, char* if_name, int length)
         intf != (pmix_pif_t*)pmix_list_get_end(&pmix_if_list);
         intf =  (pmix_pif_t*)pmix_list_get_next(intf)) {
         if (intf->if_index == if_index) {
-            strncpy(if_name, intf->if_name, length);
+            pmix_strncpy(if_name, intf->if_name, length-1);
             return PMIX_SUCCESS;
         }
     }
@@ -514,7 +514,7 @@ int pmix_ifkindextoname(int if_kindex, char* if_name, int length)
         intf != (pmix_pif_t*)pmix_list_get_end(&pmix_if_list);
         intf =  (pmix_pif_t*)pmix_list_get_next(intf)) {
         if (intf->if_kernel_index == if_kindex) {
-            strncpy(if_name, intf->if_name, length);
+            pmix_strncpy(if_name, intf->if_name, length-1);
             return PMIX_SUCCESS;
         }
     }

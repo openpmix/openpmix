@@ -265,7 +265,7 @@ static int if_posix_open(void)
 
         /* copy entry over into our data structure */
         memset(intf->if_name, 0, sizeof(intf->if_name));
-        strncpy(intf->if_name, ifr->ifr_name, sizeof(intf->if_name) - 1);
+        pmix_strncpy(intf->if_name, ifr->ifr_name, sizeof(intf->if_name) - 1);
         intf->if_flags = ifr->ifr_flags;
 
         /* every new address gets its own internal if_index */

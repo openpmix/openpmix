@@ -116,7 +116,7 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
 
     /* let the local host's server execute it */
     if (NULL != pmix_host_server.abort) {
-        (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+        pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
         proc.rank = peer->info->pname.rank;
         rc = pmix_host_server.abort(&proc, peer->info->server_object, status, msg,
                                     procs, nprocs, cbfunc, cbdata);
@@ -156,7 +156,7 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
     /* shorthand */
     info = peer->info;
     nptr = peer->nptr;
-    (void)strncpy(proc.nspace, nptr->nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, nptr->nspace, PMIX_MAX_NSLEN);
     proc.rank = info->pname.rank;
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
@@ -401,7 +401,7 @@ static pmix_server_trkr_t* new_tracker(pmix_proc_t *procs,
 
     all_def = true;
     for (i=0; i < nprocs; i++) {
-        (void)strncpy(trk->pcs[i].nspace, procs[i].nspace, PMIX_MAX_NSLEN);
+        pmix_strncpy(trk->pcs[i].nspace, procs[i].nspace, PMIX_MAX_NSLEN);
         trk->pcs[i].rank = procs[i].rank;
         if (!all_def) {
             continue;
@@ -650,7 +650,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
             PMIX_LIST_FOREACH(scd, &trk->local_cbs, pmix_server_caddy_t) {
                 /* get any remote contribution - note that there
                  * may not be a contribution */
-                (void)strncpy(pcs.nspace, scd->peer->info->pname.nspace, PMIX_MAX_NSLEN);
+                pmix_strncpy(pcs.nspace, scd->peer->info->pname.nspace, PMIX_MAX_NSLEN);
                 pcs.rank = scd->peer->info->pname.rank;
                 PMIX_CONSTRUCT(&cb, pmix_cb_t);
                 cb.proc = &pcs;
@@ -792,12 +792,12 @@ pmix_status_t pmix_server_publish(pmix_peer_t *peer,
             goto cleanup;
         }
     }
-    (void)strncpy(cd->info[cd->ninfo-1].key, PMIX_USERID, PMIX_MAX_KEYLEN);
+    pmix_strncpy(cd->info[cd->ninfo-1].key, PMIX_USERID, PMIX_MAX_KEYLEN);
     cd->info[cd->ninfo-1].value.type = PMIX_UINT32;
     cd->info[cd->ninfo-1].value.data.uint32 = uid;
 
     /* call the local server */
-    (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
     proc.rank = peer->info->pname.rank;
     rc = pmix_host_server.publish(&proc, cd->info, cd->ninfo, opcbfunc, cd);
 
@@ -906,12 +906,12 @@ pmix_status_t pmix_server_lookup(pmix_peer_t *peer,
             goto cleanup;
         }
     }
-    (void)strncpy(cd->info[cd->ninfo-1].key, PMIX_USERID, PMIX_MAX_KEYLEN);
+    pmix_strncpy(cd->info[cd->ninfo-1].key, PMIX_USERID, PMIX_MAX_KEYLEN);
     cd->info[cd->ninfo-1].value.type = PMIX_UINT32;
     cd->info[cd->ninfo-1].value.data.uint32 = uid;
 
     /* call the local server */
-    (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
     proc.rank = peer->info->pname.rank;
     rc = pmix_host_server.lookup(&proc, cd->keys, cd->info, cd->ninfo, lkcbfunc, cd);
 
@@ -1002,12 +1002,12 @@ pmix_status_t pmix_server_unpublish(pmix_peer_t *peer,
             goto cleanup;
         }
     }
-    (void)strncpy(cd->info[cd->ninfo-1].key, PMIX_USERID, PMIX_MAX_KEYLEN);
+    pmix_strncpy(cd->info[cd->ninfo-1].key, PMIX_USERID, PMIX_MAX_KEYLEN);
     cd->info[cd->ninfo-1].value.type = PMIX_UINT32;
     cd->info[cd->ninfo-1].value.data.uint32 = uid;
 
     /* call the local server */
-    (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
     proc.rank = peer->info->pname.rank;
     rc = pmix_host_server.unpublish(&proc, cd->keys, cd->info, cd->ninfo, opcbfunc, cd);
 
@@ -1242,7 +1242,7 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer,
         }
     }
     /* call the local server */
-    (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
     proc.rank = peer->info->pname.rank;
     rc = pmix_host_server.spawn(&proc, cd->info, cd->ninfo, cd->apps, cd->napps, spcbfunc, cd);
 
@@ -2105,7 +2105,7 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer,
     }
 
     /* setup the requesting peer name */
-    (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
     proc.rank = peer->info->pname.rank;
 
     /* ask the host for the info */
@@ -2148,7 +2148,7 @@ pmix_status_t pmix_server_log(pmix_peer_t *peer,
      * the request itself */
 
     /* setup the requesting peer name */
-    (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
     proc.rank = peer->info->pname.rank;
 
     cd = PMIX_NEW(pmix_shift_caddy_t);
@@ -2276,7 +2276,7 @@ pmix_status_t pmix_server_alloc(pmix_peer_t *peer,
     }
 
     /* setup the requesting peer name */
-    (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
     proc.rank = peer->info->pname.rank;
 
     /* ask the host to execute the request */
@@ -2580,7 +2580,7 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer,
     }
 
     /* setup the requesting peer name */
-    (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
     proc.rank = peer->info->pname.rank;
 
     /* ask the host to execute the request */
@@ -2672,7 +2672,7 @@ pmix_status_t pmix_server_monitor(pmix_peer_t *peer,
     }
 
     /* setup the requesting peer name */
-    (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
     proc.rank = peer->info->pname.rank;
 
     /* ask the host to execute the request */
@@ -2731,7 +2731,7 @@ pmix_status_t pmix_server_get_credential(pmix_peer_t *peer,
     }
 
     /* setup the requesting peer name */
-    (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
     proc.rank = peer->info->pname.rank;
 
     /* ask the host to execute the request */
@@ -2796,7 +2796,7 @@ pmix_status_t pmix_server_validate_credential(pmix_peer_t *peer,
     }
 
     /* setup the requesting peer name */
-    (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
     proc.rank = peer->info->pname.rank;
 
     /* ask the host to execute the request */
@@ -3088,7 +3088,7 @@ pmix_status_t pmix_server_iofstdin(pmix_peer_t *peer,
     }
 
     /* pass the data to the host */
-    (void)strncpy(source.nspace, peer->nptr->nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(source.nspace, peer->nptr->nspace, PMIX_MAX_NSLEN);
     source.rank = peer->info->pname.rank;
     if (PMIX_SUCCESS != (rc = pmix_host_server.push_stdin(&source, cd->procs, cd->nprocs,
                                                           cd->info, cd->ninfo, cd->bo,

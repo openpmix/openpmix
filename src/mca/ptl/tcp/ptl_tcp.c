@@ -1069,7 +1069,7 @@ static pmix_status_t recv_connect_ack(int sd)
                 return PMIX_ERR_INIT;
             }
         } else {
-            (void)strncpy(pmix_globals.myid.nspace, nspace, PMIX_MAX_NSLEN);
+            pmix_strncpy(pmix_globals.myid.nspace, nspace, PMIX_MAX_NSLEN);
         }
         /* if we already have a rank, then leave it alone */
         if (PMIX_RANK_INVALID == pmix_globals.myid.rank) {
