@@ -1487,7 +1487,7 @@ static void connection_handler(int sd, short args, void *cbdata)
 
       /* let the host server know that this client has connected */
       if (NULL != pmix_host_server.client_connected) {
-          (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+          pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
           proc.rank = peer->info->pname.rank;
           rc = pmix_host_server.client_connected(&proc, peer->info->server_object,
                                                  NULL, NULL);
@@ -1762,7 +1762,7 @@ static void cnct_cbfunc(pmix_status_t status,
         return;
     }
     cd->status = status;
-    (void)strncpy(cd->proc.nspace, proc->nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(cd->proc.nspace, proc->nspace, PMIX_MAX_NSLEN);
     cd->cbdata = cbdata;
     PMIX_THREADSHIFT(cd, process_cbfunc);
 }

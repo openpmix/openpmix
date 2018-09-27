@@ -75,7 +75,6 @@ pmix_status_t pmix_value_unload(pmix_value_t *kv, void **data, size_t *sz);
 
 pmix_status_t pmix_value_xfer(pmix_value_t *kv, pmix_value_t *src);
 
-
 pmix_status_t pmix_argv_append_nosize(char ***argv, const char *arg);
 
 pmix_status_t pmix_argv_prepend_nosize(char ***argv, const char *arg);
