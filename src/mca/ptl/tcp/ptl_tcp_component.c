@@ -1140,6 +1140,7 @@ static void connection_handler(int sd, short args, void *cbdata)
         }
     } else {
         /* we don't know what they are! */
+        PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
         rc = PMIX_ERR_NOT_SUPPORTED;
         free(msg);
         goto error;
@@ -1174,6 +1175,7 @@ static void connection_handler(int sd, short args, void *cbdata)
             proc_type = proc_type | PMIX_PROC_V3;
         } else {
             free(msg);
+            PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
             rc = PMIX_ERR_NOT_SUPPORTED;
             goto error;
         }
@@ -1224,6 +1226,7 @@ static void connection_handler(int sd, short args, void *cbdata)
         /* does the server support tool connections? */
         if (NULL == pmix_host_server.tool_connected) {
             /* send an error reply to the client */
+            PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
             rc = PMIX_ERR_NOT_SUPPORTED;
             goto error;
         }
