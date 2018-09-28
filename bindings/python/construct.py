@@ -13,6 +13,7 @@ def signal_handler(signal, frame):
 
 def harvest_constants(options, src, constants, definitions):
     global takeconst, takeapis, takedtypes
+
     path = os.path.join(options.src, src)
     # open the file
     try:
@@ -138,6 +139,16 @@ def harvest_constants(options, src, constants, definitions):
                     n += 1
                     continue
                 else:
+                    # check for a typedef that includes a named value
+                    # of either PMIX_MAX_NSLEN or PMIX_MAX_KEYLEN
+                    if "PMIX_MAX_NSLEN+1" in value:
+                        value = value.replace("PMIX_MAX_NSLEN+1", str(64))
+                    elif "PMIX_MAX_NSLEN" in value:
+                        value = value.replace("PMIX_MAX_NSLEN", str(63))
+                    elif "PMIX_MAX_KEYLEN+1" in value:
+                        value = value.replace("PMIX_MAX_KEYLEN+1", str(64))
+                    elif "PMIX_MAX_KEYLEN" in value:
+                        value = value.replace("PMIX_MAX_KEYLEN", str(63))
                     typedefs.append([value])
             # now check the third option by looking for
             # "fn_t" or "cbfunc_t" in it
