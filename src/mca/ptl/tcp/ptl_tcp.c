@@ -239,6 +239,9 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
                     if (NULL != suri) {
                         free(suri);
                     }
+                    if (NULL != rendfile) {
+                        free(rendfile);
+                    }
                     return PMIX_ERR_BAD_PARAM;
                 }
                 server_nspace = strdup(info[n].value.data.string);
@@ -253,6 +256,9 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
                     free(suri);
                     if (NULL != server_nspace) {
                         free(server_nspace);
+                    }
+                    if (NULL != rendfile) {
+                        free(rendfile);
                     }
                     return PMIX_ERR_BAD_PARAM;
                 }
@@ -290,6 +296,9 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
             rc = parse_uri_file(&suri[5], &suri2, &nspace, &rank);
             if (PMIX_SUCCESS != rc) {
                 free(suri);
+                if (NULL != rendfile) {
+                    free(rendfile);
+                }
                 return PMIX_ERR_UNREACH;
             }
             free(suri);
@@ -299,6 +308,9 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
             p = strchr(suri, ';');
             if (NULL == p) {
                 free(suri);
+                if (NULL != rendfile) {
+                    free(rendfile);
+                }
                 return PMIX_ERR_BAD_PARAM;
             }
             *p = '\0';
@@ -310,6 +322,9 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
             if (NULL == p) {
                 free(suri2);
                 free(suri);
+                if (NULL != rendfile) {
+                    free(rendfile);
+                }
                 return PMIX_ERR_BAD_PARAM;
             }
             *p = '\0';
@@ -328,10 +343,16 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
                 free(nspace);
             }
             free(suri);
+            if (NULL != rendfile) {
+                free(rendfile);
+            }
             return rc;
         }
         free(suri);
         suri = NULL;
+        if (NULL != rendfile) {
+            free(rendfile);
+        }
         goto complete;
     }
 
@@ -347,6 +368,9 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
             /* go ahead and try to connect */
             if (PMIX_SUCCESS == try_connect(suri, &sd)) {
                 /* don't free nspace - we will use it below */
+                if (NULL != rendfile) {
+                    free(rendfile);
+                }
                 goto complete;
             }
         }
@@ -356,6 +380,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
         if (NULL != suri) {
             free(suri);
         }
+        free(rendfile);
         /* since they gave us a specific rendfile and we couldn't
          * connect to it, return an error */
         return PMIX_ERR_UNREACH;
