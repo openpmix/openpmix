@@ -229,7 +229,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     PMIX_CONSTRUCT(&pmix_client_globals.peers, pmix_pointer_array_t);
     pmix_pointer_array_init(&pmix_client_globals.peers, 1, INT_MAX, 1);
     pmix_client_globals.myserver = PMIX_NEW(pmix_peer_t);
-    pmix_client_globals.myserver->nptr = PMIX_NEW(pmix_nspace_t);
+    pmix_client_globals.myserver->nptr = PMIX_NEW(pmix_namespace_t);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: init called");

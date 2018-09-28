@@ -81,8 +81,12 @@ extern "C" {
 /****  PMIX CONSTANTS    ****/
 
 /* define maximum value and key sizes */
-#define PMIX_MAX_NSLEN     255
-#define PMIX_MAX_KEYLEN    511
+#define PMIX_MAX_NSLEN     63
+#define PMIX_MAX_KEYLEN    63
+
+/* define abstract types for namespaces and keys */
+typedef char pmix_nspace_t[PMIX_MAX_NSLEN+1];
+typedef char pmix_key_t[PMIX_MAX_KEYLEN+1];
 
 /* define a type for rank values */
 typedef uint32_t pmix_rank_t;
@@ -128,7 +132,6 @@ typedef uint32_t pmix_rank_t;
                                                                     //        client rendezvous points and contact info
 #define PMIX_SYSTEM_TMPDIR                  "pmix.sys.tmpdir"       // (char*) temp directory for this system, where PMIx
                                                                     //        server will place tool rendezvous points and contact info
-#define PMIX_REGISTER_NODATA                "pmix.reg.nodata"       // (bool) Registration is for nspace only, do not copy job data
 #define PMIX_SERVER_ENABLE_MONITORING       "pmix.srv.monitor"      // (bool) Enable PMIx internal monitoring by server
 #define PMIX_SERVER_NSPACE                  "pmix.srv.nspace"       // (char*) Name of the nspace to use for this server
 #define PMIX_SERVER_RANK                    "pmix.srv.rank"         // (pmix_rank_t) Rank of this server
@@ -239,7 +242,6 @@ typedef uint32_t pmix_rank_t;
 /* topology info */
 #define PMIX_NET_TOPO                       "pmix.ntopo"            // (char*) xml-representation of network topology
 #define PMIX_LOCAL_TOPO                     "pmix.ltopo"            // (char*) xml-representation of local node topology
-#define PMIX_NODE_LIST                      "pmix.nlist"            // (char*) comma-delimited list of nodes running procs for this job
 #define PMIX_TOPOLOGY                       "pmix.topo"             // (hwloc_topology_t) pointer to the PMIx client's internal topology object
 #define PMIX_TOPOLOGY_SIGNATURE             "pmix.toposig"          // (char*) topology signature string
 #define PMIX_LOCALITY_STRING                "pmix.locstr"           // (char*) string describing a proc's location
@@ -291,8 +293,6 @@ typedef uint32_t pmix_rank_t;
 
 /* event handler registration and notification info keys */
 #define PMIX_EVENT_HDLR_NAME                "pmix.evname"           // (char*) string name identifying this handler
-#define PMIX_EVENT_JOB_LEVEL                "pmix.evjob"            // (bool) register for job-specific events only
-#define PMIX_EVENT_ENVIRO_LEVEL             "pmix.evenv"            // (bool) register for environment events only
 #define PMIX_EVENT_HDLR_FIRST               "pmix.evfirst"          // (bool) invoke this event handler before any other handlers
 #define PMIX_EVENT_HDLR_LAST                "pmix.evlast"           // (bool) invoke this event handler after all other handlers have been called
 #define PMIX_EVENT_HDLR_FIRST_IN_CATEGORY   "pmix.evfirstcat"       // (bool) invoke this event handler before any other handlers in this category
@@ -592,10 +592,11 @@ typedef int pmix_status_t;
 #define PMIX_MONITOR_HEARTBEAT_ALERT            (PMIX_ERR_V2X_BASE -  9)
 #define PMIX_MONITOR_FILE_ALERT                 (PMIX_ERR_V2X_BASE - 10)
 #define PMIX_PROC_TERMINATED                    (PMIX_ERR_V2X_BASE - 11)
+#define PMIX_ERR_INVALID_TERMINATION            (PMIX_ERR_V2X_BASE - 12)
 
 /* define a starting point for operational error constants so
  * we avoid renumbering when making additions */
-#define PMIX_ERR_OP_BASE    PMIX_ERR_V2X_BASE-30
+#define PMIX_ERR_OP_BASE    PMIX_ERR_V2X_BASE-100
 
 /* operational */
 #define PMIX_ERR_EVENT_REGISTRATION             (PMIX_ERR_OP_BASE - 14)
@@ -605,20 +606,26 @@ typedef int pmix_status_t;
 #define PMIX_GDS_ACTION_COMPLETE                (PMIX_ERR_OP_BASE - 18)
 /* gap created by v3 definitions */
 #define PMIX_OPERATION_SUCCEEDED                (PMIX_ERR_OP_BASE - 27)
-/* gap for group codes */
+#define PMIX_ERR_INVALID_OPERATION              (PMIX_ERR_OP_BASE - 28)
 
-/* define a starting point for system error constants so
- * we avoid renumbering when making additions */
-#define PMIX_ERR_SYS_BASE    PMIX_ERR_OP_BASE-100
+/* define a starting point for system event constants so
+ * we avoid renumbering when making additions - host environments
+ * are responsible for translating their own event codes into
+ * the closest PMIx equivalent value */
+#define PMIX_ERR_SYS_BASE    PMIX_ERR_OP_BASE-200
 
 /* system failures */
-#define PMIX_ERR_NODE_DOWN                      (PMIX_ERR_SYS_BASE -  1)
-#define PMIX_ERR_NODE_OFFLINE                   (PMIX_ERR_SYS_BASE -  2)
+#define PMIX_ERR_NODE_DOWN                      (PMIX_ERR_SYS_BASE -   0)
+#define PMIX_ERR_NODE_OFFLINE                   (PMIX_ERR_SYS_BASE -   1)
+#define PMIX_ERR_SYS_OTHER                      (PMIX_ERR_EVHDLR_BASE + 1)
 
+/* define a macro for identifying system event values */
+#define PMIX_SYSTEM_EVENT(a)   \
+    (PMIX_ERR_SYS_BASE >= (a) && PMIX_ERR_EVHDLR_BASE < (a))
 
 /* define a starting point for event handler error constants so
  * we avoid renumbering when making additions */
-#define PMIX_ERR_EVHDLR_BASE    PMIX_ERR_SYS_BASE-100
+#define PMIX_ERR_EVHDLR_BASE    PMIX_ERR_SYS_BASE-500
 
 /* used by event handlers */
 #define PMIX_EVENT_NO_ACTION_TAKEN              (PMIX_ERR_EVHDLR_BASE -  1)
@@ -629,14 +636,14 @@ typedef int pmix_status_t;
 
 /* define a starting point for PMIx internal error codes
  * that are never exposed outside the library */
-#define PMIX_INTERNAL_ERR_BASE          -1000
+#define PMIX_INTERNAL_ERR_BASE          PMIX_ERR_EVHDLR_BASE-1000
 
 /* define a starting point for user-level defined error
  * constants - negative values larger than this are guaranteed
  * not to conflict with PMIx values. Definitions should always
  * be based on the PMIX_EXTERNAL_ERR_BASE constant and -not- a
  * specific value as the value of the constant may change */
-#define PMIX_EXTERNAL_ERR_BASE           -2000
+#define PMIX_EXTERNAL_ERR_BASE           PMIX_INTERNAL_ERR_BASE-2000
 
 /****    PMIX DATA TYPES    ****/
 typedef uint16_t pmix_data_type_t;
@@ -758,9 +765,23 @@ typedef uint8_t pmix_alloc_directive_t;
 #define PMIX_CHECK_KEY(a, b) \
     (0 == strncmp((a)->key, (b), PMIX_MAX_KEYLEN))
 
+/* define a convenience macro for loading nspaces */
+#define PMIX_LOAD_NSPACE(a, b)                      \
+    do {                                            \
+        memset((a), 0, PMIX_MAX_NSLEN+1);           \
+        (void)strncpy((a), (b), PMIX_MAX_NSLEN);    \
+    }while(0)
+
 /* define a convenience macro for checking nspaces */
 #define PMIX_CHECK_NSPACE(a, b) \
     (0 == strncmp((a), (b), PMIX_MAX_NSLEN))
+
+/* define a convenience macro for loading names */
+#define PMIX_LOAD_PROCID(a, b, c)               \
+    do {                                        \
+        PMIX_LOAD_NSPACE((a)->nspace, (b));     \
+        (a)->rank = (c);                        \
+    }while(0)
 
 /* define a convenience macro for checking names */
 #define PMIX_CHECK_PROCID(a, b) \
@@ -853,7 +874,7 @@ typedef struct pmix_data_buffer {
 
 /****    PMIX PROC OBJECT    ****/
 typedef struct pmix_proc {
-    char nspace[PMIX_MAX_NSLEN+1];
+    pmix_nspace_t nspace;
     pmix_rank_t rank;
 } pmix_proc_t;
 #define PMIX_PROC_CREATE(m, n)                                  \
@@ -1065,7 +1086,7 @@ pmix_status_t pmix_setenv(const char *name, const char *value,
 
 /****    PMIX INFO STRUCT    ****/
 struct pmix_info_t {
-    char key[PMIX_MAX_KEYLEN+1];    // ensure room for the NULL terminator
+    pmix_key_t key;
     pmix_info_directives_t flags;   // bit-mask of flags
     pmix_value_t value;
 };
@@ -1115,6 +1136,11 @@ struct pmix_info_t {
 #define PMIX_INFO_OPTIONAL(m)       \
     (m)->flags &= ~PMIX_INFO_REQD;
 
+#define PMIX_INFO_IS_REQUIRED(m)    \
+    (m)->flags & PMIX_INFO_REQD
+#define PMIX_INFO_IS_OPTIONAL(m)    \
+    !((m)->flags & PMIX_INFO_REQD)
+
 #define PMIX_INFO_UNLOAD(r, v, l)                              \
     do {                                                       \
         pmix_info_t *_info;                                    \
@@ -1149,7 +1175,7 @@ struct pmix_info_t {
 /****    PMIX LOOKUP RETURN STRUCT    ****/
 typedef struct pmix_pdata {
     pmix_proc_t proc;
-    char key[PMIX_MAX_KEYLEN+1];  // ensure room for the NULL terminator
+    pmix_key_t key;
     pmix_value_t value;
 } pmix_pdata_t;
 
@@ -1334,7 +1360,7 @@ typedef struct pmix_query {
 
 /****    PMIX MODEX STRUCT    ****/
 typedef struct pmix_modex_data {
-    char nspace[PMIX_MAX_NSLEN+1];
+    pmix_nspace_t nspace;
     int rank;
     uint8_t *blob;
     size_t size;
@@ -1401,7 +1427,7 @@ typedef void (*pmix_modex_cbfunc_t)(pmix_status_t status,
  * released by the library upon return from the callback function, so
  * the receiver must copy it if it needs to be retained */
 typedef void (*pmix_spawn_cbfunc_t)(pmix_status_t status,
-                                    char nspace[], void *cbdata);
+                                    pmix_nspace_t nspace, void *cbdata);
 
 /* define a callback for common operations that simply return
  * a status. Examples include the non-blocking versions of
@@ -1635,7 +1661,7 @@ PMIX_EXPORT const char* PMIx_Get_version(void);
  * proc. This is data that has only internal scope - it will
  * never be "pushed" externally */
 PMIX_EXPORT pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc,
-                                              const char *key, pmix_value_t *val);
+                                              const pmix_key_t key, pmix_value_t *val);
 
 /**
  * Top-level interface function to pack one or more values into a

@@ -143,7 +143,7 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
     pmix_buffer_t b2, pbkt;
     pmix_kval_t *kp;
     pmix_scope_t scope;
-    pmix_nspace_t *nptr;
+    pmix_namespace_t *nptr;
     pmix_rank_info_t *info;
     pmix_proc_t proc;
     pmix_dmdx_remote_t *dcd, *dcdnext;
@@ -365,7 +365,7 @@ static pmix_server_trkr_t* new_tracker(pmix_proc_t *procs,
     pmix_server_trkr_t *trk;
     size_t i;
     bool all_def;
-    pmix_nspace_t *nptr, *ns;
+    pmix_namespace_t *nptr, *ns;
     pmix_rank_info_t *info;
 
     pmix_output_verbose(5, pmix_globals.debug_output,
@@ -406,7 +406,7 @@ static pmix_server_trkr_t* new_tracker(pmix_proc_t *procs,
         }
         /* is this nspace known to us? */
         nptr = NULL;
-        PMIX_LIST_FOREACH(ns, &pmix_server_globals.nspaces, pmix_nspace_t) {
+        PMIX_LIST_FOREACH(ns, &pmix_server_globals.nspaces, pmix_namespace_t) {
             if (0 == strcmp(procs[i].nspace, ns->nspace)) {
                 nptr = ns;
                 break;
@@ -1318,9 +1318,7 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
 
     /* check the directives */
     for (n=0; n < ninfo; n++) {
-        if (0 == strncmp(info[n].key, PMIX_EVENT_ENVIRO_LEVEL, PMIX_MAX_KEYLEN)) {
-            enviro_events = PMIX_INFO_TRUE(&info[n]);
-        } else if (0 == strncmp(info[n].key, PMIX_EVENT_AFFECTED_PROC, PMIX_MAX_KEYLEN)) {
+        if (0 == strncmp(info[n].key, PMIX_EVENT_AFFECTED_PROC, PMIX_MAX_KEYLEN)) {
             if (NULL != affected) {
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                 rc = PMIX_ERR_BAD_PARAM;
@@ -1338,6 +1336,14 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
             naffected = info[n].value.data.darray->size;
             PMIX_PROC_CREATE(affected, naffected);
             memcpy(affected, info[n].value.data.darray->array, naffected * sizeof(pmix_proc_t));
+        }
+    }
+
+    /* check the codes for system events */
+    for (n=0; n < ncodes; n++) {
+        if (PMIX_SYSTEM_EVENT(codes[n])) {
+            enviro_events = true;
+            break;
         }
     }
 

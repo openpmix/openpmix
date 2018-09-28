@@ -52,7 +52,7 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_namelist_t,
                                 pmix_list_item_t,
                                 NULL, NULL);
 
-static void nscon(pmix_nspace_t *p)
+static void nscon(pmix_namespace_t *p)
 {
     p->nspace = NULL;
     p->nprocs = 0;
@@ -64,7 +64,7 @@ static void nscon(pmix_nspace_t *p)
     PMIX_CONSTRUCT(&p->ranks, pmix_list_t);
     memset(&p->compat, 0, sizeof(p->compat));
 }
-static void nsdes(pmix_nspace_t *p)
+static void nsdes(pmix_namespace_t *p)
 {
     if (NULL != p->nspace) {
         free(p->nspace);
@@ -74,7 +74,7 @@ static void nsdes(pmix_nspace_t *p)
     }
     PMIX_LIST_DESTRUCT(&p->ranks);
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_nspace_t,
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_namespace_t,
                                 pmix_list_item_t,
                                 nscon, nsdes);
 
