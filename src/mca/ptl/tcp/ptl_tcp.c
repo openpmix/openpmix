@@ -77,8 +77,8 @@ pmix_ptl_module_t pmix_ptl_tcp_module = {
     .connect_to_peer = connect_to_peer
 };
 
-static pmix_status_t recv_connect_ack(int sd);
-static pmix_status_t send_connect_ack(int sd);
+static pmix_status_t recv_connect_ack(int sd, uint8_t myflag);
+static pmix_status_t send_connect_ack(int sd, uint8_t *myflag, pmix_info_t info[], size_t ninfo);
 
 
 static pmix_status_t init(void)
@@ -109,8 +109,9 @@ static pmix_status_t parse_uri_file(char *filename,
                                     char **uri,
                                     char **nspace,
                                     pmix_rank_t *rank);
-static pmix_status_t try_connect(char *uri, int *sd);
+static pmix_status_t try_connect(char *uri, int *sd, pmix_info_t info[], size_t ninfo);
 static pmix_status_t df_search(char *dirname, char *prefix,
+                               pmix_info_t info[], size_t ninfo,
                                int *sd, char **nspace,
                                pmix_rank_t *rank);
 
@@ -128,6 +129,10 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
     bool system_level_only = false;
     bool reconnect = false;
     pid_t pid = 0;
+    pmix_list_t ilist;
+    pmix_info_caddy_t *kv;
+    pmix_info_t *iptr = NULL;
+    size_t niptr = 0;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:tcp: connecting to server");
@@ -205,7 +210,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
                             "ptl:tcp:client attempt connect to %s", uri[1]);
 
         /* go ahead and try to connect */
-        if (PMIX_SUCCESS != (rc = try_connect(uri[1], &sd))) {
+        if (PMIX_SUCCESS != (rc = try_connect(uri[1], &sd, info, ninfo))) {
             free(nspace);
             pmix_argv_free(uri);
             return rc;
@@ -219,6 +224,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
      * to see where they want us to connect to */
     suri = NULL;
     if (NULL != info) {
+        PMIX_CONSTRUCT(&ilist, pmix_list_t);
         for (n=0; n < ninfo; n++) {
             if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_TO_SYSTEM)) {
                 system_level_only = PMIX_INFO_TRUE(&info[n]);
@@ -271,9 +277,26 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
                 reconnect = true;
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_LAUNCHER_RENDEZVOUS_FILE)) {
                 rendfile = strdup(info[n].value.data.string);
+            } else {
+                /* need to pass this to server */
+                kv = PMIX_NEW(pmix_info_caddy_t);
+                kv->info = &info[n];
+                pmix_list_append(&ilist, &kv->super);
             }
         }
     }
+    /* if we need to pass anything, setup an array */
+    if (0 < (niptr = pmix_list_get_size(&ilist))) {
+        PMIX_INFO_CREATE(iptr, niptr);
+        n = 0;
+        while (NULL != (kv = (pmix_info_caddy_t*)pmix_list_remove_first(&ilist))) {
+            PMIX_INFO_XFER(&iptr[n], kv->info);
+            PMIX_RELEASE(kv);
+            ++n;
+        }
+    }
+    PMIX_LIST_DESTRUCT(&ilist);
+
     if (NULL == suri && !reconnect && NULL != mca_ptl_tcp_component.super.uri) {
         suri = strdup(mca_ptl_tcp_component.super.uri);
     }
@@ -299,6 +322,9 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
                 if (NULL != rendfile) {
                     free(rendfile);
                 }
+                if (NULL != iptr) {
+                    PMIX_INFO_FREE(iptr, niptr);
+                }
                 return PMIX_ERR_UNREACH;
             }
             free(suri);
@@ -310,6 +336,9 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
                 free(suri);
                 if (NULL != rendfile) {
                     free(rendfile);
+                }
+                if (NULL != iptr) {
+                    PMIX_INFO_FREE(iptr, niptr);
                 }
                 return PMIX_ERR_BAD_PARAM;
             }
@@ -325,6 +354,9 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
                 if (NULL != rendfile) {
                     free(rendfile);
                 }
+                if (NULL != iptr) {
+                    PMIX_INFO_FREE(iptr, niptr);
+                }
                 return PMIX_ERR_BAD_PARAM;
             }
             *p = '\0';
@@ -338,7 +370,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "ptl:tcp:tool attempt connect using given URI %s", suri);
         /* go ahead and try to connect */
-        if (PMIX_SUCCESS != (rc = try_connect(suri, &sd))) {
+        if (PMIX_SUCCESS != (rc = try_connect(suri, &sd, iptr, niptr))) {
             if (NULL != nspace) {
                 free(nspace);
             }
@@ -346,12 +378,18 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
             if (NULL != rendfile) {
                 free(rendfile);
             }
+            if (NULL != iptr) {
+                PMIX_INFO_FREE(iptr, niptr);
+            }
             return rc;
         }
         free(suri);
         suri = NULL;
         if (NULL != rendfile) {
             free(rendfile);
+        }
+        if (NULL != iptr) {
+            PMIX_INFO_FREE(iptr, niptr);
         }
         goto complete;
     }
@@ -366,10 +404,13 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "ptl:tcp:tool attempt connect to system server at %s", suri);
             /* go ahead and try to connect */
-            if (PMIX_SUCCESS == try_connect(suri, &sd)) {
+            if (PMIX_SUCCESS == try_connect(suri, &sd, iptr, niptr)) {
                 /* don't free nspace - we will use it below */
                 if (NULL != rendfile) {
                     free(rendfile);
+                }
+                if (NULL != iptr) {
+                    PMIX_INFO_FREE(iptr, niptr);
                 }
                 goto complete;
             }
@@ -381,6 +422,9 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
             free(suri);
         }
         free(rendfile);
+        if (NULL != iptr) {
+            PMIX_INFO_FREE(iptr, niptr);
+        }
         /* since they gave us a specific rendfile and we couldn't
          * connect to it, return an error */
         return PMIX_ERR_UNREACH;
@@ -393,6 +437,9 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
             server_nspace = NULL;
         }
         if (0 > asprintf(&filename, "pmix.%s.tool.%d", myhost, pid)) {
+            if (NULL != iptr) {
+                PMIX_INFO_FREE(iptr, niptr);
+            }
             return PMIX_ERR_NOMEM;
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
@@ -400,13 +447,16 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
                             filename);
         nspace = NULL;
         rc = df_search(mca_ptl_tcp_component.system_tmpdir,
-                       filename, &sd, &nspace, &rank);
+                       filename, iptr, niptr, &sd, &nspace, &rank);
         free(filename);
         if (PMIX_SUCCESS == rc) {
             goto complete;
         }
         if (NULL != nspace) {
             free(nspace);
+        }
+        if (NULL != iptr) {
+            PMIX_INFO_FREE(iptr, niptr);
         }
         /* since they gave us a specific pid and we couldn't
          * connect to it, return an error */
@@ -417,6 +467,9 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
     if (NULL != server_nspace) {
         if (0 > asprintf(&filename, "pmix.%s.tool.%s", myhost, server_nspace)) {
             free(server_nspace);
+            if (NULL != iptr) {
+                PMIX_INFO_FREE(iptr, niptr);
+            }
             return PMIX_ERR_NOMEM;
         }
         free(server_nspace);
@@ -426,13 +479,16 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
                             filename);
         nspace = NULL;
         rc = df_search(mca_ptl_tcp_component.system_tmpdir,
-                       filename, &sd, &nspace, &rank);
+                       filename, iptr, niptr, &sd, &nspace, &rank);
         free(filename);
         if (PMIX_SUCCESS == rc) {
             goto complete;
         }
         if (NULL != nspace) {
             free(nspace);
+        }
+        if (NULL != iptr) {
+            PMIX_INFO_FREE(iptr, niptr);
         }
         /* since they gave us a specific nspace and we couldn't
          * connect to it, return an error */
@@ -442,6 +498,9 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
     /* if they asked for system-level, we start there */
     if (system_level || system_level_only) {
         if (0 > asprintf(&filename, "%s/pmix.sys.%s", mca_ptl_tcp_component.system_tmpdir, myhost)) {
+            if (NULL != iptr) {
+                PMIX_INFO_FREE(iptr, niptr);
+            }
             return PMIX_ERR_NOMEM;
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
@@ -454,8 +513,11 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "ptl:tcp:tool attempt connect to system server at %s", suri);
             /* go ahead and try to connect */
-            if (PMIX_SUCCESS == try_connect(suri, &sd)) {
+            if (PMIX_SUCCESS == try_connect(suri, &sd, iptr, niptr)) {
                 /* don't free nspace - we will use it below */
+            if (NULL != iptr) {
+                PMIX_INFO_FREE(iptr, niptr);
+            }
                 goto complete;
             }
             free(nspace);
@@ -471,6 +533,9 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
         if (NULL != suri) {
             free(suri);
         }
+        if (NULL != iptr) {
+            PMIX_INFO_FREE(iptr, niptr);
+        }
         return PMIX_ERR_UNREACH;
     }
 
@@ -483,6 +548,9 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
         if (NULL != suri) {
             free(suri);
         }
+        if (NULL != iptr) {
+            PMIX_INFO_FREE(iptr, niptr);
+        }
         return PMIX_ERR_NOMEM;
     }
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
@@ -490,7 +558,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
                         filename);
     nspace = NULL;
     rc = df_search(mca_ptl_tcp_component.system_tmpdir,
-                   filename, &sd, &nspace, &rank);
+                   filename, iptr, niptr, &sd, &nspace, &rank);
     free(filename);
     if (PMIX_SUCCESS != rc) {
         if (NULL != nspace){
@@ -499,12 +567,18 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
         if (NULL != suri) {
             free(suri);
         }
+        if (NULL != iptr) {
+            PMIX_INFO_FREE(iptr, niptr);
+        }
         return PMIX_ERR_UNREACH;
+    }
+    if (NULL != iptr) {
+        PMIX_INFO_FREE(iptr, niptr);
     }
 
   complete:
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "sock_peer_try_connect: Connection across to server succeeded");
+                        "tcp_peer_try_connect: Connection across to server succeeded");
 
     /* do a final bozo check */
     if (NULL == nspace || PMIX_RANK_WILDCARD == rank) {
@@ -733,7 +807,7 @@ static pmix_status_t parse_uri_file(char *filename,
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t try_connect(char *uri, int *sd)
+static pmix_status_t try_connect(char *uri, int *sd, pmix_info_t iptr[], size_t niptr)
 {
     char *p, *p2, *host;
     struct sockaddr_in *in;
@@ -741,6 +815,7 @@ static pmix_status_t try_connect(char *uri, int *sd)
     size_t len;
     pmix_status_t rc;
     bool retried = false;
+    uint8_t myflag;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "pmix:tcp try connect to %s", uri);
@@ -824,14 +899,14 @@ static pmix_status_t try_connect(char *uri, int *sd)
     }
 
     /* send our identity and any authentication credentials to the server */
-    if (PMIX_SUCCESS != (rc = send_connect_ack(*sd))) {
+    if (PMIX_SUCCESS != (rc = send_connect_ack(*sd, &myflag, iptr, niptr))) {
         PMIX_ERROR_LOG(rc);
         CLOSE_THE_SOCKET(*sd);
         return rc;
     }
 
     /* do whatever handshake is required */
-    if (PMIX_SUCCESS != (rc = recv_connect_ack(*sd))) {
+    if (PMIX_SUCCESS != (rc = recv_connect_ack(*sd, myflag))) {
         CLOSE_THE_SOCKET(*sd);
         if (PMIX_ERR_TEMP_UNAVAILABLE == rc) {
             /* give it two tries */
@@ -846,7 +921,8 @@ static pmix_status_t try_connect(char *uri, int *sd)
 
     return PMIX_SUCCESS;
 }
-static pmix_status_t send_connect_ack(int sd)
+static pmix_status_t send_connect_ack(int sd, uint8_t *myflag,
+                                      pmix_info_t iptr[], size_t niptr)
 {
     char *msg;
     pmix_ptl_hdr_t hdr;
@@ -859,7 +935,7 @@ static pmix_status_t send_connect_ack(int sd)
     uid_t euid;
     gid_t egid;
     uint32_t u32;
-    bool self_defined = false;
+    pmix_buffer_t buf;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "pmix:tcp SEND CONNECT ACK");
@@ -867,6 +943,7 @@ static pmix_status_t send_connect_ack(int sd)
     /* if we are a server, then we shouldn't be here */
     if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer) &&
         !PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
@@ -890,35 +967,66 @@ static pmix_status_t send_connect_ack(int sd)
     /* allow space for a marker indicating client vs tool */
     sdsize = 1;
 
-    if (PMIX_PROC_IS_CLIENT(pmix_globals.mypeer)) {
+    /* Defined marker values:
+     *
+     * 0 => simple client process
+     * 1 => legacy tool - may or may not have an identifier
+     * 2 => legacy launcher - may or may not have an identifier
+     * ------------------------------------------
+     * 3 => self-started tool process that needs an identifier
+     * 4 => self-started tool process that was given an identifier by caller
+     * 5 => tool that was started by a PMIx server - identifier specified by server
+     * 6 => self-started launcher that needs an identifier
+     * 7 => self-started launcher that was given an identifier by caller
+     * 8 => launcher that was started by a PMIx server - identifier specified by server
+     */
+    if (PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
+        if (PMIX_PROC_IS_CLIENT(pmix_globals.mypeer)) {
+            /* if we are both launcher and client, then we need
+             * to tell the server we are both */
+            flag = 8;
+            /* add space for our uid/gid for ACL purposes */
+            sdsize += 2*sizeof(uint32_t);
+            /* add space for our identifier */
+            sdsize += strlen(pmix_globals.myid.nspace) + 1 + sizeof(uint32_t);
+        } else {
+            /* add space for our uid/gid for ACL purposes */
+            sdsize += 2*sizeof(uint32_t);
+            /* if they gave us an identifier, we need to pass it */
+            if (0 < strlen(pmix_globals.myid.nspace) &&
+                PMIX_RANK_INVALID != pmix_globals.myid.rank) {
+                flag = 7;
+                sdsize += strlen(pmix_globals.myid.nspace) + 1 + sizeof(uint32_t);
+            } else {
+                flag = 6;
+            }
+        }
+
+    } else if (PMIX_PROC_IS_CLIENT(pmix_globals.mypeer)) {
         flag = 0;
         /* reserve space for our nspace and rank info */
         sdsize += strlen(pmix_globals.myid.nspace) + 1 + sizeof(uint32_t);
-    } else if (PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
-        flag = 2;
-        /* add space for our uid/gid for ACL purposes */
-        sdsize += 2*sizeof(uint32_t);
-        /* if we already have an identifier, we need to pass it */
-        if (0 < strlen(pmix_globals.myid.nspace) &&
-            PMIX_RANK_INVALID != pmix_globals.myid.rank) {
-            sdsize += strlen(pmix_globals.myid.nspace) + 1 + sizeof(uint32_t) + 1;
-            self_defined = true;
-        } else {
-            ++sdsize; // need space for the flag indicating if have id
-        }
+
     } else {  // must be a simple tool
-        flag = 1;
         /* add space for our uid/gid for ACL purposes */
         sdsize += 2*sizeof(uint32_t);
-        /* if we self-defined an identifier, we need to pass it */
-        if (0 < strlen(pmix_globals.myid.nspace) &&
+        if (PMIX_PROC_IS_CLIENT(pmix_globals.mypeer)) {
+            /* if we are both tool and client, then we need
+             * to tell the server we are both */
+            flag = 5;
+            /* add space for our identifier */
+            sdsize += strlen(pmix_globals.myid.nspace) + 1 + sizeof(uint32_t);
+        } else if (0 < strlen(pmix_globals.myid.nspace) &&
             PMIX_RANK_INVALID != pmix_globals.myid.rank) {
-            sdsize += 1 + strlen(pmix_globals.myid.nspace) + 1 + sizeof(uint32_t);
-            self_defined = true;
+            /* we were given an identifier by the caller, pass it */
+            sdsize += strlen(pmix_globals.myid.nspace) + 1 + sizeof(uint32_t);
+            flag = 4;
         } else {
-            ++sdsize; // need space for the flag indicating if have id
+            /* we are a self-started tool that needs an identifier */
+            flag = 3;
         }
     }
+    *myflag = flag;
 
     /* add the name of our active sec module - we selected it
      * in pmix_client.c prior to entering here */
@@ -932,16 +1040,26 @@ static pmix_status_t send_connect_ack(int sd)
     /* add our active gds module for working with the server */
     gds = (char*)pmix_client_globals.myserver->nptr->compat.gds->name;
 
-    /* set the number of bytes to be read beyond the header */
+    /* if we were given info structs to pass to the server, pack them */
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    if (NULL != iptr) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &niptr, 1, PMIX_SIZE);
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, iptr, niptr, PMIX_INFO);
+    }
+
+    /* set the number of bytes to be read beyond the header - must
+     * NULL terminate the strings! */
     hdr.nbytes = sdsize + strlen(PMIX_VERSION) + 1 + strlen(sec) + 1 \
                 + strlen(bfrops) + 1 + sizeof(bftype) \
-                + strlen(gds) + 1 + sizeof(uint32_t) + cred.size;  // must NULL terminate the strings!
+                + strlen(gds) + 1 + sizeof(uint32_t) + cred.size \
+                + buf.bytes_used;
 
     /* create a space for our message */
     sdsize = (sizeof(hdr) + hdr.nbytes);
     if (NULL == (msg = (char*)malloc(sdsize))) {
         PMIX_BYTE_OBJECT_DESTRUCT(&cred);
         free(sec);
+        PMIX_DESTRUCT(&buf);
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
     memset(msg, 0, sdsize);
@@ -973,7 +1091,7 @@ static pmix_status_t send_connect_ack(int sd)
     memcpy(msg+csize, &flag, 1);
     csize += 1;
 
-    if (PMIX_PROC_IS_CLIENT(pmix_globals.mypeer)) {
+    if (0 == flag) {
         /* if we are a client, provide our nspace/rank */
         memcpy(msg+csize, pmix_globals.myid.nspace, strlen(pmix_globals.myid.nspace));
         csize += strlen(pmix_globals.myid.nspace)+1;
@@ -981,9 +1099,8 @@ static pmix_status_t send_connect_ack(int sd)
         u32 = htonl((uint32_t)pmix_globals.myid.rank);
         memcpy(msg+csize, &u32, sizeof(uint32_t));
         csize += sizeof(uint32_t);
-    } else {
-        /* if we are a tool, provide our uid/gid for ACL support - note
-         * that we have to convert so we can handle heterogeneity */
+    } else if (3 == flag || 6 == flag) {
+        /* we are a tool or launcher that needs an identifier - add our ACLs */
         euid = geteuid();
         u32 = htonl(euid);
         memcpy(msg+csize, &u32, sizeof(uint32_t));
@@ -992,6 +1109,27 @@ static pmix_status_t send_connect_ack(int sd)
         u32 = htonl(egid);
         memcpy(msg+csize, &u32, sizeof(uint32_t));
         csize += sizeof(uint32_t);
+    } else if (4 == flag || 5 == flag || 7 == flag || 8 == flag) {
+        /* we are a tool or launcher that has an identifier - start with our ACLs */
+        euid = geteuid();
+        u32 = htonl(euid);
+        memcpy(msg+csize, &u32, sizeof(uint32_t));
+        csize += sizeof(uint32_t);
+        egid = getegid();
+        u32 = htonl(egid);
+        memcpy(msg+csize, &u32, sizeof(uint32_t));
+        csize += sizeof(uint32_t);
+        /* now add our identifier */
+        memcpy(msg+csize, pmix_globals.myid.nspace, strlen(pmix_globals.myid.nspace));
+        csize += strlen(pmix_globals.myid.nspace)+1;
+        /* again, need to convert */
+        u32 = htonl((uint32_t)pmix_globals.myid.rank);
+        memcpy(msg+csize, &u32, sizeof(uint32_t));
+        csize += sizeof(uint32_t);
+    } else {
+        /* not a valid flag */
+        PMIX_DESTRUCT(&buf);
+        return PMIX_ERR_NOT_SUPPORTED;
     }
 
     /* provide our version */
@@ -1010,46 +1148,33 @@ static pmix_status_t send_connect_ack(int sd)
     memcpy(msg+csize, gds, strlen(gds));
     csize += strlen(gds)+1;
 
-    /* if we are not a client and self-defined an identifier, we need to pass it */
-    if (!PMIX_PROC_IS_CLIENT(pmix_globals.mypeer)) {
-        if (self_defined) {
-            flag = 1;
-            memcpy(msg+csize, &flag, 1);
-            ++csize;
-            memcpy(msg+csize, pmix_globals.myid.nspace, strlen(pmix_globals.myid.nspace));
-            csize += strlen(pmix_globals.myid.nspace)+1;
-            /* again, need to convert */
-            u32 = htonl((uint32_t)pmix_globals.myid.rank);
-            memcpy(msg+csize, &u32, sizeof(uint32_t));
-            csize += sizeof(uint32_t);
-        } else {
-            flag = 0;
-            memcpy(msg+csize, &flag, 1);
-            ++csize;
-        }
-    }
+    /* provide the info struct bytes */
+    memcpy(msg+csize, buf.base_ptr, buf.bytes_used);
+    csize += buf.bytes_used;
 
     /* send the entire message across */
     if (PMIX_SUCCESS != pmix_ptl_base_send_blocking(sd, msg, sdsize)) {
         free(msg);
+        PMIX_DESTRUCT(&buf);
         return PMIX_ERR_UNREACH;
     }
     free(msg);
+    PMIX_DESTRUCT(&buf);
     return PMIX_SUCCESS;
 }
 
 /* we receive a connection acknowledgement from the server,
  * consisting of nothing more than a status report. If success,
  * then we initiate authentication method */
-static pmix_status_t recv_connect_ack(int sd)
+static pmix_status_t recv_connect_ack(int sd, uint8_t myflag)
 {
     pmix_status_t reply;
     pmix_status_t rc;
     struct timeval tv, save;
     pmix_socklen_t sz;
     bool sockopt = true;
+    pmix_nspace_t nspace;
     uint32_t u32;
-    char nspace[PMIX_MAX_NSLEN+1];
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "pmix: RECV CONNECT ACK FROM SERVER");
@@ -1086,7 +1211,7 @@ static pmix_status_t recv_connect_ack(int sd)
     }
     reply = ntohl(u32);
 
-    if (PMIX_PROC_IS_CLIENT(pmix_globals.mypeer)) {
+    if (0 == myflag) {
         /* see if they want us to do the handshake */
         if (PMIX_ERR_READY_FOR_HANDSHAKE == reply) {
             PMIX_PSEC_CLIENT_HANDSHAKE(rc, pmix_client_globals.myserver, sd);
@@ -1111,23 +1236,21 @@ static pmix_status_t recv_connect_ack(int sd)
             PMIX_ERROR_LOG(reply);
             return reply;
         }
-        /* recv our nspace */
-        rc = pmix_ptl_base_recv_blocking(sd, nspace, PMIX_MAX_NSLEN+1);
-        if (PMIX_SUCCESS != rc) {
-            return rc;
-        }
-        /* if we already have our nspace, then just verify it matches */
-        if (0 < strlen(pmix_globals.myid.nspace)) {
-            if (0 != strncmp(pmix_globals.myid.nspace, nspace, PMIX_MAX_NSLEN)) {
-                return PMIX_ERR_INIT;
+        /* if we needed an identifier, recv it */
+        if (3 == myflag || 6 == myflag) {
+            /* first the nspace */
+            rc = pmix_ptl_base_recv_blocking(sd, (char*)&nspace, PMIX_MAX_NSLEN+1);
+            if (PMIX_SUCCESS != rc) {
+                return rc;
             }
-        } else {
-            pmix_strncpy(pmix_globals.myid.nspace, nspace, PMIX_MAX_NSLEN);
-        }
-        /* if we already have a rank, then leave it alone */
-        if (PMIX_RANK_INVALID == pmix_globals.myid.rank) {
-            /* our rank is always zero */
-            pmix_globals.myid.rank = 0;
+            PMIX_LOAD_NSPACE(pmix_globals.myid.nspace, nspace);
+            /* now the rank */
+            rc = pmix_ptl_base_recv_blocking(sd, (char*)&u32, sizeof(uint32_t));
+            if (PMIX_SUCCESS != rc) {
+                return rc;
+            }
+            /* convert and store */
+            pmix_globals.myid.rank = htonl(u32);
         }
 
         /* get the server's nspace and rank so we can send to it */
@@ -1146,7 +1269,8 @@ static pmix_status_t recv_connect_ack(int sd)
             free(pmix_client_globals.myserver->info->pname.nspace);
         }
         pmix_client_globals.myserver->info->pname.nspace = strdup(nspace);
-        pmix_ptl_base_recv_blocking(sd, (char*)&(pmix_client_globals.myserver->info->pname.rank), sizeof(int));
+        pmix_ptl_base_recv_blocking(sd, (char*)&u32, sizeof(uint32_t));
+        pmix_client_globals.myserver->info->pname.rank = htonl(u32);
 
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "pmix: RECV CONNECT CONFIRMATION FOR TOOL %s:%d FROM SERVER %s:%d",
@@ -1180,6 +1304,7 @@ static pmix_status_t recv_connect_ack(int sd)
 }
 
 static pmix_status_t df_search(char *dirname, char *prefix,
+                               pmix_info_t info[], size_t ninfo,
                                int *sd, char **nspace,
                                pmix_rank_t *rank)
 {
@@ -1211,7 +1336,7 @@ static pmix_status_t df_search(char *dirname, char *prefix,
         }
         /* if it is a directory, down search */
         if (S_ISDIR(buf.st_mode)) {
-            rc = df_search(newdir, prefix, sd, nspace, rank);
+            rc = df_search(newdir, prefix, info, ninfo, sd, nspace, rank);
             free(newdir);
             if (PMIX_SUCCESS == rc) {
                 closedir(cur_dirp);
@@ -1231,7 +1356,7 @@ static pmix_status_t df_search(char *dirname, char *prefix,
                 /* go ahead and try to connect */
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                     "pmix:tcp: attempting to connect to %s", suri);
-                if (PMIX_SUCCESS == try_connect(suri, sd)) {
+                if (PMIX_SUCCESS == try_connect(suri, sd, info, ninfo)) {
                     (*nspace) = nsp;
                     *rank = rk;
                     closedir(cur_dirp);

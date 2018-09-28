@@ -81,8 +81,7 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
     }
     CLOSE_THE_SOCKET(peer->sd);
 
-    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer) &&
-        !PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
+    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
         /* if I am a server, then we need to ensure that
          * we properly account for the loss of this client
          * from any local collectives in which it was
@@ -130,7 +129,9 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
             }
         }
         /* reduce the number of local procs */
-        --peer->nptr->nlocalprocs;
+        if (0 < peer->nptr->nlocalprocs) {
+            --peer->nptr->nlocalprocs;
+        }
 
         /* remove this client from our array */
         pmix_pointer_array_set_item(&pmix_server_globals.clients,
@@ -149,8 +150,10 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
                 }
             }
         }
-        /* cleanup any sensors that are monitoring them */
-        pmix_psensor.stop(peer, NULL);
+        if (!PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
+            /* cleanup any sensors that are monitoring them */
+            pmix_psensor.stop(peer, NULL);
+        }
 
         if (!peer->finalized && !PMIX_PROC_IS_TOOL(peer)) {
             /* if this peer already called finalize, then

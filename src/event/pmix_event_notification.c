@@ -56,9 +56,9 @@ PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status,
         !PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         pmix_output_verbose(2, pmix_server_globals.event_output,
-                            "pmix_server_notify_event source = %s:%d event_status = %d",
+                            "pmix_server_notify_event source = %s:%d event_status = %s",
                             (NULL == source) ? "UNKNOWN" : source->nspace,
-                            (NULL == source) ? PMIX_RANK_WILDCARD : source->rank, status);
+                            (NULL == source) ? PMIX_RANK_WILDCARD : source->rank, PMIx_Error_string(status));
         rc = pmix_server_notify_client_of_event(status, source, range,
                                                 info, ninfo,
                                                 cbfunc, cbdata);
