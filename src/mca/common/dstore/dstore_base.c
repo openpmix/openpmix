@@ -1671,7 +1671,7 @@ static inline ssize_t _get_univ_size(pmix_common_dstore_ctx_t *ds_ctx, const cha
 }
 
 PMIX_EXPORT pmix_status_t pmix_common_dstor_cache_job_info(pmix_common_dstore_ctx_t *ds_ctx,
-                                struct pmix_nspace_t *ns,
+                                struct pmix_namespace_t *ns,
                                 pmix_info_t info[], size_t ninfo)
 {
     return PMIX_SUCCESS;
@@ -2630,11 +2630,11 @@ static inline int _my_client(const char *nspace, pmix_rank_t rank)
  * always contains data solely from remote procs, and we
  * shall store it accordingly */
 PMIX_EXPORT pmix_status_t pmix_common_dstor_store_modex(pmix_common_dstore_ctx_t *ds_ctx,
-                                struct pmix_nspace_t *nspace,
+                                struct pmix_namespace_t *nspace,
                                 pmix_list_t *cbs,
                                 pmix_byte_object_t *bo)
 {
-    pmix_nspace_t *ns = (pmix_nspace_t*)nspace;
+    pmix_namespace_t *ns = (pmix_namespace_t*)nspace;
     pmix_status_t rc = PMIX_SUCCESS;
     int32_t cnt;
     pmix_buffer_t pbkt;
@@ -2800,7 +2800,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_register_job_info(pmix_common_dstore
                                 pmix_buffer_t *reply)
 {
     pmix_peer_t *peer = (pmix_peer_t*)pr;
-    pmix_nspace_t *ns = peer->nptr;
+    pmix_namespace_t *ns = peer->nptr;
     char *msg;
     pmix_status_t rc;
     pmix_proc_t proc;
@@ -2884,11 +2884,11 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_store_job_info(pmix_common_dstore_ct
 
 static void _client_compat_save(pmix_common_dstore_ctx_t *ds_ctx, pmix_peer_t *peer)
 {
-    pmix_nspace_t *nptr = NULL;
+    pmix_namespace_t *nptr = NULL;
 
     if (NULL == ds_ctx->clients_peer) {
         ds_ctx->clients_peer = PMIX_NEW(pmix_peer_t);
-        nptr = PMIX_NEW(pmix_nspace_t);
+        nptr = PMIX_NEW(pmix_namespace_t);
         ds_ctx->clients_peer->nptr = nptr;
     }
     ds_ctx->clients_peer->nptr->compat = peer->nptr->compat;

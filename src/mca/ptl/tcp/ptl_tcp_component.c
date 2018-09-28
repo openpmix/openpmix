@@ -948,7 +948,7 @@ static void connection_handler(int sd, short args, void *cbdata)
     uint32_t len, u32;
     size_t cnt, msglen, n;
     uint8_t flag;
-    pmix_nspace_t *nptr, *tmp;
+    pmix_namespace_t *nptr, *tmp;
     bool found;
     pmix_rank_info_t *info;
     pmix_proc_t proc;
@@ -1319,7 +1319,7 @@ static void connection_handler(int sd, short args, void *cbdata)
 
     /* see if we know this nspace */
     nptr = NULL;
-    PMIX_LIST_FOREACH(tmp, &pmix_server_globals.nspaces, pmix_nspace_t) {
+    PMIX_LIST_FOREACH(tmp, &pmix_server_globals.nspaces, pmix_namespace_t) {
         if (0 == strcmp(tmp->nspace, nspace)) {
             nptr = tmp;
             break;
@@ -1527,7 +1527,7 @@ static void process_cbfunc(int sd, short args, void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t*)cbdata;
     pmix_pending_connection_t *pnd = (pmix_pending_connection_t*)cd->cbdata;
-    pmix_nspace_t *nptr;
+    pmix_namespace_t *nptr;
     pmix_rank_info_t *info;
     pmix_peer_t *peer;
     int rc;
@@ -1585,7 +1585,7 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     }
 
     /* add this nspace to our pool */
-    nptr = PMIX_NEW(pmix_nspace_t);
+    nptr = PMIX_NEW(pmix_namespace_t);
     if (NULL == nptr) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         CLOSE_THE_SOCKET(pnd->sd);
