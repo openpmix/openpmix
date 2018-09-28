@@ -391,7 +391,7 @@ static void dstore_finalize(void);
 
 static pmix_status_t dstore_setup_fork(const pmix_proc_t *peer, char ***env);
 
-static pmix_status_t dstore_cache_job_info(struct pmix_nspace_t *ns,
+static pmix_status_t dstore_cache_job_info(struct pmix_namespace_t *ns,
                                 pmix_info_t info[], size_t ninfo);
 
 static pmix_status_t dstore_register_job_info(struct pmix_peer_t *pr,
@@ -427,7 +427,7 @@ static pmix_status_t dstore_del_nspace(const char* nspace);
 static pmix_status_t dstore_assign_module(pmix_info_t *info, size_t ninfo,
                                 int *priority);
 
-static pmix_status_t dstore_store_modex(struct pmix_nspace_t *nspace,
+static pmix_status_t dstore_store_modex(struct pmix_namespace_t *nspace,
                                 pmix_list_t *cbs,
                                 pmix_byte_object_t *bo);
 
@@ -2072,7 +2072,7 @@ static inline ssize_t _get_univ_size(const char *nspace)
     return nprocs;
 }
 
-static pmix_status_t dstore_cache_job_info(struct pmix_nspace_t *ns,
+static pmix_status_t dstore_cache_job_info(struct pmix_namespace_t *ns,
                                 pmix_info_t info[], size_t ninfo)
 {
     return PMIX_SUCCESS;
@@ -2998,11 +2998,11 @@ static inline int _my_client(const char *nspace, pmix_rank_t rank)
  * host has received data from some other peer. It therefore
  * always contains data solely from remote procs, and we
  * shall store it accordingly */
-static pmix_status_t dstore_store_modex(struct pmix_nspace_t *nspace,
+static pmix_status_t dstore_store_modex(struct pmix_namespace_t *nspace,
                                       pmix_list_t *cbs,
                                       pmix_byte_object_t *bo)
 {
-    pmix_nspace_t *ns = (pmix_nspace_t*)nspace;
+    pmix_namespace_t *ns = (pmix_namespace_t*)nspace;
     pmix_status_t rc = PMIX_SUCCESS;
     int32_t cnt;
     pmix_buffer_t pbkt;
@@ -3166,7 +3166,7 @@ static pmix_status_t dstore_register_job_info(struct pmix_peer_t *pr,
                                             pmix_buffer_t *reply)
 {
     pmix_peer_t *peer = (pmix_peer_t*)pr;
-    pmix_nspace_t *ns = peer->nptr;
+    pmix_namespace_t *ns = peer->nptr;
     char *msg;
     pmix_status_t rc;
     pmix_proc_t proc;
@@ -3227,11 +3227,11 @@ static pmix_status_t dstore_store_job_info(const char *nspace,  pmix_buffer_t *b
 
 static void _client_compat_save(pmix_peer_t *peer)
 {
-    pmix_nspace_t *nptr = NULL;
+    pmix_namespace_t *nptr = NULL;
 
     if (NULL == _clients_peer) {
         _clients_peer = PMIX_NEW(pmix_peer_t);
-        nptr = PMIX_NEW(pmix_nspace_t);
+        nptr = PMIX_NEW(pmix_namespace_t);
         _clients_peer->nptr = nptr;
     }
     _clients_peer->nptr->compat = peer->nptr->compat;

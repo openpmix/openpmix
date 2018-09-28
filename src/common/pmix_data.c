@@ -110,7 +110,7 @@ static pmix_peer_t* find_peer(const pmix_proc_t *proc)
             PMIX_RELEASE(value);
             return NULL;
         }
-        peer->nptr = PMIX_NEW(pmix_nspace_t);
+        peer->nptr = PMIX_NEW(pmix_namespace_t);
         if (NULL == peer->nptr) {
             PMIX_RELEASE(peer);
             PMIX_RELEASE(value);
@@ -157,7 +157,7 @@ static pmix_peer_t* find_peer(const pmix_proc_t *proc)
         PMIX_RELEASE(value);
         return NULL;
     }
-    peer->nptr = PMIX_NEW(pmix_nspace_t);
+    peer->nptr = PMIX_NEW(pmix_namespace_t);
     if (NULL == peer->nptr) {
         PMIX_RELEASE(peer);
         PMIX_RELEASE(value);
