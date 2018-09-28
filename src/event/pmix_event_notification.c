@@ -1021,7 +1021,7 @@ pmix_status_t pmix_server_notify_client_of_event(pmix_status_t status,
     }
     cd->range = range;
     /* have to copy the info to preserve it for future when cached */
-    if (0 < ninfo) {
+    if (0 < ninfo && NULL != info) {
         cd->ninfo = ninfo;
         PMIX_INFO_CREATE(cd->info, cd->ninfo);
         /* need to copy the info */
