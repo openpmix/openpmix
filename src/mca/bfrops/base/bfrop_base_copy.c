@@ -305,27 +305,6 @@ pmix_status_t pmix_bfrops_base_copy_proc(pmix_proc_t **dest,
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix_bfrops_base_copy_modex(pmix_modex_data_t **dest,
-                                          pmix_modex_data_t *src,
-                                          pmix_data_type_t type)
-{
-    *dest = (pmix_modex_data_t*)malloc(sizeof(pmix_modex_data_t));
-    if (NULL == *dest) {
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    }
-    (*dest)->blob = NULL;
-    (*dest)->size = 0;
-    if (NULL != src->blob) {
-        (*dest)->blob = (uint8_t*)malloc(src->size * sizeof(uint8_t));
-        if (NULL == (*dest)->blob) {
-            return PMIX_ERR_OUT_OF_RESOURCE;
-        }
-        memcpy((*dest)->blob, src->blob, src->size * sizeof(uint8_t));
-        (*dest)->size = src->size;
-    }
-    return PMIX_SUCCESS;
-}
-
 pmix_status_t pmix_bfrop_base_copy_persist(pmix_persistence_t **dest,
                                            pmix_persistence_t *src,
                                            pmix_data_type_t type)
@@ -405,7 +384,6 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
     pmix_buffer_t *pb, *sb;
     pmix_byte_object_t *pbo, *sbo;
     pmix_kval_t *pk, *sk;
-    pmix_modex_data_t *pm, *sm;
     pmix_proc_info_t *pi, *si;
     pmix_query_t *pq, *sq;
     pmix_envar_t *pe, *se;
@@ -696,31 +674,6 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
                         free(p);
                         return rc;
                     }
-                }
-            }
-            break;
-        case PMIX_MODEX:
-            PMIX_MODEX_CREATE(p->array, src->size);
-            if (NULL == p->array) {
-                free(p);
-                return PMIX_ERR_NOMEM;
-            }
-            pm = (pmix_modex_data_t*)p->array;
-            sm = (pmix_modex_data_t*)src->array;
-            for (n=0; n < src->size; n++) {
-                memcpy(&pm[n], &sm[n], sizeof(pmix_modex_data_t));
-                if (NULL != sm[n].blob && 0 < sm[n].size) {
-                    pm[n].blob = (uint8_t*)malloc(sm[n].size);
-                    if (NULL == pm[n].blob) {
-                        PMIX_MODEX_FREE(pm, src->size);
-                        free(p);
-                        return PMIX_ERR_NOMEM;
-                    }
-                    memcpy(pm[n].blob, sm[n].blob, sm[n].size);
-                    pm[n].size = sm[n].size;
-                } else {
-                    pm[n].blob = NULL;
-                    pm[n].size = 0;
                 }
             }
             break;
