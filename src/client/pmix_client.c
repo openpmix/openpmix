@@ -336,7 +336,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
 {
     char *evar;
     pmix_status_t rc;
-    pmix_nspace_t *nsptr;
+    pmix_namespace_t *nsptr;
     pmix_cb_t cb;
     pmix_buffer_t *req;
     pmix_cmd_t cmd = PMIX_REQ_CMD;
@@ -393,7 +393,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_NOMEM;
     }
-    pmix_client_globals.myserver->nptr = PMIX_NEW(pmix_nspace_t);
+    pmix_client_globals.myserver->nptr = PMIX_NEW(pmix_namespace_t);
     if (NULL == pmix_client_globals.myserver->nptr) {
         PMIX_RELEASE(pmix_client_globals.myserver);
         PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -422,8 +422,8 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         (void)strncpy(proc->nspace, evar, PMIX_MAX_NSLEN);
     }
     (void)strncpy(pmix_globals.myid.nspace, evar, PMIX_MAX_NSLEN);
-    /* create a pmix_nspace_t object for our peer */
-    nsptr = PMIX_NEW(pmix_nspace_t);
+    /* create a pmix_namespace_t object for our peer */
+    nsptr = PMIX_NEW(pmix_namespace_t);
     if (NULL == nsptr){
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_NOMEM;

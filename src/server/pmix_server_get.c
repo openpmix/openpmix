@@ -84,7 +84,7 @@ PMIX_CLASS_INSTANCE(pmix_dmdx_reply_caddy_t,
 static void dmdx_cbfunc(pmix_status_t status, const char *data,
                         size_t ndata, void *cbdata,
                         pmix_release_cbfunc_t relfn, void *relcbdata);
-static pmix_status_t _satisfy_request(pmix_nspace_t *ns, pmix_rank_t rank,
+static pmix_status_t _satisfy_request(pmix_namespace_t *ns, pmix_rank_t rank,
                                       pmix_server_caddy_t *cd,
                                       pmix_modex_cbfunc_t cbfunc, void *cbdata, bool *scope);
 static pmix_status_t create_local_tracker(char nspace[], pmix_rank_t rank,
@@ -116,7 +116,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     pmix_rank_t rank;
     char *cptr;
     char nspace[PMIX_MAX_NSLEN+1];
-    pmix_nspace_t *ns, *nptr;
+    pmix_namespace_t *ns, *nptr;
     pmix_info_t *info=NULL;
     size_t ninfo=0;
     pmix_dmdx_local_t *lcd;
@@ -184,7 +184,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
 
     /* find the nspace object for this client */
     nptr = NULL;
-    PMIX_LIST_FOREACH(ns, &pmix_server_globals.nspaces, pmix_nspace_t) {
+    PMIX_LIST_FOREACH(ns, &pmix_server_globals.nspaces, pmix_namespace_t) {
         if (0 == strcmp(nspace, ns->nspace)) {
             nptr = ns;
             break;
@@ -444,7 +444,7 @@ static pmix_status_t create_local_tracker(char nspace[], pmix_rank_t rank,
     return rc;
 }
 
-void pmix_pending_nspace_requests(pmix_nspace_t *nptr)
+void pmix_pending_nspace_requests(pmix_namespace_t *nptr)
 {
     pmix_dmdx_local_t *cd, *cd_next;
 
@@ -486,7 +486,7 @@ void pmix_pending_nspace_requests(pmix_nspace_t *nptr)
     }
 }
 
-static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, pmix_rank_t rank,
+static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
                                       pmix_server_caddy_t *cd,
                                       pmix_modex_cbfunc_t cbfunc,
                                       void *cbdata, bool *local)
@@ -694,7 +694,7 @@ static pmix_status_t _satisfy_request(pmix_nspace_t *nptr, pmix_rank_t rank,
 }
 
 /* Resolve pending requests to this namespace/rank */
-pmix_status_t pmix_pending_resolve(pmix_nspace_t *nptr, pmix_rank_t rank,
+pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr, pmix_rank_t rank,
                                    pmix_status_t status, pmix_dmdx_local_t *lcd)
 {
     pmix_dmdx_local_t *cd, *ptr;
@@ -761,7 +761,7 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
     pmix_rank_info_t *rinfo;
     int32_t cnt;
     pmix_kval_t *kv;
-    pmix_nspace_t *ns, *nptr;
+    pmix_namespace_t *ns, *nptr;
     pmix_status_t rc;
     pmix_list_t nspaces;
     pmix_nspace_caddy_t *nm;
@@ -779,7 +779,7 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
 
     /* find the nspace object for the proc whose data is being received */
     nptr = NULL;
-    PMIX_LIST_FOREACH(ns, &pmix_server_globals.nspaces, pmix_nspace_t) {
+    PMIX_LIST_FOREACH(ns, &pmix_server_globals.nspaces, pmix_namespace_t) {
         if (0 == strcmp(caddy->lcd->proc.nspace, ns->nspace)) {
             nptr = ns;
             break;
@@ -790,7 +790,7 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
         /* We may not have this namespace because there are no local
          * processes from it running on this host - so just record it
          * so we know we have the data for any future requests */
-        nptr = PMIX_NEW(pmix_nspace_t);
+        nptr = PMIX_NEW(pmix_namespace_t);
         nptr->nspace = strdup(caddy->lcd->proc.nspace);
         /* add to the list */
         pmix_list_append(&pmix_server_globals.nspaces, &nptr->super);

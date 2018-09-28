@@ -139,14 +139,14 @@ typedef struct {
      * Since servers may support clients from multiple nspaces,
      * track their respective compatibility modules here */
     pmix_personality_t compat;
-} pmix_nspace_t;
-PMIX_CLASS_DECLARATION(pmix_nspace_t);
+} pmix_namespace_t;
+PMIX_CLASS_DECLARATION(pmix_namespace_t);
 
-/* define a caddy for quickly creating a list of pmix_nspace_t
+/* define a caddy for quickly creating a list of pmix_namespace_t
  * objects for local, dedicated purposes */
 typedef struct {
     pmix_list_item_t super;
-    pmix_nspace_t *ns;
+    pmix_namespace_t *ns;
 } pmix_nspace_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_nspace_caddy_t);
 
@@ -169,7 +169,7 @@ PMIX_CLASS_DECLARATION(pmix_rank_info_t);
  * by the socket, not the process nspace/rank */
 typedef struct pmix_peer_t {
     pmix_object_t super;
-    pmix_nspace_t *nptr;            // point to the nspace object for this process
+    pmix_namespace_t *nptr;            // point to the nspace object for this process
     pmix_rank_info_t *info;
     pmix_proc_type_t proc_type;
     int proc_cnt;
