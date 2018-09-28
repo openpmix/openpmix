@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2018      Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -142,7 +143,7 @@ static int if_linux_ipv6_open(void)
             }
 
             /* now construct the pmix_pif_t */
-            strncpy(intf->if_name, ifname, IF_NAMESIZE);
+            pmix_strncpy(intf->if_name, ifname, IF_NAMESIZE-1);
             intf->if_index = pmix_list_get_size(&pmix_if_list)+1;
             intf->if_kernel_index = (uint16_t) idx;
             ((struct sockaddr_in6*) &intf->if_addr)->sin6_addr = a6;
