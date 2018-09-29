@@ -493,8 +493,6 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
                 }
             } else if (0 == strncmp(cd->info[n].key, PMIX_EVENT_HDLR_NAME, PMIX_MAX_KEYLEN)) {
                 name = cd->info[n].value.data.string;
-            } else if (0 == strncmp(cd->info[n].key, PMIX_EVENT_ENVIRO_LEVEL, PMIX_MAX_KEYLEN)) {
-                cd->enviro = PMIX_INFO_TRUE(&cd->info[n]);
             } else if (0 == strncmp(cd->info[n].key, PMIX_EVENT_RETURN_OBJECT, PMIX_MAX_KEYLEN)) {
                 cbobject = cd->info[n].value.data.ptr;
             } else if (0 == strncmp(cd->info[n].key, PMIX_EVENT_HDLR_FIRST_IN_CATEGORY, PMIX_MAX_KEYLEN)) {
@@ -527,6 +525,14 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
                 ixfer->info = &cd->info[n];
                 pmix_list_append(&xfer, &ixfer->super);
             }
+        }
+    }
+
+    /* check the codes for system events */
+    for (n=0; n < cd->ncodes; n++) {
+        if (PMIX_SYSTEM_EVENT(cd->codes[n])) {
+            cd->enviro = true;
+            break;
         }
     }
 
