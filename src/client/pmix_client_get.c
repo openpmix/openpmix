@@ -76,7 +76,8 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
 static void _value_cbfunc(pmix_status_t status, pmix_value_t *kv, void *cbdata);
 
 
-PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
+PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc,
+                                   const pmix_key_t key,
                                    const pmix_info_t info[], size_t ninfo,
                                    pmix_value_t **val)
 {
@@ -114,7 +115,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
     return rc;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char *key,
+PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t key,
                                       const pmix_info_t info[], size_t ninfo,
                                       pmix_value_cbfunc_t cbfunc, void *cbdata)
 {
