@@ -611,7 +611,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
 }
 
 /* setup the data for a job */
-PMIX_EXPORT pmix_status_t PMIx_server_register_nspace(const char nspace[], int nlocalprocs,
+PMIX_EXPORT pmix_status_t PMIx_server_register_nspace(const pmix_nspace_t nspace, int nlocalprocs,
                                                       pmix_info_t info[], size_t ninfo,
                                                       pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
@@ -675,7 +675,7 @@ static void _deregister_nspace(int sd, short args, void *cbdata)
     PMIX_RELEASE(cd);
 }
 
-PMIX_EXPORT void PMIx_server_deregister_nspace(const char nspace[],
+PMIX_EXPORT void PMIx_server_deregister_nspace(const pmix_nspace_t nspace,
                                                pmix_op_cbfunc_t cbfunc,
                                                void *cbdata)
 {
@@ -1382,7 +1382,7 @@ static void _store_internal(int sd, short args, void *cbdata)
  }
 
 PMIX_EXPORT pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc,
-                                              const char *key, pmix_value_t *val)
+                                              const pmix_key_t key, pmix_value_t *val)
 {
     pmix_shift_caddy_t *cd;
     pmix_status_t rc;
@@ -1520,7 +1520,7 @@ static void _setup_app(int sd, short args, void *cbdata)
     PMIX_RELEASE(cd);
 }
 
-pmix_status_t PMIx_server_setup_application(const char nspace[],
+pmix_status_t PMIx_server_setup_application(const pmix_nspace_t nspace,
                                             pmix_info_t info[], size_t ninfo,
                                             pmix_setup_application_cbfunc_t cbfunc, void *cbdata)
 {
@@ -1571,7 +1571,7 @@ static void _setup_local_support(int sd, short args, void *cbdata)
     PMIX_RELEASE(cd);
 }
 
-pmix_status_t PMIx_server_setup_local_support(const char nspace[],
+pmix_status_t PMIx_server_setup_local_support(const pmix_nspace_t nspace,
                                               pmix_info_t info[], size_t ninfo,
                                               pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
