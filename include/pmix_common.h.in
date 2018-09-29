@@ -572,71 +572,56 @@ typedef int pmix_status_t;
 #define PMIX_ERR_COMM_FAILURE                       -49
 #define PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER     -50         // internal-only
 
-/* define a starting point for v2.x error values */
-#define PMIX_ERR_V2X_BASE                   -100
-
 /* v2.x communication errors */
-#define PMIX_ERR_LOST_CONNECTION_TO_SERVER      (PMIX_ERR_V2X_BASE -  1)
-#define PMIX_ERR_LOST_PEER_CONNECTION           (PMIX_ERR_V2X_BASE -  2)
-#define PMIX_ERR_LOST_CONNECTION_TO_CLIENT      (PMIX_ERR_V2X_BASE -  3)
+#define PMIX_ERR_LOST_CONNECTION_TO_SERVER          -101
+#define PMIX_ERR_LOST_PEER_CONNECTION               -102
+#define PMIX_ERR_LOST_CONNECTION_TO_CLIENT          -103
 /* used by the query system */
-#define PMIX_QUERY_PARTIAL_SUCCESS              (PMIX_ERR_V2X_BASE -  4)
+#define PMIX_QUERY_PARTIAL_SUCCESS                  -104
 /* request responses */
-#define PMIX_NOTIFY_ALLOC_COMPLETE              (PMIX_ERR_V2X_BASE -  5)
+#define PMIX_NOTIFY_ALLOC_COMPLETE                  -105
 /* job control */
-#define PMIX_JCTRL_CHECKPOINT                   (PMIX_ERR_V2X_BASE -  6)    // monitored by client to trigger checkpoint operation
-#define PMIX_JCTRL_CHECKPOINT_COMPLETE          (PMIX_ERR_V2X_BASE -  7)    // sent by client and monitored by server to notify that requested
+#define PMIX_JCTRL_CHECKPOINT                       -106    // monitored by client to trigger checkpoint operation
+#define PMIX_JCTRL_CHECKPOINT_COMPLETE              -107    // sent by client and monitored by server to notify that requested
                                                                             //     checkpoint operation has completed
-#define PMIX_JCTRL_PREEMPT_ALERT                (PMIX_ERR_V2X_BASE -  8)    // monitored by client to detect RM intends to preempt
-/* monitoring */
-#define PMIX_MONITOR_HEARTBEAT_ALERT            (PMIX_ERR_V2X_BASE -  9)
-#define PMIX_MONITOR_FILE_ALERT                 (PMIX_ERR_V2X_BASE - 10)
-#define PMIX_PROC_TERMINATED                    (PMIX_ERR_V2X_BASE - 11)
-#define PMIX_ERR_INVALID_TERMINATION            (PMIX_ERR_V2X_BASE - 12)
+#define PMIX_JCTRL_PREEMPT_ALERT                    -108    // monitored by client to detect RM intends to preempt
 
-/* define a starting point for operational error constants so
- * we avoid renumbering when making additions */
-#define PMIX_ERR_OP_BASE    PMIX_ERR_V2X_BASE-100
+/* monitoring */
+#define PMIX_MONITOR_HEARTBEAT_ALERT                -109
+#define PMIX_MONITOR_FILE_ALERT                     -110
+#define PMIX_PROC_TERMINATED                        -111
+#define PMIX_ERR_INVALID_TERMINATION                -112
 
 /* operational */
-#define PMIX_ERR_EVENT_REGISTRATION             (PMIX_ERR_OP_BASE - 14)
-#define PMIX_ERR_JOB_TERMINATED                 (PMIX_ERR_OP_BASE - 15)
-#define PMIX_ERR_UPDATE_ENDPOINTS               (PMIX_ERR_OP_BASE - 16)
-#define PMIX_MODEL_DECLARED                     (PMIX_ERR_OP_BASE - 17)
-#define PMIX_GDS_ACTION_COMPLETE                (PMIX_ERR_OP_BASE - 18)
+#define PMIX_ERR_EVENT_REGISTRATION                 -144
+#define PMIX_ERR_JOB_TERMINATED                     -145
+#define PMIX_ERR_UPDATE_ENDPOINTS                   -146
+#define PMIX_MODEL_DECLARED                         -147
+#define PMIX_GDS_ACTION_COMPLETE                    -148
 /* gap created by v3 definitions */
-#define PMIX_OPERATION_SUCCEEDED                (PMIX_ERR_OP_BASE - 27)
-#define PMIX_ERR_INVALID_OPERATION              (PMIX_ERR_OP_BASE - 28)
-
-/* define a starting point for system event constants so
- * we avoid renumbering when making additions - host environments
- * are responsible for translating their own event codes into
- * the closest PMIx equivalent value */
-#define PMIX_ERR_SYS_BASE    PMIX_ERR_OP_BASE-200
+#define PMIX_OPERATION_SUCCEEDED                    -157
+#define PMIX_ERR_INVALID_OPERATION                  -158
+/* gap for group codes */
 
 /* system failures */
-#define PMIX_ERR_NODE_DOWN                      (PMIX_ERR_SYS_BASE -   0)
-#define PMIX_ERR_NODE_OFFLINE                   (PMIX_ERR_SYS_BASE -   1)
-#define PMIX_ERR_SYS_OTHER                      (PMIX_ERR_EVHDLR_BASE + 1)
+#define PMIX_ERR_NODE_DOWN                          -231
+#define PMIX_ERR_NODE_OFFLINE                       -232
+#define PMIX_ERR_SYS_OTHER                          -330
 
 /* define a macro for identifying system event values */
 #define PMIX_SYSTEM_EVENT(a)   \
-    (PMIX_ERR_SYS_BASE >= (a) && PMIX_ERR_EVHDLR_BASE < (a))
-
-/* define a starting point for event handler error constants so
- * we avoid renumbering when making additions */
-#define PMIX_ERR_EVHDLR_BASE    PMIX_ERR_SYS_BASE-500
+    (230 > (a) && -331 < (a))
 
 /* used by event handlers */
-#define PMIX_EVENT_NO_ACTION_TAKEN              (PMIX_ERR_EVHDLR_BASE -  1)
-#define PMIX_EVENT_PARTIAL_ACTION_TAKEN         (PMIX_ERR_EVHDLR_BASE -  2)
-#define PMIX_EVENT_ACTION_DEFERRED              (PMIX_ERR_EVHDLR_BASE -  3)
-#define PMIX_EVENT_ACTION_COMPLETE              (PMIX_ERR_EVHDLR_BASE -  4)
+#define PMIX_EVENT_NO_ACTION_TAKEN                  -331
+#define PMIX_EVENT_PARTIAL_ACTION_TAKEN             -332
+#define PMIX_EVENT_ACTION_DEFERRED                  -333
+#define PMIX_EVENT_ACTION_COMPLETE                  -334
 
 
 /* define a starting point for PMIx internal error codes
  * that are never exposed outside the library */
-#define PMIX_INTERNAL_ERR_BASE          PMIX_ERR_EVHDLR_BASE-1000
+#define PMIX_INTERNAL_ERR_BASE                      -1330
 
 /* define a starting point for user-level defined error
  * constants - negative values larger than this are guaranteed
