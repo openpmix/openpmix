@@ -64,7 +64,7 @@ static void spawn_cbfunc(pmix_status_t status, char nspace[], void *cbdata);
 
 PMIX_EXPORT pmix_status_t PMIx_Spawn(const pmix_info_t job_info[], size_t ninfo,
                            const pmix_app_t apps[], size_t napps,
-                           char nspace[])
+                           pmix_nspace_t nspace)
 {
     pmix_status_t rc;
     pmix_cb_t *cb;

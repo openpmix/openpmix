@@ -1003,7 +1003,9 @@ static void _putfn(int sd, short args, void *cbdata)
     PMIX_WAKEUP_THREAD(&cb->lock);
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
+PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope,
+                                   const pmix_key_t key,
+                                   pmix_value_t *val)
 {
     pmix_cb_t *cb;
     pmix_status_t rc;
@@ -1212,7 +1214,7 @@ static void _resolve_peers(int sd, short args, void *cbdata)
 
 /* need to thread-shift this request */
 PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename,
-                                             const char *nspace,
+                                             const pmix_nspace_t nspace,
                                              pmix_proc_t **procs, size_t *nprocs)
 {
     pmix_cb_t *cb;
@@ -1285,7 +1287,7 @@ static void _resolve_nodes(int fd, short args, void *cbdata)
 }
 
 /* need to thread-shift this request */
-PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const char *nspace, char **nodelist)
+PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const pmix_nspace_t nspace, char **nodelist)
 {
     pmix_cb_t *cb;
     pmix_status_t rc;

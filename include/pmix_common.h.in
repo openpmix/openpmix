@@ -784,7 +784,6 @@ typedef int pmix_status_t;
 #define PMIX_SYSTEM_EVENT(a)   \
     (230 > (a) && -331 < (a))
 
-/* define a starting point for event handler error constants so
 /* used by event handlers */
 #define PMIX_EVENT_NO_ACTION_TAKEN                  -331
 #define PMIX_EVENT_PARTIAL_ACTION_TAKEN             -332
