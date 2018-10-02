@@ -943,7 +943,7 @@ typedef uint16_t pmix_iof_channel_t;
 #define PMIX_LOAD_NSPACE(a, b)                      \
     do {                                            \
         memset((a), 0, PMIX_MAX_NSLEN+1);           \
-        (void)strncpy((a), (b), PMIX_MAX_NSLEN);    \
+        pmix_strncpy((a), (b), PMIX_MAX_NSLEN);     \
     }while(0)
 
 /* define a convenience macro for checking nspaces */
@@ -1436,7 +1436,7 @@ typedef struct pmix_info {
 #define PMIX_INFO_LOAD(m, k, v, t)                          \
     do {                                                    \
         if (NULL != (k)) {                                  \
-            (void)strncpy((m)->key, (k), PMIX_MAX_KEYLEN);  \
+            pmix_strncpy((m)->key, (k), PMIX_MAX_KEYLEN);   \
         }                                                   \
         (m)->flags = 0;                                     \
         pmix_value_load(&((m)->value), (v), (t));           \
@@ -1444,7 +1444,7 @@ typedef struct pmix_info {
 #define PMIX_INFO_XFER(d, s)                                        \
     do {                                                            \
         if (NULL != (s)->key) {                                     \
-            (void)strncpy((d)->key, (s)->key, PMIX_MAX_KEYLEN);     \
+            pmix_strncpy((d)->key, (s)->key, PMIX_MAX_KEYLEN);      \
         }                                                           \
         (d)->flags = (s)->flags;                                    \
         pmix_value_xfer(&(d)->value, (pmix_value_t*)&(s)->value);   \
@@ -1517,9 +1517,9 @@ typedef struct pmix_pdata {
     do {                                                                    \
         if (NULL != (m)) {                                                  \
             memset((m), 0, sizeof(pmix_pdata_t));                           \
-            (void)strncpy((m)->proc.nspace, (p)->nspace, PMIX_MAX_NSLEN);   \
+            pmix_strncpy((m)->proc.nspace, (p)->nspace, PMIX_MAX_NSLEN);    \
             (m)->proc.rank = (p)->rank;                                     \
-            (void)strncpy((m)->key, (k), PMIX_MAX_KEYLEN);                  \
+            pmix_strncpy((m)->key, (k), PMIX_MAX_KEYLEN);                   \
             pmix_value_load(&((m)->value), (v), (t));                       \
         }                                                                   \
     } while (0)
@@ -1528,9 +1528,9 @@ typedef struct pmix_pdata {
     do {                                                                        \
         if (NULL != (d)) {                                                      \
             memset((d), 0, sizeof(pmix_pdata_t));                               \
-            (void)strncpy((d)->proc.nspace, (s)->proc.nspace, PMIX_MAX_NSLEN);  \
+            pmix_strncpy((d)->proc.nspace, (s)->proc.nspace, PMIX_MAX_NSLEN);   \
             (d)->proc.rank = (s)->proc.rank;                                    \
-            (void)strncpy((d)->key, (s)->key, PMIX_MAX_KEYLEN);                 \
+            pmix_strncpy((d)->key, (s)->key, PMIX_MAX_KEYLEN);                  \
             pmix_value_xfer(&((d)->value), &((s)->value));                      \
         }                                                                       \
     } while (0)
