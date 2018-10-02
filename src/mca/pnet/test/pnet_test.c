@@ -358,7 +358,7 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
                                        "recvd KEY %s %s", kv->key,
                                        (PMIX_STRING == kv->value->type) ? kv->value->data.string : "NON-STRING");
                        /* xfer the value to the info */
-                   (void)strncpy(jinfo[m].key, kv->key, PMIX_MAX_KEYLEN);
+                   pmix_strncpy(jinfo[m].key, kv->key, PMIX_MAX_KEYLEN);
                    PMIX_BFROPS_VALUE_XFER(rc, pmix_globals.mypeer,
                                           &jinfo[m].value, kv->value);
                        /* if this is the ID key, save it */
@@ -386,7 +386,7 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
                }
                    /* the data gets stored as a pmix_data_array_t on the provided key */
                PMIX_INFO_CONSTRUCT(&stinfo);
-               (void)strncpy(stinfo.key, idkey, PMIX_MAX_KEYLEN);
+               pmix_strncpy(stinfo.key, idkey, PMIX_MAX_KEYLEN);
                stinfo.value.type = PMIX_DATA_ARRAY;
                PMIX_DATA_ARRAY_CREATE(stinfo.value.data.darray, nkvals, PMIX_INFO);
                stinfo.value.data.darray->array = jinfo;

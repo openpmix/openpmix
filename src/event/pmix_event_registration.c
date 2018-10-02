@@ -293,7 +293,7 @@ static pmix_status_t _add_hdlr(pmix_rshift_caddy_t *cd, pmix_list_t *xfer)
         PMIX_INFO_CREATE(cd2->info, cd2->ninfo);
         n=0;
         PMIX_LIST_FOREACH(ixfer, xfer, pmix_info_caddy_t) {
-            (void)strncpy(cd2->info[n].key, ixfer->info[n].key, PMIX_MAX_KEYLEN);
+            pmix_strncpy(cd2->info[n].key, ixfer->info[n].key, PMIX_MAX_KEYLEN);
             PMIX_BFROPS_VALUE_LOAD(pmix_client_globals.myserver,
                                    &cd2->info[n].value,
                                    &ixfer->info[n].value.data,
@@ -407,7 +407,7 @@ static void check_cached_events(pmix_rshift_caddy_t *cd)
        /* create the chain */
         chain = PMIX_NEW(pmix_event_chain_t);
         chain->status = ncd->status;
-        (void)strncpy(chain->source.nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
+        pmix_strncpy(chain->source.nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
         chain->source.rank = pmix_globals.myid.rank;
         /* we always leave space for event hdlr name and a callback object */
         chain->nallocated = ncd->ninfo + 2;

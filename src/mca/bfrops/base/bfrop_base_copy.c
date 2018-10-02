@@ -236,7 +236,7 @@ pmix_status_t pmix_bfrops_base_copy_info(pmix_info_t **dest,
                                          pmix_data_type_t type)
 {
     *dest = (pmix_info_t*)malloc(sizeof(pmix_info_t));
-    (void)strncpy((*dest)->key, src->key, PMIX_MAX_KEYLEN);
+    pmix_strncpy((*dest)->key, src->key, PMIX_MAX_KEYLEN);
     (*dest)->flags = src->flags;
     return pmix_bfrops_base_value_xfer(&(*dest)->value, &src->value);
 }
@@ -267,7 +267,7 @@ pmix_status_t pmix_bfrops_base_copy_app(pmix_app_t **dest,
     (*dest)->ninfo = src->ninfo;
     (*dest)->info = (pmix_info_t*)malloc(src->ninfo * sizeof(pmix_info_t));
     for (j=0; j < src->ninfo; j++) {
-        (void)strncpy((*dest)->info[j].key, src->info[j].key, PMIX_MAX_KEYLEN);
+        pmix_strncpy((*dest)->info[j].key, src->info[j].key, PMIX_MAX_KEYLEN);
         pmix_value_xfer(&(*dest)->info[j].value, &src->info[j].value);
     }
     return PMIX_SUCCESS;
@@ -300,7 +300,7 @@ pmix_status_t pmix_bfrops_base_copy_proc(pmix_proc_t **dest,
     if (NULL == *dest) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
-    (void)strncpy((*dest)->nspace, src->nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy((*dest)->nspace, src->nspace, PMIX_MAX_NSLEN);
     (*dest)->rank = src->rank;
     return PMIX_SUCCESS;
 }
@@ -357,9 +357,9 @@ pmix_status_t pmix_bfrops_base_copy_pdata(pmix_pdata_t **dest,
                                           pmix_data_type_t type)
 {
     *dest = (pmix_pdata_t*)malloc(sizeof(pmix_pdata_t));
-    (void)strncpy((*dest)->proc.nspace, src->proc.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy((*dest)->proc.nspace, src->proc.nspace, PMIX_MAX_NSLEN);
     (*dest)->proc.rank = src->proc.rank;
-    (void)strncpy((*dest)->key, src->key, PMIX_MAX_KEYLEN);
+    pmix_strncpy((*dest)->key, src->key, PMIX_MAX_KEYLEN);
     return pmix_bfrops_base_value_xfer(&(*dest)->value, &src->value);
 }
 
