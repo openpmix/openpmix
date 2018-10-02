@@ -53,7 +53,7 @@
 #include PMIX_EVENT2_THREAD_HEADER
 
 static const char pmix_version_string[] = PMIX_VERSION;
-
+static pmix_status_t pmix_init_result = PMIX_ERR_INIT;
 
 #include "src/class/pmix_list.h"
 #include "src/event/pmix_event.h"
@@ -450,11 +450,14 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         if (NULL != info) {
             _check_for_notify(info, ninfo);
         }
-        return PMIX_SUCCESS;
+        return pmix_init_result;
     }
+    ++pmix_globals.init_cntr;
+
     /* if we don't see the required info, then we cannot init */
     if (NULL == (evar = getenv("PMIX_NAMESPACE"))) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
+        pmix_init_result = PMIX_ERR_INVALID_NAMESPACE;
         return PMIX_ERR_INVALID_NAMESPACE;
     }
 
@@ -463,6 +466,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     if (PMIX_SUCCESS != (rc = pmix_rte_init(PMIX_PROC_CLIENT, info, ninfo,
                                             pmix_client_notify_recv))) {
         PMIX_ERROR_LOG(rc);
+        pmix_init_result = rc;
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
@@ -480,18 +484,21 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     pmix_pointer_array_init(&pmix_client_globals.peers, 1, INT_MAX, 1);
     pmix_client_globals.myserver = PMIX_NEW(pmix_peer_t);
     if (NULL == pmix_client_globals.myserver) {
+        pmix_init_result = PMIX_ERR_NOMEM;
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_NOMEM;
     }
     pmix_client_globals.myserver->nptr = PMIX_NEW(pmix_namespace_t);
     if (NULL == pmix_client_globals.myserver->nptr) {
         PMIX_RELEASE(pmix_client_globals.myserver);
+        pmix_init_result = PMIX_ERR_NOMEM;
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_NOMEM;
     }
     pmix_client_globals.myserver->info = PMIX_NEW(pmix_rank_info_t);
     if (NULL == pmix_client_globals.myserver->info) {
         PMIX_RELEASE(pmix_client_globals.myserver);
+        pmix_init_result = PMIX_ERR_NOMEM;
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_NOMEM;
     }
@@ -517,6 +524,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     /* we also require our rank */
     if (NULL == (evar = getenv("PMIX_RANK"))) {
         /* let the caller know that the server isn't available yet */
+        pmix_init_result = PMIX_ERR_DATA_VALUE_NOT_FOUND;
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_DATA_VALUE_NOT_FOUND;
     }
@@ -528,6 +536,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     /* setup a rank_info object for us */
     pmix_globals.mypeer->info = PMIX_NEW(pmix_rank_info_t);
     if (NULL == pmix_globals.mypeer->info) {
+        pmix_init_result = PMIX_ERR_NOMEM;
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_NOMEM;
     }
@@ -540,6 +549,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     evar = getenv("PMIX_SECURITY_MODE");
     pmix_globals.mypeer->nptr->compat.psec = pmix_psec_base_assign_module(evar);
     if (NULL == pmix_globals.mypeer->nptr->compat.psec) {
+        pmix_init_result = PMIX_ERR_INIT;
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_INIT;
     }
@@ -574,6 +584,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         pmix_client_globals.myserver->nptr->compat.gds = pmix_gds_base_assign_module(NULL, 0);
     }
     if (NULL == pmix_client_globals.myserver->nptr->compat.gds) {
+        pmix_init_result = PMIX_ERR_INIT;
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_INIT;
     }
@@ -596,6 +607,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     pmix_globals.mypeer->nptr->compat.gds = pmix_gds_base_assign_module(&ginfo, 1);
     if (NULL == pmix_globals.mypeer->nptr->compat.gds) {
         PMIX_INFO_DESTRUCT(&ginfo);
+        pmix_init_result = PMIX_ERR_INIT;
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_INIT;
     }
@@ -604,6 +616,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     /* connect to the server */
     rc = pmix_ptl_base_connect_to_peer((struct pmix_peer_t*)pmix_client_globals.myserver, info, ninfo);
     if (PMIX_SUCCESS != rc) {
+        pmix_init_result = rc;
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
@@ -619,6 +632,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
      if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(req);
+        pmix_init_result = rc;
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
@@ -627,6 +641,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver,
                        req, job_data, (void*)&cb);
     if (PMIX_SUCCESS != rc) {
+        pmix_init_result = rc;
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
@@ -636,8 +651,9 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     PMIX_DESTRUCT(&cb);
 
     if (PMIX_SUCCESS == rc) {
-        pmix_globals.init_cntr++;
+        pmix_init_result = PMIX_SUCCESS;
     } else {
+        pmix_init_result = rc;
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
