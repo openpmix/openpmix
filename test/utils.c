@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2017 Intel, Inc. All rights reserved.
+ * Copyright (c) 2015-2018 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2017 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      Research Organization for Information Science
@@ -53,37 +53,37 @@ static void set_namespace(int nprocs, char *ranks, char *name)
     char *regex, *ppn;
 
     PMIX_INFO_CREATE(info, ninfo);
-    (void)strncpy(info[0].key, PMIX_UNIV_SIZE, PMIX_MAX_KEYLEN);
+    pmix_strncpy(info[0].key, PMIX_UNIV_SIZE, PMIX_MAX_KEYLEN);
     info[0].value.type = PMIX_UINT32;
     info[0].value.data.uint32 = nprocs;
 
-    (void)strncpy(info[1].key, PMIX_SPAWNED, PMIX_MAX_KEYLEN);
+    pmix_strncpy(info[1].key, PMIX_SPAWNED, PMIX_MAX_KEYLEN);
     info[1].value.type = PMIX_UINT32;
     info[1].value.data.uint32 = 0;
 
-    (void)strncpy(info[2].key, PMIX_LOCAL_SIZE, PMIX_MAX_KEYLEN);
+    pmix_strncpy(info[2].key, PMIX_LOCAL_SIZE, PMIX_MAX_KEYLEN);
     info[2].value.type = PMIX_UINT32;
     info[2].value.data.uint32 = nprocs;
 
-    (void)strncpy(info[3].key, PMIX_LOCAL_PEERS, PMIX_MAX_KEYLEN);
+    pmix_strncpy(info[3].key, PMIX_LOCAL_PEERS, PMIX_MAX_KEYLEN);
     info[3].value.type = PMIX_STRING;
     info[3].value.data.string = strdup(ranks);
 
     PMIx_generate_regex(NODE_NAME, &regex);
-    (void)strncpy(info[4].key, PMIX_NODE_MAP, PMIX_MAX_KEYLEN);
+    pmix_strncpy(info[4].key, PMIX_NODE_MAP, PMIX_MAX_KEYLEN);
     info[4].value.type = PMIX_STRING;
     info[4].value.data.string = regex;
 
     PMIx_generate_ppn(ranks, &ppn);
-    (void)strncpy(info[5].key, PMIX_PROC_MAP, PMIX_MAX_KEYLEN);
+    pmix_strncpy(info[5].key, PMIX_PROC_MAP, PMIX_MAX_KEYLEN);
     info[5].value.type = PMIX_STRING;
     info[5].value.data.string = ppn;
 
-    (void)strncpy(info[6].key, PMIX_JOB_SIZE, PMIX_MAX_KEYLEN);
+    pmix_strncpy(info[6].key, PMIX_JOB_SIZE, PMIX_MAX_KEYLEN);
     info[6].value.type = PMIX_UINT32;
     info[6].value.data.uint32 = nprocs;
 
-    (void)strncpy(info[7].key, PMIX_APPNUM, PMIX_MAX_KEYLEN);
+    pmix_strncpy(info[7].key, PMIX_APPNUM, PMIX_MAX_KEYLEN);
     info[7].value.type = PMIX_UINT32;
     info[7].value.data.uint32 = getpid ();
 
