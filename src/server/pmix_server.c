@@ -2986,8 +2986,8 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
         return rc;
     }
     pmix_output_verbose(2, pmix_server_globals.base_output,
-                        "recvd pmix cmd %d from %s:%u",
-                        cmd, peer->info->pname.nspace, peer->info->pname.rank);
+                        "recvd pmix cmd %s from %s:%u",
+                        pmix_command_string(cmd), peer->info->pname.nspace, peer->info->pname.rank);
 
     if (PMIX_REQ_CMD == cmd) {
         reply = PMIX_NEW(pmix_buffer_t);

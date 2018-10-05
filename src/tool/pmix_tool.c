@@ -327,7 +327,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
                 /* they want us to forward our stdin to someone */
                 fwd_stdin = true;
             } else if (0 == strncmp(info[n].key, PMIX_LAUNCHER, PMIX_MAX_KEYLEN)) {
-                ptype = PMIX_PROC_LAUNCHER;
+                ptype |= PMIX_PROC_LAUNCHER;
             } else if (0 == strncmp(info[n].key, PMIX_SERVER_TMPDIR, PMIX_MAX_KEYLEN)) {
                 pmix_server_globals.tmpdir = strdup(info[n].value.data.string);
             } else if (0 == strncmp(info[n].key, PMIX_SYSTEM_TMPDIR, PMIX_MAX_KEYLEN)) {
@@ -406,7 +406,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
 
     /* if we are a launcher, then we also need to act as a server,
      * so setup the server-related structures here */
-    if (PMIX_PROC_LAUNCHER == ptype) {
+    if (PMIX_PROC_LAUNCHER_ACT & ptype) {
         if (PMIX_SUCCESS != (rc = pmix_server_initialize())) {
             PMIX_ERROR_LOG(rc);
             if (NULL != nspace) {
@@ -611,36 +611,14 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     pmix_globals.mypeer->info->pname.nspace = strdup(pmix_globals.myid.nspace);
     pmix_globals.mypeer->info->pname.rank = pmix_globals.myid.rank;
 
-    /* if we are acting as a client, then send a request for our
-     * job info - we do this as a non-blocking
-     * transaction because some systems cannot handle very large
-     * blocking operations and error out if we try them. */
-    if (PMIX_PROC_IS_CLIENT(pmix_globals.mypeer)) {
-         req = PMIX_NEW(pmix_buffer_t);
-         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                          req, &cmd, 1, PMIX_COMMAND);
-         if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(req);
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
-            return rc;
-        }
-        /* send to the server */
-        PMIX_CONSTRUCT(&cb, pmix_cb_t);
-        PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver,
-                           req, job_data, (void*)&cb);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
-            return rc;
-        }
-        /* wait for the data to return */
-        PMIX_WAIT_THREAD(&cb.lock);
-        rc = cb.status;
-        PMIX_DESTRUCT(&cb);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
-            return rc;
-        }
+    /* if we are acting as a server, then start listening */
+    if (PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
+        /* setup the wildcard recv for inbound messages from clients */
+        rcv = PMIX_NEW(pmix_ptl_posted_recv_t);
+        rcv->tag = UINT32_MAX;
+        rcv->cbfunc = pmix_server_message_handler;
+        /* add it to the end of the list of recvs */
+        pmix_list_append(&pmix_ptl_globals.posted_recvs, &rcv->super);
     }
 
     /* setup IOF */
@@ -689,7 +667,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
                                &stdinev.ev, fd,
                                PMIX_EV_READ,
                                pmix_iof_read_local_handler, &stdinev);
-            }                                                               \
+            }
             /* check to see if we want the stdin read event to be
              * active - we will always at least define the event,
              * but may delay its activation
@@ -722,7 +700,37 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     /* increment our init reference counter */
     pmix_globals.init_cntr++;
 
-    if (!PMIX_PROC_IS_CLIENT(pmix_globals.mypeer)) {
+    /* if we are acting as a client, then send a request for our
+     * job info - we do this as a non-blocking
+     * transaction because some systems cannot handle very large
+     * blocking operations and error out if we try them. */
+    if (PMIX_PROC_IS_CLIENT(pmix_globals.mypeer)) {
+         req = PMIX_NEW(pmix_buffer_t);
+         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
+                          req, &cmd, 1, PMIX_COMMAND);
+         if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(req);
+            PMIX_RELEASE_THREAD(&pmix_global_lock);
+            return rc;
+        }
+        /* send to the server */
+        PMIX_CONSTRUCT(&cb, pmix_cb_t);
+        PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver,
+                           req, job_data, (void*)&cb);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE_THREAD(&pmix_global_lock);
+            return rc;
+        }
+        /* wait for the data to return */
+        PMIX_WAIT_THREAD(&cb.lock);
+        rc = cb.status;
+        PMIX_DESTRUCT(&cb);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE_THREAD(&pmix_global_lock);
+            return rc;
+        }
+    } else {
         /* now finish the initialization by filling our local
          * datastore with typical job-related info. No point
          * in having the server generate these as we are
@@ -1035,13 +1043,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
 
     /* if we are acting as a server, then start listening */
     if (PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
-        /* setup the wildcard recv for inbound messages from clients */
-        rcv = PMIX_NEW(pmix_ptl_posted_recv_t);
-        rcv->tag = UINT32_MAX;
-        rcv->cbfunc = pmix_server_message_handler;
-        /* add it to the end of the list of recvs */
-        pmix_list_append(&pmix_ptl_globals.posted_recvs, &rcv->super);
-
         /* start listening for connections */
         if (PMIX_SUCCESS != pmix_ptl_base_start_listening(info, ninfo)) {
             pmix_show_help("help-pmix-server.txt", "listener-thread-start", true);
@@ -1169,7 +1170,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
         (void)pmix_progress_thread_pause(NULL);
     }
 
-    PMIX_RELEASE(pmix_client_globals.myserver);
+//    PMIX_RELEASE(pmix_client_globals.myserver);
     PMIX_LIST_DESTRUCT(&pmix_client_globals.pending_requests);
     for (n=0; n < pmix_client_globals.peers.size; n++) {
         if (NULL != (peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_client_globals.peers, n))) {
