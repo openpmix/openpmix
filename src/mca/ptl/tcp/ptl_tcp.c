@@ -14,6 +14,7 @@
  * Copyright (c) 2011-2013 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2013-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2018      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -584,7 +585,7 @@ static pmix_status_t try_connect(int *sd)
     struct sockaddr_in6 *in6;
     size_t len;
     pmix_status_t rc;
-    bool retried = false;
+    int retries = 0;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "pmix:tcp try connect to %s",
@@ -679,9 +680,8 @@ static pmix_status_t try_connect(int *sd)
     if (PMIX_SUCCESS != (rc = recv_connect_ack(*sd))) {
         CLOSE_THE_SOCKET(*sd);
         if (PMIX_ERR_TEMP_UNAVAILABLE == rc) {
-            /* give it two tries */
-            if (!retried) {
-                retried = true;
+            ++retries;
+            if( retries < mca_ptl_tcp_component.handshake_max_retries ) {
                 goto retry;
             }
         }
@@ -874,7 +874,7 @@ static pmix_status_t recv_connect_ack(int sd)
        }
    } else {
         /* set a timeout on the blocking recv so we don't hang */
-        tv.tv_sec  = 2;
+        tv.tv_sec  = mca_ptl_tcp_component.handshake_wait_time;
         tv.tv_usec = 0;
         if (0 != setsockopt(sd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv))) {
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
