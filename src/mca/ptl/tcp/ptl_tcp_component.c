@@ -15,6 +15,7 @@
  * Copyright (c) 2016-2018 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2018      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -119,7 +120,9 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env);
     .wait_to_connect = 4,
     .max_retries = 2,
     .report_uri = NULL,
-    .remote_connections = false
+    .remote_connections = false,
+    .handshake_wait_time = 4,
+    .handshake_max_retries = 2
 };
 
 static char **split_and_resolve(char **orig_str, char *name);
@@ -148,7 +151,7 @@ static int component_register(void)
 
     (void)pmix_mca_base_component_var_register(component, "remote_connections",
                                                "Enable connections from remote tools",
-                                               PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
+                                               PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, 0,
                                                PMIX_INFO_LVL_2,
                                                PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
                                                &mca_ptl_tcp_component.remote_connections);
@@ -219,6 +222,20 @@ static int component_register(void)
                                           PMIX_INFO_LVL_4,
                                           PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                           &mca_ptl_tcp_component.max_retries);
+
+    (void)pmix_mca_base_component_var_register(component, "handshake_wait_time",
+                                          "Number of seconds to wait for the server reply to the handshake request",
+                                          PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                                          PMIX_INFO_LVL_4,
+                                          PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+                                          &mca_ptl_tcp_component.handshake_wait_time);
+
+    (void)pmix_mca_base_component_var_register(component, "handshake_max_retries",
+                                          "Number of times to retry the handshake request before giving up",
+                                          PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                                          PMIX_INFO_LVL_4,
+                                          PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+                                          &mca_ptl_tcp_component.handshake_max_retries);
 
     return PMIX_SUCCESS;
 }
