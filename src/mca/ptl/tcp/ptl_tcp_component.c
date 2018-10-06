@@ -153,7 +153,7 @@ static int component_register(void)
 
     (void)pmix_mca_base_component_var_register(component, "remote_connections",
                                                "Enable connections from remote tools",
-                                               PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
+                                               PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, 0,
                                                PMIX_INFO_LVL_2,
                                                PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
                                                &mca_ptl_tcp_component.remote_connections);
