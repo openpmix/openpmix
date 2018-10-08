@@ -1166,7 +1166,7 @@ static void wait_signal_callback(int fd, short event, void *arg)
                     exit_code = status;
                 }
                 --wakeup;
-                return;
+                break;
             }
         }
     }
