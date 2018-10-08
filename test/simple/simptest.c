@@ -1017,7 +1017,7 @@ static void wait_signal_callback(int fd, short event, void *arg)
             if (pid == t2->pid) {
                 /* found it! */
                 --wakeup;
-                return;
+                break;
             }
         }
     }
