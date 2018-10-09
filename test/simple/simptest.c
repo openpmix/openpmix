@@ -184,6 +184,7 @@ PMIX_CLASS_INSTANCE(wait_tracker_t,
                     NULL, NULL);
 
 static volatile int wakeup;
+static int exit_code = 0;
 static pmix_list_t pubdata;
 static pmix_event_t handler;
 static pmix_list_t children;
@@ -516,11 +517,16 @@ int main(int argc, char **argv)
     /* finalize the server library */
     if (PMIX_SUCCESS != (rc = PMIx_server_finalize())) {
         fprintf(stderr, "Finalize failed with error %d\n", rc);
+        exit_code = rc;
     }
 
-    fprintf(stderr, "Test finished OK!\n");
+    if (0 == exit_code) {
+        fprintf(stderr, "Test finished OK!\n");
+    } else {
+        fprintf(stderr, "TEST FAILED WITH ERROR %d\n", exit_code);
+    }
 
-    return rc;
+    return exit_code;
 }
 
 static void set_namespace(int nprocs, char *ranks, char *nspace,
@@ -1016,6 +1022,9 @@ static void wait_signal_callback(int fd, short event, void *arg)
         PMIX_LIST_FOREACH(t2, &children, wait_tracker_t) {
             if (pid == t2->pid) {
                 /* found it! */
+                if (0 != status && 0 == exit_code) {
+                    exit_code = status;
+                }
                 --wakeup;
                 break;
             }
