@@ -7,7 +7,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
  * Copyright (c) 2018      Cisco Systems, Inc.  All rights reserved
  * $COPYRIGHT$
  *
@@ -2200,6 +2200,7 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
     char byte;
     bool found;
     pmix_collect_t ctype;
+    bool holding_ns_locks = false;
 
     PMIX_ACQUIRE_OBJECT(scd);
 
@@ -2242,6 +2243,16 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
             pmix_list_append(&nslist, &nptr->super);
         }
     }
+
+    // Lock down all of the namespaces
+    PMIX_LIST_FOREACH(nptr, &nslist, pmix_nspace_caddy_t) {
+        PMIX_GDS_ACQUIRE_NS_LOCK(rc, nptr->ns);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto finish_collective;
+        }
+    }
+    holding_ns_locks = true;
 
     /* Loop over the enclosed byte object envelopes and
      * store them in our GDS module */
@@ -2309,6 +2320,18 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
     }
 
   finish_collective:
+
+    // Unlock all of the namespaces
+    if( holding_ns_locks ) {
+        PMIX_LIST_FOREACH(nptr, &nslist, pmix_nspace_caddy_t) {
+            PMIX_GDS_RELEASE_NS_LOCK(rc, nptr->ns);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                goto cleanup;
+            }
+        }
+    }
+
     /* loop across all procs in the tracker, sending them the reply */
     PMIX_LIST_FOREACH(cd, &tracker->local_cbs, pmix_server_caddy_t) {
         reply = PMIX_NEW(pmix_buffer_t);

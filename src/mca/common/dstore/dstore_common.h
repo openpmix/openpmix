@@ -2,6 +2,7 @@
  * Copyright (c) 2018      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2018      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2018      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -74,4 +75,8 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_store_modex(pmix_common_dstore_ctx_t
                                 struct pmix_namespace_t *nspace,
                                 pmix_list_t *cbs,
                                 pmix_byte_object_t *bo);
+PMIX_EXPORT pmix_status_t pmix_common_dstor_acquire_ns_lock(pmix_common_dstore_ctx_t *ds_ctx,
+                                                            struct pmix_namespace_t *nspace);
+PMIX_EXPORT pmix_status_t pmix_common_dstor_release_ns_lock(pmix_common_dstore_ctx_t *ds_ctx,
+                                                            struct pmix_namespace_t *nspace);
 #endif

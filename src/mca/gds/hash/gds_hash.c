@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2015-2018 Intel, Inc.  All rights reserved.
- * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
@@ -104,7 +104,9 @@ pmix_gds_base_module_t pmix_hash_module = {
     .add_nspace = nspace_add,
     .del_nspace = nspace_del,
     .assemb_kvs_req = assemb_kvs_req,
-    .accept_kvs_resp = accept_kvs_resp
+    .accept_kvs_resp = accept_kvs_resp,
+    .acquire_ns_lock = NULL,
+    .release_ns_lock = NULL,
 };
 
 typedef struct {

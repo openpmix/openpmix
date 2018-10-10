@@ -2,6 +2,7 @@
  * Copyright (c) 2015-2017 Intel, Inc. All rights reserved.
  * Copyright (c) 2017      Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2018      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -79,6 +80,7 @@ struct session_s {
     pmix_dstore_seg_desc_t *sm_seg_first;
     pmix_dstore_seg_desc_t *sm_seg_last;   
     pmix_common_dstor_lock_ctx_t lock;
+    int active_locks;
 };
 
 struct ns_map_data_s {

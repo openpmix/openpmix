@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2015-2018 Intel, Inc. All rights reserved.
- * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
  * Copyright (c) 2016-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
@@ -110,6 +110,16 @@ static pmix_status_t ds21_store_modex(struct pmix_namespace_t *nspace,
     return pmix_common_dstor_store_modex(ds21_ctx, nspace, cbs, bo);
 }
 
+static pmix_status_t ds21_acquire_ns_lock(struct pmix_namespace_t *nspace)
+{
+    return pmix_common_dstor_acquire_ns_lock(ds21_ctx, nspace);
+}
+
+static pmix_status_t ds21_release_ns_lock(struct pmix_namespace_t *nspace)
+{
+    return pmix_common_dstor_release_ns_lock(ds21_ctx, nspace);
+}
+
 static pmix_status_t ds21_fetch(const pmix_proc_t *proc,
                                     pmix_scope_t scope, bool copy,
                                     const char *key,
@@ -168,5 +178,7 @@ pmix_gds_base_module_t pmix_ds21_module = {
     .setup_fork = ds21_setup_fork,
     .add_nspace = ds21_add_nspace,
     .del_nspace = ds21_del_nspace,
+    .acquire_ns_lock = ds21_acquire_ns_lock,
+    .release_ns_lock = ds21_release_ns_lock,
 };
 
