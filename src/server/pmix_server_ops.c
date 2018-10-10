@@ -2148,23 +2148,6 @@ pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer,
                                                                  intermed_step, cd))) {
         goto exit;
     }
-
-    /* check the range directive - if it is LOCAL, then we are
-     * done. Otherwise, it needs to go up to our
-     * host for dissemination */
-    if (PMIX_RANGE_LOCAL == cd->range) {
-        PMIX_RELEASE(cd);
-        return PMIX_SUCCESS;
-    }
-
-    if (NULL == pmix_host_server.notify_event) {
-        PMIX_RELEASE(cd);
-        return PMIX_ERR_NOT_SUPPORTED;
-    }
-
-    /* pass it to our host RM for distribution */
-    rc = pmix_host_server.notify_event(cd->status, &cd->source, cd->range,
-                                       cd->info, cd->ninfo, local_cbfunc, cd);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(cd);
     }
@@ -2172,7 +2155,9 @@ pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer,
 
   exit:
     PMIX_RELEASE(cd);
-    cbfunc(rc, cbdata);
+    if (PMIX_OPERATION_SUCCEEDED != rc) {
+        cbfunc(rc, cbdata);
+    }
     return rc;
 }
 
