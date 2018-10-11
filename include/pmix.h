@@ -783,6 +783,9 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntar
  *    PMIX_GROUP_NOTIFY_TERMINATION - notify remaining members when another member
  *                                    terminates without first leaving the
  *                                    group (default=false)
+ *    PMIX_GROUP_ASSIGN_CONTEXT_ID - requests that the RM assign a unique context
+ *                                   ID (size_t) to the group. The value is returned
+ *                                   in the PMIX_GROUP_CONSTRUCT_COMPLETE event
  *    PMIX_TIMEOUT - return an error if the group doesn't assemble within the
  *                   specified number of seconds. Targets the scenario where a
  *                   process fails to call PMIx_Group_connect due to hanging
@@ -812,6 +815,9 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[],
  * information of the other process.
  *
  * Some relevant attributes for this operation:
+ *    PMIX_GROUP_ASSIGN_CONTEXT_ID - requests that the RM assign a unique context
+ *                                   ID (size_t) to the group. The value is returned
+ *                                   in the PMIX_GROUP_CONSTRUCT_COMPLETE event
  *    PMIX_TIMEOUT (int): return an error if the group doesn’t assemble within the
  *                        specified number of seconds. Targets the scenario where a
  *                        process fails to call PMIx_Group_connect due to hanging

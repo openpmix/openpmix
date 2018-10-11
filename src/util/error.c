@@ -228,12 +228,15 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
         return "GROUP-LEADER-SELECTED";
     case PMIX_GROUP_LEADER_FAILED:
         return "GROUP-LEADER-FAILED";
+    case PMIX_GROUP_CONTEXT_ID_ASSIGNED:
+        return "GROUP-CONTEXT-ID-ASSIGNED";
 
     case PMIX_ERR_NODE_DOWN:
         return "NODE-DOWN";
     case PMIX_ERR_NODE_OFFLINE:
         return "NODE-OFFLINE";
-
+    case PMIX_ERR_SYS_OTHER:
+        return "UNDEFINED-SYSTEM-EVENT";
 
     case PMIX_EVENT_NO_ACTION_TAKEN:
         return "EVENT-NO-ACTION-TAKEN";

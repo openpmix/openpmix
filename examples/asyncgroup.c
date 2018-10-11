@@ -190,7 +190,7 @@ int main(int argc, char **argv)
     }
     nprocs = val->data.uint32;
     PMIX_VALUE_RELEASE(val);
-    if (4 < nprocs) {
+    if (nprocs < 4) {
         if (0 == myproc.rank) {
             fprintf(stderr, "This example requires a minimum of 4 processes\n");
         }

@@ -127,8 +127,10 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
     pmix_notify_caddy_t *cd, *rbout;
 
     pmix_output_verbose(2, pmix_client_globals.event_output,
-                        "client: notifying server %s:%d of status %s for range %s",
+                        "[%s:%d] client: notifying server %s:%d of status %s for range %s",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank,
+                        pmix_client_globals.myserver->info->pname.nspace,
+                        pmix_client_globals.myserver->info->pname.rank,
                         PMIx_Error_string(status), PMIx_Data_range_string(range));
 
     if (PMIX_RANGE_PROC_LOCAL != range) {
@@ -238,8 +240,10 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
         cb->cbdata = cbdata;
         /* send to the server */
         pmix_output_verbose(2, pmix_client_globals.event_output,
-                            "client: notifying server %s:%d - sending",
-                            pmix_globals.myid.nspace, pmix_globals.myid.rank);
+                            "[%s:%d] client: notifying server %s:%d - sending",
+                            pmix_globals.myid.nspace, pmix_globals.myid.rank,
+                            pmix_client_globals.myserver->info->pname.nspace,
+                            pmix_client_globals.myserver->info->pname.rank);
         PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver,
                            msg, notify_event_cbfunc, cb);
         if (PMIX_SUCCESS != rc) {
@@ -811,7 +815,7 @@ static void _notify_client_event(int sd, short args, void *cbdata)
      * against our registrations */
     chain = PMIX_NEW(pmix_event_chain_t);
     chain->status = cd->status;
-    (void)strncpy(chain->source.nspace, cd->source.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(chain->source.nspace, cd->source.nspace, PMIX_MAX_NSLEN);
     chain->source.rank = cd->source.rank;
     /* we always leave space for a callback object and
      * the evhandler name. */
@@ -1007,9 +1011,6 @@ pmix_status_t pmix_server_notify_client_of_event(pmix_status_t status,
         for (n=0; n < ninfo; n++) {
             if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_PROXY) &&
                 PMIX_CHECK_PROCID(info[n].value.data.proc, &pmix_globals.myid)) {
-                return PMIX_OPERATION_SUCCEEDED;
-            }
-            if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_INTERNAL_NOTIFY)) {
                 return PMIX_OPERATION_SUCCEEDED;
             }
         }
