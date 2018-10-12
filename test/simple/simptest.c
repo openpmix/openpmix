@@ -342,11 +342,10 @@ int main(int argc, char **argv)
     fprintf(stderr, "Testing version %s\n", PMIx_Get_version());
 
     /* setup the server library and tell it to support tool connections */
-    ninfo = 2;
+    ninfo = 1;
     PMIX_INFO_CREATE(info, ninfo);
     PMIX_INFO_LOAD(&info[0], PMIX_SERVER_TOOL_SUPPORT, NULL, PMIX_BOOL);
-    PMIX_INFO_LOAD(&info[1], PMIX_USOCK_DISABLE, &usock, PMIX_BOOL);
-    if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, info, 2))) {
+    if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, info, ninfo))) {
         fprintf(stderr, "Init failed with error %d\n", rc);
         return rc;
     }
