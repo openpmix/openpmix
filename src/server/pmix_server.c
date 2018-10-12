@@ -108,6 +108,7 @@ pmix_status_t pmix_server_initialize(void)
     PMIX_CONSTRUCT(&pmix_server_globals.events, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_server_globals.local_reqs, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_server_globals.nspaces, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_server_globals.groups, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_server_globals.iof, pmix_hotel_t);
     rc = pmix_hotel_init(&pmix_server_globals.iof, PMIX_IOF_HOTEL_SIZE,
                          pmix_globals.evbase, PMIX_IOF_MAX_STAY,
@@ -511,6 +512,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
         pmix_execute_epilog(&ns->epilog);
     }
     PMIX_LIST_DESTRUCT(&pmix_server_globals.nspaces);
+    PMIX_LIST_DESTRUCT(&pmix_server_globals.groups);
 
     pmix_hwloc_cleanup();
 
@@ -3225,6 +3227,18 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
     if (PMIX_IOF_PUSH_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
         rc = pmix_server_iofstdin(peer, buf, op_cbfunc, cd);
+        return rc;
+    }
+
+    if (PMIX_GROUP_CONSTRUCT_CMD == cmd) {
+        PMIX_GDS_CADDY(cd, peer, tag);
+        rc = pmix_server_grpconstruct(cd, buf);
+        return rc;
+    }
+
+    if (PMIX_GROUP_DESTRUCT_CMD == cmd) {
+        PMIX_GDS_CADDY(cd, peer, tag);
+        rc = pmix_server_grpdestruct(cd, buf);
         return rc;
     }
 

@@ -1107,6 +1107,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
         return PMIX_SUCCESS;
     }
     pmix_globals.init_cntr = 0;
+    pmix_globals.mypeer->finalized = true;
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
