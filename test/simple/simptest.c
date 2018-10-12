@@ -431,30 +431,29 @@ int main(int argc, char **argv)
 #if PMIX_HAVE_HWLOC
     if (hwloc) {
 #if HWLOC_API_VERSION < 0x20000
-        ninfo = 4;
+        ninfo = 3;
 #else
-        ninfo = 5;
+        ninfo = 4;
 #endif
     } else {
-        ninfo = 3;
+        ninfo = 2;
     }
 #else
-    ninfo = 3;
+    ninfo = 2;
 #endif
 
     PMIX_INFO_CREATE(info, ninfo);
     PMIX_INFO_LOAD(&info[0], PMIX_SERVER_TOOL_SUPPORT, NULL, PMIX_BOOL);
-    PMIX_INFO_LOAD(&info[1], PMIX_USOCK_DISABLE, &usock, PMIX_BOOL);
-    PMIX_INFO_LOAD(&info[2], PMIX_SERVER_GATEWAY, NULL, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[1], PMIX_SERVER_GATEWAY, NULL, PMIX_BOOL);
 #if PMIX_HAVE_HWLOC
     if (hwloc) {
         if (NULL != hwloc_file) {
-            PMIX_INFO_LOAD(&info[3], PMIX_TOPOLOGY_FILE, hwloc_file, PMIX_STRING);
+            PMIX_INFO_LOAD(&info[2], PMIX_TOPOLOGY_FILE, hwloc_file, PMIX_STRING);
         } else {
-            PMIX_INFO_LOAD(&info[3], PMIX_TOPOLOGY, NULL, PMIX_STRING);
+            PMIX_INFO_LOAD(&info[2], PMIX_TOPOLOGY, NULL, PMIX_STRING);
         }
 #if HWLOC_API_VERSION >= 0x20000
-        PMIX_INFO_LOAD(&info[4], PMIX_HWLOC_SHARE_TOPO, NULL, PMIX_BOOL);
+        PMIX_INFO_LOAD(&info[3], PMIX_HWLOC_SHARE_TOPO, NULL, PMIX_BOOL);
 #endif
     }
 #endif
