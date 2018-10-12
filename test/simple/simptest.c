@@ -184,6 +184,7 @@ PMIX_CLASS_INSTANCE(wait_tracker_t,
                     NULL, NULL);
 
 static volatile int wakeup;
+static int exit_code = 0;
 static pmix_list_t pubdata;
 static pmix_event_t handler;
 static pmix_list_t children;
@@ -298,8 +299,6 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    fprintf(stderr, "Testing version %s\n", PMIx_Get_version());
-
     /* see if we were passed the number of procs to run or
      * the executable to use */
     for (n=1; n < argc; n++) {
@@ -340,12 +339,13 @@ int main(int argc, char **argv)
         exit(1);
     }
 
+    fprintf(stderr, "Testing version %s\n", PMIx_Get_version());
+
     /* setup the server library and tell it to support tool connections */
-    ninfo = 2;
+    ninfo = 1;
     PMIX_INFO_CREATE(info, ninfo);
     PMIX_INFO_LOAD(&info[0], PMIX_SERVER_TOOL_SUPPORT, NULL, PMIX_BOOL);
-    PMIX_INFO_LOAD(&info[1], PMIX_USOCK_DISABLE, &usock, PMIX_BOOL);
-    if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, info, 2))) {
+    if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, info, ninfo))) {
         fprintf(stderr, "Init failed with error %d\n", rc);
         return rc;
     }
@@ -516,11 +516,16 @@ int main(int argc, char **argv)
     /* finalize the server library */
     if (PMIX_SUCCESS != (rc = PMIx_server_finalize())) {
         fprintf(stderr, "Finalize failed with error %d\n", rc);
+        exit_code = rc;
     }
 
-    fprintf(stderr, "Test finished OK!\n");
+    if (0 == exit_code) {
+        fprintf(stderr, "Test finished OK!\n");
+    } else {
+        fprintf(stderr, "TEST FAILED WITH ERROR %d\n", exit_code);
+    }
 
-    return rc;
+    return exit_code;
 }
 
 static void set_namespace(int nprocs, char *ranks, char *nspace,
@@ -1016,6 +1021,16 @@ static void wait_signal_callback(int fd, short event, void *arg)
         PMIX_LIST_FOREACH(t2, &children, wait_tracker_t) {
             if (pid == t2->pid) {
                 /* found it! */
+                if (WIFEXITED(status)) {
+                    t2->exit_code = WEXITSTATUS(status);
+                } else {
+                    if (WIFSIGNALED(status)) {
+                        t2->exit_code = WTERMSIG(status) + 128;
+                    }
+                }
+                if (0 != t2->exit_code && 0 == exit_code) {
+                    exit_code = t2->exit_code;
+                }
                 --wakeup;
                 break;
             }
