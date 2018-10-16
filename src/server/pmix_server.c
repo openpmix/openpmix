@@ -184,7 +184,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     size_t n, m;
     pmix_kval_t *kv;
     bool protect, nspace_given = false, rank_given = false;
-    bool topology_req = false;
     pmix_info_t ginfo;
     char *protected[] = {
         PMIX_USERID,
@@ -315,12 +314,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
             } else if (0 == strncmp(info[n].key, PMIX_SERVER_RANK, PMIX_MAX_KEYLEN)) {
                 pmix_globals.myid.rank = info[n].value.data.rank;
                 rank_given = true;
-            } else if (0 == strncmp(info[n].key, PMIX_TOPOLOGY, PMIX_MAX_KEYLEN) ||
-                       0 == strncmp(info[n].key, PMIX_TOPOLOGY_XML, PMIX_MAX_KEYLEN) ||
-                       0 == strncmp(info[n].key, PMIX_TOPOLOGY_FILE, PMIX_MAX_KEYLEN) ||
-                       0 == strncmp(info[n].key, PMIX_HWLOC_XML_V1, PMIX_MAX_KEYLEN) ||
-                       0 == strncmp(info[n].key, PMIX_HWLOC_XML_V2, PMIX_MAX_KEYLEN)) {
-                topology_req = true;
             } else {
                 /* check the list of protected keys */
                 protect = false;
@@ -402,11 +395,9 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     }
 
     /* if requested, setup the topology */
-    if (topology_req) {
-        if (PMIX_SUCCESS != (rc = pmix_hwloc_get_topology(info, ninfo))) {
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
-            return rc;
-        }
+    if (PMIX_SUCCESS != (rc = pmix_hwloc_get_topology(info, ninfo))) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return rc;
     }
 
     /* open the psensor framework */
