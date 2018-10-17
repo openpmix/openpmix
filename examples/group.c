@@ -114,6 +114,8 @@ int main(int argc, char **argv)
     pmix_proc_t proc, *procs;
     uint32_t nprocs;
     mylock_t lock;
+    pmix_info_t *results;
+    size_t nresults;
 
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
@@ -169,34 +171,19 @@ int main(int argc, char **argv)
         PMIX_PROC_LOAD(&procs[0], myproc.nspace, 0);
         PMIX_PROC_LOAD(&procs[1], myproc.nspace, 2);
         PMIX_PROC_LOAD(&procs[2], myproc.nspace, 3);
-        rc = PMIx_Group_construct("ourgroup", procs, nprocs, NULL, 0);
+        rc = PMIx_Group_construct("ourgroup", procs, nprocs, NULL, 0, &results, &nresults);
         if (PMIX_SUCCESS != rc) {
             fprintf(stderr, "Client ns %s rank %d: PMIx_Group_construct failed: %s\n", myproc.nspace, myproc.rank, PMIx_Error_string(rc));
             goto done;
         }
+        fprintf(stderr, "%d Group construct complete\n", myproc.rank);
         PMIX_PROC_FREE(procs, nprocs);
-        fprintf(stderr, "Execute fence across group\n");
-        PMIX_PROC_LOAD(&proc, "ourgroup", PMIX_RANK_WILDCARD);
-        rc = PMIx_Fence(&proc, 1, NULL, 0);
-        if (PMIX_SUCCESS != rc) {
-            fprintf(stderr, "Client ns %s rank %d: PMIx_Fence across group failed: %d\n", myproc.nspace, myproc.rank, rc);
-            goto done;
-        }
         fprintf(stderr, "%d executing Group_destruct\n", myproc.rank);
         rc = PMIx_Group_destruct("ourgroup", NULL, 0);
         if (PMIX_SUCCESS != rc) {
             fprintf(stderr, "Client ns %s rank %d: PMIx_Group_destruct failed: %s\n", myproc.nspace, myproc.rank, PMIx_Error_string(rc));
             goto done;
         }
-    }
-
-    /* call fence to sync */
-    PMIX_PROC_CONSTRUCT(&proc);
-    (void)strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
-    proc.rank = PMIX_RANK_WILDCARD;
-    if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, NULL, 0))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Fence failed: %s\n", myproc.nspace, myproc.rank, PMIx_Error_string(rc));
-        goto done;
     }
 
  done:
