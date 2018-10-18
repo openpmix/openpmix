@@ -289,7 +289,6 @@ int main(int argc, char **argv)
     pmix_info_t *info;
     size_t ninfo;
     bool cross_version = false;
-    bool usock = true;
     volatile int active;
     pmix_status_t code;
 
@@ -317,10 +316,6 @@ int main(int argc, char **argv)
             /* cross-version test - we will set one child to
              * run at a different version. Requires -n >= 2 */
             cross_version = true;
-            usock = false;
-        } else if (0 == strcmp("-u", argv[n])) {
-            /* enable usock */
-            usock = false;
         } else if (0 == strcmp("-h", argv[n])) {
             /* print the options and exit */
             fprintf(stderr, "usage: simptest <options>\n");
