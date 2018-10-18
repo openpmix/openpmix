@@ -14,7 +14,7 @@
 # Copyright (c) 2013-2017 Intel, Inc. All rights reserved.
 # Copyright (c) 2017      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
-# Copyright (c) 2017      Mellanox Technologies, Inc.
+# Copyright (c) 2017-2018 Mellanox Technologies, Inc.
 #                         All rights reserved.
 # $COPYRIGHT$
 #
@@ -24,33 +24,26 @@
 #
 
 headers = \
-        gds_ds12_base.h \
-        gds_ds12_lock.h
+        gds_ds21_base.h \
+        gds_ds21_lock.h
 
 sources = \
-        gds_ds12_base.c \
-        gds_ds12_lock.c \
-        gds_ds12_component.c
-
-if HAVE_DSTORE_PTHREAD_LOCK
-sources += gds_ds12_lock_pthread.c
-else
-if HAVE_DSTORE_FCNTL_LOCK
-sources += gds_ds12_lock_fcntl.c
-endif
-endif
+        gds_ds21_base.c \
+        gds_ds21_lock.c \
+        gds_ds21_lock_pthread.c \
+        gds_ds21_component.c
 
 # Make the output library in this directory, and name it either
 # mca_<type>_<name>.la (for DSO builds) or libmca_<type>_<name>.la
 # (for static builds).
 
-if MCA_BUILD_pmix_gds_ds12_DSO
+if MCA_BUILD_pmix_gds_ds21_DSO
 lib =
 lib_sources =
-component = mca_gds_ds12.la
+component = mca_gds_ds21.la
 component_sources = $(headers) $(sources)
 else
-lib = libmca_gds_ds12.la
+lib = libmca_gds_ds21.la
 lib_sources = $(headers) $(sources)
 component =
 component_sources =
@@ -58,10 +51,10 @@ endif
 
 mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component)
-mca_gds_ds12_la_SOURCES = $(component_sources)
-mca_gds_ds12_la_LDFLAGS = -module -avoid-version \
+mca_gds_ds21_la_SOURCES = $(component_sources)
+mca_gds_ds21_la_LDFLAGS = -module -avoid-version \
     $(PMIX_TOP_BUILDDIR)/src/mca/common/dstore/libmca_common_dstore.la
 
 noinst_LTLIBRARIES = $(lib)
-libmca_gds_ds12_la_SOURCES = $(lib_sources)
-libmca_gds_ds12_la_LDFLAGS = -module -avoid-version
+libmca_gds_ds21_la_SOURCES = $(lib_sources)
+libmca_gds_ds21_la_LDFLAGS = -module -avoid-version
