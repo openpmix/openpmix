@@ -81,8 +81,8 @@ extern "C" {
 /****  PMIX CONSTANTS    ****/
 
 /* define maximum value and key sizes */
-#define PMIX_MAX_NSLEN     63
-#define PMIX_MAX_KEYLEN    63
+#define PMIX_MAX_NSLEN     255
+#define PMIX_MAX_KEYLEN    511
 
 /* define abstract types for namespaces and keys */
 typedef char pmix_nspace_t[PMIX_MAX_NSLEN+1];
