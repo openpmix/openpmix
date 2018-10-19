@@ -1,5 +1,7 @@
 #
 # Copyright (c) 2018      Mellanox Technologies.  All rights reserved.
+#
+# Copyright (c) 2018      Intel, Inc. All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -34,9 +36,7 @@ noinst_LTLIBRARIES += $(comp_noinst)
 endif
 
 libmca_common_dstore_la_SOURCES = $(headers) $(sources)
-libmca_common_dstore_la_CPPFLAGS = $(common_dstore_CPPFLAGS)
-libmca_common_dstore_la_LDFLAGS = $(common_dstore_LDFLAGS)
-libmca_common_dstore_la_LIBADD = $(common_dstore_LIBS)
+libmca_common_dstore_la_LDFLAGS = -version-info $(libmca_common_dstore_so_version)
 libmca_common_dstore_noinst_la_SOURCES = $(headers) $(sources)
 
 # Conditionally install the header files
