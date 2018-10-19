@@ -343,12 +343,12 @@ int main(int argc, char **argv)
     pmix_info_t *info;
     size_t ninfo;
     bool cross_version = false;
-    bool usock = true;
     bool hwloc = false;
 #if PMIX_HAVE_HWLOC
     char *hwloc_file = NULL;
 #endif
     mylock_t mylock;
+    volatile int active;
     pmix_status_t code;
 
     /* smoke test */
@@ -379,25 +379,6 @@ int main(int argc, char **argv)
             /* cross-version test - we will set one child to
              * run at a different version. Requires -n >= 2 */
             cross_version = true;
-            usock = false;
-        } else if (0 == strcmp("-u", argv[n])) {
-            /* enable usock */
-            usock = false;
-#if PMIX_HAVE_HWLOC
-        } else if (0 == strcmp("-hwloc", argv[n]) ||
-                   0 == strcmp("--hwloc", argv[n])) {
-            /* test hwloc support */
-            hwloc = true;
-        } else if (0 == strcmp("-hwloc-file", argv[n]) ||
-                   0 == strcmp("--hwloc-file", argv[n])) {
-            if (NULL == argv[n+1]) {
-                fprintf(stderr, "The --hwloc-file option requires an argument\n");
-                exit(1);
-            }
-            hwloc_file = strdup(argv[n+1]);
-            hwloc = true;
-            ++n;
-#endif
         } else if (0 == strcmp("-h", argv[n])) {
             /* print the options and exit */
             fprintf(stderr, "usage: simptest <options>\n");
@@ -559,9 +540,6 @@ int main(int argc, char **argv)
             } else {
                 pmix_setenv("PMIX_MCA_ptl", "usock", true, &client_env);
             }
-        } else if (!usock) {
-            /* don't disable usock => enable it on client */
-            pmix_setenv("PMIX_MCA_ptl", "usock", true, &client_env);
         }
         x = PMIX_NEW(myxfer_t);
         if (PMIX_SUCCESS != (rc = PMIx_server_register_client(&proc, myuid, mygid,
