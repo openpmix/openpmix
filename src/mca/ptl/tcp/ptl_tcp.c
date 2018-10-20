@@ -277,6 +277,9 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_RECONNECT_SERVER)) {
                 reconnect = true;
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_LAUNCHER_RENDEZVOUS_FILE)) {
+                if (NULL != rendfile) {
+                    free(rendfile);
+                }
                 rendfile = strdup(info[n].value.data.string);
             } else {
                 /* need to pass this to server */
