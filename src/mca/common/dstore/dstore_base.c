@@ -2480,7 +2480,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_setup_fork(pmix_common_dstore_ctx_t 
 PMIX_EXPORT pmix_status_t pmix_common_dstor_add_nspace(pmix_common_dstore_ctx_t *ds_ctx,
                                 const char *nspace, pmix_info_t info[], size_t ninfo)
 {
-    pmix_status_t rc;
+    pmix_status_t rc = PMIX_SUCCESS;
     size_t tbl_idx=0;
     uid_t jobuid = ds_ctx->jobuid;
     char setjobuid = ds_ctx->setjobuid;
