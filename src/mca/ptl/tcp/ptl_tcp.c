@@ -224,8 +224,8 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
     /* get here if we are a tool - check any provided directives
      * to see where they want us to connect to */
     suri = NULL;
+    PMIX_CONSTRUCT(&ilist, pmix_list_t);
     if (NULL != info) {
-        PMIX_CONSTRUCT(&ilist, pmix_list_t);
         for (n=0; n < ninfo; n++) {
             if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_TO_SYSTEM)) {
                 system_level_only = PMIX_INFO_TRUE(&info[n]);

@@ -392,7 +392,9 @@ static void chaincbfunc(pmix_status_t status, void *cbdata)
 {
     pmix_group_tracker_t *cb = (pmix_group_tracker_t*)cbdata;
 
-    PMIX_RELEASE(cb);
+    if (NULL != cb) {
+        PMIX_RELEASE(cb);
+    }
 }
 
 static void invite_handler(size_t evhdlr_registration_id,
@@ -406,7 +408,7 @@ static void invite_handler(size_t evhdlr_registration_id,
     pmix_group_tracker_t *cb = NULL;
     pmix_proc_t *affected = NULL;
     size_t n;
-    pmix_status_t rc;
+    pmix_status_t rc = PMIX_GROUP_INVITE_DECLINED;
 
     /* find the object we asked to be returned with event */
     for (n=0; n < ninfo; n++) {
@@ -425,6 +427,9 @@ static void invite_handler(size_t evhdlr_registration_id,
     if (NULL == cb) {
 pmix_output(0, "[%s:%d] INVITE HANDLER NULL OBJECT", pmix_globals.myid.nspace, pmix_globals.myid.rank);
         /* this is an unrecoverable error - need to abort */
+        /* always must continue the chain */
+        cbfunc(rc, NULL, 0, chaincbfunc, NULL, cbdata);
+        return;
     }
 
     /* if the status is accepted, then record it */
@@ -544,9 +549,10 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite(const char grp[],
     PMIX_PROC_CREATE(cb.info[n].value.data.darray->array, nprocs);
     memcpy(cb.info[n++].value.data.darray->array, procs, nprocs * sizeof(pmix_proc_t));
     /* mark that this only goes to non-default handlers */
-    PMIX_INFO_LOAD(&cb.info[n++], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
+    PMIX_INFO_LOAD(&cb.info[n], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
+    ++n;
     /* provide the group ID */
-    PMIX_INFO_LOAD(&cb.info[n++], PMIX_GROUP_ID, grp, PMIX_STRING);
+    PMIX_INFO_LOAD(&cb.info[n], PMIX_GROUP_ID, grp, PMIX_STRING);
 
     /* notify members */
     rc = PMIx_Notify_event(PMIX_GROUP_CONSTRUCT_COMPLETE,
@@ -672,11 +678,13 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite_nb(const char grp[],
         return PMIX_ERR_NOMEM;
     }
     PMIX_PROC_CREATE(cb->info[n].value.data.darray->array, nprocs);
-    memcpy(cb->info[n++].value.data.darray->array, procs, nprocs * sizeof(pmix_proc_t));
+    memcpy(cb->info[n].value.data.darray->array, procs, nprocs * sizeof(pmix_proc_t));
+    ++n;
     /* mark that this only goes to non-default handlers */
-    PMIX_INFO_LOAD(&cb->info[n++], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
+    PMIX_INFO_LOAD(&cb->info[n], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
+    ++n;
     /* provide the group ID */
-    PMIX_INFO_LOAD(&cb->info[n++], PMIX_GROUP_ID, grp, PMIX_STRING);
+    PMIX_INFO_LOAD(&cb->info[n], PMIX_GROUP_ID, grp, PMIX_STRING);
 
     /* notify everyone of the invitation */
     PMIX_CONSTRUCT(&lock, pmix_cb_t);
