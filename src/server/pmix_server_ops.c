@@ -3244,17 +3244,28 @@ static void _grpcbfunc(int sd, short argc, void *cbdata)
     pmix_buffer_t *reply;
     pmix_status_t ret;
     size_t n, ctxid = SIZE_MAX;
+    pmix_group_t *grp = (pmix_group_t*)trk->cbdata;
 
     PMIX_ACQUIRE_OBJECT(scd);
 
     pmix_output_verbose(2, pmix_server_globals.connect_output,
                         "server:grpcbfunc processing WITH %d MEMBERS", (int)pmix_list_get_size(&trk->local_cbs));
 
-    /* see if this group was assigned a context ID */
-    for (n=0; n < scd->ninfo; n++) {
-        if (PMIX_CHECK_KEY(&scd->info[n], PMIX_GROUP_CONTEXT_ID)) {
-            PMIX_VALUE_GET_NUMBER(ret, &scd->info[n].value, ctxid, size_t);
-            break;
+    /* the tracker's "hybrid" field is used to indicate construct
+     * vs destruct */
+    if (trk->hybrid) {
+        /* we destructed the group */
+        if (NULL != grp) {
+            pmix_list_remove_item(&pmix_server_globals.groups, &grp->super);
+            PMIX_RELEASE(grp);
+        }
+    } else {
+        /* see if this group was assigned a context ID */
+        for (n=0; n < scd->ninfo; n++) {
+            if (PMIX_CHECK_KEY(&scd->info[n], PMIX_GROUP_CONTEXT_ID)) {
+                PMIX_VALUE_GET_NUMBER(ret, &scd->info[n].value, ctxid, size_t);
+                break;
+            }
         }
     }
 
@@ -3271,12 +3282,14 @@ static void _grpcbfunc(int sd, short argc, void *cbdata)
             PMIX_RELEASE(reply);
             break;
         }
-        /* if a ctxid was provided, pass it along */
-        PMIX_BFROPS_PACK(ret, cd->peer, reply, &ctxid, 1, PMIX_SIZE);
-        if (PMIX_SUCCESS != ret) {
-            PMIX_ERROR_LOG(ret);
-            PMIX_RELEASE(reply);
-            break;
+        if (!trk->hybrid) {
+            /* if a ctxid was provided, pass it along */
+            PMIX_BFROPS_PACK(ret, cd->peer, reply, &ctxid, 1, PMIX_SIZE);
+            if (PMIX_SUCCESS != ret) {
+                PMIX_ERROR_LOG(ret);
+                PMIX_RELEASE(reply);
+                break;
+            }
         }
         pmix_output_verbose(2, pmix_server_globals.connect_output,
                             "server:grp_cbfunc reply being sent to %s:%u",
@@ -3451,6 +3464,8 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd,
         }
         trk->type = PMIX_GROUP_CONSTRUCT_CMD;
         trk->collect_type = PMIX_COLLECT_NO;
+        /* mark as being a construct operation */
+        trk->hybrid = false;
     }
 
     /* we only save the info structs from the first caller
@@ -3626,6 +3641,10 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd,
         }
         trk->type = PMIX_FENCENB_CMD;
         trk->collect_type = PMIX_COLLECT_NO;
+        /* mark as being a destruct operation */
+        trk->hybrid = true;
+        /* pass along the group object */
+        trk->cbdata = grp;
     }
 
     /* we only save the info structs from the first caller
