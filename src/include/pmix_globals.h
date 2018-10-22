@@ -106,6 +106,11 @@ typedef uint8_t pmix_cmd_t;
 #define PMIX_VALIDATE_CRED_CMD      21
 #define PMIX_IOF_PULL_CMD           22
 #define PMIX_IOF_PUSH_CMD           23
+#define PMIX_GROUP_CONSTRUCT_CMD    24
+#define PMIX_GROUP_JOIN_CMD         25
+#define PMIX_GROUP_INVITE_CMD       26
+#define PMIX_GROUP_LEAVE_CMD        27
+#define PMIX_GROUP_DESTRUCT_CMD     28
 
 /* provide a "pretty-print" function for cmds */
 const char* pmix_command_string(pmix_cmd_t cmd);
@@ -178,14 +183,14 @@ typedef struct {
                                 // from this nspace
     pmix_list_t setup_data;     // list of pmix_kval_t containing info structs having blobs
                                 // for setting up the local node for this nspace/application
-} pmix_nspace_t;
-PMIX_CLASS_DECLARATION(pmix_nspace_t);
+} pmix_namespace_t;
+PMIX_CLASS_DECLARATION(pmix_namespace_t);
 
-/* define a caddy for quickly creating a list of pmix_nspace_t
+/* define a caddy for quickly creating a list of pmix_namespace_t
  * objects for local, dedicated purposes */
 typedef struct {
     pmix_list_item_t super;
-    pmix_nspace_t *ns;
+    pmix_namespace_t *ns;
 } pmix_nspace_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_nspace_caddy_t);
 
@@ -219,7 +224,7 @@ PMIX_CLASS_DECLARATION(pmix_info_caddy_t);
  * by the socket, not the process nspace/rank */
 typedef struct pmix_peer_t {
     pmix_object_t super;
-    pmix_nspace_t *nptr;            // point to the nspace object for this process
+    pmix_namespace_t *nptr;            // point to the nspace object for this process
     pmix_rank_info_t *info;
     pmix_proc_type_t proc_type;
     pmix_listener_protocol_t protocol;
@@ -278,6 +283,7 @@ PMIX_CLASS_DECLARATION(pmix_query_caddy_t);
  * - instanced in pmix_server_ops.c */
 typedef struct {
     pmix_list_item_t super;
+    char *id;                       // string identifier for the collective
     pmix_cmd_t type;
     pmix_proc_t pname;
     bool hybrid;                    // true if participating procs are from more than one nspace
@@ -295,6 +301,7 @@ typedef struct {
     pmix_collect_t collect_type;    // whether or not data is to be returned at completion
     pmix_modex_cbfunc_t modexcbfunc;
     pmix_op_cbfunc_t op_cbfunc;
+    void *cbdata;
 } pmix_server_trkr_t;
 PMIX_CLASS_DECLARATION(pmix_server_trkr_t);
 

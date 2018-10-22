@@ -20,7 +20,8 @@ sources += \
         client/pmix_client_get.c \
         client/pmix_client_pub.c \
         client/pmix_client_spawn.c \
-        client/pmix_client_connect.c
+        client/pmix_client_connect.c \
+        client/pmix_client_group.c
 
 if WANT_PMI_BACKWARD
 pmi1_sources += \

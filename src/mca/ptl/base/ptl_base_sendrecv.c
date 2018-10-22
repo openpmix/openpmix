@@ -81,8 +81,7 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
     }
     CLOSE_THE_SOCKET(peer->sd);
 
-    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer) &&
-        !PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
+    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
         /* if I am a server, then we need to ensure that
          * we properly account for the loss of this client
          * from any local collectives in which it was
@@ -130,7 +129,9 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
             }
         }
         /* reduce the number of local procs */
-        --peer->nptr->nlocalprocs;
+        if (0 < peer->nptr->nlocalprocs) {
+            --peer->nptr->nlocalprocs;
+        }
 
         /* remove this client from our array */
         pmix_pointer_array_set_item(&pmix_server_globals.clients,
@@ -149,10 +150,15 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
                 }
             }
         }
-        /* cleanup any sensors that are monitoring them */
-        pmix_psensor.stop(peer, NULL);
+        if (PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
+            /* only connection I can lose is to my server, so mark it */
+            pmix_globals.connected = false;
+        } else {
+            /* cleanup any sensors that are monitoring them */
+            pmix_psensor.stop(peer, NULL);
+        }
 
-        if (!peer->finalized && !PMIX_PROC_IS_TOOL(peer)) {
+        if (!peer->finalized && !PMIX_PROC_IS_TOOL(peer) && !pmix_globals.mypeer->finalized) {
             /* if this peer already called finalize, then
              * we are just seeing their connection go away
              * when they terminate - so do not generate
@@ -739,7 +745,9 @@ void pmix_ptl_base_process_msg(int fd, short flags, void *cbdata)
     /* if the tag in this message is above the dynamic marker, then
      * that is an error */
     if (PMIX_PTL_TAG_DYNAMIC <= msg->hdr.tag) {
-        pmix_output(0, "UNEXPECTED MESSAGE tag = %d", msg->hdr.tag);
+        pmix_output(0, "UNEXPECTED MESSAGE tag = %d from source %s:%d",
+                    msg->hdr.tag, msg->peer->info->pname.nspace,
+                    msg->peer->info->pname.rank);
         PMIX_REPORT_EVENT(PMIX_ERROR, msg->peer, PMIX_RANGE_NAMESPACE, _notify_complete);
         PMIX_RELEASE(msg);
         return;

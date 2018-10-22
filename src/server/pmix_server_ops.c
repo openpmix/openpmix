@@ -116,7 +116,7 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
 
     /* let the local host's server execute it */
     if (NULL != pmix_host_server.abort) {
-        (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+        pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
         proc.rank = peer->info->pname.rank;
         rc = pmix_host_server.abort(&proc, peer->info->server_object, status, msg,
                                     procs, nprocs, cbfunc, cbdata);
@@ -145,7 +145,7 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
     pmix_buffer_t b2, pbkt;
     pmix_kval_t *kp;
     pmix_scope_t scope;
-    pmix_nspace_t *nptr;
+    pmix_namespace_t *nptr;
     pmix_rank_info_t *info;
     pmix_proc_t proc;
     pmix_dmdx_remote_t *dcd, *dcdnext;
@@ -156,7 +156,7 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
     /* shorthand */
     info = peer->info;
     nptr = peer->nptr;
-    (void)strncpy(proc.nspace, nptr->nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, nptr->nspace, PMIX_MAX_NSLEN);
     proc.rank = info->pname.rank;
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
@@ -293,7 +293,7 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
  *         regardless of location
  * nprocs - the number of procs in the array
  */
-static pmix_server_trkr_t* get_tracker(pmix_proc_t *procs,
+static pmix_server_trkr_t* get_tracker(char *id, pmix_proc_t *procs,
                                        size_t nprocs, pmix_cmd_t type)
 {
     pmix_server_trkr_t *trk;
@@ -304,7 +304,7 @@ static pmix_server_trkr_t* get_tracker(pmix_proc_t *procs,
                         "get_tracker called with %d procs", (int)nprocs);
 
     /* bozo check - should never happen outside of programmer error */
-    if (NULL == procs) {
+    if (NULL == procs && NULL == id) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return NULL;
     }
@@ -317,28 +317,35 @@ static pmix_server_trkr_t* get_tracker(pmix_proc_t *procs,
      * shouldn't take long */
     PMIX_LIST_FOREACH(trk, &pmix_server_globals.collectives, pmix_server_trkr_t) {
         /* Collective operation if unique identified by
-         * the set of participating processes and the type of collective
+         * the set of participating processes and the type of collective,
+         * or by the operation ID
          */
-        if (nprocs != trk->npcs) {
-            continue;
-        }
-        if (type != trk->type) {
-            continue;
-        }
-        matches = 0;
-        for (i=0; i < nprocs; i++) {
-            /* the procs may be in different order, so we have
-             * to do an exhaustive search */
-            for (j=0; j < trk->npcs; j++) {
-                if (0 == strcmp(procs[i].nspace, trk->pcs[j].nspace) &&
-                    procs[i].rank == trk->pcs[j].rank) {
-                    ++matches;
-                    break;
+        if (NULL != id) {
+            if (NULL != trk->id && 0 == strcmp(id, trk->id)) {
+                return trk;
+            }
+        } else {
+            if (nprocs != trk->npcs) {
+                continue;
+            }
+            if (type != trk->type) {
+                continue;
+            }
+            matches = 0;
+            for (i=0; i < nprocs; i++) {
+                /* the procs may be in different order, so we have
+                 * to do an exhaustive search */
+                for (j=0; j < trk->npcs; j++) {
+                    if (0 == strcmp(procs[i].nspace, trk->pcs[j].nspace) &&
+                        procs[i].rank == trk->pcs[j].rank) {
+                        ++matches;
+                        break;
+                    }
                 }
             }
-        }
-        if (trk->npcs == matches) {
-            return trk;
+            if (trk->npcs == matches) {
+                return trk;
+            }
         }
     }
     /* No tracker was found */
@@ -361,13 +368,13 @@ static pmix_server_trkr_t* get_tracker(pmix_proc_t *procs,
  *         regardless of location
  * nprocs - the number of procs in the array
  */
-static pmix_server_trkr_t* new_tracker(pmix_proc_t *procs,
+static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
                                        size_t nprocs, pmix_cmd_t type)
 {
     pmix_server_trkr_t *trk;
     size_t i;
     bool all_def;
-    pmix_nspace_t *nptr, *ns;
+    pmix_namespace_t *nptr, *ns;
     pmix_rank_info_t *info;
 
     pmix_output_verbose(5, pmix_server_globals.base_output,
@@ -380,7 +387,8 @@ static pmix_server_trkr_t* new_tracker(pmix_proc_t *procs,
     }
 
     pmix_output_verbose(5, pmix_server_globals.base_output,
-                        "adding new tracker with %d procs", (int)nprocs);
+                        "adding new tracker %s with %d procs",
+                        (NULL == id) ? "NO-ID" : id, (int)nprocs);
 
     /* this tracker is new - create it */
     trk = PMIX_NEW(pmix_server_trkr_t);
@@ -389,26 +397,35 @@ static pmix_server_trkr_t* new_tracker(pmix_proc_t *procs,
         return NULL;
     }
 
-    /* copy the procs */
-    PMIX_PROC_CREATE(trk->pcs, nprocs);
-    if (NULL == trk->pcs) {
-        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-        PMIX_RELEASE(trk);
-        return NULL;
+    if (NULL != id) {
+        trk->id = strdup(id);
     }
-    trk->npcs = nprocs;
+
+    if (NULL != procs) {
+        /* copy the procs */
+        PMIX_PROC_CREATE(trk->pcs, nprocs);
+        if (NULL == trk->pcs) {
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            PMIX_RELEASE(trk);
+            return NULL;
+        }
+        memcpy(trk->pcs, procs, nprocs * sizeof(pmix_proc_t));
+        trk->npcs = nprocs;
+    }
     trk->type = type;
 
     all_def = true;
     for (i=0; i < nprocs; i++) {
-        (void)strncpy(trk->pcs[i].nspace, procs[i].nspace, PMIX_MAX_NSLEN);
-        trk->pcs[i].rank = procs[i].rank;
+        if (NULL == id) {
+            pmix_strncpy(trk->pcs[i].nspace, procs[i].nspace, PMIX_MAX_NSLEN);
+            trk->pcs[i].rank = procs[i].rank;
+        }
         if (!all_def) {
             continue;
         }
         /* is this nspace known to us? */
         nptr = NULL;
-        PMIX_LIST_FOREACH(ns, &pmix_server_globals.nspaces, pmix_nspace_t) {
+        PMIX_LIST_FOREACH(ns, &pmix_server_globals.nspaces, pmix_namespace_t) {
             if (0 == strcmp(procs[i].nspace, ns->nspace)) {
                 nptr = ns;
                 break;
@@ -481,7 +498,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
     int32_t cnt;
     pmix_status_t rc;
     size_t nprocs;
-    pmix_proc_t *procs=NULL, pcs;
+    pmix_proc_t *procs=NULL, pcs, *newprocs;
     bool collect_data = false;
     pmix_server_trkr_t *trk;
     char *data = NULL;
@@ -492,8 +509,11 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
     pmix_kval_t *kv;
     pmix_byte_object_t bo;
     pmix_info_t *info = NULL;
-    size_t ninfo=0, n;
+    size_t ninfo=0, n, nmbrs, idx;
     struct timeval tv = {0, 0};
+    pmix_list_t expand;
+    pmix_group_caddy_t *gcd;
+    pmix_group_t *grp;
 
     pmix_output_verbose(2, pmix_server_globals.fence_output,
                         "recvd FENCE");
@@ -530,6 +550,59 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
         goto cleanup;
     }
 
+    /* cycle thru the procs and check to see if any reference
+     * a PMIx group */
+    nmbrs = nprocs;
+    PMIX_CONSTRUCT(&expand, pmix_list_t);
+    /* use groups as the outer-most loop as there will
+     * usually not be any */
+    PMIX_LIST_FOREACH(grp, &pmix_server_globals.groups, pmix_group_t) {
+        for (n=0; n < nprocs; n++) {
+            if (PMIX_CHECK_NSPACE(procs[n].nspace, grp->grpid)) {
+                /* we need to replace this proc with grp members */
+                gcd = PMIX_NEW(pmix_group_caddy_t);
+                gcd->grp = grp;
+                gcd->idx = n;
+                gcd->rank = procs[n].rank;
+                pmix_list_append(&expand, &gcd->super);
+                /* see how many need to come across */
+                if (PMIX_RANK_WILDCARD == procs[n].rank) {
+                    nmbrs += grp->nmbrs - 1; // account for replacing current proc
+                }
+                break;
+            }
+        }
+    }
+    if (0 < pmix_list_get_size(&expand)) {
+        PMIX_PROC_CREATE(newprocs, nmbrs);
+        gcd = (pmix_group_caddy_t*)pmix_list_remove_first(&expand);
+        n=0;
+        idx = 0;
+        while (n < nmbrs) {
+            if (idx != gcd->idx) {
+                memcpy(&newprocs[n], &procs[idx], sizeof(pmix_proc_t));
+                ++n;
+            } else {
+                /* if we are bringing over just one, then simply replace */
+                if (PMIX_RANK_WILDCARD != gcd->rank) {
+                    memcpy(&newprocs[n], &gcd->grp->members[gcd->rank], sizeof(pmix_proc_t));
+                    ++n;
+                } else {
+                    /* take them all */
+                    memcpy(&newprocs[n], gcd->grp->members, gcd->grp->nmbrs * sizeof(pmix_proc_t));
+                    n += gcd->grp->nmbrs;
+                }
+                PMIX_RELEASE(gcd);
+                gcd = (pmix_group_caddy_t*)pmix_list_remove_first(&expand);
+            }
+            ++idx;
+        }
+        PMIX_PROC_FREE(procs, nprocs);
+        procs = newprocs;
+        nprocs = nmbrs;
+    }
+    PMIX_LIST_DESTRUCT(&expand);
+
     /* unpack the number of provided info structs */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &ninfo, &cnt, PMIX_SIZE);
@@ -560,9 +633,9 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
     }
 
     /* find/create the local tracker for this operation */
-    if (NULL == (trk = get_tracker(procs, nprocs, PMIX_FENCENB_CMD))) {
+    if (NULL == (trk = get_tracker(NULL, procs, nprocs, PMIX_FENCENB_CMD))) {
         /* If no tracker was found - create and initialize it once */
-        if (NULL == (trk = new_tracker(procs, nprocs, PMIX_FENCENB_CMD))) {
+        if (NULL == (trk = new_tracker(NULL, procs, nprocs, PMIX_FENCENB_CMD))) {
             /* only if a bozo error occurs */
             PMIX_ERROR_LOG(PMIX_ERROR);
             /* DO NOT HANG */
@@ -650,7 +723,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
             PMIX_LIST_FOREACH(scd, &trk->local_cbs, pmix_server_caddy_t) {
                 /* get any remote contribution - note that there
                  * may not be a contribution */
-                (void)strncpy(pcs.nspace, scd->peer->info->pname.nspace, PMIX_MAX_NSLEN);
+                pmix_strncpy(pcs.nspace, scd->peer->info->pname.nspace, PMIX_MAX_NSLEN);
                 pcs.rank = scd->peer->info->pname.rank;
                 PMIX_CONSTRUCT(&cb, pmix_cb_t);
                 cb.proc = &pcs;
@@ -792,12 +865,12 @@ pmix_status_t pmix_server_publish(pmix_peer_t *peer,
             goto cleanup;
         }
     }
-    (void)strncpy(cd->info[cd->ninfo-1].key, PMIX_USERID, PMIX_MAX_KEYLEN);
+    pmix_strncpy(cd->info[cd->ninfo-1].key, PMIX_USERID, PMIX_MAX_KEYLEN);
     cd->info[cd->ninfo-1].value.type = PMIX_UINT32;
     cd->info[cd->ninfo-1].value.data.uint32 = uid;
 
     /* call the local server */
-    (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
     proc.rank = peer->info->pname.rank;
     rc = pmix_host_server.publish(&proc, cd->info, cd->ninfo, opcbfunc, cd);
 
@@ -906,12 +979,12 @@ pmix_status_t pmix_server_lookup(pmix_peer_t *peer,
             goto cleanup;
         }
     }
-    (void)strncpy(cd->info[cd->ninfo-1].key, PMIX_USERID, PMIX_MAX_KEYLEN);
+    pmix_strncpy(cd->info[cd->ninfo-1].key, PMIX_USERID, PMIX_MAX_KEYLEN);
     cd->info[cd->ninfo-1].value.type = PMIX_UINT32;
     cd->info[cd->ninfo-1].value.data.uint32 = uid;
 
     /* call the local server */
-    (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
     proc.rank = peer->info->pname.rank;
     rc = pmix_host_server.lookup(&proc, cd->keys, cd->info, cd->ninfo, lkcbfunc, cd);
 
@@ -1002,12 +1075,12 @@ pmix_status_t pmix_server_unpublish(pmix_peer_t *peer,
             goto cleanup;
         }
     }
-    (void)strncpy(cd->info[cd->ninfo-1].key, PMIX_USERID, PMIX_MAX_KEYLEN);
+    pmix_strncpy(cd->info[cd->ninfo-1].key, PMIX_USERID, PMIX_MAX_KEYLEN);
     cd->info[cd->ninfo-1].value.type = PMIX_UINT32;
     cd->info[cd->ninfo-1].value.data.uint32 = uid;
 
     /* call the local server */
-    (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
     proc.rank = peer->info->pname.rank;
     rc = pmix_host_server.unpublish(&proc, cd->keys, cd->info, cd->ninfo, opcbfunc, cd);
 
@@ -1242,7 +1315,7 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer,
         }
     }
     /* call the local server */
-    (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
     proc.rank = peer->info->pname.rank;
     rc = pmix_host_server.spawn(&proc, cd->info, cd->ninfo, cd->apps, cd->napps, spcbfunc, cd);
 
@@ -1326,9 +1399,9 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd,
     }
 
     /* find/create the local tracker for this operation */
-    if (NULL == (trk = get_tracker(procs, nprocs, PMIX_DISCONNECTNB_CMD))) {
+    if (NULL == (trk = get_tracker(NULL, procs, nprocs, PMIX_DISCONNECTNB_CMD))) {
         /* we don't have this tracker yet, so get a new one */
-        if (NULL == (trk = new_tracker(procs, nprocs, PMIX_DISCONNECTNB_CMD))) {
+        if (NULL == (trk = new_tracker(NULL, procs, nprocs, PMIX_DISCONNECTNB_CMD))) {
             /* only if a bozo error occurs */
             PMIX_ERROR_LOG(PMIX_ERROR);
             /* DO NOT HANG */
@@ -1470,9 +1543,9 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
     }
 
     /* find/create the local tracker for this operation */
-    if (NULL == (trk = get_tracker(procs, nprocs, PMIX_CONNECTNB_CMD))) {
+    if (NULL == (trk = get_tracker(NULL, procs, nprocs, PMIX_CONNECTNB_CMD))) {
         /* we don't have this tracker yet, so get a new one */
-        if (NULL == (trk = new_tracker(procs, nprocs, PMIX_CONNECTNB_CMD))) {
+        if (NULL == (trk = new_tracker(NULL, procs, nprocs, PMIX_CONNECTNB_CMD))) {
             /* only if a bozo error occurs */
             PMIX_ERROR_LOG(PMIX_ERROR);
             /* DO NOT HANG */
@@ -1601,9 +1674,7 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
 
     /* check the directives */
     for (n=0; n < ninfo; n++) {
-        if (0 == strncmp(info[n].key, PMIX_EVENT_ENVIRO_LEVEL, PMIX_MAX_KEYLEN)) {
-            enviro_events = PMIX_INFO_TRUE(&info[n]);
-        } else if (0 == strncmp(info[n].key, PMIX_EVENT_AFFECTED_PROC, PMIX_MAX_KEYLEN)) {
+        if (0 == strncmp(info[n].key, PMIX_EVENT_AFFECTED_PROC, PMIX_MAX_KEYLEN)) {
             if (NULL != affected) {
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                 rc = PMIX_ERR_BAD_PARAM;
@@ -1621,6 +1692,14 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
             naffected = info[n].value.data.darray->size;
             PMIX_PROC_CREATE(affected, naffected);
             memcpy(affected, info[n].value.data.darray->array, naffected * sizeof(pmix_proc_t));
+        }
+    }
+
+    /* check the codes for system events */
+    for (n=0; n < ncodes; n++) {
+        if (PMIX_SYSTEM_EVENT(codes[n])) {
+            enviro_events = true;
+            break;
         }
     }
 
@@ -1956,6 +2035,13 @@ static void intermed_step(pmix_status_t status, void *cbdata)
         goto complete;
     }
 
+    /* since our host is going to send this everywhere, it may well
+     * come back to us. We already processed it, so mark it here
+     * to ensure we don't do it again. We previously inserted the
+     * PMIX_SERVER_INTERNAL_NOTIFY key at the very end of the
+     * info array - just overwrite that position */
+    PMIX_INFO_LOAD(&cd->info[cd->ninfo-1], PMIX_EVENT_PROXY, &pmix_globals.myid, PMIX_PROC);
+
     /* pass it to our host RM for distribution */
     rc = pmix_host_server.notify_event(cd->status, &cd->source, cd->range,
                                        cd->info, cd->ninfo, local_cbfunc, cd);
@@ -1974,6 +2060,11 @@ static void intermed_step(pmix_status_t status, void *cbdata)
     PMIX_RELEASE(cd);
 }
 
+/* Receive an event sent by the client library. Since it was sent
+ * to us by one client, we have to both process it locally to ensure
+ * we notify all relevant local clients AND (assuming a range other
+ * than LOCAL) deliver to our host, requesting that they send it
+ * to all peer servers in the current session */
 pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer,
                                                   pmix_buffer_t *buf,
                                                   pmix_op_cbfunc_t cbfunc,
@@ -1982,11 +2073,12 @@ pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer,
     int32_t cnt;
     pmix_status_t rc;
     pmix_notify_caddy_t *cd;
-    size_t ninfo;
+    size_t ninfo, n;
 
     pmix_output_verbose(2, pmix_server_globals.event_output,
-                        "%s:%d recvd event notification from client",
-                        pmix_globals.myid.nspace, pmix_globals.myid.rank);
+                        "%s:%d recvd event notification from client %s:%d",
+                        pmix_globals.myid.nspace, pmix_globals.myid.rank,
+                        peer->info->pname.nspace, peer->info->pname.rank);
 
     cd = PMIX_NEW(pmix_notify_caddy_t);
     if (NULL == cd) {
@@ -1995,8 +2087,7 @@ pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer,
     cd->cbfunc = cbfunc;
     cd->cbdata = cbdata;
     /* set the source */
-    (void)strncpy(cd->source.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
-    cd->source.rank = peer->info->pname.rank;
+    PMIX_LOAD_PROCID(&cd->source, peer->info->pname.nspace, peer->info->pname.rank);
 
     /* unpack status */
     cnt = 1;
@@ -2035,6 +2126,18 @@ pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer,
             goto exit;
         }
     }
+
+    /* check to see if we already processed this event - it is possible
+     * that a local client "echoed" it back to us and we want to avoid
+     * a potential infinite loop */
+    for (n=0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&cd->info[n], PMIX_SERVER_INTERNAL_NOTIFY)) {
+            /* yep, we did - so don't do it again! */
+            rc = PMIX_OPERATION_SUCCEEDED;
+            goto exit;
+        }
+    }
+
     /* add an info object to mark that we recvd this internally */
     PMIX_INFO_LOAD(&cd->info[ninfo], PMIX_SERVER_INTERNAL_NOTIFY, NULL, PMIX_BOOL);
     /* process it */
@@ -2045,12 +2148,16 @@ pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer,
                                                                  intermed_step, cd))) {
         goto exit;
     }
-    /* tell the switchyard we will handle it from here */
-    return PMIX_SUCCESS;
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(cd);
+    }
+    return rc;
 
   exit:
     PMIX_RELEASE(cd);
-    cbfunc(rc, cbdata);
+    if (PMIX_OPERATION_SUCCEEDED != rc) {
+        cbfunc(rc, cbdata);
+    }
     return rc;
 }
 
@@ -2099,7 +2206,7 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer,
     }
 
     /* setup the requesting peer name */
-    (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
     proc.rank = peer->info->pname.rank;
 
     /* ask the host for the info */
@@ -2142,7 +2249,7 @@ pmix_status_t pmix_server_log(pmix_peer_t *peer,
      * the request itself */
 
     /* setup the requesting peer name */
-    (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
     proc.rank = peer->info->pname.rank;
 
     cd = PMIX_NEW(pmix_shift_caddy_t);
@@ -2270,7 +2377,7 @@ pmix_status_t pmix_server_alloc(pmix_peer_t *peer,
     }
 
     /* setup the requesting peer name */
-    (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
     proc.rank = peer->info->pname.rank;
 
     /* ask the host to execute the request */
@@ -2302,7 +2409,7 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer,
     int32_t cnt, m;
     pmix_status_t rc;
     pmix_query_caddy_t *cd;
-    pmix_nspace_t *nptr, *tmp;
+    pmix_namespace_t *nptr, *tmp;
     pmix_peer_t *pr;
     pmix_proc_t proc;
     size_t n;
@@ -2352,14 +2459,14 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer,
         for (n=0; n < cd->ntargets; n++) {
             /* find the nspace of this proc */
             nptr = NULL;
-            PMIX_LIST_FOREACH(tmp, &pmix_server_globals.nspaces, pmix_nspace_t) {
+            PMIX_LIST_FOREACH(tmp, &pmix_server_globals.nspaces, pmix_namespace_t) {
                 if (0 == strcmp(tmp->nspace, cd->targets[n].nspace)) {
                     nptr = tmp;
                     break;
                 }
             }
             if (NULL == nptr) {
-                nptr = PMIX_NEW(pmix_nspace_t);
+                nptr = PMIX_NEW(pmix_namespace_t);
                 if (NULL == nptr) {
                     rc = PMIX_ERR_NOMEM;
                     goto exit;
@@ -2574,7 +2681,7 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer,
     }
 
     /* setup the requesting peer name */
-    (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
     proc.rank = peer->info->pname.rank;
 
     /* ask the host to execute the request */
@@ -2666,7 +2773,7 @@ pmix_status_t pmix_server_monitor(pmix_peer_t *peer,
     }
 
     /* setup the requesting peer name */
-    (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
     proc.rank = peer->info->pname.rank;
 
     /* ask the host to execute the request */
@@ -2725,7 +2832,7 @@ pmix_status_t pmix_server_get_credential(pmix_peer_t *peer,
     }
 
     /* setup the requesting peer name */
-    (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
     proc.rank = peer->info->pname.rank;
 
     /* ask the host to execute the request */
@@ -2790,7 +2897,7 @@ pmix_status_t pmix_server_validate_credential(pmix_peer_t *peer,
     }
 
     /* setup the requesting peer name */
-    (void)strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
     proc.rank = peer->info->pname.rank;
 
     /* ask the host to execute the request */
@@ -3082,7 +3189,7 @@ pmix_status_t pmix_server_iofstdin(pmix_peer_t *peer,
     }
 
     /* pass the data to the host */
-    (void)strncpy(source.nspace, peer->nptr->nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(source.nspace, peer->nptr->nspace, PMIX_MAX_NSLEN);
     source.rank = peer->info->pname.rank;
     if (PMIX_SUCCESS != (rc = pmix_host_server.push_stdin(&source, cd->procs, cd->nprocs,
                                                           cd->info, cd->ninfo, cd->bo,
@@ -3096,9 +3203,452 @@ pmix_status_t pmix_server_iofstdin(pmix_peer_t *peer,
     return rc;
 }
 
+static void grp_timeout(int sd, short args, void *cbdata)
+{
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t*)cbdata;
+    pmix_buffer_t *reply;
+    pmix_status_t ret, rc = PMIX_ERR_TIMEOUT;
+
+    pmix_output_verbose(2, pmix_server_globals.fence_output,
+                        "ALERT: grp construct timeout fired");
+
+    /* send this requestor the reply */
+    reply = PMIX_NEW(pmix_buffer_t);
+    if (NULL == reply) {
+        goto error;
+    }
+    /* setup the reply, starting with the returned status */
+    PMIX_BFROPS_PACK(ret, cd->peer, reply, &rc, 1, PMIX_STATUS);
+    if (PMIX_SUCCESS != ret) {
+        PMIX_ERROR_LOG(ret);
+        PMIX_RELEASE(reply);
+        goto error;
+    }
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "server:grp_timeout reply being sent to %s:%u",
+                        cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
+    PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
+
+  error:
+    cd->event_active = false;
+    /* remove it from the list */
+    pmix_list_remove_item(&cd->trk->local_cbs, &cd->super);
+    PMIX_RELEASE(cd);
+}
+
+static void _grpcbfunc(int sd, short argc, void *cbdata)
+{
+    pmix_shift_caddy_t *scd = (pmix_shift_caddy_t*)cbdata;
+    pmix_server_trkr_t *trk = scd->tracker;
+    pmix_server_caddy_t *cd;
+    pmix_buffer_t *reply;
+    pmix_status_t ret;
+    pmix_group_t *grp;
+
+    PMIX_ACQUIRE_OBJECT(scd);
+
+    /* loop across all procs in the tracker, sending them the reply */
+    PMIX_LIST_FOREACH(cd, &trk->local_cbs, pmix_server_caddy_t) {
+        reply = PMIX_NEW(pmix_buffer_t);
+        if (NULL == reply) {
+            break;
+        }
+        /* setup the reply, starting with the returned status */
+        PMIX_BFROPS_PACK(ret, cd->peer, reply, &scd->status, 1, PMIX_STATUS);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            PMIX_RELEASE(reply);
+            break;
+        }
+        pmix_output_verbose(2, pmix_server_globals.base_output,
+                            "server:modex_cbfunc reply being sent to %s:%u",
+                            cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
+        PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
+    }
+
+    /* if the grp object is here, then we are destructing the group,
+     * so remove the grp from our list */
+    if (NULL != trk->cbdata) {
+        grp = (pmix_group_t*)trk->cbdata;
+        pmix_list_remove_item(&pmix_server_globals.groups, &grp->super);
+        PMIX_RELEASE(grp);
+    }
+
+    /* remove the tracker from the list */
+    pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
+    PMIX_RELEASE(trk);
+
+    /* we are done */
+    if (NULL != scd->cbfunc.relfn) {
+        scd->cbfunc.relfn(scd->cbdata);
+    }
+    PMIX_RELEASE(scd);
+}
+
+
+static void grpcbfunc(pmix_status_t status, const char *data, size_t ndata, void *cbdata,
+                      pmix_release_cbfunc_t relfn, void *relcbd)
+{
+    pmix_server_trkr_t *tracker = (pmix_server_trkr_t*)cbdata;
+    pmix_shift_caddy_t *scd;
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "server:modex_cbfunc called with %d bytes", (int)ndata);
+
+    if (NULL == tracker) {
+        /* nothing to do - but be sure to give them
+         * a release if they want it */
+        if (NULL != relfn) {
+            relfn(relcbd);
+        }
+        return;
+    }
+
+    /* need to thread-shift this callback as it accesses global data */
+    scd = PMIX_NEW(pmix_shift_caddy_t);
+    if (NULL == scd) {
+        /* nothing we can do */
+        if (NULL != relfn) {
+            relfn(cbdata);
+        }
+        return;
+    }
+    scd->status = status;
+    scd->tracker = tracker;
+    scd->cbfunc.relfn = relfn;
+    scd->cbdata = relcbd;
+    PMIX_THREADSHIFT(scd, _grpcbfunc);
+}
+
+pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd,
+                                       pmix_buffer_t *buf)
+{
+    pmix_peer_t *peer = cd->peer;
+    int32_t cnt;
+    pmix_status_t rc;
+    char *grpid;
+    pmix_proc_t *procs;
+    pmix_group_t *grp, *pgrp;
+    pmix_info_t *info = NULL;
+    size_t n, ninfo, ndirs, nprocs;
+    bool flag;
+    pmix_server_trkr_t *trk;
+    struct timeval tv = {0, 0};
+
+    pmix_output_verbose(2, pmix_server_globals.iof_output,
+                        "recvd grpconstruct cmd");
+
+    if (NULL == pmix_host_server.fence_nb) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    /* unpack the group ID */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &grpid, &cnt, PMIX_STRING);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto error;
+    }
+
+    /* see if we already have this group */
+    grp = NULL;
+    PMIX_LIST_FOREACH(pgrp, &pmix_server_globals.groups, pmix_group_t) {
+        if (0 == strcmp(grpid, pgrp->grpid)) {
+            grp = pgrp;
+            break;
+        }
+    }
+    if (NULL == grp) {
+        /* create a new entry */
+        grp = PMIX_NEW(pmix_group_t);
+        if (NULL == grp) {
+            rc = PMIX_ERR_NOMEM;
+            goto error;
+        }
+        grp->grpid = grpid;
+        pmix_list_append(&pmix_server_globals.groups, &grp->super);
+    } else {
+        free(grpid);
+    }
+
+    /* unpack the number of procs */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &nprocs, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto error;
+    }
+    if (0 == nprocs) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    PMIX_PROC_CREATE(procs, nprocs);
+    if (NULL == procs) {
+        rc = PMIX_ERR_NOMEM;
+        goto error;
+    }
+    cnt = nprocs;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, procs, &cnt, PMIX_PROC);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_PROC_FREE(procs, nprocs);
+        goto error;
+    }
+    if (NULL == grp->members) {
+        grp->members = procs;
+        grp->nmbrs = nprocs;
+    } else {
+        PMIX_PROC_FREE(procs, nprocs);
+    }
+
+    /* unpack the number of directives */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &ndirs, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto error;
+    }
+    ninfo = ndirs + 1;
+    PMIX_INFO_CREATE(info, ninfo);
+    if (NULL == info) {
+        rc = PMIX_ERR_NOMEM;
+        goto error;
+    }
+    if (0 < ndirs) {
+        cnt = ndirs;
+        PMIX_BFROPS_UNPACK(rc, peer, buf, info, &cnt, PMIX_INFO);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto error;
+        }
+        /* see if we are to enforce a timeout - we don't internally care
+         * about any other directives */
+        for (n=0; n < ndirs; n++) {
+            if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
+                tv.tv_sec = info[n].value.data.uint32;
+                break;
+            }
+        }
+    }
+
+    /* treat this like a fence - no data to collect */
+    flag = false;
+    PMIX_INFO_LOAD(&info[ninfo-1], PMIX_COLLECT_DATA, &flag, PMIX_BOOL);
+
+    /* find/create the local tracker for this operation */
+    if (NULL == (trk = get_tracker(grp->grpid, grp->members, grp->nmbrs, PMIX_FENCENB_CMD))) {
+        /* If no tracker was found - create and initialize it once */
+        if (NULL == (trk = new_tracker(grp->grpid, grp->members, grp->nmbrs, PMIX_FENCENB_CMD))) {
+            /* only if a bozo error occurs */
+            PMIX_ERROR_LOG(PMIX_ERROR);
+            rc = PMIX_ERROR;
+            goto error;
+        }
+        trk->type = PMIX_FENCENB_CMD;
+        trk->collect_type = PMIX_COLLECT_NO;
+    }
+
+    /* we only save the info structs from the first caller
+     * who provides them - it is a user error to provide
+     * different values from different participants */
+    if (NULL == trk->info) {
+        trk->info = info;
+        trk->ninfo = ninfo;
+    } else {
+        /* cleanup */
+        PMIX_INFO_FREE(info, ninfo);
+        info = NULL;
+    }
+
+    /* add this contributor to the tracker so they get
+     * notified when we are done */
+    pmix_list_append(&trk->local_cbs, &cd->super);
+
+    /* if a timeout was specified, set it */
+    if (0 < tv.tv_sec) {
+        PMIX_RETAIN(trk);
+        cd->trk = trk;
+        pmix_event_evtimer_set(pmix_globals.evbase, &cd->ev,
+                               grp_timeout, cd);
+        pmix_event_evtimer_add(&cd->ev, &tv);
+        cd->event_active = true;
+    }
+
+    /* if all local contributions have been received,
+     * let the local host's server know that we are at the
+     * "fence" point - they will callback once the barrier
+     * across all participants has been completed */
+    if (trk->def_complete &&
+        pmix_list_get_size(&trk->local_cbs) == trk->nlocal) {
+        pmix_output_verbose(2, pmix_server_globals.base_output,
+                            "local fence complete with %d procs", (int)trk->npcs);
+
+        pmix_host_server.fence_nb(trk->pcs, trk->npcs,
+                                  trk->info, trk->ninfo,
+                                  NULL, 0, grpcbfunc, trk);
+    }
+
+    return PMIX_SUCCESS;
+
+  error:
+    if (NULL != info) {
+        PMIX_INFO_FREE(info, ninfo);
+    }
+    return rc;
+}
+
+pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd,
+                                      pmix_buffer_t *buf)
+{
+    pmix_peer_t *peer = cd->peer;
+    int32_t cnt;
+    pmix_status_t rc;
+    char *grpid;
+    pmix_info_t *info = NULL;
+    size_t n, ninfo, ndirs;
+    bool flag;
+    pmix_server_trkr_t *trk;
+    pmix_group_t *grp, *pgrp;
+    struct timeval tv = {0, 0};
+
+    pmix_output_verbose(2, pmix_server_globals.iof_output,
+                        "recvd grpdestruct cmd");
+
+    if (NULL == pmix_host_server.fence_nb) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    /* unpack the group ID */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &grpid, &cnt, PMIX_STRING);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto error;
+    }
+
+    /* find this group in our list */
+    grp = NULL;
+    PMIX_LIST_FOREACH(pgrp, &pmix_server_globals.groups, pmix_group_t) {
+        if (0 == strcmp(grpid, pgrp->grpid)) {
+            grp = pgrp;
+            break;
+        }
+    }
+    free(grpid);
+
+    /* if not found, then this is an error - we cannot
+     * destruct a group we don't know about */
+    if (NULL == grp) {
+        rc = PMIX_ERR_NOT_FOUND;
+        goto error;
+    }
+
+    /* unpack the number of directives */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &ndirs, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto error;
+    }
+    ninfo = ndirs + 1;
+    PMIX_INFO_CREATE(info, ninfo);
+    if (NULL == info) {
+        rc = PMIX_ERR_NOMEM;
+        goto error;
+    }
+    if (0 < ndirs) {
+        cnt = ndirs;
+        PMIX_BFROPS_UNPACK(rc, peer, buf, info, &cnt, PMIX_INFO);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto error;
+        }
+        /* see if we are to enforce a timeout - we don't internally care
+         * about any other directives */
+        for (n=0; n < ndirs; n++) {
+            if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
+                tv.tv_sec = info[n].value.data.uint32;
+                break;
+            }
+        }
+    }
+
+    /* treat this like a fence - no data to collect */
+    flag = false;
+    PMIX_INFO_LOAD(&info[ninfo-1], PMIX_COLLECT_DATA, &flag, PMIX_BOOL);
+
+    /* use the grp membership for the fence we are to
+     * execute - our host RM only knows these procs by
+     * their "true" ID */
+
+
+    /* find/create the local tracker for this operation */
+    if (NULL == (trk = get_tracker(grp->grpid, grp->members, grp->nmbrs, PMIX_FENCENB_CMD))) {
+        /* If no tracker was found - create and initialize it once */
+        if (NULL == (trk = new_tracker(grp->grpid, grp->members, grp->nmbrs, PMIX_FENCENB_CMD))) {
+            /* only if a bozo error occurs */
+            PMIX_ERROR_LOG(PMIX_ERROR);
+            rc = PMIX_ERROR;
+            goto error;
+        }
+        trk->type = PMIX_FENCENB_CMD;
+        trk->collect_type = PMIX_COLLECT_NO;
+    }
+
+    /* we only save the info structs from the first caller
+     * who provides them - it is a user error to provide
+     * different values from different participants */
+    if (NULL == trk->info) {
+        trk->info = info;
+        trk->ninfo = ninfo;
+    } else {
+        /* cleanup */
+        PMIX_INFO_FREE(info, ninfo);
+        info = NULL;
+    }
+
+    /* add this contributor to the tracker so they get
+     * notified when we are done */
+    pmix_list_append(&trk->local_cbs, &cd->super);
+
+    /* if a timeout was specified, set it */
+    if (0 < tv.tv_sec) {
+        PMIX_RETAIN(trk);
+        cd->trk = trk;
+        pmix_event_evtimer_set(pmix_globals.evbase, &cd->ev,
+                               grp_timeout, cd);
+        pmix_event_evtimer_add(&cd->ev, &tv);
+        cd->event_active = true;
+    }
+
+    /* if all local contributions have been received,
+     * let the local host's server know that we are at the
+     * "fence" point - they will callback once the barrier
+     * across all participants has been completed */
+    if (trk->def_complete &&
+        pmix_list_get_size(&trk->local_cbs) == trk->nlocal) {
+        pmix_output_verbose(2, pmix_server_globals.base_output,
+                            "fence complete %d", (int)trk->nlocal);
+
+        pmix_host_server.fence_nb(grp->members, grp->nmbrs,
+                                  trk->info, trk->ninfo,
+                                  NULL, 0, grpcbfunc, trk);
+    }
+
+    return PMIX_SUCCESS;
+
+  error:
+    if (NULL != info) {
+        PMIX_INFO_FREE(info, ninfo);
+    }
+    return rc;
+}
+
 /*****    INSTANCE SERVER LIBRARY CLASSES    *****/
 static void tcon(pmix_server_trkr_t *t)
 {
+    t->id = NULL;
     memset(t->pname.nspace, 0, PMIX_MAX_NSLEN+1);
     t->pname.rank = PMIX_RANK_UNDEF;
     t->pcs = NULL;
@@ -3115,9 +3665,13 @@ static void tcon(pmix_server_trkr_t *t)
     t->modexcbfunc = NULL;
     t->op_cbfunc = NULL;
     t->hybrid = false;
+    t->cbdata = NULL;
 }
 static void tdes(pmix_server_trkr_t *t)
 {
+    if (NULL != t->id) {
+        free(t->id);
+    }
     PMIX_DESTRUCT_LOCK(&t->lock);
     if (NULL != t->pcs) {
         free(t->pcs);
@@ -3321,3 +3875,26 @@ static void ildes(pmix_inventory_rollup_t *p)
 PMIX_CLASS_INSTANCE(pmix_inventory_rollup_t,
                     pmix_object_t,
                     ilcon, ildes);
+
+static void grcon(pmix_group_t *p)
+{
+    p->grpid = NULL;
+    p->members = NULL;
+    p->nmbrs = 0;
+}
+static void grdes(pmix_group_t *p)
+{
+    if (NULL != p->grpid) {
+        free(p->grpid);
+    }
+    if (NULL != p->members) {
+        PMIX_PROC_FREE(p->members, p->nmbrs);
+    }
+}
+PMIX_CLASS_INSTANCE(pmix_group_t,
+                    pmix_list_item_t,
+                    grcon, grdes);
+
+PMIX_CLASS_INSTANCE(pmix_group_caddy_t,
+                    pmix_list_item_t,
+                    NULL, NULL);

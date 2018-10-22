@@ -74,6 +74,8 @@ examples/pub
 examples/pubi
 examples/server
 examples/tool
+examples/group
+examples/asyncgroup
 
 include/pmix_version.h
 include/pmix_rename.h

@@ -39,7 +39,7 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
 PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status,
                                             const pmix_proc_t *source,
                                             pmix_data_range_t range,
-                                            pmix_info_t info[], size_t ninfo,
+                                            const pmix_info_t info[], size_t ninfo,
                                             pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     int rc;
@@ -55,14 +55,17 @@ PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status,
     if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer) &&
         !PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
+
         pmix_output_verbose(2, pmix_server_globals.event_output,
-                            "pmix_server_notify_event source = %s:%d event_status = %d",
+                            "pmix_server_notify_event source = %s:%d event_status = %s",
                             (NULL == source) ? "UNKNOWN" : source->nspace,
-                            (NULL == source) ? PMIX_RANK_WILDCARD : source->rank, status);
+                            (NULL == source) ? PMIX_RANK_WILDCARD : source->rank, PMIx_Error_string(status));
+
         rc = pmix_server_notify_client_of_event(status, source, range,
                                                 info, ninfo,
                                                 cbfunc, cbdata);
-        if (PMIX_SUCCESS != rc) {
+
+        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
             PMIX_ERROR_LOG(rc);
         }
         return rc;
@@ -124,8 +127,10 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
     pmix_notify_caddy_t *cd, *rbout;
 
     pmix_output_verbose(2, pmix_client_globals.event_output,
-                        "client: notifying server %s:%d of status %s for range %s",
+                        "[%s:%d] client: notifying server %s:%d of status %s for range %s",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank,
+                        pmix_client_globals.myserver->info->pname.nspace,
+                        pmix_client_globals.myserver->info->pname.rank,
                         PMIx_Error_string(status), PMIx_Data_range_string(range));
 
     if (PMIX_RANGE_PROC_LOCAL != range) {
@@ -172,7 +177,7 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
     /* setup for our own local callbacks */
     chain = PMIX_NEW(pmix_event_chain_t);
     chain->status = status;
-    (void)strncpy(chain->source.nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(chain->source.nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
     chain->source.rank = pmix_globals.myid.rank;
     /* we always leave space for event hdlr name and a callback object */
     chain->nallocated = ninfo + 2;
@@ -185,10 +190,10 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
     cd = PMIX_NEW(pmix_notify_caddy_t);
     cd->status = status;
     if (NULL == source) {
-        (void)strncpy(cd->source.nspace, "UNDEF", PMIX_MAX_NSLEN);
+        pmix_strncpy(cd->source.nspace, "UNDEF", PMIX_MAX_NSLEN);
         cd->source.rank = PMIX_RANK_UNDEF;
     } else {
-        (void)strncpy(cd->source.nspace, source->nspace, PMIX_MAX_NSLEN);
+        pmix_strncpy(cd->source.nspace, source->nspace, PMIX_MAX_NSLEN);
         cd->source.rank = source->rank;
     }
     cd->range = range;
@@ -235,8 +240,10 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
         cb->cbdata = cbdata;
         /* send to the server */
         pmix_output_verbose(2, pmix_client_globals.event_output,
-                            "client: notifying server %s:%d - sending",
-                            pmix_globals.myid.nspace, pmix_globals.myid.rank);
+                            "[%s:%d] client: notifying server %s:%d - sending",
+                            pmix_globals.myid.nspace, pmix_globals.myid.rank,
+                            pmix_client_globals.myserver->info->pname.nspace,
+                            pmix_client_globals.myserver->info->pname.rank);
         PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver,
                            msg, notify_event_cbfunc, cb);
         if (PMIX_SUCCESS != rc) {
@@ -306,9 +313,9 @@ static void progress_local_event_hdlr(pmix_status_t status,
 
     /* save this handler's returned status */
     if (NULL != chain->evhdlr->name) {
-        (void)strncpy(newinfo[cnt].key, chain->evhdlr->name, PMIX_MAX_KEYLEN);
+        pmix_strncpy(newinfo[cnt].key, chain->evhdlr->name, PMIX_MAX_KEYLEN);
     } else {
-        (void)strncpy(newinfo[cnt].key, "UNKNOWN", PMIX_MAX_KEYLEN);
+        pmix_strncpy(newinfo[cnt].key, "UNKNOWN", PMIX_MAX_KEYLEN);
     }
     newinfo[cnt].value.type = PMIX_STATUS;
     newinfo[cnt].value.data.status = status;
@@ -808,7 +815,7 @@ static void _notify_client_event(int sd, short args, void *cbdata)
      * against our registrations */
     chain = PMIX_NEW(pmix_event_chain_t);
     chain->status = cd->status;
-    (void)strncpy(chain->source.nspace, cd->source.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(chain->source.nspace, cd->source.nspace, PMIX_MAX_NSLEN);
     chain->source.rank = cd->source.rank;
     /* we always leave space for a callback object and
      * the evhandler name. */
@@ -855,7 +862,6 @@ static void _notify_client_event(int sd, short args, void *cbdata)
         PMIX_RELEASE(chain);
         return;
     }
-
 
     holdcd = false;
     if (PMIX_RANGE_PROC_LOCAL != cd->range) {
@@ -957,8 +963,7 @@ static void _notify_client_event(int sd, short args, void *cbdata)
         PMIX_LIST_DESTRUCT(&trk);
         if (PMIX_RANGE_LOCAL != cd->range && PMIX_CHECK_PROCID(&cd->source, &pmix_globals.myid)) {
             /* if we are the source, then we need to post this upwards as
-             * well so the host RM can broadcast it as necessary - we rely
-             * on the host RM to _not_ deliver this back to us! */
+             * well so the host RM can broadcast it as necessary */
             if (NULL != pmix_host_server.notify_event) {
                 /* mark that we sent it upstairs so we don't release
                  * the caddy until we return from the host RM */
@@ -1002,23 +1007,27 @@ pmix_status_t pmix_server_notify_client_of_event(pmix_status_t status,
                         "pmix_server: notify client of event %s",
                         PMIx_Error_string(status));
 
-    /* check for prior processing */
-    if (NULL != info && PMIX_CHECK_KEY(&info[ninfo], PMIX_SERVER_INTERNAL_NOTIFY)) {
-        return PMIX_OPERATION_SUCCEEDED;
+    if (NULL != info) {
+        for (n=0; n < ninfo; n++) {
+            if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_PROXY) &&
+                PMIX_CHECK_PROCID(info[n].value.data.proc, &pmix_globals.myid)) {
+                return PMIX_OPERATION_SUCCEEDED;
+            }
+        }
     }
 
     cd = PMIX_NEW(pmix_notify_caddy_t);
     cd->status = status;
     if (NULL == source) {
-        (void)strncpy(cd->source.nspace, "UNDEF", PMIX_MAX_NSLEN);
+        pmix_strncpy(cd->source.nspace, "UNDEF", PMIX_MAX_NSLEN);
         cd->source.rank = PMIX_RANK_UNDEF;
     } else {
-        (void)strncpy(cd->source.nspace, source->nspace, PMIX_MAX_NSLEN);
+        pmix_strncpy(cd->source.nspace, source->nspace, PMIX_MAX_NSLEN);
         cd->source.rank = source->rank;
     }
     cd->range = range;
     /* have to copy the info to preserve it for future when cached */
-    if (0 < ninfo) {
+    if (0 < ninfo && NULL != info) {
         cd->ninfo = ninfo;
         PMIX_INFO_CREATE(cd->info, cd->ninfo);
         /* need to copy the info */

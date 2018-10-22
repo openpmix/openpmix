@@ -198,9 +198,11 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_ptl_sr_t,
 
 static void pccon(pmix_pending_connection_t *p)
 {
+    p->need_id = false;
     memset(p->nspace, 0, PMIX_MAX_NSLEN+1);
     p->info = NULL;
     p->ninfo = 0;
+    p->peer = NULL;
     p->bfrops = NULL;
     p->psec = NULL;
     p->gds = NULL;
