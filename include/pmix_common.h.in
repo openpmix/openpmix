@@ -639,7 +639,8 @@ typedef uint32_t pmix_rank_t;
                                                                     //        participate in the proposed group The default is true
 #define PMIX_GROUP_FT_COLLECTIVE            "pmix.grp.ftcoll"       // (bool) adjust internal tracking for terminated processes. Default is false
 #define PMIX_GROUP_MEMBERSHIP               "pmix.grp.mbrs"         // (pmix_data_array_t*) array of group member ID's
-#define PMIX_GROUP_ASSIGN_CONTEXT_ID        "pmix.grp.ctxid"        // (bool) request that the RM assign a unique numerical (size_t) ID to this group
+#define PMIX_GROUP_ASSIGN_CONTEXT_ID        "pmix.grp.actxid"       // (bool) request that the RM assign a unique numerical (size_t) ID to this group
+#define PMIX_GROUP_CONTEXT_ID               "pmix.grp.ctxid"        // (size_t) context ID assigned to group
 
 
 /****    PROCESS STATE DEFINITIONS    ****/

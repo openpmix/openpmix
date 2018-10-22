@@ -108,7 +108,10 @@ static void errhandler_reg_callbk(pmix_status_t status,
 }
 
 static void grpcomplete(pmix_status_t status,
-                        void *cbdata)
+                        pmix_info_t *info, size_t ninfo,
+                        void *cbdata,
+                        pmix_release_cbfunc_t release_fn,
+                        void *release_cbdata)
 {
     fprintf(stderr, "%s:%d GRPCOMPLETE\n", myproc.nspace, myproc.rank);
     DEBUG_WAKEUP_THREAD(&invitedlock);
@@ -169,6 +172,8 @@ int main(int argc, char **argv)
     uint32_t nprocs;
     mylock_t lock;
     pmix_status_t code;
+    pmix_info_t *results;
+    size_t nresults;
 
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
@@ -238,7 +243,7 @@ int main(int argc, char **argv)
         PMIX_PROC_LOAD(&procs[0], myproc.nspace, 0);
         PMIX_PROC_LOAD(&procs[1], myproc.nspace, 2);
         PMIX_PROC_LOAD(&procs[2], myproc.nspace, 3);
-        rc = PMIx_Group_invite("ourgroup", procs, nprocs, NULL, 0);
+        rc = PMIx_Group_invite("ourgroup", procs, nprocs, NULL, 0, &results, &nresults);
         if (PMIX_SUCCESS != rc) {
             fprintf(stderr, "Client ns %s rank %d: PMIx_Group_invite failed: %s\n", myproc.nspace, myproc.rank, PMIx_Error_string(rc));
             goto done;

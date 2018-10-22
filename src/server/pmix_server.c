@@ -3163,73 +3163,97 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
 
     if (PMIX_NOTIFY_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        rc = pmix_server_event_recvd_from_client(peer, buf, notifyerror_cbfunc, cd);
+        if (PMIX_SUCCESS != (rc = pmix_server_event_recvd_from_client(peer, buf, notifyerror_cbfunc, cd))) {
+            PMIX_RELEASE(cd);
+        }
         return rc;
     }
 
     if (PMIX_QUERY_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        rc = pmix_server_query(peer, buf, query_cbfunc, cd);
+        if (PMIX_SUCCESS != (rc = pmix_server_query(peer, buf, query_cbfunc, cd))) {
+            PMIX_RELEASE(cd);
+        }
         return rc;
     }
 
     if (PMIX_LOG_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        rc = pmix_server_log(peer, buf, op_cbfunc, cd);
+        if (PMIX_SUCCESS != (rc = pmix_server_log(peer, buf, op_cbfunc, cd))) {
+            PMIX_RELEASE(cd);
+        }
         return rc;
     }
 
     if (PMIX_ALLOC_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        rc = pmix_server_alloc(peer, buf, query_cbfunc, cd);
+        if (PMIX_SUCCESS != (rc = pmix_server_alloc(peer, buf, query_cbfunc, cd))) {
+            PMIX_RELEASE(cd);
+        }
         return rc;
     }
 
     if (PMIX_JOB_CONTROL_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        rc = pmix_server_job_ctrl(peer, buf, query_cbfunc, cd);
+        if (PMIX_SUCCESS != (rc = pmix_server_job_ctrl(peer, buf, query_cbfunc, cd))) {
+            PMIX_RELEASE(cd);
+        }
         return rc;
     }
 
     if (PMIX_MONITOR_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        rc = pmix_server_monitor(peer, buf, query_cbfunc, cd);
+        if (PMIX_SUCCESS != (rc = pmix_server_monitor(peer, buf, query_cbfunc, cd))) {
+            PMIX_RELEASE(cd);
+        }
         return rc;
     }
 
     if (PMIX_GET_CREDENTIAL_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        rc = pmix_server_get_credential(peer, buf, cred_cbfunc, cd);
+        if (PMIX_SUCCESS != (rc = pmix_server_get_credential(peer, buf, cred_cbfunc, cd))) {
+            PMIX_RELEASE(cd);
+        }
         return rc;
     }
 
     if (PMIX_VALIDATE_CRED_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        rc = pmix_server_validate_credential(peer, buf, validate_cbfunc, cd);
+        if (PMIX_SUCCESS != (rc = pmix_server_validate_credential(peer, buf, validate_cbfunc, cd))) {
+            PMIX_RELEASE(cd);
+        }
         return rc;
     }
 
     if (PMIX_IOF_PULL_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        rc = pmix_server_iofreg(peer, buf, iof_cbfunc, cd);
+        if (PMIX_SUCCESS != (rc = pmix_server_iofreg(peer, buf, iof_cbfunc, cd))) {
+            PMIX_RELEASE(cd);
+        }
         return rc;
     }
 
     if (PMIX_IOF_PUSH_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        rc = pmix_server_iofstdin(peer, buf, op_cbfunc, cd);
+        if (PMIX_SUCCESS != (rc = pmix_server_iofstdin(peer, buf, op_cbfunc, cd))) {
+            PMIX_RELEASE(cd);
+        }
         return rc;
     }
 
     if (PMIX_GROUP_CONSTRUCT_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        rc = pmix_server_grpconstruct(cd, buf);
+        if (PMIX_SUCCESS != (rc = pmix_server_grpconstruct(cd, buf))) {
+            PMIX_RELEASE(cd);
+        }
         return rc;
     }
 
     if (PMIX_GROUP_DESTRUCT_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        rc = pmix_server_grpdestruct(cd, buf);
+        if (PMIX_SUCCESS != (rc = pmix_server_grpdestruct(cd, buf))) {
+            PMIX_RELEASE(cd);
+        }
         return rc;
     }
 
