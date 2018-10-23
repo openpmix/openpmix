@@ -967,6 +967,11 @@ typedef enum {
     PMIX_GROUP_ACCEPT
 } pmix_group_opt_t;
 
+typedef enum {
+    PMIX_GROUP_CONSTRUCT,
+    PMIX_GROUP_DESTRUCT
+} pmix_group_operation_t;
+
 
 /* declare a convenience macro for checking keys */
 #define PMIX_CHECK_KEY(a, b) \

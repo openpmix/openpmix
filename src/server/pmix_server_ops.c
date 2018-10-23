@@ -3348,6 +3348,8 @@ static void grpcbfunc(pmix_status_t status,
     PMIX_THREADSHIFT(scd, _grpcbfunc);
 }
 
+/* we are being called from the PMIx server's switchyard function,
+ * which means we are in an event and can access global data */
 pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd,
                                        pmix_buffer_t *buf)
 {
@@ -3466,6 +3468,8 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd,
         trk->collect_type = PMIX_COLLECT_NO;
         /* mark as being a construct operation */
         trk->hybrid = false;
+        /* pass along the grp object */
+        trk->cbdata = grp;
     }
 
     /* we only save the info structs from the first caller
@@ -3503,7 +3507,8 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd,
         pmix_output_verbose(2, pmix_server_globals.base_output,
                             "local group op complete with %d procs", (int)trk->npcs);
 
-        pmix_host_server.group(trk->pcs, trk->npcs,
+        pmix_host_server.group(PMIX_GROUP_CONSTRUCT,
+                               trk->pcs, trk->npcs,
                                trk->info, trk->ninfo,
                                grpcbfunc, trk);
     }
@@ -3517,43 +3522,8 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd,
     return rc;
 }
 
-static void mdxcbfunc(pmix_status_t status,
-                      const char *data, size_t ndata,
-                      void *cbdata,
-                      pmix_release_cbfunc_t relfn,
-                      void *relcbd)
-{
-    pmix_server_trkr_t *tracker = (pmix_server_trkr_t*)cbdata;
-    pmix_shift_caddy_t *scd;
-
-    pmix_output_verbose(2, pmix_server_globals.base_output,
-                        "server:mdxcbfunc called");
-
-    if (NULL == tracker) {
-        /* nothing to do - but be sure to give them
-         * a release if they want it */
-        if (NULL != relfn) {
-            relfn(relcbd);
-        }
-        return;
-    }
-
-    /* need to thread-shift this callback as it accesses global data */
-    scd = PMIX_NEW(pmix_shift_caddy_t);
-    if (NULL == scd) {
-        /* nothing we can do */
-        if (NULL != relfn) {
-            relfn(cbdata);
-        }
-        return;
-    }
-    scd->status = status;
-    scd->tracker = tracker;
-    scd->cbfunc.relfn = relfn;
-    scd->cbdata = relcbd;
-    PMIX_THREADSHIFT(scd, _grpcbfunc);
-}
-
+/* we are being called from the PMIx server's switchyard function,
+ * which means we are in an event and can access global data */
 pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd,
                                       pmix_buffer_t *buf)
 {
@@ -3682,9 +3652,10 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd,
         pmix_output_verbose(2, pmix_server_globals.base_output,
                             "fence complete %d", (int)trk->nlocal);
 
-        pmix_host_server.fence_nb(grp->members, grp->nmbrs,
-                                  trk->info, trk->ninfo,
-                                  NULL, 0, mdxcbfunc, trk);
+        pmix_host_server.group(PMIX_GROUP_DESTRUCT,
+                               grp->members, grp->nmbrs,
+                               trk->info, trk->ninfo,
+                               grpcbfunc, trk);
     }
 
     return PMIX_SUCCESS;
