@@ -944,10 +944,18 @@ static void info_cbfunc(pmix_status_t status,
                         void *release_cbdata)
 {
     pmix_group_tracker_t *cb = (pmix_group_tracker_t*)cbdata;
+    size_t n;
 
     /* see if anything was returned - e.g., a context id */
-
     cb->status = status;
+    /* copy/save any returned info */
+    if (NULL != info) {
+        cb->nresults = ninfo;
+        PMIX_INFO_CREATE(cb->results, cb->nresults);
+        for (n=0; n < ninfo; n++) {
+            PMIX_INFO_XFER(&cb->results[n], &info[n]);
+        }
+    }
     if (NULL != release_fn) {
         release_fn(release_cbdata);
     }
