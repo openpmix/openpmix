@@ -15,6 +15,7 @@
  * Copyright (c) 2016-2018 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2018      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -478,6 +479,10 @@ static void connection_handler(int sd, short args, void *cbdata)
             cred = ptr;
             ptr += credlen;
             len -= credlen;
+        } else {
+            /* set cred pointer to NULL to guard against validation
+             * methods that assume a zero length credential is NULL */
+            cred = NULL;
         }
     }
 
