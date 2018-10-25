@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2015-2018 Intel, Inc.  All rights reserved.
- * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
  *
  * $COPYRIGHT$
  *
@@ -64,7 +64,12 @@ static pmix_status_t hash_store(const pmix_proc_t *proc,
 
 static pmix_status_t hash_store_modex(struct pmix_namespace_t *ns,
                                       pmix_list_t *cbs,
-                                      pmix_byte_object_t *bo);
+                                      pmix_buffer_t *buff);
+
+static pmix_status_t _hash_store_modex(void * cbdata,
+                                       struct pmix_namespace_t *ns,
+                                       pmix_list_t *cbs,
+                                       pmix_byte_object_t *bo);
 
 static pmix_status_t hash_fetch(const pmix_proc_t *proc,
                                 pmix_scope_t scope, bool copy,
@@ -1156,7 +1161,14 @@ static pmix_status_t hash_store(const pmix_proc_t *proc,
  * shall store it accordingly */
 static pmix_status_t hash_store_modex(struct pmix_namespace_t *nspace,
                                       pmix_list_t *cbs,
-                                      pmix_byte_object_t *bo)
+                                      pmix_buffer_t *buf) {
+    return pmix_gds_base_store_modex(nspace, cbs, buf, _hash_store_modex, NULL);
+}
+
+static pmix_status_t _hash_store_modex(void * cbdata,
+                                       struct pmix_namespace_t *nspace,
+                                       pmix_list_t *cbs,
+                                       pmix_byte_object_t *bo)
 {
     pmix_namespace_t *ns = (pmix_namespace_t*)nspace;
     pmix_hash_trkr_t *trk, *t;
