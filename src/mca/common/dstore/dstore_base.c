@@ -2684,6 +2684,8 @@ static pmix_status_t _dstor_store_modex_cb(pmix_common_dstore_ctx_t *ds_ctx,
     pmix_proc_t proc;
     pmix_kval_t *kv;
     ns_map_data_t *ns_map;
+    pmix_kval_t *kv2;
+    pmix_buffer_t tmp;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "[%s:%d] gds:dstore:store_modex for nspace %s",
@@ -2740,6 +2742,15 @@ static pmix_status_t _dstor_store_modex_cb(pmix_common_dstore_ctx_t *ds_ctx,
             return rc;
         }
 
+        kv2 = PMIX_NEW(pmix_kval_t);
+        PMIX_VALUE_CREATE(kv2->value, 1);
+        kv2->value->type = PMIX_BYTE_OBJECT;
+
+        PMIX_CONSTRUCT(&tmp, pmix_buffer_t);
+
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &tmp, kv, 1, PMIX_KVAL);
+        PMIX_UNLOAD_BUFFER(&tmp, kv2->value->data.bo.bytes, kv2->value->data.bo.size);
+
         if (NULL == (ns_map = ds_ctx->session_map_search(ds_ctx, proc.nspace))) {
             rc = PMIX_ERROR;
             PMIX_ERROR_LOG(rc);
@@ -2750,10 +2761,13 @@ static pmix_status_t _dstor_store_modex_cb(pmix_common_dstore_ctx_t *ds_ctx,
             return rc;
         }
 
-        rc = _dstore_store_nolock(ds_ctx, ns_map, proc.rank, kv);
+        rc = _dstore_store_nolock(ds_ctx, ns_map, proc.rank, kv2);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
         }
+
+        PMIX_RELEASE(kv2);
+        PMIX_DESTRUCT(&tmp);
         PMIX_RELEASE(kv);  // maintain accounting as the hash increments the ref count
         /* continue along */
         kv = PMIX_NEW(pmix_kval_t);
