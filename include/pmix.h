@@ -789,15 +789,18 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntar
  *    PMIX_TIMEOUT - return an error if the group doesn't assemble within the
  *                   specified number of seconds. Targets the scenario where a
  *                   process fails to call PMIx_Group_connect due to hanging
+ *
+ * Recognizing
  */
 PMIX_EXPORT pmix_status_t PMIx_Group_construct(const char grp[],
                                                const pmix_proc_t procs[], size_t nprocs,
-                                               const pmix_info_t info[], size_t ninfo);
+                                               const pmix_info_t directives[], size_t ndirs,
+                                               pmix_info_t **results, size_t *nresults);
 
 PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[],
                                                   const pmix_proc_t procs[], size_t nprocs,
                                                   const pmix_info_t info[], size_t ninfo,
-                                                  pmix_op_cbfunc_t cbfunc, void *cbdata);
+                                                  pmix_info_cbfunc_t cbfunc, void *cbdata);
 
 /* Explicitly invite specified processes to join a group.
  *
@@ -845,12 +848,13 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[],
  */
 PMIX_EXPORT pmix_status_t PMIx_Group_invite(const char grp[],
                                             const pmix_proc_t procs[], size_t nprocs,
-                                            const pmix_info_t info[], size_t ninfo);
+                                            const pmix_info_t info[], size_t ninfo,
+                                            pmix_info_t **results, size_t *nresult);
 
 PMIX_EXPORT pmix_status_t PMIx_Group_invite_nb(const char grp[],
                                                const pmix_proc_t procs[], size_t nprocs,
                                                const pmix_info_t info[], size_t ninfo,
-                                               pmix_op_cbfunc_t cbfunc, void *cbdata);
+                                               pmix_info_cbfunc_t cbfunc, void *cbdata);
 
 /* Respond to an invitation to join a group that is being asynchronously constructed.
  *
@@ -891,13 +895,14 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite_nb(const char grp[],
 PMIX_EXPORT pmix_status_t PMIx_Group_join(const char grp[],
                                           const pmix_proc_t *leader,
                                           pmix_group_opt_t opt,
-                                          const pmix_info_t info[], size_t ninfo);
+                                          const pmix_info_t info[], size_t ninfo,
+                                          pmix_info_t **results, size_t *nresult);
 
 PMIX_EXPORT pmix_status_t PMIx_Group_join_nb(const char grp[],
                                              const pmix_proc_t *leader,
                                              pmix_group_opt_t opt,
                                              const pmix_info_t info[], size_t ninfo,
-                                             pmix_op_cbfunc_t cbfunc, void *cbdata);
+                                             pmix_info_cbfunc_t cbfunc, void *cbdata);
 
 /* Leave a PMIx Group. Calls to PMIx_Group_leave (or its non-blocking form) will cause
  * a PMIX_GROUP_LEFT event to be generated notifying all members of the group of the

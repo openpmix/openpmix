@@ -7,7 +7,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
  * Copyright (c) 2018      Cisco Systems, Inc.  All rights reserved
  * $COPYRIGHT$
  *
@@ -2183,16 +2183,12 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
 {
     pmix_shift_caddy_t *scd = (pmix_shift_caddy_t*)cbdata;
     pmix_server_trkr_t *tracker = scd->tracker;
-    pmix_buffer_t xfer, *reply, bkt;
-    pmix_byte_object_t bo, bo2;
+    pmix_buffer_t xfer, *reply;
     pmix_server_caddy_t *cd;
     pmix_status_t rc = PMIX_SUCCESS, ret;
     pmix_nspace_caddy_t *nptr;
     pmix_list_t nslist;
-    int32_t cnt = 1;
-    char byte;
     bool found;
-    pmix_collect_t ctype;
 
     PMIX_ACQUIRE_OBJECT(scd);
 
@@ -2236,69 +2232,12 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
         }
     }
 
-    /* Loop over the enclosed byte object envelopes and
-     * store them in our GDS module */
-    cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-                       &xfer, &bo, &cnt, PMIX_BYTE_OBJECT);
-    while (PMIX_SUCCESS == rc) {
-        PMIX_LOAD_BUFFER(pmix_globals.mypeer, &bkt, bo.bytes, bo.size);
-        /* unpack the data collection flag */
-        cnt = 1;
-        PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-                           &bkt, &byte, &cnt, PMIX_BYTE);
-        if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
-            /* no data was returned, so we are done with this blob */
-            break;
-        }
+    PMIX_LIST_FOREACH(nptr, &nslist, pmix_nspace_caddy_t) {
+        PMIX_GDS_STORE_MODEX(rc, nptr->ns, &tracker->local_cbs, &xfer);
         if (PMIX_SUCCESS != rc) {
-            /* we have an error */
-            break;
-        }
-
-        // Check that this blob was accumulated with the same data collection setting
-        ctype = (pmix_collect_t)byte;
-        if (ctype != tracker->collect_type) {
-            rc = PMIX_ERR_INVALID_ARG;
-            break;
-        }
-        /* unpack the enclosed blobs from the various peers */
-        cnt = 1;
-        PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-                           &bkt, &bo2, &cnt, PMIX_BYTE_OBJECT);
-        while (PMIX_SUCCESS == rc) {
-            /* unpack all the kval's from this peer and store them in
-             * our GDS. Note that PMIx by design holds all data at
-             * the server level until requested. If our GDS is a
-             * shared memory region, then the data may be available
-             * right away - but the client still has to be notified
-             * of its presence. */
-            PMIX_LIST_FOREACH(nptr, &nslist, pmix_nspace_caddy_t) {
-                PMIX_GDS_STORE_MODEX(rc, nptr->ns, &tracker->local_cbs, &bo2);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    break;
-                }
-            }
-            PMIX_BYTE_OBJECT_DESTRUCT(&bo2);
-            /* get the next blob */
-            cnt = 1;
-            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-                               &bkt, &bo2, &cnt, PMIX_BYTE_OBJECT);
-        }
-        if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
-            rc = PMIX_SUCCESS;
-        } else if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
-            goto finish_collective;
+            break;
         }
-        /* unpack and process the next blob */
-        cnt = 1;
-        PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-                           &xfer, &bo, &cnt, PMIX_BYTE_OBJECT);
-    }
-    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
-        rc = PMIX_SUCCESS;
     }
 
   finish_collective:
@@ -3163,73 +3102,97 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
 
     if (PMIX_NOTIFY_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        rc = pmix_server_event_recvd_from_client(peer, buf, notifyerror_cbfunc, cd);
+        if (PMIX_SUCCESS != (rc = pmix_server_event_recvd_from_client(peer, buf, notifyerror_cbfunc, cd))) {
+            PMIX_RELEASE(cd);
+        }
         return rc;
     }
 
     if (PMIX_QUERY_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        rc = pmix_server_query(peer, buf, query_cbfunc, cd);
+        if (PMIX_SUCCESS != (rc = pmix_server_query(peer, buf, query_cbfunc, cd))) {
+            PMIX_RELEASE(cd);
+        }
         return rc;
     }
 
     if (PMIX_LOG_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        rc = pmix_server_log(peer, buf, op_cbfunc, cd);
+        if (PMIX_SUCCESS != (rc = pmix_server_log(peer, buf, op_cbfunc, cd))) {
+            PMIX_RELEASE(cd);
+        }
         return rc;
     }
 
     if (PMIX_ALLOC_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        rc = pmix_server_alloc(peer, buf, query_cbfunc, cd);
+        if (PMIX_SUCCESS != (rc = pmix_server_alloc(peer, buf, query_cbfunc, cd))) {
+            PMIX_RELEASE(cd);
+        }
         return rc;
     }
 
     if (PMIX_JOB_CONTROL_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        rc = pmix_server_job_ctrl(peer, buf, query_cbfunc, cd);
+        if (PMIX_SUCCESS != (rc = pmix_server_job_ctrl(peer, buf, query_cbfunc, cd))) {
+            PMIX_RELEASE(cd);
+        }
         return rc;
     }
 
     if (PMIX_MONITOR_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        rc = pmix_server_monitor(peer, buf, query_cbfunc, cd);
+        if (PMIX_SUCCESS != (rc = pmix_server_monitor(peer, buf, query_cbfunc, cd))) {
+            PMIX_RELEASE(cd);
+        }
         return rc;
     }
 
     if (PMIX_GET_CREDENTIAL_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        rc = pmix_server_get_credential(peer, buf, cred_cbfunc, cd);
+        if (PMIX_SUCCESS != (rc = pmix_server_get_credential(peer, buf, cred_cbfunc, cd))) {
+            PMIX_RELEASE(cd);
+        }
         return rc;
     }
 
     if (PMIX_VALIDATE_CRED_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        rc = pmix_server_validate_credential(peer, buf, validate_cbfunc, cd);
+        if (PMIX_SUCCESS != (rc = pmix_server_validate_credential(peer, buf, validate_cbfunc, cd))) {
+            PMIX_RELEASE(cd);
+        }
         return rc;
     }
 
     if (PMIX_IOF_PULL_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        rc = pmix_server_iofreg(peer, buf, iof_cbfunc, cd);
+        if (PMIX_SUCCESS != (rc = pmix_server_iofreg(peer, buf, iof_cbfunc, cd))) {
+            PMIX_RELEASE(cd);
+        }
         return rc;
     }
 
     if (PMIX_IOF_PUSH_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        rc = pmix_server_iofstdin(peer, buf, op_cbfunc, cd);
+        if (PMIX_SUCCESS != (rc = pmix_server_iofstdin(peer, buf, op_cbfunc, cd))) {
+            PMIX_RELEASE(cd);
+        }
         return rc;
     }
 
     if (PMIX_GROUP_CONSTRUCT_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        rc = pmix_server_grpconstruct(cd, buf);
+        if (PMIX_SUCCESS != (rc = pmix_server_grpconstruct(cd, buf))) {
+            PMIX_RELEASE(cd);
+        }
         return rc;
     }
 
     if (PMIX_GROUP_DESTRUCT_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        rc = pmix_server_grpdestruct(cd, buf);
+        if (PMIX_SUCCESS != (rc = pmix_server_grpdestruct(cd, buf))) {
+            PMIX_RELEASE(cd);
+        }
         return rc;
     }
 
