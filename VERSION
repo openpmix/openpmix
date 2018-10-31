@@ -4,6 +4,7 @@
 # Copyright (c) 2013      Mellanox Technologies, Inc.
 #                         All rights reserved.
 # Copyright (c) 2014-2016 Intel, Inc. All rights reserved.
+# Copyright (c) 2018      IBM Corporation.  All rights reserved.
 
 # This is the VERSION file for PMIx, describing the precise
 # version of PMIx in this distribution.  The various components of
@@ -23,7 +24,7 @@ release=0
 # The only requirement is that it must be entirely printable ASCII
 # characters and have no white space.
 
-greek=rc1
+greek=rc2
 
 # If repo_rev is empty, then the repository version number will be
 # obtained during "make dist" via the "git describe --tags --always"
