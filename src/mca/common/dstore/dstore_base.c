@@ -2391,7 +2391,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_del_nspace(pmix_common_dstore_ctx_t 
                              __FILE__, __LINE__, __func__, session_tbl[session_tbl_idx].jobuid));
         size = pmix_value_array_get_size(ds_ctx->ns_track_array);
         if (size && (dstor_track_idx >= 0)) {
-            if((dstor_track_idx + 1) > size) {
+            if((size_t)(dstor_track_idx + 1) > size) {
                 rc = PMIX_ERR_VALUE_OUT_OF_BOUNDS;
                 PMIX_ERROR_LOG(rc);
                 goto exit;
