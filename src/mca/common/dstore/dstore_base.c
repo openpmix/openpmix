@@ -1192,7 +1192,7 @@ static int pmix_sm_store(pmix_common_dstore_ctx_t *ds_ctx, ns_track_elem_t *ns_i
          * because previous segment is already full. */
         if (free_offset != offset && NULL != *rinfo) {
             /* here we compare previous free offset with the offset where we just put data.
-             * It should be equal in the normal case. It it's not true, then it means that
+             * It should be equal in the normal case. If it's not true, then it means that
              * segment was extended, and we put data to the next segment, so we now need to
              * put extension slot at the end of previous segment with a "reference" to a new_offset */
             addr = _get_data_region_by_offset(ds_ctx, datadesc, free_offset);
@@ -2481,7 +2481,6 @@ static pmix_status_t _dstor_store_modex_cb(pmix_common_dstore_ctx_t *ds_ctx,
     pmix_proc_t proc;
     pmix_kval_t *kv;
     ns_map_data_t *ns_map;
-    pmix_kval_t *kv2;
     pmix_buffer_t tmp;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
@@ -2523,6 +2522,10 @@ static pmix_status_t _dstor_store_modex_cb(pmix_common_dstore_ctx_t *ds_ctx,
         PMIX_DESTRUCT(&pbkt);
         return PMIX_SUCCESS;
     }
+
+    /* Prepare a buffer to be provided to the dstor store primitive */
+    PMIX_CONSTRUCT(&tmp, pmix_buffer_t);
+
     /* unpack the remaining values until we hit the end of the buffer */
     cnt = 1;
     kv = PMIX_NEW(pmix_kval_t);
@@ -2539,48 +2542,64 @@ static pmix_status_t _dstor_store_modex_cb(pmix_common_dstore_ctx_t *ds_ctx,
             return rc;
         }
 
-        kv2 = PMIX_NEW(pmix_kval_t);
-        PMIX_VALUE_CREATE(kv2->value, 1);
-        kv2->value->type = PMIX_BYTE_OBJECT;
+        printf("Pack key = %s\n", kv->key);
 
-        PMIX_CONSTRUCT(&tmp, pmix_buffer_t);
-
+        /* place the key to the to be provided to _dstore_store_nolock */
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &tmp, kv, 1, PMIX_KVAL);
-        PMIX_UNLOAD_BUFFER(&tmp, kv2->value->data.bo.bytes, kv2->value->data.bo.size);
 
-        if (NULL == (ns_map = ds_ctx->session_map_search(ds_ctx, proc.nspace))) {
-            rc = PMIX_ERROR;
-            PMIX_ERROR_LOG(rc);
-            bo->bytes = pbkt.base_ptr;
-            bo->size = pbkt.bytes_used; // restore the incoming data
-            pbkt.base_ptr = NULL;
-            PMIX_DESTRUCT(&pbkt);
-            return rc;
-        }
+        /* Release the kv to maintain accounting
+         * as the hash increments the ref count */
+        PMIX_RELEASE(kv);
 
-        rc = _dstore_store_nolock(ds_ctx, ns_map, proc.rank, kv2);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-        }
-
-        PMIX_RELEASE(kv2);
-        PMIX_DESTRUCT(&tmp);
-        PMIX_RELEASE(kv);  // maintain accounting as the hash increments the ref count
-        /* continue along */
+        /* proceed to the next element */
         kv = PMIX_NEW(pmix_kval_t);
         cnt = 1;
         PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &pbkt, kv, &cnt, PMIX_KVAL);
     }
-    PMIX_RELEASE(kv);  // maintain accounting
+
+    /* Release the kv that didn't received the value
+     * because input buffer was exhausted */
+    PMIX_RELEASE(kv);
     if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
         PMIX_ERROR_LOG(rc);
     } else {
         rc = PMIX_SUCCESS;
     }
+
+    /* Create a key-value pair with the buffer
+     * to be passed to _dstore_store_nolock */
+    kv = PMIX_NEW(pmix_kval_t);
+    PMIX_VALUE_CREATE(kv->value, 1);
+    kv->value->type = PMIX_BYTE_OBJECT;
+    PMIX_UNLOAD_BUFFER(&tmp, kv->value->data.bo.bytes, kv->value->data.bo.size);
+
+    /* Get the namespace map element for the process "proc" */
+    if (NULL == (ns_map = ds_ctx->session_map_search(ds_ctx, proc.nspace))) {
+        rc = PMIX_ERROR;
+        PMIX_ERROR_LOG(rc);
+        bo->bytes = pbkt.base_ptr;
+        bo->size = pbkt.bytes_used; // restore the incoming data
+        pbkt.base_ptr = NULL;
+        PMIX_DESTRUCT(&pbkt);
+        return rc;
+    }
+
+    /* Store all keys at once */
+    rc = _dstore_store_nolock(ds_ctx, ns_map, proc.rank, kv);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+    }
+
+    /* Release all resources */
+    PMIX_RELEASE(kv);
+    PMIX_DESTRUCT(&tmp);
+
+    /* Reset the input buffer */
     bo->bytes = pbkt.base_ptr;
-    bo->size = pbkt.bytes_used; // restore the incoming data
+    bo->size = pbkt.bytes_used;
     pbkt.base_ptr = NULL;
     PMIX_DESTRUCT(&pbkt);
+
     return rc;
 }
 
