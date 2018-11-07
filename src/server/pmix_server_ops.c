@@ -1429,6 +1429,11 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
 
     /* if they asked for enviro events, call the local server */
     if (enviro_events) {
+        /* if they don't support this, then we cannot do it */
+        if (NULL == pmix_host_server.register_events) {
+            rc = PMIX_ERR_NOT_SUPPORTED;
+            goto cleanup;
+        }
         /* need to ensure the arrays don't go away until after the
          * host RM is done with them */
         scd = PMIX_NEW(pmix_setup_caddy_t);
