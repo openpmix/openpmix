@@ -391,7 +391,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
                       crt_externs.h signal.h \
                       ioLib.h sockLib.h hostLib.h limits.h \
                       sys/statfs.h sys/statvfs.h \
-                      netdb.h ucred.h zlib.h])
+                      netdb.h ucred.h zlib.h sys/auxv.h])
 
     AC_CHECK_HEADERS([sys/mount.h], [], [],
                      [AC_INCLUDES_DEFAULT
