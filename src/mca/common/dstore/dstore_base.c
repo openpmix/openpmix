@@ -60,224 +60,6 @@
 #define ESH_ENV_NS_DATA_SEG_SIZE    "NS_DATA_SEG_SIZE"
 #define ESH_ENV_LINEAR              "SM_USE_LINEAR_SEARCH"
 
-#define ESH_MIN_KEY_LEN             (sizeof(ESH_REGION_INVALIDATED))
-
-#define ESH_KV_SIZE(client_peer, addr)                      \
-__extension__ ({                                            \
-    size_t sz;                                              \
-    if (PMIX_PROC_IS_V1(client_peer)) {                     \
-        sz = ESH_KV_SIZE_V12(addr);                         \
-    } else {                                                \
-        sz = ESH_KV_SIZE_V20(addr);                         \
-    }                                                       \
-    sz;                                                     \
-})
-
-#define ESH_KNAME_PTR(client_peer, addr)                    \
-__extension__ ({                                            \
-    char *name_ptr;                                         \
-    if (PMIX_PROC_IS_V1(client_peer)) {                     \
-        name_ptr = ESH_KNAME_PTR_V12(addr);                 \
-    } else {                                                \
-        name_ptr = ESH_KNAME_PTR_V20(addr);                 \
-    }                                                       \
-    name_ptr;                                               \
-})
-
-#define ESH_KNAME_LEN(client_peer, key)                     \
-__extension__ ({                                            \
-    size_t len;                                             \
-    if (PMIX_PROC_IS_V1(client_peer)) {                     \
-        len = ESH_KNAME_LEN_V12(key);                       \
-    } else {                                                \
-        len = ESH_KNAME_LEN_V20(key);                       \
-    }                                                       \
-    len;                                                    \
-})
-
-#define ESH_DATA_PTR(client_peer, addr)                     \
-__extension__ ({                                            \
-    uint8_t *data_ptr;                                      \
-    if (PMIX_PROC_IS_V1(client_peer)) {                     \
-        data_ptr = ESH_DATA_PTR_V12(addr);                  \
-    } else {                                                \
-        data_ptr = ESH_DATA_PTR_V20(addr);                  \
-    }                                                       \
-    data_ptr;                                               \
-})
-
-#define ESH_DATA_SIZE(client_peer, addr, data_ptr)          \
-__extension__ ({                                            \
-    size_t sz;                                              \
-    if (PMIX_PROC_IS_V1(client_peer)) {                     \
-        sz = ESH_DATA_SIZE_V12(addr);                       \
-    } else {                                                \
-        sz = ESH_DATA_SIZE_V20(addr, data_ptr);             \
-    }                                                       \
-    sz;                                                     \
-})
-
-#define ESH_KEY_SIZE(client_peer, key, size)                \
-__extension__ ({                                            \
-    size_t len;                                             \
-    if (PMIX_PROC_IS_V1(client_peer)) {                     \
-        len = ESH_KEY_SIZE_V12(key, size);                  \
-    } else {                                                \
-        len = ESH_KEY_SIZE_V20(key, size);                  \
-    }                                                       \
-    len;                                                    \
-})
-
-#define EXT_SLOT_SIZE(client_peer)                          \
-__extension__ ({                                            \
-    size_t sz;                                              \
-    if (PMIX_PROC_IS_V1(client_peer)) {                     \
-        sz = EXT_SLOT_SIZE_V12();                           \
-    } else {                                                \
-        sz = EXT_SLOT_SIZE_V20();                           \
-    }                                                       \
-    sz;                                                     \
-})
-
-#define ESH_PUT_KEY(client_peer, addr, key, buffer, size)   \
-__extension__ ({                                            \
-    if (PMIX_PROC_IS_V1(client_peer)) {                     \
-        ESH_PUT_KEY_V12(addr, key, buffer, size);           \
-    } else {                                                \
-        ESH_PUT_KEY_V20(addr, key, buffer, size);           \
-    }                                                       \
-})
-
-/* PMIx v2.x dstore specific macro */
-#define ESH_KV_SIZE_V20(addr)                               \
-__extension__ ({                                            \
-    size_t sz;                                              \
-    memcpy(&sz, addr, sizeof(size_t));                      \
-    sz;                                                     \
-})
-
-#define ESH_KNAME_PTR_V20(addr)                             \
-__extension__ ({                                            \
-    char *name_ptr = (char *)addr + sizeof(size_t);         \
-    name_ptr;                                               \
-})
-
-#define ESH_KNAME_LEN_V20(key)                              \
-__extension__ ({                                            \
-    size_t kname_len = strlen(key) + 1;                     \
-    size_t len = (kname_len < ESH_MIN_KEY_LEN) ?            \
-    ESH_MIN_KEY_LEN : kname_len;                            \
-    len;                                                    \
-})
-
-#define ESH_DATA_PTR_V20(addr)                              \
-__extension__ ({                                            \
-    size_t kname_len =                                      \
-        ESH_KNAME_LEN_V20(ESH_KNAME_PTR_V20(addr));         \
-    uint8_t *data_ptr = addr + sizeof(size_t) + kname_len;  \
-    data_ptr;                                               \
-})
-
-#define ESH_DATA_SIZE_V20(addr, data_ptr)                   \
-__extension__ ({                                            \
-    size_t sz = ESH_KV_SIZE_V20(addr);                      \
-    size_t data_size = sz - (data_ptr - addr);              \
-    data_size;                                              \
-})
-
-#define ESH_KEY_SIZE_V20(key, size)                         \
-__extension__ ({                                            \
-    size_t len =                                            \
-        sizeof(size_t) + ESH_KNAME_LEN_V20(key) + size;     \
-    len;                                                    \
-})
-
-/* in ext slot new offset will be stored in case if
- * new data were added for the same process during
- * next commit
- */
-#define EXT_SLOT_SIZE_V20()                                 \
-    (ESH_KEY_SIZE_V20(ESH_REGION_EXTENSION, sizeof(size_t)))
-
-
-#define ESH_PUT_KEY_V20(addr, key, buffer, size)            \
-__extension__ ({                                            \
-    size_t sz = ESH_KEY_SIZE_V20(key, size);                \
-    memcpy(addr, &sz, sizeof(size_t));                      \
-    memset(addr + sizeof(size_t), 0,                        \
-        ESH_KNAME_LEN_V20(key));                            \
-    strncpy((char *)addr + sizeof(size_t),                  \
-            key, ESH_KNAME_LEN_V20(key));                   \
-    memcpy(addr + sizeof(size_t) + ESH_KNAME_LEN_V20(key),  \
-            buffer, size);                                  \
-})
-
-/* PMIx v1.2 dstore specific macro */
-#define ESH_KEY_SIZE_V12(key, size)                         \
-__extension__ ({                                            \
-    size_t len = strlen(key) + 1 + sizeof(size_t) + size;   \
-    len;                                                    \
-})
-
-/* in ext slot new offset will be stored in case if
- * new data were added for the same process during
- * next commit
- */
-#define EXT_SLOT_SIZE_V12()                                 \
-    (ESH_KEY_SIZE_V12(ESH_REGION_EXTENSION, sizeof(size_t)))
-
-#define ESH_KV_SIZE_V12(addr)                               \
-__extension__ ({                                            \
-    size_t sz;                                              \
-    memcpy(&sz, addr +                                      \
-        ESH_KNAME_LEN_V12(ESH_KNAME_PTR_V12(addr)),         \
-        sizeof(size_t));                                    \
-    sz += ESH_KNAME_LEN_V12(ESH_KNAME_PTR_V12(addr)) +      \
-        sizeof(size_t);                                     \
-    sz;                                                     \
-})
-
-#define ESH_KNAME_PTR_V12(addr)                             \
-__extension__ ({                                            \
-    char *name_ptr = (char *)addr;                          \
-    name_ptr;                                               \
-})
-
-#define ESH_KNAME_LEN_V12(key)                              \
-__extension__ ({                                            \
-    size_t len = strlen((char*)key) + 1;                    \
-    len;                                                    \
-})
-
-#define ESH_DATA_PTR_V12(addr)                              \
-__extension__ ({                                            \
-    uint8_t *data_ptr =                                     \
-        addr +                                              \
-        sizeof(size_t) +                                    \
-        ESH_KNAME_LEN_V12(ESH_KNAME_PTR_V12(addr));         \
-    data_ptr;                                               \
-})
-
-#define ESH_DATA_SIZE_V12(addr)                             \
-__extension__ ({                                            \
-    size_t data_size;                                       \
-    memcpy(&data_size,                                      \
-        addr + ESH_KNAME_LEN_V12(ESH_KNAME_PTR_V12(addr)),  \
-        sizeof(size_t));                                    \
-    data_size;                                              \
-})
-
-#define ESH_PUT_KEY_V12(addr, key, buffer, size)            \
-__extension__ ({                                            \
-    size_t sz = size;                                       \
-    memset(addr, 0, ESH_KNAME_LEN_V12(key));                \
-    strncpy((char *)addr, key, ESH_KNAME_LEN_V12(key));     \
-    memcpy(addr + ESH_KNAME_LEN_V12(key), &sz,              \
-        sizeof(size_t));                                    \
-    memcpy(addr + ESH_KNAME_LEN_V12(key) + sizeof(size_t),  \
-            buffer, size);                                  \
-})
-
 #define ESH_INIT_SESSION_TBL_SIZE 2
 #define ESH_INIT_NS_MAP_TBL_SIZE  2
 
@@ -1262,17 +1044,23 @@ static int put_empty_ext_slot(pmix_common_dstore_ctx_t *ds_ctx, pmix_dstore_seg_
 {
     size_t global_offset, rel_offset, data_ended, val = 0;
     uint8_t *addr;
+    pmix_status_t rc;
+
     global_offset = get_free_offset(ds_ctx, dataseg);
     rel_offset = global_offset % ds_ctx->data_segment_size;
-    if (rel_offset + EXT_SLOT_SIZE(_client_peer(ds_ctx)) > ds_ctx->data_segment_size) {
+    if (rel_offset + PMIX_DS_SLOT_SIZE(ds_ctx) > ds_ctx->data_segment_size) {
         PMIX_ERROR_LOG(PMIX_ERROR);
         return PMIX_ERROR;
     }
     addr = _get_data_region_by_offset(ds_ctx, dataseg, global_offset);
-    ESH_PUT_KEY(_client_peer(ds_ctx), addr, ESH_REGION_EXTENSION, (void*)&val, sizeof(size_t));
+    PMIX_DS_PUT_KEY(rc, ds_ctx, addr, ESH_REGION_EXTENSION, (void*)&val, sizeof(size_t));
+    if (rc != PMIX_SUCCESS) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
 
     /* update offset at the beginning of current segment */
-    data_ended = rel_offset + EXT_SLOT_SIZE(_client_peer(ds_ctx));
+    data_ended = rel_offset + PMIX_DS_SLOT_SIZE(ds_ctx);
     addr = (uint8_t*)(addr - rel_offset);
     memcpy(addr, &data_ended, sizeof(size_t));
     return PMIX_SUCCESS;
@@ -1285,6 +1073,7 @@ static size_t put_data_to_the_end(pmix_common_dstore_ctx_t *ds_ctx, ns_track_ele
     pmix_dstore_seg_desc_t *tmp;
     size_t global_offset, data_ended;
     uint8_t *addr;
+    pmix_status_t rc;
 
     PMIX_OUTPUT_VERBOSE((2, pmix_gds_base_framework.framework_output,
                          "%s:%d:%s: key %s",
@@ -1300,14 +1089,14 @@ static size_t put_data_to_the_end(pmix_common_dstore_ctx_t *ds_ctx, ns_track_ele
 
     /* We should provide additional space at the end of segment to
      * place EXTENSION_SLOT to have an ability to enlarge data for this rank.*/
-    if ((sizeof(size_t) + ESH_KEY_SIZE(_client_peer(ds_ctx), key, size) + EXT_SLOT_SIZE(_client_peer(ds_ctx))) >
+    if ((sizeof(size_t) + PMIX_DS_KEY_SIZE(ds_ctx, key, size) + PMIX_DS_SLOT_SIZE(ds_ctx)) >
             ds_ctx->data_segment_size) {
         /* this is an error case: segment is so small that cannot place evem a single key-value pair.
          * warn a user about it and fail. */
         offset = 0; /* offset cannot be 0 in normal case, so we use this value to indicate a problem. */
         pmix_output(0, "PLEASE set NS_DATA_SEG_SIZE to value which is larger when %lu.",
                     (unsigned long)(sizeof(size_t) + strlen(key) + 1 + sizeof(size_t) +
-                                    size + EXT_SLOT_SIZE(_client_peer(ds_ctx))));
+                                    size + PMIX_DS_SLOT_SIZE(ds_ctx)));
         return offset;
     }
 
@@ -1318,8 +1107,8 @@ static size_t put_data_to_the_end(pmix_common_dstore_ctx_t *ds_ctx, ns_track_ele
      * new segment wasn't allocated to us but (global_offset % _data_segment_size) == 0
      * so if offset is 0 here - we need to allocate the segment as well
      */
-    if ( (0 == offset) || ( (offset + ESH_KEY_SIZE(_client_peer(ds_ctx), key, size) +
-                             EXT_SLOT_SIZE(_client_peer(ds_ctx))) > ds_ctx->data_segment_size) ) {
+    if ( (0 == offset) || ( (offset + PMIX_DS_KEY_SIZE(ds_ctx, key, size) +
+                             PMIX_DS_SLOT_SIZE(ds_ctx)) > ds_ctx->data_segment_size) ) {
         id++;
         /* create a new data segment. */
         tmp = pmix_common_dstor_extend_segment(tmp, ds_ctx->base_path, ns_info->ns_map.name,
@@ -1342,10 +1131,14 @@ static size_t put_data_to_the_end(pmix_common_dstore_ctx_t *ds_ctx, ns_track_ele
     }
     global_offset = offset + id * ds_ctx->data_segment_size;
     addr = (uint8_t*)(tmp->seg_info.seg_base_addr)+offset;
-    ESH_PUT_KEY(_client_peer(ds_ctx), addr, key, buffer, size);
+    PMIX_DS_PUT_KEY(rc, ds_ctx, addr, key, buffer, size);
+    if (rc != PMIX_SUCCESS) {
+        PMIX_ERROR_LOG(rc);
+        return 0;
+    }
 
     /* update offset at the beginning of current segment */
-    data_ended = offset + ESH_KEY_SIZE(_client_peer(ds_ctx), key, size);
+    data_ended = offset + PMIX_DS_KEY_SIZE(ds_ctx, key, size);
     addr = (uint8_t*)(tmp->seg_info.seg_base_addr);
     memcpy(addr, &data_ended, sizeof(size_t));
     PMIX_OUTPUT_VERBOSE((1, pmix_gds_base_framework.framework_output,
@@ -1403,7 +1196,11 @@ static int pmix_sm_store(pmix_common_dstore_ctx_t *ds_ctx, ns_track_elem_t *ns_i
              * segment was extended, and we put data to the next segment, so we now need to
              * put extension slot at the end of previous segment with a "reference" to a new_offset */
             addr = _get_data_region_by_offset(ds_ctx, datadesc, free_offset);
-            ESH_PUT_KEY(_client_peer(ds_ctx), addr, ESH_REGION_EXTENSION, (void*)&offset, sizeof(size_t));
+            PMIX_DS_PUT_KEY(rc, ds_ctx, addr, ESH_REGION_EXTENSION, (void*)&offset, sizeof(size_t));
+            if (rc != PMIX_SUCCESS) {
+                PMIX_ERROR_LOG(rc);
+                return 0;
+            }
         }
         if (NULL == *rinfo) {
             *rinfo = (rank_meta_info*)malloc(sizeof(rank_meta_info));
@@ -1436,9 +1233,8 @@ static int pmix_sm_store(pmix_common_dstore_ctx_t *ds_ctx, ns_track_elem_t *ns_i
              * .....
              * extension slot which has key = EXTENSION_SLOT and a size_t value for offset to next data address for this process.
              */
-            if (0 == strncmp(ESH_KNAME_PTR(_client_peer(ds_ctx), addr), ESH_REGION_EXTENSION,
-                             ESH_KNAME_LEN(_client_peer(ds_ctx), ESH_REGION_EXTENSION))) {
-                memcpy(&offset, ESH_DATA_PTR(ds_ctx->clients_peer, addr), sizeof(size_t));
+            if(PMIX_DS_KEY_IS_EXTSLOT(ds_ctx, addr)) {
+                memcpy(&offset, PMIX_DS_DATA_PTR(ds_ctx, addr), sizeof(size_t));
                 if (0 < offset) {
                     PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
                                 "%s:%d:%s: for rank %lu, replace flag %d %s is filled with %lu value",
@@ -1455,22 +1251,21 @@ static int pmix_sm_store(pmix_common_dstore_ctx_t *ds_ctx, ns_track_elem_t *ns_i
                 } else {
                     /* should not be, we should be out of cycle when this happens */
                 }
-            } else if (0 == strncmp(ESH_KNAME_PTR(_client_peer(ds_ctx), addr), kval->key,
-                                    ESH_KNAME_LEN(_client_peer(ds_ctx), kval->key))) {
+            } else if (0 == strncmp(PMIX_DS_KNAME_PTR(ds_ctx, addr), kval->key,
+                                    PMIX_DS_KNAME_LEN(ds_ctx, kval->key))) {
                 PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
                             "%s:%d:%s: for rank %u, replace flag %d found target key %s",
                             __FILE__, __LINE__, __func__, rank, data_exist, kval->key));
                 /* target key is found, compare value sizes */
-                if (ESH_DATA_SIZE(_client_peer(ds_ctx), addr, ESH_DATA_PTR(_client_peer(ds_ctx), addr)) != size) {
+                if (PMIX_DS_DATA_SIZE(ds_ctx, addr, PMIX_DS_DATA_PTR(ds_ctx, addr)) != size) {
                 //if (1) { /* if we want to test replacing values for existing keys. */
                     /* invalidate current value and store another one at the end of data region. */
-                    strncpy(ESH_KNAME_PTR(_client_peer(ds_ctx), addr), ESH_REGION_INVALIDATED,
-                            ESH_KNAME_LEN(_client_peer(ds_ctx), ESH_REGION_INVALIDATED));
+                    PMIX_DS_KEY_SET_INVALID(ds_ctx, addr);
                     /* decrementing count, it will be incremented back when we add a new value for this key at the end of region. */
                     (*rinfo)->count--;
                     kval_cnt--;
                     /* go to next item, updating address */
-                    addr += ESH_KV_SIZE(_client_peer(ds_ctx), addr);
+                    addr += PMIX_DS_KV_SIZE(ds_ctx, addr);
                     PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
                                 "%s:%d:%s: for rank %u, replace flag %d mark key %s regions as invalidated. put new data at the end.",
                                 __FILE__, __LINE__, __func__, rank, data_exist, kval->key));
@@ -1479,10 +1274,10 @@ static int pmix_sm_store(pmix_common_dstore_ctx_t *ds_ctx, ns_track_elem_t *ns_i
                                 "%s:%d:%s: for rank %u, replace flag %d replace data for key %s type %d in place",
                                 __FILE__, __LINE__, __func__, rank, data_exist, kval->key, kval->value->type));
                     /* replace old data with new one. */
-                    memset(ESH_DATA_PTR(_client_peer(ds_ctx), addr), 0,
-                           ESH_DATA_SIZE(_client_peer(ds_ctx), addr, ESH_DATA_PTR(_client_peer(ds_ctx), addr)));
-                    memcpy(ESH_DATA_PTR(_client_peer(ds_ctx), addr), buffer.base_ptr, size);
-                    addr += ESH_KV_SIZE(_client_peer(ds_ctx), addr);
+                    memset(PMIX_DS_DATA_PTR(ds_ctx, addr), 0,
+                           PMIX_DS_DATA_SIZE(ds_ctx, addr, PMIX_DS_DATA_PTR(ds_ctx, addr)));
+                    memcpy(PMIX_DS_DATA_PTR(ds_ctx, addr), buffer.base_ptr, size);
+                    addr += PMIX_DS_KV_SIZE(ds_ctx, addr);
                     add_to_the_end = 0;
                     break;
                 }
@@ -1490,15 +1285,14 @@ static int pmix_sm_store(pmix_common_dstore_ctx_t *ds_ctx, ns_track_elem_t *ns_i
                 PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
                             "%s:%d:%s: for rank %u, replace flag %d skip %s key, look for %s key",
                             __FILE__, __LINE__, __func__, rank, data_exist,
-                            ESH_KNAME_PTR(_client_peer(ds_ctx), addr), kval->key));
+                            PMIX_DS_KNAME_PTR(ds_ctx, addr), kval->key));
                 /* Skip it: key is "INVALIDATED" or key is valid but different from target one. */
-                if (0 != strncmp(ESH_REGION_INVALIDATED, ESH_KNAME_PTR(_client_peer(ds_ctx), addr),
-                                 ESH_KNAME_LEN(_client_peer(ds_ctx), ESH_KNAME_PTR(_client_peer(ds_ctx), addr)))) {
+                if (!PMIX_DS_KEY_IS_INVALID(ds_ctx, addr)) {
                     /* count only valid items */
                     kval_cnt--;
                 }
                 /* go to next item, updating address */
-                addr += ESH_KV_SIZE(_client_peer(ds_ctx), addr);
+                addr += PMIX_DS_KV_SIZE(ds_ctx, addr);
             }
         }
         if (1 == add_to_the_end) {
@@ -1520,12 +1314,11 @@ static int pmix_sm_store(pmix_common_dstore_ctx_t *ds_ctx, ns_track_elem_t *ns_i
              * data for different ranks, and that's why next element is EXTENSION_SLOT.
              * We put new data to the end of data region and just update EXTENSION_SLOT value by new offset.
              */
-            if (0 == strncmp(ESH_KNAME_PTR(_client_peer(ds_ctx), addr), ESH_REGION_EXTENSION,
-                             ESH_KNAME_LEN(_client_peer(ds_ctx), ESH_REGION_EXTENSION))) {
+            if (PMIX_DS_KEY_IS_EXTSLOT(ds_ctx, addr)) {
                 PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
                             "%s:%d:%s: for rank %u, replace flag %d %s should be filled with offset %lu value",
                             __FILE__, __LINE__, __func__, rank, data_exist, ESH_REGION_EXTENSION, offset));
-                memcpy(ESH_DATA_PTR(_client_peer(ds_ctx), addr), &offset, sizeof(size_t));
+                memcpy(PMIX_DS_DATA_PTR(ds_ctx, addr), &offset, sizeof(size_t));
             } else {
                 /* (2) - we point to the first free offset, no more data is stored further in this segment.
                  * There is no EXTENSION_SLOT by this addr since we continue pushing data for the same rank,
@@ -1535,7 +1328,11 @@ static int pmix_sm_store(pmix_common_dstore_ctx_t *ds_ctx, ns_track_elem_t *ns_i
                  * forcibly and store new offset in its value. */
                 if (free_offset != offset) {
                     /* segment was extended, need to put extension slot by free_offset indicating new_offset */
-                    ESH_PUT_KEY(_client_peer(ds_ctx), addr, ESH_REGION_EXTENSION, (void*)&offset, sizeof(size_t));
+                    PMIX_DS_PUT_KEY(rc, ds_ctx, addr, ESH_REGION_EXTENSION, (void*)&offset, sizeof(size_t));
+                    if (rc != PMIX_SUCCESS) {
+                        PMIX_ERROR_LOG(rc);
+                        return 0;
+                    }
                 }
             }
             PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
@@ -1681,8 +1478,9 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_cache_job_info(pmix_common_dstore_ct
 }
 
 
-pmix_common_dstore_ctx_t *pmix_common_dstor_init(pmix_common_lock_callbacks_t *lock_cb,
-                                const char *ds_name, pmix_info_t info[], size_t ninfo)
+pmix_common_dstore_ctx_t *pmix_common_dstor_init(const char *ds_name, pmix_info_t info[], size_t ninfo,
+                                                 pmix_common_lock_callbacks_t *lock_cb,
+                                                 pmix_common_dstore_file_cbs_t *file_cb)
 {
     pmix_status_t rc;
     size_t n;
@@ -1703,6 +1501,7 @@ pmix_common_dstore_ctx_t *pmix_common_dstor_init(pmix_common_lock_callbacks_t *l
 
     /* assign lock callbacks */
     ds_ctx->lock_cbs = lock_cb;
+    ds_ctx->file_cbs = file_cb;
 
     /* open the pshmem and select the active plugins */
     if( PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pshmem_base_framework, 0)) ) {
@@ -2080,6 +1879,7 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
     bool key_found = false;
     pmix_info_t *info = NULL;
     size_t ninfo;
+    size_t keyhash = 0;
 
     PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
                          "%s:%d:%s: for %s:%u look for key %s",
@@ -2181,6 +1981,10 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
     meta_seg = elem->meta_seg;
     data_seg = elem->data_seg;
 
+    if( NULL != key ) {
+        keyhash = PMIX_DS_KEY_HASH(ds_ctx, key);
+    }
+
     while (nprocs--) {
         /* Get the rank meta info in the shared meta segment. */
         rinfo = _get_rank_meta_info(ds_ctx, cur_rank, meta_seg);
@@ -2243,18 +2047,16 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
              * EXTENSION slot which has key = EXTENSION_SLOT and a size_t value for offset
              * to next data address for this process.
              */
-            if (0 == strncmp(ESH_KNAME_PTR(_client_peer(ds_ctx), addr), ESH_REGION_INVALIDATED,
-                             ESH_KNAME_LEN(_client_peer(ds_ctx), ESH_REGION_INVALIDATED))) {
+            if (PMIX_DS_KEY_IS_INVALID(ds_ctx, addr)) {
                 PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
                             "%s:%d:%s: for rank %s:%u, skip %s region",
                             __FILE__, __LINE__, __func__, nspace, cur_rank, ESH_REGION_INVALIDATED));
                 /* skip it
                  * go to next item, updating address */
-                addr += ESH_KV_SIZE(_client_peer(ds_ctx), addr);
-            } else if (0 == strncmp(ESH_KNAME_PTR(_client_peer(ds_ctx), addr), ESH_REGION_EXTENSION,
-                                    ESH_KNAME_LEN(_client_peer(ds_ctx), ESH_REGION_EXTENSION))) {
+                addr += PMIX_DS_KV_SIZE(ds_ctx, addr);
+            } else if (PMIX_DS_KEY_IS_EXTSLOT(ds_ctx, addr)) {
                 size_t offset;
-                memcpy(&offset, ESH_DATA_PTR(_client_peer(ds_ctx), addr), sizeof(size_t));
+                memcpy(&offset, PMIX_DS_DATA_PTR(ds_ctx, addr), sizeof(size_t));
                 PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
                             "%s:%d:%s: for rank %s:%u, reached %s with %lu value",
                             __FILE__, __LINE__, __func__, nspace, cur_rank, ESH_REGION_EXTENSION, offset));
@@ -2277,10 +2079,10 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
             } else if (NULL == key) {
                 PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
                             "%s:%d:%s: for rank %s:%u, found target key %s",
-                            __FILE__, __LINE__, __func__, nspace, cur_rank, ESH_KNAME_PTR(_client_peer(ds_ctx), addr)));
+                            __FILE__, __LINE__, __func__, nspace, cur_rank, PMIX_DS_KNAME_PTR(ds_ctx, addr)));
 
-                uint8_t *data_ptr = ESH_DATA_PTR(_client_peer(ds_ctx), addr);
-                size_t data_size = ESH_DATA_SIZE(_client_peer(ds_ctx), addr, data_ptr);
+                uint8_t *data_ptr = PMIX_DS_DATA_PTR(ds_ctx, addr);
+                size_t data_size = PMIX_DS_DATA_SIZE(ds_ctx, addr, data_ptr);
                 PMIX_CONSTRUCT(&buffer, pmix_buffer_t);
                 PMIX_LOAD_BUFFER(_client_peer(ds_ctx), &buffer, data_ptr, data_size);
                 int cnt = 1;
@@ -2291,8 +2093,10 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
                     PMIX_ERROR_LOG(rc);
                     goto done;
                 }
-                strncpy(info[kval_cnt - 1].key, ESH_KNAME_PTR(_client_peer(ds_ctx), addr),
-                        ESH_KNAME_LEN(_client_peer(ds_ctx), (char *)addr));
+
+                strncpy(info[kval_cnt - 1].key, PMIX_DS_KNAME_PTR(ds_ctx, addr),
+                        PMIX_DS_KNAME_LEN(ds_ctx, addr));
+
                 pmix_value_xfer(&info[kval_cnt - 1].value, &val);
                 PMIX_VALUE_DESTRUCT(&val);
                 buffer.base_ptr = NULL;
@@ -2301,31 +2105,24 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
                 key_found = true;
 
                 kval_cnt--;
-                addr += ESH_KV_SIZE(_client_peer(ds_ctx), addr);
-            } else if (0 == strncmp(ESH_KNAME_PTR(_client_peer(ds_ctx), addr), key,
-                                    ESH_KNAME_LEN(_client_peer(ds_ctx), key))) {
+                addr += PMIX_DS_KV_SIZE(ds_ctx, addr);
+            } else if (PMIX_DS_KEY_MATCH(ds_ctx, addr, key, keyhash)) {
                 PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
                             "%s:%d:%s: for rank %s:%u, found target key %s",
                             __FILE__, __LINE__, __func__, nspace, cur_rank, key));
                 /* target key is found, get value */
-                uint8_t *data_ptr = ESH_DATA_PTR(_client_peer(ds_ctx), addr);
-                size_t data_size = ESH_DATA_SIZE(_client_peer(ds_ctx), addr, data_ptr);
+                uint8_t *data_ptr = PMIX_DS_DATA_PTR(ds_ctx, addr);
+                size_t data_size = PMIX_DS_DATA_SIZE(ds_ctx, addr, data_ptr);
                 PMIX_CONSTRUCT(&buffer, pmix_buffer_t);
                 PMIX_LOAD_BUFFER(_client_peer(ds_ctx), &buffer, data_ptr, data_size);
                 int cnt = 1;
                 /* unpack value for this key from the buffer. */
-                PMIX_VALUE_CONSTRUCT(&val);
-                PMIX_BFROPS_UNPACK(rc, _client_peer(ds_ctx), &buffer, &val, &cnt, PMIX_VALUE);
+                *kvs = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+                PMIX_BFROPS_UNPACK(rc, _client_peer(ds_ctx), &buffer, (void*)*kvs, &cnt, PMIX_VALUE);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
                     goto done;
                 }
-                PMIX_BFROPS_COPY(rc, _client_peer(ds_ctx), (void**)kvs, &val, PMIX_VALUE);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    goto done;
-                }
-                PMIX_VALUE_DESTRUCT(&val);
                 buffer.base_ptr = NULL;
                 buffer.bytes_used = 0;
                 PMIX_DESTRUCT(&buffer);
@@ -2335,9 +2132,9 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
                 PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
                             "%s:%d:%s: for rank %s:%u, skip key %s look for key %s",
                             __FILE__, __LINE__, __func__, nspace, cur_rank,
-                            ESH_KNAME_PTR(_client_peer(ds_ctx), addr), key));
+                            PMIX_DS_KNAME_PTR(ds_ctx, addr), key));
                 /* go to next item, updating address */
-                addr += ESH_KV_SIZE(_client_peer(ds_ctx), addr);
+                addr += PMIX_DS_KV_SIZE(ds_ctx, addr);
                 kval_cnt--;
             }
         }
@@ -2594,7 +2391,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_del_nspace(pmix_common_dstore_ctx_t 
                              __FILE__, __LINE__, __func__, session_tbl[session_tbl_idx].jobuid));
         size = pmix_value_array_get_size(ds_ctx->ns_track_array);
         if (size && (dstor_track_idx >= 0)) {
-            if((dstor_track_idx + 1) > size) {
+            if((size_t)(dstor_track_idx + 1) > size) {
                 rc = PMIX_ERR_VALUE_OUT_OF_BOUNDS;
                 PMIX_ERROR_LOG(rc);
                 goto exit;
