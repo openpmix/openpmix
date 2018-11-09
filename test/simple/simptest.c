@@ -350,6 +350,7 @@ int main(int argc, char **argv)
 #endif
     mylock_t mylock;
     pmix_status_t code;
+    sigset_t unblock;
 
     /* smoke test */
     if (PMIX_SUCCESS != 0) {
@@ -426,6 +427,21 @@ int main(int argc, char **argv)
 #endif
 
     fprintf(stderr, "Testing version %s\n", PMIx_Get_version());
+
+    /* ensure that SIGCHLD is unblocked as we need to capture it */
+    if (0 != sigemptyset(&unblock)) {
+        fprintf(stderr, "SIGEMPTYSET FAILED\n");
+        exit(1);
+    }
+    if (0 != sigaddset(&unblock, SIGCHLD)) {
+        fprintf(stderr, "SIGADDSET FAILED\n");
+        exit(1);
+    }
+    if (0 != sigprocmask(SIG_UNBLOCK, &unblock, NULL)) {
+        fprintf(stderr, "SIG_UNBLOCK FAILED\n");
+        exit(1);
+    }
+
 
     /* setup the server library and tell it to support tool connections */
 #if PMIX_HAVE_HWLOC
