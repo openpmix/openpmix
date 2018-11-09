@@ -301,19 +301,8 @@ static int component_query(pmix_mca_base_module_t **module, int *priority)
 
 static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env)
 {
-    char *evar;
-
-    if (0 > asprintf(&evar, "PMIX_SERVER_TMPDIR=%s", mca_ptl_tcp_component.session_tmpdir)) {
-        return PMIX_ERR_NOMEM;
-    }
-    pmix_argv_append_nosize(env, evar);
-    free(evar);
-
-    if (0 > asprintf(&evar, "PMIX_SYSTEM_TMPDIR=%s", mca_ptl_tcp_component.system_tmpdir)) {
-        return PMIX_ERR_NOMEM;
-    }
-    pmix_argv_append_nosize(env, evar);
-    free(evar);
+    pmix_setenv("PMIX_SERVER_TMPDIR", mca_ptl_tcp_component.session_tmpdir, true, env);
+    pmix_setenv("PMIX_SYSTEM_TMPDIR", mca_ptl_tcp_component.system_tmpdir, true, env);
 
     return PMIX_SUCCESS;
 }
