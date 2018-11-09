@@ -1021,7 +1021,7 @@ static void connection_handler(int sd, short args, void *cbdata)
         proc_type = PMIX_PROC_V20;
         bfrops = "v20";
         bftype = pmix_bfrops_globals.default_type;  // we can't know any better
-        gds = NULL;
+        gds = "ds12,hash";
     } else {
         int major;
         major = strtoul(version, NULL, 10);
