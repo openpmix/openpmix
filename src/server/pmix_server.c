@@ -1987,7 +1987,9 @@ static void op_cbfunc(pmix_status_t status, void *cbdata)
     }
 
     /* cleanup */
-    PMIX_RELEASE(cd);
+    if (PMIX_SUCCESS == status) {
+        PMIX_RELEASE(cd);
+    }
 }
 
 static void connection_cleanup(int sd, short args, void *cbdata)
@@ -2159,7 +2161,9 @@ static void lookup_cbfunc(pmix_status_t status, pmix_pdata_t pdata[], size_t nda
      * it still being present - tell the originator the result */
     PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
     /* cleanup */
-    PMIX_RELEASE(cd);
+    if (PMIX_SUCCESS == status) {
+        PMIX_RELEASE(cd);
+    }
 }
 
 /* fence modex calls return here when the host RM has completed
@@ -2618,7 +2622,9 @@ static void regevents_cbfunc(pmix_status_t status, void *cbdata)
     }
     // send reply
     PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
-    PMIX_RELEASE(cd);
+    if (PMIX_SUCCESS == status) {
+        PMIX_RELEASE(cd);
+    }
 }
 
 static void notifyerror_cbfunc (pmix_status_t status, void *cbdata)
@@ -2642,7 +2648,9 @@ static void notifyerror_cbfunc (pmix_status_t status, void *cbdata)
     }
     // send reply
     PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
-    PMIX_RELEASE(cd);
+    if (PMIX_SUCCESS == status) {
+        PMIX_RELEASE(cd);
+    }
 }
 
 
@@ -2695,7 +2703,9 @@ static void query_cbfunc(pmix_status_t status,
         PMIX_INFO_FREE(qcd->info, qcd->ninfo);
     }
     PMIX_RELEASE(qcd);
-    PMIX_RELEASE(cd);
+    if (PMIX_SUCCESS == status) {
+        PMIX_RELEASE(cd);
+    }
 }
 
 static void cred_cbfunc(pmix_status_t status,
@@ -2755,7 +2765,9 @@ static void cred_cbfunc(pmix_status_t status,
         PMIX_INFO_FREE(qcd->info, qcd->ninfo);
     }
     PMIX_RELEASE(qcd);
-    PMIX_RELEASE(cd);
+    if (PMIX_SUCCESS == status) {
+        PMIX_RELEASE(cd);
+    }
 }
 
 static void validate_cbfunc(pmix_status_t status,
@@ -2802,7 +2814,9 @@ static void validate_cbfunc(pmix_status_t status,
         PMIX_INFO_FREE(qcd->info, qcd->ninfo);
     }
     PMIX_RELEASE(qcd);
-    PMIX_RELEASE(cd);
+    if (PMIX_SUCCESS == status) {
+        PMIX_RELEASE(cd);
+    }
 }
 
 
