@@ -1298,8 +1298,12 @@ static void connection_handler(int sd, short args, void *cbdata)
           proc.rank = peer->info->pname.rank;
           rc = pmix_host_server.client_connected(&proc, peer->info->server_object,
                                                  NULL, NULL);
-          if (PMIX_SUCCESS != rc) {
+          if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
               PMIX_ERROR_LOG(rc);
+              info->proc_cnt--;
+              pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->index, NULL);
+              PMIX_RELEASE(peer);
+              goto error;
           }
       }
 

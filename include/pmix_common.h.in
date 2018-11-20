@@ -366,6 +366,8 @@ typedef uint32_t pmix_rank_t;
 
 
 /* query attributes */
+#define PMIX_QUERY_REFRESH_CACHE            "pmix.qry.rfsh"         // (bool) retrieve updated information from server
+                                                                    //        to update local cache
 #define PMIX_QUERY_NAMESPACES               "pmix.qry.ns"           // (char*) request a comma-delimited list of active nspaces
 #define PMIX_QUERY_JOB_STATUS               "pmix.qry.jst"          // (pmix_status_t) status of a specified currently executing job
 #define PMIX_QUERY_QUEUE_LIST               "pmix.qry.qlst"         // (char*) request a comma-delimited list of scheduler queues

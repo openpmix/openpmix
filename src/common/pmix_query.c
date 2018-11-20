@@ -52,6 +52,8 @@ static void query_cbfunc(struct pmix_peer_t *peer,
     pmix_status_t rc;
     pmix_shift_caddy_t *results;
     int cnt;
+    size_t n;
+    pmix_kval_t *kv;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:query cback from server");
@@ -84,6 +86,19 @@ static void query_cbfunc(struct pmix_peer_t *peer,
             PMIX_ERROR_LOG(rc);
             goto complete;
         }
+        /* locally cache the results */
+        for (n=0; n < results->ninfo; n++) {
+            kv = PMIX_NEW(pmix_kval_t);
+            kv->key = strdup(results->info[n].key);
+            PMIX_VALUE_CREATE(kv->value, 1);
+            PMIX_BFROPS_VALUE_XFER(rc, pmix_globals.mypeer,
+                                   kv->value, &results->info[n].value);
+
+            PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
+                              &pmix_globals.myid, PMIX_INTERNAL,
+                              kv);
+            PMIX_RELEASE(kv);  // maintain accounting
+        }
     }
 
   complete:
@@ -104,6 +119,9 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
     pmix_cmd_t cmd = PMIX_QUERY_CMD;
     pmix_buffer_t *msg;
     pmix_status_t rc;
+    pmix_cb_t cb;
+    size_t n, m;
+    bool refresh = false;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -124,6 +142,29 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
 
     if (0 == nqueries || NULL == queries) {
         return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* check the directives to see if they want us to refresh
+     * the local cached results */
+
+    if (!refresh) {
+        /* if a refresh isn't required, then first try a local
+         * "get" on the data to see if we already have it */
+        PMIX_CONSTRUCT(&cb, pmix_cb_t);
+        cb.proc = &pmix_globals.myid;
+        cb.copy = false;
+        for (n=0; n < nqueries; n++) {
+            for (m=0; NULL != queries[n].keys[m]; m++) {
+                cb.key = queries[n].keys[m];
+                pmix_output(0, "LOCAL CHECK FOR %s", cb.key);
+                PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+                pmix_output(0, "CHECK COMPLETE %s", PMIx_Error_string(rc));
+                if (PMIX_SUCCESS == rc) {
+                    pmix_output(0, "data %s found in internal storage", cb.key);
+                }
+
+            }
+        }
     }
 
     /* if we are the server, then we just issue the query and

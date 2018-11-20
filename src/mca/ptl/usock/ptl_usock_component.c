@@ -721,7 +721,7 @@ static void connection_handler(int sd, short args, void *cbdata)
         (void)strncpy(proc.nspace, psave->info->pname.nspace, PMIX_MAX_NSLEN);
         proc.rank = psave->info->pname.rank;
         rc = pmix_host_server.client_connected(&proc, psave->info->server_object, NULL, NULL);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
             PMIX_ERROR_LOG(rc);
             info->proc_cnt--;
             PMIX_RELEASE(info);

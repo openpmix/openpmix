@@ -268,6 +268,7 @@ PMIX_CLASS_DECLARATION(pmix_server_trkr_t);
        pmix_evhdlr_reg_cbfunc_t evregcbfn;
        pmix_op_cbfunc_t opcbfn;
        pmix_evhdlr_reg_cbfunc_t errregcbfn;
+       pmix_modex_cbfunc_t modexcbfunc;
     } cbfunc;
     void *cbdata;
     size_t ref;
