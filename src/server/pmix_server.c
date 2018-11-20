@@ -2995,11 +2995,15 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
             pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
             proc.rank = peer->info->pname.rank;
             /* now tell the host server */
-            if (PMIX_SUCCESS == (rc = pmix_host_server.client_finalized(&proc, peer->info->server_object,
-                                                                        op_cbfunc2, cd))) {
+            rc = pmix_host_server.client_finalized(&proc, peer->info->server_object,
+                                                   op_cbfunc2, cd);
+            if (PMIX_SUCCESS == rc) {
                 /* don't reply to them ourselves - we will do so when the host
                  * server calls us back */
                 return rc;
+            } else if (PMIX_OPERATION_SUCCEEDED == rc) {
+                /* they did it atomically */
+                rc = PMIX_SUCCESS;
             }
             /* if the call doesn't succeed (e.g., they provided the stub
              * but return NOT_SUPPORTED), then the callback function
@@ -3007,7 +3011,7 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
              * any lingering references to this peer and answer
              * the client. Thus, we call the callback function ourselves
              * in this case */
-            op_cbfunc2(PMIX_SUCCESS, cd);
+            op_cbfunc2(rc, cd);
             /* return SUCCESS as the cbfunc generated the return msg
              * and released the cd object */
             return PMIX_SUCCESS;
@@ -3064,14 +3068,18 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
     if (PMIX_CONNECTNB_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
         rc = pmix_server_connect(cd, buf, cnct_cbfunc);
-        PMIX_RELEASE(cd);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(cd);
+        }
         return rc;
     }
 
     if (PMIX_DISCONNECTNB_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
         rc = pmix_server_disconnect(cd, buf, discnct_cbfunc);
-        PMIX_RELEASE(cd);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(cd);
+        }
         return rc;
     }
 
