@@ -1112,14 +1112,16 @@ static void spcbfunc(pmix_status_t status,
     if (PMIX_SUCCESS == status && PMIX_FWD_NO_CHANNELS != cd->channels) {
          /* record the request */
         req = PMIX_NEW(pmix_iof_req_t);
-        if (NULL != req) {
-            PMIX_RETAIN(cd->peer);
-            req->peer = cd->peer;
-            req->pname.nspace = strdup(nspace);
-            req->pname.rank = PMIX_RANK_WILDCARD;
-            req->channels = cd->channels;
-            pmix_list_append(&pmix_globals.iof_requests, &req->super);
+        if (NULL == req) {
+            status = PMIX_ERR_NOMEM;
+            goto cleanup;
         }
+        PMIX_RETAIN(cd->peer);
+        req->peer = cd->peer;
+        req->pname.nspace = strdup(nspace);
+        req->pname.rank = PMIX_RANK_WILDCARD;
+        req->channels = cd->channels;
+        pmix_list_append(&pmix_globals.iof_requests, &req->super);
         /* process any cached IO */
         for (i=0; i < PMIX_IOF_HOTEL_SIZE; i++) {
             pmix_hotel_knock(&pmix_server_globals.iof, PMIX_IOF_HOTEL_SIZE-i-1, (void**)&occupant);
@@ -1178,6 +1180,7 @@ static void spcbfunc(pmix_status_t status,
         }
     }
 
+  cleanup:
     /* cleanup the caddy */
     if (NULL != cd->info) {
         PMIX_INFO_FREE(cd->info, cd->ninfo);
@@ -1677,7 +1680,7 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
 
     /* check the directives */
     for (n=0; n < ninfo; n++) {
-        if (0 == strncmp(info[n].key, PMIX_EVENT_AFFECTED_PROC, PMIX_MAX_KEYLEN)) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_AFFECTED_PROC)) {
             if (NULL != affected) {
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                 rc = PMIX_ERR_BAD_PARAM;
@@ -1686,7 +1689,7 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
             naffected = 1;
             PMIX_PROC_CREATE(affected, naffected);
             memcpy(affected, info[n].value.data.proc, sizeof(pmix_proc_t));
-        } else if (0 == strncmp(info[n].key, PMIX_EVENT_AFFECTED_PROCS, PMIX_MAX_KEYLEN)) {
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_AFFECTED_PROCS)) {
             if (NULL != affected) {
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                 rc = PMIX_ERR_BAD_PARAM;
