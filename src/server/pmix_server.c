@@ -2909,6 +2909,7 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
     pmix_buffer_t *reply;
     pmix_regevents_info_t *reginfo;
     pmix_peer_events_info_t *prev;
+    pmix_iof_req_t *req, *nxt;
 
     /* retrieve the cmd */
     cnt = 1;
@@ -2993,6 +2994,15 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
                     PMIX_RELEASE(prev);
                     break;
                 }
+            }
+        }
+        /* since the client is finalizing, remove them from any IOF
+         * registrations they may still have on our list */
+        PMIX_LIST_FOREACH_SAFE(req, nxt, &pmix_globals.iof_requests, pmix_iof_req_t) {
+            if (PMIX_CHECK_NSPACE(req->peer->info->pname.nspace, peer->info->pname.nspace) &&
+                req->peer->info->pname.rank == peer->info->pname.rank) {
+                pmix_list_remove_item(&pmix_globals.iof_requests, &req->super);
+                PMIX_RELEASE(req);
             }
         }
         /* turn off the recv event - we shouldn't hear anything
