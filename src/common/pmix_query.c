@@ -154,13 +154,7 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
         for (n=0; n < nqueries; n++) {
             for (m=0; NULL != queries[n].keys[m]; m++) {
                 cb.key = queries[n].keys[m];
-                pmix_output(0, "LOCAL CHECK FOR %s", cb.key);
                 PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-                pmix_output(0, "CHECK COMPLETE %s", PMIx_Error_string(rc));
-                if (PMIX_SUCCESS == rc) {
-                    pmix_output(0, "data %s found in internal storage", cb.key);
-                }
-
             }
         }
     }
