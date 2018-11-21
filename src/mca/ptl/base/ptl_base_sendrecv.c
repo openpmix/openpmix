@@ -89,7 +89,8 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
     }
     CLOSE_THE_SOCKET(peer->sd);
 
-    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
+    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PROC_IS_TOOL(pmix_globals.mypeer)) {
         /* if I am a server, then we need to ensure that
          * we properly account for the loss of this client
          * from any local collectives in which it was
