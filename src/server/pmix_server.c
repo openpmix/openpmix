@@ -2179,7 +2179,7 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
     pmix_shift_caddy_t *scd = (pmix_shift_caddy_t*)cbdata;
     pmix_server_trkr_t *tracker = scd->tracker;
     pmix_buffer_t xfer, *reply;
-    pmix_server_caddy_t *cd;
+    pmix_server_caddy_t *cd, *nxt;
     pmix_status_t rc = PMIX_SUCCESS, ret;
     pmix_nspace_caddy_t *nptr;
     pmix_list_t nslist;
@@ -2237,7 +2237,7 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
 
   finish_collective:
     /* loop across all procs in the tracker, sending them the reply */
-    PMIX_LIST_FOREACH(cd, &tracker->local_cbs, pmix_server_caddy_t) {
+    PMIX_LIST_FOREACH_SAFE(cd, nxt, &tracker->local_cbs, pmix_server_caddy_t) {
         reply = PMIX_NEW(pmix_buffer_t);
         if (NULL == reply) {
             rc = PMIX_ERR_NOMEM;
@@ -2256,6 +2256,9 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
         if (PMIX_SUCCESS != rc) {
             PMIX_RELEASE(reply);
         }
+        /* remove this entry */
+        pmix_list_remove_item(&tracker->local_cbs, &cd->super);
+        PMIX_RELEASE(cd);
     }
 
   cleanup:
@@ -2270,6 +2273,10 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
 
     pmix_list_remove_item(&pmix_server_globals.collectives, &tracker->super);
     PMIX_RELEASE(tracker);
+    if (NULL != tracker) {
+        /* not done with it yet - restore it to the list */
+        pmix_list_append(&pmix_server_globals.collectives, &tracker->super);
+    }
     PMIX_LIST_DESTRUCT(&nslist);
 
     /* we are done */
