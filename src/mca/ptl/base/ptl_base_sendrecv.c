@@ -80,6 +80,8 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
         peer->recv_msg = NULL;
     }
     CLOSE_THE_SOCKET(peer->sd);
+    /* mark the peer as "gone" */
+    peer->finalized = true;
 
     if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
         /* if I am a server, then we need to ensure that
