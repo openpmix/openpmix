@@ -2011,6 +2011,10 @@ static void connection_cleanup(int sd, short args, void *cbdata)
 {
     pmix_server_caddy_t *cd = (pmix_server_caddy_t*)cbdata;
 
+    /* ensure that we know the peer has finalized else we
+     * will generate an event - yes, it should have been
+     * done, but it is REALLY important that it be set */
+    cd->peer->finalized = true;
     pmix_ptl_base_lost_connection(cd->peer, PMIX_SUCCESS);
     /* cleanup the caddy */
     PMIX_RELEASE(cd);
@@ -2048,10 +2052,6 @@ static void op_cbfunc2(pmix_status_t status, void *cbdata)
         PMIX_RELEASE(reply);
     }
 
-    /* ensure that we know the peer has finalized else we
-     * will generate an event - yes, it should have been
-     * done, but it is REALLY important that it be set */
-    cd->peer->finalized = true;
     /* cleanup any lingering references to this peer - note
      * that we cannot call the lost_connection function
      * directly as we need the connection to still

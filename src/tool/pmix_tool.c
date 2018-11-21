@@ -1155,6 +1155,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
         /* wait for the ack to return */
         PMIX_WAIT_THREAD(&tev.lock);
         PMIX_DESTRUCT_LOCK(&tev.lock);
+
         if (tev.active) {
             pmix_event_del(&tev.ev);
         }
@@ -1195,6 +1196,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
                 PMIX_RELEASE(peer);
             }
         }
+
         PMIX_DESTRUCT(&pmix_server_globals.clients);
         PMIX_LIST_DESTRUCT(&pmix_server_globals.collectives);
         PMIX_LIST_DESTRUCT(&pmix_server_globals.remote_pnd);
@@ -1212,6 +1214,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
 
     /* finalize the class/object system */
     pmix_class_finalize();
+
     return PMIX_SUCCESS;
 }
 
