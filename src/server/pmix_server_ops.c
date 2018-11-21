@@ -1950,7 +1950,10 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
                 break;
             }
         }
-        PMIX_SERVER_QUEUE_REPLY(peer, 0, relay);
+        PMIX_SERVER_QUEUE_REPLY(ret, peer, 0, relay);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_RELEASE(relay);
+        }
     }
     if (!enviro_events) {
         if (NULL != codes) {
@@ -3232,7 +3235,10 @@ static void grp_timeout(int sd, short args, void *cbdata)
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "server:grp_timeout reply being sent to %s:%u",
                         cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
-    PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
+    PMIX_SERVER_QUEUE_REPLY(ret, cd->peer, cd->hdr.tag, reply);
+    if (PMIX_SUCCESS != ret) {
+        PMIX_RELEASE(reply);
+    }
 
   error:
     cd->event_active = false;
@@ -3299,7 +3305,10 @@ static void _grpcbfunc(int sd, short argc, void *cbdata)
         pmix_output_verbose(2, pmix_server_globals.connect_output,
                             "server:grp_cbfunc reply being sent to %s:%u",
                             cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
-        PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
+        PMIX_SERVER_QUEUE_REPLY(ret, cd->peer, cd->hdr.tag, reply);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_RELEASE(reply);
+        }
     }
 
     /* remove the tracker from the list */
@@ -3675,6 +3684,7 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd,
 /*****    INSTANCE SERVER LIBRARY CLASSES    *****/
 static void tcon(pmix_server_trkr_t *t)
 {
+    t->event_active = false;
     t->id = NULL;
     memset(t->pname.nspace, 0, PMIX_MAX_NSLEN+1);
     t->pname.rank = PMIX_RANK_UNDEF;

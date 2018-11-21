@@ -1631,7 +1631,8 @@ static void _iofdeliver(int sd, short args, void *cbdata)
             continue;
         }
         /* never forward back to the source! This can happen if the source
-         * is a launcher */
+         * is a launcher - also, never forward to a peer that is no
+         * longer with us */
         if (NULL == req->peer->info || req->peer->finalized) {
             continue;
         }
@@ -2109,7 +2110,10 @@ static void _spcb(int sd, short args, void *cbdata)
     /* the function that created the server_caddy did a
      * retain on the peer, so we don't have to worry about
      * it still being present - tell the originator the result */
-    PMIX_SERVER_QUEUE_REPLY(cd->cd->peer, cd->cd->hdr.tag, reply);
+    PMIX_SERVER_QUEUE_REPLY(rc, cd->cd->peer, cd->cd->hdr.tag, reply);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(reply);
+    }
 
   cleanup:
     /* cleanup */
@@ -2169,7 +2173,10 @@ static void lookup_cbfunc(pmix_status_t status, pmix_pdata_t pdata[], size_t nda
     /* the function that created the server_caddy did a
      * retain on the peer, so we don't have to worry about
      * it still being present - tell the originator the result */
-    PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
+    PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(reply);
+    }
     /* cleanup */
     PMIX_RELEASE(cd);
 }
@@ -2184,7 +2191,7 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
     pmix_shift_caddy_t *scd = (pmix_shift_caddy_t*)cbdata;
     pmix_server_trkr_t *tracker = scd->tracker;
     pmix_buffer_t xfer, *reply;
-    pmix_server_caddy_t *cd;
+    pmix_server_caddy_t *cd, *nxt;
     pmix_status_t rc = PMIX_SUCCESS, ret;
     pmix_nspace_caddy_t *nptr;
     pmix_list_t nslist;
@@ -2242,7 +2249,7 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
 
   finish_collective:
     /* loop across all procs in the tracker, sending them the reply */
-    PMIX_LIST_FOREACH(cd, &tracker->local_cbs, pmix_server_caddy_t) {
+    PMIX_LIST_FOREACH_SAFE(cd, nxt, &tracker->local_cbs, pmix_server_caddy_t) {
         reply = PMIX_NEW(pmix_buffer_t);
         if (NULL == reply) {
             rc = PMIX_ERR_NOMEM;
@@ -2257,7 +2264,13 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
         pmix_output_verbose(2, pmix_server_globals.base_output,
                             "server:modex_cbfunc reply being sent to %s:%u",
                             cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
-        PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
+        PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(reply);
+        }
+        /* remove this entry */
+        pmix_list_remove_item(&tracker->local_cbs, &cd->super);
+        PMIX_RELEASE(cd);
     }
 
   cleanup:
@@ -2293,6 +2306,25 @@ static void modex_cbfunc(pmix_status_t status, const char *data, size_t ndata, v
     if (NULL == tracker) {
         /* nothing to do - but be sure to give them
          * a release if they want it */
+        if (NULL != relfn) {
+            relfn(relcbd);
+        }
+        return;
+    }
+
+    /* if all local cbs have been removed, then this is
+     * a "stale" tracker being returned to us by the
+     * host - i.e., one or more of the local procs
+     * died during the collective and so we locally
+     * cleaned up. In this case, just release the
+     * tracker to avoid memory leaks */
+    if (0 == pmix_list_get_size(&tracker->local_cbs)) {
+        /* if the timer is active, clear it */
+        if (tracker->event_active) {
+            pmix_event_del(&tracker->ev);
+        }
+        PMIX_RELEASE(tracker);
+        /* give them a release if they want it */
         if (NULL != relfn) {
             relfn(relcbd);
         }
@@ -2363,7 +2395,10 @@ static void get_cbfunc(pmix_status_t status, const char *data, size_t ndata, voi
     pmix_output_hexdump(10, pmix_server_globals.base_output,
                         reply->base_ptr, (reply->bytes_used < 256 ? reply->bytes_used : 256));
 
-    PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
+    PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(reply);
+    }
 
  cleanup:
     /* if someone wants a release, give it to them */
@@ -2503,7 +2538,10 @@ static void _cnct(int sd, short args, void *cbdata)
         pmix_output_verbose(2, pmix_server_globals.base_output,
                             "server:cnct_cbfunc reply being sent to %s:%u",
                             cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
-        PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
+        PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(reply);
+        }
     }
 
   cleanup:
@@ -2527,6 +2565,21 @@ static void cnct_cbfunc(pmix_status_t status, void *cbdata)
 
     if (NULL == tracker) {
         /* nothing to do */
+        return;
+    }
+
+    /* if all local cbs have been removed, then this is
+     * a "stale" tracker being returned to us by the
+     * host - i.e., one or more of the local procs
+     * died during the collective and so we locally
+     * cleaned up. In this case, just release the
+     * tracker to avoid memory leaks */
+    if (0 == pmix_list_get_size(&tracker->local_cbs)) {
+        /* if the timer is active, clear it */
+        if (tracker->event_active) {
+            pmix_event_del(&tracker->ev);
+        }
+        PMIX_RELEASE(tracker);
         return;
     }
 
@@ -2570,7 +2623,10 @@ static void _discnct(int sd, short args, void *cbdata)
         pmix_output_verbose(2, pmix_server_globals.base_output,
                             "server:cnct_cbfunc reply being sent to %s:%u",
                             cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
-        PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
+        PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(reply);
+        }
     }
 
   cleanup:
@@ -2597,6 +2653,20 @@ static void discnct_cbfunc(pmix_status_t status, void *cbdata)
         return;
     }
 
+    /* if all local cbs have been removed, then this is
+     * a "stale" tracker being returned to us by the
+     * host - i.e., one or more of the local procs
+     * died during the collective and so we locally
+     * cleaned up. In this case, just release the
+     * tracker to avoid memory leaks */
+    if (0 == pmix_list_get_size(&tracker->local_cbs)) {
+        /* if the timer is active, clear it */
+        if (tracker->event_active) {
+            pmix_event_del(&tracker->ev);
+        }
+        PMIX_RELEASE(tracker);
+        return;
+    }
     /* need to thread-shift this callback as it accesses global data */
     scd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scd) {
@@ -2629,7 +2699,10 @@ static void regevents_cbfunc(pmix_status_t status, void *cbdata)
         PMIX_ERROR_LOG(rc);
     }
     // send reply
-    PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
+    PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(reply);
+    }
     PMIX_RELEASE(cd);
 }
 
@@ -2653,7 +2726,10 @@ static void notifyerror_cbfunc (pmix_status_t status, void *cbdata)
         PMIX_ERROR_LOG(rc);
     }
     // send reply
-    PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
+    PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(reply);
+    }
     PMIX_RELEASE(cd);
 }
 
@@ -2698,7 +2774,11 @@ static void query_cbfunc(pmix_status_t status,
 
   complete:
     // send reply
-    PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
+    PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
+        if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(reply);
+    }
+
     // cleanup
     if (NULL != qcd->queries) {
         PMIX_QUERY_FREE(qcd->queries, qcd->nqueries);
@@ -2761,7 +2841,11 @@ static void cred_cbfunc(pmix_status_t status,
 
   complete:
     // send reply
-    PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
+    PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
+        if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(reply);
+    }
+
     // cleanup
     if (NULL != qcd->info) {
         PMIX_INFO_FREE(qcd->info, qcd->ninfo);
@@ -2808,7 +2892,10 @@ static void validate_cbfunc(pmix_status_t status,
 
   complete:
     // send reply
-    PMIX_SERVER_QUEUE_REPLY(cd->peer, cd->hdr.tag, reply);
+    PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(reply);
+    }
     // cleanup
     if (NULL != qcd->info) {
         PMIX_INFO_FREE(qcd->info, qcd->ninfo);
@@ -2850,7 +2937,10 @@ static void _iofreg(int sd, short args, void *cbdata)
     pmix_output_verbose(2, pmix_server_globals.iof_output,
                         "server:_iofreg reply being sent to %s:%u",
                         scd->peer->info->pname.nspace, scd->peer->info->pname.rank);
-    PMIX_SERVER_QUEUE_REPLY(scd->peer, scd->hdr.tag, reply);
+    PMIX_SERVER_QUEUE_REPLY(rc, scd->peer, scd->hdr.tag, reply);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(reply);
+    }
 
   cleanup:
     /* release the cached info */
@@ -2933,7 +3023,10 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
             PMIX_ERROR_LOG(rc);
             return rc;
         }
-        PMIX_SERVER_QUEUE_REPLY(peer, tag, reply);
+        PMIX_SERVER_QUEUE_REPLY(rc, peer, tag, reply);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(reply);
+        }
         peer->nptr->ndelivered++;
         return PMIX_SUCCESS;
     }
@@ -2958,7 +3051,10 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
             }
-            PMIX_SERVER_QUEUE_REPLY(peer, tag, reply);
+            PMIX_SERVER_QUEUE_REPLY(rc, peer, tag, reply);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_RELEASE(reply);
+            }
         }
         return PMIX_SUCCESS; // don't reply twice
     }
@@ -2982,8 +3078,6 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
     if (PMIX_FINALIZE_CMD == cmd) {
         pmix_output_verbose(2, pmix_server_globals.base_output,
                             "recvd FINALIZE");
-        /* mark that this peer called finalize */
-        peer->finalized = true;
         peer->nptr->nfinalized++;
         /* since the client is finalizing, remove them from any event
          * registrations they may still have on our list */
@@ -3245,6 +3339,9 @@ void pmix_server_message_handler(struct pmix_peer_t *pr,
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
         }
-        PMIX_SERVER_QUEUE_REPLY(peer, hdr->tag, reply);
+        PMIX_SERVER_QUEUE_REPLY(rc, peer, hdr->tag, reply);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(reply);
+        }
     }
 }

@@ -283,6 +283,8 @@ PMIX_CLASS_DECLARATION(pmix_query_caddy_t);
  * - instanced in pmix_server_ops.c */
 typedef struct {
     pmix_list_item_t super;
+    pmix_event_t ev;
+    bool event_active;
     char *id;                       // string identifier for the collective
     pmix_cmd_t type;
     pmix_proc_t pname;
