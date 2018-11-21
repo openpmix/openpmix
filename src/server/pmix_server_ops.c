@@ -1877,7 +1877,10 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
                 break;
             }
         }
-        PMIX_SERVER_QUEUE_REPLY(peer, 0, relay);
+        PMIX_SERVER_QUEUE_REPLY(ret, peer, 0, relay);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_RELEASE(relay);
+        }
     }
     if (!enviro_events) {
         if (NULL != codes) {
