@@ -109,14 +109,20 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
                  * complete */
                 if (PMIX_FENCENB_CMD == trk->type) {
                     if (NULL != trk->modexcbfunc) {
+                        /* protect the tracker - the host may still call back on it */
+                        PMIX_RETAIN(trk);
                         trk->modexcbfunc(PMIX_ERR_LOST_CONNECTION_TO_CLIENT, NULL, 0, trk, NULL, NULL);
                     }
                 } else if (PMIX_CONNECTNB_CMD == trk->type) {
                     if (NULL != trk->op_cbfunc) {
+                        /* protect the tracker - the host may still call back on it */
+                        PMIX_RETAIN(trk);
                         trk->op_cbfunc(PMIX_ERR_LOST_CONNECTION_TO_CLIENT, trk);
                     }
                 } else if (PMIX_DISCONNECTNB_CMD == trk->type) {
                     if (NULL != trk->op_cbfunc) {
+                        /* protect the tracker - the host may still call back on it */
+                        PMIX_RETAIN(trk);
                         trk->op_cbfunc(PMIX_ERR_LOST_CONNECTION_TO_CLIENT, trk);
                     }
                 }
