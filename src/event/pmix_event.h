@@ -192,15 +192,22 @@ void pmix_event_timeout_cb(int fd, short flags, void *arg);
             ch = PMIX_NEW(pmix_event_chain_t);                                      \
             ch->status = (e);                                                       \
             ch->range = (r);                                                        \
-            (void)strncpy(ch->source.nspace,                                        \
-                          (p)->nptr->nspace,                                        \
-                          PMIX_MAX_NSLEN);                                          \
-            ch->source.rank = (p)->info->pname.rank;                                \
-            ch->ninfo = 0;                                                          \
-            ch->nallocated = 2;                                                     \
+            PMIX_LOAD_PROCID(&ch->source, (p)->nptr->nspace,                        \
+                             (p)->info->pname.rank);                                \
+            PMIX_PROC_CREATE(ch->affected, 1);                                      \
+            ch->naffected = 1;                                                      \
+            PMIX_LOAD_PROCID(ch->affected, (p)->nptr->nspace,                       \
+                             (p)->info->pname.rank);                                \
+            PMIX_PROC_CREATE(ch->targets, 1);                                       \
+            ch->ntargets = 1;                                                       \
+            PMIX_LOAD_PROCID(ch->targets, (p)->nptr->nspace, PMIX_RANK_WILDCARD);   \
+            ch->ninfo = 1;                                                          \
+            ch->nallocated = 3;                                                     \
             ch->final_cbfunc = (f);                                                 \
             ch->final_cbdata = ch;                                                  \
             PMIX_INFO_CREATE(ch->info, ch->nallocated);                             \
+            /* mark for non-default handlers only */                                \
+            PMIX_INFO_LOAD(&ch->info[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);  \
             /* cache it */                                                          \
             pmix_list_append(&pmix_globals.cached_events, &ch->super);              \
             ch->timer_active = true;                                                \
