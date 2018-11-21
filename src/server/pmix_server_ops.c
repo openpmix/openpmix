@@ -3115,6 +3115,8 @@ pmix_status_t pmix_server_iofstdin(pmix_peer_t *peer,
 /*****    INSTANCE SERVER LIBRARY CLASSES    *****/
 static void tcon(pmix_server_trkr_t *t)
 {
+    t->event_active = false;
+    t->id = NULL;
     memset(t->pname.nspace, 0, PMIX_MAX_NSLEN+1);
     t->pname.rank = PMIX_RANK_UNDEF;
     t->pcs = NULL;
