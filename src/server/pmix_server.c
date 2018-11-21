@@ -882,6 +882,11 @@ static void _deregister_client(int sd, short args, void *cbdata)
             if (NULL != (peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, info->peerid))) {
                 pmix_psensor.stop(peer, NULL);
             }
+            /* ensure we close the socket to this peer so we don't
+             * generate "connection lost" events should it be
+             * subsequently "killed" by the host */
+            CLOSE_THE_SOCKET(peer->sd);
+
             pmix_list_remove_item(&nptr->ranks, &info->super);
             PMIX_RELEASE(info);
             break;

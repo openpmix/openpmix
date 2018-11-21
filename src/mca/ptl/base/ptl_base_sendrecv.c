@@ -153,6 +153,9 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
         }
         /* now decrease the refcount - might actually free the object */
         PMIX_RELEASE(peer->info);
+        /* mark the peer as "gone" since a release doesn't guarantee
+         * that the peer object doesn't persist */
+        peer->finalized = true;
 
         /* Release peer info */
         PMIX_RELEASE(peer);

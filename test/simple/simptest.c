@@ -465,7 +465,6 @@ int main(int argc, char **argv)
             pmix_list_append(&children, &child->super);
         }
     }
-    free(executable);
     pmix_argv_free(client_argv);
     pmix_argv_free(client_env);
 
@@ -477,14 +476,20 @@ int main(int argc, char **argv)
         nanosleep(&ts, NULL);
     }
 
-    /* see if anyone exited with non-zero status */
-    n=0;
-    PMIX_LIST_FOREACH(child, &children, wait_tracker_t) {
-        if (0 != child->exit_code) {
-            fprintf(stderr, "Child %d [%d] exited with status %d - test FAILED\n", n, child->pid, child->exit_code);
-        }
-        ++n;
+    /* see if anyone exited with non-zero status unless the test
+     * was expected to do so */
+    if (NULL == strstr(executable, "simpdie")) {
+      n=0;
+      PMIX_LIST_FOREACH(child, &children, wait_tracker_t) {
+          if (0 != child->exit_code) {
+              fprintf(stderr, "Child %d [%d] exited with status %d - test FAILED\n", n, child->pid, child->exit_code);
+          }
+          ++n;
+      }
+    } else if (1 == exit_code) {
+      exit_code = 0;
     }
+    free(executable);
 
     /* try notifying ourselves */
     ninfo = 3;
