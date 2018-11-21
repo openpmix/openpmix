@@ -2285,10 +2285,6 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
 
     pmix_list_remove_item(&pmix_server_globals.collectives, &tracker->super);
     PMIX_RELEASE(tracker);
-    if (NULL != tracker) {
-        /* not done with it yet - restore it to the list */
-        pmix_list_append(&pmix_server_globals.collectives, &tracker->super);
-    }
     PMIX_LIST_DESTRUCT(&nslist);
 
     /* we are done */
@@ -2310,6 +2306,25 @@ static void modex_cbfunc(pmix_status_t status, const char *data, size_t ndata, v
     if (NULL == tracker) {
         /* nothing to do - but be sure to give them
          * a release if they want it */
+        if (NULL != relfn) {
+            relfn(relcbd);
+        }
+        return;
+    }
+
+    /* if all local cbs have been removed, then this is
+     * a "stale" tracker being returned to us by the
+     * host - i.e., one or more of the local procs
+     * died during the collective and so we locally
+     * cleaned up. In this case, just release the
+     * tracker to avoid memory leaks */
+    if (0 == pmix_list_get_size(&tracker->local_cbs)) {
+        /* if the timer is active, clear it */
+        if (tracker->event_active) {
+            pmix_event_del(&tracker->ev);
+        }
+        PMIX_RELEASE(tracker);
+        /* give them a release if they want it */
         if (NULL != relfn) {
             relfn(relcbd);
         }
@@ -2553,6 +2568,21 @@ static void cnct_cbfunc(pmix_status_t status, void *cbdata)
         return;
     }
 
+    /* if all local cbs have been removed, then this is
+     * a "stale" tracker being returned to us by the
+     * host - i.e., one or more of the local procs
+     * died during the collective and so we locally
+     * cleaned up. In this case, just release the
+     * tracker to avoid memory leaks */
+    if (0 == pmix_list_get_size(&tracker->local_cbs)) {
+        /* if the timer is active, clear it */
+        if (tracker->event_active) {
+            pmix_event_del(&tracker->ev);
+        }
+        PMIX_RELEASE(tracker);
+        return;
+    }
+
     /* need to thread-shift this callback as it accesses global data */
     scd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scd) {
@@ -2623,6 +2653,20 @@ static void discnct_cbfunc(pmix_status_t status, void *cbdata)
         return;
     }
 
+    /* if all local cbs have been removed, then this is
+     * a "stale" tracker being returned to us by the
+     * host - i.e., one or more of the local procs
+     * died during the collective and so we locally
+     * cleaned up. In this case, just release the
+     * tracker to avoid memory leaks */
+    if (0 == pmix_list_get_size(&tracker->local_cbs)) {
+        /* if the timer is active, clear it */
+        if (tracker->event_active) {
+            pmix_event_del(&tracker->ev);
+        }
+        PMIX_RELEASE(tracker);
+        return;
+    }
     /* need to thread-shift this callback as it accesses global data */
     scd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scd) {

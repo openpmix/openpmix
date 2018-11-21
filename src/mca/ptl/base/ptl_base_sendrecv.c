@@ -55,6 +55,13 @@ static void _notify_complete(pmix_status_t status, void *cbdata)
     PMIX_RELEASE(chain);
 }
 
+static void _timeout(int sd, short args, void *cbdata)
+{
+    pmix_server_trkr_t *trk = (pmix_server_trkr_t*)cbdata;
+
+    PMIX_RELEASE(trk);
+}
+
 void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
 {
     pmix_server_trkr_t *trk;
@@ -65,6 +72,7 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
     pmix_ptl_posted_recv_t *rcv;
     pmix_buffer_t buf;
     pmix_ptl_hdr_t hdr;
+    struct timeval tv = {1200, 0};
 
     /* stop all events */
     if (peer->recv_ev_active) {
@@ -111,18 +119,36 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
                     if (NULL != trk->modexcbfunc) {
                         /* protect the tracker - the host may still call back on it */
                         PMIX_RETAIN(trk);
+                        /* set a LONG timeout so we avoid a memory leak if
+                         * the host never calls back */
+                        pmix_event_evtimer_set(pmix_globals.evbase, &trk->ev,
+                                               _timeout, trk);
+                        pmix_event_evtimer_add(&trk->ev, &tv);
+                        trk->event_active = true;
                         trk->modexcbfunc(PMIX_ERR_LOST_CONNECTION_TO_CLIENT, NULL, 0, trk, NULL, NULL);
                     }
                 } else if (PMIX_CONNECTNB_CMD == trk->type) {
                     if (NULL != trk->op_cbfunc) {
                         /* protect the tracker - the host may still call back on it */
                         PMIX_RETAIN(trk);
+                        /* set a LONG timeout so we avoid a memory leak if
+                         * the host never calls back */
+                        pmix_event_evtimer_set(pmix_globals.evbase, &trk->ev,
+                                               _timeout, trk);
+                        pmix_event_evtimer_add(&trk->ev, &tv);
+                        trk->event_active = true;
                         trk->op_cbfunc(PMIX_ERR_LOST_CONNECTION_TO_CLIENT, trk);
                     }
                 } else if (PMIX_DISCONNECTNB_CMD == trk->type) {
                     if (NULL != trk->op_cbfunc) {
                         /* protect the tracker - the host may still call back on it */
                         PMIX_RETAIN(trk);
+                        /* set a LONG timeout so we avoid a memory leak if
+                         * the host never calls back */
+                        pmix_event_evtimer_set(pmix_globals.evbase, &trk->ev,
+                                               _timeout, trk);
+                        pmix_event_evtimer_add(&trk->ev, &tv);
+                        trk->event_active = true;
                         trk->op_cbfunc(PMIX_ERR_LOST_CONNECTION_TO_CLIENT, trk);
                     }
                 }
