@@ -1076,6 +1076,10 @@ static void _deregister_client(int sd, short args, void *cbdata)
                     pmix_pnet.child_finalized(&cd->proc);
                     pmix_psensor.stop(peer, NULL);
                 }
+                /* ensure we close the socket to this peer so we don't
+                 * generate "connection lost" events should it be
+                 * subsequently "killed" by the host */
+                CLOSE_THE_SOCKET(peer->sd);
             }
             if (nptr->nlocalprocs == nptr->nfinalized) {
                 pmix_pnet.local_app_finalized(nptr);
