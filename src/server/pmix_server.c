@@ -2192,7 +2192,8 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
     PMIX_ACQUIRE_OBJECT(scd);
 
     if (NULL == tracker) {
-        /* give them a release if they want it */
+        /* give them a release if they want it - this should
+         * never happen, but protect against the possibility */
         if (NULL != scd->cbfunc.relfn) {
             scd->cbfunc.relfn(scd->cbdata);
         }
@@ -2200,24 +2201,12 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
         return;
     }
 
-    /* if all local cbs have been removed, then this is
-     * a "stale" tracker being returned to us by the
-     * host - i.e., one or more of the local procs
-     * died during the collective and so we locally
-     * cleaned up. In this case, just release the
-     * tracker to avoid memory leaks */
-    if (0 == pmix_list_get_size(&tracker->local_cbs)) {
-        /* if the timer is active, clear it */
-        if (tracker->event_active) {
-            pmix_event_del(&tracker->ev);
-        }
-        PMIX_RELEASE(tracker);
-        /* give them a release if they want it */
-        if (NULL != scd->cbfunc.relfn) {
-            scd->cbfunc.relfn(scd->cbdata);
-        }
-        PMIX_RELEASE(scd);
-        return;
+    /* if we get here, then there are processes waiting
+     * for a response */
+
+    /* if the timer is active, clear it */
+    if (tracker->event_active) {
+        pmix_event_del(&tracker->ev);
     }
 
     /* pass the blobs being returned */
@@ -2304,7 +2293,12 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
     xfer.bytes_used = 0;
     PMIX_DESTRUCT(&xfer);
 
-    pmix_list_remove_item(&pmix_server_globals.collectives, &tracker->super);
+    if (!tracker->lost_connection) {
+        /* if this tracker has gone thru the "lost_connection" procedure,
+         * then it has already been removed from the list - otherwise,
+         * remove it now */
+        pmix_list_remove_item(&pmix_server_globals.collectives, &tracker->super);
+    }
     PMIX_RELEASE(tracker);
     PMIX_LIST_DESTRUCT(&nslist);
 
@@ -2352,7 +2346,10 @@ static void get_cbfunc(pmix_status_t status, const char *data, size_t ndata, voi
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "server:get_cbfunc called with %d bytes", (int)ndata);
 
-    /* no need to thread-shift here as no global data is accessed */
+    /* no need to thread-shift here as no global data is accessed
+     * and we are called from another internal function
+     * (see pmix_server_get.c:pmix_pending_resolve) that
+     * has already been thread-shifted */
 
     if (NULL == cd) {
         /* nothing to do - but be sure to give them
@@ -2423,19 +2420,12 @@ static void _cnct(int sd, short args, void *cbdata)
         return;
     }
 
-    /* if all local cbs have been removed, then this is
-     * a "stale" tracker being returned to us by the
-     * host - i.e., one or more of the local procs
-     * died during the collective and so we locally
-     * cleaned up. In this case, just release the
-     * tracker to avoid memory leaks */
-    if (0 == pmix_list_get_size(&tracker->local_cbs)) {
-        /* if the timer is active, clear it */
-        if (tracker->event_active) {
-            pmix_event_del(&tracker->ev);
-        }
-        PMIX_RELEASE(tracker);
-        return;
+    /* if we get here, then there are processes waiting
+     * for a response */
+
+    /* if the timer is active, clear it */
+    if (tracker->event_active) {
+        pmix_event_del(&tracker->ev);
     }
 
     /* find the unique nspaces that are participating */
@@ -2561,7 +2551,12 @@ static void _cnct(int sd, short args, void *cbdata)
     if (NULL != nspaces) {
       pmix_argv_free(nspaces);
     }
-    pmix_list_remove_item(&pmix_server_globals.collectives, &tracker->super);
+    if (!tracker->lost_connection) {
+        /* if this tracker has gone thru the "lost_connection" procedure,
+         * then it has already been removed from the list - otherwise,
+         * remove it now */
+        pmix_list_remove_item(&pmix_server_globals.collectives, &tracker->super);
+    }
     PMIX_RELEASE(tracker);
 
     /* we are done */
@@ -2602,20 +2597,14 @@ static void _discnct(int sd, short args, void *cbdata)
         return;
     }
 
-    /* if all local cbs have been removed, then this is
-     * a "stale" tracker being returned to us by the
-     * host - i.e., one or more of the local procs
-     * died during the collective and so we locally
-     * cleaned up. In this case, just release the
-     * tracker to avoid memory leaks */
-    if (0 == pmix_list_get_size(&tracker->local_cbs)) {
-        /* if the timer is active, clear it */
-        if (tracker->event_active) {
-            pmix_event_del(&tracker->ev);
-        }
-        PMIX_RELEASE(tracker);
-        return;
+    /* if we get here, then there are processes waiting
+     * for a response */
+
+    /* if the timer is active, clear it */
+    if (tracker->event_active) {
+        pmix_event_del(&tracker->ev);
     }
+
     /* loop across all local procs in the tracker, sending them the reply */
     PMIX_LIST_FOREACH(cd, &tracker->local_cbs, pmix_server_caddy_t) {
         /* setup the reply */
@@ -2644,7 +2633,12 @@ static void _discnct(int sd, short args, void *cbdata)
   cleanup:
     /* cleanup the tracker -- the host RM is responsible for
      * telling us when to remove the nspace from our data */
-    pmix_list_remove_item(&pmix_server_globals.collectives, &tracker->super);
+    if (!tracker->lost_connection) {
+        /* if this tracker has gone thru the "lost_connection" procedure,
+         * then it has already been removed from the list - otherwise,
+         * remove it now */
+        pmix_list_remove_item(&pmix_server_globals.collectives, &tracker->super);
+    }
     PMIX_RELEASE(tracker);
 
     /* we are done */
