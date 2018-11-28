@@ -950,7 +950,10 @@ static void _notify_client_event(int sd, short args, void *cbdata)
                             continue;
                         }
                     }
-                    PMIX_SERVER_QUEUE_REPLY(pr->peer, 0, bfr);
+                    PMIX_SERVER_QUEUE_REPLY(rc, pr->peer, 0, bfr);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_RELEASE(bfr);
+                    }
                 }
             }
         }

@@ -195,7 +195,7 @@ static void tool_iof_handler(struct pmix_peer_t *pr,
     pmix_status_t rc;
 
     pmix_output_verbose(2, pmix_client_globals.iof_output,
-                        "recvd IOF");
+                        "recvd IOF with %d bytes", (int)buf->bytes_used);
 
     /* if the buffer is empty, they are simply closing the channel */
     if (0 == buf->bytes_used) {
@@ -1073,8 +1073,8 @@ static void finwait_cbfunc(struct pmix_peer_t *pr,
     if (tev->active) {
         tev->active = false;
         pmix_event_del(&tev->ev);  // stop the timer
-        PMIX_WAKEUP_THREAD(&tev->lock);
     }
+    PMIX_WAKEUP_THREAD(&tev->lock);
 }
 
 PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
@@ -1083,7 +1083,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     pmix_cmd_t cmd = PMIX_FINALIZE_CMD;
     pmix_status_t rc;
     pmix_tool_timeout_t tev;
-    struct timeval tv = {2, 0};
+    struct timeval tv = {5, 0};
     int n;
     pmix_peer_t *peer;
     pmix_setup_caddy_t *cd;
@@ -1142,6 +1142,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
         /* wait for the ack to return */
         PMIX_WAIT_THREAD(&tev.lock);
         PMIX_DESTRUCT_LOCK(&tev.lock);
+
         if (tev.active) {
             pmix_event_del(&tev.ev);
         }
@@ -1182,6 +1183,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
                 PMIX_RELEASE(peer);
             }
         }
+
         PMIX_DESTRUCT(&pmix_server_globals.clients);
         PMIX_LIST_DESTRUCT(&pmix_server_globals.collectives);
         PMIX_LIST_DESTRUCT(&pmix_server_globals.remote_pnd);
@@ -1199,6 +1201,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
 
     /* finalize the class/object system */
     pmix_class_finalize();
+
     return PMIX_SUCCESS;
 }
 
