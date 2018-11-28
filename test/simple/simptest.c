@@ -348,7 +348,6 @@ int main(int argc, char **argv)
     char *hwloc_file = NULL;
 #endif
     mylock_t mylock;
-    volatile int active;
     pmix_status_t code;
 
     /* smoke test */
