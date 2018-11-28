@@ -73,6 +73,7 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
     pmix_buffer_t buf;
     pmix_ptl_hdr_t hdr;
     struct timeval tv = {1200, 0};
+    pmix_dmdx_local_t *dlcd;
 
     /* stop all events */
     if (peer->recv_ev_active) {
@@ -100,10 +101,7 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
         PMIX_LIST_FOREACH(trk, &pmix_server_globals.collectives, pmix_server_trkr_t) {
             /* see if this proc is participating in this tracker */
             PMIX_LIST_FOREACH_SAFE(rinfo, rnext, &trk->local_cbs, pmix_server_caddy_t) {
-                if (0 != strncmp(rinfo->peer->info->pname.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN)) {
-                    continue;
-                }
-                if (rinfo->peer->info->pname.rank != peer->info->pname.rank) {
+                if (!PMIX_CHECK_PROCID(&rinfo->peer->info->pname, &peer->info->pname)) {
                     continue;
                 }
                 /* it is - adjust the count */
@@ -111,14 +109,20 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
                 /* remove it from the list */
                 pmix_list_remove_item(&trk->local_cbs, &rinfo->super);
                 PMIX_RELEASE(rinfo);
-                /* we need to let the other participants know that this
-                 * proc has disappeared as otherwise the collective will never
-                 * complete */
+                if (0 == pmix_list_get_size(&trk->local_cbs)) {
+                    /* this tracker is complete, so release it - there
+                     * is nobody waiting for a response */
+                    pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
+                    PMIX_RELEASE(trk);
+                    continue;
+                }
+                /* if there are other participants waiting for a response,
+                 * we need to let them know that this proc has disappeared
+                 * as otherwise the collective will never complete */
+                trk->lost_connection = true;  // mark that a peer's connection was lost
                 if (PMIX_FENCENB_CMD == trk->type) {
                     if (NULL != trk->modexcbfunc) {
-                        /* protect the tracker - the host may still call back on it */
-                        PMIX_RETAIN(trk);
-                        /* set a LONG timeout so we avoid a memory leak if
+                         /* set a LONG timeout so we avoid a memory leak if
                          * the host never calls back */
                         pmix_event_evtimer_set(pmix_globals.evbase, &trk->ev,
                                                _timeout, trk);
@@ -153,6 +157,16 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
                 }
             }
         }
+        /* see if this proc is involved in a direct modex request */
+        PMIX_LIST_FOREACH(dlcd, &pmix_server_globals.local_reqs, pmix_dmdx_local_t) {
+            if (PMIX_CHECK_PROCID(&peer->info->pname, &dlcd->proc)) {
+                /* cleanup this request */
+                pmix_list_remove_item(&pmix_server_globals.local_reqs, &dlcd->super);
+                PMIX_RELEASE(dlcd);
+                break;
+            }
+        }
+
         /* remove this proc from the list of ranks for this nspace if it is
          * still there - we must check for multiple copies as there will be
          * one for each "clone" of this peer */
