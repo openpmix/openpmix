@@ -113,7 +113,14 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
                     /* this tracker is complete, so release it - there
                      * is nobody waiting for a response */
                     pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
-                    PMIX_RELEASE(trk);
+                    /* do NOT release the tracker here as the host may
+                     * have a copy they will return later. However, they
+                     * might never call back, so set a LONG timeout to
+                     * we avoid a memory leak if they don't */
+                    pmix_event_evtimer_set(pmix_globals.evbase, &trk->ev,
+                                           _timeout, trk);
+                    pmix_event_evtimer_add(&trk->ev, &tv);
+                    trk->event_active = true;
                     break;
                 }
                 /* if there are other participants waiting for a response,
@@ -122,8 +129,10 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
                 trk->lost_connection = true;  // mark that a peer's connection was lost
                 if (PMIX_FENCENB_CMD == trk->type) {
                     if (NULL != trk->modexcbfunc) {
-                         /* set a LONG timeout so we avoid a memory leak if
-                         * the host never calls back */
+                        /* do NOT release the tracker here as the host may
+                         * have a copy they will return later. However, they
+                         * might never call back, so set a LONG timeout to
+                         * we avoid a memory leak if they don't */
                         pmix_event_evtimer_set(pmix_globals.evbase, &trk->ev,
                                                _timeout, trk);
                         pmix_event_evtimer_add(&trk->ev, &tv);
@@ -132,10 +141,10 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
                     }
                 } else if (PMIX_CONNECTNB_CMD == trk->type) {
                     if (NULL != trk->op_cbfunc) {
-                        /* protect the tracker - the host may still call back on it */
-                        PMIX_RETAIN(trk);
-                        /* set a LONG timeout so we avoid a memory leak if
-                         * the host never calls back */
+                        /* do NOT release the tracker here as the host may
+                         * have a copy they will return later. However, they
+                         * might never call back, so set a LONG timeout to
+                         * we avoid a memory leak if they don't */
                         pmix_event_evtimer_set(pmix_globals.evbase, &trk->ev,
                                                _timeout, trk);
                         pmix_event_evtimer_add(&trk->ev, &tv);
@@ -144,10 +153,10 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
                     }
                 } else if (PMIX_DISCONNECTNB_CMD == trk->type) {
                     if (NULL != trk->op_cbfunc) {
-                        /* protect the tracker - the host may still call back on it */
-                        PMIX_RETAIN(trk);
-                        /* set a LONG timeout so we avoid a memory leak if
-                         * the host never calls back */
+                        /* do NOT release the tracker here as the host may
+                         * have a copy they will return later. However, they
+                         * might never call back, so set a LONG timeout to
+                         * we avoid a memory leak if they don't */
                         pmix_event_evtimer_set(pmix_globals.evbase, &trk->ev,
                                                _timeout, trk);
                         pmix_event_evtimer_add(&trk->ev, &tv);
@@ -162,6 +171,9 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
             if (PMIX_CHECK_PROCID(&peer->info->pname, &dlcd->proc)) {
                 /* cleanup this request */
                 pmix_list_remove_item(&pmix_server_globals.local_reqs, &dlcd->super);
+                /* we can release the dlcd item here because we are not
+                 * releasing the tracker held by the host - we are only
+                 * releasing one item on that tracker */
                 PMIX_RELEASE(dlcd);
                 break;
             }
