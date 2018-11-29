@@ -64,7 +64,7 @@ static void _timeout(int sd, short args, void *cbdata)
 
 void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
 {
-    pmix_server_trkr_t *trk;
+    pmix_server_trkr_t *trk, *tnxt;
     pmix_server_caddy_t *rinfo, *rnext;
     pmix_regevents_info_t *reginfoptr, *regnext;
     pmix_peer_events_info_t *pr, *pnext;
@@ -98,7 +98,7 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
          * participating - note that the proc would not
          * have been added to any collective tracker until
          * after it successfully connected */
-        PMIX_LIST_FOREACH(trk, &pmix_server_globals.collectives, pmix_server_trkr_t) {
+        PMIX_LIST_FOREACH_SAFE(trk, tnxt, &pmix_server_globals.collectives, pmix_server_trkr_t) {
             /* see if this proc is participating in this tracker */
             PMIX_LIST_FOREACH_SAFE(rinfo, rnext, &trk->local_cbs, pmix_server_caddy_t) {
                 if (!PMIX_CHECK_PROCID(&rinfo->peer->info->pname, &peer->info->pname)) {
@@ -114,7 +114,7 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
                      * is nobody waiting for a response */
                     pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
                     PMIX_RELEASE(trk);
-                    continue;
+                    break;
                 }
                 /* if there are other participants waiting for a response,
                  * we need to let them know that this proc has disappeared
