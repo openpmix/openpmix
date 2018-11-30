@@ -115,6 +115,23 @@ static void query_cbfunc(struct pmix_peer_t *peer,
     PMIX_RELEASE(cd);
 }
 
+static void _local_relcb(void *cbdata)
+{
+    pmix_query_caddy_t *cd = (pmix_query_caddy_t*)cbdata;
+    PMIX_RELEASE(cd);
+}
+
+static void _local_cbfunc(int sd, short args, void *cbdata)
+{
+    pmix_query_caddy_t *cd = (pmix_query_caddy_t*)cbdata;
+
+    if (NULL != cd->cbfunc) {
+        cd->cbfunc(cd->status, cd->info, cd->ninfo, cd->cbdata, _local_relcb, cd);
+        return;
+    }
+    PMIX_RELEASE(cd);
+}
+
 PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nqueries,
                                              pmix_info_cbfunc_t cbfunc, void *cbdata)
 
@@ -124,8 +141,10 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
     pmix_buffer_t *msg;
     pmix_status_t rc;
     pmix_cb_t cb;
-    size_t n, m;
-    bool refresh = false;
+    size_t n, m, p;
+    pmix_list_t results;
+    pmix_kval_t *kv, *kvnxt;
+    pmix_proc_t proc;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -142,23 +161,99 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
         return PMIX_ERR_BAD_PARAM;
     }
 
-    /* check the directives to see if they want us to refresh
-     * the local cached results */
+    /* setup the list of local results */
+    PMIX_CONSTRUCT(&results, pmix_list_t);
 
-    if (!refresh) {
-        /* if a refresh isn't required, then first try a local
-         * "get" on the data to see if we already have it */
-        PMIX_CONSTRUCT(&cb, pmix_cb_t);
-        cb.proc = &pmix_globals.myid;
-        cb.copy = false;
-        for (n=0; n < nqueries; n++) {
-            for (m=0; NULL != queries[n].keys[m]; m++) {
-                cb.key = queries[n].keys[m];
+    /* check the directives to see if they want us to refresh
+     * the local cached results - if we wanted to optimize this
+     * more, we would check each query and allow those that don't
+     * want to be refreshed to be executed locally, and those that
+     * did would be sent to the host. However, for now we simply
+     * */
+    memset(proc.nspace, 0, PMIX_MAX_NSLEN+1);
+    proc.rank = PMIX_RANK_INVALID;
+    for (n=0; n < nqueries; n++) {
+        for (m=0; m < queries[n].nqual; m++) {
+            if (NULL != queries[n].qualifiers) {
+                for (p=0; p < queries[n].nqual; p++) {
+                    if (PMIX_CHECK_KEY(&queries[n].qualifiers[p], PMIX_QUERY_REFRESH_CACHE)) {
+                        PMIX_LIST_DESTRUCT(&results);
+                        goto query;
+                    } else if (PMIX_CHECK_KEY(&queries[n].qualifiers[p], PMIX_PROCID)) {
+                        PMIX_LOAD_NSPACE(proc.nspace, queries[n].qualifiers[p].value.data.proc->nspace);
+                        proc.rank = queries[n].qualifiers[p].value.data.proc->rank;
+                    } else if (PMIX_CHECK_KEY(&queries[n].qualifiers[p], PMIX_NSPACE)) {
+                        PMIX_LOAD_NSPACE(proc.nspace, queries[n].qualifiers[p].value.data.string);
+                    } else if (PMIX_CHECK_KEY(&queries[n].qualifiers[p], PMIX_RANK)) {
+                        proc.rank = queries[n].qualifiers[p].value.data.rank;
+                    }
+                }
+            }
+            /* if a refresh isn't required, then first try a local
+             * "get" on the data to see if we already have it */
+            PMIX_CONSTRUCT(&cb, pmix_cb_t);
+            cb.copy = false;
+            /* set the proc */
+            if (PMIX_RANK_INVALID == proc.rank) {
+                /* use our id */
+                cb.proc = &pmix_globals.myid;
+            } else if (0 == strlen(proc.nspace)) {
+                /* use our nspace */
+                PMIX_LOAD_NSPACE(cb.proc->nspace, pmix_globals.myid.nspace);
+            } else {
+                /* they gave us both */
+                PMIX_LOAD_PROCID(cb.proc, proc.nspace, proc.rank);
+            }
+            for (p=0; NULL != queries[n].keys[p]; p++) {
+                cb.key = queries[n].keys[p];
                 PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+                if (PMIX_SUCCESS != rc) {
+                    /* needs to be passed to the host */
+                    PMIX_LIST_DESTRUCT(&results);
+                    PMIX_DESTRUCT(&cb);
+                    goto query;
+                }
+                /* need to retain this result */
+                PMIX_LIST_FOREACH_SAFE(kv, kvnxt, &cb.kvs, pmix_kval_t) {
+                    pmix_list_remove_item(&cb.kvs, &kv->super);
+                    pmix_list_append(&results, &kv->super);
+                }
+                PMIX_DESTRUCT(&cb);
             }
         }
     }
+    /* if we get here, then all queries were completely locally
+     * resolved, so construct the results for return */
+    cd = PMIX_NEW(pmix_query_caddy_t);
+    cd->cbfunc = cbfunc;
+    cd->cbdata = cbdata;
+    cd->status = PMIX_SUCCESS;
+    cd->ninfo = pmix_list_get_size(&results);
+    PMIX_INFO_CREATE(cd->info, cd->ninfo);
+    n = 0;
+    PMIX_LIST_FOREACH_SAFE(kv, kvnxt, &results, pmix_kval_t) {
+        PMIX_LOAD_KEY(cd->info[n].key, kv->key);
+        rc = pmix_value_xfer(&cd->info[n].value, kv->value);
+        if (PMIX_SUCCESS != rc) {
+            cd->status = rc;
+            PMIX_INFO_FREE(cd->info, cd->ninfo);
+            break;
+        }
+        ++n;
+    }
+    /* done with the list of results */
+    PMIX_LIST_DESTRUCT(&results);
+    /* we need to thread-shift as we are not allowed to
+     * execute the callback function prior to returning
+     * from the API */
+    PMIX_THREADSHIFT(cd, _local_cbfunc);
+    /* regardless of the result of the query, we return
+     * PMIX_SUCCESS here to indicate that the operation
+     * was accepted for processing */
+    return PMIX_SUCCESS;
 
+
+  query:
     /* if we are the server, then we just issue the query and
      * return the response */
     if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer) &&
