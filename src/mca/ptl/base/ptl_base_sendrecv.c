@@ -109,6 +109,7 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
                 /* remove it from the list */
                 pmix_list_remove_item(&trk->local_cbs, &rinfo->super);
                 PMIX_RELEASE(rinfo);
+                trk->lost_connection = true;  // mark that a peer's connection was lost
                 if (0 == pmix_list_get_size(&trk->local_cbs)) {
                     /* this tracker is complete, so release it - there
                      * is nobody waiting for a response */
@@ -126,7 +127,6 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
                 /* if there are other participants waiting for a response,
                  * we need to let them know that this proc has disappeared
                  * as otherwise the collective will never complete */
-                trk->lost_connection = true;  // mark that a peer's connection was lost
                 if (PMIX_FENCENB_CMD == trk->type) {
                     if (NULL != trk->modexcbfunc) {
                         /* do NOT release the tracker here as the host may
