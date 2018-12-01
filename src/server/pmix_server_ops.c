@@ -3521,10 +3521,13 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd,
         pmix_output_verbose(2, pmix_server_globals.base_output,
                             "local group op complete with %d procs", (int)trk->npcs);
 
-        pmix_host_server.group(PMIX_GROUP_CONSTRUCT,
-                               trk->pcs, trk->npcs,
-                               trk->info, trk->ninfo,
-                               grpcbfunc, trk);
+        rc = pmix_host_server.group(PMIX_GROUP_CONSTRUCT,
+                                    trk->pcs, trk->npcs,
+                                    trk->info, trk->ninfo,
+                                    grpcbfunc, trk);
+        if (PMIX_OPERATION_SUCCEEDED == rc) {
+`
+        }
     }
 
     return PMIX_SUCCESS;
