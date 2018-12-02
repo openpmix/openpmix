@@ -217,7 +217,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[],
         PMIX_INFO_CREATE(iptr, ninfo + 1);
         num = ninfo + 1;
         for (n=0; n < ninfo; n++) {
-            PMIX_INFO_XFER(&iptr[n], info[n]);
+            PMIX_INFO_XFER(&iptr[n], &info[n]);
         }
         PMIX_INFO_LOAD(&iptr[ninfo], PMIX_EMBED_BARRIER, &embed, PMIX_BOOL);
     } else {
@@ -391,7 +391,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grp[],
         PMIX_INFO_CREATE(iptr, ninfo + 1);
         num = ninfo + 1;
         for (n=0; n < ninfo; n++) {
-            PMIX_INFO_XFER(&iptr[n], info[n]);
+            PMIX_INFO_XFER(&iptr[n], &info[n]);
         }
         PMIX_INFO_LOAD(&iptr[ninfo], PMIX_EMBED_BARRIER, &embed, PMIX_BOOL);
     } else {
@@ -554,8 +554,6 @@ static void invite_handler(size_t evhdlr_registration_id,
             rc = PMIX_EVENT_ACTION_COMPLETE;
         }
     }
-
-    /* need to alert the host about this process set */
 
     /* always must continue the chain */
     cbfunc(rc, cb->results, cb->nresults, chaincbfunc, cb, cbdata);

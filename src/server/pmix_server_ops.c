@@ -3367,7 +3367,7 @@ static void grpcbfunc(pmix_status_t status,
 pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd,
                                        pmix_buffer_t *buf)
 {
-    pmix_peer_t *peer = cd->peer;
+    pmix_peer_t *peer = (pmix_peer_t*)cd->peer;
     int32_t cnt;
     pmix_status_t rc;
     char *grpid;
@@ -3504,12 +3504,10 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd,
 
     /* if a timeout was specified, set it */
     if (0 < tv.tv_sec) {
-        PMIX_RETAIN(trk);
-        cd->trk = trk;
-        pmix_event_evtimer_set(pmix_globals.evbase, &cd->ev,
-                               grp_timeout, cd);
-        pmix_event_evtimer_add(&cd->ev, &tv);
-        cd->event_active = true;
+        pmix_event_evtimer_set(pmix_globals.evbase, &trk->ev,
+                               grp_timeout, trk);
+        pmix_event_evtimer_add(&trk->ev, &tv);
+        trk->event_active = true;
     }
 
     /* if all local contributions have been received,
@@ -3525,8 +3523,18 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd,
                                     trk->pcs, trk->npcs,
                                     trk->info, trk->ninfo,
                                     grpcbfunc, trk);
-        if (PMIX_OPERATION_SUCCEEDED == rc) {
-`
+        if (PMIX_SUCCESS != rc) {
+            if (trk->event_active) {
+                pmix_event_del(&trk->ev);
+            }
+            if (PMIX_OPERATION_SUCCEEDED == rc) {
+                grpcbfunc(PMIX_SUCCESS, NULL, 0, trk, NULL, NULL);
+            } else {
+                /* remove the tracker from the list */
+                pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
+                PMIX_RELEASE(trk);
+            }
+            return rc;
         }
     }
 
@@ -3544,7 +3552,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd,
 pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd,
                                       pmix_buffer_t *buf)
 {
-    pmix_peer_t *peer = cd->peer;
+    pmix_peer_t *peer = (pmix_peer_t*)cd->peer;
     int32_t cnt;
     pmix_status_t rc;
     char *grpid;
@@ -3652,12 +3660,10 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd,
 
     /* if a timeout was specified, set it */
     if (0 < tv.tv_sec) {
-        PMIX_RETAIN(trk);
-        cd->trk = trk;
-        pmix_event_evtimer_set(pmix_globals.evbase, &cd->ev,
-                               grp_timeout, cd);
-        pmix_event_evtimer_add(&cd->ev, &tv);
-        cd->event_active = true;
+        pmix_event_evtimer_set(pmix_globals.evbase, &trk->ev,
+                               grp_timeout, trk);
+        pmix_event_evtimer_add(&trk->ev, &tv);
+        trk->event_active = true;
     }
 
     /* if all local contributions have been received,
@@ -3669,10 +3675,23 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd,
         pmix_output_verbose(2, pmix_server_globals.base_output,
                             "fence complete %d", (int)trk->nlocal);
 
-        pmix_host_server.group(PMIX_GROUP_DESTRUCT,
-                               grp->members, grp->nmbrs,
-                               trk->info, trk->ninfo,
-                               grpcbfunc, trk);
+        rc = pmix_host_server.group(PMIX_GROUP_DESTRUCT,
+                                    grp->members, grp->nmbrs,
+                                    trk->info, trk->ninfo,
+                                    grpcbfunc, trk);
+        if (PMIX_SUCCESS != rc) {
+            if (trk->event_active) {
+                pmix_event_del(&trk->ev);
+            }
+            if (PMIX_OPERATION_SUCCEEDED == rc) {
+                grpcbfunc(PMIX_SUCCESS, NULL, 0, trk, NULL, NULL);
+            } else {
+                /* remove the tracker from the list */
+                pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
+                PMIX_RELEASE(trk);
+            }
+            return rc;
+        }
     }
 
     return PMIX_SUCCESS;
