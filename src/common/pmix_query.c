@@ -124,7 +124,6 @@ static void _local_relcb(void *cbdata)
 static void _local_cbfunc(int sd, short args, void *cbdata)
 {
     pmix_query_caddy_t *cd = (pmix_query_caddy_t*)cbdata;
-
     if (NULL != cd->cbfunc) {
         cd->cbfunc(cd->status, cd->info, cd->ninfo, cd->cbdata, _local_relcb, cd);
         return;
@@ -189,39 +188,45 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
                     }
                 }
             }
-            /* if a refresh isn't required, then first try a local
-             * "get" on the data to see if we already have it */
-            PMIX_CONSTRUCT(&cb, pmix_cb_t);
-            cb.copy = false;
-            /* set the proc */
-            if (PMIX_RANK_INVALID == proc.rank) {
-                /* use our id */
-                cb.proc = &pmix_globals.myid;
-            } else if (0 == strlen(proc.nspace)) {
+        }
+        /* we get here if a refresh isn't required - first try a local
+         * "get" on the data to see if we already have it */
+        PMIX_CONSTRUCT(&cb, pmix_cb_t);
+        cb.copy = false;
+        /* set the proc */
+        if (PMIX_RANK_INVALID == proc.rank &&
+            0 == strlen(proc.nspace)) {
+            /* use our id */
+            cb.proc = &pmix_globals.myid;
+        } else {
+            if (0 == strlen(proc.nspace)) {
                 /* use our nspace */
                 PMIX_LOAD_NSPACE(cb.proc->nspace, pmix_globals.myid.nspace);
-            } else {
-                /* they gave us both */
-                PMIX_LOAD_PROCID(cb.proc, proc.nspace, proc.rank);
             }
-            for (p=0; NULL != queries[n].keys[p]; p++) {
-                cb.key = queries[n].keys[p];
-                PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-                if (PMIX_SUCCESS != rc) {
-                    /* needs to be passed to the host */
-                    PMIX_LIST_DESTRUCT(&results);
-                    PMIX_DESTRUCT(&cb);
-                    goto query;
-                }
-                /* need to retain this result */
-                PMIX_LIST_FOREACH_SAFE(kv, kvnxt, &cb.kvs, pmix_kval_t) {
-                    pmix_list_remove_item(&cb.kvs, &kv->super);
-                    pmix_list_append(&results, &kv->super);
-                }
+            if (PMIX_RANK_INVALID == proc.rank) {
+                /* user the wildcard rank */
+                proc.rank = PMIX_RANK_WILDCARD;
+            }
+            PMIX_LOAD_PROCID(cb.proc, proc.nspace, proc.rank);
+        }
+        for (p=0; NULL != queries[n].keys[p]; p++) {
+            cb.key = queries[n].keys[p];
+            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+            if (PMIX_SUCCESS != rc) {
+                /* needs to be passed to the host */
+                PMIX_LIST_DESTRUCT(&results);
                 PMIX_DESTRUCT(&cb);
+                goto query;
             }
+            /* need to retain this result */
+            PMIX_LIST_FOREACH_SAFE(kv, kvnxt, &cb.kvs, pmix_kval_t) {
+                pmix_list_remove_item(&cb.kvs, &kv->super);
+                pmix_list_append(&results, &kv->super);
+            }
+            PMIX_DESTRUCT(&cb);
         }
     }
+
     /* if we get here, then all queries were completely locally
      * resolved, so construct the results for return */
     cd = PMIX_NEW(pmix_query_caddy_t);
