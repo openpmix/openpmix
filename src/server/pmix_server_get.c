@@ -783,7 +783,7 @@ pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr, pmix_rank_t rank,
         ptr = NULL;
         if (NULL != nptr) {
             PMIX_LIST_FOREACH(cd, &pmix_server_globals.local_reqs, pmix_dmdx_local_t) {
-                if (0 != strncmp(nptr->nspace, cd->proc.nspace, PMIX_MAX_NSLEN) ||
+                if (!PMIX_CHECK_NSPACE(nptr->nspace, cd->proc.nspace) ||
                         rank != cd->proc.rank) {
                     continue;
                 }
@@ -796,6 +796,13 @@ pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr, pmix_rank_t rank,
         }
     } else {
         ptr = lcd;
+    }
+
+    /* if there are no local reqs on this request (e.g., only
+     * one proc requested it and that proc has died), then
+     * just remove the request */
+    if (0 == pmix_list_get_size(&ptr->loc_reqs)) {
+        goto cleanup;
     }
 
     /* somebody was interested in this rank */
@@ -822,6 +829,8 @@ pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr, pmix_rank_t rank,
         }
         PMIX_RELEASE(scd);
     }
+
+  cleanup:
     /* remove all requests to this rank and cleanup the corresponding structure */
     pmix_list_remove_item(&pmix_server_globals.local_reqs, (pmix_list_item_t*)ptr);
     PMIX_RELEASE(ptr);

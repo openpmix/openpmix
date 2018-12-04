@@ -937,6 +937,12 @@ typedef uint16_t pmix_iof_channel_t;
 #define PMIX_CHECK_KEY(a, b) \
     (0 == strncmp((a)->key, (b), PMIX_MAX_KEYLEN))
 
+#define PMIX_LOAD_KEY(a, b) \
+    do {                                            \
+        memset((a), 0, PMIX_MAX_KEYLEN+1);          \
+        pmix_strncpy((a), (b), PMIX_MAX_KEYLEN);    \
+    }while(0)
+
 /* define a convenience macro for loading nspaces */
 #define PMIX_LOAD_NSPACE(a, b)                      \
     do {                                            \
