@@ -1220,7 +1220,6 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
     /* add this contributor to the tracker so they get
      * notified when we are done */
     pmix_list_append(&trk->local_cbs, &cd->super);
-
     /* if all local contributions have been received,
      * let the local host's server know that we are at the
      * "fence" point - they will callback once the [dis]connect
@@ -1239,15 +1238,6 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
         }
     } else {
         rc = PMIX_SUCCESS;
-    }
-    /* if a timeout was specified, set it */
-    if (PMIX_SUCCESS == rc && 0 < tv.tv_sec) {
-        PMIX_RETAIN(trk);
-        cd->trk = trk;
-        pmix_event_evtimer_set(pmix_globals.evbase, &cd->ev,
-                               connect_timeout, cd);
-        pmix_event_evtimer_add(&cd->ev, &tv);
-        cd->event_active = true;
     }
 
   cleanup:
