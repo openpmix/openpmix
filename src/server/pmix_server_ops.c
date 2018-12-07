@@ -3470,15 +3470,14 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd,
     }
 
     /* find/create the local tracker for this operation */
-    if (NULL == (trk = get_tracker(grp->grpid, grp->members, grp->nmbrs, PMIX_FENCENB_CMD))) {
+    if (NULL == (trk = get_tracker(grp->grpid, grp->members, grp->nmbrs, PMIX_GROUP_CONSTRUCT_CMD))) {
         /* If no tracker was found - create and initialize it once */
-        if (NULL == (trk = new_tracker(grp->grpid, grp->members, grp->nmbrs, PMIX_FENCENB_CMD))) {
+        if (NULL == (trk = new_tracker(grp->grpid, grp->members, grp->nmbrs, PMIX_GROUP_CONSTRUCT_CMD))) {
             /* only if a bozo error occurs */
             PMIX_ERROR_LOG(PMIX_ERROR);
             rc = PMIX_ERROR;
             goto error;
         }
-        trk->type = PMIX_GROUP_CONSTRUCT_CMD;
         trk->collect_type = PMIX_COLLECT_NO;
         /* mark as being a construct operation */
         trk->hybrid = false;
@@ -3519,7 +3518,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd,
         pmix_output_verbose(2, pmix_server_globals.base_output,
                             "local group op complete with %d procs", (int)trk->npcs);
 
-        rc = pmix_host_server.group(PMIX_GROUP_CONSTRUCT,
+        rc = pmix_host_server.group(PMIX_GROUP_CONSTRUCT, grp->grpid,
                                     trk->pcs, trk->npcs,
                                     trk->info, trk->ninfo,
                                     grpcbfunc, trk);
@@ -3528,12 +3527,13 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd,
                 pmix_event_del(&trk->ev);
             }
             if (PMIX_OPERATION_SUCCEEDED == rc) {
+                /* let the grpcbfunc threadshift the result */
                 grpcbfunc(PMIX_SUCCESS, NULL, 0, trk, NULL, NULL);
-            } else {
-                /* remove the tracker from the list */
-                pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
-                PMIX_RELEASE(trk);
+                return PMIX_SUCCESS;
             }
+            /* remove the tracker from the list */
+            pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
+            PMIX_RELEASE(trk);
             return rc;
         }
     }
@@ -3565,7 +3565,7 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd,
     pmix_output_verbose(2, pmix_server_globals.iof_output,
                         "recvd grpdestruct cmd");
 
-    if (NULL == pmix_host_server.fence_nb) {
+    if (NULL == pmix_host_server.group) {
         PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
         return PMIX_ERR_NOT_SUPPORTED;
     }
@@ -3620,21 +3620,15 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd,
         }
     }
 
-    /* use the grp membership for the fence we are to
-     * execute - our host RM only knows these procs by
-     * their "true" ID */
-
-
     /* find/create the local tracker for this operation */
-    if (NULL == (trk = get_tracker(grp->grpid, grp->members, grp->nmbrs, PMIX_FENCENB_CMD))) {
+    if (NULL == (trk = get_tracker(grp->grpid, grp->members, grp->nmbrs, PMIX_GROUP_DESTRUCT_CMD))) {
         /* If no tracker was found - create and initialize it once */
-        if (NULL == (trk = new_tracker(grp->grpid, grp->members, grp->nmbrs, PMIX_FENCENB_CMD))) {
+        if (NULL == (trk = new_tracker(grp->grpid, grp->members, grp->nmbrs, PMIX_GROUP_DESTRUCT_CMD))) {
             /* only if a bozo error occurs */
             PMIX_ERROR_LOG(PMIX_ERROR);
             rc = PMIX_ERROR;
             goto error;
         }
-        trk->type = PMIX_FENCENB_CMD;
         trk->collect_type = PMIX_COLLECT_NO;
         /* mark as being a destruct operation */
         trk->hybrid = true;
@@ -3673,9 +3667,9 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd,
     if (trk->def_complete &&
         pmix_list_get_size(&trk->local_cbs) == trk->nlocal) {
         pmix_output_verbose(2, pmix_server_globals.base_output,
-                            "fence complete %d", (int)trk->nlocal);
+                            "local group op complete %d", (int)trk->nlocal);
 
-        rc = pmix_host_server.group(PMIX_GROUP_DESTRUCT,
+        rc = pmix_host_server.group(PMIX_GROUP_DESTRUCT, grp->grpid,
                                     grp->members, grp->nmbrs,
                                     trk->info, trk->ninfo,
                                     grpcbfunc, trk);
@@ -3684,12 +3678,13 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd,
                 pmix_event_del(&trk->ev);
             }
             if (PMIX_OPERATION_SUCCEEDED == rc) {
+                /* let the grpcbfunc threadshift the result */
                 grpcbfunc(PMIX_SUCCESS, NULL, 0, trk, NULL, NULL);
-            } else {
-                /* remove the tracker from the list */
-                pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
-                PMIX_RELEASE(trk);
+                return PMIX_SUCCESS;
             }
+            /* remove the tracker from the list */
+            pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
+            PMIX_RELEASE(trk);
             return rc;
         }
     }
