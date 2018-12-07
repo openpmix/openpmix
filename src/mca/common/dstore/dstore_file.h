@@ -10,11 +10,11 @@ typedef size_t (*pmix_common_dstore_key_size_fn)(char *key, size_t data_size);
 typedef size_t (*pmix_common_dstore_ext_slot_size_fn)(void);
 typedef int (*pmix_common_dstore_put_key_fn)(uint8_t *addr, char *key, void *buf,
                                               size_t size);
-typedef int (*pmix_common_dstore_is_invalid_fn)(uint8_t *addr);
-typedef int (*pmix_common_dstore_is_extslot_fn)(uint8_t *addr);
+typedef bool (*pmix_common_dstore_is_invalid_fn)(uint8_t *addr);
+typedef bool (*pmix_common_dstore_is_extslot_fn)(uint8_t *addr);
 typedef void (*pmix_common_dstore_set_invalid_fn)(uint8_t *addr);
 typedef size_t (*pmix_common_dstore_key_hash_fn)(const char *key);
-typedef int (*pmix_common_dstore_key_match_fn)(uint8_t *addr, const char *key,
+typedef bool (*pmix_common_dstore_key_match_fn)(uint8_t *addr, const char *key,
                                                   size_t key_hash);
 
 typedef struct {
