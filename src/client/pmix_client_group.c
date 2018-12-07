@@ -292,7 +292,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[],
     if (embed && NULL != iptr) {
         PMIX_INFO_FREE(iptr, num);
     }
-    if (NULL != msg) {
+    if (PMIX_SUCCESS != rc && NULL != msg) {
         PMIX_RELEASE(msg);
     }
     return rc;
@@ -452,7 +452,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grp[],
     if (embed && NULL != iptr) {
         PMIX_INFO_FREE(iptr, num);
     }
-    if (NULL != msg) {
+    if (PMIX_SUCCESS != rc && NULL != msg) {
         PMIX_RELEASE(msg);
     }
     return rc;
