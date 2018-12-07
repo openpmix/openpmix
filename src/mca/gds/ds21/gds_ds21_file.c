@@ -62,7 +62,7 @@ __extension__ ({                             \
 #define EXT_SLOT_SIZE_V21()                                 \
     (ESH_KEY_SIZE_V21("", sizeof(size_t)))
 
-static int pmix_ds21_is_invalid(uint8_t *addr)
+static bool pmix_ds21_is_invalid(uint8_t *addr)
 {
     size_t sz;
     memcpy(&sz, addr, sizeof(size_t));
@@ -77,7 +77,7 @@ static void pmix_ds21_set_invalid(uint8_t *addr)
     memcpy(addr, &sz, sizeof(size_t));
 }
 
-static int pmix_ds21_is_ext_slot(uint8_t *addr)
+static bool pmix_ds21_is_ext_slot(uint8_t *addr)
 {
     size_t sz;
     memcpy(&sz, addr, sizeof(size_t));
@@ -94,9 +94,9 @@ static size_t pmix_ds21_key_hash(const char *key)
     return hash;
 }
 
-static int pmix_ds21_kname_match(uint8_t *addr, const char *key, size_t key_hash)
+static bool pmix_ds21_kname_match(uint8_t *addr, const char *key, size_t key_hash)
 {
-    int ret = 0;
+    bool ret = 0;
     size_t hash;
     memcpy(&hash, (char*)addr + sizeof(size_t), sizeof(size_t));
     if( key_hash != hash ) {
