@@ -66,7 +66,7 @@ static int pmix_ds21_is_invalid(uint8_t *addr)
 {
     size_t sz;
     memcpy(&sz, addr, sizeof(size_t));
-    return (sz & ESH_REGION_INVALIDATED_FLG);
+    return !!(sz & ESH_REGION_INVALIDATED_FLG);
 }
 
 static void pmix_ds21_set_invalid(uint8_t *addr)
