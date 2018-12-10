@@ -268,9 +268,6 @@ static void notification_fn(size_t evhdlr_registration_id,
     char *name = NULL;
     size_t n;
 
-    pmix_output_verbose(2, pmix_client_globals.base_output,
-                        "[%s:%d] DEBUGGER RELEASE RECVD",
-                        pmix_globals.myid.nspace, pmix_globals.myid.rank);
     if (NULL != info) {
         lock = NULL;
         for (n=0; n < ninfo; n++) {
@@ -506,6 +503,8 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         return PMIX_ERR_NOMEM;
     }
 
+    pmix_output_verbose(2, pmix_client_globals.base_output,
+                        "pmix: init called");
     /* setup the base verbosity */
     if (0 < pmix_client_globals.base_verbose) {
         /* set default output */
@@ -513,9 +512,6 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         pmix_output_set_verbosity(pmix_client_globals.base_output,
                                   pmix_client_globals.base_verbose);
     }
-
-    pmix_output_verbose(2, pmix_client_globals.base_output,
-                        "pmix: init called");
 
     /* we require our nspace */
     if (NULL != proc) {
@@ -675,9 +671,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         PMIX_CONSTRUCT_LOCK(&releaselock);
         PMIX_INFO_LOAD(&evinfo[0], PMIX_EVENT_RETURN_OBJECT, &releaselock, PMIX_POINTER);
         PMIX_INFO_LOAD(&evinfo[1], PMIX_EVENT_HDLR_NAME, "WAIT-FOR-DEBUGGER", PMIX_STRING);
-        pmix_output_verbose(2, pmix_client_globals.base_output,
-                            "[%s:%d] WAITING IN INIT FOR DEBUGGER",
-                            pmix_globals.myid.nspace, pmix_globals.myid.rank);
+
         PMIx_Register_event_handler(&code, 1, evinfo, 2,
                                     notification_fn, evhandler_reg_callbk, (void*)&reglock);
         /* wait for registration to complete */

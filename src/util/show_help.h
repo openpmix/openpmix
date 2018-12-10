@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2008-2011 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2016-2018 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2016-2017 Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -129,14 +129,9 @@ PMIX_EXPORT int pmix_show_help_finalize(void);
  * (typically $prefix/share/pmix), and looks up the message
  * based on the topic, and displays it.  If want_error_header is
  * true, a header and footer of asterisks are also displayed.
- *
- * Note that the "want_error_header" argument is int instead of bool,
- * because passing a parameter that undergoes default argument
- * promotion to va_start() has undefined behavior (according to clang
- * warnings on MacOS High Sierra).
  */
 typedef int (*pmix_show_help_fn_t)(const char *filename, const char *topic,
-                                   int want_error_header, ...);
+                                   bool want_error_header, ...);
 PMIX_EXPORT extern pmix_show_help_fn_t pmix_show_help;
 
 /**
@@ -144,7 +139,7 @@ PMIX_EXPORT extern pmix_show_help_fn_t pmix_show_help;
  * a va_list form of varargs.
  */
 typedef int (*pmix_show_vhelp_fn_t)(const char *filename, const char *topic,
-                                    int want_error_header, va_list ap);
+                                    bool want_error_header, va_list ap);
 PMIX_EXPORT extern pmix_show_vhelp_fn_t pmix_show_vhelp;
 
 /**
@@ -153,7 +148,7 @@ PMIX_EXPORT extern pmix_show_vhelp_fn_t pmix_show_vhelp;
  */
 PMIX_EXPORT char* pmix_show_help_string(const char *filename,
                                         const char *topic,
-                                        int want_error_header, ...);
+                                        bool want_error_header, ...);
 
 /**
  * This function does the same thing as pmix_show_help_string(), but
@@ -161,7 +156,7 @@ PMIX_EXPORT char* pmix_show_help_string(const char *filename,
  */
 PMIX_EXPORT char* pmix_show_help_vstring(const char *filename,
                                          const char *topic,
-                                         int want_error_header, va_list ap);
+                                         bool want_error_header, va_list ap);
 
 /**
  * This function adds another search location for the files that

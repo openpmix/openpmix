@@ -179,8 +179,6 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_VERSION_INFO                   "pmix.version"          // (char*) PMIx version of contactor
 #define PMIX_REQUESTOR_IS_TOOL              "pmix.req.tool"         // (bool) requesting process is a tool
 #define PMIX_REQUESTOR_IS_CLIENT            "pmix.req.client"       // (bool) requesting process is a client process
-#define PMIX_PSET_NAME                      "pmix.pset.nm"          // (char*) user-assigned name for the process
-                                                                    //         set containing the given process
 
 /* model attributes */
 #define PMIX_PROGRAMMING_MODEL              "pmix.pgm.model"        // (char*) programming model being initialized (e.g., "MPI" or "OpenMP")
@@ -414,8 +412,6 @@ typedef uint32_t pmix_rank_t;
                                                                     //        from the spawned processes to this process (typically used by a tool)
 
 /* query attributes */
-#define PMIX_QUERY_REFRESH_CACHE            "pmix.qry.rfsh"         // (bool) retrieve updated information from server
-                                                                    //        to update local cache
 #define PMIX_QUERY_NAMESPACES               "pmix.qry.ns"           // (char*) request a comma-delimited list of active nspaces
 #define PMIX_QUERY_JOB_STATUS               "pmix.qry.jst"          // (pmix_status_t) status of a specified currently executing job
 #define PMIX_QUERY_QUEUE_LIST               "pmix.qry.qlst"         // (char*) request a comma-delimited list of scheduler queues
@@ -436,10 +432,6 @@ typedef uint32_t pmix_rank_t;
                                                                     //         is being requested
 #define PMIX_TIME_REMAINING                 "pmix.time.remaining"   // (char*) query number of seconds (uint32_t) remaining in allocation
                                                                     //         for the specified nspace
-#define PMIX_QUERY_NUM_PSETS                "pmix.qry.psetnum"      // (size_t) return the number of psets defined
-                                                                    //          in the specified range (defaults to session)
-#define PMIX_QUERY_PSET_NAMES               "pmix.qry.psets"        // (char*) return a comma-delimited list of the names of the
-                                                                    //         psets defined in the specified range (defaults to session)
 
 /* log attributes */
 #define PMIX_LOG_SOURCE                     "pmix.log.source"       // (pmix_proc_t*) ID of source of the log request
@@ -984,12 +976,6 @@ typedef enum {
 /* declare a convenience macro for checking keys */
 #define PMIX_CHECK_KEY(a, b) \
     (0 == strncmp((a)->key, (b), PMIX_MAX_KEYLEN))
-
-#define PMIX_LOAD_KEY(a, b) \
-    do {                                            \
-        memset((a), 0, PMIX_MAX_KEYLEN+1);          \
-        pmix_strncpy((a), (b), PMIX_MAX_KEYLEN);    \
-    }while(0)
 
 /* define a convenience macro for loading nspaces */
 #define PMIX_LOAD_NSPACE(a, b)                      \

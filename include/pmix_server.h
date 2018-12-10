@@ -496,8 +496,6 @@ typedef pmix_status_t (*pmix_server_stdin_fn_t)(const pmix_proc_t *source,
  * PMIX_GROUP_ASSIGN_CONTEXT_ID - request that the RM assign a unique
  *                                numerical (size_t) ID to this group
  *
- * grp - user-assigned string ID of this group
- *
  * op - pmix_group_operation_t value indicating the operation to perform
  *      Current values support construct and destruct of the group
  *
@@ -513,7 +511,7 @@ typedef pmix_status_t (*pmix_server_stdin_fn_t)(const pmix_proc_t *source,
  *
  * cbdata - object to be returned in cbfunc
  */
-typedef pmix_status_t (*pmix_server_grp_fn_t)(pmix_group_operation_t op, char grp[],
+typedef pmix_status_t (*pmix_server_grp_fn_t)(pmix_group_operation_t op,
                                               const pmix_proc_t procs[], size_t nprocs,
                                               const pmix_info_t directives[], size_t ndirs,
                                               pmix_info_cbfunc_t cbfunc, void *cbdata);

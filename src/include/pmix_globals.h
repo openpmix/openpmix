@@ -283,9 +283,6 @@ PMIX_CLASS_DECLARATION(pmix_query_caddy_t);
  * - instanced in pmix_server_ops.c */
 typedef struct {
     pmix_list_item_t super;
-    pmix_event_t ev;
-    bool event_active;
-    bool lost_connection;           // tracker went thru lost connection procedure
     char *id;                       // string identifier for the collective
     pmix_cmd_t type;
     pmix_proc_t pname;
@@ -350,7 +347,6 @@ PMIX_CLASS_DECLARATION(pmix_server_caddy_t);
        pmix_release_cbfunc_t relfn;
        pmix_hdlr_reg_cbfunc_t hdlrregcbfn;
        pmix_op_cbfunc_t opcbfn;
-       pmix_modex_cbfunc_t modexcbfunc;
     } cbfunc;
     void *cbdata;
     size_t ref;

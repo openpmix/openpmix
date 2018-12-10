@@ -95,11 +95,7 @@ static void regevents_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
     PMIX_BFROPS_UNPACK(rc, peer, buf, &ret, &cnt, PMIX_STATUS);
     if ((PMIX_SUCCESS != rc) ||
         (PMIX_SUCCESS != ret)) {
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-        } else {
-            PMIX_ERROR_LOG(ret);
-        }
+        PMIX_ERROR_LOG(rc);
         /* remove the err handler and call the error handler reg completion callback fn.*/
         if (NULL == rb->list) {
             if (NULL != rb->hdlr) {
@@ -337,17 +333,16 @@ static pmix_status_t _add_hdlr(pmix_rshift_caddy_t *cd, pmix_list_t *xfer)
         NULL != pmix_host_server.register_events) {
         pmix_output_verbose(2, pmix_client_globals.event_output,
                             "pmix: _add_hdlr registering with server");
-        rc = pmix_host_server.register_events(cd->codes, cd->ncodes,
-                                              cd2->info, cd2->ninfo,
-                                              reg_cbfunc, cd2);
-        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+        if (PMIX_SUCCESS != (rc = pmix_host_server.register_events(cd->codes, cd->ncodes,
+                                                                   cd2->info, cd2->ninfo,
+                                                                   reg_cbfunc, cd2))) {
             if (NULL != cd2->info) {
                 PMIX_INFO_FREE(cd2->info, cd2->ninfo);
             }
             PMIX_RELEASE(cd2);
             return rc;
         }
-        return PMIX_SUCCESS;
+        return PMIX_ERR_WOULD_BLOCK;
     } else {
         if (NULL != cd2->info) {
             PMIX_INFO_FREE(cd2->info, cd2->ninfo);

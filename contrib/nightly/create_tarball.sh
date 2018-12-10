@@ -10,7 +10,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2006-2018 Cisco Systems, Inc.  All rights reserved
+# Copyright (c) 2006-2015 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2015-2017 Intel, Inc.  All rights reserved.
 # $COPYRIGHT$
 #
@@ -231,7 +231,7 @@ USER="pmixbuilder"
 export USER
 
 # autogen is our friend
-do_command "./autogen.pl"
+do_command "./autogen.sh"
 
 # do config
 CONFIG_FLAGS="--with-libevent=$LIBEVENT"

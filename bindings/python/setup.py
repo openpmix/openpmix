@@ -11,6 +11,7 @@ setup(
     author_email = 'ralph.h.castain@intel.com',
     description = 'Python bindings for PMIx',
     platforms = 'any',
-    ext_modules = cythonize([Extension("pmix", ["pmix.pyx"], libraries=["pmix"])],
-                            compiler_directives={'language_level': 3})
+    ext_modules = cythonize([Extension("pmix", ["pmix.pyx"],
+                                       libraries=["pmix"])
+    ])
 )

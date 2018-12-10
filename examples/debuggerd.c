@@ -41,6 +41,7 @@ typedef struct {
 } myquery_data_t;
 
 
+static volatile bool waiting_for_debugger = true;
 static pmix_proc_t myproc;
 
 /* this is a callback function for the PMIx_Query

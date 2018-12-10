@@ -259,42 +259,37 @@ PMIX_EXPORT extern int pmix_ptl_base_output;
  * t - tag to be sent to
  * b - buffer to be sent
  */
-#define PMIX_SERVER_QUEUE_REPLY(r, p, t, b)                                                 \
-    do {                                                                                    \
-        pmix_ptl_send_t *snd;                                                               \
-        uint32_t nbytes;                                                                    \
-        pmix_output_verbose(5, pmix_ptl_base_output,                                        \
+#define PMIX_SERVER_QUEUE_REPLY(p, t, b)                                                \
+    do {                                                                                \
+        pmix_ptl_send_t *snd;                                                           \
+        uint32_t nbytes;                                                                \
+        pmix_output_verbose(5, pmix_ptl_base_output,                                    \
                             "[%s:%d] queue callback called: reply to %s:%d on tag %d size %d",  \
-                            __FILE__, __LINE__,                                             \
-                            (p)->info->pname.nspace,                                        \
-                            (p)->info->pname.rank, (t), (int)(b)->bytes_used);              \
-        if ((p)->finalized) {                                                               \
-            (r) = PMIX_ERR_UNREACH;                                                         \
-        } else {                                                                            \
-            snd = PMIX_NEW(pmix_ptl_send_t);                                                \
-            snd->hdr.pindex = htonl(pmix_globals.pindex);                                   \
-            snd->hdr.tag = htonl(t);                                                        \
-            nbytes = (b)->bytes_used;                                                       \
-            snd->hdr.nbytes = htonl(nbytes);                                                \
-            snd->data = (b);                                                                \
-            /* always start with the header */                                              \
-            snd->sdptr = (char*)&snd->hdr;                                                  \
-            snd->sdbytes = sizeof(pmix_ptl_hdr_t);                                          \
-            /* if there is no message on-deck, put this one there */                        \
-            if (NULL == (p)->send_msg) {                                                    \
-                (p)->send_msg = snd;                                                        \
-            } else {                                                                        \
-                /* add it to the queue */                                                   \
-                pmix_list_append(&(p)->send_queue, &snd->super);                            \
-            }                                                                               \
-            /* ensure the send event is active */                                           \
-            if (!(p)->send_ev_active && 0 <= (p)->sd) {                                     \
-                (p)->send_ev_active = true;                                                 \
-                PMIX_POST_OBJECT(snd);                                                      \
-                pmix_event_add(&(p)->send_event, 0);                                        \
-            }                                                                               \
-            (r) = PMIX_SUCCESS;                                                             \
-        }                                                                                   \
+                            __FILE__, __LINE__,                                         \
+                            (p)->info->pname.nspace,                                    \
+                            (p)->info->pname.rank, (t), (int)(b)->bytes_used);          \
+        snd = PMIX_NEW(pmix_ptl_send_t);                                                \
+        snd->hdr.pindex = htonl(pmix_globals.pindex);                                   \
+        snd->hdr.tag = htonl(t);                                                        \
+        nbytes = (b)->bytes_used;                                                       \
+        snd->hdr.nbytes = htonl(nbytes);                                                \
+        snd->data = (b);                                                                \
+        /* always start with the header */                                              \
+        snd->sdptr = (char*)&snd->hdr;                                                  \
+        snd->sdbytes = sizeof(pmix_ptl_hdr_t);                                          \
+        /* if there is no message on-deck, put this one there */                        \
+        if (NULL == (p)->send_msg) {                                                    \
+            (p)->send_msg = snd;                                                        \
+        } else {                                                                        \
+            /* add it to the queue */                                                   \
+            pmix_list_append(&(p)->send_queue, &snd->super);                            \
+        }                                                                               \
+        /* ensure the send event is active */                                           \
+        if (!(p)->send_ev_active && 0 <= (p)->sd) {                                     \
+            (p)->send_ev_active = true;                                                 \
+            PMIX_POST_OBJECT(snd);                                                      \
+            pmix_event_add(&(p)->send_event, 0);                                        \
+        }                                                                               \
     } while (0)
 
 #define CLOSE_THE_SOCKET(s)                     \

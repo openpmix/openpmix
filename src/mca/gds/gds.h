@@ -3,7 +3,6 @@
  * Copyright (c) 2016-2017 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2018 Intel, Inc.  All rights reserved.
- * Copyright (c) 2018      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -244,7 +243,7 @@ typedef pmix_status_t (*pmix_gds_base_module_store_fn_t)(const pmix_proc_t *proc
  */
 typedef pmix_status_t (*pmix_gds_base_module_store_modex_fn_t)(struct pmix_namespace_t *ns,
                                                                pmix_list_t *cbs,
-                                                               pmix_buffer_t *buff);
+                                                               pmix_byte_object_t *bo);
 
 /**
  * define a convenience macro for storing modex byte objects

@@ -324,8 +324,19 @@ static int component_query(pmix_mca_base_module_t **module, int *priority)
 
 static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env)
 {
-    pmix_setenv("PMIX_SERVER_TMPDIR", mca_ptl_tcp_component.session_tmpdir, true, env);
-    pmix_setenv("PMIX_SYSTEM_TMPDIR", mca_ptl_tcp_component.system_tmpdir, true, env);
+    char *evar;
+
+    if (0 > asprintf(&evar, "PMIX_SERVER_TMPDIR=%s", mca_ptl_tcp_component.session_tmpdir)) {
+        return PMIX_ERR_NOMEM;
+    }
+    pmix_argv_append_nosize(env, evar);
+    free(evar);
+
+    if (0 > asprintf(&evar, "PMIX_SYSTEM_TMPDIR=%s", mca_ptl_tcp_component.system_tmpdir)) {
+        return PMIX_ERR_NOMEM;
+    }
+    pmix_argv_append_nosize(env, evar);
+    free(evar);
 
     return PMIX_SUCCESS;
 }
@@ -1258,7 +1269,7 @@ static void connection_handler(int sd, short args, void *cbdata)
         proc_type = proc_type | PMIX_PROC_V20;
         bfrops = "v20";
         bftype = pmix_bfrops_globals.default_type;  // we can't know any better
-        gds = "ds12,hash";
+        gds = NULL;
     } else {
         int major;
         major = strtoul(version, NULL, 10);
@@ -1602,12 +1613,8 @@ static void connection_handler(int sd, short args, void *cbdata)
           proc.rank = peer->info->pname.rank;
           rc = pmix_host_server.client_connected(&proc, peer->info->server_object,
                                                  NULL, NULL);
-          if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+          if (PMIX_SUCCESS != rc) {
               PMIX_ERROR_LOG(rc);
-              info->proc_cnt--;
-              pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->index, NULL);
-              PMIX_RELEASE(peer);
-              goto error;
           }
       }
 
