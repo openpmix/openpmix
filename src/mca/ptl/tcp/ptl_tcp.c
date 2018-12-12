@@ -968,7 +968,6 @@ static pmix_status_t try_connect(char *uri, int *sd, pmix_info_t iptr[], size_t 
                 goto retry;
             }
         }
-        PMIX_ERROR_LOG(rc);
         return rc;
     }
 
@@ -1286,7 +1285,6 @@ static pmix_status_t recv_connect_ack(int sd, uint8_t myflag)
     } else {  // we are a tool
         /* if the status indicates an error, then we are done */
         if (PMIX_SUCCESS != reply) {
-            PMIX_ERROR_LOG(reply);
             return reply;
         }
         /* if we needed an identifier, recv it */
