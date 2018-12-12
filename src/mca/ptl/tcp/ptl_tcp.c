@@ -787,7 +787,6 @@ static pmix_status_t try_connect(char *uri, int *sd)
                 goto retry;
             }
         }
-        PMIX_ERROR_LOG(rc);
         return rc;
     }
 
@@ -1055,7 +1054,6 @@ static pmix_status_t recv_connect_ack(int sd)
     } else {  // we are a tool
         /* if the status indicates an error, then we are done */
         if (PMIX_SUCCESS != reply) {
-            PMIX_ERROR_LOG(reply);
             return reply;
         }
         /* recv our nspace */
