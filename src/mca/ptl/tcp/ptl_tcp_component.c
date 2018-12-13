@@ -1386,7 +1386,6 @@ static void connection_handler(int sd, short args, void *cbdata)
                 /* we need someone to provide the tool with an
                  * identifier and they aren't available */
                 /* send an error reply to the client */
-                PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
                 rc = PMIX_ERR_NOT_SUPPORTED;
                 PMIX_RELEASE(peer);
                 /* release the msg */
