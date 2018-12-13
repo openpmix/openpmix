@@ -207,7 +207,7 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
                 /* user the wildcard rank */
                 proc.rank = PMIX_RANK_WILDCARD;
             }
-            PMIX_LOAD_PROCID(cb.proc, proc.nspace, proc.rank);
+            cb.proc = &proc;
         }
         for (p=0; NULL != queries[n].keys[p]; p++) {
             cb.key = queries[n].keys[p];
