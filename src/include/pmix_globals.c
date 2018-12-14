@@ -238,6 +238,9 @@ static void iofreqdes(pmix_iof_req_t *p)
     if (NULL != p->peer) {
         PMIX_RELEASE(p->peer);
     }
+    if (NULL != p->pname.nspace) {
+        free(p->pname.nspace);
+    }
 }
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_iof_req_t,
                                 pmix_list_item_t,
