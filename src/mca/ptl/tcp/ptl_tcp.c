@@ -130,10 +130,10 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
     bool system_level = false;
     bool system_level_only = false;
     bool reconnect = false;
-    pid_t pid = 0;
+    pid_t pid = 0, mypid;
     pmix_list_t ilist;
     pmix_info_caddy_t *kv;
-    pmix_info_t *iptr = NULL;
+    pmix_info_t *iptr = NULL, mypidinfo;
     size_t niptr = 0;
     pmix_kval_t *urikv = NULL;
 
@@ -296,6 +296,13 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
             }
         }
     }
+    /* add our pid to the array */
+    kv = PMIX_NEW(pmix_info_caddy_t);
+    mypid = getpid();
+    PMIX_INFO_LOAD(&mypidinfo, PMIX_PROC_PID, &mypid, PMIX_PID);
+    kv->info = &mypidinfo;
+    pmix_list_append(&ilist, &kv->super);
+
     /* if we need to pass anything, setup an array */
     if (0 < (niptr = pmix_list_get_size(&ilist))) {
         PMIX_INFO_CREATE(iptr, niptr);

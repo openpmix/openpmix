@@ -1444,6 +1444,8 @@ typedef struct pmix_value {
             (n) = (t)((m)->data.fval);                  \
         } else if (PMIX_DOUBLE == (m)->type) {          \
             (n) = (t)((m)->data.dval);                  \
+        } else if (PMIX_PID == (m)->type) {             \
+            (n) = (t)((m)->data.pid);                   \
         } else {                                        \
             (s) = PMIX_ERR_BAD_PARAM;                   \
         }                                               \
