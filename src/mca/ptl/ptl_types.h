@@ -198,6 +198,7 @@ typedef struct {
     pmix_listener_protocol_t protocol;
     int sd;
     bool need_id;
+    uint8_t flag;
     char nspace[PMIX_MAX_NSLEN+1];
     pmix_info_t *info;
     size_t ninfo;
