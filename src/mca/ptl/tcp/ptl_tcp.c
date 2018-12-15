@@ -1061,12 +1061,14 @@ static pmix_status_t send_connect_ack(int sd, uint8_t *myflag,
             }
         }
 
-    } else if (PMIX_PROC_IS_CLIENT(pmix_globals.mypeer)) {
+    } else if (PMIX_PROC_IS_CLIENT(pmix_globals.mypeer) &&
+               !PMIX_PROC_IS_TOOL(pmix_globals.mypeer)) {
+        /* we are a simple client */
         flag = 0;
         /* reserve space for our nspace and rank info */
         sdsize += strlen(pmix_globals.myid.nspace) + 1 + sizeof(uint32_t);
 
-    } else {  // must be a simple tool
+    } else {  // must be a tool of some sort
         /* add space for our uid/gid for ACL purposes */
         sdsize += 2*sizeof(uint32_t);
         if (PMIX_PROC_IS_CLIENT(pmix_globals.mypeer)) {

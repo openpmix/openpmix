@@ -876,8 +876,9 @@ static void _register_client(int sd, short args, void *cbdata)
     PMIX_ACQUIRE_OBJECT(cd);
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
-                        "pmix:server _register_client for nspace %s rank %d",
-                        cd->proc.nspace, cd->proc.rank);
+                        "pmix:server _register_client for nspace %s rank %d %s object",
+                        cd->proc.nspace, cd->proc.rank,
+                        (NULL == cd->server_object) ? "NULL" : "NON-NULL");
 
     /* see if we already have this nspace */
     nptr = NULL;
