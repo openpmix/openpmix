@@ -63,15 +63,16 @@ struct pmix_ptl_module_t;
 
 /* define a process type */
 typedef uint16_t pmix_proc_type_t;
+
 #define PMIX_PROC_UNDEF             0x0000
-#define PMIX_PROC_CLIENT            0x0001
-#define PMIX_PROC_SERVER            0x0002
-#define PMIX_PROC_TOOL              0x0004
-#define PMIX_PROC_V1                0x0008
-#define PMIX_PROC_V20               0x0010
-#define PMIX_PROC_V21               0x0020
-#define PMIX_PROC_V3                0x0040
-#define PMIX_PROC_LAUNCHER_ACT      0x1000
+#define PMIX_PROC_CLIENT            0x0001      // simple client process
+#define PMIX_PROC_SERVER            0x0002      // simple server process
+#define PMIX_PROC_TOOL              0x0004      // simple tool
+#define PMIX_PROC_V1                0x0008      // process is using PMIx v1 protocols
+#define PMIX_PROC_V20               0x0010      // process is using PMIx v2.0 protocols
+#define PMIX_PROC_V21               0x0020      // process is using PMIx v2.1 protocols
+#define PMIX_PROC_V3                0x0040      // process is using PMIx v3 protocols
+#define PMIX_PROC_LAUNCHER_ACT      0x1000      // process acting as launcher
 #define PMIX_PROC_LAUNCHER          (PMIX_PROC_TOOL | PMIX_PROC_SERVER | PMIX_PROC_LAUNCHER_ACT)
 #define PMIX_PROC_CLIENT_TOOL_ACT   0x2000
 #define PMIX_PROC_CLIENT_TOOL       (PMIX_PROC_TOOL | PMIX_PROC_CLIENT | PMIX_PROC_CLIENT_TOOL_ACT)
@@ -196,11 +197,14 @@ typedef struct {
     pmix_event_t ev;
     pmix_listener_protocol_t protocol;
     int sd;
+    bool need_id;
+    uint8_t flag;
     char nspace[PMIX_MAX_NSLEN+1];
     pmix_info_t *info;
     size_t ninfo;
     pmix_status_t status;
     struct sockaddr_storage addr;
+    struct pmix_peer_t *peer;
     char *bfrops;
     char *psec;
     char *gds;
@@ -236,9 +240,6 @@ PMIX_EXPORT extern int pmix_ptl_base_output;
 
 #define PMIX_ACTIVATE_POST_MSG(ms)                                      \
     do {                                                                \
-        pmix_output_verbose(5, pmix_ptl_base_output,                    \
-                            "[%s:%d] post msg",                         \
-                            __FILE__, __LINE__);                        \
         pmix_event_assign(&((ms)->ev), pmix_globals.evbase, -1,         \
                           EV_WRITE, pmix_ptl_base_process_msg, (ms));   \
         PMIX_POST_OBJECT(ms);                                           \

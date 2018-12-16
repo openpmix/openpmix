@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
- * Copyright (c) 2014-2017 Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2018 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
@@ -670,7 +670,11 @@ static pmix_status_t unpack_val(pmix_buffer_t *buffer, pmix_value_t *val)
         }
         break;
     case PMIX_INFO_ARRAY:
-        if (PMIX_SUCCESS != (ret = pmix12_bfrop_unpack_buffer(buffer, &val->data.array, &m, PMIX_INFO_ARRAY))) {
+        /* we don't know anything about info array's so we
+         * have to convert this to a data array */
+        PMIX_DATA_ARRAY_CREATE(val->data.darray, m, PMIX_INFO);
+        /* unpack into it */
+        if (PMIX_SUCCESS != (ret = pmix12_bfrop_unpack_buffer(buffer, &val->data.darray->array, &m, PMIX_INFO_ARRAY))) {
             return ret;
         }
         break;

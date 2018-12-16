@@ -63,7 +63,7 @@ int test_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
     pmix_proc_t *pcs;
     bool participate;
     int fence_num = 0;
-    char *sval;
+    char sval[500];
     int put_ind;
 
     if (NULL != params.noise) {
@@ -98,14 +98,13 @@ int test_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
             /*run fence test on this range */
             /* first put value (my_ns, my_rank) with key based on fence_num to split results of different fences*/
             put_ind = 0;
-            (void)asprintf(&sval, "%d:%s:%d", fence_num, my_nspace, my_rank);
+            (void)snprintf(sval, 500, "%d:%s:%d", fence_num, my_nspace, my_rank);
             PUT(string, sval, PMIX_GLOBAL, fence_num, put_ind++, params.use_same_keys);
             if (PMIX_SUCCESS != rc) {
                 TEST_ERROR(("%s:%d: PMIx_Put failed: %d", my_nspace, my_rank, rc));
                 PMIX_LIST_DESTRUCT(&test_fences);
                 return rc;
             }
-            free(sval);
 
             PUT(int, fence_num+my_rank, PMIX_GLOBAL, fence_num, put_ind++, params.use_same_keys);
             if (PMIX_SUCCESS != rc) {
@@ -187,7 +186,7 @@ int test_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
             /* get data from all participating in this fence clients */
             PMIX_LIST_FOREACH(p, desc->participants, participant_t) {
                 put_ind = 0;
-                asprintf(&sval, "%d:%s:%d", fence_num, p->proc.nspace, p->proc.rank);
+                snprintf(sval, 500, "%d:%s:%d", fence_num, p->proc.nspace, p->proc.rank);
                 GET(string, sval, p->proc.nspace, p->proc.rank, fence_num, put_ind++, params.use_same_keys, 1, 0);
                 if (PMIX_SUCCESS != rc) {
                     TEST_ERROR(("%s:%d: PMIx_Get failed (%d) from %s:%d", my_nspace, my_rank, rc, p->proc.nspace, p->proc.rank));
@@ -195,7 +194,6 @@ int test_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
                     PMIX_LIST_DESTRUCT(&test_fences);
                     return rc;
                 }
-                free(sval);
                 GET(int, (int)(fence_num+p->proc.rank), p->proc.nspace, p->proc.rank, fence_num, put_ind++, params.use_same_keys, 0, 0);
                 if (PMIX_SUCCESS != rc) {
                     TEST_ERROR(("%s:%d: PMIx_Get failed (%d) from %s:%d", my_nspace, my_rank, rc, p->proc.nspace, p->proc.rank));
