@@ -490,6 +490,7 @@ static pmix_status_t create_local_tracker(char nspace[], pmix_rank_t rank,
     if (NULL == lcd){
         return PMIX_ERR_NOMEM;
     }
+    PMIX_RETAIN(cbdata);
     pmix_strncpy(lcd->proc.nspace, nspace, PMIX_MAX_NSLEN);
     lcd->proc.rank = rank;
     lcd->info = info;
