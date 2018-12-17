@@ -2500,6 +2500,8 @@ static inline void pmix_value_destruct(pmix_value_t * m) {
         }
     } else if (PMIX_ENVAR == (m)->type) {
         PMIX_ENVAR_DESTRUCT(&(m)->data.envar);
+    } else if (PMIX_PROC == (m)->type) {
+        PMIX_PROC_RELEASE((m)->data.proc);
     }
 }
 
