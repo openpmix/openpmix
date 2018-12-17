@@ -1,8 +1,8 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
- * Copyright (c) 2014-2017 Research Organization for Information Science
- *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2014-2018 Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * Copyright (c) 2016-2017 Mellanox Technologies, Inc.
@@ -1186,7 +1186,7 @@ static void spcbfunc(pmix_status_t status,
         PMIX_INFO_FREE(cd->info, cd->ninfo);
     }
     if (NULL != cd->apps) {
-        PMIX_APP_CREATE(cd->apps, cd->napps);
+        PMIX_APP_FREE(cd->apps, cd->napps);
     }
     if (NULL != cd->spcbfunc) {
         cd->spcbfunc(status, nspace, cd->cbdata);
