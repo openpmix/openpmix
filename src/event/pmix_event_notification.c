@@ -1,8 +1,8 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
- * Copyright (c) 2017      Research Organization for Information Science
- *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2017-2018 Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2017      IBM Corporation. All rights reserved.
  *
  * $COPYRIGHT$
@@ -717,6 +717,8 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
     /* we still have to call their final callback */
     if (NULL != chain->final_cbfunc) {
         chain->final_cbfunc(rc, chain->final_cbdata);
+    } else {
+        PMIX_RELEASE(chain);
     }
     return;
 
