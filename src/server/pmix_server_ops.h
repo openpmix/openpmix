@@ -131,7 +131,7 @@ typedef struct {
 PMIX_CLASS_DECLARATION(pmix_regevents_info_t);
 
 typedef struct {
-    pmix_list_t nspaces;                    // list of pmix_namespace_t for the nspaces we know about
+    pmix_list_t nspaces;                    // list of pmix_nspace_t for the nspaces we know about
     pmix_pointer_array_t clients;           // array of pmix_peer_t local clients
     pmix_list_t collectives;                // list of active pmix_server_trkr_t
     pmix_list_t remote_pnd;                 // list of pmix_dmdx_remote_t awaiting arrival of data fror servicing remote req's
@@ -141,6 +141,7 @@ typedef struct {
     pmix_hotel_t iof;                       // IO to be forwarded to clients
     bool tool_connections_allowed;
     char *tmpdir;                           // temporary directory for this server
+    char *system_tmpdir;                    // system tmpdir
     // verbosity for server get operations
     int get_output;
     int get_verbose;
