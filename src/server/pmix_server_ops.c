@@ -1955,10 +1955,8 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
             PMIX_RELEASE(relay);
         }
     }
-    if (!enviro_events) {
-        if (NULL != codes) {
-            free(codes);
-        }
+    if (NULL != codes) {
+        free(codes);
     }
     if (NULL != affected) {
         PMIX_PROC_FREE(affected, naffected);
