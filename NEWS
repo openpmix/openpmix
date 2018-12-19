@@ -21,6 +21,28 @@ example, a bug might be fixed in the master, and then moved to the
 current release as well as the "stable" bug fix release branch.
 
 
+3.1.0 -- 21 Dec 2018
+----------------------
+**** THIS RELEASE MARKS THE STARTING POINT FOR FULL COMPLIANCE
+**** WITH THE PMIX v3 STANDARD. ALL API BEHAVIORS AND ATTRIBUTE
+**** DEFINITIONS MEET THE v3 STANDARD SPECIFICATIONS.
+ - Add a new, faster dstore GDS component 'ds21'
+ - Performance optimizations for the dstore GDS components.
+ - Plug miscellaneous memory leaks
+ - Silence an unnecessary warning message when checking connection
+   to a non-supporting server
+ - Ensure lost-connection events get delivered to default event
+   handlers
+ - Correctly handle cache refresh for queries
+ - Protect against race conditions between host and internal library
+   when dealing with async requests
+ - Cleanup tool operations and add support for connections to
+   remote servers. Initial support for debugger direct/indirect
+   launch verified with PRRTE.
+ - Automatically store the server URI for easy access by client
+ - Provide MCA parameter to control TCP connect retry/timeout
+
+
 3.0.2 -- 18 Sept 2018
 ----------------------
 - Ensure we cleanup any active sensors when a peer departs. Allow the
