@@ -286,6 +286,7 @@ typedef struct {
     pmix_event_t ev;
     bool event_active;
     bool lost_connection;           // tracker went thru lost connection procedure
+    bool local;                     // operation is strictly local
     char *id;                       // string identifier for the collective
     pmix_cmd_t type;
     pmix_proc_t pname;
