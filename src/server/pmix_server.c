@@ -1,8 +1,8 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2014-2018 Intel, Inc.  All rights reserved.
- * Copyright (c) 2014-2017 Research Organization for Information Science
- *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2014-2018 Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
@@ -1699,11 +1699,6 @@ static void _iofdeliver(int sd, short args, void *cbdata)
         cd->opcbfunc(rc, cd->cbdata);
     }
     if (!cached) {
-        if (NULL != cd->info) {
-            PMIX_INFO_FREE(cd->info, cd->ninfo);
-        }
-        PMIX_PROC_FREE(cd->procs, 1);
-        PMIX_BYTE_OBJECT_FREE(cd->bo, 1);
         PMIX_RELEASE(cd);
     }
 }
@@ -1729,6 +1724,7 @@ pmix_status_t PMIx_server_IOF_deliver(const pmix_proc_t *source,
         PMIX_RELEASE(cd);
         return PMIX_ERR_NOMEM;
     }
+    cd->nprocs = 1;
     pmix_strncpy(cd->procs[0].nspace, source->nspace, PMIX_MAX_NSLEN);
     cd->procs[0].rank = source->rank;
     cd->channels = channel;
@@ -1737,9 +1733,9 @@ pmix_status_t PMIx_server_IOF_deliver(const pmix_proc_t *source,
         PMIX_RELEASE(cd);
         return PMIX_ERR_NOMEM;
     }
+    cd->nbo = 1;
     cd->bo[0].bytes = (char*)malloc(bo->size);
     if (NULL == cd->bo[0].bytes) {
-        PMIX_BYTE_OBJECT_FREE(cd->bo, 1);
         PMIX_RELEASE(cd);
         return PMIX_ERR_NOMEM;
     }
@@ -1748,7 +1744,6 @@ pmix_status_t PMIx_server_IOF_deliver(const pmix_proc_t *source,
     if (0 < ninfo) {
         PMIX_INFO_CREATE(cd->info, ninfo);
         if (NULL == cd->info) {
-            PMIX_BYTE_OBJECT_FREE(cd->bo, 1);
             PMIX_RELEASE(cd);
             return PMIX_ERR_NOMEM;
         }
