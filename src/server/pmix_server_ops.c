@@ -3235,6 +3235,7 @@ static void scadcon(pmix_setup_caddy_t *p)
     p->keys = NULL;
     p->channels = PMIX_FWD_NO_CHANNELS;
     p->bo = NULL;
+    p->nbo = 0;
     p->cbfunc = NULL;
     p->opcbfunc = NULL;
     p->setupcbfunc = NULL;
