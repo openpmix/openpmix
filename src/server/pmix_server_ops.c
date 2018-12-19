@@ -3273,6 +3273,8 @@ static void ncon(pmix_notify_caddy_t *p)
     p->range = PMIX_RANGE_UNDEF;
     p->targets = NULL;
     p->ntargets = 0;
+    p->affected = NULL;
+    p->naffected = 0;
     p->nondefault = false;
     p->info = NULL;
     p->ninfo = 0;
@@ -3283,6 +3285,7 @@ static void ndes(pmix_notify_caddy_t *p)
     if (NULL != p->info) {
         PMIX_INFO_FREE(p->info, p->ninfo);
     }
+    PMIX_PROC_FREE(p->affected, p->naffected);
     if (NULL != p->targets) {
         free(p->targets);
     }
