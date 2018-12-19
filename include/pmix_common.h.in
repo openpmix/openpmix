@@ -106,6 +106,7 @@ typedef uint32_t pmix_rank_t;
 /* other special rank values will be used to define
  * groups of ranks for use in collectives */
 #define PMIX_RANK_LOCAL_NODE    UINT32_MAX-2        // all ranks on local node
+#define PMIX_RANK_LOCAL_PEERS   UINT32_MAX-4        // all peers (i.e., all procs within the same nspace) on local node
 /* define an invalid value */
 #define PMIX_RANK_INVALID   UINT32_MAX-3
 
@@ -650,6 +651,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_GROUP_MEMBERSHIP               "pmix.grp.mbrs"         // (pmix_data_array_t*) array of group member ID's
 #define PMIX_GROUP_ASSIGN_CONTEXT_ID        "pmix.grp.actxid"       // (bool) request that the RM assign a unique numerical (size_t) ID to this group
 #define PMIX_GROUP_CONTEXT_ID               "pmix.grp.ctxid"        // (size_t) context ID assigned to group
+#define PMIX_GROUP_LOCAL_ONLY               "pmix.grp.lcl"          // (bool) group operation only involves local procs
+#define PMIX_GROUP_ENDPT_DATA               "pmix.grp.endpt"        // (pmix_byte_object_t) data collected to be shared during construction
 
 
 /****    PROCESS STATE DEFINITIONS    ****/
