@@ -3230,6 +3230,8 @@ static void scadcon(pmix_setup_caddy_t *p)
     p->ncodes = 0;
     p->procs = NULL;
     p->nprocs = 0;
+    p->apps = NULL;
+    p->napps = 0;
     p->server_object = NULL;
     p->nlocalprocs = 0;
     p->info = NULL;
@@ -3249,6 +3251,13 @@ static void scaddes(pmix_setup_caddy_t *p)
 {
     if (NULL != p->peer) {
         PMIX_RELEASE(p->peer);
+    }
+    PMIX_PROC_FREE(p->procs, p->nprocs);
+    if (NULL != p->apps) {
+        PMIX_APP_FREE(p->apps, p->napps);
+    }
+    if (NULL != p->bo) {
+        PMIX_BYTE_OBJECT_FREE(p->bo, p->nbo);
     }
     PMIX_DESTRUCT_LOCK(&p->lock);
 }
