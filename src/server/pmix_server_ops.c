@@ -1,8 +1,8 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
- * Copyright (c) 2014-2017 Research Organization for Information Science
- *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2014-2018 Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * Copyright (c) 2016-2017 Mellanox Technologies, Inc.
@@ -1130,7 +1130,7 @@ static void spcbfunc(pmix_status_t status,
         PMIX_INFO_FREE(cd->info, cd->ninfo);
     }
     if (NULL != cd->apps) {
-        PMIX_APP_CREATE(cd->apps, cd->napps);
+        PMIX_APP_FREE(cd->apps, cd->napps);
     }
     if (NULL != cd->spcbfunc) {
         cd->spcbfunc(status, nspace, cd->cbdata);
@@ -1899,10 +1899,8 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
             PMIX_RELEASE(relay);
         }
     }
-    if (!enviro_events) {
-        if (NULL != codes) {
-            free(codes);
-        }
+    if (NULL != codes) {
+        free(codes);
     }
     if (NULL != affected) {
         PMIX_PROC_FREE(affected, naffected);
@@ -2384,6 +2382,8 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer,
     }
     cd->cbdata = cbdata;
 
+    PMIX_CONSTRUCT(&epicache, pmix_list_t);
+
     /* unpack the number of targets */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &cd->ntargets, &cnt, PMIX_SIZE);
@@ -2402,7 +2402,6 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer,
     }
 
     /* check targets to find proper place to put any epilog requests */
-    PMIX_CONSTRUCT(&epicache, pmix_list_t);
     if (NULL == cd->targets) {
         epicd = PMIX_NEW(pmix_srvr_epi_caddy_t);
         epicd->epi = &peer->nptr->epilog;
@@ -2582,7 +2581,6 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer,
                             rc = PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES;
                             PMIX_LIST_DESTRUCT(&cachedirs);
                             PMIX_LIST_DESTRUCT(&cachefiles);
-                            PMIX_LIST_DESTRUCT(&epicache);
                             goto exit;
                         }
                     }
@@ -2643,10 +2641,12 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer,
                                                            cbfunc, cd))) {
         goto exit;
     }
+    PMIX_LIST_DESTRUCT(&epicache);
     return PMIX_SUCCESS;
 
   exit:
     PMIX_RELEASE(cd);
+    PMIX_LIST_DESTRUCT(&epicache);
     return rc;
 }
 
@@ -3230,6 +3230,8 @@ static void scadcon(pmix_setup_caddy_t *p)
     p->ncodes = 0;
     p->procs = NULL;
     p->nprocs = 0;
+    p->apps = NULL;
+    p->napps = 0;
     p->server_object = NULL;
     p->nlocalprocs = 0;
     p->info = NULL;
@@ -3237,6 +3239,7 @@ static void scadcon(pmix_setup_caddy_t *p)
     p->keys = NULL;
     p->channels = PMIX_FWD_NO_CHANNELS;
     p->bo = NULL;
+    p->nbo = 0;
     p->cbfunc = NULL;
     p->opcbfunc = NULL;
     p->setupcbfunc = NULL;
@@ -3248,6 +3251,13 @@ static void scaddes(pmix_setup_caddy_t *p)
 {
     if (NULL != p->peer) {
         PMIX_RELEASE(p->peer);
+    }
+    PMIX_PROC_FREE(p->procs, p->nprocs);
+    if (NULL != p->apps) {
+        PMIX_APP_FREE(p->apps, p->napps);
+    }
+    if (NULL != p->bo) {
+        PMIX_BYTE_OBJECT_FREE(p->bo, p->nbo);
     }
     PMIX_DESTRUCT_LOCK(&p->lock);
 }
@@ -3263,6 +3273,8 @@ static void ncon(pmix_notify_caddy_t *p)
     p->range = PMIX_RANGE_UNDEF;
     p->targets = NULL;
     p->ntargets = 0;
+    p->affected = NULL;
+    p->naffected = 0;
     p->nondefault = false;
     p->info = NULL;
     p->ninfo = 0;
@@ -3273,6 +3285,7 @@ static void ndes(pmix_notify_caddy_t *p)
     if (NULL != p->info) {
         PMIX_INFO_FREE(p->info, p->ninfo);
     }
+    PMIX_PROC_FREE(p->affected, p->naffected);
     if (NULL != p->targets) {
         free(p->targets);
     }
