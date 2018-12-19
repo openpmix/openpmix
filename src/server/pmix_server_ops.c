@@ -2382,6 +2382,8 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer,
     }
     cd->cbdata = cbdata;
 
+    PMIX_CONSTRUCT(&epicache, pmix_list_t);
+
     /* unpack the number of targets */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &cd->ntargets, &cnt, PMIX_SIZE);
@@ -2400,7 +2402,6 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer,
     }
 
     /* check targets to find proper place to put any epilog requests */
-    PMIX_CONSTRUCT(&epicache, pmix_list_t);
     if (NULL == cd->targets) {
         epicd = PMIX_NEW(pmix_srvr_epi_caddy_t);
         epicd->epi = &peer->nptr->epilog;
@@ -2580,7 +2581,6 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer,
                             rc = PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES;
                             PMIX_LIST_DESTRUCT(&cachedirs);
                             PMIX_LIST_DESTRUCT(&cachefiles);
-                            PMIX_LIST_DESTRUCT(&epicache);
                             goto exit;
                         }
                     }
@@ -2641,10 +2641,12 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer,
                                                            cbfunc, cd))) {
         goto exit;
     }
+    PMIX_LIST_DESTRUCT(&epicache);
     return PMIX_SUCCESS;
 
   exit:
     PMIX_RELEASE(cd);
+    PMIX_LIST_DESTRUCT(&epicache);
     return rc;
 }
 
