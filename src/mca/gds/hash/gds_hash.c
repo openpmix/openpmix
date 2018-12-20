@@ -3,6 +3,8 @@
  * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2018      Mellanox Technologies, Inc.
+ *                         All rights reserved.
  *
  * $COPYRIGHT$
  *
@@ -96,6 +98,7 @@ static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf);
 
 pmix_gds_base_module_t pmix_hash_module = {
     .name = "hash",
+    .is_tsafe = false,
     .init = hash_init,
     .finalize = hash_finalize,
     .assign_module = hash_assign_module,

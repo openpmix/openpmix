@@ -71,6 +71,8 @@ struct pmix_common_dstore_ctx_s {
      * sparse communication patterns when direct modex is usually used.
      */
     int direct_mode;
+    /* dstore ctx protect lock, uses for clients only */
+    pthread_mutex_t lock;
 };
 
 struct session_s {
