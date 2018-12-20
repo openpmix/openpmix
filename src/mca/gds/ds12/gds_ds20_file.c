@@ -117,9 +117,9 @@ static int pmix_ds20_put_key(uint8_t *addr, char *key, void *buf, size_t size)
     return PMIX_SUCCESS;
 }
 
-static int pmix_ds20_is_invalid(uint8_t *addr)
+static bool pmix_ds20_is_invalid(uint8_t *addr)
 {
-    int ret = (0 == strncmp(ESH_REGION_INVALIDATED, ESH_KNAME_PTR_V20(addr),
+    bool ret = (0 == strncmp(ESH_REGION_INVALIDATED, ESH_KNAME_PTR_V20(addr),
                             ESH_KNAME_LEN_V20(ESH_KNAME_PTR_V20(addr))));
     return ret;
 }
@@ -130,17 +130,17 @@ static void pmix_ds20_set_invalid(uint8_t *addr)
             ESH_KNAME_LEN_V20(ESH_REGION_INVALIDATED));
 }
 
-static int pmix_ds20_is_ext_slot(uint8_t *addr)
+static bool pmix_ds20_is_ext_slot(uint8_t *addr)
 {
-    int ret;
+    bool ret;
     ret = (0 == strncmp(ESH_REGION_EXTENSION, ESH_KNAME_PTR_V20(addr),
                         ESH_KNAME_LEN_V20(ESH_KNAME_PTR_V20(addr))));
     return ret;
 }
 
-static int pmix_ds20_kname_match(uint8_t *addr, const char *key, size_t key_hash)
+static bool pmix_ds20_kname_match(uint8_t *addr, const char *key, size_t key_hash)
 {
-    int ret = 0;
+    bool ret = 0;
 
     ret = (0 == strncmp(ESH_KNAME_PTR_V20(addr),
                         key, ESH_KNAME_LEN_V20(key)));
