@@ -105,10 +105,8 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc,
                         (NULL == key) ? "NULL" : key);
 
     /* try to get data directly, without threadshift */
-    if (PMIX_LIKELY(true == pmix_client_globals.get_fastpath)) {
-        if (PMIX_SUCCESS == (rc = _getfn_fastpath(proc, key, info, ninfo, val))) {
-            goto done;
-        }
+    if (PMIX_SUCCESS == (rc = _getfn_fastpath(proc, key, info, ninfo, val))) {
+        goto done;
     }
 
     /* create a callback object as we need to pass it to the
@@ -500,6 +498,7 @@ static pmix_status_t _getfn_fastpath(const pmix_proc_t *proc, const pmix_key_t k
         for (n=0; n < ninfo; n++) {
             if (0 == strncmp(info[n].key, PMIX_DATA_SCOPE, PMIX_MAX_KEYLEN)) {
                 cb->scope = info[n].value.data.scope;
+                break;
             }
         }
     }

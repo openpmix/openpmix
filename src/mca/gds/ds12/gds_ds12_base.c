@@ -153,7 +153,7 @@ static pmix_status_t ds12_del_nspace(const char* nspace)
 
 pmix_gds_base_module_t pmix_ds12_module = {
     .name = "ds12",
-    .is_tsafe = true,
+    .is_tsafe = false,
     .init = ds12_init,
     .finalize = ds12_finalize,
     .assign_module = ds12_assign_module,

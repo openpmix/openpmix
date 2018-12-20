@@ -157,13 +157,6 @@ pmix_status_t pmix_register_params(void)
                                        PMIX_INFO_LVL_1, PMIX_MCA_BASE_VAR_SCOPE_ALL,
                                        &pmix_client_globals.base_verbose);
 
-    pmix_client_globals.get_fastpath = true;
-    (void) pmix_mca_base_var_register ("pmix", "pmix", "client", "get_fastpath",
-                                       "Enable fastpath for client get operations",
-                                       PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, 0,
-                                       PMIX_INFO_LVL_1, PMIX_MCA_BASE_VAR_SCOPE_ALL,
-                                       &pmix_client_globals.get_fastpath);
-
     /****   SERVER: VERBOSE OUTPUT PARAMS   ****/
     (void) pmix_mca_base_var_register ("pmix", "pmix", "server", "get_verbose",
                                        "Verbosity for server get operations",
