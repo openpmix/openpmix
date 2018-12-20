@@ -2783,6 +2783,9 @@ static void query_cbfunc(pmix_status_t status,
     }
     PMIX_RELEASE(qcd);
     PMIX_RELEASE(cd);
+    if (NULL != release_fn) {
+        release_fn(release_cbdata);
+    }
 }
 
 static void cred_cbfunc(pmix_status_t status,
