@@ -3456,6 +3456,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd,
     pmix_byte_object_t bo;
     pmix_list_t mbrs;
     pmix_namelist_t *nm;
+    bool expanded = false;
 
     pmix_output_verbose(2, pmix_server_globals.connect_output,
                         "recvd grpconstruct cmd");
@@ -3518,6 +3519,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd,
         PMIX_CONSTRUCT(&mbrs, pmix_list_t);
         for (n=0; n < nprocs; n++) {
             if (PMIX_RANK_LOCAL_PEERS == procs[n].rank) {
+                expanded = true;
                 /* expand to all local procs in this nspace */
                 for (m=0; m < pmix_server_globals.clients.size; m++) {
                     if (NULL == (pr = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, m))) {
@@ -3530,6 +3532,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd,
                     }
                 }
             } else if (PMIX_RANK_LOCAL_NODE == procs[n].rank) {
+                expanded = true;
                 /* add in all procs on the node */
                 for (m=0; m < pmix_server_globals.clients.size; m++) {
                     if (NULL == (pr = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, m))) {
@@ -3548,7 +3551,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd,
                 pmix_list_append(&mbrs, &nm->super);
             }
         }
-        if (nprocs < pmix_list_get_size(&mbrs)) {
+        if (expanded) {
             PMIX_PROC_FREE(procs, nprocs);
             nprocs = pmix_list_get_size(&mbrs);
             PMIX_PROC_CREATE(procs, nprocs);
