@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2016-2017 Mellanox Technologies, Inc.
+ * Copyright (c) 2016-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2018 Intel, Inc.  All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
@@ -399,12 +399,26 @@ typedef pmix_status_t (*pmix_gds_base_module_del_nspace_fn_t)(const char* nspace
         }                                                   \
     } while(0)
 
+/* define a convenience macro for is_tsafe for fetch operation */
+#define PMIX_GDS_FETCH_IS_TSAFE(s, p)                       \
+    do {                                                    \
+        pmix_gds_base_module_t *_g = (p)->nptr->compat.gds; \
+        pmix_output_verbose(1, pmix_gds_base_output,        \
+                "[%s:%d] GDS FETCH IS THREAD SAFE WITH %s", \
+                            __FILE__, __LINE__, _g->name);  \
+        if (true == _g->is_tsafe) {                         \
+            (s) = PMIX_SUCCESS;                             \
+        } else {                                            \
+            (s) = PMIX_ERR_NOT_SUPPORTED;                   \
+        }                                                   \
+} while(0)
 
 /**
 * structure for gds modules
 */
 typedef struct {
     const char *name;
+    const bool is_tsafe;
     pmix_gds_base_module_init_fn_t                  init;
     pmix_gds_base_module_fini_fn_t                  finalize;
     pmix_gds_base_assign_module_fn_t                assign_module;

@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2015-2018 Intel, Inc. All rights reserved.
  * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
- * Copyright (c) 2016-2017 Mellanox Technologies, Inc.
+ * Copyright (c) 2016-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
@@ -1702,6 +1702,12 @@ pmix_common_dstore_ctx_t *pmix_common_dstor_init(const char *ds_name, pmix_info_
             goto err_exit;
         }
         ds_ctx->session_map_search = _esh_session_map_search_client;
+        /* init ds_ctx protect lock */
+        if (0 != pthread_mutex_init(&ds_ctx->lock, NULL)) {
+            rc = PMIX_ERR_INIT;
+            PMIX_ERROR_LOG(rc);
+            goto err_exit;
+        }
     }
 
     rc = _esh_session_tbl_add(ds_ctx, &tbl_idx);
@@ -1940,6 +1946,7 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
     pmix_info_t *info = NULL;
     size_t ninfo;
     size_t keyhash = 0;
+    bool lock_is_set = false;
 
     PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
                          "%s:%d:%s: for %s:%u look for key %s",
@@ -1949,34 +1956,38 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
         PMIX_OUTPUT_VERBOSE((7, pmix_gds_base_framework.framework_output,
                              "dstore: Does not support passed parameters"));
         rc = PMIX_ERR_BAD_PARAM;
-        PMIX_ERROR_LOG(rc);
-        return rc;
+        goto error;
     }
 
     PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
                          "%s:%d:%s: for %s:%u look for key %s",
                          __FILE__, __LINE__, __func__, nspace, rank, key));
 
+    /* protect info of dstore segments before it will be updated */
+    if (!PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
+        if (0 != (rc = pthread_mutex_lock(&ds_ctx->lock))) {
+            goto error;
+        }
+        lock_is_set = true;
+    }
+
     if (NULL == (ns_map = ds_ctx->session_map_search(ds_ctx, nspace))) {
         /* This call is issued from the the client.
          * client must have the session, otherwise the error is fatal.
          */
         rc = PMIX_ERR_FATAL;
-        PMIX_ERROR_LOG(rc);
-        return rc;
+        goto error;
     }
 
     if (NULL == kvs) {
         rc = PMIX_ERR_FATAL;
-        PMIX_ERROR_LOG(rc);
-        return rc;
+        goto error;
     }
 
     if (PMIX_RANK_UNDEF == rank) {
         ssize_t _nprocs = _get_univ_size(ds_ctx, ns_map->name);
         if( 0 > _nprocs ){
-            PMIX_ERROR_LOG(rc);
-            return rc;
+            goto error;
         }
         nprocs = (size_t) _nprocs;
         cur_rank = 0;
@@ -1989,9 +2000,8 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
     lock_rc = _ESH_LOCK(ds_ctx, ns_map->tbl_idx, rd_lock);
     if (PMIX_SUCCESS != lock_rc) {
         /* Something wrong with the lock. The error is fatal */
-        rc = PMIX_ERR_FATAL;
-        PMIX_ERROR_LOG(lock_rc);
-        return lock_rc;
+        rc = lock_rc;
+        goto error;
     }
 
     /* First of all, we go through all initial segments and look at their field.
@@ -2043,6 +2053,14 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
 
     if( NULL != key ) {
         keyhash = PMIX_DS_KEY_HASH(ds_ctx, key);
+    }
+
+    /* all segment data updated, ctx lock may released */
+    if (lock_is_set) {
+        if (0 != (rc = pthread_mutex_unlock(&ds_ctx->lock))) {
+            goto error;
+        }
+        lock_is_set = false;
     }
 
     while (nprocs--) {
@@ -2209,6 +2227,11 @@ done:
         PMIX_ERROR_LOG(lock_rc);
     }
 
+    /* unset ds_ctx lock */
+    if (lock_is_set) {
+        pthread_mutex_unlock(&ds_ctx->lock);
+    }
+
     if( rc != PMIX_SUCCESS ){
         if ((NULL == key) && (kval_cnt > 0)) {
             if( NULL != info ) {
@@ -2234,6 +2257,13 @@ done:
         return rc;
     }
     rc = PMIX_ERR_NOT_FOUND;
+    return rc;
+
+error:
+    if (lock_is_set) {
+        pthread_mutex_unlock(&ds_ctx->lock);
+    }
+    PMIX_ERROR_LOG(rc);
     return rc;
 }
 

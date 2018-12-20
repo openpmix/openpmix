@@ -159,6 +159,7 @@ static pmix_status_t ds21_del_nspace(const char* nspace)
 
 pmix_gds_base_module_t pmix_ds21_module = {
     .name = "ds21",
+    .is_tsafe = true,
     .init = ds21_init,
     .finalize = ds21_finalize,
     .assign_module = ds21_assign_module,
