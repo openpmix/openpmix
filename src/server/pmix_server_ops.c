@@ -3454,6 +3454,8 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd,
     bool barrier_directive_included = false;
     pmix_buffer_t bucket;
     pmix_byte_object_t bo;
+    pmix_list_t mbrs;
+    pmix_namelist_t *nm;
 
     pmix_output_verbose(2, pmix_server_globals.connect_output,
                         "recvd grpconstruct cmd");
@@ -3510,6 +3512,53 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd,
         goto error;
     }
     if (NULL == grp->members) {
+        /* see if they used a local proc or local peer
+         * wildcard - if they did, then we need to expand
+         * it here */
+        PMIX_CONSTRUCT(&mbrs, pmix_list_t);
+        for (n=0; n < nprocs; n++) {
+            if (PMIX_RANK_LOCAL_PEERS == procs[n].rank) {
+                /* expand to all local procs in this nspace */
+                for (m=0; m < pmix_server_globals.clients.size; m++) {
+                    if (NULL == (pr = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, m))) {
+                        continue;
+                    }
+                    if (PMIX_CHECK_NSPACE(procs[n].nspace, pr->info->pname.nspace)) {
+                        nm = PMIX_NEW(pmix_namelist_t);
+                        nm->pname = &pr->info->pname;
+                        pmix_list_append(&mbrs, &nm->super);
+                    }
+                }
+            } else if (PMIX_RANK_LOCAL_NODE == procs[n].rank) {
+                /* add in all procs on the node */
+                for (m=0; m < pmix_server_globals.clients.size; m++) {
+                    if (NULL == (pr = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, m))) {
+                        continue;
+                    }
+                    nm = PMIX_NEW(pmix_namelist_t);
+                    nm->pname = &pr->info->pname;
+                    pmix_list_append(&mbrs, &nm->super);
+                }
+            } else {
+                nm = PMIX_NEW(pmix_namelist_t);
+                /* have to duplicate the name here */
+                nm->pname = (pmix_name_t*)malloc(sizeof(pmix_name_t));
+                nm->pname->nspace = strdup(procs[n].nspace);
+                nm->pname->rank = procs[n].rank;
+                pmix_list_append(&mbrs, &nm->super);
+            }
+        }
+        if (nprocs < pmix_list_get_size(&mbrs)) {
+            PMIX_PROC_FREE(procs, nprocs);
+            nprocs = pmix_list_get_size(&mbrs);
+            PMIX_PROC_CREATE(procs, nprocs);
+            n=0;
+            while (NULL != (nm = (pmix_namelist_t*)pmix_list_remove_first(&mbrs))) {
+                PMIX_LOAD_PROCID(&procs[n], nm->pname->nspace, nm->pname->rank);
+                PMIX_RELEASE(nm);
+            }
+            PMIX_DESTRUCT(&mbrs);
+        }
         grp->members = procs;
         grp->nmbrs = nprocs;
     } else {
