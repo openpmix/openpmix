@@ -2487,6 +2487,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_del_nspace(pmix_common_dstore_ctx_t 
             trk = pmix_value_array_get_item(ds_ctx->ns_track_array, dstor_track_idx);
             if (true == trk->in_use) {
                 PMIX_DESTRUCT(trk);
+                pmix_value_array_remove_item(ds_ctx->ns_track_array, dstor_track_idx);
             }
         }
         _esh_session_release(ds_ctx, session_tbl_idx);
