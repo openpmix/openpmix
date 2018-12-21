@@ -642,6 +642,97 @@ PMIX_EXPORT pmix_status_t PMIx_server_register_nspace(const pmix_nspace_t nspace
     return PMIX_SUCCESS;
 }
 
+void pmix_server_purge_events(pmix_peer_t *peer,
+                              pmix_proc_t *proc)
+{
+    pmix_regevents_info_t *reginfo, *regnext;
+    pmix_peer_events_info_t *prev, *pnext;
+    pmix_iof_req_t *req, *nxt;
+    int i;
+    pmix_notify_caddy_t *ncd;
+    size_t n, m, p, ntgs;
+    pmix_proc_t *tgs, *tgt;
+    pmix_dmdx_local_t *dlcd, *dnxt;
+
+    /* since the client is finalizing, remove them from any event
+     * registrations they may still have on our list */
+    PMIX_LIST_FOREACH_SAFE(reginfo, regnext, &pmix_server_globals.events, pmix_regevents_info_t) {
+        PMIX_LIST_FOREACH_SAFE(prev, pnext, &reginfo->peers, pmix_peer_events_info_t) {
+            if ((NULL != peer && prev->peer == peer) ||
+                (NULL != proc && PMIX_CHECK_PROCID(proc, &prev->peer->info->pname))) {
+                pmix_list_remove_item(&reginfo->peers, &prev->super);
+                PMIX_RELEASE(prev);
+                if (0 == pmix_list_get_size(&reginfo->peers)) {
+                    pmix_list_remove_item(&pmix_server_globals.events, &reginfo->super);
+                    PMIX_RELEASE(reginfo);
+                    break;
+                }
+            }
+        }
+    }
+
+    /* since the client is finalizing, remove them from any IOF
+     * registrations they may still have on our list */
+    PMIX_LIST_FOREACH_SAFE(req, nxt, &pmix_globals.iof_requests, pmix_iof_req_t) {
+        if ((NULL != peer && PMIX_CHECK_PROCID(&req->peer->info->pname, &peer->info->pname)) ||
+            (NULL != proc && PMIX_CHECK_PROCID(&req->peer->info->pname, proc))) {
+            pmix_list_remove_item(&pmix_globals.iof_requests, &req->super);
+            PMIX_RELEASE(req);
+        }
+    }
+
+    /* see if this proc is involved in any direct modex requests */
+    PMIX_LIST_FOREACH_SAFE(dlcd, dnxt, &pmix_server_globals.local_reqs, pmix_dmdx_local_t) {
+        if ((NULL != peer && PMIX_CHECK_PROCID(&peer->info->pname, &dlcd->proc)) ||
+            (NULL != proc && PMIX_CHECK_PROCID(proc, &dlcd->proc))) {
+                /* cleanup this request */
+            pmix_list_remove_item(&pmix_server_globals.local_reqs, &dlcd->super);
+                /* we can release the dlcd item here because we are not
+                 * releasing the tracker held by the host - we are only
+                 * releasing one item on that tracker */
+            PMIX_RELEASE(dlcd);
+        }
+    }
+
+    /* purge this client from any cached notifications */
+    for (i=0; i < pmix_globals.max_events; i++) {
+       pmix_hotel_knock(&pmix_globals.notifications, i, (void**)&ncd);
+        if (NULL != ncd && NULL != ncd->targets && 0 < ncd->ntargets) {
+            tgt = NULL;
+            for (n=0; n < ncd->ntargets; n++) {
+                if ((NULL != peer && PMIX_CHECK_PROCID(&peer->info->pname, &ncd->targets[n])) ||
+                    (NULL != proc && PMIX_CHECK_PROCID(proc, &ncd->targets[n]))) {
+                    tgt = &ncd->targets[n];
+                    break;
+                }
+            }
+            if (NULL != tgt) {
+                /* if this client was the only target, then just
+                 * evict the notification */
+                if (1 == ncd->ntargets) {
+                    pmix_hotel_checkout(&pmix_globals.notifications, i);
+                    PMIX_RELEASE(ncd);
+                } else if (PMIX_RANK_WILDCARD == tgt->rank &&
+                           NULL != proc && PMIX_RANK_WILDCARD == proc->rank) {
+                    /* we have to remove this target, but leave the rest */
+                    ntgs = ncd->ntargets - 1;
+                    PMIX_PROC_CREATE(tgs, ntgs);
+                    p=0;
+                    for (m=0; m < ncd->ntargets; m++) {
+                        if (tgt != &ncd->targets[m]) {
+                            memcpy(&tgs[p], &ncd->targets[n], sizeof(pmix_proc_t));
+                            ++p;
+                        }
+                    }
+                    PMIX_PROC_FREE(ncd->targets, ncd->ntargets);
+                    ncd->targets = tgs;
+                    ncd->ntargets = ntgs;
+                }
+            }
+        }
+    }
+}
+
 static void _deregister_nspace(int sd, short args, void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t*)cbdata;
@@ -654,11 +745,15 @@ static void _deregister_nspace(int sd, short args, void *cbdata)
                         "pmix:server _deregister_nspace %s",
                         cd->proc.nspace);
 
-    /* release any job-level messaging resources */
+    /* release any job-level network resources */
     pmix_pnet.deregister_nspace(cd->proc.nspace);
 
     /* let our local storage clean up */
     PMIX_GDS_DEL_NSPACE(rc, cd->proc.nspace);
+
+    /* remove any event registrations, IOF registrations, and
+     * cached notifications targeting procs from this nspace */
+    pmix_server_purge_events(NULL, &cd->proc);
 
     /* release this nspace */
     PMIX_LIST_FOREACH(tmp, &pmix_server_globals.nspaces, pmix_namespace_t) {
@@ -696,8 +791,8 @@ PMIX_EXPORT void PMIx_server_deregister_nspace(const pmix_nspace_t nspace,
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
-     cd = PMIX_NEW(pmix_setup_caddy_t);
-    pmix_strncpy(cd->proc.nspace, nspace, PMIX_MAX_NSLEN);
+    cd = PMIX_NEW(pmix_setup_caddy_t);
+    PMIX_LOAD_PROCID(&cd->proc, nspace, PMIX_RANK_WILDCARD);
     cd->opcbfunc = cbfunc;
     cd->cbdata = cbdata;
 
@@ -2993,9 +3088,6 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
     pmix_server_caddy_t *cd;
     pmix_proc_t proc;
     pmix_buffer_t *reply;
-    pmix_regevents_info_t *reginfo;
-    pmix_peer_events_info_t *prev;
-    pmix_iof_req_t *req, *nxt;
 
     /* retrieve the cmd */
     cnt = 1;
@@ -3075,26 +3167,8 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
         pmix_output_verbose(2, pmix_server_globals.base_output,
                             "recvd FINALIZE");
         peer->nptr->nfinalized++;
-        /* since the client is finalizing, remove them from any event
-         * registrations they may still have on our list */
-        PMIX_LIST_FOREACH(reginfo, &pmix_server_globals.events, pmix_regevents_info_t) {
-            PMIX_LIST_FOREACH(prev, &reginfo->peers, pmix_peer_events_info_t) {
-                if (prev->peer == peer) {
-                    pmix_list_remove_item(&reginfo->peers, &prev->super);
-                    PMIX_RELEASE(prev);
-                    break;
-                }
-            }
-        }
-        /* since the client is finalizing, remove them from any IOF
-         * registrations they may still have on our list */
-        PMIX_LIST_FOREACH_SAFE(req, nxt, &pmix_globals.iof_requests, pmix_iof_req_t) {
-            if (PMIX_CHECK_NSPACE(req->peer->info->pname.nspace, peer->info->pname.nspace) &&
-                req->peer->info->pname.rank == peer->info->pname.rank) {
-                pmix_list_remove_item(&pmix_globals.iof_requests, &req->super);
-                PMIX_RELEASE(req);
-            }
-        }
+        /* purge events */
+        pmix_server_purge_events(peer, NULL);
         /* turn off the recv event - we shouldn't hear anything
          * more from this proc */
         if (peer->recv_ev_active) {

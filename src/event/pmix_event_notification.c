@@ -51,7 +51,6 @@ PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status,
         return PMIX_ERR_INIT;
     }
 
-
     if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer) &&
         !PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -111,6 +110,30 @@ static void notify_event_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     PMIX_RELEASE(cb);
 }
 
+static pmix_status_t notify_event_cache(pmix_notify_caddy_t *cd)
+{
+    pmix_status_t rc;
+    int j;
+    pmix_notify_caddy_t *pk;
+
+    /* add to our cache */
+    rc = pmix_hotel_checkin(&pmix_globals.notifications, cd, &cd->room);
+    /* if there wasn't room, then search for the longest tenured
+     * occupant and evict them */
+    if (PMIX_SUCCESS != rc) {
+        for (j=0; j < pmix_globals.max_events; j++) {
+            pmix_hotel_knock(&pmix_globals.notifications, j, (void**)&pk);
+            if (NULL == pk) {
+                /* hey, there is room! */
+                pmix_hotel_checkin_with_res(&pmix_globals.notifications, cd, &cd->room);
+                return PMIX_SUCCESS;
+            }
+            /* check the age */
+        }
+    }
+    return rc;
+}
+
 /* as a client, we pass the notification to our server */
 static pmix_status_t notify_server_of_event(pmix_status_t status,
                                             const pmix_proc_t *source,
@@ -124,7 +147,7 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
     pmix_cb_t *cb;
     pmix_event_chain_t *chain;
     size_t n;
-    pmix_notify_caddy_t *cd, *rbout;
+    pmix_notify_caddy_t *cd;
 
     pmix_output_verbose(2, pmix_client_globals.event_output,
                         "[%s:%d] client: notifying server %s:%d of status %s for range %s",
@@ -205,28 +228,28 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
         for (n=0; n < cd->ninfo; n++) {
             PMIX_INFO_XFER(&cd->info[n], &chain->info[n]);
         }
-        if (NULL != chain->targets) {
-            cd->ntargets = chain->ntargets;
-            PMIX_PROC_CREATE(cd->targets, cd->ntargets);
-            memcpy(cd->targets, chain->targets, cd->ntargets * sizeof(pmix_proc_t));
-        }
-        if (NULL != chain->affected) {
-            cd->naffected = chain->naffected;
-            PMIX_PROC_CREATE(cd->affected, cd->naffected);
-            if (NULL == cd->affected) {
-                cd->naffected = 0;
-                rc = PMIX_ERR_NOMEM;
-                goto cleanup;
-            }
-            memcpy(cd->affected, chain->affected, cd->naffected * sizeof(pmix_proc_t));
-        }
     }
-
-    /* add to our cache */
-    rbout = pmix_ring_buffer_push(&pmix_globals.notifications, cd);
-    /* if an older event was bumped, release it */
-    if (NULL != rbout) {
-        PMIX_RELEASE(rbout);
+    if (NULL != chain->targets) {
+        cd->ntargets = chain->ntargets;
+        PMIX_PROC_CREATE(cd->targets, cd->ntargets);
+        memcpy(cd->targets, chain->targets, cd->ntargets * sizeof(pmix_proc_t));
+    }
+    if (NULL != chain->affected) {
+        cd->naffected = chain->naffected;
+        PMIX_PROC_CREATE(cd->affected, cd->naffected);
+        if (NULL == cd->affected) {
+            cd->naffected = 0;
+            rc = PMIX_ERR_NOMEM;
+            goto cleanup;
+        }
+        memcpy(cd->affected, chain->affected, cd->naffected * sizeof(pmix_proc_t));
+    }
+    /* cache it */
+    rc = notify_event_cache(cd);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(cd);
+        goto cleanup;
     }
 
     if (PMIX_RANGE_PROC_LOCAL != range && NULL != msg) {
@@ -765,7 +788,6 @@ static void local_cbfunc(pmix_status_t status, void *cbdata)
 static void _notify_client_event(int sd, short args, void *cbdata)
 {
     pmix_notify_caddy_t *cd = (pmix_notify_caddy_t*)cbdata;
-    pmix_notify_caddy_t *rbout;
     pmix_regevents_info_t *reginfoptr;
     pmix_peer_events_info_t *pr;
     pmix_event_chain_t *chain;
@@ -805,11 +827,9 @@ static void _notify_client_event(int sd, short args, void *cbdata)
          * the message until all local procs have received it, or it ages to
          * the point where it gets pushed out by more recent events */
         PMIX_RETAIN(cd);
-        rbout = pmix_ring_buffer_push(&pmix_globals.notifications, cd);
-
-        /* if an older event was bumped, release it */
-        if (NULL != rbout) {
-            PMIX_RELEASE(rbout);
+        rc = notify_event_cache(cd);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
         }
     }
 
@@ -826,29 +846,27 @@ static void _notify_client_event(int sd, short args, void *cbdata)
     /* prep the chain for processing */
     pmix_prep_event_chain(chain, cd->info, cd->ninfo, true);
 
-    if (0 < cd->ninfo) {
-        /* copy setup to the cd object */
-        cd->nondefault = chain->nondefault;
-        if (NULL != chain->targets) {
-            cd->ntargets = chain->ntargets;
-            PMIX_PROC_CREATE(cd->targets, cd->ntargets);
-            memcpy(cd->targets, chain->targets, cd->ntargets * sizeof(pmix_proc_t));
-        }
-        if (NULL != chain->affected) {
-            cd->naffected = chain->naffected;
-            PMIX_PROC_CREATE(cd->affected, cd->naffected);
-            if (NULL == cd->affected) {
-                cd->naffected = 0;
-                /* notify the caller */
-                if (NULL != cd->cbfunc) {
-                    cd->cbfunc(PMIX_ERR_NOMEM, cd->cbdata);
-                }
-                PMIX_RELEASE(cd);
-                PMIX_RELEASE(chain);
-                return;
+    /* copy setup to the cd object */
+    cd->nondefault = chain->nondefault;
+    if (NULL != chain->targets) {
+        cd->ntargets = chain->ntargets;
+        PMIX_PROC_CREATE(cd->targets, cd->ntargets);
+        memcpy(cd->targets, chain->targets, cd->ntargets * sizeof(pmix_proc_t));
+    }
+    if (NULL != chain->affected) {
+        cd->naffected = chain->naffected;
+        PMIX_PROC_CREATE(cd->affected, cd->naffected);
+        if (NULL == cd->affected) {
+            cd->naffected = 0;
+            /* notify the caller */
+            if (NULL != cd->cbfunc) {
+                cd->cbfunc(PMIX_ERR_NOMEM, cd->cbdata);
             }
-            memcpy(cd->affected, chain->affected, cd->naffected * sizeof(pmix_proc_t));
+            PMIX_RELEASE(cd);
+            PMIX_RELEASE(chain);
+            return;
         }
+        memcpy(cd->affected, chain->affected, cd->naffected * sizeof(pmix_proc_t));
     }
 
     /* if they provided a PMIX_EVENT_CUSTOM_RANGE info object but

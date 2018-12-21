@@ -66,14 +66,11 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
 {
     pmix_server_trkr_t *trk, *tnxt;
     pmix_server_caddy_t *rinfo, *rnext;
-    pmix_regevents_info_t *reginfoptr, *regnext;
-    pmix_peer_events_info_t *pr, *pnext;
     pmix_rank_info_t *info, *pinfo;
     pmix_ptl_posted_recv_t *rcv;
     pmix_buffer_t buf;
     pmix_ptl_hdr_t hdr;
     struct timeval tv = {1200, 0};
-    pmix_dmdx_local_t *dlcd;
 
     /* stop all events */
     if (peer->recv_ev_active) {
@@ -166,18 +163,6 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
                 }
             }
         }
-        /* see if this proc is involved in a direct modex request */
-        PMIX_LIST_FOREACH(dlcd, &pmix_server_globals.local_reqs, pmix_dmdx_local_t) {
-            if (PMIX_CHECK_PROCID(&peer->info->pname, &dlcd->proc)) {
-                /* cleanup this request */
-                pmix_list_remove_item(&pmix_server_globals.local_reqs, &dlcd->super);
-                /* we can release the dlcd item here because we are not
-                 * releasing the tracker held by the host - we are only
-                 * releasing one item on that tracker */
-                PMIX_RELEASE(dlcd);
-                break;
-            }
-        }
 
         /* remove this proc from the list of ranks for this nspace if it is
          * still there - we must check for multiple copies as there will be
@@ -195,20 +180,10 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
         /* remove this client from our array */
         pmix_pointer_array_set_item(&pmix_server_globals.clients,
                                     peer->index, NULL);
-        /* cleanup any remaining events they have registered for */
-        PMIX_LIST_FOREACH_SAFE(reginfoptr, regnext, &pmix_server_globals.events, pmix_regevents_info_t) {
-            PMIX_LIST_FOREACH_SAFE(pr, pnext, &reginfoptr->peers, pmix_peer_events_info_t) {
-                if (peer == pr->peer) {
-                    pmix_list_remove_item(&reginfoptr->peers, &pr->super);
-                    PMIX_RELEASE(pr);
-                    if (0 == pmix_list_get_size(&reginfoptr->peers)) {
-                        pmix_list_remove_item(&pmix_server_globals.events, &reginfoptr->super);
-                        PMIX_RELEASE(reginfoptr);
-                        break;
-                    }
-                }
-            }
-        }
+
+        /* purge any notifications cached for this client */
+        pmix_server_purge_events(peer, NULL);
+
         if (PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
             /* only connection I can lose is to my server, so mark it */
             pmix_globals.connected = false;
@@ -411,7 +386,9 @@ void pmix_ptl_base_send_handler(int sd, short flags, void *cbdata)
 
     if (NULL != msg) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "ptl:base:send_handler SENDING MSG");
+                            "ptl:base:send_handler SENDING MSG TO %s:%d TAG %u",
+                            peer->info->pname.nspace, peer->info->pname.rank,
+                            ntohl(msg->hdr.tag));
         if (PMIX_SUCCESS == (rc = send_msg(peer->sd, msg))) {
             // message is complete
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
@@ -642,10 +619,10 @@ void pmix_ptl_base_send(int sd, short args, void *cbdata)
     if (NULL == queue->peer || queue->peer->sd < 0 ||
         NULL == queue->peer->info || NULL == queue->peer->nptr) {
         /* this peer has lost connection */
+        if (NULL != queue->buf) {
+            PMIX_RELEASE(queue->buf);
+        }
         PMIX_RELEASE(queue);
-        /* ensure we post the object before another thread
-         * picks it back up */
-        PMIX_POST_OBJECT(queue);
         return;
     }
 
@@ -654,6 +631,12 @@ void pmix_ptl_base_send(int sd, short args, void *cbdata)
                         __FILE__, __LINE__,
                         (queue->peer)->info->pname.nspace,
                         (queue->peer)->info->pname.rank, (queue->tag));
+
+    if (NULL == queue->buf) {
+        /* nothing to send? */
+        PMIX_RELEASE(queue);
+        return;
+    }
 
     snd = PMIX_NEW(pmix_ptl_send_t);
     snd->hdr.pindex = htonl(pmix_globals.pindex);
@@ -691,12 +674,19 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(ms);
 
-    if (ms->peer->sd < 0) {
-        /* this peer's socket has been closed */
+    if (NULL == ms->peer || ms->peer->sd < 0 ||
+        NULL == ms->peer->info || NULL == ms->peer->nptr) {
+        /* this peer has lost connection */
+        if (NULL != ms->bfr) {
+            PMIX_RELEASE(ms->bfr);
+        }
         PMIX_RELEASE(ms);
-        /* ensure we post the object before another thread
-         * picks it back up */
-        PMIX_POST_OBJECT(NULL);
+        return;
+    }
+
+    if (NULL == ms->bfr) {
+        /* nothing to send? */
+        PMIX_RELEASE(ms);
         return;
     }
 
