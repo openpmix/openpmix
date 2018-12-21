@@ -360,13 +360,15 @@ static pmix_status_t _add_hdlr(pmix_rshift_caddy_t *cd, pmix_list_t *xfer)
 
 static void check_cached_events(pmix_rshift_caddy_t *cd)
 {
-    size_t i, n;
+    size_t n;
     pmix_notify_caddy_t *ncd;
     bool found, matched;
     pmix_event_chain_t *chain;
+    int j;
 
-    for (i=0; i < (size_t)pmix_globals.notifications.size; i++) {
-        if (NULL == (ncd = (pmix_notify_caddy_t*)pmix_ring_buffer_poke(&pmix_globals.notifications, i))) {
+    for (j=0; j < pmix_globals.max_events; j++) {
+        pmix_hotel_knock(&pmix_globals.notifications, j, (void**)&ncd);
+        if (NULL == ncd) {
             continue;
         }
         found = false;

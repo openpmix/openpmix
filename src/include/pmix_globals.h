@@ -36,7 +36,7 @@
 
 #include "src/class/pmix_hash_table.h"
 #include "src/class/pmix_list.h"
-#include "src/class/pmix_ring_buffer.h"
+#include "src/class/pmix_hotel.h"
 #include "src/event/pmix_event.h"
 #include "src/threads/threads.h"
 
@@ -406,6 +406,11 @@ typedef struct {
     pmix_object_t super;
     pmix_event_t ev;
     pmix_lock_t lock;
+    /* timestamp receipt of the notification so we
+     * can evict the oldest one if we get overwhelmed */
+    time_t ts;
+    /* what room of the hotel they are in */
+    int room;
     pmix_status_t status;
     pmix_proc_t source;
     pmix_data_range_t range;
@@ -460,7 +465,9 @@ typedef struct {
     struct timeval event_window;
     pmix_list_t cached_events;          // events waiting in the window prior to processing
     pmix_list_t iof_requests;           // list of pmix_iof_req_t IOF requests
-    pmix_ring_buffer_t notifications;   // ring buffer of pending notifications
+    int max_events;                     // size of the notifications hotel
+    int event_eviction_time;            // max time to cache notifications
+    pmix_hotel_t notifications;         // hotel of pending notifications
     /* processes also need a place where they can store
      * their own internal data - e.g., data provided by
      * the user via the store_internal interface, as well
