@@ -1979,6 +1979,10 @@ typedef void (*pmix_notification_fn_t)(size_t evhdlr_registration_id,
 typedef void (*pmix_hdlr_reg_cbfunc_t)(pmix_status_t status,
                                        size_t refid,
                                        void *cbdata);
+/* maintain backward compatibility with v2 definition - change of name */
+typedef void (*pmix_evhdlr_reg_cbfunc_t)(pmix_status_t status,
+                                         size_t evhdlr_ref,
+                                         void *cbdata);
 
 /* define a callback function for calls to PMIx_Get_nb. The status
  * indicates if the requested data was found or not - a pointer to the
