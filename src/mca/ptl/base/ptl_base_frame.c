@@ -258,6 +258,8 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_listener_t,
 static void qcon(pmix_ptl_queue_t *p)
 {
     p->peer = NULL;
+    p->buf = NULL;
+    p->tag = UINT32_MAX;
 }
 static void qdes(pmix_ptl_queue_t *p)
 {

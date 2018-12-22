@@ -314,7 +314,11 @@ void pmix_server_message_handler(struct pmix_peer_t *pr,
                                  pmix_ptl_hdr_t *hdr,
                                  pmix_buffer_t *buf, void *cbdata);
 
+void pmix_server_purge_events(pmix_peer_t *peer,
+                              pmix_proc_t *proc);
+
 PMIX_EXPORT extern pmix_server_module_t pmix_host_server;
 PMIX_EXPORT extern pmix_server_globals_t pmix_server_globals;
+
 
 #endif // PMIX_SERVER_OPS_H

@@ -242,6 +242,22 @@ pmix_status_t pmix_register_params(void)
                                        PMIX_INFO_LVL_9, PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                        &pmix_globals.timestamp_output);
 
+    /* max size of the notification hotel */
+    pmix_globals.max_events = 512;
+    (void) pmix_mca_base_var_register ("pmix", "pmix", "max", "events",
+                                       "Maximum number of event notifications to cache",
+                                       PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                                       PMIX_INFO_LVL_1, PMIX_MCA_BASE_VAR_SCOPE_ALL,
+                                       &pmix_globals.max_events);
+
+    /* how long to cache an event */
+    pmix_globals.event_eviction_time = 120;
+    (void) pmix_mca_base_var_register ("pmix", "pmix", "event", "eviction_time",
+                                       "Maximum number of seconds to cache an event",
+                                       PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                                       PMIX_INFO_LVL_1, PMIX_MCA_BASE_VAR_SCOPE_ALL,
+                                       &pmix_globals.event_eviction_time);
+
     return PMIX_SUCCESS;
 }
 

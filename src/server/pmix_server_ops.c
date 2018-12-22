@@ -46,6 +46,9 @@
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
+#ifdef HAVE_TIME_H
+#include <time.h>
+#endif
 #include PMIX_EVENT_HEADER
 
 #include "src/class/pmix_hotel.h"
@@ -1807,9 +1810,10 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
     }
 
     /* check if any matching notifications have been cached */
-    for (i=0; i < pmix_globals.notifications.size; i++) {
-        if (NULL == (cd = (pmix_notify_caddy_t*)pmix_ring_buffer_poke(&pmix_globals.notifications, i))) {
-            break;
+    for (i=0; i < pmix_globals.max_events; i++) {
+        pmix_hotel_knock(&pmix_globals.notifications, i, (void**)&cd);
+        if (NULL == cd) {
+            continue;
         }
         found = false;
         if (NULL == codes) {
@@ -3267,7 +3271,12 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_setup_caddy_t,
 
 static void ncon(pmix_notify_caddy_t *p)
 {
+    struct timespec tp;
+
     PMIX_CONSTRUCT_LOCK(&p->lock);
+    clock_gettime(CLOCK_MONOTONIC, &tp);
+    p->ts = tp.tv_sec;
+    p->room = -1;
     memset(p->source.nspace, 0, PMIX_MAX_NSLEN+1);
     p->source.rank = PMIX_RANK_UNDEF;
     p->range = PMIX_RANGE_UNDEF;
