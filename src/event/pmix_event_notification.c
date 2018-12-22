@@ -907,6 +907,17 @@ static void _notify_client_event(int sd, short args, void *cbdata)
             PMIX_RELEASE(chain);
             return;
         }
+        /* must include members */
+        if (NULL == cd->targets || 0 == cd->ntargets) {
+            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            /* notify the caller */
+            if (NULL != cd->cbfunc) {
+                cd->cbfunc(PMIX_ERR_BAD_PARAM, cd->cbdata);
+            }
+            PMIX_RELEASE(cd);
+            PMIX_RELEASE(chain);
+            return;
+        }
         grp = PMIX_NEW(pmix_group_t);
         grp->grpid = strdup(grpid);
         grp->nmbrs = cd->ntargets;
