@@ -3284,7 +3284,8 @@ static void _grpcbfunc(int sd, short argc, void *cbdata)
     PMIX_ACQUIRE_OBJECT(scd);
 
     pmix_output_verbose(2, pmix_server_globals.connect_output,
-                        "server:grpcbfunc processing WITH %d MEMBERS", (int)pmix_list_get_size(&trk->local_cbs));
+                        "server:grpcbfunc processing WITH %d MEMBERS",
+                        (NULL == trk) ? 0 : (int)pmix_list_get_size(&trk->local_cbs));
 
     if (NULL == trk) {
         /* give them a release if they want it - this should
