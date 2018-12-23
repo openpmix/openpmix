@@ -240,27 +240,25 @@ static void wait_cbfunc(struct pmix_peer_t *pr,
         PMIX_ERROR_LOG(rc);
         ret = rc;
     }
-    if (PMIX_SUCCESS == ret) {
-        /* unpack the namespace */
-        cnt = 1;
-        PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver,
-                           buf, &n2, &cnt, PMIX_STRING);
+    /* unpack the namespace */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver,
+                       buf, &n2, &cnt, PMIX_STRING);
+    if (PMIX_SUCCESS != rc && PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+        PMIX_ERROR_LOG(rc);
+        ret = rc;
+    }
+    pmix_output_verbose(1, pmix_globals.debug_output,
+                    "pmix:client recv '%s'", n2);
+
+    if (NULL != n2) {
+        /* protect length */
+        pmix_strncpy(nspace, n2, PMIX_MAX_NSLEN);
+        free(n2);
+        PMIX_GDS_STORE_JOB_INFO(rc, pmix_globals.mypeer, nspace, buf);
+        /* extract and process any job-related info for this nspace */
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
-            ret = rc;
-        }
-        pmix_output_verbose(1, pmix_globals.debug_output,
-                        "pmix:client recv '%s'", n2);
-
-        if (NULL != n2) {
-            /* protect length */
-            pmix_strncpy(nspace, n2, PMIX_MAX_NSLEN);
-            free(n2);
-            PMIX_GDS_STORE_JOB_INFO(rc, pmix_globals.mypeer, nspace, buf);
-            /* extract and process any job-related info for this nspace */
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-            }
         }
     }
 
