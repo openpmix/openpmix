@@ -357,6 +357,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_EVENT_DO_NOT_CACHE             "pmix.evnocache"        // (bool) instruct the PMIx server not to cache the event
 #define PMIX_EVENT_SILENT_TERMINATION       "pmix.evsilentterm"     // (bool) do not generate an event when this job normally terminates
 #define PMIX_EVENT_PROXY                    "pmix.evproxy"          // (pmix_proc_t*) PMIx server that sourced the event
+#define PMIX_EVENT_TEXT_MESSAGE             "pmix.evtext"           // (char*) text message suitable for output by recipient - e.g., describing
+                                                                    //         the cause of the event
 
 /* fault tolerance-related events */
 #define PMIX_EVENT_TERMINATE_SESSION        "pmix.evterm.sess"      // (bool) RM intends to terminate session

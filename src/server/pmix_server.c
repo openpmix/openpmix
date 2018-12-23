@@ -2172,34 +2172,38 @@ static void _spcb(int sd, short args, void *cbdata)
     PMIX_BFROPS_PACK(rc, cd->cd->peer, reply, &cd->status, 1, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(reply);
         goto cleanup;
     }
-    if (PMIX_SUCCESS == cd->status) {
-        /* pass back the name of the nspace */
-        PMIX_BFROPS_PACK(rc, cd->cd->peer, reply, &cd->pname.nspace, 1, PMIX_STRING);
-        /* add the job-level info, if we have it */
-        pmix_strncpy(proc.nspace, cd->pname.nspace, PMIX_MAX_NSLEN);
-        proc.rank = PMIX_RANK_WILDCARD;
-        /* this is going to a local client, so let the gds
-         * have the option of returning a copy of the data,
-         * or a pointer to local storage */
-        PMIX_CONSTRUCT(&cb, pmix_cb_t);
-        cb.proc = &proc;
-        cb.scope = PMIX_SCOPE_UNDEF;
-        cb.copy = false;
-        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-        if (PMIX_SUCCESS == rc) {
-            PMIX_LIST_FOREACH(kv, &cb.kvs, pmix_kval_t) {
-                PMIX_BFROPS_PACK(rc, cd->cd->peer, reply, kv, 1, PMIX_KVAL);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    PMIX_RELEASE(reply);
-                    PMIX_DESTRUCT(&cb);
-                    goto cleanup;
-                }
+    /* pass back the name of the nspace */
+    PMIX_BFROPS_PACK(rc, cd->cd->peer, reply, &cd->pname.nspace, 1, PMIX_STRING);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(reply);
+        goto cleanup;
+    }
+    /* add the job-level info, if we have it */
+    pmix_strncpy(proc.nspace, cd->pname.nspace, PMIX_MAX_NSLEN);
+    proc.rank = PMIX_RANK_WILDCARD;
+    /* this is going to a local client, so let the gds
+     * have the option of returning a copy of the data,
+     * or a pointer to local storage */
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    cb.proc = &proc;
+    cb.scope = PMIX_SCOPE_UNDEF;
+    cb.copy = false;
+    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_LIST_FOREACH(kv, &cb.kvs, pmix_kval_t) {
+            PMIX_BFROPS_PACK(rc, cd->cd->peer, reply, kv, 1, PMIX_KVAL);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(reply);
+                PMIX_DESTRUCT(&cb);
+                goto cleanup;
             }
-            PMIX_DESTRUCT(&cb);
         }
+        PMIX_DESTRUCT(&cb);
     }
 
     /* the function that created the server_caddy did a
