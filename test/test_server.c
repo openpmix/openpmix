@@ -692,8 +692,9 @@ int server_dmdx_get(const char *nspace, int rank,
 {
     server_info_t *server = NULL, *tmp;
     msg_hdr_t msg_hdr;
-    int rc = PMIX_SUCCESS;
+    pmix_status_t rc = PMIX_SUCCESS;
     char *buf = NULL;
+
 
     if (0 > (msg_hdr.dst_id = server_find_id(nspace, rank))) {
         TEST_ERROR(("%d: server cannot found for %s:%d", my_server_id, nspace, rank));
@@ -722,10 +723,10 @@ int server_dmdx_get(const char *nspace, int rank,
     server->cbdata = cbdata;
 
     if (PMIX_SUCCESS != (rc = server_send_msg(&msg_hdr, buf, msg_hdr.size))) {
-        return PMIX_ERROR;
+        rc = PMIX_ERROR;
     }
-
-    return PMIX_SUCCESS;
+    free(buf);
+    return rc;
 
 error:
     cbfunc(PMIX_ERROR, NULL, 0, cbdata, NULL, 0);
