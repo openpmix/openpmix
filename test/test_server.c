@@ -381,6 +381,9 @@ static int server_send_msg(msg_hdr_t *msg_hdr, char *data, size_t size)
                 break;
             }
         }
+        if (NULL == server) {
+            abort();
+        }
     } else {
         server = (server_info_t *)pmix_list_get_first(server_list);
     }
