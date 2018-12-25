@@ -315,18 +315,20 @@ static int srv_wait_all(double timeout)
     start_time = tv.tv_sec + 1E-6*tv.tv_usec;
     cur_time = start_time;
 
+    /* Remove this server from the list */
+    PMIX_LIST_FOREACH_SAFE(server, next, server_list, server_info_t) {
+        if (server->pid == getpid()) {
+            /* remove himself */
+            remove_server_item(server);
+            break;
+        }
+    }
+
     while (!pmix_list_is_empty(server_list) &&
                                 (timeout >= (cur_time - start_time))) {
-        struct timespec ts;
-
-        /* going through the server list first to delete yourself */
+        pid = waitpid(-1, &status, 0);
         if (pid >= 0) {
             PMIX_LIST_FOREACH_SAFE(server, next, server_list, server_info_t) {
-                if (server->pid == getpid()) {
-                    /* remove himself */
-                    remove_server_item(server);
-                    continue;
-                }
                 if (server->pid == pid) {
                     TEST_VERBOSE(("server %d finalize PID:%d with status %d", server->idx,
                                 server->pid, WEXITSTATUS(status)));
@@ -335,15 +337,9 @@ static int srv_wait_all(double timeout)
                 }
             }
         }
-
-        ts.tv_sec = 0;
-        ts.tv_nsec = 100000;
-        nanosleep(&ts, NULL);
         // calculate current timestamp
         gettimeofday(&tv, NULL);
         cur_time = tv.tv_sec + 1E-6*tv.tv_usec;
-
-        pid = waitpid(-1, &status, WNOHANG);
     }
 
     return ret;
