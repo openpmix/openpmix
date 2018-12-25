@@ -303,7 +303,7 @@ static void remove_server_item(server_info_t *server)
 
 static int srv_wait_all(double timeout)
 {
-    server_info_t *server;
+    server_info_t *server, *next;
     pid_t pid;
     int status;
     struct timeval tv;
@@ -320,7 +320,7 @@ static int srv_wait_all(double timeout)
 
         /* going through the server list first to delete yourself */
         if (pid >= 0) {
-            PMIX_LIST_FOREACH(server, server_list, server_info_t) {
+            PMIX_LIST_FOREACH_SAFE(server, next, server_list, server_info_t) {
                 if (server->pid == getpid()) {
                     /* remove himself */
                     remove_server_item(server);
