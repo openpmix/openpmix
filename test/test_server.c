@@ -572,8 +572,12 @@ static void server_read_cb(evutil_socket_t fd, short event, void *arg)
             msg_buf = NULL;
             break;
         case CMD_DMDX_REQUEST: {
-            int *sender_id = (int*)malloc(sizeof(int));
+            int *sender_id;
             pmix_proc_t proc;
+            if (NULL == msg_buf) {
+                abort();
+            }
+            sender_id = (int*)malloc(sizeof(int));
             server_unpack_dmdx(msg_buf, sender_id, &proc);
             TEST_VERBOSE(("%d: CMD_DMDX_REQUEST from %d: %s:%d", my_server_id,
                         *sender_id, proc.nspace, proc.rank));
