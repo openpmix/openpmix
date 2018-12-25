@@ -298,6 +298,7 @@ static size_t server_pack_procs(int server_id, char **buf, size_t size)
 static void remove_server_item(server_info_t *server)
 {
     pmix_list_remove_item(server_list, &server->super);
+    PMIX_DESTRUCT_LOCK(&server->lock);
     PMIX_RELEASE(server);
 }
 
@@ -427,10 +428,7 @@ static int server_send_procs(void)
     server->modex_cbfunc = _send_procs_cb;
     server->cbdata = (void*)server;
 
-    PMIX_CONSTRUCT_LOCK(&server->lock);
-
     if (PMIX_SUCCESS != (rc = server_send_msg(&msg_hdr, buf, msg_hdr.size))) {
-        PMIX_DESTRUCT_LOCK(&server->lock);
         if (buf) {
             free(buf);
         }
@@ -441,8 +439,6 @@ static int server_send_procs(void)
     }
 
     PMIX_WAIT_THREAD(&server->lock);
-    PMIX_DESTRUCT_LOCK(&server->lock);
-
     return PMIX_SUCCESS;
 }
 
@@ -463,15 +459,11 @@ int server_barrier(double to)
     msg_hdr.src_id = my_server_id;
     msg_hdr.size = 0;
 
-    PMIX_CONSTRUCT_LOCK(&server->lock);
-
     if (PMIX_SUCCESS != (rc = server_send_msg(&msg_hdr, NULL, 0))) {
-        PMIX_DESTRUCT_LOCK(&server->lock);
         return PMIX_ERROR;
     }
 
     WAIT_THREAD(&server->lock, to, rc);
-    PMIX_DESTRUCT_LOCK(&server->lock);
     if (rc == ETIMEDOUT) {
         TEST_ERROR(("timeout waiting from %d", server->idx));
         return PMIX_ERROR;
@@ -770,6 +762,7 @@ int server_init(test_params *params)
                     server_info->wr_fd = fd2[1];
                     close(fd1[1]);
                     close(fd2[0]);
+                    PMIX_CONSTRUCT_LOCK(&server_info->lock);
                     pmix_list_append(server_list, &server_info->super);
                     break;
                 }
@@ -777,6 +770,7 @@ int server_init(test_params *params)
                 server_info->pid = pid;
                 server_info->wr_fd = fd1[1];
                 server_info->rd_fd = fd2[0];
+                PMIX_CONSTRUCT_LOCK(&server_info->lock);
                 close(fd1[0]);
                 close(fd2[1]);
             } else {
@@ -785,6 +779,7 @@ int server_init(test_params *params)
                 server_info->idx  = 0;
                 server_info->rd_fd = fd1[0];
                 server_info->wr_fd = fd1[1];
+                PMIX_CONSTRUCT_LOCK(&server_info->lock);
                 close(fd2[0]);
                 close(fd2[1]);
             }
