@@ -134,11 +134,11 @@ static pmix_status_t notify_event_cache(pmix_notify_caddy_t *cd)
             }
             /* check the age */
             if (0 == j) {
-                etime = cd->ts;
+                etime = pk->ts;
                 idx = j;
             } else {
-                if (difftime(cd->ts, etime) < 0) {
-                    etime = cd->ts;
+                if (difftime(pk->ts, etime) < 0) {
+                    etime = pk->ts;
                     idx = j;
                 }
             }
