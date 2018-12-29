@@ -227,6 +227,9 @@ pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets,
     pmix_cmd_t cmd = PMIX_IOF_PUSH_CMD;
     pmix_status_t rc;
     pmix_ltcaddy_t *cd;
+    size_t n;
+    bool begincollecting, stopcollecting;
+    pmix_namelist_t *nm;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     if (pmix_globals.init_cntr <= 0) {
@@ -234,6 +237,46 @@ pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets,
         return PMIX_ERR_INIT;
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
+
+    if (NULL == bo) {
+        /* check the directives */
+        for (n=0; n < ndirs; n++) {
+            if (PMIX_CHECK_KEY(&directives[n], PMIX_IOF_PUSH_STDIN)) {
+                /* we are to start collecting our stdin and pushing
+                 * it to the specified targets */
+                begincollecting = PMIX_INFO_TRUE(&directives[n]);
+                if (begincollecting) {
+                    /* add these targets to our list */
+                    if (!pmix_globals.pushstdin) {
+                        /* not already collecting, so start */
+                    }
+                } else {
+                    if (pmix_globals.pushstdin) {
+                        /* remove these targets from the list of
+                         * recipients - if the list is then empty,
+                         * stop collecting. If the targets param
+                         * is NULL, then remove all targets and stop.
+                         * Flush any cached input before calling
+                         * the cbfunc */
+                    }
+                }
+            } else if (PMIX_CHECK_KEY(&directives[n], PMIX_IOF_COMPLETE)) {
+                /* if we are collecting our stdin for the specified
+                 * targets, then stop - a NULL for targets indicates
+                 * stop for everyone. Flush any remaining cached input
+                 * before calling the cbfunc */
+                stopcollecting = PMIX_INFO_TRUE(&directives[n]);
+                if (stopcollecting) {
+                    if (pmix_globals.pushstdin) {
+                        /* remove these targets from the list of
+                         * recipients - if the list is then empty,
+                         * stop collecting */
+                    }
+                }
+            }
+        }
+        return rc;
+    }
 
     /* if we are not a server, then we send the provided
      * data to our server for processing */

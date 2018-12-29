@@ -66,7 +66,10 @@ PMIX_EXPORT int pmix_initialized = 0;
 PMIX_EXPORT bool pmix_init_called = false;
 /* we have to export the pmix_globals object so
  * all plugins can access it. However, it is included
- * in the pmix_rename.h file for external protection */
+ * in the pmix_rename.h file for external protection.
+ * Initialize only those entries that are not covered
+ * by MCA params or are complex structures initialized
+ * below */
 PMIX_EXPORT pmix_globals_t pmix_globals = {
     .init_cntr = 0,
     .mypeer = NULL,
@@ -78,7 +81,8 @@ PMIX_EXPORT pmix_globals_t pmix_globals = {
     .debug_output = -1,
     .connected = false,
     .commits_pending = false,
-    .mygds = NULL
+    .mygds = NULL,
+    .pushstdin = false
 };
 
 
@@ -176,9 +180,10 @@ int pmix_rte_init(pmix_proc_type_t type,
         error = "notification hotel init";
         goto return_error;
     }
-
     /* and setup the iof request tracking list */
     PMIX_CONSTRUCT(&pmix_globals.iof_requests, pmix_list_t);
+    /* setup the stdin forwarding target list */
+    PMIX_CONSTRUCT(&pmix_globals.stdin_targets, pmix_list_t);
 
     /* Setup client verbosities as all procs are allowed to
      * access client APIs */

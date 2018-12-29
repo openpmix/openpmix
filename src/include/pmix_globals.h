@@ -479,6 +479,8 @@ typedef struct {
      * look them up */
     pmix_gds_base_module_t *mygds;
     /* IOF controls */
+    bool pushstdin;
+    pmix_list_t stdin_targets;          // list of pmix_namelist_t
     bool tag_output;
     bool xml_output;
     bool timestamp_output;
