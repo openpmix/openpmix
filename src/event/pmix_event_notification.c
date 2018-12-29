@@ -115,12 +115,16 @@ static pmix_status_t notify_event_cache(pmix_notify_caddy_t *cd)
     pmix_status_t rc;
     int j;
     pmix_notify_caddy_t *pk;
+    int idx;
+    time_t etime;
 
     /* add to our cache */
     rc = pmix_hotel_checkin(&pmix_globals.notifications, cd, &cd->room);
     /* if there wasn't room, then search for the longest tenured
      * occupant and evict them */
     if (PMIX_SUCCESS != rc) {
+        etime = 0;
+        idx = -1;
         for (j=0; j < pmix_globals.max_events; j++) {
             pmix_hotel_knock(&pmix_globals.notifications, j, (void**)&pk);
             if (NULL == pk) {
@@ -129,6 +133,21 @@ static pmix_status_t notify_event_cache(pmix_notify_caddy_t *cd)
                 return PMIX_SUCCESS;
             }
             /* check the age */
+            if (0 == j) {
+                etime = pk->ts;
+                idx = j;
+            } else {
+                if (difftime(pk->ts, etime) < 0) {
+                    etime = pk->ts;
+                    idx = j;
+                }
+            }
+        }
+        if (0 <= idx) {
+            /* we found the oldest occupant - evict it */
+            pmix_hotel_checkout_and_return_occupant(&pmix_globals.notifications, idx, (void**)&pk);
+            PMIX_RELEASE(pk);
+            rc = pmix_hotel_checkin(&pmix_globals.notifications, cd, &cd->room);
         }
     }
     return rc;
