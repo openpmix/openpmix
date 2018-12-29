@@ -41,6 +41,9 @@ current release as well as the "stable" bug fix release branch.
    launch verified with PRRTE.
  - Automatically store the server URI for easy access by client
  - Provide MCA parameter to control TCP connect retry/timeout
+ - Update event notification system to properly evict oldest events
+   when more space is needed
+ - Fix a number of error paths
 
 
 3.0.2 -- 18 Sept 2018
