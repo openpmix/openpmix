@@ -165,8 +165,9 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
     pmix_cmd_t cmd = PMIX_NOTIFY_CMD;
     pmix_cb_t *cb;
     pmix_event_chain_t *chain;
-    size_t n;
+    size_t n, nleft;
     pmix_notify_caddy_t *cd;
+    pmix_namespace_t *nptr, *tmp;
 
     pmix_output_verbose(2, pmix_client_globals.event_output,
                         "[%s:%d] client: notifying server %s:%d of status %s for range %s",
@@ -252,6 +253,31 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
         cd->ntargets = chain->ntargets;
         PMIX_PROC_CREATE(cd->targets, cd->ntargets);
         memcpy(cd->targets, chain->targets, cd->ntargets * sizeof(pmix_proc_t));
+        /* compute the number of targets that need to be notified */
+        nleft = 0;
+        for (n=0; n < cd->ntargets; n++) {
+            /* if this is a single proc, then increment by one */
+            if (PMIX_RANK_VALID >= cd->targets[n].rank) {
+                ++nleft;
+            } else {
+                /* look up the nspace for this proc */
+                nptr = NULL;
+                PMIX_LIST_FOREACH(tmp, &pmix_server_globals.nspaces, pmix_namespace_t) {
+                    if (PMIX_CHECK_NSPACE(tmp->nspace, cd->targets[n].nspace)) {
+                        nptr = tmp;
+                        break;
+                    }
+                }
+                /* if we don't yet know it, then nothing to do */
+                if (NULL == nptr) {
+                    nleft = SIZE_MAX;
+                    break;
+                }
+                /* might notify all local members */
+                nleft += nptr->nlocalprocs;
+            }
+        }
+        cd->nleft = nleft;
     }
     if (NULL != chain->affected) {
         cd->naffected = chain->naffected;
@@ -810,13 +836,14 @@ static void _notify_client_event(int sd, short args, void *cbdata)
     pmix_regevents_info_t *reginfoptr;
     pmix_peer_events_info_t *pr;
     pmix_event_chain_t *chain;
-    size_t n;
+    size_t n, nleft;
     bool matched, holdcd;
     pmix_buffer_t *bfr;
     pmix_cmd_t cmd = PMIX_NOTIFY_CMD;
     pmix_status_t rc;
     pmix_list_t trk;
     pmix_namelist_t *nm;
+    pmix_namespace_t *nptr, *tmp;
 
     /* need to acquire the object from its originating thread */
     PMIX_ACQUIRE_OBJECT(cd);
@@ -871,6 +898,31 @@ static void _notify_client_event(int sd, short args, void *cbdata)
         cd->ntargets = chain->ntargets;
         PMIX_PROC_CREATE(cd->targets, cd->ntargets);
         memcpy(cd->targets, chain->targets, cd->ntargets * sizeof(pmix_proc_t));
+        /* compute the number of targets that need to be notified */
+        nleft = 0;
+        for (n=0; n < cd->ntargets; n++) {
+            /* if this is a single proc, then increment by one */
+            if (PMIX_RANK_VALID >= cd->targets[n].rank) {
+                ++nleft;
+            } else {
+                /* look up the nspace for this proc */
+                nptr = NULL;
+                PMIX_LIST_FOREACH(tmp, &pmix_server_globals.nspaces, pmix_namespace_t) {
+                    if (PMIX_CHECK_NSPACE(tmp->nspace, cd->targets[n].nspace)) {
+                        nptr = tmp;
+                        break;
+                    }
+                }
+                /* if we don't yet know it, then nothing to do */
+                if (NULL == nptr) {
+                    nleft = SIZE_MAX;
+                    break;
+                }
+                /* might notify all local members */
+                nleft += nptr->nlocalprocs;
+            }
+        }
+        cd->nleft = nleft;
     }
     if (NULL != chain->affected) {
         cd->naffected = chain->naffected;
@@ -976,6 +1028,13 @@ static void _notify_client_event(int sd, short args, void *cbdata)
                         for (n=0; n < cd->ntargets; n++) {
                             if (PMIX_CHECK_PROCID(&pr->peer->info->pname, &cd->targets[n])) {
                                 matched = true;
+                                /* track the number of targets we have left to notify */
+                                --cd->nleft;
+                                /* if this is the last one, then evict this event
+                                 * from the cache */
+                                if (0 == cd->nleft) {
+                                    pmix_hotel_checkout(&pmix_globals.notifications, cd->room);
+                                }
                                 break;
                             }
                         }

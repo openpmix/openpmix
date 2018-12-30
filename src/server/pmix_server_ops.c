@@ -1905,22 +1905,26 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
             continue;
         }
        /* if we were given specific targets, check if this is one */
+        found = false;
         if (NULL != cd->targets) {
             matched = false;
             for (n=0; n < cd->ntargets; n++) {
-                if (0 != strncmp(peer->info->pname.nspace, cd->targets[n].nspace, PMIX_MAX_NSLEN)) {
-                    continue;
-                }
                 /* if the source of the event is the same peer just registered, then ignore it
                  * as the event notification system will have already locally
                  * processed it */
-                if (0 == strncmp(peer->info->pname.nspace, cd->source.nspace, PMIX_MAX_NSLEN) &&
-                    peer->info->pname.rank == cd->source.rank) {
+                if (PMIX_CHECK_PROCID(&cd->source, &peer->info->pname)) {
                     continue;
                 }
-                if (PMIX_RANK_WILDCARD == cd->targets[n].rank ||
-                    peer->info->pname.rank == cd->targets[n].rank) {
+                if (PMIX_CHECK_PROCID(&peer->info->pname, &cd->targets[n])) {
                     matched = true;
+                    /* track the number of targets we have left to notify */
+                    --cd->nleft;
+                    /* if this is the last one, then evict this event
+                     * from the cache */
+                    if (0 == cd->nleft) {
+                        pmix_hotel_checkout(&pmix_globals.notifications, cd->room);
+                        found = true;  // mark that we should release cd
+                    }
                     break;
                 }
             }
@@ -1929,6 +1933,7 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
                 continue;
             }
         }
+
         /* if they specified affected proc(s) they wanted to know about, check */
         if (!pmix_notify_check_affected(cd->affected, cd->naffected,
                                         affected, naffected)) {
@@ -1974,7 +1979,11 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
         if (PMIX_SUCCESS != ret) {
             PMIX_RELEASE(relay);
         }
+        if (found) {
+            PMIX_RELEASE(cd);
+        }
     }
+
     if (NULL != codes) {
         free(codes);
     }
@@ -4043,6 +4052,7 @@ static void ncon(pmix_notify_caddy_t *p)
     p->range = PMIX_RANGE_UNDEF;
     p->targets = NULL;
     p->ntargets = 0;
+    p->nleft = SIZE_MAX;
     p->affected = NULL;
     p->naffected = 0;
     p->nondefault = false;
