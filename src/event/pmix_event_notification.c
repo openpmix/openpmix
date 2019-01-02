@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017-2018 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2017      IBM Corporation. All rights reserved.
@@ -844,6 +844,8 @@ static void _notify_client_event(int sd, short args, void *cbdata)
     pmix_list_t trk;
     pmix_namelist_t *nm;
     pmix_namespace_t *nptr, *tmp;
+    pmix_range_trkr_t rngtrk;
+    pmix_proc_t proc;
 
     /* need to acquire the object from its originating thread */
     PMIX_ACQUIRE_OBJECT(cd);
@@ -957,6 +959,8 @@ static void _notify_client_event(int sd, short args, void *cbdata)
     holdcd = false;
     if (PMIX_RANGE_PROC_LOCAL != cd->range) {
         PMIX_CONSTRUCT(&trk, pmix_list_t);
+        rngtrk.procs = NULL;
+        rngtrk.nprocs = 0;
         /* cycle across our registered events and send the message to
          * any client who registered for it */
         PMIX_LIST_FOREACH(reginfoptr, &pmix_server_globals.events, pmix_regevents_info_t) {
@@ -978,6 +982,12 @@ static void _notify_client_event(int sd, short args, void *cbdata)
                         }
                     }
                     if (matched) {
+                        continue;
+                    }
+                    /* check the range */
+                    rngtrk.range = cd->range;
+                    PMIX_LOAD_PROCID(&proc, pr->peer->info->pname.nspace, pr->peer->info->pname.rank);
+                    if (!pmix_notify_check_range(&rngtrk, &proc)) {
                         continue;
                     }
                     /* if we were given specific targets, check if this is one */

@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2018 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
@@ -1576,6 +1576,8 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
     pmix_cmd_t cmd = PMIX_NOTIFY_CMD;
     pmix_proc_t *affected = NULL;
     size_t naffected = 0;
+    pmix_range_trkr_t rngtrk;
+    pmix_proc_t proc;
 
     pmix_output_verbose(2, pmix_server_globals.event_output,
                         "recvd register events for peer %s:%d",
@@ -1810,6 +1812,8 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
     }
 
     /* check if any matching notifications have been cached */
+    rngtrk.procs = NULL;
+    rngtrk.nprocs = 0;
     for (i=0; i < pmix_globals.max_events; i++) {
         pmix_hotel_knock(&pmix_globals.notifications, i, (void**)&cd);
         if (NULL == cd) {
@@ -1832,7 +1836,13 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
         if (!found) {
             continue;
         }
-       /* if we were given specific targets, check if this is one */
+        /* check the range */
+        rngtrk.range = cd->range;
+        PMIX_LOAD_PROCID(&proc, peer->info->pname.nspace, peer->info->pname.rank);
+        if (!pmix_notify_check_range(&rngtrk, &proc)) {
+            continue;
+        }
+        /* if we were given specific targets, check if this is one */
         found = false;
         if (NULL != cd->targets) {
             matched = false;
