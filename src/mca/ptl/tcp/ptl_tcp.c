@@ -1253,9 +1253,13 @@ static pmix_status_t recv_connect_ack(int sd, uint8_t myflag)
         tv.tv_sec  = mca_ptl_tcp_component.handshake_wait_time;
         tv.tv_usec = 0;
         if (0 != setsockopt(sd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv))) {
-            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                "pmix: recv_connect_ack could not setsockopt SO_RCVTIMEO");
-            return PMIX_ERR_UNREACH;
+            if (ENOPROTOOPT == errno || EOPNOTSUPP == errno) {
+                sockopt = false;
+            } else {
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "pmix: recv_connect_ack could not setsockopt SO_RCVTIMEO");
+                return PMIX_ERR_UNREACH;
+            }
         }
     }
 
