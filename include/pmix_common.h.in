@@ -109,6 +109,9 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_RANK_LOCAL_PEERS   UINT32_MAX-4        // all peers (i.e., all procs within the same nspace) on local node
 /* define an invalid value */
 #define PMIX_RANK_INVALID   UINT32_MAX-3
+/* define a boundary for valid ranks */
+#define PMIX_RANK_VALID         UINT32_MAX-50
+
 
 /****  PMIX ENVIRONMENTAL PARAMETERS  ****/
 /* There are a few environmental parameters used by PMIx for
