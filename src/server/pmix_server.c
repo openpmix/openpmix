@@ -707,6 +707,11 @@ void pmix_server_purge_events(pmix_peer_t *peer,
             }
         }
     }
+
+    if (NULL != peer) {
+        /* ensure we honor any peer-level epilog requests */
+        pmix_execute_epilog(&peer->epilog);
+    }
 }
 
 static void _deregister_nspace(int sd, short args, void *cbdata)
@@ -733,7 +738,10 @@ static void _deregister_nspace(int sd, short args, void *cbdata)
 
     /* release this nspace */
     PMIX_LIST_FOREACH(tmp, &pmix_server_globals.nspaces, pmix_namespace_t) {
-        if (0 == strcmp(tmp->nspace, cd->proc.nspace)) {
+        if (PMIX_CHECK_NSPACE(tmp->nspace, cd->proc.nspace)) {
+            /* perform any nspace-level epilog */
+            pmix_execute_epilog(&tmp->epilog);
+            /* remove and release it */
             pmix_list_remove_item(&pmix_server_globals.nspaces, &tmp->super);
             PMIX_RELEASE(tmp);
             break;
@@ -1146,6 +1154,8 @@ static void _deregister_client(int sd, short args, void *cbdata)
                     pmix_pnet.child_finalized(&cd->proc);
                     pmix_psensor.stop(peer, NULL);
                 }
+                /* honor any registered epilogs */
+                pmix_execute_epilog(&peer->epilog);
                 /* ensure we close the socket to this peer so we don't
                  * generate "connection lost" events should it be
                  * subsequently "killed" by the host */
