@@ -62,6 +62,12 @@ static void _timeout(int sd, short args, void *cbdata)
     PMIX_RELEASE(trk);
 }
 
+static void lcfn(pmix_status_t status, void *cbdata)
+{
+    pmix_peer_t *peer = (pmix_peer_t*)cbdata;
+    PMIX_RELEASE(peer);
+}
+
 void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
 {
     pmix_server_trkr_t *trk, *tnxt;
@@ -71,6 +77,8 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
     pmix_buffer_t buf;
     pmix_ptl_hdr_t hdr;
     struct timeval tv = {1200, 0};
+    pmix_proc_t proc;
+    pmix_status_t rc;
 
     /* stop all events */
     if (peer->recv_ev_active) {
@@ -201,10 +209,25 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
         }
         /* now decrease the refcount - might actually free the object */
         PMIX_RELEASE(peer->info);
+
+        /* be sure to let the host know that the tool or client
+         * is gone - otherwise, it won't know to cleanup the
+         * resources it allocated to it */
+        if (NULL != pmix_host_server.client_finalized && !peer->finalized) {
+            pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+            proc.rank = peer->info->pname.rank;
+            /* now tell the host server */
+            rc = pmix_host_server.client_finalized(&proc, peer->info->server_object,
+                                                   lcfn, peer);
+            if (PMIX_SUCCESS == rc) {
+                /* we will release the peer when the server calls us back */
+                peer->finalized = true;
+                return;
+            }
+        }
         /* mark the peer as "gone" since a release doesn't guarantee
          * that the peer object doesn't persist */
         peer->finalized = true;
-
         /* Release peer info */
         PMIX_RELEASE(peer);
      } else {
