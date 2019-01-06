@@ -1,0 +1,28 @@
+sudo: false
+dist: xenial
+
+cache:
+  apt: true
+
+env:
+  global:
+    # TODO: -Werror
+    # TODOL -fsanitize=address -fsanitize=undefined
+    - CFLAGS: "-Wall -Wextra"
+    - CXXFLAGS: "-Wall -Wextra"
+
+addons:
+  apt:
+    packages:
+      - gfortran
+      - perl
+      - libevent-dev
+
+jobs:
+  fast_finish: true
+  include:
+    - script:
+        - ./autogen.pl
+        - ./configure
+        - make all
+        - make check
