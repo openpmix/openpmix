@@ -2,8 +2,8 @@
 /*
  * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2017 Research Organization for Information Science
- * Copyright (c) 2014-2018 Intel, Inc.  All rights reserved.
- *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
@@ -401,7 +401,7 @@ void pmix_execute_epilog(pmix_epilog_t *epi)
         /* check the effective uid/gid of the file and ensure it
          * matches that of the peer - we do this to provide at least
          * some minimum level of protection */
-        tmp = pmix_argv_split(cf->path, ',');
+        tmp = pmix_argv_split(cd->path, ',');
         for (n=0; NULL != tmp[n]; n++) {
             rc = stat(tmp[n], &statbuf);
             if (0 != rc) {
