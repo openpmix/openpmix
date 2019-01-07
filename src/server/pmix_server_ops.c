@@ -2263,6 +2263,8 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer,
      * */
     memset(proc.nspace, 0, PMIX_MAX_NSLEN+1);
     proc.rank = PMIX_RANK_INVALID;
+    PMIX_CONSTRUCT(&results, pmix_list_t);
+
     for (n=0; n < cd->nqueries; n++) {
         for (p=0; p < cd->queries[n].nqual; p++) {
             if (PMIX_CHECK_KEY(&cd->queries[n].qualifiers[p], PMIX_QUERY_REFRESH_CACHE)) {
