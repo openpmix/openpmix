@@ -419,11 +419,15 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_FWD_STDDIAG                    "pmix.fwd.stddiag"      // (bool) if a diagnostic channel exists, forward any output on it
                                                                     //        from the spawned processes to this process (typically used by a tool)
 #define PMIX_SPAWN_TOOL                     "pmix.spwn.tool"        // (bool) job being spawned is a tool
+#define PMIX_CMD_LINE                       "pmix.cmd.line"         // (char*) command line executing in the specified nspace
 
 /* query attributes */
 #define PMIX_QUERY_REFRESH_CACHE            "pmix.qry.rfsh"         // (bool) retrieve updated information from server
                                                                     //        to update local cache
-#define PMIX_QUERY_NAMESPACES               "pmix.qry.ns"           // (char*) request a comma-delimited list of active nspaces
+#define PMIX_QUERY_NAMESPACES               "pmix.qry.ns"           // (char*) return a comma-delimited list of active namespaces
+#define PMIX_QUERY_NAMESPACE_INFO           "pmix.qry.nsinfo"       // (pmix_data_array_t) request an array of active nspace information - each
+                                                                    //        element will contain an array including the namespace plus the
+                                                                    //        command line of the application executing within it
 #define PMIX_QUERY_JOB_STATUS               "pmix.qry.jst"          // (pmix_status_t) status of a specified currently executing job
 #define PMIX_QUERY_QUEUE_LIST               "pmix.qry.qlst"         // (char*) request a comma-delimited list of scheduler queues
 #define PMIX_QUERY_QUEUE_STATUS             "pmix.qry.qst"          // (TBD) status of a specified scheduler queue
