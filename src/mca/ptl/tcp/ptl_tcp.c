@@ -43,7 +43,12 @@
 #ifdef HAVE_SYS_STAT_H
 #include <sys/stat.h>
 #endif
+#ifdef HAVE_DIRENT_H
 #include <dirent.h>
+#endif
+#ifdef HAVE_SYS_SYSCTL_H
+#include <sys/sysctl.h>
+#endif
 
 #include "src/include/pmix_globals.h"
 #include "src/include/pmix_socket_errno.h"
@@ -133,7 +138,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
     pid_t pid = 0, mypid;
     pmix_list_t ilist;
     pmix_info_caddy_t *kv;
-    pmix_info_t *iptr = NULL, mypidinfo;
+    pmix_info_t *iptr = NULL, mypidinfo, mycmdlineinfo, launcher;
     size_t niptr = 0;
     pmix_kval_t *urikv = NULL;
 
@@ -302,6 +307,97 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
     PMIX_INFO_LOAD(&mypidinfo, PMIX_PROC_PID, &mypid, PMIX_PID);
     kv->info = &mypidinfo;
     pmix_list_append(&ilist, &kv->super);
+
+    /* if I am a launcher, tell them so */
+    if (PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
+        kv = PMIX_NEW(pmix_info_caddy_t);
+        PMIX_INFO_LOAD(&launcher, PMIX_LAUNCHER, NULL, PMIX_BOOL);
+        kv->info = &launcher;
+        pmix_list_append(&ilist, &kv->super);
+    }
+
+    /* add our cmd line to the array */
+#if PMIX_HAVE_APPLE
+    int mib[3], argmax, nargs, num;
+    size_t size;
+    char *procargs, *cp, *cptr;
+    char **stack = NULL;
+
+    /* Get the maximum process arguments size. */
+    mib[0] = CTL_KERN;
+    mib[1] = KERN_ARGMAX;
+    size = sizeof(argmax);
+
+    if (sysctl(mib, 2, &argmax, &size, NULL, 0) == -1) {
+        fprintf(stderr, "sysctl() argmax failed\n");
+        return -1;
+    }
+
+    /* Allocate space for the arguments. */
+    procargs = (char *)malloc(argmax);
+    if (procargs == NULL)
+        return -1;
+
+    /* Make a sysctl() call to get the raw argument space of the process. */
+    mib[0] = CTL_KERN;
+    mib[1] = KERN_PROCARGS2;
+    mib[2] = getpid();
+
+    size = (size_t)argmax;
+
+    if (sysctl(mib, 3, procargs, &size, NULL, 0) == -1) {
+        fprintf(stderr, "Lacked permissions\n");;
+        return 0;
+    }
+
+    memcpy(&nargs, procargs, sizeof(nargs));
+    /* this points to the executable - skip over that to get the rest */
+    cp = procargs + sizeof(nargs);
+    cp += strlen(cp);
+    /* this is the first argv */
+    pmix_argv_append_nosize(&stack, cp);
+    /* skip any embedded NULLs */
+    while (cp < &procargs[size] && '\0' == *cp) {
+        ++cp;
+    }
+    if (cp != &procargs[size]) {
+        /* from this point, we have the argv separated by NULLs - split them out */
+        cptr = cp;
+        num = 0;
+        while (cp < &procargs[size] && num < nargs) {
+            if ('\0' == *cp) {
+                pmix_argv_append_nosize(&stack, cptr);
+                ++cp;  // skip over the NULL
+                cptr = cp;
+                ++num;
+            } else {
+                ++cp;
+            }
+        }
+    }
+    p = pmix_argv_join(stack, ' ');
+    pmix_argv_free(stack);
+    free(procargs);
+#else
+    char tmp[512];
+    FILE *fp;
+
+    /* open the pid's info file */
+    snprintf(tmp, 512, "/proc/%lu/cmdline", (unsigned long)mypid);
+    fp = fopen(tmp, "r");
+    if (NULL != fp) {
+        /* read the cmd line */
+        fgets(tmp, 512, fp);
+        fclose(fp);
+        p = strdup(tmp);
+    }
+#endif
+    /* pass it along */
+    kv = PMIX_NEW(pmix_info_caddy_t);
+    PMIX_INFO_LOAD(&mycmdlineinfo, PMIX_CMD_LINE, p, PMIX_STRING);
+    kv->info = &mycmdlineinfo;
+    pmix_list_append(&ilist, &kv->super);
+    free(p);
 
     /* if we need to pass anything, setup an array */
     if (0 < (niptr = pmix_list_get_size(&ilist))) {
