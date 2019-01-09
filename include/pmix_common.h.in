@@ -973,7 +973,7 @@ typedef uint8_t pmix_scope_t;
 #define PMIX_GLOBAL         3   // share with all procs (local + remote)
 #define PMIX_INTERNAL       4   // store data in the internal tables
 
-/* define a range for data "published" by PMI
+/* define a range for data "published" by PMIx
  */
 typedef uint8_t pmix_data_range_t;
 #define PMIX_RANGE_UNDEF        0
@@ -999,6 +999,7 @@ typedef uint8_t pmix_persistence_t;
  * command directives via pmix_info_t arrays */
 typedef uint32_t pmix_info_directives_t;
 #define PMIX_INFO_REQD          0x00000001
+#define PMIX_INFO_ARRAY_END     0x00000002      // mark the end of an array created by PMIX_INFO_CREATE
 /* the top 16-bits are reserved for internal use by
  * implementers - these may be changed inside the
  * PMIx library */
@@ -1342,25 +1343,20 @@ typedef struct pmix_proc_info {
     } while (0)
 
 
-/****    PMIX VALUE STRUCT    ****/
+/****    PMIX DATA ARRAY STRUCT    ****/
 
 typedef struct pmix_data_array {
     pmix_data_type_t type;
     size_t size;
     void *array;
 } pmix_data_array_t;
-#define PMIX_DATA_ARRAY_CONSTRUCT(m, n, t)         \
-    do {                                           \
-        (m)->type = (t);                           \
-        (m)->size = (n);                           \
-    } while(0)
-#define PMIX_DATA_ARRAY_CREATE(m, n, t)                                   \
-    do {                                                                  \
-        (m) = (pmix_data_array_t*)calloc(1, sizeof(pmix_data_array_t));   \
-        PMIX_DATA_ARRAY_CONSTRUCT((m), (n), (t));                         \
-    } while(0)
 
-/********************/
+/**** THE PMIX_DATA_ARRAY SUPPORT MACROS ARE DEFINED ****/
+/**** DOWN BELOW (NEAR THE BOTTOM OF THE FILE) TO    ****/
+/**** AVOID CIRCULAR DEPENDENCIES                    ****/
+
+
+/****    PMIX VALUE STRUCT    ****/
 
 /* NOTE: operations can supply a collection of values under
  * a single key by passing a pmix_value_t containing a
@@ -1534,7 +1530,10 @@ typedef struct pmix_info {
 /* utility macros for working with pmix_info_t structs */
 #define PMIX_INFO_CREATE(m, n)                                  \
     do {                                                        \
+        pmix_info_t *_i;                                        \
         (m) = (pmix_info_t*)calloc((n), sizeof(pmix_info_t));   \
+        _i = (pmix_info_t*)(m);                                 \
+        _i[(n)-1].flags = PMIX_INFO_ARRAY_END;                  \
     } while (0)
 
 #define PMIX_INFO_CONSTRUCT(m)                  \
@@ -1578,11 +1577,14 @@ typedef struct pmix_info {
     } while(0)
 
 
+/* macros for setting and unsetting the "reqd" flag
+ * in a pmix_info_t */
 #define PMIX_INFO_REQUIRED(m)       \
     (m)->flags |= PMIX_INFO_REQD
 #define PMIX_INFO_OPTIONAL(m)       \
     (m)->flags &= ~PMIX_INFO_REQD
 
+/* macros for testing the "reqd" flag in a pmix_info_t */
 #define PMIX_INFO_IS_REQUIRED(m)    \
     (m)->flags & PMIX_INFO_REQD
 #define PMIX_INFO_IS_OPTIONAL(m)    \
@@ -1631,9 +1633,10 @@ typedef struct pmix_pdata {
 #define PMIX_PDATA_FREE(m, n)                           \
     do {                                                \
         size_t _s;                                      \
-        if (NULL != (m)) {                              \
+        pmix_pdata_t *_p = (pmix_pdata_t*)(m);          \
+        if (NULL != _p) {                               \
             for (_s=0; _s < (n); _s++) {                \
-                PMIX_PDATA_DESTRUCT(&((m)[_s]));        \
+                PMIX_PDATA_DESTRUCT(&(_p[_s]));         \
             }                                           \
             free((m));                                  \
             (m) = NULL;                                 \
@@ -1679,6 +1682,12 @@ typedef struct pmix_app {
         (m) = (pmix_app_t*)calloc((n), sizeof(pmix_app_t));     \
     } while (0)
 
+#define PMIX_APP_INFO_CREATE(m, n)                  \
+    do {                                            \
+        (m)->ninfo = (n);                           \
+        PMIX_INFO_CREATE((m)->info, (m)->ninfo);    \
+    } while(0)
+
 #define PMIX_APP_RELEASE(m)                     \
     do {                                        \
         PMIX_APP_DESTRUCT((m));                 \
@@ -1717,20 +1726,18 @@ typedef struct pmix_app {
             (m)->cwd = NULL;                                    \
         }                                                       \
         if (NULL != (m)->info) {                                \
-            for (_ii=0; _ii < (m)->ninfo; _ii++) {              \
-                PMIX_INFO_DESTRUCT(&(m)->info[_ii]);            \
-            }                                                   \
-            free((m)->info);                                    \
+            PMIX_INFO_FREE((m)->info, (m)->ninfo);              \
             (m)->info = NULL;                                   \
+            (m)->ninfo = 0;                                     \
         }                                                       \
     } while (0)
 
 #define PMIX_APP_FREE(m, n)                     \
     do {                                        \
-        size_t _s;                              \
+        size_t _as;                             \
         if (NULL != (m)) {                      \
-            for (_s=0; _s < (n); _s++) {        \
-                PMIX_APP_DESTRUCT(&((m)[_s]));  \
+            for (_as=0; _as < (n); _as++) {     \
+                PMIX_APP_DESTRUCT(&((m)[_as])); \
             }                                   \
             free((m));                          \
             (m) = NULL;                         \
@@ -1749,6 +1756,12 @@ typedef struct pmix_query {
     do {                                                            \
         (m) = (pmix_query_t*)calloc((n) , sizeof(pmix_query_t));    \
     } while (0)
+
+#define PMIX_QUERY_QUALIFIERS_CREATE(m, n)                  \
+    do {                                                    \
+        (m)->nqual = (n);                                   \
+        PMIX_INFO_CREATE((m)->qualifiers, (m)->nqual);      \
+    } while(0)
 
 #define PMIX_QUERY_RELEASE(m)       \
     do {                            \
@@ -1773,11 +1786,9 @@ typedef struct pmix_query {
             (m)->keys = NULL;                                   \
         }                                                       \
         if (NULL != (m)->qualifiers) {                          \
-            for (_ii=0; _ii < (m)->nqual; _ii++) {              \
-                PMIX_INFO_DESTRUCT(&(m)->qualifiers[_ii]);      \
-            }                                                   \
-            free((m)->qualifiers);                              \
+            PMIX_INFO_FREE((m)->qualifiers, (m)->nqual);        \
             (m)->qualifiers = NULL;                             \
+            (m)->nqual = 0;                                     \
         }                                                       \
     } while (0)
 
@@ -2522,8 +2533,10 @@ PMIX_EXPORT pmix_status_t PMIx_Data_copy_payload(pmix_data_buffer_t *dest,
                                                  pmix_data_buffer_t *src);
 
 
-static inline void pmix_value_destruct(pmix_value_t * m) {
-    size_t _n;
+static inline void pmix_darray_destruct(pmix_data_array_t *m);
+
+static inline void pmix_value_destruct(pmix_value_t * m)
+{
     if (PMIX_STRING == (m)->type) {
         if (NULL != (m)->data.string) {
             free((m)->data.string);
@@ -2537,40 +2550,8 @@ static inline void pmix_value_destruct(pmix_value_t * m) {
             (m)->data.bo.size = 0;
         }
     } else if (PMIX_DATA_ARRAY == (m)->type) {
-        if (NULL != (m)->data.darray && NULL != (m)->data.darray->array) {
-            if (PMIX_STRING == (m)->data.darray->type) {
-                char **_str = (char**)(m)->data.darray->array;
-                for (_n=0; _n < (m)->data.darray->size; _n++) {
-                    if (NULL != _str[_n]) {
-                        free(_str[_n]);
-                    }
-                }
-            } else if (PMIX_PROC_INFO == (m)->data.darray->type) {
-                pmix_proc_info_t *_info =
-                            (pmix_proc_info_t*)(m)->data.darray->array;
-                for (_n=0; _n < (m)->data.darray->size; _n++) {
-                    PMIX_PROC_INFO_DESTRUCT(&_info[_n]);
-                }
-            } else if (PMIX_INFO == (m)->data.darray->type) {
-                pmix_info_t *_info =
-                            (pmix_info_t*)(m)->data.darray->array;
-                for (_n=0; _n < (m)->data.darray->size; _n++) {
-                    pmix_value_destruct(&_info[_n].value);
-                }
-            } else if (PMIX_BYTE_OBJECT == (m)->data.darray->type) {
-                pmix_byte_object_t *_obj =
-                            (pmix_byte_object_t*)(m)->data.darray->array;
-                for (_n=0; _n < (m)->data.darray->size; _n++) {
-                    if (NULL != _obj[_n].bytes) {
-                        free(_obj[_n].bytes);
-                    }
-                }
-            }
-            free((m)->data.darray->array);
-            (m)->data.darray->array = NULL;
-            (m)->data.darray->size = 0;
-        }
         if (NULL != (m)->data.darray) {
+            pmix_darray_destruct((m)->data.darray);
             free((m)->data.darray);
             (m)->data.darray = NULL;
         }
@@ -2580,6 +2561,135 @@ static inline void pmix_value_destruct(pmix_value_t * m) {
         PMIX_PROC_RELEASE((m)->data.proc);
     }
 }
+
+static inline void pmix_darray_destruct(pmix_data_array_t *m)
+{
+    if (NULL != m) {
+        if (PMIX_INFO == m->type) {
+            pmix_info_t *_info = (pmix_info_t*)m->array;
+            PMIX_INFO_FREE(_info, m->size);
+        } else if (PMIX_PROC == m->type) {
+            pmix_proc_t *_p = (pmix_proc_t*)m->array;
+            PMIX_PROC_FREE(_p, m->size);
+        } else if (PMIX_PROC_INFO == m->type) {
+            pmix_proc_info_t *_pi = (pmix_proc_info_t*)m->array;
+            PMIX_PROC_INFO_FREE(_pi, m->size);
+        } else if (PMIX_ENVAR == m->type) {
+            pmix_envar_t *_e = (pmix_envar_t*)m->array;
+            PMIX_ENVAR_FREE(_e, m->size);
+        } else if (PMIX_VALUE == m->type) {
+            pmix_value_t *_v = (pmix_value_t*)m->array;
+            PMIX_VALUE_FREE(_v, m->size);
+        } else if (PMIX_PDATA == m->type) {
+            pmix_pdata_t *_pd = (pmix_pdata_t*)m->array;
+            PMIX_PDATA_FREE(_pd, m->size);
+        } else if (PMIX_QUERY == m->type) {
+            pmix_query_t *_q = (pmix_query_t*)m->array;
+            PMIX_QUERY_FREE(_q, m->size);
+        } else if (PMIX_APP == m->type) {
+            pmix_app_t *_a = (pmix_app_t*)m->array;
+            PMIX_APP_FREE(_a, m->size);
+        } else if (PMIX_BYTE_OBJECT == m->type) {
+            pmix_byte_object_t *_b = (pmix_byte_object_t*)m->array;
+            PMIX_BYTE_OBJECT_FREE(_b, m->size);
+        } else if (PMIX_STRING == m->type) {
+            char **_s = (char**)m->array;
+            for (size_t _i=0; _i < m->size; _i++) {
+                free(_s[_i]);
+            }
+            free(m->array);
+            m->array = NULL;
+        } else {
+            free(m->array);
+        }
+    }
+}
+
+#define PMIX_DATA_ARRAY_CONSTRUCT(m, n, t)                          \
+    do {                                                            \
+        (m)->type = (t);                                            \
+        (m)->size = (n);                                            \
+        if (0 < (n)) {                                              \
+            if (PMIX_INFO == (t)) {                                 \
+                PMIX_INFO_CREATE((m)->array, (n));                  \
+            } else if (PMIX_PROC == (t)) {                          \
+                PMIX_PROC_CREATE((m)->array, (n));                  \
+            } else if (PMIX_PROC_INFO == (t)) {                     \
+                PMIX_PROC_INFO_CREATE((m)->array, (n));             \
+            } else if (PMIX_ENVAR == (t)) {                         \
+                PMIX_ENVAR_CREATE((m)->array, (n));                 \
+            } else if (PMIX_VALUE == (t)) {                         \
+                PMIX_VALUE_CREATE((m)->array, (n));                 \
+            } else if (PMIX_PDATA == (t)) {                         \
+                PMIX_PDATA_CREATE((m)->array, (n));                 \
+            } else if (PMIX_QUERY == (t)) {                         \
+                PMIX_QUERY_CREATE((m)->array, (n));                 \
+            } else if (PMIX_APP == (t)) {                           \
+                PMIX_APP_CREATE((m)->array, (n));                   \
+            } else if (PMIX_BYTE_OBJECT == (t)) {                   \
+                PMIX_BYTE_OBJECT_CREATE((m)->array, (n));           \
+            } else if (PMIX_ALLOC_DIRECTIVE == (t) ||               \
+                       PMIX_PROC_STATE == (t) ||                    \
+                       PMIX_PERSIST == (t) ||                       \
+                       PMIX_SCOPE == (t) ||                         \
+                       PMIX_DATA_RANGE == (t) ||                    \
+                       PMIX_BYTE == (t) ||                          \
+                       PMIX_INT8 == (t) ||                          \
+                       PMIX_UINT8 == (t)) {                         \
+                (m)->array = calloc((n), sizeof(int8_t));           \
+            } else if (PMIX_STRING == (t)) {                        \
+                (m)->array = calloc((n), sizeof(char*));            \
+            } else if (PMIX_SIZE == (t)) {                          \
+                (m)->array = calloc((n), sizeof(size_t));           \
+            } else if (PMIX_PID == (t)) {                           \
+                (m)->array = calloc((n), sizeof(pid_t));            \
+            } else if (PMIX_INT == (t) ||                           \
+                       PMIX_UINT == (t) ||                          \
+                       PMIX_STATUS == (t)) {                        \
+                (m)->array = calloc((n), sizeof(int));              \
+            } else if (PMIX_IOF_CHANNEL == (t) ||                   \
+                       PMIX_DATA_TYPE == (t) ||                     \
+                       PMIX_INT16 == (t) ||                         \
+                       PMIX_UINT16 == (t)) {                        \
+                (m)->array = calloc((n), sizeof(int16_t));          \
+            } else if (PMIX_PROC_RANK == (t) ||                     \
+                       PMIX_INFO_DIRECTIVES == (t) ||               \
+                       PMIX_INT32 == (t) ||                         \
+                       PMIX_UINT32 == (t)) {                        \
+                (m)->array = calloc((n), sizeof(int32_t));          \
+            } else if (PMIX_INT64 == (t) ||                         \
+                       PMIX_UINT64 == (t)) {                        \
+                (m)->array = calloc((n), sizeof(int64_t));          \
+            } else if (PMIX_FLOAT == (t)) {                         \
+                (m)->array = calloc((n), sizeof(float));            \
+            } else if (PMIX_DOUBLE == (t)) {                        \
+                (m)->array = calloc((n), sizeof(double));           \
+            } else if (PMIX_TIMEVAL == (t)) {                       \
+                (m)->array = calloc((n), sizeof(struct timeval));   \
+            } else if (PMIX_TIME == (t)) {                          \
+                (m)->array = calloc((n), sizeof(time_t));           \
+            }                                                       \
+        } else {                                                    \
+            (m)->array = NULL;                                      \
+        }                                                           \
+    } while(0)
+#define PMIX_DATA_ARRAY_CREATE(m, n, t)                                   \
+    do {                                                                  \
+        (m) = (pmix_data_array_t*)calloc(1, sizeof(pmix_data_array_t));   \
+        PMIX_DATA_ARRAY_CONSTRUCT((m), (n), (t));                         \
+    } while(0)
+
+#define PMIX_DATA_ARRAY_DESTRUCT(m) pmix_darray_destruct(m)
+
+#define PMIX_DATA_ARRAY_FREE(m)             \
+    do {                                    \
+        if (NULL != (m)) {                  \
+            PMIX_DATA_ARRAY_DESTRUCT(m);    \
+            free((m));                      \
+            (m) = NULL;                     \
+        }                                   \
+    } while(0)
+
 
 /**
  * Provide a safe version of strncpy that doesn't generate
