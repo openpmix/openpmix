@@ -1100,11 +1100,11 @@ typedef struct pmix_byte_object {
 
 #define PMIX_BYTE_OBJECT_FREE(m, n)             \
     do {                                        \
-        size_t _n;                              \
+        size_t _bon;                            \
         if (NULL != (m)) {                      \
-            for (_n=0; _n < n; _n++) {          \
-                if (NULL != (m)[_n].bytes) {    \
-                    free((m)[_n].bytes);        \
+            for (_bon=0; _bon < n; _bon++) {    \
+                if (NULL != (m)[_bon].bytes) {  \
+                    free((m)[_bon].bytes);      \
                 }                               \
             }                                   \
             free((m));                          \
@@ -1142,10 +1142,10 @@ typedef struct {
     } while (0)
 #define PMIX_ENVAR_FREE(m, n)                       \
     do {                                            \
-        size_t _k;                                  \
+        size_t _ek;                                 \
         if (NULL != (m)) {                          \
-            for (_k=0; _k < (n); _k++) {            \
-               PMIX_ENVAR_DESTRUCT(&(m)[_k]);       \
+            for (_ek=0; _ek < (n); _ek++) {         \
+               PMIX_ENVAR_DESTRUCT(&(m)[_ek]);      \
             }                                       \
             free((m));                              \
         }                                           \
@@ -1440,10 +1440,10 @@ typedef struct pmix_value {
 
 #define PMIX_VALUE_FREE(m, n)                           \
     do {                                                \
-        size_t _s;                                      \
+        size_t _vv;                                     \
         if (NULL != (m)) {                              \
-            for (_s=0; _s < (n); _s++) {                \
-                PMIX_VALUE_DESTRUCT(&((m)[_s]));        \
+            for (_vv=0; _vv < (n); _vv++) {             \
+                PMIX_VALUE_DESTRUCT(&((m)[_vv]));       \
             }                                           \
             free((m));                                  \
             (m) = NULL;                                 \
@@ -1553,16 +1553,16 @@ typedef struct pmix_info {
         PMIX_VALUE_DESTRUCT(&(m)->value);       \
     } while (0)
 
-#define PMIX_INFO_FREE(m, n)                    \
-    do {                                        \
-        size_t _s;                              \
-        if (NULL != (m)) {                      \
-            for (_s=0; _s < (n); _s++) {        \
-                PMIX_INFO_DESTRUCT(&((m)[_s])); \
-            }                                   \
-            free((m));                          \
-            (m) = NULL;                         \
-        }                                       \
+#define PMIX_INFO_FREE(m, n)                        \
+    do {                                            \
+        size_t _is;                                 \
+        if (NULL != (m)) {                          \
+            for (_is=0; _is < (n); _is++) {         \
+                PMIX_INFO_DESTRUCT(&((m)[_is]));    \
+            }                                       \
+            free((m));                              \
+            (m) = NULL;                             \
+        }                                           \
     } while (0)
 
 #define PMIX_INFO_LOAD(m, k, v, t)                          \
@@ -1638,11 +1638,11 @@ typedef struct pmix_pdata {
 
 #define PMIX_PDATA_FREE(m, n)                           \
     do {                                                \
-        size_t _s;                                      \
-        pmix_pdata_t *_p = (pmix_pdata_t*)(m);          \
-        if (NULL != _p) {                               \
-            for (_s=0; _s < (n); _s++) {                \
-                PMIX_PDATA_DESTRUCT(&(_p[_s]));         \
+        size_t _ps;                                     \
+        pmix_pdata_t *_pdf = (pmix_pdata_t*)(m);        \
+        if (NULL != _pdf) {                             \
+            for (_ps=0; _ps < (n); _ps++) {             \
+                PMIX_PDATA_DESTRUCT(&(_pdf[_ps]));      \
             }                                           \
             free((m));                                  \
             (m) = NULL;                                 \
@@ -1708,21 +1708,21 @@ typedef struct pmix_app {
 
 #define PMIX_APP_DESTRUCT(m)                                    \
     do {                                                        \
-        size_t _ii;                                             \
+        size_t _aii;                                            \
         if (NULL != (m)->cmd) {                                 \
             free((m)->cmd);                                     \
             (m)->cmd = NULL;                                    \
         }                                                       \
         if (NULL != (m)->argv) {                                \
-            for (_ii=0; NULL != (m)->argv[_ii]; _ii++) {        \
-                free((m)->argv[_ii]);                           \
+            for (_aii=0; NULL != (m)->argv[_aii]; _aii++) {     \
+                free((m)->argv[_aii]);                          \
             }                                                   \
             free((m)->argv);                                    \
             (m)->argv = NULL;                                   \
         }                                                       \
         if (NULL != (m)->env) {                                 \
-            for (_ii=0; NULL != (m)->env[_ii]; _ii++) {         \
-                free((m)->env[_ii]);                            \
+            for (_aii=0; NULL != (m)->env[_aii]; _aii++) {      \
+                free((m)->env[_aii]);                           \
             }                                                   \
             free((m)->env);                                     \
             (m)->env = NULL;                                    \
@@ -1783,10 +1783,10 @@ typedef struct pmix_query {
 
 #define PMIX_QUERY_DESTRUCT(m)                                  \
     do {                                                        \
-        size_t _ii;                                             \
+        size_t _qi;                                             \
         if (NULL != (m)->keys) {                                \
-            for (_ii=0; NULL != (m)->keys[_ii]; _ii++) {        \
-                free((m)->keys[_ii]);                           \
+            for (_qi=0; NULL != (m)->keys[_qi]; _qi++) {        \
+                free((m)->keys[_qi]);                           \
             }                                                   \
             free((m)->keys);                                    \
             (m)->keys = NULL;                                   \
@@ -1800,10 +1800,10 @@ typedef struct pmix_query {
 
 #define PMIX_QUERY_FREE(m, n)                       \
     do {                                            \
-        size_t _s;                                  \
+        size_t _qs;                                 \
         if (NULL != (m)) {                          \
-            for (_s=0; _s < (n); _s++) {            \
-                PMIX_QUERY_DESTRUCT(&((m)[_s]));    \
+            for (_qs=0; _qs < (n); _qs++) {         \
+                PMIX_QUERY_DESTRUCT(&((m)[_qs]));   \
             }                                       \
             free((m));                              \
             (m) = NULL;                             \
@@ -2596,8 +2596,9 @@ static inline void pmix_darray_destruct(pmix_data_array_t *m)
             PMIX_BYTE_OBJECT_FREE(_b, m->size);
         } else if (PMIX_STRING == m->type) {
             char **_s = (char**)m->array;
-            for (size_t _i=0; _i < m->size; _i++) {
-                free(_s[_i]);
+            size_t _si;
+            for (_si=0; _si < m->size; _si++) {
+                free(_s[_si]);
             }
             free(m->array);
             m->array = NULL;
