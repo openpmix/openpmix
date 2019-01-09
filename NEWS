@@ -1,4 +1,4 @@
-Copyright (c) 2015-2018 Intel, Inc. All rights reserved.
+Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
 Copyright (c) 2017      IBM Corporation.  All rights reserved.
 $COPYRIGHT$
 
@@ -17,11 +17,11 @@ the README file, PMIx typically maintains two separate version
 series simultaneously - the current release and one that is locked
 to only bug fixes.  Since these series are semi-independent of each
 other, a single NEWS-worthy item might apply to different series. For
-example, a bug might be fixed in the master, and then moved to the
-current release as well as the "stable" bug fix release branch.
+example, a bug might be fixed in the master, and then moved to
+multiple release branches.
 
 
-3.1.0 -- 21 Dec 2018
+3.1.0 -- 11 Jan 2019
 ----------------------
 **** THIS RELEASE MARKS THE STARTING POINT FOR FULL COMPLIANCE
 **** WITH THE PMIX v3 STANDARD. ALL API BEHAVIORS AND ATTRIBUTE
@@ -44,6 +44,14 @@ current release as well as the "stable" bug fix release branch.
  - Update event notification system to properly evict oldest events
    when more space is needed
  - Fix a number of error paths
+ - Update IOF cache code to properly drop oldest message. Provide
+   MCA parameter for setting cache size.
+ - Handle setsockopt(SO_RCVTIMEO) not being supported
+ - Ensure that epilogs get run even when connections unexpectedly
+   terminate. Properly split epilog strings to process multiple
+   paths
+ - Pass the tool's command line to the server so it can be returned
+   in queries
 
 
 3.0.2 -- 18 Sept 2018
