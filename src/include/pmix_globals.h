@@ -281,6 +281,7 @@ typedef struct {
     pmix_event_t ev;
     bool event_active;
     bool lost_connection;           // tracker went thru lost connection procedure
+    bool local;                     // operation is strictly local
     char *id;                       // string identifier for the collective
     pmix_cmd_t type;
     pmix_proc_t pname;
@@ -299,6 +300,7 @@ typedef struct {
     pmix_collect_t collect_type;    // whether or not data is to be returned at completion
     pmix_modex_cbfunc_t modexcbfunc;
     pmix_op_cbfunc_t op_cbfunc;
+    void *cbdata;
 } pmix_server_trkr_t;
 PMIX_CLASS_DECLARATION(pmix_server_trkr_t);
 
