@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2015-2018 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
@@ -579,6 +579,8 @@ pmix_status_t pmix_pnet_base_harvest_envars(char **incvars, char **excvars,
                 }
                 *string_key = '\0';
                 ++string_key;
+                pmix_output_verbose(5, pmix_pnet_base_framework.framework_output,
+                                    "pnet: adding envar %s", cs_env);
                 PMIX_ENVAR_LOAD(&kv->value->data.envar, cs_env, string_key, ':');
                 pmix_list_append(ilist, &kv->super);
                 free(cs_env);
@@ -595,6 +597,8 @@ pmix_status_t pmix_pnet_base_harvest_envars(char **incvars, char **excvars,
             }
             PMIX_LIST_FOREACH_SAFE(kv, next, ilist, pmix_kval_t) {
                 if (0 == strncmp(kv->value->data.envar.envar, excvars[j], len)) {
+                pmix_output_verbose(5, pmix_pnet_base_framework.framework_output,
+                                    "pnet: excluding envar %s", kv->value->data.envar.envar);
                     pmix_list_remove_item(ilist, &kv->super);
                     PMIX_RELEASE(kv);
                 }
