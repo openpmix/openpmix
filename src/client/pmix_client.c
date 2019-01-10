@@ -459,8 +459,8 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
 
     /* if we don't see the required info, then we cannot init */
     if (NULL == (evar = getenv("PMIX_NAMESPACE"))) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
         pmix_init_result = PMIX_ERR_INVALID_NAMESPACE;
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_INVALID_NAMESPACE;
     }
 
