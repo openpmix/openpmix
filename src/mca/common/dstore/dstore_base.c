@@ -2369,7 +2369,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_setup_fork(pmix_common_dstore_ctx_t 
 PMIX_EXPORT pmix_status_t pmix_common_dstor_add_nspace(pmix_common_dstore_ctx_t *ds_ctx,
                                 const char *nspace, pmix_info_t info[], size_t ninfo)
 {
-    pmix_status_t rc;
+    pmix_status_t rc = PMIX_SUCCESS;
     size_t tbl_idx=0;
     uid_t jobuid = ds_ctx->jobuid;
     char setjobuid = ds_ctx->setjobuid;
@@ -2480,7 +2480,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_del_nspace(pmix_common_dstore_ctx_t 
                              __FILE__, __LINE__, __func__, session_tbl[session_tbl_idx].jobuid));
         size = pmix_value_array_get_size(ds_ctx->ns_track_array);
         if (size && (dstor_track_idx >= 0)) {
-            if((size_t)(dstor_track_idx + 1) > size) {
+            if((dstor_track_idx + 1) > (int)size) {
                 rc = PMIX_ERR_VALUE_OUT_OF_BOUNDS;
                 PMIX_ERROR_LOG(rc);
                 goto exit;
