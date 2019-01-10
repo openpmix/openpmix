@@ -1,7 +1,7 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
- * Copyright (c) 2017-2018 Research Organization for Information Science
+ * Copyright (c) 2017-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2017      IBM Corporation. All rights reserved.
  *
@@ -998,10 +998,11 @@ static void _notify_client_event(int sd, short args, void *cbdata)
                                 matched = true;
                                 /* track the number of targets we have left to notify */
                                 --cd->nleft;
-                                /* if this is the last one, then evict this event
-                                 * from the cache */
-                                if (0 == cd->nleft) {
+                                /* if the event was cached and this is the last one,
+                                 * then evict this event from the cache */
+                                if (-1 != cd->room && 0 == cd->nleft) {
                                     pmix_hotel_checkout(&pmix_globals.notifications, cd->room);
+                                    PMIX_RELEASE(cd);
                                 }
                                 break;
                             }
