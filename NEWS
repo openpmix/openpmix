@@ -38,7 +38,8 @@ multiple release branches.
    when dealing with async requests
  - Cleanup tool operations and add support for connections to
    remote servers. Initial support for debugger direct/indirect
-   launch verified with PRRTE.
+   launch verified with PRRTE. Cleanup setting of tmpdir options.
+   Drop rendezvous files when acting as a launcher
  - Automatically store the server URI for easy access by client
  - Provide MCA parameter to control TCP connect retry/timeout
  - Update event notification system to properly evict oldest events
@@ -52,6 +53,8 @@ multiple release branches.
    paths
  - Pass the tool's command line to the server so it can be returned
    in queries
+ - Add support for C11 atomics
+ - Support collection and forwarding of fabric-specific envars
 
 
 3.0.2 -- 18 Sept 2018
