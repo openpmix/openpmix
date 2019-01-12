@@ -1590,6 +1590,10 @@ typedef struct pmix_info {
 #define PMIX_INFO_IS_OPTIONAL(m)    \
     !((m)->flags & PMIX_INFO_REQD)
 
+/* macro for testing end of the array */
+#define PMIX_INFO_IS_END(m)         \
+    (m)->flags & PMIX_INFO_ARRAY_END
+
 /* define a special macro for checking if a boolean
  * info is true - when info structs are provided, a
  * type of PMIX_UNDEF is taken to imply a boolean "true"

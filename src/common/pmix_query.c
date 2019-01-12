@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
@@ -158,6 +158,24 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
     if (0 == nqueries || NULL == queries) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* do a quick check of the qualifiers array to ensure
+     * the nqual field has been set */
+    for (n=0; n < nqueries; n++) {
+        if (NULL != queries[n].qualifiers && 0 == queries[n].nqual) {
+            /* look for the info marked as "end" */
+            p = 0;
+            while (!(PMIX_INFO_IS_END(&queries[n].qualifiers[p])) && p < SIZE_MAX) {
+                ++p;
+            }
+            if (SIZE_MAX == p) {
+                /* nothing we can do */
+                PMIX_RELEASE_THREAD(&pmix_global_lock);
+                return PMIX_ERR_BAD_PARAM;
+            }
+            queries[n].nqual = p;
+        }
     }
 
     /* setup the list of local results */
