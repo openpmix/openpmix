@@ -1668,8 +1668,7 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
 
     /* store the event registration info so we can call the registered
      * client when the server notifies the event */
-    k=0;
-    do {
+    for (n=0; n < ncodes; n++) {
         found = false;
         PMIX_LIST_FOREACH(reginfo, &pmix_server_globals.events, pmix_regevents_info_t) {
             if (NULL == codes) {
@@ -1683,35 +1682,28 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
             } else {
                 if (PMIX_MAX_ERR_CONSTANT == reginfo->code) {
                     continue;
-                } else if (codes[k] == reginfo->code) {
+                } else if (codes[n] == reginfo->code) {
                     found = true;
                     break;
                 }
             }
         }
         if (found) {
-            /* found it - add this peer if we don't already have it */
-            found = false;
-            PMIX_LIST_FOREACH(prev, &reginfo->peers, pmix_peer_events_info_t) {
-                if (prev->peer == peer) {
-                    /* already have it */
-                    rc = PMIX_SUCCESS;
-                    found = true;
-                    break;
-                }
+            /* found it - add this request */
+            prev = PMIX_NEW(pmix_peer_events_info_t);
+            if (NULL == prev) {
+                rc = PMIX_ERR_NOMEM;
+                goto cleanup;
             }
-            if (!found) {
-                /* get here if we don't already have this peer */
-                prev = PMIX_NEW(pmix_peer_events_info_t);
-                if (NULL == prev) {
-                    rc = PMIX_ERR_NOMEM;
-                    goto cleanup;
-                }
-                PMIX_RETAIN(peer);
-                prev->peer = peer;
-                prev->enviro_events = enviro_events;
-                pmix_list_append(&reginfo->peers, &prev->super);
+            PMIX_RETAIN(peer);
+            prev->peer = peer;
+            if (NULL != affected) {
+                PMIX_PROC_CREATE(prev->affected, naffected);
+                prev->naffected = naffected;
+                memcpy(prev->affected, affected, naffected * sizeof(pmix_proc_t));
             }
+            prev->enviro_events = enviro_events;
+            pmix_list_append(&reginfo->peers, &prev->super);
         } else {
             /* if we get here, then we didn't find an existing registration for this code */
             reginfo = PMIX_NEW(pmix_regevents_info_t);
@@ -1722,7 +1714,7 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
             if (NULL == codes) {
                 reginfo->code = PMIX_MAX_ERR_CONSTANT;
             } else {
-                reginfo->code = codes[k];
+                reginfo->code = codes[n];
             }
             pmix_list_append(&pmix_server_globals.events, &reginfo->super);
             prev = PMIX_NEW(pmix_peer_events_info_t);
@@ -1732,11 +1724,15 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
             }
             PMIX_RETAIN(peer);
             prev->peer = peer;
+            if (NULL != affected) {
+                PMIX_PROC_CREATE(prev->affected, naffected);
+                prev->naffected = naffected;
+                memcpy(prev->affected, affected, naffected * sizeof(pmix_proc_t));
+            }
             prev->enviro_events = enviro_events;
             pmix_list_append(&reginfo->peers, &prev->super);
         }
-        ++k;
-    } while (k < ncodes);
+    }
 
     /* if they asked for enviro events, call the local server */
     if (enviro_events) {
@@ -1836,7 +1832,20 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
         if (!found) {
             continue;
         }
+        /* check if the affected procs (if given) match those they
+         * wanted to know about */
+        if (!pmix_notify_check_affected(cd->affected, cd->naffected,
+                                        prev->affected, prev->naffected)) {
+            continue;
+        }
         /* check the range */
+        if (NULL == cd->targets) {
+            rngtrk.procs = &cd->source;
+            rngtrk.nprocs = 1;
+        } else {
+            rngtrk.procs = cd->targets;
+            rngtrk.nprocs = cd->ntargets;
+        }
         rngtrk.range = cd->range;
         PMIX_LOAD_PROCID(&proc, peer->info->pname.nspace, peer->info->pname.rank);
         if (!pmix_notify_check_range(&rngtrk, &proc)) {
@@ -1872,11 +1881,6 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
             }
         }
 
-        /* if they specified affected proc(s) they wanted to know about, check */
-        if (!pmix_notify_check_affected(cd->affected, cd->naffected,
-                                        affected, naffected)) {
-            continue;
-        }
         /* all matches - notify */
         relay = PMIX_NEW(pmix_buffer_t);
         if (NULL == relay) {
@@ -3483,11 +3487,16 @@ PMIX_CLASS_INSTANCE(pmix_dmdx_local_t,
 static void prevcon(pmix_peer_events_info_t *p)
 {
     p->peer = NULL;
+    p->affected = NULL;
+    p->naffected = 0;
 }
 static void prevdes(pmix_peer_events_info_t *p)
 {
     if (NULL != p->peer) {
         PMIX_RELEASE(p->peer);
+    }
+    if (NULL != p->affected) {
+        PMIX_PROC_FREE(p->affected, p->naffected);
     }
 }
 PMIX_CLASS_INSTANCE(pmix_peer_events_info_t,
