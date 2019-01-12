@@ -15,7 +15,7 @@
  *                         reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2016-2017 Intel, Inc. All rights reserved.
+ * Copyright (c) 2016-2019 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -55,6 +55,26 @@ PMIX_CLASS_INSTANCE(pmix_mca_base_component_repository_item_t, pmix_list_item_t,
                     ri_constructor, ri_destructor);
 
 #endif /* PMIX_HAVE_PDL_SUPPORT */
+
+static void clf_constructor(pmix_object_t *obj)
+{
+    pmix_mca_base_failed_component_t *cli = (pmix_mca_base_failed_component_t *) obj;
+    cli->comp = NULL;
+    cli->error_msg = NULL;
+}
+
+static void clf_destructor(pmix_object_t *obj)
+{
+    pmix_mca_base_failed_component_t *cli = (pmix_mca_base_failed_component_t *) obj;
+    cli->comp = NULL;
+    if( NULL != cli->error_msg ) {
+        free(cli->error_msg);
+        cli->error_msg = NULL;
+    }
+}
+
+PMIX_CLASS_INSTANCE(pmix_mca_base_failed_component_t, pmix_list_item_t,
+                    clf_constructor, clf_destructor);
 
 
 /*
@@ -144,12 +164,12 @@ static int process_repository_item (const char *filename, void *data)
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
-    /* strncpy does not guarantee a \0 */
+    /* pmix_strncpy does not guarantee a \0 */
     ri->ri_type[PMIX_MCA_BASE_MAX_TYPE_NAME_LEN] = '\0';
-    strncpy (ri->ri_type, type, PMIX_MCA_BASE_MAX_TYPE_NAME_LEN);
+    pmix_strncpy (ri->ri_type, type, PMIX_MCA_BASE_MAX_TYPE_NAME_LEN);
 
     ri->ri_name[PMIX_MCA_BASE_MAX_TYPE_NAME_LEN] = '\0';
-    strncpy (ri->ri_name, name, PMIX_MCA_BASE_MAX_COMPONENT_NAME_LEN);
+    pmix_strncpy (ri->ri_name, name, PMIX_MCA_BASE_MAX_COMPONENT_NAME_LEN);
 
     pmix_list_append (component_list, &ri->super);
 
@@ -409,6 +429,17 @@ int pmix_mca_base_component_repository_open(pmix_mca_base_framework_t *framework
         }
         pmix_output_verbose(vl, 0, "pmix_mca_base_component_repository_open: unable to open %s: %s (ignored)",
                             ri->ri_base, err_msg);
+
+        if( pmix_mca_base_component_track_load_errors ) {
+            pmix_mca_base_failed_component_t *f_comp = PMIX_NEW(pmix_mca_base_failed_component_t);
+            f_comp->comp = ri;
+            if (0 > asprintf(&(f_comp->error_msg), "%s", err_msg)) {
+                PMIX_RELEASE(f_comp);
+                return PMIX_ERR_BAD_PARAM;
+            }
+            pmix_list_append(&framework->framework_failed_components, &f_comp->super);
+        }
+
         return PMIX_ERR_BAD_PARAM;
     }
 

@@ -1,6 +1,10 @@
 /*
- * Copyright (c) 2015-2018 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
+ * Copyright (c) 2018      Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2018      Mellanox Technologies, Inc.
+ *                         All rights reserved.
  *
  * $COPYRIGHT$
  *
@@ -94,6 +98,7 @@ static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf);
 
 pmix_gds_base_module_t pmix_hash_module = {
     .name = "hash",
+    .is_tsafe = false,
     .init = hash_init,
     .finalize = hash_finalize,
     .assign_module = hash_assign_module,
@@ -140,8 +145,11 @@ static void htdes(pmix_hash_trkr_t *p)
     if (NULL != p->nptr) {
         PMIX_RELEASE(p->nptr);
     }
+    pmix_hash_remove_data(&p->internal, PMIX_RANK_WILDCARD, NULL);
     PMIX_DESTRUCT(&p->internal);
+    pmix_hash_remove_data(&p->remote, PMIX_RANK_WILDCARD, NULL);
     PMIX_DESTRUCT(&p->remote);
+    pmix_hash_remove_data(&p->local, PMIX_RANK_WILDCARD, NULL);
     PMIX_DESTRUCT(&p->local);
 }
 static PMIX_CLASS_INSTANCE(pmix_hash_trkr_t,
@@ -332,13 +340,14 @@ static pmix_status_t store_map(pmix_hash_table_t *ht,
                 pmix_argv_free(procs);
                 return rc;
             }
-            PMIX_RELEASE(kp2);
+            PMIX_RELEASE(kp2);  // maintain acctg
         }
         pmix_argv_free(procs);
     }
 
     /* store the comma-delimited list of nodes hosting
-     * procs in this nspace */
+     * procs in this nspace in case someone using PMIx v2
+     * requests it */
     kp2 = PMIX_NEW(pmix_kval_t);
     kp2->key = strdup(PMIX_NODE_LIST);
     kp2->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
@@ -349,6 +358,7 @@ static pmix_status_t store_map(pmix_hash_table_t *ht,
         PMIX_RELEASE(kp2);
         return rc;
     }
+    PMIX_RELEASE(kp2);  // maintain acctg
 
     return PMIX_SUCCESS;
 }
@@ -402,6 +412,20 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
     ht = &trk->internal;
     for (n=0; n < ninfo; n++) {
         if (0 == strcmp(info[n].key, PMIX_NODE_MAP)) {
+            /* store the node map itself since that is
+             * what v3 uses */
+            kp2 = PMIX_NEW(pmix_kval_t);
+            kp2->key = strdup(PMIX_NODE_MAP);
+            kp2->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+            kp2->value->type = PMIX_STRING;
+            kp2->value->data.string = strdup(info[n].value.data.string);
+            if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, kp2))) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(kp2);
+                return rc;
+            }
+            PMIX_RELEASE(kp2);  // maintain acctg
+
             /* parse the regex to get the argv array of node names */
             if (PMIX_SUCCESS != (rc = pmix_preg.parse_nodes(info[n].value.data.string, &nodes))) {
                 PMIX_ERROR_LOG(rc);
@@ -518,6 +542,7 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                 PMIX_RELEASE(kp2);
                 goto release;
             }
+            PMIX_RELEASE(kp2);  // maintain acctg
             /* if this is the job size, then store it */
             if (0 == strncmp(info[n].key, PMIX_JOB_SIZE, PMIX_MAX_KEYLEN)) {
                 nptr->nprocs = info[n].value.data.uint32;
@@ -547,6 +572,7 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                 PMIX_RELEASE(kp2);
                 break;
             }
+            PMIX_RELEASE(kp2);  // maintain acctg
         }
         trk->gdata_added = true;
     }
@@ -665,7 +691,8 @@ static pmix_status_t hash_register_job_info(struct pmix_peer_t *pr,
     pmix_status_t rc;
     pmix_hash_trkr_t *trk, *t2;
 
-    if (!PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
+    if (!PMIX_PROC_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
         /* this function is only available on servers */
         PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
         return PMIX_ERR_NOT_SUPPORTED;
@@ -765,7 +792,8 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                         "[%s:%u] pmix:gds:hash store job info for nspace %s",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank, nspace);
 
-    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
+    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
         /* this function is NOT available on servers */
         PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
         return PMIX_ERR_NOT_SUPPORTED;
@@ -920,7 +948,7 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                         PMIX_DESTRUCT(&buf2);
                         return rc;
                     }
-                    PMIX_RELEASE(kp2);
+                    PMIX_RELEASE(kp2);  // maintain acctg
                 } else {
                     /* nope - so add this by itself */
                     kp2 = PMIX_NEW(pmix_kval_t);
@@ -952,7 +980,7 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                         PMIX_DESTRUCT(&buf2);
                         return rc;
                     }
-                    PMIX_RELEASE(kp2);
+                    PMIX_RELEASE(kp2);  // maintain acctg
                 }
                 /* split the list of procs so we can store their
                  * individual location data */
@@ -975,7 +1003,7 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                         pmix_argv_free(procs);
                         return rc;
                     }
-                    PMIX_RELEASE(kp2);
+                    PMIX_RELEASE(kp2);  // maintain acctg
                 }
                 pmix_argv_free(procs);
                 PMIX_DESTRUCT(&kv);
@@ -996,7 +1024,7 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                     PMIX_DESTRUCT(&buf2);
                     return rc;
                 }
-                PMIX_RELEASE(kp2);
+                PMIX_RELEASE(kp2);  // maintain acctg
             }
             /* cleanup */
             PMIX_DESTRUCT(&buf2);
@@ -1051,10 +1079,10 @@ static pmix_status_t hash_store(const pmix_proc_t *proc,
     pmix_kval_t *kp;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
-                        "[%s:%d] gds:hash:hash_store for proc [%s:%d] key %s scope %s",
+                        "[%s:%d] gds:hash:hash_store for proc [%s:%d] key %s type %s scope %s",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank,
                         proc->nspace, proc->rank, kv->key,
-                        PMIx_Scope_string(scope));
+                        PMIx_Data_type_string(kv->value->type), PMIx_Scope_string(scope));
 
     if (NULL == kv->key) {
         return PMIX_ERR_BAD_PARAM;
@@ -1098,8 +1126,10 @@ static pmix_status_t hash_store(const pmix_proc_t *proc,
             }
             if (PMIX_SUCCESS != (rc = pmix_hash_store(&trk->internal, proc->rank, kp))) {
                 PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(kp);
                 return rc;
             }
+            PMIX_RELEASE(kp);  // maintain accounting
         }
     }
 
@@ -1456,7 +1486,17 @@ static pmix_status_t nspace_add(const char *nspace,
 
 static pmix_status_t nspace_del(const char *nspace)
 {
-    /* we don't need to do anything here */
+    pmix_hash_trkr_t *t;
+
+    /* find the hash table for this nspace */
+    PMIX_LIST_FOREACH(t, &myhashes, pmix_hash_trkr_t) {
+        if (0 == strcmp(nspace, t->ns)) {
+            /* release it */
+            pmix_list_remove_item(&myhashes, &t->super);
+            PMIX_RELEASE(t);
+            break;
+        }
+    }
     return PMIX_SUCCESS;
 }
 

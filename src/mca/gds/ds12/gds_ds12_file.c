@@ -2,6 +2,7 @@
  * Copyright (c) 2018      Mellanox Technologies, Inc.
  *                         All rights reserved.
  *
+ * Copyright (c) 2019      Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -18,7 +19,7 @@
 #include "gds_ds12_file.h"
 
 #define ESH_KEY_SIZE_V12(key, size)                         \
-__extension__ ({                             \
+__pmix_attribute_extension__ ({                             \
     size_t len = strlen((char*)key) + 1 + sizeof(size_t) + size;   \
     len;                                                    \
 })
@@ -31,7 +32,7 @@ __extension__ ({                             \
     (ESH_KEY_SIZE_V12(ESH_REGION_EXTENSION, sizeof(size_t)))
 
 #define ESH_KV_SIZE_V12(addr)                               \
-__extension__ ({                             \
+__pmix_attribute_extension__ ({                             \
     size_t sz;                                              \
     memcpy(&sz, addr +                                      \
         ESH_KNAME_LEN_V12(ESH_KNAME_PTR_V12(addr)),         \
@@ -42,19 +43,19 @@ __extension__ ({                             \
 })
 
 #define ESH_KNAME_PTR_V12(addr)                             \
-__extension__ ({                             \
+__pmix_attribute_extension__ ({                             \
     char *name_ptr = (char*)addr;                           \
     name_ptr;                                               \
 })
 
 #define ESH_KNAME_LEN_V12(key)                              \
-__extension__ ({                             \
+__pmix_attribute_extension__ ({                             \
     size_t len = strlen((char*)key) + 1;                    \
     len;                                                    \
 })
 
 #define ESH_DATA_PTR_V12(addr)                              \
-__extension__ ({                             \
+__pmix_attribute_extension__ ({                             \
     uint8_t *data_ptr =                                     \
         addr +                                              \
         sizeof(size_t) +                                    \
@@ -63,7 +64,7 @@ __extension__ ({                             \
 })
 
 #define ESH_DATA_SIZE_V12(addr)                             \
-__extension__ ({                             \
+__pmix_attribute_extension__ ({                             \
     size_t data_size;                                       \
     memcpy(&data_size,                                      \
         addr + ESH_KNAME_LEN_V12(ESH_KNAME_PTR_V12(addr)),  \
@@ -72,7 +73,7 @@ __extension__ ({                             \
 })
 
 #define ESH_PUT_KEY_V12(addr, key, buffer, size)            \
-__extension__ ({                             \
+__pmix_attribute_extension__ ({                             \
     size_t sz = size;                                       \
     memset(addr, 0, ESH_KNAME_LEN_V12(key));                \
     strncpy((char *)addr, key, ESH_KNAME_LEN_V12(key));     \
@@ -128,9 +129,9 @@ static int pmix_ds12_put_key(uint8_t *addr, char *key, void *buf, size_t size)
     return PMIX_SUCCESS;
 }
 
-static int pmix_ds12_is_invalid(uint8_t *addr)
+static bool pmix_ds12_is_invalid(uint8_t *addr)
 {
-    int ret = (0 == strncmp(ESH_REGION_INVALIDATED, ESH_KNAME_PTR_V12(addr),
+    bool ret = (0 == strncmp(ESH_REGION_INVALIDATED, ESH_KNAME_PTR_V12(addr),
                             ESH_KNAME_LEN_V12(ESH_KNAME_PTR_V12(addr))));
     return ret;
 }
@@ -141,17 +142,17 @@ static void pmix_ds12_set_invalid(uint8_t *addr)
             ESH_KNAME_LEN_V12(ESH_REGION_INVALIDATED));
 }
 
-static int pmix_ds12_is_ext_slot(uint8_t *addr)
+static bool pmix_ds12_is_ext_slot(uint8_t *addr)
 {
-    int ret;
+    bool ret;
     ret = (0 == strncmp(ESH_REGION_EXTENSION, ESH_KNAME_PTR_V12(addr),
                         ESH_KNAME_LEN_V12(ESH_KNAME_PTR_V12(addr))));
     return ret;
 }
 
-static int pmix_ds12_kname_match(uint8_t *addr, const char *key, size_t key_hash)
+static bool pmix_ds12_kname_match(uint8_t *addr, const char *key, size_t key_hash)
 {
-    int ret = 0;
+    bool ret = 0;
 
     ret =  (0 == strncmp(ESH_KNAME_PTR_V12(addr),
                          key, ESH_KNAME_LEN_V12(key)));

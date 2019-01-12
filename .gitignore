@@ -108,6 +108,7 @@ test/simple/simpdie
 test/simple/quietclient
 test/simple/stability
 test/simple/simpjctrl
+test/simple/simptimeout
 
 # coverity
 cov-int
