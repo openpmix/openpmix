@@ -2,6 +2,7 @@
  * Copyright (c) 2018      Mellanox Technologies, Inc.
  *                         All rights reserved.
  *
+ * Copyright (c) 2019      Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -18,7 +19,7 @@
 #include "gds_ds12_file.h"
 
 #define ESH_KV_SIZE_V20(addr)                               \
-__extension__ ({                             \
+__pmix_attribute_extension__ ({                             \
     size_t sz;                                              \
     memcpy(&sz, addr, sizeof(size_t));                      \
     sz;                                                     \
@@ -28,7 +29,7 @@ __extension__ ({                             \
     ((char *)addr + sizeof(size_t))
 
 #define ESH_KNAME_LEN_V20(key)                              \
-__extension__ ({                             \
+__pmix_attribute_extension__ ({                             \
     size_t kname_len = strlen(key) + 1;                     \
     size_t len = (kname_len < ESH_MIN_KEY_LEN) ?            \
     ESH_MIN_KEY_LEN : kname_len;                            \
@@ -36,7 +37,7 @@ __extension__ ({                             \
 })
 
 #define ESH_DATA_PTR_V20(addr)                              \
-__extension__ ({                             \
+__pmix_attribute_extension__ ({                             \
     size_t kname_len =                                      \
         ESH_KNAME_LEN_V20(ESH_KNAME_PTR_V20(addr));         \
     uint8_t *data_ptr = addr + sizeof(size_t) + kname_len;  \
@@ -44,7 +45,7 @@ __extension__ ({                             \
 })
 
 #define ESH_DATA_SIZE_V20(addr, data_ptr)                   \
-__extension__ ({                             \
+__pmix_attribute_extension__ ({                             \
     size_t __sz = ESH_KV_SIZE_V20(addr);                      \
     size_t data_size = __sz - (data_ptr - addr);              \
     data_size;                                              \
@@ -62,7 +63,7 @@ __extension__ ({                             \
 
 
 #define ESH_PUT_KEY_V20(addr, key, buffer, size)            \
-__extension__ ({                             \
+__pmix_attribute_extension__ ({                             \
     size_t sz = ESH_KEY_SIZE_V20(key, size);                \
     memcpy(addr, &sz, sizeof(size_t));                      \
     memset(addr + sizeof(size_t), 0,                        \

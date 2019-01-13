@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2016-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
@@ -39,7 +39,7 @@
 #include "src/mca/common/dstore/dstore_segment.h"
 
 #define _ESH_12_PTHREAD_LOCK(rwlock, func)                  \
-__extension__ ({                                            \
+__pmix_attribute_extension__ ({                             \
     pmix_status_t ret = PMIX_SUCCESS;                       \
     int rc;                                                 \
     rc = pthread_rwlock_##func(rwlock);                     \
@@ -208,6 +208,10 @@ void pmix_ds12_lock_finalize(pmix_common_dstor_lock_ctx_t *lock_ctx)
         PMIX_ERROR_LOG(PMIX_ERROR);
         return;
     }
+    if (NULL == pthread_lock->lockfile) {
+        PMIX_ERROR_LOG(PMIX_ERROR);
+        return;
+    }
 
     /* detach & unlink from current desc */
     if (pthread_lock->segment->seg_cpid == getpid()) {
@@ -217,6 +221,8 @@ void pmix_ds12_lock_finalize(pmix_common_dstor_lock_ctx_t *lock_ctx)
 
     free(pthread_lock->segment);
     pthread_lock->segment = NULL;
+    free(pthread_lock->lockfile);
+    pthread_lock->lockfile = NULL;
     pthread_lock->rwlock = NULL;
     free(pthread_lock);
     *lock_ctx = NULL;

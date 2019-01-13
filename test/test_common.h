@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2016 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
@@ -32,6 +32,13 @@
 
 #define TEST_NAMESPACE "smoky_nspace"
 #define TEST_CREDENTIAL "dummy"
+
+#define PMIX_WAIT_FOR_COMPLETION(m) \
+    do {                            \
+        while ((m)) {               \
+            usleep(10);             \
+        }                           \
+    } while(0)
 
 /* WARNING: pmix_test_output_prepare is currently not threadsafe!
  * fix it once needed!

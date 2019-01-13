@@ -1,7 +1,9 @@
 /*
  * Copyright (c) 2018      Mellanox Technologies, Inc.
  *                         All rights reserved.
- *
+ * Copyright (c) 2019      Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2019      Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -17,13 +19,18 @@
 #include "src/mca/common/dstore/dstore_file.h"
 #include "gds_ds21_file.h"
 
-/* TODO: adapt to size_t size */
+#if 8 > SIZEOF_SIZE_T
+#define ESH_REGION_EXTENSION_FLG    0x80000000
+#define ESH_REGION_INVALIDATED_FLG  0x40000000
+#define ESH_REGION_SIZE_MASK        0x3FFFFFFF
+#else
 #define ESH_REGION_EXTENSION_FLG    0x8000000000000000
 #define ESH_REGION_INVALIDATED_FLG  0x4000000000000000
 #define ESH_REGION_SIZE_MASK        0x3FFFFFFFFFFFFFFF
+#endif
 
 #define ESH_KV_SIZE_V21(addr)                               \
-__extension__ ({                             \
+__pmix_attribute_extension__ ({                             \
     size_t sz;                                              \
     memcpy(&sz, addr, sizeof(size_t));                      \
     /* drop flags in lsb's */                               \
@@ -37,7 +44,7 @@ __extension__ ({                             \
     (strlen(key) + 1)
 
 #define ESH_DATA_PTR_V21(addr)                              \
-__extension__ ({                             \
+__pmix_attribute_extension__ ({                             \
     char *key_ptr = ESH_KNAME_PTR_V21(addr);                \
     size_t kname_len = ESH_KNAME_LEN_V21(key_ptr);          \
     uint8_t *data_ptr =                                     \
@@ -46,7 +53,7 @@ __extension__ ({                             \
 })
 
 #define ESH_DATA_SIZE_V21(addr, data_ptr)                   \
-__extension__ ({                             \
+__pmix_attribute_extension__ ({                             \
     size_t sz = ESH_KV_SIZE_V21(addr);                      \
     size_t data_size = sz - (data_ptr - addr);              \
     data_size;                                              \

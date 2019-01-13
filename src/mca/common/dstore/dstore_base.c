@@ -1,8 +1,10 @@
 /*
- * Copyright (c) 2015-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
- * Copyright (c) 2016-2017 Mellanox Technologies, Inc.
+ * Copyright (c) 2016-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2018-2019 Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  *
  * $COPYRIGHT$
  *
@@ -156,7 +158,7 @@ ns_map_data_t * (*_esh_session_map_search)(const char *nspace) = NULL;
 #endif
 
 #define _ESH_LOCK(ds_ctx, session_id, operation)                               \
-__extension__ ({                                                               \
+__pmix_attribute_extension__ ({                                                \
     pmix_status_t rc = PMIX_SUCCESS;                                           \
     rc = ds_ctx->lock_cbs->operation(_ESH_SESSION_lock(ds_ctx->session_array,  \
                                                     session_id));              \
@@ -399,7 +401,7 @@ static inline ns_map_data_t * _esh_session_map(pmix_common_dstore_ctx_t *ds_ctx,
     for(map_idx = 0; map_idx < size; map_idx++) {
         if (!ns_map[map_idx].in_use) {
             ns_map[map_idx].in_use = true;
-            strncpy(ns_map[map_idx].data.name, nspace, sizeof(ns_map[map_idx].data.name)-1);
+            pmix_strncpy(ns_map[map_idx].data.name, nspace, sizeof(ns_map[map_idx].data.name)-1);
             ns_map[map_idx].data.tbl_idx = tbl_idx;
             return  &ns_map[map_idx].data;
         }
@@ -413,7 +415,7 @@ static inline ns_map_data_t * _esh_session_map(pmix_common_dstore_ctx_t *ds_ctx,
     _esh_session_map_clean(ds_ctx, new_map);
     new_map->in_use = true;
     new_map->data.tbl_idx = tbl_idx;
-    strncpy(new_map->data.name, nspace, sizeof(new_map->data.name)-1);
+    pmix_strncpy(new_map->data.name, nspace, sizeof(new_map->data.name)-1);
 
     return  &new_map->data;
 }
@@ -745,7 +747,7 @@ static int _put_ns_info_to_initial_segment(pmix_common_dstore_ctx_t *ds_ctx,
                0, ds_ctx->initial_segment_size);
     }
     memset(&elem.ns_map, 0, sizeof(elem.ns_map));
-    strncpy(elem.ns_map.name, ns_map->name, sizeof(elem.ns_map.name)-1);
+    pmix_strncpy(elem.ns_map.name, ns_map->name, sizeof(elem.ns_map.name)-1);
     elem.ns_map.tbl_idx = ns_map->tbl_idx;
     elem.num_meta_seg = 1;
     elem.num_data_seg = 1;
@@ -840,7 +842,7 @@ static ns_track_elem_t *_get_track_elem_for_namespace(pmix_common_dstore_ctx_t *
         return NULL;
     }
     PMIX_CONSTRUCT(new_elem, ns_track_elem_t);
-    strncpy(new_elem->ns_map.name, ns_map->name, sizeof(new_elem->ns_map.name)-1);
+    pmix_strncpy(new_elem->ns_map.name, ns_map->name, sizeof(new_elem->ns_map.name)-1);
     /* save latest track idx to info of nspace */
     ns_map->track_idx = size;
 
@@ -1700,6 +1702,12 @@ pmix_common_dstore_ctx_t *pmix_common_dstor_init(const char *ds_name, pmix_info_
             goto err_exit;
         }
         ds_ctx->session_map_search = _esh_session_map_search_client;
+        /* init ds_ctx protect lock */
+        if (0 != pthread_mutex_init(&ds_ctx->lock, NULL)) {
+            rc = PMIX_ERR_INIT;
+            PMIX_ERROR_LOG(rc);
+            goto err_exit;
+        }
     }
 
     rc = _esh_session_tbl_add(ds_ctx, &tbl_idx);
@@ -1774,6 +1782,7 @@ PMIX_EXPORT void pmix_common_dstor_finalize(pmix_common_dstore_ctx_t *ds_ctx)
     }
     free(ds_ctx->ds_name);
     free(ds_ctx->base_path);
+    free(ds_ctx);
 }
 
 static pmix_status_t _dstore_store_nolock(pmix_common_dstore_ctx_t *ds_ctx,
@@ -1815,7 +1824,7 @@ static pmix_status_t _dstore_store_nolock(pmix_common_dstore_ctx_t *ds_ctx,
      * data segments and update corresponding element's fields. */
     if (NULL == elem->meta_seg || NULL == elem->data_seg) {
         memset(&ns_info.ns_map, 0, sizeof(ns_info.ns_map));
-        strncpy(ns_info.ns_map.name, ns_map->name, sizeof(ns_info.ns_map.name)-1);
+        pmix_strncpy(ns_info.ns_map.name, ns_map->name, sizeof(ns_info.ns_map.name)-1);
         ns_info.ns_map.tbl_idx = ns_map->tbl_idx;
         ns_info.num_meta_seg = 1;
         ns_info.num_data_seg = 1;
@@ -1938,6 +1947,7 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
     pmix_info_t *info = NULL;
     size_t ninfo;
     size_t keyhash = 0;
+    bool lock_is_set = false;
 
     PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
                          "%s:%d:%s: for %s:%u look for key %s",
@@ -1947,34 +1957,38 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
         PMIX_OUTPUT_VERBOSE((7, pmix_gds_base_framework.framework_output,
                              "dstore: Does not support passed parameters"));
         rc = PMIX_ERR_BAD_PARAM;
-        PMIX_ERROR_LOG(rc);
-        return rc;
+        goto error;
     }
 
     PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
                          "%s:%d:%s: for %s:%u look for key %s",
                          __FILE__, __LINE__, __func__, nspace, rank, key));
 
+    /* protect info of dstore segments before it will be updated */
+    if (!PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
+        if (0 != (rc = pthread_mutex_lock(&ds_ctx->lock))) {
+            goto error;
+        }
+        lock_is_set = true;
+    }
+
     if (NULL == (ns_map = ds_ctx->session_map_search(ds_ctx, nspace))) {
         /* This call is issued from the the client.
          * client must have the session, otherwise the error is fatal.
          */
         rc = PMIX_ERR_FATAL;
-        PMIX_ERROR_LOG(rc);
-        return rc;
+        goto error;
     }
 
     if (NULL == kvs) {
         rc = PMIX_ERR_FATAL;
-        PMIX_ERROR_LOG(rc);
-        return rc;
+        goto error;
     }
 
     if (PMIX_RANK_UNDEF == rank) {
         ssize_t _nprocs = _get_univ_size(ds_ctx, ns_map->name);
         if( 0 > _nprocs ){
-            PMIX_ERROR_LOG(rc);
-            return rc;
+            goto error;
         }
         nprocs = (size_t) _nprocs;
         cur_rank = 0;
@@ -1987,9 +2001,8 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
     lock_rc = _ESH_LOCK(ds_ctx, ns_map->tbl_idx, rd_lock);
     if (PMIX_SUCCESS != lock_rc) {
         /* Something wrong with the lock. The error is fatal */
-        rc = PMIX_ERR_FATAL;
-        PMIX_ERROR_LOG(lock_rc);
-        return lock_rc;
+        rc = lock_rc;
+        goto error;
     }
 
     /* First of all, we go through all initial segments and look at their field.
@@ -2041,6 +2054,14 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
 
     if( NULL != key ) {
         keyhash = PMIX_DS_KEY_HASH(ds_ctx, key);
+    }
+
+    /* all segment data updated, ctx lock may released */
+    if (lock_is_set) {
+        lock_is_set = false;
+        if (0 != (rc = pthread_mutex_unlock(&ds_ctx->lock))) {
+            goto error;
+        }
     }
 
     while (nprocs--) {
@@ -2151,10 +2172,8 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
                     PMIX_ERROR_LOG(rc);
                     goto done;
                 }
-
-                strncpy(info[kval_cnt - 1].key, PMIX_DS_KNAME_PTR(ds_ctx, addr),
+                pmix_strncpy(info[kval_cnt - 1].key, PMIX_DS_KNAME_PTR(ds_ctx, addr),
                         PMIX_DS_KNAME_LEN(ds_ctx, addr));
-
                 pmix_value_xfer(&info[kval_cnt - 1].value, &val);
                 PMIX_VALUE_DESTRUCT(&val);
                 buffer.base_ptr = NULL;
@@ -2209,6 +2228,11 @@ done:
         PMIX_ERROR_LOG(lock_rc);
     }
 
+    /* unset ds_ctx lock */
+    if (lock_is_set) {
+        pthread_mutex_unlock(&ds_ctx->lock);
+    }
+
     if( rc != PMIX_SUCCESS ){
         if ((NULL == key) && (kval_cnt > 0)) {
             if( NULL != info ) {
@@ -2234,6 +2258,13 @@ done:
         return rc;
     }
     rc = PMIX_ERR_NOT_FOUND;
+    return rc;
+
+error:
+    if (lock_is_set) {
+        pthread_mutex_unlock(&ds_ctx->lock);
+    }
+    PMIX_ERROR_LOG(rc);
     return rc;
 }
 
@@ -2338,7 +2369,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_setup_fork(pmix_common_dstore_ctx_t 
 PMIX_EXPORT pmix_status_t pmix_common_dstor_add_nspace(pmix_common_dstore_ctx_t *ds_ctx,
                                 const char *nspace, pmix_info_t info[], size_t ninfo)
 {
-    pmix_status_t rc;
+    pmix_status_t rc = PMIX_SUCCESS;
     size_t tbl_idx=0;
     uid_t jobuid = ds_ctx->jobuid;
     char setjobuid = ds_ctx->setjobuid;
@@ -2449,7 +2480,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_del_nspace(pmix_common_dstore_ctx_t 
                              __FILE__, __LINE__, __func__, session_tbl[session_tbl_idx].jobuid));
         size = pmix_value_array_get_size(ds_ctx->ns_track_array);
         if (size && (dstor_track_idx >= 0)) {
-            if((size_t)(dstor_track_idx + 1) > size) {
+            if((dstor_track_idx + 1) > (int)size) {
                 rc = PMIX_ERR_VALUE_OUT_OF_BOUNDS;
                 PMIX_ERROR_LOG(rc);
                 goto exit;
@@ -2457,6 +2488,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_del_nspace(pmix_common_dstore_ctx_t 
             trk = pmix_value_array_get_item(ds_ctx->ns_track_array, dstor_track_idx);
             if (true == trk->in_use) {
                 PMIX_DESTRUCT(trk);
+                pmix_value_array_remove_item(ds_ctx->ns_track_array, dstor_track_idx);
             }
         }
         _esh_session_release(ds_ctx, session_tbl_idx);
@@ -2757,7 +2789,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_register_job_info(pmix_common_dstore
         ns_map_data_t *ns_map;
 
         _client_compat_save(ds_ctx, peer);
-        (void)strncpy(proc.nspace, ns->nspace, PMIX_MAX_NSLEN);
+        pmix_strncpy(proc.nspace, ns->nspace, PMIX_MAX_NSLEN);
         proc.rank = PMIX_RANK_WILDCARD;
         if (NULL == (ns_map = ds_ctx->session_map_search(ds_ctx, proc.nspace))) {
             rc = PMIX_ERROR;

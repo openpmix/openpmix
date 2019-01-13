@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2018      Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2018-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *

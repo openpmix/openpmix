@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
  * Copyright (c) 2016-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
@@ -153,6 +153,7 @@ static pmix_status_t ds12_del_nspace(const char* nspace)
 
 pmix_gds_base_module_t pmix_ds12_module = {
     .name = "ds12",
+    .is_tsafe = false,
     .init = ds12_init,
     .finalize = ds12_finalize,
     .assign_module = ds12_assign_module,

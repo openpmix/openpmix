@@ -12,7 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
- * Copyright (c) 2016-2018 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2016-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
@@ -175,6 +175,7 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
     bool disabled = false;
     char *pmix_pid;
     pid_t mypid;
+    pmix_kval_t *urikv;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:usock setup_listener");
@@ -236,6 +237,16 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
     }
     /* save the rendezvous filename for later removal */
     mca_ptl_usock_component.filename = strdup(address->sun_path);
+    /* save the URI internally so we can report it */
+    urikv = PMIX_NEW(pmix_kval_t);
+    urikv->key = strdup(PMIX_SERVER_URI);
+    PMIX_VALUE_CREATE(urikv->value, 1);
+    PMIX_VALUE_LOAD(urikv->value, lt->uri, PMIX_STRING);
+    PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
+                      &pmix_globals.myid, PMIX_INTERNAL,
+                      urikv);
+    PMIX_RELEASE(urikv);  // maintain accounting
+
 
     lt->protocol = PMIX_PROTOCOL_V1;
     lt->ptl = (struct pmix_ptl_module_t*)&pmix_ptl_usock_module;
@@ -721,7 +732,7 @@ static void connection_handler(int sd, short args, void *cbdata)
         (void)strncpy(proc.nspace, psave->info->pname.nspace, PMIX_MAX_NSLEN);
         proc.rank = psave->info->pname.rank;
         rc = pmix_host_server.client_connected(&proc, psave->info->server_object, NULL, NULL);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
             PMIX_ERROR_LOG(rc);
             info->proc_cnt--;
             PMIX_RELEASE(info);

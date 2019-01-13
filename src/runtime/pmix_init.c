@@ -15,7 +15,7 @@
  * Copyright (c) 2009      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2010-2015 Los Alamos National Security, LLC.
  *                         All rights reserved.
- * Copyright (c) 2013-2018 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
@@ -50,6 +50,7 @@
 #include "src/mca/preg/base/base.h"
 #include "src/mca/ptl/base/base.h"
 
+#include "src/client/pmix_client_ops.h"
 #include "src/event/pmix_event.h"
 #include "src/include/types.h"
 #include "src/util/error.h"
@@ -76,6 +77,15 @@ PMIX_EXPORT pmix_globals_t pmix_globals = {
     .commits_pending = false,
     .mygds = NULL
 };
+
+
+static void _notification_eviction_cbfunc(struct pmix_hotel_t *hotel,
+                                          int room_num,
+                                          void *occupant)
+{
+    pmix_notify_caddy_t *cache = (pmix_notify_caddy_t*)occupant;
+    PMIX_RELEASE(cache);
+}
 
 
 int pmix_rte_init(pmix_proc_type_t type,
@@ -145,14 +155,60 @@ int pmix_rte_init(pmix_proc_type_t type,
     }
 
     /* setup the globals structure */
-    memset(&pmix_globals.myid, 0, sizeof(pmix_proc_t));
+    memset(&pmix_globals.myid.nspace, 0, PMIX_MAX_NSLEN+1);
+    pmix_globals.myid.rank = PMIX_RANK_INVALID;
     PMIX_CONSTRUCT(&pmix_globals.events, pmix_events_t);
     pmix_globals.event_window.tv_sec = pmix_event_caching_window;
     pmix_globals.event_window.tv_usec = 0;
     PMIX_CONSTRUCT(&pmix_globals.cached_events, pmix_list_t);
     /* construct the global notification ring buffer */
-    PMIX_CONSTRUCT(&pmix_globals.notifications, pmix_ring_buffer_t);
-    pmix_ring_buffer_init(&pmix_globals.notifications, 256);
+    PMIX_CONSTRUCT(&pmix_globals.notifications, pmix_hotel_t);
+    ret = pmix_hotel_init(&pmix_globals.notifications, pmix_globals.max_events,
+                          pmix_globals.evbase, pmix_globals.event_eviction_time,
+                          _notification_eviction_cbfunc);
+    if (PMIX_SUCCESS != ret) {
+        error = "notification hotel init";
+        goto return_error;
+    }
+
+    /* Setup client verbosities as all procs are allowed to
+     * access client APIs */
+    if (0 < pmix_client_globals.get_verbose) {
+        /* set default output */
+        pmix_client_globals.get_output = pmix_output_open(NULL);
+        pmix_output_set_verbosity(pmix_client_globals.get_output,
+                                  pmix_client_globals.get_verbose);
+    }
+    if (0 < pmix_client_globals.connect_verbose) {
+        /* set default output */
+        pmix_client_globals.connect_output = pmix_output_open(NULL);
+        pmix_output_set_verbosity(pmix_client_globals.connect_output,
+                                  pmix_client_globals.connect_verbose);
+    }
+    if (0 < pmix_client_globals.fence_verbose) {
+        /* set default output */
+        pmix_client_globals.fence_output = pmix_output_open(NULL);
+        pmix_output_set_verbosity(pmix_client_globals.fence_output,
+                                  pmix_client_globals.fence_verbose);
+    }
+    if (0 < pmix_client_globals.pub_verbose) {
+        /* set default output */
+        pmix_client_globals.pub_output = pmix_output_open(NULL);
+        pmix_output_set_verbosity(pmix_client_globals.pub_output,
+                                  pmix_client_globals.pub_verbose);
+    }
+    if (0 < pmix_client_globals.spawn_verbose) {
+        /* set default output */
+        pmix_client_globals.spawn_output = pmix_output_open(NULL);
+        pmix_output_set_verbosity(pmix_client_globals.spawn_output,
+                                  pmix_client_globals.spawn_verbose);
+    }
+    if (0 < pmix_client_globals.event_verbose) {
+        /* set default output */
+        pmix_client_globals.event_output = pmix_output_open(NULL);
+        pmix_output_set_verbosity(pmix_client_globals.event_output,
+                                  pmix_client_globals.event_verbose);
+    }
 
     /* get our effective id's */
     pmix_globals.uid = geteuid();
@@ -195,21 +251,21 @@ int pmix_rte_init(pmix_proc_type_t type,
      * time of connection to that peer */
 
     /* open the bfrops and select the active plugins */
-    if( PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_bfrops_base_framework, 0)) ) {
+    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_bfrops_base_framework, 0)) ) {
         error = "pmix_bfrops_base_open";
         goto return_error;
     }
-    if( PMIX_SUCCESS != (ret = pmix_bfrop_base_select()) ) {
+    if (PMIX_SUCCESS != (ret = pmix_bfrop_base_select()) ) {
         error = "pmix_bfrops_base_select";
         goto return_error;
     }
 
     /* open the ptl and select the active plugins */
-    if( PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_ptl_base_framework, 0)) ) {
+    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_ptl_base_framework, 0)) ) {
         error = "pmix_ptl_base_open";
         goto return_error;
     }
-    if( PMIX_SUCCESS != (ret = pmix_ptl_base_select()) ) {
+    if (PMIX_SUCCESS != (ret = pmix_ptl_base_select()) ) {
         error = "pmix_ptl_base_select";
         goto return_error;
     }
@@ -230,11 +286,11 @@ int pmix_rte_init(pmix_proc_type_t type,
     }
 
     /* open the gds and select the active plugins */
-    if( PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_gds_base_framework, 0)) ) {
+    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_gds_base_framework, 0)) ) {
         error = "pmix_gds_base_open";
         goto return_error;
     }
-    if( PMIX_SUCCESS != (ret = pmix_gds_base_select(info, ninfo)) ) {
+    if (PMIX_SUCCESS != (ret = pmix_gds_base_select(info, ninfo)) ) {
         error = "pmix_gds_base_select";
         goto return_error;
     }
@@ -245,22 +301,12 @@ int pmix_rte_init(pmix_proc_type_t type,
         return ret;
     }
 
-    /* open the pnet and select the active modules for this environment */
-    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_pnet_base_framework, 0))) {
-        error = "pmix_pnet_base_open";
-        goto return_error;
-    }
-    if (PMIX_SUCCESS != (ret = pmix_pnet_base_select())) {
-        error = "pmix_pnet_base_select";
-        goto return_error;
-    }
-
     /* open the preg and select the active plugins */
-    if( PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_preg_base_framework, 0)) ) {
+    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_preg_base_framework, 0)) ) {
         error = "pmix_preg_base_open";
         goto return_error;
     }
-    if( PMIX_SUCCESS != (ret = pmix_preg_base_select()) ) {
+    if (PMIX_SUCCESS != (ret = pmix_preg_base_select()) ) {
         error = "pmix_preg_base_select";
         goto return_error;
     }

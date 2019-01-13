@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2016-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
@@ -39,7 +39,7 @@
 #include "gds_ds12_lock.h"
 
 #define _ESH_12_FCNTL_LOCK(lockfd, operation)               \
-__extension__ ({                                            \
+__pmix_attribute_extension__ ({                             \
     pmix_status_t ret = PMIX_SUCCESS;                       \
     int i;                                                  \
     struct flock fl = {0};                                  \
