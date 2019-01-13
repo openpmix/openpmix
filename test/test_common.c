@@ -2,7 +2,7 @@
  * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
- * Copyright (c) 2015-2018 Mellanox Technologies, Inc.
+ * Copyright (c) 2015-2017 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * $COPYRIGHT$
  *
@@ -86,11 +86,6 @@ void parse_cmd(int argc, char **argv, test_params *params)
             i++;
             if (NULL != argv[i]) {
                 params->binary = strdup(argv[i]);
-            }
-        } else if (0 == strcmp(argv[i], "--nservers") || 0 == strcmp(argv[i], "-s")){
-            i++;
-            if (NULL != argv[i]) {
-                params->nservers = atoi(argv[i]);
             }
         } else if( 0 == strcmp(argv[i], "--verbose") || 0 == strcmp(argv[i],"-v") ){
             TEST_VERBOSE_ON();
@@ -605,6 +600,7 @@ int get_total_ns_number(test_params params)
 
 int get_all_ranks_from_namespace(test_params params, char *nspace, pmix_proc_t **ranks, size_t *nranks)
 {
+    int base_rank = 0;
     size_t num_ranks = 0;
     int num = -1;
     size_t j;
@@ -620,6 +616,7 @@ int get_all_ranks_from_namespace(test_params params, char *nspace, pmix_proc_t *
         char *pch = tmp;
         int ns_id = (int)strtol(nspace + strlen(TEST_NAMESPACE) + 1, NULL, 10);
         while (NULL != pch && num != ns_id) {
+            base_rank += num_ranks;
             pch = strtok((-1 == num ) ? tmp : NULL, ":");
             if (NULL == pch) {
                 break;
@@ -632,7 +629,7 @@ int get_all_ranks_from_namespace(test_params params, char *nspace, pmix_proc_t *
             PMIX_PROC_CREATE(*ranks, num_ranks);
             for (j = 0; j < num_ranks; j++) {
                 (void)strncpy((*ranks)[j].nspace, nspace, PMIX_MAX_NSLEN);
-                (*ranks)[j].rank = j;
+                (*ranks)[j].rank = base_rank+j;
             }
         } else {
             free(tmp);

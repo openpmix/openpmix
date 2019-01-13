@@ -14,3 +14,4 @@
 #include "test_common.h"
 
 int test_connect_disconnect(char *my_nspace, int my_rank);
+int test_cd_common(pmix_proc_t *procs, size_t nprocs, int blocking, int disconnect);

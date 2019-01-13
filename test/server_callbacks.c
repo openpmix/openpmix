@@ -2,7 +2,7 @@
  * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2015-2018 Mellanox Technologies, Inc.
+ * Copyright (c) 2015      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
@@ -14,10 +14,8 @@
  */
 
 #include <pthread.h>
-#include <stdio.h>
 #include "server_callbacks.h"
 #include "src/util/argv.h"
-#include "test_server.h"
 
 extern bool spawn_wait;
 
@@ -36,6 +34,28 @@ pmix_server_module_t mymodule = {
     .register_events = regevents_fn,
     .deregister_events = deregevents_fn
 };
+
+typedef struct {
+    pmix_list_item_t super;
+    pmix_modex_data_t data;
+} pmix_test_data_t;
+
+static void pcon(pmix_test_data_t *p)
+{
+    p->data.blob = NULL;
+    p->data.size = 0;
+}
+
+static void pdes(pmix_test_data_t *p)
+{
+    if (NULL != p->data.blob) {
+        free(p->data.blob);
+    }
+}
+
+PMIX_CLASS_INSTANCE(pmix_test_data_t,
+                    pmix_list_item_t,
+                    pcon, pdes);
 
 typedef struct {
     pmix_list_item_t super;
@@ -74,25 +94,12 @@ pmix_status_t connected(const pmix_proc_t *proc, void *server_object,
 pmix_status_t finalized(const pmix_proc_t *proc, void *server_object,
               pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
-    cli_info_t *cli = NULL;
-    int i;
-    for (i = 0; i < cli_info_cnt; i++) {
-        if((proc->rank == cli_info[i].rank) &&
-                (0 == strcmp(proc->nspace, cli_info[i].ns))){
-            cli = &cli_info[i];
-            break;
-        }
-    }
-    if (NULL == cli) {
-        TEST_ERROR(("cannot found rank %d", proc->rank));
-        return PMIX_SUCCESS;
-    }
-    if( CLI_TERM <= cli->state ){
+    if( CLI_TERM <= cli_info[proc->rank].state ){
         TEST_ERROR(("double termination of rank %d", proc->rank));
         return PMIX_SUCCESS;
     }
-    TEST_VERBOSE(("Rank %s:%d terminated", proc->nspace, proc->rank));
-    cli_finalize(cli);
+    TEST_VERBOSE(("Rank %d terminated", proc->rank));
+    cli_finalize(&cli_info[proc->rank]);
     finalized_count++;
     if (finalized_count == cli_info_cnt) {
         if (NULL != pmix_test_published_list) {
@@ -127,13 +134,16 @@ pmix_status_t fencenb_fn(const pmix_proc_t procs[], size_t nprocs,
     TEST_VERBOSE(("Getting data for %s:%d",
                   procs[0].nspace, procs[0].rank));
 
-    if ((pmix_list_get_size(server_list) == 1) && (my_server_id == 0)) {
-        if (NULL != cbfunc) {
-            cbfunc(PMIX_SUCCESS, data, ndata, cbdata, NULL, NULL);
-        }
-        return PMIX_SUCCESS;
+    /* In a perfect world, we should wait until
+     * the test servers from all involved procs
+     * respond. We don't have multi-server capability
+     * yet, so we'll just respond right away and
+     * return what we were given */
+
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, data, ndata, cbdata, NULL, NULL);
     }
-    return server_fence_contrib(data, ndata, cbfunc, cbdata);
+    return PMIX_SUCCESS;
 }
 
 pmix_status_t dmodex_fn(const pmix_proc_t *proc,
@@ -142,12 +152,12 @@ pmix_status_t dmodex_fn(const pmix_proc_t *proc,
 {
     TEST_VERBOSE(("Getting data for %s:%d", proc->nspace, proc->rank));
 
-    /* return not_found fot single server mode */
-    if ((pmix_list_get_size(server_list) == 1) && (my_server_id == 0)) {
-        return PMIX_ERR_NOT_FOUND;
-    }
-    // TODO: add support tracker for dmodex requests
-    return server_dmdx_get(proc->nspace, proc->rank, cbfunc, cbdata);
+    /* In a perfect world, we should call another server
+     * to get the data for one of its clients. We don't
+     * have multi-server capability yet, so we'll just
+     * respond right away */
+
+    return PMIX_ERR_NOT_FOUND;
 }
 
 pmix_status_t publish_fn(const pmix_proc_t *proc,
@@ -188,7 +198,6 @@ pmix_status_t lookup_fn(const pmix_proc_t *proc, char **keys,
               pmix_lookup_cbfunc_t cbfunc, void *cbdata)
 {
     size_t i, ndata, ret;
-    pmix_status_t rc = PMIX_SUCCESS;
     pmix_pdata_t *pdata;
     pmix_test_info_t *tinfo;
     if (NULL == pmix_test_published_list) {
@@ -211,15 +220,13 @@ pmix_status_t lookup_fn(const pmix_proc_t *proc, char **keys,
         }
     }
     if (ret != ndata) {
-        rc = PMIX_ERR_NOT_FOUND;
-        goto error;
+        return PMIX_ERR_NOT_FOUND;
     }
     if (NULL != cbfunc) {
         cbfunc(PMIX_SUCCESS, pdata, ndata, cbdata);
     }
-error:
     PMIX_PDATA_FREE(pdata, ndata);
-    return rc;
+    return PMIX_SUCCESS;
 }
 
 pmix_status_t unpublish_fn(const pmix_proc_t *proc, char **keys,
@@ -298,22 +305,21 @@ pmix_status_t spawn_fn(const pmix_proc_t *proc,
     PMIx_server_register_nspace("foobar", napps, NULL, 0, release_cb, (void*)cb);
     return PMIX_SUCCESS;
 }
-static int numconnect = 0;
 
 pmix_status_t connect_fn(const pmix_proc_t procs[], size_t nprocs,
-                         const pmix_info_t info[], size_t ninfo,
-                         pmix_op_cbfunc_t cbfunc, void *cbdata)
+               const pmix_info_t info[], size_t ninfo,
+               pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     if (NULL != cbfunc) {
-        cbfunc(PMIX_SUCCESS, cbdata);
+        /* return PMIX_EXISTS here just to ensure we get the correct status on the client */
+        cbfunc(PMIX_EXISTS, cbdata);
     }
-    numconnect++;
-    return PMIX_SUCCESS;
+   return PMIX_SUCCESS;
 }
 
 pmix_status_t disconnect_fn(const pmix_proc_t procs[], size_t nprocs,
-                            const pmix_info_t info[], size_t ninfo,
-                            pmix_op_cbfunc_t cbfunc, void *cbdata)
+                  const pmix_info_t info[], size_t ninfo,
+                  pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     if (NULL != cbfunc) {
         cbfunc(PMIX_SUCCESS, cbdata);
