@@ -1212,7 +1212,7 @@ static void connection_handler(int sd, short args, void *cbdata)
     } else {
         int major;
         major = strtoul(version, NULL, 10);
-        if (2 == major) {
+        if (2 <= major) {
             proc_type = proc_type | PMIX_PROC_V21;
         } else {
             free(msg);
