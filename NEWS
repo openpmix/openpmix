@@ -1,4 +1,4 @@
-Copyright (c) 2015-2018 Intel, Inc. All rights reserved.
+Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
 Copyright (c) 2017-2018 IBM Corporation.  All rights reserved.
 $COPYRIGHT$
 
@@ -21,13 +21,32 @@ example, a bug might be fixed in the master, and then moved to the
 current release as well as the "stable" bug fix release branch.
 
 
-2.2.0 -- TBD
+2.2.0 -- 18 Jan 2019
 ----------------------
- - Add a new dstore GDS component 'ds21' and rename old dstore GDS
-   component to 'ds12'.
-   Note that the signature of the GDS function below has changed:
-    - pmix_gds_base_module_store_modex_fn_t
+**** THIS RELEASE MARKS THE STARTING POINT FOR FULL COMPLIANCE
+**** WITH THE PMIX v2.2 STANDARD. ALL API BEHAVIORS AND ATTRIBUTE
+**** DEFINITIONS MEET THE v2.2 STANDARD SPECIFICATIONS.
+ - Add a new, faster dstore GDS component 'ds21'
  - Performance optimizations for the dstore GDS components.
+ - Plug miscellaneous memory leaks
+ - Silence an unnecessary warning message when checking connection
+   to a non-supporting server
+ - Ensure lost-connection events get delivered to default event
+   handlers
+ - Correctly handle cache refresh for queries
+ - Protect against race conditions between host and internal library
+   when dealing with async requests
+ - Cleanup tool operations and add support for connections to
+   remote servers.
+ - Automatically store the server URI for easy access by client
+ - Provide MCA parameter to control TCP connect retry/timeout
+ - Update event notification system to properly evict oldest events
+   when more space is needed
+ - Fix a number of error paths
+ - Handle setsockopt(SO_RCVTIMEO) not being supported
+ - Pass the tool's command line to the server so it can be returned
+   in queries
+ - Add support for C11 atomics
 
 
 2.1.4 -- 18 Sep 2018
