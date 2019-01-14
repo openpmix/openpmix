@@ -21,7 +21,7 @@ example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
 
-3.1.0 -- 11 Jan 2019
+3.1.0 -- 18 Jan 2019
 ----------------------
 **** THIS RELEASE MARKS THE STARTING POINT FOR FULL COMPLIANCE
 **** WITH THE PMIX v3 STANDARD. ALL API BEHAVIORS AND ATTRIBUTE
@@ -55,6 +55,9 @@ multiple release branches.
    in queries
  - Add support for C11 atomics
  - Support collection and forwarding of fabric-specific envars
+ - Improve handling of hwloc configure option
+ - Fix PMIx_server_generate_regex to preserve node ordering
+
 
 
 3.0.2 -- 18 Sept 2018
