@@ -203,6 +203,12 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
                 PMIX_LOAD_NSPACE(proc.nspace, queries[n].qualifiers[p].value.data.string);
             } else if (PMIX_CHECK_KEY(&queries[n].qualifiers[p], PMIX_RANK)) {
                 proc.rank = queries[n].qualifiers[p].value.data.rank;
+            } else if (PMIX_CHECK_KEY(&queries[n].qualifiers[p], PMIX_HOSTNAME)) {
+                if (0 != strcmp(queries[n].qualifiers[p].value.data.string, pmix_globals.hostname)) {
+                    /* asking about a different host, so ask for the info */
+                    PMIX_LIST_DESTRUCT(&results);
+                    goto query;
+                }
             }
         }
         /* we get here if a refresh isn't required - first try a local

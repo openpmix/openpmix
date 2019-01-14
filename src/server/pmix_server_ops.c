@@ -2185,14 +2185,12 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer,
         }
     }
 
-    /** check each query/key to see if we already have the info
-     * before passing the request up to the host */
     /* check the directives to see if they want us to refresh
      * the local cached results - if we wanted to optimize this
      * more, we would check each query and allow those that don't
      * want to be refreshed to be executed locally, and those that
      * did would be sent to the host. However, for now we simply
-     * */
+     * determine that if we don't have it, then ask for everything */
     memset(proc.nspace, 0, PMIX_MAX_NSLEN+1);
     proc.rank = PMIX_RANK_INVALID;
     PMIX_CONSTRUCT(&results, pmix_list_t);
@@ -2211,6 +2209,12 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer,
                 PMIX_LOAD_NSPACE(proc.nspace, cd->queries[n].qualifiers[p].value.data.string);
             } else if (PMIX_CHECK_KEY(&cd->queries[n].qualifiers[p], PMIX_RANK)) {
                 proc.rank = cd->queries[n].qualifiers[p].value.data.rank;
+            } else if (PMIX_CHECK_KEY(&cd->queries[n].qualifiers[p], PMIX_HOSTNAME)) {
+                if (0 != strcmp(cd->queries[n].qualifiers[p].value.data.string, pmix_globals.hostname)) {
+                    /* asking about a different host, so ask for the info */
+                    PMIX_LIST_DESTRUCT(&results);
+                    goto query;
+                }
             }
         }
         /* we get here if a refresh isn't required - first try a local
