@@ -1566,7 +1566,7 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
     pmix_info_t *info = NULL;
     size_t ninfo=0, ncodes, n, k;
     pmix_regevents_info_t *reginfo;
-    pmix_peer_events_info_t *prev;
+    pmix_peer_events_info_t *prev = NULL;
     pmix_notify_caddy_t *cd;
     pmix_setup_caddy_t *scd;
     int i;
@@ -1663,6 +1663,32 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
     if (enviro_events && NULL == pmix_host_server.register_events) {
         enviro_events = false;
         rc = PMIX_ERR_NOT_SUPPORTED;
+        goto cleanup;
+    }
+
+    /* if they didn't send us any codes, then they are registering a
+     * default event handler. In that case, check only for default
+     * handlers and add this request to it, if not already present */
+    if (0 == ncodes)  {
+        PMIX_LIST_FOREACH(reginfo, &pmix_server_globals.events, pmix_regevents_info_t) {
+            if (PMIX_MAX_ERR_CONSTANT == reginfo->code) {
+                /* both are default handlers */
+                prev = PMIX_NEW(pmix_peer_events_info_t);
+                if (NULL == prev) {
+                    rc = PMIX_ERR_NOMEM;
+                    goto cleanup;
+                }
+                PMIX_RETAIN(peer);
+                prev->peer = peer;
+                if (NULL != affected) {
+                    PMIX_PROC_CREATE(prev->affected, naffected);
+                    prev->naffected = naffected;
+                    memcpy(prev->affected, affected, naffected * sizeof(pmix_proc_t));
+                }
+                pmix_list_append(&reginfo->peers, &prev->super);
+                break;
+            }
+        }
         goto cleanup;
     }
 
@@ -1835,7 +1861,7 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
         /* check if the affected procs (if given) match those they
          * wanted to know about */
         if (!pmix_notify_check_affected(cd->affected, cd->naffected,
-                                        prev->affected, prev->naffected)) {
+                                        affected, naffected)) {
             continue;
         }
         /* check the range */
