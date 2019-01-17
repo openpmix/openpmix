@@ -21,7 +21,7 @@ example, a bug might be fixed in the master, and then moved to the
 current release as well as the "stable" bug fix release branch.
 
 
-2.2.0 -- 18 Jan 2019
+2.2.0 -- 17 Jan 2019
 ----------------------
 **** THIS RELEASE MARKS THE STARTING POINT FOR FULL COMPLIANCE
 **** WITH THE PMIX v2.2 STANDARD. ALL API BEHAVIORS AND ATTRIBUTE
@@ -47,6 +47,7 @@ current release as well as the "stable" bug fix release branch.
  - Pass the tool's command line to the server so it can be returned
    in queries
  - Add support for C11 atomics
+ - Fix a bug when registering default event handlers
 
 
 2.1.4 -- 18 Sep 2018
