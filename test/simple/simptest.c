@@ -195,6 +195,7 @@ static pmix_event_t handler;
 static pmix_list_t children;
 static bool istimeouttest = false;
 static mylock_t globallock;
+static bool arrays = false;
 
 static void set_namespace(int nprocs, char *ranks, char *nspace,
                           pmix_op_cbfunc_t cbfunc, myxfer_t *x);
@@ -342,7 +343,12 @@ int main(int argc, char **argv)
             fprintf(stderr, "    -e foo   Name of the client executable to run (default: simpclient\n");
             fprintf(stderr, "    -x       Test cross-version support\n");
             fprintf(stderr, "    -u       Enable legacy usock support\n");
+            fprintf(stderr, "    -arrays  Use the job session array to pass registration info\n");
             exit(0);
+        } else if (0 == strcmp("-arrays", argv[n]) ||
+                   0 == strcmp("--arrays", argv[n])) {
+            /* test network support */
+            arrays = true;
         }
     }
     if (NULL == executable) {
@@ -590,38 +596,42 @@ static void set_namespace(int nprocs, char *ranks, char *nspace,
     char hostname[PMIX_MAXHOSTNAMELEN];
 
     gethostname(hostname, sizeof(hostname));
-    x->ninfo = 7;
+    if (arrays) {
+        x->ninfo = 15 + nprocs;
+    } else {
+        x->ninfo = 16 + nprocs;
+    }
 
     PMIX_INFO_CREATE(x->info, x->ninfo);
-    (void)strncpy(x->info[0].key, PMIX_UNIV_SIZE, PMIX_MAX_KEYLEN);
-    x->info[0].value.type = PMIX_UINT32;
-    x->info[0].value.data.uint32 = nprocs;
+    n = 0;
 
-    (void)strncpy(x->info[1].key, PMIX_SPAWNED, PMIX_MAX_KEYLEN);
-    x->info[1].value.type = PMIX_UINT32;
-    x->info[1].value.data.uint32 = 0;
+    PMIx_generate_regex("test000,test001,test002", &regex);
+    PMIx_generate_ppn("0;1;2", &ppn);
 
-    (void)strncpy(x->info[2].key, PMIX_LOCAL_SIZE, PMIX_MAX_KEYLEN);
-    x->info[2].value.type = PMIX_UINT32;
-    x->info[2].value.data.uint32 = nprocs;
+    if (arrays) {
+        (void)strncpy(x->info[n].key, PMIX_JOB_INFO_ARRAY, PMIX_MAX_KEYLEN);
+        x->info[n].value.type = PMIX_DATA_ARRAY;
+        PMIX_DATA_ARRAY_CREATE(x->info[n].value.data.darray, 2, PMIX_INFO);
+        iptr = (pmix_info_t*)x->info[n].value.data.darray->array;
+        (void)strncpy(iptr[0].key, PMIX_NODE_MAP, PMIX_MAX_KEYLEN);
+        iptr[0].value.type = PMIX_STRING;
+        iptr[0].value.data.string = regex;
+        (void)strncpy(iptr[1].key, PMIX_PROC_MAP, PMIX_MAX_KEYLEN);
+        iptr[1].value.type = PMIX_STRING;
+        iptr[1].value.data.string = ppn;
+        ++n;
+    } else {
+        (void)strncpy(x->info[n].key, PMIX_NODE_MAP, PMIX_MAX_KEYLEN);
+        x->info[n].value.type = PMIX_STRING;
+        x->info[n].value.data.string = regex;
+        ++n;
 
-    (void)strncpy(x->info[3].key, PMIX_LOCAL_PEERS, PMIX_MAX_KEYLEN);
-    x->info[3].value.type = PMIX_STRING;
-    x->info[3].value.data.string = strdup(ranks);
-
-    PMIx_generate_regex(hostname, &regex);
-    (void)strncpy(x->info[4].key, PMIX_NODE_MAP, PMIX_MAX_KEYLEN);
-    x->info[4].value.type = PMIX_STRING;
-    x->info[4].value.data.string = regex;
-
-    PMIx_generate_ppn(ranks, &ppn);
-    (void)strncpy(x->info[5].key, PMIX_PROC_MAP, PMIX_MAX_KEYLEN);
-    x->info[5].value.type = PMIX_STRING;
-    x->info[5].value.data.string = ppn;
-
-    (void)strncpy(x->info[6].key, PMIX_JOB_SIZE, PMIX_MAX_KEYLEN);
-    x->info[6].value.type = PMIX_UINT32;
-    x->info[6].value.data.uint32 = nprocs;
+        /* if we have some empty nodes, then fill their spots */
+        (void)strncpy(x->info[n].key, PMIX_PROC_MAP, PMIX_MAX_KEYLEN);
+        x->info[n].value.type = PMIX_STRING;
+        x->info[n].value.data.string = ppn;
+        ++n;
+    }
 
     PMIx_server_register_nspace(nspace, nprocs, x->info, x->ninfo,
                                 cbfunc, x);
