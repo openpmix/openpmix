@@ -1761,6 +1761,7 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
                 break;
             }
         }
+        rc = PMIX_OPERATION_SUCCEEDED;
         goto cleanup;
     }
 
