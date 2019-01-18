@@ -199,6 +199,7 @@ static pmix_list_t children;
 static bool istimeouttest = false;
 static mylock_t globallock;
 static bool nettest = false;
+static bool arrays = false;
 
 static void set_namespace(int nprocs, char *ranks, char *nspace,
                           pmix_op_cbfunc_t cbfunc, myxfer_t *x);
@@ -431,11 +432,16 @@ int main(int argc, char **argv)
             fprintf(stderr, "    -hwloc   Test hwloc support\n");
             fprintf(stderr, "    -hwloc-file FILE   Use file to import topology\n");
             fprintf(stderr, "    -net-test  Test network endpt assignments\n");
+            fprintf(stderr, "    -arrays  Use the job session array to pass registration info\n");
             exit(0);
         } else if (0 == strcmp("-net-test", argv[n]) ||
                    0 == strcmp("--net-test", argv[n])) {
             /* test network support */
             nettest = true;
+        } else if (0 == strcmp("-arrays", argv[n]) ||
+                   0 == strcmp("--arrays", argv[n])) {
+            /* test network support */
+            arrays = true;
         }
     }
     if (NULL == executable) {
@@ -754,23 +760,42 @@ static void set_namespace(int nprocs, char *ranks, char *nspace,
     myxfer_t cd, lock;
     pmix_status_t rc;
 
-    x->ninfo = 16 + nprocs;
+    if (arrays) {
+        x->ninfo = 15 + nprocs;
+    } else {
+        x->ninfo = 16 + nprocs;
+    }
 
     PMIX_INFO_CREATE(x->info, x->ninfo);
     n = 0;
 
     PMIx_generate_regex("test000,test001,test002", &regex);
-    (void)strncpy(x->info[n].key, PMIX_NODE_MAP, PMIX_MAX_KEYLEN);
-    x->info[n].value.type = PMIX_STRING;
-    x->info[n].value.data.string = regex;
-    ++n;
-
-    /* if we have some empty nodes, then fill their spots */
     PMIx_generate_ppn("0;1;2", &ppn);
-    (void)strncpy(x->info[n].key, PMIX_PROC_MAP, PMIX_MAX_KEYLEN);
-    x->info[n].value.type = PMIX_STRING;
-    x->info[n].value.data.string = ppn;
-    ++n;
+
+    if (arrays) {
+        (void)strncpy(x->info[n].key, PMIX_JOB_INFO_ARRAY, PMIX_MAX_KEYLEN);
+        x->info[n].value.type = PMIX_DATA_ARRAY;
+        PMIX_DATA_ARRAY_CREATE(x->info[n].value.data.darray, 2, PMIX_INFO);
+        iptr = (pmix_info_t*)x->info[n].value.data.darray->array;
+        (void)strncpy(iptr[0].key, PMIX_NODE_MAP, PMIX_MAX_KEYLEN);
+        iptr[0].value.type = PMIX_STRING;
+        iptr[0].value.data.string = regex;
+        (void)strncpy(iptr[1].key, PMIX_PROC_MAP, PMIX_MAX_KEYLEN);
+        iptr[1].value.type = PMIX_STRING;
+        iptr[1].value.data.string = ppn;
+        ++n;
+    } else {
+        (void)strncpy(x->info[n].key, PMIX_NODE_MAP, PMIX_MAX_KEYLEN);
+        x->info[n].value.type = PMIX_STRING;
+        x->info[n].value.data.string = regex;
+        ++n;
+
+        /* if we have some empty nodes, then fill their spots */
+        (void)strncpy(x->info[n].key, PMIX_PROC_MAP, PMIX_MAX_KEYLEN);
+        x->info[n].value.type = PMIX_STRING;
+        x->info[n].value.data.string = ppn;
+        ++n;
+    }
 
     /* we have the required info to run setup_app, so do that now */
     PMIX_INFO_CREATE(iptr, 4);
