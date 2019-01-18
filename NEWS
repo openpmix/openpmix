@@ -21,6 +21,12 @@ example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
 
+3.1.1 -- 18 Jan 2019
+----------------------
+- Fix a bug in registration of default event handlers
+  that somehow slipped thru testing
+
+
 3.1.0 -- 17 Jan 2019
 ----------------------
 **** THIS RELEASE MARKS THE STARTING POINT FOR FULL COMPLIANCE
@@ -126,6 +132,12 @@ multiple release branches.
      attributes to query available channels and to tag and
      format output.
 - Fix several memory and file descriptor leaks
+
+
+2.2.1 -- 18 Jan 2018
+----------------------
+ - Fix a bug in registration of default event handlers
+   that somehow slipped thru testing
 
 
 2.2.0 -- 17 Jan 2019
