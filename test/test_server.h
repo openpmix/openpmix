@@ -67,7 +67,7 @@ extern pmix_list_t *server_nspace;
 
 int server_init(test_params *params);
 int server_finalize(test_params *params);
-int server_barrier(double to);
+int server_barrier(void);
 int server_fence_contrib(char *data, size_t ndata,
                          pmix_modex_cbfunc_t cbfunc, void *cbdata);
 int server_dmdx_get(const char *nspace, int rank,
