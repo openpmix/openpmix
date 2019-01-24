@@ -21,7 +21,12 @@ example, a bug might be fixed in the master, and then moved to the
 current release as well as the "stable" bug fix release branch.
 
 
-2.2.1 -- 18 Jan 2018
+2.2.2 -- 24 Jan 2019
+----------------------
+ - Fix a bug in macro identifying system events
+
+
+2.2.1 -- 18 Jan 2019
 ----------------------
  - Fix a bug in registration of default event handlers
    that somehow slipped thru testing
