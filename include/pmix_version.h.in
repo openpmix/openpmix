@@ -19,5 +19,5 @@
 #define PMIX_VERSION_MINOR @pmixminor@
 #define PMIX_VERSION_RELEASE @pmixrelease@
 
-#define PMIX_NUMERIC_VERSION 0x00030100
+#define PMIX_NUMERIC_VERSION 0x00030103
 #endif
