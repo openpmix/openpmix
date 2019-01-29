@@ -12,7 +12,7 @@
  * Copyright (c) 2008-2015 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2010-2015 Los Alamos National Security, LLC.
  *                         All rights reserved.
- * Copyright (c) 2013-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
@@ -34,6 +34,7 @@
 #include "src/mca/base/base.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/bfrops/base/base.h"
+#include "src/mca/compress/base/base.h"
 #include "src/mca/gds/base/base.h"
 #include "src/mca/pif/base/base.h"
 #include "src/mca/pinstalldirs/base/base.h"
@@ -78,6 +79,9 @@ void pmix_rte_finalize(void)
 
     /* close bfrops */
     (void)pmix_mca_base_framework_close(&pmix_bfrops_base_framework);
+
+    /* close compress */
+    (void)pmix_mca_base_framework_close(&pmix_compress_base_framework);
 
     /* close GDS */
     (void)pmix_mca_base_framework_close(&pmix_gds_base_framework);

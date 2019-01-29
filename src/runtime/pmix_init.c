@@ -42,6 +42,7 @@
 #include "src/mca/base/base.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/bfrops/base/base.h"
+#include "src/mca/compress/base/base.h"
 #include "src/mca/gds/base/base.h"
 #include "src/mca/pif/base/base.h"
 #include "src/mca/pinstalldirs/base/base.h"
@@ -282,6 +283,16 @@ int pmix_rte_init(pmix_proc_type_t type,
     }
     if (PMIX_SUCCESS != (ret = pmix_bfrop_base_select()) ) {
         error = "pmix_bfrops_base_select";
+        goto return_error;
+    }
+
+    /* open and select the compress framework */
+    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_compress_base_framework, 0)) ) {
+        error = "pmix_compress_base_open";
+        goto return_error;
+    }
+    if (PMIX_SUCCESS != (ret = pmix_compress_base_select()) ) {
+        error = "pmix_compress_base_select";
         goto return_error;
     }
 

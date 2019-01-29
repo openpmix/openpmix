@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2018 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
@@ -37,7 +37,7 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/argv.h"
-#include "src/util/compress.h"
+#include "src/mca/compress/compress.h"
 #include "src/util/error.h"
 #include "src/util/hash.h"
 #include "src/util/output.h"
@@ -487,7 +487,7 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                 /* if the value contains a string that is longer than the
                  * limit, then compress it */
                 if (PMIX_STRING_SIZE_CHECK(kp2->value)) {
-                    if (pmix_util_compress_string(kp2->value->data.string, &tmp, &len)) {
+                    if (pmix_compress.compress_string(kp2->value->data.string, &tmp, &len)) {
                         if (NULL == tmp) {
                             PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                             rc = PMIX_ERR_NOMEM;
@@ -524,7 +524,7 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
             /* if the value contains a string that is longer than the
              * limit, then compress it */
             if (PMIX_STRING_SIZE_CHECK(kp2->value)) {
-                if (pmix_util_compress_string(kp2->value->data.string, &tmp, &len)) {
+                if (pmix_compress.compress_string(kp2->value->data.string, &tmp, &len)) {
                     if (NULL == tmp) {
                         rc = PMIX_ERR_NOMEM;
                         PMIX_ERROR_LOG(rc);
@@ -852,7 +852,7 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                 /* if the value contains a string that is longer than the
                  * limit, then compress it */
                 if (PMIX_STRING_SIZE_CHECK(kp2->value)) {
-                    if (pmix_util_compress_string(kp2->value->data.string, &tmp, &len)) {
+                    if (pmix_compress.compress_string(kp2->value->data.string, &tmp, &len)) {
                         if (NULL == tmp) {
                             PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                             rc = PMIX_ERR_NOMEM;
@@ -1032,7 +1032,7 @@ static pmix_status_t hash_store_job_info(const char *nspace,
             /* if the value contains a string that is longer than the
              * limit, then compress it */
             if (PMIX_STRING_SIZE_CHECK(kptr->value)) {
-                if (pmix_util_compress_string(kptr->value->data.string, &tmp, &len)) {
+                if (pmix_compress.compress_string(kptr->value->data.string, &tmp, &len)) {
                     if (NULL == tmp) {
                         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                         rc = PMIX_ERR_NOMEM;

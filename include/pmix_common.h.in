@@ -1506,26 +1506,6 @@ typedef struct pmix_value {
         }                                               \
     } while(0)
 
-#define PMIX_VALUE_COMPRESSED_STRING_UNPACK(s)                              \
-    do {                                                                    \
-        char *tmp;                                                          \
-        /* if this is a compressed string, then uncompress it */            \
-        if (PMIX_COMPRESSED_STRING == (s)->type) {                          \
-            pmix_util_uncompress_string(&tmp, (uint8_t*)(s)->data.bo.bytes, \
-                (s)->data.bo.size);                                         \
-            if (NULL == tmp) {                                              \
-                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);                             \
-                rc = PMIX_ERR_NOMEM;                                        \
-                PMIX_VALUE_RELEASE(s);                                      \
-                val = NULL;                                                 \
-            } else {                                                        \
-                PMIX_VALUE_DESTRUCT(s);                                     \
-                (s)->data.string = tmp;                                     \
-                (s)->type = PMIX_STRING;                                    \
-            }                                                               \
-        }                                                                   \
-    } while(0)
-
 /****    PMIX INFO STRUCT    ****/
 typedef struct pmix_info {
     pmix_key_t key;

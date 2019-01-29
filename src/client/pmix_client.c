@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2018 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
@@ -46,9 +46,6 @@
 #include <sys/types.h>
 #endif
 
-#if PMIX_HAVE_ZLIB
-#include <zlib.h>
-#endif
 #include PMIX_EVENT_HEADER
 #include PMIX_EVENT2_THREAD_HEADER
 
@@ -58,7 +55,6 @@ static pmix_status_t pmix_init_result = PMIX_ERR_INIT;
 #include "src/class/pmix_list.h"
 #include "src/event/pmix_event.h"
 #include "src/util/argv.h"
-#include "src/util/compress.h"
 #include "src/util/error.h"
 #include "src/util/hash.h"
 #include "src/util/name_fns.h"
@@ -67,6 +63,7 @@ static pmix_status_t pmix_init_result = PMIX_ERR_INIT;
 #include "src/runtime/pmix_rte.h"
 #include "src/threads/threads.h"
 #include "src/mca/bfrops/base/base.h"
+#include "src/mca/compress/compress.h"
 #include "src/mca/gds/base/base.h"
 #include "src/mca/preg/preg.h"
 #include "src/mca/ptl/base/base.h"
@@ -979,7 +976,7 @@ static void _putfn(int sd, short args, void *cbdata)
     kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
     if (PMIX_STRING_SIZE_CHECK(cb->value)) {
         /* compress large strings */
-        if (pmix_util_compress_string(cb->value->data.string, &tmp, &len)) {
+        if (pmix_compress.compress_string(cb->value->data.string, &tmp, &len)) {
             if (NULL == tmp) {
                 PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                 rc = PMIX_ERR_NOMEM;
