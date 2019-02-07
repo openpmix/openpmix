@@ -18,8 +18,8 @@ dnl                         reserved.
 dnl Copyright (c) 2009-2011 Oak Ridge National Labs.  All rights reserved.
 dnl Copyright (c) 2011-2013 NVIDIA Corporation.  All rights reserved.
 dnl Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
-dnl Copyright (c) 2015-2017 Research Organization for Information Science
-dnl                         and Technology (RIST). All rights reserved.
+dnl Copyright (c) 2015-2019 Research Organization for Information Science
+dnl                         and Technology (RIST).  All rights reserved.
 dnl Copyright (c) 2016      Mellanox Technologies, Inc.
 dnl                         All rights reserved.
 dnl
@@ -120,9 +120,11 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     pmixmajor=${PMIX_MAJOR_VERSION}L
     pmixminor=${PMIX_MINOR_VERSION}L
     pmixrelease=${PMIX_RELEASE_VERSION}L
+    pmixnumeric=$(printf 0x%4.4x%2.2x%2.2x $PMIX_MAJOR_VERSION $PMIX_MAJOR_MINOR $PMIX_RELEASE_VERSION)
     AC_SUBST(pmixmajor)
     AC_SUBST(pmixminor)
     AC_SUBST(pmixrelease)
+    AC_SUBST(pmixnumeric)
     AC_CONFIG_FILES(pmix_config_prefix[include/pmix_version.h])
 
     PMIX_GREEK_VERSION="`$PMIX_top_srcdir/config/pmix_get_version.sh $PMIX_top_srcdir/VERSION --greek`"
