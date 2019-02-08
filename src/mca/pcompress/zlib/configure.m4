@@ -10,11 +10,11 @@
 # $HEADER$
 #
 
-# MCA_compress_zlib_CONFIG([action-if-can-compile],
-#                          [action-if-cant-compile])
+# MCA_pcompress_zlib_CONFIG([action-if-can-compile],
+#                           [action-if-cant-compile])
 # ------------------------------------------------
-AC_DEFUN([MCA_pmix_compress_zlib_CONFIG],[
-    AC_CONFIG_FILES([src/mca/compress/zlib/Makefile])
+AC_DEFUN([MCA_pmix_pcompress_zlib_CONFIG],[
+    AC_CONFIG_FILES([src/mca/pcompress/zlib/Makefile])
 
     PMIX_VAR_SCOPE_PUSH([pmix_zlib_dir pmix_zlib_libdir pmix_zlib_standard_lib_location pmix_zlib_standard_header_location pmix_check_zlib_save_CPPFLAGS pmix_check_zlib_save_LDFLAGS pmix_check_zlib_save_LIBS])
 
@@ -60,7 +60,7 @@ AC_DEFUN([MCA_pmix_compress_zlib_CONFIG],[
               [pmix_zlib_libdir="$with_zlib_libdir"
                pmix_zlib_standard_lib_location=no])
 
-        PMIX_CHECK_PACKAGE([pmix_zlib],
+        PMIX_CHECK_PACKAGE([pcompress_zlib],
                            [zlib.h],
                            [z],
                            [deflate],
@@ -93,10 +93,10 @@ AC_DEFUN([MCA_pmix_compress_zlib_CONFIG],[
           [$2])
 
     # substitute in the things needed to build psm2
-    AC_SUBST([compress_zlib_CFLAGS])
-    AC_SUBST([compress_zlib_CPPFLAGS])
-    AC_SUBST([compress_zlib_LDFLAGS])
-    AC_SUBST([compress_zlib_LIBS])
+    AC_SUBST([pcompress_zlib_CFLAGS])
+    AC_SUBST([pcompress_zlib_CPPFLAGS])
+    AC_SUBST([pcompress_zlib_LDFLAGS])
+    AC_SUBST([pcompress_zlib_LIBS])
 
     PMIX_VAR_SCOPE_POP
 ])dnl

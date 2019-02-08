@@ -35,7 +35,7 @@
 #include "src/mca/base/base.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/bfrops/base/base.h"
-#include "src/mca/compress/base/base.h"
+#include "src/mca/pcompress/base/base.h"
 #include "src/mca/gds/base/base.h"
 #include "src/mca/pif/base/base.h"
 #include "src/mca/pinstalldirs/base/base.h"
@@ -84,7 +84,7 @@ void pmix_rte_finalize(void)
     (void)pmix_mca_base_framework_close(&pmix_bfrops_base_framework);
 
     /* close compress */
-    (void)pmix_mca_base_framework_close(&pmix_compress_base_framework);
+    (void)pmix_mca_base_framework_close(&pmix_pcompress_base_framework);
 
     /* close GDS */
     (void)pmix_mca_base_framework_close(&pmix_gds_base_framework);

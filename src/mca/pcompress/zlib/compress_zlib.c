@@ -35,8 +35,7 @@
 #include "pmix_common.h"
 #include "src/util/basename.h"
 
-#include "src/mca/compress/compress.h"
-#include "src/mca/compress/base/base.h"
+#include "src/mca/pcompress/base/base.h"
 
 #include "compress_zlib.h"
 
@@ -50,9 +49,9 @@ int pmix_compress_zlib_module_finalize(void)
     return PMIX_SUCCESS;
 }
 
-bool pmix_compress_zlib_compress_string(char *instring,
-                                        uint8_t **outbytes,
-                                        size_t *nbytes)
+bool pmix_compress_zlib_compress_block(char *instring,
+                                       uint8_t **outbytes,
+                                       size_t *nbytes)
 {
     z_stream strm;
     size_t len, outlen;
@@ -102,14 +101,14 @@ bool pmix_compress_zlib_compress_string(char *instring,
     /* bring over the compressed data */
     memcpy(ptr, tmp, outlen-sizeof(uint32_t));
     free(tmp);
-    pmix_output_verbose(10, mca_compress_zlib_component.super.output_handle,
-                        "JOBDATA COMPRESS INPUT STRING OF LEN %d OUTPUT SIZE %lu",
+    pmix_output_verbose(2, pmix_pcompress_base_framework.framework_output,
+                        "COMPRESS INPUT STRING OF LEN %d OUTPUT SIZE %lu",
                         inlen, outlen-sizeof(uint32_t));
     return true;  // we did the compression
 }
 
-void pmix_compress_zlib_decompress_string(char **outstring,
-                                          uint8_t *inbytes, size_t len)
+bool pmix_compress_zlib_uncompress_block(char **outstring,
+                                         uint8_t *inbytes, size_t len)
 {
     uint8_t *dest;
     int32_t len2;
@@ -122,21 +121,21 @@ void pmix_compress_zlib_decompress_string(char **outstring,
     /* the first 4 bytes contains the uncompressed size */
     memcpy(&len2, inbytes, sizeof(uint32_t));
 
-    pmix_output_verbose(10, mca_compress_zlib_component.super.output_handle,
+    pmix_output_verbose(2, pmix_pcompress_base_framework.framework_output,
                         "DECOMPRESSING INPUT OF LEN %lu OUTPUT %d", len, len2);
 
     /* setting destination to the fully decompressed size, +1 to
      * hold the NULL terminator */
     dest = (uint8_t*)malloc(len2+1);
     if (NULL == dest) {
-        return;
+        return false;
     }
     memset(dest, 0, len2+1);
 
     memset (&strm, 0, sizeof (strm));
     if (Z_OK != inflateInit(&strm)) {
         free(dest);
-        return;
+        return false;
     }
     strm.avail_in = len;
     strm.next_in = (uint8_t*)(inbytes + sizeof(uint32_t));
@@ -148,7 +147,7 @@ void pmix_compress_zlib_decompress_string(char **outstring,
     /* ensure this is NULL terminated! */
     dest[len2] = '\0';
     *outstring = (char*)dest;
-    pmix_output_verbose(10, mca_compress_zlib_component.super.output_handle,
+    pmix_output_verbose(2, pmix_pcompress_base_framework.framework_output,
                         "\tFINAL LEN: %lu CODE: %d", strlen(*outstring), rc);
-    return;
+    return true;
 }

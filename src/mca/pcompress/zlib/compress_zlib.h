@@ -25,23 +25,13 @@
 #include "src/util/output.h"
 
 #include "src/mca/mca.h"
-#include "src/mca/compress/compress.h"
+#include "src/mca/pcompress/pcompress.h"
 
 #if defined(c_plusplus) || defined(__cplusplus)
 extern "C" {
 #endif
 
-    /*
-     * Local Component structures
-     */
-    struct pmix_compress_zlib_component_t {
-        pmix_compress_base_component_t super;  /** Base COMPRESS component */
-
-    };
-    typedef struct pmix_compress_zlib_component_t pmix_compress_zlib_component_t;
-    extern pmix_compress_zlib_component_t mca_compress_zlib_component;
-
-    int pmix_compress_zlib_component_query(pmix_mca_base_module_t **module, int *priority);
+    extern pmix_mca_base_component_t mca_compress_zlib_component;
 
     /*
      * Module functions
@@ -52,11 +42,11 @@ extern "C" {
     /*
      * Actual funcationality
      */
-    bool pmix_compress_zlib_compress_string(char *instring,
-                                            uint8_t **outbytes,
-                                            size_t *nbytes);
-    void pmix_compress_zlib_decompress_string(char **outstring,
-                                              uint8_t *inbytes, size_t len);
+    bool pmix_compress_zlib_compress_block(char *instring,
+                                           uint8_t **outbytes,
+                                           size_t *nbytes);
+    bool pmix_compress_zlib_uncompress_block(char **outstring,
+                                             uint8_t *inbytes, size_t len);
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }

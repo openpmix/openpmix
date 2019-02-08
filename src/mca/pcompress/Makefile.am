@@ -12,12 +12,12 @@
 #
 
 # main library setup
-noinst_LTLIBRARIES = libmca_compress.la
-libmca_compress_la_SOURCES =
+noinst_LTLIBRARIES = libmca_pcompress.la
+libmca_pcompress_la_SOURCES =
 
 # local files
-headers = compress.h
-libmca_compress_la_SOURCES += $(headers)
+headers = pcompress.h
+libmca_pcompress_la_SOURCES += $(headers)
 
 # Ensure that the man pages are rebuilt if the pmix_config.h file
 # changes; a "good enough" way to know if configure was run again (and

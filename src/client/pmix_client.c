@@ -64,7 +64,7 @@ static pmix_status_t pmix_init_result = PMIX_ERR_INIT;
 #include "src/runtime/pmix_rte.h"
 #include "src/threads/threads.h"
 #include "src/mca/bfrops/base/base.h"
-#include "src/mca/compress/compress.h"
+#include "src/mca/pcompress/base/base.h"
 #include "src/mca/gds/base/base.h"
 #include "src/mca/preg/preg.h"
 #include "src/mca/ptl/base/base.h"

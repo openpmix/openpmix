@@ -1075,10 +1075,10 @@ typedef uint8_t pmix_coord_system_t;
 #define PMIX_CHECK_KEY(a, b) \
     (0 == strncmp((a)->key, (b), PMIX_MAX_KEYLEN))
 
-#define PMIX_LOAD_KEY(a, b) \
-    do {                                            \
-        memset((a), 0, PMIX_MAX_KEYLEN+1);          \
-        pmix_strncpy((a), (b), PMIX_MAX_KEYLEN);    \
+#define PMIX_LOAD_KEY(a, b)                                             \
+    do {                                                                \
+        memset((a), 0, PMIX_MAX_KEYLEN+1);                              \
+        pmix_strncpy((char*)(a), (const char*)(b), PMIX_MAX_KEYLEN);    \
     }while(0)
 
 /* define a convenience macro for loading nspaces */
@@ -1830,40 +1830,53 @@ typedef struct pmix_query {
 
 /****    ATTRIBUTE REGISTRATION STRUCT   ****/
 typedef struct pmix_regattr_t {
-    char *key;
+    char *name;
+    pmix_key_t *string;
     pmix_data_type_t type;
-    char **valid_values;
+    pmix_info_t *info;
+    size_t ninfo;
+    char **description;
 } pmix_regattr_t;
 
-#define PMIX_REGATTR_CONSTRUCT(a)               \
-    do {                                        \
-        if (NULL != (a)) {                      \
-            (a)->key = NULL;                    \
-            (a)->type = PMIX_UNDEF;             \
-            (a)->valid_values = NULL;           \
-        }                                       \
+#define PMIX_REGATTR_CONSTRUCT(a)                       \
+    do {                                                \
+        if (NULL != (a)) {                              \
+            (a)->name = NULL;                           \
+            memset((a)->string, 0, PMIX_MAX_KEYLEN+1);  \
+            (a)->type = PMIX_UNDEF;                     \
+            (a)->info = NULL;                           \
+            (a)->ninfo = 0;                             \
+            (a)->description = NULL;                    \
+        }                                               \
     } while(0)
 
-#define PMIX_REGATTR_LOAD(a, k, t, v)                           \
+#define PMIX_REGATTR_LOAD(a, n, k, t, ni, v)                    \
     do {                                                        \
         pmix_status_t _rgl;                                     \
+        if (NULL != (n)) {                                      \
+            (a)->name = strdup((n));                            \
+        }                                                       \
         if (NULL != (k)) {                                      \
-            (a)->key = strdup((k));                             \
+            PMIX_LOAD_KEY((a)->string, (k));                    \
         }                                                       \
         (a)->type = (t);                                        \
+        if (0 < (ni)) {                                         \
+            PMIX_INFO_CREATE((a)->info, (ni));                  \
+            (a)->ninfo = (ni);                                  \
+        }                                                       \
         if (NULL != (v)) {                                      \
-            PMIX_ARGV_APPEND(_rgl, &(a)->valid_values, (v));    \
+            PMIX_ARGV_APPEND(_rgl, &(a)->description, (v));     \
         }                                                       \
     } while(0)
 
 #define PMIX_REGATTR_DESTRUCT(a)                    \
     do {                                            \
         if (NULL != (a)) {                          \
-            if (NULL != (a)->key) {                 \
-                free((a)->key);                     \
+            if (NULL != (a)->name) {                \
+                free((a)->name);                    \
             }                                       \
-            if (NULL != (a)->valid_values) {        \
-                PMIX_ARGV_FREE((a)->valid_values);  \
+            if (NULL != (a)->description) {         \
+                PMIX_ARGV_FREE((a)->description);   \
             }                                       \
         }                                           \
     } while(0)
@@ -1887,12 +1900,22 @@ typedef struct pmix_regattr_t {
 
 #define PMIX_REGATTR_XFER(a, b)                                         \
     do {                                                                \
-        if (NULL != ((b)->key)) {                                       \
-            (a)->key = strdup((b)->key);                                \
+        size_t _n;                                                      \
+        PMIX_REGATTR_CONSTRUCT((a));                                    \
+        if (NULL != ((b)->name)) {                                      \
+            (a)->name = strdup((b)->name);                              \
         }                                                               \
+        PMIX_LOAD_KEY((a)->string, (b)->string);                        \
         (a)->type = (b)->type;                                          \
-        if (NULL != (b)->valid_values) {                                \
-            PMIX_ARGV_COPY((a)->valid_values, (b)->valid_values);       \
+        if (0 < (b)->ninfo) {                                           \
+            (a)->ninfo = (b)->ninfo;                                    \
+            PMIX_INFO_CREATE((a)->info, (a)->ninfo);                    \
+            for (_n=0; _n < (a)->ninfo; _n++) {                         \
+                PMIX_INFO_XFER(&(a)->info[_n], &(b)->info[_n]);         \
+            }                                                           \
+        }                                                               \
+        if (NULL != (b)->description) {                                 \
+            PMIX_ARGV_COPY((a)->description, (b)->description);         \
         }                                                               \
     } while(0)
 
@@ -2799,14 +2822,8 @@ static inline void pmix_darray_destruct(pmix_data_array_t *m)
  * @param len Size of the dest array - 1
  *
  */
-#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
-#define PMIX_RESTRICT restrict
-#else
-#define PMIX_RESTRICT
-#endif
-
-static inline void pmix_strncpy(char * PMIX_RESTRICT dest,
-                                const char * PMIX_RESTRICT src,
+static inline void pmix_strncpy(char *dest,
+                                const char *src,
                                 size_t len)
 {
     size_t i;

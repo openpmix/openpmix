@@ -27,8 +27,8 @@
  *
  */
 
-#ifndef MCA_COMPRESS_H
-#define MCA_COMPRESS_H
+#ifndef PMIX_MCA_COMPRESS_H
+#define PMIX_MCA_COMPRESS_H
 
 #include "pmix_config.h"
 #include "src/mca/mca.h"
@@ -38,35 +38,6 @@
 #if defined(c_plusplus) || defined(__cplusplus)
 extern "C" {
 #endif
-
-/* define a limit for storing raw strings */
-#define PMIX_STRING_LIMIT  512
-
-/* define a macro for quickly checking if a string exceeds the
- * compression limit */
-#define PMIX_STRING_SIZE_CHECK(s) \
-    (PMIX_STRING == (s)->type && NULL != (s)->data.string && PMIX_STRING_LIMIT < strlen((s)->data.string))
-
-#define PMIX_VALUE_COMPRESSED_STRING_UNPACK(s)                              \
-    do {                                                                    \
-        char *tmp;                                                          \
-        /* if this is a compressed string, then uncompress it */            \
-        if (PMIX_COMPRESSED_STRING == (s)->type) {                          \
-            pmix_compress.decompress_string(&tmp, (uint8_t*)(s)->data.bo.bytes, \
-                (s)->data.bo.size);                                         \
-            if (NULL == tmp) {                                              \
-                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);                             \
-                rc = PMIX_ERR_NOMEM;                                        \
-                PMIX_VALUE_RELEASE(s);                                      \
-                val = NULL;                                                 \
-            } else {                                                        \
-                PMIX_VALUE_DESTRUCT(s);                                     \
-                (s)->data.string = tmp;                                     \
-                (s)->type = PMIX_STRING;                                    \
-            }                                                               \
-        }                                                                   \
-    } while(0)
-
 
 /**
  * Module initialization function.
@@ -118,18 +89,20 @@ typedef int (*pmix_compress_base_module_decompress_nb_fn_t)
  * Arguments:
  *
  */
-typedef bool (*pmix_compress_base_module_compress_string_fn_t)
-    (char *instring, uint8_t **outbytes, size_t *nbytes);
-typedef void (*pmix_compress_base_module_decompress_string_fn_t)
-    (char **outstring, uint8_t *inbytes, size_t len);
+typedef bool (*pmix_compress_base_module_compress_string_fn_t)(char *instring,
+                                                               uint8_t **outbytes,
+                                                               size_t *nbytes);
+typedef bool (*pmix_compress_base_module_decompress_string_fn_t)(char **outstring,
+                                                                 uint8_t *inbytes, size_t len);
+
 
 /**
  * Structure for COMPRESS components.
  */
 struct pmix_compress_base_component_2_0_0_t {
-    /** MCA base component */
+    /** PMIX_MCA base component */
     pmix_mca_base_component_t base_version;
-    /** MCA base data */
+    /** PMIX_MCA base data */
     pmix_mca_base_component_data_t base_data;
 
     /** Verbosity Level */
@@ -172,7 +145,7 @@ PMIX_EXPORT extern pmix_compress_base_module_t pmix_compress;
  * Macro for use in components that are of type COMPRESS
  */
 #define PMIX_COMPRESS_BASE_VERSION_2_0_0 \
-    PMIX_MCA_BASE_VERSION_1_0_0("compress", 2, 0, 0)
+    PMIX_MCA_BASE_VERSION_1_0_0("pcompress", 2, 0, 0)
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }

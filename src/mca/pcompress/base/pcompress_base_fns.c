@@ -38,8 +38,8 @@
 #include "src/util/argv.h"
 #include "src/util/printf.h"
 
-#include "src/mca/compress/compress.h"
-#include "src/mca/compress/base/base.h"
+#include "src/mca/pcompress/pcompress.h"
+#include "src/mca/pcompress/base/base.h"
 
 /******************
  * Local Function Defs

@@ -11,6 +11,8 @@
 # $HEADER$
 #
 
+AM_CPPFLAGS = $(pcompress_zlib_CPPFLAGS)
+
 sources = \
         compress_zlib.h \
         compress_zlib_component.c \
@@ -20,19 +22,21 @@ sources = \
 # mca_<type>_<name>.la (for DSO builds) or libmca_<type>_<name>.la
 # (for static builds).
 
-if MCA_BUILD_pmix_compress_zlib_DSO
+if MCA_BUILD_pmix_pcompress_zlib_DSO
 component_noinst =
-component_install = mca_compress_zlib.la
+component_install = mca_pcompress_zlib.la
 else
-component_noinst = libmca_compress_zlib.la
+component_noinst = libmca_pcompress_zlib.la
 component_install =
 endif
 
 mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component_install)
-mca_compress_zlib_la_SOURCES = $(sources)
-mca_compress_zlib_la_LDFLAGS = -module -avoid-version
+mca_pcompress_zlib_la_SOURCES = $(sources)
+mca_pcompress_zlib_la_LDFLAGS = -module -avoid-version $(pcompress_zlib_LDFLAGS)
+mca_pcompress_zlib_la_LIBADD = $(pcompress_zlib_LIBS)
 
 noinst_LTLIBRARIES = $(component_noinst)
-libmca_compress_zlib_la_SOURCES = $(sources)
-libmca_compress_zlib_la_LDFLAGS = -module -avoid-version
+libmca_pcompress_zlib_la_SOURCES = $(sources)
+libmca_pcompress_zlib_la_LDFLAGS = -module -avoid-version $(pcompress_zlib_LDFLAGS)
+libmca_pcompress_zlib_la_LIBADD = $(pcompress_zlib_LIBS)

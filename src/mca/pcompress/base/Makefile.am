@@ -14,8 +14,7 @@
 headers += \
         base/base.h
 
-libmca_compress_la_SOURCES += \
-        base/compress_base_open.c \
-        base/compress_base_close.c \
-        base/compress_base_select.c \
-        base/compress_base_fns.c
+libmca_pcompress_la_SOURCES += \
+        base/pcompress_base_frame.c \
+        base/pcompress_base_select.c \
+        base/pcompress_base_fns.c
