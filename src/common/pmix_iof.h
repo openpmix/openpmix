@@ -12,7 +12,7 @@
  * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2012-2013 Los Alamos National Security, LLC.
  *                         All rights reserved.
- * Copyright (c) 2015-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017      IBM Corporation.  All rights reserved.
  * Copyright (c) 2017      Mellanox Technologies. All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
@@ -100,6 +100,8 @@ typedef struct {
     int fd;
     bool active;
     bool always_readable;
+    pmix_proc_t *targets;
+    size_t ntargets;
 } pmix_iof_read_event_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_iof_read_event_t);
 
@@ -188,6 +190,34 @@ pmix_iof_fd_always_ready(int fd)
     } while(0);
 
 
+#define PMIX_IOF_READ_EVENT(rv, p, np, fid, cbfunc, actv)               \
+    do {                                                                \
+        pmix_iof_read_event_t *rev;                                     \
+        PMIX_OUTPUT_VERBOSE((1, pmix_client_globals.iof_output,         \
+                            "defining read event at: %s %d",            \
+                            __FILE__, __LINE__));                       \
+        rev = PMIX_NEW(pmix_iof_read_event_t);                          \
+        (rev)->ntargets = (np);                                         \
+        PMIX_PROC_CREATE((rev)->targets, (rev)->ntargets);              \
+        memcpy((rev)->targets, (p), (np) * sizeof(pmix_proc_t));        \
+        rev->fd = (fid);                                                \
+        rev->always_readable = pmix_iof_fd_always_ready(fid);           \
+        *(rv) = rev;                                                    \
+        if(rev->always_readable) {                                      \
+            pmix_event_evtimer_set(pmix_globals.evbase,                 \
+                                   &rev->ev, (cbfunc), rev);            \
+        } else {                                                        \
+            pmix_event_set(pmix_globals.evbase,                         \
+                           &rev->ev, (fid),                             \
+                           PMIX_EV_READ,                                \
+                           (cbfunc), rev);                              \
+        }                                                               \
+        if ((actv)) {                                                   \
+            PMIX_IOF_READ_ACTIVATE(rev)                                 \
+        }                                                               \
+    } while(0);
+
+
 PMIX_EXPORT pmix_status_t pmix_iof_flush(void);
 
 PMIX_EXPORT pmix_status_t pmix_iof_write_output(const pmix_proc_t *name,
@@ -196,10 +226,9 @@ PMIX_EXPORT pmix_status_t pmix_iof_write_output(const pmix_proc_t *name,
                                                 pmix_iof_flags_t *flags);
 PMIX_EXPORT void pmix_iof_static_dump_output(pmix_iof_sink_t *sink);
 PMIX_EXPORT void pmix_iof_write_handler(int fd, short event, void *cbdata);
-PMIX_EXPORT void pmix_iof_stdin_write_handler(int fd, short event, void *cbdata);
 PMIX_EXPORT bool pmix_iof_stdin_check(int fd);
+PMIX_EXPORT void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata);
 PMIX_EXPORT void pmix_iof_stdin_cb(int fd, short event, void *cbdata);
-PMIX_EXPORT void pmix_iof_read_local_handler(int fd, short event, void *cbdata);
 
 END_C_DECLS
 
