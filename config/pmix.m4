@@ -120,7 +120,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     pmixmajor=${PMIX_MAJOR_VERSION}L
     pmixminor=${PMIX_MINOR_VERSION}L
     pmixrelease=${PMIX_RELEASE_VERSION}L
-    pmixnumeric=$(printf 0x%4.4x%2.2x%2.2x $PMIX_MAJOR_VERSION $PMIX_MAJOR_MINOR $PMIX_RELEASE_VERSION)
+    pmixnumeric=$(printf 0x%4.4x%2.2x%2.2x $PMIX_MAJOR_VERSION $PMIX_MINOR_VERSION $PMIX_RELEASE_VERSION)
     AC_SUBST(pmixmajor)
     AC_SUBST(pmixminor)
     AC_SUBST(pmixrelease)
