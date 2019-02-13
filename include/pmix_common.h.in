@@ -2710,21 +2710,21 @@ static inline void pmix_darray_destruct(pmix_data_array_t *m)
  * @param len Size of the dest array - 1
  *
  */
-static inline void pmix_strncpy(char *dest, const char *src, size_t len)
+static inline void pmix_strncpy(char *restrict dest,
+                                const char *restrict src,
+                                size_t len)
 {
-    size_t i, k;
-    char *new_dest = dest;
+    size_t i;
 
     /* use an algorithm that also protects against
      * non-NULL-terminated src strings */
-    for (i=0, k=0; i <= len; ++i, ++src, ++new_dest) {
-        ++k;
-        *new_dest = *src;
+    for (i=0; i < len; ++i, ++src, ++dest) {
+        *dest = *src;
         if ('\0' == *src) {
             break;
         }
     }
-    dest[k-1] = '\0';
+    *dest = '\0';
 }
 
 #include <pmix_extend.h>
