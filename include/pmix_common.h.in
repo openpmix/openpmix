@@ -2710,8 +2710,14 @@ static inline void pmix_darray_destruct(pmix_data_array_t *m)
  * @param len Size of the dest array - 1
  *
  */
-static inline void pmix_strncpy(char *dest,
-                                const char *src,
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
+#define PMIX_RESTRICT restrict
+#else
+#define PMIX_RESTRICT
+#endif
+
+static inline void pmix_strncpy(char * PMIX_RESTRICT dest,
+                                const char * PMIX_RESTRICT src,
                                 size_t len)
 {
     size_t i;
