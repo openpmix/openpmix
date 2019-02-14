@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2014-2018 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
@@ -800,6 +800,14 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
                 pe[n].separator = se[n].separator;
             }
             break;
+        case PMIX_COORD:
+            p->array = malloc(src->size * sizeof(pmix_coord_t));
+            if (NULL == p->array) {
+                free(p);
+                return PMIX_ERR_NOMEM;
+            }
+            memcpy(p->array, src->array, src->size * sizeof(pmix_coord_t));
+            break;
         default:
             free(p);
             return PMIX_ERR_UNKNOWN_DATA_TYPE;
@@ -844,5 +852,14 @@ pmix_status_t pmix_bfrops_base_copy_envar(pmix_envar_t **dest,
         (*dest)->value = strdup(src->value);
     }
     (*dest)->separator = src->separator;
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_copy_coord(pmix_coord_t **dest,
+                                          pmix_coord_t *src,
+                                          pmix_data_type_t type)
+{
+    *dest = (pmix_coord_t*)malloc(sizeof(pmix_coord_t));
+    memcpy(*dest, src, sizeof(pmix_coord_t));
     return PMIX_SUCCESS;
 }

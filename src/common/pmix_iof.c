@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
@@ -282,12 +282,14 @@ pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets,
                 return rc;
             }
         }
-        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                         msg, bo, 1, PMIX_BYTE_OBJECT);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(msg);
-            return rc;
+        if (NULL != bo) {
+            PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
+                             msg, bo, 1, PMIX_BYTE_OBJECT);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(msg);
+                return rc;
+            }
         }
 
         cd = (pmix_ltcaddy_t*)malloc(sizeof(pmix_ltcaddy_t));
@@ -296,6 +298,8 @@ pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets,
             rc = PMIX_ERR_NOMEM;
             return rc;
         }
+        cd->cbfunc = cbfunc;
+        cd->cbdata = cbdata;
         PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver,
                            msg, stdincbfunc, cd);
         if (PMIX_SUCCESS != rc) {

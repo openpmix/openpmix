@@ -3366,7 +3366,10 @@ pmix_status_t pmix_server_iofstdin(pmix_peer_t *peer,
 
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, cd->bo, &cnt, PMIX_BYTE_OBJECT);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
+        /* it is okay for them to not send data */
+        PMIX_BYTE_OBJECT_FREE(cd->bo, 1);
+    } else if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto error;
     }
@@ -4188,7 +4191,7 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_setup_caddy_t,
 static void ncon(pmix_notify_caddy_t *p)
 {
     PMIX_CONSTRUCT_LOCK(&p->lock);
-#if defined(__linux__) && OPAL_HAVE_CLOCK_GETTIME
+#if defined(__linux__) && PMIX_HAVE_CLOCK_GETTIME
     struct timespec tp;
     (void) clock_gettime(CLOCK_MONOTONIC, &tp);
     p->ts = tp.tv_sec;

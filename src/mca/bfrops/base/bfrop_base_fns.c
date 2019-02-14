@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2015-2018 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -59,6 +59,7 @@ void pmix_bfrops_base_value_load(pmix_value_t *v, const void *data,
     pmix_envar_t *envar;
     pmix_data_array_t *darray;
     pmix_status_t rc;
+    pmix_coord_t *coord;
 
     v->type = type;
     if (NULL == data) {
@@ -201,6 +202,13 @@ void pmix_bfrops_base_value_load(pmix_value_t *v, const void *data,
                 PMIX_ERROR_LOG(rc);
             }
             break;
+        case PMIX_COORD:
+            coord = (pmix_coord_t*)data;
+            rc = pmix_bfrops_base_copy_coord(&v->data.coord, coord, PMIX_COORD);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
+            break;
 
         default:
             /* silence warnings */
@@ -217,6 +225,7 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv,
     pmix_status_t rc;
     pmix_envar_t *envar;
     pmix_data_array_t **darray;
+    pmix_coord_t *coord;
 
     rc = PMIX_SUCCESS;
     if (NULL == data ||
@@ -353,6 +362,14 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv,
             envar->separator = kv->data.envar.separator;
             *data = envar;
             *sz = sizeof(pmix_envar_t);
+            break;
+        case PMIX_COORD:
+            coord = (pmix_coord_t*)malloc(sizeof(pmix_coord_t));
+            if (NULL == coord) {
+                return PMIX_ERR_NOMEM;
+            }
+            memcpy(coord, kv->data.coord, sizeof(pmix_coord_t));
+            *data = coord;
             break;
         default:
             /* silence warnings */
@@ -501,6 +518,17 @@ pmix_value_cmp_t pmix_bfrops_base_value_cmp(pmix_value_t *p,
             }
             rc = PMIX_EQUAL;
             break;
+        case PMIX_COORD:
+            rc = memcmp(p->data.coord, p1->data.coord, sizeof(pmix_coord_t));
+            if (0 > rc) {
+                rc = PMIX_VALUE2_GREATER;
+            } else if (0 < rc) {
+                rc = PMIX_VALUE1_GREATER;
+            } else {
+                rc = PMIX_EQUAL;
+            }
+            break;
+
         default:
             pmix_output(0, "COMPARE-PMIX-VALUE: UNSUPPORTED TYPE %d", (int)p->type);
     }
@@ -639,7 +667,9 @@ pmix_status_t pmix_bfrops_base_value_xfer(pmix_value_t *p,
         }
         p->data.envar.separator = src->data.envar.separator;
         break;
-
+    case PMIX_COORD:
+        pmix_bfrops_base_copy_coord(&p->data.coord, src->data.coord, PMIX_COORD);
+        break;
     default:
         pmix_output(0, "PMIX-XFER-VALUE: UNSUPPORTED TYPE %d", (int)src->type);
         return PMIX_ERROR;

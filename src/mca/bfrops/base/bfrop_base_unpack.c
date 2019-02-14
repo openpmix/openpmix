@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
- * Copyright (c) 2014-2018 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
@@ -764,6 +764,13 @@ pmix_status_t pmix_bfrops_base_unpack_val(pmix_buffer_t *buffer,
                 return ret;
             }
             break;
+        case PMIX_COORD:
+            val->data.coord = (pmix_coord_t*)malloc(sizeof(pmix_coord_t));
+            if (NULL == val->data.coord) {
+                return PMIX_ERR_NOMEM;
+            }
+            ret = pmix_bfrops_base_unpack_coord(buffer, val->data.coord, &m, PMIX_COORD);
+            return ret;
         default:
             pmix_output(0, "UNPACK-PMIX-VALUE: UNSUPPORTED TYPE %d", (int)val->type);
             return PMIX_ERROR;
@@ -1495,6 +1502,15 @@ pmix_status_t pmix_bfrops_base_unpack_darray(pmix_buffer_t *buffer, void *dest,
                     return ret;
                 }
                 break;
+            case PMIX_COORD:
+                ptr[i].array = (pmix_coord_t*)malloc(m * sizeof(pmix_coord_t));
+                if (NULL == ptr[i].array) {
+                    return PMIX_ERR_NOMEM;
+                }
+                if (PMIX_SUCCESS != (ret = pmix_bfrops_base_unpack_coord(buffer, ptr[i].array, &m, ptr[i].type))) {
+                    return ret;
+                }
+                break;
             default:
                 return PMIX_ERR_NOT_SUPPORTED;
         }
@@ -1597,6 +1613,39 @@ pmix_status_t pmix_bfrops_base_unpack_envar(pmix_buffer_t *buffer, void *dest,
         /* unpack the separator */
         m=1;
         if (PMIX_SUCCESS != (ret = pmix_bfrops_base_unpack_byte(buffer, &ptr[i].separator, &m, PMIX_BYTE))) {
+            return ret;
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_coord(pmix_buffer_t *buffer, void *dest,
+                                            int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_coord_t *ptr;
+    int32_t i, n, m;
+    pmix_status_t ret;
+
+    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
+                        "pmix_bfrop_unpack: %d coordinates", *num_vals);
+
+    ptr = (pmix_coord_t *) dest;
+    n = *num_vals;
+
+    for (i = 0; i < n; ++i) {
+        /* unpack the x-axis */
+        m=1;
+        if (PMIX_SUCCESS != (ret = pmix_bfrops_base_unpack_int(buffer, &ptr[i].x, &m, PMIX_INT))) {
+            return ret;
+        }
+        /* unpack the y-coord */
+        m=1;
+        if (PMIX_SUCCESS != (ret = pmix_bfrops_base_unpack_int(buffer, &ptr[i].y, &m, PMIX_INT))) {
+            return ret;
+        }
+        /* unpack the z-coord */
+        m=1;
+        if (PMIX_SUCCESS != (ret = pmix_bfrops_base_unpack_int(buffer, &ptr[i].z, &m, PMIX_INT))) {
             return ret;
         }
     }
