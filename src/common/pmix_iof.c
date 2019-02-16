@@ -12,6 +12,14 @@
  */
 #include <src/include/pmix_config.h>
 
+#ifdef HAVE_FCNTL_H
+#include <fcntl.h>
+#else
+#ifdef HAVE_SYS_FCNTL_H
+#include <sys/fcntl.h>
+#endif
+#endif
+
 #include <src/include/types.h>
 #include <src/include/pmix_stdint.h>
 #include <src/include/pmix_socket_errno.h>
@@ -32,6 +40,9 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/include/pmix_globals.h"
+
+static void restart_stdin(int fd, short event, void *cbdata);
+
 
 static void msgcbfunc(struct pmix_peer_t *peer,
                        pmix_ptl_hdr_t *hdr,
@@ -187,6 +198,9 @@ typedef struct {
     void *cbdata;
 } pmix_ltcaddy_t;
 
+static pmix_event_t stdinsig_ev;
+static pmix_iof_read_event_t *stdinev = NULL;
+
 static void stdincbfunc(struct pmix_peer_t *peer,
                         pmix_ptl_hdr_t *hdr,
                         pmix_buffer_t *buf, void *cbdata)
@@ -225,8 +239,11 @@ pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets,
 {
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_IOF_PUSH_CMD;
-    pmix_status_t rc;
+    pmix_status_t rc = PMIX_SUCCESS;
     pmix_ltcaddy_t *cd;
+    size_t n;
+    bool begincollecting, stopcollecting;
+    int flags, fd = fileno(stdin);
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     if (pmix_globals.init_cntr <= 0) {
@@ -234,6 +251,102 @@ pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets,
         return PMIX_ERR_INIT;
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
+
+    if (NULL == bo) {
+        /* check the directives */
+        for (n=0; n < ndirs; n++) {
+            if (PMIX_CHECK_KEY(&directives[n], PMIX_IOF_PUSH_STDIN)) {
+                /* we are to start collecting our stdin and pushing
+                 * it to the specified targets */
+                begincollecting = PMIX_INFO_TRUE(&directives[n]);
+                if (begincollecting) {
+                    /* add these targets to our list */
+                    if (!pmix_globals.pushstdin) {
+                        /* not already collecting, so start */
+                        pmix_globals.pushstdin = true;
+                        /* We don't want to set nonblocking on our
+                         * stdio stream.  If we do so, we set the file descriptor to
+                         * non-blocking for everyone that has that file descriptor, which
+                         * includes everyone else in our shell pipeline chain.  (See
+                         * http://lists.freebsd.org/pipermail/freebsd-hackers/2005-January/009742.html).
+                         * This causes things like "prun -np 1 big_app | cat" to lose
+                         * output, because cat's stdout is then ALSO non-blocking and cat
+                         * isn't built to deal with that case (same with almost all other
+                         * unix text utils).
+                         */
+                        if (0 != fd) {
+                            if((flags = fcntl(fd, F_GETFL, 0)) < 0) {
+                                pmix_output(pmix_client_globals.iof_output,
+                                            "[%s:%d]: fcntl(F_GETFL) failed with errno=%d\n",
+                                            __FILE__, __LINE__, errno);
+                            } else {
+                                flags |= O_NONBLOCK;
+                                fcntl(fd, F_SETFL, flags);
+                            }
+                        }
+                        if (isatty(fd)) {
+                            /* We should avoid trying to read from stdin if we
+                             * have a terminal, but are backgrounded.  Catch the
+                             * signals that are commonly used when we switch
+                             * between being backgrounded and not.  If the
+                             * filedescriptor is not a tty, don't worry about it
+                             * and always stay connected.
+                             */
+                            pmix_event_signal_set(pmix_globals.evbase, &stdinsig_ev,
+                                                  SIGCONT, pmix_iof_stdin_cb,
+                                                  NULL);
+
+                            /* setup a read event to read stdin, but don't activate it yet. The
+                             * dst_name indicates who should receive the stdin. If that recipient
+                             * doesn't do a corresponding pull, however, then the stdin will
+                             * be dropped upon receipt at the local daemon
+                             */
+                            PMIX_IOF_READ_EVENT(&stdinev,
+                                                targets, ntargets, fd,
+                                                pmix_iof_read_local_handler, false);
+
+                            /* check to see if we want the stdin read event to be
+                             * active - we will always at least define the event,
+                             * but may delay its activation
+                             */
+                            if (pmix_iof_stdin_check(fd)) {
+                                PMIX_IOF_READ_ACTIVATE(stdinev);
+                            }
+                        } else {
+                            /* if we are not looking at a tty, just setup a read event
+                             * and activate it
+                             */
+                            PMIX_IOF_READ_EVENT(&stdinev, targets, ntargets, fd,
+                                                pmix_iof_read_local_handler, true);
+                        }
+                    }
+                } else {
+                    if (pmix_globals.pushstdin) {
+                        /* remove these targets from the list of
+                         * recipients - if the list is then empty,
+                         * stop collecting. If the targets param
+                         * is NULL, then remove all targets and stop.
+                         * Flush any cached input before calling
+                         * the cbfunc */
+                    }
+                }
+            } else if (PMIX_CHECK_KEY(&directives[n], PMIX_IOF_COMPLETE)) {
+                /* if we are collecting our stdin for the specified
+                 * targets, then stop - a NULL for targets indicates
+                 * stop for everyone. Flush any remaining cached input
+                 * before calling the cbfunc */
+                stopcollecting = PMIX_INFO_TRUE(&directives[n]);
+                if (stopcollecting) {
+                    if (pmix_globals.pushstdin) {
+                        /* remove these targets from the list of
+                         * recipients - if the list is then empty,
+                         * stop collecting */
+                    }
+                }
+            }
+        }
+        return PMIX_OPERATION_SUCCEEDED;
+    }
 
     /* if we are not a server, then we send the provided
      * data to our server for processing */
@@ -318,7 +431,7 @@ pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets,
                                      targets, ntargets,
                                      directives, ndirs,
                                      bo, cbfunc, cbdata);
-    return PMIX_SUCCESS;
+    return rc;
 }
 
 pmix_status_t pmix_iof_write_output(const pmix_proc_t *name,
@@ -841,6 +954,8 @@ static void iof_read_event_construct(pmix_iof_read_event_t* rev)
     rev->active = false;
     rev->tv.tv_sec = 0;
     rev->tv.tv_usec = 0;
+    rev->targets = NULL;
+    rev->ntargets = 0;
 }
 static void iof_read_event_destruct(pmix_iof_read_event_t* rev)
 {
@@ -851,6 +966,9 @@ static void iof_read_event_destruct(pmix_iof_read_event_t* rev)
                              PMIX_NAME_PRINT(&pmix_globals.myid), rev->fd));
         close(rev->fd);
         rev->fd = -1;
+    }
+    if (NULL != rev->targets) {
+        PMIX_PROC_FREE(rev->targets, rev->ntargets);
     }
 }
 PMIX_CLASS_INSTANCE(pmix_iof_read_event_t,
