@@ -11,7 +11,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
- * Copyright (c) 2014-2018 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
@@ -389,6 +389,8 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_iof_channel(pmix_buffer_t *buffe
                                                             int32_t num_vals, pmix_data_type_t type);
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_envar(pmix_buffer_t *buffer, const void *src,
                                                       int32_t num_vals, pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_coord(pmix_buffer_t *buffer, const void *src,
+                                                      int32_t num_vals, pmix_data_type_t type);
 
 /*
 * "Standard" unpack functions
@@ -480,6 +482,8 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_iof_channel(pmix_buffer_t *buf
                                                               int32_t *num_vals, pmix_data_type_t type);
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_envar(pmix_buffer_t *buffer, void *dest,
                                                         int32_t *num_vals, pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_coord(pmix_buffer_t *buffer, void *dest,
+                                                        int32_t *num_vals, pmix_data_type_t type);
 /**** DEPRECATED ****/
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_array(pmix_buffer_t *buffer, void *dest,
                                                         int32_t *num_vals, pmix_data_type_t type);
@@ -537,6 +541,9 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_query(pmix_query_t **dest,
                                                       pmix_data_type_t type);
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_envar(pmix_envar_t **dest,
                                                       pmix_envar_t *src,
+                                                      pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_coord(pmix_coord_t **dest,
+                                                      pmix_coord_t *src,
                                                       pmix_data_type_t type);
 
 /*
@@ -645,6 +652,9 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_iof_channel(char **output, char
                                                             pmix_data_type_t type);
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_envar(char **output, char *prefix,
                                                        pmix_envar_t *src,
+                                                       pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_coord(char **output, char *prefix,
+                                                       pmix_coord_t *src,
                                                        pmix_data_type_t type);
 
 /*

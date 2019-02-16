@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
- * Copyright (c) 2014-2018 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  *
@@ -1021,6 +1021,11 @@ int pmix_bfrops_base_print_status(char **output, char *prefix,
                           src->data.envar.separator);
             break;
 
+        case PMIX_COORD:
+            rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_COORD\tx-axis: %d\ty-axis: %d\tz-axis: %d",
+                          prefx, src->data.coord->x, src->data.coord->y, src->data.coord->z);
+            break;
+
         default:
             rc = asprintf(output, "%sPMIX_VALUE: Data type: UNKNOWN\tValue: UNPRINTABLE", prefx);
             break;
@@ -1680,6 +1685,35 @@ pmix_status_t pmix_bfrops_base_print_envar(char **output, char *prefix,
                    prefx, (NULL == src->envar) ? "NULL" : src->envar,
                    (NULL == src->value) ? "NULL" : src->value,
                    ('\0' == src->separator) ? ' ' : src->separator);
+    if (prefx != prefix) {
+        free(prefx);
+    }
+
+    if (0 > ret) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    } else {
+        return PMIX_SUCCESS;
+    }
+}
+
+pmix_status_t pmix_bfrops_base_print_coord(char **output, char *prefix,
+                                           pmix_coord_t *src,
+                                           pmix_data_type_t type)
+{
+    char *prefx;
+    int ret;
+
+    /* deal with NULL prefix */
+    if (NULL == prefix) {
+        if (0 > asprintf(&prefx, " ")) {
+            return PMIX_ERR_NOMEM;
+        }
+    } else {
+        prefx = prefix;
+    }
+
+    ret = asprintf(output, "%sData type: PMIX_COORD\tx-axis: %d\ty-axis: %d\tz-axis: %d",
+                   prefx, src->x, src->y, src->z);
     if (prefx != prefix) {
         free(prefx);
     }

@@ -265,6 +265,9 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_PARENT_ID                      "pmix.parent"           // (pmix_proc_t*) identifier of the process that called PMIx_Spawn
                                                                     //                to launch this proc's application
 #define PMIX_EXIT_CODE                      "pmix.exit.code"        // (int) exit code returned when proc terminated
+#define PMIX_NETWORK_COORDINATE             "pmix.net.coord"        // (pmix_coord_t*) Network coordinate of the specified process
+#define PMIX_NETWORK_COORD_SYSTEM           "pmix.net.coordsys"     // (pmix_coord_system_t) Network coordinate system being employed to
+                                                                    //                describe the specified network plane
 
 
 /* size info */
@@ -942,6 +945,7 @@ typedef uint16_t pmix_data_type_t;
 // Hole left by deprecation/removal of PMIX_INFO_ARRAY
 #define PMIX_IOF_CHANNEL        45
 #define PMIX_ENVAR              46
+#define PMIX_COORD              47
 /********************/
 
 /* define a boundary for implementers so they can add their own data types */
@@ -1037,6 +1041,20 @@ typedef enum {
     PMIX_GROUP_CONSTRUCT,
     PMIX_GROUP_DESTRUCT
 } pmix_group_operation_t;
+
+
+/* define a structure for a proc's network coordinate */
+typedef struct pmix_coord {
+    int x;
+    int y;
+    int z;
+} pmix_coord_t;
+
+/* define coordinate system values */
+typedef uint8_t pmix_coord_system_t;
+#define PMIX_COORD_CARTESIAN    0x00
+#define PMIX_COORD_TOROID       0x01
+#define PMIX_COORD_CYLINDRICAL  0x02
 
 
 /* declare a convenience macro for checking keys */
@@ -1405,6 +1423,7 @@ typedef struct pmix_value {
         void *ptr;
         pmix_alloc_directive_t adir;
         pmix_envar_t envar;
+        pmix_coord_t *coord;
     } data;
 } pmix_value_t;
 /* allocate and initialize a specified number of value structs */

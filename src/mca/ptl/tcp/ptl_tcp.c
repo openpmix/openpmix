@@ -158,7 +158,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "V3 SERVER DETECTED");
             /* must use the v3 bfrops module */
-            pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module("v3");
+            pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
             if (NULL == pmix_globals.mypeer->nptr->compat.bfrops) {
                 return PMIX_ERR_INIT;
             }
