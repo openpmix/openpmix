@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2015-2018 Intel, Inc. All rights reserved.
- * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2019 IBM Corporation.  All rights reserved.
  * Copyright (c) 2016-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2018-2019 Research Organization for Information Science
@@ -481,7 +481,7 @@ static inline ns_map_data_t * _esh_session_map_search_server(pmix_common_dstore_
                 return &ns_map[idx].data;
         }
     }
-    return NULL;
+    return _esh_session_map(ds_ctx, nspace, 0, 0);
 }
 
 static inline ns_map_data_t * _esh_session_map_search_client(pmix_common_dstore_ctx_t *ds_ctx,
