@@ -134,6 +134,8 @@ test/simple/stability
 test/simple/gwclient
 test/simple/gwtest
 test/simple/simpjctrl
+test/simple/simpio
+test/simple/data-*
 
 # coverity
 cov-int

@@ -293,7 +293,7 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
             PMIX_RELEASE(cb);
             goto cleanup;
         }
-    } else {
+    } else if (NULL != cbfunc) {
         cbfunc(PMIX_SUCCESS, cbdata);
     }
 

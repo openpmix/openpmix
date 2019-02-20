@@ -41,9 +41,6 @@
 #include "src/server/pmix_server_ops.h"
 #include "src/include/pmix_globals.h"
 
-static void restart_stdin(int fd, short event, void *cbdata);
-
-
 static void msgcbfunc(struct pmix_peer_t *peer,
                        pmix_ptl_hdr_t *hdr,
                        pmix_buffer_t *buf, void *cbdata)
@@ -302,7 +299,8 @@ pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets,
                              * be dropped upon receipt at the local daemon
                              */
                             PMIX_IOF_READ_EVENT(&stdinev,
-                                                targets, ntargets, fd,
+                                                targets, ntargets,
+                                                directives, ndirs, fd,
                                                 pmix_iof_read_local_handler, false);
 
                             /* check to see if we want the stdin read event to be
@@ -316,7 +314,8 @@ pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets,
                             /* if we are not looking at a tty, just setup a read event
                              * and activate it
                              */
-                            PMIX_IOF_READ_EVENT(&stdinev, targets, ntargets, fd,
+                            PMIX_IOF_READ_EVENT(&stdinev, targets, ntargets,
+                                                directives, ndirs, fd,
                                                 pmix_iof_read_local_handler, true);
                         }
                     }
@@ -808,15 +807,41 @@ void pmix_iof_stdin_cb(int fd, short event, void *cbdata)
     }
 }
 
-static void restart_stdin(int fd, short event, void *cbdata)
+static void iof_stdin_cbfunc(struct pmix_peer_t *peer,
+                             pmix_ptl_hdr_t *hdr,
+                             pmix_buffer_t *buf, void *cbdata)
 {
-    pmix_iof_read_event_t *tm = (pmix_iof_read_event_t*)cbdata;
+    pmix_iof_read_event_t *stdinev = (pmix_iof_read_event_t*)cbdata;
+    int cnt;
+    pmix_status_t rc, ret;
 
-    PMIX_ACQUIRE_OBJECT(tm);
+    PMIX_ACQUIRE_OBJECT(stdinev);
 
-    if (!tm->active) {
-        PMIX_IOF_READ_ACTIVATE(tm);
+    /* check the return status */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &ret, &cnt, PMIX_STATUS);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        pmix_event_del(&stdinev->ev);
+        stdinev->active = false;
+        PMIX_POST_OBJECT(stdinev);
+        return;
     }
+    /* if the status wasn't success, then terminate the forward */
+    if (PMIX_SUCCESS != ret) {
+        pmix_event_del(&stdinev->ev);
+        stdinev->active = false;
+        PMIX_POST_OBJECT(stdinev);
+        if (PMIX_ERR_IOF_COMPLETE != ret) {
+            /* generate an IOF-failed event so the tool knows */
+            PMIx_Notify_event(PMIX_ERR_IOF_FAILURE,
+                              &pmix_globals.myid, PMIX_RANGE_PROC_LOCAL,
+                              NULL, 0, NULL, NULL);
+        }
+        return;
+    }
+
+    pmix_iof_stdin_cb(0, 0, stdinev);
 }
 
 /* this is the read handler for stdin */
@@ -829,6 +854,7 @@ void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata)
     pmix_status_t rc;
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_IOF_PUSH_CMD;
+    pmix_byte_object_t bo;
 
     PMIX_ACQUIRE_OBJECT(rev);
 
@@ -876,49 +902,62 @@ void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata)
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
-        goto restart;
+        return;
     }
+    /* pack the number of targets */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &numbytes, 1, PMIX_INT32);
+                     msg, &rev->ntargets, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
-        goto restart;
+        return;
     }
+    /* and the targets */
+    if (0 < rev->ntargets) {
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
+                         msg, rev->targets, rev->ntargets, PMIX_PROC);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(msg);
+            return;
+        }
+    }
+    /* pack the number of directives */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, data, numbytes, PMIX_BYTE);
+                     msg, &rev->ndirs, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
-        goto restart;
+        return;
     }
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver,
-                       msg, stdincbfunc, NULL);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(msg);
+    /* and the directives */
+    if (0 < rev->ndirs) {
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
+                         msg, rev->directives, rev->ndirs, PMIX_INFO);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(msg);
+            return;
+        }
     }
 
-  restart:
-    /* if num_bytes was zero, or we read the last piece of the file, then we need to terminate the event */
-    if (0 == numbytes) {
-       /* this will also close our stdin file descriptor */
-        PMIX_RELEASE(rev);
-    } else {
-        /* if we are looking at a tty, then we just go ahead and restart the
-         * read event assuming we are not backgrounded
-         */
-        if (pmix_iof_stdin_check(fd)) {
-            restart_stdin(fd, 0, rev);
-        } else {
-            /* delay for awhile and then restart */
-            pmix_event_evtimer_set(pmix_globals.evbase,
-                                   &rev->ev, restart_stdin, rev);
-            rev->tv.tv_sec = 0;
-            rev->tv.tv_usec = 10000;
-            PMIX_POST_OBJECT(rev);
-            pmix_event_evtimer_add(&rev->ev, &rev->tv);
-        }
+    /* pack the data */
+    bo.bytes = (char*)data;
+    bo.size = numbytes;
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
+                     msg, &bo, 1, PMIX_BYTE_OBJECT);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        return;
+    }
+
+    /* send it to the server */
+    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver,
+                       msg, iof_stdin_cbfunc, rev);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
     }
     /* nothing more to do */
     return;
@@ -956,6 +995,8 @@ static void iof_read_event_construct(pmix_iof_read_event_t* rev)
     rev->tv.tv_usec = 0;
     rev->targets = NULL;
     rev->ntargets = 0;
+    rev->directives = NULL;
+    rev->ndirs = 0;
 }
 static void iof_read_event_destruct(pmix_iof_read_event_t* rev)
 {
@@ -969,6 +1010,9 @@ static void iof_read_event_destruct(pmix_iof_read_event_t* rev)
     }
     if (NULL != rev->targets) {
         PMIX_PROC_FREE(rev->targets, rev->ntargets);
+    }
+    if (NULL != rev->directives) {
+        PMIX_INFO_FREE(rev->directives, rev->ndirs);
     }
 }
 PMIX_CLASS_INSTANCE(pmix_iof_read_event_t,

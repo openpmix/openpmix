@@ -867,6 +867,8 @@ typedef int pmix_status_t;
 #define PMIX_GROUP_LEADER_SELECTED                  -167
 #define PMIX_GROUP_LEADER_FAILED                    -168
 #define PMIX_GROUP_CONTEXT_ID_ASSIGNED              -169
+#define PMIX_ERR_IOF_FAILURE                        -171
+#define PMIX_ERR_IOF_COMPLETE                       -172
 
 /* system failures */
 #define PMIX_ERR_NODE_DOWN                          -231
