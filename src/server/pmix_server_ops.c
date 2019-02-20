@@ -797,6 +797,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
         /* now unload the blob and pass it upstairs */
         PMIX_UNLOAD_BUFFER(&bucket, data, sz);
         PMIX_DESTRUCT(&bucket);
+        trk->host_called = true;
         rc = pmix_host_server.fence_nb(trk->pcs, trk->npcs,
                                        trk->info, trk->ninfo,
                                        data, sz, trk->modexcbfunc, trk);
@@ -1449,6 +1450,7 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd,
      * across all participants has been completed */
     if (trk->def_complete &&
         pmix_list_get_size(&trk->local_cbs) == trk->nlocal) {
+        trk->host_called = true;
         rc = pmix_host_server.disconnect(trk->pcs, trk->npcs, trk->info, trk->ninfo, cbfunc, trk);
         if (PMIX_SUCCESS != rc) {
             /* remove this contributor from the list - they will be notified
@@ -1598,6 +1600,7 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
      * across all participants has been completed */
     if (trk->def_complete &&
         pmix_list_get_size(&trk->local_cbs) == trk->nlocal) {
+        trk->host_called = true;
         rc = pmix_host_server.connect(trk->pcs, trk->npcs, trk->info, trk->ninfo, cbfunc, trk);
         if (PMIX_SUCCESS != rc) {
             /* remove this contributor from the list - they will be notified
@@ -3380,9 +3383,11 @@ pmix_status_t pmix_server_iofstdin(pmix_peer_t *peer,
     if (PMIX_SUCCESS != (rc = pmix_host_server.push_stdin(&source, cd->procs, cd->nprocs,
                                                           cd->info, cd->ninfo, cd->bo,
                                                           stdcbfunc, cd))) {
-        goto error;
+        if (PMIX_OPERATION_SUCCEEDED != rc) {
+            goto error;
+        }
     }
-    return PMIX_SUCCESS;
+    return rc;
 
   error:
     PMIX_RELEASE(cd);
@@ -4080,7 +4085,7 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd,
 static void tcon(pmix_server_trkr_t *t)
 {
     t->event_active = false;
-    t->lost_connection = false;
+    t->host_called = false;
     t->local = false;
     t->id = NULL;
     memset(t->pname.nspace, 0, PMIX_MAX_NSLEN+1);
