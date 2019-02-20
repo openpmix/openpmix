@@ -10,6 +10,7 @@ Makefile.in
 *.dirstamp
 .DS_Store
 *.log
+*.dSYM
 *.trs
 static-components.h
 
