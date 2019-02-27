@@ -2,8 +2,8 @@
  * Copyright (c) 2015-2018 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2016      Research Organization for Information Science
- *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2016-2019 Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -38,7 +38,7 @@ static void sdes(server_info_t *s)
     close(s->rd_fd);
     close(s->wr_fd);
     if (s->evread) {
-        event_del(s->evread);
+        pmix_event_del(s->evread);
     }
     s->evread = NULL;
 }
@@ -792,7 +792,7 @@ int server_init(test_params *params)
         PMIX_LIST_FOREACH(server, server_list, server_info_t) {
             server->evread = event_new(pmix_globals.evbase, server->rd_fd,
                               EV_READ|EV_PERSIST, server_read_cb, server);
-            event_add(server->evread, NULL);
+            pmix_event_add(server->evread, NULL);
         }
     }
 
