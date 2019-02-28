@@ -3,8 +3,8 @@
 # Copyright (c) 2009-2015 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2013      Los Alamos National Security, LLC.  All rights reserved.
 # Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
-# Copyright (c) 2017      Research Organization for Information Science
-#                         and Technology (RIST). All rights reserved.
+# Copyright (c) 2017-2019 Research Organization for Information Science
+#                         and Technology (RIST).  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -77,7 +77,7 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
         AC_MSG_CHECKING([for libevent in])
         if test ! -z "$libevent_prefix" && test "$libevent_prefix" != "yes"; then
             pmix_event_defaults=no
-            pmix_event_dir=$libevent_prefix
+            pmix_event_dir=$libevent_prefix/include
             if test -d $libevent_prefix/lib; then
                 pmix_event_libdir=$libevent_prefix/lib
             elif test -d $libevent_prefix/lib64; then
@@ -140,17 +140,6 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
                           AC_MSG_WARN([thread support enabled])
                           pmix_libevent_support=0])
         fi
-
-        if test "$pmix_libevent_support" = "1"; then
-            # Set output variables
-            PMIX_EVENT_HEADER="<event.h>"
-            PMIX_EVENT2_THREAD_HEADER="<event2/thread.h>"
-            pmix_libevent_source=$pmix_event_dir
-            AS_IF([test "$pmix_event_defaults" = "no"],
-                  [PMIX_FLAGS_APPEND_UNIQ(CPPFLAGS, $pmix_libevent_CPPFLAGS)
-                   PMIX_FLAGS_APPEND_UNIQ(LDFLAGS, $pmix_libevent_LDFLAGS)])
-            PMIX_FLAGS_APPEND_UNIQ(LIBS, $pmix_libevent_LIBS)
-        fi
     fi
 
     CPPFLAGS="$pmix_check_libevent_save_CPPFLAGS"
@@ -165,7 +154,6 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
         PMIX_EVENT2_THREAD_HEADER="<event2/thread.h>"
         AC_DEFINE_UNQUOTED([PMIX_EVENT_HEADER], [$PMIX_EVENT_HEADER],
                            [Location of event.h])
-        PMIX_SUMMARY_ADD([[External Packages]],[[libevevent]],[libevent],[$pmix_libevent_dir])
         pmix_libevent_source=$pmix_event_dir
         AS_IF([test "$pmix_event_defaults" = "no"],
               [PMIX_FLAGS_APPEND_UNIQ(CPPFLAGS, $pmix_libevent_CPPFLAGS)

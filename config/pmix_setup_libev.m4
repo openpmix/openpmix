@@ -3,8 +3,8 @@
 # Copyright (c) 2009-2015 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2013      Los Alamos National Security, LLC.  All rights reserved.
 # Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
-# Copyright (c) 2017      Research Organization for Information Science
-#                         and Technology (RIST). All rights reserved.
+# Copyright (c) 2017-2019 Research Organization for Information Science
+#                         and Technology (RIST).  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -20,10 +20,12 @@ AC_DEFUN([PMIX_LIBEV_CONFIG],[
     AC_ARG_WITH([libev],
                 [AC_HELP_STRING([--with-libev=DIR],
                                 [Search for libev headers and libraries in DIR ])])
+    PMIX_CHECK_WITHDIR([libev], [$with_libev], [include/event.h])
 
     AC_ARG_WITH([libev-libdir],
                 [AC_HELP_STRING([--with-libev-libdir=DIR],
                                 [Search for libev libraries in DIR ])])
+    PMIX_CHECK_WITHDIR([libev-libdir], [$with_livev_libdir], [libev.*])
 
     pmix_libev_support=0
 
