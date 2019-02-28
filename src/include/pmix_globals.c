@@ -566,3 +566,30 @@ static bool dirpath_is_empty(const char *path )
 
     return true;
 }
+
+int pmix_event_assign(struct event *ev, pmix_event_base_t *evbase,
+                      int fd, short arg, event_callback_fn cbfn, void *cbd)
+{
+#if PMIX_HAVE_LIBEV
+    event_set(ev, fd, arg, cbfn, cbd);
+    event_base_set(evbase, ev);
+#else
+    event_assign(ev, pmix_event_base, fd, arg, cbfn, cbd);
+#endif
+    return 0;
+}
+
+pmix_event_t* pmix_event_new(pmix_event_base_t *b, int fd,
+                             short fg, event_callback_fn cbfn, void *cbd)
+{
+    pmix_event_t *ev = NULL;
+
+#if PMIX_HAVE_LIBEV
+    ev = (pmix_event_t*)malloc(sizeof(pmix_event_t));
+    memset(ev, 0, sizeof(pmix_event_t));
+#else
+    ev = event_new(b, fd, fg, (event_callback_fn) cb, cbd);
+#endif
+
+    return ev;
+}

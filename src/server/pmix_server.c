@@ -49,8 +49,7 @@
 #endif
 #include <ctype.h>
 #include <sys/stat.h>
-#include PMIX_EVENT_HEADER
-#include PMIX_EVENT2_THREAD_HEADER
+
 
 #include "src/util/argv.h"
 #include "src/util/error.h"

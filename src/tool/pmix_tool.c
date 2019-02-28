@@ -49,9 +49,6 @@
 #include <dirent.h>
 #endif  /* HAVE_DIRENT_H */
 
-#include PMIX_EVENT_HEADER
-#include PMIX_EVENT2_THREAD_HEADER
-
 #include "src/class/pmix_list.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"

@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2014-2018 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * $COPYRIGHT$
@@ -43,6 +43,9 @@
 #include <arpa/inet.h>
 #endif
 #include PMIX_EVENT_HEADER
+#if ! PMIX_HAVE_LIBEV
+#include PMIX_EVENT2_THREAD_HEADER
+#endif
 
 #if PMIX_ENABLE_DEBUG
 #include "src/util/output.h"
@@ -232,21 +235,29 @@ typedef struct event pmix_event_t;
 
 #define pmix_event_base_free(b) event_base_free(b)
 
-#define pmix_event_free(x) event_free(x)
-
-#define pmix_event_base_loopbreak(b) event_base_loopbreak(b)
-
 #define pmix_event_base_loopexit(b) event_base_loopexit(b, NULL)
+
+#if PMIX_HAVE_LIBEV
+#define pmix_event_use_threads()
+#define pmix_event_base_loopbreak(b) event_loopexit(NULL)
+#define pmix_event_free(b) free(b)
+#define pmix_event_get_signal(x) (x)->ev_fd
+#else
 
 /* thread support APIs */
 #define pmix_event_use_threads() evthread_use_pthreads()
+#define pmix_event_base_loopbreak(b) event_base_loopbreak(b)
+#define pmix_event_free(x) event_free(x)
+#define pmix_event_get_signal(x) event_get_signal(x)
+#endif
 
 /* Basic event APIs */
 #define pmix_event_enable_debug_mode() event_enable_debug_mode()
 
-#define pmix_event_assign(x, b, fd, fg, cb, arg) event_assign((x), (b), (fd), (fg), (event_callback_fn) (cb), (arg))
+PMIX_EXPORT int pmix_event_assign(struct event *ev, pmix_event_base_t *evbase,
+                                  int fd, short arg, event_callback_fn cbfn, void *cbd);
 
-#define pmix_event_set(b, x, fd, fg, cb, arg) event_assign((x), (b), (fd), (fg), (event_callback_fn) (cb), (arg))
+#define pmix_event_set(b, x, fd, fg, cb, arg) pmix_event_assign((x), (b), (fd), (fg), (event_callback_fn) (cb), (arg))
 
 #define pmix_event_add(ev, tv) event_add((ev), (tv))
 
@@ -254,7 +265,8 @@ typedef struct event pmix_event_t;
 
 #define pmix_event_active(x, y, z) event_active((x), (y), (z))
 
-#define pmix_event_new(b, fd, fg, cb, arg) event_new((b), (fd), (fg), (event_callback_fn) (cb), (arg))
+PMIX_EXPORT pmix_event_t* pmix_event_new(pmix_event_base_t *b, int fd,
+                                         short fg, event_callback_fn cbfn, void *cbd);
 
 #define pmix_event_loop(b, fg) event_base_loop((b), (fg))
 
@@ -264,10 +276,10 @@ typedef struct event pmix_event_t;
 
 #define pmix_event_evtimer_add(x, tv) pmix_event_add((x), (tv))
 
-#define pmix_event_evtimer_set(b, x, cb, arg) event_assign((x), (b), -1, 0, (event_callback_fn) (cb), (arg))
+#define pmix_event_evtimer_set(b, x, cb, arg) pmix_event_assign((x), (b), -1, 0, (event_callback_fn) (cb), (arg))
 
 #define pmix_event_evtimer_del(x) pmix_event_del((x))
 
-#define pmix_event_signal_set(b, x, fd, cb, arg) event_assign((x), (b), (fd), EV_SIGNAL|EV_PERSIST, (event_callback_fn) (cb), (arg))
+#define pmix_event_signal_set(b, x, fd, cb, arg) pmix_event_assign((x), (b), (fd), EV_SIGNAL|EV_PERSIST, (event_callback_fn) (cb), (arg))
 
 #endif /* PMIX_TYPES_H */

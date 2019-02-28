@@ -32,11 +32,10 @@
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
-#include PMIX_EVENT_HEADER
-#include "event2/thread.h"
 
 #include <pmix_rename.h>
 
+#include "src/include/pmix_globals.h"
 #include "src/util/output.h"
 #include "src/util/show_help.h"
 #include "src/mca/base/base.h"

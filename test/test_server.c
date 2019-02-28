@@ -1,5 +1,5 @@
  /*
- * Copyright (c) 2015-2018 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2019 Research Organization for Information Science
@@ -77,7 +77,7 @@ PMIX_CLASS_INSTANCE(server_nspace_t,
                     nscon, nsdes);
 
 static int server_send_procs(void);
-static void server_read_cb(evutil_socket_t fd, short event, void *arg);
+static void server_read_cb(int fd, short event, void *arg);
 static int srv_wait_all(double timeout);
 static int server_fwd_msg(msg_hdr_t *msg_hdr, char *buf, size_t size);
 static int server_send_msg(msg_hdr_t *msg_hdr, char *data, size_t size);
@@ -459,7 +459,7 @@ static void _libpmix_cb(void *cbdata)
     }
 }
 
-static void server_read_cb(evutil_socket_t fd, short event, void *arg)
+static void server_read_cb(int fd, short event, void *arg)
 {
     server_info_t *server = (server_info_t*)arg;
     msg_hdr_t msg_hdr;
