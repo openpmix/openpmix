@@ -23,9 +23,10 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
 
     AS_IF([test "$pmix_mode" = "embedded"],
           [_PMIX_LIBEVENT_EMBEDDED_MODE],
-          [_PMIX_LIBEVENT_EXTERNAL])
+          [AS_IF([test $pmix_libev_support -eq 0],
+                 [_PMIX_LIBEVENT_EXTERNAL])])
 
-    if test "$pmix_libevent_support" = "1"; then
+    if test $pmix_libevent_support -eq 1; then
         AC_MSG_CHECKING([libevent header])
         AC_DEFINE_UNQUOTED([PMIX_EVENT_HEADER], [$PMIX_EVENT_HEADER],
                            [Location of event.h])
@@ -72,7 +73,7 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
     libevent_prefix=$(echo $with_libevent | sed -e 'sX/*$XXg')
     libeventdir_prefix=$(echo $with_libevent_libdir | sed -e 'sX/*$XXg')
 
-    if test -z "$libevent_prefix" || test "$libevent_prefix" != "no"; then
+    if test "$libevent_prefix" != "no"; then
         AC_MSG_CHECKING([for libevent in])
         if test ! -z "$libevent_prefix" && test "$libevent_prefix" != "yes"; then
             pmix_event_defaults=no
@@ -115,7 +116,12 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
                            [pmix_libevent_support=1],
                            [pmix_libevent_support=0])
 
-        if test "$pmix_libevent_support" = "1"; then
+        AS_IF([test "$pmix_event_defaults" = "no"],
+              [PMIX_FLAGS_APPEND_UNIQ(CPPFLAGS, $pmix_libevent_CPPFLAGS)
+               PMIX_FLAGS_APPEND_UNIQ(LDFLAGS, $pmix_libevent_LDFLAGS)])
+        PMIX_FLAGS_APPEND_UNIQ(LIBS, $pmix_libevent_LIBS)
+
+        if test $pmix_libevent_support -eq 1; then
             # Ensure that this libevent has the symbol
             # "evthread_set_lock_callbacks", which will only exist if
             # libevent was configured with thread support.
@@ -126,7 +132,7 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
                           AC_MSG_WARN([thread support enabled])
                           pmix_libevent_support=0])
         fi
-        if test "$pmix_libevent_support" = "1"; then
+        if test $pmix_libevent_support -eq 1; then
             AC_CHECK_LIB([event_pthreads], [evthread_use_pthreads],
                          [],
                          [AC_MSG_WARN([External libevent does not have thread support])
@@ -150,6 +156,26 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
     CPPFLAGS="$pmix_check_libevent_save_CPPFLAGS"
     LDFLAGS="$pmix_check_libevent_save_LDFLAGS"
     LIBS="$pmix_check_libevent_save_LIBS"
+
+    AC_MSG_CHECKING([will libevent support be built])
+    if test $pmix_libevent_support -eq 1; then
+        AC_MSG_RESULT([yes])
+        # Set output variables
+        PMIX_EVENT_HEADER="<event.h>"
+        PMIX_EVENT2_THREAD_HEADER="<event2/thread.h>"
+        AC_DEFINE_UNQUOTED([PMIX_EVENT_HEADER], [$PMIX_EVENT_HEADER],
+                           [Location of event.h])
+        PMIX_SUMMARY_ADD([[External Packages]],[[libevevent]],[libevent],[$pmix_libevent_dir])
+        pmix_libevent_source=$pmix_event_dir
+        AS_IF([test "$pmix_event_defaults" = "no"],
+              [PMIX_FLAGS_APPEND_UNIQ(CPPFLAGS, $pmix_libevent_CPPFLAGS)
+               PMIX_FLAGS_APPEND_UNIQ(LDFLAGS, $pmix_libevent_LDFLAGS)])
+        PMIX_FLAGS_APPEND_UNIQ(LIBS, $pmix_libevent_LIBS)
+    else
+        AC_MSG_RESULT([no])
+    fi
+
+    AC_DEFINE_UNQUOTED([PMIX_HAVE_LIBEVENT], [$pmix_libevent_support], [Whether we are building against libevent])
 
     PMIX_VAR_SCOPE_POP
 ])dnl

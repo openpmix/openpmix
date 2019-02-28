@@ -26,63 +26,59 @@ AC_DEFUN([PMIX_LIBEV_CONFIG],[
                                 [Search for libev libraries in DIR ])])
 
     pmix_libev_support=0
-    pmix_check_libev_save_CPPFLAGS="$CPPFLAGS"
-    pmix_check_libeve_save_LDFLAGS="$LDFLAGS"
-    pmix_check_libev_save_LIBS="$LIBS"
 
-    AC_MSG_CHECKING([for libev in])
-    if test "$pmix_libevent_support" != "1" && (test -z "$with_libev" || test "$with_libev" != "no"); then
-        if test ! -z "$with_libev" && test "$with_libev" != "yes"; then
-            pmix_libev_dir=$with_libev
-            pmix_libev_standard_header_location=no
-            pmix_libev_standard_lib_location=no
-            AS_IF([test -z "$with_libev_libdir" || test "$with_libev_libdir" = "yes"],
-                  [if test -d $with_libev/lib; then
-                       pmix_libev_libdir=$with_libev/lib
-                   elif test -d $with_libev/lib64; then
-                       pmix_libev_libdir=$with_libev/lib64
-                   else
-                       AC_MSG_RESULT([Could not find $with_libev/lib or $with_libev/lib64])
-                       AC_MSG_ERROR([Can not continue])
-                   fi
-                   AC_MSG_RESULT([$pmix_libev_dir and $pmix_libev_libdir])],
-                  [AC_MSG_RESULT([$with_libev_libdir])])
-        else
-            AC_MSG_RESULT([(default search paths)])
-            pmix_libev_standard_header_location=yes
-            pmix_libev_standard_lib_location=yes
-        fi
-        AS_IF([test ! -z "$with_libev_libdir" && test "$with_libev_libdir" != "yes"],
-              [pmix_libev_libdir="$with_libev_libdir"
-               pmix_libev_standard_lib_location=no])
+    AS_IF([test -n "$with_libev" && test "$with_libev" != "no"],
+          [AC_MSG_CHECKING([for libev in])
+           pmix_check_libev_save_CPPFLAGS="$CPPFLAGS"
+           pmix_check_libeve_save_LDFLAGS="$LDFLAGS"
+           pmix_check_libev_save_LIBS="$LIBS"
+           if test "$with_libev" != "yes"; then
+               pmix_libev_dir=$with_libev/include
+               pmix_libev_standard_header_location=no
+               pmix_libev_standard_lib_location=no
+               AS_IF([test -z "$with_libev_libdir" || test "$with_libev_libdir" = "yes"],
+                     [if test -d $with_libev/lib; then
+                          pmix_libev_libdir=$with_libev/lib
+                      elif test -d $with_libev/lib64; then
+                          pmix_libev_libdir=$with_libev/lib64
+                      else
+                          AC_MSG_RESULT([Could not find $with_libev/lib or $with_libev/lib64])
+                          AC_MSG_ERROR([Can not continue])
+                      fi
+                      AC_MSG_RESULT([$pmix_libev_dir and $pmix_libev_libdir])],
+                     [AC_MSG_RESULT([$with_libev_libdir])])
+           else
+               AC_MSG_RESULT([(default search paths)])
+               pmix_libev_standard_header_location=yes
+               pmix_libev_standard_lib_location=yes
+           fi
+           AS_IF([test ! -z "$with_libev_libdir" && test "$with_libev_libdir" != "yes"],
+                 [pmix_libev_libdir="$with_libev_libdir"
+                  pmix_libev_standard_lib_location=no])
 
-        PMIX_CHECK_PACKAGE([pmix_libev],
-                           [event.h],
-                           [ev],
-                           [event_base_new],
-                           [],
-                           [$pmix_libev_dir],
-                           [$pmix_libev_libdir],
-                           [pmix_libev_support=1],
-                           [pmix_libev_support=0])
-    fi
-    CPPFLAGS="$pmix_check_libev_save_CPPFLAGS"
-    LDFLAGS="$pmix_check_libev_save_LDFLAGS"
-    LIBS="$pmix_check_libev_save_LIBS"
+           PMIX_CHECK_PACKAGE([pmix_libev],
+                              [event.h],
+                              [ev],
+                              [event_base_new],
+                              [],
+                              [$pmix_libev_dir],
+                              [$pmix_libev_libdir],
+                              [pmix_libev_support=1],
+                              [pmix_libev_support=0])
+           CPPFLAGS="$pmix_check_libev_save_CPPFLAGS"
+           LDFLAGS="$pmix_check_libev_save_LDFLAGS"
+           LIBS="$pmix_check_libev_save_LIBS"])
 
-    if test $pmix_libev_support = "1"; then
-        LIBS="$LIBS $pmix_libev_LIBS"
+    AS_IF([test $pmix_libev_support -eq 1],
+          [LIBS="$LIBS $pmix_libev_LIBS"
 
-        if test "$pmix_libev_standard_header_location" != "yes"; then
-            CPPFLAGS="$CPPFLAGS $pmix_libev_CPPFLAGS"
-        fi
-        if test "$pmix_libev_standard_lib_location" != "yes"; then
-            LDFLAGS="$LDFLAGS $pmix_libev_LDFLAGS"
-        fi
-    fi
+           AS_IF([test "$pmix_libev_standard_header_location" != "yes"],
+                 [CPPFLAGS="$CPPFLAGS $pmix_libev_CPPFLAGS"])
+           AS_IF([test "$pmix_libev_standard_lib_location" != "yes"],
+                 [LDFLAGS="$LDFLAGS $pmix_libev_LDFLAGS"])])
 
     AC_MSG_CHECKING([will libev support be built])
-    if test "$pmix_libev_support" = "1"; then
+    if test $pmix_libev_support -eq 1; then
         AC_MSG_RESULT([yes])
         PMIX_EVENT_HEADER="<event.h>"
         AC_DEFINE_UNQUOTED([PMIX_EVENT_HEADER], [$PMIX_EVENT_HEADER],
