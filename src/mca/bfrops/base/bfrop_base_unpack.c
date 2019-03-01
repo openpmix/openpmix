@@ -144,30 +144,6 @@ pmix_status_t pmix_bfrops_base_unpack(pmix_pointer_array_t *regtypes,
     return ret;
 }
 
-static pmix_status_t unpack_gentype(pmix_pointer_array_t *regtypes,
-                                    pmix_buffer_t *buffer, void *dest,
-                                    int32_t *num_vals, pmix_data_type_t type)
-{
-    pmix_status_t ret;
-
-    switch(type) {
-        case PMIX_INT8:
-        case PMIX_UINT8:
-        case PMIX_INT16:
-        case PMIX_UINT16:
-        case PMIX_INT32:
-        case PMIX_UINT32:
-        case PMIX_INT64:
-        case PMIX_UINT64:
-
-        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, dest, num_vals, type, regtypes);
-        return ret;
-
-        default:
-        return PMIX_ERR_UNKNOWN_DATA_TYPE;
-    }
-}
-
 /* UNPACK GENERIC SYSTEM TYPES */
 
 /*
@@ -224,8 +200,7 @@ pmix_status_t pmix_bfrops_base_unpack_int(pmix_pointer_array_t *regtypes,
     if (remote_type == BFROP_TYPE_INT) {
         /* fast path it if the sizes are the same */
         /* Turn around and unpack the real type */
-        if (PMIX_SUCCESS != (ret = unpack_gentype(regtypes, buffer, dest, num_vals, BFROP_TYPE_INT))) {
-        }
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, dest, num_vals, BFROP_TYPE_INT, regtypes);
     } else {
         /* slow path - types are different sizes */
         PMIX_BFROP_UNPACK_SIZE_MISMATCH(regtypes, int, remote_type, ret);
@@ -251,8 +226,7 @@ pmix_status_t pmix_bfrops_base_unpack_sizet(pmix_pointer_array_t *regtypes,
     if (remote_type == BFROP_TYPE_SIZE_T) {
         /* fast path it if the sizes are the same */
         /* Turn around and unpack the real type */
-        if (PMIX_SUCCESS != (ret = unpack_gentype(regtypes, buffer, dest, num_vals, BFROP_TYPE_SIZE_T))) {
-        }
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, dest, num_vals, BFROP_TYPE_SIZE_T, regtypes);
     } else {
         /* slow path - types are different sizes */
         PMIX_BFROP_UNPACK_SIZE_MISMATCH(regtypes, size_t, remote_type, ret);
@@ -278,8 +252,7 @@ pmix_status_t pmix_bfrops_base_unpack_pid(pmix_pointer_array_t *regtypes,
     if (remote_type == BFROP_TYPE_PID_T) {
         /* fast path it if the sizes are the same */
         /* Turn around and unpack the real type */
-        if (PMIX_SUCCESS != (ret = unpack_gentype(regtypes, buffer, dest, num_vals, BFROP_TYPE_PID_T))) {
-        }
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, dest, num_vals, BFROP_TYPE_PID_T, regtypes);
     } else {
         /* slow path - types are different sizes */
         PMIX_BFROP_UNPACK_SIZE_MISMATCH(regtypes, pid_t, remote_type, ret);
