@@ -790,8 +790,8 @@ int server_init(test_params *params)
     if (params->nservers && pmix_list_get_size(server_list)) {
         server_info_t *server;
         PMIX_LIST_FOREACH(server, server_list, server_info_t) {
-            server->evread = event_new(pmix_globals.evbase, server->rd_fd,
-                              EV_READ|EV_PERSIST, server_read_cb, server);
+            server->evread = pmix_event_new(pmix_globals.evbase, server->rd_fd,
+                                            EV_READ|EV_PERSIST, server_read_cb, server);
             pmix_event_add(server->evread, NULL);
         }
     }
