@@ -1831,7 +1831,7 @@ typedef struct pmix_query {
 /****    ATTRIBUTE REGISTRATION STRUCT   ****/
 typedef struct pmix_regattr_t {
     char *name;
-    pmix_key_t *string;
+    pmix_key_t string;
     pmix_data_type_t type;
     pmix_info_t *info;
     size_t ninfo;

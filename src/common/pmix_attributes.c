@@ -171,6 +171,7 @@ typedef struct {
 } pmix_regattr_input_t;
 
 static pmix_regattr_input_t client_attributes[] = {
+        // init
         {.name = "PMIX_GDS_MODULE", .string = PMIX_GDS_MODULE, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
         {.name = "PMIX_EVENT_BASE", .string = PMIX_EVENT_BASE, .type = PMIX_POINTER, .description = (char *[]){"VALID MEMORY REFERENCE", NULL}},
         {.name = "PMIX_HOSTNAME", .string = PMIX_HOSTNAME, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
@@ -180,16 +181,19 @@ static pmix_regattr_input_t client_attributes[] = {
         {.name = "PMIX_MODEL_LIBRARY_VERSION", .string = PMIX_MODEL_LIBRARY_VERSION, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
         {.name = "PMIX_THREADING_MODEL", .string = PMIX_THREADING_MODEL, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
         {.name = ""},
-        {.name = "PMIX_DATA_SCOPE", .string = PMIX_DATA_SCOPE, .type = PMIX_SCOPE, .description = (char *[]){"PMIX_SCOPE_UNDEF,PMIX_LOCAL,", "PMIX_REMOTE,PMIX_GLOBAL,PMIX_INTERNAL", NULL}},
+        // get
+        {.name = "PMIX_DATA_SCOPE", .string = PMIX_DATA_SCOPE, .type = PMIX_SCOPE, .description = (char *[]){"PMIX_SCOPE_UNDEF,PMIX_LOCAL,", "PMIX_REMOTE,PMIX_GLOBAL,", "PMIX_INTERNAL", NULL}},
         {.name = "PMIX_OPTIONAL", .string = PMIX_OPTIONAL, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
         {.name = "PMIX_IMMEDIATE", .string = PMIX_IMMEDIATE, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
         {.name = "PMIX_TIMEOUT", .string = PMIX_TIMEOUT, .type = PMIX_INT, .description = (char *[]){"POSITIVE INTEGERS", NULL}},
         {.name = ""},
-        {.name = "PMIX_DATA_SCOPE", .string = PMIX_DATA_SCOPE, .type = PMIX_SCOPE, .description = (char *[]){"PMIX_SCOPE_UNDEF,PMIX_LOCAL,","PMIX_REMOTE,PMIX_GLOBAL,PMIX_INTERNAL", NULL}},
+        // get_nb
+        {.name = "PMIX_DATA_SCOPE", .string = PMIX_DATA_SCOPE, .type = PMIX_SCOPE, .description = (char *[]){"PMIX_SCOPE_UNDEF,PMIX_LOCAL,","PMIX_REMOTE,PMIX_GLOBAL,", "PMIX_INTERNAL", NULL}},
         {.name = "PMIX_OPTIONAL", .string = PMIX_OPTIONAL, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
         {.name = "PMIX_IMMEDIATE", .string = PMIX_IMMEDIATE, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
         {.name = "PMIX_TIMEOUT", .string = PMIX_TIMEOUT, .type = PMIX_INT, .description = (char *[]){"POSITIVE INTEGERS", NULL}},
         {.name = ""},
+        // finalize
         {.name = "PMIX_EMBED_BARRIER", .string = PMIX_EMBED_BARRIER, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
         {.name = ""},
         {.name = "PMIX_EMBED_BARRIER", .string = PMIX_EMBED_BARRIER, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
@@ -242,7 +246,7 @@ PMIX_EXPORT pmix_status_t pmix_register_client_attrs(void)
             attrs[m].name = strdup(client_attributes[m+cnt].name);
             PMIX_LOAD_KEY(attrs[m].string, client_attributes[m+cnt].string);
             attrs[m].type = client_attributes[m+cnt].type;
-            PMIX_ARGV_COPY(attrs[m].description, client_attributes[m].description);
+            PMIX_ARGV_COPY(attrs[m].description, client_attributes[m+cnt].description);
         }
         rc = process_reg(PMIX_CLIENT_ATTRIBUTES,
                          client_fns[n],
@@ -304,13 +308,13 @@ static pmix_regattr_input_t server_attributes[] = {
         {.name = "PMIX_THREADING_MODEL", .string = PMIX_THREADING_MODEL, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
         {.name = ""},
     // finalize
-        {.name = "PMIX_DATA_SCOPE", .string = PMIX_DATA_SCOPE, .type = PMIX_SCOPE, .description = (char *[]){"PMIX_SCOPE_UNDEF,PMIX_LOCAL,", "PMIX_REMOTE,PMIX_GLOBAL,PMIX_INTERNAL", NULL}},
+        {.name = "PMIX_DATA_SCOPE", .string = PMIX_DATA_SCOPE, .type = PMIX_SCOPE, .description = (char *[]){"PMIX_SCOPE_UNDEF,PMIX_LOCAL,", "PMIX_REMOTE,PMIX_GLOBAL,", "PMIX_INTERNAL", NULL}},
         {.name = "PMIX_OPTIONAL", .string = PMIX_OPTIONAL, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
         {.name = "PMIX_IMMEDIATE", .string = PMIX_IMMEDIATE, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
         {.name = "PMIX_TIMEOUT", .string = PMIX_TIMEOUT, .type = PMIX_INT, .description = (char *[]){"POSITIVE INTEGERS", NULL}},
         {.name = ""},
     // regex
-        {.name = "PMIX_DATA_SCOPE", .string = PMIX_DATA_SCOPE, .type = PMIX_SCOPE, .description = (char *[]){"PMIX_SCOPE_UNDEF,PMIX_LOCAL,","PMIX_REMOTE,PMIX_GLOBAL,PMIX_INTERNAL", NULL}},
+        {.name = "PMIX_DATA_SCOPE", .string = PMIX_DATA_SCOPE, .type = PMIX_SCOPE, .description = (char *[]){"PMIX_SCOPE_UNDEF,PMIX_LOCAL,","PMIX_REMOTE,PMIX_GLOBAL,", "PMIX_INTERNAL", NULL}},
         {.name = "PMIX_OPTIONAL", .string = PMIX_OPTIONAL, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
         {.name = "PMIX_IMMEDIATE", .string = PMIX_IMMEDIATE, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
         {.name = "PMIX_TIMEOUT", .string = PMIX_TIMEOUT, .type = PMIX_INT, .description = (char *[]){"POSITIVE INTEGERS", NULL}},
@@ -435,7 +439,7 @@ PMIX_EXPORT pmix_status_t pmix_register_server_attrs(void)
             attrs[m].name = strdup(server_attributes[m+cnt].name);
             PMIX_LOAD_KEY(attrs[m].string, server_attributes[m+cnt].string);
             attrs[m].type = server_attributes[m+cnt].type;
-            PMIX_ARGV_COPY(attrs[m].description, server_attributes[m].description);
+            PMIX_ARGV_COPY(attrs[m].description, server_attributes[m+cnt].description);
         }
         rc = process_reg(PMIX_SERVER_ATTRIBUTES,
                          server_fns[n],
@@ -467,7 +471,7 @@ static pmix_regattr_input_t tool_attributes[] = {
         {.name = "PMIX_THREADING_MODEL", .string = PMIX_THREADING_MODEL, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
         {.name = ""},
     // finalize
-        {.name = "PMIX_DATA_SCOPE", .string = PMIX_DATA_SCOPE, .type = PMIX_SCOPE, .description = (char *[]){"PMIX_SCOPE_UNDEF,PMIX_LOCAL,", "PMIX_REMOTE,PMIX_GLOBAL,PMIX_INTERNAL", NULL}},
+        {.name = "PMIX_DATA_SCOPE", .string = PMIX_DATA_SCOPE, .type = PMIX_SCOPE, .description = (char *[]){"PMIX_SCOPE_UNDEF,PMIX_LOCAL,", "PMIX_REMOTE,PMIX_GLOBAL,", "PMIX_INTERNAL", NULL}},
         {.name = "PMIX_OPTIONAL", .string = PMIX_OPTIONAL, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
         {.name = "PMIX_IMMEDIATE", .string = PMIX_IMMEDIATE, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
         {.name = "PMIX_TIMEOUT", .string = PMIX_TIMEOUT, .type = PMIX_INT, .description = (char *[]){"POSITIVE INTEGERS", NULL}},
@@ -494,7 +498,7 @@ PMIX_EXPORT pmix_status_t pmix_register_tool_attrs(void)
             attrs[m].name = strdup(tool_attributes[m+cnt].name);
             PMIX_LOAD_KEY(attrs[m].string, tool_attributes[m+cnt].string);
             attrs[m].type = tool_attributes[m+cnt].type;
-            PMIX_ARGV_COPY(attrs[m].description, tool_attributes[m].description);
+            PMIX_ARGV_COPY(attrs[m].description, tool_attributes[m+cnt].description);
         }
         rc = process_reg(PMIX_TOOL_ATTRIBUTES,
                          tool_fns[n],
@@ -663,8 +667,9 @@ PMIX_EXPORT void pmix_attrs_query_support(int sd, short args, void *cbdata)
 /*****   PRINT QUERY ATTRS RESULTS   *****/
 
 #define PMIX_PRINT_NAME_COLUMN_WIDTH      30
-#define PMIX_PRINT_TYPE_COLUMN_WIDTH     20
-#define PMIX_PRINT_ATTR_COLUMN_WIDTH     100
+#define PMIX_PRINT_STRING_COLUMN_WIDTH    30
+#define PMIX_PRINT_TYPE_COLUMN_WIDTH      20
+#define PMIX_PRINT_ATTR_COLUMN_WIDTH     120
 
 PMIX_EXPORT void pmix_attributes_print_attr(char *level, char *function,
                                             pmix_regattr_t *src, size_t nattrs)
@@ -673,6 +678,7 @@ PMIX_EXPORT void pmix_attributes_print_attr(char *level, char *function,
     char *title1 = "CLIENT SUPPORTED ATTRIBUTES: ";
     char *title2 = "SERVER SUPPORTED ATTRIBUTES: ";
     char *title3 = "HOST SUPPORTED ATTRIBUTES: ";
+    char *title4 = "TOOL SUPPORTED ATTRIBUTES: ";
     char line[PMIX_PRINT_ATTR_COLUMN_WIDTH], *title;
     char *tmp;
 
@@ -683,6 +689,8 @@ PMIX_EXPORT void pmix_attributes_print_attr(char *level, char *function,
         title = title2;
     } else if (0 == strcmp(level, PMIX_HOST_ATTRIBUTES)) {
         title = title3;
+    } else if (0 == strcmp(level, PMIX_TOOL_ATTRIBUTES)) {
+        title = title4;
     } else {
         title = level;
     }
@@ -715,12 +723,17 @@ PMIX_EXPORT void pmix_attributes_print_attr(char *level, char *function,
     memset(line, ' ', PMIX_PRINT_ATTR_COLUMN_WIDTH);
     line[PMIX_PRINT_ATTR_COLUMN_WIDTH-1] = '\0';
     left = PMIX_PRINT_NAME_COLUMN_WIDTH/2 - 1;
-    memcpy(&line[left], "NAME", 3);
-    left = 3 + PMIX_PRINT_NAME_COLUMN_WIDTH + (PMIX_PRINT_TYPE_COLUMN_WIDTH/2) - 2;
+    memcpy(&line[left], "NAME", 4);
+
+    left = 3 + PMIX_PRINT_NAME_COLUMN_WIDTH + (PMIX_PRINT_STRING_COLUMN_WIDTH/2) - 2;
+    memcpy(&line[left], "STRING", 6);
+
+    left = 3 + PMIX_PRINT_NAME_COLUMN_WIDTH + PMIX_PRINT_STRING_COLUMN_WIDTH + (PMIX_PRINT_TYPE_COLUMN_WIDTH/2) - 2;
     memcpy(&line[left], "TYPE", 4);
-    left = PMIX_PRINT_NAME_COLUMN_WIDTH + PMIX_PRINT_NAME_COLUMN_WIDTH +
-           ((PMIX_PRINT_ATTR_COLUMN_WIDTH-PMIX_PRINT_NAME_COLUMN_WIDTH-PMIX_PRINT_NAME_COLUMN_WIDTH)/2) - 3 - strlen("VALID VALUES")/2;
-    memcpy(&line[left], "VALID VALUES", strlen("VALID VALUES"));
+
+    left = PMIX_PRINT_NAME_COLUMN_WIDTH + PMIX_PRINT_STRING_COLUMN_WIDTH + PMIX_PRINT_TYPE_COLUMN_WIDTH +
+           ((PMIX_PRINT_ATTR_COLUMN_WIDTH-PMIX_PRINT_NAME_COLUMN_WIDTH-PMIX_PRINT_STRING_COLUMN_WIDTH-PMIX_PRINT_TYPE_COLUMN_WIDTH)/2) - 3 - strlen("DESCRIPTION")/2;
+    memcpy(&line[left], "DESCRIPTION", strlen("DESCRIPTION"));
     fprintf(stderr, "%s\n", line);
 
     /* print the dashes under the column headers */
@@ -728,6 +741,11 @@ PMIX_EXPORT void pmix_attributes_print_attr(char *level, char *function,
     line[PMIX_PRINT_ATTR_COLUMN_WIDTH-1] = '\0';
     m=0;
     for (n=0; n < PMIX_PRINT_NAME_COLUMN_WIDTH; n++) {
+        line[m] = '-';
+        ++m;
+    }
+    m += 2; // leave gap
+    for (n=0; n < PMIX_PRINT_STRING_COLUMN_WIDTH; n++) {
         line[m] = '-';
         ++m;
     }
@@ -752,18 +770,24 @@ PMIX_EXPORT void pmix_attributes_print_attr(char *level, char *function,
         }
         memcpy(line, src[n].name, len);
 
+        len = strlen(src[n].string);
+        if (PMIX_PRINT_STRING_COLUMN_WIDTH < len) {
+            len = PMIX_PRINT_STRING_COLUMN_WIDTH;
+        }
+        memcpy(&line[PMIX_PRINT_NAME_COLUMN_WIDTH+2], src[n].string, len);
+
         tmp = (char*)PMIx_Data_type_string(src[n].type);
         len = strlen(tmp);
-        if (PMIX_PRINT_TYPE_COLUMN_WIDTH < len) {
-            len = PMIX_PRINT_TYPE_COLUMN_WIDTH;
+        if (PMIX_PRINT_STRING_COLUMN_WIDTH < len) {
+            len = PMIX_PRINT_STRING_COLUMN_WIDTH;
         }
-        memcpy(&line[PMIX_PRINT_NAME_COLUMN_WIDTH+2], tmp, len);
+        memcpy(&line[PMIX_PRINT_NAME_COLUMN_WIDTH+PMIX_PRINT_STRING_COLUMN_WIDTH+4], tmp, len);
 
         len = strlen(src[n].description[0]);
-        if ((PMIX_PRINT_ATTR_COLUMN_WIDTH-PMIX_PRINT_NAME_COLUMN_WIDTH-PMIX_PRINT_TYPE_COLUMN_WIDTH-2) < len) {
-            len = PMIX_PRINT_TYPE_COLUMN_WIDTH;
+        if ((PMIX_PRINT_ATTR_COLUMN_WIDTH-PMIX_PRINT_NAME_COLUMN_WIDTH-PMIX_PRINT_STRING_COLUMN_WIDTH-PMIX_PRINT_TYPE_COLUMN_WIDTH-6) < len) {
+            len = PMIX_PRINT_ATTR_COLUMN_WIDTH-PMIX_PRINT_NAME_COLUMN_WIDTH-PMIX_PRINT_STRING_COLUMN_WIDTH-PMIX_PRINT_TYPE_COLUMN_WIDTH-6;
         }
-        memcpy(&line[PMIX_PRINT_NAME_COLUMN_WIDTH+PMIX_PRINT_TYPE_COLUMN_WIDTH+4], src[n].description[0], len);
+        memcpy(&line[PMIX_PRINT_NAME_COLUMN_WIDTH+PMIX_PRINT_STRING_COLUMN_WIDTH+PMIX_PRINT_TYPE_COLUMN_WIDTH+6], src[n].description[0], len);
 
         fprintf(stderr, "%s\n", line);
 
@@ -771,10 +795,10 @@ PMIX_EXPORT void pmix_attributes_print_attr(char *level, char *function,
             memset(line, ' ', PMIX_PRINT_ATTR_COLUMN_WIDTH);
             line[PMIX_PRINT_ATTR_COLUMN_WIDTH-1] = '\0';
             len = strlen(src[n].description[m]);
-            if ((PMIX_PRINT_ATTR_COLUMN_WIDTH-PMIX_PRINT_NAME_COLUMN_WIDTH-PMIX_PRINT_TYPE_COLUMN_WIDTH-2) < len) {
-                len = PMIX_PRINT_TYPE_COLUMN_WIDTH;
+            if ((PMIX_PRINT_ATTR_COLUMN_WIDTH-PMIX_PRINT_NAME_COLUMN_WIDTH-PMIX_PRINT_STRING_COLUMN_WIDTH-PMIX_PRINT_TYPE_COLUMN_WIDTH-6) < len) {
+                len = PMIX_PRINT_ATTR_COLUMN_WIDTH-PMIX_PRINT_NAME_COLUMN_WIDTH-PMIX_PRINT_STRING_COLUMN_WIDTH-PMIX_PRINT_TYPE_COLUMN_WIDTH-6;
             }
-            memcpy(&line[PMIX_PRINT_NAME_COLUMN_WIDTH+PMIX_PRINT_TYPE_COLUMN_WIDTH+4], src[n].description[m], len);
+            memcpy(&line[PMIX_PRINT_NAME_COLUMN_WIDTH+PMIX_PRINT_STRING_COLUMN_WIDTH+PMIX_PRINT_TYPE_COLUMN_WIDTH+6], src[n].description[m], len);
             fprintf(stderr, "%s\n", line);
         }
     }
