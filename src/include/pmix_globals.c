@@ -1,8 +1,7 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
- * Copyright (c) 2014-2017 Research Organization for Information Science
- * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
@@ -18,6 +17,7 @@
 
 #include <src/include/pmix_config.h>
 
+#include <pmix_common.h>
 #include <src/include/types.h>
 #include <src/include/pmix_stdint.h>
 #include <src/include/pmix_socket_errno.h>
@@ -565,4 +565,31 @@ static bool dirpath_is_empty(const char *path )
     }
 
     return true;
+}
+
+int pmix_event_assign(struct event *ev, pmix_event_base_t *evbase,
+                      int fd, short arg, event_callback_fn cbfn, void *cbd)
+{
+#if PMIX_HAVE_LIBEV
+    event_set(ev, fd, arg, cbfn, cbd);
+    event_base_set(evbase, ev);
+#else
+    event_assign(ev, evbase, fd, arg, cbfn, cbd);
+#endif
+    return 0;
+}
+
+pmix_event_t* pmix_event_new(pmix_event_base_t *b, int fd,
+                             short fg, event_callback_fn cbfn, void *cbd)
+{
+    pmix_event_t *ev = NULL;
+
+#if PMIX_HAVE_LIBEV
+    ev = (pmix_event_t*)calloc(1, sizeof(pmix_event_t));
+    ev->ev_base = b;
+#else
+    ev = event_new(b, fd, fg, (event_callback_fn) cbfn, cbd);
+#endif
+
+    return ev;
 }

@@ -11,6 +11,8 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2019      Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -22,6 +24,8 @@
 #define PMIX_GLOBALS_H
 
 #include <src/include/pmix_config.h>
+
+#include <pmix_common.h>
 
 #include <src/include/types.h>
 

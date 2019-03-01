@@ -1,8 +1,8 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2018 Intel, Inc.  All rights reserved.
- * Copyright (c) 2014-2018 Research Organization for Information Science
- *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2019 Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * Copyright (c) 2016-2017 Mellanox Technologies, Inc.
@@ -17,7 +17,6 @@
 
 #include <src/include/pmix_config.h>
 
-#include <src/include/types.h>
 #include <src/include/pmix_stdint.h>
 #include <src/include/pmix_socket_errno.h>
 
@@ -50,7 +49,9 @@
 #include <zlib.h>
 #endif
 #include PMIX_EVENT_HEADER
+#ifdef PMIX_EVENT2_THREAD_HEADER
 #include PMIX_EVENT2_THREAD_HEADER
+#endif
 
 static const char pmix_version_string[] = PMIX_VERSION;
 static pmix_status_t pmix_init_result = PMIX_ERR_INIT;

@@ -11,8 +11,8 @@
  *                         All rights reserved.
  * Copyright (c) 2011-2013 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2014-2018 Intel, Inc.  All rights reserved.
- * Copyright (c) 2015      Research Organization for Information Science
- *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2015-2019 Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
@@ -24,8 +24,6 @@
  */
 
 #include <src/include/pmix_config.h>
-
-#include <src/include/types.h>
 
 #ifdef HAVE_ARPA_INET_H
 #include <arpa/inet.h>

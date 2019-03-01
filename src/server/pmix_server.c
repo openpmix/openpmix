@@ -1,7 +1,7 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
- * Copyright (c) 2014-2018 Research Organization for Information Science
+ * Copyright (c) 2014-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
@@ -18,7 +18,6 @@
 
 #include <src/include/pmix_config.h>
 
-#include <src/include/types.h>
 #include <src/include/pmix_stdint.h>
 #include <src/include/pmix_socket_errno.h>
 
@@ -49,8 +48,7 @@
 #endif
 #include <ctype.h>
 #include <sys/stat.h>
-#include PMIX_EVENT_HEADER
-#include PMIX_EVENT2_THREAD_HEADER
+
 
 #include "src/util/argv.h"
 #include "src/util/error.h"

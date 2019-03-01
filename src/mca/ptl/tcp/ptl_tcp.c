@@ -24,6 +24,7 @@
  */
 
 #include <src/include/pmix_config.h>
+#include "src/include/pmix_globals.h"
 
 #ifdef HAVE_FCNTL_H
 #include <fcntl.h>
@@ -50,7 +51,6 @@
 #include <sys/sysctl.h>
 #endif
 
-#include "src/include/pmix_globals.h"
 #include "src/include/pmix_socket_errno.h"
 #include "src/client/pmix_client_ops.h"
 #include "src/server/pmix_server_ops.h"

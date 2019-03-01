@@ -1,8 +1,8 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
- * Copyright (c) 2014-2016 Research Organization for Information Science
- *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2014-2019 Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
@@ -17,7 +17,6 @@
 
 #include <src/include/pmix_config.h>
 
-#include <src/include/types.h>
 #include <src/include/pmix_socket_errno.h>
 
 #include "src/client/pmix_client_ops.h"
@@ -48,9 +47,6 @@
 #ifdef HAVE_DIRENT_H
 #include <dirent.h>
 #endif  /* HAVE_DIRENT_H */
-
-#include PMIX_EVENT_HEADER
-#include PMIX_EVENT2_THREAD_HEADER
 
 #include "src/class/pmix_list.h"
 #include "src/util/argv.h"
