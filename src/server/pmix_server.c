@@ -2870,7 +2870,7 @@ static void query_cbfunc(pmix_status_t status,
     pmix_status_t rc;
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
-                        "pmix:query callback with status %d", status);
+                        "pmix:query callback with status %s", PMIx_Error_string(status));
 
     reply = PMIX_NEW(pmix_buffer_t);
     if (NULL == reply) {

@@ -52,6 +52,7 @@
 
 #include "src/class/pmix_hotel.h"
 #include "src/class/pmix_list.h"
+#include "src/common/pmix_attributes.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/plog/plog.h"
 #include "src/mca/psensor/psensor.h"
@@ -2280,6 +2281,7 @@ pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer,
     return rc;
 }
 
+
 pmix_status_t pmix_server_query(pmix_peer_t *peer,
                                 pmix_buffer_t *buf,
                                 pmix_info_cbfunc_t cbfunc,
@@ -2338,6 +2340,15 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer,
     PMIX_CONSTRUCT(&results, pmix_list_t);
 
     for (n=0; n < cd->nqueries; n++) {
+        /* if they are asking for information on support, then go get it */
+        if (0 == strcmp(cd->queries[n].keys[0], PMIX_QUERY_ATTRIBUTE_SUPPORT)) {
+            /* we are already in an event, but shift it as the handler expects to */
+            cd->cbfunc = cbfunc;
+            PMIX_RETAIN(cd); // protect against early release
+            PMIX_THREADSHIFT(cd, pmix_attrs_query_support);
+            PMIX_LIST_DESTRUCT(&results);
+            return PMIX_SUCCESS;
+        }
         for (p=0; p < cd->queries[n].nqual; p++) {
             if (PMIX_CHECK_KEY(&cd->queries[n].qualifiers[p], PMIX_QUERY_REFRESH_CACHE)) {
                 if (PMIX_INFO_TRUE(&cd->queries[n].qualifiers[p])) {

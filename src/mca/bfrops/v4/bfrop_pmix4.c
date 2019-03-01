@@ -389,6 +389,14 @@ static pmix_status_t init(void)
                        pmix_bfrops_base_print_coord,
                        &mca_bfrops_v4_component.types);
 
+    PMIX_REGISTER_TYPE("PMIX_REGATTR",
+                       PMIX_REGATTR,
+                       pmix_bfrops_base_pack_regattr,
+                       pmix_bfrops_base_unpack_regattr,
+                       pmix_bfrops_base_copy_regattr,
+                       pmix_bfrops_base_print_regattr,
+                       &mca_bfrops_v4_component.types);
+
     return PMIX_SUCCESS;
 }
 

@@ -58,8 +58,12 @@ PMIX_EXPORT pmix_status_t pmix_register_tool_attrs(void);
 PMIX_EXPORT pmix_status_t pmix_register_client_attrs(void);
 PMIX_EXPORT pmix_status_t pmix_register_server_attrs(void);
 
-PMIX_EXPORT void pmix_attributes_print_attr(char *level, char *function,
-                                            pmix_regattr_t *src, size_t nattrs);
+PMIX_EXPORT char** pmix_attributes_print_functions(char *level);
+PMIX_EXPORT char** pmix_attributes_print_attr(char *level, char *function);
+PMIX_EXPORT void pmix_attributes_print_attrs(char ***ans, char *function,
+                                 pmix_regattr_t *attrs,
+                                 size_t nattrs);
+PMIX_EXPORT void pmix_attributes_print_headers(char ***ans, char *level);
 
 PMIX_EXPORT void pmix_attrs_query_support(int sd, short args, void *cbdata);
 

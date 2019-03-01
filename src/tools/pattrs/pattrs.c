@@ -33,6 +33,7 @@
 #include <pthread.h>
 
 #include <pmix_tool.h>
+#include "src/common/pmix_attributes.h"
 #include "src/mca/base/base.h"
 #include "src/mca/pinstalldirs/base/base.h"
 #include "src/threads/threads.h"
@@ -48,6 +49,58 @@ typedef struct {
 
 static pmix_proc_t myproc;
 
+/* define a structure for collecting returned
+ * info from a query */
+typedef struct {
+    pmix_lock_t lock;
+    pmix_status_t status;
+    pmix_info_t *info;
+    size_t ninfo;
+} myquery_data_t;
+
+
+/* this is a callback function for the PMIx_Query
+ * API. The query will callback with a status indicating
+ * if the request could be fully satisfied, partially
+ * satisfied, or completely failed. The info parameter
+ * contains an array of the returned data, with the
+ * info->key field being the key that was provided in
+ * the query call. Thus, you can correlate the returned
+ * data in the info->value field to the requested key.
+ *
+ * Once we have dealt with the returned data, we must
+ * call the release_fn so that the PMIx library can
+ * cleanup */
+static void cbfunc(pmix_status_t status,
+                   pmix_info_t *info, size_t ninfo,
+                   void *cbdata,
+                   pmix_release_cbfunc_t release_fn,
+                   void *release_cbdata)
+{
+    myquery_data_t *mq = (myquery_data_t*)cbdata;
+    size_t n;
+
+    mq->status = status;
+    /* save the returned info - the PMIx library "owns" it
+     * and will release it and perform other cleanup actions
+     * when release_fn is called */
+    if (0 < ninfo) {
+        PMIX_INFO_CREATE(mq->info, ninfo);
+        mq->ninfo = ninfo;
+        for (n=0; n < ninfo; n++) {
+            PMIX_INFO_XFER(&mq->info[n], &info[n]);
+        }
+    }
+
+    /* let the library release the data and cleanup from
+     * the operation */
+    if (NULL != release_fn) {
+        release_fn(release_cbdata);
+    }
+
+    /* release the block */
+    PMIX_WAKEUP_THREAD(&mq->lock);
+}
 
 /* this is the event notification function we pass down below
  * when registering for general events - i.e.,, the default
@@ -96,7 +149,17 @@ typedef struct {
     bool verbose;
     pid_t pid;
     char *nspace;
-    char *level;
+    char *uri;
+    bool sysfirst;
+    bool system;
+    char *client;
+    char *server;
+    char *tool;
+    char *host;
+    bool clientfns;
+    bool serverfns;
+    bool toolfns;
+    bool hostfns;
 } pmix_pattrs_globals_t;
 
 pmix_pattrs_globals_t pmix_pattrs_globals = {0};
@@ -127,10 +190,71 @@ pmix_cmd_line_init_t cmd_line_opts[] = {
       "Specify server nspace to connect to" },
 
     { NULL,
-      'l', NULL, "level",
+      '\0', NULL, "uri",
+      1,
+      &pmix_pattrs_globals.uri, PMIX_CMD_LINE_TYPE_STRING,
+      "Specify URI of server to connect to" },
+
+    { NULL,
+      '\0', NULL, "system-server-first",
       0,
-      &pmix_pattrs_globals.level, PMIX_CMD_LINE_TYPE_STRING,
-      "Range of event to be sent" },
+      &pmix_pattrs_globals.sysfirst, PMIX_CMD_LINE_TYPE_BOOL,
+      "Look for the system server first" },
+
+    { NULL,
+      '\0', NULL, "system-server",
+      0,
+      &pmix_pattrs_globals.system, PMIX_CMD_LINE_TYPE_BOOL,
+      "Specifically connect to the system server" },
+
+    { NULL,
+      'c', NULL, "client",
+      1,
+      &pmix_pattrs_globals.client, PMIX_CMD_LINE_TYPE_STRING,
+      "Comma-delimited list of client function whose attributes are to be printed (function or all)" },
+
+    { NULL,
+      's', NULL, "server",
+      1,
+      &pmix_pattrs_globals.server, PMIX_CMD_LINE_TYPE_STRING,
+      "Comma-delimited list of server function whose attributes are to be printed (function or all)" },
+
+    { NULL,
+      't', NULL, "tool",
+      1,
+      &pmix_pattrs_globals.tool, PMIX_CMD_LINE_TYPE_STRING,
+      "Comma-delimited list of tool function whose attributes are to be printed (function or all)" },
+
+    { NULL,
+      'h', NULL, "host",
+      1,
+      &pmix_pattrs_globals.host, PMIX_CMD_LINE_TYPE_STRING,
+      "Comma-delimited list of host function whose attributes are to be printed (function or all)" },
+
+    { NULL,
+      '\0', NULL, "client-fns",
+      0,
+      &pmix_pattrs_globals.clientfns, PMIX_CMD_LINE_TYPE_BOOL,
+      "List the functions supported in this client library" },
+
+    { NULL,
+      '\0', NULL, "server-fns",
+      0,
+      &pmix_pattrs_globals.serverfns, PMIX_CMD_LINE_TYPE_BOOL,
+      "List the functions supported in this server library" },
+
+    { NULL,
+      '\0', NULL, "tool-fns",
+      0,
+      &pmix_pattrs_globals.toolfns, PMIX_CMD_LINE_TYPE_BOOL,
+      "List the functions supported in this tool library" },
+
+    { NULL,
+      '\0', NULL, "host-fns",
+      0,
+      &pmix_pattrs_globals.hostfns, PMIX_CMD_LINE_TYPE_BOOL,
+      "List the functions supported by this host environment" },
+
 
     /* End of list */
     { NULL,
@@ -140,20 +264,18 @@ pmix_cmd_line_init_t cmd_line_opts[] = {
       NULL }
 };
 
-static void opcbfunc(pmix_status_t status, void *cbdata)
-{
-    mylock_t *lock = (mylock_t*)cbdata;
-
-    lock->status = status;
-    PMIX_WAKEUP_THREAD(&lock->lock);
-}
-
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
     pmix_info_t *info;
     mylock_t mylock;
     pmix_cmd_line_t cmd_line;
+    char **fns;
+    size_t n, m;
+    myquery_data_t mq;
+    pmix_query_t query;
+    pmix_regattr_t *reg;
+    char **ans = NULL;
 
     /* protect against problems if someone passes us thru a pipe
      * and then abnormally terminates the pipe early */
@@ -195,8 +317,6 @@ int main(int argc, char **argv)
     /* Parse the command line options */
     pmix_cmd_line_create(&cmd_line, cmd_line_opts);
 
-    pmix_mca_base_open();
-    pmix_mca_base_cmd_line_setup(&cmd_line);
     rc = pmix_cmd_line_parse(&cmd_line, false, false, argc, argv);
 
     if (PMIX_SUCCESS != rc) {
@@ -210,7 +330,7 @@ int main(int argc, char **argv)
     if (pmix_pattrs_globals.help) {
         char *str, *args = NULL;
         args = pmix_cmd_line_get_usage_msg(&cmd_line);
-        str = pmix_show_help_string("help-pevent.txt", "usage", true,
+        str = pmix_show_help_string("help-pattrs.txt", "usage", true,
                                     args);
         if (NULL != str) {
             printf("%s", str);
@@ -221,15 +341,84 @@ int main(int argc, char **argv)
         exit(0);
     }
 
+    /* cannot list functions and get attributes at same time */
+    if ((pmix_pattrs_globals.clientfns || pmix_pattrs_globals.serverfns || pmix_pattrs_globals.toolfns || pmix_pattrs_globals.hostfns)
+        && (pmix_pattrs_globals.client || pmix_pattrs_globals.server || pmix_pattrs_globals.tool || NULL != pmix_pattrs_globals.host)) {
+        fprintf(stderr, "Cannot request both a list of functions and attributes at same time\n");
+        exit(1);
+    }
+
+    /* if they are asking for client, server, or tool attrs, then
+     * we don't need to connect to anyone - just register the
+     * attrs and report */
+    if (pmix_pattrs_globals.clientfns || pmix_pattrs_globals.serverfns || pmix_pattrs_globals.toolfns ||
+        pmix_pattrs_globals.client || pmix_pattrs_globals.server || pmix_pattrs_globals.tool) {
+        PMIX_INFO_CREATE(info, 1);
+        PMIX_INFO_LOAD(&info[0], PMIX_TOOL_DO_NOT_CONNECT, NULL, PMIX_BOOL);
+        PMIx_tool_init(&myproc, info, 1);
+        if (pmix_pattrs_globals.clientfns) {
+            pmix_register_client_attrs();
+            fns = pmix_attributes_print_functions(PMIX_CLIENT_FUNCTIONS);
+        } else if (pmix_pattrs_globals.serverfns) {
+            pmix_register_server_attrs();
+            fns = pmix_attributes_print_functions(PMIX_SERVER_FUNCTIONS);
+        } else if (pmix_pattrs_globals.toolfns) {
+            pmix_register_tool_attrs();
+            fns = pmix_attributes_print_functions(PMIX_TOOL_FUNCTIONS);
+        } else if (NULL != pmix_pattrs_globals.client) {
+            pmix_register_client_attrs();
+            fns = pmix_attributes_print_attr(PMIX_CLIENT_ATTRIBUTES, pmix_pattrs_globals.client);
+        } else if (NULL != pmix_pattrs_globals.server) {
+            pmix_register_server_attrs();
+            fns = pmix_attributes_print_attr(PMIX_SERVER_ATTRIBUTES, pmix_pattrs_globals.server);
+        } else if (NULL != pmix_pattrs_globals.tool) {
+            pmix_register_tool_attrs();
+            fns = pmix_attributes_print_attr(PMIX_TOOL_ATTRIBUTES, pmix_pattrs_globals.tool);
+        }
+        if (NULL != fns) {
+            for (n=0; NULL != fns[n]; n++) {
+                fprintf(stderr, "%s\n", fns[n]);
+            }
+        }
+        goto done;
+    }
+
+    /* if they didn't give us an option, then we can't do anything */
+    if (!pmix_pattrs_globals.hostfns && NULL == pmix_pattrs_globals.host) {
+        char *str, *args = NULL;
+        args = pmix_cmd_line_get_usage_msg(&cmd_line);
+        str = pmix_show_help_string("help-pattrs.txt", "usage", true,
+                                    args);
+        if (NULL != str) {
+            printf("%s", str);
+            free(str);
+        }
+        free(args);
+        exit(1);
+    }
+
     /* if we were given the pid of a starter, then direct that
      * we connect to it */
-
-    /* otherwise, use the system connection first, if available */
-    PMIX_INFO_CREATE(info, 1);
-    PMIX_INFO_LOAD(&info[0], PMIX_CONNECT_SYSTEM_FIRST, NULL, PMIX_BOOL);
+    n = 1;
+    PMIX_INFO_CREATE(info, n);
+    if (0 < pmix_pattrs_globals.pid) {
+        PMIX_INFO_LOAD(&info[0], PMIX_SERVER_PIDINFO, &pmix_pattrs_globals.pid, PMIX_PID);
+    } else if (NULL != pmix_pattrs_globals.nspace) {
+        PMIX_INFO_LOAD(&info[0], PMIX_SERVER_NSPACE, pmix_pattrs_globals.nspace, PMIX_STRING);
+    } else if (NULL != pmix_pattrs_globals.uri) {
+        PMIX_INFO_LOAD(&info[0], PMIX_SERVER_URI, pmix_pattrs_globals.uri, PMIX_STRING);
+    } else if (pmix_pattrs_globals.sysfirst) {
+        /* otherwise, use the system connection first, if available */
+        PMIX_INFO_LOAD(&info[0], PMIX_CONNECT_SYSTEM_FIRST, NULL, PMIX_BOOL);
+    } else if (pmix_pattrs_globals.system) {
+        PMIX_INFO_LOAD(&info[0], PMIX_CONNECT_TO_SYSTEM, NULL, PMIX_BOOL);
+    } else {
+        PMIX_INFO_FREE(info, 1);
+        n = 0;
+    }
     /* init as a tool */
-    if (PMIX_SUCCESS != (rc = PMIx_tool_init(&myproc, info, 1))) {
-        fprintf(stderr, "PMIx_tool_init failed: %d\n", rc);
+    if (PMIX_SUCCESS != (rc = PMIx_tool_init(&myproc, info, n))) {
+        fprintf(stderr, "PMIx_tool_init failed: %s\n", PMIx_Error_string(rc));
         exit(rc);
     }
     PMIX_INFO_FREE(info, 1);
@@ -247,19 +436,54 @@ int main(int argc, char **argv)
     PMIX_DESTRUCT_LOCK(&mylock.lock);
 
     /* generate the query */
-#if 0
-    PMIX_CONSTRUCT_LOCK(&mylock.lock);
-    rc = PMIx_Query_info_nb(query, nq, cbfunc,(void*)&mylock);
+    PMIX_QUERY_CONSTRUCT(&query);
+    pmix_argv_append_nosize(&query.keys, PMIX_QUERY_ATTRIBUTE_SUPPORT);
+    PMIX_QUERY_QUALIFIERS_CREATE(&query, 1);
+    if (pmix_pattrs_globals.hostfns) {
+        PMIX_INFO_LOAD(&query.qualifiers[0], PMIX_HOST_FUNCTIONS, NULL, PMIX_BOOL);
+    } else {
+        PMIX_INFO_LOAD(&query.qualifiers[0], PMIX_HOST_ATTRIBUTES, pmix_pattrs_globals.host, PMIX_STRING);
+    }
+    PMIX_CONSTRUCT_LOCK(&mq.lock);
+    rc = PMIx_Query_info_nb(&query, 1, cbfunc,(void*)&mq);
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "PMIx_Notify_event failed: %d\n", rc);
         goto done;
     }
-    PMIX_WAIT_THREAD(&mylock.lock);
-    if (PMIX_SUCCESS != mylock.status) {
-        fprintf(stderr, "PMIx_Notify_event returned bad status: %d\n", rc);
+    PMIX_WAIT_THREAD(&mq.lock);
+    PMIX_DESTRUCT_LOCK(&mq.lock);
+    if (PMIX_SUCCESS != mq.status) {
+        fprintf(stderr, "PMIx_Query returned: %s\n", PMIx_Error_string(mq.status));
+    } else {
+        /* print out the returned value(s) */
+        for (n=0; n < mq.ninfo; n++) {
+            if (PMIX_CHECK_KEY(&mq.info[n], PMIX_HOST_FUNCTIONS)) {
+                fns = pmix_argv_split(mq.info[n].value.data.string, ',');
+                fprintf(stderr, "HOST SUPPORTED FUNCTIONS:\n");
+                for (m=0; NULL != fns[m]; m++) {
+                    fprintf(stderr, "\t%s\n", fns[m]);
+                }
+                pmix_argv_free(fns);
+            } else {
+                pmix_attributes_print_headers(&ans, PMIX_HOST_ATTRIBUTES);
+                if (PMIX_DATA_ARRAY == mq.info[n].value.type) {
+                    info = (pmix_info_t*)mq.info[n].value.data.darray->array;
+                    for (m=0; m < mq.info[n].value.data.darray->size; m++) {
+                        reg = (pmix_regattr_t*)info[m].value.data.darray->array;
+                        pmix_attributes_print_attrs(&ans, info[m].key, reg, info[0].value.data.darray->size);
+                    }
+                } else {
+                    reg = (pmix_regattr_t*)mq.info[n].value.data.ptr;
+                    pmix_attributes_print_attrs(&ans, mq.info[n].key, reg, 1);
+                }
+                for (m=0; NULL != ans[m]; m++) {
+                    fprintf(stderr, "%s\n", ans[m]);
+                }
+                pmix_argv_free(ans);
+                ans = NULL;
+            }
+        }
     }
-    PMIX_DESTRUCT_LOCK(&mylock.lock);
-#endif
 
   done:
     PMIx_tool_finalize();

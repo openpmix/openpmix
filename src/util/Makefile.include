@@ -51,8 +51,7 @@ headers += \
         util/name_fns.h \
         util/net.h \
         util/pif.h \
-        util/parse_options.h \
-        util/compress.h
+        util/parse_options.h
 
 sources += \
         util/alfg.c \

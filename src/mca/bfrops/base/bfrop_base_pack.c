@@ -989,6 +989,11 @@ pmix_status_t pmix_bfrops_base_pack_darray(pmix_buffer_t *buffer, const void *sr
                     return ret;
                 }
                 break;
+            case PMIX_REGATTR:
+                if (PMIX_SUCCESS != (ret = pmix_bfrops_base_pack_regattr(buffer, p[i].array, p[i].size, PMIX_REGATTR))) {
+                    return ret;
+                }
+                break;
 
             default:
                 pmix_output(0, "PACK-PMIX-VALUE[%s:%d]: UNSUPPORTED TYPE %d",
@@ -1216,6 +1221,11 @@ pmix_status_t pmix_bfrops_base_pack_val(pmix_buffer_t *buffer,
                 return ret;
             }
             break;
+        case PMIX_REGATTR:
+            if (PMIX_SUCCESS != (ret = pmix_bfrops_base_pack_regattr(buffer, p->data.ptr, 1, PMIX_REGATTR))) {
+                return ret;
+            }
+            break;
 
         default:
             pmix_output(0, "PACK-PMIX-VALUE[%s:%d]: UNSUPPORTED TYPE %d",
@@ -1279,6 +1289,55 @@ pmix_status_t pmix_bfrops_base_pack_coord(pmix_buffer_t *buffer, const void *src
         }
         /* pack the z-coord */
         if (PMIX_SUCCESS != (ret = pmix_bfrops_base_pack_int(buffer, &ptr[i].z, 1, PMIX_INT))) {
+            return ret;
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_pack_regattr(pmix_buffer_t *buffer, const void *src,
+                                            int32_t num_vals, pmix_data_type_t type)
+{
+    pmix_regattr_t *ptr = (pmix_regattr_t*)src;
+    int32_t i, nd;
+    pmix_status_t ret;
+    char *foo;
+
+    for (i=0; i < num_vals; ++i) {
+        /* pack the name */
+        if (PMIX_SUCCESS != (ret = pmix_bfrops_base_pack_string(buffer, &ptr[i].name, 1, PMIX_STRING))) {
+            return ret;
+        }
+        /* pack the string */
+        foo = ptr[i].string;
+        if (PMIX_SUCCESS != (ret = pmix_bfrops_base_pack_string(buffer, &foo, 1, PMIX_STRING))) {
+            return ret;
+        }
+        /* pack the type */
+        if (PMIX_SUCCESS != (ret = pmix_bfrops_base_pack_datatype(buffer, &ptr[i].type, 1, PMIX_DATA_TYPE))) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        /* pack the number of info */
+        if (PMIX_SUCCESS != (ret = pmix_bfrops_base_pack_sizet(buffer, &ptr[i].ninfo, 1, PMIX_SIZE))) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        if (0 < ptr[i].ninfo) {
+            /* pack the info array */
+            if (PMIX_SUCCESS != (ret = pmix_bfrops_base_pack_info(buffer, ptr[i].info, ptr[i].ninfo, PMIX_INFO))) {
+                PMIX_ERROR_LOG(ret);
+                return ret;
+            }
+        }
+        /* pack the description */
+        nd = pmix_argv_count(ptr[i].description);
+        if (PMIX_SUCCESS != (ret = pmix_bfrops_base_pack_int32(buffer, &nd, 1, PMIX_INT32))) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        if (PMIX_SUCCESS != (ret = pmix_bfrops_base_pack_string(buffer, ptr[i].description, nd, PMIX_STRING))) {
+            PMIX_ERROR_LOG(ret);
             return ret;
         }
     }

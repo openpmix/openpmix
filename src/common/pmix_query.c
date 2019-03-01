@@ -109,7 +109,7 @@ static void query_cbfunc(struct pmix_peer_t *peer,
 
   complete:
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:query cback from server releasing");
+                        "pmix:query cback from server releasing with status %s", PMIx_Error_string(results->status));
     /* release the caller */
     if (NULL != cd->cbfunc) {
         cd->cbfunc(results->status, results->info, results->ninfo, cd->cbdata, relcbfunc, results);
