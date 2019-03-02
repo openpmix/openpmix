@@ -160,6 +160,11 @@ PMIX_EXPORT extern pmix_bfrops_globals_t pmix_bfrops_globals;
 #error Unsupported pid_t size!
 #endif
 
+#define PMIX_BFROPS_FLEX_BASE7_MAX_BUF_SIZE (SIZEOF_SIZE_T+1)
+#define PMIX_BFROPS_FLEX_BASE7_MASK ((1<<7) - 1)
+#define PMIX_BFROPS_FLEX_BASE7_SHIFT 7
+#define PMIX_BFROPS_FLEX_BASE7_CONT_FLAG (1<<7)
+
 /* Unpack generic size macros */
 #define PMIX_BFROP_UNPACK_SIZE_MISMATCH(reg_types, unpack_type, remote_type, ret)                     \
     do {                                                                        \

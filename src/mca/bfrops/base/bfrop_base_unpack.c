@@ -1298,3 +1298,23 @@ pmix_status_t pmix_bfrops_base_unpack_coord(pmix_pointer_array_t *regtypes,
     }
     return PMIX_SUCCESS;
 }
+
+static uint64_t unpack_size(uint8_t in_buf[])
+{
+    uint64_t size = 0, shift = 0;
+    int idx = 0;
+    uint8_t val = 0;
+
+    do {
+        val = in_buf[idx++];
+        size = size + (((uint64_t)val & PMIX_BFROPS_FLEX_BASE7_MASK) << shift);
+        shift += PMIX_BFROPS_FLEX_BASE7_SHIFT;
+    } while(PMIX_UNLIKELY((val & PMIX_BFROPS_FLEX_BASE7_CONT_FLAG) && (idx < 8)));
+
+    /* If we have leftover (VERY unlikely) */
+    if (PMIX_UNLIKELY(8 == idx && (val & PMIX_BFROPS_FLEX_BASE7_CONT_FLAG))) {
+        val = in_buf[idx++];
+        size = size + ((uint64_t)val << shift);
+    }
+    return size;
+}
