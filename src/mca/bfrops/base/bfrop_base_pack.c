@@ -313,8 +313,7 @@ pmix_status_t pmix_bfrops_base_pack_string(pmix_pointer_array_t *regtypes,
     for (i = 0; i < num_vals; ++i) {
         if (NULL == ssrc[i]) {  /* got zero-length string/NULL pointer - store NULL */
             len = 0;
-            PMIX_BFROPS_PACK_TYPE(ret, buffer, &len, 1, PMIX_INT32, regtypes);
-            if (PMIX_SUCCESS != ret) {
+            if (PMIX_SUCCESS != (ret = pmix_bfrops_base_pack_int32(regtypes, buffer, &len, 1, PMIX_INT32))) {
                 return ret;
             }
         } else {
@@ -1031,10 +1030,20 @@ pmix_status_t pmix_bfrops_base_pack_coord(pmix_pointer_array_t *regtypes,
     return PMIX_SUCCESS;
 }
 
-
-static int pack_size(uint64_t size, uint8_t out_buf[9])
+/*
+ * Typical representation of a number in computer systems is:
+ * A[0]*B^0 + A[1]*B^1 + A[2]*B^2 + ... + A[n]*B^n
+ * where B called a base and B == 256 (one byte)
+ *
+ * This encoding changes the default representation by introducing an additional
+ * bit per each byte to store a "continuation flag". So integers are now encoded
+ * with the same representation, but the base B = 128 and the remaning bit is
+ * used to indicate whether or not the next byte contains more bits of this value.
+ */
+static int pmix_bfrops_pack_flex(uint64_t val,
+                                 uint8_t out_buf[PMIX_BFROPS_FLEX_BASE7_MAX_BUF_SIZE])
 {
-    uint64_t tmp = size;
+    uint64_t tmp = val;
     int idx = 0;
 
     do {
@@ -1044,11 +1053,58 @@ static int pack_size(uint64_t size, uint8_t out_buf[9])
             val |= PMIX_BFROPS_FLEX_BASE7_CONT_FLAG;
         }
         out_buf[idx++] = val;
-    } while(tmp && idx < 8);
+    } while(tmp && idx < SIZEOF_SIZE_T);
 
     /* If we have leftover (VERY unlikely) */
-    if (PMIX_UNLIKELY(8 == idx && tmp)) {
+    if (PMIX_UNLIKELY(SIZEOF_SIZE_T == idx && tmp)) {
         out_buf[idx++] = tmp;
     }
+
     return idx;
+}
+
+pmix_status_t pmix_bfrops_base_pack_int_flex(pmix_pointer_array_t *regtypes,
+                                             pmix_buffer_t *buffer,
+                                             const void *src,
+                                             int32_t num_vals,
+                                             pmix_data_type_t type)
+{
+    int32_t i;
+    uint64_t tmp;
+    char *dst;
+    int tmp_size;
+    uint8_t tmp_buf[PMIX_BFROPS_FLEX_BASE7_MAX_BUF_SIZE];
+    pmix_status_t rc;
+    size_t val_size;
+
+    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
+                        "pmix_bfrops_base_pack_int_flex * %d\n", num_vals);
+
+    PMIX_BFROPS_TYPE_SIZEOF(rc, type, val_size);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    for (i = 0; i < num_vals; ++i) {
+        PMIX_BFROPS_PACK_FLEX_CONVERT(rc, type, (uint8_t*)src + val_size*i, tmp);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        tmp_size = pmix_bfrops_pack_flex(tmp, tmp_buf);
+
+        /* check to see if buffer needs extending */
+        if (NULL == (dst = pmix_bfrop_buffer_extend(buffer, tmp_size))) {
+            rc = PMIX_ERR_OUT_OF_RESOURCE;
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        memcpy(dst, tmp_buf, tmp_size);
+        dst += tmp_size;
+        buffer->pack_ptr += tmp_size;
+        buffer->bytes_used += tmp_size;
+    }
+
+    return PMIX_SUCCESS;
 }

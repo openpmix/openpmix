@@ -160,10 +160,238 @@ PMIX_EXPORT extern pmix_bfrops_globals_t pmix_bfrops_globals;
 #error Unsupported pid_t size!
 #endif
 
+/* Flexible packing */
 #define PMIX_BFROPS_FLEX_BASE7_MAX_BUF_SIZE (SIZEOF_SIZE_T+1)
 #define PMIX_BFROPS_FLEX_BASE7_MASK ((1<<7) - 1)
 #define PMIX_BFROPS_FLEX_BASE7_SHIFT 7
 #define PMIX_BFROPS_FLEX_BASE7_CONT_FLAG (1<<7)
+
+/**
+ * Packing conversion of a signed integer value to a flexible representation.
+ * The main idea is to split a signed negative value onto an absolute value
+ * and a sing bit stored in the special location.
+ * This allows efficient representetion of negative values in the
+ * flexible form.
+ *
+ * type - type (pmix_data_type_t) of integer value
+ *
+ * ptr - pointer to the signed integer value
+ *       with the type defined as (type)
+ *
+ * out - flexible representation of *ptr,
+ *       extended to uint64_t if needed
+ *
+ * (see a comment to `pmix_bfrops_pack_flex` for additional details)
+ */
+#define PMIX_BFROPS_PACK_FLEX_CONVERT_SIGNED(type, ptr, out)\
+do {                                                        \
+    type __tbuf = 0;                                        \
+    uint64_t __tmp;                                         \
+    int __sign = 0;                                         \
+    memcpy(&__tbuf, (ptr), sizeof(type));                   \
+    __tmp = __tbuf;                                         \
+    (out) = (uint64_t)__tmp;                                \
+    if (__tmp & (1UL << (sizeof(__tmp)*8 - 1))) {           \
+        __sign = 1;                                         \
+        out = ~(out);                                       \
+    }                                                       \
+    (out) = ((out) << 1) + __sign;                          \
+} while (0)
+
+/**
+ * Packing conversion of a signed integer value to a flexible representation.
+ * For unsigned types it is reduced to a memcopy.
+ *
+ * type - usual integer C-type of integer value
+ *
+ * ptr - pointer to the signed integer value
+ *       with the type defined as (type)
+ *
+ * out - flexible representation of *ptr,
+ *       extended to uint64_t if needed
+ *
+ * (see a comment to `pmix_bfrops_pack_flex` for additional details)
+ */
+#define PMIX_BFROPS_PACK_FLEX_CONVERT_UNSIGNED(type, ptr, out)  \
+do {                                                            \
+    out = 0;                                                    \
+    memcpy(&out, (ptr), sizeof(type));                          \
+} while (0)
+
+/**
+ * Sizeof by PMIx type integer values.
+ *
+ * r - return status code
+ *
+ * t - type (pmix_data_type_t) of integer value
+ *
+ * s - size of type in bytes
+ *
+ * (see a comment to `pmix_bfrops_pack_flex` for additional details)
+ */
+#define PMIX_BFROPS_TYPE_SIZEOF(r, t, s)                    \
+do {                                                        \
+    (r) = PMIX_SUCCESS;                                     \
+    switch (t) {                                            \
+        case PMIX_INT16:                                    \
+        case PMIX_UINT16:                                   \
+            (s) = SIZEOF_SHORT;                             \
+            break;                                          \
+        case PMIX_INT:                                      \
+        case PMIX_INT32:                                    \
+        case PMIX_UINT:                                     \
+        case PMIX_UINT32:                                   \
+            (s) = SIZEOF_INT;                               \
+            break;                                          \
+        case PMIX_INT64:                                    \
+        case PMIX_UINT64:                                   \
+            (s) = SIZEOF_LONG;                              \
+            break;                                          \
+        case PMIX_SIZE:                                     \
+            (s) = SIZEOF_SIZE_T;                            \
+            break;                                          \
+        default:                                            \
+            (r) = PMIX_ERR_BAD_PARAM;                       \
+    }                                                       \
+} while (0)
+
+/**
+ * Packing conversion from integer value to a flexible representation.
+ *
+ * r - return status code
+ *
+ * t - type (pmix_data_type_t) of integer value, it is determines
+ *     which type of integer is converted
+ *
+ * s - pointer to the integer value with the type defined as (t)
+ *
+ * d - flexible representation output value (uin64_t)
+ *
+ * (see a comment to `pmix_bfrops_pack_flex` for additional details)
+ */
+#define PMIX_BFROPS_PACK_FLEX_CONVERT(r, t, s, d)                   \
+do {                                                                \
+    (r) = PMIX_SUCCESS;                                             \
+    switch (t) {                                                    \
+        case PMIX_INT16:                                            \
+            PMIX_BFROPS_PACK_FLEX_CONVERT_SIGNED(int16_t, s, d);    \
+            break;                                                  \
+        case PMIX_UINT16:                                           \
+            PMIX_BFROPS_PACK_FLEX_CONVERT_UNSIGNED(uint16_t, s, d); \
+            break;                                                  \
+        case PMIX_INT:                                              \
+        case PMIX_INT32:                                            \
+            PMIX_BFROPS_PACK_FLEX_CONVERT_SIGNED(int32_t, s, d);    \
+            break;                                                  \
+        case PMIX_UINT:                                             \
+        case PMIX_UINT32:                                           \
+            PMIX_BFROPS_PACK_FLEX_CONVERT_UNSIGNED(uint32_t, s, d); \
+            break;                                                  \
+        case PMIX_INT64:                                            \
+            PMIX_BFROPS_PACK_FLEX_CONVERT_SIGNED(int64_t, s, d);    \
+            break;                                                  \
+        case PMIX_SIZE:                                             \
+            PMIX_BFROPS_PACK_FLEX_CONVERT_UNSIGNED(size_t, s, d);   \
+            break;                                                  \
+        case PMIX_UINT64:                                           \
+            PMIX_BFROPS_PACK_FLEX_CONVERT_UNSIGNED(uint64_t, s, d); \
+            break;                                                  \
+        default:                                                    \
+            (r) = PMIX_ERR_BAD_PARAM;                               \
+    }                                                               \
+} while(0)
+
+/**
+ * Unpacking conversion from a flexible representation to a
+ * signed integer value.
+ *
+ * type - C-type of a signed integer value
+ *
+ * val - flexible representation (uint64_t)
+ *
+ * ptr - pointer to a 64-bit output buffer for the upacked value
+ *
+ * (see a comment to `pmix_bfrops_pack_flex` for additional details)
+ */
+#define PMIX_BFROPS_UNPACK_FLEX_CONVERT_SIGNED(type, val, ptr)  \
+do {                                                            \
+    type __tbuf = 0;                                            \
+    uint64_t __tmp = val;                                       \
+    int sign = (__tmp) & 1;                                     \
+    __tmp >>= 1;                                                \
+    if (sign) {                                                 \
+        __tmp = ~__tmp;                                         \
+    }                                                           \
+    __tbuf = (type)__tmp;                                       \
+    memcpy(ptr, &__tbuf, sizeof(type));                         \
+} while (0)
+
+/**
+ * Unpacking conversion of a flexible representation value
+ * to an unsigned integer.
+ *
+ * type - C-type of unsigned integer value
+ *
+ * val - flexible representation value (uint64_t)
+ *
+ * ptr - pointer to a 64-bit output buffer for the upacked value
+ *
+ * (see a comment to `pmix_bfrops_pack_flex` for additional details)
+ */
+#define PMIX_BFROPS_UNPACK_FLEX_CONVERT_UNSIGNED(type, val, ptr)\
+do {                                                            \
+    type __tbuf = 0;                                            \
+    __tbuf = (type)val;                                         \
+    memcpy(ptr, &__tbuf, sizeof(type));                         \
+} while (0)
+
+
+/**
+ * Unpacking conversion of a flexible representation value
+ * to an integer.
+ *
+ * r - return status code
+ *
+ * t - type (pmix_data_type_t) of integer value, it is determines
+ *     which type of integer is converted
+ *
+ * s - flex-representation value (uin64_t)
+ *
+ * d - pointer to a 64-bit output buffer for the upacked value
+ *
+ * (see a comment to `pmix_bfrops_pack_flex` for additional details)
+ */
+#define PMIX_BFROPS_UNPACK_FLEX_CONVERT(r, t, s, d)                     \
+do {                                                                    \
+    (r) = PMIX_SUCCESS;                                                 \
+    switch (t) {                                                        \
+        case PMIX_INT16:                                                \
+            PMIX_BFROPS_UNPACK_FLEX_CONVERT_SIGNED(int16_t, s, d);      \
+            break;                                                      \
+        case PMIX_UINT16:                                               \
+            PMIX_BFROPS_UNPACK_FLEX_CONVERT_UNSIGNED(uint16_t, s, d);   \
+            break;                                                      \
+        case PMIX_INT:                                                  \
+        case PMIX_INT32:                                                \
+            PMIX_BFROPS_UNPACK_FLEX_CONVERT_SIGNED(int32_t, s, d);      \
+            break;                                                      \
+        case PMIX_UINT:                                                 \
+        case PMIX_UINT32:                                               \
+            PMIX_BFROPS_UNPACK_FLEX_CONVERT_UNSIGNED(uint32_t, s, d);   \
+            break;                                                      \
+        case PMIX_INT64:                                                \
+            PMIX_BFROPS_UNPACK_FLEX_CONVERT_SIGNED(int64_t, s, d);      \
+            break;                                                      \
+        case PMIX_SIZE:                                                 \
+            PMIX_BFROPS_UNPACK_FLEX_CONVERT_UNSIGNED(size_t, s, d);     \
+            break;                                                      \
+        case PMIX_UINT64:                                               \
+            PMIX_BFROPS_UNPACK_FLEX_CONVERT_UNSIGNED(uint64_t, s, d);   \
+            break;                                                      \
+        default:                                                        \
+            (r) = PMIX_ERR_BAD_PARAM;                                   \
+    }                                                                   \
+} while(0)
 
 /* Unpack generic size macros */
 #define PMIX_BFROP_UNPACK_SIZE_MISMATCH(reg_types, unpack_type, remote_type, ret)                     \
@@ -475,7 +703,11 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_envar(pmix_pointer_array_t *regt
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_coord(pmix_pointer_array_t *regtypes,
                                                       pmix_buffer_t *buffer, const void *src,
                                                       int32_t num_vals, pmix_data_type_t type);
-
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_int_flex(pmix_pointer_array_t *regtypes,
+                                                         pmix_buffer_t *buffer,
+                                                         const void *src,
+                                                         int32_t num_vals,
+                                                         pmix_data_type_t type);
 /*
 * "Standard" unpack functions
 */
@@ -609,6 +841,10 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_envar(pmix_pointer_array_t *re
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_coord(pmix_pointer_array_t *regtypes,
                                                         pmix_buffer_t *buffer, void *dest,
                                                         int32_t *num_vals, pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_int_flex(pmix_pointer_array_t *regtypes,
+                                                           pmix_buffer_t *buffer, void *dest,
+                                                           int32_t *num_vals,
+                                                           pmix_data_type_t type);
 /**** DEPRECATED ****/
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_array(pmix_pointer_array_t *regtypes,
                                                         pmix_buffer_t *buffer, void *dest,

@@ -89,8 +89,8 @@ static pmix_status_t init(void)
 
     /* Register the rest of the standard generic types to point to internal functions */
     PMIX_REGISTER_TYPE("PMIX_SIZE", PMIX_SIZE,
-                       pmix_bfrops_base_pack_sizet,
-                       pmix_bfrops_base_unpack_sizet,
+                       pmix_bfrops_base_pack_int_flex,
+                       pmix_bfrops_base_unpack_int_flex,
                        pmix_bfrops_base_std_copy,
                        pmix_bfrops_base_print_size,
                        &mca_bfrops_v4_component.types);
@@ -103,8 +103,8 @@ static pmix_status_t init(void)
                        &mca_bfrops_v4_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_INT", PMIX_INT,
-                       pmix_bfrops_base_pack_int,
-                       pmix_bfrops_base_unpack_int,
+                       pmix_bfrops_base_pack_int_flex,
+                       pmix_bfrops_base_unpack_int_flex,
                        pmix_bfrops_base_std_copy,
                        pmix_bfrops_base_print_int,
                        &mca_bfrops_v4_component.types);
@@ -118,29 +118,29 @@ static pmix_status_t init(void)
                        &mca_bfrops_v4_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_INT16", PMIX_INT16,
-                       pmix_bfrops_base_pack_int16,
-                       pmix_bfrops_base_unpack_int16,
+                       pmix_bfrops_base_pack_int_flex,
+                       pmix_bfrops_base_unpack_int_flex,
                        pmix_bfrops_base_std_copy,
                        pmix_bfrops_base_print_int16,
                        &mca_bfrops_v4_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_INT32", PMIX_INT32,
-                       pmix_bfrops_base_pack_int32,
-                       pmix_bfrops_base_unpack_int32,
+                       pmix_bfrops_base_pack_int_flex,
+                       pmix_bfrops_base_unpack_int_flex,
                        pmix_bfrops_base_std_copy,
                        pmix_bfrops_base_print_int32,
                        &mca_bfrops_v4_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_INT64", PMIX_INT64,
-                       pmix_bfrops_base_pack_int64,
-                       pmix_bfrops_base_unpack_int64,
+                       pmix_bfrops_base_pack_int_flex,
+                       pmix_bfrops_base_unpack_int_flex,
                        pmix_bfrops_base_std_copy,
                        pmix_bfrops_base_print_int64,
                        &mca_bfrops_v4_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_UINT", PMIX_UINT,
-                       pmix_bfrops_base_pack_int,
-                       pmix_bfrops_base_unpack_int,
+                       pmix_bfrops_base_pack_int_flex,
+                       pmix_bfrops_base_unpack_int_flex,
                        pmix_bfrops_base_std_copy,
                        pmix_bfrops_base_print_uint,
                        &mca_bfrops_v4_component.types);
@@ -153,22 +153,22 @@ static pmix_status_t init(void)
                        &mca_bfrops_v4_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_UINT16", PMIX_UINT16,
-                       pmix_bfrops_base_pack_int16,
-                       pmix_bfrops_base_unpack_int16,
+                       pmix_bfrops_base_pack_int_flex,
+                       pmix_bfrops_base_unpack_int_flex,
                        pmix_bfrops_base_std_copy,
                        pmix_bfrops_base_print_uint16,
                        &mca_bfrops_v4_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_UINT32", PMIX_UINT32,
-                       pmix_bfrops_base_pack_int32,
-                       pmix_bfrops_base_unpack_int32,
+                       pmix_bfrops_base_pack_int_flex,
+                       pmix_bfrops_base_unpack_int_flex,
                        pmix_bfrops_base_std_copy,
                        pmix_bfrops_base_print_uint32,
                        &mca_bfrops_v4_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_UINT64", PMIX_UINT64,
-                       pmix_bfrops_base_pack_int64,
-                       pmix_bfrops_base_unpack_int64,
+                       pmix_bfrops_base_pack_int_flex,
+                       pmix_bfrops_base_unpack_int_flex,
                        pmix_bfrops_base_std_copy,
                        pmix_bfrops_base_print_uint64,
                        &mca_bfrops_v4_component.types);

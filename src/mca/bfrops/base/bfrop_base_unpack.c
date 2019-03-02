@@ -1299,22 +1299,94 @@ pmix_status_t pmix_bfrops_base_unpack_coord(pmix_pointer_array_t *regtypes,
     return PMIX_SUCCESS;
 }
 
-static uint64_t unpack_size(uint8_t in_buf[])
+/*
+ * See a comment to `pmix_bfrops_pack_flex` for additional details.
+ */
+static size_t pmix_bfrop_unpack_flex(const char in_buf[], size_t buf_size,
+                                     uint64_t *out_val, size_t *out_val_size)
 {
-    uint64_t size = 0, shift = 0;
-    int idx = 0;
-    uint8_t val = 0;
+    uint64_t value = 0, shift = 0, shift_last = 0;
+    size_t idx = 0;
+    uint8_t val = 0, val_last = 0;
+    uint8_t hi_bit = 0;
+    size_t flex_size = buf_size;
+
+    /* restrict the buf size to max flex size */
+    if (buf_size > PMIX_BFROPS_FLEX_BASE7_MAX_BUF_SIZE) {
+        flex_size = PMIX_BFROPS_FLEX_BASE7_MAX_BUF_SIZE;
+    }
 
     do {
         val = in_buf[idx++];
-        size = size + (((uint64_t)val & PMIX_BFROPS_FLEX_BASE7_MASK) << shift);
+        val_last = val;
+        shift_last = shift;
+        value = value + (((uint64_t)val & PMIX_BFROPS_FLEX_BASE7_MASK) << shift);
         shift += PMIX_BFROPS_FLEX_BASE7_SHIFT;
-    } while(PMIX_UNLIKELY((val & PMIX_BFROPS_FLEX_BASE7_CONT_FLAG) && (idx < 8)));
-
+    } while(PMIX_UNLIKELY((val & PMIX_BFROPS_FLEX_BASE7_CONT_FLAG) &&
+                          (idx < (flex_size-1))));
     /* If we have leftover (VERY unlikely) */
-    if (PMIX_UNLIKELY(8 == idx && (val & PMIX_BFROPS_FLEX_BASE7_CONT_FLAG))) {
+    if (PMIX_UNLIKELY((flex_size-1) == idx &&
+                      (val & PMIX_BFROPS_FLEX_BASE7_CONT_FLAG))) {
         val = in_buf[idx++];
-        size = size + ((uint64_t)val << shift);
+        val_last = val;
+        value = value + ((uint64_t)val << shift);
+        shift_last = shift;
     }
-    return size;
+    /* compute the most significant bit of val */
+    while (val_last != 0) {
+        val_last >>= 1;
+        hi_bit++;
+    }
+    /* compute the real val size */
+    *out_val_size = (hi_bit + shift_last)/CHAR_BIT +
+            !!((hi_bit + shift_last) & (CHAR_BIT - 1));
+    *out_val = value;
+
+    return idx;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_int_flex(pmix_pointer_array_t *regtypes,
+                                               pmix_buffer_t *buffer, void *dest,
+                                               int32_t *num_vals,
+                                               pmix_data_type_t type)
+{
+    int32_t i;
+    uint64_t tmp;
+    size_t unpack_size;
+    size_t val_sizeof;
+    pmix_status_t rc;
+    size_t unpack_val_size;
+    size_t unpack_avail_size;
+
+    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
+                        "pmix_bfrops_base_unpack_flex * %d\n", (int)*num_vals);
+
+    /* stub to identify that unpacking is ended */
+    if (buffer->pack_ptr == buffer->unpack_ptr) {
+        return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
+    }
+
+    PMIX_BFROPS_TYPE_SIZEOF(rc, type, val_sizeof);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    /* unpack the data */
+    for (i = 0; i < (*num_vals); ++i) {
+        unpack_avail_size = buffer->pack_ptr - buffer->unpack_ptr;
+        unpack_size = pmix_bfrop_unpack_flex(buffer->unpack_ptr,
+                                             unpack_avail_size, &tmp,
+                                             &unpack_val_size);
+        if (unpack_val_size > val_sizeof) {
+            return PMIX_ERR_UNPACK_FAILURE;
+        }
+        PMIX_BFROPS_UNPACK_FLEX_CONVERT(rc, type, tmp, (uint8_t*)dest + val_sizeof*i);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        buffer->unpack_ptr += unpack_size;
+    }
+    return PMIX_SUCCESS;
 }
