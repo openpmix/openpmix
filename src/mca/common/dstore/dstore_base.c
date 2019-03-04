@@ -2520,7 +2520,8 @@ static inline int _my_client(const char *nspace, pmix_rank_t rank)
  * shall store it accordingly */
 PMIX_EXPORT pmix_status_t pmix_common_dstor_store_modex(pmix_common_dstore_ctx_t *ds_ctx,
                                                         struct pmix_namespace_t *nspace,
-                                                        pmix_buffer_t *buf)
+                                                        pmix_buffer_t *buf,
+                                                        void *cbdata)
 {
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_status_t rc1 = PMIX_SUCCESS;
@@ -2541,7 +2542,8 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_store_modex(pmix_common_dstore_ctx_t
     }
 
     rc = pmix_gds_base_store_modex(nspace,  buf, ds_ctx,
-                    (pmix_gds_base_store_modex_cb_fn_t)_dstor_store_modex_cb);
+                    (pmix_gds_base_store_modex_cb_fn_t)_dstor_store_modex_cb,
+                    cbdata);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
     }

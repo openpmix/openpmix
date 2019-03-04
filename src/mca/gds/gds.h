@@ -240,7 +240,8 @@ typedef pmix_status_t (*pmix_gds_base_module_store_fn_t)(const pmix_proc_t *proc
  *
  */
 typedef pmix_status_t (*pmix_gds_base_module_store_modex_fn_t)(struct pmix_namespace_t *ns,
-                                                               pmix_buffer_t *buff);
+                                                               pmix_buffer_t *buff,
+                                                               void *cbdata);
 
 /**
  * define a convenience macro for storing modex byte objects
@@ -250,13 +251,15 @@ typedef pmix_status_t (*pmix_gds_base_module_store_modex_fn_t)(struct pmix_names
  * n - pointer to the pmix_namespace_t this blob is to be stored for
  *
  * b - pointer to pmix_byte_object_t containing the data
+ *
+ * t - pointer to the modex server tracker
  */
-#define PMIX_GDS_STORE_MODEX(r, n, b)  \
+#define PMIX_GDS_STORE_MODEX(r, n, b, t)  \
     do {                                                                    \
         pmix_output_verbose(1, pmix_gds_base_output,                        \
                             "[%s:%d] GDS STORE MODEX WITH %s",              \
                             __FILE__, __LINE__, (n)->compat.gds->name);     \
-        (r) = (n)->compat.gds->store_modex((struct pmix_namespace_t*)n, b); \
+        (r) = (n)->compat.gds->store_modex((struct pmix_namespace_t*)n, b, t); \
     } while (0)
 
 /**
