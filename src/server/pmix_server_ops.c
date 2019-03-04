@@ -5,7 +5,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
- * Copyright (c) 2016-2017 Mellanox Technologies, Inc.
+ * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
@@ -3509,7 +3509,7 @@ static void _grpcbfunc(int sd, short argc, void *cbdata)
         }
 
         PMIX_LIST_FOREACH(nptr, &nslist, pmix_nspace_caddy_t) {
-            PMIX_GDS_STORE_MODEX(ret, nptr->ns, &trk->local_cbs, &xfer);
+            PMIX_GDS_STORE_MODEX(ret, nptr->ns, &xfer);
             if (PMIX_SUCCESS != ret) {
                 PMIX_ERROR_LOG(ret);
                 break;
