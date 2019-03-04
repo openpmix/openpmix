@@ -102,6 +102,8 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
     pmix_collect_t ctype;
     bool have_ctype = false;
     pmix_server_trkr_t *trk = (pmix_server_trkr_t*)cbdata;
+    pmix_proc_t proc;
+    pmix_buffer_t pbkt;
 
     /* Loop over the enclosed byte object envelopes and
      * store them in our GDS module */
@@ -130,7 +132,7 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
         if (have_ctype) {
             if (ctype != (pmix_collect_t)byte) {
                 rc = PMIX_ERR_INVALID_ARG;
-                PMIX_DESTRUCT(&bkt);
+                pbkt.base_ptr = NULL;
                 goto error;
             }
         }
@@ -150,11 +152,31 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
              * shared memory region, then the data may be available
              * right away - but the client still has to be notified
              * of its presence. */
-            rc = cb_fn(ctx, (struct pmix_namespace_t *)ns, &bo2);
+
+            /* setup the byte object for unpacking */
+            PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+            PMIX_LOAD_BUFFER(pmix_globals.mypeer, &pbkt, bo2.bytes, bo2.size);
+            /* unload the proc that provided this data */
+            cnt = 1;
+            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &pbkt, &proc, &cnt,
+                               PMIX_PROC);
             if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                pbkt.base_ptr = NULL;
+                PMIX_DESTRUCT(&pbkt);
                 PMIX_DESTRUCT(&bkt);
                 goto error;
             }
+
+            rc = cb_fn(ctx, &proc, &pbkt);
+            if (PMIX_SUCCESS != rc) {
+                pbkt.base_ptr = NULL;
+                PMIX_DESTRUCT(&pbkt);
+                PMIX_DESTRUCT(&bkt);
+                goto error;
+            }
+            pbkt.base_ptr = NULL;
+            PMIX_DESTRUCT(&pbkt);
             PMIX_BYTE_OBJECT_DESTRUCT(&bo2);
             /* get the next blob */
             cnt = 1;
