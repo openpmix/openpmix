@@ -109,7 +109,8 @@ PMIX_EXPORT pmix_status_t pmix_gds_base_setup_fork(const pmix_proc_t *proc,
 PMIX_EXPORT pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
                                                     pmix_buffer_t * buff,
                                                     pmix_gds_base_ctx_t ctx,
-                                                    pmix_gds_base_store_modex_cb_fn_t cb_fn);
+                                                    pmix_gds_base_store_modex_cb_fn_t cb_fn,
+                                                    void *cbdata);
 
 END_C_DECLS
 
