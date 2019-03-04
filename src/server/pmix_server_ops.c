@@ -528,7 +528,7 @@ static pmix_status_t _collect_data(pmix_server_trkr_t *trk,
     pmix_byte_object_t bo;
     pmix_server_caddy_t *scd;
     pmix_proc_t pcs;
-    pmix_status_t rc;
+    pmix_status_t rc = PMIX_SUCCESS;
     pmix_rank_t rel_rank;
     pmix_nspace_caddy_t *nm;
     bool found;
@@ -737,20 +737,25 @@ static pmix_status_t _collect_data(pmix_server_trkr_t *trk,
         }
         PMIX_DESTRUCT(&rank_blobs);
     } else {
+        /* mark the collection type so we can check on the
+         * receiving end that all participants did the same */
+#if PMIX_ENABLE_DEBUG
         /* pack the modex blob info byte */
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &bucket,
                          &blob_info_byte, 1, PMIX_BYTE);
+#endif
     }
-
-    /* because the remote servers have to unpack things
-     * in chunks, we have to pack the bucket as a single
-     * byte object to allow remote unpack */
-    PMIX_UNLOAD_BUFFER(&bucket, bo.bytes, bo.size);
-    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf,
-                     &bo, 1, PMIX_BYTE_OBJECT);
-    PMIX_BYTE_OBJECT_DESTRUCT(&bo);  // releases the data
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
+    if (!PMIX_BUFFER_IS_EMPTY(&bucket)) {
+        /* because the remote servers have to unpack things
+         * in chunks, we have to pack the bucket as a single
+         * byte object to allow remote unpack */
+        PMIX_UNLOAD_BUFFER(&bucket, bo.bytes, bo.size);
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf,
+                         &bo, 1, PMIX_BYTE_OBJECT);
+        PMIX_BYTE_OBJECT_DESTRUCT(&bo);  // releases the data
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
     }
 
   cleanup:
