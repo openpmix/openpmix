@@ -107,9 +107,10 @@ static pmix_status_t ds21_store(const pmix_proc_t *proc,
  * always contains data solely from remote procs, and we
  * shall store it accordingly */
 static pmix_status_t ds21_store_modex(struct pmix_namespace_t *nspace,
-                                      pmix_buffer_t *buf)
+                                      pmix_buffer_t *buf,
+                                      void *cbdata)
 {
-    return pmix_common_dstor_store_modex(ds21_ctx, nspace, buf);
+    return pmix_common_dstor_store_modex(ds21_ctx, nspace, buf, cbdata);
 }
 
 static pmix_status_t ds21_fetch(const pmix_proc_t *proc,

@@ -2410,7 +2410,7 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
     }
 
     PMIX_LIST_FOREACH(nptr, &nslist, pmix_nspace_caddy_t) {
-        PMIX_GDS_STORE_MODEX(rc, nptr->ns, &xfer);
+        PMIX_GDS_STORE_MODEX(rc, nptr->ns, &xfer, tracker);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             break;
