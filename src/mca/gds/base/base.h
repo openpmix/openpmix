@@ -81,8 +81,8 @@ typedef struct pmix_gds_globals_t pmix_gds_globals_t;
 
 typedef void * pmix_gds_base_ctx_t;
 typedef pmix_status_t (*pmix_gds_base_store_modex_cb_fn_t)(pmix_gds_base_ctx_t ctx,
-                                                           struct pmix_namespace_t *nspace,
-                                                           pmix_byte_object_t *bo);
+                                                           pmix_proc_t *proc,
+                                                           pmix_buffer_t *pbkt);
 
 PMIX_EXPORT extern pmix_gds_globals_t pmix_gds_globals;
 
