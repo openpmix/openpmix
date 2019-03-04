@@ -90,7 +90,8 @@ pmix_status_t pmix_gds_base_setup_fork(const pmix_proc_t *proc,
 pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
                                         pmix_buffer_t * buff,
                                         pmix_gds_base_ctx_t ctx,
-                                        pmix_gds_base_store_modex_cb_fn_t cb_fn)
+                                        pmix_gds_base_store_modex_cb_fn_t cb_fn,
+                                        void *cbdata)
 {
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_namespace_t * ns = (pmix_namespace_t *)nspace;
@@ -100,6 +101,7 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
     char byte;
     pmix_collect_t ctype;
     bool have_ctype = false;
+    pmix_server_trkr_t *trk = (pmix_server_trkr_t*)cbdata;
 
     /* Loop over the enclosed byte object envelopes and
      * store them in our GDS module */

@@ -67,7 +67,8 @@ static pmix_status_t hash_store(const pmix_proc_t *proc,
                                 pmix_kval_t *kv);
 
 static pmix_status_t hash_store_modex(struct pmix_namespace_t *ns,
-                                      pmix_buffer_t *buff);
+                                      pmix_buffer_t *buff,
+                                      void *cbdata);
 
 static pmix_status_t _hash_store_modex(pmix_gds_base_ctx_t ctx,
                                        struct pmix_namespace_t *nspace,
@@ -1188,9 +1189,10 @@ static pmix_status_t hash_store(const pmix_proc_t *proc,
  * always contains data solely from remote procs, and we
  * shall store it accordingly */
 static pmix_status_t hash_store_modex(struct pmix_namespace_t *nspace,
-                                      pmix_buffer_t *buf) {
+                                      pmix_buffer_t *buf,
+                                      void *cbdata) {
     return pmix_gds_base_store_modex(nspace, buf, NULL,
-                                     _hash_store_modex);
+                                     _hash_store_modex, cbdata);
 }
 
 static pmix_status_t _hash_store_modex(pmix_gds_base_ctx_t ctx,

@@ -3509,7 +3509,7 @@ static void _grpcbfunc(int sd, short argc, void *cbdata)
         }
 
         PMIX_LIST_FOREACH(nptr, &nslist, pmix_nspace_caddy_t) {
-            PMIX_GDS_STORE_MODEX(ret, nptr->ns, &xfer);
+            PMIX_GDS_STORE_MODEX(ret, nptr->ns, &xfer, trk);
             if (PMIX_SUCCESS != ret) {
                 PMIX_ERROR_LOG(ret);
                 break;
