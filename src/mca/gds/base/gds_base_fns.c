@@ -1,7 +1,7 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2015-2017 Intel, Inc. All rights reserved.
- * Copyright (c) 2016      Mellanox Technologies, Inc.
+ * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
@@ -89,10 +89,9 @@ pmix_status_t pmix_gds_base_setup_fork(const pmix_proc_t *proc,
 }
 
 pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
-                                               pmix_list_t *cbs,
-                                               pmix_buffer_t * buff,
-                                               pmix_gds_base_store_modex_cb_fn_t cb_fn,
-                                               pmix_gds_base_store_modex_cbdata_t cbdata)
+                                        pmix_buffer_t * buff,
+                                        pmix_gds_base_ctx_t ctx,
+                                        pmix_gds_base_store_modex_cb_fn_t cb_fn)
 {
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_namespace_t * ns = (pmix_namespace_t *)nspace;
@@ -150,7 +149,7 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
              * shared memory region, then the data may be available
              * right away - but the client still has to be notified
              * of its presence. */
-            rc = cb_fn(cbdata, (struct pmix_namespace_t *)ns, cbs, &bo2);
+            rc = cb_fn(ctx, (struct pmix_namespace_t *)ns, &bo2);
             if (PMIX_SUCCESS != rc) {
                 PMIX_DESTRUCT(&bkt);
                 goto error;

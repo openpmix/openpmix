@@ -5,7 +5,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
- * Copyright (c) 2016      Mellanox Technologies, Inc.
+ * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
  * Copyright (c) 2018      Cisco Systems, Inc.  All rights reserved
@@ -2410,7 +2410,7 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
     }
 
     PMIX_LIST_FOREACH(nptr, &nslist, pmix_nspace_caddy_t) {
-        PMIX_GDS_STORE_MODEX(rc, nptr->ns, &tracker->local_cbs, &xfer);
+        PMIX_GDS_STORE_MODEX(rc, nptr->ns, &xfer);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             break;

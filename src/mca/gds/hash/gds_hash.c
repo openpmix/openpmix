@@ -3,7 +3,7 @@
  * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2018      Mellanox Technologies, Inc.
+ * Copyright (c) 2018-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  *
  * $COPYRIGHT$
@@ -67,12 +67,10 @@ static pmix_status_t hash_store(const pmix_proc_t *proc,
                                 pmix_kval_t *kv);
 
 static pmix_status_t hash_store_modex(struct pmix_namespace_t *ns,
-                                      pmix_list_t *cbs,
                                       pmix_buffer_t *buff);
 
-static pmix_status_t _hash_store_modex(void * cbdata,
-                                       struct pmix_namespace_t *ns,
-                                       pmix_list_t *cbs,
+static pmix_status_t _hash_store_modex(pmix_gds_base_ctx_t ctx,
+                                       struct pmix_namespace_t *nspace,
                                        pmix_byte_object_t *bo);
 
 static pmix_status_t hash_fetch(const pmix_proc_t *proc,
@@ -1321,14 +1319,13 @@ static pmix_status_t hash_store(const pmix_proc_t *proc,
  * always contains data solely from remote procs, and we
  * shall store it accordingly */
 static pmix_status_t hash_store_modex(struct pmix_namespace_t *nspace,
-                                      pmix_list_t *cbs,
                                       pmix_buffer_t *buf) {
-    return pmix_gds_base_store_modex(nspace, cbs, buf, _hash_store_modex, NULL);
+    return pmix_gds_base_store_modex(nspace, buf, NULL,
+                                     _hash_store_modex);
 }
 
-static pmix_status_t _hash_store_modex(void * cbdata,
+static pmix_status_t _hash_store_modex(pmix_gds_base_ctx_t ctx,
                                        struct pmix_namespace_t *nspace,
-                                       pmix_list_t *cbs,
                                        pmix_byte_object_t *bo)
 {
     pmix_namespace_t *ns = (pmix_namespace_t*)nspace;

@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2015-2018 Intel, Inc. All rights reserved.
  * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
- * Copyright (c) 2016-2018 Mellanox Technologies, Inc.
+ * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2018-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
@@ -109,7 +109,6 @@ static inline int _my_client(const char *nspace, pmix_rank_t rank);
 
 static pmix_status_t _dstor_store_modex_cb(pmix_common_dstore_ctx_t *ds_ctx,
                                                 struct pmix_namespace_t *nspace,
-                                                pmix_list_t *cbs,
                                                 pmix_byte_object_t *bo);
 
 static pmix_status_t _dstore_store_nolock(pmix_common_dstore_ctx_t *ds_ctx,
@@ -2520,9 +2519,8 @@ static inline int _my_client(const char *nspace, pmix_rank_t rank)
  * always contains data solely from remote procs, and we
  * shall store it accordingly */
 PMIX_EXPORT pmix_status_t pmix_common_dstor_store_modex(pmix_common_dstore_ctx_t *ds_ctx,
-                                                            struct pmix_namespace_t *nspace,
-                                                            pmix_list_t *cbs,
-                                                            pmix_buffer_t *buf)
+                                                        struct pmix_namespace_t *nspace,
+                                                        pmix_buffer_t *buf)
 {
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_status_t rc1 = PMIX_SUCCESS;
@@ -2542,7 +2540,8 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_store_modex(pmix_common_dstore_ctx_t
         return rc;
     }
 
-    rc = pmix_gds_base_store_modex(nspace, cbs, buf, (pmix_gds_base_store_modex_cb_fn_t)_dstor_store_modex_cb, ds_ctx);
+    rc = pmix_gds_base_store_modex(nspace,  buf, ds_ctx,
+                    (pmix_gds_base_store_modex_cb_fn_t)_dstor_store_modex_cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
     }
@@ -2561,7 +2560,6 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_store_modex(pmix_common_dstore_ctx_t
 
 static pmix_status_t _dstor_store_modex_cb(pmix_common_dstore_ctx_t *ds_ctx,
                                                 struct pmix_namespace_t *nspace,
-                                                pmix_list_t *cbs,
                                                 pmix_byte_object_t *bo)
 {
     pmix_namespace_t *ns = (pmix_namespace_t*)nspace;
