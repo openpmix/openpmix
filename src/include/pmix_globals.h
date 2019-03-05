@@ -13,6 +13,8 @@
  * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2019      Mellanox Technologies, Inc.
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -297,6 +299,7 @@ typedef struct {
     bool hybrid;                    // true if participating procs are from more than one nspace
     pmix_proc_t *pcs;               // copy of the original array of participants
     size_t   npcs;                  // number of procs in the array
+    pmix_list_t nslist;             // unique nspace list of participants
     pmix_lock_t lock;               // flag for waiting for completion
     bool def_complete;              // all local procs have been registered and the trk definition is complete
     pmix_list_t local_cbs;          // list of pmix_server_caddy_t for sending result to the local participants
