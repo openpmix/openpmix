@@ -31,7 +31,7 @@
 extern "C" {
 #endif
 
-    extern pmix_mca_base_component_t mca_compress_zlib_component;
+    extern pmix_mca_base_component_t mca_pcompress_zlib_component;
 
     /*
      * Module functions
