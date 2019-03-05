@@ -45,6 +45,9 @@
 #include <sys/types.h>
 #endif
 
+#if PMIX_HAVE_ZLIB
+#include <zlib.h>
+#endif
 #include PMIX_EVENT_HEADER
 #ifdef PMIX_EVENT2_THREAD_HEADER
 #include PMIX_EVENT2_THREAD_HEADER
@@ -56,6 +59,7 @@ static pmix_status_t pmix_init_result = PMIX_ERR_INIT;
 #include "src/class/pmix_list.h"
 #include "src/event/pmix_event.h"
 #include "src/util/argv.h"
+#include "src/util/compress.h"
 #include "src/util/error.h"
 #include "src/util/hash.h"
 #include "src/util/name_fns.h"
@@ -64,12 +68,10 @@ static pmix_status_t pmix_init_result = PMIX_ERR_INIT;
 #include "src/runtime/pmix_rte.h"
 #include "src/threads/threads.h"
 #include "src/mca/bfrops/base/base.h"
-#include "src/mca/pcompress/base/base.h"
 #include "src/mca/gds/base/base.h"
 #include "src/mca/preg/preg.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/include/pmix_globals.h"
-#include "src/common/pmix_attributes.h"
 #include "src/common/pmix_iof.h"
 
 #include "pmix_client_ops.h"
@@ -420,7 +422,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
                                     pmix_info_t info[], size_t ninfo)
 {
     char *evar;
-    pmix_status_t rc = PMIX_SUCCESS;
+    pmix_status_t rc;
     pmix_cb_t cb;
     pmix_buffer_t *req;
     pmix_cmd_t cmd = PMIX_REQ_CMD;
@@ -694,10 +696,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     if (NULL != info) {
         _check_for_notify(info, ninfo);
     }
-
-    /* register the client supported attrs */
-    rc = pmix_register_client_attrs();
-    return rc;
+    return PMIX_SUCCESS;
 }
 
 PMIX_EXPORT int PMIx_Initialized(void)
@@ -981,7 +980,7 @@ static void _putfn(int sd, short args, void *cbdata)
     kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
     if (PMIX_STRING_SIZE_CHECK(cb->value)) {
         /* compress large strings */
-        if (pmix_compress.compress_string(cb->value->data.string, &tmp, &len)) {
+        if (pmix_util_compress_string(cb->value->data.string, &tmp, &len)) {
             if (NULL == tmp) {
                 PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                 rc = PMIX_ERR_NOMEM;

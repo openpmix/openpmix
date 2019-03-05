@@ -52,6 +52,8 @@
 #include "src/include/pmix_globals.h"
 #include "src/util/fd.h"
 
+#include "src/common/pmix_iof.h"
+
 BEGIN_C_DECLS
 
 /*

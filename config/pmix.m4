@@ -781,6 +781,13 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
 
     ##################################
+    # ZLIB COMPRESSION
+    ##################################
+    pmix_show_title "ZLIB"
+
+    PMIX_ZLIB_CONFIG
+
+    ##################################
     # MCA
     ##################################
 
@@ -883,7 +890,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         pmix_config_prefix[src/tools/pmix_info/Makefile]
         pmix_config_prefix[src/tools/plookup/Makefile]
         pmix_config_prefix[src/tools/pps/Makefile]
-        pmix_config_prefix[src/tools/pattrs/Makefile]
         )
 
     # publish any embedded flags so external wrappers can use them
