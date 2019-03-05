@@ -234,6 +234,9 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
     case PMIX_GROUP_CONTEXT_ID_ASSIGNED:
         return "GROUP-CONTEXT-ID-ASSIGNED";
 
+    case PMIX_ERR_REPEAT_ATTR_REGISTRATION:
+        return "REPEAT-ATTRIBUTE-REGISTRATION";
+
     case PMIX_ERR_NODE_DOWN:
         return "NODE-DOWN";
     case PMIX_ERR_NODE_OFFLINE:
