@@ -701,7 +701,11 @@ static pmix_status_t _collect_data(pmix_server_trkr_t *trk,
             PMIX_DESTRUCT(&cb);
         }
         /* mark the collection type so we can check on the
-         * receiving end that all participants did the same */
+         * receiving end that all participants did the same. Note
+         * that if the receiving end thinks that the collect flag
+         * is false, then store_modex will not be called on that
+         * node and this information (and the flag) will be ignored,
+         * meaning that no error is generated! */
         blob_info_byte |= PMIX_GDS_COLLECT_BIT;
         if (PMIX_MODEX_KEY_KEYMAP_FMT == kmap_type) {
             blob_info_byte |= PMIX_GDS_KEYMAP_BIT;
@@ -738,7 +742,14 @@ static pmix_status_t _collect_data(pmix_server_trkr_t *trk,
         PMIX_DESTRUCT(&rank_blobs);
     } else {
         /* mark the collection type so we can check on the
-         * receiving end that all participants did the same */
+         * receiving end that all participants did the same.
+         * Don't do it for non-debug mode so we don't unnecessarily
+         * send the collection bucket. The mdxcbfunc in the
+         * server only calls store_modex if the local collect
+         * flag is set to true. In debug mode, this check will
+         * cause the store_modex function to see that this node
+         * thought the collect flag was not set, and therefore
+         * generate an error */
 #if PMIX_ENABLE_DEBUG
         /* pack the modex blob info byte */
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &bucket,
