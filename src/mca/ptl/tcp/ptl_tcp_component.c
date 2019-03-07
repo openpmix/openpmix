@@ -15,7 +15,7 @@
  * Copyright (c) 2016-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2018      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2018-2019 IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1880,7 +1880,7 @@ static void process_cbfunc(int sd, short args, void *cbdata)
         /* probably cannot send an error reply if we are out of memory */
         return;
     }
-    info->peerid = peer->index;
+    peer->info->peerid = peer->index;
 
     /* start the events for this tool */
     pmix_event_assign(&peer->recv_event, pmix_globals.evbase, peer->sd,
