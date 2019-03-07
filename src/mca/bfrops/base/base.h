@@ -199,6 +199,31 @@ do {                                                        \
 } while (0)
 
 /**
+ * Unpacking conversion from a flexible representation to a
+ * signed integer value.
+ *
+ * type - C-type of a signed integer value
+ *
+ * val - flexible representation (uint64_t)
+ *
+ * ptr - pointer to a 64-bit output buffer for the upacked value
+ *
+ * (see a comment to `pmix_bfrops_pack_flex` for additional details)
+ */
+#define PMIX_BFROPS_UNPACK_FLEX_CONVERT_SIGNED(type, val, ptr)  \
+do {                                                            \
+    type __tbuf = 0;                                            \
+    uint64_t __tmp = val;                                       \
+    int sign = (__tmp) & 1;                                     \
+    __tmp >>= 1;                                                \
+    if (sign) {                                                 \
+        __tmp = ~__tmp;                                         \
+    }                                                           \
+    __tbuf = (type)__tmp;                                       \
+    memcpy(ptr, &__tbuf, sizeof(type));                         \
+} while (0)
+
+/**
  * Packing conversion of a signed integer value to a flexible representation.
  * For unsigned types it is reduced to a memcopy.
  *
@@ -216,6 +241,25 @@ do {                                                        \
 do {                                                            \
     out = 0;                                                    \
     memcpy(&out, (ptr), sizeof(type));                          \
+} while (0)
+
+/**
+ * Unpacking conversion of a flexible representation value
+ * to an unsigned integer.
+ *
+ * type - C-type of unsigned integer value
+ *
+ * val - flexible representation value (uint64_t)
+ *
+ * ptr - pointer to a 64-bit output buffer for the upacked value
+ *
+ * (see a comment to `pmix_bfrops_pack_flex` for additional details)
+ */
+#define PMIX_BFROPS_UNPACK_FLEX_CONVERT_UNSIGNED(type, val, ptr)\
+do {                                                            \
+    type __tbuf = 0;                                            \
+    __tbuf = (type)val;                                         \
+    memcpy(ptr, &__tbuf, sizeof(type));                         \
 } while (0)
 
 /**
@@ -300,51 +344,6 @@ do {                                                                \
             (r) = PMIX_ERR_BAD_PARAM;                               \
     }                                                               \
 } while(0)
-
-/**
- * Unpacking conversion from a flexible representation to a
- * signed integer value.
- *
- * type - C-type of a signed integer value
- *
- * val - flexible representation (uint64_t)
- *
- * ptr - pointer to a 64-bit output buffer for the upacked value
- *
- * (see a comment to `pmix_bfrops_pack_flex` for additional details)
- */
-#define PMIX_BFROPS_UNPACK_FLEX_CONVERT_SIGNED(type, val, ptr)  \
-do {                                                            \
-    type __tbuf = 0;                                            \
-    uint64_t __tmp = val;                                       \
-    int sign = (__tmp) & 1;                                     \
-    __tmp >>= 1;                                                \
-    if (sign) {                                                 \
-        __tmp = ~__tmp;                                         \
-    }                                                           \
-    __tbuf = (type)__tmp;                                       \
-    memcpy(ptr, &__tbuf, sizeof(type));                         \
-} while (0)
-
-/**
- * Unpacking conversion of a flexible representation value
- * to an unsigned integer.
- *
- * type - C-type of unsigned integer value
- *
- * val - flexible representation value (uint64_t)
- *
- * ptr - pointer to a 64-bit output buffer for the upacked value
- *
- * (see a comment to `pmix_bfrops_pack_flex` for additional details)
- */
-#define PMIX_BFROPS_UNPACK_FLEX_CONVERT_UNSIGNED(type, val, ptr)\
-do {                                                            \
-    type __tbuf = 0;                                            \
-    __tbuf = (type)val;                                         \
-    memcpy(ptr, &__tbuf, sizeof(type));                         \
-} while (0)
-
 
 /**
  * Unpacking conversion of a flexible representation value
