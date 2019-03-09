@@ -328,6 +328,18 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_info_caddy_t,
                                 pmix_list_item_t,
                                 NULL, NULL);
 
+static void ifcon(pmix_infolist_t *p)
+{
+    PMIX_INFO_CONSTRUCT(&p->info);
+}
+static void ifdes(pmix_infolist_t *p)
+{
+    PMIX_INFO_DESTRUCT(&p->info);
+}
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_infolist_t,
+                                pmix_list_item_t,
+                                ifcon, ifdes);
+
 static void qcon(pmix_query_caddy_t *p)
 {
     PMIX_CONSTRUCT_LOCK(&p->lock);
@@ -338,6 +350,7 @@ static void qcon(pmix_query_caddy_t *p)
     p->info = NULL;
     p->ninfo = 0;
     PMIX_BYTE_OBJECT_CONSTRUCT(&p->bo);
+    PMIX_CONSTRUCT(&p->results, pmix_list_t);
     p->cbfunc = NULL;
     p->valcbfunc = NULL;
     p->cbdata = NULL;
@@ -351,6 +364,7 @@ static void qdes(pmix_query_caddy_t *p)
     PMIX_BYTE_OBJECT_DESTRUCT(&p->bo);
     PMIX_PROC_FREE(p->targets, p->ntargets);
     PMIX_INFO_FREE(p->info, p->ninfo);
+    PMIX_LIST_DESTRUCT(&p->results);
 }
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_query_caddy_t,
                                 pmix_object_t,

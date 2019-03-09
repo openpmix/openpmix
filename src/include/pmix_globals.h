@@ -222,6 +222,11 @@ typedef struct {
 } pmix_info_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_info_caddy_t);
 
+typedef struct {
+    pmix_list_item_t super;
+    pmix_info_t info;
+} pmix_infolist_t;
+PMIX_CLASS_DECLARATION(pmix_infolist_t);
 
 /* object for tracking peers - each peer can have multiple
  * connections. This can occur if the initial app executes
@@ -275,6 +280,7 @@ typedef struct {
     size_t ntargets;
     pmix_info_t *info;
     size_t ninfo;
+    pmix_list_t results;
     pmix_byte_object_t bo;
     pmix_info_cbfunc_t cbfunc;
     pmix_value_cbfunc_t valcbfunc;

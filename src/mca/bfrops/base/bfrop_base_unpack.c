@@ -253,6 +253,7 @@ pmix_status_t pmix_bfrops_base_unpack_sizet(pmix_buffer_t *buffer, void *dest,
     pmix_data_type_t remote_type;
 
     if (PMIX_SUCCESS != (ret = pmix_bfrop_get_data_type(buffer, &remote_type))) {
+        PMIX_ERROR_LOG(ret);
         return ret;
     }
 
@@ -260,12 +261,12 @@ pmix_status_t pmix_bfrops_base_unpack_sizet(pmix_buffer_t *buffer, void *dest,
         /* fast path it if the sizes are the same */
         /* Turn around and unpack the real type */
         if (PMIX_SUCCESS != (ret = unpack_gentype(buffer, dest, num_vals, BFROP_TYPE_SIZE_T))) {
+            PMIX_ERROR_LOG(ret);
         }
     } else {
         /* slow path - types are different sizes */
         PMIX_BFROP_UNPACK_SIZE_MISMATCH(size_t, remote_type, ret);
     }
-
     return ret;
 }
 
@@ -749,6 +750,7 @@ pmix_status_t pmix_bfrops_base_unpack_val(pmix_buffer_t *buffer,
                 return PMIX_ERR_NOMEM;
             }
             if (PMIX_SUCCESS != (ret = pmix_bfrops_base_unpack_darray(buffer, val->data.darray, &m, PMIX_DATA_ARRAY))) {
+                PMIX_ERROR_LOG(ret);
                 return ret;
             }
             break;
@@ -769,6 +771,11 @@ pmix_status_t pmix_bfrops_base_unpack_val(pmix_buffer_t *buffer,
             }
             ret = pmix_bfrops_base_unpack_coord(buffer, val->data.coord, &m, PMIX_COORD);
             return ret;
+        case PMIX_REGATTR:
+            if (PMIX_SUCCESS != (ret = pmix_bfrops_base_unpack_regattr(buffer, &val->data.ptr, &m, PMIX_REGATTR))) {
+                return ret;
+            }
+            break;
         default:
             pmix_output(0, "UNPACK-PMIX-VALUE: UNSUPPORTED TYPE %d", (int)val->type);
             return PMIX_ERROR;
@@ -1509,6 +1516,16 @@ pmix_status_t pmix_bfrops_base_unpack_darray(pmix_buffer_t *buffer, void *dest,
                     return ret;
                 }
                 break;
+            case PMIX_REGATTR:
+                ptr[i].array = (pmix_regattr_t*)malloc(m * sizeof(pmix_regattr_t));
+                if (NULL == ptr[i].array) {
+                    return PMIX_ERR_NOMEM;
+                }
+                if (PMIX_SUCCESS != (ret = pmix_bfrops_base_unpack_regattr(buffer, ptr[i].array, &m, ptr[i].type))) {
+                    PMIX_ERROR_LOG(ret);
+                    return ret;
+                }
+                break;
             default:
                 return PMIX_ERR_NOT_SUPPORTED;
         }
@@ -1645,6 +1662,81 @@ pmix_status_t pmix_bfrops_base_unpack_coord(pmix_buffer_t *buffer, void *dest,
         m=1;
         if (PMIX_SUCCESS != (ret = pmix_bfrops_base_unpack_int(buffer, &ptr[i].z, &m, PMIX_INT))) {
             return ret;
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_regattr(pmix_buffer_t *buffer, void *dest,
+                                              int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_regattr_t *ptr;
+    int32_t i, n, m, nd;
+    pmix_status_t ret;
+    char *tmp;
+
+    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
+                        "pmix_bfrop_unpack: %d regattrs", *num_vals);
+
+    ptr = (pmix_regattr_t *) dest;
+    n = *num_vals;
+
+    for (i = 0; i < n; ++i) {
+        PMIX_REGATTR_CONSTRUCT(&ptr[i]);
+        /* unpack the name */
+        m=1;
+        if (PMIX_SUCCESS != (ret = pmix_bfrops_base_unpack_string(buffer, &ptr[i].name, &m, PMIX_STRING))) {
+            return ret;
+        }
+        /* unpack the string */
+        m=1;
+        tmp = NULL;
+        if (PMIX_SUCCESS != (ret = pmix_bfrops_base_unpack_string(buffer, &tmp, &m, PMIX_STRING))) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        if (NULL == tmp) {
+            return PMIX_ERROR;
+        }
+        pmix_strncpy(ptr[i].string, tmp, PMIX_MAX_KEYLEN);
+        free(tmp);
+        /* unpack the type */
+        m=1;
+        if (PMIX_SUCCESS != (ret = pmix_bfrops_base_unpack_datatype(buffer, &ptr[i].type, &m, PMIX_DATA_TYPE))) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        /* unpack the number of info */
+        m=1;
+        if (PMIX_SUCCESS != (ret = pmix_bfrops_base_unpack_sizet(buffer, &ptr[i].ninfo, &m, PMIX_SIZE))) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        if (0 < ptr[i].ninfo) {
+            /* unpack the info */
+            PMIX_INFO_CREATE(ptr[i].info, ptr[i].ninfo);
+            m =  ptr[i].ninfo;
+            if (PMIX_SUCCESS != (ret = pmix_bfrops_base_unpack_info(buffer, ptr[i].info, &m, PMIX_INFO))) {
+                PMIX_ERROR_LOG(ret);
+                return ret;
+            }
+        }
+        /* unpack the description */
+        m=1;
+        if (PMIX_SUCCESS != (ret = pmix_bfrops_base_unpack_int32(buffer, &nd, &m, PMIX_INT32))) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        if (0 < nd) {
+            /* unpack the description */
+            if (NULL == (ptr[i].description = (char**)calloc(nd+1, sizeof(char*)))) {
+                return PMIX_ERR_NOMEM;
+            }
+            m=nd;
+            if (PMIX_SUCCESS != (ret = pmix_bfrops_base_unpack_string(buffer, ptr[i].description, &m, PMIX_STRING))) {
+                PMIX_ERROR_LOG(ret);
+                return ret;
+            }
         }
     }
     return PMIX_SUCCESS;

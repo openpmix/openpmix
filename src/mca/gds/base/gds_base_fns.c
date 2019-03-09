@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2015-2017 Intel, Inc. All rights reserved.
+ * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
@@ -95,7 +95,6 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
                                         void *cbdata)
 {
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_namespace_t * ns = (pmix_namespace_t *)nspace;
     pmix_buffer_t bkt;
     pmix_byte_object_t bo, bo2;
     int32_t cnt = 1;

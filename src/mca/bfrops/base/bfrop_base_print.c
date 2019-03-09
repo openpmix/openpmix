@@ -875,6 +875,7 @@ int pmix_bfrops_base_print_status(char **output, char *prefix,
  {
     char *prefx;
     int rc;
+    pmix_regattr_t *r;
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
@@ -1024,6 +1025,13 @@ int pmix_bfrops_base_print_status(char **output, char *prefix,
         case PMIX_COORD:
             rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_COORD\tx-axis: %d\ty-axis: %d\tz-axis: %d",
                           prefx, src->data.coord->x, src->data.coord->y, src->data.coord->z);
+            break;
+
+        case PMIX_REGATTR:
+            r = (pmix_regattr_t*)src->data.ptr;
+            rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_REGATTR\tName: %s\tString: %s",
+                          prefx, (NULL == r->name) ? "NULL" : r->name,
+                          (NULL == r->string) ? "NULL" : r->string);
             break;
 
         default:
@@ -1714,6 +1722,37 @@ pmix_status_t pmix_bfrops_base_print_coord(char **output, char *prefix,
 
     ret = asprintf(output, "%sData type: PMIX_COORD\tx-axis: %d\ty-axis: %d\tz-axis: %d",
                    prefx, src->x, src->y, src->z);
+    if (prefx != prefix) {
+        free(prefx);
+    }
+
+    if (0 > ret) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    } else {
+        return PMIX_SUCCESS;
+    }
+}
+
+pmix_status_t pmix_bfrops_base_print_regattr(char **output, char *prefix,
+                                             pmix_regattr_t *src,
+                                             pmix_data_type_t type)
+{
+    char *prefx;
+    int ret;
+
+    /* deal with NULL prefix */
+    if (NULL == prefix) {
+        if (0 > asprintf(&prefx, " ")) {
+            return PMIX_ERR_NOMEM;
+        }
+    } else {
+        prefx = prefix;
+    }
+
+    ret = asprintf(output, "%sData type: PMIX_REGATTR\tName: %s\tString: %s",
+                   prefx, (NULL == src->name) ? "NULL" : src->name,
+                   (NULL == src->string) ? "NULL" : src->string);
+
     if (prefx != prefix) {
         free(prefx);
     }

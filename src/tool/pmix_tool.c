@@ -63,6 +63,7 @@
 #include "src/mca/ptl/base/base.h"
 #include "src/mca/psec/psec.h"
 #include "src/include/pmix_globals.h"
+#include "src/common/pmix_attributes.h"
 #include "src/common/pmix_iof.h"
 #include "src/server/pmix_server_ops.h"
 
@@ -989,7 +990,11 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
          * and load it from there */
 
         /* hostname */
-        gethostname(hostname, PMIX_MAX_NSLEN);
+        if (NULL != pmix_globals.hostname) {
+            pmix_strncpy(hostname, pmix_globals.hostname, PMIX_MAX_NSLEN);
+        } else {
+            gethostname(hostname, PMIX_MAX_NSLEN);
+        }
         kptr = PMIX_NEW(pmix_kval_t);
         kptr->key = strdup(PMIX_HOSTNAME);
         PMIX_VALUE_CREATE(kptr->value, 1);
@@ -1054,6 +1059,8 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         }
     }
 
+    /* register the tool supported attrs */
+    rc = pmix_register_tool_attrs();
     return rc;
 }
 
