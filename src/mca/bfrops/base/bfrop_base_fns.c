@@ -10,6 +10,8 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015-2018 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2019      Mellanox Technologies, Inc.
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -727,39 +729,23 @@ bool pmix_bfrop_too_small(pmix_buffer_t *buffer, size_t bytes_reqd)
     return false;
 }
 
-pmix_status_t pmix_bfrop_store_data_type(pmix_buffer_t *buffer, pmix_data_type_t type)
+pmix_status_t pmix_bfrop_store_data_type(pmix_pointer_array_t *regtypes,
+                                         pmix_buffer_t *buffer, pmix_data_type_t type)
 {
-    uint16_t tmp;
-    char *dst;
+    pmix_status_t ret;
 
-    /* check to see if buffer needs extending */
-     if (NULL == (dst = pmix_bfrop_buffer_extend(buffer, sizeof(tmp)))) {
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    }
-    tmp = pmix_htons(type);
-    memcpy(dst, &tmp, sizeof(tmp));
-    buffer->pack_ptr += sizeof(tmp);
-    buffer->bytes_used += sizeof(tmp);
-
-    return PMIX_SUCCESS;
+    PMIX_BFROPS_PACK_TYPE(ret, buffer, &type, 1, PMIX_UINT16, regtypes);
+    return ret;
 }
 
-pmix_status_t pmix_bfrop_get_data_type(pmix_buffer_t *buffer, pmix_data_type_t *type)
+pmix_status_t pmix_bfrop_get_data_type(pmix_pointer_array_t *regtypes,
+                                       pmix_buffer_t *buffer, pmix_data_type_t *type)
 {
-    uint16_t tmp;
+    pmix_status_t ret;
+    int32_t m = 1;
 
-    /* check to see if there's enough data in buffer */
-    if (pmix_bfrop_too_small(buffer, sizeof(tmp))) {
-        return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
-    }
-
-    /* unpack the data */
-    memcpy(&tmp, buffer->unpack_ptr, sizeof(tmp));
-    tmp = pmix_ntohs(tmp);
-    memcpy(type, &tmp, sizeof(tmp));
-    buffer->unpack_ptr += sizeof(tmp);
-
-    return PMIX_SUCCESS;
+    PMIX_BFROPS_UNPACK_TYPE(ret, buffer, type, &m, PMIX_UINT16, regtypes);
+    return ret;
 }
 
 const char* pmix_bfrops_base_data_type_string(pmix_pointer_array_t *regtypes,
