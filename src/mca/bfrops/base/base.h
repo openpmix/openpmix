@@ -226,7 +226,7 @@ PMIX_EXPORT extern pmix_bfrops_globals_t pmix_bfrops_globals;
     do {                                                                    \
         int32_t i;                                                          \
         tmptype *tmpbuf = (tmptype*)malloc(sizeof(tmptype) * (*num_vals));  \
-        ret = unpack_gentype(reg_types, buffer, tmpbuf, num_vals, tmpbfroptype);       \
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, tmpbuf, num_vals, tmpbfroptype, reg_types);        \
         for (i = 0 ; i < *num_vals ; ++i) {                                 \
             ((unpack_type*) dest)[i] = (unpack_type)(tmpbuf[i]);            \
         }                                                                   \

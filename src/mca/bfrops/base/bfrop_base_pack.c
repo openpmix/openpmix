@@ -85,29 +85,6 @@ pmix_status_t pmix_bfrops_base_pack_buffer(pmix_pointer_array_t *regtypes,
     return rc;
 }
 
-static pmix_status_t pack_gentype(pmix_pointer_array_t *regtypes,
-                                  pmix_buffer_t *buffer, const void *src,
-                                  int32_t num_vals, pmix_data_type_t type)
-{
-    pmix_status_t ret;
-
-    switch(type) {
-        case PMIX_INT8:
-        case PMIX_UINT8:
-        case PMIX_INT16:
-        case PMIX_UINT16:
-        case PMIX_INT32:
-        case PMIX_UINT32:
-        case PMIX_INT64:
-        case PMIX_UINT64:
-            PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, type, regtypes);
-            return ret;
-
-        default:
-        return PMIX_ERR_UNKNOWN_DATA_TYPE;
-    }
-}
-
 /* PACK FUNCTIONS FOR GENERIC SYSTEM TYPES */
 
 /*
@@ -161,7 +138,8 @@ pmix_status_t pmix_bfrops_base_pack_int(pmix_pointer_array_t *regtypes,
     }
 
     /* Turn around and pack the real type */
-    return pack_gentype(regtypes, buffer, src, num_vals, BFROP_TYPE_INT);
+    PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, BFROP_TYPE_INT, regtypes);
+    return ret;
 }
 
 /*
@@ -179,7 +157,8 @@ pmix_status_t pmix_bfrops_base_pack_sizet(pmix_pointer_array_t *regtypes,
         return ret;
     }
 
-    return pack_gentype(regtypes, buffer, src, num_vals, BFROP_TYPE_SIZE_T);
+    PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, BFROP_TYPE_SIZE_T, regtypes);
+    return ret;
 }
 
 /*
@@ -198,9 +177,9 @@ pmix_status_t pmix_bfrops_base_pack_pid(pmix_pointer_array_t *regtypes,
     }
 
     /* Turn around and pack the real type */
-    return pack_gentype(regtypes, buffer, src, num_vals, BFROP_TYPE_PID_T);
+    PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, BFROP_TYPE_PID_T, regtypes);
+    return ret;
 }
-
 
 /*
  * BYTE, CHAR, INT8
