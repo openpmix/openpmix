@@ -56,7 +56,7 @@ def harvest_constants(options, src, constants, definitions):
                     strconsts.append(tokens[0])
                     if len(tokens[0]) > strconstlen:
                         strconstlen = len(tokens[0])
-                elif "PMIX_ERR_" in value:
+                elif "PMIX_ERR_" in value or tokens[1].startswith("-"):
                     # numerical constant that looks just like a
                     # string constant - i.e., PMIX_ERR_FOO...1
                     # we output them in a separate section, but
