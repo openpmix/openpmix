@@ -82,6 +82,7 @@ typedef struct pmix_gds_globals_t pmix_gds_globals_t;
 typedef void * pmix_gds_base_ctx_t;
 typedef pmix_status_t (*pmix_gds_base_store_modex_cb_fn_t)(pmix_gds_base_ctx_t ctx,
                                                            pmix_proc_t *proc,
+                                                           char **kmap,
                                                            pmix_buffer_t *pbkt);
 
 PMIX_EXPORT extern pmix_gds_globals_t pmix_gds_globals;
@@ -112,6 +113,13 @@ PMIX_EXPORT pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nsp
                                                     pmix_gds_base_store_modex_cb_fn_t cb_fn,
                                                     void *cbdata);
 
+PMIX_EXPORT
+pmix_status_t pmix_gds_base_modex_pack_kval(char ***kmap, pmix_buffer_t *buf,
+                                            pmix_kval_t *kv);
+
+PMIX_EXPORT
+pmix_status_t pmix_gds_base_modex_unpack_kval(char **kmap, pmix_buffer_t *buf,
+                                              pmix_kval_t *kv);
 END_C_DECLS
 
 #endif
