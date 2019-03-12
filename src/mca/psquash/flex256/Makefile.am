@@ -1,0 +1,39 @@
+# -*- makefile -*-
+#
+# Copyright (c) 2019      IBM Corporation.  All rights reserved.
+# $COPYRIGHT$
+#
+# Additional copyrights may follow
+#
+# $HEADER$
+#
+
+headers = psquash_flex256.h
+sources = \
+        psquash_flex256_component.c \
+        psquash_flex256.c
+
+# Make the output library in this directory, and name it either
+# mca_<type>_<name>.la (for DSO builds) or libmca_<type>_<name>.la
+# (for static builds).
+
+if MCA_BUILD_pmix_psquash_flex256_DSO
+lib =
+lib_sources =
+component = mca_psquash_flex256.la
+component_sources = $(headers) $(sources)
+else
+lib = libmca_psquash_flex256.la
+lib_sources = $(headers) $(sources)
+component =
+component_sources =
+endif
+
+mcacomponentdir = $(pmixlibdir)
+mcacomponent_LTLIBRARIES = $(component)
+mca_psquash_flex256_la_SOURCES = $(component_sources)
+mca_psquash_flex256_la_LDFLAGS = -module -avoid-version
+
+noinst_LTLIBRARIES = $(lib)
+libmca_psquash_flex256_la_SOURCES = $(lib_sources)
+libmca_psquash_flex256_la_LDFLAGS = -module -avoid-version
