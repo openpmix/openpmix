@@ -35,7 +35,7 @@ static int compress_zlib_query(pmix_mca_base_module_t **module, int *priority);
  * Instantiate the public struct with all of our public information
  * and pointer to our public functions in it
  */
-pmix_mca_base_component_t mca_pcompress_zlib_component = {
+PMIX_EXPORT pmix_mca_base_component_t mca_pcompress_zlib_component = {
     /* Handle the general mca_component_t struct containing
      *  meta information about the component zlib
      */
