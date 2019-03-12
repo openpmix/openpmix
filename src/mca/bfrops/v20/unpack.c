@@ -32,36 +32,6 @@
 #include "bfrop_pmix20.h"
 #include "internal.h"
 
-static pmix_status_t unpack_gentype(pmix_pointer_array_t *regtypes,
-                                    pmix_buffer_t *buffer, void *dest,
-                                    int32_t *num_vals, pmix_data_type_t type)
-{
-    switch(type) {
-        case PMIX_INT8:
-        case PMIX_UINT8:
-        return pmix20_bfrop_unpack_byte(regtypes, buffer, dest, num_vals, type);
-        break;
-
-        case PMIX_INT16:
-        case PMIX_UINT16:
-        return pmix20_bfrop_unpack_int16(regtypes, buffer, dest, num_vals, type);
-        break;
-
-        case PMIX_INT32:
-        case PMIX_UINT32:
-        return pmix20_bfrop_unpack_int32(regtypes, buffer, dest, num_vals, type);
-        break;
-
-        case PMIX_INT64:
-        case PMIX_UINT64:
-        return pmix20_bfrop_unpack_int64(regtypes, buffer, dest, num_vals, type);
-        break;
-
-        default:
-        return PMIX_ERR_UNKNOWN_DATA_TYPE;
-    }
-}
-
 pmix_status_t pmix20_bfrop_unpack(pmix_buffer_t *buffer,
                                   void *dst, int32_t *num_vals,
                                   pmix_data_type_t type)
