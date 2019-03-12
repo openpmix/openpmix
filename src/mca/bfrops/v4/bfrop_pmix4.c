@@ -14,6 +14,7 @@
  * Copyright (c) 2011-2014 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2019      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -26,6 +27,10 @@
 
 #include "src/mca/bfrops/base/base.h"
 #include "bfrop_pmix4.h"
+
+#include "src/mca/psquash/psquash.h"
+#include "src/mca/psquash/base/base.h"
+#include "src/util/error.h"
 
 static pmix_status_t init(void);
 static void finalize(void);
@@ -65,6 +70,24 @@ pmix_bfrops_module_t pmix_bfrops_pmix4_module = {
 
 static pmix_status_t init(void)
 {
+    pmix_status_t rc;
+
+    if( PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_psquash_base_framework, 0)) ) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    if( PMIX_SUCCESS != (rc = pmix_psquash_base_select()) ) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    rc = pmix_psquash.init();
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
     /* some standard types don't require anything special */
     PMIX_REGISTER_TYPE("PMIX_BOOL", PMIX_BOOL,
                        pmix_bfrops_base_pack_bool,
@@ -404,12 +427,19 @@ static void finalize(void)
 {
     int n;
     pmix_bfrop_type_info_t *info;
+    pmix_status_t rc;
 
     for (n=0; n < mca_bfrops_v4_component.types.size; n++) {
         if (NULL != (info = (pmix_bfrop_type_info_t*)pmix_pointer_array_get_item(&mca_bfrops_v4_component.types, n))) {
             PMIX_RELEASE(info);
             pmix_pointer_array_set_item(&mca_bfrops_v4_component.types, n, NULL);
         }
+    }
+
+    /* close the psquash framework */
+    pmix_psquash.finalize();
+    if( PMIX_SUCCESS != (rc = pmix_mca_base_framework_close(&pmix_psquash_base_framework)) ) {
+        PMIX_ERROR_LOG(rc);
     }
 }
 
