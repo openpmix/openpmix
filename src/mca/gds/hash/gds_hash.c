@@ -1361,11 +1361,6 @@ static pmix_status_t _hash_store_modex(pmix_gds_base_ctx_t ctx,
      * the rank followed by pmix_kval_t's. The list of callbacks
      * contains all local participants. */
 
-    PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, pbkt, proc, &cnt, PMIX_PROC);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
     /* unpack the remaining values until we hit the end of the buffer */
     cnt = 1;
     kv = PMIX_NEW(pmix_kval_t);
