@@ -167,13 +167,13 @@ def harvest_constants(options, src, constants, definitions):
                     # check for a typedef that includes a named value
                     # of either PMIX_MAX_NSLEN or PMIX_MAX_KEYLEN
                     if "PMIX_MAX_NSLEN+1" in value:
-                        value = value.replace("PMIX_MAX_NSLEN+1", str(64))
+                        value = value.replace("PMIX_MAX_NSLEN+1", str(256))
                     elif "PMIX_MAX_NSLEN" in value:
-                        value = value.replace("PMIX_MAX_NSLEN", str(63))
+                        value = value.replace("PMIX_MAX_NSLEN", str(255))
                     elif "PMIX_MAX_KEYLEN+1" in value:
-                        value = value.replace("PMIX_MAX_KEYLEN+1", str(64))
+                        value = value.replace("PMIX_MAX_KEYLEN+1", str(512))
                     elif "PMIX_MAX_KEYLEN" in value:
-                        value = value.replace("PMIX_MAX_KEYLEN", str(63))
+                        value = value.replace("PMIX_MAX_KEYLEN", str(511))
                     typedefs.append([value])
             # now check the third option by looking for
             # "fn_t" or "cbfunc_t" in it
