@@ -204,6 +204,7 @@ Prefix: %{_prefix}
 Provides: pmix
 Provides: pmix = %{version}
 BuildRoot: /var/tmp/%{name}-%{version}-%{release}-root
+BuildRequires: libevent-devel
 %if %{disable_auto_requires}
 AutoReq: no
 %endif
