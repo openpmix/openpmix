@@ -37,7 +37,7 @@
 /**
  * Packing conversion of a signed integer value to a flexible representation.
  * The main idea is to split a signed negative value onto an absolute value
- * and a sing bit stored in the special location.
+ * and a sign bit stored in the special location.
  * This allows efficient representetion of negative values in the
  * flexible form.
  *
