@@ -1,5 +1,7 @@
 /*
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2019      Mellanox Technologies, Inc.
+ *                         All rights reserved.
  *
  * $COPYRIGHT$
  *
@@ -27,6 +29,11 @@
 #include "psquash_flex128.h"
 
 #include "src/mca/bfrops/base/base.h"
+
+#define FLEX_BASE7_MAX_BUF_SIZE (SIZEOF_SIZE_T+1)
+#define FLEX_BASE7_MASK ((1<<7) - 1)
+#define FLEX_BASE7_SHIFT 7
+#define FLEX_BASE7_CONT_FLAG (1<<7)
 
 // Move to bfrops framework
 #define PMIX_BFROPS_TYPE_SIZEOF(r, t, s)                    \
@@ -131,4 +138,45 @@ static pmix_status_t flex128_decode_int(pmix_data_type_t type,
     memcpy(&dest, src, src_len);
 
     return PMIX_SUCCESS;
+}
+
+static int flex_pack_integer(uint64_t size, uint8_t out_buf[FLEX_BASE7_MAX_BUF_SIZE])
+{
+    uint64_t tmp = size;
+    int idx = 0;
+
+    do {
+        uint8_t val = tmp & FLEX_BASE7_MASK;
+        tmp >>= FLEX_BASE7_SHIFT;
+        if (PMIX_UNLIKELY(tmp)) {
+            val |= FLEX_BASE7_CONT_FLAG;
+        }
+        out_buf[idx++] = val;
+    } while(tmp && idx < 8);
+
+    /* If we have leftover (VERY unlikely) */
+    if (PMIX_UNLIKELY(8 == idx && tmp)) {
+        out_buf[idx++] = tmp;
+    }
+    return idx;
+}
+
+static uint64_t flex_unpack_integer(uint8_t in_buf[])
+{
+    uint64_t size = 0, shift = 0;
+    int idx = 0;
+    uint8_t val = 0;
+
+    do {
+        val = in_buf[idx++];
+        size = size + (((uint64_t)val & FLEX_BASE7_MASK) << shift);
+        shift += FLEX_BASE7_SHIFT;
+    } while(PMIX_UNLIKELY((val & FLEX_BASE7_CONT_FLAG) && (idx < 8)));
+
+    /* If we have leftover (VERY unlikely) */
+    if (PMIX_UNLIKELY(8 == idx && (val & FLEX_BASE7_CONT_FLAG))) {
+        val = in_buf[idx++];
+        size = size + ((uint64_t)val << shift);
+    }
+    return size;
 }
