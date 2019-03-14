@@ -57,7 +57,7 @@ static int component_open(void)
 
 static int component_query(pmix_mca_base_module_t **module, int *priority)
 {
-    *priority = 0;
+    *priority = 5;
     *module = (pmix_mca_base_module_t *)&pmix_psquash_native_module;
     return PMIX_SUCCESS;
 }
