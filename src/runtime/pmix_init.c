@@ -32,16 +32,16 @@
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
-#include PMIX_EVENT_HEADER
-#include "event2/thread.h"
 
 #include <pmix_rename.h>
 
+#include "src/include/pmix_globals.h"
 #include "src/util/output.h"
 #include "src/util/show_help.h"
 #include "src/mca/base/base.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/bfrops/base/base.h"
+#include "src/mca/pcompress/base/base.h"
 #include "src/mca/gds/base/base.h"
 #include "src/mca/pif/base/base.h"
 #include "src/mca/pinstalldirs/base/base.h"
@@ -52,6 +52,7 @@
 #include "src/mca/ptl/base/base.h"
 
 #include "src/client/pmix_client_ops.h"
+#include "src/common/pmix_attributes.h"
 #include "src/event/pmix_event.h"
 #include "src/include/types.h"
 #include "src/util/error.h"
@@ -290,6 +291,16 @@ int pmix_rte_init(pmix_proc_type_t type,
         goto return_error;
     }
 
+    /* open and select the compress framework */
+    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_pcompress_base_framework, 0)) ) {
+        error = "pmix_pcompress_base_open";
+        goto return_error;
+    }
+    if (PMIX_SUCCESS != (ret = pmix_compress_base_select()) ) {
+        error = "pmix_pcompress_base_select";
+        goto return_error;
+    }
+
     /* open the ptl and select the active plugins */
     if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_ptl_base_framework, 0)) ) {
         error = "pmix_ptl_base_open";
@@ -350,6 +361,9 @@ int pmix_rte_init(pmix_proc_type_t type,
         error = "pmix_plog_base_select";
         goto return_error;
     }
+
+    /* initialize the attribute support system */
+    pmix_init_registered_attrs();
 
     /* if an external event base wasn't provide, create one */
     if (!pmix_globals.external_evbase) {

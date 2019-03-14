@@ -754,9 +754,23 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     ##################################
     # Libevent
     ##################################
-    pmix_show_title "Libevent"
+    pmix_show_title "Event libraries"
 
+    PMIX_LIBEV_CONFIG
     PMIX_LIBEVENT_CONFIG
+
+    AS_IF([test $pmix_libevent_support -eq 1 && test $pmix_libev_support -eq 1],
+      [AC_MSG_WARN([Both libevent and libev support have been specified.])
+       AC_MSG_WARN([Only one can be configured against at a time. Please])
+       AC_MSG_WARN([remove one from the configure command line.])
+       AC_MSG_ERROR([Cannot continue])])
+
+    AS_IF([test $pmix_libevent_support -eq 0 && test $pmix_libev_support -eq 0],
+          [AC_MSG_WARN([Either libevent or libev support is required, but neither])
+           AC_MSG_WARN([was found. Please use the configure options to point us])
+           AC_MSG_WARN([to where we can find one or the other library])
+           AC_MSG_ERROR([Cannot continue])])
+
 
     ##################################
     # HWLOC
@@ -765,13 +779,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     PMIX_HWLOC_CONFIG
 
-
-    ##################################
-    # ZLIB COMPRESSION
-    ##################################
-    pmix_show_title "ZLIB"
-
-    PMIX_ZLIB_CONFIG
 
     ##################################
     # MCA
@@ -876,6 +883,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         pmix_config_prefix[src/tools/pmix_info/Makefile]
         pmix_config_prefix[src/tools/plookup/Makefile]
         pmix_config_prefix[src/tools/pps/Makefile]
+        pmix_config_prefix[src/tools/pattrs/Makefile]
         )
 
     # publish any embedded flags so external wrappers can use them

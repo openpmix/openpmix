@@ -10,6 +10,7 @@ Makefile.in
 *.dirstamp
 .DS_Store
 *.log
+*.dSYM
 *.trs
 static-components.h
 
@@ -90,6 +91,7 @@ src/mca/pinstalldirs/config/pinstall_dirs.h
 src/mca/pdl/base/static-components.h
 src/mca/pinstalldirs/base/static-components.h
 
+src/tools/pattrs/pattrs
 src/tools/pevent/pevent
 src/tools/pmix_info/pmix_info
 src/tools/plookup/plookup
@@ -134,6 +136,8 @@ test/simple/stability
 test/simple/gwclient
 test/simple/gwtest
 test/simple/simpjctrl
+test/simple/simpio
+test/simple/data-*
 
 # coverity
 cov-int

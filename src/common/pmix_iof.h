@@ -52,8 +52,6 @@
 #include "src/include/pmix_globals.h"
 #include "src/util/fd.h"
 
-#include "src/common/pmix_iof.h"
-
 BEGIN_C_DECLS
 
 /*
@@ -102,6 +100,8 @@ typedef struct {
     bool always_readable;
     pmix_proc_t *targets;
     size_t ntargets;
+    pmix_info_t *directives;
+    size_t ndirs;
 } pmix_iof_read_event_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_iof_read_event_t);
 
@@ -190,8 +190,9 @@ pmix_iof_fd_always_ready(int fd)
     } while(0);
 
 
-#define PMIX_IOF_READ_EVENT(rv, p, np, fid, cbfunc, actv)               \
+#define PMIX_IOF_READ_EVENT(rv, p, np, d, nd, fid, cbfunc, actv)        \
     do {                                                                \
+        size_t _ii;                                                     \
         pmix_iof_read_event_t *rev;                                     \
         PMIX_OUTPUT_VERBOSE((1, pmix_client_globals.iof_output,         \
                             "defining read event at: %s %d",            \
@@ -200,6 +201,13 @@ pmix_iof_fd_always_ready(int fd)
         (rev)->ntargets = (np);                                         \
         PMIX_PROC_CREATE((rev)->targets, (rev)->ntargets);              \
         memcpy((rev)->targets, (p), (np) * sizeof(pmix_proc_t));        \
+        if (NULL != (d)) {                                              \
+            PMIX_INFO_CREATE((rev)->directives, (nd));                  \
+            (rev)->ndirs = (nd);                                        \
+            for (_ii=0; _ii < (nd); _ii++) {                            \
+                PMIX_INFO_XFER(&((rev)->directives[_ii]), &((d)[_ii])); \
+            }                                                           \
+        }                                                               \
         rev->fd = (fid);                                                \
         rev->always_readable = pmix_iof_fd_always_ready(fid);           \
         *(rv) = rev;                                                    \
