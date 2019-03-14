@@ -1,6 +1,8 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2019      Mellanox Technologies, Inc.
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -42,11 +44,13 @@ typedef pmix_status_t (*pmix_psquash_base_module_init_fn_t)(void);
 typedef void (*pmix_psquash_base_module_finalize_fn_t)(void);
 
 /**
- * Maximum size of the buffer passed to encode/decode for integers.
+ *  Maximum size of the type.
  *
- * Define a constant max here to avoid dynamic memory allocation in the call path.
+ * type - Type (PMIX_SIZE, PMIX_INT to PMIX_UINT64)
+ * size - size of the type
  */
-#define PMIX_PSQUASH_INT_MAX_BUF_SIZE (SIZEOF_SIZE_T+1)
+typedef pmix_status_t (*pmix_psquash_get_max_size_fn_t) (pmix_data_type_t type,
+                                                         size_t *size);
 
 /**
  * Encode a basic integer type into a contiguous destination buffer.
@@ -54,12 +58,12 @@ typedef void (*pmix_psquash_base_module_finalize_fn_t)(void);
  * type     - Type of the 'src' pointer (PMIX_SIZE, PMIX_INT to PMIX_UINT64)
  * src      - pointer to a single basic integer type
  * dest     - pointer to buffer to store data
- * dest_len - length, in bytes, of the dest buffer
+ * dst_len  - pointer to the packed size of dest, in bytes
  */
+
 typedef pmix_status_t (*pmix_psquash_encode_int_fn_t) (pmix_data_type_t type,
-                                                       void *src,
-                                                       uint8_t dest[PMIX_PSQUASH_INT_MAX_BUF_SIZE],
-                                                       uint8_t *dest_len);
+                                                       void *src, void *dest,
+                                                       size_t *dst_len);
 
 /**
  * Decode a basic a contiguous destination buffer into a basic integer type.
@@ -68,11 +72,11 @@ typedef pmix_status_t (*pmix_psquash_encode_int_fn_t) (pmix_data_type_t type,
  * src      - pointer to buffer where data was stored
  * src_len  - length, in bytes, of the src buffer
  * dest     - pointer to a single basic integer type
+ * dst_len  - pointer to the unpacked size of dest, in bytes
  */
 typedef pmix_status_t (*pmix_psquash_decode_int_fn_t) (pmix_data_type_t type,
-                                                       uint8_t src[PMIX_PSQUASH_INT_MAX_BUF_SIZE],
-                                                       uint8_t src_len,
-                                                       void *dest);
+                                                       void *src, size_t src_len,
+                                                       void *dest, size_t *dst_len);
 
 /**
  * Base structure for a PSQUASH module
@@ -83,6 +87,8 @@ typedef struct {
     /** init/finalize */
     pmix_psquash_base_module_init_fn_t     init;
     pmix_psquash_base_module_finalize_fn_t finalize;
+
+    pmix_psquash_get_max_size_fn_t         get_max_size;
 
     /** Integer compression */
     pmix_psquash_encode_int_fn_t           encode_int;

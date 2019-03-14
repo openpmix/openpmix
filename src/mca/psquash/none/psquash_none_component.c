@@ -1,6 +1,7 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
+ *
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
