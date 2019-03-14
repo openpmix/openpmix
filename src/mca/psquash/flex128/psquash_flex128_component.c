@@ -13,7 +13,7 @@
 
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/psquash/psquash.h"
-#include "psquash_flex256.h"
+#include "psquash_flex128.h"
 
 static pmix_status_t component_open(void);
 static pmix_status_t component_close(void);
@@ -23,12 +23,12 @@ static pmix_status_t component_query(pmix_mca_base_module_t **module, int *prior
  * Instantiate the public struct with all of our public information
  * and pointers to our public functions in it
  */
-pmix_psquash_base_component_t mca_psquash_flex256_component = {
+pmix_psquash_base_component_t mca_psquash_flex128_component = {
     .base = {
         PMIX_PSQUASH_BASE_VERSION_1_0_0,
 
         /* Component name and version */
-        .pmix_mca_component_name = "flex256",
+        .pmix_mca_component_name = "flex128",
         PMIX_MCA_BASE_MAKE_VERSION(component,
                                    PMIX_MAJOR_VERSION,
                                    PMIX_MINOR_VERSION,
@@ -55,7 +55,7 @@ static int component_open(void)
 static int component_query(pmix_mca_base_module_t **module, int *priority)
 {
     *priority = 20;
-    *module = (pmix_mca_base_module_t *)&pmix_flex256_module;
+    *module = (pmix_mca_base_module_t *)&pmix_flex128_module;
     return PMIX_SUCCESS;
 }
 

@@ -24,7 +24,7 @@
 #endif
 
 #include "src/mca/psquash/psquash.h"
-#include "psquash_flex256.h"
+#include "psquash_flex128.h"
 
 #include "src/mca/bfrops/base/base.h"
 
@@ -55,43 +55,43 @@
         }                                                   \
     } while (0)
 
-static pmix_status_t flex256_init(void);
+static pmix_status_t flex128_init(void);
 
-static void flex256_finalize(void);
+static void flex128_finalize(void);
 
-static pmix_status_t flex256_encode_int(pmix_data_type_t type,
+static pmix_status_t flex128_encode_int(pmix_data_type_t type,
                                         void *src,
                                         uint8_t dest[PMIX_PSQUASH_INT_MAX_BUF_SIZE],
                                         uint8_t *dest_len);
 
-static pmix_status_t flex256_decode_int(pmix_data_type_t type,
+static pmix_status_t flex128_decode_int(pmix_data_type_t type,
                                         uint8_t src[PMIX_PSQUASH_INT_MAX_BUF_SIZE],
                                         uint8_t src_len,
                                         void *dest);
 
-pmix_psquash_base_module_t pmix_flex256_module = {
-    .name = "flex256",
-    .init = flex256_init,
-    .finalize = flex256_finalize,
-    .encode_int = flex256_encode_int,
-    .decode_int = flex256_decode_int
+pmix_psquash_base_module_t pmix_flex128_module = {
+    .name = "flex128",
+    .init = flex128_init,
+    .finalize = flex128_finalize,
+    .encode_int = flex128_encode_int,
+    .decode_int = flex128_decode_int
 };
 
 
-static pmix_status_t flex256_init(void)
+static pmix_status_t flex128_init(void)
 {
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "psquash: flex256 init");
+                        "psquash: flex128 init");
     return PMIX_SUCCESS;
 }
 
-static void flex256_finalize(void)
+static void flex128_finalize(void)
 {
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "psquash: flex256 finalize");
+                        "psquash: flex128 finalize");
 }
 
-static pmix_status_t flex256_encode_int(pmix_data_type_t type,
+static pmix_status_t flex128_encode_int(pmix_data_type_t type,
                                         void *src,
                                         uint8_t dest[PMIX_PSQUASH_INT_MAX_BUF_SIZE],
                                         uint8_t *dest_len)
@@ -109,7 +109,7 @@ static pmix_status_t flex256_encode_int(pmix_data_type_t type,
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t flex256_decode_int(pmix_data_type_t type,
+static pmix_status_t flex128_decode_int(pmix_data_type_t type,
                                         uint8_t src[PMIX_PSQUASH_INT_MAX_BUF_SIZE],
                                         uint8_t src_len,
                                         void *dest)
