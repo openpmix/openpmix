@@ -366,7 +366,5 @@ int main(int argc, char **argv)
         fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n", myproc.nspace, myproc.rank);
     }
     fflush(stderr);
-    // JJH Falase failure
-    rc = 123;
     return(rc);
 }
