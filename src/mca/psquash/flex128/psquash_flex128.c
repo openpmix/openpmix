@@ -225,6 +225,7 @@ static size_t flex_unpack_integer(const uint8_t in_buf[], size_t buf_size,
 
 pmix_psquash_base_module_t pmix_flex128_module = {
     .name = "flex128",
+    .int_type_is_encoded = true,
     .init = flex128_init,
     .finalize = flex128_finalize,
     .get_max_size = flex128_get_max_size,
