@@ -43,6 +43,7 @@ static pmix_status_t native_decode_int(pmix_data_type_t type, void *src,
 
 pmix_psquash_base_module_t pmix_psquash_native_module = {
     .name = "native",
+    .int_type_is_encoded = false,
     .init = native_init,
     .finalize = native_finalize,
     .get_max_size = native_get_max_size,

@@ -83,6 +83,8 @@ typedef pmix_status_t (*pmix_psquash_decode_int_fn_t) (pmix_data_type_t type,
  */
 typedef struct {
     const char *name;
+    /* flag of necessity to pack the type of value */
+    bool int_type_is_encoded;
 
     /** init/finalize */
     pmix_psquash_base_module_init_fn_t     init;
