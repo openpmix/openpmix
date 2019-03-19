@@ -72,6 +72,7 @@ static pmix_status_t hash_store_modex(struct pmix_namespace_t *ns,
 
 static pmix_status_t _hash_store_modex(pmix_gds_base_ctx_t ctx,
                                        pmix_proc_t *proc,
+                                       pmix_gds_modex_key_fmt_t key_fmt,
                                        char **kmap,
                                        pmix_buffer_t *pbkt);
 
@@ -1198,6 +1199,7 @@ static pmix_status_t hash_store_modex(struct pmix_namespace_t *nspace,
 
 static pmix_status_t _hash_store_modex(pmix_gds_base_ctx_t ctx,
                                        pmix_proc_t *proc,
+                                       pmix_gds_modex_key_fmt_t key_fmt,
                                        char **kmap,
                                        pmix_buffer_t *pbkt)
 {
@@ -1233,7 +1235,7 @@ static pmix_status_t _hash_store_modex(pmix_gds_base_ctx_t ctx,
 
     /* unpack the remaining values until we hit the end of the buffer */
     kv = PMIX_NEW(pmix_kval_t);
-    rc = pmix_gds_base_modex_unpack_kval(kmap, pbkt, kv);
+    rc = pmix_gds_base_modex_unpack_kval(key_fmt, pbkt, kmap, kv);
 
     while (PMIX_SUCCESS == rc) {
         /* store this in the hash table */
@@ -1244,7 +1246,7 @@ static pmix_status_t _hash_store_modex(pmix_gds_base_ctx_t ctx,
         PMIX_RELEASE(kv);  // maintain accounting as the hash increments the ref count
         /* continue along */
         kv = PMIX_NEW(pmix_kval_t);
-        rc = pmix_gds_base_modex_unpack_kval(kmap, pbkt, kv);
+        rc = pmix_gds_base_modex_unpack_kval(key_fmt, pbkt, kmap, kv);
     }
     PMIX_RELEASE(kv);  // maintain accounting
     if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {

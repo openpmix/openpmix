@@ -98,7 +98,6 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
     pmix_buffer_t bkt;
     pmix_byte_object_t bo, bo2;
     int32_t cnt = 1;
-    char byte;
     pmix_collect_t ctype;
     bool have_ctype = false;
     pmix_server_trkr_t *trk = (pmix_server_trkr_t*)cbdata;
@@ -109,6 +108,8 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
     bool found;
     char  **kmap = NULL;
     uint32_t kmap_size;
+    pmix_gds_modex_key_fmt_t kmap_type;
+    pmix_gds_modex_blob_info_t blob_info_byte = 0;
 
     /* Loop over the enclosed byte object envelopes and
      * store them in our GDS module */
@@ -121,7 +122,7 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
         /* unpack the data collection flag */
         cnt = 1;
         PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-                &bkt, &byte, &cnt, PMIX_BYTE);
+                &bkt, &blob_info_byte, &cnt, PMIX_BYTE);
         if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
             /* no data was returned, so we are done with this blob */
             PMIX_DESTRUCT(&bkt);
@@ -134,9 +135,12 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
             goto exit;
         }
 
-        // Check that this blob was accumulated with the same data collection setting
+        /* Check that this blob was accumulated with
+         * the same data collection setting */
         if (have_ctype) {
-            if (ctype != (pmix_collect_t)byte) {
+            pmix_collect_t ctmp = PMIX_GDS_COLLECT_IS_SET(blob_info_byte) ?
+                        PMIX_COLLECT_YES : PMIX_COLLECT_NO;
+            if (ctype != ctmp) {
                 rc = PMIX_ERR_INVALID_ARG;
                 pbkt.base_ptr = NULL;
                 PMIX_ERROR_LOG(rc);
@@ -145,45 +149,51 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
             }
         }
         else {
-            ctype = (pmix_collect_t)byte;
+            ctype = PMIX_GDS_COLLECT_IS_SET(blob_info_byte) ?
+                        PMIX_COLLECT_YES : PMIX_COLLECT_NO;
             have_ctype = true;
         }
 
-        /* unpack the size of uniq keys names in the map */
-        cnt = 1;
-        PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-                           &bkt, &kmap_size, &cnt, PMIX_UINT32);
-        if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
-            rc = PMIX_SUCCESS;
-            PMIX_DESTRUCT(&bkt);
-            break;
-        } else if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_DESTRUCT(&bkt);
-            break;
-        }
+        /* determine the key-map existing flag */
+        kmap_type = PMIX_GDS_KEYMAP_IS_SET(blob_info_byte) ?
+                    PMIX_MODEX_KEY_KEYMAP_FMT : PMIX_MODEX_KEY_NATIVE_FMT;
+        if (PMIX_MODEX_KEY_KEYMAP_FMT == kmap_type) {
+            /* unpack the size of uniq keys names in the map */
+            cnt = 1;
+            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
+                               &bkt, &kmap_size, &cnt, PMIX_UINT32);
+            if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
+                rc = PMIX_SUCCESS;
+                PMIX_DESTRUCT(&bkt);
+                break;
+            } else if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_DESTRUCT(&bkt);
+                break;
+            }
 
-        /* init and unpack key names map, the position of the key name
-         * in the array determines the unique key index */
-        kmap = (char**)(calloc(kmap_size + 1, sizeof(char*)));
-        if (NULL == kmap) {
-            rc = PMIX_ERR_OUT_OF_RESOURCE;
-            PMIX_ERROR_LOG(rc);
-            goto exit;
-        }
-        cnt = kmap_size;
-        PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt,
-                           kmap, &cnt, PMIX_STRING);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_DESTRUCT(&bkt);
-            goto exit;
-        }
-        if (pmix_argv_count(kmap) != (int)kmap_size) {
-            rc = PMIX_ERR_UNPACK_FAILURE;
-            PMIX_ERROR_LOG(rc);
-            PMIX_DESTRUCT(&bkt);
-            goto exit;
+            /* init and unpack key names map, the position of the key name
+             * in the array determines the unique key index */
+            kmap = (char**)(calloc(kmap_size + 1, sizeof(char*)));
+            if (NULL == kmap) {
+                rc = PMIX_ERR_OUT_OF_RESOURCE;
+                PMIX_ERROR_LOG(rc);
+                goto exit;
+            }
+            cnt = kmap_size;
+            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt,
+                               kmap, &cnt, PMIX_STRING);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_DESTRUCT(&bkt);
+                goto exit;
+            }
+            if (pmix_argv_count(kmap) != (int)kmap_size) {
+                rc = PMIX_ERR_UNPACK_FAILURE;
+                PMIX_ERROR_LOG(rc);
+                PMIX_DESTRUCT(&bkt);
+                goto exit;
+            }
         }
 
         /* unpack the enclosed blobs from the various peers */
@@ -236,7 +246,7 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
 
             /* call a specific GDS function to storing
              * part of the process data */
-            rc = cb_fn(ctx, &proc, kmap, &pbkt);
+            rc = cb_fn(ctx, &proc, kmap_type, kmap, &pbkt);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 pbkt.base_ptr = NULL;
@@ -288,31 +298,44 @@ exit:
  *
  * kv - pmix key-value pair
  */
-pmix_status_t pmix_gds_base_modex_pack_kval(char ***kmap, pmix_buffer_t *buf,
+pmix_status_t pmix_gds_base_modex_pack_kval(pmix_gds_modex_key_fmt_t key_fmt,
+                                            pmix_buffer_t *buf, char ***kmap,
                                             pmix_kval_t *kv)
 {
     uint32_t key_idx;
-    char *tmp;
     pmix_status_t rc = PMIX_SUCCESS;
 
-    tmp = strdup(kv->key);
-    rc = pmix_argv_append_unique_idx(&key_idx, kmap, tmp, 0);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_MODEX_KEY_KEYMAP_FMT == key_fmt) {
+        rc = pmix_argv_append_unique_idx((int*)&key_idx, kmap, kv->key, 0);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        /* pack key-index */
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &key_idx, 1, PMIX_UINT32);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        /* pack key-value */
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, kv->value, 1, PMIX_VALUE);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+    } else if (PMIX_MODEX_KEY_NATIVE_FMT == key_fmt) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, kv, 1, PMIX_KVAL);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+    } else {
+        rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
-        free(tmp);
         return rc;
     }
-    /* pack key-index */
-    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &key_idx, 1, PMIX_UINT32);
-    if (PMIX_SUCCESS != rc) {
-        return rc;
-    }
-    /* pack key-value */
-    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, kv->value, 1, PMIX_VALUE);
-    if (PMIX_SUCCESS != rc) {
-        return rc;
-    }
-    return rc;
+
+    return PMIX_SUCCESS;
 }
 
 /*
@@ -325,31 +348,47 @@ pmix_status_t pmix_gds_base_modex_pack_kval(char ***kmap, pmix_buffer_t *buf,
  *
  * kv - unpacked pmix key-value pair
  */
-pmix_status_t pmix_gds_base_modex_unpack_kval(char **kmap, pmix_buffer_t *buf,
+pmix_status_t pmix_gds_base_modex_unpack_kval(pmix_gds_modex_key_fmt_t key_fmt,
+                                              pmix_buffer_t *buf, char **kmap,
                                               pmix_kval_t *kv)
 {
     int32_t cnt;
     uint32_t key_idx;
     pmix_status_t rc = PMIX_SUCCESS;
 
-    cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, buf, &key_idx, &cnt, PMIX_UINT32);
-    if (PMIX_SUCCESS != rc) {
-        return rc;
-    }
-    // sanity check
-    if (NULL == kmap[key_idx]) {
+    if (PMIX_MODEX_KEY_KEYMAP_FMT == key_fmt) {
+        cnt = 1;
+        PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, buf, &key_idx, &cnt, PMIX_UINT32);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+        // sanity check
+        if (NULL == kmap[key_idx]) {
+            rc = PMIX_ERR_BAD_PARAM;
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        kv->key = strdup(kmap[key_idx]);
+        cnt = 1;
+        PMIX_VALUE_CREATE(kv->value, 1);
+        PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, buf, kv->value, &cnt, PMIX_VALUE);
+        if (PMIX_SUCCESS != rc) {
+            free(kv->key);
+            PMIX_VALUE_RELEASE(kv->value);
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+    } else if (PMIX_MODEX_KEY_NATIVE_FMT == key_fmt) {
+        cnt = 1;
+        PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, buf, kv, &cnt, PMIX_KVAL);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+    } else {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    kv->key = strdup(kmap[key_idx]);
-    cnt = 1;
-    PMIX_VALUE_CREATE(kv->value, 1);
-    PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, buf, kv->value, &cnt, PMIX_VALUE);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_VALUE_RELEASE(kv->value);
-        return rc;
-    }
-    return rc;
+
+    return PMIX_SUCCESS;
 }
