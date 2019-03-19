@@ -109,6 +109,7 @@ static inline int _my_client(const char *nspace, pmix_rank_t rank);
 
 static pmix_status_t _dstor_store_modex_cb(pmix_common_dstore_ctx_t *ds_ctx,
                                            pmix_proc_t *proc,
+                                           pmix_gds_modex_key_fmt_t key_fmt,
                                            char **kmap,
                                            pmix_buffer_t *pbkt);
 
@@ -2542,7 +2543,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_store_modex(pmix_common_dstore_ctx_t
         return rc;
     }
 
-    rc = pmix_gds_base_store_modex(nspace,  buf, ds_ctx,
+    rc = pmix_gds_base_store_modex(nspace, buf, ds_ctx,
                     (pmix_gds_base_store_modex_cb_fn_t)_dstor_store_modex_cb,
                     cbdata);
     if (PMIX_SUCCESS != rc) {
@@ -2563,6 +2564,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_store_modex(pmix_common_dstore_ctx_t
 
 static pmix_status_t _dstor_store_modex_cb(pmix_common_dstore_ctx_t *ds_ctx,
                                            pmix_proc_t *proc,
+                                           pmix_gds_modex_key_fmt_t key_fmt,
                                            char **kmap,
                                            pmix_buffer_t *pbkt)
 {
@@ -2596,7 +2598,7 @@ static pmix_status_t _dstor_store_modex_cb(pmix_common_dstore_ctx_t *ds_ctx,
 
     /* unpack the remaining values until we hit the end of the buffer */
     kv = PMIX_NEW(pmix_kval_t);
-    rc = pmix_gds_base_modex_unpack_kval(kmap, pbkt, kv);
+    rc = pmix_gds_base_modex_unpack_kval(key_fmt, pbkt, kmap, kv);
 
     while (PMIX_SUCCESS == rc) {
         /* store this in the hash table */
@@ -2615,7 +2617,7 @@ static pmix_status_t _dstor_store_modex_cb(pmix_common_dstore_ctx_t *ds_ctx,
 
         /* proceed to the next element */
         kv = PMIX_NEW(pmix_kval_t);
-        rc = pmix_gds_base_modex_unpack_kval(kmap, pbkt, kv);
+        rc = pmix_gds_base_modex_unpack_kval(key_fmt, pbkt, kmap, kv);
         if (PMIX_SUCCESS != rc) {
             break;
         }
