@@ -1565,8 +1565,10 @@ typedef struct pmix_info {
     do {                                                        \
         pmix_info_t *_i;                                        \
         (m) = (pmix_info_t*)calloc((n), sizeof(pmix_info_t));   \
-        _i = (pmix_info_t*)(m);                                 \
-        _i[(n)-1].flags = PMIX_INFO_ARRAY_END;                  \
+	    if (NULL != (m)) {                                      \
+            _i = (pmix_info_t*)(m);                             \
+            _i[(n)-1].flags = PMIX_INFO_ARRAY_END;              \
+        }                                                       \
     } while (0)
 
 #define PMIX_INFO_CONSTRUCT(m)                  \
