@@ -3700,14 +3700,16 @@ static void _grpcbfunc(int sd, short argc, void *cbdata)
      * store it for us before releasing the group members */
     if (NULL != bo) {
         PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
-        PMIX_LOAD_BUFFER(pmix_globals.mypeer, &xfer, bo->bytes, bo->size);
         PMIX_CONSTRUCT(&nslist, pmix_list_t);
-        // collect the pmix_namespace_t's of all local participants
+        /* Collect the nptr list with uniq GDS components of all local
+         * participants. It does not allow multiple storing to the
+         * same GDS if participants have mutual GDS. */
         PMIX_LIST_FOREACH(cd, &trk->local_cbs, pmix_server_caddy_t) {
             // see if we already have this nspace
             found = false;
             PMIX_LIST_FOREACH(nptr, &nslist, pmix_nspace_caddy_t) {
-                if (nptr->ns == cd->peer->nptr) {
+                if (0 == strcmp(nptr->ns->compat.gds->name,
+                            cd->peer->nptr->compat.gds->name)) {
                     found = true;
                     break;
                 }
@@ -3722,6 +3724,7 @@ static void _grpcbfunc(int sd, short argc, void *cbdata)
         }
 
         PMIX_LIST_FOREACH(nptr, &nslist, pmix_nspace_caddy_t) {
+            PMIX_LOAD_BUFFER(pmix_globals.mypeer, &xfer, bo->bytes, bo->size);
             PMIX_GDS_STORE_MODEX(ret, nptr->ns, &xfer, trk);
             if (PMIX_SUCCESS != ret) {
                 PMIX_ERROR_LOG(ret);
