@@ -326,6 +326,8 @@ typedef uint32_t pmix_rank_t;
                                                                     //        specified operation
 #define PMIX_JOB_TERM_STATUS                "pmix.job.term.status"  // (pmix_status_t) status returned upon job termination
 #define PMIX_PROC_STATE_STATUS              "pmix.proc.state"       // (pmix_proc_state_t) process state
+#define PMIX_NOTIFY_LAUNCH                  "pmix.note.lnch"        // (bool) notify the requestor upon launch of the child job and return
+                                                                    //        its namespace in the event
 
 
 /* attributes used by host server to pass data to the server convenience library - the
@@ -888,6 +890,7 @@ typedef int pmix_status_t;
 #define PMIX_ERR_REPEAT_ATTR_REGISTRATION           -170
 #define PMIX_ERR_IOF_FAILURE                        -171
 #define PMIX_ERR_IOF_COMPLETE                       -172
+#define PMIX_LAUNCH_COMPLETE                        -173     // include nspace of the launched job with notification
 
 /* system failures */
 #define PMIX_ERR_NODE_DOWN                          -231
