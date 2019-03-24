@@ -555,7 +555,7 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
     }
 
     lt = PMIX_NEW(pmix_listener_t);
-    lt->varname = strdup("PMIX_SERVER_URI3:PMIX_SERVER_URI2:PMIX_SERVER_URI21");
+    lt->varname = strdup("PMIX_SERVER_URI32:PMIX_SERVER_URI3:PMIX_SERVER_URI2:PMIX_SERVER_URI21");
     lt->protocol = PMIX_PROTOCOL_V2;
     lt->ptl = (struct pmix_ptl_module_t*)&pmix_ptl_tcp_module;
     lt->cbfunc = connection_handler;

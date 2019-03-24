@@ -152,7 +152,17 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
     /* if I am a client, then we need to look for the appropriate
      * connection info in the environment */
     if (PMIX_PROC_IS_CLIENT(pmix_globals.mypeer)) {
-        if (NULL != (evar = getenv("PMIX_SERVER_URI3"))) {
+        if (NULL != (evar = getenv("PMIX_SERVER_URI32"))) {
+            /* we are talking to a v31 server */
+            pmix_client_globals.myserver->proc_type = PMIX_PROC_SERVER | PMIX_PROC_V3;
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "V31 SERVER DETECTED");
+            /* must use the v3 bfrops module */
+            pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module("v32");
+            if (NULL == pmix_globals.mypeer->nptr->compat.bfrops) {
+                return PMIX_ERR_INIT;
+            }
+        } else if (NULL != (evar = getenv("PMIX_SERVER_URI3"))) {
             /* we are talking to a v3 server */
             pmix_client_globals.myserver->proc_type = PMIX_PROC_SERVER | PMIX_PROC_V3;
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
