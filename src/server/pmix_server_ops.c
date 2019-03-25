@@ -60,8 +60,24 @@
 #include "src/util/error.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
+#include "src/mca/gds/base/base.h"
 
 #include "pmix_server_ops.h"
+
+/* The rank_blob_t type to collect processes blobs,
+ * this list afterward will form a node modex blob. */
+typedef struct {
+    pmix_list_item_t super;
+    pmix_buffer_t *buf;
+} rank_blob_t;
+
+static void bufdes(rank_blob_t *p)
+{
+    PMIX_RELEASE(p);
+}
+static PMIX_CLASS_INSTANCE(rank_blob_t,
+                           pmix_list_item_t,
+                           NULL, bufdes);
 
 pmix_server_module_t pmix_host_server = {0};
 
@@ -506,32 +522,122 @@ static void fence_timeout(int sd, short args, void *cbdata)
 static pmix_status_t _collect_data(pmix_server_trkr_t *trk,
                                    pmix_buffer_t *buf)
 {
-    pmix_buffer_t bucket, pbkt;
+    pmix_buffer_t bucket, *pbkt = NULL;
     pmix_cb_t cb;
     pmix_kval_t *kv;
     pmix_byte_object_t bo;
-    unsigned char tmp = (unsigned char)trk->collect_type;
     pmix_server_caddy_t *scd;
     pmix_proc_t pcs;
     pmix_status_t rc;
     pmix_rank_t rel_rank;
     pmix_nspace_caddy_t *nm;
     bool found;
+    pmix_list_t rank_blobs;
+    rank_blob_t *blob;
+    uint32_t kmap_size;
+    /* key names map, the position of the key name
+     * in the array determines the unique key index */
+    char **kmap = NULL;
+    int i;
+    pmix_gds_modex_blob_info_t blob_info_byte = 0;
+    pmix_gds_modex_key_fmt_t kmap_type = PMIX_MODEX_KEY_INVALID;
 
     PMIX_CONSTRUCT(&bucket, pmix_buffer_t);
-    /* mark the collection type so we can check on the
-     * receiving end that all participants did the same */
-    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &bucket,
-                     &tmp, 1, PMIX_BYTE);
 
     if (PMIX_COLLECT_YES == trk->collect_type) {
         pmix_output_verbose(2, pmix_server_globals.fence_output,
                             "fence - assembling data");
 
+        /* Evaluate key names sizes and their count to select
+         * a format to store key names:
+         * - keymap: use key-map in blob header for key-name resolve
+         *   from idx: key names stored as indexes (avoid key duplication)
+         * - regular: key-names stored as is */
+        if (PMIX_MODEX_KEY_INVALID == kmap_type) {
+            size_t key_fmt_size[PMIX_MODEX_KEY_MAX] = {0};
+            pmix_value_array_t *key_count_array = PMIX_NEW(pmix_value_array_t);
+            uint32_t *key_count = NULL;
+
+            pmix_value_array_init(key_count_array, sizeof(uint32_t));
+
+            PMIX_LIST_FOREACH(scd, &trk->local_cbs, pmix_server_caddy_t) {
+                pmix_strncpy(pcs.nspace, scd->peer->info->pname.nspace,
+                             PMIX_MAX_NSLEN);
+                pcs.rank = scd->peer->info->pname.rank;
+                PMIX_CONSTRUCT(&cb, pmix_cb_t);
+                cb.proc = &pcs;
+                cb.scope = PMIX_REMOTE;
+                cb.copy = true;
+                PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+                if (PMIX_SUCCESS == rc) {
+                    int key_idx;
+                    PMIX_LIST_FOREACH(kv, &cb.kvs, pmix_kval_t) {
+                        rc = pmix_argv_append_unique_idx(&key_idx, &kmap,
+                                                         strdup(kv->key), 0);
+                        if (pmix_value_array_get_size(key_count_array) <
+                                (size_t)(key_idx+1)) {
+                            size_t new_size;
+                            size_t old_size =
+                                    pmix_value_array_get_size(key_count_array);
+
+                            pmix_value_array_set_size(key_count_array,
+                                                      key_idx+1);
+                            new_size =
+                                    pmix_value_array_get_size(key_count_array);
+                            key_count =
+                                    PMIX_VALUE_ARRAY_GET_BASE(key_count_array,
+                                                              uint32_t);
+                            memset(key_count + old_size, 0, sizeof(uint32_t) *
+                                   (new_size - old_size));
+                        }
+                        key_count = PMIX_VALUE_ARRAY_GET_BASE(key_count_array,
+                                                              uint32_t);
+                        key_count[key_idx]++;
+                    }
+                }
+            }
+
+            key_count = PMIX_VALUE_ARRAY_GET_BASE(key_count_array, uint32_t);
+
+            for (i = 0; i < pmix_argv_count(kmap); i++) {
+                pmix_buffer_t tmp;
+                size_t kname_size;
+                size_t kidx_size;
+
+                PMIX_CONSTRUCT(&tmp, pmix_buffer_t);
+                PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &tmp, &kmap[i], 1,
+                                 PMIX_STRING);
+                kname_size = tmp.bytes_used;
+                PMIX_DESTRUCT(&tmp);
+                PMIX_CONSTRUCT(&tmp, pmix_buffer_t);
+                PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &tmp, &i, 1,
+                                 PMIX_UINT32);
+                kidx_size = tmp.bytes_used;
+                PMIX_DESTRUCT(&tmp);
+
+                /* calculate the key names sizes */
+                key_fmt_size[PMIX_MODEX_KEY_NATIVE_FMT] =
+                        kname_size * key_count[i];
+                key_fmt_size[PMIX_MODEX_KEY_KEYMAP_FMT] =
+                        kname_size + key_count[i]*kidx_size;
+            }
+            PMIX_RELEASE(key_count_array);
+
+            /* select the most efficient key-name pack format */
+            kmap_type = key_fmt_size[PMIX_MODEX_KEY_NATIVE_FMT] >
+                        key_fmt_size[PMIX_MODEX_KEY_KEYMAP_FMT] ?
+                        PMIX_MODEX_KEY_KEYMAP_FMT : PMIX_MODEX_KEY_NATIVE_FMT;
+            pmix_output_verbose(5, pmix_server_globals.base_output,
+                                "key packing type %s",
+                                kmap_type == PMIX_MODEX_KEY_KEYMAP_FMT ?
+                                    "kmap" : "native");
+        }
+        PMIX_CONSTRUCT(&rank_blobs, pmix_list_t);
         PMIX_LIST_FOREACH(scd, &trk->local_cbs, pmix_server_caddy_t) {
             /* get any remote contribution - note that there
              * may not be a contribution */
-            pmix_strncpy(pcs.nspace, scd->peer->info->pname.nspace, PMIX_MAX_NSLEN);
+            pmix_strncpy(pcs.nspace, scd->peer->info->pname.nspace,
+                         PMIX_MAX_NSLEN);
             pcs.rank = scd->peer->info->pname.rank;
             PMIX_CONSTRUCT(&cb, pmix_cb_t);
             cb.proc = &pcs;
@@ -557,47 +663,85 @@ static pmix_status_t _collect_data(pmix_server_trkr_t *trk,
                     rc = PMIX_ERR_NOT_FOUND;
                     PMIX_ERROR_LOG(rc);
                     PMIX_DESTRUCT(&cb);
-                    PMIX_DESTRUCT(&pbkt);
+                    PMIX_DESTRUCT(&rank_blobs);
                     goto cleanup;
                 }
                 rel_rank += pcs.rank;
 
                 /* pack the relative rank */
-                PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
-                PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &pbkt,
+                pbkt = PMIX_NEW(pmix_buffer_t);
+                PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, pbkt,
                                  &rel_rank, 1, PMIX_PROC_RANK);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
                     PMIX_DESTRUCT(&cb);
-                    PMIX_DESTRUCT(&pbkt);
+                    PMIX_DESTRUCT(&rank_blobs);
+                    PMIX_RELEASE(pbkt);
                     goto cleanup;
                 }
                 /* pack the returned kval's */
                 PMIX_LIST_FOREACH(kv, &cb.kvs, pmix_kval_t) {
-                    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &pbkt, kv, 1, PMIX_KVAL);
-                    if (PMIX_SUCCESS != rc) {
+                    rc = pmix_gds_base_modex_pack_kval(kmap_type, pbkt, &kmap,
+                                                       kv);
+                    if (rc != PMIX_SUCCESS) {
                         PMIX_ERROR_LOG(rc);
                         PMIX_DESTRUCT(&cb);
-                        PMIX_DESTRUCT(&pbkt);
+                        PMIX_DESTRUCT(&rank_blobs);
+                        PMIX_RELEASE(pbkt);
                         goto cleanup;
                     }
                 }
-                /* extract the blob */
-                PMIX_UNLOAD_BUFFER(&pbkt, bo.bytes, bo.size);
-                PMIX_DESTRUCT(&pbkt);
-                /* pack the returned blob */
-                PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &bucket,
-                                 &bo, 1, PMIX_BYTE_OBJECT);
-                PMIX_BYTE_OBJECT_DESTRUCT(&bo);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    PMIX_DESTRUCT(&cb);
-                    goto cleanup;
-                }
+
+                /* add part of the process modex to the list */
+                blob = PMIX_NEW(rank_blob_t);
+                blob->buf = pbkt;
+                pmix_list_append(&rank_blobs, &blob->super);
+                pbkt = NULL;
             }
             PMIX_DESTRUCT(&cb);
         }
+        /* mark the collection type so we can check on the
+         * receiving end that all participants did the same */
+        blob_info_byte |= PMIX_GDS_COLLECT_BIT;
+        if (PMIX_MODEX_KEY_KEYMAP_FMT == kmap_type) {
+            blob_info_byte |= PMIX_GDS_KEYMAP_BIT;
+        }
+        /* pack the modex blob info byte */
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &bucket,
+                         &blob_info_byte, 1, PMIX_BYTE);
+
+        if (PMIX_MODEX_KEY_KEYMAP_FMT == kmap_type) {
+            /* pack node part of modex to `bucket` */
+            /* pack the key names map for the remote server can
+             * use it to match key names by index */
+            kmap_size = pmix_argv_count(kmap);
+            if (0 < kmap_size) {
+                PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &bucket,
+                                 &kmap_size, 1, PMIX_UINT32);
+                PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &bucket,
+                                 kmap, kmap_size, PMIX_STRING);
+            }
+        }
+        /* pack the collected blobs of processes */
+        PMIX_LIST_FOREACH(blob, &rank_blobs, rank_blob_t) {
+            /* extract the blob */
+            PMIX_UNLOAD_BUFFER(blob->buf, bo.bytes, bo.size);
+            /* pack the returned blob */
+            PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &bucket,
+                             &bo, 1, PMIX_BYTE_OBJECT);
+            PMIX_BYTE_OBJECT_DESTRUCT(&bo); // releases the data
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                goto cleanup;
+            }
+        }
+        PMIX_DESTRUCT(&rank_blobs);
+    } else {
+        /* pack the modex blob info byte */
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &bucket,
+                         &blob_info_byte, 1, PMIX_BYTE);
     }
+
     /* because the remote servers have to unpack things
      * in chunks, we have to pack the bucket as a single
      * byte object to allow remote unpack */
@@ -611,6 +755,7 @@ static pmix_status_t _collect_data(pmix_server_trkr_t *trk,
 
   cleanup:
     PMIX_DESTRUCT(&bucket);
+    pmix_argv_free(kmap);
     return rc;
 }
 

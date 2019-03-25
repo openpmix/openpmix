@@ -122,6 +122,24 @@ PMIX_EXPORT pmix_status_t pmix_argv_prepend_nosize(char ***argv, const char *arg
 PMIX_EXPORT pmix_status_t pmix_argv_append_unique_nosize(char ***argv, const char *arg, bool overwrite);
 
 /**
+ * Append to an argv-style array, but only if the provided argument
+ * doesn't already exist somewhere in the array. Ignore the size of the array.
+ * Defines the index of the found/added item in the array.
+ *
+ * @param idx Index the found/added item in the array.
+ * @param argv Pointer to an argv array.
+ * @param str Pointer to the string to append.
+ * @param bool Whether or not to overwrite a matching value if found
+ *
+ * @retval PMIX_SUCCESS On success
+ * @retval PMIX_ERROR On failure
+ *
+ * This function is identical to the pmix_argv_append_unique_nosize() function
+ * but it has an extra argument defining the index of the item in the array.
+ */
+PMIX_EXPORT pmix_status_t pmix_argv_append_unique_idx(int *idx, char ***argv, const char *arg, bool overwrite);
+
+/**
    * Free a NULL-terminated argv array.
    *
    * @param argv Argv array to free.
