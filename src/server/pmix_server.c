@@ -1982,12 +1982,7 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
     xfer.bytes_used = 0;
     PMIX_DESTRUCT(&xfer);
 
-    if (!tracker->lost_connection) {
-        /* if this tracker has gone thru the "lost_connection" procedure,
-         * then it has already been removed from the list - otherwise,
-         * remove it now */
-        pmix_list_remove_item(&pmix_server_globals.collectives, &tracker->super);
-    }
+    pmix_list_remove_item(&pmix_server_globals.collectives, &tracker->super);
     PMIX_RELEASE(tracker);
     PMIX_LIST_DESTRUCT(&nslist);
 
@@ -2240,12 +2235,7 @@ static void _cnct(int sd, short args, void *cbdata)
     if (NULL != nspaces) {
       pmix_argv_free(nspaces);
     }
-    if (!tracker->lost_connection) {
-        /* if this tracker has gone thru the "lost_connection" procedure,
-         * then it has already been removed from the list - otherwise,
-         * remove it now */
-        pmix_list_remove_item(&pmix_server_globals.collectives, &tracker->super);
-    }
+    pmix_list_remove_item(&pmix_server_globals.collectives, &tracker->super);
     PMIX_RELEASE(tracker);
 
     /* we are done */
@@ -2322,12 +2312,7 @@ static void _discnct(int sd, short args, void *cbdata)
   cleanup:
     /* cleanup the tracker -- the host RM is responsible for
      * telling us when to remove the nspace from our data */
-    if (!tracker->lost_connection) {
-        /* if this tracker has gone thru the "lost_connection" procedure,
-         * then it has already been removed from the list - otherwise,
-         * remove it now */
-        pmix_list_remove_item(&pmix_server_globals.collectives, &tracker->super);
-    }
+    pmix_list_remove_item(&pmix_server_globals.collectives, &tracker->super);
     PMIX_RELEASE(tracker);
 
     /* we are done */
