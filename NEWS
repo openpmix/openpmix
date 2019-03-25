@@ -21,6 +21,20 @@ example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
 
+3.1.3 -- TBD
+----------------------
+- Restore PMIX_NUM_SLOTS for backward compatibility
+- Automatically generate PMIX_NUMERIC_VERSION
+- Fix tool connection handshake for tools that are registered
+  clients
+- Fix a compiler warning in atomics on POWER arch
+- Fix race condition when clients fail while in a PMIx
+  collective operation
+- Fix a regression in spinlock atomics
+- Fix missing pointer update when shared memory segment
+  was re-attached
+
+
 3.1.2 -- 24 Jan 2019
 ----------------------
  - Fix a bug in macro identifying system events
