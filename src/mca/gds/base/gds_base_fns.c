@@ -4,7 +4,7 @@
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
- * Copyright (c) 2018      Research Organization for Information Science
+ * Copyright (c) 2018-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
  * $COPYRIGHT$
@@ -306,7 +306,7 @@ pmix_status_t pmix_gds_base_modex_pack_kval(pmix_gds_modex_key_fmt_t key_fmt,
     pmix_status_t rc = PMIX_SUCCESS;
 
     if (PMIX_MODEX_KEY_KEYMAP_FMT == key_fmt) {
-        rc = pmix_argv_append_unique_idx((int*)&key_idx, kmap, kv->key, 0);
+        rc = pmix_argv_append_unique_idx((int*)&key_idx, kmap, kv->key);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             return rc;
