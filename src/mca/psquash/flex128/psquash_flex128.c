@@ -217,11 +217,11 @@ static pmix_status_t flex128_decode_int(pmix_data_type_t type, void *src,
                                         size_t src_len, void *dest,
                                         size_t *dst_size);
 
-static size_t flex_pack_integer(uint64_t val,
+static size_t flex_pack_integer(size_t val,
                                 uint8_t out_buf[FLEX_BASE7_MAX_BUF_SIZE]);
 
 static size_t flex_unpack_integer(const uint8_t in_buf[], size_t buf_size,
-                                  uint64_t *out_val, size_t *out_val_size);
+                                  size_t *out_val, size_t *out_val_size);
 
 pmix_psquash_base_module_t pmix_flex128_module = {
     .name = "flex128",
@@ -279,7 +279,7 @@ static pmix_status_t flex128_decode_int(pmix_data_type_t type, void *src,
                                         size_t src_len, void *dest, size_t *dst_size)
 {
     pmix_status_t rc = PMIX_SUCCESS;
-    uint64_t tmp;
+    size_t tmp;
     size_t val_size, unpack_val_size;
 
     PMIX_SQUASH_TYPE_SIZEOF(rc, type, val_size);
