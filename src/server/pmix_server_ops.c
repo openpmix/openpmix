@@ -528,7 +528,7 @@ static pmix_status_t _collect_data(pmix_server_trkr_t *trk,
     pmix_byte_object_t bo;
     pmix_server_caddy_t *scd;
     pmix_proc_t pcs;
-    pmix_status_t rc;
+    pmix_status_t rc = PMIX_SUCCESS;
     pmix_rank_t rel_rank;
     pmix_nspace_caddy_t *nm;
     bool found;
@@ -701,7 +701,11 @@ static pmix_status_t _collect_data(pmix_server_trkr_t *trk,
             PMIX_DESTRUCT(&cb);
         }
         /* mark the collection type so we can check on the
-         * receiving end that all participants did the same */
+         * receiving end that all participants did the same. Note
+         * that if the receiving end thinks that the collect flag
+         * is false, then store_modex will not be called on that
+         * node and this information (and the flag) will be ignored,
+         * meaning that no error is generated! */
         blob_info_byte |= PMIX_GDS_COLLECT_BIT;
         if (PMIX_MODEX_KEY_KEYMAP_FMT == kmap_type) {
             blob_info_byte |= PMIX_GDS_KEYMAP_BIT;
@@ -737,20 +741,32 @@ static pmix_status_t _collect_data(pmix_server_trkr_t *trk,
         }
         PMIX_DESTRUCT(&rank_blobs);
     } else {
+        /* mark the collection type so we can check on the
+         * receiving end that all participants did the same.
+         * Don't do it for non-debug mode so we don't unnecessarily
+         * send the collection bucket. The mdxcbfunc in the
+         * server only calls store_modex if the local collect
+         * flag is set to true. In debug mode, this check will
+         * cause the store_modex function to see that this node
+         * thought the collect flag was not set, and therefore
+         * generate an error */
+#if PMIX_ENABLE_DEBUG
         /* pack the modex blob info byte */
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &bucket,
                          &blob_info_byte, 1, PMIX_BYTE);
+#endif
     }
-
-    /* because the remote servers have to unpack things
-     * in chunks, we have to pack the bucket as a single
-     * byte object to allow remote unpack */
-    PMIX_UNLOAD_BUFFER(&bucket, bo.bytes, bo.size);
-    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf,
-                     &bo, 1, PMIX_BYTE_OBJECT);
-    PMIX_BYTE_OBJECT_DESTRUCT(&bo);  // releases the data
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
+    if (!PMIX_BUFFER_IS_EMPTY(&bucket)) {
+        /* because the remote servers have to unpack things
+         * in chunks, we have to pack the bucket as a single
+         * byte object to allow remote unpack */
+        PMIX_UNLOAD_BUFFER(&bucket, bo.bytes, bo.size);
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf,
+                         &bo, 1, PMIX_BYTE_OBJECT);
+        PMIX_BYTE_OBJECT_DESTRUCT(&bo);  // releases the data
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
     }
 
   cleanup:
@@ -3684,14 +3700,16 @@ static void _grpcbfunc(int sd, short argc, void *cbdata)
      * store it for us before releasing the group members */
     if (NULL != bo) {
         PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
-        PMIX_LOAD_BUFFER(pmix_globals.mypeer, &xfer, bo->bytes, bo->size);
         PMIX_CONSTRUCT(&nslist, pmix_list_t);
-        // collect the pmix_namespace_t's of all local participants
+        /* Collect the nptr list with uniq GDS components of all local
+         * participants. It does not allow multiple storing to the
+         * same GDS if participants have mutual GDS. */
         PMIX_LIST_FOREACH(cd, &trk->local_cbs, pmix_server_caddy_t) {
             // see if we already have this nspace
             found = false;
             PMIX_LIST_FOREACH(nptr, &nslist, pmix_nspace_caddy_t) {
-                if (nptr->ns == cd->peer->nptr) {
+                if (0 == strcmp(nptr->ns->compat.gds->name,
+                            cd->peer->nptr->compat.gds->name)) {
                     found = true;
                     break;
                 }
@@ -3706,6 +3724,7 @@ static void _grpcbfunc(int sd, short argc, void *cbdata)
         }
 
         PMIX_LIST_FOREACH(nptr, &nslist, pmix_nspace_caddy_t) {
+            PMIX_LOAD_BUFFER(pmix_globals.mypeer, &xfer, bo->bytes, bo->size);
             PMIX_GDS_STORE_MODEX(ret, nptr->ns, &xfer, trk);
             if (PMIX_SUCCESS != ret) {
                 PMIX_ERROR_LOG(ret);

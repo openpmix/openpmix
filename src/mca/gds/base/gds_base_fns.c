@@ -99,7 +99,6 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
     pmix_byte_object_t bo, bo2;
     int32_t cnt = 1;
     pmix_collect_t ctype;
-    bool have_ctype = false;
     pmix_server_trkr_t *trk = (pmix_server_trkr_t*)cbdata;
     pmix_proc_t proc;
     pmix_buffer_t pbkt;
@@ -116,6 +115,13 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
             buff, &bo, &cnt, PMIX_BYTE_OBJECT);
+
+    /* If the collect flag is set, we should have some data for unpacking */
+    if ((PMIX_COLLECT_YES == trk->collect_type) &&
+            (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc)) {
+        goto exit;
+    }
+
     while (PMIX_SUCCESS == rc) {
         PMIX_CONSTRUCT(&bkt, pmix_buffer_t);
         PMIX_LOAD_BUFFER(pmix_globals.mypeer, &bkt, bo.bytes, bo.size);
@@ -134,24 +140,14 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
             PMIX_DESTRUCT(&bkt);
             goto exit;
         }
-
-        /* Check that this blob was accumulated with
-         * the same data collection setting */
-        if (have_ctype) {
-            pmix_collect_t ctmp = PMIX_GDS_COLLECT_IS_SET(blob_info_byte) ?
-                        PMIX_COLLECT_YES : PMIX_COLLECT_NO;
-            if (ctype != ctmp) {
-                rc = PMIX_ERR_INVALID_ARG;
-                pbkt.base_ptr = NULL;
-                PMIX_ERROR_LOG(rc);
-                PMIX_DESTRUCT(&bkt);
-                goto exit;
-            }
-        }
-        else {
-            ctype = PMIX_GDS_COLLECT_IS_SET(blob_info_byte) ?
-                        PMIX_COLLECT_YES : PMIX_COLLECT_NO;
-            have_ctype = true;
+        /* Check that this blob was accumulated with the same data collection
+         * setting */
+        ctype = PMIX_GDS_COLLECT_IS_SET(blob_info_byte) ?
+                    PMIX_COLLECT_YES : PMIX_COLLECT_NO;
+        if (trk->collect_type != ctype) {
+            rc = PMIX_ERR_INVALID_ARG;
+            PMIX_ERROR_LOG(rc);
+            goto exit;
         }
 
         /* determine the key-map existing flag */
@@ -195,7 +191,6 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
                 goto exit;
             }
         }
-
         /* unpack the enclosed blobs from the various peers */
         cnt = 1;
         PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
