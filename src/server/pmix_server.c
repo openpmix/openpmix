@@ -2303,6 +2303,12 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
     /* if we get here, then there are processes waiting
      * for a response */
 
+    /* if the timer is active, clear it */
+    if (tracker->event_active) {
+        pmix_event_del(&tracker->ev);
+    }
+
+    /* pass the blobs being returned */
     PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
     PMIX_CONSTRUCT(&nslist, pmix_list_t);
 
