@@ -730,15 +730,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_PROG_GREP
     AC_PROG_EGREP
 
-    # check for Flex
-    AC_PROG_LEX
-    if test "x$LEX" != xflex; then
-        AC_MSG_WARN([PMIx requires Flex to build, but Flex])
-        AC_MSG_WARN([was not found. Please install Flex into])
-        AC_MSG_WARN([your path and try again])
-        AC_MSG_ERROR([Cannot continue])
-    fi
-
     ##################################
     # Visibility
     ##################################
@@ -909,6 +900,14 @@ AC_DEFUN([PMIX_DEFINE_ARGS],[
 
 if test -d .git; then
     PMIX_DEVEL=1
+    # check for Flex
+    AC_PROG_LEX
+    if test "x$LEX" != xflex; then
+        AC_MSG_WARN([PMIx requires Flex to build from non-tarball sources,])
+        AC_MSG_WARN([but Flex was not found. Please install Flex into])
+        AC_MSG_WARN([your path and try again])
+        AC_MSG_ERROR([Cannot continue])
+    fi
 else
     PMIX_DEVEL=0
 fi
