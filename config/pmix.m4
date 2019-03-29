@@ -910,7 +910,7 @@ AC_DEFUN([PMIX_DEFINE_ARGS],[
 # Is this a developer copy?
 #
 
-if test -d .git; then
+if test -e $PMIX_TOP_SRCDIR/.git; then
     PMIX_DEVEL=1
     # check for Flex
     AC_PROG_LEX
