@@ -33,6 +33,9 @@ multiple release branches.
 - Fix a regression in spinlock atomics
 - Fix missing pointer update when shared memory segment
   was re-attached
+- Remove dependency on C++ compiler for thread detection
+- Add detection for Flex when building in non-tarball situations
+- Add dependency on libevent-devel to rpm spec file
 
 
 3.1.2 -- 24 Jan 2019

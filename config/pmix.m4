@@ -717,8 +717,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     CFLAGS="$CFLAGS $THREAD_CFLAGS"
     CPPFLAGS="$CPPFLAGS $THREAD_CPPFLAGS"
-    CXXFLAGS="$CXXFLAGS $THREAD_CXXFLAGS"
-    CXXCPPFLAGS="$CXXCPPFLAGS $THREAD_CXXCPPFLAGS"
     LDFLAGS="$LDFLAGS $THREAD_LDFLAGS"
     LIBS="$LIBS $THREAD_LIBS"
 
@@ -728,9 +726,9 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     AC_PROG_LN_S
 
+    # Check for some common system programs that we need
     AC_PROG_GREP
     AC_PROG_EGREP
-
 
     ##################################
     # Visibility
@@ -912,8 +910,16 @@ AC_DEFUN([PMIX_DEFINE_ARGS],[
 # Is this a developer copy?
 #
 
-if test -d .git; then
+if test -e $PMIX_TOP_SRCDIR/.git; then
     PMIX_DEVEL=1
+    # check for Flex
+    AC_PROG_LEX
+    if test "x$LEX" != xflex; then
+        AC_MSG_WARN([PMIx requires Flex to build from non-tarball sources,])
+        AC_MSG_WARN([but Flex was not found. Please install Flex into])
+        AC_MSG_WARN([your path and try again])
+        AC_MSG_ERROR([Cannot continue])
+    fi
 else
     PMIX_DEVEL=0
 fi
@@ -964,7 +970,6 @@ fi
 #################### Early development override ####################
 if test "$WANT_DEBUG" = "0"; then
     CFLAGS="-DNDEBUG $CFLAGS"
-    CXXFLAGS="-DNDEBUG $CXXFLAGS"
 fi
 AC_DEFINE_UNQUOTED(PMIX_ENABLE_DEBUG, $WANT_DEBUG,
                    [Whether we want developer-level debugging code or not])
