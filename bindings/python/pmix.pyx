@@ -14,39 +14,6 @@ import array
 include "pmix_constants.pxi"
 include "pmix.pxi"
 
-class myLock(threading.Event):
-    def __init__(self):
-        threading.Event.__init__(self)
-        self.event = threading.Event()
-        self.status = PMIX_ERR_NOT_SUPPORTED
-        self.sz = 0
-
-    def set(self, status):
-        self.status = status
-        self.event.set()
-
-    def clear(self):
-        self.event.clear()
-
-    def wait(self):
-        self.event.wait()
-
-    def get_status(self):
-        return self.status
-
-    def cache_data(self, data, sz):
-        self.data = array.array('B', data[0])
-        # need to copy the data bytes as the
-        # PMIx server will free it upon return
-        n = 1
-        while n < sz:
-            self.data.append(data[n])
-            n += 1
-        self.sz = sz
-
-    def fetch_data(self):
-        return (self.data, self.sz)
-
 active = myLock()
 
 cdef void pmix_opcbfunc(pmix_status_t status, void *cbdata) with gil:
