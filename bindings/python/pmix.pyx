@@ -1,16 +1,66 @@
 #file: pmix.pyx
 
-from libc.string cimport memset,strncpy, strdup
+from libc.string cimport memset, strncpy, strcpy, strlen, strdup
 from libc.stdlib cimport malloc, free
 from libc.string cimport memcpy
 from ctypes import addressof, c_int
 from cython.operator import address
+import signal, time
+import threading
+import array
 
 # pull in all the constant definitions - we
 # store them in a separate file for neatness
 include "pmix_constants.pxi"
 include "pmix.pxi"
 
+class myLock(threading.Event):
+    def __init__(self):
+        threading.Event.__init__(self)
+        self.event = threading.Event()
+        self.status = PMIX_ERR_NOT_SUPPORTED
+        self.sz = 0
+
+    def set(self, status):
+        self.status = status
+        self.event.set()
+
+    def clear(self):
+        self.event.clear()
+
+    def wait(self):
+        self.event.wait()
+
+    def get_status(self):
+        return self.status
+
+    def cache_data(self, data, sz):
+        self.data = array.array('B', data[0])
+        # need to copy the data bytes as the
+        # PMIx server will free it upon return
+        n = 1
+        while n < sz:
+            self.data.append(data[n])
+            n += 1
+        self.sz = sz
+
+    def fetch_data(self):
+        return (self.data, self.sz)
+
+active = myLock()
+
+cdef void pmix_opcbfunc(pmix_status_t status, void *cbdata) with gil:
+    global active
+    active.set(status)
+    return
+
+cdef void dmodx_cbfunc(pmix_status_t status,
+                       char *data, size_t sz,
+                       void *cbdata) with gil:
+    global active
+    active.cache_data(data, sz)
+    active.set(status)
+    return
 
 cdef class PMIxClient:
     cdef pmix_proc_t myproc;
@@ -29,34 +79,148 @@ cdef class PMIxClient:
     #
     # @keyvals [INPUT]
     #          - a dictionary of key-value pairs
-    def init(self, keyvals):
+    def init(self, keyvals:dict):
         cdef bytes pykey
-        cdef pmix_info_t info
+        cdef pmix_info_t *info
         cdef size_t ninfo
         cdef size_t klen
         cdef const char *pykeyptr
         # Convert any provided dictionary to an array of pmix_info_t
         kvkeys = list(keyvals.keys())
         klen = len(kvkeys)
-        try:
-            inarray = PMIxInfoArray(klen)
-        except:
-            print("Unable to create info array")
-            return -1
-        inarray.load(keyvals)
+        info = <pmix_info_t*> PyMem_Malloc(klen * sizeof(pmix_info_t))
+        if not info:
+            raise MemoryError()
+        self.load_info(info, keyvals)
         print(keyvals)
-        return PMIx_Init(&self.myproc, inarray.array, klen)
+        rc = PMIx_Init(&self.myproc, info, klen)
+        return rc
 
     # Finalize the client library
-    def finalize(self, keyvals):
+    def finalize(self, keyvals:dict):
         cdef pmix_info_t info
         cdef size_t ninfo = 0
         return PMIx_Finalize(NULL, ninfo)
+
+    def initialized(self):
+        return PMIx_Initialized()
+
+    cdef int load_info(self, pmix_info_t *array, keyvals:dict):
+        kvkeys = list(keyvals.keys())
+        n = 0
+        for key in kvkeys:
+            pmix_copy_key(array[n].key, key)
+            # the value also needs to be transferred
+            if keyvals[key][1] == 'bool':
+                array[n].value.type = PMIX_BOOL
+                array[n].value.data.flag = pmix_bool_convert(keyvals[key][0])
+            elif keyvals[key][1] == 'byte':
+                array[n].value.type = PMIX_BYTE
+                array[n].value.data.byte = keyvals[key][0]
+            elif keyvals[key][1] == 'string':
+                array[n].value.type = PMIX_STRING
+                if isinstance(keyvals[key][0], str):
+                    pykey = keyvals[key][0].encode('ascii')
+                else:
+                    pykey = keyvals[key][0]
+                try:
+                    array[n].value.data.string = strdup(pykey)
+                except:
+                    raise ValueError("String value declared but non-string provided")
+            elif keyvals[key][1] == 'size':
+                array[n].value.type = PMIX_SIZE
+                if not isinstance(keyvals[key][0], pmix_int_types):
+                    raise TypeError("size_t value declared but non-integer provided")
+                array[n].value.data.size = keyvals[key][0]
+            elif keyvals[key][1] == 'pid':
+                array[n].value.type = PMIX_PID
+                if not isinstance(keyvals[key][0], pmix_int_types):
+                    raise TypeError("pid value declared but non-integer provided")
+                if keyvals[key][0] < 0:
+                    raise ValueError("pid value is negative")
+                array[n].value.data.pid = keyvals[key][0]
+            elif keyvals[key][1] == 'int':
+                array[n].value.type = PMIX_INT
+                if not isinstance(keyvals[key][0], pmix_int_types):
+                    raise TypeError("integer value declared but non-integer provided")
+                array[n].value.data.integer = keyvals[key][0]
+            elif keyvals[key][1] == 'int8':
+                array[n].value.type = PMIX_INT8
+                if not isinstance(keyvals[key][0], pmix_int_types):
+                    raise TypeError("int8 value declared but non-integer provided")
+                if keyvals[key][0] > 127 or keyvals[key][0] < -128:
+                    raise ValueError("int8 value is out of bounds")
+                array[n].value.data.int8 = keyvals[key][0]
+            elif keyvals[key][1] == 'int16':
+                array[n].value.type = PMIX_INT16
+                if not isinstance(keyvals[key][0], pmix_int_types):
+                    raise TypeError("int16 value declared but non-integer provided")
+                if keyvals[key][0] > 32767 or keyvals[key][0] < -32768:
+                    raise ValueError("int16 value is out of bounds")
+                array[n].value.data.int16 = keyvals[key][0]
+            elif keyvals[key][1] == 'int32':
+                array[n].value.type = PMIX_INT32
+                if not isinstance(keyvals[key][0], pmix_int_types):
+                    raise TypeError("int32 value declared but non-integer provided")
+                if keyvals[key][0] > 2147483647 or keyvals[key][0] < -2147483648:
+                    raise ValueError("int32 value is out of bounds")
+                array[n].value.data.int32 = keyvals[key][0]
+            else:
+                print("UNRECOGNIZED INFO VALUE TYPE FOR KEY", key)
+                return PMIX_ERR_NOT_SUPPORTED
+            print("ARRAY[", n, "]: ", array[n].key, array[n].value.type)
+            n += 1
+        return PMIX_SUCCESS
+
+    cdef void free_info(self, pmix_info_t *array, size_t sz):
+        n = 0
+        while n < sz:
+            if array[n].value.type == PMIX_STRING:
+                free(array[n].value.data.string)
+            n += 1
+        PyMem_Free(array)
+
+    # Request that the provided array of procs be aborted, returning the
+    # provided _status_ and printing the provided message.
+    #
+    # @status [INPUT]
+    #         - PMIx status to be returned on exit
+    #
+    # @msg [INPUT]
+    #        - string message to be printed
+    #
+    # @procs [INPUT]
+    #        - list of proc nspace,rank tuples
+    def abort(self, status, msg, procs):
+        # convert list of procs to array of pmix_proc_t's
+        # pass into PMIx_Abort
+        return PMIX_SUCCESS
+
+    def get_version(self):
+        return PMIx_Get_version()
+
+    # put a value into the keystore
+    #
+    # @scope [INPUT]
+    #        - the scope of the data
+    #
+    # @keyval [INPUT]
+    #        - the key-value pair to be stored
+    #
+    def put(self, scope, keyval):
+        # convert the scope to its PMIx equivalent
+        # convert the keyval tuple to a pmix_info_t
+        # pass it into the PMIx_Put function
+        return PMIX_SUCCESS
 
     # private function to convert key-value tuple
     # to pmix_info_t
     def __convert_value(self, char* dest, char* src):
         strncpy(dest, src, 511)
+        return
+
+    # private function to convert a lit of proc
+    # nspace,rank tuples into an array of pmix_proc_t
 
 pmixservermodule = {}
 def setmodulefn(k, f):
@@ -67,7 +231,7 @@ def setmodulefn(k, f):
                  'deregisterevents', 'listener', 'notify_event', 'query',
                  'toolconnected', 'log', 'allocate', 'jobcontrol',
                  'monitor', 'getcredential', 'validatecredential',
-                 'iofpull', 'pushstdin']
+                 'iofpull', 'pushstdin', 'group']
     if k not in permitted:
         raise KeyError
     if not k in pmixservermodule:
@@ -109,12 +273,8 @@ cdef class PMIxServer(PMIxClient):
         self.myserver.validate_credential = <pmix_server_validate_cred_fn_t>validatecredential
         self.myserver.iof_pull = <pmix_server_iof_fn_t>iofpull
         self.myserver.push_stdin = <pmix_server_stdin_fn_t>pushstdin
-
-    def initialized(self):
-        return PMIx_Initialized()
-
-    def get_version(self):
-        return PMIx_Get_version()
+        # v4.x interfaces
+        self.myserver.group = <pmix_server_grp_fn_t>group
 
     # Initialize the PMIx server library
     #
@@ -126,7 +286,10 @@ cdef class PMIxServer(PMIxClient):
     #          - a dictionary of key-function pairs that map
     #            server module callback functions to provided
     #            implementations
-    def init(self, keyvals, map):
+    def init(self, keyvals:dict, map:dict):
+        cdef pmix_info_t *info
+        cdef size_t sz
+
         if map is None or 0 == len(map):
             print("SERVER REQUIRES AT LEAST ONE MODULE FUNCTION TO OPERATE")
             return PMIX_ERR_INIT
@@ -137,18 +300,16 @@ cdef class PMIxServer(PMIxClient):
             except KeyError:
                 print("SERVER MODULE FUNCTION ", key, " IS NOT RECOGNIZED")
                 return PMIX_ERR_INIT
-        # Convert any provided dictionary to an array of pmix_info_t
         if keyvals is not None:
+            # Convert any provided dictionary to an array of pmix_info_t
             kvkeys = list(keyvals.keys())
-            klen = len(kvkeys)
-            try:
-                inarray = PMIxInfoArray(klen)
-            except:
-                print("Unable to create info array")
-                return -1
-            inarray.load(keyvals)
-            print(keyvals)
-            rc = PMIx_server_init(&self.myserver, inarray.array, klen)
+            sz = len(kvkeys)
+            info = <pmix_info_t*> PyMem_Malloc(sz * sizeof(pmix_info_t))
+            if not info:
+                raise MemoryError()
+            self.load_info(info, keyvals)
+            rc = PMIx_server_init(&self.myserver, info, sz)
+            self.free_info(info, sz)
         else:
             rc = PMIx_server_init(&self.myserver, NULL, 0)
         return rc
@@ -156,9 +317,149 @@ cdef class PMIxServer(PMIxClient):
     def finalize(self):
         return PMIx_server_finalize()
 
-    def register_nspace(self, args):
+    # Register a namespace
+    #
+    # @ns [INPUT]
+    #     - Namespace of job (string)
+    #
+    # @nlocalprocs [INPUT]
+    #              - number of local procs for this job (int)
+    #
+    # @keyvals [INPUT]
+    #          - key-value pairs containing job-level info (dict)
+    #
+    def register_nspace(self, ns, nlocalprocs, keyvals:dict):
+        cdef pmix_nspace_t nspace
+        cdef pmix_info_t *info
+        cdef size_t sz
+        global active
         # convert the args into the necessary C-arguments
-        pass
+        pmix_copy_nspace(nspace, ns)
+        active.clear()
+        if keyvals is not None:
+            # Convert any provided dictionary to an array of pmix_info_t
+            kvkeys = list(keyvals.keys())
+            sz = len(kvkeys)
+            info = <pmix_info_t*> PyMem_Malloc(sz * sizeof(pmix_info_t))
+            if not info:
+                raise MemoryError()
+            self.load_info(info, keyvals)
+            rc = PMIx_server_register_nspace(nspace, nlocalprocs, info, sz, pmix_opcbfunc, NULL)
+            self.free_info(info, sz)
+        else:
+            rc = PMIx_server_register_nspace(nspace, nlocalprocs, NULL, 0, pmix_opcbfunc, NULL)
+        if PMIX_SUCCESS == rc:
+            active.wait()
+            rc = active.get_status()
+        active.clear()
+        return rc
+
+    # Deregister a namespace
+    #
+    # @ns [INPUT]
+    #     - Namespace of job (string)
+    #
+    def deregister_nspace(self, ns):
+        cdef pmix_nspace_t nspace
+        global active
+        # convert the args into the necessary C-arguments
+        pmix_copy_nspace(nspace, ns)
+        active.clear()
+        PMIx_server_deregister_nspace(nspace, pmix_opcbfunc, NULL)
+        active.wait()
+        active.clear()
+        return
+
+    # Register a client process
+    #
+    # @proc [INPUT]
+    #       - namespace and rank of the client (tuple)
+    #
+    # @uid [INPUT]
+    #      - User ID (uid) of the client (int)
+    #
+    # @gid [INPUT]
+    #      - Group ID (gid) of the client (int)
+    #
+    def register_client(self, proc:tuple, uid, gid):
+        global active
+        cdef pmix_proc_t p;
+        pmix_copy_nspace(p.nspace, proc[0])
+        p.rank = proc[1]
+        active.clear()
+        rc = PMIx_server_register_client(&p, uid, gid, NULL, pmix_opcbfunc, NULL)
+        if PMIX_SUCCESS == rc:
+            active.wait()
+            rc = active.get_status()
+        return rc
+
+    # Deregister a client process
+    #
+    # @proc [INPUT]
+    #       - namespace and rank of the client (tuple)
+    #
+    def deregister_client(self, proc:tuple):
+        global active
+        cdef pmix_proc_t p;
+        pmix_copy_nspace(p.nspace, proc[0])
+        p.rank = proc[1]
+        active.clear()
+        rc = PMIx_server_deregister_client(&p, pmix_opcbfunc, NULL)
+        if PMIX_SUCCESS == rc:
+            active.wait()
+            rc = active.get_status()
+        return rc
+
+    # Setup the environment of a child process that is to be forked
+    # by the host
+    #
+    # @proc [INPUT]
+    #       - namespace,rank of client process (tuple)
+    #
+    # @envin [INPUT/OUTPUT]
+    #        - environ of client proc that will be updated
+    #          with PMIx envars (dict)
+    #
+    def setup_fork(self, proc:tuple, envin:dict):
+        cdef pmix_proc_t p;
+        cdef char **penv = NULL;
+        cdef unicode pstring
+        pmix_copy_nspace(p.nspace, proc[0])
+        p.rank = proc[1]
+        # convert the incoming dictionary to an array
+        # of strings
+        rc = PMIx_server_setup_fork(&p, &penv)
+        if PMIX_SUCCESS == rc:
+            # update the incoming dictionary
+            n = 0
+            while NULL != penv[n]:
+                ln = strlen(penv[n])
+                pstring = penv[n].decode('ascii')
+                kv = pstring.split('=')
+                envin[kv[0]] = kv[1]
+                free(penv[n])
+                n += 1
+            free(penv)
+        return rc
+
+    def dmodex_request(self, proc, dataout:dict):
+        global active
+        cdef pmix_proc_t p;
+        pmix_copy_nspace(p.nspace, proc[0])
+        p.rank = proc[1]
+        active.clear()
+        rc = PMIx_server_dmodex_request(&p, dmodx_cbfunc, NULL);
+        if PMIX_SUCCESS == rc:
+            active.wait()
+            # transfer the data to the dictionary
+            (data, sz) = active.fetch_data()
+            dataout["dmodx"] = (data, sz)
+        return rc
+
+    def setup_application(self, ns, keyvals:dict):
+        global active
+        cdef pmix_nspace_t nspace;
+        pmix_copy_nspace(nspace, ns)
 
 cdef int clientconnected(pmix_proc_t *proc, void *server_object,
                          pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
@@ -708,6 +1009,30 @@ cdef int pushstdin(const pmix_proc_t *source,
     #    args = pmixproc_to_py(proc)
         args = {}
         rc = pmixservermodule['pushstdin'](args)
+    else:
+        rc = PMIX_ERR_NOT_SUPPORTED
+    # we cannot execute a callback function here as
+    # that would cause PMIx to lockup. Likewise, the
+    # Python function we called can't do it as it
+    # would require them to call a C-function. So
+    # if they succeeded in processing this request,
+    # we return a PMIX_OPERATION_SUCCEEDED status
+    # that let's the underlying PMIx library know
+    # the situation so it can generate its own
+    # callback
+    if PMIX_SUCCESS == rc:
+        rc = PMIX_OPERATION_SUCCEEDED
+    return rc
+
+cdef int group(pmix_group_operation_t op, char grp[],
+               const pmix_proc_t procs[], size_t nprocs,
+               const pmix_info_t directives[], size_t ndirs,
+               pmix_info_cbfunc_t cbfunc, void *cbdata) with gil:
+    keys = pmixservermodule.keys()
+    if 'group' in keys:
+    #    args = pmixproc_to_py(proc)
+        args = {}
+        rc = pmixservermodule['group'](args)
     else:
         rc = PMIX_ERR_NOT_SUPPORTED
     # we cannot execute a callback function here as
