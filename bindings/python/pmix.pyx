@@ -72,79 +72,136 @@ cdef class PMIxClient:
     def initialized(self):
         return PMIx_Initialized()
 
+    cdef int load_value(self, pmix_value_t *value, val:tuple):
+        if val[1] == 'bool':
+            value[0].type = PMIX_BOOL
+            value[0].data.flag = pmix_bool_convert(val[0])
+        elif val[1] == 'byte':
+            value[0].type = PMIX_BYTE
+            value[0].data.byte = val[0]
+        elif val[1] == 'string':
+            value[0].type = PMIX_STRING
+            if isinstance(val[0], str):
+                pykey = val[0].encode('ascii')
+            else:
+                pykey = val[0]
+            try:
+                value[0].data.string = strdup(pykey)
+            except:
+                raise ValueError("String value declared but non-string provided")
+        elif val[1] == 'size':
+            value[0].type = PMIX_SIZE
+            if not isinstance(val[0], pmix_int_types):
+                raise TypeError("size_t value declared but non-integer provided")
+            value[0].data.size = val[0]
+        elif val[1] == 'pid':
+            value[0].type = PMIX_PID
+            if not isinstance(val[0], pmix_int_types):
+                raise TypeError("pid value declared but non-integer provided")
+            if val[0] < 0:
+                raise ValueError("pid value is negative")
+            value[0].data.pid = val[0]
+        elif val[1] == 'int':
+            value[0].type = PMIX_INT
+            if not isinstance(val[0], pmix_int_types):
+                raise TypeError("integer value declared but non-integer provided")
+            value[0].data.integer = val[0]
+        elif val[1] == 'int8':
+            value[0].type = PMIX_INT8
+            if not isinstance(val[0], pmix_int_types):
+                raise TypeError("int8 value declared but non-integer provided")
+            if val[0] > 127 or val[0] < -128:
+                raise ValueError("int8 value is out of bounds")
+            value[0].data.int8 = val[0]
+        elif val[1] == 'int16':
+            value[0].type = PMIX_INT16
+            if not isinstance(val[0], pmix_int_types):
+                raise TypeError("int16 value declared but non-integer provided")
+            if val[0] > 32767 or val[0] < -32768:
+                raise ValueError("int16 value is out of bounds")
+            value[0].data.int16 = val[0]
+        elif val[1] == 'int32':
+            value[0].type = PMIX_INT32
+            if not isinstance(val[0], pmix_int_types):
+                raise TypeError("int32 value declared but non-integer provided")
+            if val[0] > 2147483647 or val[0] < -2147483648:
+                raise ValueError("int32 value is out of bounds")
+            value[0].data.int32 = val[0]
+        else:
+            print("UNRECOGNIZED INFO VALUE")
+            return PMIX_ERR_NOT_SUPPORTED
+
+    cdef destruct_value(self, pmix_value_t *value):
+        if value[0].type == PMIX_STRING:
+            free(value[0].data.string);
+
+    cdef free_value(self, pmix_value_t *value):
+        self.destruct_value(value);
+        PyMem_Free(value)
+
+    # Convert a dictionary of key-value pairs into an
+    # array of pmix_info_t structs
+    #
+    # @array [INPUT]
+    #        - malloc'd array of pmix_info_t structs
+    #
+    # @keyvals [INPUT]
+    #          - dictionary of key-value pairs {key: (value, type)}
+    #
     cdef int load_info(self, pmix_info_t *array, keyvals:dict):
         kvkeys = list(keyvals.keys())
         n = 0
         for key in kvkeys:
             pmix_copy_key(array[n].key, key)
             # the value also needs to be transferred
-            if keyvals[key][1] == 'bool':
-                array[n].value.type = PMIX_BOOL
-                array[n].value.data.flag = pmix_bool_convert(keyvals[key][0])
-            elif keyvals[key][1] == 'byte':
-                array[n].value.type = PMIX_BYTE
-                array[n].value.data.byte = keyvals[key][0]
-            elif keyvals[key][1] == 'string':
-                array[n].value.type = PMIX_STRING
-                if isinstance(keyvals[key][0], str):
-                    pykey = keyvals[key][0].encode('ascii')
-                else:
-                    pykey = keyvals[key][0]
-                try:
-                    array[n].value.data.string = strdup(pykey)
-                except:
-                    raise ValueError("String value declared but non-string provided")
-            elif keyvals[key][1] == 'size':
-                array[n].value.type = PMIX_SIZE
-                if not isinstance(keyvals[key][0], pmix_int_types):
-                    raise TypeError("size_t value declared but non-integer provided")
-                array[n].value.data.size = keyvals[key][0]
-            elif keyvals[key][1] == 'pid':
-                array[n].value.type = PMIX_PID
-                if not isinstance(keyvals[key][0], pmix_int_types):
-                    raise TypeError("pid value declared but non-integer provided")
-                if keyvals[key][0] < 0:
-                    raise ValueError("pid value is negative")
-                array[n].value.data.pid = keyvals[key][0]
-            elif keyvals[key][1] == 'int':
-                array[n].value.type = PMIX_INT
-                if not isinstance(keyvals[key][0], pmix_int_types):
-                    raise TypeError("integer value declared but non-integer provided")
-                array[n].value.data.integer = keyvals[key][0]
-            elif keyvals[key][1] == 'int8':
-                array[n].value.type = PMIX_INT8
-                if not isinstance(keyvals[key][0], pmix_int_types):
-                    raise TypeError("int8 value declared but non-integer provided")
-                if keyvals[key][0] > 127 or keyvals[key][0] < -128:
-                    raise ValueError("int8 value is out of bounds")
-                array[n].value.data.int8 = keyvals[key][0]
-            elif keyvals[key][1] == 'int16':
-                array[n].value.type = PMIX_INT16
-                if not isinstance(keyvals[key][0], pmix_int_types):
-                    raise TypeError("int16 value declared but non-integer provided")
-                if keyvals[key][0] > 32767 or keyvals[key][0] < -32768:
-                    raise ValueError("int16 value is out of bounds")
-                array[n].value.data.int16 = keyvals[key][0]
-            elif keyvals[key][1] == 'int32':
-                array[n].value.type = PMIX_INT32
-                if not isinstance(keyvals[key][0], pmix_int_types):
-                    raise TypeError("int32 value declared but non-integer provided")
-                if keyvals[key][0] > 2147483647 or keyvals[key][0] < -2147483648:
-                    raise ValueError("int32 value is out of bounds")
-                array[n].value.data.int32 = keyvals[key][0]
-            else:
-                print("UNRECOGNIZED INFO VALUE TYPE FOR KEY", key)
-                return PMIX_ERR_NOT_SUPPORTED
+            self.load_value(&array[n].value, keyvals[key])
             print("ARRAY[", n, "]: ", array[n].key, array[n].value.type)
             n += 1
         return PMIX_SUCCESS
 
+    cdef destruct_info(self, pmix_info_t *info):
+        self.destruct_value(&info[0].value)
+
+    # Free a malloc'd array of pmix_info_t structures
+    #
+    # @array [INPUT]
+    #        - array of pmix_info_t to be free'd
+    #
+    # @sz [INPUT]
+    #     - number of elements in array
     cdef void free_info(self, pmix_info_t *array, size_t sz):
         n = 0
         while n < sz:
-            if array[n].value.type == PMIX_STRING:
-                free(array[n].value.data.string)
+            self.destruct_info(&array[n])
             n += 1
+        PyMem_Free(array)
+
+    # Convert a list of (nspace, rank) tuples into an
+    # array of pmix_proc_t structs
+    #
+    # @proc [INPUT]
+    #       - malloc'd array of pmix_proc_t structs
+    #
+    # @peers [INPUT]
+    #       - list of (nspace,rank) tuples
+    #
+    cdef int load_proc(self, pmix_proc_t *proc, peers:list):
+        n = 0
+        for p in peers:
+            pmix_copy_nspace(proc[n].nspace, p[0])
+            proc[n].rank = p[1]
+            n += 1
+        return PMIX_SUCCESS
+
+    # Free a malloc'd array of pmix_proc_t structures
+    #
+    # @array [INPUT]
+    #        - array of pmix_proc_t to be free'd
+    #
+    # @sz [INPUT]
+    #     - number of elements in array
+    #
+    cdef void free_procs(self, pmix_proc_t *array, size_t sz):
         PyMem_Free(array)
 
     # Request that the provided array of procs be aborted, returning the
@@ -158,10 +215,25 @@ cdef class PMIxClient:
     #
     # @procs [INPUT]
     #        - list of proc nspace,rank tuples
-    def abort(self, status, msg, procs):
+    def abort(self, status, msg, peers:list):
+        cdef pmix_proc_t *procs
+        cdef size_t sz
         # convert list of procs to array of pmix_proc_t's
+        sz = len(peers)
+        procs = <pmix_proc_t*> PyMem_Malloc(sz * sizeof(pmix_proc_t))
+        if not procs:
+            raise MemoryError()
+        rc = self.load_proc(procs, peers)
+        if PMIX_SUCCESS != rc:
+            return rc
+        if isinstance(msg, str):
+            pymsg = msg.encode('ascii')
+        else:
+            pymsg = msg
         # pass into PMIx_Abort
-        return PMIX_SUCCESS
+        rc = PMIx_Abort(status, pymsg, procs, sz)
+        self.free_procs(procs, sz)
+        return rc
 
     def get_version(self):
         return PMIx_Get_version()
@@ -171,23 +243,22 @@ cdef class PMIxClient:
     # @scope [INPUT]
     #        - the scope of the data
     #
-    # @keyval [INPUT]
-    #        - the key-value pair to be stored
+    # @key [INPUT]
+    #      - the key to be stored
     #
-    def put(self, scope, keyval):
-        # convert the scope to its PMIx equivalent
+    # @value [INPUT]
+    #        - a value tuple to be stored (value, type)
+    def put(self, scope, ky, val):
+        cdef pmix_key_t key
+        cdef pmix_value_t value
         # convert the keyval tuple to a pmix_info_t
+        pmix_copy_key(key, ky)
+        self.load_value(&value, val)
         # pass it into the PMIx_Put function
-        return PMIX_SUCCESS
+        rc = PMIx_Put(scope, key, &value)
+        self.destruct_value(&value)
+        return rc
 
-    # private function to convert key-value tuple
-    # to pmix_info_t
-    def __convert_value(self, char* dest, char* src):
-        strncpy(dest, src, 511)
-        return
-
-    # private function to convert a lit of proc
-    # nspace,rank tuples into an array of pmix_proc_t
 
 pmixservermodule = {}
 def setmodulefn(k, f):

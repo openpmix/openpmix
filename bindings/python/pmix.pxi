@@ -88,32 +88,3 @@ cdef void pmix_copy_key(pmix_key_t key, ky):
     pykeyptr = <const char *>(pykey)
     memset(key, 0, PMIX_MAX_KEYLEN+1)
     memcpy(key, pykeyptr, klen)
-
-# convert a list of nspace,rank into an array
-# of pmix_proc_t
-cdef class PMIxProcArray:
-    cdef pmix_proc_t* array
-    cdef size_t nprocs
-
-    def __cinit__(self, size_t number):
-        # allocate some memory (uninitialised, may contain arbitrary data)
-        self.array = <pmix_proc_t*> PyMem_Malloc(number * sizeof(pmix_proc_t))
-        if not self.array:
-            raise MemoryError()
-        self.nprocs = number
-
-    def load(self, procarray:list):
-        n = 0
-        for p in procarray:
-            b = p[0].encode()
-            strcpy(self.array[n].nspace, b)
-            self.array[n].rank = p[1]
-            n += 1
-        for n in range(self.nprocs):
-            b = str(self.array[n].nspace)
-
-    def unload(self):
-        ans = []
-        for n in range(self.nprocs):
-            ans.append(tuple([self.array[n].nspace] + [self.array[n].rank]))
-        return ans

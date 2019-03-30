@@ -11,8 +11,9 @@ def main():
     if 0 != my_result:
         print("FAILED TO INIT")
         exit(1)
-    # try getting something
-
+    # try putting something
+    rc = foo.put(PMIX_GLOBAL, "mykey", ('test', 'string'))
+    print("Put result ", rc);
     # finalize
     info = {}
     foo.finalize(info)
