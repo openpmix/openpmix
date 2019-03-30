@@ -11,8 +11,21 @@ def main():
     if 0 != my_result:
         print("FAILED TO INIT")
         exit(1)
-    # try getting something
-
+    # try putting something
+    print("PUT")
+    rc = foo.put(PMIX_GLOBAL, "mykey", ('test', 'string'))
+    print("Put result ", rc);
+    # commit it
+    print("COMMIT")
+    rc = foo.commit()
+    print ("Commit result ", rc)
+    # execute fence
+    print("FENCE")
+    procs = []
+    info = {}
+    rc = foo.fence(procs, info)
+    print("Fence result ", rc)
+    exit(0)
     # finalize
     info = {}
     foo.finalize(info)

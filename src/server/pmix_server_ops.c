@@ -854,6 +854,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
             }
         }
     }
+
     if (0 < pmix_list_get_size(&expand)) {
         PMIX_PROC_CREATE(newprocs, nmbrs);
         gcd = (pmix_group_caddy_t*)pmix_list_remove_first(&expand);
@@ -950,6 +951,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
             break;
         }
     }
+
     /* we only save the info structs from the first caller
      * who provides them - it is a user error to provide
      * different values from different participants */
@@ -964,6 +966,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
 
     /* add this contributor to the tracker so they get
      * notified when we are done */
+    PMIX_RETAIN(cd);
     pmix_list_append(&trk->local_cbs, &cd->super);
     /* if a timeout was specified, set it */
     if (0 < tv.tv_sec) {
@@ -981,7 +984,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
      * across all participants has been completed */
     if (trk->def_complete &&
         pmix_list_get_size(&trk->local_cbs) == trk->nlocal) {
-        pmix_output_verbose(2, pmix_server_globals.base_output,
+        pmix_output_verbose(2, pmix_server_globals.fence_output,
                             "fence complete");
         /* if the user asked us to collect data, then we have
          * to provide any locally collected data to the host
@@ -1006,6 +1009,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
         if (PMIX_SUCCESS != rc) {
             pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
             PMIX_RELEASE(trk);
+            cd->trk = NULL;
         }
     }
 
