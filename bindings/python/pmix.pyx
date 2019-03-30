@@ -59,7 +59,6 @@ cdef class PMIxClient:
         if not info:
             raise MemoryError()
         self.load_info(info, keyvals)
-        print(keyvals)
         rc = PMIx_Init(&self.myproc, info, klen)
         return rc
 
@@ -259,6 +258,54 @@ cdef class PMIxClient:
         self.destruct_value(&value)
         return rc
 
+    def commit(self):
+        rc = PMIx_Commit()
+        return rc
+
+    def fence(self, peers:list, keyvals:dict):
+        cdef pmix_proc_t *procs
+        cdef pmix_info_t *info
+        cdef size_t ninfo, nprocs
+        # convert list of procs to array of pmix_proc_t's
+        nprocs = len(peers)
+        if 0 < nprocs:
+            procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
+            if not procs:
+                raise MemoryError()
+            rc = self.load_proc(procs, peers)
+            if PMIX_SUCCESS != rc:
+                self.free_procs(procs, nprocs)
+                return rc
+        else:
+            nprocs = 1
+            procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
+            if not procs:
+                raise MemoryError()
+            pmix_copy_nspace(procs[0].nspace, self.myproc.nspace)
+            procs[0].rank = PMIX_RANK_WILDCARD
+        # convert the keyval dictionary to array of
+        # pmix_info_t structs
+        kvkeys = list(keyvals.keys())
+        ninfo = len(kvkeys)
+        if 0 < ninfo:
+            info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
+            if not info:
+                raise MemoryError()
+            rc = self.load_info(info, keyvals)
+            if PMIX_SUCCESS != rc:
+                self.free_procs(procs, nprocs)
+                self.free_info(info, ninfo)
+                return rc
+        else:
+            info = NULL
+        # pass it into the fence API
+        print("FENCE", nprocs, ninfo)
+        rc = PMIx_Fence(procs, nprocs, info, ninfo)
+        if 0 < nprocs:
+            self.free_procs(procs, nprocs)
+        if 0 < ninfo:
+            self.free_info(info, ninfo)
+        return rc
 
 pmixservermodule = {}
 def setmodulefn(k, f):
