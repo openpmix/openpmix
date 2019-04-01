@@ -10,7 +10,7 @@
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
 # Copyright (c) 2009-2010 Cisco Systems, Inc. All rights reserved.
-# Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
+# Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
 # Copyright (c) 2017      IBM Corporation.  All rights reserved.
 # $COPYRIGHT$
 #
@@ -45,7 +45,7 @@ mcacomponentdir = $(pmnixlibdir)
 mcacomponent_LTLIBRARIES = $(component_install)
 mca_plog_smtp_la_SOURCES = $(sources)
 mca_plog_smtp_la_LDFLAGS = -module -avoid-version $(plog_smtp_LDFLAGS)
-mca_plog_smtp_la_LIBADD = $(plog_smtp_LIBS)
+mca_plog_smtp_la_LIBADD = $(plog_smtp_LIBS) $(top_builddir)/src/libpmix.la
 
 noinst_LTLIBRARIES = $(component_noinst)
 libmca_plog_smtp_la_SOURCES =$(sources)
