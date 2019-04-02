@@ -1836,29 +1836,194 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
     return rc;
 }
 
+static void _check_cached_events(int sd, short args, void *cbdata)
+{
+    pmix_setup_caddy_t *scd = (pmix_setup_caddy_t*)cbdata;
+    pmix_notify_caddy_t *cd;
+    pmix_range_trkr_t rngtrk;
+    pmix_proc_t proc;
+    int i;
+    size_t k, n;
+    bool found, matched;
+    pmix_buffer_t *relay;
+    pmix_status_t ret = PMIX_SUCCESS;
+    pmix_cmd_t cmd = PMIX_NOTIFY_CMD;
+
+    /* check if any matching notifications have been cached */
+    rngtrk.procs = NULL;
+    rngtrk.nprocs = 0;
+    for (i=0; i < pmix_globals.max_events; i++) {
+        pmix_hotel_knock(&pmix_globals.notifications, i, (void**)&cd);
+        if (NULL == cd) {
+            continue;
+        }
+        found = false;
+        if (NULL == scd->codes) {
+            if (!cd->nondefault) {
+                /* they registered a default event handler - always matches */
+                found = true;
+            }
+        } else {
+            for (k=0; k < scd->ncodes; k++) {
+                if (scd->codes[k] == cd->status) {
+                    found = true;
+                    break;
+                }
+            }
+        }
+        if (!found) {
+            continue;
+        }
+        /* check if the affected procs (if given) match those they
+         * wanted to know about */
+        if (!pmix_notify_check_affected(cd->affected, cd->naffected,
+                                        scd->procs, scd->nprocs)) {
+            continue;
+        }
+        /* check the range */
+        if (NULL == cd->targets) {
+            rngtrk.procs = &cd->source;
+            rngtrk.nprocs = 1;
+        } else {
+            rngtrk.procs = cd->targets;
+            rngtrk.nprocs = cd->ntargets;
+        }
+        rngtrk.range = cd->range;
+        PMIX_LOAD_PROCID(&proc, scd->peer->info->pname.nspace, scd->peer->info->pname.rank);
+        if (!pmix_notify_check_range(&rngtrk, &proc)) {
+            continue;
+        }
+        /* if we were given specific targets, check if this is one */
+        found = false;
+        if (NULL != cd->targets) {
+            matched = false;
+            for (n=0; n < cd->ntargets; n++) {
+                /* if the source of the event is the same peer just registered, then ignore it
+                 * as the event notification system will have already locally
+                 * processed it */
+                if (PMIX_CHECK_PROCID(&cd->source, &scd->peer->info->pname)) {
+                    continue;
+                }
+                if (PMIX_CHECK_PROCID(&scd->peer->info->pname, &cd->targets[n])) {
+                    matched = true;
+                    /* track the number of targets we have left to notify */
+                    --cd->nleft;
+                    /* if this is the last one, then evict this event
+                     * from the cache */
+                    if (0 == cd->nleft) {
+                        pmix_hotel_checkout(&pmix_globals.notifications, cd->room);
+                        found = true;  // mark that we should release cd
+                    }
+                    break;
+                }
+            }
+            if (!matched) {
+                /* do not notify this one */
+                continue;
+            }
+        }
+
+        /* all matches - notify */
+        relay = PMIX_NEW(pmix_buffer_t);
+        if (NULL == relay) {
+            /* nothing we can do */
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            ret = PMIX_ERR_NOMEM;
+            break;
+        }
+        /* pack the info data stored in the event */
+        PMIX_BFROPS_PACK(ret, scd->peer, relay, &cmd, 1, PMIX_COMMAND);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            break;
+        }
+        PMIX_BFROPS_PACK(ret, scd->peer, relay, &cd->status, 1, PMIX_STATUS);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            break;
+        }
+        PMIX_BFROPS_PACK(ret, scd->peer, relay, &cd->source, 1, PMIX_PROC);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            break;
+        }
+        PMIX_BFROPS_PACK(ret, scd->peer, relay, &cd->ninfo, 1, PMIX_SIZE);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            break;
+        }
+        if (0 < cd->ninfo) {
+            PMIX_BFROPS_PACK(ret, scd->peer, relay, cd->info, cd->ninfo, PMIX_INFO);
+            if (PMIX_SUCCESS != ret) {
+                PMIX_ERROR_LOG(ret);
+                break;
+            }
+        }
+        PMIX_SERVER_QUEUE_REPLY(ret, scd->peer, 0, relay);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_RELEASE(relay);
+        }
+        if (found) {
+            PMIX_RELEASE(cd);
+        }
+    }
+    /* release the caddy */
+    if (NULL != scd->codes) {
+        free(scd->codes);
+    }
+    if (NULL != scd->info) {
+        PMIX_INFO_FREE(scd->info, scd->ninfo);
+    }
+    if (NULL != scd->opcbfunc) {
+        scd->opcbfunc(ret, scd->cbdata);
+    }
+    PMIX_RELEASE(scd);
+}
+
+/* provide a callback function for the host when it finishes
+ * processing the registration */
+static void regevopcbfunc(pmix_status_t status, void *cbdata)
+{
+    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t*)cbdata;
+
+    /* if the registration succeeded, then check local cache */
+    if (PMIX_SUCCESS == status) {
+        _check_cached_events(0, 0, cd);
+        return;
+    }
+
+    /* it didn't succeed, so cleanup and execute the callback
+     * so we don't hang */
+    if (NULL != cd->codes) {
+        free(cd->codes);
+    }
+    if (NULL != cd->info) {
+        PMIX_INFO_FREE(cd->info, cd->ninfo);
+    }
+    if (NULL != cd->opcbfunc) {
+        cd->opcbfunc(status, cd->cbdata);
+    }
+    PMIX_RELEASE(cd);
+}
+
+
 pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
                                           pmix_buffer_t *buf,
                                           pmix_op_cbfunc_t cbfunc,
                                           void *cbdata)
 {
     int32_t cnt;
-    pmix_status_t rc, ret = PMIX_SUCCESS;
+    pmix_status_t rc;
     pmix_status_t *codes = NULL;
     pmix_info_t *info = NULL;
-    size_t ninfo=0, ncodes, n, k;
+    size_t ninfo=0, ncodes, n;
     pmix_regevents_info_t *reginfo;
     pmix_peer_events_info_t *prev = NULL;
-    pmix_notify_caddy_t *cd;
     pmix_setup_caddy_t *scd;
-    int i;
     bool enviro_events = false;
-    bool found, matched;
-    pmix_buffer_t *relay;
-    pmix_cmd_t cmd = PMIX_NOTIFY_CMD;
+    bool found;
     pmix_proc_t *affected = NULL;
     size_t naffected = 0;
-    pmix_range_trkr_t rngtrk;
-    pmix_proc_t proc;
 
     pmix_output_verbose(2, pmix_server_globals.event_output,
                         "recvd register events for peer %s:%d",
@@ -2056,47 +2221,68 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
             rc = PMIX_ERR_NOMEM;
             goto cleanup;
         }
-        if (NULL != codes) {
-            scd->codes = (pmix_status_t*)malloc(ncodes * sizeof(pmix_status_t));
-            if (NULL == scd->codes) {
-                rc = PMIX_ERR_NOMEM;
-                PMIX_RELEASE(scd);
-                goto cleanup;
-            }
-            memcpy(scd->codes, codes, ncodes * sizeof(pmix_status_t));
-            scd->ncodes = ncodes;
-        }
-        if (NULL != info) {
-            PMIX_INFO_CREATE(scd->info, ninfo);
-            if (NULL == scd->info) {
-                rc = PMIX_ERR_NOMEM;
-                if (NULL != scd->codes) {
-                    free(scd->codes);
-                }
-                PMIX_RELEASE(scd);
-                goto cleanup;
-            }
-            /* copy the info across */
-            for (n=0; n < ninfo; n++) {
-                PMIX_INFO_XFER(&scd->info[n], &info[n]);
-            }
-            scd->ninfo = ninfo;
-        }
+        PMIX_RETAIN(peer);
+        scd->peer = peer;
+        scd->codes = codes;
+        scd->ncodes = ncodes;
+        scd->info = info;
+        scd->ninfo = ninfo;
         scd->opcbfunc = cbfunc;
         scd->cbdata = cbdata;
-        if (PMIX_SUCCESS != (rc = pmix_host_server.register_events(scd->codes, scd->ncodes, scd->info, scd->ninfo, opcbfunc, scd))) {
+        if (PMIX_SUCCESS == (rc = pmix_host_server.register_events(scd->codes, scd->ncodes, scd->info, scd->ninfo, regevopcbfunc, scd))) {
+            /* the host will call us back when completed */
+            pmix_output_verbose(2, pmix_server_globals.event_output,
+                                 "server register events: host server processing event registration");
+            if (NULL != affected) {
+                free(affected);
+            }
+            return rc;
+        } else if (PMIX_OPERATION_SUCCEEDED == rc) {
+            /* we need to check cached notifications, but we want to ensure
+             * that occurs _after_ the client returns from registering the
+             * event handler in case the event is flagged for do_not_cache.
+             * Setup an event to fire after we return as that means it will
+             * occur after we send the registration response back to the client,
+             * thus guaranteeing that the client will get their registration
+             * callback prior to delivery of an event notification */
+            PMIX_RETAIN(peer);
+            scd->peer = peer;
+            scd->procs = affected;
+            scd->nprocs = naffected;
+            scd->opcbfunc = NULL;
+            scd->cbdata = NULL;
+            PMIX_THREADSHIFT(scd, _check_cached_events);
+            return rc;
+        } else {
+            /* host returned a genuine error and won't be calling the callback function */
             pmix_output_verbose(2, pmix_server_globals.event_output,
                                  "server register events: host server reg events returned rc =%d", rc);
-            if (NULL != scd->codes) {
-                free(scd->codes);
-            }
-            if (NULL != scd->info) {
-                PMIX_INFO_FREE(scd->info, scd->ninfo);
-            }
             PMIX_RELEASE(scd);
+            goto cleanup;
         }
     } else {
         rc = PMIX_OPERATION_SUCCEEDED;
+        /* we need to check cached notifications, but we want to ensure
+         * that occurs _after_ the client returns from registering the
+         * event handler in case the event is flagged for do_not_cache.
+         * Setup an event to fire after we return as that means it will
+         * occur after we send the registration response back to the client,
+         * thus guaranteeing that the client will get their registration
+         * callback prior to delivery of an event notification */
+        scd = PMIX_NEW(pmix_setup_caddy_t);
+        PMIX_RETAIN(peer);
+        scd->peer = peer;
+        scd->codes = codes;
+        scd->ncodes = ncodes;
+        scd->procs = affected;
+        scd->nprocs = naffected;
+        scd->opcbfunc = NULL;
+        scd->cbdata = NULL;
+        PMIX_THREADSHIFT(scd, _check_cached_events);
+        if (NULL != info) {
+            PMIX_INFO_FREE(info, ninfo);
+        }
+        return rc;
     }
 
   cleanup:
@@ -2105,143 +2291,11 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
     if (NULL != info) {
         PMIX_INFO_FREE(info, ninfo);
     }
-    if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
-        if (NULL != codes) {
-            free(codes);
-        }
-        if (NULL != affected) {
-            PMIX_PROC_FREE(affected, naffected);
-        }
-        return rc;
-    }
-
-    /* check if any matching notifications have been cached */
-    rngtrk.procs = NULL;
-    rngtrk.nprocs = 0;
-    for (i=0; i < pmix_globals.max_events; i++) {
-        pmix_hotel_knock(&pmix_globals.notifications, i, (void**)&cd);
-        if (NULL == cd) {
-            continue;
-        }
-        found = false;
-        if (NULL == codes) {
-            if (!cd->nondefault) {
-                /* they registered a default event handler - always matches */
-                found = true;
-            }
-        } else {
-            for (k=0; k < ncodes; k++) {
-                if (codes[k] == cd->status) {
-                    found = true;
-                    break;
-                }
-            }
-        }
-        if (!found) {
-            continue;
-        }
-        /* check if the affected procs (if given) match those they
-         * wanted to know about */
-        if (!pmix_notify_check_affected(cd->affected, cd->naffected,
-                                        affected, naffected)) {
-            continue;
-        }
-        /* check the range */
-        if (NULL == cd->targets) {
-            rngtrk.procs = &cd->source;
-            rngtrk.nprocs = 1;
-        } else {
-            rngtrk.procs = cd->targets;
-            rngtrk.nprocs = cd->ntargets;
-        }
-        rngtrk.range = cd->range;
-        PMIX_LOAD_PROCID(&proc, peer->info->pname.nspace, peer->info->pname.rank);
-        if (!pmix_notify_check_range(&rngtrk, &proc)) {
-            continue;
-        }
-        /* if we were given specific targets, check if this is one */
-        found = false;
-        if (NULL != cd->targets) {
-            matched = false;
-            for (n=0; n < cd->ntargets; n++) {
-                /* if the source of the event is the same peer just registered, then ignore it
-                 * as the event notification system will have already locally
-                 * processed it */
-                if (PMIX_CHECK_PROCID(&cd->source, &peer->info->pname)) {
-                    continue;
-                }
-                if (PMIX_CHECK_PROCID(&peer->info->pname, &cd->targets[n])) {
-                    matched = true;
-                    /* track the number of targets we have left to notify */
-                    --cd->nleft;
-                    /* if this is the last one, then evict this event
-                     * from the cache */
-                    if (0 == cd->nleft) {
-                        pmix_hotel_checkout(&pmix_globals.notifications, cd->room);
-                        found = true;  // mark that we should release cd
-                    }
-                    break;
-                }
-            }
-            if (!matched) {
-                /* do not notify this one */
-                continue;
-            }
-        }
-
-        /* all matches - notify */
-        relay = PMIX_NEW(pmix_buffer_t);
-        if (NULL == relay) {
-            /* nothing we can do */
-            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-            ret = PMIX_ERR_NOMEM;
-            break;
-        }
-        /* pack the info data stored in the event */
-        PMIX_BFROPS_PACK(ret, peer, relay, &cmd, 1, PMIX_COMMAND);
-        if (PMIX_SUCCESS != ret) {
-            PMIX_ERROR_LOG(ret);
-            break;
-        }
-        PMIX_BFROPS_PACK(ret, peer, relay, &cd->status, 1, PMIX_STATUS);
-        if (PMIX_SUCCESS != ret) {
-            PMIX_ERROR_LOG(ret);
-            break;
-        }
-        PMIX_BFROPS_PACK(ret, peer, relay, &cd->source, 1, PMIX_PROC);
-        if (PMIX_SUCCESS != ret) {
-            PMIX_ERROR_LOG(ret);
-            break;
-        }
-        PMIX_BFROPS_PACK(ret, peer, relay, &cd->ninfo, 1, PMIX_SIZE);
-        if (PMIX_SUCCESS != ret) {
-            PMIX_ERROR_LOG(ret);
-            break;
-        }
-        if (0 < cd->ninfo) {
-            PMIX_BFROPS_PACK(ret, peer, relay, cd->info, cd->ninfo, PMIX_INFO);
-            if (PMIX_SUCCESS != ret) {
-                PMIX_ERROR_LOG(ret);
-                break;
-            }
-        }
-        PMIX_SERVER_QUEUE_REPLY(ret, peer, 0, relay);
-        if (PMIX_SUCCESS != ret) {
-            PMIX_RELEASE(relay);
-        }
-        if (found) {
-            PMIX_RELEASE(cd);
-        }
-    }
-
     if (NULL != codes) {
         free(codes);
     }
     if (NULL != affected) {
         PMIX_PROC_FREE(affected, naffected);
-    }
-    if (PMIX_SUCCESS != ret) {
-        rc = ret;
     }
     return rc;
 }
