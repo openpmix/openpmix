@@ -1946,7 +1946,6 @@ void pmix_server_deregister_events(pmix_peer_t *peer,
     }
 }
 
-
 static void local_cbfunc(pmix_status_t status, void *cbdata)
 {
     pmix_notify_caddy_t *cd = (pmix_notify_caddy_t*)cbdata;
