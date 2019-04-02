@@ -2,6 +2,7 @@
 #
 # Copyright (c) 2017      Mellanox Technologies, Inc.
 #                         All rights reserved.
+# Copyright (c) 2019      Intel, Inc.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -36,6 +37,7 @@ mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component)
 mca_pshmem_mmap_la_SOURCES = $(component_sources)
 mca_pshmem_mmap_la_LDFLAGS = -module -avoid-version
+mca_pshmem_mmap_la_LIBADD = $(top_builddir)/src/libpmix.la
 
 noinst_LTLIBRARIES = $(lib)
 libmca_pshmem_mmap_la_SOURCES = $(lib_sources)
