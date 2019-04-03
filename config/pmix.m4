@@ -871,6 +871,10 @@ AC_DEFUN([PMIX_DEFINE_ARGS],[
                         [Whether build should attempt to use dlopen (or
                          similar) to dynamically load components.
                          (default: enabled)])])
+    AS_IF([test "$enable_dlopen" = "unknown"],
+          [AC_MSG_WARN([enable_dlopen variable has been overwritten by configure])
+           AC_MSG_WARN([This is an internal error that should be reported to PMIx developers])
+           AC_MSG_ERROR([Cannot continue])])
     AS_IF([test "$enable_dlopen" = "no"],
           [enable_mca_dso="no"
            enable_mca_static="yes"
