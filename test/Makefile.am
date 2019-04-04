@@ -11,7 +11,7 @@
 #                         All rights reserved.
 # Copyright (c) 2006-2010 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2012-2013 Los Alamos National Security, Inc.  All rights reserved.
-# Copyright (c) 2013-2018 Intel, Inc.  All rights reserved.
+# Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
 # Copyright (c) 2018      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
 # $COPYRIGHT$
@@ -33,8 +33,27 @@ headers = test_common.h cli_stages.h server_callbacks.h utils.h test_fence.h \
 
 AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/src/api
 
-noinst_SCRIPTS = pmix_client_otheruser.sh
+noinst_SCRIPTS = pmix_client_otheruser.sh run_tests.pl
 noinst_PROGRAMS =
+
+#########################
+# Support for "make check"
+
+check_PROGRAMS = \
+    pmix_test \
+    pmix_client \
+    pmix_regex
+
+if WANT_PMI_BACKWARD
+check_PROGRAMS += \
+    pmi_client \
+    pmi2_client
+endif
+
+TESTS = \
+    run_tests.pl
+
+##########################
 
 if WANT_PMI_BACKWARD
 noinst_PROGRAMS += pmi_client pmi2_client
