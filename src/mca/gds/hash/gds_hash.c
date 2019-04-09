@@ -1327,7 +1327,6 @@ static pmix_status_t hash_fetch(const pmix_proc_t *proc,
         val = NULL;
         rc = pmix_hash_fetch(ht, PMIX_RANK_WILDCARD, NULL, &val);
         if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
             if (NULL != val) {
                 PMIX_VALUE_RELEASE(val);
             }
@@ -1341,7 +1340,6 @@ static pmix_status_t hash_fetch(const pmix_proc_t *proc,
         if (PMIX_DATA_ARRAY != val->type ||
             NULL == val->data.darray ||
             PMIX_INFO != val->data.darray->type) {
-            PMIX_ERROR_LOG(PMIX_ERR_INVALID_VAL);
             PMIX_VALUE_RELEASE(val);
             return PMIX_ERR_INVALID_VAL;
         }

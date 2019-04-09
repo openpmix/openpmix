@@ -849,6 +849,10 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     ############################################################################
     PMIX_BUILT_TEST_PREFIX=$PMIX_top_builddir
     AC_SUBST(PMIX_BUILT_TEST_PREFIX)
+    # expose the mca component library paths in the build system
+    pathfile=$PMIX_top_srcdir/config/mca_library_paths.txt
+    PMIX_COMPONENT_LIBRARY_PATHS=`cat $pathfile`
+    AC_SUBST(PMIX_COMPONENT_LIBRARY_PATHS)
     AC_CONFIG_FILES(pmix_config_prefix[test/run_tests.pl], [chmod +x test/run_tests.pl])
 
     ############################################################################

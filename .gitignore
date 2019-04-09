@@ -53,6 +53,7 @@ config/lt~obsolete.m4
 config/ylwrap
 config/autogen_found_items.m4
 config/py-compile
+config/mca_library_paths.txt
 
 bindings/python/pmix.c
 bindings/python/*.so
