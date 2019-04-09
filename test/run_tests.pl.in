@@ -29,6 +29,11 @@ my $test;
 my $cmd;
 my $output;
 my $status = 0;
+my $myprefix;
+
+$myprefix = "@PMIX_BUILT_TEST_PREFIX@";
+my $wdir = $myprefix . "/test";
+chdir $wdir;
 
 foreach $test (@tests) {
     $cmd = "./pmix_test " . $test . " 2>&1";

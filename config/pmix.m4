@@ -845,6 +845,13 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_SUBST(pmixincludedir)
 
     ############################################################################
+    # setup "make check"
+    ############################################################################
+    PMIX_BUILT_TEST_PREFIX=$PMIX_top_builddir
+    AC_SUBST(PMIX_BUILT_TEST_PREFIX)
+    AC_CONFIG_FILES(pmix_config_prefix[test/run_tests.pl], [chmod +x test/run_tests.pl])
+
+    ############################################################################
     # final output
     ############################################################################
 
