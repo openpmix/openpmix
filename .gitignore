@@ -120,6 +120,7 @@ test/pmix_test_lite.log
 test/pmix_test_lite.trs
 test/test-suite.log
 test/pmix_regex
+test/run_tests.pl
 test/simple/quietclient
 test/simple/simptest
 test/simple/simpclient
