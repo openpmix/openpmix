@@ -5,7 +5,7 @@ from pmix import *
 def main():
     foo = PMIxClient()
     print("Testing PMIx ", foo.get_version())
-    info = {PMIX_PROGRAMMING_MODEL: ('TEST', 'string'), PMIX_MODEL_LIBRARY_NAME: ("PMIX", 'string')}
+    info = {PMIX_PROGRAMMING_MODEL: ('TEST', PMIX_STRING), PMIX_MODEL_LIBRARY_NAME: ("PMIX", PMIX_STRING)}
     my_result = foo.init(info)
     print("Init result ", my_result)
     if 0 != my_result:
@@ -13,7 +13,7 @@ def main():
         exit(1)
     # try putting something
     print("PUT")
-    rc = foo.put(PMIX_GLOBAL, "mykey", ('test', 'string'))
+    rc = foo.put(PMIX_GLOBAL, "mykey", (1, PMIX_INT32))
     print("Put result ", rc);
     # commit it
     print("COMMIT")

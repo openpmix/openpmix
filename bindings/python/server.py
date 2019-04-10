@@ -28,7 +28,7 @@ def main():
         print("FAILED TO CREATE SERVER")
         exit(1)
     print("Testing server version ", foo.get_version())
-    args = {'FOOBAR': ('VAR', 'string'), 'BLAST': (7, 'size')}
+    args = {'FOOBAR': ('VAR', PMIX_STRING), 'BLAST': (7, PMIX_INT32)}
     map = {'clientconnected': clientconnected}
     my_result = foo.init(args, map)
     print("Testing PMIx_Initialized")
@@ -39,7 +39,9 @@ def main():
     # get our environment as a base
     env = os.environ.copy()
     # register an nspace for the client app
-    kvals = {}
+    darray = (PMIX_SIZE, [1, 2, 3, 4, 5])
+    kvals = {'testkey': (darray, PMIX_DATA_ARRAY)}
+    print("REGISTERING NSPACE")
     rc = foo.register_nspace("testnspace", 1, kvals)
     print("RegNspace ", rc)
     # register a client
