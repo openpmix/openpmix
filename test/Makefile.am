@@ -33,7 +33,24 @@ headers = test_common.h cli_stages.h server_callbacks.h utils.h test_fence.h \
 
 AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/src/api
 
-noinst_SCRIPTS = pmix_client_otheruser.sh run_tests.pl
+noinst_SCRIPTS = pmix_client_otheruser.sh \
+	run_tests00.pl \
+	run_tests01.pl \
+	run_tests02.pl \
+	run_tests03.pl \
+	run_tests04.pl \
+	run_tests05.pl \
+	run_tests06.pl \
+	run_tests07.pl \
+	run_tests08.pl \
+	run_tests09.pl \
+	run_tests10.pl \
+	run_tests11.pl \
+	run_tests12.pl \
+	run_tests13.pl \
+	run_tests14.pl \
+	run_tests15.pl
+
 noinst_PROGRAMS =
 
 #########################
@@ -51,7 +68,23 @@ check_PROGRAMS += \
 endif
 
 TESTS = \
-    run_tests.pl
+	run_tests00.pl \
+	run_tests01.pl \
+	run_tests02.pl \
+	run_tests03.pl \
+	run_tests04.pl \
+	run_tests05.pl \
+	run_tests06.pl \
+	run_tests07.pl \
+	run_tests08.pl \
+	run_tests09.pl \
+	run_tests10.pl \
+	run_tests11.pl \
+	run_tests12.pl \
+	run_tests13.pl \
+	run_tests14.pl \
+	run_tests15.pl
+
 
 ##########################
 
