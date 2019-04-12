@@ -110,14 +110,6 @@ if test "$LIBEVENT" != ""; then
     config_args="--with-libevent=$LIBEVENT $config_args"
 fi
 
-# if config_args isn't empty, then add that to the distcheck_flags
-# (because we'll assumedly need those to run configure under "make
-# distcheck").
-if test "$config_args" != ""; then
-    echo "*** Adding to distcheck_flags: $config_args"
-    distcheck_flags="$distcheck_flags AM_DISTCHECK_CONFIGURE_FLAGS=\"$config_args\""
-fi
-
 export DISTCHECK_CONFIGURE_FLAGS=$config_args
 
 #
