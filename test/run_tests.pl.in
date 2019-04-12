@@ -30,24 +30,6 @@ my $test;
 my $cmd;
 my $output;
 my $status = 0;
-my $myprefix;
-my $mypathstr;
-my $mymcapaths;
-my @myfullpaths;
-my $mybuilddir;
-
-$mybuilddir = "@PMIX_BUILT_TEST_PREFIX@";
-
-$mypathstr = "@PMIX_COMPONENT_LIBRARY_PATHS@";
-
-my @splitstr = split(':', $mypathstr);
-
-foreach my $path (@splitstr) {
-    my $fullpath = $mybuilddir . "/" . $path;
-    push(@myfullpaths, $fullpath);
-}
-$mymcapaths = join(":", @myfullpaths);
-# $ENV{'PMIX_MCA_mca_base_component_path'} = "$mymcapaths";
 
 # We are running tests against the build tree (vs. the installation
 # tree).  Autogen gives us a full list of all possible component
@@ -72,8 +54,7 @@ foreach my $path (@splitstr) {
 my $mymcapaths = join(":", @myfullpaths);
 $ENV{'PMIX_MCA_mca_base_component_path'} = $mymcapaths;
 
-$myprefix = "@PMIX_BUILT_TEST_PREFIX@";
-my $wdir = $myprefix . "/test";
+my $wdir = $mybuilddir . "/test";
 chdir $wdir;
 
 foreach $test (@tests) {
