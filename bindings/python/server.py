@@ -17,8 +17,16 @@ class GracefulKiller:
   def exit_gracefully(self,signum, frame):
     self.kill_now = True
 
-def clientconnected(args:dict is not None):
-    print("CLIENT CONNECTED", args)
+def clientconnected(proc:tuple is not None):
+    print("CLIENT CONNECTED", proc)
+    return PMIX_SUCCESS
+
+def clientfinalized(proc:tuple is not None):
+    print("CLIENT FINALIZED", proc)
+    return PMIX_SUCCESS
+
+def clientfence(args:dict is not None):
+    print("SERVER FENCE", args)
     return PMIX_SUCCESS
 
 def main():
@@ -28,8 +36,10 @@ def main():
         print("FAILED TO CREATE SERVER")
         exit(1)
     print("Testing server version ", foo.get_version())
-    args = {'FOOBAR': ('VAR', 'string'), 'BLAST': (7, 'size')}
-    map = {'clientconnected': clientconnected}
+    args = {'FOOBAR': ('VAR', PMIX_STRING), 'BLAST': (7, PMIX_INT32)}
+    map = {'clientconnected': clientconnected,
+           'clientfinalized': clientfinalized,
+           'fencenb': clientfence}
     my_result = foo.init(args, map)
     print("Testing PMIx_Initialized")
     rc = foo.initialized()
@@ -39,7 +49,9 @@ def main():
     # get our environment as a base
     env = os.environ.copy()
     # register an nspace for the client app
-    kvals = {}
+    darray = (PMIX_SIZE, [1, 2, 3, 4, 5])
+    kvals = {'testkey': (darray, PMIX_DATA_ARRAY)}
+    print("REGISTERING NSPACE")
     rc = foo.register_nspace("testnspace", 1, kvals)
     print("RegNspace ", rc)
     # register a client
