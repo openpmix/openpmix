@@ -42,6 +42,14 @@ class myLock(threading.Event):
     def fetch_data(self):
         return (self.data, self.sz)
 
+cdef void pmix_load_argv(char **keys, argv:list):
+    n = 0
+    while NULL != keys[n]:
+        mykey = str(keys[n])
+        argv.append(mykey)
+        n += 1
+
+# TODO: implement support for PMIX_BOOL and PMIX_BYTE
 cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
     mysize = len(mylist)
     n = 0
@@ -516,7 +524,7 @@ cdef int pmix_load_value(pmix_value_t *value, val:tuple):
         return PMIX_ERR_NOT_SUPPORTED
     return PMIX_SUCCESS
 
-cdef tuple pmix_unload_value(pmix_value_t *value):
+cdef tuple pmix_unload_value(const pmix_value_t *value):
     if PMIX_BOOL == value[0].type:
         if value[0].data.flag:
             return (True, PMIX_BOOL)
@@ -628,15 +636,17 @@ cdef int pmix_load_info(pmix_info_t *array, keyvals:dict):
         n += 1
     return PMIX_SUCCESS
 
-cdef int pmix_unload_info(pmix_info_t *info, keyval:dict):
+cdef int pmix_unload_info(const pmix_info_t *info, size_t ninfo, keyval:dict):
     cdef char* kystr
-    val = pmix_unload_value(&info[0].value)
-    if val[1] == 'error':
-        return PMIX_ERR_NOT_SUPPORTED
-    kystr = strdup(info[0].key)
-    pykey = kystr.decode("ascii")
-    free(kystr)
-    keyval[pykey] = val
+    cdef size_t n = 0
+    while n < ninfo:
+        val = pmix_unload_value(&info[n].value)
+        if val[1] == PMIX_UNDEF:
+            return PMIX_ERR_NOT_SUPPORTED
+        kystr = strdup(info[n].key)
+        pykey = kystr.decode("ascii")
+        free(kystr)
+        keyval[pykey] = val
     return PMIX_SUCCESS
 
 cdef void pmix_destruct_info(pmix_info_t *info):
@@ -665,11 +675,19 @@ cdef void pmix_free_info(pmix_info_t *array, size_t sz):
 # @peers [INPUT]
 #       - list of (nspace,rank) tuples
 #
-cdef int pmix_load_proc(pmix_proc_t *proc, peers:list):
+cdef int pmix_load_procs(pmix_proc_t *proc, peers:list):
     n = 0
     for p in peers:
         pmix_copy_nspace(proc[n].nspace, p[0])
         proc[n].rank = p[1]
+        n += 1
+    return PMIX_SUCCESS
+
+cdef int pmix_unload_procs(const pmix_proc_t *procs, size_t nprocs, peers:list):
+    n = 0
+    while n < nprocs:
+        myns = str(procs[n].nspace)
+        peers.append((myns, procs[n].rank))
         n += 1
     return PMIX_SUCCESS
 
@@ -684,3 +702,29 @@ cdef int pmix_load_proc(pmix_proc_t *proc, peers:list):
 cdef void pmix_free_procs(pmix_proc_t *array, size_t sz):
     PyMem_Free(array)
 
+cdef void pmix_unload_bytes(char *data, size_t ndata, blist:list):
+    cdef size_t n = 0
+    while n < ndata:
+        blist.append(data[n])
+        n += 1
+
+cdef void pmix_unload_apps(const pmix_app_t *apps, size_t napps, pyapps:list):
+    cdef size_t n = 0
+    while n < napps:
+        myapp = {}
+        myapp['cmd'] = str(apps[n].cmd)
+        myargv = []
+        if NULL != apps[n].argv:
+            pmix_load_argv(apps[n].argv, myargv)
+            myapp['argv'] = myargv
+        myenv = []
+        if NULL != apps[n].env:
+            pmix_load_argv(apps[n].env, myenv)
+            myapp['env'] = myenv
+        myapp['maxprocs'] = apps[n].maxprocs
+        keyvals = {}
+        if NULL != apps[n].info:
+            pmix_unload_info(apps[n].info, apps[n].ninfo, keyvals)
+            myapp['info'] = keyvals
+        pyapps.append(myapp)
+        n += 1

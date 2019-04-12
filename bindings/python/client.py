@@ -25,9 +25,9 @@ def main():
     info = {}
     rc = foo.fence(procs, info)
     print("Fence result ", rc)
-    exit(0)
     # finalize
     info = {}
     foo.finalize(info)
+    print("Client finalize complete")
 if __name__ == '__main__':
     main()
