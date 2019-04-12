@@ -30,6 +30,7 @@ my $test;
 my $cmd;
 my $output;
 my $status = 0;
+my $testnum;
 
 # We are running tests against the build tree (vs. the installation
 # tree).  Autogen gives us a full list of all possible component
@@ -57,14 +58,16 @@ $ENV{'PMIX_MCA_mca_base_component_path'} = $mymcapaths;
 my $wdir = $mybuilddir . "/test";
 chdir $wdir;
 
-foreach $test (@tests) {
-    $cmd = "./pmix_test " . $test . " 2>&1";
-    print $cmd . "\n";
-    $output = `$cmd`;
-    print $output . "\n";
-    print "CODE $?\n";
-    if ("0" != "$?") {
-        $status = "$?";
-    }
-}
+$testnum = $0;
+$testnum =~ s/.pl//;
+$testnum = substr($testnum, -2);
+$test = @tests[$testnum];
+
+$cmd = "./pmix_test " . $test . " 2>&1";
+print $cmd . "\n";
+$output = `$cmd`;
+print $output . "\n";
+print "CODE $?\n";
+$status = "$?";
+
 exit($status >> 8);
