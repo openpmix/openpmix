@@ -53,6 +53,7 @@ config/lt~obsolete.m4
 config/ylwrap
 config/autogen_found_items.m4
 config/py-compile
+config/mca_library_paths.txt
 
 bindings/python/pmix.c
 bindings/python/*.so
@@ -114,6 +115,22 @@ test/pmix_test_lite.log
 test/pmix_test_lite.trs
 test/test-suite.log
 test/pmix_regex
+test/run_tests00.pl
+test/run_tests01.pl
+test/run_tests02.pl
+test/run_tests03.pl
+test/run_tests04.pl
+test/run_tests05.pl
+test/run_tests06.pl
+test/run_tests07.pl
+test/run_tests08.pl
+test/run_tests09.pl
+test/run_tests10.pl
+test/run_tests11.pl
+test/run_tests12.pl
+test/run_tests13.pl
+test/run_tests14.pl
+test/run_tests15.pl
 test/simple/quietclient
 test/simple/simptest
 test/simple/simpclient

@@ -44,7 +44,8 @@ EXTRA_DIST = \
 	pmix_setup_cc.m4 \
 	pmix_setup_zlib.m4 \
 	pmix_setup_libevent.m4 \
-	pmix_mca_priority_sort.pl
+	pmix_mca_priority_sort.pl \
+	mca_library_paths.txt
 
 
 maintainer-clean-local:
