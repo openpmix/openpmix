@@ -71,7 +71,7 @@ PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status,
     }
 
     /* if we aren't connected, don't attempt to send */
-    if (!pmix_globals.connected) {
+    if (!pmix_globals.connected && PMIX_RANGE_PROC_LOCAL != range) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_UNREACH;
     }

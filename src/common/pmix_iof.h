@@ -97,7 +97,10 @@ typedef struct {
     struct timeval tv;
     int fd;
     bool active;
+    void *childproc;
     bool always_readable;
+    pmix_proc_t name;
+    pmix_iof_channel_t channel;
     pmix_proc_t *targets;
     size_t ntargets;
     pmix_info_t *directives;
@@ -198,9 +201,11 @@ pmix_iof_fd_always_ready(int fd)
                             "defining read event at: %s %d",            \
                             __FILE__, __LINE__));                       \
         rev = PMIX_NEW(pmix_iof_read_event_t);                          \
-        (rev)->ntargets = (np);                                         \
-        PMIX_PROC_CREATE((rev)->targets, (rev)->ntargets);              \
-        memcpy((rev)->targets, (p), (np) * sizeof(pmix_proc_t));        \
+        if (NULL != (p)) {                                              \
+            (rev)->ntargets = (np);                                     \
+            PMIX_PROC_CREATE((rev)->targets, (rev)->ntargets);          \
+            memcpy((rev)->targets, (p), (np) * sizeof(pmix_proc_t));    \
+        }                                                               \
         if (NULL != (d)) {                                              \
             PMIX_INFO_CREATE((rev)->directives, (nd));                  \
             (rev)->ndirs = (nd);                                        \

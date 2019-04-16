@@ -337,6 +337,14 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env)
  * tool connections - in that case, we will take a non-loopback
  * device by default, if one is available after filtering directives
  *
+ * If we are a tool and were give a rendezvous file, then we first
+ * check to see if it already exists. If it does, then this is the
+ * connection info we are to use. If it doesn't, then this is the
+ * name of the file we are to use to store our listener info.
+ *
+ * If we are a server and are given a rendezvous file, then that is
+ * is the name of the file we are to use to store our listener info.
+ *
  * NOTE: we accept MCA parameters, but info keys override them
  */
 static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,

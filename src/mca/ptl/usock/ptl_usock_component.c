@@ -12,7 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
- * Copyright (c) 2016-2018 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2016-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
@@ -150,7 +150,11 @@ pmix_status_t component_close(void)
 
 static int component_query(pmix_mca_base_module_t **module, int *priority)
 {
+    if (PMIX_PROC_IS_TOOL(pmix_globals.mypeer)) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
     *module = (pmix_mca_base_module_t*)&pmix_ptl_usock_module;
+    *priority = mca_ptl_usock_component.super.priority;
     return PMIX_SUCCESS;
 }
 

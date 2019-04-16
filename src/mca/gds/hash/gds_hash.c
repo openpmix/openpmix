@@ -708,6 +708,9 @@ static pmix_status_t hash_register_job_info(struct pmix_peer_t *pr,
      * for another peer in this nspace so we don't waste
      * time doing it again */
     if (NULL != ns->jobbkt) {
+        pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
+                            "[%s:%d] gds:hash:register_job_info copying prepacked payload",
+                            pmix_globals.myid.nspace, pmix_globals.myid.rank);
         /* we have packed this before - can just deliver it */
         PMIX_BFROPS_COPY_PAYLOAD(rc, peer, reply, ns->jobbkt);
         if (PMIX_SUCCESS != rc) {
@@ -715,7 +718,7 @@ static pmix_status_t hash_register_job_info(struct pmix_peer_t *pr,
         }
         /* now see if we have delivered it to all our local
          * clients for this nspace */
-        if (ns->ndelivered == ns->nlocalprocs) {
+        if (!PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer) && ns->ndelivered == ns->nlocalprocs) {
             /* we have, so let's get rid of the packed
              * copy of the data */
             PMIX_RELEASE(ns->jobbkt);
@@ -734,6 +737,9 @@ static pmix_status_t hash_register_job_info(struct pmix_peer_t *pr,
                 trk->ns = strdup(ns->nspace);
             }
             break;
+        } else if (0 == strcmp(ns->nspace, t2->ns)) {
+            trk = t2;
+            break;
         }
     }
     if (NULL == trk) {
@@ -748,6 +754,9 @@ static pmix_status_t hash_register_job_info(struct pmix_peer_t *pr,
      * been given to us in the info array - pack
      * them for delivery */
     /* pack the name of the nspace */
+    pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
+                        "[%s:%d] gds:hash:register_job_info packing new payload",
+                        pmix_globals.myid.nspace, pmix_globals.myid.rank);
     msg = ns->nspace;
     PMIX_BFROPS_PACK(rc, peer, reply, &msg, 1, PMIX_STRING);
     if (PMIX_SUCCESS != rc) {
@@ -759,7 +768,7 @@ static pmix_status_t hash_register_job_info(struct pmix_peer_t *pr,
     if (PMIX_SUCCESS == rc) {
         /* if we have more than one local client for this nspace,
          * save this packed object so we don't do this again */
-        if (1 < ns->nlocalprocs) {
+        if (PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer) || 1 < ns->nlocalprocs) {
             PMIX_RETAIN(reply);
             ns->jobbkt = reply;
         }

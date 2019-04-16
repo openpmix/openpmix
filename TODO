@@ -1,0 +1,5 @@
+ptl_tcp:
+    Rendezvous file - if not present, then treat it as name of file for contact info. If present, then treat as file containing contact info of server to be contacted
+
+pfexec_base:
+    wireup stdin of the parent proc for delivery to the child

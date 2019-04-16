@@ -172,6 +172,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_TOOL_DO_NOT_CONNECT            "pmix.tool.nocon"       // (bool) the tool wants to use internal PMIx support, but does
                                                                     //        not want to connect to a PMIx server
                                                                     //        from the specified processes to this tool
+#define PMIX_TOOL_CONNECT_OPTIONAL          "pmix.tool.conopt"      // (bool) tool shall connect to a server if available, but otherwise
+                                                                    //        continue to operate unconnected
 #define PMIX_RECONNECT_SERVER               "pmix.cnct.recon"       // (bool) tool is requesting to change server connections
 #define PMIX_LAUNCHER                       "pmix.tool.launcher"    // (bool) tool is a launcher and needs rendezvous files created
 #define PMIX_LAUNCHER_RENDEZVOUS_FILE       "pmix.tool.lncrnd"      // (char*) Pathname of file where connection info is to be stored
@@ -426,6 +428,9 @@ typedef uint32_t pmix_rank_t;
                                                                     //        from the spawned processes to this process (typically used by a tool)
 #define PMIX_SPAWN_TOOL                     "pmix.spwn.tool"        // (bool) job being spawned is a tool
 #define PMIX_CMD_LINE                       "pmix.cmd.line"         // (char*) command line executing in the specified nspace
+#define PMIX_FORK_EXEC_AGENT                "pmix.fe.agnt"          // (char*) command line of fork/exec agent to be used for starting
+                                                                    //         local processes
+
 
 /* query attributes */
 #define PMIX_QUERY_REFRESH_CACHE            "pmix.qry.rfsh"         // (bool) retrieve updated information from server

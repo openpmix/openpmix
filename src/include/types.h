@@ -232,6 +232,8 @@ static inline uint64_t pmix_swap_bytes8(uint64_t val)
 #define PMIX_EVLOOP_ONCE     EVLOOP_ONCE        /**< Block at most once. */
 #define PMIX_EVLOOP_NONBLOCK EVLOOP_NONBLOCK    /**< Do not block. */
 
+#define PMIX_EVENT_SIGNAL(ev)   pmix_event_get_signal(ev)
+
 typedef struct event_base pmix_event_base_t;
 typedef struct event pmix_event_t;
 

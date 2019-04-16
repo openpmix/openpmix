@@ -174,7 +174,7 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
     pmix_strncpy(proc.nspace, nptr->nspace, PMIX_MAX_NSLEN);
     proc.rank = info->pname.rank;
 
-    pmix_output_verbose(2, pmix_server_globals.base_output,
+    pmix_output_verbose(2, pmix_server_globals.fence_output,
                         "%s:%d EXECUTE COMMIT FOR %s:%d",
                         pmix_globals.myid.nspace,
                         pmix_globals.myid.rank,
@@ -388,7 +388,7 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
 {
     pmix_server_trkr_t *trk;
     size_t i;
-    bool all_def;
+    bool all_def, found;
     pmix_namespace_t *nptr, *ns;
     pmix_rank_info_t *info;
     pmix_nspace_caddy_t *nm;
@@ -452,6 +452,7 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
             pmix_output_verbose(5, pmix_server_globals.base_output,
                                 "new_tracker: unknown nspace %s",
                                 procs[i].nspace);
+            trk->local = false;
             continue;
         }
         /* check and add uniq ns into trk nslist */
@@ -480,6 +481,7 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
              * of the loop */
         }
         /* is this one of my local ranks? */
+        found = false;
         PMIX_LIST_FOREACH(info, &nptr->ranks, pmix_rank_info_t) {
             if (procs[i].rank == info->pname.rank ||
                 PMIX_RANK_WILDCARD == procs[i].rank) {
@@ -488,10 +490,14 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
                                         info->pname.nspace, info->pname.rank);
                 /* track the count */
                 ++trk->nlocal;
+                found = true;
                 if (PMIX_RANK_WILDCARD != procs[i].rank) {
                     break;
                 }
             }
+        }
+        if (!found) {
+            trk->local = false;
         }
     }
     if (all_def) {
@@ -799,11 +805,6 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
     pmix_output_verbose(2, pmix_server_globals.fence_output,
                         "recvd FENCE");
 
-    if (NULL == pmix_host_server.fence_nb) {
-        PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
-        return PMIX_ERR_NOT_SUPPORTED;
-    }
-
     /* unpack the number of procs */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &nprocs, &cnt, PMIX_SIZE);
@@ -986,6 +987,21 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
         pmix_list_get_size(&trk->local_cbs) == trk->nlocal) {
         pmix_output_verbose(2, pmix_server_globals.fence_output,
                             "fence complete");
+        /* if this is a purely local fence (i.e., all participants are local),
+         * then it is done and we notify accordingly */
+        if (trk->local) {
+            trk->modexcbfunc(PMIX_SUCCESS, NULL, 0, trk, NULL, NULL);
+            goto cleanup;
+        }
+        /* this fence involves non-local procs - check if the
+         * host supports it */
+        if (NULL == pmix_host_server.fence_nb) {
+            rc = PMIX_ERR_NOT_SUPPORTED;
+            pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
+            PMIX_RELEASE(trk);
+            cd->trk = NULL;
+            goto cleanup;
+        }
         /* if the user asked us to collect data, then we have
          * to provide any locally collected data to the host
          * server so they can circulate it - only take data
@@ -4359,7 +4375,7 @@ static void tcon(pmix_server_trkr_t *t)
 {
     t->event_active = false;
     t->host_called = false;
-    t->local = false;
+    t->local = true;
     t->id = NULL;
     memset(t->pname.nspace, 0, PMIX_MAX_NSLEN+1);
     t->pname.rank = PMIX_RANK_UNDEF;
