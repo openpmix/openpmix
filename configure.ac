@@ -248,6 +248,17 @@ AC_MSG_CHECKING([final LIBS])
 AC_MSG_RESULT([$LIBS])
 
 ####################################################################
+# -Werror for CI scripts
+####################################################################
+
+AC_ARG_ENABLE(werror,
+    AC_HELP_STRING([--enable-werror],
+                   [Treat compiler warnings as errors]),
+[
+    CFLAGS="$CFLAGS -Werror"
+])
+
+####################################################################
 # Version information
 ####################################################################
 
