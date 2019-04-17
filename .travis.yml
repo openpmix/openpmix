@@ -6,10 +6,9 @@ cache:
 
 env:
   global:
-    # TODO: -Werror
-    # TODOL -fsanitize=address -fsanitize=undefined
-    - CFLAGS: "-Wall -Wextra"
-    - CXXFLAGS: "-Wall -Wextra"
+    # TODO: -fsanitize=address -fsanitize=undefined
+    - CFLAGS="-Wall -Wextra -Werror -Wno-unused-function"
+    - CXXFLAGS="-Wall -Wextra -Werror -Wno-unused-function"
 
 addons:
   apt:
