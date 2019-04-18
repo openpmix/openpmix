@@ -946,7 +946,7 @@ AC_DEFUN([PMIX_DEFINE_ARGS],[
     AC_ARG_ENABLE([embedded-mode],
         [AC_HELP_STRING([--enable-embedded-mode],
                 [Using --enable-embedded-mode causes PMIx to skip a few configure checks and install nothing.  It should only be used when building PMIx within the scope of a larger package.])])
-    AS_IF([test ! -z "$enable_embedded_mode" && test "$enable_embedded_mode" = "yes"],
+    AS_IF([test "$enable_embedded_mode" = "yes"],
           [pmix_mode=embedded
            pmix_install_primary_headers=no
            AC_MSG_RESULT([yes])],
@@ -1233,6 +1233,18 @@ if test "$WANT_PYTHON_BINDINGS" = "1"; then
     fi
 fi
 
+# see if they want to disable non-RTLD_GLOBAL dlopen
+AC_MSG_CHECKING([if want to support dlopen of non-global namespaces])
+AC_ARG_ENABLE([nonglobal-dlopen],
+              AC_HELP_STRING([--enable-nonglobal-dlopen],
+                             [enable non-global dlopen (default: enabled)]))
+if test "$enable_nonglobal_dlopen" == "no"; then
+    AC_MSG_RESULT([no])
+    pmix_need_libpmix=0
+else
+    AC_MSG_RESULT([yes])
+    pmix_need_libpmix=1
+fi
 ])dnl
 
 # This must be a standalone routine so that it can be called both by
@@ -1248,6 +1260,7 @@ AC_DEFUN([PMIX_DO_AM_CONDITIONALS],[
         AM_CONDITIONAL([WANT_PRIMARY_HEADERS], [test "x$pmix_install_primary_headers" = "xyes"])
         AM_CONDITIONAL(WANT_INSTALL_HEADERS, test "$WANT_INSTALL_HEADERS" = 1)
         AM_CONDITIONAL(WANT_PMI_BACKWARD, test "$WANT_PMI_BACKWARD" = 1)
+        AM_CONDITIONAL(NEED_LIBPMIX, [test "$pmix_need_libpmix" = "1"])
     ])
     pmix_did_am_conditionals=yes
 ])dnl

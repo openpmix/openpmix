@@ -46,6 +46,9 @@ mcacomponent_LTLIBRARIES = $(component_install)
 mca_plog_smtp_la_SOURCES = $(sources)
 mca_plog_smtp_la_LDFLAGS = -module -avoid-version $(plog_smtp_LDFLAGS)
 mca_plog_smtp_la_LIBADD = $(plog_smtp_LIBS) $(top_builddir)/src/libpmix.la
+if NEED_LIBPMIX
+mca_plog_smtp_la_LIBADD = $(top_builddir)/src/libpmix.la
+endif
 
 noinst_LTLIBRARIES = $(component_noinst)
 libmca_plog_smtp_la_SOURCES =$(sources)
