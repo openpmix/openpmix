@@ -1178,6 +1178,25 @@ fi
 
 AM_CONDITIONAL([PMIX_INSTALL_BINARIES], [test $WANT_PMIX_BINARIES -eq 1])
 
+
+# see if they want to disable non-RTLD_GLOBAL dlopen
+AC_MSG_CHECKING([if want to support dlopen of non-global namespaces])
+AC_ARG_ENABLE([nonglobal-dlopen],
+              AC_HELP_STRING([--enable-nonglobal-dlopen],
+                             [enable non-global dlopen (default: enabled)]))
+if test "$enable_nonglobal_dlopen" == "no"; then
+    AC_MSG_RESULT([no])
+    pmix_need_libpmix=0
+else
+    AC_MSG_RESULT([yes])
+    pmix_need_libpmix=1
+fi
+
+# if someone enables embedded mode but doesn't want to install the
+# devel headers, then default nonglobal-dlopen to false
+AS_IF([test -z "$enable_nonglobal_dlopen" && test "x$pmix_mode" = "xembedded" && test "$WANT_INSTALL_HEADERS" = 0 && test "$pmix_need_libpmix" = "1"],
+      [$pmix_need_libpmix=0])
+
 ])dnl
 
 # This must be a standalone routine so that it can be called both by
