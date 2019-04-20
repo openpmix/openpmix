@@ -936,7 +936,7 @@ AC_DEFUN([PMIX_DEFINE_ARGS],[
     AC_ARG_ENABLE([embedded-mode],
         [AC_HELP_STRING([--enable-embedded-mode],
                 [Using --enable-embedded-mode causes PMIx to skip a few configure checks and install nothing.  It should only be used when building PMIx within the scope of a larger package.])])
-    AS_IF([test ! -z "$enable_embedded_mode" && test "$enable_embedded_mode" = "yes"],
+    AS_IF([test "$enable_embedded_mode" = "yes"],
           [pmix_mode=embedded
            pmix_install_primary_headers=no
            AC_MSG_RESULT([yes])],
@@ -1212,6 +1212,7 @@ AC_DEFUN([PMIX_DO_AM_CONDITIONALS],[
         AM_CONDITIONAL([WANT_PRIMARY_HEADERS], [test "x$pmix_install_primary_headers" = "xyes"])
         AM_CONDITIONAL(WANT_INSTALL_HEADERS, test "$WANT_INSTALL_HEADERS" = 1)
         AM_CONDITIONAL(WANT_PMI_BACKWARD, test "$WANT_PMI_BACKWARD" = 1)
+        AM_CONDITIONAL(NEED_LIBPMIX, [test "$pmix_need_libpmix" = "1"])
     ])
     pmix_did_am_conditionals=yes
 ])dnl
