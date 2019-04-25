@@ -96,9 +96,9 @@ int test_resolve_peers(char *my_nspace, int my_rank, test_params params)
         /* make a connection between processes from own namespace and processes from this namespace. */
         rc = test_cd_common(procs, 2, 1, 0);
         if (PMIX_SUCCESS == rc) {
-            TEST_VERBOSE(("%s:%d: Connect to %s succeeded %s.", my_nspace, my_rank, nspace));
+            TEST_VERBOSE(("%s:%d: Connect to %s succeeded %s.", my_nspace, my_rank, nspace, PMIx_Error_string(rc)));
         } else {
-            TEST_ERROR(("%s:%d: Connect to %s failed %s.", my_nspace, my_rank, nspace));
+            TEST_ERROR(("%s:%d: Connect to %s failed %s.", my_nspace, my_rank, nspace, PMIx_Error_string(rc)));
             return PMIX_ERROR;
         }
         /* then resolve peers from this namespace. */

@@ -47,7 +47,6 @@ int main(int argc, char **argv)
     struct stat stat_buf;
     struct timeval tv;
     double test_start;
-    cli_state_t order[CLI_TERM+1];
     test_params params;
     INIT_TEST_PARAMS(params);
     int test_fail = 0;
@@ -97,13 +96,7 @@ int main(int argc, char **argv)
     /* register the errhandler */
     PMIx_Register_errhandler(NULL, 0, errhandler, errhandler_reg_callbk, NULL);
 
-    order[CLI_UNINIT] = CLI_FORKED;
-    order[CLI_FORKED] = CLI_FIN;
-    order[CLI_CONNECTED] = CLI_UNDEF;
-    order[CLI_FIN] = CLI_TERM;
-    order[CLI_DISCONN] = CLI_UNDEF;
-    order[CLI_TERM] = CLI_UNDEF;
-    cli_init(params.nprocs, order);
+    cli_init(params.nprocs);
 
     /* set common argv and env */
     client_env = pmix_argv_copy(environ);
