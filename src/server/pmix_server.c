@@ -154,6 +154,18 @@ pmix_status_t pmix_server_initialize(void)
                                   pmix_server_globals.base_verbose);
     }
 
+    /* get our available security modules */
+    security_mode = pmix_psec_base_get_available_modules();
+
+    /* get our available ptl modules */
+    ptl_mode = pmix_ptl_base_get_available_modules();
+
+    /* get our available bfrop modules */
+    bfrops_mode = pmix_bfrops_base_get_available_modules();
+
+    /* get available gds modules */
+    gds_mode = pmix_gds_base_get_available_modules();
+
     return PMIX_SUCCESS;
 }
 
@@ -223,13 +235,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         return rc;
     }
 
-    /* setup the server-specific globals */
-    if (PMIX_SUCCESS != (rc = pmix_server_initialize())) {
-        PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return rc;
-    }
-
     /* assign our internal bfrops module */
     pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
     if (NULL == pmix_globals.mypeer->nptr->compat.bfrops) {
@@ -272,17 +277,12 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     PMIX_RETAIN(pmix_globals.mypeer->nptr);
     pmix_client_globals.myserver->nptr = pmix_globals.mypeer->nptr;
 
-    /* get our available security modules */
-    security_mode = pmix_psec_base_get_available_modules();
-
-    /* get our available ptl modules */
-    ptl_mode = pmix_ptl_base_get_available_modules();
-
-    /* get our available bfrop modules */
-    bfrops_mode = pmix_bfrops_base_get_available_modules();
-
-    /* get available gds modules */
-    gds_mode = pmix_gds_base_get_available_modules();
+    /* setup the server-specific globals */
+    if (PMIX_SUCCESS != (rc = pmix_server_initialize())) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return rc;
+    }
 
     /* check the info keys for info we
      * need to provide to every client and
@@ -456,6 +456,10 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
          * of any events objects may be holding */
         (void)pmix_progress_thread_pause(NULL);
     }
+
+    /* flush anything that is still trying to be written out */
+    pmix_iof_static_dump_output(&pmix_client_globals.iof_stdout);
+    pmix_iof_static_dump_output(&pmix_client_globals.iof_stderr);
 
     pmix_ptl_base_stop_listening();
 
@@ -2323,7 +2327,7 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
     }
 
     // Skip the data if we didn't collect it
-    if (PMIX_COLLECT_YES != tracker->collect_type) {
+    if (PMIX_COLLECT_YES != tracker->collect_type || NULL == scd->data) {
         rc = PMIX_SUCCESS;
         goto finish_collective;
     }

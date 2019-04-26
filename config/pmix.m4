@@ -418,7 +418,8 @@ AC_DEFUN([PMIX_SETUP_CORE],[
                       ioLib.h sockLib.h hostLib.h limits.h \
                       sys/fcntl.h sys/statfs.h sys/statvfs.h \
                       netdb.h ucred.h zlib.h sys/auxv.h \
-                      sys/sysctl.h])
+                      sys/sysctl.h termio.h termios.h pty.h \
+                      libutil.h util.h grp.h sys/cdefs.h utmp.h stropts.h])
 
     AC_CHECK_HEADERS([sys/mount.h], [], [],
                      [AC_INCLUDES_DEFAULT
@@ -663,7 +664,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # -lrt might be needed for clock_gettime
     PMIX_SEARCH_LIBS_CORE([clock_gettime], [rt])
 
-    AC_CHECK_FUNCS([asprintf snprintf vasprintf vsnprintf strsignal socketpair strncpy_s usleep statfs statvfs getpeereid getpeerucred strnlen posix_fallocate tcgetpgrp])
+    AC_CHECK_FUNCS([asprintf snprintf vasprintf vsnprintf strsignal socketpair strncpy_s usleep statfs statvfs getpeereid getpeerucred strnlen posix_fallocate tcgetpgrp setpgid ptsname openpty])
 
     # On some hosts, htonl is a define, so the AC_CHECK_FUNC will get
     # confused.  On others, it's in the standard library, but stubbed with
@@ -1250,6 +1251,24 @@ fi
 # devel headers, then default nonglobal-dlopen to false
 AS_IF([test -z "$enable_nonglobal_dlopen" && test "x$pmix_mode" = "xembedded" && test $WANT_INSTALL_HEADERS -eq 0 && test $pmix_need_libpmix -eq 1],
       [pmix_need_libpmix=0])
+
+#
+# Do we want PTY support?
+#
+
+AC_MSG_CHECKING([if want pty support])
+AC_ARG_ENABLE(pty-support,
+    AC_HELP_STRING([--enable-pty-support],
+                   [Enable/disable PTY support for STDIO forwarding.  (default: enabled)]))
+if test "$enable_pty_support" = "no" ; then
+    AC_MSG_RESULT([no])
+    PMIX_ENABLE_PTY_SUPPORT=0
+else
+    AC_MSG_RESULT([yes])
+    PMIX_ENABLE_PTY_SUPPORT=1
+fi
+AC_DEFINE_UNQUOTED([PMIX_ENABLE_PTY_SUPPORT], [$PMIX_ENABLE_PTY_SUPPORT],
+                   [Whether user wants PTY support or not])
 
 ])dnl
 
