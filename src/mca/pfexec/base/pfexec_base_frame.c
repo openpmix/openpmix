@@ -30,6 +30,9 @@
 
 #include <string.h>
 #include <signal.h>
+#ifdef HAVE_SYS_WAIT_H
+#include <sys/wait.h>
+#endif
 
 #include "src/mca/mca.h"
 #include "src/mca/base/base.h"
@@ -135,10 +138,8 @@ void pmix_pfexec_check_complete(int sd, short args, void *cbdata)
     if (cd->child->completed &&
         (NULL == cd->child->stdoutev || !cd->child->stdoutev->active) &&
         (NULL == cd->child->stderrev || !cd->child->stderrev->active)) {
-        if (NULL != cd->child->super.pmix_list_item_belong_to) {
-            pmix_list_remove_item(&pmix_pfexec_globals.children, &cd->child->super);
-            PMIX_RELEASE(cd->child);
-        }
+        pmix_list_remove_item(&pmix_pfexec_globals.children, &cd->child->super);
+        PMIX_RELEASE(cd->child);
         if (0 == pmix_list_get_size(&pmix_pfexec_globals.children)) {
             /* generate a local event indicating job terminated */
             PMIX_INFO_LOAD(&info[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);

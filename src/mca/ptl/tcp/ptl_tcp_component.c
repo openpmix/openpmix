@@ -279,6 +279,14 @@ static pmix_status_t component_open(void)
         0 != strcmp(mca_ptl_tcp_component.report_uri, "+")) {
         urifile = strdup(mca_ptl_tcp_component.report_uri);
     }
+
+    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer) ||
+        PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
+        if (NULL != (tdir = getenv("PMIX_LAUNCHER_RENDEZVOUS_FILE"))) {
+            mca_ptl_tcp_component.rendezvous_filename = strdup(tdir);
+        }
+    }
+
     return PMIX_SUCCESS;
 }
 
@@ -424,6 +432,9 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
                 system_tool = PMIX_INFO_TRUE(&info[n]);
             } else if (PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer) &&
                        PMIX_CHECK_KEY(&info[n], PMIX_LAUNCHER_RENDEZVOUS_FILE)) {
+                if (NULL != mca_ptl_tcp_component.rendezvous_filename) {
+                    free(mca_ptl_tcp_component.rendezvous_filename);
+                }
                 mca_ptl_tcp_component.rendezvous_filename = strdup(info[n].value.data.string);
             }
         }
@@ -689,7 +700,15 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
     /* if we were given a rendezvous file, then drop it */
     if (NULL != mca_ptl_tcp_component.rendezvous_filename) {
         FILE *fp;
-
+        /* if we are a tool and the file already exists, then we
+         * just use it as providing the rendezvous info for our
+         * server */
+        if (PMIX_PROC_IS_TOOL(pmix_globals.mypeer)) {
+            struct stat buf;
+            if (0 == stat(mca_ptl_tcp_component.rendezvous_filename, &buf)) {
+                goto nextstep;
+            }
+        }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "WRITING RENDEZVOUS FILE %s",
                             mca_ptl_tcp_component.rendezvous_filename);
@@ -718,6 +737,7 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
         }
     }
 
+  nextstep:
     /* if we are going to support tools, then drop contact file(s) */
     if (system_tool) {
         FILE *fp;
