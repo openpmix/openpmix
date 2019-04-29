@@ -386,7 +386,7 @@ int test_job_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
             if( local ){
                 GET(int, (12340+j), my_nspace, i+params.base_rank, 100, j, 0, 0, 0);
                 if (PMIX_SUCCESS != rc) {
-                    TEST_ERROR(("%s:%d: PMIx_Get failed: %d", my_nspace, my_rank, rc));
+                    TEST_ERROR(("%s:%d: PMIx_Get failed: %s", my_nspace, my_rank, PMIx_Error_string(rc)));
                     return PMIX_ERROR;
                 }
 
@@ -425,9 +425,10 @@ int test_job_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
                         my_nspace, my_rank));
             return PMIX_ERROR;
         }
-        if (PMIX_ERR_NOT_FOUND != rc) {
-            TEST_ERROR(("%s:%d [ERROR]: PMIx_Get returned %d instead of not_found",
-                        my_nspace, my_rank, rc));
+        if (PMIX_ERR_NOT_FOUND != rc && PMIX_ERR_PROC_ENTRY_NOT_FOUND != rc) {
+            TEST_ERROR(("%s:%d [ERROR]: PMIx_Get returned %s instead of not_found",
+                        my_nspace, my_rank, PMIx_Error_string(rc)));
+            return PMIX_ERROR;
         }
         if (NULL != val) {
             TEST_ERROR(("%s:%d [ERROR]: PMIx_Get did not return NULL value", my_nspace, my_rank));
