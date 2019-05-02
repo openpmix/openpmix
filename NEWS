@@ -23,21 +23,27 @@ multiple release branches.
 
 3.1.3 -- TBD
 ----------------------
-- Restore PMIX_NUM_SLOTS for backward compatibility
-- Automatically generate PMIX_NUMERIC_VERSION
-- Fix tool connection handshake for tools that are registered
+- PR #1096: Restore PMIX_NUM_SLOTS for backward compatibility
+- PR #1106: Automatically generate PMIX_NUMERIC_VERSION
+- PR #1143: Fix tool connection handshake for tools that are registered
   clients
-- Fix a compiler warning in atomics on POWER arch
-- Fix race condition when clients fail while in a PMIx
+- PR #1163: Fix a compiler warning in atomics on POWER arch
+- PR #1162: Fix race condition when clients fail while in a PMIx
   collective operation
-- Fix a regression in spinlock atomics
-- Fix missing pointer update when shared memory segment
+- PR #1166: Fix a regression in spinlock atomics
+- PR #1159: Fix missing pointer update when shared memory segment
   was re-attached
-- Remove dependency on C++ compiler for thread detection
-- Add detection for Flex when building in non-tarball situations
-- Add dependency on libevent-devel to rpm spec file
-- Link libpmix.so to MCA component libraries
-- Ensure any cached notifications arrive after registration completes
+- PR #1180: Remove dependency on C++ compiler for thread detection
+- PR #1180: Add detection for Flex when building in non-tarball situations
+- PR #1165: Add dependency on libevent-devel to rpm spec file
+- PR #1188: Link libpmix.so to MCA component libraries
+- PR #1194: Ensure any cached notifications arrive after registration completes
+- PR #1205: Add "make check" support
+- PR #1209: Update configure logic for clock_gettime
+- PR #1213/#1217/#1221: Add configure option "--enable-nonglobal-dlopen"
+  If the MCA component libraries should link back to libpmix.so
+- PR #1231: SPEC: Allow splitting PMIx in pmix and pmix-libpmi packages
+- PR #1222: Fix case of multiple launcher calls in job script
 
 
 3.1.2 -- 24 Jan 2019
