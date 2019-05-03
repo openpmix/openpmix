@@ -71,9 +71,15 @@ extern FILE *file;
 
 // Always write errors to the stderr
 #define TEST_ERROR(x) { \
-    fprintf(stderr,"==%d== ERROR [%s:%d:%s]: %s\n", getpid(), STRIPPED_FILE_NAME, __LINE__, __func__, \
-            pmix_test_output_prepare x ); \
-    fflush(stderr); \
+    struct timeval tv;                              \
+    gettimeofday(&tv, NULL);                        \
+    double ts = tv.tv_sec + 1E-6*tv.tv_usec;        \
+    fprintf(stderr,                                 \
+            "==%d== [%lf] ERROR [%s:%d:%s]: %s\n",  \
+            getpid(), ts,                           \
+            STRIPPED_FILE_NAME, __LINE__, __func__, \
+            pmix_test_output_prepare x );           \
+    fflush(stderr);                                 \
 }
 
 #define TEST_VERBOSE_ON() (pmix_test_verbose = 1)
