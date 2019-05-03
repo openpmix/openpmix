@@ -841,12 +841,11 @@ int server_finalize(test_params *params, int local_fail)
     }
 
     if (params->nservers && 0 == my_server_id) {
-        int ret;
         /* wait for all servers are finished */
         total_ret += srv_wait_all(10.0);
         PMIX_LIST_RELEASE(server_list);
         TEST_VERBOSE(("SERVER %d FINALIZE PID:%d with status %d",
-	                    my_server_id, getpid(), ret));
+	                    my_server_id, getpid(), total_ret));
         if (0 == total_ret) {
             TEST_OUTPUT(("Test finished OK!"));
         } else {
