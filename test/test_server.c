@@ -825,10 +825,10 @@ error:
     return rc;
 }
 
-int server_finalize(test_params *params)
+int server_finalize(test_params *params, int local_fail)
 {
     int rc = PMIX_SUCCESS;
-    int total_ret = 0;
+    int total_ret = local_fail;
 
     if (0 != (rc = server_barrier())) {
         total_ret++;
@@ -843,13 +843,10 @@ int server_finalize(test_params *params)
     if (params->nservers && 0 == my_server_id) {
         int ret;
         /* wait for all servers are finished */
-        ret = srv_wait_all(10.0);
-        if (!pmix_list_is_empty(server_list)) {
-            total_ret += ret;
-        }
+        total_ret += srv_wait_all(10.0);
         PMIX_LIST_RELEASE(server_list);
         TEST_VERBOSE(("SERVER %d FINALIZE PID:%d with status %d",
-                    my_server_id, getpid(), ret));
+	                    my_server_id, getpid(), ret));
         if (0 == total_ret) {
             TEST_OUTPUT(("Test finished OK!"));
         } else {
