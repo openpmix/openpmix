@@ -174,10 +174,13 @@ int main(int argc, char **argv)
     /* deregister the errhandler */
     PMIx_Deregister_event_handler(0, op_callbk, NULL);
 
+    TEST_VERBOSE(("srv #%d: call cli_wait_all!", my_server_id));
     cli_wait_all(1.0);
 
+    TEST_VERBOSE(("srv #%d: call server_finalize!", my_server_id));
     test_fail += server_finalize(&params, test_fail);
 
+    TEST_VERBOSE(("srv #%d: exit seqence!", my_server_id));
     FREE_TEST_PARAMS(params);
     pmix_argv_free(client_argv);
     pmix_argv_free(client_env);
