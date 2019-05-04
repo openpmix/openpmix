@@ -847,7 +847,7 @@ int server_finalize(test_params *params, int local_fail)
         total_ret += srv_wait_all(10.0);
         PMIX_LIST_RELEASE(server_list);
         TEST_VERBOSE(("SERVER %d FINALIZE PID:%d with status %d",
-	                    my_server_id, getpid(), total_ret));
+                        my_server_id, getpid(), total_ret));
         if (0 == total_ret) {
             TEST_OUTPUT(("Test finished OK!"));
         } else {
