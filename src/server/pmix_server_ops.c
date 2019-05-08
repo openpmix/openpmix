@@ -732,6 +732,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
         if (PMIX_SUCCESS != rc) {
             pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
             PMIX_RELEASE(trk);
+            cd->trk = NULL;
         }
     }
 
