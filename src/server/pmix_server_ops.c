@@ -730,6 +730,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
                                        trk->info, trk->ninfo,
                                        data, sz, trk->modexcbfunc, trk);
         if (PMIX_SUCCESS != rc) {
+            pmix_list_remove_item(&trk->local_cbs, &cd->super);
             pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
             PMIX_RELEASE(trk);
             cd->trk = NULL;
