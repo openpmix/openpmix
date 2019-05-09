@@ -12,7 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007-2011 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2012-2013 Los Alamos National Security, Inc. All rights reserved.
- * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -276,7 +276,7 @@ PMIX_EXPORT extern int pmix_ptl_base_output;
             snd->hdr.pindex = htonl(pmix_globals.pindex);                                   \
             snd->hdr.tag = htonl(t);                                                        \
             nbytes = (b)->bytes_used;                                                       \
-            snd->hdr.nbytes = htonl(nbytes);                                                \
+            snd->hdr.nbytes = pmix_htonsizet(nbytes);                                       \
             snd->data = (b);                                                                \
             /* always start with the header */                                              \
             snd->sdptr = (char*)&snd->hdr;                                                  \
