@@ -264,8 +264,8 @@ static pmix_status_t send_msg(int sd, pmix_ptl_send_t *msg)
     iov[0].iov_len = msg->sdbytes;
     if (!msg->hdr_sent && NULL != msg->data) {
         iov[1].iov_base = msg->data->base_ptr;
-        iov[1].iov_len = ntohl(msg->hdr.nbytes);
-        remain += ntohl(msg->hdr.nbytes);
+        iov[1].iov_len = pmix_ntohsizet(msg->hdr.nbytes);
+        remain += pmix_ntohsizet(msg->hdr.nbytes);
         iov_count = 2;
     } else {
         iov_count = 1;
@@ -321,7 +321,7 @@ static pmix_status_t send_msg(int sd, pmix_ptl_send_t *msg)
                  * we silence their warnings by using this check */
                 msg->sdptr = (char *)msg->data->base_ptr + rc;
             }
-            msg->sdbytes = ntohl(msg->hdr.nbytes) - rc;
+            msg->sdbytes = pmix_ntohsizet(msg->hdr.nbytes) - rc;
         }
         return PMIX_ERR_RESOURCE_BUSY;
     }
@@ -511,7 +511,7 @@ void pmix_ptl_base_recv_handler(int sd, short flags, void *cbdata)
             /* convert the hdr to host format */
             peer->recv_msg->hdr.pindex = ntohl(hdr.pindex);
             peer->recv_msg->hdr.tag = ntohl(hdr.tag);
-            peer->recv_msg->hdr.nbytes = ntohl(hdr.nbytes);
+            peer->recv_msg->hdr.nbytes = pmix_ntohsizet(hdr.nbytes);
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "RECVD MSG FOR TAG %d SIZE %d",
                                 (int)peer->recv_msg->hdr.tag,
@@ -656,7 +656,7 @@ void pmix_ptl_base_send(int sd, short args, void *cbdata)
     snd = PMIX_NEW(pmix_ptl_send_t);
     snd->hdr.pindex = htonl(pmix_globals.pindex);
     snd->hdr.tag = htonl(queue->tag);
-    snd->hdr.nbytes = htonl((queue->buf)->bytes_used);
+    snd->hdr.nbytes = pmix_htonsizet((queue->buf)->bytes_used);
     snd->data = (queue->buf);
     /* always start with the header */
     snd->sdptr = (char*)&snd->hdr;
@@ -733,7 +733,7 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
     snd = PMIX_NEW(pmix_ptl_send_t);
     snd->hdr.pindex = htonl(pmix_globals.pindex);
     snd->hdr.tag = htonl(tag);
-    snd->hdr.nbytes = htonl(ms->bfr->bytes_used);
+    snd->hdr.nbytes = pmix_htonsizet(ms->bfr->bytes_used);
     snd->data = ms->bfr;
     /* always start with the header */
     snd->sdptr = (char*)&snd->hdr;
