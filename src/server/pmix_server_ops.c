@@ -502,7 +502,7 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
             trk->local = false;
         } else if (PMIX_RANK_WILDCARD == procs[i].rank) {
             /* If proc is a wildcard we need to additionally check
-             * that all of the processes in the namespace were 
+             * that all of the processes in the namespace were
              * locally found.
              * Otherwise this tracker is not local
              */
@@ -978,7 +978,6 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
 
     /* add this contributor to the tracker so they get
      * notified when we are done */
-    PMIX_RETAIN(cd);
     pmix_list_append(&trk->local_cbs, &cd->super);
     /* if a timeout was specified, set it */
     if (0 < tv.tv_sec) {
@@ -1001,16 +1000,32 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
         /* if this is a purely local fence (i.e., all participants are local),
          * then it is done and we notify accordingly */
         if (trk->local) {
+            /* the modexcbfunc thread-shifts the call prior to processing,
+             * so it is okay to call it directly from here. The switchyard
+             * will acknowledge successful acceptance of the fence request,
+             * but the client still requires a return from the callback in
+             * that scenario, so we leave this caddy on the list of local cbs */
             trk->modexcbfunc(PMIX_SUCCESS, NULL, 0, trk, NULL, NULL);
+            rc = PMIX_SUCCESS;
             goto cleanup;
         }
         /* this fence involves non-local procs - check if the
          * host supports it */
         if (NULL == pmix_host_server.fence_nb) {
             rc = PMIX_ERR_NOT_SUPPORTED;
-            pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
-            PMIX_RELEASE(trk);
+            /* clear the caddy from this tracker so it can be
+             * released upon return - the switchyard will send an
+             * error to this caller, and so the fence completion
+             * function doesn't need to do so */
+            pmix_list_remove_item(&trk->local_cbs, &cd->super);
             cd->trk = NULL;
+            /* we need to ensure that all other local participants don't
+             * just hang waiting for the error return, so execute
+             * the fence completion function - it threadshifts the call
+             * prior to processing, so it is okay to call it directly
+             * from here */
+            trk->host_called = false; // the host will not be calling us back
+            trk->modexcbfunc(rc, NULL, 0, trk, NULL, NULL);
             goto cleanup;
         }
         /* if the user asked us to collect data, then we have
@@ -1024,6 +1039,18 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
         if (PMIX_SUCCESS != (rc = _collect_data(trk, &bucket))) {
             PMIX_ERROR_LOG(rc);
             PMIX_DESTRUCT(&bucket);
+            /* clear the caddy from this tracker so it can be
+             * released upon return - the switchyard will send an
+             * error to this caller, and so the fence completion
+             * function doesn't need to do so */
+            pmix_list_remove_item(&trk->local_cbs, &cd->super);
+            cd->trk = NULL;
+            /* we need to ensure that all other local participants don't
+             * just hang waiting for the error return, so execute
+             * the fence completion function - it threadshifts the call
+             * prior to processing, so it is okay to call it directly
+             * from here */
+            trk->modexcbfunc(rc, NULL, 0, trk, NULL, NULL);
             goto cleanup;
         }
         /* now unload the blob and pass it upstairs */
@@ -1033,10 +1060,29 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
         rc = pmix_host_server.fence_nb(trk->pcs, trk->npcs,
                                        trk->info, trk->ninfo,
                                        data, sz, trk->modexcbfunc, trk);
-        if (PMIX_SUCCESS != rc) {
-            pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
-            PMIX_RELEASE(trk);
+        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+            /* clear the caddy from this tracker so it can be
+             * released upon return - the switchyard will send an
+             * error to this caller, and so the fence completion
+             * function doesn't need to do so */
+            pmix_list_remove_item(&trk->local_cbs, &cd->super);
             cd->trk = NULL;
+            /* we need to ensure that all other local participants don't
+             * just hang waiting for the error return, so execute
+             * the fence completion function - it threadshifts the call
+             * prior to processing, so it is okay to call it directly
+             * from here */
+            trk->host_called = false; // the host will not be calling us back
+            trk->modexcbfunc(rc, NULL, 0, trk, NULL, NULL);
+        } else if (PMIX_OPERATION_SUCCEEDED == rc) {
+            /* the operation was atomically completed and the host will
+             * not be calling us back - ensure we notify all participants.
+             * the modexcbfunc thread-shifts the call prior to processing,
+             * so it is okay to call it directly from here */
+            trk->host_called = false; // the host will not be calling us back
+            trk->modexcbfunc(PMIX_SUCCESS, NULL, 0, trk, NULL, NULL);
+            /* ensure that the switchyard doesn't release the caddy */
+            rc = PMIX_SUCCESS;
         }
     }
 
