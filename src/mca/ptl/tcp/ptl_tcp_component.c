@@ -1619,7 +1619,7 @@ static void connection_handler(int sd, short args, void *cbdata)
     /* the choice of PTL module is obviously us */
     peer->nptr->compat.ptl = &pmix_ptl_tcp_module;
 
-    /* validate the connection */
+    /* validate the connection - the macro will send the status result to the client */
     cred.bytes = pnd->cred;
     cred.size = pnd->len;
     PMIX_PSEC_VALIDATE_CONNECTION(rc, peer, NULL, 0, NULL, NULL, &cred);
@@ -1636,17 +1636,6 @@ static void connection_handler(int sd, short args, void *cbdata)
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "client connection validated");
 
-    /* tell the client all is good */
-    u32 = htonl(PMIX_SUCCESS);
-    if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(uint32_t)))) {
-        PMIX_ERROR_LOG(rc);
-        info->proc_cnt--;
-        pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->index, NULL);
-        PMIX_RELEASE(peer);
-        CLOSE_THE_SOCKET(pnd->sd);
-        PMIX_RELEASE(pnd);
-        return;
-    }
       /* send the client's array index */
     u32 = htonl(peer->index);
       if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(uint32_t)))) {
