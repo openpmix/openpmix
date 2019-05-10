@@ -16,6 +16,8 @@
  * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2019      Mellanox Technologies, Inc.
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -385,6 +387,7 @@ static pmix_status_t recv_connect_ack(int sd)
 {
     pmix_status_t reply;
     pmix_status_t rc;
+    uint32_t u32;
     struct timeval tv, save;
     pmix_socklen_t sz;
     bool sockopt = true;
@@ -412,7 +415,7 @@ static pmix_status_t recv_connect_ack(int sd)
     }
 
     /* receive the status reply */
-    rc = pmix_ptl_base_recv_blocking(sd, (char*)&reply, sizeof(int));
+    rc = pmix_ptl_base_recv_blocking(sd, (char*)&u32, sizeof(int));
     if (PMIX_SUCCESS != rc) {
         if (sockopt) {
             /* return the socket to normal */
@@ -422,6 +425,7 @@ static pmix_status_t recv_connect_ack(int sd)
         }
         return rc;
     }
+    reply = ntohl(u32);
 
     /* see if they want us to do the handshake */
     if (PMIX_ERR_READY_FOR_HANDSHAKE == reply) {
@@ -429,10 +433,18 @@ static pmix_status_t recv_connect_ack(int sd)
         if (PMIX_SUCCESS != rc) {
             return rc;
         }
-    } else if (PMIX_SUCCESS != reply) {
-        return reply;
+        /* Receive the final status of the handshake */
+        rc = pmix_ptl_base_recv_blocking(sd, (char*)&u32, sizeof(uint32_t));
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+        reply = ntohl(u32);
     }
 
+    /* Final status */
+    if (PMIX_SUCCESS != reply) {
+        return reply;
+    }
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "pmix: RECV CONNECT CONFIRMATION");
 

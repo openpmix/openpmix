@@ -5,6 +5,8 @@
  *
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2019      Mellanox Technologies, Inc.
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -155,22 +157,32 @@ PMIX_EXPORT pmix_psec_module_t* pmix_psec_base_assign_module(const char *options
                 pmix_output_verbose(2, pmix_globals.debug_output,                                           \
                                     "credential validated");                                                \
             }                                                                                               \
-            /* send them the result */                                                                      \
-            if (PMIX_SUCCESS != (_r = pmix_ptl_base_send_blocking((p)->sd, (char*)&(_r), sizeof(int)))) {   \
-                PMIX_ERROR_LOG(_r);                                                                         \
-            }                                                                                               \
             (r) = _r;                                                                                       \
+        } else if (NULL != (p)->nptr->compat.psec->server_handshake) {                                      \
+            /* request the handshake if the security mode calls for it */                                   \
+            pmix_output_verbose(2, pmix_globals.debug_output,                                               \
+                                "requesting handshake");                                                    \
+            _r = PMIX_ERR_READY_FOR_HANDSHAKE;                                                              \
+            (r) = _r;                                                                                       \
+        } else {                                                                                            \
+            /* this is not allowed */                                                                       \
+            (r) = PMIX_ERR_NOT_SUPPORTED;                                                                   \
+        }                                                                                                   \
+    } while(0)
+
+
+#define PMIX_PSEC_SERVER_HANDSHAKE(r, p, d, nd, in, nin, c)                                                        \
+    do {                                                                                                    \
+        int _r;                                                                                             \
+        /* if a credential is available, then check it */                                                   \
+        if (NULL != (p)->nptr->compat.psec->validate_cred) {                                                \
+            (r) = PMIX_SUCCESS;                                                                             \
         } else if (NULL != (p)->nptr->compat.psec->server_handshake) {                                      \
             /* execute the handshake if the security mode calls for it */                                   \
             pmix_output_verbose(2, pmix_globals.debug_output,                                               \
                                 "executing handshake");                                                     \
-            _r = PMIX_ERR_READY_FOR_HANDSHAKE;                                                              \
-            if (PMIX_SUCCESS != (_r = pmix_ptl_base_send_blocking((p)->sd, (char*)&(_r), sizeof(int)))) {   \
+            if (PMIX_SUCCESS != (_r = p->nptr->compat.psec->server_handshake((p)->sd))) {                   \
                 PMIX_ERROR_LOG(_r);                                                                         \
-            } else {                                                                                        \
-                if (PMIX_SUCCESS != (_r = p->nptr->compat.psec->server_handshake((p)->sd))) {               \
-                    PMIX_ERROR_LOG(_r);                                                                     \
-                }                                                                                           \
             }                                                                                               \
             (r) = _r;                                                                                       \
         } else {                                                                                            \
@@ -178,6 +190,7 @@ PMIX_EXPORT pmix_psec_module_t* pmix_psec_base_assign_module(const char *options
             (r) = PMIX_ERR_NOT_SUPPORTED;                                                                   \
         }                                                                                                   \
     } while(0)
+
 
 /****    COMPONENT STRUCTURE DEFINITION    ****/
 

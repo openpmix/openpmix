@@ -16,6 +16,8 @@
  * Copyright (c) 2017-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018-2019 IBM Corporation.  All rights reserved.
+ * Copyright (c) 2019      Mellanox Technologies, Inc.
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -985,7 +987,7 @@ static void connection_handler(int sd, short args, void *cbdata)
     pmix_ptl_hdr_t hdr;
     pmix_peer_t *peer;
     pmix_rank_t rank=0;
-    pmix_status_t rc;
+    pmix_status_t rc, reply;
     char *msg, *mg, *version;
     char *sec, *bfrops, *gds;
     pmix_bfrop_buffer_type_t bftype;
@@ -1650,23 +1652,30 @@ static void connection_handler(int sd, short args, void *cbdata)
     /* validate the connection */
     cred.bytes = pnd->cred;
     cred.size = pnd->len;
-    PMIX_PSEC_VALIDATE_CONNECTION(rc, peer, NULL, 0, NULL, NULL, &cred);
-    if (PMIX_SUCCESS != rc) {
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "validation of client connection failed");
-        info->proc_cnt--;
-        pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->index, NULL);
-        PMIX_RELEASE(peer);
-        /* send an error reply to the client */
-        goto error;
+    PMIX_PSEC_VALIDATE_CONNECTION(reply, peer, NULL, 0, NULL, NULL, &cred);
+    if ( reply == PMIX_ERR_READY_FOR_HANDSHAKE ) {
+        /* Notify the client that the server is ready to perform a handshake */
+        u32 = htonl(reply);
+        rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(uint32_t));
+        if (PMIX_SUCCESS != rc ) {
+            PMIX_ERROR_LOG(rc);
+            info->proc_cnt--;
+            pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->index, NULL);
+            PMIX_RELEASE(peer);
+            CLOSE_THE_SOCKET(pnd->sd);
+            PMIX_RELEASE(pnd);
+            return;
+        }
+        PMIX_PSEC_SERVER_HANDSHAKE(reply, peer, NULL, 0, NULL, NULL, &cred);
     }
-
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "client connection validated");
 
-    /* tell the client all is good */
-    u32 = htonl(PMIX_SUCCESS);
-    if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(uint32_t)))) {
+    /* Respond to the client with the status */
+    u32 = htonl(reply);
+    rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(uint32_t));
+    /* If the send failed */
+    if (PMIX_SUCCESS != rc ) {
         PMIX_ERROR_LOG(rc);
         info->proc_cnt--;
         pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->index, NULL);
@@ -1675,6 +1684,18 @@ static void connection_handler(int sd, short args, void *cbdata)
         PMIX_RELEASE(pnd);
         return;
     }
+
+    /* If the validation failed */
+    if (PMIX_SUCCESS != reply ) {
+        PMIX_ERROR_LOG(reply);
+        info->proc_cnt--;
+        pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->index, NULL);
+        PMIX_RELEASE(peer);
+        CLOSE_THE_SOCKET(pnd->sd);
+        PMIX_RELEASE(pnd);
+        return;
+    }
+
       /* send the client's array index */
     u32 = htonl(peer->index);
       if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(uint32_t)))) {
@@ -1737,7 +1758,7 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     pmix_namespace_t *nptr;
     pmix_rank_info_t *info;
     pmix_peer_t *peer;
-    int rc;
+    int rc, reply;
     uint32_t u32;
     pmix_info_t ginfo;
     pmix_byte_object_t cred;
@@ -1746,68 +1767,9 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(cd);
 
-    /* send this status so they don't hang */
-    u32 = ntohl(cd->status);
-    if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(uint32_t)))) {
-        PMIX_ERROR_LOG(rc);
-        CLOSE_THE_SOCKET(pnd->sd);
-        PMIX_RELEASE(pnd->peer);
-        PMIX_RELEASE(pnd);
-        PMIX_RELEASE(cd);
-        return;
-    }
-
     /* if the request failed, then we are done */
     if (PMIX_SUCCESS != cd->status) {
-        PMIX_RELEASE(pnd->peer);
-        PMIX_RELEASE(pnd);
-        PMIX_RELEASE(cd);
-        return;
-    }
-
-    /* if we got an identifier, send it back to the tool */
-    if (pnd->need_id) {
-        /* start with the nspace */
-        if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, cd->proc.nspace, PMIX_MAX_NSLEN+1))) {
-            PMIX_ERROR_LOG(rc);
-            CLOSE_THE_SOCKET(pnd->sd);
-            PMIX_RELEASE(pnd->peer);
-            PMIX_RELEASE(pnd);
-            PMIX_RELEASE(cd);
-            return;
-        }
-
-        /* now the rank, suitably converted */
-        u32 = ntohl(cd->proc.rank);
-        if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(uint32_t)))) {
-            PMIX_ERROR_LOG(rc);
-            CLOSE_THE_SOCKET(pnd->sd);
-            PMIX_RELEASE(pnd->peer);
-            PMIX_RELEASE(pnd);
-            PMIX_RELEASE(cd);
-            return;
-        }
-    }
-
-    /* send my nspace back to the tool */
-    if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, pmix_globals.myid.nspace, PMIX_MAX_NSLEN+1))) {
-        PMIX_ERROR_LOG(rc);
-        CLOSE_THE_SOCKET(pnd->sd);
-        PMIX_RELEASE(pnd->peer);
-        PMIX_RELEASE(pnd);
-        PMIX_RELEASE(cd);
-        return;
-    }
-
-    /* send my rank back to the tool */
-    u32 = ntohl(pmix_globals.myid.rank);
-    if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(uint32_t)))) {
-        PMIX_ERROR_LOG(rc);
-        CLOSE_THE_SOCKET(pnd->sd);
-        PMIX_RELEASE(pnd->peer);
-        PMIX_RELEASE(pnd);
-        PMIX_RELEASE(cd);
-        return;
+        goto error;
     }
 
     /* shortcuts */
@@ -1896,16 +1858,78 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     /* validate the connection */
     cred.bytes = pnd->cred;
     cred.size = pnd->len;
-    PMIX_PSEC_VALIDATE_CONNECTION(rc, peer, NULL, 0, NULL, NULL, &cred);
-    if (PMIX_SUCCESS != rc) {
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "validation of tool credentials failed: %s",
-                            PMIx_Error_string(rc));
-        PMIX_RELEASE(peer);
-        pmix_list_remove_item(&pmix_server_globals.nspaces, &nptr->super);
-        PMIX_RELEASE(nptr);  // will release the info object
+    PMIX_PSEC_VALIDATE_CONNECTION(reply, peer, NULL, 0, NULL, NULL, &cred);
+    if ( reply == PMIX_ERR_READY_FOR_HANDSHAKE ) {
+        PMIX_PSEC_SERVER_HANDSHAKE(reply, peer, NULL, 0, NULL, NULL, &cred);
+        u32 = htonl(reply);
+        rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(uint32_t));
+        if (PMIX_SUCCESS != rc ) {
+            PMIX_ERROR_LOG(rc);
+            info->proc_cnt--;
+            pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->index, NULL);
+            PMIX_RELEASE(peer);
+            CLOSE_THE_SOCKET(pnd->sd);
+            PMIX_RELEASE(pnd);
+            return;
+        }
+    }
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "client connection validated");
+
+    /* send the status so they don't hang */
+    u32 = ntohl(reply);
+    if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(uint32_t)))) {
+        PMIX_ERROR_LOG(rc);
         CLOSE_THE_SOCKET(pnd->sd);
-        goto done;
+        PMIX_RELEASE(pnd->peer);
+        PMIX_RELEASE(pnd);
+        PMIX_RELEASE(cd);
+        return;
+    }
+
+    /* if we got an identifier, send it back to the tool */
+    if (pnd->need_id) {
+        /* start with the nspace */
+        if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, cd->proc.nspace, PMIX_MAX_NSLEN+1))) {
+            PMIX_ERROR_LOG(rc);
+            CLOSE_THE_SOCKET(pnd->sd);
+            PMIX_RELEASE(pnd->peer);
+            PMIX_RELEASE(pnd);
+            PMIX_RELEASE(cd);
+            return;
+        }
+
+        /* now the rank, suitably converted */
+        u32 = ntohl(cd->proc.rank);
+        if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(uint32_t)))) {
+            PMIX_ERROR_LOG(rc);
+            CLOSE_THE_SOCKET(pnd->sd);
+            PMIX_RELEASE(pnd->peer);
+            PMIX_RELEASE(pnd);
+            PMIX_RELEASE(cd);
+            return;
+        }
+    }
+
+    /* send my nspace back to the tool */
+    if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, pmix_globals.myid.nspace, PMIX_MAX_NSLEN+1))) {
+        PMIX_ERROR_LOG(rc);
+        CLOSE_THE_SOCKET(pnd->sd);
+        PMIX_RELEASE(pnd->peer);
+        PMIX_RELEASE(pnd);
+        PMIX_RELEASE(cd);
+        return;
+    }
+
+    /* send my rank back to the tool */
+    u32 = ntohl(pmix_globals.myid.rank);
+    if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(uint32_t)))) {
+        PMIX_ERROR_LOG(rc);
+        CLOSE_THE_SOCKET(pnd->sd);
+        PMIX_RELEASE(pnd->peer);
+        PMIX_RELEASE(pnd);
+        PMIX_RELEASE(cd);
+        return;
     }
 
     /* set the socket non-blocking for all further operations */
@@ -1936,6 +1960,18 @@ static void process_cbfunc(int sd, short args, void *cbdata)
   done:
     PMIX_RELEASE(pnd);
     PMIX_RELEASE(cd);
+    return;
+  error:
+    /* send this status so they don't hang */
+    u32 = ntohl(cd->status);
+    if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(uint32_t)))) {
+        PMIX_ERROR_LOG(rc);
+        CLOSE_THE_SOCKET(pnd->sd);
+    }
+    PMIX_RELEASE(pnd->peer);
+    PMIX_RELEASE(pnd);
+    PMIX_RELEASE(cd);
+
 }
 
 /* receive a callback from the host RM with an nspace

@@ -15,6 +15,8 @@
  *                         reserved.
  * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2019      Mellanox Technologies, Inc.
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1249,17 +1251,24 @@ static pmix_status_t recv_connect_ack(int sd, uint8_t myflag)
         return rc;
     }
     reply = ntohl(u32);
+    /* see if they want us to do the handshake */
+    if (PMIX_ERR_READY_FOR_HANDSHAKE == reply) {
+        PMIX_PSEC_CLIENT_HANDSHAKE(rc, pmix_client_globals.myserver, sd);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+        /* Receive the final status of the handshake */
+        rc = pmix_ptl_base_recv_blocking(sd, (char*)&u32, sizeof(uint32_t));
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+        reply = ntohl(u32);
+    }
+    if (PMIX_SUCCESS != reply) {
+        return reply;
+    }
 
     if (0 == myflag) {
-        /* see if they want us to do the handshake */
-        if (PMIX_ERR_READY_FOR_HANDSHAKE == reply) {
-            PMIX_PSEC_CLIENT_HANDSHAKE(rc, pmix_client_globals.myserver, sd);
-            if (PMIX_SUCCESS != rc) {
-                return rc;
-            }
-        } else if (PMIX_SUCCESS != reply) {
-            return reply;
-        }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "pmix: RECV CONNECT CONFIRMATION");
 
@@ -1269,11 +1278,7 @@ static pmix_status_t recv_connect_ack(int sd, uint8_t myflag)
             return rc;
         }
         pmix_globals.pindex = ntohl(u32);
-    } else {  // we are a tool
-        /* if the status indicates an error, then we are done */
-        if (PMIX_SUCCESS != reply) {
-            return reply;
-        }
+    } else { // we are a tool
         /* if we needed an identifier, recv it */
         if (3 == myflag || 6 == myflag) {
             /* first the nspace */
@@ -1315,21 +1320,6 @@ static pmix_status_t recv_connect_ack(int sd, uint8_t myflag)
                             pmix_globals.myid.nspace, pmix_globals.myid.rank,
                             pmix_client_globals.myserver->info->pname.nspace,
                             pmix_client_globals.myserver->info->pname.rank);
-
-        /* get the returned status from the security handshake */
-        pmix_ptl_base_recv_blocking(sd, (char*)&reply, sizeof(pmix_status_t));
-        if (PMIX_SUCCESS != reply) {
-            /* see if they want us to do the handshake */
-            if (PMIX_ERR_READY_FOR_HANDSHAKE == reply) {
-                PMIX_PSEC_CLIENT_HANDSHAKE(reply, pmix_client_globals.myserver, sd);
-                if (PMIX_SUCCESS != reply) {
-                    return reply;
-                }
-                /* if the handshake succeeded, then fall thru to the next step */
-            } else {
-                return reply;
-            }
-        }
     }
 
     if (sockopt) {
