@@ -3,6 +3,8 @@
  * Copyright (c) 2015      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2017      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2019      Mellanox Technologies, Inc.
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -119,7 +121,7 @@ static void stop_progress_engine(pmix_progress_tracker_t *trk)
 
     /* break the event loop - this will cause the loop to exit upon
        completion of any current event */
-    pmix_event_base_loopbreak(trk->ev_base);
+    pmix_event_base_loopexit(trk->ev_base);
 
     pmix_thread_join(&trk->engine, NULL);
 }
