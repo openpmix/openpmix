@@ -566,7 +566,7 @@ void pmix_usock_send_handler(int sd, short flags, void *cbdata)
     pmix_peer_t *peer = (pmix_peer_t*)cbdata;
     pmix_ptl_send_t *msg = peer->send_msg;
     pmix_status_t rc;
-    uint32_t nbytes;
+    size_t nbytes;
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(peer);
