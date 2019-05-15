@@ -95,12 +95,25 @@ pmix_status_t connected(const pmix_proc_t *proc, void *server_object,
 pmix_status_t finalized(const pmix_proc_t *proc, void *server_object,
               pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
-    if( CLI_TERM <= cli_info[proc->rank].state ){
+    cli_info_t *cli = NULL;
+    int i;
+    for (i = 0; i < cli_info_cnt; i++) {
+        if((proc->rank == cli_info[i].rank) &&
+                (0 == strcmp(proc->nspace, cli_info[i].ns))){
+            cli = &cli_info[i];
+            break;
+        }
+    }
+    if (NULL == cli) {
+        TEST_ERROR(("cannot found rank %d", proc->rank));
+        return PMIX_SUCCESS;
+    }
+    if( CLI_TERM <= cli->state ){
         TEST_ERROR(("double termination of rank %d", proc->rank));
         return PMIX_SUCCESS;
     }
-    TEST_VERBOSE(("Rank %d terminated", proc->rank));
-    cli_finalize(&cli_info[proc->rank]);
+    TEST_VERBOSE(("Rank %s:%d terminated", proc->nspace, proc->rank));
+    cli_finalize(cli);
     finalized_count++;
     if (finalized_count == cli_info_cnt) {
         if (NULL != pmix_test_published_list) {
