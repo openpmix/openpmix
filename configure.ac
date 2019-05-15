@@ -51,6 +51,11 @@ AC_CONFIG_AUX_DIR(./config)
 # -I in ACLOCAL_AMFLAGS in the top-level Makefile.am.
 AC_CONFIG_MACRO_DIR(./config)
 
+# autotools expects to perform tests without interference
+# from user-provided CFLAGS, so preserve them here
+PMIX_CFLAGS_user=$CFLAGS
+CFLAGS=
+
 PMIX_CAPTURE_CONFIGURE_CLI([PMIX_CONFIGURE_CLI])
 
 # Get our platform support file.  This has to be done very, very early
@@ -205,7 +210,17 @@ AS_IF([test -z "$CC_FOR_BUILD"],[
     AC_SUBST([CC_FOR_BUILD], [$CC])
 ])
 
+# restore any user-provided flags
+AS_IF([test ! -z "$PMIX_CFLAGS_user"], [CFLAGS="$CFLAGS $PMIX_CFLAGS_user"])
+
+# Delay setting pickyness until here so we
+# don't break configure code tests
+#if test "$WANT_PICKY_COMPILER" = "1"; then
+#    CFLAGS="$CFLAGS -Wall -Wextra -Werror"
+#fi
+
 # Cleanup duplicate flags
+PMIX_FLAGS_UNIQ(CFLAGS)
 PMIX_FLAGS_UNIQ(CPPFLAGS)
 PMIX_FLAGS_UNIQ(LDFLAGS)
 PMIX_FLAGS_UNIQ(LIBS)
