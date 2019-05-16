@@ -128,7 +128,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
     char *evar, **uri, *suri = NULL, *suri2 = NULL;
     char *filename, *nspace=NULL;
     pmix_rank_t rank = PMIX_RANK_WILDCARD;
-    char *p, *p2, *server_nspace = NULL, *rendfile = NULL;
+    char *p = NULL, *p2, *server_nspace = NULL, *rendfile = NULL;
     int sd, rc;
     size_t n;
     char myhost[PMIX_MAXHOSTNAMELEN];
