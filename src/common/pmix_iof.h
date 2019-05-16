@@ -209,7 +209,7 @@ pmix_iof_fd_always_ready(int fd)
         if (NULL != (d)) {                                              \
             PMIX_INFO_CREATE((rev)->directives, (nd));                  \
             (rev)->ndirs = (nd);                                        \
-            for (_ii=0; _ii < (nd); _ii++) {                            \
+            for (_ii=0; _ii < (size_t)nd; _ii++) {                      \
                 PMIX_INFO_XFER(&((rev)->directives[_ii]), &((d)[_ii])); \
             }                                                           \
         }                                                               \
