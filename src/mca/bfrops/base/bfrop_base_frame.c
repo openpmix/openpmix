@@ -52,6 +52,7 @@ int pmix_bfrops_base_output = 0;
 
 static int pmix_bfrop_register(pmix_mca_base_register_flag_t flags)
 {
+    (void)flags;
     pmix_bfrops_globals.initial_size = PMIX_BFROP_DEFAULT_INITIAL_SIZE;
     pmix_mca_base_var_register("pmix", "bfrops", "base", "initial_size",
                                "Initial size of a buffer",

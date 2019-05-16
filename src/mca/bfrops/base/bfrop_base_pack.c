@@ -94,6 +94,8 @@ pmix_status_t pmix_bfrops_base_pack_buffer(pmix_pointer_array_t *regtypes,
                                           pmix_buffer_t *buffer, const void *src,
                                           int32_t num_vals, pmix_data_type_t type)
  {
+    (void)regtypes;
+    (void)type;
     uint8_t *dst;
     int32_t i;
     bool *s = (bool*)src;
@@ -129,6 +131,7 @@ pmix_status_t pmix_bfrops_base_pack_int(pmix_pointer_array_t *regtypes,
                                         pmix_buffer_t *buffer, const void *src,
                                         int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     pmix_status_t ret;
 
     /* System types need to always be described so we can properly
@@ -149,6 +152,7 @@ pmix_status_t pmix_bfrops_base_pack_sizet(pmix_pointer_array_t *regtypes,
                                           pmix_buffer_t *buffer, const void *src,
                                           int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     int ret;
 
     /* System types need to always be described so we can properly
@@ -168,6 +172,7 @@ pmix_status_t pmix_bfrops_base_pack_pid(pmix_pointer_array_t *regtypes,
                                         pmix_buffer_t *buffer, const void *src,
                                         int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     int ret;
 
     /* System types need to always be described so we can properly
@@ -188,6 +193,8 @@ pmix_status_t pmix_bfrops_base_pack_byte(pmix_pointer_array_t *regtypes,
                                          pmix_buffer_t *buffer, const void *src,
                                          int32_t num_vals, pmix_data_type_t type)
 {
+    (void)regtypes;
+    (void)type;
     char *dst;
 
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
@@ -215,6 +222,8 @@ pmix_status_t pmix_bfrops_base_pack_int16(pmix_pointer_array_t *regtypes,
                                           pmix_buffer_t *buffer, const void *src,
                                           int32_t num_vals, pmix_data_type_t type)
 {
+    (void)regtypes;
+    (void)type;
     int32_t i;
     uint16_t tmp, *srctmp = (uint16_t*) src;
     char *dst;
@@ -245,6 +254,8 @@ pmix_status_t pmix_bfrops_base_pack_int32(pmix_pointer_array_t *regtypes,
                                           pmix_buffer_t *buffer, const void *src,
                                           int32_t num_vals, pmix_data_type_t type)
 {
+    (void)regtypes;
+    (void)type;
     int32_t i;
     uint32_t tmp, *srctmp = (uint32_t*) src;
     char *dst;
@@ -274,6 +285,8 @@ pmix_status_t pmix_bfrops_base_pack_int64(pmix_pointer_array_t *regtypes,
                                           pmix_buffer_t *buffer, const void *src,
                                           int32_t num_vals, pmix_data_type_t type)
 {
+    (void)regtypes;
+    (void)type;
     int32_t i;
     uint64_t tmp, tmp2;
     char *dst;
@@ -306,6 +319,7 @@ pmix_status_t pmix_bfrops_base_pack_string(pmix_pointer_array_t *regtypes,
                                            pmix_buffer_t *buffer, const void *src,
                                            int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     int ret = PMIX_SUCCESS;
     int32_t i, len;
     char **ssrc = (char**) src;
@@ -337,6 +351,7 @@ pmix_status_t pmix_bfrops_base_pack_float(pmix_pointer_array_t *regtypes,
                                           pmix_buffer_t *buffer, const void *src,
                                           int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     int ret = PMIX_SUCCESS;
     int32_t i;
     float *ssrc = (float*)src;
@@ -362,6 +377,7 @@ pmix_status_t pmix_bfrops_base_pack_double(pmix_pointer_array_t *regtypes,
                                            pmix_buffer_t *buffer, const void *src,
                                            int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     int ret = PMIX_SUCCESS;
     int32_t i;
     double *ssrc = (double*)src;
@@ -387,6 +403,7 @@ pmix_status_t pmix_bfrops_base_pack_timeval(pmix_pointer_array_t *regtypes,
                                             pmix_buffer_t *buffer, const void *src,
                                             int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     int64_t tmp[2];
     int ret = PMIX_SUCCESS;
     int32_t i;
@@ -408,6 +425,7 @@ pmix_status_t pmix_bfrops_base_pack_time(pmix_pointer_array_t *regtypes,
                                          pmix_buffer_t *buffer, const void *src,
                                          int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     int ret = PMIX_SUCCESS;
     int32_t i;
     time_t *ssrc = (time_t *)src;
@@ -431,6 +449,7 @@ pmix_status_t pmix_bfrops_base_pack_status(pmix_pointer_array_t *regtypes,
                                            pmix_buffer_t *buffer, const void *src,
                                            int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     int ret = PMIX_SUCCESS;
     int32_t i;
     pmix_status_t *ssrc = (pmix_status_t *)src;
@@ -451,6 +470,7 @@ pmix_status_t pmix_bfrops_base_pack_buf(pmix_pointer_array_t *regtypes,
                                         pmix_buffer_t *buffer, const void *src,
                                         int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     pmix_buffer_t *ptr;
     int32_t i;
     int ret;
@@ -486,6 +506,7 @@ pmix_status_t pmix_bfrops_base_pack_bo(pmix_pointer_array_t *regtypes,
                                        pmix_buffer_t *buffer, const void *src,
                                        int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     int ret;
     int i;
     pmix_byte_object_t *bo;
@@ -511,6 +532,7 @@ pmix_status_t pmix_bfrops_base_pack_proc(pmix_pointer_array_t *regtypes,
                                          pmix_buffer_t *buffer, const void *src,
                                          int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     pmix_proc_t *proc;
     int32_t i;
     int ret;
@@ -538,6 +560,7 @@ pmix_status_t pmix_bfrops_base_pack_value(pmix_pointer_array_t *regtypes,
                                           pmix_buffer_t *buffer, const void *src,
                                           int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     pmix_value_t *ptr;
     int32_t i;
     int ret;
@@ -562,6 +585,7 @@ pmix_status_t pmix_bfrops_base_pack_info(pmix_pointer_array_t *regtypes,
                                          pmix_buffer_t *buffer, const void *src,
                                          int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     pmix_info_t *info;
     int32_t i;
     int ret;
@@ -598,6 +622,7 @@ pmix_status_t pmix_bfrops_base_pack_pdata(pmix_pointer_array_t *regtypes,
                                           pmix_buffer_t *buffer, const void *src,
                                           int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     pmix_pdata_t *pdata;
     int32_t i;
     int ret;
@@ -637,6 +662,7 @@ pmix_status_t pmix_bfrops_base_pack_app(pmix_pointer_array_t *regtypes,
                                         pmix_buffer_t *buffer, const void *src,
                                         int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     pmix_app_t *app;
     int32_t i, j, nvals;
     int ret;
@@ -705,6 +731,7 @@ pmix_status_t pmix_bfrops_base_pack_kval(pmix_pointer_array_t *regtypes,
                                          pmix_buffer_t *buffer, const void *src,
                                          int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     pmix_kval_t *ptr;
     int32_t i;
     int ret;
@@ -730,6 +757,7 @@ pmix_status_t pmix_bfrops_base_pack_persist(pmix_pointer_array_t *regtypes,
                                             pmix_buffer_t *buffer, const void *src,
                                             int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     pmix_status_t ret;
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_BYTE, regtypes);
     return ret;
@@ -739,6 +767,7 @@ pmix_status_t pmix_bfrops_base_pack_datatype(pmix_pointer_array_t *regtypes,
                                              pmix_buffer_t *buffer, const void *src,
                                              int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     pmix_status_t ret;
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT16, regtypes);
     return ret;
@@ -749,6 +778,9 @@ pmix_status_t pmix_bfrops_base_pack_ptr(pmix_pointer_array_t *regtypes,
                                         pmix_buffer_t *buffer, const void *src,
                                         int32_t num_vals, pmix_data_type_t type)
 {
+    (void)src;
+    (void)num_vals;
+    (void)type;
     pmix_status_t ret;
     uint8_t foo=1;
     /* it obviously makes no sense to pack a pointer and
@@ -761,6 +793,7 @@ pmix_status_t pmix_bfrops_base_pack_scope(pmix_pointer_array_t *regtypes,
                                           pmix_buffer_t *buffer, const void *src,
                                           int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     pmix_status_t ret;
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT8, regtypes);
     return ret;
@@ -770,6 +803,7 @@ pmix_status_t pmix_bfrops_base_pack_range(pmix_pointer_array_t *regtypes,
                                           pmix_buffer_t *buffer, const void *src,
                                           int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     pmix_status_t ret;
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT8, regtypes);
     return ret;
@@ -779,6 +813,7 @@ pmix_status_t pmix_bfrops_base_pack_cmd(pmix_pointer_array_t *regtypes,
                                         pmix_buffer_t *buffer, const void *src,
                                         int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     pmix_status_t ret;
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT8, regtypes);
     return ret;
@@ -788,6 +823,7 @@ pmix_status_t pmix_bfrops_base_pack_info_directives(pmix_pointer_array_t *regtyp
                                                     pmix_buffer_t *buffer, const void *src,
                                                     int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     pmix_status_t ret;
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT32, regtypes);
     return ret;
@@ -797,6 +833,7 @@ pmix_status_t pmix_bfrops_base_pack_pstate(pmix_pointer_array_t *regtypes,
                                            pmix_buffer_t *buffer, const void *src,
                                            int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     pmix_status_t ret;
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT8, regtypes);
     return ret;
@@ -806,6 +843,7 @@ pmix_status_t pmix_bfrops_base_pack_pinfo(pmix_pointer_array_t *regtypes,
                                           pmix_buffer_t *buffer, const void *src,
                                           int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     pmix_proc_info_t *pinfo = (pmix_proc_info_t *) src;
     pmix_status_t ret;
     int32_t i;
@@ -842,6 +880,7 @@ pmix_status_t pmix_bfrops_base_pack_darray(pmix_pointer_array_t *regtypes,
                                            pmix_buffer_t *buffer, const void *src,
                                            int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     pmix_data_array_t *p = (pmix_data_array_t *) src;
     pmix_status_t ret;
     int32_t i;
@@ -878,6 +917,7 @@ pmix_status_t pmix_bfrops_base_pack_rank(pmix_pointer_array_t *regtypes,
                                          pmix_buffer_t *buffer, const void *src,
                                          int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     pmix_status_t ret;
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT32, regtypes);
     return ret;
@@ -887,6 +927,7 @@ pmix_status_t pmix_bfrops_base_pack_query(pmix_pointer_array_t *regtypes,
                                           pmix_buffer_t *buffer, const void *src,
                                           int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     pmix_query_t *pq = (pmix_query_t*)src;
     pmix_status_t ret;
     int32_t i;
@@ -962,6 +1003,7 @@ pmix_status_t pmix_bfrops_base_pack_alloc_directive(pmix_pointer_array_t *regtyp
                                                     pmix_buffer_t *buffer, const void *src,
                                                     int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     pmix_status_t ret;
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT8, regtypes);
     return ret;
@@ -971,6 +1013,7 @@ pmix_status_t pmix_bfrops_base_pack_iof_channel(pmix_pointer_array_t *regtypes,
                                                 pmix_buffer_t *buffer, const void *src,
                                                 int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     pmix_status_t ret;
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT16, regtypes);
     return ret;
@@ -980,6 +1023,7 @@ pmix_status_t pmix_bfrops_base_pack_envar(pmix_pointer_array_t *regtypes,
                                           pmix_buffer_t *buffer, const void *src,
                                           int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     pmix_envar_t *ptr = (pmix_envar_t*)src;
     int32_t i;
     pmix_status_t ret;
@@ -1008,6 +1052,7 @@ pmix_status_t pmix_bfrops_base_pack_coord(pmix_pointer_array_t *regtypes,
                                           pmix_buffer_t *buffer, const void *src,
                                           int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     pmix_coord_t *ptr = (pmix_coord_t*)src;
     int32_t i;
     pmix_status_t ret;
@@ -1036,6 +1081,7 @@ pmix_status_t pmix_bfrops_base_pack_regattr(pmix_pointer_array_t *regtypes,
                                             pmix_buffer_t *buffer, const void *src,
                                             int32_t num_vals, pmix_data_type_t type)
 {
+    (void)type;
     pmix_regattr_t *ptr = (pmix_regattr_t*)src;
     int32_t i, nd;
     pmix_status_t ret;
