@@ -144,6 +144,18 @@ static inline uint64_t pmix_ntoh64(uint64_t val)
 #endif
 }
 
+/* Convert size_t value from host to network byte order and back */
+#if SIZEOF_SIZE_T == 4
+
+#define pmix_htonsizet(x) htonl(x)
+#define pmix_ntohsizet(x) ntohl(x)
+
+#elif SIZEOF_SIZE_T == 8
+
+#define pmix_htonsizet(x) pmix_hton64(x)
+#define pmix_ntohsizet(x) pmix_ntoh64(x)
+
+#endif
 
 /**
  * Convert between a local representation of pointer and a 64 bits value.
