@@ -206,7 +206,7 @@ pmix_iof_fd_always_ready(int fd)
             PMIX_PROC_CREATE((rev)->targets, (rev)->ntargets);          \
             memcpy((rev)->targets, (p), (np) * sizeof(pmix_proc_t));    \
         }                                                               \
-        if (NULL != (d)) {                                              \
+        if (NULL != (d) && 0 < (nd)) {                                  \
             PMIX_INFO_CREATE((rev)->directives, (nd));                  \
             (rev)->ndirs = (nd);                                        \
             for (_ii=0; _ii < (size_t)nd; _ii++) {                      \

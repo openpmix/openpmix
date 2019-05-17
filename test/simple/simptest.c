@@ -413,6 +413,12 @@ int main(int argc, char **argv)
     if (NULL == executable) {
         executable = strdup("./simpclient");
     }
+    /* check for executable existence and permissions */
+    if (0 != access(executable, X_OK)) {
+        fprintf(stderr, "Executable %s not found or missing executable permissions\n", executable);
+        exit(1);
+    }
+
     if (cross_version && nprocs < 2) {
         fprintf(stderr, "Cross-version testing requires at least two clients\n");
         exit(1);

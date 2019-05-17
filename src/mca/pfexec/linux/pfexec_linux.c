@@ -492,10 +492,17 @@ static pmix_status_t do_parent(pmix_app_t *app, pmix_pfexec_child_t *child, int 
                 pmix_show_help("help-pfexec-linux.txt", "syscall fail",
                                true,
                                pmix_globals.hostname, app->cmd,
+                               "calloc", __FILE__, __LINE__);
+                return PMIX_ERR_NOMEM;
+            }
+            rc = pmix_fd_read(read_fd, msg.msg_str_len, str);
+            if (PMIX_SUCCESS != rc) {
+                pmix_show_help("help-pfexec-linux.txt", "syscall fail",
+                               true,
+                               pmix_globals.hostname, app->cmd,
                                "pmix_fd_read", __FILE__, __LINE__);
                 return rc;
             }
-            rc = pmix_fd_read(read_fd, msg.msg_str_len, str);
         }
 
         /* Print out what we got.  We already have a rendered string,
