@@ -187,6 +187,7 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
                     for (i=0; NULL != argv[i]; i++) {
                         pmix_argv_prepend_nosize(&app->argv, argv[i]);
                     }
+                    pmix_argv_free(argv);
                     if (NULL != app->cmd) {
                         free(app->cmd);
                     }
@@ -490,10 +491,16 @@ pmix_status_t pmix_pfexec_base_setup_child(pmix_pfexec_child_t *child)
 
         /* connect input to /dev/null */
         fd = open("/dev/null", O_RDONLY, 0);
-        if(fd != fileno(stdin)) {
-            dup2(fd, fileno(stdin));
-            close(fd);
+        if (0 > fd) {
+            return PMIX_ERROR;
         }
+        if (fd != fileno(stdin)) {
+            ret = dup2(fd, fileno(stdin));
+            if (ret < 0) {
+                return PMIX_ERR_SYS_OTHER;
+            }
+        }
+        close(fd);
     }
 
     if (opts->p_stderr[1] != fileno(stderr)) {
