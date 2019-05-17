@@ -200,7 +200,7 @@ pmix_status_t pmix_bfrops_base_unpack_int(pmix_pointer_array_t *regtypes,
     pmix_status_t ret;
     pmix_data_type_t remote_type;
 
-    if (PMIX_INT != type) {
+    if (PMIX_INT != type && PMIX_UINT != type) {
         return PMIX_ERR_BAD_PARAM;
     }
 
@@ -301,7 +301,7 @@ pmix_status_t pmix_bfrops_base_unpack_byte(pmix_pointer_array_t *regtypes,
     if (NULL == regtypes) {
         return PMIX_ERR_BAD_PARAM;
     }
-    if (PMIX_BYTE != type) {
+    if (PMIX_BYTE != type && PMIX_UINT8 != type && PMIX_INT8 != type) {
         return PMIX_ERR_BAD_PARAM;
     }
 
