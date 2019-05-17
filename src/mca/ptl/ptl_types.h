@@ -110,7 +110,10 @@ typedef uint32_t pmix_ptl_tag_t;
 typedef struct {
     int32_t pindex;
     pmix_ptl_tag_t tag;
-    size_t nbytes;
+    uint32_t nbytes;
+#if SIZEOF_SIZE_T == 8
+    uint32_t padding;
+#endif
 } pmix_ptl_hdr_t;
 
 /* define the messaging cbfunc */
