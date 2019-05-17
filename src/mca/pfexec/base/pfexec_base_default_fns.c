@@ -126,6 +126,8 @@ static pmix_status_t setup_path(pmix_app_t *app)
 
 void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
 {
+    (void)sd;
+    (void)args;
     pmix_pfexec_fork_caddy_t *fcd = (pmix_pfexec_fork_caddy_t*)cbdata;
     pmix_app_t *app;
     int i, n;
@@ -276,6 +278,8 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
 
 void pmix_pfexec_base_kill_proc(int sd, short args, void *cbdata)
 {
+    (void)sd;
+    (void)args;
     pmix_pfexec_signal_caddy_t *scd = (pmix_pfexec_signal_caddy_t*)cbdata;
     pmix_pfexec_child_t *child, *cd;
 
@@ -348,6 +352,8 @@ void pmix_pfexec_base_kill_proc(int sd, short args, void *cbdata)
 
 void pmix_pfexec_base_signal_proc(int sd, short args, void *cbdata)
 {
+    (void)sd;
+    (void)args;
     pmix_pfexec_signal_caddy_t *scd = (pmix_pfexec_signal_caddy_t*)cbdata;
     pmix_pfexec_child_t *child, *cd;
 
