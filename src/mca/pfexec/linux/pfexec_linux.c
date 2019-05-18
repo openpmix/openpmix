@@ -501,8 +501,10 @@ static pmix_status_t do_parent(pmix_app_t *app, pmix_pfexec_child_t *child, int 
                                true,
                                pmix_globals.hostname, app->cmd,
                                "pmix_fd_read", __FILE__, __LINE__);
+		free(str);
                 return rc;
             }
+	    free(str);
         }
 
         /* Print out what we got.  We already have a rendered string,

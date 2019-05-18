@@ -187,7 +187,6 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
                     for (i=0; NULL != argv[i]; i++) {
                         pmix_argv_prepend_nosize(&app->argv, argv[i]);
                     }
-                    pmix_argv_free(argv);
                     if (NULL != app->cmd) {
                         free(app->cmd);
                     }
@@ -197,8 +196,10 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
                                        "fork-agent-not-found",
                                        true, pmix_globals.hostname, argv[0]);
                         rc = PMIX_ERR_NOT_FOUND;
+                        pmix_argv_free(argv);
                         goto complete;
                     }
+                    pmix_argv_free(argv);
                 }
             }
         }
