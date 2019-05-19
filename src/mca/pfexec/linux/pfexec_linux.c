@@ -504,7 +504,6 @@ static pmix_status_t do_parent(pmix_app_t *app, pmix_pfexec_child_t *child, int 
 		free(str);
                 return rc;
             }
-	    free(str);
         }
 
         /* Print out what we got.  We already have a rendered string,
@@ -522,7 +521,14 @@ static pmix_status_t do_parent(pmix_app_t *app, pmix_pfexec_child_t *child, int 
            successfully). */
         if (msg.fatal) {
             close(read_fd);
+	    if (NULL != str) {
+                free(str);
+            }
             return PMIX_ERR_SYS_OTHER;
+        }
+        if (NULL != str) {
+            free(str);
+            str = NULL;
         }
     }
 
