@@ -150,6 +150,10 @@ pmix_status_t component_close(void)
 
 static int component_query(pmix_mca_base_module_t **module, int *priority)
 {
+    if (PMIX_PROC_IS_TOOL(pmix_globals.mypeer)) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
     *module = (pmix_mca_base_module_t*)&pmix_ptl_usock_module;
     return PMIX_SUCCESS;
 }
