@@ -896,6 +896,7 @@ typedef int pmix_status_t;
 #define PMIX_ERR_IOF_FAILURE                        -171
 #define PMIX_ERR_IOF_COMPLETE                       -172
 #define PMIX_LAUNCH_COMPLETE                        -173     // include nspace of the launched job with notification
+#define PMIX_FABRIC_UPDATED                         -174
 
 /* system failures */
 #define PMIX_ERR_NODE_DOWN                          -231

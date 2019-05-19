@@ -51,6 +51,7 @@
 
 /* Structure and constant definitions */
 #include <pmix_common.h>
+#include <pmix_server.h>
 
 #if defined(c_plusplus) || defined(__cplusplus)
 extern "C" {
