@@ -94,6 +94,7 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
                                         pmix_gds_base_store_modex_cb_fn_t cb_fn,
                                         void *cbdata)
 {
+    (void)nspace;
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_buffer_t bkt;
     pmix_byte_object_t bo, bo2;

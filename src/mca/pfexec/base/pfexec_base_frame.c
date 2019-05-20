@@ -77,6 +77,8 @@ static int pmix_pfexec_base_close(void)
 /* callback from the event library whenever a SIGCHLD is received */
 static void wait_signal_callback(int fd, short event, void *arg)
 {
+    (void)fd;
+    (void)event;
     pmix_event_t *signal = (pmix_event_t*) arg;
     int status;
     pid_t pid;
@@ -128,6 +130,8 @@ static void wait_signal_callback(int fd, short event, void *arg)
 
 void pmix_pfexec_check_complete(int sd, short args, void *cbdata)
 {
+    (void)sd;
+    (void)args;
     pmix_pfexec_cmpl_caddy_t *cd = (pmix_pfexec_cmpl_caddy_t*)cbdata;
     pmix_info_t info[2];
     pmix_status_t rc;
@@ -157,6 +161,7 @@ void pmix_pfexec_check_complete(int sd, short args, void *cbdata)
 
 static int pmix_pfexec_register(pmix_mca_base_register_flag_t flags)
 {
+    (void)flags;
     pmix_pfexec_globals.timeout_before_sigkill = 1;
     pmix_mca_base_var_register("pmix", "pfexec", "base", "sigkill_timeout",
                                  "Time to wait for a process to die after issuing a kill signal to it",
