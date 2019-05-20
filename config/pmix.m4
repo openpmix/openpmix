@@ -1123,6 +1123,22 @@ fi
 
 AM_CONDITIONAL([PMIX_INSTALL_BINARIES], [test $WANT_PMIX_BINARIES -eq 1])
 
+#
+# psec/dummy_handshake
+#
+
+AC_MSG_CHECKING([if want build psec/dummy_handshake])
+AC_ARG_ENABLE(dummy-handshake,
+              AC_HELP_STRING([--enable-dummy-handshake],
+                             [Enables psec dummy component intended to check the PTL handshake scenario (default: disabled)]))
+if test "$enable_dummy_handshake" != "yes"; then
+    AC_MSG_RESULT([no])
+    eval "DISABLE_psec_dummy_handshake=1"
+else
+    AC_MSG_RESULT([yes])
+    eval "DISABLE_psec_dummy_handshake=0"
+fi
+AM_CONDITIONAL(MCA_BUILD_PSEC_DUMMY_HANDSHAKE, test "$DISABLE_psec_dummy_handshake" = "0")
 ])dnl
 
 # This must be a standalone routine so that it can be called both by
