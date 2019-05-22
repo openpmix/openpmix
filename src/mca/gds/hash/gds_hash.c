@@ -1509,6 +1509,7 @@ static pmix_status_t hash_store_job_info(const char *nspace,
     pmix_hash_table_t *ht;
     char **nodelist = NULL;
     pmix_info_t *info, *iptr;
+    pmix_namespace_t *ns, *nptr;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "[%s:%u] pmix:gds:hash store job info for nspace %s",
@@ -1528,6 +1529,24 @@ static pmix_status_t hash_store_job_info(const char *nspace,
         return rc;
     }
 
+    /* see if we already have this nspace */
+    nptr = NULL;
+    PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (0 == strcmp(ns->nspace, nspace)) {
+            nptr = ns;
+            break;
+        }
+    }
+    if (NULL == nptr) {
+        nptr = PMIX_NEW(pmix_namespace_t);
+        if (NULL == nptr) {
+            rc = PMIX_ERR_NOMEM;
+            return rc;
+        }
+        nptr->nspace = strdup(nspace);
+        pmix_list_append(&pmix_globals.nspaces, &nptr->super);
+    }
+
     /* see if we already have a hash table for this nspace */
     ht = NULL;
     PMIX_LIST_FOREACH(htptr, &myjobs, pmix_job_t) {
@@ -1540,6 +1559,8 @@ static pmix_status_t hash_store_job_info(const char *nspace,
         /* nope - create one */
         htptr = PMIX_NEW(pmix_job_t);
         htptr->ns = strdup(nspace);
+        PMIX_RETAIN(nptr);
+        htptr->nptr = nptr;
         pmix_list_append(&myjobs, &htptr->super);
         ht = &htptr->internal;
     }
@@ -1552,7 +1573,7 @@ static pmix_status_t hash_store_job_info(const char *nspace,
         pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                             "[%s:%u] pmix:gds:hash store job info working key %s",
                             pmix_globals.myid.nspace, pmix_globals.myid.rank, kptr->key);
-        if (0 == strcmp(kptr->key, PMIX_PROC_BLOB)) {
+        if (PMIX_CHECK_KEY(kptr, PMIX_PROC_BLOB)) {
             bo = &(kptr->value->data.bo);
             PMIX_CONSTRUCT(&buf2, pmix_buffer_t);
             PMIX_LOAD_BUFFER(pmix_client_globals.myserver, &buf2, bo->bytes, bo->size);
@@ -1603,7 +1624,7 @@ static pmix_status_t hash_store_job_info(const char *nspace,
             /* cleanup */
             PMIX_DESTRUCT(&buf2);  // releases the original kptr data
             PMIX_RELEASE(kp2);
-        } else if (0 == strcmp(kptr->key, PMIX_MAP_BLOB)) {
+        } else if (PMIX_CHECK_KEY(kptr, PMIX_MAP_BLOB)) {
             /* transfer the byte object for unpacking */
             bo = &(kptr->value->data.bo);
             PMIX_CONSTRUCT(&buf2, pmix_buffer_t);
@@ -1774,6 +1795,11 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                 PMIX_RELEASE(kptr);
                 return rc;
             }
+            /* if this is the job size, then store it in
+             * the nptr tracker */
+            if (0 == nptr->nprocs && PMIX_CHECK_KEY(kptr, PMIX_JOB_SIZE)) {
+                nptr->nprocs = kptr->value->data.uint32;
+            }
         }
         PMIX_RELEASE(kptr);
         kptr = PMIX_NEW(pmix_kval_t);
@@ -1799,11 +1825,12 @@ static pmix_status_t hash_store(const pmix_proc_t *proc,
     pmix_job_t *trk, *t;
     pmix_status_t rc;
     pmix_kval_t *kp;
+    pmix_namespace_t *ns, *nptr;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
-                        "[%s:%d] gds:hash:hash_store for proc [%s:%d] key %s type %s scope %s",
-                        pmix_globals.myid.nspace, pmix_globals.myid.rank,
-                        proc->nspace, proc->rank, kv->key,
+                        "%s gds:hash:hash_store for proc %s key %s type %s scope %s",
+                        PMIX_NAME_PRINT(&pmix_globals.myid),
+                        PMIX_NAME_PRINT(proc), kv->key,
                         PMIx_Data_type_string(kv->value->type), PMIx_Scope_string(scope));
 
     if (NULL == kv->key) {
@@ -1822,6 +1849,26 @@ static pmix_status_t hash_store(const pmix_proc_t *proc,
         /* create one */
         trk = PMIX_NEW(pmix_job_t);
         trk->ns = strdup(proc->nspace);
+        /* see if we already have this nspace */
+        nptr = NULL;
+        PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_namespace_t) {
+            if (0 == strcmp(ns->nspace, proc->nspace)) {
+                nptr = ns;
+                break;
+            }
+        }
+        if (NULL == nptr) {
+            nptr = PMIX_NEW(pmix_namespace_t);
+            if (NULL == nptr) {
+                rc = PMIX_ERR_NOMEM;
+                PMIX_RELEASE(trk);
+                return rc;
+            }
+            nptr->nspace = strdup(proc->nspace);
+            pmix_list_append(&pmix_globals.nspaces, &nptr->super);
+        }
+        PMIX_RETAIN(nptr);
+        trk->nptr = nptr;
         pmix_list_append(&myjobs, &trk->super);
     }
 
@@ -1853,6 +1900,11 @@ static pmix_status_t hash_store(const pmix_proc_t *proc,
             }
             PMIX_RELEASE(kp);  // maintain accounting
         }
+    }
+
+    /* if the number of procs for the nspace object is new, then update it */
+    if (0 == trk->nptr->nprocs && PMIX_CHECK_KEY(kv, PMIX_JOB_SIZE)) {
+        trk->nptr->nprocs = kv->value->data.uint32;
     }
 
     /* store it in the corresponding hash table */
@@ -1929,6 +1981,7 @@ static pmix_status_t _hash_store_modex(void * cbdata,
     pmix_buffer_t pbkt;
     pmix_proc_t proc;
     pmix_kval_t *kv;
+    pmix_namespace_t *ns, *nptr;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "[%s:%d] gds:hash:store_modex for nspace %s",
@@ -1946,7 +1999,27 @@ static pmix_status_t _hash_store_modex(void * cbdata,
     if (NULL == trk) {
         /* create one */
         trk = PMIX_NEW(pmix_job_t);
-        trk->ns = strdup(ns->nspace);
+        trk->ns = strdup(proc->nspace);
+        /* see if we already have this nspace */
+        nptr = NULL;
+        PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_namespace_t) {
+            if (0 == strcmp(ns->nspace, proc->nspace)) {
+                nptr = ns;
+                break;
+            }
+        }
+        if (NULL == nptr) {
+            nptr = PMIX_NEW(pmix_namespace_t);
+            if (NULL == nptr) {
+                rc = PMIX_ERR_NOMEM;
+                PMIX_RELEASE(trk);
+                return rc;
+            }
+            nptr->nspace = strdup(proc->nspace);
+            pmix_list_append(&pmix_globals.nspaces, &nptr->super);
+        }
+        PMIX_RETAIN(nptr);
+        trk->nptr = nptr;
         pmix_list_append(&myjobs, &trk->super);
     }
 
@@ -1977,14 +2050,20 @@ static pmix_status_t _hash_store_modex(void * cbdata,
     kv = PMIX_NEW(pmix_kval_t);
     PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &pbkt, kv, &cnt, PMIX_KVAL);
     while (PMIX_SUCCESS == rc) {
-        /* store this in the hash table */
-        if (PMIX_SUCCESS != (rc = pmix_hash_store(&trk->remote, proc.rank, kv))) {
-            PMIX_ERROR_LOG(rc);
-            bo->bytes = pbkt.base_ptr;
-            bo->size = pbkt.bytes_used; // restore the incoming data
-            pbkt.base_ptr = NULL;
-            PMIX_DESTRUCT(&pbkt);
-            return rc;
+        if (PMIX_RANK_UNDEF == proc->rank) {
+            /* if the rank is undefined, then we store it on the
+             * remote table of rank=0 as we know that rank must
+             * always exist */
+            if (PMIX_SUCCESS != (rc = pmix_hash_store(&trk->remote, 0, kv))) {
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
+        } else {
+            /* store this in the hash table */
+            if (PMIX_SUCCESS != (rc = pmix_hash_store(&trk->remote, proc->rank, kv))) {
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
         }
         PMIX_RELEASE(kv);  // maintain accounting as the hash increments the ref count
         /* continue along */
@@ -2009,6 +2088,7 @@ static pmix_status_t _hash_store_modex(void * cbdata,
 static pmix_status_t dohash(pmix_hash_table_t *ht,
                             const char *key,
                             pmix_rank_t rank,
+                            bool skip_genvals,
                             pmix_list_t *kvs)
 {
     pmix_status_t rc;
@@ -2032,6 +2112,12 @@ static pmix_status_t dohash(pmix_hash_table_t *ht,
             info = (pmix_info_t*)val->data.darray->array;
             ninfo = val->data.darray->size;
             for (n=0; n < ninfo; n++) {
+                /* if the rank is UNDEF, then we don't want
+                 * anything that starts with "pmix" */
+                if (skip_genvals &&
+                    0 == strncmp(info[n].key, "pmix", 4)) {
+                    continue;
+                }
                 /* see if we already have this on the list */
                 kv = NULL;
                 PMIX_LIST_FOREACH(k2, kvs, pmix_kval_t) {
@@ -2245,10 +2331,10 @@ static pmix_status_t hash_fetch(const pmix_proc_t *proc,
     pmix_rank_t rnk;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
-                        "[%s:%u] pmix:gds:hash fetch %s for proc %s:%u on scope %s",
-                        pmix_globals.myid.nspace, pmix_globals.myid.rank,
+                        "[%s] pmix:gds:hash fetch %s for proc %s on scope %s",
+                        PMIX_NAME_PRINT(&pmix_globals.myid),
                         (NULL == key) ? "NULL" : key,
-                        proc->nspace, proc->rank, PMIx_Scope_string(scope));
+                        PMIX_NAME_PRINT(proc), PMIx_Scope_string(scope));
 
     /* if the rank is wildcard and the key is NULL, then
      * they are asking for a complete copy of the job-level
@@ -2387,7 +2473,7 @@ static pmix_status_t hash_fetch(const pmix_proc_t *proc,
         rc = fetch_appinfo(key, &trk->apps, qualifiers, nqual, kvs);
         /* if they did, then we are done */
         if (PMIX_ERR_DATA_VALUE_NOT_FOUND != rc) {
-            return rc;
+           return rc;
         }
     }
 
@@ -2415,16 +2501,15 @@ static pmix_status_t hash_fetch(const pmix_proc_t *proc,
      * be the source */
     if (PMIX_RANK_UNDEF == proc->rank) {
         for (rnk=0; rnk < trk->nptr->nprocs; rnk++) {
-            rc = dohash(ht, key, rnk, kvs);
-            if (PMIX_SUCCESS != rc) {
+            rc = dohash(ht, key, rnk, true, kvs);
+            if (PMIX_ERR_NOMEM == rc) {
                 return rc;
             }
-            if (NULL != key) {
+            if (PMIX_SUCCESS == rc && NULL != key) {
                 return rc;
             }
         }
-        /* also need to check any info that came in via
-         * a job-level info array */
+        /* also need to check any job-level info */
         PMIX_LIST_FOREACH(kvptr, &trk->jobinfo, pmix_kval_t) {
             if (NULL == key || PMIX_CHECK_KEY(kvptr, key)) {
                 kv = PMIX_NEW(pmix_kval_t);
@@ -2441,11 +2526,13 @@ static pmix_status_t hash_fetch(const pmix_proc_t *proc,
                 }
             }
         }
-        if (0 == pmix_list_get_size(kvs)) {
-            rc = PMIX_ERR_NOT_FOUND;
+        if (NULL == key) {
+            /* and need to add all job info just in case that was
+             * passed via a different GDS component */
+            dohash(&trk->internal, NULL, PMIX_RANK_WILDCARD, false, kvs);
         }
     } else {
-        rc = dohash(ht, key, proc->rank, kvs);
+        rc = dohash(ht, key, proc->rank, false, kvs);
     }
     if (PMIX_SUCCESS == rc) {
         if (PMIX_GLOBAL == scope) {
@@ -2472,6 +2559,9 @@ static pmix_status_t hash_fetch(const pmix_proc_t *proc,
                 goto doover;
             }
         }
+    }
+    if (0 == pmix_list_get_size(kvs)) {
+        rc = PMIX_ERR_NOT_FOUND;
     }
 
     return rc;
@@ -2563,6 +2653,12 @@ static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf)
             PMIX_ERROR_LOG(rc);
             return rc;
         }
+        /* if the rank is UNDEF, then we store this on our own
+         * rank tables */
+        if (PMIX_RANK_UNDEF == proct.rank) {
+            proct.rank = pmix_globals.myid.rank;
+        }
+
         cnt = 1;
         kv = PMIX_NEW(pmix_kval_t);
         PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver,
@@ -2572,7 +2668,6 @@ static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf)
              * the kval contains shmem connection info, then the
              * component will know what to do about it (or else
              * we selected the wrong component for this peer!) */
-
             PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proct, PMIX_INTERNAL, kv);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
