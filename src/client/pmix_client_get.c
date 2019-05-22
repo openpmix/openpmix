@@ -57,6 +57,7 @@
 #include "src/util/compress.h"
 #include "src/util/error.h"
 #include "src/util/hash.h"
+#include "src/util/name_fns.h"
 #include "src/util/output.h"
 #include "src/mca/gds/gds.h"
 #include "src/mca/ptl/ptl.h"
@@ -99,9 +100,8 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc,
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     pmix_output_verbose(2, pmix_client_globals.get_output,
-                        "pmix:client get for %s:%d key %s",
-                        (NULL == proc) ? "NULL" : proc->nspace,
-                        (NULL == proc) ? PMIX_RANK_UNDEF : proc->rank,
+                        "pmix:client get for %s key %s",
+                        (NULL == proc) ? "NULL" : PMIX_NAME_PRINT(proc),
                         (NULL == key) ? "NULL" : key);
 
     /* try to get data directly, without threadshift */
@@ -331,9 +331,14 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
     }
 
     if (PMIX_SUCCESS != ret) {
+        PMIX_ERROR_LOG(ret);
         goto done;
     }
-    PMIX_GDS_ACCEPT_KVS_RESP(rc, pmix_client_globals.myserver, buf);
+    if (PMIX_RANK_UNDEF == proc.rank) {
+        PMIX_GDS_ACCEPT_KVS_RESP(rc, pmix_globals.mypeer, buf);
+    } else {
+        PMIX_GDS_ACCEPT_KVS_RESP(rc, pmix_client_globals.myserver, buf);
+    }
     if (PMIX_SUCCESS != rc) {
         goto done;
     }
@@ -352,7 +357,11 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
             /* fetch the data from server peer module - since it is passing
              * it back to the user, we need a copy of it */
             cb->copy = true;
-            PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, cb);
+            if (PMIX_RANK_UNDEF == proc.rank) {
+                PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
+            } else {
+                PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, cb);
+            }
             if (PMIX_SUCCESS == rc) {
                 if (1 != pmix_list_get_size(&cb->kvs)) {
                     rc = PMIX_ERR_INVALID_VAL;
@@ -559,14 +568,14 @@ static void _getnbfn(int fd, short flags, void *cbdata)
     /* cb was passed to us from another thread - acquire it */
     PMIX_ACQUIRE_OBJECT(cb);
 
-    pmix_output_verbose(2, pmix_client_globals.get_output,
-                        "pmix: getnbfn value for proc %s:%u key %s",
-                        cb->pname.nspace, cb->pname.rank,
-                        (NULL == cb->key) ? "NULL" : cb->key);
-
     /* set the proc object identifier */
     pmix_strncpy(proc.nspace, cb->pname.nspace, PMIX_MAX_NSLEN);
     proc.rank = cb->pname.rank;
+
+    pmix_output_verbose(2, pmix_client_globals.get_output,
+                        "pmix: getnbfn value for proc %s key %s",
+                        PMIX_NAME_PRINT(&proc),
+                        (NULL == cb->key) ? "NULL" : cb->key);
 
     /* scan the incoming directives */
     if (NULL != cb->info) {
@@ -620,7 +629,13 @@ static void _getnbfn(int fd, short flags, void *cbdata)
         /* fetch the data from my server's module - since we are passing
          * it back to the user, we need a copy of it */
         cb->copy = true;
-        PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, cb);
+        /* if the peer and server GDS component are the same, then no
+         * point in trying it again */
+        if (0 != strcmp(pmix_globals.mypeer->nptr->compat.gds->name, pmix_client_globals.myserver->nptr->compat.gds->name)) {
+            PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, cb);
+        } else {
+            rc = PMIX_ERR_TAKE_NEXT_OPTION;
+        }
         if (PMIX_SUCCESS != rc) {
             pmix_output_verbose(5, pmix_client_globals.get_output,
                                 "pmix:client job-level data NOT found");
@@ -669,7 +684,17 @@ static void _getnbfn(int fd, short flags, void *cbdata)
                             "pmix:client job-level data NOT found");
         rc = process_values(&val, cb);
         goto respond;
+    } else if (PMIX_RANK_UNDEF == proc.rank) {
+        /* the data would have to be stored on our own peer, so
+         * we need to go request it */
+        goto request;
     } else {
+        /* if the peer and server GDS component are the same, then no
+         * point in trying it again */
+        if (0 == strcmp(pmix_globals.mypeer->nptr->compat.gds->name, pmix_client_globals.myserver->nptr->compat.gds->name)) {
+            val = NULL;
+            goto request;
+        }
         cb->proc = &proc;
         cb->copy = true;
         PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, cb);
@@ -738,9 +763,9 @@ static void _getnbfn(int fd, short flags, void *cbdata)
     }
 
     pmix_output_verbose(2, pmix_client_globals.get_output,
-                        "%s:%d REQUESTING DATA FROM SERVER FOR %s:%d KEY %s",
-                        pmix_globals.myid.nspace, pmix_globals.myid.rank,
-                        cb->pname.nspace, cb->pname.rank, cb->key);
+                        "%s REQUESTING DATA FROM SERVER FOR %s KEY %s",
+                        PMIX_NAME_PRINT(&pmix_globals.myid),
+                        PMIX_NAME_PRINT(cb->proc), cb->key);
 
     /* track the callback object */
     pmix_list_append(&pmix_client_globals.pending_requests, &cb->super);

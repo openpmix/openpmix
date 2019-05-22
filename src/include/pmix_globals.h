@@ -465,6 +465,7 @@ typedef struct {
      * interface so that other parts of the process can
      * look them up */
     pmix_gds_base_module_t *mygds;
+    pmix_list_t nspaces;
 } pmix_globals_t;
 
 /* provide access to a function to cleanup epilogs */
