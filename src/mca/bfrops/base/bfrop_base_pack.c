@@ -246,7 +246,7 @@ pmix_status_t pmix_bfrops_base_pack_int16(pmix_pointer_array_t *regtypes,
     if (NULL == regtypes) {
         return PMIX_ERR_BAD_PARAM;
     }
-    if (PMIX_INT16 != type) {
+    if (PMIX_INT16 != type && PMIX_UINT16 != type) {
         return PMIX_ERR_BAD_PARAM;
     }
     /* check to see if buffer needs extending */
@@ -282,7 +282,7 @@ pmix_status_t pmix_bfrops_base_pack_int32(pmix_pointer_array_t *regtypes,
     if (NULL == regtypes) {
         return PMIX_ERR_BAD_PARAM;
     }
-    if (PMIX_INT32 != type) {
+    if (PMIX_INT32 != type && PMIX_UINT32 != type) {
         return PMIX_ERR_BAD_PARAM;
     }
     /* check to see if buffer needs extending */
@@ -318,7 +318,7 @@ pmix_status_t pmix_bfrops_base_pack_int64(pmix_pointer_array_t *regtypes,
     if (NULL == regtypes) {
         return PMIX_ERR_BAD_PARAM;
     }
-    if (PMIX_INT64 != type) {
+    if (PMIX_INT64 != type && PMIX_UINT64 != type) {
         return PMIX_ERR_BAD_PARAM;
     }
     /* check to see if buffer needs extending */
