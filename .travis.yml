@@ -1,0 +1,47 @@
+sudo: false
+dist: xenial
+
+cache:
+  apt: true
+
+language: c
+
+addons:
+  apt:
+    packages:
+      - gfortran
+      - perl
+      - libevent-dev
+
+jobs:
+  fast_finish: true
+  include:
+    - compiler: gcc
+      env:
+        - CFLAGS="-Wall -Wextra -Wno-unused-function -Wno-unused-parameter -Wno-type-limits -Wno-missing-field-initializers -Wno-sign-compare -Wno-missing-braces"
+          ENABLE_WERROR="--enable-werror"
+    - compiler: gcc
+      env:
+        - CFLAGS="-fsanitize=undefined"  # TODO: add -fsanitize=address
+    - compiler: clang
+      env:
+        - CFLAGS="-Wall -Wextra -Wno-unused-function -Wno-unused-parameter -Wno-type-limits -Wno-missing-field-initializers -Wno-sign-compare -Wno-missing-braces"
+          ENABLE_WERROR="--enable-werror"
+    # TODO:
+    #- compiler: clang
+    #  env:
+    #    - CFLAGS="-fsanitize=address"
+    #      ASAN_OPTIONS=detect_stack_use_after_return=1:detect_leaks=1:check_initialization_order=true:strict_init_order=true:detect_stack_use_after_scope=1
+    - compiler: clang
+      env:
+        - CFLAGS="-fsanitize=undefined"
+
+script:
+        # prepare
+        # build
+        - ./autogen.pl
+        - ./configure ${ENABLE_WERROR}
+        - if [ $? -ne 0 ]; then cat config.log; fi
+        - make all
+        # test
+        - make check
