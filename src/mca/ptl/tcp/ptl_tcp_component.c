@@ -16,6 +16,7 @@
  * Copyright (c) 2017-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018-2019 IBM Corporation.  All rights reserved.
+ * Copyright (c) 2019      Mellanox Technologies, Inc. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -957,7 +958,7 @@ static void connection_handler(int sd, short args, void *cbdata)
     pmix_ptl_hdr_t hdr;
     pmix_peer_t *peer;
     pmix_rank_t rank=0;
-    pmix_status_t rc;
+    pmix_status_t rc, reply;
     char *msg, *mg, *version;
     char *sec, *bfrops, *gds;
     pmix_bfrop_buffer_type_t bftype;
@@ -1622,22 +1623,13 @@ static void connection_handler(int sd, short args, void *cbdata)
     /* validate the connection */
     cred.bytes = pnd->cred;
     cred.size = pnd->len;
-    PMIX_PSEC_VALIDATE_CONNECTION(rc, peer, NULL, 0, NULL, NULL, &cred);
-    if (PMIX_SUCCESS != rc) {
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "validation of client connection failed");
-        info->proc_cnt--;
-        pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->index, NULL);
-        PMIX_RELEASE(peer);
-        /* send an error reply to the client */
-        goto error;
-    }
+    PMIX_PSEC_VALIDATE_CONNECTION(reply, peer, NULL, 0, NULL, NULL, &cred);
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "client connection validated");
+                        "client connection validated with status=%d", reply);
 
     /* tell the client all is good */
-    u32 = htonl(PMIX_SUCCESS);
+    u32 = htonl(reply);
     if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(uint32_t)))) {
         PMIX_ERROR_LOG(rc);
         info->proc_cnt--;
@@ -1647,6 +1639,22 @@ static void connection_handler(int sd, short args, void *cbdata)
         PMIX_RELEASE(pnd);
         return;
     }
+    /* If needed perform the handshake. The macro will update reply */
+    PMIX_PSEC_SERVER_HANDSHAKE_IFNEED(reply, peer, NULL, 0, NULL, NULL, &cred);
+
+    /* It is possible that connection validation failed
+     * We need to reply to the client first and cleanup after */
+    if (PMIX_SUCCESS != reply) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "validation of client connection failed");
+        info->proc_cnt--;
+        pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->index, NULL);
+        PMIX_RELEASE(peer);
+        /* send an error reply to the client */
+        goto error;
+    }
+
+
       /* send the client's array index */
     u32 = htonl(peer->index);
       if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(uint32_t)))) {
@@ -1709,7 +1717,7 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     pmix_namespace_t *nptr;
     pmix_rank_info_t *info;
     pmix_peer_t *peer;
-    int rc;
+    pmix_status_t rc, reply;
     uint32_t u32;
     pmix_info_t ginfo;
     pmix_byte_object_t cred;
@@ -1868,8 +1876,23 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     /* validate the connection */
     cred.bytes = pnd->cred;
     cred.size = pnd->len;
-    PMIX_PSEC_VALIDATE_CONNECTION(rc, peer, NULL, 0, NULL, NULL, &cred);
-    if (PMIX_SUCCESS != rc) {
+    PMIX_PSEC_VALIDATE_CONNECTION(reply, peer, NULL, 0, NULL, NULL, &cred);
+    /* communicate the result to the other side */
+    u32 = htonl(reply);
+    if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(uint32_t)))) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(peer);
+        pmix_list_remove_item(&pmix_server_globals.nspaces, &nptr->super);
+        PMIX_RELEASE(nptr);  // will release the info object
+        CLOSE_THE_SOCKET(pnd->sd);
+        goto done;
+    }
+
+    /* If needed perform the handshake. The macro will update reply */
+    PMIX_PSEC_SERVER_HANDSHAKE_IFNEED(reply, peer, NULL, 0, NULL, NULL, &cred);
+
+    /* If verification wasn't successful - stop here */
+    if (PMIX_SUCCESS != reply) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "validation of tool credentials failed: %s",
                             PMIx_Error_string(rc));
