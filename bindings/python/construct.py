@@ -510,6 +510,10 @@ def main():
     definitions.write("\n\n")
     constants.write("\n\n")
     harvest_constants(options, "pmix_tool.h", constants, definitions)
+    # add some space
+    definitions.write("\n\n")
+    constants.write("\n\n")
+    harvest_constants(options, "pmix_sched.h", constants, definitions)
 
 if __name__ == '__main__':
     main()

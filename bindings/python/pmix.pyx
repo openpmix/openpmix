@@ -251,7 +251,10 @@ def setmodulefn(k, f):
 
 cdef class PMIxServer(PMIxClient):
     cdef pmix_server_module_t myserver;
+    cdef pmix_fabric_t fabric;
+    cdef int fabric_set;
     def __init__(self):
+        self.fabric_set = 0
         memset(self.myproc.nspace, 0, sizeof(self.myproc.nspace))
         self.myproc.rank = PMIX_RANK_UNDEF
         # v1.x interfaces
@@ -471,6 +474,82 @@ cdef class PMIxServer(PMIxClient):
         global active
         cdef pmix_nspace_t nspace;
         pmix_copy_nspace(nspace, ns)
+
+    def register_fabric(self, keyvals:dict):
+        cdef pmix_info_t *info
+        cdef size_t sz
+        if 1 == self.fabric_set:
+            return _PMIX_ERR_RESOURCE_BUSY
+        if keyvals is not None:
+            # Convert any provided dictionary to an array of pmix_info_t
+            kvkeys = list(keyvals.keys())
+            sz = len(kvkeys)
+            info = <pmix_info_t*> PyMem_Malloc(sz * sizeof(pmix_info_t))
+            if not info:
+                raise MemoryError()
+            pmix_load_info(info, keyvals)
+            rc = PMIx_server_register_fabric(&self.fabric, info, sz)
+            pmix_free_info(info, sz)
+        else:
+            rc = PMIx_server_register_fabric(&self.fabric, NULL, 0)
+        if PMIX_SUCCESS == rc:
+            self.fabric_set = 1
+        return rc
+
+    def deregister_fabric(self):
+        if 0 == self.fabric_set:
+            return PMIX_ERR_INIT
+        rc = PMIx_server_deregister_fabric(&self.fabric)
+        self.fabric_set = 0
+        return rc;
+
+    def get_num_vertices(self):
+        cdef uint32_t nverts;
+        rc = PMIx_server_get_num_vertices(&self.fabric, &nverts)
+        if PMIX_SUCCESS == rc:
+            return nverts
+        else:
+            return rc
+
+    def get_comm_cost(self, src, dest):
+        cdef uint16_t cost;
+        rc = PMIx_server_get_comm_cost(&self.fabric, src, dest, &cost);
+        if PMIX_SUCCESS == rc:
+            return cost
+        else:
+            return rc
+
+    def get_vertex_info(self, i):
+        cdef pmix_value_t vertex;
+        cdef char *nodename;
+        rc = PMIx_server_get_vertex_info(&self.fabric, i, &vertex, &nodename)
+        if PMIX_SUCCESS == rc:
+            # convert the vertex to a tuple
+            pyvertex = pmix_unload_value(&vertex)
+            # convert the nodename to a Python string
+            pyb = nodename
+            pystr = pyb.decode("ascii")
+            # return it as a tuple
+            return (rc, pyvertex, pystr)
+        else:
+            return (rc, None, None)
+
+    def get_index(self, pyvertex:tuple):
+        cdef pmix_value_t vertex;
+        cdef uint32_t i;
+        cdef char *nodename;
+        # convert the tuple to a pmix_value_t
+        rc = pmix_load_value(&vertex, pyvertex)
+        if PMIX_SUCCESS != rc:
+            return (rc, -1, None)
+        rc = PMIx_server_get_index(&self.fabric, &vertex, &i, &nodename)
+        if PMIX_SUCCESS != rc:
+            return (rc, -1, None)
+        # convert the nodename to a Python string
+        pyb = nodename
+        pystr = pyb.decode("ascii")
+        # return it as a tuple
+        return (rc, i, pystr)
 
 cdef int clientconnected(pmix_proc_t *proc, void *server_object,
                          pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
