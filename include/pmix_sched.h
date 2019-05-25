@@ -62,7 +62,7 @@ extern "C" {
 /* Define a pmix_fabric_t struct that host RMs can use to
  * interact with fabric-related interfaces */
 typedef struct pmix_fabric_s {
-    // user-supplied name for this fabric
+    /* user-supplied name for this fabric */
     char *name;
     /* revision - tracks how many times the
      * fabric info has been updated. Used to detect
