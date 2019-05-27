@@ -1298,7 +1298,10 @@ static pmix_status_t recv_connect_ack(int sd, uint8_t myflag)
         if (NULL == pmix_client_globals.myserver->nptr) {
             pmix_client_globals.myserver->nptr = PMIX_NEW(pmix_namespace_t);
         }
-        pmix_ptl_base_recv_blocking(sd, (char*)nspace, PMIX_MAX_NSLEN+1);
+        rc = pmix_ptl_base_recv_blocking(sd, (char*)nspace, PMIX_MAX_NSLEN+1);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
         if (NULL != pmix_client_globals.myserver->nptr->nspace) {
             free(pmix_client_globals.myserver->nptr->nspace);
         }
@@ -1307,7 +1310,10 @@ static pmix_status_t recv_connect_ack(int sd, uint8_t myflag)
             free(pmix_client_globals.myserver->info->pname.nspace);
         }
         pmix_client_globals.myserver->info->pname.nspace = strdup(nspace);
-        pmix_ptl_base_recv_blocking(sd, (char*)&u32, sizeof(uint32_t));
+        rc = pmix_ptl_base_recv_blocking(sd, (char*)&u32, sizeof(uint32_t));
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
         pmix_client_globals.myserver->info->pname.rank = htonl(u32);
 
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
