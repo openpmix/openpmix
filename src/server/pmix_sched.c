@@ -109,9 +109,10 @@ PMIX_EXPORT pmix_status_t PMIx_server_get_num_vertices(pmix_fabric_t *fabric,
     /* if fabric data has been updated since the last time
      * this was accessed, let them know */
     if (fabric->revision != ft->revision) {
-        ret = PMIX_FABRIC_UPDATED;
         /* update the revision */
         fabric->revision = ft->revision;
+        pmix_atomic_unlock(&ft->atomlock);
+        return PMIX_FABRIC_UPDATED;
     }
     if (NULL == ft->module->get_num_vertices) {
         pmix_atomic_unlock(&ft->atomlock);
