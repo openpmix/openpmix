@@ -90,6 +90,29 @@ PMIX_EXPORT pmix_status_t PMIx_server_register_fabric(pmix_fabric_t *fabric,
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
+PMIX_EXPORT pmix_status_t PMIx_server_deregister_fabric(pmix_fabric_t *fabric)
+{
+    pmix_status_t rc = PMIX_SUCCESS;
+    pmix_pnet_module_t *active;
+
+    PMIX_ACQUIRE_THREAD(&pmix_pnet_globals.lock);
+
+    /* it is possible that multiple threads could call this, so
+     * check to see if it has already been initialized - if so,
+     * then just return success */
+    if (NULL == fabric || NULL == fabric->module) {
+        PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
+        return PMIX_SUCCESS;
+    }
+    active = (pmix_pnet_module_t*)fabric->module;
+
+    if (NULL != active->deregister_fabric) {
+        rc = active->deregister_fabric(fabric);
+    }
+    PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
+    return rc;
+}
+
 PMIX_EXPORT pmix_status_t PMIx_server_get_num_vertices(pmix_fabric_t *fabric,
                                                        uint32_t *nverts)
 {

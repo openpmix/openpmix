@@ -159,6 +159,9 @@ typedef pmix_status_t (*pmix_pnet_base_module_register_fabric_fn_t)(pmix_fabric_
                                                                     size_t ndirs);
 
 
+/* Deregister the fabric, giving the associated module a chance to cleanup */
+typedef pmix_status_t (*pmix_pnet_base_deregister_fabric_fn_t)(pmix_fabric_t *fabric);
+
 /* Get the number of vertices in the fabric */
 typedef pmix_status_t (*pmix_pnet_base_module_get_num_verts_fn_t)(pmix_fabric_t *fabric,
                                                                   uint32_t *nverts);
@@ -201,6 +204,7 @@ typedef struct {
     pmix_pnet_base_module_collect_inventory_fn_t    collect_inventory;
     pmix_pnet_base_module_deliver_inventory_fn_t    deliver_inventory;
     pmix_pnet_base_module_register_fabric_fn_t      register_fabric;
+    pmix_pnet_base_deregister_fabric_fn_t           deregister_fabric;
     pmix_pnet_base_module_get_num_verts_fn_t        get_num_vertices;
     pmix_pnet_base_module_get_cost_fn_t             get_cost;
     pmix_pnet_base_module_get_vertex_fn_t           get_vertex;
