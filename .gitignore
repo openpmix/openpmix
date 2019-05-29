@@ -61,6 +61,8 @@ bindings/python/*.so
 bindings/python/build/
 bindings/python/pmix_constants.pxd
 bindings/python/pmix_constants.pxi
+bindings/python/client.py
+bindings/python/server.py
 
 examples/alloc
 examples/client

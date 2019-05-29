@@ -910,6 +910,10 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         pmix_config_prefix[src/tools/pps/Makefile]
         pmix_config_prefix[src/tools/pattrs/Makefile]
         )
+    if test "$WANT_PYTHON_BINDINGS" = "1"; then
+        AC_CONFIG_FILES(pmix_config_prefix[bindings/python/server.py], [chmod +x bindings/python/server.py])
+        AC_CONFIG_FILES(pmix_config_prefix[bindings/python/client.py], [chmod +x bindings/python/client.py])
+    fi
 
     # publish any embedded flags so external wrappers can use them
     AC_SUBST(PMIX_EMBEDDED_LIBS)
@@ -1216,6 +1220,7 @@ if test "$WANT_PYTHON_BINDINGS" = "1"; then
     fi
     python_version=`python --version 2>&1`
     PMIX_SUMMARY_ADD([[Bindings]],[[Python]], [pmix_python], [yes ($python_version)])
+    AC_SUBST([PMIX_PYTHON_PATH], [#!"$PYTHON"], "Full Python executable path")
 
     AC_MSG_CHECKING([if Cython package installed])
     have_cython=`$srcdir/config/pmix_check_cython.py 2> /dev/null`
