@@ -1,4 +1,4 @@
-#!/opt/local/bin/python
+@PMIX_PYTHON_PATH@
 
 from pmix import *
 import signal, time
