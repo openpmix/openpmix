@@ -80,20 +80,24 @@ static int if_linux_ipv6_open(void)
 {
     FILE *f;
     if ((f = fopen("/proc/net/if_inet6", "r"))) {
-        char ifname[21];  // note: IF_NAMESIZE might be too small, e.g. 10;
+        char ifname[IF_NAMESIZE];
+        char *ifnameptr;
         unsigned int idx, pfxlen, scope, dadstat;
         struct in6_addr a6;
         int iter;
         uint32_t flag;
         unsigned int addrbyte[16];
 
-        while (fscanf(f, "%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x %x %x %x %x %20s\n",
+        while (fscanf(f, "%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x%2x %x %x %x %x %ms\n",
                       &addrbyte[0], &addrbyte[1], &addrbyte[2], &addrbyte[3],
                       &addrbyte[4], &addrbyte[5], &addrbyte[6], &addrbyte[7],
                       &addrbyte[8], &addrbyte[9], &addrbyte[10], &addrbyte[11],
                       &addrbyte[12], &addrbyte[13], &addrbyte[14], &addrbyte[15],
-                      &idx, &pfxlen, &scope, &dadstat, ifname) != EOF) {
+                      &idx, &pfxlen, &scope, &dadstat, &ifnameptr) != EOF) {
             pmix_pif_t *intf;
+
+            pmix_strncpy(ifname, ifnameptr, IF_NAMESIZE-1);
+            free(ifnameptr);
 
             pmix_output_verbose(1, pmix_pif_base_framework.framework_output,
                                 "found interface %2x%2x:%2x%2x:%2x%2x:%2x%2x:%2x%2x:%2x%2x:%2x%2x:%2x%2x scope %x\n",
