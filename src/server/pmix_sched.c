@@ -65,12 +65,9 @@ PMIX_EXPORT pmix_status_t PMIx_server_register_fabric(pmix_fabric_t *fabric,
 
     PMIX_ACQUIRE_THREAD(&pmix_pnet_globals.lock);
 
-    /* it is possible that multiple threads could call this, so
-     * check to see if it has already been initialized - if so,
-     * then just return success */
-    if (NULL != fabric->module) {
+    if (0 == pmix_list_get_size(&pmix_pnet_globals.actives)) {
         PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
-        return PMIX_SUCCESS;
+        return PMIX_ERR_NOT_SUPPORTED;
     }
 
     /* scan across active modules until one returns success */
@@ -87,64 +84,47 @@ PMIX_EXPORT pmix_status_t PMIx_server_register_fabric(pmix_fabric_t *fabric,
     /* unlock prior to return */
     PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
 
-    return PMIX_ERR_NOT_SUPPORTED;
+    return PMIX_ERR_NOT_FOUND;
 }
 
 PMIX_EXPORT pmix_status_t PMIx_server_deregister_fabric(pmix_fabric_t *fabric)
 {
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_pnet_module_t *active;
-
-    PMIX_ACQUIRE_THREAD(&pmix_pnet_globals.lock);
+    pmix_pnet_fabric_t *active;
+    pmix_pnet_module_t *module;
 
     /* it is possible that multiple threads could call this, so
      * check to see if it has already been initialized - if so,
      * then just return success */
     if (NULL == fabric || NULL == fabric->module) {
-        PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
         return PMIX_SUCCESS;
     }
-    active = (pmix_pnet_module_t*)fabric->module;
+    active = (pmix_pnet_fabric_t*)fabric->module;
+    module = (pmix_pnet_module_t*)active->module;
 
-    if (NULL != active->deregister_fabric) {
-        rc = active->deregister_fabric(fabric);
+    if (NULL != module->deregister_fabric) {
+        rc = module->deregister_fabric(fabric);
     }
-    PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
     return rc;
 }
 
 PMIX_EXPORT pmix_status_t PMIx_server_get_num_vertices(pmix_fabric_t *fabric,
                                                        uint32_t *nverts)
 {
-    int rc;
-    pmix_status_t ret = PMIX_SUCCESS;
+    pmix_status_t ret;
     pmix_pnet_fabric_t *ft;
+    pmix_pnet_module_t *module;
 
     if (NULL == fabric || NULL == fabric->module) {
         return PMIX_ERR_BAD_PARAM;
     }
     ft = (pmix_pnet_fabric_t*)fabric->module;
+    module = (pmix_pnet_module_t*)ft->module;
 
-    rc = pmix_atomic_trylock(&ft->atomlock);
-    if (0 != rc) {
-        return PMIX_ERR_RESOURCE_BUSY;
-    }
-    /* if fabric data has been updated since the last time
-     * this was accessed, let them know */
-    if (fabric->revision != ft->revision) {
-        /* update the revision */
-        fabric->revision = ft->revision;
-        pmix_atomic_unlock(&ft->atomlock);
-        return PMIX_FABRIC_UPDATED;
-    }
-    if (NULL == ft->module->get_num_vertices) {
-        pmix_atomic_unlock(&ft->atomlock);
+    if (NULL == module->get_num_vertices) {
         return PMIX_ERR_NOT_SUPPORTED;
     }
-    ret = ft->module->get_num_vertices(fabric, nverts);
-
-    /* unlock prior to return */
-    pmix_atomic_unlock(&ft->atomlock);
+    ret = module->get_num_vertices(fabric, nverts);
 
     return ret;
 }
@@ -153,36 +133,21 @@ PMIX_EXPORT pmix_status_t PMIx_server_get_comm_cost(pmix_fabric_t *fabric,
                                                     uint32_t src, uint32_t dest,
                                                     uint16_t *cost)
 {
-    int rc;
     pmix_status_t ret;
     pmix_pnet_fabric_t *ft;
+    pmix_pnet_module_t *module;
 
     if (NULL == fabric || NULL == fabric->module) {
         return PMIX_ERR_BAD_PARAM;
     }
     ft = (pmix_pnet_fabric_t*)fabric->module;
+    module = (pmix_pnet_module_t*)ft->module;
 
-    rc = pmix_atomic_trylock(&ft->atomlock);
-    if (0 != rc) {
-        return PMIX_ERR_RESOURCE_BUSY;
-    }
-
-    /* if fabric data has been updated since the last time
-     * this was accessed, let them know */
-    if (fabric->revision != ft->revision) {
-        /* unlock prior to return */
-        pmix_atomic_unlock(&ft->atomlock);
-        return PMIX_FABRIC_UPDATED;
-    }
-    if (NULL == ft->module->get_cost) {
-        pmix_atomic_unlock(&ft->atomlock);
+    if (NULL == module->get_cost) {
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
-    ret = ft->module->get_cost(fabric, src, dest, cost);
-
-    /* unlock prior to return */
-    pmix_atomic_unlock(&ft->atomlock);
+    ret = module->get_cost(fabric, src, dest, cost);
 
     return ret;
 }
@@ -191,36 +156,21 @@ PMIX_EXPORT pmix_status_t PMIx_server_get_vertex_info(pmix_fabric_t *fabric,
                                                       uint32_t i, pmix_value_t *vertex,
                                                       char **nodename)
 {
-    int rc;
     pmix_status_t ret;
     pmix_pnet_fabric_t *ft;
+    pmix_pnet_module_t *module;
 
     if (NULL == fabric || NULL == fabric->module) {
         return PMIX_ERR_BAD_PARAM;
     }
     ft = (pmix_pnet_fabric_t*)fabric->module;
+    module = (pmix_pnet_module_t*)ft->module;
 
-    rc = pmix_atomic_trylock(&ft->atomlock);
-    if (0 != rc) {
-        return PMIX_ERR_RESOURCE_BUSY;
-    }
-
-    /* if fabric data has been updated since the last time
-     * this was accessed, let them know */
-    if (fabric->revision != ft->revision) {
-        /* unlock prior to return */
-        pmix_atomic_unlock(&ft->atomlock);
-        return PMIX_FABRIC_UPDATED;
-    }
-    if (NULL == ft->module->get_vertex) {
-        pmix_atomic_unlock(&ft->atomlock);
+    if (NULL == module->get_vertex) {
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
-    ret = ft->module->get_vertex(fabric, i, vertex, nodename);
-
-    /* unlock prior to return */
-    pmix_atomic_unlock(&ft->atomlock);
+    ret = module->get_vertex(fabric, i, vertex, nodename);
 
     return ret;
 }
@@ -229,36 +179,21 @@ PMIX_EXPORT pmix_status_t PMIx_server_get_index(pmix_fabric_t *fabric,
                                                 pmix_value_t *vertex, uint32_t *i,
                                                 char **nodename)
 {
-    int rc;
     pmix_status_t ret;
     pmix_pnet_fabric_t *ft;
+    pmix_pnet_module_t *module;
 
     if (NULL == fabric || NULL == fabric->module) {
         return PMIX_ERR_BAD_PARAM;
     }
     ft = (pmix_pnet_fabric_t*)fabric->module;
+    module = (pmix_pnet_module_t*)ft->module;
 
-    rc = pmix_atomic_trylock(&ft->atomlock);
-    if (0 != rc) {
-        return PMIX_ERR_RESOURCE_BUSY;
-    }
-
-    /* if fabric data has been updated since the last time
-     * this was accessed, let them know */
-    if (fabric->revision != ft->revision) {
-        /* unlock prior to return */
-        pmix_atomic_unlock(&ft->atomlock);
-        return PMIX_FABRIC_UPDATED;
-    }
-    if (NULL == ft->module->get_index) {
-        pmix_atomic_unlock(&ft->atomlock);
+    if (NULL == module->get_index) {
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
-    ret = ft->module->get_index(fabric, vertex, i, nodename);
-
-    /* unlock prior to return */
-    pmix_atomic_unlock(&ft->atomlock);
+    ret = module->get_index(fabric, vertex, i, nodename);
 
     return ret;
 }

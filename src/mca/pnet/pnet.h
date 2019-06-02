@@ -188,10 +188,13 @@ typedef pmix_status_t (*pmix_pnet_base_module_get_index_fn_t)(pmix_fabric_t *fab
                                                               uint32_t *i,
                                                               char **nodename);
 /**
- * Base structure for a PNET module
+ * Base structure for a PNET module. Each component should malloc a
+ * copy of the module structure for each fabric plane they support.
  */
 typedef struct {
     char *name;
+    /* provide a pointer to plane-specific metadata */
+    void *plane;
     /* init/finalize */
     pmix_pnet_base_module_init_fn_t                 init;
     pmix_pnet_base_module_fini_fn_t                 finalize;

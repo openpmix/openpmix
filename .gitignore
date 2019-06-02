@@ -141,6 +141,7 @@ test/run_tests14.pl
 test/run_tests15.pl
 test/simple/quietclient
 test/simple/simptest
+test/simple/simpsched
 test/simple/simpclient
 test/simple/simplegacy
 test/simple/simppub

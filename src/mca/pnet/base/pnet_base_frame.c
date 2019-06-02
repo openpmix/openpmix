@@ -184,8 +184,6 @@ PMIX_CLASS_INSTANCE(pmix_pnet_resource_t,
 
 static void ftcon(pmix_pnet_fabric_t *p)
 {
-    pmix_atomic_lock_init(&p->atomlock, 0);
-    p->revision = 0;
     p->module = NULL;
     p->payload = NULL;
 }

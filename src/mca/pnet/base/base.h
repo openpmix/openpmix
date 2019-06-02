@@ -101,12 +101,6 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pnet_job_t);
 
 typedef struct {
     pmix_object_t super;
-    /* use an atomic lock for this object */
-    pmix_atomic_lock_t atomlock;
-    /* track the number of times the info
-     * for this fabric plane has been
-     * updated */
-    uint64_t revision;
     /* provide access to the component
      * APIs that are managing this
      * fabric plane */
