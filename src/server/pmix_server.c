@@ -149,6 +149,8 @@ pmix_status_t pmix_server_initialize(void)
     return PMIX_SUCCESS;
 }
 
+static pmix_server_module_t myhostserver = {0};
+
 PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
                                            pmix_info_t info[], size_t ninfo)
 {
@@ -176,7 +178,11 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
                         "pmix:server init called");
 
     /* setup the function pointers */
-    pmix_host_server = *module;
+    if (NULL == module) {
+        pmix_host_server = myhostserver;
+    } else {
+        pmix_host_server = *module;
+    }
 
     if (NULL != info) {
         for (n=0; n < ninfo; n++) {
