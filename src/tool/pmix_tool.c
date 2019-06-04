@@ -583,7 +583,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         /* it is an error if we were not given an nspace/rank */
         if (!nspace_given || !rank_given) {
             PMIX_RELEASE_THREAD(&pmix_global_lock);
-            return PMIX_ERR_INIT;
+            goto regattr;
         }
     } else {
         /* connect to the server */
@@ -807,6 +807,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         }
     }
 
+  regattr:
     /* register the tool supported attrs */
     rc = pmix_register_tool_attrs();
     return rc;
