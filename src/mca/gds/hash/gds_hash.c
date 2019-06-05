@@ -644,25 +644,24 @@ static pmix_status_t register_info(pmix_peer_t *peer,
     for (rank=0; rank < ns->nprocs; rank++) {
         val = NULL;
         rc = pmix_hash_fetch(ht, rank, NULL, &val);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_SUCCESS != rc && PMIX_ERR_PROC_ENTRY_NOT_FOUND != rc) {
             PMIX_ERROR_LOG(rc);
             if (NULL != val) {
                 PMIX_VALUE_RELEASE(val);
             }
             return rc;
         }
-        if (NULL == val) {
-            return PMIX_ERR_NOT_FOUND;
-        }
         PMIX_CONSTRUCT(&buf, pmix_buffer_t);
         PMIX_BFROPS_PACK(rc, peer, &buf, &rank, 1, PMIX_PROC_RANK);
 
-        info = (pmix_info_t*)val->data.darray->array;
-        ninfo = val->data.darray->size;
-        for (n=0; n < ninfo; n++) {
-            kv.key = info[n].key;
-            kv.value = &info[n].value;
-            PMIX_BFROPS_PACK(rc, peer, &buf, &kv, 1, PMIX_KVAL);
+        if (NULL != val) {
+            info = (pmix_info_t*)val->data.darray->array;
+            ninfo = val->data.darray->size;
+            for (n=0; n < ninfo; n++) {
+                kv.key = info[n].key;
+                kv.value = &info[n].value;
+                PMIX_BFROPS_PACK(rc, peer, &buf, &kv, 1, PMIX_KVAL);
+            }
         }
         kv.key = PMIX_PROC_BLOB;
         kv.value = &blob;
