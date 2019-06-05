@@ -150,7 +150,7 @@ static void set_namespace(int local_size, int univ_size,
     PMIx_generate_regex(NODE_NAME, &regex);
     pmix_strncpy(info[4].key, PMIX_NODE_MAP, PMIX_MAX_KEYLEN);
     info[4].value.type = PMIX_STRING;
-    info[4].value.data.string = regex;
+    info[4].value.data.string = strdup(regex);
 
     /* generate the global proc map */
     fill_seq_ranks_array(univ_size, 0, &ranks);
@@ -161,7 +161,7 @@ static void set_namespace(int local_size, int univ_size,
     free(ranks);
     pmix_strncpy(info[5].key, PMIX_PROC_MAP, PMIX_MAX_KEYLEN);
     info[5].value.type = PMIX_STRING;
-    info[5].value.data.string = ppn;
+    info[5].value.data.string = strdup(ppn);
 
     pmix_strncpy(info[6].key, PMIX_JOB_SIZE, PMIX_MAX_KEYLEN);
     info[6].value.type = PMIX_UINT32;
@@ -915,17 +915,18 @@ int server_launch_clients(int local_size, int univ_size, int base_rank,
     /* fork/exec the test */
     for (n = 0; n < local_size; n++) {
         proc.rank = base_rank + rank_counter;
+        rc = PMIx_server_register_client(&proc, myuid, mygid, NULL, NULL, NULL);
+        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+            TEST_ERROR(("Server register client failed with error %d", rc));
+            PMIx_server_finalize();
+            cli_kill_all();
+            return 0;
+        }
         if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(&proc, client_env))) {//n
             TEST_ERROR(("Server fork setup failed with error %d", rc));
             PMIx_server_finalize();
             cli_kill_all();
             return rc;
-        }
-        if (PMIX_SUCCESS != (rc = PMIx_server_register_client(&proc, myuid, mygid, NULL, NULL, NULL))) {//n
-            TEST_ERROR(("Server fork setup failed with error %d", rc));
-            PMIx_server_finalize();
-            cli_kill_all();
-            return 0;
         }
 
         cli_info[cli_counter].pid = fork();
