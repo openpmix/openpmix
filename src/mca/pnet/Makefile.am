@@ -42,3 +42,7 @@ libmca_pnet_la_SOURCES += $(headers) $(sources)
 
 distclean-local:
 	rm -f base/static-components.h
+
+install-exec-hook:
+	cd $(pmixlibdir) && $(RM) mca_pnet_tcp.*
+	@echo "NOTE: cleaning up any previously installed pnet/tcp component"
