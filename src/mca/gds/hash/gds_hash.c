@@ -202,7 +202,8 @@ static pmix_status_t hash_assign_module(pmix_info_t *info, size_t ninfo,
 }
 
 static pmix_status_t store_map(pmix_hash_table_t *ht,
-                               char **nodes, char **ppn)
+                               char **nodes, char **ppn,
+                               bool procdataprovided)
 {
     pmix_status_t rc;
     pmix_value_t *val;
@@ -341,6 +342,48 @@ static pmix_status_t store_map(pmix_hash_table_t *ht,
                 return rc;
             }
             PMIX_RELEASE(kp2);  // maintain acctg
+            if (!procdataprovided) {
+                /* add an entry for the nodeid */
+                kp2 = PMIX_NEW(pmix_kval_t);
+                kp2->key = strdup(PMIX_NODEID);
+                kp2->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+                kp2->value->type = PMIX_UINT32;
+                kp2->value->data.uint32 = n;
+                if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, rank, kp2))) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_RELEASE(kp2);
+                    pmix_argv_free(procs);
+                    return rc;
+                }
+                PMIX_RELEASE(kp2);  // maintain acctg
+                /* add an entry for the local rank */
+                kp2 = PMIX_NEW(pmix_kval_t);
+                kp2->key = strdup(PMIX_LOCAL_RANK);
+                kp2->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+                kp2->value->type = PMIX_UINT16;
+                kp2->value->data.uint16 = m;
+                if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, rank, kp2))) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_RELEASE(kp2);
+                    pmix_argv_free(procs);
+                    return rc;
+                }
+                PMIX_RELEASE(kp2);  // maintain acctg
+                /* add an entry for the node rank - for now, we assume
+                 * only the one job is running */
+                kp2 = PMIX_NEW(pmix_kval_t);
+                kp2->key = strdup(PMIX_NODE_RANK);
+                kp2->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+                kp2->value->type = PMIX_UINT16;
+                kp2->value->data.uint16 = m;
+                if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, rank, kp2))) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_RELEASE(kp2);
+                    pmix_argv_free(procs);
+                    return rc;
+                }
+                PMIX_RELEASE(kp2);  // maintain acctg
+            }
         }
         pmix_argv_free(procs);
     }
@@ -376,6 +419,7 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
     pmix_rank_t rank;
     pmix_status_t rc=PMIX_SUCCESS;
     size_t n, j, size, len;
+    bool procdataprovided = false;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "[%s:%d] gds:hash:cache_job_info for nspace %s",
@@ -431,29 +475,14 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                 PMIX_ERROR_LOG(rc);
                 goto release;
             }
-            /* if we have already found the proc map, then parse
-             * and store the detailed map */
-            if (NULL != procs) {
-                if (PMIX_SUCCESS != (rc = store_map(ht, nodes, procs))) {
-                    PMIX_ERROR_LOG(rc);
-                    goto release;
-                }
-            }
         } else if (0 == strcmp(info[n].key, PMIX_PROC_MAP)) {
             /* parse the regex to get the argv array containing proc ranks on each node */
             if (PMIX_SUCCESS != (rc = pmix_preg.parse_procs(info[n].value.data.string, &procs))) {
                 PMIX_ERROR_LOG(rc);
                 goto release;
             }
-            /* if we have already recv'd the node map, then parse
-             * and store the detailed map */
-            if (NULL != nodes) {
-                if (PMIX_SUCCESS != (rc = store_map(ht, nodes, procs))) {
-                    PMIX_ERROR_LOG(rc);
-                    goto release;
-                }
-            }
         } else if (0 == strcmp(info[n].key, PMIX_PROC_DATA)) {
+            procdataprovided = true;
             /* an array of data pertaining to a specific proc */
             if (PMIX_DATA_ARRAY != info[n].value.type) {
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
@@ -575,6 +604,17 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
             PMIX_RELEASE(kp2);  // maintain acctg
         }
         trk->gdata_added = true;
+    }
+
+    /* we must have the proc AND node maps */
+    if (NULL == procs || NULL == nodes) {
+        rc = PMIX_ERR_NOT_FOUND;
+        goto release;
+    }
+
+    if (PMIX_SUCCESS != (rc = store_map(ht, nodes, procs, procdataprovided))) {
+        PMIX_ERROR_LOG(rc);
+        goto release;
     }
 
   release:
