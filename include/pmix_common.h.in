@@ -157,6 +157,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_SERVER_GATEWAY                 "pmix.srv.gway"         // (bool) Server is acting as a gateway for PMIx requests
                                                                     //        that cannot be serviced on backend nodes
                                                                     //        (e.g., logging to email)
+#define PMIX_SERVER_SCHEDULER               "pmix.src.sched"        // (bool) Server supports system scheduler
 
 /* tool-related attributes */
 #define PMIX_TOOL_NSPACE                    "pmix.tool.nspace"      // (char*) Name of the nspace to use for this tool
@@ -270,7 +271,9 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_NETWORK_COORDINATE             "pmix.net.coord"        // (pmix_coord_t*) Network coordinate of the specified process
 #define PMIX_NETWORK_COORD_SYSTEM           "pmix.net.coordsys"     // (pmix_coord_system_t) Network coordinate system being employed to
                                                                     //                describe the specified network plane
-
+#define PMIX_NETWORK_PLANE                  "pmix.net.plane"        // (char*) string ID of a network plane
+#define PMIX_NETWORK_SWITCH                 "pmix.net.switch"       // (char*) string ID of a network switch
+#define PMIX_NETWORK_NIC                    "pmix.net.nic"          // (char*) string ID of a NIC
 
 /* size info */
 #define PMIX_UNIV_SIZE                      "pmix.univ.size"        // (uint32_t) #procs in this nspace
