@@ -893,7 +893,7 @@ static pmix_status_t regex_parse_value_range(char *base, char *range,
     for (found = false, i = 0; i < len; ++i) {
         if (isdigit((int) range[i])) {
             if (!found) {
-                start = atoi(range + i);
+                start = strtol(range + i, NULL, 10);
                 found = true;
                 break;
             }
