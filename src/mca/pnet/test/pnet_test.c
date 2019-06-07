@@ -285,7 +285,9 @@ static pmix_status_t test_init(void)
                 nnodes = strtoul(&system[r][6], NULL, 10);
                 for (n=0; n < nnodes; n++) {
                     node = PMIX_NEW(pnet_node_t);
-                    asprintf(&node->name, "test%03d", n);
+                    if (0 > asprintf(&node->name, "test%03d", n)) {
+                        return PMIX_ERR_NOMEM;
+                    }
                     pmix_list_append(&mynodes, &node->super);
                 }
             } else if (0 == strncasecmp(system[r], "plane", 5)) {
@@ -317,7 +319,9 @@ static pmix_status_t test_init(void)
         nplane = 0;
         PMIX_LIST_FOREACH(p, &myplanes, pnet_plane_t) {
             /* assign a name to the plane */
-            asprintf(&p->name, "plane%03d", nplane);
+            if (0 > asprintf(&p->name, "plane%03d", nplane)) {
+                return PMIX_ERR_NOMEM;
+            }
             /* setup the ports on the switches */
             nports = nnodes / p->nswitches;
             /* if it didn't divide evenly, then we have to add
@@ -327,14 +331,22 @@ static pmix_status_t test_init(void)
             }
             for (n=0; n < p->nswitches; n++) {
                 s = PMIX_NEW(pnet_switch_t);
-                asprintf(&s->name, "%s:switch%03d", p->name, n);
+                if (0 > asprintf(&s->name, "%s:switch%03d", p->name, n)) {
+                    return PMIX_ERR_NOMEM;
+                }
                 s->index = n;
                 pmix_list_append(&p->switches, &s->super);
-                asprintf(&s->leftport.name, "%s:port000", s->name);
-                asprintf(&s->rightport.name, "%s:port%03d", s->name, nports+1);
+                if (0 > asprintf(&s->leftport.name, "%s:port000", s->name)) {
+                    return PMIX_ERR_NOMEM;
+                }
+                if (0 > asprintf(&s->rightport.name, "%s:port%03d", s->name, nports+1)) {
+                    return PMIX_ERR_NOMEM;
+                }
                 for (m=0; m < nports; m++) {
                     nic = PMIX_NEW(pnet_nic_t);
-                    asprintf(&nic->name, "%s:port%03d", s->name, m+1);
+                    if (0 > asprintf(&nic->name, "%s:port%03d", s->name, m+1)) {
+                        return PMIX_ERR_NOMEM;
+                    }
                     nic->s = s;
                     nic->plane = p;
                     pmix_list_append(&s->ports, &nic->super);
@@ -394,7 +406,9 @@ static pmix_status_t test_init(void)
                 ns = pmix_list_get_size(&s->ports);
                 PMIX_LIST_FOREACH(node, &mynodes, pnet_node_t) {
                     nic2 = PMIX_NEW(pnet_nic_t);
-                    asprintf(&nic2->name, "%s:nic%03d", node->name, n);
+                    if (0 > asprintf(&nic2->name, "%s:nic%03d", node->name, n)) {
+                        return PMIX_ERR_NOMEM;
+                    }
                     ++n;
                     --ns;
                     nic2->node = node;
@@ -425,8 +439,16 @@ static pmix_status_t test_init(void)
             for (n64=0; n64 < p->nverts; n64++) {
                 p->costmatrix[n64][n64] = 0;
                 nic = (pnet_nic_t*)pmix_pointer_array_get_item(&mynics, n64);
+                if (NULL == nic) {
+                    PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+                    continue;
+                }
                 for (m64=n64+1; m64 < p->nverts; m64++) {
                     nic2 = (pnet_nic_t*)pmix_pointer_array_get_item(&mynics, m64);
+                    if (NULL == nic2) {
+                        PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+                        continue;
+                    }
                     /* if they are on the same switch, then cost is 2 */
                     if (nic->s == nic2->s) {
                         p->costmatrix[n64][m64] = 2;
@@ -1028,6 +1050,10 @@ static pmix_status_t get_vertex(pmix_fabric_t *fabric,
 
     /* find NIC that corresponds to this index */
     nic = (pnet_nic_t*)pmix_pointer_array_get_item(&mynics, i);
+    if (NULL == nic) {
+        pmix_atomic_unlock(&p->atomlock);
+        return PMIX_ERR_NOT_FOUND;
+    }
     node = (pnet_node_t*)nic->node;
     *nodename = strdup(node->name);
     /* the value we pass back will be a data array containing
@@ -1117,6 +1143,10 @@ static pmix_status_t get_index(pmix_fabric_t *fabric,
          * that is the NIC id */
         *i = identifier->data.uint32;
         nic = (pnet_nic_t*)pmix_pointer_array_get_item(&mynics, *i);
+        if (NULL == nic) {
+            ret = PMIX_ERR_NOT_FOUND;
+            goto cleanup;
+        }
         node = (pnet_node_t*)nic->node;
         *nodename = strdup(node->name);
         ret = PMIX_SUCCESS;

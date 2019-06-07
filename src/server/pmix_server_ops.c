@@ -3839,7 +3839,7 @@ static void _grpcbfunc(int sd, short argc, void *cbdata)
 
     pmix_output_verbose(2, pmix_server_globals.connect_output,
                         "server:grpcbfunc processing WITH %d MEMBERS",
-                        ((int)pmix_list_get_size(&trk->local_cbs));
+                        (int)pmix_list_get_size(&trk->local_cbs));
 
     /* if the timer is active, clear it */
     if (trk->event_active) {
