@@ -118,6 +118,7 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env);
     .disable_ipv6_family = true,
     .session_filename = NULL,
     .nspace_filename = NULL,
+    .pid_filename = NULL,
     .system_filename = NULL,
     .rendezvous_filename = NULL,
     .wait_to_connect = 4,
@@ -305,6 +306,10 @@ pmix_status_t component_close(void)
     if (NULL != mca_ptl_tcp_component.nspace_filename) {
         unlink(mca_ptl_tcp_component.nspace_filename);
         free(mca_ptl_tcp_component.nspace_filename);
+    }
+    if (NULL != mca_ptl_tcp_component.pid_filename) {
+        unlink(mca_ptl_tcp_component.pid_filename);
+        free(mca_ptl_tcp_component.pid_filename);
     }
     if (NULL != mca_ptl_tcp_component.rendezvous_filename) {
         unlink(mca_ptl_tcp_component.rendezvous_filename);
@@ -779,10 +784,10 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
         FILE *fp;
         pid_t mypid;
 
-        /* first output to a file based on pid */
+        /* first output to a std file */
         mypid = getpid();
-        if (0 > asprintf(&mca_ptl_tcp_component.session_filename, "%s/pmix.%s.tool.%d",
-                         mca_ptl_tcp_component.session_tmpdir, myhost, mypid)) {
+        if (0 > asprintf(&mca_ptl_tcp_component.session_filename, "%s/pmix.%s.tool",
+                         mca_ptl_tcp_component.session_tmpdir, myhost)) {
             CLOSE_THE_SOCKET(lt->socket);
             goto sockerror;
         }
@@ -810,6 +815,40 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
             CLOSE_THE_SOCKET(lt->socket);
             free(mca_ptl_tcp_component.session_filename);
             mca_ptl_tcp_component.session_filename = NULL;
+            goto sockerror;
+        }
+
+        /* now output to a file based on pid */
+        mypid = getpid();
+        if (0 > asprintf(&mca_ptl_tcp_component.pid_filename, "%s/pmix.%s.tool.%d",
+                         mca_ptl_tcp_component.session_tmpdir, myhost, mypid)) {
+            CLOSE_THE_SOCKET(lt->socket);
+            goto sockerror;
+        }
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "WRITING TOOL FILE %s",
+                            mca_ptl_tcp_component.pid_filename);
+        fp = fopen(mca_ptl_tcp_component.pid_filename, "w");
+        if (NULL == fp) {
+            pmix_output(0, "Impossible to open the file %s in write mode\n", mca_ptl_tcp_component.pid_filename);
+            PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
+            CLOSE_THE_SOCKET(lt->socket);
+            free(mca_ptl_tcp_component.pid_filename);
+            mca_ptl_tcp_component.pid_filename = NULL;
+            goto sockerror;
+        }
+
+        /* output my URI */
+        fprintf(fp, "%s\n", lt->uri);
+        /* add a flag that indicates we accept v2.1 protocols */
+        fprintf(fp, "%s\n", PMIX_VERSION);
+        fclose(fp);
+        /* set the file mode */
+        if (0 != chmod(mca_ptl_tcp_component.pid_filename, S_IRUSR | S_IWUSR | S_IRGRP)) {
+            PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
+            CLOSE_THE_SOCKET(lt->socket);
+            free(mca_ptl_tcp_component.pid_filename);
+            mca_ptl_tcp_component.pid_filename = NULL;
             goto sockerror;
         }
 
