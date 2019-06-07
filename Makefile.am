@@ -60,3 +60,14 @@ nroff:
 
 dist-hook:
 	env LS_COLORS= sh "$(top_srcdir)/config/distscript.sh" "$(top_srcdir)" "$(distdir)" "$(PMIX_VERSION)" "$(PMIX_REPO_REV)"
+
+
+#
+# 2019/06/07: pnet/tcp disabled for now, this removes old installed
+#             versions that can cause trouble with PRRTE
+#
+install-exec-hook:
+	if [ -d $(pmixlibdir) ]; then \
+		cd $(pmixlibdir) && $(RM) mca_pnet_tcp.*; \
+		echo "NOTE: removed any previous pnet/tcp component"; \
+	fi
