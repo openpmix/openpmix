@@ -54,9 +54,52 @@
 
 static pmix_server_module_t mymodule = {0};
 
+typedef struct {
+    mylock_t lock;
+    pmix_status_t status;
+    pmix_info_t *info;
+    size_t ninfo;
+} mycaddy_t;
+
+static void local_cbfunc(pmix_status_t status, void *cbdata)
+{
+    mylock_t *lock = (mylock_t*)cbdata;
+    lock->status = status;
+    DEBUG_WAKEUP_THREAD(lock);
+}
+
+static void setup_cbfunc(pmix_status_t status,
+                         pmix_info_t info[], size_t ninfo,
+                         void *provided_cbdata,
+                         pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    mycaddy_t *mq = (mycaddy_t*)provided_cbdata;
+    size_t n;
+
+    /* print out what came back */
+    pmix_output(0, "SETUP_APP RETURNED %d INFO", (int)ninfo);
+    /* transfer it to the caddy for return to the main thread */
+    if (0 < ninfo) {
+        PMIX_INFO_CREATE(mq->info, ninfo);
+        mq->ninfo = ninfo;
+        for (n=0; n < ninfo; n++) {
+            fprintf(stderr, "Key %s Type %s(%d)\n", info[n].key, PMIx_Data_type_string(info[n].value.type), info[n].value.type);
+            PMIX_INFO_XFER(&mq->info[n], &info[n]);
+        }
+    }
+
+    /* let the library release the data and cleanup from
+     * the operation */
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, cbdata);
+    }
+
+    DEBUG_WAKEUP_THREAD(&mq->lock);
+}
+
 int main(int argc, char **argv)
 {
-    pmix_info_t *info;
+    pmix_info_t *info, *iptr;
     pmix_status_t rc;
     pmix_fabric_t myfabric;
     uint32_t nverts, n32, m32;
@@ -66,6 +109,10 @@ int main(int argc, char **argv)
     int exit_code=0;
     char *nodename;
     size_t n;
+    char *hosts, *procs;
+    char *regex, *ppn;
+    mylock_t lock;
+    mycaddy_t cd;
 
     /* smoke test */
     if (PMIX_SUCCESS != 0) {
@@ -136,6 +183,48 @@ int main(int argc, char **argv)
         goto cleanup;
     }
     fprintf(stderr, "Index %u on host %s\n", n32, nodename);
+
+    /* setup an application */
+    PMIX_INFO_CREATE(iptr, 4);
+    hosts = "test000,test001,test002";
+    PMIx_generate_regex(hosts, &regex);
+    PMIX_INFO_LOAD(&iptr[0], PMIX_NODE_MAP, regex, PMIX_STRING);
+    free(regex);
+
+    procs = "0,1,2;3,4,5;6,7";
+    PMIx_generate_ppn(procs, &ppn);
+    PMIX_INFO_LOAD(&iptr[1], PMIX_PROC_MAP, ppn, PMIX_STRING);
+    free(ppn);
+
+    PMIX_LOAD_KEY(iptr[2].key, PMIX_ALLOC_NETWORK);
+    iptr[2].value.type = PMIX_DATA_ARRAY;
+    PMIX_DATA_ARRAY_CREATE(iptr[2].value.data.darray, 2, PMIX_INFO);
+    info = (pmix_info_t*)iptr[2].value.data.darray->array;
+    PMIX_INFO_LOAD(&info[0], PMIX_ALLOC_NETWORK_ID, "SIMPSCHED.net", PMIX_STRING);
+    PMIX_INFO_LOAD(&info[1], PMIX_ALLOC_NETWORK_SEC_KEY, NULL, PMIX_BOOL);
+
+    PMIX_INFO_LOAD(&iptr[3], PMIX_SETUP_APP_ENVARS, NULL, PMIX_BOOL);
+
+    DEBUG_CONSTRUCT_LOCK(&cd.lock);
+    if (PMIX_SUCCESS != (rc = PMIx_server_setup_application("SIMPSCHED", iptr, 4,
+                                                             setup_cbfunc, &cd))) {
+        pmix_output(0, "[%s:%d] PMIx_server_setup_application failed: %s", __FILE__, __LINE__, PMIx_Error_string(rc));
+        DEBUG_DESTRUCT_LOCK(&cd.lock);
+        goto cleanup;
+    }
+    DEBUG_WAIT_THREAD(&cd.lock);
+    DEBUG_DESTRUCT_LOCK(&cd.lock);
+
+    /* setup the local subsystem */
+    DEBUG_CONSTRUCT_LOCK(&lock);
+        if (PMIX_SUCCESS != (rc = PMIx_server_setup_local_support("SIMPSCHED", cd.info, cd.ninfo,
+                                                                  local_cbfunc, &lock))) {
+        pmix_output(0, "[%s:%d] PMIx_server_setup_local_support failed: %s", __FILE__, __LINE__, PMIx_Error_string(rc));
+        DEBUG_DESTRUCT_LOCK(&lock);
+        goto cleanup;
+    }
+    DEBUG_WAIT_THREAD(&lock);
+    DEBUG_DESTRUCT_LOCK(&lock);
 
   cleanup:
     if (PMIX_SUCCESS != rc) {

@@ -187,6 +187,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         PMIX_SERVER_TOOL_SUPPORT,
         PMIX_SERVER_SYSTEM_SUPPORT,
         PMIX_SERVER_GATEWAY,
+        PMIX_SERVER_SCHEDULER,
         NULL
     };
     char *evar;
@@ -207,13 +208,17 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
 
     if (NULL != info) {
         for (n=0; n < ninfo; n++) {
-            if (0 == strncmp(info[n].key, PMIX_SERVER_GATEWAY, PMIX_MAX_KEYLEN)) {
+            if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_GATEWAY)) {
                 if (PMIX_INFO_TRUE(&info[n])) {
                     ptype |= PMIX_PROC_GATEWAY;
                 }
-            } else if (0 == strncmp(info[n].key, PMIX_SERVER_TMPDIR, PMIX_MAX_KEYLEN)) {
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_SCHEDULER)) {
+                if (PMIX_INFO_TRUE(&info[n])) {
+                    ptype |= PMIX_PROC_SCHEDULER;
+                }
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_TMPDIR)) {
                 pmix_server_globals.tmpdir = strdup(info[n].value.data.string);
-            } else if (0 == strncmp(info[n].key, PMIX_SYSTEM_TMPDIR, PMIX_MAX_KEYLEN)) {
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_SYSTEM_TMPDIR)) {
                 pmix_server_globals.system_tmpdir = strdup(info[n].value.data.string);
             }
         }

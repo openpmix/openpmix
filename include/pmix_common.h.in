@@ -274,6 +274,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_NETWORK_PLANE                  "pmix.net.plane"        // (char*) string ID of a network plane
 #define PMIX_NETWORK_SWITCH                 "pmix.net.switch"       // (char*) string ID of a network switch
 #define PMIX_NETWORK_NIC                    "pmix.net.nic"          // (char*) string ID of a NIC
+#define PMIX_NETWORK_ENDPT                  "pmix.net.endpt"        // (assigned) network endpt for process - type assigned by
+                                                                    //            fabric provider
 
 /* size info */
 #define PMIX_UNIV_SIZE                      "pmix.univ.size"        // (uint32_t) #procs in this nspace
