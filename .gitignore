@@ -108,6 +108,9 @@ bindings/python/src/_pypmix.so
 bindings/python/src/libpypmix.so
 bindings/python/src/pypmix.py
 bindings/python/src/pypmix_wrap.c
+bindings/python/client.py
+bindings/python/server.py
+bindings/python/sched.py
 
 test/pmi2_client
 test/pmi_client

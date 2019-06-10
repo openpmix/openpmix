@@ -15,6 +15,7 @@ class myLock(threading.Event):
         self.event = threading.Event()
         self.status = PMIX_ERR_NOT_SUPPORTED
         self.sz = 0
+        self.info = []
 
     def set(self, status):
         self.status = status
@@ -42,6 +43,18 @@ class myLock(threading.Event):
     def fetch_data(self):
         return (self.data, self.sz)
 
+    def cache_info(self, info:list):
+        # need to copy the info array as the
+        # PMIx server will free it upon execing
+        # the callback function
+        self.info = []
+        for x in info:
+            self.info.append(x)
+
+    def fetch_info(self, info:list):
+        for x in self.info:
+            info.append(x)
+
 cdef void pmix_load_argv(char **keys, argv:list):
     n = 0
     while NULL != keys[n]:
@@ -51,9 +64,24 @@ cdef void pmix_load_argv(char **keys, argv:list):
 
 # TODO: implement support for PMIX_BOOL and PMIX_BYTE
 cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
+    cdef pmix_info_t *infoptr;
     mysize = len(mylist)
     n = 0
-    if PMIX_STRING == mytype:
+    if PMIX_INFO == mytype:
+        array[0].array = PyMem_Malloc(mysize * sizeof(pmix_info_t))
+        if not array[0].array:
+            raise MemoryError()
+        n = 0
+        infoptr = <pmix_info_t*>array[0].array
+        for item in mylist:
+            keylist = item.keys()  # will be only one
+            for key in keylist:
+                pykey = str(key)
+                pmix_copy_key(infoptr[n].key, pykey)
+                pmix_load_value(&infoptr[n].value, item[key])
+                break
+            n += 1
+    elif PMIX_STRING == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(char*))
         if not array[0].array:
             raise MemoryError()
@@ -325,9 +353,9 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
 
 def pmix_bool_convert(f):
     if isinstance(f, str):
-        if f.startswith('t'):
+        if f.startswith('t') or f.startswith('T'):
             return 1
-        elif f.startswith('f'):
+        elif f.startswith('f') or f.startswith('F'):
             return 0
         else:
             raise ValueError("Incorrect boolean value provided")
@@ -364,7 +392,10 @@ cdef void pmix_copy_key(pmix_key_t key, ky):
         pykey = ky
     pykeyptr = <const char *>(pykey)
     memset(key, 0, PMIX_MAX_KEYLEN+1)
-    memcpy(key, pykeyptr, klen)
+    if 'b' == ky[0]:
+        memcpy(key, &pykeyptr[2], klen-3)
+    else:
+        memcpy(key, pykeyptr, klen)
 
 # provide a function for transferring a Python 'value'
 # object (a tuple containing the value and its type)
@@ -474,11 +505,16 @@ cdef int pmix_load_value(pmix_value_t *value, val:tuple):
         pmix_copy_nspace(value[0].data.proc[0].nspace, val[0][0])
         value[0].data.proc[0].rank = val[0][1]
     elif val[1] == PMIX_BYTE_OBJECT:
-        value[0].data.bo.size = val[0][0]
+        if 'b' == val[0][0][0]:
+            value[0].data.bo.size = val[0][1] - 3
+            offset = 2
+        else:
+            value[0].data.bo.size = val[0][1]
+            offset = 0
         value[0].data.bo.bytes = <char*> PyMem_Malloc(value[0].data.bo.size)
         if not value[0].data.bo.bytes:
             raise MemoryError()
-        pyarr = bytes(val[0][1])
+        pyarr = bytes(val[0][0][offset])
         pyptr = <const char*> pyarr
         memcpy(value[0].data.bo.bytes, pyptr, value[0].data.bo.size)
     elif val[1] == PMIX_PERSISTENCE:
@@ -516,8 +552,20 @@ cdef int pmix_load_value(pmix_value_t *value, val:tuple):
             raise ValueError("allocdirective value is out of bounds")
         value[0].data.adir = val[0]
     elif val[1] == PMIX_ENVAR:
-        value[0].data.envar.envar = strdup(val[0]['envar'])
-        value[0].data.envar.value = strdup(val[0]['value'])
+        enval = val[0]['envar']
+        if isinstance(enval, str):
+            pyns = enval.encode('ascii')
+        else:
+            pyns = enval
+        pynsptr = <const char *>(pyns)
+        value[0].data.envar.envar = strdup(pynsptr)
+        enval = val[0]['value']
+        if isinstance(enval, str):
+            pyns = enval.encode('ascii')
+        else:
+            pyns = enval
+        pynsptr = <const char *>(pyns)
+        value[0].data.envar.value = strdup(pynsptr)
         value[0].data.envar.separator = val[0]['separator']
     else:
         print("UNRECOGNIZED VALUE TYPE")
@@ -576,7 +624,11 @@ cdef tuple pmix_unload_value(const pmix_value_t *value):
         pyns = str(value[0].data.proc[0].nspace)
         return ((pyns, value[0].data.proc[0].rank), PMIX_PROC)
     elif PMIX_BYTE_OBJECT == value[0].type:
-        raise ValueError("Unload_value: byte object not supported")
+        mybytes = <char*> PyMem_Malloc(value[0].data.bo.size)
+        if not mybytes:
+            raise MemoryError()
+        memcpy(mybytes, value[0].data.bo.bytes, value[0].data.bo.size)
+        return ((mybytes, value[0].data.bo.size), PMIX_BYTE_OBJECT)
     elif PMIX_PERSISTENCE == value[0].type:
         return (value[0].data.persist, PMIX_PERSISTENCE)
     elif PMIX_SCOPE == value[0].type:
@@ -630,23 +682,29 @@ cdef int pmix_load_info(pmix_info_t *array, keyvals:dict):
     kvkeys = list(keyvals.keys())
     n = 0
     for key in kvkeys:
-        pmix_copy_key(array[n].key, key)
+        pykey = str(key)
+        pmix_copy_key(array[n].key, pykey)
         # the value also needs to be transferred
-        pmix_load_value(&array[n].value, keyvals[key])
+        rc = pmix_load_value(&array[n].value, keyvals[key])
+        if PMIX_SUCCESS != rc:
+            return rc
         n += 1
     return PMIX_SUCCESS
 
-cdef int pmix_unload_info(const pmix_info_t *info, size_t ninfo, keyval:dict):
+cdef int pmix_unload_info(const pmix_info_t *info, size_t ninfo, ilist:list):
     cdef char* kystr
     cdef size_t n = 0
     while n < ninfo:
         val = pmix_unload_value(&info[n].value)
         if val[1] == PMIX_UNDEF:
             return PMIX_ERR_NOT_SUPPORTED
+        keyval = {}
         kystr = strdup(info[n].key)
         pykey = kystr.decode("ascii")
         free(kystr)
         keyval[pykey] = val
+        ilist.append(keyval)
+        n += 1
     return PMIX_SUCCESS
 
 cdef void pmix_destruct_info(pmix_info_t *info):

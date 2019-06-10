@@ -825,6 +825,8 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
         for (n=0; n < ninfo; n++) {
             /* look for my key */
             if (PMIX_CHECK_KEY(&info[n], "pmix-pnet-test-blob")) {
+                pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                                    "pnet:test:setup_local_network found my blob");
                 /* this macro NULLs and zero's the incoming bo */
                 PMIX_LOAD_BUFFER(pmix_globals.mypeer, &bkt,
                                  info[n].value.data.bo.bytes,
