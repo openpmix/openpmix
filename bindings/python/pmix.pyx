@@ -25,8 +25,23 @@ cdef void dmodx_cbfunc(pmix_status_t status,
                        char *data, size_t sz,
                        void *cbdata) with gil:
     global active
-    active.cache_data(data, sz)
+    if PMIX_SUCCESS == status:
+        active.cache_data(data, sz)
     active.set(status)
+    return
+
+cdef void setupapp_cbfunc(pmix_status_t status,
+                          pmix_info_t info[], size_t ninfo,
+                          void *provided_cbdata,
+                          pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
+    global active
+    if PMIX_SUCCESS == status:
+        ilist = []
+        rc = pmix_unload_info(info, ninfo, ilist)
+        active.cache_info(ilist)
+        status = rc
+    active.set(status)
+    cbfunc(PMIX_SUCCESS, cbdata)
     return
 
 cdef class PMIxClient:
@@ -359,7 +374,6 @@ cdef class PMIxServer(PMIxClient):
                 raise MemoryError()
             pmix_load_info(info, keyvals)
             rc = PMIx_server_register_nspace(nspace, nlocalprocs, info, sz, pmix_opcbfunc, NULL)
-            pmix_free_info(info, sz)
         else:
             rc = PMIx_server_register_nspace(nspace, nlocalprocs, NULL, 0, pmix_opcbfunc, NULL)
         if PMIX_SUCCESS == rc:
@@ -473,7 +487,57 @@ cdef class PMIxServer(PMIxClient):
     def setup_application(self, ns, keyvals:dict):
         global active
         cdef pmix_nspace_t nspace;
+        cdef pmix_info_t *info
+        cdef size_t sz
+        dataout = []
         pmix_copy_nspace(nspace, ns)
+        if keyvals is not None:
+            # Convert any provided dictionary to an array of pmix_info_t
+            kvkeys = list(keyvals.keys())
+            sz = len(kvkeys)
+            info = <pmix_info_t*> PyMem_Malloc(sz * sizeof(pmix_info_t))
+            if not info:
+                raise MemoryError()
+            pmix_load_info(info, keyvals)
+        else:
+            info = NULL
+            sz = 0
+        active.clear()
+        rc = PMIx_server_setup_application(nspace, info, sz, setupapp_cbfunc, NULL);
+        if PMIX_SUCCESS == rc:
+            active.wait()
+            # transfer the data to the dictionary
+            active.fetch_info(dataout)
+        return (rc, dataout)
+
+    def setup_local_support(self, ns, ilist:list):
+        global active
+        cdef pmix_nspace_t nspace;
+        cdef pmix_info_t *info
+        cdef size_t sz
+        pmix_copy_nspace(nspace, ns)
+        if ilist is not None:
+            sz = len(ilist)
+            info = <pmix_info_t*> PyMem_Malloc(sz * sizeof(pmix_info_t))
+            if not info:
+                raise MemoryError()
+            n = 0
+            for iptr in ilist:
+                keys = list(iptr.keys())
+                for key in keys:
+                    pykey = str(key)
+                    pmix_copy_key(info[n].key, pykey)
+                    # the value also needs to be transferred
+                    pmix_load_value(&info[n].value, iptr[key])
+                    n += 1
+                    break
+        else:
+            info = NULL
+            sz = 0
+        rc = PMIx_server_setup_local_support(nspace, info, sz, pmix_opcbfunc, NULL);
+        if PMIX_SUCCESS == rc:
+            active.wait()
+        return rc
 
     def register_fabric(self, keyvals:dict):
         cdef pmix_info_t *info
@@ -550,6 +614,28 @@ cdef class PMIxServer(PMIxClient):
         pystr = pyb.decode("ascii")
         # return it as a tuple
         return (rc, i, pystr)
+
+    def generate_regex(self, hosts):
+        cdef char *regex;
+        if isinstance(hosts, str):
+            pyhosts = hosts.encode('ascii')
+        else:
+            pyhosts = hosts
+        rc = PMIx_generate_regex(pyhosts, &regex)
+        pyreg = regex
+        pystr = pyreg.decode("ascii")
+        return (rc, pystr)
+
+    def generate_ppn(self, procs):
+        cdef char *ppn;
+        if isinstance(procs, str):
+            pyprocs = procs.encode('ascii')
+        else:
+            pyprocs = procs
+        rc = PMIx_generate_ppn(pyprocs, &ppn)
+        pyppn = ppn
+        pystr = pyppn.decode("ascii")
+        return (rc, pystr)
 
 cdef int clientconnected(pmix_proc_t *proc, void *server_object,
                          pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
@@ -646,13 +732,15 @@ cdef int fencenb(const pmix_proc_t procs[], size_t nprocs,
     if 'fencenb' in keys:
         args = {}
         myprocs = []
-        keyvals = {}
         blist = []
+        ilist = []
         pmix_unload_procs(procs, nprocs, myprocs)
         args['procs'] = myprocs
         if NULL != info:
-            pmix_unload_info(info, ninfo, keyvals)
-            args['info'] = keyvals
+            rc = pmix_unload_info(info, ninfo, ilist)
+            if PMIX_SUCCESS != rc:
+                return rc
+            args['info'] = ilist
         if NULL != data:
             pmix_unload_bytes(data, ndata, blist)
             barray = bytearray(blist)
@@ -686,12 +774,12 @@ cdef int directmodex(const pmix_proc_t *proc,
     if 'directmodex' in keys:
         args = {}
         myprocs = []
-        keyvals = {}
+        ilist = []
         pmix_unload_procs(proc, 1, myprocs)
         args['proc'] = myprocs[0]
         if NULL != info:
-            pmix_unload_info(info, ninfo, keyvals)
-            args['info'] = keyvals
+            pmix_unload_info(info, ninfo, ilist)
+            args['info'] = ilist
         rc = pmixservermodule['directmodex'](args)
     else:
         return PMIX_ERR_NOT_SUPPORTED
@@ -715,12 +803,12 @@ cdef int publish(const pmix_proc_t *proc,
     if 'publish' in keys:
         args = {}
         myprocs = []
-        keyvals = {}
+        ilist = []
         pmix_unload_procs(proc, 1, myprocs)
         args['proc'] = myprocs[0]
         if NULL != info:
-            pmix_unload_info(info, ninfo, keyvals)
-            args['info'] = keyvals
+            pmix_unload_info(info, ninfo, ilist)
+            args['info'] = ilist
         rc = pmixservermodule['publish'](args)
     else:
         return PMIX_ERR_NOT_SUPPORTED
@@ -750,7 +838,7 @@ cdef int lookup(const pmix_proc_t *proc, char **keys,
     if 'lookup' in srvkeys:
         args = {}
         myprocs = []
-        keyvals = {}
+        ilist = []
         pykeys = []
         n = 0
         while NULL != keys[n]:
@@ -760,8 +848,8 @@ cdef int lookup(const pmix_proc_t *proc, char **keys,
         pmix_unload_procs(proc, 1, myprocs)
         args['proc'] = myprocs[0]
         if NULL != info:
-            pmix_unload_info(info, ninfo, keyvals)
-            args['info'] = keyvals
+            pmix_unload_info(info, ninfo, ilist)
+            args['info'] = ilist
         rc = pmixservermodule['lookup'](args)
     else:
         return PMIX_ERR_NOT_SUPPORTED
@@ -785,7 +873,7 @@ cdef int unpublish(const pmix_proc_t *proc, char **keys,
     if 'unpublish' in srvkeys:
         args = {}
         myprocs = []
-        keyvals = {}
+        ilist = []
         pykeys = []
         if NULL != keys:
             pmix_load_argv(keys, pykeys)
@@ -793,8 +881,8 @@ cdef int unpublish(const pmix_proc_t *proc, char **keys,
         pmix_unload_procs(proc, 1, myprocs)
         args['proc'] = myprocs[0]
         if NULL != info:
-            pmix_unload_info(info, ninfo, keyvals)
-            args['info'] = keyvals
+            pmix_unload_info(info, ninfo, ilist)
+            args['info'] = ilist
         rc = pmixservermodule['unpublish'](args)
     else:
         return PMIX_ERR_NOT_SUPPORTED
@@ -825,13 +913,13 @@ cdef int spawn(const pmix_proc_t *proc,
     if 'spawn' in keys:
         args = {}
         myprocs = []
-        keyvals = {}
+        ilist = []
         pyapps = []
         pmix_unload_procs(proc, 1, myprocs)
         args['proc'] = myprocs[0]
         if NULL != job_info:
-            pmix_unload_info(job_info, ninfo, keyvals)
-            args['jobinfo'] = keyvals
+            pmix_unload_info(job_info, ninfo, ilist)
+            args['jobinfo'] = ilist
         pmix_unload_apps(apps, napps, pyapps)
         args['apps'] = pyapps
         rc = pmixservermodule['spawn'](args)
@@ -846,13 +934,13 @@ cdef int connect(const pmix_proc_t procs[], size_t nprocs,
     if 'connect' in keys:
         args = {}
         myprocs = []
-        keyvals = {}
+        ilist = []
         if NULL != procs:
             pmix_unload_procs(procs, nprocs, myprocs)
             args['procs'] = myprocs
         if NULL != info:
-            pmix_unload_info(info, ninfo, keyvals)
-            args['info'] = keyvals
+            pmix_unload_info(info, ninfo, ilist)
+            args['info'] = ilist
         rc = pmixservermodule['connect'](args)
     else:
         return PMIX_ERR_NOT_SUPPORTED
@@ -876,13 +964,13 @@ cdef int disconnect(const pmix_proc_t procs[], size_t nprocs,
     if 'disconnect' in keys:
         args = {}
         myprocs = []
-        keyvals = {}
+        ilist = []
         if NULL != procs:
             pmix_unload_procs(procs, nprocs, myprocs)
             args['procs'] = myprocs
         if NULL != info:
-            pmix_unload_info(info, ninfo, keyvals)
-            args['info'] = keyvals
+            pmix_unload_info(info, ninfo, ilist)
+            args['info'] = ilist
         rc = pmixservermodule['disconnect'](args)
     else:
         return PMIX_ERR_NOT_SUPPORTED
@@ -906,7 +994,7 @@ cdef int registerevents(pmix_status_t *codes, size_t ncodes,
     if 'registerevents' in keys:
         args = {}
         mycodes = []
-        keyvals = {}
+        ilist = []
         if NULL != codes:
             n = 0
             while n < ncodes:
@@ -914,8 +1002,8 @@ cdef int registerevents(pmix_status_t *codes, size_t ncodes,
                 n += 1
             args['codes'] = mycodes
         if NULL != info:
-            pmix_unload_info(info, ninfo, keyvals)
-            args['info'] = keyvals
+            pmix_unload_info(info, ninfo, ilist)
+            args['info'] = ilist
         rc = pmixservermodule['registerevents'](args)
     else:
         return PMIX_ERR_NOT_SUPPORTED
@@ -968,15 +1056,15 @@ cdef int notifyevent(pmix_status_t code,
     keys = pmixservermodule.keys()
     if 'notifyevent' in keys:
         args = {}
-        keyvals = {}
+        ilist = []
         myproc = []
         args['code'] = code
         pmix_unload_procs(source, 1, myproc)
         args['source'] = myproc[0]
         args['range'] = drange
         if NULL != info:
-            pmix_unload_info(info, ninfo, keyvals)
-            args['info'] = keyvals
+            pmix_unload_info(info, ninfo, ilist)
+            args['info'] = ilist
         rc = pmixservermodule['notifyevent'](args)
     else:
         return PMIX_ERR_NOT_SUPPORTED
@@ -1027,10 +1115,10 @@ cdef void toolconnected(pmix_info_t *info, size_t ninfo,
     keys = pmixservermodule.keys()
     if 'toolconnected' in keys:
         args = {}
-        keyvals = {}
+        ilist = {}
         if NULL != info:
-            pmix_unload_info(info, ninfo, keyvals)
-            args['info'] = keyvals
+            pmix_unload_info(info, ninfo, ilist)
+            args['info'] = ilist
         pmixservermodule['toolconnected'](args)
     return
 
@@ -1041,14 +1129,14 @@ cdef void log(const pmix_proc_t *client,
     keys = pmixservermodule.keys()
     if 'log' in keys:
         args = {}
-        keyvals = {}
+        ilist = []
         myproc = []
-        mydirs = {}
+        mydirs = []
         pmix_unload_procs(client, 1, myproc)
         args['client'] = myproc[0]
         if NULL != data:
-            pmix_unload_info(data, ndata, keyvals)
-            args['data'] = keyvals
+            pmix_unload_info(data, ndata, ilist)
+            args['data'] = ilist
         if NULL != directives:
             pmix_unload_info(directives, ndirs, mydirs)
             args['directives'] = mydirs
