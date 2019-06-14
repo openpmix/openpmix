@@ -66,7 +66,7 @@ def main():
     kyvals = {PMIX_NODE_MAP: (regex, PMIX_STRING), PMIX_PROC_MAP: (ppn, PMIX_STRING), PMIX_ALLOC_NETWORK: (darray, PMIX_DATA_ARRAY)}
 
     appinfo = []
-    rc = foo.setup_application("SIMPSCHED", kyvals, appinfo)
+    rc, appinfo = foo.setup_application("SIMPSCHED", kyvals)
     print("SETUPAPP: ", appinfo)
 
     rc = foo.setup_local_support("SIMPSCHED", appinfo)
