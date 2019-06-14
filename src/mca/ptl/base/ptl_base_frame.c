@@ -11,7 +11,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2012-2013 Los Alamos National Security, Inc.  All rights reserved.
- * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2017 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
@@ -198,9 +198,13 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_ptl_sr_t,
 
 static void pccon(pmix_pending_connection_t *p)
 {
+    p->sd = 0;
+    p->need_id = false;
+    p->flag = 0;
     memset(p->nspace, 0, PMIX_MAX_NSLEN+1);
     p->info = NULL;
     p->ninfo = 0;
+    p->peer = NULL;
     p->bfrops = NULL;
     p->psec = NULL;
     p->gds = NULL;

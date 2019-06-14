@@ -12,7 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007-2011 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2012-2013 Los Alamos National Security, Inc. All rights reserved.
- * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -196,11 +196,14 @@ typedef struct {
     pmix_event_t ev;
     pmix_listener_protocol_t protocol;
     int sd;
+    bool need_id;
+    uint8_t flag;
     char nspace[PMIX_MAX_NSLEN+1];
     pmix_info_t *info;
     size_t ninfo;
     pmix_status_t status;
     struct sockaddr_storage addr;
+    struct pmix_peer_t *peer;
     char *bfrops;
     char *psec;
     char *gds;
