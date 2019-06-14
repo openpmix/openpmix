@@ -49,8 +49,9 @@ multiple release branches.
 - PR #1237: Ensure all participants are notified of connect and disconnect complete
 - PR #1250: Fix PMIx_server_finalize hang (rare)
 - PR #1271: PTL/usock doesn't support tools
-- PR #1240: Fix the PTL connection establishment protocol
+- PR #1280: Fix the PTL connection establishment protocol
 - PR #1280: Fix tool connection in psec/handshake mode
+- PR #1298: Add dummy handshake component to psec framework for testing
 
 
 3.1.2 -- 24 Jan 2019
