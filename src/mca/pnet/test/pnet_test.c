@@ -240,11 +240,12 @@ static pmix_status_t test_init(void)
 {
     int n, m, r, ns, nplane, nnodes, nports;
     uint64_t n64, m64;
-    char **system, **ptr;
+    char **system=NULL, **ptr;
     pnet_plane_t *p;
     pnet_switch_t *s, *s2;
     pnet_nic_t *nic, *nic2;
     pnet_node_t *node;
+    pmix_status_t rc;
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                         "pnet: test init");
@@ -288,7 +289,9 @@ static pmix_status_t test_init(void)
                 for (n=0; n < nnodes; n++) {
                     node = PMIX_NEW(pnet_node_t);
                     if (0 > asprintf(&node->name, "test%03d", n)) {
-                        return PMIX_ERR_NOMEM;
+                        rc = PMIX_ERR_NOMEM;
+                        PMIX_RELEASE(node);
+                        goto cleanup;
                     }
                     pmix_list_append(&mynodes, &node->super);
                 }
@@ -313,8 +316,8 @@ static pmix_status_t test_init(void)
                 pmix_list_append(&myplanes, &p->super);
             } else {
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-                pmix_argv_free(system);
-                return PMIX_ERR_BAD_PARAM;
+                rc = PMIX_ERR_BAD_PARAM;
+                goto cleanup;
             }
         }
         /* setup the ports in each switch for each plane */
@@ -322,7 +325,8 @@ static pmix_status_t test_init(void)
         PMIX_LIST_FOREACH(p, &myplanes, pnet_plane_t) {
             /* assign a name to the plane */
             if (0 > asprintf(&p->name, "plane%03d", nplane)) {
-                return PMIX_ERR_NOMEM;
+                rc = PMIX_ERR_NOMEM;
+                goto cleanup;
             }
             /* setup the ports on the switches */
             nports = nnodes / p->nswitches;
@@ -334,20 +338,24 @@ static pmix_status_t test_init(void)
             for (n=0; n < p->nswitches; n++) {
                 s = PMIX_NEW(pnet_switch_t);
                 if (0 > asprintf(&s->name, "%s:switch%03d", p->name, n)) {
-                    return PMIX_ERR_NOMEM;
+                    rc = PMIX_ERR_NOMEM;
+                    goto cleanup;
                 }
                 s->index = n;
                 pmix_list_append(&p->switches, &s->super);
                 if (0 > asprintf(&s->leftport.name, "%s:port000", s->name)) {
-                    return PMIX_ERR_NOMEM;
+                    rc = PMIX_ERR_NOMEM;
+                    goto cleanup;
                 }
                 if (0 > asprintf(&s->rightport.name, "%s:port%03d", s->name, nports+1)) {
-                    return PMIX_ERR_NOMEM;
+                    rc = PMIX_ERR_NOMEM;
+                    goto cleanup;
                 }
                 for (m=0; m < nports; m++) {
                     nic = PMIX_NEW(pnet_nic_t);
                     if (0 > asprintf(&nic->name, "%s:port%03d", s->name, m+1)) {
-                        return PMIX_ERR_NOMEM;
+                        rc = PMIX_ERR_NOMEM;
+                        goto cleanup;
                     }
                     nic->s = s;
                     nic->plane = p;
@@ -409,7 +417,8 @@ static pmix_status_t test_init(void)
                 PMIX_LIST_FOREACH(node, &mynodes, pnet_node_t) {
                     nic2 = PMIX_NEW(pnet_nic_t);
                     if (0 > asprintf(&nic2->name, "%s:nic%03d", node->name, n)) {
-                        return PMIX_ERR_NOMEM;
+                        rc = PMIX_ERR_NOMEM;
+                        goto cleanup;
                     }
                     ++n;
                     --ns;
@@ -471,9 +480,16 @@ static pmix_status_t test_init(void)
             ++nplane;
         }
         pmix_argv_free(system);
+        system = NULL;
+    }
+    rc = PMIX_SUCCESS;
+
+  cleanup:
+    if (NULL != system) {
+        pmix_argv_free(system);
     }
 
-    return PMIX_SUCCESS;
+    return rc;
 }
 
 static void test_finalize(void)
