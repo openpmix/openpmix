@@ -529,7 +529,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
     pmix_list_t mylist;
     size_t n, m, p, q, nreqs=0;
     pmix_info_t *requests = NULL, *iptr, *ip2;
-    char *idkey = NULL, **locals;
+    char *idkey = NULL, **locals = NULL;
     uint64_t unique_key = 12345;
     pmix_buffer_t buf;
     pmix_status_t rc;
@@ -633,7 +633,8 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             if (PMIX_STRING != requests[n].value.type ||
                 NULL == requests[n].value.data.string) {
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-                return PMIX_ERR_BAD_PARAM;
+                rc = PMIX_ERR_BAD_PARAM;
+                goto cleanup;
             }
             idkey = requests[n].value.data.string;
         } else if (PMIX_CHECK_KEY(&requests[n], PMIX_ALLOC_NETWORK_SEC_KEY)) {
@@ -709,12 +710,10 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
      * for each proc on the node - we assume the same
      * list of static endpoints on each node */
     for (n=0; NULL != nodes[n]; n++) {
-        pmix_output(0, "WORKING NODE %s", nodes[n]);
         /* split the procs for this node */
         locals = pmix_argv_split(procs[n], ',');
         if (NULL == locals) {
             /* aren't any on this node */
-            pmix_output(0, "NO PROCS ON THIS NODE");
             continue;
         }
         /* find this node in our list */
@@ -727,7 +726,6 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
         }
         if (NULL == nd) {
             /* we don't have this node in our list */
-            pmix_output(0, "DO NOT KNOW THIS NODE");
             rc = PMIX_ERR_NOT_FOUND;
             goto cleanup;
         }
@@ -778,6 +776,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             }
         }
         pmix_argv_free(locals);
+        locals = NULL;
         pmix_list_append(&mylist, &kv->super);
     }
 
@@ -818,6 +817,9 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
     if (NULL != procs) {
         pmix_argv_free(procs);
     }
+    if (NULL != locals) {
+        pmix_argv_free(locals);
+    }
     return rc;
 }
 
@@ -857,6 +859,11 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
                                         "recvd KEY %s %s", kv->key, PMIx_Data_type_string(kv->value->type));
                     /* check for the network ID */
                     if (PMIX_CHECK_KEY(kv, PMIX_ALLOC_NETWORK_ID)) {
+                        if (NULL != idkey) {
+                            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                            free(idkey);
+                            return PMIX_ERR_BAD_PARAM;
+                        }
                         idkey = strdup(kv->value->data.string);
                         pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                                             "pnet:test:setup_local_network idkey %s", idkey);
@@ -879,6 +886,9 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
                         PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr, iptr, nvals);
                         if (PMIX_SUCCESS != rc) {
                             PMIX_RELEASE(kv);
+                            if (NULL != idkey) {
+                                free(idkey);
+                            }
                             return rc;
                         }
                     }
@@ -898,6 +908,9 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
         }
     }
 
+    if (NULL != idkey) {
+        free(idkey);
+    }
     return PMIX_SUCCESS;
 }
 
