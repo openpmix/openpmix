@@ -505,17 +505,10 @@ cdef int pmix_load_value(pmix_value_t *value, val:tuple):
         pmix_copy_nspace(value[0].data.proc[0].nspace, val[0][0])
         value[0].data.proc[0].rank = val[0][1]
     elif val[1] == PMIX_BYTE_OBJECT:
-        if 'b' == val[0][0][0]:
-            value[0].data.bo.size = val[0][1] - 3
-            offset = 2
-        else:
-            value[0].data.bo.size = val[0][1]
-            offset = 0
         value[0].data.bo.bytes = <char*> PyMem_Malloc(value[0].data.bo.size)
         if not value[0].data.bo.bytes:
             raise MemoryError()
-        pyarr = bytes(val[0][0][offset])
-        pyptr = <const char*> pyarr
+        pyptr = <char*>val[0][0]
         memcpy(value[0].data.bo.bytes, pyptr, value[0].data.bo.size)
     elif val[1] == PMIX_PERSISTENCE:
         value[0].data.persist = val[0]
