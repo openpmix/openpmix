@@ -401,6 +401,7 @@ cdef void pmix_copy_key(pmix_key_t key, ky):
 # object (a tuple containing the value and its type)
 # to a pmix_value_t
 cdef int pmix_load_value(pmix_value_t *value, val:tuple):
+    print("LOADING VALUE TYPE ", PMIx_Data_type_string(val[1]))
     value[0].type = val[1]
     if val[1] == PMIX_BOOL:
         value[0].data.flag = pmix_bool_convert(val[0])
@@ -676,6 +677,7 @@ cdef int pmix_load_info(pmix_info_t *array, keyvals:dict):
     n = 0
     for key in kvkeys:
         pykey = str(key)
+        print("LOAD INFO ", key, " TYPE ", PMIx_Data_type_string(keyvals[key][1]))
         pmix_copy_key(array[n].key, pykey)
         # the value also needs to be transferred
         rc = pmix_load_value(&array[n].value, keyvals[key])
@@ -688,6 +690,7 @@ cdef int pmix_unload_info(const pmix_info_t *info, size_t ninfo, ilist:list):
     cdef char* kystr
     cdef size_t n = 0
     while n < ninfo:
+        print("UNLOADING INFO ", info[n].key, " TYPE ", PMIx_Data_type_string(info[n].value.type))
         val = pmix_unload_value(&info[n].value)
         if val[1] == PMIX_UNDEF:
             return PMIX_ERR_NOT_SUPPORTED

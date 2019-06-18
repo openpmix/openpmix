@@ -528,6 +528,7 @@ cdef class PMIxServer(PMIxClient):
                     pykey = str(key)
                     pmix_copy_key(info[n].key, pykey)
                     # the value also needs to be transferred
+                    print("SETUP LOCAL ", info[n].key, " TYPE ", PMIx_Data_type_string(iptr[key][1]))
                     pmix_load_value(&info[n].value, iptr[key])
                     n += 1
                     break
