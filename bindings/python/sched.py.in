@@ -76,7 +76,7 @@ def main():
     env = os.environ.copy()
 
     # register an nspace for the client app
-    kvals = {PMIX_UNIV_SIZE: (1, PMIX_UINT32), PMIX_JOB_SIZE: (1, PMIX_UINT32)}
+    kvals = {PMIX_NODE_MAP: (regex, PMIX_STRING), PMIX_PROC_MAP: (ppn, PMIX_STRING), PMIX_UNIV_SIZE: (1, PMIX_UINT32), PMIX_JOB_SIZE: (1, PMIX_UINT32)}
     print("REGISTERING NSPACE")
     rc = foo.register_nspace("testnspace", 1, kvals)
     print("RegNspace ", rc)
