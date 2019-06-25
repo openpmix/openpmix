@@ -616,9 +616,9 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                     }
                 }
                 pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
-                                    "[%s:%d] gds:hash:cache_job_info data for rank %u: key %s",
+                                    "[%s:%d] gds:hash:cache_job_info data for nspace %s rank %u: key %s",
                                     pmix_globals.myid.nspace, pmix_globals.myid.rank,
-                                    rank, kp2->key);
+                                    trk->ns, rank, kp2->key);
                 /* store it in the hash_table */
                 if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, rank, kp2))) {
                     PMIX_ERROR_LOG(rc);
