@@ -51,7 +51,19 @@ multiple release branches.
 - PR #1271: PTL/usock doesn't support tools
 - PR #1280: Fix the PTL connection establishment protocol
 - PR #1280: Fix tool connection in psec/handshake mode
+- PR #1289: Avoid output_verbose overhead when it won't print
+- PR #1296: Allow setup_fork to proceed even if gdds and pnet don't contribute
+- PR #1296: Allow servers to pass NULL module
+- PR #1297: Provide internal blocking ability to the register/deregister fns
 - PR #1298: Add dummy handshake component to psec framework for testing
+- PR #1303: Allow jobs to not specify proc-level info
+- PR #1304: Provide proc data in cases where host does not
+- PR #1305: Add some more values that can be computed
+- PR #1308: Add missing tool rendezvous file
+- PR #1309: Fix potential integer overflow in regex
+- PR #1311: Work around memory bug in older gcc compilers
+- PR #1321: Provide memory op hooks in user-facing macros
+- PR #1329: Add -fPIC to static builds
 
 
 3.1.2 -- 24 Jan 2019
