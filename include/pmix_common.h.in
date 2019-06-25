@@ -2652,12 +2652,6 @@ static inline void pmix_darray_destruct(pmix_data_array_t *m)
                 (m)->array = pmix_calloc((n), sizeof(struct timeval));   \
             } else if (PMIX_TIME == (t)) {                          \
                 (m)->array = pmix_calloc((n), sizeof(time_t));           \
-            } else if (PMIX_REGATTR == (t)) {                       \
-                PMIX_REGATTR_CREATE((m)->array, (n));               \
-            } else if (PMIX_BOOL == (t)) {                          \
-                (m)->array = pmix_calloc((n), sizeof(bool));             \
-            } else if (PMIX_COORD == (t)) {                         \
-                (m)->array = pmix_calloc((n), sizeof(pmix_coord_t));     \
             }                                                       \
         } else {                                                    \
             (m)->array = NULL;                                      \
