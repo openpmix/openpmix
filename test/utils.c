@@ -211,7 +211,8 @@ int launch_clients(int nprocs, char *binary, char *** client_env, char ***base_a
             cli_kill_all();
             return rc;
         }
-        if (PMIX_SUCCESS != (rc = PMIx_server_register_client(&proc, myuid, mygid, NULL, NULL, NULL))) {//n
+        rc = PMIx_server_register_client(&proc, myuid, mygid, NULL, NULL, NULL);
+        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {//n
             TEST_ERROR(("Server fork setup failed with error %d", rc));
             PMIx_server_finalize();
             cli_kill_all();

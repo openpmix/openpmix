@@ -496,7 +496,7 @@ static inline int
 pmix_atomic_trylock(pmix_atomic_lock_t *lock)
 {
     int32_t unlocked = PMIX_ATOMIC_LOCK_UNLOCKED;
-    bool ret = pmix_atomic_compare_exchange_strong_32 (&lock->u.lock, &unlocked, PMIX_ATOMIC_LOCK_LOCKED);
+    bool ret = pmix_atomic_compare_exchange_strong_acq_32 (&lock->u.lock, &unlocked, PMIX_ATOMIC_LOCK_LOCKED);
     return (ret == false) ? 1 : 0;
 }
 

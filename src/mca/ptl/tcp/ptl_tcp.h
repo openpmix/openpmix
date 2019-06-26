@@ -48,6 +48,7 @@ typedef struct {
     struct sockaddr_storage connection;
     char *session_filename;
     char *nspace_filename;
+    char *pid_filename;
     char *system_filename;
     char *rendezvous_filename;
     int wait_to_connect;
