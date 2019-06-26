@@ -57,7 +57,7 @@ AC_CONFIG_MACRO_DIR(./config)
 PMIX_CFLAGS_cache=
 PMIX_CFLAGS_pass=
 for val in $CFLAGS; do
-    if echo "$val" | grep -q "Werror"; then
+    if echo "$val" | grep -q -e "-W"; then
         PMIX_CFLAGS_cache="$PMIX_CFLAGS_cache $val";
     else
         PMIX_CFLAGS_pass="$PMIX_CFLAGS_pass $val";
