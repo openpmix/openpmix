@@ -31,6 +31,7 @@ current release as well as the "stable" bug fix release branch.
 - PR #1180: Add detection for Flex when building in non-tarball situations
 - PR #1182: configury: use PMIX_ENABLE_DLOPEN_SUPPORT instead of enable_dlopen
 - PR #1188: Link libpmix.so to MCA component libraries
+- PR #1190: Ensure any cached notifications arrive after reg completes
 - PR #1194: Ensure any cached notifications arrive after registration completes
 - PR #1209: Update configure logic for clock_gettime
 - PR #1213/#1217/#1221: Add configure option "--enable-nonglobal-dlopen"
@@ -51,6 +52,7 @@ current release as well as the "stable" bug fix release branch.
 - PR #1309: Fix potential integer overflow in regex
 - PR #1311: Work around memory bug in older gcc compilers
 - PR #1329: Add -fPIC to static builds
+- PR #1334: Cache only -W CFLAG entries to fix 32-bit builds
 
 
 2.2.2 -- 24 Jan 2019
