@@ -1354,6 +1354,31 @@ static pmix_status_t recv_connect_ack(int sd, uint8_t myflag)
             return PMIX_ERR_UNREACH;
         }
     }
+#if defined(TCP_NODELAY)
+    int optval;
+    optval = 1;
+    if (setsockopt(sd, IPPROTO_TCP, TCP_NODELAY, (char *)&optval, sizeof(optval)) < 0) {
+        opal_backtrace_print(stderr, NULL, 1);
+        pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
+                            "[%s:%d] setsockopt(TCP_NODELAY) failed: %s (%d)",
+                            __FILE__, __LINE__,
+                            strerror(pmix_socket_errno),
+                            pmix_socket_errno);
+    }
+#endif
+#if defined(SO_NOSIGPIPE)
+    /* Some BSD flavors generate EPIPE when we write to a disconnected peer. We need
+     * the prevent this signal to be able to trap socket shutdown and cleanly release
+     * the endpoint.
+     */
+    int optval2 = 1;
+    if (setsockopt(sd, SOL_SOCKET, SO_NOSIGPIPE, (char *)&optval2, sizeof(optval2)) < 0) {
+            pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
+                                "[%s:%d] setsockopt(SO_NOSIGPIPE) failed: %s (%d)",
+                                 __FILE__, __LINE__,
+                                strerror(pmix_socket_errno), pmix_socket_errno);
+    }
+#endif
 
     return PMIX_SUCCESS;
 }
