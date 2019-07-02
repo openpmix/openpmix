@@ -53,6 +53,7 @@ current release as well as the "stable" bug fix release branch.
 - PR #1311: Work around memory bug in older gcc compilers
 - PR #1329: Add -fPIC to static builds
 - PR #1334: Cache only -W CFLAG entries to fix 32-bit builds
+- PR #1341: Do not use '==' in m4 test statements
 
 
 2.2.2 -- 24 Jan 2019
