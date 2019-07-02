@@ -46,7 +46,7 @@ AC_DEFUN([MCA_pmix_pnet_opa_CONFIG],[
     pmix_check_opamgt_dir=
 
     AC_MSG_CHECKING([if opamgt requested])
-    AS_IF([test "$with_opamgt" == "no"],
+    AS_IF([test "$with_opamgt" = "no"],
           [AC_MSG_RESULT([no])
            pmix_check_opamgt_happy=no],
           [AC_MSG_RESULT([yes])
