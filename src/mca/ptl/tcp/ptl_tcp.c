@@ -131,7 +131,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
     char *p, *p2, *server_nspace = NULL, *rendfile = NULL;
     int sd, rc;
     size_t n;
-    char myhost[PMIX_MAXHOSTNAMELEN];
+    char myhost[PMIX_MAXHOSTNAMELEN] = {0};
     bool system_level = false;
     bool system_level_only = false;
     bool reconnect = false;

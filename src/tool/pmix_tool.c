@@ -789,7 +789,7 @@ pmix_status_t pmix_tool_init_info(void)
     pmix_kval_t *kptr;
     pmix_status_t rc;
     pmix_proc_t wildcard;
-    char hostname[PMIX_MAX_NSLEN];
+    char hostname[PMIX_MAXHOSTNAMELEN] = {0};
 
     pmix_strncpy(wildcard.nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
     wildcard.rank = pmix_globals.myid.rank;
@@ -1027,9 +1027,9 @@ pmix_status_t pmix_tool_init_info(void)
 
     /* hostname */
     if (NULL != pmix_globals.hostname) {
-        pmix_strncpy(hostname, pmix_globals.hostname, PMIX_MAX_NSLEN);
+        pmix_strncpy(hostname, pmix_globals.hostname, PMIX_MAXHOSTNAMELEN);
     } else {
-        gethostname(hostname, PMIX_MAX_NSLEN);
+        gethostname(hostname, PMIX_MAXHOSTNAMELEN);
     }
     kptr = PMIX_NEW(pmix_kval_t);
     kptr->key = strdup(PMIX_HOSTNAME);

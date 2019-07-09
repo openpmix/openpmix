@@ -866,8 +866,8 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
                                        pmix_inventory_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_inventory_rollup_t *cd = (pmix_inventory_rollup_t*)cbdata;
-    char *prefix, myhost[PMIX_MAXHOSTNAMELEN];
-    char myconnhost[PMIX_MAXHOSTNAMELEN];
+    char *prefix, myhost[PMIX_MAXHOSTNAMELEN] = {0};
+    char myconnhost[PMIX_MAXHOSTNAMELEN] = {0};
     char name[32], uri[2048];
     struct sockaddr_storage my_ss;
     char *foo;

@@ -16,7 +16,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014-2015 Los Alamos National Security, LLC. All rights
  *                         reserved.
- * Copyright (c) 2016-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2016-2019 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -339,7 +339,7 @@ static int component_find_check (pmix_mca_base_framework_t *framework, char **re
         }
 
         if (!found) {
-            char h[MAXHOSTNAMELEN];
+            char h[PMIX_MAXHOSTNAMELEN] = {0};
             gethostname(h, sizeof(h));
             pmix_show_help("help-pmix-mca-base.txt",
                            "find-available:not-valid", true,
