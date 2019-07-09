@@ -552,7 +552,7 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
     pmix_buffer_t bucket, pbkt;
     bool found = false;
     pmix_byte_object_t pbo;
-    char nodename[PMIX_MAXHOSTNAMELEN], *foo;
+    char nodename[PMIX_MAXHOSTNAMELEN] = {0}, *foo;
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                         "pnet:opa collect inventory");
