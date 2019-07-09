@@ -176,7 +176,7 @@ bool pmix_output_init(void)
     } else {
         verbose.lds_want_stderr = true;
     }
-    gethostname(hostname, sizeof(hostname));
+    gethostname(hostname, sizeof(hostname)-1);
     hostname[sizeof(hostname)-1] = '\0';
     if (0 > asprintf(&verbose.lds_prefix, "[%s:%05d] ", hostname, getpid())) {
         return PMIX_ERR_NOMEM;

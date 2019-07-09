@@ -414,7 +414,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
 
     /* mark that we are using the V2 protocol */
     pmix_globals.mypeer->protocol = PMIX_PROTOCOL_V2;
-    gethostname(myhost, sizeof(myhost));
+    gethostname(myhost, sizeof(myhost)-1);
     /* if we were given a URI via MCA param, then look no further */
     if (NULL != suri) {
         if (NULL != server_nspace) {
