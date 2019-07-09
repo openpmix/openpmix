@@ -155,7 +155,7 @@ int pmix_mca_base_open(void)
     } else {
         set_defaults(&lds);
     }
-    gethostname(hostname, PMIX_MAXHOSTNAMELEN);
+    gethostname(hostname, PMIX_MAXHOSTNAMELEN-1);
     rc = asprintf(&lds.lds_prefix, "[%s:%05d] ", hostname, getpid());
     if (0 > rc) {
         return PMIX_ERR_OUT_OF_RESOURCE;
