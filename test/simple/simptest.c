@@ -198,6 +198,7 @@ static pmix_event_t handler;
 static pmix_list_t children;
 static bool istimeouttest = false;
 static mylock_t globallock;
+static bool nettest = false;
 
 static void set_namespace(int nprocs, char *ranks, char *nspace,
                           pmix_op_cbfunc_t cbfunc, myxfer_t *x);
@@ -379,10 +380,6 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    /* set a known network configuration for the pnet/test component */
-    putenv("PMIX_MCA_pnet_test_nverts=nodes:5;plane:d:3;plane:s:2;plane:d:5");
-    putenv("PMIX_MCA_pnet=test");
-
     /* see if we were passed the number of procs to run or
      * the executable to use */
     for (n=1; n < argc; n++) {
@@ -433,11 +430,20 @@ int main(int argc, char **argv)
             fprintf(stderr, "    -u       Enable legacy usock support\n");
             fprintf(stderr, "    -hwloc   Test hwloc support\n");
             fprintf(stderr, "    -hwloc-file FILE   Use file to import topology\n");
+            fprintf(stderr, "    -net-test  Test network endpt assignments\n");
             exit(0);
+        } else if (0 == strcmp("-net-test", argv[n]) ||
+                   0 == strcmp("--net-test", argv[n])) {
+            /* test network support */
+            nettest = true;
         }
     }
     if (NULL == executable) {
-        executable = strdup("./simpclient");
+        if (nettest) {
+            executable = strdup("./simpcoord");
+        } else {
+            executable = strdup("./simpclient");
+        }
     }
     /* check for executable existence and permissions */
     if (0 != access(executable, X_OK)) {
@@ -504,11 +510,20 @@ int main(int argc, char **argv)
 #endif
     }
 #endif
+    if (nettest) {
+        /* set a known network configuration for the pnet/test component */
+        putenv("PMIX_MCA_pnet_test_nverts=nodes:5;plane:d:3;plane:s:2;plane:d:5");
+        putenv("PMIX_MCA_pnet=test");
+    }
     if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, info, ninfo))) {
         fprintf(stderr, "Init failed with error %d\n", rc);
         return rc;
     }
     PMIX_INFO_FREE(info, ninfo);
+    if (nettest) {
+        unsetenv("PMIX_MCA_pnet");
+        unsetenv("PMIX_MCA_pnet_test_nverts");
+    }
 
     /* register the default errhandler */
     DEBUG_CONSTRUCT_LOCK(&mylock);
