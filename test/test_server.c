@@ -187,7 +187,7 @@ static void server_unpack_procs(char *buf, size_t size)
     char *nspace;
 
     while ((size_t)(ptr - buf) < size) {
-        ns_count = (size_t)*ptr;
+        ns_count = *(size_t *)ptr;
         ptr += sizeof(size_t);
 
         for (i = 0; i < ns_count; i++) {
@@ -201,10 +201,10 @@ static void server_unpack_procs(char *buf, size_t size)
             nspace = ptr;
             ptr += PMIX_MAX_NSLEN+1;
 
-            ntasks = (size_t)*ptr;
+            ntasks = *(size_t *)ptr;
             ptr += sizeof(size_t);
 
-            ltasks = (size_t)*ptr;
+            ltasks = *(size_t *)ptr;
             ptr += sizeof(size_t);
 
             PMIX_LIST_FOREACH(tmp, server_nspace, server_nspace_t) {
@@ -226,7 +226,7 @@ static void server_unpack_procs(char *buf, size_t size)
             }
             size_t i;
             for (i = 0; i < ltasks; i++) {
-                int rank = (int)*ptr;
+                int rank = *(int *)ptr;
                 ptr += sizeof(int);
                 if (ns_item->task_map[rank] >= 0) {
                     continue;
@@ -651,13 +651,13 @@ static void server_unpack_dmdx(char *buf, int *sender, pmix_proc_t *proc)
 {
     char *ptr = buf;
 
-    *sender = (int)*ptr;
+    *sender = *(int *)ptr;
     ptr += sizeof(int);
 
     memcpy(proc->nspace, ptr, PMIX_MAX_NSLEN +1);
     ptr += PMIX_MAX_NSLEN +1;
 
-    proc->rank = (int)*ptr;
+    proc->rank = *(int *)ptr;
     ptr += sizeof(int);
 }
 
