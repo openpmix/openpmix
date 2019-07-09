@@ -376,8 +376,8 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
     bool session_tool = false;
     bool system_tool = false;
     pmix_socklen_t addrlen;
-    char *prefix, myhost[PMIX_MAXHOSTNAMELEN];
-    char myconnhost[PMIX_MAXHOSTNAMELEN];
+    char *prefix, myhost[PMIX_MAXHOSTNAMELEN] = {0};
+    char myconnhost[PMIX_MAXHOSTNAMELEN] = {0};
     int myport;
     pmix_kval_t *urikv;
 

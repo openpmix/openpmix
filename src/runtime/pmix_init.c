@@ -103,7 +103,7 @@ int pmix_rte_init(pmix_proc_type_t type,
     int ret, debug_level;
     char *error = NULL, *evar;
     size_t n;
-    char hostname[PMIX_MAXHOSTNAMELEN];
+    char hostname[PMIX_MAXHOSTNAMELEN] = {0};
 
     if( ++pmix_initialized != 1 ) {
         if( pmix_initialized < 1 ) {
