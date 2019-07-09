@@ -1058,7 +1058,7 @@ pmix_status_t pmix_tool_init_info(void)
     if (NULL != pmix_globals.hostname) {
         pmix_strncpy(hostname, pmix_globals.hostname, PMIX_MAXHOSTNAMELEN);
     } else {
-        gethostname(hostname, PMIX_MAXHOSTNAMELEN);
+        gethostname(hostname, PMIX_MAXHOSTNAMELEN-1);
     }
     kptr = PMIX_NEW(pmix_kval_t);
     kptr->key = strdup(PMIX_HOSTNAME);

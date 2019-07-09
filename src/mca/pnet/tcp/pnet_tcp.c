@@ -893,7 +893,7 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
     /* setup the bucket - we will pass the results as a blob */
     PMIX_CONSTRUCT(&bucket, pmix_buffer_t);
     /* add our hostname */
-    gethostname(myhost, sizeof(myhost));
+    gethostname(myhost, sizeof(myhost)-1);
     foo = &myhost[0];
     PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &bucket, &foo, 1, PMIX_STRING);
     if (PMIX_SUCCESS != rc) {
@@ -928,11 +928,11 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
         if (AF_INET == my_ss.ss_family) {
             prefix = "tcp4://";
             inet_ntop(AF_INET, &((struct sockaddr_in*) &my_ss)->sin_addr,
-                      myconnhost, PMIX_MAXHOSTNAMELEN);
+                      myconnhost, PMIX_MAXHOSTNAMELEN-1);
         } else if (AF_INET6 == my_ss.ss_family) {
             prefix = "tcp6://";
             inet_ntop(AF_INET6, &((struct sockaddr_in6*) &my_ss)->sin6_addr,
-                      myconnhost, PMIX_MAXHOSTNAMELEN);
+                      myconnhost, PMIX_MAXHOSTNAMELEN-1);
         } else {
             continue;
         }

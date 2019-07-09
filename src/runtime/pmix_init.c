@@ -164,7 +164,7 @@ int pmix_rte_init(pmix_proc_type_t type,
     }
 
     /* setup the globals structure */
-    gethostname(hostname, PMIX_MAXHOSTNAMELEN);
+    gethostname(hostname, PMIX_MAXHOSTNAMELEN-1);
     pmix_globals.hostname = strdup(hostname);
     pmix_globals.pid = getpid();
     memset(&pmix_globals.myid.nspace, 0, PMIX_MAX_NSLEN+1);
