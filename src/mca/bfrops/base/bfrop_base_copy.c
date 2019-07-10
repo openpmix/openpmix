@@ -853,6 +853,8 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
                 if (0 < pc[n].dims) {
                     pc[n].coord = (int*)malloc(pc[n].dims * sizeof(int));
                     if (NULL == pc[n].coord) {
+                        free(p->array);
+                        free(p);
                         return PMIX_ERR_NOMEM;
                     }
                     memcpy(pc[n].coord, sc[n].coord, pc[n].dims * sizeof(int));
