@@ -737,6 +737,7 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
                         "pnet:tcp:setup_local_network");
 
     if (NULL != info) {
+        idkey = strdup("default");
         for (n=0; n < ninfo; n++) {
             /* look for my key */
             if (0 == strncmp(info[n].key, PMIX_TCP_SETUP_APP_KEY, PMIX_MAX_KEYLEN)) {

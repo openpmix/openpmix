@@ -505,8 +505,8 @@ static void server_read_cb(evutil_socket_t fd, short event, void *arg)
     switch(msg_hdr.cmd) {
         case CMD_BARRIER_REQUEST:
             barrier_cnt++;
-            TEST_VERBOSE(("CMD_BARRIER_REQ req from %d cnt %d", msg_hdr.src_id,
-                          barrier_cnt));
+            TEST_VERBOSE(("CMD_BARRIER_REQ req from %d cnt %lu", msg_hdr.src_id,
+                          (unsigned long)barrier_cnt));
             if (pmix_list_get_size(server_list) == barrier_cnt) {
                 barrier_cnt = 0; /* reset barrier counter */
                 server_info_t *tmp_server;
@@ -535,8 +535,8 @@ static void server_read_cb(evutil_socket_t fd, short event, void *arg)
                 msg_buf = NULL;
             }
 
-            TEST_VERBOSE(("CMD_FENCE_CONTRIB req from %d cnt %d size %d",
-                        msg_hdr.src_id, contrib_cnt, msg_hdr.size));
+            TEST_VERBOSE(("CMD_FENCE_CONTRIB req from %d cnt %lu size %d",
+                        msg_hdr.src_id, (unsigned long)contrib_cnt, msg_hdr.size));
             if (pmix_list_get_size(server_list) == contrib_cnt) {
                 server_info_t *tmp_server;
                 PMIX_LIST_FOREACH(tmp_server, server_list, server_info_t) {
@@ -547,8 +547,8 @@ static void server_read_cb(evutil_socket_t fd, short event, void *arg)
                     resp_hdr.size = fence_buf_offset;
                     server_send_msg(&resp_hdr, fence_buf, fence_buf_offset);
                 }
-                TEST_VERBOSE(("CMD_FENCE_CONTRIB complete, size %d",
-                              fence_buf_offset));
+                TEST_VERBOSE(("CMD_FENCE_CONTRIB complete, size %lu",
+                              (unsigned long)fence_buf_offset));
                 if (fence_buf) {
                     free(fence_buf);
                     fence_buf = NULL;
@@ -671,6 +671,8 @@ static void _dmdx_cb(int status, char *data, size_t sz, void *cbdata)
     msg_hdr.src_id = my_server_id;
     msg_hdr.size = sz;
     msg_hdr.dst_id = *sender_id;
+    TEST_VERBOSE(("srv #%d: DMDX RESPONSE: receiver=%d, size=%lu,",
+                  my_server_id, *sender_id, (unsigned long)sz));
     free(sender_id);
 
     server_send_msg(&msg_hdr, data, sz);
