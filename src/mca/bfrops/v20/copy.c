@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2014-2018 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
@@ -431,10 +431,15 @@ pmix_status_t pmix20_bfrop_value_xfer(pmix_value_t *p, const pmix_value_t *src)
             memcpy(&p->data.status, &src->data.status, sizeof(pmix_status_t));
             break;
         case PMIX_PROC:
-            memcpy(&p->data.proc, &src->data.proc, sizeof(pmix_proc_t));
+            /* create the storage */
+            p->data.proc = (pmix_proc_t*)malloc(sizeof(pmix_proc_t));
+            if (NULL == p->data.proc) {
+                return PMIX_ERR_NOMEM;
+            }
+            memcpy(p->data.proc, src->data.proc, sizeof(pmix_proc_t));
             break;
         case PMIX_PROC_RANK:
-            memcpy(&p->data.proc, &src->data.rank, sizeof(pmix_rank_t));
+            memcpy(&p->data.rank, &src->data.rank, sizeof(pmix_rank_t));
             break;
         case PMIX_BYTE_OBJECT:
         case PMIX_COMPRESSED_STRING:
