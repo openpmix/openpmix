@@ -659,9 +659,9 @@ pmix_status_t pmix20_bfrop_value_xfer(pmix_value_t *p, const pmix_value_t *src)
                     s1 = (pmix_info_t*)src->data.darray->array;
                     for (n=0; n < src->data.darray->size; n++) {
                         PMIX_LOAD_KEY(p1[n].key, s1[n].key);
-                        PMIX_VALUE_XFER(rc, &p1[n].value, &s1[n].value);
+                        rc = pmix_value_xfer(&p1[n].value, &s1[n].value);
                         if (PMIX_SUCCESS != rc) {
-                            PMIX_INFO_FREE(p->data.darray->array, src->data.darray->size);
+                            PMIX_INFO_FREE(p1, src->data.darray->size);
                             return rc;
                         }
                     }
@@ -676,9 +676,9 @@ pmix_status_t pmix20_bfrop_value_xfer(pmix_value_t *p, const pmix_value_t *src)
                     for (n=0; n < src->data.darray->size; n++) {
                         memcpy(&pd[n].proc, &sd[n].proc, sizeof(pmix_proc_t));
                         PMIX_LOAD_KEY(pd[n].key, sd[n].key);
-                        PMIX_VALUE_XFER(rc, &pd[n].value, &sd[n].value);
+                        rc = pmix_value_xfer(&pd[n].value, &sd[n].value);
                         if (PMIX_SUCCESS != rc) {
-                            PMIX_INFO_FREE(p->data.darray->array, src->data.darray->size);
+                            PMIX_INFO_FREE(pd, src->data.darray->size);
                             return rc;
                         }
                     }
