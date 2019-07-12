@@ -14,6 +14,8 @@
  *                         reserved.
  * Copyright (c) 2014-2017 Intel, Inc. All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2019      Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -129,7 +131,13 @@ char **pmix_environ_merge(char **minor, char **major)
            astonishmet for PMIX developers (i.e., those that don't
            check the return code of pmix_setenv() and notice that we
            returned an error if you passed in the real environ) */
+#if defined (HAVE_SETENV)
+        setenv(name, value, overwrite);
+        /* setenv copies the value, so we can free it here */
+        free(newvalue);
+#else
         putenv(newvalue);
+#endif
         return PMIX_SUCCESS;
     }
 
