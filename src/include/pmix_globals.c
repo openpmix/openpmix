@@ -365,6 +365,7 @@ static void qdes(pmix_query_caddy_t *p)
     PMIX_PROC_FREE(p->targets, p->ntargets);
     PMIX_INFO_FREE(p->info, p->ninfo);
     PMIX_LIST_DESTRUCT(&p->results);
+    PMIX_QUERY_FREE(p->queries, p->nqueries);
 }
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_query_caddy_t,
                                 pmix_object_t,
