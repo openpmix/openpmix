@@ -195,7 +195,7 @@ static void server_unpack_procs(char *buf, size_t size)
             size_t ltasks, ntasks;
             int server_id;
 
-            server_id = *ptr;
+            server_id = *(int *)ptr;
             ptr += sizeof(int);
 
             nspace = ptr;
