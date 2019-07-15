@@ -268,6 +268,7 @@ typedef struct {
     pmix_info_t *info;
     size_t ninfo;
     pmix_byte_object_t bo;
+    pmix_list_t results;
     pmix_info_cbfunc_t cbfunc;
     pmix_value_cbfunc_t valcbfunc;
     pmix_release_cbfunc_t relcbfunc;

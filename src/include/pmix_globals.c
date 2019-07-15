@@ -342,6 +342,7 @@ static void qcon(pmix_query_caddy_t *p)
     p->relcbfunc = NULL;
     p->credcbfunc = NULL;
     p->validcbfunc = NULL;
+    PMIX_CONSTRUCT(&p->results, pmix_list_t);
 }
 static void qdes(pmix_query_caddy_t *p)
 {
