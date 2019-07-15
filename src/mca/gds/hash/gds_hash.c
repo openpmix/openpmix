@@ -943,8 +943,7 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
     pmix_list_t cache, ncache;
     pmix_nodeinfo_t *nd;
 
-  //  pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
-    pmix_output(0,
+    pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "[%s:%d] gds:hash:cache_job_info for nspace %s",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank,
                         nptr->nspace);
