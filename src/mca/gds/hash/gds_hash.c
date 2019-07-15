@@ -2019,7 +2019,6 @@ static pmix_status_t dohash(pmix_hash_table_t *ht,
 
     rc = pmix_hash_fetch(ht, rank, key, &val);
     if (PMIX_SUCCESS == rc) {
-    pmix_output(0, "%s: FOUND %s", PMIX_NAME_PRINT(&pmix_globals.myid), (NULL == key) ? "NULL" : key);
         /* if the key was NULL, then all found keys will be
          * returned as a pmix_data_array_t in the value */
         if (NULL == key) {
@@ -2049,7 +2048,6 @@ static pmix_status_t dohash(pmix_hash_table_t *ht,
                     return PMIX_ERR_NOMEM;
                 }
                 kv->key = strdup(info[n].key);
-                pmix_output(0, "ARRAY ADDING %s", kv->key);
                 kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
                 if (NULL == kv->value) {
                     PMIX_VALUE_RELEASE(val);
@@ -2074,7 +2072,6 @@ static pmix_status_t dohash(pmix_hash_table_t *ht,
                 return PMIX_ERR_NOMEM;
             }
             kv->key = strdup(key);
-            pmix_output(0, "ADDING %s", kv->key);
             kv->value = val;
             pmix_list_append(kvs, &kv->super);
         }
