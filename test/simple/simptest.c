@@ -263,32 +263,6 @@ static void infocbfunc(pmix_status_t status,
     DEBUG_WAKEUP_THREAD(lock);
 }
 
-static void setup_cbfunc(pmix_status_t status,
-                         pmix_info_t info[], size_t ninfo,
-                         void *provided_cbdata,
-                         pmix_op_cbfunc_t cbfunc, void *cbdata)
-{
-    myxfer_t *x = (myxfer_t*)provided_cbdata;
-    size_t n;
-
-    /* transfer it to the caddy for return to the main thread */
-    if (0 < ninfo) {
-        PMIX_INFO_CREATE(x->info, ninfo);
-        x->ninfo = ninfo;
-        for (n=0; n < ninfo; n++) {
-            PMIX_INFO_XFER(&x->info[n], &info[n]);
-        }
-    }
-
-    /* let the library release the data and cleanup from
-     * the operation */
-    if (NULL != cbfunc) {
-        cbfunc(PMIX_SUCCESS, cbdata);
-    }
-
-    DEBUG_WAKEUP_THREAD(&x->lock);
-}
-
 /* this is an event notification function that we explicitly request
  * be called when the PMIX_MODEL_DECLARED notification is issued.
  * We could catch it in the general event notification function and test
@@ -493,7 +467,7 @@ int main(int argc, char **argv)
 
     PMIX_INFO_CREATE(info, ninfo);
     PMIX_INFO_LOAD(&info[0], PMIX_SERVER_TOOL_SUPPORT, NULL, PMIX_BOOL);
-    PMIX_INFO_LOAD(&info[1], PMIX_SERVER_SCHEDULER, NULL, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[1], PMIX_SERVER_GATEWAY, NULL, PMIX_BOOL);
 #if PMIX_HAVE_HWLOC
     if (hwloc) {
         if (NULL != hwloc_file) {
@@ -734,12 +708,10 @@ int main(int argc, char **argv)
 static void set_namespace(int nprocs, char *ranks, char *nspace,
                           pmix_op_cbfunc_t cbfunc, myxfer_t *x)
 {
-    char *regex, *ppn, *rks;
+    char *regex, *ppn;
     int n, m, k;
     pmix_data_array_t *array;
-    pmix_info_t *info, *iptr, *ip;
-    myxfer_t cd, lock;
-    pmix_status_t rc;
+    pmix_info_t *info, *iptr;
 
     if (arrays) {
         x->ninfo = 15 + nprocs;
@@ -777,39 +749,6 @@ static void set_namespace(int nprocs, char *ranks, char *nspace,
         x->info[n].value.data.string = ppn;
         ++n;
     }
-
-    /* we have the required info to run setup_app, so do that now */
-    PMIX_INFO_CREATE(iptr, 4);
-    PMIX_INFO_XFER(&iptr[0], &x->info[0]);
-    PMIX_INFO_XFER(&iptr[1], &x->info[1]);
-    PMIX_INFO_LOAD(&iptr[2], PMIX_SETUP_APP_ENVARS, NULL, PMIX_BOOL);
-    PMIX_LOAD_KEY(iptr[3].key, PMIX_ALLOC_NETWORK);
-    iptr[3].value.type = PMIX_DATA_ARRAY;
-    PMIX_DATA_ARRAY_CREATE(iptr[3].value.data.darray, 2, PMIX_INFO);
-    ip = (pmix_info_t*)iptr[3].value.data.darray->array;
-    asprintf(&rks, "%s.net", nspace);
-    PMIX_INFO_LOAD(&ip[0], PMIX_ALLOC_NETWORK_ID, rks, PMIX_STRING);
-    free(rks);
-    PMIX_INFO_LOAD(&ip[1], PMIX_ALLOC_NETWORK_SEC_KEY, NULL, PMIX_BOOL);
-    PMIX_CONSTRUCT(&cd, myxfer_t);
-    if (PMIX_SUCCESS != (rc = PMIx_server_setup_application(nspace, iptr, 4,
-                                                             setup_cbfunc, &cd))) {
-        pmix_output(0, "[%s:%d] PMIx_server_setup_application failed: %s", __FILE__, __LINE__, PMIx_Error_string(rc));
-        DEBUG_DESTRUCT_LOCK(&cd.lock);
-    } else {
-        DEBUG_WAIT_THREAD(&cd.lock);
-    }
-
-    /* use the results to setup the local subsystems */
-    PMIX_CONSTRUCT(&lock, myxfer_t);
-    if (PMIX_SUCCESS != (rc = PMIx_server_setup_local_support(nspace, cd.info, cd.ninfo,
-                                                                  opcbfunc, &lock))) {
-        pmix_output(0, "[%s:%d] PMIx_server_setup_local_support failed: %s", __FILE__, __LINE__, PMIx_Error_string(rc));
-    } else {
-        DEBUG_WAIT_THREAD(&lock.lock);
-    }
-    PMIX_DESTRUCT(&lock);
-    PMIX_DESTRUCT(&cd);
 
     (void)strncpy(x->info[n].key, PMIX_UNIV_SIZE, PMIX_MAX_KEYLEN);
     x->info[n].value.type = PMIX_UINT32;
@@ -1374,7 +1313,7 @@ static void wait_signal_callback(int fd, short event, void *arg)
     pid_t pid;
     wait_tracker_t *t2;
 
-    if (SIGCHLD != pmix_event_get_signal(sig)) {
+    if (SIGCHLD != event_get_signal(sig)) {
         return;
     }
 

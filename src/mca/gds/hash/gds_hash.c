@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2018 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
@@ -1938,7 +1938,7 @@ static pmix_status_t _hash_store_modex(void * cbdata,
     /* find the hash table for this nspace */
     trk = NULL;
     PMIX_LIST_FOREACH(t, &myjobs, pmix_job_t) {
-        if (0 == strcmp(proc->nspace, t->ns)) {
+        if (0 == strcmp(ns->nspace, t->ns)) {
             trk = t;
             break;
         }
@@ -1946,7 +1946,7 @@ static pmix_status_t _hash_store_modex(void * cbdata,
     if (NULL == trk) {
         /* create one */
         trk = PMIX_NEW(pmix_job_t);
-        trk->ns = strdup(proc->nspace);
+        trk->ns = strdup(ns->nspace);
         pmix_list_append(&myjobs, &trk->super);
     }
 
