@@ -2013,6 +2013,7 @@ static pmix_status_t dohash(pmix_hash_table_t *ht,
                 PMIX_INFO != val->data.darray->type ||
                 0 == val->data.darray->size) {
                 PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+                PMIX_RELEASE(val);
                 return PMIX_ERR_NOT_FOUND;
             }
             info = (pmix_info_t*)val->data.darray->array;
@@ -2072,7 +2073,7 @@ static pmix_status_t fetch_nodeinfo(const char *key, pmix_list_t *tgt,
 {
     size_t n;
     pmix_status_t rc;
-    uint32_t nid;
+    uint32_t nid=0;
     char *hostname = NULL;
     bool found = false;
     pmix_nodeinfo_t *nd, *ndptr;
@@ -2104,7 +2105,7 @@ static pmix_status_t fetch_nodeinfo(const char *key, pmix_list_t *tgt,
     /* scan the list of nodes to find the matching entry */
     nd = NULL;
     PMIX_LIST_FOREACH(ndptr, tgt, pmix_nodeinfo_t) {
-        if (NULL != hostname && 0 == strcmp(nd->hostname, hostname)) {
+        if (NULL != hostname && 0 == strcmp(ndptr->hostname, hostname)) {
             nd = ndptr;
             break;
         }
