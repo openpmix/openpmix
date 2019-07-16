@@ -498,6 +498,7 @@ static pmix_status_t _getfn_fastpath(const pmix_proc_t *proc, const pmix_key_t k
                 cb->scope = info[n].value.data.scope;
             } else {
                 /* we cannot handle any other directives via this path */
+                PMIX_RELEASE(cb);
                 return PMIX_ERR_NOT_SUPPORTED;
             }
         }
