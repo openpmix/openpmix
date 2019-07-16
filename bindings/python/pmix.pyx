@@ -568,22 +568,6 @@ cdef class PMIxServer(PMIxClient):
         self.fabric_set = 0
         return rc;
 
-    def get_num_vertices(self):
-        cdef uint32_t nverts;
-        rc = PMIx_server_get_num_vertices(&self.fabric, &nverts)
-        if PMIX_SUCCESS == rc:
-            return nverts
-        else:
-            return rc
-
-    def get_comm_cost(self, src, dest):
-        cdef uint16_t cost;
-        rc = PMIx_server_get_comm_cost(&self.fabric, src, dest, &cost);
-        if PMIX_SUCCESS == rc:
-            return cost
-        else:
-            return rc
-
     def get_vertex_info(self, i):
         cdef pmix_value_t vertex;
         cdef char *nodename;
@@ -602,19 +586,15 @@ cdef class PMIxServer(PMIxClient):
     def get_index(self, pyvertex:tuple):
         cdef pmix_value_t vertex;
         cdef uint32_t i;
-        cdef char *nodename;
         # convert the tuple to a pmix_value_t
         rc = pmix_load_value(&vertex, pyvertex)
         if PMIX_SUCCESS != rc:
             return (rc, -1, None)
-        rc = PMIx_server_get_index(&self.fabric, &vertex, &i, &nodename)
+        rc = PMIx_server_get_index(&self.fabric, &vertex, &i)
         if PMIX_SUCCESS != rc:
             return (rc, -1, None)
-        # convert the nodename to a Python string
-        pyb = nodename
-        pystr = pyb.decode("ascii")
         # return it as a tuple
-        return (rc, i, pystr)
+        return (rc, i)
 
     def generate_regex(self, hosts):
         cdef char *regex;
