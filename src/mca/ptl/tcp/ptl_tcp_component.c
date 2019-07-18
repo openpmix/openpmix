@@ -244,6 +244,7 @@ static int component_register(void)
 }
 
 static char *urifile = NULL;
+static bool created_rendezvous_file = false;
 
 static pmix_status_t component_open(void)
 {
@@ -301,7 +302,9 @@ pmix_status_t component_close(void)
         free(mca_ptl_tcp_component.pid_filename);
     }
     if (NULL != mca_ptl_tcp_component.rendezvous_filename) {
-        unlink(mca_ptl_tcp_component.rendezvous_filename);
+        if (created_rendezvous_file) {
+            unlink(mca_ptl_tcp_component.rendezvous_filename);
+        }
         free(mca_ptl_tcp_component.rendezvous_filename);
     }
     if (NULL != urifile) {
@@ -708,6 +711,7 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
             mca_ptl_tcp_component.rendezvous_filename = NULL;
             goto sockerror;
         }
+        created_rendezvous_file = true;
     }
 
     /* if we are going to support tools, then drop contact file(s) */
