@@ -21,7 +21,7 @@ example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
 
-3.1.4 -- 19 July 2019
+3.1.4 -- 26 July 2019
 ----------------------
 - PR #1342: Fix if_linux_ipv6_open interface filter
 - PR #1344: Remove unnecessary libtool init for c++
@@ -31,6 +31,7 @@ multiple release branches.
 - PR #1354: Plug a misc memory leak in the pmix_query_caddy_t destructor
 - PR #1356: Fix another pointer cast/deref in test suite
 - PR #1358: Implement support for class-based info arrays
+- PR #1359: Plug misc minor memory leaks
 
 
 3.1.3 -- 2 July 2019
