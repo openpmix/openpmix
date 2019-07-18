@@ -24,18 +24,6 @@ def getVersion():
         version = ".".join(vers)
         return version
 
-def getLongDescription():
-    dir = os.path.dirname(__file__)
-    readmepath = os.path.join(dir, '../../README.md')
-    pyver = version_info.major
-    try:
-        readme = check_output('pandoc {} -f markdown -t rst'.format(readmepath).split())
-        if pyver == 3:
-            readme = readme.decode()
-        return readme
-    except CalledProcessError:
-        return "Not Available"
-
 setup(
     name = 'pypmix',
     version = getVersion(),
@@ -44,7 +32,6 @@ setup(
     author = 'Ralph H. Castain',
     author_email = 'ralph.h.castain@intel.com',
     description = 'Python bindings for PMIx',
-    long_description = getLongDescription(),
     classifiers = [
             'Development Status :: 1 - Under Construction',
             'Intended Audience :: Developers',
