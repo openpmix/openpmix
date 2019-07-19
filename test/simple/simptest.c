@@ -1313,7 +1313,7 @@ static void wait_signal_callback(int fd, short event, void *arg)
     pid_t pid;
     wait_tracker_t *t2;
 
-    if (SIGCHLD != event_get_signal(sig)) {
+    if (SIGCHLD != pmix_event_get_signal(sig)) {
         return;
     }
 
