@@ -54,6 +54,7 @@
 #endif
 
 #include <pthread.h>
+#include <pmix_common.h>
 
 
 /*
