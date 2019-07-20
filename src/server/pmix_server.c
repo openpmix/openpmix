@@ -50,7 +50,9 @@
 #include <ctype.h>
 #include <sys/stat.h>
 #include PMIX_EVENT_HEADER
+#if ! PMIX_HAVE_LIBEV
 #include PMIX_EVENT2_THREAD_HEADER
+#endif
 
 #include "src/util/argv.h"
 #include "src/util/error.h"

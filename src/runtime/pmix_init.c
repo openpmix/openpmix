@@ -33,7 +33,9 @@
 #include <unistd.h>
 #endif
 #include PMIX_EVENT_HEADER
-#include "event2/thread.h"
+#if ! PMIX_HAVE_LIBEV
+#include PMIX_EVENT2_THREAD_HEADER
+#endif
 
 #include <pmix_rename.h>
 
