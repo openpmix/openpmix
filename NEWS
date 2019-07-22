@@ -33,6 +33,8 @@ multiple release branches.
 - PR #1358: Implement support for class-based info arrays
 - PR #1359: Plug misc minor memory leaks
 - PR #1368: Backport support for libev
+- PR #1369: Fix legacy support for PMI-1
+- PR #1370: Cleanup handling of data requests for different nspaces
 
 
 3.1.3 -- 2 July 2019
