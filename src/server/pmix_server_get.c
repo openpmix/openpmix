@@ -604,6 +604,7 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
     char *data = NULL;
     size_t sz = 0;
     pmix_scope_t scope = PMIX_SCOPE_UNDEF;
+    bool diffnspace = false;
 
     pmix_output_verbose(2, pmix_server_globals.get_output,
                         "%s:%d SATISFY REQUEST CALLED",
@@ -617,10 +618,18 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
     PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
     pmix_strncpy(proc.nspace, nptr->nspace, PMIX_MAX_NSLEN);
 
-    /* if we have local clients of this nspace, then we use
-     * the corresponding GDS to retrieve the data. Otherwise,
-     * the data will have been stored under our GDS */
-    if (0 < nptr->nlocalprocs) {
+    if (!PMIX_CHECK_NSPACE(nptr->nspace, cd->peer->info->pname.nspace)) {
+        diffnspace = true;
+    }
+
+    /* if rank is PMIX_RANK_UNDEF, then it was stored in our GDS */
+    if (PMIX_RANK_UNDEF == rank) {
+        scope = PMIX_GLOBAL;  // we have to search everywhere
+        peer = pmix_globals.mypeer;
+    } else if (0 < nptr->nlocalprocs) {
+        /* if we have local clients of this nspace, then we use
+         * the corresponding GDS to retrieve the data. Otherwise,
+         * the data will have been stored under our GDS */
         if (local) {
             *local = true;
         }
@@ -660,8 +669,7 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
     /* if they are asking about a rank from an nspace different
      * from their own, or they gave a rank of "wildcard", then
      * include a copy of the job-level info */
-    if (PMIX_RANK_WILDCARD == rank ||
-        0 != strncmp(nptr->nspace, cd->peer->info->pname.nspace, PMIX_MAX_NSLEN)) {
+    if (PMIX_RANK_WILDCARD == rank || diffnspace) {
         proc.rank = PMIX_RANK_WILDCARD;
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         /* this data is requested by a local client, so give the gds the option
@@ -674,7 +682,7 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
         if (PMIX_SUCCESS == rc) {
             PMIX_CONSTRUCT(&pkt, pmix_buffer_t);
             /* assemble the provided data into a byte object */
-            PMIX_GDS_ASSEMB_KVS_REQ(rc, cd->peer, &proc, &cb.kvs, &pkt, cd);
+            PMIX_GDS_ASSEMB_KVS_REQ(rc, pmix_globals.mypeer, &proc, &cb.kvs, &pkt, cd);
             if (rc != PMIX_SUCCESS) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_DESTRUCT(&pkt);
@@ -743,7 +751,11 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
             found = true;
             PMIX_CONSTRUCT(&pkt, pmix_buffer_t);
             /* assemble the provided data into a byte object */
-            PMIX_GDS_ASSEMB_KVS_REQ(rc, cd->peer, &proc, &cb.kvs, &pkt, cd);
+            if (PMIX_RANK_UNDEF == rank || diffnspace) {
+                PMIX_GDS_ASSEMB_KVS_REQ(rc, pmix_globals.mypeer, &proc, &cb.kvs, &pkt, cd);
+            } else {
+                PMIX_GDS_ASSEMB_KVS_REQ(rc, cd->peer, &proc, &cb.kvs, &pkt, cd);
+            }
             if (rc != PMIX_SUCCESS) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_DESTRUCT(&pkt);
@@ -789,6 +801,7 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
         }
         PMIX_DESTRUCT(&cb);
     }
+
     PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
     PMIX_DESTRUCT(&pbkt);
 

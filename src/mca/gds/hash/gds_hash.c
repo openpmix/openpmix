@@ -1364,6 +1364,7 @@ static pmix_status_t register_info(pmix_peer_t *peer,
         PMIX_BFROPS_PACK(rc, peer, reply, kvptr, 1, PMIX_KVAL);
     }
 
+    /* get the proc-level data for each proc in the job */
     for (rank=0; rank < ns->nprocs; rank++) {
         val = NULL;
         rc = pmix_hash_fetch(ht, rank, NULL, &val);
@@ -2016,6 +2017,7 @@ static pmix_status_t dohash(pmix_hash_table_t *ht,
     pmix_kval_t *kv, *k2;
     pmix_info_t *info;
     size_t n, ninfo;
+    bool found;
 
     rc = pmix_hash_fetch(ht, rank, key, &val);
     if (PMIX_SUCCESS == rc) {
@@ -2033,14 +2035,14 @@ static pmix_status_t dohash(pmix_hash_table_t *ht,
             ninfo = val->data.darray->size;
             for (n=0; n < ninfo; n++) {
                 /* see if we already have this on the list */
-                kv = NULL;
+                found = false;
                 PMIX_LIST_FOREACH(k2, kvs, pmix_kval_t) {
                     if (PMIX_CHECK_KEY(&info[n], k2->key)) {
-                        kv = k2;
+                        found = true;
                         break;
                     }
                 }
-                if (NULL != kv) {
+                if (found) {
                     continue;
                 }
                 kv = PMIX_NEW(pmix_kval_t);
@@ -2245,8 +2247,8 @@ static pmix_status_t hash_fetch(const pmix_proc_t *proc,
     pmix_rank_t rnk;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
-                        "[%s:%u] pmix:gds:hash fetch %s for proc %s:%u on scope %s",
-                        pmix_globals.myid.nspace, pmix_globals.myid.rank,
+                        "%s pmix:gds:hash fetch %s for proc %s on scope %s",
+                        PMIX_NAME_PRINT(&pmix_globals.myid),
                         (NULL == key) ? "NULL" : key,
                         proc->nspace, proc->rank, PMIx_Scope_string(scope));
 
