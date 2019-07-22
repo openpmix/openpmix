@@ -99,7 +99,6 @@ pmix_status_t pmix_server_initialize(void)
     PMIX_CONSTRUCT(&pmix_server_globals.gdata, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_server_globals.events, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_server_globals.local_reqs, pmix_list_t);
-    PMIX_CONSTRUCT(&pmix_server_globals.groups, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_server_globals.iof, pmix_list_t);
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
@@ -482,7 +481,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
          * at zero refcount */
         pmix_execute_epilog(&ns->epilog);
     }
-    PMIX_LIST_DESTRUCT(&pmix_server_globals.groups);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.iof);
 
     pmix_hwloc_cleanup();

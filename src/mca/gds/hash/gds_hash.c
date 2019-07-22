@@ -1982,7 +1982,7 @@ static pmix_status_t _hash_store_modex(void * cbdata,
     pmix_buffer_t pbkt;
     pmix_proc_t proc;
     pmix_kval_t *kv;
-    pmix_namespace_t *ns, *nptr;
+    pmix_namespace_t *ns2, *nptr;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "[%s:%d] gds:hash:store_modex for nspace %s",
@@ -2000,12 +2000,12 @@ static pmix_status_t _hash_store_modex(void * cbdata,
     if (NULL == trk) {
         /* create one */
         trk = PMIX_NEW(pmix_job_t);
-        trk->ns = strdup(proc->nspace);
+        trk->ns = strdup(ns->nspace);
         /* see if we already have this nspace */
         nptr = NULL;
-        PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_namespace_t) {
-            if (0 == strcmp(ns->nspace, proc->nspace)) {
-                nptr = ns;
+        PMIX_LIST_FOREACH(ns2, &pmix_globals.nspaces, pmix_namespace_t) {
+            if (0 == strcmp(ns->nspace, ns2->nspace)) {
+                nptr = ns2;
                 break;
             }
         }
@@ -2016,7 +2016,7 @@ static pmix_status_t _hash_store_modex(void * cbdata,
                 PMIX_RELEASE(trk);
                 return rc;
             }
-            nptr->nspace = strdup(proc->nspace);
+            nptr->nspace = strdup(ns->nspace);
             pmix_list_append(&pmix_globals.nspaces, &nptr->super);
         }
         PMIX_RETAIN(nptr);
@@ -2051,7 +2051,7 @@ static pmix_status_t _hash_store_modex(void * cbdata,
     kv = PMIX_NEW(pmix_kval_t);
     PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &pbkt, kv, &cnt, PMIX_KVAL);
     while (PMIX_SUCCESS == rc) {
-        if (PMIX_RANK_UNDEF == proc->rank) {
+        if (PMIX_RANK_UNDEF == proc.rank) {
             /* if the rank is undefined, then we store it on the
              * remote table of rank=0 as we know that rank must
              * always exist */
@@ -2061,7 +2061,7 @@ static pmix_status_t _hash_store_modex(void * cbdata,
             }
         } else {
             /* store this in the hash table */
-            if (PMIX_SUCCESS != (rc = pmix_hash_store(&trk->remote, proc->rank, kv))) {
+            if (PMIX_SUCCESS != (rc = pmix_hash_store(&trk->remote, proc.rank, kv))) {
                 PMIX_ERROR_LOG(rc);
                 return rc;
             }
