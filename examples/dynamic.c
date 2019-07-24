@@ -49,9 +49,7 @@ int main(int argc, char **argv)
     char nsp2[PMIX_MAX_NSLEN+1];
     pmix_app_t *app;
     char hostname[1024], dir[1024];
-    pmix_proc_t *peers;
-    size_t npeers, ntmp=0;
-    char *nodelist;
+    size_t ntmp=0;
 
     if (0 > gethostname(hostname, sizeof(hostname))) {
         exit(1);
