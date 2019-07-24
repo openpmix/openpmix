@@ -35,6 +35,7 @@ multiple release branches.
 - PR #1368: Backport support for libev
 - PR #1369: Fix legacy support for PMI-1
 - PR #1370: Cleanup handling of data requests for different nspaces
+- PR #1193: Resolve get of proc-specific job-level info from another nspace
 
 
 3.1.3 -- 2 July 2019
