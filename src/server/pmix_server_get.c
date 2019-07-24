@@ -136,7 +136,8 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     size_t sz, n;
 
     pmix_output_verbose(2, pmix_server_globals.get_output,
-                        "recvd GET");
+                        "%s recvd GET",
+                        PMIX_NAME_PRINT(&pmix_globals.myid));
 
     /* setup */
     memset(nspace, 0, sizeof(nspace));
@@ -200,7 +201,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
 
     /* check if the nspace of the requestor is different from
      * the nspace of the target process */
-    if (PMIX_CHECK_NSPACE(nspace, cd->peer->info->pname.nspace)) {
+    if (!PMIX_CHECK_NSPACE(nspace, cd->peer->info->pname.nspace)) {
         diffnspace = true;
     }
 
