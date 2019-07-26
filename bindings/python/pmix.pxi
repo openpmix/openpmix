@@ -74,11 +74,18 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
         n = 0
         infoptr = <pmix_info_t*>array[0].array
         for item in mylist:
-            keylist = item.keys()  # will be only one
+            keylist = []
+            print("ITEM IN DARRAY: ", item)
+            keylist.append(item['key'])
+            print("ITEM: ", item)
             for key in keylist:
                 pykey = str(key)
+                print("PYKEY: ", pykey)
                 pmix_copy_key(infoptr[n].key, pykey)
-                pmix_load_value(&infoptr[n].value, item[key])
+                #d = next(i for i in mylist if i['key'] == key)
+                val = item['value'],item['val_type']
+                print("VAL IN LOAD DARRAY: ", val)
+                pmix_load_value(&infoptr[n].value, val)
                 break
             n += 1
     elif PMIX_STRING == mytype:
@@ -669,18 +676,25 @@ cdef void pmix_free_value(self, pmix_value_t *value):
 # @array [INPUT]
 #        - malloc'd array of pmix_info_t structs
 #
-# @keyvals [INPUT]
-#          - dictionary of key-value pairs {key: (value, type)}
+# @dicts [INPUT]
+#          - a list of dictionaries, where each
+#            dictionary has a key, value, and val_type
+#            defined as such:
+#            [{key:y, value:val, val_type:ty}, … ]
 #
-cdef int pmix_load_info(pmix_info_t *array, keyvals:dict):
-    kvkeys = list(keyvals.keys())
+cdef int pmix_load_info(pmix_info_t *array, dicts:list):
+    kvkeys = []
+    for d in dicts:
+        kvkeys.append(d['key'])
     n = 0
     for key in kvkeys:
         pykey = str(key)
-        print("LOAD INFO ", key, " TYPE ", PMIx_Data_type_string(keyvals[key][1]))
         pmix_copy_key(array[n].key, pykey)
         # the value also needs to be transferred
-        rc = pmix_load_value(&array[n].value, keyvals[key])
+        d = next(item for item in dicts if item['key'] == key)
+        val = d['value'],d['val_type']
+        rc = pmix_load_value(&array[n].value, val)
+        print("LOAD INFO ", PMIx_Data_type_string(d['val_type']))
         if PMIX_SUCCESS != rc:
             return rc
         n += 1
@@ -694,12 +708,17 @@ cdef int pmix_unload_info(const pmix_info_t *info, size_t ninfo, ilist:list):
         val = pmix_unload_value(&info[n].value)
         if val[1] == PMIX_UNDEF:
             return PMIX_ERR_NOT_SUPPORTED
-        keyval = {}
+        # empty list for list of dictionaries
+        dicts = []
+        d     = {}
         kystr = strdup(info[n].key)
         pykey = kystr.decode("ascii")
         free(kystr)
-        keyval[pykey] = val
-        ilist.append(keyval)
+        d['key']      = pykey
+        d['value']    = val[0]
+        d['val_type'] = val[1]
+        dicts.append(d)
+        ilist.append(dicts)
         n += 1
     return PMIX_SUCCESS
 

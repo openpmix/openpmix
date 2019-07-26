@@ -36,7 +36,9 @@ def main():
         print("FAILED TO CREATE SERVER")
         exit(1)
     print("Testing server version ", foo.get_version())
-    args = {'FOOBAR': ('VAR', PMIX_STRING), 'BLAST': (7, PMIX_INT32)}
+    #[{key:y, value:val, val_type:ty}, … ]
+    args = [{'key':'FOOBAR', 'value':'VAR', 'val_type':PMIX_STRING},
+            {'key':'BLAST', 'value':7, 'val_type':PMIX_INT32}]
     map = {'clientconnected': clientconnected,
            'clientfinalized': clientfinalized,
            'fencenb': clientfence}
@@ -46,14 +48,16 @@ def main():
     print("Initialized: ", rc)
     vers = foo.get_version()
     print("Version: ", vers)
+    
     # get our environment as a base
     env = os.environ.copy()
     # register an nspace for the client app
     darray = (PMIX_SIZE, [1, 2, 3, 4, 5])
-    kvals = {'testkey': (darray, PMIX_DATA_ARRAY)}
+    kvals = [{'key':'testkey', 'value':darray, 'val_type':PMIX_DATA_ARRAY}]
     print("REGISTERING NSPACE")
     rc = foo.register_nspace("testnspace", 1, kvals)
     print("RegNspace ", rc)
+    
     # register a client
     uid = os.getuid()
     gid = os.getgid()
@@ -62,6 +66,7 @@ def main():
     # setup the fork
     rc = foo.setup_fork(("testnspace", 0), env)
     print("SetupFrk", rc)
+    
     # setup the client argv
     args = ["./client.py"]
     # open a subprocess with stdout and stderr

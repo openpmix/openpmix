@@ -36,7 +36,7 @@ def main():
         print("FAILED TO CREATE SERVER")
         exit(1)
     print("Testing server version ", foo.get_version())
-    args = {PMIX_SERVER_SCHEDULER: ('T', PMIX_BOOL)}
+    args = [{'key':PMIX_SERVER_SCHEDULER, 'value':'T', 'val_type':PMIX_BOOL}]
     map = {'clientconnected': clientconnected,
            'clientfinalized': clientfinalized,
            'fencenb': clientfence}
@@ -51,19 +51,20 @@ def main():
     rc = foo.register_fabric(None)
     print("Fabric registered: ", rc)
 
-    # Get the number of vertices in this fabric
-    nverts = foo.get_num_vertices()
-    print("Nverts in fabric: ", nverts)
-
     # setup the application
     (rc, regex) = foo.generate_regex("test000,test001,test002")
     print("Node regex: ", regex)
     (rc, ppn) = foo.generate_ppn("0,1,2;3,4,5;6,7")
     print("PPN: ", ppn)
-    darray = (PMIX_INFO, [{PMIX_ALLOC_NETWORK_ID: ("SIMPSCHED.net", PMIX_STRING)},
-                          {PMIX_ALLOC_NETWORK_SEC_KEY: ('T', PMIX_BOOL)},
-                          {PMIX_SETUP_APP_ENVARS: ('T', PMIX_BOOL)}])
-    kyvals = {PMIX_NODE_MAP: (regex, PMIX_STRING), PMIX_PROC_MAP: (ppn, PMIX_STRING), PMIX_ALLOC_NETWORK: (darray, PMIX_DATA_ARRAY)}
+    darray = (PMIX_INFO, [{'key':PMIX_ALLOC_NETWORK_ID, 
+                            'value':'SIMPSCHED.net', 'val_type':PMIX_STRING},
+                           {'key':PMIX_ALLOC_NETWORK_SEC_KEY, 'value':'T', 
+                            'val_type':PMIX_BOOL},
+                           {'key':PMIX_SETUP_APP_ENVARS, 'value':'T', 
+                            'val_type':PMIX_BOOL}])
+    kyvals = [{'key':PMIX_NODE_MAP, 'value':'regex', 'val_type':PMIX_STRING},
+              {'key':PMIX_PROC_MAP, 'value':ppn, 'val_type':PMIX_STRING},
+              {'key':PMIX_ALLOC_NETWORK, 'value':darray, 'val_type':PMIX_DATA_ARRAY}]
 
     appinfo = []
     rc, appinfo = foo.setup_application("SIMPSCHED", kyvals)
@@ -76,7 +77,10 @@ def main():
     env = os.environ.copy()
 
     # register an nspace for the client app
-    kvals = {PMIX_NODE_MAP: (regex, PMIX_STRING), PMIX_PROC_MAP: (ppn, PMIX_STRING), PMIX_UNIV_SIZE: (1, PMIX_UINT32), PMIX_JOB_SIZE: (1, PMIX_UINT32)}
+    kvals = [{'key':PMIX_NODE_MAP, 'value':'regex', 'val_type':PMIX_STRING},
+             {'key':PMIX_PROC_MAP, 'value':ppn, 'val_type':PMIX_STRING}, 
+             {'key':PMIX_UNIV_SIZE, 'value':1, 'val_type':PMIX_UINT32}, 
+             {'key':PMIX_JOB_SIZE, 'value':1, 'val_type':PMIX_UINT32}]
     print("REGISTERING NSPACE")
     rc = foo.register_nspace("testnspace", 1, kvals)
     print("RegNspace ", rc)

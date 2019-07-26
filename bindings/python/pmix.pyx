@@ -59,20 +59,26 @@ cdef class PMIxClient:
     # Initialize the PMIx client library, connecting
     # us to the local PMIx server
     #
-    # @keyvals [INPUT]
-    #          - a dictionary of key-value pairs
-    def init(self, keyvals:dict):
+    # @dicts [INPUT]
+    #          - a list of dictionaries, where each
+    #            dictionary has a key, value, and val_type
+    #            defined as such:
+    #            [{key:y, value:val, val_type:ty}, … ]
+    #
+    def init(self, dicts:list):
         cdef pmix_info_t *info
         cdef size_t klen
         # Convert any provided dictionary to an array of pmix_info_t
-        if keyvals is not None:
-            kvkeys = list(keyvals.keys())
+        if dicts is not None:
+            kvkeys = []
+            for d in dicts:
+                kvkeys.append(d['key'])
             klen = len(kvkeys)
             if 0 < klen:
                 info = <pmix_info_t*> PyMem_Malloc(klen * sizeof(pmix_info_t))
                 if not info:
                     raise MemoryError()
-                pmix_load_info(info, keyvals)
+                pmix_load_info(info, dicts)
             else:
                 info = NULL
                 klen = 0
@@ -85,17 +91,19 @@ cdef class PMIxClient:
         return rc
 
     # Finalize the client library
-    def finalize(self, keyvals:dict):
+    def finalize(self, dicts:list):
         cdef pmix_info_t *info
         cdef size_t klen
-        if keyvals is not None:
-            kvkeys = list(keyvals.keys())
+        if dicts is not None:
+            kvkeys = []
+            for d in dicts:
+                kvkeys.append(d['key'])
             klen = len(kvkeys)
             if 0 < klen:
                 info = <pmix_info_t*> PyMem_Malloc(klen * sizeof(pmix_info_t))
                 if not info:
                     raise MemoryError()
-                pmix_load_info(info, keyvals)
+                pmix_load_info(info, dicts)
             else:
                 info = NULL
                 klen = 0
@@ -191,7 +199,7 @@ cdef class PMIxClient:
         rc = PMIx_Commit()
         return rc
 
-    def fence(self, peers:list, keyvals:dict):
+    def fence(self, peers:list, dicts:list):
         cdef pmix_proc_t *procs
         cdef pmix_info_t *info
         cdef size_t ninfo, nprocs
@@ -222,16 +230,18 @@ cdef class PMIxClient:
                 raise MemoryError()
             pmix_copy_nspace(procs[0].nspace, self.myproc.nspace)
             procs[0].rank = PMIX_RANK_WILDCARD
-        # convert the keyval dictionary to array of
+        # convert the list of dictionaries to array of
         # pmix_info_t structs
-        if keyvals is not None:
-            kvkeys = list(keyvals.keys())
+        if dicts is not None:
+            kvkeys = []
+            for d in dicts:
+                kvkeys.append(d['key'])
             ninfo = len(kvkeys)
             if 0 < ninfo:
                 info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
                 if not info:
                     raise MemoryError()
-                rc = pmix_load_info(info, keyvals)
+                rc = pmix_load_info(info, dicts)
                 if PMIX_SUCCESS != rc:
                     pmix_free_procs(procs, nprocs)
                     pmix_free_info(info, ninfo)
@@ -307,15 +317,17 @@ cdef class PMIxServer(PMIxClient):
 
     # Initialize the PMIx server library
     #
-    # @keyvals [INPUT]
-    #          - a dictionary of key-value pairs to be passed
-    #            as pmix_info_t to PMIx_server_init
+    # @dicts [INPUT]
+    #          - a list of dictionaries, where each
+    #            dictionary has a key, value, and val_type
+    #            defined as such:
+    #            [{key:y, value:val, val_type:ty}, … ]
     #
     # @map [INPUT]
     #          - a dictionary of key-function pairs that map
     #            server module callback functions to provided
     #            implementations
-    def init(self, keyvals:dict, map:dict):
+    def init(self, dicts:list, map:dict):
         cdef pmix_info_t *info
         cdef size_t sz
 
@@ -329,14 +341,16 @@ cdef class PMIxServer(PMIxClient):
             except KeyError:
                 print("SERVER MODULE FUNCTION ", key, " IS NOT RECOGNIZED")
                 return PMIX_ERR_INIT
-        if keyvals is not None:
+        if dicts is not None:
             # Convert any provided dictionary to an array of pmix_info_t
-            kvkeys = list(keyvals.keys())
+            kvkeys = []
+            for d in dicts:
+                kvkeys.append(d['key'])
             sz = len(kvkeys)
             info = <pmix_info_t*> PyMem_Malloc(sz * sizeof(pmix_info_t))
             if not info:
                 raise MemoryError()
-            pmix_load_info(info, keyvals)
+            pmix_load_info(info, dicts)
             rc = PMIx_server_init(&self.myserver, info, sz)
             pmix_free_info(info, sz)
         else:
@@ -354,10 +368,13 @@ cdef class PMIxServer(PMIxClient):
     # @nlocalprocs [INPUT]
     #              - number of local procs for this job (int)
     #
-    # @keyvals [INPUT]
-    #          - key-value pairs containing job-level info (dict)
+    # @dicts [INPUT]
+    #          - a list of dictionaries, where each
+    #            dictionary has a key, value, and val_type
+    #            defined as such:
+    #            [{key:y, value:val, val_type:ty}, … ]
     #
-    def register_nspace(self, ns, nlocalprocs, keyvals:dict):
+    def register_nspace(self, ns, nlocalprocs, dicts:list):
         cdef pmix_nspace_t nspace
         cdef pmix_info_t *info
         cdef size_t sz
@@ -365,14 +382,16 @@ cdef class PMIxServer(PMIxClient):
         # convert the args into the necessary C-arguments
         pmix_copy_nspace(nspace, ns)
         active.clear()
-        if keyvals is not None:
+        if dicts is not None:
             # Convert any provided dictionary to an array of pmix_info_t
-            kvkeys = list(keyvals.keys())
+            kvkeys = []
+            for d in dicts:
+                kvkeys.append(d['key'])
             sz = len(kvkeys)
             info = <pmix_info_t*> PyMem_Malloc(sz * sizeof(pmix_info_t))
             if not info:
                 raise MemoryError()
-            pmix_load_info(info, keyvals)
+            pmix_load_info(info, dicts)
             rc = PMIx_server_register_nspace(nspace, nlocalprocs, info, sz, pmix_opcbfunc, NULL)
         else:
             rc = PMIx_server_register_nspace(nspace, nlocalprocs, NULL, 0, pmix_opcbfunc, NULL)
@@ -484,21 +503,23 @@ cdef class PMIxServer(PMIxClient):
             dataout["dmodx"] = (data, sz)
         return rc
 
-    def setup_application(self, ns, keyvals:dict):
+    def setup_application(self, ns, dicts:list):
         global active
         cdef pmix_nspace_t nspace;
         cdef pmix_info_t *info
         cdef size_t sz
         dataout = []
         pmix_copy_nspace(nspace, ns)
-        if keyvals is not None:
+        if dicts is not None:
             # Convert any provided dictionary to an array of pmix_info_t
-            kvkeys = list(keyvals.keys())
+            kvkeys = []
+            for d in dicts:
+                kvkeys.append(d['key'])
             sz = len(kvkeys)
             info = <pmix_info_t*> PyMem_Malloc(sz * sizeof(pmix_info_t))
             if not info:
                 raise MemoryError()
-            pmix_load_info(info, keyvals)
+            pmix_load_info(info, dicts)
         else:
             info = NULL
             sz = 0
@@ -540,19 +561,21 @@ cdef class PMIxServer(PMIxClient):
             active.wait()
         return rc
 
-    def register_fabric(self, keyvals:dict):
+    def register_fabric(self, dicts:list):
         cdef pmix_info_t *info
         cdef size_t sz
         if 1 == self.fabric_set:
             return _PMIX_ERR_RESOURCE_BUSY
-        if keyvals is not None:
+        if dicts is not None:
             # Convert any provided dictionary to an array of pmix_info_t
-            kvkeys = list(keyvals.keys())
+            kvkeys = []
+            for d in dicts:
+                kvkeys.append(d['key'])
             sz = len(kvkeys)
             info = <pmix_info_t*> PyMem_Malloc(sz * sizeof(pmix_info_t))
             if not info:
                 raise MemoryError()
-            pmix_load_info(info, keyvals)
+            pmix_load_info(info, dicts)
             rc = PMIx_server_register_fabric(&self.fabric, info, sz)
             pmix_free_info(info, sz)
         else:
@@ -675,7 +698,6 @@ cdef int clientaborted(const pmix_proc_t *proc, void *server_object,
         args = {}
         myproc = []
         myprocs = []
-        keyvals = {}
         # convert the caller's name
         pmix_unload_procs(proc, 1, myproc)
         args['caller'] = myproc[0]
