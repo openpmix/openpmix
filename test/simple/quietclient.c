@@ -295,7 +295,9 @@ int main(int argc, char **argv)
                         pmix_output(0, "Client ns %s rank %d cnt %d: PMIx_Get %s failed for remote proc",
                                     myproc.nspace, myproc.rank, j, tmp);
                     }
-                    PMIX_VALUE_RELEASE(val);
+                    if (NULL != val) {
+                        PMIX_VALUE_RELEASE(val);
+                    }
                     free(tmp);
                 }
             }

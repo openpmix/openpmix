@@ -323,7 +323,9 @@ int main(int argc, char **argv)
                             pmix_output(0, "ERROR: Client ns %s rank %d cnt %d: PMIx_Get %s returned remote data for a local proc",
                                         myproc.nspace, myproc.rank, j, tmp);
                         }
-                        PMIX_VALUE_RELEASE(val);
+                        if (NULL != val) {
+                            PMIX_VALUE_RELEASE(val);
+                        }
                         free(tmp);
                     }
                 } else {
