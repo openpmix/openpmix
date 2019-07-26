@@ -374,7 +374,7 @@ int main(int argc, char **argv)
     PMIX_INFO_CREATE(info, ninfo);
     PMIX_INFO_LOAD(&info[0], PMIX_SERVER_TOOL_SUPPORT, NULL, PMIX_BOOL);
     PMIX_INFO_LOAD(&info[1], PMIX_USOCK_DISABLE, NULL, PMIX_BOOL);
-    PMIX_INFO_LOAD(&info[2], PMIX_SERVER_SCHEDULER, NULL, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[2], PMIX_SERVER_GATEWAY, NULL, PMIX_BOOL);
 #if PMIX_HAVE_HWLOC
     if (hwloc) {
         if (NULL != hwloc_file) {
