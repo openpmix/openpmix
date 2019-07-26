@@ -105,8 +105,10 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc,
                         (NULL == key) ? "NULL" : key);
 
     /* try to get data directly, without threadshift */
-    if (PMIX_SUCCESS == (rc = _getfn_fastpath(proc, key, info, ninfo, val))) {
-        goto done;
+    if (PMIX_RANK_UNDEF != proc->rank && NULL != key) {
+        if (PMIX_SUCCESS == (rc = _getfn_fastpath(proc, key, info, ninfo, val))) {
+            goto done;
+        }
     }
 
     /* create a callback object as we need to pass it to the
