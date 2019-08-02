@@ -36,7 +36,6 @@ def main():
         print("FAILED TO CREATE SERVER")
         exit(1)
     print("Testing server version ", foo.get_version())
-    #[{key:y, value:val, val_type:ty}, … ]
     args = [{'key':'FOOBAR', 'value':'VAR', 'val_type':PMIX_STRING},
             {'key':'BLAST', 'value':7, 'val_type':PMIX_INT32}]
     map = {'clientconnected': clientconnected,

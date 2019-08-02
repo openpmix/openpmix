@@ -70,10 +70,7 @@ cdef class PMIxClient:
         cdef size_t klen
         # Convert any provided dictionary to an array of pmix_info_t
         if dicts is not None:
-            kvkeys = []
-            for d in dicts:
-                kvkeys.append(d['key'])
-            klen = len(kvkeys)
+            klen = len(dicts)
             if 0 < klen:
                 info = <pmix_info_t*> PyMem_Malloc(klen * sizeof(pmix_info_t))
                 if not info:
@@ -95,10 +92,7 @@ cdef class PMIxClient:
         cdef pmix_info_t *info
         cdef size_t klen
         if dicts is not None:
-            kvkeys = []
-            for d in dicts:
-                kvkeys.append(d['key'])
-            klen = len(kvkeys)
+            klen = len(dicts)
             if 0 < klen:
                 info = <pmix_info_t*> PyMem_Malloc(klen * sizeof(pmix_info_t))
                 if not info:
@@ -233,10 +227,7 @@ cdef class PMIxClient:
         # convert the list of dictionaries to array of
         # pmix_info_t structs
         if dicts is not None:
-            kvkeys = []
-            for d in dicts:
-                kvkeys.append(d['key'])
-            ninfo = len(kvkeys)
+            ninfo = len(dicts)
             if 0 < ninfo:
                 info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
                 if not info:
@@ -343,10 +334,7 @@ cdef class PMIxServer(PMIxClient):
                 return PMIX_ERR_INIT
         if dicts is not None:
             # Convert any provided dictionary to an array of pmix_info_t
-            kvkeys = []
-            for d in dicts:
-                kvkeys.append(d['key'])
-            sz = len(kvkeys)
+            sz = len(dicts)
             info = <pmix_info_t*> PyMem_Malloc(sz * sizeof(pmix_info_t))
             if not info:
                 raise MemoryError()
@@ -384,10 +372,7 @@ cdef class PMIxServer(PMIxClient):
         active.clear()
         if dicts is not None:
             # Convert any provided dictionary to an array of pmix_info_t
-            kvkeys = []
-            for d in dicts:
-                kvkeys.append(d['key'])
-            sz = len(kvkeys)
+            sz = len(dicts)
             info = <pmix_info_t*> PyMem_Malloc(sz * sizeof(pmix_info_t))
             if not info:
                 raise MemoryError()
@@ -543,16 +528,14 @@ cdef class PMIxServer(PMIxClient):
             if not info:
                 raise MemoryError()
             n = 0
-            for iptr in ilist:
-                keys = list(iptr.keys())
-                for key in keys:
-                    pykey = str(key)
-                    pmix_copy_key(info[n].key, pykey)
-                    # the value also needs to be transferred
-                    print("SETUP LOCAL ", info[n].key, " TYPE ", PMIx_Data_type_string(iptr[key][1]))
-                    pmix_load_value(&info[n].value, iptr[key])
-                    n += 1
-                    break
+            for d in ilist:
+                pykey = str(d['key'])
+                pmix_copy_key(info[n].key, pykey)
+                # the value also needs to be transferred
+                print("SETUP LOCAL ", info[n].key, " TYPE ", PMIx_Data_type_string(d['val_type']))
+                pmix_load_value(&info[n].value, d['key'])
+                n += 1
+                break
         else:
             info = NULL
             sz = 0
@@ -1174,7 +1157,7 @@ cdef int allocate(const pmix_proc_t *client,
         args = {}
         myproc = []
         mydirs = {}
-        keyvals = {}
+        keyvals = []
         if NULL != client:
             pmix_unload_procs(client, 1, myproc)
             args['client'] = myproc[0]
