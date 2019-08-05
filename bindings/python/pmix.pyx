@@ -41,7 +41,8 @@ cdef void setupapp_cbfunc(pmix_status_t status,
         active.cache_info(ilist)
         status = rc
     active.set(status)
-    cbfunc(PMIX_SUCCESS, cbdata)
+    if (NULL != cbfunc):
+        cbfunc(PMIX_SUCCESS, cbdata)
     return
 
 cdef class PMIxClient:
