@@ -70,7 +70,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
     if PMIX_INFO == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(pmix_info_t))
         if not array[0].array:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         n = 0
         infoptr = <pmix_info_t*>array[0].array
         for item in mylist:
@@ -81,7 +81,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
     elif PMIX_STRING == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(char*))
         if not array[0].array:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         n = 0
         strptr = <char**> array[0].array
         for item in mylist:
@@ -90,7 +90,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
     elif PMIX_STRING == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(char*))
         if not array[0].array:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         n = 0
         strptr = <char**> array[0].array
         for item in mylist:
@@ -99,84 +99,91 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
     elif PMIX_SIZE == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(size_t))
         if not array[0].array:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         n = 0
         sptr = <size_t*> array[0].array
         for item in mylist:
             if not isinstance(item, pmix_int_types):
-                raise TypeError("size_t value declared but non-integer provided")
+                print("size_t value declared but non-integer provided")
+                return PMIX_ERR_TYPE_MISMATCH
             sptr[n] = int(item)
             n += 1
     elif PMIX_PID == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(pid_t))
         if not array[0].array:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         n = 0
         pidptr = <pid_t*> array[0].array
         for item in mylist:
             if not isinstance(item, pmix_int_types):
-                raise TypeError("pid_t value declared but non-integer provided")
+                print("pid_t value declared but non-integer provided")
+                return PMIX_ERR_TYPE_MISMATCH
             pidptr[n] = int(item)
             n += 1
     elif PMIX_INT == mytype or PMIX_UINT == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(int))
         if not array[0].array:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         n = 0
         iptr = <int*> array[0].array
         for item in mylist:
             if not isinstance(item, pmix_int_types):
-                raise TypeError("int value declared but non-integer provided")
+                print("int value declared but non-integer provided")
+                return PMIX_ERR_TYPE_MISMATCH
             iptr[n] = int(item)
             n += 1
     elif PMIX_INT8 == mytype or PMIX_UINT8 == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(int8_t))
         if not array[0].array:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         n = 0
         i8ptr = <int8_t*> array[0].array
         for item in mylist:
             if not isinstance(item, pmix_int_types):
-                raise TypeError("8-bit int value declared but non-integer provided")
+                print("8-bit int value declared but non-integer provided")
+                return PMIX_ERR_TYPE_MISMATCH
             i8ptr[n] = int(item)
             n += 1
     elif PMIX_INT16 == mytype or PMIX_UINT16 == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(int16_t))
         if not array[0].array:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         n = 0
         i16ptr = <int16_t*> array[0].array
         for item in mylist:
             if not isinstance(item, pmix_int_types):
-                raise TypeError("16-bit int value declared but non-integer provided")
+                print("16-bit int value declared but non-integer provided")
+                return PMIX_ERR_TYPE_MISMATCH
             i16ptr[n] = int(item)
             n += 1
     elif PMIX_INT32 == mytype or PMIX_UINT32 == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(int32_t))
         if not array[0].array:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         n = 0
         i32ptr = <int32_t*> array[0].array
         for item in mylist:
             if not isinstance(item, pmix_int_types):
-                raise TypeError("32-bit int value declared but non-integer provided")
+                print("32-bit int value declared but non-integer provided")
+                return PMIX_ERR_TYPE_MISMATCH
             i32ptr[n] = int(item)
             n += 1
     elif PMIX_INT64 == mytype or PMIX_UINT64 == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(int64_t))
         if not array[0].array:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         n = 0
         i64ptr = <int64_t*> array[0].array
         for item in mylist:
             if not isinstance(item, pmix_int_types):
-                raise TypeError("64-bit int value declared but non-integer provided")
+                print("64-bit int value declared but non-integer provided")
+                return PMIX_ERR_TYPE_MISMATCH
             i64ptr[n] = int(item)
             n += 1
     elif PMIX_FLOAT == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(float))
         if not array[0].array:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         n = 0
         fptr = <float*> array[0].array
         for item in mylist:
@@ -185,7 +192,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
     elif PMIX_DOUBLE == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(double))
         if not array[0].array:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         n = 0
         dptr = <double*> array[0].array
         for item in mylist:
@@ -197,7 +204,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
         # "struct timeval"
         array[0].array = PyMem_Malloc(mysize * sizeof(timeval))
         if not array[0].array:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         n = 0
         tvptr = <timeval*> array[0].array
         for item in mylist:
@@ -211,7 +218,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
     elif PMIX_TIME == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(time_t))
         if not array[0].array:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         n = 0
         tmptr = <time_t*> array[0].array
         for item in mylist:
@@ -220,7 +227,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
     elif PMIX_STATUS == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(int))
         if not array[0].array:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         n = 0
         stptr = <int*> array[0].array
         for item in mylist:
@@ -229,7 +236,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
     elif PMIX_PROC_RANK == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(pmix_rank_t))
         if not array[0].array:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         n = 0
         rkptr = <pmix_rank_t*> array[0].array
         for item in mylist:
@@ -238,7 +245,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
     elif PMIX_PROC == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(pmix_proc_t))
         if not array[0].array:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         n = 0
         prcptr = <pmix_proc_t*> array[0].array
         for item in mylist:
@@ -248,14 +255,14 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
     elif PMIX_BYTE_OBJECT == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(pmix_byte_object_t))
         if not array[0].array:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         n = 0
         boptr = <pmix_byte_object_t*>array[0].array
         for item in mylist:
             boptr[n].size = item[0]
             boptr[n].bytes = <char*> PyMem_Malloc(item[0].data.bo.size)
             if not boptr[n].bytes:
-                raise MemoryError()
+                return PMIX_ERR_NOMEM
             pyarr = bytes(item[1])
             pyptr = <const char*> pyarr
             memcpy(boptr[n].bytes, pyptr, boptr[n].size)
@@ -263,7 +270,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
     elif PMIX_PERSISTENCE == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(pmix_persistence_t))
         if not array[0].array:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         n = 0
         perptr = <pmix_persistence_t*> array[0].array
         for item in mylist:
@@ -272,7 +279,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
     elif PMIX_SCOPE == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(pmix_scope_t))
         if not array[0].array:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         n = 0
         scptr = <pmix_scope_t*> array[0].array
         for item in mylist:
@@ -281,7 +288,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
     elif PMIX_RANGE == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(pmix_data_range_t))
         if not array[0].array:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         n = 0
         rgptr = <pmix_data_range_t*> array[0].array
         for item in mylist:
@@ -290,7 +297,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
     elif PMIX_PROC_STATE == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(pmix_proc_state_t))
         if not array[0].array:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         n = 0
         psptr = <pmix_proc_state_t*> array[0].array
         for item in mylist:
@@ -299,7 +306,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
     elif PMIX_PROC_INFO == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(pmix_proc_info_t))
         if not array[0].array:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         n = 0
         piptr = <pmix_proc_info_t*> array[0].array
         for item in mylist:
@@ -313,7 +320,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
     elif PMIX_DATA_ARRAY == mytype:
         array[0].array = <pmix_data_array_t*> PyMem_Malloc(sizeof(pmix_data_array_t))
         if not array[0].array:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         daptr = <pmix_data_array_t*>array[0].array
         n = 0
         for item in mylist:
@@ -321,7 +328,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
             daptr[n].size = len(item[1])
             daptr[n].array = <pmix_data_array_t*> PyMem_Malloc(sizeof(pmix_data_array_t))
             if not daptr[n].array:
-                raise MemoryError()
+                return PMIX_ERR_NOMEM
             mydaptr = <pmix_data_array_t*>daptr[n].array
             try:
                 return pmix_load_darray(mydaptr, daptr[n].type, item[1])
@@ -330,7 +337,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
     elif PMIX_ALLOC_DIRECTIVE == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(pmix_alloc_directive_t))
         if not array[0].array:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         n = 0
         aldptr = <pmix_alloc_directive_t*> array[0].array
         for item in mylist:
@@ -339,7 +346,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
     elif PMIX_ENVAR == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(pmix_envar_t))
         if not array[0].array:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         n = 0
         envptr = <pmix_envar_t*> array[0].array
         for item in mylist:
@@ -364,7 +371,8 @@ def pmix_bool_convert(f):
         elif f.startswith('f') or f.startswith('F'):
             return 0
         else:
-            raise ValueError("Incorrect boolean value provided")
+            print("Incorrect boolean value provided")
+            return PMIX_ERR_DATA_VALUE_NOT_FOUND
     else:
         return f
 
@@ -421,72 +429,94 @@ cdef int pmix_load_value(pmix_value_t *value, val:tuple):
         try:
             value[0].data.string = strdup(pykey)
         except:
-            raise ValueError("String value declared but non-string provided")
+            print("String value declared but non-string provided")
+            return PMIX_ERR_TYPE_MISMATCH
     elif val[1] == PMIX_SIZE:
         if not isinstance(val[0], pmix_int_types):
-            raise TypeError("size_t value declared but non-integer provided")
+            print("size_t value declared but non-integer provided")
+            return PMIX_ERR_TYPE_MISMATCH
         value[0].data.size = val[0]
     elif val[1] == PMIX_PID:
         if not isinstance(val[0], pmix_int_types):
-            raise TypeError("pid value declared but non-integer provided")
+            print("pid value declared but non-integer provided")
+            return PMIX_ERR_TYPE_MISMATCH
         if val[0] < 0:
-            raise ValueError("pid value is negative")
+            print("pid value is negative")
+            return PMIX_ERR_INVALID_VAL
         value[0].data.pid = val[0]
     elif val[1] == PMIX_INT:
         if not isinstance(val[0], pmix_int_types):
-            raise TypeError("integer value declared but non-integer provided")
+            print("integer value declared but non-integer provided")
+            return PMIX_ERR_TYPE_MISMATCH
         value[0].data.integer = val[0]
     elif val[1] == PMIX_INT8:
         if not isinstance(val[0], pmix_int_types):
-            raise TypeError("int8 value declared but non-integer provided")
+            print("int8 value declared but non-integer provided")
+            return PMIX_ERR_TYPE_MISMATCH
         if val[0] > 127 or val[0] < -128:
-            raise ValueError("int8 value is out of bounds")
+            print("int8 value is out of bounds")
+            return PMIX_ERR_INVALID_VAL
         value[0].data.int8 = val[0]
     elif val[1] == PMIX_INT16:
         if not isinstance(val[0], pmix_int_types):
-            raise TypeError("int16 value declared but non-integer provided")
+            print("int16 value declared but non-integer provided")
+            return PMIX_ERR_TYPE_MISMATCH
         if val[0] > 32767 or val[0] < -32768:
-            raise ValueError("int16 value is out of bounds")
+            print("int16 value is out of bounds")
+            return PMIX_ERR_INVALID_VAL
         value[0].data.int16 = val[0]
     elif val[1] == PMIX_INT32:
         if not isinstance(val[0], pmix_int_types):
-            raise TypeError("int32 value declared but non-integer provided")
+            print("int32 value declared but non-integer provided")
+            return PMIX_ERR_TYPE_MISMATCH
         if val[0] > 2147483647 or val[0] < -2147483648:
-            raise ValueError("int32 value is out of bounds")
+            print("int32 value is out of bounds")
+            return PMIX_ERR_INVALID_VAL
         value[0].data.int32 = val[0]
     elif val[1] == PMIX_INT64:
         if not isinstance(val[0], pmix_int_types):
-            raise TypeError("int64 value declared but non-integer provided")
+            print("int64 value declared but non-integer provided")
+            return PMIX_ERR_TYPE_MISMATCH
         if val[0] > (2147483647*2147483647) or val[0] < -(2147483648*2147483648):
-            raise ValueError("int64 value is out of bounds")
+            print("int64 value is out of bounds")
+            return PMIX_ERR_INVALID_VAL
         value[0].data.int64 = val[0]
     elif val[1] == PMIX_UINT:
         if not isinstance(val[0], pmix_int_types):
-            raise TypeError("integer value declared but non-integer provided")
+            print("integer value declared but non-integer provided")
+            return PMIX_ERR_TYPE_MISMATCH
         value[0].data.uint = val[0]
     elif val[1] == PMIX_UINT8:
         if not isinstance(val[0], pmix_int_types):
-            raise TypeError("uint8 value declared but non-integer provided")
+            print("uint8 value declared but non-integer provided")
+            return PMIX_ERR_TYPE_MISMATCH
         if val[0] > 255:
-            raise ValueError("uint8 value is out of bounds")
+            print("uint8 value is out of bounds")
+            return PMIX_ERR_INVALID_VAL
         value[0].data.uint8 = val[0]
     elif val[1] == PMIX_UINT16:
         if not isinstance(val[0], pmix_int_types):
-            raise TypeError("uint16 value declared but non-integer provided")
+            print("uint16 value declared but non-integer provided")
+            return PMIX_ERR_TYPE_MISMATCH
         if val[0] > 65536:
-            raise ValueError("uint16 value is out of bounds")
+            print("uint16 value is out of bounds")
+            return PMIX_ERR_INVALID_VAL
         value[0].data.uint16 = val[0]
     elif val[1] == PMIX_UINT32:
         if not isinstance(val[0], pmix_int_types):
-            raise TypeError("uint32 value declared but non-integer provided")
+            print("uint32 value declared but non-integer provided")
+            return PMIX_ERR_TYPE_MISMATCH
         if val[0] > (65536*65536):
-            raise ValueError("uint32 value is out of bounds")
+            print("uint32 value is out of bounds")
+            return PMIX_ERR_INVALID_VAL
         value[0].data.uint32 = val[0]
     elif val[1] == PMIX_UINT64:
         if not isinstance(val[0], pmix_int_types):
-            raise TypeError("int64 value declared but non-integer provided")
+            print("int64 value declared but non-integer provided")
+            return PMIX_ERR_TYPE_MISMATCH
         if val[0] > (2147483648*2147483648):
-            raise ValueError("uint64 value is out of bounds")
+            print("uint64 value is out of bounds")
+            return PMIX_ERR_INVALID_VAL
         value[0].data.uint64 = val[0]
     elif val[1] == PMIX_FLOAT:
         value[0].data.fval = float(val[0])
@@ -508,13 +538,13 @@ cdef int pmix_load_value(pmix_value_t *value, val:tuple):
     elif val[1] == PMIX_PROC:
         value[0].data.proc = <pmix_proc_t*> PyMem_Malloc(sizeof(pmix_proc_t))
         if not value[0].data.proc:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         pmix_copy_nspace(value[0].data.proc[0].nspace, val[0][0])
         value[0].data.proc[0].rank = val[0][1]
     elif val[1] == PMIX_BYTE_OBJECT:
         value[0].data.bo.bytes = <char*> PyMem_Malloc(value[0].data.bo.size)
         if not value[0].data.bo.bytes:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         pyptr = <char*>val[0][0]
         memcpy(value[0].data.bo.bytes, pyptr, value[0].data.bo.size)
     elif val[1] == PMIX_PERSISTENCE:
@@ -528,7 +558,7 @@ cdef int pmix_load_value(pmix_value_t *value, val:tuple):
     elif val[1] == PMIX_PROC_INFO:
         value[0].data.pinfo = <pmix_proc_info_t*> PyMem_Malloc(sizeof(pmix_proc_info_t))
         if not value[0].data.pinfo:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         pmix_copy_nspace(value[0].data.pinfo[0].proc.nspace, val[0]['proc'][0])
         value[0].data.pinfo[0].proc.rank = val[0]['proc'][1]
         value[0].data.pinfo[0].hostname = strdup(val[0]['hostname'])
@@ -538,7 +568,7 @@ cdef int pmix_load_value(pmix_value_t *value, val:tuple):
     elif val[1] == PMIX_DATA_ARRAY:
         value[0].data.darray = <pmix_data_array_t*> PyMem_Malloc(sizeof(pmix_data_array_t))
         if not value[0].data.darray:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         value[0].data.darray[0].type = val[0][0]
         value[0].data.darray[0].size = len(val[0][1])
         try:
@@ -547,9 +577,11 @@ cdef int pmix_load_value(pmix_value_t *value, val:tuple):
             return PMIX_ERR_NOT_SUPPORTED
     elif val[1] == PMIX_ALLOC_DIRECTIVE:
         if not isinstance(val[0], pmix_int_types):
-            raise TypeError("allocdirective value declared but non-integer provided")
+            print("allocdirective value declared but non-integer provided")
+            return PMIX_ERR_TYPE_MISMATCH
         if val[0] > 255:
-            raise ValueError("allocdirective value is out of bounds")
+            print("allocdirective value is out of bounds")
+            return PMIX_ERR_INVALID_VAL
         value[0].data.adir = val[0]
     elif val[1] == PMIX_ENVAR:
         enval = val[0]['envar']
@@ -626,7 +658,7 @@ cdef tuple pmix_unload_value(const pmix_value_t *value):
     elif PMIX_BYTE_OBJECT == value[0].type:
         mybytes = <char*> PyMem_Malloc(value[0].data.bo.size)
         if not mybytes:
-            raise MemoryError()
+            return PMIX_ERR_NOMEM
         memcpy(mybytes, value[0].data.bo.bytes, value[0].data.bo.size)
         return ((mybytes, value[0].data.bo.size), PMIX_BYTE_OBJECT)
     elif PMIX_PERSISTENCE == value[0].type:
@@ -647,7 +679,8 @@ cdef tuple pmix_unload_value(const pmix_value_t *value):
         pians = {'proc': (pins, pirk), 'hostname': pihost, 'pid': pipid, 'exitcode': piex, 'state': pist}
         return (pians, PMIX_PROC_INFO)
     elif PMIX_DATA_ARRAY == value[0].type:
-        raise ValueError("Unload_value: data array not supported")
+        print("Unload_value: data array not supported")
+        return PMIX_ERR_NOT_SUPPORTED
     elif PMIX_ALLOC_DIRECTIVE == value[0].type:
         return (value[0].data.adir, PMIX_ALLOC_DIRECTIVE)
     elif PMIX_ENVAR:
@@ -657,7 +690,8 @@ cdef tuple pmix_unload_value(const pmix_value_t *value):
         pyenvans = {'envar': pyenv, 'value': pyval, 'separator': pysep}
         return (pyenvans, PMIX_ENVAR)
     else:
-        raise ValueError("Unload_value: provided type is unknown")
+        print("Unload_value: provided type is unknown")
+        return PMIX_ERR_TYPE_MISMATCH
 
 
 cdef void pmix_destruct_value(pmix_value_t *value):
