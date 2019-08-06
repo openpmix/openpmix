@@ -75,7 +75,7 @@ cdef class PMIxClient:
             if 0 < klen:
                 info = <pmix_info_t*> PyMem_Malloc(klen * sizeof(pmix_info_t))
                 if not info:
-                    raise MemoryError()
+                    return PMIX_ERR_NOMEM
                 pmix_load_info(info, dicts)
             else:
                 info = NULL
@@ -97,7 +97,7 @@ cdef class PMIxClient:
             if 0 < klen:
                 info = <pmix_info_t*> PyMem_Malloc(klen * sizeof(pmix_info_t))
                 if not info:
-                    raise MemoryError()
+                    return PMIX_ERR_NOMEM
                 pmix_load_info(info, dicts)
             else:
                 info = NULL
@@ -133,7 +133,7 @@ cdef class PMIxClient:
             if 0 < sz:
                 procs = <pmix_proc_t*> PyMem_Malloc(sz * sizeof(pmix_proc_t))
                 if not procs:
-                    raise MemoryError()
+                    return PMIX_ERR_NOMEM
                 rc = pmix_load_procs(procs, peers)
                 if PMIX_SUCCESS != rc:
                     pmix_free_procs(procs, sz)
@@ -144,7 +144,7 @@ cdef class PMIxClient:
                 sz = 1
                 procs = <pmix_proc_t*> PyMem_Malloc(sz * sizeof(pmix_proc_t))
                 if not procs:
-                    raise MemoryError()
+                    return PMIX_ERR_NOMEM
                 pmix_copy_nspace(procs[0].nspace, self.myproc.nspace)
                 procs[0].rank = PMIX_RANK_WILDCARD
         else:
@@ -153,7 +153,7 @@ cdef class PMIxClient:
             sz = 1
             procs = <pmix_proc_t*> PyMem_Malloc(sz * sizeof(pmix_proc_t))
             if not procs:
-                raise MemoryError()
+                return PMIX_ERR_NOMEM
             pmix_copy_nspace(procs[0].nspace, self.myproc.nspace)
             procs[0].rank = PMIX_RANK_WILDCARD
         if isinstance(msg, str):
@@ -206,7 +206,7 @@ cdef class PMIxClient:
             if 0 < nprocs:
                 procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
                 if not procs:
-                    raise MemoryError()
+                    return PMIX_ERR_NOMEM
                 rc = pmix_load_procs(procs, peers)
                 if PMIX_SUCCESS != rc:
                     pmix_free_procs(procs, nprocs)
@@ -215,14 +215,14 @@ cdef class PMIxClient:
                 nprocs = 1
                 procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
                 if not procs:
-                    raise MemoryError()
+                    return PMIX_ERR_NOMEM
                 pmix_copy_nspace(procs[0].nspace, self.myproc.nspace)
                 procs[0].rank = PMIX_RANK_WILDCARD
         else:
             nprocs = 1
             procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
             if not procs:
-                raise MemoryError()
+                return PMIX_ERR_NOMEM
             pmix_copy_nspace(procs[0].nspace, self.myproc.nspace)
             procs[0].rank = PMIX_RANK_WILDCARD
         # convert the list of dictionaries to array of
@@ -232,7 +232,7 @@ cdef class PMIxClient:
             if 0 < ninfo:
                 info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
                 if not info:
-                    raise MemoryError()
+                    return PMIX_ERR_NOMEM
                 rc = pmix_load_info(info, dicts)
                 if PMIX_SUCCESS != rc:
                     pmix_free_procs(procs, nprocs)
@@ -262,7 +262,7 @@ def setmodulefn(k, f):
                  'monitor', 'getcredential', 'validatecredential',
                  'iofpull', 'pushstdin', 'group']
     if k not in permitted:
-        raise KeyError
+        return PMIX_ERR_INVALID_KEY
     if not k in pmixservermodule:
         pmixservermodule[k] = f
 
@@ -338,7 +338,7 @@ cdef class PMIxServer(PMIxClient):
             sz = len(dicts)
             info = <pmix_info_t*> PyMem_Malloc(sz * sizeof(pmix_info_t))
             if not info:
-                raise MemoryError()
+                return PMIX_ERR_NOMEM
             pmix_load_info(info, dicts)
             rc = PMIx_server_init(&self.myserver, info, sz)
             pmix_free_info(info, sz)
@@ -376,7 +376,7 @@ cdef class PMIxServer(PMIxClient):
             sz = len(dicts)
             info = <pmix_info_t*> PyMem_Malloc(sz * sizeof(pmix_info_t))
             if not info:
-                raise MemoryError()
+                return PMIX_ERR_NOMEM
             pmix_load_info(info, dicts)
             rc = PMIx_server_register_nspace(nspace, nlocalprocs, info, sz, pmix_opcbfunc, NULL)
         else:
@@ -504,7 +504,7 @@ cdef class PMIxServer(PMIxClient):
             sz = len(kvkeys)
             info = <pmix_info_t*> PyMem_Malloc(sz * sizeof(pmix_info_t))
             if not info:
-                raise MemoryError()
+                return PMIX_ERR_NOMEM
             pmix_load_info(info, dicts)
         else:
             info = NULL
@@ -527,7 +527,7 @@ cdef class PMIxServer(PMIxClient):
             sz = len(ilist)
             info = <pmix_info_t*> PyMem_Malloc(sz * sizeof(pmix_info_t))
             if not info:
-                raise MemoryError()
+                return PMIX_ERR_NOMEM
             n = 0
             for d in ilist:
                 pykey = str(d['key'])
@@ -560,7 +560,7 @@ cdef class PMIxServer(PMIxClient):
             sz = len(kvkeys)
             info = <pmix_info_t*> PyMem_Malloc(sz * sizeof(pmix_info_t))
             if not info:
-                raise MemoryError()
+                return PMIX_ERR_NOMEM
             pmix_load_info(info, dicts)
             rc = PMIx_server_register_fabric(&self.fabric, info, sz)
             pmix_free_info(info, sz)
