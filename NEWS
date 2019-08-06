@@ -39,6 +39,7 @@ multiple release branches.
 - PR #1376 : Fix problems in the Log code path, updates to simple test suite
 - PR #1377: Skip fastpath/dstore for NULL keys
 - PR #1379 : Change IF_NAMESIZE to PMIX_IF_NAMESIZE and set to safe size
+- PR #1389: Plug misc memory leaks in configure
 
 
 3.1.3 -- 2 July 2019
