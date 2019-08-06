@@ -11,8 +11,8 @@ dnl                         University of Stuttgart.  All rights reserved.
 dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
 dnl Copyright (c) 2014      Intel, Inc. All rights reserved.
-dnl Copyright (c) 2016      Research Organization for Information Science
-dnl                         and Technology (RIST). All rights reserved.
+dnl Copyright (c) 2016-2019 Research Organization for Information Science
+dnl                         and Technology (RIST).  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -45,6 +45,7 @@ int main ()
   func (4711, "Help %d [%s]\n", 10, "ten");
   f=fopen ("conftestval", "w");
   if (!f) exit (1);
+  fclose(f);
   return 0;
 }
 
