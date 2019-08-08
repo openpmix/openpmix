@@ -251,6 +251,63 @@ cdef class PMIxClient:
             pmix_free_info(info, ninfo)
         return rc
 
+    # retrieve a value from the keystore
+    #
+    # @proc [INPUT]
+    #       - namespace and rank of the client (tuple)
+    #
+    # @key [INPUT]
+    #      - the key to be retrieved
+    #
+    # @dicts [INPUT]
+    #          - a list of dictionaries, where each
+    #            dictionary has a key, value, and val_type
+    #            defined as such:
+    #            [{key:y, value:val, val_type:ty}, … ]
+    def get(self, proc:tuple, ky, dicts:list):
+        cdef pmix_info_t *info;
+        cdef size_t ninfo;
+        cdef pmix_key_t key;
+        cdef pmix_value_t *val_ptr;
+
+        ninfo   = 0
+        val_ptr = NULL
+
+        # convert proc to pmix_proc_t
+        cdef pmix_proc_t p;
+        pmix_copy_nspace(p.nspace, proc[0])
+        p.rank = proc[1]
+
+        # convert key,val to pmix_value_t and pmix_key_t
+        pmix_copy_key(key, ky)
+
+        # convert the list of dictionaries to array of
+        # pmix_info_t structs
+        if dicts is not None:
+            ninfo = len(dicts)
+            if 0 < ninfo:
+                info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
+                if not info:
+                    return PMIX_ERR_NOMEM
+                rc = pmix_load_info(info, dicts)
+                if PMIX_SUCCESS != rc:
+                    pmix_free_info(info, ninfo)
+                    return rc
+            else:
+                info = NULL
+        else:
+            info = NULL
+
+        # pass it into the get API
+        print("GET")
+        rc = PMIx_Get(&p, key, info, ninfo, &val_ptr)
+        if PMIX_SUCCESS == rc:
+            val = pmix_unload_value(val_ptr)
+            pmix_free_value(self, val_ptr)
+        if 0 < ninfo:
+            pmix_free_info(info, ninfo)
+        return rc, val
+
 pmixservermodule = {}
 def setmodulefn(k, f):
     global pmixservermodule
