@@ -105,8 +105,10 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc,
                         (NULL == key) ? "NULL" : key);
 
     /* try to get data directly, without threadshift */
-    if (PMIX_SUCCESS == (rc = _getfn_fastpath(proc, key, info, ninfo, val))) {
-        goto done;
+    if (PMIX_RANK_UNDEF != proc->rank && NULL != key) {
+        if (PMIX_SUCCESS == (rc = _getfn_fastpath(proc, key, info, ninfo, val))) {
+            goto done;
+        }
     }
 
     /* create a callback object as we need to pass it to the
@@ -496,9 +498,15 @@ static pmix_status_t _getfn_fastpath(const pmix_proc_t *proc, const pmix_key_t k
     /* scan the incoming directives */
     if (NULL != info) {
         for (n=0; n < ninfo; n++) {
-            if (0 == strncmp(info[n].key, PMIX_DATA_SCOPE, PMIX_MAX_KEYLEN)) {
+            if (PMIX_CHECK_KEY(&info[n], PMIX_DATA_SCOPE)) {
                 cb->scope = info[n].value.data.scope;
-                break;
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_OPTIONAL) ||
+                       PMIX_CHECK_KEY(&info[n], PMIX_IMMEDIATE)) {
+                continue;
+            } else {
+                /* we cannot handle any other directives via this path */
+                PMIX_RELEASE(cb);
+                return PMIX_ERR_NOT_SUPPORTED;
             }
         }
     }
@@ -508,16 +516,16 @@ static pmix_status_t _getfn_fastpath(const pmix_proc_t *proc, const pmix_key_t k
     cb->info = (pmix_info_t*)info;
     cb->ninfo = ninfo;
 
-    PMIX_GDS_FETCH_IS_TSAFE(rc, pmix_globals.mypeer);
+    PMIX_GDS_FETCH_IS_TSAFE(rc, pmix_client_globals.myserver);
     if (PMIX_SUCCESS == rc) {
-        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
+        PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, cb);
         if (PMIX_SUCCESS == rc) {
             goto done;
         }
     }
-    PMIX_GDS_FETCH_IS_TSAFE(rc, pmix_client_globals.myserver);
+    PMIX_GDS_FETCH_IS_TSAFE(rc, pmix_globals.mypeer);
     if (PMIX_SUCCESS == rc) {
-        PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, cb);
+        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
         if (PMIX_SUCCESS == rc) {
             goto done;
         }
@@ -563,11 +571,11 @@ static void _getnbfn(int fd, short flags, void *cbdata)
     /* scan the incoming directives */
     if (NULL != cb->info) {
         for (n=0; n < cb->ninfo; n++) {
-            if (0 == strncmp(cb->info[n].key, PMIX_OPTIONAL, PMIX_MAX_KEYLEN)) {
+            if (PMIX_CHECK_KEY(&cb->info[n], PMIX_OPTIONAL)) {
                 optional = PMIX_INFO_TRUE(&cb->info[n]);
-            } else if (0 == strncmp(cb->info[n].key, PMIX_IMMEDIATE, PMIX_MAX_KEYLEN)) {
+            } else if (PMIX_CHECK_KEY(&cb->info[n], PMIX_IMMEDIATE)) {
                 immediate = PMIX_INFO_TRUE(&cb->info[n]);
-            } else if (0 == strncmp(cb->info[n].key, PMIX_TIMEOUT, PMIX_MAX_KEYLEN)) {
+            } else if (PMIX_CHECK_KEY(&cb->info[n], PMIX_TIMEOUT)) {
                 /* set a timer to kick us out if we don't
                  * have an answer within their window */
                 if (0 < cb->info[n].value.data.integer) {
@@ -578,8 +586,16 @@ static void _getnbfn(int fd, short flags, void *cbdata)
                     pmix_event_evtimer_add(&cb->ev, &tv);
                     cb->timer_running = true;
                 }
-            } else if (0 == strncmp(cb->info[n].key, PMIX_DATA_SCOPE, PMIX_MAX_KEYLEN)) {
+            } else if (PMIX_CHECK_KEY(&cb->info[n], PMIX_DATA_SCOPE)) {
                 cb->scope = cb->info[n].value.data.scope;
+            } else if (PMIX_CHECK_KEY(&cb->info[n], PMIX_SESSION_INFO)) {
+                cb->level = PMIX_LEVEL_SESSION;
+            } else if (PMIX_CHECK_KEY(&cb->info[n], PMIX_JOB_INFO)) {
+                cb->level = PMIX_LEVEL_JOB;
+            } else if (PMIX_CHECK_KEY(&cb->info[n], PMIX_APP_INFO)) {
+                cb->level = PMIX_LEVEL_APP;
+            } else if (PMIX_CHECK_KEY(&cb->info[n], PMIX_NODE_INFO)) {
+                cb->level = PMIX_LEVEL_NODE;
             }
         }
     }
