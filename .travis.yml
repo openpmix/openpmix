@@ -9,9 +9,9 @@ language: c
 addons:
   apt:
     packages:
-      - gfortran
       - perl
       - libevent-dev
+      - libhwloc-dev
 
 jobs:
   fast_finish: true

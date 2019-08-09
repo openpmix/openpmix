@@ -36,9 +36,10 @@ multiple release branches.
 - PR #1369: Fix legacy support for PMI-1
 - PR #1370: Cleanup handling of data requests for different nspaces
 - PR #1193: Resolve get of proc-specific job-level info from another nspace
-- PR #1376 : Fix problems in the Log code path, updates to simple test suite
+- PR #1376: Fix problems in the Log code path, updates to simple test suite
 - PR #1377: Skip fastpath/dstore for NULL keys
-- PR #1379 : Change IF_NAMESIZE to PMIX_IF_NAMESIZE and set to safe size
+- PR #1379: Change IF_NAMESIZE to PMIX_IF_NAMESIZE and set to safe size
+- PR #1385: Check for EINVAL return from posix_fallocate
 - PR #1389: Plug misc memory leaks in configure
 
 
