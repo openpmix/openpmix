@@ -2250,7 +2250,7 @@ static pmix_status_t hash_fetch(const pmix_proc_t *proc,
                         "%s pmix:gds:hash fetch %s for proc %s on scope %s",
                         PMIX_NAME_PRINT(&pmix_globals.myid),
                         (NULL == key) ? "NULL" : key,
-                        proc->nspace, proc->rank, PMIx_Scope_string(scope));
+                        PMIX_NAME_PRINT(proc), PMIx_Scope_string(scope));
 
     /* if the rank is wildcard and the key is NULL, then
      * they are asking for a complete copy of the job-level
