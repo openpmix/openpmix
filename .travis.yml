@@ -11,6 +11,7 @@ addons:
     packages:
       - perl
       - libevent-dev
+      - libhwloc-dev
 
 jobs:
   fast_finish: true
