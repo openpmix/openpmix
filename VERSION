@@ -77,7 +77,7 @@ date="Jul 14, 2017"
 # format.
 
 libpmix_so_version=3:23:1
-libpmi_so_version=1:0:0
+libpmi_so_version=1:1:0
 libpmi2_so_version=1:0:0
 
 # "Common" components install standalone libraries that are run-time

@@ -1,8 +1,8 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
- * Copyright (c) 2014-2015 Research Organization for Information Science
- *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2014-2019 Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
@@ -51,6 +51,7 @@
 #include "src/mca/gds/gds.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
+#include "src/util/name_fns.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
 
@@ -192,7 +193,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
 
     /* find the nspace object for this client */
     nptr = NULL;
-    PMIX_LIST_FOREACH(ns, &pmix_server_globals.nspaces, pmix_namespace_t) {
+    PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_namespace_t) {
         if (0 == strcmp(nspace, ns->nspace)) {
             nptr = ns;
             break;
@@ -746,7 +747,8 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
 
     /* retrieve the data for the specific rank they are asking about */
     if (PMIX_RANK_WILDCARD != rank) {
-        if (!PMIX_PROC_IS_SERVER(peer) && !peer->commit_cnt) {
+        if (!PMIX_PROC_IS_SERVER(peer) && 0 == peer->commit_cnt) {
+            PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
             /* this condition works only for local requests, server does
              * count commits for local ranks, and check this count when
              * local request.
@@ -927,7 +929,7 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
 
     /* find the nspace object for the proc whose data is being received */
     nptr = NULL;
-    PMIX_LIST_FOREACH(ns, &pmix_server_globals.nspaces, pmix_namespace_t) {
+    PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_namespace_t) {
         if (0 == strcmp(caddy->lcd->proc.nspace, ns->nspace)) {
             nptr = ns;
             break;
@@ -941,7 +943,7 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
         nptr = PMIX_NEW(pmix_namespace_t);
         nptr->nspace = strdup(caddy->lcd->proc.nspace);
         /* add to the list */
-        pmix_list_append(&pmix_server_globals.nspaces, &nptr->super);
+        pmix_list_append(&pmix_globals.nspaces, &nptr->super);
     }
 
     /* if the request was successfully satisfied, then store the data.
