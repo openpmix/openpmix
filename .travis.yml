@@ -9,7 +9,6 @@ language: c
 addons:
   apt:
     packages:
-      - gfortran
       - perl
       - libevent-dev
 
