@@ -76,7 +76,7 @@ date="Oct 18, 2018"
 # format.
 
 libpmix_so_version=4:24:2
-libpmi_so_version=1:0:0
+libpmi_so_version=1:1:0
 libpmi2_so_version=1:0:0
 
 # "Common" components install standalone libraries that are run-time
@@ -84,4 +84,4 @@ libpmi2_so_version=1:0:0
 # # well.  Yuck; this somewhat breaks the
 # # components-don't-affect-the-build-system abstraction.
 #
-libmca_common_dstore_so_version=1:0:0
+libmca_common_dstore_so_version=1:1:0
