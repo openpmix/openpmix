@@ -63,24 +63,6 @@ pmix_status_t pmix_pnet_base_setup_local_network(char *nspace,
         return PMIX_ERR_BAD_PARAM;
     }
 
-    /* find this proc's nspace object */
-    nptr = NULL;
-    PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_namespace_t) {
-        if (0 == strcmp(ns->nspace, nspace)) {
-            nptr = ns;
-            break;
-        }
-    }
-    if (NULL == nptr) {
-        /* add it */
-        nptr = PMIX_NEW(pmix_namespace_t);
-        if (NULL == nptr) {
-            return PMIX_ERR_NOMEM;
-        }
-        nptr->nspace = strdup(nspace);
-        pmix_list_append(&pmix_globals.nspaces, &nptr->super);
-    }
-
     PMIX_LIST_FOREACH(active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
         if (NULL != active->module->setup_local_network) {
             if (PMIX_SUCCESS != (rc = active->module->setup_local_network(nspace, info, ninfo))) {
@@ -104,24 +86,6 @@ pmix_status_t pmix_pnet_base_setup_fork(const pmix_proc_t *peer, char ***env)
     /* protect against bozo inputs */
     if (NULL == peer || NULL == env) {
         return PMIX_ERR_BAD_PARAM;
-    }
-
-    /* find this proc's nspace object */
-    nptr = NULL;
-    PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_namespace_t) {
-        if (0 == strcmp(ns->nspace, proc->nspace)) {
-            nptr = ns;
-            break;
-        }
-    }
-    if (NULL == nptr) {
-        /* add it */
-        nptr = PMIX_NEW(pmix_namespace_t);
-        if (NULL == nptr) {
-            return PMIX_ERR_NOMEM;
-        }
-        nptr->nspace = strdup(proc->nspace);
-        pmix_list_append(&pmix_globals.nspaces, &nptr->super);
     }
 
     PMIX_LIST_FOREACH(active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {

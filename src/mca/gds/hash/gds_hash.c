@@ -2051,7 +2051,7 @@ static pmix_status_t _hash_store_modex(void * cbdata,
     kv = PMIX_NEW(pmix_kval_t);
     PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &pbkt, kv, &cnt, PMIX_KVAL);
     while (PMIX_SUCCESS == rc) {
-        if (PMIX_RANK_UNDEF == proc->rank) {
+        if (PMIX_RANK_UNDEF == proc.rank) {
             /* if the rank is undefined, then we store it on the
              * remote table of rank=0 as we know that rank must
              * always exist */
@@ -2061,7 +2061,7 @@ static pmix_status_t _hash_store_modex(void * cbdata,
             }
         } else {
             /* store this in the hash table */
-            if (PMIX_SUCCESS != (rc = pmix_hash_store(&trk->remote, proc->rank, kv))) {
+            if (PMIX_SUCCESS != (rc = pmix_hash_store(&trk->remote, proc.rank, kv))) {
                 PMIX_ERROR_LOG(rc);
                 return rc;
             }
