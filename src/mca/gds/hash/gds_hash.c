@@ -43,6 +43,7 @@
 #include "src/util/output.h"
 #include "src/util/name_fns.h"
 #include "src/util/pmix_environ.h"
+#include "src/mca/preg/preg.h"
 
 #include "src/mca/gds/base/base.h"
 #include "gds_hash.h"
