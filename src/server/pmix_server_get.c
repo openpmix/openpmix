@@ -136,8 +136,8 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     size_t sz, n;
 
     pmix_output_verbose(2, pmix_server_globals.get_output,
-                        "%s recvd GET",
-                        PMIX_NAME_PRINT(&pmix_globals.myid));
+                        "%s:%u recvd GET",
+                        pmix_globals.myid.nspace, pmix_globals.myid.rank);
 
     /* setup */
     memset(nspace, 0, sizeof(nspace));
