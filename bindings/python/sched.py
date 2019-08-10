@@ -1,4 +1,4 @@
-@PMIX_PYTHON_PATH@
+#!/usr/bin/env python3
 
 from pmix import *
 import signal, time
@@ -36,8 +36,7 @@ def main():
         print("FAILED TO CREATE SERVER")
         exit(1)
     print("Testing server version ", foo.get_version())
-    args = [{'key':'FOOBAR', 'value':'VAR', 'val_type':PMIX_STRING},
-            {'key':'BLAST', 'value':7, 'val_type':PMIX_INT32}]
+    args = [{'key':PMIX_SERVER_SCHEDULER, 'value':'T', 'val_type':PMIX_BOOL}]
     map = {'clientconnected': clientconnected,
            'clientfinalized': clientfinalized,
            'fencenb': clientfence}
@@ -47,25 +46,56 @@ def main():
     print("Initialized: ", rc)
     vers = foo.get_version()
     print("Version: ", vers)
-    
+
+    # Register a fabric
+    rc = foo.register_fabric(None)
+    print("Fabric registered: ", rc)
+
+    # setup the application
+    (rc, regex) = foo.generate_regex("test000,test001,test002")
+    print("Node regex: ", regex)
+    (rc, ppn) = foo.generate_ppn("0,1,2;3,4,5;6,7")
+    print("PPN: ", ppn)
+    darray = (PMIX_INFO, [{'key':PMIX_ALLOC_NETWORK_ID,
+                            'value':'SIMPSCHED.net', 'val_type':PMIX_STRING},
+                           {'key':PMIX_ALLOC_NETWORK_SEC_KEY, 'value':'T',
+                            'val_type':PMIX_BOOL},
+                           {'key':PMIX_SETUP_APP_ENVARS, 'value':'T',
+                            'val_type':PMIX_BOOL}])
+    kyvals = [{'key':PMIX_NODE_MAP, 'value':regex, 'val_type':PMIX_STRING},
+              {'key':PMIX_PROC_MAP, 'value':ppn, 'val_type':PMIX_STRING},
+              {'key':PMIX_ALLOC_NETWORK, 'value':darray, 'val_type':PMIX_DATA_ARRAY}]
+
+    appinfo = []
+    rc, appinfo = foo.setup_application("SIMPSCHED", kyvals)
+    print("SETUPAPP: ", appinfo)
+
+    rc = foo.setup_local_support("SIMPSCHED", appinfo)
+    print("SETUPLOCAL: ", rc)
+
     # get our environment as a base
     env = os.environ.copy()
+
     # register an nspace for the client app
-    darray = (PMIX_SIZE, [1, 2, 3, 4, 5])
-    kvals = [{'key':'testkey', 'value':darray, 'val_type':PMIX_DATA_ARRAY}]
+    kvals = [{'key':PMIX_NODE_MAP, 'value':regex, 'val_type':PMIX_STRING},
+             {'key':PMIX_PROC_MAP, 'value':ppn, 'val_type':PMIX_STRING},
+             {'key':PMIX_UNIV_SIZE, 'value':1, 'val_type':PMIX_UINT32},
+             {'key':PMIX_JOB_SIZE, 'value':1, 'val_type':PMIX_UINT32}]
     print("REGISTERING NSPACE")
     rc = foo.register_nspace("testnspace", 1, kvals)
     print("RegNspace ", rc)
-    
+
     # register a client
     uid = os.getuid()
     gid = os.getgid()
+    print("REGISTERING CLIENT")
     rc = foo.register_client(("testnspace", 0), uid, gid)
     print("RegClient ", rc)
+
     # setup the fork
     rc = foo.setup_fork(("testnspace", 0), env)
     print("SetupFrk", rc)
-    
+
     # setup the client argv
     args = ["./client.py"]
     # open a subprocess with stdout and stderr

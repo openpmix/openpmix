@@ -1,4 +1,4 @@
-#!/opt/local/bin/python
+#!/usr/bin/env python3
 
 import os, os.path, sys, shutil, signal
 from optparse import OptionParser, OptionGroup
