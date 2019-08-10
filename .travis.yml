@@ -4,7 +4,9 @@ dist: xenial
 cache:
   apt: true
 
-language: c
+language: python
+python:
+  - "3.5"
 
 addons:
   apt:
@@ -40,6 +42,7 @@ script:
         # prepare
         # build
         - ./autogen.pl
+        - pip install -q cython
         - ./configure ${ENABLE_WERROR}
         - if [ $? -ne 0 ]; then cat config.log; fi
         - make all
