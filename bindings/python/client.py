@@ -1,4 +1,4 @@
-@PMIX_PYTHON_PATH@
+#!/usr/bin/env python3
 
 from pmix import *
 

@@ -885,6 +885,10 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_CONFIG_FILES(pmix_config_prefix[test/run_tests13.pl], [chmod +x test/run_tests13.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/run_tests14.pl], [chmod +x test/run_tests14.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/run_tests15.pl], [chmod +x test/run_tests15.pl])
+    if test "$WANT_PYTHON_BINDINGS" = "1"; then
+        AC_CONFIG_FILES(pmix_config_prefix[test/python/run_server.sh], [chmod +x test/python/run_server.sh])
+        AC_CONFIG_FILES(pmix_config_prefix[test/python/run_sched.sh], [chmod +x test/python/run_sched.sh])
+    fi
 
     ############################################################################
     # final output
@@ -910,11 +914,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         pmix_config_prefix[src/tools/pps/Makefile]
         pmix_config_prefix[src/tools/pattrs/Makefile]
         )
-    if test "$WANT_PYTHON_BINDINGS" = "1"; then
-        AC_CONFIG_FILES(pmix_config_prefix[bindings/python/server.py], [chmod +x bindings/python/server.py])
-        AC_CONFIG_FILES(pmix_config_prefix[bindings/python/client.py], [chmod +x bindings/python/client.py])
-        AC_CONFIG_FILES(pmix_config_prefix[bindings/python/sched.py],  [chmod +x bindings/python/sched.py])
-    fi
 
     # publish any embedded flags so external wrappers can use them
     AC_SUBST(PMIX_EMBEDDED_LIBS)
@@ -1213,9 +1212,8 @@ AM_CONDITIONAL([WANT_PYTHON_BINDINGS], [test $WANT_PYTHON_BINDINGS -eq 1])
 
 if test "$WANT_PYTHON_BINDINGS" = "1"; then
     AM_PATH_PYTHON([3.4])
-    AC_SUBST([PMIX_PYTHON_PATH], [#!"$PYTHON"], "Full Python executable path")
-    pyvers=`python --version`
-    python_version=${pyvers#"Python"}
+    pyvers=`python3 --version`
+    python_version=${pyvers#"Python "}
     major=$(echo $python_version | cut -d. -f1)
     minor=$(echo $python_version | cut -d. -f2)
     if test "$major" -lt "3"; then
@@ -1248,6 +1246,9 @@ if test "$WANT_PYTHON_BINDINGS" = "1"; then
         AC_MSG_WARN([require that the Cython package be installed])
         AC_MSG_ERROR([Cannot continue])
     fi
+
+    pmix_pythondir=`eval echo $pythondir`
+    AC_SUBST([PMIX_PYTHON_EGG_PATH], [$pmix_pythondir], [Path to installed Python egg])
 fi
 
 # see if they want to disable non-RTLD_GLOBAL dlopen

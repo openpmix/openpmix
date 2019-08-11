@@ -61,8 +61,6 @@ bindings/python/*.so
 bindings/python/build/
 bindings/python/pmix_constants.pxd
 bindings/python/pmix_constants.pxi
-bindings/python/client.py
-bindings/python/server.py
 
 examples/alloc
 examples/client
@@ -103,14 +101,6 @@ src/tools/ptop/ptop
 
 src/util/show_help_lex.c
 src/util/keyval/keyval_lex.c
-
-bindings/python/src/_pypmix.so
-bindings/python/src/libpypmix.so
-bindings/python/src/pypmix.py
-bindings/python/src/pypmix_wrap.c
-bindings/python/client.py
-bindings/python/server.py
-bindings/python/sched.py
 
 test/pmi2_client
 test/pmi_client
@@ -162,6 +152,8 @@ test/simple/simpjctrl
 test/simple/simpio
 test/simple/data-*
 test/simple/simpcoord
+test/python/run_sched.sh
+test/python/run_server.sh
 
 # coverity
 cov-int
