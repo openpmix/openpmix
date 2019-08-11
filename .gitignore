@@ -152,6 +152,8 @@ test/simple/simpjctrl
 test/simple/simpio
 test/simple/data-*
 test/simple/simpcoord
+test/python/run_sched.sh
+test/python/run_server.sh
 
 # coverity
 cov-int
