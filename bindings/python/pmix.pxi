@@ -76,7 +76,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
         for item in mylist:
             pykey = str(item['key'])
             pmix_copy_key(infoptr[n].key, pykey)
-            val = item['value'],item['val_type']
+            val = {'value':item['value'], 'val_type':item['val_type']}
             pmix_load_value(&infoptr[n].value, val)
     elif PMIX_STRING == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(char*))
@@ -412,263 +412,265 @@ cdef void pmix_copy_key(pmix_key_t key, ky):
         memcpy(key, pykeyptr, klen)
 
 # provide a function for transferring a Python 'value'
-# object (a tuple containing the value and its type)
+# object (a dict with value and val_type as keys)
 # to a pmix_value_t
-cdef int pmix_load_value(pmix_value_t *value, val:tuple):
-    print("LOADING VALUE TYPE ", PMIx_Data_type_string(val[1]))
-    value[0].type = val[1]
-    if val[1] == PMIX_BOOL:
-        value[0].data.flag = pmix_bool_convert(val[0])
-    elif val[1] == PMIX_BYTE:
-        value[0].data.byte = val[0]
-    elif val[1] == PMIX_STRING:
-        if isinstance(val[0], str):
-            pykey = val[0].encode('ascii')
+cdef int pmix_load_value(pmix_value_t *value, val:dict):
+    print("LOADING VALUE TYPE ", PMIx_Data_type_string(val['val_type']))
+    value[0].type = val['val_type']
+    if val['val_type'] == PMIX_BOOL:
+        value[0].data.flag = pmix_bool_convert(val['value'])
+    elif val['val_type'] == PMIX_BYTE:
+        value[0].data.byte = val['value']
+    elif val['val_type'] == PMIX_STRING:
+        if isinstance(val['value'], str):
+            pykey = val['value'].encode('ascii')
         else:
-            pykey = val[0]
+            pykey = val['value']
         try:
             value[0].data.string = strdup(pykey)
         except:
             print("String value declared but non-string provided")
             return PMIX_ERR_TYPE_MISMATCH
-    elif val[1] == PMIX_SIZE:
-        if not isinstance(val[0], pmix_int_types):
+    elif val['val_type'] == PMIX_SIZE:
+        if not isinstance(val['value'], pmix_int_types):
             print("size_t value declared but non-integer provided")
             return PMIX_ERR_TYPE_MISMATCH
-        value[0].data.size = val[0]
-    elif val[1] == PMIX_PID:
-        if not isinstance(val[0], pmix_int_types):
+        value[0].data.size = val['value']
+    elif val['val_type'] == PMIX_PID:
+        if not isinstance(val['value'], pmix_int_types):
             print("pid value declared but non-integer provided")
             return PMIX_ERR_TYPE_MISMATCH
-        if val[0] < 0:
+        if val['value'] < 0:
             print("pid value is negative")
             return PMIX_ERR_INVALID_VAL
-        value[0].data.pid = val[0]
-    elif val[1] == PMIX_INT:
-        if not isinstance(val[0], pmix_int_types):
+        value[0].data.pid = val['value']
+    elif val['val_type'] == PMIX_INT:
+        if not isinstance(val['value'], pmix_int_types):
             print("integer value declared but non-integer provided")
             return PMIX_ERR_TYPE_MISMATCH
-        value[0].data.integer = val[0]
-    elif val[1] == PMIX_INT8:
-        if not isinstance(val[0], pmix_int_types):
+        value[0].data.integer = val['value']
+    elif val['val_type'] == PMIX_INT8:
+        if not isinstance(val['value'], pmix_int_types):
             print("int8 value declared but non-integer provided")
             return PMIX_ERR_TYPE_MISMATCH
-        if val[0] > 127 or val[0] < -128:
+        if val['value'] > 127 or val['value'] < -128:
             print("int8 value is out of bounds")
             return PMIX_ERR_INVALID_VAL
-        value[0].data.int8 = val[0]
-    elif val[1] == PMIX_INT16:
-        if not isinstance(val[0], pmix_int_types):
+        value[0].data.int8 = val['value']
+    elif val['val_type'] == PMIX_INT16:
+        if not isinstance(val['value'], pmix_int_types):
             print("int16 value declared but non-integer provided")
             return PMIX_ERR_TYPE_MISMATCH
-        if val[0] > 32767 or val[0] < -32768:
+        if val['value'] > 32767 or val['value'] < -32768:
             print("int16 value is out of bounds")
             return PMIX_ERR_INVALID_VAL
-        value[0].data.int16 = val[0]
-    elif val[1] == PMIX_INT32:
-        if not isinstance(val[0], pmix_int_types):
+        value[0].data.int16 = val['value']
+    elif val['val_type'] == PMIX_INT32:
+        if not isinstance(val['value'], pmix_int_types):
             print("int32 value declared but non-integer provided")
             return PMIX_ERR_TYPE_MISMATCH
-        if val[0] > 2147483647 or val[0] < -2147483648:
+        if val['value'] > 2147483647 or val['value'] < -2147483648:
             print("int32 value is out of bounds")
             return PMIX_ERR_INVALID_VAL
-        value[0].data.int32 = val[0]
-    elif val[1] == PMIX_INT64:
-        if not isinstance(val[0], pmix_int_types):
+        value[0].data.int32 = val['value']
+    elif val['val_type'] == PMIX_INT64:
+        if not isinstance(val['value'], pmix_int_types):
             print("int64 value declared but non-integer provided")
             return PMIX_ERR_TYPE_MISMATCH
-        if val[0] > (2147483647*2147483647) or val[0] < -(2147483648*2147483648):
+        if val['value'] > (2147483647*2147483647) or val['value'] < -(2147483648*2147483648):
             print("int64 value is out of bounds")
             return PMIX_ERR_INVALID_VAL
-        value[0].data.int64 = val[0]
-    elif val[1] == PMIX_UINT:
-        if not isinstance(val[0], pmix_int_types):
+        value[0].data.int64 = val['value']
+    elif val['val_type'] == PMIX_UINT:
+        if not isinstance(val['value'], pmix_int_types):
             print("integer value declared but non-integer provided")
             return PMIX_ERR_TYPE_MISMATCH
-        value[0].data.uint = val[0]
-    elif val[1] == PMIX_UINT8:
-        if not isinstance(val[0], pmix_int_types):
+        value[0].data.uint = val['value']
+    elif val['val_type'] == PMIX_UINT8:
+        if not isinstance(val['value'], pmix_int_types):
             print("uint8 value declared but non-integer provided")
             return PMIX_ERR_TYPE_MISMATCH
-        if val[0] > 255:
+        if val['value'] > 255:
             print("uint8 value is out of bounds")
             return PMIX_ERR_INVALID_VAL
-        value[0].data.uint8 = val[0]
-    elif val[1] == PMIX_UINT16:
-        if not isinstance(val[0], pmix_int_types):
+        value[0].data.uint8 = val['value']
+    elif val['val_type'] == PMIX_UINT16:
+        if not isinstance(val['value'], pmix_int_types):
             print("uint16 value declared but non-integer provided")
             return PMIX_ERR_TYPE_MISMATCH
-        if val[0] > 65536:
+        if val['value'] > 65536:
             print("uint16 value is out of bounds")
             return PMIX_ERR_INVALID_VAL
-        value[0].data.uint16 = val[0]
-    elif val[1] == PMIX_UINT32:
-        if not isinstance(val[0], pmix_int_types):
+        value[0].data.uint16 = val['value']
+    elif val['val_type'] == PMIX_UINT32:
+        if not isinstance(val['value'], pmix_int_types):
             print("uint32 value declared but non-integer provided")
             return PMIX_ERR_TYPE_MISMATCH
-        if val[0] > (65536*65536):
+        if val['value'] > (65536*65536):
             print("uint32 value is out of bounds")
             return PMIX_ERR_INVALID_VAL
-        value[0].data.uint32 = val[0]
-    elif val[1] == PMIX_UINT64:
-        if not isinstance(val[0], pmix_int_types):
+        value[0].data.uint32 = val['value']
+    elif val['val_type'] == PMIX_UINT64:
+        if not isinstance(val['value'], pmix_int_types):
             print("int64 value declared but non-integer provided")
             return PMIX_ERR_TYPE_MISMATCH
-        if val[0] > (2147483648*2147483648):
+        if val['value'] > (2147483648*2147483648):
             print("uint64 value is out of bounds")
             return PMIX_ERR_INVALID_VAL
-        value[0].data.uint64 = val[0]
-    elif val[1] == PMIX_FLOAT:
-        value[0].data.fval = float(val[0])
-    elif val[1] == PMIX_DOUBLE:
-        value[0].data.dval = float(val[0])
-    elif val[1] == PMIX_TIMEVAL:
-        if isinstance(val[0], tuple):
-            value[0].data.tv.tv_sec = val[0][0]
-            value[0].data.tv.tv_usec = val[0][1]
+        value[0].data.uint64 = val['value']
+    elif val['val_type'] == PMIX_FLOAT:
+        value[0].data.fval = float(val['value'])
+    elif val['val_type'] == PMIX_DOUBLE:
+        value[0].data.dval = float(val['value'])
+    elif val['val_type'] == PMIX_TIMEVAL:
+        if isinstance(val['value'], tuple):
+            value[0].data.tv.tv_sec  = val['value'][0]
+            value[0].data.tv.tv_usec = val['value'][1]
         else:
-            value[0].data.tv.tv_sec = val[0]
+            value[0].data.tv.tv_sec = val['value']
             value[0].data.tv.tv_usec = 0
-    elif val[1] == PMIX_TIME:
-        value[0].data.time = val[1]
-    elif val[1] == PMIX_STATUS:
-        value[0].data.status = val[1]
-    elif val[1] == PMIX_PROC_RANK:
-        value[0].data.rank = val[0]
-    elif val[1] == PMIX_PROC:
+    elif val['val_type'] == PMIX_TIME:
+        value[0].data.time = val['val_type']
+    elif val['val_type'] == PMIX_STATUS:
+        value[0].data.status = val['val_type']
+    elif val['val_type'] == PMIX_PROC_RANK:
+        value[0].data.rank = val['value']
+    elif val['val_type'] == PMIX_PROC:
         value[0].data.proc = <pmix_proc_t*> PyMem_Malloc(sizeof(pmix_proc_t))
         if not value[0].data.proc:
             return PMIX_ERR_NOMEM
-        pmix_copy_nspace(value[0].data.proc[0].nspace, val[0][0])
-        value[0].data.proc[0].rank = val[0][1]
-    elif val[1] == PMIX_BYTE_OBJECT:
+        pmix_copy_nspace(value[0].data.proc[0].nspace, val['value'][0])
+        value[0].data.proc[0].rank = val['value'][1]
+    elif val['val_type'] == PMIX_BYTE_OBJECT:
         value[0].data.bo.bytes = <char*> PyMem_Malloc(value[0].data.bo.size)
         if not value[0].data.bo.bytes:
             return PMIX_ERR_NOMEM
-        pyptr = <char*>val[0][0]
+        pyptr = <char*>val['value'][0]
         memcpy(value[0].data.bo.bytes, pyptr, value[0].data.bo.size)
-    elif val[1] == PMIX_PERSISTENCE:
-        value[0].data.persist = val[0]
-    elif val[1] == PMIX_SCOPE:
-        value[0].data.scope = val[0]
-    elif val[1] == PMIX_RANGE:
-        value[0].data.range = val[0]
-    elif val[1] == PMIX_PROC_STATE:
-        value[0].data.state = val[0]
-    elif val[1] == PMIX_PROC_INFO:
+    elif val['val_type'] == PMIX_PERSISTENCE:
+        value[0].data.persist = val['val_type']
+    elif val['val_type'] == PMIX_SCOPE:
+        value[0].data.scope = val['value']
+    elif val['val_type'] == PMIX_RANGE:
+        value[0].data.range = val['value']
+    elif val['val_type'] == PMIX_PROC_STATE:
+        value[0].data.state = val['value']
+    elif val['val_type'] == PMIX_PROC_INFO:
         value[0].data.pinfo = <pmix_proc_info_t*> PyMem_Malloc(sizeof(pmix_proc_info_t))
         if not value[0].data.pinfo:
             return PMIX_ERR_NOMEM
-        pmix_copy_nspace(value[0].data.pinfo[0].proc.nspace, val[0]['proc'][0])
-        value[0].data.pinfo[0].proc.rank = val[0]['proc'][1]
-        value[0].data.pinfo[0].hostname = strdup(val[0]['hostname'])
-        value[0].data.pinfo[0].pid = val[0]['pid']
-        value[0].data.pinfo[0].exit_code = val[0]['exitcode']
-        value[0].data.pinfo[0].state = val[0]['state']
-    elif val[1] == PMIX_DATA_ARRAY:
+        pmix_copy_nspace(value[0].data.pinfo[0].proc.nspace, val['value']['proc'][0])
+        value[0].data.pinfo[0].proc.rank = val['value']['proc'][1]
+        value[0].data.pinfo[0].hostname = strdup(val['value']['hostname'])
+        value[0].data.pinfo[0].pid = val['value']['pid']
+        value[0].data.pinfo[0].exit_code = val['value']['exitcode']
+        value[0].data.pinfo[0].state = val['value']['state']
+    elif val['val_type'] == PMIX_DATA_ARRAY:
         value[0].data.darray = <pmix_data_array_t*> PyMem_Malloc(sizeof(pmix_data_array_t))
         if not value[0].data.darray:
             return PMIX_ERR_NOMEM
-        value[0].data.darray[0].type = val[0][0]
-        value[0].data.darray[0].size = len(val[0][1])
+        value[0].data.darray[0].type = val['value'][0]
+        value[0].data.darray[0].size = len(val['value'][1])
         try:
-            pmix_load_darray(value[0].data.darray, value[0].data.darray[0].type, val[0][1])
+            pmix_load_darray(value[0].data.darray, 
+            value[0].data.darray[0].type, val['value'][1])
         except:
             return PMIX_ERR_NOT_SUPPORTED
-    elif val[1] == PMIX_ALLOC_DIRECTIVE:
-        if not isinstance(val[0], pmix_int_types):
+    elif val['val_type'] == PMIX_ALLOC_DIRECTIVE:
+        if not isinstance(val['value'], pmix_int_types):
             print("allocdirective value declared but non-integer provided")
             return PMIX_ERR_TYPE_MISMATCH
-        if val[0] > 255:
+        if val['value'] > 255:
             print("allocdirective value is out of bounds")
             return PMIX_ERR_INVALID_VAL
-        value[0].data.adir = val[0]
-    elif val[1] == PMIX_ENVAR:
-        enval = val[0]['envar']
+        value[0].data.adir = val['value']
+    elif val['val_type'] == PMIX_ENVAR:
+        enval = val['value']['envar']
         if isinstance(enval, str):
             pyns = enval.encode('ascii')
         else:
             pyns = enval
         pynsptr = <const char *>(pyns)
         value[0].data.envar.envar = strdup(pynsptr)
-        enval = val[0]['value']
+        enval = val['value']['value']
         if isinstance(enval, str):
             pyns = enval.encode('ascii')
         else:
             pyns = enval
         pynsptr = <const char *>(pyns)
         value[0].data.envar.value = strdup(pynsptr)
-        value[0].data.envar.separator = val[0]['separator']
+        value[0].data.envar.separator = val['value']['separator']
     else:
         print("UNRECOGNIZED VALUE TYPE")
         return PMIX_ERR_NOT_SUPPORTED
     return PMIX_SUCCESS
 
-cdef tuple pmix_unload_value(const pmix_value_t *value):
+cdef dict pmix_unload_value(const pmix_value_t *value):
     if PMIX_BOOL == value[0].type:
         if value[0].data.flag:
-            return (True, PMIX_BOOL)
+            return {'value':True, 'val_type':PMIX_BOOL}
         else:
-            return (False, PMIX_BOOL)
+            return {'value':False, 'val_type':PMIX_BOOL}
     elif PMIX_BYTE == value[0].type:
-        return (value[0].data.byte, PMIX_BYTE)
+        return {'value':value[0].data.byte, 'val_type':PMIX_BYTE}
     elif PMIX_STRING == value[0].type:
         pyb = value[0].data.string
         pystr = pyb.decode("ascii")
-        return (pystr, PMIX_STRING)
+        return {'value':pystr, 'val_type':PMIX_STRING}
     elif PMIX_SIZE == value[0].type:
-        return (value[0].data.size, PMIX_SIZE)
+        return {'value':value[0].data.size, 'val_type':PMIX_SIZE}
     elif PMIX_PID == value[0].type:
-        return (value[0].data.pid, PMIX_PID)
+        return {'value':value[0].data.pid, 'val_type':PMIX_PID}
     elif PMIX_INT == value[0].type:
-        return (value[0].data.integer, PMIX_INT)
+        return {'value':value[0].data.integer, 'val_type':PMIX_INT}
     elif PMIX_INT8 == value[0].type:
-        return (value[0].data.int8, PMIX_INT8)
+        return {'value':value[0].data.int8, 'val_type':PMIX_INT8}
     elif PMIX_INT16 == value[0].type:
-        return (value[0].data.int16, PMIX_INT16)
+        return {'value':value[0].data.int16, 'val_type':PMIX_INT16}
     elif PMIX_INT32 == value[0].type:
-        return (value[0].data.int32, PMIX_INT32)
+        return {'value':value[0].data.int32, 'val_type':PMIX_INT32}
     elif PMIX_INT64 == value[0].type:
-        return (value[0].data.int64, PMIX_INT64)
+        return {'value':value[0].data.int64, 'val_type':PMIX_INT64}
     elif PMIX_UINT == value[0].type:
-        return (value[0].data.uint, PMIX_UINT)
+        return {'value':value[0].data.uint, 'val_type':PMIX_UINT}
     elif PMIX_UINT8 == value[0].type:
-        return (value[0].data.uint8, PMIX_UINT8)
+        return {'value':value[0].data.uint8, 'val_type':PMIX_UINT8}
     elif PMIX_UINT16 == value[0].type:
-        return (value[0].data.uint16, PMIX_UINT16)
+        return {'value':value[0].data.uint16, 'val_type':PMIX_UINT16}
     elif PMIX_UINT32 == value[0].type:
-        return (value[0].data.uint32, PMIX_UINT32)
+        return {'value':value[0].data.uint32, 'val_type':PMIX_UINT32}
     elif PMIX_UINT64 == value[0].type:
-        return (value[0].data.uint64, PMIX_UINT64)
+        return {'value':value[0].data.uint64, 'val_type':PMIX_UINT64}
     elif PMIX_FLOAT == value[0].type:
-        return (value[0].data.fval, PMIX_FLOAT)
+        return {'value':value[0].data.fval, 'val_type':PMIX_FLOAT}
     elif PMIX_DOUBLE == value[0].type:
-        return (value[0].data.dval, PMIX_DOUBLE)
+        return {'value':value[0].data.dval, 'val_type':PMIX_DOUBLE}
     elif PMIX_TIMEVAL == value[0].type:
-        return ((value[0].data.tv.tv_sec, value[0].data.tv.tv_used), PMIX_TIMEVAL)
+        return {'value':(value[0].data.tv.tv_sec, value[0].data.tv.tv_used), 
+        'val_type':PMIX_TIMEVAL}
     elif PMIX_TIME == value[0].type:
-        return (value[0].data.time, PMIX_TIME)
+        return {'value':value[0].data.time, 'val_type':PMIX_TIME}
     elif PMIX_STATUS == value[0].type:
-        return (value[0].data.status, PMIX_STATUS)
+        return {'value':value[0].data.status, 'val_type':PMIX_STATUS}
     elif PMIX_PROC_RANK == value[0].type:
-        return (value[0].data.rank, PMIX_PROC_RANK)
+        return {'value':value[0].data.rank, 'val_type':PMIX_PROC_RANK}
     elif PMIX_PROC == value[0].type:
         pyns = str(value[0].data.proc[0].nspace)
-        return ((pyns, value[0].data.proc[0].rank), PMIX_PROC)
+        return {'value':(pyns, value[0].data.proc[0].rank), 'val_type':PMIX_PROC}
     elif PMIX_BYTE_OBJECT == value[0].type:
         mybytes = <char*> PyMem_Malloc(value[0].data.bo.size)
         if not mybytes:
             return PMIX_ERR_NOMEM
         memcpy(mybytes, value[0].data.bo.bytes, value[0].data.bo.size)
-        return ((mybytes, value[0].data.bo.size), PMIX_BYTE_OBJECT)
+        return {'value':(mybytes, value[0].data.bo.size), 'val_type':PMIX_BYTE_OBJECT}
     elif PMIX_PERSISTENCE == value[0].type:
-        return (value[0].data.persist, PMIX_PERSISTENCE)
+        return {'value':value[0].data.persist, 'val_type':PMIX_PERSISTENCE}
     elif PMIX_SCOPE == value[0].type:
-        return (value[0].data.scope, PMIX_SCOPE)
+        return {'value':value[0].data.scope, 'val_type':PMIX_SCOPE}
     elif PMIX_RANGE == value[0].type:
-        return (value[0].data.range, PMIX_RANGE)
+        return {'value':value[0].data.range, 'val_type':PMIX_RANGE}
     elif PMIX_PROC_STATE == value[0].type:
-        return (value[0].data.state, PMIX_PROC_STATE)
+        return {'value':value[0].data.state, 'val_type':PMIX_PROC_STATE}
     elif PMIX_PROC_INFO == value[0].type:
         pins = str(value[0].data.pinfo[0].proc.nspace)
         pirk = value[0].data.pinfo[0].proc.rank
@@ -677,18 +679,18 @@ cdef tuple pmix_unload_value(const pmix_value_t *value):
         piex = value[0].data.pinfo[0].exit_code
         pist = value[0].data.pinfo[0].state
         pians = {'proc': (pins, pirk), 'hostname': pihost, 'pid': pipid, 'exitcode': piex, 'state': pist}
-        return (pians, PMIX_PROC_INFO)
+        return {'value':pians, 'val_type':PMIX_PROC_INFO}
     elif PMIX_DATA_ARRAY == value[0].type:
         print("Unload_value: data array not supported")
         return PMIX_ERR_NOT_SUPPORTED
     elif PMIX_ALLOC_DIRECTIVE == value[0].type:
-        return (value[0].data.adir, PMIX_ALLOC_DIRECTIVE)
+        return {'value':value[0].data.adir, 'val_type':PMIX_ALLOC_DIRECTIVE}
     elif PMIX_ENVAR:
         pyenv = str(value[0].data.envar.envar)
         pyval = str(value[0].data.envar.value)
         pysep = value[0].data.envar.separator
         pyenvans = {'envar': pyenv, 'value': pyval, 'separator': pysep}
-        return (pyenvans, PMIX_ENVAR)
+        return {'value':pyenvans, 'val_type':PMIX_ENVAR}
     else:
         print("Unload_value: provided type is unknown")
         return PMIX_ERR_TYPE_MISMATCH
@@ -720,7 +722,7 @@ cdef int pmix_load_info(pmix_info_t *array, dicts:list):
     for d in dicts:
         pykey = str(d['key'])
         pmix_copy_key(array[n].key, pykey)
-        val = d['value'],d['val_type']
+        val = {'value':d['value'], 'val_type':d['val_type']}
         rc = pmix_load_value(&array[n].value, val)
         print("LOAD INFO ", PMIx_Data_type_string(d['val_type']))
         if PMIX_SUCCESS != rc:

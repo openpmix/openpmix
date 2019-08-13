@@ -14,7 +14,7 @@ def main():
         exit(1)
     # try putting something
     print("PUT")
-    rc = foo.put(PMIX_GLOBAL, "mykey", (1, PMIX_INT32))
+    rc = foo.put(PMIX_GLOBAL, "mykey", {'value':1, 'val_type':PMIX_INT32})
     print("Put result ", rc);
     # commit it
     print("COMMIT")
