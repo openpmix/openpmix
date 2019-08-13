@@ -178,7 +178,7 @@ cdef class PMIxClient:
     #      - the key to be stored
     #
     # @value [INPUT]
-    #        - a value tuple to be stored (value, type)
+    #        - a dict to be stored with keys (value, val_type)
     def put(self, scope, ky, val):
         cdef pmix_key_t key
         cdef pmix_value_t value
@@ -591,8 +591,8 @@ cdef class PMIxServer(PMIxClient):
                 pmix_copy_key(info[n].key, pykey)
                 # the value also needs to be transferred
                 print("SETUP LOCAL ", info[n].key, " TYPE ", PMIx_Data_type_string(d['val_type']))
-                val = d['value'],d['val_type']
-                # send tuple of value and value type to pmix_load_value
+                val = {'value':d['value'], 'val_type':d['val_type']}
+                # send dict of value and val_type to pmix_load_value
                 pmix_load_value(&info[n].value, val)
                 n += 1
                 break
@@ -649,10 +649,10 @@ cdef class PMIxServer(PMIxClient):
         else:
             return (rc, None, None)
 
-    def get_index(self, pyvertex:tuple):
+    def get_index(self, pyvertex:dict):
         cdef pmix_value_t vertex;
         cdef uint32_t i;
-        # convert the tuple to a pmix_value_t
+        # convert the dict to a pmix_value_t
         rc = pmix_load_value(&vertex, pyvertex)
         if PMIX_SUCCESS != rc:
             return (rc, -1, None)
