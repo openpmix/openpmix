@@ -640,11 +640,13 @@ static void _getnbfn(int fd, short flags, void *cbdata)
         if (PMIX_SUCCESS != rc) {
             pmix_output_verbose(5, pmix_client_globals.get_output,
                                 "pmix:client job-level data NOT found");
-            if (0 != strncmp(cb->pname.nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN)) {
+            if (!PMIX_CHECK_NSPACE(cb->pname.nspace, pmix_globals.myid.nspace)) {
                 /* we are asking about the job-level info from another
                  * namespace. It seems that we don't have it - go and
-                 * ask server
+                 * ask server and indicate we only need job-level info
+                 * by setting the rank to WILDCARD
                  */
+                cb->pname.rank = PMIX_RANK_WILDCARD;
                 goto request;
             } else if (NULL != cb->key) {
                 /* if immediate was given, then we are being directed to
@@ -746,8 +748,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
      * this nspace:rank. If we do, then no need to ask again as the
      * request will return _all_ data from that proc */
     PMIX_LIST_FOREACH(cbret, &pmix_client_globals.pending_requests, pmix_cb_t) {
-        if (0 == strncmp(cbret->pname.nspace, cb->pname.nspace, PMIX_MAX_NSLEN) &&
-            cbret->pname.rank == cb->pname.rank) {
+        if (PMIX_CHECK_PROCID(&cbret->pname, &cb->pname)) {
             /* we do have a pending request, but we still need to track this
              * outstanding request so we can satisfy it once the data is returned */
             pmix_list_append(&pmix_client_globals.pending_requests, &cb->super);

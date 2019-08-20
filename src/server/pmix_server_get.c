@@ -201,9 +201,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
 
     /* check if the nspace of the requestor is different from
      * the nspace of the target process */
-    if (!PMIX_CHECK_NSPACE(nspace, cd->peer->info->pname.nspace)) {
-        diffnspace = true;
-    }
+    diffnspace = !PMIX_CHECK_NSPACE(nspace, cd->peer->info->pname.nspace);
 
     pmix_output_verbose(2, pmix_server_globals.get_output,
                         "%s EXECUTE GET FOR %s:%d ON BEHALF OF %s",
@@ -299,7 +297,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
                 req->event_active = true;
             }
         } else {
-        /* if we don't have direct modex feature, just respond with "not found" */
+            /* if we don't have direct modex feature, just respond with "not found" */
             pmix_output_verbose(5, pmix_server_globals.get_output,
                                 "%s UNKNOWN NSPACE: NO DMODEX AVAILABLE - NOT FOUND",
                                 PMIX_NAME_PRINT(&pmix_globals.myid));
