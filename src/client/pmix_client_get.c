@@ -648,7 +648,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
                  * ask server and indicate we only need job-level info
                  * by setting the rank to WILDCARD
                  */
-                cb->pname.rank = PMIX_RANK_WILDCARD;
+                proc.rank = PMIX_RANK_WILDCARD;
                 goto request;
             } else if (NULL != cb->key) {
                 /* if immediate was given, then we are being directed to
@@ -760,7 +760,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
 
     /* we don't have a pending request, so let's create one - don't worry
      * about packing the key as we return everything from that proc */
-    msg = _pack_get(cb->pname.nspace, cb->pname.rank, cb->info, cb->ninfo, PMIX_GETNB_CMD);
+    msg = _pack_get(cb->pname.nspace, proc.rank, cb->info, cb->ninfo, PMIX_GETNB_CMD);
     if (NULL == msg) {
         rc = PMIX_ERROR;
         goto respond;
