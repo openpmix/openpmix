@@ -298,6 +298,7 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
     int32_t cnt;
     pmix_proc_t proc;
     pmix_kval_t *kv;
+    bool diffnspace;
 
     pmix_output_verbose(2, pmix_client_globals.get_output,
                         "pmix: get_nb callback recvd");
@@ -319,6 +320,9 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
         goto done;
     }
 
+    /* check for a different nspace */
+    diffnspace = !PMIX_CHECK_NSPACE(pmix_globals.myid.nspace, proc.nspace);
+
     /* unpack the status */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver,
@@ -333,7 +337,7 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
     if (PMIX_SUCCESS != ret) {
         goto done;
     }
-    if (PMIX_RANK_UNDEF == proc.rank) {
+    if (PMIX_RANK_UNDEF == proc.rank || diffnspace) {
         PMIX_GDS_ACCEPT_KVS_RESP(rc, pmix_globals.mypeer, buf);
     } else {
         PMIX_GDS_ACCEPT_KVS_RESP(rc, pmix_client_globals.myserver, buf);
@@ -356,7 +360,7 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
             /* fetch the data from server peer module - since it is passing
              * it back to the user, we need a copy of it */
             cb->copy = true;
-            if (PMIX_RANK_UNDEF == proc.rank) {
+            if (PMIX_RANK_UNDEF == proc.rank || diffnspace) {
                 PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
             } else {
                 PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, cb);
