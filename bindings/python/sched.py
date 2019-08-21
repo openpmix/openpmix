@@ -56,12 +56,12 @@ def main():
     print("Node regex: ", regex)
     (rc, ppn) = foo.generate_ppn("0,1,2;3,4,5;6,7")
     print("PPN: ", ppn)
-    darray = (PMIX_INFO, [{'key':PMIX_ALLOC_NETWORK_ID,
+    darray = {'type':PMIX_INFO, 'array':[{'key':PMIX_ALLOC_NETWORK_ID,
                             'value':'SIMPSCHED.net', 'val_type':PMIX_STRING},
                            {'key':PMIX_ALLOC_NETWORK_SEC_KEY, 'value':'T',
                             'val_type':PMIX_BOOL},
                            {'key':PMIX_SETUP_APP_ENVARS, 'value':'T',
-                            'val_type':PMIX_BOOL}])
+                            'val_type':PMIX_BOOL}]}
     kyvals = [{'key':PMIX_NODE_MAP, 'value':regex, 'val_type':PMIX_STRING},
               {'key':PMIX_PROC_MAP, 'value':ppn, 'val_type':PMIX_STRING},
               {'key':PMIX_ALLOC_NETWORK, 'value':darray, 'val_type':PMIX_DATA_ARRAY}]
