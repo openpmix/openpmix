@@ -51,7 +51,7 @@ def main():
     # get our environment as a base
     env = os.environ.copy()
     # register an nspace for the client app
-    darray = (PMIX_SIZE, [1, 2, 3, 4, 5])
+    darray = {'type':PMIX_SIZE, 'array':[1, 2, 3, 4, 5]}
     kvals = [{'key':'testkey', 'value':darray, 'val_type':PMIX_DATA_ARRAY}]
     print("REGISTERING NSPACE")
     rc = foo.register_nspace("testnspace", 1, kvals)
@@ -101,9 +101,9 @@ def main():
 
         if stdout_done and stderr_done:
             break
-
     print("FINALIZING")
     foo.finalize()
+
 
 if __name__ == '__main__':
     global killer

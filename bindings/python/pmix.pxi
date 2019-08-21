@@ -569,11 +569,11 @@ cdef int pmix_load_value(pmix_value_t *value, val:dict):
         value[0].data.darray = <pmix_data_array_t*> PyMem_Malloc(sizeof(pmix_data_array_t))
         if not value[0].data.darray:
             return PMIX_ERR_NOMEM
-        value[0].data.darray[0].type = val['value'][0]
-        value[0].data.darray[0].size = len(val['value'][1])
+        value[0].data.darray[0].type = val['value']['type']
+        value[0].data.darray[0].size = len(val['value']['array'])
         try:
             pmix_load_darray(value[0].data.darray, 
-            value[0].data.darray[0].type, val['value'][1])
+            value[0].data.darray[0].type, val['value']['array'])
         except:
             return PMIX_ERR_NOT_SUPPORTED
     elif val['val_type'] == PMIX_ALLOC_DIRECTIVE:
