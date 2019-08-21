@@ -313,15 +313,15 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
     pmix_strncpy(proc.nspace, cb->pname.nspace, PMIX_MAX_NSLEN);
     proc.rank = cb->pname.rank;
 
+    /* check for a different nspace */
+    diffnspace = !PMIX_CHECK_NSPACE(pmix_globals.myid.nspace, proc.nspace);
+
     /* a zero-byte buffer indicates that this recv is being
      * completed due to a lost connection */
     if (PMIX_BUFFER_IS_EMPTY(buf)) {
         ret = PMIX_ERR_UNREACH;
         goto done;
     }
-
-    /* check for a different nspace */
-    diffnspace = !PMIX_CHECK_NSPACE(pmix_globals.myid.nspace, proc.nspace);
 
     /* unpack the status */
     cnt = 1;

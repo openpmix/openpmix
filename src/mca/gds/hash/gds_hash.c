@@ -2437,20 +2437,15 @@ static pmix_status_t hash_fetch(const pmix_proc_t *proc,
         dohash(&trk->internal, NULL, PMIX_RANK_WILDCARD, 0, kvs);
         /* also need to add any job-level info */
         PMIX_LIST_FOREACH(kvptr, &trk->jobinfo, pmix_kval_t) {
-            if (NULL == key || PMIX_CHECK_KEY(kvptr, key)) {
-                kv = PMIX_NEW(pmix_kval_t);
-                kv->key = strdup(kvptr->key);
-                kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
-                PMIX_VALUE_XFER(rc, kv->value, kvptr->value);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_RELEASE(kv);
-                    return rc;
-                }
-                pmix_list_append(kvs, &kv->super);
-                if (NULL != key) {
-                    break;
-                }
+            kv = PMIX_NEW(pmix_kval_t);
+            kv->key = strdup(kvptr->key);
+            kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+            PMIX_VALUE_XFER(rc, kv->value, kvptr->value);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_RELEASE(kv);
+                return rc;
             }
+            pmix_list_append(kvs, &kv->super);
         }
         /* finally, we need the job-level info for each rank in the job */
         for (rnk=0; rnk < trk->nptr->nprocs; rnk++) {
