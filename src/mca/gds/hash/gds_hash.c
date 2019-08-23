@@ -1290,14 +1290,10 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
     }
 
     /* we must have the proc AND node maps */
-    if (NULL == procs || NULL == nodes) {
-        rc = PMIX_ERR_NOT_FOUND;
-        goto release;
-    }
-
-    if (PMIX_SUCCESS != (rc = store_map(ht, nodes, procs, flags))) {
-        PMIX_ERROR_LOG(rc);
-        goto release;
+    if (NULL != procs && NULL != nodes) {
+        if (PMIX_SUCCESS != (rc = store_map(ht, nodes, procs, flags))) {
+            PMIX_ERROR_LOG(rc);
+        }
     }
 
   release:
