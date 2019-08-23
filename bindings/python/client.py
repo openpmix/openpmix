@@ -28,7 +28,7 @@ def main():
     print("Fence result ", rc)
     print("GET")
     info = []
-    rc, get_val = foo.get(("testnspace", 0), "mykey", info)
+    rc, get_val = foo.get({'nspace':"testnspace", 'rank':0}, "mykey", info)
     print("Get result: ", rc)
     print("Get value returned: ", get_val)
     # finalize
