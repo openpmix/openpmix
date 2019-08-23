@@ -123,7 +123,7 @@ cdef class PMIxClient:
     #        - string message to be printed
     #
     # @procs [INPUT]
-    #        - list of proc nspace,rank tuples
+    #        - list of proc nspace,rank dicts
     def abort(self, status, msg, peers:list):
         cdef pmix_proc_t *procs
         cdef size_t sz
@@ -254,7 +254,7 @@ cdef class PMIxClient:
     # retrieve a value from the keystore
     #
     # @proc [INPUT]
-    #       - namespace and rank of the client (tuple)
+    #       - namespace and rank of the client (dict)
     #
     # @key [INPUT]
     #      - the key to be retrieved
@@ -264,7 +264,7 @@ cdef class PMIxClient:
     #            dictionary has a key, value, and val_type
     #            defined as such:
     #            [{key:y, value:val, val_type:ty}, … ]
-    def get(self, proc:tuple, ky, dicts:list):
+    def get(self, proc:dict, ky, dicts:list):
         cdef pmix_info_t *info;
         cdef size_t ninfo;
         cdef pmix_key_t key;
@@ -275,8 +275,8 @@ cdef class PMIxClient:
 
         # convert proc to pmix_proc_t
         cdef pmix_proc_t p;
-        pmix_copy_nspace(p.nspace, proc[0])
-        p.rank = proc[1]
+        pmix_copy_nspace(p.nspace, proc['nspace'])
+        p.rank = proc['rank']
 
         # convert key,val to pmix_value_t and pmix_key_t
         pmix_copy_key(key, ky)
@@ -463,7 +463,7 @@ cdef class PMIxServer(PMIxClient):
     # Register a client process
     #
     # @proc [INPUT]
-    #       - namespace and rank of the client (tuple)
+    #       - namespace and rank of the client (dict)
     #
     # @uid [INPUT]
     #      - User ID (uid) of the client (int)
@@ -471,11 +471,11 @@ cdef class PMIxServer(PMIxClient):
     # @gid [INPUT]
     #      - Group ID (gid) of the client (int)
     #
-    def register_client(self, proc:tuple, uid, gid):
+    def register_client(self, proc:dict, uid, gid):
         global active
         cdef pmix_proc_t p;
-        pmix_copy_nspace(p.nspace, proc[0])
-        p.rank = proc[1]
+        pmix_copy_nspace(p.nspace, proc['nspace'])
+        p.rank = proc['rank']
         active.clear()
         rc = PMIx_server_register_client(&p, uid, gid, NULL, pmix_opcbfunc, NULL)
         if PMIX_SUCCESS == rc:
@@ -486,13 +486,13 @@ cdef class PMIxServer(PMIxClient):
     # Deregister a client process
     #
     # @proc [INPUT]
-    #       - namespace and rank of the client (tuple)
+    #       - namespace and rank of the client (dict)
     #
-    def deregister_client(self, proc:tuple):
+    def deregister_client(self, proc:dict):
         global active
         cdef pmix_proc_t p;
-        pmix_copy_nspace(p.nspace, proc[0])
-        p.rank = proc[1]
+        pmix_copy_nspace(p.nspace, proc['nspace'])
+        p.rank = proc['rank']
         active.clear()
         rc = PMIx_server_deregister_client(&p, pmix_opcbfunc, NULL)
         if PMIX_SUCCESS == rc:
@@ -510,12 +510,12 @@ cdef class PMIxServer(PMIxClient):
     #        - environ of client proc that will be updated
     #          with PMIx envars (dict)
     #
-    def setup_fork(self, proc:tuple, envin:dict):
+    def setup_fork(self, proc:dict, envin:dict):
         cdef pmix_proc_t p;
         cdef char **penv = NULL;
         cdef unicode pstring
-        pmix_copy_nspace(p.nspace, proc[0])
-        p.rank = proc[1]
+        pmix_copy_nspace(p.nspace, proc['nspace'])
+        p.rank = proc['rank']
         # convert the incoming dictionary to an array
         # of strings
         rc = PMIx_server_setup_fork(&p, &penv)
@@ -535,8 +535,8 @@ cdef class PMIxServer(PMIxClient):
     def dmodex_request(self, proc, dataout:dict):
         global active
         cdef pmix_proc_t p;
-        pmix_copy_nspace(p.nspace, proc[0])
-        p.rank = proc[1]
+        pmix_copy_nspace(p.nspace, proc['nspace'])
+        p.rank = proc['rank']
         active.clear()
         rc = PMIx_server_dmodex_request(&p, dmodx_cbfunc, NULL);
         if PMIX_SUCCESS == rc:

@@ -89,11 +89,11 @@ def main():
     uid = os.getuid()
     gid = os.getgid()
     print("REGISTERING CLIENT")
-    rc = foo.register_client(("testnspace", 0), uid, gid)
+    rc = foo.register_client({'nspace':"testnspace", 'rank':0}, uid, gid)
     print("RegClient ", rc)
 
     # setup the fork
-    rc = foo.setup_fork(("testnspace", 0), env)
+    rc = foo.setup_fork({'nspace':"testnspace", 'rank':0}, env)
     print("SetupFrk", rc)
 
     # setup the client argv

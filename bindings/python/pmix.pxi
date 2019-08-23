@@ -778,8 +778,8 @@ cdef void pmix_free_info(pmix_info_t *array, size_t sz):
 cdef int pmix_load_procs(pmix_proc_t *proc, peers:list):
     n = 0
     for p in peers:
-        pmix_copy_nspace(proc[n].nspace, p[0])
-        proc[n].rank = p[1]
+        pmix_copy_nspace(proc[n].nspace, p['nspace'])
+        proc[n].rank = p['rank']
         n += 1
     return PMIX_SUCCESS
 
@@ -787,7 +787,7 @@ cdef int pmix_unload_procs(const pmix_proc_t *procs, size_t nprocs, peers:list):
     n = 0
     while n < nprocs:
         myns = str(procs[n].nspace)
-        peers.append((myns, procs[n].rank))
+        peers.append({'nspace':myns, 'rank':procs[n].rank})
         n += 1
     return PMIX_SUCCESS
 
