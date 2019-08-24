@@ -28,9 +28,15 @@ def main():
     print("Fence result ", rc)
     print("GET")
     info = []
-    rc, get_val = foo.get({'nspace':"testnspace", 'rank':0}, "mykey", info)
+    rc, get_val = foo.get({'nspace':"testnspace", 'rank': 0}, "mykey", info)
     print("Get result: ", rc)
     print("Get value returned: ", get_val)
+    # test a fence that should return not_supported because
+    # we pass a required attribute that doesn't exist
+    procs = []
+    info = [{'key': 'ARBITRARY', 'flags': PMIX_INFO_REQD, 'value':10, 'val_type':PMIX_INT}]
+    rc = foo.fence(procs, info)
+    print("Fence should be not supported", rc)
     # finalize
     info = []
     foo.finalize(info)

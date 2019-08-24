@@ -76,6 +76,10 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
         for item in mylist:
             pykey = str(item['key'])
             pmix_copy_key(infoptr[n].key, pykey)
+            try:
+                infoptr[n].flags = item['flags']
+            except:
+                pass
             val = {'value':item['value'], 'val_type':item['val_type']}
             pmix_load_value(&infoptr[n].value, val)
     elif PMIX_STRING == mytype:
@@ -572,7 +576,7 @@ cdef int pmix_load_value(pmix_value_t *value, val:dict):
         value[0].data.darray[0].type = val['value']['type']
         value[0].data.darray[0].size = len(val['value']['array'])
         try:
-            pmix_load_darray(value[0].data.darray, 
+            pmix_load_darray(value[0].data.darray,
             value[0].data.darray[0].type, val['value']['array'])
         except:
             return PMIX_ERR_NOT_SUPPORTED
@@ -646,7 +650,7 @@ cdef dict pmix_unload_value(const pmix_value_t *value):
     elif PMIX_DOUBLE == value[0].type:
         return {'value':value[0].data.dval, 'val_type':PMIX_DOUBLE}
     elif PMIX_TIMEVAL == value[0].type:
-        return {'value':(value[0].data.tv.tv_sec, value[0].data.tv.tv_used), 
+        return {'value':(value[0].data.tv.tv_sec, value[0].data.tv.tv_used),
         'val_type':PMIX_TIMEVAL}
     elif PMIX_TIME == value[0].type:
         return {'value':value[0].data.time, 'val_type':PMIX_TIME}
@@ -722,6 +726,10 @@ cdef int pmix_load_info(pmix_info_t *array, dicts:list):
     for d in dicts:
         pykey = str(d['key'])
         pmix_copy_key(array[n].key, pykey)
+        try:
+            array[n].flags = d['flags']
+        except:
+            pass
         val = {'value':d['value'], 'val_type':d['val_type']}
         rc = pmix_load_value(&array[n].value, val)
         print("LOAD INFO ", PMIx_Data_type_string(d['val_type']))
@@ -736,15 +744,16 @@ cdef int pmix_unload_info(const pmix_info_t *info, size_t ninfo, ilist:list):
     while n < ninfo:
         print("UNLOADING INFO ", info[n].key, " TYPE ", PMIx_Data_type_string(info[n].value.type))
         val = pmix_unload_value(&info[n].value)
-        if val[1] == PMIX_UNDEF:
+        if val['val_type'] == PMIX_UNDEF:
             return PMIX_ERR_NOT_SUPPORTED
         d     = {}
         kystr = strdup(info[n].key)
         pykey = kystr.decode("ascii")
         free(kystr)
         d['key']      = pykey
-        d['value']    = val[0]
-        d['val_type'] = val[1]
+        d['flags']    = info[n].flags
+        d['value']    = val['value']
+        d['val_type'] = val['val_type']
         ilist.append(d)
         n += 1
     return PMIX_SUCCESS
