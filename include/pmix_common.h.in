@@ -988,6 +988,7 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_ENVAR              46
 #define PMIX_COORD              47
 #define PMIX_REGATTR            48
+#define PMIX_REGEX              49
 /********************/
 
 /* define a boundary for implementers so they can add their own data types */

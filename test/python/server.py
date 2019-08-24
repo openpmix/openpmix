@@ -17,16 +17,29 @@ class GracefulKiller:
   def exit_gracefully(self,signum, frame):
     self.kill_now = True
 
-def clientconnected(proc:tuple is not None):
+def clientconnected(proc:dict is not None):
     print("CLIENT CONNECTED", proc)
     return PMIX_SUCCESS
 
-def clientfinalized(proc:tuple is not None):
+def clientfinalized(proc:dict is not None):
     print("CLIENT FINALIZED", proc)
     return PMIX_SUCCESS
 
-def clientfence(args:dict is not None):
-    print("SERVER FENCE", args)
+def clientfence(procs:list, directives:list, data:bytearray):
+    # check directives
+    if directives is not None:
+        for d in directives:
+            # these are each an info dict
+            if "pmix" not in d['key']:
+                # we do not support such directives - see if
+                # it is required
+                try:
+                    if d['flags'] & PMIX_INFO_REQD:
+                        # return an error
+                        return PMIX_ERR_NOT_SUPPORTED
+                except:
+                    #it can be ignored
+                    pass
     return PMIX_SUCCESS
 
 def main():
@@ -51,7 +64,7 @@ def main():
     # get our environment as a base
     env = os.environ.copy()
     # register an nspace for the client app
-    darray = (PMIX_SIZE, [1, 2, 3, 4, 5])
+    darray = {'type':PMIX_SIZE, 'array':[1, 2, 3, 4, 5]}
     kvals = [{'key':'testkey', 'value':darray, 'val_type':PMIX_DATA_ARRAY}]
     print("REGISTERING NSPACE")
     rc = foo.register_nspace("testnspace", 1, kvals)
@@ -60,10 +73,10 @@ def main():
     # register a client
     uid = os.getuid()
     gid = os.getgid()
-    rc = foo.register_client(("testnspace", 0), uid, gid)
+    rc = foo.register_client({'nspace':"testnspace", 'rank':0}, uid, gid)
     print("RegClient ", rc)
     # setup the fork
-    rc = foo.setup_fork(("testnspace", 0), env)
+    rc = foo.setup_fork({'nspace':"testnspace", 'rank':0}, env)
     print("SetupFrk", rc)
 
     # setup the client argv
@@ -101,9 +114,9 @@ def main():
 
         if stdout_done and stderr_done:
             break
-
     print("FINALIZING")
     foo.finalize()
+
 
 if __name__ == '__main__':
     global killer

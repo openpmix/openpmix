@@ -604,6 +604,11 @@ cdef int pmix_load_value(pmix_value_t *value, val:dict):
         pynsptr = <const char *>(pyns)
         value[0].data.envar.value = strdup(pynsptr)
         value[0].data.envar.separator = val['value']['separator']
+    elif val['val_type'] == PMIX_REGEX:
+        if not isinstance(val['value'], bytearray):
+            return PMIX_ERR_TYPE_MISMATCH
+        value[0].data.bo.bytes = val['value']
+        value[0].data.bo.size = len(val['value'])
     else:
         print("UNRECOGNIZED VALUE TYPE")
         return PMIX_ERR_NOT_SUPPORTED
@@ -695,6 +700,8 @@ cdef dict pmix_unload_value(const pmix_value_t *value):
         pysep = value[0].data.envar.separator
         pyenvans = {'envar': pyenv, 'value': pyval, 'separator': pysep}
         return {'value':pyenvans, 'val_type':PMIX_ENVAR}
+    elif PMIX_REGEX:
+        return {'value': value[0].data.bo.bytes, 'val_type': PMIX_REGEX}
     else:
         print("Unload_value: provided type is unknown")
         return PMIX_ERR_TYPE_MISMATCH

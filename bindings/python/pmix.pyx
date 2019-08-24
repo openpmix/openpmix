@@ -669,9 +669,18 @@ cdef class PMIxServer(PMIxClient):
         else:
             pyhosts = hosts
         rc = PMIx_generate_regex(pyhosts, &regex)
-        pyreg = regex
-        pystr = pyreg.decode("ascii")
-        return (rc, pystr)
+        if "pmix" == regex[:4]:
+            ba = bytearray(regex)
+        else:
+            # extract the length of the blob
+            length = int(&regex[6]) + 6 + len(&regex[6])
+            ba = bytearray(length)
+            pyregex = <bytes> regex[:length]
+            index = 0
+            while index < length:
+                ba[index] = pyregex[index]
+                index += 1
+        return (rc, ba)
 
     def generate_ppn(self, procs):
         cdef char *ppn;
@@ -680,9 +689,18 @@ cdef class PMIxServer(PMIxClient):
         else:
             pyprocs = procs
         rc = PMIx_generate_ppn(pyprocs, &ppn)
-        pyppn = ppn
-        pystr = pyppn.decode("ascii")
-        return (rc, pystr)
+        if "pmix" == ppn[:4]:
+            ba = bytearray(ppn)
+        else:
+            # extract the length of the blob
+            length = int(&ppn[6]) + 6 + len(&ppn[6])
+            ba = bytearray(length)
+            index = 0
+            pyppn = <bytes> ppn[:length]
+            while index < length:
+                ba[index] = pyppn[index]
+                index += 1
+        return (rc, ba)
 
 cdef int clientconnected(pmix_proc_t *proc, void *server_object,
                          pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:

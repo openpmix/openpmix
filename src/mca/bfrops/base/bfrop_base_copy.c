@@ -26,6 +26,7 @@
 #include "src/util/error.h"
 #include "src/util/output.h"
 #include "src/include/pmix_globals.h"
+#include "src/mca/preg/preg.h"
 
 #include "src/mca/bfrops/base/base.h"
 
@@ -998,4 +999,17 @@ pmix_status_t pmix_bfrops_base_copy_regattr(pmix_regattr_t **dest,
     (*dest)->ninfo = src->ninfo;
     (*dest)->description = pmix_argv_copy(src->description);
     return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_copy_regex(char **dest,
+                                          char *src,
+                                          pmix_data_type_t type)
+{
+    size_t len;
+
+    if (PMIX_REGEX != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    return pmix_preg.copy(dest, &len, src);
 }
