@@ -796,12 +796,14 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
                                 "pnet:test:allocate assigning %d coordinates for rank %u",
                                 (int)q, rank);
             for (p=0; p < q; p++) {
+                pln = (pnet_plane_t*)nic->plane;
+                sw = (pnet_switch_t*)nic->s;
+                coords[p].fabric = strdup("test");
+                coords[p].plane = strdup(pln->name);
                 coords[p].view = PMIX_COORD_LOGICAL_VIEW;
                 coords[p].dims = 3;
                 coords[p].coord = (int*)malloc(3 * sizeof(int));
-                pln = (pnet_plane_t*)nic->plane;
                 coords[p].coord[2] = pln->index;
-                sw = (pnet_switch_t*)nic->s;
                 coords[p].coord[1] = sw->index;
                 coords[p].coord[0] = ((pnet_nic_t*)nic->link)->index;
                 nic = (pnet_nic_t*)pmix_list_get_next(&nic->super);

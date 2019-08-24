@@ -1145,6 +1145,8 @@ typedef uint8_t pmix_coord_view_t;
 
 /* define a structure for a proc's network coordinate */
 typedef struct pmix_coord {
+    char *fabric;
+    char *plane;
     pmix_coord_view_t view;
     int *coord;
     size_t dims;
@@ -1154,14 +1156,18 @@ typedef struct pmix_coord {
     do {                                                                \
         (m) = (pmix_coord_t*)pmix_calloc((n), sizeof(pmix_coord_t));    \
         if (NULL != (m)) {                                              \
+            (m)->fabric = NULL;                                         \
+            (m)->plane = NULL;                                          \
             (m)->view = PMIX_COORD_VIEW_UNDEF;                          \
             (m)->dims = (d);                                            \
             (m)->coord = (int*)pmix_calloc((m)->dims, sizeof(int));     \
         }                                                               \
     } while(0)
 
-#define PMIX_COORD_CONSTRUCT(m, d)          \
+#define PMIX_COORD_CONSTRUCT(m)             \
     do {                                    \
+        (m)->fabric = NULL;                 \
+        (m)->plane = NULL;                  \
         (m)->view = PMIX_COORD_VIEW_UNDEF;  \
         (m)->coord = NULL;                  \
         (m)->dims = 0;                      \
@@ -1171,6 +1177,12 @@ typedef struct pmix_coord {
     do {                                    \
         (m)->view = PMIX_COORD_VIEW_UNDEF;  \
         if (NULL != (m)->coord) {           \
+            if (NULL != (m)->fabric) {      \
+                free((m)->fabric);          \
+            }                               \
+            if (NULL != (m)->plane) {       \
+                free((m)->plane);           \
+            };                              \
             pmix_free((m)->coord);          \
             (m)->coord = NULL;              \
             (m)->dims = 0;                  \
