@@ -1470,6 +1470,19 @@ pmix_status_t pmix_bfrops_base_unpack_coord(pmix_pointer_array_t *regtypes,
     n = *num_vals;
 
     for (i = 0; i < n; ++i) {
+        PMIX_COORD_CONSTRUCT(&ptr[i]);
+        /* unpack the fabric name */
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].fabric, &m, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
+        /* unpack the plane */
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].plane, &m, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
         /* unpack the view */
         m=1;
         PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].view, &m, PMIX_UINT8, regtypes);

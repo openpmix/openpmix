@@ -1875,8 +1875,9 @@ pmix_status_t pmix_bfrops_base_print_coord(char **output, char *prefix,
     } else {
         tp = "UNRECOGNIZED";
     }
-    ret = asprintf(output, "%sData type: PMIX_COORD\tView: %s\tDims: %lu",
-                   prefx, tp, (unsigned long)src->dims);
+    ret = asprintf(output, "%sData type: PMIX_COORD\tFabric: %s\tPlane: %s\tView: %s\tDims: %lu",
+                   prefx, (NULL == src->fabric) ? "NULL" : src->fabric,
+                   (NULL == src->plane) ? "NULL" : src->plane, tp, (unsigned long)src->dims);
     if (prefx != prefix) {
         free(prefx);
     }

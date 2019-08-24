@@ -848,6 +848,13 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
             pc = (pmix_coord_t*)p->array;
             sc = (pmix_coord_t*)src->array;
             for (n=0; n < src->size; n++) {
+                PMIX_COORD_CONSTRUCT(&pc[n]);
+                if (NULL != sc[n].fabric) {
+                    pc[n].fabric = strdup(sc[n].fabric);
+                }
+                if (NULL != sc[n].plane) {
+                    pc[n].plane = strdup(sc[n].plane);
+                }
                 pc[n].view = sc[n].view;
                 pc[n].dims = sc[n].dims;
                 if (0 < pc[n].dims) {
@@ -947,6 +954,13 @@ pmix_status_t pmix_bfrops_base_copy_coord(pmix_coord_t **dest,
     d = (pmix_coord_t*)malloc(sizeof(pmix_coord_t));
     if (NULL == d) {
         return PMIX_ERR_NOMEM;
+    }
+    PMIX_COORD_CONSTRUCT(d);
+    if (NULL != src->fabric) {
+        d->fabric = strdup(src->fabric);
+    }
+    if (NULL != src->plane) {
+        d->plane = strdup(src->plane);
     }
     d->view = src->view;
     d->dims = src->dims;

@@ -1248,6 +1248,16 @@ pmix_status_t pmix_bfrops_base_pack_coord(pmix_pointer_array_t *regtypes,
         return PMIX_ERR_BAD_PARAM;
     }
     for (i=0; i < num_vals; ++i) {
+        /* pack the fabric name */
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].fabric, 1, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
+        /* pack the plane */
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].plane, 1, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
         /* pack the view */
         PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].view, 1, PMIX_UINT8, regtypes);
         if (PMIX_SUCCESS != ret) {
