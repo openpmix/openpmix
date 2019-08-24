@@ -776,22 +776,19 @@ cdef int fencenb(const pmix_proc_t procs[], size_t nprocs,
                  pmix_modex_cbfunc_t cbfunc, void *cbdata) with gil:
     keys = pmixservermodule.keys()
     if 'fencenb' in keys:
-        args = {}
         myprocs = []
         blist = []
         ilist = []
+        barray = None
         pmix_unload_procs(procs, nprocs, myprocs)
-        args['procs'] = myprocs
         if NULL != info:
             rc = pmix_unload_info(info, ninfo, ilist)
             if PMIX_SUCCESS != rc:
                 return rc
-            args['info'] = ilist
         if NULL != data:
             pmix_unload_bytes(data, ndata, blist)
             barray = bytearray(blist)
-            args['data'] = barray
-        rc = pmixservermodule['fencenb'](args)
+        rc = pmixservermodule['fencenb'](myprocs, ilist, barray)
     else:
         return PMIX_ERR_NOT_SUPPORTED
     # we cannot execute a callback function here as
