@@ -1922,3 +1922,35 @@ pmix_status_t pmix_bfrops_base_print_regattr(char **output, char *prefix,
         return PMIX_SUCCESS;
     }
 }
+
+pmix_status_t pmix_bfrops_base_print_regex(char **output, char *prefix,
+                                           char *src,
+                                           pmix_data_type_t type)
+{
+    char *prefx;
+    int ret;
+
+    if (PMIX_REGEX != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    /* deal with NULL prefix */
+    if (NULL == prefix) {
+        if (0 > asprintf(&prefx, " ")) {
+            return PMIX_ERR_NOMEM;
+        }
+    } else {
+        prefx = prefix;
+    }
+
+    ret = asprintf(output, "%sData type: PMIX_REGEX\tName: %s", prefx, src);
+
+    if (prefx != prefix) {
+        free(prefx);
+    }
+
+    if (0 > ret) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    } else {
+        return PMIX_SUCCESS;
+    }
+}

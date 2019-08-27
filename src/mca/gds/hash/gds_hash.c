@@ -552,7 +552,7 @@ static pmix_status_t process_job_array(pmix_info_t *info,
                 return PMIX_ERR_BAD_PARAM;
             }
             /* parse the regex to get the argv array containing proc ranks on each node */
-            if (PMIX_SUCCESS != (rc = pmix_preg.parse_procs(iptr[j].value.data.string, procs))) {
+            if (PMIX_SUCCESS != (rc = pmix_preg.parse_procs(iptr[j].value.data.bo.bytes, procs))) {
                 PMIX_ERROR_LOG(rc);
                 return rc;
             }
@@ -564,22 +564,8 @@ static pmix_status_t process_job_array(pmix_info_t *info,
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                 return PMIX_ERR_BAD_PARAM;
             }
-            /* store the node map itself since that is
-             * what v3 uses */
-            kp2 = PMIX_NEW(pmix_kval_t);
-            kp2->key = strdup(PMIX_NODE_MAP);
-            kp2->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
-            kp2->value->type = PMIX_STRING;
-            kp2->value->data.string = strdup(iptr[j].value.data.string);
-            if (PMIX_SUCCESS != (rc = pmix_hash_store(&trk->internal, PMIX_RANK_WILDCARD, kp2))) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE(kp2);
-                return rc;
-            }
-            PMIX_RELEASE(kp2);  // maintain acctg
-
             /* parse the regex to get the argv array of node names */
-            if (PMIX_SUCCESS != (rc = pmix_preg.parse_nodes(iptr[j].value.data.string, nodes))) {
+            if (PMIX_SUCCESS != (rc = pmix_preg.parse_nodes(iptr[j].value.data.bo.bytes, nodes))) {
                 PMIX_ERROR_LOG(rc);
                 return rc;
             }
@@ -1120,22 +1106,8 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                 return PMIX_ERR_BAD_PARAM;
             }
-            /* store the node map itself since that is
-             * what v3 uses */
-            kp2 = PMIX_NEW(pmix_kval_t);
-            kp2->key = strdup(PMIX_NODE_MAP);
-            kp2->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
-            kp2->value->type = PMIX_STRING;
-            kp2->value->data.string = strdup(info[n].value.data.string);
-            if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, kp2))) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE(kp2);
-                return rc;
-            }
-            PMIX_RELEASE(kp2);  // maintain acctg
-
             /* parse the regex to get the argv array of node names */
-            if (PMIX_SUCCESS != (rc = pmix_preg.parse_nodes(info[n].value.data.string, &nodes))) {
+            if (PMIX_SUCCESS != (rc = pmix_preg.parse_nodes(info[n].value.data.bo.bytes, &nodes))) {
                 PMIX_ERROR_LOG(rc);
                 goto release;
             }
@@ -1148,7 +1120,7 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                 return PMIX_ERR_BAD_PARAM;
             }
             /* parse the regex to get the argv array containing proc ranks on each node */
-            if (PMIX_SUCCESS != (rc = pmix_preg.parse_procs(info[n].value.data.string, &procs))) {
+            if (PMIX_SUCCESS != (rc = pmix_preg.parse_procs(info[n].value.data.bo.bytes, &procs))) {
                 PMIX_ERROR_LOG(rc);
                 goto release;
             }
