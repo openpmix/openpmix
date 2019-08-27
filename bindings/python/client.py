@@ -37,6 +37,9 @@ def main():
     info = [{'key': 'ARBITRARY', 'flags': PMIX_INFO_REQD, 'value':10, 'val_type':PMIX_INT}]
     rc = foo.fence(procs, info)
     print("Fence should be not supported", rc)
+    info = [{'key': 'ARBITRARY', 'flags': None, 'value':10, 'val_type':PMIX_INT}]
+    rc = foo.publish(info)
+    print("Publish result: ", rc)
     # finalize
     info = []
     foo.finalize(info)

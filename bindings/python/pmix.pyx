@@ -308,6 +308,41 @@ cdef class PMIxClient:
             pmix_free_info(info, ninfo)
         return rc, val
 
+    # Publish the data in the info array for lookup
+    #
+    # @dicts [INPUT]
+    #          - a list of dictionaries, where
+    #            a key, flags, value, and val_type
+    #            can be defined as keys
+    def publish(self, dicts:list):
+        cdef pmix_info_t *info;
+        cdef size_t ninfo;
+        ninfo = 0
+
+        # convert the list of dictionaries to array of
+        # pmix_info_t structs
+        if dicts is not None:
+            ninfo = len(dicts)
+            if 0 < ninfo:
+                info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
+                if not info:
+                    return PMIX_ERR_NOMEM
+                rc = pmix_load_info(info, dicts)
+                if PMIX_SUCCESS != rc:
+                    pmix_free_info(info, ninfo)
+                    return rc
+            else:
+                info = NULL
+        else:
+            info = NULL
+
+        # pass it into the publish API
+        print("PUBLISH")
+        rc = PMIx_Publish(info, ninfo)
+        if 0 < ninfo:
+            pmix_free_info(info, ninfo)
+        return rc
+
 pmixservermodule = {}
 def setmodulefn(k, f):
     global pmixservermodule
