@@ -1231,7 +1231,7 @@ if test "$WANT_PYTHON_BINDINGS" = "1"; then
 
     PMIX_SUMMARY_ADD([[Bindings]],[[Python]], [pmix_python], [yes ($python_version)])
 
-    AC_MSG_CHECKING([if Cython package installed])
+    AC_MSG_CHECKING([if Cython package installed as Python package])
     have_cython=`$srcdir/config/pmix_check_cython.py 2> /dev/null`
     if test "$have_cython" = "0"; then
         AC_MSG_RESULT([yes])
@@ -1241,10 +1241,21 @@ if test "$WANT_PYTHON_BINDINGS" = "1"; then
         PMIX_SUMMARY_ADD([[Bindings]],[[Cython]], [pmix_cython], [yes ($cython_version)])
     else
         AC_MSG_RESULT([no])
-        AC_MSG_WARN([Python bindings were enabled, but the Cython])
-        AC_MSG_WARN([package was not found. PMIx Python bindings])
-        AC_MSG_WARN([require that the Cython package be installed])
-        AC_MSG_ERROR([Cannot continue])
+        # Cython doesn't have any include or lib files - it is just a binary
+        AC_CHECK_PROG(pmix_cython_rpm, cython, ["found"], ["not found"])
+        if test "$pmix_cython_rpm" = "found"; then
+            AC_MSG_CHECKING([Cython version])
+            cyvers=`cython --version 2>&1`
+            cython_version=${cyvers#"Cython version "}
+            AC_MSG_RESULT([$cython_version])
+            PMIX_SUMMARY_ADD([[Bindings]],[[Cython]], [pmix_cython], [yes ($cython_version)])
+        else
+            AC_MSG_RESULT([no])
+            AC_MSG_WARN([Python bindings were enabled, but the Cython])
+            AC_MSG_WARN([package was not found. PMIx Python bindings])
+            AC_MSG_WARN([require that the Cython package be installed])
+            AC_MSG_ERROR([Cannot continue])
+        fi
     fi
 
     pmix_pythondir=`eval echo $pythondir`
