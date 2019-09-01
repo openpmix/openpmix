@@ -336,6 +336,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_EMBED_BARRIER                  "pmix.embed.barrier"    // (bool) execute a blocking fence operation before executing the
                                                                     //        specified operation
 #define PMIX_JOB_TERM_STATUS                "pmix.job.term.status"  // (pmix_status_t) status returned upon job termination
+#define PMIX_PROC_TERM_STATUS               "pmix.proc.term.status" // (pmix_status_t) status returned upon process termination
 #define PMIX_PROC_STATE_STATUS              "pmix.proc.state"       // (pmix_proc_state_t) process state
 #define PMIX_NOTIFY_LAUNCH                  "pmix.note.lnch"        // (bool) notify the requestor upon launch of the child job and return
                                                                     //        its namespace in the event
