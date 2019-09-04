@@ -343,6 +343,72 @@ cdef class PMIxClient:
             pmix_free_info(info, ninfo)
         return rc
 
+    # lookup info published by this or another process
+    # @pdata [INPUT]
+    #          - a list of dictionaries, where key is 
+    #            recorded in the pdata dictionary and
+    #            passed to PMIx_Lookup
+    # pdata = {‘proc’: {‘nspace’: mynspace, ‘rank’: myrank}, ‘key’: ky, 
+    # ‘value’: v, ‘val_type’: t}
+    # @dicts [INPUT]
+    #          - a list of dictionaries, where
+    #            a key, flags, value, and val_type
+    #            can be defined as keys
+    def lookup(self, data:list, dicts:list):
+        cdef pmix_pdata_t *pdata;
+        cdef pmix_info_t  *info;
+        cdef size_t npdata;
+        cdef size_t ninfo;
+
+        npdata  = 0
+        ninfo   = 0
+
+        # convert the list of dictionaries to array of
+        # pmix_info_t structs
+        if dicts is not None:
+            ninfo = len(dicts)
+            if 0 < ninfo:
+                info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
+                if not info:
+                    return PMIX_ERR_NOMEM
+                rc = pmix_load_info(info, dicts)
+                if PMIX_SUCCESS != rc:
+                    pmix_free_info(info, ninfo)
+                    return rc
+            else:
+                info = NULL
+        else:
+            info = NULL
+
+        # convert the list of dictionaries to array of
+        # pmix_pdata_t structs
+        if data is not None:
+            npdata = len(data)
+            if 0 < npdata:
+                pdata = <pmix_pdata_t*> PyMem_Malloc(npdata * sizeof(pmix_pdata_t))
+                if not pdata:
+                    return PMIX_ERR_NOMEM
+                rc = pmix_load_pdata(pdata, data)
+                print("pmix_load_pdata result: ", rc)
+                if PMIX_SUCCESS != rc:
+                    #pmix_free_pdata(pdata, npdata)
+                    return rc
+            else:
+                pdata = NULL
+        else:
+            pdata = NULL
+
+        # pass it into the lookup API
+        print("LOOKUP")
+        rc = PMIx_Lookup(pdata, npdata, info, ninfo)
+        print("LOOKUP RESULT PMIx_Lookup: ", rc)
+        if PMIX_SUCCESS == rc:
+            rc = pmix_unload_pdata(pdata, npdata, data)
+            print("pmix_unload_pdata result: ", rc)
+            pmix_free_info(info, ninfo)
+            pmix_free_pdata(pdata, npdata)
+        return rc, data
+
 pmixservermodule = {}
 def setmodulefn(k, f):
     global pmixservermodule

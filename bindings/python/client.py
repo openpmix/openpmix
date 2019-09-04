@@ -37,9 +37,16 @@ def main():
     info = [{'key': 'ARBITRARY', 'flags': PMIX_INFO_REQD, 'value':10, 'val_type':PMIX_INT}]
     rc = foo.fence(procs, info)
     print("Fence should be not supported", rc)
-    info = [{'key': 'ARBITRARY', 'flags': None, 'value':10, 'val_type':PMIX_INT}]
+    info = [{'key': 'ARBITRARY2', 'value':15, 'val_type':PMIX_INT}]
     rc = foo.publish(info)
     print("Publish result: ", rc)
+    procs = []
+    info  = []
+    rc = foo.fence(procs, info)
+    print("Fence result", rc)
+    pdata = [{'key': 'ARBITRARY2'}]
+    rc = foo.lookup(pdata, info)
+    print("Lookup result: ", rc)
     # finalize
     info = []
     foo.finalize(info)
