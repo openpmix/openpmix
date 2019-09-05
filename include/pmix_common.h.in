@@ -112,6 +112,9 @@ typedef uint32_t pmix_rank_t;
 /* define a boundary for valid ranks */
 #define PMIX_RANK_VALID         UINT32_MAX-50
 
+/* define a value to indicate that data applies
+ * to all apps in a job */
+#define PMIX_APP_WILDCARD  UINT32_MAX
 
 /****  PMIX ENVIRONMENTAL PARAMETERS  ****/
 /* There are a few environmental parameters used by PMIx for
