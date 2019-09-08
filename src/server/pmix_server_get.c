@@ -330,6 +330,10 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
          * can retrieve the info from that GDS. Otherwise,
          * we need to retrieve it from our own */
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
+            pmix_output_verbose(5, pmix_server_globals.get_output,
+                                "%s GETTING JOB-DATA FOR %s",
+                                PMIX_NAME_PRINT(&pmix_globals.myid),
+                                PMIX_NAME_PRINT(&proc));
         /* this data is for a local client, so give the gds the
          * option of returning a complete copy of the data,
          * or returning a pointer to local storage */
@@ -341,14 +345,14 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
             PMIX_DESTRUCT(&cb);
             return rc;
         }
-        /* if the requested rank is not WILDCARD, then retrieve the
-         * job-specific data for that rank - a scope of UNDEF
-         * will direct the GDS to provide it. Anything found will
+        /* if the requested rank is not WILDCARD, then retrieve any
+         * posted data for that rank. Anything found will
          * simply be added to the cb.kvs list */
         if (PMIX_RANK_WILDCARD != rank) {
             proc.rank = rank;
+            cb.scope = PMIX_LOCAL;
             pmix_output_verbose(5, pmix_server_globals.get_output,
-                                "%s GETTING JOB-DATA FOR %s",
+                                "%s GETTING DATA FOR %s",
                                 PMIX_NAME_PRINT(&pmix_globals.myid),
                                 PMIX_NAME_PRINT(&proc));
             PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
