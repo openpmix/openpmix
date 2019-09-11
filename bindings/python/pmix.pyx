@@ -708,7 +708,7 @@ cdef class PMIxServer(PMIxClient):
             ba = bytearray(regex)
         else:
             # extract the length of the blob
-            length = int(&regex[6]) + 6 + len(&regex[6])
+            length = 5 + len(&regex[5])
             ba = bytearray(length)
             pyregex = <bytes> regex[:length]
             index = 0
@@ -728,7 +728,7 @@ cdef class PMIxServer(PMIxClient):
             ba = bytearray(ppn)
         else:
             # extract the length of the blob
-            length = int(&ppn[6]) + 6 + len(&ppn[6])
+            length = 4 + len(&ppn[4])
             ba = bytearray(length)
             index = 0
             pyppn = <bytes> ppn[:length]
