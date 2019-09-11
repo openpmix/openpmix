@@ -1462,7 +1462,7 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                                          pmix_buffer_t *buf)
 {
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_kval_t *kptr, *kp2, kv;
+    pmix_kval_t *kptr, *kp2, *kp3, kv;
     int32_t cnt;
     size_t nnodes, len;
     uint32_t i, j;
@@ -1650,10 +1650,10 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                 kp2->value->type = PMIX_STRING;
                 kp2->value->data.string = strdup(kv.value->data.string);
                 /* ensure this item only appears once on the list */
-                PMIX_LIST_FOREACH(kptr, &nd->info, pmix_kval_t) {
-                    if (PMIX_CHECK_KEY(kptr, kp2->key)) {
-                        pmix_list_remove_item(&nd->info, &kptr->super);
-                        PMIX_RELEASE(kptr);
+                PMIX_LIST_FOREACH(kp3, &nd->info, pmix_kval_t) {
+                    if (PMIX_CHECK_KEY(kp3, kp2->key)) {
+                        pmix_list_remove_item(&nd->info, &kp3->super);
+                        PMIX_RELEASE(kp3);
                         break;
                     }
                 }

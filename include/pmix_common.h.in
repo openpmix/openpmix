@@ -2657,10 +2657,12 @@ static inline void pmix_darray_destruct(pmix_data_array_t *m)
             (m)->array = NULL;                                      \
         }                                                           \
     } while(0)
-#define PMIX_DATA_ARRAY_CREATE(m, n, t)                                   \
-    do {                                                                  \
-        (m) = (pmix_data_array_t*)pmix_calloc(1, sizeof(pmix_data_array_t));   \
-        PMIX_DATA_ARRAY_CONSTRUCT((m), (n), (t));                         \
+#define PMIX_DATA_ARRAY_CREATE(m, n, t)                                         \
+    do {                                                                        \
+        (m) = (pmix_data_array_t*)pmix_calloc(1, sizeof(pmix_data_array_t));    \
+        if (NULL != (m)) {                                                      \
+            PMIX_DATA_ARRAY_CONSTRUCT((m), (n), (t));                           \
+        }                                                                       \
     } while(0)
 
 #define PMIX_DATA_ARRAY_DESTRUCT(m) pmix_darray_destruct(m)
