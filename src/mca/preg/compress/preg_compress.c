@@ -147,9 +147,6 @@ static pmix_status_t parse_nodes(const char *regexp,
 
     len = strtoul(&regexp[6], &ptr, 10);
     ++ptr;  // step over NULL
-    if (NULL == ptr) {
-        return PMIX_ERR_BAD_PARAM;
-    }
     /* malloc the space */
     tmp = malloc(len);
     if (NULL == tmp) {
