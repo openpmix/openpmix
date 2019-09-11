@@ -769,7 +769,6 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
     /* retrieve the data for the specific rank they are asking about */
     if (PMIX_RANK_WILDCARD != rank) {
         if (!PMIX_PROC_IS_SERVER(peer) && 0 == peer->commit_cnt) {
-            PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
             /* this condition works only for local requests, server does
              * count commits for local ranks, and check this count when
              * local request.
