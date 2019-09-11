@@ -37,6 +37,7 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/mca/pcompress/base/base.h"
+#include "src/mca/pmdl/pmdl.h"
 #include "src/mca/preg/preg.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
@@ -504,6 +505,12 @@ static pmix_status_t process_app_array(pmix_value_t *val,
                 }
             }
         }
+        if (PMIX_CHECK_KEY(kp2, PMIX_MODEL_LIBRARY_NAME) ||
+            PMIX_CHECK_KEY(kp2, PMIX_PROGRAMMING_MODEL) ||
+            PMIX_CHECK_KEY(kp2, PMIX_MODEL_LIBRARY_VERSION)) {
+            // pass this info to the pmdl framework
+            pmix_pmdl.setup_nspace_kv(trk->nptr, app->appnum, kp2);
+        }
         pmix_list_append(&app->appinfo, &kp2->super);
         kp2 = (pmix_kval_t*)pmix_list_remove_first(&cache);
     }
@@ -581,6 +588,11 @@ static pmix_status_t process_job_array(pmix_info_t *info,
             }
             /* mark that we got the map */
             *flags |= PMIX_HASH_NODE_MAP;
+        } else if (PMIX_CHECK_KEY(&iptr[j], PMIX_MODEL_LIBRARY_NAME) ||
+                   PMIX_CHECK_KEY(&iptr[j], PMIX_PROGRAMMING_MODEL) ||
+                   PMIX_CHECK_KEY(&iptr[j], PMIX_MODEL_LIBRARY_VERSION)) {
+            // pass this info to the pmdl framework
+            pmix_pmdl.setup_nspace(trk->nptr, PMIX_APP_WILDCARD, &iptr[j]);
         } else {
             kp2 = PMIX_NEW(pmix_kval_t);
             kp2->key = strdup(iptr[j].key);
@@ -1132,8 +1144,17 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                     PMIX_RELEASE(kp2);
                     goto release;
                 }
+                /* if this is the appnum, pass it to the pmdl framework */
+                if (PMIX_CHECK_KEY(kp2, PMIX_APPNUM)) {
+                    pmix_pmdl.setup_client(trk->nptr, rank, kp2->value->data.uint32);
+                }
                 PMIX_RELEASE(kp2);  // maintain acctg
             }
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_MODEL_LIBRARY_NAME) ||
+                   PMIX_CHECK_KEY(&info[n], PMIX_PROGRAMMING_MODEL) ||
+                   PMIX_CHECK_KEY(&info[n], PMIX_MODEL_LIBRARY_VERSION)) {
+            // pass this info to the pmdl framework
+            pmix_pmdl.setup_nspace(trk->nptr, PMIX_APP_WILDCARD, &info[n]);
         } else {
             /* just a value relating to the entire job */
             kp2 = PMIX_NEW(pmix_kval_t);
