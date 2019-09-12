@@ -431,7 +431,7 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
                 break;
             }
         }
-        if (NULL == nptr) {
+        if (NULL == nptr || nptr->nlocalprocs <= 0) {
             /* cannot be a local proc */
             pmix_output_verbose(5, pmix_server_globals.base_output,
                                 "new_tracker: unknown nspace %s",
