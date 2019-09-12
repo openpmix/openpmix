@@ -200,6 +200,7 @@ void pmix_pmdl_base_deregister_nspace(const char *ns)
     }
 
     /* search for the namespace */
+    nptr = NULL;
     PMIX_LIST_FOREACH(n2, &pmix_globals.nspaces, pmix_namespace_t) {
         if (0 == strncmp(ns, n2->nspace, PMIX_MAX_NSLEN)) {
             nptr = n2;
