@@ -661,15 +661,16 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
         diffnspace = true;
     }
 
-    /* if rank is PMIX_RANK_UNDEF, then it was stored in our GDS */
-    if (PMIX_RANK_UNDEF == rank) {
+    /* if rank is PMIX_RANK_UNDEF or is from a different nspace,
+     * then it was stored in our GDS */
+    if (PMIX_RANK_UNDEF == rank || diffnspace) {
         scope = PMIX_GLOBAL;  // we have to search everywhere
         peer = pmix_globals.mypeer;
     } else if (0 < nptr->nlocalprocs) {
         /* if we have local clients of this nspace, then we use
          * the corresponding GDS to retrieve the data. Otherwise,
          * the data will have been stored under our GDS */
-        if (local) {
+        if (NULL != local) {
             *local = true;
         }
         if (PMIX_RANK_WILDCARD != rank) {
@@ -690,7 +691,7 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
             }
             if (PMIX_LOCAL != scope)  {
                 /* this must be a remote rank */
-                if (local) {
+                if (NULL != local) {
                     *local = false;
                 }
                 scope = PMIX_REMOTE;
@@ -698,7 +699,7 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
             }
         }
     } else {
-        if (local) {
+        if (NULL != local) {
             *local = false;
         }
         peer = pmix_globals.mypeer;
@@ -949,7 +950,7 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
     /* find the nspace object for the proc whose data is being received */
     nptr = NULL;
     PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_namespace_t) {
-        if (0 == strcmp(caddy->lcd->proc.nspace, ns->nspace)) {
+        if (PMIX_CHECK_NSPACE(caddy->lcd->proc.nspace, ns->nspace)) {
             nptr = ns;
             break;
         }
@@ -987,7 +988,7 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
             cd = (pmix_server_caddy_t*)dm->cbdata;
             found = false;
             PMIX_LIST_FOREACH(nm, &nspaces, pmix_nspace_caddy_t) {
-                if (0 == strcmp(nm->ns->nspace, cd->peer->nptr->nspace)) {
+                if (PMIX_CHECK_NSPACE(nm->ns->nspace, cd->peer->nptr->nspace)) {
                     found = true;
                     break;
                 }
@@ -1001,9 +1002,12 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
             }
         }
         /* now go thru each unique nspace and store the data using its
-         * assigned GDS component */
+         * assigned GDS component - note that if the nspace of the requesting
+         * proc is different from the nspace of the proc whose data is being
+         * returned, then we have to store it into our hash tables */
         PMIX_LIST_FOREACH(nm, &nspaces, pmix_nspace_caddy_t) {
-            if (NULL == nm->ns->compat.gds || 0 == nm->ns->nlocalprocs) {
+            if (NULL == nm->ns->compat.gds || 0 == nm->ns->nlocalprocs ||
+                !PMIX_CHECK_NSPACE(nptr->nspace, nm->ns->nspace)) {
                 peer = pmix_globals.mypeer;
             } else {
                 /* there must be at least one local proc */
@@ -1012,35 +1016,36 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
             }
             PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
             if (NULL == caddy->data) {
-                /* we assume that the data was provided via a call to
-                 * register_nspace, so what we need to do now is simply
-                 * transfer it across to the individual nspace storage
-                 * components */
-                PMIX_CONSTRUCT(&cb, pmix_cb_t);
-                PMIX_PROC_CREATE(cb.proc, 1);
-                if (NULL == cb.proc) {
-                    PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-                    PMIX_DESTRUCT(&cb);
-                    goto complete;
-                }
-                pmix_strncpy(cb.proc->nspace, nm->ns->nspace, PMIX_MAX_NSLEN);
-                cb.proc->rank = PMIX_RANK_WILDCARD;
-                cb.scope = PMIX_INTERNAL;
-                cb.copy = false;
-                PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    PMIX_DESTRUCT(&cb);
-                    goto complete;
-                }
-                PMIX_LIST_FOREACH(kv, &cb.kvs, pmix_kval_t) {
-                    PMIX_GDS_STORE_KV(rc, peer, &caddy->lcd->proc, PMIX_INTERNAL, kv);
+                if (peer != pmix_globals.mypeer) {
+                    /* we assume that the data was provided via a call to
+                     * register_nspace, so what we need to do now is simply
+                     * transfer it across to the individual nspace storage
+                     * components */
+                    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+                    PMIX_PROC_CREATE(cb.proc, 1);
+                    if (NULL == cb.proc) {
+                        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                        PMIX_DESTRUCT(&cb);
+                        goto complete;
+                    }
+                    PMIX_LOAD_PROCID(cb.proc, nm->ns->nspace, PMIX_RANK_WILDCARD);
+                    cb.scope = PMIX_INTERNAL;
+                    cb.copy = false;
+                    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
                     if (PMIX_SUCCESS != rc) {
                         PMIX_ERROR_LOG(rc);
-                        break;
+                        PMIX_DESTRUCT(&cb);
+                        goto complete;
                     }
+                    PMIX_LIST_FOREACH(kv, &cb.kvs, pmix_kval_t) {
+                        PMIX_GDS_STORE_KV(rc, peer, &caddy->lcd->proc, PMIX_INTERNAL, kv);
+                        if (PMIX_SUCCESS != rc) {
+                            PMIX_ERROR_LOG(rc);
+                            break;
+                        }
+                    }
+                    PMIX_DESTRUCT(&cb);
                 }
-                PMIX_DESTRUCT(&cb);
             } else {
                 PMIX_LOAD_BUFFER(pmix_globals.mypeer, &pbkt, caddy->data, caddy->ndata);
                 /* unpack and store it*/
