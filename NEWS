@@ -21,6 +21,21 @@ example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
 
+3.1.5 -- TBD
+----------------------
+NOTE: The signature of the PMIx_Allocation_request has changed
+in accordance with an Errata update of the PMIx v3 Standard
+- PR #1382: dstore: fixed truncate key-names while restoring 
+- PR #1405: Fix xnspace dmodex and add verbose debug
+- PR #1406: Resolve request for job-level data
+- PR #1407/#1409/#1411: Fix xnspace get yet again
+- PR #1434/#1436: Cleanup handling of info arrays
+- PR #1435: Cleanup example and remove debug
+- PR #1437: Update blocking Allocation_request signature
+- PR #1440: Fix 'get' of data for unknown namespace
+- PR #1442: Fix fences with namespaces where no local processes are running
+
+
 3.1.4 -- 9 Aug 2019
 ----------------------
 - PR #1342: Fix if_linux_ipv6_open interface filter
