@@ -704,17 +704,27 @@ cdef class PMIxServer(PMIxClient):
         else:
             pyhosts = hosts
         rc = PMIx_generate_regex(pyhosts, &regex)
-        if "pmix" == regex[:4]:
+        if "pmix" == regex[:4].decode("ascii"):
+            # remove null characters
+            if b'\x00' in regex:
+                regex.replace(b'\x00', '')
             ba = bytearray(regex)
-        else:
-            # extract the length of the blob
-            length = int(&regex[6]) + 6 + len(&regex[6])
+        elif "blob" == regex[:4].decode("ascii"):
+            sz_str    = len(regex)
+            sz_prefix = 5
+            # extract length of bytearray
+            regex.split(b'\x00')
+            len_bytearray = regex[1]
+            length = len(len_bytearray) + sz_prefix + sz_str
             ba = bytearray(length)
             pyregex = <bytes> regex[:length]
             index = 0
             while index < length:
                 ba[index] = pyregex[index]
                 index += 1
+        else:
+            # last case with no ':' in string
+            ba = bytearray(regex)
         return (rc, ba)
 
     def generate_ppn(self, procs):
@@ -724,17 +734,26 @@ cdef class PMIxServer(PMIxClient):
         else:
             pyprocs = procs
         rc = PMIx_generate_ppn(pyprocs, &ppn)
-        if "pmix" == ppn[:4]:
+        if "pmix" == ppn[:4].decode("ascii"):
+            if b'\x00' in ppn:
+                ppn.replace(b'\x00', '')
             ba = bytearray(ppn)
-        else:
-            # extract the length of the blob
-            length = int(&ppn[6]) + 6 + len(&ppn[6])
+        elif "blob" == ppn[:4].decode("ascii"):
+            sz_str    = len(ppn)
+            sz_prefix = 5
+            # extract length of bytearray
+            ppn.split(b'\x00')
+            len_bytearray = ppn[1]
+            length = len(len_bytearray) + sz_prefix + sz_str
             ba = bytearray(length)
             index = 0
             pyppn = <bytes> ppn[:length]
             while index < length:
                 ba[index] = pyppn[index]
                 index += 1
+        else: 
+            # last case with no ':' in string
+            ba = bytearray(ppn)
         return (rc, ba)
 
 cdef int clientconnected(pmix_proc_t *proc, void *server_object,

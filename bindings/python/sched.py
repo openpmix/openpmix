@@ -53,9 +53,9 @@ def main():
 
     # setup the application
     (rc, regex) = foo.generate_regex("test000,test001,test002")
-    print("Node regex: ", regex)
+    print("Node regex, rc: ", regex, rc)
     (rc, ppn) = foo.generate_ppn("0,1,2;3,4,5;6,7")
-    print("PPN: ", ppn)
+    print("PPN, rc: ", ppn, rc)
     darray = {'type':PMIX_INFO, 'array':[{'key':PMIX_ALLOC_NETWORK_ID,
                             'value':'SIMPSCHED.net', 'val_type':PMIX_STRING},
                            {'key':PMIX_ALLOC_NETWORK_SEC_KEY, 'value':'T',
