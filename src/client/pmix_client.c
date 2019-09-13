@@ -1435,7 +1435,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const pmix_nspace_t nspace, char **
             /* add to our list of results, ensuring uniqueness */
             p = pmix_argv_split(val->data.string, ',');
             for (n=0; NULL != p[n]; n++) {
-                pmix_argv_append_unique_nosize(&tmp, p[n]);
+                pmix_argv_append_unique_nosize(&tmp, p[n], true);
             }
             pmix_argv_free(p);
             PMIX_VALUE_FREE(val, 1);

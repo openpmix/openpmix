@@ -1894,7 +1894,7 @@ static pmix_status_t hash_store(const pmix_proc_t *proc,
                 /* if the value contains a string that is longer than the
                  * limit, then compress it */
                 if (PMIX_STRING_SIZE_CHECK(kp->value)) {
-                    if (pmix_compress.compress_string(kp->value->data.string, &tmp, &len)) {
+                    if (pmix_util_compress_string(kp->value->data.string, &tmp, &len)) {
                         if (NULL == tmp) {
                             PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                             rc = PMIX_ERR_NOMEM;
