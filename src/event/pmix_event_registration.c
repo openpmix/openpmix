@@ -30,6 +30,8 @@
     pmix_object_t super;
     volatile bool active;
     pmix_event_t ev;
+    pmix_lock_t lock;
+    pmix_status_t status;
     size_t index;
     bool firstoverall;
     bool enviro;
@@ -48,6 +50,7 @@
 } pmix_rshift_caddy_t;
 static void rscon(pmix_rshift_caddy_t *p)
 {
+    PMIX_CONSTRUCT_LOCK(&p->lock);
     p->firstoverall = false;
     p->enviro = false;
     p->list = NULL;
@@ -65,6 +68,7 @@ static void rscon(pmix_rshift_caddy_t *p)
 }
 static void rsdes(pmix_rshift_caddy_t *p)
 {
+    PMIX_DESTRUCT_LOCK(&p->lock);
     if (0 < p->ncodes) {
         free(p->codes);
     }
@@ -849,23 +853,36 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
     PMIX_RELEASE(cd);
 }
 
-PMIX_EXPORT void PMIx_Register_event_handler(pmix_status_t codes[], size_t ncodes,
-                                             pmix_info_t info[], size_t ninfo,
-                                             pmix_notification_fn_t event_hdlr,
-                                             pmix_hdlr_reg_cbfunc_t cbfunc,
-                                             void *cbdata)
+static void mycbfn(pmix_status_t status,
+                   size_t refid,
+                   void *cbdata)
+{
+    pmix_rshift_caddy_t *cd = (pmix_rshift_caddy_t*)cbdata;
+
+    PMIX_ACQUIRE_OBJECT(cd);
+    if (PMIX_SUCCESS == status) {
+        cd->status = refid;
+    } else {
+        cd->status = status;
+    }
+    PMIX_RELEASE_THREAD(&cd->lock);
+}
+
+PMIX_EXPORT pmix_status_t PMIx_Register_event_handler(pmix_status_t codes[], size_t ncodes,
+                                                      pmix_info_t info[], size_t ninfo,
+                                                      pmix_notification_fn_t event_hdlr,
+                                                      pmix_hdlr_reg_cbfunc_t cbfunc,
+                                                      void *cbdata)
 {
     pmix_rshift_caddy_t *cd;
     size_t n;
+    pmix_status_t rc = PMIX_SUCCESS;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
-        if (NULL != cbfunc) {
-            cbfunc(PMIX_ERR_INIT, 0, cbdata);
-        }
-        return;
+        return PMIX_ERR_INIT;
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
@@ -880,10 +897,7 @@ PMIX_EXPORT void PMIx_Register_event_handler(pmix_status_t codes[], size_t ncode
         if (NULL == cd->codes) {
             /* immediately return error */
             PMIX_RELEASE(cd);
-            if (NULL != cbfunc) {
-                cbfunc(PMIX_ERR_NOMEM, SIZE_MAX, cbdata);
-            }
-            return;
+            return PMIX_ERR_NOMEM;
         }
         for (n=0; n < ncodes; n++) {
             cd->codes[n] = codes[n];
@@ -893,13 +907,25 @@ PMIX_EXPORT void PMIx_Register_event_handler(pmix_status_t codes[], size_t ncode
     cd->info = info;
     cd->ninfo = ninfo;
     cd->evhdlr = event_hdlr;
-    cd->evregcbfn = cbfunc;
-    cd->cbdata = cbdata;
+    if (NULL == cbfunc) {
+        cd->evregcbfn = mycbfn;
+        cd->cbdata = cd;
+    } else {
+        cd->evregcbfn = cbfunc;
+        cd->cbdata = cbdata;
+    }
 
     pmix_output_verbose(2, pmix_client_globals.event_output,
                         "pmix_register_event_hdlr shifting to progress thread");
 
     PMIX_THREADSHIFT(cd, reg_event_hdlr);
+
+    if (NULL == cbfunc) {
+        PMIX_WAIT_THREAD(&cd->lock);
+        rc = cd->status;
+        PMIX_RELEASE(cd);
+    }
+    return rc;
 }
 
 static void dereg_event_hdlr(int sd, short args, void *cbdata)
@@ -1090,29 +1116,48 @@ static void dereg_event_hdlr(int sd, short args, void *cbdata)
     PMIX_RELEASE(cd);
 }
 
-PMIX_EXPORT void PMIx_Deregister_event_handler(size_t event_hdlr_ref,
-                                               pmix_op_cbfunc_t cbfunc,
-                                               void *cbdata)
+static void myopcb(pmix_status_t status, void *cbdata)
+{
+    pmix_shift_caddy_t *cd = (pmix_shift_caddy_t*)cbdata;
+
+    PMIX_ACQUIRE_OBJECT(cd);
+    cd->status = status;
+    PMIX_RELEASE_THREAD(&cd->lock);
+}
+
+PMIX_EXPORT pmix_status_t PMIx_Deregister_event_handler(size_t event_hdlr_ref,
+                                                        pmix_op_cbfunc_t cbfunc,
+                                                        void *cbdata)
 {
     pmix_shift_caddy_t *cd;
+    pmix_status_t rc = PMIX_SUCCESS;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
-        if (NULL != cbfunc) {
-            cbfunc(PMIX_ERR_INIT, cbdata);
-        }
-        return;
+        return PMIX_ERR_INIT;
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* need to thread shift this request */
     cd = PMIX_NEW(pmix_shift_caddy_t);
-    cd->cbfunc.opcbfn = cbfunc;
-    cd->cbdata = cbdata;
+    if (NULL == cbfunc) {
+        cd->cbfunc.opcbfn = myopcb;
+        cd->cbdata = cd;
+    } else {
+        cd->cbfunc.opcbfn = cbfunc;
+        cd->cbdata = cbdata;
+    }
     cd->ref = event_hdlr_ref;
 
     pmix_output_verbose(2, pmix_client_globals.event_output,
                         "pmix_deregister_event_hdlr shifting to progress thread");
     PMIX_THREADSHIFT(cd, dereg_event_hdlr);
+
+    if (NULL == cbfunc) {
+        PMIX_WAIT_THREAD(&cd->lock);
+        rc = cd->status;
+        PMIX_RELEASE(cd);
+    }
+    return rc;
 }

@@ -72,6 +72,21 @@ static void msgcbfunc(struct pmix_peer_t *peer,
     PMIX_RELEASE(cd);
 }
 
+static void mycbfn(pmix_status_t status,
+                   size_t refid,
+                   void *cbdata)
+{
+    pmix_shift_caddy_t *cd = (pmix_shift_caddy_t*)cbdata;
+
+    PMIX_ACQUIRE_OBJECT(cd);
+    if (PMIX_SUCCESS == status) {
+        cd->status = refid;
+    } else {
+        cd->status = status;
+    }
+    PMIX_RELEASE_THREAD(&cd->lock);
+}
+
 PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs,
                                         const pmix_info_t directives[], size_t ndirs,
                                         pmix_iof_channel_t channel, pmix_iof_cbfunc_t cbfunc,
@@ -117,8 +132,14 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
     if (NULL == cd) {
         return PMIX_ERR_NOMEM;
     }
-    cd->cbfunc.hdlrregcbfn = regcbfunc;
-    cd->cbdata = regcbdata;
+    if (NULL == regcbfunc) {
+        cd->cbfunc.hdlrregcbfn = mycbfn;
+        cd->cbdata = cd;
+    } else {
+        cd->cbfunc.hdlrregcbfn = regcbfunc;
+        cd->cbdata = regcbdata;
+    }
+
     /* setup the request item */
     cd->iofreq = PMIX_NEW(pmix_iof_req_t);
     if (NULL == cd->iofreq) {
@@ -188,14 +209,34 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
         PMIX_RELEASE(msg);
         PMIX_RELEASE(cd->iofreq);
         PMIX_RELEASE(cd);
+    } else if (NULL == regcbfunc) {
+        PMIX_WAIT_THREAD(&cd->lock);
+        rc = cd->status;
+        PMIX_RELEASE(cd);
     }
     return rc;
 }
 
 typedef struct {
+    pmix_object_t super;
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    pmix_status_t status;
     pmix_op_cbfunc_t cbfunc;
     void *cbdata;
 } pmix_ltcaddy_t;
+
+static void ltcon(pmix_ltcaddy_t *p)
+{
+    PMIX_CONSTRUCT_LOCK(&p->lock);
+}
+static void ltdes(pmix_ltcaddy_t *p)
+{
+    PMIX_DESTRUCT_LOCK(&p->lock);
+}
+static PMIX_CLASS_INSTANCE(pmix_ltcaddy_t,
+                           pmix_object_t,
+                           ltcon, ltdes);
 
 static pmix_event_t stdinsig_ev;
 static pmix_iof_read_event_t *stdinev = NULL;
@@ -231,6 +272,10 @@ static void stdincbfunc(struct pmix_peer_t *peer,
     free(cd);
 }
 
+static void myopcb(pmix_status_t status, void *cbdata)
+{
+
+}
 pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets,
                             pmix_byte_object_t *bo,
                             const pmix_info_t directives[], size_t ndirs,
@@ -406,20 +451,29 @@ pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets,
             }
         }
 
-        cd = (pmix_ltcaddy_t*)malloc(sizeof(pmix_ltcaddy_t));
+        cd = PMIX_NEW(pmix_ltcaddy_t);
         if (NULL == cd) {
             PMIX_RELEASE(msg);
             rc = PMIX_ERR_NOMEM;
             return rc;
         }
-        cd->cbfunc = cbfunc;
-        cd->cbdata = cbdata;
+        if (NULL == cbfunc) {
+            cd->cbfunc = myopcb;
+            cd->cbdata = cd;
+        } else {
+            cd->cbfunc = cbfunc;
+            cd->cbdata = cbdata;
+        }
         PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver,
                            msg, stdincbfunc, cd);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
             free(cd);
+        } else if (NULL == cbfunc) {
+            PMIX_WAIT_THREAD(&cd->lock);
+            rc = cd->status;
+            PMIX_RELEASE(cd);
         }
         return rc;
     }

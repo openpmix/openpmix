@@ -576,8 +576,10 @@ PMIX_EXPORT pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pm
  * will _not_ be called in such cases.
  */
 PMIX_EXPORT pmix_status_t PMIx_Get_credential(const pmix_info_t info[], size_t ninfo,
-                                              pmix_credential_cbfunc_t cbfunc, void *cbdata);
+                                              pmix_byte_object_t *credential);
 
+PMIX_EXPORT pmix_status_t PMIx_Get_credential_nb(const pmix_info_t info[], size_t ninfo,
+                                                 pmix_credential_cbfunc_t cbfunc, void *cbdata);
 
 /* Request validation of a credential by the PMIx server/SMS
  * Input values include:
@@ -610,7 +612,11 @@ PMIX_EXPORT pmix_status_t PMIx_Get_credential(const pmix_info_t info[], size_t n
  */
 PMIX_EXPORT pmix_status_t PMIx_Validate_credential(const pmix_byte_object_t *cred,
                                                    const pmix_info_t info[], size_t ninfo,
-                                                   pmix_validation_cbfunc_t cbfunc, void *cbdata);
+                                                   pmix_info_t **results, size_t *nresults);
+
+PMIX_EXPORT pmix_status_t PMIx_Validate_credential_nb(const pmix_byte_object_t *cred,
+                                                      const pmix_info_t info[], size_t ninfo,
+                                                      pmix_validation_cbfunc_t cbfunc, void *cbdata);
 
 /* Define a callback function for delivering forwarded IO to a process
  * This function will be called whenever data becomes available, or a
@@ -666,6 +672,11 @@ PMIX_EXPORT pmix_status_t PMIx_Validate_credential(const pmix_byte_object_t *cre
  *             a non-success error if the registration cannot
  *             be submitted - in this case, the regcbfunc
  *             will _not_ be called.
+ *             If regcbfunc is NULL, then this will be treated
+ *             as a BLOCKING call - a positive return value
+ *             represents the reference ID for the request,
+ *             while negative values indicate the corresponding
+ *             error
  *
  * cbdata - pointer to object to be returned in regcbfunc
  */
@@ -688,7 +699,9 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
  * cbfunc - function to be called when deregistration has
  *          been completed. Note that any IO to be flushed
  *          may continue to be received after deregistration
- *          has completed.
+ *          has completed. If cbfunc is NULL, then this is
+ *          treated as a BLOCKING call and the result of
+ *          the operation will be provided in the returned status
  *
  * cbdata - pointer to object to be returned in cbfunc
  */
@@ -715,7 +728,10 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_deregister(size_t iofhdlr,
  *
  * bo - pointer to a byte object containing the stdin data
  *
- * cbfunc - callback function when the data has been forwarded
+ * cbfunc - callback function when the data has been forwarded. If
+ *          cbfunc is NULL, then this is treated as a BLOCKING call
+ *          and the result of the operation will be provided in the
+ *          returned status
  *
  * cbdata - object to be returned in cbfunc
  */
