@@ -25,21 +25,8 @@ def clientfinalized(proc:tuple is not None):
     print("CLIENT FINALIZED", proc)
     return PMIX_SUCCESS
 
-def clientfence(procs:list, directives:list, data:bytearray):
-    # check directives
-    if directives is not None:
-        for d in directives:
-            # these are each an info dict
-            if "pmix" not in d['key']:
-                # we do not support such directives - see if
-                # it is required
-                try:
-                    if d['flags'] & PMIX_INFO_REQD:
-                        # return an error
-                        return PMIX_ERR_NOT_SUPPORTED
-                except:
-                    #it can be ignored
-                    pass
+def clientfence(args:dict is not None):
+    print("SERVER FENCE", args)
     return PMIX_SUCCESS
 
 def main():
@@ -66,21 +53,20 @@ def main():
 
     # setup the application
     (rc, regex) = foo.generate_regex("test000,test001,test002")
-    print("Node regex: ", regex)
+    print("Node regex, rc: ", regex, rc)
     (rc, ppn) = foo.generate_ppn("0,1,2;3,4,5;6,7")
-    print("PPN: ", ppn)
+    print("PPN, rc: ", ppn, rc)
     darray = {'type':PMIX_INFO, 'array':[{'key':PMIX_ALLOC_NETWORK_ID,
                             'value':'SIMPSCHED.net', 'val_type':PMIX_STRING},
                            {'key':PMIX_ALLOC_NETWORK_SEC_KEY, 'value':'T',
                             'val_type':PMIX_BOOL},
                            {'key':PMIX_SETUP_APP_ENVARS, 'value':'T',
                             'val_type':PMIX_BOOL}]}
-    kyvals = [{'key':PMIX_NODE_MAP, 'value':regex, 'val_type':PMIX_REGEX},
-              {'key':PMIX_PROC_MAP, 'value':ppn, 'val_type':PMIX_REGEX},
+    kyvals = [{'key':PMIX_NODE_MAP, 'value':regex, 'val_type':PMIX_STRING},
+              {'key':PMIX_PROC_MAP, 'value':ppn, 'val_type':PMIX_STRING},
               {'key':PMIX_ALLOC_NETWORK, 'value':darray, 'val_type':PMIX_DATA_ARRAY}]
 
     appinfo = []
-    print("Setting up application")
     rc, appinfo = foo.setup_application("SIMPSCHED", kyvals)
     print("SETUPAPP: ", appinfo)
 
@@ -91,8 +77,8 @@ def main():
     env = os.environ.copy()
 
     # register an nspace for the client app
-    kvals = [{'key':PMIX_NODE_MAP, 'value':regex, 'val_type':PMIX_REGEX},
-             {'key':PMIX_PROC_MAP, 'value':ppn, 'val_type':PMIX_REGEX},
+    kvals = [{'key':PMIX_NODE_MAP, 'value':regex, 'val_type':PMIX_STRING},
+             {'key':PMIX_PROC_MAP, 'value':ppn, 'val_type':PMIX_STRING},
              {'key':PMIX_UNIV_SIZE, 'value':1, 'val_type':PMIX_UINT32},
              {'key':PMIX_JOB_SIZE, 'value':1, 'val_type':PMIX_UINT32}]
     print("REGISTERING NSPACE")
@@ -103,11 +89,11 @@ def main():
     uid = os.getuid()
     gid = os.getgid()
     print("REGISTERING CLIENT")
-    rc = foo.register_client({'nspace': "testnspace", 'rank': 0}, uid, gid)
+    rc = foo.register_client({'nspace':"testnspace", 'rank':0}, uid, gid)
     print("RegClient ", rc)
 
     # setup the fork
-    rc = foo.setup_fork({'nspace': "testnspace", 'rank': 0}, env)
+    rc = foo.setup_fork({'nspace':"testnspace", 'rank':0}, env)
     print("SetupFrk", rc)
 
     # setup the client argv
