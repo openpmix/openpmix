@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
@@ -119,7 +119,16 @@ static void acb(pmix_status_t status,
                 void *release_cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+    size_t n;
+
     cb->status = status;
+    if (0 < ninfo) {
+        PMIX_INFO_CREATE(cb->info, ninfo);
+        cb->ninfo = ninfo;
+        for (n=0; n < ninfo; n++) {
+            PMIX_INFO_XFER(&cb->info[n], &info[n]);
+        }
+    }
     if (NULL != release_fn) {
         release_fn(release_cbdata);
     }
@@ -127,7 +136,8 @@ static void acb(pmix_status_t status,
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Job_control(const pmix_proc_t targets[], size_t ntargets,
-                                           const pmix_info_t directives[], size_t ndirs)
+                                           const pmix_info_t directives[], size_t ndirs,
+                                           pmix_info_t **results, size_t *nresults)
 {
     pmix_cb_t cb;
     pmix_status_t rc;
@@ -157,6 +167,12 @@ PMIX_EXPORT pmix_status_t PMIx_Job_control(const pmix_proc_t targets[], size_t n
     /* wait for the operation to complete */
     PMIX_WAIT_THREAD(&cb.lock);
     rc = cb.status;
+    if (0 < cb.ninfo) {
+        *results = cb.info;
+        *nresults = cb.ninfo;
+        cb.info = NULL;
+        cb.ninfo = 0;
+    }
     PMIX_DESTRUCT(&cb);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -278,7 +294,8 @@ PMIX_EXPORT pmix_status_t PMIx_Job_control_nb(const pmix_proc_t targets[], size_
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Process_monitor(const pmix_info_t *monitor, pmix_status_t error,
-                                               const pmix_info_t directives[], size_t ndirs)
+                                               const pmix_info_t directives[], size_t ndirs,
+                                               pmix_info_t **results, size_t *nresults)
 {
     pmix_cb_t cb;
     pmix_status_t rc;
@@ -308,6 +325,12 @@ PMIX_EXPORT pmix_status_t PMIx_Process_monitor(const pmix_info_t *monitor, pmix_
     /* wait for the operation to complete */
     PMIX_WAIT_THREAD(&cb.lock);
     rc = cb.status;
+    if (0 < cb.ninfo) {
+        *results = cb.info;
+        *nresults = cb.ninfo;
+        cb.info = NULL;
+        cb.ninfo = 0;
+    }
     PMIX_DESTRUCT(&cb);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
