@@ -55,11 +55,18 @@ class myLock(threading.Event):
         for x in self.info:
             info.append(x)
 
-cdef void pmix_load_argv(char **keys, argv:list):
+cdef void pmix_unload_argv(char **keys, argv:list):
     n = 0
     while NULL != keys[n]:
         mykey = str(keys[n])
         argv.append(mykey)
+        n += 1
+
+cdef void pmix_load_argv(char **keys, argv:list):
+    n = 0
+    for a in argv:
+        pya = str(a).encode('ascii')
+        keys[n] = strdup(pya)
         n += 1
 
 # TODO: implement support for PMIX_BOOL and PMIX_BYTE
@@ -824,6 +831,16 @@ cdef void pmix_unload_bytes(char *data, size_t ndata, blist:list):
         blist.append(data[n])
         n += 1
 
+cdef void pmix_free_apps(pmix_app_t *array, size_t sz):
+    n = 0
+    while n < sz:
+        PyMem_Free(array[n].cmd)
+        # need to free the argv and env arrays
+        PyMem_Free(array[n].cwd)
+        if 0 < array[n].ninfo:
+            pmix_free_info(array[n].info, array[n].ninfo)
+        n += 1
+
 cdef void pmix_unload_apps(const pmix_app_t *apps, size_t napps, pyapps:list):
     cdef size_t n = 0
     while n < napps:
@@ -831,11 +848,11 @@ cdef void pmix_unload_apps(const pmix_app_t *apps, size_t napps, pyapps:list):
         myapp['cmd'] = str(apps[n].cmd)
         myargv = []
         if NULL != apps[n].argv:
-            pmix_load_argv(apps[n].argv, myargv)
+            pmix_unload_argv(apps[n].argv, myargv)
             myapp['argv'] = myargv
         myenv = []
         if NULL != apps[n].env:
-            pmix_load_argv(apps[n].env, myenv)
+            pmix_unload_argv(apps[n].env, myenv)
             myapp['env'] = myenv
         myapp['maxprocs'] = apps[n].maxprocs
         keyvals = {}
@@ -844,3 +861,44 @@ cdef void pmix_unload_apps(const pmix_app_t *apps, size_t napps, pyapps:list):
             myapp['info'] = keyvals
         pyapps.append(myapp)
         n += 1
+
+cdef int pmix_load_apps(pmix_app_t *apps, pyapps:list):
+    cdef size_t m
+    cdef size_t n
+    cdef char** argv
+    n = 0
+    for p in pyapps:
+        pycmd = str(p['cmd']).encode('ascii')
+        try:
+            apps[n].cmd = strdup(pycmd)
+        except:
+            return PMIX_ERR_TYPE_MISMATCH
+        if p['argv'] is not None:
+            m = len(p['argv']) + 1
+            argv = <char**> PyMem_Malloc(m * sizeof(char*))
+            if not argv:
+                return PMIX_ERR_NOMEM
+            memset(argv, 0, m)
+            pmix_load_argv(argv, p['argv'])
+        if p['env'] is not None:
+            m = len(p['env']) + 1
+            env = <char**> PyMem_Malloc(m * sizeof(char*))
+            if not argv:
+                return PMIX_ERR_NOMEM
+            memset(env, 0, m)
+            pmix_load_argv(env, p['env'])
+        try:
+            pycwd = str(p['cwd']).encode('ascii')
+            apps[n].cwd = strdup(pycwd)
+        except:
+            pass
+        if p['info'] is not None:
+            apps[n].ninfo = len(p['info'])
+            apps[n].info =  <pmix_info_t*> PyMem_Malloc(apps[n].ninfo * sizeof(pmix_info_t))
+            if not apps[n].info:
+                return PMIX_ERR_NOMEM
+            rc = pmix_load_info(apps[n].info, p['info'])
+            if PMIX_SUCCESS != rc:
+                return rc
+        n += 1
+    return PMIX_SUCCESS
