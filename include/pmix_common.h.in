@@ -2434,20 +2434,24 @@ typedef void (*pmix_validation_cbfunc_t)(pmix_status_t status,
  * deregistering the current evhdlr, and then registering it
  * using a new set of info values.
  *
+ * If cbfunc is NULL, then this is treated as a BLOCKING call - a positive
+ * return value represents the reference ID for the request, while
+ * negative values indicate the corresponding error
+ *
  * See pmix_common.h for a description of the notification function */
-PMIX_EXPORT void PMIx_Register_event_handler(pmix_status_t codes[], size_t ncodes,
-                                             pmix_info_t info[], size_t ninfo,
-                                             pmix_notification_fn_t evhdlr,
-                                             pmix_hdlr_reg_cbfunc_t cbfunc,
-                                             void *cbdata);
+PMIX_EXPORT pmix_status_t PMIx_Register_event_handler(pmix_status_t codes[], size_t ncodes,
+                                                      pmix_info_t info[], size_t ninfo,
+                                                      pmix_notification_fn_t evhdlr,
+                                                      pmix_hdlr_reg_cbfunc_t cbfunc,
+                                                      void *cbdata);
 
 /* Deregister an event handler
  * evhdlr_ref is the reference returned by PMIx from the call to
  * PMIx_Register_event_handler. If non-NULL, the provided cbfunc
  * will be called to confirm removal of the designated handler */
-PMIX_EXPORT void PMIx_Deregister_event_handler(size_t evhdlr_ref,
-                                               pmix_op_cbfunc_t cbfunc,
-                                               void *cbdata);
+PMIX_EXPORT pmix_status_t PMIx_Deregister_event_handler(size_t evhdlr_ref,
+                                                        pmix_op_cbfunc_t cbfunc,
+                                                        void *cbdata);
 
 /* Report an event for notification via any
  * registered evhdlr.
@@ -2486,6 +2490,9 @@ PMIX_EXPORT void PMIx_Deregister_event_handler(size_t evhdlr_ref,
  *          will have been queued, but may not have been transmitted
  *          by this time. Note that the caller is required to maintain
  *          the input data until the callback function has been executed!
+ *          If cbfunc is NULL, then this is treated as a BLOCKING call and
+ *          the result of the operation is provided in the returned
+ *          status
  *
  * cbdata - the caller's provided void* object
  */
