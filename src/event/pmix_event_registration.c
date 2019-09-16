@@ -1143,6 +1143,7 @@ PMIX_EXPORT pmix_status_t PMIx_Deregister_event_handler(size_t event_hdlr_ref,
     cd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == cbfunc) {
         cd->cbfunc.opcbfn = myopcb;
+        PMIX_RETAIN(cd);
         cd->cbdata = cd;
     } else {
         cd->cbfunc.opcbfn = cbfunc;

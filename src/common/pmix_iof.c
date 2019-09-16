@@ -134,6 +134,7 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
     }
     if (NULL == regcbfunc) {
         cd->cbfunc.hdlrregcbfn = mycbfn;
+        PMIX_RETAIN(cd);
         cd->cbdata = cd;
     } else {
         cd->cbfunc.hdlrregcbfn = regcbfunc;
@@ -463,6 +464,7 @@ pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets,
         }
         if (NULL == cbfunc) {
             cd->cbfunc = myopcb;
+            PMIX_RETAIN(cd);
             cd->cbdata = cd;
         } else {
             cd->cbfunc = cbfunc;
