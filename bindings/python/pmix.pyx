@@ -776,6 +776,159 @@ cdef class PMIxClient:
             pmix_free_info(results, nresults)
         return rc, pyres
 
+    def group_invite(self, group:str, peers:list, pyinfo:list):
+        cdef pmix_proc_t *procs
+        cdef pmix_info_t *info
+        cdef pmix_info_t *results
+        cdef size_t ninfo
+        cdef size_t nprocs
+        cdef size_t nresults
+        nprocs = 0
+        ninfo = 0
+
+        # convert group name
+        pygrp = group.encode('ascii')
+        # convert list of procs to array of pmix_proc_t's
+        if peers is not None:
+            nprocs = len(peers)
+            procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
+            if not procs:
+                return PMIX_ERR_NOMEM
+            rc = pmix_load_procs(procs, peers)
+            if PMIX_SUCCESS != rc:
+                pmix_free_procs(procs, nprocs)
+                return rc
+        else:
+            nprocs = 1
+            procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
+            if not procs:
+                return PMIX_ERR_NOMEM
+            pmix_copy_nspace(procs[0].nspace, self.myproc.nspace)
+            procs[0].rank = PMIX_RANK_WILDCARD
+        # convert the list of dictionaries to array of
+        # pmix_info_t structs
+        if pyinfo is not None:
+            ninfo = len(pyinfo)
+            info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
+            if not info:
+                return PMIX_ERR_NOMEM
+            rc = pmix_load_info(info, pyinfo)
+            if PMIX_SUCCESS != rc:
+                pmix_free_info(info, ninfo)
+                return rc
+        else:
+            info = NULL
+            ninfo = 0
+        # Call the library
+        rc = PMIx_Group_invite(pygrp, procs, nprocs, info, ninfo, &results, &nresults)
+        if 0 < nprocs:
+            pmix_free_procs(procs, nprocs)
+        if 0 < ninfo:
+            pmix_free_info(info, ninfo)
+        pyres = []
+        if 0 < nresults:
+            # convert results
+            pmix_unload_info(results, nresults, pyres)
+            pmix_free_info(results, nresults)
+        return rc, pyres
+
+    def group_join(self, group:str, leader:dict, opt:int, pyinfo:list):
+        cdef pmix_proc_t proc
+        cdef pmix_info_t *info
+        cdef pmix_info_t *results
+        cdef size_t ninfo
+        cdef size_t nprocs
+        cdef size_t nresults
+        ninfo = 0
+
+        # convert group name
+        pygrp = group.encode('ascii')
+        # convert leader to proc
+        if leader is not None:
+            pmix_copy_nspace(proc.nspace, leader['nspace'])
+            proc.rank = leader['rank']
+        else:
+            pmix_copy_nspace(proc.nspace, self.myproc.nspace)
+            proc.rank = self.myproc.rank
+        # convert the list of dictionaries to array of
+        # pmix_info_t structs
+        if pyinfo is not None:
+            ninfo = len(pyinfo)
+            info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
+            if not info:
+                return PMIX_ERR_NOMEM
+            rc = pmix_load_info(info, pyinfo)
+            if PMIX_SUCCESS != rc:
+                pmix_free_info(info, ninfo)
+                return rc
+        else:
+            info = NULL
+            ninfo = 0
+        # Call the library
+        rc = PMIx_Group_join(pygrp, &proc, opt, info, ninfo, &results, &nresults)
+        if 0 < ninfo:
+            pmix_free_info(info, ninfo)
+        pyres = []
+        if 0 < nresults:
+            # convert results
+            pmix_unload_info(results, nresults, pyres)
+            pmix_free_info(results, nresults)
+        return rc, pyres
+
+    def group_leave(self, group:str, pyinfo:list):
+        cdef pmix_info_t *info
+        cdef size_t ninfo
+        ninfo = 0
+
+        # convert group name
+        pygrp = group.encode('ascii')
+        # convert the list of dictionaries to array of
+        # pmix_info_t structs
+        if pyinfo is not None:
+            ninfo = len(pyinfo)
+            info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
+            if not info:
+                return PMIX_ERR_NOMEM
+            rc = pmix_load_info(info, pyinfo)
+            if PMIX_SUCCESS != rc:
+                pmix_free_info(info, ninfo)
+                return rc
+        else:
+            info = NULL
+            ninfo = 0
+        # Call the library
+        rc = PMIx_Group_leave(pygrp, info, ninfo)
+        if 0 < ninfo:
+            pmix_free_info(info, ninfo)
+        return rc
+
+    def group_destruct(self, group:str, pyinfo:list):
+        cdef pmix_info_t *info
+        cdef size_t ninfo
+        ninfo = 0
+
+        # convert group name
+        pygrp = group.encode('ascii')
+        # convert the list of dictionaries to array of
+        # pmix_info_t structs
+        if pyinfo is not None:
+            ninfo = len(pyinfo)
+            info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
+            if not info:
+                return PMIX_ERR_NOMEM
+            rc = pmix_load_info(info, pyinfo)
+            if PMIX_SUCCESS != rc:
+                pmix_free_info(info, ninfo)
+                return rc
+        else:
+            info = NULL
+            ninfo = 0
+        # Call the library
+        rc = PMIx_Group_destruct(pygrp, info, ninfo)
+        if 0 < ninfo:
+            pmix_free_info(info, ninfo)
+        return rc
+
     def register_event_handler(self, pycodes:list, pyinfo:list, hdlr):
         cdef pmix_status_t *codes
         cdef size_t ncodes
