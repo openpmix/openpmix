@@ -208,6 +208,7 @@ static inline int _esh_dir_del(const char *path)
 
     while (NULL != (d_ptr = readdir(dir))) {
         snprintf(name, PMIX_PATH_MAX, "%s/%s", path, d_ptr->d_name);
+        /* coverity[toctou] */
         if ( 0 > lstat(name, &st) ){
             /* No fatal error here - just log this event
              * we will hit the error later at rmdir. Keep trying ...
@@ -1764,6 +1765,7 @@ PMIX_EXPORT void pmix_common_dstor_finalize(pmix_common_dstore_ctx_t *ds_ctx)
 
     if (NULL != ds_ctx->base_path){
         if(PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
+            /* coverity[toctou] */
             if (lstat(ds_ctx->base_path, &st) >= 0){
                 if (PMIX_SUCCESS != (rc = _esh_dir_del(ds_ctx->base_path))) {
                     PMIX_ERROR_LOG(rc);

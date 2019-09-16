@@ -387,6 +387,7 @@ void pmix_execute_epilog(pmix_epilog_t *epi)
          * some minimum level of protection */
         tmp = pmix_argv_split(cf->path, ',');
         for (n=0; NULL != tmp[n]; n++) {
+            /* coverity[toctou] */
             rc = stat(tmp[n], &statbuf);
             if (0 != rc) {
                 pmix_output_verbose(10, pmix_globals.debug_output,
@@ -420,6 +421,7 @@ void pmix_execute_epilog(pmix_epilog_t *epi)
          * some minimum level of protection */
         tmp = pmix_argv_split(cd->path, ',');
         for (n=0; NULL != tmp[n]; n++) {
+            /* coverity[toctou] */
             rc = stat(tmp[n], &statbuf);
             if (0 != rc) {
                 pmix_output_verbose(10, pmix_globals.debug_output,
@@ -505,6 +507,7 @@ static void dirpath_destroy(char *path, pmix_cleanup_dir_t *cd, pmix_epilog_t *e
         /* Check to see if it is a directory */
         is_dir = false;
 
+        /* coverity[toctou] */
         rc = stat(filenm, &buf);
         if (0 > rc) {
             /* Handle a race condition. filenm might have been deleted by an

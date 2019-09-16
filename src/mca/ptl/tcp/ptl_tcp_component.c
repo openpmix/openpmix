@@ -714,6 +714,7 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
          * server */
         if (PMIX_PROC_IS_TOOL(pmix_globals.mypeer)) {
             struct stat buf;
+            /* coverity[toctou] */
             if (0 == stat(mca_ptl_tcp_component.rendezvous_filename, &buf)) {
                 goto nextstep;
             }

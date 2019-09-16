@@ -4,7 +4,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2016-2017 Intel, Inc. All rights reserved.
+ * Copyright (c) 2016-2019 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -88,6 +88,7 @@ static int pdlopen_open(const char *fname, bool use_ext, bool private_namespace,
 
             /* Does the file exist? */
             struct stat buf;
+            /* coverity[toctou] */
             if (stat(name, &buf) < 0) {
                 free(name);
                 if (NULL != err_msg) {
@@ -200,6 +201,7 @@ static int pdlopen_foreachfile(const char *search_path,
 
             /* Stat the file */
             struct stat buf;
+            /* coverity[toctou] */
             if (stat(abs_name, &buf) < 0) {
                 free(abs_name);
                 ret = PMIX_ERR_IN_ERRNO;

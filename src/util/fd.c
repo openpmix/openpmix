@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2008-2014 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2009      Sandia National Laboratories. All rights reserved.
- * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
@@ -104,6 +104,7 @@ pmix_status_t pmix_fd_set_cloexec(int fd)
 bool pmix_fd_is_regular(int fd)
 {
     struct stat buf;
+    /* coverity[toctou] */
     if (fstat(fd, &buf)) {
         return false;
     }
@@ -113,6 +114,7 @@ bool pmix_fd_is_regular(int fd)
 bool pmix_fd_is_chardev(int fd)
 {
     struct stat buf;
+    /* coverity[toctou] */
     if (fstat(fd, &buf)) {
         return false;
     }
@@ -122,6 +124,7 @@ bool pmix_fd_is_chardev(int fd)
 bool pmix_fd_is_blkdev(int fd)
 {
     struct stat buf;
+    /* coverity[toctou] */
     if (fstat(fd, &buf)) {
         return false;
     }
