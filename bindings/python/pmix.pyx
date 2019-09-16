@@ -15,6 +15,7 @@ include "pmix_constants.pxi"
 include "pmix.pxi"
 
 active = myLock()
+myhdlrs = []
 
 cdef void pmix_opcbfunc(pmix_status_t status, void *cbdata) with gil:
     global active
@@ -45,11 +46,23 @@ cdef void setupapp_cbfunc(pmix_status_t status,
         cbfunc(PMIX_SUCCESS, cbdata)
     return
 
+cdef void pyeventhandler(size_t evhdlr_registration_id,
+                         pmix_status_t status,
+                         const pmix_proc_t *source,
+                         pmix_info_t info[], size_t ninfo,
+                         pmix_info_t *results, size_t nresults,
+                         pmix_event_notification_cbfunc_fn_t cbfunc,
+                         void *cbdata) with gil:
+    # need to find the handler
+    return
+
+
 cdef class PMIxClient:
     cdef pmix_proc_t myproc;
     def __init__(self):
         memset(self.myproc.nspace, 0, sizeof(self.myproc.nspace))
         self.myproc.rank = <uint32_t>PMIX_RANK_UNDEF
+        self.hdlrs = []
 
     def initialized(self):
         return PMIx_Initialized()
@@ -693,6 +706,204 @@ cdef class PMIxClient:
             rc = pmix_unload_info(results, nresults, pyres)
             pmix_free_info(results, nresults)
         return rc, pyres
+
+    def group_construct(self, group:str, peers:list, pyinfo:list):
+        cdef pmix_proc_t *procs
+        cdef pmix_info_t *info
+        cdef pmix_info_t *results
+        cdef size_t ninfo
+        cdef size_t nprocs
+        cdef size_t nresults
+        nprocs = 0
+        ninfo = 0
+
+        # convert group name
+        pygrp = group.encode('ascii')
+        # convert list of procs to array of pmix_proc_t's
+        if peers is not None:
+            nprocs = len(peers)
+            procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
+            if not procs:
+                return PMIX_ERR_NOMEM
+            rc = pmix_load_procs(procs, peers)
+            if PMIX_SUCCESS != rc:
+                pmix_free_procs(procs, nprocs)
+                return rc
+        else:
+            nprocs = 1
+            procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
+            if not procs:
+                return PMIX_ERR_NOMEM
+            pmix_copy_nspace(procs[0].nspace, self.myproc.nspace)
+            procs[0].rank = PMIX_RANK_WILDCARD
+        # convert the list of dictionaries to array of
+        # pmix_info_t structs
+        if pyinfo is not None:
+            ninfo = len(pyinfo)
+            info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
+            if not info:
+                return PMIX_ERR_NOMEM
+            rc = pmix_load_info(info, pyinfo)
+            if PMIX_SUCCESS != rc:
+                pmix_free_info(info, ninfo)
+                return rc
+        else:
+            info = NULL
+            ninfo = 0
+        # Call the library
+        rc = PMIx_Group_construct(pygrp, procs, nprocs, info, ninfo, &results, &nresults)
+        if 0 < nprocs:
+            pmix_free_procs(procs, nprocs)
+        if 0 < ninfo:
+            pmix_free_info(info, ninfo)
+        pyres = []
+        if 0 < nresults:
+            # convert results
+            pmix_unload_info(results, nresults, pyres)
+            pmix_free_info(results, nresults)
+        return rc, pyres
+
+    cdef register_event_handler(self, pycodes:list, pyinfo:list, hdlr):
+        cdef pmix_status_t *codes
+        cdef size_t ncodes
+        cdef pmix_info_t *info
+        cdef size_t ninfo
+
+        # convert the codes to an array of ints
+        if pycodes is not None:
+            ncodes = len(pycodes)
+            codes = <int*> PyMem_Malloc(ncodes * sizeof(int))
+            if not codes:
+                return PMIX_ERR_NOMEM
+            n = 0
+            for c in pycodes:
+                codes[n] = c
+                n += 1
+        else:
+            codes = NULL
+            ncodes = 0
+        # convert the info
+        if pyinfo is not None:
+            ninfo = len(pyinfo)
+            info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
+            if not info:
+                return PMIX_ERR_NOMEM
+            rc = pmix_load_info(info, pyinfo)
+            if PMIX_SUCCESS != rc:
+                pmix_free_info(info, ninfo)
+                return rc
+        else:
+            info = NULL
+            ninfo = 0
+        # pass our hdlr switchyard to the API
+        rc = PMIx_Register_event_handler(codes, ncodes, info, ninfo, pyeventhandler, NULL, NULL)
+        # cleanup
+        if 0 < ninfo:
+            pmix_free_info(info, ninfo)
+        if 0 < ncodes:
+            PyMem_Free(codes)
+        # if rc < 0, then there was an error
+        if 0 > rc:
+            return rc
+        # otherwise, this is our ref ID for this hdlr
+        myhdlrs.append({'refid': rc, 'hdlr': hdlr})
+        return rc
+
+    cdef dregister_event_handler(self, ref:int):
+        rc = PMIx_Deregister_event_handler(ref, NULL, NULL)
+        return rc
+
+    cdef notify_event(self, status, pysrc:dict, range, pyinfo:list):
+        cdef pmix_proc_t proc
+        cdef pmix_info_t *info
+        cdef size_t ninfo
+
+        # convert the proc
+        pmix_copy_nspace(proc.nspace, pysrc['nspace'])
+        proc.rank = pysrc['rank']
+        # convert the list of dictionaries to array of
+        # pmix_info_t structs
+        if pyinfo is not None:
+            ninfo = len(pyinfo)
+            info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
+            if not info:
+                return PMIX_ERR_NOMEM
+            rc = pmix_load_info(info, pyinfo)
+            if PMIX_SUCCESS != rc:
+                pmix_free_info(info, ninfo)
+                return rc
+        else:
+            info = NULL
+            ninfo = 0
+        # call the library
+        rc = PMIx_Notify_event(status, &proc, range, info, ninfo, NULL, NULL)
+        if 0 < ninfo:
+            pmix_free_info(info, ninfo)
+        return rc
+
+    cdef error_string(self, pystat:int):
+        cdef char *string
+
+        string = <char*>PMIx_Error_string(pystat)
+        pystr = string
+        return pystr.decode('ascii')
+
+    cdef proc_state_string(self, pystat:int):
+        cdef char *string
+
+        string = <char*>PMIx_Proc_state_string(pystat)
+        pystr = string
+        return pystr.decode('ascii')
+
+    cdef scope_string(self, pystat:int):
+        cdef char *string
+
+        string = <char*>PMIx_Scope_string(pystat)
+        pystr = string
+        return pystr.decode('ascii')
+
+    cdef persistence_string(self, pystat:int):
+        cdef char *string
+
+        string = <char*>PMIx_Persistence_string(pystat)
+        pystr = string
+        return pystr.decode('ascii')
+
+    cdef data_range_string(self, pystat:int):
+        cdef char *string
+
+        string = <char*>PMIx_Data_range_string(pystat)
+        pystr = string
+        return pystr.decode('ascii')
+
+    cdef info_directives_string(self, pystat:int):
+        cdef char *string
+
+        string = <char*>PMIx_Info_directives_string(pystat)
+        pystr = string
+        return pystr.decode('ascii')
+
+    cdef data_type_string(self, pystat:int):
+        cdef char *string
+
+        string = <char*>PMIx_Data_type_string(pystat)
+        pystr = string
+        return pystr.decode('ascii')
+
+    cdef alloc_directive_string(self, pystat:int):
+        cdef char *string
+
+        string = <char*>PMIx_Alloc_directive_string(pystat)
+        pystr = string
+        return pystr.decode('ascii')
+
+    cdef iof_channel_string(self, pystat:int):
+        cdef char *string
+
+        string = <char*>PMIx_IOF_channel_string(pystat)
+        pystr = string
+        return pystr.decode('ascii')
+
 
 pmixservermodule = {}
 def setmodulefn(k, f):
