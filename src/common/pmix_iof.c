@@ -84,7 +84,7 @@ static void mycbfn(pmix_status_t status,
     } else {
         cd->status = status;
     }
-    PMIX_RELEASE_THREAD(&cd->lock);
+    PMIX_WAKEUP_THREAD(&cd->lock);
 }
 
 PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs,
@@ -274,8 +274,12 @@ static void stdincbfunc(struct pmix_peer_t *peer,
 
 static void myopcb(pmix_status_t status, void *cbdata)
 {
+    pmix_ltcaddy_t *cd = (pmix_ltcaddy_t*)cbdata;
 
+    cd->status = status;
+    PMIX_WAKEUP_THREAD(&cd->lock);
 }
+
 pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets,
                             pmix_byte_object_t *bo,
                             const pmix_info_t directives[], size_t ndirs,

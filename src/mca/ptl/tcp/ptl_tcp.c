@@ -1410,6 +1410,7 @@ static pmix_status_t df_search(char *dirname, char *prefix,
             continue;
         }
         newdir = pmix_os_path(false, dirname, dir_entry->d_name, NULL);
+        /* coverity[toctou] */
         if (-1 == stat(newdir, &buf)) {
             free(newdir);
             continue;

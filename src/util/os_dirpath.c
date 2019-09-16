@@ -59,6 +59,7 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
         return(PMIX_ERR_BAD_PARAM);
     }
 
+    /* coverity[toctou] */
     if (0 == (ret = stat(path, &buf))) { /* already exists */
         if (mode == (mode & buf.st_mode)) { /* has correct mode */
             return(PMIX_SUCCESS);
@@ -116,6 +117,7 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
         /* Now that we have the name, try to create it */
         mkdir(tmp, mode);
         ret = errno;  // save the errno for an error msg, if needed
+        /* coverity[toctou] */
         if (0 != stat(tmp, &buf)) {
             pmix_show_help("help-pmix-util.txt", "mkdir-failed", true,
                         tmp, strerror(ret));
@@ -193,6 +195,7 @@ int pmix_os_dirpath_destroy(const char *path,
          */
         filenm = pmix_os_path(false, path, ep->d_name, NULL);
 
+        /* coverity[toctou] */
         rc = stat(filenm, &buf);
         if (0 > rc) {
             /* Handle a race condition. filenm might have been deleted by an
@@ -298,6 +301,7 @@ int pmix_os_dirpath_access(const char *path, const mode_t in_mode ) {
         loc_mode = in_mode;
     }
 
+    /* coverity[toctou] */
     if (0 == stat(path, &buf)) { /* exists - check access */
         if ((buf.st_mode & loc_mode) == loc_mode) { /* okay, I can work here */
             return(PMIX_SUCCESS);

@@ -865,7 +865,7 @@ static void mycbfn(pmix_status_t status,
     } else {
         cd->status = status;
     }
-    PMIX_RELEASE_THREAD(&cd->lock);
+    PMIX_WAKEUP_THREAD(&cd->lock);
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Register_event_handler(pmix_status_t codes[], size_t ncodes,
@@ -1122,7 +1122,7 @@ static void myopcb(pmix_status_t status, void *cbdata)
 
     PMIX_ACQUIRE_OBJECT(cd);
     cd->status = status;
-    PMIX_RELEASE_THREAD(&cd->lock);
+    PMIX_WAKEUP_THREAD(&cd->lock);
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Deregister_event_handler(size_t event_hdlr_ref,

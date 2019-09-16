@@ -13,7 +13,7 @@
  * Copyright (c) 2010      IBM Corporation.  All rights reserved.
  * Copyright (c) 2012-2013 Los Alamos National Security, LLC.
  *                         All rights reserved.
- * Copyright (c) 2014-2017 Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      University of Houston. All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
@@ -245,6 +245,7 @@ char *pmix_path_access(char *fname, char *path, int mode)
     /* first check to see - is this a file or a directory? We
      * only want files
      */
+    /* coverity[toctou] */
     if (0 != stat(fullpath, &buf)) {
         /* couldn't stat the path - obviously, this also meets the
          * existence check, if that was requested

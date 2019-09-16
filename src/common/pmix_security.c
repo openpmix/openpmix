@@ -124,7 +124,7 @@ static void mycdcb(pmix_status_t status,
         memcpy(cb->bo.bytes, credential->bytes, credential->size);
         cb->bo.size = credential->size;
     }
-    PMIX_RELEASE_THREAD(&cb->lock);
+    PMIX_WAKEUP_THREAD(&cb->lock);
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Get_credential(const pmix_info_t info[], size_t ninfo,
@@ -350,7 +350,7 @@ static void myvalcb(pmix_status_t status,
             PMIX_INFO_XFER(&cb->info[n], &info[n]);
         }
     }
-    PMIX_RELEASE_THREAD(&cb->lock);
+    PMIX_WAKEUP_THREAD(&cb->lock);
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Validate_credential(const pmix_byte_object_t *cred,

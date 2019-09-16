@@ -6,7 +6,7 @@
  * Copyright (c) 2011-2012 Los Alamos National Security, LLC.
  *                         All rights reserved.
  *
- * Copyright (c) 2017-2018 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2017-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * $COPYRIGHT$
@@ -294,6 +294,7 @@ static void file_sample(int sd, short args, void *cbdata)
                          ft->file));
 
     /* stat the file and get its info */
+    /* coverity[toctou] */
     if (0 > stat(ft->file, &buf)) {
         /* cannot stat file */
         PMIX_OUTPUT_VERBOSE((1, pmix_psensor_base_framework.framework_output,
