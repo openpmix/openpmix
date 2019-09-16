@@ -19,15 +19,15 @@ class GracefulKiller:
 
 def clientconnected(proc:tuple is not None):
     print("CLIENT CONNECTED", proc)
-    return PMIX_SUCCESS
+    return PMIX_OPERATION_SUCCEEDED
 
 def clientfinalized(proc:tuple is not None):
     print("CLIENT FINALIZED", proc)
-    return PMIX_SUCCESS
+    return PMIX_OPERATION_SUCCEEDED
 
 def clientfence(args:dict is not None):
     print("SERVER FENCE", args)
-    return PMIX_SUCCESS
+    return PMIX_OPERATION_SUCCEEDED
 
 def main():
     try:

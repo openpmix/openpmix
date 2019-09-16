@@ -380,7 +380,9 @@ static pmix_status_t process_node_array(pmix_value_t *val,
     }
     PMIX_LIST_DESTRUCT(&cache);
 
-    pmix_list_append(tgt, &nd->super);
+    if (!update) {
+        pmix_list_append(tgt, &nd->super);
+    }
     return PMIX_SUCCESS;
 }
 
@@ -399,7 +401,7 @@ static pmix_status_t process_app_array(pmix_value_t *val,
     pmix_status_t rc = PMIX_SUCCESS;
     uint32_t appnum;
     pmix_apptrkr_t *app = NULL, *apptr;
-    pmix_kval_t *kp2, *k1, *knext;
+    pmix_kval_t *kp2, *k1;
     pmix_nodeinfo_t *nd;
     bool update;
 
@@ -497,7 +499,7 @@ static pmix_status_t process_app_array(pmix_value_t *val,
         /* if this is an update, we have to ensure each data
          * item only appears once on the list */
         if (update) {
-            PMIX_LIST_FOREACH_SAFE(k1, knext, &app->appinfo, pmix_kval_t) {
+            PMIX_LIST_FOREACH(k1, &app->appinfo, pmix_kval_t) {
                 if (PMIX_CHECK_KEY(k1, kp2->key)) {
                     pmix_list_remove_item(&app->appinfo, &k1->super);
                     PMIX_RELEASE(k1);

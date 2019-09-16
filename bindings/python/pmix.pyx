@@ -53,7 +53,20 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
                          pmix_info_t *results, size_t nresults,
                          pmix_event_notification_cbfunc_fn_t cbfunc,
                          void *cbdata) with gil:
-    # need to find the handler
+    # convert the source
+    # convert the inbound info
+
+    # find the handler being called
+    for h in myhdlrs:
+        try:
+            if evhdlr_registration_id == h['refid']:
+                print("REFID", h['refid'])
+                # execute the handler - we will need to provide
+                # our own notification cbfunc for the handler to
+                # call when done so we can convert the results array
+                # it provides before calling cbfunc
+        except:
+            pass
     return
 
 
@@ -62,7 +75,7 @@ cdef class PMIxClient:
     def __init__(self):
         memset(self.myproc.nspace, 0, sizeof(self.myproc.nspace))
         self.myproc.rank = <uint32_t>PMIX_RANK_UNDEF
-        self.hdlrs = []
+        myhdlrs = []
 
     def initialized(self):
         return PMIx_Initialized()
@@ -763,7 +776,7 @@ cdef class PMIxClient:
             pmix_free_info(results, nresults)
         return rc, pyres
 
-    cdef register_event_handler(self, pycodes:list, pyinfo:list, hdlr):
+    def register_event_handler(self, pycodes:list, pyinfo:list, hdlr):
         cdef pmix_status_t *codes
         cdef size_t ncodes
         cdef pmix_info_t *info
@@ -809,11 +822,11 @@ cdef class PMIxClient:
         myhdlrs.append({'refid': rc, 'hdlr': hdlr})
         return rc
 
-    cdef dregister_event_handler(self, ref:int):
+    def dregister_event_handler(self, ref:int):
         rc = PMIx_Deregister_event_handler(ref, NULL, NULL)
         return rc
 
-    cdef notify_event(self, status, pysrc:dict, range, pyinfo:list):
+    def notify_event(self, status, pysrc:dict, range, pyinfo:list):
         cdef pmix_proc_t proc
         cdef pmix_info_t *info
         cdef size_t ninfo
@@ -841,63 +854,64 @@ cdef class PMIxClient:
             pmix_free_info(info, ninfo)
         return rc
 
-    cdef error_string(self, pystat:int):
+    def error_string(self, pystat:int):
         cdef char *string
 
         string = <char*>PMIx_Error_string(pystat)
         pystr = string
-        return pystr.decode('ascii')
+        val = pystr.decode('ascii')
+        return val
 
-    cdef proc_state_string(self, pystat:int):
+    def proc_state_string(self, pystat:int):
         cdef char *string
 
         string = <char*>PMIx_Proc_state_string(pystat)
         pystr = string
         return pystr.decode('ascii')
 
-    cdef scope_string(self, pystat:int):
+    def scope_string(self, pystat:int):
         cdef char *string
 
         string = <char*>PMIx_Scope_string(pystat)
         pystr = string
         return pystr.decode('ascii')
 
-    cdef persistence_string(self, pystat:int):
+    def persistence_string(self, pystat:int):
         cdef char *string
 
         string = <char*>PMIx_Persistence_string(pystat)
         pystr = string
         return pystr.decode('ascii')
 
-    cdef data_range_string(self, pystat:int):
+    def data_range_string(self, pystat:int):
         cdef char *string
 
         string = <char*>PMIx_Data_range_string(pystat)
         pystr = string
         return pystr.decode('ascii')
 
-    cdef info_directives_string(self, pystat:int):
+    def info_directives_string(self, pystat:int):
         cdef char *string
 
         string = <char*>PMIx_Info_directives_string(pystat)
         pystr = string
         return pystr.decode('ascii')
 
-    cdef data_type_string(self, pystat:int):
+    def data_type_string(self, pystat:int):
         cdef char *string
 
         string = <char*>PMIx_Data_type_string(pystat)
         pystr = string
         return pystr.decode('ascii')
 
-    cdef alloc_directive_string(self, pystat:int):
+    def alloc_directive_string(self, pystat:int):
         cdef char *string
 
         string = <char*>PMIx_Alloc_directive_string(pystat)
         pystr = string
         return pystr.decode('ascii')
 
-    cdef iof_channel_string(self, pystat:int):
+    def iof_channel_string(self, pystat:int):
         cdef char *string
 
         string = <char*>PMIx_IOF_channel_string(pystat)
@@ -1313,7 +1327,7 @@ cdef class PMIxServer(PMIxClient):
             while index < length:
                 ba[index] = pyppn[index]
                 index += 1
-        else: 
+        else:
             # last case with no ':' in string
             ba = bytearray(ppn)
         return (rc, ba)
