@@ -351,9 +351,6 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grp[],
     pmix_cmd_t cmd = PMIX_GROUP_DESTRUCT_CMD;
     pmix_status_t rc;
     pmix_group_tracker_t *cb = NULL;
-    size_t n, num;
-    bool embed = true;
-    pmix_info_t *iptr = NULL;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -375,27 +372,6 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grp[],
     /* check for bozo input */
     if (NULL == grp) {
         return PMIX_ERR_BAD_PARAM;
-    }
-
-    /* need to add the fence request to the provided info
-     * structs as this is a blocking operation - only add
-     * it if the user didn't specify this themselves */
-    for (n=0; n < ninfo; n++) {
-        if (PMIX_CHECK_KEY(&info[n], PMIX_EMBED_BARRIER)) {
-            embed = PMIX_INFO_TRUE(&info[n]);
-            break;
-        }
-    }
-    if (embed) {
-        PMIX_INFO_CREATE(iptr, ninfo + 1);
-        num = ninfo + 1;
-        for (n=0; n < ninfo; n++) {
-            PMIX_INFO_XFER(&iptr[n], &info[n]);
-        }
-        PMIX_INFO_LOAD(&iptr[ninfo], PMIX_EMBED_BARRIER, &embed, PMIX_BOOL);
-    } else {
-        iptr = (pmix_info_t*)info;
-        num = ninfo;
     }
 
     msg = PMIX_NEW(pmix_buffer_t);
@@ -448,9 +424,6 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grp[],
     }
 
   done:
-    if (embed && NULL != iptr) {
-        PMIX_INFO_FREE(iptr, num);
-    }
     if (PMIX_SUCCESS != rc && NULL != msg) {
         PMIX_RELEASE(msg);
     }
@@ -916,6 +889,139 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join_nb(const char grp[],
                         pmix_globals.myid.nspace, pmix_globals.myid.rank,
                         (PMIX_GROUP_INVITE_ACCEPTED == code) ? "ACCEPTED" : "DECLINED");
 
+    return rc;
+}
+
+PMIX_EXPORT pmix_status_t PMIx_Group_leave(const char grp[],
+                                           const pmix_info_t info[], size_t ninfo)
+{
+    pmix_status_t rc;
+    pmix_group_tracker_t cb;
+
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+
+    pmix_output_verbose(2, pmix_client_globals.connect_output,
+                        "pmix: group_leave called");
+
+    if (pmix_globals.init_cntr <= 0) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return PMIX_ERR_INIT;
+    }
+
+    /* if we aren't connected, don't attempt to send */
+    if (!pmix_globals.connected) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return PMIX_ERR_UNREACH;
+    }
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
+
+    /* create a callback object as we need to pass it to the
+     * recv routine so we know which callback to use when
+     * the return message is recvd */
+    PMIX_CONSTRUCT(&cb, pmix_group_tracker_t);
+
+    /* push the message into our event base to send to the server */
+    if (PMIX_SUCCESS != (rc = PMIx_Group_leave_nb(grp, info, ninfo, op_cbfunc, (void*)&cb))) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_DESTRUCT(&cb);
+        return rc;
+    }
+
+    /* wait for the connect to complete */
+    PMIX_WAIT_THREAD(&cb.lock);
+    rc = cb.status;
+    PMIX_DESTRUCT(&cb);
+
+    pmix_output_verbose(2, pmix_client_globals.connect_output,
+                        "pmix: group leave completed");
+
+    return rc;
+}
+
+PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[],
+                                              const pmix_info_t info[], size_t ninfo,
+                                              pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    pmix_buffer_t *msg = NULL;
+    pmix_cmd_t cmd = PMIX_GROUP_LEAVE_CMD;
+    pmix_status_t rc;
+    pmix_group_tracker_t *cb = NULL;
+
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+
+    pmix_output_verbose(2, pmix_client_globals.connect_output,
+                        "pmix:group_leave_nb called");
+
+    if (pmix_globals.init_cntr <= 0) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return PMIX_ERR_INIT;
+    }
+
+    /* if we aren't connected, don't attempt to send */
+    if (!pmix_globals.connected) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return PMIX_ERR_UNREACH;
+    }
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
+
+    /* check for bozo input */
+    if (NULL == grp) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    msg = PMIX_NEW(pmix_buffer_t);
+    /* pack the cmd */
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
+                     msg, &cmd, 1, PMIX_COMMAND);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto done;
+    }
+
+    /* pack the group ID */
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
+                     msg, &grp, 1, PMIX_STRING);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto done;
+    }
+
+    /* pack the info structs */
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
+                     msg, &ninfo, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        goto done;
+    }
+    if (0 < ninfo) {
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
+                         msg, info, ninfo, PMIX_INFO);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(msg);
+            goto done;
+        }
+    }
+
+    /* create a callback object as we need to pass it to the
+     * recv routine so we know which callback to use when
+     * the return message is recvd */
+    cb = PMIX_NEW(pmix_group_tracker_t);
+    cb->opcbfunc = cbfunc;
+    cb->cbdata = cbdata;
+
+    /* push the message into our event base to send to the server */
+    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver,
+                       msg, grp_cbfunc, (void*)cb);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(cb);
+    }
+
+  done:
+    if (PMIX_SUCCESS != rc && NULL != msg) {
+        PMIX_RELEASE(msg);
+    }
     return rc;
 }
 
