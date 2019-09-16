@@ -19,11 +19,11 @@ class GracefulKiller:
 
 def clientconnected(proc:tuple is not None):
     print("CLIENT CONNECTED", proc)
-    return PMIX_SUCCESS
+    return PMIX_OPERATION_SUCCEEDED
 
 def clientfinalized(proc:tuple is not None):
     print("CLIENT FINALIZED", proc)
-    return PMIX_SUCCESS
+    return PMIX_OPERATION_SUCCEEDED
 
 def clientfence(procs:list, directives:list, data:bytearray):
     # check directives
@@ -40,7 +40,7 @@ def clientfence(procs:list, directives:list, data:bytearray):
                 except:
                     #it can be ignored
                     pass
-    return PMIX_SUCCESS
+    return PMIX_OPERATION_SUCCEEDED
 
 def main():
     try:
