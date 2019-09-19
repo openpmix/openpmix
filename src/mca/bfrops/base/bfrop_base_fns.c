@@ -564,23 +564,23 @@ pmix_value_cmp_t pmix_bfrops_base_value_cmp(pmix_value_t *p,
             rc = PMIX_EQUAL;
             break;
         case PMIX_COORD:
-            rc = memcmp(p->data.coord, p1->data.coord, sizeof(pmix_coord_t));
-            if (0 > rc) {
-                rc = PMIX_VALUE2_GREATER;
-            } else if (0 < rc) {
-                rc = PMIX_VALUE1_GREATER;
+            ret = memcmp(p->data.coord, p1->data.coord, sizeof(pmix_coord_t));
+            if (0 > ret) {
+                return PMIX_VALUE2_GREATER;
+            } else if (0 < ret) {
+                return PMIX_VALUE1_GREATER;
             } else {
-                rc = PMIX_EQUAL;
+                return PMIX_EQUAL;
             }
             break;
         case PMIX_REGATTR:
-            rc = memcmp(p->data.ptr, p1->data.ptr, sizeof(pmix_regattr_t));
-            if (0 > rc) {
-                rc = PMIX_VALUE2_GREATER;
-            } else if (0 < rc) {
-                rc = PMIX_VALUE1_GREATER;
+            ret = memcmp(p->data.ptr, p1->data.ptr, sizeof(pmix_regattr_t));
+            if (0 > ret) {
+                return PMIX_VALUE2_GREATER;
+            } else if (0 < ret) {
+                return PMIX_VALUE1_GREATER;
             } else {
-                rc = PMIX_EQUAL;
+                return PMIX_EQUAL;
             }
             break;
 
