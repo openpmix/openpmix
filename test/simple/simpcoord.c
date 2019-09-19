@@ -101,6 +101,8 @@ int main(int argc, char **argv)
 
     u32 = (uint32_t*)val->data.darray->array;
     ninfo = val->data.darray->size;
+    /* print them out for diagnostics - someday we can figure
+     * out an automated way of testing the answer */
     {
         char **foo = NULL;
         for (n=0; n < ninfo; n++) {
@@ -122,6 +124,8 @@ int main(int argc, char **argv)
     }
     coords = (pmix_coord_t*)val->data.darray->array;
     ninfo = val->data.darray->size;
+    /* print them out for diagnostics - someday we can figure
+     * out an automated way of testing the answer */
     for (m=0; m < ninfo; m++) {
         char **foo = NULL;
         char *view;

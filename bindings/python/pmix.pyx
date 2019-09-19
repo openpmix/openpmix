@@ -76,6 +76,7 @@ cdef class PMIxClient:
         memset(self.myproc.nspace, 0, sizeof(self.myproc.nspace))
         self.myproc.rank = <uint32_t>PMIX_RANK_UNDEF
         myhdlrs = []
+        self.myname = {}
 
     def initialized(self):
         return PMIx_Initialized()
@@ -112,7 +113,10 @@ cdef class PMIxClient:
         rc = PMIx_Init(&self.myproc, info, klen)
         if 0 < klen:
             pmix_free_info(info, klen)
-        return rc
+        if PMIX_SUCCESS == rc:
+            # convert the returned name
+            self.myname = {'nspace': str(self.myproc.nspace), 'rank': self.myproc.rank}
+        return rc, self.myname
 
     # Finalize the client library
     def finalize(self, dicts:list):
@@ -191,9 +195,6 @@ cdef class PMIxClient:
         if 0 < sz:
             pmix_free_procs(procs, sz)
         return rc
-
-    def get_version(self):
-        return PMIx_Get_version()
 
     # put a value into the keystore
     #
@@ -295,14 +296,18 @@ cdef class PMIxClient:
         cdef size_t ninfo;
         cdef pmix_key_t key;
         cdef pmix_value_t *val_ptr;
+        cdef pmix_proc_t p;
 
         ninfo   = 0
         val_ptr = NULL
 
         # convert proc to pmix_proc_t
-        cdef pmix_proc_t p;
-        pmix_copy_nspace(p.nspace, proc['nspace'])
-        p.rank = proc['rank']
+        if proc is None:
+            pmix_copy_nspace(p.nspace, self.myproc.nspace)
+            p.rank = self.myproc.rank
+        else:
+            pmix_copy_nspace(p.nspace, proc['nspace'])
+            p.rank = proc['rank']
 
         # convert key,val to pmix_value_t and pmix_key_t
         pmix_copy_key(key, ky)
