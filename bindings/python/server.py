@@ -27,6 +27,8 @@ def clientfinalized(proc:tuple is not None):
 
 def clientfence(procs:list, directives:list, data:bytearray):
     # check directives
+    print("CLIENTFENCE")
+    output = bytearray(0)
     if directives is not None:
         for d in directives:
             # these are each an info dict
@@ -36,11 +38,12 @@ def clientfence(procs:list, directives:list, data:bytearray):
                 try:
                     if d['flags'] & PMIX_INFO_REQD:
                         # return an error
-                        return PMIX_ERR_NOT_SUPPORTED
+                        return PMIX_ERR_NOT_SUPPORTED, output
                 except:
                     #it can be ignored
                     pass
-    return PMIX_OPERATION_SUCCEEDED
+    print("COMPLETE")
+    return PMIX_OPERATION_SUCCEEDED, output
 
 def main():
     try:

@@ -7,7 +7,7 @@ def main():
     print("Testing PMIx ", foo.get_version())
     info = [{'key':PMIX_PROGRAMMING_MODEL, 'value':'TEST', 'val_type':PMIX_STRING},
             {'key':PMIX_MODEL_LIBRARY_NAME, 'value':'PMIX', 'val_type':PMIX_STRING}]
-    my_result = foo.init(info)
+    my_result,myname = foo.init(info)
     print("Init result ", my_result)
     if 0 != my_result:
         print("FAILED TO INIT")

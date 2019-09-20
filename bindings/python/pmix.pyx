@@ -8,6 +8,7 @@ from cython.operator import address
 import signal, time
 import threading
 import array
+from cpython.pycapsule cimport PyCapsule_New, PyCapsule_GetPointer
 
 # pull in all the constant definitions - we
 # store them in a separate file for neatness
@@ -16,6 +17,7 @@ include "pmix.pxi"
 
 active = myLock()
 myhdlrs = []
+myname = {}
 
 cdef void pmix_opcbfunc(pmix_status_t status, void *cbdata) with gil:
     global active
@@ -69,14 +71,20 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
             pass
     return
 
+cdef void PMIxCallback(capsule):
+    cdef pmix_pyshift_t *shifter
+    shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "fence")
+    print("SHIFTER:", shifter[0].op)
+    return
 
 cdef class PMIxClient:
     cdef pmix_proc_t myproc;
     def __init__(self):
+        global myhdlrs, myname
         memset(self.myproc.nspace, 0, sizeof(self.myproc.nspace))
         self.myproc.rank = <uint32_t>PMIX_RANK_UNDEF
         myhdlrs = []
-        self.myname = {}
+        myname = {}
 
     def initialized(self):
         return PMIx_Initialized()
@@ -96,6 +104,7 @@ cdef class PMIxClient:
     def init(self, dicts:list):
         cdef pmix_info_t *info
         cdef size_t klen
+        global myname
         # Convert any provided dictionary to an array of pmix_info_t
         if dicts is not None:
             klen = len(dicts)
@@ -115,8 +124,8 @@ cdef class PMIxClient:
             pmix_free_info(info, klen)
         if PMIX_SUCCESS == rc:
             # convert the returned name
-            self.myname = {'nspace': str(self.myproc.nspace), 'rank': self.myproc.rank}
-        return rc, self.myname
+            myname = {'nspace': str(self.myproc.nspace), 'rank': self.myproc.rank}
+        return rc, myname
 
     # Finalize the client library
     def finalize(self, dicts:list):
@@ -1586,7 +1595,10 @@ cdef int fencenb(const pmix_proc_t procs[], size_t nprocs,
         blist = []
         ilist = []
         barray = None
-        pmix_unload_procs(procs, nprocs, myprocs)
+        if NULL == procs:
+            myprocs.append({'nspace': myname.nspace, 'rank': PMIX_RANK_WILDCARD})
+        else:
+            pmix_unload_procs(procs, nprocs, myprocs)
         if NULL != info:
             rc = pmix_unload_info(info, ninfo, ilist)
             if PMIX_SUCCESS != rc:
@@ -1594,7 +1606,7 @@ cdef int fencenb(const pmix_proc_t procs[], size_t nprocs,
         if NULL != data:
             pmix_unload_bytes(data, ndata, blist)
             barray = bytearray(blist)
-        rc = pmixservermodule['fencenb'](myprocs, ilist, barray)
+        rc,data = pmixservermodule['fencenb'](myprocs, ilist, barray)
     else:
         return PMIX_ERR_NOT_SUPPORTED
     # we cannot execute a callback function here as
@@ -1606,7 +1618,17 @@ cdef int fencenb(const pmix_proc_t procs[], size_t nprocs,
     # that let's the underlying PMIx library know
     # the situation so it can generate its own
     # callback
-    if PMIX_SUCCESS == rc:
+    if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
+        print("CREATE CADDY")
+        mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
+        mycaddy.op = strdup("fence")
+        mycaddy.bo.bytes = data
+        mycaddy.bo.size = ndata
+        mycaddy.modex = cbfunc
+        cb = PyCapsule_New(mycaddy, "fence", NULL)
+        print("EXECUTE CALLBACK")
+        PMIxCallback(cb)
+        # execute the timer delay
         rc = PMIX_OPERATION_SUCCEEDED
     return rc
 

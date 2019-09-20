@@ -55,6 +55,12 @@ class myLock(threading.Event):
         for x in self.info:
             info.append(x)
 
+ctypedef struct pmix_pyshift_t:
+    char *op
+    pmix_byte_object_t bo
+    pmix_modex_cbfunc_t modex
+
+
 cdef void pmix_unload_argv(char **keys, argv:list):
     n = 0
     while NULL != keys[n]:
