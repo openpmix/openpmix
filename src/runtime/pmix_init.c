@@ -253,7 +253,7 @@ int pmix_rte_init(uint32_t type,
     PMIX_SET_PEER_TYPE(pmix_globals.mypeer, type);
     PMIX_SET_PEER_MAJOR(pmix_globals.mypeer, PMIX_VERSION_MAJOR);
     PMIX_SET_PEER_MINOR(pmix_globals.mypeer, PMIX_VERSION_MINOR);
-    PMIX_SET_PEER_REVISION(pmix_globals.mypeer, PMIX_VERSION_RELEASE);
+    PMIX_SET_PEER_RELEASE(pmix_globals.mypeer, PMIX_VERSION_RELEASE);
     /* create an nspace object for ourselves - we will
      * fill in the nspace name later */
     pmix_globals.mypeer->nptr = PMIX_NEW(pmix_namespace_t);

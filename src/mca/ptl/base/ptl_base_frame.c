@@ -211,9 +211,9 @@ static void pccon(pmix_pending_connection_t *p)
     p->ptl = NULL;
     p->cred = NULL;
     p->proc_type.type = PMIX_PROC_UNDEF;
-    p->proc_type.major = 255;
-    p->proc_type.minor = 255;
-    p->proc_type.revision = 255;
+    p->proc_type.major = PMIX_MAJOR_WILDCARD;
+    p->proc_type.minor = PMIX_MINOR_WILDCARD;
+    p->proc_type.release = PMIX_RELEASE_WILDCARD;
     p->proc_type.padding = 0;
 }
 static void pcdes(pmix_pending_connection_t *p)
