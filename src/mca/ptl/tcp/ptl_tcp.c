@@ -837,7 +837,7 @@ static pmix_status_t parse_uri_file(char *filename,
     pmix_event_t ev;
     struct timeval tv;
     int retries;
-    int major, minor, revision;
+    int major, minor, release;
 
     fp = fopen(filename, "r");
     if (NULL == fp) {
@@ -900,11 +900,11 @@ static pmix_status_t parse_uri_file(char *filename,
             major = strtoul(p2, &p3, 10);
         }
         minor = strtoul(p3, &p3, 10);
-        revision = strtoul(p3, NULL, 10);
+        release = strtoul(p3, NULL, 10);
         PMIX_SET_PEER_TYPE(pmix_client_globals.myserver, PMIX_PROC_SERVER);
         PMIX_SET_PEER_MAJOR(pmix_client_globals.myserver, major);
         PMIX_SET_PEER_MINOR(pmix_client_globals.myserver, minor);
-        PMIX_SET_PEER_REVISION(pmix_client_globals.myserver, revision);
+        PMIX_SET_PEER_RELEASE(pmix_client_globals.myserver, release);
         if (2 <= major) {
             pmix_client_globals.myserver->protocol = PMIX_PROTOCOL_V2;
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,

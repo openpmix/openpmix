@@ -66,18 +66,22 @@ typedef struct {
     uint32_t type;
     uint8_t major;
     uint8_t minor;
-    uint8_t revision;
+    uint8_t release;
     uint8_t padding;  // make the struct be 64-bits for addressing
 } pmix_proc_type_t;
 
+#define PMIX_MAJOR_WILDCARD         255
+#define PMIX_MINOR_WILDCARD         255
+#define PMIX_RELEASE_WILDCARD       255
+
 /* use 255 as WILDCARD for the release triplet values */
-#define PMIX_PROC_TYPE_STATIC_INIT      \
-    {                                   \
-        .type = PMIX_PROC_UNDEF,        \
-        .major = 255,                   \
-        .minor = 255,                   \
-        .revision = 255,                \
-        .padding = 0                    \
+#define PMIX_PROC_TYPE_STATIC_INIT          \
+    {                                       \
+        .type = PMIX_PROC_UNDEF,            \
+        .major = PMIX_MAJOR_WILDCARD,       \
+        .minor = PMIX_MINOR_WILDCARD,       \
+        .release = PMIX_RELEASE_WILDCARD,   \
+        .padding = 0                        \
     }
 
 /* Define process types - we use a bit-mask as procs can
@@ -122,23 +126,40 @@ typedef struct {
     (p)->proc_type.major = (a)
 #define PMIX_SET_PEER_MINOR(p, a)   \
     (p)->proc_type.minor = (a)
-#define PMIX_SET_PEER_REVISION(p, a)   \
-    (p)->proc_type.revision = (a)
+#define PMIX_SET_PEER_RELEASE(p, a)   \
+    (p)->proc_type.release = (a)
 #define PMIX_SET_PROC_MAJOR(p, a)   \
     (p)->major = (a)
 #define PMIX_SET_PROC_MINOR(p, a)   \
     (p)->minor = (a)
-#define PMIX_SET_PROC_REVISION(p, a)   \
-    (p)->revision = (a)
+#define PMIX_SET_PROC_RELEASE(p, a)   \
+    (p)->release = (a)
 
 /* define some convenience macros for testing version */
-#define PMIX_PROC_MAJOR_VERSION(p)     (p)->proc_type.major
-#define PMIX_PROC_MINOR_VERSION(p)     (p)->proc_type.minor
-#define PMIX_PROC_REL_VERSION(p)       (p)->proc_type.revision
+#define PMIX_PEER_MAJOR_VERSION(p)     (p)->proc_type.major
+#define PMIX_PEER_MINOR_VERSION(p)     (p)->proc_type.minor
+#define PMIX_PEER_REL_VERSION(p)       (p)->proc_type.release
+#define PMIX_PROC_MAJOR_VERSION(p)     (p)->major
+#define PMIX_PROC_MINOR_VERSION(p)     (p)->minor
+#define PMIX_PROC_REL_VERSION(p)       (p)->release
 #define PMIX_PEER_IS_V1(p)             ((p)->proc_type.major == 1)
 #define PMIX_PEER_IS_V20(p)            ((p)->proc_type.major == 2 && (p)->proc_type.minor == 0)
 #define PMIX_PEER_IS_V21(p)            ((p)->proc_type.major == 2 && (p)->proc_type.minor == 1)
 #define PMIX_PEER_IS_V3(p)             ((p)->proc_type.major == 3)
+
+
+#define PMIX_PEER_TRIPLET(p, a, b, c)               \
+    ((PMIX_PEER_MAJOR_VERSION(p) == PMIX_MAJOR_WILDCARD || (a) == PMIX_MAJOR_WILDCARD || PMIX_PEER_MAJOR_VERSION(p) == (a)) &&    \
+     (PMIX_PEER_MINOR_VERSION(p) == PMIX_MINOR_WILDCARD || (b) == PMIX_MINOR_WILDCARD || PMIX_PEER_MINOR_VERSION(p) == (b)) &&    \
+     (PMIX_PEER_REL_VERSION(p) == PMIX_RELEASE_WILDCARD || (c) == PMIX_RELEASE_WILDCARD || PMIX_PEER_REL_VERSION(p) == (c)))
+
+#define PMIX_PROC_TRIPLET(p, a, b, c)               \
+    ((PMIX_PROC_MAJOR_VERSION(p) == PMIX_MAJOR_WILDCARD || PMIX_PROC_MAJOR_VERSION(p) == (a)) &&    \
+     (PMIX_PROC_MINOR_VERSION(p) == PMIX_MINOR_WILDCARD || PMIX_PROC_MINOR_VERSION(p) == (b)) &&    \
+     (PMIX_PROC_REL_VERSION(p) == PMIX_RELEASE_WILDCARD || PMIX_PROC_REL_VERSION(p) == (c)))
+
+#define PMIX_PEER_IS_EARLIER(p, a, b, c)            \
+    pmix_ptl_base_peer_is_earlier(p, a, b, c)
 
 
 /****    MESSAGING STRUCTURES    ****/
