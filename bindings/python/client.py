@@ -25,7 +25,6 @@ def main():
     procs = []
     info = []
     rc = foo.fence(procs, info)
-    print("Fence result ", rc)
     print("GET")
     info = []
     rc, get_val = foo.get({'nspace':"testnspace", 'rank': 0}, "mykey", info)
@@ -41,6 +40,17 @@ def main():
     info = [{'key': 'ARBITRARY', 'flags': None, 'value':10, 'val_type':PMIX_INT}]
     rc = foo.publish(info)
     print("Publish result: ", foo.error_string(rc))
+    rc = foo.fence(procs, info)
+    #time.sleep(2)
+    pdata_key = [{'key':'ARBITRARY'}]
+    rc,pdata = foo.lookup(pdata_key, None)
+    #rc = foo.lookup(pdata_key, None)
+    print("rc lookup: ", rc)
+    print("pdata lookup: ", pdata)
+    pykeys = ['ARBITRARY']
+    info = []
+    rc = foo.unpublish(pykeys, info)
+    print("unpublish result: ", foo.error_string(rc))
     # finalize
     info = []
     foo.finalize(info)

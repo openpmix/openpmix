@@ -8,6 +8,9 @@ import subprocess
 
 global killer
 
+# where local data is published for testing
+pmix_locdata = []
+
 class GracefulKiller:
   kill_now = False
   def __init__(self):
@@ -25,9 +28,54 @@ def clientfinalized(proc:tuple is not None):
     print("CLIENT FINALIZED", proc)
     return PMIX_OPERATION_SUCCEEDED
 
-def clientfence(args:dict is not None):
-    print("SERVER FENCE", args)
+def clientfence(procs:list, directives:list, data:bytearray):
+    # check directives
+    print("CLIENTFENCE")
+    output = bytearray(0)
+    if directives is not None:
+        for d in directives:
+            # these are each an info dict
+            if "pmix" not in d['key']:
+                # we do not support such directives - see if
+                # it is required
+                try:
+                    if d['flags'] & PMIX_INFO_REQD:
+                        # return an error
+                        return PMIX_ERR_NOT_SUPPORTED, output
+                except:
+                    #it can be ignored
+                    pass
+    print("COMPLETE")
+    return PMIX_OPERATION_SUCCEEDED, output
+
+def clientpublish(proc:dict, directives:list):
+    print("SERVER: PUBLISH")
+    for d in directives:
+        pdata = {}
+        pdata['proc'] = proc
+        pdata['key']            = d['key']
+        pdata['value']          = d['value']
+        pdata['val_type']       = d['val_type']
+        pmix_locdata.append(pdata)
     return PMIX_OPERATION_SUCCEEDED
+
+def clientunpublish(proc:dict, pykeys:list, directives:list):
+    print("SERVER: UNPUBLISH")
+    for k in pykeys:
+        for d in pmix_locdata:
+            if k.decode('ascii') == d['key']:
+                pmix_locdata.remove(d)
+    return PMIX_OPERATION_SUCCEEDED
+
+def clientlookup(proc:dict, keys:list, directives:list):
+    print("SERVER: LOOKUP")
+    ret_pdata = []
+    for k in keys:
+        for d in pmix_locdata:
+            if k.decode('ascii') == d['key']:
+                ret_pdata.append(d)
+    # return rc and pdata
+    return ret_pdata, PMIX_SUCCESS
 
 def main():
     try:
@@ -39,7 +87,10 @@ def main():
     args = [{'key':PMIX_SERVER_SCHEDULER, 'value':'T', 'val_type':PMIX_BOOL}]
     map = {'clientconnected': clientconnected,
            'clientfinalized': clientfinalized,
-           'fencenb': clientfence}
+           'fencenb': clientfence,
+           'publish': clientpublish,
+           'unpublish': clientunpublish,
+           'lookup': clientlookup}
     my_result = foo.init(args, map)
     print("Testing PMIx_Initialized")
     rc = foo.initialized()

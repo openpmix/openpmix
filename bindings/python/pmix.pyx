@@ -9,6 +9,8 @@ import signal, time
 import threading
 import array
 from cpython.pycapsule cimport PyCapsule_New, PyCapsule_GetPointer
+#import time
+from threading import Timer
 
 # pull in all the constant definitions - we
 # store them in a separate file for neatness
@@ -71,11 +73,18 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
             pass
     return
 
-cdef void PMIxCallback(capsule):
-    cdef pmix_pyshift_t *shifter
-    shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "fence")
+cdef void lookup_cb(capsule, ret):
+    cdef pmix_pyshift_lookup_t *shifter
+    shifter = <pmix_pyshift_lookup_t*>PyCapsule_GetPointer(capsule, "lookup")
+    shifter[0].lookup(ret, shifter[0].pdata, shifter[0].ndata, shifter[0].cbdata)
     print("SHIFTER:", shifter[0].op)
-    return
+    return 
+
+cdef void fence_cb(capsule, ret):
+    cdef pmix_pyshift_fence_t *shifter
+    shifter = <pmix_pyshift_fence_t*>PyCapsule_GetPointer(capsule, "fence")
+    print("SHIFTER:", shifter[0].op)
+    return 
 
 cdef class PMIxClient:
     cdef pmix_proc_t myproc;
@@ -382,6 +391,135 @@ cdef class PMIxClient:
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
         return rc
+
+    # unpublish the data in the data store
+    #
+    # @dicts [INPUT]
+    #          - a list of dictionaries, where
+    #            a key, flags, value, and val_type
+    #            can be defined as keys
+    # @pykeys [INPUT]
+    #          - list of python info key strings
+    def unpublish(self, pykeys:list, dicts:list):
+        cdef pmix_info_t *info;
+        cdef size_t ninfo;
+        cdef size_t nstrings;
+        cdef char **keys;
+        ninfo = 0
+        nstrings = 0
+
+        # load pykeys into char **keys
+        if pykeys is not None:
+            nstrings = len(pykeys)
+            if 0 < nstrings:
+                keys = <char **> PyMem_Malloc(nstrings * sizeof(char*))
+                if not keys:
+                    PMIX_ERR_NOMEM
+            rc = pmix_load_argv(keys, pykeys)
+            if PMIX_SUCCESS != rc:
+                n = 0
+                while keys != NULL:
+                    PyMem_Free(keys[n])
+                    n += 1
+                return rc
+            else:
+                keys = NULL
+        else:
+            keys = NULL
+
+        # convert the list of dictionaries to array of
+        # pmix_info_t structs
+        if dicts is not None:
+            ninfo = len(dicts)
+            if 0 < ninfo:
+                info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
+                if not info:
+                    return PMIX_ERR_NOMEM
+                rc = pmix_load_info(info, dicts)
+                if PMIX_SUCCESS != rc:
+                    pmix_free_info(info, ninfo)
+                    return rc
+            else:
+                info = NULL
+        else:
+            info = NULL
+
+        # pass it into the unpublish API
+        print("UNPUBLISH")
+        rc = PMIx_Unpublish(keys, info, ninfo)
+        if 0 < ninfo:
+            pmix_free_info(info, ninfo)
+        return rc
+
+    # lookup info published by this or another process
+    # @pdata [INPUT]
+    #          - a list of dictionaries, where key is 
+    #            recorded in the pdata dictionary and
+    #            passed to PMIx_Lookup
+    # pdata = {‘proc’: {‘nspace’: mynspace, ‘rank’: myrank}, ‘key’: ky, 
+    # ‘value’: v, ‘val_type’: t}
+    # @dicts [INPUT]
+    #          - a list of dictionaries, where
+    #            a key, flags, value, and val_type
+    #            can be defined as keys
+    def lookup(self, data:list, dicts:list):
+        cdef pmix_pdata_t *pdata;
+        cdef pmix_info_t  *info;
+        cdef size_t npdata;
+        cdef size_t ninfo;
+
+        npdata  = 0
+        ninfo   = 0
+
+        # convert the list of dictionaries to array of
+        # pmix_info_t structs
+        if dicts is not None:
+            ninfo = len(dicts)
+            if 0 < ninfo:
+                info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
+                if not info:
+                    return PMIX_ERR_NOMEM
+                rc = pmix_load_info(info, dicts)
+                if PMIX_SUCCESS != rc:
+                    pmix_free_info(info, ninfo)
+                    return rc
+            else:
+                info = NULL
+        else:
+            info = NULL
+
+        # convert the list of dictionaries to array of
+        # pmix_pdata_t structs
+        if data is not None:
+            npdata = len(data)
+            if 0 < npdata:
+                pdata = <pmix_pdata_t*> PyMem_Malloc(npdata * sizeof(pmix_pdata_t))
+                if not pdata:
+                    return PMIX_ERR_NOMEM
+                n = 0
+                for d in data:
+                    pykey = str(d['key'])
+                    pmix_copy_key(pdata[n].key, pykey)
+                    rc = 0
+                    n += 1
+                if PMIX_SUCCESS != rc:
+                    pmix_free_pdata(pdata, npdata)
+                    return rc
+            else:
+                pdata = NULL
+        else:
+            pdata = NULL
+
+        # pass it into the lookup API
+        print("LOOKUP")
+        rc = PMIx_Lookup(pdata, npdata, info, ninfo)
+        if PMIX_SUCCESS == rc:
+            rc = pmix_unload_pdata(pdata, npdata, data)
+            # remove the first element, which is just the key
+            data.pop(0)
+            pmix_free_info(info, ninfo)
+            pmix_free_pdata(pdata, npdata)
+        return rc, data
 
     # Spawn a new job
     #
@@ -1618,18 +1756,20 @@ cdef int fencenb(const pmix_proc_t procs[], size_t nprocs,
     # that let's the underlying PMIx library know
     # the situation so it can generate its own
     # callback
+
     if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
         print("CREATE CADDY")
-        mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
+        mycaddy = <pmix_pyshift_fence_t*> PyMem_Malloc(sizeof(pmix_pyshift_fence_t))
         mycaddy.op = strdup("fence")
         mycaddy.bo.bytes = data
         mycaddy.bo.size = ndata
         mycaddy.modex = cbfunc
+        mycaddy.cbdata = cbdata
         cb = PyCapsule_New(mycaddy, "fence", NULL)
         print("EXECUTE CALLBACK")
-        PMIxCallback(cb)
-        # execute the timer delay
         rc = PMIX_OPERATION_SUCCEEDED
+        fence_cb(cb, rc)
+        # execute the timer delay
     return rc
 
 # TODO: This function requires that the server execute the
@@ -1672,15 +1812,12 @@ cdef int publish(const pmix_proc_t *proc,
                  pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
     keys = pmixservermodule.keys()
     if 'publish' in keys:
-        args = {}
         myprocs = []
         ilist = []
         pmix_unload_procs(proc, 1, myprocs)
-        args['proc'] = myprocs[0]
         if NULL != info:
             pmix_unload_info(info, ninfo, ilist)
-            args['info'] = ilist
-        rc = pmixservermodule['publish'](args)
+        rc = pmixservermodule['publish'](myprocs[0], ilist)
     else:
         return PMIX_ERR_NOT_SUPPORTED
     # we cannot execute a callback function here as
@@ -1707,7 +1844,7 @@ cdef int lookup(const pmix_proc_t *proc, char **keys,
                 pmix_lookup_cbfunc_t cbfunc, void *cbdata) with gil:
     srvkeys = pmixservermodule.keys()
     if 'lookup' in srvkeys:
-        args = {}
+        pdata   = []
         myprocs = []
         ilist = []
         pykeys = []
@@ -1715,26 +1852,44 @@ cdef int lookup(const pmix_proc_t *proc, char **keys,
         while NULL != keys[n]:
             pykeys.append(keys[n])
             n += 1
-        args['keys'] = pykeys
         pmix_unload_procs(proc, 1, myprocs)
-        args['proc'] = myprocs[0]
         if NULL != info:
             pmix_unload_info(info, ninfo, ilist)
-            args['info'] = ilist
-        rc = pmixservermodule['lookup'](args)
+        pdata, rc = pmixservermodule['lookup'](myprocs[0], pykeys, ilist)
     else:
         return PMIX_ERR_NOT_SUPPORTED
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. Likewise, the
-    # Python function we called can't do it as it
-    # would require them to call a C-function. So
-    # if they succeeded in processing this request,
-    # we return a PMIX_OPERATION_SUCCEEDED status
-    # that let's the underlying PMIx library know
-    # the situation so it can generate its own
-    # callback
-    if PMIX_SUCCESS == rc:
-        rc = PMIX_OPERATION_SUCCEEDED
+
+    # convert the list of dictionaries to array of
+    # pmix_pdata_t structs
+    cdef pmix_pdata_t *pd;
+    cdef size_t ndata;
+    if pdata is not None:
+        ndata = len(pdata)
+        if 0 < ndata:
+            pd = <pmix_pdata_t*> PyMem_Malloc(ndata * sizeof(pmix_pdata_t))
+            if not pdata:
+                return PMIX_ERR_NOMEM
+            rc = pmix_load_pdata(myprocs[0], pd, pdata)
+            if PMIX_SUCCESS != rc:
+                pmix_free_pdata(pd, ndata)
+                return rc
+        else:
+            pd = NULL
+    else:
+        pd = NULL
+
+    if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
+        print("CREATE CADDY")
+        mycaddy = <pmix_pyshift_lookup_t*> PyMem_Malloc(sizeof(pmix_pyshift_lookup_t))
+        mycaddy.op = strdup("lookup")
+        mycaddy.pdata = pd
+        mycaddy.ndata = ndata
+        mycaddy.lookup = cbfunc
+        mycaddy.cbdata = cbdata
+        cb = PyCapsule_New(mycaddy, "lookup", NULL)
+        print("EXECUTE CALLBACK")
+        rc = PMIX_SUCCESS
+        threading.Timer(1, lookup_cb, [cb, rc]).start()
     return rc
 
 cdef int unpublish(const pmix_proc_t *proc, char **keys,
@@ -1742,19 +1897,15 @@ cdef int unpublish(const pmix_proc_t *proc, char **keys,
                    pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
     srvkeys = pmixservermodule.keys()
     if 'unpublish' in srvkeys:
-        args = {}
         myprocs = []
         ilist = []
         pykeys = []
         if NULL != keys:
-            pmix_load_argv(keys, pykeys)
-            args['keys'] = pykeys
+            pmix_unload_argv(keys, pykeys)
         pmix_unload_procs(proc, 1, myprocs)
-        args['proc'] = myprocs[0]
         if NULL != info:
             pmix_unload_info(info, ninfo, ilist)
-            args['info'] = ilist
-        rc = pmixservermodule['unpublish'](args)
+        rc = pmixservermodule['unpublish'](myprocs[0], pykeys, ilist)
     else:
         return PMIX_ERR_NOT_SUPPORTED
     # we cannot execute a callback function here as

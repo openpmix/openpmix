@@ -55,11 +55,18 @@ class myLock(threading.Event):
         for x in self.info:
             info.append(x)
 
-ctypedef struct pmix_pyshift_t:
+ctypedef struct pmix_pyshift_fence_t:
     char *op
     pmix_byte_object_t bo
     pmix_modex_cbfunc_t modex
+    void *cbdata
 
+ctypedef struct pmix_pyshift_lookup_t:
+    char *op
+    pmix_pdata_t *pdata
+    size_t ndata
+    pmix_lookup_cbfunc_t lookup
+    void *cbdata
 
 cdef void pmix_unload_argv(char **keys, argv:list):
     n = 0
@@ -68,12 +75,13 @@ cdef void pmix_unload_argv(char **keys, argv:list):
         argv.append(mykey)
         n += 1
 
-cdef void pmix_load_argv(char **keys, argv:list):
+cdef int pmix_load_argv(char **keys, argv:list):
     n = 0
     for a in argv:
         pya = str(a).encode('ascii')
         keys[n] = strdup(pya)
         n += 1
+    return PMIX_SUCCESS
 
 # TODO: implement support for PMIX_BOOL and PMIX_BYTE
 cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
@@ -792,6 +800,72 @@ cdef void pmix_free_info(pmix_info_t *array, size_t sz):
     n = 0
     while n < sz:
         pmix_destruct_info(&array[n])
+        n += 1
+    PyMem_Free(array)
+
+# Convert a dictionary of key-value pairs into an
+# array of pmix_pdata_t structs
+#
+# @array [INPUT]
+#        - malloc'd array of pmix_pdata_t structs
+#
+# @pdata [INPUT]
+#          - a list of dictionaries, where each
+#            dictionary has a key, value, val_type,
+#            and proc keys
+# @proc [INPUT]
+#          - a dictionary with nspace, rank as keys
+cdef int pmix_load_pdata(proc:dict, pmix_pdata_t *array, data:list):
+    n = 0
+    for d in data:
+        pykey = str(d['key'])
+        pmix_copy_key(array[n].key, pykey)
+        val = {'value':d['value'], 'val_type':d['val_type']}
+        rc = pmix_load_value(&array[n].value, val)
+        array[n].proc.rank = proc['rank']
+        pmix_copy_nspace(array[n].proc.nspace, proc['nspace'])
+        if PMIX_SUCCESS != rc:
+            return rc
+        n += 1
+    return PMIX_SUCCESS
+
+cdef int pmix_unload_pdata(const pmix_pdata_t *pdata, size_t npdata, ilist:list):
+    cdef char* kystr
+    cdef size_t n = 0
+    while n < npdata:
+        print("UNLOADING INFO ", pdata[n].key, " TYPE ", 
+                PMIx_Data_type_string(pdata[n].value.type))
+        val = pmix_unload_value(&pdata[n].value)
+        if val['val_type'] == PMIX_UNDEF:
+            return PMIX_ERR_NOT_SUPPORTED
+        d     = {}
+        kystr = strdup(pdata[n].key)
+        pykey = kystr.decode("ascii")
+        free(kystr)
+        d['key']      = pykey
+        myns = str(pdata[n].proc.nspace)
+        proc = {'nspace':myns, 'rank':pdata[n].proc.rank}
+        d['proc']     = proc
+        d['value']    = val['value']
+        d['val_type'] = val['val_type']
+        ilist.append(d)
+        n += 1
+    return PMIX_SUCCESS
+
+cdef void pmix_destruct_pdata(pmix_pdata_t *pdata):
+    pmix_destruct_value(&pdata[0].value)
+
+# Free a malloc'd array of pmix_pdata_t structures
+#
+# @array [INPUT]
+#        - array of pmix_pdata_t to be free'd
+#
+# @sz [INPUT]
+#     - number of elements in array
+cdef void pmix_free_pdata(pmix_pdata_t *array, size_t sz):
+    n = 0
+    while n < sz:
+        pmix_destruct_pdata(&array[n])
         n += 1
     PyMem_Free(array)
 
