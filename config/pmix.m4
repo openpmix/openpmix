@@ -729,6 +729,9 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     LDFLAGS="$LDFLAGS $THREAD_LDFLAGS"
     LIBS="$LIBS $THREAD_LIBS"
 
+    PMIX_WRAPPER_FLAGS_ADD([CFLAGS], [$THREAD_CFLAGS])
+    PMIX_WRAPPER_FLAGS_ADD([LDFLAGS], [$THREAD_LDFLAGS])
+
     #
     # What is the local equivalent of "ln -s"
     #
@@ -851,6 +854,18 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         CPPFLAGS="-I$PMIX_top_srcdir -I$PMIX_top_srcdir/src -I$PMIX_top_srcdir/include $CPPFLAGS"
     fi
 
+    ############################################################################
+    # final wrapper compiler config
+    ############################################################################
+    opal_show_subtitle "Wrapper compiler final setup"
+
+    # The PMIx wrapper script (i.e., not the C-compiled
+    # executables) need perl.
+    AC_PATH_PROG(PERL, perl, perl)
+
+    PMIX_SETUP_WRAPPER_FINAL
+
+    ############################################################################
     # pmixdatadir, pmixlibdir, and pmixinclude are essentially the same as
     # pkg*dir, but will always be */pmix.
     pmixdatadir='${datadir}/pmix'
@@ -913,6 +928,9 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         pmix_config_prefix[src/tools/plookup/Makefile]
         pmix_config_prefix[src/tools/pps/Makefile]
         pmix_config_prefix[src/tools/pattrs/Makefile]
+        pmix_config_prefix[src/tools/wrapper/Makefile]
+        pmix_config_prefix[src/tools/wrapper/pmixcc-wrapper-data.txt]
+        pmix_config_prefix[src/tools/wrapper/pmix.pc]
         )
 
     # publish any embedded flags so external wrappers can use them

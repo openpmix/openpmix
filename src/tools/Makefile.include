@@ -29,11 +29,13 @@ SUBDIRS += \
     tools/pmix_info \
     tools/plookup \
     tools/pps \
-    tools/pattrs
+    tools/pattrs \
+    tools/wrapper
 
 DIST_SUBDIRS += \
     tools/pevent \
     tools/pmix_info \
     tools/plookup \
     tools/pps \
-    tools/pattrs
+    tools/pattrs \
+    tools/wrapper

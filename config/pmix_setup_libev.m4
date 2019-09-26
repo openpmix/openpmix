@@ -72,12 +72,15 @@ AC_DEFUN([PMIX_LIBEV_CONFIG],[
            LIBS="$pmix_check_libev_save_LIBS"])
 
     AS_IF([test $pmix_libev_support -eq 1],
-          [LIBS="$LIBS $pmix_libev_LIBS"
+          [PMIX_FLAGS_APPEND_UNIQ(LIBS, $pmix_libev_LIBS)
+           PMIX_WRAPPER_FLAGS_ADD(LIBS, $pmix_libev_LIBS)
 
            AS_IF([test "$pmix_libev_standard_header_location" != "yes"],
-                 [CPPFLAGS="$CPPFLAGS $pmix_libev_CPPFLAGS"])
+                 [PMIX_FLAGS_APPEND_UNIQ(CPPFLAGS, $pmix_libev_CPPFLAGS)
+                  PMIX_WRAPPER_FLAGS_ADD(CPPFLAGS, $pmix_libev_CPPFLAGS)])
            AS_IF([test "$pmix_libev_standard_lib_location" != "yes"],
-                 [LDFLAGS="$LDFLAGS $pmix_libev_LDFLAGS"])])
+                 [PMIX_FLAGS_APPEND_UNIQ(LDFLAGS, $pmix_libevent_LDFLAGS)
+                  PMIX_WRAPPER_FLAGS_ADD(LDFLAGS, $pmix_libevent_LDFLAGS)])])
 
     AC_MSG_CHECKING([will libev support be built])
     if test $pmix_libev_support -eq 1; then
