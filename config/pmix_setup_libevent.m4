@@ -118,8 +118,11 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
 
         AS_IF([test "$pmix_event_defaults" = "no"],
               [PMIX_FLAGS_APPEND_UNIQ(CPPFLAGS, $pmix_libevent_CPPFLAGS)
-               PMIX_FLAGS_APPEND_UNIQ(LDFLAGS, $pmix_libevent_LDFLAGS)])
+               PMIX_WRAPPER_FLAGS_ADD(CPPFLAGS, $pmix_libevent_CPPFLAGS)
+               PMIX_FLAGS_APPEND_UNIQ(LDFLAGS, $pmix_libevent_LDFLAGS)
+               PMIX_WRAPPER_FLAGS_ADD(LDFLAGS, $pmix_libevent_LDFLAGS)])
         PMIX_FLAGS_APPEND_UNIQ(LIBS, $pmix_libevent_LIBS)
+        PMIX_WRAPPER_FLAGS_ADD(LIBS, $pmix_libevent_LIBS)
 
         if test $pmix_libevent_support -eq 1; then
             # Ensure that this libevent has the symbol

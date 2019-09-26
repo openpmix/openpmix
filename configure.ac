@@ -176,6 +176,7 @@ AS_IF([test ! -z "$enable_static" && test "$enable_static" = "yes"],
 
 AM_ENABLE_SHARED
 AM_DISABLE_STATIC
+PMIX_SETUP_WRAPPER_INIT
 
 # This did not exist pre AM 1.11.x (where x is somewhere >0 and <3),
 # but it is necessary in AM 1.12.x.

@@ -53,7 +53,8 @@ headers += \
         util/pif.h \
         util/parse_options.h \
         util/context_fns.h \
-        util/pmix_pty.h
+        util/pmix_pty.h \
+        util/few.h
 
 sources += \
         util/alfg.c \
@@ -80,7 +81,8 @@ sources += \
         util/pif.c \
         util/parse_options.c \
         util/context_fns.c \
-        util/pmix_pty.c
+        util/pmix_pty.c \
+        util/few.c
 
 libpmix_la_LIBADD += \
         util/keyval/libpmixutilkeyval.la

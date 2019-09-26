@@ -108,11 +108,14 @@ AC_DEFUN([_PMIX_HWLOC_EXTERNAL],[
                            [pmix_hwloc_support=0])
 
         AS_IF([test "$pmix_hwloc_standard_header_location" != "yes"],
-              [PMIX_FLAGS_APPEND_UNIQ(CPPFLAGS, $pmix_hwloc_CPPFLAGS)])
+              [PMIX_FLAGS_APPEND_UNIQ(CPPFLAGS, $pmix_hwloc_CPPFLAGS)
+               PMIX_WRAPPER_FLAGS_ADD(CPPFLAGS, $pmix_hwloc_CPPFLAGS)])
 
         AS_IF([test "$pmix_hwloc_standard_lib_location" != "yes"],
-              [PMIX_FLAGS_APPEND_UNIQ(LDFLAGS, $pmix_hwloc_LDFLAGS)])
+              [PMIX_FLAGS_APPEND_UNIQ(LDFLAGS, $pmix_hwloc_LDFLAGS)
+               PMIX_WRAPPER_FLAGS_ADD(LDFLAGS, $pmix_hwloc_LDFLAGS)])
         PMIX_FLAGS_APPEND_UNIQ(LIBS, $pmix_hwloc_LIBS)
+        PMIX_WRAPPER_FLAGS_ADD(LIBS, $pmix_hwloc_LIBS)
     fi
 
     if test ! -z "$with_hwloc" && test "$with_hwloc" != "no" && test "$pmix_hwloc_support" != "1"; then

@@ -98,6 +98,12 @@ src/tools/pmix_info/pmix_info
 src/tools/plookup/plookup
 src/tools/pps/pps
 src/tools/ptop/ptop
+src/tools/wrapper/generic_wrapper.1
+src/tools/wrapper/pmix.pc
+src/tools/wrapper/pmix_wrapper
+src/tools/wrapper/pmix_wrapper.1
+src/tools/wrapper/pmixcc-wrapper-data.txt
+src/tools/wrapper/pmixcc.1
 
 src/util/show_help_lex.c
 src/util/keyval/keyval_lex.c

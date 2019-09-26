@@ -16,7 +16,7 @@ dnl Copyright (c) 2012-2017 Los Alamos National Security, LLC. All rights
 dnl                         reserved.
 dnl Copyright (c) 2015-2019 Research Organization for Information Science
 dnl                         and Technology (RIST).  All rights reserved.
-dnl Copyright (c) 2018      Intel, Inc. All rights reserved.
+dnl Copyright (c) 2018-2019 Intel, Inc.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -134,6 +134,11 @@ AC_DEFUN([PMIX_SETUP_CC],[
     AC_REQUIRE([AM_PROG_CC_C_O])
 
     PMIX_VAR_SCOPE_PUSH([pmix_prog_cc_c11_helper__Thread_local_available pmix_prog_cc_c11_helper_atomic_var_available pmix_prog_cc_c11_helper__Atomic_available pmix_prog_cc_c11_helper__static_assert_available pmix_prog_cc_c11_helper__Generic_available pmix_prog_cc__thread_available pmix_prog_cc_c11_helper_atomic_fetch_xor_explicit_available])
+
+    # AC_PROG_CC_C99 changes CC (instead of CFLAGS) so save CC (without c99
+    # flags) for use in our wrappers.
+    WRAPPER_CC="$CC"
+    AC_SUBST([WRAPPER_CC])
 
     PMIX_PROG_CC_C11
 
