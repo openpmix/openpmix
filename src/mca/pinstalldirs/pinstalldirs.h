@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2006-2015 Los Alamos National Security, LLC.  All rights
  *                         reserved.
- * Copyright (c) 2016-2017 Intel, Inc. All rights reserved.
+ * Copyright (c) 2016-2019 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -59,7 +59,7 @@ PMIX_EXPORT extern pmix_pinstall_dirs_t pmix_pinstall_dirs;
 /**
  * Expand out path variables (such as ${prefix}) in the input string
  * using the current pmix_pinstall_dirs structure */
-char * pmix_pinstall_dirs_expand(const char* input);
+PMIX_EXPORT char * pmix_pinstall_dirs_expand(const char* input);
 
 
 /**

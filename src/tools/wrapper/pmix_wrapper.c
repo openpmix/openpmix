@@ -43,6 +43,7 @@
 #endif  /* HAVE_SYS_WAIT_H */
 #include <string.h>
 
+#include "src/mca/pinstalldirs/pinstalldirs.h"
 #include "src/mca/pinstalldirs/base/base.h"
 #include "src/runtime/pmix_rte.h"
 #include "pmix_common.h"
