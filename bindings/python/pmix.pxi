@@ -766,6 +766,40 @@ cdef int pmix_load_info(pmix_info_t *array, dicts:list):
         n += 1
     return PMIX_SUCCESS
 
+# Allocate memory and load pmix info structs
+#
+# @array [INPUT]
+#          - array of pmix_info_t structs
+#
+# @ninfo [INPUT]
+#          - length of the list of dictionaries
+#
+# @dicts [INPUT]
+#          - a list of dictionaries, where each
+#            dictionary has a key, value, and val_type
+#            defined as such:
+#            [{key:y, value:val, val_type:ty}, … ]
+#
+cdef int pmix_alloc_info(pmix_info_t **info_ptr, size_t *ninfo, dicts:list):
+    # Convert any provided dictionary to an array of pmix_info_t
+    if dicts is not None:
+        ninfo[0] = len(dicts)
+        if 0 < ninfo[0]:
+            info_ptr[0] = <pmix_info_t*> PyMem_Malloc(ninfo[0] * sizeof(pmix_info_t))
+            if not info_ptr[0]:
+                return PMIX_ERR_NOMEM
+            rc = pmix_load_info(info_ptr[0], dicts)
+            if PMIX_SUCCESS != rc:
+                pmix_free_info(info_ptr[0], ninfo[0])
+                return rc
+        else:
+            info_ptr[0] = NULL
+            ninfo[0] = 0
+    else:
+        info_ptr[0] = NULL
+        ninfo[0] = 0
+    return PMIX_SUCCESS
+
 cdef int pmix_unload_info(const pmix_info_t *info, size_t ninfo, ilist:list):
     cdef char* kystr
     cdef size_t n = 0
