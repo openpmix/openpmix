@@ -111,23 +111,14 @@ cdef class PMIxClient:
     #            [{key:y, value:val, val_type:ty}, … ]
     #
     def init(self, dicts:list):
-        cdef pmix_info_t *info
         cdef size_t klen
         global myname
-        # Convert any provided dictionary to an array of pmix_info_t
-        if dicts is not None:
-            klen = len(dicts)
-            if 0 < klen:
-                info = <pmix_info_t*> PyMem_Malloc(klen * sizeof(pmix_info_t))
-                if not info:
-                    return PMIX_ERR_NOMEM
-                pmix_load_info(info, dicts)
-            else:
-                info = NULL
-                klen = 0
-        else:
-            info = NULL
-            klen = 0
+        cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
+
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &klen, dicts)
         rc = PMIx_Init(&self.myproc, info, klen)
         if 0 < klen:
             pmix_free_info(info, klen)
@@ -138,21 +129,13 @@ cdef class PMIxClient:
 
     # Finalize the client library
     def finalize(self, dicts:list):
-        cdef pmix_info_t *info
         cdef size_t klen
-        if dicts is not None:
-            klen = len(dicts)
-            if 0 < klen:
-                info = <pmix_info_t*> PyMem_Malloc(klen * sizeof(pmix_info_t))
-                if not info:
-                    return PMIX_ERR_NOMEM
-                pmix_load_info(info, dicts)
-            else:
-                info = NULL
-                klen = 0
-        else:
-            info = NULL
-            klen = 0
+        cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
+
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &klen, dicts)
         rc = PMIx_Finalize(info, klen)
         if 0 < klen:
             pmix_free_info(info, klen)
@@ -242,6 +225,7 @@ cdef class PMIxClient:
     def fence(self, peers:list, dicts:list):
         cdef pmix_proc_t *procs
         cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
         cdef size_t ninfo, nprocs
         nprocs = 0
         ninfo = 0
@@ -270,23 +254,15 @@ cdef class PMIxClient:
                 return PMIX_ERR_NOMEM
             pmix_copy_nspace(procs[0].nspace, self.myproc.nspace)
             procs[0].rank = PMIX_RANK_WILDCARD
-        # convert the list of dictionaries to array of
-        # pmix_info_t structs
-        if dicts is not None:
-            ninfo = len(dicts)
-            if 0 < ninfo:
-                info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
-                if not info:
-                    return PMIX_ERR_NOMEM
-                rc = pmix_load_info(info, dicts)
-                if PMIX_SUCCESS != rc:
-                    pmix_free_procs(procs, nprocs)
-                    pmix_free_info(info, ninfo)
-                    return rc
-            else:
-                info = NULL
-        else:
-            info = NULL
+
+
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &ninfo, dicts)
+        if PMIX_SUCCESS != rc:
+            pmix_free_procs(procs, nprocs)
+            return rc
+
         # pass it into the fence API
         print("FENCE", nprocs, ninfo)
         rc = PMIx_Fence(procs, nprocs, info, ninfo)
@@ -311,6 +287,7 @@ cdef class PMIxClient:
     #            [{key:y, value:val, val_type:ty}, … ]
     def get(self, proc:dict, ky, dicts:list):
         cdef pmix_info_t *info;
+        cdef pmix_info_t **info_ptr;
         cdef size_t ninfo;
         cdef pmix_key_t key;
         cdef pmix_value_t *val_ptr;
@@ -330,22 +307,9 @@ cdef class PMIxClient:
         # convert key,val to pmix_value_t and pmix_key_t
         pmix_copy_key(key, ky)
 
-        # convert the list of dictionaries to array of
-        # pmix_info_t structs
-        if dicts is not None:
-            ninfo = len(dicts)
-            if 0 < ninfo:
-                info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
-                if not info:
-                    return PMIX_ERR_NOMEM
-                rc = pmix_load_info(info, dicts)
-                if PMIX_SUCCESS != rc:
-                    pmix_free_info(info, ninfo)
-                    return rc
-            else:
-                info = NULL
-        else:
-            info = NULL
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &ninfo, dicts)
 
         # pass it into the get API
         print("GET")
@@ -365,25 +329,13 @@ cdef class PMIxClient:
     #            can be defined as keys
     def publish(self, dicts:list):
         cdef pmix_info_t *info;
+        cdef pmix_info_t **info_ptr;
         cdef size_t ninfo;
         ninfo = 0
 
-        # convert the list of dictionaries to array of
-        # pmix_info_t structs
-        if dicts is not None:
-            ninfo = len(dicts)
-            if 0 < ninfo:
-                info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
-                if not info:
-                    return PMIX_ERR_NOMEM
-                rc = pmix_load_info(info, dicts)
-                if PMIX_SUCCESS != rc:
-                    pmix_free_info(info, ninfo)
-                    return rc
-            else:
-                info = NULL
-        else:
-            info = NULL
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &ninfo, dicts)
 
         # pass it into the publish API
         print("PUBLISH")
@@ -402,10 +354,11 @@ cdef class PMIxClient:
     #          - list of python info key strings
     def unpublish(self, pykeys:list, dicts:list):
         cdef pmix_info_t *info;
+        cdef pmix_info_t **info_ptr;
         cdef size_t ninfo;
         cdef size_t nstrings;
         cdef char **keys;
-        ninfo = 0
+        ninfo    = 0
         nstrings = 0
 
         # load pykeys into char **keys
@@ -427,22 +380,9 @@ cdef class PMIxClient:
         else:
             keys = NULL
 
-        # convert the list of dictionaries to array of
-        # pmix_info_t structs
-        if dicts is not None:
-            ninfo = len(dicts)
-            if 0 < ninfo:
-                info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
-                if not info:
-                    return PMIX_ERR_NOMEM
-                rc = pmix_load_info(info, dicts)
-                if PMIX_SUCCESS != rc:
-                    pmix_free_info(info, ninfo)
-                    return rc
-            else:
-                info = NULL
-        else:
-            info = NULL
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &ninfo, dicts)
 
         # pass it into the unpublish API
         print("UNPUBLISH")
@@ -465,28 +405,16 @@ cdef class PMIxClient:
     def lookup(self, data:list, dicts:list):
         cdef pmix_pdata_t *pdata;
         cdef pmix_info_t  *info;
+        cdef pmix_info_t  **info_ptr;
         cdef size_t npdata;
         cdef size_t ninfo;
 
         npdata  = 0
         ninfo   = 0
 
-        # convert the list of dictionaries to array of
-        # pmix_info_t structs
-        if dicts is not None:
-            ninfo = len(dicts)
-            if 0 < ninfo:
-                info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
-                if not info:
-                    return PMIX_ERR_NOMEM
-                rc = pmix_load_info(info, dicts)
-                if PMIX_SUCCESS != rc:
-                    pmix_free_info(info, ninfo)
-                    return rc
-            else:
-                info = NULL
-        else:
-            info = NULL
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &ninfo, dicts)
 
         # convert the list of dictionaries to array of
         # pmix_pdata_t structs
@@ -526,6 +454,7 @@ cdef class PMIxClient:
     #
     def spawn(self, jobInfo:list, pyapps:list):
         cdef pmix_info_t *jinfo;
+        cdef pmix_info_t **jinfo_ptr;
         cdef pmix_app_t *apps;
         cdef size_t ninfo
         cdef size_t napps;
@@ -534,45 +463,34 @@ cdef class PMIxClient:
         # protect against bad input
         if pyapps is None:
             return PMIX_ERR_BAD_PARAM, None
-        # convert the list of dictionaries to array of
-        # pmix_info_t structs
-        if jobInfo is not None:
-            ninfo = len(jobInfo)
-            if 0 < ninfo:
-                info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
-                if not info:
-                    return PMIX_ERR_NOMEM, None
-                rc = pmix_load_info(info, jobInfo)
-                if PMIX_SUCCESS != rc:
-                    pmix_free_info(info, ninfo)
-                    return rc, None
-            else:
-                info = NULL
-        else:
-            info = NULL
+
+        # allocate and load pmix info structs from python list of dictionaries
+        jinfo_ptr = &jinfo
+        rc = pmix_alloc_info(jinfo_ptr, &ninfo, jobInfo)
 
         # convert the list of apps to an array of pmix_app_t
         napps = len(pyapps)
         apps = <pmix_app_t*> PyMem_Malloc(napps * sizeof(pmix_app_t))
         if not napps:
-            pmix_free_info(info, ninfo)
+            pmix_free_info(jinfo, ninfo)
             return PMIX_ERR_NOMEM, None
         rc = pmix_load_apps(apps, pyapps)
         if PMIX_SUCCESS != rc:
             pmix_free_apps(apps, napps)
             if 0 < ninfo:
-                pmix_free_info(info, ninfo)
+                pmix_free_info(jinfo, ninfo)
             return rc, None
-        rc = PMIx_Spawn(info, ninfo, apps, napps, nspace)
+        rc = PMIx_Spawn(jinfo, ninfo, apps, napps, nspace)
         pmix_free_apps(apps, napps)
         if 0 < ninfo:
-            pmix_free_info(info, ninfo)
+            pmix_free_info(jinfo, ninfo)
         pyns = nspace
         return rc, pyns.decode('ascii')
 
     def connect(self, peers:list, pyinfo:list):
         cdef pmix_proc_t *procs
         cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
         cdef size_t ninfo
         cdef size_t nprocs
         nprocs = 0
@@ -603,22 +521,11 @@ cdef class PMIxClient:
                 return PMIX_ERR_NOMEM
             pmix_copy_nspace(procs[0].nspace, self.myproc.nspace)
             procs[0].rank = PMIX_RANK_WILDCARD
-        # convert the list of dictionaries to array of
-        # pmix_info_t structs
-        if pyinfo is not None:
-            ninfo = len(pyinfo)
-            if 0 < ninfo:
-                info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
-                if not info:
-                    return PMIX_ERR_NOMEM
-                rc = pmix_load_info(info, pyinfo)
-                if PMIX_SUCCESS != rc:
-                    pmix_free_info(info, ninfo)
-                    return rc
-            else:
-                info = NULL
-        else:
-            info = NULL
+
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
+
         # Call the library
         rc = PMIx_Connect(procs, nprocs, info, ninfo)
         if 0 < nprocs:
@@ -630,6 +537,7 @@ cdef class PMIxClient:
     def disconnect(self, peers:list, pyinfo:list):
         cdef pmix_proc_t *procs
         cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
         cdef size_t ninfo
         cdef size_t nprocs
         nprocs = 0
@@ -660,22 +568,11 @@ cdef class PMIxClient:
                 return PMIX_ERR_NOMEM
             pmix_copy_nspace(procs[0].nspace, self.myproc.nspace)
             procs[0].rank = PMIX_RANK_WILDCARD
-        # convert the list of dictionaries to array of
-        # pmix_info_t structs
-        if pyinfo is not None:
-            ninfo = len(pyinfo)
-            if 0 < ninfo:
-                info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
-                if not info:
-                    return PMIX_ERR_NOMEM
-                rc = pmix_load_info(info, pyinfo)
-                if PMIX_SUCCESS != rc:
-                    pmix_free_info(info, ninfo)
-                    return rc
-            else:
-                info = NULL
-        else:
-            info = NULL
+
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
+
         # Call the library
         rc = PMIx_Disconnect(procs, nprocs, info, ninfo)
         if 0 < nprocs:
@@ -727,41 +624,18 @@ cdef class PMIxClient:
 
     def log(self, pydata:list, pydirs:list):
         cdef pmix_info_t *data
+        cdef pmix_info_t **data_ptr
         cdef pmix_info_t *directives
+        cdef pmix_info_t **directives_ptr
         cdef size_t ndata
         cdef size_t ndirs
 
-        # must at least have some data to log
-        if pydata is None:
-            return PMIX_ERR_BAD_PARAM
-        # convert the data
-        ndata = len(pydata)
-        if 0 < ndata:
-            data = <pmix_info_t*> PyMem_Malloc(ndata * sizeof(pmix_info_t))
-            if not data:
-                return PMIX_ERR_NOMEM
-            rc = pmix_load_info(data, pydata)
-            if PMIX_SUCCESS != rc:
-                pmix_free_info(data, ndata)
-                return rc
-        else:
-            data = NULL
-        # convert any directives
-        if pydirs is not None:
-            ndirs = len(pydirs)
-            if 0 < ndirs:
-                directives = <pmix_info_t*> PyMem_Malloc(ndirs * sizeof(pmix_info_t))
-                if not directives:
-                    return PMIX_ERR_NOMEM
-                rc = pmix_load_info(directives, pydirs)
-                if PMIX_SUCCESS != rc:
-                    pmix_free_info(directives, ndirs)
-                    return rc
-            else:
-                directives = NULL
-        else:
-            directives = NULL
-            ndirs = 0
+        # allocate and load pmix info structs from python list of dictionaries
+        data_ptr = &data
+        directives_ptr = &directives
+        rc = pmix_alloc_info(data_ptr, &ndata, pydata)
+        rc = pmix_alloc_info(directives_ptr, &ndirs, pydirs)
+
         # call the API
         rc = PMIx_Log(data, ndata, directives, ndirs)
         pmix_free_info(data, ndata)
@@ -771,6 +645,7 @@ cdef class PMIxClient:
 
     def allocation_request(self, directive, pyinfo:list):
         cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
         cdef pmix_info_t *results
         cdef size_t ninfo
         cdef size_t nresults
@@ -778,22 +653,11 @@ cdef class PMIxClient:
         results = NULL
         nresults = 0
         pyres = []
-        # convert any info
-        if pyinfo is not None:
-            ninfo = len(pyinfo)
-            if 0 < ninfo:
-                info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
-                if not info:
-                    return PMIX_ERR_NOMEM, pyres
-                rc = pmix_load_info(info, pyinfo)
-                if PMIX_SUCCESS != rc:
-                    pmix_free_info(info, ninfo)
-                    return rc, pyres
-            else:
-                info = NULL
-        else:
-            info = NULL
-            ninfo = 0
+
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
+
         # call the API
         rc = PMIx_Allocation_request(directive, info, ninfo, &results, &nresults)
         if 0 < ninfo:
@@ -807,6 +671,7 @@ cdef class PMIxClient:
     def job_control(self, pytargets:list, pydirs:list):
         cdef pmix_proc_t *targets
         cdef pmix_info_t *directives
+        cdef pmix_info_t **directives_ptr
         cdef pmix_info_t *results
         cdef size_t ntargets
         cdef size_t ndirs
@@ -840,26 +705,15 @@ cdef class PMIxClient:
                 return PMIX_ERR_NOMEM, pyres
             pmix_copy_nspace(targets[0].nspace, self.myproc.nspace)
             targets[0].rank = PMIX_RANK_WILDCARD
-        # convert any directives
-        if pydirs is not None:
-            ndirs = len(pydirs)
-            if 0 < ndirs:
-                directives = <pmix_info_t*> PyMem_Malloc(ndirs * sizeof(pmix_info_t))
-                if not directives:
-                    if 0 < ntargets:
-                        pmix_free_procs(targets, ntargets)
-                    return PMIX_ERR_NOMEM, pyres
-                rc = pmix_load_info(directives, pydirs)
-                if PMIX_SUCCESS != rc:
-                    pmix_free_info(directives, ndirs)
-                    if 0 < ntargets:
-                        pmix_free_procs(targets, ntargets)
-                    return rc, pyres
-            else:
-                directives = NULL
-        else:
-            directives = NULL
-            ndirs = 0
+
+        # allocate and load pmix info structs from python list of dictionaries
+        directives_ptr = &directives
+        rc = pmix_alloc_info(directives_ptr, &ndirs, pydirs)
+        if PMIX_SUCCESS != rc:
+            if 0 < ntargets:
+                pmix_free_procs(targets, ntargets)
+            return rc
+
         # call the API
         rc = PMIx_Job_control(targets, ntargets, directives, ndirs, &results, &nresults)
         if 0 < ndirs:
@@ -875,6 +729,7 @@ cdef class PMIxClient:
     def group_construct(self, group:str, peers:list, pyinfo:list):
         cdef pmix_proc_t *procs
         cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
         cdef pmix_info_t *results
         cdef size_t ninfo
         cdef size_t nprocs
@@ -901,20 +756,11 @@ cdef class PMIxClient:
                 return PMIX_ERR_NOMEM
             pmix_copy_nspace(procs[0].nspace, self.myproc.nspace)
             procs[0].rank = PMIX_RANK_WILDCARD
-        # convert the list of dictionaries to array of
-        # pmix_info_t structs
-        if pyinfo is not None:
-            ninfo = len(pyinfo)
-            info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
-            if not info:
-                return PMIX_ERR_NOMEM
-            rc = pmix_load_info(info, pyinfo)
-            if PMIX_SUCCESS != rc:
-                pmix_free_info(info, ninfo)
-                return rc
-        else:
-            info = NULL
-            ninfo = 0
+
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
+
         # Call the library
         rc = PMIx_Group_construct(pygrp, procs, nprocs, info, ninfo, &results, &nresults)
         if 0 < nprocs:
@@ -931,6 +777,7 @@ cdef class PMIxClient:
     def group_invite(self, group:str, peers:list, pyinfo:list):
         cdef pmix_proc_t *procs
         cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
         cdef pmix_info_t *results
         cdef size_t ninfo
         cdef size_t nprocs
@@ -957,20 +804,11 @@ cdef class PMIxClient:
                 return PMIX_ERR_NOMEM
             pmix_copy_nspace(procs[0].nspace, self.myproc.nspace)
             procs[0].rank = PMIX_RANK_WILDCARD
-        # convert the list of dictionaries to array of
-        # pmix_info_t structs
-        if pyinfo is not None:
-            ninfo = len(pyinfo)
-            info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
-            if not info:
-                return PMIX_ERR_NOMEM
-            rc = pmix_load_info(info, pyinfo)
-            if PMIX_SUCCESS != rc:
-                pmix_free_info(info, ninfo)
-                return rc
-        else:
-            info = NULL
-            ninfo = 0
+
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
+
         # Call the library
         rc = PMIx_Group_invite(pygrp, procs, nprocs, info, ninfo, &results, &nresults)
         if 0 < nprocs:
@@ -987,6 +825,7 @@ cdef class PMIxClient:
     def group_join(self, group:str, leader:dict, opt:int, pyinfo:list):
         cdef pmix_proc_t proc
         cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
         cdef pmix_info_t *results
         cdef size_t ninfo
         cdef size_t nprocs
@@ -1002,20 +841,11 @@ cdef class PMIxClient:
         else:
             pmix_copy_nspace(proc.nspace, self.myproc.nspace)
             proc.rank = self.myproc.rank
-        # convert the list of dictionaries to array of
-        # pmix_info_t structs
-        if pyinfo is not None:
-            ninfo = len(pyinfo)
-            info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
-            if not info:
-                return PMIX_ERR_NOMEM
-            rc = pmix_load_info(info, pyinfo)
-            if PMIX_SUCCESS != rc:
-                pmix_free_info(info, ninfo)
-                return rc
-        else:
-            info = NULL
-            ninfo = 0
+
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
+
         # Call the library
         rc = PMIx_Group_join(pygrp, &proc, opt, info, ninfo, &results, &nresults)
         if 0 < ninfo:
@@ -1029,25 +859,17 @@ cdef class PMIxClient:
 
     def group_leave(self, group:str, pyinfo:list):
         cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
         cdef size_t ninfo
         ninfo = 0
 
         # convert group name
         pygrp = group.encode('ascii')
-        # convert the list of dictionaries to array of
-        # pmix_info_t structs
-        if pyinfo is not None:
-            ninfo = len(pyinfo)
-            info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
-            if not info:
-                return PMIX_ERR_NOMEM
-            rc = pmix_load_info(info, pyinfo)
-            if PMIX_SUCCESS != rc:
-                pmix_free_info(info, ninfo)
-                return rc
-        else:
-            info = NULL
-            ninfo = 0
+
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
+
         # Call the library
         rc = PMIx_Group_leave(pygrp, info, ninfo)
         if 0 < ninfo:
@@ -1056,25 +878,17 @@ cdef class PMIxClient:
 
     def group_destruct(self, group:str, pyinfo:list):
         cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
         cdef size_t ninfo
         ninfo = 0
 
         # convert group name
         pygrp = group.encode('ascii')
-        # convert the list of dictionaries to array of
-        # pmix_info_t structs
-        if pyinfo is not None:
-            ninfo = len(pyinfo)
-            info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
-            if not info:
-                return PMIX_ERR_NOMEM
-            rc = pmix_load_info(info, pyinfo)
-            if PMIX_SUCCESS != rc:
-                pmix_free_info(info, ninfo)
-                return rc
-        else:
-            info = NULL
-            ninfo = 0
+
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
+
         # Call the library
         rc = PMIx_Group_destruct(pygrp, info, ninfo)
         if 0 < ninfo:
@@ -1085,6 +899,7 @@ cdef class PMIxClient:
         cdef pmix_status_t *codes
         cdef size_t ncodes
         cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
         cdef size_t ninfo
 
         # convert the codes to an array of ints
@@ -1100,19 +915,11 @@ cdef class PMIxClient:
         else:
             codes = NULL
             ncodes = 0
-        # convert the info
-        if pyinfo is not None:
-            ninfo = len(pyinfo)
-            info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
-            if not info:
-                return PMIX_ERR_NOMEM
-            rc = pmix_load_info(info, pyinfo)
-            if PMIX_SUCCESS != rc:
-                pmix_free_info(info, ninfo)
-                return rc
-        else:
-            info = NULL
-            ninfo = 0
+
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
+
         # pass our hdlr switchyard to the API
         rc = PMIx_Register_event_handler(codes, ncodes, info, ninfo, pyeventhandler, NULL, NULL)
         # cleanup
@@ -1134,25 +941,17 @@ cdef class PMIxClient:
     def notify_event(self, status, pysrc:dict, range, pyinfo:list):
         cdef pmix_proc_t proc
         cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
         cdef size_t ninfo
 
         # convert the proc
         pmix_copy_nspace(proc.nspace, pysrc['nspace'])
         proc.rank = pysrc['rank']
-        # convert the list of dictionaries to array of
-        # pmix_info_t structs
-        if pyinfo is not None:
-            ninfo = len(pyinfo)
-            info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
-            if not info:
-                return PMIX_ERR_NOMEM
-            rc = pmix_load_info(info, pyinfo)
-            if PMIX_SUCCESS != rc:
-                pmix_free_info(info, ninfo)
-                return rc
-        else:
-            info = NULL
-            ninfo = 0
+
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
+
         # call the library
         rc = PMIx_Notify_event(status, &proc, range, info, ninfo, NULL, NULL)
         if 0 < ninfo:
@@ -1294,6 +1093,7 @@ cdef class PMIxServer(PMIxClient):
     #            implementations
     def init(self, dicts:list, map:dict):
         cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
         cdef size_t sz
 
         if map is None or 0 == len(map):
@@ -1306,15 +1106,12 @@ cdef class PMIxServer(PMIxClient):
             except KeyError:
                 print("SERVER MODULE FUNCTION ", key, " IS NOT RECOGNIZED")
                 return PMIX_ERR_INIT
-        if dicts is not None:
-            # Convert any provided dictionary to an array of pmix_info_t
-            sz = len(dicts)
-            info = <pmix_info_t*> PyMem_Malloc(sz * sizeof(pmix_info_t))
-            if not info:
-                return PMIX_ERR_NOMEM
-            pmix_load_info(info, dicts)
+
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &sz, dicts)
+        if sz > 0:
             rc = PMIx_server_init(&self.myserver, info, sz)
-            pmix_free_info(info, sz)
         else:
             rc = PMIx_server_init(&self.myserver, NULL, 0)
         return rc
@@ -1339,18 +1136,18 @@ cdef class PMIxServer(PMIxClient):
     def register_nspace(self, ns, nlocalprocs, dicts:list):
         cdef pmix_nspace_t nspace
         cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
         cdef size_t sz
         global active
         # convert the args into the necessary C-arguments
         pmix_copy_nspace(nspace, ns)
         active.clear()
-        if dicts is not None:
-            # Convert any provided dictionary to an array of pmix_info_t
-            sz = len(dicts)
-            info = <pmix_info_t*> PyMem_Malloc(sz * sizeof(pmix_info_t))
-            if not info:
-                return PMIX_ERR_NOMEM
-            pmix_load_info(info, dicts)
+
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &sz, dicts)
+
+        if sz > 0:
             rc = PMIx_server_register_nspace(nspace, nlocalprocs, info, sz, pmix_opcbfunc, NULL)
         else:
             rc = PMIx_server_register_nspace(nspace, nlocalprocs, NULL, 0, pmix_opcbfunc, NULL)
@@ -1466,22 +1263,15 @@ cdef class PMIxServer(PMIxClient):
         global active
         cdef pmix_nspace_t nspace;
         cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
         cdef size_t sz
         dataout = []
         pmix_copy_nspace(nspace, ns)
-        if dicts is not None:
-            # Convert any provided dictionary to an array of pmix_info_t
-            kvkeys = []
-            for d in dicts:
-                kvkeys.append(d['key'])
-            sz = len(kvkeys)
-            info = <pmix_info_t*> PyMem_Malloc(sz * sizeof(pmix_info_t))
-            if not info:
-                return PMIX_ERR_NOMEM
-            pmix_load_info(info, dicts)
-        else:
-            info = NULL
-            sz = 0
+
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &sz, dicts)
+
         active.clear()
         rc = PMIx_server_setup_application(nspace, info, sz, setupapp_cbfunc, NULL);
         if PMIX_SUCCESS == rc:
@@ -1522,19 +1312,16 @@ cdef class PMIxServer(PMIxClient):
 
     def register_fabric(self, dicts:list):
         cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
         cdef size_t sz
         if 1 == self.fabric_set:
             return _PMIX_ERR_RESOURCE_BUSY
-        if dicts is not None:
-            # Convert any provided dictionary to an array of pmix_info_t
-            kvkeys = []
-            for d in dicts:
-                kvkeys.append(d['key'])
-            sz = len(kvkeys)
-            info = <pmix_info_t*> PyMem_Malloc(sz * sizeof(pmix_info_t))
-            if not info:
-                return PMIX_ERR_NOMEM
-            pmix_load_info(info, dicts)
+
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &sz, dicts)
+
+        if sz > 0:
             rc = PMIx_server_register_fabric(&self.fabric, info, sz)
             pmix_free_info(info, sz)
         else:
@@ -2435,14 +2222,14 @@ cdef class PMIxTool(PMIxServer):
     #            [{key:y, value:val, val_type:ty}, … ]
     def init(self, dicts:list):
         cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
         cdef size_t sz
-        if dicts is not None:
-            # Convert any provided dictionary to an array of pmix_info_t
-            sz = len(dicts)
-            info = <pmix_info_t*> PyMem_Malloc(sz * sizeof(pmix_info_t))
-            if not info:
-                return PMIX_ERR_NOMEM
-            pmix_load_info(info, dicts)
+        
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &sz, dicts)
+
+        if sz > 0:
             rc = PMIx_tool_init(&self.myproc, info, sz)
             pmix_free_info(info, sz)
         else:
@@ -2463,14 +2250,14 @@ cdef class PMIxTool(PMIxServer):
     #            [{key:y, value:val, val_type:ty}, … ]
     def connect_to_server(self, dicts:list):
         cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
         cdef size_t sz
-        if dicts is not None:
-            # Convert any provided dictionary to an array of pmix_info_t
-            sz = len(dicts)
-            info = <pmix_info_t*> PyMem_Malloc(sz * sizeof(pmix_info_t))
-            if not info:
-                return PMIX_ERR_NOMEM
-            pmix_load_info(info, dicts)
+
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &sz, dicts)
+
+        if sz > 0:
             rc = PMIx_tool_connect_to_server(&self.myproc, info, sz)
             pmix_free_info(info, sz)
         else:
