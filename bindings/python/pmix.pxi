@@ -903,6 +903,57 @@ cdef void pmix_free_pdata(pmix_pdata_t *array, size_t sz):
         n += 1
     PyMem_Free(array)
 
+# Convert a dictionary of key-value pairs into an
+# array of pmix_query_t structs
+#
+# @array [INPUT]
+#        - malloc'd array of pmix_query_t structs
+#
+# @pyq [INPUT]
+#          - a list of dictionaries, where each
+#            dictionary has a list of keys, and a
+#            list of qualifers
+#
+cdef int pmix_load_queries(pmix_query_t *array, pyq:list):
+    n = 0
+    for q in pyq:
+        nstrings = len(q['keys'])
+        if 0 < nstrings:
+            array[n].keys = <char **> PyMem_Malloc(nstrings * sizeof(char*))
+            if not array[n].keys:
+                return PMIX_ERR_NOMEM
+        # load keys from dictionary
+        n = 0
+        for k in q['keys']:
+            #keystr = str(k).encode('ascii')
+            array[n].keys[n] = strdup(k)
+            n += 1
+        array[n].nqual = len(q['qualifiers'])
+        rc = pmix_alloc_info(&(array[n].qualifiers), &(array[n].nqual), q['qualifiers'])
+        n += 1
+    if PMIX_SUCCESS != rc:
+        return rc
+    return PMIX_SUCCESS
+
+cdef int pmix_unload_queries(const pmix_query_t *queries, size_t nqueries, ilist:list):
+    cdef char* kystr
+    cdef size_t n = 0
+    keylist = []
+    qualist = []
+    query = {}
+    while n < nqueries:
+        n = 0
+        while NULL != queries.keys[n]:
+            mykey = str(queries.keys[n])
+            keylist.append(mykey)
+            n += 1
+        pmix_unload_info(queries[n].qualifiers, queries[n].nqual, qualist)
+        query['keys']       = keylist
+        query['qualifiers'] = qualist
+        ilist.append(query)
+        n += 1
+    return PMIX_SUCCESS
+
 # Convert a list of (nspace, rank) tuples into an
 # array of pmix_proc_t structs
 #

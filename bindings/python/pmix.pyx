@@ -3,12 +3,14 @@
 from libc.string cimport memset, strncpy, strcpy, strlen, strdup
 from libc.stdlib cimport malloc, free
 from libc.string cimport memcpy
+from libc.stdio cimport printf
 from ctypes import addressof, c_int
 from cython.operator import address
 import signal, time
 import threading
 import array
 from cpython.pycapsule cimport PyCapsule_New, PyCapsule_GetPointer
+from cpython.mem cimport PyMem_Malloc, PyMem_Realloc, PyMem_Free
 #import time
 from threading import Timer
 
@@ -367,13 +369,14 @@ cdef class PMIxClient:
             if 0 < nstrings:
                 keys = <char **> PyMem_Malloc(nstrings * sizeof(char*))
                 if not keys:
-                    PMIX_ERR_NOMEM
+                    return PMIX_ERR_NOMEM
             rc = pmix_load_argv(keys, pykeys)
             if PMIX_SUCCESS != rc:
                 n = 0
                 while keys != NULL:
                     PyMem_Free(keys[n])
                     n += 1
+                PyMem_Free(keys)
                 return rc
             else:
                 keys = NULL
@@ -617,10 +620,62 @@ cdef class PMIxClient:
             PyMem_Free(nodelist)
         return rc, pynodes
 
-    def query_info(self, pyq:list):
-        rc = PMIX_ERR_NOT_SUPPORTED
-        results = []
-        return rc, results
+    def query(self, pyq:list):
+        cdef char **keys
+        cdef pmix_query_t *queries
+        cdef size_t nqueries
+        cdef pmix_info_t *results
+        cdef size_t nresults
+        nqueries   = 0
+        nresults   = 0
+        info_ptr   = NULL
+        queries    = NULL
+
+        if pyq is not None:
+            nqueries = len(pyq)
+            if 0 < nqueries:
+                queries = <pmix_query_t*> PyMem_Malloc(nqueries * sizeof(pmix_query_t))
+                if not queries:
+                    return PMIX_ERR_NOMEM
+            rc = pmix_load_queries(queries, pyq)
+            print("RC LOAD QUERIES: ", self.error_string(rc))
+            if PMIX_SUCCESS != rc:
+                n = 0
+                while n < nqueries:
+                    pmix_free_info(queries[n].qualifiers, queries[n].nqual)
+                    n = 0
+                    while NULL != queries[n].keys[n]:
+                        PyMem_Free(queries[n].keys[n])
+                        n += 1
+                    PyMem_Free(queries[n].keys)
+                    n += 1
+                PyMem_Free(queries)
+                return rc
+        else:
+            queries  = NULL
+            nqueries = 0
+
+        # pass it into the query_info API
+        n = 0
+        pyresults = []
+        rc = PMIx_Query_info(queries, nqueries, &results, &nresults)
+        if PMIX_SUCCESS == rc:
+            rc = pmix_unload_queries(queries, nqueries,  pyresults)
+            # free results info structs
+            pmix_free_info(results, nresults)
+        # free memory for query structs
+        if 0 < nqueries:
+            n = 0
+            while n < nqueries:
+                pmix_free_info(queries[n].qualifiers, queries[n].nqual)
+                n = 0
+                while NULL != queries[n].keys[n]:
+                    PyMem_Free(queries[n].keys[n])
+                    n += 1
+                PyMem_Free(queries[n].keys)
+                n += 1
+            PyMem_Free(queries)
+        return rc, pyresults
 
     def log(self, pydata:list, pydirs:list):
         cdef pmix_info_t *data

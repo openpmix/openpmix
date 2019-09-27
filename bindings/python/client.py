@@ -51,6 +51,11 @@ def main():
     info = []
     rc = foo.unpublish(pykeys, info)
     print("unpublish result: ", foo.error_string(rc))
+    print("QUERY INFO")
+    pyq = [{'keys':[PMIX_QUERY_PSET_NAMES], 'qualifiers':[]}]
+    rc, pyresults = foo.query(pyq)
+    print("query info result: ", foo.error_string(rc))
+    print("pyresults: ", pyresults)
     # finalize
     info = []
     foo.finalize(info)
