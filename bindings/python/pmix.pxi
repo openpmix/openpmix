@@ -68,19 +68,29 @@ ctypedef struct pmix_pyshift_lookup_t:
     pmix_lookup_cbfunc_t lookup
     void *cbdata
 
+ctypedef struct pmix_pyshift_query_t:
+    char *op
+    pmix_info_t *info
+    size_t nqueries
+    pmix_info_cbfunc_t query
+    void *cbdata
+
 cdef void pmix_unload_argv(char **keys, argv:list):
     n = 0
     while NULL != keys[n]:
-        mykey = str(keys[n])
+        mykey = keys[n].decode('ascii')
         argv.append(mykey)
         n += 1
 
 cdef int pmix_load_argv(char **keys, argv:list):
     n = 0
     for a in argv:
-        pya = str(a).encode('ascii')
+        pya = a
+        if isinstance(a, str):
+            pya = a.encode('ascii')
         keys[n] = strdup(pya)
         n += 1
+    keys[n] = NULL
     return PMIX_SUCCESS
 
 # TODO: implement support for PMIX_BOOL and PMIX_BYTE
@@ -766,40 +776,6 @@ cdef int pmix_load_info(pmix_info_t *array, dicts:list):
         n += 1
     return PMIX_SUCCESS
 
-# Allocate memory and load pmix info structs
-#
-# @array [INPUT]
-#          - array of pmix_info_t structs
-#
-# @ninfo [INPUT]
-#          - length of the list of dictionaries
-#
-# @dicts [INPUT]
-#          - a list of dictionaries, where each
-#            dictionary has a key, value, and val_type
-#            defined as such:
-#            [{key:y, value:val, val_type:ty}, … ]
-#
-cdef int pmix_alloc_info(pmix_info_t **info_ptr, size_t *ninfo, dicts:list):
-    # Convert any provided dictionary to an array of pmix_info_t
-    if dicts is not None:
-        ninfo[0] = len(dicts)
-        if 0 < ninfo[0]:
-            info_ptr[0] = <pmix_info_t*> PyMem_Malloc(ninfo[0] * sizeof(pmix_info_t))
-            if not info_ptr[0]:
-                return PMIX_ERR_NOMEM
-            rc = pmix_load_info(info_ptr[0], dicts)
-            if PMIX_SUCCESS != rc:
-                pmix_free_info(info_ptr[0], ninfo[0])
-                return rc
-        else:
-            info_ptr[0] = NULL
-            ninfo[0] = 0
-    else:
-        info_ptr[0] = NULL
-        ninfo[0] = 0
-    return PMIX_SUCCESS
-
 cdef int pmix_unload_info(const pmix_info_t *info, size_t ninfo, ilist:list):
     cdef char* kystr
     cdef size_t n = 0
@@ -867,7 +843,7 @@ cdef int pmix_unload_pdata(const pmix_pdata_t *pdata, size_t npdata, ilist:list)
     cdef char* kystr
     cdef size_t n = 0
     while n < npdata:
-        print("UNLOADING INFO ", pdata[n].key, " TYPE ", 
+        print("UNLOADING INFO ", pdata[n].key, " TYPE ",
                 PMIx_Data_type_string(pdata[n].value.type))
         val = pmix_unload_value(&pdata[n].value)
         if val['val_type'] == PMIX_UNDEF:
@@ -877,7 +853,7 @@ cdef int pmix_unload_pdata(const pmix_pdata_t *pdata, size_t npdata, ilist:list)
         pykey = kystr.decode("ascii")
         free(kystr)
         d['key']      = pykey
-        myns = str(pdata[n].proc.nspace)
+        myns = (pdata[n].proc.nspace).decode('ascii')
         proc = {'nspace':myns, 'rank':pdata[n].proc.rank}
         d['proc']     = proc
         d['value']    = val['value']
@@ -903,6 +879,44 @@ cdef void pmix_free_pdata(pmix_pdata_t *array, size_t sz):
         n += 1
     PyMem_Free(array)
 
+cdef int pmix_unload_queries(const pmix_query_t *queries, size_t nqueries, ilist:list):
+    cdef char* kystr
+    cdef size_t n = 0
+    keylist = []
+    qualist = []
+    query = {}
+    while n < nqueries:
+        rc = pmix_unload_argv(queries[n].keys, keylist)
+        pmix_unload_info(queries[n].qualifiers, queries[n].nqual, qualist)
+        query['keys']       = keylist
+        query['qualifiers'] = qualist
+        ilist.append(query)
+        n += 1
+    return PMIX_SUCCESS
+
+# Free a malloc'd array of pmix_query_t structs to free
+#
+# @array [INPUT]
+#        - pmix_query_t queries to be free'd
+#
+# @sz [INPUT]
+#     - number of elements in array
+cdef void pmix_free_queries(pmix_query_t *queries, size_t sz):
+    n = 0
+    print("in free LOOP")
+    while n < sz:
+        if queries[n].keys != NULL:
+            j = 0
+            while NULL != queries[n].keys[j]:
+                PyMem_Free(queries[n].keys[j])
+                j += 1
+            PyMem_Free(queries[n].keys)
+        if queries[n].qualifiers != NULL:
+            pmix_free_info(queries[n].qualifiers, queries[n].nqual)
+        n += 1
+    if queries != NULL:
+        PyMem_Free(queries)
+
 # Convert a list of (nspace, rank) tuples into an
 # array of pmix_proc_t structs
 #
@@ -923,7 +937,7 @@ cdef int pmix_load_procs(pmix_proc_t *proc, peers:list):
 cdef int pmix_unload_procs(const pmix_proc_t *procs, size_t nprocs, peers:list):
     n = 0
     while n < nprocs:
-        myns = str(procs[n].nspace)
+        myns = (procs[n].nspace).decode('ascii')
         peers.append({'nspace':myns, 'rank':procs[n].rank})
         n += 1
     return PMIX_SUCCESS

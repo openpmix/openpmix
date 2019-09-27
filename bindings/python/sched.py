@@ -77,6 +77,25 @@ def clientlookup(proc:dict, keys:list, directives:list):
     # return rc and pdata
     return ret_pdata, PMIX_SUCCESS
 
+def query(proc:dict, queries:list):
+    print("SERVER: QUERY")
+    # return a python info list of dictionaries
+    info = {}
+    results = []
+    # find key we passed in to client, and
+    # if it matches return fake PSET_NAME
+    # since RM actually assigns this, we
+    # just return arbitrary name if key is
+    # found
+    find_str = 'pmix.qry.psets'
+    for q in queries:
+        print("Q in server.py QUERY: ", q)
+        for k in q['keys']:
+            if k == find_str:
+                info = {'key': find_str, 'value': 'PSET_NAME', 'val_type': PMIX_STRING}
+                results.append(info)
+    return PMIX_ERR_NOT_FOUND, results
+
 def main():
     try:
         foo = PMIxServer()
@@ -90,7 +109,8 @@ def main():
            'fencenb': clientfence,
            'publish': clientpublish,
            'unpublish': clientunpublish,
-           'lookup': clientlookup}
+           'lookup': clientlookup,
+           'query': query}
     my_result = foo.init(args, map)
     print("Testing PMIx_Initialized")
     rc = foo.initialized()

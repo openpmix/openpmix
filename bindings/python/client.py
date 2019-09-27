@@ -12,6 +12,7 @@ def main():
     if 0 != my_result:
         print("FAILED TO INIT")
         exit(1)
+
     # try putting something
     print("PUT")
     rc = foo.put(PMIX_GLOBAL, "mykey", {'value':1, 'val_type':PMIX_INT32})
@@ -41,16 +42,20 @@ def main():
     rc = foo.publish(info)
     print("Publish result: ", foo.error_string(rc))
     rc = foo.fence(procs, info)
-    #time.sleep(2)
     pdata_key = [{'key':'ARBITRARY'}]
     rc,pdata = foo.lookup(pdata_key, None)
-    #rc = foo.lookup(pdata_key, None)
-    print("rc lookup: ", rc)
-    print("pdata lookup: ", pdata)
+    rc = foo.lookup(pdata_key, None)
+    print("lookup result: ", rc, pdata)
     pykeys = ['ARBITRARY']
     info = []
     rc = foo.unpublish(pykeys, info)
     print("unpublish result: ", foo.error_string(rc))
+    rc = foo.fence(procs, info)
+    print("QUERY INFO")
+    pyq = [{'keys':[PMIX_QUERY_PSET_NAMES], 'qualifiers':[]}]
+    rc, pyresults = foo.query(pyq)
+    print("query info result: ", foo.error_string(rc))
+    print("pyresults: ", pyresults)
     # finalize
     info = []
     foo.finalize(info)
