@@ -23,6 +23,8 @@
 
 helpers = setup.py pmix.pyx pmix.pxi construct.py
 
+EXTRA_DIST = $(helpers)
+
 if WANT_PYTHON_BINDINGS
 
 install-exec-local: $(helpers)
