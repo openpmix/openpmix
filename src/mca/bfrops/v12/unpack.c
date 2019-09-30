@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
- * Copyright (c) 2014-2017 Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
@@ -119,7 +119,6 @@ pmix_status_t pmix12_bfrop_unpack(pmix_buffer_t *buffer,
         *num_vals = 0;
         /* don't error log here as the user may be unpacking past
          * the end of the buffer, which isn't necessarily an error */
-        PMIX_ERROR_LOG(rc);
         return rc;
     }
 

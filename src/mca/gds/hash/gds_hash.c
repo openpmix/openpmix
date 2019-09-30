@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2018 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
@@ -1312,7 +1312,6 @@ static pmix_status_t hash_fetch(const pmix_proc_t *proc,
         val = NULL;
         rc = pmix_hash_fetch(ht, PMIX_RANK_WILDCARD, NULL, &val);
         if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
             if (NULL != val) {
                 PMIX_VALUE_RELEASE(val);
             }
