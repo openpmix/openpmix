@@ -3311,6 +3311,9 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
     pmix_server_caddy_t *cd;
     pmix_proc_t proc;
     pmix_buffer_t *reply;
+    pmix_cb_t cb;
+    pmix_info_t info;
+    pmix_kval_t *kv;
 
     /* retrieve the cmd */
     cnt = 1;
@@ -3333,6 +3336,74 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             return rc;
+        }
+        /* if this peer is using dstore, then we let the gds/hash
+         * component add node- and app-level info for the peer's
+         * own nspace so that functions like "resolve_peers" and
+         * "resolve_nodes" can properly respond */
+        if (0 != strcmp("hash", peer->nptr->compat.gds->name)) {
+            /* get the node info */
+            PMIX_CONSTRUCT(&cb, pmix_cb_t);
+            PMIX_LOAD_NSPACE(&proc, peer->info->pname.nspace);
+            proc.rank = PMIX_RANK_UNDEF;
+            cb.proc = &proc;
+            PMIX_INFO_LOAD(&info, PMIX_NODE_INFO, NULL, PMIX_BOOL);
+            cb.info = &info;
+            cb.ninfo = 1;
+            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                cb.proc = NULL;
+                cb.info = NULL;
+                cb.ninfo = 0;
+                PMIX_DESTRUCT(&cb);
+                return rc;
+            }
+            PMIX_LIST_FOREACH(kv, &cb.kvs, pmix_kval_t) {
+                PMIX_BFROPS_PACK(rc, peer, reply, kv, 1, PMIX_KVAL);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    cb.proc = NULL;
+                    cb.info = NULL;
+                    cb.ninfo = 0;
+                    PMIX_DESTRUCT(&cb);
+                    return rc;
+                }
+            }
+            cb.proc = NULL;
+            cb.info = NULL;
+            cb.ninfo = 0;
+            PMIX_DESTRUCT(&cb);
+            /* get the app info */
+            PMIX_CONSTRUCT(&cb, pmix_cb_t);
+            cb.proc = &proc;
+            PMIX_INFO_LOAD(&info, PMIX_APP_INFO, NULL, PMIX_BOOL);
+            cb.info = &info;
+            cb.ninfo = 1;
+            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                cb.proc = NULL;
+                cb.info = NULL;
+                cb.ninfo = 0;
+                PMIX_DESTRUCT(&cb);
+                return rc;
+            }
+            PMIX_LIST_FOREACH(kv, &cb.kvs, pmix_kval_t) {
+                PMIX_BFROPS_PACK(rc, peer, reply, kv, 1, PMIX_KVAL);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    cb.proc = NULL;
+                    cb.info = NULL;
+                    cb.ninfo = 0;
+                    PMIX_DESTRUCT(&cb);
+                    return rc;
+                }
+            }
+            cb.proc = NULL;
+            cb.info = NULL;
+            cb.ninfo = 0;
+            PMIX_DESTRUCT(&cb);
         }
         PMIX_SERVER_QUEUE_REPLY(rc, peer, tag, reply);
         if (PMIX_SUCCESS != rc) {
