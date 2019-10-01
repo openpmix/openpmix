@@ -93,7 +93,7 @@ static void _notification_eviction_cbfunc(struct pmix_hotel_t *hotel,
 }
 
 
-int pmix_rte_init(pmix_proc_type_t type,
+int pmix_rte_init(uint32_t type,
                   pmix_info_t info[], size_t ninfo,
                   pmix_ptl_cbfunc_t cbfunc)
 {
@@ -245,7 +245,10 @@ int pmix_rte_init(pmix_proc_type_t type,
         goto return_error;
     }
     /* whatever our declared proc type, we are definitely v3.0 */
-    pmix_globals.mypeer->proc_type = type | PMIX_PROC_V3;
+    PMIX_SET_PEER_TYPE(pmix_globals.mypeer, type);
+    PMIX_SET_PEER_MAJOR(pmix_globals.mypeer, PMIX_VERSION_MAJOR);
+    PMIX_SET_PEER_MINOR(pmix_globals.mypeer, PMIX_VERSION_MINOR);
+    PMIX_SET_PEER_REVISION(pmix_globals.mypeer, PMIX_VERSION_RELEASE);
     /* create an nspace object for ourselves - we will
      * fill in the nspace name later */
     pmix_globals.mypeer->nptr = PMIX_NEW(pmix_namespace_t);

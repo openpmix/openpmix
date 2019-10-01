@@ -301,7 +301,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
 
     /* parse the input directives */
     gdsfound = false;
-    ptype = PMIX_PROC_TOOL;
+    PMIX_SET_PROC_TYPE(&ptype, PMIX_PROC_TOOL);
     if (NULL != info) {
         for (n=0; n < ninfo; n++) {
             if (0 == strncmp(info[n].key, PMIX_GDS_MODULE, PMIX_MAX_KEYLEN)) {
@@ -328,7 +328,9 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
                 /* they want us to forward our stdin to someone */
                 fwd_stdin = true;
             } else if (0 == strncmp(info[n].key, PMIX_LAUNCHER, PMIX_MAX_KEYLEN)) {
-                ptype |= PMIX_PROC_LAUNCHER;
+                if (PMIX_INFO_TRUE(&info[n])) {
+                    PMIX_SET_PROC_TYPE(&ptype, PMIX_PROC_LAUNCHER);
+                }
             } else if (0 == strncmp(info[n].key, PMIX_SERVER_TMPDIR, PMIX_MAX_KEYLEN)) {
                 pmix_server_globals.tmpdir = strdup(info[n].value.data.string);
             } else if (0 == strncmp(info[n].key, PMIX_SYSTEM_TMPDIR, PMIX_MAX_KEYLEN)) {
@@ -389,7 +391,11 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
                 return PMIX_ERR_BAD_PARAM;
             }
             /* flag that this tool is also a client */
-            ptype |= PMIX_PROC_CLIENT_TOOL;
+            if (PMIX_PROC_IS_LAUNCHER(&ptype)) {
+                PMIX_SET_PROC_TYPE(&ptype, PMIX_PROC_CLIENT_LAUNCHER);
+            } else {
+                PMIX_SET_PROC_TYPE(&ptype, PMIX_PROC_CLIENT_TOOL);
+            }
         } else if (nspace_in_enviro) {
             /* this is an error - we can't have one and not
              * the other */
@@ -425,7 +431,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
 
     /* setup the runtime - this init's the globals,
      * opens and initializes the required frameworks */
-    if (PMIX_SUCCESS != (rc = pmix_rte_init(ptype, info, ninfo,
+    if (PMIX_SUCCESS != (rc = pmix_rte_init(ptype.type, info, ninfo,
                                             pmix_tool_notify_recv))) {
         PMIX_ERROR_LOG(rc);
         if (NULL != nspace) {
@@ -486,7 +492,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: init called");
 
-    if (PMIX_PROC_IS_CLIENT(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer)) {
         /* if we are a client, then we need to pickup the
          * rest of the envar-based server assignments */
         pmix_globals.pindex = -1;
@@ -576,6 +582,25 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         return PMIX_ERR_INIT;
     }
 
+    /* if we are a launcher, then we also need to act as a server,
+     * so setup the server-related structures here */
+    if (PMIX_PROC_IS_LAUNCHER(&ptype) ||
+        PMIX_PROC_IS_CLIENT_LAUNCHER(&ptype)) {
+        if (PMIX_SUCCESS != (rc = pmix_server_initialize())) {
+            PMIX_ERROR_LOG(rc);
+            if (NULL != nspace) {
+                free(nspace);
+            }
+            if (gdsfound) {
+                PMIX_INFO_DESTRUCT(&ginfo);
+            }
+            PMIX_RELEASE_THREAD(&pmix_global_lock);
+            return rc;
+        }
+        /* setup the function pointers */
+        memset(&pmix_host_server, 0, sizeof(pmix_server_module_t));
+    }
+
     if (do_not_connect) {
         /* ensure we mark that we are not connected */
         pmix_globals.connected = false;
@@ -613,7 +638,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     pmix_globals.mypeer->info->pname.rank = pmix_globals.myid.rank;
 
     /* if we are acting as a server, then start listening */
-    if (PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
         /* setup the wildcard recv for inbound messages from clients */
         rcv = PMIX_NEW(pmix_ptl_posted_recv_t);
         rcv->tag = UINT32_MAX;
@@ -712,7 +737,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
      * job info - we do this as a non-blocking
      * transaction because some systems cannot handle very large
      * blocking operations and error out if we try them. */
-    if (PMIX_PROC_IS_CLIENT(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer)) {
          req = PMIX_NEW(pmix_buffer_t);
          PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
                           req, &cmd, 1, PMIX_COMMAND);
@@ -775,7 +800,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* if we are acting as a server, then start listening */
-    if (PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
         /* start listening for connections */
         if (PMIX_SUCCESS != pmix_ptl_base_start_listening(info, ninfo)) {
             pmix_show_help("help-pmix-server.txt", "listener-thread-start", true);
@@ -1213,7 +1238,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
         }
     }
 
-    if (PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
         pmix_ptl_base_stop_listening();
 
         for (n=0; n < pmix_server_globals.clients.size; n++) {

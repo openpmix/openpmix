@@ -1380,8 +1380,8 @@ static pmix_status_t hash_register_job_info(struct pmix_peer_t *pr,
     pmix_status_t rc;
     pmix_job_t *trk, *t2;
 
-    if (!PMIX_PROC_IS_SERVER(pmix_globals.mypeer) &&
-        !PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
+    if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
         /* this function is only available on servers */
         PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
         return PMIX_ERR_NOT_SUPPORTED;
@@ -1403,7 +1403,7 @@ static pmix_status_t hash_register_job_info(struct pmix_peer_t *pr,
         }
         /* now see if we have delivered it to all our local
          * clients for this nspace */
-        if (ns->ndelivered == ns->nlocalprocs) {
+        if (!PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) && ns->ndelivered == ns->nlocalprocs) {
             /* we have, so let's get rid of the packed
              * copy of the data */
             PMIX_RELEASE(ns->jobbkt);
@@ -1447,7 +1447,7 @@ static pmix_status_t hash_register_job_info(struct pmix_peer_t *pr,
     if (PMIX_SUCCESS == rc) {
         /* if we have more than one local client for this nspace,
          * save this packed object so we don't do this again */
-        if (1 < ns->nlocalprocs) {
+        if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) || 1 < ns->nlocalprocs) {
             PMIX_RETAIN(reply);
             ns->jobbkt = reply;
         }
@@ -1481,8 +1481,8 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                         "[%s:%u] pmix:gds:hash store job info for nspace %s",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank, nspace);
 
-    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer) &&
-        !PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
         /* this function is NOT available on servers */
         PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
         return PMIX_ERR_NOT_SUPPORTED;
@@ -2741,7 +2741,7 @@ static pmix_status_t assemb_kvs_req(const pmix_proc_t *proc,
     pmix_server_caddy_t *cd = (pmix_server_caddy_t*)cbdata;
     pmix_kval_t *kv;
 
-    if (!PMIX_PROC_IS_V1(cd->peer)) {
+    if (!PMIX_PEER_IS_V1(cd->peer)) {
         PMIX_BFROPS_PACK(rc, cd->peer, buf, proc, 1, PMIX_PROC);
         if (PMIX_SUCCESS != rc) {
             return rc;

@@ -514,7 +514,7 @@ static int _esh_session_init(pmix_common_dstore_ctx_t *ds_ctx, size_t idx, ns_ma
     s->jobuid = jobuid;
     s->nspace_path = strdup(ds_ctx->base_path);
 
-    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
         if (0 != mkdir(s->nspace_path, 0770)) {
             if (EEXIST != errno) {
                 pmix_output(0, "session init: can not create session directory \"%s\": %s",
@@ -566,7 +566,7 @@ static void _esh_session_release(pmix_common_dstore_ctx_t *ds_ctx, size_t idx)
     ds_ctx->lock_cbs->finalize(&_ESH_SESSION_lock(ds_ctx->session_array, idx));
 
     if (NULL != s->nspace_path) {
-        if(PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
+        if(PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
             _esh_dir_del(s->nspace_path);
         }
         free(s->nspace_path);
@@ -649,7 +649,7 @@ static int _update_ns_elem(pmix_common_dstore_ctx_t *ds_ctx, ns_track_elem_t *ns
 
     /* synchronize number of meta segments for the target namespace. */
     for (i = ns_elem->num_meta_seg; i < info->num_meta_seg; i++) {
-        if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
+        if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
             seg = pmix_common_dstor_create_new_segment(PMIX_DSTORE_NS_META_SEGMENT, ds_ctx->base_path,
                                                        info->ns_map.name, i, ds_ctx->jobuid,
                                                        ds_ctx->setjobuid);
@@ -684,7 +684,7 @@ static int _update_ns_elem(pmix_common_dstore_ctx_t *ds_ctx, ns_track_elem_t *ns
     }
     /* synchronize number of data segments for the target namespace. */
     for (i = ns_elem->num_data_seg; i < info->num_data_seg; i++) {
-        if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
+        if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
             seg = pmix_common_dstor_create_new_segment(PMIX_DSTORE_NS_DATA_SEGMENT, ds_ctx->base_path,
                                                        info->ns_map.name, i, ds_ctx->jobuid,
                                                        ds_ctx->setjobuid);
@@ -1591,7 +1591,7 @@ pmix_common_dstore_ctx_t *pmix_common_dstor_init(const char *ds_name, pmix_info_
     ds_ctx->ds_name = strdup(ds_name);
 
     /* find the temp dir */
-    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
         ds_ctx->session_map_search = (session_map_search_fn_t)_esh_session_map_search_server;
 
         /* scan incoming info for directives */
@@ -1762,7 +1762,8 @@ PMIX_EXPORT void pmix_common_dstor_finalize(pmix_common_dstore_ctx_t *ds_ctx)
     pmix_pshmem.finalize();
 
     if (NULL != ds_ctx->base_path){
-        if(PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
+        if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
+            /* coverity[toctou] */
             if (lstat(ds_ctx->base_path, &st) >= 0){
                 if (PMIX_SUCCESS != (rc = _esh_dir_del(ds_ctx->base_path))) {
                     PMIX_ERROR_LOG(rc);
@@ -1878,7 +1879,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_store(pmix_common_dstore_ctx_t *ds_c
                         "[%s:%d] gds: dstore store for key '%s' scope %d",
                         proc->nspace, proc->rank, kv->key, scope);
 
-    if (PMIX_PROC_IS_CLIENT(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer)) {
         rc = PMIX_ERR_NOT_SUPPORTED;
         PMIX_ERROR_LOG(rc);
         return rc;
@@ -1965,7 +1966,7 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
                          __FILE__, __LINE__, __func__, nspace, rank, key));
 
     /* protect info of dstore segments before it will be updated */
-    if (!PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
+    if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
         if (0 != (rc = pthread_mutex_lock(&ds_ctx->lock))) {
             goto error;
         }
@@ -2721,7 +2722,7 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
     }
 
     PMIX_LIST_FOREACH(kv, &cb.kvs, pmix_kval_t) {
-        if ((PMIX_PROC_IS_V1(_client_peer(ds_ctx)) || PMIX_PROC_IS_V20(_client_peer(ds_ctx))) &&
+        if ((PMIX_PEER_IS_V1(_client_peer(ds_ctx)) || PMIX_PEER_IS_V20(_client_peer(ds_ctx))) &&
            0 != strncmp("pmix.", kv->key, 4) &&
            kv->value->type == PMIX_DATA_ARRAY) {
             pmix_info_t *info;

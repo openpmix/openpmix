@@ -734,8 +734,8 @@ static void _getnbfn(int fd, short flags, void *cbdata)
     /* if we got here, then we don't have the data for this proc. If we
      * are a server, or we are a client and not connected, then there is
      * nothing more we can do */
-    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer) ||
-        (!PMIX_PROC_IS_SERVER(pmix_globals.mypeer) && !pmix_globals.connected)) {
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) ||
+        (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) && !pmix_globals.connected)) {
         rc = PMIX_ERR_NOT_FOUND;
         goto respond;
     }

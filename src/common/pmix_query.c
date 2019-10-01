@@ -290,8 +290,8 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
   query:
     /* if we are the server, then we just issue the query and
      * return the response */
-    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer) &&
-        !PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         if (NULL == pmix_host_server.query) {
             /* nothing we can do */
@@ -452,8 +452,8 @@ PMIX_EXPORT pmix_status_t PMIx_Allocation_request_nb(pmix_alloc_directive_t dire
 
     /* if we are the server, then we just issue the request and
      * return the response */
-    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer) &&
-        !PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         if (NULL == pmix_host_server.allocate) {
             /* nothing we can do */
