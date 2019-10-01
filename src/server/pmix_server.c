@@ -192,13 +192,14 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     };
     char *evar;
     pmix_rank_info_t *rinfo;
-    pmix_proc_type_t ptype = PMIX_PROC_SERVER;
+    pmix_proc_type_t ptype = PMIX_PROC_TYPE_STATIC_INIT;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:server init called");
 
+    PMIX_SET_PROC_TYPE(&ptype, PMIX_PROC_SERVER);
     /* setup the function pointers */
     if (NULL == module) {
         pmix_host_server = myhostserver;
@@ -210,11 +211,11 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         for (n=0; n < ninfo; n++) {
             if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_GATEWAY)) {
                 if (PMIX_INFO_TRUE(&info[n])) {
-                    ptype |= PMIX_PROC_GATEWAY;
+                    PMIX_SET_PROC_TYPE(&ptype, PMIX_PROC_GATEWAY);
                 }
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_SCHEDULER)) {
                 if (PMIX_INFO_TRUE(&info[n])) {
-                    ptype |= PMIX_PROC_SCHEDULER;
+                    PMIX_SET_PROC_TYPE(&ptype, PMIX_PROC_SCHEDULER);
                 }
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_TMPDIR)) {
                 pmix_server_globals.tmpdir = strdup(info[n].value.data.string);
@@ -240,7 +241,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
 
     /* setup the runtime - this init's the globals,
      * opens and initializes the required frameworks */
-    if (PMIX_SUCCESS != (rc = pmix_rte_init(ptype, info, ninfo, NULL))) {
+    if (PMIX_SUCCESS != (rc = pmix_rte_init(ptype.type, info, ninfo, NULL))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
@@ -420,7 +421,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     pmix_list_append(&pmix_ptl_globals.posted_recvs, &req->super);
 
     /* if we are a gateway, setup our IOF events */
-    if (PMIX_PROC_IS_GATEWAY(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_GATEWAY(pmix_globals.mypeer)) {
         /* setup IOF */
         PMIX_IOF_SINK_DEFINE(&pmix_client_globals.iof_stdout, &pmix_globals.myid,
                              1, PMIX_FWD_STDOUT_CHANNEL, pmix_iof_write_handler);
@@ -1231,7 +1232,7 @@ static void _deregister_client(int sd, short args, void *cbdata)
                 /* resources may have been allocated to them, so
                  * ensure they get cleaned up - this isn't true
                  * for tools, so don't clean them up */
-                if (!PMIX_PROC_IS_TOOL(peer)) {
+                if (!PMIX_PEER_IS_TOOL(peer)) {
                     pmix_pnet.child_finalized(&cd->proc);
                     pmix_psensor.stop(peer, NULL);
                 }
@@ -2714,7 +2715,7 @@ static void _cnct(int sd, short args, void *cbdata)
                 }
                 PMIX_DESTRUCT(&cb);
 
-                if (PMIX_PROC_IS_V1(cd->peer) || PMIX_PROC_IS_V20(cd->peer)) {
+                if (PMIX_PEER_IS_V1(cd->peer) || PMIX_PEER_IS_V20(cd->peer)) {
                     PMIX_BFROPS_PACK(rc, cd->peer, reply, &pbkt, 1, PMIX_BUFFER);
                     if (PMIX_SUCCESS != rc) {
                         PMIX_ERROR_LOG(rc);
@@ -3386,6 +3387,7 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
          * own nspace so that functions like "resolve_peers" and
          * "resolve_nodes" can properly respond */
         if (0 != strcmp("hash", peer->nptr->compat.gds->name)) {
+            pmix_output(0, "ADDING NODE/APP INFO");
             /* get the node info */
             PMIX_CONSTRUCT(&cb, pmix_cb_t);
             PMIX_LOAD_NSPACE(&proc, peer->info->pname.nspace);
@@ -3467,7 +3469,7 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
 
     if (PMIX_COMMIT_CMD == cmd) {
         rc = pmix_server_commit(peer, buf);
-        if (!PMIX_PROC_IS_V1(peer)) {
+        if (!PMIX_PEER_IS_V1(peer)) {
             reply = PMIX_NEW(pmix_buffer_t);
             if (NULL == reply) {
                 PMIX_ERROR_LOG(PMIX_ERR_NOMEM);

@@ -108,8 +108,8 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
     }
 
     /* if we are a server, we cannot do this */
-    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer) &&
-        !PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_NOT_SUPPORTED;
     }
@@ -401,8 +401,8 @@ pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets,
 
     /* if we are not a server, then we send the provided
      * data to our server for processing */
-    if (!PMIX_PROC_IS_SERVER(pmix_globals.mypeer) ||
-        PMIX_PROC_IS_LAUNCHER(pmix_globals.mypeer)) {
+    if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) ||
+        PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
         msg = PMIX_NEW(pmix_buffer_t);
         if (NULL == msg) {
             return PMIX_ERR_NOMEM;

@@ -1582,7 +1582,7 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer,
          * as we need the nspace of the spawned application! */
     }
     /* add the directive to the end */
-    if (PMIX_PROC_IS_TOOL(peer)) {
+    if (PMIX_PEER_IS_TOOL(peer)) {
         PMIX_INFO_LOAD(&cd->info[ninfo], PMIX_REQUESTOR_IS_TOOL, NULL, PMIX_BOOL);
         /* if the requestor is a tool, we default to forwarding all
          * output IO channels */
