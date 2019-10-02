@@ -1558,6 +1558,7 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                                &buf2, &rank, &cnt, PMIX_PROC_RANK);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(kptr);
                 PMIX_DESTRUCT(&buf2);
                 return rc;
             }
@@ -1587,6 +1588,7 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                 if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, rank, kp2))) {
                     PMIX_ERROR_LOG(rc);
                     PMIX_RELEASE(kp2);
+                    PMIX_RELEASE(kptr);
                     PMIX_DESTRUCT(&buf2);
                     return rc;
                 }
@@ -1610,6 +1612,7 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                                &buf2, &nnodes, &cnt, PMIX_SIZE);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(kptr);
                 PMIX_DESTRUCT(&buf2);
                 return rc;
             }
@@ -1621,6 +1624,7 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                                    &buf2, &kv, &cnt, PMIX_KVAL);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
+                    PMIX_RELEASE(kptr);
                     PMIX_DESTRUCT(&buf2);
                     PMIX_DESTRUCT(&kv);
                     return rc;
@@ -1648,12 +1652,14 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                 /* save the list of peers for this node */
                 kp2 = PMIX_NEW(pmix_kval_t);
                 if (NULL == kp2) {
+                    PMIX_RELEASE(kptr);
                     return PMIX_ERR_NOMEM;
                 }
                 kp2->key = strdup(PMIX_LOCAL_PEERS);
                 kp2->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
                 if (NULL == kp2->value) {
                     PMIX_RELEASE(kp2);
+                    PMIX_RELEASE(kptr);
                     return PMIX_ERR_NOMEM;
                 }
                 kp2->value->type = PMIX_STRING;
@@ -1683,6 +1689,7 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                     if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, rank, kp2))) {
                         PMIX_ERROR_LOG(rc);
                         PMIX_RELEASE(kp2);
+                        PMIX_RELEASE(kptr);
                         PMIX_DESTRUCT(&kv);
                         PMIX_DESTRUCT(&buf2);
                         pmix_argv_free(procs);
@@ -1705,6 +1712,7 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                 if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, kp2))) {
                     PMIX_ERROR_LOG(rc);
                     PMIX_RELEASE(kp2);
+                    PMIX_RELEASE(kptr);
                     PMIX_DESTRUCT(&kv);
                     PMIX_DESTRUCT(&buf2);
                     return rc;
@@ -1716,13 +1724,13 @@ static pmix_status_t hash_store_job_info(const char *nspace,
         } else if (PMIX_CHECK_KEY(kptr, PMIX_APP_INFO_ARRAY)) {
             if (PMIX_SUCCESS != (rc = process_app_array(kptr->value, trk))) {
                 PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE(kp2);
+                PMIX_RELEASE(kptr);
                 return rc;
             }
         } else if (PMIX_CHECK_KEY(kptr, PMIX_NODE_INFO_ARRAY)) {
             if (PMIX_SUCCESS != (rc = process_node_array(kptr->value, &trk->nodeinfo))) {
                 PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE(kp2);
+                PMIX_RELEASE(kptr);
                 return rc;
             }
         } else {
@@ -1733,6 +1741,7 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                     if (NULL == tmp) {
                         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                         rc = PMIX_ERR_NOMEM;
+                        PMIX_RELEASE(kptr);
                         return rc;
                     }
                     kptr->value->type = PMIX_COMPRESSED_STRING;
