@@ -7,7 +7,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2019 IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -430,6 +430,8 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
         trk->npcs = nprocs;
     }
     trk->type = type;
+    trk->local = false;
+    trk->nlocal = 0;
 
     all_def = true;
     for (i=0; i < nprocs; i++) {
@@ -498,19 +500,12 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
         }
 
         trk->nlocal += ns_local;
-        if (0 == ns_local) {
-            trk->local = false;
-        } else if (PMIX_RANK_WILDCARD == procs[i].rank) {
-            /* If proc is a wildcard we need to additionally check
-             * that all of the processes in the namespace were
-             * locally found.
-             * Otherwise this tracker is not local
-             */
-            if (ns_local != nptr->nprocs) {
-                trk->local = false;
-            }
-        }
     }
+
+    if (trk->nlocal == nptr->nprocs) {
+        trk->local = true;
+    }
+
     if (all_def) {
         trk->def_complete = true;
     }
