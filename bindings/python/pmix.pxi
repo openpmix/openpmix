@@ -903,7 +903,6 @@ cdef int pmix_unload_queries(const pmix_query_t *queries, size_t nqueries, ilist
 #     - number of elements in array
 cdef void pmix_free_queries(pmix_query_t *queries, size_t sz):
     n = 0
-    print("in free LOOP")
     while n < sz:
         if queries[n].keys != NULL:
             j = 0

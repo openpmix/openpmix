@@ -358,7 +358,6 @@ cdef class PMIxClient:
             info = NULL
 
         # pass it into the get API
-        print("GET")
         rc = PMIx_Get(&p, key, info, ninfo, &val_ptr)
         if PMIX_SUCCESS == rc:
             val = pmix_unload_value(val_ptr)
@@ -396,7 +395,6 @@ cdef class PMIxClient:
             info = NULL
 
         # pass it into the publish API
-        print("PUBLISH")
         rc = PMIx_Publish(info, ninfo)
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
@@ -455,7 +453,6 @@ cdef class PMIxClient:
             info = NULL
 
         # pass it into the unpublish API
-        print("UNPUBLISH")
         rc = PMIx_Unpublish(keys, info, ninfo)
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
@@ -521,7 +518,6 @@ cdef class PMIxClient:
             pdata = NULL
 
         # pass it into the lookup API
-        print("LOOKUP")
         rc = PMIx_Lookup(pdata, npdata, info, ninfo)
         if PMIX_SUCCESS == rc:
             rc = pmix_unload_pdata(pdata, npdata, data)
@@ -1917,7 +1913,7 @@ cdef int lookup(const pmix_proc_t *proc, char **keys,
         pmix_unload_procs(proc, 1, myprocs)
         if NULL != info:
             pmix_unload_info(info, ninfo, ilist)
-        pdata, rc = pmixservermodule['lookup'](myprocs[0], pykeys, ilist)
+        rc, pdata = pmixservermodule['lookup'](myprocs[0], pykeys, ilist)
     else:
         return PMIX_ERR_NOT_SUPPORTED
 
@@ -1949,7 +1945,7 @@ cdef int lookup(const pmix_proc_t *proc, char **keys,
         mycaddy.cbdata = cbdata
         cb = PyCapsule_New(mycaddy, "lookup", NULL)
         rc = PMIX_SUCCESS
-        threading.Timer(1, lookup_cb, [cb, rc]).start()
+        threading.Timer(0.5, lookup_cb, [cb, rc]).start()
     return rc
 
 cdef int unpublish(const pmix_proc_t *proc, char **keys,
@@ -2216,7 +2212,7 @@ cdef int query(pmix_proc_t *source,
         mycaddy.cbdata = cbdata
         cb = PyCapsule_New(mycaddy, "query", NULL)
         rc = PMIX_SUCCESS
-        threading.Timer(1, query_cb, [cb, rc]).start()
+        threading.Timer(0.5, query_cb, [cb, rc]).start()
     return rc
 
 # TODO: This function requires that the server execute the
