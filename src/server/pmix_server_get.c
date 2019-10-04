@@ -730,7 +730,7 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
                 PMIX_DESTRUCT(&cb);
                 return rc;
             }
-            if (PMIX_PROC_IS_V1(cd->peer)) {
+            if (PMIX_PEER_IS_V1(cd->peer)) {
                 /* if the client is using v1, then it expects the
                  * data returned to it as the rank followed by abyte object containing
                  * a buffer - so we have to do a little gyration */
@@ -768,7 +768,7 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
 
     /* retrieve the data for the specific rank they are asking about */
     if (PMIX_RANK_WILDCARD != rank) {
-        if (!PMIX_PROC_IS_SERVER(peer) && 0 == peer->commit_cnt) {
+        if (!PMIX_PEER_IS_SERVER(peer) && 0 == peer->commit_cnt) {
             /* this condition works only for local requests, server does
              * count commits for local ranks, and check this count when
              * local request.
@@ -803,7 +803,7 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
                 PMIX_DESTRUCT(&cb);
                 return rc;
             }
-            if (PMIX_PROC_IS_V1(cd->peer)) {
+            if (PMIX_PEER_IS_V1(cd->peer)) {
                 /* if the client is using v1, then it expects the
                  * data returned to it in a different order than v2
                  * - so we have to do a little gyration */

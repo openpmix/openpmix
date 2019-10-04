@@ -527,7 +527,7 @@ int main(int argc, char **argv)
         putenv("PMIX_MCA_pnet=test");
     }
     if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, info, ninfo))) {
-        fprintf(stderr, "Init failed with error %d\n", rc);
+        fprintf(stderr, "Init failed with error %s\n", PMIx_Error_string(rc));
         return rc;
     }
     PMIX_INFO_FREE(info, ninfo);

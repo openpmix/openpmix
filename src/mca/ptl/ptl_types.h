@@ -62,37 +62,87 @@ struct pmix_peer_t;
 struct pmix_ptl_module_t;
 
 /* define a process type */
-typedef uint16_t pmix_proc_type_t;
+typedef struct {
+    uint32_t type;
+    uint8_t major;
+    uint8_t minor;
+    uint8_t revision;
+    uint8_t padding;  // make the struct be 64-bits for addressing
+} pmix_proc_type_t;
 
-#define PMIX_PROC_UNDEF             0x0000
-#define PMIX_PROC_CLIENT            0x0001      // simple client process
-#define PMIX_PROC_SERVER            0x0002      // simple server process
-#define PMIX_PROC_TOOL              0x0004      // simple tool
-#define PMIX_PROC_V1                0x0008      // process is using PMIx v1 protocols
-#define PMIX_PROC_V20               0x0010      // process is using PMIx v2.0 protocols
-#define PMIX_PROC_V21               0x0020      // process is using PMIx v2.1 protocols
-#define PMIX_PROC_V3                0x0040      // process is using PMIx v3 protocols
-#define PMIX_PROC_LAUNCHER_ACT      0x1000      // process acting as launcher
+/* use 255 as WILDCARD for the release triplet values */
+#define PMIX_PROC_TYPE_STATIC_INIT      \
+    {                                   \
+        .type = PMIX_PROC_UNDEF,        \
+        .major = 255,                   \
+        .minor = 255,                   \
+        .revision = 255,                \
+        .padding = 0                    \
+    }
+
+/* Define process types - we use a bit-mask as procs can
+ * span multiple types */
+#define PMIX_PROC_UNDEF             0x00000000
+#define PMIX_PROC_CLIENT            0x00000001      // simple client process
+#define PMIX_PROC_SERVER            0x00000002      // simple server process
+#define PMIX_PROC_TOOL              0x00000004      // simple tool
+#define PMIX_PROC_LAUNCHER_ACT      0x10000000      // process acting as launcher
 #define PMIX_PROC_LAUNCHER          (PMIX_PROC_TOOL | PMIX_PROC_SERVER | PMIX_PROC_LAUNCHER_ACT)
-#define PMIX_PROC_CLIENT_TOOL_ACT   0x2000
+#define PMIX_PROC_CLIENT_LAUNCHER   (PMIX_PROC_LAUNCHER | PMIX_PROC_CLIENT)
+#define PMIX_PROC_CLIENT_TOOL_ACT   0x20000000
 #define PMIX_PROC_CLIENT_TOOL       (PMIX_PROC_TOOL | PMIX_PROC_CLIENT | PMIX_PROC_CLIENT_TOOL_ACT)
-#define PMIX_PROC_GATEWAY_ACT       0x4000
+#define PMIX_PROC_GATEWAY_ACT       0x40000000
 #define PMIX_PROC_GATEWAY           (PMIX_PROC_SERVER | PMIX_PROC_GATEWAY_ACT)
-#define PMIX_PROC_SCHEDULER_ACT     0x8000
+#define PMIX_PROC_SCHEDULER_ACT     0x80000000
 #define PMIX_PROC_SCHEDULER         (PMIX_PROC_SERVER | PMIX_PROC_SCHEDULER_ACT)
 
-/* defins some convenience macros for testing proc type */
-#define PMIX_PROC_IS_CLIENT(p)      (PMIX_PROC_CLIENT & (p)->proc_type)
-#define PMIX_PROC_IS_SERVER(p)      (PMIX_PROC_SERVER & (p)->proc_type)
-#define PMIX_PROC_IS_TOOL(p)        (PMIX_PROC_TOOL & (p)->proc_type)
-#define PMIX_PROC_IS_V1(p)          (PMIX_PROC_V1 & (p)->proc_type)
-#define PMIX_PROC_IS_V20(p)         (PMIX_PROC_V20 & (p)->proc_type)
-#define PMIX_PROC_IS_V21(p)         (PMIX_PROC_V21 & (p)->proc_type)
-#define PMIX_PROC_IS_V3(p)          (PMIX_PROC_V3 & (p)->proc_type)
-#define PMIX_PROC_IS_LAUNCHER(p)    (PMIX_PROC_LAUNCHER_ACT & (p)->proc_type)
-#define PMIX_PROC_IS_CLIENT_TOOL(p) (PMIX_PROC_CLIENT_TOOL_ACT & (p)->proc_type)
-#define PMIX_PROC_IS_GATEWAY(p)     (PMIX_PROC_GATEWAY_ACT & (p)->proc_type)
-#define PMIX_PROC_IS_SCHEDULER(p)   (PMIX_PROC_SCHEDULER_ACT & (p)->proc_type)
+#define PMIX_SET_PEER_TYPE(a, b)    \
+    (a)->proc_type.type |= (b)
+#define PMIX_SET_PROC_TYPE(a, b)    \
+    (a)->type |= (b)
+
+/* define some convenience macros for testing proc type */
+#define PMIX_PEER_IS_CLIENT(p)              (PMIX_PROC_CLIENT & (p)->proc_type.type)
+#define PMIX_PEER_IS_SERVER(p)              (PMIX_PROC_SERVER & (p)->proc_type.type)
+#define PMIX_PEER_IS_TOOL(p)                (PMIX_PROC_TOOL & (p)->proc_type.type)
+#define PMIX_PEER_IS_LAUNCHER(p)            (PMIX_PROC_LAUNCHER_ACT & (p)->proc_type.type)
+#define PMIX_PEER_IS_CLIENT_LAUNCHER(p)     ((PMIX_PROC_LAUNCHER_ACT & (p)->proc_type.type) && (PMIX_PROC_CLIENT & (p)->proc_type.type))
+#define PMIX_PEER_IS_CLIENT_TOOL(p)         ((PMIX_PROC_CLIENT_TOOL_ACT & (p)->proc_type.type) && (PMIX_PROC_CLIENT & (p)->proc_type.type))
+#define PMIX_PEER_IS_GATEWAY(p)             (PMIX_PROC_GATEWAY_ACT & (p)->proc_type.type)
+#define PMIX_PEER_IS_SCHEDULER(p)           (PMIX_PROC_SCHEDULER_ACT & (p)->proc_type.type)
+
+#define PMIX_PROC_IS_CLIENT(p)              (PMIX_PROC_CLIENT & (p)->type)
+#define PMIX_PROC_IS_SERVER(p)              (PMIX_PROC_SERVER & (p)->type)
+#define PMIX_PROC_IS_TOOL(p)                (PMIX_PROC_TOOL & (p)->type)
+#define PMIX_PROC_IS_LAUNCHER(p)            (PMIX_PROC_LAUNCHER_ACT & (p)->type)
+#define PMIX_PROC_IS_CLIENT_LAUNCHER(p)     ((PMIX_PROC_LAUNCHER_ACT & (p)->type) && (PMIX_PROC_CLIENT & (p)->type))
+#define PMIX_PROC_IS_CLIENT_TOOL(p)         ((PMIX_PROC_CLIENT_TOOL_ACT & (p)->type) && (PMIX_PROC_CLIENT & (p)->type))
+#define PMIX_PROC_IS_GATEWAY(p)             (PMIX_PROC_GATEWAY_ACT & (p)->type)
+#define PMIX_PROC_IS_SCHEDULER(p)           (PMIX_PROC_SCHEDULER_ACT & (p)->type)
+
+/* provide macros for setting the major, minor, and release values
+ * just so people don't have to deal with the details of the struct */
+#define PMIX_SET_PEER_MAJOR(p, a)   \
+    (p)->proc_type.major = (a)
+#define PMIX_SET_PEER_MINOR(p, a)   \
+    (p)->proc_type.minor = (a)
+#define PMIX_SET_PEER_REVISION(p, a)   \
+    (p)->proc_type.revision = (a)
+#define PMIX_SET_PROC_MAJOR(p, a)   \
+    (p)->major = (a)
+#define PMIX_SET_PROC_MINOR(p, a)   \
+    (p)->minor = (a)
+#define PMIX_SET_PROC_REVISION(p, a)   \
+    (p)->revision = (a)
+
+/* define some convenience macros for testing version */
+#define PMIX_PROC_MAJOR_VERSION(p)     (p)->proc_type.major
+#define PMIX_PROC_MINOR_VERSION(p)     (p)->proc_type.minor
+#define PMIX_PROC_REL_VERSION(p)       (p)->proc_type.revision
+#define PMIX_PEER_IS_V1(p)             ((p)->proc_type.major == 1)
+#define PMIX_PEER_IS_V20(p)            ((p)->proc_type.major == 2 && (p)->proc_type.minor == 0)
+#define PMIX_PEER_IS_V21(p)            ((p)->proc_type.major == 2 && (p)->proc_type.minor == 1)
+#define PMIX_PEER_IS_V3(p)             ((p)->proc_type.major == 3)
 
 
 /****    MESSAGING STRUCTURES    ****/
