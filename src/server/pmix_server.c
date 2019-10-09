@@ -3387,7 +3387,6 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
          * own nspace so that functions like "resolve_peers" and
          * "resolve_nodes" can properly respond */
         if (0 != strcmp("hash", peer->nptr->compat.gds->name)) {
-            pmix_output(0, "ADDING NODE/APP INFO");
             /* get the node info */
             PMIX_CONSTRUCT(&cb, pmix_cb_t);
             PMIX_LOAD_NSPACE(&proc, peer->info->pname.nspace);
