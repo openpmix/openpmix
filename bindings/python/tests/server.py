@@ -77,7 +77,7 @@ def main():
                     read = read.decode('utf-8').rstrip()
                     stdout_done = False
                     stdout.append(read)
-            elif fd == p.stderr.fileno():
+            if fd == p.stderr.fileno():
                 read = p.stderr.readline()
                 if read:
                     read = read.decode('utf-8').rstrip()
