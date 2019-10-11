@@ -836,12 +836,6 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
     }
 
   ack:
-    /* acknowledge the registration so the caller can release
-     * their data AND record the event handler index */
-    if (NULL != cd->evregcbfn) {
-        cd->evregcbfn(rc, index, cd->cbdata);
-    }
-
     /* check if any matching notifications have been locally cached */
     check_cached_events(cd);
     if (NULL != cd->codes) {
@@ -849,23 +843,15 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
         cd->codes = NULL;
     }
 
-    /* all done */
-    PMIX_RELEASE(cd);
-}
-
-static void mycbfn(pmix_status_t status,
-                   size_t refid,
-                   void *cbdata)
-{
-    pmix_rshift_caddy_t *cd = (pmix_rshift_caddy_t*)cbdata;
-
-    PMIX_ACQUIRE_OBJECT(cd);
-    if (PMIX_SUCCESS == status) {
-        cd->status = refid;
+    /* acknowledge the registration so the caller can release
+     * their data AND record the event handler index */
+    if (NULL != cd->evregcbfn) {
+        cd->evregcbfn(rc, index, cd->cbdata);
+        PMIX_RELEASE(cd);
     } else {
-        cd->status = status;
+        cd->status = rc;
+        PMIX_WAKEUP_THREAD(&cd->lock);
     }
-    PMIX_WAKEUP_THREAD(&cd->lock);
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Register_event_handler(pmix_status_t codes[], size_t ncodes,
@@ -907,13 +893,8 @@ PMIX_EXPORT pmix_status_t PMIx_Register_event_handler(pmix_status_t codes[], siz
     cd->info = info;
     cd->ninfo = ninfo;
     cd->evhdlr = event_hdlr;
-    if (NULL == cbfunc) {
-        cd->evregcbfn = mycbfn;
-        cd->cbdata = cd;
-    } else {
-        cd->evregcbfn = cbfunc;
-        cd->cbdata = cbdata;
-    }
+    cd->evregcbfn = cbfunc;
+    cd->cbdata = cbdata;
 
     pmix_output_verbose(2, pmix_client_globals.event_output,
                         "pmix_register_event_hdlr shifting to progress thread");
