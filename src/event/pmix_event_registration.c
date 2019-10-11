@@ -798,10 +798,8 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
      * will be deferred until after this event completes */
     if (PMIX_RANGE_PROC_LOCAL == range) {
         rc = PMIX_SUCCESS;
-    } else if (NULL != cd->evregcbfn) {
-        rc = _add_hdlr(cd, &xfer);
     } else {
-        rc = PMIX_SUCCESS;
+        rc = _add_hdlr(cd, &xfer);
     }
     PMIX_LIST_DESTRUCT(&xfer);
     if (PMIX_SUCCESS != rc &&
@@ -839,6 +837,21 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
         cd->evregcbfn(rc, index, cd->cbdata);
         PMIX_RELEASE(cd);
     }
+}
+
+static void mycbfn(pmix_status_t status,
+                   size_t refid,
+                   void *cbdata)
+{
+    pmix_rshift_caddy_t *cd = (pmix_rshift_caddy_t*)cbdata;
+
+    PMIX_ACQUIRE_OBJECT(cd);
+    if (PMIX_SUCCESS == status) {
+        cd->status = refid;
+    } else {
+        cd->status = status;
+     }
+    PMIX_WAKEUP_THREAD(&cd->lock);
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Register_event_handler(pmix_status_t codes[], size_t ncodes,
@@ -889,6 +902,9 @@ PMIX_EXPORT pmix_status_t PMIx_Register_event_handler(pmix_status_t codes[], siz
         cd->cbdata = cbdata;
         PMIX_THREADSHIFT(cd, reg_event_hdlr);
     } else {
+    	cd->evregcbfn = mycbfn;
+    	cd->cbdata = cd;
+    	PMIX_RETAIN(cd);
         reg_event_hdlr(0, 0, (void*)cd);
         rc = cd->status;
         PMIX_RELEASE(cd);
