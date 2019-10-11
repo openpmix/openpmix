@@ -75,6 +75,16 @@ ctypedef struct pmix_pyshift_query_t:
     pmix_info_cbfunc_t query
     void *cbdata
 
+ctypedef struct pmix_pyshift_event_handler_t:
+    char *op
+    pmix_status_t status
+    pmix_info_t *results
+    size_t nresults
+    pmix_op_cbfunc_t cbfunc
+    void *thiscbdata
+    void *notification_cbdata
+    pmix_event_notification_cbfunc_fn_t event_handler
+
 cdef void pmix_unload_argv(char **keys, argv:list):
     n = 0
     while NULL != keys[n]:

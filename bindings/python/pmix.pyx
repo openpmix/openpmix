@@ -58,20 +58,62 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
                          pmix_info_t *results, size_t nresults,
                          pmix_event_notification_cbfunc_fn_t cbfunc,
                          void *cbdata) with gil:
-    # convert the source
-    # convert the inbound info
+    print("IN PYEVENTHANDLER")
 
+    cdef pmix_info_t **results_ptr
+    # convert the source to python
+    pysource = {}
+    myns = (source.nspace).decode('ascii')
+    pysource = {'nspace': myns, 'rank': source.rank}
+
+    # convert the inbound info to python
+    pyinfo = []
+    pmix_unload_info(info, ninfo, pyinfo)
+
+    pyresults = []
     # find the handler being called
     for h in myhdlrs:
         try:
             if evhdlr_registration_id == h['refid']:
-                print("REFID", h['refid'])
                 # execute the handler - we will need to provide
                 # our own notification cbfunc for the handler to
                 # call when done so we can convert the results array
                 # it provides before calling cbfunc
+                print("REFID", h['refid'])
+                rc, pyresults = h['hdlr'](status, pysource, pyinfo, pyresults)
+                print("PYRESULTS ", pyresults)
+                # allocate and load pmix info structs from python list of dictionaries
+                results_ptr = &results
+                rc = pmix_alloc_info(results_ptr, &nresults, pyresults)
+
+                #typedef void (*pmix_event_notification_cbfunc_fn_t)(pmix_status_t status,
+                #                                   pmix_info_t *results, size_t nresults,
+                #                                   pmix_op_cbfunc_t cbfunc, void *thiscbdata,
+                #                                   void *notification_cbdata);
+                mycaddy    = <pmix_pyshift_event_handler_t*> PyMem_Malloc(sizeof(pmix_pyshift_event_handler_t))
+                mycaddy.op = strdup("event_handler")
+                mycaddy.status              = rc
+                mycaddy.results             = NULL
+                mycaddy.nresults            = 0
+                mycaddy.cbfunc              = NULL
+                mycaddy.thiscbdata          = NULL
+                mycaddy.notification_cbdata = cbdata
+                mycaddy.event_handler       = cbfunc
+                cb = PyCapsule_New(mycaddy, "event_handler", NULL)
+                #rc = PMIX_SUCCESS
+                threading.Timer(0.5, event_handler_cb, [cb, rc]).start()
         except:
             pass
+
+    return
+
+cdef void event_handler_cb(capsule, ret):
+    cdef pmix_pyshift_event_handler_t *shifter
+    shifter = <pmix_pyshift_event_handler_t*>PyCapsule_GetPointer(capsule, "event_handler")
+    shifter[0].event_handler(shifter[0].status, shifter[0].results, shifter[0].nresults, 
+                             shifter[0].cbfunc, shifter[0].thiscbdata, 
+                             shifter[0].notification_cbdata)
+    print("SHIFTER:", shifter[0].op)
     return
 
 cdef void query_cb(capsule, ret):
@@ -949,6 +991,7 @@ cdef class PMIxClient:
         return rc
 
     def register_event_handler(self, pycodes:list, pyinfo:list, hdlr):
+        print("IN REGISTER EVENT HANDLER CLIENT CLASS")
         cdef pmix_status_t *codes
         cdef size_t ncodes
         cdef pmix_info_t *info
@@ -963,18 +1006,27 @@ cdef class PMIxClient:
                 return PMIX_ERR_NOMEM
             n = 0
             for c in pycodes:
+                #print("C IN PYCODES: ", self.error_string(c))
                 codes[n] = c
+                printf("C IN PYCODES: %d\n", codes[n])
                 n += 1
         else:
             codes = NULL
             ncodes = 0
+        print("AFTER LOADING PYCODES")
 
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
         rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
 
+        print("AFTER LOADING INFO RC: ", rc)
+
         # pass our hdlr switchyard to the API
         rc = PMIx_Register_event_handler(codes, ncodes, info, ninfo, pyeventhandler, NULL, NULL)
+        print("AFTER PMIX REGISTER IN CLIENT CLASS RC: ", rc)
+
+        #print("EVENT HDLR REGISTRATION: ", evhdlr_registration_id)
+        print("EVENT HDLR: ", hdlr)
         # cleanup
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
@@ -985,6 +1037,9 @@ cdef class PMIxClient:
             return rc
         # otherwise, this is our ref ID for this hdlr
         myhdlrs.append({'refid': rc, 'hdlr': hdlr})
+        print("HDLR: ", hdlr)
+        
+        rc = PMIX_SUCCESS
         return rc
 
     def dregister_event_handler(self, ref:int):
@@ -1850,6 +1905,7 @@ cdef int registerevents(pmix_status_t *codes, size_t ncodes,
                         pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
     keys = pmixservermodule.keys()
     if 'registerevents' in keys:
+        print("IN REGISTER EVENTS SERVER UP CALL")
         args = {}
         mycodes = []
         ilist = []

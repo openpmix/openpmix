@@ -89,3 +89,6 @@ def clientquery(proc:dict, queries:list):
                 results.append(info)
     return PMIX_ERR_NOT_FOUND, results
 
+def client_register_events(codes:list, directives:list):
+    print("CLIENT REGISTER EVENTS ", codes)
+    return PMIX_OPERATION_SUCCEEDED

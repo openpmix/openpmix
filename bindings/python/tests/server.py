@@ -20,7 +20,8 @@ def main():
            'publish': clientpublish,
            'unpublish': clientunpublish,
            'lookup': clientlookup,
-           'query': clientquery}
+           'query': clientquery,
+           'registerevents': client_register_events}
     my_result = foo.init(args, map)
     print("Testing PMIx_Initialized")
     rc = foo.initialized()
