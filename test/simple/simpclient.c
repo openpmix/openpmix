@@ -57,17 +57,6 @@ static void notification_fn(size_t evhdlr_registration_id,
     completed = true;
 }
 
-static void errhandler_reg_callbk(pmix_status_t status,
-                                  size_t errhandler_ref,
-                                  void *cbdata)
-{
-    volatile bool *active = (volatile bool*)cbdata;
-
-    pmix_output(0, "Client: ERRHANDLER REGISTRATION CALLBACK CALLED WITH STATUS %d, ref=%lu",
-                status, (unsigned long)errhandler_ref);
-    *active = false;
-}
-
 static void opcbfunc(pmix_status_t status, void *cbdata)
 {
     volatile bool *active = (volatile bool*)cbdata;
@@ -108,18 +97,6 @@ static void model_callback(size_t evhdlr_registration_id,
     if (NULL != cbfunc) {
         cbfunc(PMIX_SUCCESS, NULL, 0, NULL, NULL, cbdata);
     }
-}
-
-/* event handler registration is done asynchronously */
-static void model_registration_callback(pmix_status_t status,
-                                        size_t evhandler_ref,
-                                        void *cbdata)
-{
-    volatile bool *active = (volatile bool*)cbdata;
-
-    fprintf(stderr, "simpclient EVENT HANDLER REGISTRATION RETURN STATUS %d, ref=%lu\n",
-               status, (unsigned long)evhandler_ref);
-    *active = false;
 }
 
 int main(int argc, char **argv)
@@ -178,26 +155,17 @@ int main(int argc, char **argv)
     PMIX_VALUE_RELEASE(val);
 
     /* register a handler specifically for when models declare */
-    active = true;
     ninfo = 1;
     PMIX_INFO_CREATE(iptr, ninfo);
     PMIX_INFO_LOAD(&iptr[0], PMIX_EVENT_HDLR_NAME, "SIMPCLIENT-MODEL", PMIX_STRING);
     code = PMIX_MODEL_DECLARED;
     PMIx_Register_event_handler(&code, 1, iptr, ninfo,
-                                model_callback, model_registration_callback, (void*)&active);
-    while (active) {
-        usleep(10);
-    }
+                                model_callback, NULL, NULL);
     PMIX_INFO_FREE(iptr, ninfo);
 
     /* register our errhandler */
-    active = true;
     PMIx_Register_event_handler(NULL, 0, NULL, 0,
-                                notification_fn, errhandler_reg_callbk, (void*)&active);
-    while (active) {
-        usleep(10);
-    }
-
+                                notification_fn, NULL, NULL);
 
     /* get our job size */
     (void)strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
