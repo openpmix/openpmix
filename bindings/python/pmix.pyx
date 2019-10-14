@@ -9,6 +9,7 @@ from cython.operator import address
 import signal, time
 import threading
 import array
+import os
 from cpython.pycapsule cimport PyCapsule_New, PyCapsule_GetPointer
 #import time
 from threading import Timer
@@ -57,12 +58,13 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
                          pmix_info_t info[], size_t ninfo,
                          pmix_info_t *results, size_t nresults,
                          pmix_event_notification_cbfunc_fn_t cbfunc,
-                         void *cbdata) with gil:
+                         void *cbdata):
     print("IN PYEVENTHANDLER")
 
     cdef pmix_info_t *myresults
     cdef pmix_info_t **myresults_ptr
     cdef size_t nmyresults
+
     # convert the source to python
     pysource = {}
     myns = (source.nspace).decode('ascii')
@@ -80,6 +82,8 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
     # find the handler being called
     for h in myhdlrs:
         try:
+            print("H REFID: ", h['refid'])
+            print("evhdlr_registration_id: ", evhdlr_registration_id)
             if evhdlr_registration_id == h['refid']:
                 # execute the handler - we will need to provide
                 # our own notification cbfunc for the handler to
@@ -91,11 +95,6 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
                 # allocate and load pmix info structs from python list of dictionaries
                 myresults_ptr = &myresults
                 rc = pmix_alloc_info(myresults_ptr, &nmyresults, pymyresults)
-
-                #typedef void (*pmix_event_notification_cbfunc_fn_t)(pmix_status_t status,
-                #                                   pmix_info_t *results, size_t nresults,
-                #                                   pmix_op_cbfunc_t cbfunc, void *thiscbdata,
-                #                                   void *notification_cbdata);
                 mycaddy    = <pmix_pyshift_event_handler_t*> PyMem_Malloc(sizeof(pmix_pyshift_event_handler_t))
                 mycaddy.op = strdup("event_handler")
                 mycaddy.status              = rc
@@ -106,8 +105,7 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
                 mycaddy.notification_cbdata = cbdata
                 mycaddy.event_handler       = cbfunc
                 cb = PyCapsule_New(mycaddy, "event_handler", NULL)
-                #rc = PMIX_SUCCESS
-                threading.Timer(0.5, event_handler_cb, [cb, rc]).start()
+                threading.Timer(2, event_handler_cb, [cb, rc]).start()
         except:
             pass
 
@@ -1041,6 +1039,7 @@ cdef class PMIxClient:
         print("HDLR: ", rc)
         
         rc = PMIX_SUCCESS
+        print("returning from client event handler")
         return rc
 
     def dregister_event_handler(self, ref:int):
@@ -1905,6 +1904,7 @@ cdef int registerevents(pmix_status_t *codes, size_t ncodes,
                         const pmix_info_t info[], size_t ninfo,
                         pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
     keys = pmixservermodule.keys()
+    print("IN REGISTER EVENTS SERVER UP CALL")
     if 'registerevents' in keys:
         print("IN REGISTER EVENTS SERVER UP CALL")
         args = {}

@@ -86,6 +86,7 @@ def test_query(client, pyqueries):
 def test_pyhandler(st:int, pysource:dict, pyinfo:list, pyresults:list):
     status = PMIX_EVENT_ACTION_COMPLETE
     results = [{'key':'eventkey', 'value':'testevent', 'val_type':PMIX_STRING}]
+    print("RESULTS FOR PYHANDLER: ", results)
     return status, results
 
 def main():
@@ -142,7 +143,8 @@ def main():
     print("REGISTERING")
     info = [{'key': PMIX_EVENT_HDLR_NAME, 'value': 'SIMPCLIENT-MODEL', 'val_type': PMIX_STRING}]
     rc = foo.register_event_handler(pycodes, info, test_pyhandler)
-    print("REGISTER EVENT HANDLER RETURNED: ", foo.error_string(rc))
+    print("REGISTER EVENT HANDLER RETURNEDj (STR): ", foo.error_string(rc))
+    print("REGISTER EVENT HANDLER RETURNED (INT): ", rc)
 
     # finalize
     info = []
