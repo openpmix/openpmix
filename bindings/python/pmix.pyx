@@ -59,8 +59,6 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
                          pmix_info_t *results, size_t nresults,
                          pmix_event_notification_cbfunc_fn_t cbfunc,
                          void *cbdata):
-    print("IN PYEVENTHANDLER")
-
     cdef pmix_info_t *myresults
     cdef pmix_info_t **myresults_ptr
     cdef size_t nmyresults
@@ -82,16 +80,8 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
     # find the handler being called
     for h in myhdlrs:
         try:
-            print("H REFID: ", h['refid'])
-            print("evhdlr_registration_id: ", evhdlr_registration_id)
             if evhdlr_registration_id == h['refid']:
-                # execute the handler - we will need to provide
-                # our own notification cbfunc for the handler to
-                # call when done so we can convert the results array
-                # it provides before calling cbfunc
-                print("REFID", h['refid'])
                 rc, pymyresults = h['hdlr'](status, pysource, pyinfo, pyresults)
-                print("PYRESULTS ", pymyresults)
                 # allocate and load pmix info structs from python list of dictionaries
                 myresults_ptr = &myresults
                 rc = pmix_alloc_info(myresults_ptr, &nmyresults, pymyresults)
@@ -997,7 +987,6 @@ cdef class PMIxClient:
         return rc
 
     def register_event_handler(self, pycodes:list, pyinfo:list, hdlr):
-        print("IN REGISTER EVENT HANDLER CLIENT CLASS")
         cdef pmix_status_t *codes
         cdef size_t ncodes
         cdef pmix_info_t *info
@@ -1031,15 +1020,14 @@ cdef class PMIxClient:
             pmix_free_info(info, ninfo)
         if 0 < ncodes:
             PyMem_Free(codes)
+
         # if rc < 0, then there was an error
         if 0 > rc:
             return rc
+
         # otherwise, this is our ref ID for this hdlr
         myhdlrs.append({'refid': rc, 'hdlr': hdlr})
-        print("HDLR: ", rc)
-        
         rc = PMIX_SUCCESS
-        print("returning from client event handler")
         return rc
 
     def dregister_event_handler(self, ref:int):
