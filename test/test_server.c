@@ -41,10 +41,14 @@ static void sdes(server_info_t *s)
         event_del(s->evread);
     }
     s->evread = NULL;
+    if (NULL != s->hostname) {
+        free(s->hostname);
+    }
 }
 
 static void scon(server_info_t *s)
 {
+    s->hostname = NULL;
     s->idx = 0;
     s->pid = 0;
     s->rd_fd = -1;
@@ -115,6 +119,18 @@ static void fill_seq_ranks_array(size_t nprocs, int base_rank, char **ranks)
     }
 }
 
+static int server_find_id(const char *nspace, int rank)
+{
+    server_nspace_t *tmp;
+
+    PMIX_LIST_FOREACH(tmp, server_nspace, server_nspace_t) {
+        if (0 == strcmp(tmp->name, nspace)) {
+            return tmp->task_map[rank];
+        }
+    }
+    return -1;
+}
+
 static void set_namespace(int local_size, int univ_size,
                           int base_rank, char *name)
 {
@@ -122,7 +138,9 @@ static void set_namespace(int local_size, int univ_size,
     pmix_info_t *info;
     ninfo = 8;
     char *regex, *ppn;
-    char *ranks = NULL;
+    char *ranks = NULL, **nodes = NULL;
+    char **rks=NULL;
+    int i;
 
     PMIX_INFO_CREATE(info, ninfo);
     pmix_strncpy(info[0].key, PMIX_UNIV_SIZE, PMIX_MAX_KEYLEN);
@@ -145,23 +163,56 @@ static void set_namespace(int local_size, int univ_size,
     pmix_strncpy(info[3].key, PMIX_LOCAL_PEERS, PMIX_MAX_KEYLEN);
     info[3].value.type = PMIX_STRING;
     info[3].value.data.string = strdup(ranks);
-    free(ranks);
 
-    PMIx_generate_regex(NODE_NAME, &regex);
-    pmix_strncpy(info[4].key, PMIX_NODE_MAP, PMIX_MAX_KEYLEN);
-    info[4].value.type = PMIX_STRING;
-    info[4].value.data.string = strdup(regex);
+    /* if we have two servers any rank not on us,
+     * must be on the other */
+    if (1 == params.nservers) {
+        ppn = strdup(my_server_info->hostname);
+    } else {
+        if (local_size < univ_size) {
+            pmix_argv_append_nosize(&nodes, "node0");
+            pmix_argv_append_nosize(&nodes, "node1");
+        }
+        ppn = pmix_argv_join(nodes, ',');
+    }
 
-    /* generate the global proc map */
-    fill_seq_ranks_array(univ_size, 0, &ranks);
-    if (NULL == ranks) {
-        return;
+    pmix_argv_free(nodes);
+    PMIx_generate_regex(ppn, &regex);
+    PMIX_INFO_LOAD(&info[4], PMIX_NODE_MAP, regex, PMIX_REGEX);
+    free(ppn);
+
+    /* generate the global proc map - if we have two
+     * servers, then the procs not on this server must
+     * be on the other */
+    if (2 == params.nservers) {
+        pmix_argv_append_nosize(&rks, ranks);
+        free(ranks);
+        nodes = NULL;
+        if (0 == my_server_id) {
+            for (i=base_rank+1; i < univ_size; i++) {
+                asprintf(&ppn, "%d", i);
+                pmix_argv_append_nosize(&nodes, ppn);
+                free(ppn);
+            }
+            ppn = pmix_argv_join(nodes, ',');
+            pmix_argv_append_nosize(&rks, ppn);
+            free(ppn);
+        } else {
+            for (i=0; i < base_rank; i++) {
+                asprintf(&ppn, "%d", i);
+                pmix_argv_append_nosize(&nodes, ppn);
+                free(ppn);
+            }
+            ppn = pmix_argv_join(nodes, ',');
+            pmix_argv_prepend_nosize(&rks, ppn);
+            free(ppn);
+        }
+        ranks = pmix_argv_join(rks, ';');
     }
     PMIx_generate_ppn(ranks, &ppn);
     free(ranks);
-    pmix_strncpy(info[5].key, PMIX_PROC_MAP, PMIX_MAX_KEYLEN);
-    info[5].value.type = PMIX_STRING;
-    info[5].value.data.string = strdup(ppn);
+    PMIX_INFO_LOAD(&info[5], PMIX_PROC_MAP, ppn, PMIX_REGEX);
+    free(ppn);
 
     pmix_strncpy(info[6].key, PMIX_JOB_SIZE, PMIX_MAX_KEYLEN);
     info[6].value.type = PMIX_UINT32;
@@ -614,18 +665,6 @@ int server_fence_contrib(char *data, size_t ndata,
     return rc;
 }
 
-static int server_find_id(const char *nspace, int rank)
-{
-    server_nspace_t *tmp;
-
-    PMIX_LIST_FOREACH(tmp, server_nspace, server_nspace_t) {
-        if (0 == strcmp(tmp->name, nspace)) {
-            return tmp->task_map[rank];
-        }
-    }
-    return -1;
-}
-
 static int server_pack_dmdx(int sender_id, const char *nspace, int rank,
                             char **buf)
 {
@@ -726,7 +765,7 @@ error:
 
 int server_init(test_params *params)
 {
-    pmix_info_t info[1];
+    pmix_info_t info[2];
     int rc = PMIX_SUCCESS;
 
     /* fork/init servers procs */
@@ -754,7 +793,9 @@ int server_init(test_params *params)
                 }
                 if (pid == 0) {
                     server_list = PMIX_NEW(pmix_list_t);
+                    my_server_info = server_info;
                     my_server_id = i;
+                    asprintf(&server_info->hostname, "node%d", i);
                     server_info->idx = 0;
                     server_info->pid = getppid();
                     server_info->rd_fd = fd1[0];
@@ -765,6 +806,7 @@ int server_init(test_params *params)
                     pmix_list_append(server_list, &server_info->super);
                     break;
                 }
+                asprintf(&server_info->hostname, "node%d", i);
                 server_info->idx = i;
                 server_info->pid = pid;
                 server_info->wr_fd = fd1[1];
@@ -774,6 +816,7 @@ int server_init(test_params *params)
                 close(fd2[1]);
             } else {
                 my_server_info = server_info;
+                server_info->hostname = strdup("node0");
                 server_info->pid = getpid();
                 server_info->idx  = 0;
                 server_info->rd_fd = fd1[0];
@@ -794,10 +837,11 @@ int server_init(test_params *params)
     (void)strncpy(info[0].key, PMIX_SOCKET_MODE, PMIX_MAX_KEYLEN);
     info[0].value.type = PMIX_UINT32;
     info[0].value.data.uint32 = 0666;
+    PMIX_INFO_LOAD(&info[1], PMIX_HOSTNAME, my_server_info->hostname, PMIX_STRING);
 
     server_nspace = PMIX_NEW(pmix_list_t);
 
-    if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, info, 1))) {
+    if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, info, 2))) {
         TEST_ERROR(("Init failed with error %d", rc));
         goto error;
     }
