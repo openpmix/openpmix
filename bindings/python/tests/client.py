@@ -84,10 +84,20 @@ def test_query(client, pyqueries):
     print("QUERY INFO RETURNED: ", pyresults)
 
 def test_pyhandler(st:int, pysource:dict, pyinfo:list, pyresults:list):
+    print("PYHANDLER")
     status = PMIX_EVENT_ACTION_COMPLETE
     results = [{'key':'eventkey', 'value':'testevent', 'val_type':PMIX_STRING}]
-    print("RESULTS FOR PYHANDLER: ", results)
+    print("PYHANDLER RETURNED: ", results)
     return status, results
+
+def test_register_event_handler(client, pycodes, info, test_pyhandler):
+    print("REGISTER EVENT HANDLER")
+    global test_count, test_fails
+    test_count = test_count + 1
+    rc = client.register_event_handler(pycodes, info, test_pyhandler)
+    if rc != 0 and rc != -47:
+        test_fails = test_fails + 1
+        print("REGISTER EVENT HANDLER TEST FAILED: ", client.error_string(rc))
 
 def main():
     foo = PMIxClient()
@@ -140,11 +150,8 @@ def main():
     pycodes = []
     code = PMIX_MODEL_DECLARED
     pycodes.append(code)
-    print("REGISTERING")
     info = [{'key': PMIX_EVENT_HDLR_NAME, 'value': 'SIMPCLIENT-MODEL', 'val_type': PMIX_STRING}]
-    rc = foo.register_event_handler(pycodes, info, test_pyhandler)
-    print("REGISTER EVENT HANDLER RETURNEDj (STR): ", foo.error_string(rc))
-    print("REGISTER EVENT HANDLER RETURNED (INT): ", rc)
+    test_register_event_handler(foo, pycodes, info, test_pyhandler)
 
     # finalize
     info = []
