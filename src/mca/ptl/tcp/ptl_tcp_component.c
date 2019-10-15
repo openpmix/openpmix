@@ -1045,6 +1045,7 @@ static void connection_handler(int sd, short args, void *cbdata)
     pmix_proc_type_t proc_type = PMIX_PROC_TYPE_STATIC_INIT;
     pmix_byte_object_t cred;
     pmix_buffer_t buf;
+    uint8_t major, minor, release;
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(pnd);
@@ -1335,27 +1336,21 @@ static void connection_handler(int sd, short args, void *cbdata)
         rc = PMIX_ERR_BAD_PARAM;
         goto error;
     }
+    major = strtoul(version, &version, 10);
+    ++version;
+    minor = strtoul(version, &version, 10);
+    ++version;
+    release = strtoul(version, NULL, 10);
+    PMIX_SET_PROC_MAJOR(&proc_type, major);
+    PMIX_SET_PROC_MINOR(&proc_type, minor);
+    PMIX_SET_PROC_RELEASE(&proc_type, release);
 
-    if (0 == strncmp(version, "2.0", 3)) {
+    if (2 == major && 0 == minor) {
         /* the 2.0 release handshake ends with the version string */
-        PMIX_SET_PROC_MAJOR(&proc_type, 2);
         bfrops = "v20";
         bftype = pmix_bfrops_globals.default_type;  // we can't know any better
         gds = "ds12,hash";
     } else {
-        int major;
-        major = strtoul(version, NULL, 10);
-        if (2 == major) {
-            PMIX_SET_PROC_MAJOR(&proc_type, 2);
-            PMIX_SET_PROC_MINOR(&proc_type, 1);
-        } else if (3 <= major) {
-            PMIX_SET_PROC_MAJOR(&proc_type, 3);
-        } else {
-            free(msg);
-            PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
-            rc = PMIX_ERR_NOT_SUPPORTED;
-            goto error;
-        }
         /* extract the name of the bfrops module they used */
         PMIX_STRNLEN(msglen, mg, cnt);
         if (msglen < cnt) {

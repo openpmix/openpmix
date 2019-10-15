@@ -145,6 +145,8 @@ typedef struct {
     uint32_t lsize;
 } test_params;
 
+extern test_params params;
+
 #define INIT_TEST_PARAMS(params) do { \
     params.nprocs = 1;                \
     params.verbose = 0;               \

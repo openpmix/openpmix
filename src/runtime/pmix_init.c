@@ -164,8 +164,6 @@ int pmix_rte_init(uint32_t type,
     }
 
     /* setup the globals structure */
-    gethostname(hostname, PMIX_MAXHOSTNAMELEN-1);
-    pmix_globals.hostname = strdup(hostname);
     pmix_globals.pid = getpid();
     memset(&pmix_globals.myid.nspace, 0, PMIX_MAX_NSLEN+1);
     pmix_globals.myid.rank = PMIX_RANK_INVALID;
@@ -179,6 +177,13 @@ int pmix_rte_init(uint32_t type,
                           pmix_globals.evbase, pmix_globals.event_eviction_time,
                           _notification_eviction_cbfunc);
     PMIX_CONSTRUCT(&pmix_globals.nspaces, pmix_list_t);
+    /* if we were given a hostname in our environment, use it */
+    if (NULL != (evar = getenv("PMIX_HOSTNAME"))) {
+        pmix_globals.hostname = strdup(evar);
+    } else {
+        gethostname(hostname, PMIX_MAXHOSTNAMELEN-1);
+        pmix_globals.hostname = strdup(hostname);
+    }
 
     if (PMIX_SUCCESS != ret) {
         error = "notification hotel init";
@@ -253,7 +258,7 @@ int pmix_rte_init(uint32_t type,
     PMIX_SET_PEER_TYPE(pmix_globals.mypeer, type);
     PMIX_SET_PEER_MAJOR(pmix_globals.mypeer, PMIX_VERSION_MAJOR);
     PMIX_SET_PEER_MINOR(pmix_globals.mypeer, PMIX_VERSION_MINOR);
-    PMIX_SET_PEER_REVISION(pmix_globals.mypeer, PMIX_VERSION_RELEASE);
+    PMIX_SET_PEER_RELEASE(pmix_globals.mypeer, PMIX_VERSION_RELEASE);
     /* create an nspace object for ourselves - we will
      * fill in the nspace name later */
     pmix_globals.mypeer->nptr = PMIX_NEW(pmix_namespace_t);

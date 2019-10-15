@@ -4515,6 +4515,8 @@ static void cdcon(pmix_server_caddy_t *cd)
     cd->event_active = false;
     cd->trk = NULL;
     cd->peer = NULL;
+    cd->info = NULL;
+    cd->ninfo = 0;
 }
 static void cddes(pmix_server_caddy_t *cd)
 {
@@ -4526,6 +4528,9 @@ static void cddes(pmix_server_caddy_t *cd)
     }
     if (NULL != cd->peer) {
         PMIX_RELEASE(cd->peer);
+    }
+    if (NULL != cd->info) {
+        PMIX_INFO_FREE(cd->info, cd->ninfo);
     }
 }
 PMIX_CLASS_INSTANCE(pmix_server_caddy_t,

@@ -177,7 +177,7 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
     pmix_status_t rc;
     socklen_t addrlen;
     struct sockaddr_un *address;
-    bool disabled = false;
+    bool disabled = true;
     char *pmix_pid;
     pid_t mypid;
 
@@ -595,7 +595,7 @@ static void connection_handler(int sd, short args, void *cbdata)
     PMIX_SET_PROC_TYPE(&psave->proc_type, PMIX_PROC_CLIENT);
     PMIX_SET_PROC_MAJOR(&psave->proc_type, major);
     PMIX_SET_PROC_MINOR(&psave->proc_type, minor);
-    PMIX_SET_PROC_REVISION(&psave->proc_type, rel);
+    PMIX_SET_PROC_RELEASE(&psave->proc_type, rel);
 
     /* save the protocol */
     psave->protocol = pnd->protocol;

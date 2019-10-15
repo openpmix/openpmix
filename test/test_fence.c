@@ -246,7 +246,7 @@ static int get_local_peers(char *my_nspace, int my_rank, pmix_rank_t **_peers, p
 
     (void)strncpy(proc.nspace, my_nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
-    /* get number of neighbours on this node */
+    /* get number of neighbors on this node */
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_LOCAL_SIZE, NULL, 0, &val))) {
         TEST_ERROR(("%s:%d: PMIx_Get local peer # failed: %d", my_nspace, my_rank, rc));
         return rc;
@@ -265,7 +265,7 @@ static int get_local_peers(char *my_nspace, int my_rank, pmix_rank_t **_peers, p
     npeers = val->data.uint32;
     peers = malloc(sizeof(pmix_rank_t) * npeers);
 
-    /* get ranks of neighbours on this node */
+    /* get ranks of neighbors on this node */
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, NULL, 0, &val))) {
         TEST_ERROR(("%s:%d: PMIx_Get local peers failed: %d", my_nspace, my_rank, rc));
         free(peers);
@@ -379,6 +379,7 @@ int test_job_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
             for(k=0; k<npeers; k++){
                 if( peers[k] == i+params.base_rank){
                     local = 1;
+                    break;
                 }
             }
             if( local ){
