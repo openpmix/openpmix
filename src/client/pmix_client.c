@@ -240,14 +240,6 @@ static void job_data(struct pmix_peer_t *pr,
                             pmix_client_globals.myserver,
                             nspace, buf);
 
-    /* if anything is left in the buffer, let the
-     * internal hash component have it - e.g., we
-     * may have been passed node and app info for
-     * our own nspace */
-    PMIX_GDS_STORE_JOB_INFO(cb->status,
-                            pmix_globals.mypeer,
-                            nspace, buf);
-
     free(nspace);
     cb->status = PMIX_SUCCESS;
     PMIX_POST_OBJECT(cb);

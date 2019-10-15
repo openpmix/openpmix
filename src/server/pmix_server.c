@@ -1345,6 +1345,10 @@ PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char *
         return rc;
     }
 
+    /* ensure we agree on our hostname - typically only important in
+     * test scenarios where we are faking multiple nodes */
+    pmix_setenv("PMIX_HOSTNAME", pmix_globals.hostname, true, env);
+
     return PMIX_SUCCESS;
 }
 

@@ -12,7 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
- * Copyright (c) 2016-2018 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2016-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
@@ -177,7 +177,7 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
     pmix_status_t rc;
     socklen_t addrlen;
     struct sockaddr_un *address;
-    bool disabled = false;
+    bool disabled = true;
     char *pmix_pid;
     pid_t mypid;
 

@@ -319,6 +319,8 @@ typedef struct {
     pmix_server_trkr_t *trk;
     pmix_ptl_hdr_t hdr;
     pmix_peer_t *peer;
+    pmix_info_t *info;
+    size_t ninfo;
 } pmix_server_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_server_caddy_t);
 
@@ -490,6 +492,40 @@ PMIX_EXPORT void pmix_execute_epilog(pmix_epilog_t *ep);
 
 PMIX_EXPORT extern pmix_globals_t pmix_globals;
 PMIX_EXPORT extern pmix_lock_t pmix_global_lock;
+
+static inline bool pmix_check_node_info(const char* key)
+{
+    char *keys[] = {
+        PMIX_LOCAL_PEERS,
+        PMIX_LOCAL_SIZE,
+        NULL
+    };
+    size_t n;
+
+    for (n=0; NULL != keys[n]; n++) {
+        if (0 == strncmp(key, keys[n], PMIX_MAX_KEYLEN)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static inline bool pmix_check_app_info(const char* key)
+{
+    char *keys[] = {
+        PMIX_APP_SIZE,
+        NULL
+    };
+    size_t n;
+
+    for (n=0; NULL != keys[n]; n++) {
+        if (0 == strncmp(key, keys[n], PMIX_MAX_KEYLEN)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 
 END_C_DECLS
 

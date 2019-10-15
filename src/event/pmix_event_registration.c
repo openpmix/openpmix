@@ -97,11 +97,6 @@ static void regevents_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
     PMIX_BFROPS_UNPACK(rc, peer, buf, &ret, &cnt, PMIX_STATUS);
     if ((PMIX_SUCCESS != rc) ||
         (PMIX_SUCCESS != ret)) {
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-        } else {
-            PMIX_ERROR_LOG(ret);
-        }
         /* remove the err handler and call the error handler
          * reg completion callback fn so the requestor
          * doesn't hang */

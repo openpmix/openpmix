@@ -161,8 +161,7 @@ int pmix_rte_init(uint32_t type,
     }
 
     /* setup the globals structure */
-    gethostname(hostname, PMIX_MAXHOSTNAMELEN-1);
-    pmix_globals.hostname = strdup(hostname);
+    pmix_globals.pid = getpid();
     memset(&pmix_globals.myid.nspace, 0, PMIX_MAX_NSLEN+1);
     pmix_globals.myid.rank = PMIX_RANK_INVALID;
     PMIX_CONSTRUCT(&pmix_globals.events, pmix_events_t);
@@ -175,6 +174,13 @@ int pmix_rte_init(uint32_t type,
                           pmix_globals.evbase, pmix_globals.event_eviction_time,
                           _notification_eviction_cbfunc);
     PMIX_CONSTRUCT(&pmix_globals.nspaces, pmix_list_t);
+    /* if we were given a hostname in our environment, use it */
+    if (NULL != (evar = getenv("PMIX_HOSTNAME"))) {
+        pmix_globals.hostname = strdup(evar);
+    } else {
+        gethostname(hostname, PMIX_MAXHOSTNAMELEN-1);
+        pmix_globals.hostname = strdup(hostname);
+    }
 
     if (PMIX_SUCCESS != ret) {
         error = "notification hotel init";
