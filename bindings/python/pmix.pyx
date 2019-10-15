@@ -78,9 +78,11 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
     pmix_unload_info(results, nresults, pyresults)
 
     # find the handler being called
+    found = False
     for h in myhdlrs:
         try:
             if evhdlr_registration_id == h['refid']:
+                found = True
                 rc, pymyresults = h['hdlr'](status, pysource, pyinfo, pyresults)
                 # allocate and load pmix info structs from python list of dictionaries
                 myresults_ptr = &myresults
@@ -99,13 +101,41 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
         except:
             pass
 
+    # if we didn't find the handler, cache this event in a timeshift
+    # and try it again
+    if not found:
+        mycaddy    = <pmix_pyshift_event_handler_t*> PyMem_Malloc(sizeof(pmix_pyshift_event_handler_t))
+        mycaddy.op = strdup("event_handler")
+        mycaddy.idx                 = evhdlr_registration_id
+        mycaddy.status              = rc
+        memset(mycaddy.source.nspace, 0, PMIX_MAX_NSLEN+1)
+        memcpy(mycaddy.source.nspace, source[0].nspace, PMIX_MAX_NSLEN)
+        mycaddy.source.rank         = source[0].rank
+        mycaddy.info                = info
+        mycaddy.ninfo               = ninfo
+        mycaddy.results             = results
+        mycaddy.nresults            = nresults
+        mycaddy.cbfunc              = NULL
+        mycaddy.thiscbdata          = NULL
+        mycaddy.notification_cbdata = cbdata
+        mycaddy.event_handler       = cbfunc
+        cb = PyCapsule_New(mycaddy, "event_handler", NULL)
+        threading.Timer(2, event_cache_cb, [cb, rc]).start()
     return
+
+cdef void event_cache_cb(capsule, ret):
+    cdef pmix_pyshift_event_handler_t *shifter
+    shifter = <pmix_pyshift_event_handler_t*>PyCapsule_GetPointer(capsule, "event_handler")
+    pyeventhandler(shifter[0].idx, shifter[0].status, &shifter[0].source,
+                   shifter[0].info, shifter[0].ninfo,
+                   shifter[0].results, shifter[0].nresults,
+                   shifter[0].event_handler, shifter[0].notification_cbdata)
 
 cdef void event_handler_cb(capsule, ret):
     cdef pmix_pyshift_event_handler_t *shifter
     shifter = <pmix_pyshift_event_handler_t*>PyCapsule_GetPointer(capsule, "event_handler")
-    shifter[0].event_handler(shifter[0].status, shifter[0].results, shifter[0].nresults, 
-                             shifter[0].cbfunc, shifter[0].thiscbdata, 
+    shifter[0].event_handler(shifter[0].status, shifter[0].results, shifter[0].nresults,
+                             shifter[0].cbfunc, shifter[0].thiscbdata,
                              shifter[0].notification_cbdata)
     print("SHIFTER:", shifter[0].op)
     if 0 < shifter[0].nresults:
@@ -2352,7 +2382,7 @@ cdef class PMIxTool(PMIxServer):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
-        
+
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
         rc = pmix_alloc_info(info_ptr, &sz, dicts)
