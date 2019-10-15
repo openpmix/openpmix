@@ -20,7 +20,8 @@ def main():
            'publish': clientpublish,
            'unpublish': clientunpublish,
            'lookup': clientlookup,
-           'query': clientquery}
+           'query': clientquery,
+           'registerevents': client_register_events}
     my_result = foo.init(args, map)
     print("Testing PMIx_Initialized")
     rc = foo.initialized()
@@ -76,7 +77,7 @@ def main():
                     read = read.decode('utf-8').rstrip()
                     stdout_done = False
                     stdout.append(read)
-            elif fd == p.stderr.fileno():
+            if fd == p.stderr.fileno():
                 read = p.stderr.readline()
                 if read:
                     read = read.decode('utf-8').rstrip()

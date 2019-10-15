@@ -83,6 +83,12 @@ def test_query(client, pyqueries):
         print("QUERY TEST FAILED: ", client.error_string(rc))
     print("QUERY INFO RETURNED: ", pyresults)
 
+def test_pyhandler(st:int, pysource:dict, pyinfo:list, pyresults:list):
+    status = PMIX_EVENT_ACTION_COMPLETE
+    results = [{'key':'eventkey', 'value':'testevent', 'val_type':PMIX_STRING}]
+    print("RESULTS FOR PYHANDLER: ", results)
+    return status, results
+
 def main():
     foo = PMIxClient()
     print("Testing PMIx ", foo.get_version())
@@ -130,6 +136,15 @@ def main():
 
     pyq = [{'keys':[PMIX_QUERY_PSET_NAMES], 'qualifiers':[]}]
     test_query(foo, pyq)
+
+    pycodes = []
+    code = PMIX_MODEL_DECLARED
+    pycodes.append(code)
+    print("REGISTERING")
+    info = [{'key': PMIX_EVENT_HDLR_NAME, 'value': 'SIMPCLIENT-MODEL', 'val_type': PMIX_STRING}]
+    rc = foo.register_event_handler(pycodes, info, test_pyhandler)
+    print("REGISTER EVENT HANDLER RETURNEDj (STR): ", foo.error_string(rc))
+    print("REGISTER EVENT HANDLER RETURNED (INT): ", rc)
 
     # finalize
     info = []

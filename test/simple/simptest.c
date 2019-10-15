@@ -557,8 +557,7 @@ int main(int argc, char **argv)
     PMIX_INFO_LOAD(&info[0], PMIX_EVENT_HDLR_NAME, "SIMPTEST-MODEL", PMIX_STRING);
     code = PMIX_MODEL_DECLARED;
     PMIx_Register_event_handler(&code, 1, info, ninfo,
-                                model_callback, model_registration_callback, (void*)&mylock);
-    DEBUG_WAIT_THREAD(&mylock);
+                                model_callback, NULL, NULL);
     PMIX_INFO_FREE(info, ninfo);
     if (PMIX_SUCCESS != mylock.status) {
         exit(mylock.status);
