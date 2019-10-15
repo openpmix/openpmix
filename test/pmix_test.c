@@ -49,12 +49,11 @@ int main(int argc, char **argv)
     struct stat stat_buf;
     struct timeval tv;
     double test_start;
-    test_params params;
-    INIT_TEST_PARAMS(params);
     int test_fail = 0;
     char *tmp;
     int ns_nprocs;
 
+    INIT_TEST_PARAMS(params);
     gettimeofday(&tv, NULL);
     test_start = tv.tv_sec + 1E-6*tv.tv_usec;
 
