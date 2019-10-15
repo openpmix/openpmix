@@ -177,7 +177,7 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
     pmix_status_t rc;
     socklen_t addrlen;
     struct sockaddr_un *address;
-    bool disabled = false;
+    bool disabled = true;
     char *pmix_pid;
     pid_t mypid;
 

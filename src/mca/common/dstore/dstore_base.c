@@ -2692,22 +2692,23 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
 
     PMIX_LIST_FOREACH(kv, &cb.kvs, pmix_kval_t) {
     	if (PMIX_CHECK_KEY(kv, PMIX_NODE_INFO_ARRAY)) {
-    	pmix_output(0, "STORING NODE ARRAY: %s", kv->key);
     		/* earlier PMIx versions don't know how to handle
     		 * the info arrays - what they need is a key-value
     		 * pair where the key is the name of the node and
     		 * the value is the local peers. So if the peer
     		 * is earlier than 3.1.5, construct the necessary
-    		 * translation */
+    		 * translation. Otherwise, ignore it as the hash
+             * component will handle it for them */
     		if (PMIX_PEER_IS_EARLIER(ds_ctx->clients_peer, 3, 1, 5)) {
 	            pmix_info_t *info;
 	            size_t size, i;
+                bool local = false;
+                /* if it is our local node, then we are going to pass
+                 * all info */
 	            info = kv->value->data.darray->array;
 	            size = kv->value->data.darray->size;
-pmix_output(0, "STORING FOR EARLIER VERSION %u:%u:%u", ds_ctx->clients_peer->proc_type.major, ds_ctx->clients_peer->proc_type.minor,ds_ctx->clients_peer->proc_type.release);
 	            for (i = 0; i < size; i++) {
 	                if (PMIX_CHECK_KEY(&info[i], PMIX_LOCAL_PEERS)) {
-	                	pmix_output(0, "FOUND LOCAL PEERS");
 	                    kv2 = PMIX_NEW(pmix_kval_t);
 	                    kv2->key = strdup(kv->key);
 	                    PMIX_VALUE_XFER(rc, kv2->value, &info[i].value);
@@ -2723,17 +2724,40 @@ pmix_output(0, "STORING FOR EARLIER VERSION %u:%u:%u", ds_ctx->clients_peer->pro
 	                        goto exit;
 	                    }
 	                    PMIX_RELEASE(kv2);
-	                    break;
-	                }
+	                } else if (PMIX_CHECK_KEY(&info[i], PMIX_HOSTNAME)) {
+                        if (0 == strcmp(info[i].value.data.string, pmix_globals.hostname)) {
+                            local = true;
+                        }
+                    }
 	            }
-    		} else {
-    			pmix_output(0, "STORING FOR NEW VERSION");
-	            PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, kv, 1, PMIX_KVAL);
-	            if (PMIX_SUCCESS != rc) {
-	                PMIX_ERROR_LOG(rc);
-	                goto exit;
-	            }
-	        }
+                if (local) {
+                    for (i = 0; i < size; i++) {
+                        if (!PMIX_CHECK_KEY(&info[i], PMIX_LOCAL_PEERS) &&
+                            !PMIX_CHECK_KEY(&info[i], PMIX_HOSTNAME) &&
+                            !PMIX_CHECK_KEY(&info[i], PMIX_NODEID)) {
+                            kv2 = PMIX_NEW(pmix_kval_t);
+                            kv2->key = strdup(kv->key);
+                            PMIX_VALUE_XFER(rc, kv2->value, &info[i].value);
+                            if (PMIX_SUCCESS != rc) {
+                                PMIX_ERROR_LOG(rc);
+                                PMIX_RELEASE(kv2);
+                                goto exit;
+                            }
+                            PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, kv2, 1, PMIX_KVAL);
+                            if (PMIX_SUCCESS != rc) {
+                                PMIX_ERROR_LOG(rc);
+                                PMIX_RELEASE(kv2);
+                                goto exit;
+                            }
+                            PMIX_RELEASE(kv2);
+                        }
+                    }
+                }
+    		}
+        } else if (PMIX_CHECK_KEY(kv, PMIX_APP_INFO_ARRAY) ||
+                   PMIX_CHECK_KEY(kv, PMIX_JOB_INFO_ARRAY) ||
+                   PMIX_CHECK_KEY(kv, PMIX_SESSION_INFO_ARRAY)) {
+            continue;
         } else {
             PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, kv, 1, PMIX_KVAL);
             if (PMIX_SUCCESS != rc) {
