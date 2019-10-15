@@ -906,6 +906,7 @@ PMIX_EXPORT pmix_status_t PMIx_Register_event_handler(pmix_status_t codes[], siz
     	cd->cbdata = cd;
     	PMIX_RETAIN(cd);
         reg_event_hdlr(0, 0, (void*)cd);
+        PMIX_WAIT_THREAD(&cd->lock);
         rc = cd->status;
         PMIX_RELEASE(cd);
     }
