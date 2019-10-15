@@ -77,7 +77,11 @@ ctypedef struct pmix_pyshift_query_t:
 
 ctypedef struct pmix_pyshift_event_handler_t:
     char *op
+    size_t idx
     pmix_status_t status
+    pmix_proc_t source
+    pmix_info_t *info
+    size_t ninfo
     pmix_info_t *results
     size_t nresults
     pmix_op_cbfunc_t cbfunc
