@@ -76,20 +76,16 @@ def main():
                 if read:
                     read = read.decode('utf-8').rstrip()
                     stdout_done = False
-                    stdout.append(read)
+                    print("stdout:", read)
             if fd == p.stderr.fileno():
                 read = p.stderr.readline()
                 if read:
                     read = read.decode('utf-8').rstrip()
-                    stderr_done = False
-                    stderr.append(read)
+                    stderr_done = False  
+                    print("stderr:", read)
 
         if stdout_done and stderr_done:
             break
-    for p in stdout:
-        print("stdout:", p)
-    for p in stderr:
-        print("stderr:", p)
     print("FINALIZING")
     foo.finalize()
 
