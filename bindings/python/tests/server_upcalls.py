@@ -40,7 +40,7 @@ def clientfence(procs:list, directives:list, data:bytearray):
                     #it can be ignored
                     pass
     print("COMPLETE")
-    return PMIX_OPERATION_SUCCEEDED, output
+    return PMIX_SUCCESS, output
 
 def clientpublish(proc:dict, directives:list):
     print("SERVER: PUBLISH")
@@ -76,6 +76,7 @@ def clientquery(proc:dict, queries:list):
     # return a python info list of dictionaries
     info = {}
     results = []
+    rc = PMIX_ERR_NOT_FOUND
     # find key we passed in to client, and
     # if it matches return fake PSET_NAME
     # since RM actually assigns this, we
@@ -87,7 +88,8 @@ def clientquery(proc:dict, queries:list):
             if k == find_str:
                 info = {'key': find_str, 'value': 'PSET_NAME', 'val_type': PMIX_STRING}
                 results.append(info)
-    return PMIX_ERR_NOT_FOUND, results
+                rc = PMIX_SUCCESS
+    return rc, results
 
 def client_register_events(codes:list, directives:list):
     print("CLIENT REGISTER EVENTS ", codes)

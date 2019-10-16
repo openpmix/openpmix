@@ -162,6 +162,8 @@ cdef void lookup_cb(capsule, ret):
 cdef void fence_cb(capsule, ret):
     cdef pmix_pyshift_fence_t *shifter
     shifter = <pmix_pyshift_fence_t*>PyCapsule_GetPointer(capsule, "fence")
+    shifter[0].modex(ret, shifter[0].bo.bytes, shifter[0].bo.size, 
+                     shifter[0].cbdata, NULL, NULL)
     print("SHIFTER:", shifter[0].op)
     return
 
@@ -1660,7 +1662,7 @@ cdef int fencenb(const pmix_proc_t procs[], size_t nprocs,
         if NULL != data:
             pmix_unload_bytes(data, ndata, blist)
             barray = bytearray(blist)
-        rc,data = pmixservermodule['fencenb'](myprocs, ilist, barray)
+        rc, data = pmixservermodule['fencenb'](myprocs, ilist, barray)
     else:
         return PMIX_ERR_NOT_SUPPORTED
     # we cannot execute a callback function here as
@@ -1672,7 +1674,6 @@ cdef int fencenb(const pmix_proc_t procs[], size_t nprocs,
     # that let's the underlying PMIx library know
     # the situation so it can generate its own
     # callback
-
     if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
         mycaddy = <pmix_pyshift_fence_t*> PyMem_Malloc(sizeof(pmix_pyshift_fence_t))
         mycaddy.op = strdup("fence")
@@ -1681,9 +1682,8 @@ cdef int fencenb(const pmix_proc_t procs[], size_t nprocs,
         mycaddy.modex = cbfunc
         mycaddy.cbdata = cbdata
         cb = PyCapsule_New(mycaddy, "fence", NULL)
-        rc = PMIX_OPERATION_SUCCEEDED
-        fence_cb(cb, rc)
-        # execute the timer delay
+        rc = PMIX_SUCCESS
+        threading.Timer(0.5, fence_cb, [cb, rc]).start()
     return rc
 
 # TODO: This function requires that the server execute the

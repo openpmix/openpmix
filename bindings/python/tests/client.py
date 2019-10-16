@@ -154,7 +154,7 @@ def main():
     info = [{'key': PMIX_EVENT_HDLR_NAME, 'value': 'SIMPCLIENT-MODEL', 'val_type': PMIX_STRING}]
     test_register_event_handler(foo, pycodes, info, test_pyhandler)
 
-    time.sleep(4)
+    time.sleep(2)
 
     # finalize
     info = []
