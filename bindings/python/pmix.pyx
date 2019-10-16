@@ -63,6 +63,7 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
     cdef pmix_info_t **myresults_ptr
     cdef size_t nmyresults
 
+    print("PYEVHDLR INVOKED")
     # convert the source to python
     pysource = {}
     myns = (source.nspace).decode('ascii')
@@ -79,6 +80,7 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
 
     # find the handler being called
     found = False
+    rc = PMIX_ERR_NOT_FOUND
     for h in myhdlrs:
         try:
             if evhdlr_registration_id == h['refid']:
@@ -104,6 +106,7 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
     # if we didn't find the handler, cache this event in a timeshift
     # and try it again
     if not found:
+        print("SHIFTING EVENT")
         mycaddy    = <pmix_pyshift_event_handler_t*> PyMem_Malloc(sizeof(pmix_pyshift_event_handler_t))
         mycaddy.op = strdup("event_handler")
         mycaddy.idx                 = evhdlr_registration_id
