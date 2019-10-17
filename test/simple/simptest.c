@@ -453,7 +453,6 @@ int main(int argc, char **argv)
             PMIx_server_finalize();
             return rc;
         }
-        pmix_setenv("PMIX_MCA_gds_base_verbose", "5", true, &client_env);
 
         x = PMIX_NEW(myxfer_t);
         if (PMIX_SUCCESS != (rc = PMIx_server_register_client(&proc, myuid, mygid,
