@@ -180,13 +180,14 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     };
     char *evar;
     pmix_rank_info_t *rinfo;
-    pmix_proc_type_t ptype = PMIX_PROC_SERVER;
+    pmix_proc_type_t ptype = PMIX_PROC_TYPE_STATIC_INIT;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:server init called");
 
+    PMIX_SET_PROC_TYPE(&ptype, PMIX_PROC_SERVER);
     /* setup the function pointers */
     if (NULL == module) {
         pmix_host_server = myhostserver;
@@ -198,9 +199,9 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         for (n=0; n < ninfo; n++) {
             if (0 == strncmp(info[n].key, PMIX_SERVER_GATEWAY, PMIX_MAX_KEYLEN)) {
                 if (PMIX_INFO_TRUE(&info[n])) {
-                    ptype |= PMIX_PROC_GATEWAY;
+                    PMIX_SET_PROC_TYPE(&ptype, PMIX_PROC_GATEWAY);
                 }
-            } else if (0 == strncmp(info[n].key, PMIX_SERVER_TMPDIR, PMIX_MAX_KEYLEN)) {
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_TMPDIR)) {
                 pmix_server_globals.tmpdir = strdup(info[n].value.data.string);
             } else if (0 == strncmp(info[n].key, PMIX_SYSTEM_TMPDIR, PMIX_MAX_KEYLEN)) {
                 pmix_server_globals.system_tmpdir = strdup(info[n].value.data.string);
@@ -224,7 +225,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
 
     /* setup the runtime - this init's the globals,
      * opens and initializes the required frameworks */
-    if (PMIX_SUCCESS != (rc = pmix_rte_init(ptype, info, ninfo, NULL))) {
+    if (PMIX_SUCCESS != (rc = pmix_rte_init(ptype.type, info, ninfo, NULL))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
@@ -406,7 +407,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     pmix_list_append(&pmix_ptl_globals.posted_recvs, &req->super);
 
     /* if we are a gateway, setup our IOF events */
-    if (PMIX_PROC_IS_GATEWAY(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_GATEWAY(pmix_globals.mypeer)) {
         /* setup IOF */
         PMIX_IOF_SINK_DEFINE(&pmix_client_globals.iof_stdout, &pmix_globals.myid,
                              1, PMIX_FWD_STDOUT_CHANNEL, pmix_iof_write_handler);
@@ -1204,7 +1205,7 @@ static void _deregister_client(int sd, short args, void *cbdata)
                 /* resources may have been allocated to them, so
                  * ensure they get cleaned up - this isn't true
                  * for tools, so don't clean them up */
-                if (!PMIX_PROC_IS_TOOL(peer)) {
+                if (!PMIX_PEER_IS_TOOL(peer)) {
                     pmix_pnet.child_finalized(&cd->proc);
                     pmix_psensor.stop(peer, NULL);
                 }
@@ -1343,6 +1344,10 @@ PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char *
         PMIX_ERROR_LOG(rc);
         return rc;
     }
+
+    /* ensure we agree on our hostname - typically only important in
+     * test scenarios where we are faking multiple nodes */
+    pmix_setenv("PMIX_HOSTNAME", pmix_globals.hostname, true, env);
 
     return PMIX_SUCCESS;
 }
@@ -2670,7 +2675,7 @@ static void _cnct(int sd, short args, void *cbdata)
                 }
                 PMIX_DESTRUCT(&cb);
 
-                if (PMIX_PROC_IS_V1(cd->peer) || PMIX_PROC_IS_V20(cd->peer)) {
+                if (PMIX_PEER_IS_V1(cd->peer) || PMIX_PEER_IS_V20(cd->peer)) {
                     PMIX_BFROPS_PACK(rc, cd->peer, reply, &pbkt, 1, PMIX_BUFFER);
                     if (PMIX_SUCCESS != rc) {
                         PMIX_ERROR_LOG(rc);
@@ -3311,9 +3316,6 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
     pmix_server_caddy_t *cd;
     pmix_proc_t proc;
     pmix_buffer_t *reply;
-    pmix_cb_t cb;
-    pmix_info_t info;
-    pmix_kval_t *kv;
 
     /* retrieve the cmd */
     cnt = 1;
@@ -3337,74 +3339,6 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
             PMIX_ERROR_LOG(rc);
             return rc;
         }
-        /* if this peer is using dstore, then we let the gds/hash
-         * component add node- and app-level info for the peer's
-         * own nspace so that functions like "resolve_peers" and
-         * "resolve_nodes" can properly respond */
-        if (0 != strcmp("hash", peer->nptr->compat.gds->name)) {
-            /* get the node info */
-            PMIX_CONSTRUCT(&cb, pmix_cb_t);
-            PMIX_LOAD_NSPACE(&proc, peer->info->pname.nspace);
-            proc.rank = PMIX_RANK_UNDEF;
-            cb.proc = &proc;
-            PMIX_INFO_LOAD(&info, PMIX_NODE_INFO, NULL, PMIX_BOOL);
-            cb.info = &info;
-            cb.ninfo = 1;
-            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                cb.proc = NULL;
-                cb.info = NULL;
-                cb.ninfo = 0;
-                PMIX_DESTRUCT(&cb);
-                return rc;
-            }
-            PMIX_LIST_FOREACH(kv, &cb.kvs, pmix_kval_t) {
-                PMIX_BFROPS_PACK(rc, peer, reply, kv, 1, PMIX_KVAL);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    cb.proc = NULL;
-                    cb.info = NULL;
-                    cb.ninfo = 0;
-                    PMIX_DESTRUCT(&cb);
-                    return rc;
-                }
-            }
-            cb.proc = NULL;
-            cb.info = NULL;
-            cb.ninfo = 0;
-            PMIX_DESTRUCT(&cb);
-            /* get the app info */
-            PMIX_CONSTRUCT(&cb, pmix_cb_t);
-            cb.proc = &proc;
-            PMIX_INFO_LOAD(&info, PMIX_APP_INFO, NULL, PMIX_BOOL);
-            cb.info = &info;
-            cb.ninfo = 1;
-            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                cb.proc = NULL;
-                cb.info = NULL;
-                cb.ninfo = 0;
-                PMIX_DESTRUCT(&cb);
-                return rc;
-            }
-            PMIX_LIST_FOREACH(kv, &cb.kvs, pmix_kval_t) {
-                PMIX_BFROPS_PACK(rc, peer, reply, kv, 1, PMIX_KVAL);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    cb.proc = NULL;
-                    cb.info = NULL;
-                    cb.ninfo = 0;
-                    PMIX_DESTRUCT(&cb);
-                    return rc;
-                }
-            }
-            cb.proc = NULL;
-            cb.info = NULL;
-            cb.ninfo = 0;
-            PMIX_DESTRUCT(&cb);
-        }
         PMIX_SERVER_QUEUE_REPLY(rc, peer, tag, reply);
         if (PMIX_SUCCESS != rc) {
             PMIX_RELEASE(reply);
@@ -3423,7 +3357,7 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
 
     if (PMIX_COMMIT_CMD == cmd) {
         rc = pmix_server_commit(peer, buf);
-        if (!PMIX_PROC_IS_V1(peer)) {
+        if (!PMIX_PEER_IS_V1(peer)) {
             reply = PMIX_NEW(pmix_buffer_t);
             if (NULL == reply) {
                 PMIX_ERROR_LOG(PMIX_ERR_NOMEM);

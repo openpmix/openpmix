@@ -170,7 +170,11 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_rank_info_t,
 
 static void pcon(pmix_peer_t *p)
 {
-    p->proc_type = PMIX_PROC_UNDEF;
+    p->proc_type.type = PMIX_PROC_UNDEF;
+    p->proc_type.major = PMIX_MAJOR_WILDCARD;
+    p->proc_type.minor = PMIX_MINOR_WILDCARD;
+    p->proc_type.release = PMIX_RELEASE_WILDCARD;
+    p->proc_type.padding = 0;
     p->protocol = PMIX_PROTOCOL_UNDEF;
     p->finalized = false;
     p->info = NULL;

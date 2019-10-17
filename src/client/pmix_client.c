@@ -240,14 +240,6 @@ static void job_data(struct pmix_peer_t *pr,
                             pmix_client_globals.myserver,
                             nspace, buf);
 
-    /* if anything is left in the buffer, let the
-     * internal hash component have it - e.g., we
-     * may have been passed node and app info for
-     * our own nspace */
-    PMIX_GDS_STORE_JOB_INFO(cb->status,
-                            pmix_globals.mypeer,
-                            nspace, buf);
-
     free(nspace);
     cb->status = PMIX_SUCCESS;
     PMIX_POST_OBJECT(cb);
@@ -452,7 +444,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
     if (0 < pmix_globals.init_cntr ||
-        (NULL != pmix_globals.mypeer && PMIX_PROC_IS_SERVER(pmix_globals.mypeer))) {
+        (NULL != pmix_globals.mypeer && PMIX_PEER_IS_SERVER(pmix_globals.mypeer))) {
         /* since we have been called before, the nspace and
          * rank should be known. So return them here if
          * requested */
@@ -1215,7 +1207,7 @@ static void _commitfn(int sd, short args, void *cbdata)
     }
 
     /* if we are a server, or we aren't connected, don't attempt to send */
-    if (PMIX_PROC_IS_SERVER(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_SUCCESS;  // not an error
     }
