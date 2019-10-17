@@ -733,6 +733,7 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
         }
     }
 
+  nextstep:
     /* if we are going to support tools, then drop contact file(s) */
     if (system_tool) {
         FILE *fp;

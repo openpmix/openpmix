@@ -413,7 +413,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
 
     /* if we are a launcher, then we also need to act as a server,
      * so setup the server-related structures here */
-    if (PMIX_PROC_LAUNCHER_ACT & ptype) {
+    if (PMIX_PROC_IS_LAUNCHER(&ptype)) {
         if (PMIX_SUCCESS != (rc = pmix_server_initialize())) {
             PMIX_ERROR_LOG(rc);
             if (NULL != nspace) {
