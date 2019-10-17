@@ -357,7 +357,6 @@ int main(int argc, char **argv)
     wait_tracker_t *child;
     pmix_info_t *info;
     size_t ninfo;
-    bool cross_version = false;
     bool hwloc = false;
 #if PMIX_HAVE_HWLOC
     char *hwloc_file = NULL;
@@ -390,10 +389,6 @@ int main(int argc, char **argv)
                 pmix_argv_append_nosize(&client_argv, argv[k]);
             }
             n += k;
-        } else if (0 == strcmp("-x", argv[n])) {
-            /* cross-version test - we will set one child to
-             * run at a different version. Requires -n >= 2 */
-            cross_version = true;
 #if PMIX_HAVE_HWLOC
         } else if (0 == strcmp("-hwloc", argv[n]) ||
                    0 == strcmp("--hwloc", argv[n])) {
@@ -414,7 +409,6 @@ int main(int argc, char **argv)
             fprintf(stderr, "usage: simptest <options>\n");
             fprintf(stderr, "    -n N     Number of clients to run\n");
             fprintf(stderr, "    -e foo   Name of the client executable to run (default: simpclient\n");
-            fprintf(stderr, "    -x       Test cross-version support\n");
             fprintf(stderr, "    -u       Enable legacy usock support\n");
             fprintf(stderr, "    -hwloc   Test hwloc support\n");
             fprintf(stderr, "    -hwloc-file FILE   Use file to import topology\n");
@@ -429,7 +423,8 @@ int main(int argc, char **argv)
                    0 == strcmp("--model", argv[n])) {
             /* test network support */
             model = true;
-        } else if (0 == strcmp("-xversion", argv[n]) ||
+        } else if (0 == strcmp("-x", argv[n]) ||
+                   0 == strcmp("-xversion", argv[n]) ||
                    0 == strcmp("--xversion", argv[n])) {
             xversion = true;
         }
@@ -444,11 +439,6 @@ int main(int argc, char **argv)
     /* check for executable existence and permissions */
     if (0 != access(executable, X_OK)) {
         fprintf(stderr, "Executable %s not found or missing executable permissions\n", executable);
-        exit(1);
-    }
-
-    if (cross_version && nprocs < 2) {
-        fprintf(stderr, "Cross-version testing requires at least two clients\n");
         exit(1);
     }
 

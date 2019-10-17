@@ -49,6 +49,7 @@
 #include "src/class/pmix_list.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/pcompress/base/base.h"
+#include "src/mca/ptl/base/base.h"
 #include "src/threads/threads.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
@@ -402,8 +403,17 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
              * it back to the user, we need a copy of it */
             cb->copy = true;
             if (PMIX_RANK_UNDEF == proc.rank || diffnspace) {
+                if (PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 1, 5)) {
+                    /* everything is under rank=wildcard */
+                    proc.rank = PMIX_RANK_WILDCARD;
+                }
                 PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
             } else {
+                if (PMIX_RANK_UNDEF == proc.rank &&
+                    PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 1, 5)) {
+                    /* everything is under rank=wildcard */
+                    proc.rank = PMIX_RANK_WILDCARD;
+                }
                 PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, cb);
             }
             if (PMIX_SUCCESS == rc) {
