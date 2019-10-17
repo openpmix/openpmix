@@ -195,6 +195,7 @@ static pmix_list_t children;
 static bool istimeouttest = false;
 static mylock_t globallock;
 static bool arrays = false;
+static bool xversion = false;
 
 static void set_namespace(int nprocs, char *ranks, char *nspace,
                           pmix_op_cbfunc_t cbfunc, myxfer_t *x);
@@ -296,8 +297,6 @@ int main(int argc, char **argv)
     wait_tracker_t *child;
     pmix_info_t *info;
     size_t ninfo;
-    bool cross_version = false;
-    bool usock = true;
     mylock_t mylock;
     pmix_status_t code;
     sigset_t unblock;
@@ -326,26 +325,22 @@ int main(int argc, char **argv)
                 pmix_argv_append_nosize(&client_argv, argv[k]);
             }
             n += k;
-        } else if (0 == strcmp("-x", argv[n])) {
-            /* cross-version test - we will set one child to
-             * run at a different version. Requires -n >= 2 */
-            cross_version = true;
-            usock = false;
-        } else if (0 == strcmp("-u", argv[n])) {
-            /* enable usock */
-            usock = false;
         } else if (0 == strcmp("-h", argv[n])) {
             /* print the options and exit */
             fprintf(stderr, "usage: simptest <options>\n");
             fprintf(stderr, "    -n N     Number of clients to run\n");
             fprintf(stderr, "    -e foo   Name of the client executable to run (default: simpclient\n");
-            fprintf(stderr, "    -x       Test cross-version support\n");
             fprintf(stderr, "    -u       Enable legacy usock support\n");
             fprintf(stderr, "    -arrays  Use the job session array to pass registration info\n");
+            fprintf(stderr, "    -xversion  Cross-version test - simulate single node only\n");
             exit(0);
         } else if (0 == strcmp("-arrays", argv[n]) ||
                    0 == strcmp("--arrays", argv[n])) {
             arrays = true;
+        } else if (0 == strcmp("-x", argv[n]) ||
+                   0 == strcmp("-xversion", argv[n]) ||
+                   0 == strcmp("--xversion", argv[n])) {
+            xversion = true;
         }
     }
     if (NULL == executable) {
@@ -354,11 +349,6 @@ int main(int argc, char **argv)
     /* check for executable existence and permissions */
     if (0 != access(executable, X_OK)) {
         fprintf(stderr, "Executable %s not found or missing executable permissions\n", executable);
-        exit(1);
-    }
-
-    if (cross_version && nprocs < 2) {
-        fprintf(stderr, "Cross-version testing requires at least two clients\n");
         exit(1);
     }
 
@@ -463,18 +453,7 @@ int main(int argc, char **argv)
             PMIx_server_finalize();
             return rc;
         }
-        /* if cross-version test is requested, then oscillate PTL support
-         * by rank */
-        if (cross_version) {
-            if (0 == n % 2) {
-                pmix_setenv("PMIX_MCA_ptl", "tcp", true, &client_env);
-            } else {
-                pmix_setenv("PMIX_MCA_ptl", "usock", true, &client_env);
-            }
-        } else if (!usock) {
-            /* don't disable usock => enable it on client */
-            pmix_setenv("PMIX_MCA_ptl", "usock", true, &client_env);
-        }
+
         x = PMIX_NEW(myxfer_t);
         if (PMIX_SUCCESS != (rc = PMIx_server_register_client(&proc, myuid, mygid,
                                                               NULL, opcbfunc, x))) {
@@ -578,10 +557,11 @@ int main(int argc, char **argv)
 static void set_namespace(int nprocs, char *ranks, char *nspace,
                           pmix_op_cbfunc_t cbfunc, myxfer_t *x)
 {
-    char *regex, *ppn;
+    char *regex, *ppn, *t2;
     int n, m, k;
     pmix_data_array_t *array;
     pmix_info_t *info, *iptr;
+    char tmp[50] , **agg = NULL;
 
     if (arrays) {
         x->ninfo = 15 + nprocs;
@@ -592,8 +572,22 @@ static void set_namespace(int nprocs, char *ranks, char *nspace,
     PMIX_INFO_CREATE(x->info, x->ninfo);
     n = 0;
 
-    PMIx_generate_regex("test000,test001,test002", &regex);
-    PMIx_generate_ppn("0;1;2", &ppn);
+    if (xversion) {
+        /* everything on one node */
+        PMIx_generate_regex(pmix_globals.hostname, &regex);
+        for (m=0; m < nprocs; m++) {
+            snprintf(tmp, 50, "%d", m);
+            pmix_argv_append_nosize(&agg, tmp);
+            memset(tmp, 0, 50);
+        }
+        t2 = pmix_argv_join(agg, ',');
+        pmix_argv_free(agg);
+        PMIx_generate_ppn(t2, &ppn);
+        free(t2);
+    } else {
+        PMIx_generate_regex("test000,test001,test002", &regex);
+        PMIx_generate_ppn("0;1;2", &ppn);
+    }
 
     if (arrays) {
         (void)strncpy(x->info[n].key, PMIX_JOB_INFO_ARRAY, PMIX_MAX_KEYLEN);
