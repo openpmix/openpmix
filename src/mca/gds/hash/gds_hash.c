@@ -1221,11 +1221,6 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                 }
                 PMIX_RELEASE(kp2);  // maintain acctg
             }
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_MODEL_LIBRARY_NAME) ||
-                   PMIX_CHECK_KEY(&info[n], PMIX_PROGRAMMING_MODEL) ||
-                   PMIX_CHECK_KEY(&info[n], PMIX_MODEL_LIBRARY_VERSION)) {
-            // pass this info to the pmdl framework
-            pmix_pmdl.setup_nspace(trk->nptr, PMIX_APP_WILDCARD, &info[n]);
         } else if (pmix_check_node_info(info[n].key)) {
             /* they are passing us the node-level info for just this
              * node - start by seeing if our node is on the list */
@@ -2042,6 +2037,7 @@ static pmix_status_t _hash_store_modex(void * cbdata,
                                        pmix_list_t *cbs,
                                        pmix_byte_object_t *bo)
 {
+    pmix_namespace_t *ns = (pmix_namespace_t*)nspace;
     pmix_job_t *trk;
     pmix_status_t rc = PMIX_SUCCESS;
     int32_t cnt;
@@ -2055,7 +2051,7 @@ static pmix_status_t _hash_store_modex(void * cbdata,
                         ns->nspace);
 
     /* find the hash table for this nspace */
-    trk = get_tracker(proc->nspace, true);
+    trk = get_tracker(ns->nspace, true);
     if (NULL == trk) {
         return PMIX_ERR_NOMEM;
     }

@@ -161,7 +161,6 @@ int pmix_rte_init(uint32_t type,
     }
 
     /* setup the globals structure */
-    pmix_globals.pid = getpid();
     memset(&pmix_globals.myid.nspace, 0, PMIX_MAX_NSLEN+1);
     pmix_globals.myid.rank = PMIX_RANK_INVALID;
     PMIX_CONSTRUCT(&pmix_globals.events, pmix_events_t);
