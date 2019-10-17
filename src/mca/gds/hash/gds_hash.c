@@ -421,7 +421,9 @@ static pmix_status_t process_node_array(pmix_value_t *val,
     }
     PMIX_LIST_DESTRUCT(&cache);
 
-    pmix_list_append(tgt, &nd->super);
+    if (!update) {
+        pmix_list_append(tgt, &nd->super);
+    }
     return PMIX_SUCCESS;
 }
 
