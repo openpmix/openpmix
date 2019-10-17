@@ -56,6 +56,7 @@
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/plog/plog.h"
 #include "src/mca/psensor/psensor.h"
+#include "src/mca/ptl/base/base.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
@@ -2536,12 +2537,16 @@ pmix_status_t pmix_server_log(pmix_peer_t *peer,
     }
     cd->cbfunc.opcbfn = cbfunc;
     cd->cbdata = cbdata;
-    /* unpack the timestamp */
-    cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, peer, buf, &timestamp, &cnt, PMIX_TIME);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        goto exit;
+    if (PMIX_PEER_IS_EARLIER(peer, 3, 0, 0)) {
+        timestamp = -1;
+    } else {
+        /* unpack the timestamp */
+        cnt = 1;
+        PMIX_BFROPS_UNPACK(rc, peer, buf, &timestamp, &cnt, PMIX_TIME);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto exit;
+        }
     }
 
     /* unpack the number of data */
