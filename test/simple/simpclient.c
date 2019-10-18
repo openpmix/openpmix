@@ -36,6 +36,7 @@
 #include "src/class/pmix_object.h"
 #include "src/util/output.h"
 #include "src/util/printf.h"
+#include "src/include/pmix_globals.h"
 
 #define MAXCNT 1
 
@@ -133,7 +134,7 @@ int main(int argc, char **argv)
         exit(rc);
     }
     PMIX_INFO_FREE(iptr, 2);
-    pmix_output(0, "Client ns %s rank %d: Running", myproc.nspace, myproc.rank);
+    pmix_output(0, "Client ns %s rank %d: Running on node %s", myproc.nspace, myproc.rank, pmix_globals.hostname);
 
     /* test something */
     (void)strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);

@@ -29,6 +29,7 @@
 #include "src/util/output.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/plog/base/base.h"
+#include "src/mca/ptl/base/base.h"
 
 #include "src/client/pmix_client_ops.h"
 #include "src/server/pmix_server_ops.h"
@@ -182,15 +183,17 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
             PMIX_RELEASE(cd);
             return rc;
         }
-        /* provide the timestamp - zero will indicate
-         * that it wasn't taken */
-        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                         msg, &timestamp, 1, PMIX_TIME);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(msg);
-            PMIX_RELEASE(cd);
-            return rc;
+        if (!PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 0, 0)) {
+            /* provide the timestamp - zero will indicate
+             * that it wasn't taken */
+            PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
+                             msg, &timestamp, 1, PMIX_TIME);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(msg);
+                PMIX_RELEASE(cd);
+                return rc;
+            }
         }
         /* pack the number of data entries */
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
