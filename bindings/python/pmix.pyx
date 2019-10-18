@@ -1831,9 +1831,23 @@ cdef int spawn(const pmix_proc_t *proc,
             args['jobinfo'] = ilist
         pmix_unload_apps(apps, napps, pyapps)
         args['apps'] = pyapps
-        rc = pmixservermodule['spawn'](args)
+        rc, nspace = pmixservermodule['spawn'](args)
     else:
         rc = PMIX_ERR_NOT_SUPPORTED
+
+    cdef pmix_nspace_t ns
+    pmix_copy_nspace(ns, nspace)
+
+    if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
+        mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
+        mycaddy.op = strdup("spawn")
+        mycaddy.status = rc
+        mycaddy.nspace = ns
+        mycaddy.spawn  = cbfunc
+        mycaddy.cbdata = cbdata
+        cb = PyCapsule_New(mycaddy, "spawn", NULL)
+        rc = PMIX_SUCCESS
+        threading.Timer(0.5, spawn_cb, [cb, rc]).start()
     return rc
 
 cdef int connect(const pmix_proc_t procs[], size_t nprocs,

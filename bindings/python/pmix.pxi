@@ -62,6 +62,7 @@ ctypedef struct pmix_pyshift_t:
     pmix_modex_cbfunc_t modex
     pmix_status_t status
     pmix_byte_object_t bo
+    pmix_nspace_t nspace
     pmix_proc_t source
     pmix_pdata_t *pdata
     pmix_info_t *results
@@ -71,11 +72,19 @@ ctypedef struct pmix_pyshift_t:
     size_t ndata
     pmix_op_cbfunc_t op_cbfunc
     pmix_info_cbfunc_t query
+    pmix_spawn_cbfunc_t spawn
     pmix_lookup_cbfunc_t lookup
     pmix_release_cbfunc_t release_fn
     pmix_event_notification_cbfunc_fn_t event_handler
     void *notification_cbdata
     void *cbdata
+
+cdef void spawn_cb(capsule, ret):
+    cdef pmix_pyshift_t *shifter
+    shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "spawn")
+    shifter[0].spawn(shifter[0].status, shifter[0].nspace, shifter[0].cbdata)
+    print("SHIFTER:", shifter[0].op)
+    return
 
 cdef void event_cache_cb(capsule, ret):
     cdef pmix_pyshift_t *shifter
