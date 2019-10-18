@@ -258,8 +258,7 @@ typedef struct {
     PMIX_VAL_SET(&value, dtype, data);                                                                              \
     TEST_VERBOSE(("%s:%d put key %s", my_nspace, my_rank, key));                                                  \
     if (PMIX_SUCCESS != (rc = PMIx_Put(flag, key, &value))) {                                                       \
-        TEST_ERROR(("%s:%d: PMIx_Put key %s failed: %d", my_nspace, my_rank, key, rc));                             \
-        rc = PMIX_ERROR;                                                                                            \
+        TEST_ERROR(("%s:%d: PMIx_Put key %s failed: %s", my_nspace, my_rank, key, PMIx_Error_string(rc)));                             \
     }                                                                                                               \
     PMIX_VALUE_DESTRUCT(&value);                                                                                    \
 } while (0)
@@ -277,9 +276,8 @@ typedef struct {
     if (blocking) {                                                                                                 \
         if (PMIX_SUCCESS != (rc = PMIx_Get(&foobar, key, NULL, 0, &val))) {                                         \
             if( !( (rc == PMIX_ERR_NOT_FOUND || rc == PMIX_ERR_PROC_ENTRY_NOT_FOUND) && ok_notfnd ) ){                                                       \
-                TEST_ERROR(("%s:%d: PMIx_Get failed: %d from %s:%d, key %s", my_nspace, my_rank, rc, ns, r, key));  \
+                TEST_ERROR(("%s:%d: PMIx_Get failed: %s from %s:%d, key %s", my_nspace, my_rank, PMIx_Error_string(rc), ns, r, key));  \
             }                                                                                                       \
-            rc = PMIX_ERROR;                                                                                        \
         }                                                                                                           \
     } else {                                                                                                        \
         int count;                                                                                                  \
@@ -287,8 +285,7 @@ typedef struct {
         PMIX_VALUE_CREATE(val, 1);                                                                                  \
         cbdata.kv = val;                                                                                            \
         if (PMIX_SUCCESS != (rc = PMIx_Get_nb(&foobar, key, NULL, 0, get_cb, (void*)&cbdata))) {                    \
-            TEST_VERBOSE(("%s:%d: PMIx_Get_nb failed: %d from %s:%d, key=%s", my_nspace, my_rank, rc, ns, r, key)); \
-            rc = PMIX_ERROR;                                                                                        \
+            TEST_VERBOSE(("%s:%d: PMIx_Get_nb failed: %s from %s:%d, key=%s", my_nspace, my_rank, PMIx_Error_string(rc), ns, r, key)); \
         } else {                                                                                                    \
             count = 0;                                                                                              \
             while(cbdata.in_progress){                                                                              \
@@ -304,19 +301,16 @@ typedef struct {
     if (PMIX_SUCCESS == rc) {                                                                                       \
         if( PMIX_SUCCESS != cbdata.status ){                                                                        \
             if( !( (cbdata.status == PMIX_ERR_NOT_FOUND || cbdata.status == PMIX_ERR_PROC_ENTRY_NOT_FOUND) && ok_notfnd ) ){ \
-                TEST_ERROR(("%s:%d: PMIx_Get_nb failed: %d from %s:%d, key=%s",                                     \
-                            my_nspace, my_rank, rc, my_nspace, r, key));                                            \
+                TEST_ERROR(("%s:%d: PMIx_Get_nb failed: %s from %s:%d, key=%s",                                     \
+                            my_nspace, my_rank, PMIx_Error_string(rc), my_nspace, r, key));                                            \
             }                                                                                                       \
-            rc = PMIX_ERROR;                                                                                        \
         } else if (NULL == val) {                                                                                   \
             TEST_VERBOSE(("%s:%d: PMIx_Get returned NULL value", my_nspace, my_rank));                              \
-            rc = PMIX_ERROR;                                                                                        \
         }                                                                                                           \
         else if (val->type != PMIX_VAL_TYPE_ ## dtype || PMIX_VAL_CMP(dtype, PMIX_VAL_FIELD_ ## dtype((val)), data)) {  \
             TEST_ERROR(("%s:%u: from %s:%d Key %s value or type mismatch,"                                        \
                         " want type %d get type %d",                                                                \
                         my_nspace, my_rank, ns, r, key, PMIX_VAL_TYPE_ ## dtype, val->type));                    \
-            rc = PMIX_ERROR;                                                                                        \
         }                                                                                                           \
     }                                                                                                               \
     if (PMIX_SUCCESS == rc) {                                                                                       \

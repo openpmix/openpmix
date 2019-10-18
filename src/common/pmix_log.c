@@ -183,7 +183,7 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
             PMIX_RELEASE(cd);
             return rc;
         }
-        if (!PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 0, 0)) {
+        if (!PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, PMIX_MINOR_WILDCARD, PMIX_RELEASE_WILDCARD)) {
             /* provide the timestamp - zero will indicate
              * that it wasn't taken */
             PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,

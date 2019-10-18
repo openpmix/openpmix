@@ -189,7 +189,7 @@ int test_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
                 snprintf(sval, 500, "%d:%s:%d", fence_num, p->proc.nspace, p->proc.rank);
                 GET(string, sval, p->proc.nspace, p->proc.rank, fence_num, put_ind++, params.use_same_keys, 1, 0);
                 if (PMIX_SUCCESS != rc) {
-                    TEST_ERROR(("%s:%d: PMIx_Get failed (%d) from %s:%d", my_nspace, my_rank, rc, p->proc.nspace, p->proc.rank));
+                    TEST_ERROR(("%s:%d: PMIx_Get failed (%s) from %s:%d", my_nspace, my_rank, PMIx_Error_string(rc), p->proc.nspace, p->proc.rank));
                     PMIX_PROC_FREE(pcs, npcs);
                     PMIX_LIST_DESTRUCT(&test_fences);
                     return rc;
