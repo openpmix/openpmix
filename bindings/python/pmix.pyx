@@ -10,7 +10,6 @@ import signal, time
 import threading
 import array
 import os
-from cpython.pycapsule cimport PyCapsule_New, PyCapsule_GetPointer
 #import time
 from threading import Timer
 
@@ -89,13 +88,13 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
                 # allocate and load pmix info structs from python list of dictionaries
                 myresults_ptr = &myresults
                 rc = pmix_alloc_info(myresults_ptr, &nmyresults, pymyresults)
-                mycaddy    = <pmix_pyshift_event_handler_t*> PyMem_Malloc(sizeof(pmix_pyshift_event_handler_t))
+                mycaddy    = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
                 mycaddy.op = strdup("event_handler")
                 mycaddy.status              = rc
                 mycaddy.results             = myresults
                 mycaddy.nresults            = nmyresults
-                mycaddy.cbfunc              = NULL
-                mycaddy.thiscbdata          = NULL
+                mycaddy.op_cbfunc           = NULL
+                mycaddy.cbdata              = NULL
                 mycaddy.notification_cbdata = cbdata
                 mycaddy.event_handler       = cbfunc
                 cb = PyCapsule_New(mycaddy, "event_handler", NULL)
@@ -107,7 +106,7 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
     # and try it again
     if not found:
         print("SHIFTING EVENT")
-        mycaddy    = <pmix_pyshift_event_handler_t*> PyMem_Malloc(sizeof(pmix_pyshift_event_handler_t))
+        mycaddy    = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
         mycaddy.op = strdup("event_handler")
         mycaddy.idx                 = evhdlr_registration_id
         mycaddy.status              = rc
@@ -115,64 +114,15 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
         memcpy(mycaddy.source.nspace, source[0].nspace, PMIX_MAX_NSLEN)
         mycaddy.source.rank         = source[0].rank
         mycaddy.info                = info
-        mycaddy.ninfo               = ninfo
+        mycaddy.ndata               = ninfo
         mycaddy.results             = results
         mycaddy.nresults            = nresults
-        mycaddy.cbfunc              = NULL
-        mycaddy.thiscbdata          = NULL
+        mycaddy.op_cbfunc           = NULL
+        mycaddy.cbdata              = NULL
         mycaddy.notification_cbdata = cbdata
         mycaddy.event_handler       = cbfunc
         cb = PyCapsule_New(mycaddy, "event_handler", NULL)
         threading.Timer(2, event_cache_cb, [cb, rc]).start()
-    return
-
-cdef void event_cache_cb(capsule, ret):
-    cdef pmix_pyshift_event_handler_t *shifter
-    shifter = <pmix_pyshift_event_handler_t*>PyCapsule_GetPointer(capsule, "event_handler")
-    pyeventhandler(shifter[0].idx, shifter[0].status, &shifter[0].source,
-                   shifter[0].info, shifter[0].ninfo,
-                   shifter[0].results, shifter[0].nresults,
-                   shifter[0].event_handler, shifter[0].notification_cbdata)
-
-cdef void event_handler_cb(capsule, ret):
-    cdef pmix_pyshift_event_handler_t *shifter
-    shifter = <pmix_pyshift_event_handler_t*>PyCapsule_GetPointer(capsule, "event_handler")
-    shifter[0].event_handler(shifter[0].status, shifter[0].results, shifter[0].nresults,
-                             shifter[0].cbfunc, shifter[0].thiscbdata,
-                             shifter[0].notification_cbdata)
-    print("SHIFTER:", shifter[0].op)
-    if 0 < shifter[0].nresults:
-        pmix_free_info(shifter[0].results, shifter[0].nresults)
-    return
-
-cdef void query_cb(capsule, ret):
-    cdef pmix_pyshift_query_t *shifter
-    shifter = <pmix_pyshift_query_t*>PyCapsule_GetPointer(capsule, "query")
-    shifter[0].query(ret, shifter[0].info, shifter[0].nqueries, shifter[0].cbdata, NULL, NULL)
-    print("SHIFTER:", shifter[0].op)
-    return
-
-cdef void lookup_cb(capsule, ret):
-    cdef pmix_pyshift_lookup_t *shifter
-    shifter = <pmix_pyshift_lookup_t*>PyCapsule_GetPointer(capsule, "lookup")
-    shifter[0].lookup(ret, shifter[0].pdata, shifter[0].ndata, shifter[0].cbdata)
-    print("SHIFTER:", shifter[0].op)
-    return
-
-cdef void fence_cb(capsule, ret):
-    cdef pmix_pyshift_fence_t *shifter
-    shifter = <pmix_pyshift_fence_t*>PyCapsule_GetPointer(capsule, "fence")
-    shifter[0].modex(ret, shifter[0].bo.bytes, shifter[0].bo.size, 
-                     shifter[0].cbdata, NULL, NULL)
-    print("SHIFTER:", shifter[0].op)
-    return
-
-cdef void dmodex_cb(capsule, ret):
-    cdef pmix_pyshift_dmodex_t *shifter
-    shifter = <pmix_pyshift_dmodex_t*>PyCapsule_GetPointer(capsule, "dmodex")
-    shifter[0].modex(shifter[0].status, shifter[0].data, shifter[0].ndata,
-                     shifter[0].cbdata, NULL, NULL)
-    print("SHIFTER:", shifter[0].op)
     return
 
 cdef class PMIxClient:
@@ -446,6 +396,7 @@ cdef class PMIxClient:
         cdef size_t ninfo;
         cdef size_t nstrings;
         cdef char **keys;
+        keys     = NULL
         ninfo    = 0
         nstrings = 0
 
@@ -1685,7 +1636,7 @@ cdef int fencenb(const pmix_proc_t procs[], size_t nprocs,
     data = strdup(ret_data)
     ndata = len(ret_data)
     if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
-        mycaddy = <pmix_pyshift_fence_t*> PyMem_Malloc(sizeof(pmix_pyshift_fence_t))
+        mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
         mycaddy.op = strdup("fence")
         mycaddy.bo.bytes = data
         mycaddy.bo.size = ndata
@@ -1733,7 +1684,7 @@ cdef int directmodex(const pmix_proc_t *proc,
     ndata = len(ret_data)
 
     if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
-        mycaddy = <pmix_pyshift_dmodex_t*> PyMem_Malloc(sizeof(pmix_pyshift_dmodex_t))
+        mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
         mycaddy.op = strdup("directmodex")
         mycaddy.status = rc
         mycaddy.data = data
@@ -1817,7 +1768,7 @@ cdef int lookup(const pmix_proc_t *proc, char **keys,
         pd = NULL
 
     if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
-        mycaddy = <pmix_pyshift_lookup_t*> PyMem_Malloc(sizeof(pmix_pyshift_lookup_t))
+        mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
         mycaddy.op = strdup("lookup")
         mycaddy.pdata = pd
         mycaddy.ndata = ndata
@@ -2086,10 +2037,10 @@ cdef int query(pmix_proc_t *source,
         info = NULL
 
     if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
-        mycaddy = <pmix_pyshift_query_t*> PyMem_Malloc(sizeof(pmix_pyshift_query_t))
+        mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
         mycaddy.op = strdup("query")
         mycaddy.info = info
-        mycaddy.nqueries = nqueries
+        mycaddy.ndata = nqueries
         mycaddy.query = cbfunc
         mycaddy.cbdata = cbdata
         cb = PyCapsule_New(mycaddy, "query", NULL)
