@@ -36,6 +36,7 @@
 #include "src/class/pmix_list.h"
 #include "src/client/pmix_client_ops.h"
 #include "src/server/pmix_server_ops.h"
+#include "src/mca/ptl/base/base.h"
 #include "src/util/argv.h"
 #include "src/util/compress.h"
 #include "src/mca/preg/preg.h"
@@ -1384,6 +1385,11 @@ static pmix_status_t register_info(pmix_peer_t *peer,
     pmix_buffer_t buf;
     pmix_rank_t rank;
     pmix_list_t results;
+    char *hname;
+
+    pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
+                        "REGISTERING FOR PEER %s type %d.%d.%d", PMIX_PNAME_PRINT(&peer->info->pname),
+                        peer->proc_type.major, peer->proc_type.minor, peer->proc_type.release);
 
     trk = get_tracker(ns->nspace, true);
     if (NULL == trk) {
@@ -1429,7 +1435,37 @@ static pmix_status_t register_info(pmix_peer_t *peer,
     rc = fetch_nodeinfo(NULL, &trk->nodeinfo, NULL, 0, &results);
     if (PMIX_SUCCESS == rc) {
         PMIX_LIST_FOREACH(kvptr, &results, pmix_kval_t) {
-            PMIX_BFROPS_PACK(rc, peer, reply, kvptr, 1, PMIX_KVAL);
+            /* if the peer is earlier than v3.1.5, it is expecting
+             * node info to be in the form of an array, but with the
+             * hostname as the key. Detect and convert that here */
+            if (PMIX_PEER_IS_EARLIER(peer, 3, 1, 5)) {
+                info = (pmix_info_t*)kvptr->value->data.darray->array;
+                ninfo = kvptr->value->data.darray->size;
+                hname = NULL;
+                /* find the hostname */
+                for (n=0; n < ninfo; n++) {
+                    if (PMIX_CHECK_KEY(&info[n], PMIX_HOSTNAME)) {
+                        free(kvptr->key);
+                        kvptr->key = strdup(info[n].value.data.string);
+                        PMIX_BFROPS_PACK(rc, peer, reply, kvptr, 1, PMIX_KVAL);
+                        hname = kvptr->key;
+                        break;
+                    }
+                }
+                if (NULL != hname && 0 == strcmp(pmix_globals.hostname, hname)) {
+                    /* older versions are looking for node-level keys for
+                     * only their own node as standalone keys */
+                    for (n=0; n < ninfo; n++) {
+                        if (pmix_check_node_info(info[n].key)) {
+                            kv.key = strdup(info[n].key);
+                            kv.value = &info[n].value;
+                            PMIX_BFROPS_PACK(rc, peer, reply, &kv, 1, PMIX_KVAL);
+                        }
+                    }
+                }
+            } else {
+                PMIX_BFROPS_PACK(rc, peer, reply, kvptr, 1, PMIX_KVAL);
+            }
         }
     }
     PMIX_LIST_DESTRUCT(&results);
@@ -2671,9 +2707,19 @@ static pmix_status_t hash_fetch(const pmix_proc_t *proc,
 
     if (nodeinfo) {
         rc = fetch_nodeinfo(key, &trk->nodeinfo, qualifiers, nqual, kvs);
+        if (PMIX_SUCCESS != rc && PMIX_RANK_WILDCARD == proc->rank) {
+            /* need to check internal as we might have an older peer */
+            ht = &trk->internal;
+            goto doover;
+        }
         return rc;
     } else if (appinfo) {
         rc = fetch_appinfo(key, &trk->apps, qualifiers, nqual, kvs);
+        if (PMIX_SUCCESS != rc && PMIX_RANK_WILDCARD == proc->rank) {
+            /* need to check internal as we might have an older peer */
+            ht = &trk->internal;
+            goto doover;
+        }
         return rc;
     }
 
