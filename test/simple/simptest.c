@@ -729,14 +729,16 @@ static void set_namespace(int nprocs, char *nspace,
 
     if (xversion) {
         /* everything on one node */
-        regex = strdup(pmix_globals.hostname);
+        PMIx_generate_regex(pmix_globals.hostname, &regex);
         for (m=0; m < nprocs; m++) {
             snprintf(tmp, 50, "%d", m);
             pmix_argv_append_nosize(&agg, tmp);
             memset(tmp, 0, 50);
         }
-        ppn = pmix_argv_join(agg, ',');
+        rks = pmix_argv_join(agg, ',');
         pmix_argv_free(agg);
+        PMIx_generate_ppn(rks, &ppn);
+        free(rks);
         nnodes = 1;
     } else {
         if (nprocs < 3) {
