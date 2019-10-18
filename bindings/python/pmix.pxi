@@ -89,6 +89,16 @@ ctypedef struct pmix_pyshift_event_handler_t:
     void *notification_cbdata
     pmix_event_notification_cbfunc_fn_t event_handler
 
+ctypedef struct pmix_pyshift_dmodex_t:
+    char *op
+    pmix_modex_cbfunc_t modex
+    pmix_status_t status
+    const char *data
+    size_t ndata
+    void *cbdata
+    pmix_release_cbfunc_t release_fn
+    void *release_cbdata
+
 cdef void pmix_unload_argv(char **keys, argv:list):
     n = 0
     while NULL != keys[n]:

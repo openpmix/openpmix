@@ -30,7 +30,7 @@ cdef void pmix_opcbfunc(pmix_status_t status, void *cbdata) with gil:
 
 cdef void dmodx_cbfunc(pmix_status_t status,
                        char *data, size_t sz,
-                       void *cbdata) with gil:
+                       void *cbdata):
     global active
     if PMIX_SUCCESS == status:
         active.cache_data(data, sz)
@@ -163,6 +163,14 @@ cdef void fence_cb(capsule, ret):
     cdef pmix_pyshift_fence_t *shifter
     shifter = <pmix_pyshift_fence_t*>PyCapsule_GetPointer(capsule, "fence")
     shifter[0].modex(ret, shifter[0].bo.bytes, shifter[0].bo.size, 
+                     shifter[0].cbdata, NULL, NULL)
+    print("SHIFTER:", shifter[0].op)
+    return
+
+cdef void dmodex_cb(capsule, ret):
+    cdef pmix_pyshift_dmodex_t *shifter
+    shifter = <pmix_pyshift_dmodex_t*>PyCapsule_GetPointer(capsule, "dmodex")
+    shifter[0].modex(shifter[0].status, shifter[0].data, shifter[0].ndata,
                      shifter[0].cbdata, NULL, NULL)
     print("SHIFTER:", shifter[0].op)
     return
@@ -1065,7 +1073,7 @@ cdef class PMIxClient:
         rc = PMIX_SUCCESS
         return rc
 
-    def dregister_event_handler(self, ref:int):
+    def deregister_event_handler(self, ref:int):
         rc = PMIx_Deregister_event_handler(ref, NULL, NULL)
         return rc
 
@@ -1662,7 +1670,7 @@ cdef int fencenb(const pmix_proc_t procs[], size_t nprocs,
         if NULL != data:
             pmix_unload_bytes(data, ndata, blist)
             barray = bytearray(blist)
-        rc, data = pmixservermodule['fencenb'](myprocs, ilist, barray)
+        rc, ret_data = pmixservermodule['fencenb'](myprocs, ilist, barray)
     else:
         return PMIX_ERR_NOT_SUPPORTED
     # we cannot execute a callback function here as
@@ -1674,6 +1682,8 @@ cdef int fencenb(const pmix_proc_t procs[], size_t nprocs,
     # that let's the underlying PMIx library know
     # the situation so it can generate its own
     # callback
+    data = strdup(ret_data)
+    ndata = len(ret_data)
     if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
         mycaddy = <pmix_pyshift_fence_t*> PyMem_Malloc(sizeof(pmix_pyshift_fence_t))
         mycaddy.op = strdup("fence")
@@ -1705,7 +1715,7 @@ cdef int directmodex(const pmix_proc_t *proc,
         if NULL != info:
             pmix_unload_info(info, ninfo, ilist)
             args['info'] = ilist
-        rc = pmixservermodule['directmodex'](args)
+        rc, ret_data = pmixservermodule['directmodex'](args)
     else:
         return PMIX_ERR_NOT_SUPPORTED
     # we cannot execute a callback function here as
@@ -1717,8 +1727,22 @@ cdef int directmodex(const pmix_proc_t *proc,
     # that let's the underlying PMIx library know
     # the situation so it can generate its own
     # callback
-    if PMIX_SUCCESS == rc:
-        rc = PMIX_OPERATION_SUCCEEDED
+    cdef const char* data
+    cdef size_t ndata
+    data  = strdup(ret_data)
+    ndata = len(ret_data)
+
+    if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
+        mycaddy = <pmix_pyshift_dmodex_t*> PyMem_Malloc(sizeof(pmix_pyshift_dmodex_t))
+        mycaddy.op = strdup("directmodex")
+        mycaddy.status = rc
+        mycaddy.data = data
+        mycaddy.ndata = ndata
+        mycaddy.modex = cbfunc
+        mycaddy.cbdata = cbdata
+        cb = PyCapsule_New(mycaddy, "directmodex", NULL)
+        rc = PMIX_SUCCESS
+        threading.Timer(0.5, dmodex_cb, [cb, rc]).start()
     return rc
 
 cdef int publish(const pmix_proc_t *proc,
