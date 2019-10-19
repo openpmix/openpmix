@@ -33,14 +33,6 @@
 bool pmix_ptl_base_peer_is_earlier(pmix_peer_t *peer, uint8_t major,
                                    uint8_t minor, uint8_t release)
 {
-    /* if any of the peer's triplets are unknown, then it
-     * must be an earlier value than us as clients from our
-     * version level always have known triplets */
-    if (PMIX_MAJOR_WILDCARD == PMIX_PEER_MAJOR_VERSION(peer) ||
-        PMIX_MINOR_WILDCARD == PMIX_PEER_MINOR_VERSION(peer) ||
-        PMIX_RELEASE_WILDCARD == PMIX_PEER_REL_VERSION(peer)) {
-        return true;
-    }
     /* if they don't care, then don't check */
     if (PMIX_MAJOR_WILDCARD != major) {
         if (PMIX_PEER_MAJOR_VERSION(peer) > major) {
