@@ -2,6 +2,7 @@ from libc.string cimport memset, strncpy, strcpy, strlen, strdup
 from libc.stdlib cimport malloc, realloc, free
 from libc.string cimport memcpy
 from cpython.mem cimport PyMem_Malloc, PyMem_Realloc, PyMem_Free
+from cpython.pycapsule cimport PyCapsule_New, PyCapsule_GetPointer
 
 # pull in all the constant definitions - we
 # store them in a separate file for neatness
@@ -55,49 +56,75 @@ class myLock(threading.Event):
         for x in self.info:
             info.append(x)
 
-ctypedef struct pmix_pyshift_fence_t:
-    char *op
-    pmix_byte_object_t bo
-    pmix_modex_cbfunc_t modex
-    void *cbdata
-
-ctypedef struct pmix_pyshift_lookup_t:
-    char *op
-    pmix_pdata_t *pdata
-    size_t ndata
-    pmix_lookup_cbfunc_t lookup
-    void *cbdata
-
-ctypedef struct pmix_pyshift_query_t:
-    char *op
-    pmix_info_t *info
-    size_t nqueries
-    pmix_info_cbfunc_t query
-    void *cbdata
-
-ctypedef struct pmix_pyshift_event_handler_t:
+ctypedef struct pmix_pyshift_t:
     char *op
     size_t idx
-    pmix_status_t status
-    pmix_proc_t source
-    pmix_info_t *info
-    size_t ninfo
-    pmix_info_t *results
-    size_t nresults
-    pmix_op_cbfunc_t cbfunc
-    void *thiscbdata
-    void *notification_cbdata
-    pmix_event_notification_cbfunc_fn_t event_handler
-
-ctypedef struct pmix_pyshift_dmodex_t:
-    char *op
     pmix_modex_cbfunc_t modex
     pmix_status_t status
+    pmix_byte_object_t bo
+    pmix_proc_t source
+    pmix_pdata_t *pdata
+    pmix_info_t *results
+    size_t nresults
+    pmix_info_t *info
     const char *data
     size_t ndata
-    void *cbdata
+    pmix_op_cbfunc_t op_cbfunc
+    pmix_info_cbfunc_t query
+    pmix_lookup_cbfunc_t lookup
     pmix_release_cbfunc_t release_fn
-    void *release_cbdata
+    pmix_event_notification_cbfunc_fn_t event_handler
+    void *notification_cbdata
+    void *cbdata
+
+cdef void event_cache_cb(capsule, ret):
+    cdef pmix_pyshift_t *shifter
+    shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "event_handler")
+    pyeventhandler(shifter[0].idx, shifter[0].status, &shifter[0].source,
+                   shifter[0].info, shifter[0].ndata,
+                   shifter[0].results, shifter[0].nresults,
+                   shifter[0].event_handler, shifter[0].notification_cbdata)
+
+cdef void event_handler_cb(capsule, ret):
+    cdef pmix_pyshift_t *shifter
+    shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "event_handler")
+    shifter[0].event_handler(shifter[0].status, shifter[0].results, shifter[0].nresults,
+                             shifter[0].op_cbfunc, shifter[0].cbdata,
+                             shifter[0].notification_cbdata)
+    print("SHIFTER:", shifter[0].op)
+    if 0 < shifter[0].nresults:
+        pmix_free_info(shifter[0].results, shifter[0].nresults)
+    return
+
+cdef void query_cb(capsule, ret):
+    cdef pmix_pyshift_t *shifter
+    shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "query")
+    shifter[0].query(ret, shifter[0].info, shifter[0].ndata, shifter[0].cbdata, NULL, NULL)
+    print("SHIFTER:", shifter[0].op)
+    return
+
+cdef void lookup_cb(capsule, ret):
+    cdef pmix_pyshift_t *shifter
+    shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "lookup")
+    shifter[0].lookup(ret, shifter[0].pdata, shifter[0].ndata, shifter[0].cbdata)
+    print("SHIFTER:", shifter[0].op)
+    return
+
+cdef void fence_cb(capsule, ret):
+    cdef pmix_pyshift_t *shifter
+    shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "fence")
+    shifter[0].modex(ret, shifter[0].bo.bytes, shifter[0].bo.size, 
+                     shifter[0].cbdata, NULL, NULL)
+    print("SHIFTER:", shifter[0].op)
+    return
+
+cdef void dmodex_cb(capsule, ret):
+    cdef pmix_pyshift_t *shifter
+    shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "dmodex")
+    shifter[0].modex(shifter[0].status, shifter[0].data, shifter[0].ndata,
+                     shifter[0].cbdata, NULL, NULL)
+    print("SHIFTER:", shifter[0].op)
+    return
 
 cdef void pmix_unload_argv(char **keys, argv:list):
     n = 0
