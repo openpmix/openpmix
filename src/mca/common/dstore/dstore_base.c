@@ -2763,25 +2763,21 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
 	            }
                 if (local) {
                     for (i = 0; i < size; i++) {
-                        if (!PMIX_CHECK_KEY(&info[i], PMIX_LOCAL_PEERS) &&
-                            !PMIX_CHECK_KEY(&info[i], PMIX_HOSTNAME) &&
-                            !PMIX_CHECK_KEY(&info[i], PMIX_NODEID)) {
-                            kv2 = PMIX_NEW(pmix_kval_t);
-                            kv2->key = strdup(kv->key);
-                            PMIX_VALUE_XFER(rc, kv2->value, &info[i].value);
-                            if (PMIX_SUCCESS != rc) {
-                                PMIX_ERROR_LOG(rc);
-                                PMIX_RELEASE(kv2);
-                                goto exit;
-                            }
-                            PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, kv2, 1, PMIX_KVAL);
-                            if (PMIX_SUCCESS != rc) {
-                                PMIX_ERROR_LOG(rc);
-                                PMIX_RELEASE(kv2);
-                                goto exit;
-                            }
+                        kv2 = PMIX_NEW(pmix_kval_t);
+                        kv2->key = strdup(info[i].key);
+                        PMIX_VALUE_XFER(rc, kv2->value, &info[i].value);
+                        if (PMIX_SUCCESS != rc) {
+                            PMIX_ERROR_LOG(rc);
                             PMIX_RELEASE(kv2);
+                            goto exit;
                         }
+                        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, kv2, 1, PMIX_KVAL);
+                        if (PMIX_SUCCESS != rc) {
+                            PMIX_ERROR_LOG(rc);
+                            PMIX_RELEASE(kv2);
+                            goto exit;
+                        }
+                        PMIX_RELEASE(kv2);
                     }
                 }
     		}
