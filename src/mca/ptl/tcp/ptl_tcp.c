@@ -141,6 +141,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
     pmix_info_t *iptr = NULL, mypidinfo, mycmdlineinfo, launcher;
     size_t niptr = 0;
     pmix_kval_t *urikv = NULL;
+    int major, minor, release;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:tcp: connecting to server");
@@ -206,6 +207,18 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
         pmix_client_globals.myserver->nptr->compat.bfrops = pmix_globals.mypeer->nptr->compat.bfrops;
         /* mark that we are using the V2 (i.e., tcp) protocol */
         pmix_globals.mypeer->protocol = PMIX_PROTOCOL_V2;
+
+        /* see if they set their version in the env */
+        if (NULL != (p2 = getenv("PMIX_VERSION"))) {
+            major = strtoul(p2, &p, 10);
+            ++p;
+            minor = strtoul(p, &p, 10);
+            ++p;
+            release = strtoul(p, NULL, 10);
+            PMIX_SET_PEER_MAJOR(pmix_client_globals.myserver, major);
+            PMIX_SET_PEER_MINOR(pmix_client_globals.myserver, minor);
+            PMIX_SET_PEER_RELEASE(pmix_client_globals.myserver, release);
+        }
 
         /* the URI consists of the following elements:
         *    - server nspace.rank
