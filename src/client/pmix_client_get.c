@@ -61,7 +61,7 @@
 #include "src/util/name_fns.h"
 #include "src/util/output.h"
 #include "src/mca/gds/gds.h"
-#include "src/mca/ptl/ptl.h"
+#include "src/mca/ptl/base/base.h"
 
 #include "pmix_client_ops.h"
 
@@ -112,42 +112,44 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc,
     iptr = (pmix_info_t*)info;
     nfo = ninfo;
 
-    if (PMIX_RANK_UNDEF == proc->rank || NULL == key) {
-        goto doget;
-    }
-    /* if they are asking about a node-level piece of info,
-     * then the rank must be UNDEF */
-    if (pmix_check_node_info(key)) {
-        p.rank = PMIX_RANK_UNDEF;
-        /* see if they told us to get node info */
-        if (NULL == info) {
-            /* guess not - better do it */
-            PMIX_INFO_LOAD(&nodeinfo, PMIX_NODE_INFO, NULL, PMIX_BOOL);
-            iptr = &nodeinfo;
-            nfo = 1;
-        }
-        goto doget;
-    }
-    /* if they are asking about an app-level piece of info,
-     * then the rank must be UNDEF */
-    if (pmix_check_app_info(key)) {
-        p.rank = PMIX_RANK_UNDEF;
-        /* see if they told us to get app info */
-        if (NULL == info) {
-            /* guess not - better do it */
-            PMIX_INFO_LOAD(&nodeinfo, PMIX_APP_INFO, NULL, PMIX_BOOL);
-            iptr = &nodeinfo;
-            nfo = 1;
-        }
-        goto doget;
-    }
-
-    /* see if they are requesting session, node, or app-level info */
-    for (n=0; n < ninfo; n++) {
-        if (PMIX_CHECK_KEY(info, PMIX_NODE_INFO) ||
-            PMIX_CHECK_KEY(info, PMIX_APP_INFO) ||
-            PMIX_CHECK_KEY(info, PMIX_SESSION_INFO)) {
+    if (!PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 1, 5)) {
+        if (PMIX_RANK_UNDEF == proc->rank || NULL == key) {
             goto doget;
+        }
+        /* if they are asking about a node-level piece of info,
+         * then the rank must be UNDEF */
+        if (pmix_check_node_info(key)) {
+            p.rank = PMIX_RANK_UNDEF;
+            /* see if they told us to get node info */
+            if (NULL == info) {
+                /* guess not - better do it */
+                PMIX_INFO_LOAD(&nodeinfo, PMIX_NODE_INFO, NULL, PMIX_BOOL);
+                iptr = &nodeinfo;
+                nfo = 1;
+            }
+            goto doget;
+        }
+        /* if they are asking about an app-level piece of info,
+         * then the rank must be UNDEF */
+        if (pmix_check_app_info(key)) {
+            p.rank = PMIX_RANK_UNDEF;
+            /* see if they told us to get app info */
+            if (NULL == info) {
+                /* guess not - better do it */
+                PMIX_INFO_LOAD(&nodeinfo, PMIX_APP_INFO, NULL, PMIX_BOOL);
+                iptr = &nodeinfo;
+                nfo = 1;
+            }
+            goto doget;
+        }
+
+        /* see if they are requesting session, node, or app-level info */
+        for (n=0; n < ninfo; n++) {
+            if (PMIX_CHECK_KEY(info, PMIX_NODE_INFO) ||
+                PMIX_CHECK_KEY(info, PMIX_APP_INFO) ||
+                PMIX_CHECK_KEY(info, PMIX_SESSION_INFO)) {
+                goto doget;
+            }
         }
     }
 
