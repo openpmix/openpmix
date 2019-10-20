@@ -35,6 +35,10 @@ bool pmix_ptl_base_peer_is_earlier(pmix_peer_t *peer, uint8_t major,
 {
     /* if they don't care, then don't check */
     if (PMIX_MAJOR_WILDCARD != major) {
+        if (PMIX_PEER_MAJOR_VERSION(peer) == PMIX_MAJOR_WILDCARD) {
+            /* we don't know what it is - assume earlier */
+            return true;
+        }
         if (PMIX_PEER_MAJOR_VERSION(peer) > major) {
             return false;
         }
@@ -44,6 +48,10 @@ bool pmix_ptl_base_peer_is_earlier(pmix_peer_t *peer, uint8_t major,
     }
     /* major value must be equal, so check minor */
     if (PMIX_MINOR_WILDCARD != minor) {
+        if (PMIX_PEER_MINOR_VERSION(peer) == PMIX_MINOR_WILDCARD) {
+            /* we don't know what it is - assume earlier */
+            return true;
+        }
         if (PMIX_PEER_MINOR_VERSION(peer) > minor) {
             return false;
         }
@@ -53,6 +61,10 @@ bool pmix_ptl_base_peer_is_earlier(pmix_peer_t *peer, uint8_t major,
     }
     /* major and minor must be equal - check release */
     if (PMIX_RELEASE_WILDCARD != release) {
+        if (PMIX_PEER_REL_VERSION(peer) == PMIX_RELEASE_WILDCARD) {
+            /* we don't know what it is - assume earlier */
+            return true;
+        }
         if (PMIX_PEER_REL_VERSION(peer) > release) {
             return false;
         }
