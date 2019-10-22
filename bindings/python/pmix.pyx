@@ -1,6 +1,7 @@
 #file: pmix.pyx
 
 from libc.string cimport memset, strncpy, strcpy, strlen, strdup
+
 from libc.stdlib cimport malloc, free
 from libc.string cimport memcpy
 from libc.stdio cimport printf
@@ -2078,7 +2079,28 @@ cdef void toolconnected(pmix_info_t *info, size_t ninfo,
         if NULL != info:
             pmix_unload_info(info, ninfo, ilist)
             args['info'] = ilist
-        pmixservermodule['toolconnected'](args)
+        rc, ret_proc = pmixservermodule['toolconnected'](args)
+    else:
+        rc = PMIX_ERR_NOT_SUPPORTED
+
+    # we cannot execute a callback function here as
+    # that would cause PMIx to lockup. So we start
+    # a new thread on a timer that should execute a
+    # callback after the funciton returns
+    cdef pmix_proc_t *proc
+    proc = NULL
+    pmix_copy_nspace(proc[0].nspace, ret_proc['nspace'])
+    proc[0].rank = ret_proc['rank']
+    if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
+        mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
+        mycaddy.op = strdup("toolconnected")
+        mycaddy.status = rc
+        mycaddy.proc = proc
+        mycaddy.toolconnected = cbfunc
+        mycaddy.cbdata = cbdata
+        cb = PyCapsule_New(mycaddy, "toolconnected", NULL)
+        rc = PMIX_SUCCESS
+        threading.Timer(0.5, toolconnected_cb, [cb, rc]).start()
     return
 
 cdef void log(const pmix_proc_t *client,
@@ -2138,9 +2160,32 @@ cdef int allocate(const pmix_proc_t *client,
         if NULL != data:
             pmix_unload_info(data, ndata, keyvals)
             args['data'] = keyvals
-        rc = pmixservermodule['allocate'](args)
+        rc, refarginfo = pmixservermodule['allocate'](args)
     else:
         rc = PMIX_ERR_NOT_SUPPORTED
+    # we cannot execute a callback function here as
+    # that would cause PMIx to lockup. So we start
+    # a new thread on a timer that should execute a
+    # callback after the funciton returns
+    cdef pmix_info_t *info
+    cdef pmix_info_t **info_ptr
+    cdef size_t ninfo = 0
+    info              = NULL
+    info_ptr          = &info
+    rc = pmix_alloc_info(info_ptr, &ninfo, refarginfo)
+    if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
+        mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
+        mycaddy.op = strdup("allocate")
+        mycaddy.status = rc
+        mycaddy.info = info
+        mycaddy.ndata = ninfo
+        mycaddy.allocate = cbfunc
+        mycaddy.cbdata = cbdata
+        mycaddy.release_fn = NULL
+        mycaddy.notification_cbdata = NULL
+        cb = PyCapsule_New(mycaddy, "allocate", NULL)
+        rc = PMIX_SUCCESS
+        threading.Timer(0.5, allocate_cb, [cb, rc]).start()
     return rc
 
 # TODO: This function requires that the server execute the
