@@ -754,6 +754,48 @@ cdef class PMIxClient:
             pmix_free_info(results, nresults)
         return rc, pyres
 
+    def monitor(self, pymonitor_info:list, pydirs:list, code:int):
+        cdef pmix_info_t *monitor_info
+        cdef pmix_info_t **monitor_info_ptr
+        cdef pmix_info_t *directives
+        cdef pmix_info_t **directives_ptr
+        cdef pmix_info_t *results
+        cdef size_t nmonitor
+        cdef size_t ndirs
+        cdef size_t nresults
+
+        results = NULL
+        nresults = 0
+        pyres = []
+
+        # convert list of info to array of pmix_info_t's
+        monitor_info_ptr = &monitor_info
+        rc = pmix_alloc_info(monitor_info_ptr, &nmonitor, pymonitor_info)
+        if PMIX_SUCCESS != rc:
+            if 0 < nmonitor:
+                pmix_free_info(monitor_info, nmonitor)
+            return rc
+
+        # allocate and load pmix info structs from python list of dictionaries
+        directives_ptr = &directives
+        rc = pmix_alloc_info(directives_ptr, &ndirs, pydirs)
+        if PMIX_SUCCESS != rc:
+            if 0 < ndirs:
+                pmix_free_info(directives, ndirs)
+            return rc
+
+        # call the API
+        rc = PMIx_Process_monitor(monitor_info, code, directives, ndirs, &results, &nresults)
+        if 0 < ndirs:
+            pmix_free_info(directives, ndirs)
+        if 0 < nmonitor:
+            pmix_free_info(monitor_info, nmonitor)
+        if PMIX_SUCCESS == rc and 0 < nresults:
+            # convert the results
+            rc = pmix_unload_info(results, nresults, pyres)
+            pmix_free_info(results, nresults)
+        return rc, pyres
+
     def job_control(self, pytargets:list, pydirs:list):
         cdef pmix_proc_t *targets
         cdef pmix_info_t *directives
@@ -2137,12 +2179,6 @@ cdef void log(const pmix_proc_t *client,
         rc = PMIX_OPERATION_SUCCEEDED
     return
 
-# TODO: This function requires that the server execute the
-# provided callback function to return the allocation, and
-# it is not allowed to do so until _after_ it returns from
-# this upcall. We'll need to figure out a way to 'save' the
-# cbfunc until the server calls us back, possibly by passing
-# an appropriate caddy object in 'cbdata'
 cdef int allocate(const pmix_proc_t *client,
                   pmix_alloc_directive_t directive,
                   const pmix_info_t data[], size_t ndata,
@@ -2188,12 +2224,6 @@ cdef int allocate(const pmix_proc_t *client,
         threading.Timer(0.5, allocate_cb, [cb, rc]).start()
     return rc
 
-# TODO: This function requires that the server execute the
-# provided callback function to return the outcome of the op, and
-# it is not allowed to do so until _after_ it returns from
-# this upcall. We'll need to figure out a way to 'save' the
-# cbfunc until the server calls us back, possibly by passing
-# an appropriate caddy object in 'cbdata'
 cdef int jobcontrol(const pmix_proc_t *requestor,
                     const pmix_proc_t targets[], size_t ntargets,
                     const pmix_info_t directives[], size_t ndirs,
@@ -2216,14 +2246,19 @@ cdef int jobcontrol(const pmix_proc_t *requestor,
         rc = pmixservermodule['jobcontrol'](args)
     else:
         rc = PMIX_ERR_NOT_SUPPORTED
+    # we cannot execute a callback function here as
+    # that would cause PMIx to lockup. Likewise, the
+    # Python function we called can't do it as it
+    # would require them to call a C-function. So
+    # if they succeeded in processing this request,
+    # we return a PMIX_OPERATION_SUCCEEDED status
+    # that let's the underlying PMIx library know
+    # the situation so it can generate its own
+    # callback
+    if PMIX_SUCCESS == rc:
+        rc = PMIX_OPERATION_SUCCEEDED
     return rc
 
-# TODO: This function requires that the server execute the
-# provided callback function to return the monitoring response, and
-# it is not allowed to do so until _after_ it returns from
-# this upcall. We'll need to figure out a way to 'save' the
-# cbfunc until the server calls us back, possibly by passing
-# an appropriate caddy object in 'cbdata'
 cdef int monitor(const pmix_proc_t *requestor,
                  const pmix_info_t *monitor, pmix_status_t error,
                  const pmix_info_t directives[], size_t ndirs,
@@ -2248,6 +2283,17 @@ cdef int monitor(const pmix_proc_t *requestor,
         rc = pmixservermodule['monitor'](args)
     else:
         rc = PMIX_ERR_NOT_SUPPORTED
+    # we cannot execute a callback function here as
+    # that would cause PMIx to lockup. Likewise, the
+    # Python function we called can't do it as it
+    # would require them to call a C-function. So
+    # if they succeeded in processing this request,
+    # we return a PMIX_OPERATION_SUCCEEDED status
+    # that let's the underlying PMIx library know
+    # the situation so it can generate its own
+    # callback
+    if PMIX_SUCCESS == rc:
+        rc = PMIX_OPERATION_SUCCEEDED
     return rc
 
 # TODO: This function requires that the server execute the
