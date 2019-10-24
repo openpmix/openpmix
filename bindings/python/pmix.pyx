@@ -296,7 +296,6 @@ cdef class PMIxClient:
             pmix_copy_nspace(procs[0].nspace, self.myproc.nspace)
             procs[0].rank = PMIX_RANK_WILDCARD
 
-
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
         rc = pmix_alloc_info(info_ptr, &ninfo, dicts)
@@ -795,6 +794,38 @@ cdef class PMIxClient:
             rc = pmix_unload_info(results, nresults, pyres)
             pmix_free_info(results, nresults)
         return rc, pyres
+
+    def get_credential(self, pyinfo:list, pycred:dict):
+        cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
+        cdef pmix_byte_object_t *bo
+        cdef size_t ninfo
+
+        # convert pycred to pmix_byte_object_t
+        bo = <pmix_byte_object_t*>PyMem_Malloc(sizeof(pmix_byte_object_t))
+        if not bo:
+            return PMIX_ERR_NOMEM
+        cred = bytes(pycred['bytes'], 'ascii')
+        bo.size = sizeof(cred)
+        bo.bytes = <char*> PyMem_Malloc(bo.size)
+        if not bo.bytes:
+            return PMIX_ERR_NOMEM
+        pyptr = <const char*>cred
+        memcpy(bo.bytes, pyptr, bo.size)
+
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
+        if PMIX_SUCCESS != rc:
+            if 0 < ninfo:
+                pmix_free_info(info, ninfo)
+            return rc
+
+        # call the API
+        rc = PMIx_Get_credential(info, ninfo, bo)
+        if 0 < ninfo:
+            pmix_free_info(info, ninfo)
+        return rc
 
     def job_control(self, pytargets:list, pydirs:list):
         cdef pmix_proc_t *targets
@@ -1676,7 +1707,7 @@ cdef int fencenb(const pmix_proc_t procs[], size_t nprocs,
     # that let's the underlying PMIx library know
     # the situation so it can generate its own
     # callback
-    data = strdup(ret_data)
+    data  = strdup(ret_data)
     ndata = len(ret_data)
     if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
         mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
@@ -2316,9 +2347,44 @@ cdef int getcredential(const pmix_proc_t *proc,
         if NULL != directives:
             pmix_unload_info(directives, ndirs, mydirs)
             args['directives'] = mydirs
-        rc = pmixservermodule['getcredential'](args)
+        status, pycred, pyinfo = pmixservermodule['getcredential'](args)
     else:
         rc = PMIX_ERR_NOT_SUPPORTED
+    # we cannot execute a callback function here as
+    # that would cause PMIx to lockup. So we start
+    # a new thread on a timer that should execute a
+    # callback after the funciton returns
+    cdef pmix_info_t *info
+    cdef pmix_info_t **info_ptr
+    cdef size_t ninfo = 0
+    info              = NULL
+    info_ptr          = &info
+    rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
+
+    # convert pycred to pmix_byte_object_t
+    bo = <pmix_byte_object_t*>PyMem_Malloc(sizeof(pmix_byte_object_t))
+    if not bo:
+        return PMIX_ERR_NOMEM
+    cred = bytes(pycred['bytes'], 'ascii')
+    bo.size = sizeof(cred)
+    bo.bytes = <char*> PyMem_Malloc(bo.size)
+    if not bo.bytes:
+        return PMIX_ERR_NOMEM
+    pyptr = <const char*>cred
+    memcpy(bo.bytes, pyptr, bo.size)
+
+    if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
+        mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
+        mycaddy.op = strdup("getcredential")
+        mycaddy.status = status
+        mycaddy.info = info
+        mycaddy.ndata = ninfo
+        mycaddy.cred = bo
+        mycaddy.getcredential = cbfunc
+        mycaddy.cbdata = cbdata
+        cb = PyCapsule_New(mycaddy, "getcredential", NULL)
+        rc = PMIX_SUCCESS
+        threading.Timer(0.5, getcredential_cb, [cb, rc]).start()
     return rc
 
 # TODO: This function requires that the server execute the

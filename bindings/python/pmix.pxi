@@ -62,6 +62,7 @@ ctypedef struct pmix_pyshift_t:
     pmix_modex_cbfunc_t modex
     pmix_status_t status
     pmix_byte_object_t bo
+    pmix_byte_object_t *cred
     pmix_nspace_t nspace
     pmix_proc_t source
     pmix_proc_t *proc
@@ -78,9 +79,20 @@ ctypedef struct pmix_pyshift_t:
     pmix_release_cbfunc_t release_fn
     pmix_event_notification_cbfunc_fn_t event_handler
     pmix_tool_connection_cbfunc_t toolconnected
+    pmix_credential_cbfunc_t getcredential
     pmix_info_cbfunc_t allocate
     void *notification_cbdata
     void *cbdata
+
+cdef void getcredential_cb(capsule, ret):
+    cdef pmix_pyshift_t *shifter
+    shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "getcredential")
+    shifter[0].getcredential(shifter[0].status, shifter[0].cred, shifter[0].info, 
+                        shifter[0].ndata, shifter[0].cbdata)
+    print("SHIFTER:", shifter[0].op)
+    if 0 < shifter[0].ndata:
+        pmix_free_info(shifter[0].info, shifter[0].ndata)
+    return
 
 cdef void allocate_cb(capsule, ret):
     cdef pmix_pyshift_t *shifter
