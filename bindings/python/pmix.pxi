@@ -80,9 +80,20 @@ ctypedef struct pmix_pyshift_t:
     pmix_event_notification_cbfunc_fn_t event_handler
     pmix_tool_connection_cbfunc_t toolconnected
     pmix_credential_cbfunc_t getcredential
+    pmix_validation_cbfunc_t validationcredential
     pmix_info_cbfunc_t allocate
     void *notification_cbdata
     void *cbdata
+
+cdef void validationcredential_cb(capsule, ret):
+    cdef pmix_pyshift_t *shifter
+    shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "validationcredential")
+    shifter[0].validationcredential(shifter[0].status, shifter[0].info, shifter[0].ndata,
+            shifter[0].cbdata)
+    print("SHIFTER:", shifter[0].op)
+    if 0 < shifter[0].ndata:
+        pmix_free_info(shifter[0].info, shifter[0].ndata)
+    return
 
 cdef void getcredential_cb(capsule, ret):
     cdef pmix_pyshift_t *shifter

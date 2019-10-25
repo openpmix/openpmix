@@ -827,6 +827,49 @@ cdef class PMIxClient:
             pmix_free_info(info, ninfo)
         return rc
 
+    def validate_credential(self, pycred:dict, pyinfo:list):
+        cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
+        cdef pmix_byte_object_t *bo
+        cdef size_t ninfo
+        cdef pmix_info_t *results
+        cdef size_t nresults
+
+        results = NULL
+        nresults = 0
+        pyres = []
+
+        # convert pycred to pmix_byte_object_t
+        bo = <pmix_byte_object_t*>PyMem_Malloc(sizeof(pmix_byte_object_t))
+        if not bo:
+            return PMIX_ERR_NOMEM
+        cred = bytes(pycred['bytes'], 'ascii')
+        bo.size = sizeof(cred)
+        bo.bytes = <char*> PyMem_Malloc(bo.size)
+        if not bo.bytes:
+            return PMIX_ERR_NOMEM
+        pyptr = <const char*>cred
+        memcpy(bo.bytes, pyptr, bo.size)
+
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
+        if PMIX_SUCCESS != rc:
+            if 0 < ninfo:
+                pmix_free_info(info, ninfo)
+            return rc
+
+        # call the API
+        rc = PMIx_Validate_credential(bo, info, ninfo, &results, &nresults)
+        if 0 < ninfo:
+            pmix_free_info(info, ninfo)
+        if PMIX_SUCCESS == rc and 0 < nresults:
+            # convert the results
+            rc = pmix_unload_info(results, nresults, pyres)
+            pmix_free_info(results, nresults)
+        return rc, pyres
+
+
     def job_control(self, pytargets:list, pydirs:list):
         cdef pmix_proc_t *targets
         cdef pmix_info_t *directives
@@ -2387,12 +2430,6 @@ cdef int getcredential(const pmix_proc_t *proc,
         threading.Timer(0.5, getcredential_cb, [cb, rc]).start()
     return rc
 
-# TODO: This function requires that the server execute the
-# provided callback function to return the validation, and
-# it is not allowed to do so until _after_ it returns from
-# this upcall. We'll need to figure out a way to 'save' the
-# cbfunc until the server calls us back, possibly by passing
-# an appropriate caddy object in 'cbdata'
 cdef int validatecredential(const pmix_proc_t *proc,
                             const pmix_byte_object_t *cred,
                             const pmix_info_t directives[], size_t ndirs,
@@ -2413,9 +2450,31 @@ cdef int validatecredential(const pmix_proc_t *proc,
         if NULL != directives:
             pmix_unload_info(directives, ndirs, mydirs)
             args['directives'] = mydirs
-        rc = pmixservermodule['validatecredential'](args)
+        status, pyinfo = pmixservermodule['validatecredential'](args)
     else:
         rc = PMIX_ERR_NOT_SUPPORTED
+    # we cannot execute a callback function here as
+    # that would cause PMIx to lockup. So we start
+    # a new thread on a timer that should execute a
+    # callback after the funciton returns
+    cdef pmix_info_t *info
+    cdef pmix_info_t **info_ptr
+    cdef size_t ninfo = 0
+    info              = NULL
+    info_ptr          = &info
+    rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
+
+    if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
+        mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
+        mycaddy.op = strdup("validationcredential")
+        mycaddy.status = status
+        mycaddy.info = info
+        mycaddy.ndata = ninfo
+        mycaddy.validationcredential = cbfunc
+        mycaddy.cbdata = cbdata
+        cb = PyCapsule_New(mycaddy, "validationcredential", NULL)
+        rc = PMIX_SUCCESS
+        threading.Timer(0.5, validationcredential_cb, [cb, rc]).start()
     return rc
 
 cdef int iofpull(const pmix_proc_t procs[], size_t nprocs,
