@@ -753,6 +753,64 @@ cdef class PMIxClient:
             pmix_free_info(results, nresults)
         return rc, pyres
 
+    def job_control(self, pytargets:list, pydirs:list):
+        cdef pmix_proc_t *targets
+        cdef pmix_info_t *directives
+        cdef pmix_info_t **directives_ptr
+        cdef pmix_info_t *results
+        cdef size_t ntargets
+        cdef size_t ndirs
+        cdef size_t nresults
+
+        results = NULL
+        nresults = 0
+        pyres = []
+        # convert list of procs to array of pmix_proc_t's
+        if pytargets is not None:
+            ntargets = len(pytargets)
+            if 0 < ntargets:
+                targets = <pmix_proc_t*> PyMem_Malloc(ntargets * sizeof(pmix_proc_t))
+                if not targets:
+                    return PMIX_ERR_NOMEM, pyres
+                rc = pmix_load_procs(targets, pytargets)
+                if PMIX_SUCCESS != rc:
+                    pmix_free_procs(targets, ntargets)
+                    return rc, pyres
+            else:
+                ntargets = 1
+                targets = <pmix_proc_t*> PyMem_Malloc(ntargets * sizeof(pmix_proc_t))
+                if not targets:
+                    return PMIX_ERR_NOMEM, pyres
+                pmix_copy_nspace(targets[0].nspace, self.myproc.nspace)
+                targets[0].rank = PMIX_RANK_WILDCARD
+        else:
+            ntargets = 1
+            targets = <pmix_proc_t*> PyMem_Malloc(ntargets * sizeof(pmix_proc_t))
+            if not targets:
+                return PMIX_ERR_NOMEM, pyres
+            pmix_copy_nspace(targets[0].nspace, self.myproc.nspace)
+            targets[0].rank = PMIX_RANK_WILDCARD
+
+        # allocate and load pmix info structs from python list of dictionaries
+        directives_ptr = &directives
+        rc = pmix_alloc_info(directives_ptr, &ndirs, pydirs)
+        if PMIX_SUCCESS != rc:
+            if 0 < ntargets:
+                pmix_free_procs(targets, ntargets)
+            return rc
+
+        # call the API
+        rc = PMIx_Job_control(targets, ntargets, directives, ndirs, &results, &nresults)
+        if 0 < ndirs:
+            pmix_free_info(directives, ndirs)
+        if 0 < ntargets:
+            pmix_free_procs(targets, ntargets)
+        if PMIX_SUCCESS == rc and 0 < nresults:
+            # convert the results
+            rc = pmix_unload_info(results, nresults, pyres)
+            pmix_free_info(results, nresults)
+        return rc, pyres
+
     def monitor(self, pymonitor_info:list, pydirs:list, code:int):
         cdef pmix_info_t *monitor_info
         cdef pmix_info_t **monitor_info_ptr
@@ -869,64 +927,47 @@ cdef class PMIxClient:
             pmix_free_info(results, nresults)
         return rc, pyres
 
-
-    def job_control(self, pytargets:list, pydirs:list):
-        cdef pmix_proc_t *targets
+    def iofpull(self, pyprocs:list, pydirs:list, iof_channel:int):
+        cdef pmix_proc_t *procs
         cdef pmix_info_t *directives
         cdef pmix_info_t **directives_ptr
-        cdef pmix_info_t *results
-        cdef size_t ntargets
+        cdef pmix_iof_channel_t channel
         cdef size_t ndirs
-        cdef size_t nresults
+        cdef size_t nprocs
+        nprocs      = 0
+        ndirs       = 0
+        channel     = iof_channel
 
-        results = NULL
-        nresults = 0
-        pyres = []
         # convert list of procs to array of pmix_proc_t's
-        if pytargets is not None:
-            ntargets = len(pytargets)
-            if 0 < ntargets:
-                targets = <pmix_proc_t*> PyMem_Malloc(ntargets * sizeof(pmix_proc_t))
-                if not targets:
-                    return PMIX_ERR_NOMEM, pyres
-                rc = pmix_load_procs(targets, pytargets)
-                if PMIX_SUCCESS != rc:
-                    pmix_free_procs(targets, ntargets)
-                    return rc, pyres
-            else:
-                ntargets = 1
-                targets = <pmix_proc_t*> PyMem_Malloc(ntargets * sizeof(pmix_proc_t))
-                if not targets:
-                    return PMIX_ERR_NOMEM, pyres
-                pmix_copy_nspace(targets[0].nspace, self.myproc.nspace)
-                targets[0].rank = PMIX_RANK_WILDCARD
+        if pyprocs is not None:
+            nprocs = len(pyprocs)
+            procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
+            if not procs:
+                return PMIX_ERR_NOMEM
+            rc = pmix_load_procs(procs, pyprocs)
+            if PMIX_SUCCESS != rc:
+                pmix_free_procs(procs, nprocs)
+                return rc
         else:
-            ntargets = 1
-            targets = <pmix_proc_t*> PyMem_Malloc(ntargets * sizeof(pmix_proc_t))
-            if not targets:
-                return PMIX_ERR_NOMEM, pyres
-            pmix_copy_nspace(targets[0].nspace, self.myproc.nspace)
-            targets[0].rank = PMIX_RANK_WILDCARD
+            nprocs = 1
+            procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
+            if not procs:
+                return PMIX_ERR_NOMEM
+            pmix_copy_nspace(procs[0].nspace, self.myproc.nspace)
+            procs[0].rank = PMIX_RANK_WILDCARD
 
         # allocate and load pmix info structs from python list of dictionaries
         directives_ptr = &directives
         rc = pmix_alloc_info(directives_ptr, &ndirs, pydirs)
-        if PMIX_SUCCESS != rc:
-            if 0 < ntargets:
-                pmix_free_procs(targets, ntargets)
-            return rc
 
-        # call the API
-        rc = PMIx_Job_control(targets, ntargets, directives, ndirs, &results, &nresults)
+        # Call the library
+        rc = PMIx_IOF_pull(procs, nprocs, directives, ndirs, channel, NULL,
+                           NULL, NULL)
+        if 0 < nprocs:
+            pmix_free_procs(procs, nprocs)
         if 0 < ndirs:
             pmix_free_info(directives, ndirs)
-        if 0 < ntargets:
-            pmix_free_procs(targets, ntargets)
-        if PMIX_SUCCESS == rc and 0 < nresults:
-            # convert the results
-            rc = pmix_unload_info(results, nresults, pyres)
-            pmix_free_info(results, nresults)
-        return rc, pyres
+        return rc
 
     def group_construct(self, group:str, peers:list, pyinfo:list):
         cdef pmix_proc_t *procs
