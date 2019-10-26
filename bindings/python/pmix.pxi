@@ -58,11 +58,13 @@ class myLock(threading.Event):
 
 ctypedef struct pmix_pyshift_t:
     char *op
+    char *payload
     size_t idx
     pmix_modex_cbfunc_t modex
     pmix_status_t status
     pmix_byte_object_t bo
     pmix_byte_object_t *cred
+    pmix_iof_channel_t channel
     pmix_nspace_t nspace
     pmix_proc_t source
     pmix_proc_t *proc
