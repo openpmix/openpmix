@@ -103,7 +103,7 @@ int main(int argc, char **argv)
     if (myproc.rank != params.rank) {
         TEST_ERROR(("Client ns %s Rank returned in PMIx_Init %d does not match to rank from command line %d.", myproc.nspace, myproc.rank, params.rank));
         FREE_TEST_PARAMS(params);
-        exit(0);
+        exit(1);
     }
     if ( NULL != params.prefix && -1 != params.ns_id) {
         TEST_SET_FILE(params.prefix, params.ns_id, params.rank);
@@ -120,7 +120,7 @@ int main(int argc, char **argv)
     if (NULL == val) {
         TEST_ERROR(("rank %d: PMIx_Get universe size returned NULL value", myproc.rank));
         FREE_TEST_PARAMS(params);
-        exit(0);
+        exit(1);
     }
     if (val->type != PMIX_UINT32 || val->data.uint32 != (uint32_t)params.ns_size ) {
         TEST_ERROR(("rank %d: Universe size value or type mismatch,"
