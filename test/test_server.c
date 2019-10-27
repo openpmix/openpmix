@@ -764,6 +764,70 @@ error:
     return PMIX_ERROR;
 }
 
+static void set_handler_default(int sig)
+{
+    struct sigaction act;
+
+    act.sa_handler = SIG_DFL;
+    act.sa_flags = 0;
+    sigemptyset(&act.sa_mask);
+
+    sigaction(sig, &act, (struct sigaction *)0);
+}
+
+static pmix_event_t handler;
+static void wait_signal_callback(int fd, short event, void *arg)
+{
+    pmix_event_t *sig = (pmix_event_t*) arg;
+    int status;
+    pid_t pid;
+    int i;
+
+    if (SIGCHLD != pmix_event_get_signal(sig)) {
+        return;
+    }
+
+    /* we can have multiple children leave but only get one
+     * sigchild callback, so reap all the waitpids until we
+     * don't get anything valid back */
+    while (1) {
+        pid = waitpid(-1, &status, WNOHANG);
+        if (-1 == pid && EINTR == errno) {
+            /* try it again */
+            continue;
+        }
+        /* if we got garbage, then nothing we can do */
+        if (pid <= 0) {
+            goto done;
+        }
+        /* we are already in an event, so it is safe to access the list */
+        for(i=0; i < cli_info_cnt; i++){
+            if( cli_info[i].pid == pid ){
+                /* found it! */
+                if (WIFEXITED(status)) {
+                    cli_info[i].exit_code = WEXITSTATUS(status);
+                } else {
+                    if (WIFSIGNALED(status)) {
+                        cli_info[i].exit_code = WTERMSIG(status) + 128;
+                    }
+                }
+                cli_cleanup(&cli_info[i]);
+                cli_info[i].alive = false;
+                break;
+            }
+        }
+    }
+  done:
+    for(i=0; i < cli_info_cnt; i++){
+        if (cli_info[i].alive) {
+            /* someone is still alive */
+            return;
+        }
+    }
+    /* get here if nobody is still alive */
+    test_complete = true;
+}
+
 int server_init(test_params *params)
 {
     pmix_info_t info[2];
@@ -860,6 +924,12 @@ int server_init(test_params *params)
     /* register the errhandler */
     PMIx_Register_event_handler(NULL, 0, NULL, 0,
                                 errhandler, errhandler_reg_callbk, NULL);
+
+    /* setup to see sigchld on the forked tests */
+    pmix_event_assign(&handler, pmix_globals.evbase, SIGCHLD,
+                      EV_SIGNAL|EV_PERSIST, wait_signal_callback, &handler);
+    pmix_event_add(&handler, NULL);
+
 
     if (0 != (rc = server_barrier())) {
         goto error;
@@ -1007,6 +1077,15 @@ int server_launch_clients(int local_size, int univ_size, int base_rank,
         pmix_argv_append_nosize(&client_argv, digit);
 
         if (cli_info[cli_counter].pid == 0) {
+            sigset_t sigs;
+            set_handler_default(SIGTERM);
+            set_handler_default(SIGINT);
+            set_handler_default(SIGHUP);
+            set_handler_default(SIGPIPE);
+            set_handler_default(SIGCHLD);
+            sigprocmask(0, 0, &sigs);
+            sigprocmask(SIG_UNBLOCK, &sigs, 0);
+
             if( !TEST_VERBOSE_GET() ){
                 // Hide clients stdout
                 if (NULL == freopen("/dev/null","w", stdout)) {
@@ -1018,6 +1097,7 @@ int server_launch_clients(int local_size, int univ_size, int base_rank,
             TEST_ERROR(("execve() failed"));
             return 0;
         }
+        cli_info[cli_counter].alive = true;
         cli_info[cli_counter].state = CLI_FORKED;
 
         pmix_argv_free(client_argv);
