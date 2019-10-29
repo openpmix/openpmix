@@ -179,7 +179,7 @@ int main(int argc, char **argv)
     PMIx_Deregister_event_handler(0, op_callbk, NULL);
 
     TEST_VERBOSE(("srv #%d: call server_finalize!", my_server_id));
-    test_fail += server_finalize(&params, test_fail);
+    test_fail += server_finalize(&params);
 
     FREE_TEST_PARAMS(params);
     pmix_argv_free(client_argv);
