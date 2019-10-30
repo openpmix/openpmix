@@ -11,6 +11,7 @@ Makefile.in
 .DS_Store
 *.log
 *.trs
+*.dSYM
 static-components.h
 
 # http://www.gnu.org/software/autoconf
