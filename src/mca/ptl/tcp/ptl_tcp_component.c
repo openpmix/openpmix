@@ -1681,7 +1681,7 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t*)cbdata;
     pmix_pending_connection_t *pnd = (pmix_pending_connection_t*)cd->cbdata;
     pmix_namespace_t *nptr;
-    pmix_rank_info_t *info;
+    pmix_rank_info_t *info, *rinfo;
     pmix_peer_t *peer;
     pmix_status_t rc, reply;
     uint32_t u32;
@@ -1772,6 +1772,22 @@ static void process_cbfunc(int sd, short args, void *cbdata)
         pmix_list_append(&nptr->ranks, &info->super);
         PMIX_RETAIN(info);
         peer->info = info;
+    } else {
+        info = NULL;
+        PMIX_LIST_FOREACH(rinfo, &nptr->ranks, pmix_rank_info_t) {
+            if (rinfo->pname.rank == cd->proc.rank) {
+                info = rinfo;
+                break;
+            }
+        }
+        if (NULL == info) {
+            PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+            CLOSE_THE_SOCKET(pnd->sd);
+            PMIX_RELEASE(pnd->peer);
+            PMIX_RELEASE(pnd);
+            PMIX_RELEASE(cd);
+            return;
+        }
     }
 
     /* mark the peer proc type */

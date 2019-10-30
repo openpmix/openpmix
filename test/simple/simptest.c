@@ -1075,6 +1075,7 @@ static void qfn(int sd, short args, void *cbdata)
 
     qd->cbfunc(PMIX_SUCCESS, qd->data, qd->ndata, qd->cbdata, NULL, NULL);
     PMIX_INFO_FREE(qd->data, qd->ndata);
+    free(qd);
 }
 
 static pmix_status_t query_fn(pmix_proc_t *proct,
@@ -1084,11 +1085,14 @@ static pmix_status_t query_fn(pmix_proc_t *proct,
 {
     size_t n;
     pmix_info_t *info;
-    query_data_t qd;
+    query_data_t *qd;
 
     if (NULL == cbfunc) {
         return PMIX_ERROR;
     }
+    qd = (query_data_t*)malloc(sizeof(query_data_t));
+    memset(qd, 0, sizeof(query_data_t));
+
     /* keep this simple */
     PMIX_INFO_CREATE(info, nqueries);
     for (n=0; n < nqueries; n++) {
@@ -1099,11 +1103,11 @@ static pmix_status_t query_fn(pmix_proc_t *proct,
             return PMIX_ERROR;
         }
     }
-    qd.data = info;
-    qd.ndata = nqueries;
-    qd.cbfunc = cbfunc;
-    qd.cbdata = cbdata;
-    PMIX_THREADSHIFT(&qd, qfn);
+    qd->data = info;
+    qd->ndata = nqueries;
+    qd->cbfunc = cbfunc;
+    qd->cbdata = cbdata;
+    PMIX_THREADSHIFT(qd, qfn);
     return PMIX_SUCCESS;
 }
 
