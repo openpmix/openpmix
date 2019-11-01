@@ -268,7 +268,7 @@ void errhandler(size_t evhdlr_registration_id,
                 pmix_event_notification_cbfunc_fn_t cbfunc,
                 void *cbdata)
 {
-    TEST_ERROR((" PMIX server event handler with status = %d", status));
+    TEST_ERROR((" PMIX server event handler for %s:%d with status = %d", source->nspace, source->rank, status));
     /* notify clients of error */
     PMIx_Notify_event(status, source,
                       PMIX_RANGE_NAMESPACE,
