@@ -1038,6 +1038,30 @@ cdef int pmix_unload_queries(const pmix_query_t *queries, size_t nqueries, ilist
         n += 1
     return PMIX_SUCCESS
 
+# Free a malloc'd array of pmix_regattr_t structs to free
+#
+# @array [INPUT]
+#        - pmix_regattr_t structs to be free'd
+#
+# @sz [INPUT]
+#     - number of elements in array
+cdef void pmix_free_regattrs(pmix_regattr_t *regattrs, size_t sz):
+    n = 0
+    while n < sz:
+        if regattrs[n].description != NULL:
+            j = 0
+            while NULL != regattrs[n].description[j]:
+                PyMem_Free(regattrs[n].description[j])
+                j += 1
+            PyMem_Free(regattrs[n].description)
+        if regattrs[n].info != NULL:
+            pmix_free_info(regattrs[n].info, regattrs[n].ninfo)
+        if regattrs[n].name != NULL:
+            PyMem_Free(regattrs[n].name)
+        n += 1
+    if regattrs != NULL:
+        PyMem_Free(regattrs)
+
 # Free a malloc'd array of pmix_query_t structs to free
 #
 # @array [INPUT]

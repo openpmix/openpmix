@@ -1494,6 +1494,59 @@ cdef class PMIxServer(PMIxClient):
             active.fetch_info(dataout)
         return (rc, dataout)
 
+    def register_attributes(function:str, attrs:list):
+        cdef pmix_regattr_t *regattrs
+        cdef size_t nattrs
+        cdef pmix_info_t **info_ptr
+        cdef char *func
+        nattrs    = 0
+        regattrs  = NULL
+        info_ptr  = NULL
+        func      = strdup(function)
+
+        if attrs is not None:
+            nattrs = len(attrs)
+            if 0 < nattrs:
+                regattrs = <pmix_regattr_t*> PyMem_Malloc(nattrs * sizeof(pmix_regattr_t))
+                if not regattrs:
+                    return PMIX_ERR_NOMEM
+                n = 0
+                for attr in attrs:
+                    regattrs[n].name      = strdup(attr['name'])
+                    pmix_copy_key(regattrs[n].string, attr['string'])
+                    regattrs[n].type = attr['val_type']
+                    nstrings         = len(attr['description'])
+
+                    # allocate and load pmix info structs from python list of dictionaries
+                    regattrs[n].ninfo = 0
+                    info_ptr          = &(regattrs[n].info)
+                    rc                = pmix_alloc_info(info_ptr, &(regattrs[n].ninfo), attr['info'])
+
+                    # allocate and load list of strings into regattrs struct
+                    if 0 < nstrings:
+                        regattrs[n].description = <char **> PyMem_Malloc((nstrings+1) * sizeof(char*))
+                        if not regattrs[n].description:
+                            pmix_free_regattrs(regattrs, nattrs)
+                            return PMIX_ERR_NOMEM
+                        rc = pmix_load_argv(regattrs[n].description, attr['description'])
+                        if PMIX_SUCCESS != rc:
+                            pmix_free_regattrs(regattrs, nattrs)
+                            return rc
+                    n += 1
+            else:
+                nattrs = 0
+        else:
+            nattrs = 0
+
+        # call Server API
+        rc = PMIx_Register_attributes(func, regattrs, nattrs)
+
+        if 0 < nattrs:
+            pmix_free_regattrs(regattrs, nattrs)
+        if func != NULL:
+            PyMem_Free(func)
+        return PMIX_SUCCESS
+
     def setup_local_support(self, ns, ilist:list):
         global active
         cdef pmix_nspace_t nspace;
