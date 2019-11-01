@@ -2733,7 +2733,6 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
                     }
                     if (NULL != ipeers) {
                         /* if this host is us, then store this as its own key */
-                        pmix_output(0, "CHECKING HOST %s %s", kv2.key, pmix_globals.hostname);
                         if (0 == strcmp(kv2.key, pmix_globals.hostname)) {
                             kv2.key = PMIX_LOCAL_PEERS;
                             kv2.value = &ipeers->value;
