@@ -342,24 +342,9 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
             PMIX_DESTRUCT(&cb);
             return rc;
         }
-        /* if the requested rank is not WILDCARD, then retrieve any
-         * posted data for that rank. Anything found will
-         * simply be added to the cb.kvs list */
-        if (PMIX_RANK_WILDCARD != rank) {
-            proc.rank = rank;
-            cb.scope = PMIX_LOCAL;
-            pmix_output_verbose(5, pmix_server_globals.get_output,
-                                "%s GETTING DATA FOR %s",
-                                PMIX_NAME_PRINT(&pmix_globals.myid),
-                                PMIX_NAME_PRINT(&proc));
-            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-            if (PMIX_SUCCESS != rc) {
-                cb.info = NULL;
-                cb.ninfo = 0;
-                PMIX_DESTRUCT(&cb);
-                return rc;
-            }
-        }
+        /* store this as a byte object in the eventual data to
+         * be returned */
+        PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
         cb.info = NULL;
         cb.ninfo = 0;
         PMIX_CONSTRUCT(&pkt, pmix_buffer_t);
@@ -373,14 +358,59 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
         PMIX_UNLOAD_BUFFER(&pkt, bo.bytes, bo.size);
         PMIX_DESTRUCT(&pkt);
         /* pack it into the payload */
-        PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
-        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &pbkt, &bo, 1, PMIX_BYTE_OBJECT);
+        PMIX_BFROPS_PACK(rc, cd->peer, &pbkt, &bo, 1, PMIX_BYTE_OBJECT);
         free(bo.bytes);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_DESTRUCT(&pbkt);
             PMIX_DESTRUCT(&cb);
             return rc;
+        }
+        PMIX_DESTRUCT(&cb);
+        /* if the requested rank is not WILDCARD, then retrieve any
+         * posted data for that rank. Anything found will
+         * be added to the cb.kvs list */
+        if (PMIX_RANK_WILDCARD != rank) {
+            PMIX_CONSTRUCT(&cb, pmix_cb_t);
+            proc.rank = rank;
+            cb.proc = &proc;
+            cb.scope = PMIX_LOCAL;
+            cb.copy = false;
+            cb.info = cd->info;
+            cb.ninfo = cd->ninfo;
+            pmix_output_verbose(5, pmix_server_globals.get_output,
+                                "%s GETTING DATA FOR %s",
+                                PMIX_NAME_PRINT(&pmix_globals.myid),
+                                PMIX_NAME_PRINT(&proc));
+            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+            if (PMIX_SUCCESS != rc) {
+                cb.info = NULL;
+                cb.ninfo = 0;
+                PMIX_DESTRUCT(&cb);
+                return rc;
+            }
+            cb.info = NULL;
+            cb.ninfo = 0;
+            PMIX_CONSTRUCT(&pkt, pmix_buffer_t);
+            /* assemble the provided data into a byte object */
+            PMIX_GDS_ASSEMB_KVS_REQ(rc, pmix_globals.mypeer, &proc, &cb.kvs, &pkt, cd);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_DESTRUCT(&cb);
+                return rc;
+            }
+            PMIX_UNLOAD_BUFFER(&pkt, bo.bytes, bo.size);
+            PMIX_DESTRUCT(&pkt);
+            /* pack it into the payload */
+            PMIX_BFROPS_PACK(rc, cd->peer, &pbkt, &bo, 1, PMIX_BYTE_OBJECT);
+            free(bo.bytes);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_DESTRUCT(&pbkt);
+                PMIX_DESTRUCT(&cb);
+                return rc;
+            }
+            PMIX_DESTRUCT(&cb);
         }
         /* unload the resulting payload */
         PMIX_UNLOAD_BUFFER(&pbkt, data, sz);

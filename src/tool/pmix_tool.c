@@ -272,7 +272,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     pmix_ptl_posted_recv_t *rcv;
     pmix_proc_t wildcard;
     int fd;
-    pmix_proc_type_t ptype;
+    pmix_proc_type_t ptype = PMIX_PROC_TYPE_STATIC_INIT;
     pmix_cb_t cb;
     pmix_buffer_t *req;
     pmix_cmd_t cmd = PMIX_REQ_CMD;
