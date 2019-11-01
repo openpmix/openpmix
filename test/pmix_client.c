@@ -13,7 +13,7 @@
  *                         All rights reserved.
  * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
- * Copyright (c) 2013-2018 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2018 Mellanox Technologies, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -40,31 +40,6 @@
 #include "test_error.h"
 #include "test_replace.h"
 #include "test_internal.h"
-
-static void errhandler(size_t evhdlr_registration_id,
-                       pmix_status_t status,
-                       const pmix_proc_t *source,
-                       pmix_info_t info[], size_t ninfo,
-                       pmix_info_t results[], size_t nresults,
-                       pmix_event_notification_cbfunc_fn_t cbfunc,
-                       void *cbdata)
-{
-    TEST_ERROR(("PMIX client: Error handler with status = %d", status))
-}
-
-static void op_callbk(pmix_status_t status,
-               void *cbdata)
-{
-    TEST_VERBOSE(( "OP CALLBACK CALLED WITH STATUS %d", status));
-}
-
-static void errhandler_reg_callbk (pmix_status_t status,
-                                   size_t errhandler_ref,
-                                   void *cbdata)
-{
-    TEST_VERBOSE(("PMIX client ERRHANDLER REGISTRATION CALLBACK CALLED WITH STATUS %d, ref=%lu",
-                  status, (unsigned long)errhandler_ref));
-}
 
 int main(int argc, char **argv)
 {
@@ -98,12 +73,6 @@ int main(int argc, char **argv)
         TEST_ERROR(("Client ns %s rank %d: PMIx_Init failed: %d", params.nspace, params.rank, rc));
         FREE_TEST_PARAMS(params);
         exit(0);
-    }
-    PMIx_Register_event_handler(NULL, 0, NULL, 0, errhandler, errhandler_reg_callbk, NULL);
-    if (myproc.rank != params.rank) {
-        TEST_ERROR(("Client ns %s Rank returned in PMIx_Init %d does not match to rank from command line %d.", myproc.nspace, myproc.rank, params.rank));
-        FREE_TEST_PARAMS(params);
-        exit(1);
     }
     if ( NULL != params.prefix && -1 != params.ns_id) {
         TEST_SET_FILE(params.prefix, params.ns_id, params.rank);
@@ -221,7 +190,6 @@ int main(int argc, char **argv)
     }
 
     TEST_VERBOSE(("Client ns %s rank %d: PASSED", myproc.nspace, myproc.rank));
-    PMIx_Deregister_event_handler(1, op_callbk, NULL);
 
     /* In case of direct modex we want to delay Finalize
        until everybody has finished. Otherwise some processes

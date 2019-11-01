@@ -25,29 +25,29 @@ static int resolve_nspace(char *nspace, test_params params, char *my_nspace, int
     rc = PMIx_Resolve_peers(pmix_globals.hostname, nspace, &procs, &nprocs);
     if (PMIX_SUCCESS != rc) {
         TEST_ERROR(("%s:%d: Resolve peers test failed: rc = %d", my_nspace, my_rank, rc));
-        exit(rc);
+        return rc;
     }
     if (NULL == procs || 0 == nprocs) {
         TEST_ERROR(("%s:%d: Resolve peers didn't find any process from ns %s at this node\n", my_nspace, my_rank,my_nspace));
-        exit(PMIX_ERROR);
+        return PMIX_ERROR;
     }
     rc = get_all_ranks_from_namespace(params, nspace, &ranks, &nranks);
     if (PMIX_SUCCESS != rc) {
         TEST_ERROR(("%s:%d: get_all_ranks_from_namespace function failed", my_nspace, my_rank));
         PMIX_PROC_FREE(procs, nprocs);
-        exit(rc);
+        return rc;
     }
     if (nprocs != nranks) {
         TEST_ERROR(("%s:%d: Resolve peers returned incorect result: returned %lu processes, expected %lu", my_nspace, my_rank, nprocs, nranks));
         PMIX_PROC_FREE(procs, nprocs);
         PMIX_PROC_FREE(ranks, nranks);
-        exit(PMIX_ERROR);
+        return PMIX_ERROR;
     }
     for (i = 0; i < nprocs; i++) {
         if (procs[i].rank != ranks[i].rank) {
             TEST_ERROR(("%s:%d: Resolve peers returned incorrect result: returned value %s:%d, expected rank %d",
                         my_nspace, my_rank, procs[i].nspace, procs[i].rank, ranks[i].rank));
-            exit(PMIX_ERROR);
+            return PMIX_ERROR;
         }
     }
     PMIX_PROC_FREE(procs, nprocs);
@@ -111,6 +111,7 @@ int test_resolve_peers(char *my_nspace, int my_rank, test_params params)
         if (PMIX_SUCCESS == rc) {
             TEST_VERBOSE(("%s:%d: Resolve peers succeeded for ns %s\n", my_nspace, my_rank, nspace));
         } else {
+            TEST_ERROR(("%s:%d: Resolve peers failed for different namespace\n", my_nspace, my_rank));
             exit(rc);
         }
 
