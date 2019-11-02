@@ -13,7 +13,7 @@
  *                         All rights reserved.
  * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
- * Copyright (c) 2013-2017 Intel, Inc. All rights reserved.
+ * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.
@@ -29,6 +29,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <signal.h>
 
 #include "src/util/pmix_environ.h"
 #include "src/util/output.h"
@@ -38,6 +39,59 @@
 #include "src/include/pmix_globals.h"
 
 bool spawn_wait = false;
+bool test_complete = false;
+static pmix_event_t handler;
+static void wait_signal_callback(int fd, short event, void *arg)
+{
+    pmix_event_t *sig = (pmix_event_t*) arg;
+    int status;
+    pid_t pid;
+    int i;
+
+    if (SIGCHLD != pmix_event_get_signal(sig)) {
+        return;
+    }
+
+    /* we can have multiple children leave but only get one
+     * sigchild callback, so reap all the waitpids until we
+     * don't get anything valid back */
+    while (1) {
+        pid = waitpid(-1, &status, WNOHANG);
+        if (-1 == pid && EINTR == errno) {
+            /* try it again */
+            continue;
+        }
+        /* if we got garbage, then nothing we can do */
+        if (pid <= 0) {
+            goto done;
+        }
+        /* we are already in an event, so it is safe to access the list */
+        for(i=0; i < cli_info_cnt; i++){
+            if( cli_info[i].pid == pid ){
+                /* found it! */
+                if (WIFEXITED(status)) {
+                    cli_info[i].exit_code = WEXITSTATUS(status);
+                } else {
+                    if (WIFSIGNALED(status)) {
+                        cli_info[i].exit_code = WTERMSIG(status) + 128;
+                    }
+                }
+                cli_cleanup(&cli_info[i]);
+                cli_info[i].alive = false;
+                break;
+            }
+        }
+    }
+  done:
+    for(i=0; i < cli_info_cnt; i++){
+        if (cli_info[i].alive) {
+            /* someone is still alive */
+            return;
+        }
+    }
+    /* get here if nobody is still alive */
+    test_complete = true;
+}
 
 int main(int argc, char **argv)
 {
@@ -45,16 +99,12 @@ int main(int argc, char **argv)
     char **client_argv=NULL;
     int rc;
     struct stat stat_buf;
-    struct timeval tv;
-    double test_start;
     test_params params;
     INIT_TEST_PARAMS(params);
     int test_fail = 0;
     char *tmp;
     int ns_nprocs;
-
-    gettimeofday(&tv, NULL);
-    test_start = tv.tv_sec + 1E-6*tv.tv_usec;
+    sigset_t unblock;
 
     /* smoke test */
     if (PMIX_SUCCESS != 0) {
@@ -82,6 +132,20 @@ int main(int argc, char **argv)
         return 0;
     }
 
+    /* ensure that SIGCHLD is unblocked as we need to capture it */
+    if (0 != sigemptyset(&unblock)) {
+        fprintf(stderr, "SIGEMPTYSET FAILED\n");
+        exit(1);
+    }
+    if (0 != sigaddset(&unblock, SIGCHLD)) {
+        fprintf(stderr, "SIGADDSET FAILED\n");
+        exit(1);
+    }
+    if (0 != sigprocmask(SIG_UNBLOCK, &unblock, NULL)) {
+        fprintf(stderr, "SIG_UNBLOCK FAILED\n");
+        exit(1);
+    }
+
     /* setup the server library */
     pmix_info_t info[1];
     (void)strncpy(info[0].key, PMIX_SOCKET_MODE, PMIX_MAX_KEYLEN);
@@ -93,9 +157,17 @@ int main(int argc, char **argv)
         FREE_TEST_PARAMS(params);
         return rc;
     }
+
+#if 0
     /* register the errhandler */
     PMIx_Register_event_handler(NULL, 0, NULL, 0,
                                 errhandler, errhandler_reg_callbk, NULL);
+#endif
+
+    /* setup to see sigchld on the forked tests */
+    pmix_event_assign(&handler, pmix_globals.evbase, SIGCHLD,
+                      EV_SIGNAL|EV_PERSIST, wait_signal_callback, &handler);
+    pmix_event_add(&handler, NULL);
 
     cli_init(params.nprocs);
 
@@ -146,23 +218,11 @@ int main(int argc, char **argv)
     }
 
     /* hang around until the client(s) finalize */
-    while (!test_terminated()) {
-        // To avoid test hang we want to interrupt the loop each 0.1s
-        double test_current;
-
-        // check if we exceed the max time
-        gettimeofday(&tv, NULL);
-        test_current = tv.tv_sec + 1E-6*tv.tv_usec;
-        if( (test_current - test_start) > params.timeout ){
-            break;
-        }
-        cli_wait_all(0);
-    }
-
-    if( !test_terminated() ){
-        TEST_ERROR(("Test exited by a timeout!"));
-        cli_kill_all();
-        test_fail = 1;
+    while (!test_complete) {
+        struct timespec ts;
+        ts.tv_sec = 0;
+        ts.tv_nsec = 100000;
+        nanosleep(&ts, NULL);
     }
 
     if( test_abort ){
@@ -182,9 +242,7 @@ int main(int argc, char **argv)
     pmix_argv_free(client_env);
 
     /* deregister the errhandler */
-    PMIx_Deregister_event_handler(0, op_callbk, NULL);
-
-    cli_wait_all(1.0);
+//    PMIx_Deregister_event_handler(0, op_callbk, NULL);
 
     /* finalize the server library */
     if (PMIX_SUCCESS != (rc = PMIx_server_finalize())) {

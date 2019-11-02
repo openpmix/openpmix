@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * $COPYRIGHT$
@@ -68,14 +68,14 @@ int test_resolve_peers(char *my_nspace, int my_rank, test_params params)
         TEST_VERBOSE(("%s:%d: Resolve peers succeeded for the own namespace\n", my_nspace, my_rank));
     } else {
         TEST_ERROR(("%s:%d: Resolve peers failed for the own namespace\n", my_nspace, my_rank));
-        return PMIX_ERROR;
+        exit(rc);
     }
 
     /* then get number of namespaces and try to resolve peers from them. */
     ns_num = get_total_ns_number(params);
     if (0 >= ns_num) {
         TEST_ERROR(("%s:%d: get_total_ns_number function failed", my_nspace, my_rank));
-        return PMIX_ERROR;
+        exit(PMIX_ERROR);
     }
     for (n = 0; n < ns_num; n++) {
         memset(nspace, 0, PMIX_MAX_NSLEN+1);
@@ -103,7 +103,7 @@ int test_resolve_peers(char *my_nspace, int my_rank, test_params params)
             TEST_VERBOSE(("%s:%d: Connect to %s succeeded %s.", my_nspace, my_rank, nspace, PMIx_Error_string(rc)));
         } else {
             TEST_ERROR(("%s:%d: Connect to %s failed %s.", my_nspace, my_rank, nspace, PMIx_Error_string(rc)));
-            return PMIX_ERROR;
+            exit(rc);
         }
 
         /* then resolve peers from this namespace. */
@@ -111,8 +111,8 @@ int test_resolve_peers(char *my_nspace, int my_rank, test_params params)
         if (PMIX_SUCCESS == rc) {
             TEST_VERBOSE(("%s:%d: Resolve peers succeeded for ns %s\n", my_nspace, my_rank, nspace));
         } else {
-            PMIx_Disconnect(procs, 2, NULL, 0);
-            break;
+            TEST_ERROR(("%s:%d: Resolve peers failed for different namespace\n", my_nspace, my_rank));
+            exit(rc);
         }
 
         /* disconnect from the processes of this namespace. */
@@ -121,7 +121,7 @@ int test_resolve_peers(char *my_nspace, int my_rank, test_params params)
             TEST_VERBOSE(("%s:%d: Disconnect from %s succeeded %s.", my_nspace, my_rank, nspace));
         } else {
             TEST_ERROR(("%s:%d: Disconnect from %s failed %s.", my_nspace, my_rank, nspace));
-            return PMIX_ERROR;
+            exit(rc);
         }
     }
     if (PMIX_SUCCESS == rc) {

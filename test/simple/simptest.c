@@ -13,7 +13,7 @@
  *                         All rights reserved.
  * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
- * Copyright (c) 2013-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
@@ -412,6 +412,11 @@ int main(int argc, char **argv)
     }
     if (NULL == executable) {
         executable = strdup("./simpclient");
+    }
+    /* check for executable existence and permissions */
+    if (0 != access(executable, X_OK)) {
+        fprintf(stderr, "Executable %s not found or missing executable permissions\n", executable);
+        exit(1);
     }
     if (cross_version && nprocs < 2) {
         fprintf(stderr, "Cross-version testing requires at least two clients\n");
