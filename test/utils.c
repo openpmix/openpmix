@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2017 Intel, Inc. All rights reserved.
+ * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      Research Organization for Information Science
@@ -261,6 +261,7 @@ int launch_clients(int nprocs, char *binary, char *** client_env, char ***base_a
             /* Does not return */
             exit(0);
         }
+        cli_info[counter].alive = true;
         cli_info[counter].state = CLI_FORKED;
 
         pmix_argv_free(client_argv);
