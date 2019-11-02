@@ -72,7 +72,7 @@ int main(int argc, char **argv)
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, info, ninfo))) {
         TEST_ERROR(("Client ns %s rank %d: PMIx_Init failed: %d", params.nspace, params.rank, rc));
         FREE_TEST_PARAMS(params);
-        exit(0);
+        exit(rc);
     }
     if ( NULL != params.prefix && -1 != params.ns_id) {
         TEST_SET_FILE(params.prefix, params.ns_id, params.rank);
@@ -84,7 +84,7 @@ int main(int argc, char **argv)
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_UNIV_SIZE, NULL, 0, &val))) {
         TEST_ERROR(("rank %d: PMIx_Get universe size failed: %d", myproc.rank, rc));
         FREE_TEST_PARAMS(params);
-        exit(0);
+        exit(rc);
     }
     if (NULL == val) {
         TEST_ERROR(("rank %d: PMIx_Get universe size returned NULL value", myproc.rank));
@@ -97,7 +97,7 @@ int main(int argc, char **argv)
                     myproc.rank, params.ns_size, PMIX_UINT32,
                     val->data.integer, val->type));
         FREE_TEST_PARAMS(params);
-        exit(0);
+        exit(1);
     }
 
     TEST_VERBOSE(("rank %d: Universe size check: PASSED", myproc.rank));
@@ -105,7 +105,7 @@ int main(int argc, char **argv)
     if( NULL != params.nspace && 0 != strcmp(myproc.nspace, params.nspace) ) {
         TEST_ERROR(("rank %d: Bad nspace!", myproc.rank));
         FREE_TEST_PARAMS(params);
-        exit(0);
+        exit(1);
     }
 
     if (NULL != params.fences) {
@@ -113,7 +113,7 @@ int main(int argc, char **argv)
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
             TEST_ERROR(("%s:%d Fence test failed: %d", myproc.nspace, myproc.rank, rc));
-            exit(0);
+            exit(rc);
         }
     }
 
@@ -122,7 +122,7 @@ int main(int argc, char **argv)
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
             TEST_ERROR(("%s:%d Job fence test failed: %d", myproc.nspace, myproc.rank, rc));
-            exit(0);
+            exit(rc);
         }
     }
 
@@ -131,7 +131,7 @@ int main(int argc, char **argv)
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
             TEST_ERROR(("%s:%d Publish/Lookup test failed: %d", myproc.nspace, myproc.rank, rc));
-            exit(0);
+            exit(rc);
         }
     }
 
@@ -140,7 +140,7 @@ int main(int argc, char **argv)
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
             TEST_ERROR(("%s:%d Spawn test failed: %d", myproc.nspace, myproc.rank, rc));
-            exit(0);
+            exit(rc);
         }
     }
 
@@ -149,7 +149,7 @@ int main(int argc, char **argv)
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
             TEST_ERROR(("%s:%d Connect/Disconnect test failed: %d", myproc.nspace, myproc.rank, rc));
-            exit(0);
+            exit(rc);
         }
     }
 
@@ -158,7 +158,7 @@ int main(int argc, char **argv)
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
             TEST_ERROR(("%s:%d Resolve peers test failed: %d", myproc.nspace, myproc.rank, rc));
-            exit(0);
+            exit(rc);
         }
     }
 
@@ -167,7 +167,7 @@ int main(int argc, char **argv)
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
             TEST_ERROR(("%s:%d error registration and event handling test failed: %d", myproc.nspace, myproc.rank, rc));
-            exit(0);
+            exit(rc);
         }
     }
 
@@ -176,7 +176,7 @@ int main(int argc, char **argv)
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
             TEST_ERROR(("%s:%d error key replace test failed: %d", myproc.nspace, myproc.rank, rc));
-            exit(0);
+            exit(rc);
         }
     }
 
@@ -185,7 +185,7 @@ int main(int argc, char **argv)
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
             TEST_ERROR(("%s:%d error key store internal test failed: %d", myproc.nspace, myproc.rank, rc));
-            exit(0);
+            exit(rc);
         }
     }
 
@@ -208,5 +208,5 @@ int main(int argc, char **argv)
     TEST_OUTPUT_CLEAR(("OK\n"));
     TEST_CLOSE_FILE();
     FREE_TEST_PARAMS(params);
-    exit(0);
+    exit(rc);
 }
