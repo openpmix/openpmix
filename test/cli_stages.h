@@ -66,8 +66,6 @@ void cli_terminate(cli_info_t *cli);
 void cli_cleanup(cli_info_t *cli);
 void cli_kill_all(void);
 
-bool test_terminated(void);
-
 void errhandler(size_t evhdlr_registration_id,
                 pmix_status_t status,
                 const pmix_proc_t *source,
