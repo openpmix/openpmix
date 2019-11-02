@@ -921,9 +921,11 @@ int server_init(test_params *params)
         }
     }
 
+#if 0
     /* register the errhandler */
     PMIx_Register_event_handler(NULL, 0, NULL, 0,
                                 errhandler, errhandler_reg_callbk, NULL);
+#endif
 
     /* setup to see sigchld on the forked tests */
     pmix_event_assign(&handler, pmix_globals.evbase, SIGCHLD,
