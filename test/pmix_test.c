@@ -176,7 +176,7 @@ int main(int argc, char **argv)
     }
 
     /* deregister the errhandler */
-    PMIx_Deregister_event_handler(0, op_callbk, NULL);
+//    PMIx_Deregister_event_handler(0, op_callbk, NULL);
 
     TEST_VERBOSE(("srv #%d: call server_finalize!", my_server_id));
     test_fail += server_finalize(&params);
