@@ -48,7 +48,6 @@ int main(int argc, char **argv)
     char **client_argv=NULL;
     int rc, i;
     struct stat stat_buf;
-    int test_fail = 0;
     char *tmp;
     int ns_nprocs;
     sigset_t unblock;

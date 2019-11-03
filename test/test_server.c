@@ -29,6 +29,7 @@
 #include "server_callbacks.h"
 
 int my_server_id = 0;
+int test_fail = 0;
 
 server_info_t *my_server_info = NULL;
 pmix_list_t *server_list = NULL;
@@ -830,7 +831,7 @@ static void wait_signal_callback(int fd, short event, void *arg)
 
 int server_init(test_params *params)
 {
-    pmix_info_t info[2];
+    pmix_info_t info[1];
     int rc = PMIX_SUCCESS;
 
     /* fork/init servers procs */
@@ -902,11 +903,10 @@ int server_init(test_params *params)
     (void)strncpy(info[0].key, PMIX_SOCKET_MODE, PMIX_MAX_KEYLEN);
     info[0].value.type = PMIX_UINT32;
     info[0].value.data.uint32 = 0666;
-    PMIX_INFO_LOAD(&info[1], PMIX_HOSTNAME, my_server_info->hostname, PMIX_STRING);
 
     server_nspace = PMIX_NEW(pmix_list_t);
 
-    if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, info, 2))) {
+    if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, info, 1))) {
         TEST_ERROR(("Init failed with error %d", rc));
         goto error;
     }
@@ -949,6 +949,7 @@ int server_finalize(test_params *params)
     int rc = PMIX_SUCCESS;
     int total_ret = 0;
 
+    total_ret = test_fail;
     if (0 != (rc = server_barrier())) {
         total_ret++;
         goto exit;
@@ -969,11 +970,6 @@ int server_finalize(test_params *params)
         PMIX_LIST_RELEASE(server_list);
         TEST_VERBOSE(("SERVER %d FINALIZE PID:%d with status %d",
                     my_server_id, getpid(), ret));
-        if (0 == total_ret) {
-            TEST_OUTPUT(("Test finished OK!"));
-        } else {
-            rc = PMIX_ERROR;
-        }
     }
     PMIX_LIST_RELEASE(server_nspace);
 
@@ -982,6 +978,11 @@ int server_finalize(test_params *params)
         TEST_ERROR(("Finalize failed with error %d", rc));
         total_ret += rc;
         goto exit;
+    }
+    if (0 == total_ret) {
+        TEST_OUTPUT(("Test finished OK!"));
+    } else {
+        TEST_OUTPUT(("Test FAILED!"));
     }
 
 exit:
