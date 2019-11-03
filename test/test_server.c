@@ -29,6 +29,7 @@
 #include "server_callbacks.h"
 
 int my_server_id = 0;
+int test_fail = 0;
 
 server_info_t *my_server_info = NULL;
 pmix_list_t *server_list = NULL;
@@ -948,6 +949,7 @@ int server_finalize(test_params *params)
     int rc = PMIX_SUCCESS;
     int total_ret = 0;
 
+    total_ret = test_fail;
     if (0 != (rc = server_barrier())) {
         total_ret++;
         goto exit;
@@ -968,11 +970,6 @@ int server_finalize(test_params *params)
         PMIX_LIST_RELEASE(server_list);
         TEST_VERBOSE(("SERVER %d FINALIZE PID:%d with status %d",
                     my_server_id, getpid(), ret));
-        if (0 == total_ret) {
-            TEST_OUTPUT(("Test finished OK!"));
-        } else {
-            rc = PMIX_ERROR;
-        }
     }
     PMIX_LIST_RELEASE(server_nspace);
 
@@ -981,6 +978,11 @@ int server_finalize(test_params *params)
         TEST_ERROR(("Finalize failed with error %d", rc));
         total_ret += rc;
         goto exit;
+    }
+    if (0 == total_ret) {
+        TEST_OUTPUT(("Test finished OK!"));
+    } else {
+        TEST_OUTPUT(("Test FAILED!"));
     }
 
 exit:
