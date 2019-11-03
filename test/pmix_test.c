@@ -121,15 +121,15 @@ int main(int argc, char **argv)
     if( 0 > ( rc = stat(params.binary, &stat_buf) ) ){
         TEST_ERROR(("Cannot stat() executable \"%s\": %d: %s", params.binary, errno, strerror(errno)));
         FREE_TEST_PARAMS(params);
-        return 0;
+        exit(rc);
     } else if( !S_ISREG(stat_buf.st_mode) ){
         TEST_ERROR(("Client executable \"%s\": is not a regular file", params.binary));
         FREE_TEST_PARAMS(params);
-        return 0;
+        exit(1);
     }else if( !(stat_buf.st_mode & S_IXUSR) ){
         TEST_ERROR(("Client executable \"%s\": has no executable flag", params.binary));
         FREE_TEST_PARAMS(params);
-        return 0;
+        exit(1);
     }
 
     /* ensure that SIGCHLD is unblocked as we need to capture it */
@@ -155,7 +155,7 @@ int main(int argc, char **argv)
     if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, info, 1))) {
         TEST_ERROR(("Init failed with error %d", rc));
         FREE_TEST_PARAMS(params);
-        return rc;
+        exit(rc);
     }
 
 #if 0
@@ -187,7 +187,7 @@ int main(int argc, char **argv)
         rc = launch_clients(ns_nprocs, params.binary, &client_env, &client_argv);
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
-            return rc;
+            exit(rc);
         }
         launched += ns_nprocs;
     } else {
@@ -198,13 +198,13 @@ int main(int argc, char **argv)
             if (params.nprocs < (uint32_t)(launched+ns_nprocs)) {
                 TEST_ERROR(("Total number of processes doesn't correspond number specified by ns_dist parameter."));
                 FREE_TEST_PARAMS(params);
-                return PMIX_ERROR;
+                exit(1);
             }
             if (0 < ns_nprocs) {
                 rc = launch_clients(ns_nprocs, params.binary, &client_env, &client_argv);
                 if (PMIX_SUCCESS != rc) {
                     FREE_TEST_PARAMS(params);
-                    return rc;
+                    exit(rc);
                 }
             }
             pch = strtok (NULL, ":");
@@ -214,7 +214,7 @@ int main(int argc, char **argv)
     if (params.nprocs != (uint32_t)launched) {
         TEST_ERROR(("Total number of processes doesn't correspond number specified by ns_dist parameter."));
         cli_kill_all();
-        test_fail = 1;
+        exit(1);
     }
 
     /* hang around until the client(s) finalize */
@@ -227,10 +227,7 @@ int main(int argc, char **argv)
 
     if( test_abort ){
         TEST_ERROR(("Test was aborted!"));
-        /* do not simply kill the clients as that generates
-         * event notifications which these tests then print
-         * out, flooding the log */
-      //  cli_kill_all();
+        cli_kill_all();
         test_fail = 1;
     }
 
@@ -247,6 +244,7 @@ int main(int argc, char **argv)
     /* finalize the server library */
     if (PMIX_SUCCESS != (rc = PMIx_server_finalize())) {
         TEST_ERROR(("Finalize failed with error %d", rc));
+        exit(rc);
     }
 
     FREE_TEST_PARAMS(params);
