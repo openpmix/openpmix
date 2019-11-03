@@ -21,7 +21,11 @@ static int resolve_nspace(char *nspace, test_params params, char *my_nspace, int
     pmix_proc_t *procs;
     size_t nprocs, nranks, i;
     pmix_proc_t *ranks;
-    rc = PMIx_Resolve_peers(NODE_NAME, nspace, &procs, &nprocs);
+    char hostname[1024];
+
+    gethostname(hostname, 1024);
+
+    rc = PMIx_Resolve_peers(hostname, nspace, &procs, &nprocs);
     if (PMIX_SUCCESS != rc) {
         TEST_ERROR(("%s:%d: Resolve peers test failed: rc = %d", my_nspace, my_rank, rc));
         return rc;
