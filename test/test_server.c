@@ -830,7 +830,7 @@ static void wait_signal_callback(int fd, short event, void *arg)
 
 int server_init(test_params *params)
 {
-    pmix_info_t info[2];
+    pmix_info_t info[1];
     int rc = PMIX_SUCCESS;
 
     /* fork/init servers procs */
@@ -902,11 +902,10 @@ int server_init(test_params *params)
     (void)strncpy(info[0].key, PMIX_SOCKET_MODE, PMIX_MAX_KEYLEN);
     info[0].value.type = PMIX_UINT32;
     info[0].value.data.uint32 = 0666;
-    PMIX_INFO_LOAD(&info[1], PMIX_HOSTNAME, my_server_info->hostname, PMIX_STRING);
 
     server_nspace = PMIX_NEW(pmix_list_t);
 
-    if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, info, 2))) {
+    if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, info, 1))) {
         TEST_ERROR(("Init failed with error %d", rc));
         goto error;
     }

@@ -233,7 +233,6 @@ extern pmix_list_t test_fences;
 extern pmix_list_t *noise_range;
 extern pmix_list_t key_replace;
 
-#define NODE_NAME "node1"
 int get_total_ns_number(test_params params);
 int get_all_ranks_from_namespace(test_params params, char *nspace, pmix_proc_t **ranks, size_t *nranks);
 
