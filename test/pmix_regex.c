@@ -13,7 +13,7 @@
  *                         All rights reserved.
  * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
- * Copyright (c) 2013-2015 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -67,6 +67,7 @@ int main(int argc, char **argv)
         free(regex);
     } else {
         fprintf(stderr, "Node reverse failed: %d\n\n\n", rc);
+        exit(rc);
     }
 
     fprintf(stderr, "PROCS: %s\n", TEST_PROCS);
@@ -83,6 +84,7 @@ int main(int argc, char **argv)
         free(regex);
     } else {
         fprintf(stderr, "PPN reverse failed: %d\n", rc);
+        exit(rc);
     }
 
     return 0;

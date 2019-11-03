@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2017 Intel, Inc. All rights reserved.
+ * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * $COPYRIGHT$
@@ -66,13 +66,13 @@ int test_spawn(char *my_nspace, int my_rank)
     rc = test_spawn_common(my_nspace, my_rank, 1);
     if (PMIX_SUCCESS != rc) {
         TEST_ERROR(("%s:%d: Spawn blocking test failed.", my_nspace, my_rank));
-        return PMIX_ERROR;
+        exit(rc);
     }
     TEST_VERBOSE(("%s:%d: Spawn blocking test succeded.", my_nspace, my_rank));
     rc = test_spawn_common(my_nspace, my_rank, 0);
     if (PMIX_SUCCESS != rc) {
         TEST_ERROR(("%s:%d: Spawn non-blocking test failed.", my_nspace, my_rank));
-        return PMIX_ERROR;
+        exit(rc);
     }
     TEST_VERBOSE(("%s:%d: Spawn non-blocking test succeded.", my_nspace, my_rank));
     return PMIX_SUCCESS;
