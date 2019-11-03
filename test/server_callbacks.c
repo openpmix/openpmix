@@ -30,9 +30,12 @@ pmix_server_module_t mymodule = {
     .unpublish = unpublish_fn,
     .spawn = spawn_fn,
     .connect = connect_fn,
-    .disconnect = disconnect_fn,
+    .disconnect = disconnect_fn
+#if 0
+,
     .register_events = regevents_fn,
     .deregister_events = deregevents_fn
+#endif
 };
 
 typedef struct {
