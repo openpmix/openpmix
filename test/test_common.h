@@ -207,7 +207,6 @@ extern pmix_list_t test_fences;
 extern pmix_list_t *noise_range;
 extern pmix_list_t key_replace;
 
-#define NODE_NAME "node1"
 int get_total_ns_number(test_params params);
 int get_all_ranks_from_namespace(test_params params, char *nspace, pmix_proc_t **ranks, size_t *nranks);
 
@@ -277,9 +276,9 @@ typedef struct {
     }                                                                                                               \
     if (PMIX_SUCCESS == rc) {                                                                                       \
         if( PMIX_SUCCESS != cbdata.status ){                                                                        \
-            if( !( (cbdata.status == PMIX_ERR_NOT_FOUND || cbdata.status == PMIX_ERR_PROC_ENTRY_NOT_FOUND) && ok_notfnd ) ){                                                       \
-                TEST_ERROR(("%s:%d: PMIx_Get_nb failed: %d from %s:%d, key=%s",                                   \
-                            my_nspace, my_rank, rc, my_nspace, r));                                                 \
+            if( !( (cbdata.status == PMIX_ERR_NOT_FOUND || cbdata.status == PMIX_ERR_PROC_ENTRY_NOT_FOUND) && ok_notfnd ) ){ \
+                TEST_ERROR(("%s:%d: PMIx_Get_nb failed: %d from %s:%d, key=%s",                                     \
+                            my_nspace, my_rank, rc, my_nspace, r, key));                                            \
             }                                                                                                       \
             rc = PMIX_ERROR;                                                                                        \
         } else if (NULL == val) {                                                                                   \
