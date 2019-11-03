@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2017 Intel, Inc. All rights reserved.
+ * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      Research Organization for Information Science
@@ -51,6 +51,9 @@ static void set_namespace(int nprocs, char *ranks, char *name)
     pmix_info_t *info;
     ninfo = 8;
     char *regex, *ppn;
+    char hostname[1024];
+
+    gethostname(hostname, 1024);
 
     PMIX_INFO_CREATE(info, ninfo);
     (void)strncpy(info[0].key, PMIX_UNIV_SIZE, PMIX_MAX_KEYLEN);
@@ -69,7 +72,7 @@ static void set_namespace(int nprocs, char *ranks, char *name)
     info[3].value.type = PMIX_STRING;
     info[3].value.data.string = strdup(ranks);
 
-    PMIx_generate_regex(NODE_NAME, &regex);
+    PMIx_generate_regex(hostname, &regex);
     (void)strncpy(info[4].key, PMIX_NODE_MAP, PMIX_MAX_KEYLEN);
     info[4].value.type = PMIX_STRING;
     info[4].value.data.string = regex;
@@ -211,7 +214,8 @@ int launch_clients(int nprocs, char *binary, char *** client_env, char ***base_a
             cli_kill_all();
             return rc;
         }
-        if (PMIX_SUCCESS != (rc = PMIx_server_register_client(&proc, myuid, mygid, NULL, NULL, NULL))) {//n
+        rc = PMIx_server_register_client(&proc, myuid, mygid, NULL, NULL, NULL);
+        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {//n
             TEST_ERROR(("Server fork setup failed with error %d", rc));
             PMIx_server_finalize();
             cli_kill_all();

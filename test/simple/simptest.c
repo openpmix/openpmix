@@ -13,7 +13,7 @@
  *                         All rights reserved.
  * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
- * Copyright (c) 2013-2018 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
@@ -289,7 +289,6 @@ int main(int argc, char **argv)
     pmix_info_t *info;
     size_t ninfo;
     bool cross_version = false;
-    bool usock = true;
     volatile int active;
     pmix_status_t code;
 
@@ -317,17 +316,12 @@ int main(int argc, char **argv)
             /* cross-version test - we will set one child to
              * run at a different version. Requires -n >= 2 */
             cross_version = true;
-            usock = false;
-        } else if (0 == strcmp("-u", argv[n])) {
-            /* enable usock */
-            usock = false;
         } else if (0 == strcmp("-h", argv[n])) {
             /* print the options and exit */
             fprintf(stderr, "usage: simptest <options>\n");
             fprintf(stderr, "    -n N     Number of clients to run\n");
             fprintf(stderr, "    -e foo   Name of the client executable to run (default: simpclient\n");
             fprintf(stderr, "    -x       Test cross-version support\n");
-            fprintf(stderr, "    -u       Enable legacy usock support\n");
             exit(0);
         }
     }
@@ -426,15 +420,7 @@ int main(int argc, char **argv)
             PMIx_server_finalize();
             return rc;
         }
-        /* if cross-version test is requested, then oscillate PTL support
-         * by rank */
-        if (cross_version) {
-            if (0 == n % 2) {
-                pmix_setenv("PMIX_MCA_ptl", "tcp", true, &client_env);
-            } else {
-                pmix_setenv("PMIX_MCA_ptl", "usock", true, &client_env);
-            }
-        }
+        pmix_setenv("PMIX_MCA_ptl", "tcp", true, &client_env);
         x = PMIX_NEW(myxfer_t);
         if (PMIX_SUCCESS != (rc = PMIx_server_register_client(&proc, myuid, mygid,
                                                               NULL, opcbfunc, x))) {
