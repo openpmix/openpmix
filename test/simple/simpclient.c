@@ -342,7 +342,6 @@ int main(int argc, char **argv)
         }
     }
 
- done:
     /* finalize us */
     pmix_output(0, "Client ns %s rank %d: Finalizing", myproc.nspace, myproc.rank);
     if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {

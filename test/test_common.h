@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2016 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
@@ -120,6 +120,7 @@ typedef struct {
     int test_error;
     char *key_replace;
     int test_internal;
+    char *gds_mode;
 } test_params;
 
 #define INIT_TEST_PARAMS(params) do { \
@@ -150,6 +151,7 @@ typedef struct {
     params.test_error = 0;            \
     params.key_replace = NULL;        \
     params.test_internal = 0;         \
+    params.gds_mode = NULL;           \
 } while (0)
 
 #define FREE_TEST_PARAMS(params) do { \
@@ -205,7 +207,6 @@ extern pmix_list_t test_fences;
 extern pmix_list_t *noise_range;
 extern pmix_list_t key_replace;
 
-#define NODE_NAME "node1"
 int get_total_ns_number(test_params params);
 int get_all_ranks_from_namespace(test_params params, char *nspace, pmix_proc_t **ranks, size_t *nranks);
 
@@ -248,7 +249,7 @@ typedef struct {
     TEST_VERBOSE(("%s:%d want to get from %s:%d key %s", my_nspace, my_rank, ns, r, key));                          \
     if (blocking) {                                                                                                 \
         if (PMIX_SUCCESS != (rc = PMIx_Get(&foobar, key, NULL, 0, &val))) {                                         \
-            if( !( rc == PMIX_ERR_NOT_FOUND && ok_notfnd ) ){                                                       \
+            if( !( (rc == PMIX_ERR_NOT_FOUND || rc == PMIX_ERR_PROC_ENTRY_NOT_FOUND) && ok_notfnd ) ){                                                       \
                 TEST_ERROR(("%s:%d: PMIx_Get failed: %d from %s:%d, key %s", my_nspace, my_rank, rc, ns, r, key));  \
             }                                                                                                       \
             rc = PMIX_ERROR;                                                                                        \
@@ -275,9 +276,9 @@ typedef struct {
     }                                                                                                               \
     if (PMIX_SUCCESS == rc) {                                                                                       \
         if( PMIX_SUCCESS != cbdata.status ){                                                                        \
-            if( !( cbdata.status == PMIX_ERR_NOT_FOUND && ok_notfnd ) ){                                                       \
-                TEST_ERROR(("%s:%d: PMIx_Get_nb failed: %d from %s:%d, key=%s",                                   \
-                            my_nspace, my_rank, rc, my_nspace, r));                                                 \
+            if( !( (cbdata.status == PMIX_ERR_NOT_FOUND || cbdata.status == PMIX_ERR_PROC_ENTRY_NOT_FOUND) && ok_notfnd ) ){ \
+                TEST_ERROR(("%s:%d: PMIx_Get_nb failed: %d from %s:%d, key=%s",                                     \
+                            my_nspace, my_rank, rc, my_nspace, r, key));                                            \
             }                                                                                                       \
             rc = PMIX_ERROR;                                                                                        \
         } else if (NULL == val) {                                                                                   \
