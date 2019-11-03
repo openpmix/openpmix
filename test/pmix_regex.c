@@ -68,6 +68,7 @@ int main(int argc, char **argv)
         free(regex);
     } else {
         fprintf(stderr, "Node reverse failed: %d\n\n\n", rc);
+        exit(rc);
     }
 
     fprintf(stderr, "PROCS: %s\n", TEST_PROCS);
@@ -84,6 +85,7 @@ int main(int argc, char **argv)
         free(regex);
     } else {
         fprintf(stderr, "PPN reverse failed: %d\n", rc);
+        exit(rc);
     }
 
     return 0;

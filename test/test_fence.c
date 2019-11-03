@@ -103,7 +103,7 @@ int test_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
             if (PMIX_SUCCESS != rc) {
                 TEST_ERROR(("%s:%d: PMIx_Put failed: %d", my_nspace, my_rank, rc));
                 PMIX_LIST_DESTRUCT(&test_fences);
-                return rc;
+                exit(rc);
             }
             free(sval);
 
@@ -111,35 +111,35 @@ int test_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
             if (PMIX_SUCCESS != rc) {
                 TEST_ERROR(("%s:%d: PMIx_Put failed: %d", my_nspace, my_rank, rc));
                 PMIX_LIST_DESTRUCT(&test_fences);
-                return rc;
+                exit(rc);
             }
 
             PUT(float, fence_num+1.1, PMIX_GLOBAL, fence_num, put_ind++, params.use_same_keys);
             if (PMIX_SUCCESS != rc) {
                 TEST_ERROR(("%s:%d: PMIx_Put failed: %d", my_nspace, my_rank, rc));
                 PMIX_LIST_DESTRUCT(&test_fences);
-                return rc;
+                exit(rc);
             }
 
             PUT(uint32_t, fence_num+14, PMIX_GLOBAL, fence_num, put_ind++, params.use_same_keys);
             if (PMIX_SUCCESS != rc) {
                 TEST_ERROR(("%s:%d: PMIx_Put failed: %d", my_nspace, my_rank, rc));
                 PMIX_LIST_DESTRUCT(&test_fences);
-                return rc;
+                exit(rc);
             }
 
             PUT(uint16_t, fence_num+15, PMIX_GLOBAL, fence_num, put_ind++, params.use_same_keys);
             if (PMIX_SUCCESS != rc) {
                 TEST_ERROR(("%s:%d: PMIx_Put failed: %d", my_nspace, my_rank, rc));
                 PMIX_LIST_DESTRUCT(&test_fences);
-                return rc;
+                exit(rc);
             }
 
             /* Submit the data */
             if (PMIX_SUCCESS != (rc = PMIx_Commit())) {
                 TEST_ERROR(("%s:%d: PMIx_Commit failed: %d", my_nspace, my_rank, rc));
                 PMIX_LIST_DESTRUCT(&test_fences);
-                return rc;
+                exit(rc);
             }
 
             /* setup the fence */
@@ -158,7 +158,7 @@ int test_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
                 TEST_ERROR(("%s:%d: PMIx_Fence failed: %d", my_nspace, my_rank, rc));
                 PMIX_LIST_DESTRUCT(&test_fences);
                 PMIX_PROC_FREE(pcs, npcs);
-                return rc;
+                exit(rc);
             }
 
             /* replace all items in the list with PMIX_RANK_WILDCARD rank by real ranks to get their data. */
@@ -170,7 +170,7 @@ int test_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
                     if (PMIX_SUCCESS != rc) {
                         TEST_ERROR(("%s:%d: Can't parse --ns-dist value in order to get ranks for namespace %s", my_nspace, my_rank, p->proc.nspace));
                         PMIX_LIST_DESTRUCT(&test_fences);
-                        return PMIX_ERROR;
+                        exit(rc);
                     }
                     pmix_list_remove_item(desc->participants, (pmix_list_item_t*)p);
                     for (i = 0; i < nranks; i++) {
@@ -193,7 +193,7 @@ int test_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
                     TEST_ERROR(("%s:%d: PMIx_Get failed (%d) from %s:%d", my_nspace, my_rank, rc, p->proc.nspace, p->proc.rank));
                     PMIX_PROC_FREE(pcs, npcs);
                     PMIX_LIST_DESTRUCT(&test_fences);
-                    return rc;
+                    exit(rc);
                 }
                 free(sval);
                 GET(int, (int)(fence_num+p->proc.rank), p->proc.nspace, p->proc.rank, fence_num, put_ind++, params.use_same_keys, 0, 0);
@@ -201,28 +201,28 @@ int test_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
                     TEST_ERROR(("%s:%d: PMIx_Get failed (%d) from %s:%d", my_nspace, my_rank, rc, p->proc.nspace, p->proc.rank));
                     PMIX_PROC_FREE(pcs, npcs);
                     PMIX_LIST_DESTRUCT(&test_fences);
-                    return rc;
+                    exit(rc);
                 }
                 GET(float, fence_num+1.1, p->proc.nspace, p->proc.rank, fence_num, put_ind++, params.use_same_keys, 1, 0);
                 if (PMIX_SUCCESS != rc) {
                     TEST_ERROR(("%s:%d: PMIx_Get failed (%d) from %s:%d", my_nspace, my_rank, rc, p->proc.nspace, p->proc.rank));
                     PMIX_PROC_FREE(pcs, npcs);
                     PMIX_LIST_DESTRUCT(&test_fences);
-                    return rc;
+                    exit(rc);
                 }
                 GET(uint32_t, (uint32_t)fence_num+14, p->proc.nspace, p->proc.rank, fence_num, put_ind++, params.use_same_keys, 0, 0);
                 if (PMIX_SUCCESS != rc) {
                     TEST_ERROR(("%s:%d: PMIx_Get failed (%d) from %s:%d", my_nspace, my_rank, rc, p->proc.nspace, p->proc.rank));
                     PMIX_PROC_FREE(pcs, npcs);
                     PMIX_LIST_DESTRUCT(&test_fences);
-                    return rc;
+                    exit(rc);
                 }
                 GET(uint16_t, fence_num+15, p->proc.nspace, p->proc.rank, fence_num, put_ind++, params.use_same_keys, 1, 0);
                 if (PMIX_SUCCESS != rc) {
                     TEST_ERROR(("%s:%d: PMIx_Get failed (%d) from %s:%d", my_nspace, my_rank, rc, p->proc.nspace, p->proc.rank));
                     PMIX_PROC_FREE(pcs, npcs);
                     PMIX_LIST_DESTRUCT(&test_fences);
-                    return rc;
+                    exit(rc);
                 }
             }
             /* barrier across participating processes to prevent putting new values with the same key
@@ -251,18 +251,18 @@ static int get_local_peers(char *my_nspace, int my_rank, pmix_rank_t **_peers, p
     /* get number of neighbours on this node */
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_LOCAL_SIZE, NULL, 0, &val))) {
         TEST_ERROR(("%s:%d: PMIx_Get local peer # failed: %d", my_nspace, my_rank, rc));
-        return rc;
+        exit(rc);
     }
     if (NULL == val) {
         TEST_ERROR(("%s:%d: PMIx_Get local peer # returned NULL value", my_nspace, my_rank));
-        return PMIX_ERROR;
+        exit(1);
     }
 
     if (val->type != PMIX_UINT32  ) {
         TEST_ERROR(("%s:%d: local peer # attribute value type mismatch,"
                 " want %d get %d(%d)",
                 my_nspace, my_rank, PMIX_UINT32, val->type));
-        return PMIX_ERROR;
+        exit(1);
     }
     npeers = val->data.uint32;
     peers = malloc(sizeof(pmix_rank_t) * npeers);
@@ -271,12 +271,12 @@ static int get_local_peers(char *my_nspace, int my_rank, pmix_rank_t **_peers, p
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, NULL, 0, &val))) {
         TEST_ERROR(("%s:%d: PMIx_Get local peers failed: %d", my_nspace, my_rank, rc));
         free(peers);
-        return rc;
+        exit(rc);
     }
     if (NULL == val) {
         TEST_ERROR(("%s:%d: PMIx_Get local peers returned NULL value", my_nspace, my_rank));
         free(peers);
-        return PMIX_ERROR;
+        exit(1);
     }
 
     if (val->type != PMIX_STRING  ) {
@@ -284,7 +284,7 @@ static int get_local_peers(char *my_nspace, int my_rank, pmix_rank_t **_peers, p
                 " want %d get %d(%d)",
                 my_nspace, my_rank, PMIX_UINT32, val->type));
         free(peers);
-        return PMIX_ERROR;
+        exit(1);
     }
 
     *count = 0;
@@ -295,7 +295,7 @@ static int get_local_peers(char *my_nspace, int my_rank, pmix_rank_t **_peers, p
             TEST_ERROR(("%s:%d: Bad peer ranks number: should be %d, actual %d (%s)",
                 my_nspace, my_rank, npeers, *count, val->data.string));
             free(peers);
-            return PMIX_ERROR;
+            exit(1);
         }
         token = strtok_r(str, ",", &sptr);
         str = NULL;
@@ -304,7 +304,7 @@ static int get_local_peers(char *my_nspace, int my_rank, pmix_rank_t **_peers, p
             if( *eptr != '\0' ){
                 TEST_ERROR(("%s:%d: Bad peer ranks string", my_nspace, my_rank));
                 free(peers);
-                return PMIX_ERROR;
+                exit(1);
             }
         }
 
@@ -314,7 +314,7 @@ static int get_local_peers(char *my_nspace, int my_rank, pmix_rank_t **_peers, p
         TEST_ERROR(("%s:%d: Bad peer ranks number: should be %d, actual %d (%s)",
                 my_nspace, my_rank, npeers, *count, val->data.string));
         free(peers);
-        return PMIX_ERROR;
+        exit(1);
     }
     *_peers = peers;
     return PMIX_SUCCESS;
@@ -337,38 +337,38 @@ int test_job_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
         PUT(int, 12340 + i, PMIX_LOCAL, 100, i, 0);
         if (PMIX_SUCCESS != rc) {
             TEST_ERROR(("%s:%d: PMIx_Put failed: %d", my_nspace, my_rank, rc));
-            return rc;
+            exit(rc);
         }
 
         (void)snprintf(sval, 50, "%s:%d", my_nspace, my_rank);
         PUT(string, sval, PMIX_REMOTE, 101, i, 0);
         if (PMIX_SUCCESS != rc) {
             TEST_ERROR(("%s:%d: PMIx_Put failed: %d", my_nspace, my_rank, rc));
-            return PMIX_ERROR;
+            exit(rc);
         }
 
         PUT(float, (float)12.15 + i, PMIX_GLOBAL, 102, i, 0);
         if (PMIX_SUCCESS != rc) {
             TEST_ERROR(("%s:%d: PMIx_Put failed: %d", my_nspace, my_rank, rc));
-            return PMIX_ERROR;
+            exit(rc);
         }
     }
 
     /* Submit the data */
     if (PMIX_SUCCESS != (rc = PMIx_Commit())) {
         TEST_ERROR(("%s:%d: PMIx_Commit failed: %d", my_nspace, my_rank, rc));
-        return PMIX_ERROR;
+        exit(rc);
     }
 
     /* Perform a fence if was requested */
     FENCE(!params.nonblocking, params.collect, NULL, 0);
     if (PMIX_SUCCESS != rc) {
         TEST_ERROR(("%s:%d: PMIx_Fence failed: %d", my_nspace, my_rank, rc));
-        return rc;
+        exit(rc);
     }
 
     if (PMIX_SUCCESS != (rc = get_local_peers(my_nspace, my_rank, &peers, &npeers))) {
-        return PMIX_ERROR;
+        exit(rc);
     }
 
     /* Check the predefined output */
@@ -387,34 +387,34 @@ int test_job_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
                 GET(int, (12340+j), my_nspace, i+params.base_rank, 100, j, 0, 0, 0);
                 if (PMIX_SUCCESS != rc) {
                     TEST_ERROR(("%s:%d: PMIx_Get failed: %s", my_nspace, my_rank, PMIx_Error_string(rc)));
-                    return PMIX_ERROR;
+                    exit(rc);
                 }
 
                 snprintf(sval, 50, "%s:%d", my_nspace, i+params.base_rank);
                 GET(string, sval, my_nspace, i+params.base_rank, 101, j, 0, 1, 1);
                 if (PMIX_SUCCESS == rc && (i+params.base_rank) != my_rank ) {
                     TEST_ERROR(("%s:%d: PMIx_Get of remote key on local proc", my_nspace, my_rank));
-                    return PMIX_ERROR;
+                    exit(1);
                 }
             } else {
                 GET(int, (12340+j), my_nspace, i+params.base_rank, 100, j, 0, 0, 1);
                 if (PMIX_SUCCESS == rc && (i+params.base_rank) != my_rank) {
                     TEST_ERROR(("%s:%d: PMIx_Get of local key on the remote proc", my_nspace, my_rank));
-                    return PMIX_ERROR;
+                    exit(1);
                 }
 
                 snprintf(sval, 50, "%s:%d", my_nspace, i+params.base_rank);
                 GET(string, sval, my_nspace, i+params.base_rank, 101, j, 0, 1, 0);
                 if (PMIX_SUCCESS != rc) {
                     TEST_ERROR(("%s:%d: PMIx_Get failed (%d)", my_nspace, my_rank, rc));
-                    return PMIX_ERROR;
+                    exit(rc);
                 }
             }
 
             GET(float, (float)12.15 + j, my_nspace, i+params.base_rank, 102, j, 0, 0, 0);
             if (PMIX_SUCCESS != rc) {
                 TEST_ERROR(("%s:%d: PMIx_Get failed (%d)", my_nspace, my_rank, rc));
-                return PMIX_ERROR;
+                exit(rc);
             }
         }
 
@@ -423,16 +423,16 @@ int test_job_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
         if (PMIX_SUCCESS == (rc = PMIx_Get(&proc, "foobar", NULL, 0, &val))) {
             TEST_ERROR(("%s:%d: PMIx_Get returned success instead of failure",
                         my_nspace, my_rank));
-            return PMIX_ERROR;
+            exit(1);
         }
         if (PMIX_ERR_NOT_FOUND != rc && PMIX_ERR_PROC_ENTRY_NOT_FOUND != rc) {
             TEST_ERROR(("%s:%d [ERROR]: PMIx_Get returned %s instead of not_found",
                         my_nspace, my_rank, PMIx_Error_string(rc)));
-            return PMIX_ERROR;
+            exit(1);
         }
         if (NULL != val) {
             TEST_ERROR(("%s:%d [ERROR]: PMIx_Get did not return NULL value", my_nspace, my_rank));
-            return PMIX_ERROR;
+            exit(1);
         }
         TEST_VERBOSE(("%s:%d: rank %d is OK", my_nspace, my_rank, i+params.base_rank));
     }

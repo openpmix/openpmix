@@ -51,6 +51,9 @@ static void set_namespace(int nprocs, char *ranks, char *name)
     pmix_info_t *info;
     ninfo = 8;
     char *regex, *ppn;
+    char hostname[1024];
+
+    gethostname(hostname, 1024);
 
     PMIX_INFO_CREATE(info, ninfo);
     (void)strncpy(info[0].key, PMIX_UNIV_SIZE, PMIX_MAX_KEYLEN);
@@ -69,7 +72,7 @@ static void set_namespace(int nprocs, char *ranks, char *name)
     info[3].value.type = PMIX_STRING;
     info[3].value.data.string = strdup(ranks);
 
-    PMIx_generate_regex(NODE_NAME, &regex);
+    PMIx_generate_regex(hostname, &regex);
     (void)strncpy(info[4].key, PMIX_NODE_MAP, PMIX_MAX_KEYLEN);
     info[4].value.type = PMIX_STRING;
     info[4].value.data.string = regex;
