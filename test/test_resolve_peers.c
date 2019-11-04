@@ -106,13 +106,17 @@ int test_resolve_peers(char *my_nspace, int my_rank, test_params params)
             exit(rc);
         }
 
-        /* then resolve peers from this namespace. */
-        rc = resolve_nspace(nspace, params, my_nspace, my_rank);
-        if (PMIX_SUCCESS == rc) {
-            TEST_VERBOSE(("%s:%d: Resolve peers succeeded for ns %s\n", my_nspace, my_rank, nspace));
-        } else {
-            TEST_ERROR(("%s:%d: Resolve peers failed for different namespace\n", my_nspace, my_rank));
-            exit(rc);
+        /* then resolve peers from this namespace - earlier versions cannot handle
+         * cross-nspace peer resolution because their test servers don't provide
+         * the info. So check for a marker of either 3.1.5 or above */
+        if (NULL != getenv("PMIX_VERSION")) {
+            rc = resolve_nspace(nspace, params, my_nspace, my_rank);
+            if (PMIX_SUCCESS == rc) {
+                TEST_VERBOSE(("%s:%d: Resolve peers succeeded for ns %s\n", my_nspace, my_rank, nspace));
+            } else {
+                TEST_ERROR(("%s:%d: Resolve peers failed for different namespace\n", my_nspace, my_rank));
+                exit(rc);
+            }
         }
 
         /* disconnect from the processes of this namespace. */

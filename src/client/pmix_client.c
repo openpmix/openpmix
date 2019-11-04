@@ -1235,13 +1235,13 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename,
                                              const pmix_nspace_t nspace,
                                              pmix_proc_t **procs, size_t *nprocs)
 {
-    pmix_info_t info[2];
+    pmix_info_t info[2], *iptr;
     pmix_status_t rc;
     pmix_proc_t proc;
     pmix_value_t *val;
     char **p, **tmp=NULL, *prs;
     pmix_proc_t *pa;
-    size_t m, n, np;
+    size_t m, n, np, ninfo;
     pmix_namespace_t *ns;
 
     /* set default response */
@@ -1255,9 +1255,21 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename,
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
-    proc.rank = PMIX_RANK_UNDEF;
-    PMIX_INFO_LOAD(&info[0], PMIX_NODE_INFO, NULL, PMIX_BOOL);
-    PMIX_INFO_LOAD(&info[1], PMIX_HOSTNAME, nodename, PMIX_STRING);
+    /* if I am a client and my server is earlier than v3.1.5, then
+     * I need to look for this data under rank=PMIX_RANK_WILDCARD
+     * with a key equal to the nodename */
+    if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer) &&
+        PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 1, 5)) {
+        proc.rank = PMIX_RANK_WILDCARD;
+        iptr = NULL;
+        ninfo = 0;
+    } else {
+        proc.rank = PMIX_RANK_UNDEF;
+        PMIX_INFO_LOAD(&info[0], PMIX_NODE_INFO, NULL, PMIX_BOOL);
+        PMIX_INFO_LOAD(&info[1], PMIX_HOSTNAME, nodename, PMIX_STRING);
+        iptr = info;
+        ninfo = 2;
+    }
 
     if (NULL == nspace || 0 == strlen(nspace)) {
         rc = PMIX_ERR_NOT_FOUND;
@@ -1265,7 +1277,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename,
         /* cycle across all known nspaces and aggregate the results */
         PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_namespace_t) {
             PMIX_LOAD_NSPACE(proc.nspace, ns->nspace);
-            rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, info, 2, &val);
+            rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, iptr, ninfo, &val);
             if (PMIX_SUCCESS != rc) {
                 continue;
             }
@@ -1333,7 +1345,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename,
     /* get the list of local peers for this nspace and node */
     PMIX_LOAD_NSPACE(proc.nspace, nspace);
 
-    rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, info, 2, &val);
+    rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, iptr, ninfo, &val);
     if (PMIX_SUCCESS != rc) {
         goto done;
     }
@@ -1372,8 +1384,10 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename,
     *nprocs = np;
 
   done:
-    PMIX_INFO_DESTRUCT(&info[0]);
-    PMIX_INFO_DESTRUCT(&info[1]);
+    if (NULL != iptr) {
+        PMIX_INFO_DESTRUCT(&info[0]);
+        PMIX_INFO_DESTRUCT(&info[1]);
+    }
     return rc;
 }
 
