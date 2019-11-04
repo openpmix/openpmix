@@ -2668,8 +2668,9 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
     pmix_cb_t cb;
     pmix_kval_t *kv;
     pmix_buffer_t buf;
-    pmix_kval_t *kv2 = NULL, *kvp;
+    pmix_kval_t kv2, *kvp;
     pmix_status_t rc = PMIX_SUCCESS;
+    pmix_info_t *ihost, *ipeers;
 
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     PMIX_CONSTRUCT(&buf, pmix_buffer_t);
@@ -2702,51 +2703,45 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
     		if (PMIX_PEER_IS_EARLIER(ds_ctx->clients_peer, 3, 1, 5)) {
 	            pmix_info_t *info;
 	            size_t size, i;
-                bool local = false;
                 /* if it is our local node, then we are going to pass
                  * all info */
 	            info = kv->value->data.darray->array;
 	            size = kv->value->data.darray->size;
+                ihost = NULL;
+                ipeers = NULL;
 	            for (i = 0; i < size; i++) {
-	                if (PMIX_CHECK_KEY(&info[i], PMIX_LOCAL_PEERS)) {
-	                    kv2 = PMIX_NEW(pmix_kval_t);
-	                    kv2->key = strdup(kv->key);
-	                    PMIX_VALUE_XFER(rc, kv2->value, &info[i].value);
-	                    if (PMIX_SUCCESS != rc) {
-	                        PMIX_ERROR_LOG(rc);
-	                        PMIX_RELEASE(kv2);
-	                        goto exit;
-	                    }
-	                    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, kv2, 1, PMIX_KVAL);
-	                    if (PMIX_SUCCESS != rc) {
-	                        PMIX_ERROR_LOG(rc);
-	                        PMIX_RELEASE(kv2);
-	                        goto exit;
-	                    }
-	                    PMIX_RELEASE(kv2);
-	                } else if (PMIX_CHECK_KEY(&info[i], PMIX_HOSTNAME)) {
-                        if (0 == strcmp(info[i].value.data.string, pmix_globals.hostname)) {
-                            local = true;
+                    if (PMIX_CHECK_KEY(&info[i], PMIX_HOSTNAME)) {
+                        ihost = &info[i];
+                        if (NULL != ipeers) {
+                            break;
+                        }
+                    } else if (PMIX_CHECK_KEY(&info[i], PMIX_LOCAL_PEERS)) {
+                        ipeers = &info[i];
+                        if (NULL != ihost) {
+                            break;
                         }
                     }
 	            }
-                if (local) {
-                    for (i = 0; i < size; i++) {
-                        kv2 = PMIX_NEW(pmix_kval_t);
-                        kv2->key = strdup(info[i].key);
-                        PMIX_VALUE_XFER(rc, kv2->value, &info[i].value);
-                        if (PMIX_SUCCESS != rc) {
-                            PMIX_ERROR_LOG(rc);
-                            PMIX_RELEASE(kv2);
-                            goto exit;
+                if (NULL != ihost) {
+                    PMIX_CONSTRUCT(&kv2, pmix_kval_t);
+                    kv2.key = ihost->value.data.string;
+                    kv2.value = kv->value;
+                    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &kv2, 1, PMIX_KVAL);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_ERROR_LOG(rc);
+                        goto exit;
+                    }
+                    if (NULL != ipeers) {
+                        /* if this host is us, then store this as its own key */
+                        if (0 == strcmp(kv2.key, pmix_globals.hostname)) {
+                            kv2.key = PMIX_LOCAL_PEERS;
+                            kv2.value = &ipeers->value;
+                            PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &kv2, 1, PMIX_KVAL);
+                            if (PMIX_SUCCESS != rc) {
+                                PMIX_ERROR_LOG(rc);
+                                goto exit;
+                            }
                         }
-                        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, kv2, 1, PMIX_KVAL);
-                        if (PMIX_SUCCESS != rc) {
-                            PMIX_ERROR_LOG(rc);
-                            PMIX_RELEASE(kv2);
-                            goto exit;
-                        }
-                        PMIX_RELEASE(kv2);
                     }
                 }
     		}
