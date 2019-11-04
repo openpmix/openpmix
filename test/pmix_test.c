@@ -101,7 +101,7 @@ int main(int argc, char **argv)
     struct stat stat_buf;
     test_params params;
     INIT_TEST_PARAMS(params);
-    int test_fail = 0;
+    int test_fail = 0, i;
     char *tmp;
     int ns_nprocs;
 
@@ -232,6 +232,12 @@ int main(int argc, char **argv)
     if (PMIX_SUCCESS != (rc = PMIx_server_finalize())) {
         TEST_ERROR(("Finalize failed with error %d", rc));
         exit(rc);
+    }
+
+    for(i=0; i < cli_info_cnt; i++){
+        if (cli_info[i].exit_code != 0) {
+            ++test_fail;
+        }
     }
 
     FREE_TEST_PARAMS(params);
