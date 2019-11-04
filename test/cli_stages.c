@@ -79,8 +79,8 @@ void cli_connect(cli_info_t *cli, int sd, struct event_base * ebase, event_callb
 void cli_finalize(cli_info_t *cli)
 {
     if( CLI_FIN != cli->next_state[cli->state] ){
-        TEST_ERROR(("rank %d: bad client next state: expect %d have %d!",
-                     cli_rank(cli), CLI_FIN, cli->next_state[cli->state]));
+        TEST_ERROR(("rank %d: bad client next state: current %d expect %d have %d!",
+                     cli_rank(cli), cli->state, CLI_FIN, cli->next_state[cli->state]));
         test_abort = true;
     }
 

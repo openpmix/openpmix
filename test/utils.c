@@ -266,6 +266,7 @@ int launch_clients(int nprocs, char *binary, char *** client_env, char ***base_a
             exit(0);
         }
         cli_info[counter].state = CLI_FORKED;
+        cli_info[counter].alive = true;
 
         pmix_argv_free(client_argv);
 
