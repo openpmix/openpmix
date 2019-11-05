@@ -106,6 +106,7 @@ typedef uint8_t pmix_cmd_t;
 #define PMIX_VALIDATE_CRED_CMD      21
 #define PMIX_IOF_PULL_CMD           22
 #define PMIX_IOF_PUSH_CMD           23
+#define PMIX_IOF_DEREG_CMD          29
 
 /* provide a "pretty-print" function for cmds */
 const char* pmix_command_string(pmix_cmd_t cmd);
@@ -246,9 +247,11 @@ PMIX_CLASS_DECLARATION(pmix_peer_t);
 
 /* tracker for IOF requests */
 typedef struct {
-    pmix_list_item_t super;
-    pmix_peer_t *peer;
-    pmix_name_t pname;
+    pmix_object_t super;
+    pmix_peer_t *requestor;
+    size_t refid;
+    pmix_proc_t *procs;
+    size_t nprocs;
     pmix_iof_channel_t channels;
     pmix_iof_cbfunc_t cbfunc;
 } pmix_iof_req_t;
@@ -468,7 +471,7 @@ typedef struct {
     bool commits_pending;
     struct timeval event_window;
     pmix_list_t cached_events;          // events waiting in the window prior to processing
-    pmix_list_t iof_requests;           // list of pmix_iof_req_t IOF requests
+    pmix_pointer_array_t iof_requests;  // array of pmix_iof_req_t IOF requests
     int max_events;                     // size of the notifications hotel
     int event_eviction_time;            // max time to cache notifications
     pmix_hotel_t notifications;         // hotel of pending notifications
@@ -481,6 +484,7 @@ typedef struct {
     pmix_gds_base_module_t *mygds;
     /* IOF controls */
     bool tag_output;
+    pmix_list_t stdin_targets;          // list of pmix_namelist_t
     bool xml_output;
     bool timestamp_output;
     size_t output_limit;

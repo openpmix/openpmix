@@ -676,7 +676,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_IOF_TAG_OUTPUT                 "pmix.iof.tag"          // (bool) Tag output with the channel it comes from
 #define PMIX_IOF_TIMESTAMP_OUTPUT           "pmix.iof.ts"           // (bool) Timestamp output
 #define PMIX_IOF_XML_OUTPUT                 "pmix.iof.xml"          // (bool) Format output in XML
-
+#define PMIX_IOF_STOP                       "pmix.iof.stop"         // (bool) Stop forwarding the specified channel(s)
 
 /* Attributes for controlling contents of application setup data */
 #define PMIX_SETUP_APP_ENVARS               "pmix.setup.env"        // (bool) harvest and include relevant envars
