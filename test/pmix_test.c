@@ -147,6 +147,7 @@ int main(int argc, char **argv)
         TEST_ERROR(("srv #%d: Total number of processes doesn't correspond number specified by ns_dist parameter.", my_server_id));
         cli_kill_all();
         test_fail = 1;
+        goto done;
     }
 
     /* hang around until the client(s) finalize */
@@ -178,13 +179,17 @@ int main(int argc, char **argv)
     /* deregister the errhandler */
     PMIx_Deregister_event_handler(0, op_callbk, NULL);
 
+  done:
     TEST_VERBOSE(("srv #%d: call server_finalize!", my_server_id));
     test_fail += server_finalize(&params, test_fail);
 
-    TEST_VERBOSE(("srv #%d: exit seqence!", my_server_id));
+    TEST_VERBOSE(("srv #%d: exit sequence!", my_server_id));
     FREE_TEST_PARAMS(params);
     pmix_argv_free(client_argv);
     pmix_argv_free(client_env);
 
+    if (0 == test_fail) {
+        TEST_OUTPUT(("Test SUCCEEDED!"));
+    }
     return test_fail;
 }
