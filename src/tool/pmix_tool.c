@@ -192,14 +192,18 @@ static void tool_iof_handler(struct pmix_peer_t *pr,
     pmix_byte_object_t bo;
     int32_t cnt;
     pmix_status_t rc;
+    size_t refid, ninfo=0;
+    pmix_iof_req_t *req;
+    pmix_info_t *info;
 
     pmix_output_verbose(2, pmix_client_globals.iof_output,
                         "recvd IOF with %d bytes", (int)buf->bytes_used);
 
-    /* if the buffer is empty, they are simply closing the channel */
+    /* if the buffer is empty, they are simply closing the socket */
     if (0 == buf->bytes_used) {
         return;
     }
+    PMIX_BYTE_OBJECT_CONSTRUCT(&bo);
 
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &source, &cnt, PMIX_PROC);
@@ -214,13 +218,52 @@ static void tool_iof_handler(struct pmix_peer_t *pr,
         return;
     }
     cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, peer, buf, &bo, &cnt, PMIX_BYTE_OBJECT);
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &refid, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return;
     }
-    if (NULL != bo.bytes && 0 < bo.size) {
-        pmix_iof_write_output(&source, channel, &bo, NULL);
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &ninfo, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return;
+    }
+    if (0 < ninfo) {
+        PMIX_INFO_CREATE(info, ninfo);
+        cnt = ninfo;
+        PMIX_BFROPS_UNPACK(rc, peer, buf, info, &cnt, PMIX_INFO);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto cleanup;
+        }
+    }
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &bo, &cnt, PMIX_BYTE_OBJECT);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto cleanup;
+    }
+    /* lookup the handler for this IOF package */
+    if (NULL == (req = (pmix_iof_req_t*)pmix_pointer_array_get_item(&pmix_globals.iof_requests, refid))) {
+        /* something wrong here - should not happen */
+        PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+        goto cleanup;
+    }
+    /* if the handler invokes a callback function, do so */
+    if (NULL != req->cbfunc) {
+        req->cbfunc(refid, channel, &source, &bo, info, ninfo);
+    } else {
+        /* otherwise, simply write it out to the specified std IO channel */
+        if (NULL != bo.bytes && 0 < bo.size) {
+            pmix_iof_write_output(&source, channel, &bo, NULL);
+        }
+    }
+
+  cleanup:
+    /* cleanup the memory */
+    if (0 < ninfo) {
+        PMIX_INFO_FREE(info, ninfo);
     }
     PMIX_BYTE_OBJECT_DESTRUCT(&bo);
 }

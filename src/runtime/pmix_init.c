@@ -190,7 +190,8 @@ int pmix_rte_init(uint32_t type,
         goto return_error;
     }
     /* and setup the iof request tracking list */
-    PMIX_CONSTRUCT(&pmix_globals.iof_requests, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_globals.iof_requests, pmix_pointer_array_t);
+    pmix_pointer_array_init(&pmix_globals.iof_requests, 128, INT_MAX, 128);
     /* setup the stdin forwarding target list */
     PMIX_CONSTRUCT(&pmix_globals.stdin_targets, pmix_list_t);
 

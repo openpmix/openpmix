@@ -675,7 +675,7 @@ void pmix_server_purge_events(pmix_peer_t *peer,
 {
     pmix_regevents_info_t *reginfo, *regnext;
     pmix_peer_events_info_t *prev, *pnext;
-    pmix_iof_req_t *req, *nxt;
+    pmix_iof_req_t *req;
     int i;
     pmix_notify_caddy_t *ncd;
     size_t n, m, p, ntgs;
@@ -701,10 +701,13 @@ void pmix_server_purge_events(pmix_peer_t *peer,
 
     /* since the client is finalizing, remove them from any IOF
      * registrations they may still have on our list */
-    PMIX_LIST_FOREACH_SAFE(req, nxt, &pmix_globals.iof_requests, pmix_iof_req_t) {
-        if ((NULL != peer && PMIX_CHECK_PROCID(&req->peer->info->pname, &peer->info->pname)) ||
-            (NULL != proc && PMIX_CHECK_PROCID(&req->peer->info->pname, proc))) {
-            pmix_list_remove_item(&pmix_globals.iof_requests, &req->super);
+    for (i=0; i < pmix_globals.iof_requests.size; i++) {
+        if (NULL == (req = (pmix_iof_req_t*)pmix_pointer_array_get_item(&pmix_globals.iof_requests, i))) {
+            continue;
+        }
+        if ((NULL != peer && PMIX_CHECK_PROCID(&req->requestor->info->pname, &peer->info->pname)) ||
+            (NULL != proc && PMIX_CHECK_PROCID(&req->requestor->info->pname, proc))) {
+            pmix_pointer_array_set_item(&pmix_globals.iof_requests, i, NULL);
             PMIX_RELEASE(req);
         }
     }
@@ -1807,69 +1810,26 @@ static void _iofdeliver(int sd, short args, void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t*)cbdata;
     pmix_iof_req_t *req;
-    pmix_status_t rc;
-    pmix_buffer_t *msg;
     bool found = false;
-    bool cached = false;
     pmix_iof_cache_t *iof;
+    int i;
+    size_t n;
 
     pmix_output_verbose(2, pmix_server_globals.iof_output,
                         "PMIX:SERVER delivering IOF from %s on channel %0x",
                         PMIX_NAME_PRINT(cd->procs), cd->channels);
 
-    /* cycle across our list of IOF requestors and see who wants
+    /* cycle across our list of IOF requests and see who wants
      * this channel from this source */
-    PMIX_LIST_FOREACH(req, &pmix_globals.iof_requests, pmix_iof_req_t) {
-        /* if the channel wasn't included, then ignore it */
-        if (!(cd->channels & req->channels)) {
+    for (i=0; i < pmix_globals.iof_requests.size; i++) {
+        if (NULL == (req = (pmix_iof_req_t*)pmix_pointer_array_get_item(&pmix_globals.iof_requests, i))) {
             continue;
         }
-        /* see if the source matches the request */
-        if (!PMIX_CHECK_PROCID(cd->procs, &req->pname)) {
-            continue;
-        }
-        /* never forward back to the source! This can happen if the source
-         * is a launcher - also, never forward to a peer that is no
-         * longer with us */
-        if (NULL == req->peer->info || req->peer->finalized) {
-            continue;
-        }
-        if (PMIX_CHECK_PROCID(cd->procs, &req->peer->info->pname)) {
-            continue;
-        }
-        found = true;
-        /* setup the msg */
-        if (NULL == (msg = PMIX_NEW(pmix_buffer_t))) {
-            PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
-            rc = PMIX_ERR_OUT_OF_RESOURCE;
-            break;
-        }
-        /* provide the source */
-        PMIX_BFROPS_PACK(rc, req->peer, msg, cd->procs, 1, PMIX_PROC);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(msg);
-            break;
-        }
-        /* provide the channel */
-        PMIX_BFROPS_PACK(rc, req->peer, msg, &cd->channels, 1, PMIX_IOF_CHANNEL);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(msg);
-            break;
-        }
-        /* pack the data */
-        PMIX_BFROPS_PACK(rc, req->peer, msg, cd->bo, 1, PMIX_BYTE_OBJECT);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(msg);
-            break;
-        }
-        /* send it to the requestor */
-        PMIX_PTL_SEND_ONEWAY(rc, req->peer, msg, PMIX_PTL_TAG_IOF);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(msg);
+        if (PMIX_OPERATION_SUCCEEDED == pmix_iof_process_iof(cd->channels, cd->procs, cd->bo,
+                                                             cd->info, cd->ninfo, req)) {
+            /* flag that we do have at least one registrant for this info,
+             * so there is no need to cache it */
+            found = true;
         }
     }
 
@@ -1887,18 +1847,33 @@ static void _iofdeliver(int sd, short args, void *cbdata)
         iof = PMIX_NEW(pmix_iof_cache_t);
         memcpy(&iof->source, cd->procs, sizeof(pmix_proc_t));
         iof->channel = cd->channels;
-        iof->bo = cd->bo;
-        cd->bo = NULL;  // protect the data
+        /* copy the data */
+        PMIX_BYTE_OBJECT_CREATE(iof->bo, 1);
+        iof->bo->bytes = (char*)malloc(cd->bo->size);
+        memcpy(iof->bo->bytes, cd->bo->bytes, cd->bo->size);
+        iof->bo->size = cd->bo->size;
+        if (0 < cd->ninfo) {
+            PMIX_INFO_CREATE(iof->info, cd->ninfo);
+            iof->ninfo = cd->ninfo;
+            for (n=0; n < iof->ninfo; n++) {
+                PMIX_INFO_XFER(&iof->info[n], &cd->info[n]);
+            }
+        }
         pmix_list_append(&pmix_server_globals.iof, &iof->super);
     }
 
 
     if (NULL != cd->opcbfunc) {
-        cd->opcbfunc(rc, cd->cbdata);
+        cd->opcbfunc(PMIX_SUCCESS, cd->cbdata);
     }
-    if (!cached) {
-        PMIX_RELEASE(cd);
-    }
+
+    /* release the caddy */
+    cd->procs = NULL;
+    cd->nprocs = 0;
+    cd->info = NULL;
+    cd->ninfo = 0;
+    cd->bo = NULL;
+    PMIX_RELEASE(cd);
 }
 
 pmix_status_t PMIx_server_IOF_deliver(const pmix_proc_t *source,
@@ -1908,48 +1883,18 @@ pmix_status_t PMIx_server_IOF_deliver(const pmix_proc_t *source,
                                       pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_setup_caddy_t *cd;
-    size_t n;
 
     /* need to threadshift this request */
     cd = PMIX_NEW(pmix_setup_caddy_t);
     if (NULL == cd) {
         return PMIX_ERR_NOMEM;
     }
-    /* unfortunately, we need to copy the input because we
-     * might have to cache it for later delivery */
-    PMIX_PROC_CREATE(cd->procs, 1);
-    if (NULL == cd->procs) {
-        PMIX_RELEASE(cd);
-        return PMIX_ERR_NOMEM;
-    }
+    cd->procs = (pmix_proc_t*)source;
     cd->nprocs = 1;
-    pmix_strncpy(cd->procs[0].nspace, source->nspace, PMIX_MAX_NSLEN);
-    cd->procs[0].rank = source->rank;
     cd->channels = channel;
-    PMIX_BYTE_OBJECT_CREATE(cd->bo, 1);
-    if (NULL == cd->bo) {
-        PMIX_RELEASE(cd);
-        return PMIX_ERR_NOMEM;
-    }
-    cd->nbo = 1;
-    cd->bo[0].bytes = (char*)malloc(bo->size);
-    if (NULL == cd->bo[0].bytes) {
-        PMIX_RELEASE(cd);
-        return PMIX_ERR_NOMEM;
-    }
-    memcpy(cd->bo[0].bytes, bo->bytes, bo->size);
-    cd->bo[0].size = bo->size;
-    if (0 < ninfo) {
-        PMIX_INFO_CREATE(cd->info, ninfo);
-        if (NULL == cd->info) {
-            PMIX_RELEASE(cd);
-            return PMIX_ERR_NOMEM;
-        }
-        cd->ninfo = ninfo;
-        for (n=0; n < ninfo; n++) {
-            PMIX_INFO_XFER(&cd->info[n], (pmix_info_t*)&info[n]);
-        }
-    }
+    cd->bo = (pmix_byte_object_t*)bo;
+    cd->info = (pmix_info_t*)info;
+    cd->ninfo = ninfo;
     cd->opcbfunc = cbfunc;
     cd->cbdata = cbdata;
     PMIX_THREADSHIFT(cd, _iofdeliver);
@@ -3277,6 +3222,8 @@ static void _iofreg(int sd, short args, void *cbdata)
     pmix_server_caddy_t *scd = (pmix_server_caddy_t*)cd->cbdata;
     pmix_buffer_t *reply;
     pmix_status_t rc;
+    pmix_iof_req_t *req;
+    pmix_iof_cache_t *iof, *inxt;
 
     PMIX_ACQUIRE_OBJECT(cd);
 
@@ -3297,7 +3244,18 @@ static void _iofreg(int sd, short args, void *cbdata)
 
     /* was the request a success? */
     if (PMIX_SUCCESS != cd->status) {
-        /* find and remove the tracker(s) */
+        /* find and remove the tracker */
+        req = (pmix_iof_req_t*)pmix_pointer_array_get_item(&pmix_globals.iof_requests, cd->ncodes);
+        PMIX_RELEASE(req);
+        pmix_pointer_array_set_item(&pmix_globals.iof_requests, cd->ncodes, NULL);
+    } else {
+        /* return the reference ID for this handler */
+        PMIX_BFROPS_PACK(rc, scd->peer, reply, &cd->ncodes, 1, PMIX_SIZE);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(reply);
+            goto cleanup;
+        }
     }
 
     pmix_output_verbose(2, pmix_server_globals.iof_output,
@@ -3306,6 +3264,21 @@ static void _iofreg(int sd, short args, void *cbdata)
     PMIX_SERVER_QUEUE_REPLY(rc, scd->peer, scd->hdr.tag, reply);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(reply);
+    }
+
+    /* if the request succeeded, then process any cached IO - doing it here
+     * guarantees that the IO will be received AFTER the client gets the
+     * refid response */
+    if (PMIX_SUCCESS == cd->status) {
+        /* get the request */
+        req = (pmix_iof_req_t*)pmix_pointer_array_get_item(&pmix_globals.iof_requests, cd->ncodes);
+        PMIX_LIST_FOREACH_SAFE(iof, inxt, &pmix_server_globals.iof, pmix_iof_cache_t) {
+            if (PMIX_OPERATION_SUCCEEDED == pmix_iof_process_iof(iof->channel, &iof->source, iof->bo,
+                                                                 iof->info, iof->ninfo, req)) {
+                pmix_list_remove_item(&pmix_server_globals.iof, &iof->super);
+                PMIX_RELEASE(iof);
+            }
+        }
     }
 
   cleanup:
@@ -3632,6 +3605,14 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
     if (PMIX_IOF_PUSH_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
         if (PMIX_SUCCESS != (rc = pmix_server_iofstdin(peer, buf, op_cbfunc, cd))) {
+            PMIX_RELEASE(cd);
+        }
+        return rc;
+    }
+
+    if (PMIX_IOF_DEREG_CMD == cmd) {
+        PMIX_GDS_CADDY(cd, peer, tag);
+        if (PMIX_SUCCESS != (rc = pmix_server_iofdereg(peer, buf, op_cbfunc, cd))) {
             PMIX_RELEASE(cd);
         }
         return rc;
