@@ -52,6 +52,70 @@ cdef void setupapp_cbfunc(pmix_status_t status,
         cbfunc(PMIX_SUCCESS, cbdata)
     return
 
+cdef void collectinventory_cbfunc(pmix_status_t status, pmix_info_t info[],
+                                  size_t ninfo, void *cbdata,
+                                  pmix_release_cbfunc_t release_fn,
+                                  void *release_cbdata) with gil:
+    global active
+    if PMIX_SUCCESS == status:
+        ilist = []
+        rc = pmix_unload_info(info, ninfo, ilist)
+        active.cache_info(ilist)
+        status = rc
+    active.set(status)
+    if (NULL != release_fn):
+        release_fn(release_cbdata)
+    return
+
+cdef void pyiofhandler(size_t iofhdlr_id, pmix_iof_channel_t channel,
+                         const pmix_proc_t *source, char *payload,
+                         pmix_info_t info[], size_t ninfo):
+    print("PYIOFHDLR INVOKED")
+    pychannel = int(channel)
+    pyiof_id  = int(iofhdlr_id)
+
+    # convert the source to python
+    pysource = {}
+    myns = (source.nspace).decode('ascii')
+    pysource = {'nspace': myns, 'rank': source.rank}
+
+    # convert the inbound info to python
+    pyinfo = []
+    pmix_unload_info(info, ninfo, pyinfo)
+
+    # convert payload to python byteobject
+    pydata = payload.decode("ascii")
+
+    # find the handler being called
+    found = False
+    rc = PMIX_ERR_NOT_FOUND
+    for h in myhdlrs:
+        try:
+            if iofhdlr_id == h['refid']:
+                found = True
+                # call user iof python handler
+                h['hdlr'](pychannel, pysource, pydata, pyinfo)
+        except:
+            pass
+    
+    # if we didn't find the handler, cache this event in a timeshift
+    # and try it again
+    if not found:
+        print("SHIFTING EVENT")
+        mycaddy    = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
+        mycaddy.op = strdup("iofhdlr_cache")
+        mycaddy.idx                 = iofhdlr_id
+        mycaddy.channel             = channel
+        memset(mycaddy.source.nspace, 0, PMIX_MAX_NSLEN+1)
+        memcpy(mycaddy.source.nspace, source[0].nspace, PMIX_MAX_NSLEN)
+        mycaddy.source.rank         = source[0].rank
+        mycaddy.payload             = strdup(payload)
+        mycaddy.info                = info
+        mycaddy.ndata               = ninfo
+        cb = PyCapsule_New(mycaddy, "iofhdlr_cache", NULL)
+        threading.Timer(2, iofhdlr_cache, [cb, rc]).start()
+    return
+
 cdef void pyeventhandler(size_t evhdlr_registration_id,
                          pmix_status_t status,
                          const pmix_proc_t *source,
@@ -853,110 +917,6 @@ cdef class PMIxClient:
             pmix_free_info(results, nresults)
         return rc, pyres
 
-    def iof_pull(self, pyprocs:list, iof_channel:int, pydirs:list, hdlr):
-        cdef pmix_proc_t *procs
-        cdef pmix_info_t *directives
-        cdef pmix_info_t **directives_ptr
-        cdef pmix_iof_channel_t channel
-        cdef size_t ndirs
-        cdef size_t nprocs
-        nprocs      = 0
-        ndirs       = 0
-        channel     = iof_channel
-
-        # convert list of procs to array of pmix_proc_t's
-        if pyprocs is not None:
-            nprocs = len(pyprocs)
-            procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
-            if not procs:
-                return PMIX_ERR_NOMEM
-            rc = pmix_load_procs(procs, pyprocs)
-            if PMIX_SUCCESS != rc:
-                pmix_free_procs(procs, nprocs)
-                return rc
-        else:
-            nprocs = 1
-            procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
-            if not procs:
-                return PMIX_ERR_NOMEM
-            pmix_copy_nspace(procs[0].nspace, self.myproc.nspace)
-            procs[0].rank = PMIX_RANK_WILDCARD
-
-        # allocate and load pmix info structs from python list of dictionaries
-        directives_ptr = &directives
-        rc = pmix_alloc_info(directives_ptr, &ndirs, pydirs)
-
-        # Call the library
-        # TODO: need to add iof handler similar to pyeventhandler, goes
-        # in NULL parameter after channel??
-        rc = PMIx_IOF_pull(procs, nprocs, directives, ndirs, channel, NULL,
-                           NULL, NULL)
-        if 0 < nprocs:
-            pmix_free_procs(procs, nprocs)
-        if 0 < ndirs:
-            pmix_free_info(directives, ndirs)
-
-        # if rc < 0, then there was an error
-        if 0 > rc:
-            return rc
-
-        # otherwise, this is our ref ID for this hdlr
-        myhdlrs.append({'refid': rc, 'hdlr': hdlr})
-        refid = rc
-        rc = PMIX_SUCCESS
-        return rc, refid
-
-    def iof_push(self, pytargets:list, data:dict, pydirs:list):
-        cdef pmix_info_t *directives
-        cdef pmix_info_t **directives_ptr
-        cdef pmix_byte_object_t *bo
-        cdef size_t ndirs
-        cdef pmix_proc_t *targets
-        ntargets    = 0
-        ndirs       = 0
-
-        # convert data to pmix_byte_object_t
-        bo = <pmix_byte_object_t*>PyMem_Malloc(sizeof(pmix_byte_object_t))
-        if not bo:
-            return PMIX_ERR_NOMEM
-        cred = bytes(data['bytes'], 'ascii')
-        bo.size = sizeof(cred)
-        bo.bytes = <char*> PyMem_Malloc(bo.size)
-        if not bo.bytes:
-            return PMIX_ERR_NOMEM
-        pyptr = <const char*>cred
-        memcpy(bo.bytes, pyptr, bo.size)
-
-        # convert list of proc targets to array of pmix_proc_t's
-        if pytargets is not None:
-            ntargets = len(pytargets)
-            targets = <pmix_proc_t*> PyMem_Malloc(ntargets * sizeof(pmix_proc_t))
-            if not targets:
-                return PMIX_ERR_NOMEM
-            rc = pmix_load_procs(targets, pytargets)
-            if PMIX_SUCCESS != rc:
-                pmix_free_procs(targets, ntargets)
-                return rc
-        else:
-            ntargets = 1
-            targets = <pmix_proc_t*> PyMem_Malloc(ntargets * sizeof(pmix_proc_t))
-            if not targets:
-                return PMIX_ERR_NOMEM
-            pmix_copy_nspace(targets[0].nspace, self.myproc.nspace)
-            targets[0].rank = PMIX_RANK_WILDCARD
-
-        # allocate and load pmix info structs from python list of dictionaries
-        directives_ptr = &directives
-        rc = pmix_alloc_info(directives_ptr, &ndirs, pydirs)
-
-        # Call the library
-        rc = PMIx_IOF_push(targets, ntargets, bo, directives, ndirs, NULL, NULL)
-        if 0 < ntargets:
-            pmix_free_procs(targets, ntargets)
-        if 0 < ndirs:
-            pmix_free_info(directives, ndirs)
-        return rc
-
     def get_credential(self, pyinfo:list, pycred:dict):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
@@ -1617,7 +1577,7 @@ cdef class PMIxServer(PMIxClient):
                 n = 0
                 for attr in attrs:
                     regattrs[n].name      = strdup(attr['name'])
-                    pmix_copy_key(regattrs[n].string, attr['string'])
+                    pmix_copy_key(regattrs[n].string, attr['key'])
                     regattrs[n].type = attr['val_type']
                     nstrings         = len(attr['description'])
 
@@ -1650,6 +1610,50 @@ cdef class PMIxServer(PMIxClient):
         if func != NULL:
             PyMem_Free(func)
         return PMIX_SUCCESS
+
+    def collect_inventory(pydirs:list):
+        cdef pmix_info_t *directives
+        cdef pmix_info_t **directives_ptr
+        cdef size_t ndirs
+        ndirs   = 0
+        dataout = []
+
+        # allocate and load pmix info structs from python list of dictionaries
+        directives_ptr = &directives
+        rc = pmix_alloc_info(directives_ptr, &ndirs, pydirs)
+
+        # call the API
+        active.clear()
+        rc = PMIx_server_collect_inventory(directives, ndirs,
+                                           collectinventory_cbfunc, NULL)
+        if PMIX_SUCCESS == rc:
+            active.wait()
+            # transfer the data to the dictionary
+            active.fetch_info(dataout)
+        return (rc, dataout)
+
+    def deliver_inventory(pyinfo:list, pydirs:list):
+        cdef pmix_info_t *directives
+        cdef pmix_info_t **directives_ptr
+        cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
+        cdef size_t ndirs
+        cdef size_t ninfo
+        ndirs   = 0
+        ninfo   = 0
+
+        # allocate and load pmix info structs from python list of dictionaries
+        directives_ptr = &directives
+        rc = pmix_alloc_info(directives_ptr, &ndirs, pydirs)
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
+
+        # call the API
+        rc = PMIx_server_deliver_inventory(info, ninfo, directives, ndirs,
+                                           pmix_opcbfunc, NULL)
+        if PMIX_SUCCESS == rc:
+            active.wait()
+        return rc
 
     def setup_local_support(self, ns, ilist:list):
         global active
@@ -2793,3 +2797,167 @@ cdef class PMIxTool(PMIxServer):
         else:
             rc = PMIx_tool_connect_to_server(&self.myproc, NULL, 0)
         return rc
+
+    def iof_pull(self, pyprocs:list, iof_channel:int, pydirs:list, hdlr):
+        cdef pmix_proc_t *procs
+        cdef pmix_info_t *directives
+        cdef pmix_info_t **directives_ptr
+        cdef pmix_iof_channel_t channel
+        cdef size_t ndirs
+        cdef size_t nprocs
+        nprocs      = 0
+        ndirs       = 0
+        channel     = iof_channel
+
+        # convert list of procs to array of pmix_proc_t's
+        if pyprocs is not None:
+            nprocs = len(pyprocs)
+            procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
+            if not procs:
+                return PMIX_ERR_NOMEM
+            rc = pmix_load_procs(procs, pyprocs)
+            if PMIX_SUCCESS != rc:
+                pmix_free_procs(procs, nprocs)
+                return rc
+        else:
+            nprocs = 1
+            procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
+            if not procs:
+                return PMIX_ERR_NOMEM
+            pmix_copy_nspace(procs[0].nspace, self.myproc.nspace)
+            procs[0].rank = PMIX_RANK_WILDCARD
+
+        # allocate and load pmix info structs from python list of dictionaries
+        directives_ptr = &directives
+        rc = pmix_alloc_info(directives_ptr, &ndirs, pydirs)
+
+        # Call the library
+        # TODO: need to add iof handler similar to pyeventhandler, goes
+        # in NULL parameter after channel??
+        rc = PMIx_IOF_pull(procs, nprocs, directives, ndirs, channel, 
+                           pyiofhandler,
+                           NULL, NULL)
+        if 0 < nprocs:
+            pmix_free_procs(procs, nprocs)
+        if 0 < ndirs:
+            pmix_free_info(directives, ndirs)
+
+        # if rc < 0, then there was an error
+        if 0 > rc:
+            return rc
+
+        # otherwise, this is our ref ID for this hdlr
+        myhdlrs.append({'refid': rc, 'hdlr': hdlr})
+        refid = rc
+        rc = PMIX_SUCCESS
+        return rc, refid
+
+    """
+    def iof_deregister(regid, pydirs:list):
+        cdef pmix_info_t *directives
+        cdef pmix_info_t **directives_ptr
+        cdef size_t ndirs
+        cdef size_t iofhdlr
+        ndirs       = 0
+        iofhdlr     = regid
+
+        # allocate and load pmix info structs from python list of dictionaries
+        directives_ptr = &directives
+        rc = pmix_alloc_info(directives_ptr, &ndirs, pydirs)
+
+        # call the library
+        rc = PMIx_IOF_deregister(iofhdlr, directives, ndirs, NULL, NULL)
+        if 0 < ndirs:
+            pmix_free_info(directives, ndirs)
+        return rc
+    """
+
+    def iof_push(self, pytargets:list, data:dict, pydirs:list):
+        cdef pmix_info_t *directives
+        cdef pmix_info_t **directives_ptr
+        cdef pmix_byte_object_t *bo
+        cdef size_t ndirs
+        cdef pmix_proc_t *targets
+        ntargets    = 0
+        ndirs       = 0
+
+        # convert data to pmix_byte_object_t
+        bo = <pmix_byte_object_t*>PyMem_Malloc(sizeof(pmix_byte_object_t))
+        if not bo:
+            return PMIX_ERR_NOMEM
+        cred = bytes(data['bytes'], 'ascii')
+        bo.size = sizeof(cred)
+        bo.bytes = <char*> PyMem_Malloc(bo.size)
+        if not bo.bytes:
+            return PMIX_ERR_NOMEM
+        pyptr = <const char*>cred
+        memcpy(bo.bytes, pyptr, bo.size)
+
+        # convert list of proc targets to array of pmix_proc_t's
+        if pytargets is not None:
+            ntargets = len(pytargets)
+            targets = <pmix_proc_t*> PyMem_Malloc(ntargets * sizeof(pmix_proc_t))
+            if not targets:
+                return PMIX_ERR_NOMEM
+            rc = pmix_load_procs(targets, pytargets)
+            if PMIX_SUCCESS != rc:
+                pmix_free_procs(targets, ntargets)
+                return rc
+        else:
+            ntargets = 1
+            targets = <pmix_proc_t*> PyMem_Malloc(ntargets * sizeof(pmix_proc_t))
+            if not targets:
+                return PMIX_ERR_NOMEM
+            pmix_copy_nspace(targets[0].nspace, self.myproc.nspace)
+            targets[0].rank = PMIX_RANK_WILDCARD
+
+        # allocate and load pmix info structs from python list of dictionaries
+        directives_ptr = &directives
+        rc = pmix_alloc_info(directives_ptr, &ndirs, pydirs)
+
+        # Call the library
+        rc = PMIx_IOF_push(targets, ntargets, bo, directives, ndirs, NULL, NULL)
+        if 0 < ntargets:
+            pmix_free_procs(targets, ntargets)
+        if 0 < ndirs:
+            pmix_free_info(directives, ndirs)
+        return rc
+
+    def iof_deliver(pysrc:dict, pychannel, pydata:dict, pydirs:list):
+        cdef pmix_proc_t *source
+        cdef pmix_iof_channel_t channel
+        cdef pmix_byte_object_t *bo
+        cdef pmix_info_t *directives
+        cdef pmix_info_t **directives_ptr
+        cdef size_t ndirs
+        source  = NULL
+        ndirs   = 0
+        channel = pychannel
+
+        # convert pysrc to pmix_proc_t
+        pmix_copy_nspace(source[0].nspace, pysrc['nspace'])
+        source[0].rank = pysrc['rank']
+
+        # convert pydata to pmix_byte_object_t
+        bo = <pmix_byte_object_t*>PyMem_Malloc(sizeof(pmix_byte_object_t))
+        if not bo:
+            return PMIX_ERR_NOMEM
+        data = bytes(pydata['bytes'], 'ascii')
+        bo.size = sizeof(data)
+        bo.bytes = <char*> PyMem_Malloc(bo.size)
+        if not bo.bytes:
+            return PMIX_ERR_NOMEM
+        pyptr = <const char*>data
+        memcpy(bo.bytes, pyptr, bo.size)
+
+        # allocate and load pmix info structs from python list of dictionaries
+        directives_ptr = &directives
+        rc = pmix_alloc_info(directives_ptr, &ndirs, pydirs)
+
+        # call API
+        rc = PMIx_server_IOF_deliver(source, channel, bo, directives, ndirs,
+                                     pmix_opcbfunc, NULL)
+        if PMIX_SUCCESS == rc:
+            active.wait()
+        return rc
+

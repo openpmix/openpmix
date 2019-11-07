@@ -75,6 +75,7 @@ ctypedef struct pmix_pyshift_t:
     const char *data
     size_t ndata
     pmix_op_cbfunc_t op_cbfunc
+    pmix_iof_cbfunc_t iof
     pmix_info_cbfunc_t query
     pmix_spawn_cbfunc_t spawn
     pmix_lookup_cbfunc_t lookup
@@ -86,6 +87,16 @@ ctypedef struct pmix_pyshift_t:
     pmix_info_cbfunc_t allocate
     void *notification_cbdata
     void *cbdata
+
+cdef void iofhdlr_cache(capsule, ret):
+    cdef pmix_pyshift_t *shifter
+    shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "iofhdlr_cache")
+    pyiofhandler(shifter[0].idx, shifter[0].channel, &shifter[0].source,
+            shifter[0].payload, shifter[0].info, shifter[0].ndata)
+    print("SHIFTER:", shifter[0].op)
+    if 0 < shifter[0].ndata:
+        pmix_free_info(shifter[0].info, shifter[0].ndata)
+    return
 
 cdef void validationcredential_cb(capsule, ret):
     cdef pmix_pyshift_t *shifter
