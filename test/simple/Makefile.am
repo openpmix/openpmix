@@ -11,7 +11,7 @@
 #                         All rights reserved.
 # Copyright (c) 2006-2010 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2012-2013 Los Alamos National Security, Inc.  All rights reserved.
-# Copyright (c) 2013-2018 Intel, Inc. All rights reserved.
+# Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -25,7 +25,8 @@ headers = simptest.h
 
 noinst_PROGRAMS = simptest simpclient simppub simpdyn simpft simpdmodex \
                   test_pmix simptool simpdie simplegacy simptimeout \
-                  gwtest gwclient stability quietclient simpjctrl
+                  gwtest gwclient stability quietclient simpjctrl \
+                  pmitest
 
 simptest_SOURCES = $(headers) \
         simptest.c
@@ -122,3 +123,9 @@ simpjctrl_SOURCES = \
 simpjctrl_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 simpjctrl_LDADD = \
     $(top_builddir)/src/libpmix.la
+
+pmitest_SOURCES = \
+        pmitest.c
+pmitest_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+pmitest_LDADD = \
+    $(top_builddir)/src/libpmi.la
