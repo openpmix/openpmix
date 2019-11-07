@@ -440,6 +440,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     size_t n;
     bool found;
     pmix_ptl_posted_recv_t *rcv;
+    pid_t pid;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -463,13 +464,6 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         return pmix_init_result;
     }
     ++pmix_globals.init_cntr;
-
-    /* if we don't see the required info, then we cannot init */
-    if (NULL == (evar = getenv("PMIX_NAMESPACE"))) {
-        pmix_init_result = PMIX_ERR_INVALID_NAMESPACE;
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return PMIX_ERR_INVALID_NAMESPACE;
-    }
 
     /* setup the runtime - this init's the globals,
      * opens and initializes the required frameworks */
@@ -524,24 +518,39 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     pmix_output_verbose(2, pmix_client_globals.base_output,
                         "pmix: init called");
 
-    /* we require our nspace */
-    if (NULL != proc) {
-        pmix_strncpy(proc->nspace, evar, PMIX_MAX_NSLEN);
-    }
-    PMIX_LOAD_NSPACE(pmix_globals.myid.nspace, evar);
-    /* set the global pmix_namespace_t object for our peer */
-    pmix_globals.mypeer->nptr->nspace = strdup(evar);
+    /* see if the required info is present */
+    if (NULL == (evar = getenv("PMIX_NAMESPACE"))) {
+        /* if we didn't see a PMIx server (e.g., missing envar),
+         * then allow us to run as a singleton */
+        pid = getpid();
+        snprintf(pmix_globals.myid.nspace, PMIX_MAX_NSLEN, "singleton.%lu", (unsigned long)pid);
+        pmix_globals.myid.rank = 0;
+        /* mark that we shouldn't connect to a server */
+        pmix_client_globals.singleton = true;
+        if (NULL != proc) {
+            PMIX_LOAD_PROCID(proc, pmix_globals.myid.nspace, pmix_globals.myid.rank);
+        }
+        pmix_globals.mypeer->nptr->nspace = strdup(pmix_globals.myid.nspace);
+    } else {
+        if (NULL != proc) {
+            pmix_strncpy(proc->nspace, evar, PMIX_MAX_NSLEN);
+        }
+        PMIX_LOAD_NSPACE(pmix_globals.myid.nspace, evar);
+        /* set the global pmix_namespace_t object for our peer */
+        pmix_globals.mypeer->nptr->nspace = strdup(evar);
 
-    /* we also require our rank */
-    if (NULL == (evar = getenv("PMIX_RANK"))) {
-        /* let the caller know that the server isn't available yet */
-        pmix_init_result = PMIX_ERR_DATA_VALUE_NOT_FOUND;
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return PMIX_ERR_DATA_VALUE_NOT_FOUND;
-    }
-    pmix_globals.myid.rank = strtol(evar, NULL, 10);
-    if (NULL != proc) {
-        proc->rank = pmix_globals.myid.rank;
+        /* we also require our rank */
+        if (NULL == (evar = getenv("PMIX_RANK"))) {
+            /* let the caller know that the server isn't available yet */
+            pmix_init_result = PMIX_ERR_DATA_VALUE_NOT_FOUND;
+            PMIX_RELEASE_THREAD(&pmix_global_lock);
+            return PMIX_ERR_DATA_VALUE_NOT_FOUND;
+        } else {
+            pmix_globals.myid.rank = strtol(evar, NULL, 10);
+        }
+        if (NULL != proc) {
+            proc->rank = pmix_globals.myid.rank;
+        }
     }
     pmix_globals.pindex = -1;
     /* setup a rank_info object for us */
@@ -624,42 +633,55 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     }
     PMIX_INFO_DESTRUCT(&ginfo);
 
-    /* connect to the server */
-    rc = pmix_ptl_base_connect_to_peer((struct pmix_peer_t*)pmix_client_globals.myserver, info, ninfo);
-    if (PMIX_SUCCESS != rc) {
-        pmix_init_result = rc;
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return rc;
-    }
-    /* mark that we are using the same module as used for the server */
-    pmix_globals.mypeer->nptr->compat.ptl = pmix_client_globals.myserver->nptr->compat.ptl;
+    if (pmix_client_globals.singleton) {
+        pmix_globals.mypeer->nptr->compat.ptl = pmix_ptl_base_assign_module();
+        pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
+        pmix_client_globals.myserver->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
+        /* initialize our data values */
+        rc = pmix_tool_init_info();
+        if (PMIX_SUCCESS != rc) {
+            pmix_init_result = rc;
+            PMIX_RELEASE_THREAD(&pmix_global_lock);
+            return rc;
+        }
+    } else {
+        /* connect to the server */
+        rc = pmix_ptl_base_connect_to_peer((struct pmix_peer_t*)pmix_client_globals.myserver, info, ninfo);
+        if (PMIX_SUCCESS != rc) {
+            pmix_init_result = rc;
+            PMIX_RELEASE_THREAD(&pmix_global_lock);
+            return rc;
+        }
+        /* mark that we are using the same module as used for the server */
+        pmix_globals.mypeer->nptr->compat.ptl = pmix_client_globals.myserver->nptr->compat.ptl;
 
-    /* send a request for our job info - we do this as a non-blocking
-     * transaction because some systems cannot handle very large
-     * blocking operations and error out if we try them. */
-     req = PMIX_NEW(pmix_buffer_t);
-     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                      req, &cmd, 1, PMIX_COMMAND);
-     if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(req);
-        pmix_init_result = rc;
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return rc;
+        /* send a request for our job info - we do this as a non-blocking
+         * transaction because some systems cannot handle very large
+         * blocking operations and error out if we try them. */
+         req = PMIX_NEW(pmix_buffer_t);
+         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
+                          req, &cmd, 1, PMIX_COMMAND);
+         if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(req);
+            pmix_init_result = rc;
+            PMIX_RELEASE_THREAD(&pmix_global_lock);
+            return rc;
+        }
+        /* send to the server */
+        PMIX_CONSTRUCT(&cb, pmix_cb_t);
+        PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver,
+                           req, job_data, (void*)&cb);
+        if (PMIX_SUCCESS != rc) {
+            pmix_init_result = rc;
+            PMIX_RELEASE_THREAD(&pmix_global_lock);
+            return rc;
+        }
+        /* wait for the data to return */
+        PMIX_WAIT_THREAD(&cb.lock);
+        rc = cb.status;
+        PMIX_DESTRUCT(&cb);
     }
-    /* send to the server */
-    PMIX_CONSTRUCT(&cb, pmix_cb_t);
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver,
-                       req, job_data, (void*)&cb);
-    if (PMIX_SUCCESS != rc) {
-        pmix_init_result = rc;
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return rc;
-    }
-    /* wait for the data to return */
-    PMIX_WAIT_THREAD(&cb.lock);
-    rc = cb.status;
-    PMIX_DESTRUCT(&cb);
 
     if (PMIX_SUCCESS == rc) {
         pmix_init_result = PMIX_SUCCESS;
@@ -1204,6 +1226,12 @@ static void _commitfn(int sd, short args, void *cbdata)
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_INIT;
+    }
+
+    /* if we are a singleton, there is nothing to do */
+    if (pmix_client_globals.singleton) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return PMIX_SUCCESS;
     }
 
     /* if we are a server, or we aren't connected, don't attempt to send */
