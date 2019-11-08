@@ -302,6 +302,43 @@ cdef class PMIxClient:
             pmix_free_procs(procs, sz)
         return rc
 
+    # Store some data locally for retrieval by other areas of the
+    # proc. This is data that has only internal scope - it will
+    # never be "pushed" externally 
+    #
+    # @proc [INPUT]
+    #       - namespace and rank of the client (dict)
+    #
+    # @key [INPUT]
+    #      - the key to be stored
+    #
+    # @value [INPUT]
+    #        - a dict to be stored with keys (value, val_type)
+    def store_internal(self, pyproc:dict, pykey:str, pyval:dict):
+        cdef pmix_key_t key
+        cdef pmix_proc_t proc
+        cdef pmix_value_t value
+
+        # convert pyproc to pmix_proc_t
+        if pyproc is None:
+            pmix_copy_nspace(proc.nspace, self.myproc.nspace)
+            proc.rank = self.myproc.rank
+        else:
+            pmix_copy_nspace(proc.nspace, pyproc['nspace'])
+            proc.rank = pyproc['rank']
+
+        # convert key,val to pmix_value_t and pmix_key_t
+        pmix_copy_key(key, pykey)
+
+        # convert the dict to a pmix_value_t
+        rc = pmix_load_value(&value, pyval)
+
+        # call API
+        rc = PMIx_Store_internal(&proc, key, &value)
+        if rc == PMIX_SUCCESS:
+            pmix_free_value(self, &value)
+        return rc
+
     # put a value into the keystore
     #
     # @scope [INPUT]
