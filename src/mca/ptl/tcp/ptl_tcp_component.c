@@ -1935,11 +1935,12 @@ static void process_cbfunc(int sd, short args, void *cbdata)
         goto done;
     }
     PMIX_RETAIN(peer);
-    req->peer = peer;
-    req->pname.nspace = strdup(pmix_globals.myid.nspace);
-    req->pname.rank = pmix_globals.myid.rank;
+    req->requestor = peer;
+    req->nprocs = 1;
+    PMIX_PROC_CREATE(req->procs, req->nprocs);
+    PMIX_LOAD_PROCID(&req->procs[0], pmix_globals.myid.nspace, pmix_globals.myid.rank);
     req->channels = PMIX_FWD_STDOUT_CHANNEL | PMIX_FWD_STDERR_CHANNEL | PMIX_FWD_STDDIAG_CHANNEL;
-    pmix_list_append(&pmix_globals.iof_requests, &req->super);
+    req->refid = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
 
     /* validate the connection */
     cred.bytes = pnd->cred;
