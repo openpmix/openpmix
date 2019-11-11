@@ -205,11 +205,11 @@ function pmix_run_tests()
     fi
     if [ "$pmix_ver" -ge 40 ]; then
         # test direct modex
-        test_exec='./pmix_test -s 2 -n 2 --job-fence -o $OUTDIR/out'
+        test_exec='./pmix_test -s 1 -n 2 --job-fence -o $OUTDIR/out'
         check_result "direct modex" "$test_exec"
 
         # test full modex
-        test_exec='./pmix_test -s 2 -n 2 --job-fence -c -o $OUTDIR/out'
+        test_exec='./pmix_test -s 1 -n 2 --job-fence -c -o $OUTDIR/out'
         check_result "full modex" "$test_exec"
     fi
 
