@@ -68,7 +68,7 @@ cdef void collectinventory_cbfunc(pmix_status_t status, pmix_info_t info[],
     return
 
 cdef void pyiofhandler(size_t iofhdlr_id, pmix_iof_channel_t channel,
-                         const pmix_proc_t *source, char *payload,
+                         const pmix_proc_t *source, pmix_byte_object_t *payload,
                          pmix_info_t info[], size_t ninfo):
     print("PYIOFHDLR INVOKED")
     pychannel = int(channel)
@@ -84,7 +84,10 @@ cdef void pyiofhandler(size_t iofhdlr_id, pmix_iof_channel_t channel,
     pmix_unload_info(info, ninfo, pyinfo)
 
     # convert payload to python byteobject
-    pydata = payload.decode("ascii")
+    pybytes = {}
+    if NULL != payload:
+        pybytes['bytes'] = payload[0].bytes
+        pybytes['size']  = payload[0].size
 
     # find the handler being called
     found = False
@@ -94,10 +97,10 @@ cdef void pyiofhandler(size_t iofhdlr_id, pmix_iof_channel_t channel,
             if iofhdlr_id == h['refid']:
                 found = True
                 # call user iof python handler
-                h['hdlr'](pychannel, pysource, pydata, pyinfo)
+                h['hdlr'](pychannel, pysource, pybytes, pyinfo)
         except:
             pass
-    
+
     # if we didn't find the handler, cache this event in a timeshift
     # and try it again
     if not found:
@@ -109,7 +112,9 @@ cdef void pyiofhandler(size_t iofhdlr_id, pmix_iof_channel_t channel,
         memset(mycaddy.source.nspace, 0, PMIX_MAX_NSLEN+1)
         memcpy(mycaddy.source.nspace, source[0].nspace, PMIX_MAX_NSLEN)
         mycaddy.source.rank         = source[0].rank
-        mycaddy.payload             = strdup(payload)
+        memset(mycaddy.payload.bytes, 0, PMIX_MAX_NSLEN+1)
+        memcpy(mycaddy.payload.bytes, payload[0].bytes, PMIX_MAX_NSLEN)
+        mycaddy.payload.size        = payload[0].size
         mycaddy.info                = info
         mycaddy.ndata               = ninfo
         cb = PyCapsule_New(mycaddy, "iofhdlr_cache", NULL)
@@ -2889,7 +2894,6 @@ cdef class PMIxTool(PMIxServer):
         rc = PMIX_SUCCESS
         return rc, refid
 
-    """
     def iof_deregister(regid, pydirs:list):
         cdef pmix_info_t *directives
         cdef pmix_info_t **directives_ptr
@@ -2907,7 +2911,6 @@ cdef class PMIxTool(PMIxServer):
         if 0 < ndirs:
             pmix_free_info(directives, ndirs)
         return rc
-    """
 
     def iof_push(self, pytargets:list, data:dict, pydirs:list):
         cdef pmix_info_t *directives
