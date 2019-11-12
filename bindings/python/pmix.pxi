@@ -58,7 +58,7 @@ class myLock(threading.Event):
 
 ctypedef struct pmix_pyshift_t:
     char *op
-    char *payload
+    pmix_byte_object_t *payload
     size_t idx
     pmix_modex_cbfunc_t modex
     pmix_status_t status
