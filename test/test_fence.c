@@ -371,9 +371,7 @@ int test_job_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
 
     /* Check the predefined output */
     for (i=0; i < (int)params.ns_size; i++) {
-
         for (j=0; j < 3; j++) {
-
             int local = 0;
             pmix_rank_t k;
             for(k=0; k<npeers; k++){
