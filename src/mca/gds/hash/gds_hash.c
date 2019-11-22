@@ -389,7 +389,7 @@ static pmix_status_t process_node_array(pmix_value_t *val,
      * provided list */
     update = false;
     PMIX_LIST_FOREACH(ndptr, tgt, pmix_nodeinfo_t) {
-        if (ndptr->nodeid == nd->nodeid ||
+        if ((ndptr->nodeid != UINT32_MAX && (ndptr->nodeid == nd->nodeid)) ||
             (NULL != ndptr->hostname && NULL != nd->hostname && 0 == strcmp(ndptr->hostname, nd->hostname))) {
             /* we assume that the data is updating the current
              * values */
