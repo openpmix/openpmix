@@ -22,6 +22,7 @@
 
 #include "pmix_server.h"
 #include "src/include/pmix_globals.h"
+#include "src/util/error.h"
 
 #include "test_server.h"
 #include "test_common.h"
@@ -139,10 +140,11 @@ static void set_namespace(int local_size, int univ_size,
     size_t ninfo;
     pmix_info_t *info;
     ninfo = 8;
-    char *regex, *ppn;
+    char *regex, *ppn, *tmp;
     char *ranks = NULL, **nodes = NULL;
     char **rks=NULL;
     int i;
+    int rc;
 
     PMIX_INFO_CREATE(info, ninfo);
     pmix_strncpy(info[0].key, PMIX_UNIV_SIZE, PMIX_MAX_KEYLEN);
@@ -166,22 +168,28 @@ static void set_namespace(int local_size, int univ_size,
     info[3].value.type = PMIX_STRING;
     info[3].value.data.string = strdup(ranks);
 
-    /* if we have two servers any rank not on us,
-     * must be on the other */
+    /* assemble the node and proc map info */
     if (1 == params.nservers) {
-        ppn = strdup(my_server_info->hostname);
+        pmix_argv_append_nosize(&nodes, my_server_info->hostname);
     } else {
-        if (local_size < univ_size) {
-            pmix_argv_append_nosize(&nodes, "node0");
-            pmix_argv_append_nosize(&nodes, "node1");
+        char hostname[PMIX_MAXHOSTNAMELEN];
+        for (i = 0; i < params.nservers; i++) {
+            snprintf(hostname, PMIX_MAXHOSTNAMELEN, "node%d", i);
+            pmix_argv_append_nosize(&nodes, hostname);
         }
-        ppn = pmix_argv_join(nodes, ',');
     }
 
-    pmix_argv_free(nodes);
-    PMIx_generate_regex(ppn, &regex);
-    PMIX_INFO_LOAD(&info[4], PMIX_NODE_MAP, regex, PMIX_STRING);
-    free(ppn);
+    if (NULL != nodes) {
+        tmp = pmix_argv_join(nodes, ',');
+        pmix_argv_free(nodes);
+        nodes = NULL;
+        if (PMIX_SUCCESS != (rc = PMIx_generate_regex(tmp, &regex) )) {
+            PMIX_ERROR_LOG(rc);
+            return;
+        }
+        free(tmp);
+        PMIX_INFO_LOAD(&info[4], PMIX_NODE_MAP, regex, PMIX_STRING);
+    }
 
     /* generate the global proc map - if we have two
      * servers, then the procs not on this server must
@@ -191,7 +199,7 @@ static void set_namespace(int local_size, int univ_size,
         free(ranks);
         nodes = NULL;
         if (0 == my_server_id) {
-            for (i=base_rank+1; i < univ_size; i++) {
+            for (i=base_rank+local_size; i < univ_size; i++) {
                 asprintf(&ppn, "%d", i);
                 pmix_argv_append_nosize(&nodes, ppn);
                 free(ppn);
@@ -224,7 +232,7 @@ static void set_namespace(int local_size, int univ_size,
     info[7].value.type = PMIX_UINT32;
     info[7].value.data.uint32 = getpid ();
 
-    int in_progress = 1, rc;
+    int in_progress = 1;
     if (PMIX_SUCCESS == (rc = PMIx_server_register_nspace(name, local_size,
                                     info, ninfo, release_cb, &in_progress))) {
         PMIX_WAIT_FOR_COMPLETION(in_progress);
@@ -831,7 +839,7 @@ static void wait_signal_callback(int fd, short event, void *arg)
 
 int server_init(test_params *params)
 {
-    pmix_info_t info[1];
+    pmix_info_t info[2];
     int rc = PMIX_SUCCESS;
 
     /* fork/init servers procs */
@@ -900,13 +908,13 @@ int server_init(test_params *params)
                 params->nprocs / params->nservers + 1 :
                 params->nprocs / params->nservers;
     /* setup the server library */
-    (void)strncpy(info[0].key, PMIX_SOCKET_MODE, PMIX_MAX_KEYLEN);
-    info[0].value.type = PMIX_UINT32;
-    info[0].value.data.uint32 = 0666;
+    uint32_t u32 = 0666;
+    PMIX_INFO_LOAD(&info[0], PMIX_SOCKET_MODE, &u32, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[1], PMIX_HOSTNAME, my_server_info->hostname, PMIX_STRING);
 
     server_nspace = PMIX_NEW(pmix_list_t);
 
-    if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, info, 1))) {
+    if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, info, 2))) {
         TEST_ERROR(("Init failed with error %d", rc));
         goto error;
     }
@@ -1050,6 +1058,7 @@ int server_launch_clients(int local_size, int univ_size, int base_rank,
             cli_kill_all();
             return rc;
         }
+        TEST_VERBOSE(("run %s:%d", proc.nspace, proc.rank));
 
         cli_info[cli_counter].pid = fork();
         if (cli_info[cli_counter].pid < 0) {
