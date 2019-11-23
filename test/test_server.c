@@ -187,7 +187,7 @@ static void set_namespace(int local_size, int univ_size,
             return;
         }
         free(tmp);
-        PMIX_INFO_LOAD(&info[4], PMIX_NODE_MAP, regex, PMIX_STRING);
+        PMIX_INFO_LOAD(&info[4], PMIX_NODE_MAP, regex, PMIX_REGEX);
     }
 
     /* generate the global proc map - if we have two
@@ -220,7 +220,7 @@ static void set_namespace(int local_size, int univ_size,
     }
     PMIx_generate_ppn(ranks, &ppn);
     free(ranks);
-    PMIX_INFO_LOAD(&info[5], PMIX_PROC_MAP, ppn, PMIX_STRING);
+    PMIX_INFO_LOAD(&info[5], PMIX_PROC_MAP, ppn, PMIX_REGEX);
     free(ppn);
 
     pmix_strncpy(info[6].key, PMIX_JOB_SIZE, PMIX_MAX_KEYLEN);
