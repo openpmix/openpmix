@@ -265,7 +265,8 @@ PMIX_CLASS_DECLARATION(pmix_peer_t);
 typedef struct {
     pmix_object_t super;
     pmix_peer_t *requestor;
-    size_t refid;
+    size_t local_id;
+    size_t remote_id;
     pmix_proc_t *procs;
     size_t nprocs;
     pmix_iof_channel_t channels;

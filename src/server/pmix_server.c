@@ -3249,7 +3249,7 @@ static void _iofreg(int sd, short args, void *cbdata)
         PMIX_RELEASE(req);
         pmix_pointer_array_set_item(&pmix_globals.iof_requests, cd->ncodes, NULL);
     } else {
-        /* return the reference ID for this handler */
+        /* return our reference ID for this handler */
         PMIX_BFROPS_PACK(rc, scd->peer, reply, &cd->ncodes, 1, PMIX_SIZE);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
