@@ -61,13 +61,10 @@ static void msgcbfunc(struct pmix_peer_t *peer,
         /* get the reference ID */
         m=1;
         PMIX_BFROPS_UNPACK(rc, peer, buf, &refid, &m, PMIX_SIZE);
-        /* store the request - we are in an event, and
-         * so this is safe */
-        if (NULL == pmix_pointer_array_get_item(&pmix_globals.iof_requests, refid)) {
-            pmix_pointer_array_set_item(&pmix_globals.iof_requests, refid, cd->iofreq);
-        }
+        /* store the remote reference id */
+        cd->iofreq->remote_id = refid;
         if (NULL != cd->cbfunc.hdlrregcbfn) {
-            cd->cbfunc.hdlrregcbfn(PMIX_SUCCESS, refid, cd->cbdata);
+            cd->cbfunc.hdlrregcbfn(PMIX_SUCCESS, cd->iofreq->local_id, cd->cbdata);
         }
     } else if (PMIX_SUCCESS != rc) {
         status = rc;
@@ -84,16 +81,18 @@ static void msgcbfunc(struct pmix_peer_t *peer,
         } else {
             cd->cbfunc.opcbfn(status, cd->cbdata);
         }
+    } else if (PMIX_SUCCESS != status) {
+        pmix_pointer_array_set_item(&pmix_globals.iof_requests, cd->iofreq->local_id, NULL);
+        PMIX_RELEASE(cd->iofreq);
     } else if (NULL == cd->cbfunc.hdlrregcbfn) {
         cd->status = status;
-        cd->ncodes = refid;
+        cd->iofreq->remote_id = refid;
         PMIX_WAKEUP_THREAD(&cd->lock);
     } else {
-        cd->cbfunc.hdlrregcbfn(PMIX_SUCCESS, refid, cd->cbdata);
+        cd->iofreq->remote_id = refid;
+        cd->cbfunc.hdlrregcbfn(PMIX_SUCCESS, cd->iofreq->local_id, cd->cbdata);
     }
-    if (PMIX_SUCCESS != rc && NULL != cd->iofreq) {
-        PMIX_RELEASE(cd->iofreq);
-    }
+
     PMIX_RELEASE(cd);
 }
 
@@ -109,6 +108,7 @@ static void mycbfn(pmix_status_t status,
     } else {
         cd->status = status;
     }
+
     PMIX_WAKEUP_THREAD(&cd->lock);
 }
 
@@ -121,6 +121,7 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
     pmix_cmd_t cmd = PMIX_IOF_PULL_CMD;
     pmix_buffer_t *msg;
     pmix_status_t rc;
+    pmix_iof_req_t *req;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -167,21 +168,23 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
     }
 
     /* setup the request item */
-    cd->iofreq = PMIX_NEW(pmix_iof_req_t);
-    if (NULL == cd->iofreq) {
-        PMIX_RELEASE(cd);
-        return PMIX_ERR_NOMEM;
+    req = PMIX_NEW(pmix_iof_req_t);
+    if (NULL == req) {
+        rc = PMIX_ERR_NOMEM;
+        goto cleanup;
     }
     /* retain the channels and cbfunc */
-    cd->iofreq->channels = channel;
-    cd->iofreq->cbfunc = cbfunc;
+    req->channels = channel;
+    req->cbfunc = cbfunc;
+    req->local_id = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
+    cd->iofreq = req;
     /* we don't need the source specifications - only the
     * server cares as it will filter against them */
 
     /* setup the registration cmd */
     msg = PMIX_NEW(pmix_buffer_t);
     if (NULL == msg) {
-        PMIX_RELEASE(cd->iofreq);
+        PMIX_RELEASE(req);
         PMIX_RELEASE(cd);
         return PMIX_ERR_NOMEM;
     }
@@ -233,11 +236,16 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
-        PMIX_RELEASE(cd->iofreq);
+        PMIX_RELEASE(req);
         PMIX_RELEASE(cd);
     } else if (NULL == regcbfunc) {
         PMIX_WAIT_THREAD(&cd->lock);
         rc = cd->status;
+        if (0 > rc) {
+            /* the request failed */
+            pmix_pointer_array_set_item(&pmix_globals.iof_requests, req->local_id, NULL);
+            PMIX_RELEASE(req);
+        }
         PMIX_RELEASE(cd);
     }
     return rc;
@@ -251,6 +259,8 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_deregister(size_t iofhdlr,
     pmix_cmd_t cmd = PMIX_IOF_DEREG_CMD;
     pmix_buffer_t *msg;
     pmix_status_t rc;
+    pmix_iof_req_t *req;
+    size_t remote_id;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -275,6 +285,15 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_deregister(size_t iofhdlr,
         return PMIX_ERR_UNREACH;
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
+
+    req = (pmix_iof_req_t*)pmix_pointer_array_get_item(&pmix_globals.iof_requests, iofhdlr);
+    if (NULL == req) {
+        /* bad value */
+        return PMIX_ERR_BAD_PARAM;
+    }
+    remote_id = req->remote_id;
+    pmix_pointer_array_set_item(&pmix_globals.iof_requests, iofhdlr, NULL);
+    PMIX_RELEASE(req);
 
     /* send this request to the server */
     cd = PMIX_NEW(pmix_shift_caddy_t);
@@ -312,9 +331,9 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_deregister(size_t iofhdlr,
         }
     }
 
-    /* pack the handler ID */
+    /* pack the remote handler ID */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &iofhdlr, 1, PMIX_SIZE);
+                     msg, &remote_id, 1, PMIX_SIZE);
 
     pmix_output_verbose(2, pmix_client_globals.iof_output,
                         "pmix:iof_dereg sending to server");
@@ -665,8 +684,8 @@ pmix_status_t pmix_iof_process_iof(pmix_iof_channel_t channels,
         PMIX_RELEASE(msg);
         return rc;
     }
-    /* provide the handler ID so they know which cbfunc to use */
-    PMIX_BFROPS_PACK(rc, req->requestor, msg, &req->refid, 1, PMIX_SIZE);
+    /* provide their local handler ID so they know which cbfunc to use */
+    PMIX_BFROPS_PACK(rc, req->requestor, msg, &req->remote_id, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);

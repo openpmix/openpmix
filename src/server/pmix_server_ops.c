@@ -1421,7 +1421,7 @@ static void spcbfunc(pmix_status_t status,
         PMIX_PROC_CREATE(req->procs, req->nprocs);
         PMIX_LOAD_PROCID(&req->procs[0], nspace, PMIX_RANK_WILDCARD);
         req->channels = cd->channels;
-        req->refid = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
+        req->local_id = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
         /* process any cached IO */
         PMIX_LIST_FOREACH_SAFE(iof, ionext, &pmix_server_globals.iof, pmix_iof_cache_t) {
             /* if the channels don't match, then ignore it */
@@ -1461,6 +1461,28 @@ static void spcbfunc(pmix_status_t status,
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(msg);
                 break;
+            }
+            /* provide their local id */
+            PMIX_BFROPS_PACK(rc, req->requestor, msg, &req->remote_id, 1, PMIX_SIZE);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(msg);
+                break;
+            }
+            /* provide any cached info */
+            PMIX_BFROPS_PACK(rc, req->requestor, msg, &iof->ninfo, 1, PMIX_SIZE);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(msg);
+                break;
+            }
+            if (0 < iof->ninfo) {
+                PMIX_BFROPS_PACK(rc, req->requestor, msg, iof->info, iof->ninfo, PMIX_INFO);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_RELEASE(msg);
+                    break;
+                }
             }
             /* pack the data */
             PMIX_BFROPS_PACK(rc, req->requestor, msg, iof->bo, 1, PMIX_BYTE_OBJECT);
@@ -3491,6 +3513,7 @@ pmix_status_t pmix_server_iofreg(pmix_peer_t *peer,
     pmix_status_t rc;
     pmix_setup_caddy_t *cd;
     pmix_iof_req_t *req;
+    size_t refid;
 
     pmix_output_verbose(2, pmix_server_globals.iof_output,
                         "recvd IOF PULL request from client");
@@ -3549,6 +3572,14 @@ pmix_status_t pmix_server_iofreg(pmix_peer_t *peer,
         goto exit;
     }
 
+    /* unpack their local reference id */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &refid, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+
     /* add this peer/source/channel combination */
     req = PMIX_NEW(pmix_iof_req_t);
     if (NULL == req) {
@@ -3563,8 +3594,9 @@ pmix_status_t pmix_server_iofreg(pmix_peer_t *peer,
         memcpy(req->procs, cd->procs, req->nprocs * sizeof(pmix_proc_t));
     }
     req->channels = cd->channels;
-    req->refid = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
-    cd->ncodes = req->refid;
+    req->remote_id = refid;
+    req->local_id = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
+    cd->ncodes = req->local_id;
 
     /* ask the host to execute the request */
     if (PMIX_SUCCESS != (rc = pmix_host_server.iof_pull(cd->procs, cd->nprocs,
@@ -3641,6 +3673,9 @@ pmix_status_t pmix_server_iofdereg(pmix_peer_t *peer,
         rc = PMIX_ERR_NOT_FOUND;
         goto exit;
     }
+    pmix_pointer_array_set_item(&pmix_globals.iof_requests, refid, NULL);
+    PMIX_RELEASE(req);
+
     /* tell the server to stop */
     if (PMIX_SUCCESS != (rc = pmix_host_server.iof_pull(cd->procs, cd->nprocs,
                                                         cd->info, cd->ninfo,

@@ -235,7 +235,8 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_peer_t,
 static void iofreqcon(pmix_iof_req_t *p)
 {
     p->requestor = NULL;
-    p->refid = 0;
+    p->local_id = 0;
+    p->remote_id = 0;
     p->procs = NULL;
     p->nprocs = 0;
     p->channels = PMIX_FWD_NO_CHANNELS;

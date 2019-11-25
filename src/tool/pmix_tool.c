@@ -319,6 +319,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     pmix_cb_t cb;
     pmix_buffer_t *req;
     pmix_cmd_t cmd = PMIX_REQ_CMD;
+    pmix_iof_req_t *iofreq;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -699,6 +700,11 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
                          1, PMIX_FWD_STDOUT_CHANNEL, pmix_iof_write_handler);
     PMIX_IOF_SINK_DEFINE(&pmix_client_globals.iof_stderr, &pmix_globals.myid,
                          2, PMIX_FWD_STDERR_CHANNEL, pmix_iof_write_handler);
+    /* create the default iof handler */
+    iofreq = PMIX_NEW(pmix_iof_req_t);
+    iofreq->channels = PMIX_FWD_STDOUT_CHANNEL | PMIX_FWD_STDERR_CHANNEL | PMIX_FWD_STDDIAG_CHANNEL;
+    pmix_pointer_array_set_item(&pmix_globals.iof_requests, 0, iofreq);
+
     if (fwd_stdin) {
         /* setup the read - we don't want to set nonblocking on our
          * stdio stream.  If we do so, we set the file descriptor to
