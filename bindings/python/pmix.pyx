@@ -18,6 +18,7 @@ from threading import Timer
 # store them in a separate file for neatness
 include "pmix_constants.pxi"
 include "pmix.pxi"
+include "tests/cython/cython_test_functions.pyx"
 
 active = myLock()
 myhdlrs = []
@@ -1225,7 +1226,6 @@ cdef class PMIxClient:
                 return PMIX_ERR_NOMEM
             n = 0
             for c in pycodes:
-                #print("C IN PYCODES: ", self.error_string(c))
                 codes[n] = c
                 n += 1
         else:
