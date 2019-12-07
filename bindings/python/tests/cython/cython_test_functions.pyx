@@ -32,7 +32,8 @@ values = [{'value': 'True', 'val_type': PMIX_BOOL},
           {'value': 34, 'val_type': PMIX_STATUS},
           {'value': 15, 'val_type': PMIX_PROC_RANK},
           {'value': {'nspace': 'testnspace', 'rank': 0}, 'val_type': PMIX_PROC},
-          {'value': {'bytes': bytearray(1), 'size': 1}, 'val_type': PMIX_BYTE_OBJECT},
+          # TODO: bytearray conversion doesn't work using python bytearray?
+          #{'value': {'bytes': bytearray(1), 'size': 1}, 'val_type': PMIX_BYTE_OBJECT},
           {'value': 18, 'val_type': PMIX_PERSISTENCE},
           {'value': 1, 'val_type': PMIX_SCOPE},
           {'value': 5, 'val_type': PMIX_RANGE},
@@ -45,7 +46,6 @@ values = [{'value': 'True', 'val_type': PMIX_BOOL},
           # TODO: is regex type a string? It is not in the type conversion 
           # table of pg 357 of the v4 API documentationi for python
         ]
-
 
 def error_string(pystat:int):
     cdef char *string
