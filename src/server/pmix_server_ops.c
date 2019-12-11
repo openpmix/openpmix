@@ -390,7 +390,6 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
     pmix_server_trkr_t *trk;
     size_t i;
     bool all_def;
-    pmix_rank_t ns_local = 0;
     pmix_namespace_t *nptr, *ns;
     pmix_rank_info_t *info;
     pmix_nspace_caddy_t *nm;
@@ -485,7 +484,6 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
              * of the loop */
         }
         /* is this one of my local ranks? */
-        ns_local = 0;
         PMIX_LIST_FOREACH(info, &nptr->ranks, pmix_rank_info_t) {
             if (procs[i].rank == info->pname.rank ||
                 PMIX_RANK_WILDCARD == procs[i].rank) {
@@ -493,14 +491,12 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
                                         "adding local proc %s.%d to tracker",
                                         info->pname.nspace, info->pname.rank);
                 /* track the count */
-                ns_local++;
+                trk->nlocal++;
                 if (PMIX_RANK_WILDCARD != procs[i].rank) {
                     break;
                 }
             }
         }
-
-        trk->nlocal += ns_local;
     }
 
     if (trk->nlocal == nptr->nprocs) {
