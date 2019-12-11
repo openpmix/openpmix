@@ -24,7 +24,9 @@ my @tests = ("-n 4 --ns-dist 3:1 --fence \"[db | 0:0-2;1:0]\"",
              "-n 5 --test-replace 100:0,1,10,50,99",
              "-n 5 --test-internal 10",
              "-s 1 -n 2 --job-fence",
-             "-s 1 -n 2 --job-fence -c");
+             "-s 1 -n 2 --job-fence -c",
+             "-s 2 -n 2 --job-fence",
+             "-s 2 -n 2 --job-fence -c");
 
 my $test;
 my $cmd;
