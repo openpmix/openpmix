@@ -32,8 +32,7 @@ values = [{'value': 'True', 'val_type': PMIX_BOOL},
           {'value': 34, 'val_type': PMIX_STATUS},
           {'value': 15, 'val_type': PMIX_PROC_RANK},
           {'value': {'nspace': 'testnspace', 'rank': 0}, 'val_type': PMIX_PROC},
-          # TODO: bytearray conversion doesn't work using python bytearray?
-          #{'value': {'bytes': bytearray(1), 'size': 1}, 'val_type': PMIX_BYTE_OBJECT},
+          {'value': {'bytes': bytearray(1), 'size': 1}, 'val_type': PMIX_BYTE_OBJECT},
           {'value': 18, 'val_type': PMIX_PERSISTENCE},
           {'value': 1, 'val_type': PMIX_SCOPE},
           {'value': 5, 'val_type': PMIX_RANGE},
@@ -59,8 +58,6 @@ def test_load_value():
     cdef pmix_value_t value
     for val in values:
         rc = pmix_load_value(&value, val)
-        if rc != PMIX_SUCCESS:
-            print("PMIX ALLOC INFO TEST FAILED: ", error_string(rc))
         if rc == PMIX_SUCCESS:
             print("SUCCESSFULLY LOADED VALUE:\n")
             print("\t" + str(val['value']) + ", "
@@ -75,9 +72,7 @@ def test_alloc_info():
     # call pmix_alloc_info
     info_ptr = &info
     rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
-    if rc != PMIX_SUCCESS:
-        print("PMIX ALLOC INFO TEST FAILED: ", error_string(rc))
-    else:
+    if rc == PMIX_SUCCESS:
         print("SUCCESSFULLY LOADED:\n")
         for i in pyinfo:
             print("\t" + str(i['key']) + ", " + str(i['value']) + ", " +
