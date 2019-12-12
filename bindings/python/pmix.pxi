@@ -245,15 +245,6 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
         for item in mylist:
             strptr[n] = strdup(item)
             n += 1
-    elif PMIX_STRING == mytype:
-        array[0].array = PyMem_Malloc(mysize * sizeof(char*))
-        if not array[0].array:
-            return PMIX_ERR_NOMEM
-        n = 0
-        strptr = <char**> array[0].array
-        for item in mylist:
-            strptr[n] = strdup(item)
-            n += 1
     elif PMIX_SIZE == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(size_t))
         if not array[0].array:
@@ -734,6 +725,7 @@ cdef int pmix_load_value(pmix_value_t *value, val:dict):
         value[0].data.proc[0].rank = val['value']['rank']
     # TODO: pmix byte object conversion isn't working
     elif val['val_type'] == PMIX_BYTE_OBJECT:
+        value[0].data.bo.size = val['value']['size']
         value[0].data.bo.bytes = <char*> PyMem_Malloc(value[0].data.bo.size)
         if not value[0].data.bo.bytes:
             return PMIX_ERR_NOMEM
@@ -747,7 +739,7 @@ cdef int pmix_load_value(pmix_value_t *value, val:dict):
         if val['value'] > 255 or val['value'] < 0:
             print("uint8 value is out of bounds")
             return PMIX_ERR_INVALID_VAL
-        value[0].data.persist = val['val_type']
+        value[0].data.persist = val['value']
     elif val['val_type'] == PMIX_SCOPE:
         # pmix_scope_t is defined as uint8
         if not isinstance(val['value'], pmix_int_types):
@@ -788,10 +780,20 @@ cdef int pmix_load_value(pmix_value_t *value, val:dict):
             print("uint32 value is out of bounds")
             return PMIX_ERR_INVALID_VAL
         value[0].data.pinfo[0].proc.rank = val['value']['proc']['rank']
-        # TODO: check char type for hostname
-        value[0].data.pinfo[0].hostname   = strdup(val['value']['hostname'])
-        # TODO: check char type for executable
-        value[0].data.pinfo[0].executable = strdup(val['value']['executable'])
+        hostname = val['value']['hostname']
+        if isinstance(hostname, str):
+            pyhostname = hostname.encode('ascii')
+        else:
+            pyhostname = hostname
+        pyhostnameptr = <const char *>(pyhostname)
+        value[0].data.pinfo[0].hostname = strdup(pyhostnameptr)
+        executable = val['value']['executable']
+        if isinstance(executable, str):
+            pyexec = executable.encode('ascii')
+        else:
+            pyexec = executable
+        pyexecptr = <const char *>(pyexec)
+        value[0].data.pinfo[0].executable_name = strdup(pyexecptr)
         # TODO: check this is a pid type
         value[0].data.pinfo[0].pid = val['value']['pid']
         if not isinstance(val['value']['exitcode'], int):
@@ -896,7 +898,7 @@ cdef dict pmix_unload_value(const pmix_value_t *value):
     elif PMIX_DOUBLE == value[0].type:
         return {'value':value[0].data.dval, 'val_type':PMIX_DOUBLE}
     elif PMIX_TIMEVAL == value[0].type:
-        return {'value':(value[0].data.tv.tv_sec, value[0].data.tv.tv_used),
+        return {'value':{'sec':value[0].data.tv.tv_sec, 'usec':value[0].data.tv.tv_usec},
         'val_type':PMIX_TIMEVAL}
     elif PMIX_TIME == value[0].type:
         return {'value':value[0].data.time, 'val_type':PMIX_TIME}
@@ -906,13 +908,13 @@ cdef dict pmix_unload_value(const pmix_value_t *value):
         return {'value':value[0].data.rank, 'val_type':PMIX_PROC_RANK}
     elif PMIX_PROC == value[0].type:
         pyns = str(value[0].data.proc[0].nspace)
-        return {'value':(pyns, value[0].data.proc[0].rank), 'val_type':PMIX_PROC}
+        return {'value':{'nspace':pyns, 'rank':value[0].data.proc[0].rank}, 'val_type':PMIX_PROC}
     elif PMIX_BYTE_OBJECT == value[0].type:
         mybytes = <char*> PyMem_Malloc(value[0].data.bo.size)
         if not mybytes:
             return PMIX_ERR_NOMEM
         memcpy(mybytes, value[0].data.bo.bytes, value[0].data.bo.size)
-        return {'value':(mybytes, value[0].data.bo.size), 'val_type':PMIX_BYTE_OBJECT}
+        return {'value':{'bytes':mybytes, 'size':value[0].data.bo.size}, 'val_type':PMIX_BYTE_OBJECT}
     elif PMIX_PERSISTENCE == value[0].type:
         return {'value':value[0].data.persist, 'val_type':PMIX_PERSISTENCE}
     elif PMIX_SCOPE == value[0].type:
@@ -925,10 +927,11 @@ cdef dict pmix_unload_value(const pmix_value_t *value):
         pins = str(value[0].data.pinfo[0].proc.nspace)
         pirk = value[0].data.pinfo[0].proc.rank
         pihost = str(value[0].data.pinfo[0].hostname)
+        pexec = str(value[0].data.pinfo[0].executable_name)
         pipid = value[0].data.pinfo[0].pid
         piex = value[0].data.pinfo[0].exit_code
         pist = value[0].data.pinfo[0].state
-        pians = {'proc': (pins, pirk), 'hostname': pihost, 'pid': pipid, 'exitcode': piex, 'state': pist}
+        pians = {'proc': {'nspace':pins, 'rank':pirk}, 'hostname': pihost, 'executable': pexec, 'pid': pipid, 'exitcode': piex, 'state': pist}
         return {'value':pians, 'val_type':PMIX_PROC_INFO}
     elif PMIX_DATA_ARRAY == value[0].type:
         print("Unload_value: data array not supported")
