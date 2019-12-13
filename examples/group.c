@@ -15,6 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2018 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
+ * Copyright (c) 2019      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -109,8 +110,7 @@ static void errhandler_reg_callbk(pmix_status_t status,
 int main(int argc, char **argv)
 {
     int rc;
-    pmix_value_t value;
-    pmix_value_t *val = &value;
+    pmix_value_t *val = NULL;
     pmix_proc_t proc, *procs;
     uint32_t nprocs;
     mylock_t lock;

@@ -17,6 +17,7 @@
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2016      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2019      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -42,8 +43,7 @@ static pmix_proc_t myproc;
 int main(int argc, char **argv)
 {
     int rc;
-    pmix_value_t value;
-    pmix_value_t *val = &value;
+    pmix_value_t *val = NULL;
     pmix_proc_t proc;
     uint32_t nprocs;
     char nsp2[PMIX_MAX_NSLEN+1];
