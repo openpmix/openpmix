@@ -560,6 +560,31 @@ cdef void pmix_copy_key(pmix_key_t key, ky):
     else:
         memcpy(key, pykeyptr, klen)
 
+# loads a python pmix regex into a python bytearray
+cdef bytearray pmix_convert_regex(char *regex):
+    if "pmix" == regex[:4].decode("ascii"):
+        # remove null characters
+        if b'\x00' in regex:
+            regex.replace(b'\x00', '')
+        ba = bytearray(regex)
+    elif "blob" == regex[:4].decode("ascii"):
+        sz_str    = len(regex)
+        sz_prefix = 5
+        # extract length of bytearray
+        regex.split(b'\x00')
+        len_bytearray = regex[1]
+        length = len(len_bytearray) + sz_prefix + sz_str
+        ba = bytearray(length)
+        pyregex = <bytes> regex[:length]
+        index = 0
+        while index < length:
+            ba[index] = pyregex[index]
+            index += 1
+    else:
+        # last case with no ':' in string
+        ba = bytearray(regex)
+    return ba
+
 # provide a function for transferring a Python 'value'
 # object (a dict with value and val_type as keys)
 # to a pmix_value_t
@@ -848,16 +873,23 @@ cdef int pmix_load_value(pmix_value_t *value, val:dict):
         pyseparator = <char>ord(val['value']['separator'])
         value[0].data.envar.separator = pyseparator
     elif val['val_type'] == PMIX_REGEX:
-        if not isinstance(val['value'], bytearray):
+        regex = val['value']
+        ba = pmix_convert_regex(regex)
+        if not isinstance(ba, bytearray):
             return PMIX_ERR_TYPE_MISMATCH
-        value[0].data.bo.bytes = val['value']
-        value[0].data.bo.size = len(val['value'])
+        value[0].data.bo.size  = len(val['value'])
+        value[0].data.bo.bytes = <char*> PyMem_Malloc(value[0].data.bo.size)
+        if not value[0].data.bo.bytes:
+            return PMIX_ERR_NOMEM
+        pyptr = <char*>ba
+        memcpy(value[0].data.bo.bytes, pyptr, value[0].data.bo.size)
     else:
         print("UNRECOGNIZED VALUE TYPE")
         return PMIX_ERR_NOT_SUPPORTED
     return PMIX_SUCCESS
 
 cdef dict pmix_unload_value(const pmix_value_t *value):
+    print("UNLOADING VALUE TYPE ", PMIx_Data_type_string(value[0].type))
     if PMIX_BOOL == value[0].type:
         if value[0].data.flag:
             return {'value':True, 'val_type':PMIX_BOOL}
@@ -938,13 +970,13 @@ cdef dict pmix_unload_value(const pmix_value_t *value):
         return PMIX_ERR_NOT_SUPPORTED
     elif PMIX_ALLOC_DIRECTIVE == value[0].type:
         return {'value':value[0].data.adir, 'val_type':PMIX_ALLOC_DIRECTIVE}
-    elif PMIX_ENVAR:
+    elif PMIX_ENVAR == value[0].type:
         pyenv = str(value[0].data.envar.envar)
         pyval = str(value[0].data.envar.value)
         pysep = value[0].data.envar.separator
         pyenvans = {'envar': pyenv, 'value': pyval, 'separator': pysep}
         return {'value':pyenvans, 'val_type':PMIX_ENVAR}
-    elif PMIX_REGEX:
+    elif PMIX_REGEX == value[0].type:
         return {'value': value[0].data.bo.bytes, 'val_type': PMIX_REGEX}
     else:
         print("Unload_value: provided type is unknown")
