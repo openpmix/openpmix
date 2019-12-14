@@ -25,14 +25,15 @@ def main():
     parser.add_argument("-t", "--test", help="pass string name of test function (i.e test_alloc_info)")
     parser.add_argument("-a", "--all", action="store_true")
     args = parser.parse_args()
+    unload = True
     if len(sys.argv) < 2:
         print("no arguments provided")
     if args.test == "test_alloc_info":
         test_alloc_info()
     elif args.test == "test_load_value":
-        test_load_value()
+        test_load_value(unload)
     elif args.all:
-        test_load_value()
+        test_load_value(unload)
         test_alloc_info()
 
 if __name__ == '__main__':

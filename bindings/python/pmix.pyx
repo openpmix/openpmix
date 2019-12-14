@@ -1789,27 +1789,8 @@ cdef class PMIxServer(PMIxClient):
         else:
             pyhosts = hosts
         rc = PMIx_generate_regex(pyhosts, &regex)
-        if "pmix" == regex[:4].decode("ascii"):
-            # remove null characters
-            if b'\x00' in regex:
-                regex.replace(b'\x00', '')
-            ba = bytearray(regex)
-        elif "blob" == regex[:4].decode("ascii"):
-            sz_str    = len(regex)
-            sz_prefix = 5
-            # extract length of bytearray
-            regex.split(b'\x00')
-            len_bytearray = regex[1]
-            length = len(len_bytearray) + sz_prefix + sz_str
-            ba = bytearray(length)
-            pyregex = <bytes> regex[:length]
-            index = 0
-            while index < length:
-                ba[index] = pyregex[index]
-                index += 1
-        else:
-            # last case with no ':' in string
-            ba = bytearray(regex)
+        # load regex appropriately into python bytearray
+        ba = pmix_convert_regex(regex)
         return (rc, ba)
 
     def generate_ppn(self, procs):

@@ -9,7 +9,7 @@ darray = {'type':PMIX_INFO, 'array':[{'key':PMIX_ALLOC_NETWORK_ID, 'value':'SIMP
                                      {'key':PMIX_ALLOC_NETWORK_SEC_KEY, 'value':'T', 'val_type':PMIX_BOOL},
                                      {'key':PMIX_SETUP_APP_ENVARS, 'value':'T', 'val_type':PMIX_BOOL}]
          }
-
+pyregex = 'pmix[test[3:0-2]]'.encode('ascii')
 values = [{'value': 'True', 'val_type': PMIX_BOOL},
           {'value': 1, 'val_type': PMIX_BYTE},
           {'value': "foo", 'val_type': PMIX_STRING},
@@ -38,12 +38,12 @@ values = [{'value': 'True', 'val_type': PMIX_BOOL},
           {'value': 5, 'val_type': PMIX_RANGE},
           {'value': 45, 'val_type': PMIX_PROC_STATE},
           {'value': {'proc': {'nspace': 'fakenspace', 'rank': 0}, 'hostname': 'myhostname', 'executable': 'testexec', 'pid': 2, 'exitcode': 0, 'state': 0}, 'val_type': PMIX_PROC_INFO},
-          {'value': darray, 'val_type': PMIX_DATA_ARRAY},
+          # TODO: need to write pmix_unload_darray for this to work now
+          #{'value': darray, 'val_type': PMIX_DATA_ARRAY},
           {'value': 19, 'val_type': PMIX_ALLOC_DIRECTIVE},
-          {'value': {'envar': 'TEST_ENVAR', 'value': 'TEST_VAL', 'separator': ':'},
-           'val_type': PMIX_ENVAR}
-          # TODO: is regex type a string? It is not in the type conversion 
-          # table of pg 357 of the v4 API documentationi for python
+          {'value': {'envar': 'TEST_ENVAR', 'value': 'TEST_VAL', 'separator': 
+                     ':'}, 'val_type': PMIX_ENVAR},
+          {'value': pyregex, 'val_type': PMIX_REGEX}
         ]
 
 def error_string(pystat:int):
@@ -53,15 +53,17 @@ def error_string(pystat:int):
     val = pystr.decode('ascii')
     return val
 
-def test_load_value():
+def test_load_value(unload:bool):
     global values
     cdef pmix_value_t value
     for val in values:
         rc = pmix_load_value(&value, val)
         if rc == PMIX_SUCCESS:
-            print("SUCCESSFULLY LOADED VALUE:\n")
-            print("\t" + str(val['value']) + ", "
-                  + str(PMIx_Data_type_string(val['val_type'])) + "\n") 
+            print("LOAD SUCCESS -- VALUE AND VALUE TYPE: \t" + str(val['value'])
+                  + ", " + str(PMIx_Data_type_string(val['val_type'])) + "\n")
+        if unload and rc == PMIX_SUCCESS:
+            pydict = pmix_unload_value(&value)
+            print("UNLOAD SUCCESS -- VALUE CONVERTED: \t" + str(pydict) + "\n")
 
 def test_alloc_info():
     global pyinfo, values
