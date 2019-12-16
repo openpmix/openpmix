@@ -285,7 +285,8 @@ typedef struct {
                 nanosleep(&ts,NULL);                                                                                \
                 count++;                                                                                            \
             }                                                                                                       \
-            PMIX_ACQUIRE_OBJECT(&cbdata);                                                                            \
+            rc = cbdata.status;                                                                                     \
+            PMIX_ACQUIRE_OBJECT(&cbdata);                                                                           \
         }                                                                                                           \
     }                                                                                                               \
     if (PMIX_SUCCESS == rc) {                                                                                       \

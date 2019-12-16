@@ -3534,6 +3534,8 @@ static void cdcon(pmix_server_caddy_t *cd)
     cd->event_active = false;
     cd->trk = NULL;
     cd->peer = NULL;
+    cd->info = NULL;
+    cd->ninfo = 0;
 }
 static void cddes(pmix_server_caddy_t *cd)
 {
