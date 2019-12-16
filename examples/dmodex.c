@@ -15,6 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
+ * Copyright (c) 2019      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -38,7 +39,7 @@ int main(int argc, char **argv)
 {
     int rc;
     pmix_value_t value;
-    pmix_value_t *val = &value;
+    pmix_value_t *val = NULL;
     char *tmp;
     pmix_proc_t proc;
     uint32_t n, k, nlocal;
@@ -146,36 +147,54 @@ int main(int argc, char **argv)
             }
         }
         if (local) {
-            (void)asprintf(&tmp, "%s-%d-local", myproc.nspace, n);
+            if( 0 > asprintf(&tmp, "%s-%d-local", myproc.nspace, n)) {
+                exit(1);
+            }
             proc.rank = n;
             if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, tmp, NULL, 0, &val))) {
                 fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s failed: %d\n", myproc.nspace, n, tmp, rc);
+                free(tmp);
                 goto done;
             }
             if (PMIX_UINT64 != val->type) {
                 fprintf(stderr, "%s:%d: PMIx_Get Key %s returned wrong type: %d\n", myproc.nspace, myproc.rank, tmp, val->type);
+                PMIX_VALUE_RELEASE(val);
+                free(tmp);
                 goto done;
             }
             if (1234 != val->data.uint64) {
                 fprintf(stderr, "%s:%d: PMIx_Get Key %s returned wrong value: %d\n", myproc.nspace, myproc.rank, tmp, (int)val->data.uint64);
+                PMIX_VALUE_RELEASE(val);
+                free(tmp);
                 goto done;
             }
             fprintf(stderr, "%s:%d Local value for %s:%d successfully retrieved\n", myproc.nspace, myproc.rank, proc.nspace, proc.rank);
+            PMIX_VALUE_RELEASE(val);
+                free(tmp);
         } else {
-            (void)asprintf(&tmp, "%s-%d-remote", myproc.nspace, n);
+            if( 0 > asprintf(&tmp, "%s-%d-remote", myproc.nspace, n)) {
+                exit(1);
+            }
             if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, tmp, NULL, 0, &val))) {
                 fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s failed: %d\n", myproc.nspace, n, tmp, rc);
+                free(tmp);
                 goto done;
             }
             if (PMIX_STRING != val->type) {
                 fprintf(stderr, "%s:%d: PMIx_Get Key %s returned wrong type: %d\n", myproc.nspace, myproc.rank, tmp, val->type);
+                PMIX_VALUE_RELEASE(val);
+                free(tmp);
                 goto done;
             }
             if (0 != strcmp(val->data.string, "1234")) {
                 fprintf(stderr, "%s:%d: PMIx_Get Key %s returned wrong value: %s\n", myproc.nspace, myproc.rank, tmp, val->data.string);
+                PMIX_VALUE_RELEASE(val);
+                free(tmp);
                 goto done;
             }
             fprintf(stderr, "%s:%d Remote value for %s:%d successfully retrieved\n", myproc.nspace, myproc.rank, proc.nspace, proc.rank);
+            PMIX_VALUE_RELEASE(val);
+            free(tmp);
         }
         /* if this isn't us, then get the ghex key */
         if (n != myproc.rank) {
@@ -185,13 +204,16 @@ int main(int argc, char **argv)
             }
             if (PMIX_BYTE_OBJECT != val->type) {
                 fprintf(stderr, "%s:%d: PMIx_Get ghex returned wrong type: %d\n", myproc.nspace, myproc.rank, val->type);
+                PMIX_VALUE_RELEASE(val);
                 goto done;
             }
             if (128 != val->data.bo.size) {
                 fprintf(stderr, "%s:%d: PMIx_Get ghex returned wrong size: %d\n", myproc.nspace, myproc.rank, (int)val->data.bo.size);
+                PMIX_VALUE_RELEASE(val);
                 goto done;
             }
             fprintf(stderr, "%s:%d Ghex for %s:%d successfully retrieved\n", myproc.nspace, myproc.rank, proc.nspace, proc.rank);
+            PMIX_VALUE_RELEASE(val);
         }
     }
 
