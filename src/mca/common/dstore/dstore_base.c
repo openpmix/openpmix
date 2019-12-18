@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
- * Copyright (c) 2016-2019 IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2018-2019 Research Organization for Information Science
@@ -2444,6 +2444,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_del_nspace(pmix_common_dstore_ctx_t 
 {
     pmix_status_t rc = PMIX_SUCCESS;
     size_t map_idx, size;
+    int in_use = 0;
     ns_map_data_t *ns_map_data = NULL;
     ns_map_t *ns_map;
     session_t *session_tbl = NULL;
@@ -2470,28 +2471,32 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_del_nspace(pmix_common_dstore_ctx_t 
                 _esh_session_map_clean(ds_ctx, &ns_map[map_idx]);
                 continue;
             }
+            in_use++;
         }
     }
 
-    session_tbl = PMIX_VALUE_ARRAY_GET_BASE(ds_ctx->session_array, session_t);
-    PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
-                         "%s:%d:%s delete session for jobuid: %d",
-                         __FILE__, __LINE__, __func__, session_tbl[session_tbl_idx].jobuid));
-    size = pmix_value_array_get_size(ds_ctx->ns_track_array);
-    if (size && (dstor_track_idx >= 0)) {
-        if((dstor_track_idx + 1) > (int)size) {
-            rc = PMIX_ERR_VALUE_OUT_OF_BOUNDS;
-            PMIX_ERROR_LOG(rc);
-            goto exit;
+    /* A lot of nspaces may be using same session info
+     * session record can only be deleted once all references are gone */
+    if (!in_use) {
+        session_tbl = PMIX_VALUE_ARRAY_GET_BASE(ds_ctx->session_array, session_t);
+        PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
+                             "%s:%d:%s delete session for jobuid: %d",
+                             __FILE__, __LINE__, __func__, session_tbl[session_tbl_idx].jobuid));
+        size = pmix_value_array_get_size(ds_ctx->ns_track_array);
+        if (size && (dstor_track_idx >= 0)) {
+            if((dstor_track_idx + 1) > (int)size) {
+                rc = PMIX_ERR_VALUE_OUT_OF_BOUNDS;
+                PMIX_ERROR_LOG(rc);
+                goto exit;
+            }
+            trk = pmix_value_array_get_item(ds_ctx->ns_track_array, dstor_track_idx);
+            if (true == trk->in_use) {
+                PMIX_DESTRUCT(trk);
+                pmix_value_array_remove_item(ds_ctx->ns_track_array, dstor_track_idx);
+            }
         }
-        trk = pmix_value_array_get_item(ds_ctx->ns_track_array, dstor_track_idx);
-        if (true == trk->in_use) {
-            PMIX_DESTRUCT(trk);
-            pmix_value_array_remove_item(ds_ctx->ns_track_array, dstor_track_idx);
-        }
-    }
-    _esh_session_release(ds_ctx, session_tbl_idx);
-
+        _esh_session_release(ds_ctx, session_tbl_idx);
+     }
 exit:
     return rc;
 }
