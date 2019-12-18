@@ -2468,8 +2468,13 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_del_nspace(pmix_common_dstore_ctx_t 
             if (0 == strcmp(ns_map[map_idx].data.name, nspace)) {
                 _esh_session_map_clean(ds_ctx, &ns_map[map_idx]);
                 continue;
+            } else {
+                /* Count other namespaces belonging to this session.
+                 * This is required to identify the moment where all
+                 * namespaces are deleted and session can be removed as well
+                 */
+                in_use++;
             }
-            in_use++;
         }
     }
 
