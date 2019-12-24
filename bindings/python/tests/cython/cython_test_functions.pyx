@@ -9,6 +9,21 @@ darray = {'type':PMIX_INFO, 'array':[{'key':PMIX_ALLOC_NETWORK_ID, 'value':'SIMP
                                      {'key':PMIX_ALLOC_NETWORK_SEC_KEY, 'value':'T', 'val_type':PMIX_BOOL},
                                      {'key':PMIX_SETUP_APP_ENVARS, 'value':'T', 'val_type':PMIX_BOOL}]
          }
+# test putting PMIX_DATA_ARRAY into a pmix info data array
+darray2 = {'type':PMIX_INFO, 'array':[{'key':PMIX_ALLOC_NETWORK_ID, 'value':'SIMPSCHED.net', 'val_type':PMIX_STRING},
+                                     {'key':PMIX_ALLOC_NETWORK_SEC_KEY, 'value':'T', 'val_type':PMIX_BOOL},
+                                     {'key':'foo', 'value':darray, 'val_type':PMIX_DATA_ARRAY}]
+         }
+str_darray = {'type': PMIX_STRING, 'array':['abc', 'def', 'efg']}
+size_darray = {'type': PMIX_SIZE, 'array':[45, 46, 47]}
+pid_darray = {'type': PMIX_SIZE, 'array':[3, 4, 5]}
+timeval_darray = {'type': PMIX_TIMEVAL, 'array':[{'sec':2, 'usec':3}, {'sec':1, 'usec':2}]}
+bool_darray = {'type': PMIX_BOOL, 'array':['False', 'True']}
+byte_darray = {'type': PMIX_BYTE, 'array':[1, 1]}
+proc_darray = {'type': PMIX_PROC, 'array':[{'nspace':'testnspace', 'rank':0}, {'nspace':'newnspace', 'rank':1}]}
+bo_darray = {'type': PMIX_BYTE_OBJECT, 'array':[{'bytes':bytearray(1), 'size':1}, {'bytes':bytearray(1), 'size':1}]}
+proc_info_darray = {'type': PMIX_PROC_INFO, 'array':[{'proc': {'nspace': 'fakenspace', 'rank': 0}, 'hostname': 'myhostname', 'executable': 'testexec', 'pid': 2, 'exitcode': 0, 'state': 0}]}
+env_darray = {'type': PMIX_ENVAR, 'array': [{'envar': 'TEST_ENVAR', 'value': 'TEST_VAL', 'separator': ':'}]}
 pyregex = 'pmix[test[3:0-2]]'.encode('ascii')
 values = [{'value': 'True', 'val_type': PMIX_BOOL},
           {'value': 1, 'val_type': PMIX_BYTE},
@@ -38,12 +53,22 @@ values = [{'value': 'True', 'val_type': PMIX_BOOL},
           {'value': 5, 'val_type': PMIX_RANGE},
           {'value': 45, 'val_type': PMIX_PROC_STATE},
           {'value': {'proc': {'nspace': 'fakenspace', 'rank': 0}, 'hostname': 'myhostname', 'executable': 'testexec', 'pid': 2, 'exitcode': 0, 'state': 0}, 'val_type': PMIX_PROC_INFO},
-          # TODO: need to write pmix_unload_darray for this to work now
-          #{'value': darray, 'val_type': PMIX_DATA_ARRAY},
+          {'value': darray, 'val_type': PMIX_DATA_ARRAY},
+          {'value': darray2, 'val_type': PMIX_DATA_ARRAY},
+          {'value': str_darray, 'val_type': PMIX_DATA_ARRAY},
+          {'value': size_darray, 'val_type': PMIX_DATA_ARRAY},
+          {'value': pid_darray, 'val_type': PMIX_DATA_ARRAY},
           {'value': 19, 'val_type': PMIX_ALLOC_DIRECTIVE},
           {'value': {'envar': 'TEST_ENVAR', 'value': 'TEST_VAL', 'separator': 
                      ':'}, 'val_type': PMIX_ENVAR},
-          {'value': pyregex, 'val_type': PMIX_REGEX}
+          {'value': pyregex, 'val_type': PMIX_REGEX},
+          {'value': timeval_darray, 'val_type': PMIX_DATA_ARRAY},
+          {'value': bool_darray, 'val_type': PMIX_DATA_ARRAY},
+          {'value': byte_darray, 'val_type': PMIX_DATA_ARRAY},
+          {'value': proc_darray, 'val_type': PMIX_DATA_ARRAY},
+          {'value': bo_darray, 'val_type': PMIX_DATA_ARRAY},
+          {'value': proc_info_darray, 'val_type': PMIX_DATA_ARRAY},
+          {'value': env_darray, 'val_type': PMIX_DATA_ARRAY}
         ]
 
 def error_string(pystat:int):
@@ -59,8 +84,7 @@ def test_load_value(unload:bool):
     for val in values:
         rc = pmix_load_value(&value, val)
         if rc == PMIX_SUCCESS:
-            print("LOAD SUCCESS -- VALUE AND VALUE TYPE: \t" + str(val['value'])
-                  + ", " + str(PMIx_Data_type_string(val['val_type'])) + "\n")
+            print("LOAD SUCCESS -- VALUE DICT: \t" + str(val) + "\n")
         if unload and rc == PMIX_SUCCESS:
             pydict = pmix_unload_value(&value)
             print("UNLOAD SUCCESS -- VALUE CONVERTED: \t" + str(pydict) + "\n")
