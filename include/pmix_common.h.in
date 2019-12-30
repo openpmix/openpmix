@@ -423,7 +423,10 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_TAG_OUTPUT                     "pmix.tagout"           // (bool) tag application output with the ID of the source
 #define PMIX_TIMESTAMP_OUTPUT               "pmix.tsout"            // (bool) timestamp output from applications
 #define PMIX_MERGE_STDERR_STDOUT            "pmix.mergeerrout"      // (bool) merge stdout and stderr streams from application procs
-#define PMIX_OUTPUT_TO_FILE                 "pmix.outfile"          // (char*) output application output to given file
+#define PMIX_OUTPUT_TO_FILE                 "pmix.outfile"          // (char*) direct application output into files of form
+                                                                    //         "<filename>.rank" with both stdout and stderr redirected into it
+#define PMIX_OUTPUT_TO_DIRECTORY            "pmix.outdir"           // (char*) direct application output into files of form
+                                                                    //         "<directory>/<jobid>/rank.<rank>/stdout[err]"
 #define PMIX_INDEX_ARGV                     "pmix.indxargv"         // (bool) mark the argv with the rank of the proc
 #define PMIX_CPUS_PER_PROC                  "pmix.cpuperproc"       // (uint32_t) #cpus to assign to each rank
 #define PMIX_NO_PROCS_ON_HEAD               "pmix.nolocal"          // (bool) do not place procs on the head node
