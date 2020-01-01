@@ -15,7 +15,7 @@
  *                         All rights reserved.
  * Copyright (c) 2014-2018 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2017-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -67,8 +67,9 @@ static int pmix_pfexec_base_close(void)
 {
     PMIX_LIST_DESTRUCT(&pmix_pfexec_globals.children);
     if (pmix_pfexec_globals.active) {
-        pmix_event_del(&pmix_pfexec_globals.handler);
+        pmix_event_del(pmix_pfexec_globals.handler);
     }
+    free(pmix_pfexec_globals.handler);
     pmix_pfexec_globals.active = false;
 
     return pmix_mca_base_framework_components_close(&pmix_pfexec_base_framework, NULL);
@@ -198,13 +199,14 @@ static int pmix_pfexec_base_open(pmix_mca_base_open_flag_t flags)
     }
 
     /* set to catch SIGCHLD events */
+    pmix_pfexec_globals.handler = (pmix_event_t*)malloc(sizeof(pmix_event_t));
     pmix_event_set(pmix_globals.evbase,
-                   &pmix_pfexec_globals.handler,
+                   pmix_pfexec_globals.handler,
                    SIGCHLD, PMIX_EV_SIGNAL|PMIX_EV_PERSIST,
                    wait_signal_callback,
-                   &pmix_pfexec_globals.handler);
+                   pmix_pfexec_globals.handler);
     pmix_pfexec_globals.active = true;
-    pmix_event_add(&pmix_pfexec_globals.handler, NULL);
+    pmix_event_add(pmix_pfexec_globals.handler, NULL);
 
      /* Open up all available components */
     return pmix_mca_base_framework_components_open(&pmix_pfexec_base_framework, flags);

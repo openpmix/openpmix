@@ -11,7 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2011 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2013      Los Alamos National Security, LLC.  All rights reserved.
- * Copyright (c) 2017-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -70,7 +70,7 @@ typedef struct {
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pfexec_child_t);
 
 typedef struct {
-    pmix_event_t handler;
+    pmix_event_t *handler;
     bool active;
     pmix_list_t children;
     int timeout_before_sigkill;
