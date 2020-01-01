@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2016-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
@@ -132,12 +132,14 @@ pmix_status_t pmix_gds_ds12_lock_init(pmix_common_dstor_lock_ctx_t *ctx, const c
             PMIX_ERROR_LOG(rc);
             goto error;
         }
+#ifdef HAVE_PTHREAD_SHARED
         if (0 != pthread_rwlockattr_setpshared(&attr, PTHREAD_PROCESS_SHARED)) {
             pthread_rwlockattr_destroy(&attr);
             rc = PMIX_ERR_INIT;
             PMIX_ERROR_LOG(rc);
             goto error;
         }
+#endif
 #ifdef HAVE_PTHREAD_SETKIND
         if (0 != pthread_rwlockattr_setkind_np(&attr,
                                 PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP)) {
