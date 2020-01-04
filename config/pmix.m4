@@ -17,7 +17,7 @@ dnl Copyright (c) 2009      Los Alamos National Security, LLC.  All rights
 dnl                         reserved.
 dnl Copyright (c) 2009-2011 Oak Ridge National Labs.  All rights reserved.
 dnl Copyright (c) 2011-2013 NVIDIA Corporation.  All rights reserved.
-dnl Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+dnl Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 dnl Copyright (c) 2015-2019 Research Organization for Information Science
 dnl                         and Technology (RIST).  All rights reserved.
 dnl Copyright (c) 2016      Mellanox Technologies, Inc.
@@ -783,6 +783,15 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
 
     ##################################
+    # Dstore Locking
+    ##################################
+
+    pmix_show_title "Dstore Locking"
+
+    PMIX_CHECK_DSTOR_LOCK
+
+
+    ##################################
     # MCA
     ##################################
 
@@ -820,13 +829,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     PMIX_MCA
 
-    ##################################
-    # Dstore Locking
-    ##################################
-
-    pmix_show_title "Dstore Locking"
-
-    PMIX_CHECK_DSTOR_LOCK
 
     ############################################################################
     # final compiler config
