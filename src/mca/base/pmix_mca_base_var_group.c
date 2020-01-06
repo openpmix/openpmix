@@ -13,7 +13,7 @@
  * Copyright (c) 2008-2013 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2012-2015 Los Alamos National Security, LLC. All rights
  *                         reserved.
- * Copyright (c) 2016-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -59,6 +59,7 @@ int pmix_mca_base_var_group_init (void)
     int ret;
 
     if (!pmix_mca_base_var_group_initialized) {
+        pmix_output(0, "INIT GROUPS");
         PMIX_CONSTRUCT(&pmix_mca_base_var_groups, pmix_pointer_array_t);
 
         /* These values are arbitrary */

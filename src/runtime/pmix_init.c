@@ -15,7 +15,7 @@
  * Copyright (c) 2009      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2010-2015 Los Alamos National Security, LLC.
  *                         All rights reserved.
- * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
@@ -47,8 +47,9 @@
 #include "src/mca/pinstalldirs/base/base.h"
 #include "src/mca/plog/base/base.h"
 #include "src/mca/pnet/base/base.h"
-#include "src/mca/psec/base/base.h"
 #include "src/mca/preg/base/base.h"
+#include "src/mca/psec/base/base.h"
+#include "src/mca/psquash/base/base.h"
 #include "src/mca/ptl/base/base.h"
 
 #include "src/client/pmix_client_ops.h"
@@ -161,6 +162,19 @@ int pmix_rte_init(uint32_t type,
     if (PMIX_SUCCESS != (ret = pmix_mca_base_open())) {
         error = "mca_base_open";
         goto return_error;
+    }
+
+    /* if an external event base wasn't provide, create one */
+    if (!pmix_globals.external_evbase) {
+        /* tell libevent that we need thread support */
+        pmix_event_use_threads();
+
+        /* create an event base and progress thread for us */
+        if (NULL == (pmix_globals.evbase = pmix_progress_thread_init(NULL))) {
+            error = "progress thread";
+            ret = PMIX_ERROR;
+            goto return_error;
+        }
     }
 
     /* setup the globals structure */
@@ -293,6 +307,22 @@ int pmix_rte_init(uint32_t type,
      * will be done by the individual init functions and at the
      * time of connection to that peer */
 
+    if( PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_psquash_base_framework, 0)) ) {
+        error = "pmix_psquash_base_open";
+        goto return_error;
+    }
+
+    if( PMIX_SUCCESS != (ret = pmix_psquash_base_select()) ) {
+        error = "pmix_psquash_base_select";
+        goto return_error;
+    }
+
+    ret = pmix_psquash.init();
+    if (PMIX_SUCCESS != ret) {
+        error = "psquash_init";
+        goto return_error;
+    }
+
     /* open the bfrops and select the active plugins */
     if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_bfrops_base_framework, 0)) ) {
         error = "pmix_bfrops_base_open";
@@ -389,15 +419,10 @@ int pmix_rte_init(uint32_t type,
     /* initialize the attribute support system */
     pmix_init_registered_attrs();
 
-    /* if an external event base wasn't provide, create one */
     if (!pmix_globals.external_evbase) {
-        /* tell libevent that we need thread support */
-        pmix_event_use_threads();
-
-        /* create an event base and progress thread for us */
-        if (NULL == (pmix_globals.evbase = pmix_progress_thread_init(NULL))) {
-            error = "progress thread";
-            ret = PMIX_ERROR;
+        /* start progressing the event library */
+        if (PMIX_SUCCESS != (ret = pmix_progress_thread_start(NULL))) {
+            error = "pmix_progress_thread_start";
             goto return_error;
         }
     }
