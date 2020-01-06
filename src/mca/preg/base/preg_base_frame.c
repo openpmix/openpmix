@@ -12,8 +12,8 @@
  *                         All rights reserved.
  * Copyright (c) 2012-2013 Los Alamos National Security, Inc.  All rights reserved.
  * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
- * Copyright (c) 2015-2016 Research Organization for Information Science
- *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2015-2020 Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -62,6 +62,7 @@ static pmix_status_t pmix_preg_close(void)
         return PMIX_SUCCESS;
     }
     pmix_preg_globals.initialized = false;
+    pmix_preg_globals.selected = false;
 
     PMIX_LIST_DESTRUCT(&pmix_preg_globals.actives);
 

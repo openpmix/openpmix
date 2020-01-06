@@ -12,8 +12,8 @@
  *                         All rights reserved.
  * Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
  * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
- * Copyright (c) 2015      Research Organization for Information Science
- *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2015-2020 Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -72,6 +72,7 @@ PMIX_CLASS_DECLARATION(pmix_preg_base_active_module_t);
 struct pmix_preg_globals_t {
   pmix_list_t actives;
   bool initialized;
+  bool selected;
 };
 typedef struct pmix_preg_globals_t pmix_preg_globals_t;
 
