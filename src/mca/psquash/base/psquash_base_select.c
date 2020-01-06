@@ -11,6 +11,8 @@
  *                         All rights reserved.
  * Copyright (c) 2016-2017 Intel, Inc. All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2020      Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,8 +32,6 @@
 
 #include "src/mca/psquash/base/base.h"
 
-static bool selected = false;
-
 /* Function for selecting a prioritized list of components
  * from all those that are available. */
 int pmix_psquash_base_select(void)
@@ -43,11 +43,11 @@ int pmix_psquash_base_select(void)
     int rc, priority, best_pri = -1;
     bool inserted = false;
 
-    if (selected) {
+    if (pmix_psquash_globals.selected) {
         /* ensure we don't do this twice */
         return PMIX_SUCCESS;
     }
-    selected = true;
+    pmix_psquash_globals.selected = true;
 
     /* Query all available components and ask if they have a module */
     PMIX_LIST_FOREACH(cli, &pmix_psquash_base_framework.framework_components, pmix_mca_base_component_list_item_t) {

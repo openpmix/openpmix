@@ -54,6 +54,7 @@ extern "C" {
 
 typedef struct {
     size_t compress_limit;
+    bool selected;
 } pmix_compress_base_t;
 
 PMIX_EXPORT extern pmix_compress_base_t pmix_compress_base;

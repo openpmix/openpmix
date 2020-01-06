@@ -12,7 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
  * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
- * Copyright (c) 2015-2019 Research Organization for Information Science
+ * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
@@ -74,6 +74,7 @@ PMIX_CLASS_DECLARATION(pmix_bfrops_base_active_module_t);
 struct pmix_bfrops_globals_t {
   pmix_list_t actives;
   bool initialized;
+  bool selected;
   size_t initial_size;
   size_t threshold_size;
   pmix_bfrop_buffer_type_t default_type;

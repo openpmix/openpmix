@@ -3,7 +3,8 @@
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- *
+ * Copyright (c) 2020      Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -63,10 +64,18 @@ do {                                                        \
     }                                                       \
 } while (0)
 
+struct pmix_psquash_globals_t {
+  bool initialized;
+  bool selected;
+};
+
+typedef struct pmix_psquash_globals_t pmix_psquash_globals_t;
 
 PMIX_EXPORT extern pmix_mca_base_framework_t pmix_psquash_base_framework;
 
 PMIX_EXPORT pmix_status_t pmix_psquash_base_select(void);
+
+PMIX_EXPORT extern pmix_psquash_globals_t pmix_psquash_globals;
 
 END_C_DECLS
 

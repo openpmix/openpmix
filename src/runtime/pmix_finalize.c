@@ -12,7 +12,7 @@
  * Copyright (c) 2008-2015 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2010-2015 Los Alamos National Security, LLC.
  *                         All rights reserved.
- * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * $COPYRIGHT$
@@ -43,6 +43,7 @@
 #include "src/mca/pnet/base/base.h"
 #include "src/mca/preg/base/base.h"
 #include "src/mca/psec/base/base.h"
+#include "src/mca/psquash/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include PMIX_EVENT_HEADER
 
@@ -83,6 +84,10 @@ void pmix_rte_finalize(void)
 
     /* close bfrops */
     (void)pmix_mca_base_framework_close(&pmix_bfrops_base_framework);
+
+    /* close the psquash framework */
+    pmix_psquash.finalize();
+    pmix_mca_base_framework_close(&pmix_psquash_base_framework);
 
     /* close compress */
     (void)pmix_mca_base_framework_close(&pmix_pcompress_base_framework);

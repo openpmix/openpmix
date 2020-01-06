@@ -44,27 +44,27 @@
 
 #include "src/mca/psquash/base/static-components.h"
 
-static bool initialized = false;
-
 pmix_psquash_base_module_t pmix_psquash = {0};
+pmix_psquash_globals_t pmix_psquash_globals = {0};
 
 static pmix_status_t pmix_psquash_close(void)
 {
-    if (!initialized) {
+    if (!pmix_psquash_globals.initialized) {
         return PMIX_SUCCESS;
     }
-    initialized = false;
+    pmix_psquash_globals.initialized = false;
+    pmix_psquash_globals.selected = false;
 
     return pmix_mca_base_framework_components_close(&pmix_psquash_base_framework, NULL);
 }
 
 static pmix_status_t pmix_psquash_open(pmix_mca_base_open_flag_t flags)
 {
-    if (initialized) {
+    if (pmix_psquash_globals.initialized) {
         return PMIX_SUCCESS;
     }
     /* initialize globals */
-    initialized = true;
+    pmix_psquash_globals.initialized = true;
 
     /* Open up all available components */
     return pmix_mca_base_framework_components_open(&pmix_psquash_base_framework, flags);

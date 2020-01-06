@@ -71,6 +71,7 @@ static int pmix_pfexec_base_close(void)
     }
     free(pmix_pfexec_globals.handler);
     pmix_pfexec_globals.active = false;
+    pmix_pfexec_globals.selected = false;
 
     return pmix_mca_base_framework_components_close(&pmix_pfexec_base_framework, NULL);
 }

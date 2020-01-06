@@ -81,6 +81,7 @@ static int pmix_compress_base_open(pmix_mca_base_open_flag_t flags)
 
 static int pmix_compress_base_close(void)
 {
+    pmix_compress_base.selected = false;
     /* Call the component's finalize routine */
     if( NULL != pmix_compress.finalize ) {
         pmix_compress.finalize();

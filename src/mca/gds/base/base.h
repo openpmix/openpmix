@@ -12,8 +12,8 @@
  *                         All rights reserved.
  * Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
  * Copyright (c) 2014-2017 Intel, Inc. All rights reserved.
- * Copyright (c) 2015      Research Organization for Information Science
- *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2015-2020 Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
@@ -75,6 +75,7 @@ PMIX_CLASS_DECLARATION(pmix_gds_base_active_module_t);
 struct pmix_gds_globals_t {
   pmix_list_t actives;
   bool initialized;
+  bool selected;
   char *all_mods;
 };
 
