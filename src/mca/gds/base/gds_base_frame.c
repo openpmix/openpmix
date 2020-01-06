@@ -12,8 +12,8 @@
  *                         All rights reserved.
  * Copyright (c) 2012-2013 Los Alamos National Security, Inc.  All rights reserved.
  * Copyright (c) 2014-2017 Intel, Inc. All rights reserved.
- * Copyright (c) 2015-2016 Research Organization for Information Science
- *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2015-2020 Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -57,6 +57,7 @@ static pmix_status_t pmix_gds_close(void)
         return PMIX_SUCCESS;
     }
     pmix_gds_globals.initialized = false;
+    pmix_gds_globals.selected = false;
 
     PMIX_LIST_FOREACH_SAFE(active, prev, &pmix_gds_globals.actives, pmix_gds_base_active_module_t) {
       pmix_list_remove_item(&pmix_gds_globals.actives, &active->super);
