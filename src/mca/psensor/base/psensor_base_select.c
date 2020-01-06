@@ -10,6 +10,8 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2016-2017 Intel, Inc. All rights reserved.
+ * Copyright (c) 2020      Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -27,8 +29,6 @@
 
 #include "src/mca/psensor/base/base.h"
 
-static bool selected = false;
-
 /* Function for selecting a prioritized list of components
  * from all those that are available. */
 int pmix_psensor_base_select(void)
@@ -40,11 +40,11 @@ int pmix_psensor_base_select(void)
     int pri;
     bool inserted;
 
-    if (selected) {
+    if (pmix_psensor_base.selected) {
         /* ensure we don't do this twice */
         return PMIX_SUCCESS;
     }
-    selected = true;
+    pmix_psensor_base.selected = true;
 
     /* Query all available components and ask if they have a module */
     PMIX_LIST_FOREACH(cli, &pmix_psensor_base_framework.framework_components, pmix_mca_base_component_list_item_t) {
