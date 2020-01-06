@@ -10,6 +10,8 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2016-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2020      Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -28,8 +30,6 @@
 
 #include "src/mca/plog/base/base.h"
 
-static bool selected = false;
-
 /* Function for selecting a prioritized array of components
  * from all those that are available. */
 int pmix_plog_base_select(void)
@@ -45,11 +45,11 @@ int pmix_plog_base_select(void)
     char *ptr;
     size_t len;
 
-    if (selected) {
+    if (pmix_plog_globals.selected) {
         /* ensure we don't do this twice */
         return PMIX_SUCCESS;
     }
-    selected = true;
+    pmix_plog_globals.selected = true;
 
     PMIX_CONSTRUCT(&actives, pmix_list_t);
 

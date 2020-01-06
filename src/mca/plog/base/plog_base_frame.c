@@ -1,6 +1,8 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
 /*
  * Copyright (c) 2018      Intel, Inc. All rights reserved.
+ * Copyright (c) 2020      Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -60,6 +62,7 @@ static pmix_status_t pmix_plog_close(void)
         return PMIX_SUCCESS;
     }
     pmix_plog_globals.initialized = false;
+    pmix_plog_globals.selected = false;
 
     for (n=0; n < pmix_plog_globals.actives.size; n++) {
         if (NULL == (active = (pmix_plog_base_active_module_t*)pmix_pointer_array_get_item(&pmix_plog_globals.actives, n))) {
