@@ -2,8 +2,9 @@
 /*
  * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2012-2013 Los Alamos National Security, Inc. All rights reserved.
- *
  * Copyright (c) 2017      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2020      Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -61,6 +62,7 @@ static int pmix_psensor_register(pmix_mca_base_register_flag_t flags)
 
 static int pmix_psensor_base_close(void)
 {
+    pmix_psensor_base.selected = false;
     PMIX_LIST_DESTRUCT(&pmix_psensor_base.actives);
 
     if (use_separate_thread && NULL != pmix_psensor_base.evbase) {

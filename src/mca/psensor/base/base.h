@@ -1,8 +1,9 @@
 /*
  * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2013      Los Alamos National Security, LLC.  All rights reserved.
- *
  * Copyright (c) 2017      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2020      Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -36,6 +37,7 @@ PMIX_EXPORT int pmix_psensor_base_select(void);
 typedef struct {
     pmix_list_t actives;
     pmix_event_base_t *evbase;
+    bool selected;
 } pmix_psensor_base_t;
 
 typedef struct {
