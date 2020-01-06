@@ -399,9 +399,9 @@ if [ "$jenkins_test_check" = "yes" ]; then
 
         gds_list="hash ds12,hash"
         # check the existence of ds21 component
-        if [ "$has_gds_ds21" -gt 0 ]; then
-            gds_list="$gds_list ds21,hash"
-        fi
+        # if [ "$has_gds_ds21" -gt 0 ]; then
+        #     gds_list="$gds_list ds21,hash"
+        # fi
 
         for gds in $gds_list; do
             echo "Checking with $gds:" >> $run_tap
