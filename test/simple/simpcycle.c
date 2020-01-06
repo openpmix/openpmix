@@ -116,7 +116,6 @@ int main(int argc, char **argv)
     }
     PMIX_INFO_FREE(iptr, 2);
     pmix_output(0, "Client ns %s rank %d: Running on node %s", myproc.nspace, myproc.rank, pmix_globals.hostname);
-    goto testpoint;
 
     /* test something */
     (void)strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
@@ -161,7 +160,6 @@ int main(int argc, char **argv)
     }
     PMIX_VALUE_RELEASE(val);
 
-  testpoint:
     /* finalize us */
     pmix_output(0, "Client ns %s rank %d: Finalizing(1)", myproc.nspace, myproc.rank);
     if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {

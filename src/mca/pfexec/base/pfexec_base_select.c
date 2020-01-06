@@ -39,6 +39,12 @@ int pmix_pfexec_base_select(void)
     pmix_pfexec_base_component_t *best_component = NULL;
     pmix_pfexec_base_module_t *best_module = NULL;
 
+    if (pmix_pfexec_globals.selected) {
+        /* ensure we don't do this twice */
+        return PMIX_SUCCESS;
+    }
+    pmix_pfexec_globals.selected = true;
+
     /*
      * Select the best component
      */

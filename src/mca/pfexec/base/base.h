@@ -75,6 +75,7 @@ typedef struct {
     pmix_list_t children;
     int timeout_before_sigkill;
     size_t next;
+    bool selected;
 } pmix_pfexec_globals_t;
 
 PMIX_EXPORT extern pmix_pfexec_globals_t pmix_pfexec_globals;

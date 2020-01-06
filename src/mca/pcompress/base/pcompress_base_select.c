@@ -33,6 +33,11 @@ int pmix_compress_base_select(void)
     pmix_compress_base_component_t *best_component = NULL;
     pmix_compress_base_module_t *best_module = NULL;
 
+    if (pmix_compress_base.selected) {
+        /* ensure we don't do this twice */
+        return PMIX_SUCCESS;
+    }
+    pmix_compress_base.selected = true;
     /*
      * Select the best component
      */
