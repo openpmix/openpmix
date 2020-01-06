@@ -59,7 +59,6 @@ int pmix_mca_base_var_group_init (void)
     int ret;
 
     if (!pmix_mca_base_var_group_initialized) {
-        pmix_output(0, "INIT GROUPS");
         PMIX_CONSTRUCT(&pmix_mca_base_var_groups, pmix_pointer_array_t);
 
         /* These values are arbitrary */

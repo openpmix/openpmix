@@ -106,13 +106,17 @@ int main(int argc, char **argv)
     pmix_status_t code;
 
     /* init us and declare we are a test programming model */
-    pmix_output(0, "Client Init(1)");
-    if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
+    PMIX_INFO_CREATE(iptr, 2);
+    PMIX_INFO_LOAD(&iptr[0], PMIX_PROGRAMMING_MODEL, "TEST", PMIX_STRING);
+    PMIX_INFO_LOAD(&iptr[1], PMIX_MODEL_LIBRARY_NAME, "PMIX", PMIX_STRING);
+    if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, iptr, 2))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Init failed: %s",
                     myproc.nspace, myproc.rank, PMIx_Error_string(rc));
         exit(rc);
     }
+    PMIX_INFO_FREE(iptr, 2);
     pmix_output(0, "Client ns %s rank %d: Running on node %s", myproc.nspace, myproc.rank, pmix_globals.hostname);
+    goto testpoint;
 
     /* test something */
     (void)strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
@@ -157,6 +161,7 @@ int main(int argc, char **argv)
     }
     PMIX_VALUE_RELEASE(val);
 
+  testpoint:
     /* finalize us */
     pmix_output(0, "Client ns %s rank %d: Finalizing(1)", myproc.nspace, myproc.rank);
     if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {
@@ -168,7 +173,7 @@ int main(int argc, char **argv)
     }
 
     /* initialize us again */
-    pmix_output(0, "Client Init(2)");
+    fprintf(stderr, "Client Init(2)\n");
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Init failed: %s",
                     myproc.nspace, myproc.rank, PMIx_Error_string(rc));
