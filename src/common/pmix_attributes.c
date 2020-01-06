@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
@@ -137,6 +137,7 @@ PMIX_EXPORT void pmix_release_registered_attrs(void)
         PMIX_LIST_DESTRUCT(&host_attrs);
         PMIX_LIST_DESTRUCT(&tool_attrs);
     }
+    initialized = false;
 }
 
 /* sadly, we cannot dynamically register our supported attributes
