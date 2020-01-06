@@ -12,8 +12,8 @@
  *                         All rights reserved.
  * Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
  * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
- * Copyright (c) 2015      Research Organization for Information Science
- *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2015-2020 Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -77,6 +77,7 @@ struct pmix_plog_globals_t {
     pmix_lock_t lock;
     pmix_pointer_array_t actives;
     bool initialized;
+    bool selected;
     char **channels;
 };
 typedef struct pmix_plog_globals_t pmix_plog_globals_t;
