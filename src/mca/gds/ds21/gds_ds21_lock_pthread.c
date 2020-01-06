@@ -182,14 +182,12 @@ pmix_status_t pmix_gds_ds21_lock_init(pmix_common_dstor_lock_ctx_t *ctx, const c
             PMIX_ERROR_LOG(rc);
             goto error;
         }
-#ifdef HAVE_PTHREAD_MUTEXATTR_SETPSHARED
         if (0 != pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED)) {
             pthread_mutexattr_destroy(&attr);
             rc = PMIX_ERR_INIT;
             PMIX_ERROR_LOG(rc);
             goto error;
         }
-#endif
 
         segment_hdr_t *seg_hdr = (segment_hdr_t*)lock_item->seg_desc->seg_info.seg_base_addr;
         seg_hdr->num_locks = local_size;

@@ -132,29 +132,30 @@ pmix_status_t pmix_gds_ds12_lock_init(pmix_common_dstor_lock_ctx_t *ctx, const c
             PMIX_ERROR_LOG(rc);
             goto error;
         }
-#ifdef HAVE_PTHREAD_SHARED
         if (0 != pthread_rwlockattr_setpshared(&attr, PTHREAD_PROCESS_SHARED)) {
             pthread_rwlockattr_destroy(&attr);
             rc = PMIX_ERR_INIT;
             PMIX_ERROR_LOG(rc);
             goto error;
         }
-#endif
-#ifdef HAVE_PTHREAD_SETKIND
+#if PMIX_PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP
         if (0 != pthread_rwlockattr_setkind_np(&attr,
                                 PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP)) {
             pthread_rwlockattr_destroy(&attr);
-            PMIX_ERROR_LOG(PMIX_ERR_INIT);
+            rc = PMIX_ERR_INIT;
+            PMIX_ERROR_LOG(rc);
             goto error;
         }
 #endif
         if (0 != pthread_rwlock_init(lock_ctx->rwlock, &attr)) {
             pthread_rwlockattr_destroy(&attr);
-            PMIX_ERROR_LOG(PMIX_ERR_INIT);
+            rc = PMIX_ERR_INIT;
+            PMIX_ERROR_LOG(rc);
             goto error;
         }
         if (0 != pthread_rwlockattr_destroy(&attr)) {
-            PMIX_ERROR_LOG(PMIX_ERR_INIT);
+            rc = PMIX_ERR_INIT;
+            PMIX_ERROR_LOG(rc);
             goto error;
         }
 
