@@ -55,6 +55,16 @@ PMIX_EXPORT extern pmix_mca_base_framework_t pmix_pshmem_base_framework;
  */
 PMIX_EXPORT pmix_status_t pmix_pshmem_base_select(void);
 
+/* framework globals */
+struct pmix_pshmem_globals_t {
+  bool initialized;
+  bool selected;
+};
+
+typedef struct pmix_pshmem_globals_t pmix_pshmem_globals_t;
+
+PMIX_EXPORT extern pmix_pshmem_globals_t pmix_pshmem_globals;
+
 END_C_DECLS
 
 #endif
