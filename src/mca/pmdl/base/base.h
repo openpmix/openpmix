@@ -12,8 +12,8 @@
  *                         All rights reserved.
  * Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
  * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
- * Copyright (c) 2015      Research Organization for Information Science
- *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2015-2020 Research Organization for Information Science
+ *                         and Technology (RIST).  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -73,6 +73,7 @@ struct pmix_pmdl_globals_t {
     pmix_lock_t lock;
     pmix_list_t actives;
     bool initialized;
+    bool selected;
 };
 typedef struct pmix_pmdl_globals_t pmix_pmdl_globals_t;
 
