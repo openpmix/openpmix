@@ -454,6 +454,7 @@ void pmix_output_finalize(void)
         free (output_prefix);
         free (output_dir);
         PMIX_DESTRUCT(&verbose);
+        initialized = false;
     }
 }
 

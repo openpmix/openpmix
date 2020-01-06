@@ -162,6 +162,7 @@ test/simple/simpcoord
 test/python/run_sched.sh
 test/python/run_server.sh
 test/simple/pmitest
+test/simple/simpcycle
 
 # coverity
 cov-int
