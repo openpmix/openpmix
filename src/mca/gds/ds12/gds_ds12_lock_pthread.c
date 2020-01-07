@@ -203,7 +203,6 @@ void pmix_ds12_lock_finalize(pmix_common_dstor_lock_ctx_t *lock_ctx)
         return;
     }
     if (0 != pthread_rwlock_destroy(pthread_lock->rwlock)) {
-        PMIX_ERROR_LOG(PMIX_ERROR);
         return;
     }
 
