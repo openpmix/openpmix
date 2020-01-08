@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
@@ -1398,12 +1398,22 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename,
             for (n=0; NULL != tmp[n]; n++) {
                 /* find the nspace delimiter */
                 prs = strchr(tmp[n], ':');
+                if (NULL == prs) {
+                    /* should never happen, but silence a Coverity warning */
+                    rc = PMIX_ERR_BAD_PARAM;
+                    pmix_argv_free(tmp);
+                    PMIX_PROC_FREE(pa, np);
+                    *procs = NULL;
+                    *nprocs = 0;
+                    goto done;
+                }
                 *prs = '\0';
                 ++prs;
                 p = pmix_argv_split(prs, ',');
                 for (m=0; NULL != p[m]; m++) {
                     PMIX_LOAD_NSPACE(&pa[np].nspace, tmp[n]);
-                    pa[n].rank = strtoul(p[m], NULL, 10);
+                    pa[np].rank = strtoul(p[m], NULL, 10);
+                    ++np;
                 }
                 pmix_argv_free(p);
             }

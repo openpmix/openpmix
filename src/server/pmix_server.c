@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
@@ -1101,6 +1101,8 @@ static void _register_client(int sd, short args, void *cbdata)
                         /* this is one of mine - track the count */
                         ++trk->nlocal;
                         break;
+                    } else {
+                        trk->local = false;
                     }
                 }
             }
@@ -3246,7 +3248,9 @@ static void _iofreg(int sd, short args, void *cbdata)
     if (PMIX_SUCCESS != cd->status) {
         /* find and remove the tracker */
         req = (pmix_iof_req_t*)pmix_pointer_array_get_item(&pmix_globals.iof_requests, cd->ncodes);
-        PMIX_RELEASE(req);
+        if (NULL != req) {
+            PMIX_RELEASE(req);
+        }
         pmix_pointer_array_set_item(&pmix_globals.iof_requests, cd->ncodes, NULL);
     } else {
         /* return our reference ID for this handler */
@@ -3272,11 +3276,13 @@ static void _iofreg(int sd, short args, void *cbdata)
     if (PMIX_SUCCESS == cd->status) {
         /* get the request */
         req = (pmix_iof_req_t*)pmix_pointer_array_get_item(&pmix_globals.iof_requests, cd->ncodes);
-        PMIX_LIST_FOREACH_SAFE(iof, inxt, &pmix_server_globals.iof, pmix_iof_cache_t) {
-            if (PMIX_OPERATION_SUCCEEDED == pmix_iof_process_iof(iof->channel, &iof->source, iof->bo,
-                                                                 iof->info, iof->ninfo, req)) {
-                pmix_list_remove_item(&pmix_server_globals.iof, &iof->super);
-                PMIX_RELEASE(iof);
+        if (NULL != req) {
+            PMIX_LIST_FOREACH_SAFE(iof, inxt, &pmix_server_globals.iof, pmix_iof_cache_t) {
+                if (PMIX_OPERATION_SUCCEEDED == pmix_iof_process_iof(iof->channel, &iof->source, iof->bo,
+                                                                     iof->info, iof->ninfo, req)) {
+                    pmix_list_remove_item(&pmix_server_globals.iof, &iof->super);
+                    PMIX_RELEASE(iof);
+                }
             }
         }
     }
