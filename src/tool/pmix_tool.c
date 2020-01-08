@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
@@ -194,7 +194,7 @@ static void tool_iof_handler(struct pmix_peer_t *pr,
     pmix_status_t rc;
     size_t refid, ninfo=0;
     pmix_iof_req_t *req;
-    pmix_info_t *info;
+    pmix_info_t *info=NULL;
 
     pmix_output_verbose(2, pmix_client_globals.iof_output,
                         "recvd IOF with %d bytes", (int)buf->bytes_used);

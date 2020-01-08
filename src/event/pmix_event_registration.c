@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
@@ -690,102 +690,104 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
     cd->firstoverall = false;
 
   addtolist:
-    /* now add this event to the appropriate list - if the registration
-     * subsequently fails, it will be removed */
+    if (NULL != cd->list) {
+        /* now add this event to the appropriate list - if the registration
+         * subsequently fails, it will be removed */
 
-    /* if the list is empty, or no location was specified, just put this on it */
-    if (0 == pmix_list_get_size(cd->list) ||
-        PMIX_EVENT_ORDER_NONE == location) {
-        pmix_list_prepend(cd->list, &evhdlr->super);
-    } else if (PMIX_EVENT_ORDER_FIRST == location) {
-        /* see if the first handler on the list was also declared as "first" */
-        ev = (pmix_event_hdlr_t*)pmix_list_get_first(cd->list);
-        if (PMIX_EVENT_ORDER_FIRST == ev->precedence) {
-            /* this is an error */
-            --pmix_globals.events.nhdlrs;
-            rc = PMIX_ERR_EVENT_REGISTRATION;
-            index = UINT_MAX;
-            PMIX_RELEASE(evhdlr);
-            goto ack;
-        }
-        /* prepend it to the list */
-        pmix_list_prepend(cd->list, &evhdlr->super);
-    } else if (PMIX_EVENT_ORDER_LAST == location) {
-        /* see if the last handler on the list was also declared as "last" */
-        ev = (pmix_event_hdlr_t*)pmix_list_get_last(cd->list);
-        if (PMIX_EVENT_ORDER_LAST == ev->precedence) {
-            /* this is an error */
-            --pmix_globals.events.nhdlrs;
-            rc = PMIX_ERR_EVENT_REGISTRATION;
-            index = UINT_MAX;
-            PMIX_RELEASE(evhdlr);
-            goto ack;
-        }
-        /* append it to the list */
-        pmix_list_append(cd->list, &evhdlr->super);
-    } else if (PMIX_EVENT_ORDER_PREPEND == location) {
-        /* we know the list isn't empty - check the first element to see if
-         * it is designated to be "first". If so, then we need to put this
-         * right after it */
-        ev = (pmix_event_hdlr_t*)pmix_list_get_first(cd->list);
-        if (PMIX_EVENT_ORDER_FIRST == ev->precedence) {
-            ev = (pmix_event_hdlr_t*)pmix_list_get_next(&ev->super);
-            if (NULL != ev) {
+        /* if the list is empty, or no location was specified, just put this on it */
+        if (0 == pmix_list_get_size(cd->list) ||
+            PMIX_EVENT_ORDER_NONE == location) {
+            pmix_list_prepend(cd->list, &evhdlr->super);
+        } else if (PMIX_EVENT_ORDER_FIRST == location) {
+            /* see if the first handler on the list was also declared as "first" */
+            ev = (pmix_event_hdlr_t*)pmix_list_get_first(cd->list);
+            if (PMIX_EVENT_ORDER_FIRST == ev->precedence) {
+                /* this is an error */
+                --pmix_globals.events.nhdlrs;
+                rc = PMIX_ERR_EVENT_REGISTRATION;
+                index = UINT_MAX;
+                PMIX_RELEASE(evhdlr);
+                goto ack;
+            }
+            /* prepend it to the list */
+            pmix_list_prepend(cd->list, &evhdlr->super);
+        } else if (PMIX_EVENT_ORDER_LAST == location) {
+            /* see if the last handler on the list was also declared as "last" */
+            ev = (pmix_event_hdlr_t*)pmix_list_get_last(cd->list);
+            if (PMIX_EVENT_ORDER_LAST == ev->precedence) {
+                /* this is an error */
+                --pmix_globals.events.nhdlrs;
+                rc = PMIX_ERR_EVENT_REGISTRATION;
+                index = UINT_MAX;
+                PMIX_RELEASE(evhdlr);
+                goto ack;
+            }
+            /* append it to the list */
+            pmix_list_append(cd->list, &evhdlr->super);
+        } else if (PMIX_EVENT_ORDER_PREPEND == location) {
+            /* we know the list isn't empty - check the first element to see if
+             * it is designated to be "first". If so, then we need to put this
+             * right after it */
+            ev = (pmix_event_hdlr_t*)pmix_list_get_first(cd->list);
+            if (PMIX_EVENT_ORDER_FIRST == ev->precedence) {
+                ev = (pmix_event_hdlr_t*)pmix_list_get_next(&ev->super);
+                if (NULL != ev) {
+                    pmix_list_insert_pos(cd->list, &ev->super, &evhdlr->super);
+                } else {
+                    /* we are at the end of the list */
+                    pmix_list_append(cd->list, &evhdlr->super);
+                }
+            } else {
+                pmix_list_prepend(cd->list, &evhdlr->super);
+            }
+        } else if (PMIX_EVENT_ORDER_APPEND == location) {
+            /* we know the list isn't empty - check the last element to see if
+             * it is designated to be "last". If so, then we need to put this
+             * right before it */
+            ev = (pmix_event_hdlr_t*)pmix_list_get_last(cd->list);
+            if (PMIX_EVENT_ORDER_LAST == ev->precedence) {
                 pmix_list_insert_pos(cd->list, &ev->super, &evhdlr->super);
             } else {
-                /* we are at the end of the list */
                 pmix_list_append(cd->list, &evhdlr->super);
             }
         } else {
-            pmix_list_prepend(cd->list, &evhdlr->super);
-        }
-    } else if (PMIX_EVENT_ORDER_APPEND == location) {
-        /* we know the list isn't empty - check the last element to see if
-         * it is designated to be "last". If so, then we need to put this
-         * right before it */
-        ev = (pmix_event_hdlr_t*)pmix_list_get_last(cd->list);
-        if (PMIX_EVENT_ORDER_LAST == ev->precedence) {
-            pmix_list_insert_pos(cd->list, &ev->super, &evhdlr->super);
-        } else {
-            pmix_list_append(cd->list, &evhdlr->super);
-        }
-    } else {
-        /* find the named event */
-        found = false;
-        PMIX_LIST_FOREACH(ev, cd->list, pmix_event_hdlr_t) {
-            if (NULL == ev->name) {
-                continue;
-            }
-            if (0 == strcmp(ev->name, name)) {
-               if (PMIX_EVENT_ORDER_BEFORE == location) {
-                    /* put it before this handler */
-                    pmix_list_insert_pos(cd->list, &ev->super, &evhdlr->super);
-               } else {
-                   /* put it after this handler */
-                    ev = (pmix_event_hdlr_t*)pmix_list_get_next(&ev->super);
-                    if (NULL != ev) {
+            /* find the named event */
+            found = false;
+            PMIX_LIST_FOREACH(ev, cd->list, pmix_event_hdlr_t) {
+                if (NULL == ev->name) {
+                    continue;
+                }
+                if (0 == strcmp(ev->name, name)) {
+                   if (PMIX_EVENT_ORDER_BEFORE == location) {
+                        /* put it before this handler */
                         pmix_list_insert_pos(cd->list, &ev->super, &evhdlr->super);
-                    } else {
-                        /* we are at the end of the list */
-                        pmix_list_append(cd->list, &evhdlr->super);
-                    }
-               }
-               found = true;
-               break;
+                   } else {
+                       /* put it after this handler */
+                        ev = (pmix_event_hdlr_t*)pmix_list_get_next(&ev->super);
+                        if (NULL != ev) {
+                            pmix_list_insert_pos(cd->list, &ev->super, &evhdlr->super);
+                        } else {
+                            /* we are at the end of the list */
+                            pmix_list_append(cd->list, &evhdlr->super);
+                        }
+                   }
+                   found = true;
+                   break;
+                }
             }
-        }
-        /* if the handler wasn't found, then we return an error. At some
-         * future time, we may change this behavior and cache this handler
-         * until the reference one has been registered. However, this could
-         * turn out to be a laborious search procedure as the reference
-         * event handler may in turn be dependent on another handler, etc. */
-        if (!found) {
-            /* this is an error */
-            --pmix_globals.events.nhdlrs;
-            rc = PMIX_ERR_EVENT_REGISTRATION;
-            index = UINT_MAX;
-            PMIX_RELEASE(evhdlr);
-            goto ack;
+            /* if the handler wasn't found, then we return an error. At some
+             * future time, we may change this behavior and cache this handler
+             * until the reference one has been registered. However, this could
+             * turn out to be a laborious search procedure as the reference
+             * event handler may in turn be dependent on another handler, etc. */
+            if (!found) {
+                /* this is an error */
+                --pmix_globals.events.nhdlrs;
+                rc = PMIX_ERR_EVENT_REGISTRATION;
+                index = UINT_MAX;
+                PMIX_RELEASE(evhdlr);
+                goto ack;
+            }
         }
     }
 
@@ -807,7 +809,7 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
             pmix_globals.events.first = NULL;
         } else if (lastoverall) {
             pmix_globals.events.last = NULL;
-        } else {
+        } else if (NULL != cd->list) {
             pmix_list_remove_item(cd->list, &evhdlr->super);
         }
         PMIX_RELEASE(evhdlr);

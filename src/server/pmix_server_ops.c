@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
@@ -418,27 +418,21 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
         trk->id = strdup(id);
     }
 
-    if (NULL != procs) {
-        /* copy the procs */
-        PMIX_PROC_CREATE(trk->pcs, nprocs);
-        if (NULL == trk->pcs) {
-            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-            PMIX_RELEASE(trk);
-            return NULL;
-        }
-        memcpy(trk->pcs, procs, nprocs * sizeof(pmix_proc_t));
-        trk->npcs = nprocs;
+    /* copy the procs */
+    PMIX_PROC_CREATE(trk->pcs, nprocs);
+    if (NULL == trk->pcs) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        PMIX_RELEASE(trk);
+        return NULL;
     }
+    memcpy(trk->pcs, procs, nprocs * sizeof(pmix_proc_t));
+    trk->npcs = nprocs;
     trk->type = type;
     trk->local = false;
     trk->nlocal = 0;
 
     all_def = true;
     for (i=0; i < nprocs; i++) {
-        if (NULL == id) {
-            pmix_strncpy(trk->pcs[i].nspace, procs[i].nspace, PMIX_MAX_NSLEN);
-            trk->pcs[i].rank = procs[i].rank;
-        }
         if (!all_def) {
             continue;
         }
@@ -495,12 +489,10 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
                 if (PMIX_RANK_WILDCARD != procs[i].rank) {
                     break;
                 }
+            } else {
+                trk->local = false;
             }
         }
-    }
-
-    if (trk->nlocal == nptr->nprocs) {
-        trk->local = true;
     }
 
     if (all_def) {
