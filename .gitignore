@@ -27,6 +27,7 @@ stamp-h?
 config/install-sh
 config/libtool.m4
 config/ltmain.sh
+config/ltmain.sh.orig
 config/ylwrap
 config.log
 config.lt
