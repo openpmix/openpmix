@@ -822,7 +822,7 @@ static ns_track_elem_t *_get_track_elem_for_namespace(pmix_common_dstore_ctx_t *
     ns_track_elem_t *new_elem = NULL;
     size_t size = pmix_value_array_get_size(ds_ctx->ns_track_array);
     ns_track_elem_t *ns_trk;
-    size_t i;
+    size_t i, idx = -1;
 
     PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
                          "%s:%d:%s: nspace %s",
@@ -843,12 +843,15 @@ static ns_track_elem_t *_get_track_elem_for_namespace(pmix_common_dstore_ctx_t *
     for (i = 0; i < size; i++) {
         ns_track_elem_t *trk = ns_trk + i;
         if (!trk->in_use) {
+            idx = i;
             new_elem = trk;
+            break;
         }
     }
     /* If we failed - allocate a new tracker */
     if (NULL == new_elem) {
-        if (NULL == (new_elem = pmix_value_array_get_item(ds_ctx->ns_track_array, size))) {
+        idx = size;
+        if (NULL == (new_elem = pmix_value_array_get_item(ds_ctx->ns_track_array, idx))) {
             return NULL;
         }
     }
@@ -858,7 +861,7 @@ static ns_track_elem_t *_get_track_elem_for_namespace(pmix_common_dstore_ctx_t *
     PMIX_CONSTRUCT(new_elem, ns_track_elem_t);
     pmix_strncpy(new_elem->ns_map.name, ns_map->name, sizeof(new_elem->ns_map.name)-1);
     /* save latest track idx to info of nspace */
-    ns_map->track_idx = size;
+    ns_map->track_idx = idx;
     return new_elem;
 }
 
