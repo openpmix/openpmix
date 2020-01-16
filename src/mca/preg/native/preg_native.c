@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016-2019 IBM Corporation.  All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
@@ -535,7 +535,7 @@ static pmix_status_t copy(char **dest, size_t *len, const char *input)
     }
 
     *dest = strdup(input);
-    *len = strlen(input);
+    *len = strlen(input) + 1;
     return PMIX_SUCCESS;
 }
 
@@ -607,7 +607,7 @@ static pmix_status_t pmix_regex_extract_nodes(char *regexp, char ***names)
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
-    PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
+    PMIX_OUTPUT_VERBOSE((1, pmix_preg_base_framework.framework_output,
                          "pmix:extract:nodes: checking list: %s", regexp));
 
     do {
@@ -683,7 +683,7 @@ static pmix_status_t pmix_regex_extract_nodes(char *regexp, char ***names)
             } else {
                 suffix = NULL;
             }
-            PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
+            PMIX_OUTPUT_VERBOSE((1, pmix_preg_base_framework.framework_output,
                                  "regex:extract:nodes: parsing range %s %s %s",
                                  base, base + i, suffix));
 
@@ -757,7 +757,7 @@ static pmix_status_t regex_parse_value_ranges(char *base, char *ranges,
 
     if (start < orig + len) {
 
-        PMIX_OUTPUT_VERBOSE((1, pmix_globals.debug_output,
+        PMIX_OUTPUT_VERBOSE((1, pmix_preg_base_framework.framework_output,
                              "regex:parse:ranges: parse range %s (2)", start));
 
         ret = regex_parse_value_range(base, start, num_digits, suffix, names);
