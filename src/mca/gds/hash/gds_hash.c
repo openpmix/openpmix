@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
@@ -651,6 +651,12 @@ static pmix_status_t process_job_array(pmix_info_t *info,
                 return rc;
             }
             pmix_list_append(&trk->jobinfo, &kp2->super);
+            /* check for job size */
+            if (PMIX_CHECK_KEY(&iptr[j], PMIX_JOB_SIZE) &&
+                !(PMIX_HASH_JOB_SIZE & *flags)) {
+                trk->nptr->nprocs = iptr[j].value.data.uint32;
+                *flags |= PMIX_HASH_JOB_SIZE;
+            }
         }
     }
     return PMIX_SUCCESS;
@@ -941,6 +947,10 @@ static pmix_status_t store_map(pmix_job_t *trk,
             kp2->value->type = PMIX_STRING;
             kp2->value->data.string = strdup(nodes[n]);
             rank = strtol(procs[m], NULL, 10);
+            pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
+                                "[%s:%d] gds:hash:store_map for [%s:%u]: key %s",
+                                pmix_globals.myid.nspace, pmix_globals.myid.rank,
+                                trk->ns, rank, kp2->key);
             if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, rank, kp2))) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(kp2);
@@ -1024,6 +1034,8 @@ static pmix_status_t store_map(pmix_job_t *trk,
             return rc;
         }
         PMIX_RELEASE(kp2);  // maintain acctg
+        flags |= PMIX_HASH_JOB_SIZE;
+        trk->nptr->nprocs = totalprocs;
     }
 
     /* if they didn't provide a value for max procs, just
@@ -1041,6 +1053,7 @@ static pmix_status_t store_map(pmix_job_t *trk,
             return rc;
         }
         PMIX_RELEASE(kp2);  // maintain acctg
+        flags |= PMIX_HASH_MAX_PROCS;
     }
 
 
@@ -1067,9 +1080,9 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
     pmix_apptrkr_t *apptr;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
-                        "[%s:%d] gds:hash:cache_job_info for nspace %s",
+                        "[%s:%d] gds:hash:cache_job_info for nspace %s with %lu info",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank,
-                        nptr->nspace);
+                        nptr->nspace, ninfo);
 
     trk = get_tracker(nptr->nspace, true);
     if (NULL == trk) {
@@ -1216,6 +1229,10 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                         kp2->value->data.bo.size = len;
                     }
                 }
+                pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
+                                    "[%s:%d] gds:hash:cache_job_info proc data for [%s:%u]: key %s",
+                                    pmix_globals.myid.nspace, pmix_globals.myid.rank,
+                                    trk->ns, rank, kp2->key);
                 /* store it in the hash_table */
                 if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, rank, kp2))) {
                     PMIX_ERROR_LOG(rc);
@@ -1481,7 +1498,12 @@ static pmix_status_t register_info(pmix_peer_t *peer,
     PMIX_LIST_DESTRUCT(&results);
 
     /* get the proc-level data for each proc in the job */
+    pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
+                        "FETCHING PROC INFO FOR NSPACE %s NPROCS %u",
+                        ns->nspace, ns->nprocs);
     for (rank=0; rank < ns->nprocs; rank++) {
+        pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
+                            "FETCHING PROC INFO FOR RANK %s", PMIX_RANK_PRINT(rank));
         val = NULL;
         rc = pmix_hash_fetch(ht, rank, NULL, &val);
         if (PMIX_SUCCESS != rc && PMIX_ERR_PROC_ENTRY_NOT_FOUND != rc) {

@@ -13,7 +13,7 @@
  *                         All rights reserved.
  * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
- * Copyright (c) 2013-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -176,6 +176,22 @@ int main(int argc, char **argv)
         exit(rc);
     }
     pmix_output(0, "CLIENT SERVER URI: %s", val->data.string);
+    PMIX_VALUE_RELEASE(val);
+
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_LOCAL_RANK, NULL, 0, &val))) {
+        pmix_output(0, "Client ns %s rank %d: PMIx_Get LOCAL RANK failed: %s",
+                    myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+        exit(rc);
+    }
+    pmix_output(0, "CLIENT LOCAL RANK: %u", val->data.uint32);
+    PMIX_VALUE_RELEASE(val);
+
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_HOSTNAME, NULL, 0, &val))) {
+        pmix_output(0, "Client ns %s rank %d: PMIx_Get HOSTNAME failed: %s",
+                    myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+        exit(rc);
+    }
+    pmix_output(0, "CLIENT HOSTNAME: %s", val->data.string);
     PMIX_VALUE_RELEASE(val);
 
     /* register a handler specifically for when models declare */
