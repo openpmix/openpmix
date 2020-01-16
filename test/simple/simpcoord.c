@@ -13,7 +13,7 @@
  *                         All rights reserved.
  * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
- * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
@@ -66,16 +66,6 @@ int main(int argc, char **argv)
                     myproc.nspace, myproc.rank, PMIx_Error_string(rc));
         exit(rc);
     }
-    PMIX_VALUE_RELEASE(val);
-
-    /* get our job size */
-    (void)strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
-    proc.rank = PMIX_RANK_WILDCARD;
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Get job size failed: %s",
-                    myproc.nspace, myproc.rank, PMIx_Error_string(rc));
-        goto done;
-    }
     nprocs = val->data.uint32;
     PMIX_VALUE_RELEASE(val);
     pmix_output(0, "Client %s:%d job size %d", myproc.nspace, myproc.rank, nprocs);
@@ -88,12 +78,13 @@ int main(int argc, char **argv)
     }
     hostname = strdup(val->data.string);
     PMIX_VALUE_RELEASE(val);
+    pmix_output(0, "Client %s:%d hostname %s", myproc.nspace, myproc.rank, hostname);
 
     /* get our assigned network endpts */
     if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_NETWORK_ENDPT, NULL, 0, &val))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get network endpt failed: %s",
                     myproc.nspace, myproc.rank, PMIx_Error_string(rc));
-        goto done;
+        goto nextstep;
     }
     pmix_output(0, "Client %s:%d was assigned %lu endpts",
                 myproc.nspace, myproc.rank,
@@ -116,33 +107,57 @@ int main(int argc, char **argv)
         free(tmp);
     }
 
+  nextstep:
     /* get our assigned network coordinates */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_NETWORK_COORDINATE, NULL, 0, &val))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Get network endpt failed: %s",
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_NETWORK_COORDINATE, NULL, 0, &val)) ||
+        NULL == val) {
+        pmix_output(0, "Client ns %s rank %d: PMIx_Get network coordinate failed: %s",
                     myproc.nspace, myproc.rank, PMIx_Error_string(rc));
         goto done;
     }
-    coords = (pmix_coord_t*)val->data.darray->array;
-    ninfo = val->data.darray->size;
-    /* print them out for diagnostics - someday we can figure
-     * out an automated way of testing the answer */
-    for (m=0; m < ninfo; m++) {
+    if (PMIX_DATA_ARRAY == val->type) {
+        coords = (pmix_coord_t*)val->data.darray->array;
+        ninfo = val->data.darray->size;
+        /* print them out for diagnostics - someday we can figure
+         * out an automated way of testing the answer */
+        for (m=0; m < ninfo; m++) {
+            char **foo = NULL;
+            char *view;
+            for (n=0; n < coords[m].dims; n++) {
+                asprintf(&tmp, "%d", coords[m].coord[n]);
+                pmix_argv_append_nosize(&foo, tmp);
+                free(tmp);
+            }
+            tmp = pmix_argv_join(foo, ',');
+            pmix_argv_free(foo);
+            if (PMIX_COORD_LOGICAL_VIEW == coords[m].view) {
+                view = "LOGICAL";
+            } else {
+                view = "PHYSICAL";
+            }
+            pmix_output(0, "Rank %u[%s]: COORD[%d] VIEW %s: %s", myproc.rank, hostname, (int)m, view, tmp);
+            free(tmp);
+        }
+    } else if (PMIX_COORD == val->type) {
         char **foo = NULL;
         char *view;
-        for (n=0; n < coords[m].dims; n++) {
-            asprintf(&tmp, "%d", coords[m].coord[n]);
+        for (n=0; n < val->data.coord->dims; n++) {
+            asprintf(&tmp, "%d", val->data.coord->coord[n]);
             pmix_argv_append_nosize(&foo, tmp);
             free(tmp);
         }
         tmp = pmix_argv_join(foo, ',');
         pmix_argv_free(foo);
-        if (PMIX_COORD_LOGICAL_VIEW == coords[m].view) {
+        if (PMIX_COORD_LOGICAL_VIEW == val->data.coord->view) {
             view = "LOGICAL";
         } else {
             view = "PHYSICAL";
         }
-        pmix_output(0, "Rank %u[%s]: COORD[%d] VIEW %s: %s", myproc.rank, hostname, (int)m, view, tmp);
+        pmix_output(0, "Rank %u[%s]: COORD VIEW %s DIMS %lu: %s", myproc.rank, hostname, view, val->data.coord->dims, tmp);
         free(tmp);
+    } else {
+        pmix_output(0, "Client ns %s rank %d: PMIx_Get network coordinate returned wrong type: %s",
+                    myproc.nspace, myproc.rank, PMIx_Data_type_string(val->type));
     }
 
  done:
