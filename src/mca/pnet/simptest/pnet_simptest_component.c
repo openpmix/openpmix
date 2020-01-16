@@ -31,7 +31,7 @@
 
 #include "src/util/argv.h"
 #include "src/mca/pnet/pnet.h"
-#include "pnet_test.h"
+#include "pnet_simptest.h"
 
 static pmix_status_t component_open(void);
 static pmix_status_t component_close(void);
@@ -42,13 +42,13 @@ static pmix_status_t component_register(void);
  * Instantiate the public struct with all of our public information
  * and pointers to our public functions in it
  */
-pmix_pnet_test_component_t mca_pnet_test_component = {
+pmix_pnet_simptest_component_t mca_pnet_simptest_component = {
     .super = {
         .base = {
             PMIX_PNET_BASE_VERSION_1_0_0,
 
             /* Component name and version */
-            .pmix_mca_component_name = "test",
+            .pmix_mca_component_name = "simptest",
             PMIX_MCA_BASE_MAKE_VERSION(component,
                                        PMIX_MAJOR_VERSION,
                                        PMIX_MINOR_VERSION,
@@ -65,22 +65,19 @@ pmix_pnet_test_component_t mca_pnet_test_component = {
             PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT
         }
     },
-    .planes = NULL,
-    .costmatrix = NULL
+    .configfile = NULL
 };
 
 static pmix_status_t component_register(void)
 {
-    pmix_mca_base_component_t *component = &mca_pnet_test_component.super.base;
+    pmix_mca_base_component_t *component = &mca_pnet_simptest_component.super.base;
 
-    (void)pmix_mca_base_component_var_register(component, "planes",
-                                               "Comma-delimited list describing each fabric plane in format\n"
-                                               "plane:<(d)ense or (s)parse>:#switches:#ports(defaults to 3+fit) - examples:\n"
-                                               "\tplane:d:3:4,plane:s:2,plane:3",
+    (void)pmix_mca_base_component_var_register(component, "config_file",
+                                               "Path of file containing network coordinate configuration",
                                                PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
                                                PMIX_INFO_LVL_2,
                                                PMIX_MCA_BASE_VAR_SCOPE_READONLY,
-                                               &mca_pnet_test_component.planes);
+                                               &mca_pnet_simptest_component.configfile);
     return PMIX_SUCCESS;
 }
 
@@ -89,7 +86,7 @@ static pmix_status_t component_open(void)
     int index;
     const pmix_mca_base_var_storage_t *value=NULL;
 
-    if (NULL == mca_pnet_test_component.planes ||
+    if (NULL == mca_pnet_simptest_component.configfile ||
         !PMIX_PROC_IS_SERVER(&pmix_globals.mypeer->proc_type)) {
         /* nothing we can do without a description
          * of the fabric topology */
@@ -103,7 +100,7 @@ static pmix_status_t component_open(void)
     }
     pmix_mca_base_var_get_value(index, &value, NULL, NULL);
     if (NULL != value && NULL != value->stringval && '\0' != value->stringval[0]) {
-        if (NULL != strcasestr(value->stringval, "test")) {
+        if (NULL != strcasestr(value->stringval, "simptest")) {
             return PMIX_SUCCESS;
         }
     }
@@ -114,7 +111,7 @@ static pmix_status_t component_open(void)
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority)
 {
     *priority = 0;
-    *module = (pmix_mca_base_module_t *)&pmix_test_module;
+    *module = (pmix_mca_base_module_t *)&pmix_simptest_module;
     return PMIX_SUCCESS;
 }
 

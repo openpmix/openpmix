@@ -13,7 +13,7 @@
  *                         All rights reserved.
  * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
- * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
@@ -198,7 +198,6 @@ static pmix_event_t handler;
 static pmix_list_t children;
 static bool istimeouttest = false;
 static mylock_t globallock;
-static bool nettest = false;
 static bool model = false;
 static bool xversion = false;
 static char *hostnames[] = {
@@ -412,13 +411,8 @@ int main(int argc, char **argv)
             fprintf(stderr, "    -u       Enable legacy usock support\n");
             fprintf(stderr, "    -hwloc   Test hwloc support\n");
             fprintf(stderr, "    -hwloc-file FILE   Use file to import topology\n");
-            fprintf(stderr, "    -net-test  Test network endpt assignments\n");
             fprintf(stderr, "    -xversion  Cross-version test - simulate single node only\n");
             exit(0);
-        } else if (0 == strcmp("-net-test", argv[n]) ||
-                   0 == strcmp("--net-test", argv[n])) {
-            /* test network support */
-            nettest = true;
         }  else if (0 == strcmp("-model", argv[n]) ||
                    0 == strcmp("--model", argv[n])) {
             /* test network support */
@@ -430,11 +424,7 @@ int main(int argc, char **argv)
         }
     }
     if (NULL == executable) {
-        if (nettest) {
-            executable = strdup("./simpcoord");
-        } else {
-            executable = strdup("./simpclient");
-        }
+        executable = strdup("./simpclient");
     }
     /* check for executable existence and permissions */
     if (0 != access(executable, X_OK)) {
@@ -496,20 +486,11 @@ int main(int argc, char **argv)
 #endif
     }
 #endif
-    if (nettest) {
-        /* set a known network configuration for the pnet/test component */
-        putenv("PMIX_MCA_pnet_test_planes=plane:d:3;plane:s:2;plane:d:5:2");
-        putenv("PMIX_MCA_pnet=test");
-    }
     if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, info, ninfo))) {
         fprintf(stderr, "Init failed with error %s\n", PMIx_Error_string(rc));
         return rc;
     }
     PMIX_INFO_FREE(info, ninfo);
-    if (nettest) {
-        unsetenv("PMIX_MCA_pnet");
-        unsetenv("PMIX_MCA_pnet_test_planes");
-    }
 
     /* register the default errhandler */
     DEBUG_CONSTRUCT_LOCK(&mylock);
