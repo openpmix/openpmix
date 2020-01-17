@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
- * Copyright (c) 2016-2019 IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2018-2019 Research Organization for Information Science
@@ -821,6 +821,8 @@ static ns_track_elem_t *_get_track_elem_for_namespace(pmix_common_dstore_ctx_t *
 {
     ns_track_elem_t *new_elem = NULL;
     size_t size = pmix_value_array_get_size(ds_ctx->ns_track_array);
+    ns_track_elem_t *ns_trk;
+    size_t i, idx = -1;
 
     PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
                          "%s:%d:%s: nspace %s",
@@ -836,16 +838,30 @@ static ns_track_elem_t *_get_track_elem_for_namespace(pmix_common_dstore_ctx_t *
         return pmix_value_array_get_item(ds_ctx->ns_track_array, ns_map->track_idx);
     }
 
+    /* Try to find an empty tracker structure */
+    ns_trk = PMIX_VALUE_ARRAY_GET_BASE(ds_ctx->ns_track_array, ns_track_elem_t);
+    for (i = 0; i < size; i++) {
+        ns_track_elem_t *trk = ns_trk + i;
+        if (!trk->in_use) {
+            idx = i;
+            new_elem = trk;
+            break;
+        }
+    }
+    /* If we failed - allocate a new tracker */
+    if (NULL == new_elem) {
+        idx = size;
+        if (NULL == (new_elem = pmix_value_array_get_item(ds_ctx->ns_track_array, idx))) {
+            return NULL;
+        }
+    }
+
     /* create shared memory regions for this namespace and store its info locally
      * to operate with address and detach/unlink afterwards. */
-    if (NULL == (new_elem = pmix_value_array_get_item(ds_ctx->ns_track_array, size))) {
-        return NULL;
-    }
     PMIX_CONSTRUCT(new_elem, ns_track_elem_t);
     pmix_strncpy(new_elem->ns_map.name, ns_map->name, sizeof(new_elem->ns_map.name)-1);
     /* save latest track idx to info of nspace */
-    ns_map->track_idx = size;
-
+    ns_map->track_idx = idx;
     return new_elem;
 }
 
@@ -2442,6 +2458,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_del_nspace(pmix_common_dstore_ctx_t 
 {
     pmix_status_t rc = PMIX_SUCCESS;
     size_t map_idx, size;
+    int in_use = 0;
     ns_map_data_t *ns_map_data = NULL;
     ns_map_t *ns_map;
     session_t *session_tbl = NULL;
@@ -2465,31 +2482,41 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_del_nspace(pmix_common_dstore_ctx_t 
         if (ns_map[map_idx].in_use &&
                         (ns_map[map_idx].data.tbl_idx == ns_map_data->tbl_idx)) {
             if (0 == strcmp(ns_map[map_idx].data.name, nspace)) {
+                /* Unmap corresponding memory regions and stop tracking this namespace */
+                size_t nst_size = pmix_value_array_get_size(ds_ctx->ns_track_array);
+                if (nst_size && (dstor_track_idx >= 0)) {
+                    if((dstor_track_idx + 1) > (int)nst_size) {
+                        rc = PMIX_ERR_VALUE_OUT_OF_BOUNDS;
+                        PMIX_ERROR_LOG(rc);
+                        goto exit;
+                    }
+                    trk = pmix_value_array_get_item(ds_ctx->ns_track_array, dstor_track_idx);
+                    if (true == trk->in_use) {
+                        PMIX_DESTRUCT(trk);
+                    }
+                }
+                /* Cleanup the mapping structure */
                 _esh_session_map_clean(ds_ctx, &ns_map[map_idx]);
                 continue;
+            } else {
+                /* Count other namespaces belonging to this session.
+                 * This is required to identify the moment where all
+                 * namespaces are deleted and session can be removed as well
+                 */
+                in_use++;
             }
         }
     }
 
-    session_tbl = PMIX_VALUE_ARRAY_GET_BASE(ds_ctx->session_array, session_t);
-    PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
-                         "%s:%d:%s delete session for jobuid: %d",
-                         __FILE__, __LINE__, __func__, session_tbl[session_tbl_idx].jobuid));
-    size = pmix_value_array_get_size(ds_ctx->ns_track_array);
-    if (size && (dstor_track_idx >= 0)) {
-        if((dstor_track_idx + 1) > (int)size) {
-            rc = PMIX_ERR_VALUE_OUT_OF_BOUNDS;
-            PMIX_ERROR_LOG(rc);
-            goto exit;
-        }
-        trk = pmix_value_array_get_item(ds_ctx->ns_track_array, dstor_track_idx);
-        if (true == trk->in_use) {
-            PMIX_DESTRUCT(trk);
-            pmix_value_array_remove_item(ds_ctx->ns_track_array, dstor_track_idx);
-        }
-    }
-    _esh_session_release(ds_ctx, session_tbl_idx);
-
+    /* A lot of nspaces may be using same session info
+     * session record can only be deleted once all references are gone */
+    if (!in_use) {
+        session_tbl = PMIX_VALUE_ARRAY_GET_BASE(ds_ctx->session_array, session_t);
+        PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
+                             "%s:%d:%s delete session for jobuid: %d",
+                             __FILE__, __LINE__, __func__, session_tbl[session_tbl_idx].jobuid));
+        _esh_session_release(ds_ctx, session_tbl_idx);
+     }
 exit:
     return rc;
 }
