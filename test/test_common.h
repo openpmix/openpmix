@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
@@ -269,8 +269,7 @@ typedef struct {
     cbdata.status = PMIX_SUCCESS;                                                                                   \
     pmix_proc_t foobar; \
     SET_KEY(key, fence_num, ind, use_same_keys);                                                                    \
-    (void)strncpy(foobar.nspace, ns, PMIX_MAX_NSLEN); \
-    foobar.rank = r; \
+    PMIX_LOAD_PROCID(&foobar, ns, r); \
     TEST_VERBOSE(("%s:%d want to get from %s:%d key %s", my_nspace, my_rank, ns, r, key));                          \
     if (blocking) {                                                                                                 \
         if (PMIX_SUCCESS != (rc = PMIx_Get(&foobar, key, NULL, 0, &val))) {                                         \

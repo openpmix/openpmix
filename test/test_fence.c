@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2017 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * $COPYRIGHT$
@@ -146,8 +146,7 @@ int test_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
             PMIX_PROC_CREATE(pcs, npcs);
             i = 0;
             PMIX_LIST_FOREACH(p, desc->participants, participant_t) {
-                (void)strncpy(pcs[i].nspace, p->proc.nspace, PMIX_MAX_NSLEN);
-                pcs[i].rank = p->proc.rank;
+                PMIX_LOAD_PROCID(&pcs[i], p->proc.nspace, p->proc.rank);
                 i++;
             }
 
@@ -175,8 +174,7 @@ int test_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
                     for (i = 0; i < nranks; i++) {
                         participant_t *prt;
                         prt = PMIX_NEW(participant_t);
-                        strncpy(prt->proc.nspace, ranks[i].nspace, strlen(ranks[i].nspace)+1);
-                        prt->proc.rank = ranks[i].rank;
+                        PMIX_LOAD_PROCID(&prt->proc, ranks[i].nspace, ranks[i].rank);
                         pmix_list_append(desc->participants, &prt->super);
                     }
                     PMIX_PROC_FREE(ranks, nranks);

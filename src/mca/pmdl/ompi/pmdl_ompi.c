@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  *
  * $COPYRIGHT$
@@ -403,10 +403,8 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
 
 	/* do we already have the data we need here? */
 	if (!ns->datacollected) {
-	    (void)strncpy(wildcard.nspace, proc->nspace, PMIX_MAX_NSLEN);
-	    wildcard.rank = PMIX_RANK_WILDCARD;
-	    (void)strncpy(undef.nspace, proc->nspace, PMIX_MAX_NSLEN);
-	    undef.rank = PMIX_RANK_UNDEF;
+        PMIX_LOAD_PROCID(&wildcard, proc->nspace, PMIX_RANK_WILDCARD);
+        PMIX_LOAD_PROCID(&undef, proc->nspace, PMIX_RANK_UNDEF);
 
 		/* fetch the universe size */
 	    if (PMIX_SUCCESS == (rc = PMIx_Get(&wildcard, PMIX_UNIV_SIZE, NULL, 0, &val))) {

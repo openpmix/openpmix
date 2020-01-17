@@ -148,7 +148,7 @@ static char *getword(char *line)
 
 static pmix_status_t simptest_init(void)
 {
-    FILE *fp;
+    FILE *fp = NULL;
     char *line, *ptr;
     pnet_node_t *nd;
     int n, cache[1024];
@@ -182,6 +182,7 @@ static pmix_status_t simptest_init(void)
             if (NULL == ptr) {
                 /* that is an error */
                 free(line);
+                fclose(fp);
                 return PMIX_ERR_FATAL;
             }
             nd = PMIX_NEW(pnet_node_t);
@@ -191,6 +192,8 @@ static pmix_status_t simptest_init(void)
             pos = strlen(ptr) + 2;  // move past the NULL terminator
             if (len <= pos) {
                 /* we are done */
+                free(line);
+                fclose(fp);
                 return PMIX_ERR_FATAL;
             }
             while (n < 1024 && NULL != (ptr = getword(&line[pos]))) {
@@ -206,6 +209,10 @@ static pmix_status_t simptest_init(void)
             memcpy(nd->coord.coord, cache, nd->coord.dims * sizeof(int));
             free(line);
         }
+    }
+
+    if (NULL != fp) {
+        fclose(fp);
     }
     return PMIX_SUCCESS;
 }

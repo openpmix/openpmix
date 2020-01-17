@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2015-2018 Mellanox Technologies, Inc.
@@ -170,7 +170,7 @@ pmix_status_t publish_fn(const pmix_proc_t *proc,
         }
         if (!found) {
             new_info = PMIX_NEW(pmix_test_info_t);
-            strncpy(new_info->data.key, info[i].key, strlen(info[i].key)+1);
+            PMIX_LOAD_KEY(new_info->data.key, info[i].key);
             pmix_value_xfer(&new_info->data.value, (pmix_value_t*)&info[i].value);
             new_info->namespace_published = strdup(proc->nspace);
             new_info->rank_published = proc->rank;

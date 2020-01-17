@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
@@ -119,7 +119,7 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
 {
     pmix_shift_caddy_t *cd;
     pmix_cmd_t cmd = PMIX_IOF_PULL_CMD;
-    pmix_buffer_t *msg;
+    pmix_buffer_t *msg = NULL;
     pmix_status_t rc;
     pmix_iof_req_t *req;
 
@@ -235,7 +235,9 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
   cleanup:
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(msg);
+        if (NULL != msg) {
+            PMIX_RELEASE(msg);
+        }
         PMIX_RELEASE(req);
         PMIX_RELEASE(cd);
     } else if (NULL == regcbfunc) {

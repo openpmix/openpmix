@@ -13,7 +13,7 @@
  *                         All rights reserved.
  * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
- * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
@@ -43,9 +43,9 @@ int main(int argc, char **argv)
     char *tmp;
     pmix_proc_t proc;
     uint32_t n, k, nlocal;
-    bool local, all_local;
+    bool local, all_local = false;
     char **peers;
-    pmix_rank_t *locals;
+    pmix_rank_t *locals = NULL;
     uint8_t j;
 
     /* init us */
@@ -56,8 +56,7 @@ int main(int argc, char **argv)
     fprintf(stderr, "Client ns %s rank %d: Running\n", myproc.nspace, myproc.rank);
 
     /* get our job size */
-    (void)strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
-    proc.rank = PMIX_RANK_WILDCARD;
+    PMIX_LOAD_PROCID(&proc, myproc.nspace, PMIX_RANK_WILDCARD);
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Get job size failed: %s\n",
                     myproc.nspace, myproc.rank, PMIx_Error_string(rc));

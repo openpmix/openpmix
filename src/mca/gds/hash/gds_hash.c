@@ -2805,7 +2805,9 @@ static pmix_status_t hash_fetch(const pmix_proc_t *proc,
         if (NULL == key) {
             /* and need to add all job info just in case that was
              * passed via a different GDS component */
-            dohash(&trk->internal, NULL, PMIX_RANK_WILDCARD, false, kvs);
+            rc = dohash(&trk->internal, NULL, PMIX_RANK_WILDCARD, false, kvs);
+        } else {
+            rc = PMIX_ERR_NOT_FOUND;
         }
     } else {
         rc = dohash(ht, key, proc->rank, false, kvs);
