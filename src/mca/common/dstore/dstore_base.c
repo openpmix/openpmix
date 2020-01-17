@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
@@ -1964,7 +1964,7 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
     bool all_ranks_found = true;
     bool key_found = false;
     pmix_info_t *info = NULL;
-    size_t ninfo;
+    size_t ninfo = 0;
     size_t keyhash = 0;
     bool lock_is_set = false;
 
@@ -2255,7 +2255,7 @@ done:
 
     if( rc != PMIX_SUCCESS ){
         if ((NULL == key) && (kval_cnt > 0)) {
-            if( NULL != info ) {
+            if( NULL != info && 0 < ninfo ) {
                 PMIX_INFO_FREE(info, ninfo);
             }
             if (NULL != kval) {
@@ -2463,7 +2463,9 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_del_nspace(pmix_common_dstore_ctx_t 
     int in_use = 0;
     ns_map_data_t *ns_map_data = NULL;
     ns_map_t *ns_map;
+#if PMIX_ENABLE_DEBUG
     session_t *session_tbl = NULL;
+#endif
     ns_track_elem_t *trk = NULL;
     int dstor_track_idx;
     size_t session_tbl_idx;
@@ -2513,10 +2515,12 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_del_nspace(pmix_common_dstore_ctx_t 
     /* A lot of nspaces may be using same session info
      * session record can only be deleted once all references are gone */
     if (!in_use) {
+#if PMIX_ENABLE_DEBUG
         session_tbl = PMIX_VALUE_ARRAY_GET_BASE(ds_ctx->session_array, session_t);
         PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
                              "%s:%d:%s delete session for jobuid: %d",
                              __FILE__, __LINE__, __func__, session_tbl[session_tbl_idx].jobuid));
+#endif
         _esh_session_release(ds_ctx, session_tbl_idx);
      }
 exit:
