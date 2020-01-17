@@ -148,7 +148,7 @@ static char *getword(char *line)
 
 static pmix_status_t simptest_init(void)
 {
-    FILE *fp;
+    FILE *fp = NULL;
     char *line, *ptr;
     pnet_node_t *nd;
     int n, cache[1024];
@@ -211,7 +211,9 @@ static pmix_status_t simptest_init(void)
         }
     }
 
-    fclose(fp);
+    if (NULL != fp) {
+        fclose(fp);
+    }
     return PMIX_SUCCESS;
 }
 

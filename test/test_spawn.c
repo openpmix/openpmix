@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * $COPYRIGHT$
@@ -23,7 +23,7 @@ static void spawn_cb(pmix_status_t status,
 {
     spawn_cbdata *cb = (spawn_cbdata*)cbdata;
 
-    strncpy(cb->nspace, nspace, strlen(nspace)+1);
+    PMIX_LOAD_NSPACE(cb->nspace, nspace);
     cb->in_progress = 0;
 }
 
@@ -51,10 +51,10 @@ static int test_spawn_common(char *my_nspace, int my_rank, int blocking)
             exit(rc);
         }
         PMIX_WAIT_FOR_COMPLETION(cbdata.in_progress);
-        strncpy(nspace, cbdata.nspace, strlen(cbdata.nspace)+1);
+        PMIX_LOAD_NSPACE(nspace, cbdata.nspace);
     }
     PMIX_APP_FREE(apps, napps);
-    if (strncmp(nspace, "foobar", strlen(nspace)+1)) {
+    if (!PMIX_CHECK_NSPACE(nspace, "foobar")) {
         exit(PMIX_ERROR);
     }
     return rc;
