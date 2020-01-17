@@ -182,6 +182,7 @@ static pmix_status_t simptest_init(void)
             if (NULL == ptr) {
                 /* that is an error */
                 free(line);
+                fclose(fp);
                 return PMIX_ERR_FATAL;
             }
             nd = PMIX_NEW(pnet_node_t);
@@ -191,6 +192,8 @@ static pmix_status_t simptest_init(void)
             pos = strlen(ptr) + 2;  // move past the NULL terminator
             if (len <= pos) {
                 /* we are done */
+                free(line);
+                fclose(fp);
                 return PMIX_ERR_FATAL;
             }
             while (n < 1024 && NULL != (ptr = getword(&line[pos]))) {
@@ -207,6 +210,8 @@ static pmix_status_t simptest_init(void)
             free(line);
         }
     }
+
+    fclose(fp);
     return PMIX_SUCCESS;
 }
 
