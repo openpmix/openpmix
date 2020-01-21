@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
@@ -191,6 +191,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_REQUESTOR_IS_CLIENT            "pmix.req.client"       // (bool) requesting process is a client process
 #define PMIX_PSET_NAME                      "pmix.pset.nm"          // (char*) user-assigned name for the process
                                                                     //         set containing the given process
+#define PMIX_REINCARNATION                  "pmix.reinc"            // (uint32_t) number of times this process has been instantiated - i.e.,
+                                                                    //            tracks the number of times it has been restarted
 
 /* model attributes */
 #define PMIX_PROGRAMMING_MODEL              "pmix.pgm.model"        // (char*) programming model being initialized (e.g., "MPI" or "OpenMP")
