@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2018 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
@@ -376,7 +376,6 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
     bool all_def;
     pmix_namespace_t *nptr, *ns;
     pmix_rank_info_t *info;
-    pmix_rank_t ns_local = 0;
 
     pmix_output_verbose(5, pmix_server_globals.base_output,
                         "new_tracker called with %d procs", (int)nprocs);
@@ -414,15 +413,11 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
         trk->npcs = nprocs;
     }
     trk->type = type;
-    trk->local = false;
+    trk->local = true;
     trk->nlocal = 0;
 
     all_def = true;
     for (i=0; i < nprocs; i++) {
-        if (NULL == id) {
-            pmix_strncpy(trk->pcs[i].nspace, procs[i].nspace, PMIX_MAX_NSLEN);
-            trk->pcs[i].rank = procs[i].rank;
-        }
         if (!all_def) {
             continue;
         }
@@ -439,6 +434,7 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
             pmix_output_verbose(5, pmix_server_globals.base_output,
                                 "new_tracker: unknown nspace %s",
                                 procs[i].nspace);
+            trk->local = false;
             continue;
         }
         /* have all the clients for this nspace been defined? */
@@ -454,7 +450,6 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
              * of the loop */
         }
         /* is this one of my local ranks? */
-        ns_local = 0;
         PMIX_LIST_FOREACH(info, &nptr->ranks, pmix_rank_info_t) {
             if (procs[i].rank == info->pname.rank ||
                 PMIX_RANK_WILDCARD == procs[i].rank) {
@@ -462,18 +457,14 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
                                         "adding local proc %s.%d to tracker",
                                         info->pname.nspace, info->pname.rank);
                 /* track the count */
-                ns_local++;
+                trk->nlocal++;
                 if (PMIX_RANK_WILDCARD != procs[i].rank) {
                     break;
                 }
+            } else {
+                trk->local = false;
             }
         }
-
-        trk->nlocal += ns_local;
-    }
-
-    if (trk->nlocal == nptr->nprocs) {
-        trk->local = true;
     }
 
     if (all_def) {
