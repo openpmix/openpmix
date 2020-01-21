@@ -428,7 +428,7 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
     memcpy(trk->pcs, procs, nprocs * sizeof(pmix_proc_t));
     trk->npcs = nprocs;
     trk->type = type;
-    trk->local = false;
+    trk->local = true;
     trk->nlocal = 0;
 
     all_def = true;
