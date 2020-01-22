@@ -15,7 +15,7 @@
 
 typedef struct {
     int in_progress;
-    char nspace[PMIX_MAX_NSLEN];
+    pmix_nspace_t nspace;
 } spawn_cbdata;
 
 static void spawn_cb(pmix_status_t status,
@@ -32,7 +32,7 @@ static int test_spawn_common(char *my_nspace, int my_rank, int blocking)
     int rc;
     pmix_app_t *apps;
     size_t napps;
-    char nspace[PMIX_MAX_NSLEN+1];
+    pmix_nspace_t nspace;
     memset(nspace, 0, PMIX_MAX_NSLEN+1);
     napps = 1;
     PMIX_APP_CREATE(apps, napps);
@@ -44,7 +44,7 @@ static int test_spawn_common(char *my_nspace, int my_rank, int blocking)
     } else {
         spawn_cbdata cbdata;
         cbdata.in_progress = 1;
-        memset(cbdata.nspace, 0, PMIX_MAX_NSLEN);
+        memset(cbdata.nspace, 0, PMIX_MAX_NSLEN+1);
         rc = PMIx_Spawn_nb(NULL, 0, apps, napps, spawn_cb, (void*)&cbdata);
         if (PMIX_SUCCESS != rc) {
             PMIX_APP_FREE(apps, napps);
