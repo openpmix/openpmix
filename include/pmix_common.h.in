@@ -792,6 +792,33 @@ typedef uint8_t pmix_proc_state_t;
 #define PMIX_PROC_STATE_FAILED_TO_LAUNCH        (PMIX_PROC_STATE_ERROR + 13)  /* unable to launch process */
 
 
+/****    JOB STATE DEFINITIONS    ****/
+typedef uint8_t pmix_job_state_t;
+#define PMIX_JOB_STATE_UNDEF                     0  // undefined process state
+#define PMIX_JOB_STATE_PREPPED                   1  // job is ready to be launched
+#define PMIX_JOB_STATE_LAUNCH_UNDERWAY           2  // job launch underway
+#define PMIX_JOB_STATE_RUNNING                   3  // all procs have been spawned
+#define PMIX_JOB_STATE_SUSPENDED                 4  // job has been suspended
+#define PMIX_JOB_STATE_CONNECTED                 5  // all procs have connected to their PMIx server
+
+/*
+* Define a "boundary" so users can easily and quickly determine
+* if a job is still running or not - any value less than
+* this one means that the job has not terminated
+*/
+#define PMIX_JOB_STATE_UNTERMINATED             15
+
+#define PMIX_JOB_STATE_TERMINATED               20  // job has terminated and is no longer running - typically will
+                                                    // be accompanied by the job exit status in response to a query
+
+/* Define a boundary so users can easily and quickly determine
+* if a job abnormally terminated - leave a little room
+* for future expansion
+*/
+#define PMIX_JOB_STATE_TERMINATED_WITH_ERROR    50  // job has terminated and is no longer running - typically will
+                                                    // be accompanied by a job-related error code in response to a query
+
+
 /****    PMIX ERROR CONSTANTS    ****/
 /* PMIx errors are always negative, with 0 reserved for success */
 #define PMIX_ERR_BASE                   0
@@ -917,6 +944,23 @@ typedef int pmix_status_t;
 #define PMIX_FABRIC_UPDATED                         -174
 #define PMIX_FABRIC_UPDATE_PENDING                  -175
 
+/* job-related errors */
+#define PMIX_ERR_JOB_FAILED_TO_START                -176
+#define PMIX_ERR_JOB_APP_NOT_EXECUTABLE             -177
+#define PMIX_ERR_JOB_NO_EXE_SPECIFIED               -178
+#define PMIX_ERR_JOB_FAILED_TO_MAP                  -179
+#define PMIX_ERR_JOB_CANCELLED                      -180
+#define PMIX_ERR_JOB_FAILED_TO_LAUNCH               -181
+#define PMIX_ERR_JOB_ABORTED                        -182
+#define PMIX_ERR_JOB_KILLED_BY_CMD                  -183
+#define PMIX_ERR_JOB_ABORTED_BY_SIG                 -184
+#define PMIX_ERR_JOB_TERM_WO_SYNC                   -185
+#define PMIX_ERR_JOB_SENSOR_BOUND_EXCEEDED          -186
+#define PMIX_ERR_JOB_NEVER_LAUNCHED                 -187
+#define PMIX_ERR_JOB_NON_ZERO_TERM                  -188
+#define PMIX_ERR_JOB_ALLOC_FAILED                   -189
+#define PMIX_ERR_JOB_CANNOT_LAUNCH                  -190
+
 /* system failures */
 #define PMIX_ERR_SYS_BASE                           -230
 #define PMIX_ERR_NODE_DOWN                          -231
@@ -998,6 +1042,7 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_COORD              47
 #define PMIX_REGATTR            48
 #define PMIX_REGEX              49
+#define PMIX_JOB_STATE          50
 /********************/
 
 /* define a boundary for implementers so they can add their own data types */
@@ -1551,6 +1596,7 @@ typedef struct pmix_value {
         pmix_alloc_directive_t adir;
         pmix_envar_t envar;
         pmix_coord_t *coord;
+        pmix_job_state_t jstate;
     } data;
 } pmix_value_t;
 /* allocate and initialize a specified number of value structs */
@@ -2521,6 +2567,8 @@ PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status,
  * - pmix_data_type_t   (PMIX_DATA_TYPE)
  * - pmix_alloc_directive_t  (PMIX_ALLOC_DIRECTIVE)
  * - pmix_iof_channel_t  (PMIX_IOF_CHANNEL)
+ * - pmix_job_state_t  (PMIX_JOB_STATE)
+ * - pmix_proc_state_t  (PMIX_PROC_STATE)
  */
 PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t status);
 PMIX_EXPORT const char* PMIx_Proc_state_string(pmix_proc_state_t state);
@@ -2531,6 +2579,7 @@ PMIX_EXPORT const char* PMIx_Info_directives_string(pmix_info_directives_t direc
 PMIX_EXPORT const char* PMIx_Data_type_string(pmix_data_type_t type);
 PMIX_EXPORT const char* PMIx_Alloc_directive_string(pmix_alloc_directive_t directive);
 PMIX_EXPORT const char* PMIx_IOF_channel_string(pmix_iof_channel_t channel);
+PMIX_EXPORT const char* PMIx_Job_state_string(pmix_job_state_t state);
 
 /* Get the PMIx version string. Note that the provided string is
  * statically defined and must NOT be free'd  */

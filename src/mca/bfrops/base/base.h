@@ -11,7 +11,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
- * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
@@ -479,6 +479,9 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_regattr(pmix_pointer_array_t *re
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_regex(pmix_pointer_array_t *regtypes,
                                                       pmix_buffer_t *buffer, const void *src,
                                                       int32_t num_vals, pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_jobstate(pmix_pointer_array_t *regtypes,
+                                                         pmix_buffer_t *buffer, const void *src,
+                                                         int32_t num_vals, pmix_data_type_t type);
 
 /*
 * "Standard" unpack functions
@@ -619,6 +622,10 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_regattr(pmix_pointer_array_t *
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_regex(pmix_pointer_array_t *regtypes,
                                                         pmix_buffer_t *buffer, void *dest,
                                                         int32_t *num_vals, pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_jobstate(pmix_pointer_array_t *regtypes,
+                                                           pmix_buffer_t *buffer, void *dest,
+                                                           int32_t *num_vals, pmix_data_type_t type);
+
 /**** DEPRECATED ****/
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_array(pmix_pointer_array_t *regtypes,
                                                         pmix_buffer_t *buffer, void *dest,
@@ -804,6 +811,9 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_regattr(char **output, char *pr
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_regex(char **output, char *prefix,
                                                        char *src,
                                                        pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_jobstate(char **output, char *prefix,
+                                                          pmix_proc_state_t *src,
+                                                          pmix_data_type_t type);
 
 /*
  * Common helper functions

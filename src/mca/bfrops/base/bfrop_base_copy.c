@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
@@ -178,6 +178,10 @@ pmix_status_t pmix_bfrops_base_std_copy(void **dest, void *src,
 
     case PMIX_ALLOC_DIRECTIVE:
         datasize = sizeof(pmix_alloc_directive_t);
+        break;
+
+    case PMIX_JOB_STATE:
+        datasize = sizeof(pmix_job_state_t);
         break;
 
     default:

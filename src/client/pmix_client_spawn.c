@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
@@ -346,6 +346,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr,
         /* extract and process any job-related info for this nspace */
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            ret = rc;
         }
     }
 
