@@ -7,7 +7,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2016-2019 IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2020 IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -389,6 +389,7 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
 {
     pmix_server_trkr_t *trk;
     size_t i;
+    size_t proc_participants = 0;
     bool all_def;
     pmix_namespace_t *nptr, *ns;
     pmix_rank_info_t *info;
@@ -493,6 +494,15 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
                 trk->local = false;
             }
         }
+        if (PMIX_RANK_WILDCARD == procs[i].rank) {
+            proc_participants += nptr->nprocs;
+        } else {
+            proc_participants ++;
+        }
+    }
+
+    if (proc_participants > trk->nlocal) {
+        trk->local = false;
     }
 
     if (all_def) {
