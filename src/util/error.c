@@ -11,7 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007-2012 Los Alamos National Security, LLC.
  *                         All rights reserved.
- * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -281,6 +281,36 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
     case PMIX_MAX_ERR_CONSTANT:
         return "PMIX_ERR_WILDCARD";
 
+    case PMIX_ERR_JOB_FAILED_TO_START:
+        return "JOB FAILED TO START";
+    case PMIX_ERR_JOB_APP_NOT_EXECUTABLE:
+        return "APPLICATION NOT EXECUTABLE";
+    case PMIX_ERR_JOB_NO_EXE_SPECIFIED:
+        return "NO EXECUTABLE SPECIFIED";
+    case PMIX_ERR_JOB_FAILED_TO_MAP:
+        return "JOB FAILED TO MAP";
+    case PMIX_ERR_JOB_CANCELLED:
+        return "JOB CANCELLED";
+    case PMIX_ERR_JOB_FAILED_TO_LAUNCH:
+        return "JOB FAILED TO LAUNCH";
+    case PMIX_ERR_JOB_ABORTED:
+        return "JOB ABORTED";
+    case PMIX_ERR_JOB_KILLED_BY_CMD:
+        return "KILLED BY COMMAND";
+    case PMIX_ERR_JOB_ABORTED_BY_SIG:
+        return "ABORTED BY SIGNAL";
+    case PMIX_ERR_JOB_TERM_WO_SYNC:
+        return "TERMINATED WITHOUT SYNC";
+    case PMIX_ERR_JOB_SENSOR_BOUND_EXCEEDED:
+        return "SENSOR BOUND EXCEEDED";
+    case PMIX_ERR_JOB_NEVER_LAUNCHED:
+        return "NEVER LAUNCHED";
+    case PMIX_ERR_JOB_NON_ZERO_TERM:
+        return "NON-ZERO TERMINATION";
+    case PMIX_ERR_JOB_ALLOC_FAILED:
+        return "FAILED TO OBTAIN ALLOCATION";
+    case PMIX_ERR_JOB_CANNOT_LAUNCH:
+        return "COULD NOT BE LAUNCHED";
 
     default:
         return "ERROR STRING NOT FOUND";

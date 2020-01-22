@@ -434,6 +434,15 @@ static pmix_status_t init(void)
                        pmix_bfrops_base_copy_regex,
                        pmix_bfrops_base_print_regex,
                        &mca_bfrops_v4_component.types);
+
+    PMIX_REGISTER_TYPE("PMIX_JOB_STATE",
+                       PMIX_JOB_STATE,
+                       pmix_bfrops_base_pack_jobstate,
+                       pmix_bfrops_base_unpack_jobstate,
+                       pmix_bfrops_base_std_copy,
+                       pmix_bfrops_base_print_jobstate,
+                       &mca_bfrops_v4_component.types);
+
     return PMIX_SUCCESS;
 }
 

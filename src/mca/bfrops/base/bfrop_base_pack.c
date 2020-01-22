@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * $COPYRIGHT$
@@ -1363,3 +1363,20 @@ pmix_status_t pmix_bfrops_base_pack_regex(pmix_pointer_array_t *regtypes,
     }
     return PMIX_SUCCESS;
 }
+
+pmix_status_t pmix_bfrops_base_pack_jobstate(pmix_pointer_array_t *regtypes,
+                                             pmix_buffer_t *buffer, const void *src,
+                                             int32_t num_vals, pmix_data_type_t type)
+{
+    pmix_status_t ret;
+
+    if (NULL == regtypes) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (PMIX_JOB_STATE != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT8, regtypes);
+    return ret;
+}
+
