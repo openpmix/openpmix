@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
@@ -102,7 +102,7 @@ static void nscon(pmix_namespace_t *p)
 {
     p->nspace = NULL;
     p->nprocs = 0;
-    p->nlocalprocs = 0;
+    p->nlocalprocs = SIZE_MAX;
     p->all_registered = false;
     p->version_stored = false;
     p->jobbkt = NULL;
