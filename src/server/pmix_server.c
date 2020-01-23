@@ -540,6 +540,10 @@ static void _register_nspace(int sd, short args, void *cbdata)
     pmix_namespace_t *nptr, *tmp;
     pmix_status_t rc;
     size_t i;
+    bool all_def;
+    pmix_server_trkr_t *trk;
+    pmix_namespace_t *ns;
+    pmix_trkr_caddy_t *tcd;
 
     PMIX_ACQUIRE_OBJECT(caddy);
 
@@ -591,6 +595,77 @@ static void _register_nspace(int sd, short args, void *cbdata)
      * are using */
     PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr,
                             cd->info, cd->ninfo);
+
+    /* check any pending trackers to see if they are
+     * waiting for us. There is a slight race condition whereby
+     * the host server could have spawned the local client and
+     * it called back into the collective -before- our local event
+     * would fire the register_client callback. Deal with that here. */
+    all_def = true;
+    PMIX_LIST_FOREACH(trk, &pmix_server_globals.collectives, pmix_server_trkr_t) {
+        /* if this tracker is already complete, then we
+         * don't need to update it */
+        if (trk->def_complete) {
+            continue;
+        }
+        /* the fact that the tracker is here means that the tracker was
+         * created in response to at least one collective call being received
+         * from a participant. However, not all local participants may have
+         * already called the collective. While the collective created the
+         * tracker, it would not have updated the number of local participants
+         * from this nspace if they specified PMIX_RANK_WILDCARD in the list of
+         * participants since the host hadn't yet called "register_nspace".
+         * Take care of that here */
+        for (i=0; i < trk->npcs; i++) {
+            /* since we have to do this search, let's see
+             * if the nspaces are all completely registered */
+            if (all_def) {
+                /* so far, they have all been defined - check this one */
+                PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_namespace_t) {
+                    if (0 == strcmp(trk->pcs[i].nspace, ns->nspace)) {
+                        if (SIZE_MAX == ns->nlocalprocs ||
+                            !ns->all_registered) {
+                            all_def = false;
+                        }
+                        break;
+                    }
+                }
+            }
+            /* now see if this nspace is the one we just registered */
+            if (0 != strncmp(trk->pcs[i].nspace, nptr->nspace, PMIX_MAX_NSLEN)) {
+                /* if not, then we really can't say anything more about it as
+                 * we have no new information about this nspace */
+                continue;
+            }
+            /* if this request was for all participants from this nspace, then
+             * we handle this case here */
+            if (PMIX_RANK_WILDCARD == trk->pcs[i].rank) {
+            	trk->nlocal = nptr->nlocalprocs;
+                /* the total number of procs in this nspace was provided
+                 * in the data blob delivered to register_nspace, so check
+                 * to see if all the procs are local */
+                if (nptr->nprocs != nptr->nlocalprocs) {
+                    trk->local = false;
+                }
+                continue;
+            }
+        }
+        /* update this tracker's status */
+        trk->def_complete = all_def;
+        /* is this now locally completed? */
+        if (trk->def_complete && pmix_list_get_size(&trk->local_cbs) == trk->nlocal) {
+            /* it did, so now we need to process it
+             * we don't want to block someone
+             * here, so kick any completed trackers into a
+             * new event for processing */
+            PMIX_EXECUTE_COLLECTIVE(tcd, trk, pmix_server_execute_collective);
+        }
+    }
+    /* also check any pending local modex requests to see if
+     * someone has been waiting for a request on a remote proc
+     * in one of our nspaces, but we didn't know all the local procs
+     * and so couldn't determine the proc was remote */
+    pmix_pending_nspace_requests(nptr);
 
   release:
     cd->opcbfunc(rc, cd->cbdata);
@@ -984,7 +1059,7 @@ void pmix_server_execute_collective(int sd, short args, void *cbdata)
 static void _register_client(int sd, short args, void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t*)cbdata;
-    pmix_rank_info_t *info, *iptr;
+    pmix_rank_info_t *info;
     pmix_namespace_t *nptr, *ns;
     pmix_server_trkr_t *trk;
     pmix_trkr_caddy_t *tcd;
@@ -1008,6 +1083,10 @@ static void _register_client(int sd, short args, void *cbdata)
         }
     }
     if (NULL == nptr) {
+        /* there is no requirement in the Standard that hosts register
+         * an nspace prior to registering clients for that nspace. So
+         * if we didn't find it, just add it to our collection now in
+         * anticipation of eventually getting a "register_nspace" call */
         nptr = PMIX_NEW(pmix_namespace_t);
         if (NULL == nptr) {
             rc = PMIX_ERR_NOMEM;
@@ -1030,8 +1109,11 @@ static void _register_client(int sd, short args, void *cbdata)
     info->gid = cd->gid;
     info->server_object = cd->server_object;
     pmix_list_append(&nptr->ranks, &info->super);
-    /* see if we have everyone */
-    if (nptr->nlocalprocs == pmix_list_get_size(&nptr->ranks)) {
+    /* see if we have everyone - not that nlocalprocs is set to
+     * a default value to ensure we don't execute this
+     * test until the host calls "register_nspace" */
+    if (SIZE_MAX != nptr->nlocalprocs &&
+        nptr->nlocalprocs == pmix_list_get_size(&nptr->ranks)) {
         nptr->all_registered = true;
         /* check any pending trackers to see if they are
          * waiting for us. There is a slight race condition whereby
@@ -1045,36 +1127,47 @@ static void _register_client(int sd, short args, void *cbdata)
             if (trk->def_complete) {
                 continue;
             }
-            /* see if any of our procs from this nspace are involved - the tracker will
-             * have been created because a callback was received, but
-             * we may or may not have received _all_ callbacks by this
-             * time. So check and see if any procs from this nspace are
-             * involved, and add them to the count of local participants */
+            /* the fact that the tracker is here means that the tracker was
+             * created in response to at least one collective call being received
+             * from a participant. However, not all local participants may have
+             * already called the collective. While the collective created the
+             * tracker, it would not have updated the number of local participants
+             * from this nspace UNLESS the collective involves all procs in the
+             * nspace (i.e., they specified PMIX_RANK_WILDCARD in the list of
+             * participants) AND the host already provided the number of local
+             * procs for this nspace by calling "register_nspace". So avoid that
+             * scenario here to avoid double-counting */
             for (i=0; i < trk->npcs; i++) {
                 /* since we have to do this search, let's see
-                 * if the nspaces are all defined */
+                 * if the nspaces are all completely registered */
                 if (all_def) {
                     /* so far, they have all been defined - check this one */
                     PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_namespace_t) {
-                        if (0 < ns->nlocalprocs &&
-                            0 == strcmp(trk->pcs[i].nspace, ns->nspace)) {
-                            all_def = ns->all_registered;
+                        if (0 == strcmp(trk->pcs[i].nspace, ns->nspace)) {
+                            if (SIZE_MAX == ns->nlocalprocs ||
+                                !ns->all_registered) {
+                                all_def = false;
+                            }
                             break;
                         }
                     }
                 }
-                /* now see if this proc is local to us */
+                /* now see if this nspace is the one to which the client we just
+                 * registered belongs */
                 if (0 != strncmp(trk->pcs[i].nspace, nptr->nspace, PMIX_MAX_NSLEN)) {
+                    /* if not, then we really can't say anything more about it as
+                     * we have no new information about this nspace */
                     continue;
                 }
-                /* need to check if this rank is one of mine */
-                PMIX_LIST_FOREACH(iptr, &nptr->ranks, pmix_rank_info_t) {
-                    if (PMIX_RANK_WILDCARD == trk->pcs[i].rank ||
-                        iptr->pname.rank == trk->pcs[i].rank) {
-                        /* this is one of mine - track the count */
-                        ++trk->nlocal;
-                        break;
-                    }
+                /* if this request was for all participants from this nspace, then
+                 * we handle this case elsewhere */
+                if (PMIX_RANK_WILDCARD == trk->pcs[i].rank) {
+                    continue;
+                }
+                /* see if the rank we just registered is a participant */
+                if (cd->proc.rank == trk->pcs[i].rank) {
+                    /* yes, we are included */
+                    ++trk->nlocal;
                 }
             }
             /* update this tracker's status */
