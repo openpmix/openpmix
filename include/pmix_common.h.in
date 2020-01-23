@@ -1169,10 +1169,12 @@ static inline void* pmix_calloc(size_t n, size_t m)
     }while(0)
 
 /* define a convenience macro for loading nspaces */
-#define PMIX_LOAD_NSPACE(a, b)                          \
-    do {                                                \
-        memset((a), 0, PMIX_MAX_NSLEN+1);               \
-        pmix_strncpy((char*)(a), (b), PMIX_MAX_NSLEN);  \
+#define PMIX_LOAD_NSPACE(a, b)                              \
+    do {                                                    \
+        memset((a), 0, PMIX_MAX_NSLEN+1);                   \
+        if (NULL != (b)) {                                  \
+            pmix_strncpy((char*)(a), (b), PMIX_MAX_NSLEN);  \
+        }                                                   \
     }while(0)
 
 /* define a convenience macro for checking nspaces */
