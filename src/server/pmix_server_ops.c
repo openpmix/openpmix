@@ -245,9 +245,6 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
     /* mark us as having successfully received a blob from this proc */
     info->modex_recvd = true;
 
-    /* update the commit counter */
-    peer->commit_cnt++;
-
     /* see if anyone remote is waiting on this data - could be more than one */
     PMIX_LIST_FOREACH_SAFE(dcd, dcdnext, &pmix_server_globals.remote_pnd, pmix_dmdx_remote_t) {
         if (0 != strncmp(dcd->cd->proc.nspace, nptr->nspace, PMIX_MAX_NSLEN)) {
@@ -522,6 +519,12 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
          * clients have been "registered" */
         if (PMIX_RANK_WILDCARD == procs[i].rank) {
             trk->nlocal += nptr->nlocalprocs;
+            /* the total number of procs in this nspace was provided
+             * in the data blob delivered to register_nspace, so check
+             * to see if all the procs are local */
+            if (nptr->nprocs != nptr->nlocalprocs) {
+                trk->local = false;
+            }
             continue;
         }
 

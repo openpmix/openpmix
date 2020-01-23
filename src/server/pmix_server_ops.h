@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.
@@ -113,6 +113,7 @@ typedef struct {
                                     // all local ranks that are interested in this namespace-rank
     pmix_info_t *info;              // array of info structs for this request
     size_t ninfo;                   // number of info structs
+    pmix_scope_t scope;
 } pmix_dmdx_local_t;
 PMIX_CLASS_DECLARATION(pmix_dmdx_local_t);
 

@@ -345,6 +345,9 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_PROC_STATE_STATUS              "pmix.proc.state"       // (pmix_proc_state_t) process state
 #define PMIX_NOTIFY_LAUNCH                  "pmix.note.lnch"        // (bool) notify the requestor upon launch of the child job and return
                                                                     //        its namespace in the event
+#define PMIX_GET_REFRESH_CACHE              "pmix.get.refresh"      // (bool) when retrieving data for a remote process, refresh the existing
+                                                                    //        local data cache for the process in case new values have been
+                                                                    //        put and committed by it since the last refresh
 
 
 /* attributes used by host server to pass data to the server convenience library - the

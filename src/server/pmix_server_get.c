@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
@@ -86,7 +86,8 @@ static void dmdx_cbfunc(pmix_status_t status, const char *data,
                         pmix_release_cbfunc_t relfn, void *relcbdata);
 static pmix_status_t _satisfy_request(pmix_namespace_t *ns, pmix_rank_t rank,
                                       pmix_server_caddy_t *cd,
-                                      pmix_modex_cbfunc_t cbfunc, void *cbdata, bool *scope);
+                                      pmix_modex_cbfunc_t cbfunc, void *cbdata,
+                                      bool refresh, pmix_scope_t scope, bool *local);
 static pmix_status_t create_local_tracker(char nspace[], pmix_rank_t rank,
                                           pmix_info_t info[], size_t ninfo,
                                           pmix_modex_cbfunc_t cbfunc,
@@ -125,6 +126,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     bool local;
     bool localonly = false;
     bool diffnspace = false;
+    bool refresh_cache = false;
     struct timeval tv = {0, 0};
     pmix_buffer_t pbkt, pkt;
     pmix_byte_object_t bo;
@@ -132,6 +134,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     pmix_proc_t proc;
     char *data;
     size_t sz, n;
+    pmix_scope_t scope = PMIX_SCOPE_UNDEF;
 
     pmix_output_verbose(2, pmix_server_globals.get_output,
                         "%s recvd GET",
@@ -184,6 +187,10 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
             localonly = PMIX_INFO_TRUE(&cd->info[n]);
         } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_TIMEOUT)) {
             tv.tv_sec = cd->info[n].value.data.uint32;
+        } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_GET_REFRESH_CACHE)) {
+            refresh_cache = PMIX_INFO_TRUE(&cd->info[n]);
+        } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_DATA_SCOPE)) {
+            scope = cd->info[n].value.data.scope;
         }
     }
 
@@ -467,8 +474,8 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     }
 
     /* if everyone has registered, see if we already have this data */
-    rc = _satisfy_request(nptr, rank, cd, cbfunc, cbdata, &local);
-    if( PMIX_SUCCESS == rc ){
+    rc = _satisfy_request(nptr, rank, cd, cbfunc, cbdata, refresh_cache, scope, &local);
+    if (PMIX_SUCCESS == rc) {
         /* return success as the satisfy_request function
          * calls the cbfunc for us, and it will have
          * released the cbdata object */
@@ -655,8 +662,8 @@ void pmix_pending_nspace_requests(pmix_namespace_t *nptr)
 
 static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
                                       pmix_server_caddy_t *cd,
-                                      pmix_modex_cbfunc_t cbfunc,
-                                      void *cbdata, bool *local)
+                                      pmix_modex_cbfunc_t cbfunc, void *cbdata,
+                                      bool refresh, pmix_scope_t scp, bool *local)
 {
     pmix_status_t rc;
     bool found = false;
@@ -668,8 +675,8 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
     pmix_byte_object_t bo;
     char *data = NULL;
     size_t sz = 0;
-    pmix_scope_t scope = PMIX_SCOPE_UNDEF;
     bool diffnspace = false;
+    pmix_scope_t scope = scp;
 
     pmix_output_verbose(2, pmix_server_globals.get_output,
                         "%s:%d SATISFY REQUEST CALLED",
@@ -681,7 +688,7 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
      * a remote peer, or due to data from a local client
      * having been committed */
     PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
-    pmix_strncpy(proc.nspace, nptr->nspace, PMIX_MAX_NSLEN);
+    PMIX_LOAD_NSPACE(proc.nspace, nptr->nspace);
 
     if (!PMIX_CHECK_NSPACE(nptr->nspace, cd->peer->info->pname.nspace)) {
         diffnspace = true;
@@ -692,6 +699,17 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
     if (PMIX_RANK_UNDEF == rank || diffnspace) {
         scope = PMIX_GLOBAL;  // we have to search everywhere
         peer = pmix_globals.mypeer;
+        /* since the rank is undefined, we can only search ourselves
+         * as the RM would have no idea where to go for the info */
+        if (NULL != local) {
+            *local = true;
+        }
+    } else if (PMIX_RANK_WILDCARD == rank) {
+        peer = pmix_globals.mypeer;
+        /* only search ourselves for getting job-level data */
+        if (NULL != local) {
+            *local = true;
+        }
     } else if (0 < nptr->nlocalprocs) {
         /* if we have local clients of this nspace, then we use
          * the corresponding GDS to retrieve the data. Otherwise,
@@ -699,37 +717,39 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
         if (NULL != local) {
             *local = true;
         }
-        if (PMIX_RANK_WILDCARD != rank) {
-            peer = NULL;
-            /* see if the requested rank is local */
-            PMIX_LIST_FOREACH(iptr, &nptr->ranks, pmix_rank_info_t) {
-                if (rank == iptr->pname.rank) {
-                    scope = PMIX_LOCAL;
-                    if (0 <= iptr->peerid) {
-                        peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, iptr->peerid);
-                    }
-                    if (NULL == peer) {
-                        /* this rank has not connected yet, so this request needs to be held */
-                        return PMIX_ERR_NOT_FOUND;
-                    }
-                    break;
+        peer = NULL;
+        /* see if the requested rank is local */
+        PMIX_LIST_FOREACH(iptr, &nptr->ranks, pmix_rank_info_t) {
+            if (rank == iptr->pname.rank) {
+                if (0 <= iptr->peerid) {
+                    peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, iptr->peerid);
                 }
-            }
-            if (PMIX_LOCAL != scope)  {
-                /* this must be a remote rank */
-                if (NULL != local) {
-                    *local = false;
+                if (NULL == peer) {
+                    /* this rank has not connected yet, so this request needs to be held */
+                    return PMIX_ERR_NOT_FOUND;
                 }
-                scope = PMIX_REMOTE;
-                peer = pmix_globals.mypeer;
+                break;
             }
+        }
+        if (NULL == peer)  {
+            /* this must be a remote rank */
+            if (NULL != local) {
+                *local = false;
+            }
+            peer = pmix_globals.mypeer;
         }
     } else {
         if (NULL != local) {
             *local = false;
         }
         peer = pmix_globals.mypeer;
-        scope = PMIX_REMOTE;
+    }
+
+    /* if this is a remote process and they asked us to refresh the
+     * cache, then we can't go any further - we need to do a dmodex
+     * and get the remote proc's info */
+    if (refresh && !(*local)) {
+        return PMIX_ERR_NOT_FOUND;
     }
 
     /* if they are asking about a rank from an nspace different
@@ -762,7 +782,7 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
             }
             if (PMIX_PEER_IS_V1(cd->peer)) {
                 /* if the client is using v1, then it expects the
-                 * data returned to it as the rank followed by abyte object containing
+                 * data returned to it as the rank followed by a byte object containing
                  * a buffer - so we have to do a little gyration */
                 pmix_buffer_t xfer;
                 PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
@@ -796,18 +816,8 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
         }
     }
 
-    /* retrieve the data for the specific rank they are asking about */
+    /* if we have it, retrieve the data for the specific rank they are asking about */
     if (PMIX_RANK_WILDCARD != rank) {
-        if (!PMIX_PEER_IS_SERVER(peer) && 0 == peer->commit_cnt) {
-            /* this condition works only for local requests, server does
-             * count commits for local ranks, and check this count when
-             * local request.
-             * if that request performs for remote rank on the remote
-             * node (by direct modex) so `peer->commit_cnt` should be ignored,
-             * it is can not be counted for the remote side and this condition
-             * does not matter for remote case */
-            return PMIX_ERR_NOT_FOUND;
-        }
         proc.rank = rank;
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         /* this is a local request, so give the gds the option
@@ -939,7 +949,7 @@ pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr, pmix_rank_t rank,
         scd->peer = pmix_globals.mypeer;
         PMIX_LIST_FOREACH(req, &ptr->loc_reqs, pmix_dmdx_request_t) {
             pmix_status_t rc;
-            rc = _satisfy_request(nptr, rank, scd, req->cbfunc, req->cbdata, NULL);
+            rc = _satisfy_request(nptr, rank, scd, req->cbfunc, req->cbdata, false, ptr->scope, NULL);
             if( PMIX_SUCCESS != rc ){
                 /* if we can't satisfy this particular request (missing key?) */
                 req->cbfunc(rc, NULL, 0, req->cbdata, NULL, NULL);

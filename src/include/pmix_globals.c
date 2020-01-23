@@ -188,7 +188,6 @@ static void pcon(pmix_peer_t *p)
     PMIX_CONSTRUCT(&p->send_queue, pmix_list_t);
     p->send_msg = NULL;
     p->recv_msg = NULL;
-    p->commit_cnt = 0;
     PMIX_CONSTRUCT(&p->epilog.cleanup_dirs, pmix_list_t);
     PMIX_CONSTRUCT(&p->epilog.cleanup_files, pmix_list_t);
     PMIX_CONSTRUCT(&p->epilog.ignores, pmix_list_t);

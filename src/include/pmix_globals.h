@@ -10,7 +10,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
@@ -254,7 +254,6 @@ typedef struct pmix_peer_t {
     pmix_list_t send_queue;         /**< list of messages to send */
     pmix_ptl_send_t *send_msg;      /**< current send in progress */
     pmix_ptl_recv_t *recv_msg;      /**< current recv in progress */
-    int commit_cnt;
     pmix_epilog_t epilog;           /**< things to be performed upon
                                          termination of this peer */
 } pmix_peer_t;
