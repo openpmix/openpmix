@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
@@ -681,7 +681,7 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
      * a remote peer, or due to data from a local client
      * having been committed */
     PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
-    pmix_strncpy(proc.nspace, nptr->nspace, PMIX_MAX_NSLEN);
+    PMIX_LOAD_NSPACE(proc.nspace, nptr->nspace);
 
     if (!PMIX_CHECK_NSPACE(nptr->nspace, cd->peer->info->pname.nspace)) {
         diffnspace = true;
@@ -715,7 +715,7 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
                     break;
                 }
             }
-            if (PMIX_LOCAL != scope)  {
+            if (NULL == peer)  {
                 /* this must be a remote rank */
                 if (NULL != local) {
                     *local = false;

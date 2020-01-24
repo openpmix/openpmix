@@ -665,6 +665,12 @@ static void _register_nspace(int sd, short args, void *cbdata)
              * we handle this case here */
             if (PMIX_RANK_WILDCARD == trk->pcs[i].rank) {
             	trk->nlocal = nptr->nlocalprocs;
+                /* the total number of procs in this nspace was provided
+                 * in the data blob delivered to register_nspace, so check
+                 * to see if all the procs are local */
+                if (nptr->nprocs != nptr->nlocalprocs) {
+                    trk->local = false;
+                }
                 continue;
             }
         }
