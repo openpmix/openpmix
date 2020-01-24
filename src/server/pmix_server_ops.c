@@ -522,6 +522,12 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
          * clients have been "registered" */
         if (PMIX_RANK_WILDCARD == procs[i].rank) {
             trk->nlocal += nptr->nlocalprocs;
+            /* the total number of procs in this nspace was provided
+             * in the data blob delivered to register_nspace, so check
+             * to see if all the procs are local */
+            if (nptr->nprocs != nptr->nlocalprocs) {
+                trk->local = false;
+            }
             continue;
         }
 
