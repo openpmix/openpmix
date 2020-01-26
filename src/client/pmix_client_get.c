@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
@@ -143,7 +143,8 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc,
         for (n=0; n < ninfo; n++) {
             if (PMIX_CHECK_KEY(info, PMIX_NODE_INFO) ||
                 PMIX_CHECK_KEY(info, PMIX_APP_INFO) ||
-                PMIX_CHECK_KEY(info, PMIX_SESSION_INFO)) {
+                PMIX_CHECK_KEY(info, PMIX_SESSION_INFO) ||
+                PMIX_CHECK_KEY(info, PMIX_GET_REFRESH_CACHE)) {
                 goto doget;
             }
         }
@@ -660,6 +661,9 @@ static void _getnbfn(int fd, short flags, void *cbdata)
                        PMIX_CHECK_KEY(&cb->info[n], PMIX_APP_INFO) ||
                        PMIX_CHECK_KEY(&cb->info[n], PMIX_SESSION_INFO)) {
                 internal_only = true;
+            } else if (PMIX_CHECK_KEY(&cb->info[n], PMIX_GET_REFRESH_CACHE)) {
+                /* immediately query the server */
+                goto request;
             }
         }
     }

@@ -85,7 +85,7 @@ static void dmdx_cbfunc(pmix_status_t status, const char *data,
                         size_t ndata, void *cbdata,
                         pmix_release_cbfunc_t relfn, void *relcbdata);
 static pmix_status_t _satisfy_request(pmix_namespace_t *ns, pmix_rank_t rank,
-                                      pmix_server_caddy_t *cd,
+                                      pmix_server_caddy_t *cd, bool refresh_cache,
                                       pmix_modex_cbfunc_t cbfunc, void *cbdata, bool *scope);
 static pmix_status_t create_local_tracker(char nspace[], pmix_rank_t rank,
                                           pmix_info_t info[], size_t ninfo,
@@ -125,6 +125,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     bool local;
     bool localonly = false;
     bool diffnspace = false;
+    bool refresh_cache = false;
     struct timeval tv = {0, 0};
     pmix_buffer_t pbkt, pkt;
     pmix_byte_object_t bo;
@@ -184,6 +185,8 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
             localonly = PMIX_INFO_TRUE(&cd->info[n]);
         } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_TIMEOUT)) {
             tv.tv_sec = cd->info[n].value.data.uint32;
+        } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_GET_REFRESH_CACHE)) {
+            refresh_cache = PMIX_INFO_TRUE(&cd->info[n]);
         }
     }
 
@@ -307,7 +310,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     /* the target nspace is known, so we can process the request.
      * if the rank is wildcard, or the nspace is different, then
      * they are asking for the job-level info for this nspace - provide it */
-    if (PMIX_RANK_WILDCARD == rank || diffnspace) {
+    if (!refresh_cache && (PMIX_RANK_WILDCARD == rank || diffnspace)) {
         pmix_output_verbose(5, pmix_server_globals.get_output,
                             "%s LOOKING FOR %s",
                             PMIX_NAME_PRINT(&pmix_globals.myid),
@@ -467,7 +470,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     }
 
     /* if everyone has registered, see if we already have this data */
-    rc = _satisfy_request(nptr, rank, cd, cbfunc, cbdata, &local);
+    rc = _satisfy_request(nptr, rank, cd, refresh_cache, cbfunc, cbdata, &local);
     if( PMIX_SUCCESS == rc ){
         /* return success as the satisfy_request function
          * calls the cbfunc for us, and it will have
@@ -655,6 +658,7 @@ void pmix_pending_nspace_requests(pmix_namespace_t *nptr)
 
 static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
                                       pmix_server_caddy_t *cd,
+                                      bool refresh_cache,
                                       pmix_modex_cbfunc_t cbfunc,
                                       void *cbdata, bool *local)
 {
@@ -730,6 +734,10 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
         }
         peer = pmix_globals.mypeer;
         scope = PMIX_REMOTE;
+    }
+
+    if (refresh_cache && !(*local)) {
+        return PMIX_ERR_NOT_FOUND;
     }
 
     /* if they are asking about a rank from an nspace different
@@ -939,7 +947,7 @@ pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr, pmix_rank_t rank,
         scd->peer = pmix_globals.mypeer;
         PMIX_LIST_FOREACH(req, &ptr->loc_reqs, pmix_dmdx_request_t) {
             pmix_status_t rc;
-            rc = _satisfy_request(nptr, rank, scd, req->cbfunc, req->cbdata, NULL);
+            rc = _satisfy_request(nptr, rank, scd, false, req->cbfunc, req->cbdata, NULL);
             if( PMIX_SUCCESS != rc ){
                 /* if we can't satisfy this particular request (missing key?) */
                 req->cbfunc(rc, NULL, 0, req->cbdata, NULL, NULL);
