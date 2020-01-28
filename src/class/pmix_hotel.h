@@ -5,6 +5,7 @@
  * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2020      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -161,7 +162,7 @@ PMIX_CLASS_DECLARATION(pmix_hotel_t);
  */
 PMIX_EXPORT pmix_status_t pmix_hotel_init(pmix_hotel_t *hotel, int num_rooms,
                                           pmix_event_base_t *evbase,
-                                          uint32_t eviction_timeout,
+                                          uint64_t eviction_timeout,
                                           pmix_hotel_eviction_callback_fn_t evict_callback_fn);
 
 /**

@@ -15,6 +15,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2020      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -492,7 +493,7 @@ typedef struct {
     pmix_list_t cached_events;          // events waiting in the window prior to processing
     pmix_pointer_array_t iof_requests;  // array of pmix_iof_req_t IOF requests
     int max_events;                     // size of the notifications hotel
-    int event_eviction_time;            // max time to cache notifications
+    uint64_t event_eviction_time;       // max time to cache notifications
     pmix_hotel_t notifications;         // hotel of pending notifications
     /* processes also need a place where they can store
      * their own internal data - e.g., data provided by

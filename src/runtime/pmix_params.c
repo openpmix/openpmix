@@ -254,7 +254,7 @@ pmix_status_t pmix_register_params(void)
     pmix_globals.event_eviction_time = 120;
     (void) pmix_mca_base_var_register ("pmix", "pmix", "event", "eviction_time",
                                        "Maximum number of seconds to cache an event",
-                                       PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                                       PMIX_MCA_BASE_VAR_TYPE_UNSIGNED_LONG_LONG, NULL, 0, 0,
                                        PMIX_INFO_LVL_1, PMIX_MCA_BASE_VAR_SCOPE_ALL,
                                        &pmix_globals.event_eviction_time);
     // pmix_hotel_init expects this value to be in usec not sec
