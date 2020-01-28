@@ -22,6 +22,7 @@
  * Copyright (c) 2015-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2020      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -256,6 +257,8 @@ pmix_status_t pmix_register_params(void)
                                        PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
                                        PMIX_INFO_LVL_1, PMIX_MCA_BASE_VAR_SCOPE_ALL,
                                        &pmix_globals.event_eviction_time);
+    // pmix_hotel_init expects this value to be in usec not sec
+    pmix_globals.event_eviction_time *= 1000000;
 
     /* max number of IOF messages to cache */
     pmix_server_globals.max_iof_cache = 1024 * 1024;
