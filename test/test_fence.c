@@ -325,6 +325,7 @@ int test_job_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
     pmix_value_t value;
     pmix_value_t *val = &value;
     pmix_proc_t proc;
+    pmix_info_t info;
 
     (void)strncpy(proc.nspace, my_nspace, PMIX_MAX_NSLEN);
     proc.rank = my_rank;
@@ -415,10 +416,16 @@ int test_job_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
 
         /* ask for a non-existent key */
         proc.rank = i+params.base_rank;
-        if (PMIX_SUCCESS == (rc = PMIx_Get(&proc, "foobar", NULL, 0, &val))) {
+        j = 2;
+        PMIX_INFO_LOAD(&info, PMIX_TIMEOUT, &j, PMIX_INT);
+        PMIX_INFO_REQUIRED(&info);
+        if (PMIX_SUCCESS == (rc = PMIx_Get(&proc, "foobar", &info, 1, &val))) {
             TEST_ERROR(("%s:%d: PMIx_Get returned success instead of failure",
                         my_nspace, my_rank));
             exit(PMIX_ERROR);
+        }
+        if (PMIX_ERR_NOT_SUPPORTED == rc) {
+            goto cleanout;
         }
         if (PMIX_ERR_NOT_FOUND != rc && PMIX_ERR_PROC_ENTRY_NOT_FOUND != rc) {
             TEST_ERROR(("%s:%d [ERROR]: PMIx_Get returned %s instead of not_found",
@@ -429,6 +436,8 @@ int test_job_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
             TEST_ERROR(("%s:%d [ERROR]: PMIx_Get did not return NULL value", my_nspace, my_rank));
             exit(PMIX_ERROR);
         }
+
+      cleanout:
         TEST_VERBOSE(("%s:%d: rank %d is OK", my_nspace, my_rank, i+params.base_rank));
     }
     return PMIX_SUCCESS;

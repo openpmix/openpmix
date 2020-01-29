@@ -140,7 +140,17 @@ pmix_status_t dmodex_fn(const pmix_proc_t *proc,
               const pmix_info_t info[], size_t ninfo,
               pmix_modex_cbfunc_t cbfunc, void *cbdata)
 {
+    size_t n;
+
     TEST_VERBOSE(("Getting data for %s:%d", proc->nspace, proc->rank));
+
+    if (NULL != info) {
+        for (n=0; n < ninfo; n++) {
+            if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
+                return PMIX_ERR_NOT_SUPPORTED;
+            }
+        }
+    }
 
     /* return not_found for single server mode */
     if ((pmix_list_get_size(server_list) == 1) && (my_server_id == 0)) {

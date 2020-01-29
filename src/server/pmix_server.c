@@ -1535,7 +1535,7 @@ static void _dmodex_req(int sd, short args, void *cbdata)
     }
 
     /* They are asking for job level data for this process */
-    if (cd->proc.rank == PMIX_RANK_WILDCARD) {
+    if (PMIX_RANK_WILDCARD == cd->proc.rank) {
         /* fetch the job-level info for this nspace */
         /* this is going to a remote peer, so inform the gds
          * that we need an actual copy of the data */
@@ -3441,7 +3441,8 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    pmix_output_verbose(2, pmix_server_globals.base_output,
+  //  pmix_output_verbose(2, pmix_server_globals.base_output,
+    pmix_output(0,
                         "recvd pmix cmd %s from %s:%u",
                         pmix_command_string(cmd), peer->info->pname.nspace, peer->info->pname.rank);
 

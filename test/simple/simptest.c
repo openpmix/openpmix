@@ -48,6 +48,7 @@
 #include "src/util/output.h"
 #include "src/util/printf.h"
 #include "src/util/argv.h"
+#include "src/runtime/pmix_progress_threads.h"
 
 #include "simptest.h"
 
@@ -200,12 +201,7 @@ static bool istimeouttest = false;
 static mylock_t globallock;
 static bool model = false;
 static bool xversion = false;
-static char *hostnames[] = {
-    "test000",
-    "test001",
-    "test002",
-    NULL
-};
+static pmix_event_base_t *simptest_evbase = NULL;
 
 static void set_namespace(int nprocs, char *nspace,
                           pmix_op_cbfunc_t cbfunc, myxfer_t *x);
@@ -261,7 +257,7 @@ static void infocbfunc(pmix_status_t status,
     for (n=0; n < ninfo; n++) {
         PMIX_INFO_XFER(&x->info[n], &info[n]);
     }
-    PMIX_THREADSHIFT(x, dlcbfunc);
+    SIMPTEST_THREADSHIFT(x, dlcbfunc);
 
     if (NULL != release_fn) {
         release_fn(release_cbdata);
@@ -492,6 +488,10 @@ int main(int argc, char **argv)
     }
     PMIX_INFO_FREE(info, ninfo);
 
+    /* get our own event base */
+    simptest_evbase = pmix_progress_thread_init("simptest");
+    pmix_progress_thread_start("simptest");
+
     /* register the default errhandler */
     DEBUG_CONSTRUCT_LOCK(&mylock);
     ninfo = 1;
@@ -569,10 +569,6 @@ int main(int argc, char **argv)
             fprintf(stderr, "Server fork setup failed with error %d\n", rc);
             PMIx_server_finalize();
             return rc;
-        }
-        /* add the hostname we want them to use */
-        if (!xversion) {
-            PMIX_SETENV(rc, "PMIX_HOSTNAME", hostnames[n % 3], &client_env);
         }
 
         x = PMIX_NEW(myxfer_t);
@@ -708,54 +704,18 @@ static void set_namespace(int nprocs, char *nspace,
     char *peers[3] = {NULL, NULL, NULL};
     char tmp[50] , **agg = NULL;
 
-    if (xversion) {
-        /* everything on one node */
-        PMIx_generate_regex(pmix_globals.hostname, &regex);
-        for (m=0; m < nprocs; m++) {
-            snprintf(tmp, 50, "%d", m);
-            pmix_argv_append_nosize(&agg, tmp);
-            memset(tmp, 0, 50);
-        }
-        rks = pmix_argv_join(agg, ',');
-        pmix_argv_free(agg);
-        PMIx_generate_ppn(rks, &ppn);
-        free(rks);
-        nnodes = 1;
-    } else {
-        if (nprocs < 3) {
-            /* take only the number of hostnames equal to
-             * the number of procs */
-            for (m=0; m < nprocs; m++) {
-                pmix_argv_append_nosize(&agg, hostnames[m]);
-            }
-            ppn = pmix_argv_join(agg, ',');
-            pmix_argv_free(agg);
-            agg = NULL;
-            nnodes = nprocs;
-        } else {
-            nnodes = 3;
-            ppn = pmix_argv_join(hostnames, ',');
-        }
-        PMIx_generate_regex(ppn, &regex);
-        free(ppn);
-        /* compute the placement of the procs */
-        for (m=0; m < nprocs; m++) {
-            snprintf(tmp, 50, "%d", m);
-            pmix_argv_append_nosize(&map[m%3], tmp);
-            memset(tmp, 0, 50);
-        }
-        for (m=0; m < 3; m++) {
-            if (NULL != map[m]) {
-                peers[m] = pmix_argv_join(map[m], ',');
-                pmix_argv_append_nosize(&agg, peers[m]);
-                pmix_argv_free(map[m]);
-            }
-        }
-        rks = pmix_argv_join(agg, ';');
-        pmix_argv_free(agg);
-        PMIx_generate_ppn(rks, &ppn);
-        free(rks);
+    /* everything on one node */
+    PMIx_generate_regex(pmix_globals.hostname, &regex);
+    for (m=0; m < nprocs; m++) {
+        snprintf(tmp, 50, "%d", m);
+        pmix_argv_append_nosize(&agg, tmp);
+        memset(tmp, 0, 50);
     }
+    rks = pmix_argv_join(agg, ',');
+    pmix_argv_free(agg);
+    PMIx_generate_ppn(rks, &ppn);
+    free(rks);
+    nnodes = 1;
 
     x->ninfo = 1 + nprocs + nnodes;
     PMIX_INFO_CREATE(x->info, x->ninfo);
@@ -826,11 +786,7 @@ static void set_namespace(int nprocs, char *nspace,
         x->info[n].value.type = PMIX_DATA_ARRAY;
         PMIX_DATA_ARRAY_CREATE(x->info[n].value.data.darray, 3, PMIX_INFO);
         iptr = (pmix_info_t*)x->info[n].value.data.darray->array;
-        if (xversion) {
-            PMIX_INFO_LOAD(&iptr[0], PMIX_HOSTNAME, pmix_globals.hostname, PMIX_STRING);
-        } else {
-            PMIX_INFO_LOAD(&iptr[0], PMIX_HOSTNAME, hostnames[m % 3], PMIX_STRING);
-        }
+        PMIX_INFO_LOAD(&iptr[0], PMIX_HOSTNAME, pmix_globals.hostname, PMIX_STRING);
         PMIX_INFO_LOAD(&iptr[1], PMIX_NODEID, &m, PMIX_UINT32);
         PMIX_INFO_LOAD(&iptr[2], PMIX_NODE_SIZE, &nprocs, PMIX_UINT32);
         ++n;
@@ -869,11 +825,7 @@ static void set_namespace(int nprocs, char *nspace,
 
         (void)strncpy(info[k].key, PMIX_HOSTNAME, PMIX_MAX_KEYLEN);
         info[k].value.type = PMIX_STRING;
-        if (xversion) {
-            info[k].value.data.string = strdup(pmix_globals.hostname);
-        } else {
-            info[k].value.data.string = strdup(hostnames[m % 3]);
-        }
+        info[k].value.data.string = strdup(pmix_globals.hostname);
         ++k;
         /* move to next proc */
         ++n;
@@ -999,10 +951,40 @@ static pmix_status_t fencenb_fn(const pmix_proc_t procs[], size_t nprocs,
     scd->ndata = ndata;
     scd->cbfunc.modexcbfunc = cbfunc;
     scd->cbdata = cbdata;
-    PMIX_THREADSHIFT(scd, fencbfn);
+    SIMPTEST_THREADSHIFT(scd, fencbfn);
     return PMIX_SUCCESS;
 }
 
+
+static void modex_resp(pmix_status_t status,
+                       char *data, size_t sz,
+                       void *cbdata)
+{
+    pmix_shift_caddy_t *scd = (pmix_shift_caddy_t*)cbdata;
+    scd->status = status;
+    scd->data = (char*)malloc(sz);
+    memcpy((char*)scd->data, data, sz);
+    scd->ndata = sz;
+    SIMPTEST_THREADSHIFT(scd, fencbfn);
+}
+
+static void dmdxfn(int sd, short args, void *cbdata)
+{
+    pmix_shift_caddy_t *scd = (pmix_shift_caddy_t*)cbdata;
+    pmix_proc_t proc;
+    pmix_status_t rc;
+
+    /* get the data */
+    PMIX_LOAD_PROCID(&proc, scd->pname.nspace, scd->pname.rank);
+    rc = PMIx_server_dmodex_request(&proc, modex_resp, scd);
+    if (PMIX_SUCCESS != rc) {
+        scd->status = rc;
+        scd->data = NULL;
+        scd->ndata = 0;
+        SIMPTEST_THREADSHIFT(scd, fencbfn);
+    }
+    return;
+}
 
 static pmix_status_t dmodex_fn(const pmix_proc_t *proc,
                      const pmix_info_t info[], size_t ninfo,
@@ -1016,10 +998,11 @@ static pmix_status_t dmodex_fn(const pmix_proc_t *proc,
     }
 
     scd = PMIX_NEW(pmix_shift_caddy_t);
-    scd->status = PMIX_ERR_NOT_FOUND;
+    scd->pname.nspace = strdup(proc->nspace);
+    scd->pname.rank = proc->rank;
     scd->cbfunc.modexcbfunc = cbfunc;
     scd->cbdata = cbdata;
-    PMIX_THREADSHIFT(scd, fencbfn);
+    SIMPTEST_THREADSHIFT(scd, dmdxfn);
 
     return PMIX_SUCCESS;
 }
@@ -1107,7 +1090,7 @@ static pmix_status_t lookup_fn(const pmix_proc_t *proc, char **keys,
         lk->n = n;
         lk->cbfunc = cbfunc;
         lk->cbdata = cbdata;
-        PMIX_THREADSHIFT(lk, lkcbfn);
+        SIMPTEST_THREADSHIFT(lk, lkcbfn);
     }
 
     return ret;
@@ -1265,7 +1248,7 @@ static pmix_status_t query_fn(pmix_proc_t *proct,
     qd.ndata = nqueries;
     qd.cbfunc = cbfunc;
     qd.cbdata = cbdata;
-    PMIX_THREADSHIFT(&qd, qfn);
+    SIMPTEST_THREADSHIFT(&qd, qfn);
     return PMIX_SUCCESS;
 }
 
@@ -1304,7 +1287,7 @@ static void log_fn(const pmix_proc_t *client,
 
     lg->cbfunc = cbfunc;
     lg->cbdata = cbdata;
-    PMIX_THREADSHIFT(lg, foobar);
+    SIMPTEST_THREADSHIFT(lg, foobar);
 }
 
 static pmix_status_t alloc_fn(const pmix_proc_t *client,

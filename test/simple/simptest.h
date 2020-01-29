@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018      Intel, Inc. All rights reserved.
+ * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -51,3 +51,11 @@ typedef struct {
         pthread_cond_broadcast(&(lck)->cond);           \
         pthread_mutex_unlock(&(lck)->mutex);            \
     } while(0)
+
+#define SIMPTEST_THREADSHIFT(r, c)                          \
+ do {                                                       \
+    pmix_event_assign(&((r)->ev), simptest_evbase,          \
+                      -1, EV_WRITE, (c), (r));              \
+    PMIX_POST_OBJECT((r));                                  \
+    pmix_event_active(&((r)->ev), EV_WRITE, 1);             \
+} while (0)
