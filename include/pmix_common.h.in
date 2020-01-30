@@ -348,15 +348,10 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_GET_REFRESH_CACHE              "pmix.get.refresh"      // (bool) when retrieving data for a remote process, refresh the existing
                                                                     //        local data cache for the process in case new values have been
                                                                     //        put and committed by it since the last refresh
-#define PMIX_GET_WAIT_FOR_KEY               "pmix.get.wkey"         // (char*) do not respond to the PMIx_Get request until the specified key
-                                                                    //         is available or, if PMIX_TIMEOUT is given, the timeout period
-                                                                    //         expires. If used multiple times in a PMIx_Get request, the
-                                                                    //         response will be delayed until ALL keys are available. This
-                                                                    //         behavior can be altered with the PMIX_WAIT attribute.
 
 
-/* attributes used by host server to pass data to the server convenience library - the
- * data will then be parsed and provided to the local clients */
+/* attributes used by host server to pass data to/from the server convenience library - the
+ * data will then be parsed and provided to the local clients. Not generally accessible by users */
 #define PMIX_REGISTER_NODATA                "pmix.reg.nodata"       // (bool) Registration is for nspace only, do not copy job data
 #define PMIX_PROC_DATA                      "pmix.pdata"            // (pmix_data_array_t*) starts with rank, then contains more data
 #define PMIX_NODE_MAP                       "pmix.nmap"             // (char*) regex of nodes containing procs for this job
@@ -364,6 +359,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_ANL_MAP                        "pmix.anlmap"           // (char*) process mapping in ANL notation (used in PMI-1/PMI-2)
 #define PMIX_APP_MAP_TYPE                   "pmix.apmap.type"       // (char*) type of mapping used to layout the application (e.g., cyclic)
 #define PMIX_APP_MAP_REGEX                  "pmix.apmap.regex"      // (char*) regex describing the result of the mapping
+#define PMIX_REQUIRED_KEY                   "pmix.req.key"          // (char*) key the user needs prior to responding from a dmodex request
 
 
 /* attributes used internally to communicate data from the server to the client */
@@ -591,7 +587,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_DEBUG_WAITING_FOR_NOTIFY       "pmix.dbg.waiting"      // (bool) job to be debugged is waiting for a release
 #define PMIX_DEBUG_JOB_DIRECTIVES           "pmix.dbg.jdirs"        // (pmix_data_array_t*) array of job-level directives
 #define PMIX_DEBUG_APP_DIRECTIVES           "pmix.dbg.adirs"        // (pmix_data_array_t*) array of app-level directives
-
+#define PMIX_DEBUG_TARGET                   "pmix.dbg.tgt"          // (char*) Name of the nspace to be debugged
 
 /* Resource Manager identification */
 #define PMIX_RM_NAME                        "pmix.rm.name"          // (char*) string name of the resource manager
