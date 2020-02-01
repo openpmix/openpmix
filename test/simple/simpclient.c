@@ -137,8 +137,7 @@ int main(int argc, char **argv)
     pmix_output(0, "Client ns %s rank %d: Running on node %s", myproc.nspace, myproc.rank, pmix_globals.hostname);
 
     /* test something */
-    (void)strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
-    proc.rank = PMIX_RANK_WILDCARD;
+    PMIX_LOAD_PROCID(&proc, myproc.nspace, PMIX_RANK_WILDCARD);
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get job size failed: %s",
                     myproc.nspace, myproc.rank, PMIx_Error_string(rc));

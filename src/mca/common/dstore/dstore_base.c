@@ -2719,50 +2719,50 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
 
     PMIX_LIST_FOREACH(kv, &cb.kvs, pmix_kval_t) {
     	if (PMIX_CHECK_KEY(kv, PMIX_NODE_INFO_ARRAY)) {
-    		/* earlier PMIx versions don't know how to handle
-    		 * the info arrays - what they need is a key-value
-    		 * pair where the key is the name of the node and
-    		 * the value is the local peers. So if the peer
-    		 * is earlier than 3.1.5, construct the necessary
-    		 * translation. Otherwise, ignore it as the hash
-             * component will handle it for them */
-    		if (PMIX_PEER_IS_EARLIER(ds_ctx->clients_peer, 3, 1, 5)) {
-	            pmix_info_t *info;
-	            size_t size, i;
-                /* if it is our local node, then we are going to pass
-                 * all info */
-	            info = kv->value->data.darray->array;
-	            size = kv->value->data.darray->size;
-                ihost = NULL;
-	            for (i = 0; i < size; i++) {
-                    if (PMIX_CHECK_KEY(&info[i], PMIX_HOSTNAME)) {
-                        ihost = &info[i];
-                        break;
+    		/* the dstore currently does not understand info arrays,
+             * which causes problems when users query for node/app
+             * info. We cannot fully resolve the problem, but we
+             * can mitigate it by at least storing the info for
+             * the local node and this proc's app number */
+            pmix_info_t *info;
+            size_t size, i;
+            /* if it is our local node, then we are going to pass
+             * all info */
+            info = kv->value->data.darray->array;
+            size = kv->value->data.darray->size;
+            ihost = NULL;
+            for (i = 0; i < size; i++) {
+                if (PMIX_CHECK_KEY(&info[i], PMIX_HOSTNAME)) {
+                    ihost = &info[i];
+                    break;
+                }
+            }
+            if (0 == strcmp(ihost->value.data.string, pmix_globals.hostname)) {
+                /* if this host is us, then store each value as its own key */
+                for (i = 0; i < size; i++) {
+                    if (&info[i] == ihost) {
+                        continue;
                     }
-	            }
-                if (NULL != ihost) {
-                    PMIX_CONSTRUCT(&kv2, pmix_kval_t);
-                    kv2.key = ihost->value.data.string;
-                    kv2.value = kv->value;
+                    kv2.key = info[i].key;
+                    kv2.value = &info[i].value;
                     PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &kv2, 1, PMIX_KVAL);
                     if (PMIX_SUCCESS != rc) {
                         PMIX_ERROR_LOG(rc);
-                        goto exit;
-                    }
-                    /* if this host is us, then store each value as its own key */
-                    if (0 == strcmp(kv2.key, pmix_globals.hostname)) {
-                        for (i = 0; i < size; i++) {
-                            kv2.key = info[i].key;
-                            kv2.value = &info[i].value;
-                            PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &kv2, 1, PMIX_KVAL);
-                            if (PMIX_SUCCESS != rc) {
-                                PMIX_ERROR_LOG(rc);
-                                goto exit;
-                            }
-                        }
+                        continue;
                     }
                 }
     		}
+            /* if the client is earlier than v3.1.5, we also need to store the
+             * array using the hostname as key */
+            if (PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 1, 5)) {
+                kv2.key = ihost->value.data.string;
+                kv2.value = kv->value;
+                PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &kv2, 1, PMIX_KVAL);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    continue;
+                }
+            }
         } else if (PMIX_CHECK_KEY(kv, PMIX_APP_INFO_ARRAY) ||
                    PMIX_CHECK_KEY(kv, PMIX_JOB_INFO_ARRAY) ||
                    PMIX_CHECK_KEY(kv, PMIX_SESSION_INFO_ARRAY)) {
@@ -2809,8 +2809,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_register_job_info(pmix_common_dstore
         ns_map_data_t *ns_map;
 
         _client_compat_save(ds_ctx, peer);
-        pmix_strncpy(proc.nspace, ns->nspace, PMIX_MAX_NSLEN);
-        proc.rank = PMIX_RANK_WILDCARD;
+        PMIX_LOAD_PROCID(&proc, ns->nspace, PMIX_RANK_WILDCARD);
         if (NULL == (ns_map = ds_ctx->session_map_search(ds_ctx, proc.nspace))) {
             rc = PMIX_ERROR;
             PMIX_ERROR_LOG(rc);

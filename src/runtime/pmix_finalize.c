@@ -135,7 +135,9 @@ void pmix_rte_finalize(void)
     }
     PMIX_DESTRUCT(&pmix_globals.iof_requests);
     PMIX_LIST_DESTRUCT(&pmix_globals.stdin_targets);
-    free(pmix_globals.hostname);
+    if (NULL != pmix_globals.hostname) {
+        free(pmix_globals.hostname);
+    }
     PMIX_LIST_DESTRUCT(&pmix_globals.nspaces);
 
     /* now safe to release the event base */

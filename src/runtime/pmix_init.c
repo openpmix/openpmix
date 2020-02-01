@@ -191,6 +191,13 @@ int pmix_rte_init(uint32_t type,
                           pmix_globals.evbase, pmix_globals.event_eviction_time,
                           _notification_eviction_cbfunc);
     PMIX_CONSTRUCT(&pmix_globals.nspaces, pmix_list_t);
+    /* need to hold off checking the hotel init return code
+     * until after we construct all the globals so they can
+     * correct finalize */
+    if (PMIX_SUCCESS != ret) {
+        error = "notification hotel init";
+        goto return_error;
+    }
     /* if we were given a hostname in our environment, use it */
     if (NULL != (evar = getenv("PMIX_HOSTNAME"))) {
         pmix_globals.hostname = strdup(evar);
@@ -199,10 +206,6 @@ int pmix_rte_init(uint32_t type,
         pmix_globals.hostname = strdup(hostname);
     }
 
-    if (PMIX_SUCCESS != ret) {
-        error = "notification hotel init";
-        goto return_error;
-    }
     /* and setup the iof request tracking list */
     PMIX_CONSTRUCT(&pmix_globals.iof_requests, pmix_pointer_array_t);
     pmix_pointer_array_init(&pmix_globals.iof_requests, 128, INT_MAX, 128);
