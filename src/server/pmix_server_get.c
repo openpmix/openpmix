@@ -48,12 +48,14 @@
 #include "src/class/pmix_list.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/gds/gds.h"
+#include "src/mca/ptl/base/base.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/name_fns.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
 
+#include "src/client/pmix_client_ops.h"
 #include "pmix_server_ops.h"
 
 extern pmix_server_module_t pmix_host_server;
@@ -417,6 +419,18 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
             goto request;
         }
         /* we did find it, so go ahead and collect the payload */
+    } else if (PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 4, 0, 0)) {
+        PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+        rc = get_job_data(nspace, cd, &pbkt);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_DESTRUCT(&pbkt);
+            return rc;
+        }
+        /* pass it back */
+        PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
+        PMIX_DESTRUCT(&pbkt);
+        cbfunc(rc, data, sz, cbdata, relfn, data);
+        return rc;
     }
 
     /* check if the nspace of the requestor is different from
