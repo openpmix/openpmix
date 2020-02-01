@@ -700,8 +700,6 @@ static void set_namespace(int nprocs, char *nspace,
     pmix_info_t *isv1, *isv2;
     myxfer_t cd, lock;
     pmix_status_t rc;
-    char **map[3] = {NULL, NULL, NULL};
-    char *peers[3] = {NULL, NULL, NULL};
     char tmp[50] , **agg = NULL;
 
     /* everything on one node */

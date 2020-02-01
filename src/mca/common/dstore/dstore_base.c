@@ -2752,6 +2752,17 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
                     }
                 }
     		}
+            /* if the client is earlier than v3.1.5, we also need to store the
+             * array using the hostname as key */
+            if (PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 1, 5)) {
+                kv2.key = ihost->value.data.string;
+                kv2.value = kv->value;
+                PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &kv2, 1, PMIX_KVAL);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    continue;
+                }
+            }
         } else if (PMIX_CHECK_KEY(kv, PMIX_APP_INFO_ARRAY) ||
                    PMIX_CHECK_KEY(kv, PMIX_JOB_INFO_ARRAY) ||
                    PMIX_CHECK_KEY(kv, PMIX_SESSION_INFO_ARRAY)) {
