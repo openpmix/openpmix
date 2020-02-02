@@ -900,8 +900,8 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_CONFIG_FILES(pmix_config_prefix[test/run_tests11.pl], [chmod +x test/run_tests11.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/run_tests12.pl], [chmod +x test/run_tests12.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/run_tests13.pl], [chmod +x test/run_tests13.pl])
-    AC_CONFIG_FILES(pmix_config_prefix[test/run_tests14.pl], [chmod +x test/run_tests14.pl])
-    AC_CONFIG_FILES(pmix_config_prefix[test/run_tests15.pl], [chmod +x test/run_tests15.pl])
+#    AC_CONFIG_FILES(pmix_config_prefix[test/run_tests14.pl], [chmod +x test/run_tests14.pl])
+#    AC_CONFIG_FILES(pmix_config_prefix[test/run_tests15.pl], [chmod +x test/run_tests15.pl])
     if test "$WANT_PYTHON_BINDINGS" = "1"; then
         AC_CONFIG_FILES(pmix_config_prefix[test/python/run_server.sh], [chmod +x test/python/run_server.sh])
         AC_CONFIG_FILES(pmix_config_prefix[test/python/run_sched.sh], [chmod +x test/python/run_sched.sh])
