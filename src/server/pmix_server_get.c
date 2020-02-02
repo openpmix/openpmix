@@ -142,6 +142,11 @@ static pmix_status_t defer_response(char *nspace, pmix_rank_t rank,
     if (PMIX_ERR_NOMEM == rc || NULL == lcd) {
         return rc;
     }
+    /* only other response is either PMIX_SUCCESS, indicating that
+     * we found a pre-existing tracker, or PMIX_ERR_NOT_FOUND,
+     * indicating that a tracker was created. Either way, we
+     * need to return PMIX_SUCCESS so that the switchyard
+     * doesn't release the server caddy */
     pmix_output_verbose(2, pmix_server_globals.get_output,
                         "%s:%d TRACKER CREATED - WAITING",
                         pmix_globals.myid.nspace,
@@ -156,7 +161,7 @@ static pmix_status_t defer_response(char *nspace, pmix_rank_t rank,
     /* the peer object has been added to the new lcd tracker,
      * so return success here */
     *locald = lcd;
-    return rc;
+    return PMIX_SUCCESS;
 
 }
 pmix_status_t pmix_server_get(pmix_buffer_t *buf,
@@ -403,10 +408,6 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
         if (PMIX_SUCCESS != rc) {
             /* if the target proc is local, then we just need to wait */
             if (local) {
-                /* something isn't right about the timeout - the cbfunc
-                 * segfaults due to the cd->peer having been released
-                 * too soon. For now, let's just return NOT FOUND */
-                return PMIX_ERR_NOT_FOUND;
                 /* if they provided a timeout, we need to execute it here
                  * as we are not going to pass it upwards for the host
                  * to perform - we default it to 2 sec */
@@ -526,6 +527,7 @@ static pmix_status_t create_local_tracker(char nspace[], pmix_rank_t rank,
     pmix_dmdx_local_t *lcd, *cd;
     pmix_dmdx_request_t *req;
     pmix_status_t rc;
+    size_t n;
 
     /* define default */
     *ld = NULL;
@@ -554,10 +556,14 @@ static pmix_status_t create_local_tracker(char nspace[], pmix_rank_t rank,
     if (NULL == lcd){
         return PMIX_ERR_NOMEM;
     }
-    pmix_strncpy(lcd->proc.nspace, nspace, PMIX_MAX_NSLEN);
-    lcd->proc.rank = rank;
-    lcd->info = info;
-    lcd->ninfo = ninfo;
+    PMIX_LOAD_PROCID(&lcd->proc, nspace, rank);
+    if (0 < ninfo) {
+        lcd->ninfo = ninfo;
+        PMIX_INFO_CREATE(lcd->info, lcd->ninfo);
+        for (n=0; n < ninfo; n++) {
+            PMIX_INFO_XFER(&lcd->info[n], &info[n]);
+        }
+    }
     pmix_list_append(&pmix_server_globals.local_reqs, &lcd->super);
     rc = PMIX_ERR_NOT_FOUND;  // indicates that we created a new request tracker
 
@@ -572,8 +578,14 @@ static pmix_status_t create_local_tracker(char nspace[], pmix_rank_t rank,
     PMIX_RETAIN(lcd);
     req->lcd = lcd;
     req->cbfunc = cbfunc;
-    req->cbdata = cbdata;
     pmix_list_append(&lcd->loc_reqs, &req->super);
+    /* if provided, the cbdata is always a pmix_server_caddy_t. Since
+     * it will be released by every req when it completes, we have to
+     * up the refcount on it to avoid multiple free's of its contents */
+    if (NULL != cbdata && 1 < pmix_list_get_size(&lcd->loc_reqs)) {
+        PMIX_RETAIN(cbdata);
+    }
+    req->cbdata = cbdata;
     *ld = lcd;
     *rq = req;
     return rc;

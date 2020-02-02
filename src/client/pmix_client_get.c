@@ -478,19 +478,6 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
     }
 }
 
-static void timeout(int fd, short flags, void *cbdata)
-{
-    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
-
-    /* let them know that we timed out */
-    cb->cbfunc.valuefn(PMIX_ERR_TIMEOUT, NULL, cb->cbdata);
-    cb->timer_running = false;
-
-    /* remove this request */
-    pmix_list_remove_item(&pmix_client_globals.pending_requests, &cb->super);
-    PMIX_RELEASE(cb);
-}
-
 static pmix_status_t process_values(pmix_value_t **v, pmix_cb_t *cb)
 {
     pmix_list_t *kvs = &cb->kvs;

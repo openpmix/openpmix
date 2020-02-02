@@ -140,6 +140,7 @@ test/run_tests12.pl
 test/run_tests13.pl
 test/run_tests14.pl
 test/run_tests15.pl
+test/simple/doubleget
 test/simple/quietclient
 test/simple/simptest
 test/simple/simpsched

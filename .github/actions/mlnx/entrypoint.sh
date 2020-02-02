@@ -203,15 +203,15 @@ function pmix_run_tests()
         test_exec='./pmix_test -n 5 --test-internal 10 -o $OUTDIR/out'
         check_result "local store" "$test_exec"
     fi
-    if [ "$pmix_ver" -ge 40 ]; then
-        # test direct modex
-        test_exec='./pmix_test -s 2 -n 2 --job-fence -o $OUTDIR/out'
-        check_result "direct modex" "$test_exec"
+#    if [ "$pmix_ver" -ge 40 ]; then
+#        # test direct modex
+#        test_exec='./pmix_test -s 2 -n 2 --job-fence -o $OUTDIR/out'
+#        check_result "direct modex" "$test_exec"
 
         # test full modex
-        test_exec='./pmix_test -s 2 -n 2 --job-fence -c -o $OUTDIR/out'
-        check_result "full modex" "$test_exec"
-    fi
+#        test_exec='./pmix_test -s 2 -n 2 --job-fence -c -o $OUTDIR/out'
+#        check_result "full modex" "$test_exec"
+#    fi
 
     # run valgrind
     if [ "$jenkins_test_vg" = "yes" ]; then
