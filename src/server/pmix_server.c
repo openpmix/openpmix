@@ -3441,8 +3441,7 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-  //  pmix_output_verbose(2, pmix_server_globals.base_output,
-    pmix_output(0,
+    pmix_output_verbose(2, pmix_server_globals.base_output,
                         "recvd pmix cmd %s from %s:%u",
                         pmix_command_string(cmd), peer->info->pname.nspace, peer->info->pname.rank);
 
