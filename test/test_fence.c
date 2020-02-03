@@ -440,5 +440,6 @@ int test_job_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
       cleanout:
         TEST_VERBOSE(("%s:%d: rank %d is OK", my_nspace, my_rank, i+params.base_rank));
     }
+    free(peers);
     return PMIX_SUCCESS;
 }
