@@ -142,11 +142,6 @@ static pmix_status_t defer_response(char *nspace, pmix_rank_t rank,
     if (PMIX_ERR_NOMEM == rc || NULL == lcd) {
         return rc;
     }
-    /* only other response is either PMIX_SUCCESS, indicating that
-     * we found a pre-existing tracker, or PMIX_ERR_NOT_FOUND,
-     * indicating that a tracker was created. Either way, we
-     * need to return PMIX_SUCCESS so that the switchyard
-     * doesn't release the server caddy */
     pmix_output_verbose(2, pmix_server_globals.get_output,
                         "%s:%d TRACKER CREATED - WAITING",
                         pmix_globals.myid.nspace,
@@ -161,7 +156,7 @@ static pmix_status_t defer_response(char *nspace, pmix_rank_t rank,
     /* the peer object has been added to the new lcd tracker,
      * so return success here */
     *locald = lcd;
-    return PMIX_SUCCESS;
+    return rc;
 
 }
 pmix_status_t pmix_server_get(pmix_buffer_t *buf,
@@ -343,7 +338,12 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
                             "%s:%d NSPACE %s not all registered",
                             pmix_globals.myid.nspace,
                             pmix_globals.myid.rank, nspace);
-        return defer_response(nspace, rank, cd, localonly, cbfunc, cbdata, &tv, &lcd);
+        rc = defer_response(nspace, rank, cd, localonly, cbfunc, cbdata, &tv, &lcd);
+        if (PMIX_ERR_NOT_FOUND == rc) {
+            /* just means we created a tracker */
+            rc = PMIX_SUCCESS;
+        }
+        return rc;
     }
 
     /* everyone has been registered, so we know who our local procs
@@ -359,7 +359,12 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
                 if (rank == iptr->pname.rank) {
                     if (0 > iptr->peerid) {
                         /* this rank has not connected yet, so this request needs to be held */
-                        return defer_response(nspace, rank, cd, localonly, cbfunc, cbdata, &tv, &lcd);
+                        rc = defer_response(nspace, rank, cd, localonly, cbfunc, cbdata, &tv, &lcd);
+                        if (PMIX_ERR_NOT_FOUND == rc) {
+                            /* just means we created a tracker */
+                            rc = PMIX_SUCCESS;
+                        }
+                        return rc;
                     }
                     break;
                 }
@@ -414,7 +419,12 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
                 if (0 == tv.tv_sec) {
                     tv.tv_sec = 2;
                 }
-                return defer_response(nspace, rank, cd, localonly, cbfunc, cbdata, &tv, &lcd);
+                rc = defer_response(nspace, rank, cd, localonly, cbfunc, cbdata, &tv, &lcd);
+                if (PMIX_ERR_NOT_FOUND == rc) {
+                    /* just means we created a tracker */
+                    rc = PMIX_SUCCESS;
+                }
+                return rc;
             }
             /* otherwise, we need to request the info */
             goto request;
