@@ -2737,6 +2737,9 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
                     break;
                 }
             }
+            if (NULL == ihost) {
+                continue;
+            }
             if (0 == strcmp(ihost->value.data.string, pmix_globals.hostname)) {
                 /* if this host is us, then store each value as its own key */
                 for (i = 0; i < size; i++) {
