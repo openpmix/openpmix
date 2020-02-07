@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2018 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
@@ -373,10 +373,11 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
 {
     pmix_server_trkr_t *trk;
     size_t i;
-    bool all_def;
+    bool all_def, found;
     pmix_namespace_t *nptr, *ns;
     pmix_rank_info_t *info;
-    pmix_rank_t ns_local = 0;
+    pmix_nspace_caddy_t *nm;
+    pmix_nspace_t first;
 
     pmix_output_verbose(5, pmix_server_globals.base_output,
                         "new_tracker called with %d procs", (int)nprocs);
@@ -418,14 +419,8 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
     trk->nlocal = 0;
 
     all_def = true;
+    PMIX_LOAD_NSPACE(first, NULL);
     for (i=0; i < nprocs; i++) {
-        if (NULL == id) {
-            pmix_strncpy(trk->pcs[i].nspace, procs[i].nspace, PMIX_MAX_NSLEN);
-            trk->pcs[i].rank = procs[i].rank;
-        }
-        if (!all_def) {
-            continue;
-        }
         /* is this nspace known to us? */
         nptr = NULL;
         PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_namespace_t) {
@@ -434,14 +429,96 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
                 break;
             }
         }
-        if (NULL == nptr || nptr->nlocalprocs <= 0) {
-            /* cannot be a local proc */
+        /* check if multiple nspaces are involved in this operation */
+        if (0 == strlen(first)) {
+            PMIX_LOAD_NSPACE(first, procs[i].nspace);
+        } else if (!PMIX_CHECK_NSPACE(first, procs[i].nspace)) {
+            trk->hybrid = true;
+        }
+        if (NULL == nptr) {
+            /* we don't know about this nspace. If there is going to
+             * be at least one local process participating in a fence,
+             * they we require that either at least one process must already
+             * have been registered (via "register client") or that the
+             * nspace itself have been regisered. So either the nspace
+             * wasn't registered because it doesn't include any local
+             * procs, or our host has not been told about this nspace
+             * because it won't host any local procs. We therefore mark
+             * this tracker as including non-local participants.
+             *
+             * NOTE: It is conceivable that someone might want to review
+             * this constraint at a future date. I believe it has to be
+             * required (at least for now) as otherwise we wouldn't have
+             * a way of knowing when all local procs have participated.
+             * It is possible that a new nspace could come along at some
+             * later time and add more local participants - but we don't
+             * know how long to wait.
+             *
+             * The only immediately obvious alternative solutions would
+             * be to either require that RMs always inform all daemons
+             * about the launch of nspaces, regardless of whether or
+             * not they will host local procs; or to drop the aggregation
+             * of local participants and just pass every fence call
+             * directly to the host. Neither of these seems palatable
+             * at this time. */
+            trk->local = false;
+            /* we don't know any more info about this nspace, so
+             * there isn't anything more we can do */
+            continue;
+        }
+        /* it is possible we know about this nspace because the host
+         * has registered one or more clients via "register_client",
+         * but the host has not yet called "register_nspace". There is
+         * a very tiny race condition whereby this can happen due
+         * to event-driven processing, but account for it here */
+        if (SIZE_MAX == nptr->nlocalprocs) {
+            /* delay processing until this nspace is registered */
+            all_def = false;
+            continue;
+        }
+        if (0 == nptr->nlocalprocs) {
+            /* the host has informed us that this nspace has no local procs */
             pmix_output_verbose(5, pmix_server_globals.base_output,
                                 "new_tracker: unknown nspace %s",
                                 procs[i].nspace);
             continue;
         }
-        /* have all the clients for this nspace been defined? */
+        /* check and add uniq ns into trk nslist */
+        found = false;
+        PMIX_LIST_FOREACH(nm, &trk->nslist, pmix_nspace_caddy_t) {
+            if (0 == strcmp(nptr->nspace, nm->ns->nspace)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            nm = PMIX_NEW(pmix_nspace_caddy_t);
+            PMIX_RETAIN(nptr);
+            nm->ns = nptr;
+            pmix_list_append(&trk->nslist, &nm->super);
+        }
+
+        /* if they want all the local members of this nspace, then
+         * add them in here. They told us how many procs will be
+         * local to us from this nspace, but we don't know their
+         * ranks. So as long as they want _all_ of them, we can
+         * handle that case regardless of whether the individual
+         * clients have been "registered" */
+        if (PMIX_RANK_WILDCARD == procs[i].rank) {
+            trk->nlocal += nptr->nlocalprocs;
+            /* the total number of procs in this nspace was provided
+             * in the data blob delivered to register_nspace, so check
+             * to see if all the procs are local */
+            if (nptr->nprocs != nptr->nlocalprocs) {
+                trk->local = false;
+            }
+            continue;
+        }
+
+        /* They don't want all the local clients, or they are at
+         * least listing them individually. Check if all the clients
+         * for this nspace have been registered via "register_client"
+         * so we know the specific ranks on this node */
         if (!nptr->all_registered) {
             /* nope, so no point in going further on this one - we'll
              * process it once all the procs are known */
@@ -449,31 +526,24 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
             pmix_output_verbose(5, pmix_server_globals.base_output,
                                 "new_tracker: all clients not registered nspace %s",
                                 procs[i].nspace);
-            /* we have to continue processing the list of procs
-             * to setup the trk->pcs array, so don't break out
-             * of the loop */
+            continue;
         }
         /* is this one of my local ranks? */
-        ns_local = 0;
+        found = false;
         PMIX_LIST_FOREACH(info, &nptr->ranks, pmix_rank_info_t) {
-            if (procs[i].rank == info->pname.rank ||
-                PMIX_RANK_WILDCARD == procs[i].rank) {
-                    pmix_output_verbose(5, pmix_server_globals.base_output,
-                                        "adding local proc %s.%d to tracker",
-                                        info->pname.nspace, info->pname.rank);
+            if (procs[i].rank == info->pname.rank) {
+                pmix_output_verbose(5, pmix_server_globals.base_output,
+                                    "adding local proc %s.%d to tracker",
+                                    info->pname.nspace, info->pname.rank);
+                found = true;
                 /* track the count */
-                ns_local++;
-                if (PMIX_RANK_WILDCARD != procs[i].rank) {
-                    break;
-                }
+                trk->nlocal++;
+                break;
             }
         }
-
-        trk->nlocal += ns_local;
-    }
-
-    if (trk->nlocal == nptr->nprocs) {
-        trk->local = true;
+        if (!found) {
+            trk->local = false;
+        }
     }
 
     if (all_def) {
@@ -3497,6 +3567,7 @@ static void tcon(pmix_server_trkr_t *t)
     t->pname.rank = PMIX_RANK_UNDEF;
     t->pcs = NULL;
     t->npcs = 0;
+    PMIX_CONSTRUCT(&t->nslist, pmix_list_t);
     PMIX_CONSTRUCT_LOCK(&t->lock);
     t->def_complete = false;
     PMIX_CONSTRUCT(&t->local_cbs, pmix_list_t);
@@ -3515,6 +3586,7 @@ static void tdes(pmix_server_trkr_t *t)
     if (NULL != t->id) {
         free(t->id);
     }
+    PMIX_LIST_DESTRUCT(&t->nslist);
     PMIX_DESTRUCT_LOCK(&t->lock);
     if (NULL != t->pcs) {
         free(t->pcs);
