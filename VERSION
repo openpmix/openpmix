@@ -4,6 +4,8 @@
 # Copyright (c) 2013      Mellanox Technologies, Inc.
 #                         All rights reserved.
 # Copyright (c) 2014-2016 Intel, Inc. All rights reserved.
+# Copyright (c) 2020      IBM Corporation.  All rights reserved.
+
 
 # This is the VERSION file for PMIx, describing the precise
 # version of PMIx in this distribution.  The various components of
@@ -44,7 +46,7 @@ tarball_version=
 
 # The date when this release was created
 
-date="Oct 18, 2018"
+date="Feb 14, 2020"
 
 # The shared library version of each of PMIx's public libraries.
 # These versions are maintained in accordance with the "Library
