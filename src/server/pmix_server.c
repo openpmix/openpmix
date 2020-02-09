@@ -2323,28 +2323,29 @@ static void _spcb(int sd, short args, void *cbdata)
         PMIX_RELEASE(reply);
         goto cleanup;
     }
-    /* add the job-level info, if we have it */
-    pmix_strncpy(proc.nspace, cd->pname.nspace, PMIX_MAX_NSLEN);
-    proc.rank = PMIX_RANK_WILDCARD;
-    /* this is going to a local client, so let the gds
-     * have the option of returning a copy of the data,
-     * or a pointer to local storage */
-    PMIX_CONSTRUCT(&cb, pmix_cb_t);
-    cb.proc = &proc;
-    cb.scope = PMIX_SCOPE_UNDEF;
-    cb.copy = false;
-    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-    if (PMIX_SUCCESS == rc) {
-        PMIX_LIST_FOREACH(kv, &cb.kvs, pmix_kval_t) {
-            PMIX_BFROPS_PACK(rc, cd->cd->peer, reply, kv, 1, PMIX_KVAL);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE(reply);
-                PMIX_DESTRUCT(&cb);
-                goto cleanup;
+    if (PMIX_SUCCESS == cd->status) {
+        /* add the job-level info, if we have it */
+        PMIX_LOAD_PROCID(&proc, cd->pname.nspace, PMIX_RANK_WILDCARD);
+        /* this is going to a local client, so let the gds
+         * have the option of returning a copy of the data,
+         * or a pointer to local storage */
+        PMIX_CONSTRUCT(&cb, pmix_cb_t);
+        cb.proc = &proc;
+        cb.scope = PMIX_SCOPE_UNDEF;
+        cb.copy = false;
+        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+        if (PMIX_SUCCESS == rc) {
+            PMIX_LIST_FOREACH(kv, &cb.kvs, pmix_kval_t) {
+                PMIX_BFROPS_PACK(rc, cd->cd->peer, reply, kv, 1, PMIX_KVAL);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_RELEASE(reply);
+                    PMIX_DESTRUCT(&cb);
+                    goto cleanup;
+                }
             }
+            PMIX_DESTRUCT(&cb);
         }
-        PMIX_DESTRUCT(&cb);
     }
 
     /* the function that created the server_caddy did a
@@ -2368,7 +2369,9 @@ static void spawn_cbfunc(pmix_status_t status, char *nspace, void *cbdata)
     /* need to thread-shift this request */
     cd = PMIX_NEW(pmix_shift_caddy_t);
     cd->status = status;
-    cd->pname.nspace = strdup(nspace);
+    if (NULL != nspace) {
+        cd->pname.nspace = strdup(nspace);
+    }
     cd->cd = (pmix_server_caddy_t*)cbdata;;
 
     PMIX_THREADSHIFT(cd, _spcb);
