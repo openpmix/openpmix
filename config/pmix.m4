@@ -783,6 +783,22 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
 
     ##################################
+    # JANSSON
+    ##################################
+    pmix_show_title "JANSSON"
+
+    PMIX_CHECK_JANSSON
+
+
+    ##################################
+    # CURL
+    ##################################
+    pmix_show_title "CURL"
+
+    PMIX_CHECK_CURL
+
+
+    ##################################
     # Dstore Locking
     ##################################
 
@@ -1350,6 +1366,8 @@ AC_DEFUN([PMIX_DO_AM_CONDITIONALS],[
         AM_CONDITIONAL(WANT_INSTALL_HEADERS, test "$WANT_INSTALL_HEADERS" = 1)
         AM_CONDITIONAL(WANT_PMI_BACKWARD, test "$WANT_PMI_BACKWARD" = 1)
         AM_CONDITIONAL(NEED_LIBPMIX, [test "$pmix_need_libpmix" = "1"])
+        AM_CONDITIONAL([PMIX_HAVE_JANSSON], [test "x$pmix_check_jansson_happy" = "xyes"])
+        AM_CONDITIONAL([PMIX_HAVE_CURL], [test "x$pmix_check_curl_happy" = "xyes"])
     ])
     pmix_did_am_conditionals=yes
 ])dnl
