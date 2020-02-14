@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2016 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
@@ -89,7 +89,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc,
                                    const pmix_info_t info[], size_t ninfo,
                                    pmix_value_t **val)
 {
-    pmix_cb_t *cb;
+    pmix_cb_t cb;
     pmix_status_t rc;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
@@ -105,20 +105,22 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc,
                         (NULL == proc) ? "NULL" : PMIX_NAME_PRINT(proc),
                         (NULL == key) ? "NULL" : key);
 
-    cb = PMIX_NEW(pmix_cb_t);
-    if (PMIX_SUCCESS != (rc = PMIx_Get_nb(proc, key, info, ninfo, _value_cbfunc, cb))) {
-        PMIX_RELEASE(cb);
+    /* create a callback object so we can be notified when
+     * the non-blocking operation is complete */
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    if (PMIX_SUCCESS != (rc = PMIx_Get_nb(proc, key, info, ninfo, _value_cbfunc, &cb))) {
+        PMIX_DESTRUCT(&cb);
         return rc;
     }
 
     /* wait for the data to return */
-    PMIX_WAIT_THREAD(&cb->lock);
-    rc = cb->status;
+    PMIX_WAIT_THREAD(&cb.lock);
+    rc = cb.status;
     if (NULL != val) {
-        *val = cb->value;
-        cb->value = NULL;
+        *val = cb.value;
+        cb.value = NULL;
     }
-    PMIX_RELEASE(cb);
+    PMIX_DESTRUCT(&cb);
 
     pmix_output_verbose(2, pmix_client_globals.get_output,
                         "pmix:client get completed");
@@ -327,8 +329,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
 
         /* see if they are requesting session info or requesting cache refresh */
         for (n=0; n < ninfo; n++) {
-            if (PMIX_CHECK_KEY(info, PMIX_SESSION_INFO) ||
-                PMIX_CHECK_KEY(info, PMIX_GET_REFRESH_CACHE)) {
+            if (PMIX_CHECK_KEY(info, PMIX_SESSION_INFO)) {
                 goto doget;
             }
         }
