@@ -102,5 +102,6 @@ AC_DEFUN([PMIX_CHECK_CURL],[
     AC_SUBST(pmix_check_curl_CPPFLAGS)
     AC_SUBST(pmix_check_curl_LDFLAGS)
     AC_SUBST(pmix_check_curl_LIBS)
+
     PMIX_VAR_SCOPE_POP
 ])

@@ -453,16 +453,15 @@ PMIX_CLASS_DECLARATION(pmix_cb_t);
     pmix_event_active(&((r)->ev), EV_WRITE, 1);             \
 } while (0)
 
-#define PMIX_TIMED_THREADSHIFT(r, c, t)                         \
-    do {                                                        \
-        struct timeval _tv = {0, 0};                            \
-        _tv.tv_sec = (t);                                       \
-        pmix_event_evtimer_set(pmix_globals.evbase,             \
-                               &((r)->ev),                      \
-                               (c), (r));                       \
-        PMIX_POST_OBJECT((r));                                  \
-        pmix_event_evtimer_add(&((r)->ev), &_tv);               \
-    } while (0)
+#define PMIX_THREADSHIFT_DELAY(r, c, t)                     \
+ do {                                                       \
+    struct timeval _tv = {0, 0};                            \
+    pmix_event_evtimer_set(pmix_globals.evbase, &(r)->ev,   \
+                               (c), (r));                   \
+    _tv.tv_sec = (t);                                       \
+    PMIX_POST_OBJECT((r));                                  \
+    pmix_event_evtimer_add(&(r)->ev, &_tv);                 \
+} while (0)
 
 
 typedef struct {
