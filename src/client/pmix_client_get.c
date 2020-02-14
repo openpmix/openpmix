@@ -85,7 +85,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc,
                                    const pmix_info_t info[], size_t ninfo,
                                    pmix_value_t **val)
 {
-    pmix_cb_t *cb;
+    pmix_cb_t cb;
     pmix_status_t rc;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
@@ -103,20 +103,20 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc,
 
     /* create a callback object so we can be notified when
      * the non-blocking operation is complete */
-    cb = PMIX_NEW(pmix_cb_t);
-    if (PMIX_SUCCESS != (rc = PMIx_Get_nb(proc, key, info, ninfo, _value_cbfunc, cb))) {
-        PMIX_RELEASE(cb);
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    if (PMIX_SUCCESS != (rc = PMIx_Get_nb(proc, key, info, ninfo, _value_cbfunc, &cb))) {
+        PMIX_DESTRUCT(&cb);
         return rc;
     }
 
     /* wait for the data to return */
-    PMIX_WAIT_THREAD(&cb->lock);
-    rc = cb->status;
+    PMIX_WAIT_THREAD(&cb.lock);
+    rc = cb.status;
     if (NULL != val) {
-        *val = cb->value;
-        cb->value = NULL;
+        *val = cb.value;
+        cb.value = NULL;
     }
-    PMIX_RELEASE(cb);
+    PMIX_DESTRUCT(&cb);
 
     pmix_output_verbose(2, pmix_client_globals.get_output,
                         "pmix:client get completed");
