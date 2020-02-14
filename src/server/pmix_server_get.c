@@ -147,7 +147,7 @@ static pmix_status_t defer_response(char *nspace, pmix_rank_t rank,
                         pmix_globals.myid.nspace,
                         pmix_globals.myid.rank);
     /* if they specified a timeout, set it up now */
-    if (0 < tv->tv_sec) {
+    if (NULL != tv && 0 < tv->tv_sec) {
         pmix_event_evtimer_set(pmix_globals.evbase, &req->ev,
                                get_timeout, req);
         pmix_event_evtimer_add(&req->ev, tv);
@@ -473,7 +473,10 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
                         pmix_globals.myid.rank);
 
   request:
-    rc = defer_response(nspace, rank, cd, localonly, cbfunc, cbdata, &tv, &lcd);
+    /* setup to handle this remote request, but don't set any timeout as
+     * this might create a race condition with our host if they also
+     * support the timeout */
+    rc = defer_response(nspace, rank, cd, localonly, cbfunc, cbdata, NULL, &lcd);
     if (PMIX_SUCCESS == rc) {
        /* we are already waiting for the data - nothing more
         * for us to do as the function added the new request
@@ -832,7 +835,7 @@ pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr, pmix_rank_t rank,
 {
     pmix_dmdx_local_t *cd, *ptr;
     pmix_dmdx_request_t *req;
-    pmix_server_caddy_t *scd;
+    pmix_server_caddy_t scd;
 
     /* find corresponding request (if exists) */
     if (NULL == lcd) {
@@ -872,19 +875,19 @@ pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr, pmix_rank_t rank,
         /* run through all the requests for this rank */
         /* this info is going back to one of our peers, so provide a server
          * caddy with our peer in it so the data gets packed correctly */
-        scd = PMIX_NEW(pmix_server_caddy_t);
+        PMIX_CONSTRUCT(&scd, pmix_server_caddy_t);
         PMIX_RETAIN(pmix_globals.mypeer);
-        scd->peer = pmix_globals.mypeer;
+        scd.peer = pmix_globals.mypeer;
         PMIX_LIST_FOREACH(req, &ptr->loc_reqs, pmix_dmdx_request_t) {
             pmix_status_t rc;
             bool diffnspace = !PMIX_CHECK_NSPACE(nptr->nspace, req->lcd->proc.nspace);
-            rc = _satisfy_request(nptr, rank, scd, diffnspace, PMIX_REMOTE, req->cbfunc, req->cbdata);
+            rc = _satisfy_request(nptr, rank, &scd, diffnspace, PMIX_REMOTE, req->cbfunc, req->cbdata);
             if( PMIX_SUCCESS != rc ){
                 /* if we can't satisfy this particular request (missing key?) */
                 req->cbfunc(rc, NULL, 0, req->cbdata, NULL, NULL);
             }
         }
-        PMIX_RELEASE(scd);
+        PMIX_DESTRUCT(&scd);
     }
 
   cleanup:
