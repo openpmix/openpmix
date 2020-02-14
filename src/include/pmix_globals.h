@@ -10,7 +10,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
@@ -408,6 +408,7 @@ typedef struct {
     size_t nprocs;
     pmix_info_t *info;
     size_t ninfo;
+    bool infocopy;
     size_t nvals;
     pmix_list_t kvs;
     bool copy;
