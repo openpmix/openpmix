@@ -78,14 +78,12 @@ date="Feb 14, 2020"
 # format.
 
 libpmix_so_version=4:25:2
-libpmi_so_version=4:1:2
-libpmi2_so_version=4:0:2
+libpmi_so_version=1:1:0
+libpmi2_so_version=1:0:0
 
 # "Common" components install standalone libraries that are run-time
 # linked by one or more components.  So they need to be versioned as
 # well.  Yuck; this somewhat breaks the
 # components-don't-affect-the-build-system abstraction.
 #
-# NOTE: the c-a value MUST track that of libpmix!
-#
-libmca_common_dstore_so_version=4:2:2
+libmca_common_dstore_so_version=1:2:0
