@@ -13,7 +13,7 @@
  * Copyright (c) 2011      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
- * Copyright (c) 2016-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -79,7 +79,8 @@ int pmix_mca_base_open(void)
     /* define the system and user default paths */
 #if PMIX_WANT_HOME_CONFIG_FILES
     pmix_mca_base_system_default_path = strdup(pmix_pinstall_dirs.pmixlibdir);
-    rc = asprintf(&pmix_mca_base_user_default_path, "%s"PMIX_PATH_SEP".pmix"PMIX_PATH_SEP"components", pmix_home_directory());
+    value = (char*)pmix_home_directory();
+    rc = asprintf(&pmix_mca_base_user_default_path, "%s"PMIX_PATH_SEP".pmix"PMIX_PATH_SEP"components", value);
 #else
     rc = asprintf(&pmix_mca_base_system_default_path, "%s", pmix_pinstall_dirs.pmixlibdir);
 #endif
