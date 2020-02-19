@@ -16,7 +16,7 @@
  *                         reserved.
  * Copyright (c) 2017      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2018-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -178,8 +178,6 @@ enum {
 #include "src/atomics/sys/ia32/atomic.h"
 #elif PMIX_ASSEMBLY_ARCH == PMIX_IA64
 #include "src/atomics/sys/ia64/atomic.h"
-#elif PMIX_ASSEMBLY_ARCH == PMIX_MIPS
-#include "src/atomics/sys/mips/atomic.h"
 #elif PMIX_ASSEMBLY_ARCH == PMIX_POWERPC32
 #include "src/atomics/sys/powerpc/atomic.h"
 #elif PMIX_ASSEMBLY_ARCH == PMIX_POWERPC64
