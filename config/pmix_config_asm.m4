@@ -17,7 +17,7 @@ dnl Copyright (c) 2014-2018 Los Alamos National Security, LLC. All rights
 dnl                         reserved.
 dnl Copyright (c) 2017      Amazon.com, Inc. or its affiliates.  All Rights
 dnl                         reserved.
-dnl Copyright (c) 2018      Intel, Inc.  All rights reserved.
+dnl Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -1230,14 +1230,6 @@ AC_DEFUN([PMIX_CONFIG_ASM],[
         armv5*linux*|armv4*linux*|arm-*-linux-gnueabi)
             # uses Linux kernel helpers for some atomic operations
             pmix_cv_asm_arch="ARM"
-            PMIX_CHECK_SYNC_BUILTINS([pmix_cv_asm_builtin="BUILTIN_SYNC"],
-              [AC_MSG_ERROR([No atomic primitives available for $host])])
-            ;;
-
-        mips-*|mips64*)
-            # Should really find some way to make sure that we are on
-            # a MIPS III machine (r4000 and later)
-            pmix_cv_asm_arch="MIPS"
             PMIX_CHECK_SYNC_BUILTINS([pmix_cv_asm_builtin="BUILTIN_SYNC"],
               [AC_MSG_ERROR([No atomic primitives available for $host])])
             ;;

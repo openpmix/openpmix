@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2011      Sandia National Laboratories. All rights reserved.
- * Copyright (c) 2014-2018 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2017      Research Organization for Information Science
@@ -39,7 +39,6 @@
 #define PMIX_SPARC          0060
 #define PMIX_SPARCV9_32     0061
 #define PMIX_SPARCV9_64     0062
-#define PMIX_MIPS           0070
 #define PMIX_ARM            0100
 #define PMIX_ARM64          0101
 #define PMIX_S390           0110
