@@ -176,18 +176,10 @@ enum {
 #include "src/atomics/sys/arm64/atomic.h"
 #elif PMIX_ASSEMBLY_ARCH == PMIX_IA32
 #include "src/atomics/sys/ia32/atomic.h"
-#elif PMIX_ASSEMBLY_ARCH == PMIX_IA64
-#include "src/atomics/sys/ia64/atomic.h"
 #elif PMIX_ASSEMBLY_ARCH == PMIX_POWERPC32
 #include "src/atomics/sys/powerpc/atomic.h"
 #elif PMIX_ASSEMBLY_ARCH == PMIX_POWERPC64
 #include "src/atomics/sys/powerpc/atomic.h"
-#elif PMIX_ASSEMBLY_ARCH == PMIX_SPARC
-#include "src/atomics/sys/sparc/atomic.h"
-#elif PMIX_ASSEMBLY_ARCH == PMIX_SPARCV9_32
-#include "src/atomics/sys/sparcv9/atomic.h"
-#elif PMIX_ASSEMBLY_ARCH == PMIX_SPARCV9_64
-#include "src/atomics/sys/sparcv9/atomic.h"
 #endif
 
 #ifndef DOXYGEN
