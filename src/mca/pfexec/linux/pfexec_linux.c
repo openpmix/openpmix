@@ -307,7 +307,6 @@ static void send_error_show_help(int fd, int exit_status,
 /* close all open file descriptors w/ exception of stdin/stdout/stderr
    and the pipe up to the parent. */
 static int close_open_file_descriptors(int write_fd) {
-    return PMIX_SUCCESS;
     DIR *dir = opendir("/proc/self/fd");
     if (NULL == dir) {
         return PMIX_ERR_FILE_OPEN_FAILURE;
