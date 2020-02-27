@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2019      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -99,7 +99,7 @@ typedef bool (*pmix_os_dirpath_destroy_callback_fn_t)(const char *root, const ch
  * Destroy a directory
  *
  * @param path A pointer to a string that contains the path name to be destroyed
- * @param recursive Recursively desend the directory removing all files and directories.
+ * @param recursive Recursively descend the directory removing all files and directories.
  *                  if set to 'false' then the directory must be empty to succeed.
  * @param cbfunc A function that will be called before removing a file or directory.
  *               If NULL, then assume all remove.

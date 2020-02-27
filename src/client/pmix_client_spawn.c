@@ -99,6 +99,9 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn(const pmix_info_t job_info[], size_t ninfo,
     if (PMIX_SUCCESS != (rc = PMIx_Spawn_nb(job_info, ninfo, apps, napps, spawn_cbfunc, cb))) {
         /* note: the call may have return PMIX_OPERATION_SUCCEEDED thus indicating
          * that the spawn was atomically completed */
+        if (PMIX_OPERATION_SUCCEEDED == rc) {
+            PMIX_LOAD_NSPACE(nspace, cb->pname.nspace);
+        }
         PMIX_RELEASE(cb);
         return rc;
     }
@@ -129,6 +132,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     char *harvest[2] = {"PMIX_MCA_", NULL};
     pmix_kval_t *kv;
     pmix_list_t ilist;
+    pmix_nspace_t nspace;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -219,8 +223,12 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     /* if I am a tool and not connected, then just fork/exec
      * the specified application */
     if (forkexec) {
-        rc = pmix_pfexec.spawn_proc(job_info, ninfo,
-                                    apps, napps);
+        rc = pmix_pfexec.spawn_job(job_info, ninfo,
+                                   apps, napps, nspace);
+        cb = (pmix_cb_t*)cbdata;
+        if (PMIX_OPERATION_SUCCEEDED == rc) {
+            cb->pname.nspace = strdup(nspace);
+        }
         return rc;
     }
 

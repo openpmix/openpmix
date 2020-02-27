@@ -150,6 +150,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_SERVER_REMOTE_CONNECTIONS      "pmix.srvr.remote"      // (bool) Allow connections from remote tools (do not use loopback device)
 #define PMIX_SERVER_SYSTEM_SUPPORT          "pmix.srvr.sys"         // (bool) The host RM wants to declare itself as being the local
                                                                     //        system server for PMIx connection requests
+#define PMIX_SERVER_SESSION_SUPPORT         "pmix.srvr.sess"        // (bool) The host RM wants to declare itself as being the local
+                                                                    //        session server for PMIx connection requests
 #define PMIX_SERVER_TMPDIR                  "pmix.srvr.tmpdir"      // (char*) temp directory where PMIx server will place
                                                                     //        client rendezvous points and contact info
 #define PMIX_SYSTEM_TMPDIR                  "pmix.sys.tmpdir"       // (char*) temp directory for this system, where PMIx
@@ -181,6 +183,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_RECONNECT_SERVER               "pmix.cnct.recon"       // (bool) tool is requesting to change server connections
 #define PMIX_LAUNCHER                       "pmix.tool.launcher"    // (bool) tool is a launcher and needs rendezvous files created
 #define PMIX_LAUNCHER_RENDEZVOUS_FILE       "pmix.tool.lncrnd"      // (char*) Pathname of file where connection info is to be stored
+#define PMIX_TOOL_ATTACHMENT_FILE           "pmix.tool.attach"      // (char*) File containing connection info to be used for attaching to server
+
 
 /* identification attributes */
 #define PMIX_USERID                         "pmix.euid"             // (uint32_t) effective user id

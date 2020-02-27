@@ -12,7 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2011-2015 Los Alamos National Security, LLC. All rights
  *                         reserved.
- * Copyright (c) 2016-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -42,26 +42,27 @@ BEGIN_C_DECLS
  */
 
 /**
- * Locally fork/exec the provided process
+ * Locally fork/exec the provided job
  */
-typedef pmix_status_t (*pmix_pfexec_base_module_spawn_process_fn_t)(const pmix_info_t job_info[], size_t ninfo,
-                                                                    const pmix_app_t apps[], size_t napps);
+typedef pmix_status_t (*pmix_pfexec_base_module_spawn_job_fn_t)(const pmix_info_t job_info[], size_t ninfo,
+                                                                const pmix_app_t apps[], size_t napps,
+                                                                pmix_nspace_t nspace);
 
 /**
  * Kill the local process we started
  */
-typedef pmix_status_t (*pmix_pfexec_base_module_kill_process_fn_t)(pmix_rank_t rank);
+typedef pmix_status_t (*pmix_pfexec_base_module_kill_process_fn_t)(pmix_proc_t *proc);
 
 /**
  * Signal local process we started
  */
-typedef pmix_status_t (*pmix_pfexec_base_module_signal_process_fn_t)(pmix_rank_t rank, int signum);
+typedef pmix_status_t (*pmix_pfexec_base_module_signal_process_fn_t)(pmix_proc_t *proc, int signum);
 
 /**
  * pfexec module version
  */
 typedef struct {
-    pmix_pfexec_base_module_spawn_process_fn_t       spawn_proc;
+    pmix_pfexec_base_module_spawn_job_fn_t           spawn_job;
     pmix_pfexec_base_module_kill_process_fn_t        kill_proc;
     pmix_pfexec_base_module_signal_process_fn_t      signal_proc;
 } pmix_pfexec_base_module_t;
