@@ -59,7 +59,7 @@ typedef struct {
 typedef struct {
     pmix_list_item_t super;
     pmix_event_t ev;
-    pmix_rank_t rank;
+    pmix_proc_t proc;
     pid_t pid;
     bool completed;
     int exitcode;
@@ -74,7 +74,7 @@ typedef struct {
     bool active;
     pmix_list_t children;
     int timeout_before_sigkill;
-    size_t next;
+    size_t nextid;
     bool selected;
 } pmix_pfexec_globals_t;
 
@@ -91,6 +91,7 @@ typedef pmix_status_t (*pmix_pfexec_base_signal_local_fn_t)(pid_t pd, int signum
 typedef struct {
     pmix_object_t super;
     pmix_event_t ev;
+    pmix_nspace_t nspace;
     const pmix_info_t *jobinfo;
     size_t njinfo;
     const pmix_app_t *apps;
@@ -103,7 +104,7 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pfexec_fork_caddy_t);
 typedef struct {
     pmix_object_t super;
     pmix_event_t ev;
-    pmix_rank_t rank;
+    pmix_proc_t *proc;
     int signal;
     pmix_pfexec_base_signal_local_fn_t sigfn;
     pmix_lock_t *lock;
@@ -137,7 +138,7 @@ PMIX_EXPORT void pmix_pfexec_check_complete(int sd, short args, void *cbdata);
 #define PMIX_PFEXEC_KILL(scd, r, fn, lk)                                    \
     do {                                                                    \
         (scd) = PMIX_NEW(pmix_pfexec_signal_caddy_t);                       \
-        (scd)->rank = (r);                                                  \
+        (scd)->proc = (r);                                                  \
         (scd)->sigfn = (fn);                                                \
         (scd)->lock = (lk);                                                 \
         pmix_event_assign(&((scd)->ev), pmix_globals.evbase, -1,            \
@@ -149,7 +150,7 @@ PMIX_EXPORT void pmix_pfexec_check_complete(int sd, short args, void *cbdata);
 #define PMIX_PFEXEC_SIGNAL(scd, r, nm, fn, lk)                              \
     do {                                                                    \
         (scd) = PMIX_NEW(pmix_pfexec_signal_caddy_t);                       \
-        (scd)->rank = (r);                                                  \
+        (scd)->proc = (r);                                                  \
         (scd)->signal = (nm);                                               \
         (scd)->sigfn = (fn);                                                \
         (scd)->lock = (lk);                                                 \

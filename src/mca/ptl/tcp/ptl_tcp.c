@@ -13,7 +13,7 @@
  * Copyright (c) 2011-2014 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011-2013 Los Alamos National Security, LLC.  All rights
  *                         reserved.
- * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -302,7 +302,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
                 mca_ptl_tcp_component.max_retries = info[n].value.data.uint32;
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_RECONNECT_SERVER)) {
                 reconnect = true;
-            } else if (PMIX_CHECK_KEY(&info[n], PMIX_LAUNCHER_RENDEZVOUS_FILE)) {
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOOL_ATTACHMENT_FILE)) {
                 if (NULL != rendfile) {
                     free(rendfile);
                 }
@@ -495,7 +495,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
         rendfile = NULL;
         if (PMIX_SUCCESS == rc) {
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                "ptl:tcp:tool attempt connect to system server at %s", suri);
+                                "ptl:tcp:tool attempt connect to rendezvous server at %s", suri);
             /* go ahead and try to connect */
             if (PMIX_SUCCESS == try_connect(suri, &sd, iptr, niptr)) {
                 /* don't free nspace - we will use it below */
@@ -766,7 +766,7 @@ static pmix_status_t parse_uri_file(char *filename,
          * user isn't authorized to access it - or it may just
          * not exist yet! Check for existence */
         if (0 != access(filename, R_OK)) {
-            if (ENOENT == errno && 0 < mca_ptl_tcp_component.wait_to_connect) {
+            if (ENOENT == errno) {
                 /* the file does not exist, so give it
                  * a little time to see if the server
                  * is still starting up */
@@ -774,13 +774,23 @@ static pmix_status_t parse_uri_file(char *filename,
                 do {
                     ++retries;
                     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                        "WAITING FOR CONNECTION FILE");
+                                        "WAITING FOR CONNECTION FILE %s", filename);
                     PMIX_CONSTRUCT_LOCK(&lock);
-                    tv.tv_sec = mca_ptl_tcp_component.wait_to_connect;
-                    tv.tv_usec = 0;
-                    pmix_event_evtimer_set(pmix_globals.evbase, &ev,
-                                           timeout, &lock);
-                    pmix_event_evtimer_add(&ev, &tv);
+                    if (0 < mca_ptl_tcp_component.wait_to_connect) {
+                        tv.tv_sec = mca_ptl_tcp_component.wait_to_connect;
+                        tv.tv_usec = 0;
+                        pmix_event_evtimer_set(pmix_globals.evbase, &ev,
+                                               timeout, &lock);
+                        PMIX_POST_OBJECT(&ev);
+                        pmix_event_evtimer_add(&ev, &tv);
+                    } else {
+                        tv.tv_sec = 0;
+                        tv.tv_usec = 10000;  // use 0.01 sec as default
+                        pmix_event_evtimer_set(pmix_globals.evbase, &ev,
+                                               timeout, &lock);
+                        PMIX_POST_OBJECT(&ev);
+                        pmix_event_evtimer_add(&ev, &tv);
+                    }
                     PMIX_WAIT_THREAD(&lock);
                     PMIX_DESTRUCT_LOCK(&lock);
                     fp = fopen(filename, "r");

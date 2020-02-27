@@ -14,7 +14,7 @@
  * Copyright (c) 2011-2013 Los Alamos National Security, LLC.
  *                         All rights reserved.
  * Copyright (c) 2011-2017 Cisco Systems, Inc.  All rights reserved
- * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2017      Mellanox Technologies Ltd. All rights reserved.
@@ -136,9 +136,10 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
     char **argv = NULL, **env = NULL;
     char basedir[MAXPATHLEN];
     pmix_pfexec_child_t *child;
-    pmix_proc_t proc;
     pmix_rank_info_t *info;
-    pmix_namespace_t *nptr, *n2;
+    pmix_namespace_t *nptr;
+    pmix_rank_t rank=0;
+    char *tmp;
 
     pmix_output_verbose(5, pmix_pfexec_base_framework.framework_output,
                         "%s pfexec:base spawn proc",
@@ -153,24 +154,17 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
         goto complete;
     }
 
-    /* ensure our nspace is on the server global list */
-    nptr = NULL;
-    PMIX_LIST_FOREACH(n2, &pmix_globals.nspaces, pmix_namespace_t) {
-        if (0 == strcmp(n2->nspace, pmix_globals.myid.nspace)) {
-            nptr = n2;
-            break;
-        }
-    }
-    if (NULL == nptr) {
-        /* add it */
-        nptr = PMIX_NEW(pmix_namespace_t);
-        nptr->nspace = strdup(pmix_globals.myid.nspace);
-        pmix_list_append(&pmix_globals.nspaces, &nptr->super);
-    }
-    /* mark all children as "registered" so collectives don't falter */
-    nptr->all_registered = true;
+    /* create a namespace for the new job */
+    pmix_asprintf(&tmp, "%s.%lu", pmix_globals.myid.nspace, (unsigned long)pmix_pfexec_globals.nextid);
+    PMIX_LOAD_NSPACE(fcd->nspace, tmp);
+    free(tmp);
+    ++pmix_pfexec_globals.nextid;
 
-    PMIX_LOAD_NSPACE(proc.nspace, pmix_globals.myid.nspace);
+    /* add the nspace to the server global list */
+    nptr = PMIX_NEW(pmix_namespace_t);
+    nptr->nspace = strdup(pmix_globals.myid.nspace);
+    pmix_list_append(&pmix_globals.nspaces, &nptr->super);
+
     for (m=0; m < fcd->napps; m++) {
         app = (pmix_app_t*)&fcd->apps[m];
         /* merge our launch environment into the proc */
@@ -214,6 +208,8 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
         for (n=0; n < app->maxprocs; n++) {
             /* create a tracker for this child */
             child = PMIX_NEW(pmix_pfexec_child_t);
+            PMIX_LOAD_PROCID(&child->proc, fcd->nspace, rank);
+            ++rank;
             pmix_list_append(&pmix_pfexec_globals.children, &child->super);
 
             /* setup any IOF */
@@ -233,16 +229,15 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
                 PMIX_RELEASE(child);
                 goto complete;
             }
-            info->pname.nspace = strdup(pmix_globals.myid.nspace);
-            info->pname.rank = child->rank;
+            info->pname.nspace = strdup(child->proc.nspace);
+            info->pname.rank = child->proc.rank;
             info->uid = pmix_globals.uid;
             info->gid = pmix_globals.gid;
             pmix_list_append(&nptr->ranks, &info->super);
 
             /* setup the PMIx environment */
             env = pmix_argv_copy(app->env);
-            proc.rank = child->rank;
-            rc = PMIx_server_setup_fork(&proc, &env);
+            rc = PMIx_server_setup_fork(&child->proc, &env);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 pmix_list_remove_item(&pmix_pfexec_globals.children, &child->super);
@@ -288,7 +283,7 @@ void pmix_pfexec_base_kill_proc(int sd, short args, void *cbdata)
     /* find the process */
     child = NULL;
     PMIX_LIST_FOREACH(cd, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
-        if (scd->rank == cd->rank) {
+        if (PMIX_CHECK_PROCID(scd->proc, &child->proc)) {
             child = cd;
             break;
         }
@@ -362,7 +357,7 @@ void pmix_pfexec_base_signal_proc(int sd, short args, void *cbdata)
     /* find the process */
     child = NULL;
     PMIX_LIST_FOREACH(cd, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
-        if (scd->rank == cd->rank) {
+        if (PMIX_CHECK_PROCID(scd->proc, &child->proc)) {
             child = cd;
             break;
         }
@@ -433,13 +428,13 @@ static pmix_status_t setup_prefork(pmix_pfexec_child_t *child)
     PMIX_IOF_READ_EVENT(&child->stdoutev,
                         targets, 0, directives, 0, opts->p_stdout[0],
                         pmix_iof_read_local_handler, false);
-    PMIX_LOAD_PROCID(&child->stdoutev->name, pmix_globals.myid.nspace, child->rank);
+    PMIX_LOAD_PROCID(&child->stdoutev->name, child->proc.nspace, child->proc.rank);
     child->stdoutev->childproc = (void*)child;
     child->stdoutev->channel = PMIX_FWD_STDOUT_CHANNEL;
     PMIX_IOF_READ_EVENT(&child->stderrev,
                         targets, 0, directives, 0, opts->p_stderr[0],
                         pmix_iof_read_local_handler, false);
-    PMIX_LOAD_PROCID(&child->stderrev->name, pmix_globals.myid.nspace, child->rank);
+    PMIX_LOAD_PROCID(&child->stderrev->name, child->proc.nspace, child->proc.rank);
     child->stderrev->childproc = (void*)child;
     child->stderrev->channel = PMIX_FWD_STDERR_CHANNEL;
 

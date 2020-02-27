@@ -60,6 +60,7 @@
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/gds/base/base.h"
 #include "src/mca/pfexec/base/base.h"
+#include "src/mca/pmdl/base/base.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/mca/psec/psec.h"
@@ -672,7 +673,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     }
     pmix_globals.mypeer->info->pname.nspace = strdup(pmix_globals.myid.nspace);
     pmix_globals.mypeer->info->pname.rank = pmix_globals.myid.rank;
-
     /* if we are acting as a server, then start listening */
     if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
         /* setup the wildcard recv for inbound messages from clients */
@@ -839,16 +839,26 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
-    /* setup the fork/exec framework */
-    if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pfexec_base_framework, 0)) ) {
-        return rc;
-    }
-    if (PMIX_SUCCESS != (rc = pmix_pfexec_base_select()) ) {
-        return rc;
-    }
-
     /* if we are acting as a server, then start listening */
     if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
+    /* setup the fork/exec framework */
+        if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pfexec_base_framework, 0)) ) {
+            return rc;
+        }
+        if (PMIX_SUCCESS != (rc = pmix_pfexec_base_select()) ) {
+            return rc;
+        }
+
+        /* open the pmdl framework and select the active modules for this environment */
+        if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pmdl_base_framework, 0))) {
+            PMIX_RELEASE_THREAD(&pmix_global_lock);
+            return rc;
+        }
+        if (PMIX_SUCCESS != (rc = pmix_pmdl_base_select())) {
+            PMIX_RELEASE_THREAD(&pmix_global_lock);
+            return rc;
+        }
+
         /* start listening for connections */
         if (PMIX_SUCCESS != pmix_ptl_base_start_listening(info, ninfo)) {
             pmix_show_help("help-pmix-server.txt", "listener-thread-start", true);

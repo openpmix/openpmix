@@ -15,7 +15,7 @@
  * Copyright (c) 2010      IBM Corporation.  All rights reserved.
  * Copyright (c) 2011-2013 Los Alamos National Security, LLC.  All rights
  *                         reserved.
- * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017      Rutgers, The State University of New Jersey.
  *                         All rights reserved.
  * Copyright (c) 2017      Research Organization for Information Science
@@ -127,10 +127,11 @@
 /*
  * Module functions (function pointers used in a struct)
  */
-static pmix_status_t spawn_proc(const pmix_info_t job_info[], size_t ninfo,
-                                const pmix_app_t apps[], size_t napps);
-static pmix_status_t kill_proc(pmix_rank_t rank);
-static pmix_status_t signal_proc(pmix_rank_t rank, int32_t signal);
+static pmix_status_t spawn_job(const pmix_info_t job_info[], size_t ninfo,
+                               const pmix_app_t apps[], size_t napps,
+                               pmix_nspace_t nspace);
+static pmix_status_t kill_proc(pmix_proc_t *proc);
+static pmix_status_t signal_proc(pmix_proc_t *proc, int32_t signal);
 
 /*
  * Explicitly declared functions so that we can get the noreturn
@@ -148,7 +149,7 @@ static void do_child(pmix_app_t *cd, char **env, pmix_pfexec_child_t *child, int
  * Module
  */
 pmix_pfexec_base_module_t pmix_pfexec_linux_module = {
-    .spawn_proc = spawn_proc,
+    .spawn_job = spawn_job,
     .kill_proc = kill_proc,
     .signal_proc = signal_proc,
 };
@@ -190,14 +191,14 @@ static pmix_status_t sigproc(pid_t pd, int signum)
     return 0;
 }
 
-static pmix_status_t kill_proc(pmix_rank_t rank)
+static pmix_status_t kill_proc(pmix_proc_t *proc)
 {
     pmix_status_t rc;
     pmix_lock_t mylock;
     pmix_pfexec_signal_caddy_t *kcd;
 
     PMIX_CONSTRUCT_LOCK(&mylock);
-    PMIX_PFEXEC_KILL(kcd, rank, sigproc, &mylock);
+    PMIX_PFEXEC_KILL(kcd, proc, sigproc, &mylock);
     PMIX_WAIT_THREAD(&mylock);
     rc = mylock.status;
     PMIX_DESTRUCT_LOCK(&mylock);
@@ -206,14 +207,14 @@ static pmix_status_t kill_proc(pmix_rank_t rank)
     return rc;
 }
 
-static pmix_status_t signal_proc(pmix_rank_t rank, int32_t signal)
+static pmix_status_t signal_proc(pmix_proc_t *proc, int32_t signal)
 {
     pmix_status_t rc;
     pmix_lock_t mylock;
     pmix_pfexec_signal_caddy_t *scd;
 
     PMIX_CONSTRUCT_LOCK(&mylock);
-    PMIX_PFEXEC_SIGNAL(scd, rank, signal, sigproc, &mylock);
+    PMIX_PFEXEC_SIGNAL(scd, proc, signal, sigproc, &mylock);
     PMIX_WAIT_THREAD(&mylock);
     rc = mylock.status;
     PMIX_DESTRUCT_LOCK(&mylock);
@@ -306,6 +307,7 @@ static void send_error_show_help(int fd, int exit_status,
 /* close all open file descriptors w/ exception of stdin/stdout/stderr
    and the pipe up to the parent. */
 static int close_open_file_descriptors(int write_fd) {
+    return PMIX_SUCCESS;
     DIR *dir = opendir("/proc/self/fd");
     if (NULL == dir) {
         return PMIX_ERR_FILE_OPEN_FAILURE;
@@ -583,8 +585,9 @@ static int fork_proc(pmix_app_t *app, pmix_pfexec_child_t *child, char **env)
  * Launch all processes allocated to the current node.
  */
 
-static pmix_status_t spawn_proc(const pmix_info_t job_info[], size_t ninfo,
-                                const pmix_app_t apps[], size_t napps)
+static pmix_status_t spawn_job(const pmix_info_t job_info[], size_t ninfo,
+                               const pmix_app_t apps[], size_t napps,
+                               pmix_nspace_t nspace)
 {
     pmix_status_t rc;
     pmix_lock_t mylock;
@@ -599,6 +602,7 @@ static pmix_status_t spawn_proc(const pmix_info_t job_info[], size_t ninfo,
     PMIX_WAIT_THREAD(&mylock);
     if (PMIX_SUCCESS == mylock.status) {
         mylock.status = PMIX_OPERATION_SUCCEEDED;
+        PMIX_LOAD_NSPACE(nspace, scd->nspace);
     }
     rc = mylock.status;
     PMIX_DESTRUCT_LOCK(&mylock);

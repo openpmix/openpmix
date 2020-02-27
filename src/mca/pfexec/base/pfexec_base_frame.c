@@ -137,6 +137,9 @@ void pmix_pfexec_check_complete(int sd, short args, void *cbdata)
     pmix_pfexec_cmpl_caddy_t *cd = (pmix_pfexec_cmpl_caddy_t*)cbdata;
     pmix_info_t info[2];
     pmix_status_t rc;
+    pmix_pfexec_child_t *child;
+    bool stillalive = false;
+    pmix_proc_t wildcard;
 
     /* if the waitpid fired and the sink is empty, then that means
      * it terminated and all output has been written, so remove
@@ -145,11 +148,17 @@ void pmix_pfexec_check_complete(int sd, short args, void *cbdata)
         (NULL == cd->child->stdoutev || !cd->child->stdoutev->active) &&
         (NULL == cd->child->stderrev || !cd->child->stderrev->active)) {
         pmix_list_remove_item(&pmix_pfexec_globals.children, &cd->child->super);
-        PMIX_RELEASE(cd->child);
-        if (0 == pmix_list_get_size(&pmix_pfexec_globals.children)) {
+        /* see if any more children from this nspace are alive */
+        PMIX_LIST_FOREACH(child, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
+            if (PMIX_CHECK_NSPACE(child->proc.nspace, cd->child->proc.nspace)) {
+                stillalive = true;
+            }
+        }
+        if (!stillalive) {
             /* generate a local event indicating job terminated */
             PMIX_INFO_LOAD(&info[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
-            PMIX_INFO_LOAD(&info[1], PMIX_EVENT_AFFECTED_PROC, &pmix_globals.myid, PMIX_PROC);
+            PMIX_LOAD_NSPACE(wildcard.nspace, cd->child->proc.nspace);
+            PMIX_INFO_LOAD(&info[1], PMIX_EVENT_AFFECTED_PROC, &wildcard, PMIX_PROC);
             rc = PMIx_Notify_event(PMIX_ERR_JOB_TERMINATED,
                                    &pmix_globals.myid, PMIX_RANGE_PROC_LOCAL,
                                    info, 2, NULL, NULL);
@@ -157,6 +166,7 @@ void pmix_pfexec_check_complete(int sd, short args, void *cbdata)
                 PMIX_ERROR_LOG(rc);
             }
         }
+        PMIX_RELEASE(cd->child);
     }
     PMIX_RELEASE(cd);
 }
@@ -186,7 +196,7 @@ static int pmix_pfexec_base_open(pmix_mca_base_open_flag_t flags)
 
     /* setup the list of children */
     PMIX_CONSTRUCT(&pmix_pfexec_globals.children, pmix_list_t);
-    pmix_pfexec_globals.next = 1;
+    pmix_pfexec_globals.nextid = 1;
 
     /* ensure that SIGCHLD is unblocked as we need to capture it */
     if (0 != sigemptyset(&unblock)) {
@@ -222,11 +232,8 @@ PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pfexec, "PMIx fork/exec Subsystem",
 
 static void chcon(pmix_pfexec_child_t *p)
 {
-    pmix_proc_t proc;
-
-    p->rank = pmix_pfexec_globals.next;
-    PMIX_LOAD_PROCID(&proc, pmix_globals.myid.nspace, p->rank);
-    pmix_pfexec_globals.next++;
+    p->stdoutev = NULL;
+    p->stderrev = NULL;
     p->pid = 0;
 }
 static void chdes(pmix_pfexec_child_t *p)
@@ -244,6 +251,7 @@ PMIX_CLASS_INSTANCE(pmix_pfexec_child_t,
 
 static void fccon(pmix_pfexec_fork_caddy_t *p)
 {
+    PMIX_LOAD_NSPACE(p->nspace, NULL);
     p->jobinfo = NULL;
     p->njinfo = 0;
     p->apps = NULL;
