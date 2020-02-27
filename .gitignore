@@ -20,6 +20,9 @@ autom4te.cache
 aclocal.m4
 compile
 configure
+configure.log.*
+make.log.*
+make.install.log.*
 depcomp
 install-sh
 missing
