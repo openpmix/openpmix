@@ -91,7 +91,6 @@ static void wait_signal_callback(int fd, short event, void *arg)
     if (SIGCHLD != PMIX_EVENT_SIGNAL(signal)) {
         return;
     }
-
     /* if we haven't spawned anyone, then ignore this */
     if (0 == pmix_list_get_size(&pmix_pfexec_globals.children)) {
         return;
@@ -123,7 +122,10 @@ static void wait_signal_callback(int fd, short event, void *arg)
                 }
                 /* mark the child as complete */
                 child->completed = true;
-                PMIX_PFEXEC_CHK_COMPLETE(child);
+                if ((NULL == child->stdoutev || !child->stdoutev->active) &&
+                    (NULL == child->stderrev || !child->stderrev->active)) {
+                    PMIX_PFEXEC_CHK_COMPLETE(child);
+                }
                 break;
             }
         }
@@ -141,33 +143,26 @@ void pmix_pfexec_check_complete(int sd, short args, void *cbdata)
     bool stillalive = false;
     pmix_proc_t wildcard;
 
-    /* if the waitpid fired and the sink is empty, then that means
-     * it terminated and all output has been written, so remove
-     * it from the list of children */
-    if (cd->child->completed &&
-        (NULL == cd->child->stdoutev || !cd->child->stdoutev->active) &&
-        (NULL == cd->child->stderrev || !cd->child->stderrev->active)) {
-        pmix_list_remove_item(&pmix_pfexec_globals.children, &cd->child->super);
-        /* see if any more children from this nspace are alive */
-        PMIX_LIST_FOREACH(child, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
-            if (PMIX_CHECK_NSPACE(child->proc.nspace, cd->child->proc.nspace)) {
-                stillalive = true;
-            }
+    pmix_list_remove_item(&pmix_pfexec_globals.children, &cd->child->super);
+    /* see if any more children from this nspace are alive */
+    PMIX_LIST_FOREACH(child, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
+        if (PMIX_CHECK_NSPACE(child->proc.nspace, cd->child->proc.nspace)) {
+            stillalive = true;
         }
-        if (!stillalive) {
-            /* generate a local event indicating job terminated */
-            PMIX_INFO_LOAD(&info[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
-            PMIX_LOAD_NSPACE(wildcard.nspace, cd->child->proc.nspace);
-            PMIX_INFO_LOAD(&info[1], PMIX_EVENT_AFFECTED_PROC, &wildcard, PMIX_PROC);
-            rc = PMIx_Notify_event(PMIX_ERR_JOB_TERMINATED,
-                                   &pmix_globals.myid, PMIX_RANGE_PROC_LOCAL,
-                                   info, 2, NULL, NULL);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-            }
-        }
-        PMIX_RELEASE(cd->child);
     }
+    if (!stillalive) {
+        /* generate a local event indicating job terminated */
+        PMIX_INFO_LOAD(&info[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
+        PMIX_LOAD_NSPACE(wildcard.nspace, cd->child->proc.nspace);
+        PMIX_INFO_LOAD(&info[1], PMIX_EVENT_AFFECTED_PROC, &wildcard, PMIX_PROC);
+        rc = PMIx_Notify_event(PMIX_ERR_JOB_TERMINATED,
+                               &pmix_globals.myid, PMIX_RANGE_PROC_LOCAL,
+                               info, 2, NULL, NULL);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
+    }
+    PMIX_RELEASE(cd->child);
     PMIX_RELEASE(cd);
 }
 

@@ -1189,7 +1189,7 @@ void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata)
         bo.bytes = (char*)data;
         bo.size = numbytes;
         pmix_iof_write_output(&rev->name, rev->channel, &bo, NULL);
-        if (0 == numbytes) {
+        if (0 == numbytes && child->completed) {
             PMIX_PFEXEC_CHK_COMPLETE(child);
             return;
         }

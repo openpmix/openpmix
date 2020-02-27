@@ -283,7 +283,7 @@ void pmix_pfexec_base_kill_proc(int sd, short args, void *cbdata)
     /* find the process */
     child = NULL;
     PMIX_LIST_FOREACH(cd, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
-        if (PMIX_CHECK_PROCID(scd->proc, &child->proc)) {
+        if (PMIX_CHECK_PROCID(scd->proc, &cd->proc)) {
             child = cd;
             break;
         }
@@ -357,7 +357,7 @@ void pmix_pfexec_base_signal_proc(int sd, short args, void *cbdata)
     /* find the process */
     child = NULL;
     PMIX_LIST_FOREACH(cd, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
-        if (PMIX_CHECK_PROCID(scd->proc, &child->proc)) {
+        if (PMIX_CHECK_PROCID(scd->proc, &cd->proc)) {
             child = cd;
             break;
         }
