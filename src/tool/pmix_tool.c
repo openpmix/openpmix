@@ -328,8 +328,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
          * rank should be known. So return them here if
          * requested */
         if (NULL != proc) {
-            pmix_strncpy(proc->nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
-            proc->rank = pmix_globals.myid.rank;
+            PMIX_LOAD_PROCID(proc, pmix_globals.myid.nspace, pmix_globals.myid.rank);
         }
         ++pmix_globals.init_cntr;
         PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -654,14 +653,10 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
             pmix_client_globals.myserver->info->gid = pmix_globals.gid;
         }
     }
-    if (!nspace_given) {
-        /* Success, so copy the nspace and rank to the proc struct they gave us */
-        pmix_strncpy(proc->nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
-    }
-    if (!rank_given) {
-        proc->rank = pmix_globals.myid.rank;
-    }
-    /* and into our own peer object */
+    /* pass back the ID */
+    PMIX_LOAD_PROCID(proc, pmix_globals.myid.nspace, pmix_globals.myid.rank);
+
+    /* load into our own peer object */
     if (NULL == pmix_globals.mypeer->nptr->nspace) {
         pmix_globals.mypeer->nptr->nspace = strdup(pmix_globals.myid.nspace);
     }
