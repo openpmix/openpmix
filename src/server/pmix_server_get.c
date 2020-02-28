@@ -366,6 +366,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
                         }
                         return rc;
                     }
+                    local = true;
                     break;
                 }
             }
