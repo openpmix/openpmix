@@ -854,6 +854,16 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
             return rc;
         }
 
+        /* open the pnet framework and select the active modules for this environment */
+        if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pnet_base_framework, 0))) {
+            PMIX_RELEASE_THREAD(&pmix_global_lock);
+            return rc;
+        }
+        if (PMIX_SUCCESS != (rc = pmix_pnet_base_select())) {
+            PMIX_RELEASE_THREAD(&pmix_global_lock);
+            return rc;
+        }
+
         /* start listening for connections */
         if (PMIX_SUCCESS != pmix_ptl_base_start_listening(info, ninfo)) {
             pmix_show_help("help-pmix-server.txt", "listener-thread-start", true);
