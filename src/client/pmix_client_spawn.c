@@ -51,6 +51,7 @@
 #include "src/mca/pnet/base/base.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
+#include "src/util/name_fns.h"
 #include "src/util/output.h"
 #include "src/mca/gds/gds.h"
 #include "src/mca/pfexec/pfexec.h"
@@ -73,7 +74,8 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn(const pmix_info_t job_info[], size_t ninfo,
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
     pmix_output_verbose(2, pmix_client_globals.spawn_output,
-                        "pmix: spawn called");
+                        "%s pmix: spawn called",
+                        PMIX_NAME_PRINT(&pmix_globals.myid));
 
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -137,7 +139,8 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
     pmix_output_verbose(2, pmix_client_globals.spawn_output,
-                        "pmix: spawn_nb called");
+                        "%s pmix: spawn_nb called",
+                        PMIX_NAME_PRINT(&pmix_globals.myid));
 
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
