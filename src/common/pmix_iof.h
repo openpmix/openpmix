@@ -12,7 +12,7 @@
  * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2012-2013 Los Alamos National Security, LLC.
  *                         All rights reserved.
- * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017      IBM Corporation.  All rights reserved.
  * Copyright (c) 2017      Mellanox Technologies. All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
@@ -137,7 +137,7 @@ pmix_iof_fd_always_ready(int fd)
         PMIX_POST_OBJECT(wev);                                          \
         if (wev->always_writable) {                                     \
             /* Regular is always write ready. Use timer to activate */  \
-            tv = &wev->tv;                                        \
+            tv = &wev->tv;                                              \
         }                                                               \
         if (pmix_event_add(&wev->ev, tv)) {                             \
             PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);                         \
