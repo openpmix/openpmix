@@ -1189,7 +1189,9 @@ void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata)
         bo.bytes = (char*)data;
         bo.size = numbytes;
         pmix_iof_write_output(&rev->name, rev->channel, &bo, NULL);
-        if (0 == numbytes && child->completed) {
+        if (0 == numbytes && child->completed &&
+            (NULL == child->stdoutev || !child->stdoutev->active) &&
+            (NULL == child->stderrev || !child->stderrev->active)) {
             PMIX_PFEXEC_CHK_COMPLETE(child);
             return;
         }
@@ -1313,7 +1315,9 @@ static void iof_read_event_construct(pmix_iof_read_event_t* rev)
 }
 static void iof_read_event_destruct(pmix_iof_read_event_t* rev)
 {
-    pmix_event_del(&rev->ev);
+    if (rev->active) {
+        pmix_event_del(&rev->ev);
+    }
     if (0 <= rev->fd) {
         PMIX_OUTPUT_VERBOSE((20, pmix_client_globals.iof_output,
                              "%s iof: closing fd %d",
@@ -1344,14 +1348,16 @@ static void iof_write_event_construct(pmix_iof_write_event_t* wev)
 }
 static void iof_write_event_destruct(pmix_iof_write_event_t* wev)
 {
-    pmix_event_del(&wev->ev);
+    if (wev->pending) {
+        pmix_event_del(&wev->ev);
+    }
     if (2 < wev->fd) {
         PMIX_OUTPUT_VERBOSE((20, pmix_client_globals.iof_output,
                              "%s iof: closing fd %d for write event",
                              PMIX_NAME_PRINT(&pmix_globals.myid), wev->fd));
         close(wev->fd);
     }
-    PMIX_DESTRUCT(&wev->outputs);
+    PMIX_LIST_DESTRUCT(&wev->outputs);
 }
 PMIX_CLASS_INSTANCE(pmix_iof_write_event_t,
                     pmix_list_item_t,

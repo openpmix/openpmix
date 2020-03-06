@@ -230,6 +230,7 @@ static void chcon(pmix_pfexec_child_t *p)
     p->stdoutev = NULL;
     p->stderrev = NULL;
     p->pid = 0;
+    p->completed = false;
 }
 static void chdes(pmix_pfexec_child_t *p)
 {
