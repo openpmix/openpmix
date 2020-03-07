@@ -130,14 +130,13 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
 {
     pmix_cb_t *cb;
     pmix_status_t rc;
-    size_t n, nfo;
+    size_t n;
     bool wantinfo = false;
-    bool haveid = false;
     pmix_proc_t p;
-    pmix_info_t *iptr;
-    bool copy = false;
-    uint32_t appnum;
+    uint32_t appnum, myapp;
     pmix_value_t *ival = NULL;
+    char *hostname = NULL;
+    uint32_t nodeid = UINT32_MAX;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -188,8 +187,6 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
     } else {
         p.rank = proc->rank;
     }
-    iptr = (pmix_info_t*)info;
-    nfo = ninfo;
 
     pmix_output_verbose(2, pmix_client_globals.get_output,
                         "pmix: get_nb value for proc %s key %s",
@@ -212,51 +209,31 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
                     if (PMIX_CHECK_KEY(&info[n], PMIX_NODE_INFO)) {
                         wantinfo = true;
                     } else if (PMIX_CHECK_KEY(&info[n], PMIX_HOSTNAME)) {
-                        haveid = true;
+                        hostname = info[n].value.data.string;
                     } else if (PMIX_CHECK_KEY(&info[n], PMIX_NODEID)) {
-                        haveid = true;
+                        PMIX_VALUE_GET_NUMBER(rc, &info[n].value, nodeid, uint32_t);
                     }
                 }
             }
-            if (wantinfo && haveid) {
-                goto doget;
-            } else if (wantinfo) {
-                /* missing the nodeid/hostname - add our hostname */
-                nfo = ninfo + 1;
-                PMIX_INFO_CREATE(iptr, nfo);
-                for (n=0; n < ninfo; n++) {
-                    PMIX_INFO_XFER(&iptr[n], &info[n]);
+            if (wantinfo && (NULL != hostname || UINT32_MAX != nodeid)) {
+                /* if they specified a host and it isn't us, then the
+                 * dstore won't be able to supply it */
+                if (NULL != hostname) {
+                    if (0 != strcmp(hostname, pmix_globals.hostname)) {
+                        goto doget;
+                    }
+                } else if (nodeid != pmix_globals.nodeid) {
+                    goto doget;
                 }
-                PMIX_INFO_LOAD(&iptr[ninfo], PMIX_HOSTNAME, pmix_globals.hostname, PMIX_STRING);
-                copy = true;
-                goto doget;
-            } else if (haveid) {
-                /* flag that we want node info */
-                nfo = ninfo + 1;
-                PMIX_INFO_CREATE(iptr, nfo);
-                for (n=0; n < ninfo; n++) {
-                    PMIX_INFO_XFER(&iptr[n], &info[n]);
-                }
-                PMIX_INFO_LOAD(&iptr[ninfo], PMIX_NODE_INFO, NULL, PMIX_BOOL);
-                copy = true;
-                goto doget;
-            } else {
-                /* missing both */
-                nfo = ninfo + 2;
-                PMIX_INFO_CREATE(iptr, nfo);
-                for (n=0; n < ninfo; n++) {
-                    PMIX_INFO_XFER(&iptr[n], &info[n]);
-                }
-                PMIX_INFO_LOAD(&iptr[ninfo], PMIX_NODE_INFO, NULL, PMIX_BOOL);
-                PMIX_INFO_LOAD(&iptr[ninfo+1], PMIX_HOSTNAME, pmix_globals.hostname, PMIX_STRING);
-                copy = true;
-                goto doget;
             }
+            /* otherwise, we assume they are referring to our own node - in
+             * that case, the info will be stored in the job-info under
+             * rank=WILDCARD */
+            p.rank = PMIX_RANK_WILDCARD;
         }
 
         /* see if they are asking about an app-level piece of info */
         wantinfo = false;
-        haveid = false;
         if (pmix_check_app_info(key)) {
             p.rank = PMIX_RANK_UNDEF;
             /* the key is app-related - see if the target appnum is in the
@@ -267,60 +244,25 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
                         wantinfo = true;
                     } else if (PMIX_CHECK_KEY(&info[n], PMIX_APPNUM) &&
                                0 != info[n].value.data.uint32) {
-                        haveid = true;
+                        PMIX_VALUE_GET_NUMBER(rc, &info[n].value, appnum, uint32_t);
                     }
                 }
             }
-            if (wantinfo && haveid) {
-                goto doget;
-            } else if (wantinfo) {
-                /* missing the appnum - add ours */
-                nfo = ninfo + 1;
-                PMIX_INFO_CREATE(iptr, nfo);
-                for (n=0; n < ninfo; n++) {
-                    PMIX_INFO_XFER(&iptr[n], &info[n]);
-                }
-                /* try to retrieve it */
+            if (wantinfo) {
+                /* get our appnum */
                 rc = _getfn_fastpath(&pmix_globals.myid, PMIX_APPNUM, NULL, 0, &ival);
-                if (PMIX_SUCCESS != rc) {
-                    appnum = ival->data.uint32;
+                if (PMIX_SUCCESS == rc) {
+                    PMIX_VALUE_GET_NUMBER(rc, ival, myapp, uint32_t);
                     PMIX_VALUE_RELEASE(ival);
-                } else {
-                    appnum = 0;
+                    if (appnum != UINT32_MAX && myapp != appnum) {
+                        goto doget;
+                    }
                 }
-                PMIX_INFO_LOAD(&iptr[ninfo], PMIX_APPNUM, &appnum, PMIX_UINT32);
-                copy = true;
-                goto doget;
-            } else if (haveid) {
-                /* flag that we want app info */
-                nfo = ninfo + 1;
-                PMIX_INFO_CREATE(iptr, nfo);
-                for (n=0; n < ninfo; n++) {
-                    PMIX_INFO_XFER(&iptr[n], &info[n]);
-                }
-                PMIX_INFO_LOAD(&iptr[ninfo], PMIX_APP_INFO, NULL, PMIX_BOOL);
-                copy = true;
-                goto doget;
-            } else {
-                /* missing both */
-                nfo = ninfo + 2;
-                PMIX_INFO_CREATE(iptr, nfo);
-                for (n=0; n < ninfo; n++) {
-                    PMIX_INFO_XFER(&iptr[n], &info[n]);
-                }
-                PMIX_INFO_LOAD(&iptr[ninfo], PMIX_APP_INFO, NULL, PMIX_BOOL);
-                /* try to retrieve it */
-                rc = _getfn_fastpath(&pmix_globals.myid, PMIX_APPNUM, NULL, 0, &ival);
-                if (PMIX_SUCCESS != rc) {
-                    appnum = ival->data.uint32;
-                    PMIX_VALUE_RELEASE(ival);
-                } else {
-                    appnum = 0;
-                }
-                PMIX_INFO_LOAD(&iptr[ninfo], PMIX_APPNUM, &appnum, PMIX_UINT32);
-                copy = true;
-                goto doget;
             }
+            /* otherwise, we assume they are referring to our own app - in
+             * that case, the info will be stored in the proc-info under
+             * our own rank */
+            p.rank = pmix_globals.myid.rank;
         }
 
         /* see if they are requesting session info or requesting cache refresh */
@@ -333,7 +275,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
     }
 
     /* try to get data directly, without threadshift */
-    if (PMIX_SUCCESS == (rc = _getfn_fastpath(&p, key, iptr, nfo, &ival))) {
+    if (PMIX_SUCCESS == (rc = _getfn_fastpath(&p, key, info, ninfo, &ival))) {
         if (NULL != cbfunc) {
             cbfunc(rc, ival, cbdata);
             /* ownership of the memory in ival is passed to the
@@ -348,9 +290,8 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
     cb->pname.nspace = strdup(p.nspace);
     cb->pname.rank = p.rank;
     cb->key = (char*)key;
-    cb->info = iptr;
-    cb->ninfo = nfo;
-    cb->infocopy = copy;
+    cb->info = (pmix_info_t*)info;
+    cb->ninfo = ninfo;
     cb->cbfunc.valuefn = cbfunc;
     cb->cbdata = cbdata;
     PMIX_THREADSHIFT(cb, _getnbfn);
@@ -690,7 +631,8 @@ static void _getnbfn(int fd, short flags, void *cbdata)
         goto respond;
     }
     pmix_output_verbose(5, pmix_client_globals.get_output,
-                        "pmix:client data NOT found in internal storage");
+                        "pmix:client data NOT found in internal storage - internal only is %s",
+                        internal_only ? "TRUE" : "FALSE");
 
     /* if the key is NULL or starts with "pmix", then they are looking
      * for data that was provided by the server at startup */
