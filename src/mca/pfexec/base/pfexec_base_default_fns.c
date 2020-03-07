@@ -221,7 +221,10 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
                 goto complete;
             }
 
-            /* register this client in case they callback to us */
+            /* track some details about the child from our
+             * perspective - note that the child may determine
+             * its own nspace/rank, but that is irrelevant here
+             * as we just need an ID for our own internal tracking */
             info = PMIX_NEW(pmix_rank_info_t);
             if (NULL == info) {
                 rc = PMIX_ERR_NOMEM;
@@ -235,16 +238,18 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
             info->gid = pmix_globals.gid;
             pmix_list_append(&nptr->ranks, &info->super);
 
-            /* setup the PMIx environment */
+            /* we only support fork/exec of tools and servers - not
+             * applications. So we don't need to setup anything
+             * special in their environment except for hostname
+             * and version  */
             env = pmix_argv_copy(app->env);
-            rc = PMIx_server_setup_fork(&child->proc, &env);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                pmix_list_remove_item(&pmix_pfexec_globals.children, &child->super);
-                PMIX_RELEASE(child);
-                pmix_argv_free(env);
-                goto complete;
-            }
+            /* ensure we agree on our hostname - typically only important in
+             * test scenarios where we are faking multiple nodes */
+            pmix_setenv("PMIX_HOSTNAME", pmix_globals.hostname, true, &env);
+
+            /* communicate our version */
+            pmix_setenv("PMIX_VERSION", PMIX_VERSION, true, &env);
+
             pmix_output_verbose(5, pmix_pfexec_base_framework.framework_output,
                                 "%s pfexec:base spawning child %s",
                                 PMIX_NAME_PRINT(&pmix_globals.myid), app->cmd);
