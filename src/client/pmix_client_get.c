@@ -132,11 +132,13 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
     pmix_status_t rc;
     size_t n, nfo;
     bool wantinfo = false;
-    bool haveid = false;
+    char *hostname = NULL;
+    uint32_t nodeid = UINT32_MAX;
+    uint32_t appnum = UINT32_MAX;
+    uint32_t app;
     pmix_proc_t p;
     pmix_info_t *iptr;
     bool copy = false;
-    uint32_t appnum;
     pmix_value_t *ival = NULL;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
@@ -196,15 +198,13 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
                         PMIX_NAME_PRINT(&p), (NULL == key) ? "NULL" : key);
 
     if (!PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 1, 5)) {
-        /* ]don't consider the fastpath option
+        /* don't consider the fastpath option
          * for undefined rank or NULL keys */
         if (PMIX_RANK_UNDEF == p.rank || NULL == key) {
             goto doget;
         }
-        /* if they are asking about a node-level piece of info,
-         * then the rank must be UNDEF */
+        /* see if they are asking about a node-level piece of info */
         if (pmix_check_node_info(key)) {
-            p.rank = PMIX_RANK_UNDEF;
             /* the key is node-related - see if the target node is in the
              * info array and if they tagged the request accordingly */
             if (NULL != info) {
@@ -212,26 +212,38 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
                     if (PMIX_CHECK_KEY(&info[n], PMIX_NODE_INFO)) {
                         wantinfo = true;
                     } else if (PMIX_CHECK_KEY(&info[n], PMIX_HOSTNAME)) {
-                        haveid = true;
+                        hostname = info[n].value.data.string;
                     } else if (PMIX_CHECK_KEY(&info[n], PMIX_NODEID)) {
-                        haveid = true;
+                        PMIX_VALUE_GET_NUMBER(rc, &info[n].value, nodeid, uint32_t);
+                        if (PMIX_SUCCESS != rc) {
+                            PMIX_ERROR_LOG(rc);
+                            return rc;
+                        }
                     }
                 }
             }
-            if (wantinfo && haveid) {
+            if (wantinfo && (NULL != hostname || UINT32_MAX != nodeid)) {
+                /* they provided the "node-info" attribute. if they also
+                 * specified the target node and it is NOT us, then dstore cannot
+                 * resolve it and we need the rank to be undefined */
+                if ((NULL != hostname && 0 == strcmp(hostname, pmix_globals.hostname)) ||
+                    nodeid == pmix_globals.nodeid) {
+                    goto fastpath;
+                }
+                p.rank = PMIX_RANK_UNDEF;
                 goto doget;
             } else if (wantinfo) {
-                /* missing the nodeid/hostname - add our hostname */
-                nfo = ninfo + 1;
-                PMIX_INFO_CREATE(iptr, nfo);
-                for (n=0; n < ninfo; n++) {
-                    PMIX_INFO_XFER(&iptr[n], &info[n]);
+                /* they provided "node-info" but are missing the nodeid/hostname - assume
+                 * they are asking for info about our node. The dstore would have that */
+                goto fastpath;
+            } else if (NULL != hostname) {
+                /* they did not provide the "node-info" attribute but did specify
+                 * a hostname - if the ID is other than us, then we just need to
+                 * flag it as "node-info" and mark it for the undefined rank so
+                 * the GDS will know where to look */
+                if (0 == strcmp(hostname, pmix_globals.hostname)) {
+                    goto fastpath;
                 }
-                PMIX_INFO_LOAD(&iptr[ninfo], PMIX_HOSTNAME, pmix_globals.hostname, PMIX_STRING);
-                copy = true;
-                goto doget;
-            } else if (haveid) {
-                /* flag that we want node info */
                 nfo = ninfo + 1;
                 PMIX_INFO_CREATE(iptr, nfo);
                 for (n=0; n < ninfo; n++) {
@@ -239,26 +251,35 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
                 }
                 PMIX_INFO_LOAD(&iptr[ninfo], PMIX_NODE_INFO, NULL, PMIX_BOOL);
                 copy = true;
+                p.rank = PMIX_RANK_UNDEF;
+                goto doget;
+            } else if (UINT32_MAX != nodeid) {
+                /* they did not provide the "node-info" attribute but did specify
+                 * the nodeid - if the ID is other than us, then we just need to
+                 * flag it as "node-info" and mark it for the undefined rank so
+                 * the GDS will know where to look */
+                if (nodeid == pmix_globals.nodeid) {
+                    goto fastpath;
+                }
+                nfo = ninfo + 1;
+                PMIX_INFO_CREATE(iptr, nfo);
+                for (n=0; n < ninfo; n++) {
+                    PMIX_INFO_XFER(&iptr[n], &info[n]);
+                }
+                PMIX_INFO_LOAD(&iptr[ninfo], PMIX_NODE_INFO, NULL, PMIX_BOOL);
+                copy = true;
+                p.rank = PMIX_RANK_UNDEF;
                 goto doget;
             } else {
-                /* missing both */
-                nfo = ninfo + 2;
-                PMIX_INFO_CREATE(iptr, nfo);
-                for (n=0; n < ninfo; n++) {
-                    PMIX_INFO_XFER(&iptr[n], &info[n]);
-                }
-                PMIX_INFO_LOAD(&iptr[ninfo], PMIX_NODE_INFO, NULL, PMIX_BOOL);
-                PMIX_INFO_LOAD(&iptr[ninfo+1], PMIX_HOSTNAME, pmix_globals.hostname, PMIX_STRING);
-                copy = true;
-                goto doget;
+                /* nothing was given, so assume this is about our node and
+                 * pass it along */
+                goto fastpath;
             }
         }
 
         /* see if they are asking about an app-level piece of info */
         wantinfo = false;
-        haveid = false;
         if (pmix_check_app_info(key)) {
-            p.rank = PMIX_RANK_UNDEF;
             /* the key is app-related - see if the target appnum is in the
              * info array and if they tagged the request accordingly */
             if (NULL != info) {
@@ -267,32 +288,51 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
                         wantinfo = true;
                     } else if (PMIX_CHECK_KEY(&info[n], PMIX_APPNUM) &&
                                0 != info[n].value.data.uint32) {
-                        haveid = true;
+                        PMIX_VALUE_GET_NUMBER(rc, &info[n].value, appnum, uint32_t);
+                        if (PMIX_SUCCESS != rc) {
+                            PMIX_ERROR_LOG(rc);
+                            return rc;
+                        }
                     }
                 }
             }
-            if (wantinfo && haveid) {
+            if (wantinfo && UINT32_MAX != appnum) {
+                /* asked for app-level info and provided an appnum - if it
+                 * isn't our appnum, then we need to redirect */
+                rc = _getfn_fastpath(&pmix_globals.myid, PMIX_APPNUM, NULL, 0, &ival);
+                if (PMIX_SUCCESS == rc) {
+                    PMIX_VALUE_GET_NUMBER(rc, &info[n].value, app, uint32_t);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_ERROR_LOG(rc);
+                        return rc;
+                    }
+                    PMIX_VALUE_RELEASE(ival);
+                    if (app == appnum) {
+                        goto fastpath;
+                    }
+                }
+                p.rank = PMIX_RANK_UNDEF;
                 goto doget;
             } else if (wantinfo) {
-                /* missing the appnum - add ours */
-                nfo = ninfo + 1;
-                PMIX_INFO_CREATE(iptr, nfo);
-                for (n=0; n < ninfo; n++) {
-                    PMIX_INFO_XFER(&iptr[n], &info[n]);
-                }
-                /* try to retrieve it */
+                /* missing the appnum - assume it is ours */
+                goto fastpath;
+            } else if (UINT32_MAX != appnum) {
+                /* they did not provide the "app-info" attribute but did specify
+                 * the appnum - if the ID is other than us, then we just need to
+                 * flag it as "app-info" and mark it for the undefined rank so
+                 * the GDS will know where to look */
                 rc = _getfn_fastpath(&pmix_globals.myid, PMIX_APPNUM, NULL, 0, &ival);
-                if (PMIX_SUCCESS != rc) {
-                    appnum = ival->data.uint32;
+                if (PMIX_SUCCESS == rc) {
+                    PMIX_VALUE_GET_NUMBER(rc, &info[n].value, app, uint32_t);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_ERROR_LOG(rc);
+                        return rc;
+                    }
                     PMIX_VALUE_RELEASE(ival);
-                } else {
-                    appnum = 0;
+                    if (app == appnum) {
+                        goto fastpath;
+                    }
                 }
-                PMIX_INFO_LOAD(&iptr[ninfo], PMIX_APPNUM, &appnum, PMIX_UINT32);
-                copy = true;
-                goto doget;
-            } else if (haveid) {
-                /* flag that we want app info */
                 nfo = ninfo + 1;
                 PMIX_INFO_CREATE(iptr, nfo);
                 for (n=0; n < ninfo; n++) {
@@ -300,26 +340,11 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
                 }
                 PMIX_INFO_LOAD(&iptr[ninfo], PMIX_APP_INFO, NULL, PMIX_BOOL);
                 copy = true;
+                p.rank = PMIX_RANK_UNDEF;
                 goto doget;
             } else {
-                /* missing both */
-                nfo = ninfo + 2;
-                PMIX_INFO_CREATE(iptr, nfo);
-                for (n=0; n < ninfo; n++) {
-                    PMIX_INFO_XFER(&iptr[n], &info[n]);
-                }
-                PMIX_INFO_LOAD(&iptr[ninfo], PMIX_APP_INFO, NULL, PMIX_BOOL);
-                /* try to retrieve it */
-                rc = _getfn_fastpath(&pmix_globals.myid, PMIX_APPNUM, NULL, 0, &ival);
-                if (PMIX_SUCCESS != rc) {
-                    appnum = ival->data.uint32;
-                    PMIX_VALUE_RELEASE(ival);
-                } else {
-                    appnum = 0;
-                }
-                PMIX_INFO_LOAD(&iptr[ninfo], PMIX_APPNUM, &appnum, PMIX_UINT32);
-                copy = true;
-                goto doget;
+                /* missing both - all we can do is assume they want our info */
+                goto fastpath;
             }
         }
 
@@ -332,6 +357,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
         }
     }
 
+  fastpath:
     /* try to get data directly, without threadshift */
     if (PMIX_SUCCESS == (rc = _getfn_fastpath(&p, key, iptr, nfo, &ival))) {
         if (NULL != cbfunc) {
