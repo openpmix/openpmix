@@ -222,6 +222,23 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
                     }
                 }
             }
+            if (PMIX_PEER_TRIPLET(pmix_client_globals.myserver, 3, 1, 5)) {
+                p.rank = PMIX_RANK_UNDEF;
+               /* see if they told us to get node info */
+                if (!wantinfo) {
+                    /* guess not - better do it */
+                    nfo = ninfo + 1;
+                    PMIX_INFO_CREATE(iptr, nfo);
+                    for (n=0; n < ninfo; n++) {
+                        PMIX_INFO_XFER(&iptr[n], &info[n]);
+                    }
+                    PMIX_INFO_LOAD(&iptr[ninfo], PMIX_NODE_INFO, NULL, PMIX_BOOL);
+                    copy = true;
+                    p.rank = PMIX_RANK_UNDEF;
+                    goto doget;
+                }
+                goto doget;
+            }
             if (wantinfo && (NULL != hostname || UINT32_MAX != nodeid)) {
                 /* they provided the "node-info" attribute. if they also
                  * specified the target node and it is NOT us, then dstore cannot
@@ -295,6 +312,23 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
                         }
                     }
                 }
+            }
+            if (PMIX_PEER_TRIPLET(pmix_client_globals.myserver, 3, 1, 5)) {
+                p.rank = PMIX_RANK_UNDEF;
+               /* see if they told us to get app info */
+                if (!wantinfo) {
+                    /* guess not - better do it */
+                    nfo = ninfo + 1;
+                    PMIX_INFO_CREATE(iptr, nfo);
+                    for (n=0; n < ninfo; n++) {
+                        PMIX_INFO_XFER(&iptr[n], &info[n]);
+                    }
+                    PMIX_INFO_LOAD(&iptr[ninfo], PMIX_APP_INFO, NULL, PMIX_BOOL);
+                    copy = true;
+                    p.rank = PMIX_RANK_UNDEF;
+                    goto doget;
+                }
+                goto doget;
             }
             if (wantinfo && UINT32_MAX != appnum) {
                 /* asked for app-level info and provided an appnum - if it
