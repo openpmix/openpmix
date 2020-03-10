@@ -456,7 +456,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_CMD_LINE                       "pmix.cmd.line"         // (char*) command line executing in the specified nspace
 #define PMIX_FORK_EXEC_AGENT                "pmix.fe.agnt"          // (char*) command line of fork/exec agent to be used for starting
                                                                     //         local processes
-
+#define PMIX_TIMEOUT_STACKTRACES            "pmix.tim.stack"        // (bool) include process stacktraces in timeout report from a job
+#define PMIX_TIMEOUT_REPORT_STATE           "pmix.tim.state"        // (bool) report process states in timeout report from a job
 
 /* query attributes */
 #define PMIX_QUERY_REFRESH_CACHE            "pmix.qry.rfsh"         // (bool) retrieve updated information from server
