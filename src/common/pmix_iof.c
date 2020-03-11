@@ -1113,7 +1113,6 @@ static void iof_stdin_cbfunc(struct pmix_peer_t *peer,
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &ret, &cnt, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
         pmix_event_del(&stdinev->ev);
         stdinev->active = false;
         PMIX_POST_OBJECT(stdinev);
