@@ -59,6 +59,7 @@
 #include "src/util/error.h"
 #include "src/util/fd.h"
 #include "src/util/net.h"
+#include "src/util/name_fns.h"
 #include "src/util/os_dirpath.h"
 #include "src/util/os_path.h"
 #include "src/util/parse_options.h"
@@ -247,6 +248,8 @@ static int component_register(void)
 
 static char *urifile = NULL;
 static bool created_rendezvous_file = false;
+static bool created_session_tmpdir = false;
+static bool created_system_tmpdir = false;
 
 static pmix_status_t component_open(void)
 {
@@ -298,42 +301,45 @@ static pmix_status_t component_open(void)
 pmix_status_t component_close(void)
 {
     if (NULL != mca_ptl_tcp_component.system_filename) {
-        unlink(mca_ptl_tcp_component.system_filename);
+        pmix_os_dirpath_destroy(mca_ptl_tcp_component.system_filename, true, NULL);
         free(mca_ptl_tcp_component.system_filename);
     }
     if (NULL != mca_ptl_tcp_component.session_filename) {
-        unlink(mca_ptl_tcp_component.session_filename);
+        pmix_os_dirpath_destroy(mca_ptl_tcp_component.session_filename, true, NULL);
         free(mca_ptl_tcp_component.session_filename);
     }
     if (NULL != mca_ptl_tcp_component.nspace_filename) {
-        unlink(mca_ptl_tcp_component.nspace_filename);
+        pmix_os_dirpath_destroy(mca_ptl_tcp_component.nspace_filename, true, NULL);
         free(mca_ptl_tcp_component.nspace_filename);
     }
     if (NULL != mca_ptl_tcp_component.pid_filename) {
-        unlink(mca_ptl_tcp_component.pid_filename);
+        pmix_os_dirpath_destroy(mca_ptl_tcp_component.pid_filename, true, NULL);
         free(mca_ptl_tcp_component.pid_filename);
     }
     if (NULL != mca_ptl_tcp_component.rendezvous_filename) {
         if (created_rendezvous_file) {
-            unlink(mca_ptl_tcp_component.rendezvous_filename);
+            pmix_os_dirpath_destroy(mca_ptl_tcp_component.rendezvous_filename, true, NULL);
         }
         free(mca_ptl_tcp_component.rendezvous_filename);
     }
     if (NULL != urifile) {
         /* remove the file */
-        unlink(urifile);
+        pmix_os_dirpath_destroy(urifile, true, NULL);
         free(urifile);
         urifile = NULL;
     }
     if (NULL != mca_ptl_tcp_component.session_tmpdir) {
-        if (pmix_os_dirpath_is_empty(mca_ptl_tcp_component.session_tmpdir)) {
-            rmdir(mca_ptl_tcp_component.session_tmpdir);
+        /* if I am a tool or a server, then remove my session directory if empty */
+        if (created_session_tmpdir) {
+            pmix_os_dirpath_destroy(mca_ptl_tcp_component.session_tmpdir,
+                                    true, NULL);
         }
         free(mca_ptl_tcp_component.session_tmpdir);
     }
     if (NULL != mca_ptl_tcp_component.system_tmpdir) {
-        if (pmix_os_dirpath_is_empty(mca_ptl_tcp_component.system_tmpdir)) {
-            rmdir(mca_ptl_tcp_component.system_tmpdir);
+        if (created_system_tmpdir) {
+            pmix_os_dirpath_destroy(mca_ptl_tcp_component.system_tmpdir,
+                                    true, NULL);
         }
         free(mca_ptl_tcp_component.system_tmpdir);
     }
@@ -792,6 +798,7 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
                 CLOSE_THE_SOCKET(lt->socket);
                 goto sockerror;
             }
+            created_system_tmpdir = true;
         }
         if (0 > asprintf(&mca_ptl_tcp_component.system_filename, "%s/pmix.sys.%s",
                          mca_ptl_tcp_component.system_tmpdir, myhost)) {
@@ -845,6 +852,7 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
                 CLOSE_THE_SOCKET(lt->socket);
                 goto sockerror;
             }
+            created_session_tmpdir = true;
         }
         /* first output to a std file */
         if (0 > asprintf(&mca_ptl_tcp_component.session_filename, "%s/pmix.%s.tool",
@@ -899,6 +907,7 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
                 CLOSE_THE_SOCKET(lt->socket);
                 goto sockerror;
             }
+            created_session_tmpdir = true;
         }
         /* now output to a file based on pid */
         mypid = getpid();
