@@ -87,7 +87,7 @@ static void apcon(pmdl_app_t *p)
 {
 	p->ompi = false;
 	p->appnum = 0;
-	p->start = UINT32_MAX;
+	p->start = PMIX_RANK_UNDEF;
 	p->end = 0;
 	p->num_procs = 0;
 }
@@ -169,8 +169,9 @@ static pmix_status_t harvest_envars(pmix_namespace_t *nptr,
         /* check the directives */
         for (n=0; n < ninfo; n++) {
             /* check the attribute */
-            if (PMIX_CHECK_KEY(&info[n], PMIX_PROGRAMMING_MODEL)) {
-                if (0 == strcasecmp(info->value.data.string, "ompi")) {
+            if (PMIX_CHECK_KEY(&info[n], PMIX_PROGRAMMING_MODEL) ||
+                PMIX_CHECK_KEY(&info[n], PMIX_PERSONALITY)) {
+                if (NULL != strcasestr(info[n].value.data.string, "ompi")) {
                     ns->ompi = true;
                     break;
                 }
@@ -226,8 +227,8 @@ static pmix_status_t setup_nspace(pmix_namespace_t *nptr,
 	pmdl_app_t *ap, *ap2;
 
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
-                        "pmdl:ompi: setup nspace for app %u with %s",
-                        appnum, info->value.data.string);
+                        "pmdl:ompi: setup nspace for nspace %s app %u with %s",
+                        nptr->nspace, appnum, info->value.data.string);
 
 	/* see if we already have this nspace */
 	ns = NULL;
@@ -256,8 +257,9 @@ static pmix_status_t setup_nspace(pmix_namespace_t *nptr,
 		pmix_list_append(&ns->apps, &ap->super);
 	}
 	/* check the attribute */
-	if (PMIX_CHECK_KEY(info, PMIX_PROGRAMMING_MODEL)) {
-		if (0 == strcasecmp(info->value.data.string, "ompi")) {
+	if (PMIX_CHECK_KEY(info, PMIX_PROGRAMMING_MODEL) ||
+        PMIX_CHECK_KEY(info, PMIX_PERSONALITY)) {
+        if (NULL != strcasestr(info->value.data.string, "ompi")) {
 			ap->ompi = true;
             ns->ompi = true;  // flag that at least one app is ompi
 		}
@@ -274,7 +276,8 @@ static pmix_status_t setup_nspace_kv(pmix_namespace_t *nptr,
 	pmdl_app_t *ap, *ap2;
 
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
-                        "pmdl:ompi: setup nspace_kv with %s", kv->value->data.string);
+                        "pmdl:ompi: setup nspace_kv for nspace %s with %s",
+                        nptr->nspace, kv->value->data.string);
 
 	/* see if we already have this nspace */
 	ns = NULL;
@@ -303,8 +306,9 @@ static pmix_status_t setup_nspace_kv(pmix_namespace_t *nptr,
 		pmix_list_append(&ns->apps, &ap->super);
 	}
 	/* check the attribute */
-	if (PMIX_CHECK_KEY(kv, PMIX_PROGRAMMING_MODEL)) {
-		if (0 == strcasecmp(kv->value->data.string, "ompi")) {
+	if (PMIX_CHECK_KEY(kv, PMIX_PROGRAMMING_MODEL) ||
+        PMIX_CHECK_KEY(kv, PMIX_PERSONALITY)) {
+		if (NULL != strcasestr(kv->value->data.string, "ompi")) {
 			ap->ompi = true;
             ns->ompi = true;  // flag that at least one app is ompi
 		}
@@ -321,7 +325,8 @@ static pmix_status_t setup_client(pmix_namespace_t *nptr,
 	pmdl_app_t *ap, *ap2;
 
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
-                        "pmdl:ompi: setup client with %s", PMIX_RANK_PRINT(rank));
+                        "pmdl:ompi: setup client for nspace %s with %s",
+                        nptr->nspace, PMIX_RANK_PRINT(rank));
 
 	/* see if we already have this nspace */
 	ns = NULL;
@@ -356,6 +361,8 @@ static pmix_status_t setup_client(pmix_namespace_t *nptr,
 	if (rank > ap->end) {
 		ap->end = rank;
 	}
+    ap->num_procs = (ap->end - ap->start) + 1;
+
 	return PMIX_SUCCESS;
 }
 
@@ -368,7 +375,6 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
 	pmix_proc_t wildcard, undef;
 	pmix_status_t rc;
 	pmix_value_t *val;
-	pmix_info_t info[2];
 	uint16_t u16;
 
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
@@ -438,23 +444,9 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
                 return rc;
             }
 	    }
-        if (NULL != ap) {
-    		/* fetch the number of procs in this app */
-    		PMIX_INFO_LOAD(&info[0], PMIX_APP_INFO, NULL, PMIX_BOOL);
-    		PMIX_INFO_LOAD(&info[1], PMIX_APPNUM, &ap->appnum, PMIX_UINT32);
-    	    if (PMIX_SUCCESS == (rc = PMIx_Get(&undef, PMIX_APP_SIZE, info, 2, &val))) {
-                PMIX_VALUE_GET_NUMBER(rc, val, ap->num_procs, uint32_t);
-                PMIX_VALUE_RELEASE(val);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_INFO_DESTRUCT(&info[0]);
-                    PMIX_INFO_DESTRUCT(&info[1]);
-                    return rc;
-                }
-    	    }
-    	    PMIX_INFO_DESTRUCT(&info[0]);
-    	    PMIX_INFO_DESTRUCT(&info[1]);
-        }
-	}
+
+        ns->datacollected = true;
+    }
 
     if (UINT32_MAX != ns->univ_size) {
         if (0 > asprintf(&param, "%u", ns->univ_size)) {
@@ -480,23 +472,7 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
         free(param);
     }
 
-    /* add the MPI-3 envars */
-    if (UINT32_MAX != ns->num_apps) {
-        if (0 > asprintf(&param, "%u", ns->num_apps)) {
-        	return PMIX_ERR_NOMEM;
-        }
-        pmix_setenv("OMPI_NUM_APP_CTX", param, true, env);
-        free(param);
-    }
-
-    if (NULL != ap && UINT32_MAX != ap->num_procs) {
-        if (0 > asprintf(&param, "%u", ap->num_procs)) {
-        	return PMIX_ERR_NOMEM;
-        }
-        pmix_setenv("OMPI_APP_CTX_NUM_PROCS", param, true, env);
-        free(param);
-    }
-
+    /* pass the rank */
     if (0 > asprintf(&param, "%lu", (unsigned long)proc->rank)) {
     	return PMIX_ERR_NOMEM;
     }
@@ -529,12 +505,6 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
         }
         pmix_setenv("OMPI_COMM_WORLD_NODE_RANK", param, true, env);
         free(param);
-    }
-
-    /* pass an envar so the proc can find any files it had prepositioned */
-    if (PMIX_SUCCESS == (rc = PMIx_Get(proc, PMIX_PROCDIR, NULL, 0, &val))) {
-        pmix_setenv("OMPI_FILE_LOCATION", val->data.string, true, env);
-        PMIX_VALUE_RELEASE(val);
     }
 
     return PMIX_SUCCESS;

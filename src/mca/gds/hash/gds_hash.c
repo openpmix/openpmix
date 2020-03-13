@@ -553,7 +553,8 @@ static pmix_status_t process_app_array(pmix_value_t *val,
         }
         if (PMIX_CHECK_KEY(kp2, PMIX_MODEL_LIBRARY_NAME) ||
             PMIX_CHECK_KEY(kp2, PMIX_PROGRAMMING_MODEL) ||
-            PMIX_CHECK_KEY(kp2, PMIX_MODEL_LIBRARY_VERSION)) {
+            PMIX_CHECK_KEY(kp2, PMIX_MODEL_LIBRARY_VERSION) ||
+            PMIX_CHECK_KEY(kp2, PMIX_PERSONALITY)) {
             // pass this info to the pmdl framework
             pmix_pmdl.setup_nspace_kv(trk->nptr, app->appnum, kp2);
         }
@@ -636,7 +637,8 @@ static pmix_status_t process_job_array(pmix_info_t *info,
             *flags |= PMIX_HASH_NODE_MAP;
         } else if (PMIX_CHECK_KEY(&iptr[j], PMIX_MODEL_LIBRARY_NAME) ||
                    PMIX_CHECK_KEY(&iptr[j], PMIX_PROGRAMMING_MODEL) ||
-                   PMIX_CHECK_KEY(&iptr[j], PMIX_MODEL_LIBRARY_VERSION)) {
+                   PMIX_CHECK_KEY(&iptr[j], PMIX_MODEL_LIBRARY_VERSION)  ||
+                   PMIX_CHECK_KEY(&iptr[j], PMIX_PERSONALITY)) {
             // pass this info to the pmdl framework
             pmix_pmdl.setup_nspace(trk->nptr, PMIX_APP_WILDCARD, &iptr[j]);
         } else {
@@ -1113,6 +1115,7 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
     uint32_t flags = 0;
     pmix_nodeinfo_t *nd, *ndptr;
     pmix_apptrkr_t *apptr;
+    bool found;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "[%s:%d] gds:hash:cache_job_info for nspace %s with %lu info",
@@ -1227,6 +1230,7 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
             flags |= PMIX_HASH_PROC_MAP;
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_PROC_DATA)) {
             flags |= PMIX_HASH_PROC_DATA;
+            found = false;
             /* an array of data pertaining to a specific proc */
             if (PMIX_DATA_ARRAY != info[n].value.type) {
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
@@ -1285,12 +1289,34 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                 /* if this is the appnum, pass it to the pmdl framework */
                 if (PMIX_CHECK_KEY(kp2, PMIX_APPNUM)) {
                     pmix_pmdl.setup_client(trk->nptr, rank, kp2->value->data.uint32);
+                    found = true;
                 }
+                PMIX_RELEASE(kp2);  // maintain acctg
+            }
+            if (!found) {
+                /* if they didn't give us an appnum for this proc, we have
+                 * to assume it is appnum=0 */
+                uint32_t zero = 0;
+                kp2 = PMIX_NEW(pmix_kval_t);
+                if (NULL == kp2) {
+                    rc = PMIX_ERR_NOMEM;
+                    goto release;
+                }
+                kp2->key = strdup(PMIX_APPNUM);
+                PMIX_VALUE_CREATE(kp2->value, 1);
+                PMIX_VALUE_LOAD(kp2->value, &zero, PMIX_UINT32);
+                if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, rank, kp2))) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_RELEASE(kp2);
+                    goto release;
+                }
+                pmix_pmdl.setup_client(trk->nptr, rank, kp2->value->data.uint32);
                 PMIX_RELEASE(kp2);  // maintain acctg
             }
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_MODEL_LIBRARY_NAME) ||
                    PMIX_CHECK_KEY(&info[n], PMIX_PROGRAMMING_MODEL) ||
-                   PMIX_CHECK_KEY(&info[n], PMIX_MODEL_LIBRARY_VERSION)) {
+                   PMIX_CHECK_KEY(&info[n], PMIX_MODEL_LIBRARY_VERSION) ||
+                   PMIX_CHECK_KEY(&info[n], PMIX_PERSONALITY)) {
             // pass this info to the pmdl framework
             pmix_pmdl.setup_nspace(trk->nptr, PMIX_APP_WILDCARD, &info[n]);
         } else if (pmix_check_node_info(info[n].key)) {
