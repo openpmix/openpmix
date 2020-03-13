@@ -539,6 +539,9 @@ static inline bool pmix_check_app_info(const char* key)
 {
     char *keys[] = {
         PMIX_APP_SIZE,
+        PMIX_APPLDR,
+        PMIX_APP_ARGV,
+        PMIX_WDIR,
         NULL
     };
     size_t n;
