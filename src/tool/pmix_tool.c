@@ -676,13 +676,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         rcv->cbfunc = pmix_server_message_handler;
         /* add it to the end of the list of recvs */
         pmix_list_append(&pmix_ptl_globals.posted_recvs, &rcv->super);
-        /* open the pnet framework so we can harvest envars */
-        rc = pmix_mca_base_framework_open(&pmix_pnet_base_framework, 0);
-        if (PMIX_SUCCESS != rc){
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
-            return rc;
-        }
-        /* note that we do not select active plugins as we don't need them */
     }
 
     /* setup IOF */
@@ -1223,6 +1216,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     struct timeval tv = {5, 0};
     int n;
     pmix_peer_t *peer;
+    pmix_pfexec_child_t *child;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     if (1 != pmix_globals.init_cntr) {
@@ -1286,6 +1280,15 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
 
     }
 
+    if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
+        /* if we have launched children, then we need to cleanly
+         * terminate them - do this before stopping our progress
+         * thread as we need it for terminating procs */
+        PMIX_LIST_FOREACH(child, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
+            pmix_pfexec.kill_proc(&child->proc);
+        }
+    }
+
     if (!pmix_globals.external_evbase) {
         /* stop the progress thread, but leave the event base
          * still constructed. This will allow us to safely
@@ -1294,7 +1297,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
         (void)pmix_progress_thread_pause(NULL);
     }
 
-//    PMIX_RELEASE(pmix_client_globals.myserver);
+    PMIX_RELEASE(pmix_client_globals.myserver);
     PMIX_LIST_DESTRUCT(&pmix_client_globals.pending_requests);
     for (n=0; n < pmix_client_globals.peers.size; n++) {
         if (NULL != (peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_client_globals.peers, n))) {
@@ -1319,10 +1322,12 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
         PMIX_LIST_DESTRUCT(&pmix_server_globals.gdata);
         PMIX_LIST_DESTRUCT(&pmix_server_globals.events);
         PMIX_LIST_DESTRUCT(&pmix_server_globals.iof);
+
+        (void)pmix_mca_base_framework_close(&pmix_pfexec_base_framework);
+        (void)pmix_mca_base_framework_close(&pmix_pmdl_base_framework);
+        (void)pmix_mca_base_framework_close(&pmix_pnet_base_framework);
     }
 
-    /* shutdown services */
-    (void)pmix_mca_base_framework_close(&pmix_pfexec_base_framework);
     pmix_rte_finalize();
     if (NULL != pmix_globals.mypeer) {
         PMIX_RELEASE(pmix_globals.mypeer);
