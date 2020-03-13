@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
@@ -69,10 +69,8 @@ pmix_status_t pmix_pmdl_base_harvest_envars(char *nspace,
     /* process the request */
     PMIX_LIST_FOREACH(active, &pmix_pmdl_globals.actives, pmix_pmdl_base_active_module_t) {
         if (NULL != active->module->harvest_envars) {
-            if (PMIX_SUCCESS == (rc = active->module->harvest_envars(nptr, info, ninfo, ilist))) {
-                break;
-            }
-            if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
+            rc = active->module->harvest_envars(nptr, info, ninfo, ilist);
+            if (PMIX_SUCCESS != rc && PMIX_ERR_TAKE_NEXT_OPTION != rc) {
                 /* true error */
                 return rc;
             }
@@ -83,7 +81,6 @@ pmix_status_t pmix_pmdl_base_harvest_envars(char *nspace,
 }
 
 pmix_status_t pmix_pmdl_base_setup_nspace(pmix_namespace_t *nptr,
-                                          uint32_t appnum,
                                           pmix_info_t *info)
 {
     pmix_pmdl_base_active_module_t *active;
@@ -99,10 +96,8 @@ pmix_status_t pmix_pmdl_base_setup_nspace(pmix_namespace_t *nptr,
     /* process the request */
     PMIX_LIST_FOREACH(active, &pmix_pmdl_globals.actives, pmix_pmdl_base_active_module_t) {
         if (NULL != active->module->setup_nspace) {
-            if (PMIX_SUCCESS == (rc = active->module->setup_nspace(nptr, appnum, info))) {
-                break;
-            }
-            if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
+            rc = active->module->setup_nspace(nptr, info);
+            if (PMIX_SUCCESS != rc && PMIX_ERR_TAKE_NEXT_OPTION != rc) {
                 /* true error */
                 return rc;
             }
@@ -113,7 +108,6 @@ pmix_status_t pmix_pmdl_base_setup_nspace(pmix_namespace_t *nptr,
 }
 
 pmix_status_t pmix_pmdl_base_setup_nspace_kv(pmix_namespace_t *nptr,
-                                            uint32_t appnum,
                                             pmix_kval_t *kv)
 {
     pmix_pmdl_base_active_module_t *active;
@@ -129,7 +123,33 @@ pmix_status_t pmix_pmdl_base_setup_nspace_kv(pmix_namespace_t *nptr,
     /* process the request */
     PMIX_LIST_FOREACH(active, &pmix_pmdl_globals.actives, pmix_pmdl_base_active_module_t) {
         if (NULL != active->module->setup_nspace_kv) {
-            rc = active->module->setup_nspace_kv(nptr, appnum, kv);
+            rc = active->module->setup_nspace_kv(nptr, kv);
+            if (PMIX_SUCCESS != rc && PMIX_ERR_TAKE_NEXT_OPTION != rc) {
+                /* true error */
+                return rc;
+            }
+        }
+    }
+
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_pmdl_base_register_nspace(pmix_namespace_t *nptr)
+{
+    pmix_pmdl_base_active_module_t *active;
+    pmix_status_t rc;
+
+    if (!pmix_pmdl_globals.initialized) {
+        return PMIX_ERR_INIT;
+    }
+
+    pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
+                        "pmdl:register_nspace called");
+
+    /* process the request */
+    PMIX_LIST_FOREACH(active, &pmix_pmdl_globals.actives, pmix_pmdl_base_active_module_t) {
+        if (NULL != active->module->register_nspace) {
+            rc = active->module->register_nspace(nptr);
             if (PMIX_SUCCESS != rc && PMIX_ERR_TAKE_NEXT_OPTION != rc) {
                 /* true error */
                 return rc;

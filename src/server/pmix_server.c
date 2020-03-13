@@ -619,6 +619,15 @@ static void _register_nspace(int sd, short args, void *cbdata)
      * are using */
     PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr,
                             cd->info, cd->ninfo);
+    if (PMIX_SUCCESS != rc) {
+        goto release;
+    }
+
+    /* give the programming models a chance to add anything they need */
+    rc = pmix_pmdl.register_nspace(nptr);
+    if (PMIX_SUCCESS != rc) {
+        goto release;
+    }
 
     /* check any pending trackers to see if they are
      * waiting for us. There is a slight race condition whereby

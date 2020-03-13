@@ -404,6 +404,9 @@ static pmix_status_t process_node_array(pmix_value_t *val,
             break;
         }
     }
+    if (!update) {
+        pmix_list_append(tgt, &nd->super);
+    }
 
     /* transfer the cached items to the nodeinfo list */
     kp2 = (pmix_kval_t*)pmix_list_remove_first(&cache);
@@ -424,9 +427,6 @@ static pmix_status_t process_node_array(pmix_value_t *val,
     }
     PMIX_LIST_DESTRUCT(&cache);
 
-    if (!update) {
-        pmix_list_append(tgt, &nd->super);
-    }
     return PMIX_SUCCESS;
 }
 
@@ -509,6 +509,7 @@ static pmix_status_t process_app_array(pmix_value_t *val,
          * an appnum so long as only one app is in the job */
         if (0 == pmix_list_get_size(&trk->apps)) {
             app = PMIX_NEW(pmix_apptrkr_t);
+            app->appnum = 0;
         } else {
             /* this is not allowed to happen - they are required
              * to provide us with an app number per the standard */
@@ -530,7 +531,9 @@ static pmix_status_t process_app_array(pmix_value_t *val,
             break;
         }
     }
-
+    if (!update) {
+        pmix_list_append(&trk->apps, &app->super);
+    }
     /* point the app at its job */
     if (NULL == app->job) {
         PMIX_RETAIN(trk);
@@ -556,7 +559,7 @@ static pmix_status_t process_app_array(pmix_value_t *val,
             PMIX_CHECK_KEY(kp2, PMIX_MODEL_LIBRARY_VERSION) ||
             PMIX_CHECK_KEY(kp2, PMIX_PERSONALITY)) {
             // pass this info to the pmdl framework
-            pmix_pmdl.setup_nspace_kv(trk->nptr, app->appnum, kp2);
+            pmix_pmdl.setup_nspace_kv(trk->nptr, kp2);
         }
         pmix_list_append(&app->appinfo, &kp2->super);
         kp2 = (pmix_kval_t*)pmix_list_remove_first(&cache);
@@ -640,7 +643,7 @@ static pmix_status_t process_job_array(pmix_info_t *info,
                    PMIX_CHECK_KEY(&iptr[j], PMIX_MODEL_LIBRARY_VERSION)  ||
                    PMIX_CHECK_KEY(&iptr[j], PMIX_PERSONALITY)) {
             // pass this info to the pmdl framework
-            pmix_pmdl.setup_nspace(trk->nptr, PMIX_APP_WILDCARD, &iptr[j]);
+            pmix_pmdl.setup_nspace(trk->nptr, &iptr[j]);
         } else {
             kp2 = PMIX_NEW(pmix_kval_t);
             kp2->key = strdup(iptr[j].key);
@@ -1290,6 +1293,9 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                 if (PMIX_CHECK_KEY(kp2, PMIX_APPNUM)) {
                     pmix_pmdl.setup_client(trk->nptr, rank, kp2->value->data.uint32);
                     found = true;
+                    if (rank == pmix_globals.myid.rank) {
+                        pmix_globals.appnum = kp2->value->data.uint32;
+                    }
                 }
                 PMIX_RELEASE(kp2);  // maintain acctg
             }
@@ -1318,7 +1324,7 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                    PMIX_CHECK_KEY(&info[n], PMIX_MODEL_LIBRARY_VERSION) ||
                    PMIX_CHECK_KEY(&info[n], PMIX_PERSONALITY)) {
             // pass this info to the pmdl framework
-            pmix_pmdl.setup_nspace(trk->nptr, PMIX_APP_WILDCARD, &info[n]);
+            pmix_pmdl.setup_nspace(trk->nptr, &info[n]);
         } else if (pmix_check_node_info(info[n].key)) {
             /* they are passing us the node-level info for just this
              * node - start by seeing if our node is on the list */
@@ -2450,6 +2456,10 @@ static pmix_status_t fetch_nodeinfo(const char *key, pmix_list_t *tgt,
         }
     }
     if (NULL == nd) {
+        if (!found) {
+            /* they didn't specify, so it is optional */
+            return PMIX_ERR_DATA_VALUE_NOT_FOUND;
+        }
         return PMIX_ERR_NOT_FOUND;
     }
 
@@ -2539,7 +2549,8 @@ static pmix_status_t fetch_appinfo(const char *key, pmix_list_t *tgt,
     pmix_data_array_t *darray;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
-                        "FETCHING APP INFO");
+                        "FETCHING APP INFO WITH %d APPS",
+                        (int)pmix_list_get_size(tgt));
 
     /* scan for the appnum to identify
      * which app they are asking about */

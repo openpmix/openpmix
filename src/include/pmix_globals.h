@@ -480,6 +480,7 @@ typedef struct {
     uid_t uid;                          // my effective uid
     gid_t gid;                          // my effective gid
     char *hostname;                     // my hostname
+    uint32_t appnum;                    // my appnum
     pid_t pid;                          // my local pid
     uint32_t nodeid;                    // my nodeid, if given
     int pindex;
@@ -523,6 +524,8 @@ static inline bool pmix_check_node_info(const char* key)
     char *keys[] = {
         PMIX_LOCAL_PEERS,
         PMIX_LOCAL_SIZE,
+        PMIX_NODE_SIZE,
+        PMIX_LOCALLDR,
         NULL
     };
     size_t n;
@@ -542,6 +545,7 @@ static inline bool pmix_check_app_info(const char* key)
         PMIX_APPLDR,
         PMIX_APP_ARGV,
         PMIX_WDIR,
+        PMIX_PSET_NAME,
         NULL
     };
     size_t n;
