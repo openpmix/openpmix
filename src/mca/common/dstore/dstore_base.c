@@ -2697,6 +2697,7 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
     pmix_kval_t kv2, *kvp;
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_info_t *ihost;
+    uint32_t appnum;
 
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     PMIX_CONSTRUCT(&buf, pmix_buffer_t);
@@ -2766,8 +2767,34 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
                     continue;
                 }
             }
-        } else if (PMIX_CHECK_KEY(kv, PMIX_APP_INFO_ARRAY) ||
-                   PMIX_CHECK_KEY(kv, PMIX_JOB_INFO_ARRAY) ||
+        } else if (PMIX_CHECK_KEY(kv, PMIX_APP_INFO_ARRAY)) {
+            /* the dstore currently does not understand info arrays,
+             * but we will store info from our own app */
+            pmix_info_t *info;
+            size_t size, i;
+            /* if it is our local node, then we are going to pass
+             * all info */
+            info = kv->value->data.darray->array;
+            size = kv->value->data.darray->size;
+            appnum = UINT32_MAX;
+            for (i = 0; i < size; i++) {
+                if (PMIX_CHECK_KEY(&info[i], PMIX_APPNUM)) {
+                    appnum = info[i].value.data.uint32;
+                    break;
+                }
+            }
+            if (appnum == pmix_globals.appnum) {
+                for (i = 0; i < size; i++) {
+                    kv2.key = info[i].key;
+                    kv2.value = &info[i].value;
+                    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &kv2, 1, PMIX_KVAL);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_ERROR_LOG(rc);
+                        continue;
+                    }
+                }
+            }
+        } else if (PMIX_CHECK_KEY(kv, PMIX_JOB_INFO_ARRAY) ||
                    PMIX_CHECK_KEY(kv, PMIX_SESSION_INFO_ARRAY)) {
             continue;
         } else {

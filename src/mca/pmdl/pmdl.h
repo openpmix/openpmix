@@ -4,7 +4,7 @@
  *
  * Copyright (c) 2015-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2018-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -61,11 +61,13 @@ typedef pmix_status_t (*pmix_pmdl_base_module_harvest_envars_fn_t)(pmix_namespac
  * Setup any programming model specific support for the given nspace
  */
 typedef pmix_status_t (*pmix_pmdl_base_module_setup_ns_fn_t)(pmix_namespace_t *nptr,
-                                                             uint32_t appnum,
                                                              pmix_info_t *info);
 typedef pmix_status_t (*pmix_pmdl_base_module_setup_ns_kv_fn_t)(pmix_namespace_t *nptr,
-                                                                uint32_t appnum,
                                                                 pmix_kval_t *kv);
+
+/* Allow programming models to add key-value pairs to the job-info - they
+ * can directly cache them in the GDS */
+typedef pmix_status_t (*pmix_pmdl_base_module_reg_nspace_fn_t)(pmix_namespace_t *nptr);
 
 /**
  * Setup any programming model specific support for the given client */
@@ -96,6 +98,7 @@ typedef struct {
     pmix_pmdl_base_module_harvest_envars_fn_t       harvest_envars;
     pmix_pmdl_base_module_setup_ns_fn_t             setup_nspace;
     pmix_pmdl_base_module_setup_ns_kv_fn_t          setup_nspace_kv;
+    pmix_pmdl_base_module_reg_nspace_fn_t           register_nspace;
     pmix_pmdl_base_module_setup_client_fn_t         setup_client;
     pmix_pmdl_base_module_setup_fork_fn_t           setup_fork;
     pmix_pmdl_base_module_dregister_nspace_fn_t     deregister_nspace;
@@ -114,6 +117,7 @@ typedef struct {
     pmix_pmdl_base_API_harvest_envars_fn_t          harvest_envars;
     pmix_pmdl_base_module_setup_ns_fn_t             setup_nspace;
     pmix_pmdl_base_module_setup_ns_kv_fn_t          setup_nspace_kv;
+    pmix_pmdl_base_module_reg_nspace_fn_t           register_nspace;
     pmix_pmdl_base_module_setup_client_fn_t         setup_client;
     pmix_pmdl_base_module_setup_fork_fn_t           setup_fork;
     pmix_pmdl_base_API_dregister_nspace_fn_t        deregister_nspace;
