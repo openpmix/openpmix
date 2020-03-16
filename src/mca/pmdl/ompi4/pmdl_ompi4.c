@@ -563,8 +563,8 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
 #ifdef HAVE_SYS_UTSNAME_H
     struct utsname sysname;
     memset(&sysname, 0, sizeof(sysname));
-    if(-1 < uname(&sysname)) {
-        if((sysname.machine[0] != 0) && (sysname.machine[0] != '\0')) {
+    if (-1 < uname(&sysname)) {
+        if (sysname.machine[0] != '\0') {
             pmix_setenv("OMPI_MCA_cpu_type", (const char *) &sysname.machine, true, env);
         }
     }
