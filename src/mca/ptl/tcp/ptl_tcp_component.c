@@ -53,6 +53,7 @@
 #include <netdb.h>
 #endif
 #include <ctype.h>
+#include <stdio.h>
 
 #include "src/include/pmix_socket_errno.h"
 #include "src/util/argv.h"
@@ -301,30 +302,30 @@ static pmix_status_t component_open(void)
 pmix_status_t component_close(void)
 {
     if (NULL != mca_ptl_tcp_component.system_filename) {
-        pmix_os_dirpath_destroy(mca_ptl_tcp_component.system_filename, true, NULL);
+        remove(mca_ptl_tcp_component.system_filename);
         free(mca_ptl_tcp_component.system_filename);
     }
     if (NULL != mca_ptl_tcp_component.session_filename) {
-        pmix_os_dirpath_destroy(mca_ptl_tcp_component.session_filename, true, NULL);
+        remove(mca_ptl_tcp_component.session_filename);
         free(mca_ptl_tcp_component.session_filename);
     }
     if (NULL != mca_ptl_tcp_component.nspace_filename) {
-        pmix_os_dirpath_destroy(mca_ptl_tcp_component.nspace_filename, true, NULL);
+        remove(mca_ptl_tcp_component.nspace_filename);
         free(mca_ptl_tcp_component.nspace_filename);
     }
     if (NULL != mca_ptl_tcp_component.pid_filename) {
-        pmix_os_dirpath_destroy(mca_ptl_tcp_component.pid_filename, true, NULL);
+        remove(mca_ptl_tcp_component.pid_filename);
         free(mca_ptl_tcp_component.pid_filename);
     }
     if (NULL != mca_ptl_tcp_component.rendezvous_filename) {
         if (created_rendezvous_file) {
-            pmix_os_dirpath_destroy(mca_ptl_tcp_component.rendezvous_filename, true, NULL);
+            remove(mca_ptl_tcp_component.rendezvous_filename);
         }
         free(mca_ptl_tcp_component.rendezvous_filename);
     }
     if (NULL != urifile) {
         /* remove the file */
-        pmix_os_dirpath_destroy(urifile, true, NULL);
+        remove(urifile);
         free(urifile);
         urifile = NULL;
     }
