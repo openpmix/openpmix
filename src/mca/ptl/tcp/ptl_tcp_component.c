@@ -251,6 +251,11 @@ static char *urifile = NULL;
 static bool created_rendezvous_file = false;
 static bool created_session_tmpdir = false;
 static bool created_system_tmpdir = false;
+static bool created_system_filename = false;
+static bool created_session_filename = false;
+static bool created_nspace_filename = false;
+static bool created_pid_filename = false;
+static bool created_urifile = false;
 
 static pmix_status_t component_open(void)
 {
@@ -302,19 +307,27 @@ static pmix_status_t component_open(void)
 pmix_status_t component_close(void)
 {
     if (NULL != mca_ptl_tcp_component.system_filename) {
-        remove(mca_ptl_tcp_component.system_filename);
+        if (created_system_filename) {
+            remove(mca_ptl_tcp_component.system_filename);
+        }
         free(mca_ptl_tcp_component.system_filename);
     }
     if (NULL != mca_ptl_tcp_component.session_filename) {
-        remove(mca_ptl_tcp_component.session_filename);
+        if (created_session_filename) {
+            remove(mca_ptl_tcp_component.session_filename);
+        }
         free(mca_ptl_tcp_component.session_filename);
     }
     if (NULL != mca_ptl_tcp_component.nspace_filename) {
-        remove(mca_ptl_tcp_component.nspace_filename);
+        if (created_nspace_filename) {
+            remove(mca_ptl_tcp_component.nspace_filename);
+        }
         free(mca_ptl_tcp_component.nspace_filename);
     }
     if (NULL != mca_ptl_tcp_component.pid_filename) {
-        remove(mca_ptl_tcp_component.pid_filename);
+        if (created_pid_filename) {
+            remove(mca_ptl_tcp_component.pid_filename);
+        }
         free(mca_ptl_tcp_component.pid_filename);
     }
     if (NULL != mca_ptl_tcp_component.rendezvous_filename) {
@@ -324,8 +337,10 @@ pmix_status_t component_close(void)
         free(mca_ptl_tcp_component.rendezvous_filename);
     }
     if (NULL != urifile) {
-        /* remove the file */
-        remove(urifile);
+        if (created_urifile) {
+            /* remove the file */
+            remove(urifile);
+        }
         free(urifile);
         urifile = NULL;
     }
@@ -733,6 +748,7 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
             /* add a flag that indicates we accept v2.1 protocols */
             fprintf(fp, "v%s\n", PMIX_VERSION);
             fclose(fp);
+            created_urifile = true;
         }
     }
 
@@ -832,6 +848,7 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
             mca_ptl_tcp_component.system_filename = NULL;
             goto sockerror;
         }
+        created_system_filename = true;
     }
 
     if (session_tool) {
@@ -887,6 +904,7 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
             mca_ptl_tcp_component.session_filename = NULL;
             goto sockerror;
         }
+        created_session_filename = true;
     }
 
     if (tool_support) {
@@ -943,6 +961,7 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
             mca_ptl_tcp_component.pid_filename = NULL;
             goto sockerror;
         }
+        created_pid_filename = true;
 
         /* now output it into a file based on my nspace */
 
@@ -977,6 +996,7 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
             mca_ptl_tcp_component.nspace_filename = NULL;
             goto sockerror;
         }
+        created_nspace_filename = true;
     }
     /* if we are a tool and connected, then register any rendezvous files for cleanup */
     if (PMIX_PEER_IS_TOOL(pmix_globals.mypeer) && pmix_globals.connected) {
