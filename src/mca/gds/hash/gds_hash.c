@@ -1041,9 +1041,9 @@ static pmix_status_t store_map(pmix_job_t *trk,
     kp2->value->type = PMIX_STRING;
     kp2->value->data.string = pmix_argv_join(nodes, ',');
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
-                        "[%s:%d] gds:hash:store_map for [%s:%u]: key %s",
+                        "[%s:%d] gds:hash:store_map for nspace %s: key %s",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank,
-                        trk->ns, rank, kp2->key);
+                        trk->ns, kp2->key);
     if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, kp2))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(kp2);
@@ -1061,9 +1061,9 @@ static pmix_status_t store_map(pmix_job_t *trk,
         kp2->value->type = PMIX_UINT32;
         kp2->value->data.uint32 = totalprocs;
         pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
-                            "[%s:%d] gds:hash:store_map for [%s:%u]: key %s",
+                            "[%s:%d] gds:hash:store_map for nspace %s: key %s",
                             pmix_globals.myid.nspace, pmix_globals.myid.rank,
-                            trk->ns, rank, kp2->key);
+                            trk->ns, kp2->key);
         if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, kp2))) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(kp2);
@@ -1084,9 +1084,9 @@ static pmix_status_t store_map(pmix_job_t *trk,
         kp2->value->type = PMIX_UINT32;
         kp2->value->data.uint32 = totalprocs;
         pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
-                            "[%s:%d] gds:hash:store_map for [%s:%u]: key %s",
+                            "[%s:%d] gds:hash:store_map for nspace %s: key %s",
                             pmix_globals.myid.nspace, pmix_globals.myid.rank,
-                            trk->ns, rank, kp2->key);
+                            trk->ns, kp2->key);
         if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, kp2))) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(kp2);

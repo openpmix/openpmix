@@ -594,7 +594,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_DEBUG_WAITING_FOR_NOTIFY       "pmix.dbg.waiting"      // (bool) job to be debugged is waiting for a release
 #define PMIX_DEBUG_JOB_DIRECTIVES           "pmix.dbg.jdirs"        // (pmix_data_array_t*) array of job-level directives
 #define PMIX_DEBUG_APP_DIRECTIVES           "pmix.dbg.adirs"        // (pmix_data_array_t*) array of app-level directives
-#define PMIX_DEBUG_TARGET                   "pmix.dbg.tgt"          // (char*) Name of the nspace to be debugged
+#define PMIX_DEBUG_TARGET                   "pmix.dbg.tgt"          // (pmix_proc_t*) Identifier of proc(s) to be debugged
 
 /* Resource Manager identification */
 #define PMIX_RM_NAME                        "pmix.rm.name"          // (char*) string name of the resource manager
