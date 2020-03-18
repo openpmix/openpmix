@@ -60,3 +60,6 @@ nroff:
 
 dist-hook:
 	env LS_COLORS= sh "$(top_srcdir)/config/distscript.sh" "$(top_srcdir)" "$(distdir)" "$(PMIX_VERSION)" "$(PMIX_REPO_REV)"
+
+pkgconfigdir = $(libdir)/pkgconfig
+pkgconfig_DATA = maint/pmix.pc

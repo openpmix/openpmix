@@ -260,6 +260,24 @@ AC_MSG_CHECKING([final LIBS])
 AC_MSG_RESULT([$LIBS])
 
 ####################################################################
+# Setup variables for pkg-config file (maint/pmix.pc.in)
+####################################################################
+
+#
+# Dependencies that themselves have a pkg-config file available.
+#
+PC_REQUIRES="hwloc libevent"
+AC_SUBST([PC_REQUIRES], ["$PC_REQUIRES"])
+
+#
+# Dependencies that don't have a pkg-config file available.
+# In this case we need to manually add -L<path> and -l<lib>
+# to the PC_PRIVATE_LIBS variable.
+#
+PC_PRIVATE_LIBS=""
+AC_SUBST([PC_PRIVATE_LIBS], ["$PC_PRIVATE_LIBS"])
+
+####################################################################
 # -Werror for CI scripts
 ####################################################################
 
@@ -289,7 +307,8 @@ AC_CONFIG_FILES(pmix_config_prefix[contrib/Makefile]
                 pmix_config_prefix[examples/Makefile]
                 pmix_config_prefix[test/Makefile]
                 pmix_config_prefix[test/simple/Makefile]
-                pmix_config_prefix[test/python/Makefile])
+                pmix_config_prefix[test/python/Makefile]
+                pmix_config_prefix[maint/pmix.pc])
 
 pmix_show_title "Configuration complete"
 
