@@ -1284,6 +1284,10 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
         /* if we have launched children, then we need to cleanly
          * terminate them - do this before stopping our progress
          * thread as we need it for terminating procs */
+        if (pmix_pfexec_globals.active) {
+            pmix_event_del(pmix_pfexec_globals.handler);
+            pmix_pfexec_globals.active = false;
+        }
         PMIX_LIST_FOREACH(child, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
             pmix_pfexec.kill_proc(&child->proc);
         }

@@ -65,12 +65,12 @@ pmix_pfexec_globals_t pmix_pfexec_globals = {0};
 
 static int pmix_pfexec_base_close(void)
 {
-    PMIX_LIST_DESTRUCT(&pmix_pfexec_globals.children);
     if (pmix_pfexec_globals.active) {
         pmix_event_del(pmix_pfexec_globals.handler);
+        pmix_pfexec_globals.active = false;
     }
+    PMIX_LIST_DESTRUCT(&pmix_pfexec_globals.children);
     free(pmix_pfexec_globals.handler);
-    pmix_pfexec_globals.active = false;
     pmix_pfexec_globals.selected = false;
 
     return pmix_mca_base_framework_components_close(&pmix_pfexec_base_framework, NULL);
