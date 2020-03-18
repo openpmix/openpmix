@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
@@ -168,10 +168,12 @@ PMIX_EXPORT pmix_status_t PMIx_Job_control(const pmix_proc_t targets[], size_t n
     PMIX_WAIT_THREAD(&cb.lock);
     rc = cb.status;
     if (0 < cb.ninfo) {
-        *results = cb.info;
-        *nresults = cb.ninfo;
-        cb.info = NULL;
-        cb.ninfo = 0;
+        if (NULL != results && NULL != nresults) {
+            *results = cb.info;
+            *nresults = cb.ninfo;
+            cb.info = NULL;
+            cb.ninfo = 0;
+        }
     }
     PMIX_DESTRUCT(&cb);
 
