@@ -759,55 +759,77 @@ static pmix_status_t parse_uri_file(char *filename,
     int retries;
     int major, minor, release;
 
-    fp = fopen(filename, "r");
-    if (NULL == fp) {
-        /* if we cannot open the file, then the server must not
-         * be configured to support tool connections, or this
-         * user isn't authorized to access it - or it may just
-         * not exist yet! Check for existence */
-        if (0 != access(filename, R_OK)) {
-            if (ENOENT == errno) {
-                /* the file does not exist, so give it
-                 * a little time to see if the server
-                 * is still starting up */
-                retries = 0;
-                do {
-                    ++retries;
-                    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                        "WAITING FOR CONNECTION FILE %s", filename);
-                    PMIX_CONSTRUCT_LOCK(&lock);
-                    if (0 < mca_ptl_tcp_component.wait_to_connect) {
-                        tv.tv_sec = mca_ptl_tcp_component.wait_to_connect;
-                        tv.tv_usec = 0;
-                        pmix_event_evtimer_set(pmix_globals.evbase, &ev,
-                                               timeout, &lock);
-                        PMIX_POST_OBJECT(&ev);
-                        pmix_event_evtimer_add(&ev, &tv);
-                    } else {
-                        tv.tv_sec = 0;
-                        tv.tv_usec = 10000;  // use 0.01 sec as default
-                        pmix_event_evtimer_set(pmix_globals.evbase, &ev,
-                                               timeout, &lock);
-                        PMIX_POST_OBJECT(&ev);
-                        pmix_event_evtimer_add(&ev, &tv);
-                    }
-                    PMIX_WAIT_THREAD(&lock);
-                    PMIX_DESTRUCT_LOCK(&lock);
-                    fp = fopen(filename, "r");
-                    if (NULL != fp) {
-                        /* we found it! */
-                        goto process;
-                    }
-                } while (retries < mca_ptl_tcp_component.max_retries);
-                /* otherwise, mark it as unreachable */
-            }
+     /* if we cannot open the file, then the server must not
+     * be configured to support tool connections, or this
+     * user isn't authorized to access it - or it may just
+     * not exist yet! Check for existence */
+    if (0 == access(filename, R_OK)) {
+        goto process;
+    } else {
+        if (ENOENT == errno) {
+            /* the file does not exist, so give it
+             * a little time to see if the server
+             * is still starting up */
+            retries = 0;
+            do {
+                ++retries;
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "WAITING FOR CONNECTION FILE %s", filename);
+                PMIX_CONSTRUCT_LOCK(&lock);
+                if (0 < mca_ptl_tcp_component.wait_to_connect) {
+                    tv.tv_sec = mca_ptl_tcp_component.wait_to_connect;
+                    tv.tv_usec = 0;
+                    pmix_event_evtimer_set(pmix_globals.evbase, &ev,
+                                           timeout, &lock);
+                    PMIX_POST_OBJECT(&ev);
+                    pmix_event_evtimer_add(&ev, &tv);
+                } else {
+                    tv.tv_sec = 0;
+                    tv.tv_usec = 10000;  // use 0.01 sec as default
+                    pmix_event_evtimer_set(pmix_globals.evbase, &ev,
+                                           timeout, &lock);
+                    PMIX_POST_OBJECT(&ev);
+                    pmix_event_evtimer_add(&ev, &tv);
+                }
+                PMIX_WAIT_THREAD(&lock);
+                PMIX_DESTRUCT_LOCK(&lock);
+                if (0 == access(filename, R_OK)) {
+                    goto process;
+                }
+            } while (retries < mca_ptl_tcp_component.max_retries);
+            /* otherwise, mark it as unreachable */
         }
-        return PMIX_ERR_UNREACH;
     }
+    return PMIX_ERR_UNREACH;
 
   process:
-    /* get the URI */
-    srvr = pmix_getline(fp);
+    fp = fopen(filename, "r");
+    if (NULL == fp) {
+        return PMIX_ERR_UNREACH;
+    }
+    /* get the URI - might seem crazy, but there is actually
+     * a race condition here where the server may have created
+     * the file but not yet finished writing into it. So give
+     * us a chance to get the required info */
+    for (retries=0; retries < 3; retries++) {
+        srvr = pmix_getline(fp);
+        if (NULL != srvr) {
+            break;
+        }
+        fclose(fp);
+        tv.tv_sec = 0;
+        tv.tv_usec = 10000;  // use 0.01 sec as default
+        pmix_event_evtimer_set(pmix_globals.evbase, &ev,
+                               timeout, &lock);
+        PMIX_POST_OBJECT(&ev);
+        pmix_event_evtimer_add(&ev, &tv);
+        PMIX_WAIT_THREAD(&lock);
+        PMIX_DESTRUCT_LOCK(&lock);
+        fp = fopen(filename, "r");
+        if (NULL == fp) {
+            return PMIX_ERR_UNREACH;
+        }
+    }
     if (NULL == srvr) {
         PMIX_ERROR_LOG(PMIX_ERR_FILE_READ_FAILURE);
         fclose(fp);
