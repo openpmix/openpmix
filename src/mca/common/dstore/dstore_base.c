@@ -44,6 +44,7 @@
 #include "src/util/argv.h"
 #include "src/mca/pcompress/pcompress.h"
 #include "src/util/error.h"
+#include "src/util/name_fns.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/hash.h"
@@ -2696,8 +2697,10 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
     pmix_buffer_t buf;
     pmix_kval_t kv2, *kvp;
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_info_t *ihost;
     uint32_t appnum;
+    char *hostname, **aliases;
+    uint32_t nodeid;
+    bool match;
 
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     PMIX_CONSTRUCT(&buf, pmix_buffer_t);
@@ -2708,6 +2711,10 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
     cb.proc = proc;
     cb.scope = PMIX_INTERNAL;
     cb.copy = false;
+
+    PMIX_OUTPUT_VERBOSE((8, pmix_gds_base_framework.framework_output,
+                        "STORE JOB INFO FOR PROC %s",
+                        PMIX_NAME_PRINT(proc)));
 
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
     if (PMIX_SUCCESS != rc) {
@@ -2731,22 +2738,46 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
              * all info */
             info = kv->value->data.darray->array;
             size = kv->value->data.darray->size;
-            ihost = NULL;
+            hostname = NULL;
+            nodeid = UINT32_MAX;
+            aliases = NULL;
             for (i = 0; i < size; i++) {
                 if (PMIX_CHECK_KEY(&info[i], PMIX_HOSTNAME)) {
-                    ihost = &info[i];
-                    break;
+                    hostname = info[i].value.data.string;
+                } else if (PMIX_CHECK_KEY(&info[i], PMIX_NODEID)) {
+                    nodeid = info[i].value.data.uint32;
+                } else if (PMIX_CHECK_KEY(&info[i], PMIX_HOSTNAME_ALIASES)) {
+                    aliases = pmix_argv_split(info[i].value.data.string, ',');
                 }
             }
-            if (NULL == ihost) {
+            if (NULL == hostname && UINT32_MAX == nodeid) {
                 continue;
             }
-            if (0 == strcmp(ihost->value.data.string, pmix_globals.hostname)) {
+            match = false;
+            if (0 == strcmp(hostname, pmix_globals.hostname)) {
+                match = true;
+            } else if (UINT32_MAX != nodeid && nodeid == pmix_globals.nodeid) {
+                match = true;
+            } else if (NULL != aliases) {
+                for (i=0; NULL != aliases[i]; i++) {
+                    if (0 == strcmp(aliases[i], pmix_globals.hostname)) {
+                        match = true;
+                        break;
+                    }
+                }
+                pmix_argv_free(aliases);
+            }
+            if (match) {
                 /* if this host is us, then store each value as its own key */
                 for (i = 0; i < size; i++) {
-                    if (&info[i] == ihost) {
+                    if (PMIX_CHECK_KEY(&info[i], PMIX_HOSTNAME) ||
+                        PMIX_CHECK_KEY(&info[i], PMIX_NODEID) ||
+                        PMIX_CHECK_KEY(&info[i], PMIX_HOSTNAME_ALIASES)) {
                         continue;
                     }
+                    PMIX_OUTPUT_VERBOSE((8, pmix_gds_base_framework.framework_output,
+                                        "STORE %s FOR NODE %s",
+                                        info[i].key, hostname));
                     kv2.key = info[i].key;
                     kv2.value = &info[i].value;
                     PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &kv2, 1, PMIX_KVAL);
@@ -2758,8 +2789,9 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
     		}
             /* if the client is earlier than v3.1.5, we also need to store the
              * array using the hostname as key */
-            if (PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 1, 5)) {
-                kv2.key = ihost->value.data.string;
+            if (PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 1, 5) &&
+                NULL != hostname) {
+                kv2.key = hostname;
                 kv2.value = kv->value;
                 PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &kv2, 1, PMIX_KVAL);
                 if (PMIX_SUCCESS != rc) {

@@ -165,6 +165,7 @@ typedef struct {
     pmix_list_item_t super;
     uint32_t nodeid;
     char *hostname;
+    char **aliases;
     pmix_list_t info;
 } pmix_nodeinfo_t;
 
@@ -249,6 +250,7 @@ static void ndinfocon(pmix_nodeinfo_t *p)
 {
     p->nodeid = UINT32_MAX;
     p->hostname = NULL;
+    p->aliases = NULL;
     PMIX_CONSTRUCT(&p->info, pmix_list_t);
 }
 static void ndinfodes(pmix_nodeinfo_t *p)
@@ -256,12 +258,18 @@ static void ndinfodes(pmix_nodeinfo_t *p)
     if (NULL != p->hostname) {
         free(p->hostname);
     }
+    if (NULL != p->aliases) {
+        pmix_argv_free(p->aliases);
+    }
     PMIX_LIST_DESTRUCT(&p->info);
 }
 static PMIX_CLASS_INSTANCE(pmix_nodeinfo_t,
                            pmix_list_item_t,
                            ndinfocon, ndinfodes);
 
+/**********************************************
+ *  Local Functions
+ **********************************************/
 static pmix_job_t* get_tracker(const pmix_nspace_t nspace, bool create)
 {
     pmix_job_t *trk, *t;
@@ -301,6 +309,89 @@ static pmix_job_t* get_tracker(const pmix_nspace_t nspace, bool create)
         pmix_list_append(&myjobs, &trk->super);
     }
     return trk;
+}
+
+static bool check_hostname(char *h1, char *h2)
+{
+    size_t len1, len2;
+
+    /* only check to the shortest name */
+    len1 = strlen(h1);
+    len2 = strlen(h2);
+    if (len2 < len1) {
+        len1 = len2;
+    }
+
+    if (0 == strncmp(h1, h2, len1)) {
+        return true;
+    }
+    return false;
+}
+
+static bool check_node(pmix_nodeinfo_t *n1,
+                       pmix_nodeinfo_t *n2)
+{
+    int i, j;
+
+    if (UINT32_MAX != n1->nodeid &&
+        UINT32_MAX != n2->nodeid &&
+        n1->nodeid == n2->nodeid) {
+        return true;
+    }
+
+    if (NULL != n1->hostname && NULL != n2->hostname) {
+        if (check_hostname(n1->hostname, n2->hostname)) {
+            return true;
+        }
+    }
+
+    if (NULL != n1->aliases) {
+        for (i=0; NULL != n1->aliases[i]; i++) {
+            if (check_hostname(n1->aliases[i], n2->hostname)) {
+                return true;
+            }
+            if (NULL != n2->aliases) {
+                for (j=0; NULL != n2->aliases[j]; j++) {
+                    if (check_hostname(n1->hostname, n2->aliases[j])) {
+                        return true;
+                    }
+                    if (check_hostname(n1->aliases[i], n2->aliases[j])) {
+                        return true;
+                    }
+                }
+            }
+        }
+    } else if (NULL != n2->aliases) {
+        for (j=0; NULL != n2->aliases[j]; j++) {
+            if (check_hostname(n1->hostname, n2->aliases[j])) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+static bool check_nodename(pmix_nodeinfo_t *nptr, char *hostname)
+{
+    int i;
+
+    if (NULL == nptr->hostname) {
+        return false;
+    }
+
+    if (check_hostname(nptr->hostname, hostname)) {
+        return true;
+    }
+
+    if (NULL != nptr->aliases) {
+        for (i=0; NULL != nptr->aliases[i]; i++) {
+            if (check_hostname(nptr->aliases[i], hostname)) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 /**********************************************
@@ -363,6 +454,23 @@ static pmix_status_t process_node_array(pmix_value_t *val,
                 nd = PMIX_NEW(pmix_nodeinfo_t);
             }
             nd->hostname = strdup(iptr[j].value.data.string);
+        } else if (PMIX_CHECK_KEY(&iptr[j], PMIX_HOSTNAME_ALIASES)) {
+            nd->aliases = pmix_argv_split(iptr[j].value.data.string, ',');
+            /* need to cache this value as well */
+            kp2 = PMIX_NEW(pmix_kval_t);
+            kp2->key = strdup(iptr[j].key);
+            kp2->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+            PMIX_VALUE_XFER(rc, kp2->value, &iptr[j].value);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(kp2);
+                if (NULL != nd) {
+                    PMIX_RELEASE(nd);
+                }
+                PMIX_LIST_DESTRUCT(&cache);
+                return rc;
+            }
+            pmix_list_append(&cache, &kp2->super);
         } else {
             kp2 = PMIX_NEW(pmix_kval_t);
             kp2->key = strdup(iptr[j].key);
@@ -391,8 +499,7 @@ static pmix_status_t process_node_array(pmix_value_t *val,
      * provided list */
     update = false;
     PMIX_LIST_FOREACH(ndptr, tgt, pmix_nodeinfo_t) {
-        if ((ndptr->nodeid != UINT32_MAX && (ndptr->nodeid == nd->nodeid)) ||
-            (NULL != ndptr->hostname && NULL != nd->hostname && 0 == strcmp(ndptr->hostname, nd->hostname))) {
+        if (check_node(ndptr, nd)) {
             /* we assume that the data is updating the current
              * values */
             if (NULL == ndptr->hostname && NULL != nd->hostname) {
@@ -856,7 +963,7 @@ static pmix_status_t store_map(pmix_job_t *trk,
         /* check and see if we already have this node */
         nd = NULL;
         PMIX_LIST_FOREACH(ndptr, &trk->nodeinfo, pmix_nodeinfo_t) {
-            if (NULL != ndptr->hostname && 0 == strcmp(ndptr->hostname, nodes[n])) {
+            if (check_nodename(ndptr, nodes[n])) {
                 nd = ndptr;
                 break;
             }
@@ -1330,7 +1437,7 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
              * node - start by seeing if our node is on the list */
             nd = NULL;
             PMIX_LIST_FOREACH(ndptr, &trk->nodeinfo, pmix_nodeinfo_t) {
-                if (0 == strcmp(pmix_globals.hostname, ndptr->hostname)) {
+                if (check_nodename(ndptr, pmix_globals.hostname)) {
                     nd = ndptr;
                     break;
                 }
@@ -1553,7 +1660,7 @@ static pmix_status_t register_info(pmix_peer_t *peer,
                         break;
                     }
                 }
-                if (NULL != hname && 0 == strcmp(pmix_globals.hostname, hname)) {
+                if (NULL != hname && check_hostname(pmix_globals.hostname, hname)) {
                     /* older versions are looking for node-level keys for
                      * only their own node as standalone keys */
                     for (n=0; n < ninfo; n++) {
@@ -1857,12 +1964,9 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                 /* check and see if we already have this node */
                 nd = NULL;
                 PMIX_LIST_FOREACH(ndptr, &trk->nodeinfo, pmix_nodeinfo_t) {
-                    if (NULL != ndptr->hostname && 0 == strcmp(ndptr->hostname, kv.key)) {
+                    if (check_nodename(ndptr, kv.key)) {
                         /* we assume that the data is updating the current
                          * values */
-                        if (NULL == ndptr->hostname) {
-                            ndptr->hostname = strdup(kv.key);
-                        }
                         nd = ndptr;
                         break;
                     }
@@ -2445,8 +2549,7 @@ static pmix_status_t fetch_nodeinfo(const char *key, pmix_list_t *tgt,
     nd = NULL;
     PMIX_LIST_FOREACH(ndptr, tgt, pmix_nodeinfo_t) {
         if (NULL != hostname) {
-            nds = strlen(hostname) < strlen(ndptr->hostname) ? strlen(hostname) : strlen(ndptr->hostname);
-            if (0 == strncmp(ndptr->hostname, hostname, nds)) {
+            if (check_nodename(ndptr, hostname)) {
                 nd = ndptr;
                 break;
             }
