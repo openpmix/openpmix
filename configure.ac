@@ -266,13 +266,11 @@ AC_MSG_RESULT([$LIBS])
 #
 # Dependencies that themselves have a pkg-config file available.
 #
-PC_REQUIRES=
+PC_REQUIRES=""
 AS_IF([test "$pmix_hwloc_support_will_build" = "yes"],
       [PC_REQUIRES="$PC_REQUIRES hwloc"])
-AS_IF([test $pmix_libev_support -eq 1],
-      [PC_REQUIRES="$PC_REQUIRES libev"])
 AS_IF([test $pmix_libevent_support -eq 1],
-      [PC_REQUIRES="$PC_REQUIRES libevevent"])
+      [PC_REQUIRES="$PC_REQUIRES libevent"])
 AS_IF([test "$pmix_zlib_support" = "1"],
       [PC_REQUIRES="$PC_REQUIRES zlib"])
 AC_SUBST([PC_REQUIRES], ["$PC_REQUIRES"])
@@ -283,6 +281,8 @@ AC_SUBST([PC_REQUIRES], ["$PC_REQUIRES"])
 # to the PC_PRIVATE_LIBS variable.
 #
 PC_PRIVATE_LIBS=""
+AS_IF([test $pmix_libev_support -eq 1],
+      [PC_PRIVATE_LIBS="$PC_PRIVATE_LIBS $pmix_libev_LDFLAGS $pmix_libev_LIBS"])
 AC_SUBST([PC_PRIVATE_LIBS], ["$PC_PRIVATE_LIBS"])
 
 ####################################################################
