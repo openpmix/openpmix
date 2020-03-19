@@ -2,7 +2,7 @@
 #
 # Copyright (c) 2009-2015 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2013      Los Alamos National Security, LLC.  All rights reserved.
-# Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+# Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2017-2019 Research Organization for Information Science
 #                         and Technology (RIST).  All rights reserved.
 # $COPYRIGHT$
@@ -79,8 +79,8 @@ AC_DEFUN([PMIX_LIBEV_CONFIG],[
                  [PMIX_FLAGS_APPEND_UNIQ(CPPFLAGS, $pmix_libev_CPPFLAGS)
                   PMIX_WRAPPER_FLAGS_ADD(CPPFLAGS, $pmix_libev_CPPFLAGS)])
            AS_IF([test "$pmix_libev_standard_lib_location" != "yes"],
-                 [PMIX_FLAGS_APPEND_UNIQ(LDFLAGS, $pmix_libevent_LDFLAGS)
-                  PMIX_WRAPPER_FLAGS_ADD(LDFLAGS, $pmix_libevent_LDFLAGS)])])
+                 [PMIX_FLAGS_APPEND_UNIQ(LDFLAGS, $pmix_libev_LDFLAGS)
+                  PMIX_WRAPPER_FLAGS_ADD(LDFLAGS, $pmix_libev_LDFLAGS)])])
 
     AC_MSG_CHECKING([will libev support be built])
     if test $pmix_libev_support -eq 1; then
