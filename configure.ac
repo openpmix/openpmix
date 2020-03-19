@@ -19,7 +19,7 @@
 # Copyright (c) 2012      Oracle and/or its affiliates.  All rights reserved.
 # Copyright (c) 2013      Mellanox Technologies, Inc.
 #                         All rights reserved.
-# Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+# Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2016      IBM Corporation.  All rights reserved.
 # Copyright (c) 2016-2018 Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
@@ -266,7 +266,15 @@ AC_MSG_RESULT([$LIBS])
 #
 # Dependencies that themselves have a pkg-config file available.
 #
-PC_REQUIRES="hwloc libevent"
+PC_REQUIRES=
+AS_IF([test "$pmix_hwloc_support_will_build" = "yes"],
+      [PC_REQUIRES="$PC_REQUIRES hwloc"])
+AS_IF([test $pmix_libev_support -eq 1],
+      [PC_REQUIRES="$PC_REQUIRES libev"])
+AS_IF([test $pmix_libevent_support -eq 1],
+      [PC_REQUIRES="$PC_REQUIRES libevevent"])
+AS_IF([test "$pmix_zlib_support" = "1"],
+      [PC_REQUIRES="$PC_REQUIRES zlib"])
 AC_SUBST([PC_REQUIRES], ["$PC_REQUIRES"])
 
 #
