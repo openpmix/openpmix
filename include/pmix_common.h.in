@@ -268,6 +268,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_ALLOCATED_NODELIST             "pmix.alist"            // (char*) comma-delimited list of all nodes in this allocation regardless of
                                                                     //         whether or not they currently host procs.
 #define PMIX_HOSTNAME                       "pmix.hname"            // (char*) name of the host the specified proc is on
+#define PMIX_HOSTNAME_ALIASES               "pmix.alias"            // (char*) comma-delimited list of names by which this node is known
 #define PMIX_NODEID                         "pmix.nodeid"           // (uint32_t) node identifier where the specified proc is located
 #define PMIX_LOCAL_PEERS                    "pmix.lpeers"           // (char*) comma-delimited string of ranks on this node within the specified nspace
 #define PMIX_LOCAL_PROCS                    "pmix.lprocs"           // (pmix_proc_t array) array of pmix_proc_t of procs on the specified node
