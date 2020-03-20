@@ -763,6 +763,7 @@ static pmix_status_t parse_uri_file(char *filename,
      * be configured to support tool connections, or this
      * user isn't authorized to access it - or it may just
      * not exist yet! Check for existence */
+    /* coverity[toctou] */
     if (0 == access(filename, R_OK)) {
         goto process;
     } else {
@@ -793,6 +794,7 @@ static pmix_status_t parse_uri_file(char *filename,
                 }
                 PMIX_WAIT_THREAD(&lock);
                 PMIX_DESTRUCT_LOCK(&lock);
+                /* coverity[toctou] */
                 if (0 == access(filename, R_OK)) {
                     goto process;
                 }

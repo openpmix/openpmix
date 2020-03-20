@@ -339,10 +339,12 @@ static bool check_node(pmix_nodeinfo_t *n1,
         return true;
     }
 
-    if (NULL != n1->hostname && NULL != n2->hostname) {
-        if (check_hostname(n1->hostname, n2->hostname)) {
-            return true;
-        }
+    if (NULL == n1->hostname || NULL == n2->hostname) {
+        return false;
+    }
+
+    if (check_hostname(n1->hostname, n2->hostname)) {
+        return true;
     }
 
     if (NULL != n1->aliases) {
@@ -455,6 +457,9 @@ static pmix_status_t process_node_array(pmix_value_t *val,
             }
             nd->hostname = strdup(iptr[j].value.data.string);
         } else if (PMIX_CHECK_KEY(&iptr[j], PMIX_HOSTNAME_ALIASES)) {
+            if (NULL == nd) {
+                nd = PMIX_NEW(pmix_nodeinfo_t);
+            }
             nd->aliases = pmix_argv_split(iptr[j].value.data.string, ',');
             /* need to cache this value as well */
             kp2 = PMIX_NEW(pmix_kval_t);

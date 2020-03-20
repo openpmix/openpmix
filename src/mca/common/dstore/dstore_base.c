@@ -2750,15 +2750,17 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
                     aliases = pmix_argv_split(info[i].value.data.string, ',');
                 }
             }
-            if (NULL == hostname && UINT32_MAX == nodeid) {
+            if (NULL == hostname && UINT32_MAX == nodeid && NULL == aliases) {
                 continue;
             }
             match = false;
-            if (0 == strcmp(hostname, pmix_globals.hostname)) {
+            if (NULL != hostname && 0 == strcmp(hostname, pmix_globals.hostname)) {
                 match = true;
-            } else if (UINT32_MAX != nodeid && nodeid == pmix_globals.nodeid) {
+            }
+            if (!match && UINT32_MAX != nodeid && nodeid == pmix_globals.nodeid) {
                 match = true;
-            } else if (NULL != aliases) {
+            }
+            if (!match && NULL != aliases) {
                 for (i=0; NULL != aliases[i]; i++) {
                     if (0 == strcmp(aliases[i], pmix_globals.hostname)) {
                         match = true;
