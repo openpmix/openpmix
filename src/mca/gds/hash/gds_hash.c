@@ -313,16 +313,7 @@ static pmix_job_t* get_tracker(const pmix_nspace_t nspace, bool create)
 
 static bool check_hostname(char *h1, char *h2)
 {
-    size_t len1, len2;
-
-    /* only check to the shortest name */
-    len1 = strlen(h1);
-    len2 = strlen(h2);
-    if (len2 < len1) {
-        len1 = len2;
-    }
-
-    if (0 == strncmp(h1, h2, len1)) {
+    if (0 == strcmp(h1, h2)) {
         return true;
     }
     return false;
