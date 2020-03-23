@@ -460,9 +460,7 @@ static pmix_status_t process_node_array(pmix_value_t *val,
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(kp2);
-                if (NULL != nd) {
-                    PMIX_RELEASE(nd);
-                }
+                PMIX_RELEASE(nd);
                 PMIX_LIST_DESTRUCT(&cache);
                 return rc;
             }

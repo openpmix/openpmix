@@ -291,6 +291,10 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_NETWORK_SHAPE                  "pmix.net.shape"        // (pmix_data_array_t*) number of interfaces (uint32_t) on each dimension of the
                                                                     //        specified network plane in the requested view
 #define PMIX_NETWORK_SHAPE_STRING           "pmix.net.shapestr"     // (char*) network shape expressed as a string (e.g., "10x12x2")
+#define PMIX_SWITCH_PEERS                   "pmix.speers"           // (char*) comma-delimited string of peers that share the same switch as the proc
+                                                                    //         specified in the call to PMIx_Get. Multi-NIC environments will return
+                                                                    //         an array of results, each element containing the NIC and the list of
+                                                                    //         peers sharing the switch to which that NIC is connected.
 
 /* size info */
 #define PMIX_UNIV_SIZE                      "pmix.univ.size"        // (uint32_t) #procs in this nspace
