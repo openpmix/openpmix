@@ -136,6 +136,7 @@ static char **split_and_resolve(char **orig_str, char *name);
 static void connection_handler(int sd, short args, void *cbdata);
 static void cnct_cbfunc(pmix_status_t status,
                         pmix_proc_t *proc, void *cbdata);
+static void _check_cached_events(pmix_peer_t *peer);
 
 static int component_register(void)
 {
@@ -1871,6 +1872,10 @@ static void connection_handler(int sd, short args, void *cbdata)
                         "pmix:server client %s:%u has connected on socket %d",
                         peer->info->pname.nspace, peer->info->pname.rank, peer->sd);
     PMIX_RELEASE(pnd);
+
+    /* pass the client any cached notifications */
+    _check_cached_events(peer);
+
     return;
 
   error:
@@ -2105,6 +2110,9 @@ static void process_cbfunc(int sd, short args, void *cbdata)
                         "pmix:server tool %s:%d has connected on socket %d",
                         peer->info->pname.nspace, peer->info->pname.rank, peer->sd);
 
+    /* pass the client any cached notifications */
+    _check_cached_events(peer);
+
   done:
     PMIX_RELEASE(pnd);
     PMIX_RELEASE(cd);
@@ -2132,4 +2140,109 @@ static void cnct_cbfunc(pmix_status_t status,
     cd->proc.rank = proc->rank;
     cd->cbdata = cbdata;
     PMIX_THREADSHIFT(cd, process_cbfunc);
+}
+
+static void _check_cached_events(pmix_peer_t *peer)
+{
+    pmix_notify_caddy_t *cd;
+    int i;
+    size_t n;
+    pmix_range_trkr_t rngtrk;
+    pmix_buffer_t *relay;
+    pmix_proc_t proc;
+    pmix_status_t ret;
+    pmix_cmd_t cmd = PMIX_NOTIFY_CMD;
+    bool matched, found;
+
+    PMIX_LOAD_PROCID(&proc, peer->info->pname.nspace, peer->info->pname.rank);
+
+    for (i=0; i < pmix_globals.max_events; i++) {
+        pmix_hotel_knock(&pmix_globals.notifications, i, (void**)&cd);
+        if (NULL == cd) {
+            continue;
+        }
+        /* check the range */
+        if (NULL == cd->targets) {
+            rngtrk.procs = &cd->source;
+            rngtrk.nprocs = 1;
+        } else {
+            rngtrk.procs = cd->targets;
+            rngtrk.nprocs = cd->ntargets;
+        }
+        rngtrk.range = cd->range;
+        if (!pmix_notify_check_range(&rngtrk, &proc)) {
+            continue;
+        }
+        found = false;
+        /* if we were given specific targets, check if this is one */
+        if (NULL != cd->targets) {
+            matched = false;
+            for (n=0; n < cd->ntargets; n++) {
+                if (PMIX_CHECK_PROCID(&proc, &cd->targets[n])) {
+                    matched = true;
+                    /* track the number of targets we have left to notify */
+                    --cd->nleft;
+                    /* if this is the last one, then evict this event
+                     * from the cache */
+                    if (0 == cd->nleft) {
+                        pmix_hotel_checkout(&pmix_globals.notifications, cd->room);
+                        found = true;  // mark that we should release cd
+                    }
+                    break;
+                }
+            }
+            if (!matched) {
+                /* do not notify this one */
+                continue;
+            }
+        }
+
+        /* all matches - notify */
+        relay = PMIX_NEW(pmix_buffer_t);
+        if (NULL == relay) {
+            /* nothing we can do */
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            break;
+        }
+        /* pack the info data stored in the event */
+        PMIX_BFROPS_PACK(ret, peer, relay, &cmd, 1, PMIX_COMMAND);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            PMIX_RELEASE(relay);
+            break;
+        }
+        PMIX_BFROPS_PACK(ret, peer, relay, &cd->status, 1, PMIX_STATUS);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            PMIX_RELEASE(relay);
+            break;
+        }
+        PMIX_BFROPS_PACK(ret, peer, relay, &cd->source, 1, PMIX_PROC);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_RELEASE(relay);
+            PMIX_ERROR_LOG(ret);
+            break;
+        }
+        PMIX_BFROPS_PACK(ret, peer, relay, &cd->ninfo, 1, PMIX_SIZE);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            PMIX_RELEASE(relay);
+            break;
+        }
+        if (0 < cd->ninfo) {
+            PMIX_BFROPS_PACK(ret, peer, relay, cd->info, cd->ninfo, PMIX_INFO);
+            if (PMIX_SUCCESS != ret) {
+                PMIX_ERROR_LOG(ret);
+                PMIX_RELEASE(relay);
+                break;
+            }
+        }
+        PMIX_SERVER_QUEUE_REPLY(ret, peer, 0, relay);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_RELEASE(relay);
+        }
+        if (found) {
+            PMIX_RELEASE(cd);
+        }
+    }
 }

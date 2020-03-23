@@ -684,6 +684,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
             PMIX_RELEASE_THREAD(&pmix_global_lock);
             return rc;
         }
+        rc = PMIX_ERR_UNREACH;
     } else {
         /* connect to the server */
         rc = pmix_ptl_base_connect_to_peer((struct pmix_peer_t*)pmix_client_globals.myserver, info, ninfo);
