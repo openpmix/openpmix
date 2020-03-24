@@ -302,7 +302,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     if (NULL != info) {
         for (n=0; n < ninfo; n++) {
             if (0 == strncmp(info[n].key, PMIX_SERVER_NSPACE, PMIX_MAX_KEYLEN)) {
-                pmix_strncpy(pmix_globals.myid.nspace, info[n].value.data.string, PMIX_MAX_NSLEN);
+                PMIX_LOAD_NSPACE(pmix_globals.myid.nspace, info[n].value.data.string);
                 nspace_given = true;
             } else if (0 == strncmp(info[n].key, PMIX_SERVER_RANK, PMIX_MAX_KEYLEN)) {
                 pmix_globals.myid.rank = info[n].value.data.rank;
@@ -340,9 +340,10 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         /* look for our namespace, if one was given */
         if (NULL == (evar = getenv("PMIX_SERVER_NAMESPACE"))) {
             /* use a fake namespace */
-            pmix_strncpy(pmix_globals.myid.nspace, "pmix-server", PMIX_MAX_NSLEN);
+            PMIX_LOAD_NSPACE(pmix_globals.myid.nspace, "pmix-server");
         } else {
-            pmix_strncpy(pmix_globals.myid.nspace, evar, PMIX_MAX_NSLEN);
+            pmix_output(0, "NSPACE FROM ENV %s", evar);
+            PMIX_LOAD_NSPACE(pmix_globals.myid.nspace, evar);
         }
     }
     if (!rank_given) {

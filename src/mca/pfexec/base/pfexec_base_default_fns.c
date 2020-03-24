@@ -240,12 +240,22 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
 
             /* we only support fork/exec of tools and servers - not
              * applications. So we don't need to setup anything
-             * special in their environment except for hostname
-             * and version  */
+             * special in their environment except for hostname,
+             * nspace/rank, and version so that the child matches
+             * our expectations */
             env = pmix_argv_copy(app->env);
             /* ensure we agree on our hostname - typically only important in
              * test scenarios where we are faking multiple nodes */
             pmix_setenv("PMIX_HOSTNAME", pmix_globals.hostname, true, &env);
+
+            /* communicate the assigned nspace/rank - could be a server too */
+            pmix_setenv("PMIX_NAMESPACE", child->proc.nspace, true, &env);
+            pmix_setenv("PMIX_SERVER_NSPACE", child->proc.nspace, true, &env);
+            /* communicate the assigned rank */
+            pmix_asprintf(&tmp, "%u", child->proc.rank);
+            pmix_setenv("PMIX_RANK", tmp, true, &env);
+            pmix_setenv("PMIX_SERVER_RANK", tmp, true, &env);
+            free(tmp);
 
             /* communicate our version */
             pmix_setenv("PMIX_VERSION", PMIX_VERSION, true, &env);

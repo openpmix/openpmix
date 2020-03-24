@@ -2567,13 +2567,6 @@ static void intermed_step(pmix_status_t status, void *cbdata)
         goto complete;
     }
 
-    /* since our host is going to send this everywhere, it may well
-     * come back to us. We already processed it, so mark it here
-     * to ensure we don't do it again. We previously inserted the
-     * PMIX_SERVER_INTERNAL_NOTIFY key at the very end of the
-     * info array - just overwrite that position */
-    PMIX_INFO_LOAD(&cd->info[cd->ninfo-1], PMIX_EVENT_PROXY, &pmix_globals.myid, PMIX_PROC);
-
     /* pass it to our host RM for distribution */
     rc = pmix_host_server.notify_event(cd->status, &cd->source, cd->range,
                                        cd->info, cd->ninfo, local_cbfunc, cd);
@@ -2671,7 +2664,8 @@ pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer,
     }
 
     /* add an info object to mark that we recvd this internally */
-    PMIX_INFO_LOAD(&cd->info[ninfo], PMIX_SERVER_INTERNAL_NOTIFY, NULL, PMIX_BOOL);
+    PMIX_INFO_LOAD(&cd->info[cd->ninfo-1], PMIX_SERVER_INTERNAL_NOTIFY, NULL, PMIX_BOOL);
+
     /* process it */
     if (PMIX_SUCCESS != (rc = pmix_server_notify_client_of_event(cd->status,
                                                                  &cd->source,
@@ -2679,9 +2673,6 @@ pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer,
                                                                  cd->info, cd->ninfo,
                                                                  intermed_step, cd))) {
         goto exit;
-    }
-    if (PMIX_SUCCESS != rc) {
-        PMIX_RELEASE(cd);
     }
     return rc;
 

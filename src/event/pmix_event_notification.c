@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2017      IBM Corporation. All rights reserved.
@@ -20,6 +20,7 @@
 
 #include "src/threads/threads.h"
 #include "src/util/error.h"
+#include "src/util/name_fns.h"
 #include "src/util/output.h"
 
 #include "src/mca/bfrops/bfrops.h"
@@ -328,6 +329,10 @@ static void progress_local_event_hdlr(pmix_status_t status,
     pmix_list_item_t *item;
     pmix_event_hdlr_t *nxt;
 
+    pmix_output_verbose(2, pmix_client_globals.event_output,
+                        "%s progressing local event",
+                        PMIX_NAME_PRINT(&pmix_globals.myid));
+
     /* aggregate the results per RFC0018 - first search the
      * prior chained results to see if any keys have been NULL'd
      * as this indicates that info struct should be removed */
@@ -621,8 +626,8 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
     bool found;
 
     pmix_output_verbose(2, pmix_client_globals.event_output,
-                        "%s:%d invoke_local_event_hdlr for status %s",
-                        pmix_globals.myid.nspace, pmix_globals.myid.rank,
+                        "%s invoke_local_event_hdlr for status %s",
+                        PMIX_NAME_PRINT(&pmix_globals.myid),
                         PMIx_Error_string(chain->status));
 
     /* sanity check */
@@ -630,6 +635,9 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
         /* should never happen as space must always be
          * reserved for handler name and callback object*/
         rc = PMIX_ERR_BAD_PARAM;
+        pmix_output_verbose(8, pmix_client_globals.event_output,
+                            "%s %s:%d", PMIX_NAME_PRINT(&pmix_globals.myid),
+                            __FILE__, __LINE__);
         goto complete;
     }
 
@@ -637,15 +645,25 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
     if (NULL != chain->targets) {
         found = false;
         for (i=0; i < chain->ntargets; i++) {
+            pmix_output_verbose(8, pmix_client_globals.event_output,
+                                "%s CHECKING TARGET %s",
+                                PMIX_NAME_PRINT(&pmix_globals.myid),
+                                PMIX_NAME_PRINT(&chain->targets[i]));
             if (PMIX_CHECK_PROCID(&chain->targets[i], &pmix_globals.myid)) {
                 found = true;
                 break;
             }
         }
         if (!found) {
+            pmix_output_verbose(8, pmix_client_globals.event_output,
+                                "%s %s:%d", PMIX_NAME_PRINT(&pmix_globals.myid),
+                                __FILE__, __LINE__);
             goto complete;
         }
     }
+    pmix_output_verbose(8, pmix_client_globals.event_output,
+                        "%s %s:%d", PMIX_NAME_PRINT(&pmix_globals.myid),
+                        __FILE__, __LINE__);
 
     /* if we registered a "first" handler, and it fits the given range,
      * then invoke it first */
@@ -657,6 +675,9 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
                                        chain->affected, chain->naffected)) {
             /* invoke the handler */
             chain->evhdlr = pmix_globals.events.first;
+            pmix_output_verbose(8, pmix_client_globals.event_output,
+                                "%s %s:%d", PMIX_NAME_PRINT(&pmix_globals.myid),
+                                __FILE__, __LINE__);
             goto invk;
         } else if (NULL != pmix_globals.events.first->codes) {
             /* need to check if this code is included in the array */
@@ -672,6 +693,9 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
             if (found && pmix_notify_check_range(&pmix_globals.events.first->rng, &chain->source)) {
                 /* invoke the handler */
                 chain->evhdlr = pmix_globals.events.first;
+                pmix_output_verbose(8, pmix_client_globals.event_output,
+                                    "%s %s:%d", PMIX_NAME_PRINT(&pmix_globals.myid),
+                                    __FILE__, __LINE__);
                 goto invk;
             }
         } else {
@@ -679,11 +703,17 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
             if (pmix_notify_check_range(&pmix_globals.events.first->rng, &chain->source)) {
                 /* invoke the handler */
                 chain->evhdlr = pmix_globals.events.first;
+                pmix_output_verbose(8, pmix_client_globals.event_output,
+                                    "%s %s:%d", PMIX_NAME_PRINT(&pmix_globals.myid),
+                                    __FILE__, __LINE__);
                 goto invk;
             }
         }
         /* get here if there is no match, so fall thru */
     }
+    pmix_output_verbose(8, pmix_client_globals.event_output,
+                        "%s %s:%d", PMIX_NAME_PRINT(&pmix_globals.myid),
+                        __FILE__, __LINE__);
 
     /* cycle thru the single-event registrations first */
     PMIX_LIST_FOREACH(evhdlr, &pmix_globals.events.single_events, pmix_event_hdlr_t) {
@@ -693,6 +723,9 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
                                            chain->affected, chain->naffected)) {
                 /* invoke the handler */
                 chain->evhdlr = evhdlr;
+                pmix_output_verbose(8, pmix_client_globals.event_output,
+                                    "%s %s:%d", PMIX_NAME_PRINT(&pmix_globals.myid),
+                                    __FILE__, __LINE__);
                 goto invk;
             }
         }
@@ -708,11 +741,17 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
                                                chain->affected, chain->naffected)) {
                     /* invoke the handler */
                     chain->evhdlr = evhdlr;
+                    pmix_output_verbose(8, pmix_client_globals.event_output,
+                                        "%s %s:%d", PMIX_NAME_PRINT(&pmix_globals.myid),
+                                        __FILE__, __LINE__);
                     goto invk;
                 }
             }
         }
     }
+    pmix_output_verbose(8, pmix_client_globals.event_output,
+                        "%s %s:%d", PMIX_NAME_PRINT(&pmix_globals.myid),
+                        __FILE__, __LINE__);
 
     /* if they didn't want it to go to a default handler, then ignore them */
     if (!chain->nondefault) {
@@ -723,6 +762,9 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
                                            chain->affected, chain->naffected)) {
                 /* invoke the handler */
                 chain->evhdlr = evhdlr;
+                pmix_output_verbose(8, pmix_client_globals.event_output,
+                                    "%s %s:%d", PMIX_NAME_PRINT(&pmix_globals.myid),
+                                    __FILE__, __LINE__);
                 goto invk;
             }
         }
@@ -738,21 +780,33 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
         if (1 == pmix_globals.events.last->ncodes &&
             pmix_globals.events.last->codes[0] == chain->status) {
             chain->evhdlr = pmix_globals.events.last;
+            pmix_output_verbose(8, pmix_client_globals.event_output,
+                                "%s %s:%d", PMIX_NAME_PRINT(&pmix_globals.myid),
+                                __FILE__, __LINE__);
             goto invk;
         } else if (NULL != pmix_globals.events.last->codes) {
             /* need to check if this code is included in the array */
             for (i=0; i < pmix_globals.events.last->ncodes; i++) {
                 if (pmix_globals.events.last->codes[i] == chain->status) {
                     chain->evhdlr = pmix_globals.events.last;
+                    pmix_output_verbose(8, pmix_client_globals.event_output,
+                                        "%s %s:%d", PMIX_NAME_PRINT(&pmix_globals.myid),
+                                        __FILE__, __LINE__);
                     goto invk;
                 }
             }
         } else {
             /* gets run for all codes */
             chain->evhdlr = pmix_globals.events.last;
+            pmix_output_verbose(8, pmix_client_globals.event_output,
+                                "%s %s:%d", PMIX_NAME_PRINT(&pmix_globals.myid),
+                                __FILE__, __LINE__);
             goto invk;
         }
     }
+    pmix_output_verbose(8, pmix_client_globals.event_output,
+                        "%s %s:%d", PMIX_NAME_PRINT(&pmix_globals.myid),
+                        __FILE__, __LINE__);
 
     /* if we got here, then nothing was found */
 
@@ -767,6 +821,9 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
 
 
   invk:
+    pmix_output_verbose(8, pmix_client_globals.event_output,
+                        "%s %s:%d", PMIX_NAME_PRINT(&pmix_globals.myid),
+                        __FILE__, __LINE__);
     /* start with the chain holding only the given info */
     chain->ninfo = chain->nallocated - 2;
 
@@ -1140,15 +1197,6 @@ pmix_status_t pmix_server_notify_client_of_event(pmix_status_t status,
     pmix_output_verbose(2, pmix_server_globals.event_output,
                         "pmix_server: notify client of event %s",
                         PMIx_Error_string(status));
-
-    if (NULL != info) {
-        for (n=0; n < ninfo; n++) {
-            if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_PROXY) &&
-                PMIX_CHECK_PROCID(info[n].value.data.proc, &pmix_globals.myid)) {
-                return PMIX_OPERATION_SUCCEEDED;
-            }
-        }
-    }
 
     cd = PMIX_NEW(pmix_notify_caddy_t);
     cd->status = status;
