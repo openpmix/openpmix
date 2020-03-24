@@ -15,7 +15,7 @@
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2018-2019 IBM Corporation.  All rights reserved.
+ * Copyright (c) 2018-2020 IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc. All rights reserved.
  * $COPYRIGHT$
  *
@@ -68,6 +68,7 @@
 #include "src/util/pmix_environ.h"
 #include "src/util/show_help.h"
 #include "src/util/strnlen.h"
+#include "src/event/pmix_event.h"
 #include "src/common/pmix_iof.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/mca/bfrops/base/base.h"

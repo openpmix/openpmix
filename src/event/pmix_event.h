@@ -11,6 +11,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2020      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -156,8 +157,8 @@ pmix_status_t pmix_prep_event_chain(pmix_event_chain_t *chain,
  * affected, plus any additional info provided by the server */
 void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain);
 
-bool pmix_notify_check_range(pmix_range_trkr_t *rng,
-                             const pmix_proc_t *proc);
+PMIX_EXPORT bool pmix_notify_check_range(pmix_range_trkr_t *rng,
+                                         const pmix_proc_t *proc);
 
 bool pmix_notify_check_affected(pmix_proc_t *interested, size_t ninterested,
                                 pmix_proc_t *affected, size_t naffected);
