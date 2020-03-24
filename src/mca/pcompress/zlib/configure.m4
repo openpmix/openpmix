@@ -2,7 +2,7 @@
 #
 # Copyright (c) 2009-2015 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2013      Los Alamos National Security, LLC.  All rights reserved.
-# Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+# Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -89,14 +89,19 @@ AC_DEFUN([MCA_pmix_pcompress_zlib_CONFIG],[
 
     AS_IF([test "$pmix_zlib_support" = "1"],
           [$1
+           pcompress_zlib_LIBS=-lz
            PMIX_SUMMARY_ADD([[External Packages]],[[ZLIB]], [pmix_zlib], [yes ($pmix_zlib_source)])],
           [$2])
 
-    # substitute in the things needed to build psm2
+    # substitute in the things needed to build pcompress/zlib
     AC_SUBST([pcompress_zlib_CFLAGS])
     AC_SUBST([pcompress_zlib_CPPFLAGS])
     AC_SUBST([pcompress_zlib_LDFLAGS])
     AC_SUBST([pcompress_zlib_LIBS])
+
+    PMIX_EMBEDDED_LIBS="$PMIX_EMBEDDED_LIBS $pcompress_zlib_LIBS"
+    PMIX_EMBEDDED_LDFLAGS="$PMIX_EMBEDDED_LDFLAGS $pcompress_zlib_LDFLAGS"
+    PMIX_EMBEDDED_CPPFLAGS="$PMIX_EMBEDDED_CPPFLAGS $pcompress_zlib_CPPFLAGS"
 
     PMIX_VAR_SCOPE_POP
 ])dnl
