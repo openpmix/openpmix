@@ -43,6 +43,11 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_REQUIRE([AM_PROG_CC_C_O])
 
 
+    # initialize
+    PMIX_EMBEDDED_LDFLAGS=
+    PMIX_EMBEDDED_LIBS=
+    PMIX_EMBEDDED_CPPFLAGS=
+
     # If no prefix was defined, set a good value
     m4_ifval([$1],
              [m4_define([pmix_config_prefix],[$1/])],
