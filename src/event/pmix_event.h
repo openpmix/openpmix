@@ -10,7 +10,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -148,30 +148,30 @@ PMIX_CLASS_DECLARATION(pmix_event_chain_t);
 /* prepare a chain for processing by cycling across provided
  * info structs and translating those supported by the event
  * system into the chain object*/
-pmix_status_t pmix_prep_event_chain(pmix_event_chain_t *chain,
-                                    const pmix_info_t *info, size_t ninfo,
-                                    bool xfer);
+PMIX_EXPORT pmix_status_t pmix_prep_event_chain(pmix_event_chain_t *chain,
+                                                const pmix_info_t *info, size_t ninfo,
+                                                bool xfer);
 
 /* invoke the error handler that is registered against the given
  * status, passing it the provided info on the procs that were
  * affected, plus any additional info provided by the server */
-void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain);
+PMIX_EXPORT void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain);
 
 PMIX_EXPORT bool pmix_notify_check_range(pmix_range_trkr_t *rng,
                                          const pmix_proc_t *proc);
 
-bool pmix_notify_check_affected(pmix_proc_t *interested, size_t ninterested,
-                                pmix_proc_t *affected, size_t naffected);
+PMIX_EXPORT bool pmix_notify_check_affected(pmix_proc_t *interested, size_t ninterested,
+                                            pmix_proc_t *affected, size_t naffected);
 
 
 /* invoke the server event notification handler */
-pmix_status_t pmix_server_notify_client_of_event(pmix_status_t status,
-                                                 const pmix_proc_t *source,
-                                                 pmix_data_range_t range,
-                                                 const pmix_info_t info[], size_t ninfo,
-                                                 pmix_op_cbfunc_t cbfunc, void *cbdata);
+PMIX_EXPORT pmix_status_t pmix_server_notify_client_of_event(pmix_status_t status,
+                                                             const pmix_proc_t *source,
+                                                             pmix_data_range_t range,
+                                                             const pmix_info_t info[], size_t ninfo,
+                                                             pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-void pmix_event_timeout_cb(int fd, short flags, void *arg);
+PMIX_EXPORT void pmix_event_timeout_cb(int fd, short flags, void *arg);
 
 #define PMIX_REPORT_EVENT(e, p, r, f)                                                   \
     do {                                                                                \

@@ -67,11 +67,11 @@
 #include "src/include/pmix_globals.h"
 #include "src/common/pmix_attributes.h"
 #include "src/common/pmix_iof.h"
+#include "src/client/pmix_client_ops.h"
 #include "src/server/pmix_server_ops.h"
 
 #define PMIX_MAX_RETRIES 10
 
-extern pmix_client_globals_t pmix_client_globals;
 static pmix_event_t stdinsig;
 static pmix_iof_read_event_t stdinev;
 
@@ -870,7 +870,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     return rc;
 }
 
-pmix_status_t pmix_tool_init_info(void)
+PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
 {
     pmix_kval_t *kptr;
     pmix_status_t rc;
