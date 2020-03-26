@@ -112,7 +112,7 @@ static void notify_event_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     PMIX_RELEASE(cb);
 }
 
-static pmix_status_t notify_event_cache(pmix_notify_caddy_t *cd)
+pmix_status_t pmix_notify_event_cache(pmix_notify_caddy_t *cd)
 {
     pmix_status_t rc;
     int j;
@@ -221,8 +221,12 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
     /* setup for our own local callbacks */
     chain = PMIX_NEW(pmix_event_chain_t);
     chain->status = status;
-    pmix_strncpy(chain->source.nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
-    chain->source.rank = pmix_globals.myid.rank;
+    chain->range = range;
+    if (NULL == source) {
+        PMIX_LOAD_PROCID(&chain->source, pmix_globals.myid.nspace, pmix_globals.myid.rank);
+    } else {
+        PMIX_LOAD_PROCID(&chain->source, source->nspace, source->rank);
+    }
     /* we always leave space for event hdlr name and a callback object */
     chain->nallocated = ninfo + 2;
     PMIX_INFO_CREATE(chain->info, chain->nallocated);
@@ -233,14 +237,8 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
      * ourselves should someone later register for it */
     cd = PMIX_NEW(pmix_notify_caddy_t);
     cd->status = status;
-    if (NULL == source) {
-        pmix_strncpy(cd->source.nspace, "UNDEF", PMIX_MAX_NSLEN);
-        cd->source.rank = PMIX_RANK_UNDEF;
-    } else {
-        pmix_strncpy(cd->source.nspace, source->nspace, PMIX_MAX_NSLEN);
-        cd->source.rank = source->rank;
-    }
-    cd->range = range;
+    PMIX_LOAD_PROCID(&cd->source, chain->source.nspace, chain->source.rank);
+    cd->range = chain->range;
     if (0 < chain->ninfo) {
         cd->ninfo = chain->ninfo;
         PMIX_INFO_CREATE(cd->info, cd->ninfo);
@@ -266,12 +264,13 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
         memcpy(cd->affected, chain->affected, cd->naffected * sizeof(pmix_proc_t));
     }
     /* cache it */
-    rc = notify_event_cache(cd);
+    rc = pmix_notify_event_cache(cd);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(cd);
         goto cleanup;
     }
+    chain->cached = true;
 
     if (PMIX_RANGE_PROC_LOCAL != range && NULL != msg) {
         /* create a callback object as we need to pass it to the
@@ -806,9 +805,11 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
     }
     pmix_output_verbose(8, pmix_client_globals.event_output,
                         "%s %s:%d", PMIX_NAME_PRINT(&pmix_globals.myid),
+
                         __FILE__, __LINE__);
 
     /* if we got here, then nothing was found */
+    rc = PMIX_ERR_NOT_FOUND;
 
   complete:
     /* we still have to call their final callback */
@@ -909,7 +910,7 @@ static void _notify_client_event(int sd, short args, void *cbdata)
          * the message until all local procs have received it, or it ages to
          * the point where it gets pushed out by more recent events */
         PMIX_RETAIN(cd);
-        rc = notify_event_cache(cd);
+        rc = pmix_notify_event_cache(cd);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
         }
@@ -919,8 +920,10 @@ static void _notify_client_event(int sd, short args, void *cbdata)
      * against our registrations */
     chain = PMIX_NEW(pmix_event_chain_t);
     chain->status = cd->status;
-    pmix_strncpy(chain->source.nspace, cd->source.nspace, PMIX_MAX_NSLEN);
-    chain->source.rank = cd->source.rank;
+    if (holdcd) {
+        chain->cached = true;
+    }
+    PMIX_LOAD_PROCID(&chain->source, cd->source.nspace, cd->source.rank);
     /* we always leave space for a callback object and
      * the evhandler name. */
     chain->nallocated = cd->ninfo + 2;
@@ -1470,6 +1473,7 @@ static void chcon(pmix_event_chain_t *p)
     p->source.rank = PMIX_RANK_UNDEF;
     p->nondefault = false;
     p->endchain = false;
+    p->cached = false;
     p->targets = NULL;
     p->ntargets = 0;
     p->range = PMIX_RANGE_UNDEF;

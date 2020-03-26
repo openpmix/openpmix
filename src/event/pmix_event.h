@@ -123,6 +123,7 @@ typedef struct pmix_event_chain_t {
     bool timer_active;
     bool nondefault;
     bool endchain;
+    bool cached;
     pmix_proc_t source;
     pmix_data_range_t range;
     /* When generating events, callers can specify
@@ -247,8 +248,11 @@ PMIX_EXPORT void pmix_event_timeout_cb(int fd, short flags, void *arg);
             ch->info = info;                                                            \
             ch->ninfo = ninfo - 2;                                                      \
             /* reset the timer */                                                       \
-            pmix_event_del(&ch->ev);                                                    \
+            if (ch->timer_active) {                                                     \
+                pmix_event_del(&ch->ev);                                                \
+            }                                                                           \
             PMIX_POST_OBJECT(ch);                                                       \
+            ch->timer_active = true;                                                    \
             pmix_event_add(&ch->ev, &pmix_globals.event_window);                        \
         }                                                                               \
     } while(0)

@@ -79,7 +79,56 @@ static pmix_status_t pmix_init_result = PMIX_ERR_INIT;
 static void _notify_complete(pmix_status_t status, void *cbdata)
 {
     pmix_event_chain_t *chain = (pmix_event_chain_t*)cbdata;
+    pmix_notify_caddy_t *cd;
+    size_t n;
+    pmix_status_t rc;
+
     PMIX_ACQUIRE_OBJECT(chain);
+
+    /* if the event wasn't found, then cache it as it might
+     * be registered later */
+    if (PMIX_ERR_NOT_FOUND == status && !chain->cached) {
+        cd = PMIX_NEW(pmix_notify_caddy_t);
+        cd->status = chain->status;
+        PMIX_LOAD_PROCID(&cd->source, chain->source.nspace, chain->source.rank);
+        cd->range = chain->range;
+        if (0 < chain->ninfo) {
+            cd->ninfo = chain->ninfo;
+            PMIX_INFO_CREATE(cd->info, cd->ninfo);
+            cd->nondefault = chain->nondefault;
+           /* need to copy the info */
+            for (n=0; n < cd->ninfo; n++) {
+                PMIX_INFO_XFER(&cd->info[n], &chain->info[n]);
+            }
+        }
+        if (NULL != chain->targets) {
+            cd->ntargets = chain->ntargets;
+            PMIX_PROC_CREATE(cd->targets, cd->ntargets);
+            memcpy(cd->targets, chain->targets, cd->ntargets * sizeof(pmix_proc_t));
+        }
+        if (NULL != chain->affected) {
+            cd->naffected = chain->naffected;
+            PMIX_PROC_CREATE(cd->affected, cd->naffected);
+            if (NULL == cd->affected) {
+                cd->naffected = 0;
+                goto cleanup;
+            }
+            memcpy(cd->affected, chain->affected, cd->naffected * sizeof(pmix_proc_t));
+        }
+        /* cache it */
+        pmix_output_verbose(2, pmix_client_globals.event_output,
+                            "%s pmix:client_notify - processing complete, caching",
+                            PMIX_NAME_PRINT(&pmix_globals.myid));
+        rc = pmix_notify_event_cache(cd);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(cd);
+            goto cleanup;
+        }
+        chain->cached = true;
+    }
+
+  cleanup:
     PMIX_RELEASE(chain);
 }
 
@@ -93,8 +142,9 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer,
     pmix_event_chain_t *chain;
     size_t ninfo;
 
-    pmix_output_verbose(2, pmix_client_globals.base_output,
-                        "pmix:client_notify_recv - processing event");
+    pmix_output_verbose(2, pmix_client_globals.event_output,
+                        "%s pmix:client_notify_recv - processing event",
+                        PMIX_NAME_PRINT(&pmix_globals.myid));
 
     /* a zero-byte buffer indicates that this recv is being
      * completed due to a lost connection */
@@ -172,17 +222,18 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer,
     /* prep the chain for processing */
     pmix_prep_event_chain(chain, chain->info, ninfo, false);
 
-    pmix_output_verbose(2, pmix_client_globals.base_output,
-                        "[%s:%d] pmix:client_notify_recv - processing event %s, calling errhandler",
-                        pmix_globals.myid.nspace, pmix_globals.myid.rank, PMIx_Error_string(chain->status));
+    pmix_output_verbose(2, pmix_client_globals.event_output,
+                        "%s pmix:client_notify_recv - processing event %s, calling errhandler",
+                        PMIX_NAME_PRINT(&pmix_globals.myid), PMIx_Error_string(chain->status));
 
     pmix_invoke_local_event_hdlr(chain);
     return;
 
   error:
     /* we always need to return */
-    pmix_output_verbose(2, pmix_client_globals.base_output,
-                        "pmix:client_notify_recv - unpack error status =%d, calling def errhandler", rc);
+    pmix_output_verbose(2, pmix_client_globals.event_output,
+                        "%s pmix:client_notify_recv - unpack error status =%s, calling def errhandler",
+                        PMIX_NAME_PRINT(&pmix_globals.myid), PMIx_Error_string(rc));
     chain = PMIX_NEW(pmix_event_chain_t);
     if (NULL == chain) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
@@ -745,7 +796,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         PMIX_CONSTRUCT_LOCK(&releaselock);
         PMIX_INFO_LOAD(&evinfo[0], PMIX_EVENT_RETURN_OBJECT, &releaselock, PMIX_POINTER);
         PMIX_INFO_LOAD(&evinfo[1], PMIX_EVENT_HDLR_NAME, "WAIT-FOR-DEBUGGER", PMIX_STRING);
-        pmix_output_verbose(2, pmix_client_globals.base_output,
+        pmix_output_verbose(2, pmix_client_globals.event_output,
                             "[%s:%d] WAITING IN INIT FOR DEBUGGER",
                             pmix_globals.myid.nspace, pmix_globals.myid.rank);
         PMIx_Register_event_handler(&code, 1, evinfo, 2,
