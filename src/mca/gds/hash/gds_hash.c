@@ -431,6 +431,9 @@ static pmix_status_t process_node_array(pmix_value_t *val,
     /* cache the values while searching for the nodeid
      * and/or hostname */
     for (j=0; j < size; j++) {
+        pmix_output_verbose(12, pmix_gds_base_framework.framework_output,
+                            "%s gds:hash:node_array for key %s",
+                            PMIX_NAME_PRINT(&pmix_globals.myid), iptr[j].key);
         if (PMIX_CHECK_KEY(&iptr[j], PMIX_NODEID)) {
             if (NULL == nd) {
                 nd = PMIX_NEW(pmix_nodeinfo_t);
@@ -571,6 +574,9 @@ static pmix_status_t process_app_array(pmix_value_t *val,
     iptr = (pmix_info_t*)val->data.darray->array;
 
     for (j=0; j < size; j++) {
+        pmix_output_verbose(12, pmix_gds_base_framework.framework_output,
+                            "%s gds:hash:app_array for key %s",
+                            PMIX_NAME_PRINT(&pmix_globals.myid), iptr[j].key);
         if (PMIX_CHECK_KEY(&iptr[j], PMIX_APPNUM)) {
             PMIX_VALUE_GET_NUMBER(rc, &iptr[j].value, appnum, uint32_t);
             if (PMIX_SUCCESS != rc) {
@@ -1240,6 +1246,9 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
     /* cache the job info on the internal hash table for this nspace */
     ht = &trk->internal;
     for (n=0; n < ninfo; n++) {
+        pmix_output_verbose(12, pmix_gds_base_framework.framework_output,
+                            "%s gds:hash:cache_job_info for key %s",
+                            PMIX_NAME_PRINT(&pmix_globals.myid), info[n].key);
         if (PMIX_CHECK_KEY(&info[n], PMIX_SESSION_ID)) {
             PMIX_VALUE_GET_NUMBER(rc, &info[n].value, sid, uint32_t);
             if (PMIX_SUCCESS != rc) {
@@ -2514,6 +2523,9 @@ static pmix_status_t fetch_nodeinfo(const char *key, pmix_list_t *tgt,
      				++n;
      			}
      			PMIX_LIST_FOREACH(kp2, &nd->info, pmix_kval_t) {
+                    pmix_output_verbose(12, pmix_gds_base_framework.framework_output,
+                                        "%s gds:hash:fetch_nodearray adding key %s",
+                                        PMIX_NAME_PRINT(&pmix_globals.myid), kp2->key);
      				PMIX_LOAD_KEY(iptr[n].key, kp2->key);
      				rc = pmix_value_xfer(&iptr[n].value, kp2->value);
      				if (PMIX_SUCCESS != rc) {
@@ -2530,15 +2542,11 @@ static pmix_status_t fetch_nodeinfo(const char *key, pmix_list_t *tgt,
      		}
      		return PMIX_SUCCESS;
 
-        } else {
-            /* assume they want it from this node */
-            hostname = pmix_globals.hostname;
-            goto scan;
         }
-        return PMIX_ERR_DATA_VALUE_NOT_FOUND;
+        /* assume they want it from this node */
+        hostname = pmix_globals.hostname;
     }
 
-  scan:
     /* scan the list of nodes to find the matching entry */
     nd = NULL;
     PMIX_LIST_FOREACH(ndptr, tgt, pmix_nodeinfo_t) {
@@ -2592,6 +2600,9 @@ static pmix_status_t fetch_nodeinfo(const char *key, pmix_list_t *tgt,
             ++n;
         }
         PMIX_LIST_FOREACH(kp2, &nd->info, pmix_kval_t) {
+            pmix_output_verbose(12, pmix_gds_base_framework.framework_output,
+                                "%s gds:hash:fetch_nodearray adding key %s",
+                                PMIX_NAME_PRINT(&pmix_globals.myid), kp2->key);
             PMIX_LOAD_KEY(iptr[n].key, kp2->key);
             rc = pmix_value_xfer(&iptr[n].value, kp2->value);
             if (PMIX_SUCCESS != rc) {
@@ -2612,6 +2623,9 @@ static pmix_status_t fetch_nodeinfo(const char *key, pmix_list_t *tgt,
     rc = PMIX_ERR_NOT_FOUND;
     PMIX_LIST_FOREACH(kp2, &nd->info, pmix_kval_t) {
         if (PMIX_CHECK_KEY(kp2, key)) {
+            pmix_output_verbose(12, pmix_gds_base_framework.framework_output,
+                                "%s gds:hash:fetch_nodearray adding key %s",
+                                PMIX_NAME_PRINT(&pmix_globals.myid), kp2->key);
             /* since they only asked for one key, return just that value */
             kv = PMIX_NEW(pmix_kval_t);
             kv->key = strdup(kp2->key);
@@ -2700,9 +2714,9 @@ static pmix_status_t fetch_appinfo(const char *key, pmix_list_t *tgt,
      			pmix_list_append(kvs, &kv->super);
      		}
      		return PMIX_SUCCESS;
-
         }
-        return PMIX_ERR_DATA_VALUE_NOT_FOUND;
+        /* assume they are asking for our app */
+        appnum = pmix_globals.appnum;
     }
 
     /* scan the list of apps to find the matching entry */
@@ -2896,6 +2910,15 @@ static pmix_status_t hash_fetch(const pmix_proc_t *proc,
             nodeinfo = PMIX_INFO_TRUE(&qualifiers[n]);
         } else if (PMIX_CHECK_KEY(&qualifiers[n], PMIX_APP_INFO)) {
             appinfo = PMIX_INFO_TRUE(&qualifiers[n]);
+        }
+    }
+
+    /* check for node/app keys in the absence of corresponding qualifier */
+    if (NULL != key) {
+        if (pmix_check_node_info(key)) {
+            nodeinfo = true;
+        } else if (pmix_check_app_info(key)) {
+            appinfo = true;
         }
     }
 
