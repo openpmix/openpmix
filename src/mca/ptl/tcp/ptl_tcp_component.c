@@ -1874,7 +1874,7 @@ static void connection_handler(int sd, short args, void *cbdata)
                         peer->info->pname.nspace, peer->info->pname.rank, peer->sd);
     PMIX_RELEASE(pnd);
 
-    /* pass the client any cached notifications */
+    /* check the cached events and update the client */
     _check_cached_events(peer);
 
     return;
@@ -2111,7 +2111,7 @@ static void process_cbfunc(int sd, short args, void *cbdata)
                         "pmix:server tool %s:%d has connected on socket %d",
                         peer->info->pname.nspace, peer->info->pname.rank, peer->sd);
 
-    /* pass the client any cached notifications */
+    /* check the cached events and update the tool */
     _check_cached_events(peer);
 
   done:
@@ -2137,8 +2137,7 @@ static void cnct_cbfunc(pmix_status_t status,
         return;
     }
     cd->status = status;
-    pmix_strncpy(cd->proc.nspace, proc->nspace, PMIX_MAX_NSLEN);
-    cd->proc.rank = proc->rank;
+    PMIX_LOAD_PROCID(&cd->proc, proc->nspace, proc->rank);
     cd->cbdata = cbdata;
     PMIX_THREADSHIFT(cd, process_cbfunc);
 }

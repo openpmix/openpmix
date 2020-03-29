@@ -424,6 +424,17 @@ PMIX_CLASS_DECLARATION(pmix_cb_t);
     pmix_event_active(&((r)->ev), EV_WRITE, 1);             \
 } while (0)
 
+#define PMIX_TIMED_THREADSHIFT(r, c, t)                         \
+    do {                                                        \
+        struct timeval _tv = {0, 0};                            \
+        _tv.tv_sec = (t);                                       \
+        pmix_event_evtimer_set(pmix_globals.evbase,             \
+                               &((r)->ev),                      \
+                               (c), (r));                       \
+        PMIX_POST_OBJECT((r));                                  \
+        pmix_event_evtimer_add(&((r)->ev), &_tv);               \
+    } while (0)
+
 
 typedef struct {
     pmix_object_t super;
@@ -462,7 +473,9 @@ typedef struct {
      * handlers can look at it */
     pmix_info_t *info;
     size_t ninfo;
+    /* allow for a buffer to be carried across internal processing */
     pmix_buffer_t *buf;
+    /* the final callback to be executed upon completion of the event */
     pmix_op_cbfunc_t cbfunc;
     void *cbdata;
 } pmix_notify_caddy_t;
@@ -515,6 +528,8 @@ typedef struct {
 
 /* provide access to a function to cleanup epilogs */
 PMIX_EXPORT void pmix_execute_epilog(pmix_epilog_t *ep);
+
+PMIX_EXPORT pmix_status_t pmix_notify_event_cache(pmix_notify_caddy_t *cd);
 
 PMIX_EXPORT extern pmix_globals_t pmix_globals;
 PMIX_EXPORT extern pmix_lock_t pmix_global_lock;

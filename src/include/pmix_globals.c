@@ -382,6 +382,47 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_query_caddy_t,
                                 pmix_object_t,
                                 qcon, qdes);
 
+static void ncon(pmix_notify_caddy_t *p)
+{
+    PMIX_CONSTRUCT_LOCK(&p->lock);
+#if defined(__linux__) && PMIX_HAVE_CLOCK_GETTIME
+    struct timespec tp;
+    (void) clock_gettime(CLOCK_MONOTONIC, &tp);
+    p->ts = tp.tv_sec;
+#else
+    /* Fall back to gettimeofday() if we have nothing else */
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    p->ts = tv.tv_sec;
+#endif
+    p->room = -1;
+    memset(p->source.nspace, 0, PMIX_MAX_NSLEN+1);
+    p->source.rank = PMIX_RANK_UNDEF;
+    p->range = PMIX_RANGE_UNDEF;
+    p->targets = NULL;
+    p->ntargets = 0;
+    p->nleft = SIZE_MAX;
+    p->affected = NULL;
+    p->naffected = 0;
+    p->nondefault = false;
+    p->info = NULL;
+    p->ninfo = 0;
+}
+static void ndes(pmix_notify_caddy_t *p)
+{
+    PMIX_DESTRUCT_LOCK(&p->lock);
+    if (NULL != p->info) {
+        PMIX_INFO_FREE(p->info, p->ninfo);
+    }
+    PMIX_PROC_FREE(p->affected, p->naffected);
+    if (NULL != p->targets) {
+        free(p->targets);
+    }
+}
+PMIX_CLASS_INSTANCE(pmix_notify_caddy_t,
+                    pmix_object_t,
+                    ncon, ndes);
+
 void pmix_execute_epilog(pmix_epilog_t *epi)
 {
     pmix_cleanup_file_t *cf, *cfnext;

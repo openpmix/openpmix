@@ -43,6 +43,7 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/error.h"
+#include "src/util/name_fns.h"
 #include "src/util/show_help.h"
 #include "src/mca/psensor/psensor.h"
 
@@ -374,16 +375,16 @@ void pmix_ptl_base_send_handler(int sd, short flags, void *cbdata)
     PMIX_ACQUIRE_OBJECT(peer);
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "%s:%d ptl:base:send_handler SENDING TO PEER %s:%d tag %u with %s msg",
-                        pmix_globals.myid.nspace, pmix_globals.myid.rank,
-                        peer->info->pname.nspace, peer->info->pname.rank,
+                        "%s ptl:base:send_handler SENDING TO PEER %s tag %u with %s msg",
+                        PMIX_NAME_PRINT(&pmix_globals.myid),
+                        PMIX_PNAME_PRINT(&peer->info->pname),
                         (NULL == msg) ? UINT_MAX : ntohl(msg->hdr.tag),
                         (NULL == msg) ? "NULL" : "NON-NULL");
 
     if (NULL != msg) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "ptl:base:send_handler SENDING MSG TO %s:%d TAG %u",
-                            peer->info->pname.nspace, peer->info->pname.rank,
+                            "ptl:base:send_handler SENDING MSG TO %s TAG %u",
+                            PMIX_PNAME_PRINT(&peer->info->pname),
                             ntohl(msg->hdr.tag));
         if (PMIX_SUCCESS == (rc = send_msg(peer->sd, msg))) {
             // message is complete
@@ -402,8 +403,8 @@ void pmix_ptl_base_send_handler(int sd, short flags, void *cbdata)
             return;
         } else {
             pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
-                                "%s:%d SEND ERROR %s",
-                                pmix_globals.myid.nspace, pmix_globals.myid.rank,
+                                "%s SEND ERROR %s",
+                                PMIX_NAME_PRINT(&pmix_globals.myid),
                                 PMIx_Error_string(rc));
             // report the error
             pmix_event_del(&peer->send_event);
@@ -456,8 +457,8 @@ void pmix_ptl_base_recv_handler(int sd, short flags, void *cbdata)
     PMIX_ACQUIRE_OBJECT(peer);
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "%s:%d ptl:base:recv:handler called with peer %s:%d",
-                        pmix_globals.myid.nspace, pmix_globals.myid.rank,
+                        "%s ptl:base:recv:handler called with peer %s:%u",
+                        PMIX_NAME_PRINT(&pmix_globals.myid),
                         (NULL == peer) ? "NULL" : peer->info->pname.nspace,
                         (NULL == peer) ? PMIX_RANK_UNDEF : peer->info->pname.rank);
 
@@ -495,14 +496,17 @@ void pmix_ptl_base_recv_handler(int sd, short flags, void *cbdata)
             peer->recv_msg->hdr.tag = ntohl(hdr.tag);
             peer->recv_msg->hdr.nbytes = ntohl(hdr.nbytes);
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                "RECVD MSG FOR TAG %d SIZE %d",
+                                "%s RECVD MSG FROM %s FOR TAG %d SIZE %d",
+                                PMIX_NAME_PRINT(&pmix_globals.myid),
+                                PMIX_PNAME_PRINT(&peer->info->pname),
                                 (int)peer->recv_msg->hdr.tag,
                                 (int)peer->recv_msg->hdr.nbytes);
             /* if this is a zero-byte message, then we are done */
             if (0 == peer->recv_msg->hdr.nbytes) {
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                    "RECVD ZERO-BYTE MESSAGE FROM %s:%u for tag %d",
-                                    peer->info->pname.nspace, peer->info->pname.rank,
+                                    "%s RECVD ZERO-BYTE MESSAGE FROM %s for tag %d",
+                                    PMIX_NAME_PRINT(&pmix_globals.myid),
+                                    PMIX_PNAME_PRINT(&peer->info->pname),
                                     peer->recv_msg->hdr.tag);
                 peer->recv_msg->data = NULL;  // make sure
                 peer->recv_msg->rdptr = NULL;
@@ -539,8 +543,9 @@ void pmix_ptl_base_recv_handler(int sd, short flags, void *cbdata)
              * and let the caller know
              */
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                "ptl:base:msg_recv: peer %s:%d closed connection",
-                                peer->nptr->nspace, peer->info->pname.rank);
+                                "%s ptl:base:msg_recv: peer %s closed connection",
+                                PMIX_NAME_PRINT(&pmix_globals.myid),
+                                PMIX_PNAME_PRINT(&peer->info->pname));
             goto err_close;
         }
     }

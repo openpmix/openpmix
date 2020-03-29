@@ -78,6 +78,53 @@ static pmix_iof_read_event_t stdinev;
 static void _notify_complete(pmix_status_t status, void *cbdata)
 {
     pmix_event_chain_t *chain = (pmix_event_chain_t*)cbdata;
+    pmix_notify_caddy_t *cd;
+    size_t n;
+    pmix_status_t rc;
+
+    PMIX_ACQUIRE_OBJECT(chain);
+
+    /* if the event wasn't found, then cache it as it might
+     * be registered later */
+    if (PMIX_ERR_NOT_FOUND == status && !chain->cached) {
+        cd = PMIX_NEW(pmix_notify_caddy_t);
+        cd->status = chain->status;
+        PMIX_LOAD_PROCID(&cd->source, chain->source.nspace, chain->source.rank);
+        cd->range = chain->range;
+        if (0 < chain->ninfo) {
+            cd->ninfo = chain->ninfo;
+            PMIX_INFO_CREATE(cd->info, cd->ninfo);
+            cd->nondefault = chain->nondefault;
+           /* need to copy the info */
+            for (n=0; n < cd->ninfo; n++) {
+                PMIX_INFO_XFER(&cd->info[n], &chain->info[n]);
+            }
+        }
+        if (NULL != chain->targets) {
+            cd->ntargets = chain->ntargets;
+            PMIX_PROC_CREATE(cd->targets, cd->ntargets);
+            memcpy(cd->targets, chain->targets, cd->ntargets * sizeof(pmix_proc_t));
+        }
+        if (NULL != chain->affected) {
+            cd->naffected = chain->naffected;
+            PMIX_PROC_CREATE(cd->affected, cd->naffected);
+            if (NULL == cd->affected) {
+                cd->naffected = 0;
+                goto cleanup;
+            }
+            memcpy(cd->affected, chain->affected, cd->naffected * sizeof(pmix_proc_t));
+        }
+        /* cache it */
+        rc = pmix_notify_event_cache(cd);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(cd);
+            goto cleanup;
+        }
+        chain->cached = true;
+    }
+
+  cleanup:
     PMIX_RELEASE(chain);
 }
 
@@ -1351,6 +1398,7 @@ pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
     pmix_status_t rc;
     pmix_tool_timeout_t tev;
     struct timeval tv = {2, 0};
+    pmix_event_base_t *evbase_save;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     if (pmix_globals.init_cntr <= 0) {
@@ -1411,7 +1459,47 @@ pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
                             "pmix:tool:reconnect finalize sync received");
     }
 
+    /* stop the existing progress thread */
+    (void)pmix_progress_thread_pause(NULL);
+
+    /* save that event base */
+    evbase_save = pmix_globals.evbase;
+
+    /* create a new progress thread */
+    pmix_globals.evbase = pmix_progress_thread_init("reconnect");
+    pmix_progress_thread_start("reconnect");
+
     /* now ask the ptl to establish connection to the new server */
     rc = pmix_ptl_base_connect_to_peer((struct pmix_peer_t*)pmix_client_globals.myserver, info, ninfo);
-    return rc;
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+
+    /* once that activity has all completed, then stop the new progress thread */
+    pmix_progress_thread_stop("reconnect");
+    pmix_progress_thread_finalize("reconnect");
+
+    /* restore the original progress thread */
+    pmix_globals.evbase = evbase_save;
+    /* restore the communication events */
+    pmix_event_assign(&pmix_client_globals.myserver->recv_event,
+                      pmix_globals.evbase,
+                      pmix_client_globals.myserver->sd,
+                      EV_READ | EV_PERSIST,
+                      pmix_ptl_base_recv_handler, pmix_client_globals.myserver);
+    pmix_client_globals.myserver->recv_ev_active = true;
+    PMIX_POST_OBJECT(pmix_client_globals.myserver);
+    pmix_event_add(&pmix_client_globals.myserver->recv_event, 0);
+
+    /* setup send event */
+    pmix_event_assign(&pmix_client_globals.myserver->send_event,
+                      pmix_globals.evbase,
+                      pmix_client_globals.myserver->sd,
+                      EV_WRITE|EV_PERSIST,
+                      pmix_ptl_base_send_handler, pmix_client_globals.myserver);
+    pmix_client_globals.myserver->send_ev_active = false;
+    /* resume processing events */
+    pmix_progress_thread_resume(NULL);
+
+    return PMIX_SUCCESS;
 }
