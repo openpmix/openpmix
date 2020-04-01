@@ -250,6 +250,21 @@ static pmix_status_t harvest_envars(pmix_namespace_t *nptr,
             pmix_list_append(ilist, &kv->super);
         }
         PMIX_LIST_DESTRUCT(&params);
+        /* add an envar indicating that we did this so the OMPI
+         * processes won't duplicate it */
+        kv = PMIX_NEW(pmix_kval_t);
+        if (NULL == kv) {
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+        kv->key = strdup(PMIX_SET_ENVAR);
+        kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+        if (NULL == kv->value) {
+            PMIX_RELEASE(kv);
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+        kv->value->type = PMIX_ENVAR;
+        PMIX_ENVAR_LOAD(&kv->value->data.envar, "OPAL_USER_PARAMS_GIVEN", "1", ':');
+        pmix_list_append(ilist, &kv->super);
     }
 
     /* harvest our local envars */
