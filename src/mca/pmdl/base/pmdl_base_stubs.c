@@ -29,12 +29,14 @@
 
 
 pmix_status_t pmix_pmdl_base_harvest_envars(char *nspace,
-                                            pmix_info_t info[], size_t ninfo,
+                                            const pmix_info_t info[], size_t ninfo,
                                             pmix_list_t *ilist)
 {
     pmix_pmdl_base_active_module_t *active;
     pmix_status_t rc;
     pmix_namespace_t *nptr, *ns;
+    char *params[2] = {"PMIX_MCA_", NULL};
+    char **priors = NULL;
 
     if (!pmix_pmdl_globals.initialized) {
         return PMIX_ERR_INIT;
@@ -44,38 +46,45 @@ pmix_status_t pmix_pmdl_base_harvest_envars(char *nspace,
                         "pmdl:harvest envars called");
 
     /* protect against bozo inputs */
-    if (NULL == nspace || NULL == ilist) {
+    if (NULL == ilist) {
         return PMIX_ERR_BAD_PARAM;
     }
-    nptr = NULL;
-    /* find this nspace - note that it may not have
-     * been registered yet */
-    PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_namespace_t) {
-        if (0 == strcmp(ns->nspace, nspace)) {
-            nptr = ns;
-            break;
+
+    if (NULL != nspace) {
+        nptr = NULL;
+        /* find this nspace - note that it may not have
+         * been registered yet */
+        PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_namespace_t) {
+            if (0 == strcmp(ns->nspace, nspace)) {
+                nptr = ns;
+                break;
+            }
         }
-    }
-    if (NULL == nptr) {
-        /* add it */
-        nptr = PMIX_NEW(pmix_namespace_t);
         if (NULL == nptr) {
-            return PMIX_ERR_NOMEM;
+            /* add it */
+            nptr = PMIX_NEW(pmix_namespace_t);
+            if (NULL == nptr) {
+                return PMIX_ERR_NOMEM;
+            }
+            nptr->nspace = strdup(nspace);
+            pmix_list_append(&pmix_globals.nspaces, &nptr->super);
         }
-        nptr->nspace = strdup(nspace);
-        pmix_list_append(&pmix_globals.nspaces, &nptr->super);
     }
 
     /* process the request */
     PMIX_LIST_FOREACH(active, &pmix_pmdl_globals.actives, pmix_pmdl_base_active_module_t) {
         if (NULL != active->module->harvest_envars) {
-            rc = active->module->harvest_envars(nptr, info, ninfo, ilist);
+            rc = active->module->harvest_envars(nptr, info, ninfo, ilist, &priors);
             if (PMIX_SUCCESS != rc && PMIX_ERR_TAKE_NEXT_OPTION != rc) {
                 /* true error */
                 return rc;
             }
         }
     }
+    pmix_argv_free(priors);
+
+    /* add any local PMIx MCA params */
+    rc = pmix_util_harvest_envars(params, NULL, ilist);
 
     return PMIX_SUCCESS;
 }

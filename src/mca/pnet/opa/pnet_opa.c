@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  *
  * $COPYRIGHT$
@@ -338,9 +338,9 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
                             (NULL == mca_pnet_opa_component.excparms) ? "NONE" : mca_pnet_opa_component.excparms);
         /* harvest envars to pass along */
         if (NULL != mca_pnet_opa_component.include) {
-            rc = pmix_pnet_base_harvest_envars(mca_pnet_opa_component.include,
-                                               mca_pnet_opa_component.exclude,
-                                               ilist);
+            rc = pmix_util_harvest_envars(mca_pnet_opa_component.include,
+                                          mca_pnet_opa_component.exclude,
+                                          ilist);
             if (PMIX_SUCCESS != rc) {
                 return rc;
             }

@@ -11,7 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007-2013 Los Alamos National Security, LLC.  All rights
  *                         reserved.
- * Copyright (c) 2015-2017 Intel, Inc. All rights reserved.
+ * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
@@ -33,12 +33,13 @@
 
 #include <src/include/pmix_config.h>
 
-
+#include <unistd.h>
 #ifdef HAVE_CRT_EXTERNS_H
 #include <crt_externs.h>
 #endif
 
 #include <pmix_common.h>
+#include "src/class/pmix_list.h"
 
 BEGIN_C_DECLS
 
@@ -135,8 +136,12 @@ PMIX_EXPORT pmix_status_t pmix_unsetenv(const char *name, char ***env) __pmix_at
 /* A consistent way to retrieve the home and tmp directory on all supported
  * platforms.
  */
-PMIX_EXPORT const char* pmix_home_directory( void );
-PMIX_EXPORT const char* pmix_tmp_directory( void );
+PMIX_EXPORT const char* pmix_home_directory(uid_t uid);
+PMIX_EXPORT const char* pmix_tmp_directory(void);
+
+/* Provide a utility for harvesting envars */
+PMIX_EXPORT pmix_status_t pmix_util_harvest_envars(char **incvars, char **excvars,
+                                                   pmix_list_t *ilist);
 
 /* Some care is needed with environ on OS X when dealing with shared
    libraries.  Handle that care here... */

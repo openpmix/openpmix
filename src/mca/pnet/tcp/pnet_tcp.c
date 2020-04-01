@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
@@ -357,9 +357,9 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
                                 "pnet: tcp harvesting envars %s excluding %s",
                                 (NULL == mca_pnet_tcp_component.incparms) ? "NONE" : mca_pnet_tcp_component.incparms,
                                 (NULL == mca_pnet_tcp_component.excparms) ? "NONE" : mca_pnet_tcp_component.excparms);
-            rc = pmix_pnet_base_harvest_envars(mca_pnet_tcp_component.include,
-                                               mca_pnet_tcp_component.exclude,
-                                               ilist);
+            rc = pmix_util_harvest_envars(mca_pnet_tcp_component.include,
+                                          mca_pnet_tcp_component.exclude,
+                                          ilist);
             if (PMIX_SUCCESS != rc) {
                 return rc;
             }

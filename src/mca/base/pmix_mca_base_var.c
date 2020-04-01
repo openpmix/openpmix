@@ -13,7 +13,7 @@
  * Copyright (c) 2008-2015 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2012-2015 Los Alamos National Security, LLC. All rights
  *                         reserved.
- * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * $COPYRIGHT$
@@ -423,14 +423,20 @@ int pmix_mca_base_var_cache_files(bool rel_path_search)
     int ret;
 
     /* We may need this later */
-    home = (char*)pmix_home_directory();
+    home = (char*)pmix_home_directory(geteuid());
 
-    if(NULL == cwd) {
+    if (NULL == cwd) {
         cwd = (char *) malloc(sizeof(char) * MAXPATHLEN);
-        if( NULL == (cwd = getcwd(cwd, MAXPATHLEN) )) {
+        if (NULL == (cwd = getcwd(cwd, MAXPATHLEN))) {
             pmix_output(0, "Error: Unable to get the current working directory\n");
             cwd = strdup(".");
         }
+    }
+
+    /* if we were passed our PMIx param file contents, then no need
+     * to obtain them here */
+    if (NULL != getenv("PMIX_PARAM_FILE_PASSED")) {
+        return PMIX_SUCCESS;
     }
 
 #if PMIX_WANT_HOME_CONFIG_FILES

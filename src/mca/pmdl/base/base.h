@@ -80,7 +80,7 @@ typedef struct pmix_pmdl_globals_t pmix_pmdl_globals_t;
 PMIX_EXPORT extern pmix_pmdl_globals_t pmix_pmdl_globals;
 
 PMIX_EXPORT pmix_status_t pmix_pmdl_base_harvest_envars(char *nspace,
-                                                        pmix_info_t info[], size_t ninfo,
+                                                        const pmix_info_t info[], size_t ninfo,
                                                         pmix_list_t *ilist);
 PMIX_EXPORT pmix_status_t pmix_pmdl_base_setup_nspace(pmix_namespace_t *nptr,
                                                       pmix_info_t *info);
