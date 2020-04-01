@@ -8,8 +8,8 @@
  * $HEADER$
  */
 
-#ifndef PMIX_PMDL_ompi5_H
-#define PMIX_PMDL_ompi5_H
+#ifndef PMIX_PMDL_oshmem_H
+#define PMIX_PMDL_oshmem_H
 
 #include <src/include/pmix_config.h>
 
@@ -24,11 +24,11 @@ typedef struct {
     char *excparms;
     char **include;
     char **exclude;
-} pmix_pmdl_ompi5_component_t;
+} pmix_pmdl_oshmem_component_t;
 
 /* the component must be visible data for the linker to find it */
-PMIX_EXPORT extern pmix_pmdl_ompi5_component_t mca_pmdl_ompi5_component;
-extern pmix_pmdl_module_t pmix_pmdl_ompi5_module;
+PMIX_EXPORT extern pmix_pmdl_oshmem_component_t mca_pmdl_oshmem_component;
+extern pmix_pmdl_module_t pmix_pmdl_oshmem_module;
 
 END_C_DECLS
 

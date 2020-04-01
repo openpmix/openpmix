@@ -53,8 +53,10 @@
 #include "src/util/error.h"
 #include "src/util/name_fns.h"
 #include "src/util/output.h"
+#include "src/util/pmix_environ.h"
 #include "src/mca/gds/gds.h"
 #include "src/mca/pfexec/pfexec.h"
+#include "src/mca/pmdl/pmdl.h"
 #include "src/mca/ptl/ptl.h"
 
 #include "pmix_client_ops.h"
@@ -131,7 +133,6 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     pmix_app_t *aptr;
     bool jobenvars = false;
     bool forkexec = false;
-    char *harvest[2] = {"PMIX_MCA_", NULL};
     pmix_kval_t *kv;
     pmix_list_t ilist;
     pmix_nspace_t nspace;
@@ -164,7 +165,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
         for (n=0; n < ninfo; n++) {
             if (PMIX_CHECK_KEY(&job_info[n], PMIX_SETUP_APP_ENVARS)) {
                 PMIX_CONSTRUCT(&ilist, pmix_list_t);
-                rc = pmix_pnet_base_harvest_envars(harvest, NULL, &ilist);
+                rc = pmix_pmdl.harvest_envars(NULL, job_info, ninfo, &ilist);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_LIST_DESTRUCT(&ilist);
                     return rc;
@@ -205,7 +206,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
             for (m=0; m < aptr->ninfo; m++) {
                 if (PMIX_CHECK_KEY(&aptr->info[m], PMIX_SETUP_APP_ENVARS)) {
                     PMIX_CONSTRUCT(&ilist, pmix_list_t);
-                    rc = pmix_pnet_base_harvest_envars(harvest, NULL, &ilist);
+                    rc = pmix_pmdl.harvest_envars(NULL, aptr->info, aptr->ninfo, &ilist);
                     if (PMIX_SUCCESS != rc) {
                         PMIX_LIST_DESTRUCT(&ilist);
                         return rc;

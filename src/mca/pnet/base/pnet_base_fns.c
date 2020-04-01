@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
@@ -43,7 +43,6 @@ pmix_status_t pmix_pnet_base_allocate(char *nspace,
     pmix_namespace_t *nptr, *ns;
     size_t n;
     char **nodes, **procs;
-    char *params[2] = {"PMIX_MCA_", NULL};
 
     if (!pmix_pnet_globals.initialized) {
         return PMIX_ERR_INIT;
@@ -122,9 +121,6 @@ pmix_status_t pmix_pnet_base_allocate(char *nspace,
             }
         }
     }
-
-    /* add any local PMIx MCA params */
-    rc = pmix_pnet_base_harvest_envars(params, NULL, ilist);
 
     return rc;
 }
@@ -535,73 +531,6 @@ void pmix_pnet_base_deliver_inventory(pmix_info_t info[], size_t ninfo,
 
     PMIX_RELEASE_THREAD(&myrollup->lock);
     return;
-}
-
-pmix_status_t pmix_pnet_base_harvest_envars(char **incvars, char **excvars,
-                                            pmix_list_t *ilist)
-{
-    int i, j;
-    size_t len;
-    pmix_kval_t *kv, *next;
-    char *cs_env, *string_key;
-
-    /* harvest envars to pass along */
-    for (j=0; NULL != incvars[j]; j++) {
-        len = strlen(incvars[j]);
-        if ('*' == incvars[j][len-1]) {
-            --len;
-        }
-        for (i = 0; NULL != environ[i]; ++i) {
-            if (0 == strncmp(environ[i], incvars[j], len)) {
-                cs_env = strdup(environ[i]);
-                kv = PMIX_NEW(pmix_kval_t);
-                if (NULL == kv) {
-                    free(cs_env);
-                    return PMIX_ERR_OUT_OF_RESOURCE;
-                }
-                kv->key = strdup(PMIX_SET_ENVAR);
-                kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
-                if (NULL == kv->value) {
-                    PMIX_RELEASE(kv);
-                    free(cs_env);
-                    return PMIX_ERR_OUT_OF_RESOURCE;
-                }
-                kv->value->type = PMIX_ENVAR;
-                string_key = strchr(cs_env, '=');
-                if (NULL == string_key) {
-                    free(cs_env);
-                    PMIX_RELEASE(kv);
-                    return PMIX_ERR_BAD_PARAM;
-                }
-                *string_key = '\0';
-                ++string_key;
-                pmix_output_verbose(5, pmix_pnet_base_framework.framework_output,
-                                    "pnet: adding envar %s", cs_env);
-                PMIX_ENVAR_LOAD(&kv->value->data.envar, cs_env, string_key, ':');
-                pmix_list_append(ilist, &kv->super);
-                free(cs_env);
-            }
-        }
-    }
-
-    /* now check the exclusions and remove any that match */
-    if (NULL != excvars) {
-        for (j=0; NULL != excvars[j]; j++) {
-            len = strlen(excvars[j]);
-            if ('*' == excvars[j][len-1]) {
-                --len;
-            }
-            PMIX_LIST_FOREACH_SAFE(kv, next, ilist, pmix_kval_t) {
-                if (0 == strncmp(kv->value->data.envar.envar, excvars[j], len)) {
-                pmix_output_verbose(5, pmix_pnet_base_framework.framework_output,
-                                    "pnet: excluding envar %s", kv->value->data.envar.envar);
-                    pmix_list_remove_item(ilist, &kv->super);
-                    PMIX_RELEASE(kv);
-                }
-            }
-        }
-    }
-    return PMIX_SUCCESS;
 }
 
 static pmix_status_t process_maps(char *nspace, char **nodes, char **procs)

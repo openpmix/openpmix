@@ -55,8 +55,9 @@ typedef void (*pmix_pmdl_base_module_fini_fn_t)(void);
 /* Harvest envars for this programming model so they can be forwarded
  * to backend processes */
 typedef pmix_status_t (*pmix_pmdl_base_module_harvest_envars_fn_t)(pmix_namespace_t *nptr,
-                                                                   pmix_info_t info[], size_t ninfo,
-                                                                   pmix_list_t *ilist);
+                                                                   const pmix_info_t info[], size_t ninfo,
+                                                                   pmix_list_t *ilist,
+                                                                   char ***priors);
 /**
  * Setup any programming model specific support for the given nspace
  */
@@ -107,7 +108,7 @@ typedef struct {
 /* define a public API */
 
 typedef pmix_status_t (*pmix_pmdl_base_API_harvest_envars_fn_t)(char *nspace,
-                                                                pmix_info_t info[], size_t ninfo,
+                                                                const pmix_info_t info[], size_t ninfo,
                                                                 pmix_list_t *ilist);
 typedef void (*pmix_pmdl_base_API_dregister_nspace_fn_t)(const char *nptr);
 typedef struct {

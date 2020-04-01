@@ -46,10 +46,10 @@
 
 #include "src/mca/pmdl/pmdl.h"
 #include "src/mca/pmdl/base/base.h"
-#include "pmdl_ompi5.h"
+#include "pmdl_oshmem.h"
 
-static pmix_status_t ompi5_init(void);
-static void ompi5_finalize(void);
+static pmix_status_t oshmem_init(void);
+static void oshmem_finalize(void);
 static pmix_status_t harvest_envars(pmix_namespace_t *nptr,
                                     const pmix_info_t info[], size_t ninfo,
                                     pmix_list_t *ilist,
@@ -60,10 +60,10 @@ static pmix_status_t setup_nspace_kv(pmix_namespace_t *nptr,
                                      pmix_kval_t *kv);
 static pmix_status_t register_nspace(pmix_namespace_t *nptr);
 static void deregister_nspace(pmix_namespace_t *nptr);
-pmix_pmdl_module_t pmix_pmdl_ompi5_module = {
-    .name = "ompi5",
-    .init = ompi5_init,
-    .finalize = ompi5_finalize,
+pmix_pmdl_module_t pmix_pmdl_oshmem_module = {
+    .name = "oshmem",
+    .init = oshmem_init,
+    .finalize = oshmem_finalize,
     .harvest_envars = harvest_envars,
     .setup_nspace = setup_nspace,
     .setup_nspace_kv = setup_nspace_kv,
@@ -96,17 +96,17 @@ static PMIX_CLASS_INSTANCE(pmdl_nspace_t,
 /* internal variables */
 static pmix_list_t mynspaces;
 
-static pmix_status_t ompi5_init(void)
+static pmix_status_t oshmem_init(void)
 {
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
-                        "pmdl: ompi5 init");
+                        "pmdl: oshmem init");
 
     PMIX_CONSTRUCT(&mynspaces, pmix_list_t);
 
     return PMIX_SUCCESS;
 }
 
-static void ompi5_finalize(void)
+static void oshmem_finalize(void)
 {
     PMIX_LIST_DESTRUCT(&mynspaces);
 }
@@ -114,9 +114,8 @@ static void ompi5_finalize(void)
 static bool checkus(const pmix_info_t info[], size_t ninfo)
 {
     bool takeus = false;
-    char **tmp, *ptr;
+    char **tmp;
     size_t n, m;
-    uint vers;
 
     if (NULL == info) {
         return false;
@@ -129,20 +128,8 @@ static bool checkus(const pmix_info_t info[], size_t ninfo)
             PMIX_CHECK_KEY(&info[n], PMIX_PERSONALITY)) {
             tmp = pmix_argv_split(info[n].value.data.string, ',');
             for (m=0; NULL != tmp[m]; m++) {
-                if (0 == strcmp(tmp[m], "ompi")) {
-                    /* they didn't specify a level, so we will service
-                     * them just in case */
+                if (0 == strcmp(tmp[m], "oshmem")) {
                     takeus = true;
-                    break;
-                }
-                if (0 == strncmp(tmp[m], "ompi", 4)) {
-                    /* if they specifically requested an ompi level greater
-                     * than or equal to us, then we service it */
-                    ptr = &tmp[m][4];
-                    vers = strtoul(ptr, NULL, 10);
-                    if (vers >= 5) {
-                        takeus = true;
-                    }
                     break;
                 }
             }
@@ -160,24 +147,14 @@ static pmix_status_t harvest_envars(pmix_namespace_t *nptr,
 {
     pmdl_nspace_t *ns, *ns2;
     pmix_status_t rc;
-    uint32_t uid = UINT32_MAX;
-    const char *home;
-    pmix_list_t params;
-    pmix_mca_base_var_file_value_t *fv;
-    pmix_kval_t *kv;
-    size_t n;
-    char *file, *tmp;
 
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
-                        "pmdl:ompi5:harvest envars");
+                        "pmdl:oshmem:harvest envars");
 
 
     if (!checkus(info, ninfo)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
-
-    /* flag that we worked on this */
-    pmix_argv_append_nosize(priors, "ompi5");
 
     if (NULL != nptr) {
         /* see if we already have this nspace */
@@ -195,59 +172,14 @@ static pmix_status_t harvest_envars(pmix_namespace_t *nptr,
         }
     }
 
-    /* see if the user has a default MCA param file */
-    if (NULL != info) {
-        for (n=0; n < ninfo; n++) {
-            if (PMIX_CHECK_KEY(&info[n], PMIX_USERID)) {
-                PMIX_VALUE_GET_NUMBER(rc, &info[n].value, uid, uint32_t);
-                if (PMIX_SUCCESS != rc) {
-                    return rc;
-                }
-                break;
-            }
-        }
-    }
-    if (UINT32_MAX == uid) {
-        uid = geteuid();
-    }
-    /* try to get their home directory */
-    home = pmix_home_directory(uid);
-    if (NULL != home) {
-        file = pmix_os_path(false, home, ".openmpi", "mca-params.conf", NULL);
-        PMIX_CONSTRUCT(&params, pmix_list_t);
-        pmix_mca_base_parse_paramfile(file, &params);
-        free(file);
-        PMIX_LIST_FOREACH(fv, &params, pmix_mca_base_var_file_value_t) {
-            /* need to prefix the param name */
-            kv = PMIX_NEW(pmix_kval_t);
-            if (NULL == kv) {
-                PMIX_LIST_DESTRUCT(&params);
-                return PMIX_ERR_OUT_OF_RESOURCE;
-            }
-            kv->key = strdup(PMIX_SET_ENVAR);
-            kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
-            if (NULL == kv->value) {
-                PMIX_RELEASE(kv);
-                PMIX_LIST_DESTRUCT(&params);
-                return PMIX_ERR_OUT_OF_RESOURCE;
-            }
-            kv->value->type = PMIX_ENVAR;
-            pmix_asprintf(&tmp, "OMPI_MCA_%s", fv->mbvfv_var);
-            PMIX_ENVAR_LOAD(&kv->value->data.envar, tmp, fv->mbvfv_value, ':');
-            free(tmp);
-            pmix_list_append(ilist, &kv->super);
-        }
-        PMIX_LIST_DESTRUCT(&params);
-    }
-
     /* harvest our local envars */
-    if (NULL != mca_pmdl_ompi5_component.include) {
+    if (NULL != mca_pmdl_oshmem_component.include) {
         pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
-                            "pmdl: ompi5 harvesting envars %s excluding %s",
-                            (NULL == mca_pmdl_ompi5_component.incparms) ? "NONE" : mca_pmdl_ompi5_component.incparms,
-                            (NULL == mca_pmdl_ompi5_component.excparms) ? "NONE" : mca_pmdl_ompi5_component.excparms);
-        rc = pmix_util_harvest_envars(mca_pmdl_ompi5_component.include,
-                                      mca_pmdl_ompi5_component.exclude,
+                            "pmdl: oshmem harvesting envars %s excluding %s",
+                            (NULL == mca_pmdl_oshmem_component.incparms) ? "NONE" : mca_pmdl_oshmem_component.incparms,
+                            (NULL == mca_pmdl_oshmem_component.excparms) ? "NONE" : mca_pmdl_oshmem_component.excparms);
+        rc = pmix_util_harvest_envars(mca_pmdl_oshmem_component.include,
+                                      mca_pmdl_oshmem_component.exclude,
                                       ilist);
         if (PMIX_SUCCESS != rc) {
             return rc;
@@ -264,7 +196,7 @@ static pmix_status_t setup_nspace(pmix_namespace_t *nptr,
 	pmdl_nspace_t *ns, *ns2;
 
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
-                        "pmdl:ompi5: setup nspace for nspace %s with %s",
+                        "pmdl:oshmem: setup nspace for nspace %s with %s",
                         nptr->nspace, info->value.data.string);
 
     if (!checkus(info, 1)) {
@@ -298,7 +230,7 @@ static pmix_status_t setup_nspace_kv(pmix_namespace_t *nptr,
     bool takeus = false;
 
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
-                        "pmdl:ompi5: setup nspace_kv for nspace %s with %s",
+                        "pmdl:oshmem: setup nspace_kv for nspace %s with %s",
                         nptr->nspace, kv->value->data.string);
 
     /* check the attribute */
@@ -358,7 +290,7 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr)
     pmix_cb_t cb;
 
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
-                        "pmdl:ompi5: register_nspace for %s", nptr->nspace);
+                        "pmdl:oshmem: register_nspace for %s", nptr->nspace);
 
 	/* see if we already have this nspace */
 	ns = NULL;
