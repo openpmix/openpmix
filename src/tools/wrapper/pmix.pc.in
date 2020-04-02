@@ -3,7 +3,7 @@
 Name: Open Portability Access Layer (PMIX)
 Description: Lowest layer abstractions for the Open MPI software package
 Version: @PMIX_VERSION@
-URL: http://www.open-mpi.org/
+URL: https://www.open-mpi.org/
 #
 prefix=@prefix@
 exec_prefix=@exec_prefix@
