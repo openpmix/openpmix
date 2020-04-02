@@ -15,7 +15,7 @@ dnl Copyright (c) 2009-2016 Cisco Systems, Inc.  All rights reserved.
 dnl Copyright (c) 2015-2017 Research Organization for Information Science
 dnl                         and Technology (RIST). All rights reserved.
 dnl Copyright (c) 2016      IBM Corporation.  All rights reserved.
-dnl Copyright (c) 2017-2019 Intel, Inc.  All rights reserved.
+dnl Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -64,7 +64,7 @@ AC_DEFUN([PMIX_WRAPPER_FLAGS_ADD], [
 # framework, the component is a static component, and devel headers
 # are installed.  Note that MCA components are ONLY allowed to
 # (indirectly) influence the wrapper CPPFLAGS, LDFLAGS, and LIBS.
-# That is, a component may not influence CFLAGS, CXXFLAGS, or FCFLAGS.
+# That is, a component may not influence CFLAGS.
 #
 # Notes:
 #   * Keep user flags separate as 1) they should have no influence
@@ -136,7 +136,7 @@ AC_DEFUN([PMIX_LIBTOOL_CONFIG],[
 # (because if script A sources script B, and B calls "exit", then both
 # B and A will exit).  Instead, we have to send the output to a file
 # and then source that.
-$PMIX_TOP_BUILDDIR/libtool $3 --config > $rpath_outfile
+libtool $3 --config > $rpath_outfile
 
 chmod +x $rpath_outfile
 . ./$rpath_outfile
@@ -166,8 +166,7 @@ AC_DEFUN([PMIX_SETUP_RPATH],[
 
     AS_IF([test -n "$rpath_args"],
           [WRAPPER_RPATH_SUPPORT=rpath
-           PMIX_LIBTOOL_CONFIG([hardcode_libdir_flag_spec],[rpath_fc_args],[--tag=FC],[libdir=LIBDIR])
-           AC_MSG_RESULT([yes ($rpath_args + $rpath_fc_args)])],
+           AC_MSG_RESULT([yes ($rpath_args)])],
           [WRAPPER_RPATH_SUPPORT=unnecessary
            AC_MSG_RESULT([yes (no extra flags needed)])])
 
@@ -186,7 +185,7 @@ AC_DEFUN([PMIX_SETUP_RPATH],[
 # If DT_RUNPATH is supported, then we'll use *both* the RPATH and
 # RUNPATH flags in the LDFLAGS.
 AC_DEFUN([PMIX_SETUP_RUNPATH],[
-    PMIX_VAR_SCOPE_PUSH([LDFLAGS_save wl_fc])
+    PMIX_VAR_SCOPE_PUSH([LDFLAGS_save])
 
     # Set the output in $runpath_args
     runpath_args=
@@ -232,8 +231,6 @@ AC_DEFUN([RPATHIFY_LDFLAGS_INTERNAL],[
 ])
 
 AC_DEFUN([RPATHIFY_LDFLAGS],[RPATHIFY_LDFLAGS_INTERNAL([$1], [rpath_args], [runpath_args])])
-
-AC_DEFUN([RPATHIFY_FC_LDFLAGS],[RPATHIFY_LDFLAGS_INTERNAL([$1], [rpath_fc_args], [runpath_fc_args])])
 
 dnl
 dnl Avoid some repetitive code below

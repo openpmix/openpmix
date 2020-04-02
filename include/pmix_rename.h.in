@@ -816,12 +816,6 @@
 #define pmix_util_get_ranges                                    @PMIX_RENAME@pmix_util_get_ranges
 #define pmix_util_getid                                         @PMIX_RENAME@pmix_util_getid
 #define pmix_util_harvest_envars                                @PMIX_RENAME@pmix_util_harvest_envars
-#define pmix_util_keyval_init_buffer                            @PMIX_RENAME@pmix_util_keyval_init_buffer
-#define pmix_util_keyval_parse                                  @PMIX_RENAME@pmix_util_keyval_parse
-#define pmix_util_keyval_parse_done                             @PMIX_RENAME@pmix_util_keyval_parse_done
-#define pmix_util_keyval_parse_finalize                         @PMIX_RENAME@pmix_util_keyval_parse_finalize
-#define pmix_util_keyval_parse_init                             @PMIX_RENAME@pmix_util_keyval_parse_init
-#define pmix_util_keyval_save_internal_envars                   @PMIX_RENAME@pmix_util_keyval_save_internal_envars
 #define pmix_util_parse_range_options                           @PMIX_RENAME@pmix_util_parse_range_options
 #define pmix_util_print_name_args                               @PMIX_RENAME@pmix_util_print_name_args
 #define pmix_util_print_pname_args                              @PMIX_RENAME@pmix_util_print_pname_args
