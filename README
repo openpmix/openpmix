@@ -8,7 +8,7 @@ Copyright (c) 2004-2008 High Performance Computing Center Stuttgart,
                         University of Stuttgart.  All rights reserved.
 Copyright (c) 2004-2007 The Regents of the University of California.
                         All rights reserved.
-Copyright (c) 2006-2015 Cisco Systems, Inc.  All rights reserved.
+Copyright (c) 2006-2020 Cisco Systems, Inc.  All rights reserved.
 Copyright (c) 2006-2011 Mellanox Technologies. All rights reserved.
 Copyright (c) 2006-2012 Oracle and/or its affiliates.  All rights reserved.
 Copyright (c) 2007      Myricom, Inc.  All rights reserved.
@@ -28,12 +28,17 @@ When submitting questions and problems, be sure to include as much
 extra information as possible.  This web page details all the
 information that we request in order to provide assistance:
 
-     http://pmix.github.io/pmix/community/help/
+     https://pmix.org/support/
 
 The best way to report bugs, send comments, or ask questions is to
-sign up on the PMIx mailing list, which is hosted by GoogleGroups:
+post them on the OpenPMIx GitHub issue tracker:
 
-        pmix@googlegroups.com
+     https://github.com/openpmix/openpmix/issues
+
+Alternatively, you can sign up on the PMIx mailing list, which is
+hosted by Google Groups:
+
+     pmix@googlegroups.com
 
 Because of spam, only subscribers are allowed to post to this list
 (ensure that you subscribe with and post from exactly the same e-mail
@@ -48,7 +53,7 @@ Thanks for your time.
 
 More information is available in the PMIx FAQ:
 
-    http://pmix.github.io/pmix/faq/
+    https://pmix.org/support/faq/
 
 We are in early days, so please be patient - info will grow as questions
 are addressed.
@@ -63,7 +68,7 @@ General notes
 
 - The majority of PMIx's documentation is here in this file, the
   included man pages, and on the web site FAQ
-  (http://pmix.github.io/pmix/faq).  This will eventually be
+  (https://pmix.org/support/faq/).  This will eventually be
   supplemented with cohesive installation and user documentation files.
 
 - Systems that have been tested are:
@@ -312,7 +317,7 @@ Common Questions
 Many common questions about building and using PMIx are answered
 on the FAQ:
 
-    http://pmix.github.io/pmix/faq/
+    https://pmix.org/support/faq/
 
 ===========================================================================
 
@@ -326,15 +331,19 @@ When submitting questions and problems, be sure to include as much
 extra information as possible.  This web page details all the
 information that we request in order to provide assistance:
 
-     http://pmix.github.io/pmix/community/help/
+     https://pmix.org/support/
 
-Questions and comments should generally be sent to the PMIx mailing
-list (pmix@googlegroups.com).  Because of spam, only
-subscribers are allowed to post to this list (ensure that you
-subscribe with and post from *exactly* the same e-mail address --
-joe@example.com is considered different than
-joe@mycomputer.example.com!).  Visit this page to subscribe to the
-user's list:
+Questions and comments should generally be posted to the OpenPMIx
+GitHub issue tracker:
+
+    https://github.com/openpmix/openpmix/issues
+
+Alternatively, question can also be sent to the PMIx mailing list
+(pmix@googlegroups.com).  Because of spam, only subscribers are
+allowed to post to this list (ensure that you subscribe with and post
+from *exactly* the same e-mail address -- joe@example.com is
+considered different than joe@mycomputer.example.com!).  Visit this
+page to subscribe to the user's list:
 
      https://groups.google.com/d/forum/pmix
 
