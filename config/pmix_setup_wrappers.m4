@@ -132,20 +132,14 @@ AC_DEFUN([PMIX_LIBTOOL_CONFIG],[
 
 # Slurp in the libtool config into my environment
 
-# Apparently, "libtool --config" calls "exit", so we can't source it
+# Apparently, "libtoool --config" calls "exit", so we can't source it
 # (because if script A sources script B, and B calls "exit", then both
 # B and A will exit).  Instead, we have to send the output to a file
 # and then source that.
-pmix_eval="libtool --config 2>&1 > /dev/null"
-pmix_found=`eval $pmix_eval`
-status=$?
-if test "$status" = "0"; then
-    libtool $3 --config 2>&1 > $rpath_outfile
-    chmod +x $rpath_outfile
-    . ./$rpath_outfile
-else
-    exit 1
-fi
+libtool $3 --config > $rpath_outfile
+
+chmod +x $rpath_outfile
+. ./$rpath_outfile
 rm -f $rpath_outfile
 
 # Evaluate \$$1, and substitute in LIBDIR for \$libdir
