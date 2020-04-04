@@ -11,7 +11,7 @@
 #ifndef PMIX_PMDL_ompi4_H
 #define PMIX_PMDL_ompi4_H
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
 
 #include "src/mca/pmdl/pmdl.h"

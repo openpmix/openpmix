@@ -31,14 +31,14 @@
 #ifndef PMIX_ENVIRON_H
 #define PMIX_ENVIRON_H
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
 #include <unistd.h>
 #ifdef HAVE_CRT_EXTERNS_H
 #include <crt_externs.h>
 #endif
 
-#include <pmix_common.h>
+#include "include/pmix_common.h"
 #include "src/class/pmix_list.h"
 
 BEGIN_C_DECLS

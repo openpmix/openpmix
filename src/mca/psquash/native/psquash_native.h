@@ -3,6 +3,7 @@
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserve
  *
+ * Copyright (c) 2020      Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -13,7 +14,7 @@
 #ifndef PMIX_NATIVE_H
 #define PMIX_NATIVE_H
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
 
 #include "src/mca/psquash/psquash.h"

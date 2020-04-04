@@ -15,7 +15,7 @@
  *                         reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2016-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,7 +24,7 @@
  */
 
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
@@ -40,7 +40,7 @@
 #include "src/mca/base/base.h"
 #include "src/mca/base/pmix_mca_base_component_repository.h"
 #include "src/mca/pdl/base/base.h"
-#include "pmix_common.h"
+#include "include/pmix_common.h"
 #include "src/class/pmix_hash_table.h"
 #include "src/util/basename.h"
 #include "src/util/show_help.h"

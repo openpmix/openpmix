@@ -3,6 +3,7 @@
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
  *
+ * Copyright (c) 2020      Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -10,9 +11,9 @@
  * $HEADER$
  */
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
-#include <pmix_common.h>
+#include "include/pmix_common.h"
 
 #include "src/include/pmix_socket_errno.h"
 #include "src/include/pmix_globals.h"

@@ -23,7 +23,7 @@
  *
  */
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 #include "src/include/pmix_globals.h"
 
 #ifdef HAVE_FCNTL_H

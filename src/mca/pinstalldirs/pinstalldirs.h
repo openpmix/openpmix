@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2006-2015 Los Alamos National Security, LLC.  All rights
  *                         reserved.
- * Copyright (c) 2016-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -13,7 +13,7 @@
 #ifndef PMIX_MCA_PINSTALLDIRS_PINSTALLDIRS_H
 #define PMIX_MCA_PINSTALLDIRS_PINSTALLDIRS_H
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
 #include "src/mca/mca.h"
 #include "src/mca/base/base.h"

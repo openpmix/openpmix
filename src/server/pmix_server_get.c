@@ -15,13 +15,13 @@
  * $HEADER$
  */
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
-#include <src/include/pmix_stdint.h>
-#include <src/include/pmix_socket_errno.h>
+#include "src/include/pmix_stdint.h"
+#include "src/include/pmix_socket_errno.h"
 
-#include <pmix_server.h>
-#include <pmix_rename.h>
+#include "include/pmix_server.h"
+#include "include/pmix_rename.h"
 #include "src/include/pmix_globals.h"
 
 #ifdef HAVE_STRING_H

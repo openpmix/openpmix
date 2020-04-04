@@ -3,6 +3,7 @@
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2020      Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -23,7 +24,7 @@
 #ifndef PMIX_PSQUASH_H
 #define PMIX_PSQUASH_H
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
 #include "src/mca/mca.h"
 #include "src/mca/base/pmix_mca_base_var.h"

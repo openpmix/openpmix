@@ -30,8 +30,8 @@
  * entire components just to query their version and parameters.
  */
 
-#include <src/include/pmix_config.h>
-#include <pmix_common.h>
+#include "src/include/pmix_config.h"
+#include "include/pmix_common.h"
 
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>

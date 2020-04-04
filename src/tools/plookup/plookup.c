@@ -13,7 +13,7 @@
  *                         All rights reserved.
  * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
- * Copyright (c) 2013-2018 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -30,7 +30,7 @@
 #include <time.h>
 #include <pthread.h>
 
-#include <pmix_tool.h>
+#include "include/pmix_tool.h"
 #include "src/mca/base/base.h"
 #include "src/mca/pinstalldirs/base/base.h"
 #include "src/threads/threads.h"

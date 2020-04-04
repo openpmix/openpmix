@@ -21,8 +21,8 @@
 #ifndef PMIX_SHOW_HELP_LEX_H
 #define PMIX_SHOW_HELP_LEX_H
 
-#include <src/include/pmix_config.h>
-#include <pmix_common.h>
+#include "src/include/pmix_config.h"
+#include "include/pmix_common.h"
 
 #ifdef malloc
 #undef malloc

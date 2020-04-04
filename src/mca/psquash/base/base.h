@@ -5,6 +5,7 @@
  *                         All rights reserved.
  * Copyright (c) 2020      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2020      Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -15,7 +16,7 @@
 #ifndef PMIX_PSQUASH_BASE_H_
 #define PMIX_PSQUASH_BASE_H_
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
 #ifdef HAVE_STRING_H
 #include <string.h>

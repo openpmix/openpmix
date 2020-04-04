@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2015-2018 Mellanox Technologies, Inc.
@@ -15,7 +15,7 @@
 #ifndef CLI_STAGES_H
 #define CLI_STAGES_H
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 #include <signal.h>
 #include <fcntl.h>
 #include <sys/types.h>

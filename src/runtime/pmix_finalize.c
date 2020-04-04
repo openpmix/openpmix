@@ -24,7 +24,7 @@
 
 /** @file **/
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
 #include "src/class/pmix_object.h"
 #include "src/client/pmix_client_ops.h"

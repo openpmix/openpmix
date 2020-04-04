@@ -9,7 +9,7 @@
  * $HEADER$
  */
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
 #include <string.h>
 #ifdef HAVE_UNISTD_H
@@ -29,7 +29,7 @@
 #endif
 #include <time.h>
 
-#include <pmix.h>
+#include "include/pmix.h"
 
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/base/pmix_mca_base_vari.h"

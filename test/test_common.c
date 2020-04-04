@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2017 Intel, Inc. All rights reserved.
+ * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * Copyright (c) 2015-2018 Mellanox Technologies, Inc.
@@ -12,8 +12,8 @@
  *
  */
 
-#include <src/include/pmix_config.h>
-#include <pmix_common.h>
+#include "src/include/pmix_config.h"
+#include "include/pmix_common.h"
 
 #include "test_common.h"
 #include <stdarg.h>

@@ -11,7 +11,7 @@
 #ifndef PMIX_PNET_simptest_H
 #define PMIX_PNET_simptest_H
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
 
 #include "src/mca/pnet/pnet.h"

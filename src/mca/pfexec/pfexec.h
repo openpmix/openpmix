@@ -30,7 +30,7 @@
 #define PMIX_MCA_PFEXEC_H
 
 #include "pmix_config.h"
-#include "pmix_common.h"
+#include "include/pmix_common.h"
 #include "src/include/types.h"
 
 #include "src/mca/mca.h"

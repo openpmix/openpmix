@@ -13,7 +13,7 @@
  *                         All rights reserved.
  * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
- * Copyright (c) 2013-2016 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
@@ -32,10 +32,10 @@
 #ifndef USOCK_H
 #define USOCK_H
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
-#include <src/include/types.h>
-#include <pmix_common.h>
+#include "src/include/types.h"
+#include "include/pmix_common.h"
 
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>

@@ -11,7 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007-2012 Los Alamos National Security, LLC.
  *                         All rights reserved.
- * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -19,7 +19,7 @@
  * $HEADER$
  */
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
 
 #ifdef HAVE_STRING_H
@@ -31,8 +31,8 @@
 #include <stdlib.h>
 #endif
 
-#include <pmix.h>
-#include <pmix_rename.h>
+#include "include/pmix.h"
+#include "include/pmix_rename.h"
 
 #include "src/mca/bfrops/bfrops.h"
 #include "src/include/pmix_globals.h"

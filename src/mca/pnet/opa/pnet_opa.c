@@ -9,7 +9,7 @@
  * $HEADER$
  */
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
 #include <string.h>
 #ifdef HAVE_UNISTD_H
@@ -31,7 +31,7 @@
 #include <opamgt/opamgt_sa.h>
 #endif
 
-#include <pmix_common.h>
+#include "include/pmix_common.h"
 
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/class/pmix_list.h"

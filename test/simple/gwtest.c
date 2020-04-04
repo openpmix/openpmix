@@ -13,7 +13,7 @@
  *                         All rights reserved.
  * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
- * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
@@ -25,10 +25,10 @@
  *
  */
 
-#include <src/include/pmix_config.h>
-#include <pmix_server.h>
-#include <src/include/types.h>
-#include <src/include/pmix_globals.h>
+#include "src/include/pmix_config.h"
+#include "include/pmix_server.h"
+#include "src/include/types.h"
+#include "src/include/pmix_globals.h"
 
 #include <stdio.h>
 #include <stdlib.h>

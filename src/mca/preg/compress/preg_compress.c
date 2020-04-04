@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016-2019 IBM Corporation.  All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
@@ -11,7 +11,7 @@
  * $HEADER$
  */
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
 #ifdef HAVE_STRING_H
 #include <string.h>
@@ -26,8 +26,8 @@
 #include <ctype.h>
 
 
-#include <pmix_common.h>
-#include <pmix.h>
+#include "include/pmix_common.h"
+#include "include/pmix.h"
 
 #include "src/include/pmix_socket_errno.h"
 #include "src/include/pmix_globals.h"

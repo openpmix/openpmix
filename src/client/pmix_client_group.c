@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
@@ -15,12 +15,12 @@
  * $HEADER$
  */
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
-#include <src/include/pmix_stdint.h>
+#include "src/include/pmix_stdint.h"
 
-#include <pmix.h>
-#include <pmix_rename.h>
+#include "include/pmix.h"
+#include "include/pmix_rename.h"
 
 #include "src/include/pmix_globals.h"
 #include "src/mca/gds/base/base.h"

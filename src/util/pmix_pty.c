@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2018      Cisco Systems, Inc.  All rights reserved
- * Copyright (c) 2019      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -46,7 +46,7 @@
  * SUCH DAMAGE.
  */
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
 #ifdef HAVE_SYS_CDEFS_H
 # include <sys/cdefs.h>

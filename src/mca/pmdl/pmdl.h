@@ -26,8 +26,8 @@
 #ifndef PMIX_PMDL_H
 #define PMIX_PMDL_H
 
-#include <src/include/pmix_config.h>
-#include <pmix_sched.h>
+#include "src/include/pmix_config.h"
+#include "include/pmix_sched.h"
 
 #include "src/class/pmix_list.h"
 #include "src/mca/mca.h"

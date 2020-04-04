@@ -32,7 +32,7 @@
 #ifndef PMIX_IOF_H
 #define PMIX_IOF_H
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>

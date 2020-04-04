@@ -31,9 +31,9 @@
 #ifndef PMIX_PTL_H_
 #define PMIX_PTL_H_
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
-#include <src/include/types.h>
+#include "src/include/types.h"
 
 #include "src/mca/mca.h"
 #include "src/mca/base/pmix_mca_base_var.h"

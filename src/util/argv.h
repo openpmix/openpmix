@@ -13,7 +13,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007      Voltaire. All rights reserved.
  * Copyright (c) 2012      Los Alamos National Security, LLC. All rights reserved.
- * Copyright (c) 2015-2016 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  *
  * Copyright (c) 2015-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
@@ -34,14 +34,14 @@
 #ifndef PMIX_ARGV_H
 #define PMIX_ARGV_H
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
 
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
 
-#include <pmix_common.h>
+#include "include/pmix_common.h"
 
 BEGIN_C_DECLS
 

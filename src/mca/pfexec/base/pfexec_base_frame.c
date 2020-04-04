@@ -25,7 +25,7 @@
 
 
 #include "pmix_config.h"
-#include "pmix_common.h"
+#include "include/pmix_common.h"
 #include "src/include/types.h"
 
 #include <string.h>

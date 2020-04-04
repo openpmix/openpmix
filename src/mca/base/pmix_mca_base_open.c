@@ -21,7 +21,7 @@
  * $HEADER$
  */
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -38,7 +38,7 @@
 #include "src/mca/mca.h"
 #include "src/mca/base/base.h"
 #include "src/mca/base/pmix_mca_base_component_repository.h"
-#include "pmix_common.h"
+#include "include/pmix_common.h"
 #include "src/util/pmix_environ.h"
 
 /*

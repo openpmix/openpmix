@@ -11,7 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
@@ -21,7 +21,7 @@
  * $HEADER$
  */
 #include "pmix_config.h"
-#include "pmix_common.h"
+#include "include/pmix_common.h"
 
 #include <string.h>
 #include <stdlib.h>

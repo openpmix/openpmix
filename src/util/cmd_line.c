@@ -39,7 +39,7 @@
 #include "src/util/pmix_environ.h"
 
 #include "src/mca/base/pmix_mca_base_var.h"
-#include "pmix_common.h"
+#include "include/pmix_common.h"
 
 
 /*

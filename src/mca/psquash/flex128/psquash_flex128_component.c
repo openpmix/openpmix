@@ -1,6 +1,7 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2020      Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -8,8 +9,8 @@
  * $HEADER$
  */
 
-#include <src/include/pmix_config.h>
-#include "pmix_common.h"
+#include "src/include/pmix_config.h"
+#include "include/pmix_common.h"
 
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/psquash/psquash.h"

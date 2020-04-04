@@ -58,9 +58,9 @@
 #include <libutil.h>
 #endif
 
-#include <pmix.h>
-#include <pmix_server.h>
-#include "pmix_common.h"
+#include "include/pmix.h"
+#include "include/pmix_server.h"
+#include "include/pmix_common.h"
 
 #include "src/include/pmix_stdint.h"
 #include "src/include/pmix_globals.h"
