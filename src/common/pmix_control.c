@@ -12,15 +12,15 @@
  *
  * $HEADER$
  */
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
-#include <src/include/pmix_stdint.h>
-#include <src/include/pmix_socket_errno.h>
+#include "src/include/pmix_stdint.h"
+#include "src/include/pmix_socket_errno.h"
 
-#include <pmix.h>
-#include <pmix_common.h>
-#include <pmix_server.h>
-#include <pmix_rename.h>
+#include "include/pmix.h"
+#include "include/pmix_common.h"
+#include "include/pmix_server.h"
+#include "include/pmix_rename.h"
 
 #include "src/threads/threads.h"
 #include "src/util/argv.h"

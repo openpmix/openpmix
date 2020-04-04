@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2018      Intel, Inc. All rights reserved.
+ * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -14,8 +14,8 @@
  * entire components just to query their version and parameters.
  */
 
-#include <src/include/pmix_config.h>
-#include "pmix_common.h"
+#include "src/include/pmix_config.h"
+#include "include/pmix_common.h"
 
 #include "src/util/argv.h"
 #include "src/mca/pnet/pnet.h"

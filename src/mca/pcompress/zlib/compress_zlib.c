@@ -7,7 +7,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018      Amazon.com, Inc. or its affiliates.  All Rights reserved.
- * Copyright (c) 2019      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -32,7 +32,7 @@
 #include "src/util/pmix_environ.h"
 #include "src/util/printf.h"
 
-#include "pmix_common.h"
+#include "include/pmix_common.h"
 #include "src/util/basename.h"
 
 #include "src/mca/pcompress/base/base.h"

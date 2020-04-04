@@ -4,7 +4,7 @@
  *
  * Copyright (c) 2015-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2018-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -26,8 +26,8 @@
 #ifndef PMIX_PNET_H
 #define PMIX_PNET_H
 
-#include <src/include/pmix_config.h>
-#include <pmix_sched.h>
+#include "src/include/pmix_config.h"
+#include "include/pmix_sched.h"
 
 #include "src/class/pmix_list.h"
 #include "src/mca/mca.h"

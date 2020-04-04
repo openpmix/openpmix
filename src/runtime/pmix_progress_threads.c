@@ -12,7 +12,7 @@
  * $HEADER$
  */
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>

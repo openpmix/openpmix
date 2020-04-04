@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include <pmix.h>
+#include "include/pmix.h"
 #include <sched.h>
 
 static pmix_proc_t allproc = {0};

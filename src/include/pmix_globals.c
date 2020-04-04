@@ -17,12 +17,12 @@
 
 /* THIS FILE IS INCLUDED SOLELY TO INSTANTIATE AND INIT/FINALIZE THE GLOBAL CLASSES */
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
-#include <pmix_common.h>
-#include <src/include/types.h>
-#include <src/include/pmix_stdint.h>
-#include <src/include/pmix_socket_errno.h>
+#include "include/pmix_common.h"
+#include "src/include/types.h"
+#include "src/include/pmix_stdint.h"
+#include "src/include/pmix_socket_errno.h"
 
 #include "src/include/pmix_globals.h"
 
@@ -45,7 +45,7 @@
 #include <dirent.h>
 #endif  /* HAVE_DIRENT_H */
 
-#include <pmix_common.h>
+#include "include/pmix_common.h"
 
 #include "src/mca/bfrops/bfrops_types.h"
 #include "src/class/pmix_hash_table.h"

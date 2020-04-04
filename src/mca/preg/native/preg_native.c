@@ -11,7 +11,7 @@
  * $HEADER$
  */
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
 #ifdef HAVE_STRING_H
 #include <string.h>
@@ -26,8 +26,8 @@
 #include <ctype.h>
 
 
-#include <pmix_common.h>
-#include <pmix.h>
+#include "include/pmix_common.h"
+#include "include/pmix.h"
 
 #include "src/include/pmix_socket_errno.h"
 #include "src/include/pmix_globals.h"

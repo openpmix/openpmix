@@ -22,11 +22,11 @@
 #ifndef PMIX_EVENT_H
 #define PMIX_EVENT_H
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 #include "src/include/types.h"
 #include PMIX_EVENT_HEADER
 
-#include <pmix_common.h>
+#include "include/pmix_common.h"
 #include "src/class/pmix_list.h"
 #include "src/util/output.h"
 

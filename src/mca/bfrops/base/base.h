@@ -26,7 +26,7 @@
 #ifndef PMIX_BFROP_BASE_H_
 #define PMIX_BFROP_BASE_H_
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
 
 #ifdef HAVE_SYS_TIME_H

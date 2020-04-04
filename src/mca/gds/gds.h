@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2016-2018 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -14,10 +14,10 @@
 #ifndef PMIX_GDS_H
 #define PMIX_GDS_H
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
 
-#include <pmix_common.h>
+#include "include/pmix_common.h"
 #include "src/mca/mca.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/base/pmix_mca_base_framework.h"

@@ -19,7 +19,7 @@
  * $HEADER$
  */
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
 
 #ifdef HAVE_STRING_H
@@ -31,7 +31,7 @@
 #include <stdlib.h>
 #endif
 
-#include <pmix_common.h>
+#include "include/pmix_common.h"
 #include "src/include/pmix_globals.h"
 #include "src/util/error.h"
 

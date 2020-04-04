@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  *
  * $COPYRIGHT$
  *
@@ -11,7 +11,7 @@
 #ifndef PMIX_PNET_test_H
 #define PMIX_PNET_test_H
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
 
 #include "src/mca/pnet/pnet.h"

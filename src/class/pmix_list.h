@@ -13,7 +13,7 @@
  * Copyright (c) 2007      Voltaire All rights reserved.
  * Copyright (c) 2013      Los Alamos National Security, LLC. All rights
  *                         reserved.
- * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -67,7 +67,7 @@
 #ifndef PMIX_LIST_H
 #define PMIX_LIST_H
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 #include <stdio.h>
 #include <stdlib.h>
 #if HAVE_STDBOOL_H

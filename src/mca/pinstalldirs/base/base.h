@@ -3,7 +3,7 @@
  *                         reserved.
  * Copyright (c) 2007-2010 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2010      Sandia National Laboratories. All rights reserved.
- * Copyright (c) 2016-2017 Intel, Inc. All rights reserved.
+ * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -15,7 +15,7 @@
 #ifndef PMIX_PINSTALLDIRS_BASE_H
 #define PMIX_PINSTALLDIRS_BASE_H
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 #include "src/mca/base/pmix_mca_base_framework.h"
 #include "src/mca/pinstalldirs/pinstalldirs.h"
 

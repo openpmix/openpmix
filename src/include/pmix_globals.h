@@ -25,11 +25,11 @@
 #ifndef PMIX_GLOBALS_H
 #define PMIX_GLOBALS_H
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
-#include <pmix_common.h>
+#include "include/pmix_common.h"
 
-#include <src/include/types.h>
+#include "src/include/types.h"
 
 #include <unistd.h>
 #ifdef HAVE_SYS_TYPES_H
@@ -37,8 +37,8 @@
 #endif
 #include PMIX_EVENT_HEADER
 
-#include <pmix.h>
-#include <pmix_common.h>
+#include "include/pmix.h"
+#include "include/pmix_common.h"
 
 #include "src/class/pmix_hash_table.h"
 #include "src/class/pmix_list.h"

@@ -26,8 +26,8 @@
  * entire components just to query their version and parameters.
  */
 
-#include <src/include/pmix_config.h>
-#include "pmix_common.h"
+#include "src/include/pmix_config.h"
+#include "include/pmix_common.h"
 
 #include "src/util/argv.h"
 #include "src/mca/pnet/pnet.h"

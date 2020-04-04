@@ -16,7 +16,7 @@ dnl Copyright (c) 2012-2017 Los Alamos National Security, LLC. All rights
 dnl                         reserved.
 dnl Copyright (c) 2015-2019 Research Organization for Information Science
 dnl                         and Technology (RIST).  All rights reserved.
-dnl Copyright (c) 2018-2019 Intel, Inc.  All rights reserved.
+dnl Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -120,6 +120,28 @@ AC_DEFUN([PMIX_PROG_CC_C11],[
 ])
 
 
+# PMIX_CHECK_CC_IQUOTE()
+# ----------------------
+# Check if the compiler supports the -iquote option. This options
+# removes the specified directory from the search path when using
+# #include <>. This check works around an issue caused by C++20
+# which added a <version> header. This conflicts with the
+# VERSION file at the base of our source directory on case-
+# insensitive filesystems.
+AC_DEFUN([PMIX_CHECK_CC_IQUOTE],[
+    PMIX_VAR_SCOPE_PUSH([pmix_check_cc_iquote_CFLAGS_save])
+    pmix_check_cc_iquote_CFLAGS_save=${CFLAGS}
+    CFLAGS="${CFLAGS} -iquote ."
+    AC_MSG_CHECKING([for $CC option to add a directory only to the search path for the quote form of include])
+    AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]],[])],
+              [pmix_cc_iquote="-iquote"],
+              [pmix_cc_iquote="-I"])
+    CFLAGS=${pmix_check_cc_iquote_CFLAGS_save}
+    PMIX_VAR_SCOPE_POP
+    AC_MSG_RESULT([$pmix_cc_iquote])
+])
+
+
 # PMIX_SETUP_CC()
 # ---------------
 # Do everything required to setup the C compiler.  Safe to AC_REQUIRE
@@ -141,6 +163,7 @@ AC_DEFUN([PMIX_SETUP_CC],[
     AC_SUBST([WRAPPER_CC])
 
     PMIX_PROG_CC_C11
+    PMIX_CHECK_CC_IQUOTE
 
     if test $pmix_cv_c11_supported = no ; then
         # It is not currently an error if C11 support is not available. Uncomment the

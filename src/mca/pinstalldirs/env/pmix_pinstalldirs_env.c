@@ -2,7 +2,7 @@
  * Copyright (c) 2006-2007 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2016      Intel, Inc. All rights reserved
+ * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -10,12 +10,12 @@
  * $HEADER$
  */
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
 #include <stdlib.h>
 #include <string.h>
 
-#include "pmix_common.h"
+#include "include/pmix_common.h"
 #include "src/mca/pinstalldirs/pinstalldirs.h"
 
 static int pinstalldirs_env_open(void);

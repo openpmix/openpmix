@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2015 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
@@ -15,15 +15,15 @@
  * $HEADER$
  */
 
-#include <src/include/pmix_config.h>
-#include <pmix_sched.h>
+#include "src/include/pmix_config.h"
+#include "include/pmix_sched.h"
 
-#include <src/include/types.h>
-#include <src/include/pmix_stdint.h>
-#include <src/include/pmix_socket_errno.h>
+#include "src/include/types.h"
+#include "src/include/pmix_stdint.h"
+#include "src/include/pmix_socket_errno.h"
 
-#include <pmix_server.h>
-#include <pmix_rename.h>
+#include "include/pmix_server.h"
+#include "include/pmix_rename.h"
 #include "src/include/pmix_globals.h"
 
 #ifdef HAVE_STRING_H

@@ -873,10 +873,12 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         # rather than have successive assignments to these shell
         # variables, lest the $(foo) names try to get evaluated here.
         # Yuck!
-        CPPFLAGS="-I$PMIX_top_builddir -I$PMIX_top_srcdir -I$PMIX_top_srcdir/src -I$PMIX_top_builddir/include -I$PMIX_top_srcdir/include $CPPFLAGS"
+        cpp_includes="$PMIX_top_builddir $PMIX_top_srcdir $PMIX_top_srcdir/src $PMIX_top_builddir/include"
     else
-        CPPFLAGS="-I$PMIX_top_srcdir -I$PMIX_top_srcdir/src -I$PMIX_top_srcdir/include $CPPFLAGS"
+        cpp_includes="$PMIX_top_srcdir $PMIX_top_srcdir/src"
     fi
+    CPP_INCLUDES="$(echo $cpp_includes | $SED 's/[[^ \]]* */'"$pmix_cc_iquote"'&/g')"
+    CPPFLAGS="$CPP_INCLUDES -I$PMIX_top_srcdir/include $CPPFLAGS"
 
     ############################################################################
     # final wrapper compiler config

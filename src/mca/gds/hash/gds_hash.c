@@ -13,7 +13,7 @@
  * $HEADER$
  */
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
 #include <string.h>
 #ifdef HAVE_UNISTD_H
@@ -30,7 +30,7 @@
 #endif
 #include <time.h>
 
-#include <pmix_common.h>
+#include "include/pmix_common.h"
 
 #include "src/include/pmix_globals.h"
 #include "src/class/pmix_list.h"

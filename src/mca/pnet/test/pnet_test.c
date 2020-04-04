@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  *
  * $COPYRIGHT$
@@ -9,7 +9,7 @@
  * $HEADER$
  */
 
-#include <src/include/pmix_config.h>
+#include "src/include/pmix_config.h"
 
 #include <string.h>
 #ifdef HAVE_UNISTD_H
@@ -26,7 +26,7 @@
 #endif
 #include <time.h>
 
-#include <pmix_common.h>
+#include "include/pmix_common.h"
 
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/include/pmix_socket_errno.h"

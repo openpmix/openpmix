@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * Copyright (c) 2015-2019 Research Organization for Information Science
@@ -62,18 +62,6 @@
 #if defined(c_plusplus) || defined(__cplusplus)
 extern "C" {
 #endif
-
-/* declare a convenience macro for checking keys */
-#define PMIX_CHECK_KEY(a, b) \
-    (0 == strncmp((a)->key, (b), PMIX_MAX_KEYLEN))
-
-/* define a convenience macro for checking nspaces */
-#define PMIX_CHECK_NSPACE(a, b) \
-    (0 == strncmp((a), (b), PMIX_MAX_NSLEN))
-
-/* define a convenience macro for checking names */
-#define PMIX_CHECK_PROCID(a, b) \
-    (PMIX_CHECK_NSPACE((a)->nspace, (b)->nspace) && ((a)->rank == (b)->rank || (PMIX_RANK_WILDCARD == (a)->rank || PMIX_RANK_WILDCARD == (b)->rank)))
 
 /* expose some functions that are resolved in the
  * PMIx library, but part of a header that
