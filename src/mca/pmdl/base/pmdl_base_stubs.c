@@ -34,7 +34,7 @@ pmix_status_t pmix_pmdl_base_harvest_envars(char *nspace,
 {
     pmix_pmdl_base_active_module_t *active;
     pmix_status_t rc;
-    pmix_namespace_t *nptr, *ns;
+    pmix_namespace_t *nptr = NULL, *ns;
     char *params[2] = {"PMIX_MCA_", NULL};
     char **priors = NULL;
 
