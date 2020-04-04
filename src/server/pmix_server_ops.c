@@ -2334,21 +2334,11 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
     for (n=0; n < ncodes; n++) {
         found = false;
         PMIX_LIST_FOREACH(reginfo, &pmix_server_globals.events, pmix_regevents_info_t) {
-            if (NULL == codes) {
-                if (PMIX_MAX_ERR_CONSTANT == reginfo->code) {
-                    /* both are default handlers */
-                    found = true;
-                    break;
-                } else {
-                    continue;
-                }
-            } else {
-                if (PMIX_MAX_ERR_CONSTANT == reginfo->code) {
-                    continue;
-                } else if (codes[n] == reginfo->code) {
-                    found = true;
-                    break;
-                }
+            if (PMIX_MAX_ERR_CONSTANT == reginfo->code) {
+                continue;
+            } else if (codes[n] == reginfo->code) {
+                found = true;
+                break;
             }
         }
         if (found) {
@@ -2374,11 +2364,7 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
                 rc = PMIX_ERR_NOMEM;
                 goto cleanup;
             }
-            if (NULL == codes) {
-                reginfo->code = PMIX_MAX_ERR_CONSTANT;
-            } else {
-                reginfo->code = codes[n];
-            }
+            reginfo->code = codes[n];
             pmix_list_append(&pmix_server_globals.events, &reginfo->super);
             prev = PMIX_NEW(pmix_peer_events_info_t);
             if (NULL == prev) {

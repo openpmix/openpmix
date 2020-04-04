@@ -904,6 +904,11 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name,
                     for (j=0; j < endtaglen && k < PMIX_IOF_BASE_TAGGED_OUT_MAX-1; j++) {
                         output->data[k++] = endtag[j];
                     }
+                    if (k == PMIX_IOF_BASE_TAGGED_OUT_MAX) {
+                        /* out of space */
+                        PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
+                        goto process;
+                    }
                     /* move the <cr> over */
                     output->data[k++] = '\n';
                     /* if this isn't the end of the data buffer, add a new start tag */
