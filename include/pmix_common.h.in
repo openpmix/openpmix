@@ -259,6 +259,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_NPROC_OFFSET                   "pmix.offset"           // (pmix_rank_t) starting global rank of this job
 #define PMIX_LOCAL_RANK                     "pmix.lrank"            // (uint16_t) rank on this node within this job
 #define PMIX_NODE_RANK                      "pmix.nrank"            // (uint16_t) rank on this node spanning all jobs
+#define PMIX_NUMA_RANK                      "pmix.nurank"           // (uint16_t) rank on this proc's NUMA region within this job
 #define PMIX_LOCALLDR                       "pmix.lldr"             // (pmix_rank_t) lowest rank on this node within this job
 #define PMIX_APPLDR                         "pmix.aldr"             // (pmix_rank_t) lowest rank in this app within this job
 #define PMIX_PROC_PID                       "pmix.ppid"             // (pid_t) pid of specified proc
