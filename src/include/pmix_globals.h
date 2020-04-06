@@ -218,7 +218,7 @@ PMIX_CLASS_DECLARATION(pmix_rank_info_t);
 
 
 /* define a very simple caddy for dealing with pmix_info_t
- * objects when transferring portions of arrays */
+ * and pmix_query_t objects when transferring portions of arrays */
 typedef struct {
     pmix_list_item_t super;
     pmix_info_t *info;
@@ -231,6 +231,13 @@ typedef struct {
     pmix_info_t info;
 } pmix_infolist_t;
 PMIX_CLASS_DECLARATION(pmix_infolist_t);
+
+typedef struct {
+    pmix_list_item_t super;
+    pmix_query_t query;
+} pmix_querylist_t;
+PMIX_CLASS_DECLARATION(pmix_querylist_t);
+
 
 /* object for tracking peers - each peer can have multiple
  * connections. This can occur if the initial app executes
@@ -274,6 +281,10 @@ typedef struct {
 } pmix_iof_req_t;
 PMIX_CLASS_DECLARATION(pmix_iof_req_t);
 
+typedef void (*pmix_pstrg_query_cbfunc_t)(pmix_status_t status,
+                                          pmix_list_t *results,
+                                          void *cbdata);
+
 
 /* caddy for query requests */
 typedef struct {
@@ -288,12 +299,15 @@ typedef struct {
     pmix_info_t *info;
     size_t ninfo;
     pmix_list_t results;
+    size_t nreplies;
+    size_t nrequests;
     pmix_byte_object_t bo;
     pmix_info_cbfunc_t cbfunc;
     pmix_value_cbfunc_t valcbfunc;
     pmix_release_cbfunc_t relcbfunc;
     pmix_credential_cbfunc_t credcbfunc;
     pmix_validation_cbfunc_t validcbfunc;
+    pmix_pstrg_query_cbfunc_t stqcbfunc;
     void *cbdata;
 } pmix_query_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_query_caddy_t);

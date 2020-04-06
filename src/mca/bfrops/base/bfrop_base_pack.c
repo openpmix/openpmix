@@ -1380,3 +1380,35 @@ pmix_status_t pmix_bfrops_base_pack_jobstate(pmix_pointer_array_t *regtypes,
     return ret;
 }
 
+pmix_status_t pmix_bfrops_base_pack_dimval(pmix_pointer_array_t *regtypes,
+                                           pmix_buffer_t *buffer, const void *src,
+                                           int32_t num_vals, pmix_data_type_t type)
+{
+    pmix_dim_value_t *ptr = (pmix_dim_value_t*)src;
+    int i;
+    pmix_status_t ret;
+
+    if (NULL == regtypes) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (PMIX_DIM_VALUE != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    for (i=0; i < num_vals; ++i) {
+        /* pack the value */
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].dval, 1, PMIX_DOUBLE, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        /* pack the units */
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].units, 1, PMIX_UINT16, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+    }
+
+    return PMIX_SUCCESS;
+}

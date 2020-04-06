@@ -104,7 +104,7 @@ src/tools/pevent/pevent
 src/tools/pmix_info/pmix_info
 src/tools/plookup/plookup
 src/tools/pps/pps
-src/tools/ptop/ptop
+src/tools/pquery/pquery
 src/tools/wrapper/generic_wrapper.1
 src/tools/wrapper/pmix.pc
 src/tools/wrapper/pmix_wrapper

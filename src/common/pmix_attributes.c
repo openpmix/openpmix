@@ -344,6 +344,7 @@ static char *server_fns[] = {
     "PMIx_Connect",
     "PMIx_Connect_nb",
     "PMIx_Register_event_handler",
+    "PMIx_Query_info",
     "PMIx_Query_info_nb",
     "PMIx_Job_control",
     "PMIx_Job_control_nb"
@@ -464,11 +465,33 @@ static pmix_regattr_input_t server_attributes[] = {
         {.name = "PMIX_NSPACE", .string = PMIX_NSPACE, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
         {.name = "PMIX_RANK", .string = PMIX_RANK, .type = PMIX_PROC_RANK, .description = (char *[]){"UNSIGNED INT32", NULL}},
         {.name = "PMIX_HOSTNAME", .string = PMIX_HOSTNAME, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
+        {.name = "PMIX_QUERY_STORAGE_LIST", .string = PMIX_QUERY_STORAGE_LIST, .type = PMIX_STRING, .description = (char *[]){"comma-delimited list of storage identifiers", NULL}},
+        {.name = "PMIX_STORAGE_CAPACITY", .string = PMIX_STORAGE_CAPACITY, .type = PMIX_FLOAT, .description = (char *[]){"Floating point value in Megabytes", NULL}},
+        {.name = "PMIX_STORAGE_FREE", .string = PMIX_STORAGE_FREE, .type = PMIX_FLOAT, .description = (char *[]){"Currently unused storage capacity", NULL}},
+        {.name = "PMIX_STORAGE_AVAIL", .string = PMIX_STORAGE_AVAIL, .type = PMIX_FLOAT, .description = (char *[]){"Storage capacity available to caller", NULL}},
+        {.name = "PMIX_STORAGE_BW", .string = PMIX_STORAGE_BW, .type = PMIX_FLOAT, .description = (char *[]){"Total storage system bandwidth", NULL}},
+        {.name = "PMIX_STORAGE_AVAIL_BW", .string = PMIX_STORAGE_AVAIL_BW, .type = PMIX_FLOAT, .description = (char *[]){"Storage system bandwidth available to caller", NULL}},
+        {.name = "PMIX_STORAGE_ID", .string = PMIX_STORAGE_ID, .type = PMIX_FLOAT, .description = (char *[]){"Storage ID", NULL}},
+        {.name = ""},
+    // query_nb
+        {.name = "PMIX_QUERY_REFRESH_CACHE", .string = PMIX_QUERY_REFRESH_CACHE, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
+        {.name = "PMIX_PROCID", .string = PMIX_PROCID, .type = PMIX_PROC, .description = (char *[]){"pmix_proc_t*", NULL}},
+        {.name = "PMIX_NSPACE", .string = PMIX_NSPACE, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
+        {.name = "PMIX_RANK", .string = PMIX_RANK, .type = PMIX_PROC_RANK, .description = (char *[]){"UNSIGNED INT32", NULL}},
+        {.name = "PMIX_HOSTNAME", .string = PMIX_HOSTNAME, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
+        {.name = "PMIX_QUERY_STORAGE_LIST", .string = PMIX_QUERY_STORAGE_LIST, .type = PMIX_STRING, .description = (char *[]){"comma-delimited list of storage identifiers", NULL}},
+        {.name = "PMIX_STORAGE_CAPACITY", .string = PMIX_STORAGE_CAPACITY, .type = PMIX_FLOAT, .description = (char *[]){"Total storage capacity", NULL}},
+        {.name = "PMIX_STORAGE_FREE", .string = PMIX_STORAGE_FREE, .type = PMIX_FLOAT, .description = (char *[]){"Currently unused storage capacity", NULL}},
+        {.name = "PMIX_STORAGE_AVAIL", .string = PMIX_STORAGE_AVAIL, .type = PMIX_FLOAT, .description = (char *[]){"Storage capacity available to caller", NULL}},
+        {.name = "PMIX_STORAGE_BW", .string = PMIX_STORAGE_BW, .type = PMIX_FLOAT, .description = (char *[]){"Total storage system bandwidth", NULL}},
+        {.name = "PMIX_STORAGE_AVAIL_BW", .string = PMIX_STORAGE_AVAIL_BW, .type = PMIX_FLOAT, .description = (char *[]){"Storage system bandwidth available to caller", NULL}},
+        {.name = "PMIX_STORAGE_ID", .string = PMIX_STORAGE_ID, .type = PMIX_FLOAT, .description = (char *[]){"Storage ID", NULL}},
         {.name = ""},
     // job_ctrl
         {.name = "PMIX_REGISTER_CLEANUP", .string = PMIX_REGISTER_CLEANUP, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
         {.name = "PMIX_REGISTER_CLEANUP_DIR", .string = PMIX_REGISTER_CLEANUP_DIR, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
         {.name = "PMIX_CLEANUP_RECURSIVE", .string = PMIX_CLEANUP_RECURSIVE, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
+        {.name = "PMIX_CLEANUP_EMPTY", .string = PMIX_CLEANUP_EMPTY, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
         {.name = "PMIX_CLEANUP_IGNORE", .string = PMIX_CLEANUP_IGNORE, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
         {.name = "PMIX_CLEANUP_LEAVE_TOPDIR", .string = PMIX_CLEANUP_LEAVE_TOPDIR, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
         {.name = ""},
@@ -476,9 +499,12 @@ static pmix_regattr_input_t server_attributes[] = {
         {.name = "PMIX_REGISTER_CLEANUP", .string = PMIX_REGISTER_CLEANUP, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
         {.name = "PMIX_REGISTER_CLEANUP_DIR", .string = PMIX_REGISTER_CLEANUP_DIR, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
         {.name = "PMIX_CLEANUP_RECURSIVE", .string = PMIX_CLEANUP_RECURSIVE, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
+        {.name = "PMIX_CLEANUP_EMPTY", .string = PMIX_CLEANUP_EMPTY, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
         {.name = "PMIX_CLEANUP_IGNORE", .string = PMIX_CLEANUP_IGNORE, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
         {.name = "PMIX_CLEANUP_LEAVE_TOPDIR", .string = PMIX_CLEANUP_LEAVE_TOPDIR, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
         {.name = ""},
+    // monitoring
+    // storage
 };
 
 /*****    REGISTER SERVER ATTRS    *****/
@@ -807,7 +833,7 @@ PMIX_EXPORT void pmix_attrs_query_support(int sd, short args, void *cbdata)
                 /* if I am a server, add in my fns */
                 if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
                     _get_fns(&kyresults, &cd->queries[n].qualifiers[m], &server_attrs);
-                 } else {
+                } else {
                     /* we need to ask our server for them */
                     PMIX_LIST_DESTRUCT(&kyresults);
                     goto query;
@@ -931,6 +957,77 @@ PMIX_EXPORT void pmix_attrs_query_support(int sd, short args, void *cbdata)
     }
 
     PMIX_RELEASE(cd);
+}
+
+/*****   LOCATE A GIVEN ATTRIBUTE    *****/
+PMIX_EXPORT const char* pmix_attributes_lookup(char *name)
+{
+    pmix_attribute_trk_t *fnptr;
+    size_t n;
+
+    /* start by searching the client list */
+    PMIX_LIST_FOREACH(fnptr, &client_attrs, pmix_attribute_trk_t) {
+        for (n=0; n < fnptr->nattrs; n++) {
+            if (0 == strcasecmp(fnptr->attrs[n].name, name)) {
+                return fnptr->attrs[n].string;
+            }
+        }
+    }
+
+    /* now check the server list */
+    PMIX_LIST_FOREACH(fnptr, &server_attrs, pmix_attribute_trk_t) {
+        for (n=0; n < fnptr->nattrs; n++) {
+            if (0 == strcasecmp(fnptr->attrs[n].name, name)) {
+                return fnptr->attrs[n].string;
+            }
+        }
+    }
+
+    /* now check the tool list */
+    PMIX_LIST_FOREACH(fnptr, &tool_attrs, pmix_attribute_trk_t) {
+        for (n=0; n < fnptr->nattrs; n++) {
+            if (0 == strcasecmp(fnptr->attrs[n].name, name)) {
+                return fnptr->attrs[n].string;
+            }
+        }
+    }
+
+    return NULL;
+}
+
+PMIX_EXPORT const char* pmix_attributes_reverse_lookup(char *name)
+{
+    pmix_attribute_trk_t *fnptr;
+    size_t n;
+
+    /* start by searching the client list */
+    PMIX_LIST_FOREACH(fnptr, &client_attrs, pmix_attribute_trk_t) {
+        for (n=0; n < fnptr->nattrs; n++) {
+            if (0 == strcasecmp(fnptr->attrs[n].string, name)) {
+                return fnptr->attrs[n].name;
+            }
+        }
+    }
+
+    /* now check the server list */
+    PMIX_LIST_FOREACH(fnptr, &server_attrs, pmix_attribute_trk_t) {
+        for (n=0; n < fnptr->nattrs; n++) {
+            if (0 == strcasecmp(fnptr->attrs[n].string, name)) {
+                return fnptr->attrs[n].name;
+            }
+        }
+    }
+
+    /* now check the tool list */
+    PMIX_LIST_FOREACH(fnptr, &tool_attrs, pmix_attribute_trk_t) {
+        for (n=0; n < fnptr->nattrs; n++) {
+            if (0 == strcasecmp(fnptr->attrs[n].string, name)) {
+                return fnptr->attrs[n].name;
+            }
+        }
+    }
+
+    return NULL;
 }
 
 /*****   PRINT QUERY FUNCTIONS RESULTS   *****/

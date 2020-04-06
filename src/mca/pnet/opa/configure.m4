@@ -12,7 +12,7 @@
 #                         All rights reserved.
 # Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2013      Sandia National Laboratories.  All rights reserved.
-# Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
+# Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -99,8 +99,13 @@ AC_DEFUN([MCA_pmix_pnet_opa_CONFIG],[
     LIBS="$pmix_check_opamgt_save_LIBS"
 
     AS_IF([test "$pnet_opa_happy" = "yes"],
-          [$1],
-          [$2])
+          [PMIX_SUMMARY_ADD([[Optional Support]],[[OmniPath]], [pnet_opa], [yes ($pmix_check_psm2_dir)])
+           AS_IF([test "$pmix_check_opamgt_happy" = "yes"],
+                 [PMIX_SUMMARY_ADD([[Optional Support]],[[OmniPath Mgmt]], [pnet_opa_mgmt], [yes ($pmix_check_opamgt_dir)])],
+                 [PMIX_SUMMARY_ADD([[Optional Support]],[[OmniPath Mgmt]], [pnet_opa_mgmt], [no])])
+           $1],
+          [PMIX_SUMMARY_ADD([[Optional Support]],[[OmniPath]], [pnet_opa], [no])
+           $2])
 
     # substitute in the things needed to build psm2
     AC_SUBST([pnet_opa_CFLAGS])

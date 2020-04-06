@@ -62,6 +62,7 @@
 #include "src/mca/pfexec/base/base.h"
 #include "src/mca/pmdl/base/base.h"
 #include "src/mca/pnet/base/base.h"
+#include "src/mca/pstrg/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/mca/psec/psec.h"
 #include "src/include/pmix_globals.h"
@@ -904,6 +905,15 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
             return rc;
         }
 
+        /* open the pstrg framework */
+        if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pstrg_base_framework, 0))) {
+            PMIX_RELEASE_THREAD(&pmix_global_lock);
+            return rc;
+        }
+        if (PMIX_SUCCESS != (rc = pmix_pstrg_base_select())) {
+            PMIX_RELEASE_THREAD(&pmix_global_lock);
+            return rc;
+        }
         /* start listening for connections */
         if (PMIX_SUCCESS != pmix_ptl_base_start_listening(info, ninfo)) {
             pmix_show_help("help-pmix-server.txt", "listener-thread-start", true);
@@ -1377,6 +1387,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
         (void)pmix_mca_base_framework_close(&pmix_pfexec_base_framework);
         (void)pmix_mca_base_framework_close(&pmix_pmdl_base_framework);
         (void)pmix_mca_base_framework_close(&pmix_pnet_base_framework);
+        (void)pmix_mca_base_framework_close(&pmix_pstrg_base_framework);
     }
 
     pmix_rte_finalize();

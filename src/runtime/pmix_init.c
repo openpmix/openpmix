@@ -105,6 +105,7 @@ int pmix_rte_init(uint32_t type,
     char *error = NULL, *evar;
     size_t n;
     char hostname[PMIX_MAXHOSTNAMELEN] = {0};
+    char *gds = NULL;
 
     if( ++pmix_initialized != 1 ) {
         if( pmix_initialized < 1 ) {
@@ -302,6 +303,8 @@ int pmix_rte_init(uint32_t type,
                 if (PMIX_SUCCESS != ret) {
                     goto return_error;
                 }
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_GDS_MODULE)) {
+                gds = info[n].value.data.string;
             }
         }
     }
@@ -380,7 +383,9 @@ int pmix_rte_init(uint32_t type,
     }
 
     /* open the gds and select the active plugins */
-    if (NULL != (evar = getenv("PMIX_GDS_MODULE"))) {
+    if (NULL != gds) {
+        pmix_setenv("PMIX_MCA_gds", gds, true, &environ);
+    } else if (NULL != (evar = getenv("PMIX_GDS_MODULE"))) {
         /* convert to an MCA param, but don't overwrite something already there */
         pmix_setenv("PMIX_MCA_gds", evar, false, &environ);
     }

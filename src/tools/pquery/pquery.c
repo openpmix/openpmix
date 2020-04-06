@@ -25,6 +25,8 @@
 
 #include "pmix_config.h"
 #include "include/pmix_common.h"
+#include "include/pmix_server.h"
+#include "include/pmix.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -160,100 +162,52 @@ typedef struct {
     bool serverfns;
     bool toolfns;
     bool hostfns;
-} pmix_pattrs_globals_t;
+} pmix_pquery_globals_t;
 
-pmix_pattrs_globals_t pmix_pattrs_globals = {0};
+pmix_pquery_globals_t pmix_pquery_globals = {0};
 
 pmix_cmd_line_init_t cmd_line_opts[] = {
     { NULL,
       'h', NULL, "help",
       0,
-      &pmix_pattrs_globals.help, PMIX_CMD_LINE_TYPE_BOOL,
+      &pmix_pquery_globals.help, PMIX_CMD_LINE_TYPE_BOOL,
       "This help message" },
 
     { NULL,
       'v', NULL, "verbose",
       0,
-      &pmix_pattrs_globals.verbose, PMIX_CMD_LINE_TYPE_BOOL,
+      &pmix_pquery_globals.verbose, PMIX_CMD_LINE_TYPE_BOOL,
       "Be Verbose" },
 
     { NULL,
       'p', NULL, "pid",
       1,
-      &pmix_pattrs_globals.pid, PMIX_CMD_LINE_TYPE_INT,
+      &pmix_pquery_globals.pid, PMIX_CMD_LINE_TYPE_INT,
       "Specify server pid to connect to" },
 
     { NULL,
       'n', NULL, "nspace",
       1,
-      &pmix_pattrs_globals.nspace, PMIX_CMD_LINE_TYPE_STRING,
+      &pmix_pquery_globals.nspace, PMIX_CMD_LINE_TYPE_STRING,
       "Specify server nspace to connect to" },
 
     { NULL,
       '\0', NULL, "uri",
       1,
-      &pmix_pattrs_globals.uri, PMIX_CMD_LINE_TYPE_STRING,
+      &pmix_pquery_globals.uri, PMIX_CMD_LINE_TYPE_STRING,
       "Specify URI of server to connect to" },
 
     { NULL,
       '\0', NULL, "system-server-first",
       0,
-      &pmix_pattrs_globals.sysfirst, PMIX_CMD_LINE_TYPE_BOOL,
+      &pmix_pquery_globals.sysfirst, PMIX_CMD_LINE_TYPE_BOOL,
       "Look for the system server first" },
 
     { NULL,
       '\0', NULL, "system-server",
       0,
-      &pmix_pattrs_globals.system, PMIX_CMD_LINE_TYPE_BOOL,
+      &pmix_pquery_globals.system, PMIX_CMD_LINE_TYPE_BOOL,
       "Specifically connect to the system server" },
-
-    { NULL,
-      'c', NULL, "client",
-      1,
-      &pmix_pattrs_globals.client, PMIX_CMD_LINE_TYPE_STRING,
-      "Comma-delimited list of client function whose attributes are to be printed (function or all)" },
-
-    { NULL,
-      's', NULL, "server",
-      1,
-      &pmix_pattrs_globals.server, PMIX_CMD_LINE_TYPE_STRING,
-      "Comma-delimited list of server function whose attributes are to be printed (function or all)" },
-
-    { NULL,
-      't', NULL, "tool",
-      1,
-      &pmix_pattrs_globals.tool, PMIX_CMD_LINE_TYPE_STRING,
-      "Comma-delimited list of tool function whose attributes are to be printed (function or all)" },
-
-    { NULL,
-      'h', NULL, "host",
-      1,
-      &pmix_pattrs_globals.host, PMIX_CMD_LINE_TYPE_STRING,
-      "Comma-delimited list of host function whose attributes are to be printed (function or all)" },
-
-    { NULL,
-      '\0', NULL, "client-fns",
-      0,
-      &pmix_pattrs_globals.clientfns, PMIX_CMD_LINE_TYPE_BOOL,
-      "List the functions supported in this client library" },
-
-    { NULL,
-      '\0', NULL, "server-fns",
-      0,
-      &pmix_pattrs_globals.serverfns, PMIX_CMD_LINE_TYPE_BOOL,
-      "List the functions supported in this server library" },
-
-    { NULL,
-      '\0', NULL, "tool-fns",
-      0,
-      &pmix_pattrs_globals.toolfns, PMIX_CMD_LINE_TYPE_BOOL,
-      "List the functions supported in this tool library" },
-
-    { NULL,
-      '\0', NULL, "host-fns",
-      0,
-      &pmix_pattrs_globals.hostfns, PMIX_CMD_LINE_TYPE_BOOL,
-      "List the functions supported by this host environment" },
 
 
     /* End of list */
@@ -270,12 +224,20 @@ int main(int argc, char **argv)
     pmix_info_t *info;
     mylock_t mylock;
     pmix_cmd_line_t cmd_line;
-    char **fns = NULL;
-    size_t n, m;
-    myquery_data_t mq;
-    pmix_query_t query;
-    pmix_regattr_t *reg;
-    char **ans = NULL;
+    size_t n, m, nqueries, ninfo;
+    myquery_data_t mq = {0};
+    int count;
+    char **qkeys = NULL;
+    const char *attr;
+    bool server = false;
+    pmix_list_t querylist, qlist;
+    pmix_querylist_t *qry;
+    char **qprs;
+    char *strt, *endp, *kptr;
+    pmix_infolist_t *iptr;
+    char *str, *args = NULL;
+    pmix_query_t *queries;
+    pmix_info_t *infoptr;
 
     /* protect against problems if someone passes us thru a pipe
      * and then abnormally terminates the pipe early */
@@ -317,7 +279,7 @@ int main(int argc, char **argv)
     /* Parse the command line options */
     pmix_cmd_line_create(&cmd_line, cmd_line_opts);
 
-    rc = pmix_cmd_line_parse(&cmd_line, false, false, argc, argv);
+    rc = pmix_cmd_line_parse(&cmd_line, true, false, argc, argv);
 
     if (PMIX_SUCCESS != rc) {
         if (PMIX_ERR_SILENT != rc) {
@@ -327,10 +289,9 @@ int main(int argc, char **argv)
         return rc;
     }
 
-    if (pmix_pattrs_globals.help) {
-        char *str, *args = NULL;
+    if (pmix_pquery_globals.help) {
         args = pmix_cmd_line_get_usage_msg(&cmd_line);
-        str = pmix_show_help_string("help-pattrs.txt", "usage", true,
+        str = pmix_show_help_string("help-pquery.txt", "usage", true,
                                     args);
         if (NULL != str) {
             printf("%s", str);
@@ -341,57 +302,13 @@ int main(int argc, char **argv)
         exit(0);
     }
 
-    /* cannot list functions and get attributes at same time */
-    if ((pmix_pattrs_globals.clientfns || pmix_pattrs_globals.serverfns || pmix_pattrs_globals.toolfns || pmix_pattrs_globals.hostfns)
-        && (pmix_pattrs_globals.client || pmix_pattrs_globals.server || pmix_pattrs_globals.tool || NULL != pmix_pattrs_globals.host)) {
-        fprintf(stderr, "Cannot request both a list of functions and attributes at same time\n");
-        exit(1);
-    }
-
-    /* if they are asking for client, server, or tool attrs, then
-     * we don't need to connect to anyone - just register the
-     * attrs and report */
-    if (pmix_pattrs_globals.clientfns || pmix_pattrs_globals.serverfns || pmix_pattrs_globals.toolfns ||
-        pmix_pattrs_globals.client || pmix_pattrs_globals.server || pmix_pattrs_globals.tool) {
-        PMIX_INFO_CREATE(info, 1);
-        PMIX_INFO_LOAD(&info[0], PMIX_TOOL_DO_NOT_CONNECT, NULL, PMIX_BOOL);
-        rc = PMIx_tool_init(&myproc, info, 1);
-        if (PMIX_SUCCESS != rc) {
-            fprintf(stderr, "PMIx_tool_init failed: %s\n", PMIx_Error_string(rc));
-            exit(rc);
-        }
-        if (pmix_pattrs_globals.clientfns) {
-            pmix_register_client_attrs();
-            fns = pmix_attributes_print_functions(PMIX_CLIENT_FUNCTIONS);
-        } else if (pmix_pattrs_globals.serverfns) {
-            pmix_register_server_attrs();
-            fns = pmix_attributes_print_functions(PMIX_SERVER_FUNCTIONS);
-        } else if (pmix_pattrs_globals.toolfns) {
-            pmix_register_tool_attrs();
-            fns = pmix_attributes_print_functions(PMIX_TOOL_FUNCTIONS);
-        } else if (NULL != pmix_pattrs_globals.client) {
-            pmix_register_client_attrs();
-            fns = pmix_attributes_print_attr(PMIX_CLIENT_ATTRIBUTES, pmix_pattrs_globals.client);
-        } else if (NULL != pmix_pattrs_globals.server) {
-            pmix_register_server_attrs();
-            fns = pmix_attributes_print_attr(PMIX_SERVER_ATTRIBUTES, pmix_pattrs_globals.server);
-        } else if (NULL != pmix_pattrs_globals.tool) {
-            pmix_register_tool_attrs();
-            fns = pmix_attributes_print_attr(PMIX_TOOL_ATTRIBUTES, pmix_pattrs_globals.tool);
-        }
-        if (NULL != fns) {
-            for (n=0; NULL != fns[n]; n++) {
-                fprintf(stderr, "%s\n", fns[n]);
-            }
-        }
-        goto done;
-    }
+    /* get the argv array of keys they want us to query */
+    pmix_cmd_line_get_tail(&cmd_line, &count, &qkeys);
 
     /* if they didn't give us an option, then we can't do anything */
-    if (!pmix_pattrs_globals.hostfns && NULL == pmix_pattrs_globals.host) {
-        char *str, *args = NULL;
+    if (NULL == qkeys) {
         args = pmix_cmd_line_get_usage_msg(&cmd_line);
-        str = pmix_show_help_string("help-pattrs.txt", "usage", true,
+        str = pmix_show_help_string("help-pquery.txt", "usage", true,
                                     args);
         if (NULL != str) {
             printf("%s", str);
@@ -401,31 +318,52 @@ int main(int argc, char **argv)
         exit(1);
     }
 
+    /* they might be querying the system about a client, server, or tool
+     * attribute, so register those - this will allow us to compare the
+     * provided key with the actual name of the attribute so we can
+     * identify it */
+    pmix_init_registered_attrs();
+    pmix_register_client_attrs();
+    pmix_register_server_attrs();
+    pmix_register_tool_attrs();
+
     /* if we were given the pid of a starter, then direct that
      * we connect to it */
     n = 1;
     PMIX_INFO_CREATE(info, n);
-    if (0 < pmix_pattrs_globals.pid) {
-        PMIX_INFO_LOAD(&info[0], PMIX_SERVER_PIDINFO, &pmix_pattrs_globals.pid, PMIX_PID);
-    } else if (NULL != pmix_pattrs_globals.nspace) {
-        PMIX_INFO_LOAD(&info[0], PMIX_SERVER_NSPACE, pmix_pattrs_globals.nspace, PMIX_STRING);
-    } else if (NULL != pmix_pattrs_globals.uri) {
-        PMIX_INFO_LOAD(&info[0], PMIX_SERVER_URI, pmix_pattrs_globals.uri, PMIX_STRING);
-    } else if (pmix_pattrs_globals.sysfirst) {
+    if (0 < pmix_pquery_globals.pid) {
+        PMIX_INFO_LOAD(&info[0], PMIX_SERVER_PIDINFO, &pmix_pquery_globals.pid, PMIX_PID);
+    } else if (NULL != pmix_pquery_globals.nspace) {
+        PMIX_INFO_LOAD(&info[0], PMIX_SERVER_NSPACE, pmix_pquery_globals.nspace, PMIX_STRING);
+    } else if (NULL != pmix_pquery_globals.uri) {
+        PMIX_INFO_LOAD(&info[0], PMIX_SERVER_URI, pmix_pquery_globals.uri, PMIX_STRING);
+    } else if (pmix_pquery_globals.sysfirst) {
         /* otherwise, use the system connection first, if available */
         PMIX_INFO_LOAD(&info[0], PMIX_CONNECT_SYSTEM_FIRST, NULL, PMIX_BOOL);
-    } else if (pmix_pattrs_globals.system) {
+    } else if (pmix_pquery_globals.system) {
         PMIX_INFO_LOAD(&info[0], PMIX_CONNECT_TO_SYSTEM, NULL, PMIX_BOOL);
     } else {
+        /* we set ourselves up as a server, but no connections required */
+        PMIX_INFO_LOAD(&info[0], PMIX_GDS_MODULE, "hash", PMIX_STRING);
+        server = true;;
+    }
+
+    if (server) {
+        /* initialize as a server so we can process the query ourselves */
+        rc = PMIx_server_init(NULL, NULL, 0);
+        if (PMIX_SUCCESS != rc) {
+            fprintf(stderr, "PMIx_server_init failed: %s\n", PMIx_Error_string(rc));
+            exit(rc);
+        }
+    } else {
+        /* init as a tool */
+        rc = PMIx_tool_init(&myproc, info, n);
+        if (PMIX_SUCCESS != rc) {
+            fprintf(stderr, "PMIx_tool_init failed: %s\n", PMIx_Error_string(rc));
+            exit(rc);
+        }
         PMIX_INFO_FREE(info, 1);
-        n = 0;
     }
-    /* init as a tool */
-    if (PMIX_SUCCESS != (rc = PMIx_tool_init(&myproc, info, n))) {
-        fprintf(stderr, "PMIx_tool_init failed: %s\n", PMIx_Error_string(rc));
-        exit(rc);
-    }
-    PMIX_INFO_FREE(info, 1);
 
     /* register a default event handler */
     PMIX_CONSTRUCT_LOCK(&mylock.lock);
@@ -440,17 +378,80 @@ int main(int argc, char **argv)
     }
     PMIX_DESTRUCT_LOCK(&mylock.lock);
 
-    /* generate the query */
-    PMIX_QUERY_CONSTRUCT(&query);
-    pmix_argv_append_nosize(&query.keys, PMIX_QUERY_ATTRIBUTE_SUPPORT);
-    PMIX_QUERY_QUALIFIERS_CREATE(&query, 1);
-    if (pmix_pattrs_globals.hostfns) {
-        PMIX_INFO_LOAD(&query.qualifiers[0], PMIX_HOST_FUNCTIONS, NULL, PMIX_BOOL);
-    } else {
-        PMIX_INFO_LOAD(&query.qualifiers[0], PMIX_HOST_ATTRIBUTES, pmix_pattrs_globals.host, PMIX_STRING);
+    /* generate the queries */
+    PMIX_CONSTRUCT(&querylist, pmix_list_t);
+    for (n=0; NULL != qkeys[n]; n++) {
+        qry = PMIX_NEW(pmix_querylist_t);
+        PMIX_CONSTRUCT(&qlist, pmix_list_t);
+        /* check for qualifiers: key[qual=foo,qual=bar] */
+        if (NULL != (strt = strchr(qkeys[n], '['))) {
+            /* we have qualifiers - find the end */
+            *strt = '\0';
+            ++strt;
+            if (NULL == (endp = strrchr(strt, ']'))) {
+                str = pmix_show_help_string("help-pquery.txt", "bad-quals", true, qkeys[n]);
+                if (NULL != str) {
+                    printf("%s", str);
+                    free(str);
+                }
+                exit(1);
+            }
+            *endp = '\0';
+            /* break into qual=val pairs */
+            qprs = pmix_argv_split(strt, ',');
+            for (m=0; NULL != qprs[m]; m++) {
+                /* break each pair */
+                if (NULL == (kptr = strchr(qprs[m], '='))) {
+                    str = pmix_show_help_string("help-pquery.txt", "bad-qual", true, qkeys[n], qprs[m]);
+                    if (NULL != str) {
+                        printf("%s", str);
+                        free(str);
+                    }
+                    exit(1);
+                }
+                *kptr = '\0';
+                kptr++;
+                iptr = PMIX_NEW(pmix_infolist_t);
+                if (NULL == (attr = pmix_attributes_lookup(qprs[m]))) {
+                    exit(1);
+                }
+                PMIX_INFO_LOAD(&iptr->info, attr, kptr, PMIX_STRING);
+                pmix_list_append(&qlist, &iptr->super);
+            }
+        }
+        /* convert the key */
+        if (NULL == (attr = pmix_attributes_lookup(qkeys[n]))) {
+            exit(1);
+        }
+        pmix_argv_append_nosize(&qry->query.keys, attr);
+        /* add in any qualifiers */
+        m = pmix_list_get_size(&qlist);
+        if (0 < m) {
+            PMIX_QUERY_QUALIFIERS_CREATE(&qry->query, m);
+            m = 0;
+            PMIX_LIST_FOREACH(iptr, &qlist, pmix_infolist_t) {
+                PMIX_INFO_XFER(&qry->query.qualifiers[m], &iptr->info);
+                ++m;
+            }
+        }
+        pmix_list_append(&querylist, &qry->super);
+        PMIX_LIST_DESTRUCT(&qlist);
     }
+    /* convert the list of queries into an array */
+    nqueries = pmix_list_get_size(&querylist);
+    PMIX_QUERY_CREATE(queries, nqueries);
+    m = 0;
+    PMIX_LIST_FOREACH(qry, &querylist, pmix_querylist_t) {
+        /* move the queries across */
+        queries[m].keys = qry->query.keys;
+        queries[m].nqual = qry->query.nqual;
+        queries[m].qualifiers = qry->query.qualifiers;
+        ++m;
+    }
+    PMIX_LIST_DESTRUCT(&querylist);
+
     PMIX_CONSTRUCT_LOCK(&mq.lock);
-    rc = PMIx_Query_info_nb(&query, 1, cbfunc,(void*)&mq);
+    rc = PMIx_Query_info_nb(queries, nqueries, cbfunc,(void*)&mq);
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "PMIx_Query_info failed: %d\n", rc);
         goto done;
@@ -463,36 +464,32 @@ int main(int argc, char **argv)
     } else {
         /* print out the returned value(s) */
         for (n=0; n < mq.ninfo; n++) {
-            if (PMIX_CHECK_KEY(&mq.info[n], PMIX_HOST_FUNCTIONS)) {
-                fns = pmix_argv_split(mq.info[n].value.data.string, ',');
-                fprintf(stderr, "HOST SUPPORTED FUNCTIONS:\n");
-                for (m=0; NULL != fns[m]; m++) {
-                    fprintf(stderr, "\t%s\n", fns[m]);
-                }
-                pmix_argv_free(fns);
+            if (NULL == (attr = pmix_attributes_reverse_lookup(mq.info[n].key))) {
+                fprintf(stdout, "%s: ", mq.info[n].key);
             } else {
-                pmix_attributes_print_headers(&ans, PMIX_HOST_ATTRIBUTES);
-                if (PMIX_DATA_ARRAY == mq.info[n].value.type) {
-                    info = (pmix_info_t*)mq.info[n].value.data.darray->array;
-                    for (m=0; m < mq.info[n].value.data.darray->size; m++) {
-                        reg = (pmix_regattr_t*)info[m].value.data.darray->array;
-                        pmix_attributes_print_attrs(&ans, info[m].key, reg, info[0].value.data.darray->size);
-                    }
-                } else {
-                    reg = (pmix_regattr_t*)mq.info[n].value.data.ptr;
-                    pmix_attributes_print_attrs(&ans, mq.info[n].key, reg, 1);
+                fprintf(stdout, "%s: ", attr);
+            }
+            if (PMIX_STRING == mq.info[n].value.type) {
+                fprintf(stdout, "%s\n", mq.info[n].value.data.string);
+            } else if (PMIX_DATA_ARRAY ==  mq.info[n].value.type) {
+                fprintf(stdout, "\n");
+                infoptr = (pmix_info_t*)mq.info[n].value.data.darray->array;
+                ninfo = mq.info[n].value.data.darray->size;
+                for (m=0; m < ninfo; m++) {
+                    fprintf(stdout, "\t%s:  %lf (%s)\n", infoptr[m].key,
+                            infoptr[m].value.data.dimval->dval,
+                            PMIx_Units_string(infoptr[m].value.data.dimval->units));
                 }
-                for (m=0; NULL != ans[m]; m++) {
-                    fprintf(stderr, "%s\n", ans[m]);
-                }
-                pmix_argv_free(ans);
-                ans = NULL;
             }
         }
     }
 
   done:
-    PMIx_tool_finalize();
+    if (server) {
+        PMIx_server_finalize();
+    } else {
+        PMIx_tool_finalize();
+    }
 
     return(rc);
 }
