@@ -410,6 +410,25 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
         cb.ninfo = cd->ninfo;
         cb.key = key;
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+        /* A local client may send a get request concurrently with
+         * a commit request from another client, but the server may
+         * have processed the commit request earlyer than the get
+         * request. In this case, we create a local tracker for
+         * possibly existing keys that are added with the completed
+         * commit request. Thus, the get request will be pended in
+         * tracker and will be deffered. This scenario is possible
+         * when the non-fence commit-get scheme is used and when
+         * the peer GDS component is `dstore`.
+         * Checking the peer storage for local keys to avoid creating
+         * a local tracker for existing keys. */
+        if ((PMIX_SUCCESS != rc) && local) {
+            PMIX_GDS_FETCH_KV(rc, cd->peer, &cb);
+            if (PMIX_SUCCESS == rc) {
+                cbfunc(rc, NULL, 0, cbdata, NULL, NULL);
+                PMIX_DESTRUCT(&cb);
+                return rc;
+            }
+        }
         PMIX_DESTRUCT(&cb);  // does not release info or key
         if (PMIX_SUCCESS != rc) {
             /* if the target proc is local, then we just need to wait */
