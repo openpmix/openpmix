@@ -60,14 +60,15 @@
 #include "src/mca/base/base.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/pinstalldirs/base/base.h"
-#include "src/mca/pnet/base/base.h"
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/runtime/pmix_rte.h"
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/gds/base/base.h"
 #include "src/mca/pmdl/base/base.h"
+#include "src/mca/pnet/base/base.h"
 #include "src/mca/preg/preg.h"
 #include "src/mca/psensor/base/base.h"
+#include "src/mca/pstrg/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/hwloc/hwloc-internal.h"
 
@@ -414,6 +415,16 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         return rc;
     }
 
+    /* open the pstrg framework */
+    if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pstrg_base_framework, 0))) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return rc;
+    }
+    if (PMIX_SUCCESS != (rc = pmix_pstrg_base_select())) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return rc;
+    }
+
     /* setup the wildcard recv for inbound messages from clients */
     req = PMIX_NEW(pmix_ptl_posted_recv_t);
     req->tag = UINT32_MAX;
@@ -534,6 +545,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     (void)pmix_mca_base_framework_close(&pmix_psensor_base_framework);
     /* close the pnet framework */
     (void)pmix_mca_base_framework_close(&pmix_pnet_base_framework);
+    /* close the pstrg framework */
+    (void)pmix_mca_base_framework_close(&pmix_pstrg_base_framework);
 
     PMIX_RELEASE_THREAD(&pmix_global_lock);
     PMIX_DESTRUCT_LOCK(&pmix_global_lock);

@@ -1017,3 +1017,18 @@ pmix_status_t pmix_bfrops_base_copy_regex(char **dest,
 
     return pmix_preg.copy(dest, &len, src);
 }
+
+pmix_status_t pmix_bfrops_base_copy_dimval(pmix_dim_value_t **dest,
+                                           pmix_dim_value_t *src,
+                                           pmix_data_type_t type)
+{
+    if (PMIX_DIM_VALUE != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    PMIX_DIM_VALUE_CREATE(*dest, 1);
+    if (NULL == (*dest)) {
+        return PMIX_ERR_NOMEM;
+    }
+    memcpy(*dest, src, sizeof(pmix_dim_value_t));
+    return PMIX_SUCCESS;
+}
