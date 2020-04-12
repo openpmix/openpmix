@@ -397,6 +397,7 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv,
             }
             memcpy(coord, kv->data.coord, sizeof(pmix_coord_t));
             *data = coord;
+            *sz = sizeof(pmix_coord_t);
             break;
         case PMIX_REGATTR:
             PMIX_REGATTR_CREATE(regattr, 1);
@@ -415,6 +416,7 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv,
             regattr->ninfo = r->ninfo;
             regattr->description = pmix_argv_copy(r->description);
             *data = regattr;
+            *sz = sizeof(pmix_regattr_t);
             break;
         case PMIX_REGEX:
             if (NULL != kv->data.bo.bytes && 0 < kv->data.bo.size) {
@@ -431,6 +433,8 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv,
                 return PMIX_ERR_NOMEM;
             }
             memcpy(dimval, kv->data.dimval, sizeof(pmix_dim_value_t));
+            *data = dimval;
+            *sz = sizeof(pmix_dim_value_t);
             break;
         default:
             /* silence warnings */
