@@ -276,7 +276,7 @@ static void localquery(int sd, short args, void *cbdata)
     pmix_list_t results;
     pmix_kval_t *kv, *kvnxt;
     pmix_proc_t proc;
-    bool rank_given;
+    bool rank_given = false;
 
     /* setup the list of local results */
     PMIX_CONSTRUCT(&results, pmix_list_t);
@@ -449,9 +449,9 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_INIT;
     }
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     if (0 == nqueries || NULL == queries) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_BAD_PARAM;
     }
 
@@ -466,7 +466,6 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
             }
             if (SIZE_MAX == p) {
                 /* nothing we can do */
-                PMIX_RELEASE_THREAD(&pmix_global_lock);
                 return PMIX_ERR_BAD_PARAM;
             }
             queries[n].nqual = p;
@@ -492,7 +491,6 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
             /* regardless of the result of the query, we return
              * PMIX_SUCCESS here to indicate that the operation
              * was accepted for processing */
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
             return PMIX_SUCCESS;
         }
         for (p=0; p < queries[n].nqual; p++) {
@@ -504,22 +502,21 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
                 }
             }
         }
-        /* we get here if a refresh isn't required - need to
-         * threadshift this to access our internal data */
-        cd = PMIX_NEW(pmix_query_caddy_t);
-        cd->queries = queries;
-        cd->nqueries = nqueries;
-        cd->cbfunc = cbfunc;
-        cd->cbdata = cbdata;
-        PMIX_THREADSHIFT(cd, localquery);
-        /* regardless of the result of the query, we return
-         * PMIX_SUCCESS here to indicate that the operation
-         * was accepted for processing */
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return PMIX_SUCCESS;
     }
 
-    return PMIX_OPERATION_SUCCEEDED;
+    /* we get here if a refresh isn't required - need to
+     * threadshift this to access our internal data */
+    cd = PMIX_NEW(pmix_query_caddy_t);
+    cd->queries = queries;
+    cd->nqueries = nqueries;
+    cd->cbfunc = cbfunc;
+    cd->cbdata = cbdata;
+    PMIX_THREADSHIFT(cd, localquery);
+    /* regardless of the result of the query, we return
+     * PMIX_SUCCESS here to indicate that the operation
+     * was accepted for processing */
+
+    return PMIX_SUCCESS;
 }
 
 static void acb(pmix_status_t status,
