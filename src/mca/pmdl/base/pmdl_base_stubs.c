@@ -15,6 +15,24 @@
 
 #include "src/include/pmix_config.h"
 
+#include <string.h>
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
+#endif
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>
+#endif
+#ifdef HAVE_SYS_STAT_H
+#include <sys/stat.h>
+#endif
+#ifdef HAVE_FCNTL_H
+#include <fcntl.h>
+#endif
+#ifdef HAVE_SYS_UTSNAME_H
+#include <sys/utsname.h>
+#endif
+#include <time.h>
+
 #include "include/pmix_common.h"
 #include "src/include/pmix_globals.h"
 
@@ -77,6 +95,7 @@ pmix_status_t pmix_pmdl_base_harvest_envars(char *nspace,
             rc = active->module->harvest_envars(nptr, info, ninfo, ilist, &priors);
             if (PMIX_SUCCESS != rc && PMIX_ERR_TAKE_NEXT_OPTION != rc) {
                 /* true error */
+                pmix_argv_free(priors);
                 return rc;
             }
         }
@@ -202,19 +221,22 @@ pmix_status_t pmix_pmdl_base_setup_fork(const pmix_proc_t *proc, char ***env)
 {
     pmix_pmdl_base_active_module_t *active;
     pmix_status_t rc;
+    char **priors = NULL;
 
     if (!pmix_pmdl_globals.initialized) {
         return PMIX_ERR_INIT;
     }
     PMIX_LIST_FOREACH(active, &pmix_pmdl_globals.actives, pmix_pmdl_base_active_module_t) {
         if (NULL != active->module->setup_fork) {
-            rc = active->module->setup_fork(proc, env);
+            rc = active->module->setup_fork(proc, env, &priors);
             if (PMIX_SUCCESS != rc && PMIX_ERR_TAKE_NEXT_OPTION != rc) {
                 /* true error */
+                pmix_argv_free(priors);
                 return rc;
             }
         }
     }
+    pmix_argv_free(priors);
 
     return PMIX_SUCCESS;
 }

@@ -24,6 +24,9 @@
 #ifdef HAVE_FCNTL_H
 #include <fcntl.h>
 #endif
+#ifdef HAVE_SYS_UTSNAME_H
+#include <sys/utsname.h>
+#endif
 #include <time.h>
 
 #include "include/pmix.h"
@@ -59,6 +62,10 @@ static pmix_status_t setup_nspace(pmix_namespace_t *nptr,
 static pmix_status_t setup_nspace_kv(pmix_namespace_t *nptr,
                                      pmix_kval_t *kv);
 static pmix_status_t register_nspace(pmix_namespace_t *nptr);
+static pmix_status_t setup_fork(const pmix_proc_t *proc,
+                                char ***env,
+                                char ***priors);
+static void deregister_nspace(pmix_namespace_t *nptr);
 static void deregister_nspace(pmix_namespace_t *nptr);
 pmix_pmdl_module_t pmix_pmdl_ompi5_module = {
     .name = "ompi5",
@@ -68,6 +75,7 @@ pmix_pmdl_module_t pmix_pmdl_ompi5_module = {
     .setup_nspace = setup_nspace,
     .setup_nspace_kv = setup_nspace_kv,
     .register_nspace = register_nspace,
+    .setup_fork = setup_fork,
     .deregister_nspace = deregister_nspace
 };
 
@@ -176,6 +184,15 @@ static pmix_status_t harvest_envars(pmix_namespace_t *nptr,
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
+    /* don't do OMPI again if already done */
+    if (NULL != priors) {
+        char **t2 = *priors;
+        for (n=0; NULL != t2[n]; n++) {
+            if (0 == strncmp(t2[n], "ompi", 4)) {
+                return PMIX_ERR_TAKE_NEXT_OPTION;
+            }
+        }
+    }
     /* flag that we worked on this */
     pmix_argv_append_nosize(priors, "ompi5");
 
@@ -510,6 +527,431 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr)
         PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr, info, 1);
         PMIX_INFO_DESTRUCT(&info[0]);
     }
+
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t setup_fork(const pmix_proc_t *proc,
+                                char ***env,
+                                char ***priors)
+{
+    pmdl_nspace_t *ns, *ns2;
+    char *param;
+    char *ev1, **tmp;
+    pmix_proc_t wildcard, undef;
+    pmix_status_t rc;
+    uint16_t u16;
+    pmix_kval_t *kv;
+    pmix_info_t info[2];
+    uint32_t n;
+    pmix_cb_t cb;
+
+    pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
+                        "pmdl:ompi5: setup fork for %s", PMIX_NAME_PRINT(proc));
+
+    /* don't do OMPI again if already done */
+    if (NULL != priors && NULL != *priors) {
+        char **t2 = *priors;
+        for (n=0; NULL != t2[n]; n++) {
+            if (0 == strncmp(t2[n], "ompi", 4)) {
+                return PMIX_ERR_TAKE_NEXT_OPTION;
+            }
+        }
+    }
+    /* flag that we worked on this */
+    pmix_argv_append_nosize(priors, "ompi5");
+
+    /* see if we already have this nspace */
+    ns = NULL;
+    PMIX_LIST_FOREACH(ns2, &mynspaces, pmdl_nspace_t) {
+        if (PMIX_CHECK_NSPACE(ns2->nspace, proc->nspace)) {
+            ns = ns2;
+            break;
+        }
+    }
+    if (NULL == ns) {
+        /* we don't know anything about this one or
+         * it doesn't have any ompi-based apps */
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+
+    PMIX_LOAD_PROCID(&wildcard, proc->nspace, PMIX_RANK_WILDCARD);
+    PMIX_LOAD_PROCID(&undef, proc->nspace, PMIX_RANK_UNDEF);
+
+    /* do we already have the data we need here? */
+    if (!ns->datacollected) {
+
+        /* fetch the universe size */
+        PMIX_CONSTRUCT(&cb, pmix_cb_t);
+        cb.proc = &wildcard;
+        cb.copy = true;
+        cb.key = PMIX_UNIV_SIZE;
+        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+        cb.key = NULL;
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_DESTRUCT(&cb);
+            return rc;
+        }
+        /* the data is the first value on the cb.kvs list */
+        if (1 != pmix_list_get_size(&cb.kvs)) {
+            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            PMIX_DESTRUCT(&cb);
+            return PMIX_ERR_BAD_PARAM;
+        }
+        kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
+        ns->univ_size = kv->value->data.uint32;
+        PMIX_DESTRUCT(&cb);
+
+        /* fetch the job size */
+        PMIX_CONSTRUCT(&cb, pmix_cb_t);
+        cb.proc = &wildcard;
+        cb.copy = true;
+        cb.key = PMIX_JOB_SIZE;
+        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+        cb.key = NULL;
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_DESTRUCT(&cb);
+            return rc;
+        }
+        /* the data is the first value on the cb.kvs list */
+        if (1 != pmix_list_get_size(&cb.kvs)) {
+            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            PMIX_DESTRUCT(&cb);
+            return PMIX_ERR_BAD_PARAM;
+        }
+        kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
+        ns->job_size = kv->value->data.uint32;
+        PMIX_DESTRUCT(&cb);
+
+        /* fetch the number of apps */
+        PMIX_CONSTRUCT(&cb, pmix_cb_t);
+        cb.proc = &wildcard;
+        cb.copy = true;
+        cb.key = PMIX_JOB_NUM_APPS;
+        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+        cb.key = NULL;
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_DESTRUCT(&cb);
+            return rc;
+        }
+        /* the data is the first value on the cb.kvs list */
+        if (1 != pmix_list_get_size(&cb.kvs)) {
+            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            PMIX_DESTRUCT(&cb);
+            return PMIX_ERR_BAD_PARAM;
+        }
+        kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
+        ns->num_apps = kv->value->data.uint32;
+        PMIX_DESTRUCT(&cb);
+
+        ns->datacollected = true;
+    }
+
+    /* pass universe size */
+    if (0 > asprintf(&param, "%u", ns->univ_size)) {
+        return PMIX_ERR_NOMEM;
+    }
+    pmix_setenv("OMPI_UNIVERSE_SIZE", param, true, env);
+    free(param);
+
+    /* pass the comm_world size in various formats */
+    if (0 > asprintf(&param, "%u", ns->job_size)) {
+        return PMIX_ERR_NOMEM;
+    }
+    pmix_setenv("OMPI_COMM_WORLD_SIZE", param, true, env);
+    pmix_setenv("OMPI_WORLD_SIZE", param, true, env);
+    pmix_setenv("OMPI_MCA_num_procs", param, true, env);
+    free(param);
+
+    /* pass the local size in various formats */
+    if (0 > asprintf(&param, "%u", ns->local_size)) {
+        return PMIX_ERR_NOMEM;
+    }
+    pmix_setenv("OMPI_COMM_WORLD_LOCAL_SIZE", param, true, env);
+    pmix_setenv("OMPI_WORLD_LOCAL_SIZE", param, true, env);
+    free(param);
+
+    /* pass the number of apps in the job */
+    if (0 > asprintf(&param, "%u", ns->num_apps)) {
+        return PMIX_ERR_NOMEM;
+    }
+    pmix_setenv("OMPI_NUM_APP_CTX", param, true, env);
+    free(param);
+
+    /* pass an envar so the proc can find any files it had prepositioned */
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    cb.proc = (pmix_proc_t*)proc;
+    cb.copy = true;
+    cb.key = PMIX_PROCDIR;
+    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+    cb.key = NULL;
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_DESTRUCT(&cb);
+        return rc;
+    }
+    /* the data is the first value on the cb.kvs list */
+    if (1 != pmix_list_get_size(&cb.kvs)) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        PMIX_DESTRUCT(&cb);
+        return PMIX_ERR_BAD_PARAM;
+    }
+    kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
+    pmix_setenv("OMPI_FILE_LOCATION", kv->value->data.string, true, env);
+    PMIX_DESTRUCT(&cb);
+
+    /* pass the cwd */
+    PMIX_INFO_LOAD(&info[0], PMIX_APP_INFO, NULL, PMIX_BOOL);
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    cb.proc = &undef;
+    cb.copy = true;
+    cb.info = info;
+    cb.ninfo = 2;
+    cb.key = PMIX_WDIR;
+    PMIX_INFO_LOAD(&info[1], PMIX_APPNUM, &pmix_globals.appnum, PMIX_UINT32);
+    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+    PMIX_INFO_DESTRUCT(&info[1]);
+    cb.key = NULL;
+    cb.info = NULL;
+    cb.ninfo = 0;
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_DESTRUCT(&cb);
+        return rc;
+    }
+    /* the data is the first value on the cb.kvs list */
+    if (1 != pmix_list_get_size(&cb.kvs)) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        PMIX_DESTRUCT(&cb);
+        return PMIX_ERR_BAD_PARAM;
+    }
+    kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
+    pmix_setenv("OMPI_MCA_initial_wdir", kv->value->data.string, true, env);
+    PMIX_DESTRUCT(&cb);
+    PMIX_INFO_DESTRUCT(&info[0]);
+
+    /* pass its command. */
+    PMIX_INFO_LOAD(&info[0], PMIX_APP_INFO, NULL, PMIX_BOOL);
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    cb.proc = &undef;
+    cb.copy = true;
+    cb.info = info;
+    cb.ninfo = 2;
+    cb.key = PMIX_APP_ARGV;
+    PMIX_INFO_LOAD(&info[1], PMIX_APPNUM, &pmix_globals.appnum, PMIX_UINT32);
+    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+    PMIX_INFO_DESTRUCT(&info[1]);
+    cb.key = NULL;
+    cb.info = NULL;
+    cb.ninfo = 0;
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_DESTRUCT(&cb);
+        return rc;
+    }
+    /* the data is the first value on the cb.kvs list */
+    if (1 != pmix_list_get_size(&cb.kvs)) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        PMIX_DESTRUCT(&cb);
+        return PMIX_ERR_BAD_PARAM;
+    }
+    kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
+    tmp = pmix_argv_split(kv->value->data.string, ' ');
+    PMIX_DESTRUCT(&cb);
+    PMIX_INFO_DESTRUCT(&info[0]);
+    pmix_setenv("OMPI_COMMAND", tmp[0], true, env);
+    ev1 = pmix_argv_join(&tmp[1], ' ');
+    pmix_setenv("OMPI_ARGV", ev1, true, env);
+    free(ev1);
+    pmix_argv_free(tmp);
+
+    /* pass the arch - if available */
+#ifdef HAVE_SYS_UTSNAME_H
+    struct utsname sysname;
+    memset(&sysname, 0, sizeof(sysname));
+    if (-1 < uname(&sysname)) {
+        if (sysname.machine[0] != '\0') {
+            pmix_setenv("OMPI_MCA_cpu_type", (const char *) &sysname.machine, true, env);
+        }
+    }
+#endif
+
+    /* pass the rank */
+    if (0 > asprintf(&param, "%lu", (unsigned long)proc->rank)) {
+        return PMIX_ERR_NOMEM;
+    }
+    pmix_setenv("OMPI_COMM_WORLD_RANK", param, true, env);
+    free(param);  /* done with this now */
+
+    /* get the proc's local rank */
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    cb.proc = (pmix_proc_t*)proc;
+    cb.copy = true;
+    cb.key = PMIX_LOCAL_RANK;
+    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+    cb.key = NULL;
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_DESTRUCT(&cb);
+        return rc;
+    }
+    /* the data is the first value on the cb.kvs list */
+    if (1 != pmix_list_get_size(&cb.kvs)) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        PMIX_DESTRUCT(&cb);
+        return PMIX_ERR_BAD_PARAM;
+    }
+    kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
+    u16 = kv->value->data.uint16;
+    PMIX_DESTRUCT(&cb);
+    if (0 > asprintf(&param, "%lu", (unsigned long)u16)) {
+        return PMIX_ERR_NOMEM;
+    }
+    pmix_setenv("OMPI_COMM_WORLD_LOCAL_RANK", param, true, env);
+    free(param);
+
+    /* get the proc's node rank */
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    cb.proc = (pmix_proc_t*)proc;
+    cb.copy = true;
+    cb.key = PMIX_NODE_RANK;
+    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+    cb.key = NULL;
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_DESTRUCT(&cb);
+        return rc;
+    }
+    /* the data is the first value on the cb.kvs list */
+    if (1 != pmix_list_get_size(&cb.kvs)) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        PMIX_DESTRUCT(&cb);
+        return PMIX_ERR_BAD_PARAM;
+    }
+    kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
+    u16 = kv->value->data.uint16;
+    PMIX_DESTRUCT(&cb);
+    if (0 > asprintf(&param, "%lu", (unsigned long)u16)) {
+        return PMIX_ERR_NOMEM;
+    }
+    pmix_setenv("OMPI_COMM_WORLD_NODE_RANK", param, true, env);
+    free(param);
+
+    if (1 == ns->num_apps) {
+        return PMIX_SUCCESS;
+    }
+
+    PMIX_LOAD_PROCID(&undef, proc->nspace, PMIX_RANK_UNDEF);
+    PMIX_INFO_LOAD(&info[0], PMIX_APP_INFO, NULL, PMIX_BOOL);
+    tmp = NULL;
+    for (n=0; n < ns->num_apps; n++) {
+        PMIX_CONSTRUCT(&cb, pmix_cb_t);
+        cb.proc = &undef;
+        cb.copy = true;
+        cb.info = info;
+        cb.ninfo = 2;
+        cb.key = PMIX_APP_SIZE;
+        PMIX_INFO_LOAD(&info[1], PMIX_APPNUM, &n, PMIX_UINT32);
+        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+        PMIX_INFO_DESTRUCT(&info[1]);
+        cb.key = NULL;
+        cb.info = NULL;
+        cb.ninfo = 0;
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_DESTRUCT(&cb);
+            return rc;
+        }
+        /* the data is the first value on the cb.kvs list */
+        if (1 != pmix_list_get_size(&cb.kvs)) {
+            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            PMIX_DESTRUCT(&cb);
+            return PMIX_ERR_BAD_PARAM;
+        }
+        kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
+        pmix_asprintf(&ev1, "%u", kv->value->data.uint32);
+        pmix_argv_append_nosize(&tmp, ev1);
+        free(ev1);
+        PMIX_DESTRUCT(&cb);
+    }
+    PMIX_INFO_DESTRUCT(&info[0]);
+
+    if (NULL != tmp) {
+        ev1 = pmix_argv_join(tmp, ' ');
+        pmix_argv_free(tmp);
+        pmix_setenv("OMPI_APP_CTX_NUM_PROCS", ev1, true, env);
+        free(ev1);
+    }
+
+
+    PMIX_INFO_LOAD(&info[0], PMIX_APP_INFO, NULL, PMIX_BOOL);
+    tmp = NULL;
+    for (n=0; n < ns->num_apps; n++) {
+        PMIX_CONSTRUCT(&cb, pmix_cb_t);
+        cb.proc = &undef;
+        cb.copy = true;
+        cb.info = info;
+        cb.ninfo = 2;
+        cb.key = PMIX_APPLDR;
+        PMIX_INFO_LOAD(&info[1], PMIX_APPNUM, &n, PMIX_UINT32);
+        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+        PMIX_INFO_DESTRUCT(&info[1]);
+        cb.key = NULL;
+        cb.info = NULL;
+        cb.ninfo = 0;
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_DESTRUCT(&cb);
+            return rc;
+        }
+        /* the data is the first value on the cb.kvs list */
+        if (1 != pmix_list_get_size(&cb.kvs)) {
+            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            PMIX_DESTRUCT(&cb);
+            return PMIX_ERR_BAD_PARAM;
+        }
+        kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
+        pmix_asprintf(&ev1, "%u", kv->value->data.uint32);
+        pmix_argv_append_nosize(&tmp, ev1);
+        free(ev1);
+        PMIX_DESTRUCT(&cb);
+    }
+    PMIX_INFO_DESTRUCT(&info[0]);
+
+    if (NULL != tmp) {
+        ev1 = pmix_argv_join(tmp, ' ');
+        pmix_argv_free(tmp);
+        tmp = NULL;
+        pmix_setenv("OMPI_FIRST_RANKS", ev1, true, env);
+        free(ev1);
+    }
+
+    /* provide the reincarnation number */
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    cb.proc = (pmix_proc_t*)proc;
+    cb.copy = true;
+    cb.key = PMIX_REINCARNATION;
+    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+    cb.key = NULL;
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_DESTRUCT(&cb);
+        return rc;
+    }
+    /* the data is the first value on the cb.kvs list */
+    if (1 != pmix_list_get_size(&cb.kvs)) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        PMIX_DESTRUCT(&cb);
+        return PMIX_ERR_BAD_PARAM;
+    }
+    kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
+    pmix_asprintf(&ev1, "%u", kv->value->data.uint32);
+    pmix_setenv("OMPI_MCA_num_restarts", ev1, true, env);
+    free(ev1);
+    PMIX_DESTRUCT(&cb);
 
     return PMIX_SUCCESS;
 }

@@ -63,7 +63,8 @@ static pmix_status_t setup_nspace_kv(pmix_namespace_t *nptr,
                                      pmix_kval_t *kv);
 static pmix_status_t register_nspace(pmix_namespace_t *nptr);
 static pmix_status_t setup_fork(const pmix_proc_t *proc,
-                                char ***env);
+                                char ***env,
+                                char ***priors);
 static void deregister_nspace(pmix_namespace_t *nptr);
 pmix_pmdl_module_t pmix_pmdl_ompi4_module = {
     .name = "ompi4",
@@ -190,6 +191,8 @@ static pmix_status_t harvest_envars(pmix_namespace_t *nptr,
             }
         }
     }
+    /* flag that we worked on this */
+    pmix_argv_append_nosize(priors, "ompi4");
 
     if (NULL != nptr) {
         /* see if we already have this nspace */
@@ -402,7 +405,8 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr)
 }
 
 static pmix_status_t setup_fork(const pmix_proc_t *proc,
-                                char ***env)
+                                char ***env,
+                                char ***priors)
 {
 	pmdl_nspace_t *ns, *ns2;
 	char *param;
@@ -417,6 +421,18 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
 
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
                         "pmdl:ompi4: setup fork for %s", PMIX_NAME_PRINT(proc));
+
+    /* don't do OMPI again if already done */
+    if (NULL != priors && NULL != *priors) {
+        char **t2 = *priors;
+        for (n=0; NULL != t2[n]; n++) {
+            if (0 == strncmp(t2[n], "ompi", 4)) {
+                return PMIX_ERR_TAKE_NEXT_OPTION;
+            }
+        }
+    }
+    /* flag that we worked on this */
+    pmix_argv_append_nosize(priors, "ompi4");
 
 	/* see if we already have this nspace */
 	ns = NULL;
