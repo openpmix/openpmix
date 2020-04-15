@@ -443,14 +443,6 @@ static pmix_status_t init(void)
                        pmix_bfrops_base_print_jobstate,
                        &mca_bfrops_v4_component.types);
 
-    PMIX_REGISTER_TYPE("PMIX_DIM_VALUE",
-                       PMIX_DIM_VALUE,
-                       pmix_bfrops_base_pack_dimval,
-                       pmix_bfrops_base_unpack_dimval,
-                       pmix_bfrops_base_copy_dimval,
-                       pmix_bfrops_base_print_dimval,
-                       &mca_bfrops_v4_component.types);
-
     return PMIX_SUCCESS;
 }
 

@@ -774,14 +774,24 @@ typedef uint32_t pmix_rank_t;
 
 /* Storage-Related Attributes */
 #define PMIX_QUERY_STORAGE_LIST             "pmix.strg.list"       // (char*) return comma-delimited list of identifiers for all available storage systems
-#define PMIX_STORAGE_CAPACITY               "pmix.strg.cap"        // (float) return overall capacity (in Megabytes) of specified storage system
-#define PMIX_STORAGE_FREE                   "pmix.strg.free"       // (float) return overall free capacity (in Megabytes) of specified storage system
-#define PMIX_STORAGE_AVAIL                  "pmix.strg.avail"      // (float) return overall capacity (in Megabytes) of specified storage
-                                                                   //         system that is available for use by the calling program
-#define PMIX_STORAGE_BW                     "pmix.strg.bw"         // (float) return overall bandwidth (in Megabytes/sec) of specified storage system
-#define PMIX_STORAGE_AVAIL_BW               "pmix.strg.availbw"    // (float) return overall bandwidth (in Megabytes/sec) of specified storage system
+#define PMIX_STORAGE_CAPACITY_LIMIT         "pmix.strg.cap"        // (uint64_t) return overall capacity (in Megabytes[base2]) of specified storage system
+#define PMIX_STORAGE_CAPACITY_FREE          "pmix.strg.free"       // (uint64_t) return free capacity (in Megabytes[base2]) of specified storage system
+#define PMIX_STORAGE_CAPACITY_AVAIL         "pmix.strg.avail"      // (uint64_t) return capacity (in Megabytes[[base2]]) of specified storage
+                                                                   //            system that is available for use by the calling program
+
+#define PMIX_STORAGE_OBJECT_LIMIT           "pmix.strg.obj"        // (uint64_t) return overall limit on number of objects (e.g., inodes) of specified storage system
+#define PMIX_STORAGE_OBJECTS_FREE           "pmix.strg.objf"       // (uint64_t) return number of free objects (e.g., inodes) of specified storage system
+#define PMIX_STORAGE_OBJECTS_AVAIL          "pmix.strg.obja"       // (uint64_t) return number of objects (e.g., inodes) of specified storage system
+                                                                   //            that are available for use by the calling program
+
+#define PMIX_STORAGE_BW                     "pmix.strg.bw"         // (float) return overall bandwidth (in Megabytes[base2]/sec) of specified storage system
+#define PMIX_STORAGE_AVAIL_BW               "pmix.strg.availbw"    // (float) return overall bandwidth (in Megabytes[base2]/sec) of specified storage system
                                                                    //         that is available for use by the calling program
+
 #define PMIX_STORAGE_ID                     "pmix.strg.id"         // (char*) identifier of the storage system being referenced
+#define PMIX_STORAGE_PATH                   "pmix.strg.path"       // (char*) Mount point corresponding to a specified storage ID
+#define PMIX_STORAGE_TYPE                   "pmix.strg.type"       // (char*) Qualifier indicating the type of storage being referenced by a query
+                                                                   //         (e.g., lustre, gpfs, online, network-attached, ...)
 
 
 /****    PROCESS STATE DEFINITIONS    ****/
@@ -1073,7 +1083,6 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_REGATTR            48
 #define PMIX_REGEX              49
 #define PMIX_JOB_STATE          50
-#define PMIX_DIM_VALUE          51
 /********************/
 
 /* define a boundary for implementers so they can add their own data types */
@@ -1581,62 +1590,6 @@ typedef struct pmix_data_array {
 /**** AVOID CIRCULAR DEPENDENCIES                    ****/
 
 
-/****    VALUE UNITS    ****/
-typedef uint16_t pmix_units_t;
-#define PMIX_UNIT_BYTES             1       // Bytes
-#define PMIX_UNIT_KILOBYTES         2       // Kilobytes
-#define PMIX_UNIT_MEGABYTES         3       // Megabytes
-#define PMIX_UNIT_GIGABYTES         4       // Gigabytes
-#define PMIX_UNIT_TERABYTES         5       // Terabytes
-#define PMIX_UNIT_PETABYTES         6       // Petabytes
-#define PMIX_UNIT_EXABYTES          7       // Exabytes
-#define PMIX_UNIT_BSEC              8       // Bytes/sec
-#define PMIX_UNIT_KBSEC             9       // KBytes/sec
-#define PMIX_UNIT_MBSEC            10       // MBytes/sec
-#define PMIX_UNIT_GBSEC            11       // GBytes/sec
-#define PMIX_UNIT_TBSEC            12       // TBytes/sec
-#define PMIX_UNIT_PBSEC            13       // PBytes/sec
-#define PMIX_UNIT_EBSEC            14       // EBytes/sec
-
-
-/****    DIMENSIONED VALUE STRUCT    ****/
-typedef struct pmix_dim_value_t {
-    double dval;
-    pmix_units_t units;
-} pmix_dim_value_t;
-/* allocate and initialize a specified number of dim_value structs */
-#define PMIX_DIM_VALUE_CREATE(m, n)                             \
-    (m) = (pmix_dim_value_t*)pmix_calloc((n), sizeof(pmix_dim_value_t));
-
-/* release a single pmix_dim_value_t struct, including its data */
-#define PMIX_DIM_VALUE_RELEASE(m)       \
-    do {                                \
-        pmix_free((m));                 \
-        (m) = NULL;                     \
-    } while (0)
-
-/* initialize a single dim_value struct */
-#define PMIX_DIM_VALUE_CONSTRUCT(m)             \
-    memset((m), 0, sizeof(pmix_dim_value_t));
-
-/* release the memory in the dim_value struct data field */
-#define PMIX_DIM_VALUE_DESTRUCT(m)
-
-#define PMIX_DIM_VALUE_FREE(m, n)                       \
-    do {                                                \
-        if (NULL != (m)) {                              \
-            pmix_free((m));                             \
-            (m) = NULL;                                 \
-        }                                               \
-    } while (0)
-
-#define PMIX_DIM_VALUE_LOAD(m, d, u) \
-    do {                                \
-        (m)->dval = (double)(d);        \
-        (m)->units = (u);               \
-    } while(0)
-
-
 /* we cannot forward-declare the pmix_regattr_t struct
  * as Cython doesn't know what to do with it. Thus, we
  * will utilize the void* entry of the pmix_value_t to
@@ -1686,7 +1639,6 @@ typedef struct pmix_value {
         pmix_envar_t envar;
         pmix_coord_t *coord;
         pmix_job_state_t jstate;
-        pmix_dim_value_t *dimval;
     } data;
 } pmix_value_t;
 /* allocate and initialize a specified number of value structs */
@@ -2670,7 +2622,6 @@ PMIX_EXPORT const char* PMIx_Data_type_string(pmix_data_type_t type);
 PMIX_EXPORT const char* PMIx_Alloc_directive_string(pmix_alloc_directive_t directive);
 PMIX_EXPORT const char* PMIx_IOF_channel_string(pmix_iof_channel_t channel);
 PMIX_EXPORT const char* PMIx_Job_state_string(pmix_job_state_t state);
-PMIX_EXPORT const char* PMIx_Units_string(pmix_units_t unit);
 
 /* Get the PMIx version string. Note that the provided string is
  * statically defined and must NOT be free'd  */

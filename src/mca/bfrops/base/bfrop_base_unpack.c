@@ -1638,39 +1638,3 @@ pmix_status_t pmix_bfrops_base_unpack_jobstate(pmix_pointer_array_t *regtypes,
     PMIX_BFROPS_UNPACK_TYPE(ret, buffer, dest, num_vals, PMIX_UINT8, regtypes);
     return ret;
 }
-
-pmix_status_t pmix_bfrops_base_unpack_dimval(pmix_pointer_array_t *regtypes,
-                                             pmix_buffer_t *buffer, void *dest,
-                                             int32_t *num_vals, pmix_data_type_t type)
-{
-    pmix_dim_value_t *ptr;
-    int32_t i, n, m;
-    pmix_status_t ret;
-
-    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
-                        "pmix_bfrop_unpack: %d dimvals", *num_vals);
-
-    if (PMIX_DIM_VALUE != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-
-    ptr = (pmix_dim_value_t *) dest;
-    n = *num_vals;
-
-    for (i = 0; i < n; ++i) {
-        PMIX_DIM_VALUE_CONSTRUCT(&ptr[i]);
-        /* unpack the value */
-        m=1;
-        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].dval, &m, PMIX_DOUBLE, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        /* unpack the units */
-        m=1;
-        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].units, &m, PMIX_UINT16, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-    }
-    return PMIX_SUCCESS;
-}

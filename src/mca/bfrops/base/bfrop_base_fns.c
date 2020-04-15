@@ -64,7 +64,6 @@ void pmix_bfrops_base_value_load(pmix_value_t *v, const void *data,
     pmix_status_t rc;
     pmix_coord_t *coord;
     pmix_regattr_t *regattr;
-    pmix_dim_value_t *dimval;
 
     v->type = type;
     if (NULL == data) {
@@ -228,13 +227,6 @@ void pmix_bfrops_base_value_load(pmix_value_t *v, const void *data,
                 PMIX_ERROR_LOG(rc);
             }
             break;
-        case PMIX_DIM_VALUE:
-            dimval = (pmix_dim_value_t*)data;
-            rc = pmix_bfrops_base_copy_dimval((pmix_dim_value_t**)&v->data.dimval, dimval, PMIX_DIM_VALUE);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-            }
-            break;
         default:
             /* silence warnings */
             break;
@@ -252,7 +244,6 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv,
     pmix_data_array_t **darray;
     pmix_coord_t *coord;
     pmix_regattr_t *regattr, *r;
-    pmix_dim_value_t *dimval;
 
     rc = PMIX_SUCCESS;
     if (NULL == data ||
@@ -427,15 +418,6 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv,
                 *sz = 0;
             }
             break;
-        case PMIX_DIM_VALUE:
-            PMIX_DIM_VALUE_CREATE(dimval, 1);
-            if (NULL == dimval) {
-                return PMIX_ERR_NOMEM;
-            }
-            memcpy(dimval, kv->data.dimval, sizeof(pmix_dim_value_t));
-            *data = dimval;
-            *sz = sizeof(pmix_dim_value_t);
-            break;
         default:
             /* silence warnings */
             rc = PMIX_ERROR;
@@ -603,15 +585,6 @@ pmix_value_cmp_t pmix_bfrops_base_value_cmp(pmix_value_t *p,
                 return PMIX_EQUAL;
             }
             break;
-        case PMIX_DIM_VALUE:
-            if (p->data.dimval->dval > p1->data.dimval->dval) {
-                return PMIX_VALUE1_GREATER;
-            } else if (p1->data.dimval->dval > p->data.dimval->dval) {
-                return PMIX_VALUE2_GREATER;
-            } else {
-                return PMIX_EQUAL;
-            }
-            break;
 
         default:
             pmix_output(0, "COMPARE-PMIX-VALUE: UNSUPPORTED TYPE %d", (int)p->type);
@@ -757,9 +730,6 @@ pmix_status_t pmix_bfrops_base_value_xfer(pmix_value_t *p,
         break;
     case PMIX_REGATTR:
         pmix_bfrops_base_copy_regattr((pmix_regattr_t**)&p->data.ptr, src->data.ptr, PMIX_REGATTR);
-        break;
-    case PMIX_DIM_VALUE:
-        pmix_bfrops_base_copy_dimval((pmix_dim_value_t**)&p->data.dimval, src->data.dimval, PMIX_DIM_VALUE);
         break;
 
     default:
