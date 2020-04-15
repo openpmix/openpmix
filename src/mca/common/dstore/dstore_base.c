@@ -1600,10 +1600,12 @@ pmix_common_dstore_ctx_t *pmix_common_dstor_init(const char *ds_name, pmix_info_
         goto err_exit;
     }
 
-    rc = pmix_pshmem.init();
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        goto err_exit;
+    if (NULL != pmix_pshmem.init) {
+        rc = pmix_pshmem.init();
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto err_exit;
+        }
     }
 
     _set_constants_from_env(ds_ctx);
@@ -1778,7 +1780,9 @@ PMIX_EXPORT void pmix_common_dstor_finalize(pmix_common_dstore_ctx_t *ds_ctx)
     _esh_ns_map_cleanup(ds_ctx);
     _esh_ns_track_cleanup(ds_ctx);
 
-    pmix_pshmem.finalize();
+    if (NULL != pmix_pshmem.finalize) {
+        pmix_pshmem.finalize();
+    }
 
     if (NULL != ds_ctx->base_path){
         if(PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
