@@ -300,39 +300,3 @@ PMIX_EXPORT const char* PMIx_Job_state_string(pmix_job_state_t state)
             return "UNKNOWN";
     }
 }
-
-PMIX_EXPORT const char* PMIx_Units_string(pmix_units_t unit)
-{
-    switch(unit) {
-        case PMIX_UNIT_BYTES:
-            return "Bytes";
-        case PMIX_UNIT_KILOBYTES:
-            return "Kilobytes";
-        case PMIX_UNIT_MEGABYTES:
-            return "Megabytes";
-        case PMIX_UNIT_GIGABYTES:
-            return "Gigabytes";
-        case PMIX_UNIT_TERABYTES:
-            return "Terabytes";
-        case PMIX_UNIT_PETABYTES:
-            return "Petabytes";
-        case PMIX_UNIT_EXABYTES:
-            return "Exabytes";
-        case PMIX_UNIT_BSEC:
-            return "Bytes/sec";
-        case PMIX_UNIT_KBSEC:
-            return "KBytes/sec";
-        case PMIX_UNIT_MBSEC:
-            return "MBytes/sec";
-        case PMIX_UNIT_GBSEC:
-            return "GBytes/sec";
-        case PMIX_UNIT_TBSEC:
-            return "TBytes/sec";
-        case PMIX_UNIT_PBSEC:
-            return "PBytes/sec";
-        case PMIX_UNIT_EBSEC:
-            return "EBytes/sec";
-        default:
-            return "Other";
-    }
-}

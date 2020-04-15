@@ -476,9 +476,8 @@ int main(int argc, char **argv)
                 infoptr = (pmix_info_t*)mq.info[n].value.data.darray->array;
                 ninfo = mq.info[n].value.data.darray->size;
                 for (m=0; m < ninfo; m++) {
-                    fprintf(stdout, "\t%s:  %lf (%s)\n", infoptr[m].key,
-                            infoptr[m].value.data.dimval->dval,
-                            PMIx_Units_string(infoptr[m].value.data.dimval->units));
+                    fprintf(stdout, "\t%s:  %lu\n", infoptr[m].key,
+                            infoptr[m].value.data.uint64);
                 }
             }
         }
