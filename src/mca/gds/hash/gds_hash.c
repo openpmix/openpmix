@@ -3,7 +3,7 @@
  * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2018-2019 Mellanox Technologies, Inc.
+ * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
  *
  * $COPYRIGHT$
@@ -87,9 +87,8 @@ static pmix_status_t hash_fetch(const pmix_proc_t *proc,
 
 static pmix_status_t setup_fork(const pmix_proc_t *peer, char ***env);
 
-static pmix_status_t nspace_add(const char *nspace,
-                                pmix_info_t info[],
-                                size_t ninfo);
+static pmix_status_t nspace_add(const char *nspace, uint32_t nlocalprocs,
+                                pmix_info_t info[], size_t ninfo);
 
 static pmix_status_t nspace_del(const char *nspace);
 
@@ -3044,9 +3043,8 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env)
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t nspace_add(const char *nspace,
-                                pmix_info_t info[],
-                                size_t ninfo)
+static pmix_status_t nspace_add(const char *nspace, uint32_t nlocalprocs,
+                                pmix_info_t info[], size_t ninfo)
 {
     /* we don't need to do anything here */
     return PMIX_SUCCESS;

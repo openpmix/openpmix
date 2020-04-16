@@ -5,7 +5,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
- * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
+ * Copyright (c) 2016-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
  * Copyright (c) 2018      Cisco Systems, Inc.  All rights reserved
@@ -622,7 +622,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
     }
 
     /* register nspace for each activate components */
-    PMIX_GDS_ADD_NSPACE(rc, nptr->nspace, cd->info, cd->ninfo);
+    PMIX_GDS_ADD_NSPACE(rc, nptr->nspace, cd->nlocalprocs, cd->info, cd->ninfo);
     if (PMIX_SUCCESS != rc) {
         goto release;
     }
