@@ -183,7 +183,7 @@ static pmix_status_t harvest_envars(pmix_namespace_t *nptr,
     }
 
     /* don't do OMPI again if already done - ompi5 has higher priority */
-    if (NULL != priors) {
+    if (NULL != *priors) {
         char **t2 = *priors;
         for (n=0; NULL != t2[n]; n++) {
             if (0 == strncmp(t2[n], "ompi", 4)) {
@@ -423,7 +423,7 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
                         "pmdl:ompi4: setup fork for %s", PMIX_NAME_PRINT(proc));
 
     /* don't do OMPI again if already done */
-    if (NULL != priors && NULL != *priors) {
+    if (NULL != *priors) {
         char **t2 = *priors;
         for (n=0; NULL != t2[n]; n++) {
             if (0 == strncmp(t2[n], "ompi", 4)) {
