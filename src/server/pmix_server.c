@@ -3681,23 +3681,6 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
         }
         return rc;
     }
-
-    if (PMIX_GROUP_CONSTRUCT_CMD == cmd) {
-        PMIX_GDS_CADDY(cd, peer, tag);
-        if (PMIX_SUCCESS != (rc = pmix_server_grpconstruct(cd, buf))) {
-            PMIX_RELEASE(cd);
-        }
-        return rc;
-    }
-
-    if (PMIX_GROUP_DESTRUCT_CMD == cmd) {
-        PMIX_GDS_CADDY(cd, peer, tag);
-        if (PMIX_SUCCESS != (rc = pmix_server_grpdestruct(cd, buf))) {
-            PMIX_RELEASE(cd);
-        }
-        return rc;
-    }
-
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
