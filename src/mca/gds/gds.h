@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
+ * Copyright (c) 2016-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
@@ -342,11 +342,12 @@ typedef pmix_status_t (*pmix_gds_base_module_setup_fork_fn_t)(const pmix_proc_t 
 * @return PMIX_SUCCESS on success.
 */
 typedef pmix_status_t (*pmix_gds_base_module_add_nspace_fn_t)(const char *nspace,
+                                                              uint32_t nlocalprocs,
                                                               pmix_info_t info[],
                                                               size_t ninfo);
 
 /* define a convenience macro for add_nspace based on peer */
-#define PMIX_GDS_ADD_NSPACE(s, n, i, ni)                    \
+#define PMIX_GDS_ADD_NSPACE(s, n, ls, i, ni)                \
     do {                                                    \
         pmix_gds_base_active_module_t *_g;                  \
         pmix_status_t _s = PMIX_SUCCESS;                    \
@@ -357,7 +358,7 @@ typedef pmix_status_t (*pmix_gds_base_module_add_nspace_fn_t)(const char *nspace
         PMIX_LIST_FOREACH(_g, &pmix_gds_globals.actives,    \
                           pmix_gds_base_active_module_t) {  \
             if (NULL != _g->module->add_nspace) {           \
-                _s = _g->module->add_nspace(n, i, ni);      \
+                _s = _g->module->add_nspace(n, ls, i, ni);  \
             }                                               \
             if (PMIX_SUCCESS != _s) {                       \
                 (s) = PMIX_ERROR;                           \

@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
- * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
+ * Copyright (c) 2016-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
@@ -139,11 +139,10 @@ static pmix_status_t ds12_setup_fork(const pmix_proc_t *peer, char ***env)
     return pmix_common_dstor_setup_fork(ds12_ctx, PMIX_DSTORE_ESH_BASE_PATH, peer, env);
 }
 
-static pmix_status_t ds12_add_nspace(const char *nspace,
-                                pmix_info_t info[],
-                                size_t ninfo)
+static pmix_status_t ds12_add_nspace(const char *nspace, uint32_t local_size,
+                                     pmix_info_t info[], size_t ninfo)
 {
-    return pmix_common_dstor_add_nspace(ds12_ctx, nspace, info, ninfo);
+    return pmix_common_dstor_add_nspace(ds12_ctx, nspace, local_size, info, ninfo);
 }
 
 static pmix_status_t ds12_del_nspace(const char* nspace)
