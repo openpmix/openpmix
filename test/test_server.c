@@ -1,5 +1,5 @@
  /*
- * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2019 Research Organization for Information Science
@@ -187,7 +187,7 @@ static void set_namespace(int local_size, int univ_size,
             return;
         }
         free(tmp);
-        PMIX_INFO_LOAD(&info[4], PMIX_NODE_MAP, regex, PMIX_REGEX);
+        PMIX_INFO_LOAD(&info[4], PMIX_NODE_MAP, regex, PMIX_STRING);
     }
 
     /* generate the global proc map - if we have two
@@ -220,7 +220,7 @@ static void set_namespace(int local_size, int univ_size,
     }
     PMIx_generate_ppn(ranks, &ppn);
     free(ranks);
-    PMIX_INFO_LOAD(&info[5], PMIX_PROC_MAP, ppn, PMIX_REGEX);
+    PMIX_INFO_LOAD(&info[5], PMIX_PROC_MAP, ppn, PMIX_STRING);
     free(ppn);
 
     pmix_strncpy(info[6].key, PMIX_JOB_SIZE, PMIX_MAX_KEYLEN);

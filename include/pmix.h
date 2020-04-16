@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  *
@@ -200,7 +200,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs
  *     an error. The timeout parameter can help avoid "hangs" due to programming
  *     errors that prevent the target proc from ever exposing its data.
  */
-PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
+PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const pmix_key_t key,
                                    const pmix_info_t info[], size_t ninfo,
                                    pmix_value_t **val);
 
@@ -394,8 +394,7 @@ PMIX_EXPORT pmix_status_t PMIx_Disconnect_nb(const pmix_proc_t ranges[], size_t 
  * for releasing the array when done with it - the PMIX_PROC_FREE macro is
  * provided for this purpose.
  */
-PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename,
-                                             const pmix_nspace_t nspace,
+PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_nspace_t nspace,
                                              pmix_proc_t **procs, size_t *nprocs);
 
 
@@ -411,6 +410,9 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const pmix_nspace_t nspace, char **
  * executing on a given node. We assume that the host RM will
  * exercise appropriate access control on the information.
  *
+ * NOTE: there is no blocking form of this API as the structures
+ * passed to query info differ from those for receiving the results
+ *
  * The following return status codes are provided in the callback:
  *
  * PMIX_SUCCESS - all data has been returned
@@ -418,9 +420,6 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const pmix_nspace_t nspace, char **
  * PMIX_ERR_PARTIAL_SUCCESS - some of the data has been returned
  * PMIX_ERR_NOT_SUPPORTED - the host RM does not support this function
  */
-PMIX_EXPORT pmix_status_t PMIx_Query_info(pmix_query_t queries[], size_t nqueries,
-                                          pmix_info_t **results, size_t *nresults);
-
 PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nqueries,
                                              pmix_info_cbfunc_t cbfunc, void *cbdata);
 
@@ -496,8 +495,7 @@ PMIX_EXPORT pmix_status_t PMIx_Allocation_request_nb(pmix_alloc_directive_t dire
  * any provided pmix_info_t array.
  */
 PMIX_EXPORT pmix_status_t PMIx_Job_control(const pmix_proc_t targets[], size_t ntargets,
-                                           const pmix_info_t directives[], size_t ndirs,
-                                           pmix_info_t **results, size_t *nresults);
+                                           const pmix_info_t directives[], size_t ndirs);
 
 PMIX_EXPORT pmix_status_t PMIx_Job_control_nb(const pmix_proc_t targets[], size_t ntargets,
                                               const pmix_info_t directives[], size_t ndirs,
@@ -531,8 +529,7 @@ PMIX_EXPORT pmix_status_t PMIx_Job_control_nb(const pmix_proc_t targets[], size_
  * Note: a process can send a heartbeat to the server using the PMIx_Heartbeat
  * macro provided below*/
 PMIX_EXPORT pmix_status_t PMIx_Process_monitor(const pmix_info_t *monitor, pmix_status_t error,
-                                               const pmix_info_t directives[], size_t ndirs,
-                                               pmix_info_t **results, size_t *nresults);
+                                               const pmix_info_t directives[], size_t ndirs);
 
 PMIX_EXPORT pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pmix_status_t error,
                                                   const pmix_info_t directives[], size_t ndirs,
@@ -576,10 +573,8 @@ PMIX_EXPORT pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pm
  * will _not_ be called in such cases.
  */
 PMIX_EXPORT pmix_status_t PMIx_Get_credential(const pmix_info_t info[], size_t ninfo,
-                                              pmix_byte_object_t *credential);
+                                              pmix_credential_cbfunc_t cbfunc, void *cbdata);
 
-PMIX_EXPORT pmix_status_t PMIx_Get_credential_nb(const pmix_info_t info[], size_t ninfo,
-                                                 pmix_credential_cbfunc_t cbfunc, void *cbdata);
 
 /* Request validation of a credential by the PMIx server/SMS
  * Input values include:
@@ -612,11 +607,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_credential_nb(const pmix_info_t info[], size_
  */
 PMIX_EXPORT pmix_status_t PMIx_Validate_credential(const pmix_byte_object_t *cred,
                                                    const pmix_info_t info[], size_t ninfo,
-                                                   pmix_info_t **results, size_t *nresults);
-
-PMIX_EXPORT pmix_status_t PMIx_Validate_credential_nb(const pmix_byte_object_t *cred,
-                                                      const pmix_info_t info[], size_t ninfo,
-                                                      pmix_validation_cbfunc_t cbfunc, void *cbdata);
+                                                   pmix_validation_cbfunc_t cbfunc, void *cbdata);
 
 /* Define a callback function for delivering forwarded IO to a process
  * This function will be called whenever data becomes available, or a
@@ -674,11 +665,6 @@ PMIX_EXPORT pmix_status_t PMIx_Validate_credential_nb(const pmix_byte_object_t *
  *             a non-success error if the registration cannot
  *             be submitted - in this case, the regcbfunc
  *             will _not_ be called.
- *             If regcbfunc is NULL, then this will be treated
- *             as a BLOCKING call - a positive return value
- *             represents the reference ID for the request,
- *             while negative values indicate the corresponding
- *             error
  *
  * cbdata - pointer to object to be returned in regcbfunc
  */
@@ -701,9 +687,7 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
  * cbfunc - function to be called when deregistration has
  *          been completed. Note that any IO to be flushed
  *          may continue to be received after deregistration
- *          has completed. If cbfunc is NULL, then this is
- *          treated as a BLOCKING call and the result of
- *          the operation will be provided in the returned status
+ *          has completed.
  *
  * cbdata - pointer to object to be returned in cbfunc
  */
@@ -712,7 +696,7 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_deregister(size_t iofhdlr,
                                               pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Push data collected locally (typically from stdin) to
- * stdin of target recipients.
+ * target recipients.
  *
  * targets - array of process identifiers to which the data is to be delivered. Note
  *           that a WILDCARD rank indicates that all procs in the given nspace are
@@ -730,10 +714,7 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_deregister(size_t iofhdlr,
  *
  * bo - pointer to a byte object containing the stdin data
  *
- * cbfunc - callback function when the data has been forwarded. If
- *          cbfunc is NULL, then this is treated as a BLOCKING call
- *          and the result of the operation will be provided in the
- *          returned status
+ * cbfunc - callback function when the data has been forwarded
  *
  * cbdata - object to be returned in cbfunc
  */
@@ -741,243 +722,6 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntar
                                         pmix_byte_object_t *bo,
                                         const pmix_info_t directives[], size_t ndirs,
                                         pmix_op_cbfunc_t cbfunc, void *cbdata);
-
-/* Construct a new group composed of the specified processes and identified with
- * the provided group identifier. Both blocking and non-blocking versions
- * are provided (the callback function for the non-blocking form will be called
- * once all specified processes have joined the group). The group identifier is
- * a user-defined, NULL-terminated character array of length less than or equal
- * to PMIX_MAX_NSLEN. Only characters accepted by standard string comparison
- * functions (e.g., strncmp) are supported.
- *
- * Processes may engage in multiple simultaneous group construct operations as
- * desired so long as each is provided with a unique group ID. The info array
- * can be used to pass user-level directives regarding timeout constraints and
- * other options available from the PMIx server.
- *
- * The construct leader (if PMIX_GROUP_LEADER is provided) or all participants
- * will receive events (if registered for the PMIX_GROUP_MEMBER_FAILED event)
- * whenever a process fails or terminates prior to calling
- * PMIx_Group_construct(_nb) – the events will contain the identifier of the
- * process that failed to join plus any other information that the resource
- * manager provided. This provides an opportunity for the leader to react to
- * the event – e.g., to invite an alternative member to the group or to decide
- * to proceed with a smaller group. The decision to proceed with a smaller group
- * is communicated to the PMIx library in the results array at the end of the
- * event handler. This allows PMIx to properly adjust accounting for procedure
- * completion. When construct is complete, the participating PMIx servers will
- * be alerted to any change in participants and each group member will (if
- * registered) receive a PMIX_GROUP_MEMBERSHIP_UPDATE event updating the group
- * membership.
- *
- * Processes in a group under construction are not allowed to leave the group
- * until group construction is complete. Upon completion of the construct
- * procedure, each group member will have access to the job-level information
- * of all nspaces represented in the group and the contact information for
- * every group member.
- *
- * Failure of the leader at any time will cause a PMIX_GROUP_LEADER_FAILED event
- * to be delivered to all participants so they can optionally declare a new leader.
- * A new leader is identified by providing the PMIX_GROUP_LEADER attribute in
- * the results array in the return of the event handler. Only one process is
- * allowed to return that attribute, declaring itself as the new leader. Results
- * of the leader selection will be communicated to all participants via a
- * PMIX_GROUP_LEADER_SELECTED event identifying the new leader. If no leader
- * was selected, then the status code provided in the event handler will provide
- * an error value so the participants can take appropriate action.
- *
- * Any participant that returns PMIX_GROUP_CONSTRUCT_ABORT from the leader failed
- * event handler will cause the construct process to abort. Those processes
- * engaged in the blocking construct will return from the call with the
- * PMIX_GROUP_CONSTRUCT_ABORT status. Non-blocking participants will have
- * their callback function executed with that status.
- *
- * Some relevant attributes for this operation:
- *    PMIX_GROUP_LEADER - declare this process to be the leader of the construction
- *                        procedure. If a process provides this attribute, then
- *                        failure notification for any participating process will
- *                        go only to that one process. In the absence of a
- *                        declared leader, failure events go to all participants.
- *    PMIX_GROUP_OPTIONAL - participation is optional - do not return an error if
- *                          any of the specified processes terminate
- *                          without having joined (default=false)
- *    PMIX_GROUP_NOTIFY_TERMINATION - notify remaining members when another member
- *                                    terminates without first leaving the
- *                                    group (default=false)
- *    PMIX_GROUP_ASSIGN_CONTEXT_ID - requests that the RM assign a unique context
- *                                   ID (size_t) to the group. The value is returned
- *                                   in the PMIX_GROUP_CONSTRUCT_COMPLETE event
- *    PMIX_TIMEOUT - return an error if the group doesn't assemble within the
- *                   specified number of seconds. Targets the scenario where a
- *                   process fails to call PMIx_Group_connect due to hanging
- *
- */
-PMIX_EXPORT pmix_status_t PMIx_Group_construct(const char grp[],
-                                               const pmix_proc_t procs[], size_t nprocs,
-                                               const pmix_info_t directives[], size_t ndirs,
-                                               pmix_info_t **results, size_t *nresults);
-
-PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[],
-                                                  const pmix_proc_t procs[], size_t nprocs,
-                                                  const pmix_info_t info[], size_t ninfo,
-                                                  pmix_info_cbfunc_t cbfunc, void *cbdata);
-
-/* Explicitly invite specified processes to join a group.
- *
- * Each invited process will be notified of the invitation via the PMIX_GROUP_INVITED
- * event. The processes being invited must have registered for the PMIX_GROUP_INVITED
- * event in order to be notified of the invitation. When ready to respond, each invited
- * process provides a response using the appropriate form of PMIx_Group_join. This will
- * notify the inviting process that the invitation was either accepted (via the
- * PMIX_GROUP_INVITE_ACCEPTED event) or declined (via the PMIX_GROUP_INVITE_DECLINED event).
- * The inviting process will also receive PMIX_GROUP_MEMBER_FAILED events whenever a
- * process fails or terminates prior to responding to the invitation.
- *
- * Upon accepting the invitation, both the inviting and invited process will receive
- * access to the job-level information of each other’s nspaces and the contact
- * information of the other process.
- *
- * Some relevant attributes for this operation:
- *    PMIX_GROUP_ASSIGN_CONTEXT_ID - requests that the RM assign a unique context
- *                                   ID (size_t) to the group. The value is returned
- *                                   in the PMIX_GROUP_CONSTRUCT_COMPLETE event
- *    PMIX_TIMEOUT (int): return an error if the group doesn’t assemble within the
- *                        specified number of seconds. Targets the scenario where a
- *                        process fails to call PMIx_Group_connect due to hanging
- *
- * The inviting process is automatically considered the leader of the asynchronous
- * group construction procedure and will receive all failure or termination events
- * for invited members prior to completion. The inviting process is required to
- * provide a PMIX_GROUP_CONSTRUCT_COMPLETE event once the group has been fully
- * assembled – this event will be distributed to all participants along with the
- * final membership.
- *
- * Failure of the leader at any time will cause a PMIX_GROUP_LEADER_FAILED event
- * to be delivered to all participants so they can optionally declare a new leader.
- * A new leader is identified by providing the PMIX_GROUP_LEADER attribute in
- * the results array in the return of the event handler. Only one process is
- * allowed to return that attribute, declaring itself as the new leader. Results
- * of the leader selection will be communicated to all participants via a
- * PMIX_GROUP_LEADER_SELECTED event identifying the new leader. If no leader
- * was selected, then the status code provided in the event handler will provide
- * an error value so the participants can take appropriate action.
- *
- * Any participant that returns PMIX_GROUP_CONSTRUCT_ABORT from the event
- * handler will cause all participants to receive an event notifying them
- * of that status.
- */
-PMIX_EXPORT pmix_status_t PMIx_Group_invite(const char grp[],
-                                            const pmix_proc_t procs[], size_t nprocs,
-                                            const pmix_info_t info[], size_t ninfo,
-                                            pmix_info_t **results, size_t *nresult);
-
-PMIX_EXPORT pmix_status_t PMIx_Group_invite_nb(const char grp[],
-                                               const pmix_proc_t procs[], size_t nprocs,
-                                               const pmix_info_t info[], size_t ninfo,
-                                               pmix_info_cbfunc_t cbfunc, void *cbdata);
-
-/* Respond to an invitation to join a group that is being asynchronously constructed.
- *
- * The process must have registered for the PMIX_GROUP_INVITED event in order to be
- * notified of the invitation. When ready to respond, the process provides a response
- * using the appropriate form of PMIx_Group_join.
- *
- * Critical Note: Since the process is alerted to the invitation in a PMIx event handler,
- * the process must not use the blocking form of this call unless it first “thread shifts”
- * out of the handler and into its own thread context. Likewise, while it is safe to call
- * the non-blocking form of the API from the event handler, the process must not block
- * in the handler while waiting for the callback function to be called.
- *
- * Calling this function causes the group “leader” to be notified that the process has
- * either accepted or declined the request. The blocking form of the API will return
- * once the group has been completely constructed or the group’s construction has failed
- * (as determined by the leader) – likewise, the callback function of the non-blocking
- * form will be executed upon the same conditions.
- *
- * Failure of the leader at any time will cause a PMIX_GROUP_LEADER_FAILED event
- * to be delivered to all participants so they can optionally declare a new leader.
- * A new leader is identified by providing the PMIX_GROUP_LEADER attribute in
- * the results array in the return of the event handler. Only one process is
- * allowed to return that attribute, declaring itself as the new leader. Results
- * of the leader selection will be communicated to all participants via a
- * PMIX_GROUP_LEADER_SELECTED event identifying the new leader. If no leader
- * was selected, then the status code provided in the event handler will provide
- * an error value so the participants can take appropriate action.
- *
- * Any participant that returns PMIX_GROUP_CONSTRUCT_ABORT from the leader failed
- * event handler will cause all participants to receive an event notifying them
- * of that status. Similarly, the leader may elect to abort the procedure
- * by either returning PMIX_GROUP_CONSTRUCT_ABORT from the handler assigned
- * to the PMIX_GROUP_INVITE_ACCEPTED or PMIX_GROUP_INVITE_DECLINED codes, or
- * by generating an event for the abort code. Abort events will be sent to
- * all invited participants.
- */
-PMIX_EXPORT pmix_status_t PMIx_Group_join(const char grp[],
-                                          const pmix_proc_t *leader,
-                                          pmix_group_opt_t opt,
-                                          const pmix_info_t info[], size_t ninfo,
-                                          pmix_info_t **results, size_t *nresult);
-
-PMIX_EXPORT pmix_status_t PMIx_Group_join_nb(const char grp[],
-                                             const pmix_proc_t *leader,
-                                             pmix_group_opt_t opt,
-                                             const pmix_info_t info[], size_t ninfo,
-                                             pmix_info_cbfunc_t cbfunc, void *cbdata);
-
-/* Leave a PMIx Group. Calls to PMIx_Group_leave (or its non-blocking form) will cause
- * a PMIX_GROUP_LEFT event to be generated notifying all members of the group of the
- * caller’s departure. The function will return (or the non-blocking function will
- * execute the specified callback function) once the event has been locally generated
- * and is not indicative of remote receipt. All PMIx-based collectives such as
- * PMIx_Fence in action across the group will automatically be adjusted if the
- * collective was called with the PMIX_GROUP_FT_COLLECTIVE attribute (default is
- * false) – otherwise, the standard error return behavior will be provided.
- *
- * Critical Note: The PMIx_Group_leave API is intended solely for asynchronous
- * departures of individual processes from a group as it is not a scalable
- * operation – i.e., when a process determines it should no longer be a part of a
- * defined group, but the remainder of the group retains a valid reason to continue
- * in existence. Developers are advised to use PMIx_Group_destruct (or its
- * non-blocking form) for all other scenarios as it represents a more scalable
- * operation.
- */
-PMIX_EXPORT pmix_status_t PMIx_Group_leave(const char grp[],
-                                           const pmix_info_t info[], size_t ninfo);
-
-PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[],
-                                              const pmix_info_t info[], size_t ninfo,
-                                              pmix_op_cbfunc_t cbfunc, void *cbdata);
-
-/* Destruct a group identified by the provided group identifier. Both blocking and
- * non-blocking versions are provided (the callback function for the non-blocking
- * form will be called once all members of the group have called “destruct”).
- * Processes may engage in multiple simultaneous group destruct operations as
- * desired so long as each involves a unique group ID. The info array can be used
- * to pass user-level directives regarding timeout constraints and other options
- * available from the PMIx server.
- *
- * Some relevant attributes for this operation:
- *
- *    PMIX_TIMEOUT (int): return an error if the group doesn’t destruct within the
- *                        specified number of seconds. Targets the scenario where
- *                        a process fails to call PMIx_Group_destruct due to hanging
- *
- * The destruct API will return an error if any group process fails or terminates
- * prior to calling PMIx_Group_destruct or its non-blocking version unless the
- * PMIX_GROUP_NOTIFY_TERMINATION attribute was provided (with a value of true) at
- * time of group construction. If notification was requested, then a event will
- * be delivered (using PMIX_GROUP_MEMBER_FAILED) for each process that fails to
- * call destruct and the destruct tracker updated to account for the lack of
- * participation. The PMIx_Group_destruct operation will subsequently return
- * PMIX_SUCCESS when the remaining processes have all called destruct – i.e., the
- * event will serve in place of return of an error.
- */
-PMIX_EXPORT pmix_status_t PMIx_Group_destruct(const char grp[],
-                                              const pmix_info_t info[], size_t ninfo);
-
-PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grp[],
-                                                 const pmix_info_t info[], size_t ninfo,
-                                                 pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 
 #if defined(c_plusplus) || defined(__cplusplus)

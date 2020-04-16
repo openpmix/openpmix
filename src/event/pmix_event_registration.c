@@ -851,21 +851,23 @@ static void mycbfn(pmix_status_t status,
     PMIX_WAKEUP_THREAD(&cd->lock);
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Register_event_handler(pmix_status_t codes[], size_t ncodes,
-                                                      pmix_info_t info[], size_t ninfo,
-                                                      pmix_notification_fn_t event_hdlr,
-                                                      pmix_hdlr_reg_cbfunc_t cbfunc,
-                                                      void *cbdata)
+PMIX_EXPORT void PMIx_Register_event_handler(pmix_status_t codes[], size_t ncodes,
+                                             pmix_info_t info[], size_t ninfo,
+                                             pmix_notification_fn_t event_hdlr,
+                                             pmix_hdlr_reg_cbfunc_t cbfunc,
+                                             void *cbdata)
 {
     pmix_rshift_caddy_t *cd;
     size_t n;
-    pmix_status_t rc = PMIX_SUCCESS;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return PMIX_ERR_INIT;
+        if (NULL != cbfunc) {
+            cbfunc(PMIX_ERR_INIT, SIZE_MAX, cbdata);
+        }
+        return;
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
@@ -880,7 +882,10 @@ PMIX_EXPORT pmix_status_t PMIx_Register_event_handler(pmix_status_t codes[], siz
         if (NULL == cd->codes) {
             /* immediately return error */
             PMIX_RELEASE(cd);
-            return PMIX_ERR_NOMEM;
+            if (NULL != cbfunc) {
+                cbfunc(PMIX_ERR_NOMEM, SIZE_MAX, cbdata);
+            }
+            return;
         }
         for (n=0; n < ncodes; n++) {
             cd->codes[n] = codes[n];
@@ -904,10 +909,16 @@ PMIX_EXPORT pmix_status_t PMIx_Register_event_handler(pmix_status_t codes[], siz
     	PMIX_RETAIN(cd);
         reg_event_hdlr(0, 0, (void*)cd);
         PMIX_WAIT_THREAD(&cd->lock);
-        rc = cd->status;
+        if (NULL != cbfunc) {
+            if (0 > cd->status) {
+                cbfunc(cd->status, SIZE_MAX, cbdata);
+            } else {
+                cbfunc(PMIX_SUCCESS, cd->status, cbdata);
+            }
+        }
         PMIX_RELEASE(cd);
     }
-    return rc;
+    return;
 }
 
 static void dereg_event_hdlr(int sd, short args, void *cbdata)
@@ -1107,17 +1118,19 @@ static void myopcb(pmix_status_t status, void *cbdata)
     PMIX_WAKEUP_THREAD(&cd->lock);
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Deregister_event_handler(size_t event_hdlr_ref,
-                                                        pmix_op_cbfunc_t cbfunc,
-                                                        void *cbdata)
+PMIX_EXPORT void PMIx_Deregister_event_handler(size_t event_hdlr_ref,
+                                               pmix_op_cbfunc_t cbfunc,
+                                               void *cbdata)
 {
     pmix_shift_caddy_t *cd;
-    pmix_status_t rc = PMIX_SUCCESS;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return PMIX_ERR_INIT;
+        if (NULL != cbfunc) {
+            cbfunc(PMIX_ERR_INIT, cbdata);
+        }
+        return;
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
@@ -1137,10 +1150,5 @@ PMIX_EXPORT pmix_status_t PMIx_Deregister_event_handler(size_t event_hdlr_ref,
                         "pmix_deregister_event_hdlr shifting to progress thread");
     PMIX_THREADSHIFT(cd, dereg_event_hdlr);
 
-    if (NULL == cbfunc) {
-        PMIX_WAIT_THREAD(&cd->lock);
-        rc = cd->status;
-        PMIX_RELEASE(cd);
-    }
-    return rc;
+    return;
 }

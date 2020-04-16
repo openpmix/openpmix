@@ -50,7 +50,6 @@
 #include <sys/stat.h>
 
 
-#include "src/common/pmix_attributes.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/name_fns.h"
@@ -64,11 +63,9 @@
 #include "src/runtime/pmix_rte.h"
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/gds/base/base.h"
-#include "src/mca/pmdl/base/base.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/mca/preg/preg.h"
 #include "src/mca/psensor/base/base.h"
-#include "src/mca/pstrg/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/hwloc/hwloc-internal.h"
 
@@ -188,7 +185,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         PMIX_SERVER_TOOL_SUPPORT,
         PMIX_SERVER_SYSTEM_SUPPORT,
         PMIX_SERVER_GATEWAY,
-        PMIX_SERVER_SCHEDULER,
         NULL
     };
     char *evar;
@@ -213,10 +209,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
             if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_GATEWAY)) {
                 if (PMIX_INFO_TRUE(&info[n])) {
                     PMIX_SET_PROC_TYPE(&ptype, PMIX_PROC_GATEWAY);
-                }
-            } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_SCHEDULER)) {
-                if (PMIX_INFO_TRUE(&info[n])) {
-                    PMIX_SET_PROC_TYPE(&ptype, PMIX_PROC_SCHEDULER);
                 }
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_TMPDIR)) {
                 pmix_server_globals.tmpdir = strdup(info[n].value.data.string);
@@ -389,16 +381,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         return rc;
     }
 
-    /* open the pmdl framework and select the active modules for this environment */
-    if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pmdl_base_framework, 0))) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return rc;
-    }
-    if (PMIX_SUCCESS != (rc = pmix_pmdl_base_select())) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return rc;
-    }
-
     /* if requested, setup the topology */
     if (PMIX_SUCCESS != (rc = pmix_hwloc_get_topology(info, ninfo))) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -411,16 +393,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         return rc;
     }
     if (PMIX_SUCCESS != (rc = pmix_psensor_base_select())) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return rc;
-    }
-
-    /* open the pstrg framework */
-    if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pstrg_base_framework, 0))) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return rc;
-    }
-    if (PMIX_SUCCESS != (rc = pmix_pstrg_base_select())) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
@@ -439,12 +411,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
                              1, PMIX_FWD_STDOUT_CHANNEL, pmix_iof_write_handler);
         PMIX_IOF_SINK_DEFINE(&pmix_client_globals.iof_stderr, &pmix_globals.myid,
                              2, PMIX_FWD_STDERR_CHANNEL, pmix_iof_write_handler);
-    }
-
-    /* register our attributes */
-    if (PMIX_SUCCESS != (rc = pmix_register_server_attrs())) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return rc;
     }
 
     /* start listening for connections */
@@ -545,8 +511,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     (void)pmix_mca_base_framework_close(&pmix_psensor_base_framework);
     /* close the pnet framework */
     (void)pmix_mca_base_framework_close(&pmix_pnet_base_framework);
-    /* close the pstrg framework */
-    (void)pmix_mca_base_framework_close(&pmix_pstrg_base_framework);
 
     PMIX_RELEASE_THREAD(&pmix_global_lock);
     PMIX_DESTRUCT_LOCK(&pmix_global_lock);
@@ -633,12 +597,6 @@ static void _register_nspace(int sd, short args, void *cbdata)
      * are using */
     PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr,
                             cd->info, cd->ninfo);
-    if (PMIX_SUCCESS != rc) {
-        goto release;
-    }
-
-    /* give the programming models a chance to add anything they need */
-    rc = pmix_pmdl.register_nspace(nptr);
     if (PMIX_SUCCESS != rc) {
         goto release;
     }
@@ -881,9 +839,6 @@ static void _deregister_nspace(int sd, short args, void *cbdata)
 
     /* release any job-level network resources */
     pmix_pnet.deregister_nspace(cd->proc.nspace);
-
-    /* release any programming model info */
-    pmix_pmdl.deregister_nspace(cd->proc.nspace);
 
     /* let our local storage clean up */
     PMIX_GDS_DEL_NSPACE(rc, cd->proc.nspace);
@@ -1491,13 +1446,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char *
         return rc;
     }
 
-    /* get any contribution for the specific programming
-     * model/implementation, if known */
-    if (PMIX_SUCCESS != (rc = pmix_pmdl.setup_fork(proc, env))) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-
     /* ensure we agree on our hostname - typically only important in
      * test scenarios where we are faking multiple nodes */
     pmix_setenv("PMIX_HOSTNAME", pmix_globals.hostname, true, env);
@@ -1789,13 +1737,6 @@ static void _setup_app(int sd, short args, void *cbdata)
     if (PMIX_SUCCESS != (rc = pmix_pnet.allocate(cd->nspace,
                                                  cd->info, cd->ninfo,
                                                  &ilist))) {
-        goto depart;
-    }
-
-    /* pass to the programming model libraries */
-    if (PMIX_SUCCESS != (rc = pmix_pmdl.harvest_envars(cd->nspace,
-                                                       cd->info, cd->ninfo,
-                                                       &ilist))) {
         goto depart;
     }
 

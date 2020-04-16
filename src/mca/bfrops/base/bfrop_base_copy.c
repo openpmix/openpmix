@@ -180,10 +180,6 @@ pmix_status_t pmix_bfrops_base_std_copy(void **dest, void *src,
         datasize = sizeof(pmix_alloc_directive_t);
         break;
 
-    case PMIX_JOB_STATE:
-        datasize = sizeof(pmix_job_state_t);
-        break;
-
     default:
         return PMIX_ERR_UNKNOWN_DATA_TYPE;
     }
@@ -425,8 +421,6 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
     pmix_proc_info_t *pi, *si;
     pmix_query_t *pq, *sq;
     pmix_envar_t *pe, *se;
-    pmix_regattr_t *pr, *sr;
-    pmix_coord_t *pc, *sc;
 
     if (PMIX_DATA_ARRAY != type) {
         return PMIX_ERR_BAD_PARAM;
@@ -844,56 +838,7 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
                 pe[n].separator = se[n].separator;
             }
             break;
-        case PMIX_COORD:
-            p->array = malloc(src->size * sizeof(pmix_coord_t));
-            if (NULL == p->array) {
-                free(p);
-                return PMIX_ERR_NOMEM;
-            }
-            pc = (pmix_coord_t*)p->array;
-            sc = (pmix_coord_t*)src->array;
-            for (n=0; n < src->size; n++) {
-                PMIX_COORD_CONSTRUCT(&pc[n]);
-                if (NULL != sc[n].fabric) {
-                    pc[n].fabric = strdup(sc[n].fabric);
-                }
-                if (NULL != sc[n].plane) {
-                    pc[n].plane = strdup(sc[n].plane);
-                }
-                pc[n].view = sc[n].view;
-                pc[n].dims = sc[n].dims;
-                if (0 < pc[n].dims) {
-                    pc[n].coord = (int*)malloc(pc[n].dims * sizeof(int));
-                    if (NULL == pc[n].coord) {
-                        free(p->array);
-                        free(p);
-                        return PMIX_ERR_NOMEM;
-                    }
-                    memcpy(pc[n].coord, sc[n].coord, pc[n].dims * sizeof(int));
-                }
-            }
-            break;
-        case PMIX_REGATTR:
-            PMIX_REGATTR_CREATE(p->array, src->size);
-            if (NULL == p->array) {
-                free(p);
-                return PMIX_ERR_NOMEM;
-            }
-            pr = (pmix_regattr_t*)p->array;
-            sr = (pmix_regattr_t*)src->array;
-            for (n=0; n < src->size; n++) {
-                if (NULL != sr[n].name) {
-                    pr[n].name = strdup(sr[n].name);
-                }
-                PMIX_LOAD_KEY(pr[n].string, sr[n].string);
-                pr[n].type = sr[n].type;
-                if (NULL != sr[n].info) {
-                    PMIX_INFO_XFER(pr[n].info, sr[n].info);
-                }
-                pr[n].ninfo = sr[n].ninfo;
-                pr[n].description = pmix_argv_copy(sr[n].description);
-            }
-            break;
+
         default:
             free(p);
             return PMIX_ERR_UNKNOWN_DATA_TYPE;
@@ -945,75 +890,4 @@ pmix_status_t pmix_bfrops_base_copy_envar(pmix_envar_t **dest,
     }
     (*dest)->separator = src->separator;
     return PMIX_SUCCESS;
-}
-
-pmix_status_t pmix_bfrops_base_copy_coord(pmix_coord_t **dest,
-                                          pmix_coord_t *src,
-                                          pmix_data_type_t type)
-{
-    pmix_coord_t *d;
-
-    if (PMIX_COORD != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    d = (pmix_coord_t*)malloc(sizeof(pmix_coord_t));
-    if (NULL == d) {
-        return PMIX_ERR_NOMEM;
-    }
-    PMIX_COORD_CONSTRUCT(d);
-    if (NULL != src->fabric) {
-        d->fabric = strdup(src->fabric);
-    }
-    if (NULL != src->plane) {
-        d->plane = strdup(src->plane);
-    }
-    d->view = src->view;
-    d->dims = src->dims;
-    if (0 < d->dims) {
-        d->coord = (int*)malloc(d->dims * sizeof(int));
-        if (NULL == d->coord) {
-            free(d);
-            return PMIX_ERR_NOMEM;
-        }
-        memcpy(d->coord, src->coord, d->dims * sizeof(int));
-    }
-    *dest = d;
-    return PMIX_SUCCESS;
-}
-
-pmix_status_t pmix_bfrops_base_copy_regattr(pmix_regattr_t **dest,
-                                            pmix_regattr_t *src,
-                                            pmix_data_type_t type)
-{
-    if (PMIX_REGATTR != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    PMIX_REGATTR_CREATE(*dest, 1);
-    if (NULL == (*dest)) {
-        return PMIX_ERR_NOMEM;
-    }
-    if (NULL != src->name) {
-        (*dest)->name = strdup(src->name);
-    }
-    PMIX_LOAD_KEY((*dest)->string, src->string);
-    (*dest)->type = src->type;
-    if (NULL != src->info) {
-        PMIX_INFO_XFER((*dest)->info, src->info);
-    }
-    (*dest)->ninfo = src->ninfo;
-    (*dest)->description = pmix_argv_copy(src->description);
-    return PMIX_SUCCESS;
-}
-
-pmix_status_t pmix_bfrops_base_copy_regex(char **dest,
-                                          char *src,
-                                          pmix_data_type_t type)
-{
-    size_t len;
-
-    if (PMIX_REGEX != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-
-    return pmix_preg.copy(dest, &len, src);
 }

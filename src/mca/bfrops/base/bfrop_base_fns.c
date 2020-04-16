@@ -62,8 +62,6 @@ void pmix_bfrops_base_value_load(pmix_value_t *v, const void *data,
     pmix_envar_t *envar;
     pmix_data_array_t *darray;
     pmix_status_t rc;
-    pmix_coord_t *coord;
-    pmix_regattr_t *regattr;
 
     v->type = type;
     if (NULL == data) {
@@ -206,27 +204,7 @@ void pmix_bfrops_base_value_load(pmix_value_t *v, const void *data,
                 PMIX_ERROR_LOG(rc);
             }
             break;
-        case PMIX_COORD:
-            coord = (pmix_coord_t*)data;
-            rc = pmix_bfrops_base_copy_coord(&v->data.coord, coord, PMIX_COORD);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-            }
-            break;
-        case PMIX_REGATTR:
-            regattr = (pmix_regattr_t*)data;
-            rc = pmix_bfrops_base_copy_regattr((pmix_regattr_t**)&v->data.ptr, regattr, PMIX_REGATTR);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-            }
-            break;
-        case PMIX_REGEX:
-            /* load it into the byte object */
-            rc = pmix_preg.copy(&v->data.bo.bytes, &v->data.bo.size, (char*)data);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-            }
-            break;
+
         default:
             /* silence warnings */
             break;
@@ -242,8 +220,6 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv,
     pmix_status_t rc;
     pmix_envar_t *envar;
     pmix_data_array_t **darray;
-    pmix_coord_t *coord;
-    pmix_regattr_t *regattr, *r;
 
     rc = PMIX_SUCCESS;
     if (NULL == data ||
@@ -380,43 +356,6 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv,
             envar->separator = kv->data.envar.separator;
             *data = envar;
             *sz = sizeof(pmix_envar_t);
-            break;
-        case PMIX_COORD:
-            coord = (pmix_coord_t*)malloc(sizeof(pmix_coord_t));
-            if (NULL == coord) {
-                return PMIX_ERR_NOMEM;
-            }
-            memcpy(coord, kv->data.coord, sizeof(pmix_coord_t));
-            *data = coord;
-            *sz = sizeof(pmix_coord_t);
-            break;
-        case PMIX_REGATTR:
-            PMIX_REGATTR_CREATE(regattr, 1);
-            if (NULL == regattr) {
-                return PMIX_ERR_NOMEM;
-            }
-            r = (pmix_regattr_t*)kv->data.ptr;
-            if (NULL != r->name) {
-                regattr->name = strdup(r->name);
-            }
-            PMIX_LOAD_KEY(regattr->string, r->string);
-            regattr->type = r->type;
-            if (NULL != r->info) {
-                PMIX_INFO_XFER(regattr->info, r->info);
-            }
-            regattr->ninfo = r->ninfo;
-            regattr->description = pmix_argv_copy(r->description);
-            *data = regattr;
-            *sz = sizeof(pmix_regattr_t);
-            break;
-        case PMIX_REGEX:
-            if (NULL != kv->data.bo.bytes && 0 < kv->data.bo.size) {
-                *data = kv->data.bo.bytes;
-                *sz = kv->data.bo.size;
-            } else {
-                *data = NULL;
-                *sz = 0;
-            }
             break;
         default:
             /* silence warnings */
@@ -565,26 +504,6 @@ pmix_value_cmp_t pmix_bfrops_base_value_cmp(pmix_value_t *p,
             }
             rc = PMIX_EQUAL;
             break;
-        case PMIX_COORD:
-            ret = memcmp(p->data.coord, p1->data.coord, sizeof(pmix_coord_t));
-            if (0 > ret) {
-                return PMIX_VALUE2_GREATER;
-            } else if (0 < ret) {
-                return PMIX_VALUE1_GREATER;
-            } else {
-                return PMIX_EQUAL;
-            }
-            break;
-        case PMIX_REGATTR:
-            ret = memcmp(p->data.ptr, p1->data.ptr, sizeof(pmix_regattr_t));
-            if (0 > ret) {
-                return PMIX_VALUE2_GREATER;
-            } else if (0 < ret) {
-                return PMIX_VALUE1_GREATER;
-            } else {
-                return PMIX_EQUAL;
-            }
-            break;
 
         default:
             pmix_output(0, "COMPARE-PMIX-VALUE: UNSUPPORTED TYPE %d", (int)p->type);
@@ -685,7 +604,6 @@ pmix_status_t pmix_bfrops_base_value_xfer(pmix_value_t *p,
         break;
     case PMIX_BYTE_OBJECT:
     case PMIX_COMPRESSED_STRING:
-    case PMIX_REGEX:
         memset(&p->data.bo, 0, sizeof(pmix_byte_object_t));
         if (NULL != src->data.bo.bytes && 0 < src->data.bo.size) {
             p->data.bo.bytes = malloc(src->data.bo.size);
@@ -724,12 +642,6 @@ pmix_status_t pmix_bfrops_base_value_xfer(pmix_value_t *p,
             p->data.envar.value = strdup(src->data.envar.value);
         }
         p->data.envar.separator = src->data.envar.separator;
-        break;
-    case PMIX_COORD:
-        pmix_bfrops_base_copy_coord(&p->data.coord, src->data.coord, PMIX_COORD);
-        break;
-    case PMIX_REGATTR:
-        pmix_bfrops_base_copy_regattr((pmix_regattr_t**)&p->data.ptr, src->data.ptr, PMIX_REGATTR);
         break;
 
     default:

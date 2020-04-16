@@ -48,10 +48,10 @@
 
 #include "src/class/pmix_list.h"
 #include "src/mca/bfrops/bfrops.h"
-#include "src/mca/pcompress/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/threads/threads.h"
 #include "src/util/argv.h"
+#include "src/util/compress.h"
 #include "src/util/error.h"
 #include "src/util/hash.h"
 #include "src/util/name_fns.h"

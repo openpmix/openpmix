@@ -36,11 +36,10 @@
 #include "src/class/pmix_list.h"
 #include "src/client/pmix_client_ops.h"
 #include "src/server/pmix_server_ops.h"
-#include "src/mca/pcompress/base/base.h"
-#include "src/mca/pmdl/pmdl.h"
 #include "src/mca/preg/preg.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/util/argv.h"
+#include "src/util/compress.h"
 #include "src/util/error.h"
 #include "src/util/hash.h"
 #include "src/util/output.h"
@@ -661,13 +660,6 @@ static pmix_status_t process_app_array(pmix_value_t *val,
                 }
             }
         }
-        if (PMIX_CHECK_KEY(kp2, PMIX_MODEL_LIBRARY_NAME) ||
-            PMIX_CHECK_KEY(kp2, PMIX_PROGRAMMING_MODEL) ||
-            PMIX_CHECK_KEY(kp2, PMIX_MODEL_LIBRARY_VERSION) ||
-            PMIX_CHECK_KEY(kp2, PMIX_PERSONALITY)) {
-            // pass this info to the pmdl framework
-            pmix_pmdl.setup_nspace_kv(trk->nptr, kp2);
-        }
         pmix_list_append(&app->appinfo, &kp2->super);
         kp2 = (pmix_kval_t*)pmix_list_remove_first(&cache);
     }
@@ -745,12 +737,6 @@ static pmix_status_t process_job_array(pmix_info_t *info,
             }
             /* mark that we got the map */
             *flags |= PMIX_HASH_NODE_MAP;
-        } else if (PMIX_CHECK_KEY(&iptr[j], PMIX_MODEL_LIBRARY_NAME) ||
-                   PMIX_CHECK_KEY(&iptr[j], PMIX_PROGRAMMING_MODEL) ||
-                   PMIX_CHECK_KEY(&iptr[j], PMIX_MODEL_LIBRARY_VERSION)  ||
-                   PMIX_CHECK_KEY(&iptr[j], PMIX_PERSONALITY)) {
-            // pass this info to the pmdl framework
-            pmix_pmdl.setup_nspace(trk->nptr, &iptr[j]);
         } else {
             kp2 = PMIX_NEW(pmix_kval_t);
             kp2->key = strdup(iptr[j].key);
@@ -1300,12 +1286,7 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                 return PMIX_ERR_BAD_PARAM;
             }
             /* parse the regex to get the argv array of node names */
-            if (PMIX_REGEX == info[n].value.type) {
-                if (PMIX_SUCCESS != (rc = pmix_preg.parse_nodes(info[n].value.data.bo.bytes, &nodes))) {
-                    PMIX_ERROR_LOG(rc);
-                    goto release;
-                }
-            } else if (PMIX_STRING == info[n].value.type) {
+            if (PMIX_STRING == info[n].value.type) {
                 if (PMIX_SUCCESS != (rc = pmix_preg.parse_nodes(info[n].value.data.string, &nodes))) {
                     PMIX_ERROR_LOG(rc);
                     goto release;
@@ -1324,12 +1305,7 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                 return PMIX_ERR_BAD_PARAM;
             }
             /* parse the regex to get the argv array containing proc ranks on each node */
-            if (PMIX_REGEX == info[n].value.type) {
-                if (PMIX_SUCCESS != (rc = pmix_preg.parse_procs(info[n].value.data.bo.bytes, &procs))) {
-                    PMIX_ERROR_LOG(rc);
-                    goto release;
-                }
-            } else if (PMIX_STRING == info[n].value.type) {
+            if (PMIX_STRING == info[n].value.type) {
                 if (PMIX_SUCCESS != (rc = pmix_preg.parse_procs(info[n].value.data.string, &procs))) {
                     PMIX_ERROR_LOG(rc);
                     goto release;
@@ -1377,7 +1353,7 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                 /* if the value contains a string that is longer than the
                  * limit, then compress it */
                 if (PMIX_STRING_SIZE_CHECK(kp2->value)) {
-                    if (pmix_compress.compress_string(kp2->value->data.string, &tmp, &len)) {
+                    if (pmix_util_compress_string(kp2->value->data.string, &tmp, &len)) {
                         if (NULL == tmp) {
                             PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                             rc = PMIX_ERR_NOMEM;
@@ -1401,7 +1377,6 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                 }
                 /* if this is the appnum, pass it to the pmdl framework */
                 if (PMIX_CHECK_KEY(kp2, PMIX_APPNUM)) {
-                    pmix_pmdl.setup_client(trk->nptr, rank, kp2->value->data.uint32);
                     found = true;
                     if (rank == pmix_globals.myid.rank) {
                         pmix_globals.appnum = kp2->value->data.uint32;
@@ -1426,15 +1401,8 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                     PMIX_RELEASE(kp2);
                     goto release;
                 }
-                pmix_pmdl.setup_client(trk->nptr, rank, kp2->value->data.uint32);
                 PMIX_RELEASE(kp2);  // maintain acctg
             }
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_MODEL_LIBRARY_NAME) ||
-                   PMIX_CHECK_KEY(&info[n], PMIX_PROGRAMMING_MODEL) ||
-                   PMIX_CHECK_KEY(&info[n], PMIX_MODEL_LIBRARY_VERSION) ||
-                   PMIX_CHECK_KEY(&info[n], PMIX_PERSONALITY)) {
-            // pass this info to the pmdl framework
-            pmix_pmdl.setup_nspace(trk->nptr, &info[n]);
         } else if (pmix_check_node_info(info[n].key)) {
             /* they are passing us the node-level info for just this
              * node - start by seeing if our node is on the list */
@@ -1506,7 +1474,7 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
             /* if the value contains a string that is longer than the
              * limit, then compress it */
             if (PMIX_STRING_SIZE_CHECK(kp2->value)) {
-                if (pmix_compress.compress_string(kp2->value->data.string, &tmp, &len)) {
+                if (pmix_util_compress_string(kp2->value->data.string, &tmp, &len)) {
                     if (NULL == tmp) {
                         rc = PMIX_ERR_NOMEM;
                         PMIX_ERROR_LOG(rc);
@@ -1904,7 +1872,7 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                 /* if the value contains a string that is longer than the
                  * limit, then compress it */
                 if (PMIX_STRING_SIZE_CHECK(kp2->value)) {
-                    if (pmix_compress.compress_string(kp2->value->data.string, &tmp, &len)) {
+                    if (pmix_util_compress_string(kp2->value->data.string, &tmp, &len)) {
                         if (NULL == tmp) {
                             PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                             rc = PMIX_ERR_NOMEM;
@@ -2067,7 +2035,7 @@ static pmix_status_t hash_store_job_info(const char *nspace,
             /* if the value contains a string that is longer than the
              * limit, then compress it */
             if (PMIX_STRING_SIZE_CHECK(kptr->value)) {
-                if (pmix_compress.compress_string(kptr->value->data.string, &tmp, &len)) {
+                if (pmix_util_compress_string(kptr->value->data.string, &tmp, &len)) {
                     if (NULL == tmp) {
                         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                         rc = PMIX_ERR_NOMEM;
@@ -2212,7 +2180,7 @@ static pmix_status_t hash_store(const pmix_proc_t *proc,
                 /* if the value contains a string that is longer than the
                  * limit, then compress it */
                 if (PMIX_STRING_SIZE_CHECK(kp->value)) {
-                    if (pmix_compress.compress_string(kp->value->data.string, &tmp, &len)) {
+                    if (pmix_util_compress_string(kp->value->data.string, &tmp, &len)) {
                         if (NULL == tmp) {
                             PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                             rc = PMIX_ERR_NOMEM;

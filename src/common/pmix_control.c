@@ -136,8 +136,7 @@ static void acb(pmix_status_t status,
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Job_control(const pmix_proc_t targets[], size_t ntargets,
-                                           const pmix_info_t directives[], size_t ndirs,
-                                           pmix_info_t **results, size_t *nresults)
+                                           const pmix_info_t directives[], size_t ndirs)
 {
     pmix_cb_t cb;
     pmix_status_t rc;
@@ -167,14 +166,6 @@ PMIX_EXPORT pmix_status_t PMIx_Job_control(const pmix_proc_t targets[], size_t n
     /* wait for the operation to complete */
     PMIX_WAIT_THREAD(&cb.lock);
     rc = cb.status;
-    if (0 < cb.ninfo) {
-        if (NULL != results && NULL != nresults) {
-            *results = cb.info;
-            *nresults = cb.ninfo;
-            cb.info = NULL;
-            cb.ninfo = 0;
-        }
-    }
     PMIX_DESTRUCT(&cb);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -296,8 +287,7 @@ PMIX_EXPORT pmix_status_t PMIx_Job_control_nb(const pmix_proc_t targets[], size_
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Process_monitor(const pmix_info_t *monitor, pmix_status_t error,
-                                               const pmix_info_t directives[], size_t ndirs,
-                                               pmix_info_t **results, size_t *nresults)
+                                               const pmix_info_t directives[], size_t ndirs)
 {
     pmix_cb_t cb;
     pmix_status_t rc;
@@ -327,12 +317,6 @@ PMIX_EXPORT pmix_status_t PMIx_Process_monitor(const pmix_info_t *monitor, pmix_
     /* wait for the operation to complete */
     PMIX_WAIT_THREAD(&cb.lock);
     rc = cb.status;
-    if (0 < cb.ninfo) {
-        *results = cb.info;
-        *nresults = cb.ninfo;
-        cb.info = NULL;
-        cb.ninfo = 0;
-    }
     PMIX_DESTRUCT(&cb);
 
     pmix_output_verbose(2, pmix_globals.debug_output,

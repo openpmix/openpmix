@@ -274,29 +274,3 @@ PMIX_EXPORT const char* PMIx_IOF_channel_string(pmix_iof_channel_t channel)
     }
     return answer;
 }
-
-PMIX_EXPORT const char* PMIx_Job_state_string(pmix_job_state_t state)
-{
-    switch(state) {
-        case PMIX_JOB_STATE_UNDEF:
-            return "UNDEFINED";
-        case PMIX_JOB_STATE_PREPPED:
-            return "PREPPED FOR LAUNCH";
-        case PMIX_JOB_STATE_LAUNCH_UNDERWAY:
-            return "LAUNCHING";
-        case PMIX_JOB_STATE_RUNNING:
-            return "RUNNING";
-        case PMIX_JOB_STATE_SUSPENDED:
-            return "SUSPENDED";
-        case PMIX_JOB_STATE_CONNECTED:
-            return "CONNECTED";
-        case PMIX_JOB_STATE_UNTERMINATED:
-            return "UNTERMINATED";
-        case PMIX_JOB_STATE_TERMINATED:
-            return "TERMINATED";
-        case PMIX_JOB_STATE_TERMINATED_WITH_ERROR:
-            return "TERMINATED WITH ERROR";
-      default:
-            return "UNKNOWN";
-    }
-}

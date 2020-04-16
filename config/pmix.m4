@@ -789,20 +789,11 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
 
     ##################################
-    # JANSSON
+    # ZLIB
     ##################################
-    pmix_show_title "JANSSON"
+    pmix_show_title "ZLIB"
 
-    PMIX_CHECK_JANSSON
-
-
-    ##################################
-    # CURL
-    ##################################
-    pmix_show_title "CURL"
-
-    PMIX_CHECK_CURL
-
+    PMIX_ZLIB_CONFIG
 
     ##################################
     # Dstore Locking
@@ -926,10 +917,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_CONFIG_FILES(pmix_config_prefix[test/run_tests13.pl], [chmod +x test/run_tests13.pl])
 #    AC_CONFIG_FILES(pmix_config_prefix[test/run_tests14.pl], [chmod +x test/run_tests14.pl])
 #    AC_CONFIG_FILES(pmix_config_prefix[test/run_tests15.pl], [chmod +x test/run_tests15.pl])
-    if test "$WANT_PYTHON_BINDINGS" = "1"; then
-        AC_CONFIG_FILES(pmix_config_prefix[test/python/run_server.sh], [chmod +x test/python/run_server.sh])
-        AC_CONFIG_FILES(pmix_config_prefix[test/python/run_sched.sh], [chmod +x test/python/run_sched.sh])
-    fi
 
     ############################################################################
     # final output
@@ -941,8 +928,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     AC_CONFIG_FILES(
         pmix_config_prefix[Makefile]
-        pmix_config_prefix[bindings/Makefile]
-        pmix_config_prefix[bindings/python/Makefile]
         pmix_config_prefix[config/Makefile]
         pmix_config_prefix[etc/Makefile]
         pmix_config_prefix[include/Makefile]
@@ -953,8 +938,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         pmix_config_prefix[src/tools/pmix_info/Makefile]
         pmix_config_prefix[src/tools/plookup/Makefile]
         pmix_config_prefix[src/tools/pps/Makefile]
-        pmix_config_prefix[src/tools/pattrs/Makefile]
-        pmix_config_prefix[src/tools/pquery/Makefile]
         pmix_config_prefix[src/tools/wrapper/Makefile]
         pmix_config_prefix[src/tools/wrapper/pmixcc-wrapper-data.txt]
         pmix_config_prefix[src/tools/wrapper/pmix.pc]
@@ -1237,75 +1220,6 @@ else
 fi
 
 AM_CONDITIONAL([PMIX_INSTALL_BINARIES], [test $WANT_PMIX_BINARIES -eq 1])
-
-#
-# Install Python bindings?
-#
-AC_MSG_CHECKING([if want install Python bindings])
-AC_ARG_ENABLE(python-bindings,
-              AC_HELP_STRING([--enable-python-bindings],
-                             [enable Python bindings (default: disabled)]))
-if test "$enable_python_bindings" != "yes"; then
-    AC_MSG_RESULT([no])
-    WANT_PYTHON_BINDINGS=0
-else
-    AC_MSG_RESULT([yes])
-    WANT_PYTHON_BINDINGS=1
-fi
-
-AM_CONDITIONAL([WANT_PYTHON_BINDINGS], [test $WANT_PYTHON_BINDINGS -eq 1])
-
-if test "$WANT_PYTHON_BINDINGS" = "1"; then
-    AM_PATH_PYTHON([3.4])
-    pyvers=`python3 --version`
-    python_version=${pyvers#"Python "}
-    major=$(echo $python_version | cut -d. -f1)
-    minor=$(echo $python_version | cut -d. -f2)
-    if test "$major" -lt "3"; then
-        AC_MSG_WARN([Python bindings were enabled, but no suitable])
-        AC_MSG_WARN([interpreter was found. PMIx requires at least])
-        AC_MSG_WARN([Python v3.4 to provide Python bindings])
-        AC_MSG_ERROR([Cannot continue])
-    fi
-    if test "$major" -eq "3" && test "$minor" -lt "4"; then
-        AC_MSG_WARN([Python bindings were enabled, but no suitable])
-        AC_MSG_WARN([interpreter was found. PMIx requires at least])
-        AC_MSG_WARN([Python v3.4 to provide Python bindings])
-        AC_MSG_ERROR([Cannot continue])
-    fi
-
-    PMIX_SUMMARY_ADD([[Bindings]],[[Python]], [pmix_python], [yes ($python_version)])
-
-    AC_MSG_CHECKING([if Cython package installed as Python package])
-    have_cython=`$srcdir/config/pmix_check_cython.py 2> /dev/null`
-    if test "$have_cython" = "0"; then
-        AC_MSG_RESULT([yes])
-        AC_MSG_CHECKING([Cython version])
-        cython_version=`python -c "from Cython.Compiler.Version import version; print(version)"`
-        AC_MSG_RESULT([$cython_version])
-        PMIX_SUMMARY_ADD([[Bindings]],[[Cython]], [pmix_cython], [yes ($cython_version)])
-    else
-        AC_MSG_RESULT([no])
-        # Cython doesn't have any include or lib files - it is just a binary
-        AC_CHECK_PROG(pmix_cython_rpm, cython, ["found"], ["not found"])
-        if test "$pmix_cython_rpm" = "found"; then
-            AC_MSG_CHECKING([Cython version])
-            cyvers=`cython --version 2>&1`
-            cython_version=${cyvers#"Cython version "}
-            AC_MSG_RESULT([$cython_version])
-            PMIX_SUMMARY_ADD([[Bindings]],[[Cython]], [pmix_cython], [yes ($cython_version)])
-        else
-            AC_MSG_RESULT([no])
-            AC_MSG_WARN([Python bindings were enabled, but the Cython])
-            AC_MSG_WARN([package was not found. PMIx Python bindings])
-            AC_MSG_WARN([require that the Cython package be installed])
-            AC_MSG_ERROR([Cannot continue])
-        fi
-    fi
-
-    pmix_pythondir=`eval echo $pythondir`
-    AC_SUBST([PMIX_PYTHON_EGG_PATH], [$pmix_pythondir], [Path to installed Python egg])
-fi
 
 # see if they want to disable non-RTLD_GLOBAL dlopen
 AC_MSG_CHECKING([if want to support dlopen of non-global namespaces])

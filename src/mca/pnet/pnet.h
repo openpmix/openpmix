@@ -27,7 +27,6 @@
 #define PMIX_PNET_H
 
 #include "src/include/pmix_config.h"
-#include "include/pmix_sched.h"
 
 #include "src/class/pmix_list.h"
 #include "src/mca/mca.h"
@@ -146,34 +145,6 @@ typedef pmix_status_t (*pmix_pnet_base_module_deliver_inventory_fn_t)(pmix_info_
                                                                       pmix_info_t directives[], size_t ndirs,
                                                                       pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-
-/* Register to provide cost information
- *
- * Scan the provided directives to identify if the module
- * should service this request - directives could include
- * ordered specification of fabric type or a direct request
- * for a specific component
- */
-typedef pmix_status_t (*pmix_pnet_base_module_register_fabric_fn_t)(pmix_fabric_t *fabric,
-                                                                    const pmix_info_t directives[],
-                                                                    size_t ndirs);
-
-
-/* Deregister the fabric, giving the associated module a chance to cleanup */
-typedef pmix_status_t (*pmix_pnet_base_deregister_fabric_fn_t)(pmix_fabric_t *fabric);
-
-/* Get the identifier and nodename corresponding to the provided
- * index of the communication cost array - caller must provide
- * the address of an allocated pmix_value_t structure */
-typedef pmix_status_t (*pmix_pnet_base_module_get_vertex_fn_t)(pmix_fabric_t *fabric,
-                                                               uint32_t i,
-                                                               pmix_value_t *identifier,
-                                                               char **nodename);
-
-/* Get the index in the communication cost array corresponding
- * to the provided identifier(s) */
-typedef pmix_status_t (*pmix_pnet_base_module_get_index_fn_t)(pmix_fabric_t *fabric,
-                                                              pmix_value_t *vertex, uint32_t *i);
 /**
  * Base structure for a PNET module. Each component should malloc a
  * copy of the module structure for each fabric plane they support.
@@ -193,10 +164,6 @@ typedef struct {
     pmix_pnet_base_module_dregister_nspace_fn_t     deregister_nspace;
     pmix_pnet_base_module_collect_inventory_fn_t    collect_inventory;
     pmix_pnet_base_module_deliver_inventory_fn_t    deliver_inventory;
-    pmix_pnet_base_module_register_fabric_fn_t      register_fabric;
-    pmix_pnet_base_deregister_fabric_fn_t           deregister_fabric;
-    pmix_pnet_base_module_get_vertex_fn_t           get_vertex;
-    pmix_pnet_base_module_get_index_fn_t            get_index;
 } pmix_pnet_module_t;
 
 

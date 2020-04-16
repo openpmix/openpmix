@@ -28,9 +28,7 @@
 #include "src/util/name_fns.h"
 #include "src/util/output.h"
 #include "src/mca/bfrops/bfrops.h"
-#include "src/mca/pstrg/pstrg.h"
 #include "src/mca/ptl/ptl.h"
-#include "src/common/pmix_attributes.h"
 
 #include "src/client/pmix_client_ops.h"
 #include "src/server/pmix_server_ops.h"
@@ -118,26 +116,6 @@ static void query_cbfunc(struct pmix_peer_t *peer,
     PMIX_RELEASE(cd);
 }
 
-static void qinfocb(pmix_status_t status, pmix_info_t info[], size_t ninfo,
-					void *cbdata, pmix_release_cbfunc_t release_fn, void *release_cbdata)
-{
-    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
-    size_t n;
-
-    cb->status = status;
-    if (NULL != info) {
-    	cb->ninfo = ninfo;
-    	PMIX_INFO_CREATE(cb->info, cb->ninfo);
-    	for (n=0; n < ninfo; n++) {
-    		PMIX_INFO_XFER(&cb->info[n], &info[n]);
-    	}
-    }
-    if (NULL != release_fn) {
-        release_fn(release_cbdata);
-    }
-    PMIX_WAKEUP_THREAD(&cb->lock);
-}
-
 static pmix_status_t request_help(pmix_query_t queries[], size_t nqueries,
                                   pmix_info_cbfunc_t cbfunc, void *cbdata)
 {
@@ -221,50 +199,6 @@ static void _local_relcb(void *cbdata)
     PMIX_RELEASE(cd);
 }
 
-static void nxtcbfunc(pmix_status_t status,
-                      pmix_list_t *results,
-                      void *cbdata)
-{
-    pmix_query_caddy_t *cd = (pmix_query_caddy_t*)cbdata;
-    size_t n;
-    pmix_kval_t *kv, *kvnxt;
-    pmix_status_t rc;
-
-    /* if they return success, then all queries were locally
-     * resolved, so construct the results for return */
-    if (PMIX_SUCCESS == status) {
-        cd->status = status;
-        cd->ninfo = pmix_list_get_size(results);
-        PMIX_INFO_CREATE(cd->info, cd->ninfo);
-        n = 0;
-        PMIX_LIST_FOREACH_SAFE(kv, kvnxt, results, pmix_kval_t) {
-            PMIX_LOAD_KEY(cd->info[n].key, kv->key);
-            rc = pmix_value_xfer(&cd->info[n].value, kv->value);
-            if (PMIX_SUCCESS != rc) {
-                cd->status = rc;
-                PMIX_INFO_FREE(cd->info, cd->ninfo);
-                break;
-            }
-            ++n;
-        }
-
-        if (NULL != cd->cbfunc) {
-            cd->cbfunc(cd->status, cd->info, cd->ninfo, cd->cbdata, _local_relcb, cd);
-        }
-    } else {
-        /* need to ask our host */
-        rc = request_help(cd->queries, cd->nqueries, cd->cbfunc, cd->cbdata);
-        if (PMIX_SUCCESS != rc) {
-            /* we have to return the error to the caller */
-            if (NULL != cd->cbfunc) {
-                cd->cbfunc(rc, NULL, 0, cd->cbdata, NULL, NULL);
-            }
-        }
-        PMIX_RELEASE(cd);
-        return;
-    }
-}
-
 static void localquery(int sd, short args, void *cbdata)
 {
     pmix_query_caddy_t *cd = (pmix_query_caddy_t*)cbdata;
@@ -343,9 +277,6 @@ static void localquery(int sd, short args, void *cbdata)
     }
 
   nextstep:
-    /* pass the queries thru our active plugins with query
-     * interfaces to see if someone can resolve it */
-    rc = pmix_pstrg.query(queries, nqueries, &results, nxtcbfunc, cd);
     if (PMIX_OPERATION_SUCCEEDED == rc) {
         /* if we get here, then all queries were locally
          * resolved, so construct the results for return */
@@ -389,49 +320,6 @@ static void localquery(int sd, short args, void *cbdata)
      * when complete */
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Query_info(pmix_query_t queries[], size_t nqueries,
-									      pmix_info_t **results, size_t *nresults)
-{
-    pmix_cb_t cb;
-    pmix_status_t rc;
-
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return PMIX_ERR_INIT;
-    }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
-
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "%s pmix:query", PMIX_NAME_PRINT(&pmix_globals.myid));
-
-    /* create a callback object as we need to pass it to the
-     * recv routine so we know which callback to use when
-     * the return message is recvd */
-    PMIX_CONSTRUCT(&cb, pmix_cb_t);
-    if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(queries, nqueries,
-                                                 qinfocb, &cb))) {
-        PMIX_DESTRUCT(&cb);
-        return rc;
-    }
-
-    /* wait for the operation to complete */
-    PMIX_WAIT_THREAD(&cb.lock);
-    rc = cb.status;
-    if (NULL != cb.info) {
-    	*results = cb.info;
-    	*nresults = cb.ninfo;
-    	cb.info = NULL;
-    	cb.ninfo = 0;
-    }
-    PMIX_DESTRUCT(&cb);
-
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:job_ctrl completed");
-
-    return rc;
-}
 PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nqueries,
                                              pmix_info_cbfunc_t cbfunc, void *cbdata)
 
@@ -480,19 +368,6 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
      * assume that any requirement to refresh will force all to
      * do so */
     for (n=0; n < nqueries; n++) {
-        /* check for requests to report supported attributes */
-        if (0 == strcmp(queries[n].keys[0], PMIX_QUERY_ATTRIBUTE_SUPPORT)) {
-            cd = PMIX_NEW(pmix_query_caddy_t);
-            cd->queries = queries;
-            cd->nqueries = nqueries;
-            cd->cbfunc = cbfunc;
-            cd->cbdata = cbdata;
-            PMIX_THREADSHIFT(cd, pmix_attrs_query_support);
-            /* regardless of the result of the query, we return
-             * PMIX_SUCCESS here to indicate that the operation
-             * was accepted for processing */
-            return PMIX_SUCCESS;
-        }
         for (p=0; p < queries[n].nqual; p++) {
             if (PMIX_CHECK_KEY(&queries[n].qualifiers[p], PMIX_QUERY_REFRESH_CACHE)) {
                 if (PMIX_INFO_TRUE(&queries[n].qualifiers[p])) {

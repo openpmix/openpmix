@@ -315,7 +315,6 @@ AC_CONFIG_FILES(pmix_config_prefix[contrib/Makefile]
                 pmix_config_prefix[examples/Makefile]
                 pmix_config_prefix[test/Makefile]
                 pmix_config_prefix[test/simple/Makefile]
-                pmix_config_prefix[test/python/Makefile]
                 pmix_config_prefix[maint/pmix.pc])
 
 pmix_show_title "Configuration complete"

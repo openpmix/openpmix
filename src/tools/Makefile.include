@@ -29,8 +29,6 @@ SUBDIRS += \
     tools/pmix_info \
     tools/plookup \
     tools/pps \
-    tools/pattrs \
-    tools/pquery \
     tools/wrapper
 
 DIST_SUBDIRS += \
@@ -38,6 +36,4 @@ DIST_SUBDIRS += \
     tools/pmix_info \
     tools/plookup \
     tools/pps \
-    tools/pattrs \
-    tools/pquery \
     tools/wrapper

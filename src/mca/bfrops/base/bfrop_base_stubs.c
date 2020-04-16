@@ -36,8 +36,6 @@ static const char* basic_type_string(pmix_data_type_t type)
     switch(type) {
         case PMIX_BOOL:
             return "PMIX_BOOL";
-        case PMIX_REGEX:
-            return "PMIX_REGEX";
         case PMIX_BYTE:
             return "PMIX_BYTE";
         case PMIX_STRING:
@@ -124,10 +122,7 @@ static const char* basic_type_string(pmix_data_type_t type)
             return "PMIX_IOF_CHANNEL";
         case PMIX_ENVAR:
             return "PMIX_ENVAR";
-        case PMIX_COORD:
-            return "PMIX_COORD";
-        case PMIX_REGATTR:
-            return "PMIX_REGATTR";
+
         default:
             return "NOT INITIALIZED";
     }

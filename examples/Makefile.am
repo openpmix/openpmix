@@ -11,7 +11,7 @@
 #                         All rights reserved.
 # Copyright (c) 2006-2010 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2012-2013 Los Alamos National Security, Inc.  All rights reserved.
-# Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+# Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -22,7 +22,7 @@ headers = examples.h
 
 AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/include -I$(top_builddir)/include/pmix
 
-noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi tool debugger debuggerd alloc jctrl group asyncgroup
+noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi tool debugger debuggerd alloc jctrl
 if !WANT_HIDDEN
 # these examples use internal symbols
 # use --disable-visibility
@@ -76,14 +76,6 @@ pubi_LDADD = $(top_builddir)/src/libpmix.la
 tool_SOURCES = tool.c examples.h
 tool_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 tool_LDADD = $(top_builddir)/src/libpmix.la
-
-group_SOURCES = group.c examples.h
-group_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
-group_LDADD = $(top_builddir)/src/libpmix.la
-
-asyncgroup_SOURCES = asyncgroup.c examples.h
-asyncgroup_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
-asyncgroup_LDADD = $(top_builddir)/src/libpmix.la
 
 if !WANT_HIDDEN
 server_SOURCES = server.c examples.h

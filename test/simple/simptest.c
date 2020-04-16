@@ -456,29 +456,28 @@ int main(int argc, char **argv)
 #if PMIX_HAVE_HWLOC
     if (hwloc) {
 #if HWLOC_API_VERSION < 0x20000
-        ninfo = 3;
+        ninfo = 2;
 #else
-        ninfo = 4;
+        ninfo = 3;
 #endif
     } else {
-        ninfo = 2;
+        ninfo = 1;
     }
 #else
-    ninfo = 2;
+    ninfo = 1;
 #endif
 
     PMIX_INFO_CREATE(info, ninfo);
     PMIX_INFO_LOAD(&info[0], PMIX_SERVER_TOOL_SUPPORT, NULL, PMIX_BOOL);
-    PMIX_INFO_LOAD(&info[1], PMIX_SERVER_SCHEDULER, NULL, PMIX_BOOL);
 #if PMIX_HAVE_HWLOC
     if (hwloc) {
         if (NULL != hwloc_file) {
-            PMIX_INFO_LOAD(&info[2], PMIX_TOPOLOGY_FILE, hwloc_file, PMIX_STRING);
+            PMIX_INFO_LOAD(&info[1], PMIX_TOPOLOGY_FILE, hwloc_file, PMIX_STRING);
         } else {
-            PMIX_INFO_LOAD(&info[2], PMIX_TOPOLOGY, NULL, PMIX_STRING);
+            PMIX_INFO_LOAD(&info[1], PMIX_TOPOLOGY, NULL, PMIX_STRING);
         }
 #if HWLOC_API_VERSION >= 0x20000
-        PMIX_INFO_LOAD(&info[3], PMIX_HWLOC_SHARE_TOPO, NULL, PMIX_BOOL);
+        PMIX_INFO_LOAD(&info[2], PMIX_HWLOC_SHARE_TOPO, NULL, PMIX_BOOL);
 #endif
     }
 #endif
@@ -727,9 +726,9 @@ static void set_namespace(int nprocs, char *nspace,
         PMIX_DATA_ARRAY_CREATE(x->info[n].value.data.darray, 9, PMIX_INFO);
     }
     iptr = (pmix_info_t*)x->info[n].value.data.darray->array;
-    PMIX_INFO_LOAD(&iptr[0], PMIX_NODE_MAP, regex, PMIX_REGEX);
+    PMIX_INFO_LOAD(&iptr[0], PMIX_NODE_MAP, regex, PMIX_STRING);
     isv1 = &iptr[0];
-    PMIX_INFO_LOAD(&iptr[1], PMIX_PROC_MAP, ppn, PMIX_REGEX);
+    PMIX_INFO_LOAD(&iptr[1], PMIX_PROC_MAP, ppn, PMIX_STRING);
     isv2 = &iptr[1];
     PMIX_INFO_LOAD(&iptr[2], PMIX_JOB_SIZE, &nprocs, PMIX_UINT32);
     PMIX_INFO_LOAD(&iptr[3], PMIX_JOBID, "1234", PMIX_STRING);

@@ -110,46 +110,8 @@ static void getcbfunc(struct pmix_peer_t *peer,
     PMIX_RELEASE(cd);
 }
 
-static void mycdcb(pmix_status_t status,
-                   pmix_byte_object_t *credential,
-                   pmix_info_t info[], size_t ninfo,
-                   void *cbdata)
-{
-    pmix_query_caddy_t *cb = (pmix_query_caddy_t*)cbdata;
-
-    PMIX_ACQUIRE_OBJECT(cb);
-    cb->status = status;
-    if (PMIX_SUCCESS == status && NULL != credential) {
-        cb->bo.bytes = malloc(credential->size);
-        memcpy(cb->bo.bytes, credential->bytes, credential->size);
-        cb->bo.size = credential->size;
-    }
-    PMIX_WAKEUP_THREAD(&cb->lock);
-}
-
 PMIX_EXPORT pmix_status_t PMIx_Get_credential(const pmix_info_t info[], size_t ninfo,
-                                              pmix_byte_object_t *credential)
-{
-    pmix_query_caddy_t cb;
-    pmix_status_t rc;
-
-    PMIX_CONSTRUCT(&cb, pmix_query_caddy_t);
-    rc = PMIx_Get_credential_nb(info, ninfo, mycdcb, &cb);
-    if (PMIX_SUCCESS == rc) {
-        PMIX_WAIT_THREAD(&cb.lock);
-        rc = cb.status;
-        if (NULL != cb.bo.bytes) {
-            credential->bytes = malloc(cb.bo.size);
-            memcpy(credential->bytes, cb.bo.bytes, cb.bo.size);
-            credential->size = cb.bo.size;
-        }
-    }
-    PMIX_DESTRUCT(&cb);
-    return rc;
-}
-
-PMIX_EXPORT pmix_status_t PMIx_Get_credential_nb(const pmix_info_t info[], size_t ninfo,
-                                                 pmix_credential_cbfunc_t cbfunc, void *cbdata)
+                                              pmix_credential_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_GET_CREDENTIAL_CMD;
@@ -334,52 +296,9 @@ static void valid_cbfunc(struct pmix_peer_t *peer,
     PMIX_RELEASE(cd);
 }
 
-static void myvalcb(pmix_status_t status,
-                    pmix_info_t info[], size_t ninfo,
-                    void *cbdata)
-{
-    pmix_query_caddy_t *cb = (pmix_query_caddy_t*)cbdata;
-    size_t n;
-
-    PMIX_ACQUIRE_OBJECT(cb);
-    cb->status = status;
-    if (PMIX_SUCCESS == status && NULL != info) {
-        cb->ninfo = ninfo;
-        PMIX_INFO_CREATE(cb->info, cb->ninfo);
-        for (n=0; n < ninfo; n++) {
-            PMIX_INFO_XFER(&cb->info[n], &info[n]);
-        }
-    }
-    PMIX_WAKEUP_THREAD(&cb->lock);
-}
-
 PMIX_EXPORT pmix_status_t PMIx_Validate_credential(const pmix_byte_object_t *cred,
                                                    const pmix_info_t directives[], size_t ndirs,
-                                                   pmix_info_t *results[], size_t *nresults)
-{
-    pmix_query_caddy_t cb;
-    pmix_status_t rc;
-
-    PMIX_CONSTRUCT(&cb, pmix_query_caddy_t);
-    rc = PMIx_Validate_credential_nb(cred, directives, ndirs, myvalcb, &cb);
-    if (PMIX_SUCCESS == rc) {
-        PMIX_WAIT_THREAD(&cb.lock);
-        rc = cb.status;
-        if (NULL != cb.info) {
-            *results = cb.info;
-            *nresults = cb.ninfo;
-            cb.info = NULL;
-            cb.ninfo = 0;
-        }
-    }
-    PMIX_DESTRUCT(&cb);
-    return rc;
-}
-
-
-PMIX_EXPORT pmix_status_t PMIx_Validate_credential_nb(const pmix_byte_object_t *cred,
-                                                      const pmix_info_t directives[], size_t ndirs,
-                                                      pmix_validation_cbfunc_t cbfunc, void *cbdata)
+                                                   pmix_validation_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_VALIDATE_CRED_CMD;

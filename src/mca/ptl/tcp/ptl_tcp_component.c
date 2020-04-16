@@ -407,7 +407,6 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
     struct sockaddr_storage my_ss;
     int kindex;
     size_t n;
-    bool session_tool = false;
     bool system_tool = false;
     bool tool_support = false;
     pmix_socklen_t addrlen;
@@ -470,8 +469,6 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
                     free(mca_ptl_tcp_component.system_tmpdir);
                 }
                 mca_ptl_tcp_component.system_tmpdir = strdup(info[n].value.data.string);
-            } else if (0 == strcmp(info[n].key, PMIX_SERVER_SESSION_SUPPORT)) {
-                session_tool = PMIX_INFO_TRUE(&info[n]);
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_SYSTEM_SUPPORT)) {
                 system_tool = PMIX_INFO_TRUE(&info[n]);
             } else if (0 == strcmp(info[n].key, PMIX_SERVER_TOOL_SUPPORT)) {
@@ -851,62 +848,6 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
             goto sockerror;
         }
         created_system_filename = true;
-    }
-
-    if (session_tool) {
-        if (0 == stat(mca_ptl_tcp_component.session_tmpdir, &sbuf)) {
-            /* already exists - check if it is a directory */
-            if (! S_ISDIR(sbuf.st_mode)) {
-                /* nope - we are hosed */
-                pmix_output(0, "Session tmpdir %s is not a directory\n", mca_ptl_tcp_component.session_tmpdir);
-                PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
-                CLOSE_THE_SOCKET(lt->socket);
-                goto sockerror;
-            }
-        } else {
-            /* need to create it */
-            rc = mkdir(mca_ptl_tcp_component.session_tmpdir, 0755);
-            if (0 != rc) {
-                pmix_output(0, "Session tmpdir %s could not be created\n", mca_ptl_tcp_component.session_tmpdir);
-                PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
-                CLOSE_THE_SOCKET(lt->socket);
-                goto sockerror;
-            }
-            created_session_tmpdir = true;
-        }
-        /* first output to a std file */
-        if (0 > asprintf(&mca_ptl_tcp_component.session_filename, "%s/pmix.%s.tool",
-                         mca_ptl_tcp_component.session_tmpdir, myhost)) {
-            CLOSE_THE_SOCKET(lt->socket);
-            goto sockerror;
-        }
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "WRITING SESSION TOOL FILE %s",
-                            mca_ptl_tcp_component.session_filename);
-        fp = fopen(mca_ptl_tcp_component.session_filename, "w");
-        if (NULL == fp) {
-            pmix_output(0, "Impossible to open the file %s in write mode\n", mca_ptl_tcp_component.session_filename);
-            PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
-            CLOSE_THE_SOCKET(lt->socket);
-            free(mca_ptl_tcp_component.session_filename);
-            mca_ptl_tcp_component.session_filename = NULL;
-            goto sockerror;
-        }
-
-        /* output my URI */
-        fprintf(fp, "%s\n", lt->uri);
-        /* add a flag that indicates we accept v2.1 protocols */
-        fprintf(fp, "%s\n", PMIX_VERSION);
-        fclose(fp);
-        /* set the file mode */
-        if (0 != chmod(mca_ptl_tcp_component.session_filename, S_IRUSR | S_IWUSR | S_IRGRP)) {
-            PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
-            CLOSE_THE_SOCKET(lt->socket);
-            free(mca_ptl_tcp_component.session_filename);
-            mca_ptl_tcp_component.session_filename = NULL;
-            goto sockerror;
-        }
-        created_session_filename = true;
     }
 
     if (tool_support) {

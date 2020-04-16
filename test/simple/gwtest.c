@@ -26,7 +26,7 @@
  */
 
 #include "src/include/pmix_config.h"
-#include "include/pmix_server.h"
+#include <pmix_server.h>
 #include "src/include/types.h"
 #include "src/include/pmix_globals.h"
 
@@ -38,6 +38,7 @@
 #include <sys/wait.h>
 #include <errno.h>
 #include <signal.h>
+#include PMIX_EVENT_HEADER
 
 #include "src/class/pmix_list.h"
 #include "src/util/pmix_environ.h"
@@ -580,10 +581,14 @@ static void set_namespace(int nprocs, char *ranks, char *nspace,
     x->info[3].value.data.string = strdup(ranks);
 
     PMIx_generate_regex(hostname, &regex);
-    PMIX_INFO_LOAD(&x->info[4], PMIX_NODE_MAP, regex, PMIX_REGEX);
+    (void)strncpy(x->info[4].key, PMIX_NODE_MAP, PMIX_MAX_KEYLEN);
+    x->info[4].value.type = PMIX_STRING;
+    x->info[4].value.data.string = regex;
 
     PMIx_generate_ppn(ranks, &ppn);
-    PMIX_INFO_LOAD(&x->info[5], PMIX_PROC_MAP, ppn, PMIX_REGEX);
+    (void)strncpy(x->info[5].key, PMIX_PROC_MAP, PMIX_MAX_KEYLEN);
+    x->info[5].value.type = PMIX_STRING;
+    x->info[5].value.data.string = ppn;
 
     (void)strncpy(x->info[6].key, PMIX_JOB_SIZE, PMIX_MAX_KEYLEN);
     x->info[6].value.type = PMIX_UINT32;

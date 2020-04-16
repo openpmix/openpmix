@@ -935,8 +935,6 @@ int pmix_bfrops_base_print_status(char **output, char *prefix,
  {
     char *prefx;
     int rc;
-    pmix_regattr_t *r;
-    char *tp;
 
     if (PMIX_VALUE != type) {
         return PMIX_ERR_BAD_PARAM;
@@ -1084,27 +1082,6 @@ int pmix_bfrops_base_print_status(char **output, char *prefix,
                           prefx, (NULL == src->data.envar.envar) ? "NULL" : src->data.envar.envar,
                           (NULL == src->data.envar.value) ? "NULL" : src->data.envar.value,
                           src->data.envar.separator);
-            break;
-
-        case PMIX_COORD:
-            if (PMIX_COORD_VIEW_UNDEF == src->data.coord->view) {
-                tp = "UNDEF";
-            } else if (PMIX_COORD_LOGICAL_VIEW == src->data.coord->view) {
-                tp = "LOGICAL";
-            } else if (PMIX_COORD_PHYSICAL_VIEW == src->data.coord->view) {
-                tp = "PHYSICAL";
-            } else {
-                tp = "UNRECOGNIZED";
-            }
-            rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_COORD\tView: %s\tDims: %lu",
-                          prefx, tp, (unsigned long)src->data.coord->dims);
-            break;
-
-        case PMIX_REGATTR:
-            r = (pmix_regattr_t*)src->data.ptr;
-            rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_REGATTR\tName: %s\tString: %s",
-                          prefx, (NULL == r->name) ? "NULL" : r->name,
-                          (0 == strlen(r->string)) ? "NULL" : r->string);
             break;
 
         default:
@@ -1835,147 +1812,6 @@ pmix_status_t pmix_bfrops_base_print_envar(char **output, char *prefix,
                    prefx, (NULL == src->envar) ? "NULL" : src->envar,
                    (NULL == src->value) ? "NULL" : src->value,
                    ('\0' == src->separator) ? ' ' : src->separator);
-    if (prefx != prefix) {
-        free(prefx);
-    }
-
-    if (0 > ret) {
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    } else {
-        return PMIX_SUCCESS;
-    }
-}
-
-pmix_status_t pmix_bfrops_base_print_coord(char **output, char *prefix,
-                                           pmix_coord_t *src,
-                                           pmix_data_type_t type)
-{
-    char *prefx;
-    int ret;
-    char *tp;
-
-    if (PMIX_COORD != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    /* deal with NULL prefix */
-    if (NULL == prefix) {
-        if (0 > asprintf(&prefx, " ")) {
-            return PMIX_ERR_NOMEM;
-        }
-    } else {
-        prefx = prefix;
-    }
-
-    if (PMIX_COORD_VIEW_UNDEF == src->view) {
-        tp = "UNDEF";
-    } else if (PMIX_COORD_LOGICAL_VIEW == src->view) {
-        tp = "LOGICAL";
-    } else if (PMIX_COORD_PHYSICAL_VIEW == src->view) {
-        tp = "PHYSICAL";
-    } else {
-        tp = "UNRECOGNIZED";
-    }
-    ret = asprintf(output, "%sData type: PMIX_COORD\tFabric: %s\tPlane: %s\tView: %s\tDims: %lu",
-                   prefx, (NULL == src->fabric) ? "NULL" : src->fabric,
-                   (NULL == src->plane) ? "NULL" : src->plane, tp, (unsigned long)src->dims);
-    if (prefx != prefix) {
-        free(prefx);
-    }
-
-    if (0 > ret) {
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    } else {
-        return PMIX_SUCCESS;
-    }
-}
-
-pmix_status_t pmix_bfrops_base_print_regattr(char **output, char *prefix,
-                                             pmix_regattr_t *src,
-                                             pmix_data_type_t type)
-{
-    char *prefx;
-    int ret;
-
-    if (PMIX_REGATTR != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    /* deal with NULL prefix */
-    if (NULL == prefix) {
-        if (0 > asprintf(&prefx, " ")) {
-            return PMIX_ERR_NOMEM;
-        }
-    } else {
-        prefx = prefix;
-    }
-
-    ret = asprintf(output, "%sData type: PMIX_REGATTR\tName: %s\tString: %s",
-                   prefx, (NULL == src->name) ? "NULL" : src->name,
-                   (0 == strlen(src->string)) ? "NULL" : src->string);
-
-    if (prefx != prefix) {
-        free(prefx);
-    }
-
-    if (0 > ret) {
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    } else {
-        return PMIX_SUCCESS;
-    }
-}
-
-pmix_status_t pmix_bfrops_base_print_regex(char **output, char *prefix,
-                                           char *src,
-                                           pmix_data_type_t type)
-{
-    char *prefx;
-    int ret;
-
-    if (PMIX_REGEX != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    /* deal with NULL prefix */
-    if (NULL == prefix) {
-        if (0 > asprintf(&prefx, " ")) {
-            return PMIX_ERR_NOMEM;
-        }
-    } else {
-        prefx = prefix;
-    }
-
-    ret = asprintf(output, "%sData type: PMIX_REGEX\tName: %s", prefx, src);
-
-    if (prefx != prefix) {
-        free(prefx);
-    }
-
-    if (0 > ret) {
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    } else {
-        return PMIX_SUCCESS;
-    }
-}
-
-pmix_status_t pmix_bfrops_base_print_jobstate(char **output, char *prefix,
-                                              pmix_job_state_t *src,
-                                              pmix_data_type_t type)
-{
-    char *prefx;
-    int ret;
-
-    if (PMIX_JOB_STATE != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    /* deal with NULL prefix */
-    if (NULL == prefix) {
-        if (0 > asprintf(&prefx, " ")) {
-            return PMIX_ERR_NOMEM;
-        }
-    } else {
-        prefx = prefix;
-    }
-
-    ret = asprintf(output, "%sData type: PMIX_JOB_STATE\tValue: %s",
-                   prefx, PMIx_Job_state_string(*src));
     if (prefx != prefix) {
         free(prefx);
     }

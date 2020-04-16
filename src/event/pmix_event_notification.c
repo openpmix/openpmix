@@ -993,49 +993,6 @@ static void _notify_client_event(int sd, short args, void *cbdata)
         return;
     }
 
-    /* check to see if this is a group_complete notification
-     * indicating that a group has asynchronously been formed.
-     * If it is, then we need to track the group */
-    if (PMIX_GROUP_CONSTRUCT_COMPLETE == cd->status) {
-        char *grpid = NULL;
-        pmix_group_t *grp;
-        /* must include the group id */
-        for (n=0; n < cd->ninfo; n++) {
-            if (PMIX_CHECK_KEY(&cd->info[n], PMIX_GROUP_ID)) {
-                grpid = cd->info[n].value.data.string;
-                break;
-            }
-        }
-        if (NULL == grpid) {
-            /* failed to provide the ID */
-            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-            /* notify the caller */
-            if (NULL != cd->cbfunc) {
-                cd->cbfunc(PMIX_ERR_BAD_PARAM, cd->cbdata);
-            }
-            PMIX_RELEASE(cd);
-            PMIX_RELEASE(chain);
-            return;
-        }
-        /* must include members */
-        if (NULL == cd->targets || 0 == cd->ntargets) {
-            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-            /* notify the caller */
-            if (NULL != cd->cbfunc) {
-                cd->cbfunc(PMIX_ERR_BAD_PARAM, cd->cbdata);
-            }
-            PMIX_RELEASE(cd);
-            PMIX_RELEASE(chain);
-            return;
-        }
-        grp = PMIX_NEW(pmix_group_t);
-        grp->grpid = strdup(grpid);
-        grp->nmbrs = cd->ntargets;
-        PMIX_PROC_CREATE(grp->members, grp->nmbrs);
-        memcpy(grp->members, cd->targets, cd->ntargets * sizeof(pmix_proc_t));
-        pmix_list_append(&pmix_server_globals.groups, &grp->super);
-    }
-
     holdcd = false;
     if (PMIX_RANGE_PROC_LOCAL != cd->range) {
         PMIX_CONSTRUCT(&trk, pmix_list_t);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
@@ -492,35 +492,6 @@ typedef pmix_status_t (*pmix_server_stdin_fn_t)(const pmix_proc_t *source,
                                                 pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 
-/* Perform a "fence" operation across the specified procs, plus any special
- * actions included in the directives. Return the result of any special action
- * requests in the info cbfunc when the fence is completed. Actions may include:
- *
- * PMIX_GROUP_ASSIGN_CONTEXT_ID - request that the RM assign a unique
- *                                numerical (size_t) ID to this group
- *
- * grp - user-assigned string ID of this group
- *
- * op - pmix_group_operation_t value indicating the operation to perform
- *      Current values support construct and destruct of the group
- *
- * procs - pointer to array of pmix_proc_t ID's of group members
- *
- * nprocs - number of group members
- *
- * directives - array of key-value attributes specifying special actions.
- *
- * ndirs - size of the directives array
- *
- * cbfunc - callback function when the operation is completed
- *
- * cbdata - object to be returned in cbfunc
- */
-typedef pmix_status_t (*pmix_server_grp_fn_t)(pmix_group_operation_t op, char grp[],
-                                              const pmix_proc_t procs[], size_t nprocs,
-                                              const pmix_info_t directives[], size_t ndirs,
-                                              pmix_info_cbfunc_t cbfunc, void *cbdata);
-
 typedef struct pmix_server_module_2_0_0_t {
     /* v1x interfaces */
     pmix_server_client_connected_fn_t   client_connected;
@@ -550,8 +521,6 @@ typedef struct pmix_server_module_2_0_0_t {
     pmix_server_validate_cred_fn_t      validate_credential;
     pmix_server_iof_fn_t                iof_pull;
     pmix_server_stdin_fn_t              push_stdin;
-    /* v4x interfaces */
-    pmix_server_grp_fn_t                group;
 } pmix_server_module_t;
 
 /****    HOST RM FUNCTIONS FOR INTERFACE TO PMIX SERVER    ****/
@@ -574,41 +543,34 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
  * memory usage is released */
 PMIX_EXPORT pmix_status_t PMIx_server_finalize(void);
 
-/* Given a comma-separated list of \refarg{input} values, generate
- * a reduced size representation of the input that can be passed
- * down to PMIx_server_register_nspace for parsing. The order of
- * the individual values in the \refarg{input} string is preserved
- * across the operation. The caller is responsible for releasing
- * the returned data.
+/* given a semicolon-separated list of input values, generate
+ * a regex that can be passed down to the client for parsing.
+ * The caller is responsible for free'ing the resulting
+ * string
  *
- * The returned representation may be an arbitrary array of bytes
- * as opposed to a valid NULL-terminated string. However, the
- * method used to generate the representation shall be identified
- * with a colon-delimited string at the beginning of the output.
- * For example, an output starting with "pmix:" indicates that
- * the representation is a PMIx-defined regular expression.
- * In contrast, an output starting with "blob:" is a compressed
- * binary array.
+ * If values have leading zero's, then that is preserved. You
+ * have to add back any prefix/suffix for node names
+ * odin[009-015,017-023,076-086]
+ *
+ *     "pmix:odin[009-015,017-023,076-086]"
+ *
+ * Note that the "pmix" at the beginning of each regex indicates
+ * that the PMIx native parser is to be used by the client for
+ * parsing the provided regex. Other parsers may be supported - see
+ * the pmix_client.h header for a list.
  */
 PMIX_EXPORT pmix_status_t PMIx_generate_regex(const char *input, char **regex);
 
-/* The input shall consist of a semicolon-separated list of ranges
- * representing the ranks of processes on each node of the job -
- * e.g.,  "1-4;2-5;8,10,11,12;6,7,9". Each field of the input must
- * correspond to the node name provided at that position in the
- * input to PMIx_generate_regex. Thus, in the example, ranks 1-4
- * would be located on the first node of the comma-separated list
- * of names provided to PMIx_generate_regex, and ranks 2-5 would
- * be on the second name in the list.
+/* The input is expected to consist of a comma-separated list
+ * of ranges. Thus, an input of:
+ *     "1-4;2-5;8,10,11,12;6,7,9"
+ * would generate a regex of
+ *     "[pmix:2x(3);8,10-12;6-7,9]"
  *
- * The returned representation may be an arbitrary array of bytes
- * as opposed to a valid NULL-terminated string. However, the
- * method used to generate the representation shall be identified
- * with a colon-delimited string at the beginning of the output.
- * For example, an output starting with "pmix:" indicates that
- * the representation is a PMIx-defined regular expression.
- * In contrast, an output starting with "blob:" is a compressed
- * binary array.
+ * Note that the "pmix" at the beginning of each regex indicates
+ * that the PMIx native parser is to be used by the client for
+ * parsing the provided regex. Other parsers may be supported - see
+ * the pmix_client.h header for a list.
  */
 PMIX_EXPORT pmix_status_t PMIx_generate_ppn(const char *input, char **ppn);
 
@@ -788,28 +750,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_collect_inventory(pmix_info_t directives[]
 PMIX_EXPORT pmix_status_t PMIx_server_deliver_inventory(pmix_info_t info[], size_t ninfo,
                                                         pmix_info_t directives[], size_t ndirs,
                                                         pmix_op_cbfunc_t cbfunc, void *cbdata);
-
-/******      ATTRIBUTE REGISTRATION      ******/
-/**
- * This function is used by the host environment to register with its
- * server library the attributes it supports for each pmix_server_module_t
- * function.
- *
- * Parameters include:
- *
- * function - the string name of the server module function
- *            (e.g., "register_events", "validate_credential",
- *            or "allocate") whose attributes are being registered.
- *
- * attrs - array of pmix_regattr_t describing the attributes supported
- *         by the host environment for the specified function
- *
- * nattrs - number of elements in the attrs array
- *
- */
-PMIX_EXPORT pmix_status_t PMIx_Register_attributes(char *function,
-                                                   pmix_regattr_t attrs[], size_t nattrs);
-
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }

@@ -59,14 +59,10 @@
 #include "src/runtime/pmix_rte.h"
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/gds/base/base.h"
-#include "src/mca/pfexec/base/base.h"
-#include "src/mca/pmdl/base/base.h"
 #include "src/mca/pnet/base/base.h"
-#include "src/mca/pstrg/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/mca/psec/psec.h"
 #include "src/include/pmix_globals.h"
-#include "src/common/pmix_attributes.h"
 #include "src/common/pmix_iof.h"
 #include "src/client/pmix_client_ops.h"
 #include "src/server/pmix_server_ops.h"
@@ -419,8 +415,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
                 pmix_server_globals.tmpdir = strdup(info[n].value.data.string);
             } else if (0 == strncmp(info[n].key, PMIX_SYSTEM_TMPDIR, PMIX_MAX_KEYLEN)) {
                 pmix_server_globals.system_tmpdir = strdup(info[n].value.data.string);
-            } else if (0 == strncmp(info[n].key, PMIX_TOOL_CONNECT_OPTIONAL, PMIX_MAX_KEYLEN)) {
-                connect_optional = PMIX_INFO_TRUE(&info[n]);
             }
         }
     }
@@ -675,7 +669,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         /* it is an error if we were not given an nspace/rank */
         if (!nspace_given || !rank_given) {
             PMIX_RELEASE_THREAD(&pmix_global_lock);
-            goto regattr;
+            return PMIX_ERR_UNREACH;
         }
     } else {
         /* connect to the server */
@@ -877,24 +871,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
 
     /* if we are acting as a server, then start listening */
     if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
-    /* setup the fork/exec framework */
-        if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pfexec_base_framework, 0)) ) {
-            return rc;
-        }
-        if (PMIX_SUCCESS != (rc = pmix_pfexec_base_select()) ) {
-            return rc;
-        }
-
-        /* open the pmdl framework and select the active modules for this environment */
-        if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pmdl_base_framework, 0))) {
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
-            return rc;
-        }
-        if (PMIX_SUCCESS != (rc = pmix_pmdl_base_select())) {
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
-            return rc;
-        }
-
         /* open the pnet framework and select the active modules for this environment */
         if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pnet_base_framework, 0))) {
             PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -905,15 +881,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
             return rc;
         }
 
-        /* open the pstrg framework */
-        if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pstrg_base_framework, 0))) {
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
-            return rc;
-        }
-        if (PMIX_SUCCESS != (rc = pmix_pstrg_base_select())) {
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
-            return rc;
-        }
         /* start listening for connections */
         if (PMIX_SUCCESS != pmix_ptl_base_start_listening(info, ninfo)) {
             pmix_show_help("help-pmix-server.txt", "listener-thread-start", true);
@@ -921,10 +888,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         }
     }
 
-  regattr:
-    /* register the tool supported attrs */
-    rc = pmix_register_tool_attrs();
-    return rc;
+    return PMIX_SUCCESS;
 }
 
 PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
@@ -1273,7 +1237,6 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     struct timeval tv = {5, 0};
     int n;
     pmix_peer_t *peer;
-    pmix_pfexec_child_t *child;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     if (1 != pmix_globals.init_cntr) {
@@ -1337,19 +1300,6 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
 
     }
 
-    if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
-        /* if we have launched children, then we need to cleanly
-         * terminate them - do this before stopping our progress
-         * thread as we need it for terminating procs */
-        if (pmix_pfexec_globals.active) {
-            pmix_event_del(pmix_pfexec_globals.handler);
-            pmix_pfexec_globals.active = false;
-        }
-        PMIX_LIST_FOREACH(child, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
-            pmix_pfexec.kill_proc(&child->proc);
-        }
-    }
-
     if (!pmix_globals.external_evbase) {
         /* stop the progress thread, but leave the event base
          * still constructed. This will allow us to safely
@@ -1384,10 +1334,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
         PMIX_LIST_DESTRUCT(&pmix_server_globals.events);
         PMIX_LIST_DESTRUCT(&pmix_server_globals.iof);
 
-        (void)pmix_mca_base_framework_close(&pmix_pfexec_base_framework);
-        (void)pmix_mca_base_framework_close(&pmix_pmdl_base_framework);
         (void)pmix_mca_base_framework_close(&pmix_pnet_base_framework);
-        (void)pmix_mca_base_framework_close(&pmix_pstrg_base_framework);
     }
 
     pmix_rte_finalize();

@@ -37,11 +37,11 @@
 
 #include "src/include/pmix_globals.h"
 #include "src/util/output.h"
+#include "src/util/pmix_environ.h"
 #include "src/util/show_help.h"
 #include "src/mca/base/base.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/bfrops/base/base.h"
-#include "src/mca/pcompress/base/base.h"
 #include "src/mca/gds/base/base.h"
 #include "src/mca/pif/base/base.h"
 #include "src/mca/pinstalldirs/base/base.h"
@@ -53,7 +53,6 @@
 #include "src/mca/ptl/base/base.h"
 
 #include "src/client/pmix_client_ops.h"
-#include "src/common/pmix_attributes.h"
 #include "src/event/pmix_event.h"
 #include "src/include/types.h"
 #include "src/util/error.h"
@@ -339,16 +338,6 @@ int pmix_rte_init(uint32_t type,
         goto return_error;
     }
 
-    /* open and select the compress framework */
-    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_pcompress_base_framework, 0)) ) {
-        error = "pmix_pcompress_base_open";
-        goto return_error;
-    }
-    if (PMIX_SUCCESS != (ret = pmix_compress_base_select()) ) {
-        error = "pmix_pcompress_base_select";
-        goto return_error;
-    }
-
     /* open the ptl and select the active plugins */
     if (NULL != (evar = getenv("PMIX_PTL_MODULE"))) {
         /* convert to an MCA param, but don't overwrite something already there */
@@ -423,9 +412,6 @@ int pmix_rte_init(uint32_t type,
         error = "pmix_plog_base_select";
         goto return_error;
     }
-
-    /* initialize the attribute support system */
-    pmix_init_registered_attrs();
 
     if (!pmix_globals.external_evbase) {
         /* start progressing the event library */

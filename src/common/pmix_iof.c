@@ -36,7 +36,6 @@
 #include "src/util/name_fns.h"
 #include "src/util/output.h"
 #include "src/mca/bfrops/bfrops.h"
-#include "src/mca/pfexec/base/base.h"
 #include "src/mca/ptl/ptl.h"
 
 #include "src/client/pmix_client_ops.h"
@@ -1128,12 +1127,6 @@ static void iof_stdin_cbfunc(struct pmix_peer_t *peer,
         pmix_event_del(&stdinev->ev);
         stdinev->active = false;
         PMIX_POST_OBJECT(stdinev);
-        if (PMIX_ERR_IOF_COMPLETE != ret) {
-            /* generate an IOF-failed event so the tool knows */
-            PMIx_Notify_event(PMIX_ERR_IOF_FAILURE,
-                              &pmix_globals.myid, PMIX_RANGE_PROC_LOCAL,
-                              NULL, 0, NULL, NULL);
-        }
         return;
     }
 
@@ -1151,7 +1144,6 @@ void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata)
     pmix_cmd_t cmd = PMIX_IOF_PUSH_CMD;
     pmix_byte_object_t bo;
     int fd;
-    pmix_pfexec_child_t *child = (pmix_pfexec_child_t*)rev->childproc;
 
     PMIX_ACQUIRE_OBJECT(rev);
 
@@ -1186,21 +1178,6 @@ void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata)
     /* The event has fired, so it's no longer active until we
        re-add it */
     rev->active = false;
-
-    /* if this is from our own child proc, then
-     * just push it to the corresponding sink */
-    if (NULL != child) {
-        bo.bytes = (char*)data;
-        bo.size = numbytes;
-        pmix_iof_write_output(&rev->name, rev->channel, &bo, NULL);
-        if (0 == numbytes && child->completed &&
-            (NULL == child->stdoutev || !child->stdoutev->active) &&
-            (NULL == child->stderrev || !child->stderrev->active)) {
-            PMIX_PFEXEC_CHK_COMPLETE(child);
-            return;
-        }
-        goto reactivate;
-    }
 
     /* pass the data to our PMIx server so it can relay it
      * to the host RM for distribution */
@@ -1272,7 +1249,6 @@ void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata)
         PMIX_RELEASE(msg);
     }
 
-  reactivate:
     if (0 < numbytes) {
         PMIX_IOF_READ_ACTIVATE(rev);
     }

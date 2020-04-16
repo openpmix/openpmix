@@ -26,7 +26,7 @@
  */
 
 #include "src/include/pmix_config.h"
-#include "include/pmix_server.h"
+#include <pmix_server.h>
 #include "src/include/types.h"
 #include "src/include/pmix_globals.h"
 
@@ -38,6 +38,7 @@
 #include <sys/wait.h>
 #include <errno.h>
 #include <signal.h>
+#include PMIX_EVENT_HEADER
 
 #if PMIX_HAVE_HWLOC
 #include "src/hwloc/hwloc-internal.h"
@@ -373,7 +374,7 @@ int main(int argc, char **argv)
     PMIX_INFO_CREATE(info, ninfo);
     PMIX_INFO_LOAD(&info[0], PMIX_SERVER_TOOL_SUPPORT, NULL, PMIX_BOOL);
     PMIX_INFO_LOAD(&info[1], PMIX_USOCK_DISABLE, NULL, PMIX_BOOL);
-    PMIX_INFO_LOAD(&info[2], PMIX_SERVER_SCHEDULER, NULL, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[2], PMIX_SERVER_GATEWAY, NULL, PMIX_BOOL);
 #if PMIX_HAVE_HWLOC
     if (hwloc) {
         if (NULL != hwloc_file) {
@@ -587,13 +588,22 @@ static void set_namespace(int nprocs, char *ranks, char *nspace,
         PMIX_DATA_ARRAY_CREATE(x->info[n].value.data.darray, 2, PMIX_INFO);
         iptr = (pmix_info_t*)x->info[n].value.data.darray->array;
         (void)strncpy(iptr[0].key, PMIX_NODE_MAP, PMIX_MAX_KEYLEN);
-        PMIX_INFO_LOAD(&iptr[0], PMIX_NODE_MAP, regex, PMIX_REGEX);
-        PMIX_INFO_LOAD(&iptr[1], PMIX_PROC_MAP, ppn, PMIX_REGEX);
+        iptr[0].value.type = PMIX_STRING;
+        iptr[0].value.data.string = regex;
+        (void)strncpy(iptr[1].key, PMIX_PROC_MAP, PMIX_MAX_KEYLEN);
+        iptr[1].value.type = PMIX_STRING;
+        iptr[1].value.data.string = ppn;
         ++n;
     } else {
-        PMIX_INFO_LOAD(&x->info[n], PMIX_NODE_MAP, regex, PMIX_REGEX);
+        (void)strncpy(x->info[n].key, PMIX_NODE_MAP, PMIX_MAX_KEYLEN);
+        x->info[n].value.type = PMIX_STRING;
+        x->info[n].value.data.string = regex;
         ++n;
-        PMIX_INFO_LOAD(&x->info[n], PMIX_PROC_MAP, ppn, PMIX_REGEX);
+
+        /* if we have some empty nodes, then fill their spots */
+        (void)strncpy(x->info[n].key, PMIX_PROC_MAP, PMIX_MAX_KEYLEN);
+        x->info[n].value.type = PMIX_STRING;
+        x->info[n].value.data.string = ppn;
         ++n;
     }
 

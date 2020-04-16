@@ -12,7 +12,7 @@
 #                         All rights reserved.
 # Copyright (c) 2007-2016 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2013      NVIDIA Corporation.  All rights reserved.
-# Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+# Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2016      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
 # $COPYRIGHT$
@@ -54,7 +54,8 @@ headers += \
         util/parse_options.h \
         util/context_fns.h \
         util/pmix_pty.h \
-        util/few.h
+        util/few.h \
+        util/compress.h
 
 sources += \
         util/alfg.c \
@@ -82,7 +83,8 @@ sources += \
         util/parse_options.c \
         util/context_fns.c \
         util/pmix_pty.c \
-        util/few.c
+        util/few.c \
+        util/compress.c
 
 libpmix_la_LIBADD += \
         util/keyval/libpmixutilkeyval.la

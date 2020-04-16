@@ -55,8 +55,6 @@
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
 #include "src/mca/gds/gds.h"
-#include "src/mca/pfexec/pfexec.h"
-#include "src/mca/pmdl/pmdl.h"
 #include "src/mca/ptl/ptl.h"
 
 #include "pmix_client_ops.h"
@@ -85,7 +83,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn(const pmix_info_t job_info[], size_t ninfo,
     }
 
     /* if we aren't connected, don't attempt to send */
-    if (!pmix_globals.connected && !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
+    if (!pmix_globals.connected) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_UNREACH;
     }
@@ -131,11 +129,6 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     pmix_cb_t *cb;
     size_t n, m;
     pmix_app_t *aptr;
-    bool jobenvars = false;
-    bool forkexec = false;
-    pmix_kval_t *kv;
-    pmix_list_t ilist;
-    pmix_nspace_t nspace;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -150,41 +143,10 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
 
     /* if we aren't connected, don't attempt to send */
     if (!pmix_globals.connected) {
-        /* if I am a launcher, we default to local fork/exec */
-        if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
-            forkexec = true;
-        } else {
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
-            return PMIX_ERR_UNREACH;
-        }
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return PMIX_ERR_UNREACH;
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
-
-    /* check job info for directives */
-    if (NULL != job_info) {
-        for (n=0; n < ninfo; n++) {
-            if (PMIX_CHECK_KEY(&job_info[n], PMIX_SETUP_APP_ENVARS)) {
-                PMIX_CONSTRUCT(&ilist, pmix_list_t);
-                rc = pmix_pmdl.harvest_envars(NULL, job_info, ninfo, &ilist);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_LIST_DESTRUCT(&ilist);
-                    return rc;
-                }
-                PMIX_LIST_FOREACH(kv, &ilist, pmix_kval_t) {
-                    /* cycle across all the apps and set this envar */
-                    for (m=0; m < napps; m++) {
-                        aptr = (pmix_app_t*)&apps[m];
-                        pmix_setenv(kv->value->data.envar.envar,
-                                    kv->value->data.envar.value,
-                                    true, &aptr->env);
-                    }
-                }
-                jobenvars = true;
-                PMIX_LIST_DESTRUCT(&ilist);
-                break;
-            }
-        }
-    }
 
     for (n=0; n < napps; n++) {
         /* do a quick check of the apps directive array to ensure
@@ -202,38 +164,6 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
             }
             aptr->ninfo = m;
         }
-        if (!jobenvars) {
-            for (m=0; m < aptr->ninfo; m++) {
-                if (PMIX_CHECK_KEY(&aptr->info[m], PMIX_SETUP_APP_ENVARS)) {
-                    PMIX_CONSTRUCT(&ilist, pmix_list_t);
-                    rc = pmix_pmdl.harvest_envars(NULL, aptr->info, aptr->ninfo, &ilist);
-                    if (PMIX_SUCCESS != rc) {
-                        PMIX_LIST_DESTRUCT(&ilist);
-                        return rc;
-                    }
-                    PMIX_LIST_FOREACH(kv, &ilist, pmix_kval_t) {
-                        pmix_setenv(kv->value->data.envar.envar,
-                                    kv->value->data.envar.value,
-                                    true, &aptr->env);
-                    }
-                    jobenvars = true;
-                    PMIX_LIST_DESTRUCT(&ilist);
-                    break;
-                }
-            }
-        }
-    }
-
-    /* if I am a tool and not connected, then just fork/exec
-     * the specified application */
-    if (forkexec) {
-        rc = pmix_pfexec.spawn_job(job_info, ninfo,
-                                   apps, napps, nspace);
-        cb = (pmix_cb_t*)cbdata;
-        if (PMIX_OPERATION_SUCCEEDED == rc) {
-            cb->pname.nspace = strdup(nspace);
-        }
-        return rc;
     }
 
     msg = PMIX_NEW(pmix_buffer_t);

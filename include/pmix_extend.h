@@ -2,8 +2,8 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
- * Copyright (c) 2015-2019 Research Organization for Information Science
- *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Redistribution and use in source and binary forms, with or without
@@ -42,18 +42,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  * $HEADER$
- *
- * PMIx provides a "function-shipping" approach to support for
- * implementing the server-side of the protocol. This method allows
- * resource managers to implement the server without being burdened
- * with PMIx internal details. Accordingly, each PMIx API is mirrored
- * here in a function call to be provided by the server. When a
- * request is received from the client, the corresponding server function
- * will be called with the information.
- *
- * Any functions not supported by the RM can be indicated by a NULL for
- * the function pointer. Client calls to such functions will have a
- * "not supported" error returned.
  */
 
 #ifndef PMIx_EXTEND_H
@@ -66,8 +54,9 @@ extern "C" {
 /* expose some functions that are resolved in the
  * PMIx library, but part of a header that
  * includes internal functions - we don't
- * want to expose the entire header here. For
- * consistency, we provide macro versions as well
+ * want to expose the entire header here. These
+ * back the associated macros included in the
+ * PMIx Standard
  */
 void pmix_value_load(pmix_value_t *v, const void *data, pmix_data_type_t type);
 
@@ -94,6 +83,70 @@ char **pmix_argv_copy(char **argv);
 pmix_status_t pmix_setenv(const char *name, const char *value,
                           bool overwrite, char ***env);
 
+
+/* the following are a set of legacy macros not included in the
+ * PMIx Standard, but used in some codes (e.g., the Slurm plugin).
+ * These should be considered "deprecated" and will be removed
+ * in the next major release of the PRI */
+#define PMIX_VAL_FIELD_int(x)       ((x)->data.integer)
+#define PMIX_VAL_FIELD_uint32_t(x)  ((x)->data.uint32)
+#define PMIX_VAL_FIELD_uint16_t(x)  ((x)->data.uint16)
+#define PMIX_VAL_FIELD_string(x)    ((x)->data.string)
+#define PMIX_VAL_FIELD_float(x)     ((x)->data.fval)
+#define PMIX_VAL_FIELD_byte(x)      ((x)->data.byte)
+#define PMIX_VAL_FIELD_flag(x)      ((x)->data.flag)
+
+#define PMIX_VAL_TYPE_int      PMIX_INT
+#define PMIX_VAL_TYPE_uint32_t PMIX_UINT32
+#define PMIX_VAL_TYPE_uint16_t PMIX_UINT16
+#define PMIX_VAL_TYPE_string   PMIX_STRING
+#define PMIX_VAL_TYPE_float    PMIX_FLOAT
+#define PMIX_VAL_TYPE_byte     PMIX_BYTE
+#define PMIX_VAL_TYPE_flag     PMIX_BOOL
+
+#define PMIX_VAL_set_assign(_v, _field, _val )   \
+    do {                                                            \
+        (_v)->type = PMIX_VAL_TYPE_ ## _field;                      \
+        PMIX_VAL_FIELD_ ## _field((_v)) = _val;                     \
+    } while (0)
+
+#define PMIX_VAL_set_strdup(_v, _field, _val )       \
+    do {                                                                \
+        (_v)->type = PMIX_VAL_TYPE_ ## _field;                          \
+        PMIX_VAL_FIELD_ ## _field((_v)) = strdup(_val);                 \
+    } while (0)
+
+#define PMIX_VAL_SET_int        PMIX_VAL_set_assign
+#define PMIX_VAL_SET_uint32_t   PMIX_VAL_set_assign
+#define PMIX_VAL_SET_uint16_t   PMIX_VAL_set_assign
+#define PMIX_VAL_SET_string     PMIX_VAL_set_strdup
+#define PMIX_VAL_SET_float      PMIX_VAL_set_assign
+#define PMIX_VAL_SET_byte       PMIX_VAL_set_assign
+#define PMIX_VAL_SET_flag       PMIX_VAL_set_assign
+
+#define PMIX_VAL_SET(_v, _field, _val )   \
+    PMIX_VAL_SET_ ## _field(_v, _field, _val)
+
+#define PMIX_VAL_cmp_val(_val1, _val2)      ((_val1) != (_val2))
+#define PMIX_VAL_cmp_float(_val1, _val2)    (((_val1)>(_val2))?(((_val1)-(_val2))>0.000001):(((_val2)-(_val1))>0.000001))
+#define PMIX_VAL_cmp_ptr(_val1, _val2)      strncmp(_val1, _val2, strlen(_val1)+1)
+
+#define PMIX_VAL_CMP_int        PMIX_VAL_cmp_val
+#define PMIX_VAL_CMP_uint32_t   PMIX_VAL_cmp_val
+#define PMIX_VAL_CMP_uint16_t   PMIX_VAL_cmp_val
+#define PMIX_VAL_CMP_float      PMIX_VAL_cmp_float
+#define PMIX_VAL_CMP_string     PMIX_VAL_cmp_ptr
+#define PMIX_VAL_CMP_byte       PMIX_VAL_cmp_val
+#define PMIX_VAL_CMP_flag       PMIX_VAL_cmp_val
+
+#define PMIX_VAL_ASSIGN(_v, _field, _val) \
+    PMIX_VAL_set_assign(_v, _field, _val)
+
+#define PMIX_VAL_CMP(_field, _val1, _val2) \
+    PMIX_VAL_CMP_ ## _field(_val1, _val2)
+
+#define PMIX_VAL_FREE(_v) \
+     PMIx_free_value_data(_v)
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }

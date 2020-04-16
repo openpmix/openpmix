@@ -151,10 +151,6 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
         return "UNPACK-PAST-END";
     case PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES:
         return "PMIX CONFLICTING CLEANUP DIRECTIVES";
-    case PMIX_ERR_IOF_FAILURE:
-        return "IOF FAILURE";
-    case PMIX_ERR_IOF_COMPLETE:
-        return "IOF COMPLETE";
 
     case PMIX_ERR_LOST_CONNECTION_TO_SERVER:
         return "LOST_CONNECTION_TO_SERVER";
@@ -211,34 +207,6 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
     case PMIX_ERR_INVALID_OPERATION:
         return "INVALID-OPERATION";
 
-    case PMIX_GROUP_INVITED:
-        return "GROUP-INVITED";
-    case PMIX_GROUP_LEFT:
-        return "GROUP-LEFT";
-    case PMIX_GROUP_INVITE_ACCEPTED:
-        return "GROUP-INVITE-ACCEPTED";
-    case PMIX_GROUP_INVITE_DECLINED:
-        return "GROUP-INVITE-DECLINED";
-    case PMIX_GROUP_INVITE_FAILED:
-        return "GROUP-INVITE-FAILED";
-    case PMIX_GROUP_MEMBERSHIP_UPDATE:
-        return "GROUP-MEMBERSHIP-UPDATE";
-    case PMIX_GROUP_CONSTRUCT_ABORT:
-        return "GROUP-CONSTRUCT-ABORT";
-    case PMIX_GROUP_CONSTRUCT_COMPLETE:
-        return "GROUP-CONSTRUCT-COMPLETE";
-    case PMIX_GROUP_LEADER_SELECTED:
-        return "GROUP-LEADER-SELECTED";
-    case PMIX_GROUP_LEADER_FAILED:
-        return "GROUP-LEADER-FAILED";
-    case PMIX_GROUP_CONTEXT_ID_ASSIGNED:
-        return "GROUP-CONTEXT-ID-ASSIGNED";
-
-    case PMIX_FABRIC_UPDATED:
-        return "FABRIC-UPDATED";
-    case PMIX_ERR_REPEAT_ATTR_REGISTRATION:
-        return "REPEAT-ATTRIBUTE-REGISTRATION";
-
     case PMIX_ERR_NODE_DOWN:
         return "NODE-DOWN";
     case PMIX_ERR_NODE_OFFLINE:
@@ -275,42 +243,8 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
     case PMIX_ERR_TEMP_UNAVAILABLE:
         return "PMIX TEMPORARILY UNAVAILABLE";
 
-    case PMIX_LAUNCH_COMPLETE:
-        return "PMIX LAUNCH COMPLETE";
-
     case PMIX_MAX_ERR_CONSTANT:
         return "PMIX_ERR_WILDCARD";
-
-    case PMIX_ERR_JOB_FAILED_TO_START:
-        return "JOB FAILED TO START";
-    case PMIX_ERR_JOB_APP_NOT_EXECUTABLE:
-        return "APPLICATION NOT EXECUTABLE";
-    case PMIX_ERR_JOB_NO_EXE_SPECIFIED:
-        return "NO EXECUTABLE SPECIFIED";
-    case PMIX_ERR_JOB_FAILED_TO_MAP:
-        return "JOB FAILED TO MAP";
-    case PMIX_ERR_JOB_CANCELLED:
-        return "JOB CANCELLED";
-    case PMIX_ERR_JOB_FAILED_TO_LAUNCH:
-        return "JOB FAILED TO LAUNCH";
-    case PMIX_ERR_JOB_ABORTED:
-        return "JOB ABORTED";
-    case PMIX_ERR_JOB_KILLED_BY_CMD:
-        return "KILLED BY COMMAND";
-    case PMIX_ERR_JOB_ABORTED_BY_SIG:
-        return "ABORTED BY SIGNAL";
-    case PMIX_ERR_JOB_TERM_WO_SYNC:
-        return "TERMINATED WITHOUT SYNC";
-    case PMIX_ERR_JOB_SENSOR_BOUND_EXCEEDED:
-        return "SENSOR BOUND EXCEEDED";
-    case PMIX_ERR_JOB_NEVER_LAUNCHED:
-        return "NEVER LAUNCHED";
-    case PMIX_ERR_JOB_NON_ZERO_TERM:
-        return "NON-ZERO TERMINATION";
-    case PMIX_ERR_JOB_ALLOC_FAILED:
-        return "FAILED TO OBTAIN ALLOCATION";
-    case PMIX_ERR_JOB_CANNOT_LAUNCH:
-        return "COULD NOT BE LAUNCHED";
 
     default:
         return "ERROR STRING NOT FOUND";

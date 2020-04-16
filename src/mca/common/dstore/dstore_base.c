@@ -42,7 +42,7 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/argv.h"
-#include "src/mca/pcompress/pcompress.h"
+#include "src/util/compress.h"
 #include "src/util/error.h"
 #include "src/util/name_fns.h"
 #include "src/util/output.h"
