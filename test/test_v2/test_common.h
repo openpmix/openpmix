@@ -6,6 +6,8 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2015-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2020      Triad National Security, LLC.
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -32,7 +34,23 @@
 #include "src/util/argv.h"
 
 #define TEST_NAMESPACE "smoky_nspace"
+
 #define TEST_CREDENTIAL "dummy"
+
+#define PMIXT_CHECK_EXPECT(stmt, expected_val, params) \
+do {                                                   \
+   int pmix_rc = (stmt);                               \
+   if (expected_val != pmix_rc) {                      \
+       TEST_ERROR(("Client ns %s rank %d: PMIx call failed: %s", \
+           params.nspace, params.rank,                 \
+	   PMIx_Error_string(pmix_rc)));               \
+       free_test_params(&params);                      \
+       exit(pmix_rc);                                  \
+   }                                                   \
+   assert(expected_val == pmix_rc);                    \
+} while (0)
+
+#define PMIXT_CHECK(stmt, params) PMIXT_CHECK_EXPECT(stmt, PMIX_SUCCESS, params)
 
 #define PMIX_WAIT_FOR_COMPLETION(m) \
     do {                            \
@@ -69,7 +87,7 @@ extern FILE *file;
     fflush(file); \
 }
 
-// Always write errors to the stderr
+// Always write errors to stderr
 #define TEST_ERROR(x) { \
     struct timeval tv;                              \
     gettimeofday(&tv, NULL);                        \
@@ -82,7 +100,7 @@ extern FILE *file;
     fflush(stderr);                                 \
 }
 
-#define TEST_VERBOSE_ON() (pmix_test_verbose = 1)
+#define PMIXT_VERBOSE_ON() (pmix_test_verbose = 1)
 #define TEST_VERBOSE_GET() (pmix_test_verbose)
 
 #define TEST_VERBOSE(x) { \
@@ -121,93 +139,29 @@ typedef struct {
     int timeout;
     int verbose;
     pmix_rank_t rank;
-    int early_fail;
-    int test_job_fence;
     int collect_bad;
-    int use_same_keys;
     int collect;
     int nonblocking;
-    char *fences;
-    char *noise;
-    char *ns_dist;
     int ns_size;
     int ns_id;
     pmix_rank_t base_rank;
-    int test_publish;
-    int test_spawn;
-    int test_connect;
-    int test_resolve_peers;
-    int test_error;
-    char *key_replace;
-    int test_internal;
-    char *gds_mode;
     int nservers;
     uint32_t lsize;
 } test_params;
 
 extern test_params params;
 
-#define INIT_TEST_PARAMS(params) do { \
-    params.nprocs = 1;                \
-    params.verbose = 0;               \
-    params.rank = PMIX_RANK_UNDEF;    \
-    params.base_rank = 0;             \
-    params.early_fail = 0;            \
-    params.ns_size = -1;              \
-    params.ns_id = -1;                \
-    params.timeout = TEST_DEFAULT_TIMEOUT; \
-    params.test_job_fence = 0;        \
-    params.use_same_keys = 0;         \
-    params.collect = 0;               \
-    params.collect_bad = 0;           \
-    params.nonblocking = 0;           \
-    params.test_publish = 0;          \
-    params.test_spawn = 0;            \
-    params.test_connect = 0;          \
-    params.test_resolve_peers = 0;    \
-    params.binary = NULL;             \
-    params.np = NULL;                 \
-    params.prefix = NULL;             \
-    params.nspace = NULL;             \
-    params.fences = NULL;             \
-    params.noise = NULL;              \
-    params.ns_dist = NULL;            \
-    params.test_error = 0;            \
-    params.key_replace = NULL;        \
-    params.test_internal = 0;         \
-    params.gds_mode = NULL;           \
-    params.nservers = 1;              \
-    params.lsize = 0;                 \
-} while (0)
-
-#define FREE_TEST_PARAMS(params) do { \
-    if (NULL != params.binary) {      \
-        free(params.binary);          \
-    }                                 \
-    if (NULL != params.np) {          \
-        free(params.np);              \
-    }                                 \
-    if (NULL != params.prefix) {      \
-        free(params.prefix);          \
-    }                                 \
-    if (NULL != params.nspace) {      \
-        free(params.nspace);          \
-    }                                 \
-    if (NULL != params.fences) {      \
-        free(params.fences);          \
-    }                                 \
-    if (NULL != params.noise) {       \
-        free(params.noise);           \
-    }                                 \
-    if (NULL != params.ns_dist) {     \
-        free(params.ns_dist);         \
-    }                                 \
-} while (0)
-
 void parse_cmd(int argc, char **argv, test_params *params);
 int parse_fence(char *fence_param, int store);
 int parse_noise(char *noise_param, int store);
 int parse_replace(char *replace_param, int store, int *key_num);
+
+void init_test_params(test_params *params);
+void free_test_params(test_params *params);
+void pmixt_fix_rank_and_ns(pmix_proc_t *this_proc, test_params *params);
+void pmixt_post_init(pmix_proc_t *this_proc, test_params *params);
+void pmixt_post_finalize(pmix_proc_t *this_proc, test_params *params);
+void pmixt_pre_init(int argc, char **argv, test_params *params);
 
 typedef struct {
     pmix_list_item_t super;

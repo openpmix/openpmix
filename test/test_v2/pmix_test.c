@@ -18,6 +18,8 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2015-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2020      Triad National Security, LLC.
+ *                         All rights reserved.
  *
  * $COPYRIGHT$
  *
@@ -53,7 +55,7 @@ int main(int argc, char **argv)
     int ns_nprocs;
     sigset_t unblock;
 
-    INIT_TEST_PARAMS(params);
+    init_test_params(&params);
 
     /* smoke test */
     if (PMIX_SUCCESS != 0) {
@@ -77,15 +79,15 @@ int main(int argc, char **argv)
     /* verify executable */
     if( 0 > ( rc = stat(params.binary, &stat_buf) ) ){
         TEST_ERROR(("Cannot stat() executable \"%s\": %d: %s", params.binary, errno, strerror(errno)));
-        FREE_TEST_PARAMS(params);
+        free_test_params(&params);
         return 0;
     } else if( !S_ISREG(stat_buf.st_mode) ){
         TEST_ERROR(("Client executable \"%s\": is not a regular file", params.binary));
-        FREE_TEST_PARAMS(params);
+        free_test_params(&params);
         return 0;
     }else if( !(stat_buf.st_mode & S_IXUSR) ){
         TEST_ERROR(("Client executable \"%s\": has no executable flag", params.binary));
-        FREE_TEST_PARAMS(params);
+        free_test_params(&params);
         return 0;
     }
 
@@ -104,7 +106,7 @@ int main(int argc, char **argv)
     }
 
     if (PMIX_SUCCESS != (rc = server_init(&params))) {
-        FREE_TEST_PARAMS(params);
+        free_test_params(&params);
         return rc;
     }
 
@@ -112,13 +114,13 @@ int main(int argc, char **argv)
 
     int launched = 0;
     /* set namespaces and fork clients */
-    if (NULL == params.ns_dist) {
-        uint32_t i;
+    {
+        uint32_t j;
         int base_rank = 0;
 
         /* compute my start counter */
-        for(i = 0; i < (uint32_t)my_server_id; i++) {
-            base_rank += (params.nprocs % params.nservers) > (uint32_t)i ?
+        for(j = 0; j < (uint32_t)my_server_id; j++) {
+            base_rank += (params.nprocs % params.nservers) > (uint32_t)j ?
                         params.nprocs / params.nservers + 1 :
                         params.nprocs / params.nservers;
         }
@@ -126,22 +128,6 @@ int main(int argc, char **argv)
         ns_nprocs = params.nprocs;
         launched += server_launch_clients(params.lsize, params.nprocs, base_rank,
                                    &params, &client_env, &client_argv);
-    } else {
-        char *pch;
-        pch = strtok(params.ns_dist, ":");
-        while (NULL != pch) {
-            ns_nprocs = (int)strtol(pch, NULL, 10);
-            if (params.nprocs < (uint32_t)(launched+ns_nprocs)) {
-                TEST_ERROR(("srv #%d: Total number of processes doesn't correspond number specified by ns_dist parameter.", my_server_id));
-                FREE_TEST_PARAMS(params);
-                return PMIX_ERROR;
-            }
-            if (0 < ns_nprocs) {
-                launched += server_launch_clients(ns_nprocs, ns_nprocs, 0, &params,
-                                           &client_env, &client_argv);
-            }
-            pch = strtok (NULL, ":");
-        }
     }
     if (params.lsize != (uint32_t)launched) {
         TEST_ERROR(("srv #%d: Total number of processes doesn't correspond number specified by ns_dist parameter.", my_server_id));
@@ -167,9 +153,6 @@ int main(int argc, char **argv)
         test_fail = 1;
     }
 
-    if (0 != params.test_spawn) {
-        PMIX_WAIT_FOR_COMPLETION(spawn_wait);
-    }
     for(i=0; i < cli_info_cnt; i++){
         if (cli_info[i].exit_code != 0) {
             ++test_fail;
@@ -184,7 +167,7 @@ int main(int argc, char **argv)
     test_fail += server_finalize(&params, test_fail);
 
     TEST_VERBOSE(("srv #%d: exit sequence!", my_server_id));
-    FREE_TEST_PARAMS(params);
+    free_test_params(&params);
     pmix_argv_free(client_argv);
     pmix_argv_free(client_env);
 

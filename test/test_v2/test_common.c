@@ -60,29 +60,15 @@ void parse_cmd(int argc, char **argv, test_params *params)
             }
         } else if (0 == strcmp(argv[i], "--h") || 0 == strcmp(argv[i], "-h")) {
             /* print help */
-            fprintf(stderr, "usage: pmix_test [-h] [-e foo] [-b] [-c] [-nb]\n");
+            fprintf(stderr, "usage: pmix_test [-h] [-e foo] [-b] [-nb]\n");
             fprintf(stderr, "\t-n       the job size (for checking purposes)\n");
             fprintf(stderr, "\t-s       number of servers to emulate\n");
             fprintf(stderr, "\t-e foo   use foo as test client\n");
             fprintf(stderr, "\t-v       verbose output\n");
             fprintf(stderr, "\t-t <>    set timeout\n");
             fprintf(stderr, "\t-o out   redirect clients logs to file out.<rank>\n");
-            fprintf(stderr, "\t--early-fail    force client process with rank 0 to fail before PMIX_Init.\n");
-            fprintf(stderr, "\t--ns-dist n1:n2:n3   register n namespaces (3 in this example) each with ni ranks (n1, n2 or n3).\n");
-            fprintf(stderr, "\t--fence \"[<data_exchange><blocking> | ns0:ranks;ns1:ranks...][...]\"  specify fences in different configurations.\n");
-            fprintf(stderr, "\t--use-same-keys relative to the --fence option: put the same keys in the interim between multiple fences.\n");
-            fprintf(stderr, "\t--job-fence  test fence inside its own namespace.\n");
-            fprintf(stderr, "\t-c       relative to the --job-fence option: fence[_nb] callback shall include all collected data\n");
-            fprintf(stderr, "\t-nb      relative to the --job-fence option: use non-blocking fence\n");
-            fprintf(stderr, "\t--noise \"[ns0:ranks;ns1:ranks...]\"  add system noise to specified processes.\n");
-            fprintf(stderr, "\t--test-publish     test publish/lookup/unpublish api.\n");
-            fprintf(stderr, "\t--test-spawn       test spawn api.\n");
-            fprintf(stderr, "\t--test-connect     test connect/disconnect api.\n");
-            fprintf(stderr, "\t--test-resolve-peers    test resolve_peers api.\n");
-            fprintf(stderr, "\t--test-error test error handling api.\n");
-            fprintf(stderr, "\t--test-replace N:k0,k1,...,k(N-1)   test key replace for N keys, k0,k1,k(N-1) - key indexes to replace  \n");
-            fprintf(stderr, "\t--test-internal N  test store internal key, N - number of internal keys\n");
-            fprintf(stderr, "\t--gds <external gds name>           set GDS module \"--gds hash|ds12\", default is hash\n");
+            fprintf(stderr, "\t-c       fence[_nb] callback shall include all collected data\n");
+            fprintf(stderr, "\t-nb      use non-blocking fence\n");
             exit(0);
         } else if (0 == strcmp(argv[i], "--exec") || 0 == strcmp(argv[i], "-e")) {
             i++;
@@ -99,7 +85,7 @@ void parse_cmd(int argc, char **argv, test_params *params)
                 exit(1);
             }
         } else if( 0 == strcmp(argv[i], "--verbose") || 0 == strcmp(argv[i],"-v") ){
-            TEST_VERBOSE_ON();
+            PMIXT_VERBOSE_ON();
             params->verbose = 1;
         } else if (0 == strcmp(argv[i], "--timeout") || 0 == strcmp(argv[i], "-t")) {
             i++;
@@ -124,41 +110,12 @@ void parse_cmd(int argc, char **argv, test_params *params)
             if (NULL != argv[i]) {
                 params->rank = strtol(argv[i], NULL, 10);
             }
-        } else if( 0 == strcmp(argv[i], "--early-fail") ){
-            params->early_fail = 1;
-        } else if (0 == strcmp(argv[i], "--fence")) {
-            i++;
-            if (NULL != argv[i]) {
-                params->fences = strdup(argv[i]);
-                if (0 != parse_fence(params->fences, 0)) {
-                    fprintf(stderr, "Incorrect --fence option format: %s\n", params->fences);
-                    exit(1);
-                }
-            }
-        } else if (0 == strcmp(argv[i], "--use-same-keys")) {
-            params->use_same_keys = 1;
-        } else if (0 == strcmp(argv[i], "--job-fence")) {
-            params->test_job_fence = 1;
         } else if (0 == strcmp(argv[i], "--collect-corrupt")) {
             params->collect_bad = 1;
         } else if (0 == strcmp(argv[i], "--collect") || 0 == strcmp(argv[i], "-c")) {
             params->collect = 1;
         } else if (0 == strcmp(argv[i], "--non-blocking") || 0 == strcmp(argv[i], "-nb")) {
             params->nonblocking = 1;
-        } else if (0 == strcmp(argv[i], "--noise")) {
-            i++;
-            if (NULL != argv[i]) {
-                params->noise = strdup(argv[i]);
-                if (0 != parse_noise(params->noise, 0)) {
-                    fprintf(stderr, "Incorrect --noise option format: %s\n", params->noise);
-                    exit(1);
-                }
-            }
-        } else if (0 == strcmp(argv[i], "--ns-dist")) {
-            i++;
-            if (NULL != argv[i]) {
-                params->ns_dist = strdup(argv[i]);
-            }
         } else if (0 == strcmp(argv[i], "--ns-size")) {
             i++;
             if (NULL != argv[i]) {
@@ -174,39 +131,7 @@ void parse_cmd(int argc, char **argv, test_params *params)
             if (NULL != argv[i]) {
                 params->base_rank = strtol(argv[i], NULL, 10);
             }
-        } else if( 0 == strcmp(argv[i], "--test-publish") ){
-            params->test_publish = 1;
-        } else if( 0 == strcmp(argv[i], "--test-spawn") ){
-            params->test_spawn = 1;
-        } else if( 0 == strcmp(argv[i], "--test-connect") ){
-            params->test_connect = 1;
-        } else if( 0 == strcmp(argv[i], "--test-resolve-peers") ){
-            params->test_resolve_peers = 1;
-        } else if( 0 == strcmp(argv[i], "--test-error") ){
-            params->test_error = 1;
-        } else if(0 == strcmp(argv[i], "--test-replace") ) {
-            i++;
-            if (NULL != argv[i] && (*argv[i] != '-')) {
-                params->key_replace = strdup(argv[i]);
-                if (0 != parse_replace(params->key_replace, 0, NULL)) {
-                    fprintf(stderr, "Incorrect --test-replace option format: %s\n", params->key_replace);
-                    exit(1);
-                }
-            } else {
-                params->key_replace = strdup(TEST_REPLACE_DEFAULT);
-            }
-        } else if(0 == strcmp(argv[i], "--test-internal")) {
-            i++;
-            if ((NULL != argv[i]) && (*argv[i] != '-')) {
-                params->test_internal = strtol(argv[i], NULL, 10);
-            } else {
-                params->test_internal = 1;
-            }
-        } else if(0 == strcmp(argv[i], "--gds") ) {
-            i++;
-            params->gds_mode = strdup(argv[i]);
-        }
-
+	}
         else {
             fprintf(stderr, "unrecognized option: %s\n", argv[i]);
             exit(1);
@@ -243,11 +168,68 @@ void parse_cmd(int argc, char **argv, test_params *params)
     if( params->collect_bad ){
         params->collect = params->rank % 2;
     }
+}
 
-    // Fix rank if running under SLURM
+void init_test_params(test_params *params) {
+    params->nprocs = 1;                
+    params->verbose = 0;               
+    params->rank = PMIX_RANK_UNDEF;    
+    params->base_rank = 0;             
+    params->ns_size = -1;              
+    params->ns_id = -1;                
+    params->timeout = TEST_DEFAULT_TIMEOUT; 
+    params->collect = 0;               
+    params->collect_bad = 0;           
+    params->nonblocking = 0;           
+    params->binary = NULL;             
+    params->np = NULL;                 
+    params->prefix = NULL;             
+    params->nspace = NULL;             
+    params->nservers = 1;              
+    params->lsize = 0;                 
+}
+
+void free_test_params(test_params *params) { 
+    if (NULL != params->binary) {      
+        free(params->binary);          
+    }                                 
+    if (NULL != params->np) {          
+        free(params->np);              
+    }                                 
+    if (NULL != params->prefix) {      
+        free(params->prefix);          
+    }                                 
+    if (NULL != params->nspace) {      
+        free(params->nspace);          
+    }                                 
+} 
+
+void pmixt_pre_init(int argc, char **argv, test_params *params) {
+
+    init_test_params(params);
+    parse_cmd(argc, argv, params);
+    /* set filename if available in params */
+    if ( NULL != params->prefix && -1 != params->ns_id ) {
+	char *fname = malloc( strlen(params->prefix) + MAX_DIGIT_LEN + 2 ); 
+        sprintf(fname, "%s.%d.%d", params->prefix, params->ns_id, params->rank); 
+        file = fopen(fname, "w"); 
+        free(fname); 
+        if( NULL == file ){ 
+            fprintf(stderr, "Cannot open file %s for writing!", fname); 
+            exit(1); 
+        } 
+    }
+    else {
+        file = stdout;
+    }
+}
+
+void pmixt_fix_rank_and_ns(pmix_proc_t *this_proc, test_params *params) {
+    // Fix rank if running under RM
     if( PMIX_RANK_UNDEF == params->rank ){
         char *ranklist = getenv("SLURM_GTIDS");
         char *rankno = getenv("SLURM_LOCALID");
+        // Fix rank if running under SLURM
         if( NULL != ranklist && NULL != rankno ){
             char **argv = pmix_argv_split(ranklist, ',');
             int count = pmix_argv_count(argv);
@@ -261,15 +243,56 @@ void parse_cmd(int argc, char **argv, test_params *params)
             params->rank = strtoul(argv[rankidx], NULL, 10);
             pmix_argv_free(argv);
         }
+        else if ( NULL == getenv("PMIX_RANK") ) { /* we must not be running under SLURM */
+            // **Call separate function for your own resource manager here**
+            // It should likely be wrapped in condition that checks for existence of an RM env var
+            // Function name should be of form: fix_rank_and_nspace_rm_* 
+            // and should check/fix both rank and nspace
+            // e.g: fix_rank_and_ns_rm_pbs(), fix_rank_and_ns_rm_torque(), etc.
+        }
+        else { /* unknown situation - PMIX_RANK is not null but SLURM env vars are */
+            fprintf(stderr, "It feels like we are running under SLURM:\n\t"
+                    "PMIX_RANK=%s\nbut SLURM env vars are null\n",
+                    getenv("PMIX_RANK"));
+            exit(1);
+        }
     }
 
-    // Fix namespace if running under SLURM
+    // Fix namespace if running under RM
     if( NULL == params->nspace ){
         char *nspace = getenv("PMIX_NAMESPACE");
         if( NULL != nspace ){
             params->nspace = strdup(nspace);
         }
+	else { /* If we aren't running under SLURM, you should have set nspace 
+	          in your custom fix_rank_and_ns_rm_* function! */
+            fprintf(stderr, "nspace not set. Is the fix_rank_and_ns_rm_*"
+	            " function for this resource manager failing to set it?\n");
+            exit(1);
+        }
     }
+
+    if (this_proc->rank != params->rank) {
+        TEST_ERROR(("Client ns %s Rank returned in PMIx_Init %d does not match rank from command line %d.", 
+	    this_proc->nspace, this_proc->rank, params->rank));
+        free_test_params(params);
+        exit(1);
+    }
+}
+
+void pmixt_post_init(pmix_proc_t *this_proc, test_params *params) {
+    pmixt_fix_rank_and_ns(this_proc, params);
+    TEST_VERBOSE((" Client ns %s rank %d: PMIx_Init success", this_proc->nspace, this_proc->rank));
+ 
+}
+
+void pmixt_post_finalize(pmix_proc_t *this_proc, test_params *params) {
+    TEST_VERBOSE((" Client ns %s rank %d: PMIx_Finalize success", this_proc->nspace, this_proc->rank));
+    if( (stdout != file) && (stderr != file) ) {
+        fclose(file);
+    }
+    free_test_params(params);
+    exit(EXIT_SUCCESS);
 }
 
 static void fcon(fence_desc_t *p)
@@ -305,7 +328,7 @@ pmix_list_t key_replace;
 
 #define CHECK_STRTOL_VAL(val, str, store) do {                  \
     if (0 == val) {                                             \
-        if (0 != strncmp(str, "0", 1)) {                         \
+        if (0 != strncmp(str, "0", 1)) {                        \
             if (!store) {                                       \
                 return 1;                                       \
             }                                                   \
@@ -500,32 +523,6 @@ int parse_fence(char *fence_param, int store)
     return ret;
 }
 
-int parse_noise(char *noise_param, int store)
-{
-    int ret = 0;
-    char *tmp = strdup(noise_param);
-    char * pch, *ech;
-
-    pch = strchr(tmp, '[');
-    if (NULL != pch) {
-        pch++;
-        ech = strchr(pch, ']');
-        if (NULL != ech) {
-            *ech = '\0';
-            ech++;
-            if ('\0' != *ech) {
-                ret = 1;
-            } else {
-                ret = parse_token(pch, 1, store);
-            }
-        } else {
-            ret = 1;
-        }
-    }
-    free(tmp);
-    return ret;
-}
-
 static int is_digit(const char *str)
 {
     if (NULL == str)
@@ -540,111 +537,4 @@ static int is_digit(const char *str)
         }
     }
     return 1;
-}
-
-int parse_replace(char *replace_param, int store, int *key_num) {
-    int ret = 0;
-    char *tmp = strdup(replace_param);
-    char tmp_str[32];
-    char * pch, *ech;
-    key_replace_t *item;
-    int cnt = 0;
-
-    if (NULL == replace_param) {
-        free(tmp);
-        return 1;
-    }
-
-    pch = strchr(tmp, ':');
-    snprintf(tmp_str, pch - tmp + 1, "%s", tmp);
-    cnt = atol(tmp_str);
-
-    if (NULL != key_num) {
-        *key_num = cnt;
-    }
-
-    while(NULL != pch) {
-        pch++;
-        ech = strchr(pch, ',');
-        if (strlen(pch) > 0) {
-            if (NULL != ech) {
-                snprintf(tmp_str, ech - pch + 1, "%s", pch);
-            } else {
-                snprintf(tmp_str, strlen(pch) + 1, "%s", pch);
-            }
-            if ((0 == is_digit(tmp_str)) || ((atoi(tmp_str) + 1) > cnt)) {
-                ret = 1;
-                break;
-            }
-            pch = ech;
-            if (store) {
-                item = PMIX_NEW(key_replace_t);
-                item->key_idx = atoi(tmp_str);
-                pmix_list_append(&key_replace, &item->super);
-            }
-        } else {
-            ret = 1;
-            break;
-        }
-    }
-    free(tmp);
-    return ret;
-}
-
-int get_total_ns_number(test_params params)
-{
-    int num = 0;
-    if (NULL == params.ns_dist) {
-        return 1;
-    } else {
-        char *tmp = strdup(params.ns_dist);
-        char *pch = tmp;
-        while (NULL != pch) {
-            num++;
-            pch = strtok((1 == num ) ? tmp : NULL, ":");
-        }
-        num--;
-        free(tmp);
-    }
-    return num;
-}
-
-int get_all_ranks_from_namespace(test_params params, char *nspace, pmix_proc_t **ranks, size_t *nranks)
-{
-    size_t num_ranks = 0;
-    int num = -1;
-    size_t j;
-    if (NULL == params.ns_dist) {
-        *nranks = params.ns_size;
-        PMIX_PROC_CREATE(*ranks, params.ns_size);
-        for (j = 0; j < (size_t)params.ns_size; j++) {
-            (void)strncpy((*ranks)[j].nspace, nspace, PMIX_MAX_NSLEN);
-            (*ranks)[j].rank = j;
-        }
-    } else {
-        char *tmp = strdup(params.ns_dist);
-        char *pch = tmp;
-        int ns_id = (int)strtol(nspace + strlen(TEST_NAMESPACE) + 1, NULL, 10);
-        while (NULL != pch && num != ns_id) {
-            pch = strtok((-1 == num ) ? tmp : NULL, ":");
-            if (NULL == pch) {
-                break;
-            }
-            num++;
-            num_ranks = (size_t)strtol(pch, NULL, 10);
-        }
-        if (num == ns_id && 0 != num_ranks) {
-            *nranks = num_ranks;
-            PMIX_PROC_CREATE(*ranks, num_ranks);
-            for (j = 0; j < num_ranks; j++) {
-                (void)strncpy((*ranks)[j].nspace, nspace, PMIX_MAX_NSLEN);
-                (*ranks)[j].rank = j;
-            }
-        } else {
-            free(tmp);
-            return PMIX_ERROR;
-        }
-        free(tmp);
-    }
-    return PMIX_SUCCESS;
 }
