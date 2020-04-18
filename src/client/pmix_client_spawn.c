@@ -101,10 +101,11 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn(const pmix_info_t job_info[], size_t ninfo,
     cb = PMIX_NEW(pmix_cb_t);
 
     if (PMIX_SUCCESS != (rc = PMIx_Spawn_nb(job_info, ninfo, apps, napps, spawn_cbfunc, cb))) {
-        /* note: the call may have return PMIX_OPERATION_SUCCEEDED thus indicating
+        /* note: the call may have returned PMIX_OPERATION_SUCCEEDED thus indicating
          * that the spawn was atomically completed */
         if (PMIX_OPERATION_SUCCEEDED == rc) {
             PMIX_LOAD_NSPACE(nspace, cb->pname.nspace);
+            rc = PMIX_SUCCESS;
         }
         PMIX_RELEASE(cb);
         return rc;
