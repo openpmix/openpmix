@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
- * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
+ * Copyright (c) 2016-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2018-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
@@ -2392,7 +2392,8 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_setup_fork(pmix_common_dstore_ctx_t 
 }
 
 PMIX_EXPORT pmix_status_t pmix_common_dstor_add_nspace(pmix_common_dstore_ctx_t *ds_ctx,
-                                const char *nspace, pmix_info_t info[], size_t ninfo)
+                                                       const char *nspace, uint32_t local_size,
+                                                       pmix_info_t info[], size_t ninfo)
 {
     pmix_status_t rc = PMIX_SUCCESS;
     size_t tbl_idx=0;
@@ -2400,21 +2401,17 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_add_nspace(pmix_common_dstore_ctx_t 
     char setjobuid = ds_ctx->setjobuid;
     size_t n;
     ns_map_data_t *ns_map = NULL;
-    uint32_t local_size = 0;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
-                        "gds: dstore add nspace");
+                        "gds: dstore add nspace %s, local_size %d",
+                        nspace, local_size);
 
     if (NULL != info) {
         for (n=0; n < ninfo; n++) {
             if (0 == strcmp(PMIX_USERID, info[n].key)) {
                 jobuid = info[n].value.data.uint32;
                 setjobuid = 1;
-                continue;
-            }
-            if (0 == strcmp(PMIX_LOCAL_SIZE, info[n].key)) {
-                local_size = info[n].value.data.uint32;
-                continue;
+                break;
             }
         }
     }
