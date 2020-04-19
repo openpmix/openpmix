@@ -127,6 +127,10 @@ typedef pmix_status_t (*pmix_ptl_connect_to_peer_fn_t)(struct pmix_peer_t *peer,
                                                        pmix_info_t info[], size_t ninfo);
 
 
+/* query available servers on the local node */
+typedef void (*pmix_ptl_query_servers_fn_t)(char *dirname, pmix_list_t *servers);
+
+
 /**
  * Base structure for a PTL module
  */
@@ -138,6 +142,7 @@ struct pmix_ptl_module_t {
     pmix_ptl_recv_fn_t                  recv;
     pmix_ptl_cancel_fn_t                cancel;
     pmix_ptl_connect_to_peer_fn_t       connect_to_peer;
+    pmix_ptl_query_servers_fn_t         query_servers;
 };
 typedef struct pmix_ptl_module_t pmix_ptl_module_t;
 

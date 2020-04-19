@@ -418,6 +418,7 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
     FILE *fp;
     pid_t mypid;
     struct stat sbuf;
+    time_t mytime;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:tcp setup_listener");
@@ -841,6 +842,13 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
         fprintf(fp, "%s\n", lt->uri);
         /* add a flag that indicates we accept v3.0 protocols */
         fprintf(fp, "v%s\n", PMIX_VERSION);
+        /* output our pid */
+        fprintf(fp, "%lu\n", (unsigned long)getpid());
+        /* output our effective uid and gid */
+        fprintf(fp, "%lu:%lu\n", (unsigned long)geteuid(), (unsigned long)getegid());
+        /* output the time */
+        mytime = time(NULL);
+        fprintf(fp, "%s\n", ctime(&mytime));
         fclose(fp);
         /* set the file mode */
         if (0 != chmod(mca_ptl_tcp_component.system_filename, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)) {
@@ -897,6 +905,13 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
         fprintf(fp, "%s\n", lt->uri);
         /* add a flag that indicates we accept v2.1 protocols */
         fprintf(fp, "%s\n", PMIX_VERSION);
+        /* output our pid */
+        fprintf(fp, "%lu\n", (unsigned long)getpid());
+        /* output our effective uid and gid */
+        fprintf(fp, "%lu:%lu\n", (unsigned long)geteuid(), (unsigned long)getegid());
+        /* output the time */
+        mytime = time(NULL);
+        fprintf(fp, "%s\n", ctime(&mytime));
         fclose(fp);
         /* set the file mode */
         if (0 != chmod(mca_ptl_tcp_component.session_filename, S_IRUSR | S_IWUSR | S_IRGRP)) {
@@ -954,6 +969,13 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
         fprintf(fp, "%s\n", lt->uri);
         /* add a flag that indicates we accept v2.1 protocols */
         fprintf(fp, "%s\n", PMIX_VERSION);
+        /* output our pid */
+        fprintf(fp, "%lu\n", (unsigned long)getpid());
+        /* output our effective uid and gid */
+        fprintf(fp, "%lu:%lu\n", (unsigned long)geteuid(), (unsigned long)getegid());
+        /* output the time */
+        mytime = time(NULL);
+        fprintf(fp, "%s\n", ctime(&mytime));
         fclose(fp);
         /* set the file mode */
         if (0 != chmod(mca_ptl_tcp_component.pid_filename, S_IRUSR | S_IWUSR | S_IRGRP)) {
@@ -989,6 +1011,13 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
         fprintf(fp, "%s\n", lt->uri);
         /* add a flag that indicates we accept v2.1 protocols */
         fprintf(fp, "%s\n", PMIX_VERSION);
+        /* output our pid */
+        fprintf(fp, "%lu\n", (unsigned long)getpid());
+        /* output our effective uid and gid */
+        fprintf(fp, "%lu:%lu\n", (unsigned long)geteuid(), (unsigned long)getegid());
+        /* output the time */
+        mytime = time(NULL);
+        fprintf(fp, "%s\n", ctime(&mytime));
         fclose(fp);
         /* set the file mode */
         if (0 != chmod(mca_ptl_tcp_component.nspace_filename, S_IRUSR | S_IWUSR | S_IRGRP)) {

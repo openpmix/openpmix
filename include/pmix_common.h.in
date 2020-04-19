@@ -163,6 +163,8 @@ typedef uint32_t pmix_rank_t;
                                                                     //        that cannot be serviced on backend nodes
                                                                     //        (e.g., logging to email)
 #define PMIX_SERVER_SCHEDULER               "pmix.srv.sched"        // (bool) Server supports system scheduler
+#define PMIX_SERVER_START_TIME              "pmix.srv.strtime"      // (char*) Time when the server started - i.e., when the server created
+                                                                    //         it's rendezvous file (given in ctime string format)
 
 /* tool-related attributes */
 #define PMIX_TOOL_NSPACE                    "pmix.tool.nspace"      // (char*) Name of the nspace to use for this tool
@@ -515,6 +517,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_TOOL_ATTRIBUTES                "pmix.tool.attrs"       // (char*) comma-delimited list of functions, including "all"
                                                                     //        when used in a query, indicates whether or not to include
                                                                     //        attributes supported by the PMIx tool library
+#define PMIX_QUERY_AVAIL_SERVERS            "pmix.qry.asrvrs"       // (pmix_data_array_t) array containing available data for servers on this node
+                                                                    //         to which the caller might be able to connect
 
 
 /* information retrieval attributes */
@@ -559,6 +563,8 @@ typedef uint32_t pmix_rank_t;
                                                                     //        information. At a minimum, either the PMIX_NODEID or PMIX_HOSTNAME
                                                                     //        attribute is required to be included in the array, though both may be
                                                                     //        included.
+#define PMIX_SERVER_INFO_ARRAY              "pmix.srv.info"         // (pmix_data_array_t) array of data on a given server, starting with its nspace
+
 
 /* log attributes */
 #define PMIX_LOG_SOURCE                     "pmix.log.source"       // (pmix_proc_t*) ID of source of the log request
