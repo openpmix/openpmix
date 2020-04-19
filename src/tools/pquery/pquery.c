@@ -224,7 +224,7 @@ int main(int argc, char **argv)
     pmix_info_t *info;
     mylock_t mylock;
     pmix_cmd_line_t cmd_line;
-    size_t n, m, nqueries, ninfo;
+    size_t n, m, k, nqueries, ninfo, ndarray;
     myquery_data_t mq = {0};
     int count;
     char **qkeys = NULL;
@@ -237,7 +237,8 @@ int main(int argc, char **argv)
     pmix_infolist_t *iptr;
     char *str, *args = NULL;
     pmix_query_t *queries;
-    pmix_info_t *infoptr;
+    pmix_info_t *infoptr, *ifptr;
+    uint64_t u64;
 
     /* protect against problems if someone passes us thru a pipe
      * and then abnormally terminates the pipe early */
@@ -350,7 +351,7 @@ int main(int argc, char **argv)
 
     if (server) {
         /* initialize as a server so we can process the query ourselves */
-        rc = PMIx_server_init(NULL, NULL, 0);
+        rc = PMIx_server_init(NULL, info, n);
         if (PMIX_SUCCESS != rc) {
             fprintf(stderr, "PMIx_server_init failed: %s\n", PMIx_Error_string(rc));
             exit(rc);
@@ -476,8 +477,48 @@ int main(int argc, char **argv)
                 infoptr = (pmix_info_t*)mq.info[n].value.data.darray->array;
                 ninfo = mq.info[n].value.data.darray->size;
                 for (m=0; m < ninfo; m++) {
-                    fprintf(stdout, "\t%s:  %lu\n", infoptr[m].key,
-                            infoptr[m].value.data.uint64);
+                    if (NULL == (attr = pmix_attributes_reverse_lookup(infoptr[m].key))) {
+                        fprintf(stdout, "\t%s:", infoptr[m].key);
+                    } else {
+                        fprintf(stdout, "\t%s:", attr);
+                    }
+                    if (PMIX_STRING == infoptr[m].value.type) {
+                        fprintf(stdout, "  %s\n", infoptr[m].value.data.string);
+                    } else if (PMIX_DATA_ARRAY == infoptr[m].value.type) {
+                        fprintf(stdout, "\n");
+                        ifptr = (pmix_info_t*)infoptr[m].value.data.darray->array;
+                        ndarray = infoptr[m].value.data.darray->size;
+                        for (k=0; k < ndarray; k++) {
+                            if (NULL == (attr = pmix_attributes_reverse_lookup(ifptr[k].key))) {
+                                fprintf(stdout, "\t\t%s:", ifptr[k].key);
+                            } else {
+                                fprintf(stdout, "\t\t%s:", attr);
+                            }
+                            if (PMIX_STRING == ifptr[k].value.type) {
+                                fprintf(stdout, "  %s\n", ifptr[k].value.data.string);
+                            } else if (PMIX_PROC_RANK == ifptr[k].value.type) {
+                                fprintf(stdout, "  %u\n", ifptr[k].value.data.rank);
+                            } else {
+                                /* see if it is a number */
+                                PMIX_VALUE_GET_NUMBER(rc, &ifptr[k].value, u64, uint64_t);
+                                if (PMIX_SUCCESS == rc) {
+                                    fprintf(stdout, "  %lu\n", (unsigned long)u64);
+                                } else {
+                                    fprintf(stdout, "  Unimplemented value type: %s\n", PMIx_Data_type_string(ifptr[k].value.type));
+                                }
+                            }
+                        }
+                    } else if (PMIX_PROC_RANK == infoptr[m].value.type) {
+                        fprintf(stdout, "  %u\n", infoptr[m].value.data.rank);
+                    } else {
+                        /* see if it is a number */
+                        PMIX_VALUE_GET_NUMBER(rc, &infoptr[m].value, u64, uint64_t);
+                        if (PMIX_SUCCESS == rc) {
+                            fprintf(stdout, "  %lu\n", (unsigned long)infoptr[m].value.data.uint64);
+                        } else {
+                            fprintf(stdout, "  Unimplemented value type: %s\n", PMIx_Data_type_string(infoptr[m].value.type));
+                        }
+                    }
                 }
             }
         }

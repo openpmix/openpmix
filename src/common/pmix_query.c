@@ -29,7 +29,7 @@
 #include "src/util/output.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/pstrg/pstrg.h"
-#include "src/mca/ptl/ptl.h"
+#include "src/mca/ptl/base/base.h"
 #include "src/common/pmix_attributes.h"
 
 #include "src/client/pmix_client_ops.h"
@@ -455,7 +455,7 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
         return PMIX_ERR_BAD_PARAM;
     }
 
-    /* do a quick check of the qualifiers array to ensure
+    /* do a quick check of the qualifiers arrays to ensure
      * the nqual field has been set */
     for (n=0; n < nqueries; n++) {
         if (NULL != queries[n].qualifiers && 0 == queries[n].nqual) {
@@ -488,6 +488,20 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
             cd->cbfunc = cbfunc;
             cd->cbdata = cbdata;
             PMIX_THREADSHIFT(cd, pmix_attrs_query_support);
+            /* regardless of the result of the query, we return
+             * PMIX_SUCCESS here to indicate that the operation
+             * was accepted for processing */
+            return PMIX_SUCCESS;
+        }
+        /* check for request to scan the local node for available
+         * servers the caller could connect to */
+        if (0 == strcmp(queries[n].keys[0], PMIX_QUERY_AVAIL_SERVERS)) {
+            cd = PMIX_NEW(pmix_query_caddy_t);
+            cd->queries = queries;
+            cd->nqueries = nqueries;
+            cd->cbfunc = cbfunc;
+            cd->cbdata = cbdata;
+            PMIX_THREADSHIFT(cd, pmix_ptl_base_query_servers);
             /* regardless of the result of the query, we return
              * PMIX_SUCCESS here to indicate that the operation
              * was accepted for processing */

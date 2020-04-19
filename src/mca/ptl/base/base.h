@@ -120,6 +120,7 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_send_connect_ack(int sd);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_recv_connect_ack(int sd);
 PMIX_EXPORT void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err);
 PMIX_EXPORT bool pmix_ptl_base_peer_is_earlier(pmix_peer_t *peer, uint8_t major, uint8_t minor, uint8_t release);
+PMIX_EXPORT void pmix_ptl_base_query_servers(int sd, short args, void *cbdata);
 
 END_C_DECLS
 

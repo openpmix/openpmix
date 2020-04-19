@@ -262,3 +262,49 @@ pmix_status_t pmix_ptl_base_cancel_recv(struct pmix_peer_t *peer,
     pmix_event_active(&(req->ev), EV_WRITE, 1);
     return PMIX_SUCCESS;
 }
+
+static void _local_relcb(void *cbdata)
+{
+    pmix_query_caddy_t *cd = (pmix_query_caddy_t*)cbdata;
+
+    if (NULL != cd->info) {
+        PMIX_INFO_FREE(cd->info, cd->ninfo);
+    }
+    PMIX_RELEASE(cd);
+}
+
+void pmix_ptl_base_query_servers(int sd, short args, void *cbdata)
+{
+    pmix_query_caddy_t *cd = (pmix_query_caddy_t*)cbdata;
+    pmix_ptl_base_active_t *active;
+    pmix_list_t servers;
+    size_t n;
+    pmix_infolist_t *iptr;
+    pmix_status_t rc;
+
+    PMIX_CONSTRUCT(&servers, pmix_list_t);
+
+    PMIX_LIST_FOREACH(active, &pmix_ptl_globals.actives, pmix_ptl_base_active_t) {
+        if (NULL != active->module->query_servers) {
+            active->module->query_servers(NULL, &servers);
+        }
+    }
+
+    /* convert the list to an array of pmix_info_t */
+    cd->ninfo = pmix_list_get_size(&servers);
+    if (0 == cd->ninfo) {
+        rc = PMIX_ERR_NOT_FOUND;
+    } else {
+        PMIX_INFO_CREATE(cd->info, cd->ninfo);
+        n = 0;
+        PMIX_LIST_FOREACH(iptr, &servers, pmix_infolist_t) {
+            PMIX_INFO_XFER(&cd->info[n], &iptr->info);
+            ++n;
+        }
+        rc = PMIX_SUCCESS;
+    }
+    PMIX_LIST_DESTRUCT(&servers);
+
+    /* execute the callback function */
+    cd->cbfunc(rc, cd->info, cd->ninfo, cd->cbdata, _local_relcb, cd);
+}

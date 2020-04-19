@@ -75,17 +75,22 @@ static pmix_status_t send_recv(struct pmix_peer_t *peer,
 static pmix_status_t send_oneway(struct pmix_peer_t *peer,
                                  pmix_buffer_t *bfr,
                                  pmix_ptl_tag_t tag);
+static void query_servers(char *dirname,
+                          pmix_list_t *servers);
 
 pmix_ptl_module_t pmix_ptl_tcp_module = {
     .init = init,
     .finalize = finalize,
     .send_recv = send_recv,
     .send = send_oneway,
-    .connect_to_peer = connect_to_peer
+    .connect_to_peer = connect_to_peer,
+    .query_servers = query_servers
 };
 
 static pmix_status_t recv_connect_ack(int sd, uint8_t myflag);
 static pmix_status_t send_connect_ack(int sd, uint8_t *myflag, pmix_info_t info[], size_t ninfo);
+static void check_server(char *filename,
+                         pmix_list_t *servers);
 
 
 static pmix_status_t init(void)
@@ -737,6 +742,66 @@ static pmix_status_t send_oneway(struct pmix_peer_t *peer,
     q->tag = tag;
     PMIX_THREADSHIFT(q, pmix_ptl_base_send);
     return PMIX_SUCCESS;
+}
+
+static void query_servers(char *dirname, pmix_list_t *servers)
+{
+    char *newdir, *dname;
+    struct stat buf;
+    DIR *cur_dirp;
+    struct dirent *dir_entry;
+
+    /* search the system tmpdir directory tree for files
+     * beginning with "pmix." as these can be potential
+     * servers */
+
+    if (NULL == dirname) {
+        /* we first check the system tmpdir to see if a system-level
+         * server is present */
+        dname = mca_ptl_tcp_component.system_tmpdir;
+    } else {
+        dname = dirname;
+    }
+    cur_dirp = opendir(dname);
+    if (NULL == cur_dirp) {
+        return;
+    }
+
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "pmix:tcp: searching directory %s",
+                        (NULL == dirname) ? mca_ptl_tcp_component.system_tmpdir : dirname);
+
+    /* search the entries for something that starts with the "pmix." prefix */
+    while (NULL != (dir_entry = readdir(cur_dirp))) {
+        /* ignore the . and .. entries */
+        if (0 == strcmp(dir_entry->d_name, ".") ||
+            0 == strcmp(dir_entry->d_name, "..")) {
+            continue;
+        }
+        newdir = pmix_os_path(false, dname, dir_entry->d_name, NULL);
+        /* coverity[toctou] */
+        if (-1 == stat(newdir, &buf)) {
+            free(newdir);
+            continue;
+        }
+        /* if it is a directory, down search */
+        if (S_ISDIR(buf.st_mode)) {
+            query_servers(newdir, servers);
+            free(newdir);
+            continue;
+        }
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "pmix:tcp: checking %s", dir_entry->d_name);
+        /* see if it starts with our prefix */
+        if (0 == strncmp(dir_entry->d_name, "pmix.", strlen("pmix."))) {
+            /* try to read this file */
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "pmix:tcp: reading file %s", newdir);
+            check_server(newdir, servers);
+        }
+        free(newdir);
+    }
+    closedir(cur_dirp);
 }
 
 static void timeout(int sd, short args, void *cbdata)
@@ -1508,4 +1573,225 @@ static pmix_status_t df_search(char *dirname, char *prefix,
     }
     closedir(cur_dirp);
     return PMIX_ERR_NOT_FOUND;
+}
+
+static void check_server(char *filename,
+                         pmix_list_t *servers)
+{
+    FILE *fp;
+    char *srvr, *p, *p2;
+    pmix_lock_t lock;
+    pmix_event_t ev;
+    struct timeval tv;
+    int retries;
+    pmix_info_t *sdata;
+    size_t ndata, n;
+    pmix_infolist_t *iptr, *ians;
+    char *nspace, *version;
+    pmix_rank_t rank;
+    pmix_list_t mylist;
+    uint32_t u32;
+
+     /* if we cannot open the file, then the server must not
+     * be configured to support tool connections, or this
+     * user isn't authorized to access it - or it may just
+     * not exist yet! Check for existence */
+    /* coverity[toctou] */
+    if (0 == access(filename, R_OK)) {
+        goto process;
+    } else {
+        if (ENOENT == errno) {
+            /* the file does not exist, so give it
+             * a little time to see if the server
+             * is still starting up */
+            retries = 0;
+            do {
+                ++retries;
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "WAITING FOR CONNECTION FILE %s", filename);
+                PMIX_CONSTRUCT_LOCK(&lock);
+                if (0 < mca_ptl_tcp_component.wait_to_connect) {
+                    tv.tv_sec = mca_ptl_tcp_component.wait_to_connect;
+                    tv.tv_usec = 0;
+                    pmix_event_evtimer_set(pmix_globals.evbase, &ev,
+                                           timeout, &lock);
+                    PMIX_POST_OBJECT(&ev);
+                    pmix_event_evtimer_add(&ev, &tv);
+                } else {
+                    tv.tv_sec = 0;
+                    tv.tv_usec = 10000;  // use 0.01 sec as default
+                    pmix_event_evtimer_set(pmix_globals.evbase, &ev,
+                                           timeout, &lock);
+                    PMIX_POST_OBJECT(&ev);
+                    pmix_event_evtimer_add(&ev, &tv);
+                }
+                PMIX_WAIT_THREAD(&lock);
+                PMIX_DESTRUCT_LOCK(&lock);
+                /* coverity[toctou] */
+                if (0 == access(filename, R_OK)) {
+                    goto process;
+                }
+            } while (retries < mca_ptl_tcp_component.max_retries);
+            /* otherwise, it is unreachable */
+        }
+    }
+    return;
+
+  process:
+    fp = fopen(filename, "r");
+    if (NULL == fp) {
+        return;
+    }
+    /* get the URI - might seem crazy, but there is actually
+     * a race condition here where the server may have created
+     * the file but not yet finished writing into it. So give
+     * us a chance to get the required info */
+    for (retries=0; retries < 3; retries++) {
+        srvr = pmix_getline(fp);
+        if (NULL != srvr) {
+            break;
+        }
+        fclose(fp);
+        tv.tv_sec = 0;
+        tv.tv_usec = 10000;  // use 0.01 sec as default
+        pmix_event_evtimer_set(pmix_globals.evbase, &ev,
+                               timeout, &lock);
+        PMIX_POST_OBJECT(&ev);
+        pmix_event_evtimer_add(&ev, &tv);
+        PMIX_WAIT_THREAD(&lock);
+        PMIX_DESTRUCT_LOCK(&lock);
+        fp = fopen(filename, "r");
+        if (NULL == fp) {
+            return;
+        }
+    }
+    if (NULL == srvr) {
+        PMIX_ERROR_LOG(PMIX_ERR_FILE_READ_FAILURE);
+        fclose(fp);
+        return;
+    }
+    /* up to the first ';' is the server nspace/rank */
+    if (NULL == (p = strchr(srvr, ';'))) {
+        /* malformed */
+        free(srvr);
+        return;
+    }
+    *p = '\0';
+    ++p;  // move past the semicolon
+    /* the nspace is the section up to the '.' */
+    if (NULL == (p2 = strchr(srvr, '.'))) {
+        /* malformed */
+        free(srvr);
+        fclose(fp);
+        return;
+    }
+    *p2 = '\0';
+    ++p2;
+    /* set the server nspace/rank */
+    nspace = srvr;
+    rank = strtoull(p2, NULL, 10);
+
+    /* see if we already have this server in our list */
+    PMIX_LIST_FOREACH(iptr, servers, pmix_infolist_t) {
+        /* each item contains an array starting with the server nspace */
+        sdata = (pmix_info_t*)iptr->info.value.data.darray->array;
+        ndata = iptr->info.value.data.darray->size;
+        if (0 == strcmp(sdata[0].value.data.string, nspace) &&
+            sdata[1].value.data.rank == rank) {
+            /* already have this one */
+            fclose(fp);
+            free(srvr);
+            return;
+        }
+    }
+
+    /* begin collecting data for the new entry */
+    PMIX_CONSTRUCT(&mylist, pmix_list_t);
+    iptr = PMIX_NEW(pmix_infolist_t);
+    PMIX_INFO_LOAD(&iptr->info, PMIX_SERVER_NSPACE, nspace, PMIX_STRING);
+    pmix_list_append(&mylist, &iptr->super);
+    iptr = PMIX_NEW(pmix_infolist_t);
+    PMIX_INFO_LOAD(&iptr->info, PMIX_SERVER_RANK, &rank, PMIX_PROC_RANK);
+    pmix_list_append(&mylist, &iptr->super);
+
+    free(srvr);
+
+    /* see if this file contains the server's version */
+    p2 = pmix_getline(fp);
+    if (NULL == p2) {
+        version = strdup("v2.0");
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "V20 SERVER DETECTED");
+    } else {
+        version = p2;
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "VERSION %s SERVER DETECTED", p2);
+    }
+    iptr = PMIX_NEW(pmix_infolist_t);
+    PMIX_INFO_LOAD(&iptr->info, PMIX_VERSION_INFO, version, PMIX_STRING);
+    pmix_list_append(&mylist, &iptr->super);
+    free(p2);
+
+    /* see if the file contains the pid */
+    p2 = pmix_getline(fp);
+    if (NULL == p2) {
+        goto complete;
+    }
+    u32 = strtoul(p2, NULL, 10);
+    iptr = PMIX_NEW(pmix_infolist_t);
+    PMIX_INFO_LOAD(&iptr->info, PMIX_SERVER_PIDINFO, &u32, PMIX_UINT32);
+    pmix_list_append(&mylist, &iptr->super);
+    free(p2);
+
+    /* check for uid:gid */
+    p2 = pmix_getline(fp);
+    if (NULL == p2) {
+        goto complete;
+    }
+    /* find the colon */
+    if (NULL == (p = strchr(p2, ':'))) {
+        /* bad format */
+        free(p2);
+        goto complete;
+    }
+    *p = '\0';
+    ++p;
+    u32 = strtoul(p2, NULL, 10);
+    iptr = PMIX_NEW(pmix_infolist_t);
+    PMIX_INFO_LOAD(&iptr->info, PMIX_USERID, &u32, PMIX_UINT32);
+    pmix_list_append(&mylist, &iptr->super);
+    u32 = strtoul(p, NULL, 10);
+    iptr = PMIX_NEW(pmix_infolist_t);
+    PMIX_INFO_LOAD(&iptr->info, PMIX_GRPID, &u32, PMIX_UINT32);
+    pmix_list_append(&mylist, &iptr->super);
+    free(p2);
+
+    /* check for timestamp */
+    p2 = pmix_getline(fp);
+    if (NULL == p2) {
+        goto complete;
+    }
+    iptr = PMIX_NEW(pmix_infolist_t);
+    PMIX_INFO_LOAD(&iptr->info, PMIX_SERVER_START_TIME, p2, PMIX_STRING);
+    pmix_list_append(&mylist, &iptr->super);
+    free(p2);
+
+  complete:
+    fclose(fp);
+
+    /* convert the list to an array */
+    if (0 < (ndata = pmix_list_get_size(&mylist))) {
+        ians = PMIX_NEW(pmix_infolist_t);
+        PMIX_LOAD_KEY(&ians->info.key, PMIX_SERVER_INFO_ARRAY);
+        ians->info.value.type = PMIX_DATA_ARRAY;
+        PMIX_DATA_ARRAY_CREATE(ians->info.value.data.darray, ndata, PMIX_INFO);
+        sdata = (pmix_info_t*)ians->info.value.data.darray->array;
+        n = 0;
+        PMIX_LIST_FOREACH(iptr, &mylist, pmix_infolist_t) {
+            PMIX_INFO_XFER(&sdata[n], &iptr->info);
+            ++n;
+        }
+        PMIX_LIST_DESTRUCT(&mylist);
+        pmix_list_append(servers, &ians->super);
+    }
 }
