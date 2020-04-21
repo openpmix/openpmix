@@ -161,9 +161,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
     /* set the server rank */
     pmix_client_globals.myserver->info->pname.rank = strtoull(uri[1], NULL, 10);
 
-    nspace = strdup(pmix_client_globals.myserver->nptr->nspace);
     rank = pmix_client_globals.myserver->info->pname.rank;
-    suri = strdup(evar);
 
     /* setup the path to the daemon rendezvous point */
     memset(&mca_ptl_usock_component.connection, 0, sizeof(struct sockaddr_storage));
@@ -208,6 +206,9 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "sock_peer_try_connect: Connection across to server succeeded");
+
+    nspace = strdup(pmix_client_globals.myserver->nptr->nspace);
+    suri = strdup(evar);
 
     /* mark the connection as made */
     pmix_globals.connected = true;
