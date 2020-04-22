@@ -856,6 +856,380 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grp[],
                                                  const pmix_info_t info[], size_t ninfo,
                                                  pmix_op_cbfunc_t cbfunc, void *cbdata);
 
+/****************************************/
+/****    COMMON SUPPORT FUNCTIONS    ****/
+/****************************************/
+
+/******     EVENT NOTIFICATION SUPPORT      ******/
+/* Register an event handler to report events. Three types of events
+ * can be reported:
+ *
+ * (a) those that occur within the client library, but are not
+ *     reportable via the API itself (e.g., loss of connection to
+ *     the server). These events typically occur during behind-the-scenes
+ *     non-blocking operations.
+ *
+ * (b) job-related events such as the failure of another process in
+ *     the job or in any connected job, impending failure of hardware
+ *     within the job's usage footprint, etc.
+ *
+ * (c) system notifications that are made available by the local
+ *     administrators
+ *
+ * By default, only events that directly affect the process and/or
+ * any process to which it is connected (via the PMIx_Connect call)
+ * will be reported. Options to modify that behavior can be provided
+ * in the info array
+ *
+ * Both the client application and the resource manager can register
+ * err handlers for specific events. PMIx client/server calls the registered
+ * err handler upon receiving event notify notification (via PMIx_Notify_event)
+ * from the other end (Resource Manager/Client application).
+ *
+ * Multiple err handlers can be registered for different events. PMIX returns
+ * an integer reference to each register handler in the callback fn. The caller
+ * must retain the reference in order to deregister the evhdlr.
+ * Modification of the notification behavior can be accomplished by
+ * deregistering the current evhdlr, and then registering it
+ * using a new set of info values.
+ *
+ * If cbfunc is NULL, then this is treated as a BLOCKING call - a positive
+ * return value represents the reference ID for the request, while
+ * negative values indicate the corresponding error
+ *
+ * See pmix_common.h for a description of the notification function */
+PMIX_EXPORT pmix_status_t PMIx_Register_event_handler(pmix_status_t codes[], size_t ncodes,
+                                                      pmix_info_t info[], size_t ninfo,
+                                                      pmix_notification_fn_t evhdlr,
+                                                      pmix_hdlr_reg_cbfunc_t cbfunc,
+                                                      void *cbdata);
+
+/* Deregister an event handler
+ * evhdlr_ref is the reference returned by PMIx from the call to
+ * PMIx_Register_event_handler. If non-NULL, the provided cbfunc
+ * will be called to confirm removal of the designated handler */
+PMIX_EXPORT pmix_status_t PMIx_Deregister_event_handler(size_t evhdlr_ref,
+                                                        pmix_op_cbfunc_t cbfunc,
+                                                        void *cbdata);
+
+/* Report an event for notification via any
+ * registered evhdlr.
+ *
+ * This function allows the host server to direct the server
+ * convenience library to notify all registered local procs of
+ * an event. The event can be local, or anywhere in the cluster.
+ * The status indicates the event being reported.
+ *
+ * The client application can also call this function to notify the
+ * resource manager and/or other processes of an event it encountered.
+ * It can also be used to asynchronously notify other parts of its
+ * own internal process - e.g., for one library to notify another
+ * when initialized inside the process.
+ *
+ * status - status code indicating the event being reported
+ *
+ * source - the process that generated the event
+ *
+ * range - the range in which the event is to be reported. For example,
+ *         a value of PMIX_RANGE_LOCAL would instruct the system
+ *         to only notify procs on the same local node as the
+ *         event generator.
+ *
+ * info - an array of pmix_info_t structures provided by the event
+ *        generator to pass any additional information about the
+ *        event. This can include an array of pmix_proc_t structs
+ *        describing the processes impacted by the event, the nature
+ *        of the event and its severity, etc. The precise contents
+ *        of the array will depend on the event generator.
+ *
+ * ninfo - number of elements in the info array
+ *
+ * cbfunc - callback function to be called upon completion of the
+ *          notify_event function's actions. Note that any messages
+ *          will have been queued, but may not have been transmitted
+ *          by this time. Note that the caller is required to maintain
+ *          the input data until the callback function has been executed!
+ *          If cbfunc is NULL, then this is treated as a BLOCKING call and
+ *          the result of the operation is provided in the returned
+ *          status
+ *
+ * cbdata - the caller's provided void* object
+ */
+PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status,
+                                            const pmix_proc_t *source,
+                                            pmix_data_range_t range,
+                                            const pmix_info_t info[], size_t ninfo,
+                                            pmix_op_cbfunc_t cbfunc, void *cbdata);
+
+
+/******    PRETTY-PRINT DEFINED VALUE TYPES     ******/
+/* Provide a string representation for several types of value. Note
+ * that the provided string is statically defined and must NOT be
+ * free'd. Supported value types:
+ *
+ * - pmix_status_t (PMIX_STATUS)
+ * - pmix_scope_t   (PMIX_SCOPE)
+ * - pmix_persistence_t  (PMIX_PERSIST)
+ * - pmix_data_range_t   (PMIX_DATA_RANGE)
+ * - pmix_info_directives_t   (PMIX_INFO_DIRECTIVES)
+ * - pmix_data_type_t   (PMIX_DATA_TYPE)
+ * - pmix_alloc_directive_t  (PMIX_ALLOC_DIRECTIVE)
+ * - pmix_iof_channel_t  (PMIX_IOF_CHANNEL)
+ * - pmix_job_state_t  (PMIX_JOB_STATE)
+ * - pmix_proc_state_t  (PMIX_PROC_STATE)
+ */
+PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t status);
+PMIX_EXPORT const char* PMIx_Proc_state_string(pmix_proc_state_t state);
+PMIX_EXPORT const char* PMIx_Scope_string(pmix_scope_t scope);
+PMIX_EXPORT const char* PMIx_Persistence_string(pmix_persistence_t persist);
+PMIX_EXPORT const char* PMIx_Data_range_string(pmix_data_range_t range);
+PMIX_EXPORT const char* PMIx_Info_directives_string(pmix_info_directives_t directives);
+PMIX_EXPORT const char* PMIx_Data_type_string(pmix_data_type_t type);
+PMIX_EXPORT const char* PMIx_Alloc_directive_string(pmix_alloc_directive_t directive);
+PMIX_EXPORT const char* PMIx_IOF_channel_string(pmix_iof_channel_t channel);
+PMIX_EXPORT const char* PMIx_Job_state_string(pmix_job_state_t state);
+PMIX_EXPORT const char* PMIx_Get_attribute_string(char *attribute);
+PMIX_EXPORT const char* PMIx_Get_attribute_name(char *attrstring);
+
+/* Get the PMIx version string. Note that the provided string is
+ * statically defined and must NOT be free'd  */
+PMIX_EXPORT const char* PMIx_Get_version(void);
+
+/* Store some data locally for retrieval by other areas of the
+ * proc. This is data that has only internal scope - it will
+ * never be "pushed" externally */
+PMIX_EXPORT pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc,
+                                              const pmix_key_t key, pmix_value_t *val);
+
+
+/******    DATA BUFFER PACK/UNPACK SUPPORT    ******/
+/**
+ * Top-level interface function to pack one or more values into a
+ * buffer.
+ *
+ * The pack function packs one or more values of a specified type into
+ * the specified buffer.  The buffer must have already been
+ * initialized via the PMIX_DATA_BUFFER_CREATE or PMIX_DATA_BUFFER_CONSTRUCT
+ * call - otherwise, the pack_value function will return an error.
+ * Providing an unsupported type flag will likewise be reported as an error.
+ *
+ * Note that any data to be packed that is not hard type cast (i.e.,
+ * not type cast to a specific size) may lose precision when unpacked
+ * by a non-homogeneous recipient.  The PACK function will do its best to deal
+ * with heterogeneity issues between the packer and unpacker in such
+ * cases. Sending a number larger than can be handled by the recipient
+ * will return an error code (generated upon unpacking) -
+ * the error cannot be detected during packing.
+ *
+ * The identity of the intended recipient of the packed buffer (i.e., the
+ * process that will be unpacking it) is used solely to resolve any data type
+ * differences between PMIx versions. The recipient must, therefore, be
+ * known to the user prior to calling the pack function so that the
+ * PMIx library is aware of the version the recipient is using.
+ *
+ * @param *target Pointer to a pmix_proc_t structure containing the
+ * nspace/rank of the process that will be unpacking the final buffer.
+ * A NULL value may be used to indicate that the target is based on
+ * the same PMIx version as the caller.
+ *
+ * @param *buffer A pointer to the buffer into which the value is to
+ * be packed.
+ *
+ * @param *src A void* pointer to the data that is to be packed. Note
+ * that strings are to be passed as (char **) - i.e., the caller must
+ * pass the address of the pointer to the string as the void*. This
+ * allows PMIx to use a single pack function, but still allow
+ * the caller to pass multiple strings in a single call.
+ *
+ * @param num_values An int32_t indicating the number of values that are
+ * to be packed, beginning at the location pointed to by src. A string
+ * value is counted as a single value regardless of length. The values
+ * must be contiguous in memory. Arrays of pointers (e.g., string
+ * arrays) should be contiguous, although (obviously) the data pointed
+ * to need not be contiguous across array entries.
+ *
+ * @param type The type of the data to be packed - must be one of the
+ * PMIX defined data types.
+ *
+ * @retval PMIX_SUCCESS The data was packed as requested.
+ *
+ * @retval PMIX_ERROR(s) An appropriate PMIX error code indicating the
+ * problem encountered. This error code should be handled
+ * appropriately.
+ *
+ * @code
+ * pmix_data_buffer_t *buffer;
+ * int32_t src;
+ *
+ * PMIX_DATA_BUFFER_CREATE(buffer);
+ * status_code = PMIx_Data_pack(buffer, &src, 1, PMIX_INT32);
+ * @endcode
+ */
+PMIX_EXPORT pmix_status_t PMIx_Data_pack(const pmix_proc_t *target,
+                                         pmix_data_buffer_t *buffer,
+                                         void *src, int32_t num_vals,
+                                         pmix_data_type_t type);
+
+/**
+ * Unpack values from a buffer.
+ *
+ * The unpack function unpacks the next value (or values) of a
+ * specified type from the specified buffer.
+ *
+ * The buffer must have already been initialized via an PMIX_DATA_BUFFER_CREATE or
+ * PMIX_DATA_BUFFER_CONSTRUCT call (and assumedly filled with some data) -
+ * otherwise, the unpack_value function will return an
+ * error. Providing an unsupported type flag will likewise be reported
+ * as an error, as will specifying a data type that DOES NOT match the
+ * type of the next item in the buffer. An attempt to read beyond the
+ * end of the stored data held in the buffer will also return an
+ * error.
+ *
+ * NOTE: it is possible for the buffer to be corrupted and that
+ * PMIx will *think* there is a proper variable type at the
+ * beginning of an unpack region - but that the value is bogus (e.g., just
+ * a byte field in a string array that so happens to have a value that
+ * matches the specified data type flag). Therefore, the data type error check
+ * is NOT completely safe. This is true for ALL unpack functions.
+ *
+ *
+ * Unpacking values is a "nondestructive" process - i.e., the values are
+ * not removed from the buffer. It is therefore possible for the caller
+ * to re-unpack a value from the same buffer by resetting the unpack_ptr.
+ *
+ * Warning: The caller is responsible for providing adequate memory
+ * storage for the requested data. As noted below, the user
+ * must provide a parameter indicating the maximum number of values that
+ * can be unpacked into the allocated memory. If more values exist in the
+ * buffer than can fit into the memory storage, then the function will unpack
+ * what it can fit into that location and return an error code indicating
+ * that the buffer was only partially unpacked.
+ *
+ * Note that any data that was not hard type cast (i.e., not type cast
+ * to a specific size) when packed may lose precision when unpacked by
+ * a non-homogeneous recipient.  PMIx will do its best to deal with
+ * heterogeneity issues between the packer and unpacker in such
+ * cases. Sending a number larger than can be handled by the recipient
+ * will return an error code generated upon unpacking - these errors
+ * cannot be detected during packing.
+ *
+ * The identity of the source of the packed buffer (i.e., the
+ * process that packed it) is used solely to resolve any data type
+ * differences between PMIx versions. The source must, therefore, be
+ * known to the user prior to calling the unpack function so that the
+ * PMIx library is aware of the version the source used.
+ *
+ * @param *source Pointer to a pmix_proc_t structure containing the
+ * nspace/rank of the process that packed the provided buffer.
+ * A NULL value may be used to indicate that the source is based on
+ * the same PMIx version as the caller.
+ *
+ * @param *buffer A pointer to the buffer from which the value will be
+ * extracted.
+ *
+ * @param *dest A void* pointer to the memory location into which the
+ * data is to be stored. Note that these values will be stored
+ * contiguously in memory. For strings, this pointer must be to (char
+ * **) to provide a means of supporting multiple string
+ * operations. The unpack function will allocate memory for each
+ * string in the array - the caller must only provide adequate memory
+ * for the array of pointers.
+ *
+ * @param type The type of the data to be unpacked - must be one of
+ * the BFROP defined data types.
+ *
+ * @retval *max_num_values The number of values actually unpacked. In
+ * most cases, this should match the maximum number provided in the
+ * parameters - but in no case will it exceed the value of this
+ * parameter.  Note that if you unpack fewer values than are actually
+ * available, the buffer will be in an unpackable state - the function will
+ * return an error code to warn of this condition.
+ *
+ * @note The unpack function will return the actual number of values
+ * unpacked in this location.
+ *
+ * @retval PMIX_SUCCESS The next item in the buffer was successfully
+ * unpacked.
+ *
+ * @retval PMIX_ERROR(s) The unpack function returns an error code
+ * under one of several conditions: (a) the number of values in the
+ * item exceeds the max num provided by the caller; (b) the type of
+ * the next item in the buffer does not match the type specified by
+ * the caller; or (c) the unpack failed due to either an error in the
+ * buffer or an attempt to read past the end of the buffer.
+ *
+ * @code
+ * pmix_data_buffer_t *buffer;
+ * int32_t dest;
+ * char **string_array;
+ * int32_t num_values;
+ *
+ * num_values = 1;
+ * status_code = PMIx_Data_unpack(buffer, (void*)&dest, &num_values, PMIX_INT32);
+ *
+ * num_values = 5;
+ * string_array = pmix_malloc(num_values*sizeof(char *));
+ * status_code = PMIx_Data_unpack(buffer, (void*)(string_array), &num_values, PMIX_STRING);
+ *
+ * @endcode
+ */
+PMIX_EXPORT pmix_status_t PMIx_Data_unpack(const pmix_proc_t *source,
+                                           pmix_data_buffer_t *buffer, void *dest,
+                                           int32_t *max_num_values,
+                                           pmix_data_type_t type);
+
+/**
+ * Copy a data value from one location to another.
+ *
+ * Since registered data types can be complex structures, the system
+ * needs some way to know how to copy the data from one location to
+ * another (e.g., for storage in the registry). This function, which
+ * can call other copy functions to build up complex data types, defines
+ * the method for making a copy of the specified data type.
+ *
+ * @param **dest The address of a pointer into which the
+ * address of the resulting data is to be stored.
+ *
+ * @param *src A pointer to the memory location from which the
+ * data is to be copied.
+ *
+ * @param type The type of the data to be copied - must be one of
+ * the PMIx defined data types.
+ *
+ * @retval PMIX_SUCCESS The value was successfully copied.
+ *
+ * @retval PMIX_ERROR(s) An appropriate error code.
+ *
+ */
+PMIX_EXPORT pmix_status_t PMIx_Data_copy(void **dest, void *src,
+                                         pmix_data_type_t type);
+
+/**
+ * Print a data value.
+ *
+ * Since registered data types can be complex structures, the system
+ * needs some way to know how to print them (i.e., convert them to a string
+ * representation). Provided for debug purposes.
+ *
+ * @retval PMIX_SUCCESS The value was successfully printed.
+ *
+ * @retval PMIX_ERROR(s) An appropriate error code.
+ */
+PMIX_EXPORT pmix_status_t PMIx_Data_print(char **output, char *prefix,
+                                          void *src, pmix_data_type_t type);
+
+/**
+ * Copy a payload from one buffer to another
+ *
+ * This function will append a copy of the payload in one buffer into
+ * another buffer.
+ * NOTE: This is NOT a destructive procedure - the
+ * source buffer's payload will remain intact, as will any pre-existing
+ * payload in the destination's buffer.
+ */
+PMIX_EXPORT pmix_status_t PMIx_Data_copy_payload(pmix_data_buffer_t *dest,
+                                                 pmix_data_buffer_t *src);
+
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }
