@@ -37,6 +37,7 @@
 #include "include/pmix_rename.h"
 
 #include "src/include/pmix_globals.h"
+#include "src/common/pmix_attributes.h"
 
 PMIX_EXPORT const char* PMIx_Proc_state_string(pmix_proc_state_t state)
 {
@@ -299,4 +300,14 @@ PMIX_EXPORT const char* PMIx_Job_state_string(pmix_job_state_t state)
       default:
             return "UNKNOWN";
     }
+}
+
+PMIX_EXPORT const char* PMIx_Get_attribute_string(char *attribute)
+{
+    return pmix_attributes_lookup(attribute);
+}
+
+PMIX_EXPORT const char* PMIx_Get_attribute_name(char *attrstring)
+{
+    return pmix_attributes_reverse_lookup(attrstring);
 }

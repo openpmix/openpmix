@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
@@ -801,14 +801,11 @@ PMIX_EXPORT pmix_status_t PMIx_server_deliver_inventory(pmix_info_t info[], size
  *            (e.g., "register_events", "validate_credential",
  *            or "allocate") whose attributes are being registered.
  *
- * attrs - array of pmix_regattr_t describing the attributes supported
+ * attrs - NULL-terminated argv array of attributes supported
  *         by the host environment for the specified function
  *
- * nattrs - number of elements in the attrs array
- *
  */
-PMIX_EXPORT pmix_status_t PMIx_Register_attributes(char *function,
-                                                   pmix_regattr_t attrs[], size_t nattrs);
+PMIX_EXPORT pmix_status_t PMIx_Register_attributes(char *function, char *attrs[]);
 
 
 #if defined(c_plusplus) || defined(__cplusplus)

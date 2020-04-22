@@ -48,6 +48,7 @@
 #endif
 
 #include "src/class/pmix_list.h"
+#include "src/include/pmix_globals.h"
 
 BEGIN_C_DECLS
 
@@ -68,6 +69,7 @@ PMIX_EXPORT void pmix_attributes_print_headers(char ***ans, char *level);
 PMIX_EXPORT void pmix_attrs_query_support(int sd, short args, void *cbdata);
 PMIX_EXPORT const char* pmix_attributes_lookup(char *name);
 PMIX_EXPORT const char* pmix_attributes_reverse_lookup(char *name);
+PMIX_EXPORT const pmix_regattr_input_t* pmix_attributes_lookup_term(char *attr);
 
 END_C_DECLS
 

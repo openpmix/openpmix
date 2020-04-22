@@ -401,10 +401,6 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv,
             }
             PMIX_LOAD_KEY(regattr->string, r->string);
             regattr->type = r->type;
-            if (NULL != r->info) {
-                PMIX_INFO_XFER(regattr->info, r->info);
-            }
-            regattr->ninfo = r->ninfo;
             regattr->description = pmix_argv_copy(r->description);
             *data = regattr;
             *sz = sizeof(pmix_regattr_t);

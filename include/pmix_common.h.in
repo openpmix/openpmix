@@ -143,19 +143,23 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_ATTR_UNDEF      NULL
 
 /* initialization attributes */
-#define PMIX_EVENT_BASE                     "pmix.evbase"           // (struct event_base *) pointer to libevent event_base to use in place
-                                                                    //                       of the internal progress thread
-#define PMIX_SERVER_TOOL_SUPPORT            "pmix.srvr.tool"        // (bool) The host RM wants to declare itself as willing to
-                                                                    //        accept tool connection requests
-#define PMIX_SERVER_REMOTE_CONNECTIONS      "pmix.srvr.remote"      // (bool) Allow connections from remote tools (do not use loopback device)
-#define PMIX_SERVER_SYSTEM_SUPPORT          "pmix.srvr.sys"         // (bool) The host RM wants to declare itself as being the local
-                                                                    //        system server for PMIx connection requests
-#define PMIX_SERVER_SESSION_SUPPORT         "pmix.srvr.sess"        // (bool) The host RM wants to declare itself as being the local
-                                                                    //        session server for PMIx connection requests
+#define PMIX_EVENT_BASE                     "pmix.evbase"           // (struct event_base *) pointer to libevent event_base
+                                                                    // to use in place of the internal progress thread
+#define PMIX_SERVER_TOOL_SUPPORT            "pmix.srvr.tool"        // (bool) The host RM wants to declare itself as willing
+                                                                    //        to accept tool connection requests
+#define PMIX_SERVER_REMOTE_CONNECTIONS      "pmix.srvr.remote"      // (bool) Allow connections from remote tools (do not use
+                                                                    //        loopback device)
+#define PMIX_SERVER_SYSTEM_SUPPORT          "pmix.srvr.sys"         // (bool) The host RM wants to declare itself as being
+                                                                    //        the local system server for PMIx connection
+                                                                    //        requests
+#define PMIX_SERVER_SESSION_SUPPORT         "pmix.srvr.sess"        // (bool) The host RM wants to declare itself as being
+                                                                    //        the local session server for PMIx connection
+                                                                    //        requests
 #define PMIX_SERVER_TMPDIR                  "pmix.srvr.tmpdir"      // (char*) temp directory where PMIx server will place
                                                                     //        client rendezvous points and contact info
 #define PMIX_SYSTEM_TMPDIR                  "pmix.sys.tmpdir"       // (char*) temp directory for this system, where PMIx
-                                                                    //        server will place tool rendezvous points and contact info
+                                                                    //        server will place tool rendezvous points and
+                                                                    //        contact info
 #define PMIX_SERVER_ENABLE_MONITORING       "pmix.srv.monitor"      // (bool) Enable PMIx internal monitoring by server
 #define PMIX_SERVER_NSPACE                  "pmix.srv.nspace"       // (char*) Name of the nspace to use for this server
 #define PMIX_SERVER_RANK                    "pmix.srv.rank"         // (pmix_rank_t) Rank of this server
@@ -275,7 +279,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_HOSTNAME_KEEP_FQDN             "pmix.fqdn"             // (bool) FQDN hostnames are being retained
 #define PMIX_NODEID                         "pmix.nodeid"           // (uint32_t) node identifier where the specified proc is located
 #define PMIX_LOCAL_PEERS                    "pmix.lpeers"           // (char*) comma-delimited string of ranks on this node within the specified nspace
-#define PMIX_LOCAL_PROCS                    "pmix.lprocs"           // (pmix_proc_t array) array of pmix_proc_t of procs on the specified node
+#define PMIX_LOCAL_PROCS                    "pmix.lprocs"           // (pmix_data_array_t*) array of pmix_proc_t of procs on the specified node
 #define PMIX_LOCAL_CPUSETS                  "pmix.lcpus"            // (char*) colon-delimited cpusets of local peers within the specified nspace
 #define PMIX_PROC_URI                       "pmix.puri"             // (char*) URI containing contact info for proc
 #define PMIX_LOCALITY                       "pmix.loc"              // (uint16_t) relative locality of two procs
@@ -289,8 +293,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_NETWORK_PLANE                  "pmix.net.plane"        // (char*) string ID of a network plane
 #define PMIX_NETWORK_SWITCH                 "pmix.net.switch"       // (char*) string ID of a network switch
 #define PMIX_NETWORK_NIC                    "pmix.net.nic"          // (char*) string ID of a NIC
-#define PMIX_NETWORK_ENDPT                  "pmix.net.endpt"        // (assigned) network endpt for process - type assigned by
-                                                                    //            fabric provider
+#define PMIX_NETWORK_ENDPT                  "pmix.net.endpt"        // (pmix_byte_object_t) network endpt for process
 #define PMIX_NETWORK_SHAPE                  "pmix.net.shape"        // (pmix_data_array_t*) number of interfaces (uint32_t) on each dimension of the
                                                                     //        specified network plane in the requested view
 #define PMIX_NETWORK_SHAPE_STRING           "pmix.net.shapestr"     // (char*) network shape expressed as a string (e.g., "10x12x2")
@@ -470,41 +473,65 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_APP_ARGV                       "pmix.app.argv"         // (char*) consolidated argv passed to the spawn command for the given app
 
 
-/* query attributes */
-#define PMIX_QUERY_REFRESH_CACHE            "pmix.qry.rfsh"         // (bool) retrieve updated information from server
-                                                                    //        to update local cache
-#define PMIX_QUERY_NAMESPACES               "pmix.qry.ns"           // (char*) return a comma-delimited list of active namespaces
-#define PMIX_QUERY_NAMESPACE_INFO           "pmix.qry.nsinfo"       // (pmix_data_array_t) request an array of active nspace information - each
+/* query keys - value type shown is the type of the value that will be RETURNED by that key  */
+#define PMIX_QUERY_SUPPORTED_KEYS           "pmix.qry.keys"         // (char*) returns comma-delimited list of keys supported by the query
+                                                                    //         function. NO QUALIFIERS
+#define PMIX_QUERY_NAMESPACES               "pmix.qry.ns"           // (char*) returns a comma-delimited list of active namespaces. NO QUALIFIERS
+#define PMIX_QUERY_NAMESPACE_INFO           "pmix.qry.nsinfo"       // (pmix_data_array_t*) returns an array of active nspace information - each
                                                                     //        element will contain an array including the namespace plus the
                                                                     //        command line of the application executing within it
-#define PMIX_QUERY_JOB_STATUS               "pmix.qry.jst"          // (pmix_status_t) status of a specified currently executing job
-#define PMIX_QUERY_QUEUE_LIST               "pmix.qry.qlst"         // (char*) request a comma-delimited list of scheduler queues
-#define PMIX_QUERY_QUEUE_STATUS             "pmix.qry.qst"          // (TBD) status of a specified scheduler queue
-#define PMIX_QUERY_PROC_TABLE               "pmix.qry.ptable"       // (char*) input nspace of job whose info is being requested
-                                                                    //         returns (pmix_data_array_t*) an array of pmix_proc_info_t
-#define PMIX_QUERY_LOCAL_PROC_TABLE         "pmix.qry.lptable"      // (char*) input nspace of job whose info is being requested
-                                                                    //         returns (pmix_data_array_t*) an array of pmix_proc_info_t for
-                                                                    //         procs in job on same node
-#define PMIX_QUERY_AUTHORIZATIONS           "pmix.qry.auths"        // (bool) return operations tool is authorized to perform
-#define PMIX_QUERY_SPAWN_SUPPORT            "pmix.qry.spawn"        // (bool) return a comma-delimited list of supported spawn attributes
-#define PMIX_QUERY_DEBUG_SUPPORT            "pmix.qry.debug"        // (bool) return a comma-delimited list of supported debug attributes
-#define PMIX_QUERY_MEMORY_USAGE             "pmix.qry.mem"          // (bool) return info on memory usage for the procs indicated in the qualifiers
+                                                                    //        SUPPORTED QUALIFIERS: PMIX_NSPACE of specific nspace whose info
+                                                                    //        is being requested
+#define PMIX_QUERY_JOB_STATUS               "pmix.qry.jst"          // (pmix_status_t) returns status of a specified currently executing job
+                                                                    //         REQUIRES a PMIX_NSPACE qualifier indicating the nspace being queried
+#define PMIX_QUERY_QUEUE_LIST               "pmix.qry.qlst"         // (char*) request a comma-delimited list of scheduler queues. NO QUALIFIERS
+#define PMIX_QUERY_QUEUE_STATUS             "pmix.qry.qst"          // (pmix_data_array_t*) returns array where each element contains the name and
+                                                                    //         status of a scheduler queue
+                                                                    //        SUPPORTED QUALIFIERS: PMIX_ALLOC_QUEUE naming specific queue whose status
+                                                                    //        is being requested
+#define PMIX_QUERY_PROC_TABLE               "pmix.qry.ptable"       // (pmix_data_array_t*) returns (pmix_data_array_t*) an array of pmix_proc_info_t
+                                                                    //         REQUIRES a PMIX_NSPACE qualifier indicating the nspace being queried
+#define PMIX_QUERY_LOCAL_PROC_TABLE         "pmix.qry.lptable"      // (pmix_data_array_t*) returns (pmix_data_array_t*) an array of pmix_proc_info_t
+                                                                    //         of pmix_proc_info_t for procs in job on same node
+                                                                    //         REQUIRES a PMIX_NSPACE qualifier indicating the nspace being queried
+#define PMIX_QUERY_AUTHORIZATIONS           "pmix.qry.auths"        // (pmix_data_array_t*) return operations tool is authorized to perform. The contents
+                                                                    //         of the array elements have not yet been standardized. NO QUALIFIERS
+#define PMIX_QUERY_SPAWN_SUPPORT            "pmix.qry.spawn"        // (char*) return a comma-delimited list of supported spawn attributes. NO QUALIFIERS
+#define PMIX_QUERY_DEBUG_SUPPORT            "pmix.qry.debug"        // (char*) return a comma-delimited list of supported debug attributes. NO QUALIFIERS
+#define PMIX_QUERY_MEMORY_USAGE             "pmix.qry.mem"          // (pmix_data_array_t*) return info on memory usage for the procs indicated in the qualifiers
+                                                                    //        SUPPORTED QUALIFIERS: PMIX_NSPACE/PMIX_RANK, or PMIX_PROCID of specific proc(s)
+                                                                    //        whose info is being requested
+#define PMIX_QUERY_ALLOC_STATUS             "pmix.query.alloc"      // (char*) return a string reporting status of an allocation request
+                                                                    //         REQUIRES a PMIX_ALLOC_ID qualifier indicating the allocation request being queried
+#define PMIX_TIME_REMAINING                 "pmix.time.remaining"   // (uint32_t) returns number of seconds remaining in allocation
+                                                                    //         for the specified nspace (defaults to allocation containing the caller)
+                                                                    //         SUPPORTED QUALIFIERS: PMIX_NSPACE of the nspace whose info is being requested
+#define PMIX_QUERY_NUM_PSETS                "pmix.qry.psetnum"      // (size_t) returns the number of psets defined
+                                                                    //          in the specified range (defaults to session)
+                                                                    //         SUPPORTED QUALIFIERS: PMIX_RANGE whose info is being requested
+#define PMIX_QUERY_PSET_NAMES               "pmix.qry.psets"        // (char*) returns a comma-delimited list of the names of the
+                                                                    //         psets defined in the specified range (defaults to session)
+                                                                    //         SUPPORTED QUALIFIERS: PMIX_RANGE whose info is being requested
+#define PMIX_QUERY_ATTRIBUTE_SUPPORT        "pmix.qry.attrs"        // (pmix_data_array_t*) returns array of pmix_info_t where each element consists
+                                                                    //         of a key containing the name of the function, and an array of pmix_regattr_t
+                                                                    //         detailing the attribute support for that function
+                                                                    //         SUPPORTED QUALIFIERS: PMIX_CLIENT_FUNCTIONS, PMIX_SERVER_FUNCTIONS,
+                                                                    //         PMIX_TOOL_FUNCTIONS, and/or PMIX_HOST_FUNCTIONS
+#define PMIX_CLIENT_FUNCTIONS               "pmix.client.fns"       // (char*) returns a comma-delimited list of supported PMIx client functions. NO QUALIFIERS
+#define PMIX_SERVER_FUNCTIONS               "pmix.srvr.fns"         // (char*) returns a comma-delimited list of supported PMIx server functions. NO QUALIFIERS
+#define PMIX_TOOL_FUNCTIONS                 "pmix.tool.fns"         // (char*) returns a comma-delimited list of supported PMIx tool functions. NO QUALIFIERS
+#define PMIX_HOST_FUNCTIONS                 "pmix.host.fns"         // (char*) returns a comma-delimited list of PMIx functions supported by the host environment
+#define PMIX_QUERY_AVAIL_SERVERS            "pmix.qry.asrvrs"       // (pmix_data_array_t*) array of pmix_info_t, each element containing an array of
+                                                                    //         pmix_info_t of available data for servers on this node
+                                                                    //         to which the caller might be able to connect. NO QUALIFIERS
+
+/* query qualifiers - these are used to provide information to narrow/modify the query. Value type shown is the type of data expected
+ * to be provided with the key */
+#define PMIX_QUERY_REFRESH_CACHE            "pmix.qry.rfsh"         // (bool) retrieve updated information from server
+                                                                    //        to update local cache
 #define PMIX_QUERY_LOCAL_ONLY               "pmix.qry.local"        // (bool) constrain the query to local information only
 #define PMIX_QUERY_REPORT_AVG               "pmix.qry.avg"          // (bool) report average values
 #define PMIX_QUERY_REPORT_MINMAX            "pmix.qry.minmax"       // (bool) report minimum and maximum value
-#define PMIX_QUERY_ALLOC_STATUS             "pmix.query.alloc"      // (char*) string identifier of the allocation whose status
-                                                                    //         is being requested
-#define PMIX_TIME_REMAINING                 "pmix.time.remaining"   // (char*) query number of seconds (uint32_t) remaining in allocation
-                                                                    //         for the specified nspace
-#define PMIX_QUERY_NUM_PSETS                "pmix.qry.psetnum"      // (size_t) return the number of psets defined
-                                                                    //          in the specified range (defaults to session)
-#define PMIX_QUERY_PSET_NAMES               "pmix.qry.psets"        // (char*) return a comma-delimited list of the names of the
-                                                                    //         psets defined in the specified range (defaults to session)
-#define PMIX_QUERY_ATTRIBUTE_SUPPORT        "pmix.qry.attrs"        // (bool) query attribute support for specified functions
-#define PMIX_CLIENT_FUNCTIONS               "pmix.client.fns"       // (bool) query the list of supported PMIx client functions
-#define PMIX_SERVER_FUNCTIONS               "pmix.srvr.fns"         // (bool) query the list of supported PMIx server functions
-#define PMIX_TOOL_FUNCTIONS                 "pmix.tool.fns"         // (bool) query the list of supported PMIx tool functions
-#define PMIX_HOST_FUNCTIONS                 "pmix.host.fns"         // (bool) query the list of PMIx functions supported by the host environment
 #define PMIX_CLIENT_ATTRIBUTES              "pmix.client.attrs"     // (char*) comma-delimited list of functions, including "all"
                                                                     //        when used in a query, indicates whether or not to include
                                                                     //        attributes supported by the PMIx client library
@@ -517,11 +544,12 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_TOOL_ATTRIBUTES                "pmix.tool.attrs"       // (char*) comma-delimited list of functions, including "all"
                                                                     //        when used in a query, indicates whether or not to include
                                                                     //        attributes supported by the PMIx tool library
-#define PMIX_QUERY_AVAIL_SERVERS            "pmix.qry.asrvrs"       // (pmix_data_array_t) array containing available data for servers on this node
-                                                                    //         to which the caller might be able to connect
+#define PMIX_QUERY_SUPPORTED_QUALIFIERS     "pmix.qry.quals"        // (bool) return comma-delimited list of qualifiers supported by
+                                                                    //        a query on the provided key, instead of actually performing
+                                                                    //        the query on the key.
 
 
-/* information retrieval attributes */
+/* PMIx_Get information retrieval attributes */
 #define PMIX_SESSION_INFO                   "pmix.ssn.info"         // (bool) Return information about the specified session. If information
                                                                     //        about a session other than the one containing the requesting
                                                                     //        process is desired, then the attribute array must contain a
@@ -546,24 +574,25 @@ typedef uint32_t pmix_rank_t;
                                                                     //        then the attribute array must contain either the PMIX_NODEID or
                                                                     //        PMIX_HOSTNAME attribute identifying the desired target.
 
+
 /* information storage attributes */
-#define PMIX_SESSION_INFO_ARRAY             "pmix.ssn.arr"          // (pmix_data_array_t) Provide an array of pmix_info_t containing
+#define PMIX_SESSION_INFO_ARRAY             "pmix.ssn.arr"          // (pmix_data_array_t*) Provide an array of pmix_info_t containing
                                                                     //        session-level information. The PMIX_SESSION_ID attribute is required
                                                                     //        to be included in the array.
-#define PMIX_JOB_INFO_ARRAY                 "pmix.job.arr"          // (pmix_data_array_t) Provide an array of pmix_info_t containing job-level
+#define PMIX_JOB_INFO_ARRAY                 "pmix.job.arr"          // (pmix_data_array_t*) Provide an array of pmix_info_t containing job-level
                                                                     //        information. Information is registered one job (aka namespace) at a time
                                                                     //        via the PMIx_server_register_nspace API. Thus, there is no requirement that
                                                                     //        the array contain either the PMIX_NSPACE or PMIX_JOBID attributes, though
                                                                     //        either or both of them may be included.
-#define PMIX_APP_INFO_ARRAY                 "pmix.app.arr"          // (pmix_data_array_t) Provide an array of pmix_info_t containing app-level
+#define PMIX_APP_INFO_ARRAY                 "pmix.app.arr"          // (pmix_data_array_t*) Provide an array of pmix_info_t containing app-level
                                                                     //        information. The PMIX_NSPACE or PMIX_JOBID attributes of the job containing
                                                                     //        the appplication, plus its PMIX_APPNUM attribute, are required to be
                                                                     //        included in the array.
-#define PMIX_NODE_INFO_ARRAY                "pmix.node.arr"         // (pmix_data_array_t) Provide an array of pmix_info_t containing node-level
+#define PMIX_NODE_INFO_ARRAY                "pmix.node.arr"         // (pmix_data_array_t*) Provide an array of pmix_info_t containing node-level
                                                                     //        information. At a minimum, either the PMIX_NODEID or PMIX_HOSTNAME
                                                                     //        attribute is required to be included in the array, though both may be
                                                                     //        included.
-#define PMIX_SERVER_INFO_ARRAY              "pmix.srv.info"         // (pmix_data_array_t) array of data on a given server, starting with its nspace
+#define PMIX_SERVER_INFO_ARRAY              "pmix.srv.info"         // (pmix_data_array_t*) array of data on a given server, starting with its nspace
 
 
 /* log attributes */
@@ -593,7 +622,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_LOG_EMAIL_SERVER               "pmix.log.esrvr"        // (char*) hostname (or IP addr) of estmp server
 #define PMIX_LOG_EMAIL_SRVR_PORT            "pmix.log.esrvrprt"     // (int32_t) port the email server is listening to
 
-#define PMIX_LOG_GLOBAL_DATASTORE           "pmix.log.gstore"       // (bool)
+#define PMIX_LOG_GLOBAL_DATASTORE           "pmix.log.gstore"       // (bool) log the provided data to a global datastore
 #define PMIX_LOG_JOB_RECORD                 "pmix.log.jrec"         // (bool) log the provided information to the RM's job record
 
 
@@ -668,6 +697,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_ALLOC_NETWORK_ENDPTS           "pmix.alloc.endpts"     // (size_t) number of endpoints to allocate per process
 #define PMIX_ALLOC_NETWORK_ENDPTS_NODE      "pmix.alloc.endpts.nd"  // (size_t) number of endpoints to allocate per node
 #define PMIX_ALLOC_NETWORK_SEC_KEY          "pmix.alloc.nsec"       // (pmix_byte_object_t) network security key
+#define PMIX_ALLOC_QUEUE                    "pmix.alloc.queue"      // (char*) name of queue being referenced
 
 
 /* job control attributes */
@@ -682,7 +712,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_JOB_CTRL_CHECKPOINT_EVENT      "pmix.jctrl.ckptev"     // (bool) use event notification to trigger process checkpoint
 #define PMIX_JOB_CTRL_CHECKPOINT_SIGNAL     "pmix.jctrl.ckptsig"    // (int) use the given signal to trigger process checkpoint
 #define PMIX_JOB_CTRL_CHECKPOINT_TIMEOUT    "pmix.jctrl.ckptsig"    // (int) time in seconds to wait for checkpoint to complete
-#define PMIX_JOB_CTRL_CHECKPOINT_METHOD     "pmix.jctrl.ckmethod"   // (pmix_data_array_t) array of pmix_info_t declaring each
+#define PMIX_JOB_CTRL_CHECKPOINT_METHOD     "pmix.jctrl.ckmethod"   // (pmix_data_array_t*) array of pmix_info_t declaring each
                                                                     //      method and value supported by this application
 #define PMIX_JOB_CTRL_SIGNAL                "pmix.jctrl.sig"        // (int) send given signal to specified processes
 #define PMIX_JOB_CTRL_PROVISION             "pmix.jctrl.pvn"        // (char*) regex identifying nodes that are to be provisioned
@@ -708,8 +738,8 @@ typedef uint32_t pmix_rank_t;
                                                                     //         monitoring for this process)
 #define PMIX_MONITOR_APP_CONTROL            "pmix.monitor.appctrl"  // (bool) the application desires to control the response to
                                                                     //        a monitoring event
-#define PMIX_MONITOR_HEARTBEAT              "pmix.monitor.mbeat"    // (void) register to have the server monitor the requestor for heartbeats
-#define PMIX_SEND_HEARTBEAT                 "pmix.monitor.beat"     // (void) send heartbeat to local server
+#define PMIX_MONITOR_HEARTBEAT              "pmix.monitor.mbeat"    // (bool) register to have the server monitor the requestor for heartbeats
+#define PMIX_SEND_HEARTBEAT                 "pmix.monitor.beat"     // (bool) send heartbeat to local server
 #define PMIX_MONITOR_HEARTBEAT_TIME         "pmix.monitor.btime"    // (uint32_t) time in seconds before declaring heartbeat missed
 #define PMIX_MONITOR_HEARTBEAT_DROPS        "pmix.monitor.bdrop"    // (uint32_t) number of heartbeats that can be missed before
                                                                     //            generating the event
@@ -2042,8 +2072,6 @@ typedef struct pmix_regattr_t {
     char *name;
     pmix_key_t string;
     pmix_data_type_t type;
-    pmix_info_t *info;
-    size_t ninfo;
     char **description;
 } pmix_regattr_t;
 
@@ -2053,13 +2081,11 @@ typedef struct pmix_regattr_t {
             (a)->name = NULL;                           \
             memset((a)->string, 0, PMIX_MAX_KEYLEN+1);  \
             (a)->type = PMIX_UNDEF;                     \
-            (a)->info = NULL;                           \
-            (a)->ninfo = 0;                             \
             (a)->description = NULL;                    \
         }                                               \
     } while(0)
 
-#define PMIX_REGATTR_LOAD(a, n, k, t, ni, v)                    \
+#define PMIX_REGATTR_LOAD(a, n, k, t, v)                        \
     do {                                                        \
         pmix_status_t _rgl;                                     \
         if (NULL != (n)) {                                      \
@@ -2069,10 +2095,6 @@ typedef struct pmix_regattr_t {
             PMIX_LOAD_KEY((a)->string, (k));                    \
         }                                                       \
         (a)->type = (t);                                        \
-        if (0 < (ni)) {                                         \
-            PMIX_INFO_CREATE((a)->info, (ni));                  \
-            (a)->ninfo = (ni);                                  \
-        }                                                       \
         if (NULL != (v)) {                                      \
             PMIX_ARGV_APPEND(_rgl, &(a)->description, (v));     \
         }                                                       \
@@ -2116,13 +2138,6 @@ typedef struct pmix_regattr_t {
         }                                                               \
         PMIX_LOAD_KEY((a)->string, (b)->string);                        \
         (a)->type = (b)->type;                                          \
-        if (0 < (b)->ninfo) {                                           \
-            (a)->ninfo = (b)->ninfo;                                    \
-            PMIX_INFO_CREATE((a)->info, (a)->ninfo);                    \
-            for (_n=0; _n < (a)->ninfo; _n++) {                         \
-                PMIX_INFO_XFER(&(a)->info[_n], &(b)->info[_n]);         \
-            }                                                           \
-        }                                                               \
         if (NULL != (b)->description) {                                 \
             PMIX_ARGV_COPY((a)->description, (b)->description);         \
         }                                                               \
@@ -2628,6 +2643,8 @@ PMIX_EXPORT const char* PMIx_Data_type_string(pmix_data_type_t type);
 PMIX_EXPORT const char* PMIx_Alloc_directive_string(pmix_alloc_directive_t directive);
 PMIX_EXPORT const char* PMIx_IOF_channel_string(pmix_iof_channel_t channel);
 PMIX_EXPORT const char* PMIx_Job_state_string(pmix_job_state_t state);
+PMIX_EXPORT const char* PMIx_Get_attribute_string(char *attribute);
+PMIX_EXPORT const char* PMIx_Get_attribute_name(char *attrstring);
 
 /* Get the PMIx version string. Note that the provided string is
  * statically defined and must NOT be free'd  */

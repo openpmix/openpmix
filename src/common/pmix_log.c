@@ -264,8 +264,7 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
             PMIX_INFO_FREE(cd->directives, cd->ndirs);
             PMIX_RELEASE(cd);
         }
-    } else if (0 == strncmp(source->nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN) &&
-               source->rank == pmix_globals.myid.rank) {
+    } else if (PMIX_CHECK_PROCID(source, &pmix_globals.myid)) {
         /* if I am the recorded source, then this is a re-submission of
          * something that got "upcalled" by a prior call. In this case,
          * we return a "not supported" error as clearly we couldn't

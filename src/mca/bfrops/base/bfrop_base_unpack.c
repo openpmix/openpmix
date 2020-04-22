@@ -1557,23 +1557,6 @@ pmix_status_t pmix_bfrops_base_unpack_regattr(pmix_pointer_array_t *regtypes,
             PMIX_ERROR_LOG(ret);
             return ret;
         }
-        /* unpack the number of info */
-        m=1;
-        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].ninfo, &m, PMIX_SIZE, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            PMIX_ERROR_LOG(ret);
-            return ret;
-        }
-        if (0 < ptr[i].ninfo) {
-            /* unpack the info */
-            PMIX_INFO_CREATE(ptr[i].info, ptr[i].ninfo);
-            m =  ptr[i].ninfo;
-            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, ptr[i].info, &m, PMIX_INFO, regtypes);
-            if (PMIX_SUCCESS != ret) {
-                PMIX_ERROR_LOG(ret);
-                return ret;
-            }
-        }
         /* unpack the description */
         m=1;
         PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &nd, &m, PMIX_INT32, regtypes);

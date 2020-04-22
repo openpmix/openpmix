@@ -275,7 +275,7 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer,
         }
         *ninfo = 3;
         /* mark that this came from us */
-        PMIX_INFO_LOAD(info[0], PMIX_CRED_TYPE, "munge", PMIX_STRING);
+        PMIX_INFO_LOAD(info[0], PMIX_CRED_TYPE, "native", PMIX_STRING);
         /* provide the uid it contained */
         u32 = euid;
         PMIX_INFO_LOAD(info[1], PMIX_USERID, &u32, PMIX_UINT32);

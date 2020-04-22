@@ -887,10 +887,6 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
                 }
                 PMIX_LOAD_KEY(pr[n].string, sr[n].string);
                 pr[n].type = sr[n].type;
-                if (NULL != sr[n].info) {
-                    PMIX_INFO_XFER(pr[n].info, sr[n].info);
-                }
-                pr[n].ninfo = sr[n].ninfo;
                 pr[n].description = pmix_argv_copy(sr[n].description);
             }
             break;
@@ -997,10 +993,6 @@ pmix_status_t pmix_bfrops_base_copy_regattr(pmix_regattr_t **dest,
     }
     PMIX_LOAD_KEY((*dest)->string, src->string);
     (*dest)->type = src->type;
-    if (NULL != src->info) {
-        PMIX_INFO_XFER((*dest)->info, src->info);
-    }
-    (*dest)->ninfo = src->ninfo;
     (*dest)->description = pmix_argv_copy(src->description);
     return PMIX_SUCCESS;
 }
