@@ -23,7 +23,7 @@
 #include "src/include/pmix_config.h"
 
 
-#include "include/pmix_common.h"
+#include "include/pmix.h"
 #include "src/util/output.h"
 
  BEGIN_C_DECLS
