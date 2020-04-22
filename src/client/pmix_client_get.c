@@ -764,7 +764,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
         if (0 != strcmp(pmix_globals.mypeer->nptr->compat.gds->name, pmix_client_globals.myserver->nptr->compat.gds->name)) {
             PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, cb);
         } else {
-            rc = PMIX_ERR_TAKE_NEXT_OPTION;
+            rc = PMIX_ERR_NOT_FOUND;
         }
         if (PMIX_SUCCESS != rc) {
             pmix_output_verbose(5, pmix_client_globals.get_output,
