@@ -26,9 +26,6 @@
 #define PMIX_GLOBALS_H
 
 #include "src/include/pmix_config.h"
-
-#include "include/pmix_common.h"
-
 #include "src/include/types.h"
 
 #include <unistd.h>
@@ -39,6 +36,7 @@
 
 #include "include/pmix.h"
 #include "include/pmix_common.h"
+#include "include/pmix_tool.h"
 
 #include "src/class/pmix_hash_table.h"
 #include "src/class/pmix_list.h"
@@ -82,6 +80,15 @@ typedef struct {
     pmix_name_t *pname;
 } pmix_namelist_t;
 PMIX_CLASS_DECLARATION(pmix_namelist_t);
+
+/* define a struct for holding entries in the
+ * dictionary of attributes */
+typedef struct {
+    char *name;
+    char *string;
+    pmix_data_type_t type;
+    char **description;
+} pmix_regattr_input_t;
 
 /* define a command type for communicating to the
  * pmix server */

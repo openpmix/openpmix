@@ -24,6 +24,7 @@
 #include "src/client/pmix_client_ops.h"
 
 #include "src/common/pmix_attributes.h"
+#include "src/include/dictionary.h"
 
 static bool initialized = false;
 static pmix_list_t client_attrs;
@@ -32,26 +33,27 @@ static pmix_list_t host_attrs;
 static pmix_list_t tool_attrs;
 
 typedef struct {
+    char *function;
+    char **attrs;
+} pmix_attr_init_t;
+
+typedef struct {
     pmix_list_item_t super;
     char *function;
-    pmix_regattr_t *attrs;
-    size_t nattrs;
+    char **attrs;
 } pmix_attribute_trk_t;
 
 static void atrkcon(pmix_attribute_trk_t *p)
 {
     p->function = NULL;
     p->attrs = NULL;
-    p->nattrs = 0;
 }
 static void atrkdes(pmix_attribute_trk_t *p)
 {
     if (NULL != p->function) {
         free(p->function);
     }
-    if (NULL != p->attrs) {
-        PMIX_REGATTR_FREE(p->attrs, p->nattrs);
-    }
+    pmix_argv_free(p->attrs);
 }
 static PMIX_CLASS_INSTANCE(pmix_attribute_trk_t,
                            pmix_list_item_t,
@@ -69,11 +71,10 @@ PMIX_EXPORT void pmix_init_registered_attrs(void)
 }
 
 static pmix_status_t process_reg(char *level, char *function,
-                                 pmix_regattr_t attrs[], size_t nattrs)
+                                 char **attrs)
 {
     pmix_attribute_trk_t *fnptr;
     pmix_list_t *lst;
-    size_t n;
 
     /* select the list this will appear on */
     if (0 == strcmp(level, PMIX_CLIENT_ATTRIBUTES)) {
@@ -100,21 +101,13 @@ static pmix_status_t process_reg(char *level, char *function,
     fnptr = PMIX_NEW(pmix_attribute_trk_t);
     pmix_list_append(lst, &fnptr->super);
     fnptr->function = strdup(function);
-    if (0 < nattrs) {
-        fnptr->nattrs = nattrs;
-        PMIX_REGATTR_CREATE(fnptr->attrs, fnptr->nattrs);
-        for (n=0; n < nattrs; n++) {
-            fnptr->attrs[n].name = strdup(attrs[n].name);
-            PMIX_LOAD_KEY(fnptr->attrs[n].string, attrs[n].string);
-            fnptr->attrs[n].type = attrs[n].type;
-            PMIX_ARGV_COPY(fnptr->attrs[n].description, attrs[n].description);
-        }
+    if (NULL != attrs) {
+        fnptr->attrs = pmix_argv_copy(attrs);
     }
     return PMIX_SUCCESS;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Register_attributes(char *function,
-                                                   pmix_regattr_t attrs[], size_t nattrs)
+PMIX_EXPORT pmix_status_t PMIx_Register_attributes(char *function, char *attrs[])
 {
     pmix_status_t rc;
 
@@ -124,7 +117,7 @@ PMIX_EXPORT pmix_status_t PMIx_Register_attributes(char *function,
         return PMIX_ERR_INIT;
     }
 
-    rc = process_reg(PMIX_HOST_ATTRIBUTES, function, attrs, nattrs);
+    rc = process_reg(PMIX_HOST_ATTRIBUTES, function, attrs);
     PMIX_RELEASE_THREAD(&pmix_global_lock);
     return rc;
 }
@@ -145,127 +138,68 @@ PMIX_EXPORT void pmix_release_registered_attrs(void)
  * attributes they want to know about - which somewhat defeats the
  * purpose. Until someone comes up with a better solution, we will
  * manually maintain the list */
-static char *client_fns[] = {
-    "PMIx_Init",
-    "PMIx_Finalize",
-    "PMIx_Put",
-    "PMIx_Get",
-    "PMIx_Get_nb",
-    "PMIx_Store_internal",
-    "PMIx_Commit",
-    "PMIx_Fence",
-    "PMIx_Fence_nb",
-    "PMIx_Publish",
-    "PMIx_Group_construct",
-    "PMIx_Group_construct_nb",
-    "PMIx_Group_destruct",
-    "PMIx_Group_destruct_nb",
-    "PMIx_Group_invite",
-    "PMIx_Group_invite_nb",
-    "PMIx_Group_join",
-    "PMIx_Group_join_nb",
-    "PMIx_Spawn",
-    "PMIx_Spawn_nb",
-    "PMIx_Log",
-    "PMIx_Log_nb"
-};
-
-typedef struct {
-    char *name;
-    char *string;
-    pmix_data_type_t type;
-    char **description;
-} pmix_regattr_input_t;
-
-static pmix_regattr_input_t client_attributes[] = {
-        // init
-        {.name = "PMIX_GDS_MODULE", .string = PMIX_GDS_MODULE, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
-        {.name = "PMIX_EVENT_BASE", .string = PMIX_EVENT_BASE, .type = PMIX_POINTER, .description = (char *[]){"VALID MEMORY REFERENCE", NULL}},
-        {.name = "PMIX_HOSTNAME", .string = PMIX_HOSTNAME, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
-        {.name = "PMIX_NODEID", .string = PMIX_NODEID, .type = PMIX_UINT32, .description = (char *[]){"POSITIVE INTEGERS", NULL}},
-        {.name = "PMIX_PROGRAMMING_MODEL", .string = PMIX_PROGRAMMING_MODEL, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
-        {.name = "PMIX_MODEL_LIBRARY_NAME", .string = PMIX_MODEL_LIBRARY_NAME, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
-        {.name = "PMIX_MODEL_LIBRARY_VERSION", .string = PMIX_MODEL_LIBRARY_VERSION, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
-        {.name = "PMIX_THREADING_MODEL", .string = PMIX_THREADING_MODEL, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
-        {.name = "PMIX_USOCK_DISABLE", .string = PMIX_USOCK_DISABLE, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Disable usock messaging interface", NULL}},
-        {.name = "PMIX_SOCKET_MODE", .string = PMIX_SOCKET_MODE, .type = PMIX_UINT32, .description = (char *[]){"Valid POSIX mode_t value", NULL}},
-        {.name = "PMIX_TCP_REPORT_URI", .string = PMIX_TCP_REPORT_URI, .type = PMIX_STRING, .description = (char *[]){"-, +, or filename", NULL}},
-        {.name = "PMIX_TCP_IF_INCLUDE", .string = PMIX_TCP_IF_INCLUDE, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", "Comma-separated list of", "TCP interfaces to include", NULL}},
-        {.name = "PMIX_TCP_IF_EXCLUDE", .string = PMIX_TCP_IF_EXCLUDE, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", "Comma-separated list of", "TCP interfaces to exclude", NULL}},
-        {.name = "PMIX_TCP_IPV4_PORT", .string = PMIX_TCP_IPV4_PORT, .type = PMIX_INT, .description = (char *[]){"POSITIVE INTEGERS", "IPv4 port to be used", NULL}},
-        {.name = "PMIX_TCP_IPV6_PORT", .string = PMIX_TCP_IPV6_PORT, .type = PMIX_INT, .description = (char *[]){"POSITIVE INTEGERS", "IPv6 port to be used", NULL}},
-        {.name = "PMIX_TCP_DISABLE_IPV4", .string = PMIX_TCP_DISABLE_IPV4, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Disable IPv4 messaging interface", NULL}},
-        {.name = "PMIX_TCP_DISABLE_IPV6", .string = PMIX_TCP_DISABLE_IPV6, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Disable IPv6 messaging interface", NULL}},
-        {.name = ""},
-        // finalize
-        {.name = "PMIX_EMBED_BARRIER", .string = PMIX_EMBED_BARRIER, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Execute fence during finalize", NULL}},
-        {.name = ""},
-        // put
-        {.name = ""},
-        // get
-        {.name = "PMIX_DATA_SCOPE", .string = PMIX_DATA_SCOPE, .type = PMIX_SCOPE, .description = (char *[]){"PMIX_SCOPE_UNDEF,PMIX_LOCAL,", "PMIX_REMOTE,PMIX_GLOBAL,", "PMIX_INTERNAL", NULL}},
-        {.name = "PMIX_OPTIONAL", .string = PMIX_OPTIONAL, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = "PMIX_IMMEDIATE", .string = PMIX_IMMEDIATE, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = "PMIX_SESSION_INFO", .string = PMIX_SESSION_INFO, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Requesting session-level value", NULL}},
-        {.name = "PMIX_JOB_INFO", .string = PMIX_JOB_INFO, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Requesting job-level value", NULL}},
-        {.name = "PMIX_APP_INFO", .string = PMIX_APP_INFO, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Requesting app-level value", NULL}},
-        {.name = "PMIX_NODE_INFO", .string = PMIX_NODE_INFO, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Requesting node-level value", NULL}},
-        {.name = ""},
-        // get_nb
-        {.name = "PMIX_DATA_SCOPE", .string = PMIX_DATA_SCOPE, .type = PMIX_SCOPE, .description = (char *[]){"PMIX_SCOPE_UNDEF,PMIX_LOCAL,", "PMIX_REMOTE,PMIX_GLOBAL,", "PMIX_INTERNAL", NULL}},
-        {.name = "PMIX_OPTIONAL", .string = PMIX_OPTIONAL, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = "PMIX_IMMEDIATE", .string = PMIX_IMMEDIATE, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = "PMIX_SESSION_INFO", .string = PMIX_SESSION_INFO, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Requesting session-level value", NULL}},
-        {.name = "PMIX_JOB_INFO", .string = PMIX_JOB_INFO, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Requesting job-level value", NULL}},
-        {.name = "PMIX_APP_INFO", .string = PMIX_APP_INFO, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Requesting app-level value", NULL}},
-        {.name = "PMIX_NODE_INFO", .string = PMIX_NODE_INFO, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Requesting node-level value", NULL}},
-        {.name = ""},
-        // store_internal
-        {.name = ""},
-        // commit
-        {.name = ""},
-        // fence
-        {.name = ""},
-        // fence_nb
-        {.name = ""},
-        // publish
-        {.name = ""},
-        // group_construct
-        {.name = "PMIX_EMBED_BARRIER", .string = PMIX_EMBED_BARRIER, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = ""},
-        // group_construct_nb
-        {.name = "PMIX_EMBED_BARRIER", .string = PMIX_EMBED_BARRIER, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = ""},
-        // group_destruct
-        {.name = "PMIX_EMBED_BARRIER", .string = PMIX_EMBED_BARRIER, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = ""},
-        // group_destruct_nb
-        {.name = "PMIX_TIMEOUT", .string = PMIX_TIMEOUT, .type = PMIX_INT, .description = (char *[]){"POSITIVE INTEGERS", NULL}},
-        {.name = ""},
-        // group_invite
-        {.name = "PMIX_TIMEOUT", .string = PMIX_TIMEOUT, .type = PMIX_INT, .description = (char *[]){"POSITIVE INTEGERS", NULL}},
-        {.name = ""},
-        // group_invite_nb
-        {.name = "PMIX_TIMEOUT", .string = PMIX_TIMEOUT, .type = PMIX_INT, .description = (char *[]){"POSITIVE INTEGERS", NULL}},
-        {.name = ""},
-        // group_join
-        {.name = "PMIX_TIMEOUT", .string = PMIX_TIMEOUT, .type = PMIX_INT, .description = (char *[]){"POSITIVE INTEGERS", NULL}},
-        {.name = ""},
-        // group_join_nb
-        {.name = "PMIX_SETUP_APP_ENVARS", .string = PMIX_SETUP_APP_ENVARS, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
-        {.name = ""},
-        // spawn
-        {.name = "PMIX_SETUP_APP_ENVARS", .string = PMIX_SETUP_APP_ENVARS, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
-        {.name = ""},
-        // spawn_nb
-        {.name = "PMIX_EMBED_BARRIER", .string = PMIX_EMBED_BARRIER, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = ""},
-        // log
-        {.name = "PMIX_LOG_GENERATE_TIMESTAMP", .string = PMIX_LOG_GENERATE_TIMESTAMP, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = ""},
-        // log_nb
-        {.name = "PMIX_LOG_GENERATE_TIMESTAMP", .string = PMIX_LOG_GENERATE_TIMESTAMP, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = ""},
+static pmix_attr_init_t client_fns[] = {
+    {.function = "PMIx_Init", .attrs = (char *[]){"PMIX_GDS_MODULE", "PMIX_EVENT_BASE", "PMIX_HOSTNAME",
+                                                  "PMIX_NODEID", NULL}},
+    {.function = "PMIx_Finalize", .attrs = (char *[]){"PMIX_EMBED_BARRIER", NULL}},
+    {.function = "PMIx_Initialized", .attrs = (char *[]){"N/A", NULL}},
+    {.function = "PMIx_Abort", .attrs = (char *[]){"N/A", NULL}},
+    {.function = "PMIx_Store_internal", .attrs = (char *[]){"N/A", NULL}},
+    {.function = "PMIx_Put", .attrs = (char *[]){"N/A", NULL}},
+    {.function = "PMIx_Commit", .attrs = (char *[]){"N/A", NULL}},
+    {.function = "PMIx_Fence", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_Fence_nb", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_Get", .attrs = (char *[]){"PMIX_NODE_INFO", "PMIX_HOSTNAME", "PMIX_NODEID",
+                                                 "PMIX_APP_INFO", "PMIX_APPNUM", "PMIX_SESSION_INFO",
+                                                 "PMIX_GET_REFRESH_CACHE", NULL}},
+    {.function = "PMIx_Get_nb", .attrs = (char *[]){"PMIX_NODE_INFO", "PMIX_HOSTNAME", "PMIX_NODEID",
+                                                    "PMIX_APP_INFO", "PMIX_APPNUM", "PMIX_SESSION_INFO",
+                                                    "PMIX_GET_REFRESH_CACHE", NULL}},
+    {.function = "PMIx_Publish", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_Publish_nb", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_Lookup", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_Lookup_nb", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_Unpublish", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_Unpublish_nb", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_Spawn", .attrs = (char *[]){"PMIX_SETUP_APP_ENVARS", NULL}},
+    {.function = "PMIx_Spawn_nb", .attrs = (char *[]){"PMIX_SETUP_APP_ENVARS", NULL}},
+    {.function = "PMIx_Connect", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_Connect_nb", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_Disconnect", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_Disconnect_nb", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_Resolve_peers", .attrs = (char *[]){"N/A", NULL}},
+    {.function = "PMIx_Resolve_nodes", .attrs = (char *[]){"N/A", NULL}},
+    {.function = "PMIx_Query_info", .attrs = (char *[]){"PMIX_QUERY_SUPPORTED_KEYS", "PMIX_QUERY_NAMESPACES",
+                                                        "PMIX_QUERY_ATTRIBUTE_SUPPORT", "PMIX_QUERY_AVAIL_SERVERS",
+                                                        "PMIX_QUERY_REFRESH_CACHE", "PMIX_QUERY_SUPPORTED_KEYS",
+                                                        "PMIX_QUERY_SUPPORTED_QUALIFIERS", NULL}},
+    {.function = "PMIx_Query_info_nb", .attrs = (char *[]){"PMIX_QUERY_SUPPORTED_KEYS", "PMIX_QUERY_NAMESPACES",
+                                                           "PMIX_QUERY_ATTRIBUTE_SUPPORT", "PMIX_QUERY_AVAIL_SERVERS",
+                                                           "PMIX_QUERY_REFRESH_CACHE", "PMIX_QUERY_SUPPORTED_KEYS",
+                                                           "PMIX_QUERY_SUPPORTED_QUALIFIERS", NULL}},
+    {.function = "PMIx_Log", .attrs = (char *[]){"PMIX_LOG_GENERATE_TIMESTAMP", "PMIX_LOG_SOURCE", NULL}},
+    {.function = "PMIx_Log_nb", .attrs = (char *[]){"PMIX_LOG_GENERATE_TIMESTAMP", "PMIX_LOG_SOURCE", NULL}},
+    {.function = "PMIx_Allocation_request", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_Allocation_request_nb", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_Job_control", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_Job_control_nb", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_Process_monitor", .attrs = (char *[]){"PMIX_SEND_HEARTBEAT", NULL}},
+    {.function = "PMIx_Process_monitor_nb", .attrs = (char *[]){"PMIX_SEND_HEARTBEAT", NULL}},
+    {.function = "PMIx_Get_credential", .attrs = (char *[]){"PMIX_CRED_TYPE", NULL}},
+    {.function = "PMIx_Get_credential_nb", .attrs = (char *[]){"PMIX_CRED_TYPE", NULL}},
+    {.function = "PMIx_Validate_credential", .attrs = (char *[]){"PMIX_CRED_TYPE", NULL}},
+    {.function = "PMIx_Validate_credential_nb", .attrs = (char *[]){"PMIX_CRED_TYPE", NULL}},
+    {.function = "PMIx_Group_construct", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_Group_construct_nb", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_Group_invite", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_Group_invite_nb", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_Group_join", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_Group_join_nb", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_Group_leave", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_Group_leave_nb", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_Group_destruct", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_Group_destruct_nb", .attrs = (char *[]){"NONE", NULL}},
+    {.function = ""}
 };
 
 /*****    REGISTER CLIENT ATTRS    *****/
@@ -273,259 +207,61 @@ static bool client_attrs_regd = false;
 
 PMIX_EXPORT pmix_status_t pmix_register_client_attrs(void)
 {
-    size_t nregs, nattrs, n, m;
-    size_t cnt = 0;
+    size_t n;
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_regattr_t *attrs;
 
     if (client_attrs_regd) {
         return PMIX_SUCCESS;
     }
     client_attrs_regd = true;
 
-    nregs = sizeof(client_fns) / sizeof(char*);
-
-    /* we know we have to prep the GDS, PTL, BFROPS, and SEC
-     * entries as these are dynamically defined */
-    client_attributes[0].description[0] = pmix_gds_base_get_available_modules();
-
-    for (n=0; n < nregs; n++) {
-        nattrs = 0;
-        while (0 != strlen(client_attributes[cnt+nattrs].name)) {
-            ++nattrs;
-        }
-        PMIX_REGATTR_CREATE(attrs, nattrs);
-        for (m=0; m < nattrs; m++) {
-            attrs[m].name = strdup(client_attributes[m+cnt].name);
-            PMIX_LOAD_KEY(attrs[m].string, client_attributes[m+cnt].string);
-            attrs[m].type = client_attributes[m+cnt].type;
-            PMIX_ARGV_COPY(attrs[m].description, client_attributes[m+cnt].description);
-        }
+    for (n=0; 0 != strlen(client_fns[n].function); n++) {
         rc = process_reg(PMIX_CLIENT_ATTRIBUTES,
-                         client_fns[n],
-                         attrs, nattrs);
-        PMIX_REGATTR_FREE(attrs, nattrs);
+                         client_fns[n].function, client_fns[n].attrs);
         if (PMIX_SUCCESS != rc) {
             break;
         }
-        cnt += nattrs + 1;
     }
 
-    if (NULL != client_attributes[0].description[0]) {
-        free(client_attributes[0].description[0]);
-        client_attributes[0].description[0] = NULL;
-    }
-    return PMIX_SUCCESS;
+    return rc;
 }
 
-static char *server_fns[] = {
-    "PMIx_server_init",
-    "PMIx_server_finalize",
-    "PMIx_generate_regex",
-    "PMIx_generate_ppn",
-    "PMIx_server_register_nspace",
-    "PMIx_server_deregister_nspace",
-    "PMIx_server_register_client",
-    "PMIx_server_deregister_client",
-    "PMIx_server_setup_fork",
-    "PMIx_server_dmodex_request",
-    "PMIx_server_setup_application",
-    "PMIx_Register_attributes",
-    "PMIx_server_setup_local_support",
-    "PMIx_server_IOF_deliver",
-    "PMIx_server_collect_inventory",
-    "PMIx_server_deliver_inventory",
-    "PMIx_Get",
-    "PMIx_Get_nb",
-    "PMIx_Fence",
-    "PMIx_Fence_nb",
-    "PMIx_Spawn",
-    "PMIx_Spawn_nb",
-    "PMIx_Connect",
-    "PMIx_Connect_nb",
-    "PMIx_Register_event_handler",
-    "PMIx_Query_info",
-    "PMIx_Query_info_nb",
-    "PMIx_Job_control",
-    "PMIx_Job_control_nb"
-};
-
-static pmix_regattr_input_t server_attributes[] = {
-    // init
-        {.name = "PMIX_GDS_MODULE", .string = PMIX_GDS_MODULE, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
-        {.name = "PMIX_EVENT_BASE", .string = PMIX_EVENT_BASE, .type = PMIX_POINTER, .description = (char *[]){"VALID MEMORY REFERENCE", NULL}},
-        {.name = "PMIX_HOSTNAME", .string = PMIX_HOSTNAME, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
-        {.name = "PMIX_NODEID", .string = PMIX_NODEID, .type = PMIX_UINT32, .description = (char *[]){"POSITIVE INTEGERS", NULL}},
-        {.name = "PMIX_SINGLE_LISTENER", .string = PMIX_SINGLE_LISTENER, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Only use one messaging interface", NULL}},
-        {.name = "PMIX_USOCK_DISABLE", .string = PMIX_USOCK_DISABLE, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Disable usock messaging interface", NULL}},
-        {.name = "PMIX_SOCKET_MODE", .string = PMIX_SOCKET_MODE, .type = PMIX_UINT32, .description = (char *[]){"Valid POSIX mode_t value", NULL}},
-        {.name = "PMIX_TCP_REPORT_URI", .string = PMIX_TCP_REPORT_URI, .type = PMIX_STRING, .description = (char *[]){"-, +, or filename", NULL}},
-        {.name = "PMIX_TCP_IF_INCLUDE", .string = PMIX_TCP_IF_INCLUDE, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", "Comma-separated list of", "TCP interfaces to include", NULL}},
-        {.name = "PMIX_TCP_IF_EXCLUDE", .string = PMIX_TCP_IF_EXCLUDE, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", "Comma-separated list of", "TCP interfaces to exclude", NULL}},
-        {.name = "PMIX_TCP_IPV4_PORT", .string = PMIX_TCP_IPV4_PORT, .type = PMIX_INT, .description = (char *[]){"POSITIVE INTEGERS", "IPv4 port to be used", NULL}},
-        {.name = "PMIX_TCP_IPV6_PORT", .string = PMIX_TCP_IPV6_PORT, .type = PMIX_INT, .description = (char *[]){"POSITIVE INTEGERS", "IPv6 port to be used", NULL}},
-        {.name = "PMIX_TCP_DISABLE_IPV4", .string = PMIX_TCP_DISABLE_IPV4, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Disable IPv4 messaging interface", NULL}},
-        {.name = "PMIX_TCP_DISABLE_IPV6", .string = PMIX_TCP_DISABLE_IPV6, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Disable IPv6 messaging interface", NULL}},
-        {.name = "PMIX_SERVER_REMOTE_CONNECTIONS", .string = PMIX_SERVER_REMOTE_CONNECTIONS, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Allow connections from", "remote tools", NULL}},
-        {.name = "PMIX_SERVER_NSPACE", .string = PMIX_SERVER_NSPACE, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", "Namespace assigned to server", NULL}},
-        {.name = "PMIX_SERVER_RANK", .string = PMIX_SERVER_RANK, .type = PMIX_PROC_RANK, .description = (char *[]){"POSITIVE INTEGERS", "Rank assigned to server", NULL}},
-        {.name = "PMIX_SERVER_TMPDIR", .string = PMIX_SERVER_TMPDIR, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", "Path to temp directory", "assigned to server", NULL}},
-        {.name = "PMIX_SYSTEM_TMPDIR", .string = PMIX_SYSTEM_TMPDIR, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", "Path to system temp directory", NULL}},
-        {.name = "PMIX_SERVER_TOOL_SUPPORT", .string = PMIX_SERVER_TOOL_SUPPORT, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Allow tool connections", NULL}},
-        {.name = "PMIX_SERVER_SYSTEM_SUPPORT", .string = PMIX_SERVER_SYSTEM_SUPPORT, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Declare server as being the", "local system server for PMIx", "connection requests", NULL}},
-        {.name = ""},
-    // finalize
-        {.name = ""},
-    // regex
-        {.name = "PMIX_DATA_SCOPE", .string = PMIX_DATA_SCOPE, .type = PMIX_SCOPE, .description = (char *[]){"PMIX_SCOPE_UNDEF,PMIX_LOCAL,","PMIX_REMOTE,PMIX_GLOBAL,", "PMIX_INTERNAL", NULL}},
-        {.name = "PMIX_OPTIONAL", .string = PMIX_OPTIONAL, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = "PMIX_IMMEDIATE", .string = PMIX_IMMEDIATE, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = "PMIX_TIMEOUT", .string = PMIX_TIMEOUT, .type = PMIX_INT, .description = (char *[]){"POSITIVE INTEGERS", NULL}},
-        {.name = ""},
-    // ppn
-        {.name = "PMIX_EMBED_BARRIER", .string = PMIX_EMBED_BARRIER, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = ""},
-    // register_nspace
-        {.name = "PMIX_EMBED_BARRIER", .string = PMIX_EMBED_BARRIER, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = ""},
-    // deregister_nspace
-        {.name = "PMIX_EMBED_BARRIER", .string = PMIX_EMBED_BARRIER, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = ""},
-    // register_client
-        {.name = "PMIX_EMBED_BARRIER", .string = PMIX_EMBED_BARRIER, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = ""},
-    // deregister_client
-        {.name = "PMIX_TIMEOUT", .string = PMIX_TIMEOUT, .type = PMIX_INT, .description = (char *[]){"POSITIVE INTEGERS", NULL}},
-        {.name = ""},
-    // setup_fork
-        {.name = "PMIX_TIMEOUT", .string = PMIX_TIMEOUT, .type = PMIX_INT, .description = (char *[]){"POSITIVE INTEGERS", NULL}},
-        {.name = ""},
-    // dmodex_request
-        {.name = "PMIX_TIMEOUT", .string = PMIX_TIMEOUT, .type = PMIX_INT, .description = (char *[]){"POSITIVE INTEGERS", NULL}},
-        {.name = ""},
-    // setup_application
-        {.name = "PMIX_TIMEOUT", .string = PMIX_TIMEOUT, .type = PMIX_INT, .description = (char *[]){"POSITIVE INTEGERS", NULL}},
-        {.name = ""},
-    // register_attributes
-        {.name = "PMIX_SETUP_APP_ENVARS", .string = PMIX_SETUP_APP_ENVARS, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
-        {.name = ""},
-    // setup_local_support
-        {.name = "PMIX_SETUP_APP_ENVARS", .string = PMIX_SETUP_APP_ENVARS, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
-        {.name = ""},
-    // IOF deliver
-        {.name = "PMIX_EMBED_BARRIER", .string = PMIX_EMBED_BARRIER, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = ""},
-    // collect_inventory
-        {.name = "PMIX_LOG_GENERATE_TIMESTAMP", .string = PMIX_LOG_GENERATE_TIMESTAMP, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = ""},
-    // deliver_inventory
-        {.name = "PMIX_LOG_GENERATE_TIMESTAMP", .string = PMIX_LOG_GENERATE_TIMESTAMP, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = ""},
-    // get
-        {.name = "PMIX_IMMEDIATE", .string = PMIX_IMMEDIATE, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = "PMIX_TIMEOUT", .string = PMIX_TIMEOUT, .type = PMIX_INT, .description = (char *[]){"POSITIVE INTEGERS", NULL}},
-        {.name = ""},
-    // get_nb
-        {.name = "PMIX_IMMEDIATE", .string = PMIX_IMMEDIATE, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = "PMIX_TIMEOUT", .string = PMIX_TIMEOUT, .type = PMIX_INT, .description = (char *[]){"POSITIVE INTEGERS", NULL}},
-        {.name = ""},
-    // fence
-        {.name = "PMIX_COLLECT_DATA", .string = PMIX_COLLECT_DATA, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = "PMIX_TIMEOUT", .string = PMIX_TIMEOUT, .type = PMIX_INT, .description = (char *[]){"POSITIVE INTEGERS", NULL}},
-        {.name = ""},
-    // fence_nb
-        {.name = "PMIX_COLLECT_DATA", .string = PMIX_COLLECT_DATA, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = "PMIX_TIMEOUT", .string = PMIX_TIMEOUT, .type = PMIX_INT, .description = (char *[]){"POSITIVE INTEGERS", NULL}},
-        {.name = ""},
-    // spawn
-        {.name = "PMIX_FWD_STDIN", .string = PMIX_FWD_STDIN, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = "PMIX_FWD_STDOUT", .string = PMIX_FWD_STDOUT, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = "PMIX_FWD_STDERR", .string = PMIX_FWD_STDERR, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = "PMIX_FWD_STDDIAG", .string = PMIX_FWD_STDDIAG, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = ""},
-    // spawn_nb
-        {.name = "PMIX_FWD_STDIN", .string = PMIX_FWD_STDIN, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = "PMIX_FWD_STDOUT", .string = PMIX_FWD_STDOUT, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = "PMIX_FWD_STDERR", .string = PMIX_FWD_STDERR, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = "PMIX_FWD_STDDIAG", .string = PMIX_FWD_STDDIAG, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = ""},
-    // connect
-        {.name = "PMIX_TIMEOUT", .string = PMIX_TIMEOUT, .type = PMIX_INT, .description = (char *[]){"POSITIVE INTEGERS", NULL}},
-        {.name = ""},
-    // connect_nb
-        {.name = "PMIX_TIMEOUT", .string = PMIX_TIMEOUT, .type = PMIX_INT, .description = (char *[]){"POSITIVE INTEGERS", NULL}},
-        {.name = ""},
-    // register_event
-        {.name = "PMIX_EVENT_AFFECTED_PROC", .string = PMIX_EVENT_AFFECTED_PROC, .type = PMIX_PROC, .description = (char *[]){"pmix_proc_t*", NULL}},
-        {.name = "PMIX_EVENT_AFFECTED_PROCS", .string = PMIX_EVENT_AFFECTED_PROCS, .type = PMIX_DATA_ARRAY, .description = (char *[]){"Array of pmix_proc_t", NULL}},
-        {.name = ""},
-    // query
-        {.name = "PMIX_QUERY_REFRESH_CACHE", .string = PMIX_QUERY_REFRESH_CACHE, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = "PMIX_PROCID", .string = PMIX_PROCID, .type = PMIX_PROC, .description = (char *[]){"pmix_proc_t*", NULL}},
-        {.name = "PMIX_NSPACE", .string = PMIX_NSPACE, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
-        {.name = "PMIX_RANK", .string = PMIX_RANK, .type = PMIX_PROC_RANK, .description = (char *[]){"UNSIGNED INT32", NULL}},
-        {.name = "PMIX_HOSTNAME", .string = PMIX_HOSTNAME, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
-        {.name = "PMIX_QUERY_STORAGE_LIST", .string = PMIX_QUERY_STORAGE_LIST, .type = PMIX_STRING, .description = (char *[]){"Comma-delimited list of storage identifiers", NULL}},
-        {.name = "PMIX_STORAGE_CAPACITY_LIMIT", .string = PMIX_STORAGE_CAPACITY_LIMIT, .type = PMIX_UINT64, .description = (char *[]){"Overall capacity (in Megabytes[base2]) of specified storage system", NULL}},
-        {.name = "PMIX_STORAGE_CAPACITY_FREE", .string = PMIX_STORAGE_CAPACITY_FREE, .type = PMIX_UINT64, .description = (char *[]){"Free capacity (in Megabytes[base2]) of specified storage system", NULL}},
-        {.name = "PMIX_STORAGE_CAPACITY_AVAIL", .string = PMIX_STORAGE_CAPACITY_AVAIL, .type = PMIX_UINT64, .description = (char *[]){"Storage capacity (in Megabytes[[base2]]) available to caller", NULL}},
-        {.name = "PMIX_STORAGE_OBJECT_LIMIT", .string = PMIX_STORAGE_OBJECT_LIMIT, .type = PMIX_UINT64, .description = (char *[]){"Overall limit on number of objects (e.g., inodes) of specified storage system", NULL}},
-        {.name = "PMIX_STORAGE_OBJECTS_FREE", .string = PMIX_STORAGE_OBJECTS_FREE, .type = PMIX_UINT64, .description = (char *[]){"Number of free objects (e.g., inodes) of specified storage system", NULL}},
-        {.name = "PMIX_STORAGE_OBJECTS_AVAIL", .string = PMIX_STORAGE_OBJECTS_AVAIL, .type = PMIX_UINT64, .description = (char *[]){"Number of objects (e.g., inodes) of specified storage system available to caller", NULL}},
-        {.name = "PMIX_STORAGE_BW", .string = PMIX_STORAGE_BW, .type = PMIX_FLOAT, .description = (char *[]){"Total storage system bandwidth (in Megabytes[base2]/sec) of specified storage system", NULL}},
-        {.name = "PMIX_STORAGE_AVAIL_BW", .string = PMIX_STORAGE_AVAIL_BW, .type = PMIX_FLOAT, .description = (char *[]){"Storage system bandwidth (in Megabytes[base2]/sec) of specified storage system available to caller", NULL}},
-        {.name = "PMIX_STORAGE_ID", .string = PMIX_STORAGE_ID, .type = PMIX_STRING, .description = (char *[]){"Identifier of the storage system being referenced", NULL}},
-        {.name = "PMIX_STORAGE_PATH", .string = PMIX_STORAGE_PATH, .type = PMIX_STRING, .description = (char *[]){"Mount point corresponding to a specified storage ID", NULL}},
-        {.name = "PMIX_STORAGE_TYPE", .string = PMIX_STORAGE_TYPE, .type = PMIX_STRING, .description = (char *[]){"Qualifier indicating the type of storage being referenced by a query (e.g., lustre, gpfs, online, network-attached, ...)", NULL}},
-        {.name = "PMIX_QUERY_AVAIL_SERVERS", .string = PMIX_QUERY_AVAIL_SERVERS, .type = PMIX_DATA_ARRAY, .description = (char *[]){"Array of pmix_info_t, each containing an array of info about an available server", NULL}},
-        {.name = "PMIX_SERVER_START_TIME", .string = PMIX_SERVER_START_TIME, .type = PMIX_STRING, .description = (char *[]){"Start time of the server", NULL}},
-        {.name = "PMIX_SERVER_INFO_ARRAY", .string = PMIX_SERVER_INFO_ARRAY, .type = PMIX_DATA_ARRAY, .description = (char *[]){"Array of data on a given server, starting with its nspace", NULL}},
-        {.name = "PMIX_USERID", .string = PMIX_USERID, .type = PMIX_UINT32, .description = (char *[]){"Effective user ID", NULL}},
-        {.name = "PMIX_GRPID", .string = PMIX_GRPID, .type = PMIX_UINT32, .description = (char *[]){"Effective group ID", NULL}},
-        {.name = "PMIX_VERSION_INFO", .string = PMIX_VERSION_INFO, .type = PMIX_STRING, .description = (char *[]){"PMIx version", NULL}},
-        {.name = ""},
-    // query_nb
-        {.name = "PMIX_QUERY_REFRESH_CACHE", .string = PMIX_QUERY_REFRESH_CACHE, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = "PMIX_PROCID", .string = PMIX_PROCID, .type = PMIX_PROC, .description = (char *[]){"pmix_proc_t*", NULL}},
-        {.name = "PMIX_NSPACE", .string = PMIX_NSPACE, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
-        {.name = "PMIX_RANK", .string = PMIX_RANK, .type = PMIX_PROC_RANK, .description = (char *[]){"UNSIGNED INT32", NULL}},
-        {.name = "PMIX_HOSTNAME", .string = PMIX_HOSTNAME, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
-        {.name = "PMIX_QUERY_STORAGE_LIST", .string = PMIX_QUERY_STORAGE_LIST, .type = PMIX_STRING, .description = (char *[]){"Comma-delimited list of storage identifiers", NULL}},
-        {.name = "PMIX_STORAGE_CAPACITY_LIMIT", .string = PMIX_STORAGE_CAPACITY_LIMIT, .type = PMIX_UINT64, .description = (char *[]){"Overall capacity (in Megabytes[base2]) of specified storage system", NULL}},
-        {.name = "PMIX_STORAGE_CAPACITY_FREE", .string = PMIX_STORAGE_CAPACITY_FREE, .type = PMIX_UINT64, .description = (char *[]){"Free capacity (in Megabytes[base2]) of specified storage system", NULL}},
-        {.name = "PMIX_STORAGE_CAPACITY_AVAIL", .string = PMIX_STORAGE_CAPACITY_AVAIL, .type = PMIX_UINT64, .description = (char *[]){"Storage capacity (in Megabytes[[base2]]) available to caller", NULL}},
-        {.name = "PMIX_STORAGE_OBJECT_LIMIT", .string = PMIX_STORAGE_OBJECT_LIMIT, .type = PMIX_UINT64, .description = (char *[]){"Overall limit on number of objects (e.g., inodes) of specified storage system", NULL}},
-        {.name = "PMIX_STORAGE_OBJECTS_FREE", .string = PMIX_STORAGE_OBJECTS_FREE, .type = PMIX_UINT64, .description = (char *[]){"Number of free objects (e.g., inodes) of specified storage system", NULL}},
-        {.name = "PMIX_STORAGE_OBJECTS_AVAIL", .string = PMIX_STORAGE_OBJECTS_AVAIL, .type = PMIX_UINT64, .description = (char *[]){"Number of objects (e.g., inodes) of specified storage system available to caller", NULL}},
-        {.name = "PMIX_STORAGE_BW", .string = PMIX_STORAGE_BW, .type = PMIX_FLOAT, .description = (char *[]){"Total storage system bandwidth (in Megabytes[base2]/sec) of specified storage system", NULL}},
-        {.name = "PMIX_STORAGE_AVAIL_BW", .string = PMIX_STORAGE_AVAIL_BW, .type = PMIX_FLOAT, .description = (char *[]){"Storage system bandwidth (in Megabytes[base2]/sec) of specified storage system available to caller", NULL}},
-        {.name = "PMIX_STORAGE_ID", .string = PMIX_STORAGE_ID, .type = PMIX_STRING, .description = (char *[]){"Identifier of the storage system being referenced", NULL}},
-        {.name = "PMIX_STORAGE_PATH", .string = PMIX_STORAGE_PATH, .type = PMIX_STRING, .description = (char *[]){"Mount point corresponding to a specified storage ID", NULL}},
-        {.name = "PMIX_STORAGE_TYPE", .string = PMIX_STORAGE_TYPE, .type = PMIX_STRING, .description = (char *[]){"Qualifier indicating the type of storage being referenced by a query (e.g., lustre, gpfs, online, network-attached, ...)", NULL}},
-        {.name = "PMIX_SERVER_START_TIME", .string = PMIX_SERVER_START_TIME, .type = PMIX_STRING, .description = (char *[]){"Start time of the server", NULL}},
-        {.name = "PMIX_SERVER_INFO_ARRAY", .string = PMIX_SERVER_INFO_ARRAY, .type = PMIX_DATA_ARRAY, .description = (char *[]){"Array of data on a given server, starting with its nspace", NULL}},
-        {.name = "PMIX_USERID", .string = PMIX_USERID, .type = PMIX_UINT32, .description = (char *[]){"Effective user ID", NULL}},
-        {.name = "PMIX_GRPID", .string = PMIX_GRPID, .type = PMIX_UINT32, .description = (char *[]){"Effective group ID", NULL}},
-        {.name = "PMIX_VERSION_INFO", .string = PMIX_VERSION_INFO, .type = PMIX_STRING, .description = (char *[]){"PMIx version", NULL}},
-        {.name = ""},
-    // job_ctrl
-        {.name = "PMIX_REGISTER_CLEANUP", .string = PMIX_REGISTER_CLEANUP, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
-        {.name = "PMIX_REGISTER_CLEANUP_DIR", .string = PMIX_REGISTER_CLEANUP_DIR, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
-        {.name = "PMIX_CLEANUP_RECURSIVE", .string = PMIX_CLEANUP_RECURSIVE, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = "PMIX_CLEANUP_EMPTY", .string = PMIX_CLEANUP_EMPTY, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = "PMIX_CLEANUP_IGNORE", .string = PMIX_CLEANUP_IGNORE, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
-        {.name = "PMIX_CLEANUP_LEAVE_TOPDIR", .string = PMIX_CLEANUP_LEAVE_TOPDIR, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = ""},
-    // job_ctrl_nb
-        {.name = "PMIX_REGISTER_CLEANUP", .string = PMIX_REGISTER_CLEANUP, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
-        {.name = "PMIX_REGISTER_CLEANUP_DIR", .string = PMIX_REGISTER_CLEANUP_DIR, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
-        {.name = "PMIX_CLEANUP_RECURSIVE", .string = PMIX_CLEANUP_RECURSIVE, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = "PMIX_CLEANUP_EMPTY", .string = PMIX_CLEANUP_EMPTY, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = "PMIX_CLEANUP_IGNORE", .string = PMIX_CLEANUP_IGNORE, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
-        {.name = "PMIX_CLEANUP_LEAVE_TOPDIR", .string = PMIX_CLEANUP_LEAVE_TOPDIR, .type = PMIX_BOOL, .description = (char *[]){"True,False", NULL}},
-        {.name = ""},
-    // monitoring
-    // storage
+static pmix_attr_init_t server_fns[] = {
+    {.function = "PMIx_server_init", .attrs = (char *[]){"PMIX_SERVER_GATEWAY", "PMIX_SERVER_SCHEDULER",
+                                                         "PMIX_SERVER_TMPDIR", "PMIX_SYSTEM_TMPDIR",
+                                                         "PMIX_SERVER_NSPACE", "PMIX_SERVER_RANK",
+                                                         "PMIX_GDS_MODULE", "PMIX_EVENT_BASE",
+                                                         "PMIX_HOSTNAME", "PMIX_NODEID", "PMIX_TCP_IF_INCLUDE",
+                                                         "PMIX_TCP_IPV4_PORT", "PMIX_TCP_IPV6_PORT",
+                                                         "PMIX_TCP_DISABLE_IPV4", "PMIX_TCP_DISABLE_IPV6",
+                                                         "PMIX_SERVER_REMOTE_CONNECTIONS", "PMIX_TCP_REPORT_URI",
+                                                         "PMIX_SERVER_SESSION_SUPPORT", "PMIX_SERVER_SYSTEM_SUPPORT",
+                                                         "PMIX_SERVER_TOOL_SUPPORT", "PMIX_LAUNCHER_RENDEZVOUS_FILE",
+                                                         "PMIX_SERVER_ENABLE_MONITORING", NULL}},
+    {.function = "PMIx_server_finalize", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_generate_regex", .attrs = (char *[]){"N/A", NULL}},
+    {.function = "PMIx_generate_ppn", .attrs = (char *[]){"N/A", NULL}},
+    {.function = "PMIx_server_register_nspace", .attrs = (char *[]){"PMIX_REGISTER_NODATA", NULL}},
+    {.function = "PMIx_server_deregister_nspace", .attrs = (char *[]){"N/A", NULL}},
+    {.function = "PMIx_server_register_client", .attrs = (char *[]){"N/A", NULL}},
+    {.function = "PMIx_server_deregister_client", .attrs = (char *[]){"N/A", NULL}},
+    {.function = "PMIx_server_setup_fork", .attrs = (char *[]){"N/A", NULL}},
+    {.function = "PMIx_server_dmodex_request", .attrs = (char *[]){"N/A", NULL}},
+    {.function = "PMIx_server_setup_application", .attrs = (char *[]){"PMIX_SETUP_APP_ENVARS", "PMIX_SETUP_APP_ALL",
+                                                                      "PMIX_SETUP_APP_NONENVARS", "PMIX_ALLOC_NETWORK",
+                                                                      "PMIX_ALLOC_NETWORK_SEC_KEY", "PMIX_ALLOC_NETWORK_ID",
+                                                                      "PMIX_ALLOC_NETWORK_TYPE", "PMIX_ALLOC_NETWORK_PLANE",
+                                                                      "PMIX_ALLOC_NETWORK_ENDPTS", NULL}},
+    {.function = "PMIx_server_setup_local_support", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_server_IOF_deliver", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_server_collect_inventory", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_server_deliver_inventory", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_Register_attributes", .attrs = (char *[]){"N/A", NULL}},
+    {.function = "PMIx_server_register_fabric", .attrs = (char *[]){"PMIX_NETWORK_PLANE", NULL}},
+    {.function = "PMIx_server_deregister_fabric", .attrs = (char *[]){"N/A", NULL}},
+    {.function = "PMIx_server_get_vertex_info", .attrs = (char *[]){"N/A", NULL}},
+    {.function = "PMIx_server_get_index", .attrs = (char *[]){"N/A", NULL}},
+    {.function = ""}
 };
 
 /*****    REGISTER SERVER ATTRS    *****/
@@ -533,93 +269,45 @@ static bool server_attrs_regd = false;
 
 PMIX_EXPORT pmix_status_t pmix_register_server_attrs(void)
 {
-    size_t nregs, nattrs, n, m;
-    size_t cnt = 0;
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_regattr_t *attrs;
+    size_t n;
 
     if (server_attrs_regd) {
         return PMIX_SUCCESS;
     }
     server_attrs_regd = true;
 
-    nregs = sizeof(server_fns) / sizeof(char*);
-
-    /* we know we have to prep the GDS, PTL, BFROPS, and SEC
-     * entries as these are dynamically defined */
-    server_attributes[0].description[0] = pmix_gds_base_get_available_modules();
-
-    for (n=0; n < nregs; n++) {
-        nattrs = 0;
-        while (0 != strlen(server_attributes[cnt+nattrs].name)) {
-            ++nattrs;
-        }
-        PMIX_REGATTR_CREATE(attrs, nattrs);
-        for (m=0; m < nattrs; m++) {
-            attrs[m].name = strdup(server_attributes[m+cnt].name);
-            PMIX_LOAD_KEY(attrs[m].string, server_attributes[m+cnt].string);
-            attrs[m].type = server_attributes[m+cnt].type;
-            PMIX_ARGV_COPY(attrs[m].description, server_attributes[m+cnt].description);
-        }
+    for (n=0; 0 != strlen(server_fns[n].function); n++) {
         rc = process_reg(PMIX_SERVER_ATTRIBUTES,
-                         server_fns[n],
-                         attrs, nattrs);
-        PMIX_REGATTR_FREE(attrs, nattrs);
+                         server_fns[n].function, server_fns[n].attrs);
         if (PMIX_SUCCESS != rc) {
             break;
         }
-        cnt += nattrs + 1;
     }
 
-    return PMIX_SUCCESS;
+    return rc;
 }
 
-static char *tool_fns[] = {
-    "PMIx_tool_init",
-    "PMIx_tool_finalize",
-    "PMIx_tool_connect_to_server"
-};
-
-static pmix_regattr_input_t tool_attributes[] = {
-    // init
-        {.name = "PMIX_GDS_MODULE", .string = PMIX_GDS_MODULE, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
-        {.name = "PMIX_EVENT_BASE", .string = PMIX_EVENT_BASE, .type = PMIX_POINTER, .description = (char *[]){"VALID MEMORY REFERENCE", NULL}},
-        {.name = "PMIX_HOSTNAME", .string = PMIX_HOSTNAME, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
-        {.name = "PMIX_NODEID", .string = PMIX_NODEID, .type = PMIX_UINT32, .description = (char *[]){"POSITIVE INTEGERS", NULL}},
-        {.name = "PMIX_TOOL_NSPACE", .string = PMIX_TOOL_NSPACE, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", NULL}},
-        {.name = "PMIX_TOOL_RANK", .string = PMIX_TOOL_RANK, .type = PMIX_PROC_RANK, .description = (char *[]){"POSITIVE INTEGERS", "Rank assigned to tool", NULL}},
-        {.name = "PMIX_TOOL_DO_NOT_CONNECT", .string = PMIX_TOOL_DO_NOT_CONNECT, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Do not connect to server", NULL}},
-        {.name = "PMIX_CONNECT_TO_SYSTEM", .string = PMIX_CONNECT_TO_SYSTEM, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Connect to system PMIx server", NULL}},
-        {.name = "PMIX_CONNECT_SYSTEM_FIRST", .string = PMIX_CONNECT_SYSTEM_FIRST, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Try system PMIx server first", NULL}},
-        {.name = "PMIX_SERVER_PIDINFO", .string = PMIX_SERVER_PIDINFO, .type = PMIX_PID, .description = (char *[]){"Valid pid_t value", "PID of target PMIx server", NULL}},
-        {.name = "PMIX_TCP_URI", .string = PMIX_TCP_URI, .type = PMIX_STRING, .description = (char *[]){"Valid PMIx URI", "URI of PMIx server to connect to", NULL}},
-        {.name = "PMIX_SERVER_URI", .string = PMIX_SERVER_URI, .type = PMIX_STRING, .description = (char *[]){"Valid PMIx URI", "URI of PMIx server to connect to", NULL}},
-        {.name = "PMIX_SERVER_NSPACE", .string = PMIX_SERVER_NSPACE, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", "Namespace of PMIx server to", "connect to", NULL}},
-        {.name = "PMIX_CONNECT_RETRY_DELAY", .string = PMIX_CONNECT_RETRY_DELAY, .type = PMIX_UINT32, .description = (char *[]){"POSITIVE INTEGERS", "Seconds between connection", "attempts", NULL}},
-        {.name = "PMIX_CONNECT_MAX_RETRIES", .string = PMIX_CONNECT_MAX_RETRIES, .type = PMIX_UINT32, .description = (char *[]){"POSITIVE INTEGERS", "Max number of connection retries", NULL}},
-        {.name = "PMIX_SOCKET_MODE", .string = PMIX_SOCKET_MODE, .type = PMIX_UINT32, .description = (char *[]){"Valid POSIX mode_t value", NULL}},
-        {.name = "PMIX_TCP_REPORT_URI", .string = PMIX_TCP_REPORT_URI, .type = PMIX_STRING, .description = (char *[]){"-, +, or filename", NULL}},
-        {.name = "PMIX_TCP_IF_INCLUDE", .string = PMIX_TCP_IF_INCLUDE, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", "Comma-separated list of", "TCP interfaces to include", NULL}},
-        {.name = "PMIX_TCP_IF_EXCLUDE", .string = PMIX_TCP_IF_EXCLUDE, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", "Comma-separated list of", "TCP interfaces to exclude", NULL}},
-        {.name = "PMIX_TCP_IPV4_PORT", .string = PMIX_TCP_IPV4_PORT, .type = PMIX_INT, .description = (char *[]){"POSITIVE INTEGERS", "IPv4 port to be used", NULL}},
-        {.name = "PMIX_TCP_IPV6_PORT", .string = PMIX_TCP_IPV6_PORT, .type = PMIX_INT, .description = (char *[]){"POSITIVE INTEGERS", "IPv6 port to be used", NULL}},
-        {.name = "PMIX_TCP_DISABLE_IPV4", .string = PMIX_TCP_DISABLE_IPV4, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Disable IPv4 messaging interface", NULL}},
-        {.name = "PMIX_TCP_DISABLE_IPV6", .string = PMIX_TCP_DISABLE_IPV6, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Disable IPv6 messaging interface", NULL}},
-        {.name = "PMIX_FWD_STDIN", .string = PMIX_FWD_STDIN, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Forward stdin of the tool", NULL}},
-        {.name = "PMIX_LAUNCHER", .string = PMIX_LAUNCHER, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Tool is a job launcher", NULL}},
-        {.name = "PMIX_SERVER_TMPDIR", .string = PMIX_SERVER_TMPDIR, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", "Path to temp directory", "assigned to tool", NULL}},
-        {.name = "PMIX_SYSTEM_TMPDIR", .string = PMIX_SYSTEM_TMPDIR, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", "Path to system temp directory", NULL}},
-        {.name = ""},
-    // finalize
-        {.name = ""},
-    // connect_to_server
-        {.name = "PMIX_CONNECT_TO_SYSTEM", .string = PMIX_CONNECT_TO_SYSTEM, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Connect to system PMIx server", NULL}},
-        {.name = "PMIX_CONNECT_SYSTEM_FIRST", .string = PMIX_CONNECT_SYSTEM_FIRST, .type = PMIX_BOOL, .description = (char *[]){"True,False", "Try system PMIx server first", NULL}},
-        {.name = "PMIX_SERVER_PIDINFO", .string = PMIX_SERVER_PIDINFO, .type = PMIX_PID, .description = (char *[]){"Valid pid_t value", "PID of target PMIx server", NULL}},
-        {.name = "PMIX_TCP_URI", .string = PMIX_TCP_URI, .type = PMIX_STRING, .description = (char *[]){"Valid PMIx URI", "URI of PMIx server to connect to", NULL}},
-        {.name = "PMIX_SERVER_URI", .string = PMIX_SERVER_URI, .type = PMIX_STRING, .description = (char *[]){"Valid PMIx URI", "URI of PMIx server to connect to", NULL}},
-        {.name = "PMIX_SERVER_NSPACE", .string = PMIX_SERVER_NSPACE, .type = PMIX_STRING, .description = (char *[]){"UNRESTRICTED", "Namespace of PMIx server to", "connect to", NULL}},
-        {.name = ""},
+static pmix_attr_init_t tool_fns[] = {
+    {.function = "PMIx_tool_init", .attrs = (char *[]){"PMIX_GDS_MODULE", "PMIX_EVENT_BASE", "PMIX_HOSTNAME",
+                                                       "PMIX_NODEID", "PMIX_TOOL_DO_NOT_CONNECT", "PMIX_TOOL_NSPACE",
+                                                       "PMIX_TOOL_RANK", "PMIX_FWD_STDIN", "PMIX_LAUNCHER",
+                                                       "PMIX_SERVER_TMPDIR", "PMIX_SYSTEM_TMPDIR",
+                                                       "PMIX_TOOL_CONNECT_OPTIONAL", "PMIX_RECONNECT_SERVER",
+                                                       "PMIX_TOOL_ATTACHMENT_FILE", "PMIX_CONNECT_MAX_RETRIES",
+                                                       "PMIX_CONNECT_RETRY_DELAY", "PMIX_CONNECT_TO_SYSTEM",
+                                                       "PMIX_CONNECT_SYSTEM_FIRST", "PMIX_SERVER_PIDINFO",
+                                                       "PMIX_SERVER_NSPACE", "PMIX_SERVER_URI", NULL}},
+    {.function = "PMIx_tool_finalize", .attrs = (char *[]){"N/A", NULL}},
+    {.function = "PMIx_tool_connect_to_server", .attrs = (char *[]){"PMIX_CONNECT_TO_SYSTEM", "PMIX_CONNECT_SYSTEM_FIRST",
+                                                                    "PMIX_SERVER_PIDINFO", "PMIX_SERVER_NSPACE",
+                                                                    "PMIX_SERVER_URI", "PMIX_CONNECT_RETRY_DELAY",
+                                                                    "PMIX_CONNECT_MAX_RETRIES", "PMIX_RECONNECT_SERVER",
+                                                                    "PMIX_TOOL_ATTACHMENT_FILE", NULL}},
+    {.function = "PMIx_IOF_pull", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_IOF_deregister", .attrs = (char *[]){"NONE", NULL}},
+    {.function = "PMIx_IOF_push", .attrs = (char *[]){"PMIX_IOF_PUSH_STDIN", "PMIX_IOF_COMPLETE", NULL}},
+    {.function = ""}
 };
 
 /*****    REGISTER TOOL ATTRS    *****/
@@ -627,45 +315,23 @@ static bool tool_attrs_regd = false;
 
 PMIX_EXPORT pmix_status_t pmix_register_tool_attrs(void)
 {
-    size_t nregs, nattrs, n, m;
-    size_t cnt = 0;
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_regattr_t *attrs;
+    size_t n;
 
     if (tool_attrs_regd) {
         return PMIX_SUCCESS;
     }
     tool_attrs_regd = true;
 
-    nregs = sizeof(tool_fns) / sizeof(char*);
-
-    /* we know we have to prep the GDS, PTL, BFROPS, and SEC
-     * entries as these are dynamically defined */
-    tool_attributes[0].description[0] = pmix_gds_base_get_available_modules();
-
-    for (n=0; n < nregs; n++) {
-        nattrs = 0;
-        while (0 != strlen(tool_attributes[cnt+nattrs].name)) {
-            ++nattrs;
-        }
-        PMIX_REGATTR_CREATE(attrs, nattrs);
-        for (m=0; m < nattrs; m++) {
-            attrs[m].name = strdup(tool_attributes[m+cnt].name);
-            PMIX_LOAD_KEY(attrs[m].string, tool_attributes[m+cnt].string);
-            attrs[m].type = tool_attributes[m+cnt].type;
-            PMIX_ARGV_COPY(attrs[m].description, tool_attributes[m+cnt].description);
-        }
+    for (n=0; 0 != strlen(tool_fns[n].function); n++) {
         rc = process_reg(PMIX_TOOL_ATTRIBUTES,
-                         tool_fns[n],
-                         attrs, nattrs);
-        PMIX_REGATTR_FREE(attrs, nattrs);
+                         tool_fns[n].function, tool_fns[n].attrs);
         if (PMIX_SUCCESS != rc) {
             break;
         }
-        cnt += nattrs + 1;
     }
 
-    return PMIX_SUCCESS;
+    return rc;
 }
 
 /*****   PROCESS QUERY ATTRS    *****/
@@ -677,8 +343,9 @@ static void _get_attrs(pmix_list_t *lst,
     pmix_infolist_t *ip;
     pmix_data_array_t *darray;
     pmix_regattr_t *regarray;
-    size_t m;
+    size_t m, nattr;
     char **fns;
+    const pmix_regattr_input_t *dptr;
 
     /* the value in the info is a comma-delimited list of
      * functions whose attributes are being requested */
@@ -703,12 +370,21 @@ static void _get_attrs(pmix_list_t *lst,
         ip = PMIX_NEW(pmix_infolist_t);
         PMIX_LOAD_KEY(ip->info.key, tptr->function);
         /* create the data array to hold the results */
-        PMIX_DATA_ARRAY_CREATE(darray, trk->nattrs, PMIX_REGATTR);
+        nattr = pmix_argv_count(tptr->attrs);
+        PMIX_DATA_ARRAY_CREATE(darray, nattr, PMIX_REGATTR);
         ip->info.value.type = PMIX_DATA_ARRAY;
         ip->info.value.data.darray = darray;
         regarray = (pmix_regattr_t*)darray->array;
-        for (m=0; m < trk->nattrs; m++) {
-            PMIX_REGATTR_XFER(&regarray[m], &trk->attrs[m]);
+        for (m=0; m < nattr; m++) {
+            regarray[m].name = strdup(tptr->attrs[m]);
+            PMIX_LOAD_KEY(regarray[m].string, pmix_attributes_lookup(tptr->attrs[m]));
+            dptr = pmix_attributes_lookup_term(tptr->attrs[m]);
+            if (NULL == dptr) {
+                PMIX_RELEASE(ip);
+                return;
+            }
+            regarray[m].type = dptr->type;
+            regarray[m].description = pmix_argv_copy(dptr->description);
         }
         pmix_list_append(lst, &ip->super);
     }
@@ -981,73 +657,39 @@ PMIX_EXPORT void pmix_attrs_query_support(int sd, short args, void *cbdata)
 }
 
 /*****   LOCATE A GIVEN ATTRIBUTE    *****/
-PMIX_EXPORT const char* pmix_attributes_lookup(char *name)
+PMIX_EXPORT const char* pmix_attributes_lookup(char *attr)
 {
-    pmix_attribute_trk_t *fnptr;
     size_t n;
 
-    /* start by searching the client list */
-    PMIX_LIST_FOREACH(fnptr, &client_attrs, pmix_attribute_trk_t) {
-        for (n=0; n < fnptr->nattrs; n++) {
-            if (0 == strcasecmp(fnptr->attrs[n].name, name)) {
-                return fnptr->attrs[n].string;
-            }
+    for (n=0; 0 != strlen(dictionary[n].name); n++) {
+        if (0 == strcasecmp(dictionary[n].name, attr)) {
+            return dictionary[n].string;
         }
     }
-
-    /* now check the server list */
-    PMIX_LIST_FOREACH(fnptr, &server_attrs, pmix_attribute_trk_t) {
-        for (n=0; n < fnptr->nattrs; n++) {
-            if (0 == strcasecmp(fnptr->attrs[n].name, name)) {
-                return fnptr->attrs[n].string;
-            }
-        }
-    }
-
-    /* now check the tool list */
-    PMIX_LIST_FOREACH(fnptr, &tool_attrs, pmix_attribute_trk_t) {
-        for (n=0; n < fnptr->nattrs; n++) {
-            if (0 == strcasecmp(fnptr->attrs[n].name, name)) {
-                return fnptr->attrs[n].string;
-            }
-        }
-    }
-
     return NULL;
 }
 
-PMIX_EXPORT const char* pmix_attributes_reverse_lookup(char *name)
+PMIX_EXPORT const char* pmix_attributes_reverse_lookup(char *attrstring)
 {
-    pmix_attribute_trk_t *fnptr;
     size_t n;
 
-    /* start by searching the client list */
-    PMIX_LIST_FOREACH(fnptr, &client_attrs, pmix_attribute_trk_t) {
-        for (n=0; n < fnptr->nattrs; n++) {
-            if (0 == strcasecmp(fnptr->attrs[n].string, name)) {
-                return fnptr->attrs[n].name;
-            }
+    for (n=0; 0 != strlen(dictionary[n].name); n++) {
+        if (0 == strcasecmp(dictionary[n].string, attrstring)) {
+            return dictionary[n].name;
         }
     }
+    return NULL;
+}
 
-    /* now check the server list */
-    PMIX_LIST_FOREACH(fnptr, &server_attrs, pmix_attribute_trk_t) {
-        for (n=0; n < fnptr->nattrs; n++) {
-            if (0 == strcasecmp(fnptr->attrs[n].string, name)) {
-                return fnptr->attrs[n].name;
-            }
+PMIX_EXPORT const pmix_regattr_input_t* pmix_attributes_lookup_term(char *attr)
+{
+    size_t n;
+
+    for (n=0; 0 != strlen(dictionary[n].name); n++) {
+        if (0 == strcmp(dictionary[n].name, attr)) {
+            return &dictionary[n];
         }
     }
-
-    /* now check the tool list */
-    PMIX_LIST_FOREACH(fnptr, &tool_attrs, pmix_attribute_trk_t) {
-        for (n=0; n < fnptr->nattrs; n++) {
-            if (0 == strcasecmp(fnptr->attrs[n].string, name)) {
-                return fnptr->attrs[n].name;
-            }
-        }
-    }
-
     return NULL;
 }
 
@@ -1087,10 +729,10 @@ PMIX_EXPORT char** pmix_attributes_print_functions(char *level)
 
 /*****   PRINT QUERY ATTRS RESULTS   *****/
 
-#define PMIX_PRINT_NAME_COLUMN_WIDTH      30
-#define PMIX_PRINT_STRING_COLUMN_WIDTH    30
+#define PMIX_PRINT_NAME_COLUMN_WIDTH      35
+#define PMIX_PRINT_STRING_COLUMN_WIDTH    25
 #define PMIX_PRINT_TYPE_COLUMN_WIDTH      20
-#define PMIX_PRINT_ATTR_COLUMN_WIDTH     120
+#define PMIX_PRINT_ATTR_COLUMN_WIDTH     141
 
 void pmix_attributes_print_attrs(char ***ans, char *function,
                                  pmix_regattr_t *attrs,
@@ -1132,24 +774,13 @@ void pmix_attributes_print_attrs(char ***ans, char *function,
         }
         memcpy(&line[PMIX_PRINT_NAME_COLUMN_WIDTH+PMIX_PRINT_STRING_COLUMN_WIDTH+4], tmp, len);
 
-        len = strlen(attrs[n].description[0]);
-        if ((PMIX_PRINT_ATTR_COLUMN_WIDTH-PMIX_PRINT_NAME_COLUMN_WIDTH-PMIX_PRINT_STRING_COLUMN_WIDTH-PMIX_PRINT_TYPE_COLUMN_WIDTH-6) < len) {
-            len = PMIX_PRINT_ATTR_COLUMN_WIDTH-PMIX_PRINT_NAME_COLUMN_WIDTH-PMIX_PRINT_STRING_COLUMN_WIDTH-PMIX_PRINT_TYPE_COLUMN_WIDTH-6;
-        }
-        memcpy(&line[PMIX_PRINT_NAME_COLUMN_WIDTH+PMIX_PRINT_STRING_COLUMN_WIDTH+PMIX_PRINT_TYPE_COLUMN_WIDTH+6], attrs[n].description[0], len);
-        line[PMIX_PRINT_ATTR_COLUMN_WIDTH-1] = '\0';  // ensure NULL termination
-        pmix_argv_append_nosize(ans, line);
-
-        for (m=1; NULL != attrs[n].description[m]; m++) {
-            memset(line, ' ', PMIX_PRINT_ATTR_COLUMN_WIDTH);
-            line[PMIX_PRINT_ATTR_COLUMN_WIDTH-1] = '\0';
+        for (m=0; NULL != attrs[n].description[m]; m++) {
             len = strlen(attrs[n].description[m]);
-            if ((PMIX_PRINT_ATTR_COLUMN_WIDTH-PMIX_PRINT_NAME_COLUMN_WIDTH-PMIX_PRINT_STRING_COLUMN_WIDTH-PMIX_PRINT_TYPE_COLUMN_WIDTH-6) < len) {
-                len = PMIX_PRINT_ATTR_COLUMN_WIDTH-PMIX_PRINT_NAME_COLUMN_WIDTH-PMIX_PRINT_STRING_COLUMN_WIDTH-PMIX_PRINT_TYPE_COLUMN_WIDTH-6;
-            }
             memcpy(&line[PMIX_PRINT_NAME_COLUMN_WIDTH+PMIX_PRINT_STRING_COLUMN_WIDTH+PMIX_PRINT_TYPE_COLUMN_WIDTH+6], attrs[n].description[m], len);
             line[PMIX_PRINT_ATTR_COLUMN_WIDTH-1] = '\0';  // ensure NULL termination
             pmix_argv_append_nosize(ans, line);
+            memset(line, ' ', PMIX_PRINT_ATTR_COLUMN_WIDTH);
+            line[PMIX_PRINT_ATTR_COLUMN_WIDTH-1] = '\0';
         }
     }
 }
@@ -1221,13 +852,16 @@ void pmix_attributes_print_headers(char ***ans, char *level)
     pmix_argv_append_nosize(ans, line);
 }
 
+
 PMIX_EXPORT char** pmix_attributes_print_attr(char *level, char *function)
 {
-    size_t n;
+    size_t n, m, nattr;
     char **tmp, **ans=NULL;
     pmix_list_t *lst;
     pmix_attribute_trk_t *fnptr;
     char line[PMIX_PRINT_ATTR_COLUMN_WIDTH];
+    pmix_regattr_t *rptr;
+    const pmix_regattr_input_t *dptr;
 
     /* select title */
     if (0 == strcmp(level, PMIX_CLIENT_ATTRIBUTES)) {
@@ -1251,12 +885,29 @@ PMIX_EXPORT char** pmix_attributes_print_attr(char *level, char *function)
     tmp = pmix_argv_split(function, ',');
     for (n=0; NULL != tmp[n]; n++) {
         PMIX_LIST_FOREACH(fnptr, lst, pmix_attribute_trk_t) {
-            if (0 == strcmp(tmp[n], "all")) {
-                pmix_attributes_print_attrs(&ans, fnptr->function, fnptr->attrs, fnptr->nattrs);
+            if (0 == strcmp(tmp[n], "all") ||
+                0 == strcmp(tmp[n], fnptr->function)) {
+                /* create an array of pmix_regattr_t for this function's attributes */
+                nattr = pmix_argv_count(fnptr->attrs);
+                PMIX_REGATTR_CREATE(rptr, nattr);
+                for (m=0; m < nattr; m++) {
+                    rptr[m].name = strdup(fnptr->attrs[m]);
+                    PMIX_LOAD_KEY(rptr[m].string, pmix_attributes_lookup(fnptr->attrs[m]));
+                    dptr = pmix_attributes_lookup_term(fnptr->attrs[m]);
+                    if (NULL == dptr) {
+                        pmix_argv_free(tmp);
+                        pmix_argv_free(ans);
+                        return NULL;
+                    }
+                    rptr[m].type = dptr->type;
+                    rptr[m].description = pmix_argv_copy(dptr->description);
+                }
+                pmix_attributes_print_attrs(&ans, fnptr->function, rptr, nattr);
+                PMIX_REGATTR_FREE(rptr, nattr);
                 pmix_argv_append_nosize(&ans, line);
-            } else if (0 == strcmp(tmp[n], fnptr->function)) {
-                pmix_attributes_print_attrs(&ans, fnptr->function, fnptr->attrs, fnptr->nattrs);
-                break;
+                if (0 == strcmp(tmp[n], fnptr->function)) {
+                    break;
+                }
             }
         }
     }

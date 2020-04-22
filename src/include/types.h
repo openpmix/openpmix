@@ -25,6 +25,7 @@
 #define PMIX_TYPES_H
 
 #include "src/include/pmix_config.h"
+#include "include/pmix_common.h"
 
 #ifdef HAVE_STDINT_H
 #include <stdint.h>

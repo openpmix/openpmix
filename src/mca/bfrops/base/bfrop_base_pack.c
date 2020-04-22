@@ -1311,20 +1311,6 @@ pmix_status_t pmix_bfrops_base_pack_regattr(pmix_pointer_array_t *regtypes,
             PMIX_ERROR_LOG(ret);
             return ret;
         }
-        /* pack the number of info */
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].ninfo, 1, PMIX_SIZE, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            PMIX_ERROR_LOG(ret);
-            return ret;
-        }
-        if (0 < ptr[i].ninfo) {
-            /* pack the info array */
-            PMIX_BFROPS_PACK_TYPE(ret, buffer, ptr[i].info, ptr[i].ninfo, PMIX_INFO, regtypes);
-            if (PMIX_SUCCESS != ret) {
-                PMIX_ERROR_LOG(ret);
-                return ret;
-            }
-        }
         /* pack the description */
         nd = pmix_argv_count(ptr[i].description);
         PMIX_BFROPS_PACK_TYPE(ret, buffer, &nd, 1, PMIX_INT32, regtypes);

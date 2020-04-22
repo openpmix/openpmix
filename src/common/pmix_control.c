@@ -390,7 +390,7 @@ PMIX_EXPORT pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pm
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* if the monitor is PMIX_SEND_HEARTBEAT, then send it */
-    if (0 == strncmp(monitor->key, PMIX_SEND_HEARTBEAT, PMIX_MAX_KEYLEN)) {
+    if (PMIX_CHECK_KEY(monitor, PMIX_SEND_HEARTBEAT)) {
         msg = PMIX_NEW(pmix_buffer_t);
         if (NULL == msg) {
             return PMIX_ERR_NOMEM;
