@@ -1674,6 +1674,7 @@ static void check_server(char *filename,
     if (NULL == (p = strchr(srvr, ';'))) {
         /* malformed */
         free(srvr);
+        fclose(fp);
         return;
     }
     *p = '\0';
