@@ -854,7 +854,7 @@ pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr, pmix_rank_t rank,
                                    pmix_status_t status, pmix_dmdx_local_t *lcd)
 {
     pmix_dmdx_local_t *cd, *ptr;
-    pmix_dmdx_request_t *req;
+    pmix_dmdx_request_t *req, *rnext;
     pmix_server_caddy_t scd;
 
     /* find corresponding request (if exists) */
@@ -913,9 +913,15 @@ pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr, pmix_rank_t rank,
   cleanup:
     /* remove all requests to this rank and cleanup the corresponding structure */
     pmix_list_remove_item(&pmix_server_globals.local_reqs, &ptr->super);
-    while (NULL != (req = (pmix_dmdx_request_t*)
-                    pmix_list_remove_first(&ptr->loc_reqs))) {
-        PMIX_RELEASE(req);
+    /* the dmdx request is linked back to its local request for ease
+     * of lookup upon return from the server. However, this means that
+     * the refcount of the local request has been increased by the number
+     * dmdx requests attached to it. In order to release the local request's
+     * storage, we first have to drive the refcount down by releasing all
+     * of the associated dmdx requests */
+    PMIX_LIST_FOREACH_SAFE(req, rnext, &ptr->loc_reqs, pmix_dmdx_request_t) {
+        pmix_list_remove_item(&ptr->loc_reqs, &req->super);
+        PMIX_RELEASE(req);  // decrements refcount of ptr
     }
     PMIX_RELEASE(ptr);
 
