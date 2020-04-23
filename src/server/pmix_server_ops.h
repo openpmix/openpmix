@@ -109,7 +109,7 @@ PMIX_CLASS_DECLARATION(pmix_dmdx_remote_t);
 typedef struct {
     pmix_list_item_t super;
     pmix_proc_t proc;               // id of proc whose data is being requested
-    pmix_list_t loc_reqs;           // list of pmix_dmdx_request_t elem's keeping track of
+    pmix_list_t loc_reqs;           // list of pmix_dmdx_request_t elem is keeping track of
                                     // all local ranks that are interested in this namespace-rank
     pmix_info_t *info;              // array of info structs for this request
     size_t ninfo;                   // number of info structs
