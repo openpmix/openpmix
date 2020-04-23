@@ -138,12 +138,12 @@ static pmix_status_t query(pmix_query_t queries[], size_t nqueries,
         /* did they specify a storage type for this query? */
         takeus = true;
         for (k=0; k < queries[n].nqual; k++) {
-            if (0 == strcmp(queries[n].qualifiers[m].key, PMIX_STORAGE_TYPE)) {
+            if (0 == strcmp(queries[n].qualifiers[k].key, PMIX_STORAGE_TYPE)) {
 
                 /* NOTE: I only included "lustre" as an accepted type, but we might
                  * want to consider other types as well - e.g., "parallel", "persistent",...) */
 
-                if (NULL == strcasestr("lustre", queries[n].qualifiers[m].value.data.string)) {
+                if (NULL == strcasestr("lustre", queries[n].qualifiers[k].value.data.string)) {
                     /* they are not interested in us */
                     takeus = false;;
                 }
@@ -174,18 +174,18 @@ static pmix_status_t query(pmix_query_t queries[], size_t nqueries,
             sid = NULL;
             mountpt = NULL;
             for (k=0; k < queries[n].nqual; k++) {
-                if (0 == strcmp(queries[n].qualifiers[m].key, PMIX_STORAGE_ID)) {
+                if (0 == strcmp(queries[n].qualifiers[k].key, PMIX_STORAGE_ID)) {
                     /* there may be more than one (comma-delimited) storage ID, so
                      * split them into a NULL-terminated argv-type array */
-                    sid = pmix_argv_split(queries[n].qualifiers[m].value.data.string, ',');
-                } else if (0 == strcmp(queries[n].qualifiers[m].key, PMIX_STORAGE_PATH)) {
+                    sid = pmix_argv_split(queries[n].qualifiers[k].value.data.string, ',');
+                } else if (0 == strcmp(queries[n].qualifiers[k].key, PMIX_STORAGE_PATH)) {
                     /* there may be more than one (comma-delimited) mount pt, so
                      * split them into a NULL-terminated argv-type array */
-                    mountpt = pmix_argv_split(queries[n].qualifiers[m].value.data.string, ',');
-                } else if (0 == strcmp(queries[n].qualifiers[m].key, PMIX_USERID)) {
-                    uid = queries[n].qualifiers[m].value.data.uint32;
-                } else if (0 == strcmp(queries[n].qualifiers[m].key, PMIX_GRPID)) {
-                    gid = queries[n].qualifiers[m].value.data.uint32;
+                    mountpt = pmix_argv_split(queries[n].qualifiers[k].value.data.string, ',');
+                } else if (0 == strcmp(queries[n].qualifiers[k].key, PMIX_USERID)) {
+                    uid = queries[n].qualifiers[k].value.data.uint32;
+                } else if (0 == strcmp(queries[n].qualifiers[k].key, PMIX_GRPID)) {
+                    gid = queries[n].qualifiers[k].value.data.uint32;
                 }
             }
 
