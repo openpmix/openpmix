@@ -927,6 +927,7 @@ PMIX_EXPORT char** pmix_attributes_print_attr(char *level, char *function)
                     if (NULL == dptr) {
                         pmix_argv_free(tmp);
                         pmix_argv_free(ans);
+                        PMIX_REGATTR_FREE(rptr, nattr);
                         return NULL;
                     }
                     rptr[m].type = dptr->type;
