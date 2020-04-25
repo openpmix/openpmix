@@ -409,11 +409,56 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr)
 	/* do we already have the data we need here? */
 	if (!ns->datacollected) {
         PMIX_LOAD_PROCID(&wildcard, nptr->nspace, PMIX_RANK_WILDCARD);
+
+        /* fetch the universe size */
+        PMIX_CONSTRUCT(&cb, pmix_cb_t);
+        cb.proc = &wildcard;
+        cb.copy = true;
+        cb.key = PMIX_UNIV_SIZE;
+        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+        cb.key = NULL;
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_DESTRUCT(&cb);
+            return rc;
+        }
+        /* the data is the first value on the cb.kvs list */
+        if (1 != pmix_list_get_size(&cb.kvs)) {
+            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            PMIX_DESTRUCT(&cb);
+            return PMIX_ERR_BAD_PARAM;
+        }
+        kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
+        ns->univ_size = kv->value->data.uint32;
+        PMIX_DESTRUCT(&cb);
+
+        /* fetch the job size */
+        PMIX_CONSTRUCT(&cb, pmix_cb_t);
+        cb.proc = &wildcard;
+        cb.copy = true;
+        cb.key = PMIX_JOB_SIZE;
+        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+        cb.key = NULL;
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_DESTRUCT(&cb);
+            return rc;
+        }
+        /* the data is the first value on the cb.kvs list */
+        if (1 != pmix_list_get_size(&cb.kvs)) {
+            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            PMIX_DESTRUCT(&cb);
+            return PMIX_ERR_BAD_PARAM;
+        }
+        kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
+        ns->job_size = kv->value->data.uint32;
+        PMIX_DESTRUCT(&cb);
+
+        /* fetch the number of apps */
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &wildcard;
         cb.copy = true;
         cb.key = PMIX_JOB_NUM_APPS;
-		/* fetch the number of apps */
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
         cb.key = NULL;
         if (PMIX_SUCCESS != rc) {
@@ -429,6 +474,28 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr)
         }
         kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
         ns->num_apps = kv->value->data.uint32;
+        PMIX_DESTRUCT(&cb);
+
+        /* fetch the number of local peers */
+        PMIX_CONSTRUCT(&cb, pmix_cb_t);
+        cb.proc = &wildcard;
+        cb.copy = true;
+        cb.key = PMIX_LOCAL_SIZE;
+        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+        cb.key = NULL;
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_DESTRUCT(&cb);
+            return rc;
+        }
+        /* the data is the first value on the cb.kvs list */
+        if (1 != pmix_list_get_size(&cb.kvs)) {
+            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            PMIX_DESTRUCT(&cb);
+            return PMIX_ERR_BAD_PARAM;
+        }
+        kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
+        ns->local_size = kv->value->data.uint32;
         PMIX_DESTRUCT(&cb);
 
         ns->datacollected = true;
