@@ -324,5 +324,5 @@ static pmix_status_t query(pmix_query_t queries[], size_t nqueries,
             }
         }
     }
-    return PMIX_OPERATION_SUCCEEDED;
+    return PMIX_ERR_NOT_FOUND;
 }
