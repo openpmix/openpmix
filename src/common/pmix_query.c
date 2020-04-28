@@ -119,18 +119,18 @@ static void query_cbfunc(struct pmix_peer_t *peer,
 }
 
 static void qinfocb(pmix_status_t status, pmix_info_t info[], size_t ninfo,
-					void *cbdata, pmix_release_cbfunc_t release_fn, void *release_cbdata)
+                    void *cbdata, pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
     size_t n;
 
     cb->status = status;
     if (NULL != info) {
-    	cb->ninfo = ninfo;
-    	PMIX_INFO_CREATE(cb->info, cb->ninfo);
-    	for (n=0; n < ninfo; n++) {
-    		PMIX_INFO_XFER(&cb->info[n], &info[n]);
-    	}
+        cb->ninfo = ninfo;
+        PMIX_INFO_CREATE(cb->info, cb->ninfo);
+        for (n=0; n < ninfo; n++) {
+            PMIX_INFO_XFER(&cb->info[n], &info[n]);
+        }
     }
     if (NULL != release_fn) {
         release_fn(release_cbdata);
@@ -390,7 +390,7 @@ static void localquery(int sd, short args, void *cbdata)
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Query_info(pmix_query_t queries[], size_t nqueries,
-									      pmix_info_t **results, size_t *nresults)
+                                          pmix_info_t **results, size_t *nresults)
 {
     pmix_cb_t cb;
     pmix_status_t rc;
@@ -420,10 +420,10 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info(pmix_query_t queries[], size_t nquerie
     PMIX_WAIT_THREAD(&cb.lock);
     rc = cb.status;
     if (NULL != cb.info) {
-    	*results = cb.info;
-    	*nresults = cb.ninfo;
-    	cb.info = NULL;
-    	cb.ninfo = 0;
+        *results = cb.info;
+        *nresults = cb.ninfo;
+        cb.info = NULL;
+        cb.ninfo = 0;
     }
     PMIX_DESTRUCT(&cb);
 
