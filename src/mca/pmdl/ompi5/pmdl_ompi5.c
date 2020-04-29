@@ -83,7 +83,6 @@ pmix_pmdl_module_t pmix_pmdl_ompi5_module = {
 typedef struct {
 	pmix_list_item_t super;
 	pmix_nspace_t nspace;
-	bool datacollected;
 	uint32_t univ_size;
 	uint32_t job_size;
 	uint32_t local_size;
@@ -91,11 +90,10 @@ typedef struct {
 } pmdl_nspace_t;
 static void nscon(pmdl_nspace_t *p)
 {
-	p->datacollected = false;
-	p->univ_size = 0;
-	p->job_size = 0;
-	p->local_size = 0;
-	p->num_apps = 0;
+	p->univ_size = UINT32_MAX;
+	p->job_size = UINT32_MAX;
+	p->local_size = UINT32_MAX;
+	p->num_apps = UINT32_MAX;
 }
 static PMIX_CLASS_INSTANCE(pmdl_nspace_t,
 						   pmix_list_item_t,
@@ -406,11 +404,14 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr)
 		return PMIX_ERR_TAKE_NEXT_OPTION;
 	}
 
-	/* do we already have the data we need here? */
-	if (!ns->datacollected) {
-        PMIX_LOAD_PROCID(&wildcard, nptr->nspace, PMIX_RANK_WILDCARD);
+	/* do we already have the data we need here? Servers are
+     * allowed to call register_nspace multiple times with
+     * different info, so we really need to recheck those
+     * values that haven't already been filled */
+    PMIX_LOAD_PROCID(&wildcard, nptr->nspace, PMIX_RANK_WILDCARD);
 
-        /* fetch the universe size */
+    /* fetch the universe size */
+    if (UINT32_MAX == ns->univ_size) {
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &wildcard;
         cb.copy = true;
@@ -431,8 +432,10 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr)
         kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
         ns->univ_size = kv->value->data.uint32;
         PMIX_DESTRUCT(&cb);
+    }
 
-        /* fetch the job size */
+    /* fetch the job size */
+    if (UINT32_MAX == ns->job_size) {
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &wildcard;
         cb.copy = true;
@@ -453,8 +456,10 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr)
         kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
         ns->job_size = kv->value->data.uint32;
         PMIX_DESTRUCT(&cb);
+    }
 
-        /* fetch the number of apps */
+    /* fetch the number of apps */
+    if (UINT32_MAX == ns->num_apps) {
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &wildcard;
         cb.copy = true;
@@ -475,30 +480,28 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr)
         kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
         ns->num_apps = kv->value->data.uint32;
         PMIX_DESTRUCT(&cb);
+    }
 
-        /* fetch the number of local peers */
+    /* fetch the number of local peers */
+    if (UINT32_MAX == ns->local_size) {
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &wildcard;
         cb.copy = true;
         cb.key = PMIX_LOCAL_SIZE;
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
         cb.key = NULL;
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
+        /* it is okay if there are no local procs */
+        if (PMIX_SUCCESS == rc) {
+            /* the data is the first value on the cb.kvs list */
+            if (1 != pmix_list_get_size(&cb.kvs)) {
+                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                PMIX_DESTRUCT(&cb);
+                return PMIX_ERR_BAD_PARAM;
+            }
+            kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
+            ns->local_size = kv->value->data.uint32;
             PMIX_DESTRUCT(&cb);
-            return rc;
         }
-        /* the data is the first value on the cb.kvs list */
-        if (1 != pmix_list_get_size(&cb.kvs)) {
-            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-            PMIX_DESTRUCT(&cb);
-            return PMIX_ERR_BAD_PARAM;
-        }
-        kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
-        ns->local_size = kv->value->data.uint32;
-        PMIX_DESTRUCT(&cb);
-
-        ns->datacollected = true;
     }
 
     if (1 == ns->num_apps) {
@@ -644,78 +647,6 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
 
     PMIX_LOAD_PROCID(&wildcard, proc->nspace, PMIX_RANK_WILDCARD);
     PMIX_LOAD_PROCID(&undef, proc->nspace, PMIX_RANK_UNDEF);
-
-    /* do we already have the data we need here? */
-    if (!ns->datacollected) {
-
-        /* fetch the universe size */
-        PMIX_CONSTRUCT(&cb, pmix_cb_t);
-        cb.proc = &wildcard;
-        cb.copy = true;
-        cb.key = PMIX_UNIV_SIZE;
-        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-        cb.key = NULL;
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_DESTRUCT(&cb);
-            return rc;
-        }
-        /* the data is the first value on the cb.kvs list */
-        if (1 != pmix_list_get_size(&cb.kvs)) {
-            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-            PMIX_DESTRUCT(&cb);
-            return PMIX_ERR_BAD_PARAM;
-        }
-        kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
-        ns->univ_size = kv->value->data.uint32;
-        PMIX_DESTRUCT(&cb);
-
-        /* fetch the job size */
-        PMIX_CONSTRUCT(&cb, pmix_cb_t);
-        cb.proc = &wildcard;
-        cb.copy = true;
-        cb.key = PMIX_JOB_SIZE;
-        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-        cb.key = NULL;
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_DESTRUCT(&cb);
-            return rc;
-        }
-        /* the data is the first value on the cb.kvs list */
-        if (1 != pmix_list_get_size(&cb.kvs)) {
-            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-            PMIX_DESTRUCT(&cb);
-            return PMIX_ERR_BAD_PARAM;
-        }
-        kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
-        ns->job_size = kv->value->data.uint32;
-        PMIX_DESTRUCT(&cb);
-
-        /* fetch the number of apps */
-        PMIX_CONSTRUCT(&cb, pmix_cb_t);
-        cb.proc = &wildcard;
-        cb.copy = true;
-        cb.key = PMIX_JOB_NUM_APPS;
-        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-        cb.key = NULL;
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_DESTRUCT(&cb);
-            return rc;
-        }
-        /* the data is the first value on the cb.kvs list */
-        if (1 != pmix_list_get_size(&cb.kvs)) {
-            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-            PMIX_DESTRUCT(&cb);
-            return PMIX_ERR_BAD_PARAM;
-        }
-        kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
-        ns->num_apps = kv->value->data.uint32;
-        PMIX_DESTRUCT(&cb);
-
-        ns->datacollected = true;
-    }
 
     /* pass universe size */
     if (0 > asprintf(&param, "%u", ns->univ_size)) {

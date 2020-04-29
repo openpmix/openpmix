@@ -30,6 +30,9 @@ headers += \
 sources += \
         include/pmix_globals.c
 
+nodist_headers += \
+    include/pmix_config.h
+
 if ! PMIX_EMBEDDED_MODE
 headers += \
         include/align.h \
@@ -48,6 +51,6 @@ headers += \
 endif ! PMIX_EMBEDDED_MODE
 
 if WANT_INSTALL_HEADERS
-nobase_pmix_HEADERS += \
+nobase_nodist_pmix_HEADERS = \
     include/pmix_config.h
 endif
