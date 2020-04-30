@@ -32,7 +32,6 @@
 #endif
 
 #include "include/pmix.h"
-#include "include/pmix_rename.h"
 
 #include "src/mca/bfrops/bfrops.h"
 #include "src/include/pmix_globals.h"

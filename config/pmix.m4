@@ -173,22 +173,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # replaced, not the entire file.
     AC_CONFIG_HEADERS(pmix_config_prefix[src/include/pmix_config.h])
 
-    # Rename symbols?
-    AC_ARG_WITH([pmix-symbol-rename],
-                AC_HELP_STRING([--with-pmix-symbol-rename=PREFIX],
-                               [Provide a prefix to rename PMIx symbols]))
-    AC_MSG_CHECKING([for symbol rename])
-    AS_IF([test ! -z "$with_pmix_symbol_rename" && test "$with_pmix_symbol_rename" != "yes"],
-          [AC_MSG_RESULT([$with_pmix_symbol_rename])
-           pmix_symbol_rename="$with_pmix_symbol_rename"
-           PMIX_RENAME=$with_pmix_symbol_rename],
-          [AC_MSG_RESULT([no])
-           pmix_symbol_rename=""
-           PMIX_RENAME=])
-    AC_DEFINE_UNQUOTED(PMIX_SYMBOL_RENAME, [$pmix_symbol_rename],
-                       [The pmix symbol rename include directive])
-    AC_SUBST(PMIX_RENAME)
-    AC_CONFIG_FILES(pmix_config_prefix[include/pmix_rename.h])
 
     # Add any extra lib?
     AC_ARG_WITH([pmix-extra-lib],

@@ -21,7 +21,6 @@
 
 #include "src/client/pmix_client_ops.h"
 #include "include/pmix_tool.h"
-#include "include/pmix_rename.h"
 
 #include "src/include/pmix_globals.h"
 

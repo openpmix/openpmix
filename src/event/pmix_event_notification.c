@@ -16,7 +16,6 @@
 #include "include/pmix.h"
 #include "include/pmix_common.h"
 #include "include/pmix_server.h"
-#include "include/pmix_rename.h"
 
 #include "src/threads/threads.h"
 #include "src/util/error.h"

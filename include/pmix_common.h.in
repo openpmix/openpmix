@@ -71,7 +71,6 @@
 #endif
 
 
-#include <pmix_rename.h>
 #include <pmix_version.h>
 
 #if defined(c_plusplus) || defined(__cplusplus)

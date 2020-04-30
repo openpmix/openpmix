@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
+# Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
 #
 # $COPYRIGHT$
 #
@@ -26,7 +26,6 @@ endif
 
 nodist_include_HEADERS = \
     pmix_common.h \
-    pmix_version.h \
-    pmix_rename.h
+    pmix_version.h
 
 endif
