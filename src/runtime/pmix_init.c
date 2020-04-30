@@ -33,8 +33,6 @@
 #include <unistd.h>
 #endif
 
-#include "include/pmix_rename.h"
-
 #include "src/include/pmix_globals.h"
 #include "src/util/output.h"
 #include "src/util/show_help.h"

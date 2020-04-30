@@ -21,7 +21,6 @@
 #include "src/include/pmix_socket_errno.h"
 
 #include "include/pmix.h"
-#include "include/pmix_rename.h"
 
 #include "src/include/pmix_globals.h"
 
