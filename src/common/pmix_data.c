@@ -87,7 +87,7 @@ static pmix_peer_t* find_peer(const pmix_proc_t *proc)
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
         /* see if we know this proc */
         for (i=0; i < pmix_server_globals.clients.size; i++) {
-            if (NULL != (peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, i))) {
+            if (NULL == (peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, i))) {
                 continue;
             }
             if (0 == strncmp(proc->nspace, peer->nptr->nspace, PMIX_MAX_NSLEN)) {
