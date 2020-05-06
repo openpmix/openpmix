@@ -150,7 +150,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
                               pmix_list_t *ilist)
 {
     uint64_t unique_key[2];
-    char *string_key, *cs_env;
+    char *string_key;
     int fd_rand;
     size_t bytes_read, n, m, p;
     pmix_kval_t *kv;
@@ -214,30 +214,21 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
 
-        if (PMIX_SUCCESS != pmix_mca_base_var_env_name("opa_precondition_transports", &cs_env)) {
-            PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
-            free(string_key);
-            return PMIX_ERR_OUT_OF_RESOURCE;
-        }
-
         kv = PMIX_NEW(pmix_kval_t);
         if (NULL == kv) {
             free(string_key);
-            free(cs_env);
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
         kv->key = strdup(PMIX_SET_ENVAR);
         kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
         if (NULL == kv->value) {
             free(string_key);
-            free(cs_env);
             PMIX_RELEASE(kv);
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
         kv->value->type = PMIX_ENVAR;
-        PMIX_ENVAR_LOAD(&kv->value->data.envar, cs_env, string_key, ':');
+        PMIX_ENVAR_LOAD(&kv->value->data.envar, "OPA_TRANSPORT_KEY", string_key, ':');
         pmix_list_append(ilist, &kv->super);
-        free(cs_env);
         free(string_key);
     }
 
