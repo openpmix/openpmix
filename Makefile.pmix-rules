@@ -9,12 +9,34 @@
 # $HEADER$
 #
 
-TRIM_OPTIONS=
+MD2NROFF = $(PMIX_TOP_SRCDIR)/config/md2nroff.pl
 
-.1in.1:
-	$(PMIX_V_GEN) $(top_srcdir)/contrib/make_manpage.pl \
-	  --package-name='@PACKAGE_NAME@' \
-	  --package-version='@PACKAGE_VERSION@' \
-	  --pmix-date='@PMIX_RELEASE_DATE@' \
-	  --input=$< \
-	  --output=$@
+%.1: %.1.md
+	$(PMIX_V_GEN) $(MD2NROFF) --source=$< --dest=$@ --pandoc=$(PANDOC)
+
+# It is an error to "configure --disable-man-pages" and then try to
+# "make dist".
+if !PMIX_ENABLE_MAN_PAGES
+dist-hook:
+	@echo "************************************************************************************"
+	@echo "ERROR: 'make dist' inoperable when Open PMIx is configured with --disable-man-pages"
+	@echo "************************************************************************************"
+	@/bin/false
+endif
+
+# A little verbosity magic; "make" will show the terse output.  "make
+# V=1" will show the actual commands used (just like the other
+# Automake-generated compilation/linker rules).
+V=0
+
+PMIX_V_LN_S = $(pmix__v_LN_S_$V)
+pmix__v_LN_S_ = $(pmix__v_LN_S_$AM_DEFAULT_VERBOSITY)
+pmix__v_LN_S_0 = @echo "  LN_S    " `basename $@`;
+
+PMIX_V_MKDIR = $(pmix__v_MKDIR_$V)
+pmix__v_MKDIR_ = $(pmix__v_MKDIR_$AM_DEFAULT_VERBOSITY)
+pmix__v_MKDIR_0 = @echo "  MKDIR   " $@;
+
+PMIX_V_GEN = $(pmix__v_GEN_$V)
+pmix__v_GEN_ = $(pmix__v_GEN_$AM_DEFAULT_VERBOSITY)
+pmix__v_GEN_0 = @echo "  GENERATE" $@;

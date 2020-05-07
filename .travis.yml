@@ -12,6 +12,7 @@ addons:
   apt:
     packages:
       - perl
+      - pandoc
       - libevent-dev
       - libhwloc-dev
 

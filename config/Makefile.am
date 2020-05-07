@@ -1,7 +1,7 @@
 # Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
 # Copyright (c) 2016      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
-# Copyright (c) 2006-2016 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2006-2020 Cisco Systems, Inc.  All rights reserved
 # Copyright (c) 2004-2006 The Trustees of Indiana University and Indiana
 #                         University Research and Technology
 #                         Corporation.  All rights reserved.
@@ -27,6 +27,7 @@ EXTRA_DIST = \
 	c_get_alignment.m4 \
 	pmix_get_version.sh \
 	distscript.sh \
+	md2nroff.pl \
 	pmix_check_attributes.m4 \
 	pmix_check_broken_qsort.m4 \
 	pmix_check_compiler_version.m4 \
