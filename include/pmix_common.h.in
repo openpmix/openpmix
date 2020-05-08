@@ -264,7 +264,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_NPROC_OFFSET                   "pmix.offset"           // (pmix_rank_t) starting global rank of this job
 #define PMIX_LOCAL_RANK                     "pmix.lrank"            // (uint16_t) rank on this node within this job
 #define PMIX_NODE_RANK                      "pmix.nrank"            // (uint16_t) rank on this node spanning all jobs
-#define PMIX_NUMA_RANK                      "pmix.nurank"           // (uint16_t) rank on this proc's NUMA region within this job
+#define PMIX_PACKAGE_RANK                   "pmix.pkgrank"          // (uint16_t) rank within this job on the package where this proc resides
 #define PMIX_LOCALLDR                       "pmix.lldr"             // (pmix_rank_t) lowest rank on this node within this job
 #define PMIX_APPLDR                         "pmix.aldr"             // (pmix_rank_t) lowest rank in this app within this job
 #define PMIX_PROC_PID                       "pmix.ppid"             // (pid_t) pid of specified proc
@@ -652,6 +652,9 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_APPEND_ENVAR                   "pmix.envar.appnd"        // (pmix_envar_t*) append the given value to the specified
                                                                       //                 envar using the separator character,
                                                                       //                 creating the envar if it doesn't already exist
+#define PMIX_FIRST_ENVAR                    "pmix.envar.first"        // (pmix_envar_t*) ensure the given value appears first in the
+                                                                      //                 specified envar using the separator
+                                                                      //                 character, creating the envar if it doesn't already exist
 
 /* attributes relating to allocations */
 #define PMIX_ALLOC_ID                       "pmix.alloc.id"         // (char*) provide a string identifier for this allocation request
