@@ -135,6 +135,11 @@ int pmix_rte_init(uint32_t type,
                 __FILE__, __LINE__, ret);
         return ret;
     }
+    if (PMIX_SUCCESS != (ret = pmix_pinstall_dirs_base_init(info, ninfo))) {
+        fprintf(stderr, "pmix_pinstalldirs_base_init() failed -- process will likely abort (%s:%d, returned %d instead of PMIX_SUCCESS)\n",
+                __FILE__, __LINE__, ret);
+        return ret;
+    }
 
     /* initialize the help system */
     pmix_show_help_init();
