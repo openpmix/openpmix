@@ -12,8 +12,16 @@ addons:
   apt:
     packages:
       - perl
+      - pandoc
       - libevent-dev
       - libhwloc-dev
+
+env:
+    global:
+        - AM_MAKEFLAGS="-j4"
+        - PRRTE_PREFIX="$HOME/bogus"
+        - PRRTE_CONFIGURE_ARGS="--prefix=$PRRTE_PREFIX"
+        - DISTCHECK_CONFIGURE_FLAGS="$PRRTE_CONFIGURE_ARGS --disable-dlopen"
 
 jobs:
   fast_finish: true
@@ -47,4 +55,4 @@ script:
         - if [ $? -ne 0 ]; then cat config.log; fi
         - make all
         # test
-        - make check
+        - make distcheck

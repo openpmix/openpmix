@@ -9,7 +9,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2006-2014 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2006-2020 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
 # Copyright (c) 2014      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
@@ -23,16 +23,27 @@
 
 DEFS="-DEXEEXT=\"$(EXEEXT)\""
 
-real_man_pages = generic_wrapper.1 pmix_wrapper.1
-EXTRA_DIST = $(real_man_pages:.1=.1in)
+MD_FILES = \
+        pmix_wrapper.1.md
+MD_FILES_NOINST = \
+        generic_wrapper.1.md
+
+man_pages_from_md = $(MD_FILES:.1.md=.1)
+man_pages_from_md_noinst = $(MD_FILES_NOINST:.1.md=.1)
+
+EXTRA_DIST = $(MD_FILES) $(MD_FILES_NOINST) $(man_pages_from_md) $(man_pages_from_md_noinst)
 
 include $(top_srcdir)/Makefile.pmix-rules
+
+nodist_man_MANS =
 
 if PMIX_INSTALL_BINARIES
 
 bin_PROGRAMS = pmix_wrapper
 
-nodist_man_MANS = pmix_wrapper.1
+if PMIX_ENABLE_MAN_PAGES
+nodist_man_MANS += $(man_pages_from_md)
+endif # PMIX_ENABLE_MAN_PAGES
 
 dist_pmixdata_DATA = help-pmix-wrapper.txt
 
@@ -42,7 +53,9 @@ if WANT_INSTALL_HEADERS
 nodist_pmixdata_DATA = \
 	pmixcc-wrapper-data.txt
 
+if PMIX_ENABLE_MAN_PAGES
 nodist_man_MANS += pmixcc.1
+endif # PMIX_ENABLE_MAN_PAGES
 
 pkgconfigdir = $(libdir)/pkgconfig
 pkgconfig_DATA = pmix.pc
@@ -60,14 +73,10 @@ endif # PMIX_INSTALL_BINARIES
 pmix_wrapper_SOURCES = pmix_wrapper.c
 pmix_wrapper_LDADD = $(top_builddir)/src/libpmix.la
 
-# Ensure that the man pages are rebuilt if the pmix_config.h file
-# changes; a "good enough" way to know if configure was run again (and
-# therefore the release date or version may have changed)
-$(real_man_pages): $(top_builddir)/src/include/pmix_config.h
-
 pmixcc.1: generic_wrapper.1
 	rm -f pmixcc.1
 	sed -e 's/#COMMAND#/pmixcc/g' -e 's/#PROJECT#/PMIx/g' -e 's/#PROJECT_SHORT#/PMIx/g' -e 's/#LANGUAGE#/C/g' < $(top_builddir)/src/tools/wrapper/generic_wrapper.1 > pmixcc.1
+EXTRA_DIST += pmixcc.1
 
 distclean-local:
-	rm -f $(real_man_pages) pmixcc.1
+	rm -f pmixcc.1
