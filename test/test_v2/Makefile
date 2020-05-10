@@ -1,4 +1,4 @@
-INSTALLDIR = /home/cps/pmix-install
+INSTALLDIR = $(HOME)/pmix-install
 INCLUDES = -I. -I../../test -I../../include -I../.. -I../../src/include
 vpath %.h .:../../test:../../include:../..:../../src/include
 LDIR = $(INSTALLDIR)/lib
@@ -9,11 +9,11 @@ LDFLAGS = -Wl,-rpath,$(LDIR)
 LIBS =-lpmix -lpthread -levent
 
 # Executables
-EXE = pmix_test 
+EXE = pmix_test test_init_fin
 
 # List of all .c source files.
 PCFILES = pmix_test.c test_common.c cli_stages.c utils.c test_server.c server_callbacks.c
-TCFILES = 
+TCFILES = test_init_fin.c test_common.c
 CFILES = $(PCFILES) $(TCFILES)
 
 OBJ = $(CFILES:%.c=%.o)
@@ -24,10 +24,13 @@ all: pmix_test test_init_fin
 .PHONY: all
 
 clean:
-	rm -f a.out $(EXE) $(OBJ) $(DEP)
+	rm -f $(EXE) $(OBJ) $(DEP)
 .PHONY: clean
 
 pmix_test: $(POBJ) 
+	$(CC) -o $@ $^ $(CFLAGS) -L$(LDIR) $(LDFLAGS) $(LIBS)
+
+test_init_fin: $(TOBJ)
 	$(CC) -o $@ $^ $(CFLAGS) -L$(LDIR) $(LDFLAGS) $(LIBS)
 
 %.o : %.c
