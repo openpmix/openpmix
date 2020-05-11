@@ -61,7 +61,7 @@ AC_DEFUN([PMIX_LIBEV_CONFIG],[
            PMIX_CHECK_PACKAGE([pmix_libev],
                               [event.h],
                               [ev],
-                              [event_base_new],
+                              [ev_async_init],
                               [],
                               [$pmix_libev_dir],
                               [$pmix_libev_libdir],
@@ -91,6 +91,10 @@ AC_DEFUN([PMIX_LIBEV_CONFIG],[
         PMIX_SUMMARY_ADD([[External Packages]],[[libev]],[libev],[$pmix_libev_dir])
     else
         AC_MSG_RESULT([no])
+        # if they asked us to use it, then this is an error
+        AS_IF([test -n "$with_libev" && test "$with_libev" != "no"],
+              [AC_MSG_WARN([LIBEV SUPPORT REQUESTED AND NOT FOUND])
+               AC_MSG_ERROR([CANNOT CONTINUE])])
     fi
 
     AC_DEFINE_UNQUOTED([PMIX_HAVE_LIBEV], [$pmix_libev_support], [Whether we are building against libev])
