@@ -15,7 +15,7 @@
 # MCA_libev_CONFIG([action-if-found], [action-if-not-found])
 # --------------------------------------------------------------------
 AC_DEFUN([PMIX_LIBEV_CONFIG],[
-    PMIX_VAR_SCOPE_PUSH([pmix_libev_dir pmix_libev_libdir pmix_libev_standard_header_location pmix_libev_standard_lib_location])
+    PMIX_VAR_SCOPE_PUSH([pmix_libev_dir pmix_libev_libdir pmix_libev_standard_header_location pmix_libev_standard_lib_location pmix_check_libev_save_CPPFLAGS pmix_check_libev_save_LDFLAGS pmix_check_libev_save_LIBS])
 
     AC_ARG_WITH([libev],
                 [AC_HELP_STRING([--with-libev=DIR],
@@ -72,14 +72,14 @@ AC_DEFUN([PMIX_LIBEV_CONFIG],[
            LIBS="$pmix_check_libev_save_LIBS"])
 
     AS_IF([test $pmix_libev_support -eq 1],
-          [PMIX_FLAGS_APPEND_UNIQ(LIBS, $pmix_libev_LIBS)
+          [PMIX_FLAGS_APPEND_UNIQ(PMIX_FINAL_LIBS, $pmix_libev_LIBS)
            PMIX_WRAPPER_FLAGS_ADD(LIBS, $pmix_libev_LIBS)
 
            AS_IF([test "$pmix_libev_standard_header_location" != "yes"],
-                 [PMIX_FLAGS_APPEND_UNIQ(CPPFLAGS, $pmix_libev_CPPFLAGS)
+                 [PMIX_FLAGS_APPEND_UNIQ(PMIX_FINAL_CPPFLAGS, $pmix_libev_CPPFLAGS)
                   PMIX_WRAPPER_FLAGS_ADD(CPPFLAGS, $pmix_libev_CPPFLAGS)])
            AS_IF([test "$pmix_libev_standard_lib_location" != "yes"],
-                 [PMIX_FLAGS_APPEND_UNIQ(LDFLAGS, $pmix_libev_LDFLAGS)
+                 [PMIX_FLAGS_APPEND_UNIQ(PMIX_FINAL_LDFLAGS, $pmix_libev_LDFLAGS)
                   PMIX_WRAPPER_FLAGS_ADD(LDFLAGS, $pmix_libev_LDFLAGS)])])
 
     AC_MSG_CHECKING([will libev support be built])

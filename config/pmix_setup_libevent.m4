@@ -2,7 +2,7 @@
 #
 # Copyright (c) 2009-2015 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2013      Los Alamos National Security, LLC.  All rights reserved.
-# Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+# Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2017-2019 Research Organization for Information Science
 #                         and Technology (RIST).  All rights reserved.
 # $COPYRIGHT$
@@ -55,7 +55,7 @@ AC_DEFUN([_PMIX_LIBEVENT_EMBEDDED_MODE],[
 ])
 
 AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
-    PMIX_VAR_SCOPE_PUSH([pmix_event_dir pmix_event_libdir pmix_event_defaults])
+    PMIX_VAR_SCOPE_PUSH([pmix_event_dir pmix_event_libdir pmix_event_defaults pmix_check_libevent_save_CPPFLAGS pmix_check_libevent_save_LDFLAGS pmix_check_libevent_save_LIBS])
 
     AC_ARG_WITH([libevent],
                 [AC_HELP_STRING([--with-libevent=DIR],
@@ -68,6 +68,7 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
     pmix_check_libevent_save_CPPFLAGS="$CPPFLAGS"
     pmix_check_libevent_save_LDFLAGS="$LDFLAGS"
     pmix_check_libevent_save_LIBS="$LIBS"
+    pmix_event_defaults=yes
 
     # get rid of the trailing slash(es)
     libevent_prefix=$(echo $with_libevent | sed -e 'sX/*$XXg')
@@ -116,13 +117,12 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
                            [pmix_libevent_support=1],
                            [pmix_libevent_support=0])
 
+        # need to add resulting flags to global ones so we can
+        # test for thread support
         AS_IF([test "$pmix_event_defaults" = "no"],
               [PMIX_FLAGS_APPEND_UNIQ(CPPFLAGS, $pmix_libevent_CPPFLAGS)
-               PMIX_WRAPPER_FLAGS_ADD(CPPFLAGS, $pmix_libevent_CPPFLAGS)
-               PMIX_FLAGS_APPEND_UNIQ(LDFLAGS, $pmix_libevent_LDFLAGS)
-               PMIX_WRAPPER_FLAGS_ADD(LDFLAGS, $pmix_libevent_LDFLAGS)])
+               PMIX_FLAGS_APPEND_UNIQ(LDFLAGS, $pmix_libevent_LDFLAGS)])
         PMIX_FLAGS_APPEND_UNIQ(LIBS, $pmix_libevent_LIBS)
-        PMIX_WRAPPER_FLAGS_ADD(LIBS, $pmix_libevent_LIBS)
 
         if test $pmix_libevent_support -eq 1; then
             # Ensure that this libevent has the symbol
@@ -159,9 +159,12 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
                            [Location of event.h])
         pmix_libevent_source=$pmix_event_dir
         AS_IF([test "$pmix_event_defaults" = "no"],
-              [PMIX_FLAGS_APPEND_UNIQ(CPPFLAGS, $pmix_libevent_CPPFLAGS)
-               PMIX_FLAGS_APPEND_UNIQ(LDFLAGS, $pmix_libevent_LDFLAGS)])
-        PMIX_FLAGS_APPEND_UNIQ(LIBS, $pmix_libevent_LIBS)
+              [PMIX_FLAGS_APPEND_UNIQ(PMIX_FINAL_CPPFLAGS, $pmix_libevent_CPPFLAGS)
+               PMIX_WRAPPER_FLAGS_ADD(CPPFLAGS, $pmix_libevent_CPPFLAGS)
+               PMIX_FLAGS_APPEND_UNIQ(PMIX_FINAL_LDFLAGS, $pmix_libevent_LDFLAGS)
+               PMIX_WRAPPER_FLAGS_ADD(LDFLAGS, $pmix_libevent_LDFLAGS)])
+        PMIX_FLAGS_APPEND_UNIQ(PMIX_FINAL_LIBS, $pmix_libevent_LIBS)
+        PMIX_WRAPPER_FLAGS_ADD(LIBS, $pmix_libevent_LIBS)
     else
         AC_MSG_RESULT([no])
     fi

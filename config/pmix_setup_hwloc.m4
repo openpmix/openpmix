@@ -2,7 +2,7 @@
 #
 # Copyright (c) 2009-2015 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2013      Los Alamos National Security, LLC.  All rights reserved.
-# Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+# Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -46,7 +46,7 @@ AC_DEFUN([_PMIX_HWLOC_EMBEDDED_MODE],[
  ])
 
 AC_DEFUN([_PMIX_HWLOC_EXTERNAL],[
-    PMIX_VAR_SCOPE_PUSH([pmix_hwloc_dir pmix_hwloc_libdir pmix_hwloc_standard_lib_location pmix_hwloc_standard_header_location])
+    PMIX_VAR_SCOPE_PUSH([pmix_hwloc_dir pmix_hwloc_libdir pmix_hwloc_standard_lib_location pmix_hwloc_standard_header_location pmix_check_hwloc_save_CPPFLAGS pmix_check_hwloc_save_LDFLAGS pmix_check_hwloc_save_LIBS])
 
     AC_ARG_WITH([hwloc],
                 [AC_HELP_STRING([--with-hwloc=DIR],
@@ -57,6 +57,12 @@ AC_DEFUN([_PMIX_HWLOC_EXTERNAL],[
                                 [Search for hwloc libraries in DIR ])])
 
     pmix_hwloc_support=0
+    pmix_check_hwloc_save_CPPFLAGS="$CPPFLAGS"
+    pmix_check_hwloc_save_LDFLAGS="$LDFLAGS"
+    pmix_check_hwloc_save_LIBS="$LIBS"
+    pmix_hwloc_standard_header_location=yes
+    pmix_hwloc_standard_lib_location=yes
+
     AS_IF([test "$with_hwloc" = "internal" || test "$with_hwloc" = "external"],
           [with_hwloc=])
 
@@ -108,14 +114,11 @@ AC_DEFUN([_PMIX_HWLOC_EXTERNAL],[
                            [pmix_hwloc_support=0])
 
         AS_IF([test "$pmix_hwloc_standard_header_location" != "yes"],
-              [PMIX_FLAGS_APPEND_UNIQ(CPPFLAGS, $pmix_hwloc_CPPFLAGS)
-               PMIX_WRAPPER_FLAGS_ADD(CPPFLAGS, $pmix_hwloc_CPPFLAGS)])
+              [PMIX_FLAGS_APPEND_UNIQ(CPPFLAGS, $pmix_hwloc_CPPFLAGS)])
 
         AS_IF([test "$pmix_hwloc_standard_lib_location" != "yes"],
-              [PMIX_FLAGS_APPEND_UNIQ(LDFLAGS, $pmix_hwloc_LDFLAGS)
-               PMIX_WRAPPER_FLAGS_ADD(LDFLAGS, $pmix_hwloc_LDFLAGS)])
+              [PMIX_FLAGS_APPEND_UNIQ(LDFLAGS, $pmix_hwloc_LDFLAGS)])
         PMIX_FLAGS_APPEND_UNIQ(LIBS, $pmix_hwloc_LIBS)
-        PMIX_WRAPPER_FLAGS_ADD(LIBS, $pmix_hwloc_LIBS)
     fi
 
     if test ! -z "$with_hwloc" && test "$with_hwloc" != "no" && test "$pmix_hwloc_support" != "1"; then
@@ -137,6 +140,10 @@ AC_DEFUN([_PMIX_HWLOC_EXTERNAL],[
                AC_MSG_ERROR([Cannot continue])])
     fi
 
+    CPPFLAGS=$pmix_check_hwloc_save_CPPFLAGS
+    LDFLAGS=$pmix_check_hwloc_save_LDFLAGS
+    LIBS=$pmix_check_hwloc_save_LIBS
+
     AC_MSG_CHECKING([will hwloc support be built])
     if test "$pmix_hwloc_support" != "1"; then
         AC_MSG_RESULT([no])
@@ -146,6 +153,16 @@ AC_DEFUN([_PMIX_HWLOC_EXTERNAL],[
         AC_MSG_RESULT([yes])
         pmix_hwloc_source=$pmix_hwloc_dir
         pmix_hwloc_support_will_build=yes
+        AS_IF([test "$pmix_hwloc_standard_header_location" != "yes"],
+              [AC_MSG_WARN([NONSTD LOC])
+               PMIX_FLAGS_APPEND_UNIQ(PMIX_FINAL_CPPFLAGS, $pmix_hwloc_CPPFLAGS)
+               PMIX_WRAPPER_FLAGS_ADD(CPPFLAGS, $pmix_hwloc_CPPFLAGS)])
+
+        AS_IF([test "$pmix_hwloc_standard_lib_location" != "yes"],
+              [PMIX_FLAGS_APPEND_UNIQ(PMIX_FINAL_LDFLAGS, $pmix_hwloc_LDFLAGS)
+               PMIX_WRAPPER_FLAGS_ADD(LDFLAGS, $pmix_hwloc_LDFLAGS)])
+        PMIX_FLAGS_APPEND_UNIQ(PMIX_FINAL_LIBS, $pmix_hwloc_LIBS)
+        PMIX_WRAPPER_FLAGS_ADD(LIBS, $pmix_hwloc_LIBS)
     fi
 
     # Set output variables
