@@ -14,6 +14,7 @@
 # Copyright (c) 2014      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
 # Copyright (c) 2019      Intel, Inc.  All rights reserved.
+# Copyright (c) 2020      IBM Corporation.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -47,9 +48,6 @@ endif # PMIX_ENABLE_MAN_PAGES
 
 dist_pmixdata_DATA = help-pmix-wrapper.txt
 
-# Only install the following for developer-level installs
-if WANT_INSTALL_HEADERS
-
 nodist_pmixdata_DATA = \
 	pmixcc-wrapper-data.txt
 
@@ -65,8 +63,6 @@ install-exec-hook:
 
 uninstall-local:
 	rm -f $(DESTDIR)$(bindir)/pmixcc$(EXEEXT)
-
-endif # WANT_INSTALL_HEADERS
 
 endif # PMIX_INSTALL_BINARIES
 
