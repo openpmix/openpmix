@@ -14,6 +14,8 @@ dnl Copyright (c) 2009-2017 Cisco Systems, Inc.  All rights reserved
 dnl Copyright (c) 2008-2018 University of Houston. All rights reserved.
 dnl Copyright (c) 2015-2018 Research Organization for Information Science
 dnl                         and Technology (RIST).  All rights reserved.
+dnl Copyright (c) 2020      Triad National Security, LLC. All rights
+dnl                         reserved.
 dnl Copyright (c) 2020      Intel, Inc.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
@@ -29,7 +31,9 @@ dnl
 # support, otherwise executes action-if-not-found
 AC_DEFUN([PMIX_CHECK_LUSTRE],[
 
-    PMIX_VAR_SCOPE_PUSH([check_lustre_save_LIBS check_lustre_save_LDFLAGS check_lustre_save_CPPFLAGS])
+    check_lustre_CPPFLAGS=
+    check_lustre_LDFLAGS=
+    check_lustre_LIBS=
 
     check_lustre_save_LIBS="$LIBS"
     check_lustre_save_LDFLAGS="$LDFLAGS"
@@ -44,31 +48,28 @@ AC_DEFUN([PMIX_CHECK_LUSTRE],[
     PMIX_CHECK_WITHDIR([lustre], [$with_lustre], [include/lustre/lustreapi.h])
 
     AS_IF([test "$with_lustre" = "no"],
-        [pmix_check_lustre_happy="no"],
-        [AS_IF([test -z "$with_lustre" || test "$with_lustre" = "yes"],
-                [pmix_check_lustre_dir="/usr"],
-                [pmix_check_lustre_dir=$with_lustre])
+          [pmix_check_lustre_happy=no])
 
-            if test -e "$pmix_check_lustre_dir/lib64" ; then
-                pmix_check_lustre_libdir="$pmix_check_lustre_dir/lib64"
-            else
-                pmix_check_lustre_libdir="$pmix_check_lustre_dir/lib"
-            fi
+    AS_IF([test "$pmix_check_lustre_happy" != "no" ],
+          [AC_MSG_CHECKING([looking for lustre libraries and header files in])
+           AS_IF([test "$with_lustre" != "yes"],
+                 [pmix_check_lustre_dir=$with_lustre
+                  AC_MSG_RESULT([($pmix_check_lustre_dir)])],
+                 [AC_MSG_RESULT([(default search paths)])])
+           AS_IF([test -n "$with_lustre_libdir" && \
+                         test "$with_lustre_libdir" != "yes"],
+                 [pmix_check_lustre_libdir=$with_lustre_libdir])
+          ])
 
-            # Add correct -I and -L flags
-            PMIX_CHECK_PACKAGE([$1],
-                               [lustre/lustreapi.h],
-                               [lustreapi],
-                               [llapi_file_create],
-                               [],
-                               [$pmix_check_lustre_dir],
-                               [$pmix_check_lustre_libdir],
-                               [pmix_check_lustre_happy="yes"],
-                               [pmix_check_lustre_happy="no"])
+    AS_IF([test "$pmix_check_lustre_happy" != "no" ],
+          [PMIX_CHECK_PACKAGE([$1], [lustre/lustreapi.h], [lustreapi], [llapi_file_create],
+                [], [$pmix_check_lustre_dir], [$pmix_check_lustre_libdir],
+                [pmix_check_lustre_happy="yes"],
+                [pmix_check_lustre_happy="no"])])
 
-            AS_IF([test "$pmix_check_lustre_happy" = "yes"],
-                  [AC_MSG_CHECKING([for required lustre data structures])
-                   cat > conftest.c <<EOF
+    AS_IF([test "$pmix_check_lustre_happy" = "yes"],
+          [AC_MSG_CHECKING([for required lustre data structures])
+           cat > conftest.c <<EOF
 #include "lustre/lustreapi.h"
 void alloc_lum()
 {
@@ -80,26 +81,19 @@ void alloc_lum()
 }
 EOF
 
-                   # Try the compile
-                   PMIX_LOG_COMMAND(
-                       [$CC $CFLAGS -I$pmix_check_lustre_dir/include -c conftest.c],
-                       [pmix_check_lustre_struct_happy="yes"],
-                       [pmix_check_lustre_struct_happy="no"
-                        pmix_check_lustre_happy="no"]
-                   )
-                       rm -f conftest.c conftest.o
-                       AC_MSG_RESULT([$pmix_check_lustre_struct_happy])])
-    ])
+           # Try the compile
+           PMIX_LOG_COMMAND(
+               [$CC $CFLAGS -I$pmix_check_lustre_dir/include -c conftest.c],
+               [pmix_check_lustre_struct_happy="yes"],
+               [pmix_check_lustre_struct_happy="no"
+                pmix_check_lustre_happy="no"]
+            )
+            rm -f conftest.c conftest.o
+            AC_MSG_RESULT([$pmix_check_lustre_struct_happy])])
 
     AS_IF([test "$pmix_check_lustre_happy" = "yes"],
           [$2],
-          [AS_IF([test ! -z "$with_lustre" && test "$with_lustre" != "no"],
+          [AS_IF([test -n "$with_lustre" && test "$with_lustre" != "no"],
                  [AC_MSG_ERROR([Lustre support requested but not found.  Aborting])])
-           $3])
-
-    CPPFLAGS=$check_lustre_save_CPPFLAGS
-    LDFLAGS=$check_lustre_save_LDFLAGS
-    LIBS=$check_lustre_save_LIBS
-
-    PMIX_VAR_SCOPE_POP
+                  $3])
 ])

@@ -255,7 +255,7 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
         for (n=0; n < ndirs; n++) {
             PMIX_INFO_XFER(&cd->directives[n], (pmix_info_t*)&directives[n]);
         }
-        PMIX_INFO_LOAD(&cd->directives[ndirs], PMIX_LOG_SOURCE, &source, PMIX_PROC);
+        PMIX_INFO_LOAD(&cd->directives[ndirs], PMIX_LOG_SOURCE, source, PMIX_PROC);
         /* call down to process the request - the various components
          * will thread shift as required */
         rc = pmix_plog.log(source, data, ndata, cd->directives, cd->ndirs, localcbfunc, cd);
