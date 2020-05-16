@@ -172,7 +172,7 @@ static pmix_status_t harvest_envars(pmix_namespace_t *nptr,
     pmix_mca_base_var_file_value_t *fv;
     pmix_kval_t *kv;
     size_t n;
-    char *file, *tmp;
+    char *file, *tmp, *evar;
 
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
                         "pmdl:ompi5:harvest envars");
@@ -208,6 +208,51 @@ static pmix_status_t harvest_envars(pmix_namespace_t *nptr,
             PMIX_LOAD_NSPACE(ns->nspace, nptr->nspace);
             pmix_list_append(&mynspaces, &ns->super);
         }
+    }
+
+    /* check if the user has set OMPIHOME in their environment */
+    if (NULL != (evar = getenv("OMPIHOME"))) {
+        /* look for the default MCA param file */
+        file = pmix_os_path(false, evar, "etc", "openmpi-mca-params.conf", NULL);
+        PMIX_CONSTRUCT(&params, pmix_list_t);
+        pmix_mca_base_parse_paramfile(file, &params);
+        free(file);
+        PMIX_LIST_FOREACH(fv, &params, pmix_mca_base_var_file_value_t) {
+            /* need to prefix the param name */
+            kv = PMIX_NEW(pmix_kval_t);
+            if (NULL == kv) {
+                PMIX_LIST_DESTRUCT(&params);
+                return PMIX_ERR_OUT_OF_RESOURCE;
+            }
+            kv->key = strdup(PMIX_SET_ENVAR);
+            kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+            if (NULL == kv->value) {
+                PMIX_RELEASE(kv);
+                PMIX_LIST_DESTRUCT(&params);
+                return PMIX_ERR_OUT_OF_RESOURCE;
+            }
+            kv->value->type = PMIX_ENVAR;
+            pmix_asprintf(&tmp, "OMPI_MCA_%s", fv->mbvfv_var);
+            PMIX_ENVAR_LOAD(&kv->value->data.envar, tmp, fv->mbvfv_value, ':');
+            free(tmp);
+            pmix_list_append(ilist, &kv->super);
+        }
+        PMIX_LIST_DESTRUCT(&params);
+        /* add an envar indicating that we did this so the OMPI
+         * processes won't duplicate it */
+        kv = PMIX_NEW(pmix_kval_t);
+        if (NULL == kv) {
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+        kv->key = strdup(PMIX_SET_ENVAR);
+        kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+        if (NULL == kv->value) {
+            PMIX_RELEASE(kv);
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+        kv->value->type = PMIX_ENVAR;
+        PMIX_ENVAR_LOAD(&kv->value->data.envar, "OPAL_SYS_PARAMS_GIVEN", "1", ':');
+        pmix_list_append(ilist, &kv->super);
     }
 
     /* see if the user has a default MCA param file */
