@@ -292,7 +292,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_NETWORK_PLANE                  "pmix.net.plane"        // (char*) string ID of a network plane
 #define PMIX_NETWORK_SWITCH                 "pmix.net.switch"       // (char*) string ID of a network switch
 #define PMIX_NETWORK_NIC                    "pmix.net.nic"          // (char*) string ID of a NIC
-#define PMIX_NETWORK_ENDPT                  "pmix.net.endpt"        // (pmix_byte_object_t) network endpt for process
+#define PMIX_NETWORK_ENDPT                  "pmix.net.endpt"        // (pmix_data_array_t*) array of network endpts for process
 #define PMIX_NETWORK_SHAPE                  "pmix.net.shape"        // (pmix_data_array_t*) number of interfaces (uint32_t) on each dimension of the
                                                                     //        specified network plane in the requested view
 #define PMIX_NETWORK_SHAPE_STRING           "pmix.net.shapestr"     // (char*) network shape expressed as a string (e.g., "10x12x2")

@@ -46,10 +46,11 @@ int main(int argc, char **argv)
     pmix_value_t *val = &value;
     char *tmp;
     pmix_proc_t proc;
-    uint32_t nprocs, n, *u32;
+    uint32_t nprocs, n;
     size_t ninfo, m;
     pmix_coord_t *coords;
     char *hostname;
+    pmix_byte_object_t *bptr;
 
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Init failed: %s",
@@ -90,16 +91,15 @@ int main(int argc, char **argv)
                 myproc.nspace, myproc.rank,
                 (unsigned long)val->data.darray->size);
 
-    u32 = (uint32_t*)val->data.darray->array;
+    bptr = (pmix_byte_object_t*)val->data.darray->array;
     ninfo = val->data.darray->size;
     /* print them out for diagnostics - someday we can figure
-     * out an automated way of testing the answer */
+     * out an automated way of testing the answer. We know that
+     * the simptest pnet component returns strings */
     {
         char **foo = NULL;
         for (n=0; n < ninfo; n++) {
-            asprintf(&tmp, "%d", u32[n]);
-            pmix_argv_append_nosize(&foo, tmp);
-            free(tmp);
+            pmix_argv_append_nosize(&foo, bptr[0].bytes);
         }
         tmp = pmix_argv_join(foo, ',');
         pmix_argv_free(foo);

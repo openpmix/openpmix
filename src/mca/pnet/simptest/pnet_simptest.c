@@ -68,6 +68,7 @@ typedef struct {
     pmix_list_item_t super;
     char *name;
     pmix_coord_t coord;
+    pmix_byte_object_t endpt;
 } pnet_node_t;
 static void ndcon(pnet_node_t *p)
 {
@@ -76,6 +77,9 @@ static void ndcon(pnet_node_t *p)
     p->coord.fabric = strdup("test");
     p->coord.plane = strdup("simptest");
     p->coord.view = PMIX_COORD_LOGICAL_VIEW;
+    PMIX_BYTE_OBJECT_CONSTRUCT(&p->endpt);
+    p->endpt.bytes = strdup("ENDPT");
+    p->endpt.size = strlen("ENDPT") + 1;
 }
 static void nddes(pnet_node_t *p)
 {
@@ -86,6 +90,9 @@ static void nddes(pnet_node_t *p)
     free(p->coord.plane);
     if (NULL != p->coord.coord) {
         free(p->coord.coord);
+    }
+    if (NULL != p->endpt.bytes) {
+        free(p->endpt.bytes);
     }
 }
 static PMIX_CLASS_INSTANCE(pnet_node_t,
@@ -242,9 +249,10 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
     pnet_node_t *nd, *nd2;
     pmix_kval_t *kv;
     pmix_info_t *iptr, *ip2;
-    pmix_data_array_t *darray, *d2;
+    pmix_data_array_t *darray, *d2, *d3;
     pmix_rank_t rank;
     pmix_buffer_t buf;
+    pmix_byte_object_t *bptr;
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                         "pnet:simptest:allocate for nspace %s",
@@ -339,10 +347,10 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
         kv->value->data.darray = darray;
         iptr = (pmix_info_t*)darray->array;
         for (m=0; NULL != locals[m]; m++) {
-            /* each proc has one endpoint corresponding to the
+            /* each proc has one endpoint and one coord corresponding to the
              * node they upon which they are executing */
             PMIX_LOAD_KEY(iptr[m].key, PMIX_PROC_DATA);
-            PMIX_DATA_ARRAY_CREATE(d2, 2, PMIX_INFO);
+            PMIX_DATA_ARRAY_CREATE(d2, 3, PMIX_INFO);
             iptr[m].value.type = PMIX_DATA_ARRAY;
             iptr[m].value.data.darray = d2;
             ip2 = (pmix_info_t*)d2->array;
@@ -354,6 +362,14 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             PMIX_INFO_LOAD(&ip2[0], PMIX_RANK, &rank, PMIX_PROC_RANK);
             /* the second element in this array is the coord */
             PMIX_INFO_LOAD(&ip2[1], PMIX_NETWORK_COORDINATE, &nd->coord, PMIX_COORD);
+            /* third element is the endpt */
+            PMIX_DATA_ARRAY_CREATE(d3, 1, PMIX_BYTE_OBJECT);
+            PMIX_LOAD_KEY(ip2[2].key, PMIX_NETWORK_ENDPT);
+            ip2[2].value.type = PMIX_DATA_ARRAY;
+            ip2[2].value.data.darray = d3;
+            bptr = (pmix_byte_object_t*)d3->array;
+            bptr[0].bytes = strdup(nd->endpt.bytes);
+            bptr[0].size = nd->endpt.size;
         }
         pmix_argv_free(locals);
         locals = NULL;
