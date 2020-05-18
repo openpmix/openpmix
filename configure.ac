@@ -94,7 +94,7 @@ pmix_show_title "Configuring PMIx"
 AC_CANONICAL_TARGET
 
 # Init automake
-AM_INIT_AUTOMAKE([foreign dist-bzip2 subdir-objects no-define 1.13.4])
+AM_INIT_AUTOMAKE([foreign dist-bzip2 subdir-objects no-define 1.13.4 tar-pax])
 
 # SILENT_RULES is new in AM 1.11, but we require 1.13.4 or higher via
 # autogen.  Limited testing shows that calling SILENT_RULES directly
