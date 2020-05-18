@@ -92,7 +92,10 @@ static int pdlopen_open(const char *fname, bool use_ext, bool private_namespace,
             if (stat(name, &buf) < 0) {
                 free(name);
                 if (NULL != err_msg) {
-                    *err_msg = "File not found";
+                    rc = asprintf(err_msg, "File %s not found", name);
+                    if (0 > rc) {
+                        return PMIX_ERR_NOMEM;
+                    }
                 }
                 continue;
             }
