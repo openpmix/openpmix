@@ -1,7 +1,8 @@
 dnl -*- shell-script -*-
 dnl
-dnl Copyright (c) 2020 Cisco Systems, Inc.  All rights reserved.
+dnl Copyright (c) 2020      Cisco Systems, Inc.  All rights reserved.
 dnl
+dnl Copyright (c) 2020      Intel, Inc.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -19,7 +20,7 @@ dnl
 AC_DEFUN([PMIX_SETUP_MAN_PAGES],[
     AC_ARG_ENABLE(man-pages,
                   [AC_HELP_STRING([--disable-man-pages],
-                                  [Do not generate/install man pages (default: enable)])])
+                                  [Do not generate/install man pages (default: enabled)])])
 
     PANDOC=
     PMIX_ENABLE_MAN_PAGES=0
@@ -65,13 +66,18 @@ AC_DEFUN([_PMIX_SETUP_PANDOC],[
           ])
 
     AS_IF([test -z "$PANDOC" || test -n "`echo $PANDOC | $GREP missing`"],
-          [AS_IF([test ! -f "$srcdir/tools/wrapper/pmix_wrapper.1"],
-                 [AC_MSG_WARN([*** Could not find a suitable pandoc on your system.])
-                  AC_MSG_WARN([*** You need pandoc >=$min_major_version.$min_minor_version to build Open PMIx man pages.])
-                  AC_MSG_WARN([*** See pandoc.org.])
-                  AC_MSG_WARN([*** NOTE: If you are building from a tarball downloaded from the Open PMIx web site, you do not need Pandoc])
-                  AC_MSG_ERROR([Cannot continue])
-                 ])
+          [AS_IF([test "$PMIX_DEVEL" = "1" && test -z "$enable_man_pages"],
+                 [AC_MSG_CHECKING([man pages will be built])
+                  AC_MSG_RESULT([no - adequate pandoc installation not found])
+                  PANDOC=
+                  PMIX_ENABLE_MAN_PAGES=0],
+                 [AS_IF([test ! -f "$srcdir/tools/wrapper/pmix_wrapper.1"],
+                         [AC_MSG_WARN([*** Could not find a suitable pandoc on your system.])
+                          AC_MSG_WARN([*** You need pandoc >=$min_major_version.$min_minor_version to build OpenPMIx man pages.])
+                          AC_MSG_WARN([*** See pandoc.org.])
+                          AC_MSG_WARN([*** NOTE: If you are building from a tarball downloaded from the OpenPMIx GitHub repository, you do not need Pandoc])
+                          AC_MSG_ERROR([Cannot continue])
+                         ])])
            ])
 
     PMIX_VAR_SCOPE_POP

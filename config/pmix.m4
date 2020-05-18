@@ -921,6 +921,13 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         AC_CONFIG_FILES(pmix_config_prefix[test/python/run_sched.sh], [chmod +x test/python/run_sched.sh])
     fi
 
+
+    ############################################################################
+    # Check for building man pages
+    ############################################################################
+    pmix_show_subtitle "Man page setup"
+    PMIX_SETUP_MAN_PAGES
+
     ############################################################################
     # final output
     ############################################################################
