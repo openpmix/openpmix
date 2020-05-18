@@ -183,8 +183,6 @@ PMIX_SETUP_WRAPPER_INIT
 m4_ifdef([AM_PROG_AR], [AM_PROG_AR])
 AM_PROG_LEX
 
-PMIX_SETUP_MAN_PAGES
-
 ############################################################################
 # Configuration options
 ############################################################################
