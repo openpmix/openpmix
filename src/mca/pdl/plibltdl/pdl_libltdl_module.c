@@ -90,7 +90,7 @@ static int plibltpdl_lookup(pmix_pdl_handle_t *handle, const char *symbol,
     }
 
     if (NULL != err_msg) {
-        *err_msg = (char*) lt_dlerror();
+        *err_msg = strdup((char*) lt_dlerror());
     }
     return PMIX_ERROR;
 }
