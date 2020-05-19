@@ -63,14 +63,14 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env, char ***pr
 static void deregister_nspace(pmix_namespace_t *nptr);
 static void deregister_nspace(pmix_namespace_t *nptr);
 pmix_pmdl_module_t pmix_pmdl_ompi5_module = {.name = "ompi5",
-                                             .init = ompi5_init,
-                                             .finalize = ompi5_finalize,
-                                             .harvest_envars = harvest_envars,
-                                             .setup_nspace = setup_nspace,
-                                             .setup_nspace_kv = setup_nspace_kv,
-                                             .register_nspace = register_nspace,
-                                             .setup_fork = setup_fork,
-                                             .deregister_nspace = deregister_nspace};
+    .init = ompi5_init,
+    .finalize = ompi5_finalize,
+    .harvest_envars = harvest_envars,
+    .setup_nspace = setup_nspace,
+    .setup_nspace_kv = setup_nspace_kv,
+    .register_nspace = register_nspace,
+    .setup_fork = setup_fork,
+    .deregister_nspace = deregister_nspace};
 
 /* internal structures */
 typedef struct {
@@ -306,11 +306,11 @@ static pmix_status_t harvest_envars(pmix_namespace_t *nptr, const pmix_info_t in
         pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
                             "pmdl: ompi5 harvesting envars %s excluding %s",
                             (NULL == mca_pmdl_ompi5_component.incparms)
-                                ? "NONE"
-                                : mca_pmdl_ompi5_component.incparms,
+                            ? "NONE"
+                            : mca_pmdl_ompi5_component.incparms,
                             (NULL == mca_pmdl_ompi5_component.excparms)
-                                ? "NONE"
-                                : mca_pmdl_ompi5_component.excparms);
+                            ? "NONE"
+                            : mca_pmdl_ompi5_component.excparms);
         rc = pmix_util_harvest_envars(mca_pmdl_ompi5_component.include,
                                       mca_pmdl_ompi5_component.exclude, ilist);
         if (PMIX_SUCCESS != rc) {

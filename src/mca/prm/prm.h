@@ -66,6 +66,14 @@ typedef pmix_status_t (*pmix_prm_base_module_notify_fn_t)(pmix_status_t status,
                                                           const pmix_info_t info[], size_t ninfo,
                                                           pmix_op_cbfunc_t cbfunc, void *cbdata);
 
+/* request time remaining in this allocation - only one module
+ * capable of supporting this operation should be available
+ * in a given environment. However, if a module is available
+ * and decides it cannot provide the info in the current situation,
+ * then it can return PMIX_ERR_TAKE_NEXT_OPTION to indicate that
+ * another module should be tried */
+typedef int (*pmix_prm_base_module_get_rem_time_fn_t)(uint32_t *timeleft);
+
 /**
  * Base structure for a PRM module. Each component should malloc a
  * copy of the module structure for each fabric plane they support.
@@ -73,16 +81,18 @@ typedef pmix_status_t (*pmix_prm_base_module_notify_fn_t)(pmix_status_t status,
 typedef struct {
     char *name;
     /* init/finalize */
-    pmix_prm_base_module_init_fn_t init;
-    pmix_prm_base_module_fini_fn_t finalize;
-    pmix_prm_base_module_notify_fn_t notify;
+    pmix_prm_base_module_init_fn_t                 init;
+    pmix_prm_base_module_fini_fn_t                 finalize;
+    pmix_prm_base_module_notify_fn_t               notify;
+    pmix_prm_base_module_get_rem_time_fn_t         get_remaining_time;
 } pmix_prm_module_t;
 
 /**
  * Base structure for a PRM API - don't expose the init/finalize fns
  */
 typedef struct {
-    pmix_prm_base_module_notify_fn_t notify;
+    pmix_prm_base_module_notify_fn_t               notify;
+    pmix_prm_base_module_get_rem_time_fn_t         get_remaining_time;
 } pmix_prm_API_module_t;
 
 /* declare the global APIs */

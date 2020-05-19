@@ -140,3 +140,22 @@ pmix_status_t pmix_prm_base_notify(pmix_status_t status, const pmix_proc_t *sour
     /* return success to indicate we are processing it */
     return PMIX_SUCCESS;
 }
+
+int pmix_prm_base_get_remaining_time(uint32_t *timeleft)
+{
+    pmix_prm_base_active_module_t *active;
+    pmix_status_t rc;
+
+    PMIX_LIST_FOREACH(active, &pmix_prm_globals.actives, pmix_prm_base_active_module_t) {
+        if (NULL != active->module->get_remaining_time) {
+            rc = active->module->get_remaining_time(timeleft);
+            if (PMIX_SUCCESS == rc) {
+                return rc;
+            } else if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
+                return rc;
+            }
+        }
+    }
+
+    return PMIX_ERR_NOT_SUPPORTED;
+}
