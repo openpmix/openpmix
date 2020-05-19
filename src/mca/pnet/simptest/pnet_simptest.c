@@ -127,39 +127,12 @@ static char *localgetline(FILE *fp)
     return NULL;
 }
 
-static char *getword(char *line)
-{
-    int i = 0;
-    char *ptr;
-
-    if (NULL == line || '\0' == line[0]) {
-        return NULL;
-    }
-    /* scan string for first non-whitespace character */
-    while (' ' != line[i] && '\t' != line[i] && '\0' != line[i]) {
-        ++i;
-    }
-    line[i] = '\0';
-    ptr = line;
-    ++i;
-    if ('\0' == line[i]) {
-        return ptr;
-    }
-    /* scan string for the next whitespace character */
-    while (' ' != line[i] && '\t' != line[i] && '\0' != line[i]) {
-        ++i;
-    }
-    line[i] = '\0';
-    return ptr;
-}
-
 static pmix_status_t simptest_init(void)
 {
     FILE *fp = NULL;
-    char *line, *ptr;
+    char *line, **tmp;
     pnet_node_t *nd;
     int n, cache[1024];
-    size_t len, pos;
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                         "pnet: simptest init");
@@ -183,38 +156,20 @@ static pmix_status_t simptest_init(void)
                 free(line);
                 continue;
             }
-            len = strlen(line);
-            /* we start with the node name */
-            ptr = getword(line);
-            if (NULL == ptr) {
-                /* that is an error */
-                free(line);
-                fclose(fp);
-                return PMIX_ERR_FATAL;
-            }
+            tmp = pmix_argv_split(line, ' ');
             nd = PMIX_NEW(pnet_node_t);
-            nd->name = strdup(ptr);
+            nd->name = strdup(tmp[0]);
             pmix_list_append(&mynodes, &nd->super);
             n = 0;
-            pos = strlen(ptr) + 2;  // move past the NULL terminator
-            if (len <= pos) {
-                /* we are done */
-                free(line);
-                fclose(fp);
-                return PMIX_ERR_FATAL;
-            }
-            while (n < 1024 && NULL != (ptr = getword(&line[pos]))) {
-                cache[n] = strtol(ptr, NULL, 10);
-                pos += strlen(ptr) + 2;
-                if (len <= pos) {
-                    break;
-                }
+            while (n < 1024 && NULL != tmp[n+1]) {
+                cache[n] = strtol(tmp[n+1], NULL, 10);
                 ++n;
             }
-            nd->coord.dims = n + 1;
+            nd->coord.dims = n;
             nd->coord.coord = (int*)malloc(nd->coord.dims * sizeof(int));
             memcpy(nd->coord.coord, cache, nd->coord.dims * sizeof(int));
             free(line);
+            pmix_argv_free(tmp);
         }
     }
 

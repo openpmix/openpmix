@@ -777,16 +777,10 @@ static void _getnbfn(int fd, short flags, void *cbdata)
                 proc.rank = PMIX_RANK_WILDCARD;
                 goto request;
             } else if (NULL != cb->key) {
-                /* if immediate was given, then we are being directed to
-                 * check with the server even though the caller is looking for
-                 * job-level info. In some cases, a server may elect not
-                 * to provide info at init to save memory */
-                if (!optional) {
-                    pmix_output_verbose(5, pmix_client_globals.get_output,
-                                        "pmix:client not optional - requesting data");
-                    goto request;
-                }
-                /* we should have had this info, so respond with the error */
+                /* => cb->key starts with pmix
+                 * we should have had this info, so respond with the error - if
+                 * they want us to check with the server, they should ask us to
+                 * refresh the cache */
                 pmix_output_verbose(5, pmix_client_globals.get_output,
                                     "pmix:client returning NOT FOUND error");
                 goto respond;

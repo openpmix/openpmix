@@ -179,7 +179,7 @@ PMIX_EXPORT pmix_status_t PMIx_Data_pack(const pmix_proc_t *target,
     pmix_peer_t *peer;
 
     if (NULL == (peer = find_peer(target))) {
-        return PMIX_ERR_NOT_SUPPORTED;
+        return PMIX_ERR_NOT_FOUND;
     }
 
     /* setup the host */
@@ -210,7 +210,7 @@ PMIX_EXPORT pmix_status_t PMIx_Data_unpack(const pmix_proc_t *source,
     pmix_peer_t *peer;
 
     if (NULL == (peer = find_peer(source))) {
-        return PMIX_ERR_NOT_SUPPORTED;
+        return PMIX_ERR_NOT_FOUND;
     }
 
     /* setup the host */
