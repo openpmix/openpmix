@@ -434,18 +434,19 @@ int pmix_mca_base_component_repository_open(pmix_mca_base_framework_t *framework
         }
         pmix_output_verbose(vl, 0, "pmix_mca_base_component_repository_open: unable to open %s: %s (ignored)",
                             ri->ri_base, err_msg);
-        free(err_msg);
 
         if( pmix_mca_base_component_track_load_errors ) {
             pmix_mca_base_failed_component_t *f_comp = PMIX_NEW(pmix_mca_base_failed_component_t);
             f_comp->comp = ri;
             if (0 > asprintf(&(f_comp->error_msg), "%s", err_msg)) {
                 PMIX_RELEASE(f_comp);
+                free(err_msg);
                 return PMIX_ERR_BAD_PARAM;
             }
             pmix_list_append(&framework->framework_failed_components, &f_comp->super);
         }
 
+        free(err_msg);
         return PMIX_ERR_BAD_PARAM;
     }
 
