@@ -430,7 +430,7 @@ int pmix_mca_base_component_repository_open(pmix_mca_base_framework_t *framework
              * (e.g., missing symbol) -- do some simple huersitics and if
              * the file [probably] does exist, print a slightly better error
              * message. */
-            err_msg = strdup("perhaps a missing symbol, or compiled for a different version of Open MPI?");
+            err_msg = strdup("perhaps a missing symbol, or compiled for a different version of OpenPMIx");
         }
         pmix_output_verbose(vl, 0, "pmix_mca_base_component_repository_open: unable to open %s: %s (ignored)",
                             ri->ri_base, err_msg);
