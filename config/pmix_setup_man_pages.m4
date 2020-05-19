@@ -33,6 +33,13 @@ AC_DEFUN([PMIX_SETUP_MAN_PAGES],[
 
     AC_SUBST(PANDOC)
     AM_CONDITIONAL([PMIX_ENABLE_MAN_PAGES], [test $PMIX_ENABLE_MAN_PAGES -eq 1])
+    AC_DEFINE_UNQUOTED([PMIX_ENABLE_MAN_PAGES], [$PMIX_ENABLE_MAN_PAGES],
+                       [Whether or not we will build manpages])
+
+    AS_IF([test $PMIX_ENABLE_MAN_PAGES -eq 1],
+          [PMIX_SUMMARY_ADD([[Options]],[[Manpages built]], [pmix_manpages], [yes])],
+          [PMIX_SUMMARY_ADD([[Options]],[[Manpages built]], [pmix_manpages], [yes])])
+
 ])
 
 dnl Back-end pandoc setup
