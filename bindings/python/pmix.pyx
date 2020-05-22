@@ -310,7 +310,7 @@ cdef class PMIxClient:
 
     # Store some data locally for retrieval by other areas of the
     # proc. This is data that has only internal scope - it will
-    # never be "pushed" externally 
+    # never be "pushed" externally
     #
     # @proc [INPUT]
     #       - namespace and rank of the client (dict)
@@ -1601,54 +1601,33 @@ cdef class PMIxServer(PMIxClient):
         return (rc, dataout)
 
     def register_attributes(function:str, attrs:list):
-        cdef pmix_regattr_t *regattrs
         cdef size_t nattrs
-        cdef pmix_info_t **info_ptr
         cdef char *func
+        cdef char **attarray
         nattrs    = 0
-        regattrs  = NULL
-        info_ptr  = NULL
         func      = strdup(function)
 
         if attrs is not None:
             nattrs = len(attrs)
             if 0 < nattrs:
-                regattrs = <pmix_regattr_t*> PyMem_Malloc(nattrs * sizeof(pmix_regattr_t))
-                if not regattrs:
+                # allocate and load list of strings into regattrs struct
+                attarray = <char **> PyMem_Malloc((nattrs+1) * sizeof(char*))
+                if not attarray:
                     return PMIX_ERR_NOMEM
-                n = 0
-                for attr in attrs:
-                    regattrs[n].name      = strdup(attr['name'])
-                    pmix_copy_key(regattrs[n].string, attr['key'])
-                    regattrs[n].type = attr['val_type']
-                    nstrings         = len(attr['description'])
-
-                    # allocate and load pmix info structs from python list of dictionaries
-                    regattrs[n].ninfo = 0
-                    info_ptr          = &(regattrs[n].info)
-                    rc                = pmix_alloc_info(info_ptr, &(regattrs[n].ninfo), attr['info'])
-
-                    # allocate and load list of strings into regattrs struct
-                    if 0 < nstrings:
-                        regattrs[n].description = <char **> PyMem_Malloc((nstrings+1) * sizeof(char*))
-                        if not regattrs[n].description:
-                            pmix_free_regattrs(regattrs, nattrs)
-                            return PMIX_ERR_NOMEM
-                        rc = pmix_load_argv(regattrs[n].description, attr['description'])
-                        if PMIX_SUCCESS != rc:
-                            pmix_free_regattrs(regattrs, nattrs)
-                            return rc
-                    n += 1
+                rc = pmix_load_argv(attarray, attrs)
+                if PMIX_SUCCESS != rc:
+                    PyMem_Free(attarray)
+                    return rc
             else:
-                nattrs = 0
+                return PMIX_SUCCESS
         else:
-            nattrs = 0
+            return PMIX_SUCCESS
 
         # call Server API
-        rc = PMIx_Register_attributes(func, regattrs, nattrs)
+        rc = PMIx_Register_attributes(func, attarray)
 
         if 0 < nattrs:
-            pmix_free_regattrs(regattrs, nattrs)
+            PyMem_Free(attarray)
         if func != NULL:
             PyMem_Free(func)
         return PMIX_SUCCESS
@@ -2857,7 +2836,7 @@ cdef class PMIxTool(PMIxServer):
         # Call the library
         # TODO: need to add iof handler similar to pyeventhandler, goes
         # in NULL parameter after channel??
-        rc = PMIx_IOF_pull(procs, nprocs, directives, ndirs, channel, 
+        rc = PMIx_IOF_pull(procs, nprocs, directives, ndirs, channel,
                            pyiofhandler,
                            NULL, NULL)
         if 0 < nprocs:

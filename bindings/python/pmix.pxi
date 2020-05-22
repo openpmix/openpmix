@@ -111,7 +111,7 @@ cdef void validationcredential_cb(capsule, ret):
 cdef void getcredential_cb(capsule, ret):
     cdef pmix_pyshift_t *shifter
     shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "getcredential")
-    shifter[0].getcredential(shifter[0].status, shifter[0].cred, shifter[0].info, 
+    shifter[0].getcredential(shifter[0].status, shifter[0].cred, shifter[0].info,
                         shifter[0].ndata, shifter[0].cbdata)
     print("SHIFTER:", shifter[0].op)
     if 0 < shifter[0].ndata:
@@ -121,8 +121,8 @@ cdef void getcredential_cb(capsule, ret):
 cdef void allocate_cb(capsule, ret):
     cdef pmix_pyshift_t *shifter
     shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "allocate")
-    shifter[0].allocate(shifter[0].status, shifter[0].info, shifter[0].ndata, 
-                        shifter[0].cbdata, shifter[0].release_fn, 
+    shifter[0].allocate(shifter[0].status, shifter[0].info, shifter[0].ndata,
+                        shifter[0].cbdata, shifter[0].release_fn,
                         shifter[0].notification_cbdata)
     print("SHIFTER:", shifter[0].op)
     if 0 < shifter[0].ndata:
@@ -183,7 +183,7 @@ cdef void lookup_cb(capsule, ret):
 cdef void fence_cb(capsule, ret):
     cdef pmix_pyshift_t *shifter
     shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "fence")
-    shifter[0].modex(ret, shifter[0].bo.bytes, shifter[0].bo.size, 
+    shifter[0].modex(ret, shifter[0].bo.bytes, shifter[0].bo.size,
                      shifter[0].cbdata, NULL, NULL)
     print("SHIFTER:", shifter[0].op)
     return
@@ -848,7 +848,7 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
         piptr = <pmix_proc_info_t*> array[0].array
         list = []
         while n < array.size:
-            d = {'proc': {'nspace':piptr[n].proc.nspace, 
+            d = {'proc': {'nspace':piptr[n].proc.nspace,
             'rank':piptr[n].proc.rank}, 'hostname':piptr[n].hostname,
             'executable':piptr[n].executable_name, 'pid':piptr[n].pid,
             'exitcode':piptr[n].exit_code, 'state':piptr[n].state}
@@ -869,7 +869,9 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
                 return PMIX_ERR_NOMEM
             mydaptr = <pmix_data_array_t*>daptr[n].array
             try:
-                return pmix_unload_darray(mydaptr)
+                rc = pmix_unload_darray(mydaptr)
+                if rc != PMIX_SUCCESS:
+                    return rc
             except:
                 return PMIX_ERR_NOT_SUPPORTED
             n += 1
@@ -1576,29 +1578,6 @@ cdef int pmix_unload_queries(const pmix_query_t *queries, size_t nqueries, ilist
         n += 1
     return PMIX_SUCCESS
 
-# Free a malloc'd array of pmix_regattr_t structs to free
-#
-# @array [INPUT]
-#        - pmix_regattr_t structs to be free'd
-#
-# @sz [INPUT]
-#     - number of elements in array
-cdef void pmix_free_regattrs(pmix_regattr_t *regattrs, size_t sz):
-    n = 0
-    while n < sz:
-        if regattrs[n].description != NULL:
-            j = 0
-            while NULL != regattrs[n].description[j]:
-                PyMem_Free(regattrs[n].description[j])
-                j += 1
-            PyMem_Free(regattrs[n].description)
-        if regattrs[n].info != NULL:
-            pmix_free_info(regattrs[n].info, regattrs[n].ninfo)
-        if regattrs[n].name != NULL:
-            PyMem_Free(regattrs[n].name)
-        n += 1
-    if regattrs != NULL:
-        PyMem_Free(regattrs)
 
 # Free a malloc'd array of pmix_query_t structs to free
 #
