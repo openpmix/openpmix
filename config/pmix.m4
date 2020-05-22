@@ -879,6 +879,9 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # executables) need perl.
     AC_PATH_PROG(PERL, perl, perl)
 
+    # Need the libtool executable before the rpathify stuff
+    LT_OUTPUT
+
     PMIX_SETUP_WRAPPER_FINAL
 
     ############################################################################

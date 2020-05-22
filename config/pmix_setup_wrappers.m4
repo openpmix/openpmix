@@ -136,7 +136,7 @@ AC_DEFUN([PMIX_LIBTOOL_CONFIG],[
 # (because if script A sources script B, and B calls "exit", then both
 # B and A will exit).  Instead, we have to send the output to a file
 # and then source that.
-libtool $3 --config > $rpath_outfile
+$PMIX_TOP_BUILDDIR/libtool $3 --config > $rpath_outfile
 
 chmod +x $rpath_outfile
 . ./$rpath_outfile
