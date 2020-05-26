@@ -913,6 +913,10 @@ pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr, pmix_rank_t rank,
   cleanup:
     /* remove all requests to this rank and cleanup the corresponding structure */
     pmix_list_remove_item(&pmix_server_globals.local_reqs, &ptr->super);
+    while (NULL != (req = (pmix_dmdx_request_t*)
+                    pmix_list_remove_first(&ptr->loc_reqs))) {
+        PMIX_RELEASE(req);
+    }
     PMIX_RELEASE(ptr);
 
     return PMIX_SUCCESS;
