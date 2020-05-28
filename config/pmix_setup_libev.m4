@@ -61,7 +61,7 @@ AC_DEFUN([PMIX_LIBEV_CONFIG],[
            PMIX_CHECK_PACKAGE([pmix_libev],
                               [event.h],
                               [ev],
-                              [ev_async_init],
+                              [ev_async_send],
                               [],
                               [$pmix_libev_dir],
                               [$pmix_libev_libdir],
