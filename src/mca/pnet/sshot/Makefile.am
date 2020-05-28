@@ -21,6 +21,10 @@
 # $HEADER$
 #
 
+AM_CPPFLAGS = $(pmix_check_jansson_CPPFLAGS)
+
+dist_pmixdata_DATA = help-pnet-sshot.txt
+
 headers = pnet_sshot.h
 sources = \
         pnet_sshot_component.c \
@@ -45,9 +49,10 @@ endif
 mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component)
 mca_pnet_sshot_la_SOURCES = $(component_sources)
-mca_pnet_sshot_la_LDFLAGS = -module -avoid-version
+mca_pnet_sshot_la_LDFLAGS = -module -avoid-version $(pmix_check_jansson_LDFLAGS)
+mca_pnet_sshot_la_LIBADD = -ljansson
 if NEED_LIBPMIX
-mca_pnet_sshot_la_LIBADD = $(top_builddir)/src/libpmix.la
+mca_pnet_sshot_la_LIBADD += $(top_builddir)/src/libpmix.la
 endif
 
 noinst_LTLIBRARIES = $(lib)

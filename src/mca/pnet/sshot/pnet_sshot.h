@@ -20,8 +20,9 @@ BEGIN_C_DECLS
 
 typedef struct {
     pmix_pnet_base_component_t super;
-    char *groupings;
-    int numgroups;
+    char *configfile;
+    char *pipe;
+    bool simulate;
 } pmix_pnet_sshot_component_t;
 
 /* the component must be visible data for the linker to find it */

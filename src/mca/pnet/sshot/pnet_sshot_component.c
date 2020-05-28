@@ -30,6 +30,7 @@
 #include "include/pmix_common.h"
 
 #include "src/util/argv.h"
+#include "src/util/show_help.h"
 #include "src/mca/pnet/pnet.h"
 #include "pnet_sshot.h"
 
@@ -65,30 +66,36 @@ pmix_pnet_sshot_component_t mca_pnet_sshot_component = {
             PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT
         }
     },
-    .groupings = NULL,
-    .numgroups = 0
+    .configfile = NULL,
+    .pipe = NULL,
+    .simulate = false
 };
 
 static pmix_status_t component_register(void)
 {
     pmix_mca_base_component_t *component = &mca_pnet_sshot_component.super.base;
 
-    (void)pmix_mca_base_component_var_register(component, "groupings",
-                                               "Colon-delimited list of comma-delimited list of names for each node group\n"
-                                               "example: node1,node2:node3,node4,node5\n"
-                                               "would define two node groups, one containing nodes 1-2 "
-                                               "and the other containing nodes 3-5",
+    (void)pmix_mca_base_component_var_register(component, "config_file",
+                                               "Path of file containing Slingshot fabric configuration",
                                                PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
                                                PMIX_INFO_LVL_2,
                                                PMIX_MCA_BASE_VAR_SCOPE_READONLY,
-                                               &mca_pnet_sshot_component.groupings);
+                                               &mca_pnet_sshot_component.configfile);
 
-    (void)pmix_mca_base_component_var_register(component, "num_groups",
-                                               "Number of groups to evenly divide the allocated nodes across",
-                                               PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+    (void)pmix_mca_base_component_var_register(component, "scheduler_pipe",
+                                               "Path of named pipe for updating scheduler with fabric group membership",
+                                               PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
                                                PMIX_INFO_LVL_2,
                                                PMIX_MCA_BASE_VAR_SCOPE_READONLY,
-                                               &mca_pnet_sshot_component.numgroups);
+                                               &mca_pnet_sshot_component.pipe);
+
+    (void)pmix_mca_base_component_var_register(component, "simulate",
+                                               "Simulate fabric by mapping allocated nodes to appropriate entries in the config file",
+                                               PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, 0,
+                                               PMIX_INFO_LVL_2,
+                                               PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+                                               &mca_pnet_sshot_component.simulate);
+
     return PMIX_SUCCESS;
 }
 
@@ -97,7 +104,7 @@ static pmix_status_t component_open(void)
     int index;
     const pmix_mca_base_var_storage_t *value=NULL;
 
-    if ((NULL == mca_pnet_sshot_component.groupings && 0 == mca_pnet_sshot_component.numgroups) ||
+    if ((NULL == mca_pnet_sshot_component.configfile) ||
         !PMIX_PROC_IS_SERVER(&pmix_globals.mypeer->proc_type)) {
         /* nothing we can do without a description
          * of the fabric topology */
