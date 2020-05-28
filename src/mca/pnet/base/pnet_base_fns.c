@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  *
@@ -110,7 +110,6 @@ void pmix_pnet_base_child_finalized(pmix_peer_t *peer)
 
     /* protect against bozo inputs */
     if (NULL == peer) {
-        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return;
     }
 
@@ -133,7 +132,6 @@ void pmix_pnet_base_local_app_finalized(char *nspace)
 
     /* protect against bozo inputs */
     if (NULL == nspace) {
-        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return;
     }
 
