@@ -6,6 +6,8 @@
 # Copyright (c) 2017-2019 Research Organization for Information Science
 #                         and Technology (RIST).  All rights reserved.
 # Copyright (c) 2020      IBM Corporation.  All rights reserved.
+# Copyright (c) 2020      Amazon.com, Inc. or its affiliates.  All Rights
+#                         reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -13,19 +15,55 @@
 # $HEADER$
 #
 
+#
+# We have three modes for building libevent.
+#
+# First is an embedded libevent, where PMIx is being built into
+# another library and assumes that libevent is available, that there
+# is a single header (pointed to by --with-libevent-header) which
+# includes all the Libevent bits, and that the right libevent
+# configuration is used.  This mode is used when --enable-embeded-mode
+# is specified to configure.
+#
+# Second is as a co-built libevent.  In this case, PMIx's CPPFLAGS
+# will be set before configure to include the right -Is to pick up
+# libevent headers and LIBS will point to where the .la file for
+# libevent will exist.  When co-building, libevent's configure will be
+# run already, but the library will not yet be built.  It is ok to run
+# any compile-time (not link-time) tests in this mode.  This mode is
+# used when the --with-libevent=cobuild option is specified.
+#
+# Third is an external package.  In this case, all compile and link
+# time tests can be run.  This macro must do any CPPFLAGS/LDFLAGS/LIBS
+# modifications it desires in order to compile and link against
+# libevent.  This mode is used whenever the other modes are not used.
+#
 # MCA_libevent_CONFIG([action-if-found], [action-if-not-found])
 # --------------------------------------------------------------------
 AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
+    PMIX_VAR_SCOPE_PUSH([libevent_build_mode])
+
+    AC_ARG_WITH([libevent],
+                [AC_HELP_STRING([--with-libevent=DIR],
+                                [Search for libevent headers and libraries in DIR ])])
+
+    AC_ARG_WITH([libevent-libdir],
+                [AC_HELP_STRING([--with-libevent-libdir=DIR],
+                                [Search for libevent libraries in DIR ])])
+
     AC_ARG_WITH([libevent-header],
                 [AC_HELP_STRING([--with-libevent-header=HEADER],
-                                [The value that should be included in C files to include event.h])])
+                                [The value that should be included in C files to include event.h.  This option only has meaning if --enable-embedded-mode is enabled.])])
 
     pmix_libevent_support=0
+    libevent_build_mode=""
 
+    # figure out our mode...
     AS_IF([test "$pmix_mode" = "embedded"],
-          [_PMIX_LIBEVENT_EMBEDDED_MODE],
-          [AS_IF([test $pmix_libev_support -eq 0],
-                 [_PMIX_LIBEVENT_EXTERNAL])])
+          [_PMIX_LIBEVENT_EMBEDDED_MODE(embedded)],
+          [test "$with_libevent" = "cobuild"],
+          [_PMIX_LIBEVENT_EMBEDDED_MODE(cobuild)],
+          [_PMIX_LIBEVENT_EXTERNAL])
 
     if test $pmix_libevent_support -eq 1; then
         AC_MSG_CHECKING([libevent header])
@@ -39,11 +77,13 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
 
         PMIX_SUMMARY_ADD([[External Packages]],[[Libevent]], [pmix_libevent], [yes ($pmix_libevent_source)])
     fi
+
+    PMIX_VAR_SCOPE_POP
 ])
 
-AC_DEFUN([_PMIX_LIBEVENT_EMBEDDED_MODE],[
+AC_DEFUN([_PMIX_LIBEVENT_EMBEDDED_MODE], [
     AC_MSG_CHECKING([for libevent])
-    AC_MSG_RESULT([assumed available (embedded mode)])
+    AC_MSG_RESULT([$1])
 
     AS_IF([test -z "$with_libevent_header" || test "$with_libevent_header" = "yes"],
           [PMIX_EVENT_HEADER="<event.h>"
@@ -51,20 +91,24 @@ AC_DEFUN([_PMIX_LIBEVENT_EMBEDDED_MODE],[
           [PMIX_EVENT_HEADER="$with_libevent_header"
            PMIX_EVENT2_THREAD_HEADER="$with_libevent_header"])
 
-    pmix_libevent_source=embedded
+    AS_IF([test "$1" == "cobuild"],
+        [AC_MSG_CHECKING([if co-built libevent includes thread support])
+         AC_TRY_COMPILE([#include <event.h>
+#include <event2/thread.h>
+           ],[
+#if !(EVTHREAD_LOCK_API_VERSION >= 1)
+#error "No threads!"
+#endif
+           ],[AC_MSG_RESULT([yes])],
+           [AC_MSG_RESULT([no])
+            AC_MSG_ERROR([No thread support in co-build libevent.  Aborting])])])
+
+    pmix_libevent_source=$1
     pmix_libevent_support=1
 ])
 
 AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
     PMIX_VAR_SCOPE_PUSH([pmix_event_dir pmix_event_libdir pmix_event_defaults pmix_check_libevent_save_CPPFLAGS pmix_check_libevent_save_LDFLAGS pmix_check_libevent_save_LIBS])
-
-    AC_ARG_WITH([libevent],
-                [AC_HELP_STRING([--with-libevent=DIR],
-                                [Search for libevent headers and libraries in DIR ])])
-
-    AC_ARG_WITH([libevent-libdir],
-                [AC_HELP_STRING([--with-libevent-libdir=DIR],
-                                [Search for libevent libraries in DIR ])])
 
     pmix_check_libevent_save_CPPFLAGS="$CPPFLAGS"
     pmix_check_libevent_save_LDFLAGS="$LDFLAGS"
