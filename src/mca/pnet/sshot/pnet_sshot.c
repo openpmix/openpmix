@@ -25,12 +25,14 @@
 #include <fcntl.h>
 #endif
 #include <time.h>
+#include <jansson.h>
 
 #include "include/pmix_common.h"
 
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/include/pmix_socket_errno.h"
 #include "src/include/pmix_globals.h"
+#include "src/class/pmix_bitmap.h"
 #include "src/class/pmix_list.h"
 #include "src/class/pmix_pointer_array.h"
 #include "src/util/alfg.h"
@@ -39,14 +41,16 @@
 #include "src/util/name_fns.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
+#include "src/util/printf.h"
+#include "src/util/show_help.h"
 #include "src/mca/preg/preg.h"
 
 #include "src/mca/pnet/pnet.h"
 #include "src/mca/pnet/base/base.h"
-#include "pnet_test.h"
+#include "pnet_sshot.h"
 
-static pmix_status_t test_init(void);
-static void test_finalize(void);
+static pmix_status_t sshot_init(void);
+static void sshot_finalize(void);
 static pmix_status_t allocate(pmix_namespace_t *nptr,
                               pmix_info_t info[], size_t ninfo,
                               pmix_list_t *ilist);
@@ -56,322 +60,315 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
 static pmix_status_t setup_fork(pmix_namespace_t *nptr,
                                 const pmix_proc_t *proc,
                                 char ***env);
-static void child_finalized(pmix_proc_t *peer);
-static void local_app_finalized(pmix_namespace_t *nptr);
-static void deregister_nspace(pmix_namespace_t *nptr);
-static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
-                                       pmix_inventory_cbfunc_t cbfunc, void *cbdata);
-static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
-                                       pmix_info_t directives[], size_t ndirs,
-                                       pmix_op_cbfunc_t cbfunc, void *cbdata);
-static pmix_status_t register_fabric(pmix_fabric_t *fabric,
-                                     const pmix_info_t directives[],
-                                     size_t ndirs);
-static pmix_status_t deregister_fabric(pmix_fabric_t *fabric);
-static pmix_status_t get_vertex(pmix_fabric_t *fabric,
-                                uint32_t i,
-                                pmix_value_t *identifier,
-                                char **nodename);
-static pmix_status_t get_index(pmix_fabric_t *fabric,
-                               pmix_value_t *identifier,
-                               uint32_t *i);
-pmix_pnet_module_t pmix_test_module = {
-    .name = "test",
-    .init = test_init,
-    .finalize = test_finalize,
+pmix_pnet_module_t pmix_sshot_module = {
+    .name = "sshot",
+    .init = sshot_init,
+    .finalize = sshot_finalize,
     .allocate = allocate,
     .setup_local_network = setup_local_network,
-    .setup_fork = setup_fork,
-    .child_finalized = child_finalized,
-    .local_app_finalized = local_app_finalized,
-    .deregister_nspace = deregister_nspace,
-    .collect_inventory = collect_inventory,
-    .deliver_inventory = deliver_inventory,
-    .register_fabric = register_fabric,
-    .deregister_fabric = deregister_fabric,
-    .get_vertex = get_vertex,
-    .get_index = get_index
+    .setup_fork = setup_fork
 };
+
+/* internal variables */
+static pmix_pointer_array_t mygroups, mynodes, myvertices;
+static int mynswitches = 100, mynnics = 80000;
+static char **myenvlist = NULL;
+static char **myvalues = NULL;
+static int schedpipe = -1;
 
 /* internal tracking structures */
 typedef struct {
-    pmix_list_item_t super;
+    pmix_object_t super;
+    int grpID;
+    pmix_bitmap_t switches;
+    pmix_bitmap_t nics;
     char **members;
 } pnet_fabricgroup_t;
 static void ncon(pnet_fabricgroup_t *p)
 {
+    /* initialize the switch bitmap */
+    PMIX_CONSTRUCT(&p->switches, pmix_bitmap_t);
+    pmix_bitmap_set_max_size(&p->switches, mynswitches);
+    pmix_bitmap_init(&p->switches, mynswitches);
+    /* initialize the nic bitmap */
+    PMIX_CONSTRUCT(&p->nics, pmix_bitmap_t);
+    pmix_bitmap_set_max_size(&p->nics, mynnics);
+    pmix_bitmap_init(&p->nics, mynnics);
+    /* initialize the argv array of members */
     p->members = NULL;
 }
 static void ndes(pnet_fabricgroup_t *p)
 {
+    PMIX_DESTRUCT(&p->switches);
+    PMIX_DESTRUCT(&p->nics);
     if (NULL != p->members) {
         pmix_argv_free(p->members);
     }
 }
 static PMIX_CLASS_INSTANCE(pnet_fabricgroup_t,
-                           pmix_list_item_t,
+                           pmix_object_t,
                            ncon, ndes);
 
-
-/* internal variables */
-static pmix_list_t mygroups;
-
-static pmix_status_t test_init(void)
+typedef struct {
+    pmix_object_t super;
+    char *name;
+    pnet_fabricgroup_t *grp;
+    pmix_pointer_array_t nics;
+} pnet_node_t;
+static void ndcon(pnet_node_t *p)
 {
+    p->name = NULL;
+    p->grp = NULL;
+    PMIX_CONSTRUCT(&p->nics, pmix_pointer_array_t);
+    pmix_pointer_array_init(&p->nics, 8, INT_MAX, 8);
+}
+static void nddes(pnet_node_t *p)
+{
+    pmix_object_t *item;
+    int n;
+
+    if (NULL != p->name) {
+        free(p->name);
+    }
+    if (NULL != p->grp) {
+        PMIX_RELEASE(p->grp);
+    }
+    for (n=0; n < p->nics.size; n++) {
+        if (NULL != (item = pmix_pointer_array_get_item(&p->nics, n))) {
+            PMIX_RELEASE(item);
+        }
+    }
+    PMIX_DESTRUCT(&p->nics);
+}
+static PMIX_CLASS_INSTANCE(pnet_node_t,
+                           pmix_object_t,
+                           ndcon, nddes);
+
+typedef struct {
+    pmix_object_t super;
+    uint32_t index;
+    pnet_node_t *host;
+    char *addr;
+    pmix_coord_t coord;
+} pnet_vertex_t;
+static void vtcon(pnet_vertex_t *p)
+{
+    p->host = NULL;
+    p->addr = NULL;
+    memset(&p->coord, 0, sizeof(pmix_coord_t));
+    p->coord.fabric = strdup("test");
+    p->coord.plane = strdup("sshot");
+    p->coord.view = PMIX_COORD_LOGICAL_VIEW;
+}
+static void vtdes(pnet_vertex_t *p)
+{
+    if (NULL != p->host) {
+        PMIX_RELEASE(p->host);
+    }
+    if (NULL != p->addr) {
+        free(p->addr);
+    }
+    free(p->coord.fabric);
+    free(p->coord.plane);
+    if (NULL != p->coord.coord) {
+        free(p->coord.coord);
+    }
+}
+static PMIX_CLASS_INSTANCE(pnet_vertex_t,
+                           pmix_object_t,
+                           vtcon, vtdes);
+
+
+static pmix_status_t sshot_init(void)
+{
+    json_t *root, *switches, *ndarray, *sw, *nd, *nic, *nics;
+    json_error_t error;
+    int nswitches, nnodes, m, n, p, grpID, swcNum, nnics;
+    const char *str;
+    pnet_fabricgroup_t *grp;
+    pnet_node_t *node;
+    pnet_vertex_t *vtx;
+    char **grps = NULL, *grpmems, *gmem;
+
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                        "pnet: test init");
+                        "pnet: sshot init");
 
-    PMIX_CONSTRUCT(&mygroups, pmix_list_t);
+    PMIX_CONSTRUCT(&mygroups, pmix_pointer_array_t);
+    pmix_pointer_array_init(&mygroups, 3, INT_MAX, 2);
+    PMIX_CONSTRUCT(&mynodes, pmix_pointer_array_t);
+    pmix_pointer_array_init(&mynodes, 128, INT_MAX, 64);
+    PMIX_CONSTRUCT(&myvertices, pmix_pointer_array_t);
+    pmix_pointer_array_init(&myvertices, 128, INT_MAX, 64);
 
+    /* load the file */
+    root = json_load_file(mca_pnet_sshot_component.configfile, 0, &error);
+    if (NULL == root) {
+        /* the error object contains info on the error */
+        pmix_show_help("help-pnet-sshot.txt", "json-load", true,
+                       error.text, error.source, error.line,
+                       error.column, error.position,
+                       json_error_code(&error));
+        return PMIX_ERROR;
+    }
+
+    /* unpack the switch information and assemble them
+     * into Dragonfly groups */
+    switches = json_object_get(root, "switches");
+    if (!json_is_array(switches)) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        json_decref(root);
+        return PMIX_ERR_BAD_PARAM;
+    }
+    nswitches = json_array_size(switches);
+
+    for (n=0; n < nswitches; n++) {
+        sw = json_array_get(switches, n);
+        json_unpack(sw, "{s:i, s:i}", "grpID", &grpID, "swcNum", &swcNum);
+        /* see if we already have this group */
+        if (NULL == (grp = (pnet_fabricgroup_t*)pmix_pointer_array_get_item(&mygroups, grpID))) {
+            /* nope - better add it */
+            grp = PMIX_NEW(pnet_fabricgroup_t);
+            grp->grpID = grpID;
+            pmix_pointer_array_set_item(&mygroups, grpID, grp);
+            /* adjust the bitmap, if necessary */
+            if (pmix_bitmap_size(&grp->switches) < nswitches) {
+                pmix_bitmap_set_max_size(&grp->switches, nswitches);
+            }
+            /* indicate that this switch belongs to this group */
+            pmix_bitmap_set_bit(&grp->switches, swcNum);
+        } else {
+            /* indicate that this switch belongs to this group */
+            pmix_bitmap_set_bit(&grp->switches, swcNum);
+        }
+    }
+
+    /* get the total number of NICs in each group */
+    ndarray = json_object_get(root, "nodes");
+    if (!json_is_array(ndarray)) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        json_decref(root);
+        return PMIX_ERR_BAD_PARAM;
+    }
+    nnodes = json_array_size(ndarray);
+
+    for (n=0; n < nnodes; n++) {
+        nd = json_array_get(ndarray, n);
+        node = PMIX_NEW(pnet_node_t);
+        json_unpack(nd, "{s:s}", "name", &str);
+        node->name = strdup(str);
+        pmix_pointer_array_add(&mynodes, node);
+        nics = json_object_get(nd, "nics");
+        nnics = json_array_size(nics);
+        /* adjust the bitmaps, if necessary */
+        for (p=0; p < mygroups.size; p++) {
+            if (NULL != (grp = (pnet_fabricgroup_t*)pmix_pointer_array_get_item(&mygroups, p))) {
+                if (pmix_bitmap_size(&grp->nics) < nnics) {
+                    pmix_bitmap_set_max_size(&grp->nics, nnics);
+                }
+            }
+        }
+        /* cycle thru the NICs to get the switch
+         * to which they are connected */
+        for (m=0; m < nnics; m++) {
+            nic = json_array_get(nics, m);
+            json_unpack(nic, "{s:s, s:i}", "id", &str, "switch", &swcNum);
+            /* add the vertex to our array */
+            vtx = PMIX_NEW(pnet_vertex_t);
+            PMIX_RETAIN(node);
+            vtx->host = node;
+            vtx->addr = strdup(str);
+            vtx->index = pmix_pointer_array_add(&myvertices, vtx);
+            /* add the NIC to the node */
+            PMIX_RETAIN(vtx);
+            pmix_pointer_array_add(&node->nics, vtx);
+            /* look for this switch in our groups */
+            for (p=0; p < mygroups.size; p++) {
+                if (NULL != (grp = (pnet_fabricgroup_t*)pmix_pointer_array_get_item(&mygroups, p))) {
+                    if (pmix_bitmap_is_set_bit(&grp->switches, swcNum)) {
+                        /* mark that this NIC is part of this group */
+                        pmix_bitmap_set_bit(&grp->nics, vtx->index);
+                        /* record that this node is in this group */
+                        if (NULL == node->grp) {
+                            PMIX_RETAIN(grp);
+                            node->grp = grp;
+                            pmix_argv_append_nosize(&grp->members, node->name);
+                        }
+                        /* record a coordinate for this NIC */
+                        /* we are done */
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    /* see if we have a FIFO to the scheduler */
+    if (NULL != mca_pnet_sshot_component.pipe) {
+        schedpipe = open(mca_pnet_sshot_component.pipe, O_WRONLY | O_CLOEXEC);
+        if (0 > schedpipe) {
+            /* can't open it - scheduler may not have created it */
+            return PMIX_SUCCESS;
+        }
+        for (p=0; p < mygroups.size; p++) {
+            if (NULL != (grp = (pnet_fabricgroup_t*)pmix_pointer_array_get_item(&mygroups, p))) {
+                if (NULL == grp->members) {
+                    continue;
+                }
+                grpmems = pmix_argv_join(grp->members, ',');
+                pmix_asprintf(&gmem, "%d:%s", grp->grpID, grpmems);
+                pmix_argv_append_nosize(&grps, gmem);
+                free(gmem);
+                free(grpmems);
+            }
+        }
+        if (NULL != grps) {
+            gmem = pmix_argv_join(grps, ';');
+            n = strlen(gmem) + 1;  // include the NULL terminator
+            write(schedpipe, &n, sizeof(int));
+            write(schedpipe, gmem, n * sizeof(char));
+            free(gmem);
+            pmix_argv_free(grps);
+        }
+        /* for test purposes, we are done */
+        n = -1;
+        write(schedpipe, &n, sizeof(int));
+        close(schedpipe);
+    }
     return PMIX_SUCCESS;
 }
 
-static void test_finalize(void)
+static void sshot_finalize(void)
 {
-    pmix_pnet_fabric_t *ft;
-    pnet_nic_t *nic;
+    pnet_fabricgroup_t *ft;
+    pnet_node_t *nd;
+    pnet_vertex_t *vt;
     int n;
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                        "pnet: test finalize");
+                        "pnet: sshot finalize");
 
-    PMIX_LIST_DESTRUCT(&mygroups);
+    for (n=0; n < mygroups.size; n++) {
+        if (NULL != (ft = (pnet_fabricgroup_t*)pmix_pointer_array_get_item(&mygroups, n))) {
+            PMIX_RELEASE(ft);
+        }
+    }
+    PMIX_DESTRUCT(&mygroups);
+
+    for (n=0; n < mynodes.size; n++) {
+        if (NULL != (nd = (pnet_node_t*)pmix_pointer_array_get_item(&mynodes, n))) {
+            PMIX_RELEASE(nd);
+        }
+    }
+    PMIX_DESTRUCT(&mynodes);
+
+    for (n=0; n < myvertices.size; n++) {
+        if (NULL != (vt = (pnet_vertex_t*)pmix_pointer_array_get_item(&myvertices, n))) {
+            PMIX_RELEASE(vt);
+        }
+    }
+    PMIX_DESTRUCT(&myvertices);
 }
 
-static pmix_status_t build_topo(char **nodes)
-{
-    int n, r, ns, nplane, nports;
-    uint64_t n64, m64;
-    char **system=NULL, **ptr;
-    pnet_plane_t *p;
-    pnet_switch_t *s, *s2;
-    pnet_nic_t *nic, *nic2;
-    pnet_node_t *node, *nd, *nd2;
-    pmix_status_t rc=PMIX_SUCCESS;
-    bool update = false;
-
-    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                        "pnet: test creating system configuration");
-
-    /* setup the list of nodes */
-    for (n=0; NULL != nodes[n]; n++) {
-        /* check to see if this node is already on our list */
-        nd = NULL;
-        PMIX_LIST_FOREACH(nd2, &mynodes, pnet_node_t) {
-            if (0 == strcmp(nd2->name, nodes[n])) {
-                nd = nd2;
-                break;
-            }
-        }
-        if (NULL == nd) {
-            /* add it */
-            nd = PMIX_NEW(pnet_node_t);
-            nd->name = strdup(nodes[n]);
-            pmix_list_append(&mynodes, &nd->super);
-            update = true;
-        }
-    }
-    if (!update) {
-        return PMIX_SUCCESS;
-    }
-
-    /* the system description is configured as nodes and fabric planes
-     * delineated by semi-colons */
-    system = pmix_argv_split(mca_pnet_test_component.planes, ';');
-    /* there can be multiple planes defined.
-     * We assume that each switch in the plane contains
-     * a port to connect to each node in the system. For simplicity,
-     * we assume a ring connection topology between the switches.
-     *
-     * Thus, the #NICS in a node equals the number of planes in the
-     * overall system.
-     */
-    for (r=0; NULL != system[r]; r++) {
-        /* create a plane object */
-        p = PMIX_NEW(pnet_plane_t);
-        /* the plane contains a flag indicating how the nodes
-         * are to be distributed across the plane plus the
-         * number of switches in the plane and the number of
-         * ports/switch */
-        ptr = pmix_argv_split(&system[r][6], ':');
-        if (1 == pmix_argv_count(ptr)) {
-            /* just gave us #switches - default to dense
-             * with 3 ports/switch */
-            p->dense = true;
-            p->nswitches = strtoul(ptr[0], NULL, 10);
-            p->nportsperswitch = 3;
-        } else if (2 == pmix_argv_count(ptr)) {
-            /* gave us density and #switches */
-            if ('d' == ptr[0][0] || 'D' == ptr[0][0]) {
-                p->dense = true;
-            }
-            p->nswitches = strtoul(ptr[1], NULL, 10);
-            p->nportsperswitch = 3;
-        } else {
-            if ('d' == ptr[0][0] || 'D' == ptr[0][0]) {
-                p->dense = true;
-            }
-            p->nswitches = strtoul(ptr[1], NULL, 10);
-            p->nportsperswitch = strtoul(ptr[2], NULL, 10);
-        }
-        pmix_argv_free(ptr);
-        pmix_list_append(&myplanes, &p->super);
-    }
-    /* setup the ports in each switch for each plane */
-    nplane = 0;
-    PMIX_LIST_FOREACH(p, &myplanes, pnet_plane_t) {
-        /* assign a name to the plane */
-        if (0 > asprintf(&p->name, "plane%03d", nplane)) {
-            rc = PMIX_ERR_NOMEM;
-            goto cleanup;
-        }
-        p->index = nplane;
-        for (n=0; n < p->nswitches; n++) {
-            s = PMIX_NEW(pnet_switch_t);
-            if (0 > asprintf(&s->name, "%s:switch%03d", p->name, n)) {
-                rc = PMIX_ERR_NOMEM;
-                goto cleanup;
-            }
-            s->index = pmix_pointer_array_add(&mysws, s);
-            s->plane = p;
-            PMIX_RETAIN(s);
-            pmix_list_append(&p->switches, &s->super);
-        }
-
-        /* now cycle across the nodes and setup their connections
-         * to the switches */
-        if (p->dense) {
-            /* setup the ports on the switches */
-            nports = p->nportsperswitch;
-            /* connect each successive node to the same switch
-             * until that switch is full - then move to the next */
-            s = (pnet_switch_t*)pmix_list_get_first(&p->switches);
-            ns = nports;
-            PMIX_LIST_FOREACH(node, &mynodes, pnet_node_t) {
-                nic2 = PMIX_NEW(pnet_nic_t);
-                if (0 > asprintf(&nic2->name, "%s:nic.%s.0", node->name, p->name)) {
-                    rc = PMIX_ERR_NOMEM;
-                    goto cleanup;
-                }
-                nic2->node = node;
-                nic2->s = s;
-                nic2->plane = p;
-                nic2->index = pmix_pointer_array_add(&mynics, nic2);
-                PMIX_RETAIN(nic2);
-                pmix_list_append(&node->nics, &nic2->super);
-                p->nverts++;
-                /* create a corresponding link on the switch */
-                nic = PMIX_NEW(pnet_nic_t);
-                if (0 > asprintf(&nic->name, "%s:nic.0", s->name)) {
-                    rc = PMIX_ERR_NOMEM;
-                    goto cleanup;
-                }
-                nic->s = s;
-                nic->onswitch = true;
-                nic->index = pmix_pointer_array_add(&mynics, nic);
-                PMIX_RETAIN(nic);
-                pmix_list_append(&s->ports, &nic->super);
-                nic2->link = nic;
-                nic->link = nic2;
-                --ns;
-                if (0 == ns) {
-                    /* move to the next switch */
-                    s = (pnet_switch_t*)pmix_list_get_next(&s->super);
-                    if (NULL == s || (pnet_switch_t*)pmix_list_get_end(&p->switches) == s) {
-                        s = (pnet_switch_t*)pmix_list_get_first(&p->switches);
-                        /* add one per switch as we have overrun their initial value */
-                        ns = 1;
-                    } else {
-                        ns = nports;
-                    }
-                    nic = (pnet_nic_t*)pmix_list_get_first(&s->ports);
-                }
-            }
-        } else {
-            /* connect the nodes to the switches in a round-robin manner */
-            s = (pnet_switch_t*)pmix_list_get_first(&p->switches);
-            PMIX_LIST_FOREACH(node, &mynodes, pnet_node_t) {
-                nic2 = PMIX_NEW(pnet_nic_t);
-                if (0 > asprintf(&nic2->name, "%s:nic.%s.0", node->name, p->name)) {
-                    rc = PMIX_ERR_NOMEM;
-                    goto cleanup;
-                }
-                nic2->node = node;
-                nic2->s = s;
-                nic2->plane = p;
-                nic2->index = pmix_pointer_array_add(&mynics, nic2);
-                PMIX_RETAIN(nic2);
-                pmix_list_append(&node->nics, &nic2->super);
-                p->nverts++;
-                /* create a corresponding link on the switch */
-                nic = PMIX_NEW(pnet_nic_t);
-                if (0 > asprintf(&nic->name, "%s:nic.0", s->name)) {
-                    rc = PMIX_ERR_NOMEM;
-                    goto cleanup;
-                }
-                nic->s = s;
-                nic->onswitch = true;
-                nic->index = pmix_pointer_array_add(&mynics, nic);
-                PMIX_RETAIN(nic);
-                pmix_list_append(&s->ports, &nic->super);
-                nic2->link = nic;
-                nic->link = nic2;
-                /* move to the next switch */
-                s = (pnet_switch_t*)pmix_list_get_next(&s->super);
-                /* if we are at the end, rotate around to the first */
-                if (NULL == s || (pnet_switch_t*)pmix_list_get_end(&p->switches) == s) {
-                    s = (pnet_switch_t*)pmix_list_get_first(&p->switches);
-                }
-            }
-        }
-
-        /* setup the cost matrix - we assume switch-to-switch hops
-         * have a cost of 1, as do all node-to-switch hops */
-        p->costmatrix = (uint16_t**)malloc(p->nverts * sizeof(uint16_t*));
-        for (n64=0; n64 < p->nverts; n64++) {
-            p->costmatrix[n64] = malloc(p->nverts * sizeof(uint16_t));
-        }
-        /* fill the matrix with the #hops between each NIC, keeping it symmetric */
-        for (n64=0; n64 < (uint64_t)mynics.size; n64++) {
-            nic = (pnet_nic_t*)pmix_pointer_array_get_item(&mynics, n64);
-            if (NULL == nic || p != nic->plane || !nic->onswitch) {
-                continue;
-            }
-            p->costmatrix[n64][n64] = 0;
-            for (m64=n64+1; m64 < (uint64_t)mynics.size; m64++) {
-                nic2 = (pnet_nic_t*)pmix_pointer_array_get_item(&mynics, m64);
-                if (NULL == nic2 || p != nic2->plane || !nic2->onswitch) {
-                    continue;
-                }
-                /* if they are on the same switch, then cost is 2 */
-                if (nic->s == nic2->s) {
-                    p->costmatrix[n64][m64] = 2;
-                } else {
-                    /* the cost is increased by the distance
-                     * between switches */
-                    s = (pnet_switch_t*)nic->s;
-                    s2 = (pnet_switch_t*)nic2->s;
-                    if (s->index > s2->index) {
-                        p->costmatrix[n64][m64] = 2 + s->index - s2->index;
-                    } else {
-                        p->costmatrix[n64][m64] = 2 + s2->index - s->index;
-                    }
-                }
-                p->costmatrix[m64][n64] = p->costmatrix[n64][m64];
-            }
-        }
-        ++nplane;
-    }
-    pmix_argv_free(system);
-    system = NULL;
-
-  cleanup:
-    if (NULL != system) {
-        pmix_argv_free(system);
-    }
-
-    return rc;
-}
 
 /* NOTE: if there is any binary data to be transferred, then
  * this function MUST pack it for transport as the host will
@@ -383,7 +380,8 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
     pmix_kval_t *kv;
     bool seckey = false, envars = false;
     pmix_list_t mylist;
-    size_t n, m, p, q, nreqs=0;
+    size_t n, p, q, nreqs=0;
+    int m;
     pmix_info_t *requests = NULL, *iptr, *ip2;
     char *idkey = NULL, **locals = NULL;
     uint64_t unique_key = 12345;
@@ -394,9 +392,6 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
     pmix_rank_t rank;
     pnet_node_t *nd, *nd2;
     uint32_t *u32;
-    pnet_nic_t *nic;
-    pnet_plane_t *pln;
-    pnet_switch_t *sw;
     pmix_coord_t *coords;
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
@@ -479,8 +474,8 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             idkey = requests[n].value.data.string;
         } else if (PMIX_CHECK_KEY(&requests[n], PMIX_ALLOC_NETWORK_SEC_KEY)) {
                seckey = PMIX_INFO_TRUE(&requests[n]);
-           }
-       }
+        }
+    }
 
     /* if they didn't give us a key, just create one */
     if (NULL == idkey) {
@@ -546,13 +541,6 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
                         "pnet:test:allocate assigning endpoints for nspace %s",
                         nptr->nspace);
 
-    /* setup the topology */
-    rc = build_topo(nodes);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        goto cleanup;
-    }
-
     /* cycle across the nodes and add the endpoints
      * for each proc on the node - we assume the same
      * list of static endpoints on each node */
@@ -563,19 +551,31 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             /* aren't any on this node */
             continue;
         }
-        /* find this node in our list */
+        /* find this node in our array */
         nd = NULL;
-        PMIX_LIST_FOREACH(nd2, &mynodes, pnet_node_t) {
-            if (0 == strcmp(nd2->name, nodes[n])) {
-                nd = nd2;
-                break;
+        for (m=0; m < mynodes.size; m++) {
+            if (NULL != (nd2 = (pnet_node_t*)pmix_pointer_array_get_item(&mynodes, m))) {
+                if (0 == strcmp(nodes[n], nd2->name)) {
+                    nd = nd2;
+                    break;
+                }
             }
         }
         if (NULL == nd) {
-            /* should be impossible */
-            rc = PMIX_ERR_NOT_FOUND;
-            PMIX_ERROR_LOG(rc);
-            goto cleanup;
+            if (mca_pnet_sshot_component.simulate) {
+                /* just take the nth entry */
+                nd = (pnet_node_t*)pmix_pointer_array_get_item(&mynodes, n);
+                if (NULL == nd) {
+                    rc = PMIX_ERR_NOT_FOUND;
+                    PMIX_ERROR_LOG(rc);
+                    goto cleanup;
+                }
+            } else {
+                /* should be impossible */
+                rc = PMIX_ERR_NOT_FOUND;
+                PMIX_ERROR_LOG(rc);
+                goto cleanup;
+            }
         }
         kv = PMIX_NEW(pmix_kval_t);
         if (NULL == kv) {
@@ -596,7 +596,6 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
         PMIX_DATA_ARRAY_CREATE(darray, q, PMIX_INFO);
         kv->value->data.darray = darray;
         iptr = (pmix_info_t*)darray->array;
-        q = pmix_list_get_size(&nd->nics);
         for (m=0; NULL != locals[m]; m++) {
             /* each proc can have multiple endpoints depending
              * on the number of NICs available on the node. So
@@ -643,6 +642,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             ip2[2].value.type = PMIX_DATA_ARRAY;
             ip2[2].value.data.darray = d3;
             coords = (pmix_coord_t*)d3->array;
+#if 0
             nic = (pnet_nic_t*)pmix_list_get_first(&nd->nics);
             pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                                 "pnet:test:allocate assigning %d coordinates for rank %u",
@@ -660,6 +660,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
                 coords[p].coord[0] = ((pnet_nic_t*)nic->link)->index;
                 nic = (pnet_nic_t*)pmix_list_get_next(&nic->super);
             }
+#endif
         }
         pmix_argv_free(locals);
         locals = NULL;
@@ -818,217 +819,4 @@ static pmix_status_t setup_fork(pmix_namespace_t *nptr,
         }
     }
     return PMIX_SUCCESS;
-}
-
-static void child_finalized(pmix_proc_t *peer)
-{
-    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                        "pnet:test CHILD %s:%d FINALIZED",
-                        peer->nspace, peer->rank);
-}
-
-static void local_app_finalized(pmix_namespace_t *nptr)
-{
-    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                        "pnet:test NSPACE %s LOCALLY FINALIZED", nptr->nspace);
-}
-
-static void deregister_nspace(pmix_namespace_t *nptr)
-{
-    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                        "pnet:test DEREGISTER NSPACE %s", nptr->nspace);
-}
-
-static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
-                                       pmix_inventory_cbfunc_t cbfunc, void *cbdata)
-{
-    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                        "pnet:test COLLECT INVENTORY");
-    return PMIX_ERR_NOT_SUPPORTED;
-}
-
-static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
-                                       pmix_info_t directives[], size_t ndirs,
-                                       pmix_op_cbfunc_t cbfunc, void *cbdata)
-{
-    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                        "pnet:test deliver inventory");
-
-    return PMIX_ERR_NOT_SUPPORTED;
-}
-
-static pmix_status_t register_fabric(pmix_fabric_t *fabric,
-                                     const pmix_info_t directives[],
-                                     size_t ndirs)
-{
-    pmix_pnet_fabric_t *ft;
-    pnet_plane_t *p, *p2;
-    char *pln = NULL;
-    size_t n;
-
-    if (NULL == fabric) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    /* see what plane they wanted */
-    for (n=0; n < ndirs; n++) {
-        if (PMIX_CHECK_KEY(&directives[n], PMIX_NETWORK_PLANE)) {
-            pln = directives[n].value.data.string;
-            break;
-        }
-    }
-    if (NULL == pln) {
-        /* just use the first on our list */
-        p = (pnet_plane_t*)pmix_list_get_first(&myplanes);
-    } else {
-        /* find it */
-        p = NULL;
-        PMIX_LIST_FOREACH(p2, &myplanes, pnet_plane_t) {
-            if (0 == strcmp(pln, p2->name)) {
-                p = p2;
-                break;
-            }
-        }
-    }
-    if (NULL == p) {
-        return PMIX_ERR_NOT_FOUND;
-    }
-
-    ft = PMIX_NEW(pmix_pnet_fabric_t);
-    ft->module = &pmix_test_module;
-    ft->payload = p;
-
-    /* pass to the user-level object */
-    fabric->module = ft;
-    fabric->commcost = p->costmatrix;
-    fabric->nverts = p->nverts;
-
-    return PMIX_SUCCESS;
-}
-
-static pmix_status_t deregister_fabric(pmix_fabric_t *fabric)
-{
-    fabric->module = NULL;
-    fabric->commcost = NULL;
-    fabric->nverts = 0;
-    return PMIX_SUCCESS;
-}
-
-static pmix_status_t get_vertex(pmix_fabric_t *fabric,
-                                uint32_t i,
-                                pmix_value_t *identifier,
-                                char **nodename)
-{
-    pmix_pnet_fabric_t *ft = (pmix_pnet_fabric_t*)fabric->module;
-    pnet_plane_t *p = (pnet_plane_t*)ft->payload;
-    pnet_nic_t *nic;
-    pnet_plane_t *pln;
-    pnet_switch_t *sw;
-    pnet_node_t *node;
-    pmix_info_t *info;
-    size_t n;
-    int rc;
-
-    if (NULL == p) {
-        return PMIX_ERR_NOT_SUPPORTED;
-    }
-
-    rc = pmix_atomic_trylock(&p->atomlock);
-    if (0 != rc) {
-        return PMIX_ERR_RESOURCE_BUSY;
-    }
-    if (i >= p->nverts) {
-        pmix_atomic_unlock(&p->atomlock);
-        return PMIX_ERR_BAD_PARAM;
-    }
-
-    /* find NIC that corresponds to this index */
-    nic = (pnet_nic_t*)pmix_pointer_array_get_item(&mynics, i);
-    if (NULL == nic) {
-        pmix_atomic_unlock(&p->atomlock);
-        return PMIX_ERR_NOT_FOUND;
-    }
-    node = (pnet_node_t*)nic->node;
-    *nodename = strdup(node->name);
-    /* the value we pass back will be a data array containing
-     * info on the switch this NIC is connected to and the
-     * plane it is on */
-    identifier->type = PMIX_DATA_ARRAY;
-    PMIX_DATA_ARRAY_CREATE(identifier->data.darray, 3, PMIX_INFO);
-    info = (pmix_info_t*)identifier->data.darray->array;
-    n = 0;
-    pln = (pnet_plane_t*)nic->plane;
-    PMIX_INFO_LOAD(&info[n], PMIX_NETWORK_PLANE, pln->name, PMIX_STRING);
-    ++n;
-    sw = (pnet_switch_t*)nic->s;
-    PMIX_INFO_LOAD(&info[n], PMIX_NETWORK_SWITCH, sw->name, PMIX_STRING);
-    ++n;
-    PMIX_INFO_LOAD(&info[n], PMIX_NETWORK_NIC, nic->name, PMIX_STRING);
-
-    pmix_atomic_unlock(&p->atomlock);
-    return PMIX_SUCCESS;
-}
-
-static pmix_status_t get_index(pmix_fabric_t *fabric,
-                               pmix_value_t *identifier,
-                               uint32_t *i)
-{
-    pmix_pnet_fabric_t *ft = (pmix_pnet_fabric_t*)fabric->module;
-    pnet_plane_t *p = (pnet_plane_t*)ft->payload;
-    pnet_nic_t *nic;
-    int rc, m;
-    pmix_status_t ret;
-    pmix_info_t *info;
-    char *nc=NULL;
-    size_t n;
-
-    if (NULL == p) {
-        return PMIX_ERR_NOT_SUPPORTED;
-    }
-
-    rc = pmix_atomic_trylock(&p->atomlock);
-    if (0 != rc) {
-        return PMIX_ERR_RESOURCE_BUSY;
-    }
-
-    /* see what they gave us */
-    if (PMIX_DATA_ARRAY == identifier->type) {
-        if (PMIX_INFO != identifier->data.darray->type) {
-            ret = PMIX_ERR_BAD_PARAM;
-            goto cleanup;
-        }
-        info = (pmix_info_t*)identifier->data.darray->array;
-        for (n=0; n < identifier->data.darray->size; n++) {
-            if (PMIX_CHECK_KEY(&info[n], PMIX_NETWORK_NIC)) {
-                nc = info[n].value.data.string;
-            }
-        }
-        if (NULL == nc) {
-            ret = PMIX_ERR_BAD_PARAM;
-            goto cleanup;
-        }
-        /* find the NIC */
-        for (m=0; m < mynics.size; m++) {
-            nic = (pnet_nic_t*)pmix_pointer_array_get_item(&mynics, m);
-            if (NULL == nic) {
-                continue;
-            }
-            if (0 == strcmp(nc, nic->name)) {
-                *i = m;
-                ret = PMIX_SUCCESS;
-                goto cleanup;
-            }
-        }
-        ret = PMIX_ERR_NOT_FOUND;
-    } else if (PMIX_UINT32 == identifier->type) {
-        /* they gave us the vertex number - in our case,
-         * that is the NIC id */
-        *i = identifier->data.uint32;
-        ret = PMIX_SUCCESS;
-    } else {
-        ret = PMIX_ERR_BAD_PARAM;
-    }
-
-  cleanup:
-    pmix_atomic_unlock(&p->atomlock);
-    return ret;
 }

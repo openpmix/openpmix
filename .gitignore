@@ -171,5 +171,10 @@ test/python/run_server.sh
 test/simple/pmitest
 test/simple/simpcycle
 
+test/sshot/daemon
+test/sshot/generate
+test/sshot/server
+test/sshot/mytopo.json
+
 # coverity
 cov-int

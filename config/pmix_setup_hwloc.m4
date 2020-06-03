@@ -154,8 +154,7 @@ AC_DEFUN([_PMIX_HWLOC_EXTERNAL],[
         pmix_hwloc_source=$pmix_hwloc_dir
         pmix_hwloc_support_will_build=yes
         AS_IF([test "$pmix_hwloc_standard_header_location" != "yes"],
-              [AC_MSG_WARN([NONSTD LOC])
-               PMIX_FLAGS_APPEND_UNIQ(PMIX_FINAL_CPPFLAGS, $pmix_hwloc_CPPFLAGS)
+              [PMIX_FLAGS_APPEND_UNIQ(PMIX_FINAL_CPPFLAGS, $pmix_hwloc_CPPFLAGS)
                PMIX_WRAPPER_FLAGS_ADD(CPPFLAGS, $pmix_hwloc_CPPFLAGS)])
 
         AS_IF([test "$pmix_hwloc_standard_lib_location" != "yes"],

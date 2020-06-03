@@ -51,12 +51,12 @@ AC_DEFUN([PMIX_CHECK_JANSSON],[
                pmix_check_jansson_basedir=/usr
                pmix_jansson_source=standard],
     	      [PMIX_CHECK_WITHDIR([jansson], [$with_jansson], [include/jansson.h])
-               pmix_check_jansson_dir=$with_jansson
+               pmix_check_jansson_dir=$with_jansson/include
                pmix_check_jansson_basedir=$with_jansson
                pmix_jansson_source=$with_jansson])
 
         AS_IF([test -z "$with_jansson_libdir" || test "$with_jansson_libdir" = "yes"],
-              [pmix_check_jansson_libdir=$pmix_check_jansson_basedir],
+              [pmix_check_jansson_libdir=$pmix_check_jansson_basedir/lib],
     	      [PMIX_CHECK_WITHDIR([jansson-libdir], [$with_jansson_libdir], [libjansson.*])
                pmix_check_jansson_libdir=$with_jansson_libdir])
 
@@ -88,6 +88,8 @@ AC_DEFUN([PMIX_CHECK_JANSSON],[
 
     AC_MSG_CHECKING([Jansson support available])
     AC_MSG_RESULT([$pmix_check_jansson_happy])
+
+    AM_CONDITIONAL([HAVE_JANSSON], [test "$pmix_check_jansson_happy" = "yes"])
 
     AS_IF([test "$pmix_check_jansson_happy" = "yes"],
           [PMIX_SUMMARY_ADD([[External Packages]],[[Jansson]], [pmix_jansson], [$pmix_check_jansson_happy ($pmix_jansson_source)])])
