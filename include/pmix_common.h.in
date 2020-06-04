@@ -990,7 +990,6 @@ typedef int pmix_status_t;
 
 /* operational */
 #define PMIX_ERR_EVENT_REGISTRATION                 -144
-#define PMIX_ERR_JOB_TERMINATED                     -145
 #define PMIX_ERR_UPDATE_ENDPOINTS                   -146
 #define PMIX_MODEL_DECLARED                         -147
 #define PMIX_GDS_ACTION_COMPLETE                    -148
@@ -1038,6 +1037,11 @@ typedef int pmix_status_t;
 #define PMIX_ERR_JOB_NON_ZERO_TERM                  -188
 #define PMIX_ERR_JOB_ALLOC_FAILED                   -189
 #define PMIX_ERR_JOB_CANNOT_LAUNCH                  -190
+
+/* job-related non-error events */
+#define PMIX_EVENT_JOB_START                        -191
+#define PMIX_ERR_JOB_TERMINATED                     -145    // DEPRECATED NAME - non-error termination
+#define PMIX_EVENT_JOB_END                          -145
 
 /* system failures */
 #define PMIX_ERR_SYS_BASE                           -230

@@ -55,6 +55,7 @@
 #include "src/common/pmix_attributes.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/plog/plog.h"
+#include "src/mca/prm/prm.h"
 #include "src/mca/psensor/psensor.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/util/argv.h"
@@ -2548,14 +2549,9 @@ static void intermed_step(pmix_status_t status, void *cbdata)
         goto complete;
     }
 
-    if (NULL == pmix_host_server.notify_event) {
-        rc = PMIX_ERR_NOT_SUPPORTED;
-        goto complete;
-    }
-
     /* pass it to our host RM for distribution */
-    rc = pmix_host_server.notify_event(cd->status, &cd->source, cd->range,
-                                       cd->info, cd->ninfo, local_cbfunc, cd);
+    rc = pmix_prm.notify(cd->status, &cd->source, cd->range,
+                         cd->info, cd->ninfo, local_cbfunc, cd);
     if (PMIX_SUCCESS == rc) {
         /* let the callback function respond for us */
         return;
