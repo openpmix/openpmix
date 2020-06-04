@@ -65,14 +65,30 @@ AC_DEFUN([PMIX_CHECK_JANSSON],[
     	pmix_check_jansson_save_LIBS="$LIBS"
 
         PMIX_CHECK_PACKAGE([pmix_check_jansson],
-		   [jansson.h],
-	 	   [jansson],
-		   [json_loads],
-		   [],
-		   [$pmix_check_jansson_dir],
-		   [$pmix_check_jansson_libdir],
-		   [pmix_check_jansson_happy="yes"],
-		   [pmix_check_jansson_happy="no"])
+		                   [jansson.h],
+	 	                   [jansson],
+		                   [json_loads],
+		                   [],
+		                   [$pmix_check_jansson_dir],
+		                   [$pmix_check_jansson_libdir],
+		                   [pmix_check_jansson_happy="yes"],
+		                   [pmix_check_jansson_happy="no"])
+
+        if test "$pmix_check_jansson_happy" == "yes"; then
+            AC_MSG_CHECKING([if libjansson version is 2.11 or greater])
+            AS_IF([test "$pmix_jansson_source" != "standard"],
+                  [PMIX_FLAGS_APPEND_UNIQ(CPPFLAGS, $pmix_check_jansson_CPPFLAGS)])
+            AC_COMPILE_IFELSE(
+                  [AC_LANG_PROGRAM([[#include <jansson.h>]],
+                  [[
+        #if JANSSON_VERSION_HEX < 0x00020b00
+        #error "jansson API version is less than 2.11"
+        #endif
+                  ]])],
+                  [AC_MSG_RESULT([yes])],
+                  [AC_MSG_RESULT([no])
+                   pmix_check_jansson_happy=no])
+        fi
 
     	CPPFLAGS="$pmix_check_jansson_save_CPPFLAGS"
     	LDFLAGS="$pmix_check_jansson_save_LDFLAGS"
