@@ -21,8 +21,14 @@ example, a bug might be fixed in the master, and then moved to the
 current release as well as the "stable" bug fix release branch.
 
 
-2.2.4 -- 02 Jun 2020
+2.2.4 -- 07 Jun 2020
 ----------------------
+- PR #1466: Silence spurious error log
+- PR #1489: Allow specification of hostname to use by client
+- PR #1499/#1512/#1518/#1525/#1528/#1533/#1553: Fix internal tests
+- PR #1678: Update "check_vendor" for PGI problem
+- PR #1734: Fix resource leaks in ptl/usock component
+- PR #1777: Fix crash of dstor locks destructor in ds12
 - PR #1788: Remove unnecessary error logs
 
 
