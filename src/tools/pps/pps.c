@@ -263,6 +263,11 @@ main(int argc, char *argv[])
                 __FILE__, __LINE__, rc);
         return rc;
     }
+    if (PMIX_SUCCESS != (rc = pmix_pinstall_dirs_base_init(NULL, 0))) {
+        fprintf(stderr, "pmix_pinstalldirs_base_init() failed -- process will likely abort (%s:%d, returned %d instead of PMIX_SUCCESS)\n",
+                __FILE__, __LINE__, rc);
+        return rc;
+    }
 
     /* initialize the help system */
     pmix_show_help_init();

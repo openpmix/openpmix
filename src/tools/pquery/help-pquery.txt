@@ -21,7 +21,12 @@
 # This is the US/English help file for pquery
 #
 [usage]
-pquery [OPTIONS] KEY1 KEY2...
+pquery [OPTIONS] KEY1[qualifiers] KEY2[qualifiers]...
   PMIx Query tool
 
 %s
+
+Keys passed to pquery may optionally include one or more qualifiers, with the
+individual qualifiers delimited by semi-colons. For example:
+
+PMIX_STORAGE_XFER_SIZE[PMIX_STORAGE_ID=lustre1,lustre2;PMIX_STORAGE_PATH=foo]
