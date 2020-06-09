@@ -389,7 +389,7 @@ int main(int argc, char **argv)
     for (n=0; NULL != qkeys[n]; n++) {
         qry = PMIX_NEW(pmix_querylist_t);
         PMIX_CONSTRUCT(&qlist, pmix_list_t);
-        /* check for qualifiers: key[qual=foo,qual=bar] */
+        /* check for qualifiers: key[qual=foo;qual=bar] */
         if (NULL != (strt = strchr(qkeys[n], '['))) {
             /* we have qualifiers - find the end */
             *strt = '\0';
@@ -404,7 +404,7 @@ int main(int argc, char **argv)
             }
             *endp = '\0';
             /* break into qual=val pairs */
-            qprs = pmix_argv_split(strt, ',');
+            qprs = pmix_argv_split(strt, ';');
             for (m=0; NULL != qprs[m]; m++) {
                 /* break each pair */
                 if (NULL == (kptr = strchr(qprs[m], '='))) {
