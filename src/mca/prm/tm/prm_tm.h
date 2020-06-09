@@ -9,7 +9,7 @@
  */
 
 #ifndef PMIX_PRM_TM_H
-#ifndef PMIX_PRM_TM_H
+#define PMIX_PRM_TM_H
 
 #include "src/include/pmix_config.h"
 
