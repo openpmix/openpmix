@@ -63,8 +63,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_register_fabric(pmix_fabric_t *fabric,
     pmix_status_t rc;
 
     /* ensure our fields of the fabric object are initialized */
-    fabric->commcost = NULL;
-    fabric->nverts = 0;
+    fabric->info = NULL;
+    fabric->ninfo = 0;
     fabric->module = NULL;
 
     PMIX_ACQUIRE_THREAD(&pmix_pnet_globals.lock);
@@ -91,17 +91,35 @@ PMIX_EXPORT pmix_status_t PMIx_server_register_fabric(pmix_fabric_t *fabric,
     return PMIX_ERR_NOT_FOUND;
 }
 
+PMIX_EXPORT pmix_status_t PMIx_server_update_fabric(pmix_fabric_t *fabric)
+{
+    pmix_status_t rc = PMIX_SUCCESS;
+    pmix_pnet_fabric_t *active;
+    pmix_pnet_module_t *module;
+
+    /* protect against bozo input */
+    if (NULL == fabric || NULL == fabric->module) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    active = (pmix_pnet_fabric_t*)fabric->module;
+    module = (pmix_pnet_module_t*)active->module;
+
+    if (NULL != module->update_fabric) {
+        rc = module->update_fabric(fabric);
+    }
+    return rc;
+}
+
+
 PMIX_EXPORT pmix_status_t PMIx_server_deregister_fabric(pmix_fabric_t *fabric)
 {
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_pnet_fabric_t *active;
     pmix_pnet_module_t *module;
 
-    /* it is possible that multiple threads could call this, so
-     * check to see if it has already been initialized - if so,
-     * then just return success */
+    /* protect against bozo input */
     if (NULL == fabric || NULL == fabric->module) {
-        return PMIX_SUCCESS;
+        return PMIX_ERR_BAD_PARAM;
     }
     active = (pmix_pnet_fabric_t*)fabric->module;
     module = (pmix_pnet_module_t*)active->module;
@@ -113,13 +131,14 @@ PMIX_EXPORT pmix_status_t PMIx_server_deregister_fabric(pmix_fabric_t *fabric)
 }
 
 PMIX_EXPORT pmix_status_t PMIx_server_get_vertex_info(pmix_fabric_t *fabric,
-                                                      uint32_t i, pmix_value_t *vertex,
-                                                      char **nodename)
+                                                      uint32_t i,
+                                                      pmix_info_t **info, size_t *ninfo)
 {
     pmix_status_t ret;
     pmix_pnet_fabric_t *ft;
     pmix_pnet_module_t *module;
 
+    /* protect against bozo input */
     if (NULL == fabric || NULL == fabric->module) {
         return PMIX_ERR_BAD_PARAM;
     }
@@ -130,18 +149,20 @@ PMIX_EXPORT pmix_status_t PMIx_server_get_vertex_info(pmix_fabric_t *fabric,
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
-    ret = module->get_vertex(fabric, i, vertex, nodename);
+    ret = module->get_vertex(fabric, i, info, ninfo);
 
     return ret;
 }
 
 PMIX_EXPORT pmix_status_t PMIx_server_get_index(pmix_fabric_t *fabric,
-                                                pmix_value_t *vertex, uint32_t *i)
+                                                const pmix_info_t vertex[], size_t ninfo,
+                                                uint32_t *i)
 {
     pmix_status_t ret;
     pmix_pnet_fabric_t *ft;
     pmix_pnet_module_t *module;
 
+    /* protect against bozo input */
     if (NULL == fabric || NULL == fabric->module) {
         return PMIX_ERR_BAD_PARAM;
     }
@@ -152,7 +173,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_get_index(pmix_fabric_t *fabric,
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
-    ret = module->get_index(fabric, vertex, i);
+    ret = module->get_index(fabric, vertex, ninfo, i);
 
     return ret;
 }

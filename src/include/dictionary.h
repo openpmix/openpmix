@@ -270,8 +270,9 @@ pmix_regattr_input_t dictionary[] = {
     {.name = "PMIX_NODE_RANK", .string = "pmix.nrank", .type = PMIX_UINT16,
      .description = (char *[]){"rank on this node spanning all jobs", NULL}},
 
-    {.name = "PMIX_NUMA_RANK", .string = "pmix.nurank", .type = PMIX_UINT16,
-     .description = (char *[]){"rank on this proc's NUMA region within this job", NULL}},
+    {.name = "PMIX_PACKAGE_RANK", .string = "pmix.pkgrank", .type = PMIX_UINT16,
+     .description = (char *[]){"rank within this job on the package where this proc",
+                               "resides", NULL}},
 
     {.name = "PMIX_LOCALLDR", .string = "pmix.lldr", .type = PMIX_PROC_RANK,
      .description = (char *[]){"lowest rank on this node within this job", NULL}},
@@ -331,45 +332,6 @@ pmix_regattr_input_t dictionary[] = {
     {.name = "PMIX_EXIT_CODE", .string = "pmix.exit.code", .type = PMIX_INT,
      .description = (char *[]){"exit code returned when proc terminated", NULL}},
 
-    {.name = "PMIX_NETWORK_COORDINATE", .string = "pmix.net.coord", .type = PMIX_COORD,
-     .description = (char *[]){"Network coordinate of the specified process in the",
-                               "given view type (e.g., logical vs physical)", NULL}},
-
-    {.name = "PMIX_NETWORK_VIEW", .string = "pmix.net.view", .type = PMIX_UINT8,
-     .description = (char *[]){"Requested view type (e.g., logical vs physical)", NULL}},
-
-    {.name = "PMIX_NETWORK_DIMS", .string = "pmix.net.dims", .type = PMIX_UINT32,
-     .description = (char *[]){"Number of dimensions in the specified network",
-                               "plane/view", NULL}},
-
-    {.name = "PMIX_NETWORK_PLANE", .string = "pmix.net.plane", .type = PMIX_STRING,
-     .description = (char *[]){"string ID of a network plane", NULL}},
-
-    {.name = "PMIX_NETWORK_SWITCH", .string = "pmix.net.switch", .type = PMIX_STRING,
-     .description = (char *[]){"string ID of a network switch", NULL}},
-
-    {.name = "PMIX_NETWORK_NIC", .string = "pmix.net.nic", .type = PMIX_STRING,
-     .description = (char *[]){"string ID of a NIC", NULL}},
-
-    {.name = "PMIX_NETWORK_ENDPT", .string = "pmix.net.endpt", .type = PMIX_BYTE_OBJECT,
-     .description = (char *[]){"network endpt for process", NULL}},
-
-    {.name = "PMIX_NETWORK_SHAPE", .string = "pmix.net.shape", .type = PMIX_DATA_ARRAY,
-     .description = (char *[]){"number of interfaces (uint32_t) on each dimension of",
-                               "the specified network plane in the requested view", NULL}},
-
-    {.name = "PMIX_NETWORK_SHAPE_STRING", .string = "pmix.net.shapestr", .type = PMIX_STRING,
-     .description = (char *[]){"network shape expressed as a string (e.g.,",
-                               "\"10x12x2\")", NULL}},
-
-    {.name = "PMIX_SWITCH_PEERS", .string = "pmix.speers", .type = PMIX_STRING,
-     .description = (char *[]){"comma-delimited string of peers that share the same",
-                               "switch as the proc specified in the call to PMIx_Get.",
-                               "Multi-NIC environments will return an array of",
-                               "results, each element containing the NIC and the list",
-                               "of peers sharing the switch to which that NIC is",
-                               "connected.", NULL}},
-
     {.name = "PMIX_UNIV_SIZE", .string = "pmix.univ.size", .type = PMIX_UINT32,
      .description = (char *[]){"#procs in this nspace", NULL}},
 
@@ -407,7 +369,7 @@ pmix_regattr_input_t dictionary[] = {
      .description = (char *[]){"Average Mbytes of memory used by client processes", NULL}},
 
     {.name = "PMIX_NET_TOPO", .string = "pmix.ntopo", .type = PMIX_STRING,
-     .description = (char *[]){"xml-representation of network topology", NULL}},
+     .description = (char *[]){"xml-representation of fabric topology", NULL}},
 
     {.name = "PMIX_LOCAL_TOPO", .string = "pmix.ltopo", .type = PMIX_STRING,
      .description = (char *[]){"xml-representation of local node topology", NULL}},
@@ -1144,6 +1106,11 @@ pmix_regattr_input_t dictionary[] = {
                                "the separator character, creating the envar if it",
                                "doesn't already exist", NULL}},
 
+    {.name = "PMIX_FIRST_ENVAR", .string = "pmix.envar.first", .type = PMIX_ENVAR,
+     .description = (char *[]){"ensure the given value appears first in the specified",
+                               "envar using the separator character, creating the",
+                               "envar if it doesn't already exist", NULL}},
+
     {.name = "PMIX_ALLOC_ID", .string = "pmix.alloc.id", .type = PMIX_STRING,
      .description = (char *[]){"provide a string identifier for this allocation",
                                "request which can later be used to query status of",
@@ -1168,38 +1135,47 @@ pmix_regattr_input_t dictionary[] = {
      .description = (char *[]){"number of Mbytes", NULL}},
 
     {.name = "PMIX_ALLOC_NETWORK", .string = "pmix.alloc.net", .type = PMIX_DATA_ARRAY,
-     .description = (char *[]){"Array of pmix_info_t describing network resource",
+     .description = (char *[]){"***** DEPRECATED *****", NULL}},
+
+    {.name = "PMIX_ALLOC_FABRIC", .string = "pmix.alloc.net", .type = PMIX_DATA_ARRAY,
+     .description = (char *[]){"Array of pmix_info_t describing fabric resource",
                                "request. This must include at least: *",
-                               "PMIX_ALLOC_NETWORK_ID * PMIX_ALLOC_NETWORK_TYPE *",
-                               "PMIX_ALLOC_NETWORK_ENDPTS plus whatever other",
+                               "PMIX_ALLOC_FABRIC_ID * PMIX_ALLOC_FABRIC_TYPE *",
+                               "PMIX_ALLOC_FABRIC_ENDPTS plus whatever other",
                                "descriptors are desired", NULL}},
 
     {.name = "PMIX_ALLOC_NETWORK_ID", .string = "pmix.alloc.netid", .type = PMIX_STRING,
-     .description = (char *[]){"key to be used when accessing this requested network",
+     .description = (char *[]){"***** DEPRECATED *****", NULL}},
+
+    {.name = "PMIX_ALLOC_FABRIC_ID", .string = "pmix.alloc.netid", .type = PMIX_STRING,
+     .description = (char *[]){"key to be used when accessing this requested fabric",
                                "allocation. The allocation will be returned/stored as",
                                "a pmix_data_array_t of pmix_info_t indexed by this",
                                "key and containing at least one entry with the same",
                                "key and the allocated resource description. The type",
-                               "of the included value depends upon the network",
+                               "of the included value depends upon the fabric",
                                "support. For example, a TCP allocation might consist",
                                "of a comma-delimited string of socket ranges such as",
                                "\"32000-32100,33005,38123-38146\". Additional entries",
                                "will consist of any provided resource request",
                                "directives, along with their assigned values.",
-                               "Examples include: * PMIX_ALLOC_NETWORK_TYPE - the",
-                               "type of resources provided * PMIX_ALLOC_NETWORK_PLANE",
-                               "- if applicable, what plane the resources were",
-                               "assigned from * PMIX_ALLOC_NETWORK_QOS - the assigned",
-                               "QoS * PMIX_ALLOC_BANDWIDTH - the allocated bandwidth",
-                               "* PMIX_ALLOC_NETWORK_SEC_KEY - a security key for the",
-                               "requested network allocation NOTE: the assigned",
-                               "values may differ from those requested, especially if",
-                               "the \"required\" flag was not set in the request", NULL}},
+                               "Examples include: * PMIX_ALLOC_FABRIC_TYPE - the type",
+                               "of resources provided * PMIX_ALLOC_FABRIC_PLANE - if",
+                               "applicable, what plane the resources were assigned",
+                               "from * PMIX_ALLOC_FABRIC_QOS - the assigned QoS *",
+                               "PMIX_ALLOC_BANDWIDTH - the allocated bandwidth *",
+                               "PMIX_ALLOC_FABRIC_SEC_KEY - a security key for the",
+                               "requested fabric allocation NOTE: the assigned values",
+                               "may differ from those requested, especially if the",
+                               "\"required\" flag was not set in the request", NULL}},
 
     {.name = "PMIX_ALLOC_BANDWIDTH", .string = "pmix.alloc.bw", .type = PMIX_FLOAT,
      .description = (char *[]){"Mbits/sec", NULL}},
 
     {.name = "PMIX_ALLOC_NETWORK_QOS", .string = "pmix.alloc.netqos", .type = PMIX_STRING,
+     .description = (char *[]){"***** DEPRECATED *****", NULL}},
+
+    {.name = "PMIX_ALLOC_FABRIC_QOS", .string = "pmix.alloc.netqos", .type = PMIX_STRING,
      .description = (char *[]){"quality of service level", NULL}},
 
     {.name = "PMIX_ALLOC_TIME", .string = "pmix.alloc.time", .type = PMIX_UINT32,
@@ -1207,20 +1183,35 @@ pmix_regattr_input_t dictionary[] = {
                                "valid", NULL}},
 
     {.name = "PMIX_ALLOC_NETWORK_TYPE", .string = "pmix.alloc.nettype", .type = PMIX_STRING,
+     .description = (char *[]){"***** DEPRECATED *****", NULL}},
+
+    {.name = "PMIX_ALLOC_FABRIC_TYPE", .string = "pmix.alloc.nettype", .type = PMIX_STRING,
      .description = (char *[]){"type of desired transport (e.g., tcp, udp)", NULL}},
 
     {.name = "PMIX_ALLOC_NETWORK_PLANE", .string = "pmix.alloc.netplane", .type = PMIX_STRING,
+     .description = (char *[]){"***** DEPRECATED *****", NULL}},
+
+    {.name = "PMIX_ALLOC_FABRIC_PLANE", .string = "pmix.alloc.netplane", .type = PMIX_STRING,
      .description = (char *[]){"id string for the NIC (aka plane) to be used for this",
                                "allocation (e.g., CIDR for Ethernet)", NULL}},
 
     {.name = "PMIX_ALLOC_NETWORK_ENDPTS", .string = "pmix.alloc.endpts", .type = PMIX_SIZE,
+     .description = (char *[]){"***** DEPRECATED *****", NULL}},
+
+    {.name = "PMIX_ALLOC_FABRIC_ENDPTS", .string = "pmix.alloc.endpts", .type = PMIX_SIZE,
      .description = (char *[]){"number of endpoints to allocate per process", NULL}},
 
     {.name = "PMIX_ALLOC_NETWORK_ENDPTS_NODE", .string = "pmix.alloc.endpts.nd", .type = PMIX_SIZE,
+     .description = (char *[]){"***** DEPRECATED *****", NULL}},
+
+    {.name = "PMIX_ALLOC_FABRIC_ENDPTS_NODE", .string = "pmix.alloc.endpts.nd", .type = PMIX_SIZE,
      .description = (char *[]){"number of endpoints to allocate per node", NULL}},
 
     {.name = "PMIX_ALLOC_NETWORK_SEC_KEY", .string = "pmix.alloc.nsec", .type = PMIX_BYTE_OBJECT,
-     .description = (char *[]){"network security key", NULL}},
+     .description = (char *[]){"***** DEPRECATED *****", NULL}},
+
+    {.name = "PMIX_ALLOC_FABRIC_SEC_KEY", .string = "pmix.alloc.nsec", .type = PMIX_BYTE_OBJECT,
+     .description = (char *[]){"fabric security key", NULL}},
 
     {.name = "PMIX_ALLOC_QUEUE", .string = "pmix.alloc.queue", .type = PMIX_STRING,
      .description = (char *[]){"name of queue being referenced", NULL}},
@@ -1508,7 +1499,135 @@ pmix_regattr_input_t dictionary[] = {
     {.name = "PMIX_STORAGE_TYPE", .string = "pmix.strg.type", .type = PMIX_STRING,
      .description = (char *[]){"Qualifier indicating the type of storage being",
                                "referenced by a query (e.g., lustre, gpfs, online,",
-                               "network-attached, ...)", NULL}},
+                               "fabric-attached, ...)", NULL}},
+
+    {.name = "PMIX_FABRIC_COST_MATRIX", .string = "pmix.fab.cm", .type = PMIX_POINTER,
+     .description = (char *[]){"Pointer to a two-dimensional array of point-to-point",
+                               "relative communication costs expressed as uint16_t",
+                               "values", NULL}},
+
+    {.name = "PMIX_FABRIC_GROUPS", .string = "pmix.fab.grps", .type = PMIX_STRING,
+     .description = (char *[]){"A string delineating the group membership of nodes in",
+                               "the system, where each fabric group consists of the",
+                               "group number followed by a colon and a",
+                               "comma-delimited list of nodes in that group, with the",
+                               "groups delimited by semi-colons (e.g.,",
+                               "0:node000,node002,node004,node006;1:node001,node003,node005,node007)", NULL}},
+
+    {.name = "PMIX_FABRIC_VENDOR", .string = "pmix.fab.vndr", .type = PMIX_STRING,
+     .description = (char *[]){"Name of fabric vendor (e.g., Amazon, Mellanox, Cray,",
+                               "Intel)", NULL}},
+
+    {.name = "PMIX_FABRIC_IDENTIFIER", .string = "pmix.fab.id", .type = PMIX_STRING,
+     .description = (char *[]){"An identifier for the fabric (e.g., MgmtEthernet,",
+                               "Slingshot-11, OmniPath-1)", NULL}},
+
+    {.name = "PMIX_FABRIC_NUM_VERTICES", .string = "pmix.fab.nverts", .type = PMIX_SIZE,
+     .description = (char *[]){"Total number of NICs in the system - corresponds to",
+                               "the number of vertices (i.e., rows and columns) in",
+                               "the cost matrix", NULL}},
+
+    {.name = "PMIX_FABRIC_COORDINATE", .string = "pmix.net.coord", .type = PMIX_COORD,
+     .description = (char *[]){"Fabric coordinate of the specified process in the",
+                               "given view type (e.g., logical vs physical)", NULL}},
+
+    {.name = "PMIX_FABRIC_VIEW", .string = "pmix.net.view", .type = PMIX_UINT8,
+     .description = (char *[]){"Requested view type (e.g., logical vs physical)", NULL}},
+
+    {.name = "PMIX_FABRIC_DIMS", .string = "pmix.net.dims", .type = PMIX_UINT32,
+     .description = (char *[]){"Number of dimensions in the specified fabric",
+                               "plane/view", NULL}},
+
+    {.name = "PMIX_FABRIC_PLANE", .string = "pmix.net.plane", .type = PMIX_STRING,
+     .description = (char *[]){"string ID of a fabric plane", NULL}},
+
+    {.name = "PMIX_FABRIC_SWITCH", .string = "pmix.net.switch", .type = PMIX_STRING,
+     .description = (char *[]){"string ID of a fabric switch", NULL}},
+
+    {.name = "PMIX_FABRIC_NIC", .string = "pmix.net.nic", .type = PMIX_STRING,
+     .description = (char *[]){"string ID of a NIC", NULL}},
+
+    {.name = "PMIX_FABRIC_ENDPT", .string = "pmix.net.endpt", .type = PMIX_DATA_ARRAY,
+     .description = (char *[]){"array of fabric endpts for process", NULL}},
+
+    {.name = "PMIX_FABRIC_SHAPE", .string = "pmix.net.shape", .type = PMIX_DATA_ARRAY,
+     .description = (char *[]){"number of interfaces (uint32_t) on each dimension of",
+                               "the specified fabric plane in the requested view", NULL}},
+
+    {.name = "PMIX_FABRIC_SHAPE_STRING", .string = "pmix.net.shapestr", .type = PMIX_STRING,
+     .description = (char *[]){"fabric shape expressed as a string (e.g.,",
+                               "\"10x12x2\")", NULL}},
+
+    {.name = "PMIX_SWITCH_PEERS", .string = "pmix.speers", .type = PMIX_STRING,
+     .description = (char *[]){"comma-delimited string of peers that share the same",
+                               "switch as the proc specified in the call to PMIx_Get.",
+                               "Multi-NIC environments will return an array of",
+                               "results, each element containing the NIC and the list",
+                               "of peers sharing the switch to which that NIC is",
+                               "connected.", NULL}},
+
+    {.name = "PMIX_FABRIC_DEVICE", .string = "pmix.fabdev", .type = PMIX_DATA_ARRAY,
+     .description = (char *[]){"An array of pmix_info_t describing a particular",
+                               "fabric device (NIC).", NULL}},
+
+    {.name = "PMIX_FABRIC_DEVICE_NAME", .string = "pmix.fabdev.nm", .type = PMIX_STRING,
+     .description = (char *[]){"The operating system name associated with the device.",
+                               "This may be a logical fabric interface name (e.g.",
+                               "eth0 or eno1) or an absolute filename.", NULL}},
+
+    {.name = "PMIX_FABRIC_DEVICE_VENDOR", .string = "pmix.fabdev.vndr", .type = PMIX_STRING,
+     .description = (char *[]){"Indicates the name of the vendor that distributes the",
+                               "NIC.", NULL}},
+
+    {.name = "PMIX_FABRIC_DEVICE_BUS_TYPE", .string = "pmix.fabdev.btyp", .type = PMIX_STRING,
+     .description = (char *[]){"The type of bus to which the device is attached",
+                               "(e.g., \"PCI\", \"GEN-Z\").", NULL}},
+
+    {.name = "PMIX_FABRIC_DEVICE_ID", .string = "pmix.fabdev.devid", .type = PMIX_STRING,
+     .description = (char *[]){"A vendor-provided identifier for the device or",
+                               "product", NULL}},
+
+    {.name = "PMIX_FABRIC_DEVICE_DRIVER", .string = "pmix.fabdev.driver", .type = PMIX_STRING,
+     .description = (char *[]){"The name of the driver associated with the device", NULL}},
+
+    {.name = "PMIX_FABRIC_DEVICE_FIRMWARE", .string = "pmix.fabdev.fmwr", .type = PMIX_STRING,
+     .description = (char *[]){"The device’s firmware version", NULL}},
+
+    {.name = "PMIX_FABRIC_DEVICE_ADDRESS", .string = "pmix.fabdev.addr", .type = PMIX_STRING,
+     .description = (char *[]){"The primary link-level address associated with the",
+                               "NIC, such as a MAC address. If multiple addresses are",
+                               "available, only one will be reported.", NULL}},
+
+    {.name = "PMIX_FABRIC_DEVICE_MTU", .string = "pmix.fabdev.mtu", .type = PMIX_SIZE,
+     .description = (char *[]){"The maximum transfer unit of link level frames or",
+                               "packets, in bytes.", NULL}},
+
+    {.name = "PMIX_FABRIC_DEVICE_SPEED", .string = "pmix.fabdev.speed", .type = PMIX_SIZE,
+     .description = (char *[]){"The active link data rate, given in bits per second.", NULL}},
+
+    {.name = "PMIX_FABRIC_DEVICE_STATE", .string = "pmix.fabdev.state", .type = PMIX_LINK_STATE,
+     .description = (char *[]){"The last available physical port state. Possible",
+                               "values are PMIX_LINK_STATE_UNKNOWN, PMIX_LINK_DOWN,",
+                               "and PMIX_LINK_UP, to indicate if the port state is",
+                               "unknown or not applicable (unknown), inactive (down),",
+                               "or active (up).", NULL}},
+
+    {.name = "PMIX_FABRIC_DEVICE_TYPE", .string = "pmix.fabdev.type", .type = PMIX_STRING,
+     .description = (char *[]){"Specifies the type of fabric interface currently",
+                               "active on the device, such as Ethernet or InfiniBand.", NULL}},
+
+    {.name = "PMIX_FABRIC_DEVICE_PCI_DEVID", .string = "pmix.fabdev.pcidevid", .type = PMIX_STRING,
+     .description = (char *[]){"A node-level unique identifier for a PCI device.",
+                               "Provided only if the device is located on a \ac{PCI}",
+                               "bus. The identifier is constructed as a four-part",
+                               "tuple delimited by colons comprised of the \ac{PCI}",
+                               "16-bit domain, 8-bit bus, 8-bit device, and 8-bit",
+                               "function IDs, each expressed in zero-extended",
+                               "hexadecimal form. Thus, an example identifier might",
+                               "be \"abc1:0f:23:01\". The combination of node",
+                               "identifier PMIX_HOSTNAME or PMIX_NODEID and",
+                               "PMIX_FABRIC_DEVICE_PCI_DEVID shall be unique within",
+                               "the system.", NULL}},
     {.name = ""}
 
 };

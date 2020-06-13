@@ -68,12 +68,10 @@ static pmix_status_t register_fabric(pmix_fabric_t *fabric,
                                      const pmix_info_t directives[],
                                      size_t ndirs);
 static pmix_status_t deregister_fabric(pmix_fabric_t *fabric);
-static pmix_status_t get_vertex(pmix_fabric_t *fabric,
-                                uint32_t i,
-                                pmix_value_t *identifier,
-                                char **nodename);
+static pmix_status_t get_vertex(pmix_fabric_t *fabric, uint32_t i,
+                                pmix_info_t **info, size_t *ninfo);
 static pmix_status_t get_index(pmix_fabric_t *fabric,
-                               pmix_value_t *identifier,
+                               const pmix_info_t vertex[], size_t ninfo,
                                uint32_t *i);
 pmix_pnet_module_t pmix_test_module = {
     .name = "test",
@@ -224,9 +222,13 @@ static pmix_pointer_array_t mynics;
 static pmix_pointer_array_t mysws;
 static char **myenvlist = NULL;
 static char **myvalues = NULL;
+static pmix_status_t build_topo(char **nodes);
 
 static pmix_status_t test_init(void)
 {
+    int rc = PMIX_SUCCESS;
+    char **nodes;
+
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                         "pnet: test init");
 
@@ -239,7 +241,13 @@ static pmix_status_t test_init(void)
     PMIX_CONSTRUCT(&mysws, pmix_pointer_array_t);
     pmix_pointer_array_init(&mysws, 8, INT_MAX, 8);
 
-    return PMIX_SUCCESS;
+    if (NULL != mca_pnet_test_component.nodes) {
+        nodes = pmix_argv_split(mca_pnet_test_component.nodes, ',');
+        rc = build_topo(nodes);
+        pmix_argv_free(nodes);
+    }
+
+    return rc;
 }
 
 static void test_finalize(void)
@@ -542,7 +550,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
     /* check directives to see if a crypto key and/or
-     * network resource allocations requested */
+     * fabric resource allocations requested */
     for (n=0; n < ninfo; n++) {
         pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                             "pnet:test:allocate processing key %s",
@@ -550,7 +558,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
         if (PMIX_CHECK_KEY(&info[n], PMIX_SETUP_APP_ENVARS) ||
             PMIX_CHECK_KEY(&info[n], PMIX_SETUP_APP_ALL)) {
             envars = PMIX_INFO_TRUE(&info[n]);
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_ALLOC_NETWORK)) {
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_ALLOC_FABRIC)) {
             /* this info key includes an array of pmix_info_t, each providing
              * a key (that is to be used as the key for the allocated ports) and
              * a number of ports to allocate for that key */
@@ -611,12 +619,12 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
     }
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                        "pnet:test:allocate alloc_network for nspace %s",
+                        "pnet:test:allocate alloc_fabric for nspace %s",
                         nptr->nspace);
 
     /* cycle thru the provided array and get the ID key */
     for (n=0; n < nreqs; n++) {
-        if (PMIX_CHECK_KEY(&requests[n], PMIX_ALLOC_NETWORK_ID)) {
+        if (PMIX_CHECK_KEY(&requests[n], PMIX_ALLOC_FABRIC_ID)) {
             /* check for bozo error */
             if (PMIX_STRING != requests[n].value.type ||
                 NULL == requests[n].value.data.string) {
@@ -625,7 +633,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
                 goto cleanup;
             }
             idkey = requests[n].value.data.string;
-        } else if (PMIX_CHECK_KEY(&requests[n], PMIX_ALLOC_NETWORK_SEC_KEY)) {
+        } else if (PMIX_CHECK_KEY(&requests[n], PMIX_ALLOC_FABRIC_SEC_KEY)) {
                seckey = PMIX_INFO_TRUE(&requests[n]);
            }
        }
@@ -641,7 +649,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
         rc = PMIX_ERR_NOMEM;
         goto cleanup;
     }
-    kv->key = strdup(PMIX_ALLOC_NETWORK_ID);
+    kv->key = strdup(PMIX_ALLOC_FABRIC_ID);
     kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
     if (NULL == kv->value) {
         PMIX_RELEASE(kv);
@@ -654,7 +662,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
 
     if (seckey) {
         pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                            "pnet:test:allocate assigning network security key for nspace %s",
+                            "pnet:test:allocate assigning fabric security key for nspace %s",
                             nptr->nspace);
 
         kv = PMIX_NEW(pmix_kval_t);
@@ -662,7 +670,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             rc = PMIX_ERR_NOMEM;
             goto cleanup;
         }
-        kv->key = strdup(PMIX_ALLOC_NETWORK_SEC_KEY);
+        kv->key = strdup(PMIX_ALLOC_FABRIC_SEC_KEY);
         kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
         if (NULL == kv->value) {
             PMIX_RELEASE(kv);
@@ -730,7 +738,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             rc = PMIX_ERR_NOMEM;
             goto cleanup;
         }
-        kv->key = strdup(PMIX_ALLOC_NETWORK_ENDPTS);
+        kv->key = strdup(PMIX_ALLOC_FABRIC_ENDPTS);
         kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
         if (NULL == kv->value) {
             PMIX_RELEASE(kv);
@@ -766,7 +774,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             /* the second element in this array will itself
              * be a data array of endpts */
             PMIX_DATA_ARRAY_CREATE(d3, q, PMIX_UINT32);
-            PMIX_LOAD_KEY(ip2[1].key, PMIX_NETWORK_ENDPT);
+            PMIX_LOAD_KEY(ip2[1].key, PMIX_FABRIC_ENDPT);
             ip2[1].value.type = PMIX_DATA_ARRAY;
             ip2[1].value.data.darray = d3;
             u32 = (uint32_t*)d3->array;
@@ -774,7 +782,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
                 u32[p] = 3180 + (m * 4) + p;
             }
             /* the third element will also be a data array
-             * containing the network coordinates of the proc
+             * containing the fabric coordinates of the proc
              * for each NIC - note that the NIC is the true
              * "holder" of the coordinate, but we pass it for
              * each proc for ease of lookup. The coordinate is
@@ -787,7 +795,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
              * Thus, two procs that share the same y,z-coords are
              * on the same switch. */
             PMIX_DATA_ARRAY_CREATE(d3, q, PMIX_COORD);
-            PMIX_LOAD_KEY(ip2[2].key, PMIX_NETWORK_COORDINATE);
+            PMIX_LOAD_KEY(ip2[2].key, PMIX_FABRIC_COORDINATE);
             ip2[2].value.type = PMIX_DATA_ARRAY;
             ip2[2].value.data.darray = d3;
             coords = (pmix_coord_t*)d3->array;
@@ -891,8 +899,8 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
                 while (PMIX_SUCCESS == rc) {
                     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                                         "recvd KEY %s %s", kv->key, PMIx_Data_type_string(kv->value->type));
-                    /* check for the network ID */
-                    if (PMIX_CHECK_KEY(kv, PMIX_ALLOC_NETWORK_ID)) {
+                    /* check for the fabric ID */
+                    if (PMIX_CHECK_KEY(kv, PMIX_ALLOC_FABRIC_ID)) {
                         if (NULL != idkey) {
                             PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                             free(idkey);
@@ -906,11 +914,11 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
                          * list - we will supply it when setup_fork is called */
                         pmix_argv_append_nosize(&myenvlist, kv->value->data.envar.envar);
                         pmix_argv_append_nosize(&myvalues, kv->value->data.envar.value);
-                    } else if (PMIX_CHECK_KEY(kv, PMIX_ALLOC_NETWORK_SEC_KEY)) {
-                        /* our network security key was stored as a byte object but
+                    } else if (PMIX_CHECK_KEY(kv, PMIX_ALLOC_FABRIC_SEC_KEY)) {
+                        /* our fabric security key was stored as a byte object but
                          * is really just a uint64_t */
                         memcpy(&seckey, kv->value->data.bo.bytes, sizeof(uint64_t));
-                    } else if (PMIX_CHECK_KEY(kv, PMIX_ALLOC_NETWORK_ENDPTS)) {
+                    } else if (PMIX_CHECK_KEY(kv, PMIX_ALLOC_FABRIC_ENDPTS)) {
                         iptr = (pmix_info_t*)kv->value->data.darray->array;
                         nvals = kv->value->data.darray->size;
                         /* each element in this array is itself an array containing
@@ -1019,7 +1027,7 @@ static pmix_status_t register_fabric(pmix_fabric_t *fabric,
     }
     /* see what plane they wanted */
     for (n=0; n < ndirs; n++) {
-        if (PMIX_CHECK_KEY(&directives[n], PMIX_NETWORK_PLANE)) {
+        if (PMIX_CHECK_KEY(&directives[n], PMIX_FABRIC_PLANE)) {
             pln = directives[n].value.data.string;
             break;
         }
@@ -1047,8 +1055,13 @@ static pmix_status_t register_fabric(pmix_fabric_t *fabric,
 
     /* pass to the user-level object */
     fabric->module = ft;
-    fabric->commcost = p->costmatrix;
-    fabric->nverts = p->nverts;
+    fabric->ninfo = 4;
+    PMIX_INFO_CREATE(fabric->info, fabric->ninfo);
+    n = p->nverts;
+    PMIX_INFO_LOAD(&fabric->info[0], PMIX_FABRIC_NUM_VERTICES, &n, PMIX_SIZE);
+    PMIX_INFO_LOAD(&fabric->info[1], PMIX_FABRIC_COST_MATRIX, p->costmatrix, PMIX_POINTER);
+    PMIX_INFO_LOAD(&fabric->info[2], PMIX_FABRIC_VENDOR, "TEST", PMIX_STRING);
+    PMIX_INFO_LOAD(&fabric->info[3], PMIX_FABRIC_IDENTIFIER, "TEST-1", PMIX_STRING);
 
     return PMIX_SUCCESS;
 }
@@ -1056,23 +1069,20 @@ static pmix_status_t register_fabric(pmix_fabric_t *fabric,
 static pmix_status_t deregister_fabric(pmix_fabric_t *fabric)
 {
     fabric->module = NULL;
-    fabric->commcost = NULL;
-    fabric->nverts = 0;
+    if (NULL != fabric->info) {
+        PMIX_INFO_FREE(fabric->info, fabric->ninfo);
+    }
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t get_vertex(pmix_fabric_t *fabric,
-                                uint32_t i,
-                                pmix_value_t *identifier,
-                                char **nodename)
+static pmix_status_t get_vertex(pmix_fabric_t *fabric, uint32_t i,
+                                pmix_info_t **info, size_t *ninfo)
 {
     pmix_pnet_fabric_t *ft = (pmix_pnet_fabric_t*)fabric->module;
     pnet_plane_t *p = (pnet_plane_t*)ft->payload;
     pnet_nic_t *nic;
-    pnet_plane_t *pln;
-    pnet_switch_t *sw;
     pnet_node_t *node;
-    pmix_info_t *info;
+    pmix_info_t *iptr;
     size_t n;
     int rc;
 
@@ -1096,38 +1106,33 @@ static pmix_status_t get_vertex(pmix_fabric_t *fabric,
         return PMIX_ERR_NOT_FOUND;
     }
     node = (pnet_node_t*)nic->node;
-    *nodename = strdup(node->name);
-    /* the value we pass back will be a data array containing
-     * info on the switch this NIC is connected to and the
-     * plane it is on */
-    identifier->type = PMIX_DATA_ARRAY;
-    PMIX_DATA_ARRAY_CREATE(identifier->data.darray, 3, PMIX_INFO);
-    info = (pmix_info_t*)identifier->data.darray->array;
+
+    PMIX_INFO_CREATE(iptr, 5);
     n = 0;
-    pln = (pnet_plane_t*)nic->plane;
-    PMIX_INFO_LOAD(&info[n], PMIX_NETWORK_PLANE, pln->name, PMIX_STRING);
+    PMIX_INFO_LOAD(&iptr[n], PMIX_HOSTNAME, node->name, PMIX_STRING);
     ++n;
-    sw = (pnet_switch_t*)nic->s;
-    PMIX_INFO_LOAD(&info[n], PMIX_NETWORK_SWITCH, sw->name, PMIX_STRING);
+    PMIX_INFO_LOAD(&iptr[n], PMIX_FABRIC_DEVICE_NAME, "TEST-DEVICE", PMIX_STRING);
     ++n;
-    PMIX_INFO_LOAD(&info[n], PMIX_NETWORK_NIC, nic->name, PMIX_STRING);
+    PMIX_INFO_LOAD(&iptr[n], PMIX_FABRIC_DEVICE_VENDOR, "INTEL", PMIX_STRING);
+    ++n;
+    PMIX_INFO_LOAD(&iptr[n], PMIX_FABRIC_DEVICE_BUS_TYPE, "PCI", PMIX_STRING);
+    ++n;
+    PMIX_INFO_LOAD(&iptr[n], PMIX_FABRIC_DEVICE_PCI_DEVID, "abc1:0f:23:01", PMIX_STRING);
+
+    *info = iptr;
+    *ninfo = 5;
 
     pmix_atomic_unlock(&p->atomlock);
     return PMIX_SUCCESS;
 }
 
 static pmix_status_t get_index(pmix_fabric_t *fabric,
-                               pmix_value_t *identifier,
+                               const pmix_info_t vertex[], size_t ninfo,
                                uint32_t *i)
 {
     pmix_pnet_fabric_t *ft = (pmix_pnet_fabric_t*)fabric->module;
     pnet_plane_t *p = (pnet_plane_t*)ft->payload;
-    pnet_nic_t *nic;
-    int rc, m;
-    pmix_status_t ret;
-    pmix_info_t *info;
-    char *nc=NULL;
-    size_t n;
+    int rc;
 
     if (NULL == p) {
         return PMIX_ERR_NOT_SUPPORTED;
@@ -1138,45 +1143,8 @@ static pmix_status_t get_index(pmix_fabric_t *fabric,
         return PMIX_ERR_RESOURCE_BUSY;
     }
 
-    /* see what they gave us */
-    if (PMIX_DATA_ARRAY == identifier->type) {
-        if (PMIX_INFO != identifier->data.darray->type) {
-            ret = PMIX_ERR_BAD_PARAM;
-            goto cleanup;
-        }
-        info = (pmix_info_t*)identifier->data.darray->array;
-        for (n=0; n < identifier->data.darray->size; n++) {
-            if (PMIX_CHECK_KEY(&info[n], PMIX_NETWORK_NIC)) {
-                nc = info[n].value.data.string;
-            }
-        }
-        if (NULL == nc) {
-            ret = PMIX_ERR_BAD_PARAM;
-            goto cleanup;
-        }
-        /* find the NIC */
-        for (m=0; m < mynics.size; m++) {
-            nic = (pnet_nic_t*)pmix_pointer_array_get_item(&mynics, m);
-            if (NULL == nic) {
-                continue;
-            }
-            if (0 == strcmp(nc, nic->name)) {
-                *i = m;
-                ret = PMIX_SUCCESS;
-                goto cleanup;
-            }
-        }
-        ret = PMIX_ERR_NOT_FOUND;
-    } else if (PMIX_UINT32 == identifier->type) {
-        /* they gave us the vertex number - in our case,
-         * that is the NIC id */
-        *i = identifier->data.uint32;
-        ret = PMIX_SUCCESS;
-    } else {
-        ret = PMIX_ERR_BAD_PARAM;
-    }
+    *i = 3;
 
-  cleanup:
     pmix_atomic_unlock(&p->atomlock);
-    return ret;
+    return PMIX_SUCCESS;
 }

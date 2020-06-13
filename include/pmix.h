@@ -990,6 +990,7 @@ PMIX_EXPORT const char* PMIx_IOF_channel_string(pmix_iof_channel_t channel);
 PMIX_EXPORT const char* PMIx_Job_state_string(pmix_job_state_t state);
 PMIX_EXPORT const char* PMIx_Get_attribute_string(char *attribute);
 PMIX_EXPORT const char* PMIx_Get_attribute_name(char *attrstring);
+PMIX_EXPORT const char* PMIx_Link_state_string(pmix_link_state_t state);
 
 /* Get the PMIx version string. Note that the provided string is
  * statically defined and must NOT be free'd  */

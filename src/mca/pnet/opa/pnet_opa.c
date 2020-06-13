@@ -59,7 +59,7 @@ pmix_pnet_module_t pmix_opa_module = {
     .allocate = allocate
 };
 
-/* some network transports require a little bit of information to
+/* some fabric transports require a little bit of information to
  * "pre-condition" them - i.e., to setup their individual transport
  * connections so they can generate their endpoint addresses. This
  * function provides a means for doing so. The resulting info is placed
@@ -173,13 +173,13 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             seckeys = PMIX_INFO_TRUE(&info[n]);
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SETUP_APP_NONENVARS)) {
             seckeys = PMIX_INFO_TRUE(&info[n]);
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_ALLOC_NETWORK)) {
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_ALLOC_FABRIC)) {
             iptr = (pmix_info_t*)info[n].value.data.darray->array;
             m = info[n].value.data.darray->size;
             for (p=0; p < m; p++) {
-                if (PMIX_CHECK_KEY(&iptr[p], PMIX_ALLOC_NETWORK_SEC_KEY)) {
+                if (PMIX_CHECK_KEY(&iptr[p], PMIX_ALLOC_FABRIC_SEC_KEY)) {
                     seckeys = PMIX_INFO_TRUE(&iptr[p]);
-                } else if (PMIX_CHECK_KEY(&iptr[p], PMIX_ALLOC_NETWORK_ID)) {
+                } else if (PMIX_CHECK_KEY(&iptr[p], PMIX_ALLOC_FABRIC_ID)) {
                     /* need to track the request by this ID */
                 } else if (PMIX_CHECK_KEY(&iptr[p], PMIX_SETUP_APP_ENVARS)) {
                     envars = PMIX_INFO_TRUE(&iptr[p]);

@@ -443,6 +443,14 @@ static pmix_status_t init(void)
                        pmix_bfrops_base_print_jobstate,
                        &mca_bfrops_v4_component.types);
 
+    PMIX_REGISTER_TYPE("PMIX_LINK_STATE",
+                       PMIX_LINK_STATE,
+                       pmix_bfrops_base_pack_linkstate,
+                       pmix_bfrops_base_unpack_linkstate,
+                       pmix_bfrops_base_std_copy,
+                       pmix_bfrops_base_print_linkstate,
+                       &mca_bfrops_v4_component.types);
+
     return PMIX_SUCCESS;
 }
 

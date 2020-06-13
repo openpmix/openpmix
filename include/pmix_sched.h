@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
@@ -66,12 +66,10 @@ typedef struct pmix_fabric_s {
     char *name;
     /* a PMIx-supplied index identifying this registration object */
     size_t index;
-    /* communication cost array - the number of vertices
-     * (nverts) equals the number of interfaces in the
-     * fabric. This equates to the number of columns & rows
-     * in the commcost array as the matrix is symmetric */
-    uint16_t **commcost;
-    uint32_t nverts;
+    /* array containing information (provided by the PMIx library)
+     * about the fabric */
+    pmix_info_t *info;
+    size_t ninfo;
     /* object pointer for use by the PMIx server library */
     void *module;
 } pmix_fabric_t;
@@ -103,6 +101,20 @@ PMIX_EXPORT pmix_status_t PMIx_server_register_fabric(pmix_fabric_t *fabric,
                                                       const pmix_info_t directives[],
                                                       size_t ndirs);
 
+/* Update fabric-related information. This call can be made at any time to request an update of the
+ * fabric information contained in the provided pmix_fabric_t object. The caller is not allowed
+ * to access the provided pmix_fabric_t until the call has returned.
+ *
+ * fabric - pointer to the pmix_fabric_t struct provided to
+ *          the registration function
+ *
+ * Return values include:
+ *
+ * PMIX_SUCCESS - indicates successful update
+ */
+PMIX_EXPORT pmix_status_t PMIx_server_update_fabric(pmix_fabric_t *fabric);
+
+
 /* Deregister a fabric object, providing an opportunity for
  * the PMIx server library to cleanup any information
  * (e.g., cost matrix) associated with it
@@ -121,21 +133,18 @@ PMIX_EXPORT pmix_status_t PMIx_server_deregister_fabric(pmix_fabric_t *fabric);
  *
  * i - communication cost matrix index
  *
- * vertex - pointer to the pmix_value_t where the vertex info is to
- *          be returned (backed by storage)
+ * info - Address where a pointer to an array of pmix_info_t containing
+ *        the results of the query can be returned
  *
- * nodename - pointer to the location where the string nodename
- *            is to be returned. The caller is responsible for
- *            releasing the string when done
+ * ninfo - Address where the number of elements in info can be returned
  *
  * Return values include:
  *
  * PMIX_SUCCESS - indicates return of a valid value
  * PMIX_ERR_BAD_PARAM - provided index is out of bounds
  */
-PMIX_EXPORT pmix_status_t PMIx_server_get_vertex_info(pmix_fabric_t *fabric,
-                                                      uint32_t i, pmix_value_t *vertex,
-                                                      char **nodename);
+PMIX_EXPORT pmix_status_t PMIx_server_get_vertex_info(pmix_fabric_t *fabric, uint32_t index,
+                                                      pmix_info_t **info, size_t *ninfo);
 
 /* Given vertex info and the name of the device upon which that
  * vertex resides, return the corresponding communication cost matrix
@@ -144,7 +153,10 @@ PMIX_EXPORT pmix_status_t PMIx_server_get_vertex_info(pmix_fabric_t *fabric,
  * fabric - pointer to the pmix_fabric_t struct provided to
  *          the registration function
  *
- * vertex - pointer to the vertex info whose index is being requested
+ * vertex - array of pmix_info_t containing info describing the vertex whose
+ *          index is being queried
+ *
+ * ninfo - number of elements in vertex array
  *
  * i - pointer to the location where the index is to be returned
  *
@@ -157,7 +169,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_get_vertex_info(pmix_fabric_t *fabric,
  *                           last call involving this pmix_fabric_t
   */
 PMIX_EXPORT pmix_status_t PMIx_server_get_index(pmix_fabric_t *fabric,
-                                                pmix_value_t *vertex, uint32_t *i);
+                                                const pmix_info_t vertex[], size_t ninfo,
+                                                uint32_t *i);
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }

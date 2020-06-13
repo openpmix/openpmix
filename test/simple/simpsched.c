@@ -99,11 +99,9 @@ int main(int argc, char **argv)
     pmix_info_t *info, *iptr;
     pmix_status_t rc;
     pmix_fabric_t myfabric;
-    uint32_t n32, m32;
-    pmix_value_t val;
+    uint32_t n32;
     size_t ninfo;
     int exit_code=0;
-    char *nodename;
     size_t n;
     char *hosts, *procs;
     char *regex, *ppn;
@@ -119,7 +117,8 @@ int main(int argc, char **argv)
     fprintf(stderr, "PID: %lu Testing version %s\n", (unsigned long)getpid(), PMIx_Get_version());
 
     /* set a known network configuration for the pnet/test component */
-    putenv("PMIX_MCA_pnet_test_nverts=nodes:5;plane:d:3");
+    putenv("PMIX_MCA_pnet_test_planes=plane:d:3:4,plane:s:2,plane:3");
+    putenv("PMIX_MCA_pnet_test_nodes=test000,test001,test002");
     putenv("PMIX_MCA_pnet=test");
 
     ninfo = 1;
@@ -134,44 +133,35 @@ int main(int argc, char **argv)
     /* register a fabric */
     rc = PMIx_server_register_fabric(&myfabric, NULL, 0);
     if (PMIX_SUCCESS == rc) {
-        fprintf(stderr, "Number of fabric vertices: %u\n", myfabric.nverts);
-
-        for (n32=0; n32 < myfabric.nverts; n32++) {
-            fprintf(stderr, "%u:", n32);
-            for (m32=0; m32 < myfabric.nverts; m32++) {
-                fprintf(stderr, "   %u", myfabric.commcost[n32][m32]);
+        /* scan the returned info array for values */
+        for (n=0; n < myfabric.ninfo; n++) {
+            if (PMIX_CHECK_KEY(&myfabric.info[n], PMIX_FABRIC_VENDOR)) {
+                fprintf(stderr, "Fabric vendor: %s\n", myfabric.info[n].value.data.string);
+            } else if (PMIX_CHECK_KEY(&myfabric.info[n], PMIX_FABRIC_IDENTIFIER)) {
+                fprintf(stderr, "Fabric ID: %s\n", myfabric.info[n].value.data.string);
+            } else if (PMIX_CHECK_KEY(&myfabric.info[n], PMIX_FABRIC_NUM_VERTICES)) {
+                fprintf(stderr, "Number of fabric vertices: %u\n", (unsigned)myfabric.info[n].value.data.size);
             }
-            fprintf(stderr, "\n");
         }
 
-        rc = PMIx_server_get_vertex_info(&myfabric, myfabric.nverts/2, &val, &nodename);
+        rc = PMIx_server_get_vertex_info(&myfabric, 0, &info, &ninfo);
         if (PMIX_SUCCESS != rc) {
             fprintf(stderr, "Fabric get vertex info failed with error: %s\n", PMIx_Error_string(rc));
             goto cleanup;
         }
-        if (PMIX_DATA_ARRAY != val.type) {
-            fprintf(stderr, "Fabric get vertex info returned wrong type: %s\n", PMIx_Data_type_string(val.type));
-            goto cleanup;
-        }
-        fprintf(stderr, "Vertex info for index %u on node %s:\n", myfabric.nverts/2, nodename);
-        info = (pmix_info_t*)val.data.darray->array;
-        for (n=0; n < val.data.darray->size; n++) {
+        fprintf(stderr, "Vertex info for index 0:\n");
+        for (n=0; n < ninfo; n++) {
             fprintf(stderr, "\t%s:\t%s\n", info[n].key, info[n].value.data.string);
         }
-        PMIX_VALUE_DESTRUCT(&val);
-        free(nodename);
 
-        PMIX_INFO_CREATE(info, 1);
-        PMIX_INFO_LOAD(&info[0], PMIX_NETWORK_NIC, "test002:nic002", PMIX_STRING);
-        val.type = PMIX_DATA_ARRAY;
-        PMIX_DATA_ARRAY_CREATE(val.data.darray, 1, PMIX_INFO);
-        val.data.darray->array = info;
-        rc = PMIx_server_get_index(&myfabric, &val, &n32);
+        rc = PMIx_server_get_index(&myfabric, info, ninfo, &n32);
         if (PMIX_SUCCESS != rc) {
             fprintf(stderr, "Fabric get index failed with error: %s\n", PMIx_Error_string(rc));
             goto cleanup;
         }
-        fprintf(stderr, "Index %u for NIC %s\n", n32, "test002:nic002");
+        fprintf(stderr, "Index %u for test NIC\n", n32);
+    } else {
+        fprintf(stderr, "Register fabric failed with error %s\n", PMIx_Error_string(rc));
     }
 
     /* setup an application */

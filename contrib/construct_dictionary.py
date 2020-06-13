@@ -111,12 +111,20 @@ def harvest_constants(options, path, constants):
                             datatype = "PMIX_PID"
                         elif tokens[3] == "(pmix_proc_state_t)":
                             datatype = "PMIX_PROC_STATE"
+                        elif tokens[3] == "(pmix_link_state_t)":
+                            datatype = "PMIX_LINK_STATE"
+                        elif tokens[3] == "(pointer)":
+                            datatype = "PMIX_POINTER"
                         else:
                             datatype = "FOOBAR"
                     constants.write(", .type = " + datatype + ",\n     .description = (char *[]){\"")
                     # the description consists of at least all remaining tokens
                     m = dstart + 1
                     desc = tokens[dstart].replace("\"", "\\\"")
+                    if "DEPRECATED" in desc:
+                        constants.write(desc + "\"")
+                        constants.write(", NULL}}")
+                        continue
                     firstout = True
                     while m < len(tokens):
                         tmp = tokens[m].replace("\"", "\\\"")

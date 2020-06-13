@@ -310,3 +310,17 @@ PMIX_EXPORT const char* PMIx_Get_attribute_name(char *attrstring)
 {
     return pmix_attributes_reverse_lookup(attrstring);
 }
+
+PMIX_EXPORT const char* PMIx_Link_state_string(pmix_link_state_t state)
+{
+    switch(state) {
+        case PMIX_LINK_STATE_UNKNOWN:
+            return "UNKNOWN";
+        case PMIX_LINK_DOWN:
+            return "INACTIVE";
+        case PMIX_LINK_UP:
+            return "ACTIVE";
+        default:
+            return "UNKNOWN";
+    }
+}

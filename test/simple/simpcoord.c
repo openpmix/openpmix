@@ -81,9 +81,9 @@ int main(int argc, char **argv)
     PMIX_VALUE_RELEASE(val);
     pmix_output(0, "Client %s:%d hostname %s", myproc.nspace, myproc.rank, hostname);
 
-    /* get our assigned network endpts */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_NETWORK_ENDPT, NULL, 0, &val))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Get network endpt failed: %s",
+    /* get our assigned fabric endpts */
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_FABRIC_ENDPT, NULL, 0, &val))) {
+        pmix_output(0, "Client ns %s rank %d: PMIx_Get fabric endpt failed: %s",
                     myproc.nspace, myproc.rank, PMIx_Error_string(rc));
         goto nextstep;
     }
@@ -108,10 +108,10 @@ int main(int argc, char **argv)
     }
 
   nextstep:
-    /* get our assigned network coordinates */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_NETWORK_COORDINATE, NULL, 0, &val)) ||
+    /* get our assigned fabric coordinates */
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_FABRIC_COORDINATE, NULL, 0, &val)) ||
         NULL == val) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Get network coordinate failed: %s",
+        pmix_output(0, "Client ns %s rank %d: PMIx_Get fabric coordinate failed: %s",
                     myproc.nspace, myproc.rank, PMIx_Error_string(rc));
         goto done;
     }
@@ -156,7 +156,7 @@ int main(int argc, char **argv)
         pmix_output(0, "Rank %u[%s]: COORD VIEW %s DIMS %lu: %s", myproc.rank, hostname, view, val->data.coord->dims, tmp);
         free(tmp);
     } else {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Get network coordinate returned wrong type: %s",
+        pmix_output(0, "Client ns %s rank %d: PMIx_Get fabric coordinate returned wrong type: %s",
                     myproc.nspace, myproc.rank, PMIx_Data_type_string(val->type));
     }
 

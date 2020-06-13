@@ -225,7 +225,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
 
 
     /* check directives to see if a crypto key and/or
-     * network resource allocations requested */
+     * fabric resource allocations requested */
     for (n=0; n < ninfo; n++) {
         pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                             "pnet:simptest:allocate processing key %s",
@@ -287,7 +287,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             rc = PMIX_ERR_NOMEM;
             goto cleanup;
         }
-        kv->key = strdup(PMIX_ALLOC_NETWORK_ENDPTS);
+        kv->key = strdup(PMIX_ALLOC_FABRIC_ENDPTS);
         kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
         if (NULL == kv->value) {
             PMIX_RELEASE(kv);
@@ -316,10 +316,10 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
                                 (int)q, rank);
             PMIX_INFO_LOAD(&ip2[0], PMIX_RANK, &rank, PMIX_PROC_RANK);
             /* the second element in this array is the coord */
-            PMIX_INFO_LOAD(&ip2[1], PMIX_NETWORK_COORDINATE, &nd->coord, PMIX_COORD);
+            PMIX_INFO_LOAD(&ip2[1], PMIX_FABRIC_COORDINATE, &nd->coord, PMIX_COORD);
             /* third element is the endpt */
             PMIX_DATA_ARRAY_CREATE(d3, 1, PMIX_BYTE_OBJECT);
-            PMIX_LOAD_KEY(ip2[2].key, PMIX_NETWORK_ENDPT);
+            PMIX_LOAD_KEY(ip2[2].key, PMIX_FABRIC_ENDPT);
             ip2[2].value.type = PMIX_DATA_ARRAY;
             ip2[2].value.data.darray = d3;
             bptr = (pmix_byte_object_t*)d3->array;
@@ -405,8 +405,8 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
                 while (PMIX_SUCCESS == rc) {
                     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                                         "recvd KEY %s %s", kv->key, PMIx_Data_type_string(kv->value->type));
-                    /* check for the network ID */
-                    if (PMIX_CHECK_KEY(kv, PMIX_ALLOC_NETWORK_ENDPTS)) {
+                    /* check for the fabric ID */
+                    if (PMIX_CHECK_KEY(kv, PMIX_ALLOC_FABRIC_ENDPTS)) {
                         iptr = (pmix_info_t*)kv->value->data.darray->array;
                         nvals = kv->value->data.darray->size;
                         /* each element in this array is itself an array containing

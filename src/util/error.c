@@ -264,8 +264,8 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
         return "PMIX_ERR_VALUE_OUT_OF_BOUNDS";
     case PMIX_ERR_PERM:
         return "PMIX_ERR_PERM";
-    case PMIX_ERR_NETWORK_NOT_PARSEABLE:
-        return "PMIX_ERR_NETWORK_NOT_PARSEABLE";
+    case PMIX_ERR_FABRIC_NOT_PARSEABLE:
+        return "PMIX_ERR_FABRIC_NOT_PARSEABLE";
     case PMIX_ERR_FILE_OPEN_FAILURE:
         return "PMIX_ERR_FILE_OPEN_FAILURE";
     case PMIX_ERR_FILE_READ_FAILURE:

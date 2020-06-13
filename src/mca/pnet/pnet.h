@@ -159,21 +159,24 @@ typedef pmix_status_t (*pmix_pnet_base_module_register_fabric_fn_t)(pmix_fabric_
                                                                     size_t ndirs);
 
 
+/* Update the fabric information */
+typedef pmix_status_t (*pmix_pnet_base_module_update_fabric_fn_t)(pmix_fabric_t *fabric);
+
+
 /* Deregister the fabric, giving the associated module a chance to cleanup */
-typedef pmix_status_t (*pmix_pnet_base_deregister_fabric_fn_t)(pmix_fabric_t *fabric);
+typedef pmix_status_t (*pmix_pnet_base_module_deregister_fabric_fn_t)(pmix_fabric_t *fabric);
 
 /* Get the identifier and nodename corresponding to the provided
  * index of the communication cost array - caller must provide
  * the address of an allocated pmix_value_t structure */
-typedef pmix_status_t (*pmix_pnet_base_module_get_vertex_fn_t)(pmix_fabric_t *fabric,
-                                                               uint32_t i,
-                                                               pmix_value_t *identifier,
-                                                               char **nodename);
+typedef pmix_status_t (*pmix_pnet_base_module_get_vertex_fn_t)(pmix_fabric_t *fabric, uint32_t i,
+                                                               pmix_info_t **info, size_t *ninfo);
 
 /* Get the index in the communication cost array corresponding
  * to the provided identifier(s) */
 typedef pmix_status_t (*pmix_pnet_base_module_get_index_fn_t)(pmix_fabric_t *fabric,
-                                                              pmix_value_t *vertex, uint32_t *i);
+                                                              const pmix_info_t vertex[], size_t ninfo,
+                                                              uint32_t *i);
 /**
  * Base structure for a PNET module. Each component should malloc a
  * copy of the module structure for each fabric plane they support.
@@ -194,7 +197,8 @@ typedef struct {
     pmix_pnet_base_module_collect_inventory_fn_t    collect_inventory;
     pmix_pnet_base_module_deliver_inventory_fn_t    deliver_inventory;
     pmix_pnet_base_module_register_fabric_fn_t      register_fabric;
-    pmix_pnet_base_deregister_fabric_fn_t           deregister_fabric;
+    pmix_pnet_base_module_update_fabric_fn_t        update_fabric;
+    pmix_pnet_base_module_deregister_fabric_fn_t    deregister_fabric;
     pmix_pnet_base_module_get_vertex_fn_t           get_vertex;
     pmix_pnet_base_module_get_index_fn_t            get_index;
 } pmix_pnet_module_t;

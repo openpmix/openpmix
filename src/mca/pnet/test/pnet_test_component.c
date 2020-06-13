@@ -66,6 +66,7 @@ pmix_pnet_test_component_t mca_pnet_test_component = {
         }
     },
     .planes = NULL,
+    .nodes = NULL,
     .costmatrix = NULL
 };
 
@@ -81,6 +82,12 @@ static pmix_status_t component_register(void)
                                                PMIX_INFO_LVL_2,
                                                PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                                &mca_pnet_test_component.planes);
+    (void)pmix_mca_base_component_var_register(component, "nodes",
+                                               "Comma-delimited list of node names",
+                                               PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
+                                               PMIX_INFO_LVL_2,
+                                               PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+                                               &mca_pnet_test_component.nodes);
     return PMIX_SUCCESS;
 }
 
