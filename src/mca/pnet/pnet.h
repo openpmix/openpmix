@@ -27,7 +27,7 @@
 #define PMIX_PNET_H
 
 #include "src/include/pmix_config.h"
-#include "include/pmix_sched.h"
+#include "include/pmix.h"
 
 #include "src/class/pmix_list.h"
 #include "src/mca/mca.h"
@@ -174,9 +174,9 @@ typedef pmix_status_t (*pmix_pnet_base_module_get_vertex_fn_t)(pmix_fabric_t *fa
 
 /* Get the index in the communication cost array corresponding
  * to the provided identifier(s) */
-typedef pmix_status_t (*pmix_pnet_base_module_get_index_fn_t)(pmix_fabric_t *fabric,
-                                                              const pmix_info_t vertex[], size_t ninfo,
-                                                              uint32_t *i);
+typedef pmix_status_t (*pmix_pnet_base_module_get_device_index_fn_t)(pmix_fabric_t *fabric,
+                                                                     const pmix_info_t vertex[], size_t ninfo,
+                                                                     uint32_t *i);
 /**
  * Base structure for a PNET module. Each component should malloc a
  * copy of the module structure for each fabric plane they support.
@@ -199,8 +199,8 @@ typedef struct {
     pmix_pnet_base_module_register_fabric_fn_t      register_fabric;
     pmix_pnet_base_module_update_fabric_fn_t        update_fabric;
     pmix_pnet_base_module_deregister_fabric_fn_t    deregister_fabric;
-    pmix_pnet_base_module_get_vertex_fn_t           get_vertex;
-    pmix_pnet_base_module_get_index_fn_t            get_index;
+    pmix_pnet_base_module_get_vertex_fn_t           get_vertex_info;
+    pmix_pnet_base_module_get_device_index_fn_t     get_device_index;
 } pmix_pnet_module_t;
 
 
@@ -240,6 +240,11 @@ typedef struct {
     pmix_pnet_base_API_deregister_nspace_fn_t       deregister_nspace;
     pmix_pnet_base_API_collect_inventory_fn_t       collect_inventory;
     pmix_pnet_base_API_deliver_inventory_fn_t       deliver_inventory;
+    pmix_pnet_base_module_register_fabric_fn_t      register_fabric;
+    pmix_pnet_base_module_update_fabric_fn_t        update_fabric;
+    pmix_pnet_base_module_deregister_fabric_fn_t    deregister_fabric;
+    pmix_pnet_base_module_get_vertex_fn_t           get_vertex_info;
+    pmix_pnet_base_module_get_device_index_fn_t     get_device_index;
 } pmix_pnet_API_module_t;
 
 

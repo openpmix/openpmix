@@ -377,8 +377,6 @@ def harvest_constants(options, src, constants, definitions):
             defsrc = True
         definitions.write("\n    # TYPEDEFS\n")
         for t in typedefs:
-            if len(t) > 1:
-                definitions.write("\n")
             definitions.write("    c" + t[0] + "\n")
             if len(t) > 1:
                 # find the 2nd opening paren
@@ -389,6 +387,7 @@ def harvest_constants(options, src, constants, definitions):
                     for m in range(idx):
                         definitions.write(" ")
                     definitions.write(t[n] + "\n")
+            definitions.write("\n")
         # add some space
         definitions.write("\n")
 
@@ -510,10 +509,6 @@ def main():
     definitions.write("\n\n")
     constants.write("\n\n")
     harvest_constants(options, "pmix_tool.h", constants, definitions)
-    # add some space
-    definitions.write("\n\n")
-    constants.write("\n\n")
-    harvest_constants(options, "pmix_sched.h", constants, definitions)
 
 if __name__ == '__main__':
     main()

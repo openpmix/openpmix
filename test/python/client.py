@@ -9,7 +9,7 @@ def main():
             {'key':PMIX_MODEL_LIBRARY_NAME, 'value':'PMIX', 'val_type':PMIX_STRING}]
     my_result = foo.init(info)
     print("Init result ", my_result)
-    if 0 != my_result:
+    if 0 != my_result[0]:
         print("FAILED TO INIT")
         exit(1)
     # try putting something

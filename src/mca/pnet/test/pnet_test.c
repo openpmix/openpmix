@@ -87,8 +87,8 @@ pmix_pnet_module_t pmix_test_module = {
     .deliver_inventory = deliver_inventory,
     .register_fabric = register_fabric,
     .deregister_fabric = deregister_fabric,
-    .get_vertex = get_vertex,
-    .get_index = get_index
+    .get_vertex_info = get_vertex,
+    .get_device_index = get_index
 };
 
 /* internal tracking structures */

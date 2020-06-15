@@ -835,6 +835,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_FABRIC_VENDOR                  "pmix.fab.vndr"        // (char*) Name of fabric vendor (e.g., Amazon, Mellanox, Cray, Intel)
 #define PMIX_FABRIC_IDENTIFIER              "pmix.fab.id"          // (char*) An identifier for the fabric (e.g., MgmtEthernet, Slingshot-11,
                                                                    //         OmniPath-1)
+#define PMIX_FABRIC_INDEX                   "pmix.fab.idx"         // (size_t) The index of the fabric as returned in pmix_fabric_t
 #define PMIX_FABRIC_NUM_VERTICES            "pmix.fab.nverts"      // (size_t) Total number of NICs in the system - corresponds to the number
                                                                    //          of vertices (i.e., rows and columns) in the cost matrix
 #define PMIX_FABRIC_COORDINATE              "pmix.net.coord"       // (pmix_coord_t*) Fabric coordinate of the specified process in
@@ -857,6 +858,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_FABRIC_DEVICE_NAME             "pmix.fabdev.nm"       // (char*) The operating system name associated with the device. This may be
                                                                    //         a logical fabric interface name (e.g. eth0 or eno1) or an absolute
                                                                    //         filename.
+#define PMIX_FABRIC_DEVICE_INDEX            "pmix.fabdev.idx"      // (uint32_t) The fabric-wide index of the specified NIC within a given fabric
 #define PMIX_FABRIC_DEVICE_VENDOR           "pmix.fabdev.vndr"     // (char*) Indicates the name of the vendor that distributes the NIC.
 #define PMIX_FABRIC_DEVICE_BUS_TYPE         "pmix.fabdev.btyp"     // (char*) The type of bus to which the device is attached (e.g., "PCI", "GEN-Z").
 #define PMIX_FABRIC_DEVICE_ID               "pmix.fabdev.devid"    // (char*) A vendor-provided identifier for the device or product
@@ -1390,6 +1392,7 @@ typedef struct pmix_coord {
             (m) = NULL;                             \
         }                                           \
     } while(0)
+
 
 /****    PMIX LINK STATES    ****/
 typedef uint8_t pmix_link_state_t;
@@ -2207,6 +2210,33 @@ typedef struct pmix_regattr_t {
         }                                                               \
     } while(0)
 
+
+/****    FABRIC STRUCT    ****/
+/* Define a pmix_fabric_t struct for
+ * interacting with fabric-related interfaces */
+typedef struct pmix_fabric_s {
+    /* user-supplied name for this fabric */
+    char *name;
+    /* a PMIx-supplied index identifying this registration object */
+    size_t index;
+    /* array containing information (provided by the PMIx library)
+     * about the fabric */
+    pmix_info_t *info;
+    size_t ninfo;
+    /* object pointer for use by the PMIx library */
+    void *module;
+} pmix_fabric_t;
+
+/* convenience macros to support pmix_fabric_t */
+#define PMIX_FABRIC_CONSTRUCT(x) \
+    memset(x, 0, sizeof(pmix_fabric_t))
+
+typedef enum {
+    PMIX_FABRIC_REQUEST_INFO,
+    PMIX_FABRIC_UPDATE_INFO,
+    PMIX_FABRIC_GET_VERTEX_INFO,
+    PMIX_FABRIC_GET_DEVICE_INDEX
+} pmix_fabric_operation_t;
 
 /****    GENERIC HELPER MACROS    ****/
 

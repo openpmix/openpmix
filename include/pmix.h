@@ -962,6 +962,102 @@ PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status,
                                             pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 
+/******    FABRIC-RELATED APIS    ******/
+/* Register for access to fabric-related information, including
+ * communication cost matrix. This call must be made prior to
+ * requesting information from a fabric.
+ *
+ * fabric - address of a pmix_fabric_t (backed by storage). User
+ *          may populate the "name" field at will - PMIx does not
+ *          utilize this field
+ *
+ * directives - an optional array of values indicating desired
+ *              behaviors and/or fabric to be accessed. If NULL,
+ *              then the highest priority available fabric will
+ *              be used
+ *
+ * ndirs - number of elements in the directives array
+ *
+ * Return values include:
+ *
+ * PMIX_SUCCESS - indicates success
+ */
+PMIX_EXPORT pmix_status_t PMIx_Fabric_register(pmix_fabric_t *fabric,
+                                               const pmix_info_t directives[],
+                                               size_t ndirs);
+
+/* Update fabric-related information. This call can be made at any time to request an update of the
+ * fabric information contained in the provided pmix_fabric_t object. The caller is not allowed
+ * to access the provided pmix_fabric_t until the call has returned.
+ *
+ * fabric - pointer to the pmix_fabric_t struct provided to
+ *          the registration function
+ *
+ * Return values include:
+ *
+ * PMIX_SUCCESS - indicates successful update
+ */
+PMIX_EXPORT pmix_status_t PMIx_Fabric_update(pmix_fabric_t *fabric);
+
+
+/* Deregister a fabric object, providing an opportunity for
+ * the PMIx server library to cleanup any information
+ * (e.g., cost matrix) associated with it
+ *
+ * fabric - pointer to the pmix_fabric_t struct provided
+ *          to the registration function
+ */
+PMIX_EXPORT pmix_status_t PMIx_Fabric_deregister(pmix_fabric_t *fabric);
+
+/* Given a communication cost matrix index for a specified fabric,
+ * return the corresponding vertex info and the name of the node upon
+ * which it resides.
+ *
+ * fabric - pointer to the pmix_fabric_t struct provided to
+ *          the registration function
+ *
+ * i - communication cost matrix index
+ *
+ * info - Address where a pointer to an array of pmix_info_t containing
+ *        the results of the query can be returned
+ *
+ * ninfo - Address where the number of elements in info can be returned
+ *
+ * Return values include:
+ *
+ * PMIX_SUCCESS - indicates return of a valid value
+ * PMIX_ERR_BAD_PARAM - provided index is out of bounds
+ */
+PMIX_EXPORT pmix_status_t PMIx_Fabric_get_vertex_info(pmix_fabric_t *fabric, uint32_t index,
+                                                      pmix_info_t **info, size_t *ninfo);
+
+/* Given vertex info and the name of the device upon which that
+ * vertex resides, return the corresponding communication cost matrix
+ * index
+ *
+ * fabric - pointer to the pmix_fabric_t struct provided to
+ *          the registration function
+ *
+ * vertex - array of pmix_info_t containing info describing the vertex whose
+ *          index is being queried
+ *
+ * ninfo - number of elements in vertex array
+ *
+ * i - pointer to the location where the index is to be returned
+ *
+ * Return values include:
+ *
+ * PMIX_SUCCESS - indicates return of a valid value
+ * PMIX_ERR_NOT_FOUND - provided vertex description is not found
+ * PMIX_ERR_RESOURCE_BUSY - matrix is being updated
+ * PMIX_ERR_FABRIC_UPDATED - fabric info has been updated since
+ *                           last call involving this pmix_fabric_t
+  */
+PMIX_EXPORT pmix_status_t PMIx_Fabric_get_device_index(pmix_fabric_t *fabric,
+                                                       const pmix_info_t vertex[], size_t ninfo,
+                                                       uint32_t *i);
+
+
 /******    PRETTY-PRINT DEFINED VALUE TYPES     ******/
 /* Provide a string representation for several types of value. Note
  * that the provided string is statically defined and must NOT be

@@ -93,7 +93,6 @@ cdef void iofhdlr_cache(capsule, ret):
     shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "iofhdlr_cache")
     pyiofhandler(shifter[0].idx, shifter[0].channel, &shifter[0].source,
             shifter[0].payload, shifter[0].info, shifter[0].ndata)
-    print("SHIFTER:", shifter[0].op)
     if 0 < shifter[0].ndata:
         pmix_free_info(shifter[0].info, shifter[0].ndata)
     return
@@ -103,7 +102,6 @@ cdef void validationcredential_cb(capsule, ret):
     shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "validationcredential")
     shifter[0].validationcredential(shifter[0].status, shifter[0].info, shifter[0].ndata,
             shifter[0].cbdata)
-    print("SHIFTER:", shifter[0].op)
     if 0 < shifter[0].ndata:
         pmix_free_info(shifter[0].info, shifter[0].ndata)
     return
@@ -113,7 +111,6 @@ cdef void getcredential_cb(capsule, ret):
     shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "getcredential")
     shifter[0].getcredential(shifter[0].status, shifter[0].cred, shifter[0].info,
                         shifter[0].ndata, shifter[0].cbdata)
-    print("SHIFTER:", shifter[0].op)
     if 0 < shifter[0].ndata:
         pmix_free_info(shifter[0].info, shifter[0].ndata)
     return
@@ -124,7 +121,6 @@ cdef void allocate_cb(capsule, ret):
     shifter[0].allocate(shifter[0].status, shifter[0].info, shifter[0].ndata,
                         shifter[0].cbdata, shifter[0].release_fn,
                         shifter[0].notification_cbdata)
-    print("SHIFTER:", shifter[0].op)
     if 0 < shifter[0].ndata:
         pmix_free_info(shifter[0].info, shifter[0].ndata)
     return
@@ -133,14 +129,12 @@ cdef void toolconnected_cb(capsule, ret):
     cdef pmix_pyshift_t *shifter
     shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "toolconnected")
     shifter[0].toolconnected(shifter[0].status, shifter[0].proc, shifter[0].cbdata)
-    print("SHIFTER:", shifter[0].op)
     return
 
 cdef void spawn_cb(capsule, ret):
     cdef pmix_pyshift_t *shifter
     shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "spawn")
     shifter[0].spawn(shifter[0].status, shifter[0].nspace, shifter[0].cbdata)
-    print("SHIFTER:", shifter[0].op)
     return
 
 cdef void event_cache_cb(capsule, ret):
@@ -157,7 +151,6 @@ cdef void event_handler_cb(capsule, ret):
     shifter[0].event_handler(shifter[0].status, shifter[0].results, shifter[0].nresults,
                              shifter[0].op_cbfunc, shifter[0].cbdata,
                              shifter[0].notification_cbdata)
-    print("SHIFTER:", shifter[0].op)
     if 0 < shifter[0].nresults:
         pmix_free_info(shifter[0].results, shifter[0].nresults)
     return
@@ -166,7 +159,6 @@ cdef void query_cb(capsule, ret):
     cdef pmix_pyshift_t *shifter
     shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "query")
     shifter[0].query(ret, shifter[0].info, shifter[0].ndata, shifter[0].cbdata, NULL, NULL)
-    print("SHIFTER:", shifter[0].op)
     if 0 < shifter[0].ndata:
         pmix_free_info(shifter[0].info, shifter[0].ndata)
     return
@@ -175,7 +167,6 @@ cdef void lookup_cb(capsule, ret):
     cdef pmix_pyshift_t *shifter
     shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "lookup")
     shifter[0].lookup(ret, shifter[0].pdata, shifter[0].ndata, shifter[0].cbdata)
-    print("SHIFTER:", shifter[0].op)
     if 0 < shifter[0].ndata:
         pmix_free_pdata(shifter[0].pdata, shifter[0].ndata)
     return
@@ -185,7 +176,6 @@ cdef void fence_cb(capsule, ret):
     shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "fence")
     shifter[0].modex(ret, shifter[0].bo.bytes, shifter[0].bo.size,
                      shifter[0].cbdata, NULL, NULL)
-    print("SHIFTER:", shifter[0].op)
     return
 
 cdef void dmodex_cb(capsule, ret):
@@ -193,7 +183,6 @@ cdef void dmodex_cb(capsule, ret):
     shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "dmodex")
     shifter[0].modex(shifter[0].status, shifter[0].data, shifter[0].ndata,
                      shifter[0].cbdata, NULL, NULL)
-    print("SHIFTER:", shifter[0].op)
     if 0 < shifter[0].ndata:
         PyMem_Free(&(shifter[0].data))
     return
@@ -216,7 +205,6 @@ cdef int pmix_load_argv(char **keys, argv:list):
     keys[n] = NULL
     return PMIX_SUCCESS
 
-# TODO: implement support for PMIX_BOOL and PMIX_BYTE
 cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
     cdef pmix_info_t *infoptr;
     mysize = len(mylist)
@@ -992,7 +980,6 @@ cdef bytearray pmix_convert_regex(char *regex):
 cdef int pmix_load_value(pmix_value_t *value, val:dict):
     if not isinstance(val['val_type'], pmix_int_types):
         return PMIX_ERR_INVALID_VAL
-    print("LOADING VALUE TYPE ", PMIx_Data_type_string(val['val_type']))
     value[0].type = val['val_type']
     if val['val_type'] == PMIX_BOOL:
         int_bool = pmix_bool_convert(val['value'])
@@ -1289,7 +1276,6 @@ cdef int pmix_load_value(pmix_value_t *value, val:dict):
     return PMIX_SUCCESS
 
 cdef dict pmix_unload_value(const pmix_value_t *value):
-    print("UNLOADING VALUE TYPE ", PMIx_Data_type_string(value[0].type))
     if PMIX_BOOL == value[0].type:
         if value[0].data.flag:
             return {'value':True, 'val_type':PMIX_BOOL}
@@ -1419,7 +1405,6 @@ cdef int pmix_load_info(pmix_info_t *array, dicts:list):
             pass
         val = {'value':d['value'], 'val_type':d['val_type']}
         rc = pmix_load_value(&array[n].value, val)
-        print("LOAD INFO ", PMIx_Data_type_string(d['val_type']))
         if PMIX_SUCCESS != rc:
             return rc
         n += 1
@@ -1470,7 +1455,9 @@ cdef int pmix_unload_info(const pmix_info_t *info, size_t ninfo, ilist:list):
         if val['val_type'] == PMIX_UNDEF:
             return PMIX_ERR_NOT_SUPPORTED
         d     = {}
-        pykey = str(info[n].key.decode("ascii"))
+        kystr = strdup(info[n].key)
+        pykey = str(kystr.decode("ascii"))
+        free(kystr)
         d['key']      = pykey
         # TODO: don't know how to decide if flags was defined or not??
         d['flags']    = info[n].flags
@@ -1537,7 +1524,9 @@ cdef int pmix_unload_pdata(const pmix_pdata_t *pdata, size_t npdata, ilist:list)
         pykey = kystr.decode("ascii")
         free(kystr)
         d['key']      = pykey
-        myns = (pdata[n].proc.nspace).decode('ascii')
+        kystr = strdup(pdata[n].proc.nspace)
+        myns = kystr.decode('ascii')
+        free(kystr)
         proc = {'nspace':myns, 'rank': pdata[n].proc.rank}
         d['proc']     = proc
         d['value']    = val['value']
@@ -1619,9 +1608,12 @@ cdef int pmix_load_procs(pmix_proc_t *proc, peers:list):
     return PMIX_SUCCESS
 
 cdef int pmix_unload_procs(const pmix_proc_t *procs, size_t nprocs, peers:list):
+    cdef char* kystr
     n = 0
     while n < nprocs:
-        myns = (procs[n].nspace).decode('ascii')
+        kystr = strdup(procs[n].nspace)
+        myns = kystr.decode('ascii')
+        free(kystr)
         peers.append({'nspace':myns, 'rank':procs[n].rank})
         n += 1
     return PMIX_SUCCESS

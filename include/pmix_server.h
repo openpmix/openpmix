@@ -521,7 +521,15 @@ typedef pmix_status_t (*pmix_server_grp_fn_t)(pmix_group_operation_t op, char gr
                                               const pmix_info_t directives[], size_t ndirs,
                                               pmix_info_cbfunc_t cbfunc, void *cbdata);
 
-typedef struct pmix_server_module_2_0_0_t {
+/* Retrieve fabric-related information from the server supporting
+ * the system scheduler.
+ */
+typedef pmix_status_t (*pmix_server_fabric_fn_t)(const pmix_proc_t *requestor,
+                                                 pmix_fabric_operation_t op,
+                                                 const pmix_info_t directives[], size_t ndirs,
+                                                 pmix_info_cbfunc_t cbfunc, void *cbdata);
+
+typedef struct pmix_server_module_4_0_0_t {
     /* v1x interfaces */
     pmix_server_client_connected_fn_t   client_connected;
     pmix_server_client_finalized_fn_t   client_finalized;
@@ -552,6 +560,7 @@ typedef struct pmix_server_module_2_0_0_t {
     pmix_server_stdin_fn_t              push_stdin;
     /* v4x interfaces */
     pmix_server_grp_fn_t                group;
+    pmix_server_fabric_fn_t             fabric;
 } pmix_server_module_t;
 
 /****    HOST RM FUNCTIONS FOR INTERFACE TO PMIX SERVER    ****/

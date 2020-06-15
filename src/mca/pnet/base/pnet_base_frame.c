@@ -53,7 +53,12 @@ pmix_pnet_API_module_t pmix_pnet = {
     .local_app_finalized = pmix_pnet_base_local_app_finalized,
     .deregister_nspace = pmix_pnet_base_deregister_nspace,
     .collect_inventory = pmix_pnet_base_collect_inventory,
-    .deliver_inventory = pmix_pnet_base_deliver_inventory
+    .deliver_inventory = pmix_pnet_base_deliver_inventory,
+    .register_fabric = pmix_pnet_base_register_fabric,
+    .update_fabric = pmix_pnet_base_update_fabric,
+    .deregister_fabric = pmix_pnet_base_deregister_fabric,
+    .get_vertex_info = pmix_pnet_base_get_vertex_info,
+    .get_device_index = pmix_pnet_base_get_device_index
 };
 
 static pmix_status_t pmix_pnet_close(void)
@@ -74,6 +79,7 @@ static pmix_status_t pmix_pnet_close(void)
       PMIX_RELEASE(active);
     }
     PMIX_DESTRUCT(&pmix_pnet_globals.actives);
+    PMIX_DESTRUCT(&pmix_pnet_globals.fabrics);
 
     PMIX_LIST_DESTRUCT(&pmix_pnet_globals.jobs);
     PMIX_LIST_DESTRUCT(&pmix_pnet_globals.nodes);
@@ -89,6 +95,7 @@ static pmix_status_t pmix_pnet_open(pmix_mca_base_open_flag_t flags)
     PMIX_CONSTRUCT_LOCK(&pmix_pnet_globals.lock);
     pmix_pnet_globals.lock.active = false;
     PMIX_CONSTRUCT(&pmix_pnet_globals.actives, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_pnet_globals.fabrics, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_pnet_globals.jobs, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_pnet_globals.nodes, pmix_list_t);
 
@@ -185,9 +192,17 @@ PMIX_CLASS_INSTANCE(pmix_pnet_resource_t,
 
 static void ftcon(pmix_pnet_fabric_t *p)
 {
+    p->name = NULL;
+    p->index = 0;
     p->module = NULL;
     p->payload = NULL;
 }
+static void ftdes(pmix_pnet_fabric_t *p)
+{
+    if (NULL != p->name) {
+        free(p->name);
+    }
+}
 PMIX_CLASS_INSTANCE(pmix_pnet_fabric_t,
-                    pmix_object_t,
-                    ftcon, NULL);
+                    pmix_list_item_t,
+                    ftcon, ftdes);

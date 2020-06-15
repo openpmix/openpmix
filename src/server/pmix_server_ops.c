@@ -55,6 +55,7 @@
 #include "src/common/pmix_attributes.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/plog/plog.h"
+#include "src/mca/pnet/pnet.h"
 #include "src/mca/prm/prm.h"
 #include "src/mca/psensor/psensor.h"
 #include "src/mca/ptl/base/base.h"
@@ -4523,6 +4524,322 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd,
     if (NULL != info) {
         PMIX_INFO_FREE(info, ninfo);
     }
+    return rc;
+}
+
+static void _fabric_response(int sd, short args, void *cbdata)
+{
+    pmix_query_caddy_t *cd = (pmix_query_caddy_t*)cbdata;
+
+    cd->cbfunc(PMIX_SUCCESS, cd->info, cd->ninfo,
+               cd->cbdata, NULL, NULL);
+    PMIX_RELEASE(cd);
+}
+
+/* we are being called from the PMIx server's switchyard function,
+ * which means we are in an event and can access global data */
+pmix_status_t pmix_server_fabric_register(pmix_server_caddy_t *cd,
+                                          pmix_buffer_t *buf,
+                                          pmix_info_cbfunc_t cbfunc)
+{
+    int32_t cnt;
+    pmix_status_t rc;
+    pmix_query_caddy_t *qcd;
+    pmix_proc_t proc;
+    pmix_fabric_t fabric;
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "recvd register_fabric request from client");
+
+
+    qcd = PMIX_NEW(pmix_query_caddy_t);
+    if (NULL == qcd) {
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_RETAIN(cd);
+    qcd->cbdata = cd;
+
+    /* unpack the number of directives */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &qcd->ninfo, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+    /* unpack the directives */
+    if (0 < qcd->ninfo) {
+        PMIX_INFO_CREATE(cd->info, qcd->ninfo);
+        cnt = qcd->ninfo;
+        PMIX_BFROPS_UNPACK(rc, cd->peer, buf, qcd->info, &cnt, PMIX_INFO);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto exit;
+        }
+    }
+
+    /* see if we support this request ourselves */
+    PMIX_FABRIC_CONSTRUCT(&fabric);
+    rc = pmix_pnet.register_fabric(&fabric, qcd->info, qcd->ninfo);
+    if (PMIX_SUCCESS == rc) {
+        /* we need to respond, but we want to ensure
+         * that occurs _after_ the client returns from its API */
+        if (NULL != qcd->info) {
+            PMIX_INFO_FREE(qcd->info, qcd->ninfo);
+        }
+        qcd->info = fabric.info;
+        qcd->ninfo = fabric.ninfo;
+        PMIX_THREADSHIFT(qcd, _fabric_response);
+        return rc;
+    }
+
+    /* if we don't internally support it, see if
+     * our host does */
+    if (NULL == pmix_host_server.fabric) {
+        rc = PMIX_ERR_NOT_SUPPORTED;
+        goto exit;
+    }
+
+    /* setup the requesting peer name */
+    pmix_strncpy(proc.nspace, cd->peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    proc.rank = cd->peer->info->pname.rank;
+
+    /* ask the host to execute the request */
+    if (PMIX_SUCCESS != (rc = pmix_host_server.fabric(&proc, PMIX_FABRIC_REQUEST_INFO,
+                                                       qcd->info, qcd->ninfo,
+                                                       cbfunc, qcd))) {
+        goto exit;
+    }
+    return PMIX_SUCCESS;
+
+  exit:
+    PMIX_RELEASE(cd);
+    return rc;
+}
+
+pmix_status_t pmix_server_fabric_update(pmix_server_caddy_t *cd,
+                                        pmix_buffer_t *buf,
+                                        pmix_info_cbfunc_t cbfunc)
+{
+    int32_t cnt;
+    size_t index;
+    pmix_status_t rc;
+    pmix_query_caddy_t *qcd;
+    pmix_proc_t proc;
+    pmix_fabric_t fabric;
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "recvd update_fabric request from client");
+
+
+    qcd = PMIX_NEW(pmix_query_caddy_t);
+    if (NULL == qcd) {
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_RETAIN(cd);
+    qcd->cbdata = cd;
+
+    /* unpack the fabric index */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &index, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+
+    /* see if we support this request ourselves */
+    PMIX_FABRIC_CONSTRUCT(&fabric);
+    fabric.index = index;
+    rc = pmix_pnet.update_fabric(&fabric);
+    if (PMIX_SUCCESS == rc) {
+        /* we need to respond, but we want to ensure
+         * that occurs _after_ the client returns from its API */
+        if (NULL != qcd->info) {
+            PMIX_INFO_FREE(qcd->info, qcd->ninfo);
+        }
+        qcd->info = fabric.info;
+        qcd->ninfo = fabric.ninfo;
+        PMIX_THREADSHIFT(qcd, _fabric_response);
+        return rc;
+    }
+
+    /* if we don't internally support it, see if
+     * our host does */
+    if (NULL == pmix_host_server.fabric) {
+        rc = PMIX_ERR_NOT_SUPPORTED;
+        goto exit;
+    }
+
+    /* setup the requesting peer name */
+    pmix_strncpy(proc.nspace, cd->peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    proc.rank = cd->peer->info->pname.rank;
+    /* add the index */
+    qcd->ninfo = 1;
+    PMIX_INFO_CREATE(qcd->info, qcd->ninfo);
+    PMIX_INFO_LOAD(&qcd->info[0], PMIX_FABRIC_INDEX, &index, PMIX_SIZE);
+
+    /* ask the host to execute the request */
+    if (PMIX_SUCCESS != (rc = pmix_host_server.fabric(&proc, PMIX_FABRIC_UPDATE_INFO,
+                                                       qcd->info, qcd->ninfo,
+                                                       cbfunc, qcd))) {
+        goto exit;
+    }
+    return PMIX_SUCCESS;
+
+  exit:
+    PMIX_RELEASE(cd);
+    return rc;
+}
+
+/* we are being called from the PMIx server's switchyard function,
+ * which means we are in an event and can access global data */
+pmix_status_t pmix_server_fabric_get_vertex_info(pmix_server_caddy_t *cd,
+                                                 pmix_buffer_t *buf,
+                                                 pmix_info_cbfunc_t cbfunc)
+{
+    int32_t cnt;
+    uint32_t index;
+    pmix_status_t rc;
+    pmix_query_caddy_t *qcd;
+    pmix_proc_t proc;
+    pmix_fabric_t fabric;
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "recvd get_vertex_info request from client");
+
+
+    qcd = PMIX_NEW(pmix_query_caddy_t);
+    if (NULL == qcd) {
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_RETAIN(cd);
+    qcd->cbdata = cd;
+
+    /* unpack the device index */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &index, &cnt, PMIX_UINT32);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+
+    /* see if we support this request ourselves */
+    PMIX_FABRIC_CONSTRUCT(&fabric);
+    rc = pmix_pnet.get_vertex_info(&fabric, index, &qcd->info, &qcd->ninfo);
+    if (PMIX_SUCCESS == rc) {
+        /* we need to respond, but we want to ensure
+         * that occurs _after_ the client returns from its API */
+        PMIX_THREADSHIFT(qcd, _fabric_response);
+        return rc;
+    }
+
+    /* if we don't internally support it, see if
+     * our host does */
+    if (NULL == pmix_host_server.fabric) {
+        rc = PMIX_ERR_NOT_SUPPORTED;
+        goto exit;
+    }
+
+    /* setup the requesting peer name */
+    pmix_strncpy(proc.nspace, cd->peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    proc.rank = cd->peer->info->pname.rank;
+    /* add the vertex info */
+    qcd->ninfo = 1;
+    PMIX_INFO_CREATE(cd->info, qcd->ninfo);
+    PMIX_INFO_LOAD(&qcd->info[0], PMIX_FABRIC_DEVICE_INDEX, &index, PMIX_UINT32);
+
+    /* ask the host to execute the request */
+    if (PMIX_SUCCESS != (rc = pmix_host_server.fabric(&proc, PMIX_FABRIC_GET_VERTEX_INFO,
+                                                      qcd->info, qcd->ninfo,
+                                                      cbfunc, qcd))) {
+        goto exit;
+    }
+    return PMIX_SUCCESS;
+
+  exit:
+    PMIX_RELEASE(cd);
+    return rc;
+}
+
+/* we are being called from the PMIx server's switchyard function,
+ * which means we are in an event and can access global data */
+pmix_status_t pmix_server_fabric_get_device_index(pmix_server_caddy_t *cd,
+                                                  pmix_buffer_t *buf,
+                                                  pmix_info_cbfunc_t cbfunc)
+{
+    int32_t cnt;
+    uint32_t index;
+    pmix_status_t rc;
+    pmix_query_caddy_t *qcd;
+    pmix_proc_t proc;
+    pmix_fabric_t fabric;
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "recvd monitor request from client");
+
+
+    qcd = PMIX_NEW(pmix_query_caddy_t);
+    if (NULL == qcd) {
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_RETAIN(cd);
+    qcd->cbdata = cd;
+
+    /* unpack the number of directives */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &qcd->ninfo, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+    /* unpack the directives */
+    if (0 < qcd->ninfo) {
+        PMIX_INFO_CREATE(cd->info, qcd->ninfo);
+        cnt = qcd->ninfo;
+        PMIX_BFROPS_UNPACK(rc, cd->peer, buf, qcd->info, &cnt, PMIX_INFO);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto exit;
+        }
+    }
+
+    /* see if we support this request ourselves */
+    PMIX_FABRIC_CONSTRUCT(&fabric);
+    rc = pmix_pnet.get_device_index(&fabric, qcd->info, qcd->ninfo, &index);
+    if (PMIX_SUCCESS == rc) {
+        /* we need to respond, but we want to ensure
+         * that occurs _after_ the client returns from its API */
+        if (NULL != qcd->info) {
+            PMIX_INFO_FREE(qcd->info, qcd->ninfo);
+        }
+        /* we pass back the result in the info array */
+        qcd->ninfo = 1;
+        PMIX_INFO_CREATE(qcd->info, qcd->ninfo);
+        PMIX_INFO_LOAD(&qcd->info[0], PMIX_FABRIC_INDEX, &index, PMIX_UINT32);
+        PMIX_THREADSHIFT(qcd, _fabric_response);
+        return rc;
+    }
+
+    /* if we don't internally support it, see if
+     * our host does */
+    if (NULL == pmix_host_server.fabric) {
+        rc = PMIX_ERR_NOT_SUPPORTED;
+        goto exit;
+    }
+
+    /* setup the requesting peer name */
+    pmix_strncpy(proc.nspace, cd->peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    proc.rank = cd->peer->info->pname.rank;
+
+    /* ask the host to execute the request */
+    if (PMIX_SUCCESS != (rc = pmix_host_server.fabric(&proc, PMIX_FABRIC_GET_DEVICE_INDEX,
+                                                       qcd->info, qcd->ninfo,
+                                                       cbfunc, qcd))) {
+        goto exit;
+    }
+    return PMIX_SUCCESS;
+
+  exit:
+    PMIX_RELEASE(cd);
     return rc;
 }
 

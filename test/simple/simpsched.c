@@ -26,8 +26,8 @@
  */
 
 #include "src/include/pmix_config.h"
+#include "include/pmix.h"
 #include "include/pmix_server.h"
-#include "include/pmix_sched.h"
 #include "src/include/types.h"
 #include "src/include/pmix_globals.h"
 
@@ -131,7 +131,7 @@ int main(int argc, char **argv)
     PMIX_INFO_FREE(info, ninfo);
 
     /* register a fabric */
-    rc = PMIx_server_register_fabric(&myfabric, NULL, 0);
+    rc = PMIx_Fabric_register(&myfabric, NULL, 0);
     if (PMIX_SUCCESS == rc) {
         /* scan the returned info array for values */
         for (n=0; n < myfabric.ninfo; n++) {
@@ -144,7 +144,7 @@ int main(int argc, char **argv)
             }
         }
 
-        rc = PMIx_server_get_vertex_info(&myfabric, 0, &info, &ninfo);
+        rc = PMIx_Fabric_get_vertex_info(&myfabric, 0, &info, &ninfo);
         if (PMIX_SUCCESS != rc) {
             fprintf(stderr, "Fabric get vertex info failed with error: %s\n", PMIx_Error_string(rc));
             goto cleanup;
@@ -154,7 +154,7 @@ int main(int argc, char **argv)
             fprintf(stderr, "\t%s:\t%s\n", info[n].key, info[n].value.data.string);
         }
 
-        rc = PMIx_server_get_index(&myfabric, info, ninfo, &n32);
+        rc = PMIx_Fabric_get_device_index(&myfabric, info, ninfo, &n32);
         if (PMIX_SUCCESS != rc) {
             fprintf(stderr, "Fabric get index failed with error: %s\n", PMIx_Error_string(rc));
             goto cleanup;

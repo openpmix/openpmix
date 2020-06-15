@@ -3432,6 +3432,65 @@ static void iof_cbfunc(pmix_status_t status,
     PMIX_THREADSHIFT(cd, _iofreg);
 }
 
+static void fabric_cbfunc(pmix_status_t status,
+                          pmix_info_t *info, size_t ninfo,
+                          void *cbdata,
+                          pmix_release_cbfunc_t release_fn,
+                          void *release_cbdata)
+{
+    pmix_query_caddy_t *qcd = (pmix_query_caddy_t*)cbdata;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t*)qcd->cbdata;
+    pmix_buffer_t *reply;
+    pmix_status_t rc;
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "pmix:fabric callback with status %d", status);
+
+    reply = PMIX_NEW(pmix_buffer_t);
+    if (NULL == reply) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        PMIX_RELEASE(cd);
+        return;
+    }
+    PMIX_BFROPS_PACK(rc, cd->peer, reply, &status, 1, PMIX_STATUS);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto complete;
+    }
+    /* pack the returned data */
+    PMIX_BFROPS_PACK(rc, cd->peer, reply, &ninfo, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto complete;
+    }
+    if (0 < ninfo) {
+        PMIX_BFROPS_PACK(rc, cd->peer, reply, info, ninfo, PMIX_INFO);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
+    }
+
+  complete:
+    // send reply
+    PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
+        if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(reply);
+    }
+
+    // cleanup
+    if (NULL != qcd->queries) {
+        PMIX_QUERY_FREE(qcd->queries, qcd->nqueries);
+    }
+    if (NULL != qcd->info) {
+        PMIX_INFO_FREE(qcd->info, qcd->ninfo);
+    }
+    PMIX_RELEASE(qcd);
+    PMIX_RELEASE(cd);
+    if (NULL != release_fn) {
+        release_fn(release_cbdata);
+    }
+}
+
 /* the switchyard is the primary message handling function. It's purpose
  * is to take incoming commands (packed into a buffer), unpack them,
  * and then call the corresponding host server's function to execute
@@ -3751,6 +3810,30 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
     if (PMIX_GROUP_DESTRUCT_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
         if (PMIX_SUCCESS != (rc = pmix_server_grpdestruct(cd, buf))) {
+            PMIX_RELEASE(cd);
+        }
+        return rc;
+    }
+
+    if (PMIX_FABRIC_REGISTER_CMD == cmd) {
+        PMIX_GDS_CADDY(cd, peer, tag);
+        if (PMIX_SUCCESS != (rc = pmix_server_fabric_register(cd, buf, fabric_cbfunc))) {
+            PMIX_RELEASE(cd);
+        }
+        return rc;
+    }
+
+    if (PMIX_FABRIC_GET_VERTEX_INFO_CMD == cmd) {
+        PMIX_GDS_CADDY(cd, peer, tag);
+        if (PMIX_SUCCESS != (rc = pmix_server_fabric_get_vertex_info(cd, buf, fabric_cbfunc))) {
+            PMIX_RELEASE(cd);
+        }
+        return rc;
+    }
+
+    if (PMIX_FABRIC_GET_DEVICE_INDEX_CMD == cmd) {
+        PMIX_GDS_CADDY(cd, peer, tag);
+        if (PMIX_SUCCESS != (rc = pmix_server_fabric_get_device_index(cd, buf, fabric_cbfunc))) {
             PMIX_RELEASE(cd);
         }
         return rc;
