@@ -446,6 +446,18 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         return rc;
     }
 
+#if PMIX_HAVE_HWLOC
+    /* if we don't know our topology, we better get it now as we
+     * increasingly rely on it - note that our host will hopefully
+     * have passed it to us so we don't duplicate their storage! */
+    if (NULL == pmix_hwloc_topology) {
+        if (PMIX_SUCCESS != (rc = pmix_hwloc_get_topology(info, ninfo))) {
+            PMIX_RELEASE_THREAD(&pmix_global_lock);
+            return rc;
+        }
+    }
+#endif
+
     /* start listening for connections */
     if (PMIX_SUCCESS != pmix_ptl_base_start_listening(info, ninfo)) {
         pmix_show_help("help-pmix-server.txt", "listener-thread-start", true);
@@ -2097,17 +2109,6 @@ static void clct_complete(pmix_status_t status,
 static void clct(int sd, short args, void *cbdata)
 {
     pmix_inventory_rollup_t *cd = (pmix_inventory_rollup_t*)cbdata;
-
-#if PMIX_HAVE_HWLOC
-    /* if we don't know our topology, we better get it now */
-    pmix_status_t rc;
-    if (NULL == pmix_hwloc_topology) {
-        if (PMIX_SUCCESS != (rc = pmix_hwloc_get_topology(NULL, 0))) {
-            PMIX_ERROR_LOG(rc);
-            return;
-        }
-    }
-#endif
 
     /* we only have one source at this time */
     cd->requests = 1;
