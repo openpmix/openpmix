@@ -27,7 +27,6 @@
 
 #include "src/include/pmix_config.h"
 #include "include/pmix_server.h"
-#include "include/pmix_sched.h"
 #include "src/include/types.h"
 #include "src/include/pmix_globals.h"
 

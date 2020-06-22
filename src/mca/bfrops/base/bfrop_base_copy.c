@@ -109,6 +109,7 @@ pmix_status_t pmix_bfrops_base_std_copy(void **dest, void *src,
     case PMIX_BYTE:
     case PMIX_INT8:
     case PMIX_UINT8:
+    case PMIX_LINK_STATE:
         datasize = 1;
         break;
 

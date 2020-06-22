@@ -533,6 +533,207 @@ void pmix_pnet_base_deliver_inventory(pmix_info_t info[], size_t ninfo,
     return;
 }
 
+pmix_status_t pmix_pnet_base_register_fabric(pmix_fabric_t *fabric,
+                                             const pmix_info_t directives[],
+                                             size_t ndirs)
+{
+    pmix_pnet_base_active_module_t *active;
+    pmix_status_t rc;
+    pmix_pnet_fabric_t *ft;
+
+    /* ensure our fields of the fabric object are initialized */
+    fabric->info = NULL;
+    fabric->ninfo = 0;
+    fabric->module = NULL;
+
+    PMIX_ACQUIRE_THREAD(&pmix_pnet_globals.lock);
+
+    if (0 == pmix_list_get_size(&pmix_pnet_globals.actives)) {
+        PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    /* scan across active modules until one returns success */
+    PMIX_LIST_FOREACH(active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
+        if (NULL != active->module->register_fabric) {
+            rc = active->module->register_fabric(fabric, directives, ndirs);
+            if (PMIX_SUCCESS == rc) {
+                /* track this fabric so we can respond to remote requests */
+                ft = PMIX_NEW(pmix_pnet_fabric_t);
+                ft->index = fabric->index;
+                if (NULL != fabric->name) {
+                    ft->name = strdup(fabric->name);
+                }
+                ft->module = fabric->module;
+                pmix_list_append(&pmix_pnet_globals.fabrics, &ft->super);
+            } else if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
+                /* just return the error */
+                PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
+                return rc;
+            }
+        }
+    }
+
+    /* unlock prior to return */
+    PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
+
+    return PMIX_ERR_NOT_FOUND;
+}
+
+pmix_status_t pmix_pnet_base_update_fabric(pmix_fabric_t *fabric)
+{
+    pmix_status_t rc = PMIX_SUCCESS;
+    pmix_pnet_fabric_t *active = NULL;
+    pmix_pnet_module_t *module;
+    pmix_pnet_fabric_t *ft;
+
+    /* protect against bozo input */
+    if (NULL == fabric) {
+        return PMIX_ERR_BAD_PARAM;
+    } else if (NULL == fabric->module) {
+        /* this might be a remote request, so look at the
+         * list of fabrics we have registered locally and
+         * see if we have one with the matching index */
+        PMIX_LIST_FOREACH(ft, &pmix_pnet_globals.fabrics, pmix_pnet_fabric_t) {
+            if (fabric->index == ft->index) {
+                active = fabric->module;
+            } else if (NULL != fabric->name && NULL != ft->name
+                       && 0 == strcmp(ft->name, fabric->name)) {
+                active = fabric->module;
+            }
+        }
+        if (NULL == active) {
+            return PMIX_ERR_BAD_PARAM;
+        }
+    } else {
+        active = (pmix_pnet_fabric_t*)fabric->module;
+    }
+    module = (pmix_pnet_module_t*)active->module;
+
+    if (NULL != module->update_fabric) {
+        rc = module->update_fabric(fabric);
+    }
+    return rc;
+}
+
+pmix_status_t pmix_pnet_base_deregister_fabric(pmix_fabric_t *fabric)
+{
+    pmix_status_t rc = PMIX_SUCCESS;
+    pmix_pnet_fabric_t *active = NULL;
+    pmix_pnet_module_t *module;
+    pmix_pnet_fabric_t *ft;
+
+    /* protect against bozo input */
+    if (NULL == fabric) {
+        return PMIX_ERR_BAD_PARAM;
+    } else if (NULL == fabric->module) {
+        /* this might be a remote request, so look at the
+         * list of fabrics we have registered locally and
+         * see if we have one with the matching index */
+        PMIX_LIST_FOREACH(ft, &pmix_pnet_globals.fabrics, pmix_pnet_fabric_t) {
+            if (fabric->index == ft->index) {
+                active = fabric->module;
+            } else if (NULL != fabric->name && NULL != ft->name
+                       && 0 == strcmp(ft->name, fabric->name)) {
+                active = fabric->module;
+            }
+        }
+        if (NULL == active) {
+            return PMIX_ERR_BAD_PARAM;
+        }
+    } else {
+        active = (pmix_pnet_fabric_t*)fabric->module;
+    }
+    module = (pmix_pnet_module_t*)active->module;
+
+    if (NULL != module->deregister_fabric) {
+        rc = module->deregister_fabric(fabric);
+    }
+    return rc;
+}
+
+pmix_status_t pmix_pnet_base_get_vertex_info(pmix_fabric_t *fabric,
+                                             uint32_t i,
+                                             pmix_info_t **info, size_t *ninfo)
+{
+    pmix_status_t ret;
+    pmix_pnet_fabric_t *active = NULL;
+    pmix_pnet_module_t *module;
+    pmix_pnet_fabric_t *ft;
+
+    /* protect against bozo input */
+    if (NULL == fabric) {
+        return PMIX_ERR_BAD_PARAM;
+    } else if (NULL == fabric->module) {
+        /* this might be a remote request, so look at the
+         * list of fabrics we have registered locally and
+         * see if we have one with the matching index */
+        PMIX_LIST_FOREACH(ft, &pmix_pnet_globals.fabrics, pmix_pnet_fabric_t) {
+            if (fabric->index == ft->index) {
+                active = fabric->module;
+            } else if (NULL != fabric->name && NULL != ft->name
+                       && 0 == strcmp(ft->name, fabric->name)) {
+                active = fabric->module;
+            }
+        }
+        if (NULL == active) {
+            return PMIX_ERR_BAD_PARAM;
+        }
+    } else {
+        active = (pmix_pnet_fabric_t*)fabric->module;
+    }
+    module = (pmix_pnet_module_t*)ft->module;
+
+    if (NULL == module->get_vertex_info) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    ret = module->get_vertex_info(fabric, i, info, ninfo);
+
+    return ret;
+}
+
+pmix_status_t pmix_pnet_base_get_device_index(pmix_fabric_t *fabric,
+                                              const pmix_info_t vertex[], size_t ninfo,
+                                              uint32_t *i)
+{
+    pmix_status_t ret;
+    pmix_pnet_fabric_t *active = NULL;
+    pmix_pnet_module_t *module;
+    pmix_pnet_fabric_t *ft;
+
+    /* protect against bozo input */
+    if (NULL == fabric) {
+        return PMIX_ERR_BAD_PARAM;
+    } else if (NULL == fabric->module) {
+        /* this might be a remote request, so look at the
+         * list of fabrics we have registered locally and
+         * see if we have one with the matching index */
+        PMIX_LIST_FOREACH(ft, &pmix_pnet_globals.fabrics, pmix_pnet_fabric_t) {
+            if (fabric->index == ft->index) {
+                active = fabric->module;
+            } else if (NULL != fabric->name && NULL != ft->name
+                       && 0 == strcmp(ft->name, fabric->name)) {
+                active = fabric->module;
+            }
+        }
+        if (NULL == active) {
+            return PMIX_ERR_BAD_PARAM;
+        }
+    } else {
+        active = (pmix_pnet_fabric_t*)fabric->module;
+    }
+    module = (pmix_pnet_module_t*)ft->module;
+
+    if (NULL == module->get_device_index) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    ret = module->get_device_index(fabric, vertex, ninfo, i);
+
+    return ret;
+}
+
 static pmix_status_t process_maps(char *nspace, char **nodes, char **procs)
 {
     char **ranks;

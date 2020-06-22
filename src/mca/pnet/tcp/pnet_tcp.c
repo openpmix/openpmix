@@ -334,7 +334,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
         if (PMIX_CHECK_KEY(&info[n], PMIX_SETUP_APP_ENVARS) ||
             PMIX_CHECK_KEY(&info[n], PMIX_SETUP_APP_ALL)) {
             envars = PMIX_INFO_TRUE(&info[n]);
-        } else if (PMIX_CHECK_KEY(info, PMIX_ALLOC_NETWORK)) {
+        } else if (PMIX_CHECK_KEY(info, PMIX_ALLOC_FABRIC)) {
             /* this info key includes an array of pmix_info_t, each providing
              * a key (that is to be used as the key for the allocated ports) and
              * a number of ports to allocate for that key */
@@ -377,7 +377,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
      * tcp/udp-based resources - there is no required ordering
      * of the keys, so just have to do a search */
     for (n=0; n < nreqs; n++) {
-        if (0 == strncasecmp(requests[n].key, PMIX_ALLOC_NETWORK_TYPE, PMIX_MAX_KEYLEN)) {
+        if (0 == strncasecmp(requests[n].key, PMIX_ALLOC_FABRIC_TYPE, PMIX_MAX_KEYLEN)) {
             /* check for bozo error */
             if (PMIX_STRING != requests[n].value.type ||
                 NULL == requests[n].value.data.string) {
@@ -385,7 +385,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
                 return PMIX_ERR_BAD_PARAM;
             }
             type = requests[n].value.data.string;
-        } else if (0 == strncasecmp(requests[n].key, PMIX_ALLOC_NETWORK_PLANE, PMIX_MAX_KEYLEN)) {
+        } else if (0 == strncasecmp(requests[n].key, PMIX_ALLOC_FABRIC_PLANE, PMIX_MAX_KEYLEN)) {
             /* check for bozo error */
             if (PMIX_STRING != requests[n].value.type ||
                 NULL == requests[n].value.data.string) {
@@ -393,12 +393,12 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
                 return PMIX_ERR_BAD_PARAM;
             }
             plane = requests[n].value.data.string;
-        } else if (0 == strncasecmp(requests[n].key, PMIX_ALLOC_NETWORK_ENDPTS, PMIX_MAX_KEYLEN)) {
+        } else if (0 == strncasecmp(requests[n].key, PMIX_ALLOC_FABRIC_ENDPTS, PMIX_MAX_KEYLEN)) {
             PMIX_VALUE_GET_NUMBER(rc, &requests[n].value, ports_per_node, int);
             if (PMIX_SUCCESS != rc) {
                 return rc;
             }
-        } else if (0 == strncmp(requests[n].key, PMIX_ALLOC_NETWORK_ID, PMIX_MAX_KEYLEN)) {
+        } else if (0 == strncmp(requests[n].key, PMIX_ALLOC_FABRIC_ID, PMIX_MAX_KEYLEN)) {
             /* check for bozo error */
             if (PMIX_STRING != requests[n].value.type ||
                 NULL == requests[n].value.data.string) {
@@ -406,7 +406,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
                 return PMIX_ERR_BAD_PARAM;
             }
             idkey = requests[n].value.data.string;
-        } else if (0 == strncasecmp(requests[n].key, PMIX_ALLOC_NETWORK_SEC_KEY, PMIX_MAX_KEYLEN)) {
+        } else if (0 == strncasecmp(requests[n].key, PMIX_ALLOC_FABRIC_SEC_KEY, PMIX_MAX_KEYLEN)) {
             seckey = PMIX_INFO_TRUE(&requests[n]);
         }
     }
@@ -422,7 +422,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
     if (NULL == kv) {
         return PMIX_ERR_NOMEM;
     }
-    kv->key = strdup(PMIX_ALLOC_NETWORK_ID);
+    kv->key = strdup(PMIX_ALLOC_FABRIC_ID);
     kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
     if (NULL == kv->value) {
         PMIX_RELEASE(kv);
@@ -672,7 +672,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             PMIX_LIST_DESTRUCT(&mylist);
             return PMIX_ERR_NOMEM;
         }
-        kv->key = strdup(PMIX_ALLOC_NETWORK_SEC_KEY);
+        kv->key = strdup(PMIX_ALLOC_FABRIC_SEC_KEY);
         kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
         if (NULL == kv->value) {
             PMIX_RELEASE(kv);
@@ -781,7 +781,7 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
                                            &jinfo[m].value, kv->value);
                     /* if this is the ID key, save it */
                     if (NULL == idkey &&
-                        0 == strncmp(kv->key, PMIX_ALLOC_NETWORK_ID, PMIX_MAX_KEYLEN)) {
+                        0 == strncmp(kv->key, PMIX_ALLOC_FABRIC_ID, PMIX_MAX_KEYLEN)) {
                         idkey = strdup(kv->value->data.string);
                     }
                     ++m;

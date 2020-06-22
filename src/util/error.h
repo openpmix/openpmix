@@ -33,7 +33,7 @@
 #define PMIX_ERR_FATAL                                  (PMIX_INTERNAL_ERR_BASE - 29)
 #define PMIX_ERR_VALUE_OUT_OF_BOUNDS                    (PMIX_INTERNAL_ERR_BASE - 30)
 #define PMIX_ERR_PERM                                   (PMIX_INTERNAL_ERR_BASE - 31)
-#define PMIX_ERR_NETWORK_NOT_PARSEABLE                  (PMIX_INTERNAL_ERR_BASE - 33)
+#define PMIX_ERR_FABRIC_NOT_PARSEABLE                  (PMIX_INTERNAL_ERR_BASE - 33)
 #define PMIX_ERR_FILE_OPEN_FAILURE                      (PMIX_INTERNAL_ERR_BASE - 34)
 #define PMIX_ERR_FILE_READ_FAILURE                      (PMIX_INTERNAL_ERR_BASE - 35)
 #define PMIX_ERR_TAKE_NEXT_OPTION                       (PMIX_INTERNAL_ERR_BASE - 36)

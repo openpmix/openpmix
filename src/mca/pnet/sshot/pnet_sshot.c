@@ -408,12 +408,12 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
     /* check directives to see if a crypto key and/or
-     * network resource allocations requested */
+     * fabric resource allocations requested */
     for (n=0; n < ninfo; n++) {
         pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                             "pnet:sshot:allocate processing key %s",
                             info[n].key);
-        if (PMIX_CHECK_KEY(&info[n], PMIX_ALLOC_NETWORK)) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_ALLOC_FABRIC)) {
             /* this info key includes an array of pmix_info_t, each providing
              * a key (that is to be used as the key for the allocated ports) and
              * a number of ports to allocate for that key */
@@ -463,7 +463,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
 
     /* cycle thru the provided array and get the ID key */
     for (n=0; n < nreqs; n++) {
-        if (PMIX_CHECK_KEY(&requests[n], PMIX_ALLOC_NETWORK_ID)) {
+        if (PMIX_CHECK_KEY(&requests[n], PMIX_ALLOC_FABRIC_ID)) {
             /* check for bozo error */
             if (PMIX_STRING != requests[n].value.type ||
                 NULL == requests[n].value.data.string) {
@@ -472,7 +472,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
                 goto cleanup;
             }
             idkey = requests[n].value.data.string;
-        } else if (PMIX_CHECK_KEY(&requests[n], PMIX_ALLOC_NETWORK_SEC_KEY)) {
+        } else if (PMIX_CHECK_KEY(&requests[n], PMIX_ALLOC_FABRIC_SEC_KEY)) {
                seckey = PMIX_INFO_TRUE(&requests[n]);
         }
     }
@@ -488,7 +488,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
         rc = PMIX_ERR_NOMEM;
         goto cleanup;
     }
-    kv->key = strdup(PMIX_ALLOC_NETWORK_ID);
+    kv->key = strdup(PMIX_ALLOC_FABRIC_ID);
     kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
     if (NULL == kv->value) {
         PMIX_RELEASE(kv);
@@ -509,7 +509,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             rc = PMIX_ERR_NOMEM;
             goto cleanup;
         }
-        kv->key = strdup(PMIX_ALLOC_NETWORK_SEC_KEY);
+        kv->key = strdup(PMIX_ALLOC_FABRIC_SEC_KEY);
         kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
         if (NULL == kv->value) {
             PMIX_RELEASE(kv);
@@ -582,7 +582,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             rc = PMIX_ERR_NOMEM;
             goto cleanup;
         }
-        kv->key = strdup(PMIX_ALLOC_NETWORK_ENDPTS);
+        kv->key = strdup(PMIX_ALLOC_FABRIC_ENDPTS);
         kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
         if (NULL == kv->value) {
             PMIX_RELEASE(kv);
@@ -617,7 +617,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             /* the second element in this array will itself
              * be a data array of endpts */
             PMIX_DATA_ARRAY_CREATE(d3, q, PMIX_UINT32);
-            PMIX_LOAD_KEY(ip2[1].key, PMIX_NETWORK_ENDPT);
+            PMIX_LOAD_KEY(ip2[1].key, PMIX_FABRIC_ENDPT);
             ip2[1].value.type = PMIX_DATA_ARRAY;
             ip2[1].value.data.darray = d3;
             u32 = (uint32_t*)d3->array;
@@ -625,7 +625,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
                 u32[p] = 3180 + (m * 4) + p;
             }
             /* the third element will also be a data array
-             * containing the network coordinates of the proc
+             * containing the fabric coordinates of the proc
              * for each NIC - note that the NIC is the true
              * "holder" of the coordinate, but we pass it for
              * each proc for ease of lookup. The coordinate is
@@ -638,7 +638,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
              * Thus, two procs that share the same y,z-coords are
              * on the same switch. */
             PMIX_DATA_ARRAY_CREATE(d3, q, PMIX_COORD);
-            PMIX_LOAD_KEY(ip2[2].key, PMIX_NETWORK_COORDINATE);
+            PMIX_LOAD_KEY(ip2[2].key, PMIX_FABRIC_COORDINATE);
             ip2[2].value.type = PMIX_DATA_ARRAY;
             ip2[2].value.data.darray = d3;
             coords = (pmix_coord_t*)d3->array;
@@ -744,8 +744,8 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
                 while (PMIX_SUCCESS == rc) {
                     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                                         "recvd KEY %s %s", kv->key, PMIx_Data_type_string(kv->value->type));
-                    /* check for the network ID */
-                    if (PMIX_CHECK_KEY(kv, PMIX_ALLOC_NETWORK_ID)) {
+                    /* check for the fabric ID */
+                    if (PMIX_CHECK_KEY(kv, PMIX_ALLOC_FABRIC_ID)) {
                         if (NULL != idkey) {
                             PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                             free(idkey);
@@ -759,11 +759,11 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
                          * list - we will supply it when setup_fork is called */
                         pmix_argv_append_nosize(&myenvlist, kv->value->data.envar.envar);
                         pmix_argv_append_nosize(&myvalues, kv->value->data.envar.value);
-                    } else if (PMIX_CHECK_KEY(kv, PMIX_ALLOC_NETWORK_SEC_KEY)) {
-                        /* our network security key was stored as a byte object but
+                    } else if (PMIX_CHECK_KEY(kv, PMIX_ALLOC_FABRIC_SEC_KEY)) {
+                        /* our fabric security key was stored as a byte object but
                          * is really just a uint64_t */
                         memcpy(&seckey, kv->value->data.bo.bytes, sizeof(uint64_t));
-                    } else if (PMIX_CHECK_KEY(kv, PMIX_ALLOC_NETWORK_ENDPTS)) {
+                    } else if (PMIX_CHECK_KEY(kv, PMIX_ALLOC_FABRIC_ENDPTS)) {
                         iptr = (pmix_info_t*)kv->value->data.darray->array;
                         nvals = kv->value->data.darray->size;
                         /* each element in this array is itself an array containing

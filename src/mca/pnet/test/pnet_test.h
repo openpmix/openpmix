@@ -21,6 +21,7 @@ BEGIN_C_DECLS
 typedef struct {
     pmix_pnet_base_component_t super;
     char *planes;
+    char *nodes;
     uint16_t **costmatrix;
 } pmix_pnet_test_component_t;
 

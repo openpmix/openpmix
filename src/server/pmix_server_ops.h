@@ -368,6 +368,22 @@ PMIX_EXPORT void pmix_server_message_handler(struct pmix_peer_t *pr,
 PMIX_EXPORT void pmix_server_purge_events(pmix_peer_t *peer,
                                           pmix_proc_t *proc);
 
+PMIX_EXPORT pmix_status_t pmix_server_fabric_register(pmix_server_caddy_t *cd,
+                                                      pmix_buffer_t *buf,
+                                                      pmix_info_cbfunc_t cbfunc);
+
+PMIX_EXPORT pmix_status_t pmix_server_fabric_update(pmix_server_caddy_t *cd,
+                                                    pmix_buffer_t *buf,
+                                                    pmix_info_cbfunc_t cbfunc);
+
+PMIX_EXPORT pmix_status_t pmix_server_fabric_get_vertex_info(pmix_server_caddy_t *cd,
+                                                             pmix_buffer_t *buf,
+                                                             pmix_info_cbfunc_t cbfunc);
+
+PMIX_EXPORT pmix_status_t pmix_server_fabric_get_device_index(pmix_server_caddy_t *cd,
+                                                              pmix_buffer_t *buf,
+                                                              pmix_info_cbfunc_t cbfunc);
+
 PMIX_EXPORT extern pmix_server_module_t pmix_host_server;
 PMIX_EXPORT extern pmix_server_globals_t pmix_server_globals;
 

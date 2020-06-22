@@ -1986,3 +1986,35 @@ pmix_status_t pmix_bfrops_base_print_jobstate(char **output, char *prefix,
         return PMIX_SUCCESS;
     }
 }
+
+pmix_status_t pmix_bfrops_base_print_linkstate(char **output, char *prefix,
+                                               pmix_link_state_t *src,
+                                               pmix_data_type_t type)
+{
+    char *prefx;
+    int ret;
+
+    if (PMIX_LINK_STATE != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    /* deal with NULL prefix */
+    if (NULL == prefix) {
+        if (0 > asprintf(&prefx, " ")) {
+            return PMIX_ERR_NOMEM;
+        }
+    } else {
+        prefx = prefix;
+    }
+
+    ret = asprintf(output, "%sData type: PMIX_LINK_STATE\tValue: %s",
+                   prefx, PMIx_Link_state_string(*src));
+    if (prefx != prefix) {
+        free(prefx);
+    }
+
+    if (0 > ret) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    } else {
+        return PMIX_SUCCESS;
+    }
+}

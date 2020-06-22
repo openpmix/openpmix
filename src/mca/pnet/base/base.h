@@ -100,7 +100,9 @@ typedef struct {
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pnet_job_t);
 
 typedef struct {
-    pmix_object_t super;
+    pmix_list_item_t super;
+    char *name;
+    size_t index;
     /* provide access to the component
      * APIs that are managing this
      * fabric plane */
@@ -115,6 +117,7 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pnet_fabric_t);
 struct pmix_pnet_globals_t {
     pmix_lock_t lock;
     pmix_list_t actives;
+    pmix_list_t fabrics;
     bool initialized;
     bool selected;
     pmix_list_t jobs;
@@ -142,6 +145,18 @@ PMIX_EXPORT void pmix_pnet_base_deliver_inventory(pmix_info_t info[], size_t nin
                                                   pmix_op_cbfunc_t cbfunc, void *cbdata);
 PMIX_EXPORT pmix_status_t pmix_pnet_base_harvest_envars(char **incvars, char **excvars,
                                                         pmix_list_t *ilist);
+
+PMIX_EXPORT pmix_status_t pmix_pnet_base_register_fabric(pmix_fabric_t *fabric,
+                                                         const pmix_info_t directives[],
+                                                         size_t ndirs);
+PMIX_EXPORT pmix_status_t pmix_pnet_base_deregister_fabric(pmix_fabric_t *fabric);
+PMIX_EXPORT pmix_status_t pmix_pnet_base_update_fabric(pmix_fabric_t *fabric);
+PMIX_EXPORT pmix_status_t pmix_pnet_base_get_vertex_info(pmix_fabric_t *fabric,
+                                                         uint32_t i,
+                                                         pmix_info_t **info, size_t *ninfo);
+PMIX_EXPORT pmix_status_t pmix_pnet_base_get_device_index(pmix_fabric_t *fabric,
+                                                          const pmix_info_t vertex[], size_t ninfo,
+                                                          uint32_t *i);
 
 END_C_DECLS
 

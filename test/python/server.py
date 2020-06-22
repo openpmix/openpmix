@@ -25,22 +25,25 @@ def clientfinalized(proc:dict is not None):
     print("CLIENT FINALIZED", proc)
     return PMIX_SUCCESS
 
-def clientfence(procs:list, directives:list, data:bytearray):
+def clientfence(args:dict is not None):
     # check directives
-    if directives is not None:
-        for d in directives:
-            # these are each an info dict
-            if "pmix" not in d['key']:
-                # we do not support such directives - see if
-                # it is required
-                try:
-                    if d['flags'] & PMIX_INFO_REQD:
-                        # return an error
-                        return PMIX_ERR_NOT_SUPPORTED
-                except:
-                    #it can be ignored
-                    pass
-    return PMIX_SUCCESS
+    try:
+        if args['directives'] is not None:
+            for d in args['directives']:
+                # these are each an info dict
+                if "pmix" not in d['key']:
+                    # we do not support such directives - see if
+                    # it is required
+                    try:
+                        if d['flags'] & PMIX_INFO_REQD:
+                            # return an error
+                            return PMIX_ERR_NOT_SUPPORTED
+                    except:
+                        #it can be ignored
+                        pass
+    except:
+        pass
+    return PMIX_SUCCESS, None
 
 def main():
     try:
@@ -64,8 +67,12 @@ def main():
     # get our environment as a base
     env = os.environ.copy()
     # register an nspace for the client app
-    darray = {'type':PMIX_SIZE, 'array':[1, 2, 3, 4, 5]}
-    kvals = [{'key':'testkey', 'value':darray, 'val_type':PMIX_DATA_ARRAY}]
+    (rc, regex) = foo.generate_regex(["test000","test001","test002"])
+    (rc, ppn) = foo.generate_ppn(["0,1,2", "3,4,5", "6,7"])
+    kvals = [{'key':PMIX_NODE_MAP, 'value':regex, 'val_type':PMIX_STRING},
+             {'key':PMIX_PROC_MAP, 'value':ppn, 'val_type':PMIX_STRING},
+             {'key':PMIX_UNIV_SIZE, 'value':1, 'val_type':PMIX_UINT32},
+             {'key':PMIX_JOB_SIZE, 'value':1, 'val_type':PMIX_UINT32}]
     print("REGISTERING NSPACE")
     rc = foo.register_nspace("testnspace", 1, kvals)
     print("RegNspace ", rc)

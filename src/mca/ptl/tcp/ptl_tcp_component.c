@@ -556,7 +556,7 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo,
             /* if one of the network specifications isn't parseable, then
              * error out as we can't do what was requested
              */
-            if (PMIX_ERR_NETWORK_NOT_PARSEABLE == rc) {
+            if (PMIX_ERR_FABRIC_NOT_PARSEABLE == rc) {
                 pmix_show_help("help-ptl-tcp.txt", "not-parseable", true);
                 pmix_argv_free(interfaces);
                 return PMIX_ERR_BAD_PARAM;
