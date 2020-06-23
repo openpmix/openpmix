@@ -4612,7 +4612,6 @@ pmix_status_t pmix_server_fabric_register(pmix_server_caddy_t *cd,
     return PMIX_SUCCESS;
 
   exit:
-    PMIX_RELEASE(cd);
     return rc;
 }
 
@@ -4686,7 +4685,6 @@ pmix_status_t pmix_server_fabric_update(pmix_server_caddy_t *cd,
     return PMIX_SUCCESS;
 
   exit:
-    PMIX_RELEASE(cd);
     return rc;
 }
 
@@ -4756,7 +4754,6 @@ pmix_status_t pmix_server_fabric_get_vertex_info(pmix_server_caddy_t *cd,
     return PMIX_SUCCESS;
 
   exit:
-    PMIX_RELEASE(cd);
     return rc;
 }
 
@@ -4839,7 +4836,6 @@ pmix_status_t pmix_server_fabric_get_device_index(pmix_server_caddy_t *cd,
     return PMIX_SUCCESS;
 
   exit:
-    PMIX_RELEASE(cd);
     return rc;
 }
 

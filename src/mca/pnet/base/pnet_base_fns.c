@@ -564,7 +564,7 @@ pmix_status_t pmix_pnet_base_register_fabric(pmix_fabric_t *fabric,
                 if (NULL != fabric->name) {
                     ft->name = strdup(fabric->name);
                 }
-                ft->module = fabric->module;
+                ft->module = active->module;
                 pmix_list_append(&pmix_pnet_globals.fabrics, &ft->super);
             } else if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
                 /* just return the error */
@@ -583,8 +583,8 @@ pmix_status_t pmix_pnet_base_register_fabric(pmix_fabric_t *fabric,
 pmix_status_t pmix_pnet_base_update_fabric(pmix_fabric_t *fabric)
 {
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_pnet_fabric_t *active = NULL;
-    pmix_pnet_module_t *module;
+    pmix_pnet_fabric_t *active;
+    pmix_pnet_module_t *module = NULL;
     pmix_pnet_fabric_t *ft;
 
     /* protect against bozo input */
@@ -596,19 +596,19 @@ pmix_status_t pmix_pnet_base_update_fabric(pmix_fabric_t *fabric)
          * see if we have one with the matching index */
         PMIX_LIST_FOREACH(ft, &pmix_pnet_globals.fabrics, pmix_pnet_fabric_t) {
             if (fabric->index == ft->index) {
-                active = fabric->module;
+                module = ft->module;
             } else if (NULL != fabric->name && NULL != ft->name
                        && 0 == strcmp(ft->name, fabric->name)) {
-                active = fabric->module;
+                module = ft->module;
             }
-        }
-        if (NULL == active) {
-            return PMIX_ERR_BAD_PARAM;
         }
     } else {
         active = (pmix_pnet_fabric_t*)fabric->module;
+        module = (pmix_pnet_module_t*)active->module;
     }
-    module = (pmix_pnet_module_t*)active->module;
+    if (NULL == module) {
+        return PMIX_ERR_BAD_PARAM;
+    }
 
     if (NULL != module->update_fabric) {
         rc = module->update_fabric(fabric);
@@ -619,8 +619,8 @@ pmix_status_t pmix_pnet_base_update_fabric(pmix_fabric_t *fabric)
 pmix_status_t pmix_pnet_base_deregister_fabric(pmix_fabric_t *fabric)
 {
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_pnet_fabric_t *active = NULL;
-    pmix_pnet_module_t *module;
+    pmix_pnet_fabric_t *active;
+    pmix_pnet_module_t *module = NULL;
     pmix_pnet_fabric_t *ft;
 
     /* protect against bozo input */
@@ -632,19 +632,19 @@ pmix_status_t pmix_pnet_base_deregister_fabric(pmix_fabric_t *fabric)
          * see if we have one with the matching index */
         PMIX_LIST_FOREACH(ft, &pmix_pnet_globals.fabrics, pmix_pnet_fabric_t) {
             if (fabric->index == ft->index) {
-                active = fabric->module;
+                module = ft->module;
             } else if (NULL != fabric->name && NULL != ft->name
                        && 0 == strcmp(ft->name, fabric->name)) {
-                active = fabric->module;
+                module = ft->module;
             }
-        }
-        if (NULL == active) {
-            return PMIX_ERR_BAD_PARAM;
         }
     } else {
         active = (pmix_pnet_fabric_t*)fabric->module;
+        module = (pmix_pnet_module_t*)active->module;
     }
-    module = (pmix_pnet_module_t*)active->module;
+    if (NULL == module) {
+        return PMIX_ERR_BAD_PARAM;
+    }
 
     if (NULL != module->deregister_fabric) {
         rc = module->deregister_fabric(fabric);
@@ -657,8 +657,8 @@ pmix_status_t pmix_pnet_base_get_vertex_info(pmix_fabric_t *fabric,
                                              pmix_info_t **info, size_t *ninfo)
 {
     pmix_status_t ret;
-    pmix_pnet_fabric_t *active = NULL;
-    pmix_pnet_module_t *module;
+    pmix_pnet_fabric_t *active;
+    pmix_pnet_module_t *module = NULL;
     pmix_pnet_fabric_t *ft;
 
     /* protect against bozo input */
@@ -670,19 +670,19 @@ pmix_status_t pmix_pnet_base_get_vertex_info(pmix_fabric_t *fabric,
          * see if we have one with the matching index */
         PMIX_LIST_FOREACH(ft, &pmix_pnet_globals.fabrics, pmix_pnet_fabric_t) {
             if (fabric->index == ft->index) {
-                active = fabric->module;
+                module = ft->module;
             } else if (NULL != fabric->name && NULL != ft->name
                        && 0 == strcmp(ft->name, fabric->name)) {
-                active = fabric->module;
+                module = ft->module;
             }
-        }
-        if (NULL == active) {
-            return PMIX_ERR_BAD_PARAM;
         }
     } else {
         active = (pmix_pnet_fabric_t*)fabric->module;
+        module = (pmix_pnet_module_t*)active->module;
     }
-    module = (pmix_pnet_module_t*)ft->module;
+    if (NULL == module) {
+        return PMIX_ERR_BAD_PARAM;
+    }
 
     if (NULL == module->get_vertex_info) {
         return PMIX_ERR_NOT_SUPPORTED;
@@ -698,8 +698,7 @@ pmix_status_t pmix_pnet_base_get_device_index(pmix_fabric_t *fabric,
                                               uint32_t *i)
 {
     pmix_status_t ret;
-    pmix_pnet_fabric_t *active = NULL;
-    pmix_pnet_module_t *module;
+    pmix_pnet_module_t *module = NULL;
     pmix_pnet_fabric_t *ft;
 
     /* protect against bozo input */
@@ -711,19 +710,18 @@ pmix_status_t pmix_pnet_base_get_device_index(pmix_fabric_t *fabric,
          * see if we have one with the matching index */
         PMIX_LIST_FOREACH(ft, &pmix_pnet_globals.fabrics, pmix_pnet_fabric_t) {
             if (fabric->index == ft->index) {
-                active = fabric->module;
+                module = ft->module;
             } else if (NULL != fabric->name && NULL != ft->name
                        && 0 == strcmp(ft->name, fabric->name)) {
-                active = fabric->module;
+                module = ft->module;
             }
         }
-        if (NULL == active) {
-            return PMIX_ERR_BAD_PARAM;
-        }
     } else {
-        active = (pmix_pnet_fabric_t*)fabric->module;
+        module = (pmix_pnet_module_t*)fabric->module;
     }
-    module = (pmix_pnet_module_t*)ft->module;
+    if (NULL == module) {
+        return PMIX_ERR_BAD_PARAM;
+    }
 
     if (NULL == module->get_device_index) {
         return PMIX_ERR_NOT_SUPPORTED;
