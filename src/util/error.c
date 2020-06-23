@@ -287,8 +287,8 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
         return "NO EXECUTABLE SPECIFIED";
     case PMIX_ERR_JOB_FAILED_TO_MAP:
         return "JOB FAILED TO MAP";
-    case PMIX_ERR_JOB_CANCELLED:
-        return "JOB CANCELLED";
+    case PMIX_ERR_JOB_CANCELED:
+        return "JOB CANCELED";
     case PMIX_ERR_JOB_FAILED_TO_LAUNCH:
         return "JOB FAILED TO LAUNCH";
     case PMIX_ERR_JOB_ABORTED:
