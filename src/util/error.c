@@ -281,8 +281,6 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
     case PMIX_MAX_ERR_CONSTANT:
         return "PMIX_ERR_WILDCARD";
 
-    case PMIX_ERR_JOB_FAILED_TO_START:
-        return "JOB FAILED TO START";
     case PMIX_ERR_JOB_APP_NOT_EXECUTABLE:
         return "APPLICATION NOT EXECUTABLE";
     case PMIX_ERR_JOB_NO_EXE_SPECIFIED:
@@ -303,14 +301,10 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
         return "TERMINATED WITHOUT SYNC";
     case PMIX_ERR_JOB_SENSOR_BOUND_EXCEEDED:
         return "SENSOR BOUND EXCEEDED";
-    case PMIX_ERR_JOB_NEVER_LAUNCHED:
-        return "NEVER LAUNCHED";
     case PMIX_ERR_JOB_NON_ZERO_TERM:
         return "NON-ZERO TERMINATION";
     case PMIX_ERR_JOB_ALLOC_FAILED:
         return "FAILED TO OBTAIN ALLOCATION";
-    case PMIX_ERR_JOB_CANNOT_LAUNCH:
-        return "COULD NOT BE LAUNCHED";
 
     default:
         return "ERROR STRING NOT FOUND";
