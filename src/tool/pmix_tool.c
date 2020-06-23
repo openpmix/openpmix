@@ -1511,5 +1511,10 @@ pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
     /* resume processing events */
     pmix_progress_thread_resume(NULL);
 
+    /* if they gave us an address, we pass back our name */
+    if (NULL != proc) {
+        memcpy(proc, &pmix_globals.myid, sizeof(pmix_proc_t));
+    }
+
     return PMIX_SUCCESS;
 }
