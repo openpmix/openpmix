@@ -519,8 +519,22 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
             } else if (0 == strncmp(cd->info[n].key, PMIX_RANGE, PMIX_MAX_KEYLEN)) {
                 range = cd->info[n].value.data.range;
             } else if (0 == strncmp(cd->info[n].key, PMIX_EVENT_CUSTOM_RANGE, PMIX_MAX_KEYLEN)) {
-                parray = (pmix_proc_t*)cd->info[n].value.data.darray->array;
-                nprocs = cd->info[n].value.data.darray->size;
+                /* provides an array of pmix_proc_t identifying the procs
+                 * that are to receive this notification, or a single pmix_proc_t  */
+                if (PMIX_DATA_ARRAY == cd->info[n].value.type &&
+                    NULL != cd->info[n].value.data.darray &&
+                    NULL != cd->info[n].value.data.darray->array) {
+                    parray = (pmix_proc_t*)cd->info[n].value.data.darray->array;
+                    nprocs = cd->info[n].value.data.darray->size;
+                } else if (PMIX_PROC == cd->info[n].value.type &&
+                           NULL != cd->info[n].value.data.proc) {
+                    parray = cd->info[n].value.data.proc;
+                    nprocs = 1;
+                } else {
+                    /* this is an error */
+                    rc = PMIX_ERR_BAD_PARAM;
+                    goto ack;
+                }
             } else if (0 == strncmp(cd->info[n].key, PMIX_EVENT_AFFECTED_PROC, PMIX_MAX_KEYLEN)) {
                 cd->affected = cd->info[n].value.data.proc;
                 cd->naffected = 1;
