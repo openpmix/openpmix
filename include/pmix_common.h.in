@@ -1077,7 +1077,7 @@ typedef int pmix_status_t;
 #define PMIX_ERR_JOB_APP_NOT_EXECUTABLE             -176
 #define PMIX_ERR_JOB_NO_EXE_SPECIFIED               -177
 #define PMIX_ERR_JOB_FAILED_TO_MAP                  -178
-#define PMIX_ERR_JOB_CANCELLED                      -179
+#define PMIX_ERR_JOB_CANCELED                       -179
 #define PMIX_ERR_JOB_FAILED_TO_LAUNCH               -180
 #define PMIX_ERR_JOB_ABORTED                        -181
 #define PMIX_ERR_JOB_KILLED_BY_CMD                  -182
