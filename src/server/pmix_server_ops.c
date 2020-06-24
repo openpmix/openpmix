@@ -3881,7 +3881,7 @@ static void _grpcbfunc(int sd, short argc, void *cbdata)
     pmix_buffer_t *reply, xfer;
     pmix_status_t ret;
     size_t n, ctxid = SIZE_MAX;
-    pmix_group_t *grp = (pmix_group_t*)trk->cbdata;
+    pmix_group_t *grp;
     pmix_byte_object_t *bo = NULL;
     pmix_nspace_caddy_t *nptr;
     pmix_list_t nslist;
@@ -3907,6 +3907,7 @@ static void _grpcbfunc(int sd, short argc, void *cbdata)
     if (trk->event_active) {
         pmix_event_del(&trk->ev);
     }
+    grp = (pmix_group_t*)trk->cbdata;
 
     /* the tracker's "hybrid" field is used to indicate construct
      * vs destruct */
