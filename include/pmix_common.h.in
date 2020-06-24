@@ -305,7 +305,6 @@ typedef uint32_t pmix_rank_t;
 
 
 /* topology info */
-#define PMIX_NET_TOPO                       "pmix.ntopo"            // (char*) xml-representation of fabric topology
 #define PMIX_LOCAL_TOPO                     "pmix.ltopo"            // (char*) xml-representation of local node topology
 #define PMIX_TOPOLOGY                       "pmix.topo"             // (hwloc_topology_t) pointer to the PMIx client's internal topology object
 #define PMIX_TOPOLOGY_XML                   "pmix.topo.xml"         // (char*) XML-based description of topology
@@ -338,6 +337,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_DATA_SCOPE                     "pmix.scope"            // (pmix_scope_t) scope of the data to be found in a PMIx_Get call
 #define PMIX_OPTIONAL                       "pmix.optional"         // (bool) look only in the client's local data store for the requested value - do
                                                                     //        not request data from the server if not found
+#define PMIX_GET_STATIC_VALUES              "pmix.get.static"       // (bool) Request that any pointers in the returned value point directly
+                                                                    //       to values in the key-value store
 #define PMIX_EMBED_BARRIER                  "pmix.embed.barrier"    // (bool) execute a blocking fence operation before executing the
                                                                     //        specified operation
 #define PMIX_JOB_TERM_STATUS                "pmix.job.term.status"  // (pmix_status_t) status returned upon job termination
@@ -576,7 +577,7 @@ typedef uint32_t pmix_rank_t;
                                                                     //        information. At a minimum, either the PMIX_NODEID or PMIX_HOSTNAME
                                                                     //        attribute is required to be included in the array, though both may be
                                                                     //        included.
-#define PMIX_SERVER_INFO_ARRAY              "pmix.srv.info"         // (pmix_data_array_t*) array of data on a given server, starting with its nspace
+#define PMIX_SERVER_INFO_ARRAY              "pmix.srv.arr"          // (pmix_data_array_t*) array of data on a given server, starting with its nspace
 
 
 /* log attributes */
@@ -642,8 +643,11 @@ typedef uint32_t pmix_rank_t;
                                                                       //                 character, creating the envar if it doesn't already exist
 
 /* attributes relating to allocations */
-#define PMIX_ALLOC_ID                       "pmix.alloc.id"         // (char*) provide a string identifier for this allocation request
-                                                                    //         which can later be used to query status of the request
+#define PMIX_ALLOC_REQ_ID                   "pmix.alloc.reqid"      // (char*) User-provided string identifier for this allocation request
+                                                                    //         which can later be used to query status of the request.
+#define PMIX_ALLOC_ID                       "pmix.alloc.id"         // (char*) A string identifier (provided by the host environment) for
+                                                                    //         the resulting allocation which can later be used to reference
+                                                                    //         the allocated resources in, for example, a call to PMIx_Spawn
 #define PMIX_ALLOC_NUM_NODES                "pmix.alloc.nnodes"     // (uint64_t) number of nodes
 #define PMIX_ALLOC_NODE_LIST                "pmix.alloc.nlist"      // (char*) regex of specific nodes
 #define PMIX_ALLOC_NUM_CPUS                 "pmix.alloc.ncpus"      // (uint64_t) number of cpus
@@ -838,17 +842,16 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_FABRIC_INDEX                   "pmix.fab.idx"         // (size_t) The index of the fabric as returned in pmix_fabric_t
 #define PMIX_FABRIC_NUM_VERTICES            "pmix.fab.nverts"      // (size_t) Total number of NICs in the system - corresponds to the number
                                                                    //          of vertices (i.e., rows and columns) in the cost matrix
-#define PMIX_FABRIC_COORDINATE              "pmix.net.coord"       // (pmix_coord_t*) Fabric coordinate of the specified process in
+#define PMIX_FABRIC_COORDINATE              "pmix.fab.coord"       // (pmix_coord_t*) Fabric coordinate of the specified process in
                                                                    //       the given view type (e.g., logical vs physical)
-#define PMIX_FABRIC_VIEW                    "pmix.net.view"        // (pmix_coord_view_t) Requested view type (e.g., logical vs physical)
-#define PMIX_FABRIC_DIMS                    "pmix.net.dims"        // (uint32_t) Number of dimensions in the specified fabric plane/view
-#define PMIX_FABRIC_PLANE                   "pmix.net.plane"       // (char*) string ID of a fabric plane
-#define PMIX_FABRIC_SWITCH                  "pmix.net.switch"      // (char*) string ID of a fabric switch
-#define PMIX_FABRIC_NIC                     "pmix.net.nic"         // (char*) string ID of a NIC
-#define PMIX_FABRIC_ENDPT                   "pmix.net.endpt"       // (pmix_data_array_t*) array of fabric endpts for process
-#define PMIX_FABRIC_SHAPE                   "pmix.net.shape"       // (pmix_data_array_t*) number of interfaces (uint32_t) on each dimension of the
+#define PMIX_FABRIC_VIEW                    "pmix.fab.view"        // (pmix_coord_view_t) Requested view type (e.g., logical vs physical)
+#define PMIX_FABRIC_DIMS                    "pmix.fab.dims"        // (uint32_t) Number of dimensions in the specified fabric plane/view
+#define PMIX_FABRIC_PLANE                   "pmix.fab.plane"       // (char*) string ID of a fabric plane
+#define PMIX_FABRIC_SWITCH                  "pmix.fab.switch"      // (char*) string ID of a fabric switch
+#define PMIX_FABRIC_ENDPT                   "pmix.fab.endpt"       // (pmix_data_array_t*) array of fabric endpts for process
+#define PMIX_FABRIC_SHAPE                   "pmix.fab.shape"       // (pmix_data_array_t*) number of interfaces (uint32_t) on each dimension of the
                                                                    //        specified fabric plane in the requested view
-#define PMIX_FABRIC_SHAPE_STRING            "pmix.net.shapestr"    // (char*) fabric shape expressed as a string (e.g., "10x12x2")
+#define PMIX_FABRIC_SHAPE_STRING            "pmix.fab.shapestr"    // (char*) fabric shape expressed as a string (e.g., "10x12x2")
 #define PMIX_SWITCH_PEERS                   "pmix.speers"          // (char*) comma-delimited string of peers that share the same switch as the proc
                                                                    //         specified in the call to PMIx_Get. Multi-NIC environments will return
                                                                    //         an array of results, each element containing the NIC and the list of
@@ -883,6 +886,18 @@ typedef uint32_t pmix_rank_t;
                                                                    //         "abc1:0f:23:01". The combination of node identifier PMIX_HOSTNAME or
                                                                    //         PMIX_NODEID and PMIX_FABRIC_DEVICE_PCI_DEVID shall be unique within the
                                                                    //         system.
+
+/* Descriptive Attributes */
+#define PMIX_MAX_VALUE                      "pmix.descr.maxval"    // (varies) Used in pmix_regattr_t to describe the maximum valid value
+                                                                   //          for the associated attribute.
+#define PMIX_MIN_VALUE                      "pmix.descr.minval"    // (varies) Used in pmix_regattr_t to describe the minimum valid value
+                                                                   //          for the associated attribute.
+#define PMIX_ENUM_VALUE                     "pmix.descr.enum"      // (char*) Used in pmix_regattr_t to describe accepted values for the
+                                                                   //         associated attribute. Numerical values shall be presented in
+                                                                   //         a form convertible to the attribute's declared data type.
+                                                                   //         Named values (i.e., values defined by constant names via a
+                                                                   //         typical C-language enum declaration) must be provided as
+                                                                   //         their numerical equivalent.
 
 /****    PROCESS STATE DEFINITIONS    ****/
 typedef uint8_t pmix_proc_state_t;
@@ -951,8 +966,6 @@ typedef uint8_t pmix_job_state_t;
 
 /****    PMIX ERROR CONSTANTS    ****/
 /* PMIx errors are always negative, with 0 reserved for success */
-#define PMIX_ERR_BASE                   0
-
 typedef int pmix_status_t;
 
 /* v1.x error values - must be fixed in place for backward
@@ -1016,9 +1029,10 @@ typedef int pmix_status_t;
 #define PMIX_ERR_COMM_FAILURE                       -49
 #define PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER     -50
 #define PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES     -51
+#define PMIX_ERR_PARTIAL_SUCCESS                    -52
+#define PMIX_ERR_DUPLICATE_KEY                      -53
+#define PMIX_ERR_GET_MALLOC_REQD                    -54
 
-/* define a starting point for v2.x error values */
-#define PMIX_ERR_V2X_BASE                   -100
 
 /* v2.x communication errors */
 #define PMIX_ERR_LOST_CONNECTION_TO_SERVER          -101
@@ -1066,27 +1080,28 @@ typedef int pmix_status_t;
 #define PMIX_GROUP_LEADER_SELECTED                  -167
 #define PMIX_GROUP_LEADER_FAILED                    -168
 #define PMIX_GROUP_CONTEXT_ID_ASSIGNED              -169
-#define PMIX_ERR_REPEAT_ATTR_REGISTRATION           -170
-#define PMIX_ERR_IOF_FAILURE                        -171
-#define PMIX_ERR_IOF_COMPLETE                       -172
-#define PMIX_LAUNCH_COMPLETE                        -173     // include nspace of the launched job with notification
-#define PMIX_FABRIC_UPDATED                         -174
-#define PMIX_FABRIC_UPDATE_PENDING                  -175
+#define PMIX_GROUP_MEMBER_FAILED                    -170
+#define PMIX_ERR_REPEAT_ATTR_REGISTRATION           -171
+#define PMIX_ERR_IOF_FAILURE                        -172
+#define PMIX_ERR_IOF_COMPLETE                       -173
+#define PMIX_LAUNCH_COMPLETE                        -174     // include nspace of the launched job with notification
+#define PMIX_FABRIC_UPDATED                         -175
+#define PMIX_FABRIC_UPDATE_PENDING                  -176
 
 /* job-related errors */
-#define PMIX_ERR_JOB_APP_NOT_EXECUTABLE             -176
-#define PMIX_ERR_JOB_NO_EXE_SPECIFIED               -177
-#define PMIX_ERR_JOB_FAILED_TO_MAP                  -178
-#define PMIX_ERR_JOB_CANCELED                       -179
-#define PMIX_ERR_JOB_FAILED_TO_LAUNCH               -180
-#define PMIX_ERR_JOB_ABORTED                        -181
-#define PMIX_ERR_JOB_KILLED_BY_CMD                  -182
-#define PMIX_ERR_JOB_ABORTED_BY_SIG                 -183
-#define PMIX_ERR_JOB_TERM_WO_SYNC                   -184
-#define PMIX_ERR_JOB_SENSOR_BOUND_EXCEEDED          -185
-#define PMIX_ERR_JOB_NON_ZERO_TERM                  -186
-#define PMIX_ERR_JOB_ALLOC_FAILED                   -187
-#define PMIX_ERR_JOB_ABORTED_BY_SYS_EVENT           -188
+#define PMIX_ERR_JOB_APP_NOT_EXECUTABLE             -177
+#define PMIX_ERR_JOB_NO_EXE_SPECIFIED               -178
+#define PMIX_ERR_JOB_FAILED_TO_MAP                  -179
+#define PMIX_ERR_JOB_CANCELED                       -180
+#define PMIX_ERR_JOB_FAILED_TO_LAUNCH               -181
+#define PMIX_ERR_JOB_ABORTED                        -182
+#define PMIX_ERR_JOB_KILLED_BY_CMD                  -183
+#define PMIX_ERR_JOB_ABORTED_BY_SIG                 -184
+#define PMIX_ERR_JOB_TERM_WO_SYNC                   -185
+#define PMIX_ERR_JOB_SENSOR_BOUND_EXCEEDED          -186
+#define PMIX_ERR_JOB_NON_ZERO_TERM                  -187
+#define PMIX_ERR_JOB_ALLOC_FAILED                   -188
+#define PMIX_ERR_JOB_ABORTED_BY_SYS_EVENT           -189
 
 /* job-related non-error events */
 #define PMIX_EVENT_JOB_START                        -191
@@ -1110,10 +1125,6 @@ typedef int pmix_status_t;
 #define PMIX_EVENT_PARTIAL_ACTION_TAKEN             -332
 #define PMIX_EVENT_ACTION_DEFERRED                  -333
 #define PMIX_EVENT_ACTION_COMPLETE                  -334
-
-/* define a starting point for PMIx internal error codes
- * that are never exposed outside the library */
-#define PMIX_INTERNAL_ERR_BASE                      -1330
 
 /* define a starting point for user-level defined error
  * constants - negative values larger than this are guaranteed
@@ -2273,7 +2284,7 @@ typedef enum {
  * argv array - same as above only prepend
  */
 #define PMIX_ARGV_PREPEND(r, a, b) \
-    (r) = pmix_argv_prepend_nosize(a, b)
+    (r) = pmix_argv_prepend_nosize(&(a), b)
 
 /* Append to an argv-style array, but only if the provided argument
  * doesn't already exist somewhere in the array. Ignore the size of the array.
@@ -2519,6 +2530,10 @@ typedef void (*pmix_notification_fn_t)(size_t evhdlr_registration_id,
 typedef void (*pmix_hdlr_reg_cbfunc_t)(pmix_status_t status,
                                        size_t refid,
                                        void *cbdata);
+/* retain the deprecated form */
+typedef void (*pmix_evhdlr_reg_cbfunc_t)(pmix_status_t status,
+                                         size_t refid,
+                                         void *cbdata);
 
 /* define a callback function for calls to PMIx_Get_nb. The status
  * indicates if the requested data was found or not - a pointer to the
