@@ -1225,7 +1225,8 @@ PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
 
     /* store our server's ID */
     if (NULL != pmix_client_globals.myserver &&
-        NULL != pmix_client_globals.myserver->info) {
+        NULL != pmix_client_globals.myserver->info &&
+        NULL != pmix_client_globals.myserver->info->pname.nspace) {
         kptr = PMIX_NEW(pmix_kval_t);
         kptr->key = strdup(PMIX_SERVER_NSPACE);
         PMIX_VALUE_CREATE(kptr->value, 1);
@@ -1513,9 +1514,6 @@ pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
 
     /* now ask the ptl to establish connection to the new server */
     rc = pmix_ptl_base_connect_to_peer((struct pmix_peer_t*)pmix_client_globals.myserver, info, ninfo);
-    if (PMIX_SUCCESS != rc) {
-        return rc;
-    }
 
     /* once that activity has all completed, then stop the new progress thread */
     pmix_progress_thread_stop("reconnect");
@@ -1543,9 +1541,20 @@ pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
     /* resume processing events */
     pmix_progress_thread_resume(NULL);
 
+    /* if they gave us an address, we pass back our name */
+    if (NULL != proc) {
+        memcpy(proc, &pmix_globals.myid, sizeof(pmix_proc_t));
+    }
+
+    /* if the transition didn't succeed, then return at this point */
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+
     /* update our server's ID */
     if (NULL != pmix_client_globals.myserver &&
-        NULL != pmix_client_globals.myserver->info) {
+        NULL != pmix_client_globals.myserver->info &&
+        NULL != pmix_client_globals.myserver->info->pname.nspace) {
         kptr = PMIX_NEW(pmix_kval_t);
         kptr->key = strdup(PMIX_SERVER_NSPACE);
         PMIX_VALUE_CREATE(kptr->value, 1);
@@ -1572,11 +1581,6 @@ pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
             return rc;
         }
         PMIX_RELEASE(kptr); // maintain accounting
-    }
-
-    /* if they gave us an address, we pass back our name */
-    if (NULL != proc) {
-        memcpy(proc, &pmix_globals.myid, sizeof(pmix_proc_t));
     }
 
     return PMIX_SUCCESS;
