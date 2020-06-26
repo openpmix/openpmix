@@ -13,7 +13,7 @@
 # Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
 # Copyright (c) 2014      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
-# Copyright (c) 2019      Intel, Inc.  All rights reserved.
+# Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2020      IBM Corporation.  All rights reserved.
 # $COPYRIGHT$
 #
@@ -22,57 +22,32 @@
 # $HEADER$
 #
 
-DEFS="-DEXEEXT=\"$(EXEEXT)\""
-
-MD_FILES = \
-        pmix_wrapper.1.md
-MD_FILES_NOINST = \
-        generic_wrapper.1.md
-
-man_pages_from_md = $(MD_FILES:.1.md=.1)
-man_pages_from_md_noinst = $(MD_FILES_NOINST:.1.md=.1)
-
-EXTRA_DIST = $(MD_FILES) $(MD_FILES_NOINST) $(man_pages_from_md) $(man_pages_from_md_noinst)
-
 include $(top_srcdir)/Makefile.pmix-rules
 
-nodist_man_MANS =
+MD_FILES = pmixcc.1.md
+man_pages_from_md = $(MD_FILES:.1.md=.1)
+EXTRA_DIST = $(MD_FILES) $(man_pages_from_md)
+AM_LDFLAGS = $(PMIX_EXTRA_LIB_LDFLAGS) $(pmix_hwloc_LDFLAGS) $(pmix_libevent_LDFLAGS)
 
 if PMIX_INSTALL_BINARIES
 
-bin_PROGRAMS = pmix_wrapper
+bin_PROGRAMS = pmixcc
 
 if PMIX_ENABLE_MAN_PAGES
-nodist_man_MANS += $(man_pages_from_md)
+_man_MANS = $(man_pages_from_md)
 endif # PMIX_ENABLE_MAN_PAGES
 
-dist_pmixdata_DATA = help-pmix-wrapper.txt
+nodist_pmixdata_DATA = pmixcc-wrapper-data.txt
 
-nodist_pmixdata_DATA = \
-	pmixcc-wrapper-data.txt
+dist_pmixdata_DATA = help-pmixcc.txt
 
-if PMIX_ENABLE_MAN_PAGES
-nodist_man_MANS += pmixcc.1
-endif # PMIX_ENABLE_MAN_PAGES
+pmixcc_SOURCES = \
+        pmixcc.c
 
-pkgconfigdir = $(libdir)/pkgconfig
-pkgconfig_DATA = pmix.pc
-
-install-exec-hook:
-	(cd $(DESTDIR)$(bindir); rm -f pmixcc$(EXEEXT); $(LN_S) pmix_wrapper$(EXEECT) pmixcc$(EXEEXT))
-
-uninstall-local:
-	rm -f $(DESTDIR)$(bindir)/pmixcc$(EXEEXT)
+pmixcc_LDADD = \
+    $(PMIXEXTRA_LTLIB) \
+    $(pmix_libevent_LIBS) \
+    $(pmix_hwloc_LIBS) \
+	$(top_builddir)/src/libpmix.la
 
 endif # PMIX_INSTALL_BINARIES
-
-pmix_wrapper_SOURCES = pmix_wrapper.c
-pmix_wrapper_LDADD = $(top_builddir)/src/libpmix.la
-
-pmixcc.1: generic_wrapper.1
-	rm -f pmixcc.1
-	sed -e 's/#COMMAND#/pmixcc/g' -e 's/#PROJECT#/PMIx/g' -e 's/#PROJECT_SHORT#/PMIx/g' -e 's/#LANGUAGE#/C/g' < $(top_builddir)/src/tools/wrapper/generic_wrapper.1 > pmixcc.1
-EXTRA_DIST += pmixcc.1
-
-distclean-local:
-	rm -f pmixcc.1

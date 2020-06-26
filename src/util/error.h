@@ -28,6 +28,11 @@
 
  BEGIN_C_DECLS
 
+/* define a starting point for PMIx internal error codes
+ * that are never exposed outside the library */
+#define PMIX_INTERNAL_ERR_BASE                      -1330
+
+
 /* internal error codes - never exposed outside of the library */
 #define PMIX_ERR_NOT_AVAILABLE                          (PMIX_INTERNAL_ERR_BASE - 28)
 #define PMIX_ERR_FATAL                                  (PMIX_INTERNAL_ERR_BASE - 29)

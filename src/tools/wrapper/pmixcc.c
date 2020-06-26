@@ -556,7 +556,7 @@ main(int argc, char *argv[])
     /* if we still didn't find a match, abort */
     if (user_data_idx < 0) {
         char *flat = pmix_argv_join(argv, ' ');
-        pmix_show_help("help-pmix-wrapper.txt", "no-options-support", true,
+        pmix_show_help("help-pmixcc.txt", "no-options-support", true,
                        base_argv0, flat, NULL);
         free(flat);
         exit(1);
@@ -588,7 +588,7 @@ main(int argc, char *argv[])
     if (NULL != options_data[user_data_idx].req_file) {
         /* make sure the language is supported */
         if (0 == strcmp(options_data[user_data_idx].req_file, "not supported")) {
-            pmix_show_help("help-pmix-wrapper.txt", "no-language-support", true,
+            pmix_show_help("help-pmixcc.txt", "no-language-support", true,
                            options_data[user_data_idx].language, base_argv0, NULL);
             exit_status = 1;
             goto cleanup;
@@ -599,7 +599,7 @@ main(int argc, char *argv[])
             struct stat buf;
             filename = pmix_os_path( false, options_data[user_data_idx].path_libdir, options_data[user_data_idx].req_file, NULL );
             if (0 != stat(filename, &buf)) {
-                pmix_show_help("help-pmix-wrapper.txt", "file-not-found", true,
+                pmix_show_help("help-pmixcc.txt", "file-not-found", true,
                                base_argv0, options_data[user_data_idx].req_file, options_data[user_data_idx].language, NULL);
             }
         }
@@ -657,7 +657,7 @@ main(int argc, char *argv[])
             } else if (0 == strncmp(user_argv[i], "-showme:version", strlen("-showme:version")) ||
                        0 == strncmp(user_argv[i], "--showme:version", strlen("--showme:version"))) {
                 char * str;
-                str = pmix_show_help_string("help-pmix-wrapper.txt",
+                str = pmix_show_help_string("help-pmixcc.txt",
                                             "version", false,
                                             argv[0], options_data[user_data_idx].project, options_data[user_data_idx].version, options_data[user_data_idx].language, NULL);
                 if (NULL != str) {
@@ -668,7 +668,7 @@ main(int argc, char *argv[])
             } else if (0 == strncmp(user_argv[i], "-showme:help", strlen("-showme:help")) ||
                        0 == strncmp(user_argv[i], "--showme:help", strlen("--showme:help"))) {
                 char *str;
-                str = pmix_show_help_string("help-pmix-wrapper.txt", "usage",
+                str = pmix_show_help_string("help-pmixcc.txt", "usage",
                                             false, argv[0],
                                             options_data[user_data_idx].project,
                                             NULL);
@@ -803,7 +803,7 @@ main(int argc, char *argv[])
     /* This error would normally not happen unless the user edits the
        wrapper data files manually */
     if (NULL == exec_argv) {
-        pmix_show_help("help-pmix-wrapper.txt", "no-compiler-specified", true);
+        pmix_show_help("help-pmixcc.txt", "no-compiler-specified", true);
         return 1;
     }
 
@@ -938,7 +938,7 @@ main(int argc, char *argv[])
 
         tmp = pmix_path_findv(exec_argv[0], 0, environ, NULL);
         if (NULL == tmp) {
-            pmix_show_help("help-pmix-wrapper.txt", "no-compiler-found", true,
+            pmix_show_help("help-pmixcc.txt", "no-compiler-found", true,
                            exec_argv[0], NULL);
             errno = 0;
             exit_status = 1;
@@ -954,11 +954,11 @@ main(int argc, char *argv[])
             if( (PMIX_SUCCESS != ret) || ((0 != exit_status) && (flags & COMP_SHOW_ERROR)) ) {
                 char* exec_command = pmix_argv_join(exec_argv, ' ');
                 if( PMIX_SUCCESS != ret ) {
-                    pmix_show_help("help-pmix-wrapper.txt", "spawn-failed", true,
+                    pmix_show_help("help-pmixcc.txt", "spawn-failed", true,
                                    exec_argv[0], strerror(status), exec_command, NULL);
                 } else {
 #if 0
-                    pmix_show_help("help-pmix-wrapper.txt", "compiler-failed", true,
+                    pmix_show_help("help-pmixcc.txt", "compiler-failed", true,
                                    exec_argv[0], exit_status, exec_command, NULL);
 #endif
                 }
