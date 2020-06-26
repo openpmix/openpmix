@@ -151,6 +151,12 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
         return "UNPACK-PAST-END";
     case PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES:
         return "PMIX CONFLICTING CLEANUP DIRECTIVES";
+    case PMIX_ERR_PARTIAL_SUCCESS:
+        return "PARTIAL SUCCESS";
+    case PMIX_ERR_DUPLICATE_KEY:
+        return "DUPLICATE KEY";
+    case PMIX_ERR_GET_MALLOC_REQD:
+        return "GET REQD MALLOC";
     case PMIX_ERR_IOF_FAILURE:
         return "IOF FAILURE";
     case PMIX_ERR_IOF_COMPLETE:
@@ -233,9 +239,13 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
         return "GROUP-LEADER-FAILED";
     case PMIX_GROUP_CONTEXT_ID_ASSIGNED:
         return "GROUP-CONTEXT-ID-ASSIGNED";
+    case PMIX_GROUP_MEMBER_FAILED:
+        return "GROUP-MEMBER-FAILED";
 
     case PMIX_FABRIC_UPDATED:
         return "FABRIC-UPDATED";
+    case PMIX_FABRIC_UPDATE_PENDING:
+        return "FABRIC-UPDATE-PENDING";
     case PMIX_ERR_REPEAT_ATTR_REGISTRATION:
         return "REPEAT-ATTRIBUTE-REGISTRATION";
 
@@ -305,6 +315,8 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
         return "NON-ZERO TERMINATION";
     case PMIX_ERR_JOB_ALLOC_FAILED:
         return "FAILED TO OBTAIN ALLOCATION";
+    case PMIX_ERR_JOB_ABORTED_BY_SYS_EVENT:
+        return "JOB ABORTED BY SYSTEM EVENT";
 
     default:
         return "ERROR STRING NOT FOUND";
