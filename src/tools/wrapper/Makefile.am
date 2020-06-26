@@ -31,6 +31,7 @@ MD_FILES_NOINST = \
 
 man_pages_from_md = $(MD_FILES:.1.md=.1)
 man_pages_from_md_noinst = $(MD_FILES_NOINST:.1.md=.1)
+man_pages_from_md_all = $(man_pages_from_md) $(man_pages_from_md_noinst)
 
 EXTRA_DIST = $(MD_FILES) $(MD_FILES_NOINST) $(man_pages_from_md) $(man_pages_from_md_noinst)
 
@@ -68,6 +69,13 @@ endif # PMIX_INSTALL_BINARIES
 
 pmix_wrapper_SOURCES = pmix_wrapper.c
 pmix_wrapper_LDADD = $(top_builddir)/src/libpmix.la
+
+# Ensure that the man pages are rebuilt if the pmix_config.h file
+# changes; a "good enough" way to know if configure was run again (and
+# therefore the release date or version may have changed)
+# Additionally, this ensures that generic_wrapper.1 is a probably build target
+# in some build environments with VPATH that might skip it and fail.
+$(man_pages_from_md_all): $(top_builddir)/src/include/pmix_config.h
 
 pmixcc.1: generic_wrapper.1
 	rm -f pmixcc.1
