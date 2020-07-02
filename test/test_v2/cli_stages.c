@@ -183,7 +183,7 @@ void cli_kill_all(void)
     int i;
     for(i = 0; i < cli_info_cnt; i++){
         if( CLI_UNINIT == cli_info[i].state ){
-            TEST_ERROR(("Skip rank %d as it wasn't ever initialized (shouldn't happe)",
+            TEST_ERROR(("Skip rank %d as it wasn't ever initialized (shouldn't happen)",
                           i));
             continue;
         } else if( CLI_TERM <= cli_info[i].state ){

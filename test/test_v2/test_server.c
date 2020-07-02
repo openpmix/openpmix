@@ -35,6 +35,7 @@ server_info_t *my_server_info = NULL;
 pmix_list_t *server_list = NULL;
 pmix_list_t *server_nspace = NULL;
 
+/* server destructor */
 static void sdes(server_info_t *s)
 {
     close(s->rd_fd);
@@ -48,6 +49,7 @@ static void sdes(server_info_t *s)
     }
 }
 
+/* server constructor */
 static void scon(server_info_t *s)
 {
     s->hostname = NULL;
@@ -64,6 +66,7 @@ PMIX_CLASS_INSTANCE(server_info_t,
                     pmix_list_item_t,
                     scon, sdes);
 
+/* namespace destructor */
 static void nsdes(server_nspace_t *ns)
 {
     if (ns->task_map) {
@@ -71,6 +74,7 @@ static void nsdes(server_nspace_t *ns)
     }
 }
 
+/* namespace constructor */
 static void nscon(server_nspace_t *ns)
 {
     memset(ns->name, 0, PMIX_MAX_NSLEN);
@@ -92,6 +96,7 @@ static void server_unpack_dmdx(char *buf, int *sender, pmix_proc_t *proc);
 static int server_pack_dmdx(int sender_id, const char *nspace, int rank,
                             char **buf);
 static void _dmdx_cb(int status, char *data, size_t sz, void *cbdata);
+static void fill_global_validation_params(pmix_proc_t proc, int local_size, int univ_size, test_params *params, validation_params *v_params);
 
 static void release_cb(pmix_status_t status, void *cbdata)
 {
@@ -837,7 +842,7 @@ static void wait_signal_callback(int fd, short event, void *arg)
     test_complete = true;
 }
 
-int server_init(test_params *params)
+int server_init(test_params *params, validation_params *val_params)
 {
     pmix_info_t info[2];
     int rc = PMIX_SUCCESS;
@@ -990,8 +995,25 @@ exit:
     return total_ret;
 }
 
+static void fill_global_validation_params(pmix_proc_t proc, int local_size, int univ_size,
+                                   test_params *params, validation_params *v_params)
+{
+    v_params->validate_params = true;
+    params->validate_params = 1;
+
+    PMIXT_VAL_PARAM_SETSTR(v_params, pmix_nspace, proc.nspace, PMIX_MAX_NSLEN);
+    // more will be added as validation_params struct grows
+}
+
+int fill_client_validation_params(pmix_proc_t proc, validation_params *val_params)
+{
+    PMIXT_VAL_PARAM_SETNUM(val_params, pmix_rank, proc.rank);
+    // this function will be filled out as validation_params struct grows
+    return PMIX_SUCCESS;
+}
+
 int server_launch_clients(int local_size, int univ_size, int base_rank,
-                   test_params *params, char *** client_env, char ***base_argv)
+                   test_params *params, validation_params *v_params, char *** client_env, char ***base_argv)
 {
     int n;
     uid_t myuid;
@@ -1003,14 +1025,12 @@ int server_launch_clients(int local_size, int univ_size, int base_rank,
     static int num_ns = 0;
     pmix_proc_t proc;
     int rank_counter = 0;
+    validation_params local_v_params;
+    char *vptr;
     server_nspace_t *nspace_item = PMIX_NEW(server_nspace_t);
 
-    TEST_VERBOSE(("%d: lsize: %d, base rank %d, local_size %d, univ_size %d",
-                  my_server_id,
-                  params->lsize,
-                  base_rank,
-                  local_size,
-                  univ_size));
+    TEST_VERBOSE(("%d: lsize: %d, base rank %d, local_size %d, univ_size %d", my_server_id, params->lsize, base_rank,
+                  local_size, univ_size));
 
     TEST_VERBOSE(("Setting job info"));
     (void)snprintf(proc.nspace, PMIX_MAX_NSLEN, "%s-%d", TEST_NAMESPACE, num_ns);
@@ -1018,6 +1038,7 @@ int server_launch_clients(int local_size, int univ_size, int base_rank,
     if (NULL != ranks) {
         free(ranks);
     }
+
     /* add namespace entry */
     nspace_item->ntasks = univ_size;
     nspace_item->ltasks = local_size;
@@ -1025,6 +1046,9 @@ int server_launch_clients(int local_size, int univ_size, int base_rank,
     memset(nspace_item->task_map, -1, sizeof(int)*univ_size);
     strcpy(nspace_item->name, proc.nspace);
     pmix_list_append(server_nspace, &nspace_item->super);
+    /* populate our validation parameters with all non-client-specific information */
+    fill_global_validation_params(proc, local_size, univ_size, params, v_params);
+
     for (n = 0; n < local_size; n++) {
         proc.rank = base_rank + n;
         nspace_item->task_map[proc.rank] = my_server_id;
@@ -1051,9 +1075,11 @@ int server_launch_clients(int local_size, int univ_size, int base_rank,
             cli_kill_all();
             return rc;
         }
-        TEST_VERBOSE(("run %s:%d", proc.nspace, proc.rank));
+        TEST_VERBOSE(("run namespace:%s rank:%d", proc.nspace, proc.rank));
 
         cli_info[cli_counter].pid = fork();
+        //sleep for debugging purposes (to attach to clients)
+        //sleep(60);
         if (cli_info[cli_counter].pid < 0) {
             TEST_ERROR(("Fork failed"));
             PMIx_server_finalize();
@@ -1065,14 +1091,31 @@ int server_launch_clients(int local_size, int univ_size, int base_rank,
 
         char **client_argv = pmix_argv_copy(*base_argv);
 
+        // assign values of globally applicable params
+        local_v_params = *v_params; // is copying into a local truly necessary? we run the
+                                   // risk of messing up any pointers that might be in
+                                   // the struct later because this is a 'shallow' copy
+        /* client-specific params filled in by fill_client_validation_params() */
+        if (params->validate_params) {
+            if (PMIX_SUCCESS != fill_client_validation_params(proc, &local_v_params)) {
+                TEST_VERBOSE(("Unable to populate client-specific validation params."));
+                exit(1);
+            }
+            vptr = (char *) &local_v_params;
+            char *v_params_ascii = pmixt_encode(vptr, sizeof(local_v_params));
+            /* provide the validation data to the client */
+            pmix_argv_append_nosize(&client_argv, "--validate-params");
+            pmix_argv_append_nosize(&client_argv, v_params_ascii);
+            free(v_params_ascii);
+        }
         /* add two last arguments: -r <rank> */
+        /*
         sprintf(digit, "%d", proc.rank);
         pmix_argv_append_nosize(&client_argv, "-r");
         pmix_argv_append_nosize(&client_argv, digit);
-
         pmix_argv_append_nosize(&client_argv, "-s");
         pmix_argv_append_nosize(&client_argv, proc.nspace);
-
+        */
         sprintf(digit, "%d", univ_size);
         pmix_argv_append_nosize(&client_argv, "--ns-size");
         pmix_argv_append_nosize(&client_argv, digit);

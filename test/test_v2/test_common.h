@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <sys/time.h>
 
 #include "src/include/pmix_globals.h"
@@ -37,20 +38,20 @@
 
 #define TEST_CREDENTIAL "dummy"
 
-#define PMIXT_CHECK_EXPECT(stmt, expected_val, params) \
+#define PMIXT_VALIDATION_PARAMS_VER 1
+
+#define PMIXT_CHECK_EXPECT(rc, expected_rc, params, vparams) \
 do {                                                   \
-   int pmix_rc = (stmt);                               \
-   if (expected_val != pmix_rc) {                      \
+   int pmix_rc = (rc);                               \
+   if (expected_rc != pmix_rc) {                      \
        TEST_ERROR(("Client ns %s rank %d: PMIx call failed: %s", \
-           params.nspace, params.rank,                 \
-	   PMIx_Error_string(pmix_rc)));               \
-       free_test_params(&params);                      \
-       exit(pmix_rc);                                  \
+           vparams.pmix_nspace, vparams.pmix_rank,           \
+	   PMIx_Error_string(pmix_rc)));                   \
+       exit(-1);                                       \
    }                                                   \
-   assert(expected_val == pmix_rc);                    \
 } while (0)
 
-#define PMIXT_CHECK(stmt, params) PMIXT_CHECK_EXPECT(stmt, PMIX_SUCCESS, params)
+#define PMIXT_CHECK(stmt, params, vparams) PMIXT_CHECK_EXPECT(stmt, PMIX_SUCCESS, params, vparams)
 
 #define PMIX_WAIT_FOR_COMPLETION(m) \
     do {                            \
@@ -130,6 +131,62 @@ extern FILE *file;
     } \
 }
 
+#define PMIXT_VAL_PARAM_SETNUM(base, field, val) {\
+    base->field = val;               \
+    base->check_ ## field = true;    \
+}
+
+#define PMIXT_VAL_PARAM_SETSTR(base, field, val, len) {\
+    strncpy(base->field, val, len);               \
+    base->check_ ## field = true;    \
+}
+
+/* a convenience macro for checking keys (test suite-specific) */
+#define PMIXT_CHECK_KEY(a, b) \
+    (0 == strncmp((a), (b), PMIX_MAX_KEYLEN))
+
+// order of these fields should be in order that we introduce them
+typedef struct {
+    uint32_t version;
+    bool validate_params;
+    bool check_pmix_rank;
+    pmix_rank_t pmix_rank;
+    bool check_pmix_nspace;
+    pmix_nspace_t pmix_nspace;
+    /*
+    bool check_pmix_job_size;
+    uint32_t pmix_job_size;
+    bool check_pmix_univ_size;
+    uint32_t pmix_univ_size;
+    bool check_pmix_jobid;
+    char pmix_jobid[PMIX_MAX_KEYLEN];
+    bool check_pmix_local_size;
+    uint32_t pmix_local_size; 
+    bool check_pmix_local_rank;
+    uint16_t pmix_local_rank;
+    bool check_pmix_job_num_apps; 
+    uint32_t pmix_job_num_apps; 
+    bool check_pmix_app_size; 
+    uint32_t pmix_app_size; 
+    bool check_pmix_node_size;
+    uint32_t pmix_node_size;
+    bool check_pmix_max_procs;
+    uint32_t pmix_max_procs;
+    bool check_pmix_num_slots;
+    uint32_t pmix_num_slots;
+    bool check_pmix_num_nodes;
+    uint32_t pmix_num_nodes;
+    bool check_pmix_node_rank;
+    uint16_t pmix_node_rank;
+    bool check_pmix_nodeid;
+    uint32_t pmix_nodeid;
+    */
+    // more as needed
+} validation_params;
+
+validation_params val_params;
+char *v_params_ascii_str;
+
 typedef struct {
     char *binary;
     char *np;
@@ -147,6 +204,7 @@ typedef struct {
     pmix_rank_t base_rank;
     int nservers;
     uint32_t lsize;
+    int validate_params;
 } test_params;
 
 extern test_params params;
@@ -156,12 +214,19 @@ int parse_fence(char *fence_param, int store);
 int parse_noise(char *noise_param, int store);
 int parse_replace(char *replace_param, int store, int *key_num);
 
-void init_test_params(test_params *params);
-void free_test_params(test_params *params);
-void pmixt_fix_rank_and_ns(pmix_proc_t *this_proc, test_params *params);
-void pmixt_post_init(pmix_proc_t *this_proc, test_params *params);
-void pmixt_post_finalize(pmix_proc_t *this_proc, test_params *params);
-void pmixt_pre_init(int argc, char **argv, test_params *params);
+void default_params(test_params *params, validation_params *v_params);
+void free_params(test_params *params, validation_params *vparams);
+void set_client_argv(test_params *params, char ***argv);
+
+void pmixt_fix_rank_and_ns(pmix_proc_t *this_proc, test_params *params, validation_params *v_params);
+void pmixt_post_init(pmix_proc_t *this_proc, test_params *params, validation_params *val_params);
+void pmixt_post_finalize(pmix_proc_t *this_proc, test_params *params, validation_params *v_params);
+void pmixt_pre_init(int argc, char **argv, test_params *params, validation_params *v_params);
+void pmixt_validate_predefined(pmix_proc_t *myproc, const pmix_key_t key, pmix_value_t *value, validation_params *val_params);
+
+char *pmixt_encode(const void *val, size_t vallen);
+ssize_t pmixt_decode (const char *data, void *decdata, size_t buffsz);
+//char *pmixt_decode (const char *data, size_t *retlen);
 
 typedef struct {
     pmix_list_item_t super;
@@ -271,6 +336,11 @@ typedef struct {
         PMIX_VALUE_RELEASE(val);                                                                                    \
     }                                                                                                               \
 } while (0)
+
+#define PMIXT_OUTPUT_VALUE(this_proc, ns, r, key, datatype, value) do {         \
+    // we use the datatype of the value to extract the value                    \
+} while (0)
+
 
 #define FENCE(blocking, data_ex, pcs, nprocs) do {                              \
     if( blocking ){                                                             \
