@@ -55,7 +55,7 @@ int main(int argc, char **argv)
     int ns_nprocs;
     sigset_t unblock;
 
-    init_test_params(&params);
+    default_params(&params, &val_params);
 
     /* smoke test */
     if (PMIX_SUCCESS != 0) {
@@ -79,15 +79,15 @@ int main(int argc, char **argv)
     /* verify executable */
     if( 0 > ( rc = stat(params.binary, &stat_buf) ) ){
         TEST_ERROR(("Cannot stat() executable \"%s\": %d: %s", params.binary, errno, strerror(errno)));
-        free_test_params(&params);
+        free_params(&params, &val_params);
         return 0;
     } else if( !S_ISREG(stat_buf.st_mode) ){
         TEST_ERROR(("Client executable \"%s\": is not a regular file", params.binary));
-        free_test_params(&params);
+        free_params(&params, &val_params);
         return 0;
     }else if( !(stat_buf.st_mode & S_IXUSR) ){
         TEST_ERROR(("Client executable \"%s\": has no executable flag", params.binary));
-        free_test_params(&params);
+        free_params(&params, &val_params);
         return 0;
     }
 
@@ -105,8 +105,8 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    if (PMIX_SUCCESS != (rc = server_init(&params))) {
-        free_test_params(&params);
+    if (PMIX_SUCCESS != (rc = server_init(&params, &val_params))) {
+        free_params(&params, &val_params);
         return rc;
     }
 
@@ -127,7 +127,7 @@ int main(int argc, char **argv)
         /* we have a single namespace for all clients */
         ns_nprocs = params.nprocs;
         launched += server_launch_clients(params.lsize, params.nprocs, base_rank,
-                                   &params, &client_env, &client_argv);
+                                   &params, &val_params, &client_env, &client_argv);
     }
     if (params.lsize != (uint32_t)launched) {
         TEST_ERROR(("srv #%d: Total number of processes doesn't correspond number specified by ns_dist parameter.", my_server_id));
@@ -167,7 +167,7 @@ int main(int argc, char **argv)
     test_fail += server_finalize(&params, test_fail);
 
     TEST_VERBOSE(("srv #%d: exit sequence!", my_server_id));
-    free_test_params(&params);
+    free_params(&params, &val_params);
     pmix_argv_free(client_argv);
     pmix_argv_free(client_env);
 

@@ -37,6 +37,14 @@ char *pmix_test_output_prepare(const char *fmt, ... )
     return output;
 }
 
+// presently a placeholder - to be developed into a client-only command parser,
+// separating the processing logic for client command line options from that for
+// other callers (test app or server), unlike how parse_cmd() presently works.
+void parse_cmd_client(int argc, char **argv, test_params *params, validation_params *v_params)
+{
+    ;
+}
+
 void parse_cmd(int argc, char **argv, test_params *params)
 {
     int i;
@@ -100,11 +108,13 @@ void parse_cmd(int argc, char **argv, test_params *params)
             if (NULL != argv[i]) {
                 params->prefix = strdup(argv[i]);
             }
+        /*
         } else if( 0 == strcmp(argv[i], "-s")) {
             i++;
             if (NULL != argv[i]) {
                 params->nspace = strdup(argv[i]);
-            }
+
+        */
         } else if (0 == strcmp(argv[i], "--rank") || 0 == strcmp(argv[i], "-r")) {
             i++;
             if (NULL != argv[i]) {
@@ -131,7 +141,12 @@ void parse_cmd(int argc, char **argv, test_params *params)
             if (NULL != argv[i]) {
                 params->base_rank = strtol(argv[i], NULL, 10);
             }
-	}
+
+        } else if (0 == strcmp(argv[i], "--validate-params")) {
+            i++;
+            params->validate_params = 1;
+            v_params_ascii_str = strdup(argv[i]);
+	    }
         else {
             fprintf(stderr, "unrecognized option: %s\n", argv[i]);
             exit(1);
@@ -170,26 +185,42 @@ void parse_cmd(int argc, char **argv, test_params *params)
     }
 }
 
-void init_test_params(test_params *params) {
-    params->nprocs = 1;                
-    params->verbose = 0;               
-    params->rank = PMIX_RANK_UNDEF;    
-    params->base_rank = 0;             
-    params->ns_size = -1;              
-    params->ns_id = -1;                
-    params->timeout = TEST_DEFAULT_TIMEOUT; 
-    params->collect = 0;               
-    params->collect_bad = 0;           
-    params->nonblocking = 0;           
-    params->binary = NULL;             
-    params->np = NULL;                 
-    params->prefix = NULL;             
-    params->nspace = NULL;             
-    params->nservers = 1;              
-    params->lsize = 0;                 
+void default_params(test_params *params, validation_params *v_params) {
+    params->binary = NULL;
+    params->np = NULL;
+    params->prefix = NULL;
+    params->nspace = NULL;
+    params->nprocs = 1;
+    params->timeout = TEST_DEFAULT_TIMEOUT;
+    params->verbose = 0;
+    params->rank = PMIX_RANK_UNDEF;
+    params->collect_bad = 0;
+    params->collect = 0;
+    params->nonblocking = 0;
+    params->ns_size = -1;
+    params->ns_id = -1;
+    params->base_rank = 0;
+    params->nservers = 1;
+    params->lsize = 0;
+    params->validate_params = 0;
+
+    v_params->version = PMIXT_VALIDATION_PARAMS_VER;
+    v_params->validate_params = false;
+    v_params->check_pmix_rank = false;
+    v_params->pmix_rank = PMIX_RANK_UNDEF;
+    v_params->check_pmix_nspace = false;
+    v_params->pmix_nspace[0] = '\0';
+/*
+    v_params->check_pmix_job_size = false;
+    v_params->pmix_job_size = 0;
+    v_params->check_pmix_univ_size = false;
+    v_params->pmix_univ_size = 0;
+    v_params->check_pmix_jobid = false;
+    v_params->pmix_jobid[0] = '\0';
+    */
 }
 
-void free_test_params(test_params *params) { 
+void free_params(test_params *params, validation_params *vparams) {
     if (NULL != params->binary) {      
         free(params->binary);          
     }                                 
@@ -201,19 +232,64 @@ void free_test_params(test_params *params) {
     }                                 
     if (NULL != params->nspace) {      
         free(params->nspace);          
-    }                                 
+    }
+    if (NULL != v_params_ascii_str) {
+        free(v_params_ascii_str);
+    }
 } 
 
-void pmixt_pre_init(int argc, char **argv, test_params *params) {
+void set_client_argv(test_params *params, char ***argv)
+{
+    pmix_argv_append_nosize(argv, params->binary);
+    pmix_argv_append_nosize(argv, "-n");
+    if (NULL == params->np) {
+        pmix_argv_append_nosize(argv, "1");
+    } else {
+        pmix_argv_append_nosize(argv, params->np);
+    }
+    if( params->verbose ){
+        pmix_argv_append_nosize(argv, "-v");
+    }
+    if (NULL != params->prefix) {
+        pmix_argv_append_nosize(argv, "-o");
+        pmix_argv_append_nosize(argv, params->prefix);
+    }
+    if (params->nonblocking) {
+        pmix_argv_append_nosize(argv, "-nb");
+    }
+    if (params->collect) {
+        pmix_argv_append_nosize(argv, "-c");
+    }
+    if (params->collect_bad) {
+        pmix_argv_append_nosize(argv, "--collect-corrupt");
+    }
+}
+void pmixt_pre_init(int argc, char **argv, test_params *params, validation_params *v_params) {
 
-    init_test_params(params);
+    ssize_t v_size = -1;
+
+    default_params(params, v_params);
     parse_cmd(argc, argv, params);
+    //parse_cmd_client(argc, argv, params, v_params);
+
+    if (params->validate_params) {
+        v_size = pmixt_decode(v_params_ascii_str, v_params, sizeof(*v_params));
+        if (v_size != sizeof(*v_params)) {
+            assert(v_size == sizeof(*v_params));
+            exit(1);
+        }
+    }
+    else {
+        // we're not doing any parameter validation - is this reasonable?
+        TEST_VERBOSE(("Parameter validation disabled\n"));
+    }
+
     /* set filename if available in params */
     if ( NULL != params->prefix && -1 != params->ns_id ) {
 	char *fname = malloc( strlen(params->prefix) + MAX_DIGIT_LEN + 2 ); 
         sprintf(fname, "%s.%d.%d", params->prefix, params->ns_id, params->rank); 
         file = fopen(fname, "w"); 
-        free(fname); 
+        free(fname);
         if( NULL == file ){ 
             fprintf(stderr, "Cannot open file %s for writing!", fname); 
             exit(1); 
@@ -224,9 +300,9 @@ void pmixt_pre_init(int argc, char **argv, test_params *params) {
     }
 }
 
-void pmixt_fix_rank_and_ns(pmix_proc_t *this_proc, test_params *params) {
+void pmixt_fix_rank_and_ns(pmix_proc_t *this_proc, test_params *params, validation_params *v_params) {
     // Fix rank if running under RM
-    if( PMIX_RANK_UNDEF == params->rank ){
+    if( PMIX_RANK_UNDEF == v_params->pmix_rank ){
         char *ranklist = getenv("SLURM_GTIDS");
         char *rankno = getenv("SLURM_LOCALID");
         // Fix rank if running under SLURM
@@ -238,9 +314,12 @@ void pmixt_fix_rank_and_ns(pmix_proc_t *this_proc, test_params *params) {
                 fprintf(stderr, "It feels like we are running under SLURM:\n\t"
                         "SLURM_GTIDS=%s, SLURM_LOCALID=%s\nbut env vars are conflicting\n",
                         ranklist, rankno);
+                if( (stdout != file) && (stderr != file) ) {
+                    fclose(file);
+                }
                 exit(1);
             }
-            params->rank = strtoul(argv[rankidx], NULL, 10);
+            v_params->pmix_rank = strtoul(argv[rankidx], NULL, 10);
             pmix_argv_free(argv);
         }
         else if ( NULL == getenv("PMIX_RANK") ) { /* we must not be running under SLURM */
@@ -254,6 +333,9 @@ void pmixt_fix_rank_and_ns(pmix_proc_t *this_proc, test_params *params) {
             fprintf(stderr, "It feels like we are running under SLURM:\n\t"
                     "PMIX_RANK=%s\nbut SLURM env vars are null\n",
                     getenv("PMIX_RANK"));
+            if( (stdout != file) && (stderr != file) ) {
+                  fclose(file);
+            }
             exit(1);
         }
     }
@@ -268,31 +350,80 @@ void pmixt_fix_rank_and_ns(pmix_proc_t *this_proc, test_params *params) {
 	          in your custom fix_rank_and_ns_rm_* function! */
             fprintf(stderr, "nspace not set. Is the fix_rank_and_ns_rm_*"
 	            " function for this resource manager failing to set it?\n");
+            if( (stdout != file) && (stderr != file) ) {
+                fclose(file);
+            }
             exit(1);
         }
     }
 
-    if (this_proc->rank != params->rank) {
+    if (this_proc->rank != v_params->pmix_rank) {
         TEST_ERROR(("Client ns %s Rank returned in PMIx_Init %d does not match rank from command line %d.", 
-	    this_proc->nspace, this_proc->rank, params->rank));
-        free_test_params(params);
+	    this_proc->nspace, this_proc->rank, v_params->pmix_rank));
+        if( (stdout != file) && (stderr != file) ) {
+            fclose(file);
+        }
         exit(1);
     }
 }
 
-void pmixt_post_init(pmix_proc_t *this_proc, test_params *params) {
-    pmixt_fix_rank_and_ns(this_proc, params);
-    TEST_VERBOSE((" Client ns %s rank %d: PMIx_Init success", this_proc->nspace, this_proc->rank));
- 
+void pmixt_post_init(pmix_proc_t *this_proc, test_params *params, validation_params *val_params) {
+    pmixt_fix_rank_and_ns(this_proc, params, val_params);
+    TEST_VERBOSE((" Client/PMIX ns %s rank %d: PMIx_Init success", this_proc->nspace, this_proc->rank));
 }
 
-void pmixt_post_finalize(pmix_proc_t *this_proc, test_params *params) {
+void pmixt_post_finalize(pmix_proc_t *this_proc, test_params *params, validation_params *v_params) {
     TEST_VERBOSE((" Client ns %s rank %d: PMIx_Finalize success", this_proc->nspace, this_proc->rank));
     if( (stdout != file) && (stderr != file) ) {
         fclose(file);
     }
-    free_test_params(params);
+    free_params(params, v_params);
     exit(EXIT_SUCCESS);
+}
+
+void pmixt_validate_predefined(pmix_proc_t *myproc, const pmix_key_t key, pmix_value_t *value, validation_params *val_params)
+{
+    pmix_status_t rc = PMIX_ERROR;
+    size_t *size;
+    // To be developed.
+    ;
+}
+
+/* lifted from contrib/perf_tools/pmix.c, pmi_get_local_ranks() */
+// Not sure how to go about validating what we get here, which comes from PMIx_Get
+void pmixt_get_local_ranks(pmix_proc_t *this_proc, int **local_ranks, int *local_cnt) {
+    pmix_value_t value, *val = &value;
+    char *ptr;
+    int i, rc;
+    //pmix_proc_t job_proc = &this_proc;
+#if (PMIX_VERSION_MAJOR > 1 )
+    this_proc->rank = PMIX_RANK_WILDCARD;
+#endif
+
+    /* get our job size */
+    if (PMIX_SUCCESS != (rc = PMIx_Get(this_proc, PMIX_LOCAL_SIZE, NULL, 0, &val))) {
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Get PMIX_LOCAL_SIZE failed: %d", this_proc->nspace, this_proc->rank, rc);
+        abort();
+    }
+    *local_cnt = val->data.uint32;
+    PMIX_VALUE_RELEASE(val);
+
+    *local_ranks = calloc(*local_cnt, sizeof(int));
+    /* get our job size */
+    if (PMIX_SUCCESS != (rc = PMIx_Get(this_proc, PMIX_LOCAL_PEERS, NULL, 0, &val))) {
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Get PMIX_LOCAL_PEERS failed: %d", this_proc->nspace, this_proc->rank, rc);
+        abort();
+    }
+    ptr = val->data.string;
+    for(i=0; NULL != ptr && i < *local_cnt; i++ ){
+         char *loc_rank = strsep(&ptr, ",");
+         (*local_ranks)[i] = atoi(loc_rank);
+    }
+    if( i != *local_cnt || NULL != ptr ){
+        fprintf(stderr, "Client ns %s rank %d: number of local peers doesn't match",
+                this_proc->nspace, this_proc->rank);
+        abort();
+    }
 }
 
 static void fcon(fence_desc_t *p)
@@ -522,6 +653,7 @@ int parse_fence(char *fence_param, int store)
     free(tmp);
     return ret;
 }
+
 
 static int is_digit(const char *str)
 {
