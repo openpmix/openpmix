@@ -422,7 +422,7 @@ static void set_namespace(int nprocs, char *ranks, char *nspace,
     char hostname[PMIX_MAXHOSTNAMELEN];
     pmix_status_t rc;
     myxfer_t myxfer;
-    size_t i;
+    size_t i = 0;
 
     gethostname(hostname, sizeof(hostname));
 
@@ -484,6 +484,7 @@ static void set_namespace(int nprocs, char *ranks, char *nspace,
 
     PMIx_server_register_nspace(nspace, nprocs, x->info, x->ninfo,
                                 cbfunc, x);
+
 }
 
 static void errhandler(size_t evhdlr_registration_id,
