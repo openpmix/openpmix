@@ -59,28 +59,6 @@ pmix_pstrg_base_module_t pmix_pstrg_lustre_module = {
     .query = query
 };
 
-typedef struct {
-    char *name;
-    char *mountpt;
-    uint64_t cap;
-    uint64_t free;
-    uint64_t avail;
-    uint64_t bw;
-    uint64_t availbw;
-} lustre_storage_t;
-
-static lustre_storage_t availsys[] = {
-    {.name = "lustre1", .mountpt = "/scratch1", .cap = 123456, .free = 5678,
-     .avail = 131, .bw = 100.0, .availbw = 13.2},
-
-    {.name = "lustre2", .mountpt = "/scratch2", .cap = 789, .free = 178,
-     .avail = 100, .bw = 10.0, .availbw = 2.2},
-
-    {.name = "lustre3", .mountpt = "/usr/tmp", .cap = 91, .free = 35,
-     .avail = 81, .bw = 5.0, .availbw = 42},
-    {.name = NULL}
-};
-
 static pmix_status_t lustre_init(void)
 {
     pmix_output_verbose(2, pmix_pstrg_base_framework.framework_output,
@@ -127,9 +105,6 @@ static pmix_status_t query(pmix_query_t queries[], size_t nqueries,
     mountpt = pmix_argv_split("foo,bar", ',');
     pmix_argv_free(mountpt);
     mountpt = NULL;
-    if (availsys[0].cap != 123456) {
-        return PMIX_ERROR;
-    }
 
     /* now on to the real code */
 
