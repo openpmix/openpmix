@@ -411,7 +411,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
         /* A local client may send a get request concurrently with
          * a commit request from another client, but the server may
-         * have processed the commit request earlyer than the get
+         * have processed the commit request earlier than the get
          * request. In this case, we create a local tracker for
          * possibly existing keys that are added with the completed
          * commit request. Thus, the get request will be pended in
@@ -449,7 +449,8 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
             goto request;
         }
         /* we did find it, so go ahead and collect the payload */
-    } else if (PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 4, 0, 0)) {
+    } else if (!PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 2, 0)) {
+
         PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
         rc = get_job_data(nspace, cd, &pbkt);
         if (PMIX_SUCCESS != rc) {
