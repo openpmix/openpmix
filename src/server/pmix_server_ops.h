@@ -5,7 +5,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2020 IBM Corporation.  All rights reserved.
  * Copyright (c) 2016-2018 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * $COPYRIGHT$
@@ -166,6 +166,7 @@ typedef struct {
     bool tool_connections_allowed;
     char *tmpdir;                           // temporary directory for this server
     char *system_tmpdir;                    // system tmpdir
+    bool fence_localonly_opt;               // local-only fence optimization
     // verbosity for server get operations
     int get_output;
     int get_verbose;
