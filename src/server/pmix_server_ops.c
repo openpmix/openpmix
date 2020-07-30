@@ -7,7 +7,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016-2017 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2016-2019 IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2020 IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -734,7 +734,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
                             "fence LOCALLY complete");
         /* if this is a purely local fence (i.e., all participants are local),
          * then it is done and we notify accordingly */
-        if (trk->local) {
+        if (pmix_server_globals.fence_localonly_opt && trk->local) {
             /* the modexcbfunc thread-shifts the call prior to processing,
              * so it is okay to call it directly from here. The switchyard
              * will acknowledge successful acceptance of the fence request,
