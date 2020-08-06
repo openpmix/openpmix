@@ -1,6 +1,6 @@
 #!/usr/bin/env perl
 #
-# Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
+# Copyright (c) 2019      Intel, Inc.
 #
 # Copyright (c) 2019      Cisco Systems, Inc.  All rights reserved
 # $COPYRIGHT$
@@ -25,8 +25,6 @@ my @tests = ("-n 4 --ns-dist 3:1 --fence \"[db | 0:0-2;1:0]\"",
              "-n 5 --test-internal 10",
              "-s 1 -n 2 --job-fence",
              "-s 1 -n 2 --job-fence -c");
-#             "-s 2 -n 2 --job-fence",
-#            "-s 2 -n 2 --job-fence -c");
 
 my $test;
 my $cmd;

@@ -10,7 +10,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2006-2016 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2006-2020 Cisco Systems, Inc.  All rights reserved
 # Copyright (c) 2006-2008 Sun Microsystems, Inc.  All rights reserved.
 # Copyright (c) 2006-2017 Los Alamos National Security, LLC.  All rights
 #                         reserved.
@@ -94,7 +94,7 @@ pmix_show_title "Configuring PMIx"
 AC_CANONICAL_TARGET
 
 # Init automake
-AM_INIT_AUTOMAKE([foreign dist-bzip2 subdir-objects no-define 1.13.4 -Wall -Werror])
+AM_INIT_AUTOMAKE([foreign dist-bzip2 subdir-objects no-define 1.13.4])
 
 # SILENT_RULES is new in AM 1.11, but we require 1.13.4 or higher via
 # autogen.  Limited testing shows that calling SILENT_RULES directly

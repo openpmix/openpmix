@@ -8,5 +8,5 @@ Description: Process Management Interface for Exascale (PMIx)
 Version: @PACKAGE_VERSION@
 URL: https://pmix.org/
 Requires: @PC_REQUIRES@
-Libs: -L${libdir} -pmix @PC_PRIVATE_LIBS@
+Libs: -L${libdir} -lpmix @PC_PRIVATE_LIBS@
 Cflags: -I${includedir}

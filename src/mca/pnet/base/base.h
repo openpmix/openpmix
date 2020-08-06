@@ -100,7 +100,9 @@ typedef struct {
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pnet_job_t);
 
 typedef struct {
-    pmix_object_t super;
+    pmix_list_item_t super;
+    char *name;
+    size_t index;
     /* provide access to the component
      * APIs that are managing this
      * fabric plane */
@@ -115,6 +117,7 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pnet_fabric_t);
 struct pmix_pnet_globals_t {
     pmix_lock_t lock;
     pmix_list_t actives;
+    pmix_list_t fabrics;
     bool initialized;
     bool selected;
     pmix_list_t jobs;

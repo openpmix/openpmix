@@ -1231,3 +1231,26 @@ pmix_status_t pmix_bfrops_base_pack_envar(pmix_pointer_array_t *regtypes,
     }
     return PMIX_SUCCESS;
 }
+
+pmix_status_t pmix_bfrops_base_pack_regex(pmix_pointer_array_t *regtypes,
+                                          pmix_buffer_t *buffer, const void *src,
+                                          int32_t num_vals, pmix_data_type_t type)
+{
+    char **ptr = (char**)src;
+    int32_t i;
+    pmix_status_t ret;
+
+    if (NULL == regtypes) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (PMIX_REGEX != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    for (i=0; i < num_vals; ++i) {
+        ret = pmix_preg.pack(buffer, ptr[i]);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
+    }
+    return PMIX_SUCCESS;
+}

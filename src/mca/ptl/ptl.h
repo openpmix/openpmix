@@ -127,6 +127,7 @@ typedef pmix_status_t (*pmix_ptl_connect_to_peer_fn_t)(struct pmix_peer_t *peer,
                                                        pmix_info_t info[], size_t ninfo);
 
 
+
 /**
  * Base structure for a PTL module
  */

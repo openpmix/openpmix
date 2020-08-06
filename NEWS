@@ -1,4 +1,4 @@
-Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
+Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
 Copyright (c) 2017-2020 IBM Corporation.  All rights reserved.
 $COPYRIGHT$
 
@@ -36,7 +36,7 @@ in accordance with an Errata update of the PMIx v3 Standard
 - PR #1433: Return the correct status from PMIx_Publish
 - PR #1445: Sync. with master to fix 'get' of data for unknown namespace
   Includes the following PRs from master
-  - PR #1382: dstore: fixed truncate key-names while restoring 
+  - PR #1382: dstore: fixed truncate key-names while restoring
   - PR #1405: Fix xnspace dmodex and add verbose debug
   - PR #1406: Resolve request for job-level data
   - PR #1407/#1409/#1411: Fix dmodex across nspaces
@@ -289,6 +289,17 @@ in accordance with an Errata update of the PMIx v3 Standard
      attributes to query available channels and to tag and
      format output.
 - Fix several memory and file descriptor leaks
+
+
+2.2.4 -- 07 Jun 2020
+----------------------
+- PR #1466: Silence spurious error log
+- PR #1489: Allow specification of hostname to use by client
+- PR #1499/#1512/#1518/#1525/#1528/#1533/#1553: Fix internal tests
+- PR #1678: Update "check_vendor" for PGI problem
+- PR #1734: Fix resource leaks in ptl/usock component
+- PR #1777: Fix crash of dstor locks destructor in ds12
+- PR #1788: Remove unnecessary error logs
 
 
 2.2.3 -- 15 Aug 2019

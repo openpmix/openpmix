@@ -39,7 +39,7 @@ pmix_status_t pmix_pnet_base_allocate(char *nspace,
                                       pmix_list_t *ilist)
 {
     pmix_pnet_base_active_module_t *active;
-    pmix_status_t rc = PMIX_SUCCESS;
+    pmix_status_t rc;
     pmix_namespace_t *nptr, *ns;
     size_t n;
     char **nodes, **procs;
@@ -122,7 +122,7 @@ pmix_status_t pmix_pnet_base_allocate(char *nspace,
         }
     }
 
-    return rc;
+    return PMIX_SUCCESS;
 }
 
 /* can only be called by a server */
@@ -532,6 +532,7 @@ void pmix_pnet_base_deliver_inventory(pmix_info_t info[], size_t ninfo,
     PMIX_RELEASE_THREAD(&myrollup->lock);
     return;
 }
+
 
 static pmix_status_t process_maps(char *nspace, char **nodes, char **procs)
 {

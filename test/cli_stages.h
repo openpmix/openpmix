@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2015-2018 Mellanox Technologies, Inc.
@@ -15,7 +15,7 @@
 #ifndef CLI_STAGES_H
 #define CLI_STAGES_H
 
-#include "src/include/pmix_config.h"
+#include <pmix_config.h>
 #include <signal.h>
 #include <fcntl.h>
 #include <sys/types.h>
@@ -25,6 +25,7 @@
 #include <sys/wait.h>
 #include <sys/time.h>
 #include <time.h>
+#include PMIX_EVENT_HEADER
 #include <errno.h>
 #include "src/include/pmix_globals.h"
 #include "pmix_server.h"
@@ -58,14 +59,12 @@ extern bool test_complete;
 
 int cli_rank(cli_info_t *cli);
 void cli_init(int nprocs);
-void cli_connect(cli_info_t *cli, int sd, struct event_base * ebase, event_callback_fn callback);
+void cli_connect(cli_info_t *cli, int sd, pmix_event_base_t * ebase, event_callback_fn callback);
 void cli_finalize(cli_info_t *cli);
 void cli_disconnect(cli_info_t *cli);
 void cli_terminate(cli_info_t *cli);
 void cli_cleanup(cli_info_t *cli);
 void cli_kill_all(void);
-
-bool test_terminated(void);
 
 void errhandler(size_t evhdlr_registration_id,
                 pmix_status_t status,

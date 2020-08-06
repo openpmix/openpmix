@@ -32,7 +32,6 @@
 #endif
 
 #include "include/pmix.h"
-#include "include/pmix_rename.h"
 
 #include "src/mca/bfrops/bfrops.h"
 #include "src/include/pmix_globals.h"
@@ -88,7 +87,7 @@ static pmix_peer_t* find_peer(const pmix_proc_t *proc)
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
         /* see if we know this proc */
         for (i=0; i < pmix_server_globals.clients.size; i++) {
-            if (NULL != (peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, i))) {
+            if (NULL == (peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, i))) {
                 continue;
             }
             if (0 == strncmp(proc->nspace, peer->nptr->nspace, PMIX_MAX_NSLEN)) {
@@ -180,7 +179,7 @@ PMIX_EXPORT pmix_status_t PMIx_Data_pack(const pmix_proc_t *target,
     pmix_peer_t *peer;
 
     if (NULL == (peer = find_peer(target))) {
-        return PMIX_ERR_NOT_SUPPORTED;
+        return PMIX_ERR_NOT_FOUND;
     }
 
     /* setup the host */
@@ -211,7 +210,7 @@ PMIX_EXPORT pmix_status_t PMIx_Data_unpack(const pmix_proc_t *source,
     pmix_peer_t *peer;
 
     if (NULL == (peer = find_peer(source))) {
-        return PMIX_ERR_NOT_SUPPORTED;
+        return PMIX_ERR_NOT_FOUND;
     }
 
     /* setup the host */

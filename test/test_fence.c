@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2016-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2017 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * $COPYRIGHT$
@@ -146,7 +146,8 @@ int test_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
             PMIX_PROC_CREATE(pcs, npcs);
             i = 0;
             PMIX_LIST_FOREACH(p, desc->participants, participant_t) {
-                PMIX_LOAD_PROCID(&pcs[i], p->proc.nspace, p->proc.rank);
+                (void)strncpy(pcs[i].nspace, p->proc.nspace, PMIX_MAX_NSLEN);
+                pcs[i].rank = p->proc.rank;
                 i++;
             }
 
@@ -174,7 +175,8 @@ int test_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
                     for (i = 0; i < nranks; i++) {
                         participant_t *prt;
                         prt = PMIX_NEW(participant_t);
-                        PMIX_LOAD_PROCID(&prt->proc, ranks[i].nspace, ranks[i].rank);
+                        strncpy(prt->proc.nspace, ranks[i].nspace, strlen(ranks[i].nspace)+1);
+                        prt->proc.rank = ranks[i].rank;
                         pmix_list_append(desc->participants, &prt->super);
                     }
                     PMIX_PROC_FREE(ranks, nranks);
@@ -187,7 +189,7 @@ int test_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
                 snprintf(sval, 500, "%d:%s:%d", fence_num, p->proc.nspace, p->proc.rank);
                 GET(string, sval, p->proc.nspace, p->proc.rank, fence_num, put_ind++, params.use_same_keys, 1, 0);
                 if (PMIX_SUCCESS != rc) {
-                    TEST_ERROR(("%s:%d: PMIx_Get failed (%s) from %s:%d", my_nspace, my_rank, PMIx_Error_string(rc), p->proc.nspace, p->proc.rank));
+                    TEST_ERROR(("%s:%d: PMIx_Get failed (%d) from %s:%d", my_nspace, my_rank, rc, p->proc.nspace, p->proc.rank));
                     PMIX_PROC_FREE(pcs, npcs);
                     PMIX_LIST_DESTRUCT(&test_fences);
                     exit(rc);
@@ -325,7 +327,6 @@ int test_job_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
     pmix_value_t value;
     pmix_value_t *val = &value;
     pmix_proc_t proc;
-    pmix_info_t info;
 
     (void)strncpy(proc.nspace, my_nspace, PMIX_MAX_NSLEN);
     proc.rank = my_rank;
@@ -416,16 +417,10 @@ int test_job_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
 
         /* ask for a non-existent key */
         proc.rank = i+params.base_rank;
-        j = 2;
-        PMIX_INFO_LOAD(&info, PMIX_TIMEOUT, &j, PMIX_INT);
-        PMIX_INFO_REQUIRED(&info);
-        if (PMIX_SUCCESS == (rc = PMIx_Get(&proc, "foobar", &info, 1, &val))) {
+        if (PMIX_SUCCESS == (rc = PMIx_Get(&proc, "foobar", NULL, 0, &val))) {
             TEST_ERROR(("%s:%d: PMIx_Get returned success instead of failure",
                         my_nspace, my_rank));
             exit(PMIX_ERROR);
-        }
-        if (PMIX_ERR_NOT_SUPPORTED == rc) {
-            goto cleanout;
         }
         if (PMIX_ERR_NOT_FOUND != rc && PMIX_ERR_PROC_ENTRY_NOT_FOUND != rc) {
             TEST_ERROR(("%s:%d [ERROR]: PMIx_Get returned %s instead of not_found",
@@ -436,10 +431,7 @@ int test_job_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
             TEST_ERROR(("%s:%d [ERROR]: PMIx_Get did not return NULL value", my_nspace, my_rank));
             exit(PMIX_ERROR);
         }
-
-      cleanout:
         TEST_VERBOSE(("%s:%d: rank %d is OK", my_nspace, my_rank, i+params.base_rank));
     }
-    free(peers);
     return PMIX_SUCCESS;
 }

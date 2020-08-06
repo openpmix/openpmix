@@ -20,7 +20,6 @@
 #include "include/pmix.h"
 #include "include/pmix_common.h"
 #include "include/pmix_server.h"
-#include "include/pmix_rename.h"
 
 #include "src/threads/threads.h"
 #include "src/util/argv.h"
@@ -256,7 +255,7 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
         for (n=0; n < ndirs; n++) {
             PMIX_INFO_XFER(&cd->directives[n], (pmix_info_t*)&directives[n]);
         }
-        PMIX_INFO_LOAD(&cd->directives[ndirs], PMIX_LOG_SOURCE, &source, PMIX_PROC);
+        PMIX_INFO_LOAD(&cd->directives[ndirs], PMIX_LOG_SOURCE, source, PMIX_PROC);
         /* call down to process the request - the various components
          * will thread shift as required */
         rc = pmix_plog.log(source, data, ndata, cd->directives, cd->ndirs, localcbfunc, cd);
@@ -264,8 +263,7 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
             PMIX_INFO_FREE(cd->directives, cd->ndirs);
             PMIX_RELEASE(cd);
         }
-    } else if (0 == strncmp(source->nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN) &&
-               source->rank == pmix_globals.myid.rank) {
+    } else if (PMIX_CHECK_PROCID(source, &pmix_globals.myid)) {
         /* if I am the recorded source, then this is a re-submission of
          * something that got "upcalled" by a prior call. In this case,
          * we return a "not supported" error as clearly we couldn't

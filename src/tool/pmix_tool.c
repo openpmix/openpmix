@@ -21,7 +21,6 @@
 
 #include "src/client/pmix_client_ops.h"
 #include "include/pmix_tool.h"
-#include "include/pmix_rename.h"
 
 #include "src/include/pmix_globals.h"
 
@@ -1188,6 +1187,38 @@ PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
     }
     PMIX_RELEASE(kptr); // maintain accounting
 
+    /* store our server's ID */
+    if (NULL != pmix_client_globals.myserver &&
+        NULL != pmix_client_globals.myserver->info &&
+        NULL != pmix_client_globals.myserver->info->pname.nspace) {
+        kptr = PMIX_NEW(pmix_kval_t);
+        kptr->key = strdup(PMIX_SERVER_NSPACE);
+        PMIX_VALUE_CREATE(kptr->value, 1);
+        kptr->value->type = PMIX_STRING;
+        kptr->value->data.string = strdup(pmix_client_globals.myserver->info->pname.nspace);
+        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
+                          &pmix_globals.myid,
+                          PMIX_INTERNAL, kptr);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        PMIX_RELEASE(kptr); // maintain accounting
+        kptr = PMIX_NEW(pmix_kval_t);
+        kptr->key = strdup(PMIX_SERVER_RANK);
+        PMIX_VALUE_CREATE(kptr->value, 1);
+        kptr->value->type = PMIX_PROC_RANK;
+        kptr->value->data.rank = pmix_client_globals.myserver->info->pname.rank;
+        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
+                          &pmix_globals.myid,
+                          PMIX_INTERNAL, kptr);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        PMIX_RELEASE(kptr); // maintain accounting
+    }
+
     return PMIX_SUCCESS;
 }
 
@@ -1357,6 +1388,7 @@ pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
     pmix_tool_timeout_t tev;
     struct timeval tv = {2, 0};
     pmix_event_base_t *evbase_save;
+    pmix_kval_t *kptr;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     if (pmix_globals.init_cntr <= 0) {
@@ -1429,9 +1461,6 @@ pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
 
     /* now ask the ptl to establish connection to the new server */
     rc = pmix_ptl_base_connect_to_peer((struct pmix_peer_t*)pmix_client_globals.myserver, info, ninfo);
-    if (PMIX_SUCCESS != rc) {
-        return rc;
-    }
 
     /* once that activity has all completed, then stop the new progress thread */
     pmix_progress_thread_stop("reconnect");
@@ -1458,6 +1487,48 @@ pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
     pmix_client_globals.myserver->send_ev_active = false;
     /* resume processing events */
     pmix_progress_thread_resume(NULL);
+
+    /* if they gave us an address, we pass back our name */
+    if (NULL != proc) {
+        memcpy(proc, &pmix_globals.myid, sizeof(pmix_proc_t));
+    }
+
+    /* if the transition didn't succeed, then return at this point */
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+
+    /* update our server's ID */
+    if (NULL != pmix_client_globals.myserver &&
+        NULL != pmix_client_globals.myserver->info &&
+        NULL != pmix_client_globals.myserver->info->pname.nspace) {
+        kptr = PMIX_NEW(pmix_kval_t);
+        kptr->key = strdup(PMIX_SERVER_NSPACE);
+        PMIX_VALUE_CREATE(kptr->value, 1);
+        kptr->value->type = PMIX_STRING;
+        kptr->value->data.string = strdup(pmix_client_globals.myserver->info->pname.nspace);
+        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
+                          &pmix_globals.myid,
+                          PMIX_INTERNAL, kptr);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        PMIX_RELEASE(kptr); // maintain accounting
+        kptr = PMIX_NEW(pmix_kval_t);
+        kptr->key = strdup(PMIX_SERVER_RANK);
+        PMIX_VALUE_CREATE(kptr->value, 1);
+        kptr->value->type = PMIX_PROC_RANK;
+        kptr->value->data.rank = pmix_client_globals.myserver->info->pname.rank;
+        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
+                          &pmix_globals.myid,
+                          PMIX_INTERNAL, kptr);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        PMIX_RELEASE(kptr); // maintain accounting
+    }
 
     return PMIX_SUCCESS;
 }
