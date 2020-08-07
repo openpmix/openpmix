@@ -65,7 +65,7 @@ int main(int argc, char **argv)
 
     TEST_VERBOSE(("Testing version %s", PMIx_Get_version()));
 
-    parse_cmd(argc, argv, &params);
+    parse_cmd(argc, argv, &params, &val_params);
     TEST_VERBOSE(("Start PMIx_lite smoke test (timeout is %d)", params.timeout));
 
     /* set common argv and env */
@@ -110,7 +110,7 @@ int main(int argc, char **argv)
         return rc;
     }
 
-    cli_init(params.lsize);
+    cli_init(val_params.pmix_local_size);
 
     int launched = 0;
     /* set namespaces and fork clients */
@@ -126,11 +126,12 @@ int main(int argc, char **argv)
         }
         /* we have a single namespace for all clients */
         ns_nprocs = params.nprocs;
-        launched += server_launch_clients(params.lsize, params.nprocs, base_rank,
+        launched += server_launch_clients(val_params.pmix_local_size, params.nprocs, base_rank,
                                    &params, &val_params, &client_env, &client_argv);
     }
-    if (params.lsize != (uint32_t)launched) {
-        TEST_ERROR(("srv #%d: Total number of processes doesn't correspond number specified by ns_dist parameter.", my_server_id));
+    if (val_params.pmix_local_size != (uint32_t)launched) {
+        TEST_ERROR(("srv #%d: Total number of processes doesn't correspond to number specified by ns_dist parameter.", 
+                    my_server_id));
         cli_kill_all();
         test_fail = 1;
         goto done;
