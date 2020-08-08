@@ -3,6 +3,8 @@
 # Copyright (c) 2009-2015 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2013      Los Alamos National Security, LLC.  All rights reserved.
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
+# Copyright (c) 2020      Amazon.com, Inc. or its affiliates.  All Rights
+#                         reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -10,43 +12,33 @@
 # $HEADER$
 #
 
+#
+# We have three modes for building hwloc.
+#
+# First is an embedded hwloc, where PMIx is being built into
+# another library and assumes that hwloc is available, that there
+# is a single header (pointed to by --with-hwloc-header) which
+# includes all the Hwloc bits, and that the right hwloc
+# configuration is used.  This mode is used when --enable-embeded-mode
+# is specified to configure.
+#
+# Second is as a co-built hwloc.  In this case, PMIx's CPPFLAGS
+# will be set before configure to include the right -Is to pick up
+# hwloc headers and LIBS will point to where the .la file for
+# hwloc will exist.  When co-building, hwloc's configure will be
+# run already, but the library will not yet be built.  It is ok to run
+# any compile-time (not link-time) tests in this mode.  This mode is
+# used when the --with-hwloc=cobuild option is specified.
+#
+# Third is an external package.  In this case, all compile and link
+# time tests can be run.  This macro must do any CPPFLAGS/LDFLAGS/LIBS
+# modifications it desires in order to compile and link against
+# hwloc.  This mode is used whenever the other modes are not used.
+#
 # MCA_hwloc_CONFIG([action-if-found], [action-if-not-found])
 # --------------------------------------------------------------------
 AC_DEFUN([PMIX_HWLOC_CONFIG],[
-    AC_ARG_WITH([hwloc-header],
-                [AC_HELP_STRING([--with-hwloc-header=HEADER],
-                                [The value that should be included in C files to include hwloc.h])])
-
-    AS_IF([test "$pmix_mode" = "embedded"],
-          [_PMIX_HWLOC_EMBEDDED_MODE],
-          [_PMIX_HWLOC_EXTERNAL])
-
-    AC_MSG_CHECKING([hwloc header])
-    AC_DEFINE_UNQUOTED([PMIX_HWLOC_HEADER], [$PMIX_HWLOC_HEADER],
-                       [Location of hwloc.h])
-    AC_MSG_RESULT([$PMIX_HWLOC_HEADER])
-
-    AC_DEFINE_UNQUOTED([PMIX_HAVE_HWLOC], [$pmix_hwloc_support],
-                   [Whether or not we have hwloc support])
-
-    PMIX_SUMMARY_ADD([[External Packages]],[[HWLOC]], [pmix_hwloc], [$pmix_hwloc_support_will_build ($pmix_hwloc_source)])
-])
-
-AC_DEFUN([_PMIX_HWLOC_EMBEDDED_MODE],[
-    AC_MSG_CHECKING([for hwloc])
-    AC_MSG_RESULT([assumed available (embedded mode)])
-
-    AS_IF([test -z "$with_hwloc_header" || test "$with_hwloc_header" = "yes"],
-          [PMIX_HWLOC_HEADER="<hwloc.h>"],
-          [PMIX_HWLOC_HEADER="$with_hwloc_header"])
-
-    pmix_hwloc_support=1
-    pmix_hwloc_source=embedded
-    pmix_hwloc_support_will_build=yes
- ])
-
-AC_DEFUN([_PMIX_HWLOC_EXTERNAL],[
-    PMIX_VAR_SCOPE_PUSH([pmix_hwloc_dir pmix_hwloc_libdir pmix_hwloc_standard_lib_location pmix_hwloc_standard_header_location pmix_check_hwloc_save_CPPFLAGS pmix_check_hwloc_save_LDFLAGS pmix_check_hwloc_save_LIBS])
+    PMIX_VAR_SCOPE_PUSH([hwloc_build_mode])
 
     AC_ARG_WITH([hwloc],
                 [AC_HELP_STRING([--with-hwloc=DIR],
@@ -55,6 +47,62 @@ AC_DEFUN([_PMIX_HWLOC_EXTERNAL],[
     AC_ARG_WITH([hwloc-libdir],
                 [AC_HELP_STRING([--with-hwloc-libdir=DIR],
                                 [Search for hwloc libraries in DIR ])])
+
+    AC_ARG_WITH([hwloc-header],
+                [AC_HELP_STRING([--with-hwloc-header=HEADER],
+                                [The value that should be included in C files to include hwloc.h.  This option only has meaning if --enable-embedded-mode is enabled.])])
+
+    pmix_hwloc_support=0
+    pmix_hwloc_source=""
+    pmix_hwloc_support_will_build=no
+
+    # figure out our mode...
+    AS_IF([test "$pmix_mode" = "embedded"],
+          [_PMIX_HWLOC_EMBEDDED_MODE(embedded)],
+          [test "$with_hwloc" = "cobuild"],
+          [_PMIX_HWLOC_EMBEDDED_MODE(cobuild)],
+          [_PMIX_HWLOC_EXTERNAL])
+
+    AS_IF([test $pmix_hwloc_support -eq 1],
+          [AC_MSG_CHECKING([hwloc header])
+           AC_MSG_RESULT([$PMIX_HWLOC_HEADER])])
+
+    AC_DEFINE_UNQUOTED([PMIX_HWLOC_HEADER], [$PMIX_HWLOC_HEADER],
+                   [Location of hwloc.h])
+    AC_DEFINE_UNQUOTED([PMIX_HAVE_HWLOC], [$pmix_hwloc_support],
+                   [Whether or not we have hwloc support])
+
+    PMIX_SUMMARY_ADD([[External Packages]],[[HWLOC]], [pmix_hwloc], [$pmix_hwloc_support_will_build ($pmix_hwloc_source)])
+])
+
+AC_DEFUN([_PMIX_HWLOC_EMBEDDED_MODE],[
+    AC_MSG_CHECKING([for hwloc])
+    AC_MSG_RESULT([$1])
+
+    AS_IF([test -z "$with_hwloc_header" || test "$with_hwloc_header" = "yes"],
+          [PMIX_HWLOC_HEADER="<hwloc.h>"],
+          [PMIX_HWLOC_HEADER="$with_hwloc_header"])
+
+    AS_IF([test "$1" == "cobuild"],
+           [AC_MSG_CHECKING([if external hwloc version is 1.5 or greater])
+            AC_COMPILE_IFELSE(
+              [AC_LANG_PROGRAM([[#include <hwloc.h>]],
+              [[
+    #if HWLOC_API_VERSION < 0x00010500
+    #error "hwloc API version is less than 0x00010500"
+    #endif
+              ]])],
+              [AC_MSG_RESULT([yes])],
+              [AC_MSG_RESULT([no])
+               AC_MSG_ERROR([Cannot continue])])])
+
+    pmix_hwloc_support=1
+    pmix_hwloc_source=$1
+    pmix_hwloc_support_will_build=yes
+ ])
+
+AC_DEFUN([_PMIX_HWLOC_EXTERNAL],[
+    PMIX_VAR_SCOPE_PUSH([pmix_hwloc_dir pmix_hwloc_libdir pmix_hwloc_standard_lib_location pmix_hwloc_standard_header_location pmix_check_hwloc_save_CPPFLAGS pmix_check_hwloc_save_LDFLAGS pmix_check_hwloc_save_LIBS])
 
     pmix_hwloc_support=0
     pmix_check_hwloc_save_CPPFLAGS="$CPPFLAGS"
