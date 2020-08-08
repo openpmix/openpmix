@@ -25,7 +25,6 @@ endif
 
 nodist_include_HEADERS = \
     pmix_common.h \
-    pmix_version.h \
-    pmix_rename.h
+    pmix_version.h
 
 endif

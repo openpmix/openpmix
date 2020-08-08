@@ -173,22 +173,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # replaced, not the entire file.
     AC_CONFIG_HEADERS(pmix_config_prefix[src/include/pmix_config.h])
 
-    # Rename symbols?
-    AC_ARG_WITH([pmix-symbol-rename],
-                AC_HELP_STRING([--with-pmix-symbol-rename=PREFIX],
-                               [Provide a prefix to rename PMIx symbols]))
-    AC_MSG_CHECKING([for symbol rename])
-    AS_IF([test ! -z "$with_pmix_symbol_rename" && test "$with_pmix_symbol_rename" != "yes"],
-          [AC_MSG_RESULT([$with_pmix_symbol_rename])
-           pmix_symbol_rename="$with_pmix_symbol_rename"
-           PMIX_RENAME=$with_pmix_symbol_rename],
-          [AC_MSG_RESULT([no])
-           pmix_symbol_rename=""
-           PMIX_RENAME=])
-    AC_DEFINE_UNQUOTED(PMIX_SYMBOL_RENAME, [$pmix_symbol_rename],
-                       [The pmix symbol rename include directive])
-    AC_SUBST(PMIX_RENAME)
-    AC_CONFIG_FILES(pmix_config_prefix[include/pmix_rename.h])
 
     # Add any extra lib?
     AC_ARG_WITH([pmix-extra-lib],
@@ -735,9 +719,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     LDFLAGS="$LDFLAGS $THREAD_LDFLAGS"
     LIBS="$LIBS $THREAD_LIBS"
 
-    PMIX_WRAPPER_FLAGS_ADD([CFLAGS], [$THREAD_CFLAGS])
-    PMIX_WRAPPER_FLAGS_ADD([LDFLAGS], [$THREAD_LDFLAGS])
-
     #
     # What is the local equivalent of "ln -s"
     #
@@ -795,6 +776,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     PMIX_ZLIB_CONFIG
 
+
     ##################################
     # Dstore Locking
     ##################################
@@ -823,15 +805,19 @@ AC_DEFUN([PMIX_SETUP_CORE],[
                                    MCA-variable-setting mechansism).  This MCA variable
                                    controls whether warnings are displayed when an MCA
                                    component fails to load at run time due to an error.
-                                   (default: enabled, meaning that
+                                   (default: enabled in --enable-debug builds, meaning that
                                    mca_base_component_show_load_errors is enabled
-                                   by default])])
+                                   by default when configured with --enable-debug])])
     if test "$enable_show_load_errors_by_default" = "no" ; then
         PMIX_SHOW_LOAD_ERRORS_DEFAULT=0
         AC_MSG_RESULT([disabled by default])
     else
-        PMIX_SHOW_LOAD_ERRORS_DEFAULT=1
-        AC_MSG_RESULT([enabled by default])
+        PMIX_SHOW_LOAD_ERRORS_DEFAULT=$WANT_DEBUG
+        if test "$WANT_DEBUG" = "1"; then
+            AC_MSG_RESULT([enabled by default])
+        else
+            AC_MSG_RESULT([disabled by default])
+        fi
     fi
     AC_DEFINE_UNQUOTED(PMIX_SHOW_LOAD_ERRORS_DEFAULT, $PMIX_SHOW_LOAD_ERRORS_DEFAULT,
                        [Default value for mca_base_component_show_load_errors MCA variable])
@@ -869,7 +855,9 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         cpp_includes="$PMIX_top_srcdir $PMIX_top_srcdir/src"
     fi
     CPP_INCLUDES="$(echo $cpp_includes | $SED 's/[[^ \]]* */'"$pmix_cc_iquote"'&/g')"
-    CPPFLAGS="$CPP_INCLUDES -I$PMIX_top_srcdir/include $CPPFLAGS"
+    CPPFLAGS="$CPP_INCLUDES -I$PMIX_top_srcdir/include $CPPFLAGS $PMIX_FINAL_CPPFLAGS"
+    LDFLAGS="$LDFLAGS $PMIX_FINAL_LDFLAGS"
+    LIBS="$LIBS $PMIX_FINAL_LIBS"
 
     ############################################################################
     # final wrapper compiler config
@@ -879,6 +867,9 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # The PMIx wrapper script (i.e., not the C-compiled
     # executables) need perl.
     AC_PATH_PROG(PERL, perl, perl)
+
+    # Need the libtool executable before the rpathify stuff
+    LT_OUTPUT
 
     PMIX_SETUP_WRAPPER_FINAL
 
@@ -918,6 +909,13 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 #    AC_CONFIG_FILES(pmix_config_prefix[test/run_tests14.pl], [chmod +x test/run_tests14.pl])
 #    AC_CONFIG_FILES(pmix_config_prefix[test/run_tests15.pl], [chmod +x test/run_tests15.pl])
 
+
+    ############################################################################
+    # Check for building man pages
+    ############################################################################
+    pmix_show_subtitle "Man page setup"
+    PMIX_SETUP_MAN_PAGES
+
     ############################################################################
     # final output
     ############################################################################
@@ -938,9 +936,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         pmix_config_prefix[src/tools/pmix_info/Makefile]
         pmix_config_prefix[src/tools/plookup/Makefile]
         pmix_config_prefix[src/tools/pps/Makefile]
-        pmix_config_prefix[src/tools/wrapper/Makefile]
-        pmix_config_prefix[src/tools/wrapper/pmixcc-wrapper-data.txt]
-        pmix_config_prefix[src/tools/wrapper/pmix.pc]
         )
 
     # publish any embedded flags so external wrappers can use them

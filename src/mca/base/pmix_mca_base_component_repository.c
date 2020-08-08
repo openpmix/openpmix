@@ -419,20 +419,18 @@ int pmix_mca_base_component_repository_open(pmix_mca_base_framework_t *framework
     char *err_msg = NULL;
     if (PMIX_SUCCESS != pmix_pdl_open(ri->ri_path, true, false, &ri->ri_dlhandle, &err_msg)) {
         if (NULL == err_msg) {
-            err_msg = "pmix_dl_open() error message was NULL!";
-        }
-        /* Because libltdl erroneously says "file not found" for any
-           type of error -- which is especially misleading when the file
-           is actually there but cannot be opened for some other reason
-           (e.g., missing symbol) -- do some simple huersitics and if
-           the file [probably] does exist, print a slightly better error
-           message. */
-        if (0 == strcasecmp("file not found", err_msg) &&
-            (file_exists(ri->ri_path, "lo") ||
-             file_exists(ri->ri_path, "so") ||
-             file_exists(ri->ri_path, "dylib") ||
-             file_exists(ri->ri_path, "dll"))) {
-            err_msg = "perhaps a missing symbol, or compiled for a different version of Open MPI?";
+            err_msg = strdup("pmix_dl_open() error message was NULL!");
+        } else if (file_exists(ri->ri_path, "lo") ||
+                   file_exists(ri->ri_path, "so") ||
+                   file_exists(ri->ri_path, "dylib") ||
+                   file_exists(ri->ri_path, "dll")) {
+            /* Because libltdl erroneously says "file not found" for any
+             * type of error -- which is especially misleading when the file
+             * is actually there but cannot be opened for some other reason
+             * (e.g., missing symbol) -- do some simple huersitics and if
+             * the file [probably] does exist, print a slightly better error
+             * message. */
+            err_msg = strdup("perhaps a missing symbol, or compiled for a different version of OpenPMIx");
         }
         pmix_output_verbose(vl, 0, "pmix_mca_base_component_repository_open: unable to open %s: %s (ignored)",
                             ri->ri_base, err_msg);
@@ -442,11 +440,13 @@ int pmix_mca_base_component_repository_open(pmix_mca_base_framework_t *framework
             f_comp->comp = ri;
             if (0 > asprintf(&(f_comp->error_msg), "%s", err_msg)) {
                 PMIX_RELEASE(f_comp);
+                free(err_msg);
                 return PMIX_ERR_BAD_PARAM;
             }
             pmix_list_append(&framework->framework_failed_components, &f_comp->super);
         }
 
+        free(err_msg);
         return PMIX_ERR_BAD_PARAM;
     }
 

@@ -90,10 +90,14 @@ static int pdlopen_open(const char *fname, bool use_ext, bool private_namespace,
             struct stat buf;
             /* coverity[toctou] */
             if (stat(name, &buf) < 0) {
-                free(name);
                 if (NULL != err_msg) {
-                    *err_msg = "File not found";
+                    rc = asprintf(err_msg, "File %s not found", name);
+                    if (0 > rc) {
+                        free(name);
+                        return PMIX_ERR_NOMEM;
+                    }
                 }
+                free(name);
                 continue;
             }
 

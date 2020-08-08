@@ -1,9 +1,9 @@
  /*
- * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2016-2019 Research Organization for Information Science
- *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2016      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,6 +30,7 @@
 #include "server_callbacks.h"
 
 int my_server_id = 0;
+int test_fail = 0;
 
 server_info_t *my_server_info = NULL;
 pmix_list_t *server_list = NULL;
@@ -40,7 +41,7 @@ static void sdes(server_info_t *s)
     close(s->rd_fd);
     close(s->wr_fd);
     if (s->evread) {
-        pmix_event_del(s->evread);
+        event_del(s->evread);
     }
     s->evread = NULL;
     if (NULL != s->hostname) {
@@ -924,14 +925,16 @@ int server_init(test_params *params)
         server_info_t *server;
         PMIX_LIST_FOREACH(server, server_list, server_info_t) {
             server->evread = pmix_event_new(pmix_globals.evbase, server->rd_fd,
-                                            EV_READ|EV_PERSIST, server_read_cb, server);
+                              EV_READ|EV_PERSIST, server_read_cb, server);
             pmix_event_add(server->evread, NULL);
         }
     }
 
+#if 0
     /* register the errhandler */
     PMIx_Register_event_handler(NULL, 0, NULL, 0,
                                 errhandler, errhandler_reg_callbk, NULL);
+#endif
 
     /* setup to see sigchld on the forked tests */
     pmix_event_assign(&handler, pmix_globals.evbase, SIGCHLD,
@@ -950,11 +953,12 @@ error:
     return rc;
 }
 
-int server_finalize(test_params *params, int local_fail)
+int server_finalize(test_params *params)
 {
     int rc = PMIX_SUCCESS;
-    int total_ret = local_fail;
+    int total_ret = 0;
 
+    total_ret = test_fail;
     if (0 != (rc = server_barrier())) {
         total_ret++;
         goto exit;
@@ -966,16 +970,15 @@ int server_finalize(test_params *params, int local_fail)
     }
 
     if (params->nservers && 0 == my_server_id) {
+        int ret;
         /* wait for all servers are finished */
-        total_ret += srv_wait_all(10.0);
+        ret = srv_wait_all(10.0);
+        if (!pmix_list_is_empty(server_list)) {
+            total_ret += ret;
+        }
         PMIX_LIST_RELEASE(server_list);
         TEST_VERBOSE(("SERVER %d FINALIZE PID:%d with status %d",
-                        my_server_id, getpid(), total_ret));
-        if (0 == total_ret) {
-            TEST_OUTPUT(("Test finished OK!"));
-        } else {
-            rc = PMIX_ERROR;
-        }
+                    my_server_id, getpid(), ret));
     }
     PMIX_LIST_RELEASE(server_nspace);
 
@@ -984,6 +987,11 @@ int server_finalize(test_params *params, int local_fail)
         TEST_ERROR(("Finalize failed with error %d", rc));
         total_ret += rc;
         goto exit;
+    }
+    if (0 == total_ret) {
+        TEST_OUTPUT(("Test finished OK!"));
+    } else {
+        TEST_OUTPUT(("Test FAILED!"));
     }
 
 exit:

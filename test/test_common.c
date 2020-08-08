@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2018 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * Copyright (c) 2015-2018 Mellanox Technologies, Inc.
@@ -13,7 +13,7 @@
  */
 
 #include "src/include/pmix_config.h"
-#include "include/pmix_common.h"
+#include <pmix_common.h>
 
 #include "test_common.h"
 #include <stdarg.h>
@@ -61,8 +61,7 @@ void parse_cmd(int argc, char **argv, test_params *params)
         } else if (0 == strcmp(argv[i], "--h") || 0 == strcmp(argv[i], "-h")) {
             /* print help */
             fprintf(stderr, "usage: pmix_test [-h] [-e foo] [-b] [-c] [-nb]\n");
-            fprintf(stderr, "\t-n       the job size (for checking purposes)\n");
-            fprintf(stderr, "\t-s       number of servers to emulate\n");
+            fprintf(stderr, "\t-n       provides information about the job size (for checking purposes)\n");
             fprintf(stderr, "\t-e foo   use foo as test client\n");
             fprintf(stderr, "\t-v       verbose output\n");
             fprintf(stderr, "\t-t <>    set timeout\n");

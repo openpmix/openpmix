@@ -20,7 +20,6 @@
 #include "include/pmix.h"
 #include "include/pmix_common.h"
 #include "include/pmix_server.h"
-#include "include/pmix_rename.h"
 
 #include "src/threads/threads.h"
 #include "src/util/argv.h"
@@ -28,7 +27,7 @@
 #include "src/util/name_fns.h"
 #include "src/util/output.h"
 #include "src/mca/bfrops/bfrops.h"
-#include "src/mca/ptl/ptl.h"
+#include "src/mca/ptl/base/base.h"
 
 #include "src/client/pmix_client_ops.h"
 #include "src/server/pmix_server_ops.h"
@@ -343,7 +342,7 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
         return PMIX_ERR_BAD_PARAM;
     }
 
-    /* do a quick check of the qualifiers array to ensure
+    /* do a quick check of the qualifiers arrays to ensure
      * the nqual field has been set */
     for (n=0; n < nqueries; n++) {
         if (NULL != queries[n].qualifiers && 0 == queries[n].nqual) {

@@ -13,7 +13,7 @@
  *                         All rights reserved.
  * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
- * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
@@ -26,7 +26,7 @@
  */
 
 #include "src/include/pmix_config.h"
-#include "include/pmix_server.h"
+#include <pmix_server.h>
 #include "src/include/types.h"
 #include "src/include/pmix_globals.h"
 
@@ -48,7 +48,6 @@
 #include "src/util/output.h"
 #include "src/util/printf.h"
 #include "src/util/argv.h"
-#include "src/runtime/pmix_progress_threads.h"
 
 #include "simptest.h"
 
@@ -199,9 +198,15 @@ static pmix_event_t handler;
 static pmix_list_t children;
 static bool istimeouttest = false;
 static mylock_t globallock;
+static bool nettest = false;
 static bool model = false;
 static bool xversion = false;
-static pmix_event_base_t *simptest_evbase = NULL;
+static char *hostnames[] = {
+    "test000",
+    "test001",
+    "test002",
+    NULL
+};
 
 static void set_namespace(int nprocs, char *nspace,
                           pmix_op_cbfunc_t cbfunc, myxfer_t *x);
@@ -257,7 +262,7 @@ static void infocbfunc(pmix_status_t status,
     for (n=0; n < ninfo; n++) {
         PMIX_INFO_XFER(&x->info[n], &info[n]);
     }
-    SIMPTEST_THREADSHIFT(x, dlcbfunc);
+    PMIX_THREADSHIFT(x, dlcbfunc);
 
     if (NULL != release_fn) {
         release_fn(release_cbdata);
@@ -407,8 +412,13 @@ int main(int argc, char **argv)
             fprintf(stderr, "    -u       Enable legacy usock support\n");
             fprintf(stderr, "    -hwloc   Test hwloc support\n");
             fprintf(stderr, "    -hwloc-file FILE   Use file to import topology\n");
+            fprintf(stderr, "    -net-test  Test network endpt assignments\n");
             fprintf(stderr, "    -xversion  Cross-version test - simulate single node only\n");
             exit(0);
+        } else if (0 == strcmp("-net-test", argv[n]) ||
+                   0 == strcmp("--net-test", argv[n])) {
+            /* test network support */
+            nettest = true;
         }  else if (0 == strcmp("-model", argv[n]) ||
                    0 == strcmp("--model", argv[n])) {
             /* test network support */
@@ -420,7 +430,11 @@ int main(int argc, char **argv)
         }
     }
     if (NULL == executable) {
-        executable = strdup("./simpclient");
+        if (nettest) {
+            executable = strdup("./simpcoord");
+        } else {
+            executable = strdup("./simpclient");
+        }
     }
     /* check for executable existence and permissions */
     if (0 != access(executable, X_OK)) {
@@ -481,15 +495,20 @@ int main(int argc, char **argv)
 #endif
     }
 #endif
+    if (nettest) {
+        /* set a known network configuration for the pnet/test component */
+        putenv("PMIX_MCA_pnet_test_planes=plane:d:3;plane:s:2;plane:d:5:2");
+        putenv("PMIX_MCA_pnet=test");
+    }
     if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, info, ninfo))) {
         fprintf(stderr, "Init failed with error %s\n", PMIx_Error_string(rc));
         return rc;
     }
     PMIX_INFO_FREE(info, ninfo);
-
-    /* get our own event base */
-    simptest_evbase = pmix_progress_thread_init("simptest");
-    pmix_progress_thread_start("simptest");
+    if (nettest) {
+        unsetenv("PMIX_MCA_pnet");
+        unsetenv("PMIX_MCA_pnet_test_planes");
+    }
 
     /* register the default errhandler */
     DEBUG_CONSTRUCT_LOCK(&mylock);
@@ -568,6 +587,10 @@ int main(int argc, char **argv)
             fprintf(stderr, "Server fork setup failed with error %d\n", rc);
             PMIx_server_finalize();
             return rc;
+        }
+        /* add the hostname we want them to use */
+        if (!xversion) {
+            PMIX_SETENV(rc, "PMIX_HOSTNAME", hostnames[n % 3], &client_env);
         }
 
         x = PMIX_NEW(myxfer_t);
@@ -699,20 +722,58 @@ static void set_namespace(int nprocs, char *nspace,
     pmix_info_t *isv1, *isv2;
     myxfer_t cd, lock;
     pmix_status_t rc;
+    char **map[3] = {NULL, NULL, NULL};
+    char *peers[3] = {NULL, NULL, NULL};
     char tmp[50] , **agg = NULL;
 
-    /* everything on one node */
-    PMIx_generate_regex(pmix_globals.hostname, &regex);
-    for (m=0; m < nprocs; m++) {
-        snprintf(tmp, 50, "%d", m);
-        pmix_argv_append_nosize(&agg, tmp);
-        memset(tmp, 0, 50);
+    if (xversion) {
+        /* everything on one node */
+        PMIx_generate_regex(pmix_globals.hostname, &regex);
+        for (m=0; m < nprocs; m++) {
+            snprintf(tmp, 50, "%d", m);
+            pmix_argv_append_nosize(&agg, tmp);
+            memset(tmp, 0, 50);
+        }
+        rks = pmix_argv_join(agg, ',');
+        pmix_argv_free(agg);
+        PMIx_generate_ppn(rks, &ppn);
+        free(rks);
+        nnodes = 1;
+    } else {
+        if (nprocs < 3) {
+            /* take only the number of hostnames equal to
+             * the number of procs */
+            for (m=0; m < nprocs; m++) {
+                pmix_argv_append_nosize(&agg, hostnames[m]);
+            }
+            ppn = pmix_argv_join(agg, ',');
+            pmix_argv_free(agg);
+            agg = NULL;
+            nnodes = nprocs;
+        } else {
+            nnodes = 3;
+            ppn = pmix_argv_join(hostnames, ',');
+        }
+        PMIx_generate_regex(ppn, &regex);
+        free(ppn);
+        /* compute the placement of the procs */
+        for (m=0; m < nprocs; m++) {
+            snprintf(tmp, 50, "%d", m);
+            pmix_argv_append_nosize(&map[m%3], tmp);
+            memset(tmp, 0, 50);
+        }
+        for (m=0; m < 3; m++) {
+            if (NULL != map[m]) {
+                peers[m] = pmix_argv_join(map[m], ',');
+                pmix_argv_append_nosize(&agg, peers[m]);
+                pmix_argv_free(map[m]);
+            }
+        }
+        rks = pmix_argv_join(agg, ';');
+        pmix_argv_free(agg);
+        PMIx_generate_ppn(rks, &ppn);
+        free(rks);
     }
-    rks = pmix_argv_join(agg, ',');
-    pmix_argv_free(agg);
-    PMIx_generate_ppn(rks, &ppn);
-    free(rks);
-    nnodes = 1;
 
     x->ninfo = 1 + nprocs + nnodes;
     PMIX_INFO_CREATE(x->info, x->ninfo);
@@ -783,7 +844,11 @@ static void set_namespace(int nprocs, char *nspace,
         x->info[n].value.type = PMIX_DATA_ARRAY;
         PMIX_DATA_ARRAY_CREATE(x->info[n].value.data.darray, 3, PMIX_INFO);
         iptr = (pmix_info_t*)x->info[n].value.data.darray->array;
-        PMIX_INFO_LOAD(&iptr[0], PMIX_HOSTNAME, pmix_globals.hostname, PMIX_STRING);
+        if (xversion) {
+            PMIX_INFO_LOAD(&iptr[0], PMIX_HOSTNAME, pmix_globals.hostname, PMIX_STRING);
+        } else {
+            PMIX_INFO_LOAD(&iptr[0], PMIX_HOSTNAME, hostnames[m % 3], PMIX_STRING);
+        }
         PMIX_INFO_LOAD(&iptr[1], PMIX_NODEID, &m, PMIX_UINT32);
         PMIX_INFO_LOAD(&iptr[2], PMIX_NODE_SIZE, &nprocs, PMIX_UINT32);
         ++n;
@@ -822,7 +887,11 @@ static void set_namespace(int nprocs, char *nspace,
 
         (void)strncpy(info[k].key, PMIX_HOSTNAME, PMIX_MAX_KEYLEN);
         info[k].value.type = PMIX_STRING;
-        info[k].value.data.string = strdup(pmix_globals.hostname);
+        if (xversion) {
+            info[k].value.data.string = strdup(pmix_globals.hostname);
+        } else {
+            info[k].value.data.string = strdup(hostnames[m % 3]);
+        }
         ++k;
         /* move to next proc */
         ++n;
@@ -948,40 +1017,10 @@ static pmix_status_t fencenb_fn(const pmix_proc_t procs[], size_t nprocs,
     scd->ndata = ndata;
     scd->cbfunc.modexcbfunc = cbfunc;
     scd->cbdata = cbdata;
-    SIMPTEST_THREADSHIFT(scd, fencbfn);
+    PMIX_THREADSHIFT(scd, fencbfn);
     return PMIX_SUCCESS;
 }
 
-
-static void modex_resp(pmix_status_t status,
-                       char *data, size_t sz,
-                       void *cbdata)
-{
-    pmix_shift_caddy_t *scd = (pmix_shift_caddy_t*)cbdata;
-    scd->status = status;
-    scd->data = (char*)malloc(sz);
-    memcpy((char*)scd->data, data, sz);
-    scd->ndata = sz;
-    SIMPTEST_THREADSHIFT(scd, fencbfn);
-}
-
-static void dmdxfn(int sd, short args, void *cbdata)
-{
-    pmix_shift_caddy_t *scd = (pmix_shift_caddy_t*)cbdata;
-    pmix_proc_t proc;
-    pmix_status_t rc;
-
-    /* get the data */
-    PMIX_LOAD_PROCID(&proc, scd->pname.nspace, scd->pname.rank);
-    rc = PMIx_server_dmodex_request(&proc, modex_resp, scd);
-    if (PMIX_SUCCESS != rc) {
-        scd->status = rc;
-        scd->data = NULL;
-        scd->ndata = 0;
-        SIMPTEST_THREADSHIFT(scd, fencbfn);
-    }
-    return;
-}
 
 static pmix_status_t dmodex_fn(const pmix_proc_t *proc,
                      const pmix_info_t info[], size_t ninfo,
@@ -995,11 +1034,10 @@ static pmix_status_t dmodex_fn(const pmix_proc_t *proc,
     }
 
     scd = PMIX_NEW(pmix_shift_caddy_t);
-    scd->pname.nspace = strdup(proc->nspace);
-    scd->pname.rank = proc->rank;
+    scd->status = PMIX_ERR_NOT_FOUND;
     scd->cbfunc.modexcbfunc = cbfunc;
     scd->cbdata = cbdata;
-    SIMPTEST_THREADSHIFT(scd, dmdxfn);
+    PMIX_THREADSHIFT(scd, fencbfn);
 
     return PMIX_SUCCESS;
 }
@@ -1087,7 +1125,7 @@ static pmix_status_t lookup_fn(const pmix_proc_t *proc, char **keys,
         lk->n = n;
         lk->cbfunc = cbfunc;
         lk->cbdata = cbdata;
-        SIMPTEST_THREADSHIFT(lk, lkcbfn);
+        PMIX_THREADSHIFT(lk, lkcbfn);
     }
 
     return ret;
@@ -1245,7 +1283,7 @@ static pmix_status_t query_fn(pmix_proc_t *proct,
     qd.ndata = nqueries;
     qd.cbfunc = cbfunc;
     qd.cbdata = cbdata;
-    SIMPTEST_THREADSHIFT(&qd, qfn);
+    PMIX_THREADSHIFT(&qd, qfn);
     return PMIX_SUCCESS;
 }
 
@@ -1284,7 +1322,7 @@ static void log_fn(const pmix_proc_t *client,
 
     lg->cbfunc = cbfunc;
     lg->cbdata = cbdata;
-    SIMPTEST_THREADSHIFT(lg, foobar);
+    PMIX_THREADSHIFT(lg, foobar);
 }
 
 static pmix_status_t alloc_fn(const pmix_proc_t *client,

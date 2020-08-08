@@ -20,7 +20,6 @@
 #include "src/include/pmix_stdint.h"
 
 #include "include/pmix.h"
-#include "include/pmix_rename.h"
 
 #include "src/include/pmix_globals.h"
 
@@ -48,10 +47,10 @@
 
 #include "src/class/pmix_list.h"
 #include "src/mca/bfrops/bfrops.h"
+#include "src/mca/pcompress/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/threads/threads.h"
 #include "src/util/argv.h"
-#include "src/util/compress.h"
 #include "src/util/error.h"
 #include "src/util/hash.h"
 #include "src/util/name_fns.h"
@@ -149,6 +148,11 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
+    if (NULL == cbfunc) {
+        /* no way to return the result! */
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     /* if the proc is NULL, then the caller is assuming
      * that the key is universally unique within the caller's
      * own nspace. This most likely indicates that the code
@@ -202,6 +206,22 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
          * for undefined rank or NULL keys */
         if (PMIX_RANK_UNDEF == p.rank || NULL == key) {
             goto doget;
+        }
+        /* if they passed our nspace and an INVALID rank, and are asking
+         * for PMIX_RANK, then they are asking for our process rank */
+        if (PMIX_RANK_INVALID == p.rank &&
+            PMIX_CHECK_NSPACE(p.nspace, pmix_globals.myid.nspace) &&
+            NULL != key && 0 == strcmp(key, PMIX_RANK)) {
+            PMIX_VALUE_CREATE(ival, 1);
+            if (NULL == ival) {
+                return PMIX_ERR_NOMEM;
+            }
+            ival->type = PMIX_PROC_RANK;
+            ival->data.rank = pmix_globals.myid.rank;
+            cbfunc(PMIX_SUCCESS, ival, cbdata);
+            /* ownership of the memory in ival is passed to the
+             * user in the cbfunc, so don't release it here */
+            return PMIX_SUCCESS;
         }
         /* see if they are asking about a node-level piece of info */
         if (pmix_check_node_info(key)) {
@@ -394,11 +414,9 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
   fastpath:
     /* try to get data directly, without threadshift */
     if (PMIX_SUCCESS == (rc = _getfn_fastpath(&p, key, iptr, nfo, &ival))) {
-        if (NULL != cbfunc) {
-            cbfunc(rc, ival, cbdata);
-            /* ownership of the memory in ival is passed to the
-             * user in the cbfunc, so don't release it here */
-        }
+        cbfunc(rc, ival, cbdata);
+        /* ownership of the memory in ival is passed to the
+         * user in the cbfunc, so don't release it here */
         return rc;
     }
 
@@ -764,7 +782,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
         if (0 != strcmp(pmix_globals.mypeer->nptr->compat.gds->name, pmix_client_globals.myserver->nptr->compat.gds->name)) {
             PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, cb);
         } else {
-            rc = PMIX_ERR_TAKE_NEXT_OPTION;
+            rc = PMIX_ERR_NOT_FOUND;
         }
         if (PMIX_SUCCESS != rc) {
             pmix_output_verbose(5, pmix_client_globals.get_output,
@@ -778,16 +796,10 @@ static void _getnbfn(int fd, short flags, void *cbdata)
                 proc.rank = PMIX_RANK_WILDCARD;
                 goto request;
             } else if (NULL != cb->key) {
-                /* if immediate was given, then we are being directed to
-                 * check with the server even though the caller is looking for
-                 * job-level info. In some cases, a server may elect not
-                 * to provide info at init to save memory */
-                if (!optional) {
-                    pmix_output_verbose(5, pmix_client_globals.get_output,
-                                        "pmix:client not optional - requesting data");
-                    goto request;
-                }
-                /* we should have had this info, so respond with the error */
+                /* => cb->key starts with pmix
+                 * we should have had this info, so respond with the error - if
+                 * they want us to check with the server, they should ask us to
+                 * refresh the cache */
                 pmix_output_verbose(5, pmix_client_globals.get_output,
                                     "pmix:client returning NOT FOUND error");
                 goto respond;

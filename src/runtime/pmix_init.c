@@ -33,8 +33,6 @@
 #include <unistd.h>
 #endif
 
-#include "include/pmix_rename.h"
-
 #include "src/include/pmix_globals.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
@@ -42,6 +40,7 @@
 #include "src/mca/base/base.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/bfrops/base/base.h"
+#include "src/mca/pcompress/base/base.h"
 #include "src/mca/gds/base/base.h"
 #include "src/mca/pif/base/base.h"
 #include "src/mca/pinstalldirs/base/base.h"
@@ -133,6 +132,11 @@ int pmix_rte_init(uint32_t type,
     /* initialize install dirs code */
     if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_pinstalldirs_base_framework, 0))) {
         fprintf(stderr, "pmix_pinstalldirs_base_open() failed -- process will likely abort (%s:%d, returned %d instead of PMIX_SUCCESS)\n",
+                __FILE__, __LINE__, ret);
+        return ret;
+    }
+    if (PMIX_SUCCESS != (ret = pmix_pinstall_dirs_base_init(info, ninfo))) {
+        fprintf(stderr, "pmix_pinstalldirs_base_init() failed -- process will likely abort (%s:%d, returned %d instead of PMIX_SUCCESS)\n",
                 __FILE__, __LINE__, ret);
         return ret;
     }
@@ -335,6 +339,16 @@ int pmix_rte_init(uint32_t type,
     }
     if (PMIX_SUCCESS != (ret = pmix_bfrop_base_select()) ) {
         error = "pmix_bfrops_base_select";
+        goto return_error;
+    }
+
+    /* open and select the compress framework */
+    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_pcompress_base_framework, 0)) ) {
+        error = "pmix_pcompress_base_open";
+        goto return_error;
+    }
+    if (PMIX_SUCCESS != (ret = pmix_compress_base_select()) ) {
+        error = "pmix_pcompress_base_select";
         goto return_error;
     }
 

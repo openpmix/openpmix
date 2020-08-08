@@ -73,7 +73,6 @@
 #include <stdarg.h>
 #endif
 
-#include "pmix_rename.h"
 #include "src/class/pmix_object.h"
 
 BEGIN_C_DECLS

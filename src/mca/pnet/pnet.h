@@ -27,6 +27,7 @@
 #define PMIX_PNET_H
 
 #include "src/include/pmix_config.h"
+#include "include/pmix.h"
 
 #include "src/class/pmix_list.h"
 #include "src/mca/mca.h"

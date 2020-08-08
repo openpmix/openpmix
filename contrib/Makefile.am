@@ -31,11 +31,7 @@ EXTRA_DIST = \
     update-my-copyright.pl \
     whitespace-purge.sh \
     make_manpage.pl \
-    symbol-hiding.pl \
-    platform/intel/bend/mac \
-    platform/intel/bend/mac.conf \
-    platform/intel/bend/linux \
-    platform/intel/bend/linux.conf
+	platform/optimized
 
 include perf_tools/Makefile.include
 

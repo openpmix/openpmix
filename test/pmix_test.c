@@ -48,7 +48,6 @@ int main(int argc, char **argv)
     char **client_argv=NULL;
     int rc, i;
     struct stat stat_buf;
-    int test_fail = 0;
     char *tmp;
     int ns_nprocs;
     sigset_t unblock;
@@ -132,7 +131,7 @@ int main(int argc, char **argv)
         while (NULL != pch) {
             ns_nprocs = (int)strtol(pch, NULL, 10);
             if (params.nprocs < (uint32_t)(launched+ns_nprocs)) {
-                TEST_ERROR(("srv #%d: Total number of processes doesn't correspond number specified by ns_dist parameter.", my_server_id));
+                TEST_ERROR(("Total number of processes doesn't correspond number specified by ns_dist parameter."));
                 FREE_TEST_PARAMS(params);
                 return PMIX_ERROR;
             }
@@ -144,7 +143,7 @@ int main(int argc, char **argv)
         }
     }
     if (params.lsize != (uint32_t)launched) {
-        TEST_ERROR(("srv #%d: Total number of processes doesn't correspond number specified by ns_dist parameter.", my_server_id));
+        TEST_ERROR(("Total number of processes doesn't correspond number specified by ns_dist parameter."));
         cli_kill_all();
         test_fail = 1;
         goto done;
@@ -159,7 +158,7 @@ int main(int argc, char **argv)
     }
 
     if( test_abort ){
-        TEST_ERROR(("srv #%d: Test was aborted!", my_server_id));
+        TEST_ERROR(("Test was aborted!"));
         /* do not simply kill the clients as that generates
          * event notifications which these tests then print
          * out, flooding the log */
@@ -177,13 +176,12 @@ int main(int argc, char **argv)
     }
 
     /* deregister the errhandler */
-    PMIx_Deregister_event_handler(0, op_callbk, NULL);
+//    PMIx_Deregister_event_handler(0, op_callbk, NULL);
 
   done:
     TEST_VERBOSE(("srv #%d: call server_finalize!", my_server_id));
-    test_fail += server_finalize(&params, test_fail);
+    test_fail += server_finalize(&params);
 
-    TEST_VERBOSE(("srv #%d: exit sequence!", my_server_id));
     FREE_TEST_PARAMS(params);
     pmix_argv_free(client_argv);
     pmix_argv_free(client_env);

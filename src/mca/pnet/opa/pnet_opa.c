@@ -59,7 +59,7 @@ pmix_pnet_module_t pmix_opa_module = {
     .allocate = allocate
 };
 
-/* some network transports require a little bit of information to
+/* some fabric transports require a little bit of information to
  * "pre-condition" them - i.e., to setup their individual transport
  * connections so they can generate their endpoint addresses. This
  * function provides a means for doing so. The resulting info is placed
@@ -150,7 +150,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
                               pmix_list_t *ilist)
 {
     uint64_t unique_key[2];
-    char *string_key, *cs_env;
+    char *string_key;
     int fd_rand;
     size_t bytes_read, n, m, p;
     pmix_kval_t *kv;
@@ -173,13 +173,13 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             seckeys = PMIX_INFO_TRUE(&info[n]);
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SETUP_APP_NONENVARS)) {
             seckeys = PMIX_INFO_TRUE(&info[n]);
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_ALLOC_NETWORK)) {
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_ALLOC_FABRIC)) {
             iptr = (pmix_info_t*)info[n].value.data.darray->array;
             m = info[n].value.data.darray->size;
             for (p=0; p < m; p++) {
-                if (PMIX_CHECK_KEY(&iptr[p], PMIX_ALLOC_NETWORK_SEC_KEY)) {
+                if (PMIX_CHECK_KEY(&iptr[p], PMIX_ALLOC_FABRIC_SEC_KEY)) {
                     seckeys = PMIX_INFO_TRUE(&iptr[p]);
-                } else if (PMIX_CHECK_KEY(&iptr[p], PMIX_ALLOC_NETWORK_ID)) {
+                } else if (PMIX_CHECK_KEY(&iptr[p], PMIX_ALLOC_FABRIC_ID)) {
                     /* need to track the request by this ID */
                 } else if (PMIX_CHECK_KEY(&iptr[p], PMIX_SETUP_APP_ENVARS)) {
                     envars = PMIX_INFO_TRUE(&iptr[p]);
@@ -214,30 +214,21 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
 
-        if (PMIX_SUCCESS != pmix_mca_base_var_env_name("opa_precondition_transports", &cs_env)) {
-            PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
-            free(string_key);
-            return PMIX_ERR_OUT_OF_RESOURCE;
-        }
-
         kv = PMIX_NEW(pmix_kval_t);
         if (NULL == kv) {
             free(string_key);
-            free(cs_env);
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
         kv->key = strdup(PMIX_SET_ENVAR);
         kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
         if (NULL == kv->value) {
             free(string_key);
-            free(cs_env);
             PMIX_RELEASE(kv);
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
         kv->value->type = PMIX_ENVAR;
-        PMIX_ENVAR_LOAD(&kv->value->data.envar, cs_env, string_key, ':');
+        PMIX_ENVAR_LOAD(&kv->value->data.envar, "OPA_TRANSPORT_KEY", string_key, ':');
         pmix_list_append(ilist, &kv->super);
-        free(cs_env);
         free(string_key);
     }
 
@@ -257,5 +248,6 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
         }
     }
 
+    /* we don't currently manage OPA resources */
     return PMIX_ERR_TAKE_NEXT_OPTION;
 }

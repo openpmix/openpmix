@@ -7,7 +7,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2016-2019 IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2020 IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -54,6 +54,7 @@
 #include "src/class/pmix_list.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/plog/plog.h"
+#include "src/mca/pnet/pnet.h"
 #include "src/mca/psensor/psensor.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/util/argv.h"
@@ -1054,7 +1055,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
                             "fence LOCALLY complete");
         /* if this is a purely local fence (i.e., all participants are local),
          * then it is done and we notify accordingly */
-        if (trk->local) {
+        if (pmix_server_globals.fence_localonly_opt && trk->local) {
             /* the modexcbfunc thread-shifts the call prior to processing,
              * so it is okay to call it directly from here. The switchyard
              * will acknowledge successful acceptance of the fence request,
@@ -2551,6 +2552,13 @@ static void intermed_step(pmix_status_t status, void *cbdata)
         rc = PMIX_ERR_NOT_SUPPORTED;
         goto complete;
     }
+
+    /* since our host is going to send this everywhere, it may well
+     * come back to us. We already processed it, so mark it here
+     * to ensure we don't do it again. We previously inserted the
+     * PMIX_SERVER_INTERNAL_NOTIFY key at the very end of the
+     * info array - just overwrite that position */
+    PMIX_INFO_LOAD(&cd->info[cd->ninfo-1], PMIX_EVENT_PROXY, &pmix_globals.myid, PMIX_PROC);
 
     /* pass it to our host RM for distribution */
     rc = pmix_host_server.notify_event(cd->status, &cd->source, cd->range,

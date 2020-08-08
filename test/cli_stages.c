@@ -70,7 +70,7 @@ void cli_connect(cli_info_t *cli, int sd, pmix_event_base_t * ebase, event_callb
 
     cli->sd = sd;
     cli->ev = pmix_event_new(ebase, sd,
-                      EV_READ|EV_PERSIST, callback, cli);
+                             EV_READ|EV_PERSIST, callback, cli);
     pmix_event_add(cli->ev,NULL);
     pmix_ptl_base_set_nonblocking(sd);
     TEST_VERBOSE(("Connection accepted from rank %d", cli_rank(cli) ));
@@ -205,7 +205,7 @@ void errhandler(size_t evhdlr_registration_id,
                 pmix_event_notification_cbfunc_fn_t cbfunc,
                 void *cbdata)
 {
-    TEST_ERROR((" PMIX server event handler for %s:%d with status = %d", source->nspace, source->rank, status));
+    TEST_ERROR((" PMIX server event handler with status = %d", status));
     /* notify clients of error */
     PMIx_Notify_event(status, source,
                       PMIX_RANGE_NAMESPACE,

@@ -74,6 +74,7 @@ static pmix_status_t pmix_pnet_close(void)
       PMIX_RELEASE(active);
     }
     PMIX_DESTRUCT(&pmix_pnet_globals.actives);
+    PMIX_DESTRUCT(&pmix_pnet_globals.fabrics);
 
     PMIX_LIST_DESTRUCT(&pmix_pnet_globals.jobs);
     PMIX_LIST_DESTRUCT(&pmix_pnet_globals.nodes);
@@ -89,6 +90,7 @@ static pmix_status_t pmix_pnet_open(pmix_mca_base_open_flag_t flags)
     PMIX_CONSTRUCT_LOCK(&pmix_pnet_globals.lock);
     pmix_pnet_globals.lock.active = false;
     PMIX_CONSTRUCT(&pmix_pnet_globals.actives, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_pnet_globals.fabrics, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_pnet_globals.jobs, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_pnet_globals.nodes, pmix_list_t);
 
@@ -185,9 +187,17 @@ PMIX_CLASS_INSTANCE(pmix_pnet_resource_t,
 
 static void ftcon(pmix_pnet_fabric_t *p)
 {
+    p->name = NULL;
+    p->index = 0;
     p->module = NULL;
     p->payload = NULL;
 }
+static void ftdes(pmix_pnet_fabric_t *p)
+{
+    if (NULL != p->name) {
+        free(p->name);
+    }
+}
 PMIX_CLASS_INSTANCE(pmix_pnet_fabric_t,
-                    pmix_object_t,
-                    ftcon, NULL);
+                    pmix_list_item_t,
+                    ftcon, ftdes);

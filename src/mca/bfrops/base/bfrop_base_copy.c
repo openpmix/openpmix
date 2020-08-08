@@ -838,7 +838,6 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
                 pe[n].separator = se[n].separator;
             }
             break;
-
         default:
             free(p);
             return PMIX_ERR_UNKNOWN_DATA_TYPE;
@@ -890,4 +889,17 @@ pmix_status_t pmix_bfrops_base_copy_envar(pmix_envar_t **dest,
     }
     (*dest)->separator = src->separator;
     return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_copy_regex(char **dest,
+                                          char *src,
+                                          pmix_data_type_t type)
+{
+    size_t len;
+
+    if (PMIX_REGEX != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    return pmix_preg.copy(dest, &len, src);
 }

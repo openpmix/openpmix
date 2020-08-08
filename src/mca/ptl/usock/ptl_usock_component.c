@@ -650,13 +650,9 @@ static void connection_handler(int sd, short args, void *cbdata)
     nptr->compat.type = bftype;
 
     /* set the gds module to match this peer */
-    if (NULL != gds) {
-        PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, gds, PMIX_STRING);
-        nptr->compat.gds = pmix_gds_base_assign_module(&ginfo, 1);
-        PMIX_INFO_DESTRUCT(&ginfo);
-    } else {
-        nptr->compat.gds = pmix_gds_base_assign_module(NULL, 0);
-    }
+    PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, gds, PMIX_STRING);
+    nptr->compat.gds = pmix_gds_base_assign_module(&ginfo, 1);
+    PMIX_INFO_DESTRUCT(&ginfo);
     if (NULL == nptr->compat.gds) {
         free(msg);
         info->proc_cnt--;

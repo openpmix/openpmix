@@ -21,7 +21,6 @@
 #include "src/include/pmix_socket_errno.h"
 
 #include "include/pmix.h"
-#include "include/pmix_rename.h"
 
 #include "src/include/pmix_globals.h"
 
@@ -56,7 +55,6 @@ static pmix_status_t pmix_init_result = PMIX_ERR_INIT;
 #include "src/class/pmix_list.h"
 #include "src/event/pmix_event.h"
 #include "src/util/argv.h"
-#include "src/util/compress.h"
 #include "src/util/error.h"
 #include "src/util/hash.h"
 #include "src/util/name_fns.h"
@@ -65,6 +63,7 @@ static pmix_status_t pmix_init_result = PMIX_ERR_INIT;
 #include "src/runtime/pmix_rte.h"
 #include "src/threads/threads.h"
 #include "src/mca/bfrops/base/base.h"
+#include "src/mca/pcompress/base/base.h"
 #include "src/mca/gds/base/base.h"
 #include "src/mca/preg/preg.h"
 #include "src/mca/ptl/base/base.h"
@@ -531,6 +530,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     bool found;
     pmix_ptl_posted_recv_t *rcv;
     pid_t pid;
+    pmix_kval_t *kptr;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -704,7 +704,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     found = false;
     if (info != NULL) {
         for (n=0; n < ninfo; n++) {
-            if (0 == strncmp(info[n].key, PMIX_GDS_MODULE, PMIX_MAX_KEYLEN)) {
+            if (PMIX_CHECK_KEY(&info[n], PMIX_GDS_MODULE)) {
                 PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, info[n].value.data.string, PMIX_STRING);
                 found = true;
                 break;
@@ -816,7 +816,38 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         _check_for_notify(info, ninfo);
     }
 
-    return PMIX_SUCCESS;
+    /* store our server's ID */
+    if (NULL != pmix_client_globals.myserver &&
+        NULL != pmix_client_globals.myserver->info) {
+        kptr = PMIX_NEW(pmix_kval_t);
+        kptr->key = strdup(PMIX_SERVER_NSPACE);
+        PMIX_VALUE_CREATE(kptr->value, 1);
+        kptr->value->type = PMIX_STRING;
+        kptr->value->data.string = strdup(pmix_client_globals.myserver->info->pname.nspace);
+        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
+                          &pmix_globals.myid,
+                          PMIX_INTERNAL, kptr);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        PMIX_RELEASE(kptr); // maintain accounting
+        kptr = PMIX_NEW(pmix_kval_t);
+        kptr->key = strdup(PMIX_SERVER_RANK);
+        PMIX_VALUE_CREATE(kptr->value, 1);
+        kptr->value->type = PMIX_PROC_RANK;
+        kptr->value->data.rank = pmix_client_globals.myserver->info->pname.rank;
+        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
+                          &pmix_globals.myid,
+                          PMIX_INTERNAL, kptr);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        PMIX_RELEASE(kptr); // maintain accounting
+    }
+
+    return rc;
 }
 
 PMIX_EXPORT int PMIx_Initialized(void)
@@ -1100,7 +1131,7 @@ static void _putfn(int sd, short args, void *cbdata)
     kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
     if (PMIX_STRING_SIZE_CHECK(cb->value)) {
         /* compress large strings */
-        if (pmix_util_compress_string(cb->value->data.string, &tmp, &len)) {
+        if (pmix_compress.compress_string(cb->value->data.string, &tmp, &len)) {
             if (NULL == tmp) {
                 PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                 rc = PMIX_ERR_NOMEM;
@@ -1571,7 +1602,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const pmix_nspace_t nspace, char **
             /* add to our list of results, ensuring uniqueness */
             p = pmix_argv_split(val->data.string, ',');
             for (n=0; NULL != p[n]; n++) {
-                pmix_argv_append_unique_nosize(&tmp, p[n]);
+                pmix_argv_append_unique_nosize(&tmp, p[n], true);
             }
             pmix_argv_free(p);
             PMIX_VALUE_FREE(val, 1);

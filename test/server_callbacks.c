@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2015-2018 Mellanox Technologies, Inc.
@@ -32,9 +32,12 @@ pmix_server_module_t mymodule = {
     .unpublish = unpublish_fn,
     .spawn = spawn_fn,
     .connect = connect_fn,
-    .disconnect = disconnect_fn,
+    .disconnect = disconnect_fn
+#if 0
+,
     .register_events = regevents_fn,
     .deregister_events = deregevents_fn
+#endif
 };
 
 typedef struct {
@@ -140,19 +143,9 @@ pmix_status_t dmodex_fn(const pmix_proc_t *proc,
               const pmix_info_t info[], size_t ninfo,
               pmix_modex_cbfunc_t cbfunc, void *cbdata)
 {
-    size_t n;
-
     TEST_VERBOSE(("Getting data for %s:%d", proc->nspace, proc->rank));
 
-    if (NULL != info) {
-        for (n=0; n < ninfo; n++) {
-            if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
-                return PMIX_ERR_NOT_SUPPORTED;
-            }
-        }
-    }
-
-    /* return not_found for single server mode */
+    /* return not_found fot single server mode */
     if ((pmix_list_get_size(server_list) == 1) && (my_server_id == 0)) {
         return PMIX_ERR_NOT_FOUND;
     }
@@ -180,7 +173,7 @@ pmix_status_t publish_fn(const pmix_proc_t *proc,
         }
         if (!found) {
             new_info = PMIX_NEW(pmix_test_info_t);
-            PMIX_LOAD_KEY(new_info->data.key, info[i].key);
+            strncpy(new_info->data.key, info[i].key, strlen(info[i].key)+1);
             pmix_value_xfer(&new_info->data.value, (pmix_value_t*)&info[i].value);
             new_info->namespace_published = strdup(proc->nspace);
             new_info->rank_published = proc->rank;

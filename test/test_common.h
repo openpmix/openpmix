@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Artem Y. Polyakov <artpol84@gmail.com>.
  *                         All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
@@ -18,14 +18,13 @@
 #define TEST_COMMON_H
 
 #include "src/include/pmix_config.h"
-#include "include/pmix_common.h"
+#include <pmix_common.h>
 
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdint.h>
-#include <sys/time.h>
 
 #include "src/include/pmix_globals.h"
 #include "src/class/pmix_list.h"
@@ -51,15 +50,10 @@ extern FILE *file;
 
 #define STRIPPED_FILE_NAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 
-#define TEST_OUTPUT(x) {                            \
-    struct timeval tv;                              \
-    gettimeofday(&tv, NULL);                        \
-    double ts = tv.tv_sec + 1E-6*tv.tv_usec;        \
-    fprintf(file,"==%d== [%lf] %s:%s: %s\n",        \
-            getpid(), ts,STRIPPED_FILE_NAME,        \
-            __func__,                               \
-            pmix_test_output_prepare x );           \
-    fflush(file);                                   \
+#define TEST_OUTPUT(x) { \
+    fprintf(file,"==%d== %s:%s: %s\n", getpid(), STRIPPED_FILE_NAME, __func__, \
+            pmix_test_output_prepare x ); \
+    fflush(file); \
 }
 
 // Write output without adding anything to it.
@@ -71,15 +65,9 @@ extern FILE *file;
 
 // Always write errors to the stderr
 #define TEST_ERROR(x) { \
-    struct timeval tv;                              \
-    gettimeofday(&tv, NULL);                        \
-    double ts = tv.tv_sec + 1E-6*tv.tv_usec;        \
-    fprintf(stderr,                                 \
-            "==%d== [%lf] ERROR [%s:%d:%s]: %s\n",  \
-            getpid(), ts,                           \
-            STRIPPED_FILE_NAME, __LINE__, __func__, \
-            pmix_test_output_prepare x );           \
-    fflush(stderr);                                 \
+    fprintf(stderr,"==%d== ERROR [%s:%d:%s]: %s\n", getpid(), STRIPPED_FILE_NAME, __LINE__, __func__, \
+            pmix_test_output_prepare x ); \
+    fflush(stderr); \
 }
 
 #define TEST_VERBOSE_ON() (pmix_test_verbose = 1)
@@ -257,7 +245,8 @@ typedef struct {
     PMIX_VAL_SET(&value, dtype, data);                                                                              \
     TEST_VERBOSE(("%s:%d put key %s", my_nspace, my_rank, key));                                                  \
     if (PMIX_SUCCESS != (rc = PMIx_Put(flag, key, &value))) {                                                       \
-        TEST_ERROR(("%s:%d: PMIx_Put key %s failed: %s", my_nspace, my_rank, key, PMIx_Error_string(rc)));                             \
+        TEST_ERROR(("%s:%d: PMIx_Put key %s failed: %d", my_nspace, my_rank, key, rc));                             \
+        rc = PMIX_ERROR;                                                                                            \
     }                                                                                                               \
     PMIX_VALUE_DESTRUCT(&value);                                                                                    \
 } while (0)
@@ -269,13 +258,15 @@ typedef struct {
     cbdata.status = PMIX_SUCCESS;                                                                                   \
     pmix_proc_t foobar; \
     SET_KEY(key, fence_num, ind, use_same_keys);                                                                    \
-    PMIX_LOAD_PROCID(&foobar, ns, r); \
+    (void)strncpy(foobar.nspace, ns, PMIX_MAX_NSLEN); \
+    foobar.rank = r; \
     TEST_VERBOSE(("%s:%d want to get from %s:%d key %s", my_nspace, my_rank, ns, r, key));                          \
     if (blocking) {                                                                                                 \
         if (PMIX_SUCCESS != (rc = PMIx_Get(&foobar, key, NULL, 0, &val))) {                                         \
             if( !( (rc == PMIX_ERR_NOT_FOUND || rc == PMIX_ERR_PROC_ENTRY_NOT_FOUND) && ok_notfnd ) ){                                                       \
-                TEST_ERROR(("%s:%d: PMIx_Get failed: %s from %s:%d, key %s", my_nspace, my_rank, PMIx_Error_string(rc), ns, r, key));  \
+                TEST_ERROR(("%s:%d: PMIx_Get failed: %d from %s:%d, key %s", my_nspace, my_rank, rc, ns, r, key));  \
             }                                                                                                       \
+            rc = PMIX_ERROR;                                                                                        \
         }                                                                                                           \
     } else {                                                                                                        \
         int count;                                                                                                  \
@@ -283,7 +274,8 @@ typedef struct {
         PMIX_VALUE_CREATE(val, 1);                                                                                  \
         cbdata.kv = val;                                                                                            \
         if (PMIX_SUCCESS != (rc = PMIx_Get_nb(&foobar, key, NULL, 0, get_cb, (void*)&cbdata))) {                    \
-            TEST_VERBOSE(("%s:%d: PMIx_Get_nb failed: %s from %s:%d, key=%s", my_nspace, my_rank, PMIx_Error_string(rc), ns, r, key)); \
+            TEST_VERBOSE(("%s:%d: PMIx_Get_nb failed: %d from %s:%d, key=%s", my_nspace, my_rank, rc, ns, r, key)); \
+            rc = PMIX_ERROR;                                                                                        \
         } else {                                                                                                    \
             count = 0;                                                                                              \
             while(cbdata.in_progress){                                                                              \
@@ -300,16 +292,19 @@ typedef struct {
     if (PMIX_SUCCESS == rc) {                                                                                       \
         if( PMIX_SUCCESS != cbdata.status ){                                                                        \
             if( !( (cbdata.status == PMIX_ERR_NOT_FOUND || cbdata.status == PMIX_ERR_PROC_ENTRY_NOT_FOUND) && ok_notfnd ) ){ \
-                TEST_ERROR(("%s:%d: PMIx_Get_nb failed: %s from %s:%d, key=%s",                                     \
-                            my_nspace, my_rank, PMIx_Error_string(rc), my_nspace, r, key));                                            \
+                TEST_ERROR(("%s:%d: PMIx_Get_nb failed: %d from %s:%d, key=%s",                                     \
+                            my_nspace, my_rank, rc, my_nspace, r, key));                                            \
             }                                                                                                       \
+            rc = PMIX_ERROR;                                                                                        \
         } else if (NULL == val) {                                                                                   \
             TEST_VERBOSE(("%s:%d: PMIx_Get returned NULL value", my_nspace, my_rank));                              \
+            rc = PMIX_ERROR;                                                                                        \
         }                                                                                                           \
         else if (val->type != PMIX_VAL_TYPE_ ## dtype || PMIX_VAL_CMP(dtype, PMIX_VAL_FIELD_ ## dtype((val)), data)) {  \
             TEST_ERROR(("%s:%u: from %s:%d Key %s value or type mismatch,"                                        \
                         " want type %d get type %d",                                                                \
                         my_nspace, my_rank, ns, r, key, PMIX_VAL_TYPE_ ## dtype, val->type));                    \
+            rc = PMIX_ERROR;                                                                                        \
         }                                                                                                           \
     }                                                                                                               \
     if (PMIX_SUCCESS == rc) {                                                                                       \
@@ -352,68 +347,5 @@ typedef struct {
                         my_nspace, my_rank));                                   \
     }                                                                           \
 } while (0)
-
-/* Key-Value pair management macros */
-// TODO: add all possible types/fields here.
-
-#define PMIX_VAL_FIELD_int(x)       ((x)->data.integer)
-#define PMIX_VAL_FIELD_uint32_t(x)  ((x)->data.uint32)
-#define PMIX_VAL_FIELD_uint16_t(x)  ((x)->data.uint16)
-#define PMIX_VAL_FIELD_string(x)    ((x)->data.string)
-#define PMIX_VAL_FIELD_float(x)     ((x)->data.fval)
-#define PMIX_VAL_FIELD_byte(x)      ((x)->data.byte)
-#define PMIX_VAL_FIELD_flag(x)      ((x)->data.flag)
-
-#define PMIX_VAL_TYPE_int      PMIX_INT
-#define PMIX_VAL_TYPE_uint32_t PMIX_UINT32
-#define PMIX_VAL_TYPE_uint16_t PMIX_UINT16
-#define PMIX_VAL_TYPE_string   PMIX_STRING
-#define PMIX_VAL_TYPE_float    PMIX_FLOAT
-#define PMIX_VAL_TYPE_byte     PMIX_BYTE
-#define PMIX_VAL_TYPE_flag     PMIX_BOOL
-
-#define PMIX_VAL_set_assign(_v, _field, _val )   \
-    do {                                                            \
-        (_v)->type = PMIX_VAL_TYPE_ ## _field;                      \
-        PMIX_VAL_FIELD_ ## _field((_v)) = _val;                     \
-    } while (0)
-
-#define PMIX_VAL_set_strdup(_v, _field, _val )       \
-    do {                                                                \
-        (_v)->type = PMIX_VAL_TYPE_ ## _field;                          \
-        PMIX_VAL_FIELD_ ## _field((_v)) = strdup(_val);                 \
-    } while (0)
-
-#define PMIX_VAL_SET_int        PMIX_VAL_set_assign
-#define PMIX_VAL_SET_uint32_t   PMIX_VAL_set_assign
-#define PMIX_VAL_SET_uint16_t   PMIX_VAL_set_assign
-#define PMIX_VAL_SET_string     PMIX_VAL_set_strdup
-#define PMIX_VAL_SET_float      PMIX_VAL_set_assign
-#define PMIX_VAL_SET_byte       PMIX_VAL_set_assign
-#define PMIX_VAL_SET_flag       PMIX_VAL_set_assign
-
-#define PMIX_VAL_SET(_v, _field, _val )   \
-    PMIX_VAL_SET_ ## _field(_v, _field, _val)
-
-#define PMIX_VAL_cmp_val(_val1, _val2)      ((_val1) != (_val2))
-#define PMIX_VAL_cmp_float(_val1, _val2)    (((_val1)>(_val2))?(((_val1)-(_val2))>0.000001):(((_val2)-(_val1))>0.000001))
-#define PMIX_VAL_cmp_ptr(_val1, _val2)      strncmp(_val1, _val2, strlen(_val1)+1)
-
-#define PMIX_VAL_CMP_int        PMIX_VAL_cmp_val
-#define PMIX_VAL_CMP_uint32_t   PMIX_VAL_cmp_val
-#define PMIX_VAL_CMP_uint16_t   PMIX_VAL_cmp_val
-#define PMIX_VAL_CMP_float      PMIX_VAL_cmp_float
-#define PMIX_VAL_CMP_string     PMIX_VAL_cmp_ptr
-#define PMIX_VAL_CMP_byte       PMIX_VAL_cmp_val
-#define PMIX_VAL_CMP_flag       PMIX_VAL_cmp_val
-
-#define PMIX_VAL_ASSIGN(_v, _field, _val) \
-    PMIX_VAL_set_assign(_v, _field, _val)
-
-#define PMIX_VAL_CMP(_field, _val1, _val2) \
-    PMIX_VAL_CMP_ ## _field(_val1, _val2)
-
-#define PMIX_VAL_FREE(_v) \
-     PMIx_free_value_data(_v)
 
 #endif // TEST_COMMON_H

@@ -36,10 +36,10 @@
 #include "src/class/pmix_list.h"
 #include "src/client/pmix_client_ops.h"
 #include "src/server/pmix_server_ops.h"
+#include "src/mca/pcompress/base/base.h"
 #include "src/mca/preg/preg.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/util/argv.h"
-#include "src/util/compress.h"
 #include "src/util/error.h"
 #include "src/util/hash.h"
 #include "src/util/output.h"
@@ -1285,7 +1285,12 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                 return PMIX_ERR_BAD_PARAM;
             }
             /* parse the regex to get the argv array of node names */
-            if (PMIX_STRING == info[n].value.type) {
+            if (PMIX_REGEX == info[n].value.type) {
+                if (PMIX_SUCCESS != (rc = pmix_preg.parse_nodes(info[n].value.data.bo.bytes, &nodes))) {
+                    PMIX_ERROR_LOG(rc);
+                    goto release;
+                }
+            } else if (PMIX_STRING == info[n].value.type) {
                 if (PMIX_SUCCESS != (rc = pmix_preg.parse_nodes(info[n].value.data.string, &nodes))) {
                     PMIX_ERROR_LOG(rc);
                     goto release;
@@ -1304,7 +1309,12 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                 return PMIX_ERR_BAD_PARAM;
             }
             /* parse the regex to get the argv array containing proc ranks on each node */
-            if (PMIX_STRING == info[n].value.type) {
+            if (PMIX_REGEX == info[n].value.type) {
+                if (PMIX_SUCCESS != (rc = pmix_preg.parse_procs(info[n].value.data.bo.bytes, &procs))) {
+                    PMIX_ERROR_LOG(rc);
+                    goto release;
+                }
+            } else if (PMIX_STRING == info[n].value.type) {
                 if (PMIX_SUCCESS != (rc = pmix_preg.parse_procs(info[n].value.data.string, &procs))) {
                     PMIX_ERROR_LOG(rc);
                     goto release;
@@ -1352,7 +1362,7 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                 /* if the value contains a string that is longer than the
                  * limit, then compress it */
                 if (PMIX_STRING_SIZE_CHECK(kp2->value)) {
-                    if (pmix_util_compress_string(kp2->value->data.string, &tmp, &len)) {
+                    if (pmix_compress.compress_string(kp2->value->data.string, &tmp, &len)) {
                         if (NULL == tmp) {
                             PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                             rc = PMIX_ERR_NOMEM;
@@ -1473,7 +1483,7 @@ pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
             /* if the value contains a string that is longer than the
              * limit, then compress it */
             if (PMIX_STRING_SIZE_CHECK(kp2->value)) {
-                if (pmix_util_compress_string(kp2->value->data.string, &tmp, &len)) {
+                if (pmix_compress.compress_string(kp2->value->data.string, &tmp, &len)) {
                     if (NULL == tmp) {
                         rc = PMIX_ERR_NOMEM;
                         PMIX_ERROR_LOG(rc);
@@ -1871,7 +1881,7 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                 /* if the value contains a string that is longer than the
                  * limit, then compress it */
                 if (PMIX_STRING_SIZE_CHECK(kp2->value)) {
-                    if (pmix_util_compress_string(kp2->value->data.string, &tmp, &len)) {
+                    if (pmix_compress.compress_string(kp2->value->data.string, &tmp, &len)) {
                         if (NULL == tmp) {
                             PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                             rc = PMIX_ERR_NOMEM;
@@ -2034,7 +2044,7 @@ static pmix_status_t hash_store_job_info(const char *nspace,
             /* if the value contains a string that is longer than the
              * limit, then compress it */
             if (PMIX_STRING_SIZE_CHECK(kptr->value)) {
-                if (pmix_util_compress_string(kptr->value->data.string, &tmp, &len)) {
+                if (pmix_compress.compress_string(kptr->value->data.string, &tmp, &len)) {
                     if (NULL == tmp) {
                         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                         rc = PMIX_ERR_NOMEM;
@@ -2179,7 +2189,7 @@ static pmix_status_t hash_store(const pmix_proc_t *proc,
                 /* if the value contains a string that is longer than the
                  * limit, then compress it */
                 if (PMIX_STRING_SIZE_CHECK(kp->value)) {
-                    if (pmix_util_compress_string(kp->value->data.string, &tmp, &len)) {
+                    if (pmix_compress.compress_string(kp->value->data.string, &tmp, &len)) {
                         if (NULL == tmp) {
                             PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                             rc = PMIX_ERR_NOMEM;

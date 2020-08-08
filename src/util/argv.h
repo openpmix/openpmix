@@ -110,6 +110,7 @@ PMIX_EXPORT pmix_status_t pmix_argv_prepend_nosize(char ***argv, const char *arg
  *
  * @param argv Pointer to an argv array.
  * @param str Pointer to the string to append.
+ * @param bool Whether or not to overwrite a matching value if found
  *
  * @retval PMIX_SUCCESS On success
  * @retval PMIX_ERROR On failure
@@ -118,7 +119,7 @@ PMIX_EXPORT pmix_status_t pmix_argv_prepend_nosize(char ***argv, const char *arg
  * except that it only appends the provided argument if it does not already
  * exist in the provided array.
  */
-PMIX_EXPORT pmix_status_t pmix_argv_append_unique_nosize(char ***argv, const char *arg);
+PMIX_EXPORT pmix_status_t pmix_argv_append_unique_nosize(char ***argv, const char *arg, bool overwrite);
 
 /**
  * Append to an argv-style array, but only if the provided argument

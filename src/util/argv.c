@@ -156,7 +156,7 @@ add:
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix_argv_append_unique_nosize(char ***argv, const char *arg)
+pmix_status_t pmix_argv_append_unique_nosize(char ***argv, const char *arg, bool overwrite)
 {
     int i;
 
@@ -170,7 +170,11 @@ pmix_status_t pmix_argv_append_unique_nosize(char ***argv, const char *arg)
     /* see if this arg is already present in the array */
     for (i=0; NULL != (*argv)[i]; i++) {
         if (0 == strcmp(arg, (*argv)[i])) {
-            /* already exists */
+            /* already exists - are we authorized to overwrite? */
+            if (overwrite) {
+                free((*argv)[i]);
+                (*argv)[i] = strdup(arg);
+            }
             return PMIX_SUCCESS;
         }
     }

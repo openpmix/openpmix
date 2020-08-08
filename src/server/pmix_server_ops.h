@@ -5,7 +5,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2020 IBM Corporation.  All rights reserved.
  * Copyright (c) 2016-2018 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * $COPYRIGHT$
@@ -109,7 +109,7 @@ PMIX_CLASS_DECLARATION(pmix_dmdx_remote_t);
 typedef struct {
     pmix_list_item_t super;
     pmix_proc_t proc;               // id of proc whose data is being requested
-    pmix_list_t loc_reqs;           // list of pmix_dmdx_request_t elem's keeping track of
+    pmix_list_t loc_reqs;           // list of pmix_dmdx_request_t elem is keeping track of
                                     // all local ranks that are interested in this namespace-rank
     pmix_info_t *info;              // array of info structs for this request
     size_t ninfo;                   // number of info structs
@@ -183,6 +183,7 @@ typedef struct {
     bool tool_connections_allowed;
     char *tmpdir;                           // temporary directory for this server
     char *system_tmpdir;                    // system tmpdir
+    bool fence_localonly_opt;               // local-only fence optimization
     // verbosity for server get operations
     int get_output;
     int get_verbose;

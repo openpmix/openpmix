@@ -221,7 +221,7 @@ static char *append_filename_to_list(const char *filename)
 {
     int i, count;
 
-    (void) pmix_argv_append_unique_nosize(&pmix_mca_base_var_file_list, filename);
+    (void) pmix_argv_append_unique_nosize(&pmix_mca_base_var_file_list, filename, false);
 
     count = pmix_argv_count(pmix_mca_base_var_file_list);
 
