@@ -242,7 +242,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
                     }
                 }
             }
-            if (PMIX_PEER_TRIPLET(pmix_client_globals.myserver, 3, 1, 5)) {
+            if (PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 2, PMIX_RELEASE_WILDCARD)) {
                 p.rank = PMIX_RANK_UNDEF;
                /* see if they told us to get node info */
                 if (!wantinfo) {
@@ -333,7 +333,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
                     }
                 }
             }
-            if (PMIX_PEER_TRIPLET(pmix_client_globals.myserver, 3, 1, 5)) {
+            if (PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 2, PMIX_RELEASE_WILDCARD)) {
                 p.rank = PMIX_RANK_UNDEF;
                /* see if they told us to get app info */
                 if (!wantinfo) {
