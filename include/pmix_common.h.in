@@ -863,12 +863,16 @@ typedef int pmix_status_t;
 #define PMIX_EVENT_ACTION_DEFERRED                  -333
 #define PMIX_EVENT_ACTION_COMPLETE                  -334
 
+/* define a starting point for PMIx internal error codes
+ * that are never exposed outside the library */
+#define PMIX_INTERNAL_ERR_BASE                      -1330
+
 /* define a starting point for user-level defined error
  * constants - negative values larger than this are guaranteed
  * not to conflict with PMIx values. Definitions should always
  * be based on the PMIX_EXTERNAL_ERR_BASE constant and -not- a
  * specific value as the value of the constant may change */
-#define PMIX_INTERNAL_ERR_BASE                      -1330
+#define PMIX_EXTERNAL_ERR_BASE           PMIX_INTERNAL_ERR_BASE-2000
 
 /****    PMIX DATA TYPES    ****/
 typedef uint16_t pmix_data_type_t;
@@ -1855,7 +1859,7 @@ typedef struct pmix_query {
  * except that it only appends the provided argument if it does not already
  * exist in the provided array, or overwrites it if it is.
  */
-#define PMIX_ARGV_APPEND_UNIQUE(r, a, b) \
+#define PMIX_ARGV_APPEND_UNIQUE(r, a, b, c) \
     (r) = pmix_argv_append_unique_nosize(a, b, c)
 
 /* Free a NULL-terminated argv array.
