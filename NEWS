@@ -21,8 +21,16 @@ example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
 
-3.1.6 -- TBD
+3.1.7 -- TBD
 ----------------------
+
+
+3.1.6 -- 20 Aug 2020
+----------------------
+ - PR #1669: Silence unnecessary error log message
+ - PR #1776: Fixed crash of dstore locks destructor
+ - PR #1825: Add option to bypass local-only fence optimization
+ - PR #1830: Increase timeout in test case
 
 
 3.1.5 -- 14 Feb 2020
