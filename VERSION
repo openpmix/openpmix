@@ -23,7 +23,7 @@ release=0
 # The only requirement is that it must be entirely printable ASCII
 # characters and have no white space.
 
-greek=a1
+greek=rc1
 
 # If repo_rev is empty, then the repository version number will be
 # obtained during "make dist" via the "git describe --tags --always"
@@ -44,7 +44,7 @@ tarball_version=
 
 # The date when this release was created
 
-date="Mar 10, 2018"
+date="Aug 10, 2020"
 
 # The shared library version of each of PMIx's public libraries.
 # These versions are maintained in accordance with the "Library
