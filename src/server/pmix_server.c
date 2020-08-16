@@ -2231,6 +2231,8 @@ pmix_status_t PMIx_server_setup_local_support(const pmix_nspace_t nspace,
                                               pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_setup_caddy_t *cd;
+    pmix_status_t rc;
+    pmix_lock_t mylock;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     if (pmix_globals.init_cntr <= 0) {
@@ -2251,6 +2253,23 @@ pmix_status_t PMIx_server_setup_local_support(const pmix_nspace_t nspace,
     cd->ninfo = ninfo;
     cd->opcbfunc = cbfunc;
     cd->cbdata = cbdata;
+
+    /* if the provided callback is NULL, then substitute
+     * our own internal cbfunc and block here */
+    if (NULL == cbfunc) {
+        PMIX_CONSTRUCT_LOCK(&mylock);
+        cd->opcbfunc = opcbfunc;
+        cd->cbdata = &mylock;
+        PMIX_THREADSHIFT(cd, _setup_local_support);
+        PMIX_WAIT_THREAD(&mylock);
+        rc = mylock.status;
+        PMIX_DESTRUCT_LOCK(&mylock);
+        if (PMIX_SUCCESS == rc) {
+            rc = PMIX_OPERATION_SUCCEEDED;
+        }
+        return rc;
+    }
+
     PMIX_THREADSHIFT(cd, _setup_local_support);
 
     return PMIX_SUCCESS;
@@ -2333,6 +2352,8 @@ pmix_status_t PMIx_server_IOF_deliver(const pmix_proc_t *source,
                                       pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_setup_caddy_t *cd;
+    pmix_lock_t mylock;
+    pmix_status_t rc;
 
     /* need to threadshift this request */
     cd = PMIX_NEW(pmix_setup_caddy_t);
@@ -2347,6 +2368,23 @@ pmix_status_t PMIx_server_IOF_deliver(const pmix_proc_t *source,
     cd->ninfo = ninfo;
     cd->opcbfunc = cbfunc;
     cd->cbdata = cbdata;
+
+    /* if the provided callback is NULL, then substitute
+     * our own internal cbfunc and block here */
+    if (NULL == cbfunc) {
+        PMIX_CONSTRUCT_LOCK(&mylock);
+        cd->opcbfunc = opcbfunc;
+        cd->cbdata = &mylock;
+        PMIX_THREADSHIFT(cd, _iofdeliver);
+        PMIX_WAIT_THREAD(&mylock);
+        rc = mylock.status;
+        PMIX_DESTRUCT_LOCK(&mylock);
+        if (PMIX_SUCCESS == rc) {
+            rc = PMIX_OPERATION_SUCCEEDED;
+        }
+        return rc;
+    }
+
     PMIX_THREADSHIFT(cd, _iofdeliver);
     return PMIX_SUCCESS;
 }
@@ -2517,6 +2555,8 @@ pmix_status_t PMIx_server_deliver_inventory(pmix_info_t info[], size_t ninfo,
                                             pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_shift_caddy_t *cd;
+    pmix_lock_t mylock;
+    pmix_status_t rc;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     if (pmix_globals.init_cntr <= 0) {
@@ -2537,6 +2577,23 @@ pmix_status_t PMIx_server_deliver_inventory(pmix_info_t info[], size_t ninfo,
     cd->ndirs = ndirs;
     cd->cbfunc.opcbfn = cbfunc;
     cd->cbdata = cbdata;
+
+    /* if the provided callback is NULL, then substitute
+     * our own internal cbfunc and block here */
+    if (NULL == cbfunc) {
+        PMIX_CONSTRUCT_LOCK(&mylock);
+        cd->cbfunc.opcbfn = opcbfunc;
+        cd->cbdata = &mylock;
+        PMIX_THREADSHIFT(cd, dlinv);
+        PMIX_WAIT_THREAD(&mylock);
+        rc = mylock.status;
+        PMIX_DESTRUCT_LOCK(&mylock);
+        if (PMIX_SUCCESS == rc) {
+            rc = PMIX_OPERATION_SUCCEEDED;
+        }
+        return rc;
+    }
+
     PMIX_THREADSHIFT(cd, dlinv);
 
     return PMIX_SUCCESS;
