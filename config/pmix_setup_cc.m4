@@ -17,6 +17,9 @@ dnl                         reserved.
 dnl Copyright (c) 2015-2019 Research Organization for Information Science
 dnl                         and Technology (RIST).  All rights reserved.
 dnl Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
+dnl Copyright (c) 2020      Triad National Security, LLC. All rights
+dnl                         reserved.
+dnl
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -321,7 +324,7 @@ AC_DEFUN([PMIX_SETUP_CC],[
                       pmix_cv_cc_wno_long_double="yes"
                       if test -s conftest.err ; then
                           dnl Yes, it should be "ignor", in order to catch ignoring and ignore
-                          for i in unknown invalid ignor unrecognized ; do
+                          for i in unknown invalid ignor unrecognized 'not supported'; do
                               $GREP -iq $i conftest.err
                               if test "$?" = "0" ; then
                                   pmix_cv_cc_wno_long_double="no"
