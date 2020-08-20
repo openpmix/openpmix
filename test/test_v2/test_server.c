@@ -96,7 +96,7 @@ static void server_unpack_dmdx(char *buf, int *sender, pmix_proc_t *proc);
 static int server_pack_dmdx(int sender_id, const char *nspace, int rank,
                             char **buf);
 static void _dmdx_cb(int status, char *data, size_t sz, void *cbdata);
-static void fill_global_validation_params(pmix_proc_t proc, int local_size, int univ_size, test_params *params, validation_params *v_params);
+static void fill_global_validation_params(pmix_proc_t proc, int univ_size, test_params *params, validation_params *v_params);
 
 static void release_cb(pmix_status_t status, void *cbdata)
 {
@@ -139,7 +139,7 @@ static int server_find_id(const char *nspace, int rank)
 }
 
 static void set_namespace(int local_size, int univ_size,
-                          int base_rank, char *name)
+                          int base_rank, char *name, validation_params *v_params)
 {
     size_t ninfo;
     pmix_info_t *info;
@@ -168,6 +168,7 @@ static void set_namespace(int local_size, int univ_size,
     if (NULL == ranks) {
         return;
     }
+    PMIXT_VAL_PARAM_SETSTR(v_params, pmix_local_peers, ranks, PMIX_MAX_KEYLEN);
     pmix_strncpy(info[3].key, PMIX_LOCAL_PEERS, PMIX_MAX_KEYLEN);
     info[3].value.type = PMIX_STRING;
     info[3].value.data.string = strdup(ranks);
@@ -845,6 +846,7 @@ static void wait_signal_callback(int fd, short event, void *arg)
 int server_init(test_params *params, validation_params *val_params)
 {
     pmix_info_t info[2];
+    uint32_t local_size;
     int rc = PMIX_SUCCESS;
 
     /* fork/init servers procs */
@@ -876,6 +878,7 @@ int server_init(test_params *params, validation_params *val_params)
                     my_server_id = i;
                     asprintf(&server_info->hostname, "node%d", i);
                     server_info->idx = 0;
+                    TEST_VERBOSE(("my_server_id after fork: %d, server_info->idx = %d", my_server_id, server_info->idx));
                     server_info->pid = getppid();
                     server_info->rd_fd = fd1[0];
                     server_info->wr_fd = fd2[1];
@@ -886,7 +889,7 @@ int server_init(test_params *params, validation_params *val_params)
                     break;
                 }
                 asprintf(&server_info->hostname, "node%d", i);
-                server_info->idx = i;
+                server_info->idx = i; // idx is id of server we are talking to (descriptor of remote peer)
                 server_info->pid = pid;
                 server_info->wr_fd = fd1[1];
                 server_info->rd_fd = fd2[0];
@@ -904,14 +907,26 @@ int server_init(test_params *params, validation_params *val_params)
                 close(fd2[0]);
                 close(fd2[1]);
             }
-            TEST_VERBOSE(("%d: add server %d", my_server_id, server_info->idx));
             pmix_list_append(server_list, &server_info->super);
         }
+        // set validation params for server-specific (i.e., node-specific) info.
+        // putting this here even though we have a separate function to do this
+        // (fill_global_validation_params()) because server_info is currently a
+        // local variable
+        PMIXT_VAL_PARAM_SETSTR(val_params, pmix_hostname, server_info->hostname, PMIX_MAX_KEYLEN-1);
     }
+    else {
+        PMIXT_VAL_PARAM_SETSTR(val_params, pmix_hostname, "node0", 6);
+    }
+    PMIXT_VAL_PARAM_SETNUM(val_params, pmix_nodeid, my_server_id);
+    TEST_VERBOSE(("my_server_id: %d, pmix_node_id: %d, pmix_hostname: %s",
+                   my_server_id, val_params->pmix_nodeid, val_params->pmix_hostname));
     /* compute local proc size */
-    params->lsize = (params->nprocs % params->nservers) > (uint32_t)my_server_id ?
+    local_size = (params->nprocs % params->nservers) > (uint32_t)my_server_id ?
                 params->nprocs / params->nservers + 1 :
                 params->nprocs / params->nservers;
+    PMIXT_VAL_PARAM_SETNUM(val_params, pmix_local_size, local_size);
+    TEST_VERBOSE(("pmix_local_size = %d, params->nprocs = %d", local_size, params->nprocs));
     /* setup the server library */
     uint32_t u32 = 0666;
     PMIX_INFO_LOAD(&info[0], PMIX_SOCKET_MODE, &u32, PMIX_UINT32);
@@ -995,20 +1010,33 @@ exit:
     return total_ret;
 }
 
-static void fill_global_validation_params(pmix_proc_t proc, int local_size, int univ_size,
+static void fill_global_validation_params(pmix_proc_t proc, int univ_size,
                                    test_params *params, validation_params *v_params)
 {
     v_params->validate_params = true;
-    params->validate_params = 1;
 
+    PMIXT_VAL_PARAM_SETNUM(v_params, pmix_univ_size, univ_size);
+    PMIXT_VAL_PARAM_SETNUM(v_params, pmix_job_size, params->nprocs);
     PMIXT_VAL_PARAM_SETSTR(v_params, pmix_nspace, proc.nspace, PMIX_MAX_NSLEN);
     // more will be added as validation_params struct grows
+    // some validation params set inside server_init
 }
 
 int fill_client_validation_params(pmix_proc_t proc, validation_params *val_params)
 {
+    int local_rank;
+
     PMIXT_VAL_PARAM_SETNUM(val_params, pmix_rank, proc.rank);
+
+    if (val_params->pmix_nodeid == 0) {
+        PMIXT_VAL_PARAM_SETNUM(val_params, pmix_local_rank, proc.rank);
+    }
+    else {
+        local_rank = (int) proc.rank % (int) (val_params->pmix_nodeid * val_params->pmix_local_size);
+        PMIXT_VAL_PARAM_SETNUM(val_params, pmix_local_rank, local_rank);
+    }
     // this function will be filled out as validation_params struct grows
+    // some validation params are set in other places out of necessity
     return PMIX_SUCCESS;
 }
 
@@ -1029,12 +1057,12 @@ int server_launch_clients(int local_size, int univ_size, int base_rank,
     char *vptr;
     server_nspace_t *nspace_item = PMIX_NEW(server_nspace_t);
 
-    TEST_VERBOSE(("%d: lsize: %d, base rank %d, local_size %d, univ_size %d", my_server_id, params->lsize, base_rank,
-                  local_size, univ_size));
+    TEST_VERBOSE(("%d: lsize: %d, base rank %d, local_size %d, univ_size %d", my_server_id, v_params->pmix_local_size,
+                  base_rank, local_size, univ_size));
 
     TEST_VERBOSE(("Setting job info"));
     (void)snprintf(proc.nspace, PMIX_MAX_NSLEN, "%s-%d", TEST_NAMESPACE, num_ns);
-    set_namespace(local_size, univ_size, base_rank, proc.nspace);
+    set_namespace(local_size, univ_size, base_rank, proc.nspace, v_params);
     if (NULL != ranks) {
         free(ranks);
     }
@@ -1047,7 +1075,7 @@ int server_launch_clients(int local_size, int univ_size, int base_rank,
     strcpy(nspace_item->name, proc.nspace);
     pmix_list_append(server_nspace, &nspace_item->super);
     /* populate our validation parameters with all non-client-specific information */
-    fill_global_validation_params(proc, local_size, univ_size, params, v_params);
+    fill_global_validation_params(proc, univ_size, params, v_params);
 
     for (n = 0; n < local_size; n++) {
         proc.rank = base_rank + n;
@@ -1096,7 +1124,7 @@ int server_launch_clients(int local_size, int univ_size, int base_rank,
                                    // risk of messing up any pointers that might be in
                                    // the struct later because this is a 'shallow' copy
         /* client-specific params filled in by fill_client_validation_params() */
-        if (params->validate_params) {
+        if (v_params->validate_params) {
             if (PMIX_SUCCESS != fill_client_validation_params(proc, &local_v_params)) {
                 TEST_VERBOSE(("Unable to populate client-specific validation params."));
                 exit(1);
@@ -1127,6 +1155,7 @@ int server_launch_clients(int local_size, int univ_size, int base_rank,
         sprintf(digit, "%d", 0);
         pmix_argv_append_nosize(&client_argv, "--base-rank");
         pmix_argv_append_nosize(&client_argv, digit);
+
 
         if (cli_info[cli_counter].pid == 0) {
             sigset_t sigs;

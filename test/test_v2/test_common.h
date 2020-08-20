@@ -153,7 +153,6 @@ typedef struct {
     pmix_rank_t pmix_rank;
     bool check_pmix_nspace;
     pmix_nspace_t pmix_nspace;
-    /*
     bool check_pmix_job_size;
     uint32_t pmix_job_size;
     bool check_pmix_univ_size;
@@ -161,13 +160,20 @@ typedef struct {
     bool check_pmix_jobid;
     char pmix_jobid[PMIX_MAX_KEYLEN];
     bool check_pmix_local_size;
-    uint32_t pmix_local_size; 
+    uint32_t pmix_local_size;
     bool check_pmix_local_rank;
     uint16_t pmix_local_rank;
-    bool check_pmix_job_num_apps; 
-    uint32_t pmix_job_num_apps; 
-    bool check_pmix_app_size; 
-    uint32_t pmix_app_size; 
+    bool check_pmix_nodeid;
+    uint32_t pmix_nodeid;
+    bool check_pmix_local_peers;
+    char pmix_local_peers[PMIX_MAX_KEYLEN];
+    bool check_pmix_hostname;
+    char pmix_hostname[PMIX_MAX_KEYLEN];
+    /*
+    bool check_pmix_job_num_apps;
+    uint32_t pmix_job_num_apps;
+    bool check_pmix_app_size;
+    uint32_t pmix_app_size;
     bool check_pmix_node_size;
     uint32_t pmix_node_size;
     bool check_pmix_max_procs;
@@ -178,8 +184,6 @@ typedef struct {
     uint32_t pmix_num_nodes;
     bool check_pmix_node_rank;
     uint16_t pmix_node_rank;
-    bool check_pmix_nodeid;
-    uint32_t pmix_nodeid;
     */
     // more as needed
 } validation_params;
@@ -203,13 +207,11 @@ typedef struct {
     int ns_id;
     pmix_rank_t base_rank;
     int nservers;
-    uint32_t lsize;
-    int validate_params;
 } test_params;
 
 extern test_params params;
 
-void parse_cmd(int argc, char **argv, test_params *params);
+void parse_cmd(int argc, char **argv, test_params *params, validation_params *v_params);
 int parse_fence(char *fence_param, int store);
 int parse_noise(char *noise_param, int store);
 int parse_replace(char *replace_param, int store, int *key_num);
@@ -222,11 +224,10 @@ void pmixt_fix_rank_and_ns(pmix_proc_t *this_proc, test_params *params, validati
 void pmixt_post_init(pmix_proc_t *this_proc, test_params *params, validation_params *val_params);
 void pmixt_post_finalize(pmix_proc_t *this_proc, test_params *params, validation_params *v_params);
 void pmixt_pre_init(int argc, char **argv, test_params *params, validation_params *v_params);
-void pmixt_validate_predefined(pmix_proc_t *myproc, const pmix_key_t key, pmix_value_t *value, validation_params *val_params);
+void pmixt_validate_predefined(pmix_proc_t *myproc, const pmix_key_t key, pmix_value_t *value, const pmix_data_type_t expected_type, validation_params *val_params);
 
 char *pmixt_encode(const void *val, size_t vallen);
 ssize_t pmixt_decode (const char *data, void *decdata, size_t buffsz);
-//char *pmixt_decode (const char *data, size_t *retlen);
 
 typedef struct {
     pmix_list_item_t super;

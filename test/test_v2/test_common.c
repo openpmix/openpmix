@@ -45,9 +45,10 @@ void parse_cmd_client(int argc, char **argv, test_params *params, validation_par
     ;
 }
 
-void parse_cmd(int argc, char **argv, test_params *params)
+void parse_cmd(int argc, char **argv, test_params *params, validation_params *v_params)
 {
     int i;
+    uint32_t job_size;
 
     /* set output to stderr by default */
     file = stdout;
@@ -61,9 +62,11 @@ void parse_cmd(int argc, char **argv, test_params *params)
             i++;
             if (NULL != argv[i]) {
                 params->np = strdup(argv[i]);
-                params->nprocs = strtol(argv[i], NULL, 10);
+                job_size = strtol(argv[i], NULL, 10);
+                params->nprocs = job_size;
+                PMIXT_VAL_PARAM_SETNUM(v_params, pmix_job_size, job_size);
                 if (-1 == params->ns_size) {
-                    params->ns_size = params->nprocs;
+                    params->ns_size = job_size;
                 }
             }
         } else if (0 == strcmp(argv[i], "--h") || 0 == strcmp(argv[i], "-h")) {
@@ -118,7 +121,8 @@ void parse_cmd(int argc, char **argv, test_params *params)
         } else if (0 == strcmp(argv[i], "--rank") || 0 == strcmp(argv[i], "-r")) {
             i++;
             if (NULL != argv[i]) {
-                params->rank = strtol(argv[i], NULL, 10);
+                pmix_rank_t rank = strtol(argv[i], NULL, 10);
+                PMIXT_VAL_PARAM_SETNUM(v_params, pmix_rank, rank);
             }
         } else if (0 == strcmp(argv[i], "--collect-corrupt")) {
             params->collect_bad = 1;
@@ -144,7 +148,7 @@ void parse_cmd(int argc, char **argv, test_params *params)
 
         } else if (0 == strcmp(argv[i], "--validate-params")) {
             i++;
-            params->validate_params = 1;
+            v_params->validate_params = 1;
             v_params_ascii_str = strdup(argv[i]);
 	    }
         else {
@@ -201,8 +205,6 @@ void default_params(test_params *params, validation_params *v_params) {
     params->ns_id = -1;
     params->base_rank = 0;
     params->nservers = 1;
-    params->lsize = 0;
-    params->validate_params = 0;
 
     v_params->version = PMIXT_VALIDATION_PARAMS_VER;
     v_params->validate_params = false;
@@ -210,33 +212,41 @@ void default_params(test_params *params, validation_params *v_params) {
     v_params->pmix_rank = PMIX_RANK_UNDEF;
     v_params->check_pmix_nspace = false;
     v_params->pmix_nspace[0] = '\0';
-/*
     v_params->check_pmix_job_size = false;
     v_params->pmix_job_size = 0;
     v_params->check_pmix_univ_size = false;
     v_params->pmix_univ_size = 0;
     v_params->check_pmix_jobid = false;
     v_params->pmix_jobid[0] = '\0';
-    */
+    v_params->check_pmix_local_size = false;
+    v_params->pmix_local_size = 0;
+    v_params->check_pmix_local_rank = false;
+    v_params->pmix_local_rank = 0;
+    v_params->check_pmix_nodeid = false;
+    v_params->pmix_nodeid = 0;
+    v_params->check_pmix_local_peers = false;
+    v_params->pmix_local_peers[0] = '\0';
+    v_params->check_pmix_hostname = false;
+    v_params->pmix_hostname[0] = '\0';
 }
 
 void free_params(test_params *params, validation_params *vparams) {
-    if (NULL != params->binary) {      
-        free(params->binary);          
-    }                                 
-    if (NULL != params->np) {          
-        free(params->np);              
-    }                                 
-    if (NULL != params->prefix) {      
-        free(params->prefix);          
-    }                                 
-    if (NULL != params->nspace) {      
-        free(params->nspace);          
+    if (NULL != params->binary) {
+        free(params->binary);
+    }
+    if (NULL != params->np) {
+        free(params->np);
+    }
+    if (NULL != params->prefix) {
+        free(params->prefix);
+    }
+    if (NULL != params->nspace) {
+        free(params->nspace);
     }
     if (NULL != v_params_ascii_str) {
         free(v_params_ascii_str);
     }
-} 
+}
 
 void set_client_argv(test_params *params, char ***argv)
 {
@@ -264,15 +274,16 @@ void set_client_argv(test_params *params, char ***argv)
         pmix_argv_append_nosize(argv, "--collect-corrupt");
     }
 }
+
 void pmixt_pre_init(int argc, char **argv, test_params *params, validation_params *v_params) {
 
     ssize_t v_size = -1;
 
     default_params(params, v_params);
-    parse_cmd(argc, argv, params);
+    parse_cmd(argc, argv, params, v_params);
     //parse_cmd_client(argc, argv, params, v_params);
 
-    if (params->validate_params) {
+    if (v_params->validate_params) {
         v_size = pmixt_decode(v_params_ascii_str, v_params, sizeof(*v_params));
         if (v_size != sizeof(*v_params)) {
             assert(v_size == sizeof(*v_params));
@@ -286,14 +297,14 @@ void pmixt_pre_init(int argc, char **argv, test_params *params, validation_param
 
     /* set filename if available in params */
     if ( NULL != params->prefix && -1 != params->ns_id ) {
-	char *fname = malloc( strlen(params->prefix) + MAX_DIGIT_LEN + 2 ); 
-        sprintf(fname, "%s.%d.%d", params->prefix, params->ns_id, params->rank); 
-        file = fopen(fname, "w"); 
+	char *fname = malloc( strlen(params->prefix) + MAX_DIGIT_LEN + 2 );
+        sprintf(fname, "%s.%d.%d", params->prefix, params->ns_id, params->rank);
+        file = fopen(fname, "w");
         free(fname);
-        if( NULL == file ){ 
-            fprintf(stderr, "Cannot open file %s for writing!", fname); 
-            exit(1); 
-        } 
+        if( NULL == file ){
+            fprintf(stderr, "Cannot open file %s for writing!", fname);
+            exit(1);
+        }
     }
     else {
         file = stdout;
@@ -325,7 +336,7 @@ void pmixt_fix_rank_and_ns(pmix_proc_t *this_proc, test_params *params, validati
         else if ( NULL == getenv("PMIX_RANK") ) { /* we must not be running under SLURM */
             // **Call separate function for your own resource manager here**
             // It should likely be wrapped in condition that checks for existence of an RM env var
-            // Function name should be of form: fix_rank_and_nspace_rm_* 
+            // Function name should be of form: fix_rank_and_nspace_rm_*
             // and should check/fix both rank and nspace
             // e.g: fix_rank_and_ns_rm_pbs(), fix_rank_and_ns_rm_torque(), etc.
         }
@@ -346,7 +357,7 @@ void pmixt_fix_rank_and_ns(pmix_proc_t *this_proc, test_params *params, validati
         if( NULL != nspace ){
             params->nspace = strdup(nspace);
         }
-	else { /* If we aren't running under SLURM, you should have set nspace 
+	else { /* If we aren't running under SLURM, you should have set nspace
 	          in your custom fix_rank_and_ns_rm_* function! */
             fprintf(stderr, "nspace not set. Is the fix_rank_and_ns_rm_*"
 	            " function for this resource manager failing to set it?\n");
@@ -358,7 +369,7 @@ void pmixt_fix_rank_and_ns(pmix_proc_t *this_proc, test_params *params, validati
     }
 
     if (this_proc->rank != v_params->pmix_rank) {
-        TEST_ERROR(("Client ns %s Rank returned in PMIx_Init %d does not match rank from command line %d.", 
+        TEST_ERROR(("Client ns %s Rank returned in PMIx_Init %d does not match rank from command line %d.",
 	    this_proc->nspace, this_proc->rank, v_params->pmix_rank));
         if( (stdout != file) && (stderr != file) ) {
             fclose(file);
@@ -381,12 +392,182 @@ void pmixt_post_finalize(pmix_proc_t *this_proc, test_params *params, validation
     exit(EXIT_SUCCESS);
 }
 
-void pmixt_validate_predefined(pmix_proc_t *myproc, const pmix_key_t key, pmix_value_t *value, validation_params *val_params)
+/* This function is used to validate values returned from calls to Get against sidechannel validation data */
+void pmixt_validate_predefined(pmix_proc_t *myproc, const pmix_key_t key, pmix_value_t *value,
+                               const pmix_data_type_t expected_type, validation_params *val_params)
 {
     pmix_status_t rc = PMIX_ERROR;
-    size_t *size;
-    // To be developed.
-    ;
+    if (val_params->validate_params) {
+        if (expected_type != value->type) {
+            TEST_ERROR(("Type mismatch for key. Key: %s Type: %u Expected type: %u",
+                    key, value->type, expected_type));
+            exit(1);
+        }
+        switch (value->type) {
+            case PMIX_UINT16:
+                //empty statement to separate label and declaration
+                ;
+                uint16_t uint16data;
+                PMIX_VALUE_GET_NUMBER(rc, value, uint16data, uint16_t);
+                if (PMIX_SUCCESS != rc) {
+                    TEST_ERROR(("Failed to retrieve value correctly. Key: %s Type: %u",
+                    key, value->type));
+                    exit(1);
+                }
+                if (PMIXT_CHECK_KEY(key, PMIX_LOCAL_RANK) && val_params->check_pmix_local_rank) {
+                    if (val_params->pmix_local_rank != uint16data) {
+                        TEST_ERROR(("Key %s failed validation. Get value: %d Validation value: %d",
+                                     key, uint16data, val_params->pmix_local_rank));
+                        exit(1);
+                    }
+                    TEST_VERBOSE(("Namespace %s: Rank %d: Data validated: Key: %s Value: %u",
+                        myproc->nspace, myproc->rank, key, uint16data));
+                } // other possibilities will be added here later
+                else {
+                   TEST_ERROR(("Check input for case PMIX_UINT16: key: %s check_pmix_local_rank %u",
+                       key, val_params->check_pmix_local_rank));
+                    exit(1);
+                }
+                break;
+            case PMIX_UINT32:
+                //empty statement to separate label and declaration
+                ;
+                uint32_t uint32data;
+                PMIX_VALUE_GET_NUMBER(rc, value, uint32data, uint32_t);
+                if (PMIX_SUCCESS != rc) {
+                    TEST_ERROR(("Failed to retrieve value correctly. Key: %s Type: %u",
+                    key, value->type));
+                    exit(1);
+                }
+                if (PMIXT_CHECK_KEY(key, PMIX_JOB_SIZE) && val_params->check_pmix_job_size) {
+                    if (val_params->pmix_job_size != uint32data) {
+                        TEST_ERROR(("Key %s failed validation. Get value: %d Validation value: %d",
+                                     key, uint32data, val_params->pmix_job_size));
+                        exit(1);
+                    }
+                    TEST_VERBOSE(("Namespace %s: Rank %d: Data validated: Key: %s Value: %u",
+                        myproc->nspace, myproc->rank, key, uint32data));
+                }
+                else if (PMIXT_CHECK_KEY(key, PMIX_UNIV_SIZE) && val_params->check_pmix_univ_size) {
+                    if (val_params->pmix_univ_size != uint32data) {
+                        TEST_ERROR(("Key %s failed validation. Get value: %d Validation value: %d",
+                                     key, uint32data, val_params->pmix_univ_size));
+                        exit(1);
+                    }
+                    TEST_VERBOSE(("Namespace %s: Rank %d: Data validated: Key: %s Value: %u",
+                        myproc->nspace, myproc->rank, key, uint32data));
+                }
+                else if (PMIXT_CHECK_KEY(key, PMIX_LOCAL_SIZE) && val_params->check_pmix_local_size) {
+                    if (val_params->pmix_local_size != uint32data) {
+                        TEST_ERROR(("Key %s failed validation. Get value: %d Validation value: %d",
+                                     key, uint32data, val_params->pmix_local_size));
+                        exit(1);
+                    }
+                    TEST_VERBOSE(("Namespace %s: Rank %d: Data validated: Key: %s Value: %u",
+                        myproc->nspace, myproc->rank, key, uint32data));
+                }
+                else if (PMIXT_CHECK_KEY(key, PMIX_NODEID) && val_params->check_pmix_nodeid) {
+                    if (val_params->pmix_nodeid != uint32data) {
+                        TEST_ERROR(("Key %s failed validation. Get value: %d Validation value: %d",
+                                     key, uint32data, val_params->pmix_nodeid));
+                        exit(1);
+                    }
+                    TEST_VERBOSE(("Namespace %s: Rank %d: Data validated: Key: %s Value: %u",
+                        myproc->nspace, myproc->rank, key, uint32data));
+                } // other possibilities will be added here later
+                else {
+                   TEST_ERROR(("Check input for case PMIX_UINT32: key: %s check_pmix_job_size: %u check_pmix_univ_size %u check_pmix_local_size %u",
+                        key, val_params->check_pmix_job_size, val_params->check_pmix_univ_size, val_params->check_pmix_local_size));
+                    exit(1);
+                }
+                break;
+            case PMIX_PROC_RANK:
+                //empty statement to separate label and declaration
+                ;
+                pmix_rank_t rankdata;
+                PMIX_VALUE_GET_NUMBER(rc, value, rankdata, pmix_rank_t);
+                if (PMIX_SUCCESS != rc) {
+                    TEST_ERROR(("Failed to retrieve value correctly. Key: %s Type: %u",
+                    key, value->type));
+                    exit(1);
+                }
+                if (PMIXT_CHECK_KEY(key, PMIX_RANK) && val_params->check_pmix_rank) {
+                    if (val_params->pmix_rank != rankdata) {
+                        TEST_ERROR(("Key %s failed validation. Get value: %d Validation value: %d",
+                                     key, rankdata, val_params->pmix_rank));
+                        exit(1);
+                    }
+                    TEST_VERBOSE(("Namespace %s: Rank %d Data validated: Key: %s Value: %u",
+                        myproc->nspace, myproc->rank, key, rankdata));
+                } // other possibilities will be added here later
+                else {
+                    TEST_ERROR(("Check input for case PMIX_PROC_RANK: key: %s check_pmix_rank: %u",
+                        key, val_params->check_pmix_rank));
+                    exit(1);
+                }
+                break;
+            case PMIX_STRING:
+                //empty statement to separate label and declaration
+                ;
+                void *stringdata;
+                size_t lsize;
+                PMIX_VALUE_UNLOAD(rc, value, &stringdata, &lsize);
+                if (PMIX_SUCCESS != rc) {
+                    TEST_ERROR(("Failed to retrieve value correctly. Key: %s Type: %u",
+                    key, value->type));
+                    exit(1);
+                }
+                if (PMIXT_CHECK_KEY(key, PMIX_NSPACE) && val_params->check_pmix_nspace) {
+                    if (0 != strcmp(val_params->pmix_nspace, stringdata)) {
+                        TEST_ERROR(("Key %s failed validation. Get value: %s Validation value: %s",
+                                     key, stringdata, val_params->pmix_nspace));
+                        exit(1);
+                    }
+                    TEST_VERBOSE(("Namespace %s: Rank %d Data validated: Key: %s Value: %s",
+                        myproc->nspace, myproc->rank, key, stringdata));
+                }
+                else if (PMIXT_CHECK_KEY(key, PMIX_JOBID) && val_params->check_pmix_jobid) {
+                    if (0 != strcmp(val_params->pmix_jobid, stringdata)) {
+                        TEST_ERROR(("Key %s failed validation. Get value: %s Validation value: %s",
+                                     key, stringdata, val_params->pmix_jobid));
+                        exit(1);
+                    }
+                    TEST_VERBOSE(("Namespace %s: Rank %d Data validated: Key: %s Value: %s",
+                        myproc->nspace, myproc->rank, key, stringdata));
+                }
+                else if (PMIXT_CHECK_KEY(key, PMIX_LOCAL_PEERS) && val_params->check_pmix_local_peers) {
+                    if (0 != strcmp(val_params->pmix_local_peers, stringdata)) {
+                        TEST_ERROR(("Key %s failed validation. Get value: %s Validation value: %s",
+                                     key, stringdata, val_params->pmix_local_peers));
+                        exit(1);
+                    }
+                    TEST_VERBOSE(("Namespace %s: Rank %d Data validated: Key: %s Value: %s",
+                        myproc->nspace, myproc->rank, key, stringdata));
+                }
+                else if (PMIXT_CHECK_KEY(key, PMIX_HOSTNAME) && val_params->check_pmix_hostname) {
+                    if (0 != strcmp(val_params->pmix_hostname, stringdata)) {
+                        TEST_ERROR(("Key %s failed validation. Get value: %s Validation value: %s",
+                                     key, stringdata, val_params->pmix_hostname));
+                        exit(1);
+                    }
+                    TEST_VERBOSE(("Namespace %s: Rank %d Data validated: Key: %s Value: %s",
+                        myproc->nspace, myproc->rank, key, stringdata));
+                } // other possibilities will be added here later
+                else {
+                    TEST_ERROR(("Check input for case PMIX_STRING: key: %s stringdata: %s",
+                        key, stringdata));
+                    exit(1);
+                }
+                free(stringdata);
+                break;
+            default:
+                TEST_ERROR(("No test logic for type: %d, key: %s", value->type, key));
+                exit(1);
+        }
+    }
+    else {
+        TEST_VERBOSE(("All validation disabled, will not validate: %s", key));
+    }
 }
 
 /* lifted from contrib/perf_tools/pmix.c, pmi_get_local_ranks() */
