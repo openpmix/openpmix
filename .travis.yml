@@ -59,4 +59,4 @@ script:
         - if [ $? -ne 0 ]; then cat config.log; fi
         - make all
         # test
-        - make distcheck
+        - make check
