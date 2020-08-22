@@ -1,5 +1,9 @@
 sudo: false
 dist: xenial
+arch:
+  - amd64
+  - ppc64le
+
 
 cache:
   apt: true
@@ -55,4 +59,4 @@ script:
         - if [ $? -ne 0 ]; then cat config.log; fi
         - make all
         # test
-        - make distcheck
+        - make check
