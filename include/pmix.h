@@ -986,6 +986,12 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register(pmix_fabric_t *fabric,
                                                const pmix_info_t directives[],
                                                size_t ndirs);
 
+PMIX_EXPORT pmix_status_t PMIx_Fabric_register_nb(pmix_fabric_t *fabric,
+												  const pmix_info_t directives[],
+											      size_t ndirs,
+												  pmix_op_cbfunc_t cbfunc, void *cbdata);
+
+
 /* Update fabric-related information. This call can be made at any time to request an update of the
  * fabric information contained in the provided pmix_fabric_t object. The caller is not allowed
  * to access the provided pmix_fabric_t until the call has returned.
@@ -999,6 +1005,9 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register(pmix_fabric_t *fabric,
  */
 PMIX_EXPORT pmix_status_t PMIx_Fabric_update(pmix_fabric_t *fabric);
 
+PMIX_EXPORT pmix_status_t PMIx_Fabric_update_nb(pmix_fabric_t *fabric,
+											    pmix_op_cbfunc_t cbfunc, void *cbdata);
+
 
 /* Deregister a fabric object, providing an opportunity for
  * the PMIx server library to cleanup any information
@@ -1008,6 +1017,10 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update(pmix_fabric_t *fabric);
  *          to the registration function
  */
 PMIX_EXPORT pmix_status_t PMIx_Fabric_deregister(pmix_fabric_t *fabric);
+
+PMIX_EXPORT pmix_status_t PMIx_Fabric_deregister_nb(pmix_fabric_t *fabric,
+												    pmix_op_cbfunc_t cbfunc, void *cbdata);
+
 
 /* Given a communication cost matrix index for a specified fabric,
  * return the corresponding vertex info and the name of the node upon
@@ -1031,6 +1044,9 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_deregister(pmix_fabric_t *fabric);
 PMIX_EXPORT pmix_status_t PMIx_Fabric_get_vertex_info(pmix_fabric_t *fabric, uint32_t index,
                                                       pmix_info_t **info, size_t *ninfo);
 
+PMIX_EXPORT pmix_status_t PMIx_Fabric_get_vertex_info_nb(pmix_fabric_t *fabric, uint32_t index,
+                                                         pmix_info_cbfunc_t cbfunc, void *cbdata);
+
 /* Given vertex info and the name of the device upon which that
  * vertex resides, return the corresponding communication cost matrix
  * index
@@ -1052,11 +1068,65 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_get_vertex_info(pmix_fabric_t *fabric, uin
  * PMIX_ERR_RESOURCE_BUSY - matrix is being updated
  * PMIX_ERR_FABRIC_UPDATED - fabric info has been updated since
  *                           last call involving this pmix_fabric_t
-  */
+ */
 PMIX_EXPORT pmix_status_t PMIx_Fabric_get_device_index(pmix_fabric_t *fabric,
                                                        const pmix_info_t vertex[], size_t ninfo,
                                                        uint32_t *i);
 
+PMIX_EXPORT pmix_status_t PMIx_Fabric_get_device_index_nb(pmix_fabric_t *fabric,
+                                                          const pmix_info_t vertex[], size_t ninfo,
+                                                          pmix_info_cbfunc_t cbfunc, void *cbdata);
+
+
+/* Load the local hwardware topology description
+ *
+ * topo - pointer to a pmix_topology_t object. This object
+ *        must be initialized! If the a particular "source"
+ *        for the topology is required (e.g., "hwloc"), then
+ *        the "source" field of the object must be set to
+ *        that value
+ *
+ * Return values include:
+ * PMIX_SUCCESS - indicates return of a valid value
+ * PMIX_ERR_NOT_FOUND - provided source is not available
+ * PMIX_ERR_NOT_SUPPORTED - current implementation does not support this option
+ */
+PMIX_EXPORT pmix_status_t PMIx_Load_topology(pmix_topology_t *topo);
+
+
+/* Get the PU binding bitmap from its string representation
+ *
+ * cpuset_string - string representation of the binding bitmap
+ *                 (as returned by PMIx_Get using the PMIX_CPUSET key)
+ *
+ * cpuset - pointer to a pmix_cpuset_t object where the result
+ *          is to be stored
+ *
+ * Return values include:
+ * PMIX_SUCCESS - indicates return of a valid value
+ * PMIX_ERR_NOT_FOUND - provided source is not available
+ * PMIX_ERR_NOT_SUPPORTED - current implementation does not support this option
+ */
+PMIX_EXPORT pmix_status_t PMIx_Get_cpuset(const char *cpuset_string,
+	                                      pmix_cpuset_t *cpuset);
+
+
+/* Get the relative locality of two local processes given their locality strings.
+ *
+ * locality1 - String returned by the PMIx_server_generate_locality_string API
+ *
+ * locality2 - String returned by the PMIx_server_generate_locality_string API
+ *
+ * locality - Pointer to the location where the relative locality bitmask is
+ *            to be constructed
+ *
+ * Return values include:
+ * PMIX_SUCCESS - indicates return of a valid value
+ * other error constant
+ */
+PMIX_EXPORT pmix_status_t PMIx_Get_relative_locality(const char *locality1,
+	                                                 const char *locality2,
+	                                                 pmix_locality_t *locality);
 
 /******    PRETTY-PRINT DEFINED VALUE TYPES     ******/
 /* Provide a string representation for several types of value. Note

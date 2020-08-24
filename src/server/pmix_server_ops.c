@@ -5109,3 +5109,22 @@ static void iodes(pmix_iof_cache_t *p)
 PMIX_CLASS_INSTANCE(pmix_iof_cache_t,
                     pmix_list_item_t,
                     iocon, iodes);
+
+static void pscon(pmix_pset_t *p)
+{
+    p->name = NULL;
+    p->members = NULL;
+    p->nmembers = 0;
+}
+static void psdes(pmix_pset_t *p)
+{
+    if (NULL != p->name) {
+        free(p->name);
+    }
+    if (NULL != p->members) {
+        free(p->members);
+    }
+}
+PMIX_CLASS_INSTANCE(pmix_pset_t,
+                    pmix_list_item_t,
+                    pscon, psdes);

@@ -39,10 +39,6 @@
 #include <errno.h>
 #include <signal.h>
 
-#if PMIX_HAVE_HWLOC
-#include "src/hwloc/hwloc-internal.h"
-#endif
-
 #include "src/class/pmix_list.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/output.h"
@@ -252,10 +248,6 @@ int main(int argc, char **argv)
     size_t ninfo;
     mylock_t mylock;
     int ncycles=1, m, delay=0;
-    bool hwloc = false;
-#if PMIX_HAVE_HWLOC
-    char *hwloc_file = NULL;
-#endif
     sigset_t unblock;
 
     /* smoke test */
@@ -292,29 +284,12 @@ int main(int argc, char **argv)
                    0 == strcmp("--sleep", argv[n])) &&
                    NULL != argv[n+1]) {
             delay = strtol(argv[n+1], NULL, 10);
-#if PMIX_HAVE_HWLOC
-        } else if (0 == strcmp("-hwloc", argv[n]) ||
-                   0 == strcmp("--hwloc", argv[n])) {
-            /* test hwloc support */
-            hwloc = true;
-        } else if (0 == strcmp("-hwloc-file", argv[n]) ||
-                   0 == strcmp("--hwloc-file", argv[n])) {
-            if (NULL == argv[n+1]) {
-                fprintf(stderr, "The --hwloc-file option requires an argument\n");
-                exit(1);
-            }
-            hwloc_file = strdup(argv[n+1]);
-            hwloc = true;
-            ++n;
-#endif
         } else if (0 == strcmp("-h", argv[n])) {
             /* print the options and exit */
             fprintf(stderr, "usage: simptest <options>\n");
             fprintf(stderr, "    -n N     Number of clients to run\n");
             fprintf(stderr, "    -e foo   Name of the client executable to run (default: simpclient\n");
             fprintf(stderr, "    -reps N  Cycle for N repetitions");
-            fprintf(stderr, "    -hwloc   Test hwloc support\n");
-            fprintf(stderr, "    -hwloc-file FILE   Use file to import topology\n");
             fprintf(stderr, "    -net-test  Test network endpt assignments\n");
             fprintf(stderr, "    -arrays  Use the job session array to pass registration info\n");
             exit(0);
@@ -356,36 +331,12 @@ int main(int argc, char **argv)
     }
 
     /* setup the server library and tell it to support tool connections */
-#if PMIX_HAVE_HWLOC
-    if (hwloc) {
-#if HWLOC_API_VERSION < 0x20000
-        ninfo = 4;
-#else
-        ninfo = 5;
-#endif
-    } else {
-        ninfo = 4;
-    }
-#else
     ninfo = 3;
-#endif
 
     PMIX_INFO_CREATE(info, ninfo);
     PMIX_INFO_LOAD(&info[0], PMIX_SERVER_TOOL_SUPPORT, NULL, PMIX_BOOL);
     PMIX_INFO_LOAD(&info[1], PMIX_USOCK_DISABLE, NULL, PMIX_BOOL);
     PMIX_INFO_LOAD(&info[2], PMIX_SERVER_SCHEDULER, NULL, PMIX_BOOL);
-#if PMIX_HAVE_HWLOC
-    if (hwloc) {
-        if (NULL != hwloc_file) {
-            PMIX_INFO_LOAD(&info[3], PMIX_TOPOLOGY_FILE, hwloc_file, PMIX_STRING);
-        } else {
-            PMIX_INFO_LOAD(&info[3], PMIX_TOPOLOGY, NULL, PMIX_STRING);
-        }
-#if HWLOC_API_VERSION >= 0x20000
-        PMIX_INFO_LOAD(&info[4], PMIX_HWLOC_SHARE_TOPO, NULL, PMIX_BOOL);
-#endif
-    }
-#endif
     if (nettest) {
         /* set a known network configuration for the pnet/test component */
         putenv("PMIX_MCA_pnet_test_nverts=nodes:5;plane:d:3;plane:s:2;plane:d:5");

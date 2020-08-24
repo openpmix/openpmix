@@ -157,6 +157,8 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
         return "DUPLICATE KEY";
     case PMIX_ERR_GET_MALLOC_REQD:
         return "GET REQD MALLOC";
+    case PMIX_PROCESS_SET_DEFINE:
+        return "PROCESS SET DEFINED";
     case PMIX_ERR_IOF_FAILURE:
         return "IOF FAILURE";
     case PMIX_ERR_IOF_COMPLETE:
