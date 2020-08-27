@@ -15,6 +15,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2020      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -577,11 +578,6 @@ static inline bool pmix_check_app_info(const char* key)
     }
     return false;
 }
-
-// Pull some v4 feature from master for internal use only
-#ifndef PMIX_REGEX
-#define PMIX_REGEX              49
-#endif
 
 END_C_DECLS
 
