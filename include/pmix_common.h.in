@@ -3,7 +3,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2020 IBM Corporation.  All rights reserved.
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  *
@@ -925,6 +925,7 @@ typedef uint16_t pmix_data_type_t;
 // Hole left by deprecation/removal of PMIX_INFO_ARRAY
 #define PMIX_IOF_CHANNEL        45
 #define PMIX_ENVAR              46
+#define PMIX_REGEX              49 // numerical ID matches v4
 /********************/
 
 /* define a boundary for implementers so they can add their own data types */
