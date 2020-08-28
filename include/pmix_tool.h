@@ -126,9 +126,6 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void);
  * proc parameter will be filled with the tool's existing nspace/rank, and
  * the caller is welcome to pass _NULL_ in that location
  */
-PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
-                                                      pmix_info_t info[], size_t ninfo);
-
 /* REPLACES CONNECT_TO_SERVER, ADDING ABILITY TO RETURN
  * IDENTIFIER OF SERVER TO WHICH TOOL ATTACHED
  */
@@ -149,7 +146,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_disconnect(pmix_proc_t *server);
 
 /* Get an array containing the pmix_proc_t process identifiers of all
  * servers to which the tool is currently connected.
- * 
+ *
  * servers - Address where the pointer to an array of pmix_proc_t
  *           structures shall be returned
  *
