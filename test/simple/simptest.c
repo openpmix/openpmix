@@ -39,10 +39,6 @@
 #include <errno.h>
 #include <signal.h>
 
-#if PMIX_HAVE_HWLOC
-#include "src/hwloc/hwloc-internal.h"
-#endif
-
 #include "src/class/pmix_list.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/output.h"
@@ -352,10 +348,6 @@ int main(int argc, char **argv)
     wait_tracker_t *child;
     pmix_info_t *info;
     size_t ninfo;
-    bool hwloc = false;
-#if PMIX_HAVE_HWLOC
-    char *hwloc_file = NULL;
-#endif
     mylock_t mylock;
     pmix_status_t code;
     sigset_t unblock;
@@ -384,29 +376,12 @@ int main(int argc, char **argv)
                 pmix_argv_append_nosize(&client_argv, argv[k]);
             }
             n += k;
-#if PMIX_HAVE_HWLOC
-        } else if (0 == strcmp("-hwloc", argv[n]) ||
-                   0 == strcmp("--hwloc", argv[n])) {
-            /* test hwloc support */
-            hwloc = true;
-        } else if (0 == strcmp("-hwloc-file", argv[n]) ||
-                   0 == strcmp("--hwloc-file", argv[n])) {
-            if (NULL == argv[n+1]) {
-                fprintf(stderr, "The --hwloc-file option requires an argument\n");
-                exit(1);
-            }
-            hwloc_file = strdup(argv[n+1]);
-            hwloc = true;
-            ++n;
-#endif
         } else if (0 == strcmp("-h", argv[n])) {
             /* print the options and exit */
             fprintf(stderr, "usage: simptest <options>\n");
             fprintf(stderr, "    -n N     Number of clients to run\n");
             fprintf(stderr, "    -e foo   Name of the client executable to run (default: simpclient\n");
             fprintf(stderr, "    -u       Enable legacy usock support\n");
-            fprintf(stderr, "    -hwloc   Test hwloc support\n");
-            fprintf(stderr, "    -hwloc-file FILE   Use file to import topology\n");
             fprintf(stderr, "    -xversion  Cross-version test - simulate single node only\n");
             exit(0);
         }  else if (0 == strcmp("-model", argv[n]) ||
@@ -428,13 +403,6 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-#if !PMIX_HAVE_HWLOC
-    if (hwloc) {
-        fprintf(stderr, "PMIx was not configured with HWLOC support - cannot continue\n");
-        exit(1);
-    }
-#endif
-
     fprintf(stderr, "Testing version %s\n", PMIx_Get_version());
 
     /* ensure that SIGCHLD is unblocked as we need to capture it */
@@ -453,35 +421,11 @@ int main(int argc, char **argv)
 
 
     /* setup the server library and tell it to support tool connections */
-#if PMIX_HAVE_HWLOC
-    if (hwloc) {
-#if HWLOC_API_VERSION < 0x20000
-        ninfo = 3;
-#else
-        ninfo = 4;
-#endif
-    } else {
-        ninfo = 2;
-    }
-#else
     ninfo = 2;
-#endif
 
     PMIX_INFO_CREATE(info, ninfo);
     PMIX_INFO_LOAD(&info[0], PMIX_SERVER_TOOL_SUPPORT, NULL, PMIX_BOOL);
     PMIX_INFO_LOAD(&info[1], PMIX_SERVER_SCHEDULER, NULL, PMIX_BOOL);
-#if PMIX_HAVE_HWLOC
-    if (hwloc) {
-        if (NULL != hwloc_file) {
-            PMIX_INFO_LOAD(&info[2], PMIX_TOPOLOGY_FILE, hwloc_file, PMIX_STRING);
-        } else {
-            PMIX_INFO_LOAD(&info[2], PMIX_TOPOLOGY, NULL, PMIX_STRING);
-        }
-#if HWLOC_API_VERSION >= 0x20000
-        PMIX_INFO_LOAD(&info[3], PMIX_HWLOC_SHARE_TOPO, NULL, PMIX_BOOL);
-#endif
-    }
-#endif
     if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, info, ninfo))) {
         fprintf(stderr, "Init failed with error %s\n", PMIx_Error_string(rc));
         return rc;

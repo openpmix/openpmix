@@ -110,7 +110,6 @@
 #endif
 #include <ctype.h>
 
-#include "src/hwloc/hwloc-internal.h"
 #include "src/class/pmix_pointer_array.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/show_help.h"

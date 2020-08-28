@@ -43,6 +43,7 @@
 #include "src/mca/gds/base/base.h"
 #include "src/mca/pif/base/base.h"
 #include "src/mca/pinstalldirs/base/base.h"
+#include "src/mca/ploc/base/base.h"
 #include "src/mca/plog/base/base.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/mca/preg/base/base.h"
@@ -82,7 +83,9 @@ PMIX_EXPORT pmix_globals_t pmix_globals = {
     .connected = false,
     .commits_pending = false,
     .mygds = NULL,
-    .pushstdin = false
+    .pushstdin = false,
+    .topology = {NULL, NULL},
+    .external_topology = false
 };
 
 
@@ -276,7 +279,7 @@ int pmix_rte_init(uint32_t type,
         ret = PMIX_ERR_NOMEM;
         goto return_error;
     }
-    /* whatever our declared proc type, we are definitely v3.0 */
+    /* whatever our declared proc type, set our version */
     PMIX_SET_PEER_TYPE(pmix_globals.mypeer, type);
     PMIX_SET_PEER_MAJOR(pmix_globals.mypeer, PMIX_VERSION_MAJOR);
     PMIX_SET_PEER_MINOR(pmix_globals.mypeer, PMIX_VERSION_MINOR);
@@ -424,6 +427,16 @@ int pmix_rte_init(uint32_t type,
     }
     if (PMIX_SUCCESS != (ret = pmix_plog_base_select()) ) {
         error = "pmix_plog_base_select";
+        goto return_error;
+    }
+
+    /* open the ploc and select the active plugins */
+    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_ploc_base_framework, 0)) ) {
+        error = "pmix_ploc_base_open";
+        goto return_error;
+    }
+    if (PMIX_SUCCESS != (ret = pmix_ploc_base_select()) ) {
+        error = "pmix_ploc_base_select";
         goto return_error;
     }
 

@@ -85,6 +85,12 @@ extern "C" {
 typedef pmix_status_t (*pmix_server_client_connected_fn_t)(const pmix_proc_t *proc, void* server_object,
                                                            pmix_op_cbfunc_t cbfunc, void *cbdata);
 
+/* REPLACES ABOVE FUNCTION TO ALLOW PASSING ADDITIONAL INFO */
+typedef pmix_status_t (*pmix_server_client_connected2_fn_t)(const pmix_proc_t *proc, void* server_object,
+                                                            pmix_info_t info[], size_t ninfo,
+                                                            pmix_op_cbfunc_t cbfunc, void *cbdata);
+
+
 /* Notify the host server that a client called PMIx_Finalize - note
  * that the client will be in a blocked state until the host server
  * executes the callback function, thus allowing the PMIx server support
@@ -798,6 +804,11 @@ PMIX_EXPORT pmix_status_t PMIx_server_deliver_inventory(pmix_info_t info[], size
                                                         pmix_info_t directives[], size_t ndirs,
                                                         pmix_op_cbfunc_t cbfunc, void *cbdata);
 
+/* Generate PMIx locality string */
+PMIX_EXPORT pmix_status_t PMIx_generate_locality_string(const pmix_cpuset_t *cpuset,
+                                                        char **locality);
+
+
 /******      ATTRIBUTE REGISTRATION      ******/
 /**
  * This function is used by the host environment to register with its
@@ -816,6 +827,36 @@ PMIX_EXPORT pmix_status_t PMIx_server_deliver_inventory(pmix_info_t info[], size
  */
 PMIX_EXPORT pmix_status_t PMIx_Register_attributes(char *function, char *attrs[]);
 
+/* Generate a PMIx locality string from a given cpuset.
+ * Provide a function by which the host environment can generate a PMIx locality
+ * string for inclusion in the call to PMIx_server_register_nspace . This function
+ * shall only be called for local client processes, with the returned locality
+ * included in the job-level information (via the PMIX_LOCALITY_STRING attribute)
+ * provided to local clients.
+ */
+PMIX_EXPORT pmix_status_t PMIx_server_generate_locality_string(const pmix_cpuset_t *cpuset,
+                                                               char **locality);
+
+/* Generate a PMIx string representation of the provided cpuset.
+ * Provide a function by which the host environment can generate a string
+ * representation of the cpuset bitmap for inclusion in the call to
+ * PMIx_server_register_nspace . This function shall only be called for local
+ * client processes, with the returned string included in the job-level information
+ * (via the PMIX_CPUSET attribute) provided to local clients.
+ */
+PMIX_EXPORT pmix_status_t PMIx_server_generate_cpuset_string(const pmix_cpuset_t *cpuset,
+                                                             char **cpuset_string);
+
+/* Define a process set
+ * Provide a function by which the host environment can define a new process set.
+ */
+PMIX_EXPORT pmix_status_t PMIx_server_define_process_set(const pmix_proc_t *members,
+                                                         size_t nmembers, char *pset_name);
+
+/* Delete a process set
+ * Provide a function by which the host environment can delete a new process set.
+ */
+PMIX_EXPORT pmix_status_t PMIx_server_delete_process_set(char *pset_name);
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }

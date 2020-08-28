@@ -159,6 +159,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_SYSTEM_TMPDIR                  "pmix.sys.tmpdir"       // (char*) temp directory for this system, where PMIx
                                                                     //        server will place tool rendezvous points and
                                                                     //        contact info
+#define PMIX_SERVER_SHARE_TOPOLOGY          "pmix.srvr.share"       // (bool) server is to share its copy of the local node
+                                                                    // topology (whether given to it or self-discovered) with any clients.
 #define PMIX_SERVER_ENABLE_MONITORING       "pmix.srv.monitor"      // (bool) Enable PMIx internal monitoring by server
 #define PMIX_SERVER_NSPACE                  "pmix.srv.nspace"       // (char*) Name of the nspace to use for this server
 #define PMIX_SERVER_RANK                    "pmix.srv.rank"         // (pmix_rank_t) Rank of this server
@@ -198,8 +200,12 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_VERSION_INFO                   "pmix.version"          // (char*) PMIx version of contactor
 #define PMIX_REQUESTOR_IS_TOOL              "pmix.req.tool"         // (bool) requesting process is a tool
 #define PMIX_REQUESTOR_IS_CLIENT            "pmix.req.client"       // (bool) requesting process is a client process
-#define PMIX_PSET_NAME                      "pmix.pset.nm"          // (char*) user-assigned name for the process
-                                                                    //         set containing the given process
+#define PMIX_PSET_NAME                      "pmix.pset.nm"          // (char*) assigned name for the process
+                                                                    //          set containing the given process
+#define PMIX_PSET_NAMES                     "pmix.pset.nms"         // (pmix_data_array_t*) Returns an array of string names of the
+                                                                    //          process sets in which the given process is a member.
+#define PMIX_PSET_MEMBERS                   "pmix.pset.mems"        // (pmix_data_array_t*) An array of pmix_proc_t containing
+                                                                    //          the members of the newly defined process set.
 #define PMIX_REINCARNATION                  "pmix.reinc"            // (uint32_t) number of times this process has been instantiated - i.e.,
                                                                     //            tracks the number of times it has been restarted
 
@@ -305,12 +311,16 @@ typedef uint32_t pmix_rank_t;
 
 
 /* topology info */
+
+#define PMIX_TOPOLOGY2                      "pmix.topo2"            // (pmix_topology_t) pointer to a PMIx topology object
+#define PMIX_LOCALITY_STRING                "pmix.locstr"           // (char*) string describing a proc's location
+/*********   DEPRECATED   *********/
 #define PMIX_LOCAL_TOPO                     "pmix.ltopo"            // (char*) xml-representation of local node topology
-#define PMIX_TOPOLOGY                       "pmix.topo"             // (hwloc_topology_t) pointer to the PMIx client's internal topology object
+#define PMIX_TOPOLOGY                       "pmix.topo"             // (hwloc_topology_t) pointer to the PMIx client's internal
+                                                                    //         topology object
 #define PMIX_TOPOLOGY_XML                   "pmix.topo.xml"         // (char*) XML-based description of topology
 #define PMIX_TOPOLOGY_FILE                  "pmix.topo.file"        // (char*) full path to file containing XML topology description
 #define PMIX_TOPOLOGY_SIGNATURE             "pmix.toposig"          // (char*) topology signature string
-#define PMIX_LOCALITY_STRING                "pmix.locstr"           // (char*) string describing a proc's location
 #define PMIX_HWLOC_SHMEM_ADDR               "pmix.hwlocaddr"        // (size_t) address of HWLOC shared memory segment
 #define PMIX_HWLOC_SHMEM_SIZE               "pmix.hwlocsize"        // (size_t) size of HWLOC shared memory segment
 #define PMIX_HWLOC_SHMEM_FILE               "pmix.hwlocfile"        // (char*) path to HWLOC shared memory file
@@ -1032,7 +1042,8 @@ typedef int pmix_status_t;
 #define PMIX_ERR_PARTIAL_SUCCESS                    -52
 #define PMIX_ERR_DUPLICATE_KEY                      -53
 #define PMIX_ERR_GET_MALLOC_REQD                    -54
-
+#define PMIX_PROCESS_SET_DEFINE                     -55
+#define PMIX_PROCESS_SET_DELETE                     -56
 
 /* v2.x communication errors */
 #define PMIX_ERR_LOST_CONNECTION_TO_SERVER          -101
@@ -1286,7 +1297,6 @@ typedef enum {
 } pmix_group_operation_t;
 
 
-
 /* define some "hooks" external libraries can use to
  * intercept memory allocation/release operations */
 static inline void* pmix_malloc(size_t n)
@@ -1410,6 +1420,39 @@ typedef uint8_t pmix_link_state_t;
 #define PMIX_LINK_STATE_UNKNOWN     0  // The port state is unknown or not applicable
 #define PMIX_LINK_DOWN              1  // The port is inactive.
 #define PMIX_LINK_UP                2  // The port is active.
+
+
+/****   PMIX CPUSET    ****/
+typedef struct{
+    char *source;
+    void *bitmap;
+} pmix_cpuset_t;
+
+#define PMIX_CPUSET_CONSTRUCT(m) \
+    memset((m), 0, sizeof(pmix_cpuset_t))
+
+
+/****    PMIX TOPOLOGY    ****/
+typedef struct {
+    char *source;
+    void *topology;
+} pmix_topology_t;
+
+#define PMIX_TOPOLOGY_CONSTRUCT(m) \
+    memset((m), 0, sizeof(pmix_topology_t))
+
+/**** PMIX RELATIVE LOCALITY    ****/
+typedef uint16_t pmix_locality_t;
+#define PMIX_LOCALITY_UNKNOWN           0x0000
+#define PMIX_LOCALITY_NONLOCAL          0x8000
+#define PMIX_LOCALITY_SHARE_HWTHREAD    0x0001
+#define PMIX_LOCALITY_SHARE_CORE        0x0002
+#define PMIX_LOCALITY_SHARE_L1CACHE     0x0004
+#define PMIX_LOCALITY_SHARE_L2CACHE     0x0008
+#define PMIX_LOCALITY_SHARE_L3CACHE     0x0010
+#define PMIX_LOCALITY_SHARE_PACKAGE     0x0020
+#define PMIX_LOCALITY_SHARE_NUMA        0x0040
+#define PMIX_LOCALITY_SHARE_NODE        0x4000
 
 
 /****    PMIX BYTE OBJECT    ****/
@@ -1891,7 +1934,7 @@ typedef struct pmix_info {
             for (_is=0; _is < (n); _is++) {         \
                 PMIX_INFO_DESTRUCT(&((m)[_is]));    \
             }                                       \
-            pmix_free((m));                              \
+            pmix_free((m));                         \
             (m) = NULL;                             \
         }                                           \
     } while (0)

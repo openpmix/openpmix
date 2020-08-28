@@ -40,7 +40,6 @@
 #include "src/util/pmix_environ.h"
 #include "src/util/printf.h"
 #include "src/mca/preg/preg.h"
-#include "src/hwloc/hwloc-internal.h"
 
 #include "src/mca/pstrg/pstrg.h"
 #include "src/mca/pstrg/base/base.h"

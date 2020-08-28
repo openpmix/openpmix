@@ -1,38 +1,29 @@
 /*
- * Copyright (c) 2011-2017 Cisco Systems, Inc.  All rights reserved
- * Copyright (c) 2016      Research Organization for Information Science
- *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  *
- * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
  *
  * $HEADER$
- *
- * this file is included in the rest of
- * the code base via pmix/hwloc/hwloc-internal.h.
  */
 
-#ifndef PMIX_HWLOC_INTERNAL_H
-#define PMIX_HWLOC_INTERNAL_H
-
+#ifndef PMIX_PLOC_HWLOC_H
+#define PMIX_PLOC_HWLOC_H
 
 #include "src/include/pmix_config.h"
-#include "include/pmix_common.h"
 
-#if PMIX_HAVE_HWLOC
 #include PMIX_HWLOC_HEADER
+
+#include "src/mca/ploc/ploc.h"
+
+BEGIN_C_DECLS
 
 #if HWLOC_API_VERSION < 0x00010b00
 #define HWLOC_OBJ_NUMANODE HWLOC_OBJ_NODE
 #define HWLOC_OBJ_PACKAGE HWLOC_OBJ_SOCKET
 #endif
 
-PMIX_EXPORT extern hwloc_topology_t pmix_hwloc_topology;
-#endif
-
-BEGIN_C_DECLS
 
 typedef enum {
     VM_HOLE_NONE = -1,
@@ -52,9 +43,15 @@ typedef enum {
     VM_MAP_OTHER = 4 /* vsyscall/vdso/vvar shouldn't occur since we stop after stack */
 } pmix_hwloc_vm_map_kind_t;
 
-PMIX_EXPORT pmix_status_t pmix_hwloc_get_topology(pmix_info_t *info, size_t ninfo);
-PMIX_EXPORT void pmix_hwloc_cleanup(void);
+typedef struct {
+    pmix_ploc_base_component_t super;
+    int hole_kind;
+} pmix_ploc_hwloc_component_t;
+
+/* the component must be visible data for the linker to find it */
+PMIX_EXPORT extern pmix_ploc_hwloc_component_t mca_ploc_hwloc_component;
+extern pmix_ploc_module_t pmix_ploc_hwloc_module;
 
 END_C_DECLS
 
-#endif /* PMIX_HWLOC_INTERNAL_H */
+#endif

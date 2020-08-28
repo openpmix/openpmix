@@ -765,14 +765,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
 
     ##################################
-    # HWLOC
-    ##################################
-    pmix_show_title "HWLOC"
-
-    PMIX_HWLOC_CONFIG
-
-
-    ##################################
     # JANSSON
     ##################################
     pmix_show_title "JANSSON"

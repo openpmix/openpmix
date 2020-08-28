@@ -129,6 +129,46 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void);
 PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
                                                       pmix_info_t info[], size_t ninfo);
 
+/* REPLACES CONNECT_TO_SERVER, ADDING ABILITY TO RETURN
+ * IDENTIFIER OF SERVER TO WHICH TOOL ATTACHED
+ */
+PMIX_EXPORT pmix_status_t PMIx_tool_attach_to_server(pmix_proc_t *myproc, pmix_proc_t *server,
+                                                     pmix_info_t info[], size_t ninfo);
+
+
+/* Disconnect the PMIx tool from the specified server connection while
+ * leaving the tool library initialized.
+ *
+ * server - Process identifier of the server from which the tool is
+ *          to be disconnected
+ *
+ * Returns PMIX_SUCCESS or a PMIx error constant
+ */
+PMIX_EXPORT pmix_status_t PMIx_tool_disconnect(pmix_proc_t *server);
+
+
+/* Get an array containing the pmix_proc_t process identifiers of all
+ * servers to which the tool is currently connected.
+ * 
+ * servers - Address where the pointer to an array of pmix_proc_t
+ *           structures shall be returned
+ *
+ * nservers - Address where the number of elements in servers
+ *            shall be returned
+ *
+ * Returns PMIX_SUCCESS or a PMIx error constant
+ */
+PMIX_EXPORT pmix_status_t PMIx_tool_get_servers(pmix_proc_t *servers[], size_t *nservers);
+
+
+/* Designate a server as the tool’s primary server.
+ *
+ * server - Process identifier of the target server
+ *
+ * Returns PMIX_SUCCESS or a PMIx error constant
+ */
+PMIX_EXPORT pmix_status_t PMIx_tool_set_server(pmix_proc_t *server);
+
 
 /* Define a callback function for delivering forwarded IO to a process
  * This function will be called whenever data becomes available, or a

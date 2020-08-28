@@ -39,6 +39,7 @@
 #include "src/mca/gds/base/base.h"
 #include "src/mca/pif/base/base.h"
 #include "src/mca/pinstalldirs/base/base.h"
+#include "src/mca/ploc/base/base.h"
 #include "src/mca/plog/base/base.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/mca/preg/base/base.h"
@@ -69,6 +70,9 @@ void pmix_rte_finalize(void)
 
     /* release the attribute support trackers */
     pmix_release_registered_attrs();
+
+    /* close ploc */
+    (void)pmix_mca_base_framework_close(&pmix_ploc_base_framework);
 
     /* close plog */
     (void)pmix_mca_base_framework_close(&pmix_plog_base_framework);

@@ -63,13 +63,13 @@
 #include "src/runtime/pmix_rte.h"
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/gds/base/base.h"
+#include "src/mca/ploc/base/base.h"
 #include "src/mca/pmdl/base/base.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/mca/preg/preg.h"
 #include "src/mca/psensor/base/base.h"
 #include "src/mca/pstrg/base/base.h"
 #include "src/mca/ptl/base/base.h"
-#include "src/hwloc/hwloc-internal.h"
 
 /* the server also needs access to client operations
  * as it can, and often does, behave as a client */
@@ -99,6 +99,7 @@ pmix_status_t pmix_server_initialize(void)
     PMIX_CONSTRUCT(&pmix_server_globals.local_reqs, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_server_globals.groups, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_server_globals.iof, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_server_globals.psets, pmix_list_t);
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:server init called");
@@ -179,6 +180,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     size_t n, m;
     pmix_kval_t *kv;
     bool protect, nspace_given = false, rank_given = false;
+    bool share_topo = false;
     pmix_info_t ginfo;
     char *protected[] = {
         PMIX_USERID,
@@ -190,9 +192,11 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         PMIX_SERVER_SCHEDULER,
         NULL
     };
-    char *evar;
+    char *evar, *nspace = NULL;
+    pmix_rank_t rank = PMIX_RANK_INVALID;
     pmix_rank_info_t *rinfo;
     pmix_proc_type_t ptype = PMIX_PROC_TYPE_STATIC_INIT;
+    pmix_topology_t *topo = NULL;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -221,6 +225,29 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
                 pmix_server_globals.tmpdir = strdup(info[n].value.data.string);
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SYSTEM_TMPDIR)) {
                 pmix_server_globals.system_tmpdir = strdup(info[n].value.data.string);
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_NSPACE)) {
+                nspace = info[n].value.data.string;
+                nspace_given = true;
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_RANK)) {
+                rank = info[n].value.data.rank;
+                rank_given = true;
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOPOLOGY2)) {
+                if (NULL != topo && pmix_globals.external_topology) {
+                    /* must have come from PMIX_TOPOLOGY entry */
+                    free(pmix_globals.topology.source);
+                }
+                topo = (pmix_topology_t*)info[n].value.data.ptr;
+                pmix_globals.topology.source = strdup(topo->source);
+                pmix_globals.topology.topology = topo->topology;
+                pmix_globals.external_topology = true;
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOPOLOGY)) {
+                if (NULL == topo) {  // prefer PMIX_TOPOLOGY2
+                    pmix_globals.topology.source = strdup("hwloc");
+                    pmix_globals.topology.topology = info[n].value.data.ptr;
+                    pmix_globals.external_topology = true;
+                }
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_SHARE_TOPOLOGY)) {
+                share_topo = true;
             }
         }
     }
@@ -299,54 +326,47 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     /* check the info keys for info we
      * need to provide to every client and
      * directives aimed at us */
-    if (NULL != info) {
-        for (n=0; n < ninfo; n++) {
-            if (0 == strncmp(info[n].key, PMIX_SERVER_NSPACE, PMIX_MAX_KEYLEN)) {
-                PMIX_LOAD_NSPACE(pmix_globals.myid.nspace, info[n].value.data.string);
-                nspace_given = true;
-            } else if (0 == strncmp(info[n].key, PMIX_SERVER_RANK, PMIX_MAX_KEYLEN)) {
-                pmix_globals.myid.rank = info[n].value.data.rank;
-                rank_given = true;
-            } else {
-                /* check the list of protected keys */
-                protect = false;
-                for (m=0; NULL != protected[m]; m++) {
-                    if (0 == strcmp(info[n].key, protected[m])) {
-                        protect = true;
-                        break;
-                    }
-                }
-                if (protect) {
-                    continue;
-                }
-                /* store and pass along to every client */
-                kv = PMIX_NEW(pmix_kval_t);
-                kv->key = strdup(info[n].key);
-                PMIX_VALUE_CREATE(kv->value, 1);
-                PMIX_BFROPS_VALUE_XFER(rc, pmix_globals.mypeer,
-                                       kv->value, &info[n].value);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_RELEASE(kv);
-                    PMIX_ERROR_LOG(rc);
-                    PMIX_RELEASE_THREAD(&pmix_global_lock);
-                    return rc;
-                }
-                pmix_list_append(&pmix_server_globals.gdata, &kv->super);
+    for (n=0; n < ninfo; n++) {
+        /* check the list of protected keys */
+        protect = false;
+        for (m=0; NULL != protected[m]; m++) {
+            if (0 == strcmp(info[n].key, protected[m])) {
+                protect = true;
+                break;
             }
         }
+        if (protect) {
+            continue;
+        }
+        /* store and pass along to every client */
+        kv = PMIX_NEW(pmix_kval_t);
+        kv->key = strdup(info[n].key);
+        PMIX_VALUE_CREATE(kv->value, 1);
+        PMIX_BFROPS_VALUE_XFER(rc, pmix_globals.mypeer,
+                               kv->value, &info[n].value);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(kv);
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE_THREAD(&pmix_global_lock);
+            return rc;
+        }
+        pmix_list_append(&pmix_server_globals.gdata, &kv->super);
     }
 
-    if (!nspace_given) {
+    if (nspace_given) {
+        PMIX_LOAD_NSPACE(pmix_globals.myid.nspace, nspace);
+    } else {
         /* look for our namespace, if one was given */
         if (NULL == (evar = getenv("PMIX_SERVER_NAMESPACE"))) {
             /* use a fake namespace */
             PMIX_LOAD_NSPACE(pmix_globals.myid.nspace, "pmix-server");
         } else {
-            pmix_output(0, "NSPACE FROM ENV %s", evar);
             PMIX_LOAD_NSPACE(pmix_globals.myid.nspace, evar);
         }
     }
-    if (!rank_given) {
+    if (rank_given) {
+        pmix_globals.myid.rank = rank;
+    } else {
         /* look for our rank, if one was given */
         mypid = getpid();
         if (NULL == (evar = getenv("PMIX_SERVER_RANK"))) {
@@ -398,12 +418,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         return rc;
     }
 
-    /* if requested, setup the topology */
-    if (PMIX_SUCCESS != (rc = pmix_hwloc_get_topology(info, ninfo))) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return rc;
-    }
-
     /* open the psensor framework */
     if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_psensor_base_framework, 0))) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -420,6 +434,16 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         return rc;
     }
     if (PMIX_SUCCESS != (rc = pmix_pstrg_base_select())) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return rc;
+    }
+
+    /* open the ploc framework */
+    if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_ploc_base_framework, 0))) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return rc;
+    }
+    if (PMIX_SUCCESS != (rc = pmix_ploc_base_select())) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
@@ -446,17 +470,17 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         return rc;
     }
 
-#if PMIX_HAVE_HWLOC
     /* if we don't know our topology, we better get it now as we
      * increasingly rely on it - note that our host will hopefully
      * have passed it to us so we don't duplicate their storage! */
-    if (NULL == pmix_hwloc_topology) {
-        if (PMIX_SUCCESS != (rc = pmix_hwloc_get_topology(info, ninfo))) {
+    if (PMIX_SUCCESS != (rc = pmix_ploc.setup_topology(info, ninfo))) {
+        /* if they told us to share our topology and we cannot do so,
+         * then that is a reportable error */
+        if (share_topo) {
             PMIX_RELEASE_THREAD(&pmix_global_lock);
             return rc;
         }
     }
-#endif
 
     /* start listening for connections */
     if (PMIX_SUCCESS != pmix_ptl_base_start_listening(info, ninfo)) {
@@ -531,8 +555,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     }
     PMIX_LIST_DESTRUCT(&pmix_server_globals.groups);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.iof);
-
-    pmix_hwloc_cleanup();
+    PMIX_LIST_DESTRUCT(&pmix_server_globals.psets);
 
     if (NULL != security_mode) {
         free(security_mode);
@@ -2219,6 +2242,164 @@ pmix_status_t PMIx_server_deliver_inventory(pmix_info_t info[], size_t ninfo,
     return PMIX_SUCCESS;
 
 }
+
+pmix_status_t PMIx_server_generate_locality_string(const pmix_cpuset_t *cpuset,
+                                                   char **locality)
+{
+    pmix_status_t rc;
+
+    /* just pass this down */
+    rc = pmix_ploc.generate_locality_string(cpuset, locality);
+    return rc;
+}
+
+pmix_status_t PMIx_server_generate_cpuset_string(const pmix_cpuset_t *cpuset,
+                                                 char **cpuset_string)
+{
+    pmix_status_t rc;
+
+    /* just pass this down */
+    rc = pmix_ploc.generate_cpuset_string(cpuset, cpuset_string);
+    return rc;
+}
+
+typedef struct {
+    pmix_info_t *info;
+    size_t ninfo;
+} mydata_t;
+
+static void release_info(pmix_status_t status, void *cbdata)
+{
+    mydata_t *cd = (mydata_t*)cbdata;
+    PMIX_INFO_FREE(cd->info, cd->ninfo);
+    free(cd);
+}
+
+static void psetdef(int sd, short args, void *cbdata)
+{
+    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t*)cbdata;
+    /* the PMIx server needs to cache the process sets so it can
+     * respond to queries for names and memberships */
+    mydata_t *mydat;
+    pmix_data_array_t *darray;
+    pmix_proc_t *ptr;
+    pmix_pset_t *ps;
+
+    mydat = (mydata_t*)malloc(sizeof(mydata_t));
+    mydat->ninfo = 3;
+    PMIX_INFO_CREATE(mydat->info, mydat->ninfo);
+    PMIX_INFO_LOAD(&mydat->info[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
+    PMIX_INFO_LOAD(&mydat->info[1], PMIX_PSET_NAME, cd->nspace, PMIX_STRING);
+    PMIX_DATA_ARRAY_CREATE(darray, cd->nprocs, PMIX_PROC);
+    PMIX_LOAD_KEY(mydat->info[2].key, PMIX_PSET_MEMBERS);
+    mydat->info[2].value.type = PMIX_DATA_ARRAY;
+    mydat->info[2].value.data.darray = darray;
+    ptr = (pmix_proc_t*)darray->array;
+    memcpy(ptr, cd->procs, cd->nprocs * sizeof(pmix_proc_t));
+
+    PMIx_Notify_event(PMIX_PROCESS_SET_DEFINE,
+                      &pmix_globals.myid, PMIX_RANGE_LOCAL,
+                      mydat->info, mydat->ninfo, release_info, (void*)mydat);
+
+    /* now record the process set */
+    ps = PMIX_NEW(pmix_pset_t);
+    ps->name = strdup(cd->nspace);
+    ps->members = (pmix_proc_t*)malloc(cd->nprocs * sizeof(pmix_proc_t));
+    memcpy(ps->members, cd->procs, cd->nprocs * sizeof(pmix_proc_t));
+    ps->nmembers = cd->nprocs;
+    pmix_list_append(&pmix_server_globals.psets, &ps->super);
+
+    PMIX_WAKEUP_THREAD(&cd->lock);
+}
+
+pmix_status_t PMIx_server_define_process_set(const pmix_proc_t *members,
+                                             size_t nmembers, char *pset_name)
+{
+    pmix_setup_caddy_t cd;
+    pmix_status_t rc;
+
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+    if (pmix_globals.init_cntr <= 0) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return PMIX_ERR_INIT;
+    }
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
+
+    /* need to threadshift this request */
+    PMIX_CONSTRUCT(&cd, pmix_setup_caddy_t);
+    cd.nspace = pset_name;
+    cd.procs = (pmix_proc_t*)members;
+    cd.nprocs = nmembers;
+    cd.opcbfunc = opcbfunc;
+    cd.cbdata = &cd.lock;
+    PMIX_THREADSHIFT(&cd, psetdef);
+    PMIX_WAIT_THREAD(&cd.lock);
+    rc = cd.lock.status;
+    /* protect the input */
+    cd.procs = NULL;
+    cd.nprocs = 0;
+    PMIX_DESTRUCT(&cd);
+    if (PMIX_SUCCESS == rc) {
+        rc = PMIX_OPERATION_SUCCEEDED;
+    }
+    return rc;
+}
+
+static void psetdel(int sd, short args, void *cbdata)
+{
+    /* the PMIx server needs to delete the process set from its list */
+    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t*)cbdata;
+    mydata_t *mydat;
+    pmix_pset_t *ps;
+
+    mydat = (mydata_t*)malloc(sizeof(mydata_t));
+    mydat->ninfo = 2;
+    PMIX_INFO_CREATE(mydat->info, mydat->ninfo);
+    PMIX_INFO_LOAD(&mydat->info[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
+    PMIX_INFO_LOAD(&mydat->info[1], PMIX_PSET_NAME, cd->nspace, PMIX_STRING);
+
+    PMIx_Notify_event(PMIX_PROCESS_SET_DELETE,
+                      &pmix_globals.myid, PMIX_RANGE_LOCAL,
+                      mydat->info, mydat->ninfo, release_info, (void*)mydat);
+
+    /* now find this process set */
+    PMIX_LIST_FOREACH(ps, &pmix_server_globals.psets, pmix_pset_t) {
+        if (0 == strcmp(cd->nspace, ps->name)) {
+            pmix_list_remove_item(&pmix_server_globals.psets, &ps->super);
+            PMIX_RELEASE(ps);
+            break;
+        }
+    }
+    PMIX_WAKEUP_THREAD(&cd->lock);
+}
+
+pmix_status_t PMIx_server_delete_process_set(char *pset_name)
+{
+    pmix_setup_caddy_t cd;
+    pmix_status_t rc;
+
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+    if (pmix_globals.init_cntr <= 0) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return PMIX_ERR_INIT;
+    }
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
+
+    /* need to threadshift this request */
+    PMIX_CONSTRUCT(&cd, pmix_setup_caddy_t);
+    cd.nspace = pset_name;
+    cd.opcbfunc = opcbfunc;
+    cd.cbdata = &cd.lock;
+    PMIX_THREADSHIFT(&cd, psetdel);
+    PMIX_WAIT_THREAD(&cd.lock);
+    rc = cd.lock.status;
+    PMIX_DESTRUCT(&cd);
+    if (PMIX_SUCCESS == rc) {
+        rc = PMIX_OPERATION_SUCCEEDED;
+    }
+    return rc;
+}
+
 
 /****    THE FOLLOWING CALLBACK FUNCTIONS ARE USED BY THE HOST SERVER    ****
  ****    THEY THEREFORE CAN OCCUR IN EITHER THE HOST SERVER'S THREAD     ****

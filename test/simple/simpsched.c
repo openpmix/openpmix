@@ -40,10 +40,6 @@
 #include <errno.h>
 #include <signal.h>
 
-#if PMIX_HAVE_HWLOC
-#include "src/hwloc/hwloc-internal.h"
-#endif
-
 #include "src/class/pmix_list.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/output.h"

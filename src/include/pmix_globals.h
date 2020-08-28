@@ -422,6 +422,7 @@ typedef struct {
         pmix_lookup_cbfunc_t lookupfn;
         pmix_spawn_cbfunc_t spawnfn;
         pmix_hdlr_reg_cbfunc_t hdlrregfn;
+        pmix_info_cbfunc_t infofn;
     } cbfunc;
     size_t errhandler_ref;
     void *cbdata;
@@ -438,6 +439,7 @@ typedef struct {
     pmix_list_t kvs;
     bool copy;
     bool timer_running;
+    pmix_fabric_t *fabric;
 } pmix_cb_t;
 PMIX_CLASS_DECLARATION(pmix_cb_t);
 
@@ -549,6 +551,8 @@ typedef struct {
     bool timestamp_output;
     size_t output_limit;
     pmix_list_t nspaces;
+    pmix_topology_t topology;
+    bool external_topology;
 } pmix_globals_t;
 
 /* provide access to a function to cleanup epilogs */

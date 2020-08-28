@@ -170,6 +170,14 @@ typedef struct {
 PMIX_CLASS_DECLARATION(pmix_iof_cache_t);
 
 typedef struct {
+    pmix_list_item_t super;
+    char *name;
+    pmix_proc_t *members;
+    size_t nmembers;
+} pmix_pset_t;
+PMIX_CLASS_DECLARATION(pmix_pset_t);
+
+typedef struct {
     pmix_list_t nspaces;                    // list of pmix_nspace_t for the nspaces we know about
     pmix_pointer_array_t clients;           // array of pmix_peer_t local clients
     pmix_list_t collectives;                // list of active pmix_server_trkr_t
@@ -179,6 +187,7 @@ typedef struct {
     pmix_list_t events;                     // list of pmix_regevents_info_t registered events
     pmix_list_t groups;                     // list of pmix_group_t group memberships
     pmix_list_t iof;                        // IO to be forwarded to clients
+    pmix_list_t psets;                      // list of known psets and memberships
     size_t max_iof_cache;                   // max number of IOF messages to cache
     bool tool_connections_allowed;
     char *tmpdir;                           // temporary directory for this server
