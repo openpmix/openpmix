@@ -47,7 +47,7 @@ AC_DEFUN([PMIX_CHECK_TM_LIBS_FLAGS],[
 # --------------------------------------------------------
 AC_DEFUN([PMIX_CHECK_TM],[
     if test -z $pmix_check_tm_happy ; then
-	PMIX_VAR_SCOPE_PUSH([pmix_check_tm_found pmix_check_tm_dir pmix_check_tm_pbs_config pmix_check_tm_LDFLAGS_save pmix_check_tm_CPPFLAGS_save pmix_check_tm_LIBS_save])
+	PMIX_VAR_SCOPE_PUSH([pmix_check_tm_found pmix_check_tm_dir pmix_check_tm_libdir pmix_check_tm_pbs_config pmix_check_tm_LDFLAGS_save pmix_check_tm_CPPFLAGS_save pmix_check_tm_LIBS_save])
 
 	AC_ARG_WITH([tm],
                     [AC_HELP_STRING([--with-tm(=DIR)],
@@ -59,7 +59,8 @@ AC_DEFUN([PMIX_CHECK_TM],[
               [pmix_check_tm_happy="no"],
               [pmix_check_tm_happy="yes"
                AS_IF([test ! -z "$with_tm" && test "$with_tm" != "yes"],
-                     [pmix_check_tm_dir="$with_tm"],
+                     [pmix_check_tm_dir="$with_tm"
+                      pmix_check_tm_libdir="$with_tm/lib"],
                      [pmix_check_tm_dir=""])])
 
 	AS_IF([test "$pmix_check_tm_happy" = "yes"],
