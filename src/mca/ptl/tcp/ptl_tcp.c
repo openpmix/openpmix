@@ -120,12 +120,14 @@ static char *pmix_getline(FILE *fp)
 static pmix_status_t parse_uri_file(char *filename,
                                     char **uri,
                                     char **nspace,
-                                    pmix_rank_t *rank);
+                                    pmix_rank_t *rank,
+                                    pmix_peer_t *peer);
 static pmix_status_t try_connect(char *uri, int *sd, pmix_info_t info[], size_t ninfo);
 static pmix_status_t df_search(char *dirname, char *prefix,
                                pmix_info_t info[], size_t ninfo,
                                int *sd, char **nspace,
-                               pmix_rank_t *rank, char **uri);
+                               pmix_rank_t *rank, char **uri,
+                               pmix_peer_t *peer);
 
 static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
                                      pmix_info_t *info, size_t ninfo)
@@ -160,8 +162,8 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
     if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer)) {
         if (NULL != (evar = getenv("PMIX_SERVER_URI4"))) {
             /* we are talking to a v4 server */
-            PMIX_SET_PEER_TYPE(pmix_client_globals.myserver, PMIX_PROC_SERVER);
-            PMIX_SET_PEER_MAJOR(pmix_client_globals.myserver, 4);
+            PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
+            PMIX_SET_PEER_MAJOR(peer, 4);
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "V4 SERVER DETECTED");
             /* must use the v3 bfrops module */
@@ -171,8 +173,8 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
             }
         } else if (NULL != (evar = getenv("PMIX_SERVER_URI3"))) {
             /* we are talking to a v3 server */
-            PMIX_SET_PEER_TYPE(pmix_client_globals.myserver, PMIX_PROC_SERVER);
-            PMIX_SET_PEER_MAJOR(pmix_client_globals.myserver, 3);
+            PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
+            PMIX_SET_PEER_MAJOR(peer, 3);
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "V3 SERVER DETECTED");
             /* must use the v3 bfrops module */
@@ -182,9 +184,9 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
             }
         } else if (NULL != (evar = getenv("PMIX_SERVER_URI21"))) {
             /* we are talking to a v2.1 server */
-            PMIX_SET_PEER_TYPE(pmix_client_globals.myserver, PMIX_PROC_SERVER);
-            PMIX_SET_PEER_MAJOR(pmix_client_globals.myserver, 2);
-            PMIX_SET_PEER_MINOR(pmix_client_globals.myserver, 1);
+            PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
+            PMIX_SET_PEER_MAJOR(peer, 2);
+            PMIX_SET_PEER_MINOR(peer, 1);
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "V21 SERVER DETECTED");
             /* must use the v21 bfrops module */
@@ -194,9 +196,9 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
             }
         } else if (NULL != (evar = getenv("PMIX_SERVER_URI2"))) {
             /* we are talking to a v2.0 server */
-            PMIX_SET_PEER_TYPE(pmix_client_globals.myserver, PMIX_PROC_SERVER);
-            PMIX_SET_PEER_MAJOR(pmix_client_globals.myserver, 2);
-            PMIX_SET_PEER_MINOR(pmix_client_globals.myserver, 0);
+            PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
+            PMIX_SET_PEER_MAJOR(peer, 2);
+            PMIX_SET_PEER_MINOR(peer, 0);
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "V20 SERVER DETECTED");
             /* must use the v20 bfrops module */
@@ -209,7 +211,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
             return PMIX_ERR_NOT_SUPPORTED;
         }
         /* the server will be using the same bfrops as us */
-        pmix_client_globals.myserver->nptr->compat.bfrops = pmix_globals.mypeer->nptr->compat.bfrops;
+        peer->nptr->compat.bfrops = pmix_globals.mypeer->nptr->compat.bfrops;
         /* mark that we are using the V2 (i.e., tcp) protocol */
         pmix_globals.mypeer->protocol = PMIX_PROTOCOL_V2;
 
@@ -220,9 +222,9 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
             minor = strtoul(p, &p, 10);
             ++p;
             release = strtoul(p, NULL, 10);
-            PMIX_SET_PEER_MAJOR(pmix_client_globals.myserver, major);
-            PMIX_SET_PEER_MINOR(pmix_client_globals.myserver, minor);
-            PMIX_SET_PEER_RELEASE(pmix_client_globals.myserver, release);
+            PMIX_SET_PEER_MAJOR(peer, major);
+            PMIX_SET_PEER_MINOR(peer, minor);
+            PMIX_SET_PEER_RELEASE(peer, release);
         }
 
         /* the URI consists of the following elements:
@@ -449,7 +451,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "ptl:tcp:tool getting connection info from %s", suri);
             nspace = NULL;
-            rc = parse_uri_file(&suri[5], &suri2, &nspace, &rank);
+            rc = parse_uri_file(&suri[5], &suri2, &nspace, &rank, peer);
             if (PMIX_SUCCESS != rc) {
                 rc = PMIX_ERR_UNREACH;
                 goto cleanup;
@@ -495,7 +497,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
     /* if they gave us a rendezvous file, use it */
     if (NULL != rendfile) {
         /* try to read the file */
-        rc = parse_uri_file(rendfile, &suri, &nspace, &rank);
+        rc = parse_uri_file(rendfile, &suri, &nspace, &rank, peer);
         free(rendfile);
         rendfile = NULL;
         if (PMIX_SUCCESS == rc) {
@@ -526,7 +528,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
                             "ptl:tcp:tool looking for system server at %s",
                             filename);
         /* try to read the file */
-        rc = parse_uri_file(filename, &suri, &nspace, &rank);
+        rc = parse_uri_file(filename, &suri, &nspace, &rank, peer);
         free(filename);
         if (PMIX_SUCCESS == rc) {
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
@@ -562,7 +564,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
                             filename);
         nspace = NULL;
         rc = df_search(mca_ptl_tcp_component.system_tmpdir,
-                       filename, iptr, niptr, &sd, &nspace, &rank, &suri);
+                       filename, iptr, niptr, &sd, &nspace, &rank, &suri, peer);
         free(filename);
         if (PMIX_SUCCESS == rc) {
             goto complete;
@@ -586,7 +588,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
                             filename);
         nspace = NULL;
         rc = df_search(mca_ptl_tcp_component.system_tmpdir,
-                       filename, iptr, niptr, &sd, &nspace, &rank, &suri);
+                       filename, iptr, niptr, &sd, &nspace, &rank, &suri, peer);
         free(filename);
         if (PMIX_SUCCESS == rc) {
             goto complete;
@@ -611,7 +613,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
                         filename);
     nspace = NULL;
     rc = df_search(mca_ptl_tcp_component.system_tmpdir,
-                   filename, iptr, niptr, &sd, &nspace, &rank, &suri);
+                   filename, iptr, niptr, &sd, &nspace, &rank, &suri, peer);
     free(filename);
     if (PMIX_SUCCESS != rc) {
         rc = PMIX_ERR_UNREACH;
@@ -630,28 +632,28 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
     }
     /* mark the connection as made */
     pmix_globals.connected = true;
-    pmix_client_globals.myserver->sd = sd;
+    peer->sd = sd;
 
     /* tools setup their server info in try_connect because they
      * utilize a broader handshake */
     if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer)) {
         /* setup the server info */
-        if (NULL == pmix_client_globals.myserver->info) {
-            pmix_client_globals.myserver->info = PMIX_NEW(pmix_rank_info_t);
+        if (NULL == peer->info) {
+            peer->info = PMIX_NEW(pmix_rank_info_t);
         }
-        if (NULL == pmix_client_globals.myserver->nptr) {
-            pmix_client_globals.myserver->nptr = PMIX_NEW(pmix_namespace_t);
+        if (NULL == peer->nptr) {
+            peer->nptr = PMIX_NEW(pmix_namespace_t);
         }
-        if (NULL != pmix_client_globals.myserver->nptr->nspace) {
-            free(pmix_client_globals.myserver->nptr->nspace);
+        if (NULL != peer->nptr->nspace) {
+            free(peer->nptr->nspace);
         }
-        pmix_client_globals.myserver->nptr->nspace = strdup(nspace);
+        peer->nptr->nspace = strdup(nspace);
 
-        if (NULL != pmix_client_globals.myserver->info->pname.nspace) {
-            free(pmix_client_globals.myserver->info->pname.nspace);
+        if (NULL != peer->info->pname.nspace) {
+            free(peer->info->pname.nspace);
         }
-        pmix_client_globals.myserver->info->pname.nspace = strdup(pmix_client_globals.myserver->nptr->nspace);
-        pmix_client_globals.myserver->info->pname.rank = rank;
+        peer->info->pname.nspace = strdup(peer->nptr->nspace);
+        peer->info->pname.rank = rank;
     }
     /* store the URI for subsequent lookups */
     urikv = PMIX_NEW(pmix_kval_t);
@@ -667,22 +669,22 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
     pmix_ptl_base_set_nonblocking(sd);
 
     /* setup recv event */
-    pmix_event_assign(&pmix_client_globals.myserver->recv_event,
+    pmix_event_assign(&peer->recv_event,
                       pmix_globals.evbase,
-                      pmix_client_globals.myserver->sd,
+                      peer->sd,
                       EV_READ | EV_PERSIST,
-                      pmix_ptl_base_recv_handler, pmix_client_globals.myserver);
-    pmix_client_globals.myserver->recv_ev_active = true;
-    PMIX_POST_OBJECT(pmix_client_globals.myserver);
-    pmix_event_add(&pmix_client_globals.myserver->recv_event, 0);
+                      pmix_ptl_base_recv_handler, peer);
+    peer->recv_ev_active = true;
+    PMIX_POST_OBJECT(peer);
+    pmix_event_add(&peer->recv_event, 0);
 
     /* setup send event */
-    pmix_event_assign(&pmix_client_globals.myserver->send_event,
+    pmix_event_assign(&peer->send_event,
                       pmix_globals.evbase,
-                      pmix_client_globals.myserver->sd,
+                      peer->sd,
                       EV_WRITE|EV_PERSIST,
-                      pmix_ptl_base_send_handler, pmix_client_globals.myserver);
-    pmix_client_globals.myserver->send_ev_active = false;
+                      pmix_ptl_base_send_handler, peer);
+    peer->send_ev_active = false;
 
   cleanup:
     if (NULL != nspace) {
@@ -814,7 +816,8 @@ static void timeout(int sd, short args, void *cbdata)
 static pmix_status_t parse_uri_file(char *filename,
                                     char **uri,
                                     char **nspace,
-                                    pmix_rank_t *rank)
+                                    pmix_rank_t *rank,
+                                    pmix_peer_t *peer)
 {
     FILE *fp;
     char *srvr, *p, *p2, *p3;
@@ -905,10 +908,10 @@ static pmix_status_t parse_uri_file(char *filename,
     /* see if this file contains the server's version */
     p2 = pmix_getline(fp);
     if (NULL == p2) {
-        PMIX_SET_PEER_TYPE(pmix_client_globals.myserver, PMIX_PROC_SERVER);
-        PMIX_SET_PEER_MAJOR(pmix_client_globals.myserver, 2);
-        PMIX_SET_PEER_MINOR(pmix_client_globals.myserver, 0);
-        pmix_client_globals.myserver->protocol = PMIX_PROTOCOL_V2;
+        PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
+        PMIX_SET_PEER_MAJOR(peer, 2);
+        PMIX_SET_PEER_MINOR(peer, 0);
+        peer->protocol = PMIX_PROTOCOL_V2;
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "V20 SERVER DETECTED");
     } else {
@@ -920,12 +923,12 @@ static pmix_status_t parse_uri_file(char *filename,
         }
         minor = strtoul(p3, &p3, 10);
         release = strtoul(p3, NULL, 10);
-        PMIX_SET_PEER_TYPE(pmix_client_globals.myserver, PMIX_PROC_SERVER);
-        PMIX_SET_PEER_MAJOR(pmix_client_globals.myserver, major);
-        PMIX_SET_PEER_MINOR(pmix_client_globals.myserver, minor);
-        PMIX_SET_PEER_RELEASE(pmix_client_globals.myserver, release);
+        PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
+        PMIX_SET_PEER_MAJOR(peer, major);
+        PMIX_SET_PEER_MINOR(peer, minor);
+        PMIX_SET_PEER_RELEASE(peer, release);
         if (2 <= major) {
-            pmix_client_globals.myserver->protocol = PMIX_PROTOCOL_V2;
+            peer->protocol = PMIX_PROTOCOL_V2;
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "V2 PROTOCOL SERVER DETECTED");
         }
@@ -1506,7 +1509,8 @@ static pmix_status_t recv_connect_ack(int sd, uint8_t myflag)
 static pmix_status_t df_search(char *dirname, char *prefix,
                                pmix_info_t info[], size_t ninfo,
                                int *sd, char **nspace,
-                               pmix_rank_t *rank, char **uri)
+                               pmix_rank_t *rank, char **uri,
+                               pmix_peer_t *peer)
 {
     char *suri, *nsp, *newdir;
     pmix_rank_t rk;
@@ -1537,7 +1541,7 @@ static pmix_status_t df_search(char *dirname, char *prefix,
         }
         /* if it is a directory, down search */
         if (S_ISDIR(buf.st_mode)) {
-            rc = df_search(newdir, prefix, info, ninfo, sd, nspace, rank, uri);
+            rc = df_search(newdir, prefix, info, ninfo, sd, nspace, rank, uri, peer);
             free(newdir);
             if (PMIX_SUCCESS == rc) {
                 closedir(cur_dirp);
@@ -1552,7 +1556,7 @@ static pmix_status_t df_search(char *dirname, char *prefix,
             /* try to read this file */
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "pmix:tcp: reading file %s", newdir);
-            rc = parse_uri_file(newdir, &suri, &nsp, &rk);
+            rc = parse_uri_file(newdir, &suri, &nsp, &rk, peer);
             if (PMIX_SUCCESS == rc) {
                 /* go ahead and try to connect */
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
