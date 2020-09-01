@@ -75,6 +75,17 @@
 static pmix_event_t stdinsig;
 static pmix_iof_read_event_t stdinev;
 
+typedef struct {
+    pmix_list_item_t super;
+    pmix_proc_t server;
+    pmix_peer_t *peer;
+} pmix_myservers_t;
+static PMIX_CLASS_INSTANCE(pmix_myservers_t,
+                           pmix_list_item_t,
+                           NULL, NULL);
+
+static pmix_list_t myservers;
+
 static void _notify_complete(pmix_status_t status, void *cbdata)
 {
     pmix_event_chain_t *chain = (pmix_event_chain_t*)cbdata;
@@ -363,6 +374,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     pmix_buffer_t *req;
     pmix_cmd_t cmd = PMIX_REQ_CMD;
     pmix_iof_req_t *iofreq;
+    pmix_myservers_t *ps;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -381,6 +393,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_SUCCESS;
     }
+    PMIX_CONSTRUCT(&myservers, pmix_list_t);
 
     /* parse the input directives */
     gdsfound = false;
@@ -679,7 +692,17 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     } else {
         /* connect to the server */
         rc = pmix_ptl_base_connect_to_peer((struct pmix_peer_t*)pmix_client_globals.myserver, info, ninfo);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_SUCCESS == rc) {
+            /* record that we connected to it */
+            ps = PMIX_NEW(pmix_myservers_t);
+            PMIX_RETAIN(pmix_client_globals.myserver);
+            ps->peer = pmix_client_globals.myserver;
+            PMIX_LOAD_PROCID(&ps->server,
+                             pmix_client_globals.myserver->info->pname.nspace,
+                             pmix_client_globals.myserver->info->pname.rank);
+            pmix_list_append(&myservers, &ps->super);
+        } else {
+            /* if connection wasn't optional, then error out */
             if (!connect_optional) {
                 PMIX_RELEASE_THREAD(&pmix_global_lock);
                 return rc;
@@ -1435,13 +1458,20 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
 pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
                                           pmix_info_t info[], size_t ninfo)
 {
-    pmix_buffer_t *msg;
-    pmix_cmd_t cmd = PMIX_FINALIZE_CMD;
     pmix_status_t rc;
-    pmix_tool_timeout_t tev;
-    struct timeval tv = {2, 0};
+
+    rc = PMIx_tool_attach_to_server(proc, NULL, info, ninfo);
+    return rc;
+}
+
+pmix_status_t PMIx_tool_attach_to_server(pmix_proc_t *myproc, pmix_proc_t *server,
+                                         pmix_info_t info[], size_t ninfo)
+{
+    pmix_status_t rc;
     pmix_event_base_t *evbase_save;
     pmix_kval_t *kptr;
+    pmix_myservers_t *ps;
+    pmix_peer_t *peer;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     if (pmix_globals.init_cntr <= 0) {
@@ -1450,56 +1480,10 @@ pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
-    /* check for bozo error - we do this
-     * prior to breaking any existing connection to avoid
-     * becoming stranded due to an incorrect function call */
+    /* check for bozo error */
     if (NULL == info || 0 == ninfo) {
         pmix_show_help("help-pmix-runtime.txt", "tool:no-server", true);
         return PMIX_ERR_BAD_PARAM;
-    }
-
-    /* break any existing connection */
-    if (pmix_globals.connected) {
-        /* gracefully terminate this connection */
-        msg = PMIX_NEW(pmix_buffer_t);
-        /* pack the cmd */
-        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                         msg, &cmd, 1, PMIX_COMMAND);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(msg);
-            return rc;
-        }
-
-
-        pmix_output_verbose(2, pmix_globals.debug_output,
-                            "pmix:tool:reconnect sending finalize sync to server");
-
-        /* setup a timer to protect ourselves should the server be unable
-         * to answer for some reason */
-        PMIX_CONSTRUCT_LOCK(&tev.lock);
-        pmix_event_assign(&tev.ev, pmix_globals.evbase, -1, 0,
-                          fin_timeout, &tev);
-        tev.active = true;
-        PMIX_POST_OBJECT(&tev);
-        pmix_event_add(&tev.ev, &tv);
-        PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg,
-                           finwait_cbfunc, (void*)&tev);
-        if (PMIX_SUCCESS != rc) {
-            if (tev.active) {
-                pmix_event_del(&tev.ev);
-            }
-            return rc;
-        }
-
-        /* wait for the ack to return */
-        PMIX_WAIT_THREAD(&tev.lock);
-        PMIX_DESTRUCT_LOCK(&tev.lock);
-        if (tev.active) {
-            pmix_event_del(&tev.ev);
-        }
-        pmix_output_verbose(2, pmix_globals.debug_output,
-                            "pmix:tool:reconnect finalize sync received");
     }
 
     /* stop the existing progress thread */
@@ -1513,15 +1497,27 @@ pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
     pmix_progress_thread_start("reconnect");
 
     /* now ask the ptl to establish connection to the new server */
-    rc = pmix_ptl_base_connect_to_peer((struct pmix_peer_t*)pmix_client_globals.myserver, info, ninfo);
+    peer = PMIX_NEW(pmix_peer_t);
+    rc = pmix_ptl_base_connect_to_peer((struct pmix_peer_t*)peer, info, ninfo);
 
     /* once that activity has all completed, then stop the new progress thread */
     pmix_progress_thread_stop("reconnect");
     pmix_progress_thread_finalize("reconnect");
 
+    if (PMIX_SUCCESS == rc) {
+        /* track that we are connected to this new server */
+        ps = PMIX_NEW(pmix_myservers_t);
+        ps->peer = peer;
+        PMIX_LOAD_PROCID(&ps->server, peer->info->pname.nspace, peer->info->pname.rank);
+        pmix_list_append(&myservers, &ps->super);
+
+        /* point our active server at this new one */
+        pmix_client_globals.myserver = peer;
+    }
+
     /* restore the original progress thread */
     pmix_globals.evbase = evbase_save;
-    /* restore the communication events */
+    /* setup the communication events for the new server */
     pmix_event_assign(&pmix_client_globals.myserver->recv_event,
                       pmix_globals.evbase,
                       pmix_client_globals.myserver->sd,
@@ -1542,8 +1538,8 @@ pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
     pmix_progress_thread_resume(NULL);
 
     /* if they gave us an address, we pass back our name */
-    if (NULL != proc) {
-        memcpy(proc, &pmix_globals.myid, sizeof(pmix_proc_t));
+    if (NULL != myproc) {
+        memcpy(myproc, &pmix_globals.myid, sizeof(pmix_proc_t));
     }
 
     /* if the transition didn't succeed, then return at this point */
@@ -1551,7 +1547,13 @@ pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
         return rc;
     }
 
-    /* update our server's ID */
+    /* if they gave us an address, return the new server's ID */
+    if (NULL != server) {
+        PMIX_LOAD_PROCID(server, pmix_client_globals.myserver->info->pname.nspace,
+                         pmix_client_globals.myserver->info->pname.rank);
+    }
+
+    /* update our active server's ID in the local key-value store */
     if (NULL != pmix_client_globals.myserver &&
         NULL != pmix_client_globals.myserver->info &&
         NULL != pmix_client_globals.myserver->info->pname.nspace) {
@@ -1584,4 +1586,114 @@ pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
     }
 
     return PMIX_SUCCESS;
+}
+
+pmix_status_t PMIx_tool_disconnect(pmix_proc_t *server)
+{
+    pmix_myservers_t *ps;
+    pmix_peer_t *peer = NULL;
+
+    /* see if we have this server */
+    PMIX_LIST_FOREACH(ps, &myservers, pmix_myservers_t) {
+        if (PMIX_CHECK_PROCID(server, &ps->server)) {
+            peer = ps->peer;
+            pmix_list_remove_item(&myservers, &ps->super);
+            PMIX_RELEASE(ps);
+            break;
+        }
+    }
+    if (NULL == peer) {
+        return PMIX_ERR_NOT_FOUND;
+    }
+
+    /* if we are disconnecting from the active server, then we enter a
+     * "disconnected" state where we point the active server back at
+     * ourselves - effectively the same as when we init without connecting */
+    if (peer == pmix_client_globals.myserver) {
+        PMIX_RETAIN(pmix_globals.mypeer);
+        /* stop the existing progress thread */
+        (void)pmix_progress_thread_pause(NULL);
+        /* switch servers */
+        pmix_client_globals.myserver = pmix_globals.mypeer;
+        /* resume processing events */
+        pmix_progress_thread_resume(NULL);
+    }
+
+    /* now drop the connection */
+    PMIX_RELEASE(peer);
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t PMIx_tool_get_servers(pmix_proc_t *servers[], size_t *nservers)
+{
+    size_t n, ns;
+    pmix_myservers_t *ps;
+    pmix_proc_t *srvrs;
+
+    ns = pmix_list_get_size(&myservers);
+
+    if (0 == ns) {
+        /* we aren't connected to anyone */
+        *nservers = 0;
+        *servers = NULL;
+        return PMIX_ERR_UNREACH;
+    }
+
+    /* allocate the array */
+    PMIX_PROC_CREATE(srvrs, ns);
+
+    /* the return has to start with the current active server */
+    PMIX_LOAD_PROCID(&srvrs[0],
+                     pmix_client_globals.myserver->info->pname.nspace,
+                     pmix_client_globals.myserver->info->pname.rank);
+
+    /* now load the remainder, skipping the current active server */
+    n=1;
+    PMIX_LIST_FOREACH(ps, &myservers, pmix_myservers_t) {
+        if (ps->peer == pmix_client_globals.myserver) {
+            continue;
+        }
+        memcpy(&srvrs[n], &ps->server, sizeof(pmix_proc_t));
+        ++n;
+        if (ns == n) {
+            break;
+        }
+    }
+    *nservers = ns;
+    *servers = srvrs;
+
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t PMIx_tool_set_server(pmix_proc_t *server)
+{
+    pmix_myservers_t *ps;
+    pmix_peer_t *peer = NULL;
+
+    /* see if we have this server */
+    PMIX_LIST_FOREACH(ps, &myservers, pmix_myservers_t) {
+        if (PMIX_CHECK_PROCID(server, &ps->server)) {
+            peer = ps->peer;
+            break;
+        }
+    }
+    if (NULL == peer) {
+        return PMIX_ERR_NOT_FOUND;
+    }
+
+    /* if this is the current active server, then ignore the request */
+    if (peer == pmix_client_globals.myserver) {
+        return PMIX_SUCCESS;
+    }
+
+    /* stop the existing progress thread */
+    (void)pmix_progress_thread_pause(NULL);
+
+    /* switch the active server */
+    pmix_client_globals.myserver = peer;
+
+    /* resume processing events */
+    pmix_progress_thread_resume(NULL);
+
+   return PMIX_SUCCESS;
 }
