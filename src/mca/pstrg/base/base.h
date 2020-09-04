@@ -63,5 +63,27 @@ PMIX_EXPORT pmix_status_t pmix_pstrg_base_query(pmix_query_t queries[], size_t n
                                                 pmix_list_t *results,
                                                 pmix_pstrg_query_cbfunc_t cbfunc, void *cbdata);
 
+PMIX_EXPORT extern pmix_hash_table_t fs_mount_to_id_hash;
+PMIX_EXPORT extern pmix_hash_table_t fs_id_to_mount_hash;
+
+typedef struct {
+    char *mnt_fsname;
+    char *mnt_dir;
+    char *mnt_type;
+} pmix_pstrg_mntent_t;
+
+//XXX individual modules allocate these, register them, and if successful-> add to per-mod list
+typedef struct {
+    char *id;
+    char *mount_dir;
+} pmix_pstrg_fs_info_t;
+
+PMIX_EXPORT pmix_status_t pmix_pstrg_get_fs_mounts(pmix_value_array_t **mounts);
+PMIX_EXPORT pmix_status_t pmix_pstrg_free_fs_mounts(pmix_value_array_t **mounts);
+PMIX_EXPORT pmix_status_t pmix_pstrg_register_fs(pmix_pstrg_fs_info_t fs_info);
+PMIX_EXPORT pmix_status_t pmix_pstrg_deregister_fs(pmix_pstrg_fs_info_t fs_info);
+PMIX_EXPORT char *pmix_pstrg_get_registered_fs_id_by_mount(char *mount_dir);
+PMIX_EXPORT char *pmix_pstrg_get_registered_fs_mount_by_id(char *id);
+
 END_C_DECLS
 #endif

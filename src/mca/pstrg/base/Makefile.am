@@ -16,4 +16,5 @@ headers += \
 libmca_pstrg_la_SOURCES += \
         base/pstrg_base_frame.c \
         base/pstrg_base_select.c \
-        base/pstrg_base_stubs.c
+        base/pstrg_base_stubs.c \
+        base/pstrg_base_fns.c

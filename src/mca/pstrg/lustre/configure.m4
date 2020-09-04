@@ -31,7 +31,7 @@ AC_DEFUN([MCA_pmix_pstrg_lustre_CONFIG],[
                       [pstrg_lustre_happy="no"])
 
 
-    AS_IF([test "$pstrg_lustre_happy" = "yes" || test "1" = "1"],
+    AS_IF([test "$pstrg_lustre_happy" = "yes"],
           [PMIX_SUMMARY_ADD([[Optional Support]],[[Lustre]], [pstrg_lustre], [yes ($pmix_check_lustre_dir)])
            $1],
           [PMIX_SUMMARY_ADD([[Optional Support]],[[Lustre]], [pstrg_lustre], [no])

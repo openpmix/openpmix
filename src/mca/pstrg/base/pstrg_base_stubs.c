@@ -93,6 +93,7 @@ pmix_status_t pmix_pstrg_base_query(pmix_query_t queries[], size_t nqueries, pmi
             /* if they return success, then the values were
              * placed directly on the payload - nothing
              * to wait for here */
+            printf("PSTRG plugin %s returned %d\n", active->module->name, rc);
             if (PMIX_OPERATION_IN_PROGRESS == rc) {
                 myrollup->nrequests++;
             } else if (PMIX_OPERATION_SUCCEEDED == rc) {
