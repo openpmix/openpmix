@@ -1041,9 +1041,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
     if (0 < tv.tv_sec) {
         PMIX_RETAIN(trk);
         cd->trk = trk;
-        pmix_event_evtimer_set(pmix_globals.evbase, &cd->ev,
-                               fence_timeout, cd);
-        pmix_event_evtimer_add(&cd->ev, &tv);
+        PMIX_THREADSHIFT_DELAY(cd, fence_timeout, tv.tv_sec);
         cd->event_active = true;
     }
 
@@ -2012,9 +2010,7 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
     if (PMIX_SUCCESS == rc && 0 < tv.tv_sec) {
         PMIX_RETAIN(trk);
         cd->trk = trk;
-        pmix_event_evtimer_set(pmix_globals.evbase, &cd->ev,
-                               connect_timeout, cd);
-        pmix_event_evtimer_add(&cd->ev, &tv);
+        PMIX_THREADSHIFT_DELAY(cd, connect_timeout, tv.tv_sec);
         cd->event_active = true;
     }
 
@@ -4284,9 +4280,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd,
 
     /* if a timeout was specified, set it */
     if (0 < tv.tv_sec) {
-        pmix_event_evtimer_set(pmix_globals.evbase, &trk->ev,
-                               grp_timeout, trk);
-        pmix_event_evtimer_add(&trk->ev, &tv);
+        PMIX_THREADSHIFT_DELAY(trk, grp_timeout, tv.tv_sec);
         trk->event_active = true;
     }
 
@@ -4484,9 +4478,7 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd,
 
     /* if a timeout was specified, set it */
     if (0 < tv.tv_sec) {
-        pmix_event_evtimer_set(pmix_globals.evbase, &trk->ev,
-                               grp_timeout, trk);
-        pmix_event_evtimer_add(&trk->ev, &tv);
+        PMIX_THREADSHIFT_DELAY(trk, grp_timeout, tv.tv_sec);
         trk->event_active = true;
     }
 

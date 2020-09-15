@@ -95,7 +95,6 @@ int main(int argc, char **argv)
     pmix_info_t *info, *iptr;
     pmix_status_t rc;
     pmix_fabric_t myfabric;
-    uint32_t n32;
     size_t ninfo;
     int exit_code=0;
     size_t n;
