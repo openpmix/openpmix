@@ -103,6 +103,7 @@ int main(int argc, char **argv)
     char *regex, *ppn;
     mylock_t lock;
     mycaddy_t cd;
+    pmix_value_t *val;
 
     /* smoke test */
     if (PMIX_SUCCESS != 0) {
@@ -135,27 +136,22 @@ int main(int argc, char **argv)
                 fprintf(stderr, "Fabric vendor: %s\n", myfabric.info[n].value.data.string);
             } else if (PMIX_CHECK_KEY(&myfabric.info[n], PMIX_FABRIC_IDENTIFIER)) {
                 fprintf(stderr, "Fabric ID: %s\n", myfabric.info[n].value.data.string);
-            } else if (PMIX_CHECK_KEY(&myfabric.info[n], PMIX_FABRIC_NUM_VERTICES)) {
+            } else if (PMIX_CHECK_KEY(&myfabric.info[n], PMIX_FABRIC_NUM_DEVICES)) {
                 fprintf(stderr, "Number of fabric vertices: %u\n", (unsigned)myfabric.info[n].value.data.size);
             }
         }
 
-        rc = PMIx_Fabric_get_vertex_info(&myfabric, 0, &info, &ninfo);
+        rc = PMIx_Get(NULL, PMIX_FABRIC_DEVICES, NULL, 0, &val);
         if (PMIX_SUCCESS != rc) {
-            fprintf(stderr, "Fabric get vertex info failed with error: %s\n", PMIx_Error_string(rc));
+            fprintf(stderr, "Fabric get devices failed with error: %s\n", PMIx_Error_string(rc));
             goto cleanup;
         }
-        fprintf(stderr, "Vertex info for index 0:\n");
+        fprintf(stderr, "Device info:\n");
+        info = (pmix_info_t*)val->data.darray->array;
+        ninfo = val->data.darray->size;
         for (n=0; n < ninfo; n++) {
             fprintf(stderr, "\t%s:\t%s\n", info[n].key, info[n].value.data.string);
         }
-
-        rc = PMIx_Fabric_get_device_index(&myfabric, info, ninfo, &n32);
-        if (PMIX_SUCCESS != rc) {
-            fprintf(stderr, "Fabric get index failed with error: %s\n", PMIx_Error_string(rc));
-            goto cleanup;
-        }
-        fprintf(stderr, "Index %u for test NIC\n", n32);
     } else {
         fprintf(stderr, "Register fabric failed with error %s\n", PMIx_Error_string(rc));
     }

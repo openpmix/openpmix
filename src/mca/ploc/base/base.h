@@ -90,7 +90,11 @@ PMIX_EXPORT pmix_status_t pmix_ploc_base_generate_locality_string(const pmix_cpu
 PMIX_EXPORT pmix_status_t pmix_ploc_base_get_relative_locality(const char *loc1,
                                                                const char *loc2,
                                                                pmix_locality_t *locality);
-
+PMIX_EXPORT pmix_status_t pmix_ploc_base_pack(pmix_buffer_t *buf, pmix_cpuset_t *src);
+PMIX_EXPORT pmix_status_t pmix_ploc_base_unpack(pmix_buffer_t *buf, pmix_cpuset_t *dest);
+PMIX_EXPORT pmix_status_t pmix_ploc_base_copy(pmix_cpuset_t *dest, pmix_cpuset_t *src);
+PMIX_EXPORT char* pmix_ploc_base_print(pmix_cpuset_t *src);
+PMIX_EXPORT void pmix_ploc_base_release(pmix_cpuset_t *ptr, size_t sz);
 END_C_DECLS
 
 #endif

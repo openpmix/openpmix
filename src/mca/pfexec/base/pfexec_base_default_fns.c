@@ -175,7 +175,7 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
         /* check for a fork/exec agent we should use */
         if (NULL != app->info) {
             for (k=0; k < app->ninfo; k++) {
-                if (PMIX_CHECK_KEY(&app->info[k], PMIX_FORK_EXEC_AGENT)) {
+                if (PMIX_CHECK_KEY(&app->info[k], PMIX_FORKEXEC_AGENT)) {
                     /* we were given a fork agent - use it. We have to put its
                      * argv at the beginning of the app argv array */
                     argv = pmix_argv_split(app->info[k].value.data.string, ' ');

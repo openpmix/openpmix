@@ -31,7 +31,7 @@
 #endif
 
 #include "src/util/error.h"
-
+#include "src/mca/ploc/ploc.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/base/base.h"
 
@@ -1875,9 +1875,8 @@ pmix_status_t pmix_bfrops_base_print_coord(char **output, char *prefix,
     } else {
         tp = "UNRECOGNIZED";
     }
-    ret = asprintf(output, "%sData type: PMIX_COORD\tFabric: %s\tPlane: %s\tView: %s\tDims: %lu",
-                   prefx, (NULL == src->fabric) ? "NULL" : src->fabric,
-                   (NULL == src->plane) ? "NULL" : src->plane, tp, (unsigned long)src->dims);
+    ret = asprintf(output, "%sData type: PMIX_COORD\tView: %s\tDims: %lu",
+                   prefx, tp, (unsigned long)src->dims);
     if (prefx != prefix) {
         free(prefx);
     }
@@ -2008,6 +2007,176 @@ pmix_status_t pmix_bfrops_base_print_linkstate(char **output, char *prefix,
 
     ret = asprintf(output, "%sData type: PMIX_LINK_STATE\tValue: %s",
                    prefx, PMIx_Link_state_string(*src));
+    if (prefx != prefix) {
+        free(prefx);
+    }
+
+    if (0 > ret) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    } else {
+        return PMIX_SUCCESS;
+    }
+}
+
+pmix_status_t pmix_bfrops_base_print_cpuset(char **output, char *prefix,
+                                            pmix_cpuset_t *src,
+                                            pmix_data_type_t type)
+{
+    char *prefx, *string;
+    int ret;
+
+    if (PMIX_PROC_CPUSET != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    string = pmix_ploc.print(src);
+    if (NULL == string) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    /* deal with NULL prefix */
+    if (NULL == prefix) {
+        if (0 > asprintf(&prefx, " ")) {
+            free(string);
+            return PMIX_ERR_NOMEM;
+        }
+    } else {
+        prefx = prefix;
+    }
+
+    ret = asprintf(output, "%sData type: PMIX_CPUSET\tValue: %s",
+                   prefx, string);
+    if (prefx != prefix) {
+        free(prefx);
+    }
+    free(string);
+
+    if (0 > ret) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    } else {
+        return PMIX_SUCCESS;
+    }
+}
+
+pmix_status_t pmix_bfrops_base_print_geometry(char **output, char *prefix,
+                                              pmix_geometry_t *src,
+                                              pmix_data_type_t type)
+{
+    char *prefx, *tmp, *pfx2, **result = NULL;
+    int ret;
+    size_t n;
+
+    if (PMIX_GEOMETRY != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* deal with NULL prefix */
+    if (NULL == prefix) {
+        if (0 > asprintf(&prefx, " ")) {
+            return PMIX_ERR_NOMEM;
+        }
+    } else {
+        prefx = prefix;
+    }
+    if (0 > asprintf(&pfx2, "%s\t", prefx)) {
+        if (prefx != prefix) {
+            free(prefx);
+        }
+        return PMIX_ERR_NOMEM;
+    }
+
+    ret = asprintf(&tmp, "%sData type: PMIX_GEOMETRY\tValue: Fabric: %"PRIsize_t" UUID: %s",
+                   prefx, src->fabric, (NULL == src->uuid) ? "NULL" : src->uuid);
+    if (0 > ret) {
+        if (prefx != prefix) {
+            free(prefx);
+        }
+        free(pfx2);
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+    pmix_argv_append_nosize(&result, tmp);
+    free(tmp);
+
+    for (n=0; n < src->ncoords; n++) {
+        ret = pmix_bfrops_base_print_coord(&tmp, pfx2, &src->coordinates[n], PMIX_COORD);
+        if (PMIX_SUCCESS != ret) {
+            if (prefx != prefix) {
+                free(prefx);
+            }
+            free(pfx2);
+            if (NULL != result) {
+                pmix_argv_free(result);
+            }
+            return ret;
+        }
+        pmix_argv_append_nosize(&result, tmp);
+        free(tmp);
+    }
+
+    if (prefx != prefix) {
+        free(prefx);
+    }
+
+    *output = pmix_argv_join(result, '\n');
+    pmix_argv_free(result);
+
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_print_devdist(char **output, char *prefix,
+                                             pmix_device_distance_t *src,
+                                             pmix_data_type_t type)
+{
+    char *prefx;
+    int ret;
+
+    if (PMIX_DEVICE_DIST != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    /* deal with NULL prefix */
+    if (NULL == prefix) {
+        if (0 > asprintf(&prefx, " ")) {
+            return PMIX_ERR_NOMEM;
+        }
+    } else {
+        prefx = prefix;
+    }
+
+    ret = asprintf(output, "%sData type: PMIX_DEVICE_DIST\tValue: %s Min: %u Max: %u",
+                   prefx, (NULL == src->uuid) ? "NULL" : src->uuid,
+                   (unsigned)src->mindist, (unsigned)src->maxdist);
+    if (prefx != prefix) {
+        free(prefx);
+    }
+
+    if (0 > ret) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    } else {
+        return PMIX_SUCCESS;
+    }
+}
+
+pmix_status_t pmix_bfrops_base_print_endpoint(char **output, char *prefix,
+                                              pmix_endpoint_t *src,
+                                              pmix_data_type_t type)
+{
+    char *prefx;
+    int ret;
+
+    if (PMIX_ENDPOINT != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    /* deal with NULL prefix */
+    if (NULL == prefix) {
+        if (0 > asprintf(&prefx, " ")) {
+            return PMIX_ERR_NOMEM;
+        }
+    } else {
+        prefx = prefix;
+    }
+
+    ret = asprintf(output, "%sData type: PMIX_ENDPOINT\tValue: %s #bytes: %"PRIsize_t,
+                   prefx, (NULL == src->uuid) ? "NULL" : src->uuid, src->endpt.size);
     if (prefx != prefix) {
         free(prefx);
     }

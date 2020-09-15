@@ -103,12 +103,17 @@ PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
 #define PMIX_NOTIFY_ALLOC_COMPLETE                  -105
 #define PMIX_ERR_INVALID_TERMINATION                -112
 #define PMIX_ERR_JOB_TERMINATED                     -145    // DEPRECATED NAME - non-error termination
+#define PMIX_ERR_UPDATE_ENDPOINTS                   -146
 #define PMIX_GDS_ACTION_COMPLETE                    -148
 #define PMIX_PROC_HAS_CONNECTED                     -149
 #define PMIX_CONNECT_REQUESTED                      -150
 #define PMIX_ERR_NODE_DOWN                          -231
 #define PMIX_ERR_NODE_OFFLINE                       -232
-#define PMIX_ERR_SYS_OTHER                          -330
+
+#define PMIX_ERR_SYS_BASE                           PMIX_EVENT_SYS_BASE
+#define PMIX_ERR_SYS_OTHER                          PMIX_EVENT_SYS_OTHER
+
+#define PMIX_JOB_STATE_PREPPED                   1  // job is ready to be launched
 
 /* ATTRIBUTES */
 #define PMIX_TOPOLOGY                       "pmix.topo"             // (hwloc_topology_t) pointer to the PMIx client's internal
@@ -148,6 +153,21 @@ PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
 #define PMIX_NON_PMI                        "pmix.nonpmi"           // (bool) spawned procs will not call PMIx_Init
 #define PMIX_PROC_URI                       "pmix.puri"             // (char*) URI containing contact info for proc
 #define PMIX_ARCH                           "pmix.arch"             // (uint32_t) datatype architecture flag
+
+#define PMIX_DEBUG_JOB_DIRECTIVES           "pmix.dbg.jdirs"        // (pmix_data_array_t*) array of job-level directives
+#define PMIX_DEBUG_APP_DIRECTIVES           "pmix.dbg.adirs"        // (pmix_data_array_t*) array of app-level directives
+#define PMIX_EVENT_NO_TERMINATION           "pmix.evnoterm"         // (bool) indicates that the handler has satisfactorily handled
+                                                                    //        the event and believes termination of the application is not required
+#define PMIX_EVENT_WANT_TERMINATION         "pmix.evterm"           // (bool) indicates that the handler has determined that the
+                                                                    //        application should be terminated
+
+/* attributes for GDS */
+#define PMIX_GDS_MODULE                     "pmix.gds.mod"          // (char*) comma-delimited string of desired modules
+
+
+#define PMIX_IOF_STOP                       "pmix.iof.stop"         // (bool) Stop forwarding the specified channel(s)
+#define PMIX_NOTIFY_LAUNCH                  "pmix.note.lnch"        // (bool) notify the requestor upon launch of the child job and return
+                                                                    //        its namespace in the event
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }

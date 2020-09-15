@@ -67,32 +67,33 @@ pmix_pnet_module_t pmix_simptest_module = {
 typedef struct {
     pmix_list_item_t super;
     char *name;
-    pmix_coord_t coord;
-    pmix_byte_object_t endpt;
+    pmix_geometry_t *devices;
+    size_t ndevices;
+    pmix_endpoint_t *endpts;
+    size_t nendpts;
+    pmix_device_distance_t *distances;
+    size_t ndists;
 } pnet_node_t;
 static void ndcon(pnet_node_t *p)
 {
     p->name = NULL;
-    memset(&p->coord, 0, sizeof(pmix_coord_t));
-    p->coord.fabric = strdup("test");
-    p->coord.plane = strdup("simptest");
-    p->coord.view = PMIX_COORD_LOGICAL_VIEW;
-    PMIX_BYTE_OBJECT_CONSTRUCT(&p->endpt);
-    p->endpt.bytes = strdup("ENDPT");
-    p->endpt.size = strlen("ENDPT") + 1;
+    p->devices = NULL;
+    p->endpts = NULL;
+    p->distances = NULL;
 }
 static void nddes(pnet_node_t *p)
 {
     if (NULL != p->name) {
         free(p->name);
     }
-    free(p->coord.fabric);
-    free(p->coord.plane);
-    if (NULL != p->coord.coord) {
-        free(p->coord.coord);
+    if (NULL != p->devices) {
+        PMIX_GEOMETRY_FREE(p->devices, p->ndevices);
     }
-    if (NULL != p->endpt.bytes) {
-        free(p->endpt.bytes);
+    if (NULL != p->endpts) {
+        PMIX_ENDPOINT_FREE(p->endpts, p->nendpts);
+    }
+    if (NULL != p->distances) {
+        PMIX_DEVICE_DIST_FREE(p->distances, p->ndists);
     }
 }
 static PMIX_CLASS_INSTANCE(pnet_node_t,
@@ -101,7 +102,6 @@ static PMIX_CLASS_INSTANCE(pnet_node_t,
 
 /* internal variables */
 static pmix_list_t mynodes;
-static bool config_in_file = false;
 
 #define PMIX_SIMPTEST_MAX_LINE_LENGTH 1024
 
@@ -141,36 +141,39 @@ static pmix_status_t simptest_init(void)
 
     /* if the configuration was given in a file, then build
      * the topology so we can respond to requests */
-    if (NULL != mca_pnet_simptest_component.configfile) {
-        config_in_file = true;
-        fp = fopen(mca_pnet_simptest_component.configfile, "r");
-        if (NULL == fp) {
-            pmix_show_help("help-pnet-simptest.txt", "missing-file",
-                           true, mca_pnet_simptest_component.configfile);
-            return PMIX_ERR_FATAL;
-        }
-        while (NULL != (line = localgetline(fp))) {
-            /* if the line starts with a '#' or is blank, then
-             * it is a comment and we ignore it */
-            if (0 == strlen(line) || '#' == line[0]) {
-                free(line);
-                continue;
-            }
-            tmp = pmix_argv_split(line, ' ');
-            nd = PMIX_NEW(pnet_node_t);
-            nd->name = strdup(tmp[0]);
-            pmix_list_append(&mynodes, &nd->super);
-            n = 0;
-            while (n < 1024 && NULL != tmp[n+1]) {
-                cache[n] = strtol(tmp[n+1], NULL, 10);
-                ++n;
-            }
-            nd->coord.dims = n;
-            nd->coord.coord = (int*)malloc(nd->coord.dims * sizeof(int));
-            memcpy(nd->coord.coord, cache, nd->coord.dims * sizeof(int));
+    if (NULL == mca_pnet_simptest_component.configfile) {
+        /* we cannot function */
+        return PMIX_ERR_INIT;
+    }
+
+    fp = fopen(mca_pnet_simptest_component.configfile, "r");
+    if (NULL == fp) {
+        pmix_show_help("help-pnet-simptest.txt", "missing-file",
+                       true, mca_pnet_simptest_component.configfile);
+        return PMIX_ERR_FATAL;
+    }
+    while (NULL != (line = localgetline(fp))) {
+        /* if the line starts with a '#' or is blank, then
+         * it is a comment and we ignore it */
+        if (0 == strlen(line) || '#' == line[0]) {
             free(line);
-            pmix_argv_free(tmp);
+            continue;
         }
+        tmp = pmix_argv_split(line, ' ');
+        nd = PMIX_NEW(pnet_node_t);
+        nd->name = strdup(tmp[0]);
+        pmix_list_append(&mynodes, &nd->super);
+        n = 0;
+        while (n < 1024 && NULL != tmp[n+1]) {
+            cache[n] = strtol(tmp[n+1], NULL, 10);
+            ++n;
+        }
+
+        nd->coord.dims = n;
+        nd->coord.coord = (int*)malloc(nd->coord.dims * sizeof(int));
+        memcpy(nd->coord.coord, cache, nd->coord.dims * sizeof(int));
+        free(line);
+        pmix_argv_free(tmp);
     }
 
     if (NULL != fp) {

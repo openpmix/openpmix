@@ -986,6 +986,143 @@ PMIX_EXPORT void PMIx_server_deregister_nspace(const pmix_nspace_t nspace,
     PMIX_THREADSHIFT(cd, _deregister_nspace);
 }
 
+static void _register_resources(int sd, short args, void *cbdata)
+{
+    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t*)cbdata;
+    pmix_kval_t *kv;
+    size_t n;
+    pmix_status_t rc = PMIX_SUCCESS;
+
+    /* add any provided data to our global cache for all nspaces */
+    for (n=0; n < cd->ninfo; n++) {
+        kv = PMIX_NEW(pmix_kval_t);
+        kv->key = strdup(cd->info[n].key);
+        kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+        PMIX_VALUE_XFER(rc, kv->value, &cd->info[n].value);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(kv);
+            break;
+        }
+        pmix_list_append(&pmix_server_globals.gdata, &kv->super);
+    }
+
+    cd->opcbfunc(rc, cd->cbdata);
+    PMIX_RELEASE(cd);
+}
+
+pmix_status_t PMIx_server_register_resources(pmix_info_t info[], size_t ninfo,
+                                             pmix_op_cbfunc_t cbfunc,
+                                             void *cbdata)
+{
+    pmix_setup_caddy_t *cd;
+    pmix_lock_t mylock;
+    pmix_status_t rc;
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "pmix:server register resources");
+
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+    if (pmix_globals.init_cntr <= 0) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return PMIX_ERR_INIT;
+    }
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
+
+    cd = PMIX_NEW(pmix_setup_caddy_t);
+    cd->info = info;
+    cd->ninfo = ninfo;
+    cd->opcbfunc = cbfunc;
+    cd->cbdata = cbdata;
+
+    /* if the provided callback is NULL, then substitute
+     * our own internal cbfunc and block here */
+    if (NULL == cbfunc) {
+        PMIX_CONSTRUCT_LOCK(&mylock);
+        cd->opcbfunc = opcbfunc;
+        cd->cbdata = &mylock;
+        PMIX_THREADSHIFT(cd, _register_resources);
+        PMIX_WAIT_THREAD(&mylock);
+        rc = mylock.status;
+        if (PMIX_SUCCESS == rc) {
+            rc = PMIX_OPERATION_SUCCEEDED;
+        }
+        PMIX_DESTRUCT_LOCK(&mylock);
+        return rc;
+    }
+
+    /* we have to push this into our event library to avoid
+     * potential threading issues */
+    PMIX_THREADSHIFT(cd, _register_resources);
+    return PMIX_SUCCESS;
+}
+
+static void _deregister_resources(int sd, short args, void *cbdata)
+{
+    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t*)cbdata;
+    pmix_kval_t *kv;
+    size_t n;
+
+    /* find any matches in our global cache and remove them */
+    for (n=0; n < cd->ninfo; n++) {
+        PMIX_LIST_FOREACH(kv, &pmix_server_globals.gdata, pmix_kval_t) {
+            if (PMIX_CHECK_KEY(kv, cd->info[n].key)) {
+                pmix_list_remove_item(&pmix_server_globals.gdata, &kv->super);
+                PMIX_RELEASE(kv);
+                break;
+            }
+        }
+    }
+
+    cd->opcbfunc(PMIX_SUCCESS, cd->cbdata);
+    PMIX_RELEASE(cd);
+}
+
+pmix_status_t PMIx_server_deregister_resources(pmix_info_t info[], size_t ninfo,
+                                               pmix_op_cbfunc_t cbfunc,
+                                               void *cbdata)
+{
+    pmix_setup_caddy_t *cd;
+    pmix_lock_t mylock;
+    pmix_status_t rc;
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "pmix:server deregister resources");
+
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+    if (pmix_globals.init_cntr <= 0) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return PMIX_ERR_INIT;
+    }
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
+
+    cd = PMIX_NEW(pmix_setup_caddy_t);
+    cd->info = info;
+    cd->ninfo = ninfo;
+    cd->opcbfunc = cbfunc;
+    cd->cbdata = cbdata;
+
+    /* if the provided callback is NULL, then substitute
+     * our own internal cbfunc and block here */
+    if (NULL == cbfunc) {
+        PMIX_CONSTRUCT_LOCK(&mylock);
+        cd->opcbfunc = opcbfunc;
+        cd->cbdata = &mylock;
+        PMIX_THREADSHIFT(cd, _deregister_resources);
+        PMIX_WAIT_THREAD(&mylock);
+        rc = mylock.status;
+        if (PMIX_SUCCESS == rc) {
+            rc = PMIX_OPERATION_SUCCEEDED;
+        }
+        PMIX_DESTRUCT_LOCK(&mylock);
+        return rc;
+    }
+
+    /* we have to push this into our event library to avoid
+     * potential threading issues */
+    PMIX_THREADSHIFT(cd, _deregister_resources);
+    return PMIX_SUCCESS;
+}
+
 void pmix_server_execute_collective(int sd, short args, void *cbdata)
 {
     pmix_trkr_caddy_t *tcd = (pmix_trkr_caddy_t*)cbdata;

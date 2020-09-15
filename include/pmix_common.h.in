@@ -190,7 +190,24 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_LAUNCHER                       "pmix.tool.launcher"    // (bool) tool is a launcher and needs rendezvous files created
 #define PMIX_LAUNCHER_RENDEZVOUS_FILE       "pmix.tool.lncrnd"      // (char*) Pathname of file where connection info is to be stored
 #define PMIX_TOOL_ATTACHMENT_FILE           "pmix.tool.attach"      // (char*) File containing connection info to be used for attaching to server
-
+#define PMIX_PRIMARY_SERVER                 "pmix.pri.srvr"         // (bool) The server to which the tool is connecting shall be designated
+                                                                    //        the primary server once connection has been accomplished.
+#define PMIX_NOHUP                          "pmix.nohup"            // (bool) Any processes started on behalf of the calling tool (or the
+                                                                    //        specified namespace, if such specification is included in the
+                                                                    //        list of attributes) should continue after the tool disconnects
+                                                                    //        from its server
+#define PMIX_LAUNCHER_DAEMON                "pmix.lnch.dmn"         // (char*) Path to executable that is to be used as the backend daemon
+                                                                    //        for the launcher. This replaces the launcher's own daemon with
+                                                                    //        the specified executable. Note that the user is therefore
+                                                                    //        responsible for ensuring compatibility of the specified
+                                                                    //        executable and the host launcher.
+#define PMIX_EXEC_AGENT                     "pmix.exec.agnt"        // (char*) Path to executable that the launcher's backend daemons are to
+                                                                    //        fork/exec in place of the actual application processes. The
+                                                                    //        launcher's daemon shall pass the full command line of the
+                                                                    //        application on the command line of the exec agent, which shall
+                                                                    //        not connect back to the launcher's daemon. The exec agent is
+                                                                    //        responsible for exec'ing the specified application process in
+                                                                    //        its own place.
 
 /* identification attributes */
 #define PMIX_USERID                         "pmix.euid"             // (uint32_t) effective user id
@@ -198,8 +215,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_VERSION_INFO                   "pmix.version"          // (char*) PMIx version of contactor
 #define PMIX_REQUESTOR_IS_TOOL              "pmix.req.tool"         // (bool) requesting process is a tool
 #define PMIX_REQUESTOR_IS_CLIENT            "pmix.req.client"       // (bool) requesting process is a client process
-#define PMIX_PSET_NAME                      "pmix.pset.nm"          // (char*) assigned name for the process
-                                                                    //          set containing the given process
+#define PMIX_PSET_NAME                      "pmix.pset.nm"          // (char*) The name of the newly defined process set.
 #define PMIX_PSET_NAMES                     "pmix.pset.nms"         // (pmix_data_array_t*) Returns an array of string names of the
                                                                     //          process sets in which the given process is a member.
 #define PMIX_PSET_MEMBERS                   "pmix.pset.mems"        // (pmix_data_array_t*) An array of pmix_proc_t containing
@@ -238,10 +254,6 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_TCP_IPV6_PORT                  "pmix.tcp.ipv6"         // (int) IPv6 port to be used
 #define PMIX_TCP_DISABLE_IPV4               "pmix.tcp.disipv4"      // (bool) true to disable IPv4 family
 #define PMIX_TCP_DISABLE_IPV6               "pmix.tcp.disipv6"      // (bool) true to disable IPv6 family
-
-
-/* attributes for GDS */
-#define PMIX_GDS_MODULE                     "pmix.gds.mod"          // (char*) comma-delimited string of desired modules
 
 
 /* general proc-level attributes */
@@ -288,7 +300,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_EXIT_CODE                      "pmix.exit.code"        // (int) exit code returned when proc terminated
 
 /* size info */
-#define PMIX_UNIV_SIZE                      "pmix.univ.size"        // (uint32_t) #procs in this nspace
+#define PMIX_UNIV_SIZE                      "pmix.univ.size"        // (uint32_t) #slots in this session
 #define PMIX_JOB_SIZE                       "pmix.job.size"         // (uint32_t) #procs in this job
 #define PMIX_JOB_NUM_APPS                   "pmix.job.napps"        // (uint32_t) #apps in this job
 #define PMIX_APP_SIZE                       "pmix.app.size"         // (uint32_t) #procs in this application
@@ -296,8 +308,9 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_NODE_SIZE                      "pmix.node.size"        // (uint32_t) #procs across all jobs on this node
 #define PMIX_MAX_PROCS                      "pmix.max.size"         // (uint32_t) max #procs for this job
 #define PMIX_NUM_SLOTS                      "pmix.num.slots"        // (uint32_t) #slots allocated
-#define PMIX_NUM_NODES                      "pmix.num.nodes"        // (uint32_t) #nodes in this nspace
-
+#define PMIX_NUM_NODES                      "pmix.num.nodes"        // (uint32_t) #nodes currently hosting processes in the specified realm.
+#define PMIX_NUM_ALLOCATED_NODES            "pmix.num.anodes"       // (uint32_t) #nodes in the specified realm regardless of whether or
+                                                                    //            not they currently host processes.
 
 /* Memory info */
 #define PMIX_AVAIL_PHYS_MEMORY              "pmix.pmem"             // (uint64_t) total available physical memory on this node
@@ -332,12 +345,16 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_JOB_TERM_STATUS                "pmix.job.term.status"  // (pmix_status_t) status returned upon job termination
 #define PMIX_PROC_TERM_STATUS               "pmix.proc.term.status" // (pmix_status_t) status returned upon process termination
 #define PMIX_PROC_STATE_STATUS              "pmix.proc.state"       // (pmix_proc_state_t) process state
-#define PMIX_NOTIFY_LAUNCH                  "pmix.note.lnch"        // (bool) notify the requestor upon launch of the child job and return
-                                                                    //        its namespace in the event
 #define PMIX_GET_REFRESH_CACHE              "pmix.get.refresh"      // (bool) when retrieving data for a remote process, refresh the existing
                                                                     //        local data cache for the process in case new values have been
                                                                     //        put and committed by it since the last refresh
-
+#define PMIX_ACCESS_PERMISSIONS             "pmix.aperms"           // (pmix_data_array_t*) Define access permissions for the published
+                                                                    //        data. The value shall contain an array of pmix_info_t structs
+                                                                    //        containing the specified permissions.
+#define PMIX_ACCESS_USERIDS                 "pmix.auids"            // (pmix_data_array_t*) Array of effective UIDs that are allowed to
+                                                                    //        access the published data
+#define PMIX_ACCESS_GRPIDS                  "pmix.agids"            // (pmix_data_array_t*) Array of effective GIDs that are allowed to
+                                                                    //        access the published data
 
 /* attributes used by host server to pass data to/from the server convenience library - the
  * data will then be parsed and provided to the local clients. Not generally accessible by users */
@@ -372,6 +389,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_EVENT_PROXY                    "pmix.evproxy"          // (pmix_proc_t*) PMIx server that sourced the event
 #define PMIX_EVENT_TEXT_MESSAGE             "pmix.evtext"           // (char*) text message suitable for output by recipient - e.g., describing
                                                                     //         the cause of the event
+#define PMIX_EVENT_TIMESTAMP                "pmix.evtstamp"         // (time_t) System time when the associated event occurred.
+
 
 /* fault tolerance-related events */
 #define PMIX_EVENT_TERMINATE_SESSION        "pmix.evterm.sess"      // (bool) RM intends to terminate session
@@ -379,11 +398,6 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_EVENT_TERMINATE_NODE           "pmix.evterm.node"      // (bool) RM intends to terminate all procs on this node
 #define PMIX_EVENT_TERMINATE_PROC           "pmix.evterm.proc"      // (bool) RM intends to terminate just this process
 #define PMIX_EVENT_ACTION_TIMEOUT           "pmix.evtimeout"        // (int) time in sec before RM will execute error response
-#define PMIX_EVENT_NO_TERMINATION           "pmix.evnoterm"         // (bool) indicates that the handler has satisfactorily handled
-                                                                    //        the event and believes termination of the application is not required
-#define PMIX_EVENT_WANT_TERMINATION         "pmix.evterm"           // (bool) indicates that the handler has determined that the
-                                                                    //        application should be terminated
-
 
 /* attributes used to describe "spawn" directives */
 #define PMIX_PERSONALITY                    "pmix.pers"             // (char*) name of personality to use
@@ -431,7 +445,7 @@ typedef uint32_t pmix_rank_t;
                                                                     //        from the spawned processes to this process (typically used by a tool)
 #define PMIX_SPAWN_TOOL                     "pmix.spwn.tool"        // (bool) job being spawned is a tool
 #define PMIX_CMD_LINE                       "pmix.cmd.line"         // (char*) command line executing in the specified nspace
-#define PMIX_FORK_EXEC_AGENT                "pmix.fe.agnt"          // (char*) command line of fork/exec agent to be used for starting
+#define PMIX_FORKEXEC_AGENT                 "pmix.fe.agnt"          // (char*) command line of fork/exec agent to be used for starting
                                                                     //         local processes
 #define PMIX_TIMEOUT_STACKTRACES            "pmix.tim.stack"        // (bool) include process stacktraces in timeout report from a job
 #define PMIX_TIMEOUT_REPORT_STATE           "pmix.tim.state"        // (bool) report process states in timeout report from a job
@@ -477,6 +491,16 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_QUERY_PSET_NAMES               "pmix.qry.psets"        // (char*) returns a comma-delimited list of the names of the
                                                                     //         psets defined in the specified range (defaults to session)
                                                                     //         SUPPORTED QUALIFIERS: PMIX_RANGE whose info is being requested
+#define PMIX_QUERY_PSET_MEMBERSHIP          "pmix.qry.pmems"        // (pmix_data_array_t*) Return an array of pmix_proc_t containing the members of
+                                                                    //         the specified process set.
+#define PMIX_QUERY_NUM_GROUPS               "pmix.qry.pgrpnum"      // (size_t) Return the number of process groups defined in the specified range
+                                                                    //         (defaults to session). OPTIONAL QUALIFERS: PMIX_RANGE.
+#define PMIX_QUERY_GROUP_NAMES              "pmix.qry.pgrp"         // (pmix_data_array_t*) Return a pmix_data_array_t containing an array of string
+                                                                    //         names of the process groups defined in the specified range (defaults
+                                                                    //         to session). OPTIONAL QUALIFERS: PMIX_RANGE
+#define PMIX_QUERY_GROUP_MEMBERSHIP         "pmix.qry.pgrpmems"     // (pmix_data_array_t*) Return a pmix_data_array_t of pmix_proc_t containing
+                                                                    //         the members of the specified process group. REQUIRED QUALIFIERS:
+                                                                    //         PMIX_GROUP_ID.
 #define PMIX_QUERY_ATTRIBUTE_SUPPORT        "pmix.qry.attrs"        // (pmix_data_array_t*) returns array of pmix_info_t where each element consists
                                                                     //         of a key containing the name of the function, and an array of pmix_regattr_t
                                                                     //         detailing the attribute support for that function
@@ -595,10 +619,25 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_DEBUG_STOP_ON_EXEC             "pmix.dbg.exec"         // (bool) job is being spawned under debugger - instruct it to pause on start
 #define PMIX_DEBUG_STOP_IN_INIT             "pmix.dbg.init"         // (bool) instruct job to stop during PMIx init
 #define PMIX_DEBUG_WAIT_FOR_NOTIFY          "pmix.dbg.notify"       // (bool) block at desired point until receiving debugger release notification
-#define PMIX_DEBUG_WAITING_FOR_NOTIFY       "pmix.dbg.waiting"      // (bool) job to be debugged is waiting for a release
-#define PMIX_DEBUG_JOB_DIRECTIVES           "pmix.dbg.jdirs"        // (pmix_data_array_t*) array of job-level directives
-#define PMIX_DEBUG_APP_DIRECTIVES           "pmix.dbg.adirs"        // (pmix_data_array_t*) array of app-level directives
 #define PMIX_DEBUG_TARGET                   "pmix.dbg.tgt"          // (pmix_proc_t*) Identifier of proc(s) to be debugged
+#define PMIX_DEBUG_DAEMONS_PER_PROC         "pmix.dbg.dpproc"       // (uint16_t) Number of debugger daemons to be spawned per application
+                                                                    //        process. The launcher is to pass the identifier of the namespace to
+                                                                    //        be debugged by including the PMIX_DEBUG_TARGET attribute in the
+                                                                    //        daemon's job-level information. The debugger daemons spawned on a
+                                                                    //        given node are responsible for self-determining their specific
+                                                                    //        target process(es) - e.g., by referencing their own PMIX_LOCAL_RANK
+                                                                    //        in the daemon debugger job versus the corresponding PMIX_LOCAL_RANK
+                                                                    //        of the target processes on the node.
+#define PMIX_DEBUG_DAEMONS_PER_NODE         "pmix.dbg.dpnd"         // (uint16_t) Number of debugger daemons to be spawned on each node where the
+                                                                    //        target job is executing. The launcher is to pass the identifier of
+                                                                    //        the namespace to be debugged by including the PMIX_DEBUG_TARGET
+                                                                    //        attribute in the daemon's job-level information. The debugger
+                                                                    //        daemons spawned on a given node are responsible for
+                                                                    //        self-determining their specific target process(es) - e.g., by
+                                                                    //        referencing their own PMIX_LOCAL_RANK in the daemon debugger job
+                                                                    //        versus the corresponding PMIX_LOCAL_RANK of the target processes on
+                                                                    //        the node.
+
 
 /* Resource Manager identification */
 #define PMIX_RM_NAME                        "pmix.rm.name"          // (char*) string name of the resource manager
@@ -751,7 +790,18 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_IOF_TAG_OUTPUT                 "pmix.iof.tag"          // (bool) Tag output with the channel it comes from
 #define PMIX_IOF_TIMESTAMP_OUTPUT           "pmix.iof.ts"           // (bool) Timestamp output
 #define PMIX_IOF_XML_OUTPUT                 "pmix.iof.xml"          // (bool) Format output in XML
-#define PMIX_IOF_STOP                       "pmix.iof.stop"         // (bool) Stop forwarding the specified channel(s)
+#define PMIX_IOF_COPY                       "pmix.iof.cpy"          // (bool) Requests that the host environment deliver a copy of the
+                                                                    //        specified output stream(s) to the tool, letting the stream(s)
+                                                                    //        continue to also be delivered to the default location. This
+                                                                    //        allows the tool to tap into the output stream(s) without
+                                                                    //        redirecting it from its current final destination.
+#define PMIX_IOF_REDIRECT                   "pmix.iof.redir"        // (bool) Requests that the host environment intercept the specified
+                                                                    //        output stream(s) and deliver it to the requesting tool instead
+                                                                    //        of its current final destination. This might be used, for
+                                                                    //        example, during a debugging procedure to avoid injection of
+                                                                    //        debugger-related output into the application’s results file.
+                                                                    //        The original output stream(s) destination is restored upon
+                                                                    //        termination of the tool.
 
 /* Attributes for controlling contents of application setup data */
 #define PMIX_SETUP_APP_ENVARS               "pmix.setup.env"        // (bool) harvest and include relevant envars
@@ -766,14 +816,14 @@ typedef uint32_t pmix_rank_t;
                                                                     //        is false
 #define PMIX_GROUP_NOTIFY_TERMINATION       "pmix.grp.notterm"      // (bool) notify remaining members when another member terminates without first
                                                                     //        leaving the group. The default is false
-#define PMIX_GROUP_INVITE_DECLINE           "pmix.grp.decline"      // (bool) notify the inviting process that this process does not wish to
-                                                                    //        participate in the proposed group The default is true
 #define PMIX_GROUP_FT_COLLECTIVE            "pmix.grp.ftcoll"       // (bool) adjust internal tracking for terminated processes. Default is false
 #define PMIX_GROUP_MEMBERSHIP               "pmix.grp.mbrs"         // (pmix_data_array_t*) array of group member ID's
 #define PMIX_GROUP_ASSIGN_CONTEXT_ID        "pmix.grp.actxid"       // (bool) request that the RM assign a unique numerical (size_t) ID to this group
 #define PMIX_GROUP_CONTEXT_ID               "pmix.grp.ctxid"        // (size_t) context ID assigned to group
 #define PMIX_GROUP_LOCAL_ONLY               "pmix.grp.lcl"          // (bool) group operation only involves local procs
 #define PMIX_GROUP_ENDPT_DATA               "pmix.grp.endpt"        // (pmix_byte_object_t) data collected to be shared during construction
+#define PMIX_GROUP_NAMES                    "pmix.pgrp.nm"          // (pmix_data_array_t*) Returns an array of string names of the process groups
+                                                                    //        in which the given process is a member.
 
 
 /* Storage-Related Attributes */
@@ -805,48 +855,108 @@ typedef uint32_t pmix_rank_t;
                                                                    //         a colon and a comma-delimited list of nodes in that group, with the
                                                                    //         groups delimited by semi-colons (e.g.,
                                                                    //         0:node000,node002,node004,node006;1:node001,node003,node005,node007)
-#define PMIX_FABRIC_VENDOR                  "pmix.fab.vndr"        // (char*) Name of fabric vendor (e.g., Amazon, Mellanox, Cray, Intel)
+#define PMIX_FABRIC_VENDOR                  "pmix.fab.vndr"        // (char*) Name of fabric vendor (e.g., Amazon, Mellanox, HPE, Intel)
 #define PMIX_FABRIC_IDENTIFIER              "pmix.fab.id"          // (char*) An identifier for the fabric (e.g., MgmtEthernet, Slingshot-11,
                                                                    //         OmniPath-1)
 #define PMIX_FABRIC_INDEX                   "pmix.fab.idx"         // (size_t) The index of the fabric as returned in pmix_fabric_t
-#define PMIX_FABRIC_NUM_VERTICES            "pmix.fab.nverts"      // (size_t) Total number of NICs in the system - corresponds to the number
-                                                                   //          of vertices (i.e., rows and columns) in the cost matrix
-#define PMIX_FABRIC_COORDINATE              "pmix.fab.coord"       // (pmix_coord_t*) Fabric coordinate of the specified process in
-                                                                   //       the given view type (e.g., logical vs physical)
-#define PMIX_FABRIC_VIEW                    "pmix.fab.view"        // (pmix_coord_view_t) Requested view type (e.g., logical vs physical)
-#define PMIX_FABRIC_DIMS                    "pmix.fab.dims"        // (uint32_t) Number of dimensions in the specified fabric plane/view
-#define PMIX_FABRIC_PLANE                   "pmix.fab.plane"       // (char*) string ID of a fabric plane
-#define PMIX_FABRIC_SWITCH                  "pmix.fab.switch"      // (char*) string ID of a fabric switch
-#define PMIX_FABRIC_ENDPT                   "pmix.fab.endpt"       // (pmix_data_array_t*) array of fabric endpts for process
-#define PMIX_FABRIC_SHAPE                   "pmix.fab.shape"       // (pmix_data_array_t*) number of interfaces (uint32_t) on each dimension of the
-                                                                   //        specified fabric plane in the requested view
-#define PMIX_FABRIC_SHAPE_STRING            "pmix.fab.shapestr"    // (char*) fabric shape expressed as a string (e.g., "10x12x2")
-#define PMIX_SWITCH_PEERS                   "pmix.speers"          // (char*) comma-delimited string of peers that share the same switch as the proc
-                                                                   //         specified in the call to PMIx_Get. Multi-NIC environments will return
-                                                                   //         an array of results, each element containing the NIC and the list of
-                                                                   //         peers sharing the switch to which that NIC is connected.
+#define PMIX_FABRIC_COORDINATES             "pmix.fab.coord"       // (pmix_data_array_t*) Array of pmix_geometry_t fabric coordinates for
+                                                                   //          devices on the specified node. The array will contain the
+                                                                   //          coordinates of all devices on the node, including values for
+                                                                   //          all supported coordinate views. The information for devices
+                                                                   //          on the local node shall be provided if the node is not
+                                                                   //          specified in the request.
+#define PMIX_FABRIC_DEVICE_DIST             "pmix.fab.endptdist"   // (pmix_data_array_t*) Relative distance from the location of the
+                                                                   //          calling process (either as sampled at the time of the request
+                                                                   //          or based on the initial binding location set at time of start
+                                                                   //          of execution) to each local fabric device, returned as an
+                                                                   //          array of pmix_device_distance_t elements in no particular
+                                                                   //          order.
+#define PMIX_FABRIC_DEVICE_VENDORID         "pmix.fabdev.vendid"   // (char*) This is a vendor-provided identifier for the device or product.
+#define PMIX_FABRIC_NUM_DEVICES             "pmix.fab.nverts"      // (size_t) Total number of fabric devices in the system - corresponds to
+                                                                   //          the number of rows or columns in the cost matrix
+#define PMIX_FABRIC_VIEW                    "pmix.fab.view"        // (pmix_coord_view_t) Used purely as a qualifier to requests, specifies the
+                                                                   //          view type (e.g., local vs. physical) for the requested information.
+#define PMIX_FABRIC_DIMS                    "pmix.fab.dims"        // (uint32_t) Number of dimensions in the specified fabric plane/view. If no
+                                                                   //          plane is specified in a request, then the dimensions of all planes
+                                                                   //          in the overall system will be returned as a pmix_data_array_t
+                                                                   //          containing an array of \code{uint32_t} values. Default is to
+                                                                   //          provide dimensions in logical view.
+
+#define PMIX_FABRIC_PLANE                   "pmix.fab.plane"       // (char*) ID string of a fabric plane (e.g., CIDR for Ethernet). When used as
+                                                                   //          a modifier in a request for information, specifies the plane whose
+                                                                   //          information is to be returned. When used directly as a key in a
+                                                                   //          request, returns a \refstruct{pmix_data_array_t} of string
+                                                                   //          identifiers for all fabric planes in the overall system.
+
+#define PMIX_FABRIC_SWITCH                  "pmix.fab.switch"      // (char*) ID string of a fabric switch. When used as a modifier in a request
+                                                                   //         for information, specifies the switch whose information is to be
+                                                                   //         returned. When used directly as a key in a request, returns a
+                                                                   //         pmix_data_array_t of string identifiers for all fabric switches in
+                                                                   //         the overall system.
+
+#define PMIX_FABRIC_ENDPT                   "pmix.fab.endpt"       // (pmix_data_array_t*) Fabric endpoints for a specified process. As multiple
+                                                                   //         endpoints may be assigned to a given process (e.g., in the case
+                                                                   //         where multiple devices are associated with a package to which the
+                                                                   //         process is bound), the returned values will be provided in a
+                                                                   //         pmix_data_array_t of pmix_endpoint_t elements.
+
+#define PMIX_FABRIC_SHAPE                   "pmix.fab.shape"       // (pmix_data_array_t*) The size of each dimension in the specified fabric
+                                                                   //         plane/view, returned in a pmix_data_array_t containing an array of
+                                                                   //         uint32_t values. The size is defined as the number of elements
+                                                                   //         present in that dimension - e.g., the number of devices in one
+                                                                   //         dimension of a physical view of a fabric plane. If no plane is
+                                                                   //         specified, then the shape of each plane in the overall system will
+                                                                   //         be returned in a pmix_data_array_t array where each element is
+                                                                   //         itself a two-element array containing the PMIX_FABRIC_PLANE
+                                                                   //         followed by that plane's fabric shape. Default is to provide the
+                                                                   //         shape in logical view.
+
+#define PMIX_FABRIC_SHAPE_STRING            "pmix.fab.shapestr"    // (char*) Network shape expressed as a string (e.g., "10x12x2"). If no plane
+                                                                   //         is specified, then the shape of each plane in the overall system
+                                                                   //         will be returned in a \refstruct{pmix_data_array_t} array where
+                                                                   //         each element is itself a two-element array containing the
+                                                                   //         PMIX_FABRIC_PLANE followed by that plane's fabric shape string.
+                                                                   //         Default is to provide the shape in logical view.
+
+#define PMIX_SWITCH_PEERS                   "pmix.speers"          // (char*) Peer ranks that share the same switch as the process specified in
+                                                                   //         the call to \refapi{PMIx_Get}. Returns a pmix_data_array_t array of
+                                                                   //         pmix_info_t results, each element containing the PMIX_SWITCH_PEERS
+                                                                   //         key with a three-element pmix_data_array_t array of pmix_info_t
+                                                                   //         containing the PMIX_FABRIC_DEVICE_ID of the local fabric device,
+                                                                   //         the PMIX_FABRIC_SWITCH identifying the switch to which it is
+                                                                   //         connected, and a comma-delimited string of peer ranks sharing the
+                                                                   //         switch to which that device is connected.
 #define PMIX_FABRIC_DEVICE                  "pmix.fabdev"          // (pmix_data_array_t*) An array of pmix_info_t describing a particular
-                                                                   //         fabric device (NIC).
+                                                                   //         fabric device. The first element in the array shall be the
+                                                                   //         PMIX_FABRIC_DEVICE_ID of the device
+#define PMIX_FABRIC_DEVICES                 "pmix.fab.devs"        // (pmix_data_array_t*) Array of pmix_info_t containing information for all
+                                                                   //         devices on the specified node. Each element of the array will contain
+                                                                   //         a PMIX_FABRIC_DEVICE entry, which in turn will contain an array of
+                                                                   //         information on a given device.
 #define PMIX_FABRIC_DEVICE_NAME             "pmix.fabdev.nm"       // (char*) The operating system name associated with the device. This may be
                                                                    //         a logical fabric interface name (e.g. eth0 or eno1) or an absolute
                                                                    //         filename.
-#define PMIX_FABRIC_DEVICE_INDEX            "pmix.fabdev.idx"      // (uint32_t) The fabric-wide index of the specified NIC within a given fabric
+#define PMIX_FABRIC_DEVICE_INDEX            "pmix.fabdev.idx"      // (uint32_t) Index of the device within an associated communication cost
+                                                                   //         matrix.
+
 #define PMIX_FABRIC_DEVICE_VENDOR           "pmix.fabdev.vndr"     // (char*) Indicates the name of the vendor that distributes the NIC.
-#define PMIX_FABRIC_DEVICE_BUS_TYPE         "pmix.fabdev.btyp"     // (char*) The type of bus to which the device is attached (e.g., "PCI", "GEN-Z").
-#define PMIX_FABRIC_DEVICE_ID               "pmix.fabdev.devid"    // (char*) A vendor-provided identifier for the device or product
+#define PMIX_FABRIC_DEVICE_BUS_TYPE         "pmix.fabdev.btyp"     // (char*) The type of bus to which the device is attached (e.g., "PCI",
+                                                                   //         "GEN-Z").
+#define PMIX_FABRIC_DEVICE_ID               "pmix.fabdev.id"       // (char*) System-wide UUID of a particular fabric device.
 #define PMIX_FABRIC_DEVICE_DRIVER           "pmix.fabdev.driver"   // (char*) The name of the driver associated with the device
 #define PMIX_FABRIC_DEVICE_FIRMWARE         "pmix.fabdev.fmwr"     // (char*) The device’s firmware version
-#define PMIX_FABRIC_DEVICE_ADDRESS          "pmix.fabdev.addr"     // (char*) The primary link-level address associated with the NIC, such as a
+#define PMIX_FABRIC_DEVICE_ADDRESS          "pmix.fabdev.addr"     // (char*) The primary link-level address associated with the device, such as a
                                                                    //         MAC address. If multiple addresses are available, only one will be
                                                                    //         reported.
-#define PMIX_FABRIC_DEVICE_MTU              "pmix.fabdev.mtu"      // (size_t) The maximum transfer unit of link level frames or packets, in bytes.
+#define PMIX_FABRIC_DEVICE_MTU              "pmix.fabdev.mtu"      // (size_t) The maximum transfer unit of link level frames or packets,
+                                                                   //          in bytes.
 #define PMIX_FABRIC_DEVICE_SPEED            "pmix.fabdev.speed"    // (size_t) The active link data rate, given in bits per second.
 #define PMIX_FABRIC_DEVICE_STATE            "pmix.fabdev.state"    // (pmix_link_state_t) The last available physical port state. Possible values
                                                                    //          are PMIX_LINK_STATE_UNKNOWN, PMIX_LINK_DOWN, and PMIX_LINK_UP, to
                                                                    //          indicate if the port state is unknown or not applicable (unknown),
                                                                    //          inactive (down), or active (up).
-#define PMIX_FABRIC_DEVICE_TYPE             "pmix.fabdev.type"     // (char*) Specifies the type of fabric interface currently active on the device,
-                                                                   //         such as Ethernet or InfiniBand.
+#define PMIX_FABRIC_DEVICE_TYPE             "pmix.fabdev.type"     // (char*) Specifies the type of fabric interface currently active on the
+                                                                   //         device, such as Ethernet or InfiniBand.
 #define PMIX_FABRIC_DEVICE_PCI_DEVID        "pmix.fabdev.pcidevid" // (char*) A node-level unique identifier for a PCI device. Provided only if the
                                                                    //         device is located on a \ac{PCI} bus. The identifier is constructed as
                                                                    //         a four-part tuple delimited by colons comprised of the \ac{PCI} 16-bit
@@ -909,7 +1019,6 @@ typedef uint8_t pmix_proc_state_t;
 /****    JOB STATE DEFINITIONS    ****/
 typedef uint8_t pmix_job_state_t;
 #define PMIX_JOB_STATE_UNDEF                     0  // undefined process state
-#define PMIX_JOB_STATE_PREPPED                   1  // job is ready to be launched
 #define PMIX_JOB_STATE_LAUNCH_UNDERWAY           2  // job launch underway
 #define PMIX_JOB_STATE_RUNNING                   3  // all procs have been spawned
 #define PMIX_JOB_STATE_SUSPENDED                 4  // job has been suspended
@@ -974,6 +1083,8 @@ typedef int pmix_status_t;
 #define PMIX_ERR_GET_MALLOC_REQD                    -54
 #define PMIX_PROCESS_SET_DEFINE                     -55
 #define PMIX_PROCESS_SET_DELETE                     -56
+#define PMIX_DEBUGGER_RELEASE                       -57
+#define PMIX_DEBUG_WAITING_FOR_NOTIFY               -58
 
 /* v2.x communication errors */
 #define PMIX_QUERY_PARTIAL_SUCCESS                  -104
@@ -990,7 +1101,6 @@ typedef int pmix_status_t;
 
 /* operational */
 #define PMIX_ERR_EVENT_REGISTRATION                 -144
-#define PMIX_ERR_UPDATE_ENDPOINTS                   -146
 #define PMIX_MODEL_DECLARED                         -147
 #define PMIX_MODEL_RESOURCES                        -151     // model resource usage has changed
 #define PMIX_OPENMP_PARALLEL_ENTERED                -152     // an OpenMP parallel region has been entered
@@ -1018,6 +1128,7 @@ typedef int pmix_status_t;
 #define PMIX_LAUNCH_COMPLETE                        -174     // include nspace of the launched job with notification
 #define PMIX_FABRIC_UPDATED                         -175
 #define PMIX_FABRIC_UPDATE_PENDING                  -176
+#define PMIX_FABRIC_UPDATE_ENDPOINTS                 -57
 
 /* job-related errors */
 #define PMIX_ERR_JOB_APP_NOT_EXECUTABLE             -177
@@ -1041,12 +1152,15 @@ typedef int pmix_status_t;
 #define PMIX_EVENT_SESSION_END                      -193
 
 /* system failures */
-#define PMIX_ERR_SYS_BASE                           -230
+#define PMIX_EVENT_SYS_BASE                         -230
+#define PMIX_EVENT_NODE_DOWN                        -231
+#define PMIX_EVENT_NODE_OFFLINE                     -232
+#define PMIX_EVENT_SYS_OTHER                        -330
 
 
 /* define a macro for identifying system event values */
 #define PMIX_SYSTEM_EVENT(a)   \
-    ((a) <= PMIX_ERR_SYS_BASE && PMIX_ERR_SYS_OTHER <= (a))
+    ((a) <= PMIX_EVENT_SYS_BASE && PMIX_EVENT_SYS_OTHER <= (a))
 
 /* used by event handlers */
 #define PMIX_EVENT_NO_ACTION_TAKEN                  -331
@@ -1117,6 +1231,10 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_REGEX              49
 #define PMIX_JOB_STATE          50
 #define PMIX_LINK_STATE         51
+#define PMIX_PROC_CPUSET        52
+#define PMIX_GEOMETRY           53
+#define PMIX_DEVICE_DIST        54
+#define PMIX_ENDPOINT           55
 /********************/
 
 /* define a boundary for implementers so they can add their own data types */
@@ -1275,8 +1393,6 @@ typedef uint8_t pmix_coord_view_t;
 
 /* define a structure for a proc's fabric coordinate */
 typedef struct pmix_coord {
-    char *fabric;
-    char *plane;
     pmix_coord_view_t view;
     int *coord;
     size_t dims;
@@ -1284,20 +1400,18 @@ typedef struct pmix_coord {
 
 #define PMIX_COORD_CREATE(m, d, n)                                      \
     do {                                                                \
-        (m) = (pmix_coord_t*)pmix_calloc((n), sizeof(pmix_coord_t));    \
-        if (NULL != (m)) {                                              \
-            (m)->fabric = NULL;                                         \
-            (m)->plane = NULL;                                          \
-            (m)->view = PMIX_COORD_VIEW_UNDEF;                          \
-            (m)->dims = (d);                                            \
-            (m)->coord = (int*)pmix_calloc((m)->dims, sizeof(int));     \
+        pmix_coord_t *_m;                                               \
+        _m = (pmix_coord_t*)pmix_calloc((n), sizeof(pmix_coord_t));     \
+        if (NULL != _m {                                                \
+            _m->view = PMIX_COORD_VIEW_UNDEF;                           \
+            _m->dims = (d);                                             \
+            _m->coord = (int*)pmix_calloc((m)->dims, sizeof(int));      \
+            (m) = _m;                                                   \
         }                                                               \
     } while(0)
 
 #define PMIX_COORD_CONSTRUCT(m)             \
     do {                                    \
-        (m)->fabric = NULL;                 \
-        (m)->plane = NULL;                  \
         (m)->view = PMIX_COORD_VIEW_UNDEF;  \
         (m)->coord = NULL;                  \
         (m)->dims = 0;                      \
@@ -1307,12 +1421,6 @@ typedef struct pmix_coord {
     do {                                    \
         (m)->view = PMIX_COORD_VIEW_UNDEF;  \
         if (NULL != (m)->coord) {           \
-            if (NULL != (m)->fabric) {      \
-                free((m)->fabric);          \
-            }                               \
-            if (NULL != (m)->plane) {       \
-                free((m)->plane);           \
-            };                              \
             pmix_free((m)->coord);          \
             (m)->coord = NULL;              \
             (m)->dims = 0;                  \
@@ -1348,6 +1456,9 @@ typedef struct{
 #define PMIX_CPUSET_CONSTRUCT(m) \
     memset((m), 0, sizeof(pmix_cpuset_t))
 
+#define PMIX_CPUSET_CREATE(m, n)    \
+    (m) = (pmix_cpuset_t*)calloc((n), sizeof(pmix_cpuset_t));
+
 
 /****    PMIX TOPOLOGY    ****/
 typedef struct {
@@ -1370,6 +1481,92 @@ typedef uint16_t pmix_locality_t;
 #define PMIX_LOCALITY_SHARE_PACKAGE     0x0020
 #define PMIX_LOCALITY_SHARE_NUMA        0x0040
 #define PMIX_LOCALITY_SHARE_NODE        0x4000
+
+
+/****    PMIX GEOMETRY     ****/
+typedef struct pmix_geometry {
+    size_t fabric;
+    char *uuid;
+    pmix_coord_t *coordinates;
+    size_t ncoords;
+} pmix_geometry_t;
+
+#define PMIX_GEOMETRY_CONSTRUCT(m) \
+    memset((m), 0, sizeof(pmix_geometry_t));
+
+#define PMIX_GEOMETRY_DESTRUCT(m)                               \
+    do {                                                        \
+        if (NULL != (m)->uuid) {                                \
+            free((m)->uuid);                                    \
+            (m)->uuid = NULL;                                   \
+        }                                                       \
+        if (NULL != (m)->coordinates) {                         \
+            PMIX_COORD_FREE((m)->coordinates, (m)->ncoords);    \
+        }                                                       \
+    } while(0)
+
+#define PMIX_GEOMETRY_CREATE(m, n)                              \
+    (m) = (pmix_geometry_t*)calloc((n), sizeof(pmix_geometry_t))
+
+#define PMIX_GEOMETRY_FREE(m, n)                    \
+    do {                                            \
+        size_t _i;                                  \
+        if (NULL != (m)) {                          \
+            for (_i=0; _i < (n); _i++) {            \
+                PMIX_GEOMETRY_DESTRUCT(&(m)[_i]);   \
+            }                                       \
+            free((m));                              \
+            (m) = NULL;                             \
+        }                                           \
+    } while(0)
+
+
+/****    PMIX_DISTANCE     ****/
+typedef struct pmix_device_distance {
+    char *uuid;
+    uint16_t mindist;
+    uint16_t maxdist;
+} pmix_device_distance_t;
+
+#define PMIX_DEVICE_DIST_CONSTRUCT(m)                       \
+    do {                                                    \
+        memset((m), 0, sizeof(pmix_device_distance_t));     \
+        (m)->mindist = UINT16_MAX;                          \
+        (m)->maxdist = UINT16_MAX;                          \
+    } while(0);
+
+#define PMIX_DEVICE_DIST_DESTRUCT(m)    \
+    do {                                \
+        if (NULL != ((m)->uuid)) {      \
+            free((m)->uuid);            \
+        }                               \
+    } while(0)
+
+#define PMIX_DEVICE_DIST_CREATE(m, n)                                                       \
+    do {                                                                                    \
+        size_t _i;                                                                          \
+        pmix_device_distance_t *_m;                                                         \
+        _m = (pmix_device_distance_t*)pmix_calloc((n), sizeof(pmix_device_distance_t));     \
+        if (NULL != _m) {                                                                   \
+            for (_i=0; _i < (n); _i++) {                                                    \
+                _m[_i].mindist = UINT16_MAX;                                                \
+                _m[_i].maxdist = UINT16_MAX;                                                \
+            }                                                                               \
+            (m) = _m;                                                                       \
+        }                                                                                   \
+    } while(0)
+
+#define PMIX_DEVICE_DIST_FREE(m, n)                     \
+    do {                                                \
+        size_t _i;                                      \
+        if (NULL != (m)) {                              \
+            for (_i=0; _i < (n); _i++) {                \
+                PMIX_DEVICE_DIST_DESTRUCT(&(m)[_i]);    \
+            }                                           \
+            free((m));                                  \
+            (m) = NULL;                                 \
+        }                                               \
+    } while(0)
 
 
 /****    PMIX BYTE OBJECT    ****/
@@ -1420,6 +1617,42 @@ typedef struct pmix_byte_object {
         (b)->size = (s);                    \
         (s) = 0;                            \
     } while(0)
+
+
+/****    PMIX ENDPOINT    ****/
+typedef struct pmix_endpoint {
+    char *uuid;
+    pmix_byte_object_t endpt;
+} pmix_endpoint_t;
+
+#define PMIX_ENDPOINT_CONSTRUCT(m)      \
+    memset((m), 0, sizeof(pmix_endpoint_t))
+
+#define PMIX_ENDPOINT_DESTRUCT(m)       \
+    do {                                \
+        if (NULL != (m)->uuid) {        \
+            free((m)->uuid);            \
+        }                               \
+        if (NULL != (m)->endpt.bytes) { \
+            free((m)->endpt.bytes);     \
+        }                               \
+    } while(0)
+
+#define PMIX_ENDPOINT_CREATE(m, n)      \
+    (m) = (pmix_endpoint_t*)calloc((n), sizeof(pmix_endpoint_t))
+
+#define PMIX_ENDPOINT_FREE(m, n)                    \
+    do {                                            \
+        size_t _n;                                  \
+        if (NULL != (m)) {                          \
+            for (_n=0; _n < (n); _n++) {            \
+                PMIX_ENDPOINT_DESTRUCT(&((m)[_n])); \
+            }                                       \
+            free((m));                              \
+            (m) = NULL;                             \
+        }                                           \
+    } while(0)
+
 
 
 /****    PMIX ENVAR STRUCT   ****/
@@ -2205,7 +2438,7 @@ typedef struct pmix_fabric_s {
 typedef enum {
     PMIX_FABRIC_REQUEST_INFO,
     PMIX_FABRIC_UPDATE_INFO,
-    PMIX_FABRIC_GET_VERTEX_INFO,
+    PMIX_FABRIC_GET_DEVICE_INFO,
     PMIX_FABRIC_GET_DEVICE_INDEX
 } pmix_fabric_operation_t;
 

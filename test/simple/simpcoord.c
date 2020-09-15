@@ -109,7 +109,7 @@ int main(int argc, char **argv)
 
   nextstep:
     /* get our assigned fabric coordinates */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_FABRIC_COORDINATE, NULL, 0, &val)) ||
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_FABRIC_COORDINATES, NULL, 0, &val)) ||
         NULL == val) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get fabric coordinate failed: %s",
                     myproc.nspace, myproc.rank, PMIx_Error_string(rc));

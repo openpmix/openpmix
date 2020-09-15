@@ -1041,10 +1041,10 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_deregister_nb(pmix_fabric_t *fabric,
  * PMIX_SUCCESS - indicates return of a valid value
  * PMIX_ERR_BAD_PARAM - provided index is out of bounds
  */
-PMIX_EXPORT pmix_status_t PMIx_Fabric_get_vertex_info(pmix_fabric_t *fabric, uint32_t index,
+PMIX_EXPORT pmix_status_t PMIx_Fabric_get_device_info(pmix_fabric_t *fabric, uint32_t index,
                                                       pmix_info_t **info, size_t *ninfo);
 
-PMIX_EXPORT pmix_status_t PMIx_Fabric_get_vertex_info_nb(pmix_fabric_t *fabric, uint32_t index,
+PMIX_EXPORT pmix_status_t PMIx_Fabric_get_device_info_nb(pmix_fabric_t *fabric, uint32_t index,
                                                          pmix_info_cbfunc_t cbfunc, void *cbdata);
 
 /* Given vertex info and the name of the device upon which that
@@ -1077,6 +1077,25 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_get_device_index_nb(pmix_fabric_t *fabric,
                                                           const pmix_info_t vertex[], size_t ninfo,
                                                           pmix_info_cbfunc_t cbfunc, void *cbdata);
 
+/* Update the distance information for the current process
+ * Returns an array of distances from the current process
+ * location to each of the local fabric devices
+ *
+ * distances - pointer to location where the array of
+ *             distances is to be returned
+ *
+ * ndist - number of elements in the distances array
+ *
+ * Return values include:
+ *
+ * PMIX_SUCCESS - distance array was successfully returned
+ * Other error
+ */
+PMIX_EXPORT pmix_status_t PMIx_Fabric_update_distances(pmix_device_distance_t *distances[],
+                                                       size_t *ndist);
+
+PMIX_EXPORT pmix_status_t PMIx_Fabric_update_distances_nb(pmix_info_cbfunc_t cbfunc,
+                                                          void *cbdata);
 
 /* Load the local hwardware topology description
  *
