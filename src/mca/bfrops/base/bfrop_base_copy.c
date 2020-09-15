@@ -27,6 +27,7 @@
 #include "src/util/output.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/preg/preg.h"
+#include "src/mca/ploc/ploc.h"
 
 #include "src/mca/bfrops/base/base.h"
 
@@ -405,6 +406,23 @@ pmix_status_t pmix_bfrops_base_copy_pinfo(pmix_proc_info_t **dest,
     return PMIX_SUCCESS;
 }
 
+static pmix_status_t fill_coord(pmix_coord_t *dst,
+                                pmix_coord_t *src)
+{
+    dst->view = src->view;
+    dst->dims = src->dims;
+    if (0 < dst->dims) {
+        dst->coord = (int*)malloc(dst->dims * sizeof(int));
+        if (NULL == dst->coord) {
+            free(dst);
+            return PMIX_ERR_NOMEM;
+        }
+        memcpy(dst->coord, src->coord, dst->dims * sizeof(int));
+    }
+    return PMIX_SUCCESS;
+}
+
+
 /* the pmix_data_array_t is a little different in that it
  * is an array of values, and so we cannot just copy one
  * value at a time. So handle all value types here */
@@ -428,6 +446,9 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
     pmix_envar_t *pe, *se;
     pmix_regattr_t *pr, *sr;
     pmix_coord_t *pc, *sc;
+    pmix_cpuset_t *pcpuset, *scpuset;
+    pmix_geometry_t *pgeoset, *sgeoset;
+    pmix_device_distance_t *pdevdist, *sdevdist;
 
     if (PMIX_DATA_ARRAY != type) {
         return PMIX_ERR_BAD_PARAM;
@@ -854,23 +875,10 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
             pc = (pmix_coord_t*)p->array;
             sc = (pmix_coord_t*)src->array;
             for (n=0; n < src->size; n++) {
-                PMIX_COORD_CONSTRUCT(&pc[n]);
-                if (NULL != sc[n].fabric) {
-                    pc[n].fabric = strdup(sc[n].fabric);
-                }
-                if (NULL != sc[n].plane) {
-                    pc[n].plane = strdup(sc[n].plane);
-                }
-                pc[n].view = sc[n].view;
-                pc[n].dims = sc[n].dims;
-                if (0 < pc[n].dims) {
-                    pc[n].coord = (int*)malloc(pc[n].dims * sizeof(int));
-                    if (NULL == pc[n].coord) {
-                        free(p->array);
-                        free(p);
-                        return PMIX_ERR_NOMEM;
-                    }
-                    memcpy(pc[n].coord, sc[n].coord, pc[n].dims * sizeof(int));
+                rc = fill_coord(&pc[n], &sc[n]);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_COORD_FREE(pc, src->size);
+                    return rc;
                 }
             }
             break;
@@ -889,6 +897,70 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
                 PMIX_LOAD_KEY(pr[n].string, sr[n].string);
                 pr[n].type = sr[n].type;
                 pr[n].description = pmix_argv_copy(sr[n].description);
+            }
+            break;
+        case PMIX_PROC_CPUSET:
+            PMIX_CPUSET_CREATE(p->array, src->size);
+            if (NULL == p->array) {
+                free(p);
+                return PMIX_ERR_NOMEM;
+            }
+            pcpuset = (pmix_cpuset_t*)p->array;
+            scpuset = (pmix_cpuset_t*)src->array;
+            for (n=0; n < src->size; n++) {
+                rc = pmix_ploc.copy(&pcpuset[n], &scpuset[n]);
+                if (PMIX_SUCCESS != rc) {
+                    pmix_ploc.release(pcpuset, src->size);
+                    free(p->array);
+                    free(p);
+                    return rc;
+                }
+            }
+            break;
+        case PMIX_GEOMETRY:
+            PMIX_CPUSET_CREATE(p->array, src->size);
+            if (NULL == p->array) {
+                free(p);
+                return PMIX_ERR_NOMEM;
+            }
+            pgeoset = (pmix_geometry_t*)p->array;
+            sgeoset = (pmix_geometry_t*)src->array;
+            for (n=0; n < src->size; n++) {
+                pgeoset[n].fabric = sgeoset[n].fabric;
+                if (NULL != sgeoset[n].uuid) {
+                    pgeoset[n].uuid = strdup(sgeoset[n].uuid);
+                }
+                if (NULL != sgeoset[n].coordinates) {
+                    pgeoset[n].ncoords = sgeoset[n].ncoords;
+                    pgeoset[n].coordinates = (pmix_coord_t*)malloc(pgeoset[n].ncoords * sizeof(pmix_coord_t));
+                    if (NULL == pgeoset[n].coordinates) {
+                        free(p);
+                        return PMIX_ERR_NOMEM;
+                    }
+                    for (m=0; m < pgeoset[n].ncoords; m++) {
+                        rc = fill_coord(&pgeoset[n].coordinates[m], &sgeoset[n].coordinates[m]);
+                        if (PMIX_SUCCESS != rc) {
+                            PMIX_GEOMETRY_FREE(pgeoset, src->size);
+                            return rc;
+                        }
+                    }
+                }
+            }
+            break;
+        case PMIX_DEVICE_DIST:
+            PMIX_DEVICE_DIST_CREATE(p->array, src->size);
+            if (NULL == p->array) {
+                free(p);
+                return PMIX_ERR_NOMEM;
+            }
+            pdevdist = (pmix_device_distance_t*)p->array;
+            sdevdist = (pmix_device_distance_t*)src->array;
+            for (n=0; n < src->size; n++) {
+                if (NULL != sdevdist[n].uuid) {
+                    pdevdist[n].uuid = strdup(sdevdist[n].uuid);
+                }
+                pdevdist[n].mindist = sdevdist[n].mindist;
+                pdevdist[n].maxdist = sdevdist[n].maxdist;
             }
             break;
         default:
@@ -949,6 +1021,7 @@ pmix_status_t pmix_bfrops_base_copy_coord(pmix_coord_t **dest,
                                           pmix_data_type_t type)
 {
     pmix_coord_t *d;
+    pmix_status_t rc;
 
     if (PMIX_COORD != type) {
         return PMIX_ERR_BAD_PARAM;
@@ -958,24 +1031,13 @@ pmix_status_t pmix_bfrops_base_copy_coord(pmix_coord_t **dest,
         return PMIX_ERR_NOMEM;
     }
     PMIX_COORD_CONSTRUCT(d);
-    if (NULL != src->fabric) {
-        d->fabric = strdup(src->fabric);
+    rc = fill_coord(d, src);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_COORD_DESTRUCT(d);
+    } else {
+        *dest = d;
     }
-    if (NULL != src->plane) {
-        d->plane = strdup(src->plane);
-    }
-    d->view = src->view;
-    d->dims = src->dims;
-    if (0 < d->dims) {
-        d->coord = (int*)malloc(d->dims * sizeof(int));
-        if (NULL == d->coord) {
-            free(d);
-            return PMIX_ERR_NOMEM;
-        }
-        memcpy(d->coord, src->coord, d->dims * sizeof(int));
-    }
-    *dest = d;
-    return PMIX_SUCCESS;
+    return rc;
 }
 
 pmix_status_t pmix_bfrops_base_copy_regattr(pmix_regattr_t **dest,
@@ -1009,4 +1071,111 @@ pmix_status_t pmix_bfrops_base_copy_regex(char **dest,
     }
 
     return pmix_preg.copy(dest, &len, src);
+}
+
+pmix_status_t pmix_bfrops_base_copy_cpuset(pmix_cpuset_t **dest,
+                                           pmix_cpuset_t *src,
+                                           pmix_data_type_t type)
+{
+    pmix_cpuset_t *dst;
+    pmix_status_t rc;
+
+    if (PMIX_PROC_CPUSET != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    PMIX_CPUSET_CREATE(dst, 1);
+    if (NULL == dst) {
+        return PMIX_ERR_NOMEM;
+    }
+
+    rc = pmix_ploc.copy(dst, src);
+    if (PMIX_SUCCESS == rc) {
+        *dest = dst;
+    } else {
+        free(dst);
+    }
+    return rc;
+}
+
+pmix_status_t pmix_bfrops_base_copy_geometry(pmix_geometry_t **dest,
+                                             pmix_geometry_t *src,
+                                             pmix_data_type_t type)
+{
+    pmix_geometry_t *dst;
+    pmix_status_t rc;
+    size_t n;
+
+    if (PMIX_GEOMETRY != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    PMIX_GEOMETRY_CREATE(dst, 1);
+    if (NULL == dst) {
+        return PMIX_ERR_NOMEM;
+    }
+
+    dst->fabric = src->fabric;
+    if (NULL != src->uuid) {
+        dst->uuid = strdup(src->uuid);
+    }
+    if (NULL != src->coordinates) {
+        dst->ncoords = src->ncoords;
+        dst->coordinates = (pmix_coord_t*)calloc(dst->ncoords, sizeof(pmix_coord_t));
+        for (n=0; n < dst->ncoords; n++) {
+            rc = fill_coord(&dst->coordinates[n], &src->coordinates[n]);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_COORD_FREE(dst->coordinates, dst->ncoords);
+                return rc;
+            }
+        }
+    }
+
+    *dest = dst;
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_copy_devdist(pmix_device_distance_t **dest,
+                                            pmix_device_distance_t *src,
+                                            pmix_data_type_t type)
+{
+    pmix_device_distance_t *dst;
+
+    if (PMIX_DEVICE_DIST != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    PMIX_DEVICE_DIST_CREATE(dst, 1);
+    if (NULL == dst) {
+        return PMIX_ERR_NOMEM;
+    }
+
+    if (NULL != src->uuid) {
+        dst->uuid = strdup(src->uuid);
+    }
+    dst->mindist = src->mindist;
+    dst->maxdist = src->maxdist;
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_copy_endpoint(pmix_endpoint_t **dest,
+                                             pmix_endpoint_t *src,
+                                             pmix_data_type_t type)
+{
+    pmix_endpoint_t *dst;
+
+    if (PMIX_ENDPOINT != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    PMIX_ENDPOINT_CREATE(dst, 1);
+    if (NULL == dst) {
+        return PMIX_ERR_NOMEM;
+    }
+
+    if (NULL != src->uuid) {
+        dst->uuid = strdup(src->uuid);
+    }
+    if (NULL != src->endpt.bytes) {
+        dst->endpt.bytes = (char*)malloc(src->endpt.size);
+        memcpy(dst->endpt.bytes, src->endpt.bytes, src->endpt.size);
+        dst->endpt.size = src->endpt.size;
+    }
+    return PMIX_SUCCESS;
 }

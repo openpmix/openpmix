@@ -29,6 +29,7 @@
 #include "src/util/output.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/preg/preg.h"
+#include "src/mca/ploc/ploc.h"
 
 #include "src/mca/bfrops/bfrops_types.h"
 #include "src/mca/bfrops/base/base.h"
@@ -1473,18 +1474,6 @@ pmix_status_t pmix_bfrops_base_unpack_coord(pmix_pointer_array_t *regtypes,
 
     for (i = 0; i < n; ++i) {
         PMIX_COORD_CONSTRUCT(&ptr[i]);
-        /* unpack the fabric name */
-        m=1;
-        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].fabric, &m, PMIX_STRING, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        /* unpack the plane */
-        m=1;
-        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].plane, &m, PMIX_STRING, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
         /* unpack the view */
         m=1;
         PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].view, &m, PMIX_UINT8, regtypes);
@@ -1634,4 +1623,176 @@ pmix_status_t pmix_bfrops_base_unpack_linkstate(pmix_pointer_array_t *regtypes,
 
     PMIX_BFROPS_UNPACK_TYPE(ret, buffer, dest, num_vals, PMIX_UINT8, regtypes);
     return ret;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_cpuset(pmix_pointer_array_t *regtypes,
+                                            pmix_buffer_t *buffer, void *dest,
+                                            int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_cpuset_t *ptr;
+    int32_t i, n;
+    pmix_status_t ret;
+
+    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
+                        "pmix_bfrop_unpack: %d cpuset", *num_vals);
+
+    if (PMIX_PROC_CPUSET != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    ptr = (pmix_cpuset_t *) dest;
+    n = *num_vals;
+
+    for (i = 0; i < n; ++i) {
+        ret = pmix_ploc.unpack(buffer, &ptr[n]);
+        if (PMIX_SUCCESS != ret) {
+            *num_vals = n;
+            return ret;
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_geometry(pmix_pointer_array_t *regtypes,
+                                               pmix_buffer_t *buffer, void *dest,
+                                               int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_geometry_t *ptr;
+    int32_t i, n, m;
+    pmix_status_t ret;
+
+    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
+                        "pmix_bfrop_unpack: %d regattrs", *num_vals);
+
+    if (PMIX_GEOMETRY != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    ptr = (pmix_geometry_t *) dest;
+    n = *num_vals;
+
+    for (i = 0; i < n; ++i) {
+        PMIX_GEOMETRY_CONSTRUCT(&ptr[i]);
+        /* unpack the fabric id */
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].fabric, &m, PMIX_SIZE, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
+        /* unpack the uuid */
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].uuid, &m, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        /* get the number of coords */
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].ncoords, &m, PMIX_SIZE, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        if (0 < ptr[i].ncoords) {
+            /* allocate the coords */
+            ptr[i].coordinates = (pmix_coord_t*)calloc(ptr[i].ncoords, sizeof(pmix_coord_t));
+            /* unpack them */
+            m=ptr[i].ncoords;
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].coordinates, &m, PMIX_COORD, regtypes);
+            if (PMIX_SUCCESS != ret) {
+                PMIX_ERROR_LOG(ret);
+                return ret;
+            }
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_devdist(pmix_pointer_array_t *regtypes,
+                                              pmix_buffer_t *buffer, void *dest,
+                                              int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_device_distance_t *ptr;
+    int32_t i, n, m;
+    pmix_status_t ret;
+
+    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
+                        "pmix_bfrop_unpack: %d regattrs", *num_vals);
+
+    if (PMIX_DEVICE_DIST != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    ptr = (pmix_device_distance_t *) dest;
+    n = *num_vals;
+
+    for (i = 0; i < n; ++i) {
+        PMIX_DEVICE_DIST_CONSTRUCT(&ptr[i]);
+        /* unpack the uuid */
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].uuid, &m, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].mindist, &m, PMIX_UINT16, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].maxdist, &m, PMIX_UINT16, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_endpoint(pmix_pointer_array_t *regtypes,
+                                               pmix_buffer_t *buffer, void *dest,
+                                               int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_endpoint_t *ptr;
+    int32_t i, n, m;
+    pmix_status_t ret;
+
+    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
+                        "pmix_bfrop_unpack: %d endpts", *num_vals);
+
+    if (PMIX_ENDPOINT != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    ptr = (pmix_endpoint_t *) dest;
+    n = *num_vals;
+
+    for (i = 0; i < n; ++i) {
+        PMIX_ENDPOINT_CONSTRUCT(&ptr[i]);
+        /* unpack the uuid */
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].uuid, &m, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].endpt.size, &m, PMIX_SIZE, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        if (0 < ptr[i].endpt.size) {
+            ptr[i].endpt.bytes = (char*)malloc(ptr[i].endpt.size);
+            m = ptr[i].endpt.size;
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, ptr[i].endpt.bytes, &m, PMIX_BYTE, regtypes);
+            if (PMIX_SUCCESS != ret) {
+                PMIX_ERROR_LOG(ret);
+                return ret;
+            }
+        }
+    }
+    return PMIX_SUCCESS;
 }

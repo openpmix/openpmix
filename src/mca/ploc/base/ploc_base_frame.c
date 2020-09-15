@@ -50,7 +50,11 @@ pmix_ploc_API_module_t pmix_ploc = {
     .load_topology = pmix_ploc_base_load_topology,
     .get_cpuset = pmix_ploc_base_get_cpuset,
     .generate_locality_string = pmix_ploc_base_generate_locality_string,
-    .get_relative_locality = pmix_ploc_base_get_relative_locality
+    .get_relative_locality = pmix_ploc_base_get_relative_locality,
+    .pack = pmix_ploc_base_pack,
+    .unpack = pmix_ploc_base_unpack,
+    .copy = pmix_ploc_base_copy,
+    .print = pmix_ploc_base_print
 };
 
 static pmix_status_t pmix_ploc_close(void)

@@ -33,6 +33,7 @@
 #include "src/util/output.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/preg/preg.h"
+#include "src/mca/ploc/ploc.h"
 
 #include "src/mca/bfrops/base/base.h"
 
@@ -1249,16 +1250,6 @@ pmix_status_t pmix_bfrops_base_pack_coord(pmix_pointer_array_t *regtypes,
         return PMIX_ERR_BAD_PARAM;
     }
     for (i=0; i < num_vals; ++i) {
-        /* pack the fabric name */
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].fabric, 1, PMIX_STRING, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        /* pack the plane */
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].plane, 1, PMIX_STRING, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
         /* pack the view */
         PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].view, 1, PMIX_UINT8, regtypes);
         if (PMIX_SUCCESS != ret) {
@@ -1380,4 +1371,130 @@ pmix_status_t pmix_bfrops_base_pack_linkstate(pmix_pointer_array_t *regtypes,
     }
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT8, regtypes);
     return ret;
+}
+
+pmix_status_t pmix_bfrops_base_pack_cpuset(pmix_pointer_array_t *regtypes,
+                                           pmix_buffer_t *buffer, const void *src,
+                                           int32_t num_vals, pmix_data_type_t type)
+{
+    pmix_cpuset_t *ptr = (pmix_cpuset_t*)src;
+    int32_t i;
+    pmix_status_t ret;
+
+    if (NULL == regtypes) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (PMIX_PROC_CPUSET != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    for (i=0; i < num_vals; ++i) {
+        ret = pmix_ploc.pack(buffer, &ptr[i]);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_pack_geometry(pmix_pointer_array_t *regtypes,
+                                             pmix_buffer_t *buffer, const void *src,
+                                             int32_t num_vals, pmix_data_type_t type)
+{
+    pmix_geometry_t *ptr = (pmix_geometry_t*)src;
+    int32_t i;
+    pmix_status_t ret;
+
+    if (NULL == regtypes) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (PMIX_GEOMETRY != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    for (i=0; i < num_vals; ++i) {
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].fabric, 1, PMIX_SIZE, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].uuid, 1, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].ncoords, 1, PMIX_SIZE, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, ptr[i].coordinates, ptr[i].ncoords, PMIX_COORD, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_pack_devdist(pmix_pointer_array_t *regtypes,
+                                            pmix_buffer_t *buffer, const void *src,
+                                            int32_t num_vals, pmix_data_type_t type)
+{
+    pmix_device_distance_t *ptr = (pmix_device_distance_t*)src;
+    int32_t i;
+    pmix_status_t ret;
+
+    if (NULL == regtypes) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (PMIX_DEVICE_DIST != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    for (i=0; i < num_vals; ++i) {
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].uuid, 1, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].mindist, 1, PMIX_UINT16, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].maxdist, 1, PMIX_UINT16, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_pack_endpoint(pmix_pointer_array_t *regtypes,
+                                             pmix_buffer_t *buffer, const void *src,
+                                             int32_t num_vals, pmix_data_type_t type)
+{
+    pmix_endpoint_t *ptr = (pmix_endpoint_t*)src;
+    int32_t i;
+    pmix_status_t ret;
+
+    if (NULL == regtypes) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (PMIX_ENDPOINT != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    for (i=0; i < num_vals; ++i) {
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].uuid, 1, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].endpt.size, 1, PMIX_SIZE, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
+        if (0 < ptr[i].endpt.size) {
+            PMIX_BFROPS_PACK_TYPE(ret, buffer, ptr[i].endpt.bytes, ptr[i].endpt.size, PMIX_BYTE, regtypes);
+            if (PMIX_SUCCESS != ret) {
+                return ret;
+            }
+        }
+    }
+    return PMIX_SUCCESS;
 }

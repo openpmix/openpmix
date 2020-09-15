@@ -4747,7 +4747,7 @@ pmix_status_t pmix_server_fabric_get_vertex_info(pmix_server_caddy_t *cd,
     PMIX_INFO_LOAD(&qcd->info[0], PMIX_FABRIC_DEVICE_INDEX, &index, PMIX_UINT32);
 
     /* ask the host to execute the request */
-    if (PMIX_SUCCESS != (rc = pmix_host_server.fabric(&proc, PMIX_FABRIC_GET_VERTEX_INFO,
+    if (PMIX_SUCCESS != (rc = pmix_host_server.fabric(&proc, PMIX_FABRIC_GET_DEVICE_INFO,
                                                       qcd->info, qcd->ninfo,
                                                       cbfunc, qcd))) {
         goto exit;

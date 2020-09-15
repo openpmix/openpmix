@@ -451,6 +451,38 @@ static pmix_status_t init(void)
                        pmix_bfrops_base_print_linkstate,
                        &mca_bfrops_v4_component.types);
 
+    PMIX_REGISTER_TYPE("PMIX_PROC_CPUSET",
+                       PMIX_PROC_CPUSET,
+                       pmix_bfrops_base_pack_cpuset,
+                       pmix_bfrops_base_unpack_cpuset,
+                       pmix_bfrops_base_copy_cpuset,
+                       pmix_bfrops_base_print_cpuset,
+                       &mca_bfrops_v4_component.types);
+
+    PMIX_REGISTER_TYPE("PMIX_GEOMETRY",
+                       PMIX_GEOMETRY,
+                       pmix_bfrops_base_pack_geometry,
+                       pmix_bfrops_base_unpack_geometry,
+                       pmix_bfrops_base_copy_geometry,
+                       pmix_bfrops_base_print_geometry,
+                       &mca_bfrops_v4_component.types);
+
+    PMIX_REGISTER_TYPE("PMIX_DEVICE_DIST",
+                       PMIX_DEVICE_DIST,
+                       pmix_bfrops_base_pack_devdist,
+                       pmix_bfrops_base_unpack_devdist,
+                       pmix_bfrops_base_copy_devdist,
+                       pmix_bfrops_base_print_devdist,
+                       &mca_bfrops_v4_component.types);
+
+    PMIX_REGISTER_TYPE("PMIX_ENDPOINT",
+                       PMIX_ENDPOINT,
+                       pmix_bfrops_base_pack_endpoint,
+                       pmix_bfrops_base_unpack_endpoint,
+                       pmix_bfrops_base_copy_endpoint,
+                       pmix_bfrops_base_print_endpoint,
+                       &mca_bfrops_v4_component.types);
+
     return PMIX_SUCCESS;
 }
 

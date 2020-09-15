@@ -727,7 +727,6 @@ pmix_status_t pmix_bfrops_base_value_xfer(pmix_value_t *p,
     case PMIX_REGATTR:
         pmix_bfrops_base_copy_regattr((pmix_regattr_t**)&p->data.ptr, src->data.ptr, PMIX_REGATTR);
         break;
-
     default:
         pmix_output(0, "PMIX-XFER-VALUE: UNSUPPORTED TYPE %d", (int)src->type);
         return PMIX_ERROR;

@@ -804,11 +804,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_deliver_inventory(pmix_info_t info[], size
                                                         pmix_info_t directives[], size_t ndirs,
                                                         pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-/* Generate PMIx locality string */
-PMIX_EXPORT pmix_status_t PMIx_generate_locality_string(const pmix_cpuset_t *cpuset,
-                                                        char **locality);
-
-
+\
 /******      ATTRIBUTE REGISTRATION      ******/
 /**
  * This function is used by the host environment to register with its
@@ -857,6 +853,19 @@ PMIX_EXPORT pmix_status_t PMIx_server_define_process_set(const pmix_proc_t *memb
  * Provide a function by which the host environment can delete a new process set.
  */
 PMIX_EXPORT pmix_status_t PMIx_server_delete_process_set(char *pset_name);
+
+
+/* Register non-namespace related information with the local PMIx server library.
+ */
+PMIX_EXPORT pmix_status_t PMIx_server_register_resources(pmix_info_t info[], size_t ninfo,
+                                                         pmix_op_cbfunc_t cbfunc,
+                                                         void *cbdata);
+
+/* Remove specified non-namespace related information from the local PMIx server library.
+ */
+PMIX_EXPORT pmix_status_t PMIx_server_deregister_resources(pmix_info_t info[], size_t ninfo,
+                                                           pmix_op_cbfunc_t cbfunc,
+                                                           void *cbdata);
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }

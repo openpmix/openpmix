@@ -485,6 +485,19 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_jobstate(pmix_pointer_array_t *r
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_linkstate(pmix_pointer_array_t *regtypes,
                                                           pmix_buffer_t *buffer, const void *src,
                                                           int32_t num_vals, pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_cpuset(pmix_pointer_array_t *regtypes,
+                                                       pmix_buffer_t *buffer, const void *src,
+                                                       int32_t num_vals, pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_geometry(pmix_pointer_array_t *regtypes,
+                                                         pmix_buffer_t *buffer, const void *src,
+                                                         int32_t num_vals, pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_devdist(pmix_pointer_array_t *regtypes,
+                                                        pmix_buffer_t *buffer, const void *src,
+                                                        int32_t num_vals, pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_endpoint(pmix_pointer_array_t *regtypes,
+                                                         pmix_buffer_t *buffer, const void *src,
+                                                         int32_t num_vals, pmix_data_type_t type);
+
 
 /*
 * "Standard" unpack functions
@@ -631,6 +644,18 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_jobstate(pmix_pointer_array_t 
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_linkstate(pmix_pointer_array_t *regtypes,
                                                             pmix_buffer_t *buffer, void *dest,
                                                             int32_t *num_vals, pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_cpuset(pmix_pointer_array_t *regtypes,
+                                                         pmix_buffer_t *buffer, void *dest,
+                                                         int32_t *num_vals, pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_geometry(pmix_pointer_array_t *regtypes,
+                                                           pmix_buffer_t *buffer, void *dest,
+                                                           int32_t *num_vals, pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_devdist(pmix_pointer_array_t *regtypes,
+                                                          pmix_buffer_t *buffer, void *dest,
+                                                          int32_t *num_vals, pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_endpoint(pmix_pointer_array_t *regtypes,
+                                                           pmix_buffer_t *buffer, void *dest,
+                                                           int32_t *num_vals, pmix_data_type_t type);
 
 /**** DEPRECATED ****/
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_array(pmix_pointer_array_t *regtypes,
@@ -700,6 +725,18 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_regattr(pmix_regattr_t **dest,
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_regex(char **dest,
                                                       char *src,
                                                       pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_cpuset(pmix_cpuset_t **dest,
+                                                       pmix_cpuset_t *src,
+                                                       pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_geometry(pmix_geometry_t **dest,
+                                                         pmix_geometry_t *src,
+                                                         pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_devdist(pmix_device_distance_t **dest,
+                                                        pmix_device_distance_t *src,
+                                                        pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_endpoint(pmix_endpoint_t **dest,
+                                                         pmix_endpoint_t *src,
+                                                         pmix_data_type_t type);
 
 /*
 * "Standard" print functions
@@ -823,6 +860,19 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_jobstate(char **output, char *p
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_linkstate(char **output, char *prefix,
                                                            pmix_link_state_t *src,
                                                            pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_cpuset(char **output, char *prefix,
+                                                        pmix_cpuset_t *src,
+                                                        pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_geometry(char **output, char *prefix,
+                                                          pmix_geometry_t *src,
+                                                          pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_devdist(char **output, char *prefix,
+                                                         pmix_device_distance_t *src,
+                                                         pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_endpoint(char **output, char *prefix,
+                                                          pmix_endpoint_t *src,
+                                                          pmix_data_type_t type);
+
 
 
 /*

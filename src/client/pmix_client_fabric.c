@@ -46,6 +46,7 @@
 #include PMIX_EVENT_HEADER
 
 #include "src/class/pmix_list.h"
+#include "src/mca/ploc/ploc.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
@@ -462,7 +463,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_deregister_nb(pmix_fabric_t *fabric,
 }
 
 
-PMIX_EXPORT pmix_status_t PMIx_Fabric_get_vertex_info(pmix_fabric_t *fabric,
+PMIX_EXPORT pmix_status_t PMIx_Fabric_get_device_info(pmix_fabric_t *fabric,
                                                       uint32_t index,
                                                       pmix_info_t **info, size_t *ninfo)
 {
@@ -484,7 +485,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_get_vertex_info(pmix_fabric_t *fabric,
      * the non-blocking operation is complete */
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.fabric = fabric;
-    rc = PMIx_Fabric_get_vertex_info_nb(fabric, index, NULL, &cb);
+    rc = PMIx_Fabric_get_device_info_nb(fabric, index, NULL, &cb);
     if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
         PMIX_DESTRUCT(&cb);
         return rc;
@@ -621,7 +622,7 @@ static void ifrecv(struct pmix_peer_t *peer,
     }
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Fabric_get_vertex_info_nb(pmix_fabric_t *fabric, uint32_t index,
+PMIX_EXPORT pmix_status_t PMIx_Fabric_get_device_info_nb(pmix_fabric_t *fabric, uint32_t index,
                                                          pmix_info_cbfunc_t cbfunc, void *cbdata)
 
 {
@@ -672,7 +673,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_get_vertex_info_nb(pmix_fabric_t *fabric, 
         }
         PMIX_INFO_CREATE(cb->info, 1);
         PMIX_INFO_LOAD(&cb->info[0], PMIX_FABRIC_INDEX, &fabric->index, PMIX_SIZE);
-        rc = pmix_host_server.fabric(&pmix_globals.myid, PMIX_FABRIC_GET_VERTEX_INFO,
+        rc = pmix_host_server.fabric(&pmix_globals.myid, PMIX_FABRIC_GET_DEVICE_INFO,
                                      cb->info, 1, ifcb, (void*)cb);
         if (PMIX_SUCCESS != rc && NULL != cbfunc) {
             PMIX_RELEASE(cb);
@@ -892,6 +893,153 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_get_device_index_nb(pmix_fabric_t *fabric,
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(msg);
         PMIX_RELEASE(cb);
+    }
+    return rc;
+}
+
+pmix_status_t PMIx_Fabric_update_distances(pmix_device_distance_t *distances[],
+                                           size_t *ndist)
+{
+    pmix_cb_t cb;
+    pmix_status_t rc;
+    size_t n;
+
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+
+    if (pmix_globals.init_cntr <= 0) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return PMIX_ERR_INIT;
+    }
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
+
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:fabric update_distances");
+
+    *distances = NULL;
+    *ndist = 0;
+
+    /* create a callback object so we can be notified when
+     * the non-blocking operation is complete */
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    rc = PMIx_Fabric_update_distances_nb(NULL, &cb);
+    if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+        PMIX_DESTRUCT(&cb);
+        return rc;
+    }
+
+    if (PMIX_OPERATION_SUCCEEDED != rc) {
+        /* wait for the data to return */
+        PMIX_WAIT_THREAD(&cb.lock);
+    }
+    rc = cb.status;
+    /* xfer the results */
+    if (NULL != cb.info) {
+        for (n=0; n < cb.ninfo; n++) {
+            if (PMIX_CHECK_KEY(&cb.info[n], PMIX_FABRIC_DEVICE_DIST)) {
+                *distances = (pmix_device_distance_t*)cb.info[n].value.data.darray->array;
+                *ndist = cb.info[n].value.data.darray->size;
+                break;
+            }
+        }
+    }
+    PMIX_DESTRUCT(&cb);
+
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:fabric get_vertex_info completed");
+
+    return rc;
+}
+
+pmix_status_t PMIx_Fabric_update_distances_nb(pmix_info_cbfunc_t cbfunc,
+                                              void *cbdata)
+{
+    pmix_cb_t *cb;
+    pmix_status_t rc;
+    pmix_buffer_t *msg;
+    pmix_cmd_t cmd = PMIX_FABRIC_UPDATE_DISTANCES_CMD;
+    pmix_cpuset_t mycpuset;
+
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+
+    if (NULL != cbfunc) {
+        cb = PMIX_NEW(pmix_cb_t);
+        cb->cbfunc.infofn = cbfunc;
+        cb->cbdata = cbdata;
+    } else {
+        cb = (pmix_cb_t*)cbdata;
+    }
+
+    /* see if I can support this myself */
+    cb->status = pmix_ploc.update_distances(ifcb, (void*)cb);
+    if (PMIX_SUCCESS == cb->status) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        /* if they gave us a callback function, then we have
+         * to threadshift before calling it. Otherwise, we can
+         * just let the cb object return the results for us */
+        if (NULL != cbfunc) {
+            /* threadshift to return the result */
+            PMIX_THREADSHIFT(cb, icbfunc);
+        } else {
+            if (PMIX_SUCCESS == cb->status) {
+                cb->status = PMIX_OPERATION_SUCCEEDED;
+            }
+        }
+        return cb->status;
+    }
+    /* if I am a server, there is nothing more I can do */
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) || !pmix_globals.connected) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        if (NULL != cbfunc) {
+            PMIX_RELEASE(cb);
+        }
+        return PMIX_ERR_UNREACH;
+    }
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
+
+    /* if we are a tool or client, then relay this request to the server */
+    msg = PMIX_NEW(pmix_buffer_t);
+    /* pack the cmd */
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
+                     msg, &cmd, 1, PMIX_COMMAND);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        if (NULL != cbfunc) {
+            PMIX_RELEASE(cb);
+        }
+        return rc;
+    }
+
+    /* get our current location */
+    PMIX_CPUSET_CONSTRUCT(&mycpuset);
+    rc = pmix_ploc.get_location(&mycpuset);
+
+    /* pack the cpuset */
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
+                     msg, &mycpuset, 1, PMIX_PROC_CPUSET);
+    pmix_ploc.release(&mycpuset, 1);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        if (NULL != cbfunc) {
+            PMIX_RELEASE(cb);
+        }
+        return rc;
+    }
+
+    /* create a callback object as we need to pass it to the
+     * recv routine so we know which callback to use when
+     * the return message is recvd */
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+
+    /* push the message into our event base to send to the server */
+    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver,
+                       msg, ifrecv, (void*)cb);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(msg);
+        if (NULL != cbfunc) {
+            PMIX_RELEASE(cb);
+        }
     }
     return rc;
 }

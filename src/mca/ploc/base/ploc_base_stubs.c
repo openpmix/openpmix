@@ -231,3 +231,138 @@ pmix_status_t pmix_ploc_base_get_relative_locality(const char *loc1,
 
     return PMIX_ERR_NOT_SUPPORTED;
 }
+
+pmix_status_t pmix_ploc_base_pack(pmix_buffer_t *buf, pmix_cpuset_t *src)
+{
+    pmix_ploc_base_active_module_t *active;
+    pmix_status_t rc;
+
+    if (!pmix_ploc_globals.initialized) {
+        return PMIX_ERR_INIT;
+    }
+
+    pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                        "ploc:pack called");
+
+    /* process the request */
+    PMIX_LIST_FOREACH(active, &pmix_ploc_globals.actives, pmix_ploc_base_active_module_t) {
+        if (NULL != active->module->pack) {
+            rc = active->module->pack(buf, src);
+            if (PMIX_SUCCESS == rc) {
+                return rc;
+            }
+            if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
+                /* true error */
+                return rc;
+            }
+        }
+    }
+
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+
+pmix_status_t pmix_ploc_base_unpack(pmix_buffer_t *buf, pmix_cpuset_t *dest)
+{
+    pmix_ploc_base_active_module_t *active;
+    pmix_status_t rc;
+
+    if (!pmix_ploc_globals.initialized) {
+        return PMIX_ERR_INIT;
+    }
+
+    pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                        "ploc:unpack called");
+
+    /* process the request */
+    PMIX_LIST_FOREACH(active, &pmix_ploc_globals.actives, pmix_ploc_base_active_module_t) {
+        if (NULL != active->module->unpack) {
+            rc = active->module->unpack(buf, dest);
+            if (PMIX_SUCCESS == rc) {
+                return rc;
+            }
+            if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
+                /* true error */
+                return rc;
+            }
+        }
+    }
+
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+
+pmix_status_t pmix_ploc_base_copy(pmix_cpuset_t *dest, pmix_cpuset_t *src)
+{
+    pmix_ploc_base_active_module_t *active;
+    pmix_status_t rc;
+
+    if (!pmix_ploc_globals.initialized) {
+        return PMIX_ERR_INIT;
+    }
+
+    pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                        "ploc:copy called");
+
+    /* process the request */
+    PMIX_LIST_FOREACH(active, &pmix_ploc_globals.actives, pmix_ploc_base_active_module_t) {
+        if (NULL != active->module->copy) {
+            rc = active->module->copy(dest, src);
+            if (PMIX_SUCCESS == rc) {
+                return rc;
+            }
+            if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
+                /* true error */
+                return rc;
+            }
+        }
+    }
+
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+
+char* pmix_ploc_base_print(pmix_cpuset_t *src)
+{
+    pmix_ploc_base_active_module_t *active;
+    char *string;
+
+    if (!pmix_ploc_globals.initialized) {
+        return NULL;
+    }
+
+    pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                        "ploc:print called");
+
+    /* process the request */
+    PMIX_LIST_FOREACH(active, &pmix_ploc_globals.actives, pmix_ploc_base_active_module_t) {
+        if (NULL != active->module->print) {
+            string = active->module->print(src);
+            if (NULL != string) {
+                return string;
+            }
+        }
+    }
+
+    return NULL;
+}
+
+void pmix_ploc_base_release(pmix_cpuset_t *ptr, size_t sz)
+{
+    pmix_ploc_base_active_module_t *active;
+    pmix_status_t rc;
+
+    if (!pmix_ploc_globals.initialized) {
+        return;
+    }
+
+    pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                        "ploc:release called");
+
+    /* process the request */
+    PMIX_LIST_FOREACH(active, &pmix_ploc_globals.actives, pmix_ploc_base_active_module_t) {
+        if (NULL != active->module->release) {
+            rc = active->module->release(ptr, sz);
+            if (PMIX_SUCCESS == rc) {
+                return;
+            }
+        }
+    }
+}
