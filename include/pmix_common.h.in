@@ -640,7 +640,7 @@ typedef uint32_t pmix_rank_t;
 
 #define PMIX_LOG_GLOBAL_DATASTORE           "pmix.log.gstore"       // (bool) log the provided data to a global datastore
 #define PMIX_LOG_JOB_RECORD                 "pmix.log.jrec"         // (bool) log the provided information to the RM's job record
-#define PMIX_LOG_PROC_TERMINATION           "pmix.logproc"          // (bool) Requests that the launcher log the PMIX_EVENT_PROC_TERMINATED} event
+#define PMIX_LOG_PROC_TERMINATION           "pmix.logproc"          // (bool) Requests that the launcher log the PMIX_EVENT_PROC_TERMINATED event
                                                                     //        whenever a process either normally or abnormally terminates.
 #define PMIX_LOG_PROC_ABNORMAL_TERMINATION  "pmix.logabproc"        // (bool) Requests that the launcher log the PMIX_EVENT_PROC_TERMINATED event
                                                                     //        only when a process abnormally terminates.
@@ -1190,6 +1190,10 @@ typedef int pmix_status_t;
 #define PMIX_EVENT_JOB_END                          -145
 #define PMIX_EVENT_SESSION_START                    -192
 #define PMIX_EVENT_SESSION_END                      -193
+
+/* process-related events */
+#define PMIX_ERR_PROC_TERM_WO_SYNC                  -200
+#define PMIX_EVENT_PROC_TERMINATED                  -201
 
 /* system failures */
 #define PMIX_EVENT_SYS_BASE                         -230

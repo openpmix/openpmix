@@ -1022,61 +1022,6 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_deregister_nb(pmix_fabric_t *fabric,
 												    pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 
-/* Given a communication cost matrix index for a specified fabric,
- * return the corresponding vertex info and the name of the node upon
- * which it resides.
- *
- * fabric - pointer to the pmix_fabric_t struct provided to
- *          the registration function
- *
- * i - communication cost matrix index
- *
- * info - Address where a pointer to an array of pmix_info_t containing
- *        the results of the query can be returned
- *
- * ninfo - Address where the number of elements in info can be returned
- *
- * Return values include:
- *
- * PMIX_SUCCESS - indicates return of a valid value
- * PMIX_ERR_BAD_PARAM - provided index is out of bounds
- */
-PMIX_EXPORT pmix_status_t PMIx_Fabric_get_device_info(pmix_fabric_t *fabric, uint32_t index,
-                                                      pmix_info_t **info, size_t *ninfo);
-
-PMIX_EXPORT pmix_status_t PMIx_Fabric_get_device_info_nb(pmix_fabric_t *fabric, uint32_t index,
-                                                         pmix_info_cbfunc_t cbfunc, void *cbdata);
-
-/* Given vertex info and the name of the device upon which that
- * vertex resides, return the corresponding communication cost matrix
- * index
- *
- * fabric - pointer to the pmix_fabric_t struct provided to
- *          the registration function
- *
- * vertex - array of pmix_info_t containing info describing the vertex whose
- *          index is being queried
- *
- * ninfo - number of elements in vertex array
- *
- * i - pointer to the location where the index is to be returned
- *
- * Return values include:
- *
- * PMIX_SUCCESS - indicates return of a valid value
- * PMIX_ERR_NOT_FOUND - provided vertex description is not found
- * PMIX_ERR_RESOURCE_BUSY - matrix is being updated
- * PMIX_ERR_FABRIC_UPDATED - fabric info has been updated since
- *                           last call involving this pmix_fabric_t
- */
-PMIX_EXPORT pmix_status_t PMIx_Fabric_get_device_index(pmix_fabric_t *fabric,
-                                                       const pmix_info_t vertex[], size_t ninfo,
-                                                       uint32_t *i);
-
-PMIX_EXPORT pmix_status_t PMIx_Fabric_get_device_index_nb(pmix_fabric_t *fabric,
-                                                          const pmix_info_t vertex[], size_t ninfo,
-                                                          pmix_info_cbfunc_t cbfunc, void *cbdata);
-
 /* Update the distance information for the current process
  * Returns an array of distances from the current process
  * location to each of the local fabric devices

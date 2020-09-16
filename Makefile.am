@@ -11,7 +11,7 @@
 #                         All rights reserved.
 # Copyright (c) 2006-2016 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2012-2013 Los Alamos National Security, Inc.  All rights reserved.
-# Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+# Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2019      Amazon.com, Inc. or its affiliates.  All Rights
 #                         reserved.
 # $COPYRIGHT$
@@ -53,6 +53,11 @@ nobase_pmix_HEADERS = $(headers)
 else
 
 noinst_HEADERS = $(headers)
+endif
+
+if PMIX_PYTHON_AVAILABLE
+install-exec-local: $(top_srcdir)/include/pmix_common.h.in
+	$(PYTHON) $(top_srcdir)/contrib/construct_dictionary.py
 endif
 
 nroff:

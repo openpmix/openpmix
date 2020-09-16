@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+#
+# Copyright (c) 2020      Intel, Inc.  All rights reserved.
+# $COPYRIGHT$
+#
+# Construct a dictionary for translating attributes to/from
+# their defined name and their string representation - used
+# by tools to interpret user input
+#
 
 import os, os.path, sys, shutil, signal
 from optparse import OptionParser, OptionGroup
@@ -13,11 +21,17 @@ def harvest_constants(options, path, constants):
         inputfile = open(path, "r")
     except:
         print("File", path, "could not be opened")
-        return
+        return 1
 
     # read the file - these files aren't too large
     # so ingest the whole thing at one gulp
-    lines = inputfile.readlines()
+    try:
+        lines = inputfile.readlines()
+    except:
+        inputfile.close()
+        return 1
+
+    inputfile.close()  # we read everything, so done with the file
     firstline = True
     preamble = "                               \""
     linesize = 53
@@ -123,7 +137,7 @@ def harvest_constants(options, path, constants):
                         elif tokens[3] == "(varies)":
                             datatype = "PMIX_INT"
                         else:
-                            datatype = "FOOBAR"
+                            return 1
                     constants.write(", .type = " + datatype + ",\n     .description = (char *[]){\"")
                     # the description consists of at least all remaining tokens
                     m = dstart + 1
@@ -193,7 +207,7 @@ def harvest_constants(options, path, constants):
                     # finish it up by closing the definition
                     constants.write(", NULL}}")
 
-    return
+    return 0
 
 def main():
     signal.signal(signal.SIGINT, signal_handler)
@@ -226,7 +240,7 @@ def main():
     if options.dryrun:
         constants = sys.stdout
     else:
-        outpath = os.path.join(top, "src", "include", "dictionary.h")
+        outpath = os.path.join(top, "dictionary.tmp")
         constants = open(outpath, "w+")
 
     # write the header
@@ -239,15 +253,30 @@ def main():
 
     # scan across the header files in the src directory
     # looking for constants and typedefs
-    harvest_constants(options, "pmix_common.h", constants)
+    rc = harvest_constants(options, "pmix_common.h", constants)
+    if 0 != rc:
+        constants.close()
+        os.remove(outpath)
+        print("DICTIONARY COULD NOT BE CONSTRUCTED")
+        return 1
     constants.write(",\n")
     harvest_constants(options, "pmix_deprecated.h", constants)
+    if 0 != rc:
+        constants.close()
+        os.remove(outpath)
+        print("DICTIONARY COULD NOT BE CONSTRUCTED")
+        return 1
 
     # mark the end of the array
     constants.write(",\n    {.name = \"\"}\n")
     # write the closure
     constants.write("\n};\n")
 
+    # transfer the results
+    target = os.path.join(top, "src", "include", "dictionary.h")
+    os.replace(outpath, target)
+
+    # return to original directory
     os.chdir(save)
 
 if __name__ == '__main__':

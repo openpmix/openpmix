@@ -1098,7 +1098,7 @@ pmix_regattr_input_t dictionary[] = {
 
     {.name = "PMIX_LOG_PROC_TERMINATION", .string = "pmix.logproc", .type = PMIX_BOOL,
      .description = (char *[]){"Requests that the launcher log the",
-                               "PMIX_EVENT_PROC_TERMINATED} event whenever a process",
+                               "PMIX_EVENT_PROC_TERMINATED event whenever a process",
                                "either normally or abnormally terminates.", NULL}},
 
     {.name = "PMIX_LOG_PROC_ABNORMAL_TERMINATION", .string = "pmix.logabproc", .type = PMIX_BOOL,
