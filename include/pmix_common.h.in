@@ -919,13 +919,13 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_FABRIC_DIMS                    "pmix.fab.dims"        // (uint32_t) Number of dimensions in the specified fabric plane/view. If no
                                                                    //          plane is specified in a request, then the dimensions of all planes
                                                                    //          in the overall system will be returned as a pmix_data_array_t
-                                                                   //          containing an array of \code{uint32_t} values. Default is to
+                                                                   //          containing an array of uint32_t values. Default is to
                                                                    //          provide dimensions in logical view.
 
 #define PMIX_FABRIC_PLANE                   "pmix.fab.plane"       // (char*) ID string of a fabric plane (e.g., CIDR for Ethernet). When used as
                                                                    //          a modifier in a request for information, specifies the plane whose
                                                                    //          information is to be returned. When used directly as a key in a
-                                                                   //          request, returns a \refstruct{pmix_data_array_t} of string
+                                                                   //          request, returns a pmix_data_array_t of string
                                                                    //          identifiers for all fabric planes in the overall system.
 
 #define PMIX_FABRIC_SWITCH                  "pmix.fab.switch"      // (char*) ID string of a fabric switch. When used as a modifier in a request
@@ -953,13 +953,13 @@ typedef uint32_t pmix_rank_t;
 
 #define PMIX_FABRIC_SHAPE_STRING            "pmix.fab.shapestr"    // (char*) Network shape expressed as a string (e.g., "10x12x2"). If no plane
                                                                    //         is specified, then the shape of each plane in the overall system
-                                                                   //         will be returned in a \refstruct{pmix_data_array_t} array where
+                                                                   //         will be returned in a pmix_data_array_t array where
                                                                    //         each element is itself a two-element array containing the
                                                                    //         PMIX_FABRIC_PLANE followed by that plane's fabric shape string.
                                                                    //         Default is to provide the shape in logical view.
 
 #define PMIX_SWITCH_PEERS                   "pmix.speers"          // (char*) Peer ranks that share the same switch as the process specified in
-                                                                   //         the call to \refapi{PMIx_Get}. Returns a pmix_data_array_t array of
+                                                                   //         the call to PMIx_Get. Returns a pmix_data_array_t array of
                                                                    //         pmix_info_t results, each element containing the PMIX_SWITCH_PEERS
                                                                    //         key with a three-element pmix_data_array_t array of pmix_info_t
                                                                    //         containing the PMIX_FABRIC_DEVICE_ID of the local fabric device,
@@ -1275,6 +1275,7 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_GEOMETRY           53
 #define PMIX_DEVICE_DIST        54
 #define PMIX_ENDPOINT           55
+#define PMIX_TOPO               56
 /********************/
 
 /* define a boundary for implementers so they can add their own data types */
