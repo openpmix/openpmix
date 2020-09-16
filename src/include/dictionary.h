@@ -7,6 +7,9 @@
 #include "src/include/pmix_globals.h"
 
 pmix_regattr_input_t dictionary[] = {
+    {.name = "PMIX_ATTR_UNDEF", .string = "pmix.undef", .type = PMIX_POINTER,
+     .description = (char *[]){"NONE"}},
+
     {.name = "PMIX_EVENT_BASE", .string = "pmix.evbase", .type = PMIX_POINTER,
      .description = (char *[]){"(struct event_base *) pointer to libevent event_base",
                                "to use in place of the internal progress thread", NULL}},
@@ -34,6 +37,11 @@ pmix_regattr_input_t dictionary[] = {
     {.name = "PMIX_SYSTEM_TMPDIR", .string = "pmix.sys.tmpdir", .type = PMIX_STRING,
      .description = (char *[]){"temp directory for this system, where PMIx server",
                                "will place tool rendezvous points and contact info", NULL}},
+
+    {.name = "PMIX_SERVER_SHARE_TOPOLOGY", .string = "pmix.srvr.share", .type = PMIX_BOOL,
+     .description = (char *[]){"server is to share its copy of the local node",
+                               "topology (whether given to it or self-discovered)",
+                               "with any clients.", NULL}},
 
     {.name = "PMIX_SERVER_ENABLE_MONITORING", .string = "pmix.srv.monitor", .type = PMIX_BOOL,
      .description = (char *[]){"Enable PMIx internal monitoring by server", NULL}},
@@ -95,9 +103,6 @@ pmix_regattr_input_t dictionary[] = {
      .description = (char *[]){"tool shall connect to a server if available, but",
                                "otherwise continue to operate unconnected", NULL}},
 
-    {.name = "PMIX_RECONNECT_SERVER", .string = "pmix.cnct.recon", .type = PMIX_BOOL,
-     .description = (char *[]){"tool is requesting to change server connections", NULL}},
-
     {.name = "PMIX_LAUNCHER", .string = "pmix.tool.launcher", .type = PMIX_BOOL,
      .description = (char *[]){"tool is a launcher and needs rendezvous files created", NULL}},
 
@@ -109,14 +114,40 @@ pmix_regattr_input_t dictionary[] = {
      .description = (char *[]){"File containing connection info to be used for",
                                "attaching to server", NULL}},
 
+    {.name = "PMIX_PRIMARY_SERVER", .string = "pmix.pri.srvr", .type = PMIX_BOOL,
+     .description = (char *[]){"The server to which the tool is connecting shall be",
+                               "designated the primary server once connection has",
+                               "been accomplished.", NULL}},
+
+    {.name = "PMIX_NOHUP", .string = "pmix.nohup", .type = PMIX_BOOL,
+     .description = (char *[]){"Any processes started on behalf of the calling tool",
+                               "(or the specified namespace, if such specification is",
+                               "included in the list of attributes) should continue",
+                               "after the tool disconnects from its server", NULL}},
+
+    {.name = "PMIX_LAUNCHER_DAEMON", .string = "pmix.lnch.dmn", .type = PMIX_STRING,
+     .description = (char *[]){"Path to executable that is to be used as the backend",
+                               "daemon for the launcher. This replaces the launcher's",
+                               "own daemon with the specified executable. Note that",
+                               "the user is therefore responsible for ensuring",
+                               "compatibility of the specified executable and the",
+                               "host launcher.", NULL}},
+
+    {.name = "PMIX_EXEC_AGENT", .string = "pmix.exec.agnt", .type = PMIX_STRING,
+     .description = (char *[]){"Path to executable that the launcher's backend",
+                               "daemons are to fork/exec in place of the actual",
+                               "application processes. The launcher's daemon shall",
+                               "pass the full command line of the application on the",
+                               "command line of the exec agent, which shall not",
+                               "connect back to the launcher's daemon. The exec agent",
+                               "is responsible for exec'ing the specified application",
+                               "process in its own place.", NULL}},
+
     {.name = "PMIX_USERID", .string = "pmix.euid", .type = PMIX_UINT32,
      .description = (char *[]){"effective user id", NULL}},
 
     {.name = "PMIX_GRPID", .string = "pmix.egid", .type = PMIX_UINT32,
      .description = (char *[]){"effective group id", NULL}},
-
-    {.name = "PMIX_DSTPATH", .string = "pmix.dstpath", .type = PMIX_STRING,
-     .description = (char *[]){"path to dstore files", NULL}},
 
     {.name = "PMIX_VERSION_INFO", .string = "pmix.version", .type = PMIX_STRING,
      .description = (char *[]){"PMIx version of contactor", NULL}},
@@ -128,8 +159,15 @@ pmix_regattr_input_t dictionary[] = {
      .description = (char *[]){"requesting process is a client process", NULL}},
 
     {.name = "PMIX_PSET_NAME", .string = "pmix.pset.nm", .type = PMIX_STRING,
-     .description = (char *[]){"user-assigned name for the process set containing the",
-                               "given process", NULL}},
+     .description = (char *[]){"The name of the newly defined process set.", NULL}},
+
+    {.name = "PMIX_PSET_NAMES", .string = "pmix.pset.nms", .type = PMIX_DATA_ARRAY,
+     .description = (char *[]){"Returns an array of string names of the process sets",
+                               "in which the given process is a member.", NULL}},
+
+    {.name = "PMIX_PSET_MEMBERS", .string = "pmix.pset.mems", .type = PMIX_DATA_ARRAY,
+     .description = (char *[]){"An array of pmix_proc_t containing the members of the",
+                               "newly defined process set.", NULL}},
 
     {.name = "PMIX_REINCARNATION", .string = "pmix.reinc", .type = PMIX_UINT32,
      .description = (char *[]){"number of times this process has been instantiated -",
@@ -209,9 +247,6 @@ pmix_regattr_input_t dictionary[] = {
     {.name = "PMIX_TCP_DISABLE_IPV6", .string = "pmix.tcp.disipv6", .type = PMIX_BOOL,
      .description = (char *[]){"true to disable IPv6 family", NULL}},
 
-    {.name = "PMIX_GDS_MODULE", .string = "pmix.gds.mod", .type = PMIX_STRING,
-     .description = (char *[]){"comma-delimited string of desired modules", NULL}},
-
     {.name = "PMIX_CPUSET", .string = "pmix.cpuset", .type = PMIX_STRING,
      .description = (char *[]){"hwloc bitmap applied to proc upon launch", NULL}},
 
@@ -220,9 +255,6 @@ pmix_regattr_input_t dictionary[] = {
 
     {.name = "PMIX_SPAWNED", .string = "pmix.spawned", .type = PMIX_BOOL,
      .description = (char *[]){"true if this proc resulted from a call to PMIx_Spawn", NULL}},
-
-    {.name = "PMIX_ARCH", .string = "pmix.arch", .type = PMIX_UINT32,
-     .description = (char *[]){"datatype architecture flag", NULL}},
 
     {.name = "PMIX_TMPDIR", .string = "pmix.tmpdir", .type = PMIX_STRING,
      .description = (char *[]){"top-level tmp dir assigned to session", NULL}},
@@ -319,12 +351,6 @@ pmix_regattr_input_t dictionary[] = {
      .description = (char *[]){"colon-delimited cpusets of local peers within the",
                                "specified nspace", NULL}},
 
-    {.name = "PMIX_PROC_URI", .string = "pmix.puri", .type = PMIX_STRING,
-     .description = (char *[]){"URI containing contact info for proc", NULL}},
-
-    {.name = "PMIX_LOCALITY", .string = "pmix.loc", .type = PMIX_UINT16,
-     .description = (char *[]){"relative locality of two procs", NULL}},
-
     {.name = "PMIX_PARENT_ID", .string = "pmix.parent", .type = PMIX_PROC,
      .description = (char *[]){"identifier of the process that called PMIx_Spawn to",
                                "launch this proc's application", NULL}},
@@ -333,7 +359,7 @@ pmix_regattr_input_t dictionary[] = {
      .description = (char *[]){"exit code returned when proc terminated", NULL}},
 
     {.name = "PMIX_UNIV_SIZE", .string = "pmix.univ.size", .type = PMIX_UINT32,
-     .description = (char *[]){"#procs in this nspace", NULL}},
+     .description = (char *[]){"#slots in this session", NULL}},
 
     {.name = "PMIX_JOB_SIZE", .string = "pmix.job.size", .type = PMIX_UINT32,
      .description = (char *[]){"#procs in this job", NULL}},
@@ -357,7 +383,12 @@ pmix_regattr_input_t dictionary[] = {
      .description = (char *[]){"#slots allocated", NULL}},
 
     {.name = "PMIX_NUM_NODES", .string = "pmix.num.nodes", .type = PMIX_UINT32,
-     .description = (char *[]){"#nodes in this nspace", NULL}},
+     .description = (char *[]){"#nodes currently hosting processes in the specified",
+                               "realm.", NULL}},
+
+    {.name = "PMIX_NUM_ALLOCATED_NODES", .string = "pmix.num.anodes", .type = PMIX_UINT32,
+     .description = (char *[]){"#nodes in the specified realm regardless of whether",
+                               "or not they currently host processes.", NULL}},
 
     {.name = "PMIX_AVAIL_PHYS_MEMORY", .string = "pmix.pmem", .type = PMIX_UINT64,
      .description = (char *[]){"total available physical memory on this node", NULL}},
@@ -368,50 +399,11 @@ pmix_regattr_input_t dictionary[] = {
     {.name = "PMIX_CLIENT_AVG_MEMORY", .string = "pmix.cl.mem.avg", .type = PMIX_FLOAT,
      .description = (char *[]){"Average Mbytes of memory used by client processes", NULL}},
 
-    {.name = "PMIX_NET_TOPO", .string = "pmix.ntopo", .type = PMIX_STRING,
-     .description = (char *[]){"xml-representation of fabric topology", NULL}},
-
-    {.name = "PMIX_LOCAL_TOPO", .string = "pmix.ltopo", .type = PMIX_STRING,
-     .description = (char *[]){"xml-representation of local node topology", NULL}},
-
-    {.name = "PMIX_TOPOLOGY", .string = "pmix.topo", .type = PMIX_POINTER,
-     .description = (char *[]){"pointer to the PMIx client's internal topology object", NULL}},
-
-    {.name = "PMIX_TOPOLOGY_XML", .string = "pmix.topo.xml", .type = PMIX_STRING,
-     .description = (char *[]){"XML-based description of topology", NULL}},
-
-    {.name = "PMIX_TOPOLOGY_FILE", .string = "pmix.topo.file", .type = PMIX_STRING,
-     .description = (char *[]){"full path to file containing XML topology description", NULL}},
-
-    {.name = "PMIX_TOPOLOGY_SIGNATURE", .string = "pmix.toposig", .type = PMIX_STRING,
-     .description = (char *[]){"topology signature string", NULL}},
+    {.name = "PMIX_TOPOLOGY2", .string = "pmix.topo2", .type = PMIX_TOPO,
+     .description = (char *[]){"pointer to a PMIx topology object", NULL}},
 
     {.name = "PMIX_LOCALITY_STRING", .string = "pmix.locstr", .type = PMIX_STRING,
      .description = (char *[]){"string describing a proc's location", NULL}},
-
-    {.name = "PMIX_HWLOC_SHMEM_ADDR", .string = "pmix.hwlocaddr", .type = PMIX_SIZE,
-     .description = (char *[]){"address of HWLOC shared memory segment", NULL}},
-
-    {.name = "PMIX_HWLOC_SHMEM_SIZE", .string = "pmix.hwlocsize", .type = PMIX_SIZE,
-     .description = (char *[]){"size of HWLOC shared memory segment", NULL}},
-
-    {.name = "PMIX_HWLOC_SHMEM_FILE", .string = "pmix.hwlocfile", .type = PMIX_STRING,
-     .description = (char *[]){"path to HWLOC shared memory file", NULL}},
-
-    {.name = "PMIX_HWLOC_XML_V1", .string = "pmix.hwlocxml1", .type = PMIX_STRING,
-     .description = (char *[]){"XML representation of local topology using HWLOC v1.x",
-                               "format", NULL}},
-
-    {.name = "PMIX_HWLOC_XML_V2", .string = "pmix.hwlocxml2", .type = PMIX_STRING,
-     .description = (char *[]){"XML representation of local topology using HWLOC v2.x",
-                               "format", NULL}},
-
-    {.name = "PMIX_HWLOC_SHARE_TOPO", .string = "pmix.hwlocsh", .type = PMIX_BOOL,
-     .description = (char *[]){"Share the HWLOC topology via shared memory", NULL}},
-
-    {.name = "PMIX_HWLOC_HOLE_KIND", .string = "pmix.hwlocholek", .type = PMIX_STRING,
-     .description = (char *[]){"Kind of VM \"hole\" HWLOC should use for shared",
-                               "memory", NULL}},
 
     {.name = "PMIX_COLLECT_DATA", .string = "pmix.collect", .type = PMIX_BOOL,
      .description = (char *[]){"collect data and return it at the end of the",
@@ -431,14 +423,6 @@ pmix_regattr_input_t dictionary[] = {
                                "the specified #values are found (0 => all and is the",
                                "default)", NULL}},
 
-    {.name = "PMIX_COLLECTIVE_ALGO", .string = "pmix.calgo", .type = PMIX_STRING,
-     .description = (char *[]){"comma-delimited list of algorithms to use for",
-                               "collective", NULL}},
-
-    {.name = "PMIX_COLLECTIVE_ALGO_REQD", .string = "pmix.calreqd", .type = PMIX_BOOL,
-     .description = (char *[]){"if true, indicates that the requested choice of algo",
-                               "is mandatory", NULL}},
-
     {.name = "PMIX_NOTIFY_COMPLETION", .string = "pmix.notecomp", .type = PMIX_BOOL,
      .description = (char *[]){"notify parent process upon termination of child job", NULL}},
 
@@ -457,6 +441,10 @@ pmix_regattr_input_t dictionary[] = {
                                "requested value - do not request data from the server",
                                "if not found", NULL}},
 
+    {.name = "PMIX_GET_STATIC_VALUES", .string = "pmix.get.static", .type = PMIX_BOOL,
+     .description = (char *[]){"Request that any pointers in the returned value point",
+                               "directly to values in the key-value store", NULL}},
+
     {.name = "PMIX_EMBED_BARRIER", .string = "pmix.embed.barrier", .type = PMIX_BOOL,
      .description = (char *[]){"execute a blocking fence operation before executing",
                                "the specified operation", NULL}},
@@ -470,21 +458,27 @@ pmix_regattr_input_t dictionary[] = {
     {.name = "PMIX_PROC_STATE_STATUS", .string = "pmix.proc.state", .type = PMIX_PROC_STATE,
      .description = (char *[]){"process state", NULL}},
 
-    {.name = "PMIX_NOTIFY_LAUNCH", .string = "pmix.note.lnch", .type = PMIX_BOOL,
-     .description = (char *[]){"notify the requestor upon launch of the child job and",
-                               "return its namespace in the event", NULL}},
-
     {.name = "PMIX_GET_REFRESH_CACHE", .string = "pmix.get.refresh", .type = PMIX_BOOL,
      .description = (char *[]){"when retrieving data for a remote process, refresh",
                                "the existing local data cache for the process in case",
                                "new values have been put and committed by it since",
                                "the last refresh", NULL}},
 
+    {.name = "PMIX_ACCESS_PERMISSIONS", .string = "pmix.aperms", .type = PMIX_DATA_ARRAY,
+     .description = (char *[]){"Define access permissions for the published data. The",
+                               "value shall contain an array of pmix_info_t structs",
+                               "containing the specified permissions.", NULL}},
+
+    {.name = "PMIX_ACCESS_USERIDS", .string = "pmix.auids", .type = PMIX_DATA_ARRAY,
+     .description = (char *[]){"Array of effective UIDs that are allowed to access",
+                               "the published data", NULL}},
+
+    {.name = "PMIX_ACCESS_GRPIDS", .string = "pmix.agids", .type = PMIX_DATA_ARRAY,
+     .description = (char *[]){"Array of effective GIDs that are allowed to access",
+                               "the published data", NULL}},
+
     {.name = "PMIX_REGISTER_NODATA", .string = "pmix.reg.nodata", .type = PMIX_BOOL,
      .description = (char *[]){"Registration is for nspace only, do not copy job data", NULL}},
-
-    {.name = "PMIX_PROC_DATA", .string = "pmix.pdata", .type = PMIX_DATA_ARRAY,
-     .description = (char *[]){"starts with rank, then contains more data", NULL}},
 
     {.name = "PMIX_NODE_MAP", .string = "pmix.nmap", .type = PMIX_STRING,
      .description = (char *[]){"regex of nodes containing procs for this job", NULL}},
@@ -505,12 +499,6 @@ pmix_regattr_input_t dictionary[] = {
     {.name = "PMIX_REQUIRED_KEY", .string = "pmix.req.key", .type = PMIX_STRING,
      .description = (char *[]){"key the user needs prior to responding from a dmodex",
                                "request", NULL}},
-
-    {.name = "PMIX_PROC_BLOB", .string = "pmix.pblob", .type = PMIX_BYTE_OBJECT,
-     .description = (char *[]){"packed blob of process data", NULL}},
-
-    {.name = "PMIX_MAP_BLOB", .string = "pmix.mblob", .type = PMIX_BYTE_OBJECT,
-     .description = (char *[]){"packed blob of process location", NULL}},
 
     {.name = "PMIX_EVENT_HDLR_NAME", .string = "pmix.evname", .type = PMIX_STRING,
      .description = (char *[]){"string name identifying this handler", NULL}},
@@ -579,6 +567,9 @@ pmix_regattr_input_t dictionary[] = {
      .description = (char *[]){"text message suitable for output by recipient - e.g.,",
                                "describing the cause of the event", NULL}},
 
+    {.name = "PMIX_EVENT_TIMESTAMP", .string = "pmix.evtstamp", .type = PMIX_TIME,
+     .description = (char *[]){"System time when the associated event occurred.", NULL}},
+
     {.name = "PMIX_EVENT_TERMINATE_SESSION", .string = "pmix.evterm.sess", .type = PMIX_BOOL,
      .description = (char *[]){"RM intends to terminate session", NULL}},
 
@@ -593,15 +584,6 @@ pmix_regattr_input_t dictionary[] = {
 
     {.name = "PMIX_EVENT_ACTION_TIMEOUT", .string = "pmix.evtimeout", .type = PMIX_INT,
      .description = (char *[]){"time in sec before RM will execute error response", NULL}},
-
-    {.name = "PMIX_EVENT_NO_TERMINATION", .string = "pmix.evnoterm", .type = PMIX_BOOL,
-     .description = (char *[]){"indicates that the handler has satisfactorily handled",
-                               "the event and believes termination of the application",
-                               "is not required", NULL}},
-
-    {.name = "PMIX_EVENT_WANT_TERMINATION", .string = "pmix.evterm", .type = PMIX_BOOL,
-     .description = (char *[]){"indicates that the handler has determined that the",
-                               "application should be terminated", NULL}},
 
     {.name = "PMIX_PERSONALITY", .string = "pmix.pers", .type = PMIX_STRING,
      .description = (char *[]){"name of personality to use", NULL}},
@@ -625,9 +607,6 @@ pmix_regattr_input_t dictionary[] = {
     {.name = "PMIX_WDIR", .string = "pmix.wdir", .type = PMIX_STRING,
      .description = (char *[]){"working directory for spawned procs", NULL}},
 
-    {.name = "PMIX_MAPPER", .string = "pmix.mapper", .type = PMIX_STRING,
-     .description = (char *[]){"mapper to use for placing spawned procs", NULL}},
-
     {.name = "PMIX_DISPLAY_MAP", .string = "pmix.dispmap", .type = PMIX_BOOL,
      .description = (char *[]){"display process map upon spawn", NULL}},
 
@@ -648,9 +627,6 @@ pmix_regattr_input_t dictionary[] = {
 
     {.name = "PMIX_PRELOAD_FILES", .string = "pmix.preloadfiles", .type = PMIX_STRING,
      .description = (char *[]){"comma-delimited list of files to pre-position", NULL}},
-
-    {.name = "PMIX_NON_PMI", .string = "pmix.nonpmi", .type = PMIX_BOOL,
-     .description = (char *[]){"spawned procs will not call PMIx_Init", NULL}},
 
     {.name = "PMIX_STDIN_TGT", .string = "pmix.stdin", .type = PMIX_PROC,
      .description = (char *[]){"proc that is to receive stdin (PMIX_RANK_WILDCARD =",
@@ -737,7 +713,7 @@ pmix_regattr_input_t dictionary[] = {
     {.name = "PMIX_CMD_LINE", .string = "pmix.cmd.line", .type = PMIX_STRING,
      .description = (char *[]){"command line executing in the specified nspace", NULL}},
 
-    {.name = "PMIX_FORK_EXEC_AGENT", .string = "pmix.fe.agnt", .type = PMIX_STRING,
+    {.name = "PMIX_FORKEXEC_AGENT", .string = "pmix.fe.agnt", .type = PMIX_STRING,
      .description = (char *[]){"command line of fork/exec agent to be used for",
                                "starting local processes", NULL}},
 
@@ -751,6 +727,24 @@ pmix_regattr_input_t dictionary[] = {
     {.name = "PMIX_APP_ARGV", .string = "pmix.app.argv", .type = PMIX_STRING,
      .description = (char *[]){"consolidated argv passed to the spawn command for the",
                                "given app", NULL}},
+
+    {.name = "PMIX_NOTIFY_JOB_EVENTS", .string = "pmix.note.jev", .type = PMIX_BOOL,
+     .description = (char *[]){"Requests that the launcher generate the",
+                               "PMIX_EVENT_JOB_START, PMIX_LAUNCH_COMPLETE, and",
+                               "PMIX_EVENT_JOB_END events. Each event is to include",
+                               "at least the namespace of the corresponding job and a",
+                               "PMIX_EVENT_TIMESTAMP indicating the time the event",
+                               "occurred.", NULL}},
+
+    {.name = "PMIX_NOTIFY_PROC_TERMINATION", .string = "pmix.noteproc", .type = PMIX_BOOL,
+     .description = (char *[]){"Requests that the launcher generate the",
+                               "PMIX_EVENT_PROC_TERMINATED event whenever a process",
+                               "either normally or abnormally terminates.", NULL}},
+
+    {.name = "PMIX_NOTIFY_PROC_ABNORMAL_TERMINATION", .string = "pmix.noteabproc", .type = PMIX_BOOL,
+     .description = (char *[]){"Requests that the launcher generate the",
+                               "PMIX_EVENT_PROC_TERMINATED event only when a process",
+                               "abnormally terminates.", NULL}},
 
     {.name = "PMIX_QUERY_SUPPORTED_KEYS", .string = "pmix.qry.keys", .type = PMIX_STRING,
      .description = (char *[]){"returns comma-delimited list of keys supported by the",
@@ -835,6 +829,26 @@ pmix_regattr_input_t dictionary[] = {
                                "session) SUPPORTED QUALIFIERS: PMIX_RANGE whose info",
                                "is being requested", NULL}},
 
+    {.name = "PMIX_QUERY_PSET_MEMBERSHIP", .string = "pmix.qry.pmems", .type = PMIX_DATA_ARRAY,
+     .description = (char *[]){"Return an array of pmix_proc_t containing the members",
+                               "of the specified process set.", NULL}},
+
+    {.name = "PMIX_QUERY_NUM_GROUPS", .string = "pmix.qry.pgrpnum", .type = PMIX_SIZE,
+     .description = (char *[]){"Return the number of process groups defined in the",
+                               "specified range (defaults to session). OPTIONAL",
+                               "QUALIFERS: PMIX_RANGE.", NULL}},
+
+    {.name = "PMIX_QUERY_GROUP_NAMES", .string = "pmix.qry.pgrp", .type = PMIX_DATA_ARRAY,
+     .description = (char *[]){"Return a pmix_data_array_t containing an array of",
+                               "string names of the process groups defined in the",
+                               "specified range (defaults to session). OPTIONAL",
+                               "QUALIFERS: PMIX_RANGE", NULL}},
+
+    {.name = "PMIX_QUERY_GROUP_MEMBERSHIP", .string = "pmix.qry.pgrpmems", .type = PMIX_DATA_ARRAY,
+     .description = (char *[]){"Return a pmix_data_array_t of pmix_proc_t containing",
+                               "the members of the specified process group. REQUIRED",
+                               "QUALIFIERS: PMIX_GROUP_ID.", NULL}},
+
     {.name = "PMIX_QUERY_ATTRIBUTE_SUPPORT", .string = "pmix.qry.attrs", .type = PMIX_DATA_ARRAY,
      .description = (char *[]){"returns array of pmix_info_t where each element",
                                "consists of a key containing the name of the",
@@ -865,6 +879,24 @@ pmix_regattr_input_t dictionary[] = {
                                "array of pmix_info_t of available data for servers on",
                                "this node to which the caller might be able to",
                                "connect. NO QUALIFIERS", NULL}},
+
+    {.name = "PMIX_QUERY_QUALIFIERS", .string = "pmix.qry.quals", .type = PMIX_DATA_ARRAY,
+     .description = (char *[]){"Contains an array of qualifiers that were included in",
+                               "the query that produced the provided results. This",
+                               "attribute is solely for reporting purposes and cannot",
+                               "be used in PMIx_Get or other query operations", NULL}},
+
+    {.name = "PMIX_QUERY_RESULTS", .string = "pmix.qry.res", .type = PMIX_DATA_ARRAY,
+     .description = (char *[]){"Contains an array of query results for a given",
+                               "pmix_query_t passed to the PMIx_Query_info APIs. If",
+                               "qualifiers were included in the query, then the first",
+                               "element of the array shall be the",
+                               "PMIX_QUERY_QUALIFIERS attribute containing those",
+                               "qualifiers. Each of the remaining elements of the",
+                               "array is a pmix_info_t containing the query key and",
+                               "the corresponding value returned by the query. This",
+                               "attribute is solely for reporting purposes and cannot",
+                               "be used in PMIx_Get or other query operations", NULL}},
 
     {.name = "PMIX_QUERY_REFRESH_CACHE", .string = "pmix.qry.rfsh", .type = PMIX_BOOL,
      .description = (char *[]){"retrieve updated information from server to update",
@@ -965,13 +997,26 @@ pmix_regattr_input_t dictionary[] = {
                                "PMIX_APPNUM attribute, are required to be included in",
                                "the array.", NULL}},
 
+    {.name = "PMIX_PROC_INFO_ARRAY", .string = "pmix.pdata", .type = PMIX_DATA_ARRAY,
+     .description = (char *[]){"Provide an array of pmix_info_t containing",
+                               "process-realm information. The PMIX_RANK and",
+                               "PMIX_NSPACE attributes, or the PMIX_PROCID attribute,",
+                               "are required to be included in the array when the",
+                               "array is not included as part of a call to",
+                               "PMIx_server_register_nspace - i.e., when the job",
+                               "containing the process is ambiguous. All three may be",
+                               "included if desired. When the array is included in",
+                               "some broader structure that identifies the job, then",
+                               "only the PMIX_RANK or the PMIX_PROCID attribute must",
+                               "be included (the others are optional).", NULL}},
+
     {.name = "PMIX_NODE_INFO_ARRAY", .string = "pmix.node.arr", .type = PMIX_DATA_ARRAY,
      .description = (char *[]){"Provide an array of pmix_info_t containing node-level",
                                "information. At a minimum, either the PMIX_NODEID or",
                                "PMIX_HOSTNAME attribute is required to be included in",
                                "the array, though both may be included.", NULL}},
 
-    {.name = "PMIX_SERVER_INFO_ARRAY", .string = "pmix.srv.info", .type = PMIX_DATA_ARRAY,
+    {.name = "PMIX_SERVER_INFO_ARRAY", .string = "pmix.srv.arr", .type = PMIX_DATA_ARRAY,
      .description = (char *[]){"array of data on a given server, starting with its",
                                "nspace", NULL}},
 
@@ -1051,6 +1096,31 @@ pmix_regattr_input_t dictionary[] = {
     {.name = "PMIX_LOG_JOB_RECORD", .string = "pmix.log.jrec", .type = PMIX_BOOL,
      .description = (char *[]){"log the provided information to the RM's job record", NULL}},
 
+    {.name = "PMIX_LOG_PROC_TERMINATION", .string = "pmix.logproc", .type = PMIX_BOOL,
+     .description = (char *[]){"Requests that the launcher log the",
+                               "PMIX_EVENT_PROC_TERMINATED} event whenever a process",
+                               "either normally or abnormally terminates.", NULL}},
+
+    {.name = "PMIX_LOG_PROC_ABNORMAL_TERMINATION", .string = "pmix.logabproc", .type = PMIX_BOOL,
+     .description = (char *[]){"Requests that the launcher log the",
+                               "PMIX_EVENT_PROC_TERMINATED event only when a process",
+                               "abnormally terminates.", NULL}},
+
+    {.name = "PMIX_LOG_JOB_EVENTS", .string = "pmix.log.jev", .type = PMIX_BOOL,
+     .description = (char *[]){"Requests that the launcher log the",
+                               "PMIX_EVENT_JOB_START, PMIX_LAUNCH_COMPLETE, and",
+                               "PMIX_EVENT_JOB_END events using PMIx_Log", NULL}},
+
+    {.name = "PMIX_LOG_COMPLETION", .string = "pmix.logcomp", .type = PMIX_BOOL,
+     .description = (char *[]){"Requests that the launcher log the PMIX_EVENT_JOB_END",
+                               "event for normal or abnormal termination of the",
+                               "spawned job using PMIx_Log. The event shall include",
+                               "the returned status code (PMIX_JOB_TERM_STATUS) for",
+                               "the corresponding job; the identity (PMIX_PROCID) and",
+                               "exit status (PMIX_EXIT_CODE) of the first failed",
+                               "process, if applicable; and a PMIX_EVENT_TIMESTAMP",
+                               "indicating the time the termination occurred.", NULL}},
+
     {.name = "PMIX_DEBUG_STOP_ON_EXEC", .string = "pmix.dbg.exec", .type = PMIX_BOOL,
      .description = (char *[]){"job is being spawned under debugger - instruct it to",
                                "pause on start", NULL}},
@@ -1062,23 +1132,32 @@ pmix_regattr_input_t dictionary[] = {
      .description = (char *[]){"block at desired point until receiving debugger",
                                "release notification", NULL}},
 
-    {.name = "PMIX_DEBUG_JOB", .string = "pmix.dbg.job", .type = PMIX_STRING,
-     .description = (char *[]){"nspace of the job assigned to this debugger to be",
-                               "debugged. Note that id's, pids, and other info on the",
-                               "procs is available via a query for the nspace's local",
-                               "or global proctable", NULL}},
-
-    {.name = "PMIX_DEBUG_WAITING_FOR_NOTIFY", .string = "pmix.dbg.waiting", .type = PMIX_BOOL,
-     .description = (char *[]){"job to be debugged is waiting for a release", NULL}},
-
-    {.name = "PMIX_DEBUG_JOB_DIRECTIVES", .string = "pmix.dbg.jdirs", .type = PMIX_DATA_ARRAY,
-     .description = (char *[]){"array of job-level directives", NULL}},
-
-    {.name = "PMIX_DEBUG_APP_DIRECTIVES", .string = "pmix.dbg.adirs", .type = PMIX_DATA_ARRAY,
-     .description = (char *[]){"array of app-level directives", NULL}},
-
     {.name = "PMIX_DEBUG_TARGET", .string = "pmix.dbg.tgt", .type = PMIX_PROC,
      .description = (char *[]){"Identifier of proc(s) to be debugged", NULL}},
+
+    {.name = "PMIX_DEBUG_DAEMONS_PER_PROC", .string = "pmix.dbg.dpproc", .type = PMIX_UINT16,
+     .description = (char *[]){"Number of debugger daemons to be spawned per",
+                               "application process. The launcher is to pass the",
+                               "identifier of the namespace to be debugged by",
+                               "including the PMIX_DEBUG_TARGET attribute in the",
+                               "daemon's job-level information. The debugger daemons",
+                               "spawned on a given node are responsible for",
+                               "self-determining their specific target process(es) -",
+                               "e.g., by referencing their own PMIX_LOCAL_RANK in the",
+                               "daemon debugger job versus the corresponding",
+                               "PMIX_LOCAL_RANK of the target processes on the node.", NULL}},
+
+    {.name = "PMIX_DEBUG_DAEMONS_PER_NODE", .string = "pmix.dbg.dpnd", .type = PMIX_UINT16,
+     .description = (char *[]){"Number of debugger daemons to be spawned on each node",
+                               "where the target job is executing. The launcher is to",
+                               "pass the identifier of the namespace to be debugged",
+                               "by including the PMIX_DEBUG_TARGET attribute in the",
+                               "daemon's job-level information. The debugger daemons",
+                               "spawned on a given node are responsible for",
+                               "self-determining their specific target process(es) -",
+                               "e.g., by referencing their own PMIX_LOCAL_RANK in the",
+                               "daemon debugger job versus the corresponding",
+                               "PMIX_LOCAL_RANK of the target processes on the node.", NULL}},
 
     {.name = "PMIX_RM_NAME", .string = "pmix.rm.name", .type = PMIX_STRING,
      .description = (char *[]){"string name of the resource manager", NULL}},
@@ -1111,10 +1190,16 @@ pmix_regattr_input_t dictionary[] = {
                                "envar using the separator character, creating the",
                                "envar if it doesn't already exist", NULL}},
 
-    {.name = "PMIX_ALLOC_ID", .string = "pmix.alloc.id", .type = PMIX_STRING,
-     .description = (char *[]){"provide a string identifier for this allocation",
+    {.name = "PMIX_ALLOC_REQ_ID", .string = "pmix.alloc.reqid", .type = PMIX_STRING,
+     .description = (char *[]){"User-provided string identifier for this allocation",
                                "request which can later be used to query status of",
-                               "the request", NULL}},
+                               "the request.", NULL}},
+
+    {.name = "PMIX_ALLOC_ID", .string = "pmix.alloc.id", .type = PMIX_STRING,
+     .description = (char *[]){"A string identifier (provided by the host",
+                               "environment) for the resulting allocation which can",
+                               "later be used to reference the allocated resources",
+                               "in, for example, a call to PMIx_Spawn", NULL}},
 
     {.name = "PMIX_ALLOC_NUM_NODES", .string = "pmix.alloc.nnodes", .type = PMIX_UINT64,
      .description = (char *[]){"number of nodes", NULL}},
@@ -1134,18 +1219,12 @@ pmix_regattr_input_t dictionary[] = {
     {.name = "PMIX_ALLOC_MEM_SIZE", .string = "pmix.alloc.msize", .type = PMIX_FLOAT,
      .description = (char *[]){"number of Mbytes", NULL}},
 
-    {.name = "PMIX_ALLOC_NETWORK", .string = "pmix.alloc.net", .type = PMIX_DATA_ARRAY,
-     .description = (char *[]){"***** DEPRECATED *****", NULL}},
-
     {.name = "PMIX_ALLOC_FABRIC", .string = "pmix.alloc.net", .type = PMIX_DATA_ARRAY,
      .description = (char *[]){"Array of pmix_info_t describing fabric resource",
                                "request. This must include at least: *",
                                "PMIX_ALLOC_FABRIC_ID * PMIX_ALLOC_FABRIC_TYPE *",
                                "PMIX_ALLOC_FABRIC_ENDPTS plus whatever other",
                                "descriptors are desired", NULL}},
-
-    {.name = "PMIX_ALLOC_NETWORK_ID", .string = "pmix.alloc.netid", .type = PMIX_STRING,
-     .description = (char *[]){"***** DEPRECATED *****", NULL}},
 
     {.name = "PMIX_ALLOC_FABRIC_ID", .string = "pmix.alloc.netid", .type = PMIX_STRING,
      .description = (char *[]){"key to be used when accessing this requested fabric",
@@ -1172,9 +1251,6 @@ pmix_regattr_input_t dictionary[] = {
     {.name = "PMIX_ALLOC_BANDWIDTH", .string = "pmix.alloc.bw", .type = PMIX_FLOAT,
      .description = (char *[]){"Mbits/sec", NULL}},
 
-    {.name = "PMIX_ALLOC_NETWORK_QOS", .string = "pmix.alloc.netqos", .type = PMIX_STRING,
-     .description = (char *[]){"***** DEPRECATED *****", NULL}},
-
     {.name = "PMIX_ALLOC_FABRIC_QOS", .string = "pmix.alloc.netqos", .type = PMIX_STRING,
      .description = (char *[]){"quality of service level", NULL}},
 
@@ -1182,33 +1258,18 @@ pmix_regattr_input_t dictionary[] = {
      .description = (char *[]){"time in seconds that the allocation shall remain",
                                "valid", NULL}},
 
-    {.name = "PMIX_ALLOC_NETWORK_TYPE", .string = "pmix.alloc.nettype", .type = PMIX_STRING,
-     .description = (char *[]){"***** DEPRECATED *****", NULL}},
-
     {.name = "PMIX_ALLOC_FABRIC_TYPE", .string = "pmix.alloc.nettype", .type = PMIX_STRING,
      .description = (char *[]){"type of desired transport (e.g., tcp, udp)", NULL}},
-
-    {.name = "PMIX_ALLOC_NETWORK_PLANE", .string = "pmix.alloc.netplane", .type = PMIX_STRING,
-     .description = (char *[]){"***** DEPRECATED *****", NULL}},
 
     {.name = "PMIX_ALLOC_FABRIC_PLANE", .string = "pmix.alloc.netplane", .type = PMIX_STRING,
      .description = (char *[]){"id string for the NIC (aka plane) to be used for this",
                                "allocation (e.g., CIDR for Ethernet)", NULL}},
 
-    {.name = "PMIX_ALLOC_NETWORK_ENDPTS", .string = "pmix.alloc.endpts", .type = PMIX_SIZE,
-     .description = (char *[]){"***** DEPRECATED *****", NULL}},
-
     {.name = "PMIX_ALLOC_FABRIC_ENDPTS", .string = "pmix.alloc.endpts", .type = PMIX_SIZE,
      .description = (char *[]){"number of endpoints to allocate per process", NULL}},
 
-    {.name = "PMIX_ALLOC_NETWORK_ENDPTS_NODE", .string = "pmix.alloc.endpts.nd", .type = PMIX_SIZE,
-     .description = (char *[]){"***** DEPRECATED *****", NULL}},
-
     {.name = "PMIX_ALLOC_FABRIC_ENDPTS_NODE", .string = "pmix.alloc.endpts.nd", .type = PMIX_SIZE,
      .description = (char *[]){"number of endpoints to allocate per node", NULL}},
-
-    {.name = "PMIX_ALLOC_NETWORK_SEC_KEY", .string = "pmix.alloc.nsec", .type = PMIX_BYTE_OBJECT,
-     .description = (char *[]){"***** DEPRECATED *****", NULL}},
 
     {.name = "PMIX_ALLOC_FABRIC_SEC_KEY", .string = "pmix.alloc.nsec", .type = PMIX_BYTE_OBJECT,
      .description = (char *[]){"fabric security key", NULL}},
@@ -1398,8 +1459,23 @@ pmix_regattr_input_t dictionary[] = {
     {.name = "PMIX_IOF_XML_OUTPUT", .string = "pmix.iof.xml", .type = PMIX_BOOL,
      .description = (char *[]){"Format output in XML", NULL}},
 
-    {.name = "PMIX_IOF_STOP", .string = "pmix.iof.stop", .type = PMIX_BOOL,
-     .description = (char *[]){"Stop forwarding the specified channel(s)", NULL}},
+    {.name = "PMIX_IOF_COPY", .string = "pmix.iof.cpy", .type = PMIX_BOOL,
+     .description = (char *[]){"Requests that the host environment deliver a copy of",
+                               "the specified output stream(s) to the tool, letting",
+                               "the stream(s) continue to also be delivered to the",
+                               "default location. This allows the tool to tap into",
+                               "the output stream(s) without redirecting it from its",
+                               "current final destination.", NULL}},
+
+    {.name = "PMIX_IOF_REDIRECT", .string = "pmix.iof.redir", .type = PMIX_BOOL,
+     .description = (char *[]){"Requests that the host environment intercept the",
+                               "specified output stream(s) and deliver it to the",
+                               "requesting tool instead of its current final",
+                               "destination. This might be used, for example, during",
+                               "a debugging procedure to avoid injection of",
+                               "debugger-related output into the application’s",
+                               "results file. The original output stream(s)",
+                               "destination is restored upon termination of the tool.", NULL}},
 
     {.name = "PMIX_SETUP_APP_ENVARS", .string = "pmix.setup.env", .type = PMIX_BOOL,
      .description = (char *[]){"harvest and include relevant envars", NULL}},
@@ -1426,11 +1502,6 @@ pmix_regattr_input_t dictionary[] = {
                                "terminates without first leaving the group. The",
                                "default is false", NULL}},
 
-    {.name = "PMIX_GROUP_INVITE_DECLINE", .string = "pmix.grp.decline", .type = PMIX_BOOL,
-     .description = (char *[]){"notify the inviting process that this process does",
-                               "not wish to participate in the proposed group The",
-                               "default is true", NULL}},
-
     {.name = "PMIX_GROUP_FT_COLLECTIVE", .string = "pmix.grp.ftcoll", .type = PMIX_BOOL,
      .description = (char *[]){"adjust internal tracking for terminated processes.",
                                "Default is false", NULL}},
@@ -1450,6 +1521,10 @@ pmix_regattr_input_t dictionary[] = {
 
     {.name = "PMIX_GROUP_ENDPT_DATA", .string = "pmix.grp.endpt", .type = PMIX_BYTE_OBJECT,
      .description = (char *[]){"data collected to be shared during construction", NULL}},
+
+    {.name = "PMIX_GROUP_NAMES", .string = "pmix.pgrp.nm", .type = PMIX_DATA_ARRAY,
+     .description = (char *[]){"Returns an array of string names of the process",
+                               "groups in which the given process is a member.", NULL}},
 
     {.name = "PMIX_QUERY_STORAGE_LIST", .string = "pmix.strg.list", .type = PMIX_STRING,
      .description = (char *[]){"return comma-delimited list of identifiers for all",
@@ -1515,65 +1590,135 @@ pmix_regattr_input_t dictionary[] = {
                                "0:node000,node002,node004,node006;1:node001,node003,node005,node007)", NULL}},
 
     {.name = "PMIX_FABRIC_VENDOR", .string = "pmix.fab.vndr", .type = PMIX_STRING,
-     .description = (char *[]){"Name of fabric vendor (e.g., Amazon, Mellanox, Cray,",
+     .description = (char *[]){"Name of fabric vendor (e.g., Amazon, Mellanox, HPE,",
                                "Intel)", NULL}},
 
     {.name = "PMIX_FABRIC_IDENTIFIER", .string = "pmix.fab.id", .type = PMIX_STRING,
      .description = (char *[]){"An identifier for the fabric (e.g., MgmtEthernet,",
                                "Slingshot-11, OmniPath-1)", NULL}},
 
-    {.name = "PMIX_FABRIC_NUM_VERTICES", .string = "pmix.fab.nverts", .type = PMIX_SIZE,
-     .description = (char *[]){"Total number of NICs in the system - corresponds to",
-                               "the number of vertices (i.e., rows and columns) in",
-                               "the cost matrix", NULL}},
+    {.name = "PMIX_FABRIC_INDEX", .string = "pmix.fab.idx", .type = PMIX_SIZE,
+     .description = (char *[]){"The index of the fabric as returned in pmix_fabric_t", NULL}},
 
-    {.name = "PMIX_FABRIC_COORDINATE", .string = "pmix.net.coord", .type = PMIX_COORD,
-     .description = (char *[]){"Fabric coordinate of the specified process in the",
-                               "given view type (e.g., logical vs physical)", NULL}},
+    {.name = "PMIX_FABRIC_COORDINATES", .string = "pmix.fab.coord", .type = PMIX_DATA_ARRAY,
+     .description = (char *[]){"Array of pmix_geometry_t fabric coordinates for",
+                               "devices on the specified node. The array will contain",
+                               "the coordinates of all devices on the node, including",
+                               "values for all supported coordinate views. The",
+                               "information for devices on the local node shall be",
+                               "provided if the node is not specified in the request.", NULL}},
 
-    {.name = "PMIX_FABRIC_VIEW", .string = "pmix.net.view", .type = PMIX_UINT8,
-     .description = (char *[]){"Requested view type (e.g., logical vs physical)", NULL}},
+    {.name = "PMIX_FABRIC_DEVICE_DIST", .string = "pmix.fab.endptdist", .type = PMIX_DATA_ARRAY,
+     .description = (char *[]){"Relative distance from the location of the calling",
+                               "process (either as sampled at the time of the request",
+                               "or based on the initial binding location set at time",
+                               "of start of execution) to each local fabric device,",
+                               "returned as an array of pmix_device_distance_t",
+                               "elements in no particular order.", NULL}},
 
-    {.name = "PMIX_FABRIC_DIMS", .string = "pmix.net.dims", .type = PMIX_UINT32,
+    {.name = "PMIX_FABRIC_DEVICE_VENDORID", .string = "pmix.fabdev.vendid", .type = PMIX_STRING,
+     .description = (char *[]){"This is a vendor-provided identifier for the device",
+                               "or product.", NULL}},
+
+    {.name = "PMIX_FABRIC_NUM_DEVICES", .string = "pmix.fab.nverts", .type = PMIX_SIZE,
+     .description = (char *[]){"Total number of fabric devices in the system -",
+                               "corresponds to the number of rows or columns in the",
+                               "cost matrix", NULL}},
+
+    {.name = "PMIX_FABRIC_VIEW", .string = "pmix.fab.view", .type = PMIX_UINT8,
+     .description = (char *[]){"Used purely as a qualifier to requests, specifies the",
+                               "view type (e.g., local vs. physical) for the",
+                               "requested information.", NULL}},
+
+    {.name = "PMIX_FABRIC_DIMS", .string = "pmix.fab.dims", .type = PMIX_UINT32,
      .description = (char *[]){"Number of dimensions in the specified fabric",
-                               "plane/view", NULL}},
+                               "plane/view. If no plane is specified in a request,",
+                               "then the dimensions of all planes in the overall",
+                               "system will be returned as a pmix_data_array_t",
+                               "containing an array of uint32_t values. Default is to",
+                               "provide dimensions in logical view.", NULL}},
 
-    {.name = "PMIX_FABRIC_PLANE", .string = "pmix.net.plane", .type = PMIX_STRING,
-     .description = (char *[]){"string ID of a fabric plane", NULL}},
+    {.name = "PMIX_FABRIC_PLANE", .string = "pmix.fab.plane", .type = PMIX_STRING,
+     .description = (char *[]){"ID string of a fabric plane (e.g., CIDR for",
+                               "Ethernet). When used as a modifier in a request for",
+                               "information, specifies the plane whose information is",
+                               "to be returned. When used directly as a key in a",
+                               "request, returns a pmix_data_array_t of string",
+                               "identifiers for all fabric planes in the overall",
+                               "system.", NULL}},
 
-    {.name = "PMIX_FABRIC_SWITCH", .string = "pmix.net.switch", .type = PMIX_STRING,
-     .description = (char *[]){"string ID of a fabric switch", NULL}},
+    {.name = "PMIX_FABRIC_SWITCH", .string = "pmix.fab.switch", .type = PMIX_STRING,
+     .description = (char *[]){"ID string of a fabric switch. When used as a modifier",
+                               "in a request for information, specifies the switch",
+                               "whose information is to be returned. When used",
+                               "directly as a key in a request, returns a",
+                               "pmix_data_array_t of string identifiers for all",
+                               "fabric switches in the overall system.", NULL}},
 
-    {.name = "PMIX_FABRIC_NIC", .string = "pmix.net.nic", .type = PMIX_STRING,
-     .description = (char *[]){"string ID of a NIC", NULL}},
+    {.name = "PMIX_FABRIC_ENDPT", .string = "pmix.fab.endpt", .type = PMIX_DATA_ARRAY,
+     .description = (char *[]){"Fabric endpoints for a specified process. As multiple",
+                               "endpoints may be assigned to a given process (e.g.,",
+                               "in the case where multiple devices are associated",
+                               "with a package to which the process is bound), the",
+                               "returned values will be provided in a",
+                               "pmix_data_array_t of pmix_endpoint_t elements.", NULL}},
 
-    {.name = "PMIX_FABRIC_ENDPT", .string = "pmix.net.endpt", .type = PMIX_DATA_ARRAY,
-     .description = (char *[]){"array of fabric endpts for process", NULL}},
+    {.name = "PMIX_FABRIC_SHAPE", .string = "pmix.fab.shape", .type = PMIX_DATA_ARRAY,
+     .description = (char *[]){"The size of each dimension in the specified fabric",
+                               "plane/view, returned in a pmix_data_array_t",
+                               "containing an array of uint32_t values. The size is",
+                               "defined as the number of elements present in that",
+                               "dimension - e.g., the number of devices in one",
+                               "dimension of a physical view of a fabric plane. If no",
+                               "plane is specified, then the shape of each plane in",
+                               "the overall system will be returned in a",
+                               "pmix_data_array_t array where each element is itself",
+                               "a two-element array containing the PMIX_FABRIC_PLANE",
+                               "followed by that plane's fabric shape. Default is to",
+                               "provide the shape in logical view.", NULL}},
 
-    {.name = "PMIX_FABRIC_SHAPE", .string = "pmix.net.shape", .type = PMIX_DATA_ARRAY,
-     .description = (char *[]){"number of interfaces (uint32_t) on each dimension of",
-                               "the specified fabric plane in the requested view", NULL}},
-
-    {.name = "PMIX_FABRIC_SHAPE_STRING", .string = "pmix.net.shapestr", .type = PMIX_STRING,
-     .description = (char *[]){"fabric shape expressed as a string (e.g.,",
-                               "\"10x12x2\")", NULL}},
+    {.name = "PMIX_FABRIC_SHAPE_STRING", .string = "pmix.fab.shapestr", .type = PMIX_STRING,
+     .description = (char *[]){"Network shape expressed as a string (e.g.,",
+                               "\"10x12x2\"). If no plane is specified, then the",
+                               "shape of each plane in the overall system will be",
+                               "returned in a pmix_data_array_t array where each",
+                               "element is itself a two-element array containing the",
+                               "PMIX_FABRIC_PLANE followed by that plane's fabric",
+                               "shape string. Default is to provide the shape in",
+                               "logical view.", NULL}},
 
     {.name = "PMIX_SWITCH_PEERS", .string = "pmix.speers", .type = PMIX_STRING,
-     .description = (char *[]){"comma-delimited string of peers that share the same",
-                               "switch as the proc specified in the call to PMIx_Get.",
-                               "Multi-NIC environments will return an array of",
-                               "results, each element containing the NIC and the list",
-                               "of peers sharing the switch to which that NIC is",
-                               "connected.", NULL}},
+     .description = (char *[]){"Peer ranks that share the same switch as the process",
+                               "specified in the call to PMIx_Get. Returns a",
+                               "pmix_data_array_t array of pmix_info_t results, each",
+                               "element containing the PMIX_SWITCH_PEERS key with a",
+                               "three-element pmix_data_array_t array of pmix_info_t",
+                               "containing the PMIX_FABRIC_DEVICE_ID of the local",
+                               "fabric device, the PMIX_FABRIC_SWITCH identifying the",
+                               "switch to which it is connected, and a",
+                               "comma-delimited string of peer ranks sharing the",
+                               "switch to which that device is connected.", NULL}},
 
     {.name = "PMIX_FABRIC_DEVICE", .string = "pmix.fabdev", .type = PMIX_DATA_ARRAY,
      .description = (char *[]){"An array of pmix_info_t describing a particular",
-                               "fabric device (NIC).", NULL}},
+                               "fabric device. The first element in the array shall",
+                               "be the PMIX_FABRIC_DEVICE_ID of the device", NULL}},
+
+    {.name = "PMIX_FABRIC_DEVICES", .string = "pmix.fab.devs", .type = PMIX_DATA_ARRAY,
+     .description = (char *[]){"Array of pmix_info_t containing information for all",
+                               "devices on the specified node. Each element of the",
+                               "array will contain a PMIX_FABRIC_DEVICE entry, which",
+                               "in turn will contain an array of information on a",
+                               "given device.", NULL}},
 
     {.name = "PMIX_FABRIC_DEVICE_NAME", .string = "pmix.fabdev.nm", .type = PMIX_STRING,
      .description = (char *[]){"The operating system name associated with the device.",
                                "This may be a logical fabric interface name (e.g.",
                                "eth0 or eno1) or an absolute filename.", NULL}},
+
+    {.name = "PMIX_FABRIC_DEVICE_INDEX", .string = "pmix.fabdev.idx", .type = PMIX_UINT32,
+     .description = (char *[]){"Index of the device within an associated",
+                               "communication cost matrix.", NULL}},
 
     {.name = "PMIX_FABRIC_DEVICE_VENDOR", .string = "pmix.fabdev.vndr", .type = PMIX_STRING,
      .description = (char *[]){"Indicates the name of the vendor that distributes the",
@@ -1583,9 +1728,8 @@ pmix_regattr_input_t dictionary[] = {
      .description = (char *[]){"The type of bus to which the device is attached",
                                "(e.g., \"PCI\", \"GEN-Z\").", NULL}},
 
-    {.name = "PMIX_FABRIC_DEVICE_ID", .string = "pmix.fabdev.devid", .type = PMIX_STRING,
-     .description = (char *[]){"A vendor-provided identifier for the device or",
-                               "product", NULL}},
+    {.name = "PMIX_FABRIC_DEVICE_ID", .string = "pmix.fabdev.id", .type = PMIX_STRING,
+     .description = (char *[]){"System-wide UUID of a particular fabric device.", NULL}},
 
     {.name = "PMIX_FABRIC_DEVICE_DRIVER", .string = "pmix.fabdev.driver", .type = PMIX_STRING,
      .description = (char *[]){"The name of the driver associated with the device", NULL}},
@@ -1595,8 +1739,8 @@ pmix_regattr_input_t dictionary[] = {
 
     {.name = "PMIX_FABRIC_DEVICE_ADDRESS", .string = "pmix.fabdev.addr", .type = PMIX_STRING,
      .description = (char *[]){"The primary link-level address associated with the",
-                               "NIC, such as a MAC address. If multiple addresses are",
-                               "available, only one will be reported.", NULL}},
+                               "device, such as a MAC address. If multiple addresses",
+                               "are available, only one will be reported.", NULL}},
 
     {.name = "PMIX_FABRIC_DEVICE_MTU", .string = "pmix.fabdev.mtu", .type = PMIX_SIZE,
      .description = (char *[]){"The maximum transfer unit of link level frames or",
@@ -1628,6 +1772,170 @@ pmix_regattr_input_t dictionary[] = {
                                "identifier PMIX_HOSTNAME or PMIX_NODEID and",
                                "PMIX_FABRIC_DEVICE_PCI_DEVID shall be unique within",
                                "the system.", NULL}},
+
+    {.name = "PMIX_MAX_VALUE", .string = "pmix.descr.maxval", .type = PMIX_INT,
+     .description = (char *[]){"Used in pmix_regattr_t to describe the maximum valid",
+                               "value for the associated attribute.", NULL}},
+
+    {.name = "PMIX_MIN_VALUE", .string = "pmix.descr.minval", .type = PMIX_INT,
+     .description = (char *[]){"Used in pmix_regattr_t to describe the minimum valid",
+                               "value for the associated attribute.", NULL}},
+
+    {.name = "PMIX_ENUM_VALUE", .string = "pmix.descr.enum", .type = PMIX_STRING,
+     .description = (char *[]){"Used in pmix_regattr_t to describe accepted values",
+                               "for the associated attribute. Numerical values shall",
+                               "be presented in a form convertible to the attribute's",
+                               "declared data type. Named values (i.e., values",
+                               "defined by constant names via a typical C-language",
+                               "enum declaration) must be provided as their numerical",
+                               "equivalent.", NULL}},
+    {.name = "PMIX_TOPOLOGY", .string = "pmix.topo", .type = PMIX_POINTER,
+     .description = (char *[]){"***** DEPRECATED ***** pointer to the PMIx client's",
+                               "internal topology object", NULL}},
+
+    {.name = "PMIX_DEBUG_JOB", .string = "pmix.dbg.job", .type = PMIX_STRING,
+     .description = (char *[]){"***** DEPRECATED ***** nspace of the job assigned to",
+                               "this debugger to be debugged. Note that id's, pids,",
+                               "and other info on the procs is available via a query",
+                               "for the nspace's local or global proctable", NULL}},
+
+    {.name = "PMIX_RECONNECT_SERVER", .string = "pmix.cnct.recon", .type = PMIX_BOOL,
+     .description = (char *[]){"tool is requesting to change server connections", NULL}},
+
+    {.name = "PMIX_ALLOC_NETWORK", .string = "pmix.alloc.net", .type = PMIX_DATA_ARRAY,
+     .description = (char *[]){"***** DEPRECATED *****", NULL}},
+
+    {.name = "PMIX_ALLOC_NETWORK_ID", .string = "pmix.alloc.netid", .type = PMIX_STRING,
+     .description = (char *[]){"***** DEPRECATED *****", NULL}},
+
+    {.name = "PMIX_ALLOC_NETWORK_QOS", .string = "pmix.alloc.netqos", .type = PMIX_STRING,
+     .description = (char *[]){"***** DEPRECATED *****", NULL}},
+
+    {.name = "PMIX_ALLOC_NETWORK_TYPE", .string = "pmix.alloc.nettype", .type = PMIX_STRING,
+     .description = (char *[]){"***** DEPRECATED *****", NULL}},
+
+    {.name = "PMIX_ALLOC_NETWORK_PLANE", .string = "pmix.alloc.netplane", .type = PMIX_STRING,
+     .description = (char *[]){"***** DEPRECATED *****", NULL}},
+
+    {.name = "PMIX_ALLOC_NETWORK_ENDPTS", .string = "pmix.alloc.endpts", .type = PMIX_SIZE,
+     .description = (char *[]){"***** DEPRECATED *****", NULL}},
+
+    {.name = "PMIX_ALLOC_NETWORK_ENDPTS_NODE", .string = "pmix.alloc.endpts.nd", .type = PMIX_SIZE,
+     .description = (char *[]){"***** DEPRECATED *****", NULL}},
+
+    {.name = "PMIX_ALLOC_NETWORK_SEC_KEY", .string = "pmix.alloc.nsec", .type = PMIX_BYTE_OBJECT,
+     .description = (char *[]){"***** DEPRECATED *****", NULL}},
+
+    {.name = "PMIX_PROC_DATA", .string = "pmix.pdata", .type = PMIX_DATA_ARRAY,
+     .description = (char *[]){"***** DEPRECATED ***** starts with rank, then",
+                               "contains more data", NULL}},
+
+    {.name = "PMIX_LOCALITY", .string = "pmix.loc", .type = PMIX_UINT16,
+     .description = (char *[]){"***** DEPRECATED *****relative locality of two procs", NULL}},
+
+    {.name = "PMIX_LOCAL_TOPO", .string = "pmix.ltopo", .type = PMIX_STRING,
+     .description = (char *[]){"***** DEPRECATED *****xml-representation of local",
+                               "node topology", NULL}},
+
+    {.name = "PMIX_TOPOLOGY_XML", .string = "pmix.topo.xml", .type = PMIX_STRING,
+     .description = (char *[]){"***** DEPRECATED *****XML-based description of",
+                               "topology", NULL}},
+
+    {.name = "PMIX_TOPOLOGY_FILE", .string = "pmix.topo.file", .type = PMIX_STRING,
+     .description = (char *[]){"***** DEPRECATED *****full path to file containing",
+                               "XML topology description", NULL}},
+
+    {.name = "PMIX_TOPOLOGY_SIGNATURE", .string = "pmix.toposig", .type = PMIX_STRING,
+     .description = (char *[]){"***** DEPRECATED *****topology signature string", NULL}},
+
+    {.name = "PMIX_HWLOC_SHMEM_ADDR", .string = "pmix.hwlocaddr", .type = PMIX_SIZE,
+     .description = (char *[]){"***** DEPRECATED *****address of HWLOC shared memory",
+                               "segment", NULL}},
+
+    {.name = "PMIX_HWLOC_SHMEM_SIZE", .string = "pmix.hwlocsize", .type = PMIX_SIZE,
+     .description = (char *[]){"***** DEPRECATED *****size of HWLOC shared memory",
+                               "segment", NULL}},
+
+    {.name = "PMIX_HWLOC_SHMEM_FILE", .string = "pmix.hwlocfile", .type = PMIX_STRING,
+     .description = (char *[]){"***** DEPRECATED *****path to HWLOC shared memory",
+                               "file", NULL}},
+
+    {.name = "PMIX_HWLOC_XML_V1", .string = "pmix.hwlocxml1", .type = PMIX_STRING,
+     .description = (char *[]){"***** DEPRECATED ***** XML representation of local",
+                               "topology using HWLOC v1.x format", NULL}},
+
+    {.name = "PMIX_HWLOC_XML_V2", .string = "pmix.hwlocxml2", .type = PMIX_STRING,
+     .description = (char *[]){"***** DEPRECATED ***** XML representation of local",
+                               "topology using HWLOC v2.x format", NULL}},
+
+    {.name = "PMIX_HWLOC_SHARE_TOPO", .string = "pmix.hwlocsh", .type = PMIX_BOOL,
+     .description = (char *[]){"***** DEPRECATED ***** Share the HWLOC topology via",
+                               "shared memory", NULL}},
+
+    {.name = "PMIX_HWLOC_HOLE_KIND", .string = "pmix.hwlocholek", .type = PMIX_STRING,
+     .description = (char *[]){"***** DEPRECATED ***** Kind of VM \"hole\" HWLOC",
+                               "should use for shared memory", NULL}},
+
+    {.name = "PMIX_DSTPATH", .string = "pmix.dstpath", .type = PMIX_STRING,
+     .description = (char *[]){"***** DEPRECATED ***** path to dstore files", NULL}},
+
+    {.name = "PMIX_COLLECTIVE_ALGO", .string = "pmix.calgo", .type = PMIX_STRING,
+     .description = (char *[]){"***** DEPRECATED ***** comma-delimited list of",
+                               "algorithms to use for collective", NULL}},
+
+    {.name = "PMIX_COLLECTIVE_ALGO_REQD", .string = "pmix.calreqd", .type = PMIX_BOOL,
+     .description = (char *[]){"***** DEPRECATED ***** if true, indicates that the",
+                               "requested choice of algo is mandatory", NULL}},
+
+    {.name = "PMIX_PROC_BLOB", .string = "pmix.pblob", .type = PMIX_BYTE_OBJECT,
+     .description = (char *[]){"***** DEPRECATED ***** packed blob of process data", NULL}},
+
+    {.name = "PMIX_MAP_BLOB", .string = "pmix.mblob", .type = PMIX_BYTE_OBJECT,
+     .description = (char *[]){"***** DEPRECATED ***** packed blob of process",
+                               "location", NULL}},
+
+    {.name = "PMIX_MAPPER", .string = "pmix.mapper", .type = PMIX_STRING,
+     .description = (char *[]){"***** DEPRECATED ***** mapper to use for placing",
+                               "spawned procs", NULL}},
+
+    {.name = "PMIX_NON_PMI", .string = "pmix.nonpmi", .type = PMIX_BOOL,
+     .description = (char *[]){"***** DEPRECATED ***** spawned procs will not call",
+                               "PMIx_Init", NULL}},
+
+    {.name = "PMIX_PROC_URI", .string = "pmix.puri", .type = PMIX_STRING,
+     .description = (char *[]){"***** DEPRECATED ***** URI containing contact info",
+                               "for proc", NULL}},
+
+    {.name = "PMIX_ARCH", .string = "pmix.arch", .type = PMIX_UINT32,
+     .description = (char *[]){"***** DEPRECATED ***** datatype architecture flag", NULL}},
+
+    {.name = "PMIX_DEBUG_JOB_DIRECTIVES", .string = "pmix.dbg.jdirs", .type = PMIX_DATA_ARRAY,
+     .description = (char *[]){"***** DEPRECATED ***** array of job-level directives", NULL}},
+
+    {.name = "PMIX_DEBUG_APP_DIRECTIVES", .string = "pmix.dbg.adirs", .type = PMIX_DATA_ARRAY,
+     .description = (char *[]){"***** DEPRECATED ***** array of app-level directives", NULL}},
+
+    {.name = "PMIX_EVENT_NO_TERMINATION", .string = "pmix.evnoterm", .type = PMIX_BOOL,
+     .description = (char *[]){"***** DEPRECATED ***** indicates that the handler has",
+                               "satisfactorily handled the event and believes",
+                               "termination of the application is not required", NULL}},
+
+    {.name = "PMIX_EVENT_WANT_TERMINATION", .string = "pmix.evterm", .type = PMIX_BOOL,
+     .description = (char *[]){"***** DEPRECATED ***** indicates that the handler has",
+                               "determined that the application should be terminated", NULL}},
+
+    {.name = "PMIX_GDS_MODULE", .string = "pmix.gds.mod", .type = PMIX_STRING,
+     .description = (char *[]){"***** DEPRECATED ***** comma-delimited string of",
+                               "desired modules", NULL}},
+
+    {.name = "PMIX_IOF_STOP", .string = "pmix.iof.stop", .type = PMIX_BOOL,
+     .description = (char *[]){"***** DEPRECATED ***** Stop forwarding the specified",
+                               "channel(s)", NULL}},
+
+    {.name = "PMIX_NOTIFY_LAUNCH", .string = "pmix.note.lnch", .type = PMIX_BOOL,
+     .description = (char *[]){"***** DEPRECATED ***** notify the requestor upon",
+                               "launch of the child job and return its namespace in",
+                               "the event", NULL}},
     {.name = ""}
 
 };
