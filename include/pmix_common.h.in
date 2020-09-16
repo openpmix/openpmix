@@ -139,7 +139,7 @@ typedef uint32_t pmix_rank_t;
  * might choose to expose - i.e., they are values provided
  * by the resource manager as opposed to the application. Thus,
  * these keys are RESERVED */
-#define PMIX_ATTR_UNDEF      NULL
+#define PMIX_ATTR_UNDEF      "pmix.undef"
 
 /* initialization attributes */
 #define PMIX_EVENT_BASE                     "pmix.evbase"           // (struct event_base *) pointer to libevent event_base
@@ -450,7 +450,14 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_TIMEOUT_STACKTRACES            "pmix.tim.stack"        // (bool) include process stacktraces in timeout report from a job
 #define PMIX_TIMEOUT_REPORT_STATE           "pmix.tim.state"        // (bool) report process states in timeout report from a job
 #define PMIX_APP_ARGV                       "pmix.app.argv"         // (char*) consolidated argv passed to the spawn command for the given app
-
+#define PMIX_NOTIFY_JOB_EVENTS              "pmix.note.jev"         // (bool) Requests that the launcher generate the PMIX_EVENT_JOB_START,
+                                                                    //        PMIX_LAUNCH_COMPLETE, and PMIX_EVENT_JOB_END events. Each event is to
+                                                                    //        include at least the namespace of the corresponding job and a
+                                                                    //        PMIX_EVENT_TIMESTAMP indicating the time the event occurred.
+#define PMIX_NOTIFY_PROC_TERMINATION        "pmix.noteproc"         // (bool) Requests that the launcher generate the PMIX_EVENT_PROC_TERMINATED
+                                                                    //        event whenever a process either normally or abnormally terminates.
+#define PMIX_NOTIFY_PROC_ABNORMAL_TERMINATION   "pmix.noteabproc"   // (bool) Requests that the launcher generate the PMIX_EVENT_PROC_TERMINATED
+                                                                    //        event only when a process abnormally terminates.
 
 /* query keys - value type shown is the type of the value that will be RETURNED by that key  */
 #define PMIX_QUERY_SUPPORTED_KEYS           "pmix.qry.keys"         // (char*) returns comma-delimited list of keys supported by the query
@@ -513,6 +520,17 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_QUERY_AVAIL_SERVERS            "pmix.qry.asrvrs"       // (pmix_data_array_t*) array of pmix_info_t, each element containing an array of
                                                                     //         pmix_info_t of available data for servers on this node
                                                                     //         to which the caller might be able to connect. NO QUALIFIERS
+#define PMIX_QUERY_QUALIFIERS               "pmix.qry.quals"        // (pmix_data_array_t*) Contains an array of qualifiers that were included in the
+                                                                    //         query that produced the provided results. This attribute is solely for
+                                                                    //         reporting purposes and cannot be used in PMIx_Get or other query
+                                                                    //         operations
+#define PMIX_QUERY_RESULTS                  "pmix.qry.res"          // (pmix_data_array_t*) Contains an array of query results for a given pmix_query_t passed to the
+                                                                    //         PMIx_Query_info APIs. If qualifiers were included in the query, then the first element
+                                                                    //         of the array shall be the PMIX_QUERY_QUALIFIERS attribute containing those qualifiers.
+                                                                    //         Each of the remaining elements of the array is a pmix_info_t containing the query key
+                                                                    //         and the corresponding value returned by the query. This attribute is solely for
+                                                                    //         reporting purposes and cannot be used in PMIx_Get or other query operations
+
 
 /* query qualifiers - these are used to provide information to narrow/modify the query. Value type shown is the type of data expected
  * to be provided with the key */
@@ -577,6 +595,15 @@ typedef uint32_t pmix_rank_t;
                                                                     //        information. The PMIX_NSPACE or PMIX_JOBID attributes of the job containing
                                                                     //        the appplication, plus its PMIX_APPNUM attribute, are required to be
                                                                     //        included in the array.
+#define PMIX_PROC_INFO_ARRAY                "pmix.pdata"            // (pmix_data_array_t*) Provide an array of pmix_info_t containing process-realm
+                                                                    //        information. The PMIX_RANK and PMIX_NSPACE attributes, or the
+                                                                    //        PMIX_PROCID attribute, are required to be included in the array when
+                                                                    //        the array is not included as part of a call to
+                                                                    //        PMIx_server_register_nspace - i.e., when the job containing the process
+                                                                    //        is ambiguous. All three may be included if desired. When the array is
+                                                                    //        included in some broader structure that identifies the job, then only
+                                                                    //        the PMIX_RANK or the PMIX_PROCID attribute must be included (the others
+                                                                    //        are optional).
 #define PMIX_NODE_INFO_ARRAY                "pmix.node.arr"         // (pmix_data_array_t*) Provide an array of pmix_info_t containing node-level
                                                                     //        information. At a minimum, either the PMIX_NODEID or PMIX_HOSTNAME
                                                                     //        attribute is required to be included in the array, though both may be
@@ -613,6 +640,19 @@ typedef uint32_t pmix_rank_t;
 
 #define PMIX_LOG_GLOBAL_DATASTORE           "pmix.log.gstore"       // (bool) log the provided data to a global datastore
 #define PMIX_LOG_JOB_RECORD                 "pmix.log.jrec"         // (bool) log the provided information to the RM's job record
+#define PMIX_LOG_PROC_TERMINATION           "pmix.logproc"          // (bool) Requests that the launcher log the PMIX_EVENT_PROC_TERMINATED} event
+                                                                    //        whenever a process either normally or abnormally terminates.
+#define PMIX_LOG_PROC_ABNORMAL_TERMINATION  "pmix.logabproc"        // (bool) Requests that the launcher log the PMIX_EVENT_PROC_TERMINATED event
+                                                                    //        only when a process abnormally terminates.
+#define PMIX_LOG_JOB_EVENTS                 "pmix.log.jev"          // (bool) Requests that the launcher log the PMIX_EVENT_JOB_START,
+                                                                    //        PMIX_LAUNCH_COMPLETE, and PMIX_EVENT_JOB_END events using PMIx_Log
+#define PMIX_LOG_COMPLETION                 "pmix.logcomp"          // (bool) Requests that the launcher log the PMIX_EVENT_JOB_END event
+                                                                    //        for normal or abnormal termination of the spawned job using
+                                                                    //        PMIx_Log. The event shall include the returned status code
+                                                                    //        (PMIX_JOB_TERM_STATUS) for the corresponding job; the identity
+                                                                    //        (PMIX_PROCID) and exit status (PMIX_EXIT_CODE) of the first failed
+                                                                    //        process, if applicable; and a PMIX_EVENT_TIMESTAMP indicating the time
+                                                                    //        the termination occurred.
 
 
 /* debugger attributes */
@@ -2437,9 +2477,7 @@ typedef struct pmix_fabric_s {
 
 typedef enum {
     PMIX_FABRIC_REQUEST_INFO,
-    PMIX_FABRIC_UPDATE_INFO,
-    PMIX_FABRIC_GET_DEVICE_INFO,
-    PMIX_FABRIC_GET_DEVICE_INDEX
+    PMIX_FABRIC_UPDATE_INFO
 } pmix_fabric_operation_t;
 
 /****    GENERIC HELPER MACROS    ****/

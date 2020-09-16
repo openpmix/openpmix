@@ -4150,22 +4150,6 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
         return rc;
     }
 
-    if (PMIX_FABRIC_GET_VERTEX_INFO_CMD == cmd) {
-        PMIX_GDS_CADDY(cd, peer, tag);
-        if (PMIX_SUCCESS != (rc = pmix_server_fabric_get_vertex_info(cd, buf, fabric_cbfunc))) {
-            PMIX_RELEASE(cd);
-        }
-        return rc;
-    }
-
-    if (PMIX_FABRIC_GET_DEVICE_INDEX_CMD == cmd) {
-        PMIX_GDS_CADDY(cd, peer, tag);
-        if (PMIX_SUCCESS != (rc = pmix_server_fabric_get_device_index(cd, buf, fabric_cbfunc))) {
-            PMIX_RELEASE(cd);
-        }
-        return rc;
-    }
-
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
