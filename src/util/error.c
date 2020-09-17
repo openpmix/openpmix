@@ -191,8 +191,6 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
 
     case PMIX_ERR_EVENT_REGISTRATION:
         return "EVENT-REGISTRATION";
-    case PMIX_ERR_JOB_TERMINATED:
-        return "PMIX_ERR_JOB_TERMINATED";
     case PMIX_ERR_UPDATE_ENDPOINTS:
         return "UPDATE-ENDPOINTS";
     case PMIX_MODEL_DECLARED:
@@ -251,12 +249,14 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
     case PMIX_ERR_REPEAT_ATTR_REGISTRATION:
         return "REPEAT-ATTRIBUTE-REGISTRATION";
 
-    case PMIX_ERR_NODE_DOWN:
+    case PMIX_EVENT_NODE_DOWN:
         return "NODE-DOWN";
-    case PMIX_ERR_NODE_OFFLINE:
+    case PMIX_EVENT_NODE_OFFLINE:
         return "NODE-OFFLINE";
-    case PMIX_ERR_SYS_OTHER:
+    case PMIX_EVENT_SYS_OTHER:
         return "UNDEFINED-SYSTEM-EVENT";
+    case PMIX_EVENT_SYS_BASE:
+        return "SYSTEM BASE EVENT";
 
     case PMIX_EVENT_NO_ACTION_TAKEN:
         return "EVENT-NO-ACTION-TAKEN";
@@ -319,6 +319,19 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
         return "FAILED TO OBTAIN ALLOCATION";
     case PMIX_ERR_JOB_ABORTED_BY_SYS_EVENT:
         return "JOB ABORTED BY SYSTEM EVENT";
+    case PMIX_ERR_PROC_TERM_WO_SYNC:
+        return "PROC TERMINATED WITHOUT SYNC";
+
+    case PMIX_EVENT_PROC_TERMINATED:
+        return "PROC TERMINATED";
+    case PMIX_EVENT_JOB_START:
+        return "JOB STARTED";
+    case PMIX_EVENT_JOB_END:
+        return "JOB ENDED";
+    case PMIX_EVENT_SESSION_START:
+        return "SESSION STARTED";
+    case PMIX_EVENT_SESSION_END:
+        return "SESSION ENDED";
 
     default:
         return "ERROR STRING NOT FOUND";

@@ -1246,24 +1246,18 @@ fi
 
 AM_CONDITIONAL([WANT_PYTHON_BINDINGS], [test $WANT_PYTHON_BINDINGS -eq 1])
 
+AM_PATH_PYTHON([3.4], [pmix_python_good=yes], [pmix_python_good=no])
+AM_CONDITIONAL([PMIX_PYTHON_AVAILABLE], [test "$pmix_python_good" = "yes"])
+
 if test "$WANT_PYTHON_BINDINGS" = "1"; then
-    AM_PATH_PYTHON([3.4])
+    if test "$pmix_python_good" = "no"; then
+        AC_MSG_WARN([Python bindings were enabled, but no suitable])
+        AC_MSG_WARN([interpreter was found. PMIx requires at least])
+        AC_MSG_WARN([Python v3.4 to provide Python bindings])
+        AC_MSG_ERROR([Cannot continue])
+    fi
     pyvers=`python3 --version`
     python_version=${pyvers#"Python "}
-    major=$(echo $python_version | cut -d. -f1)
-    minor=$(echo $python_version | cut -d. -f2)
-    if test "$major" -lt "3"; then
-        AC_MSG_WARN([Python bindings were enabled, but no suitable])
-        AC_MSG_WARN([interpreter was found. PMIx requires at least])
-        AC_MSG_WARN([Python v3.4 to provide Python bindings])
-        AC_MSG_ERROR([Cannot continue])
-    fi
-    if test "$major" -eq "3" && test "$minor" -lt "4"; then
-        AC_MSG_WARN([Python bindings were enabled, but no suitable])
-        AC_MSG_WARN([interpreter was found. PMIx requires at least])
-        AC_MSG_WARN([Python v3.4 to provide Python bindings])
-        AC_MSG_ERROR([Cannot continue])
-    fi
 
     PMIX_SUMMARY_ADD([[Bindings]],[[Python]], [pmix_python], [yes ($python_version)])
 
