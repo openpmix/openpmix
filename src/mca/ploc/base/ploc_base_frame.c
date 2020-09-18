@@ -51,10 +51,16 @@ pmix_ploc_API_module_t pmix_ploc = {
     .get_cpuset = pmix_ploc_base_get_cpuset,
     .generate_locality_string = pmix_ploc_base_generate_locality_string,
     .get_relative_locality = pmix_ploc_base_get_relative_locality,
-    .pack = pmix_ploc_base_pack,
-    .unpack = pmix_ploc_base_unpack,
-    .copy = pmix_ploc_base_copy,
-    .print = pmix_ploc_base_print
+    .pack_cpuset = pmix_ploc_base_pack_cpuset,
+    .unpack_cpuset = pmix_ploc_base_unpack_cpuset,
+    .copy_cpuset = pmix_ploc_base_copy_cpuset,
+    .print_cpuset = pmix_ploc_base_print_cpuset,
+    .release_cpuset = pmix_ploc_base_release_cpuset,
+    .pack_topology = pmix_ploc_base_pack_topology,
+    .unpack_topology = pmix_ploc_base_unpack_topology,
+    .copy_topology = pmix_ploc_base_copy_topology,
+    .print_topology = pmix_ploc_base_print_topology,
+    .release_topology = pmix_ploc_base_release_topology
 };
 
 static pmix_status_t pmix_ploc_close(void)

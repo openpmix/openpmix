@@ -2029,7 +2029,7 @@ pmix_status_t pmix_bfrops_base_print_cpuset(char **output, char *prefix,
         return PMIX_ERR_BAD_PARAM;
     }
 
-    string = pmix_ploc.print(src);
+    string = pmix_ploc.print_cpuset(src);
     if (NULL == string) {
         return PMIX_ERR_NOT_SUPPORTED;
     }
@@ -2180,6 +2180,46 @@ pmix_status_t pmix_bfrops_base_print_endpoint(char **output, char *prefix,
     if (prefx != prefix) {
         free(prefx);
     }
+
+    if (0 > ret) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    } else {
+        return PMIX_SUCCESS;
+    }
+}
+
+pmix_status_t pmix_bfrops_base_print_topology(char **output, char *prefix,
+                                             pmix_topology_t *src,
+                                             pmix_data_type_t type)
+{
+    char *prefx, *string;
+    int ret;
+
+    if (PMIX_TOPO != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    string = pmix_ploc.print_topology(src);
+    if (NULL == string) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    /* deal with NULL prefix */
+    if (NULL == prefix) {
+        if (0 > asprintf(&prefx, " ")) {
+            free(string);
+            return PMIX_ERR_NOMEM;
+        }
+    } else {
+        prefx = prefix;
+    }
+
+    ret = asprintf(output, "%sData type: PMIX_TOPO\tValue: %s",
+                   prefx, string);
+    if (prefx != prefix) {
+        free(prefx);
+    }
+    free(string);
 
     if (0 > ret) {
         return PMIX_ERR_OUT_OF_RESOURCE;

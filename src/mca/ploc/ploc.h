@@ -81,7 +81,7 @@ typedef pmix_status_t (*pmix_ploc_base_module_get_location_fn_t)(pmix_cpuset_t *
 typedef pmix_status_t (*pmix_ploc_base_module_update_dist_fn_t)(pmix_info_cbfunc_t cbfunc,
                                                                 void *cbdata);
 
-/* pack/unpack/copy/print functions */
+/* cpuset pack/unpack/copy/print functions */
 typedef pmix_status_t (*pmix_ploc_base_module_pack_fn_t)(pmix_buffer_t *buf, pmix_cpuset_t *src);
 
 typedef pmix_status_t (*pmix_ploc_base_module_unpack_fn_t)(pmix_buffer_t *buf, pmix_cpuset_t *dest);
@@ -93,8 +93,21 @@ typedef char* (*pmix_ploc_base_module_print_fn_t)(pmix_cpuset_t *src);
 
 typedef pmix_status_t (*pmix_ploc_base_module_release_fn_t)(pmix_cpuset_t *ptr, size_t sz);
 
-
 typedef void (*pmix_ploc_base_API_release_fn_t)(pmix_cpuset_t *ptr, size_t sz);
+
+/* topology pack/unpack/copy/print functions */
+typedef pmix_status_t (*pmix_ploc_base_module_pack_topo_fn_t)(pmix_buffer_t *buf, pmix_topology_t *src);
+
+typedef pmix_status_t (*pmix_ploc_base_module_unpack_topo_fn_t)(pmix_buffer_t *buf, pmix_topology_t *dest);
+
+typedef pmix_status_t (*pmix_ploc_base_module_copy_topo_fn_t)(pmix_topology_t *dest,
+                                                              pmix_topology_t *src);
+
+typedef char* (*pmix_ploc_base_module_print_topo_fn_t)(pmix_topology_t *src);
+
+typedef pmix_status_t (*pmix_ploc_base_module_release_topo_fn_t)(pmix_topology_t *ptr, size_t sz);
+
+typedef void (*pmix_ploc_base_API_release_topo_fn_t)(pmix_topology_t *ptr, size_t sz);
 
 /**
  * Base structure for a PLOC module. Each component should malloc a
@@ -112,11 +125,16 @@ typedef struct {
     pmix_ploc_base_module_get_rel_loc_fn_t              get_relative_locality;
     pmix_ploc_base_module_get_location_fn_t             get_location;
     pmix_ploc_base_module_update_dist_fn_t              update_distances;
-    pmix_ploc_base_module_pack_fn_t                     pack;
-    pmix_ploc_base_module_unpack_fn_t                   unpack;
-    pmix_ploc_base_module_copy_fn_t                     copy;
-    pmix_ploc_base_module_print_fn_t                    print;
-    pmix_ploc_base_module_release_fn_t                  release;
+    pmix_ploc_base_module_pack_fn_t                     pack_cpuset;
+    pmix_ploc_base_module_unpack_fn_t                   unpack_cpuset;
+    pmix_ploc_base_module_copy_fn_t                     copy_cpuset;
+    pmix_ploc_base_module_print_fn_t                    print_cpuset;
+    pmix_ploc_base_module_release_fn_t                  release_cpuset;
+    pmix_ploc_base_module_pack_topo_fn_t                pack_topology;
+    pmix_ploc_base_module_unpack_topo_fn_t              unpack_topology;
+    pmix_ploc_base_module_copy_topo_fn_t                copy_topology;
+    pmix_ploc_base_module_print_topo_fn_t               print_topology;
+    pmix_ploc_base_module_release_topo_fn_t             release_topology;
 } pmix_ploc_module_t;
 
 /* define a public API */
@@ -129,11 +147,16 @@ typedef struct {
     pmix_ploc_base_module_get_rel_loc_fn_t              get_relative_locality;
     pmix_ploc_base_module_get_location_fn_t             get_location;
     pmix_ploc_base_module_update_dist_fn_t              update_distances;
-    pmix_ploc_base_module_pack_fn_t                     pack;
-    pmix_ploc_base_module_unpack_fn_t                   unpack;
-    pmix_ploc_base_module_copy_fn_t                     copy;
-    pmix_ploc_base_module_print_fn_t                    print;
-    pmix_ploc_base_API_release_fn_t                     release;
+    pmix_ploc_base_module_pack_fn_t                     pack_cpuset;
+    pmix_ploc_base_module_unpack_fn_t                   unpack_cpuset;
+    pmix_ploc_base_module_copy_fn_t                     copy_cpuset;
+    pmix_ploc_base_module_print_fn_t                    print_cpuset;
+    pmix_ploc_base_API_release_fn_t                     release_cpuset;
+    pmix_ploc_base_module_pack_topo_fn_t                pack_topology;
+    pmix_ploc_base_module_unpack_topo_fn_t              unpack_topology;
+    pmix_ploc_base_module_copy_topo_fn_t                copy_topology;
+    pmix_ploc_base_module_print_topo_fn_t               print_topology;
+    pmix_ploc_base_API_release_topo_fn_t                release_topology;
 } pmix_ploc_API_module_t;
 
 

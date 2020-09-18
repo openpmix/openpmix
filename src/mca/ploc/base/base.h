@@ -90,11 +90,17 @@ PMIX_EXPORT pmix_status_t pmix_ploc_base_generate_locality_string(const pmix_cpu
 PMIX_EXPORT pmix_status_t pmix_ploc_base_get_relative_locality(const char *loc1,
                                                                const char *loc2,
                                                                pmix_locality_t *locality);
-PMIX_EXPORT pmix_status_t pmix_ploc_base_pack(pmix_buffer_t *buf, pmix_cpuset_t *src);
-PMIX_EXPORT pmix_status_t pmix_ploc_base_unpack(pmix_buffer_t *buf, pmix_cpuset_t *dest);
-PMIX_EXPORT pmix_status_t pmix_ploc_base_copy(pmix_cpuset_t *dest, pmix_cpuset_t *src);
-PMIX_EXPORT char* pmix_ploc_base_print(pmix_cpuset_t *src);
-PMIX_EXPORT void pmix_ploc_base_release(pmix_cpuset_t *ptr, size_t sz);
+PMIX_EXPORT pmix_status_t pmix_ploc_base_pack_cpuset(pmix_buffer_t *buf, pmix_cpuset_t *src);
+PMIX_EXPORT pmix_status_t pmix_ploc_base_unpack_cpuset(pmix_buffer_t *buf, pmix_cpuset_t *dest);
+PMIX_EXPORT pmix_status_t pmix_ploc_base_copy_cpuset(pmix_cpuset_t *dest, pmix_cpuset_t *src);
+PMIX_EXPORT char* pmix_ploc_base_print_cpuset(pmix_cpuset_t *src);
+PMIX_EXPORT void pmix_ploc_base_release_cpuset(pmix_cpuset_t *ptr, size_t sz);
+
+PMIX_EXPORT pmix_status_t pmix_ploc_base_pack_topology(pmix_buffer_t *buf, pmix_topology_t *src);
+PMIX_EXPORT pmix_status_t pmix_ploc_base_unpack_topology(pmix_buffer_t *buf, pmix_topology_t *dest);
+PMIX_EXPORT pmix_status_t pmix_ploc_base_copy_topology(pmix_topology_t *dest, pmix_topology_t *src);
+PMIX_EXPORT char* pmix_ploc_base_print_topology(pmix_topology_t *src);
+PMIX_EXPORT void pmix_ploc_base_release_topology(pmix_topology_t *ptr, size_t sz);
 END_C_DECLS
 
 #endif

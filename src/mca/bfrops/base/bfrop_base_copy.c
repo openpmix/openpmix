@@ -908,9 +908,9 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
             pcpuset = (pmix_cpuset_t*)p->array;
             scpuset = (pmix_cpuset_t*)src->array;
             for (n=0; n < src->size; n++) {
-                rc = pmix_ploc.copy(&pcpuset[n], &scpuset[n]);
+                rc = pmix_ploc.copy_cpuset(&pcpuset[n], &scpuset[n]);
                 if (PMIX_SUCCESS != rc) {
-                    pmix_ploc.release(pcpuset, src->size);
+                    pmix_ploc.release_cpuset(pcpuset, src->size);
                     free(p->array);
                     free(p);
                     return rc;
@@ -1088,7 +1088,7 @@ pmix_status_t pmix_bfrops_base_copy_cpuset(pmix_cpuset_t **dest,
         return PMIX_ERR_NOMEM;
     }
 
-    rc = pmix_ploc.copy(dst, src);
+    rc = pmix_ploc.copy_cpuset(dst, src);
     if (PMIX_SUCCESS == rc) {
         *dest = dst;
     } else {
@@ -1178,4 +1178,28 @@ pmix_status_t pmix_bfrops_base_copy_endpoint(pmix_endpoint_t **dest,
         dst->endpt.size = src->endpt.size;
     }
     return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_copy_topology(pmix_topology_t **dest,
+                                           pmix_topology_t *src,
+                                           pmix_data_type_t type)
+{
+    pmix_topology_t *dst;
+    pmix_status_t rc;
+
+    if (PMIX_TOPO != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    PMIX_TOPOLOGY_CREATE(dst, 1);
+    if (NULL == dst) {
+        return PMIX_ERR_NOMEM;
+    }
+
+    rc = pmix_ploc.copy_topology(dst, src);
+    if (PMIX_SUCCESS == rc) {
+        *dest = dst;
+    } else {
+        free(dst);
+    }
+    return rc;
 }

@@ -1644,7 +1644,7 @@ pmix_status_t pmix_bfrops_base_unpack_cpuset(pmix_pointer_array_t *regtypes,
     n = *num_vals;
 
     for (i = 0; i < n; ++i) {
-        ret = pmix_ploc.unpack(buffer, &ptr[n]);
+        ret = pmix_ploc.unpack_cpuset(buffer, &ptr[n]);
         if (PMIX_SUCCESS != ret) {
             *num_vals = n;
             return ret;
@@ -1792,6 +1792,34 @@ pmix_status_t pmix_bfrops_base_unpack_endpoint(pmix_pointer_array_t *regtypes,
                 PMIX_ERROR_LOG(ret);
                 return ret;
             }
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_topology(pmix_pointer_array_t *regtypes,
+                                               pmix_buffer_t *buffer, void *dest,
+                                               int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_topology_t *ptr;
+    int32_t i, n;
+    pmix_status_t ret;
+
+    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
+                        "pmix_bfrop_unpack: %d topology", *num_vals);
+
+    if (PMIX_TOPO != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    ptr = (pmix_topology_t *) dest;
+    n = *num_vals;
+
+    for (i = 0; i < n; ++i) {
+        ret = pmix_ploc.unpack_topology(buffer, &ptr[n]);
+        if (PMIX_SUCCESS != ret) {
+            *num_vals = n;
+            return ret;
         }
     }
     return PMIX_SUCCESS;
