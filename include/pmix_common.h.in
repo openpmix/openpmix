@@ -1530,6 +1530,10 @@ typedef struct {
 #define PMIX_TOPOLOGY_CONSTRUCT(m) \
     memset((m), 0, sizeof(pmix_topology_t))
 
+#define PMIX_TOPOLOGY_CREATE(m, n) \
+    (m) = (pmix_topology_t*)calloc(n, sizeof(pmix_topology_t))
+
+
 /**** PMIX RELATIVE LOCALITY    ****/
 typedef uint16_t pmix_locality_t;
 #define PMIX_LOCALITY_UNKNOWN           0x0000

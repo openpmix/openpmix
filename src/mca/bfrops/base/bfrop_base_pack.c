@@ -1389,7 +1389,7 @@ pmix_status_t pmix_bfrops_base_pack_cpuset(pmix_pointer_array_t *regtypes,
     }
 
     for (i=0; i < num_vals; ++i) {
-        ret = pmix_ploc.pack(buffer, &ptr[i]);
+        ret = pmix_ploc.pack_cpuset(buffer, &ptr[i]);
         if (PMIX_SUCCESS != ret) {
             return ret;
         }
@@ -1494,6 +1494,31 @@ pmix_status_t pmix_bfrops_base_pack_endpoint(pmix_pointer_array_t *regtypes,
             if (PMIX_SUCCESS != ret) {
                 return ret;
             }
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_pack_topology(pmix_pointer_array_t *regtypes,
+                                             pmix_buffer_t *buffer, const void *src,
+                                             int32_t num_vals, pmix_data_type_t type)
+{
+    pmix_topology_t *ptr = (pmix_topology_t*)src;
+    int32_t i;
+    pmix_status_t ret;
+
+    if (NULL == regtypes) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (PMIX_TOPO != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    for (i=0; i < num_vals; ++i) {
+        /* call the framework to pack it */
+        ret = pmix_ploc.pack_topology(buffer, &ptr[i]);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
         }
     }
     return PMIX_SUCCESS;

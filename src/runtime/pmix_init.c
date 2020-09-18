@@ -104,9 +104,11 @@ int pmix_rte_init(uint32_t type,
 {
     int ret, debug_level;
     char *error = NULL, *evar;
-    size_t n;
+    size_t n, m;
     char hostname[PMIX_MAXHOSTNAMELEN] = {0};
     char *gds = NULL;
+    pmix_info_t *iptr;
+    size_t minfo;
 
     if( ++pmix_initialized != 1 ) {
         if( pmix_initialized < 1 ) {
@@ -311,6 +313,23 @@ int pmix_rte_init(uint32_t type,
                 }
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_GDS_MODULE)) {
                 gds = info[n].value.data.string;
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_NODE_INFO_ARRAY)) {
+                /* contains info about our node */
+                iptr = (pmix_info_t*)info[n].value.data.darray->array;
+                minfo = info[n].value.data.darray->size;
+                for (m=0; m < minfo; m++) {
+                    if (PMIX_CHECK_KEY(&iptr[m], PMIX_HOSTNAME)) {
+                        if (NULL != pmix_globals.hostname) {
+                            free(pmix_globals.hostname);
+                        }
+                        pmix_globals.hostname = strdup(iptr[m].value.data.string);
+                    } else if (PMIX_CHECK_KEY(&iptr[m], PMIX_NODEID)) {
+                        PMIX_VALUE_GET_NUMBER(ret, &iptr[m].value, pmix_globals.nodeid, uint32_t);
+                        if (PMIX_SUCCESS != ret) {
+                            goto return_error;
+                        }
+                    }
+                }
             }
         }
     }

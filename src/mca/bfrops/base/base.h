@@ -497,6 +497,9 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_devdist(pmix_pointer_array_t *re
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_endpoint(pmix_pointer_array_t *regtypes,
                                                          pmix_buffer_t *buffer, const void *src,
                                                          int32_t num_vals, pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_topology(pmix_pointer_array_t *regtypes,
+                                                         pmix_buffer_t *buffer, const void *src,
+                                                         int32_t num_vals, pmix_data_type_t type);
 
 
 /*
@@ -656,6 +659,9 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_devdist(pmix_pointer_array_t *
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_endpoint(pmix_pointer_array_t *regtypes,
                                                            pmix_buffer_t *buffer, void *dest,
                                                            int32_t *num_vals, pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_topology(pmix_pointer_array_t *regtypes,
+                                                           pmix_buffer_t *buffer, void *dest,
+                                                           int32_t *num_vals, pmix_data_type_t type);
 
 /**** DEPRECATED ****/
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_array(pmix_pointer_array_t *regtypes,
@@ -736,6 +742,9 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_devdist(pmix_device_distance_t *
                                                         pmix_data_type_t type);
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_endpoint(pmix_endpoint_t **dest,
                                                          pmix_endpoint_t *src,
+                                                         pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_topology(pmix_topology_t **dest,
+                                                         pmix_topology_t *src,
                                                          pmix_data_type_t type);
 
 /*
@@ -871,6 +880,9 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_devdist(char **output, char *pr
                                                          pmix_data_type_t type);
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_endpoint(char **output, char *prefix,
                                                           pmix_endpoint_t *src,
+                                                          pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_topology(char **output, char *prefix,
+                                                          pmix_topology_t *src,
                                                           pmix_data_type_t type);
 
 

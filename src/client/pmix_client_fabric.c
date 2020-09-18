@@ -694,7 +694,7 @@ pmix_status_t PMIx_Fabric_update_distances_nb(pmix_info_cbfunc_t cbfunc,
     /* pack the cpuset */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
                      msg, &mycpuset, 1, PMIX_PROC_CPUSET);
-    pmix_ploc.release(&mycpuset, 1);
+    pmix_ploc.release_cpuset(&mycpuset, 1);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);

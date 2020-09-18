@@ -177,21 +177,10 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
 {
     pmix_ptl_posted_recv_t *req;
     pmix_status_t rc;
-    size_t n, m;
-    pmix_kval_t *kv;
-    bool protect, nspace_given = false, rank_given = false;
+    size_t n;
+    bool nspace_given = false, rank_given = false;
     bool share_topo = false;
     pmix_info_t ginfo;
-    char *protected[] = {
-        PMIX_USERID,
-        PMIX_GRPID,
-        PMIX_SOCKET_MODE,
-        PMIX_SERVER_TOOL_SUPPORT,
-        PMIX_SERVER_SYSTEM_SUPPORT,
-        PMIX_SERVER_GATEWAY,
-        PMIX_SERVER_SCHEDULER,
-        NULL
-    };
     char *evar, *nspace = NULL;
     pmix_rank_t rank = PMIX_RANK_INVALID;
     pmix_rank_info_t *rinfo;
@@ -321,36 +310,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
-    }
-
-    /* check the info keys for info we
-     * need to provide to every client and
-     * directives aimed at us */
-    for (n=0; n < ninfo; n++) {
-        /* check the list of protected keys */
-        protect = false;
-        for (m=0; NULL != protected[m]; m++) {
-            if (0 == strcmp(info[n].key, protected[m])) {
-                protect = true;
-                break;
-            }
-        }
-        if (protect) {
-            continue;
-        }
-        /* store and pass along to every client */
-        kv = PMIX_NEW(pmix_kval_t);
-        kv->key = strdup(info[n].key);
-        PMIX_VALUE_CREATE(kv->value, 1);
-        PMIX_BFROPS_VALUE_XFER(rc, pmix_globals.mypeer,
-                               kv->value, &info[n].value);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_RELEASE(kv);
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
-            return rc;
-        }
-        pmix_list_append(&pmix_server_globals.gdata, &kv->super);
     }
 
     if (nspace_given) {

@@ -483,6 +483,14 @@ static pmix_status_t init(void)
                        pmix_bfrops_base_print_endpoint,
                        &mca_bfrops_v4_component.types);
 
+    PMIX_REGISTER_TYPE("PMIX_TOPO",
+                       PMIX_ENDPOINT,
+                       pmix_bfrops_base_pack_topology,
+                       pmix_bfrops_base_unpack_topology,
+                       pmix_bfrops_base_copy_topology,
+                       pmix_bfrops_base_print_topology,
+                       &mca_bfrops_v4_component.types);
+
     return PMIX_SUCCESS;
 }
 
