@@ -135,6 +135,7 @@ int main(int argc, char **argv)
     myrel_t myrel;
     pmix_status_t dbg = PMIX_ERR_DEBUGGER_RELEASE;
     pid_t pid;
+    pmix_topology_t mytopo;
 
     pid = getpid();
     fprintf(stderr, "Client %lu: Running\n", (unsigned long)pid);
@@ -200,6 +201,15 @@ int main(int argc, char **argv)
 
         PMIX_VALUE_RELEASE(val);
     }
+
+    /* check for local topology info */
+    PMIX_TOPOLOGY_CONSTRUCT(&mytopo);
+    if (PMIX_SUCCESS != (rc = PMIx_Load_topology(&mytopo))) {
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Load_topology failed: %s\n", myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+        goto done;
+    }
+    fprintf(stderr, "Client %s:%d topology loaded\n", myproc.nspace, myproc.rank);
+
 
     /* get our universe size */
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_UNIV_SIZE, NULL, 0, &val))) {
