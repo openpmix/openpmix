@@ -37,6 +37,7 @@
 #include "src/util/show_help.h"
 #include "src/mca/bfrops/bfrops_types.h"
 #include "src/server/pmix_server_ops.h"
+#include "src/client/pmix_client_ops.h"
 
 #include "src/mca/ploc/base/base.h"
 #include "ploc_hwloc.h"
@@ -194,39 +195,48 @@ pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo)
       * this so the procs won't read the topology
       * themselves as this could overwhelm the local
       * system on large-scale SMPs */
-    kv = PMIX_NEW(pmix_kval_t);
-    kv->key = strdup(PMIX_HWLOC_XML_V1);
-    if (0 != hwloc_topology_export_xmlbuffer(pmix_globals.topology.topology, &xmlbuffer, &len)) {
-        PMIX_RELEASE(kv);
-    } else {
+    if (0 == hwloc_topology_export_xmlbuffer(pmix_globals.topology.topology, &xmlbuffer, &len)) {
+        kv = PMIX_NEW(pmix_kval_t);
+        kv->key = strdup(PMIX_HWLOC_XML_V1);
+        kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
         PMIX_VALUE_LOAD(kv->value, xmlbuffer, PMIX_STRING);
-        hwloc_free_xmlbuffer(pmix_globals.topology.topology, xmlbuffer);
         pmix_list_append(&pmix_server_globals.gdata, &kv->super);
+        /* save it with the deprecated key for older RMs */
+        kv = PMIX_NEW(pmix_kval_t);
+        kv->key = strdup(PMIX_LOCAL_TOPO);
+        kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+        PMIX_VALUE_LOAD(kv->value, xmlbuffer, PMIX_STRING);
+        pmix_list_append(&pmix_server_globals.gdata, &kv->super);
+        /* done with the buffer */
+        hwloc_free_xmlbuffer(pmix_globals.topology.topology, xmlbuffer);
     }
     /* we don't have the ability to do shared memory, so we are done */
     return PMIX_SUCCESS;
 #else
     /* pass the topology as a v2 xml string */
-    kv = PMIX_NEW(pmix_kval_t);
-    kv->key = strdup(PMIX_HWLOC_XML_V2);
-    if (0 != hwloc_topology_export_xmlbuffer(pmix_globals.topology.topology, &xmlbuffer, &len, 0)) {
-        PMIX_RELEASE(kv);
-    } else {
+    if (0 == hwloc_topology_export_xmlbuffer(pmix_globals.topology.topology, &xmlbuffer, &len, 0)) {
+        kv = PMIX_NEW(pmix_kval_t);
+        kv->key = strdup(PMIX_HWLOC_XML_V2);
         kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
         PMIX_VALUE_LOAD(kv->value, xmlbuffer, PMIX_STRING);
-        hwloc_free_xmlbuffer(pmix_globals.topology.topology, xmlbuffer);
         pmix_list_append(&pmix_server_globals.gdata, &kv->super);
+        /* save it with the deprecated key for older RMs */
+        kv = PMIX_NEW(pmix_kval_t);
+        kv->key = strdup(PMIX_LOCAL_TOPO);
+        kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+        PMIX_VALUE_LOAD(kv->value, xmlbuffer, PMIX_STRING);
+        pmix_list_append(&pmix_server_globals.gdata, &kv->super);
+        hwloc_free_xmlbuffer(pmix_globals.topology.topology, xmlbuffer);
     }
     /* and as a v1 xml string, should an older client attach */
-    kv = PMIX_NEW(pmix_kval_t);
-    kv->key = strdup(PMIX_HWLOC_XML_V1);
-    if (0 != hwloc_topology_export_xmlbuffer(pmix_globals.topology.topology, &xmlbuffer, &len, HWLOC_TOPOLOGY_EXPORT_XML_FLAG_V1)) {
-        PMIX_RELEASE(kv);
-    } else {
+    if (0 == hwloc_topology_export_xmlbuffer(pmix_globals.topology.topology, &xmlbuffer, &len, HWLOC_TOPOLOGY_EXPORT_XML_FLAG_V1)) {
+        kv = PMIX_NEW(pmix_kval_t);
+        kv->key = strdup(PMIX_HWLOC_XML_V1);
         kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
         PMIX_VALUE_LOAD(kv->value, xmlbuffer, PMIX_STRING);
         hwloc_free_xmlbuffer(pmix_globals.topology.topology, xmlbuffer);
         pmix_list_append(&pmix_server_globals.gdata, &kv->super);
+        /* cannot support the deprecated key here as it would overwrite the HWLOC v2 string */
     }
 
     /* if they specified no shared memory, then we are done */
@@ -352,7 +362,11 @@ static char* popstr(pmix_cb_t *cb)
     }
     str = kv->value->data.string;
     kv->value->data.string = NULL;
-    PMIX_LIST_DESTRUCT(&cb->kvs);
+    kv = (pmix_kval_t*)pmix_list_remove_first(kvs);
+    while (NULL != kv) {
+        PMIX_RELEASE(kv);
+        kv = (pmix_kval_t*)pmix_list_remove_first(kvs);
+    }
     return str;
 }
 
@@ -371,7 +385,11 @@ static size_t popsize(pmix_cb_t *cb)
         return UINT64_MAX;
     }
     sz = kv->value->data.size;
-    PMIX_LIST_DESTRUCT(&cb->kvs);
+    kv = (pmix_kval_t*)pmix_list_remove_first(kvs);
+    while (NULL != kv) {
+        PMIX_RELEASE(kv);
+        kv = (pmix_kval_t*)pmix_list_remove_first(kvs);
+    }
     return sz;
 }
 #endif
@@ -433,7 +451,7 @@ static pmix_status_t load_topology(pmix_topology_t *topo)
 
     /* first try to get the shmem link, if available */
     cb.key = PMIX_HWLOC_SHMEM_FILE;
-    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+    PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, &cb);
     if (PMIX_SUCCESS != rc) {
         cb.key = NULL;
         PMIX_DESTRUCT(&cb);
@@ -442,7 +460,7 @@ static pmix_status_t load_topology(pmix_topology_t *topo)
     file = popstr(&cb);
 
     cb.key = PMIX_HWLOC_SHMEM_ADDR;
-    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+    PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, &cb);
     if (PMIX_SUCCESS != rc) {
         cb.key = NULL;
         PMIX_DESTRUCT(&cb);
@@ -452,7 +470,7 @@ static pmix_status_t load_topology(pmix_topology_t *topo)
     addr = popsize(&cb);
 
     cb.key = PMIX_HWLOC_SHMEM_SIZE;
-    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+    PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, &cb);
     if (PMIX_SUCCESS != rc) {
         cb.key = NULL;
         PMIX_DESTRUCT(&cb);
@@ -460,6 +478,8 @@ static pmix_status_t load_topology(pmix_topology_t *topo)
         goto tryxml;
     }
     size = popsize(&cb);
+    cb.key = NULL;
+    PMIX_DESTRUCT(&cb);
 
     if (0 > (fd = open(file, O_RDONLY))) {
         free(file);
@@ -474,7 +494,6 @@ static pmix_status_t load_topology(pmix_topology_t *topo)
         /* got it - we are done */
         pmix_globals.topology.source = strdup("hwloc");
         topo_in_shmem = true;
-        PMIX_DESTRUCT(&cb);
         return PMIX_SUCCESS;
     }
 
@@ -499,12 +518,14 @@ static pmix_status_t load_topology(pmix_topology_t *topo)
 
   tryxml:
     /* try to get the v2 XML string */
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.key = PMIX_HWLOC_XML_V2;
-    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+    PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, &cb);
     if (PMIX_SUCCESS == rc) {
         file = popstr(&cb);
         rc = load_xml(file);
         free(file);
+        cb.key = NULL;
         PMIX_DESTRUCT(&cb);
         return rc;
     }
@@ -513,15 +534,17 @@ static pmix_status_t load_topology(pmix_topology_t *topo)
 
     /* try to get the v1 XML string */
     cb.key = PMIX_HWLOC_XML_V1;
-    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+    PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, &cb);
     if (PMIX_SUCCESS == rc) {
         file = popstr(&cb);
         rc = load_xml(file);
         free(file);
+        cb.key = NULL;
         PMIX_DESTRUCT(&cb);
         return rc;
     }
     /* if we got here, then we couldn't find anything */
+    cb.key = NULL;
     PMIX_DESTRUCT(&cb);
 
     /* try discovering it for ourselves */

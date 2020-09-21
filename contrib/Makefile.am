@@ -25,6 +25,7 @@
 EXTRA_DIST = \
 	make_dist_tarball \
 	buildrpm.sh \
+    construct_dictionary.py \
     pmix_jenkins.sh \
     pmix-release.sh \
     pmix.spec \
