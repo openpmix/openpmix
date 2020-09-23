@@ -19,9 +19,19 @@
 
 BEGIN_C_DECLS
 
-#if HWLOC_API_VERSION < 0x00010b00
+#if HWLOC_API_VERSION < 0x20000
+#define HWLOC_OBJ_L3CACHE HWLOC_OBJ_CACHE
+#define HWLOC_OBJ_L2CACHE HWLOC_OBJ_CACHE
+#define HWLOC_OBJ_L1CACHE HWLOC_OBJ_CACHE
+#if HWLOC_API_VERSION < 0x10a00
 #define HWLOC_OBJ_NUMANODE HWLOC_OBJ_NODE
 #define HWLOC_OBJ_PACKAGE HWLOC_OBJ_SOCKET
+#endif
+#define HAVE_DECL_HWLOC_OBJ_OSDEV_COPROC 0
+#define HAVE_HWLOC_TOPOLOGY_DUP 0
+#else
+#define HAVE_DECL_HWLOC_OBJ_OSDEV_COPROC 1
+#define HAVE_HWLOC_TOPOLOGY_DUP 1
 #endif
 
 
@@ -46,6 +56,7 @@ typedef enum {
 typedef struct {
     pmix_ploc_base_component_t super;
     int hole_kind;
+    char *topo_file;
 } pmix_ploc_hwloc_component_t;
 
 /* the component must be visible data for the linker to find it */

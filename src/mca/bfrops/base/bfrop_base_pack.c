@@ -1389,7 +1389,7 @@ pmix_status_t pmix_bfrops_base_pack_cpuset(pmix_pointer_array_t *regtypes,
     }
 
     for (i=0; i < num_vals; ++i) {
-        ret = pmix_ploc.pack_cpuset(buffer, &ptr[i]);
+        ret = pmix_ploc.pack_cpuset(buffer, &ptr[i], regtypes);
         if (PMIX_SUCCESS != ret) {
             return ret;
         }
@@ -1516,7 +1516,7 @@ pmix_status_t pmix_bfrops_base_pack_topology(pmix_pointer_array_t *regtypes,
 
     for (i=0; i < num_vals; ++i) {
         /* call the framework to pack it */
-        ret = pmix_ploc.pack_topology(buffer, &ptr[i]);
+        ret = pmix_ploc.pack_topology(buffer, &ptr[i], regtypes);
         if (PMIX_SUCCESS != ret) {
             return ret;
         }

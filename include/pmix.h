@@ -1036,11 +1036,15 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_deregister_nb(pmix_fabric_t *fabric,
  * PMIX_SUCCESS - distance array was successfully returned
  * Other error
  */
-PMIX_EXPORT pmix_status_t PMIx_Fabric_update_distances(pmix_device_distance_t *distances[],
-                                                       size_t *ndist);
+PMIX_EXPORT pmix_status_t PMIx_Fabric_compute_distances(pmix_topology_t *topo,
+                                                        pmix_cpuset_t *cpuset,
+                                                        pmix_device_distance_t *distances[],
+                                                        size_t *ndist);
 
-PMIX_EXPORT pmix_status_t PMIx_Fabric_update_distances_nb(pmix_info_cbfunc_t cbfunc,
-                                                          void *cbdata);
+PMIX_EXPORT pmix_status_t PMIx_Fabric_compute_distances_nb(pmix_topology_t *topo,
+                                                           pmix_cpuset_t *cpuset,
+                                                           pmix_device_dist_cbfunc_t cbfunc,
+                                                           void *cbdata);
 
 /* Load the local hwardware topology description
  *
@@ -1071,9 +1075,10 @@ PMIX_EXPORT pmix_status_t PMIx_Load_topology(pmix_topology_t *topo);
  * PMIX_ERR_NOT_FOUND - provided source is not available
  * PMIX_ERR_NOT_SUPPORTED - current implementation does not support this option
  */
-PMIX_EXPORT pmix_status_t PMIx_Get_cpuset(const char *cpuset_string,
-	                                      pmix_cpuset_t *cpuset);
+PMIX_EXPORT pmix_status_t PMIx_Parse_cpuset_string(const char *cpuset_string,
+	                                               pmix_cpuset_t *cpuset);
 
+PMIX_EXPORT pmix_status_t PMIx_Get_cpuset(pmix_cpuset_t *cpuset, pmix_bind_envelope_t ref);
 
 /* Get the relative locality of two local processes given their locality strings.
  *

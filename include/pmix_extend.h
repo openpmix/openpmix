@@ -94,6 +94,13 @@ char **pmix_argv_copy(char **argv);
 pmix_status_t pmix_setenv(const char *name, const char *value,
                           bool overwrite, char ***env);
 
+void pmix_ploc_base_destruct_cpuset(pmix_cpuset_t *cpuset);
+
+void pmix_ploc_base_release_cpuset(pmix_cpuset_t *cpuset, size_t n);
+
+void pmix_ploc_base_destruct_topology(pmix_topology_t *topo);
+
+void pmix_ploc_base_release_topology(pmix_topology_t *topo, size_t n);
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }

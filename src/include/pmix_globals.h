@@ -127,7 +127,7 @@ typedef uint8_t pmix_cmd_t;
 #define PMIX_IOF_DEREG_CMD                  29
 #define PMIX_FABRIC_REGISTER_CMD            30
 #define PMIX_FABRIC_UPDATE_CMD              31
-#define PMIX_FABRIC_UPDATE_DISTANCES_CMD    32
+#define PMIX_FABRIC_COMPUTE_DISTANCES_CMD   32
 
 
 /* provide a "pretty-print" function for cmds */
@@ -423,6 +423,7 @@ typedef struct {
         pmix_spawn_cbfunc_t spawnfn;
         pmix_hdlr_reg_cbfunc_t hdlrregfn;
         pmix_info_cbfunc_t infofn;
+        pmix_device_dist_cbfunc_t distfn;
     } cbfunc;
     size_t errhandler_ref;
     void *cbdata;
@@ -434,6 +435,7 @@ typedef struct {
     size_t nprocs;
     pmix_info_t *info;
     size_t ninfo;
+    pmix_device_distance_t *dist;
     bool infocopy;
     size_t nvals;
     pmix_list_t kvs;

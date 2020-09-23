@@ -311,6 +311,7 @@ static void cbcon(pmix_cb_t *p)
     p->nprocs = 0;
     p->info = NULL;
     p->ninfo = 0;
+    p->dist = NULL;
     p->infocopy = false;
     p->nvals = 0;
     PMIX_CONSTRUCT(&p->kvs, pmix_list_t);
@@ -329,6 +330,9 @@ static void cbdes(pmix_cb_t *p)
     PMIX_DESTRUCT(&p->data);
     if (p->infocopy) {
         PMIX_INFO_FREE(p->info, p->ninfo);
+    }
+    if (NULL != p->dist) {
+        PMIX_DEVICE_DIST_FREE(p->dist, p->nvals);
     }
     PMIX_LIST_DESTRUCT(&p->kvs);
 }

@@ -1517,8 +1517,20 @@ typedef struct{
 #define PMIX_CPUSET_CONSTRUCT(m) \
     memset((m), 0, sizeof(pmix_cpuset_t))
 
+#define PMIX_CPUSET_DESTRUCT(m) \
+    pmix_ploc_base_destruct_cpuset((m))
+
 #define PMIX_CPUSET_CREATE(m, n)    \
     (m) = (pmix_cpuset_t*)calloc((n), sizeof(pmix_cpuset_t));
+
+#define PMIX_CPUSET_FREE(m, n) \
+    pmix_ploc_base_release_cpuset((m), (n))
+
+
+/****    PMIX BIND ENVELOPE    ****/
+typedef uint8_t pmix_bind_envelope_t;
+#define PMIX_CPUBIND_PROCESS    0
+#define PMIX_CPUBIND_THREAD     1
 
 
 /****    PMIX TOPOLOGY    ****/
@@ -1530,9 +1542,14 @@ typedef struct {
 #define PMIX_TOPOLOGY_CONSTRUCT(m) \
     memset((m), 0, sizeof(pmix_topology_t))
 
+#define PMIX_TOPOLOGY_DESTRUCT(m) \
+    pmix_ploc_base_destruct_topology((m))
+
 #define PMIX_TOPOLOGY_CREATE(m, n) \
     (m) = (pmix_topology_t*)calloc(n, sizeof(pmix_topology_t))
 
+#define PMIX_TOPOLOGY_FREE(m, n) \
+    pmix_ploc_base_release_topology((m), (n))
 
 /**** PMIX RELATIVE LOCALITY    ****/
 typedef uint16_t pmix_locality_t;
@@ -2875,6 +2892,16 @@ typedef void (*pmix_credential_cbfunc_t)(pmix_status_t status,
 typedef void (*pmix_validation_cbfunc_t)(pmix_status_t status,
                                          pmix_info_t info[], size_t ninfo,
                                          void *cbdata);
+
+/* Define a callback function to return device distance arrays
+ */
+typedef void (*pmix_device_dist_cbfunc_t)(pmix_status_t status,
+                                          pmix_device_distance_t *dist,
+                                          size_t ndist,
+                                          void *cbdata,
+                                          pmix_release_cbfunc_t release_fn,
+                                          void *release_cbdata);
+
 
 /********    STANDARD MACROS FOR DARRAY AND VALUE SUPPORT     ********/
 static inline void pmix_darray_destruct(pmix_data_array_t *m);

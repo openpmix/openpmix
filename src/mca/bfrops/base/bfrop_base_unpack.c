@@ -1644,7 +1644,7 @@ pmix_status_t pmix_bfrops_base_unpack_cpuset(pmix_pointer_array_t *regtypes,
     n = *num_vals;
 
     for (i = 0; i < n; ++i) {
-        ret = pmix_ploc.unpack_cpuset(buffer, &ptr[n]);
+        ret = pmix_ploc.unpack_cpuset(buffer, &ptr[n], regtypes);
         if (PMIX_SUCCESS != ret) {
             *num_vals = n;
             return ret;
@@ -1816,7 +1816,7 @@ pmix_status_t pmix_bfrops_base_unpack_topology(pmix_pointer_array_t *regtypes,
     n = *num_vals;
 
     for (i = 0; i < n; ++i) {
-        ret = pmix_ploc.unpack_topology(buffer, &ptr[n]);
+        ret = pmix_ploc.unpack_topology(buffer, &ptr[n], regtypes);
         if (PMIX_SUCCESS != ret) {
             *num_vals = n;
             return ret;
