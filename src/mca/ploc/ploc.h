@@ -61,8 +61,8 @@ typedef pmix_status_t (*pmix_ploc_base_module_generate_cpuset_string_fn_t)(const
                                                                            char **cpuset_string);
 
 /* get cpuset from its string representation */
-typedef pmix_status_t (*pmix_ploc_base_module_get_cpuset_fn_t)(const char *cpuset_string,
-                                                               pmix_cpuset_t *cpuset);
+typedef pmix_status_t (*pmix_ploc_base_module_parse_cpuset_string_fn_t)(const char *cpuset_string,
+                                                                        pmix_cpuset_t *cpuset);
 
 /* Get locality string */
 typedef pmix_status_t (*pmix_ploc_base_module_generate_loc_str_fn_t)(const pmix_cpuset_t *cpuset,
@@ -75,35 +75,48 @@ typedef pmix_status_t (*pmix_ploc_base_module_get_rel_loc_fn_t)(const char *loc1
                                                                 pmix_locality_t *locality);
 
 /* Get current bound location */
-typedef pmix_status_t (*pmix_ploc_base_module_get_location_fn_t)(pmix_cpuset_t *cpuset);
+typedef pmix_status_t (*pmix_ploc_base_module_get_cpuset_fn_t)(pmix_cpuset_t *cpuset,
+                                                               pmix_bind_envelope_t ref);
 
 /* Get distance array */
-typedef pmix_status_t (*pmix_ploc_base_module_update_dist_fn_t)(pmix_info_cbfunc_t cbfunc,
-                                                                void *cbdata);
+typedef pmix_status_t (*pmix_ploc_base_module_compute_dist_fn_t)(pmix_topology_t *topo,
+                                                                 pmix_cpuset_t *cpuset,
+                                                                 pmix_device_distance_t **dist,
+                                                                 size_t *ndist);
 
 /* cpuset pack/unpack/copy/print functions */
-typedef pmix_status_t (*pmix_ploc_base_module_pack_fn_t)(pmix_buffer_t *buf, pmix_cpuset_t *src);
+typedef pmix_status_t (*pmix_ploc_base_module_pack_fn_t)(pmix_buffer_t *buf, pmix_cpuset_t *src,
+                                                         pmix_pointer_array_t *regtypes);
 
-typedef pmix_status_t (*pmix_ploc_base_module_unpack_fn_t)(pmix_buffer_t *buf, pmix_cpuset_t *dest);
+typedef pmix_status_t (*pmix_ploc_base_module_unpack_fn_t)(pmix_buffer_t *buf, pmix_cpuset_t *dest,
+                                                           pmix_pointer_array_t *regtypes);
 
 typedef pmix_status_t (*pmix_ploc_base_module_copy_fn_t)(pmix_cpuset_t *dest,
                                                          pmix_cpuset_t *src);
 
 typedef char* (*pmix_ploc_base_module_print_fn_t)(pmix_cpuset_t *src);
 
+typedef pmix_status_t (*pmix_ploc_base_module_destruct_fn_t)(pmix_cpuset_t *ptr);
+typedef void (*pmix_ploc_base_API_destruct_fn_t)(pmix_cpuset_t *ptr);
+
 typedef pmix_status_t (*pmix_ploc_base_module_release_fn_t)(pmix_cpuset_t *ptr, size_t sz);
 
 typedef void (*pmix_ploc_base_API_release_fn_t)(pmix_cpuset_t *ptr, size_t sz);
 
 /* topology pack/unpack/copy/print functions */
-typedef pmix_status_t (*pmix_ploc_base_module_pack_topo_fn_t)(pmix_buffer_t *buf, pmix_topology_t *src);
+typedef pmix_status_t (*pmix_ploc_base_module_pack_topo_fn_t)(pmix_buffer_t *buf, pmix_topology_t *src,
+                                                              pmix_pointer_array_t *regtypes);
 
-typedef pmix_status_t (*pmix_ploc_base_module_unpack_topo_fn_t)(pmix_buffer_t *buf, pmix_topology_t *dest);
+typedef pmix_status_t (*pmix_ploc_base_module_unpack_topo_fn_t)(pmix_buffer_t *buf, pmix_topology_t *dest,
+                                                                pmix_pointer_array_t *regtypes);
 
 typedef pmix_status_t (*pmix_ploc_base_module_copy_topo_fn_t)(pmix_topology_t *dest,
                                                               pmix_topology_t *src);
 
 typedef char* (*pmix_ploc_base_module_print_topo_fn_t)(pmix_topology_t *src);
+
+typedef pmix_status_t (*pmix_ploc_base_module_destruct_topo_fn_t)(pmix_topology_t *ptr);
+typedef void (*pmix_ploc_base_API_destruct_topo_fn_t)(pmix_topology_t *ptr);
 
 typedef pmix_status_t (*pmix_ploc_base_module_release_topo_fn_t)(pmix_topology_t *ptr, size_t sz);
 
@@ -120,20 +133,22 @@ typedef struct {
     pmix_ploc_base_module_setup_topo_fn_t               setup_topology;
     pmix_ploc_base_module_load_topo_fn_t                load_topology;
     pmix_ploc_base_module_generate_cpuset_string_fn_t   generate_cpuset_string;
-    pmix_ploc_base_module_get_cpuset_fn_t               get_cpuset;
+    pmix_ploc_base_module_parse_cpuset_string_fn_t      parse_cpuset_string;
     pmix_ploc_base_module_generate_loc_str_fn_t         generate_locality_string;
     pmix_ploc_base_module_get_rel_loc_fn_t              get_relative_locality;
-    pmix_ploc_base_module_get_location_fn_t             get_location;
-    pmix_ploc_base_module_update_dist_fn_t              update_distances;
+    pmix_ploc_base_module_get_cpuset_fn_t               get_cpuset;
+    pmix_ploc_base_module_compute_dist_fn_t             compute_distances;
     pmix_ploc_base_module_pack_fn_t                     pack_cpuset;
     pmix_ploc_base_module_unpack_fn_t                   unpack_cpuset;
     pmix_ploc_base_module_copy_fn_t                     copy_cpuset;
     pmix_ploc_base_module_print_fn_t                    print_cpuset;
+    pmix_ploc_base_module_destruct_fn_t                 destruct_cpuset;
     pmix_ploc_base_module_release_fn_t                  release_cpuset;
     pmix_ploc_base_module_pack_topo_fn_t                pack_topology;
     pmix_ploc_base_module_unpack_topo_fn_t              unpack_topology;
     pmix_ploc_base_module_copy_topo_fn_t                copy_topology;
     pmix_ploc_base_module_print_topo_fn_t               print_topology;
+    pmix_ploc_base_module_destruct_topo_fn_t            destruct_topology;
     pmix_ploc_base_module_release_topo_fn_t             release_topology;
 } pmix_ploc_module_t;
 
@@ -142,20 +157,22 @@ typedef struct {
     pmix_ploc_base_module_setup_topo_fn_t               setup_topology;
     pmix_ploc_base_module_load_topo_fn_t                load_topology;
     pmix_ploc_base_module_generate_cpuset_string_fn_t   generate_cpuset_string;
-    pmix_ploc_base_module_get_cpuset_fn_t               get_cpuset;
+    pmix_ploc_base_module_parse_cpuset_string_fn_t      parse_cpuset_string;
     pmix_ploc_base_module_generate_loc_str_fn_t         generate_locality_string;
     pmix_ploc_base_module_get_rel_loc_fn_t              get_relative_locality;
-    pmix_ploc_base_module_get_location_fn_t             get_location;
-    pmix_ploc_base_module_update_dist_fn_t              update_distances;
+    pmix_ploc_base_module_get_cpuset_fn_t               get_cpuset;
+    pmix_ploc_base_module_compute_dist_fn_t             compute_distances;
     pmix_ploc_base_module_pack_fn_t                     pack_cpuset;
     pmix_ploc_base_module_unpack_fn_t                   unpack_cpuset;
     pmix_ploc_base_module_copy_fn_t                     copy_cpuset;
     pmix_ploc_base_module_print_fn_t                    print_cpuset;
+    pmix_ploc_base_API_destruct_fn_t                    destruct_cpuset;
     pmix_ploc_base_API_release_fn_t                     release_cpuset;
     pmix_ploc_base_module_pack_topo_fn_t                pack_topology;
     pmix_ploc_base_module_unpack_topo_fn_t              unpack_topology;
     pmix_ploc_base_module_copy_topo_fn_t                copy_topology;
     pmix_ploc_base_module_print_topo_fn_t               print_topology;
+    pmix_ploc_base_API_destruct_topo_fn_t               destruct_topology;
     pmix_ploc_base_API_release_topo_fn_t                release_topology;
 } pmix_ploc_API_module_t;
 

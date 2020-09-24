@@ -39,8 +39,8 @@ PMIX_EXPORT pmix_status_t PMIx_Load_topology(pmix_topology_t *topo)
 }
 
 
-PMIX_EXPORT pmix_status_t PMIx_Get_cpuset(const char *cpuset_string,
-                                          pmix_cpuset_t *cpuset)
+PMIX_EXPORT pmix_status_t PMIx_Parse_cpuset_string(const char *cpuset_string,
+                                                   pmix_cpuset_t *cpuset)
 {
     pmix_status_t rc;
 
@@ -52,7 +52,23 @@ PMIX_EXPORT pmix_status_t PMIx_Get_cpuset(const char *cpuset_string,
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
-    rc = pmix_ploc.get_cpuset(cpuset_string, cpuset);
+    rc = pmix_ploc.parse_cpuset_string(cpuset_string, cpuset);
+    return rc;
+}
+
+PMIX_EXPORT pmix_status_t PMIx_Get_cpuset(pmix_cpuset_t *cpuset, pmix_bind_envelope_t ref)
+{
+    pmix_status_t rc;
+
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+
+    if (pmix_globals.init_cntr <= 0) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return PMIX_ERR_INIT;
+    }
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
+
+    rc = pmix_ploc.get_cpuset(cpuset, ref);
     return rc;
 }
 

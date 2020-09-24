@@ -135,8 +135,8 @@ pmix_status_t pmix_ploc_base_generate_cpuset_string(const pmix_cpuset_t *cpuset,
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
-pmix_status_t pmix_ploc_base_get_cpuset(const char *cpuset_string,
-                                        pmix_cpuset_t *cpuset)
+pmix_status_t pmix_ploc_base_parse_cpuset_string(const char *cpuset_string,
+                                                 pmix_cpuset_t *cpuset)
 {
     pmix_ploc_base_active_module_t *active;
     pmix_status_t rc;
@@ -150,8 +150,8 @@ pmix_status_t pmix_ploc_base_get_cpuset(const char *cpuset_string,
 
     /* process the request */
     PMIX_LIST_FOREACH(active, &pmix_ploc_globals.actives, pmix_ploc_base_active_module_t) {
-        if (NULL != active->module->get_cpuset) {
-            rc = active->module->get_cpuset(cpuset_string, cpuset);
+        if (NULL != active->module->parse_cpuset_string) {
+            rc = active->module->parse_cpuset_string(cpuset_string, cpuset);
             if (PMIX_SUCCESS == rc) {
                 return rc;
             }
@@ -232,7 +232,71 @@ pmix_status_t pmix_ploc_base_get_relative_locality(const char *loc1,
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
-pmix_status_t pmix_ploc_base_pack_cpuset(pmix_buffer_t *buf, pmix_cpuset_t *src)
+pmix_status_t pmix_ploc_base_get_cpuset(pmix_cpuset_t *cpuset,
+                                        pmix_bind_envelope_t ref)
+{
+    pmix_ploc_base_active_module_t *active;
+    pmix_status_t rc;
+
+    if (!pmix_ploc_globals.initialized) {
+        return PMIX_ERR_INIT;
+    }
+
+    pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                        "ploc:get_location called");
+
+    /* process the request */
+    PMIX_LIST_FOREACH(active, &pmix_ploc_globals.actives, pmix_ploc_base_active_module_t) {
+        if (NULL != active->module->get_cpuset) {
+            rc = active->module->get_cpuset(cpuset, ref);
+            if (PMIX_SUCCESS == rc) {
+                return rc;
+            }
+            if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
+                /* true error */
+                return rc;
+            }
+        }
+    }
+
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+
+pmix_status_t pmix_ploc_base_compute_distances(pmix_topology_t *topo,
+                                               pmix_cpuset_t *cpuset,
+                                               pmix_device_distance_t **dist,
+                                               size_t *ndist)
+{
+    pmix_ploc_base_active_module_t *active;
+    pmix_status_t rc;
+
+    if (!pmix_ploc_globals.initialized) {
+        return PMIX_ERR_INIT;
+    }
+
+    pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                        "ploc:update_distance called");
+
+    /* process the request */
+    PMIX_LIST_FOREACH(active, &pmix_ploc_globals.actives, pmix_ploc_base_active_module_t) {
+        if (NULL != active->module->compute_distances) {
+            rc = active->module->compute_distances(topo, cpuset, dist, ndist);
+            if (PMIX_SUCCESS == rc) {
+                return rc;
+            }
+            if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
+                /* true error */
+                return rc;
+            }
+        }
+    }
+
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+
+pmix_status_t pmix_ploc_base_pack_cpuset(pmix_buffer_t *buf,
+                                         pmix_cpuset_t *src,
+                                         pmix_pointer_array_t *regtypes)
 {
     pmix_ploc_base_active_module_t *active;
     pmix_status_t rc;
@@ -247,7 +311,7 @@ pmix_status_t pmix_ploc_base_pack_cpuset(pmix_buffer_t *buf, pmix_cpuset_t *src)
     /* process the request */
     PMIX_LIST_FOREACH(active, &pmix_ploc_globals.actives, pmix_ploc_base_active_module_t) {
         if (NULL != active->module->pack_cpuset) {
-            rc = active->module->pack_cpuset(buf, src);
+            rc = active->module->pack_cpuset(buf, src, regtypes);
             if (PMIX_SUCCESS == rc) {
                 return rc;
             }
@@ -261,7 +325,9 @@ pmix_status_t pmix_ploc_base_pack_cpuset(pmix_buffer_t *buf, pmix_cpuset_t *src)
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
-pmix_status_t pmix_ploc_base_unpack_cpuset(pmix_buffer_t *buf, pmix_cpuset_t *dest)
+pmix_status_t pmix_ploc_base_unpack_cpuset(pmix_buffer_t *buf,
+                                           pmix_cpuset_t *dest,
+                                           pmix_pointer_array_t *regtypes)
 {
     pmix_ploc_base_active_module_t *active;
     pmix_status_t rc;
@@ -276,7 +342,7 @@ pmix_status_t pmix_ploc_base_unpack_cpuset(pmix_buffer_t *buf, pmix_cpuset_t *de
     /* process the request */
     PMIX_LIST_FOREACH(active, &pmix_ploc_globals.actives, pmix_ploc_base_active_module_t) {
         if (NULL != active->module->unpack_cpuset) {
-            rc = active->module->unpack_cpuset(buf, dest);
+            rc = active->module->unpack_cpuset(buf, dest, regtypes);
             if (PMIX_SUCCESS == rc) {
                 return rc;
             }
@@ -344,6 +410,29 @@ char* pmix_ploc_base_print_cpuset(pmix_cpuset_t *src)
     return NULL;
 }
 
+void pmix_ploc_base_destruct_cpuset(pmix_cpuset_t *cpuset)
+{
+    pmix_ploc_base_active_module_t *active;
+    pmix_status_t rc;
+
+    if (!pmix_ploc_globals.initialized) {
+        return;
+    }
+
+    pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                        "ploc:destruct_cpuset called");
+
+    /* process the request */
+    PMIX_LIST_FOREACH(active, &pmix_ploc_globals.actives, pmix_ploc_base_active_module_t) {
+        if (NULL != active->module->destruct_cpuset) {
+            rc = active->module->destruct_cpuset(cpuset);
+            if (PMIX_SUCCESS == rc) {
+                return;
+            }
+        }
+    }
+}
+
 void pmix_ploc_base_release_cpuset(pmix_cpuset_t *ptr, size_t sz)
 {
     pmix_ploc_base_active_module_t *active;
@@ -367,7 +456,9 @@ void pmix_ploc_base_release_cpuset(pmix_cpuset_t *ptr, size_t sz)
     }
 }
 
-pmix_status_t pmix_ploc_base_pack_topology(pmix_buffer_t *buf, pmix_topology_t *src)
+pmix_status_t pmix_ploc_base_pack_topology(pmix_buffer_t *buf,
+                                           pmix_topology_t *src,
+                                           pmix_pointer_array_t *regtypes)
 {
     pmix_ploc_base_active_module_t *active;
     pmix_status_t rc;
@@ -382,7 +473,7 @@ pmix_status_t pmix_ploc_base_pack_topology(pmix_buffer_t *buf, pmix_topology_t *
     /* process the request */
     PMIX_LIST_FOREACH(active, &pmix_ploc_globals.actives, pmix_ploc_base_active_module_t) {
         if (NULL != active->module->pack_topology) {
-            rc = active->module->pack_topology(buf, src);
+            rc = active->module->pack_topology(buf, src, regtypes);
             if (PMIX_SUCCESS == rc) {
                 return rc;
             }
@@ -396,7 +487,9 @@ pmix_status_t pmix_ploc_base_pack_topology(pmix_buffer_t *buf, pmix_topology_t *
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
-pmix_status_t pmix_ploc_base_unpack_topology(pmix_buffer_t *buf, pmix_topology_t *dest)
+pmix_status_t pmix_ploc_base_unpack_topology(pmix_buffer_t *buf,
+                                             pmix_topology_t *dest,
+                                             pmix_pointer_array_t *regtypes)
 {
     pmix_ploc_base_active_module_t *active;
     pmix_status_t rc;
@@ -411,7 +504,7 @@ pmix_status_t pmix_ploc_base_unpack_topology(pmix_buffer_t *buf, pmix_topology_t
     /* process the request */
     PMIX_LIST_FOREACH(active, &pmix_ploc_globals.actives, pmix_ploc_base_active_module_t) {
         if (NULL != active->module->unpack_topology) {
-            rc = active->module->unpack_topology(buf, dest);
+            rc = active->module->unpack_topology(buf, dest, regtypes);
             if (PMIX_SUCCESS == rc) {
                 return rc;
             }
@@ -477,6 +570,29 @@ char* pmix_ploc_base_print_topology(pmix_topology_t *src)
     }
 
     return NULL;
+}
+
+void pmix_ploc_base_destruct_topology(pmix_topology_t *ptr)
+{
+    pmix_ploc_base_active_module_t *active;
+    pmix_status_t rc;
+
+    if (!pmix_ploc_globals.initialized) {
+        return;
+    }
+
+    pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                        "ploc:destruct_topology called");
+
+    /* process the request */
+    PMIX_LIST_FOREACH(active, &pmix_ploc_globals.actives, pmix_ploc_base_active_module_t) {
+        if (NULL != active->module->destruct_topology) {
+            rc = active->module->destruct_topology(ptr);
+            if (PMIX_SUCCESS == rc) {
+                return;
+            }
+        }
+    }
 }
 
 void pmix_ploc_base_release_topology(pmix_topology_t *ptr, size_t sz)

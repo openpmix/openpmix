@@ -1181,8 +1181,8 @@ pmix_status_t pmix_bfrops_base_copy_endpoint(pmix_endpoint_t **dest,
 }
 
 pmix_status_t pmix_bfrops_base_copy_topology(pmix_topology_t **dest,
-                                           pmix_topology_t *src,
-                                           pmix_data_type_t type)
+                                             pmix_topology_t *src,
+                                             pmix_data_type_t type)
 {
     pmix_topology_t *dst;
     pmix_status_t rc;

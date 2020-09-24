@@ -35,7 +35,7 @@
 #include "src/util/path.h"
 #include "src/util/printf.h"
 #include "src/util/show_help.h"
-#include "src/mca/bfrops/bfrops_types.h"
+#include "src/mca/bfrops/base/base.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/client/pmix_client_ops.h"
 
@@ -50,13 +50,36 @@ static pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo);
 static pmix_status_t load_topology(pmix_topology_t *topo);
 static pmix_status_t generate_cpuset_string(const pmix_cpuset_t *cpuset,
                                             char **cpuset_string);
-static pmix_status_t get_cpuset(const char *cpuset_string,
-                                pmix_cpuset_t *cpuset);
+static pmix_status_t parse_cpuset_string(const char *cpuset_string,
+                                         pmix_cpuset_t *cpuset);
 static pmix_status_t generate_locality_string(const pmix_cpuset_t *cpuset,
                                               char **locality);
 static pmix_status_t get_relative_locality(const char *loc1,
                                            const char *loc2,
                                            pmix_locality_t *locality);
+static pmix_status_t get_cpuset(pmix_cpuset_t *cpuset,
+                                pmix_bind_envelope_t ref);
+static pmix_status_t compute_distances(pmix_topology_t *topo,
+                                       pmix_cpuset_t *cpuset,
+                                       pmix_device_distance_t **dist,
+                                       size_t *ndist);
+static pmix_status_t pack_cpuset(pmix_buffer_t *buf, pmix_cpuset_t *src,
+                                 pmix_pointer_array_t *regtypes);
+static pmix_status_t unpack_cpuset(pmix_buffer_t *buf, pmix_cpuset_t *dest,
+                                   pmix_pointer_array_t *regtypes);
+static pmix_status_t copy_cpuset(pmix_cpuset_t *dest, pmix_cpuset_t *src);
+static char* print_cpuset(pmix_cpuset_t *src);
+static pmix_status_t destruct_cpuset(pmix_cpuset_t *src);
+static pmix_status_t release_cpuset(pmix_cpuset_t *src, size_t ncpu);
+static pmix_status_t pack_topology(pmix_buffer_t *buf, pmix_topology_t *src,
+                                   pmix_pointer_array_t *regtypes);
+static pmix_status_t unpack_topology(pmix_buffer_t *buf, pmix_topology_t *dest,
+                                     pmix_pointer_array_t *regtypes);
+static pmix_status_t copy_topology(pmix_topology_t *dest, pmix_topology_t *src);
+static char* print_topology(pmix_topology_t *src);
+static pmix_status_t destruct_topology(pmix_topology_t *src);
+static pmix_status_t release_topology(pmix_topology_t *src, size_t ncpu);
+
 static void finalize(void);
 
 pmix_ploc_module_t pmix_ploc_hwloc_module = {
@@ -64,9 +87,23 @@ pmix_ploc_module_t pmix_ploc_hwloc_module = {
     .setup_topology = setup_topology,
     .load_topology = load_topology,
     .generate_cpuset_string = generate_cpuset_string,
-    .get_cpuset = get_cpuset,
+    .parse_cpuset_string = parse_cpuset_string,
     .generate_locality_string = generate_locality_string,
-    .get_relative_locality = get_relative_locality
+    .get_relative_locality = get_relative_locality,
+    .get_cpuset = get_cpuset,
+    .compute_distances = compute_distances,
+    .pack_cpuset = pack_cpuset,
+    .unpack_cpuset = unpack_cpuset,
+    .copy_cpuset = copy_cpuset,
+    .print_cpuset = print_cpuset,
+    .destruct_cpuset = destruct_cpuset,
+    .release_cpuset = release_cpuset,
+    .pack_topology = pack_topology,
+    .unpack_topology = unpack_topology,
+    .copy_topology = copy_topology,
+    .print_topology = print_topology,
+    .destruct_topology = destruct_topology,
+    .release_topology = release_topology,
 };
 
 static bool topo_in_shmem = false;
@@ -96,6 +133,7 @@ static int enough_space(const char *filename,
                         uint64_t *space_avail,
                         bool *result);
 #endif
+static pmix_status_t load_xml(char *xml);
 
 static int set_flags(hwloc_topology_t topo, unsigned int flags)
 {
@@ -165,20 +203,44 @@ pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo)
         }
     }
 
-    /* we weren't given a topology, so get it for ourselves */
-    if (0 != hwloc_topology_init((hwloc_topology_t*)&pmix_globals.topology.topology)) {
-        return PMIX_ERR_TAKE_NEXT_OPTION;
-    }
+    /* did they give us one to use? */
+    if (NULL != mca_ploc_hwloc_component.topo_file) {
+        if (0 != hwloc_topology_init((hwloc_topology_t*)&pmix_globals.topology.topology)) {
+            return PMIX_ERR_TAKE_NEXT_OPTION;
+        }
+        if (0 != hwloc_topology_set_xml((hwloc_topology_t)pmix_globals.topology.topology,
+                                        mca_ploc_hwloc_component.topo_file)) {
+            return PMIX_ERR_NOT_SUPPORTED;
+        }
+        /* since we are loading this from an external source, we have to
+         * explicitly set a flag so hwloc sets things up correctly
+         */
+        if (0 != set_flags(pmix_globals.topology.topology,
+                           HWLOC_TOPOLOGY_FLAG_IS_THISSYSTEM)) {
+            hwloc_topology_destroy(pmix_globals.topology.topology);
+            return PMIX_ERROR;
+        }
+        /* now load the topology */
+        if (0 != hwloc_topology_load(pmix_globals.topology.topology)) {
+            hwloc_topology_destroy(pmix_globals.topology.topology);
+            return PMIX_ERROR;
+        }
+    } else {
+        /* we weren't given a topology, so get it for ourselves */
+        if (0 != hwloc_topology_init((hwloc_topology_t*)&pmix_globals.topology.topology)) {
+            return PMIX_ERR_TAKE_NEXT_OPTION;
+        }
 
-    if (0 != set_flags(pmix_globals.topology.topology, 0)) {
-        hwloc_topology_destroy(pmix_globals.topology.topology);
-        return PMIX_ERR_INIT;
-    }
+        if (0 != set_flags(pmix_globals.topology.topology, 0)) {
+            hwloc_topology_destroy(pmix_globals.topology.topology);
+            return PMIX_ERR_INIT;
+        }
 
-    if (0 != hwloc_topology_load(pmix_globals.topology.topology)) {
-        PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
-        hwloc_topology_destroy(pmix_globals.topology.topology);
-        return PMIX_ERR_NOT_SUPPORTED;
+        if (0 != hwloc_topology_load(pmix_globals.topology.topology)) {
+            PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
+            hwloc_topology_destroy(pmix_globals.topology.topology);
+            return PMIX_ERR_NOT_SUPPORTED;
+        }
     }
 
     /* if we don't need to share it, then we are done */
@@ -560,6 +622,8 @@ static pmix_status_t load_topology(pmix_topology_t *topo)
 static pmix_status_t generate_cpuset_string(const pmix_cpuset_t *cpuset,
                                             char **cpuset_string)
 {
+    char *tmp;
+
     if (NULL == cpuset || NULL == cpuset->bitmap) {
         *cpuset_string = NULL;
         return PMIX_ERR_BAD_PARAM;
@@ -570,22 +634,35 @@ static pmix_status_t generate_cpuset_string(const pmix_cpuset_t *cpuset,
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
-    hwloc_bitmap_list_asprintf(cpuset_string, cpuset->bitmap);
+    hwloc_bitmap_list_asprintf(&tmp, cpuset->bitmap);
+    pmix_asprintf(cpuset_string, "hwloc:%s", tmp);
+    free(tmp);
 
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t get_cpuset(const char *cpuset_string,
-                                pmix_cpuset_t *cpuset)
+static pmix_status_t parse_cpuset_string(const char *cpuset_string,
+                                         pmix_cpuset_t *cpuset)
 {
+    char *src;
+
     /* if we aren't the source, then pass */
-    if (0 != strcasecmp(cpuset->source, "hwloc")) {
+    src = strchr(cpuset_string, ':');
+    if (NULL == src) {
+        /* bad string */
+        return PMIX_ERR_BAD_PARAM;
+    }
+    *src = '\0';
+    if (0 != strcasecmp(cpuset_string, "hwloc")) {
+        *src = ':';
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
+    *src = ':';
+    ++src;
 
     cpuset->source = strdup("hwloc");
     cpuset->bitmap = hwloc_bitmap_alloc();
-    hwloc_bitmap_list_sscanf(cpuset->bitmap, cpuset_string);
+    hwloc_bitmap_list_sscanf(cpuset->bitmap, src);
 
     return PMIX_SUCCESS;
 }
@@ -864,6 +941,516 @@ static pmix_status_t get_relative_locality(const char *locality1,
     hwloc_bitmap_free(bit2);
     *loc = locality;
     return rc;
+}
+
+static pmix_status_t get_cpuset(pmix_cpuset_t *cpuset,
+                                pmix_bind_envelope_t ref)
+{
+    int rc, flag;
+
+    if (NULL != cpuset->source && 0 != strcasecmp(cpuset->source, "hwloc")) {
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+
+    cpuset->bitmap = hwloc_bitmap_alloc();
+    if (PMIX_CPUBIND_PROCESS == ref) {
+        flag = HWLOC_CPUBIND_PROCESS;
+    } else if (PMIX_CPUBIND_THREAD == ref) {
+        flag = HWLOC_CPUBIND_THREAD;
+    } else {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    rc = hwloc_get_cpubind(pmix_globals.topology.topology, cpuset->bitmap, flag);
+    if (0 != rc) {
+        hwloc_bitmap_free(cpuset->bitmap);
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+    if (NULL == cpuset->source) {
+        cpuset->source = strdup("hwloc");
+    }
+    return PMIX_SUCCESS;
+}
+
+static hwloc_obj_t dsearch(hwloc_topology_t t, int depth,
+                           hwloc_cpuset_t cpuset)
+{
+    hwloc_obj_t obj;
+    unsigned width, w;
+
+    /* get the width of the topology at this depth */
+    width = hwloc_get_nbobjs_by_depth(t, depth);
+    if (0 == width) {
+        return NULL;
+    }
+    /* scan all objects at this depth to see if
+     * the location is under one of them
+     */
+    for (w=0; w < width; w++) {
+        /* get the object at this depth/index */
+        obj = hwloc_get_obj_by_depth(t, depth, w);
+        /* if this object doesn't have a cpuset, then ignore it */
+        if (NULL == obj->cpuset) {
+            continue;
+        }
+        /* see if the provided cpuset is completely included in this object */
+        if (hwloc_bitmap_isincluded(cpuset, obj->cpuset)) {
+            return obj;
+        }
+    }
+
+    return NULL;
+}
+
+static pmix_status_t compute_distances(pmix_topology_t *topo,
+                                       pmix_cpuset_t *cpuset,
+                                       pmix_device_distance_t **dist,
+                                       size_t *ndist)
+{
+    hwloc_obj_t obj = NULL;
+    hwloc_obj_t tgt;
+    hwloc_obj_t device;
+    unsigned d, depth;
+
+    if (NULL == topo->source || NULL == cpuset->source) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    if (0 != strcasecmp(topo->source, "hwloc") || 0 != strcasecmp(cpuset->source, "hwloc")) {
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+
+    /* find the max depth of this topology */
+    depth = hwloc_topology_get_depth(topo->topology);
+
+    /* get the lowest object that completely covers the cpuset */
+    for (d=1; d < depth; d++) {
+        tgt = dsearch(topo->topology, d, cpuset->bitmap);
+        if (NULL == tgt) {
+            /* nothing found at that depth, so we are done */
+            break;
+        }
+        obj = tgt;
+    }
+    if (NULL == obj) {
+        /* no joy */
+        return PMIX_ERR_NOT_FOUND;
+    }
+
+    /* loop over the fabric devices in the topology */
+    device = hwloc_get_obj_by_type(topo->topology, HWLOC_OBJ_OS_DEVICE, 0);
+    while (NULL != device) {
+        if (device->attr->osdev.type == HWLOC_OBJ_OSDEV_OPENFABRICS ||
+            device->attr->osdev.type == HWLOC_OBJ_OSDEV_NETWORK) {
+            pmix_output(0, "FOUND OPENFAB OR NET OSDEV %s", device->name);
+        }
+        device = hwloc_get_next_osdev(topo->topology, device);
+    }
+
+    device = hwloc_get_obj_by_type(topo->topology, HWLOC_OBJ_PCI_DEVICE, 0);
+    while (NULL != device) {
+        pmix_output(0, "FOUND PCIDEV %s", device->name);
+        device = hwloc_get_next_pcidev(topo->topology, device);
+    }
+        /* climb the topology until we find a non-NULL cpuset */
+
+        /* find the common ancestor between the cpuset and NIC objects */
+#if 0
+        if (0 == ancestor->depth) {
+            /* we only share the machine */
+        } else {
+            /* the depth value can be used as an indicator of relative
+             * locality - the higher the value, the closer the device */
+        }
+#endif
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t pack_cpuset(pmix_buffer_t *buf, pmix_cpuset_t *src,
+                                 pmix_pointer_array_t *regtypes)
+{
+    char *tmp;
+    pmix_status_t rc;
+
+    if (NULL == src->source || 0 != strcasecmp(src->source, "hwloc")) {
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+
+    /* express the cpuset as a string */
+    if (0 != hwloc_bitmap_list_asprintf(&tmp, src->bitmap)) {
+        return PMIX_ERROR;
+    }
+
+    /* pack the string */
+    PMIX_BFROPS_PACK_TYPE(rc, buf, &tmp, 1, PMIX_STRING, regtypes);
+    free(tmp);
+
+    return rc;
+}
+
+static pmix_status_t unpack_cpuset(pmix_buffer_t *buf, pmix_cpuset_t *dest,
+                                   pmix_pointer_array_t *regtypes)
+{
+    pmix_status_t rc;
+    int cnt;
+    char *tmp;
+
+    /* unpack the cpustring */
+    cnt=1;
+    PMIX_BFROPS_UNPACK_TYPE(rc, buf, &tmp, &cnt, PMIX_STRING, regtypes);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+
+    /* convert to a bitmap */
+    dest->source = strdup("hwloc");
+    dest->bitmap = hwloc_bitmap_alloc();
+    hwloc_bitmap_list_sscanf(dest->bitmap, tmp);
+    free(tmp);
+
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t copy_cpuset(pmix_cpuset_t *dest, pmix_cpuset_t *src)
+{
+    if (NULL == src->source || 0 != strcasecmp(src->source, "hwloc")) {
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+    if (NULL == src->bitmap) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* copy the src bitmap */
+    dest->bitmap = hwloc_bitmap_dup(src->bitmap);
+    dest->source = strdup("hwloc");
+
+    return PMIX_SUCCESS;
+}
+
+static char* print_cpuset(pmix_cpuset_t *src)
+{
+    char *tmp;
+
+    if (NULL == src->source || 0 != strcasecmp(src->source, "hwloc")) {
+        return NULL;
+    }
+    if (NULL == src->bitmap) {
+        return NULL;
+    }
+
+    /* express the cpuset as a string */
+    if (0 != hwloc_bitmap_list_asprintf(&tmp, src->bitmap)) {
+        return NULL;
+    }
+
+    return tmp;
+}
+
+static pmix_status_t destruct_cpuset(pmix_cpuset_t *src)
+{
+    if (NULL == src->source || 0 != strcasecmp(src->source, "hwloc")) {
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+    if (NULL == src->bitmap) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    hwloc_bitmap_free(src->bitmap);
+    src->bitmap = NULL;
+    free(src->source);
+
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t release_cpuset(pmix_cpuset_t *src, size_t ncpu)
+{
+    size_t n;
+
+    if (NULL == src->source || 0 != strcasecmp(src->source, "hwloc")) {
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+
+    for (n=0; n < ncpu; n++) {
+        destruct_cpuset(&src[n]);
+    }
+    free(src);
+
+    return PMIX_SUCCESS;
+}
+
+
+static pmix_status_t pack_topology(pmix_buffer_t *buf, pmix_topology_t *src,
+                                   pmix_pointer_array_t *regtypes)
+{
+    /* NOTE: hwloc defines topology_t as a pointer to a struct! */
+    pmix_status_t rc;
+    char *xmlbuffer=NULL;
+    int len;
+    struct hwloc_topology_support *support;
+
+    if (NULL == src->source|| 0 != strcasecmp(src->source, "hwloc")) {
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+
+    /* extract an xml-buffer representation of the tree */
+#if HWLOC_API_VERSION < 0x20000
+    if (0 != hwloc_topology_export_xmlbuffer(src->topology, &xmlbuffer, &len)) {
+        return PMIX_ERROR;
+    }
+#else
+    if (0 != hwloc_topology_export_xmlbuffer(src->topology, &xmlbuffer, &len, 0)) {
+        return PMIX_ERROR;
+    }
+#endif
+
+    /* add to buffer */
+    PMIX_BFROPS_PACK_TYPE(rc, buf, &xmlbuffer, 1, PMIX_STRING, regtypes);
+    free(xmlbuffer);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+
+    /* get the available support - hwloc unfortunately does
+     * not include this info in its xml export!
+     */
+    support = (struct hwloc_topology_support*)hwloc_topology_get_support(src->topology);
+    /* pack the discovery support */
+    PMIX_BFROPS_PACK_TYPE(rc, buf, support->discovery,
+                          sizeof(struct hwloc_topology_discovery_support),
+                          PMIX_BYTE, regtypes);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    /* pack the cpubind support */
+    PMIX_BFROPS_PACK_TYPE(rc, buf, support->cpubind,
+                          sizeof(struct hwloc_topology_cpubind_support),
+                          PMIX_BYTE, regtypes);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+
+    /* pack the membind support */
+    PMIX_BFROPS_PACK_TYPE(rc, buf, support->membind,
+                          sizeof(struct hwloc_topology_membind_support),
+                          PMIX_BYTE, regtypes);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t unpack_topology(pmix_buffer_t *buf, pmix_topology_t *dest,
+                                     pmix_pointer_array_t *regtypes)
+{
+    /* NOTE: hwloc defines topology_t as a pointer to a struct! */
+    pmix_status_t rc;
+    char *xmlbuffer=NULL;
+    int cnt;
+    struct hwloc_topology_support *support;
+    hwloc_topology_t t;
+    unsigned long flags;
+
+    /* unpack the xml string */
+    cnt=1;
+    PMIX_BFROPS_UNPACK_TYPE(rc, buf, &xmlbuffer, &cnt, PMIX_STRING, regtypes);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+
+    /* convert the xml */
+    if (0 != hwloc_topology_init(&t)) {
+        rc = PMIX_ERROR;
+        free(xmlbuffer);
+        return rc;
+    }
+    if (0 != hwloc_topology_set_xmlbuffer(t, xmlbuffer, strlen(xmlbuffer))) {
+        rc = PMIX_ERROR;
+        free(xmlbuffer);
+        hwloc_topology_destroy(t);
+        return rc;
+    }
+    free(xmlbuffer);
+
+    /* since we are loading this from an external source, we have to
+     * explicitly set a flag so hwloc sets things up correctly
+     */
+    flags = HWLOC_TOPOLOGY_FLAG_IS_THISSYSTEM;
+#if HWLOC_API_VERSION < 0x00020000
+        flags |= HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM;
+        flags |= HWLOC_TOPOLOGY_FLAG_IO_DEVICES;
+#else
+        if (0 != hwloc_topology_set_io_types_filter(t, HWLOC_TYPE_FILTER_KEEP_IMPORTANT)) {
+            hwloc_topology_destroy(t);
+            return PMIX_ERROR;
+        }
+#if HWLOC_API_VERSION < 0x00020100
+        flags |= HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM;
+#else
+        flags |= HWLOC_TOPOLOGY_FLAG_INCLUDE_DISALLOWED;
+#endif
+#endif
+    if (0 != hwloc_topology_set_flags(t, flags)) {
+        hwloc_topology_destroy(t);
+        return PMIX_ERROR;
+    }
+    /* now load the topology */
+    if (0 != hwloc_topology_load(t)) {
+        hwloc_topology_destroy(t);
+        return PMIX_ERROR;
+    }
+
+    /* get the available support - hwloc unfortunately does
+     * not include this info in its xml import!
+     */
+    support = (struct hwloc_topology_support*)hwloc_topology_get_support(t);
+    cnt = sizeof(struct hwloc_topology_discovery_support);
+    PMIX_BFROPS_UNPACK_TYPE(rc, buf, support->discovery, &cnt, PMIX_BYTE, regtypes);
+    if (PMIX_SUCCESS != rc) {
+        hwloc_topology_destroy(t);
+        return PMIX_ERROR;
+    }
+    cnt = sizeof(struct hwloc_topology_cpubind_support);
+    PMIX_BFROPS_UNPACK_TYPE(rc, buf, support->cpubind, &cnt, PMIX_BYTE, regtypes);
+    if (PMIX_SUCCESS != rc) {
+        hwloc_topology_destroy(t);
+        return PMIX_ERROR;
+    }
+    cnt = sizeof(struct hwloc_topology_membind_support);
+    PMIX_BFROPS_UNPACK_TYPE(rc, buf, support->membind, &cnt, PMIX_BYTE, regtypes);
+    if (PMIX_SUCCESS != rc) {
+        hwloc_topology_destroy(t);
+        return PMIX_ERROR;
+    }
+
+    dest->source = strdup("hwloc");
+    dest->topology = (void*)t;
+
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t copy_topology(pmix_topology_t *dest, pmix_topology_t *src)
+{
+    if (NULL == src->source|| 0 != strcasecmp(src->source, "hwloc")) {
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+
+#if HAVE_HWLOC_TOPOLOGY_DUP
+    /* use the hwloc dup function */
+    if (0 != hwloc_topology_dup(dest->topology, src->topology)) {
+        return PMIX_ERROR;
+    }
+    return PMIX_SUCCESS;
+#else
+    /* hwloc_topology_dup() was introduced in hwloc v1.8.0. */
+    return PMIX_ERR_NOT_SUPPORTED;
+#endif
+}
+
+#define PMIX_HWLOC_MAX_STRING   2048
+
+static void print_hwloc_obj(char **output, char *prefix,
+                            hwloc_topology_t topo, hwloc_obj_t obj)
+{
+    hwloc_obj_t obj2;
+    char string[1024], *tmp, *tmp2, *pfx;
+    unsigned i;
+    struct hwloc_topology_support *support;
+
+    /* print the object type */
+    hwloc_obj_type_snprintf(string, 1024, obj, 1);
+    pmix_asprintf(&pfx, "\n%s\t", (NULL == prefix) ? "" : prefix);
+    pmix_asprintf(&tmp, "%sType: %s Number of child objects: %u%sName=%s",
+             (NULL == prefix) ? "" : prefix, string, obj->arity,
+             pfx, (NULL == obj->name) ? "NULL" : obj->name);
+    if (0 < hwloc_obj_attr_snprintf(string, 1024, obj, pfx, 1)) {
+        /* print the attributes */
+        pmix_asprintf(&tmp2, "%s%s%s", tmp, pfx, string);
+        free(tmp);
+        tmp = tmp2;
+    }
+    /* print the cpusets - apparently, some new HWLOC types don't
+     * have cpusets, so protect ourselves here
+     */
+    if (NULL != obj->cpuset) {
+        hwloc_bitmap_snprintf(string, PMIX_HWLOC_MAX_STRING, obj->cpuset);
+        pmix_asprintf(&tmp2, "%s%sCpuset:  %s", tmp, pfx, string);
+        free(tmp);
+        tmp = tmp2;
+    }
+    if (HWLOC_OBJ_MACHINE == obj->type) {
+        /* root level object - add support values */
+        support = (struct hwloc_topology_support*)hwloc_topology_get_support(topo);
+        pmix_asprintf(&tmp2, "%s%sBind CPU proc:   %s%sBind CPU thread: %s", tmp, pfx,
+                 (support->cpubind->set_thisproc_cpubind) ? "TRUE" : "FALSE", pfx,
+                 (support->cpubind->set_thisthread_cpubind) ? "TRUE" : "FALSE");
+        free(tmp);
+        tmp = tmp2;
+        pmix_asprintf(&tmp2, "%s%sBind MEM proc:   %s%sBind MEM thread: %s", tmp, pfx,
+                 (support->membind->set_thisproc_membind) ? "TRUE" : "FALSE", pfx,
+                 (support->membind->set_thisthread_membind) ? "TRUE" : "FALSE");
+        free(tmp);
+        tmp = tmp2;
+    }
+    pmix_asprintf(&tmp2, "%s%s\n", (NULL == *output) ? "" : *output, tmp);
+    free(tmp);
+    free(pfx);
+    pmix_asprintf(&pfx, "%s\t", (NULL == prefix) ? "" : prefix);
+    for (i=0; i < obj->arity; i++) {
+        obj2 = obj->children[i];
+        /* print the object */
+        print_hwloc_obj(&tmp2, pfx, topo, obj2);
+    }
+    free(pfx);
+    if (NULL != *output) {
+        free(*output);
+    }
+    *output = tmp2;
+}
+
+static char* print_topology(pmix_topology_t *src)
+{
+    hwloc_obj_t obj;
+    char *tmp=NULL;
+
+    if (NULL == src->source|| 0 != strcasecmp(src->source, "hwloc")) {
+        return NULL;
+    }
+
+    /* get root object */
+    obj = hwloc_get_root_obj(src->topology);
+    /* print it */
+    print_hwloc_obj(&tmp, NULL, src->topology, obj);
+    return tmp;
+}
+
+static pmix_status_t destruct_topology(pmix_topology_t *src)
+{
+    if (NULL == src->source|| 0 != strcasecmp(src->source, "hwloc")) {
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+    if (NULL == src->topology) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    hwloc_topology_destroy(src->topology);
+
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t release_topology(pmix_topology_t *src, size_t ncpu)
+{
+    size_t n;
+
+    if (NULL == src->source|| 0 != strcasecmp(src->source, "hwloc")) {
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+
+    for (n=0; n < ncpu; n++) {
+        destruct_topology(&src[n]);
+    }
+    free(src);
+
+    return PMIX_SUCCESS;
 }
 
 #if HWLOC_API_VERSION >= 0x20000
