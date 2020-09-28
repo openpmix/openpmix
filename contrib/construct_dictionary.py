@@ -134,6 +134,8 @@ def harvest_constants(options, path, constants):
                             datatype = "PMIX_DEVICE_DIST"
                         elif tokens[3] == "(pmix_endpoint_t)":
                             datatype = "PMIX_ENDPOINT"
+                        elif tokens[3] == "(pmix_device_type_t)":
+                            datatype = "PMIX_DEVTYPE"
                         elif tokens[3] == "(varies)":
                             datatype = "PMIX_INT"
                         else:
@@ -262,7 +264,7 @@ def main():
     if 0 != rc:
         constants.close()
         os.remove(outpath)
-        print("DICTIONARY COULD NOT BE CONSTRUCTED")
+        print("HARVEST PMIX_COMMON FAILED - DICTIONARY COULD NOT BE CONSTRUCTED")
         os.chdir(save)
         return 1
     constants.write(",\n")
@@ -270,7 +272,7 @@ def main():
     if 0 != rc:
         constants.close()
         os.remove(outpath)
-        print("DICTIONARY COULD NOT BE CONSTRUCTED")
+        print("HARVEST DEPRECATED FAILED - DICTIONARY COULD NOT BE CONSTRUCTED")
         os.chdir(save)
         return 1
 

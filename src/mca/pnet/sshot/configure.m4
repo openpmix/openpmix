@@ -15,6 +15,11 @@ AC_DEFUN([MCA_pmix_pnet_sshot_CONFIG], [
     AC_CONFIG_FILES([src/mca/pnet/sshot/Makefile])
 
     AS_IF([test "$pmix_check_jansson_happy" = "yes"],
-          [$1], [$2])
+          [$1
+           pnet_sshot_happy=yes],
+          [$2
+           pnet_sshot_happy=no])
+
+    PMIX_SUMMARY_ADD([[Transports]],[[HPE Slingshot]],[[pnet_sshot]],[$pnet_sshot_happy])
 
 ])dnl

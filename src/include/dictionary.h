@@ -1795,6 +1795,17 @@ pmix_regattr_input_t dictionary[] = {
                                "PMIX_FABRIC_DEVICE_PCI_DEVID shall be unique within",
                                "the system.", NULL}},
 
+    {.name = "PMIX_DEVICE_DISTANCES", .string = "pmix.dev.dist", .type = PMIX_DATA_ARRAY,
+     .description = (char *[]){"Return an array of pmix_device_dist_t containing the",
+                               "minimum and maximum distances of the given process",
+                               "location to all devices of the specified type on the",
+                               "local node.", NULL}},
+
+    {.name = "PMIX_DEVICE_TYPE", .string = "pmix.dev.type", .type = PMIX_DEVTYPE,
+     .description = (char *[]){"Bitmask specifying the type(s) of device(s) whose",
+                               "information is being requested. Only used as a",
+                               "directive/qualifier.", NULL}},
+
     {.name = "PMIX_MAX_VALUE", .string = "pmix.descr.maxval", .type = PMIX_INT,
      .description = (char *[]){"Used in pmix_regattr_t to describe the maximum valid",
                                "value for the associated attribute.", NULL}},

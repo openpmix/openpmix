@@ -1686,6 +1686,13 @@ pmix_status_t pmix_bfrops_base_unpack_geometry(pmix_pointer_array_t *regtypes,
             PMIX_ERROR_LOG(ret);
             return ret;
         }
+        /* unpack the osname */
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].osname, &m, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
         /* get the number of coords */
         m=1;
         PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].ncoords, &m, PMIX_SIZE, regtypes);
@@ -1731,6 +1738,18 @@ pmix_status_t pmix_bfrops_base_unpack_devdist(pmix_pointer_array_t *regtypes,
         /* unpack the uuid */
         m=1;
         PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].uuid, &m, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].osname, &m, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].type, &m, PMIX_DEVTYPE, regtypes);
         if (PMIX_SUCCESS != ret) {
             PMIX_ERROR_LOG(ret);
             return ret;
@@ -1823,4 +1842,22 @@ pmix_status_t pmix_bfrops_base_unpack_topology(pmix_pointer_array_t *regtypes,
         }
     }
     return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_devtype(pmix_pointer_array_t *regtypes,
+                                              pmix_buffer_t *buffer, void *dest,
+                                              int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_status_t ret;
+
+    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
+                        "pmix_bfrop_unpack: %d device types", *num_vals);
+
+    if (PMIX_DEVTYPE != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    PMIX_BFROPS_UNPACK_TYPE(ret, buffer,dest, num_vals, PMIX_UINT64, regtypes);
+
+    return ret;
 }

@@ -127,6 +127,7 @@ pmix_status_t pmix_bfrops_base_std_copy(void **dest, void *src,
 
     case PMIX_INT64:
     case PMIX_UINT64:
+    case PMIX_DEVTYPE:
         datasize = 8;
         break;
 
@@ -930,6 +931,9 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
                 if (NULL != sgeoset[n].uuid) {
                     pgeoset[n].uuid = strdup(sgeoset[n].uuid);
                 }
+                if (NULL != sgeoset[n].osname) {
+                    pgeoset[n].osname = strdup(sgeoset[n].osname);
+                }
                 if (NULL != sgeoset[n].coordinates) {
                     pgeoset[n].ncoords = sgeoset[n].ncoords;
                     pgeoset[n].coordinates = (pmix_coord_t*)malloc(pgeoset[n].ncoords * sizeof(pmix_coord_t));
@@ -959,6 +963,10 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
                 if (NULL != sdevdist[n].uuid) {
                     pdevdist[n].uuid = strdup(sdevdist[n].uuid);
                 }
+                if (NULL != sdevdist[n].osname) {
+                    pdevdist[n].osname = strdup(sdevdist[n].osname);
+                }
+                pdevdist[n].type = sdevdist[n].type;
                 pdevdist[n].mindist = sdevdist[n].mindist;
                 pdevdist[n].maxdist = sdevdist[n].maxdist;
             }
@@ -1117,6 +1125,9 @@ pmix_status_t pmix_bfrops_base_copy_geometry(pmix_geometry_t **dest,
     if (NULL != src->uuid) {
         dst->uuid = strdup(src->uuid);
     }
+    if (NULL != src->osname) {
+        dst->osname = strdup(src->osname);
+    }
     if (NULL != src->coordinates) {
         dst->ncoords = src->ncoords;
         dst->coordinates = (pmix_coord_t*)calloc(dst->ncoords, sizeof(pmix_coord_t));
@@ -1150,6 +1161,10 @@ pmix_status_t pmix_bfrops_base_copy_devdist(pmix_device_distance_t **dest,
     if (NULL != src->uuid) {
         dst->uuid = strdup(src->uuid);
     }
+    if (NULL != src->osname) {
+        dst->osname = strdup(src->osname);
+    }
+    dst->type = src->type;
     dst->mindist = src->mindist;
     dst->maxdist = src->maxdist;
     return PMIX_SUCCESS;

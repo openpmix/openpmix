@@ -28,6 +28,7 @@
 #if HAVE_FCNTL_H
 #include <fcntl.h>
 #endif
+#include PMIX_HWLOC_HEADER
 
 #include "src/util/error.h"
 #include "src/util/fd.h"
@@ -36,6 +37,7 @@
 #include "src/util/printf.h"
 #include "src/util/show_help.h"
 #include "src/mca/bfrops/base/base.h"
+#include "src/mca/pnet/pnet.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/client/pmix_client_ops.h"
 
@@ -61,6 +63,7 @@ static pmix_status_t get_cpuset(pmix_cpuset_t *cpuset,
                                 pmix_bind_envelope_t ref);
 static pmix_status_t compute_distances(pmix_topology_t *topo,
                                        pmix_cpuset_t *cpuset,
+                                       pmix_device_type_t types,
                                        pmix_device_distance_t **dist,
                                        size_t *ndist);
 static pmix_status_t pack_cpuset(pmix_buffer_t *buf, pmix_cpuset_t *src,
@@ -242,6 +245,7 @@ pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo)
             return PMIX_ERR_NOT_SUPPORTED;
         }
     }
+    pmix_globals.topology.source = strdup("hwloc");
 
     /* if we don't need to share it, then we are done */
     if (!share) {
@@ -952,7 +956,6 @@ static pmix_status_t get_cpuset(pmix_cpuset_t *cpuset,
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
-    cpuset->bitmap = hwloc_bitmap_alloc();
     if (PMIX_CPUBIND_PROCESS == ref) {
         flag = HWLOC_CPUBIND_PROCESS;
     } else if (PMIX_CPUBIND_THREAD == ref) {
@@ -969,6 +972,7 @@ static pmix_status_t get_cpuset(pmix_cpuset_t *cpuset,
     if (NULL == cpuset->source) {
         cpuset->source = strdup("hwloc");
     }
+
     return PMIX_SUCCESS;
 }
 
@@ -1002,15 +1006,74 @@ static hwloc_obj_t dsearch(hwloc_topology_t t, int depth,
     return NULL;
 }
 
+typedef struct {
+    pmix_list_item_t super;
+    pmix_device_distance_t dist;
+} pmix_devdist_item_t;
+static void dvcon(pmix_devdist_item_t *p)
+{
+    PMIX_DEVICE_DIST_CONSTRUCT(&p->dist);
+}
+static void dvdes(pmix_devdist_item_t *p)
+{
+    PMIX_DEVICE_DIST_DESTRUCT(&p->dist);
+}
+static PMIX_CLASS_INSTANCE(pmix_devdist_item_t,
+                           pmix_list_item_t,
+                           dvcon, dvdes);
+
+typedef struct {
+    hwloc_obj_osdev_type_t hwtype;
+    pmix_device_type_t pxtype;
+    char *name;
+} pmix_type_conversion_t;
+
+static pmix_type_conversion_t table[] =
+{
+    {.hwtype = HWLOC_OBJ_OSDEV_BLOCK, .pxtype = PMIX_DEVTYPE_BLOCK, .name = "BLOCK"},
+    {.hwtype = HWLOC_OBJ_OSDEV_GPU, .pxtype = PMIX_DEVTYPE_GPU, .name = "GPU"},
+    {.hwtype = HWLOC_OBJ_OSDEV_NETWORK, .pxtype = PMIX_DEVTYPE_NETWORK, .name = "NETWORK"},
+    {.hwtype = HWLOC_OBJ_OSDEV_OPENFABRICS, .pxtype = PMIX_DEVTYPE_OPENFABRICS, .name = "OPENFABRICS"},
+    {.hwtype = HWLOC_OBJ_OSDEV_DMA, .pxtype = PMIX_DEVTYPE_DMA, .name = "DMA"},
+    {.hwtype = HWLOC_OBJ_OSDEV_COPROC, .pxtype = PMIX_DEVTYPE_COPROC, .name = "COPROCESSOR"},
+};
+
+static int countcolons(char *str)
+{
+    int cnt=0;
+    char *p;
+
+    p = strchr(str, ':');
+    while (NULL != p) {
+        ++cnt;
+        ++p;
+        p = strchr(p, ':');
+    }
+
+    return cnt;
+}
+
 static pmix_status_t compute_distances(pmix_topology_t *topo,
                                        pmix_cpuset_t *cpuset,
+                                       pmix_device_type_t types,
                                        pmix_device_distance_t **dist,
                                        size_t *ndist)
 {
     hwloc_obj_t obj = NULL;
     hwloc_obj_t tgt;
     hwloc_obj_t device;
-    unsigned d, depth;
+    hwloc_obj_t ancestor;
+    hwloc_obj_t pu;
+    unsigned dp, depth;
+    unsigned maxdist = 0;
+    unsigned mindist = UINT_MAX;
+    unsigned i;
+    pmix_list_t dists;
+    pmix_devdist_item_t *d;
+    pmix_device_distance_t *array;
+    size_t n, ntypes;
+    int cnt;
+    unsigned w, width, pudepth;
 
     if (NULL == topo->source || NULL == cpuset->source) {
         return PMIX_ERR_BAD_PARAM;
@@ -1020,12 +1083,19 @@ static pmix_status_t compute_distances(pmix_topology_t *topo,
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
+    /* set default returns */
+    *dist = NULL;
+    *ndist = 0;
+
+    /* determine number of types we support */
+    ntypes = sizeof(table) / sizeof(pmix_type_conversion_t);
+
     /* find the max depth of this topology */
     depth = hwloc_topology_get_depth(topo->topology);
 
     /* get the lowest object that completely covers the cpuset */
-    for (d=1; d < depth; d++) {
-        tgt = dsearch(topo->topology, d, cpuset->bitmap);
+    for (dp=1; dp < depth; dp++) {
+        tgt = dsearch(topo->topology, dp, cpuset->bitmap);
         if (NULL == tgt) {
             /* nothing found at that depth, so we are done */
             break;
@@ -1036,33 +1106,183 @@ static pmix_status_t compute_distances(pmix_topology_t *topo,
         /* no joy */
         return PMIX_ERR_NOT_FOUND;
     }
+    /* get the PU depth */
+    pudepth = (unsigned)hwloc_get_type_depth(topo->topology, HWLOC_OBJ_PU);
+    width = hwloc_get_nbobjs_by_depth(topo->topology, pudepth);
 
-    /* loop over the fabric devices in the topology */
-    device = hwloc_get_obj_by_type(topo->topology, HWLOC_OBJ_OS_DEVICE, 0);
-    while (NULL != device) {
-        if (device->attr->osdev.type == HWLOC_OBJ_OSDEV_OPENFABRICS ||
-            device->attr->osdev.type == HWLOC_OBJ_OSDEV_NETWORK) {
-            pmix_output(0, "FOUND OPENFAB OR NET OSDEV %s", device->name);
+    PMIX_CONSTRUCT(&dists, pmix_list_t);
+
+    /* loop over the specified devices in the topology */
+    for (n=0; n < ntypes; n++) {
+        if (!(types & table[n].pxtype)) {
+            continue;
         }
-        device = hwloc_get_next_osdev(topo->topology, device);
+        if (HWLOC_OBJ_OSDEV_BLOCK == table[n].hwtype ||
+            HWLOC_OBJ_OSDEV_DMA == table[n].hwtype) {
+            continue;
+        }
+        device = hwloc_get_obj_by_type(topo->topology, HWLOC_OBJ_OS_DEVICE, 0);
+        while (NULL != device) {
+            if (device->attr->osdev.type == table[n].hwtype) {
+
+                d = PMIX_NEW(pmix_devdist_item_t);
+                pmix_list_append(&dists, &d->super);
+
+                d->dist.type = table[n].pxtype;
+
+                /* Construct a UUID for this device */
+                if (HWLOC_OBJ_OSDEV_NETWORK == table[n].hwtype) {
+                    char *addr = NULL;
+                    /* find the address */
+                    for (i=0; i < device->infos_count; i++) {
+                        if (0 == strcasecmp(device->infos[i].name, "Address")) {
+                            addr = device->infos[i].value;
+                            break;
+                        }
+                    }
+                    if (NULL == addr) {
+                        /* couldn't find an address - report it as an error */
+                        PMIX_LIST_DESTRUCT(&dists);
+                        return PMIX_ERROR;
+                    }
+                    /* could be IPv4 or IPv6 */
+                    cnt = countcolons(addr);
+                    if (5 == cnt) {
+                        pmix_asprintf(&d->dist.uuid, "ipv4://%s", addr);
+                    } else if (19 == cnt) {
+                        pmix_asprintf(&d->dist.uuid, "ipv6://%s", addr);
+                    } else {
+                        /* unknown address type */
+                        PMIX_LIST_DESTRUCT(&dists);
+                        return PMIX_ERROR;
+                    }
+                } else if (HWLOC_OBJ_OSDEV_OPENFABRICS == table[n].hwtype) {
+                    char *ngid = NULL;
+                    char *sgid = NULL;
+                    /* find the UIDs */
+                    for (i=0; i < device->infos_count; i++) {
+                        if (0 == strcasecmp(device->infos[i].name, "NodeGUID")) {
+                            ngid = device->infos[i].value;
+                        } else if (0 == strcasecmp(device->infos[i].name, "SysImageGUID")) {
+                            sgid = device->infos[i].value;
+                        }
+                    }
+                    if (NULL == ngid || NULL == sgid) {
+                        PMIX_LIST_DESTRUCT(&dists);
+                        return PMIX_ERROR;
+                    }
+                    pmix_asprintf(&d->dist.uuid, "fab://%s::%s", ngid, sgid);
+                } else if (HWLOC_OBJ_OSDEV_COPROC == table[n].hwtype) {
+                    /* if the name starts with "card", then this is just the aux card of the coprocessor */
+                    if (0 == strncasecmp(device->name, "card", 4)) {
+                        pmix_list_remove_item(&dists, &d->super);
+                        PMIX_RELEASE(d);
+                        device = hwloc_get_next_osdev(topo->topology, device);
+                        continue;
+                    }
+                    pmix_asprintf(&d->dist.uuid, "coproc://%s::%s", pmix_globals.hostname, device->name);
+                } else if (HWLOC_OBJ_OSDEV_GPU == table[n].hwtype) {
+                    /* if the name starts with "card", then this is just the aux card of the GPU */
+                    if (0 == strncasecmp(device->name, "card", 4)) {
+                        pmix_list_remove_item(&dists, &d->super);
+                        PMIX_RELEASE(d);
+                        device = hwloc_get_next_osdev(topo->topology, device);
+                        continue;
+                    }
+                    pmix_asprintf(&d->dist.uuid, "gpu://%s::%s", pmix_globals.hostname, device->name);
+                } else {
+                    /* unknown type */
+                    pmix_list_remove_item(&dists, &d->super);
+                    PMIX_RELEASE(d);
+                    device = hwloc_get_next_osdev(topo->topology, device);
+                    continue;
+                }
+
+                /* save the osname */
+                d->dist.osname = strdup(device->name);
+                if (NULL == device->cpuset) {
+                    /* climb the topology until we find a non-NULL cpuset */
+                    tgt = device->parent;
+                    while (NULL != tgt && NULL == tgt->cpuset) {
+                        tgt = tgt->parent;
+                    }
+                    if (NULL == tgt) {
+                        PMIX_LIST_DESTRUCT(&dists);
+                        return PMIX_ERR_NOT_FOUND;
+                    }
+                } else {
+                    tgt = device;
+                }
+                /* loop over the PUs on this node */
+                maxdist = 0;
+                mindist = UINT_MAX;
+                for (w=0; w < width; w++) {
+                    /* get the pu at this index */
+                    pu = hwloc_get_obj_by_depth(topo->topology, pudepth, w);
+                    /* is this PU in our cpuset? */
+                    if (!hwloc_bitmap_intersects(pu->cpuset, cpuset->bitmap)) {
+                        continue;
+                    }
+                    /* find the common ancestor between the cpuset and NIC objects */
+                    ancestor = hwloc_get_common_ancestor_obj(topo->topology, obj, tgt);
+                    if (NULL != ancestor) {
+                        if (0 == ancestor->depth) {
+                            /* we only share the machine - need to do something more
+                             * to compute the distance. This can, however, get a little
+                             * hairy as there is no good measure of package-to-package
+                             * distance - it is all typically given in terms of NUMA
+                             * domains, which is no longer a valid way of looking at
+                             * locations due to overlapping domains. For now, we will
+                             * just take the depth of the device in its package and
+                             * add that to the depth of the object in its package
+                             * plus the depth of a package to ensure it is further away */
+                            dp = obj->depth + depth;
+                        } else {
+                            /* the depth value can be used as an indicator of relative
+                             * locality - the higher the value, the closer the device.
+                             * We invert the pyramid to set the dist to be closer for
+                             * smaller values */
+                            dp = depth - ancestor->depth;
+                        }
+                    } else {
+                        /* shouldn't happen - consider this an error condition */
+                        PMIX_LIST_DESTRUCT(&dists);
+                        return PMIX_ERROR;
+                    }
+                    if (mindist > dp) {
+                        mindist = dp;
+                    }
+                    if (maxdist < dp) {
+                        maxdist = dp;
+                    }
+                }
+                d->dist.mindist = mindist;
+                d->dist.maxdist = maxdist;
+            }
+            device = hwloc_get_next_osdev(topo->topology, device);
+        }
     }
 
-    device = hwloc_get_obj_by_type(topo->topology, HWLOC_OBJ_PCI_DEVICE, 0);
-    while (NULL != device) {
-        pmix_output(0, "FOUND PCIDEV %s", device->name);
-        device = hwloc_get_next_pcidev(topo->topology, device);
+    /* create the return array */
+    n = pmix_list_get_size(&dists);
+    if (0 == n) {
+        /* no devices found */
+        return PMIX_ERR_NOT_FOUND;
     }
-        /* climb the topology until we find a non-NULL cpuset */
+    PMIX_DEVICE_DIST_CREATE(array, n);
+    *ndist = n;
+    n = 0;
+    PMIX_LIST_FOREACH(d, &dists, pmix_devdist_item_t) {
+        array[n].uuid = strdup(d->dist.uuid);
+        array[n].osname = strdup(d->dist.osname);
+        array[n].type = d->dist.type;
+        array[n].mindist = d->dist.mindist;
+        array[n].maxdist = d->dist.maxdist;
+        ++n;
+    }
+    PMIX_LIST_DESTRUCT(&dists);
+    *dist = array;
 
-        /* find the common ancestor between the cpuset and NIC objects */
-#if 0
-        if (0 == ancestor->depth) {
-            /* we only share the machine */
-        } else {
-            /* the depth value can be used as an indicator of relative
-             * locality - the higher the value, the closer the device */
-        }
-#endif
     return PMIX_SUCCESS;
 }
 

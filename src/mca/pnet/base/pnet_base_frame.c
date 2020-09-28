@@ -56,9 +56,7 @@ pmix_pnet_API_module_t pmix_pnet = {
     .deliver_inventory = pmix_pnet_base_deliver_inventory,
     .register_fabric = pmix_pnet_base_register_fabric,
     .update_fabric = pmix_pnet_base_update_fabric,
-    .deregister_fabric = pmix_pnet_base_deregister_fabric,
-    .get_vertex_info = pmix_pnet_base_get_vertex_info,
-    .get_device_index = pmix_pnet_base_get_device_index
+    .deregister_fabric = pmix_pnet_base_deregister_fabric
 };
 
 static pmix_status_t pmix_pnet_close(void)

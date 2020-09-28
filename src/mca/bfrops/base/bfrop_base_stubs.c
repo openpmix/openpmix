@@ -128,6 +128,22 @@ static const char* basic_type_string(pmix_data_type_t type)
             return "PMIX_COORD";
         case PMIX_REGATTR:
             return "PMIX_REGATTR";
+        case PMIX_JOB_STATE:
+            return "PMIX_JOB_STATE";
+        case PMIX_LINK_STATE:
+            return "PMIX_LINK_STATE";
+        case PMIX_PROC_CPUSET:
+            return "PMIX_PROC_CPUSET";
+        case PMIX_GEOMETRY:
+            return "PMIX_GEOMETRY";
+        case PMIX_DEVICE_DIST:
+            return "PMIX_DEVICE_DIST";
+        case PMIX_ENDPOINT:
+            return "PMIX_ENDPOINT";
+        case PMIX_TOPO:
+            return "PMIX_TOPO";
+        case PMIX_DEVTYPE:
+            return "PMIX_DEVTYPE";
         default:
             return "NOT INITIALIZED";
     }

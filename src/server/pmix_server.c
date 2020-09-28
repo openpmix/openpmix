@@ -186,6 +186,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     pmix_rank_info_t *rinfo;
     pmix_proc_type_t ptype = PMIX_PROC_TYPE_STATIC_INIT;
     pmix_topology_t *topo = NULL;
+    pmix_value_t value;
+    pmix_proc_t myproc;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -357,16 +359,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     PMIX_RETAIN(pmix_globals.mypeer->info);
     pmix_client_globals.myserver->info = pmix_globals.mypeer->info;
 
-    /* open the pnet framework and select the active modules for this environment */
-    if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pnet_base_framework, 0))) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return rc;
-    }
-    if (PMIX_SUCCESS != (rc = pmix_pnet_base_select())) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return rc;
-    }
-
     /* open the pmdl framework and select the active modules for this environment */
     if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pmdl_base_framework, 0))) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -441,6 +433,18 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         }
     }
 
+    /* open the pnet framework and select the active modules for this environment
+     * Do this after setting up the topology so the components can check to see
+     * if they have any local assets */
+    if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pnet_base_framework, 0))) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return rc;
+    }
+    if (PMIX_SUCCESS != (rc = pmix_pnet_base_select())) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return rc;
+    }
+
     /* start listening for connections */
     if (PMIX_SUCCESS != pmix_ptl_base_start_listening(info, ninfo)) {
         pmix_show_help("help-pmix-server.txt", "listener-thread-start", true);
@@ -451,6 +455,12 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
 
     ++pmix_globals.init_cntr;
     PMIX_RELEASE_THREAD(&pmix_global_lock);
+
+    /* save the topology internally in case our host wants it */
+    PMIX_LOAD_PROCID(&myproc, pmix_globals.myid.nspace, pmix_globals.myid.rank);
+    value.type = PMIX_TOPO;
+    value.data.ptr = &pmix_globals.topology;
+    rc = PMIx_Store_internal(&myproc, PMIX_TOPOLOGY2, &value);
 
     return PMIX_SUCCESS;
 }

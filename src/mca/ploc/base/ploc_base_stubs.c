@@ -243,7 +243,7 @@ pmix_status_t pmix_ploc_base_get_cpuset(pmix_cpuset_t *cpuset,
     }
 
     pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
-                        "ploc:get_location called");
+                        "ploc:get_cpuset called");
 
     /* process the request */
     PMIX_LIST_FOREACH(active, &pmix_ploc_globals.actives, pmix_ploc_base_active_module_t) {
@@ -264,6 +264,7 @@ pmix_status_t pmix_ploc_base_get_cpuset(pmix_cpuset_t *cpuset,
 
 pmix_status_t pmix_ploc_base_compute_distances(pmix_topology_t *topo,
                                                pmix_cpuset_t *cpuset,
+                                               pmix_device_type_t types,
                                                pmix_device_distance_t **dist,
                                                size_t *ndist)
 {
@@ -275,12 +276,14 @@ pmix_status_t pmix_ploc_base_compute_distances(pmix_topology_t *topo,
     }
 
     pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
-                        "ploc:update_distance called");
+                        "ploc:compute_distances called");
 
     /* process the request */
     PMIX_LIST_FOREACH(active, &pmix_ploc_globals.actives, pmix_ploc_base_active_module_t) {
+        pmix_output(0, "CHECKING %s", active->component->base.pmix_mca_component_name);
         if (NULL != active->module->compute_distances) {
-            rc = active->module->compute_distances(topo, cpuset, dist, ndist);
+            pmix_output(0, "CALLING");
+            rc = active->module->compute_distances(topo, cpuset, types, dist, ndist);
             if (PMIX_SUCCESS == rc) {
                 return rc;
             }

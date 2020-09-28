@@ -151,12 +151,6 @@ PMIX_EXPORT pmix_status_t pmix_pnet_base_register_fabric(pmix_fabric_t *fabric,
                                                          size_t ndirs);
 PMIX_EXPORT pmix_status_t pmix_pnet_base_deregister_fabric(pmix_fabric_t *fabric);
 PMIX_EXPORT pmix_status_t pmix_pnet_base_update_fabric(pmix_fabric_t *fabric);
-PMIX_EXPORT pmix_status_t pmix_pnet_base_get_vertex_info(pmix_fabric_t *fabric,
-                                                         uint32_t i,
-                                                         pmix_info_t **info, size_t *ninfo);
-PMIX_EXPORT pmix_status_t pmix_pnet_base_get_device_index(pmix_fabric_t *fabric,
-                                                          const pmix_info_t vertex[], size_t ninfo,
-                                                          uint32_t *i);
 
 END_C_DECLS
 
