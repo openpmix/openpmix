@@ -324,3 +324,25 @@ PMIX_EXPORT const char* PMIx_Link_state_string(pmix_link_state_t state)
             return "UNKNOWN";
     }
 }
+
+const char* PMIx_Device_type_string(pmix_device_type_t type)
+{
+    switch(type) {
+        case PMIX_DEVTYPE_UNKNOWN:
+            return "UNKNOWN";
+        case PMIX_DEVTYPE_BLOCK:
+            return "BLOCK";
+        case PMIX_DEVTYPE_GPU:
+            return "GPU";
+        case PMIX_DEVTYPE_NETWORK:
+            return "NETWORK";
+        case PMIX_DEVTYPE_OPENFABRICS:
+            return "OPENFABRICS";
+        case PMIX_DEVTYPE_DMA:
+            return "DMA";
+        case PMIX_DEVTYPE_COPROC:
+            return "COPROCESSOR";
+        default:
+            return "UNKNOWN";
+    }
+}

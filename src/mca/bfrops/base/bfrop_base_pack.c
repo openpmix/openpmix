@@ -1421,6 +1421,10 @@ pmix_status_t pmix_bfrops_base_pack_geometry(pmix_pointer_array_t *regtypes,
         if (PMIX_SUCCESS != ret) {
             return ret;
         }
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].osname, 1, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
         PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].ncoords, 1, PMIX_SIZE, regtypes);
         if (PMIX_SUCCESS != ret) {
             return ret;
@@ -1450,6 +1454,14 @@ pmix_status_t pmix_bfrops_base_pack_devdist(pmix_pointer_array_t *regtypes,
 
     for (i=0; i < num_vals; ++i) {
         PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].uuid, 1, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].osname, 1, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].type, 1, PMIX_DEVTYPE, regtypes);
         if (PMIX_SUCCESS != ret) {
             return ret;
         }
@@ -1522,4 +1534,21 @@ pmix_status_t pmix_bfrops_base_pack_topology(pmix_pointer_array_t *regtypes,
         }
     }
     return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_pack_devtype(pmix_pointer_array_t *regtypes,
+                                            pmix_buffer_t *buffer, const void *src,
+                                            int32_t num_vals, pmix_data_type_t type)
+{
+    pmix_status_t ret;
+
+    if (NULL == regtypes) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (PMIX_DEVTYPE != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT64, regtypes);
+    return ret;
 }

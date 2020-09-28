@@ -60,6 +60,7 @@ AC_DEFUN([MCA_pmix_ploc_hwloc_CONFIG],[
                    [Location of hwloc.h])
     AC_DEFINE_UNQUOTED([PMIX_HAVE_HWLOC], [$pmix_hwloc_support],
                    [Whether or not we have hwloc support])
+    AM_CONDITIONAL([PMIX_HAVE_HWLOC], [test $pmix_hwloc_support -eq 1])
 
     PMIX_SUMMARY_ADD([[External Packages]],[[HWLOC]], [pmix_hwloc], [$pmix_hwloc_support_will_build ($pmix_hwloc_source)])
 

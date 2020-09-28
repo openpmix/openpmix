@@ -81,6 +81,7 @@ typedef pmix_status_t (*pmix_ploc_base_module_get_cpuset_fn_t)(pmix_cpuset_t *cp
 /* Get distance array */
 typedef pmix_status_t (*pmix_ploc_base_module_compute_dist_fn_t)(pmix_topology_t *topo,
                                                                  pmix_cpuset_t *cpuset,
+                                                                 pmix_device_type_t types,
                                                                  pmix_device_distance_t **dist,
                                                                  size_t *ndist);
 

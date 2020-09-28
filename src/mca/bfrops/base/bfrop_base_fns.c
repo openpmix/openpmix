@@ -187,6 +187,11 @@ void pmix_bfrops_base_value_load(pmix_value_t *v, const void *data,
             memcpy(&(v->data.pinfo->exit_code), &pi->exit_code, sizeof(int));
             break;
         case PMIX_POINTER:
+        case PMIX_TOPO:
+        case PMIX_PROC_CPUSET:
+        case PMIX_GEOMETRY:
+        case PMIX_DEVICE_DIST:
+        case PMIX_ENDPOINT:
             v->data.ptr = (void*)data;
             break;
         case PMIX_ENVAR:
@@ -358,6 +363,11 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv,
             *sz = sizeof(pmix_proc_state_t);
             break;
         case PMIX_POINTER:
+        case PMIX_TOPO:
+        case PMIX_PROC_CPUSET:
+        case PMIX_GEOMETRY:
+        case PMIX_DEVICE_DIST:
+        case PMIX_ENDPOINT:
             *data = (void*)kv->data.ptr;
             *sz = sizeof(void*);
             break;
@@ -709,6 +719,11 @@ pmix_status_t pmix_bfrops_base_value_xfer(pmix_value_t *p,
     case PMIX_DATA_ARRAY:
         return pmix_bfrops_base_copy_darray(&p->data.darray, src->data.darray, PMIX_DATA_ARRAY);
     case PMIX_POINTER:
+    case PMIX_TOPO:
+    case PMIX_PROC_CPUSET:
+    case PMIX_GEOMETRY:
+    case PMIX_DEVICE_DIST:
+    case PMIX_ENDPOINT:
         p->data.ptr = src->data.ptr;
         break;
     case PMIX_ENVAR:

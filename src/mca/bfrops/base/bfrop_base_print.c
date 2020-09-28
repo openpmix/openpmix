@@ -2085,8 +2085,9 @@ pmix_status_t pmix_bfrops_base_print_geometry(char **output, char *prefix,
         return PMIX_ERR_NOMEM;
     }
 
-    ret = asprintf(&tmp, "%sData type: PMIX_GEOMETRY\tValue: Fabric: %"PRIsize_t" UUID: %s",
-                   prefx, src->fabric, (NULL == src->uuid) ? "NULL" : src->uuid);
+    ret = asprintf(&tmp, "%sData type: PMIX_GEOMETRY\tValue: Fabric: %"PRIsize_t" UUID: %s OSName: %s",
+                   prefx, src->fabric, (NULL == src->uuid) ? "NULL" : src->uuid,
+                   (NULL == src->osname) ? "NULL" : src->osname);
     if (0 > ret) {
         if (prefx != prefix) {
             free(prefx);
@@ -2142,8 +2143,10 @@ pmix_status_t pmix_bfrops_base_print_devdist(char **output, char *prefix,
         prefx = prefix;
     }
 
-    ret = asprintf(output, "%sData type: PMIX_DEVICE_DIST\tValue: %s Min: %u Max: %u",
+    ret = asprintf(output, "%sData type: PMIX_DEVICE_DIST\tValue: UUID: %s OSName: %s Type: %s Min: %u Max: %u",
                    prefx, (NULL == src->uuid) ? "NULL" : src->uuid,
+                   (NULL == src->osname) ? "NULL" : src->osname,
+                   PMIx_Device_type_string(src->type),
                    (unsigned)src->mindist, (unsigned)src->maxdist);
     if (prefx != prefix) {
         free(prefx);
@@ -2189,8 +2192,8 @@ pmix_status_t pmix_bfrops_base_print_endpoint(char **output, char *prefix,
 }
 
 pmix_status_t pmix_bfrops_base_print_topology(char **output, char *prefix,
-                                             pmix_topology_t *src,
-                                             pmix_data_type_t type)
+                                              pmix_topology_t *src,
+                                              pmix_data_type_t type)
 {
     char *prefx, *string;
     int ret;
@@ -2220,6 +2223,39 @@ pmix_status_t pmix_bfrops_base_print_topology(char **output, char *prefix,
         free(prefx);
     }
     free(string);
+
+    if (0 > ret) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    } else {
+        return PMIX_SUCCESS;
+    }
+}
+
+pmix_status_t pmix_bfrops_base_print_devtype(char **output, char *prefix,
+                                             pmix_device_type_t *src,
+                                             pmix_data_type_t type)
+{
+    char *prefx;
+    int ret;
+
+    if (PMIX_DEVTYPE != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* deal with NULL prefix */
+    if (NULL == prefix) {
+        if (0 > asprintf(&prefx, " ")) {
+            return PMIX_ERR_NOMEM;
+        }
+    } else {
+        prefx = prefix;
+    }
+
+    ret = asprintf(output, "%sData type: PMIX_DEVTYPE\tValue: 0x%"PRIx64,
+                   prefx, (uint64_t)src);
+    if (prefx != prefix) {
+        free(prefx);
+    }
 
     if (0 > ret) {
         return PMIX_ERR_OUT_OF_RESOURCE;

@@ -1022,9 +1022,9 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_deregister_nb(pmix_fabric_t *fabric,
 												    pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 
-/* Update the distance information for the current process
+/* Compute the distance information for the current process
  * Returns an array of distances from the current process
- * location to each of the local fabric devices
+ * location to each of the local devices of the specified type(s)
  *
  * distances - pointer to location where the array of
  *             distances is to be returned
@@ -1036,15 +1036,17 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_deregister_nb(pmix_fabric_t *fabric,
  * PMIX_SUCCESS - distance array was successfully returned
  * Other error
  */
-PMIX_EXPORT pmix_status_t PMIx_Fabric_compute_distances(pmix_topology_t *topo,
-                                                        pmix_cpuset_t *cpuset,
-                                                        pmix_device_distance_t *distances[],
-                                                        size_t *ndist);
+PMIX_EXPORT pmix_status_t PMIx_Compute_distances(pmix_topology_t *topo,
+                                                 pmix_cpuset_t *cpuset,
+                                                 pmix_device_type_t types,
+                                                 pmix_device_distance_t *distances[],
+                                                 size_t *ndist);
 
-PMIX_EXPORT pmix_status_t PMIx_Fabric_compute_distances_nb(pmix_topology_t *topo,
-                                                           pmix_cpuset_t *cpuset,
-                                                           pmix_device_dist_cbfunc_t cbfunc,
-                                                           void *cbdata);
+PMIX_EXPORT pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *topo,
+                                                    pmix_cpuset_t *cpuset,
+                                                    pmix_device_type_t types,
+                                                    pmix_device_dist_cbfunc_t cbfunc,
+                                                    void *cbdata);
 
 /* Load the local hwardware topology description
  *
@@ -1126,6 +1128,7 @@ PMIX_EXPORT const char* PMIx_Job_state_string(pmix_job_state_t state);
 PMIX_EXPORT const char* PMIx_Get_attribute_string(char *attribute);
 PMIX_EXPORT const char* PMIx_Get_attribute_name(char *attrstring);
 PMIX_EXPORT const char* PMIx_Link_state_string(pmix_link_state_t state);
+PMIX_EXPORT const char* PMIx_Device_type_string(pmix_device_type_t type);
 
 /* Get the PMIx version string. Note that the provided string is
  * statically defined and must NOT be free'd  */

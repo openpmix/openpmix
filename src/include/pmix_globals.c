@@ -68,6 +68,10 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_namelist_t,
                                 pmix_list_item_t,
                                 NULL, NULL);
 
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_topo_obj_t,
+                                pmix_object_t,
+                                NULL, NULL);
+
 static void cfcon(pmix_cleanup_file_t *p)
 {
     p->path = NULL;

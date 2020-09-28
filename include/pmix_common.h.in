@@ -1016,6 +1016,15 @@ typedef uint32_t pmix_rank_t;
                                                                    //         PMIX_NODEID and PMIX_FABRIC_DEVICE_PCI_DEVID shall be unique within the
                                                                    //         system.
 
+
+/* Distance Attributes */
+#define PMIX_DEVICE_DISTANCES               "pmix.dev.dist"        // (pmix_data_array_t*) Return an array of pmix_device_dist_t containing the
+                                                                   //         minimum and maximum distances of the given process location to all
+                                                                   //         devices of the specified type on the local node.
+#define PMIX_DEVICE_TYPE                    "pmix.dev.type"        // (pmix_device_type_t) Bitmask specifying the type(s) of device(s) whose
+                                                                   //         information is being requested. Only used as a directive/qualifier.
+
+
 /* Descriptive Attributes */
 #define PMIX_MAX_VALUE                      "pmix.descr.maxval"    // (varies) Used in pmix_regattr_t to describe the maximum valid value
                                                                    //          for the associated attribute.
@@ -1296,6 +1305,7 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_DEVICE_DIST        54
 #define PMIX_ENDPOINT           55
 #define PMIX_TOPO               56
+#define PMIX_DEVTYPE            57
 /********************/
 
 /* define a boundary for implementers so they can add their own data types */
@@ -1569,6 +1579,7 @@ typedef uint16_t pmix_locality_t;
 typedef struct pmix_geometry {
     size_t fabric;
     char *uuid;
+    char *osname;
     pmix_coord_t *coordinates;
     size_t ncoords;
 } pmix_geometry_t;
@@ -1581,6 +1592,10 @@ typedef struct pmix_geometry {
         if (NULL != (m)->uuid) {                                \
             free((m)->uuid);                                    \
             (m)->uuid = NULL;                                   \
+        }                                                       \
+        if (NULL != (m)->osname) {                              \
+            free((m)->osname);                                  \
+            (m)->osname = NULL;                                 \
         }                                                       \
         if (NULL != (m)->coordinates) {                         \
             PMIX_COORD_FREE((m)->coordinates, (m)->ncoords);    \
@@ -1603,9 +1618,21 @@ typedef struct pmix_geometry {
     } while(0)
 
 
+/****    PMIX_DEVICE_TYPE    ****/
+typedef uint64_t pmix_device_type_t;
+#define PMIX_DEVTYPE_UNKNOWN        0x0
+#define PMIX_DEVTYPE_BLOCK          0x1
+#define PMIX_DEVTYPE_GPU            0x2
+#define PMIX_DEVTYPE_NETWORK        0x4
+#define PMIX_DEVTYPE_OPENFABRICS    0x8
+#define PMIX_DEVTYPE_DMA            0x10
+#define PMIX_DEVTYPE_COPROC         0x20
+
 /****    PMIX_DISTANCE     ****/
 typedef struct pmix_device_distance {
     char *uuid;
+    char *osname;
+    pmix_device_type_t type;
     uint16_t mindist;
     uint16_t maxdist;
 } pmix_device_distance_t;
@@ -1621,6 +1648,9 @@ typedef struct pmix_device_distance {
     do {                                \
         if (NULL != ((m)->uuid)) {      \
             free((m)->uuid);            \
+        }                               \
+        if (NULL != ((m)->osname)) {    \
+            free((m)->osname);          \
         }                               \
     } while(0)
 
@@ -1704,6 +1734,7 @@ typedef struct pmix_byte_object {
 /****    PMIX ENDPOINT    ****/
 typedef struct pmix_endpoint {
     char *uuid;
+    char *osname;
     pmix_byte_object_t endpt;
 } pmix_endpoint_t;
 
@@ -1714,6 +1745,9 @@ typedef struct pmix_endpoint {
     do {                                \
         if (NULL != (m)->uuid) {        \
             free((m)->uuid);            \
+        }                               \
+        if (NULL != (m)->osname) {      \
+            free((m)->osname);          \
         }                               \
         if (NULL != (m)->endpt.bytes) { \
             free((m)->endpt.bytes);     \

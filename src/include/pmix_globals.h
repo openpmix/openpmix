@@ -90,6 +90,14 @@ typedef struct {
     char **description;
 } pmix_regattr_input_t;
 
+/* define a struct for passing topology objects */
+typedef struct {
+    pmix_object_t super;
+    char *source;
+    void *object;
+} pmix_topo_obj_t;
+PMIX_CLASS_DECLARATION(pmix_topo_obj_t);
+
 /* define a command type for communicating to the
  * pmix server */
 typedef uint8_t pmix_cmd_t;

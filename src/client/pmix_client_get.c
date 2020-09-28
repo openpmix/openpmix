@@ -170,6 +170,16 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
         return PMIX_ERR_BAD_PARAM;
     }
 
+    /* see if they just want their own process ID */
+    if (NULL == proc && 0 == strncmp(key, PMIX_PROCID, PMIX_MAX_KEYLEN)) {
+        PMIX_VALUE_CREATE(ival, 1);
+        ival->type = PMIX_PROC;
+        ival->data.proc = (pmix_proc_t*)malloc(sizeof(pmix_proc_t));
+        PMIX_LOAD_PROCID(ival->data.proc, pmix_globals.myid.nspace, pmix_globals.myid.rank);
+        cbfunc(PMIX_SUCCESS, ival, cbdata);
+        return PMIX_SUCCESS;
+    }
+
     /* if the key is NULL, the rank cannot be WILDCARD as
      * we cannot return all info from every rank */
     if (NULL != proc && PMIX_RANK_WILDCARD == proc->rank && NULL == key) {
