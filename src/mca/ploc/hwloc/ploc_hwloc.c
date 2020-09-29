@@ -1408,7 +1408,7 @@ static pmix_status_t pack_topology(pmix_buffer_t *buf, pmix_topology_t *src,
     int len;
     struct hwloc_topology_support *support;
 
-    if (NULL == src->source|| 0 != strcasecmp(src->source, "hwloc")) {
+    if (NULL == src->source || 0 != strcasecmp(src->source, "hwloc")) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
@@ -1557,7 +1557,7 @@ static pmix_status_t copy_topology(pmix_topology_t *dest, pmix_topology_t *src)
 
 #if HAVE_HWLOC_TOPOLOGY_DUP
     /* use the hwloc dup function */
-    if (0 != hwloc_topology_dup(dest->topology, src->topology)) {
+    if (0 != hwloc_topology_dup(&dest->topology, src->topology)) {
         return PMIX_ERROR;
     }
     return PMIX_SUCCESS;

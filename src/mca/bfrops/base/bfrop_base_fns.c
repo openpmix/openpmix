@@ -64,6 +64,11 @@ void pmix_bfrops_base_value_load(pmix_value_t *v, const void *data,
     pmix_status_t rc;
     pmix_coord_t *coord;
     pmix_regattr_t *regattr;
+    pmix_topology_t *topo;
+    pmix_cpuset_t *cpuset;
+    pmix_geometry_t *geometry;
+    pmix_endpoint_t *endpoint;
+    pmix_device_distance_t *devdist;
 
     v->type = type;
     if (NULL == data) {
@@ -148,6 +153,7 @@ void pmix_bfrops_base_value_load(pmix_value_t *v, const void *data,
             memcpy(v->data.proc, data, sizeof(pmix_proc_t));
             break;
         case PMIX_BYTE_OBJECT:
+        case PMIX_COMPRESSED_STRING:
             bo = (pmix_byte_object_t*)data;
             v->data.bo.bytes = (char*)malloc(bo->size);
             if (NULL == v->data.bo.bytes) {
@@ -186,13 +192,18 @@ void pmix_bfrops_base_value_load(pmix_value_t *v, const void *data,
             memcpy(&(v->data.pinfo->pid), &pi->pid, sizeof(pid_t));
             memcpy(&(v->data.pinfo->exit_code), &pi->exit_code, sizeof(int));
             break;
+        case PMIX_DATA_ARRAY:
+            darray = (pmix_data_array_t*)data;
+            rc = pmix_bfrops_base_copy_darray(&v->data.darray, darray, PMIX_DATA_ARRAY);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
+            break;
         case PMIX_POINTER:
-        case PMIX_TOPO:
-        case PMIX_PROC_CPUSET:
-        case PMIX_GEOMETRY:
-        case PMIX_DEVICE_DIST:
-        case PMIX_ENDPOINT:
             v->data.ptr = (void*)data;
+            break;
+        case PMIX_ALLOC_DIRECTIVE:
+            memcpy(&(v->data.adir), data, sizeof(pmix_alloc_directive_t));
             break;
         case PMIX_ENVAR:
             envar = (pmix_envar_t*)data;
@@ -204,16 +215,60 @@ void pmix_bfrops_base_value_load(pmix_value_t *v, const void *data,
             }
             v->data.envar.separator = envar->separator;
             break;
-        case PMIX_DATA_ARRAY:
-            darray = (pmix_data_array_t*)data;
-            rc = pmix_bfrops_base_copy_darray(&v->data.darray, darray, PMIX_DATA_ARRAY);
+        case PMIX_COORD:
+            coord = (pmix_coord_t*)data;
+            rc = pmix_bfrops_base_copy_coord(&v->data.coord, coord, PMIX_COORD);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
             }
             break;
-        case PMIX_COORD:
-            coord = (pmix_coord_t*)data;
-            rc = pmix_bfrops_base_copy_coord(&v->data.coord, coord, PMIX_COORD);
+        case PMIX_LINK_STATE:
+            memcpy(&(v->data.linkstate), data, sizeof(pmix_link_state_t));
+            break;
+        case PMIX_JOB_STATE:
+            memcpy(&(v->data.jstate), data, sizeof(pmix_job_state_t));
+            break;
+        case PMIX_TOPO:
+            topo = (pmix_topology_t*)data;
+            rc = pmix_bfrops_base_copy_topology(&v->data.topo, topo, PMIX_TOPO);
+            if (PMIX_ERR_INIT == rc || PMIX_ERR_NOT_SUPPORTED == rc) {
+                /* we are not initialized yet, so just copy the pointer */
+                v->data.topo = topo;
+                rc = PMIX_SUCCESS;
+            }
+            break;
+        case PMIX_PROC_CPUSET:
+            cpuset = (pmix_cpuset_t*)data;
+            rc = pmix_bfrops_base_copy_cpuset(&v->data.cpuset, cpuset, PMIX_PROC_CPUSET);
+            if (PMIX_ERR_INIT == rc || PMIX_ERR_NOT_SUPPORTED == rc) {
+                /* we are not initialized yet, so just copy the pointer */
+                v->data.cpuset = cpuset;
+                rc = PMIX_SUCCESS;
+            }
+            break;
+        case PMIX_LOCTYPE:
+            memcpy(&(v->data.locality), data, sizeof(pmix_locality_t));
+            break;
+        case PMIX_GEOMETRY:
+            geometry = (pmix_geometry_t*)data;
+            rc = pmix_bfrops_base_copy_geometry(&v->data.geometry, geometry, PMIX_GEOMETRY);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
+            break;
+        case PMIX_DEVTYPE:
+            memcpy(&(v->data.devtype), data, sizeof(pmix_device_type_t));
+            break;
+        case PMIX_DEVICE_DIST:
+            devdist = (pmix_device_distance_t*)data;
+            rc = pmix_bfrops_base_copy_devdist(&v->data.devdist, devdist, PMIX_DEVICE_DIST);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
+            break;
+        case PMIX_ENDPOINT:
+            endpoint = (pmix_endpoint_t*)data;
+            rc = pmix_bfrops_base_copy_endpoint(&v->data.endpoint, endpoint, PMIX_ENDPOINT);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
             }
@@ -247,7 +302,6 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv,
     pmix_status_t rc;
     pmix_envar_t *envar;
     pmix_data_array_t **darray;
-    pmix_coord_t *coord;
     pmix_regattr_t *regattr, *r;
 
     rc = PMIX_SUCCESS;
@@ -337,7 +391,22 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv,
             memcpy(*data, &(kv->data.time), sizeof(time_t));
             *sz = sizeof(time_t);
             break;
+        case PMIX_STATUS:
+            memcpy(*data, &(kv->data.status), sizeof(pmix_status_t));
+            *sz = sizeof(pmix_status_t);
+            break;
+        case PMIX_PROC_RANK:
+            memcpy(*data, &(kv->data.rank), sizeof(pmix_rank_t));
+            *sz = sizeof(pmix_rank_t);
+            break;
+        case PMIX_PROC:
+            rc = pmix_bfrops_base_copy_proc((pmix_proc_t**)data, kv->data.proc, PMIX_PROC);
+            if (PMIX_SUCCESS == rc) {
+                *sz = sizeof(pmix_proc_t);
+            }
+            break;
         case PMIX_BYTE_OBJECT:
+        case PMIX_COMPRESSED_STRING:
             if (NULL != kv->data.bo.bytes && 0 < kv->data.bo.size) {
                 *data = kv->data.bo.bytes;
                 *sz = kv->data.bo.size;
@@ -362,19 +431,26 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv,
             memcpy(*data, &(kv->data.state), sizeof(pmix_proc_state_t));
             *sz = sizeof(pmix_proc_state_t);
             break;
-        case PMIX_POINTER:
-        case PMIX_TOPO:
-        case PMIX_PROC_CPUSET:
-        case PMIX_GEOMETRY:
-        case PMIX_DEVICE_DIST:
-        case PMIX_ENDPOINT:
-            *data = (void*)kv->data.ptr;
-            *sz = sizeof(void*);
+        case PMIX_PROC_INFO:
+            rc = pmix_bfrops_base_copy_pinfo((pmix_proc_info_t**)data, kv->data.pinfo, PMIX_PROC_INFO);
+            if (PMIX_SUCCESS == rc) {
+                *sz = sizeof(pmix_proc_info_t);
+            }
             break;
         case PMIX_DATA_ARRAY:
             darray = (pmix_data_array_t**)data;
             rc = pmix_bfrops_base_copy_darray(darray, kv->data.darray, PMIX_DATA_ARRAY);
-            *sz = sizeof(pmix_data_array_t);
+            if (PMIX_SUCCESS == rc) {
+                *sz = sizeof(pmix_data_array_t);
+            }
+            break;
+        case PMIX_POINTER:
+            *data = (void*)kv->data.ptr;
+            *sz = sizeof(void*);
+            break;
+        case PMIX_ALLOC_DIRECTIVE:
+            memcpy(*data, &(kv->data.adir), sizeof(pmix_alloc_directive_t));
+            *sz = sizeof(pmix_alloc_directive_t);
             break;
         case PMIX_ENVAR:
             PMIX_ENVAR_CREATE(envar, 1);
@@ -392,13 +468,66 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv,
             *sz = sizeof(pmix_envar_t);
             break;
         case PMIX_COORD:
-            coord = (pmix_coord_t*)malloc(sizeof(pmix_coord_t));
-            if (NULL == coord) {
-                return PMIX_ERR_NOMEM;
+            rc = pmix_bfrops_base_copy_coord((pmix_coord_t**)data, kv->data.coord, PMIX_COORD);
+            if (PMIX_SUCCESS == rc) {
+                *sz = sizeof(pmix_coord_t);
             }
-            memcpy(coord, kv->data.coord, sizeof(pmix_coord_t));
-            *data = coord;
-            *sz = sizeof(pmix_coord_t);
+            break;
+        case PMIX_LINK_STATE:
+            memcpy(*data, &(kv->data.linkstate), sizeof(pmix_link_state_t));
+            *sz = sizeof(pmix_link_state_t);
+            break;
+        case PMIX_JOB_STATE:
+            memcpy(*data, &(kv->data.jstate), sizeof(pmix_job_state_t));
+            *sz = sizeof(pmix_job_state_t);
+            break;
+        case PMIX_TOPO:
+            rc = pmix_bfrops_base_copy_topology((pmix_topology_t**)data, kv->data.topo, PMIX_TOPO);
+            if (PMIX_SUCCESS == rc) {
+                *sz = sizeof(pmix_topology_t);
+            } else if (PMIX_ERR_INIT == rc || PMIX_ERR_NOT_SUPPORTED == rc) {
+                data = malloc(sizeof(pmix_topology_t));
+                memcpy(data, kv->data.topo, sizeof(pmix_topology_t));
+                *sz = sizeof(pmix_topology_t);
+                rc = PMIX_SUCCESS;
+            }
+            break;
+        case PMIX_PROC_CPUSET:
+            rc = pmix_bfrops_base_copy_cpuset((pmix_cpuset_t**)data, kv->data.cpuset, PMIX_PROC_CPUSET);
+            if (PMIX_SUCCESS == rc) {
+                *sz = sizeof(pmix_cpuset_t);
+            } else if (PMIX_ERR_INIT == rc || PMIX_ERR_NOT_SUPPORTED == rc) {
+                data = malloc(sizeof(pmix_cpuset_t));
+                memcpy(data, kv->data.cpuset, sizeof(pmix_cpuset_t));
+                *sz = sizeof(pmix_cpuset_t);
+                rc = PMIX_SUCCESS;
+            }
+            break;
+        case PMIX_LOCTYPE:
+            memcpy(*data, &(kv->data.locality), sizeof(pmix_locality_t));
+            *sz = sizeof(pmix_locality_t);
+            break;
+        case PMIX_GEOMETRY:
+            rc = pmix_bfrops_base_copy_geometry((pmix_geometry_t**)data, kv->data.geometry, PMIX_GEOMETRY);
+            if (PMIX_SUCCESS == rc) {
+                *sz = sizeof(pmix_geometry_t);
+            }
+            break;
+        case PMIX_DEVTYPE:
+            memcpy(*data, &(kv->data.devtype), sizeof(pmix_device_type_t));
+            *sz = sizeof(pmix_device_type_t);
+            break;
+        case PMIX_DEVICE_DIST:
+            rc = pmix_bfrops_base_copy_devdist((pmix_device_distance_t**)data, kv->data.devdist, PMIX_DEVICE_DIST);
+            if (PMIX_SUCCESS == rc) {
+                *sz = sizeof(pmix_device_distance_t);
+            }
+            break;
+        case PMIX_ENDPOINT:
+            rc = pmix_bfrops_base_copy_endpoint((pmix_endpoint_t**)data, kv->data.endpoint, PMIX_ENDPOINT);
+            if (PMIX_SUCCESS == rc) {
+                *sz = sizeof(pmix_endpoint_t);
+            }
             break;
         case PMIX_REGATTR:
             PMIX_REGATTR_CREATE(regattr, 1);
@@ -602,6 +731,8 @@ pmix_value_cmp_t pmix_bfrops_base_value_cmp(pmix_value_t *p,
 pmix_status_t pmix_bfrops_base_value_xfer(pmix_value_t *p,
                                           const pmix_value_t *src)
 {
+    pmix_status_t rc;
+
     /* copy the right field */
     p->type = src->type;
     switch (src->type) {
@@ -679,15 +810,15 @@ pmix_status_t pmix_bfrops_base_value_xfer(pmix_value_t *p,
     case PMIX_STATUS:
         memcpy(&p->data.status, &src->data.status, sizeof(pmix_status_t));
         break;
+    case PMIX_PROC_RANK:
+        memcpy(&p->data.rank, &src->data.rank, sizeof(pmix_rank_t));
+        break;
     case PMIX_PROC:
         PMIX_PROC_CREATE(p->data.proc, 1);
         if (NULL == p->data.proc) {
             return PMIX_ERR_NOMEM;
         }
         memcpy(p->data.proc, src->data.proc, sizeof(pmix_proc_t));
-        break;
-    case PMIX_PROC_RANK:
-        memcpy(&p->data.rank, &src->data.rank, sizeof(pmix_rank_t));
         break;
     case PMIX_BYTE_OBJECT:
     case PMIX_COMPRESSED_STRING:
@@ -719,12 +850,10 @@ pmix_status_t pmix_bfrops_base_value_xfer(pmix_value_t *p,
     case PMIX_DATA_ARRAY:
         return pmix_bfrops_base_copy_darray(&p->data.darray, src->data.darray, PMIX_DATA_ARRAY);
     case PMIX_POINTER:
-    case PMIX_TOPO:
-    case PMIX_PROC_CPUSET:
-    case PMIX_GEOMETRY:
-    case PMIX_DEVICE_DIST:
-    case PMIX_ENDPOINT:
         p->data.ptr = src->data.ptr;
+        break;
+    case PMIX_ALLOC_DIRECTIVE:
+        memcpy(&p->data.adir, &src->data.adir, sizeof(pmix_alloc_directive_t));
         break;
     case PMIX_ENVAR:
         PMIX_ENVAR_CONSTRUCT(&p->data.envar);
@@ -737,11 +866,42 @@ pmix_status_t pmix_bfrops_base_value_xfer(pmix_value_t *p,
         p->data.envar.separator = src->data.envar.separator;
         break;
     case PMIX_COORD:
-        pmix_bfrops_base_copy_coord(&p->data.coord, src->data.coord, PMIX_COORD);
+        return pmix_bfrops_base_copy_coord(&p->data.coord, src->data.coord, PMIX_COORD);
+    case PMIX_LINK_STATE:
+        memcpy(&p->data.linkstate, &src->data.linkstate, sizeof(pmix_link_state_t));
         break;
+    case PMIX_JOB_STATE:
+        memcpy(&p->data.jstate, &src->data.jstate, sizeof(pmix_job_state_t));
+        break;
+    case PMIX_TOPO:
+        rc = pmix_bfrops_base_copy_topology(&p->data.topo, src->data.topo, PMIX_TOPO);
+        if (PMIX_ERR_INIT == rc || PMIX_ERR_NOT_SUPPORTED == rc) {
+            /* we are being asked to do this before init, so
+             * just copy the pointer across */
+            p->data.topo = src->data.topo;
+        }
+        break;
+    case PMIX_PROC_CPUSET:
+        rc = pmix_bfrops_base_copy_cpuset(&p->data.cpuset, src->data.cpuset, PMIX_PROC_CPUSET);
+        if (PMIX_ERR_INIT == rc || PMIX_ERR_NOT_SUPPORTED == rc) {
+            /* we are being asked to do this before init, so
+             * just copy the pointer across */
+            p->data.cpuset = src->data.cpuset;
+        }
+    case PMIX_LOCTYPE:
+        memcpy(&p->data.locality, &src->data.locality, sizeof(pmix_locality_t));
+        break;
+    case PMIX_GEOMETRY:
+        return pmix_bfrops_base_copy_geometry(&p->data.geometry, src->data.geometry, PMIX_GEOMETRY);
+    case PMIX_DEVTYPE:
+        memcpy(&p->data.devtype, &src->data.devtype, sizeof(pmix_device_type_t));
+        break;
+    case PMIX_DEVICE_DIST:
+        return pmix_bfrops_base_copy_devdist(&p->data.devdist, src->data.devdist, PMIX_DEVICE_DIST);
+    case PMIX_ENDPOINT:
+        return pmix_bfrops_base_copy_endpoint(&p->data.endpoint, src->data.endpoint, PMIX_ENDPOINT);
     case PMIX_REGATTR:
-        pmix_bfrops_base_copy_regattr((pmix_regattr_t**)&p->data.ptr, src->data.ptr, PMIX_REGATTR);
-        break;
+        return pmix_bfrops_base_copy_regattr((pmix_regattr_t**)&p->data.ptr, src->data.ptr, PMIX_REGATTR);
     default:
         pmix_output(0, "PMIX-XFER-VALUE: UNSUPPORTED TYPE %d", (int)src->type);
         return PMIX_ERROR;

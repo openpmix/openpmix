@@ -422,7 +422,6 @@ int main(int argc, char **argv)
 
     /* setup the server library and tell it to support tool connections */
     ninfo = 2;
-
     PMIX_INFO_CREATE(info, ninfo);
     PMIX_INFO_LOAD(&info[0], PMIX_SERVER_TOOL_SUPPORT, NULL, PMIX_BOOL);
     PMIX_INFO_LOAD(&info[1], PMIX_SERVER_SCHEDULER, NULL, PMIX_BOOL);

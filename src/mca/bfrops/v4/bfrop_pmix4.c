@@ -499,6 +499,14 @@ static pmix_status_t init(void)
                        pmix_bfrops_base_print_devtype,
                        &mca_bfrops_v4_component.types);
 
+    PMIX_REGISTER_TYPE("PMIX_LOCTYPE",
+                       PMIX_LOCTYPE,
+                       pmix_bfrops_base_pack_locality,
+                       pmix_bfrops_base_unpack_locality,
+                       pmix_bfrops_base_std_copy,
+                       pmix_bfrops_base_print_locality,
+                       &mca_bfrops_v4_component.types);
+
     return PMIX_SUCCESS;
 }
 

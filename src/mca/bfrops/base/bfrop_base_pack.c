@@ -1146,10 +1146,15 @@ pmix_status_t pmix_bfrops_base_pack_val(pmix_pointer_array_t *regtypes,
     switch (p->type) {
         case PMIX_UNDEF:
             break;
+        case PMIX_PROC:
         case PMIX_PROC_INFO:
         case PMIX_DATA_ARRAY:
-        case PMIX_PROC:
         case PMIX_COORD:
+        case PMIX_TOPO:
+        case PMIX_PROC_CPUSET:
+        case PMIX_GEOMETRY:
+        case PMIX_DEVICE_DIST:
+        case PMIX_ENDPOINT:
         case PMIX_REGATTR:
             PMIX_BFROPS_PACK_TYPE(ret, buffer, p->data.ptr, 1, p->type, regtypes);
             if (PMIX_SUCCESS != ret) {
@@ -1550,5 +1555,22 @@ pmix_status_t pmix_bfrops_base_pack_devtype(pmix_pointer_array_t *regtypes,
     }
 
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT64, regtypes);
+    return ret;
+}
+
+pmix_status_t pmix_bfrops_base_pack_locality(pmix_pointer_array_t *regtypes,
+                                             pmix_buffer_t *buffer, const void *src,
+                                             int32_t num_vals, pmix_data_type_t type)
+{
+    pmix_status_t ret;
+
+    if (NULL == regtypes) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (PMIX_LOCTYPE != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT16, regtypes);
     return ret;
 }

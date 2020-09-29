@@ -657,12 +657,54 @@ pmix_status_t pmix_bfrops_base_unpack_val(pmix_pointer_array_t *regtypes,
             }
             PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.darray, &m, PMIX_DATA_ARRAY, regtypes);
             break;
+        case PMIX_REGATTR:
+            val->data.ptr = (void*)malloc(sizeof(void*));
+            if (NULL == val->data.ptr) {
+                return PMIX_ERR_NOMEM;
+            }
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.ptr, &m, val->type, regtypes);
+            return ret;
         case PMIX_COORD:
-            val->data.coord = (pmix_coord_t*)malloc(sizeof(pmix_coord_t));
+            val->data.coord = (pmix_coord_t*)calloc(1, sizeof(pmix_coord_t));
             if (NULL == val->data.coord) {
                 return PMIX_ERR_NOMEM;
             }
             PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.coord, &m, PMIX_COORD, regtypes);
+            return ret;
+        case PMIX_TOPO:
+            PMIX_TOPOLOGY_CREATE(val->data.topo, 1);
+            if (NULL == val->data.topo) {
+                return PMIX_ERR_NOMEM;
+            }
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.topo, &m, PMIX_TOPO, regtypes);
+            return ret;
+        case PMIX_PROC_CPUSET:
+            PMIX_CPUSET_CREATE(val->data.cpuset, 1);
+            if (NULL == val->data.cpuset) {
+                return PMIX_ERR_NOMEM;
+            }
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.cpuset, &m, PMIX_PROC_CPUSET, regtypes);
+            return ret;
+        case PMIX_GEOMETRY:
+            PMIX_GEOMETRY_CREATE(val->data.geometry, 1);
+            if (NULL == val->data.geometry) {
+                return PMIX_ERR_NOMEM;
+            }
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.geometry, &m, PMIX_GEOMETRY, regtypes);
+            return ret;
+        case PMIX_DEVICE_DIST:
+            PMIX_DEVICE_DIST_CREATE(val->data.devdist, 1);
+            if (NULL == val->data.devdist) {
+                return PMIX_ERR_NOMEM;
+            }
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.devdist, &m, PMIX_DEVICE_DIST, regtypes);
+            return ret;
+        case PMIX_ENDPOINT:
+            PMIX_ENDPOINT_CREATE(val->data.endpoint, 1);
+            if (NULL == val->data.endpoint) {
+                return PMIX_ERR_NOMEM;
+            }
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.endpoint, &m, PMIX_ENDPOINT, regtypes);
             return ret;
         default:
             PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &val->data, &m, val->type, regtypes);
@@ -1588,9 +1630,9 @@ pmix_status_t pmix_bfrops_base_unpack_regex(pmix_pointer_array_t *regtypes,
     n = *num_vals;
 
     for (i = 0; i < n; ++i) {
-        ret = pmix_preg.unpack(buffer, &ptr[n]);
+        ret = pmix_preg.unpack(buffer, &ptr[i]);
         if (PMIX_SUCCESS != ret) {
-            *num_vals = n;
+            *num_vals = 0;
             return ret;
         }
     }
@@ -1644,9 +1686,9 @@ pmix_status_t pmix_bfrops_base_unpack_cpuset(pmix_pointer_array_t *regtypes,
     n = *num_vals;
 
     for (i = 0; i < n; ++i) {
-        ret = pmix_ploc.unpack_cpuset(buffer, &ptr[n], regtypes);
+        ret = pmix_ploc.unpack_cpuset(buffer, &ptr[i], regtypes);
         if (PMIX_SUCCESS != ret) {
-            *num_vals = n;
+            *num_vals = 0;
             return ret;
         }
     }
@@ -1835,9 +1877,9 @@ pmix_status_t pmix_bfrops_base_unpack_topology(pmix_pointer_array_t *regtypes,
     n = *num_vals;
 
     for (i = 0; i < n; ++i) {
-        ret = pmix_ploc.unpack_topology(buffer, &ptr[n], regtypes);
+        ret = pmix_ploc.unpack_topology(buffer, &ptr[i], regtypes);
         if (PMIX_SUCCESS != ret) {
-            *num_vals = n;
+            *num_vals = 0;
             return ret;
         }
     }
@@ -1858,6 +1900,24 @@ pmix_status_t pmix_bfrops_base_unpack_devtype(pmix_pointer_array_t *regtypes,
     }
 
     PMIX_BFROPS_UNPACK_TYPE(ret, buffer,dest, num_vals, PMIX_UINT64, regtypes);
+
+    return ret;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_locality(pmix_pointer_array_t *regtypes,
+                                               pmix_buffer_t *buffer, void *dest,
+                                               int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_status_t ret;
+
+    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
+                        "pmix_bfrop_unpack: %d locality", *num_vals);
+
+    if (PMIX_LOCTYPE != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    PMIX_BFROPS_UNPACK_TYPE(ret, buffer,dest, num_vals, PMIX_UINT16, regtypes);
 
     return ret;
 }

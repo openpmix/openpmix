@@ -503,6 +503,9 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_topology(pmix_pointer_array_t *r
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_devtype(pmix_pointer_array_t *regtypes,
                                                         pmix_buffer_t *buffer, const void *src,
                                                         int32_t num_vals, pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_locality(pmix_pointer_array_t *regtypes,
+                                                         pmix_buffer_t *buffer, const void *src,
+                                                         int32_t num_vals, pmix_data_type_t type);
 
 
 /*
@@ -668,6 +671,9 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_topology(pmix_pointer_array_t 
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_devtype(pmix_pointer_array_t *regtypes,
                                                           pmix_buffer_t *buffer, void *dest,
                                                           int32_t *num_vals, pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_locality(pmix_pointer_array_t *regtypes,
+                                                           pmix_buffer_t *buffer, void *dest,
+                                                           int32_t *num_vals, pmix_data_type_t type);
 
 /**** DEPRECATED ****/
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_array(pmix_pointer_array_t *regtypes,
@@ -893,6 +899,9 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_topology(char **output, char *p
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_devtype(char **output, char *prefix,
                                                          pmix_device_type_t *src,
                                                          pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_locality(char **output, char *prefix,
+                                                          pmix_locality_t *src,
+                                                          pmix_data_type_t type);
 
 
 

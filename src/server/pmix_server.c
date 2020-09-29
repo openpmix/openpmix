@@ -459,7 +459,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     /* save the topology internally in case our host wants it */
     PMIX_LOAD_PROCID(&myproc, pmix_globals.myid.nspace, pmix_globals.myid.rank);
     value.type = PMIX_TOPO;
-    value.data.ptr = &pmix_globals.topology;
+    value.data.topo = &pmix_globals.topology;
     rc = PMIx_Store_internal(&myproc, PMIX_TOPOLOGY2, &value);
 
     return PMIX_SUCCESS;

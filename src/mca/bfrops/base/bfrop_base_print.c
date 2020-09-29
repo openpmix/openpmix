@@ -1079,13 +1079,21 @@ int pmix_bfrops_base_print_status(char **output, char *prefix,
             rc = asprintf(output, "%sPMIX_VALUE: Data type: DATA_ARRAY\tARRAY SIZE: %ld",
                           prefx, (long)src->data.darray->size);
             break;
+        case PMIX_REGATTR:
+            r = (pmix_regattr_t*)src->data.ptr;
+            rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_REGATTR\tName: %s\tString: %s",
+                          prefx, (NULL == r->name) ? "NULL" : r->name,
+                          (0 == strlen(r->string)) ? "NULL" : r->string);
+            break;
+        case PMIX_ALLOC_DIRECTIVE:
+            rc = pmix_bfrops_base_print_alloc_directive(output, prefx, &src->data.adir, PMIX_ALLOC_DIRECTIVE);
+            break;
         case PMIX_ENVAR:
             rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_ENVAR\tName: %s\tValue: %s\tSeparator: %c",
                           prefx, (NULL == src->data.envar.envar) ? "NULL" : src->data.envar.envar,
                           (NULL == src->data.envar.value) ? "NULL" : src->data.envar.value,
                           src->data.envar.separator);
             break;
-
         case PMIX_COORD:
             if (PMIX_COORD_VIEW_UNDEF == src->data.coord->view) {
                 tp = "UNDEF";
@@ -1099,14 +1107,33 @@ int pmix_bfrops_base_print_status(char **output, char *prefix,
             rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_COORD\tView: %s\tDims: %lu",
                           prefx, tp, (unsigned long)src->data.coord->dims);
             break;
-
-        case PMIX_REGATTR:
-            r = (pmix_regattr_t*)src->data.ptr;
-            rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_REGATTR\tName: %s\tString: %s",
-                          prefx, (NULL == r->name) ? "NULL" : r->name,
-                          (0 == strlen(r->string)) ? "NULL" : r->string);
+        case PMIX_LINK_STATE:
+            rc = pmix_bfrops_base_print_linkstate(output, prefx, &src->data.linkstate, PMIX_LINK_STATE);
             break;
-
+        case PMIX_JOB_STATE:
+            rc = pmix_bfrops_base_print_jobstate(output, prefx, &src->data.jstate, PMIX_JOB_STATE);
+            break;
+        case PMIX_TOPO:
+            rc = pmix_bfrops_base_print_topology(output, prefx, src->data.topo, PMIX_TOPO);
+            break;
+        case PMIX_PROC_CPUSET:
+            rc = pmix_bfrops_base_print_cpuset(output, prefx, src->data.cpuset, PMIX_PROC_CPUSET);
+            break;
+        case PMIX_LOCTYPE:
+            rc = pmix_bfrops_base_print_locality(output, prefx, &src->data.locality, PMIX_LOCTYPE);
+            break;
+        case PMIX_GEOMETRY:
+            rc = pmix_bfrops_base_print_geometry(output, prefx, src->data.geometry, PMIX_GEOMETRY);
+            break;
+        case PMIX_DEVTYPE:
+            rc = pmix_bfrops_base_print_devtype(output, prefx, &src->data.devtype, PMIX_DEVTYPE);
+            break;
+        case PMIX_DEVICE_DIST:
+            rc = pmix_bfrops_base_print_devdist(output, prefx, src->data.devdist, PMIX_DEVICE_DIST);
+            break;
+        case PMIX_ENDPOINT:
+            rc = pmix_bfrops_base_print_endpoint(output, prefx, src->data.endpoint, PMIX_ENDPOINT);
+            break;
         default:
             rc = asprintf(output, "%sPMIX_VALUE: Data type: UNKNOWN\tValue: UNPRINTABLE", prefx);
             break;
@@ -2251,11 +2278,78 @@ pmix_status_t pmix_bfrops_base_print_devtype(char **output, char *prefix,
         prefx = prefix;
     }
 
-    ret = asprintf(output, "%sData type: PMIX_DEVTYPE\tValue: 0x%"PRIx64,
+    ret = asprintf(output, "%sData type: PMIX_DEVICE_TYPE\tValue: 0x%"PRIx64,
                    prefx, (uint64_t)src);
     if (prefx != prefix) {
         free(prefx);
     }
+
+    if (0 > ret) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    } else {
+        return PMIX_SUCCESS;
+    }
+}
+
+pmix_status_t pmix_bfrops_base_print_locality(char **output, char *prefix,
+                                              pmix_locality_t *src,
+                                              pmix_data_type_t type)
+{
+    char *prefx, **tmp = NULL, *str;
+    int ret;
+
+    if (PMIX_LOCTYPE != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* deal with NULL prefix */
+    if (NULL == prefix) {
+        if (0 > asprintf(&prefx, " ")) {
+            return PMIX_ERR_NOMEM;
+        }
+    } else {
+        prefx = prefix;
+    }
+
+    if (PMIX_LOCALITY_UNKNOWN == *src) {
+        str = strdup("UNKNOWN");
+    } else if (PMIX_LOCALITY_NONLOCAL == *src) {
+        str = strdup("NONLOCAL");
+    } else {
+        if (PMIX_LOCALITY_SHARE_HWTHREAD & *src) {
+            pmix_argv_append_nosize(&tmp, "HWTHREAD");
+        }
+        if (PMIX_LOCALITY_SHARE_CORE & *src) {
+            pmix_argv_append_nosize(&tmp, "CORE");
+        }
+        if (PMIX_LOCALITY_SHARE_L1CACHE & *src) {
+            pmix_argv_append_nosize(&tmp, "L1");
+        }
+        if (PMIX_LOCALITY_SHARE_L2CACHE & *src) {
+            pmix_argv_append_nosize(&tmp, "L2");
+        }
+        if (PMIX_LOCALITY_SHARE_L3CACHE & *src) {
+            pmix_argv_append_nosize(&tmp, "L3");
+        }
+        if (PMIX_LOCALITY_SHARE_PACKAGE & *src) {
+            pmix_argv_append_nosize(&tmp, "CORE");
+        }
+        if (PMIX_LOCALITY_SHARE_NUMA & *src) {
+            pmix_argv_append_nosize(&tmp, "NUMA");
+        }
+        if (PMIX_LOCALITY_SHARE_NODE & *src) {
+            pmix_argv_append_nosize(&tmp, "NODE");
+        }
+        str = pmix_argv_join(tmp, ':');
+        pmix_argv_free(tmp);
+    }
+
+    ret = asprintf(output, "%sData type: PMIX_LOCALITY\tValue: %s",
+                   prefx, str);
+    if (prefx != prefix) {
+        free(prefx);
+    }
+    free(str);
 
     if (0 > ret) {
         return PMIX_ERR_OUT_OF_RESOURCE;
