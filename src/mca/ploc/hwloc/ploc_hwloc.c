@@ -964,6 +964,7 @@ static pmix_status_t get_cpuset(pmix_cpuset_t *cpuset,
         return PMIX_ERR_BAD_PARAM;
     }
 
+    cpuset->bitmap = hwloc_bitmap_alloc();
     rc = hwloc_get_cpubind(pmix_globals.topology.topology, cpuset->bitmap, flag);
     if (0 != rc) {
         hwloc_bitmap_free(cpuset->bitmap);
@@ -1092,7 +1093,6 @@ static pmix_status_t compute_distances(pmix_topology_t *topo,
 
     /* find the max depth of this topology */
     depth = hwloc_topology_get_depth(topo->topology);
-
     /* get the lowest object that completely covers the cpuset */
     for (dp=1; dp < depth; dp++) {
         tgt = dsearch(topo->topology, dp, cpuset->bitmap);
@@ -1103,8 +1103,11 @@ static pmix_status_t compute_distances(pmix_topology_t *topo,
         obj = tgt;
     }
     if (NULL == obj) {
-        /* no joy */
-        return PMIX_ERR_NOT_FOUND;
+        /* only the entire machine covers this cpuset - typically,
+         * this means we are in some odd container where every
+         * PU is in its own package. There is nothing useful
+         * that can be done here */
+        return PMIX_ERR_NOT_AVAILABLE;
     }
     /* get the PU depth */
     pudepth = (unsigned)hwloc_get_type_depth(topo->topology, HWLOC_OBJ_PU);
@@ -1118,7 +1121,8 @@ static pmix_status_t compute_distances(pmix_topology_t *topo,
             continue;
         }
         if (HWLOC_OBJ_OSDEV_BLOCK == table[n].hwtype ||
-            HWLOC_OBJ_OSDEV_DMA == table[n].hwtype) {
+            HWLOC_OBJ_OSDEV_DMA == table[n].hwtype ||
+            HWLOC_OBJ_OSDEV_COPROC == table[n].hwtype) {
             continue;
         }
         device = hwloc_get_obj_by_type(topo->topology, HWLOC_OBJ_OS_DEVICE, 0);
@@ -1172,15 +1176,6 @@ static pmix_status_t compute_distances(pmix_topology_t *topo,
                         return PMIX_ERROR;
                     }
                     pmix_asprintf(&d->dist.uuid, "fab://%s::%s", ngid, sgid);
-                } else if (HWLOC_OBJ_OSDEV_COPROC == table[n].hwtype) {
-                    /* if the name starts with "card", then this is just the aux card of the coprocessor */
-                    if (0 == strncasecmp(device->name, "card", 4)) {
-                        pmix_list_remove_item(&dists, &d->super);
-                        PMIX_RELEASE(d);
-                        device = hwloc_get_next_osdev(topo->topology, device);
-                        continue;
-                    }
-                    pmix_asprintf(&d->dist.uuid, "coproc://%s::%s", pmix_globals.hostname, device->name);
                 } else if (HWLOC_OBJ_OSDEV_GPU == table[n].hwtype) {
                     /* if the name starts with "card", then this is just the aux card of the GPU */
                     if (0 == strncasecmp(device->name, "card", 4)) {
@@ -1559,6 +1554,8 @@ static pmix_status_t copy_topology(pmix_topology_t *dest, pmix_topology_t *src)
     if (0 != hwloc_topology_dup((hwloc_topology_t*)&dest->topology, src->topology)) {
         return PMIX_ERROR;
     }
+    dest->source = strdup("hwloc");
+
     return PMIX_SUCCESS;
 }
 
@@ -1648,6 +1645,7 @@ static pmix_status_t destruct_topology(pmix_topology_t *src)
         return PMIX_ERR_BAD_PARAM;
     }
     hwloc_topology_destroy(src->topology);
+    free(src->source);
 
     return PMIX_SUCCESS;
 }
