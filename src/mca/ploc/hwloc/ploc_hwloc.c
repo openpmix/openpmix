@@ -83,9 +83,11 @@ static char* print_topology(pmix_topology_t *src);
 static pmix_status_t destruct_topology(pmix_topology_t *src);
 static pmix_status_t release_topology(pmix_topology_t *src, size_t ncpu);
 
+static pmix_status_t init(void);
 static void finalize(void);
 
 pmix_ploc_module_t pmix_ploc_hwloc_module = {
+    .init = init,
     .finalize = finalize,
     .setup_topology = setup_topology,
     .load_topology = load_topology,
@@ -149,6 +151,16 @@ static int set_flags(hwloc_topology_t topo, unsigned int flags)
     if (0 != hwloc_topology_set_flags(topo, flags)) {
         return PMIX_ERR_INIT;
     }
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t init(void)
+{
+#if HAVE_HWLOC_TOPOLOGY_DUP
+    pmix_output(0, "OLD HWLOC");
+#else
+    pmix_output(0, "NEWER HWLOC");
+#endif
     return PMIX_SUCCESS;
 }
 
@@ -1409,16 +1421,19 @@ static pmix_status_t pack_topology(pmix_buffer_t *buf, pmix_topology_t *src,
     struct hwloc_topology_support *support;
 
     if (NULL == src->source || 0 != strcasecmp(src->source, "hwloc")) {
+        pmix_output(0, "NO SOURCE");
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
     /* extract an xml-buffer representation of the tree */
 #if HWLOC_API_VERSION < 0x20000
     if (0 != hwloc_topology_export_xmlbuffer(src->topology, &xmlbuffer, &len)) {
+        PMIX_ERROR_LOG(PMIX_ERROR);
         return PMIX_ERROR;
     }
 #else
     if (0 != hwloc_topology_export_xmlbuffer(src->topology, &xmlbuffer, &len, 0)) {
+        PMIX_ERROR_LOG(PMIX_ERROR);
         return PMIX_ERROR;
     }
 #endif
@@ -1427,6 +1442,7 @@ static pmix_status_t pack_topology(pmix_buffer_t *buf, pmix_topology_t *src,
     PMIX_BFROPS_PACK_TYPE(rc, buf, &xmlbuffer, 1, PMIX_STRING, regtypes);
     free(xmlbuffer);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
         return rc;
     }
 
@@ -1439,6 +1455,7 @@ static pmix_status_t pack_topology(pmix_buffer_t *buf, pmix_topology_t *src,
                           sizeof(struct hwloc_topology_discovery_support),
                           PMIX_BYTE, regtypes);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
         return rc;
     }
     /* pack the cpubind support */
@@ -1446,6 +1463,7 @@ static pmix_status_t pack_topology(pmix_buffer_t *buf, pmix_topology_t *src,
                           sizeof(struct hwloc_topology_cpubind_support),
                           PMIX_BYTE, regtypes);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
         return rc;
     }
 
@@ -1454,6 +1472,7 @@ static pmix_status_t pack_topology(pmix_buffer_t *buf, pmix_topology_t *src,
                           sizeof(struct hwloc_topology_membind_support),
                           PMIX_BYTE, regtypes);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
         return rc;
     }
 
