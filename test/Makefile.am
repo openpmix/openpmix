@@ -66,12 +66,6 @@ check_PROGRAMS = \
     pmix_client \
     pmix_regex
 
-if WANT_PMI_BACKWARD
-check_PROGRAMS += \
-    pmi_client \
-    pmi2_client
-endif
-
 TESTS = \
 	run_tests00.pl \
 	run_tests01.pl \
@@ -93,10 +87,6 @@ TESTS = \
 
 ##########################
 
-if WANT_PMI_BACKWARD
-noinst_PROGRAMS += pmi_client pmi2_client
-endif
-
 noinst_PROGRAMS += pmix_test pmix_client pmix_regex
 
 pmix_test_SOURCES = $(headers) \
@@ -104,20 +94,6 @@ pmix_test_SOURCES = $(headers) \
 pmix_test_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 pmix_test_LDADD = \
     $(top_builddir)/src/libpmix.la
-
-if WANT_PMI_BACKWARD
-pmi_client_SOURCES = $(headers) \
-        pmi_client.c
-pmi_client_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
-pmi_client_LDADD = \
-    $(top_builddir)/src/libpmi.la
-
-pmi2_client_SOURCES = $(headers) \
-        pmi2_client.c
-pmi2_client_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
-pmi2_client_LDADD = \
-    $(top_builddir)/src/libpmi2.la
-endif
 
 pmix_client_SOURCES = $(headers) \
         pmix_client.c test_fence.c test_common.c test_publish.c test_spawn.c \
