@@ -98,6 +98,7 @@ AC_DEFUN([_PMIX_HWLOC_EXTERNAL],[
     PMIX_VAR_SCOPE_PUSH([pmix_hwloc_dir pmix_hwloc_libdir pmix_hwloc_standard_lib_location pmix_hwloc_standard_header_location pmix_check_hwloc_save_CPPFLAGS pmix_check_hwloc_save_LDFLAGS pmix_check_hwloc_save_LIBS])
 
     pmix_hwloc_support=0
+    pmix_hwloc_have_dup=0
     pmix_check_hwloc_save_CPPFLAGS="$CPPFLAGS"
     pmix_check_hwloc_save_LDFLAGS="$LDFLAGS"
     pmix_check_hwloc_save_LIBS="$LIBS"
@@ -154,6 +155,22 @@ AC_DEFUN([_PMIX_HWLOC_EXTERNAL],[
                            [pmix_hwloc_support=1],
                            [pmix_hwloc_support=0])
 
+        if test $pmix_hwloc_support -eq 1; then
+            AS_IF([test "$pmix_hwloc_standard_header_location" = "no"],
+                  [PMIX_FLAGS_APPEND_UNIQ(CPPFLAGS, $pmix_hwloc_CPPFLAGS)
+                   PMIX_FLAGS_APPEND_UNIQ(LDFLAGS, $pmix_hwloc_LDFLAGS)])
+            AC_CHECK_LIB([hwloc], [hwloc_topology_dup],
+                         [pmix_hwloc_have_dup=1],
+                         [AC_MSG_WARN([===================================================================])
+                          AC_MSG_WARN([HWLOC library does not contain the hwloc_topology_dup function])
+                          AC_MSG_WARN([required by OpenPMIx. If HWLOC support was specifically requested,])
+                          AC_MSG_WARN([then this build will fail and you will need to either provide an])
+                          AC_MSG_WARN([HWLOC version that includes the required function (1.8 or greater)])
+                          AC_MSG_WARN([or configure without HWLOC support])
+                          AC_MSG_WARN([===================================================================])
+                          ])
+        fi
+
         AS_IF([test "$pmix_hwloc_standard_header_location" != "yes"],
               [PMIX_FLAGS_APPEND_UNIQ(CPPFLAGS, $pmix_hwloc_CPPFLAGS)])
 
@@ -163,7 +180,9 @@ AC_DEFUN([_PMIX_HWLOC_EXTERNAL],[
     fi
 
     if test ! -z "$with_hwloc" && test "$with_hwloc" != "no" && test "$pmix_hwloc_support" != "1"; then
-        AC_MSG_WARN([HWLOC SUPPORT REQUESTED AND NOT FOUND])
+        if test "$pmix_hwloc_have_dup" = "1"; then
+            AC_MSG_WARN([HWLOC SUPPORT REQUESTED AND NOT FOUND])
+        fi
         AC_MSG_ERROR([CANNOT CONTINUE])
     fi
 
