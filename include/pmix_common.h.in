@@ -321,6 +321,7 @@ typedef uint32_t pmix_rank_t;
 /* topology info */
 #define PMIX_TOPOLOGY2                      "pmix.topo2"            // (pmix_topology_t) pointer to a PMIx topology object
 #define PMIX_LOCALITY_STRING                "pmix.locstr"           // (char*) string describing a proc's location
+#define PMIX_LOCALITY                       "pmix.loc"              // (pmix_locality_t) bitmaks describing a proc's location
 
 
 /* request-related info */
@@ -1306,6 +1307,7 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_ENDPOINT           55
 #define PMIX_TOPO               56
 #define PMIX_DEVTYPE            57
+#define PMIX_LOCTYPE            58
 /********************/
 
 /* define a boundary for implementers so they can add their own data types */
@@ -1473,7 +1475,7 @@ typedef struct pmix_coord {
     do {                                                                \
         pmix_coord_t *_m;                                               \
         _m = (pmix_coord_t*)pmix_calloc((n), sizeof(pmix_coord_t));     \
-        if (NULL != _m {                                                \
+        if (NULL != _m) {                                               \
             _m->view = PMIX_COORD_VIEW_UNDEF;                           \
             _m->dims = (d);                                             \
             _m->coord = (int*)pmix_calloc((m)->dims, sizeof(int));      \
@@ -2062,6 +2064,13 @@ typedef struct pmix_value {
         pmix_coord_t *coord;
         pmix_link_state_t linkstate;
         pmix_job_state_t jstate;
+        pmix_topology_t *topo;
+        pmix_cpuset_t *cpuset;
+        pmix_locality_t locality;
+        pmix_geometry_t *geometry;
+        pmix_device_type_t devtype;
+        pmix_device_distance_t *devdist;
+        pmix_endpoint_t *endpoint;
     } data;
 } pmix_value_t;
 /* allocate and initialize a specified number of value structs */
