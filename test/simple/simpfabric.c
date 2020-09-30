@@ -142,10 +142,10 @@ int main(int argc, char **argv)
         fprintf(stderr, "Get of my topology failed: %s\n", PMIx_Error_string(rc));
         goto cleanup;
     }
-    mytopo = val->data.ptr;
-    val->data.ptr = NULL;
+    mytopo = val->data.topo;
+    val->data.topo = NULL;
     PMIX_VALUE_FREE(val, 1);
-    fprintf(stderr, "Got my topology\n");
+    fprintf(stderr, "Got my topology: Source = %s\n", (NULL == mytopo->source) ? "NULL" : mytopo->source);
 
     /* get my cpuset */
     fprintf(stderr, "GETTING CPUSET\n");
@@ -164,12 +164,11 @@ int main(int argc, char **argv)
                                 &distances, &ndist);
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "Compute distances failed: %s\n", PMIx_Error_string(rc));
-        goto cleanup;
-    }
-
-    for (n=0; n < ndist; n++) {
-        fprintf(stderr, "Device[%d]: UUID %s OSname: %s Type %s MinDist %u MaxDist %u\n", (int)n, distances[n].uuid,
-                distances[n].osname, PMIx_Device_type_string(distances[n].type), distances[n].mindist, distances[n].maxdist);
+    } else {
+        for (n=0; n < ndist; n++) {
+            fprintf(stderr, "Device[%d]: UUID %s OSname: %s Type %s MinDist %u MaxDist %u\n", (int)n, distances[n].uuid,
+                    distances[n].osname, PMIx_Device_type_string(distances[n].type), distances[n].mindist, distances[n].maxdist);
+        }
     }
 
     /* setup an application */

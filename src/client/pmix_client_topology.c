@@ -267,7 +267,7 @@ pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *topo,
 
     /* see if I can support this myself */
     cb->status = pmix_ploc.compute_distances(topo, cpuset, types, &cb->dist, &cb->nvals);
-    if (PMIX_SUCCESS == cb->status) {
+    if (PMIX_SUCCESS == cb->status || PMIX_ERR_NOT_AVAILABLE == cb->status) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         /* threadshift to return the result */
         PMIX_THREADSHIFT(cb, dcbfunc);

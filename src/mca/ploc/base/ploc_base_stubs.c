@@ -280,16 +280,18 @@ pmix_status_t pmix_ploc_base_compute_distances(pmix_topology_t *topo,
 
     /* process the request */
     PMIX_LIST_FOREACH(active, &pmix_ploc_globals.actives, pmix_ploc_base_active_module_t) {
-        pmix_output(0, "CHECKING %s", active->component->base.pmix_mca_component_name);
         if (NULL != active->module->compute_distances) {
-            pmix_output(0, "CALLING");
             rc = active->module->compute_distances(topo, cpuset, types, dist, ndist);
             if (PMIX_SUCCESS == rc) {
                 return rc;
             }
             if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
-                /* true error */
-                return rc;
+                /* indicate that we were able to process the
+                 * request, but didn't get a successful answer.
+                 * We need to return a PMIX_ERR_NOT_AVAILABLE
+                 * response so the caller knows not to raise
+                 * the request to our host */
+                return PMIX_ERR_NOT_AVAILABLE;
             }
         }
     }
