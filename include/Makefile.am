@@ -18,12 +18,6 @@ include_HEADERS = \
         pmix_extend.h \
         pmix_deprecated.h
 
-if WANT_PMI_BACKWARD
-include_HEADERS += \
-        pmi.h \
-        pmi2.h
-endif
-
 nodist_include_HEADERS = \
     pmix_common.h \
     pmix_version.h

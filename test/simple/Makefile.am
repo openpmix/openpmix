@@ -24,9 +24,9 @@ AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_buildd
 headers = simptest.h
 
 noinst_PROGRAMS = simptest simpclient simppub simpdyn simpft simpdmodex \
-                  test_pmix simptool simpdie simplegacy simptimeout \
+                  test_pmix simptool simpdie simptimeout \
                   gwtest gwclient stability quietclient simpjctrl simpio simpsched \
-                  simpcoord pmitest simpcycle doubleget simpfabric
+                  simpcoord simpcycle doubleget simpfabric
 
 simptest_SOURCES = \
         simptest.c
@@ -82,12 +82,6 @@ simpdie_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 simpdie_LDADD = \
     $(top_builddir)/src/libpmix.la
 
-simplegacy_SOURCES = \
-        simplegacy.c
-simplegacy_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
-simplegacy_LDADD = \
-    $(top_builddir)/src/libpmi.la
-
 simptimeout_SOURCES = \
         simptimeout.c
 simptimeout_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
@@ -141,12 +135,6 @@ simpcoord_SOURCES = \
 simpcoord_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 simpcoord_LDADD = \
     $(top_builddir)/src/libpmix.la
-
-pmitest_SOURCES = \
-        pmitest.c
-pmitest_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
-pmitest_LDADD = \
-    $(top_builddir)/src/libpmi.la
 
 simpcycle_SOURCES = \
         simpcycle.c

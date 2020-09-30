@@ -24,10 +24,3 @@ sources += \
         client/pmix_client_group.c \
         client/pmix_client_fabric.c \
         client/pmix_client_topology.c
-
-if WANT_PMI_BACKWARD
-pmi1_sources += \
-        client/pmi1.c
-pmi2_sources += \
-        client/pmi2.c
-endif

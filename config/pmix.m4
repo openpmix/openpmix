@@ -1194,22 +1194,6 @@ fi
 AC_DEFINE_UNQUOTED([PMIX_ENABLE_TIMING], [$WANT_PMIX_TIMING],
                    [Whether we want developer-level timing support or not])
 
-#
-#
-# Install backward compatibility support for PMI-1 and PMI-2
-#
-AC_MSG_CHECKING([if want backward compatibility for PMI-1 and PMI-2])
-AC_ARG_ENABLE(pmi-backward-compatibility,
-              AC_HELP_STRING([--enable-pmi-backward-compatibility],
-                             [enable PMIx support for PMI-1 and PMI-2 (default: enabled)]))
-if test "$enable_pmi_backward_compatibility" = "no"; then
-    AC_MSG_RESULT([no])
-    WANT_PMI_BACKWARD=0
-else
-    AC_MSG_RESULT([yes])
-    WANT_PMI_BACKWARD=1
-fi
-
 AM_CONDITIONAL([WANT_INSTALL_HEADERS], [test $WANT_INSTALL_HEADERS -eq 1])
 
 #
