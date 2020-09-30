@@ -1666,8 +1666,8 @@ typedef struct pmix_device_distance {
                 _m[_i].mindist = UINT16_MAX;                                                \
                 _m[_i].maxdist = UINT16_MAX;                                                \
             }                                                                               \
-            (m) = _m;                                                                       \
         }                                                                                   \
+        (m) = _m;                                                                           \
     } while(0)
 
 #define PMIX_DEVICE_DIST_FREE(m, n)                     \

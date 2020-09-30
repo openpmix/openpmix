@@ -658,11 +658,8 @@ pmix_status_t pmix_bfrops_base_unpack_val(pmix_pointer_array_t *regtypes,
             PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.darray, &m, PMIX_DATA_ARRAY, regtypes);
             break;
         case PMIX_REGATTR:
-            val->data.ptr = (void*)malloc(sizeof(void*));
-            if (NULL == val->data.ptr) {
-                return PMIX_ERR_NOMEM;
-            }
-            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.ptr, &m, val->type, regtypes);
+            val->data.ptr = (pmix_regattr_t*)calloc(1, sizeof(pmix_regattr_t));
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.ptr, &m, PMIX_REGATTR, regtypes);
             return ret;
         case PMIX_COORD:
             val->data.coord = (pmix_coord_t*)calloc(1, sizeof(pmix_coord_t));
@@ -1704,7 +1701,7 @@ pmix_status_t pmix_bfrops_base_unpack_geometry(pmix_pointer_array_t *regtypes,
     pmix_status_t ret;
 
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
-                        "pmix_bfrop_unpack: %d regattrs", *num_vals);
+                        "pmix_bfrop_unpack: %d geometry", *num_vals);
 
     if (PMIX_GEOMETRY != type) {
         return PMIX_ERR_BAD_PARAM;
@@ -1766,7 +1763,7 @@ pmix_status_t pmix_bfrops_base_unpack_devdist(pmix_pointer_array_t *regtypes,
     pmix_status_t ret;
 
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
-                        "pmix_bfrop_unpack: %d regattrs", *num_vals);
+                        "pmix_bfrop_unpack: %d device distances", *num_vals);
 
     if (PMIX_DEVICE_DIST != type) {
         return PMIX_ERR_BAD_PARAM;

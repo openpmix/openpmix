@@ -416,7 +416,6 @@ static pmix_status_t fill_coord(pmix_coord_t *dst,
     if (0 < dst->dims) {
         dst->coord = (int*)malloc(dst->dims * sizeof(int));
         if (NULL == dst->coord) {
-            free(dst);
             return PMIX_ERR_NOMEM;
         }
         memcpy(dst->coord, src->coord, dst->dims * sizeof(int));
@@ -880,6 +879,7 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
                 rc = fill_coord(&pc[n], &sc[n]);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_COORD_FREE(pc, src->size);
+                    free(p);
                     return rc;
                 }
             }
@@ -946,6 +946,7 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
                         rc = fill_coord(&pgeoset[n].coordinates[m], &sgeoset[n].coordinates[m]);
                         if (PMIX_SUCCESS != rc) {
                             PMIX_GEOMETRY_FREE(pgeoset, src->size);
+                            free(p);
                             return rc;
                         }
                     }
@@ -1135,7 +1136,7 @@ pmix_status_t pmix_bfrops_base_copy_geometry(pmix_geometry_t **dest,
         for (n=0; n < dst->ncoords; n++) {
             rc = fill_coord(&dst->coordinates[n], &src->coordinates[n]);
             if (PMIX_SUCCESS != rc) {
-                PMIX_COORD_FREE(dst->coordinates, dst->ncoords);
+                PMIX_GEOMETRY_FREE(dst, 1);
                 return rc;
             }
         }
@@ -1168,6 +1169,8 @@ pmix_status_t pmix_bfrops_base_copy_devdist(pmix_device_distance_t **dest,
     dst->type = src->type;
     dst->mindist = src->mindist;
     dst->maxdist = src->maxdist;
+
+    *dest = dst;
     return PMIX_SUCCESS;
 }
 
@@ -1193,6 +1196,8 @@ pmix_status_t pmix_bfrops_base_copy_endpoint(pmix_endpoint_t **dest,
         memcpy(dst->endpt.bytes, src->endpt.bytes, src->endpt.size);
         dst->endpt.size = src->endpt.size;
     }
+
+    *dest = dst;
     return PMIX_SUCCESS;
 }
 

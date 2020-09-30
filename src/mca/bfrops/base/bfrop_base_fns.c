@@ -486,8 +486,8 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv,
             if (PMIX_SUCCESS == rc) {
                 *sz = sizeof(pmix_topology_t);
             } else if (PMIX_ERR_INIT == rc || PMIX_ERR_NOT_SUPPORTED == rc) {
-                data = malloc(sizeof(pmix_topology_t));
-                memcpy(data, kv->data.topo, sizeof(pmix_topology_t));
+                *data = malloc(sizeof(pmix_topology_t));
+                memcpy(*data, kv->data.topo, sizeof(pmix_topology_t));
                 *sz = sizeof(pmix_topology_t);
                 rc = PMIX_SUCCESS;
             }
@@ -497,8 +497,8 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv,
             if (PMIX_SUCCESS == rc) {
                 *sz = sizeof(pmix_cpuset_t);
             } else if (PMIX_ERR_INIT == rc || PMIX_ERR_NOT_SUPPORTED == rc) {
-                data = malloc(sizeof(pmix_cpuset_t));
-                memcpy(data, kv->data.cpuset, sizeof(pmix_cpuset_t));
+                *data = malloc(sizeof(pmix_cpuset_t));
+                memcpy(*data, kv->data.cpuset, sizeof(pmix_cpuset_t));
                 *sz = sizeof(pmix_cpuset_t);
                 rc = PMIX_SUCCESS;
             }
@@ -888,6 +888,7 @@ pmix_status_t pmix_bfrops_base_value_xfer(pmix_value_t *p,
              * just copy the pointer across */
             p->data.cpuset = src->data.cpuset;
         }
+        break;
     case PMIX_LOCTYPE:
         memcpy(&p->data.locality, &src->data.locality, sizeof(pmix_locality_t));
         break;
