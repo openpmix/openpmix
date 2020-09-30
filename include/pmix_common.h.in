@@ -257,7 +257,8 @@ typedef uint32_t pmix_rank_t;
 
 
 /* general proc-level attributes */
-#define PMIX_CPUSET                         "pmix.cpuset"           // (char*) hwloc bitmap applied to proc upon launch
+#define PMIX_CPUSET                         "pmix.cpuset"           // (char*) String representation of bitmap applied to process upon launch
+#define PMIX_CPUSET_BITMAP                  "pmix.bitmap"           // (pmix_cpuset_t*) Bitmap applied to process at launch
 #define PMIX_CREDENTIAL                     "pmix.cred"             // (char*) security credential assigned to proc
 #define PMIX_SPAWNED                        "pmix.spawned"          // (bool) true if this proc resulted from a call to PMIx_Spawn
 
@@ -321,7 +322,6 @@ typedef uint32_t pmix_rank_t;
 /* topology info */
 #define PMIX_TOPOLOGY2                      "pmix.topo2"            // (pmix_topology_t) pointer to a PMIx topology object
 #define PMIX_LOCALITY_STRING                "pmix.locstr"           // (char*) string describing a proc's location
-#define PMIX_LOCALITY                       "pmix.loc"              // (pmix_locality_t) bitmaks describing a proc's location
 
 
 /* request-related info */
@@ -991,7 +991,6 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_FABRIC_DEVICE_VENDOR           "pmix.fabdev.vndr"     // (char*) Indicates the name of the vendor that distributes the NIC.
 #define PMIX_FABRIC_DEVICE_BUS_TYPE         "pmix.fabdev.btyp"     // (char*) The type of bus to which the device is attached (e.g., "PCI",
                                                                    //         "GEN-Z").
-#define PMIX_FABRIC_DEVICE_ID               "pmix.fabdev.id"       // (char*) System-wide UUID of a particular fabric device.
 #define PMIX_FABRIC_DEVICE_DRIVER           "pmix.fabdev.driver"   // (char*) The name of the driver associated with the device
 #define PMIX_FABRIC_DEVICE_FIRMWARE         "pmix.fabdev.fmwr"     // (char*) The device’s firmware version
 #define PMIX_FABRIC_DEVICE_ADDRESS          "pmix.fabdev.addr"     // (char*) The primary link-level address associated with the device, such as a
@@ -1024,6 +1023,7 @@ typedef uint32_t pmix_rank_t;
                                                                    //         devices of the specified type on the local node.
 #define PMIX_DEVICE_TYPE                    "pmix.dev.type"        // (pmix_device_type_t) Bitmask specifying the type(s) of device(s) whose
                                                                    //         information is being requested. Only used as a directive/qualifier.
+#define PMIX_DEVICE_ID                      "pmix.dev.id"          // (char*) System-wide UUID or node-local OS name of a particular device.
 
 
 /* Descriptive Attributes */
