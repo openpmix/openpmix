@@ -1044,6 +1044,7 @@ pmix_status_t pmix_bfrops_base_copy_coord(pmix_coord_t **dest,
     rc = fill_coord(d, src);
     if (PMIX_SUCCESS != rc) {
         PMIX_COORD_DESTRUCT(d);
+        free(d);
     } else {
         *dest = d;
     }

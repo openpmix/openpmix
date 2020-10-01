@@ -5,7 +5,7 @@ dnl                         reserved.
 dnl Copyright (c) 2016-2018 Cisco Systems, Inc.  All rights reserved
 dnl Copyright (c) 2016      Research Organization for Information Science
 dnl                         and Technology (RIST). All rights reserved.
-dnl Copyright (c) 2018      Intel, Inc.  All rights reserved.
+dnl Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -50,8 +50,8 @@ EOF
         echo "Debug build: yes"
     fi
 
-    if test ! -z $with_platform ; then
-        echo "Platform file: $with_platform"
+    if test ! -z $with_pmix_platform ; then
+        echo "Platform file: $with_pmix_platform"
     else
         echo "Platform file: (none)"
     fi
