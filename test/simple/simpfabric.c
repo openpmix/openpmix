@@ -107,6 +107,7 @@ int main(int argc, char **argv)
     pmix_cpuset_t mycpuset;
     pmix_device_distance_t *distances;
     size_t ndist;
+    pmix_device_type_t type = PMIX_DEVTYPE_OPENFABRICS | PMIX_DEVTYPE_NETWORK | PMIX_DEVTYPE_COPROC | PMIX_DEVTYPE_GPU;
 
     /* smoke test */
     if (PMIX_SUCCESS != 0) {
@@ -159,9 +160,13 @@ int main(int argc, char **argv)
     fprintf(stderr, "Got my cpuset: %s\n", ppn);
     free(ppn);
 
+    ninfo = 1;
+    PMIX_INFO_CREATE(info, ninfo);
+    PMIX_INFO_LOAD(&info[0], PMIX_DEVICE_TYPE, &type, PMIX_DEVTYPE);
     rc = PMIx_Compute_distances(mytopo, &mycpuset,
-                                PMIX_DEVTYPE_OPENFABRICS | PMIX_DEVTYPE_NETWORK | PMIX_DEVTYPE_COPROC | PMIX_DEVTYPE_GPU,
+                                info, ninfo,
                                 &distances, &ndist);
+    PMIX_INFO_FREE(info, ninfo);
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "Compute distances failed: %s\n", PMIx_Error_string(rc));
     } else {
