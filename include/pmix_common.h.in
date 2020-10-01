@@ -914,12 +914,6 @@ typedef uint32_t pmix_rank_t;
                                                                    //          all supported coordinate views. The information for devices
                                                                    //          on the local node shall be provided if the node is not
                                                                    //          specified in the request.
-#define PMIX_FABRIC_DEVICE_DIST             "pmix.fab.endptdist"   // (pmix_data_array_t*) Relative distance from the location of the
-                                                                   //          calling process (either as sampled at the time of the request
-                                                                   //          or based on the initial binding location set at time of start
-                                                                   //          of execution) to each local fabric device, returned as an
-                                                                   //          array of pmix_device_distance_t elements in no particular
-                                                                   //          order.
 #define PMIX_FABRIC_DEVICE_VENDORID         "pmix.fabdev.vendid"   // (char*) This is a vendor-provided identifier for the device or product.
 #define PMIX_FABRIC_NUM_DEVICES             "pmix.fab.nverts"      // (size_t) Total number of fabric devices in the system - corresponds to
                                                                    //          the number of rows or columns in the cost matrix
