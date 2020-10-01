@@ -23,44 +23,44 @@ dnl
 # PMIX_LOAD_PLATFORM()
 # --------------------
 AC_DEFUN([PMIX_LOAD_PLATFORM], [
-    AC_ARG_WITH([platform-patches-dir],
-        [AC_HELP_STRING([--with-platform-patches-dir=DIR],
+    AC_ARG_WITH([pmix-platform-patches-dir],
+        [AC_HELP_STRING([--with-pmix-platform-patches-dir=DIR],
                         [Location of the platform patches directory. If you use this option, you must also use --with-platform.])])
 
-    AC_ARG_WITH([platform],
-        [AC_HELP_STRING([--with-platform=FILE],
+    AC_ARG_WITH([pmix-platform],
+        [AC_HELP_STRING([--with-pmix-platform=FILE],
                         [Load options for build from FILE.  Options on the
                          command line not in FILE are used.  Options on the
                          command line and in FILE are replaced by what is
                          in FILE.])])
     m4_ifval([autogen_platform_file], [
-        if test "$with_platform" = "" ; then
-            with_platform=autogen_platform_file
+        if test "$with_pmix_platform" = "" ; then
+            with_pmix_platform=autogen_platform_file
         fi])
-    if test "$with_platform" = "yes" ; then
-        AC_MSG_ERROR([--with-platform argument must include FILE option])
-    elif test "$with_platform" = "no" ; then
-        AC_MSG_ERROR([--without-platform is not a valid argument])
-    elif test "$with_platform" != "" ; then
+    if test "$with_pmix_platform" = "yes" ; then
+        AC_MSG_ERROR([--with-pmix_platform argument must include FILE option])
+    elif test "$with_pmix_platform" = "no" ; then
+        AC_MSG_ERROR([--without-pmix_platform is not a valid argument])
+    elif test "$with_pmix_platform" != "" ; then
         # if not an absolute path, check in contrib/platform
-        if test ! "`echo $with_platform | cut -c1`" = "/" && test ! "`echo $with_platform | cut -c2`" = ".." ; then
-            if test -r "${srcdir}/contrib/platform/$with_platform" ; then
-                with_platform="${srcdir}/contrib/platform/$with_platform"
+        if test ! "`echo $with_pmix_platform | cut -c1`" = "/" && test ! "`echo $with_pmix_platform | cut -c2`" = ".." ; then
+            if test -r "${srcdir}/contrib/platform/$with_pmix_platform" ; then
+                with_pmix_platform="${srcdir}/contrib/platform/$with_pmix_platform"
             fi
         fi
 
         # make sure file exists
-        if test ! -r "$with_platform" ; then
-            AC_MSG_ERROR([platform file $with_platform not found])
+        if test ! -r "$with_pmix_platform" ; then
+            AC_MSG_ERROR([platform file $with_pmix_platform not found])
         fi
 
         # eval into environment
-        PMIX_LOG_MSG([Loading environment file $with_platform, with contents below])
-        PMIX_LOG_FILE([$with_platform])
+        PMIX_LOG_MSG([Loading environment file $with_pmix_platform, with contents below])
+        PMIX_LOG_FILE([$with_pmix_platform])
 
         # setup by getting full pathname for the platform directories
-        platform_base="`dirname $with_platform`"
-        platform_file="`basename $with_platform`"
+        platform_base="`dirname $with_pmix_platform`"
+        platform_file="`basename $with_pmix_platform`"
         # get full pathname of where we are so we can return
         platform_savedir="`pwd`"
         # go to where the platform file is located
@@ -74,7 +74,7 @@ AC_DEFUN([PMIX_LOAD_PLATFORM], [
         if test "$PMIX_PLATFORM_LOADED" != "" ; then
            platform_loaded="$PMIX_PLATFORM_LOADED"
         else
-           platform_loaded="$with_platform"
+           platform_loaded="$with_pmix_platform"
         fi
         echo "Loaded platform arguments for $platform_loaded"
         PMIX_LOG_MSG([Loaded platform arguments for $platform_loaded])
@@ -101,17 +101,17 @@ AC_DEFUN([PMIX_LOAD_PLATFORM], [
             AC_SUBST(PMIX_PARAM_FROM_PLATFORM, "no")
         fi
 
-        patch_dir="${with_platform}.patches"
-        if test -n "$with_platform_patches_dir"; then
-            if test "$with_platform_patches_dir" = "yes"; then
-                patch_dir="${with_platform}.patches"
-            elif test "$with_platform_patches_dir" = "no"; then
+        patch_dir="${with_pmix_platform}.patches"
+        if test -n "$with_pmix_platform_patches_dir"; then
+            if test "$with_pmix_platform_patches_dir" = "yes"; then
+                patch_dir="${with_pmix_platform}.patches"
+            elif test "$with_pmix_platform_patches_dir" = "no"; then
                 AC_MSG_NOTICE([Disabling platform patches on user request])
                 patch_dir=""
-            elif test -d "$with_platform_patches_dir"; then
-                patch_dir=$with_platform_patches_dir
+            elif test -d "$with_pmix_platform_patches_dir"; then
+                patch_dir=$with_pmix_platform_patches_dir
             else
-                AC_MSG_ERROR([User provided patches directory: $with_platform_patches_dir not found])
+                AC_MSG_ERROR([User provided patches directory: $with_pmix_platform_patches_dir not found])
             fi
         fi
 
