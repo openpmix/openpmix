@@ -1038,13 +1038,13 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_deregister_nb(pmix_fabric_t *fabric,
  */
 PMIX_EXPORT pmix_status_t PMIx_Compute_distances(pmix_topology_t *topo,
                                                  pmix_cpuset_t *cpuset,
-                                                 pmix_device_type_t types,
+                                                 pmix_info_t info[], size_t ninfo,
                                                  pmix_device_distance_t *distances[],
                                                  size_t *ndist);
 
 PMIX_EXPORT pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *topo,
                                                     pmix_cpuset_t *cpuset,
-                                                    pmix_device_type_t types,
+                                                    pmix_info_t info[], size_t ninfo,
                                                     pmix_device_dist_cbfunc_t cbfunc,
                                                     void *cbdata);
 

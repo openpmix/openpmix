@@ -56,7 +56,8 @@ pmix_ploc_hwloc_component_t mca_ploc_hwloc_component = {
         }
     },
     .hole_kind = VM_HOLE_BIGGEST,
-    .topo_file = NULL
+    .topo_file = NULL,
+    .testcpuset = NULL
 };
 
 static char *vmhole = "biggest";
@@ -94,6 +95,13 @@ static int component_register(void)
                                            PMIX_INFO_LVL_9,
                                            PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                            &mca_ploc_hwloc_component.topo_file);
+
+    (void)pmix_mca_base_component_var_register(component, "test_cpuset",
+                                           "Cpuset for testing purposes",
+                                           PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
+                                           PMIX_INFO_LVL_9,
+                                           PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+                                           &mca_ploc_hwloc_component.testcpuset);
 
     return PMIX_SUCCESS;
 }

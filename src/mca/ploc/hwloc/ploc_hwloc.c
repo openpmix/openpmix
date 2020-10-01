@@ -63,7 +63,7 @@ static pmix_status_t get_cpuset(pmix_cpuset_t *cpuset,
                                 pmix_bind_envelope_t ref);
 static pmix_status_t compute_distances(pmix_topology_t *topo,
                                        pmix_cpuset_t *cpuset,
-                                       pmix_device_type_t types,
+                                       pmix_info_t info[], size_t ninfo,
                                        pmix_device_distance_t **dist,
                                        size_t *ndist);
 static pmix_status_t pack_cpuset(pmix_buffer_t *buf, pmix_cpuset_t *src,
@@ -965,7 +965,11 @@ static pmix_status_t get_cpuset(pmix_cpuset_t *cpuset,
     }
 
     cpuset->bitmap = hwloc_bitmap_alloc();
-    rc = hwloc_get_cpubind(pmix_globals.topology.topology, cpuset->bitmap, flag);
+    if (NULL != mca_ploc_hwloc_component.testcpuset) {
+        rc = hwloc_bitmap_sscanf(cpuset->bitmap, mca_ploc_hwloc_component.testcpuset);
+    } else {
+        rc = hwloc_get_cpubind(pmix_globals.topology.topology, cpuset->bitmap, flag);
+    }
     if (0 != rc) {
         hwloc_bitmap_free(cpuset->bitmap);
         return PMIX_ERR_TAKE_NEXT_OPTION;
@@ -1056,7 +1060,7 @@ static int countcolons(char *str)
 
 static pmix_status_t compute_distances(pmix_topology_t *topo,
                                        pmix_cpuset_t *cpuset,
-                                       pmix_device_type_t types,
+                                       pmix_info_t info[], size_t ninfo,
                                        pmix_device_distance_t **dist,
                                        size_t *ndist)
 {
@@ -1072,9 +1076,12 @@ static pmix_status_t compute_distances(pmix_topology_t *topo,
     pmix_list_t dists;
     pmix_devdist_item_t *d;
     pmix_device_distance_t *array;
-    size_t n, ntypes;
+    size_t n, ntypes, dn;
     int cnt;
     unsigned w, width, pudepth;
+    pmix_device_type_t type=0;
+    char **devids = NULL;
+    bool found;
 
     if (NULL == topo->source || NULL == cpuset->source) {
         return PMIX_ERR_BAD_PARAM;
@@ -1090,6 +1097,22 @@ static pmix_status_t compute_distances(pmix_topology_t *topo,
 
     /* determine number of types we support */
     ntypes = sizeof(table) / sizeof(pmix_type_conversion_t);
+
+    /* determine what they want us to look at */
+    if (NULL == info) {
+        /* find everything */
+        for (n=0; n < ntypes; n++) {
+            type |= table[n].pxtype;
+        }
+    } else {
+        for (n=0; n < ninfo; n++) {
+            if (PMIX_CHECK_KEY(&info[n], PMIX_DEVICE_TYPE)) {
+                type |= info[n].value.data.devtype;
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_DEVICE_ID)) {
+                pmix_argv_append_nosize(&devids, info[n].value.data.string);
+            }
+        }
+    }
 
     /* find the max depth of this topology */
     depth = hwloc_topology_get_depth(topo->topology);
@@ -1117,7 +1140,7 @@ static pmix_status_t compute_distances(pmix_topology_t *topo,
 
     /* loop over the specified devices in the topology */
     for (n=0; n < ntypes; n++) {
-        if (!(types & table[n].pxtype)) {
+        if (!(type & table[n].pxtype)) {
             continue;
         }
         if (HWLOC_OBJ_OSDEV_BLOCK == table[n].hwtype ||
@@ -1193,6 +1216,24 @@ static pmix_status_t compute_distances(pmix_topology_t *topo,
                     continue;
                 }
 
+                /* if device id was given, then check if this one matches either
+                 * the UUID or osname */
+                if (NULL != devids) {
+                    found = false;
+                    for (dn=0; NULL != devids[dn]; dn++) {
+                        if (0 == strcasecmp(devids[dn], device->name) ||
+                            0 == strcasecmp(devids[dn], d->dist.uuid)) {
+                            found = true;
+                        }
+                    }
+                    if (!found) {
+                        /* skip this one */
+                        pmix_list_remove_item(&dists, &d->super);
+                        PMIX_RELEASE(d);
+                        device = hwloc_get_next_osdev(topo->topology, device);
+                        continue;
+                    }
+                }
                 /* save the osname */
                 d->dist.osname = strdup(device->name);
                 if (NULL == device->cpuset) {

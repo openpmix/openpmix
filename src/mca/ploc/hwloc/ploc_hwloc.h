@@ -61,6 +61,7 @@ typedef struct {
     pmix_ploc_base_component_t super;
     int hole_kind;
     char *topo_file;
+    char *testcpuset;
 } pmix_ploc_hwloc_component_t;
 
 /* the component must be visible data for the linker to find it */

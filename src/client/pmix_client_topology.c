@@ -132,7 +132,7 @@ static void distcb(pmix_status_t status,
 
 pmix_status_t PMIx_Compute_distances(pmix_topology_t *topo,
                                      pmix_cpuset_t *cpuset,
-                                     pmix_device_type_t types,
+                                     pmix_info_t info[], size_t ninfo,
                                      pmix_device_distance_t *distances[],
                                      size_t *ndist)
 {
@@ -156,7 +156,7 @@ pmix_status_t PMIx_Compute_distances(pmix_topology_t *topo,
     /* create a callback object so we can be notified when
      * the non-blocking operation is complete */
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
-    rc = PMIx_Compute_distances_nb(topo, cpuset, types, distcb, &cb);
+    rc = PMIx_Compute_distances_nb(topo, cpuset, info, ninfo, distcb, &cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_DESTRUCT(&cb);
         return rc;
@@ -250,7 +250,7 @@ static void direcv(struct pmix_peer_t *peer,
 
 pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *topo,
                                         pmix_cpuset_t *cpuset,
-                                        pmix_device_type_t types,
+                                        pmix_info_t info[], size_t ninfo,
                                         pmix_device_dist_cbfunc_t cbfunc,
                                         void *cbdata)
 {
@@ -266,7 +266,7 @@ pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *topo,
     cb->cbdata = cbdata;
 
     /* see if I can support this myself */
-    cb->status = pmix_ploc.compute_distances(topo, cpuset, types, &cb->dist, &cb->nvals);
+    cb->status = pmix_ploc.compute_distances(topo, cpuset, info, ninfo, &cb->dist, &cb->nvals);
     if (PMIX_SUCCESS == cb->status || PMIX_ERR_NOT_AVAILABLE == cb->status) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         /* threadshift to return the result */
@@ -313,14 +313,24 @@ pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *topo,
         return rc;
     }
 
-    /* pack the device types we want them to use */
+    /* pack the directives */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &types, 1, PMIX_UINT64);
+                     msg, &ninfo, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         PMIX_RELEASE(cb);
         return rc;
+    }
+    if (0 < ninfo) {
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
+                         msg, info, ninfo, PMIX_INFO);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(msg);
+            PMIX_RELEASE(cb);
+            return rc;
+        }
     }
 
     /* push the message into our event base to send to the server */

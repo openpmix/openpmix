@@ -94,7 +94,7 @@ PMIX_EXPORT pmix_status_t pmix_ploc_base_get_cpuset(pmix_cpuset_t *cpuset,
                                                     pmix_bind_envelope_t ref);
 PMIX_EXPORT pmix_status_t pmix_ploc_base_compute_distances(pmix_topology_t *topo,
                                                            pmix_cpuset_t *cpuset,
-                                                           pmix_device_type_t types,
+                                                           pmix_info_t info[], size_t ninfo,
                                                            pmix_device_distance_t **dist,
                                                            size_t *ndist);
 
