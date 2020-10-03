@@ -145,8 +145,6 @@ void pmix_rte_finalize(void)
     PMIX_LIST_DESTRUCT(&pmix_globals.nspaces);
 
     /* now safe to release the event base */
-    if (!pmix_globals.external_evbase) {
-        (void)pmix_progress_thread_stop(NULL);
-    }
+    (void)pmix_progress_thread_stop(NULL);
 
 }

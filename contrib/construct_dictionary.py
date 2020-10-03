@@ -84,7 +84,7 @@ def harvest_constants(options, path, constants):
                             datatype = "PMIX_INT"
                         elif tokens[3] == "(uint16_t)":
                             datatype = "PMIX_UINT16"
-                        elif tokens[3] == "(pmix_data_array_t*)":
+                        elif tokens[3] == "(pmix_data_array_t)" or tokens[3] == "(pmix_data_array_t*)":
                             datatype = "PMIX_DATA_ARRAY"
                         elif tokens[3] == "(pmix_proc_t*)":
                             datatype = "PMIX_PROC"
@@ -124,21 +124,22 @@ def harvest_constants(options, path, constants):
                             datatype = "PMIX_LINK_STATE"
                         elif tokens[3] == "(pointer)":
                             datatype = "PMIX_POINTER"
-                        elif tokens[3] == "(pmix_topology_t)":
+                        elif tokens[3] == "(pmix_topology_t)" or tokens[3] == "(pmix_topology_t*)":
                             datatype = "PMIX_TOPO"
-                        elif tokens[3] == "(pmix_cpuset_t)":
+                        elif tokens[3] == "(pmix_cpuset_t)" or tokens[3] == "(pmix_cpuset_t*)":
                             datatype = "PMIX_PROC_CPUSET"
-                        elif tokens[3] == "(pmix_geometry_t)":
+                        elif tokens[3] == "(pmix_geometry_t)" or tokens[3] == "(pmix_geometry_t*)":
                             datatype = "PMIX_GEOMETRY"
-                        elif tokens[3] == "(pmix_device_distance_t)":
+                        elif tokens[3] == "(pmix_device_distance_t)" or tokens[3] == "(pmix_device_distance_t*)":
                             datatype = "PMIX_DEVICE_DIST"
-                        elif tokens[3] == "(pmix_endpoint_t)":
+                        elif tokens[3] == "(pmix_endpoint_t)" or tokens[3] == "(pmix_endpoint_t*)":
                             datatype = "PMIX_ENDPOINT"
                         elif tokens[3] == "(pmix_device_type_t)":
                             datatype = "PMIX_DEVTYPE"
                         elif tokens[3] == "(varies)":
                             datatype = "PMIX_INT"
                         else:
+                            print(0, "UNKNOWN TOKEN", tokens[3])
                             return 1
                     constants.write(", .type = " + datatype + ",\n     .description = (char *[]){\"")
                     # the description consists of at least all remaining tokens

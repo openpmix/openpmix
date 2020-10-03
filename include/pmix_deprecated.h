@@ -116,6 +116,8 @@ PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
 #define PMIX_JOB_STATE_PREPPED                   1  // job is ready to be launched
 
 /* ATTRIBUTES */
+#define PMIX_EVENT_BASE                     "pmix.evbase"           // (struct event_base *) pointer to libevent event_base
+                                                                    // to use in place of the internal progress thread ***** DEPRECATED *****
 #define PMIX_TOPOLOGY                       "pmix.topo"             // (hwloc_topology_t) ***** DEPRECATED ***** pointer to the PMIx client's internal
                                                                     //         topology object
 #define PMIX_DEBUG_JOB                      "pmix.dbg.job"          // (char*) ***** DEPRECATED ***** nspace of the job assigned to this debugger to be debugged. Note

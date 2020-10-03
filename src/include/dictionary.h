@@ -10,9 +10,9 @@ pmix_regattr_input_t dictionary[] = {
     {.name = "PMIX_ATTR_UNDEF", .string = "pmix.undef", .type = PMIX_POINTER,
      .description = (char *[]){"NONE"}},
 
-    {.name = "PMIX_EVENT_BASE", .string = "pmix.evbase", .type = PMIX_POINTER,
-     .description = (char *[]){"(struct event_base *) pointer to libevent event_base",
-                               "to use in place of the internal progress thread", NULL}},
+    {.name = "PMIX_EXTERNAL_PROGRESS", .string = "pmix.evext", .type = PMIX_BOOL,
+     .description = (char *[]){"The host shall progress the PMIx library via calls to",
+                               "PMIx_Progress", NULL}},
 
     {.name = "PMIX_SERVER_TOOL_SUPPORT", .string = "pmix.srvr.tool", .type = PMIX_BOOL,
      .description = (char *[]){"The host RM wants to declare itself as willing to",
@@ -248,7 +248,11 @@ pmix_regattr_input_t dictionary[] = {
      .description = (char *[]){"true to disable IPv6 family", NULL}},
 
     {.name = "PMIX_CPUSET", .string = "pmix.cpuset", .type = PMIX_STRING,
-     .description = (char *[]){"hwloc bitmap applied to proc upon launch", NULL}},
+     .description = (char *[]){"String representation of bitmap applied to process",
+                               "upon launch", NULL}},
+
+    {.name = "PMIX_CPUSET_BITMAP", .string = "pmix.bitmap", .type = PMIX_PROC_CPUSET,
+     .description = (char *[]){"Bitmap applied to process at launch", NULL}},
 
     {.name = "PMIX_CREDENTIAL", .string = "pmix.cred", .type = PMIX_STRING,
      .description = (char *[]){"security credential assigned to proc", NULL}},
@@ -1625,14 +1629,6 @@ pmix_regattr_input_t dictionary[] = {
                                "information for devices on the local node shall be",
                                "provided if the node is not specified in the request.", NULL}},
 
-    {.name = "PMIX_FABRIC_DEVICE_DIST", .string = "pmix.fab.endptdist", .type = PMIX_DATA_ARRAY,
-     .description = (char *[]){"Relative distance from the location of the calling",
-                               "process (either as sampled at the time of the request",
-                               "or based on the initial binding location set at time",
-                               "of start of execution) to each local fabric device,",
-                               "returned as an array of pmix_device_distance_t",
-                               "elements in no particular order.", NULL}},
-
     {.name = "PMIX_FABRIC_DEVICE_VENDORID", .string = "pmix.fabdev.vendid", .type = PMIX_STRING,
      .description = (char *[]){"This is a vendor-provided identifier for the device",
                                "or product.", NULL}},
@@ -1745,9 +1741,6 @@ pmix_regattr_input_t dictionary[] = {
      .description = (char *[]){"The type of bus to which the device is attached",
                                "(e.g., \"PCI\", \"GEN-Z\").", NULL}},
 
-    {.name = "PMIX_FABRIC_DEVICE_ID", .string = "pmix.fabdev.id", .type = PMIX_STRING,
-     .description = (char *[]){"System-wide UUID of a particular fabric device.", NULL}},
-
     {.name = "PMIX_FABRIC_DEVICE_DRIVER", .string = "pmix.fabdev.driver", .type = PMIX_STRING,
      .description = (char *[]){"The name of the driver associated with the device", NULL}},
 
@@ -1806,6 +1799,10 @@ pmix_regattr_input_t dictionary[] = {
                                "information is being requested. Only used as a",
                                "directive/qualifier.", NULL}},
 
+    {.name = "PMIX_DEVICE_ID", .string = "pmix.dev.id", .type = PMIX_STRING,
+     .description = (char *[]){"System-wide UUID or node-local OS name of a",
+                               "particular device.", NULL}},
+
     {.name = "PMIX_MAX_VALUE", .string = "pmix.descr.maxval", .type = PMIX_INT,
      .description = (char *[]){"Used in pmix_regattr_t to describe the maximum valid",
                                "value for the associated attribute.", NULL}},
@@ -1822,6 +1819,11 @@ pmix_regattr_input_t dictionary[] = {
                                "defined by constant names via a typical C-language",
                                "enum declaration) must be provided as their numerical",
                                "equivalent.", NULL}},
+    {.name = "PMIX_EVENT_BASE", .string = "pmix.evbase", .type = PMIX_POINTER,
+     .description = (char *[]){"(struct event_base *) pointer to libevent event_base",
+                               "to use in place of the internal progress thread *****",
+                               "DEPRECATED *****", NULL}},
+
     {.name = "PMIX_TOPOLOGY", .string = "pmix.topo", .type = PMIX_POINTER,
      .description = (char *[]){"***** DEPRECATED ***** pointer to the PMIx client's",
                                "internal topology object", NULL}},

@@ -989,13 +989,11 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
                              pmix_globals.myid.nspace, pmix_globals.myid.rank);
     }
 
-    if (!pmix_globals.external_evbase) {
-        /* stop the progress thread, but leave the event base
-         * still constructed. This will allow us to safely
-         * tear down the infrastructure, including removal
-         * of any events objects may be holding */
-        (void)pmix_progress_thread_pause(NULL);
-    }
+    /* stop the progress thread, but leave the event base
+     * still constructed. This will allow us to safely
+     * tear down the infrastructure, including removal
+     * of any events objects may be holding */
+    (void)pmix_progress_thread_pause(NULL);
 
     PMIX_LIST_DESTRUCT(&pmix_client_globals.pending_requests);
     for (i=0; i < pmix_client_globals.peers.size; i++) {
