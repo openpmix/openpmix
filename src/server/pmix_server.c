@@ -487,13 +487,11 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:server finalize called");
 
-    if (!pmix_globals.external_evbase) {
-        /* stop the progress thread, but leave the event base
-         * still constructed. This will allow us to safely
-         * tear down the infrastructure, including removal
-         * of any events objects may be holding */
-        (void)pmix_progress_thread_pause(NULL);
-    }
+    /* stop the progress thread, but leave the event base
+     * still constructed. This will allow us to safely
+     * tear down the infrastructure, including removal
+     * of any events objects may be holding */
+    (void)pmix_progress_thread_pause(NULL);
 
     /* flush anything that is still trying to be written out */
     pmix_iof_static_dump_output(&pmix_client_globals.iof_stdout);

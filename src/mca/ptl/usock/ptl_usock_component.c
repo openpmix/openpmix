@@ -735,7 +735,19 @@ static void connection_handler(int sd, short args, void *cbdata)
                         "connect-ack from client completed");
 
     /* let the host server know that this client has connected */
-    if (NULL != pmix_host_server.client_connected) {
+    if (NULL != pmix_host_server.client_connected2) {
+        pmix_strncpy(proc.nspace, psave->info->pname.nspace, PMIX_MAX_NSLEN);
+        proc.rank = psave->info->pname.rank;
+        rc = pmix_host_server.client_connected2(&proc, psave->info->server_object, NULL, 0, NULL, NULL);
+        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+            PMIX_ERROR_LOG(rc);
+            info->proc_cnt--;
+            PMIX_RELEASE(info);
+            pmix_pointer_array_set_item(&pmix_server_globals.clients, psave->index, NULL);
+            PMIX_RELEASE(psave);
+            CLOSE_THE_SOCKET(pnd->sd);
+        }
+    } else if (NULL != pmix_host_server.client_connected) {
         pmix_strncpy(proc.nspace, psave->info->pname.nspace, PMIX_MAX_NSLEN);
         proc.rank = psave->info->pname.rank;
         rc = pmix_host_server.client_connected(&proc, psave->info->server_object, NULL, NULL);

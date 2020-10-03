@@ -25,9 +25,8 @@
 #include "src/threads/threads.h"
 #include "src/util/error.h"
 #include "src/util/fd.h"
-
+#include "src/include/pmix_globals.h"
 #include "src/runtime/pmix_progress_threads.h"
-
 
 /* create a tracking object for progress threads */
 typedef struct {
@@ -92,6 +91,17 @@ static PMIX_CLASS_INSTANCE(pmix_progress_tracker_t,
                           pmix_list_item_t,
                           tracker_constructor,
                           tracker_destructor);
+
+/* LOCAL VARIABLES */
+static bool inited = false;
+static pmix_list_t tracking;
+static struct timeval long_timeout = {
+    .tv_sec = 3600,
+    .tv_usec = 0
+};
+static const char *shared_thread_name = "PMIX-wide async progress thread";
+static pmix_progress_tracker_t *shared_thread_tracker = NULL;
+
 
 #if PMIX_HAVE_LIBEV
 
@@ -201,14 +211,6 @@ void pmix_event_base_loopexit (pmix_event_base_t *ev_base) {
 }
 #endif
 
-static bool inited = false;
-static pmix_list_t tracking;
-static struct timeval long_timeout = {
-    .tv_sec = 3600,
-    .tv_usec = 0
-};
-static const char *shared_thread_name = "PMIX-wide async progress thread";
-
 /*
  * If this event is fired, just restart it so that this event base
  * continues to have something to block on.
@@ -233,6 +235,14 @@ static void* progress_engine(pmix_object_t *obj)
     }
 
     return PMIX_THREAD_CANCELLED;
+}
+
+void PMIx_Progress(void)
+{
+    if (NULL == shared_thread_tracker) {
+        return;
+    }
+    pmix_event_loop(shared_thread_tracker->ev_base, PMIX_EVLOOP_ONCE);
 }
 
 static void stop_progress_engine(pmix_progress_tracker_t *trk)
@@ -321,6 +331,10 @@ pmix_event_base_t *pmix_progress_thread_init(const char *name)
     trk->engine_constructed = true;
     pmix_list_append(&tracking, &trk->super);
 
+    if (0 == strcmp(name, shared_thread_name)) {
+        shared_thread_tracker = trk;
+    }
+
     return trk->ev_base;
 }
 
@@ -334,7 +348,10 @@ pmix_status_t pmix_progress_thread_start(const char *name)
         return PMIX_ERR_NOT_FOUND;
     }
 
-    if (NULL == name) {
+    if (NULL == name || 0 == strcmp(name, shared_thread_name)) {
+        if (pmix_globals.external_progress) {
+            return PMIX_SUCCESS;
+        }
         name = shared_thread_name;
     }
 
@@ -366,7 +383,10 @@ pmix_status_t pmix_progress_thread_stop(const char *name)
         return PMIX_ERR_NOT_FOUND;
     }
 
-    if (NULL == name) {
+    if (NULL == name || 0 == strcmp(name, shared_thread_name)) {
+        if (pmix_globals.external_progress) {
+            return PMIX_SUCCESS;
+        }
         name = shared_thread_name;
     }
 
@@ -403,7 +423,10 @@ pmix_status_t pmix_progress_thread_finalize(const char *name)
         return PMIX_ERR_NOT_FOUND;
     }
 
-    if (NULL == name) {
+    if (NULL == name || 0 == strcmp(name, shared_thread_name)) {
+        if (pmix_globals.external_progress) {
+            return PMIX_SUCCESS;
+        }
         name = shared_thread_name;
     }
 
@@ -436,7 +459,10 @@ pmix_status_t pmix_progress_thread_pause(const char *name)
         return PMIX_ERR_NOT_FOUND;
     }
 
-    if (NULL == name) {
+    if (NULL == name || 0 == strcmp(name, shared_thread_name)) {
+        if (pmix_globals.external_progress) {
+            return PMIX_SUCCESS;
+        }
         name = shared_thread_name;
     }
 
@@ -478,7 +504,10 @@ pmix_status_t pmix_progress_thread_resume(const char *name)
         return PMIX_ERR_NOT_FOUND;
     }
 
-    if (NULL == name) {
+    if (NULL == name || 0 == strcmp(name, shared_thread_name)) {
+        if (pmix_globals.external_progress) {
+            return PMIX_SUCCESS;
+        }
         name = shared_thread_name;
     }
 

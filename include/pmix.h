@@ -1099,6 +1099,8 @@ PMIX_EXPORT pmix_status_t PMIx_Get_relative_locality(const char *locality1,
 	                                                 const char *locality2,
 	                                                 pmix_locality_t *locality);
 
+PMIX_EXPORT void PMIx_Progress(void);
+
 /******    PRETTY-PRINT DEFINED VALUE TYPES     ******/
 /* Provide a string representation for several types of value. Note
  * that the provided string is statically defined and must NOT be

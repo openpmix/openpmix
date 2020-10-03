@@ -534,7 +534,6 @@ typedef struct {
     uint32_t nodeid;                    // my nodeid, if given
     int pindex;
     pmix_event_base_t *evbase;
-    bool external_evbase;
     int debug_output;
     pmix_events_t events;               // my event handler registrations.
     bool connected;
@@ -562,6 +561,7 @@ typedef struct {
     pmix_list_t nspaces;
     pmix_topology_t topology;
     bool external_topology;
+    bool external_progress;
 } pmix_globals_t;
 
 /* provide access to a function to cleanup epilogs */

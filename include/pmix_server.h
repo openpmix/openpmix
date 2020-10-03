@@ -567,6 +567,7 @@ typedef struct pmix_server_module_4_0_0_t {
     /* v4x interfaces */
     pmix_server_grp_fn_t                group;
     pmix_server_fabric_fn_t             fabric;
+    pmix_server_client_connected2_fn_t  client_connected2;
 } pmix_server_module_t;
 
 /****    HOST RM FUNCTIONS FOR INTERFACE TO PMIX SERVER    ****/

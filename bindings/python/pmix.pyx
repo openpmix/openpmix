@@ -1,7 +1,7 @@
 #file: pmix.pyx
 
 from libc.string cimport memset, strncpy, strcpy, strlen, strdup
-
+from bitarray import bitarray
 from libc.stdlib cimport malloc, free
 from libc.string cimport memcpy
 from libc.stdio cimport printf
@@ -201,8 +201,18 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
 
 cdef class PMIxClient:
     cdef pmix_proc_t myproc;
-    cdef pmix_fabric_t fabric;
+    cdef pmix_fabric_t myfabric;
     cdef int fabric_set;
+    cdef pmix_topology_t topo
+
+    def __cinit__(self):
+        memset(self.myproc.nspace, 0, sizeof(self.myproc.nspace))
+        self.myproc.rank = PMIX_RANK_UNDEF
+        memset(&self.myfabric, 0, sizeof(self.myfabric))
+        self.fabric_set = 0
+        self.topo.source = NULL
+        self.topo.topology = NULL
+
     def __init__(self):
         global myhdlrs, myname
         memset(self.myproc.nspace, 0, sizeof(self.myproc.nspace))
@@ -1363,6 +1373,13 @@ cdef class PMIxClient:
         pystr = string
         return pystr.decode('ascii')
 
+    def device_type_string(self, pystat:int):
+        cdef char *string
+
+        string = <char*>PMIx_Device_type_string(pystat)
+        pystr = string
+        return pystr.decode('ascii')
+
     def fabric_register(self, dicts:list):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
@@ -1376,68 +1393,111 @@ cdef class PMIxClient:
         rc = pmix_alloc_info(info_ptr, &sz, dicts)
 
         if sz > 0:
-            rc = PMIx_Fabric_register(&self.fabric, info, sz)
+            rc = PMIx_Fabric_register(&self.myfabric, info, sz)
             pmix_free_info(info, sz)
         else:
-            rc = PMIx_Fabric_register(&self.fabric, NULL, 0)
+            rc = PMIx_Fabric_register(&self.myfabric, NULL, 0)
         if PMIX_SUCCESS == rc:
             self.fabric_set = 1
             # convert the fabric info array for return
-            if 0 < self.fabric.ninfo:
-                pmix_unload_info(self.fabric.info, self.fabric.ninfo, fabricinfo)
+            if 0 < self.myfabric.ninfo:
+                pmix_unload_info(self.myfabric.info, self.myfabric.ninfo, fabricinfo)
         return (rc, fabricinfo)
 
     def fabric_update(self):
         fabricinfo = []
         if 0 == self.fabric_set:
             return (PMIX_ERR_INIT, None)
-        rc = PMIx_Fabric_update(&self.fabric)
+        rc = PMIx_Fabric_update(&self.myfabric)
         # convert the fabric info array for return
-        if 0 < self.fabric.ninfo:
-            pmix_unload_info(self.fabric.info, self.fabric.ninfo, fabricinfo)
+        if 0 < self.myfabric.ninfo:
+            pmix_unload_info(self.myfabric.info, self.myfabric.ninfo, fabricinfo)
         return (rc, fabricinfo)
 
     def fabric_deregister(self):
         if 0 == self.fabric_set:
             return PMIX_ERR_INIT
-        rc = PMIx_Fabric_deregister(&self.fabric)
+        rc = PMIx_Fabric_deregister(&self.myfabric)
         self.fabric_set = 0
         return rc;
 
-    def fabric_get_vertex_info(self, i:int):
-        cdef pmix_info_t *info
-        cdef size_t sz
-        results = []
-        rc = PMIx_Fabric_get_vertex_info(&self.fabric, i, &info, &sz)
-        if PMIX_SUCCESS == rc:
-            # convert the info array
-            pmix_unload_info(info, sz, results)
-            pmix_free_info(info, sz)
-            # return it as a tuple
-            return (rc, results)
-        else:
-            return (rc, None)
+    def load_topology(self):
+        rc = PMIx_Load_topology(&self.topo)
+        return rc
 
-    def fabric_get_device_index(self, dicts:list):
+    def get_relative_locality(self, loc1:str, loc2:str):
+        cdef char *string
+        cdef pmix_locality_t locality
+        pyl1 = loc1.encode('ascii')
+        pyl2 = loc2.encode('ascii')
+        pyloc = []
+        rc = PMIx_Get_relative_locality(pyl1, pyl2, &locality)
+        if PMIX_SUCCESS == rc:
+            pmix_convert_locality(locality, pyloc)
+        return (rc, pyloc)
+
+    def get_cpuset(self, ref:int):
+        cdef pmix_cpuset_t cpuset
+        cdef char* csetstr
+        pycpus = {}
+        rc = PMIx_Get_cpuset(&cpuset, ref)
+        if PMIX_SUCCESS == rc:
+            rc = PMIx_server_generate_cpuset_string(&cpuset, &csetstr)
+            if PMIX_SUCCESS == rc:
+                pycpus['source'] = strdup(cpuset.source)
+                txt = csetstr.decode('ascii')
+                pycpus['cpus'] = txt.split(",")
+        return (rc, pycpus)
+
+    def compute_distances(self, pycpus:dict, dicts:list):
+        cdef pmix_cpuset_t cpuset
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
-        cdef uint32_t i
-        # convert the dict to an array of pmix_info_t
+        cdef pmix_device_distance_t *distances
+        cdef size_t ndist
+
+        results = []
+
+        # check that we loaded our topology
+        if NULL == self.topo.topology:
+            rc = self.load_topology()
+            if PMIX_SUCCESS != rc:
+                return (rc, results)
+
+        # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
         rc = pmix_alloc_info(info_ptr, &sz, dicts)
         if PMIX_SUCCESS != rc:
-            return (rc, -1, None)
-        if sz > 0:
-            rc = PMIx_Fabric_get_device_index(&self.fabric, info, sz, &i)
-            pmix_free_info(info, sz)
-        else:
-            rc = PMIX_ERR_BAD_PARAM
-        if PMIX_SUCCESS != rc:
-            return (rc, -1, None)
-        # return it as a tuple
-        return (rc, i)
+            return (rc, results)
 
+        # convert the cpuset
+        csetstr = pycpus['cpus'].encode('ascii')
+        rc = PMIx_Parse_cpuset_string(csetstr, &cpuset);
+        if PMIX_SUCCESS != rc:
+            return (rc, results)
+
+        # compute distances
+        rc = PMIx_Compute_distances(&self.topo, &cpuset, info, sz, &distances, &ndist)
+        if PMIX_SUCCESS != rc:
+            return (rc, results)
+
+        # convert to Python
+        n = 0
+        while n < ndist:
+            pydist = {}
+            pydist['uuid'] = strdup(distances[n].uuid)
+            pydist['osname'] = strdup(distances[n].osname)
+            pydist['mindist'] = distances[n].mindist
+            pydist['maxdist'] = distances[n].maxdist
+            results.append(pydist)
+            n += 1
+
+        # free the memory
+        PyMem_Free(distances)
+
+        # return result
+        return (rc, results)
 
 pmixservermodule = {}
 def setmodulefn(k, f):
@@ -1448,20 +1508,20 @@ def setmodulefn(k, f):
                  'deregisterevents', 'listener', 'notify_event', 'query',
                  'toolconnected', 'log', 'allocate', 'jobcontrol',
                  'monitor', 'getcredential', 'validatecredential',
-                 'iofpull', 'pushstdin', 'group']
+                 'iofpull', 'pushstdin', 'group', 'fabric']
     if k not in permitted:
-        return PMIX_ERR_INVALID_KEY
+        return PMIX_ERR_BAD_PARAM
     if not k in pmixservermodule:
         pmixservermodule[k] = f
 
 cdef class PMIxServer(PMIxClient):
     cdef pmix_server_module_t myserver;
-    def __init__(self):
+    def __cinit__(self):
         self.fabric_set = 0
         memset(self.myproc.nspace, 0, sizeof(self.myproc.nspace))
         self.myproc.rank = PMIX_RANK_UNDEF
         # v1.x interfaces
-        self.myserver.client_connected = <pmix_server_client_connected_fn_t>clientconnected
+        self.myserver.client_connected2 = <pmix_server_client_connected2_fn_t>clientconnected
         self.myserver.client_finalized = <pmix_server_client_finalized_fn_t>clientfinalized
         self.myserver.abort = <pmix_server_abort_fn_t>clientaborted
         self.myserver.fence_nb = <pmix_server_fencenb_fn_t>fencenb
@@ -1492,6 +1552,7 @@ cdef class PMIxServer(PMIxClient):
         self.myserver.push_stdin = <pmix_server_stdin_fn_t>pushstdin
         # v4.x interfaces
         self.myserver.group = <pmix_server_grp_fn_t>group
+        self.myserver.fabric = <pmix_server_fabric_fn_t>fabric
 
     # Initialize the PMIx server library
     #
@@ -2852,6 +2913,27 @@ cdef int group(pmix_group_operation_t op, char grp[],
         rc = PMIX_ERR_NOT_SUPPORTED
     return rc
 
+cdef int fabric(const pmix_proc_t *requestor,
+                pmix_fabric_operation_t op,
+                const pmix_info_t directives[],
+                size_t ndirs,
+                pmix_info_cbfunc_t cbfunc,
+                void *cbdata) with gil:
+    keys = pmixservermodule.keys()
+    if 'fabric' in keys:
+        args = {}
+        keyvals = {}
+        myprocs = []
+        mydirs = {}
+        args['op'] = op
+        if NULL != directives:
+            pmix_unload_info(directives, ndirs, mydirs)
+            args['directives'] = mydirs
+        rc = pmixservermodule['fabric'](args)
+    else:
+        rc = PMIX_ERR_NOT_SUPPORTED
+    return rc
+
 cdef class PMIxTool(PMIxServer):
     def __init__(self):
         memset(self.myproc.nspace, 0, sizeof(self.myproc.nspace))
@@ -2896,20 +2978,25 @@ cdef class PMIxTool(PMIxServer):
     #            dictionary has a key, value, and val_type
     #            defined as such:
     #            [{key:y, value:val, val_type:ty}, … ]
-    def connect_to_server(self, dicts:list):
+    def connect_to_server(self, dicts:list, server:dict):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
+        cdef pmix_proc_t srvr
 
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
         rc = pmix_alloc_info(info_ptr, &sz, dicts)
 
+        # convert the server name
+        pmix_copy_nspace(srvr.nspace, server['nspace'])
+        srvr.rank = server['rank']
+
         if sz > 0:
-            rc = PMIx_tool_connect_to_server(&self.myproc, info, sz)
+            rc = PMIx_tool_attach_to_server(&self.myproc, &srvr, info, sz)
             pmix_free_info(info, sz)
         else:
-            rc = PMIx_tool_connect_to_server(&self.myproc, NULL, 0)
+            rc = PMIx_tool_attach_to_server(&self.myproc, &srvr, NULL, 0)
         if PMIX_SUCCESS == rc:
             # convert the returned name
             myname = {'nspace': str(self.myproc.nspace), 'rank': self.myproc.rank}

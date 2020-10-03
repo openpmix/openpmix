@@ -78,14 +78,14 @@ PMIX_EXPORT pmix_globals_t pmix_globals = {
     .nodeid = UINT32_MAX,
     .pindex = 0,
     .evbase = NULL,
-    .external_evbase = false,
     .debug_output = -1,
     .connected = false,
     .commits_pending = false,
     .mygds = NULL,
     .pushstdin = false,
     .topology = {NULL, NULL},
-    .external_topology = false
+    .external_topology = false,
+    .external_progress = false
 };
 
 
@@ -173,17 +173,14 @@ int pmix_rte_init(uint32_t type,
         goto return_error;
     }
 
-    /* if an external event base wasn't provide, create one */
-    if (!pmix_globals.external_evbase) {
-        /* tell libevent that we need thread support */
-        pmix_event_use_threads();
+    /* tell libevent that we need thread support */
+    pmix_event_use_threads();
 
-        /* create an event base and progress thread for us */
-        if (NULL == (pmix_globals.evbase = pmix_progress_thread_init(NULL))) {
-            error = "progress thread";
-            ret = PMIX_ERROR;
-            goto return_error;
-        }
+    /* create an event base and progress thread for us */
+    if (NULL == (pmix_globals.evbase = pmix_progress_thread_init(NULL))) {
+        error = "progress thread";
+        ret = PMIX_ERROR;
+        goto return_error;
     }
 
     /* setup the globals structure */
@@ -298,10 +295,7 @@ int pmix_rte_init(uint32_t type,
     /* scan incoming info for directives */
     if (NULL != info) {
         for (n=0; n < ninfo; n++) {
-            if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_BASE)) {
-                pmix_globals.evbase = (pmix_event_base_t*)info[n].value.data.ptr;
-                pmix_globals.external_evbase = true;
-            } else if (PMIX_CHECK_KEY(&info[n], PMIX_HOSTNAME)) {
+            if (PMIX_CHECK_KEY(&info[n], PMIX_HOSTNAME)) {
                 if (NULL != pmix_globals.hostname) {
                     free(pmix_globals.hostname);
                 }
@@ -330,6 +324,8 @@ int pmix_rte_init(uint32_t type,
                         }
                     }
                 }
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_EXTERNAL_PROGRESS)) {
+                pmix_globals.external_progress = PMIX_INFO_TRUE(&info[n]);
             }
         }
     }
@@ -462,12 +458,10 @@ int pmix_rte_init(uint32_t type,
     /* initialize the attribute support system */
     pmix_init_registered_attrs();
 
-    if (!pmix_globals.external_evbase) {
-        /* start progressing the event library */
-        if (PMIX_SUCCESS != (ret = pmix_progress_thread_start(NULL))) {
-            error = "pmix_progress_thread_start";
-            goto return_error;
-        }
+    /* start progressing the event library */
+    if (PMIX_SUCCESS != (ret = pmix_progress_thread_start(NULL))) {
+        error = "pmix_progress_thread_start";
+        goto return_error;
     }
 
     return PMIX_SUCCESS;

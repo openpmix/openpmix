@@ -5,13 +5,13 @@
 
 pyinfo = [{'key': PMIX_EVENT_HDLR_NAME, 'value': 'SIMPCLIENT-MODEL',
            'val_type': PMIX_STRING}]
-darray = {'type':PMIX_INFO, 'array':[{'key':PMIX_ALLOC_NETWORK_ID, 'value':'SIMPSCHED.net', 'val_type':PMIX_STRING},
-                                     {'key':PMIX_ALLOC_NETWORK_SEC_KEY, 'value':'T', 'val_type':PMIX_BOOL},
+darray = {'type':PMIX_INFO, 'array':[{'key':PMIX_ALLOC_FABRIC_ID, 'value':'SIMPSCHED.net', 'val_type':PMIX_STRING},
+                                     {'key':PMIX_ALLOC_FABRIC_SEC_KEY, 'value':'T', 'val_type':PMIX_BOOL},
                                      {'key':PMIX_SETUP_APP_ENVARS, 'value':'T', 'val_type':PMIX_BOOL}]
          }
 # test putting PMIX_DATA_ARRAY into a pmix info data array
-darray2 = {'type':PMIX_INFO, 'array':[{'key':PMIX_ALLOC_NETWORK_ID, 'value':'SIMPSCHED.net', 'val_type':PMIX_STRING},
-                                     {'key':PMIX_ALLOC_NETWORK_SEC_KEY, 'value':'T', 'val_type':PMIX_BOOL},
+darray2 = {'type':PMIX_INFO, 'array':[{'key':PMIX_ALLOC_FABRIC_ID, 'value':'SIMPSCHED.net', 'val_type':PMIX_STRING},
+                                     {'key':PMIX_ALLOC_FABRIC_SEC_KEY, 'value':'T', 'val_type':PMIX_BOOL},
                                      {'key':'foo', 'value':darray, 'val_type':PMIX_DATA_ARRAY}]
          }
 str_darray = {'type': PMIX_STRING, 'array':['abc', 'def', 'efg']}
@@ -59,7 +59,7 @@ values = [{'value': 'True', 'val_type': PMIX_BOOL},
           {'value': size_darray, 'val_type': PMIX_DATA_ARRAY},
           {'value': pid_darray, 'val_type': PMIX_DATA_ARRAY},
           {'value': 19, 'val_type': PMIX_ALLOC_DIRECTIVE},
-          {'value': {'envar': 'TEST_ENVAR', 'value': 'TEST_VAL', 'separator': 
+          {'value': {'envar': 'TEST_ENVAR', 'value': 'TEST_VAL', 'separator':
                      ':'}, 'val_type': PMIX_ENVAR},
           {'value': pyregex, 'val_type': PMIX_REGEX},
           {'value': timeval_darray, 'val_type': PMIX_DATA_ARRAY},
