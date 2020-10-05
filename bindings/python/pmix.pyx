@@ -1,7 +1,7 @@
 #file: pmix.pyx
 
 from libc.string cimport memset, strncpy, strcpy, strlen, strdup
-from bitarray import bitarray
+
 from libc.stdlib cimport malloc, free
 from libc.string cimport memcpy
 from libc.stdio cimport printf
@@ -1499,6 +1499,10 @@ cdef class PMIxClient:
         # return result
         return (rc, results)
 
+    def progress(self):
+        PMIx_Progress()
+        return
+
 pmixservermodule = {}
 def setmodulefn(k, f):
     global pmixservermodule
@@ -1685,6 +1689,36 @@ cdef class PMIxServer(PMIxClient):
         active.wait()
         active.clear()
         return
+
+    # Register resources
+    def register_resources(directives:list):
+        cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
+        cdef size_t sz
+
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &sz, directives)
+        if PMIX_SUCCESS != rc:
+            return rc
+
+        rc = PMIx_server_register_resources(info, sz, NULL, NULL)
+        return rc
+
+    # Deregister resources
+    def deregister_resources(directives:list):
+        cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
+        cdef size_t sz
+
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &sz, directives)
+        if PMIX_SUCCESS != rc:
+            return rc
+
+        rc = PMIx_server_deregister_resources(info, sz, NULL, NULL)
+        return rc
 
     # Register a client process
     #
@@ -1937,6 +1971,38 @@ cdef class PMIxServer(PMIxClient):
         if PMIX_SUCCESS == rc:
             active.wait()
         return rc
+
+    def define_process_set(members:list, name:str):
+        cdef pmix_proc_t *procs
+        cdef size_t nprocs
+        nprocs = 0
+
+        # convert set name
+        pyset = name.encode('ascii')
+        # convert list of procs to array of pmix_proc_t's
+        if members is None:
+            return PMIX_ERR_BAD_PARAM
+        nprocs = len(members)
+        procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
+        if not procs:
+            return PMIX_ERR_NOMEM
+        rc = pmix_load_procs(procs, members)
+        if PMIX_SUCCESS != rc:
+            pmix_free_procs(procs, nprocs)
+            return rc
+        # define the set
+        rc = PMIx_server_define_process_set(procs, nprocs, pyset)
+        pmix_free_procs(procs, nprocs)
+        return rc
+
+    def delete_process_set(name:str):
+
+        # convert set name
+        pyset = name.encode('ascii')
+        # delete the set
+        rc = PMIx_server_delete_process_set(pyset)
+        return rc
+
 
 cdef int clientconnected(pmix_proc_t *proc, void *server_object,
                          pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
@@ -2935,7 +3001,7 @@ cdef int fabric(const pmix_proc_t *requestor,
     return rc
 
 cdef class PMIxTool(PMIxServer):
-    def __init__(self):
+    def __cinit__(self):
         memset(self.myproc.nspace, 0, sizeof(self.myproc.nspace))
         self.myproc.rank = PMIX_RANK_UNDEF
 
@@ -2971,6 +3037,18 @@ cdef class PMIxTool(PMIxServer):
         rc = PMIx_tool_finalize()
         return rc
 
+    # Disconnect from a server
+    def disconnect(server:dict):
+        cdef pmix_proc_t srvr
+
+        # convert the server name
+        pmix_copy_nspace(srvr.nspace, server['nspace'])
+        srvr.rank = server['rank']
+
+        # perform disconnect
+        rc = PMIx_tool_disconnect(&srvr);
+        return rc
+
     # Connect to a server
     #
     # @dicts [INPUT]
@@ -2978,7 +3056,7 @@ cdef class PMIxTool(PMIxServer):
     #            dictionary has a key, value, and val_type
     #            defined as such:
     #            [{key:y, value:val, val_type:ty}, … ]
-    def connect_to_server(self, dicts:list, server:dict):
+    def attach_to_server(self, dicts:list):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
@@ -2988,10 +3066,6 @@ cdef class PMIxTool(PMIxServer):
         info_ptr = &info
         rc = pmix_alloc_info(info_ptr, &sz, dicts)
 
-        # convert the server name
-        pmix_copy_nspace(srvr.nspace, server['nspace'])
-        srvr.rank = server['rank']
-
         if sz > 0:
             rc = PMIx_tool_attach_to_server(&self.myproc, &srvr, info, sz)
             pmix_free_info(info, sz)
@@ -3000,7 +3074,31 @@ cdef class PMIxTool(PMIxServer):
         if PMIX_SUCCESS == rc:
             # convert the returned name
             myname = {'nspace': str(self.myproc.nspace), 'rank': self.myproc.rank}
-        return rc, myname
+            mysrvr = {'nspace': str(srvr.nspace), 'rank': srvr.rank}
+        return rc, myname, mysrvr
+
+    def get_servers(self):
+        cdef pmix_proc_t *servers
+        cdef size_t nservers
+
+        pysrvrs = []
+        rc = PMIx_tool_get_servers(&servers, &nservers)
+        if PMIX_SUCCESS != rc:
+            return rc, pysrvrs
+        rc = pmix_unload_procs(servers, nservers, pysrvrs)
+        PyMem_Free(servers)
+        return rc, pysrvrs
+
+    def set_server(self, server:dict):
+        cdef pmix_proc_t srvr
+
+        # convert the server name
+        pmix_copy_nspace(srvr.nspace, server['nspace'])
+        srvr.rank = server['rank']
+
+        # perform op
+        rc = PMIx_tool_set_server(&srvr);
+        return rc
 
     def iof_pull(self, pyprocs:list, iof_channel:int, pydirs:list, hdlr):
         cdef pmix_proc_t *procs
