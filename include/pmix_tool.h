@@ -98,8 +98,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_init(pmix_proc_t *proc,
  * operation. */
 PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void);
 
-/* Switch server connection. Closes the connection, if existing, to a server
- * and establishes a connection to the specified server. The target server can
+/* Establish a connection to a PMIx server. The target server can
  * be given as:
  *
  * - PMIX_CONNECT_TO_SYSTEM: connect solely to the system server
