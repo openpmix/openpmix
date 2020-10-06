@@ -129,7 +129,7 @@ static pmix_status_t df_search(char *dirname, char *prefix,
                                pmix_rank_t *rank, char **uri,
                                pmix_peer_t *peer);
 
-static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
+static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
                                      pmix_info_t *info, size_t ninfo)
 {
     char *evar, **uri, *suri = NULL, *suri2 = NULL;
@@ -149,6 +149,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
     size_t niptr = 0;
     pmix_kval_t *urikv = NULL;
     int major, minor, release;
+    pmix_peer_t *peer = (pmix_peer_t*)pr;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:tcp: connecting to server");
@@ -634,27 +635,24 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
     pmix_globals.connected = true;
     peer->sd = sd;
 
-    /* tools setup their server info in try_connect because they
-     * utilize a broader handshake */
-    if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer)) {
-        /* setup the server info */
-        if (NULL == peer->info) {
-            peer->info = PMIX_NEW(pmix_rank_info_t);
-        }
-        if (NULL == peer->nptr) {
-            peer->nptr = PMIX_NEW(pmix_namespace_t);
-        }
-        if (NULL != peer->nptr->nspace) {
-            free(peer->nptr->nspace);
-        }
-        peer->nptr->nspace = strdup(nspace);
-
-        if (NULL != peer->info->pname.nspace) {
-            free(peer->info->pname.nspace);
-        }
-        peer->info->pname.nspace = strdup(peer->nptr->nspace);
-        peer->info->pname.rank = rank;
+    /* setup the server info */
+    if (NULL == peer->info) {
+        peer->info = PMIX_NEW(pmix_rank_info_t);
     }
+    if (NULL == peer->nptr) {
+        peer->nptr = PMIX_NEW(pmix_namespace_t);
+    }
+    if (NULL != peer->nptr->nspace) {
+        free(peer->nptr->nspace);
+    }
+    peer->nptr->nspace = strdup(nspace);
+
+    if (NULL != peer->info->pname.nspace) {
+        free(peer->info->pname.nspace);
+    }
+    peer->info->pname.nspace = strdup(peer->nptr->nspace);
+    peer->info->pname.rank = rank;
+
     /* store the URI for subsequent lookups */
     urikv = PMIX_NEW(pmix_kval_t);
     urikv->key = strdup(PMIX_SERVER_URI);
