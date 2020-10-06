@@ -2790,9 +2790,9 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
                     }
                 }
     		}
-            /* if the client is earlier than v3.1.5, we also need to store the
+            /* if the client is earlier than v3.2.x, we also need to store the
              * array using the hostname as key */
-            if (PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 1, 5) &&
+            if (PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 1, 100) &&
                 NULL != hostname) {
                 kv2.key = hostname;
                 kv2.value = kv->value;
