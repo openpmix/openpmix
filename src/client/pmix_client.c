@@ -1407,11 +1407,11 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename,
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
-    /* if I am a client and my server is earlier than v3.1.5, then
+    /* if I am a client and my server is earlier than v3.2.x, then
      * I need to look for this data under rank=PMIX_RANK_WILDCARD
      * with a key equal to the nodename */
     if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer) &&
-        PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 1, 5)) {
+        PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 1, 100)) {
         proc.rank = PMIX_RANK_WILDCARD;
         iptr = NULL;
         ninfo = 0;

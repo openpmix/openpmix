@@ -575,7 +575,13 @@ PMIX_EXPORT extern pmix_lock_t pmix_global_lock;
 static inline bool pmix_check_node_info(const char* key)
 {
     char *keys[] = {
+    	PMIX_HOSTNAME,
+    	PMIX_HOSTNAME_ALIASES,
+    	PMIX_NODEID,
+    	PMIX_AVAIL_PHYS_MEMORY,
         PMIX_LOCAL_PEERS,
+        PMIX_LOCAL_PROCS,
+        PMIX_LOCAL_CPUSETS,
         PMIX_LOCAL_SIZE,
         PMIX_NODE_SIZE,
         PMIX_LOCALLDR,
@@ -599,6 +605,31 @@ static inline bool pmix_check_app_info(const char* key)
         PMIX_APP_ARGV,
         PMIX_WDIR,
         PMIX_PSET_NAME,
+        PMIX_APP_MAP_TYPE,
+        PMIX_APP_MAP_REGEX,
+        NULL
+    };
+    size_t n;
+
+    for (n=0; NULL != keys[n]; n++) {
+        if (0 == strncmp(key, keys[n], PMIX_MAX_KEYLEN)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static inline bool pmix_check_session_info(const char* key)
+{
+    char *keys[] = {
+        PMIX_SESSION_ID,
+        PMIX_CLUSTER_ID,
+        PMIX_UNIV_SIZE,
+        PMIX_TMPDIR,
+        PMIX_TDIR_RMCLEAN,
+        PMIX_HOSTNAME_KEEP_FQDN,
+        PMIX_RM_NAME,
+        PMIX_RM_VERSION,
         NULL
     };
     size_t n;

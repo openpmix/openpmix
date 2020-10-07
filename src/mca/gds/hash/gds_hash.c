@@ -1645,10 +1645,10 @@ static pmix_status_t register_info(pmix_peer_t *peer,
     rc = fetch_nodeinfo(NULL, &trk->nodeinfo, NULL, 0, &results);
     if (PMIX_SUCCESS == rc) {
         PMIX_LIST_FOREACH(kvptr, &results, pmix_kval_t) {
-            /* if the peer is earlier than v3.1.5, it is expecting
+            /* if the peer is earlier than v3.2.x, it is expecting
              * node info to be in the form of an array, but with the
              * hostname as the key. Detect and convert that here */
-            if (PMIX_PEER_IS_EARLIER(peer, 3, 1, 5)) {
+            if (PMIX_PEER_IS_EARLIER(peer, 3, 1, 100)) {
                 info = (pmix_info_t*)kvptr->value->data.darray->array;
                 ninfo = kvptr->value->data.darray->size;
                 hname = NULL;
@@ -2779,6 +2779,8 @@ static pmix_status_t hash_fetch(const pmix_proc_t *proc,
     pmix_list_t rkvs;
     bool nodeinfo = false;
     bool appinfo = false;
+    bool nigiven = false;
+    bool apigiven = false;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "%s pmix:gds:hash fetch %s for proc %s on scope %s",
@@ -2907,13 +2909,15 @@ static pmix_status_t hash_fetch(const pmix_proc_t *proc,
             return PMIX_ERR_NOT_FOUND;
         } else if (PMIX_CHECK_KEY(&qualifiers[n], PMIX_NODE_INFO)) {
             nodeinfo = PMIX_INFO_TRUE(&qualifiers[n]);
+            nigiven = true;
         } else if (PMIX_CHECK_KEY(&qualifiers[n], PMIX_APP_INFO)) {
             appinfo = PMIX_INFO_TRUE(&qualifiers[n]);
+            apigiven = true;
         }
     }
 
     /* check for node/app keys in the absence of corresponding qualifier */
-    if (NULL != key) {
+    if (NULL != key && !nigiven && !apigiven) {
         if (pmix_check_node_info(key)) {
             nodeinfo = true;
         } else if (pmix_check_app_info(key)) {

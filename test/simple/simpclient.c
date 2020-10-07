@@ -161,7 +161,7 @@ int main(int argc, char **argv)
                     myproc.nspace, myproc.rank, PMIx_Error_string(rc));
         exit(rc);
     }
-    pmix_output(0, "CLIENT LOCAL RANK: %u", val->data.uint32);
+    pmix_output(0, "CLIENT LOCAL RANK: %u", val->data.uint16);
     PMIX_VALUE_RELEASE(val);
 
     if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_HOSTNAME, NULL, 0, &val))) {
