@@ -66,6 +66,29 @@ pmix_gds_base_module_t* pmix_gds_base_assign_module(pmix_info_t *info, size_t ni
     return mod;
 }
 
+pmix_status_t pmix_gds_base_register_nspace(struct pmix_namespace_t *ns, int nlocalprocs,
+                                            pmix_info_t info[], size_t ninfo)
+{
+    pmix_gds_base_active_module_t *active;
+    pmix_status_t rc;
+
+    if (!pmix_gds_globals.initialized) {
+        return PMIX_ERR_INIT;
+    }
+
+    PMIX_LIST_FOREACH(active, &pmix_gds_globals.actives, pmix_gds_base_active_module_t) {
+        if (NULL == active->module->register_nspace) {
+            continue;
+        }
+        rc = active->module->register_nspace(ns, nlocalprocs, info, ninfo);
+        if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_AVAILABLE != rc) {
+            return rc;
+        }
+    }
+
+    return PMIX_SUCCESS;
+}
+
 pmix_status_t pmix_gds_base_setup_fork(const pmix_proc_t *proc,
                                        char ***env)
 {
@@ -91,8 +114,6 @@ pmix_status_t pmix_gds_base_setup_fork(const pmix_proc_t *proc,
 
 pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
                                         pmix_buffer_t * buff,
-                                        pmix_gds_base_ctx_t ctx,
-                                        pmix_gds_base_store_modex_cb_fn_t cb_fn,
                                         void *cbdata)
 {
     (void)nspace;
@@ -111,6 +132,7 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
     uint32_t kmap_size;
     pmix_gds_modex_key_fmt_t kmap_type;
     pmix_gds_modex_blob_info_t blob_info_byte = 0;
+    pmix_kval_t *kv;
 
     /* Loop over the enclosed byte object envelopes and
      * store them in our GDS module */
@@ -243,12 +265,21 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
 
             /* call a specific GDS function to storing
              * part of the process data */
-            rc = cb_fn(ctx, &proc, kmap_type, kmap, &pbkt);
-            if (PMIX_SUCCESS != rc) {
+            kv = PMIX_NEW(pmix_kval_t);
+            rc = pmix_gds_base_modex_unpack_kval(kmap_type, &pbkt, kmap, kv);
+
+            while (PMIX_SUCCESS == rc) {
+                /* store the data on this peer */
+                PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
+                                  &proc, PMIX_REMOTE, kv);
+                PMIX_RELEASE(kv);  // maintain accounting as the hash increments the ref count
+                /* continue along */
+                kv = PMIX_NEW(pmix_kval_t);
+                rc = pmix_gds_base_modex_unpack_kval(kmap_type, &pbkt, kmap, kv);
+            }
+            PMIX_RELEASE(kv);  // maintain accounting
+            if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
                 PMIX_ERROR_LOG(rc);
-                pbkt.base_ptr = NULL;
-                PMIX_DESTRUCT(&pbkt);
-                break;
             }
             pbkt.base_ptr = NULL;
             PMIX_DESTRUCT(&pbkt);

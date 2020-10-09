@@ -459,7 +459,6 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr)
     if (UINT32_MAX == ns->univ_size) {
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &wildcard;
-        cb.copy = true;
         cb.key = PMIX_UNIV_SIZE;
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
         cb.key = NULL;
@@ -483,7 +482,6 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr)
     if (UINT32_MAX == ns->job_size) {
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &wildcard;
-        cb.copy = true;
         cb.key = PMIX_JOB_SIZE;
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
         cb.key = NULL;
@@ -507,7 +505,6 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr)
     if (UINT32_MAX == ns->num_apps) {
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &wildcard;
-        cb.copy = true;
         cb.key = PMIX_JOB_NUM_APPS;
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
         cb.key = NULL;
@@ -531,7 +528,6 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr)
     if (UINT32_MAX == ns->local_size) {
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &wildcard;
-        cb.copy = true;
         cb.key = PMIX_LOCAL_SIZE;
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
         cb.key = NULL;
@@ -560,7 +556,6 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr)
     for (n=0; n < ns->num_apps; n++) {
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &undef;
-        cb.copy = true;
         cb.info = info;
         cb.ninfo = 2;
         cb.key = PMIX_APP_SIZE;
@@ -590,12 +585,14 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr)
     PMIX_INFO_DESTRUCT(&info[0]);
 
     if (NULL != tmp) {
-        ev1 = pmix_argv_join(tmp, ' ');
+        kv = PMIX_NEW(pmix_kval_t);
+        kv->key = strdup("OMPI_APP_SIZES");
+        kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+        kv->value->type = PMIX_STRING;
+        kv->value->data.string = pmix_argv_join(tmp, ' ');
         pmix_argv_free(tmp);
-        PMIX_INFO_LOAD(&info[0], "OMPI_APP_SIZES", ev1, PMIX_STRING);
-        free(ev1);
-        PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr, info, 1);
-        PMIX_INFO_DESTRUCT(&info[0]);
+        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &wildcard, PMIX_GLOBAL, kv);
+        PMIX_RELEASE(kv);
     }
 
     /* construct the list of app leaders */
@@ -604,7 +601,6 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr)
     for (n=0; n < ns->num_apps; n++) {
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &undef;
-        cb.copy = true;
         cb.info = info;
         cb.ninfo = 2;
         cb.key = PMIX_APPLDR;
@@ -634,13 +630,14 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr)
     PMIX_INFO_DESTRUCT(&info[0]);
 
     if (NULL != tmp) {
-        ev1 = pmix_argv_join(tmp, ' ');
+        kv = PMIX_NEW(pmix_kval_t);
+        kv->key = strdup("OMPI_FIRST_RANKS");
+        kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+        kv->value->type = PMIX_STRING;
+        kv->value->data.string = pmix_argv_join(tmp, ' ');
         pmix_argv_free(tmp);
-        tmp = NULL;
-        PMIX_INFO_LOAD(&info[0], "OMPI_FIRST_RANKS", ev1, PMIX_STRING);
-        free(ev1);
-        PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr, info, 1);
-        PMIX_INFO_DESTRUCT(&info[0]);
+        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &wildcard, PMIX_GLOBAL, kv);
+        PMIX_RELEASE(kv);
     }
 
     return PMIX_SUCCESS;
@@ -727,7 +724,6 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
     /* pass an envar so the proc can find any files it had prepositioned */
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.proc = (pmix_proc_t*)proc;
-    cb.copy = true;
     cb.key = PMIX_PROCDIR;
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
     cb.key = NULL;
@@ -750,7 +746,6 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
     PMIX_INFO_LOAD(&info[0], PMIX_APP_INFO, NULL, PMIX_BOOL);
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.proc = &undef;
-    cb.copy = true;
     cb.info = info;
     cb.ninfo = 2;
     cb.key = PMIX_WDIR;
@@ -780,7 +775,6 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
     PMIX_INFO_LOAD(&info[0], PMIX_APP_INFO, NULL, PMIX_BOOL);
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.proc = &undef;
-    cb.copy = true;
     cb.info = info;
     cb.ninfo = 2;
     cb.key = PMIX_APP_ARGV;
@@ -832,7 +826,6 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
     /* get the proc's local rank */
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.proc = (pmix_proc_t*)proc;
-    cb.copy = true;
     cb.key = PMIX_LOCAL_RANK;
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
     cb.key = NULL;
@@ -859,7 +852,6 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
     /* get the proc's node rank */
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.proc = (pmix_proc_t*)proc;
-    cb.copy = true;
     cb.key = PMIX_NODE_RANK;
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
     cb.key = NULL;
@@ -893,7 +885,6 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
     for (n=0; n < ns->num_apps; n++) {
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &undef;
-        cb.copy = true;
         cb.info = info;
         cb.ninfo = 2;
         cb.key = PMIX_APP_SIZE;
@@ -935,7 +926,6 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
     for (n=0; n < ns->num_apps; n++) {
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &undef;
-        cb.copy = true;
         cb.info = info;
         cb.ninfo = 2;
         cb.key = PMIX_APPLDR;
@@ -975,7 +965,6 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
     /* provide the reincarnation number */
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.proc = (pmix_proc_t*)proc;
-    cb.copy = true;
     cb.key = PMIX_REINCARNATION;
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
     cb.key = NULL;

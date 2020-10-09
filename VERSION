@@ -84,5 +84,5 @@ libpmi2_so_version=0:0:0
 # # well.  Yuck; this somewhat breaks the
 # # components-don't-affect-the-build-system abstraction.
 #
-libmca_common_dstore_so_version=0:0:0
+libmca_common_gds_so_version=0:0:0
 libmca_common_sse_so_version=0:0:0

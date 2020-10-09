@@ -333,6 +333,9 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
     case PMIX_EVENT_SESSION_END:
         return "SESSION ENDED";
 
+    case PMIX_ERR_EXISTS_OUTSIDE_SCOPE:
+        return "EXISTS OUTSIDE OF SCOPE";
+
     default:
         return "ERROR STRING NOT FOUND";
     }

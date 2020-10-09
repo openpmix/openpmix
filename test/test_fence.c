@@ -413,10 +413,12 @@ int test_job_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
                 exit(PMIX_ERROR);
             }
         }
+    }
 
+    if (0 == my_rank) {
         /* ask for a non-existent key */
-        proc.rank = i+params.base_rank;
-        j = 2;
+        PMIX_LOAD_PROCID(&proc, my_nspace, my_rank);
+        j = 1;
         PMIX_INFO_LOAD(&info, PMIX_TIMEOUT, &j, PMIX_INT);
         PMIX_INFO_REQUIRED(&info);
         if (PMIX_SUCCESS == (rc = PMIx_Get(&proc, "foobar", &info, 1, &val))) {
@@ -436,10 +438,10 @@ int test_job_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
             TEST_ERROR(("%s:%d [ERROR]: PMIx_Get did not return NULL value", my_nspace, my_rank));
             exit(PMIX_ERROR);
         }
-
       cleanout:
         TEST_VERBOSE(("%s:%d: rank %d is OK", my_nspace, my_rank, i+params.base_rank));
     }
+
     free(peers);
     return PMIX_SUCCESS;
 }

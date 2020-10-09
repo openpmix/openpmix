@@ -42,28 +42,8 @@ BEGIN_C_DECLS
 
 #endif
 
-
-typedef enum {
-    VM_HOLE_NONE = -1,
-    VM_HOLE_BEGIN = 0,        /* use hole at the very beginning */
-    VM_HOLE_AFTER_HEAP = 1,   /* use hole right after heap */
-    VM_HOLE_BEFORE_STACK = 2, /* use hole right before stack */
-    VM_HOLE_BIGGEST = 3,      /* use biggest hole */
-    VM_HOLE_IN_LIBS = 4,      /* use biggest hole between heap and stack */
-    VM_HOLE_CUSTOM = 5,       /* use given address if available */
-} pmix_hwloc_vm_hole_kind_t;
-
-typedef enum {
-    VM_MAP_FILE = 0,
-    VM_MAP_ANONYMOUS = 1,
-    VM_MAP_HEAP = 2,
-    VM_MAP_STACK = 3,
-    VM_MAP_OTHER = 4 /* vsyscall/vdso/vvar shouldn't occur since we stop after stack */
-} pmix_hwloc_vm_map_kind_t;
-
 typedef struct {
     pmix_ploc_base_component_t super;
-    int hole_kind;
     char *topo_file;
     char *testcpuset;
 } pmix_ploc_hwloc_component_t;

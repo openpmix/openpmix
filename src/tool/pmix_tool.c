@@ -345,8 +345,8 @@ static void job_data(struct pmix_peer_t *pr,
 
     /* decode it */
     PMIX_GDS_STORE_JOB_INFO(cb->status,
-                            pmix_client_globals.myserver,
-                            nspace, buf);
+                        pmix_client_globals.myserver,
+                        nspace, buf);
     cb->status = PMIX_SUCCESS;
     PMIX_POST_OBJECT(cb);
     PMIX_WAKEUP_THREAD(&cb->lock);
@@ -873,7 +873,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         pmix_strncpy(wildcard.nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
         wildcard.rank = PMIX_RANK_WILDCARD;
         cb.proc = &wildcard;
-        cb.copy = true;
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
         if (PMIX_SUCCESS != rc) {
             pmix_output_verbose(5, pmix_client_globals.get_output,

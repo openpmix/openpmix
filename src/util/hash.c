@@ -31,8 +31,10 @@
 #include "src/class/pmix_hash_table.h"
 #include "src/class/pmix_pointer_array.h"
 #include "src/mca/bfrops/bfrops.h"
+#include "src/mca/gds/base/base.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
+#include "src/util/name_fns.h"
 
 #include "src/util/hash.h"
 
@@ -72,9 +74,11 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
     uint64_t id;
     pmix_kval_t *hv;
 
-    pmix_output_verbose(10, pmix_globals.debug_output,
-                        "HASH:STORE rank %d key %s",
-                        rank, (NULL == kin) ? "NULL KVAL" : kin->key);
+    pmix_output_verbose(10, pmix_gds_base_framework.framework_output,
+                        "%s HASH storing %s for rank %s",
+                        PMIX_NAME_PRINT(&pmix_globals.myid),
+                        (NULL == kin) ? "NULL" : kin->key,
+                        PMIX_RANK_PRINT(rank))
 
     if (NULL == kin) {
         return PMIX_ERR_BAD_PARAM;

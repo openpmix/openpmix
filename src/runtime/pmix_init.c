@@ -34,8 +34,11 @@
 #endif
 
 #include "src/include/pmix_globals.h"
+#include "src/util/error.h"
+#include "src/util/keyval_parse.h"
 #include "src/util/output.h"
 #include "src/util/show_help.h"
+#include "src/util/vmhole.h"
 #include "src/mca/base/base.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/bfrops/base/base.h"
@@ -55,8 +58,6 @@
 #include "src/common/pmix_attributes.h"
 #include "src/event/pmix_event.h"
 #include "src/include/types.h"
-#include "src/util/error.h"
-#include "src/util/keyval_parse.h"
 
 #include "src/runtime/pmix_rte.h"
 #include "src/runtime/pmix_progress_threads.h"
@@ -81,7 +82,6 @@ PMIX_EXPORT pmix_globals_t pmix_globals = {
     .debug_output = -1,
     .connected = false,
     .commits_pending = false,
-    .mygds = NULL,
     .pushstdin = false,
     .topology = {NULL, NULL},
     .external_topology = false,
@@ -166,6 +166,10 @@ int pmix_rte_init(uint32_t type,
         error = "pmix_register_params";
         goto return_error;
     }
+    if (PMIX_SUCCESS != (ret = pmix_vmhole_register_params())) {
+        error = "pmix_vmhole_register_params";
+        goto return_error;
+    }
 
     /* initialize the mca */
     if (PMIX_SUCCESS != (ret = pmix_mca_base_open())) {
@@ -185,8 +189,17 @@ int pmix_rte_init(uint32_t type,
 
     /* setup the globals structure */
     pmix_globals.pid = getpid();
-    memset(&pmix_globals.myid.nspace, 0, PMIX_MAX_NSLEN+1);
+    PMIX_LOAD_NSPACE(pmix_globals.myid.nspace, NULL);
     pmix_globals.myid.rank = PMIX_RANK_INVALID;
+
+    pmix_globals.myidval.type = PMIX_PROC;
+    pmix_globals.myidval.data.proc = (pmix_proc_t*)malloc(sizeof(pmix_proc_t));
+    PMIX_LOAD_NSPACE(pmix_globals.myidval.data.proc->nspace, NULL);
+    pmix_globals.myidval.data.proc->rank = PMIX_RANK_INVALID;
+
+    pmix_globals.myrankval.type = PMIX_PROC_RANK;
+    pmix_globals.myrankval.data.rank = PMIX_RANK_INVALID;
+
     PMIX_CONSTRUCT(&pmix_globals.events, pmix_events_t);
     pmix_globals.event_window.tv_sec = pmix_event_caching_window;
     pmix_globals.event_window.tv_usec = 0;
@@ -196,6 +209,7 @@ int pmix_rte_init(uint32_t type,
     ret = pmix_hotel_init(&pmix_globals.notifications, pmix_globals.max_events,
                           pmix_globals.evbase, pmix_globals.event_eviction_time,
                           _notification_eviction_cbfunc);
+
     PMIX_CONSTRUCT(&pmix_globals.nspaces, pmix_list_t);
     /* need to hold off checking the hotel init return code
      * until after we construct all the globals so they can

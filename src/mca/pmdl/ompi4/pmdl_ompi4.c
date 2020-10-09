@@ -457,7 +457,6 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
 		/* fetch the universe size */
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &wildcard;
-        cb.copy = true;
         cb.key = PMIX_UNIV_SIZE;
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
         cb.key = NULL;
@@ -479,7 +478,6 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
 		/* fetch the job size */
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &wildcard;
-        cb.copy = true;
         cb.key = PMIX_JOB_SIZE;
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
         cb.key = NULL;
@@ -501,7 +499,6 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
 		/* fetch the number of apps */
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &wildcard;
-        cb.copy = true;
         cb.key = PMIX_JOB_NUM_APPS;
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
         cb.key = NULL;
@@ -557,7 +554,6 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
     /* pass an envar so the proc can find any files it had prepositioned */
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.proc = (pmix_proc_t*)proc;
-    cb.copy = true;
     cb.key = PMIX_PROCDIR;
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
     cb.key = NULL;
@@ -580,7 +576,6 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
     PMIX_INFO_LOAD(&info[0], PMIX_APP_INFO, NULL, PMIX_BOOL);
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.proc = &undef;
-    cb.copy = true;
     cb.info = info;
     cb.ninfo = 2;
     cb.key = PMIX_WDIR;
@@ -610,7 +605,6 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
     PMIX_INFO_LOAD(&info[0], PMIX_APP_INFO, NULL, PMIX_BOOL);
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.proc = &undef;
-    cb.copy = true;
     cb.info = info;
     cb.ninfo = 2;
     cb.key = PMIX_APP_ARGV;
@@ -662,7 +656,6 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
     /* get the proc's local rank */
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.proc = (pmix_proc_t*)proc;
-    cb.copy = true;
     cb.key = PMIX_LOCAL_RANK;
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
     cb.key = NULL;
@@ -689,7 +682,6 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
     /* get the proc's node rank */
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.proc = (pmix_proc_t*)proc;
-    cb.copy = true;
     cb.key = PMIX_NODE_RANK;
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
     cb.key = NULL;
@@ -723,7 +715,6 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
     for (n=0; n < ns->num_apps; n++) {
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &undef;
-        cb.copy = true;
         cb.info = info;
         cb.ninfo = 2;
         cb.key = PMIX_APP_SIZE;
@@ -765,7 +756,6 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
     for (n=0; n < ns->num_apps; n++) {
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &undef;
-        cb.copy = true;
         cb.info = info;
         cb.ninfo = 2;
         cb.key = PMIX_APPLDR;
@@ -805,7 +795,6 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc,
     /* provide the reincarnation number */
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.proc = (pmix_proc_t*)proc;
-    cb.copy = true;
     cb.key = PMIX_REINCARNATION;
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
     cb.key = NULL;

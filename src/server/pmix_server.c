@@ -622,18 +622,16 @@ static void _register_nspace(int sd, short args, void *cbdata)
         }
     }
 
-    /* register nspace for each activate components */
-    PMIX_GDS_ADD_NSPACE(rc, nptr->nspace, cd->nlocalprocs, cd->info, cd->ninfo);
-    if (PMIX_SUCCESS != rc) {
-        goto release;
-    }
-
-    /* store this data in our own GDS module - we will retrieve
-     * it later so it can be passed down to the launched procs
-     * once they connect to us and we know what GDS module they
-     * are using */
-    PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr,
-                            cd->info, cd->ninfo);
+    /* store this data in an appropriate place - the function will cycle
+     * in priority order across all active components that support
+     * register_nspace until someone picks it up. In the case where our
+     * clients are also using this version of the library, this method
+     * gives us the highest likelihood that the info will be stored on
+     * the component shared with the client - hopefully avoiding having
+     * to store the data again once the client connects and tells us
+     * the actual component they are using */
+    rc = pmix_gds_base_register_nspace((struct pmix_namespace_t*)nptr,
+                                       cd->nlocalprocs, cd->info, cd->ninfo);
     if (PMIX_SUCCESS != rc) {
         goto release;
     }
@@ -1180,7 +1178,6 @@ void pmix_server_execute_collective(int sd, short args, void *cbdata)
                 PMIX_CONSTRUCT(&cb, pmix_cb_t);
                 cb.proc = &proc;
                 cb.scope = PMIX_REMOTE;
-                cb.copy = true;
                 PMIX_GDS_FETCH_KV(rc, peer, &cb);
                 if (PMIX_SUCCESS == rc) {
                     /* pack the returned kvals */
@@ -1703,7 +1700,6 @@ static void _dmodex_req(int sd, short args, void *cbdata)
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &cd->proc;
         cb.scope = PMIX_REMOTE;
-        cb.copy = true;
         PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
         if (PMIX_SUCCESS == rc) {
@@ -1755,7 +1751,6 @@ static void _dmodex_req(int sd, short args, void *cbdata)
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.proc = &cd->proc;
     cb.scope = PMIX_REMOTE;
-    cb.copy = true;
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
     if (PMIX_SUCCESS == rc) {
         /* assemble the provided data into a byte object */
@@ -2640,7 +2635,6 @@ static void _spcb(int sd, short args, void *cbdata)
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &proc;
         cb.scope = PMIX_SCOPE_UNDEF;
-        cb.copy = false;
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
         if (PMIX_SUCCESS == rc) {
             PMIX_LIST_FOREACH(kv, &cb.kvs, pmix_kval_t) {
@@ -2792,11 +2786,16 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
      * participants. It does not allow multiple storing to the
      * same GDS if participants have mutual GDS. */
     PMIX_LIST_FOREACH(cd, &tracker->local_cbs, pmix_server_caddy_t) {
+        /* if they are using "hash", then they need their own copy
+         * sent to them */
+        if (PMIX_GDS_CHECK_COMPONENT(cd->peer, "hash")) {
+            cd->event_active = true; // just piggy-back on this object element
+            continue;
+        }
         // see if we already have this nspace
         found = false;
         PMIX_LIST_FOREACH(nptr, &nslist, pmix_nspace_caddy_t) {
-            if (0 == strcmp(nptr->ns->compat.gds->name,
-                            cd->peer->nptr->compat.gds->name)) {
+            if (PMIX_CHECK_NSPACE(nptr->ns->nspace, cd->peer->nptr->nspace)) {
                 found = true;
                 break;
             }
@@ -2810,7 +2809,12 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
         }
     }
     PMIX_LIST_FOREACH(nptr, &nslist, pmix_nspace_caddy_t) {
-        /* pass the blobs being returned */
+        /* pass the blobs to the component being used by
+         * clients of each participating nspace - if it
+         * is a shmem component, then the data will be
+         * stored in an appropriate memory segment. If
+         * it is a hash component, then the data will be
+         * cached locally to ourselves */
         PMIX_LOAD_BUFFER(pmix_globals.mypeer, &xfer, scd->data, scd->ndata);
         PMIX_GDS_STORE_MODEX(rc, nptr->ns, &xfer, tracker);
         if (PMIX_SUCCESS != rc) {
@@ -2836,6 +2840,25 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
         pmix_output_verbose(2, pmix_server_globals.base_output,
                             "server:modex_cbfunc reply being sent to %s:%u",
                             cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
+        // check to see if they need a copy of the data
+        if (cd->event_active) {
+            PMIX_LOAD_BUFFER(cd->peer, &xfer, scd->data, scd->ndata);
+            PMIX_BFROPS_COPY_PAYLOAD(rc, cd->peer, reply, &xfer);
+            cd->event_active = false; // protect release of the object's event
+        } else {
+            /* If their component is a shmem one, then we need to get
+             * the required address and size info so they can mmap the
+             * new memory region. */
+            PMIX_GDS_COLLECT_INFO(rc, cd->peer, reply);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                /* we must queue the reply so the client doesn't
+                 * hang in their fence operation */
+                PMIX_RELEASE(reply);
+                reply = PMIX_NEW(pmix_buffer_t);
+                PMIX_BFROPS_PACK(ret, cd->peer, reply, &rc, 1, PMIX_STATUS);
+            }
+        }
         PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
         if (PMIX_SUCCESS != rc) {
             PMIX_RELEASE(reply);
@@ -3041,7 +3064,6 @@ static void _cnct(int sd, short args, void *cbdata)
                  * or returning a pointer to local storage */
                 cb.proc = &proc;
                 cb.scope = PMIX_SCOPE_UNDEF;
-                cb.copy = false;
                 PMIX_GDS_FETCH_KV(rc, cd->peer, &cb);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
@@ -3821,7 +3843,7 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
             PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
             return PMIX_ERR_NOMEM;
         }
-        PMIX_GDS_REGISTER_JOB_INFO(rc, peer, reply);
+        PMIX_GDS_COLLECT_INFO(rc, peer, reply);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             return rc;

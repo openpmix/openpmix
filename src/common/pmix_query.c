@@ -297,7 +297,6 @@ static void localquery(int sd, short args, void *cbdata)
 
         /* first try a local "get" on the data to see if we already have it */
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
-        cb.copy = false;
         /* if they are querying about node or app values not directly
          * associated with a proc (i.e., they didn't specify the proc),
          * then we obtain those by leaving the proc info as undefined */

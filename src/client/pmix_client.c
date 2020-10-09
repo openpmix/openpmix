@@ -284,8 +284,8 @@ static void job_data(struct pmix_peer_t *pr,
 
     /* decode it */
     PMIX_GDS_STORE_JOB_INFO(cb->status,
-                            pmix_client_globals.myserver,
-                            nspace, buf);
+                        pmix_client_globals.myserver,
+                        nspace, buf);
 
     free(nspace);
     cb->status = PMIX_SUCCESS;
@@ -624,7 +624,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         pmix_globals.mypeer->nptr->nspace = strdup(pmix_globals.myid.nspace);
     } else {
         if (NULL != proc) {
-            pmix_strncpy(proc->nspace, evar, PMIX_MAX_NSLEN);
+            PMIX_LOAD_NSPACE(proc->nspace, evar);
         }
         PMIX_LOAD_NSPACE(pmix_globals.myid.nspace, evar);
         /* set the global pmix_namespace_t object for our peer */
@@ -653,6 +653,8 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     }
     pmix_globals.mypeer->info->pname.nspace = strdup(proc->nspace);
     pmix_globals.mypeer->info->pname.rank = proc->rank;
+    PMIX_LOAD_PROCID(pmix_globals.myidval.data.proc, proc->nspace, proc->rank);
+    pmix_globals.myrankval.data.rank = proc->rank;
 
     /* select our psec compat module - the selection will be based
      * on the corresponding envars that should have been passed
@@ -1239,12 +1241,8 @@ static void _commitfn(int sd, short args, void *cbdata)
     if (pmix_globals.commits_pending) {
         /* fetch and pack the local values */
         scope = PMIX_LOCAL;
-        /* allow the GDS module to pass us this info
-         * as a local connection as this data would
-         * only go to another local client */
         cb->proc = &pmix_globals.myid;
         cb->scope = scope;
-        cb->copy = false;
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
         if (PMIX_SUCCESS == rc) {
             PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
@@ -1280,12 +1278,8 @@ static void _commitfn(int sd, short args, void *cbdata)
 
         /* fetch and pack the remote values */
         scope = PMIX_REMOTE;
-        /* we need real copies here as this data will
-         * go to remote procs - so a connection will
-         * not suffice */
         cb->proc = &pmix_globals.myid;
         cb->scope = scope;
-        cb->copy = true;
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
         if (PMIX_SUCCESS == rc) {
             PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,

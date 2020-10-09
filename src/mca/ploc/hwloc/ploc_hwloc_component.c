@@ -55,39 +55,13 @@ pmix_ploc_hwloc_component_t mca_ploc_hwloc_component = {
             PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT
         }
     },
-    .hole_kind = VM_HOLE_BIGGEST,
     .topo_file = NULL,
     .testcpuset = NULL
 };
 
-static char *vmhole = "biggest";
-
 static int component_register(void)
 {
     pmix_mca_base_component_t *component = &mca_ploc_hwloc_component.super.base;
-
-    (void)pmix_mca_base_component_var_register(component, "hole_kind",
-                                           "Kind of VM hole to identify - none, begin, biggest, libs, heap, stack (default=biggest)",
-                                           PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
-                                           PMIX_INFO_LVL_9,
-                                           PMIX_MCA_BASE_VAR_SCOPE_READONLY,
-                                           &vmhole);
-    if (0 == strcasecmp(vmhole, "none")) {
-        mca_ploc_hwloc_component.hole_kind = VM_HOLE_NONE;
-    } else if (0 == strcasecmp(vmhole, "begin")) {
-        mca_ploc_hwloc_component.hole_kind = VM_HOLE_BEGIN;
-    } else if (0 == strcasecmp(vmhole, "biggest")) {
-        mca_ploc_hwloc_component.hole_kind = VM_HOLE_BIGGEST;
-    } else if (0 == strcasecmp(vmhole, "libs")) {
-        mca_ploc_hwloc_component.hole_kind = VM_HOLE_IN_LIBS;
-    } else if (0 == strcasecmp(vmhole, "heap")) {
-        mca_ploc_hwloc_component.hole_kind = VM_HOLE_AFTER_HEAP;
-    } else if (0 == strcasecmp(vmhole, "stack")) {
-        mca_ploc_hwloc_component.hole_kind = VM_HOLE_BEFORE_STACK;
-    } else {
-        pmix_output(0, "INVALID VM HOLE TYPE");
-        return PMIX_ERROR;
-    }
 
     (void)pmix_mca_base_component_var_register(component, "topo_file",
                                            "Topology file to use instead of discovering it (mostly for testing purposes)",

@@ -311,7 +311,6 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr)
         PMIX_LOAD_PROCID(&wildcard, nptr->nspace, PMIX_RANK_WILDCARD);
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &wildcard;
-        cb.copy = true;
         cb.key = PMIX_JOB_NUM_APPS;
 		/* fetch the number of apps */
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
@@ -345,7 +344,6 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr)
     for (n=0; n < ns->num_apps; n++) {
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &undef;
-        cb.copy = true;
         cb.info = info;
         cb.ninfo = 2;
         cb.key = PMIX_APP_SIZE;
@@ -375,12 +373,14 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr)
     PMIX_INFO_DESTRUCT(&info[0]);
 
     if (NULL != tmp) {
-        ev1 = pmix_argv_join(tmp, ' ');
+        kv = PMIX_NEW(pmix_kval_t);
+        kv->key = strdup("OMPI_APP_SIZES");
+        kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+        kv->value->type = PMIX_STRING;
+        kv->value->data.string = pmix_argv_join(tmp, ' ');
         pmix_argv_free(tmp);
-        PMIX_INFO_LOAD(&info[0], "OMPI_APP_SIZES", ev1, PMIX_STRING);
-        free(ev1);
-        PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr, info, 1);
-        PMIX_INFO_DESTRUCT(&info[0]);
+        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &wildcard, PMIX_GLOBAL, kv);
+        PMIX_RELEASE(kv);
     }
 
     /* construct the list of app leaders */
@@ -389,7 +389,6 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr)
     for (n=0; n < ns->num_apps; n++) {
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &undef;
-        cb.copy = true;
         cb.info = info;
         cb.ninfo = 2;
         cb.key = PMIX_APPLDR;
@@ -419,13 +418,14 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr)
     PMIX_INFO_DESTRUCT(&info[0]);
 
     if (NULL != tmp) {
-        ev1 = pmix_argv_join(tmp, ' ');
+        kv = PMIX_NEW(pmix_kval_t);
+        kv->key = strdup("OMPI_FIRST_RANKS");
+        kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+        kv->value->type = PMIX_STRING;
+        kv->value->data.string = pmix_argv_join(tmp, ' ');
         pmix_argv_free(tmp);
-        tmp = NULL;
-        PMIX_INFO_LOAD(&info[0], "OMPI_FIRST_RANKS", ev1, PMIX_STRING);
-        free(ev1);
-        PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr, info, 1);
-        PMIX_INFO_DESTRUCT(&info[0]);
+        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &wildcard, PMIX_GLOBAL, kv);
+        PMIX_RELEASE(kv);
     }
 
     return PMIX_SUCCESS;

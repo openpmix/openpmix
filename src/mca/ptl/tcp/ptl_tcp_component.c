@@ -1184,6 +1184,7 @@ static void connection_handler(int sd, short args, void *cbdata)
     pmix_byte_object_t cred;
     pmix_buffer_t buf;
     uint8_t major, minor, release;
+    pmix_kval_t *kv;
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(pnd);
@@ -1815,9 +1816,14 @@ static void connection_handler(int sd, short args, void *cbdata)
     /* if we haven't previously stored the version for this
      * nspace, do so now */
     if (!nptr->version_stored) {
-        PMIX_INFO_LOAD(&ginfo, PMIX_BFROPS_MODULE, peer->nptr->compat.bfrops->version, PMIX_STRING);
-        PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, peer->nptr, &ginfo, 1);
-        PMIX_INFO_DESTRUCT(&ginfo);
+        kv = PMIX_NEW(pmix_kval_t);
+        kv->key = strdup(PMIX_BFROPS_MODULE);
+        kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+        kv->value->type = PMIX_STRING;
+        kv->value->data.string = strdup(peer->nptr->compat.bfrops->version);
+        PMIX_LOAD_PROCID(&proc, info->pname.nspace, info->pname.rank);
+        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, PMIX_GLOBAL, kv);
+        PMIX_RELEASE(kv);
         nptr->version_stored = true;
     }
 
@@ -1944,6 +1950,8 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     pmix_info_t ginfo;
     pmix_byte_object_t cred;
     pmix_iof_req_t *req;
+    pmix_proc_t proc;
+    pmix_kval_t *kv;
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(cd);
@@ -2073,9 +2081,14 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     /* if we haven't previously stored the version for this
      * nspace, do so now */
     if (!peer->nptr->version_stored) {
-        PMIX_INFO_LOAD(&ginfo, PMIX_BFROPS_MODULE, peer->nptr->compat.bfrops->version, PMIX_STRING);
-        PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, peer->nptr, &ginfo, 1);
-        PMIX_INFO_DESTRUCT(&ginfo);
+        kv = PMIX_NEW(pmix_kval_t);
+        kv->key = strdup(PMIX_BFROPS_MODULE);
+        kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+        kv->value->type = PMIX_STRING;
+        kv->value->data.string = strdup(peer->nptr->compat.bfrops->version);
+        PMIX_LOAD_PROCID(&proc, peer->info->pname.nspace, peer->info->pname.rank);
+        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, PMIX_GLOBAL, kv);
+        PMIX_RELEASE(kv);
         nptr->version_stored = true;
     }
 

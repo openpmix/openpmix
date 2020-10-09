@@ -246,11 +246,14 @@ int main(int argc, char **argv)
         PMIX_PROC_CONSTRUCT(&proc);
         (void)strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
         proc.rank = PMIX_RANK_WILDCARD;
-        if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, NULL, 0))) {
+        /* collect all data */
+        PMIX_INFO_LOAD(&info, PMIX_COLLECT_DATA, NULL, PMIX_BOOL);
+        if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, &info, 1))) {
             pmix_output(0, "Client ns %s rank %d cnt %d: PMIx_Fence failed: %s",
                         myproc.nspace, myproc.rank, cnt, PMIx_Error_string(rc));
             exit(rc);
         }
+        PMIX_INFO_DESTRUCT(&info);
 
         /* check the returned data */
         (void)strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
@@ -274,11 +277,11 @@ int main(int argc, char **argv)
                     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, tmp, NULL, 0, &val))) {
                         pmix_output(0, "Client ns %s rank %d cnt %d: PMIx_Get %s failed: %s",
                                     myproc.nspace, myproc.rank, j, tmp, PMIx_Error_string(rc));
-                        continue;
+                        exit(rc);
                     }
                     if (NULL == val) {
-                        pmix_output(0, "Client ns %s rank %d: NULL value returned",
-                                    myproc.nspace, myproc.rank);
+                        pmix_output(0, "Client ns %s rank %d cnt %d key %s: NULL value returned",
+                                    myproc.nspace, myproc.rank, j, tmp);
                         exit(1);
                     }
                     if (PMIX_UINT64 != val->type) {

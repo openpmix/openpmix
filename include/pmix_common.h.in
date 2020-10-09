@@ -142,6 +142,16 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_ATTR_UNDEF      "pmix.undef"
 
 /* initialization attributes */
+#define PMIX_EVENT_BASE                     "pmix.evbase"           // (void*) Pointer to an event_base to use in place of the internal
+                                                                    //         progress thread. All \ac{PMIx} library events are to be
+                                                                    //         assigned to the provided event base. The event base must
+                                                                    //         be compatible with the event library used by the PMIx
+                                                                    //         implementation - e.g., either both the host and PMIx
+                                                                    //         library must use libevent, or both must use libev.
+                                                                    //         Cross-matches are unlikely to work and should be
+                                                                    //         avoided - it is the responsibility of the host to ensure
+                                                                    //         that the PMIx implementation supports (and was built with)
+                                                                    //         the appropriate event library.
 #define PMIX_EXTERNAL_PROGRESS              "pmix.evext"            // (bool) The host shall progress the PMIx library via
                                                                     //        calls to PMIx_Progress
 #define PMIX_SERVER_TOOL_SUPPORT            "pmix.srvr.tool"        // (bool) The host RM wants to declare itself as willing
@@ -1145,14 +1155,15 @@ typedef int pmix_status_t;
 #define PMIX_ERR_PARTIAL_SUCCESS                    -52
 #define PMIX_ERR_DUPLICATE_KEY                      -53
 #define PMIX_ERR_GET_MALLOC_REQD                    -54
+#define PMIX_ERR_EXISTS_OUTSIDE_SCOPE               -55
 
 /* Process set */
-#define PMIX_PROCESS_SET_DEFINE                     -55
-#define PMIX_PROCESS_SET_DELETE                     -56
+#define PMIX_PROCESS_SET_DEFINE                     -60
+#define PMIX_PROCESS_SET_DELETE                     -61
 
 /* Debugger ops */
-#define PMIX_DEBUGGER_RELEASE                       -57
-#define PMIX_DEBUG_WAITING_FOR_NOTIFY               -58
+#define PMIX_DEBUGGER_RELEASE                       -62
+#define PMIX_DEBUG_WAITING_FOR_NOTIFY               -63
 
 /* v2.x communication errors */
 #define PMIX_QUERY_PARTIAL_SUCCESS                  -104

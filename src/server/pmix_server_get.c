@@ -410,18 +410,17 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
         } else {
             cb.scope = PMIX_REMOTE;
         }
-        cb.copy = false;
         cb.info = cd->info;
         cb.ninfo = cd->ninfo;
         cb.key = key;
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
         /* A local client may send a get request concurrently with
          * a commit request from another client, but the server may
-         * have processed the commit request earlyer than the get
+         * have processed the commit request earlier than the get
          * request. In this case, we create a local tracker for
          * possibly existing keys that are added with the completed
          * commit request. Thus, the get request will be pended in
-         * tracker and will be deffered. This scenario is possible
+         * tracker and will be deferred. This scenario is possible
          * when the non-fence commit-get scheme is used and when
          * the peer GDS component is `dstore`.
          * Checking the peer storage for local keys to avoid creating
@@ -429,6 +428,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
         if ((PMIX_SUCCESS != rc) && local) {
             PMIX_GDS_FETCH_KV(rc, cd->peer, &cb);
             if (PMIX_SUCCESS == rc) {
+                /* need to pack and return the result */
                 cbfunc(rc, NULL, 0, cbdata, NULL, NULL);
                 PMIX_DESTRUCT(&cb);
                 return rc;
@@ -436,6 +436,11 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
         }
         PMIX_DESTRUCT(&cb);  // does not release info or key
         if (PMIX_SUCCESS != rc) {
+            /* if the target data was found but only available from
+             * a different scope, then just return that error */
+            if (PMIX_ERR_EXISTS_OUTSIDE_SCOPE == rc) {
+                return rc;
+            }
             /* if the target proc is local, then we just need to wait */
             if (local) {
                 /* if they provided a timeout, we need to execute it here
@@ -493,6 +498,10 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
          * calls the cbfunc for us, and it will have
          * released the cbdata object */
         return PMIX_SUCCESS;
+    } else if (PMIX_ERR_EXISTS_OUTSIDE_SCOPE == rc) {
+        /* the target data was found but only available from
+         * a different scope, so just return that error */
+        return rc;
     }
 
     pmix_output_verbose(2, pmix_server_globals.get_output,
@@ -697,7 +706,6 @@ static pmix_status_t get_job_data(char *nspace,
      * local storage */
     cb.proc = &proc;
     cb.scope = PMIX_INTERNAL;
-    cb.copy = false;
     cb.info = cd->info;
     cb.ninfo = cd->ninfo;
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
@@ -716,7 +724,7 @@ static pmix_status_t get_job_data(char *nspace,
         }
         if (PMIX_PEER_IS_V1(cd->peer)) {
             /* if the client is using v1, then it expects the
-             * data returned to it as the rank followed by abyte object containing
+             * data returned to it as the rank followed by a byte object containing
              * a buffer - so we have to do a little gyration */
             pmix_buffer_t xfer;
             PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
@@ -783,12 +791,8 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
     /* retrieve the data for the specific rank they are asking about */
     proc.rank = rank;
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
-    /* this is a local request, so give the gds the option
-     * of returning a copy of the data, or a pointer to
-     * local storage */
     cb.proc = &proc;
     cb.scope = scope;
-    cb.copy = false;
     cb.info = cd->info;
     cb.ninfo = cd->ninfo;
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
@@ -1047,7 +1051,6 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
                     }
                     PMIX_LOAD_PROCID(cb.proc, nm->ns->nspace, PMIX_RANK_WILDCARD);
                     cb.scope = PMIX_INTERNAL;
-                    cb.copy = false;
                     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
                     if (PMIX_SUCCESS != rc) {
                         PMIX_ERROR_LOG(rc);

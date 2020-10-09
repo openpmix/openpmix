@@ -299,6 +299,20 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_shift_caddy_t,
                                 pmix_object_t,
                                 scon, scdes);
 
+static void lgcon(pmix_get_logic_t *p)
+{
+    memset(&p->p, 0, sizeof(pmix_proc_t));
+    p->pntrval = false;
+    p->stval = false;
+    p->optional = false;
+    p->refresh_cache = false;
+    p->scope = PMIX_SCOPE_UNDEF;
+}
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_get_logic_t,
+                                pmix_object_t,
+                                lgcon, NULL);
+
+
 static void cbcon(pmix_cb_t *p)
 {
     PMIX_CONSTRUCT_LOCK(&p->lock);
@@ -319,7 +333,7 @@ static void cbcon(pmix_cb_t *p)
     p->infocopy = false;
     p->nvals = 0;
     PMIX_CONSTRUCT(&p->kvs, pmix_list_t);
-    p->copy = false;
+    p->lg = NULL;
     p->timer_running = false;
     p->fabric = NULL;
 }

@@ -13,8 +13,6 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2017      Mellanox Technologies, Inc.
- *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -31,9 +29,12 @@
 #include "src/include/pmix_config.h"
 #include "include/pmix_common.h"
 
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
+#endif
 
-#include "src/mca/pshmem/pshmem.h"
-#include "pshmem_mmap.h"
+#include "src/mca/gds/gds.h"
+#include "gds_shmem.h"
 
 static pmix_status_t component_open(void);
 static pmix_status_t component_close(void);
@@ -43,12 +44,12 @@ static pmix_status_t component_query(pmix_mca_base_module_t **module, int *prior
  * Instantiate the public struct with all of our public information
  * and pointers to our public functions in it
  */
-pmix_pshmem_base_component_t mca_pshmem_mmap_component = {
+pmix_gds_base_component_t mca_gds_shmem_component = {
     .base = {
-        PMIX_PSHMEM_BASE_VERSION_1_0_0,
+        PMIX_GDS_BASE_VERSION_1_0_0,
 
         /* Component name and version */
-        .pmix_mca_component_name = "mmap",
+        .pmix_mca_component_name = "shmem",
         PMIX_MCA_BASE_MAKE_VERSION(component,
                                    PMIX_MAJOR_VERSION,
                                    PMIX_MINOR_VERSION,
@@ -74,8 +75,19 @@ static int component_open(void)
 
 static int component_query(pmix_mca_base_module_t **module, int *priority)
 {
-    *priority = 10;
-    *module = (pmix_mca_base_module_t *)&pmix_mmap_module;
+    /* see if the required system file is present */
+    if (access("/proc/self/maps", F_OK) == -1) {
+        *priority = 0;
+        *module = NULL;
+        return PMIX_ERROR;
+    } else {
+        *priority = 0;
+        *module = NULL;
+        return PMIX_ERROR;
+    }
+
+    *priority = 30;
+    *module = (pmix_mca_base_module_t *)&pmix_shmem_module;
     return PMIX_SUCCESS;
 }
 

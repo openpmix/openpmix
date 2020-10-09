@@ -804,8 +804,8 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
                 }
 
                 /* cache the info on the job */
-                PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr,
-                                        &stinfo, 1);
+            //    PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr,
+             //                           &stinfo, 1);
                 PMIX_INFO_DESTRUCT(&stinfo);
             }
         }

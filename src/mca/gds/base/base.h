@@ -72,12 +72,12 @@ PMIX_CLASS_DECLARATION(pmix_gds_base_active_module_t);
 
 
 /* framework globals */
-struct pmix_gds_globals_t {
+typedef struct pmix_gds_globals_t {
   pmix_list_t actives;
   bool initialized;
   bool selected;
   char *all_mods;
-};
+} pmix_gds_globals_t;
 
 typedef enum {
     PMIX_MODEX_KEY_INVALID = -1,
@@ -94,8 +94,6 @@ typedef uint8_t pmix_gds_modex_blob_info_t;
 
 #define PMIX_GDS_KEYMAP_IS_SET(byte)        (PMIX_GDS_KEYMAP_BIT & (byte))
 #define PMIX_GDS_COLLECT_IS_SET(byte)       (PMIX_GDS_COLLECT_BIT & (byte))
-
-typedef struct pmix_gds_globals_t pmix_gds_globals_t;
 
 typedef void * pmix_gds_base_ctx_t;
 typedef pmix_status_t (*pmix_gds_base_store_modex_cb_fn_t)(pmix_gds_base_ctx_t ctx,
@@ -128,8 +126,6 @@ PMIX_EXPORT pmix_status_t pmix_gds_base_setup_fork(const pmix_proc_t *proc,
 
 PMIX_EXPORT pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
                                                     pmix_buffer_t * buff,
-                                                    pmix_gds_base_ctx_t ctx,
-                                                    pmix_gds_base_store_modex_cb_fn_t cb_fn,
                                                     void *cbdata);
 
 PMIX_EXPORT
@@ -141,6 +137,11 @@ PMIX_EXPORT
 pmix_status_t pmix_gds_base_modex_unpack_kval(pmix_gds_modex_key_fmt_t key_fmt,
                                               pmix_buffer_t *buf, char **kmap,
                                               pmix_kval_t *kv);
+
+PMIX_EXPORT
+pmix_status_t pmix_gds_base_register_nspace(struct pmix_namespace_t *ns, int nlocalprocs,
+                                            pmix_info_t info[], size_t ninfo);
+
 END_C_DECLS
 
 #endif

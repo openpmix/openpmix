@@ -265,11 +265,14 @@ typedef struct {
 #define GET(dtype, data, ns, r, fence_num, ind, use_same_keys, blocking, ok_notfnd) do {                        \
     char key[50];                                                                                                   \
     pmix_value_t *val;                                                                                              \
+    pmix_info_t info;                                                                                               \
     get_cbdata cbdata;                                                                                              \
     cbdata.status = PMIX_SUCCESS;                                                                                   \
-    pmix_proc_t foobar; \
+    pmix_proc_t foobar;                                                                                             \
+    int j=1;                                                                                                        \
     SET_KEY(key, fence_num, ind, use_same_keys);                                                                    \
-    PMIX_LOAD_PROCID(&foobar, ns, r); \
+    PMIX_LOAD_PROCID(&foobar, ns, r);                                                                               \
+    PMIX_INFO_LOAD(&info, PMIX_TIMEOUT, &j, PMIX_INT);                                                              \
     TEST_VERBOSE(("%s:%d want to get from %s:%d key %s", my_nspace, my_rank, ns, r, key));                          \
     if (blocking) {                                                                                                 \
         if (PMIX_SUCCESS != (rc = PMIx_Get(&foobar, key, NULL, 0, &val))) {                                         \
@@ -282,7 +285,7 @@ typedef struct {
         cbdata.in_progress = 1;                                                                                     \
         PMIX_VALUE_CREATE(val, 1);                                                                                  \
         cbdata.kv = val;                                                                                            \
-        if (PMIX_SUCCESS != (rc = PMIx_Get_nb(&foobar, key, NULL, 0, get_cb, (void*)&cbdata))) {                    \
+        if (PMIX_SUCCESS != (rc = PMIx_Get_nb(&foobar, key, &info, 1, get_cb, (void*)&cbdata))) {                   \
             TEST_VERBOSE(("%s:%d: PMIx_Get_nb failed: %s from %s:%d, key=%s", my_nspace, my_rank, PMIx_Error_string(rc), ns, r, key)); \
         } else {                                                                                                    \
             count = 0;                                                                                              \

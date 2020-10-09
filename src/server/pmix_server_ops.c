@@ -214,6 +214,14 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
                     PMIX_DESTRUCT(&b2);
                     return rc;
                 }
+                /* cache a copy for myself */
+                PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, scope, kp);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_RELEASE(kp);
+                    PMIX_DESTRUCT(&b2);
+                    return rc;
+                }
             }
             if (PMIX_REMOTE == scope || PMIX_GLOBAL == scope) {
                 PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, scope, kp);
@@ -264,7 +272,6 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
             PMIX_CONSTRUCT(&cb, pmix_cb_t);
             cb.proc = &proc;
             cb.scope = PMIX_REMOTE;
-            cb.copy = true;
             PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
             if (PMIX_SUCCESS == rc) {
                 /* package it up */
@@ -637,7 +644,6 @@ static pmix_status_t _collect_data(pmix_server_trkr_t *trk,
                 PMIX_CONSTRUCT(&cb, pmix_cb_t);
                 cb.proc = &pcs;
                 cb.scope = PMIX_REMOTE;
-                cb.copy = true;
                 PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
                 if (PMIX_SUCCESS == rc) {
                     int key_idx;
@@ -712,7 +718,6 @@ static pmix_status_t _collect_data(pmix_server_trkr_t *trk,
             PMIX_CONSTRUCT(&cb, pmix_cb_t);
             cb.proc = &pcs;
             cb.scope = PMIX_REMOTE;
-            cb.copy = true;
             PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
             if (PMIX_SUCCESS == rc) {
                 /* calculate the throughout rank */
@@ -2752,7 +2757,6 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer,
         /* we get here if a refresh isn't required - first try a local
          * "get" on the data to see if we already have it */
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
-        cb.copy = false;
         /* set the proc */
         if (PMIX_RANK_INVALID == proc.rank &&
             0 == strlen(proc.nspace)) {
