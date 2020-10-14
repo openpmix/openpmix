@@ -65,6 +65,11 @@ pmix_regattr_input_t dictionary[] = {
                                "created it's rendezvous file (given in ctime string",
                                "format)", NULL}},
 
+    {.name = "PMIX_HOMOGENEOUS_SYSTEM", .string = "pmix.homo", .type = PMIX_BOOL,
+     .description = (char *[]){"The nodes comprising the session are homogeneous -",
+                               "i.e., they each contain the same number of identical",
+                               "packages, fabric interfaces, GPU, and other devices", NULL}},
+
     {.name = "PMIX_TOOL_NSPACE", .string = "pmix.tool.nspace", .type = PMIX_STRING,
      .description = (char *[]){"Name of the nspace to use for this tool", NULL}},
 
@@ -463,6 +468,10 @@ pmix_regattr_input_t dictionary[] = {
                                "if not found", NULL}},
 
     {.name = "PMIX_GET_STATIC_VALUES", .string = "pmix.get.static", .type = PMIX_BOOL,
+     .description = (char *[]){"Request that the data be returned in the provided",
+                               "storage location", NULL}},
+
+    {.name = "PMIX_GET_POINTER_VALUES", .string = "pmix.get.pntrs", .type = PMIX_BOOL,
      .description = (char *[]){"Request that any pointers in the returned value point",
                                "directly to values in the key-value store", NULL}},
 

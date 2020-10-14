@@ -170,6 +170,10 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_SERVER_SCHEDULER               "pmix.srv.sched"        // (bool) Server supports system scheduler
 #define PMIX_SERVER_START_TIME              "pmix.srv.strtime"      // (char*) Time when the server started - i.e., when the server created
                                                                     //         it's rendezvous file (given in ctime string format)
+#define PMIX_HOMOGENEOUS_SYSTEM             "pmix.homo"             // (bool) The nodes comprising the session are homogeneous - i.e., they
+                                                                    //        each contain the same number of identical packages, fabric interfaces,
+                                                                    //        GPU, and other devices
+
 
 /* tool-related attributes */
 #define PMIX_TOOL_NSPACE                    "pmix.tool.nspace"      // (char*) Name of the nspace to use for this tool
@@ -347,7 +351,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_DATA_SCOPE                     "pmix.scope"            // (pmix_scope_t) scope of the data to be found in a PMIx_Get call
 #define PMIX_OPTIONAL                       "pmix.optional"         // (bool) look only in the client's local data store for the requested value - do
                                                                     //        not request data from the server if not found
-#define PMIX_GET_STATIC_VALUES              "pmix.get.static"       // (bool) Request that any pointers in the returned value point directly
+#define PMIX_GET_STATIC_VALUES              "pmix.get.static"       // (bool) Request that the data be returned in the provided storage location
+#define PMIX_GET_POINTER_VALUES             "pmix.get.pntrs"        // (bool) Request that any pointers in the returned value point directly
                                                                     //       to values in the key-value store
 #define PMIX_EMBED_BARRIER                  "pmix.embed.barrier"    // (bool) execute a blocking fence operation before executing the
                                                                     //        specified operation
@@ -1419,6 +1424,9 @@ static inline void* pmix_calloc(size_t n, size_t m)
 /* declare a convenience macro for checking keys */
 #define PMIX_CHECK_KEY(a, b) \
     (0 == strncmp((a)->key, (b), PMIX_MAX_KEYLEN))
+
+#define PMIX_CHECK_RESERVED_KEY(a) \
+    (0 == strncmp((a), "pmix", 4))
 
 #define PMIX_LOAD_KEY(a, b)                                             \
     do {                                                                \
