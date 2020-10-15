@@ -132,7 +132,7 @@ static pmix_status_t defer_response(char *nspace, pmix_rank_t rank,
                             "%s:%d CLIENT REQUESTED IMMEDIATE",
                             pmix_globals.myid.nspace,
                             pmix_globals.myid.rank);
-        return PMIX_ERR_NOT_FOUND;
+        return PMIX_ERR_NOT_AVAILABLE;
     }
     /* we cannot do anything further, so just track this request
      * for now */
@@ -341,6 +341,9 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
         if (PMIX_ERR_NOT_FOUND == rc) {
             /* just means we created a tracker */
             rc = PMIX_SUCCESS;
+        } else if (PMIX_ERR_NOT_AVAILABLE == rc) {
+            /* means they requested "immediate" */
+            rc = PMIX_ERR_NOT_FOUND;
         }
         return rc;
     }
@@ -362,6 +365,9 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
                         if (PMIX_ERR_NOT_FOUND == rc) {
                             /* just means we created a tracker */
                             rc = PMIX_SUCCESS;
+                        } else if (PMIX_ERR_NOT_AVAILABLE == rc) {
+                            /* means they requested "immediate" */
+                            rc = PMIX_ERR_NOT_FOUND;
                         }
                         return rc;
                     }
@@ -442,6 +448,9 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
                 if (PMIX_ERR_NOT_FOUND == rc) {
                     /* just means we created a tracker */
                     rc = PMIX_SUCCESS;
+                } else if (PMIX_ERR_NOT_AVAILABLE == rc) {
+                    /* means they requested "immediate" */
+                    rc = PMIX_ERR_NOT_FOUND;
                 }
                 return rc;
             }
@@ -501,6 +510,9 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
         * for us to do as the function added the new request
         * to the tracker for us */
        return PMIX_SUCCESS;
+    } else if (PMIX_ERR_NOT_AVAILABLE == rc) {
+        /* means they requested "immediate" */
+        return PMIX_ERR_NOT_FOUND;
     }
 
     /* Getting here means that we didn't already have a request for
