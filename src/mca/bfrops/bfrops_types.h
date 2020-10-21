@@ -66,6 +66,13 @@ typedef struct {
 } pmix_kval_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_kval_t);
 
+/* helpful macro extension of the usual PMIX_NEW */
+#define PMIX_KVAL_NEW(k, s)                                         \
+    do {                                                            \
+        (k) = PMIX_NEW(pmix_kval_t);                                \
+        (k)->key = strdup((s));                                     \
+        (k)->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));   \
+    } while(0)
 
 /**
  * Structure for holding a buffer */

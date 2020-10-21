@@ -354,7 +354,8 @@ pmix_status_t pmix_bfrops_base_copy_bo(pmix_byte_object_t **dest,
                                        pmix_byte_object_t *src,
                                        pmix_data_type_t type)
 {
-    if (PMIX_BYTE_OBJECT != type) {
+    if (PMIX_BYTE_OBJECT != type &&
+        PMIX_COMPRESSED_BYTE_OBJECT != type) {
         return PMIX_ERR_BAD_PARAM;
     }
     *dest = (pmix_byte_object_t*)malloc(sizeof(pmix_byte_object_t));
@@ -414,11 +415,11 @@ static pmix_status_t fill_coord(pmix_coord_t *dst,
     dst->view = src->view;
     dst->dims = src->dims;
     if (0 < dst->dims) {
-        dst->coord = (int*)malloc(dst->dims * sizeof(int));
+        dst->coord = (uint32_t*)malloc(dst->dims * sizeof(uint32_t));
         if (NULL == dst->coord) {
             return PMIX_ERR_NOMEM;
         }
-        memcpy(dst->coord, src->coord, dst->dims * sizeof(int));
+        memcpy(dst->coord, src->coord, dst->dims * sizeof(uint32_t));
     }
     return PMIX_SUCCESS;
 }
@@ -920,7 +921,7 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
             }
             break;
         case PMIX_GEOMETRY:
-            PMIX_CPUSET_CREATE(p->array, src->size);
+            PMIX_GEOMETRY_CREATE(p->array, src->size);
             if (NULL == p->array) {
                 free(p);
                 return PMIX_ERR_NOMEM;

@@ -10,7 +10,7 @@
 AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/include -I$(top_builddir)/include/pmix $(pmix_check_jansson_CPPFLAGS)
 
 if HAVE_JANSSON
-noinst_PROGRAMS = generate server daemon
+noinst_PROGRAMS = generate server daemon testcoord
 
 generate_SOURCES = \
         generate.c
@@ -26,5 +26,11 @@ daemon_SOURCES = \
         daemon.c
 daemon_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 daemon_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
+testcoord_SOURCES = \
+        testcoord.c
+testcoord_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+testcoord_LDADD = \
     $(top_builddir)/src/libpmix.la
 endif

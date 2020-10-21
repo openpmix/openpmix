@@ -107,8 +107,7 @@ AC_DEFUN([PMIX_CHECK_JANSSON],[
 
     AM_CONDITIONAL([HAVE_JANSSON], [test "$pmix_check_jansson_happy" = "yes"])
 
-    AS_IF([test "$pmix_check_jansson_happy" = "yes"],
-          [PMIX_SUMMARY_ADD([[External Packages]],[[Jansson]], [pmix_jansson], [$pmix_check_jansson_happy ($pmix_jansson_source)])])
+    PMIX_SUMMARY_ADD([[External Packages]],[[Jansson]], [pmix_jansson], [$pmix_check_jansson_happy ($pmix_jansson_source)])
 
     PMIX_VAR_SCOPE_POP
 ])

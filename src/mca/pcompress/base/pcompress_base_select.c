@@ -52,8 +52,10 @@ int pmix_compress_base_select(void)
 
     /* Initialize the winner */
     if (NULL != best_module) {
-        if (PMIX_SUCCESS != (ret = best_module->init()) ) {
-            goto cleanup;
+        if (NULL != best_module->init) {
+            if (PMIX_SUCCESS != (ret = best_module->init()) ) {
+                goto cleanup;
+            }
         }
         pmix_compress = *best_module;
     }

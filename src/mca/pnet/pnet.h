@@ -156,7 +156,8 @@ typedef pmix_status_t (*pmix_pnet_base_module_deliver_inventory_fn_t)(pmix_info_
  */
 typedef pmix_status_t (*pmix_pnet_base_module_register_fabric_fn_t)(pmix_fabric_t *fabric,
                                                                     const pmix_info_t directives[],
-                                                                    size_t ndirs);
+                                                                    size_t ndirs,
+                                                                    pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 
 /* Update the fabric information */

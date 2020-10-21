@@ -4522,13 +4522,24 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd,
 
 static void _fabric_response(int sd, short args, void *cbdata)
 {
-    pmix_query_caddy_t *cd = (pmix_query_caddy_t*)cbdata;
+    pmix_query_caddy_t *qcd = (pmix_query_caddy_t*)cbdata;
 
-    cd->cbfunc(PMIX_SUCCESS, cd->info, cd->ninfo,
-               cd->cbdata, NULL, NULL);
-    PMIX_RELEASE(cd);
+    qcd->cbfunc(PMIX_SUCCESS, qcd->info, qcd->ninfo,
+                qcd->cbdata, NULL, NULL);
+    PMIX_RELEASE(qcd);
 }
 
+static void frcbfunc(pmix_status_t status, void *cbdata)
+{
+    pmix_query_caddy_t *qcd = (pmix_query_caddy_t*)cbdata;
+
+    PMIX_ACQUIRE_OBJECT(qcd);
+    qcd->status = status;
+    PMIX_POST_OBJECT(qcd);
+
+    PMIX_WAKEUP_THREAD(&qcd->lock);
+
+}
 /* we are being called from the PMIx server's switchyard function,
  * which means we are in an event and can access global data */
 pmix_status_t pmix_server_fabric_register(pmix_server_caddy_t *cd,
@@ -4537,7 +4548,7 @@ pmix_status_t pmix_server_fabric_register(pmix_server_caddy_t *cd,
 {
     int32_t cnt;
     pmix_status_t rc;
-    pmix_query_caddy_t *qcd;
+    pmix_query_caddy_t *qcd = NULL;
     pmix_proc_t proc;
     pmix_fabric_t fabric;
 
@@ -4550,6 +4561,7 @@ pmix_status_t pmix_server_fabric_register(pmix_server_caddy_t *cd,
         return PMIX_ERR_NOMEM;
     }
     PMIX_RETAIN(cd);
+    qcd->cbfunc = cbfunc;
     qcd->cbdata = cd;
 
     /* unpack the number of directives */
@@ -4557,6 +4569,8 @@ pmix_status_t pmix_server_fabric_register(pmix_server_caddy_t *cd,
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &qcd->ninfo, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(cd);
+        PMIX_RELEASE(qcd);
         goto exit;
     }
     /* unpack the directives */
@@ -4566,14 +4580,16 @@ pmix_status_t pmix_server_fabric_register(pmix_server_caddy_t *cd,
         PMIX_BFROPS_UNPACK(rc, cd->peer, buf, qcd->info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(cd);
+            PMIX_RELEASE(qcd);
             goto exit;
         }
     }
 
     /* see if we support this request ourselves */
     PMIX_FABRIC_CONSTRUCT(&fabric);
-    rc = pmix_pnet.register_fabric(&fabric, qcd->info, qcd->ninfo);
-    if (PMIX_SUCCESS == rc) {
+    rc = pmix_pnet.register_fabric(&fabric, qcd->info, qcd->ninfo, frcbfunc, qcd);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
         /* we need to respond, but we want to ensure
          * that occurs _after_ the client returns from its API */
         if (NULL != qcd->info) {
@@ -4582,13 +4598,25 @@ pmix_status_t pmix_server_fabric_register(pmix_server_caddy_t *cd,
         qcd->info = fabric.info;
         qcd->ninfo = fabric.ninfo;
         PMIX_THREADSHIFT(qcd, _fabric_response);
-        return rc;
+        return PMIX_SUCCESS;
+    } else if (PMIX_SUCCESS == rc) {
+        PMIX_WAIT_THREAD(&qcd->lock);
+        /* we need to respond, but we want to ensure
+         * that occurs _after_ the client returns from its API */
+        if (NULL != qcd->info) {
+            PMIX_INFO_FREE(qcd->info, qcd->ninfo);
+        }
+        qcd->info = fabric.info;
+        qcd->ninfo = fabric.ninfo;
+        PMIX_THREADSHIFT(qcd, _fabric_response);
+        return PMIX_SUCCESS;
     }
 
     /* if we don't internally support it, see if
      * our host does */
     if (NULL == pmix_host_server.fabric) {
         rc = PMIX_ERR_NOT_SUPPORTED;
+        PMIX_RELEASE(cd);
         goto exit;
     }
 
@@ -4605,6 +4633,9 @@ pmix_status_t pmix_server_fabric_register(pmix_server_caddy_t *cd,
     return PMIX_SUCCESS;
 
   exit:
+    if (NULL != qcd) {
+        PMIX_RELEASE(qcd);
+    }
     return rc;
 }
 

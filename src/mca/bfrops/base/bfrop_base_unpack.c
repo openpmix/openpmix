@@ -1123,7 +1123,8 @@ pmix_status_t pmix_bfrops_base_unpack_bo(pmix_pointer_array_t *regtypes,
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
                         "pmix_bfrop_unpack: %d byte_object", *num_vals);
 
-    if (PMIX_BYTE_OBJECT != type) {
+    if (PMIX_BYTE_OBJECT != type &&
+        PMIX_COMPRESSED_BYTE_OBJECT != type) {
         return PMIX_ERR_BAD_PARAM;
     }
 
@@ -1526,10 +1527,10 @@ pmix_status_t pmix_bfrops_base_unpack_coord(pmix_pointer_array_t *regtypes,
             return ret;
         }
         if (0 < ptr[i].dims) {
-            ptr[i].coord = (int*)malloc(ptr[i].dims * sizeof(int));
+            ptr[i].coord = (uint32_t*)malloc(ptr[i].dims * sizeof(uint32_t));
             /* unpack the coords */
             m=ptr[i].dims;
-            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, ptr[i].coord, &m, PMIX_INT, regtypes);
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, ptr[i].coord, &m, PMIX_UINT32, regtypes);
             if (PMIX_SUCCESS != ret) {
                 return ret;
             }

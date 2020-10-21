@@ -143,6 +143,17 @@ static void frecv(struct pmix_peer_t *peer,
 }
 
 
+static void mycbfunc(pmix_status_t status, void *cbdata)
+{
+    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+
+    PMIX_ACQUIRE_OBJECT(cb);
+    cb->status = status;
+    PMIX_POST_OBJECT(cb);
+    PMIX_WAKEUP_THREAD(&cb->lock);
+    return;
+}
+
 PMIX_EXPORT pmix_status_t PMIx_Fabric_register(pmix_fabric_t *fabric,
                                                const pmix_info_t directives[],
                                                size_t ndirs)
@@ -165,7 +176,12 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register(pmix_fabric_t *fabric,
      * the non-blocking operation is complete */
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.fabric = fabric;
-    if (PMIX_SUCCESS != (rc = PMIx_Fabric_register_nb(fabric, directives, ndirs, NULL, &cb))) {
+    rc = PMIx_Fabric_register_nb(fabric, directives, ndirs, mycbfunc, &cb);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        PMIX_DESTRUCT(&cb);
+        return PMIX_SUCCESS;
+    } else if (PMIX_SUCCESS != rc) {
+        /* got an error */
         PMIX_DESTRUCT(&cb);
         return rc;
     }
@@ -193,20 +209,21 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register_nb(pmix_fabric_t *fabric,
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_FABRIC_REGISTER_CMD;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
     /* if I am a scheduler server, then I should be able
      * to support this myself */
-    if (PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
-        rc = pmix_pnet.register_fabric(fabric, directives, ndirs);
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return rc;
-    }
-
-    /* otherwise, if we are a server, then see if we can pass
-     * it up to our host so they can send it to the scheduler */
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        /* see if we can do it ourselves */
+        rc = pmix_pnet.register_fabric(fabric, directives, ndirs, cbfunc, cbdata);
+        if (PMIX_OPERATION_SUCCEEDED == rc) {
+            /* did it atomically */
+            return rc;
+        } else if (PMIX_SUCCESS == rc) {
+            /* in progress - the pnet component will callback
+             * when it is complete */
+            return rc;
+        }
+        /* otherwise, see if we can pass
+         * it up to our host so they can send it to the scheduler */
         if (NULL == pmix_host_server.fabric) {
             return PMIX_ERR_NOT_SUPPORTED;
         }
@@ -229,6 +246,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register_nb(pmix_fabric_t *fabric,
 
     /* finally, if I am a tool or client, then I need to send it to
      * a daemon for processing */
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     if (!pmix_globals.connected) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_UNREACH;
