@@ -24,8 +24,29 @@ Master (not on release branches yet)
 ------------------------------------
 
 
-3.1.6 -- TBD
+3.2.0 -- 22 Oct 2020
 ----------------------
+ - PR #1402/#1403/#1421/#1423: Modex size reductions
+ - PR #1752: Convert man pages to Markdown (pandoc)
+ - PR #1766: Move from -levent to -levent_core for linking Libevent
+ - PR #1832: Sync 3.2 branch with master
+   - New attributes:
+     - PMIX_HOSTNAME_ALIASES
+     - PMIX_HOSTNAME_KEEP_FQDN
+     - PMIX_GET_REFRESH_CACHE
+     - PMIX_REQUIRED_KEY
+   - Removed PMIX_VALUE_COMPRESSED_STRING_UNPACK macro from pmix_common.h
+   - New frameworks
+     - PR #1139: pcompress - Compression methods
+     - PR #1423: psquash - Flexible integer packing
+   - New components
+     - PR #1139: preg/compress - regular expression methods
+   - PR #1422 Modified string representations produced by PMIx_generate_regex
+     and PMIx_generate_ppn.
+   - Issue #1586: Fixed dmodex support and PMIx_Get behavior
+   - PR #1748: Removed --with-pmix-symbol-rename configure option
+ - PR #1848: Expose PMIX_REGEX constant per v3.2 standard
+ - PR #1885: Fix immediate flag behavior at the server
 
 
 3.1.5 -- 14 Feb 2020
