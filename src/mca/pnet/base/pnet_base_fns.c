@@ -55,7 +55,7 @@ pmix_status_t pmix_pnet_base_allocate(char *nspace,
     if (NULL == nspace || NULL == ilist) {
         return PMIX_ERR_BAD_PARAM;
     }
-    if (PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
         nptr = NULL;
         /* find this nspace - note that it may not have
          * been registered yet */
@@ -107,16 +107,16 @@ pmix_status_t pmix_pnet_base_allocate(char *nspace,
                     return rc;
                 }
             }
-            /* process the allocation request */
-            PMIX_LIST_FOREACH(active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
-                if (NULL != active->module->allocate) {
-                    if (PMIX_SUCCESS == (rc = active->module->allocate(nptr, info, ninfo, ilist))) {
-                        break;
-                    }
-                    if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
-                        /* true error */
-                        return rc;
-                    }
+        }
+        /* process the allocation request */
+        PMIX_LIST_FOREACH(active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
+            if (NULL != active->module->allocate) {
+                if (PMIX_SUCCESS == (rc = active->module->allocate(nptr, info, ninfo, ilist))) {
+                    continue;
+                }
+                if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
+                    /* true error */
+                    return rc;
                 }
             }
         }
@@ -535,7 +535,8 @@ void pmix_pnet_base_deliver_inventory(pmix_info_t info[], size_t ninfo,
 
 pmix_status_t pmix_pnet_base_register_fabric(pmix_fabric_t *fabric,
                                              const pmix_info_t directives[],
-                                             size_t ndirs)
+                                             size_t ndirs,
+                                             pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_pnet_base_active_module_t *active;
     pmix_status_t rc;
@@ -556,8 +557,8 @@ pmix_status_t pmix_pnet_base_register_fabric(pmix_fabric_t *fabric,
     /* scan across active modules until one returns success */
     PMIX_LIST_FOREACH(active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
         if (NULL != active->module->register_fabric) {
-            rc = active->module->register_fabric(fabric, directives, ndirs);
-            if (PMIX_SUCCESS == rc) {
+            rc = active->module->register_fabric(fabric, directives, ndirs, cbfunc, cbdata);
+            if (PMIX_OPERATION_SUCCEEDED == rc) {
                 /* track this fabric so we can respond to remote requests */
                 ft = PMIX_NEW(pmix_pnet_fabric_t);
                 ft->index = fabric->index;
@@ -567,7 +568,7 @@ pmix_status_t pmix_pnet_base_register_fabric(pmix_fabric_t *fabric,
                 ft->module = active->module;
                 pmix_list_append(&pmix_pnet_globals.fabrics, &ft->super);
             } else if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
-                /* just return the error */
+                /* just return the result */
                 PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
                 return rc;
             }

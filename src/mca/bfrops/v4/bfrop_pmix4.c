@@ -507,6 +507,14 @@ static pmix_status_t init(void)
                        pmix_bfrops_base_print_locality,
                        &mca_bfrops_v4_component.types);
 
+    PMIX_REGISTER_TYPE("PMIX_COMPRESSED_BYTE_OBJECT",
+    				   PMIX_COMPRESSED_BYTE_OBJECT,
+                       pmix_bfrops_base_pack_bo,
+                       pmix_bfrops_base_unpack_bo,
+                       pmix_bfrops_base_copy_bo,
+                       pmix_bfrops_base_print_bo,
+                       &mca_bfrops_v4_component.types);
+
     return PMIX_SUCCESS;
 }
 

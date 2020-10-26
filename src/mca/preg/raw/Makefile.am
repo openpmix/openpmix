@@ -12,8 +12,6 @@
 #                         All rights reserved.
 # Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
-# Copyright (c) 2017      Research Organization for Information Science
-#                         and Technology (RIST). All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -21,27 +19,22 @@
 # $HEADER$
 #
 
-AM_CPPFLAGS = $(pmix_check_jansson_CPPFLAGS)
-
-dist_pmixdata_DATA = help-pnet-sshot.txt
-
-headers = pnet_sshot.h
+headers = preg_raw.h
 sources = \
-        pnet_sshot_component.c \
-        pnet_sshot.c \
-        pnet_fabric.c
+        preg_raw_component.c \
+        preg_raw.c
 
 # Make the output library in this directory, and name it either
 # mca_<type>_<name>.la (for DSO builds) or libmca_<type>_<name>.la
 # (for static builds).
 
-if MCA_BUILD_pmix_pnet_sshot_DSO
+if MCA_BUILD_pmix_preg_raw_DSO
 lib =
 lib_sources =
-component = mca_pnet_sshot.la
+component = mca_preg_raw.la
 component_sources = $(headers) $(sources)
 else
-lib = libmca_pnet_sshot.la
+lib = libmca_preg_raw.la
 lib_sources = $(headers) $(sources)
 component =
 component_sources =
@@ -49,15 +42,12 @@ endif
 
 mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component)
-mca_pnet_sshot_la_SOURCES = $(component_sources)
-mca_pnet_sshot_la_LDFLAGS = -module -avoid-version $(pmix_check_jansson_LDFLAGS) \
-    $(PMIX_TOP_BUILDDIR)/src/mca/common/sse/libmca_common_sse.la
-mca_pnet_sshot_la_LIBADD = -ljansson
+mca_preg_raw_la_SOURCES = $(component_sources)
+mca_preg_raw_la_LDFLAGS = -module -avoid-version
 if NEED_LIBPMIX
-mca_pnet_sshot_la_LIBADD += $(top_builddir)/src/libpmix.la
+mca_preg_raw_la_LIBADD = $(top_builddir)/src/libpmix.la
 endif
 
 noinst_LTLIBRARIES = $(lib)
-libmca_pnet_sshot_la_SOURCES = $(lib_sources)
-libmca_pnet_sshot_la_LDFLAGS = -module -avoid-version $(pmix_check_jansson_LDFLAGS)
-libmca_pnet_sshot_la_LIBADD = -ljansson
+libmca_preg_raw_la_SOURCES = $(lib_sources)
+libmca_preg_raw_la_LDFLAGS = -module -avoid-version

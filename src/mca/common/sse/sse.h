@@ -28,6 +28,7 @@
 #include <stdio.h>
 
 #include "src/class/pmix_object.h"
+#include "src/threads/threads.h"
 
 typedef enum {
     PMIX_HTTP_UNDEF = -1,
@@ -50,6 +51,8 @@ typedef void (*pmix_sse_on_data_cbfunc_fn_t)(const char *ptr, char **result, voi
  */
 typedef struct {
     pmix_object_t                   super;
+    pmix_lock_t                     lock;                               // thread lock so requesters can wait for completion
+    pmix_status_t                   status;                             // return status of operation
     pmix_sse_verb_t                 verb;                               // operation to perform
     const char                      *url;                               // URL to get
     int                             max_retries;                        // max number of times to try to connect
@@ -80,8 +83,9 @@ PMIX_EXPORT void pmix_sse_common_init(void);
  * request and providing a callback function to be executed whenever data
  * becomes available on the specified channel */
 PMIX_EXPORT pmix_status_t pmix_sse_register_request(pmix_sse_request_t *req,
-                                                    pmix_sse_on_data_cbfunc_fn_t ondata,
                                                     pmix_sse_register_cbfunc_fn_t regcbfunc,
-                                                    void *cbdata);
+                                                    void *reqcbdata,
+                                                    pmix_sse_on_data_cbfunc_fn_t ondata,
+                                                    void *datcbdata);
 
 #endif /* PMIX_SSE_H */

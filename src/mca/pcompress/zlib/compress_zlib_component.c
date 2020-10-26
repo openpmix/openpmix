@@ -27,8 +27,6 @@ const char *pmix_compress_zlib_component_version_string =
 /*
  * Local functionality
  */
-static int compress_zlib_open(void);
-static int compress_zlib_close(void);
 static int compress_zlib_query(pmix_mca_base_module_t **module, int *priority);
 
 /*
@@ -47,40 +45,12 @@ PMIX_EXPORT pmix_mca_base_component_t mca_pcompress_zlib_component = {
                                PMIX_RELEASE_VERSION),
 
     /* Component open and close functions */
-    .pmix_mca_open_component = compress_zlib_open,
-    .pmix_mca_close_component = compress_zlib_close,
     .pmix_mca_query_component = compress_zlib_query
 };
 
-/*
- * Zlib module
- */
-static pmix_compress_base_module_t loc_module = {
-    /** Initialization Function */
-    .init = pmix_compress_zlib_module_init,
-    /** Finalization Function */
-    .finalize = pmix_compress_zlib_module_finalize,
-
-    /** Compress Function */
-    .compress_string = pmix_compress_zlib_compress_block,
-
-    /** Decompress Function */
-    .decompress_string = pmix_compress_zlib_uncompress_block,
-};
-
-static int compress_zlib_open(void)
-{
-    return PMIX_SUCCESS;
-}
-
-static int compress_zlib_close(void)
-{
-    return PMIX_SUCCESS;
-}
-
 static int compress_zlib_query(pmix_mca_base_module_t **module, int *priority)
 {
-    *module   = (pmix_mca_base_module_t *)&loc_module;
+    *module   = (pmix_mca_base_module_t *)&pmix_pcompress_zlib_module;
     *priority = 50;
 
     return PMIX_SUCCESS;

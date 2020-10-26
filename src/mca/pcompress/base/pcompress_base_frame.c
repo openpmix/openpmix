@@ -6,7 +6,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2019      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,9 +24,30 @@
 /*
  * Globals
  */
-static bool compress_block(char *instring,
+static bool compress_block(uint8_t *inblock, size_t size,
                            uint8_t **outbytes,
                            size_t *nbytes)
+{
+    (void)inblock;
+    (void)size;
+    (void)outbytes;
+    (void)nbytes;
+    return false;
+}
+
+static bool decompress_block(uint8_t **outbytes, size_t *outlen,
+                             uint8_t *inbytes, size_t len)
+{
+    (void)outbytes;
+    (void)outlen;
+    (void)inbytes;
+    (void)len;
+    return false;
+}
+
+static bool compress_string(char *instring,
+                            uint8_t **outbytes,
+                            size_t *nbytes)
 {
     (void)instring;
     (void)outbytes;
@@ -34,8 +55,8 @@ static bool compress_block(char *instring,
     return false;
 }
 
-static bool decompress_block(char **outstring,
-                             uint8_t *inbytes, size_t len)
+static bool decompress_string(char **outstring,
+                              uint8_t *inbytes, size_t len)
 {
     (void)outstring;
     (void)inbytes;
@@ -44,14 +65,10 @@ static bool decompress_block(char **outstring,
 }
 
 pmix_compress_base_module_t pmix_compress = {
-    NULL, /* init             */
-    NULL, /* finalize         */
-    NULL, /* compress         */
-    NULL, /* compress_nb      */
-    NULL, /* decompress       */
-    NULL,  /* decompress_nb    */
-    compress_block,
-    decompress_block
+    .compress = compress_block,
+    .decompress = decompress_block,
+    .compress_string = compress_string,
+    .decompress_string = decompress_string
 };
 pmix_compress_base_t pmix_compress_base = {0};
 

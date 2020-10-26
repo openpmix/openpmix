@@ -55,8 +55,9 @@ typedef struct {
     char *ssl_cert;
     char *ca_info;
     pmix_sse_register_cbfunc_fn_t regcbfunc;    // fn to call upon request completion
+    void *regcbdata;                            // handle to pass back to regcbfunc
     pmix_sse_on_data_cbfunc_fn_t ondata;        // fn to call when data arrives
-    void *cbdata;
+    void *datcbdata;                            // handle to pass back to ondata
 } pmix_sse_curl_handle_t;
 
 static void clcons(pmix_sse_curl_handle_t *p)
@@ -77,8 +78,9 @@ static void clcons(pmix_sse_curl_handle_t *p)
     p->ssl_cert = NULL;
     p->ca_info = NULL;
     p->regcbfunc = NULL;
+    p->regcbdata = NULL;
     p->ondata = NULL;
-    p->cbdata = NULL;
+    p->datcbdata = NULL;
 }
 static void cldes(pmix_sse_curl_handle_t *p)
 {
@@ -90,7 +92,7 @@ static void cldes(pmix_sse_curl_handle_t *p)
     curl_easy_cleanup(p->curl);
     if (NULL != p->ondata) {
         /* return a NULL stream so they know this has closed */
-        p->ondata(NULL, NULL, p->cbdata);
+        p->ondata(NULL, NULL, p->datcbdata);
     }
     if (NULL != p->expected_content_type) {
         free(p->expected_content_type);
@@ -125,7 +127,7 @@ static void curl_perform(int sd, short args, void *cbdata)
                 /* get the response code */
                 curl_easy_getinfo(pcl->curl, CURLINFO_RESPONSE_CODE, &response_code);
                 if (response_code < 200 || response_code >= 300) {
-                    pcl->regcbfunc(response_code, effective_url, pcl->cbdata);
+                    pcl->regcbfunc(response_code, effective_url, pcl->regcbdata);
                     PMIX_RELEASE(pcl);
                     return;
                 }
@@ -134,12 +136,12 @@ static void curl_perform(int sd, short args, void *cbdata)
                     curl_easy_getinfo(pcl->curl, CURLINFO_CONTENT_TYPE, &content_type);
                     if (NULL == content_type ||
                         0 != strncmp(content_type, pcl->expected_content_type, strlen(pcl->expected_content_type))) {
-                        pcl->regcbfunc(PMIX_ERR_TYPE_MISMATCH, content_type, pcl->cbdata);
+                        pcl->regcbfunc(PMIX_ERR_TYPE_MISMATCH, content_type, pcl->regcbdata);
                         PMIX_RELEASE(pcl);
                         return;
                     }
                 }
-                pcl->regcbfunc(PMIX_SUCCESS, effective_url, pcl->cbdata);
+                pcl->regcbfunc(PMIX_SUCCESS, effective_url, pcl->regcbdata);
                 return;
 
             case CURLE_COULDNT_RESOLVE_PROXY:
@@ -149,7 +151,7 @@ static void curl_perform(int sd, short args, void *cbdata)
                                     "curl: %s\n", pcl->curl_error_buf);
                 retries++;
                 if (pcl->max_retries <= retries) {
-                    pcl->regcbfunc(PMIX_ERR_UNREACH, pcl->curl_error_buf, pcl->cbdata);
+                    pcl->regcbfunc(PMIX_ERR_UNREACH, pcl->curl_error_buf, pcl->regcbdata);
                     return;
                 }
                 /* delay and retry */
@@ -160,7 +162,7 @@ static void curl_perform(int sd, short args, void *cbdata)
             default:
                 pmix_output_verbose(1, pmix_common_sse_globals.output,
                                   "curl: %s\n", pcl->curl_error_buf);
-                pcl->regcbfunc(PMIX_ERR_UNREACH, pcl->curl_error_buf, pcl->cbdata);
+                pcl->regcbfunc(PMIX_ERR_UNREACH, pcl->curl_error_buf, pcl->regcbdata);
                 return;
         }
     }
@@ -188,7 +190,7 @@ void pmix_common_on_sse_event(char** headers, const char* data, const char* repl
 
     /* pass to the user for processing */
     if (NULL != pcl->ondata) {
-        pcl->ondata(data, &result, pcl->cbdata);
+        pcl->ondata(data, &result, pcl->datcbdata);
     }
 
     if (NULL != reply_url) {
@@ -241,9 +243,10 @@ void pmix_sse_common_init(void)
 }
 
 pmix_status_t pmix_sse_register_request(pmix_sse_request_t *req,
-                                        pmix_sse_on_data_cbfunc_fn_t ondata,
                                         pmix_sse_register_cbfunc_fn_t regcbfunc,
-                                        void *cbdata)
+                                        void *regcbdata,
+                                        pmix_sse_on_data_cbfunc_fn_t ondata,
+                                        void *datcbdata)
 {
     pmix_sse_curl_handle_t *pcl;
     int n;
@@ -262,7 +265,9 @@ pmix_status_t pmix_sse_register_request(pmix_sse_request_t *req,
         pcl->expected_content_type = strdup(req->expected_content_type);
     }
     pcl->ondata = ondata;
+    pcl->datcbdata = datcbdata;
     pcl->regcbfunc = regcbfunc;
+    pcl->regcbdata = regcbdata;
     pcl->allow_insecure = req->allow_insecure;
     if (NULL != req->ssl_cert) {
         pcl->ssl_cert = strdup(req->ssl_cert);
@@ -270,7 +275,6 @@ pmix_status_t pmix_sse_register_request(pmix_sse_request_t *req,
     if (NULL != req->ca_info) {
         pcl->ca_info = strdup(req->ca_info);
     }
-    pcl->cbdata = cbdata;
 
     // -- set URL -------------------------------------------------------
     curl_easy_setopt(pcl->curl, CURLOPT_URL, req->url);
@@ -346,6 +350,8 @@ pmix_status_t pmix_sse_register_request(pmix_sse_request_t *req,
 /****  CLASS INSTANTIATION  ****/
 static void rqcon(pmix_sse_request_t *p)
 {
+    PMIX_CONSTRUCT_LOCK(&p->lock);
+    p->status = PMIX_ERR_NOT_SUPPORTED;
     p->verb = PMIX_HTTP_UNDEF;
     p->url = NULL;
     p->max_retries = 5;
@@ -357,6 +363,10 @@ static void rqcon(pmix_sse_request_t *p)
     p->body = NULL;
     p->len = 0;
 }
-PMIX_CLASS_INSTANCE(pmix_sse_request_t,
-                    pmix_object_t,
-                    rqcon, NULL);
+static void rqdes(pmix_sse_request_t *p)
+{
+    PMIX_DESTRUCT_LOCK(&p->lock);
+}
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_sse_request_t,
+                                pmix_object_t,
+                                rqcon, rqdes);

@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2004-2010 The Trustees of Indiana University.
  *                         All rights reserved.
- * Copyright (c) 2019      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -31,22 +31,9 @@
 extern "C" {
 #endif
 
-    extern pmix_mca_base_component_t mca_pcompress_zlib_component;
-
-    /*
-     * Module functions
-     */
-    int pmix_compress_zlib_module_init(void);
-    int pmix_compress_zlib_module_finalize(void);
-
-    /*
-     * Actual funcationality
-     */
-    bool pmix_compress_zlib_compress_block(char *instring,
-                                           uint8_t **outbytes,
-                                           size_t *nbytes);
-    bool pmix_compress_zlib_uncompress_block(char **outstring,
-                                             uint8_t *inbytes, size_t len);
+/* the component must be visible data for the linker to find it */
+PMIX_EXPORT extern pmix_mca_base_component_t mca_pcompress_zlib_component;
+extern pmix_compress_base_module_t pmix_pcompress_zlib_module;
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }

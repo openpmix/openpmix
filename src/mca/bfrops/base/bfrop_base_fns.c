@@ -154,6 +154,7 @@ void pmix_bfrops_base_value_load(pmix_value_t *v, const void *data,
             break;
         case PMIX_BYTE_OBJECT:
         case PMIX_COMPRESSED_STRING:
+        case PMIX_COMPRESSED_BYTE_OBJECT:
             bo = (pmix_byte_object_t*)data;
             v->data.bo.bytes = (char*)malloc(bo->size);
             if (NULL == v->data.bo.bytes) {
@@ -407,6 +408,7 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv,
             break;
         case PMIX_BYTE_OBJECT:
         case PMIX_COMPRESSED_STRING:
+        case PMIX_COMPRESSED_BYTE_OBJECT:
             if (NULL != kv->data.bo.bytes && 0 < kv->data.bo.size) {
                 *data = kv->data.bo.bytes;
                 *sz = kv->data.bo.size;
@@ -823,6 +825,7 @@ pmix_status_t pmix_bfrops_base_value_xfer(pmix_value_t *p,
     case PMIX_BYTE_OBJECT:
     case PMIX_COMPRESSED_STRING:
     case PMIX_REGEX:
+    case PMIX_COMPRESSED_BYTE_OBJECT:
         memset(&p->data.bo, 0, sizeof(pmix_byte_object_t));
         if (NULL != src->data.bo.bytes && 0 < src->data.bo.size) {
             p->data.bo.bytes = malloc(src->data.bo.size);

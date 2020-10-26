@@ -6,7 +6,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  *
- * Copyright (c) 2019      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -54,36 +54,6 @@ typedef int (*pmix_compress_base_module_finalize_fn_t)
      (void);
 
 /**
- * Compress the file provided
- *
- * Arguments:
- *   fname   = Filename to compress
- *   cname   = Compressed filename
- *   postfix = postfix added to filename to create compressed filename
- * Returns:
- *   PMIX_SUCCESS on success, ow PMIX_ERROR
- */
-typedef int (*pmix_compress_base_module_compress_fn_t)
-    (char * fname, char **cname, char **postfix);
-
-typedef int (*pmix_compress_base_module_compress_nb_fn_t)
-    (char * fname, char **cname, char **postfix, pid_t *child_pid);
-
-/**
- * Decompress the file provided
- *
- * Arguments:
- *   fname = Filename to compress
- *   cname = Compressed filename
- * Returns:
- *   PMIX_SUCCESS on success, ow PMIX_ERROR
- */
-typedef int (*pmix_compress_base_module_decompress_fn_t)
-    (char * cname, char **fname);
-typedef int (*pmix_compress_base_module_decompress_nb_fn_t)
-    (char * cname, char **fname, pid_t *child_pid);
-
-/**
  * Compress a string
  *
  * Arguments:
@@ -94,6 +64,20 @@ typedef bool (*pmix_compress_base_module_compress_string_fn_t)(char *instring,
                                                                size_t *nbytes);
 typedef bool (*pmix_compress_base_module_decompress_string_fn_t)(char **outstring,
                                                                  uint8_t *inbytes, size_t len);
+
+/**
+ * Compress a block
+ *
+ * Arguments:
+ *
+ */
+typedef bool (*pmix_compress_base_module_compress_fn_t)(uint8_t *inbytes,
+                                                        size_t size,
+                                                        uint8_t **outbytes,
+                                                        size_t *nbytes);
+
+typedef bool (*pmix_compress_base_module_decompress_fn_t)(uint8_t **outbytes, size_t *outlen,
+                                                          uint8_t *inbytes, size_t len);
 
 
 /**
@@ -126,11 +110,9 @@ struct pmix_compress_base_module_1_0_0_t {
 
     /** Compress interface */
     pmix_compress_base_module_compress_fn_t       compress;
-    pmix_compress_base_module_compress_nb_fn_t    compress_nb;
 
     /** Decompress Interface */
     pmix_compress_base_module_decompress_fn_t     decompress;
-    pmix_compress_base_module_decompress_nb_fn_t  decompress_nb;
 
     /* COMPRESS STRING */
     pmix_compress_base_module_compress_string_fn_t      compress_string;

@@ -96,8 +96,7 @@ AC_DEFUN([PMIX_CHECK_CURL],[
     AC_MSG_CHECKING([libcurl support available])
     AC_MSG_RESULT([$pmix_check_curl_happy])
 
-    AS_IF([test "$pmix_check_curl_happy" = "yes"],
-          [PMIX_SUMMARY_ADD([[External Packages]],[[Curl]], [pmix_curl], [$pmix_check_curl_happy ($pmix_curl_source)])])
+    PMIX_SUMMARY_ADD([[External Packages]],[[Curl]], [pmix_curl], [$pmix_check_curl_happy ($pmix_curl_source)])
 
     AC_SUBST(pmix_check_curl_CPPFLAGS)
     AC_SUBST(pmix_check_curl_LDFLAGS)

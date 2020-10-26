@@ -1474,7 +1474,8 @@ int pmix_bfrops_base_print_bo(char **output, char *prefix,
     char *prefx;
     int ret;
 
-    if (PMIX_BYTE_OBJECT != type) {
+    if (PMIX_BYTE_OBJECT != type &&
+        PMIX_COMPRESSED_BYTE_OBJECT != type) {
         return PMIX_ERR_BAD_PARAM;
     }
     /* deal with NULL prefix */
@@ -1488,7 +1489,8 @@ int pmix_bfrops_base_print_bo(char **output, char *prefix,
 
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
-        ret = asprintf(output, "%sData type: PMIX_BYTE_OBJECT\tValue: NULL pointer", prefx);
+        ret = asprintf(output, "%sData type: %s\tValue: NULL pointer", prefx,
+                       (PMIX_COMPRESSED_BYTE_OBJECT == type) ? "PMIX_COMPRESSED_BYTE_OBJECT" : "PMIX_BYTE_OBJECT");
         if (prefx != prefix) {
             free(prefx);
         }
@@ -1499,7 +1501,9 @@ int pmix_bfrops_base_print_bo(char **output, char *prefix,
         }
     }
 
-    ret = asprintf(output, "%sData type: PMIX_BYTE_OBJECT\tSize: %ld", prefx, (long)src->size);
+    ret = asprintf(output, "%sData type: %s\tSize: %ld", prefx,
+                   (PMIX_COMPRESSED_BYTE_OBJECT == type) ? "PMIX_COMPRESSED_BYTE_OBJECT" : "PMIX_BYTE_OBJECT",
+                   (long)src->size);
     if (prefx != prefix) {
         free(prefx);
     }

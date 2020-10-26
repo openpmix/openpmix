@@ -317,6 +317,9 @@ pmix_status_t pmix_util_harvest_envars(char **incvars, char **excvars,
                 /* see if we already have this envar on the list */
                 duplicate = false;
                 PMIX_LIST_FOREACH(kv, ilist, pmix_kval_t) {
+                    if (PMIX_ENVAR != kv->value->type) {
+                        continue;
+                    }
                     if (0 == strcmp(kv->value->data.envar.envar, cs_env)) {
                         /* if the value is the same, then ignore it */
                         if (0 != strcmp(kv->value->data.envar.value, string_key)) {

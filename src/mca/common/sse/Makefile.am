@@ -9,7 +9,7 @@
 
 # Header files
 
-AM_CPPFLAGS = $(LTDLINCL) -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/include -I$(top_builddir)/include/pmix
+AM_CPPFLAGS = $(LTDLINCL) -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/include -I$(top_builddir)/include/pmix $(pmix_check_curl_CPPFLAGS)
 AM_LFLAGS = -Ppmix_util_sse_yy
 LEX_OUTPUT_ROOT = lex.pmix_util_sse_yy
 
@@ -35,7 +35,8 @@ noinst_LTLIBRARIES += $(comp_noinst)
 endif
 
 libmca_common_sse_la_SOURCES = $(headers) $(sources)
-libmca_common_sse_la_LDFLAGS = -version-info $(libmca_common_sse_so_version)
+libmca_common_sse_la_LDFLAGS = -version-info $(libmca_common_sse_so_version) $(pmix_check_curl_LDFLAGS)
+libmca_common_sse_la_LIBADD = $(pmix_check_curl_LIBS)
 libmca_common_sse_noinst_la_SOURCES = $(headers) $(sources)
 
 # Conditionally install the header files

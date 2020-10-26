@@ -576,7 +576,8 @@ pmix_status_t pmix_bfrops_base_pack_bo(pmix_pointer_array_t *regtypes,
     if (NULL == regtypes) {
         return PMIX_ERR_BAD_PARAM;
     }
-    if (PMIX_BYTE_OBJECT != type) {
+    if (PMIX_BYTE_OBJECT != type &&
+        PMIX_COMPRESSED_BYTE_OBJECT != type) {
         return PMIX_ERR_BAD_PARAM;
     }
     bo = (pmix_byte_object_t*)src;
@@ -1266,7 +1267,7 @@ pmix_status_t pmix_bfrops_base_pack_coord(pmix_pointer_array_t *regtypes,
             return ret;
         }
         /* pack the array of coordinates */
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, ptr[i].coord, ptr[i].dims, PMIX_INT, regtypes);
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, ptr[i].coord, ptr[i].dims, PMIX_UINT32, regtypes);
         if (PMIX_SUCCESS != ret) {
             return ret;
         }

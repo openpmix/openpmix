@@ -32,8 +32,8 @@
 /* response limit: 128 kByte */
 #define PMIX_COMMON_SSE_RESPONSE_LIMIT  128 * 1024
 
-extern void pmix_common_sse_parse_sse(char *ptr, size_t size, void *cbdata);
+PMIX_EXPORT void pmix_common_sse_parse_sse(char *ptr, size_t size, void *cbdata);
 
-extern void pmix_common_on_sse_event(char** headers, const char* data, const char* reply_url, void *cbdata);
+PMIX_EXPORT void pmix_common_on_sse_event(char** headers, const char* data, const char* reply_url, void *cbdata);
 
 #endif /* PMIX_SSE_INTERNAL_H */

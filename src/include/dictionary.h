@@ -513,8 +513,17 @@ pmix_regattr_input_t dictionary[] = {
     {.name = "PMIX_NODE_MAP", .string = "pmix.nmap", .type = PMIX_STRING,
      .description = (char *[]){"regex of nodes containing procs for this job", NULL}},
 
+    {.name = "PMIX_NODE_MAP_RAW", .string = "pmix.nmap.raw", .type = PMIX_STRING,
+     .description = (char *[]){"comma-delimited list of nodes containing procs for",
+                               "this job", NULL}},
+
     {.name = "PMIX_PROC_MAP", .string = "pmix.pmap", .type = PMIX_STRING,
      .description = (char *[]){"regex describing procs on each node within this job", NULL}},
+
+    {.name = "PMIX_PROC_MAP_RAW", .string = "pmix.pmap.raw", .type = PMIX_STRING,
+     .description = (char *[]){"semi-colon delimited list of strings, each string",
+                               "containing a comma-delimited list of ranks on the",
+                               "corresponding node", NULL}},
 
     {.name = "PMIX_ANL_MAP", .string = "pmix.anlmap", .type = PMIX_STRING,
      .description = (char *[]){"process mapping in ANL notation (used in PMI-1/PMI-2)", NULL}},

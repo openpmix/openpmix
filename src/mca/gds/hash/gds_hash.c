@@ -2138,6 +2138,20 @@ static pmix_status_t hash_store(const pmix_proc_t *proc,
         return PMIX_ERR_NOMEM;
     }
 
+    /* if this is node/app data, then process it accordingly */
+    if (PMIX_CHECK_KEY(kv, PMIX_NODE_INFO_ARRAY)) {
+        rc = process_node_array(kv->value, &trk->nodeinfo);
+        return rc;
+    } else if (PMIX_CHECK_KEY(kv, PMIX_APP_INFO_ARRAY)) {
+        rc = process_app_array(kv->value, trk);
+        return rc;
+    } else if (PMIX_CHECK_KEY(kv, PMIX_SESSION_INFO_ARRAY)) {
+        rc = process_session_array(kv->value, trk);
+        return rc;
+    } else if (PMIX_CHECK_KEY(kv, PMIX_JOB_INFO_ARRAY)) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
     /* see if the proc is me - cannot use CHECK_PROCID as
      * we don't want rank=wildcard to match */
     if (proc->rank == pmix_globals.myid.rank &&
