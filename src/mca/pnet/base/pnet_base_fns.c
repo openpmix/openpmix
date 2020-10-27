@@ -55,7 +55,14 @@ pmix_status_t pmix_pnet_base_allocate(char *nspace,
     if (NULL == nspace || NULL == ilist) {
         return PMIX_ERR_BAD_PARAM;
     }
+
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
+        PMIX_ACQUIRE_THREAD(&pmix_pnet_globals.lock);
+        if (0 == pmix_list_get_size(&pmix_pnet_globals.actives)) {
+            PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
+            return PMIX_SUCCESS;
+        }
+
         nptr = NULL;
         /* find this nspace - note that it may not have
          * been registered yet */
@@ -69,6 +76,7 @@ pmix_status_t pmix_pnet_base_allocate(char *nspace,
             /* add it */
             nptr = PMIX_NEW(pmix_namespace_t);
             if (NULL == nptr) {
+                PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
                 return PMIX_ERR_NOMEM;
             }
             nptr->nspace = strdup(nspace);
@@ -83,11 +91,13 @@ pmix_status_t pmix_pnet_base_allocate(char *nspace,
                 if (PMIX_CHECK_KEY(&info[n], PMIX_NODE_MAP)) {
                     rc = pmix_preg.parse_nodes(info[n].value.data.bo.bytes, &nodes);
                     if (PMIX_SUCCESS != rc) {
+                        PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
                         return rc;
                     }
                 } else if (PMIX_CHECK_KEY(&info[n], PMIX_PROC_MAP)) {
                     rc = pmix_preg.parse_procs(info[n].value.data.bo.bytes, &procs);
                     if (PMIX_SUCCESS != rc) {
+                        PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
                         return rc;
                     }
                 }
@@ -104,6 +114,7 @@ pmix_status_t pmix_pnet_base_allocate(char *nspace,
                 pmix_argv_free(nodes);
                 pmix_argv_free(procs);
                 if (PMIX_SUCCESS != rc) {
+                    PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
                     return rc;
                 }
             }
@@ -116,10 +127,12 @@ pmix_status_t pmix_pnet_base_allocate(char *nspace,
                 }
                 if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
                     /* true error */
+                    PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
                     return rc;
                 }
             }
         }
+        PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
     }
 
     return PMIX_SUCCESS;
@@ -146,6 +159,12 @@ pmix_status_t pmix_pnet_base_setup_local_network(char *nspace,
         return PMIX_ERR_BAD_PARAM;
     }
 
+    PMIX_ACQUIRE_THREAD(&pmix_pnet_globals.lock);
+    if (0 == pmix_list_get_size(&pmix_pnet_globals.actives)) {
+        PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
+        return PMIX_SUCCESS;
+    }
+
     /* find this proc's nspace object */
     nptr = NULL;
     PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_namespace_t) {
@@ -158,6 +177,7 @@ pmix_status_t pmix_pnet_base_setup_local_network(char *nspace,
         /* add it */
         nptr = PMIX_NEW(pmix_namespace_t);
         if (NULL == nptr) {
+            PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
             return PMIX_ERR_NOMEM;
         }
         nptr->nspace = strdup(nspace);
@@ -167,11 +187,13 @@ pmix_status_t pmix_pnet_base_setup_local_network(char *nspace,
     PMIX_LIST_FOREACH(active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
         if (NULL != active->module->setup_local_network) {
             if (PMIX_SUCCESS != (rc = active->module->setup_local_network(nptr, info, ninfo))) {
+                PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
                 return rc;
             }
         }
     }
 
+    PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
     return PMIX_SUCCESS;
 }
 
@@ -186,9 +208,18 @@ pmix_status_t pmix_pnet_base_setup_fork(const pmix_proc_t *proc, char ***env)
         return PMIX_ERR_INIT;
     }
 
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet: setup_fork called");
+
     /* protect against bozo inputs */
     if (NULL == proc || NULL == env) {
         return PMIX_ERR_BAD_PARAM;
+    }
+
+    PMIX_ACQUIRE_THREAD(&pmix_pnet_globals.lock);
+    if (0 == pmix_list_get_size(&pmix_pnet_globals.actives)) {
+        PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
+        return PMIX_SUCCESS;
     }
 
     /* find this proc's nspace object */
@@ -203,6 +234,7 @@ pmix_status_t pmix_pnet_base_setup_fork(const pmix_proc_t *proc, char ***env)
         /* add it */
         nptr = PMIX_NEW(pmix_namespace_t);
         if (NULL == nptr) {
+            PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
             return PMIX_ERR_NOMEM;
         }
         nptr->nspace = strdup(proc->nspace);
@@ -213,11 +245,13 @@ pmix_status_t pmix_pnet_base_setup_fork(const pmix_proc_t *proc, char ***env)
         if (NULL != active->module->setup_fork) {
             rc = active->module->setup_fork(nptr, proc, env);
             if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_AVAILABLE != rc) {
+                PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
                 return rc;
             }
         }
     }
 
+    PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
     return PMIX_SUCCESS;
 }
 
@@ -229,9 +263,18 @@ void pmix_pnet_base_child_finalized(pmix_proc_t *peer)
         return;
     }
 
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet: child_finalized called");
+
     /* protect against bozo inputs */
     if (NULL == peer) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        return;
+    }
+
+    PMIX_ACQUIRE_THREAD(&pmix_pnet_globals.lock);
+    if (0 == pmix_list_get_size(&pmix_pnet_globals.actives)) {
+        PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
         return;
     }
 
@@ -241,6 +284,7 @@ void pmix_pnet_base_child_finalized(pmix_proc_t *peer)
         }
     }
 
+    PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
     return;
 }
 
@@ -252,8 +296,17 @@ void pmix_pnet_base_local_app_finalized(pmix_namespace_t *nptr)
         return;
     }
 
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet: local_app_finalized called");
+
     /* protect against bozo inputs */
     if (NULL == nptr) {
+        return;
+    }
+
+    PMIX_ACQUIRE_THREAD(&pmix_pnet_globals.lock);
+    if (0 == pmix_list_get_size(&pmix_pnet_globals.actives)) {
+        PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
         return;
     }
 
@@ -263,6 +316,7 @@ void pmix_pnet_base_local_app_finalized(pmix_namespace_t *nptr)
         }
     }
 
+    PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
     return;
 }
 
@@ -277,8 +331,17 @@ void pmix_pnet_base_deregister_nspace(char *nspace)
         return;
     }
 
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet: deregister_nspace called");
+
     /* protect against bozo inputs */
     if (NULL == nspace) {
+        return;
+    }
+
+    PMIX_ACQUIRE_THREAD(&pmix_pnet_globals.lock);
+    if (0 == pmix_list_get_size(&pmix_pnet_globals.actives)) {
+        PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
         return;
     }
 
@@ -292,6 +355,7 @@ void pmix_pnet_base_deregister_nspace(char *nspace)
     }
     if (NULL == nptr) {
         /* nothing we can do */
+        PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
         return;
     }
 
@@ -319,6 +383,7 @@ void pmix_pnet_base_deregister_nspace(char *nspace)
             }
         }
     }
+    PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
 }
 
 static void cicbfunc(pmix_status_t status,
@@ -378,6 +443,11 @@ void pmix_pnet_base_collect_inventory(pmix_info_t directives[], size_t ndirs,
         }
         return;
     }
+    if (0 == pmix_list_get_size(&pmix_pnet_globals.actives)) {
+        cbfunc(PMIX_SUCCESS, NULL, cbdata);
+        return;
+    }
+
     /* create the rollup object */
     myrollup = PMIX_NEW(pmix_inventory_rollup_t);
     if (NULL == myrollup) {
@@ -481,6 +551,11 @@ void pmix_pnet_base_deliver_inventory(pmix_info_t info[], size_t ninfo,
         }
         return;
     }
+    if (0 == pmix_list_get_size(&pmix_pnet_globals.actives)) {
+        cbfunc(PMIX_SUCCESS, cbdata);
+        return;
+    }
+
     /* create the rollup object */
     myrollup = PMIX_NEW(pmix_inventory_rollup_t);
     if (NULL == myrollup) {
@@ -664,13 +739,10 @@ static pmix_status_t process_maps(char *nspace, char **nodes, char **procs)
     pmix_pnet_local_procs_t *lp;
     bool needcheck;
 
-    PMIX_ACQUIRE_THREAD(&pmix_pnet_globals.lock);
-
     /* bozo check */
     if (pmix_argv_count(nodes) != pmix_argv_count(procs)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
         return rc;
     }
 
@@ -746,6 +818,5 @@ static pmix_status_t process_maps(char *nspace, char **nodes, char **procs)
         pmix_argv_free(ranks);
     }
 
-    PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
     return PMIX_SUCCESS;
 }

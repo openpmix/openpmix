@@ -249,7 +249,9 @@ static void infocbfunc(pmix_status_t status,
      * server */
     x = PMIX_NEW(myxfer_t);
     x->ninfo = ninfo;
-    PMIX_INFO_CREATE(x->info, x->ninfo);
+    if (0 < ninfo) {
+        PMIX_INFO_CREATE(x->info, x->ninfo);
+    }
     for (n=0; n < ninfo; n++) {
         PMIX_INFO_XFER(&x->info[n], &info[n]);
     }
