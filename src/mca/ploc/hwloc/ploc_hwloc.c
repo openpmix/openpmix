@@ -1587,6 +1587,7 @@ static pmix_status_t unpack_topology(pmix_buffer_t *buf, pmix_topology_t *dest,
 
 static pmix_status_t copy_topology(pmix_topology_t *dest, pmix_topology_t *src)
 {
+#if HAVE_HWLOC_TOPOLOGY_DUP
     if (NULL == src->source|| 0 != strcasecmp(src->source, "hwloc")) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
@@ -1598,6 +1599,9 @@ static pmix_status_t copy_topology(pmix_topology_t *dest, pmix_topology_t *src)
     dest->source = strdup("hwloc");
 
     return PMIX_SUCCESS;
+#else
+    return PMIX_ERR_TAKE_NEXT_OPTION;
+#endif
 }
 
 #define PMIX_HWLOC_MAX_STRING   2048
