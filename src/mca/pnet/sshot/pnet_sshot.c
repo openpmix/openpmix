@@ -295,12 +295,34 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
      * in, but will assume for now that it is a string */
     PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &mydata, &vni, 1, PMIX_STRING);
 
+    /* store the VNI locally so our host can retrieve it if needed */
+    PMIX_KVAL_NEW(kv, PMIX_CREDENTIAL);
+    kv->value->type = PMIX_STRING;
+    kv->value->data.string = vni;
+    PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
+                      &pmix_globals.myid, PMIX_LOCAL, kv);
+    PMIX_RELEASE(kv);  // maintain refcount
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+
     /* Traffic class (if supported)
      */
     tclass = 1234;
     /* pack the traffic class, if we have it - I'm not sure what form that
      * will take, but will assume for now that it is an integer */
     PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &mydata, &tclass, 1, PMIX_INT);
+
+    /* store the traffic class locally so our host can retrieve it if needed */
+    PMIX_KVAL_NEW(kv, "HPE_TRAFFIC_CLASS");
+    kv->value->type = PMIX_INT;
+    kv->value->data.integer = tclass;
+    PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
+                      &pmix_globals.myid, PMIX_LOCAL, kv);
+    PMIX_RELEASE(kv);  // maintain refcount
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
 
     if (sessioninfo) {
         /* we have already provided all the fabric endpoints for nodes
