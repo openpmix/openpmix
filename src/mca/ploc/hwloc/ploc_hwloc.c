@@ -1587,11 +1587,11 @@ static pmix_status_t unpack_topology(pmix_buffer_t *buf, pmix_topology_t *dest,
 
 static pmix_status_t copy_topology(pmix_topology_t *dest, pmix_topology_t *src)
 {
-#if HAVE_HWLOC_TOPOLOGY_DUP
     if (NULL == src->source|| 0 != strcasecmp(src->source, "hwloc")) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
+#if PMIX_HAVE_HWLOC_TOPOLOGY_DUP
     /* use the hwloc dup function */
     if (0 != hwloc_topology_dup((hwloc_topology_t*)&dest->topology, src->topology)) {
         return PMIX_ERROR;
@@ -1600,7 +1600,43 @@ static pmix_status_t copy_topology(pmix_topology_t *dest, pmix_topology_t *src)
 
     return PMIX_SUCCESS;
 #else
-    return PMIX_ERR_TAKE_NEXT_OPTION;
+    /* we have to do this in a convoluted manner */
+    char *xmlbuffer=NULL;
+    int len;
+    struct hwloc_topology_support *srcsup, *destsup;
+    pmix_status_t rc;
+
+    /* extract an xml-buffer representation of the tree */
+#if HWLOC_API_VERSION < 0x20000
+    if (0 != hwloc_topology_export_xmlbuffer(src->topology, &xmlbuffer, &len)) {
+        return PMIX_ERROR;
+    }
+#else
+    if (0 != hwloc_topology_export_xmlbuffer(src->topology, &xmlbuffer, &len, 0)) {
+        return PMIX_ERROR;
+    }
+#endif
+
+    /* convert the xml back */
+    if (0 != hwloc_topology_init((hwloc_topology_t*)&dest->topology)) {
+        rc = PMIX_ERROR;
+        free(xmlbuffer);
+        return rc;
+    }
+    if (0 != hwloc_topology_set_xmlbuffer(dest->topology, xmlbuffer, strlen(xmlbuffer))) {
+        rc = PMIX_ERROR;
+        free(xmlbuffer);
+        hwloc_topology_destroy(dest->topology);
+        return rc;
+    }
+    free(xmlbuffer);
+
+    /* transfer the support struct */
+    srcsup = (struct hwloc_topology_support*)hwloc_topology_get_support(src->topology);
+    destsup = (struct hwloc_topology_support*)hwloc_topology_get_support(dest->topology);
+    memcpy(destsup, srcsup, sizeof(struct hwloc_topology_support));
+
+    return PMIX_SUCCESS;
 #endif
 }
 
