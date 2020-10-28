@@ -114,6 +114,27 @@ AC_USE_SYSTEM_EXTENSIONS
 AS_IF([test -z "$CFLAGS_save"], [CFLAGS=])
 PMIX_VAR_SCOPE_POP
 
+# Sanity checks
+AC_DEFUN([PMIX_CHECK_DIR_FOR_SPACES],[
+    dir="$1"
+    article="$2"
+    label="$3"
+
+    AC_MSG_CHECKING([directory of $label])
+    AC_MSG_RESULT([$dir])
+    AS_IF([test -n "`echo $dir | grep ' '`"],
+          [AC_MSG_WARN([This version of OpenPMIx does not support $article $label])
+           AC_MSG_WARN([with a path that contains spaces])
+           AC_MSG_ERROR([Cannot continue.])])
+])
+
+PMIX_CHECK_DIR_FOR_SPACES([$srcdir], [a], [source tree])
+PMIX_CHECK_DIR_FOR_SPACES([`readlink -f $srcdir`], [an], [absolute source tree])
+PMIX_CHECK_DIR_FOR_SPACES([`readlink -f .`], [a], [build tree])
+PMIX_CHECK_DIR_FOR_SPACES([$prefix], [a], [prefix])
+PMIX_CHECK_DIR_FOR_SPACES([`readlink -f $prefix`], [an], [absolute prefix])
+
+
 ####################################################################
 # Setup the configure header files
 ####################################################################
