@@ -4569,7 +4569,6 @@ pmix_status_t pmix_server_fabric_register(pmix_server_caddy_t *cd,
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &qcd->ninfo, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(cd);
         PMIX_RELEASE(qcd);
         goto exit;
     }
@@ -4580,7 +4579,6 @@ pmix_status_t pmix_server_fabric_register(pmix_server_caddy_t *cd,
         PMIX_BFROPS_UNPACK(rc, cd->peer, buf, qcd->info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(cd);
             PMIX_RELEASE(qcd);
             goto exit;
         }
@@ -4616,13 +4614,11 @@ pmix_status_t pmix_server_fabric_register(pmix_server_caddy_t *cd,
      * our host does */
     if (NULL == pmix_host_server.fabric) {
         rc = PMIX_ERR_NOT_SUPPORTED;
-        PMIX_RELEASE(cd);
         goto exit;
     }
 
     /* setup the requesting peer name */
-    pmix_strncpy(proc.nspace, cd->peer->info->pname.nspace, PMIX_MAX_NSLEN);
-    proc.rank = cd->peer->info->pname.rank;
+    PMIX_LOAD_PROCID(&proc, cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
 
     /* ask the host to execute the request */
     if (PMIX_SUCCESS != (rc = pmix_host_server.fabric(&proc, PMIX_FABRIC_REQUEST_INFO,

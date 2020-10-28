@@ -266,21 +266,25 @@ static int save_param_name (void)
 
 static int add_to_env_str(char *var, char *val)
 {
-    int sz, varsz, valsz;
+    int sz, varsz, valsz, new_envsize;
     void *tmp;
 
     if (NULL == var) {
         return PMIX_ERR_BAD_PARAM;
     }
 
-    if (NULL != env_str) {
-        varsz = strlen(var);
-        valsz = (NULL != val) ? strlen(val) : 0;
-        sz = strlen(env_str)+varsz+valsz+2;
-        if (envsize <= sz) {
-            envsize *=2;
+    varsz = strlen(var);
+    valsz = (NULL != val) ? strlen(val) : 0;
+    sz = (NULL != env_str) ? strlen(env_str) : 0;
+    sz += varsz+valsz+2;
+    new_envsize = envsize;
+    while (new_envsize <= sz) {
+        new_envsize *=2;
+    }
 
-            tmp = realloc(env_str, envsize);
+    if (NULL != env_str) {
+        if (new_envsize > envsize) {
+            tmp = realloc(env_str, new_envsize);
             if (NULL == tmp) {
                 return PMIX_ERR_OUT_OF_RESOURCE;
             }
@@ -288,11 +292,12 @@ static int add_to_env_str(char *var, char *val)
         }
         strcat(env_str, ";");
     } else {
-        env_str = calloc(1, envsize);
+        env_str = calloc(1, new_envsize);
         if (NULL == env_str) {
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
     }
+    envsize = new_envsize;
 
     strcat(env_str, var);
     if (NULL != val) {
