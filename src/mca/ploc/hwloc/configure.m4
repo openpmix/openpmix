@@ -46,10 +46,11 @@ AC_DEFUN([MCA_pmix_ploc_hwloc_CONFIG],[
     pmix_hwloc_support=0
     pmix_hwloc_source=""
     pmix_hwloc_support_will_build=no
+    pmix_have_topology_dup=0
 
     # figure out our mode...
     AS_IF([test "$with_hwloc" = "cobuild"],
-          [_PMIX_HWLOC_EMBEDDED_MODE(cobuild)],
+          [_PMIX_HWLOC_EMBEDDED_MODE],
           [_PMIX_HWLOC_EXTERNAL])
 
     AS_IF([test $pmix_hwloc_support -eq 1],
@@ -61,6 +62,8 @@ AC_DEFUN([MCA_pmix_ploc_hwloc_CONFIG],[
     AC_DEFINE_UNQUOTED([PMIX_HAVE_HWLOC], [$pmix_hwloc_support],
                    [Whether or not we have hwloc support])
     AM_CONDITIONAL([PMIX_HAVE_HWLOC], [test $pmix_hwloc_support -eq 1])
+    AC_DEFINE_UNQUOTED([PMIX_HAVE_HWLOC_TOPOLOGY_DUP], [$pmix_have_topology_dup],
+                   [Whether or not we have hwloc_topology_dup support])
 
     PMIX_SUMMARY_ADD([[External Packages]],[[HWLOC]], [pmix_hwloc], [$pmix_hwloc_support_will_build ($pmix_hwloc_source)])
 
@@ -76,9 +79,8 @@ AC_DEFUN([_PMIX_HWLOC_EMBEDDED_MODE],[
           [PMIX_HWLOC_HEADER="<hwloc.h>"],
           [PMIX_HWLOC_HEADER="$with_hwloc_header"])
 
-    AS_IF([test "$1" == "cobuild"],
-           [AC_MSG_CHECKING([if external hwloc version is 1.5 or greater])
-            AC_COMPILE_IFELSE(
+    AC_MSG_CHECKING([if external hwloc version is 1.5 or greater])
+    AC_COMPILE_IFELSE(
               [AC_LANG_PROGRAM([[#include <hwloc.h>]],
               [[
     #if HWLOC_API_VERSION < 0x00010500
@@ -87,12 +89,24 @@ AC_DEFUN([_PMIX_HWLOC_EMBEDDED_MODE],[
               ]])],
               [AC_MSG_RESULT([yes])],
               [AC_MSG_RESULT([no])
-               AC_MSG_ERROR([Cannot continue])])])
+               AC_MSG_ERROR([Cannot continue])])
+
+    AC_MSG_CHECKING([if external hwloc version is 1.8 or greater])
+    AC_COMPILE_IFELSE(
+          [AC_LANG_PROGRAM([[#include <hwloc.h>]],
+          [[
+    #if HWLOC_API_VERSION < 0x00010800
+    #error "hwloc API version is less than 0x00010800"
+    #endif
+          ]])],
+          [AC_MSG_RESULT([yes])
+           pmix_have_topology_dup=1],
+          [AC_MSG_RESULT([no])])
 
     pmix_hwloc_support=1
-    pmix_hwloc_source=$1
+    pmix_hwloc_source=cobuild
     pmix_hwloc_support_will_build=yes
- ])
+])
 
 AC_DEFUN([_PMIX_HWLOC_EXTERNAL],[
     PMIX_VAR_SCOPE_PUSH([pmix_hwloc_dir pmix_hwloc_libdir pmix_hwloc_standard_lib_location pmix_hwloc_standard_header_location pmix_check_hwloc_save_CPPFLAGS pmix_check_hwloc_save_LDFLAGS pmix_check_hwloc_save_LIBS])
@@ -155,22 +169,6 @@ AC_DEFUN([_PMIX_HWLOC_EXTERNAL],[
                            [pmix_hwloc_support=1],
                            [pmix_hwloc_support=0])
 
-        if test $pmix_hwloc_support -eq 1; then
-            AS_IF([test "$pmix_hwloc_standard_header_location" = "no"],
-                  [PMIX_FLAGS_APPEND_UNIQ(CPPFLAGS, $pmix_hwloc_CPPFLAGS)
-                   PMIX_FLAGS_APPEND_UNIQ(LDFLAGS, $pmix_hwloc_LDFLAGS)])
-            AC_CHECK_LIB([hwloc], [hwloc_topology_dup],
-                         [pmix_hwloc_have_dup=1],
-                         [AC_MSG_WARN([===================================================================])
-                          AC_MSG_WARN([HWLOC library does not contain the hwloc_topology_dup function])
-                          AC_MSG_WARN([required by OpenPMIx. If HWLOC support was specifically requested,])
-                          AC_MSG_WARN([then this build will fail and you will need to either provide an])
-                          AC_MSG_WARN([HWLOC version that includes the required function (1.8 or greater)])
-                          AC_MSG_WARN([or configure without HWLOC support])
-                          AC_MSG_WARN([===================================================================])
-                          ])
-        fi
-
         AS_IF([test "$pmix_hwloc_standard_header_location" != "yes"],
               [PMIX_FLAGS_APPEND_UNIQ(CPPFLAGS, $pmix_hwloc_CPPFLAGS)])
 
@@ -180,9 +178,7 @@ AC_DEFUN([_PMIX_HWLOC_EXTERNAL],[
     fi
 
     if test ! -z "$with_hwloc" && test "$with_hwloc" != "no" && test "$pmix_hwloc_support" != "1"; then
-        if test "$pmix_hwloc_have_dup" = "1"; then
-            AC_MSG_WARN([HWLOC SUPPORT REQUESTED AND NOT FOUND])
-        fi
+        AC_MSG_WARN([HWLOC SUPPORT REQUESTED AND NOT FOUND])
         AC_MSG_ERROR([CANNOT CONTINUE])
     fi
 
@@ -198,6 +194,18 @@ AC_DEFUN([_PMIX_HWLOC_EXTERNAL],[
               [AC_MSG_RESULT([yes])],
               [AC_MSG_RESULT([no])
                AC_MSG_ERROR([Cannot continue])])
+
+        AC_MSG_CHECKING([if external hwloc version is 1.8 or greater])
+        AC_COMPILE_IFELSE(
+              [AC_LANG_PROGRAM([[#include <hwloc.h>]],
+              [[
+    #if HWLOC_API_VERSION < 0x00010800
+    #error "hwloc API version is less than 0x00010800"
+    #endif
+              ]])],
+              [AC_MSG_RESULT([yes])
+               pmix_have_topology_dup=1],
+              [AC_MSG_RESULT([no])])
     fi
 
     CPPFLAGS=$pmix_check_hwloc_save_CPPFLAGS
