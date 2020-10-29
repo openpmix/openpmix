@@ -694,14 +694,14 @@ static void set_namespace(int nprocs, char *nspace,
     PMIX_INFO_XFER(&iptr[0], isv1);
     PMIX_INFO_XFER(&iptr[1], isv2);
     PMIX_INFO_LOAD(&iptr[2], PMIX_SETUP_APP_ENVARS, NULL, PMIX_BOOL);
-    PMIX_LOAD_KEY(iptr[3].key, PMIX_ALLOC_NETWORK);
+    PMIX_LOAD_KEY(iptr[3].key, PMIX_ALLOC_FABRIC);
     iptr[3].value.type = PMIX_DATA_ARRAY;
     PMIX_DATA_ARRAY_CREATE(iptr[3].value.data.darray, 2, PMIX_INFO);
     ip = (pmix_info_t*)iptr[3].value.data.darray->array;
     asprintf(&rks, "%s.net", nspace);
-    PMIX_INFO_LOAD(&ip[0], PMIX_ALLOC_NETWORK_ID, rks, PMIX_STRING);
+    PMIX_INFO_LOAD(&ip[0], PMIX_ALLOC_FABRIC_ID, rks, PMIX_STRING);
     free(rks);
-    PMIX_INFO_LOAD(&ip[1], PMIX_ALLOC_NETWORK_SEC_KEY, NULL, PMIX_BOOL);
+    PMIX_INFO_LOAD(&ip[1], PMIX_ALLOC_FABRIC_SEC_KEY, NULL, PMIX_BOOL);
     PMIX_CONSTRUCT(&cd, myxfer_t);
     if (PMIX_SUCCESS != (rc = PMIx_server_setup_application(nspace, iptr, 4,
                                                              setup_cbfunc, &cd))) {

@@ -286,7 +286,14 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
     PMIX_CONSTRUCT(&mydata, pmix_buffer_t);
 
     /* pass the full set of nodes for the job or session to the fabric
-     * controller. Get back the following:
+     * controller
+     */
+    if (NULL == macs || NULL == xnames || NULL == osnames) {
+        /* cannot proceed */
+        pmix_argv_free(nodes);
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+    /* Get back the following:
      *
      * VNI for the job
      */

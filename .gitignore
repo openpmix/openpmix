@@ -169,6 +169,7 @@ test/python/run_server.sh
 test/simple/pmitest
 test/simple/simpcycle
 test/simple/simpfabric
+test/simple/get_put_example
 
 test/sshot/daemon
 test/sshot/generate
