@@ -1632,7 +1632,7 @@ static pmix_status_t copy_topology(pmix_topology_t *dest, pmix_topology_t *src)
     free(xmlbuffer);
 
     /* transfer the support struct */
-    srcsup = (struct hwloc_topology_support*)hwloc_topology_get_support(src->topology);
+    srcsup = (struct hwloc_topology_support*)hwloc_topology_get_support((hwloc_topology_t)src->topology);
     destsup = (struct hwloc_topology_support*)hwloc_topology_get_support(dest->topology);
     memcpy(destsup, srcsup, sizeof(struct hwloc_topology_support));
 
