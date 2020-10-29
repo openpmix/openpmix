@@ -26,7 +26,7 @@ headers = simptest.h
 noinst_PROGRAMS = simptest simpclient simppub simpdyn simpft simpdmodex \
                   test_pmix simptool simpdie simptimeout \
                   gwtest gwclient stability quietclient simpjctrl simpio simpsched \
-                  simpcoord simpcycle doubleget simpfabric
+                  simpcoord simpcycle doubleget simpfabric get_put_example
 
 simptest_SOURCES = \
         simptest.c
@@ -152,4 +152,10 @@ simpfabric_SOURCES = \
         simpfabric.c
 simpfabric_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 simpfabric_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
+get_put_example_SOURCES = \
+        get_put_example.c
+get_put_example_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+get_put_example_LDADD = \
     $(top_builddir)/src/libpmix.la
