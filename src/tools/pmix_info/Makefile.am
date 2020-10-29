@@ -11,7 +11,7 @@
 #                         All rights reserved.
 # Copyright (c) 2008-2014 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
-# Copyright (c) 2017-2018 Intel, Inc. All rights reserved.
+# Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -19,22 +19,13 @@
 # $HEADER$
 #
 
-if SOURCE_DATE_EPOCH_SET
-  USER = @PMIX_CONFIGURE_USER@
-  PMIX_BUILD_HOST = @PMIX_CONFIGURE_HOST@
-  PMIX_BUILD_DATE = @PMIX_CONFIGURE_DATE@
-else
-  PMIX_BUILD_HOST = `(hostname || uname -n) 2> /dev/null | sed 1q`
-  PMIX_BUILD_DATE = `date +%Y-%m-%dT%H:%M:%S`
-endif
-
 AM_CFLAGS = \
             -DPMIX_CONFIGURE_USER="\"@PMIX_CONFIGURE_USER@\"" \
             -DPMIX_CONFIGURE_HOST="\"@PMIX_CONFIGURE_HOST@\"" \
             -DPMIX_CONFIGURE_DATE="\"@PMIX_CONFIGURE_DATE@\"" \
-            -DPMIX_BUILD_USER="\"$(USER)\"" \
-            -DPMIX_BUILD_HOST="\"$(PMIX_BUILD_HOST)\"" \
-            -DPMIX_BUILD_DATE="\"$(PMIX_BUILD_DATE)\"" \
+            -DPMIX_BUILD_USER="\"$$USER\"" \
+            -DPMIX_BUILD_HOST="\"`(hostname || uname -n) | sed 1q`\"" \
+            -DPMIX_BUILD_DATE="\"`$(top_srcdir)/config/getdate.sh`\"" \
             -DPMIX_BUILD_CFLAGS="\"@CFLAGS@\"" \
             -DPMIX_BUILD_CPPFLAGS="\"@CPPFLAGS@\"" \
             -DPMIX_BUILD_LDFLAGS="\"@LDFLAGS@\"" \

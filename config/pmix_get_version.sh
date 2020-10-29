@@ -92,7 +92,7 @@ else
                     PMIX_REPO_REV=`git describe --tags --always`
                 fi
             else
-                PMIX_REPO_REV="date`date '+%Y-%m-%d'`"
+                PMIX_REPO_REV=date`$srcdir/getdate.sh '+%Y-%m-%d'`
             fi
         fi
 
