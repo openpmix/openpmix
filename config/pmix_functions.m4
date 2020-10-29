@@ -13,7 +13,7 @@ dnl                         All rights reserved.
 dnl Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
 dnl Copyright (c) 2009      Oak Ridge National Labs.  All rights reserved.
 dnl Copyright (c) 2009-2020 Cisco Systems, Inc.  All rights reserved.
-dnl Copyright (c) 2013-2017 Intel, Inc. All rights reserved.
+dnl Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 dnl Copyright (c) 2017      Research Organization for Information Science
 dnl                         and Technology (RIST). All rights reserved.
 dnl
@@ -94,16 +94,10 @@ EOF
 # Save some stats about this build
 #
 
-DATE_FMT="+%Y-%m-%dT%H:%M:%S"
-if test -n "$SOURCE_DATE_EPOCH" ; then
-  PMIX_CONFIGURE_USER="reproduciblebuild"
-  PMIX_CONFIGURE_HOST="reproduciblebuild"
-  PMIX_CONFIGURE_DATE=$(date -u -d "@$SOURCE_DATE_EPOCH" "$DATE_FMT" 2>/dev/null || date -u -r "$SOURCE_DATE_EPOCH" "$DATE_FMT" 2>/dev/null || date -u "$DATE_FMT")
-else
-  PMIX_CONFIGURE_USER="`whoami`"
-  PMIX_CONFIGURE_HOST="`(hostname || uname -n) 2> /dev/null | sed 1q`"
-  PMIX_CONFIGURE_DATE="`date $DATE_FMT`"
-fi
+PMIX_CONFIGURE_USER="${USER:-`whoami`}"
+PMIX_CONFIGURE_HOST="${HOSTNAME:-`(hostname || uname -n) 2> /dev/null | sed 1q`}"
+PMIX_CONFIGURE_DATE="`$srcdir/config/getdate.sh`"
+
 
 AC_SUBST([SOURCE_DATE_EPOCH])
 AM_CONDITIONAL([SOURCE_DATE_EPOCH_SET], [test -n "$SOURCE_DATE_EPOCH"])

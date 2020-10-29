@@ -88,6 +88,7 @@ fi
 
 # setup configure options (e.g., show_title and friends)
 PMIX_CONFIGURE_SETUP
+
 pmix_show_title "Configuring PMIx"
 
 # This must be before AM_INIT_AUTOMAKE
@@ -128,12 +129,31 @@ AC_DEFUN([PMIX_CHECK_DIR_FOR_SPACES],[
            AC_MSG_ERROR([Cannot continue.])])
 ])
 
-PMIX_CHECK_DIR_FOR_SPACES([$srcdir], [a], [source tree])
-PMIX_CHECK_DIR_FOR_SPACES([`readlink -f $srcdir`], [an], [absolute source tree])
-PMIX_CHECK_DIR_FOR_SPACES([`readlink -f .`], [a], [build tree])
-PMIX_CHECK_DIR_FOR_SPACES([$prefix], [a], [prefix])
-PMIX_CHECK_DIR_FOR_SPACES([`readlink -f $prefix`], [an], [absolute prefix])
+AC_DEFUN([PMIX_CANONICALIZE_PATH],[
+    case $host_os in
+    darwin*)
+        # MacOS does not have "readlink -f" or realpath (at least as
+        # of MacOS Cataline / 10.15).  Instead, use Python, because we
+        # know MacOS comes with a /usr/bin/python that has
+        # os.path.realpath.
+        $2=`/usr/bin/python -c 'import os; print os.path.realpath("'$1'")'`
+        ;;
+    *)
+        $2=`readlink -f $1`
+        ;;
+    esac
+])
 
+PMIX_VAR_SCOPE_PUSH(pmix_checkdir)
+PMIX_CHECK_DIR_FOR_SPACES([$srcdir], [a], [source tree])
+PMIX_CANONICALIZE_PATH([$srcdir], [pmix_checkdir])
+PMIX_CHECK_DIR_FOR_SPACES([$pmix_checkdir], [an], [absolute source tree])
+PMIX_CANONICALIZE_PATH([.], [pmix_checkdir])
+PMIX_CHECK_DIR_FOR_SPACES([$pmix_checkdir], [a], [build tree])
+PMIX_CHECK_DIR_FOR_SPACES([$prefix], [a], [prefix])
+PMIX_CANONICALIZE_PATH([$prefix], [pmix_checkdir])
+PMIX_CHECK_DIR_FOR_SPACES([$pmix_checkdir], [an], [absolute prefix])
+PMIX_VAR_SCOPE_POP
 
 ####################################################################
 # Setup the configure header files
