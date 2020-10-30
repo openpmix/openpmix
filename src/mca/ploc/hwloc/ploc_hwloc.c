@@ -1040,7 +1040,9 @@ static pmix_type_conversion_t table[] =
     {.hwtype = HWLOC_OBJ_OSDEV_NETWORK, .pxtype = PMIX_DEVTYPE_NETWORK, .name = "NETWORK"},
     {.hwtype = HWLOC_OBJ_OSDEV_OPENFABRICS, .pxtype = PMIX_DEVTYPE_OPENFABRICS, .name = "OPENFABRICS"},
     {.hwtype = HWLOC_OBJ_OSDEV_DMA, .pxtype = PMIX_DEVTYPE_DMA, .name = "DMA"},
+#if HWLOC_API_VERSION >= 0x00010800
     {.hwtype = HWLOC_OBJ_OSDEV_COPROC, .pxtype = PMIX_DEVTYPE_COPROC, .name = "COPROCESSOR"},
+#endif
 };
 
 static int countcolons(char *str)
@@ -1144,8 +1146,12 @@ static pmix_status_t compute_distances(pmix_topology_t *topo,
             continue;
         }
         if (HWLOC_OBJ_OSDEV_BLOCK == table[n].hwtype ||
-            HWLOC_OBJ_OSDEV_DMA == table[n].hwtype ||
-            HWLOC_OBJ_OSDEV_COPROC == table[n].hwtype) {
+            HWLOC_OBJ_OSDEV_DMA == table[n].hwtype
+#if HWLOC_API_VERSION >= 0x00010800
+             ||
+            HWLOC_OBJ_OSDEV_COPROC == table[n].hwtype
+#endif
+                                                     ) {
             continue;
         }
         device = hwloc_get_obj_by_type(topo->topology, HWLOC_OBJ_OS_DEVICE, 0);
