@@ -274,9 +274,21 @@ static int add_to_env_str(char *var, char *val)
     }
 
     varsz = strlen(var);
-    valsz = (NULL != val) ? strlen(val) : 0;
-    sz = (NULL != env_str) ? strlen(env_str) : 0;
-    sz += varsz+valsz+2;
+    if (NULL != val) {
+        valsz = strlen(val);
+        /* account for '=' */
+        valsz += 1;
+    }
+    sz = 0;
+    if (NULL != env_str) {
+        sz = strlen(env_str);
+        /* account for ';' */
+        sz += 1;
+    }
+    /* add required new size incl NULL byte */
+    sz += varsz+valsz+1;
+
+    /* make sure we have sufficient space */
     new_envsize = envsize;
     while (new_envsize <= sz) {
         new_envsize *=2;
