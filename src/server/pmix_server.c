@@ -379,16 +379,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         return rc;
     }
 
-    /* open the pstrg framework */
-    if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pstrg_base_framework, 0))) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return rc;
-    }
-    if (PMIX_SUCCESS != (rc = pmix_pstrg_base_select())) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return rc;
-    }
-
     /* open the ploc framework */
     if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_ploc_base_framework, 0))) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);

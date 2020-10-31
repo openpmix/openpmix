@@ -59,6 +59,7 @@
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/gds/base/base.h"
 #include "src/mca/pfexec/base/base.h"
+#include "src/mca/ploc/base/base.h"
 #include "src/mca/pmdl/base/base.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/mca/pstrg/base/base.h"
@@ -748,6 +749,17 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         pmix_list_append(&pmix_ptl_globals.posted_recvs, &rcv->super);
     }
 
+    /* open the pmdl framework and select the active modules for this environment
+     * as we might need them if we are asking a server to launch something for us */
+    if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pmdl_base_framework, 0))) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return rc;
+    }
+    if (PMIX_SUCCESS != (rc = pmix_pmdl_base_select())) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return rc;
+    }
+
     /* setup IOF */
     PMIX_IOF_SINK_DEFINE(&pmix_client_globals.iof_stdout, &pmix_globals.myid,
                          1, PMIX_FWD_STDOUT_CHANNEL, pmix_iof_write_handler);
@@ -907,12 +919,20 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
             return rc;
         }
 
-        /* open the pmdl framework and select the active modules for this environment */
-        if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pmdl_base_framework, 0))) {
+        /* open the ploc framework */
+        if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_ploc_base_framework, 0))) {
             PMIX_RELEASE_THREAD(&pmix_global_lock);
             return rc;
         }
-        if (PMIX_SUCCESS != (rc = pmix_pmdl_base_select())) {
+        if (PMIX_SUCCESS != (rc = pmix_ploc_base_select())) {
+            PMIX_RELEASE_THREAD(&pmix_global_lock);
+            return rc;
+        }
+
+        /* if we don't know our topology, we better get it now as we
+         * increasingly rely on it - note that our host will hopefully
+         * have passed it to us so we don't duplicate their storage! */
+        if (PMIX_SUCCESS != (rc = pmix_ploc.setup_topology(info, ninfo))) {
             PMIX_RELEASE_THREAD(&pmix_global_lock);
             return rc;
         }
@@ -927,15 +947,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
             return rc;
         }
 
-        /* open the pstrg framework */
-        if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pstrg_base_framework, 0))) {
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
-            return rc;
-        }
-        if (PMIX_SUCCESS != (rc = pmix_pstrg_base_select())) {
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
-            return rc;
-        }
         /* start listening for connections */
         if (PMIX_SUCCESS != pmix_ptl_base_start_listening(info, ninfo)) {
             pmix_show_help("help-pmix-server.txt", "listener-thread-start", true);
