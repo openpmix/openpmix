@@ -133,9 +133,6 @@ static pmix_status_t generate_ppn(const char *input,
         return PMIX_ERR_NOMEM;
     }
 
-    if (NULL == tmp) {
-        return PMIX_ERR_NOMEM;
-    }
     rc = pack_blob(tmp, len, regexp);
     free(tmp);
 
