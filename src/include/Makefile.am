@@ -11,7 +11,7 @@
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
-# Copyright (c) 2007-2016 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2007-2020 Cisco Systems, Inc.  All rights reserved
 # Copyright (c) 2017      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
 # $COPYRIGHT$
@@ -25,8 +25,6 @@
 # Makefile.am
 
 pmixdir = $(pmixincludedir)/$(subdir)
-
-all: dictionary.h
 
 noinst_LTLIBRARIES = libpmixglobal.la
 
@@ -52,7 +50,7 @@ headers += \
         pmix_portable_platform.h \
         frameworks.h \
         pmix_stdatomic.h \
-	    dictionary.h
+        dictionary.h
 
 endif ! PMIX_EMBEDDED_MODE
 
@@ -60,6 +58,8 @@ if WANT_INSTALL_HEADERS
 nobase_nodist_pmix_HEADERS = \
     pmix_config.h
 endif
+
+BUILT_SOURCES = dictionary.h
 
 dictionary.h: $(top_srcdir)/include/pmix_common.h.in
 	$(PYTHON) $(top_srcdir)/contrib/construct_dictionary.py
