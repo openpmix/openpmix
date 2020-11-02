@@ -1232,7 +1232,6 @@ fi
 AM_CONDITIONAL([WANT_PYTHON_BINDINGS], [test $WANT_PYTHON_BINDINGS -eq 1])
 
 AM_PATH_PYTHON([3.4], [pmix_python_good=yes], [pmix_python_good=no])
-AM_CONDITIONAL([PMIX_PYTHON_AVAILABLE], [test "$pmix_python_good" = "yes"])
 
 if test "$WANT_PYTHON_BINDINGS" = "1"; then
     if test "$pmix_python_good" = "no"; then

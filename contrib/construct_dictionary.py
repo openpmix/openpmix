@@ -10,7 +10,6 @@
 #
 
 from __future__ import print_function
-from builtins import int
 import os, os.path, sys, shutil, signal
 from optparse import OptionParser, OptionGroup
 
@@ -302,9 +301,11 @@ pmix_regattr_input_t dictionary[] = {
     if outpath:
         try:
             target = os.path.join(top_src_dir, "src", "include", "dictionary.h")
-            os.replace(outpath, target)
-        except:
-            print("DICTIONARY COULD NOT BE CONSTRUCTED")
+            # Use os.renames() because it works in both Python 2 and
+            # Python 3.
+            os.renames(outpath, target)
+        except Exception as e:
+            print("DICTIONARY COULD NOT BE CONSTRUCTED: {e}".format(e=e))
             return 1
 
     return 0

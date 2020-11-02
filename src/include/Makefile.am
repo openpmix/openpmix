@@ -62,6 +62,6 @@ nobase_nodist_pmix_HEADERS = \
 endif
 
 dictionary.h: $(top_srcdir)/include/pmix_common.h.in
-	$(PYTHON) /Users/rhc/pmix/master/contrib/construct_dictionary.py
+	$(PYTHON) $(top_srcdir)/contrib/construct_dictionary.py
 
 MAINTAINERCLEANFILES = dictionary.h
