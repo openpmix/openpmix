@@ -9,6 +9,8 @@
 # by tools to interpret user input
 #
 
+from __future__ import print_function
+from builtins import int
 import os, os.path, sys, shutil, signal
 from optparse import OptionParser, OptionGroup
 
@@ -221,17 +223,9 @@ def main():
     debugGroup.add_option("--dryrun",
                           action="store_true", dest="dryrun", default=False,
                           help="Show output to screen")
-    debugGroup.add_option("--build-dir",
-                          help="Specify build tree directory (default: cwd)")
     parser.add_option_group(debugGroup)
 
     (options, args) = parser.parse_args()
-
-    # Assume that we are running in the top build directory
-    if options.build_dir:
-        top_build_dir = args.build_dir
-    else:
-        top_build_dir = os.getcwd()
 
     # Find the top-level PMIx source tree dir.
     # Start with the location of this script, which we know is in
@@ -247,17 +241,16 @@ def main():
         return 1
 
     src_include_dir = os.path.join(top_src_dir, "include")
-    build_include_dir = os.path.join(top_build_dir, "include")
 
     if options.dryrun:
         constants = sys.stdout
         outpath = None
     else:
-        outpath = os.path.join(build_include_dir, "dictionary.tmp")
+        outpath = os.path.join(src_include_dir, "dictionary.tmp")
         try:
             constants = open(outpath, "w+")
         except:
-            print("DICTIONARY COULD NOT BE CONSTRUCTED")
+            print(outpath, "CANNOT BE OPENED - DICTIONARY COULD NOT BE CONSTRUCTED")
             return 1
 
     # write the header
@@ -275,9 +268,9 @@ pmix_regattr_input_t dictionary[] = {
     # scan across the header files in the src directory
     # looking for constants and typedefs
 
-    # pmix_common.h is in the build tree
+    # pmix_common.h.in is in the src tree
     rc = harvest_constants(options,
-                           os.path.join(build_include_dir, "pmix_common.h"),
+                           os.path.join(src_include_dir, "pmix_common.h.in"),
                            constants)
     if 0 != rc:
         constants.close()
@@ -308,7 +301,7 @@ pmix_regattr_input_t dictionary[] = {
     # Write to the source tree
     if outpath:
         try:
-            target = os.path.join(src_include_dir, "dictionary.h")
+            target = os.path.join(top_src_dir, "src", "include", "dictionary.h")
             os.replace(outpath, target)
         except:
             print("DICTIONARY COULD NOT BE CONSTRUCTED")
