@@ -11,7 +11,7 @@
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
-# Copyright (c) 2007-2016 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2007-2020 Cisco Systems, Inc.  All rights reserved
 # Copyright (c) 2017      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
 # $COPYRIGHT$
@@ -24,38 +24,44 @@
 # This makefile.am does not stand on its own - it is included from
 # Makefile.am
 
-headers += \
-        include/pmix_globals.h
+pmixdir = $(pmixincludedir)/$(subdir)
 
-sources += \
-        include/pmix_globals.c
+noinst_LTLIBRARIES = libpmixglobal.la
 
-nodist_headers += \
-    include/pmix_config.h
+libpmixglobal_la_sources = \
+		pmix_globals.h \
+        libpmixglobal.c
+
+headers = pmix_globals.h
+
+nodist_headers = \
+    pmix_config.h
 
 if ! PMIX_EMBEDDED_MODE
 headers += \
-        include/align.h \
-        include/hash_string.h \
-        include/pmix_socket_errno.h \
-        include/pmix_stdint.h \
-        include/prefetch.h \
-        include/types.h \
-        include/pmix_config_top.h \
-        include/pmix_config_bottom.h \
-        include/pmix_portable_platform.h \
-        include/frameworks.h \
-        include/pmix_stdatomic.h \
-	    include/dictionary.h
+        align.h \
+        hash_string.h \
+        pmix_socket_errno.h \
+        pmix_stdint.h \
+        prefetch.h \
+        types.h \
+        pmix_config_top.h \
+        pmix_config_bottom.h \
+        pmix_portable_platform.h \
+        frameworks.h \
+        pmix_stdatomic.h \
+        dictionary.h
 
 endif ! PMIX_EMBEDDED_MODE
 
 if WANT_INSTALL_HEADERS
 nobase_nodist_pmix_HEADERS = \
-    include/pmix_config.h
+    pmix_config.h
 endif
 
+BUILT_SOURCES = dictionary.h
+
 dictionary.h: $(top_srcdir)/include/pmix_common.h.in
-    $(PYTHON) $(top_srcdir)/contrib/construct_dictionary.py
+	$(PYTHON) $(top_srcdir)/contrib/construct_dictionary.py
 
 MAINTAINERCLEANFILES = dictionary.h

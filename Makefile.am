@@ -55,11 +55,6 @@ else
 noinst_HEADERS = $(headers)
 endif
 
-if PMIX_PYTHON_AVAILABLE
-install-exec-local: $(top_srcdir)/include/pmix_common.h.in
-	$(PYTHON) $(top_srcdir)/contrib/construct_dictionary.py
-endif
-
 nroff:
 	(cd man; $(MAKE) nroff)
 

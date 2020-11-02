@@ -24,6 +24,7 @@
 ACLOCAL_AMFLAGS = -I ./config
 
 SUBDIRS = \
+    include \
 	util/keyval \
     mca/base \
     $(MCA_pmix_FRAMEWORKS_SUBDIRS) \
@@ -32,6 +33,7 @@ SUBDIRS = \
     $(MCA_pmix_FRAMEWORK_COMPONENT_DSO_SUBDIRS)
 
 DIST_SUBDIRS = \
+    include \
 	util/keyval \
     mca/base \
     $(MCA_pmix_FRAMEWORKS_SUBDIRS) \
@@ -76,6 +78,10 @@ else
 lib_LTLIBRARIES = libpmix.la
 libpmix_la_SOURCES = $(headers) $(sources)
 libpmix_la_LDFLAGS = -version-info $(libpmix_so_version)
+libpmix_la_LIBADD += \
+        include/libpmixglobal.la
+libpmix_la_DEPENDENCIES += \
+        include/libpmixglobal.la
 
 endif !PMIX_EMBEDDED_MODE
 
@@ -83,7 +89,6 @@ include atomics/sys/Makefile.include
 include threads/Makefile.include
 include class/Makefile.include
 include event/Makefile.include
-include include/Makefile.include
 include mca/Makefile.include
 include util/Makefile.include
 include client/Makefile.include
@@ -96,7 +101,6 @@ include common/Makefile.include
 if WANT_INSTALL_HEADERS
 nobase_pmix_HEADERS += $(headers)
 endif
-
 
 MAINTAINERCLEANFILES = Makefile.in config.h config.h.in
 DISTCLEANFILES = Makefile

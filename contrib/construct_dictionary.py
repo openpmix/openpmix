@@ -9,6 +9,7 @@
 # by tools to interpret user input
 #
 
+from __future__ import print_function
 import os, os.path, sys, shutil, signal
 from optparse import OptionParser, OptionGroup
 
@@ -24,26 +25,21 @@ def harvest_constants(options, path, constants):
         print("File", path, "could not be opened")
         return 1
 
-    # read the file - these files aren't too large
-    # so ingest the whole thing at one gulp
-    try:
-        lines = inputfile.readlines()
-    except:
-        inputfile.close()
-        return 1
-
-    inputfile.close()  # we read everything, so done with the file
     firstline = True
     preamble = "                               \""
     linesize = 53
     # loop over the lines
-    for n in range(len(lines)):
-        line = lines[n]
+    while True:
+        try:
+            line = inputfile.readline()
+        except:
+            continue
+        if not line:
+            break
         # remove white space at front and back
         myline = line.strip()
         # remove comment lines
         if "/*" in myline or "*/" in myline or myline.startswith("*"):
-            n += 1
             continue
         # if the line starts with #define, then we want it
         if myline.startswith("#define"):
@@ -165,7 +161,10 @@ def harvest_constants(options, path, constants):
                         m += 1
                     # if the next line starts with '/', then it is a continuation
                     # of the description
-                    line = lines[n+1]
+                    try:
+                        line = inputfile.readline()
+                    except:
+                        break
                     # remove white space at front and back
                     myline = line.strip()
                     while len(myline) > 0 and myline[0] == '/':
@@ -200,8 +199,10 @@ def harvest_constants(options, path, constants):
                                     desc = tmp
                             tmp = ""
                             k += 1
-                        n += 1
-                        line = lines[n+1]
+                        try:
+                            line = inputfile.readline()
+                        except:
+                            break
                         myline = line.strip()
                     if len(desc) > 0:
                         if firstout:
@@ -211,6 +212,7 @@ def harvest_constants(options, path, constants):
                     # finish it up by closing the definition
                     constants.write(", NULL}}")
 
+    inputfile.close()
     return 0
 
 def main():
@@ -221,17 +223,9 @@ def main():
     debugGroup.add_option("--dryrun",
                           action="store_true", dest="dryrun", default=False,
                           help="Show output to screen")
-    debugGroup.add_option("--build-dir",
-                          help="Specify build tree directory (default: cwd)")
     parser.add_option_group(debugGroup)
 
     (options, args) = parser.parse_args()
-
-    # Assume that we are running in the top build directory
-    if options.build_dir:
-        top_build_dir = args.build_dir
-    else:
-        top_build_dir = os.getcwd()
 
     # Find the top-level PMIx source tree dir.
     # Start with the location of this script, which we know is in
@@ -247,17 +241,16 @@ def main():
         return 1
 
     src_include_dir = os.path.join(top_src_dir, "include")
-    build_include_dir = os.path.join(top_build_dir, "include")
 
     if options.dryrun:
         constants = sys.stdout
         outpath = None
     else:
-        outpath = os.path.join(build_include_dir, "dictionary.tmp")
+        outpath = os.path.join(src_include_dir, "dictionary.tmp")
         try:
             constants = open(outpath, "w+")
         except:
-            print("DICTIONARY COULD NOT BE CONSTRUCTED")
+            print(outpath, "CANNOT BE OPENED - DICTIONARY COULD NOT BE CONSTRUCTED")
             return 1
 
     # write the header
@@ -275,9 +268,9 @@ pmix_regattr_input_t dictionary[] = {
     # scan across the header files in the src directory
     # looking for constants and typedefs
 
-    # pmix_common.h is in the build tree
+    # pmix_common.h.in is in the src tree
     rc = harvest_constants(options,
-                           os.path.join(build_include_dir, "pmix_common.h"),
+                           os.path.join(src_include_dir, "pmix_common.h.in"),
                            constants)
     if 0 != rc:
         constants.close()
@@ -308,10 +301,12 @@ pmix_regattr_input_t dictionary[] = {
     # Write to the source tree
     if outpath:
         try:
-            target = os.path.join(src_include_dir, "dictionary.h")
-            os.replace(outpath, target)
-        except:
-            print("DICTIONARY COULD NOT BE CONSTRUCTED")
+            target = os.path.join(top_src_dir, "src", "include", "dictionary.h")
+            # Use os.renames() because it works in both Python 2 and
+            # Python 3.
+            os.renames(outpath, target)
+        except Exception as e:
+            print("DICTIONARY COULD NOT BE CONSTRUCTED: {e}".format(e=e))
             return 1
 
     return 0

@@ -10,7 +10,7 @@ dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
 dnl                         University of Stuttgart.  All rights reserved.
 dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
-dnl Copyright (c) 2006-2016 Cisco Systems, Inc.  All rights reserved.
+dnl Copyright (c) 2006-2020 Cisco Systems, Inc.  All rights reserved
 dnl Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
 dnl Copyright (c) 2009-2018 IBM Corporation.  All rights reserved.
 dnl Copyright (c) 2009      Los Alamos National Security, LLC.  All rights
@@ -939,6 +939,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         pmix_config_prefix[etc/Makefile]
         pmix_config_prefix[include/Makefile]
         pmix_config_prefix[src/Makefile]
+        pmix_config_prefix[src/include/Makefile]
         pmix_config_prefix[src/util/keyval/Makefile]
         pmix_config_prefix[src/mca/base/Makefile]
         pmix_config_prefix[src/tools/pevent/Makefile]
@@ -1231,7 +1232,14 @@ fi
 AM_CONDITIONAL([WANT_PYTHON_BINDINGS], [test $WANT_PYTHON_BINDINGS -eq 1])
 
 AM_PATH_PYTHON([3.4], [pmix_python_good=yes], [pmix_python_good=no])
-AM_CONDITIONAL([PMIX_PYTHON_AVAILABLE], [test "$pmix_python_good" = "yes"])
+
+# If we didn't find a good python and we don't have dictionary.h, then
+# give up.  I.e., we require developers (i.e., those building from git
+# clones) to have Python >=v3.4.
+AS_IF([test "$PYTHON" = ":" && test ! -f $srcdir/include/dictionary.h],
+      [AC_MSG_WARN([Could not find a modern enough Python])
+       AC_MSG_WARN([Developer builds (e.g., git clones) of OpenPMIx must have Python >=v3.4 available])
+       AC_MSG_ERROR([Cannot continue])])
 
 if test "$WANT_PYTHON_BINDINGS" = "1"; then
     if test "$pmix_python_good" = "no"; then
