@@ -25,26 +25,21 @@ def harvest_constants(options, path, constants):
         print("File", path, "could not be opened")
         return 1
 
-    # read the file - these files aren't too large
-    # so ingest the whole thing at one gulp
-    try:
-        lines = inputfile.readlines()
-    except:
-        inputfile.close()
-        return 1
-
-    inputfile.close()  # we read everything, so done with the file
     firstline = True
     preamble = "                               \""
     linesize = 53
     # loop over the lines
-    for n in range(len(lines)):
-        line = lines[n]
+    while True:
+        try:
+            line = inputfile.readline()
+        except:
+            continue
+        if not line:
+            break
         # remove white space at front and back
         myline = line.strip()
         # remove comment lines
         if "/*" in myline or "*/" in myline or myline.startswith("*"):
-            n += 1
             continue
         # if the line starts with #define, then we want it
         if myline.startswith("#define"):
@@ -166,7 +161,10 @@ def harvest_constants(options, path, constants):
                         m += 1
                     # if the next line starts with '/', then it is a continuation
                     # of the description
-                    line = lines[n+1]
+                    try:
+                        line = inputfile.readline()
+                    except:
+                        break
                     # remove white space at front and back
                     myline = line.strip()
                     while len(myline) > 0 and myline[0] == '/':
@@ -201,8 +199,10 @@ def harvest_constants(options, path, constants):
                                     desc = tmp
                             tmp = ""
                             k += 1
-                        n += 1
-                        line = lines[n+1]
+                        try:
+                            line = inputfile.readline()
+                        except:
+                            break
                         myline = line.strip()
                     if len(desc) > 0:
                         if firstout:
@@ -212,6 +212,7 @@ def harvest_constants(options, path, constants):
                     # finish it up by closing the definition
                     constants.write(", NULL}}")
 
+    inputfile.close()
     return 0
 
 def main():
