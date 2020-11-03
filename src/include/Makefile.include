@@ -54,8 +54,3 @@ if WANT_INSTALL_HEADERS
 nobase_nodist_pmix_HEADERS = \
     include/pmix_config.h
 endif
-
-dictionary.h: $(top_srcdir)/include/pmix_common.h.in
-    $(PYTHON) $(top_srcdir)/contrib/construct_dictionary.py
-
-MAINTAINERCLEANFILES = dictionary.h

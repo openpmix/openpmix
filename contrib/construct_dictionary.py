@@ -25,17 +25,22 @@ def harvest_constants(options, path, constants):
         print("File", path, "could not be opened")
         return 1
 
+    # read the file - these files aren't too large
+    # so ingest the whole thing at one gulp
+    try:
+        lines = inputfile.readlines()
+    except:
+        inputfile.close()
+        return 1
+
+    inputfile.close()  # we read everything, so done with the file
+
     firstline = True
     preamble = "                               \""
     linesize = 53
     # loop over the lines
-    while True:
-        try:
-            line = inputfile.readline()
-        except:
-            continue
-        if not line:
-            break
+    for n in range(len(lines)):
+        line = lines[n]
         # remove white space at front and back
         myline = line.strip()
         # remove comment lines
@@ -161,10 +166,7 @@ def harvest_constants(options, path, constants):
                         m += 1
                     # if the next line starts with '/', then it is a continuation
                     # of the description
-                    try:
-                        line = inputfile.readline()
-                    except:
-                        break
+                    line = lines[n+1]
                     # remove white space at front and back
                     myline = line.strip()
                     while len(myline) > 0 and myline[0] == '/':
@@ -199,10 +201,8 @@ def harvest_constants(options, path, constants):
                                     desc = tmp
                             tmp = ""
                             k += 1
-                        try:
-                            line = inputfile.readline()
-                        except:
-                            break
+                        n += 1
+                        line = lines[n+1]
                         myline = line.strip()
                     if len(desc) > 0:
                         if firstout:
