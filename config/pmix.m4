@@ -939,7 +939,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         pmix_config_prefix[etc/Makefile]
         pmix_config_prefix[include/Makefile]
         pmix_config_prefix[src/Makefile]
-        pmix_config_prefix[src/include/Makefile]
         pmix_config_prefix[src/util/keyval/Makefile]
         pmix_config_prefix[src/mca/base/Makefile]
         pmix_config_prefix[src/tools/pevent/Makefile]
@@ -1231,9 +1230,8 @@ fi
 
 AM_CONDITIONAL([WANT_PYTHON_BINDINGS], [test $WANT_PYTHON_BINDINGS -eq 1])
 
-AM_PATH_PYTHON([3.4], [pmix_python_good=yes], [pmix_python_good=no])
-
 if test "$WANT_PYTHON_BINDINGS" = "1"; then
+    AM_PATH_PYTHON([3.4], [pmix_python_good=yes], [pmix_python_good=no])
     if test "$pmix_python_good" = "no"; then
         AC_MSG_WARN([Python bindings were enabled, but no suitable])
         AC_MSG_WARN([interpreter was found. PMIx requires at least])
@@ -1275,21 +1273,6 @@ if test "$WANT_PYTHON_BINDINGS" = "1"; then
     pmix_pythondir=`eval echo $pythondir`
     AC_SUBST([PMIX_PYTHON_EGG_PATH], [$pmix_pythondir], [Path to installed Python egg])
 fi
-
-# If we didn't find a good Python and we don't have dictionary.h, then
-# see if we can find an older Python (because construct_dictionary.py
-# can use an older Python).
-AS_IF([test "$PYTHON" = ":" && test ! -f $srcdir/include/dictionary.h],
-      [PYTHON=
-       AM_PATH_PYTHON
-       # If we still can't find Python (and we don't have
-       # dictionary.h), then give up.
-       AS_IF([test "$PYTHON" = ":"],
-             [AC_MSG_WARN([Could not find a modern enough Python])
-              AC_MSG_WARN([Developer builds (e.g., git clones) of OpenPMIx must have Python available])
-              AC_MSG_ERROR([Cannot continue])
-             ])
-       ])
 
 # see if they want to disable non-RTLD_GLOBAL dlopen
 AC_MSG_CHECKING([if want to support dlopen of non-global namespaces])
