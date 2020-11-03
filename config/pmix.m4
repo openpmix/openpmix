@@ -1233,14 +1233,6 @@ AM_CONDITIONAL([WANT_PYTHON_BINDINGS], [test $WANT_PYTHON_BINDINGS -eq 1])
 
 AM_PATH_PYTHON([3.4], [pmix_python_good=yes], [pmix_python_good=no])
 
-# If we didn't find a good python and we don't have dictionary.h, then
-# give up.  I.e., we require developers (i.e., those building from git
-# clones) to have Python >=v3.4.
-AS_IF([test "$PYTHON" = ":" && test ! -f $srcdir/include/dictionary.h],
-      [AC_MSG_WARN([Could not find a modern enough Python])
-       AC_MSG_WARN([Developer builds (e.g., git clones) of OpenPMIx must have Python >=v3.4 available])
-       AC_MSG_ERROR([Cannot continue])])
-
 if test "$WANT_PYTHON_BINDINGS" = "1"; then
     if test "$pmix_python_good" = "no"; then
         AC_MSG_WARN([Python bindings were enabled, but no suitable])
@@ -1283,6 +1275,21 @@ if test "$WANT_PYTHON_BINDINGS" = "1"; then
     pmix_pythondir=`eval echo $pythondir`
     AC_SUBST([PMIX_PYTHON_EGG_PATH], [$pmix_pythondir], [Path to installed Python egg])
 fi
+
+# If we didn't find a good Python and we don't have dictionary.h, then
+# see if we can find an older Python (because construct_dictionary.py
+# can use an older Python).
+AS_IF([test "$PYTHON" = ":" && test ! -f $srcdir/include/dictionary.h],
+      [PYTHON=
+       AM_PATH_PYTHON
+       # If we still can't find Python (and we don't have
+       # dictionary.h), then give up.
+       AS_IF([test "$PYTHON" = ":"],
+             [AC_MSG_WARN([Could not find a modern enough Python])
+              AC_MSG_WARN([Developer builds (e.g., git clones) of OpenPMIx must have Python available])
+              AC_MSG_ERROR([Cannot continue])
+             ])
+       ])
 
 # see if they want to disable non-RTLD_GLOBAL dlopen
 AC_MSG_CHECKING([if want to support dlopen of non-global namespaces])
