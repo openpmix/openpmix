@@ -26,6 +26,7 @@ def harvest_constants(options, path, constants):
     try:
         lines = inputfile.readlines()
     except:
+        print("Error reading file {path}".format(path=path))
         inputfile.close()
         return 1
 
