@@ -52,10 +52,12 @@ headers += \
 endif ! PMIX_EMBEDDED_MODE
 
 if WANT_INSTALL_HEADERS
-nobase_nodist_pmix_HEADERS = \
-    pmix_config.h
+nobase_pmix_HEADERS = $(headers)
+nobase_nodist_pmix_HEADERS = $(nodist_headers)
 endif
 
+# Need to ensure that dictionary.h is built first -- before any other
+# targets.
 BUILT_SOURCES = dictionary.h
 
 dictionary.h: $(top_srcdir)/include/pmix_common.h.in
