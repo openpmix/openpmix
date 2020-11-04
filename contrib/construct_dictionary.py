@@ -226,28 +226,37 @@ def main():
     # Find the top-level PMIx source tree dir.
     # Start with the location of this script, which we know is in
     # $top_srcdir/contrib.
-    top_src_dir= os.path.dirname(sys.argv[0])
-    top_src_dir= os.path.join(top_src_dir, "..")
-    top_src_dir= os.path.abspath(top_src_dir)
+    top_src_dir = os.path.dirname(sys.argv[0])
+    top_src_dir = os.path.join(top_src_dir, "..")
+    top_src_dir = os.path.abspath(top_src_dir)
 
     # Sanity check
-    verfile = os.path.join(top_src_dir, "VERSION")
-    if not os.path.exists(verfile):
+    checkfile = os.path.join(top_src_dir, "VERSION")
+    if not os.path.exists(checkfile):
         print("ERROR: Could not find top source directory for Open PMIx")
         return 1
 
-    src_include_dir = os.path.join(top_src_dir, "include")
+    source_include_dir = os.path.join(top_src_dir, "include")
+
+    # This script is invoked from src/include/Makefile.am, and
+    # therefore the cwd will be $(builddir)/src/include.  Verify this
+    # by checking for a file that we know should be in there.
+    build_src_include_dir = os.getcwd()
+    checkfile = os.path.join(build_src_include_dir, "pmix_config.h")
+    if not os.path.exists(checkfile):
+        print("ERROR: Could not find build directory for Open PMIx")
+        return 1
 
     if options.dryrun:
         constants = sys.stdout
         outpath = None
     else:
-        outpath = os.path.join(src_include_dir, "dictionary.tmp")
+        outpath = os.path.join(build_src_include_dir, "dictionary.h")
         try:
             constants = open(outpath, "w+")
         except Exception as e:
-            print("{outputpath} CANNOT BE OPENED - DICTIONARY COULD NOT BE CONSTRUCTED: {e}"
-                  .format(outputpath=outputpath, e=e))
+            print("{outpath} CANNOT BE OPENED - DICTIONARY COULD NOT BE CONSTRUCTED: {e}"
+                  .format(outpath=outpath, e=e))
             return 1
 
     # write the header
@@ -267,7 +276,7 @@ pmix_regattr_input_t dictionary[] = {
 
     # pmix_common.h.in is in the src tree
     rc = harvest_constants(options,
-                           os.path.join(src_include_dir, "pmix_common.h.in"),
+                           os.path.join(source_include_dir, "pmix_common.h.in"),
                            constants)
     if 0 != rc:
         constants.close()
@@ -279,7 +288,7 @@ pmix_regattr_input_t dictionary[] = {
 
     # pmix_deprecated.h is in the source tree
     rc = harvest_constants(options,
-                           os.path.join(src_include_dir, "pmix_deprecated.h"),
+                           os.path.join(source_include_dir, "pmix_deprecated.h"),
                            constants)
     if 0 != rc:
         constants.close()
@@ -294,19 +303,6 @@ pmix_regattr_input_t dictionary[] = {
 };
 """)
     constants.close()
-
-    # transfer the results
-    # Write to the source tree
-    if outpath:
-        try:
-            target = os.path.join(top_src_dir, "src", "include", "dictionary.h")
-            # Use os.renames() because it works in both Python 2 and
-            # Python 3.
-            os.renames(outpath, target)
-        except Exception as e:
-            print("DICTIONARY COULD NOT BE CONSTRUCTED: {e}".format(e=e))
-            return 1
-
     return 0
 
 if __name__ == '__main__':
