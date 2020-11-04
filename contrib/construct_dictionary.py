@@ -308,6 +308,6 @@ pmix_regattr_input_t dictionary[] = {
             return 1
 
     return 0
-if __name__ == '__main__':
-    main()
 
+if __name__ == '__main__':
+    exit(main())
