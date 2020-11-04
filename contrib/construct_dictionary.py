@@ -16,17 +16,18 @@ def harvest_constants(options, path, constants):
     # open the file
     try:
         inputfile = open(path, "r")
-    except:
-        print("File {path} could not be opened"
-              .format(path=path))
+    except Exception as e:
+        print("File {path} could not be opened: {e}"
+              .format(path=path, e=e))
         return 1
 
     # read the file - these files aren't too large
     # so ingest the whole thing at one gulp
     try:
         lines = inputfile.readlines()
-    except:
-        print("Error reading file {path}".format(path=path))
+    except Exception as e:
+        print("Error reading file {path}: {e}"
+              .format(path=path, e=e))
         inputfile.close()
         return 1
 
@@ -244,9 +245,9 @@ def main():
         outpath = os.path.join(src_include_dir, "dictionary.tmp")
         try:
             constants = open(outpath, "w+")
-        except:
-            print("{outputpath} CANNOT BE OPENED - DICTIONARY COULD NOT BE CONSTRUCTED"
-                  .format(outputpath=outputpath))
+        except Exception as e:
+            print("{outputpath} CANNOT BE OPENED - DICTIONARY COULD NOT BE CONSTRUCTED: {e}"
+                  .format(outputpath=outputpath, e=e))
             return 1
 
     # write the header
