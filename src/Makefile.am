@@ -98,6 +98,4 @@ if WANT_INSTALL_HEADERS
 nobase_pmix_HEADERS += $(headers)
 endif
 
-MAINTAINERCLEANFILES = Makefile.in config.h config.h.in
-DISTCLEANFILES = Makefile
 CLEANFILES = core.* *~
