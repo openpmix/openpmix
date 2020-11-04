@@ -42,6 +42,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
+ * Copyright (c) 2020      Cisco Systems, Inc.  All rights reserved
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -856,7 +857,7 @@ typedef uint32_t pmix_rank_t;
                                                                     //        output stream(s) and deliver it to the requesting tool instead
                                                                     //        of its current final destination. This might be used, for
                                                                     //        example, during a debugging procedure to avoid injection of
-                                                                    //        debugger-related output into the application’s results file.
+                                                                    //        debugger-related output into the application's results file.
                                                                     //        The original output stream(s) destination is restored upon
                                                                     //        termination of the tool.
 
@@ -994,7 +995,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_FABRIC_DEVICE_BUS_TYPE         "pmix.fabdev.btyp"     // (char*) The type of bus to which the device is attached (e.g., "PCI",
                                                                    //         "GEN-Z").
 #define PMIX_FABRIC_DEVICE_DRIVER           "pmix.fabdev.driver"   // (char*) The name of the driver associated with the device
-#define PMIX_FABRIC_DEVICE_FIRMWARE         "pmix.fabdev.fmwr"     // (char*) The device’s firmware version
+#define PMIX_FABRIC_DEVICE_FIRMWARE         "pmix.fabdev.fmwr"     // (char*) The device's firmware version
 #define PMIX_FABRIC_DEVICE_ADDRESS          "pmix.fabdev.addr"     // (char*) The primary link-level address associated with the device, such as a
                                                                    //         MAC address. If multiple addresses are available, only one will be
                                                                    //         reported.

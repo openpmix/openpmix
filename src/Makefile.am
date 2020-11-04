@@ -9,7 +9,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2006-2016 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2006-2020 Cisco Systems, Inc.  All rights reserved
 # Copyright (c) 2012-2013 Los Alamos National Security, Inc.  All rights reserved.
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 # $COPYRIGHT$
@@ -19,12 +19,9 @@
 # $HEADER$
 #
 
-# Note that the -I directory must *exactly* match what was specified
-# via AC_CONFIG_MACRO_DIR in configure.ac.
-ACLOCAL_AMFLAGS = -I ./config
-
 SUBDIRS = \
-	util/keyval \
+    include \
+    util/keyval \
     mca/base \
     $(MCA_pmix_FRAMEWORKS_SUBDIRS) \
     $(MCA_pmix_FRAMEWORK_COMPONENT_STATIC_SUBDIRS) \
@@ -32,7 +29,8 @@ SUBDIRS = \
     $(MCA_pmix_FRAMEWORK_COMPONENT_DSO_SUBDIRS)
 
 DIST_SUBDIRS = \
-	util/keyval \
+    include \
+    util/keyval \
     mca/base \
     $(MCA_pmix_FRAMEWORKS_SUBDIRS) \
     $(MCA_pmix_FRAMEWORK_COMPONENT_ALL_SUBDIRS)
@@ -76,13 +74,16 @@ else
 lib_LTLIBRARIES = libpmix.la
 libpmix_la_SOURCES = $(headers) $(sources)
 libpmix_la_LDFLAGS = -version-info $(libpmix_so_version)
+libpmix_la_LIBADD += \
+        include/libpmixglobal.la
+libpmix_la_DEPENDENCIES += \
+        include/libpmixglobal.la
 
 endif !PMIX_EMBEDDED_MODE
 
 include atomics/sys/Makefile.include
 include threads/Makefile.include
 include class/Makefile.include
-include include/Makefile.include
 include event/Makefile.include
 include mca/Makefile.include
 include util/Makefile.include

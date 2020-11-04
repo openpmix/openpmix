@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 #
 # Copyright (c) 2020      Intel, Inc.  All rights reserved.
 # Copyright (c) 2020      Cisco Systems, Inc.  All rights reserved
@@ -10,26 +9,25 @@
 #
 
 from __future__ import print_function
-import os, os.path, sys, shutil, signal
+import os, os.path, sys, shutil
 from optparse import OptionParser, OptionGroup
-
-def signal_handler(signal, frame):
-    print("Ctrl-C received")
-    sys.exit(0)
 
 def harvest_constants(options, path, constants):
     # open the file
     try:
         inputfile = open(path, "r")
-    except:
-        print("File", path, "could not be opened")
+    except Exception as e:
+        print("File {path} could not be opened: {e}"
+              .format(path=path, e=e))
         return 1
 
     # read the file - these files aren't too large
     # so ingest the whole thing at one gulp
     try:
         lines = inputfile.readlines()
-    except:
+    except Exception as e:
+        print("Error reading file {path}: {e}"
+              .format(path=path, e=e))
         inputfile.close()
         return 1
 
@@ -141,7 +139,7 @@ def harvest_constants(options, path, constants):
                         elif tokens[3] == "(varies)":
                             datatype = "PMIX_INT"
                         else:
-                            print(0, "UNKNOWN TOKEN", tokens[3])
+                            print("UNKNOWN TOKEN: {tok}".format(tok=tokens[3]))
                             return 1
                     constants.write(", .type = " + datatype + ",\n     .description = (char *[]){\"")
                     # the description consists of at least all remaining tokens
@@ -216,8 +214,6 @@ def harvest_constants(options, path, constants):
     return 0
 
 def main():
-    signal.signal(signal.SIGINT, signal_handler)
-
     parser = OptionParser("usage: %prog [options]")
     debugGroup = OptionGroup(parser, "Debug Options")
     debugGroup.add_option("--dryrun",
@@ -249,8 +245,9 @@ def main():
         outpath = os.path.join(src_include_dir, "dictionary.tmp")
         try:
             constants = open(outpath, "w+")
-        except:
-            print(outpath, "CANNOT BE OPENED - DICTIONARY COULD NOT BE CONSTRUCTED")
+        except Exception as e:
+            print("{outputpath} CANNOT BE OPENED - DICTIONARY COULD NOT BE CONSTRUCTED: {e}"
+                  .format(outputpath=outputpath, e=e))
             return 1
 
     # write the header
@@ -288,7 +285,7 @@ pmix_regattr_input_t dictionary[] = {
         constants.close()
         if outpath:
             os.remove(outpath)
-        print("HARVEST DEPRECATED FAILED - DICTIONARY COULD NOT BE CONSTRUCTED")
+        print("HARVEST PMIX_DEPRECATED FAILED - DICTIONARY COULD NOT BE CONSTRUCTED")
         return 1
 
     # mark the end of the array
@@ -296,6 +293,7 @@ pmix_regattr_input_t dictionary[] = {
     {.name = ""}
 };
 """)
+    constants.close()
 
     # transfer the results
     # Write to the source tree
@@ -310,6 +308,6 @@ pmix_regattr_input_t dictionary[] = {
             return 1
 
     return 0
-if __name__ == '__main__':
-    main()
 
+if __name__ == '__main__':
+    exit(main())
