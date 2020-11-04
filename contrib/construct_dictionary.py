@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 #
 # Copyright (c) 2020      Intel, Inc.  All rights reserved.
 # Copyright (c) 2020      Cisco Systems, Inc.  All rights reserved
@@ -9,6 +8,7 @@
 # by tools to interpret user input
 #
 
+from __future__ import print_function
 import os, os.path, sys, shutil
 from optparse import OptionParser, OptionGroup
 
