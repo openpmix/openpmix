@@ -11,7 +11,7 @@
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
 # Copyright (c) 2008-2019 Cisco Systems, Inc.  All rights reserved
-# Copyright (c) 2018      Intel, Inc. All rights reserved.
+# Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -25,7 +25,7 @@ A requested component was not found, or was unable to be opened.  This
 means that this component is either not installed or is unable to be
 used on your system (e.g., sometimes this means that shared libraries
 that the component requires are unable to be found/loaded).  Note that
-PMIX stopped checking at the first component that it did not find.
+PMIx stopped checking at the first component that it did not find.
 
 Host:      %s
 Framework: %s
@@ -35,7 +35,7 @@ Component: %s
 No components were able to be opened in the %s framework.
 
 This typically means that either no components of this type were
-installed, or none of the installed componnets can be loaded.
+installed, or none of the installed components can be loaded.
 Sometimes this means that shared libraries required by these
 components are unable to be found/loaded.
 
@@ -63,7 +63,7 @@ You cannot mix inclusive and exclusive behavior.
 #
 [failed to add component dir]
 The pmix_mca_base_component_path MCA variable was used to add paths to
-search for PMIX components.  At least one directory failed to add
+search for PMIx components.  At least one directory failed to add
 properly:
 
     %s
