@@ -27,6 +27,7 @@ EXTRA_DIST = \
 	c_get_alignment.m4 \
 	pmix_get_version.sh \
 	distscript.sh \
+	getdate.sh \
 	md2nroff.pl \
 	pmix_check_attributes.m4 \
 	pmix_check_broken_qsort.m4 \
