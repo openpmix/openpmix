@@ -76,9 +76,9 @@ AC_SUBST(PMIX_TOP_BUILDDIR)
 top_buildir=`pwd`
 cd "$srcdir"
 PMIX_TOP_SRCDIR="`pwd`"
+top_srcdir=$PMIX_TOP_SRCDIR
 AC_SUBST(PMIX_TOP_SRCDIR)
 cd "$PMIX_TOP_BUILDDIR"
-top_srcdir=`pwd`
 
 AC_MSG_NOTICE([builddir: $PMIX_TOP_BUILDDIR])
 AC_MSG_NOTICE([srcdir: $PMIX_TOP_SRCDIR])

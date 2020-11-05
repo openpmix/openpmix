@@ -96,7 +96,7 @@ EOF
 
 PMIX_CONFIGURE_USER="${USER:-`whoami`}"
 PMIX_CONFIGURE_HOST="${HOSTNAME:-`(hostname || uname -n) 2> /dev/null | sed 1q`}"
-PMIX_CONFIGURE_DATE="`$srcdir/config/getdate.sh`"
+PMIX_CONFIGURE_DATE="`$top_srcdir/config/getdate.sh`"
 
 
 AC_SUBST([SOURCE_DATE_EPOCH])
