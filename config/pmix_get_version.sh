@@ -10,7 +10,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2008-2015 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2008-2020 Cisco Systems, Inc.  All rights reserved
 # Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
 # $COPYRIGHT$
 #
@@ -92,7 +92,7 @@ else
                     PMIX_REPO_REV=`git describe --tags --always`
                 fi
             else
-                PMIX_REPO_REV=date`$srcdir/getdate.sh '+%Y-%m-%d'`
+                PMIX_REPO_REV=date`$srcdir/config/getdate.sh '+%Y-%m-%d'`
             fi
         fi
 
