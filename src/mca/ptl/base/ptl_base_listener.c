@@ -91,8 +91,8 @@ static pmix_status_t setup_listeners(pmix_info_t *info, size_t ninfo, bool *need
             if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_AVAILABLE != rc) {
                 return rc;
             }
-            if (single) {
-                return PMIX_SUCCESS;
+            if (PMIX_SUCCESS == rc && single) {
+                break;
             }
         }
     }

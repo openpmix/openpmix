@@ -91,13 +91,13 @@ typedef pmix_status_t (*pmix_pfexec_base_signal_local_fn_t)(pid_t pd, int signum
 typedef struct {
     pmix_object_t super;
     pmix_event_t ev;
-    pmix_nspace_t nspace;
     const pmix_info_t *jobinfo;
     size_t njinfo;
     const pmix_app_t *apps;
     size_t napps;
     pmix_pfexec_base_fork_proc_fn_t frkfn;
-    pmix_lock_t *lock;
+    pmix_spawn_cbfunc_t cbfunc;
+    void *cbdata;
 } pmix_pfexec_fork_caddy_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pfexec_fork_caddy_t);
 
@@ -120,17 +120,19 @@ PMIX_EXPORT void pmix_pfexec_base_signal_proc(int sd, short args, void *cbdata);
 
 PMIX_EXPORT void pmix_pfexec_check_complete(int sd, short args, void *cbdata);
 
-#define PMIX_PFEXEC_SPAWN(fcd, j, nj, a, na, fn, lk)                        \
+#define PMIX_PFEXEC_SPAWN(j, nj, a, na, fn, cbf, cbd)                       \
     do {                                                                    \
-        (fcd) = PMIX_NEW(pmix_pfexec_fork_caddy_t);                         \
-        (fcd)->jobinfo = (j);                                               \
-        (fcd)->njinfo = (nj);                                               \
-        (fcd)->apps = (a);                                                  \
-        (fcd)->napps = (na);                                                \
-        (fcd)->frkfn = (fn);                                                \
-        (fcd)->lock = (lk);                                                 \
-        pmix_event_assign(&((fcd)->ev), pmix_globals.evbase, -1,            \
-                          EV_WRITE, pmix_pfexec_base_spawn_proc, (fcd));    \
+        pmix_pfexec_fork_caddy_t *fcd;                                      \
+        fcd = PMIX_NEW(pmix_pfexec_fork_caddy_t);                           \
+        fcd->jobinfo = (j);                                                 \
+        fcd->njinfo = (nj);                                                 \
+        fcd->apps = (a);                                                    \
+        fcd->napps = (na);                                                  \
+        fcd->frkfn = (fn);                                                  \
+        fcd->cbfunc = (cbf);                                                \
+        fcd->cbdata = (cbd);                                                \
+        pmix_event_assign(&(fcd->ev), pmix_globals.evbase, -1,              \
+                          EV_WRITE, pmix_pfexec_base_spawn_proc, fcd);      \
         PMIX_POST_OBJECT((fcd));                                            \
         pmix_event_active(&((fcd)->ev), EV_WRITE, 1);                       \
     } while(0)

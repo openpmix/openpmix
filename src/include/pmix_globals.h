@@ -257,6 +257,11 @@ typedef struct {
 } pmix_querylist_t;
 PMIX_CLASS_DECLARATION(pmix_querylist_t);
 
+typedef struct {
+    pmix_list_item_t super;
+    pmix_proc_t proc;
+} pmix_proclist_t;
+PMIX_CLASS_DECLARATION(pmix_proclist_t);
 
 /* object for tracking peers - each peer can have multiple
  * connections. This can occur if the initial app executes
@@ -388,6 +393,7 @@ PMIX_CLASS_DECLARATION(pmix_server_caddy_t);
     pmix_status_t *codes;
     size_t ncodes;
     pmix_name_t pname;
+    pmix_peer_t *peer;
     const char *data;
     size_t ndata;
     const char *key;
@@ -467,6 +473,7 @@ PMIX_CLASS_DECLARATION(pmix_cb_t);
     pmix_event_evtimer_set(pmix_globals.evbase, &(r)->ev,   \
                                (c), (r));                   \
     _tv.tv_sec = (t);                                       \
+    _tv.tv_usec = ((t) - _tv.tv_sec) * 1000000.0;           \
     PMIX_POST_OBJECT((r));                                  \
     pmix_event_evtimer_add(&(r)->ev, &_tv);                 \
 } while (0)

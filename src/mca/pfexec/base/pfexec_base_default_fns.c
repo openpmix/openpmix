@@ -76,6 +76,7 @@
 #include "src/util/pmix_pty.h"
 #include "src/util/printf.h"
 #include "src/util/show_help.h"
+#include "src/mca/ptl/base/base.h"
 
 #include "src/client/pmix_client_ops.h"
 #include "src/server/pmix_server_ops.h"
@@ -134,12 +135,13 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
     size_t m, k;
     pmix_status_t rc;
     char **argv = NULL, **env = NULL;
+    pmix_nspace_t nspace;
     char basedir[MAXPATHLEN];
     pmix_pfexec_child_t *child;
     pmix_rank_info_t *info;
     pmix_namespace_t *nptr;
     pmix_rank_t rank=0;
-    char *tmp;
+    char tmp[2048], *ptr;
 
     pmix_output_verbose(5, pmix_pfexec_base_framework.framework_output,
                         "%s pfexec:base spawn proc",
@@ -155,21 +157,41 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
     }
 
     /* create a namespace for the new job */
-    pmix_asprintf(&tmp, "%s.%lu", pmix_globals.myid.nspace, (unsigned long)pmix_pfexec_globals.nextid);
-    PMIX_LOAD_NSPACE(fcd->nspace, tmp);
-    free(tmp);
+    memset(tmp, 0, 2048);
+    (void)snprintf(tmp, 2047, "%s:%lu", pmix_globals.myid.nspace, (unsigned long)pmix_pfexec_globals.nextid);
+    PMIX_LOAD_NSPACE(nspace, tmp);
     ++pmix_pfexec_globals.nextid;
 
     /* add the nspace to the server global list */
     nptr = PMIX_NEW(pmix_namespace_t);
-    nptr->nspace = strdup(pmix_globals.myid.nspace);
+    nptr->nspace = strdup(nspace);
     pmix_list_append(&pmix_globals.nspaces, &nptr->super);
 
     for (m=0; m < fcd->napps; m++) {
         app = (pmix_app_t*)&fcd->apps[m];
-        /* merge our launch environment into the proc */
+
+        /* merge our launch environment into the app's */
         for (i=0; NULL != environ[i]; i++) {
-            pmix_argv_append_unique_nosize(&app->env, environ[i]);
+            ptr = strchr(environ[i], '=');
+            *ptr = '\0';
+            ++ptr;
+            pmix_setenv(environ[i], ptr, false, &app->env);  // do not overwrite a given value
+            --ptr;
+            *ptr = '=';
+        }
+
+        /* process any job-info */
+        if (NULL != fcd->jobinfo) {
+            for (k=0; k < fcd->njinfo; k++) {
+                if (PMIX_CHECK_KEY(&fcd->jobinfo[k], PMIX_SET_ENVAR)) {
+
+                } else if (PMIX_CHECK_KEY(&fcd->jobinfo[k], PMIX_ADD_ENVAR)) {
+
+                } else if (PMIX_CHECK_KEY(&fcd->jobinfo[k], PMIX_UNSET_ENVAR)) {
+                } else if (PMIX_CHECK_KEY(&fcd->jobinfo[k], PMIX_PREPEND_ENVAR)) {
+                } else if (PMIX_CHECK_KEY(&fcd->jobinfo[k], PMIX_APPEND_ENVAR)) {
+                }
+            }
         }
 
         /* check for a fork/exec agent we should use */
@@ -208,7 +230,7 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
         for (n=0; n < app->maxprocs; n++) {
             /* create a tracker for this child */
             child = PMIX_NEW(pmix_pfexec_child_t);
-            PMIX_LOAD_PROCID(&child->proc, fcd->nspace, rank);
+            PMIX_LOAD_PROCID(&child->proc, nspace, rank);
             ++rank;
             pmix_list_append(&pmix_pfexec_globals.children, &child->super);
 
@@ -238,24 +260,34 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
             info->gid = pmix_globals.gid;
             pmix_list_append(&nptr->ranks, &info->super);
 
-            /* we only support fork/exec of tools and servers - not
-             * applications. So we don't need to setup anything
-             * special in their environment except for hostname,
-             * nspace/rank, and version so that the child matches
-             * our expectations */
+            /* setup the environment */
             env = pmix_argv_copy(app->env);
-            /* ensure we agree on our hostname - typically only important in
-             * test scenarios where we are faking multiple nodes */
-            pmix_setenv("PMIX_HOSTNAME", pmix_globals.hostname, true, &env);
 
-            /* communicate the assigned nspace/rank - could be a server too */
+            /* we only support the start of tools and servers, not apps,
+             * so we don't register this nspace or child. However, we do
+             * still want to pass along our connection info and active
+             * modules so the forked process can connect back to us */
+
+            /* pass the nspace */
             pmix_setenv("PMIX_NAMESPACE", child->proc.nspace, true, &env);
             pmix_setenv("PMIX_SERVER_NSPACE", child->proc.nspace, true, &env);
-            /* communicate the assigned rank */
-            pmix_asprintf(&tmp, "%u", child->proc.rank);
+
+            /* pass the rank */
+            memset(tmp, 0, 2048);
+            (void)snprintf(tmp, 2047, "%u", child->proc.rank);
             pmix_setenv("PMIX_RANK", tmp, true, &env);
             pmix_setenv("PMIX_SERVER_RANK", tmp, true, &env);
-            free(tmp);
+
+            /* get any PTL contribution such as tmpdir settings for session files */
+            if (PMIX_SUCCESS != (rc = pmix_ptl_base_setup_fork(&child->proc, &env))) {
+                PMIX_ERROR_LOG(rc);
+                pmix_list_remove_item(&pmix_pfexec_globals.children, &child->super);
+                PMIX_RELEASE(child);
+                goto complete;
+            }
+
+            /* ensure we agree on our hostname */
+            pmix_setenv("PMIX_HOSTNAME", pmix_globals.hostname, true, &env);
 
             /* communicate our version */
             pmix_setenv("PMIX_VERSION", PMIX_VERSION, true, &env);
@@ -276,15 +308,17 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
             PMIX_IOF_READ_ACTIVATE(child->stderrev);
         }
     }
+    rc = PMIX_SUCCESS;
 
+  complete:
     /* ensure we reset our working directory back to our default location  */
     if (0 != chdir(basedir)) {
         PMIX_ERROR_LOG(PMIX_ERROR);
     }
 
-  complete:
-    fcd->lock->status = rc;
-    PMIX_WAKEUP_THREAD(fcd->lock);
+    /* execute the callback */
+    fcd->cbfunc(rc, nspace, fcd->cbdata);
+    PMIX_RELEASE(fcd);
     return;
 }
 

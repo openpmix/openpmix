@@ -56,10 +56,11 @@
 #include "src/server/pmix_server_ops.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
+#include "src/util/name_fns.h"
 #include "src/util/os_path.h"
 #include "src/util/show_help.h"
 #include "src/mca/bfrops/base/base.h"
-#include "src/mca/gds/gds.h"
+#include "src/mca/gds/base/base.h"
 
 #include "src/mca/ptl/base/base.h"
 #include "ptl_tcp.h"
@@ -75,6 +76,9 @@ static pmix_status_t send_recv(struct pmix_peer_t *peer,
 static pmix_status_t send_oneway(struct pmix_peer_t *peer,
                                  pmix_buffer_t *bfr,
                                  pmix_ptl_tag_t tag);
+static pmix_status_t check_connection(const pmix_proc_t *proc,
+                                      const pmix_info_t directives[], size_t ndirs,
+                                      pmix_op_cbfunc_t cbfunc, void *cbdata);
 static void query_servers(char *dirname,
                           pmix_list_t *servers);
 
@@ -84,11 +88,14 @@ pmix_ptl_module_t pmix_ptl_tcp_module = {
     .send_recv = send_recv,
     .send = send_oneway,
     .connect_to_peer = connect_to_peer,
+    .check_connection = check_connection,
     .query_servers = query_servers
 };
 
-static pmix_status_t recv_connect_ack(int sd, uint8_t myflag);
-static pmix_status_t send_connect_ack(int sd, uint8_t *myflag, pmix_info_t info[], size_t ninfo);
+static pmix_status_t recv_connect_ack(int sd, uint8_t myflag, pmix_peer_t *peer);
+static pmix_status_t send_connect_ack(int sd, uint8_t *myflag,
+                                      pmix_info_t info[], size_t ninfo,
+                                      pmix_peer_t *peer);
 static void check_server(char *filename,
                          pmix_list_t *servers);
 
@@ -122,7 +129,7 @@ static pmix_status_t parse_uri_file(char *filename,
                                     char **nspace,
                                     pmix_rank_t *rank,
                                     pmix_peer_t *peer);
-static pmix_status_t try_connect(char *uri, int *sd, pmix_info_t info[], size_t ninfo);
+static pmix_status_t try_connect(char *uri, int *sd, pmix_info_t info[], size_t ninfo, pmix_peer_t *peer);
 static pmix_status_t df_search(char *dirname, char *prefix,
                                pmix_info_t info[], size_t ninfo,
                                int *sd, char **nspace,
@@ -207,6 +214,15 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
             if (NULL == pmix_globals.mypeer->nptr->compat.bfrops) {
                 return PMIX_ERR_INIT;
             }
+        } else if (PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
+            /* we are both client and tool - select our bfrops compat module */
+            pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
+            if (NULL == pmix_globals.mypeer->nptr->compat.bfrops) {
+                return PMIX_ERR_INIT;
+            }
+            /* the server will be using the same bfrops as us */
+            peer->nptr->compat.bfrops = pmix_globals.mypeer->nptr->compat.bfrops;
+            goto checktool;
         } else {
             /* not us */
             return PMIX_ERR_NOT_SUPPORTED;
@@ -256,7 +272,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
                             "ptl:tcp:client attempt connect to %s", uri[1]);
 
         /* go ahead and try to connect */
-        if (PMIX_SUCCESS != (rc = try_connect(uri[1], &sd, info, ninfo))) {
+        if (PMIX_SUCCESS != (rc = try_connect(uri[1], &sd, info, ninfo, peer))) {
             free(nspace);
             pmix_argv_free(uri);
             free(suri);
@@ -267,6 +283,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
 
     }
 
+  checktool:
     /* get here if we are a tool - check any provided directives
      * to see where they want us to connect to */
     suri = NULL;
@@ -488,7 +505,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "ptl:tcp:tool attempt connect using given URI %s", suri);
         /* go ahead and try to connect */
-        if (PMIX_SUCCESS != (rc = try_connect(suri, &sd, iptr, niptr))) {
+        if (PMIX_SUCCESS != (rc = try_connect(suri, &sd, iptr, niptr, peer))) {
             goto cleanup;
         }
         /* cleanup */
@@ -505,7 +522,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "ptl:tcp:tool attempt connect to rendezvous server at %s", suri);
             /* go ahead and try to connect */
-            if (PMIX_SUCCESS == try_connect(suri, &sd, iptr, niptr)) {
+            if (PMIX_SUCCESS == try_connect(suri, &sd, iptr, niptr, peer)) {
                 /* don't free nspace - we will use it below */
                 if (NULL != iptr) {
                     PMIX_INFO_FREE(iptr, niptr);
@@ -535,7 +552,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "ptl:tcp:tool attempt connect to system server at %s", suri);
             /* go ahead and try to connect */
-            if (PMIX_SUCCESS == try_connect(suri, &sd, iptr, niptr)) {
+            if (PMIX_SUCCESS == try_connect(suri, &sd, iptr, niptr, peer)) {
                 /* don't free nspace - we will use it below */
                 goto complete;
             }
@@ -741,6 +758,89 @@ static pmix_status_t send_oneway(struct pmix_peer_t *peer,
     q->buf = bfr;
     q->tag = tag;
     PMIX_THREADSHIFT(q, pmix_ptl_base_send);
+    return PMIX_SUCCESS;
+}
+
+static void check_cn(int sd, short args, void *cbdata)
+{
+    pmix_shift_caddy_t *cd = (pmix_shift_caddy_t*)cbdata;
+    pmix_peer_t *peer = NULL, *pr;
+    int n;
+
+    /* search our clients for the peer object - we are in an event, so it
+     * is safe to do so here */
+    for (n=0; n < pmix_server_globals.clients.size; n++) {
+        pr = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, n);
+        if (NULL == pr || NULL == pr->info) {
+            continue;
+        }
+        if (0 != strncmp(cd->pname.nspace, pr->info->pname.nspace, PMIX_MAX_NSLEN)) {
+            continue;
+        }
+        if (cd->pname.rank != pr->info->pname.rank) {
+            continue;
+        }
+        peer = pr;
+        break;
+    }
+    if (NULL != peer) {
+        /* if we have an active socket, then we are connected */
+        if (0 <= peer->sd) {
+            cd->cbfunc.opcbfn(PMIX_SUCCESS, cd->cbdata);
+        } else {
+            cd->cbfunc.opcbfn(PMIX_ERR_UNREACH, cd->cbdata);
+        }
+        PMIX_RELEASE(cd);
+        return;
+    }
+
+    if (!cd->enviro) {
+        /* we are not being requested to wait */
+        cd->cbfunc.opcbfn(PMIX_ERR_UNREACH, cd->cbdata);
+        PMIX_RELEASE(cd);
+        return;
+    }
+
+    if (0 < cd->ncodes) {
+        --cd->ncodes;
+        /* we continue to wait for connection to be completed */
+        PMIX_THREADSHIFT_DELAY(cd, check_cn, 1);
+        return;
+    }
+
+    /* we have timed out */
+    cd->cbfunc.opcbfn(PMIX_ERR_TIMEOUT, cd->cbdata);
+    PMIX_RELEASE(cd);
+    return;
+}
+
+static pmix_status_t check_connection(const pmix_proc_t *proc,
+                                      const pmix_info_t directives[], size_t ndirs,
+                                      pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    pmix_shift_caddy_t *cd;
+    size_t n;
+
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "pmix:tcp: check connection for %s",
+                        PMIX_NAME_PRINT(proc));
+
+    /* need to transfer this to an event for thread safety */
+    cd = PMIX_NEW(pmix_shift_caddy_t);
+    cd->pname.nspace = strdup(proc->nspace);
+    cd->pname.rank = proc->rank;
+    /* check for timeout directive */
+    for (n=0; n < ndirs; n++) {
+        if (PMIX_CHECK_KEY(&directives[n], PMIX_TIMEOUT)) {
+            /* use ncodes to track the time */
+            cd->ncodes = directives[n].value.data.integer;
+        } else if (PMIX_CHECK_KEY(&directives[n], PMIX_WAIT_FOR_CONNECTION)) {
+            cd->enviro = PMIX_INFO_TRUE(&directives[n]);
+        }
+    }
+    cd->cbfunc.opcbfn = cbfunc;
+    cd->cbdata = cbdata;
+    PMIX_THREADSHIFT(cd, check_cn);
     return PMIX_SUCCESS;
 }
 
@@ -963,7 +1063,9 @@ static pmix_status_t parse_uri_file(char *filename,
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t try_connect(char *uri, int *sd, pmix_info_t iptr[], size_t niptr)
+static pmix_status_t try_connect(char *uri, int *sd,
+                                 pmix_info_t iptr[], size_t niptr,
+                                 pmix_peer_t *peer)
 {
     char *p, *p2, *host;
     struct sockaddr_in *in;
@@ -977,7 +1079,10 @@ static pmix_status_t try_connect(char *uri, int *sd, pmix_info_t iptr[], size_t 
                         "pmix:tcp try connect to %s", uri);
 
     /* mark that we are the active module for this server */
-    pmix_client_globals.myserver->nptr->compat.ptl = &pmix_ptl_tcp_module;
+    if (NULL == peer->nptr) {
+        peer->nptr = PMIX_NEW(pmix_namespace_t);
+    }
+    peer->nptr->compat.ptl = &pmix_ptl_tcp_module;
 
     /* setup the path to the daemon rendezvous point */
     memset(&mca_ptl_tcp_component.connection, 0, sizeof(struct sockaddr_storage));
@@ -1055,14 +1160,14 @@ static pmix_status_t try_connect(char *uri, int *sd, pmix_info_t iptr[], size_t 
     }
 
     /* send our identity and any authentication credentials to the server */
-    if (PMIX_SUCCESS != (rc = send_connect_ack(*sd, &myflag, iptr, niptr))) {
+    if (PMIX_SUCCESS != (rc = send_connect_ack(*sd, &myflag, iptr, niptr, peer))) {
         PMIX_ERROR_LOG(rc);
         CLOSE_THE_SOCKET(*sd);
         return rc;
     }
 
     /* do whatever handshake is required */
-    if (PMIX_SUCCESS != (rc = recv_connect_ack(*sd, myflag))) {
+    if (PMIX_SUCCESS != (rc = recv_connect_ack(*sd, myflag, peer))) {
         CLOSE_THE_SOCKET(*sd);
         if (PMIX_ERR_TEMP_UNAVAILABLE == rc) {
             ++retries;
@@ -1076,7 +1181,8 @@ static pmix_status_t try_connect(char *uri, int *sd, pmix_info_t iptr[], size_t 
     return PMIX_SUCCESS;
 }
 static pmix_status_t send_connect_ack(int sd, uint8_t *myflag,
-                                      pmix_info_t iptr[], size_t niptr)
+                                      pmix_info_t iptr[], size_t niptr,
+                                      pmix_peer_t *peer)
 {
     char *msg;
     pmix_ptl_hdr_t hdr;
@@ -1185,7 +1291,7 @@ static pmix_status_t send_connect_ack(int sd, uint8_t *myflag,
     *myflag = flag;
 
     /* add the name of our active sec module - we selected it
-     * in pmix_client.c prior to entering here */
+     * in pmix_client.c or pmix_tool.c prior to entering here */
     sec = pmix_globals.mypeer->nptr->compat.psec->name;
 
     /* add our active bfrops module name */
@@ -1193,8 +1299,20 @@ static pmix_status_t send_connect_ack(int sd, uint8_t *myflag,
     /* and the type of buffer we are using */
     bftype = pmix_globals.mypeer->nptr->compat.type;
 
-    /* add our active gds module for working with the server */
-    gds = (char*)pmix_client_globals.myserver->nptr->compat.gds->name;
+    /* if the peer hasn't been assigned a GDS module yet, do so */
+    if (NULL == peer->nptr->compat.gds) {
+        pmix_info_t ginfo;
+        char *evar;
+        evar = getenv("PMIX_GDS_MODULE");
+        if (NULL != evar) {
+            PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, evar, PMIX_STRING);
+            peer->nptr->compat.gds = pmix_gds_base_assign_module(&ginfo, 1);
+            PMIX_INFO_DESTRUCT(&ginfo);
+        } else {
+            peer->nptr->compat.gds = pmix_gds_base_assign_module(NULL, 0);
+        }
+    }
+    gds = (char*)peer->nptr->compat.gds->name;
 
     /* if we were given info structs to pass to the server, pack them */
     PMIX_CONSTRUCT(&buf, pmix_buffer_t);
@@ -1322,7 +1440,7 @@ static pmix_status_t send_connect_ack(int sd, uint8_t *myflag,
 /* we receive a connection acknowledgement from the server,
  * consisting of nothing more than a status report. If success,
  * then we initiate authentication method */
-static pmix_status_t recv_connect_ack(int sd, uint8_t myflag)
+static pmix_status_t recv_connect_ack(int sd, uint8_t myflag, pmix_peer_t *peer)
 {
     pmix_status_t reply;
     pmix_status_t rc;
@@ -1374,7 +1492,7 @@ static pmix_status_t recv_connect_ack(int sd, uint8_t myflag)
     if (0 == myflag) {
         /* see if they want us to do the handshake */
         if (PMIX_ERR_READY_FOR_HANDSHAKE == reply) {
-            PMIX_PSEC_CLIENT_HANDSHAKE(rc, pmix_client_globals.myserver, sd);
+            PMIX_PSEC_CLIENT_HANDSHAKE(rc, peer, sd);
             if (PMIX_SUCCESS != rc) {
                 return rc;
             }
@@ -1413,35 +1531,35 @@ static pmix_status_t recv_connect_ack(int sd, uint8_t myflag)
         }
 
         /* get the server's nspace and rank so we can send to it */
-        if (NULL == pmix_client_globals.myserver->info) {
-            pmix_client_globals.myserver->info = PMIX_NEW(pmix_rank_info_t);
+        if (NULL == peer->info) {
+            peer->info = PMIX_NEW(pmix_rank_info_t);
         }
-        if (NULL == pmix_client_globals.myserver->nptr) {
-            pmix_client_globals.myserver->nptr = PMIX_NEW(pmix_namespace_t);
+        if (NULL == peer->nptr) {
+            peer->nptr = PMIX_NEW(pmix_namespace_t);
         }
         rc = pmix_ptl_base_recv_blocking(sd, (char*)nspace, PMIX_MAX_NSLEN+1);
         if (PMIX_SUCCESS != rc) {
             return rc;
         }
-        if (NULL != pmix_client_globals.myserver->nptr->nspace) {
-            free(pmix_client_globals.myserver->nptr->nspace);
+        if (NULL != peer->nptr->nspace) {
+            free(peer->nptr->nspace);
         }
-        pmix_client_globals.myserver->nptr->nspace = strdup(nspace);
-        if (NULL != pmix_client_globals.myserver->info->pname.nspace) {
-            free(pmix_client_globals.myserver->info->pname.nspace);
+        peer->nptr->nspace = strdup(nspace);
+        if (NULL != peer->info->pname.nspace) {
+            free(peer->info->pname.nspace);
         }
-        pmix_client_globals.myserver->info->pname.nspace = strdup(nspace);
+        peer->info->pname.nspace = strdup(nspace);
         rc = pmix_ptl_base_recv_blocking(sd, (char*)&u32, sizeof(uint32_t));
         if (PMIX_SUCCESS != rc) {
             return rc;
         }
-        pmix_client_globals.myserver->info->pname.rank = htonl(u32);
+        peer->info->pname.rank = htonl(u32);
 
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "pmix: RECV CONNECT CONFIRMATION FOR TOOL %s:%d FROM SERVER %s:%d",
                             pmix_globals.myid.nspace, pmix_globals.myid.rank,
-                            pmix_client_globals.myserver->info->pname.nspace,
-                            pmix_client_globals.myserver->info->pname.rank);
+                            peer->info->pname.nspace,
+                            peer->info->pname.rank);
 
         /* get the returned status from the security handshake */
         rc = pmix_ptl_base_recv_blocking(sd, (char*)&u32, sizeof(pmix_status_t));
@@ -1459,7 +1577,7 @@ static pmix_status_t recv_connect_ack(int sd, uint8_t myflag)
         if (PMIX_SUCCESS != reply) {
             /* see if they want us to do the handshake */
             if (PMIX_ERR_READY_FOR_HANDSHAKE == reply) {
-                PMIX_PSEC_CLIENT_HANDSHAKE(reply, pmix_client_globals.myserver, sd);
+                PMIX_PSEC_CLIENT_HANDSHAKE(reply, peer, sd);
                 if (PMIX_SUCCESS != reply) {
                     return reply;
                 }
@@ -1479,7 +1597,7 @@ static pmix_status_t recv_connect_ack(int sd, uint8_t myflag)
     int optval;
     optval = 1;
     if (setsockopt(sd, IPPROTO_TCP, TCP_NODELAY, (char *)&optval, sizeof(optval)) < 0) {
-        opal_backtrace_print(stderr, NULL, 1);
+        pmix_backtrace_print(stderr, NULL, 1);
         pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
                             "[%s:%d] setsockopt(TCP_NODELAY) failed: %s (%d)",
                             __FILE__, __LINE__,
@@ -1559,7 +1677,7 @@ static pmix_status_t df_search(char *dirname, char *prefix,
                 /* go ahead and try to connect */
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                     "pmix:tcp: attempting to connect to %s", suri);
-                if (PMIX_SUCCESS == try_connect(suri, sd, info, ninfo)) {
+                if (PMIX_SUCCESS == try_connect(suri, sd, info, ninfo, peer)) {
                     (*nspace) = nsp;
                     *rank = rk;
                     closedir(cur_dirp);

@@ -794,6 +794,15 @@ void pmix_server_purge_events(pmix_peer_t *peer,
         if (NULL == (req = (pmix_iof_req_t*)pmix_pointer_array_get_item(&pmix_globals.iof_requests, i))) {
             continue;
         }
+        /* protect against errors */
+        if (NULL == req->requestor || NULL == req->requestor->info) {
+            pmix_pointer_array_set_item(&pmix_globals.iof_requests, i, NULL);
+            PMIX_RELEASE(req);
+            continue;
+        }
+        if (NULL != peer && NULL == peer->info) {
+            continue;
+        }
         if ((NULL != peer && PMIX_CHECK_PROCID(&req->requestor->info->pname, &peer->info->pname)) ||
             (NULL != proc && PMIX_CHECK_PROCID(&req->requestor->info->pname, proc))) {
             pmix_pointer_array_set_item(&pmix_globals.iof_requests, i, NULL);
@@ -1570,13 +1579,13 @@ PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char *
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
-                        "pmix:server setup_fork for nspace %s rank %d",
+                        "pmix:server setup_fork for nspace %s rank %u",
                         proc->nspace, proc->rank);
 
     /* pass the nspace */
     pmix_setenv("PMIX_NAMESPACE", proc->nspace, true, env);
     /* pass the rank */
-    (void)snprintf(rankstr, 127, "%d", proc->rank);
+    (void)snprintf(rankstr, 127, "%u", proc->rank);
     pmix_setenv("PMIX_RANK", rankstr, true, env);
     /* pass our rendezvous info */
     PMIX_LIST_FOREACH(lt, &pmix_ptl_globals.listeners, pmix_listener_t) {
@@ -1626,8 +1635,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char *
         return rc;
     }
 
-    /* ensure we agree on our hostname - typically only important in
-     * test scenarios where we are faking multiple nodes */
+    /* ensure we agree on our hostname */
     pmix_setenv("PMIX_HOSTNAME", pmix_globals.hostname, true, env);
 
     /* communicate our version */

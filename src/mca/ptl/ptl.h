@@ -127,6 +127,11 @@ typedef pmix_status_t (*pmix_ptl_connect_to_peer_fn_t)(struct pmix_peer_t *peer,
                                                        pmix_info_t info[], size_t ninfo);
 
 
+/* check for peer connection */
+typedef pmix_status_t (*pmix_ptl_check_peer_connection_fn_t)(const pmix_proc_t *proc,
+                                                             const pmix_info_t directives[], size_t ndirs,
+                                                             pmix_op_cbfunc_t cbfunc, void *cbdata);
+
 /* query available servers on the local node */
 typedef void (*pmix_ptl_query_servers_fn_t)(char *dirname, pmix_list_t *servers);
 
@@ -142,6 +147,7 @@ struct pmix_ptl_module_t {
     pmix_ptl_recv_fn_t                  recv;
     pmix_ptl_cancel_fn_t                cancel;
     pmix_ptl_connect_to_peer_fn_t       connect_to_peer;
+    pmix_ptl_check_peer_connection_fn_t check_connection;
     pmix_ptl_query_servers_fn_t         query_servers;
 };
 typedef struct pmix_ptl_module_t pmix_ptl_module_t;
@@ -171,6 +177,9 @@ typedef struct pmix_ptl_module_t pmix_ptl_module_t;
 
 #define PMIX_PTL_CANCEL(r, p, t)                        \
     (r) = (p)->nptr->compat.ptl->cancel((struct pmix_peer_t*)(p), t)
+
+#define PMIX_PTL_CHECK_CONNECTION(r, p, d, nd, cf, cd)         \
+    (r) = pmix_globals.mypeer->nptr->compat.ptl->check_connection((p), (d), (nd), (cf), (cd))
 
 PMIX_EXPORT extern pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t* peer,
                                                                pmix_info_t info[], size_t ninfo);
