@@ -394,6 +394,35 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_SUCCESS;
     }
+
+    /* backward compatibility fix - remove any directive to use
+     * the old usock component so we avoid a warning message */
+    if (NULL != (evar = getenv("PMIX_MCA_ptl"))) {
+        char **snip;
+        int argc;
+        if (0 == strcmp(evar, "usock")) {
+            /* we cannot support a usock-only environment */
+            PMIX_RELEASE_THREAD(&pmix_global_lock);
+            fprintf(stderr, "-------------------------------------------------------------------\n");
+            fprintf(stderr, "PMIx no longer supports the \"usock\" transport for client-server\n");
+            fprintf(stderr, "communication. A directive was detected that only allows that mode.\n");
+            fprintf(stderr, "We cannot continue - please remove that constraint and try again.\n");
+            fprintf(stderr, "-------------------------------------------------------------------\n");
+            return PMIX_ERR_INIT;
+        }
+        /* anything else is okay - just clear the "usock" directive */
+        snip = pmix_argv_split(evar, ',');
+        for (n=0; NULL != snip[n]; n++) {
+            if (0 == strcmp(snip[n], "usock")) {
+                pmix_argv_delete(&argc, &snip, n, 1);
+                evar = pmix_argv_join(snip, ',');
+                pmix_setenv("PMIX_MCA_ptl", evar, true, &environ);
+                break;
+            }
+        }
+        pmix_argv_free(snip);
+    }
+
     PMIX_CONSTRUCT(&myservers, pmix_list_t);
 
     /* parse the input directives */
