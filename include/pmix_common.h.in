@@ -117,19 +117,14 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_APP_WILDCARD  UINT32_MAX
 
 /****  PMIX ENVIRONMENTAL PARAMETERS  ****/
-/* There are a few environmental parameters used by PMIx for
- * various operations. While there is no "definition" of them
- * as values, we do record them here for informational purposes.
- *
- * PMIX_LAUNCHER_PAUSE_FOR_TOOL - if set to non-zero value, instructs
- * launchers (e.g., "prun") to stop prior to spawning the application until
- * a tool can connect with further instructions. This envar will be
- * set by the tool and is _not_ intended for the direct use of users.
- *
- * PMIX_LAUNCHER_RENDEZVOUS_FILE - if set, contains the full pathname
+/* URI of tool waiting for launcher to rendezvous back to it */
+#define PMIX_LAUNCHER_RNDZ_URI "PMIX_LAUNCHER_RNDZ_URI"
+
+/* PMIX_LAUNCHER_RNDZ_FILE - if set, contains the full pathname
  * of a file the launcher is to write that contains its connection info.
  * Works in addition to anything else the launcher may output.
  */
+#define PMIX_LAUNCHER_RNDZ_FILE "PMIX_LAUNCHER_RNDZ_FILE"
 
 /* define a set of "standard" PMIx attributes that can
  * be queried. Implementations (and users) are free to extend as
@@ -370,6 +365,8 @@ typedef uint32_t pmix_rank_t;
                                                                     //        access the published data
 #define PMIX_ACCESS_GRPIDS                  "pmix.agids"            // (pmix_data_array_t*) Array of effective GIDs that are allowed to
                                                                     //        access the published data
+#define PMIX_WAIT_FOR_CONNECTION            "pmix.wait.conn"        // (bool) wait until the specified connection has been made
+
 
 /* attributes used by host server to pass data to/from the server convenience library - the
  * data will then be parsed and provided to the local clients. Not generally accessible by users */
@@ -1463,6 +1460,8 @@ static inline void* pmix_calloc(size_t n, size_t m)
 #define PMIX_CHECK_PROCID(a, b) \
     (PMIX_CHECK_NSPACE((a)->nspace, (b)->nspace) && ((a)->rank == (b)->rank || (PMIX_RANK_WILDCARD == (a)->rank || PMIX_RANK_WILDCARD == (b)->rank)))
 
+#define PMIX_CHECK_RANK(a, b) \
+    ((a) == (b) || (PMIX_RANK_WILDCARD == (a) || PMIX_RANK_WILDCARD == (b)))
 
 /****    PMIX COORD    ****/
 /* define coordinate system views */
