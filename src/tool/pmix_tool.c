@@ -648,6 +648,16 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     /* the server will be using the same */
     pmix_client_globals.myserver->nptr->compat.type = pmix_globals.mypeer->nptr->compat.type;
 
+    /* set the ptl component */
+    pmix_globals.mypeer->nptr->compat.ptl = pmix_ptl_base_assign_module();
+    if (NULL == pmix_globals.mypeer->nptr->compat.ptl) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return rc;
+    }
+    /* the server will be using the same */
+    pmix_client_globals.myserver->nptr->compat.ptl = pmix_globals.mypeer->nptr->compat.ptl;
+
     /* select a GDS module for our own internal use - the user may
      * have passed down a directive for this purpose. If they did, then
      * use it. Otherwise, we want the "hash" module */
