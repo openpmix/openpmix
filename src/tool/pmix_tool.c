@@ -702,8 +702,19 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         pmix_globals.connected = false;
         /* it is an error if we were not given an nspace/rank */
         if (!nspace_given || !rank_given) {
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
-            goto regattr;
+            /* self-assign a namespace and rank for ourselves. Use our hostname:pid
+             * for the nspace, and rank clearly is 0 */
+            snprintf(pmix_globals.myid.nspace, PMIX_MAX_NSLEN-1, "%s:%lu", pmix_globals.hostname, (unsigned long)pmix_globals.pid);
+            pmix_globals.myid.rank = 0;
+            nspace_given = false;
+            rank_given = false;
+            /* also setup the client myserver to point to ourselves */
+            pmix_client_globals.myserver->nptr->nspace = strdup(pmix_globals.myid.nspace);
+            pmix_client_globals.myserver->info = PMIX_NEW(pmix_rank_info_t);
+            pmix_client_globals.myserver->info->pname.nspace = strdup(pmix_globals.myid.nspace);
+            pmix_client_globals.myserver->info->pname.rank = pmix_globals.myid.rank;
+            pmix_client_globals.myserver->info->uid = pmix_globals.uid;
+            pmix_client_globals.myserver->info->gid = pmix_globals.gid;
         }
     } else {
         /* connect to the server */
@@ -745,7 +756,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     }
     pmix_globals.mypeer->info->pname.nspace = strdup(pmix_globals.myid.nspace);
     pmix_globals.mypeer->info->pname.rank = pmix_globals.myid.rank;
-    /* if we are acting as a server, then start listening */
+    /* if we are acting as a server, then setup the global recv */
     if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
         /* setup the wildcard recv for inbound messages from clients */
         rcv = PMIX_NEW(pmix_ptl_posted_recv_t);
@@ -854,7 +865,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
      * job info - we do this as a non-blocking
      * transaction because some systems cannot handle very large
      * blocking operations and error out if we try them. */
-    if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer)) {
+    if (!do_not_connect && PMIX_PEER_IS_CLIENT(pmix_globals.mypeer)) {
          req = PMIX_NEW(pmix_buffer_t);
          PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
                           req, &cmd, 1, PMIX_COMMAND);
@@ -917,7 +928,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
 
     /* if we are acting as a server, then start listening */
     if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
-    /* setup the fork/exec framework */
+        /* setup the fork/exec framework */
         if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pfexec_base_framework, 0)) ) {
             return rc;
         }
@@ -960,7 +971,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         }
     }
 
-  regattr:
     /* register the tool supported attrs */
     rc = pmix_register_tool_attrs();
     return rc;
