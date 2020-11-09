@@ -46,7 +46,7 @@ BEGIN_C_DECLS
  */
 typedef pmix_status_t (*pmix_pfexec_base_module_spawn_job_fn_t)(const pmix_info_t job_info[], size_t ninfo,
                                                                 const pmix_app_t apps[], size_t napps,
-                                                                pmix_nspace_t nspace);
+                                                                pmix_spawn_cbfunc_t cbfunc, void *cbdata);
 
 /**
  * Kill the local process we started
