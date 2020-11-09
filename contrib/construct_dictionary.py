@@ -52,6 +52,10 @@ def harvest_constants(options, path, constants):
                 continue
             if value.startswith("PMIX_HAVE_VISIB"):
                 continue
+            if value.startswith("PMIX_LAUNCHER_RNDZ_FILE"):
+                continue
+            if value.startswith("PMIX_LAUNCHER_RNDZ_URI"):
+                continue
             tokens = value.split()
             if len(tokens) >= 2:
                 if tokens[1][0] == '"':
