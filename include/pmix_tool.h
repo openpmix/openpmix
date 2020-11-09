@@ -140,7 +140,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_attach_to_server(pmix_proc_t *myproc, pmix_p
  *
  * Returns PMIX_SUCCESS or a PMIx error constant
  */
-PMIX_EXPORT pmix_status_t PMIx_tool_disconnect(pmix_proc_t *server);
+PMIX_EXPORT pmix_status_t PMIx_tool_disconnect(const pmix_proc_t *server);
 
 
 /* Get an array containing the pmix_proc_t process identifiers of all
@@ -163,7 +163,8 @@ PMIX_EXPORT pmix_status_t PMIx_tool_get_servers(pmix_proc_t *servers[], size_t *
  *
  * Returns PMIX_SUCCESS or a PMIx error constant
  */
-PMIX_EXPORT pmix_status_t PMIx_tool_set_server(pmix_proc_t *server);
+PMIX_EXPORT pmix_status_t PMIx_tool_set_server(const pmix_proc_t *server,
+                                               pmix_info_t info[], size_t ninfo);
 
 
 /* Define a callback function for delivering forwarded IO to a process

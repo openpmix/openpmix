@@ -68,6 +68,10 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_namelist_t,
                                 pmix_list_item_t,
                                 NULL, NULL);
 
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_proclist_t,
+                                pmix_list_item_t,
+                                NULL, NULL);
+
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_topo_obj_t,
                                 pmix_object_t,
                                 NULL, NULL);
@@ -265,6 +269,7 @@ static void scon(pmix_shift_caddy_t *p)
     PMIX_CONSTRUCT_LOCK(&p->lock);
     p->codes = NULL;
     p->ncodes = 0;
+    p->peer = NULL;
     p->pname.nspace = NULL;
     p->pname.rank = PMIX_RANK_UNDEF;
     p->data = NULL;
@@ -288,6 +293,9 @@ static void scon(pmix_shift_caddy_t *p)
 static void scdes(pmix_shift_caddy_t *p)
 {
     PMIX_DESTRUCT_LOCK(&p->lock);
+    if (NULL != p->peer) {
+        PMIX_RELEASE(p->peer);
+    }
     if (NULL != p->pname.nspace) {
         free(p->pname.nspace);
     }
