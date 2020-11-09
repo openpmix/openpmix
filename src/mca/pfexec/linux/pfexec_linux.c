@@ -128,7 +128,7 @@
  */
 static pmix_status_t spawn_job(const pmix_info_t job_info[], size_t ninfo,
                                const pmix_app_t apps[], size_t napps,
-                               pmix_nspace_t nspace);
+                               pmix_spawn_cbfunc_t cbfunc, void *cbdata);
 static pmix_status_t kill_proc(pmix_proc_t *proc);
 static pmix_status_t signal_proc(pmix_proc_t *proc, int32_t signal);
 
@@ -585,26 +585,13 @@ static int fork_proc(pmix_app_t *app, pmix_pfexec_child_t *child, char **env)
 
 static pmix_status_t spawn_job(const pmix_info_t job_info[], size_t ninfo,
                                const pmix_app_t apps[], size_t napps,
-                               pmix_nspace_t nspace)
+                               pmix_spawn_cbfunc_t cbfunc, void *cbdata)
 {
-    pmix_status_t rc;
-    pmix_lock_t mylock;
-    pmix_pfexec_fork_caddy_t *scd;
-
     pmix_output_verbose(5, pmix_pfexec_base_framework.framework_output,
                         "%s pfexec:linux spawning child job",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
 
-    PMIX_CONSTRUCT_LOCK(&mylock);
-    PMIX_PFEXEC_SPAWN(scd, job_info, ninfo, apps, napps, fork_proc, (void*)&mylock);
-    PMIX_WAIT_THREAD(&mylock);
-    if (PMIX_SUCCESS == mylock.status) {
-        mylock.status = PMIX_OPERATION_SUCCEEDED;
-        PMIX_LOAD_NSPACE(nspace, scd->nspace);
-    }
-    rc = mylock.status;
-    PMIX_DESTRUCT_LOCK(&mylock);
-    PMIX_RELEASE(scd);
+    PMIX_PFEXEC_SPAWN(job_info, ninfo, apps, napps, fork_proc, cbfunc, cbdata);
 
-    return rc;
+    return PMIX_SUCCESS;
 }

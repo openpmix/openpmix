@@ -247,7 +247,6 @@ PMIX_CLASS_INSTANCE(pmix_pfexec_child_t,
 
 static void fccon(pmix_pfexec_fork_caddy_t *p)
 {
-    PMIX_LOAD_NSPACE(p->nspace, NULL);
     p->jobinfo = NULL;
     p->njinfo = 0;
     p->apps = NULL;

@@ -135,7 +135,6 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     bool forkexec = false;
     pmix_kval_t *kv;
     pmix_list_t ilist;
-    pmix_nspace_t nspace;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -228,11 +227,8 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
      * the specified application */
     if (forkexec) {
         rc = pmix_pfexec.spawn_job(job_info, ninfo,
-                                   apps, napps, nspace);
-        cb = (pmix_cb_t*)cbdata;
-        if (PMIX_OPERATION_SUCCEEDED == rc) {
-            cb->pname.nspace = strdup(nspace);
-        }
+                                   apps, napps,
+                                   cbfunc, cbdata);
         return rc;
     }
 
