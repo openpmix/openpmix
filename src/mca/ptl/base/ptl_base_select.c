@@ -37,16 +37,16 @@ int pmix_ptl_base_select(void)
 {
     pmix_mca_base_component_list_item_t *cli = NULL;
     pmix_ptl_base_component_t *component = NULL;
-    pmix_ptl_base_active_t *newactive, *active;
     pmix_mca_base_module_t *mod;
-    int pri;
-    bool inserted;
+    pmix_ptl_module_t *pmod;
+    int rc, pri, best_pri = -1;;
+    bool inserted = false;
 
-    if (pmix_ptl_globals.selected) {
+    if (pmix_ptl_base.selected) {
         /* ensure we don't do this twice */
         return PMIX_SUCCESS;
     }
-    pmix_ptl_globals.selected = true;
+    pmix_ptl_base.selected = true;
 
     /* Query all available components and ask if they have a module */
     PMIX_LIST_FOREACH(cli, &pmix_ptl_base_framework.framework_components, pmix_mca_base_component_list_item_t) {
@@ -57,46 +57,39 @@ int pmix_ptl_base_select(void)
                             component->base.pmix_mca_component_name);
 
         /* get the module for this component */
-        if (PMIX_SUCCESS != component->base.pmix_mca_query_component(&mod, &pri)) {
+        rc =component->base.pmix_mca_query_component(&mod, &pri);
+        if (PMIX_SUCCESS != rc || NULL == mod) {
             continue;
         }
 
-        /* add to our prioritized list of available actives */
-        newactive = PMIX_NEW(pmix_ptl_base_active_t);
-        newactive->pri = component->priority;
-        newactive->component = component;
-        newactive->module = (pmix_ptl_module_t*)mod;
+        /* If we got a module, try to initialize it */
+        pmod = (pmix_ptl_module_t*)mod;
+        if (NULL != pmod->init && PMIX_SUCCESS != pmod->init()) {
+            continue;
+        }
 
-        /* maintain priority order */
-        inserted = false;
-        PMIX_LIST_FOREACH(active, &pmix_ptl_globals.actives, pmix_ptl_base_active_t) {
-            if (newactive->pri > active->pri) {
-                pmix_list_insert_pos(&pmix_ptl_globals.actives,
-                                     &active->super, &newactive->super);
-                inserted = true;
-                break;
+        /* keep only the highest priority module */
+        if (best_pri < pri) {
+            best_pri = pri;
+            /* give any prior module a chance to finalize */
+            if (NULL != pmix_ptl.finalize) {
+                pmix_ptl.finalize();
             }
+            pmix_ptl = *pmod;
+            inserted = true;
         }
-        if (!inserted) {
-            /* must be lowest priority - add to end */
-            pmix_list_append(&pmix_ptl_globals.actives, &newactive->super);
-        }
+
     }
 
     /* if no modules were found, then that's an error as we require at least one */
-    if (0 == pmix_list_get_size(&pmix_ptl_globals.actives)) {
+    if (!inserted) {
         pmix_show_help("help-pmix-runtime.txt", "no-plugins", true, "PTL");
         return PMIX_ERR_SILENT;
     }
 
-    if (4 < pmix_output_get_verbosity(pmix_ptl_base_framework.framework_output)) {
-        pmix_output(0, "Final PTL priorities");
-        /* show the prioritized list */
-        PMIX_LIST_FOREACH(active, &pmix_ptl_globals.actives, pmix_ptl_base_active_t) {
-            pmix_output(0, "\tPTL: %s Priority: %d",
-                        active->component->base.pmix_mca_component_name, active->pri);
-        }
-    }
+    pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
+                        "mca:ptl:select: using component %s",
+                        pmix_ptl.name);
 
     return PMIX_SUCCESS;;
 }

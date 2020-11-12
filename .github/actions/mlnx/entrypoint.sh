@@ -258,7 +258,7 @@ if [ "$jenkins_test_build" = "yes" ]; then
     $autogen_script && touch .autogen_done
     echo ./configure --prefix=$pmix_dir $configure_args | bash -xeE
     make $make_opt install
-    make $make_opt check || exit 12
+    make $make_opt check || (cat test/test-suite.log && exit 12)
 fi
 
 cd $WORKSPACE

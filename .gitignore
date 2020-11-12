@@ -171,6 +171,7 @@ test/simple/pmitest
 test/simple/simpcycle
 test/simple/simpfabric
 test/simple/get_put_example
+test/simple/simpvni
 
 test/sshot/daemon
 test/sshot/generate

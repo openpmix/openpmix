@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2015-2018 Mellanox Technologies, Inc.
@@ -206,11 +206,7 @@ void errhandler(size_t evhdlr_registration_id,
                 void *cbdata)
 {
     TEST_ERROR((" PMIX server event handler for %s:%d with status = %d", source->nspace, source->rank, status));
-    /* notify clients of error */
-    PMIx_Notify_event(status, source,
-                      PMIX_RANGE_NAMESPACE,
-                      NULL, 0,
-                      op_callbk, NULL);
+    cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
 }
 
 void op_callbk(pmix_status_t status,

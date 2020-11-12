@@ -372,10 +372,6 @@ int pmix_rte_init(uint32_t type,
     }
 
     /* open the ptl and select the active plugins */
-    if (NULL != (evar = getenv("PMIX_PTL_MODULE"))) {
-        /* convert to an MCA param, but don't overwrite something already there */
-        pmix_setenv("PMIX_MCA_ptl", evar, false, &environ);
-    }
     if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_ptl_base_framework, 0)) ) {
         error = "pmix_ptl_base_open";
         goto return_error;
