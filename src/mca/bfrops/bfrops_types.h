@@ -45,6 +45,19 @@ typedef enum {
     PMIX_VALUE2_GREATER
 } pmix_value_cmp_t;
 
+/* set the bfrops module */
+#define PMIX_BFROPS_SET_MODULE(r, mp, p, v)                                 \
+    do {                                                                    \
+        (mp)->nptr->compat.bfrops = pmix_bfrops_base_assign_module((v));    \
+        if (NULL == (mp)->nptr->compat.bfrops) {                            \
+            (r) = PMIX_ERR_INIT;                                            \
+        } else {                                                            \
+            (p)->nptr->compat.bfrops = (mp)->nptr->compat.bfrops;           \
+            (mp)->protocol = PMIX_PROTOCOL_V2;                              \
+            (r) = PMIX_SUCCESS;                                             \
+        }                                                                   \
+    } while(0)
+
 /**
  * buffer type
  */

@@ -81,7 +81,6 @@ pmix_server_globals_t pmix_server_globals = {{{0}}};
 
 // local variables
 static char *security_mode = NULL;
-static char *ptl_mode = NULL;
 static char *bfrops_mode = NULL;
 static char *gds_mode = NULL;
 static pid_t mypid;
@@ -158,9 +157,6 @@ pmix_status_t pmix_server_initialize(void)
     /* get our available security modules */
     security_mode = pmix_psec_base_get_available_modules();
 
-    /* get our available ptl modules */
-    ptl_mode = pmix_ptl_base_get_available_modules();
-
     /* get our available bfrop modules */
     bfrops_mode = pmix_bfrops_base_get_available_modules();
 
@@ -198,8 +194,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     /* backward compatibility fix - remove any directive to use
      * the old usock component so we avoid a warning message */
     if (NULL != (evar = getenv("PMIX_MCA_ptl"))) {
-        char **snip;
-        int argc;
         if (0 == strcmp(evar, "usock")) {
             /* we cannot support a usock-only environment */
             PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -210,17 +204,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
             fprintf(stderr, "-------------------------------------------------------------------\n");
             return PMIX_ERR_INIT;
         }
-        /* anything else is okay - just clear the "usock" directive */
-        snip = pmix_argv_split(evar, ',');
-        for (n=0; NULL != snip[n]; n++) {
-            if (0 == strcmp(snip[n], "usock")) {
-                pmix_argv_delete(&argc, &snip, n, 1);
-                evar = pmix_argv_join(snip, ',');
-                pmix_setenv("PMIX_MCA_ptl", evar, true, &environ);
-                break;
-            }
-        }
-        pmix_argv_free(snip);
+        /* anything else should just be cleared */
+        pmix_unsetenv("PMIX_MCA_ptl", &environ);
     }
 
     PMIX_SET_PROC_TYPE(&ptype, PMIX_PROC_SERVER);
@@ -545,10 +530,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
 
     if (NULL != security_mode) {
         free(security_mode);
-    }
-
-    if (NULL != ptl_mode) {
-        free(ptl_mode);
     }
 
     if (NULL != bfrops_mode) {
@@ -1628,8 +1609,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char *
     }
     /* pass our active security modules */
     pmix_setenv("PMIX_SECURITY_MODE", security_mode, true, env);
-    /* pass our available ptl modules */
-    pmix_setenv("PMIX_PTL_MODULE", ptl_mode, true, env);
     /* pass the type of buffer we are using */
     if (PMIX_BFROP_BUFFER_FULLY_DESC == pmix_globals.mypeer->nptr->compat.type) {
         pmix_setenv("PMIX_BFROP_BUFFER_TYPE", "PMIX_BFROP_BUFFER_FULLY_DESC", true, env);

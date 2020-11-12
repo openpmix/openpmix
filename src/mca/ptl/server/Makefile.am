@@ -12,7 +12,6 @@
 #                         All rights reserved.
 # Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
-# Copyright (c) 2016      Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -20,19 +19,35 @@
 # $HEADER$
 #
 
-# This makefile.include does not stand on its own - it is included from
-# src/Makefile.am
+headers = ptl_server.h
+sources = \
+        ptl_server_component.c \
+        ptl_server.c
 
-dist_pmixdata_DATA = base/help-ptl-base.txt
+# Make the output library in this directory, and name it either
+# mca_<type>_<name>.la (for DSO builds) or libmca_<type>_<name>.la
+# (for static builds).
 
-headers += \
-         base/base.h
+if MCA_BUILD_pmix_ptl_server_DSO
+lib =
+lib_sources =
+component = mca_ptl_server.la
+component_sources = $(headers) $(sources)
+else
+lib = libmca_ptl_server.la
+lib_sources = $(headers) $(sources)
+component =
+component_sources =
+endif
 
-sources += \
-        base/ptl_base_frame.c \
-        base/ptl_base_select.c \
-        base/ptl_base_sendrecv.c \
-        base/ptl_base_listener.c \
-        base/ptl_base_stubs.c \
-        base/ptl_base_connect.c \
-        base/ptl_base_fns.c
+mcacomponentdir = $(pmixlibdir)
+mcacomponent_LTLIBRARIES = $(component)
+mca_ptl_server_la_SOURCES = $(component_sources)
+mca_ptl_server_la_LDFLAGS = -module -avoid-version
+if NEED_LIBPMIX
+mca_ptl_server_la_LIBADD = $(top_builddir)/src/libpmix.la
+endif
+
+noinst_LTLIBRARIES = $(lib)
+libmca_ptl_server_la_SOURCES = $(lib_sources)
+libmca_ptl_server_la_LDFLAGS = -module -avoid-version

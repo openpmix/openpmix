@@ -559,8 +559,6 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     /* backward compatibility fix - remove any directive to use
      * the old usock component so we avoid a warning message */
     if (NULL != (evar = getenv("PMIX_MCA_ptl"))) {
-        char **snip;
-        int argc;
         if (0 == strcmp(evar, "usock")) {
             /* we cannot support a usock-only environment */
             PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -571,17 +569,8 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
             fprintf(stderr, "-------------------------------------------------------------------\n");
             return PMIX_ERR_INIT;
         }
-        /* anything else is okay - just clear the "usock" directive */
-        snip = pmix_argv_split(evar, ',');
-        for (n=0; NULL != snip[n]; n++) {
-            if (0 == strcmp(snip[n], "usock")) {
-                pmix_argv_delete(&argc, &snip, n, 1);
-                evar = pmix_argv_join(snip, ',');
-                pmix_setenv("PMIX_MCA_ptl", evar, true, &environ);
-                break;
-            }
-        }
-        pmix_argv_free(snip);
+        /* anything else should just be cleared */
+        pmix_unsetenv("PMIX_MCA_ptl", &environ);
     }
 
     /* setup the runtime - this init's the globals,

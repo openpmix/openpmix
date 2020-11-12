@@ -184,7 +184,7 @@ pmix_status_t pmix_ptl_base_recv_blocking(int sd, char *data, size_t size)
 pmix_status_t pmix_ptl_base_connect(struct sockaddr_storage *addr,
                                     pmix_socklen_t addrlen, int *fd)
 {
-    int sd = -1;
+    int sd = -1, sd2;
     int retries = 0;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
@@ -208,7 +208,11 @@ pmix_status_t pmix_ptl_base_connect(struct sockaddr_storage *addr,
                 /* The server may be too busy to accept new connections */
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                     "timeout connecting to server");
+                /* get a different socket, but do that BEFORE we release the current
+                 * one so we don't just get the same socket handed back to us */
+                sd2 = socket(addr->ss_family, SOCK_STREAM, 0);
                 CLOSE_THE_SOCKET(sd);
+                sd = sd2;
                 continue;
             }
 
@@ -220,13 +224,21 @@ pmix_status_t pmix_ptl_base_connect(struct sockaddr_storage *addr,
             if (ECONNABORTED == pmix_socket_errno) {
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                     "connection to server aborted by OS - retrying");
+                /* get a different socket, but do that BEFORE we release the current
+                 * one so we don't just get the same socket handed back to us */
+                sd2 = socket(addr->ss_family, SOCK_STREAM, 0);
                 CLOSE_THE_SOCKET(sd);
+                sd = sd2;
                 continue;
             } else {
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                     "Connect failed: %s (%d)", strerror(pmix_socket_errno),
                                     pmix_socket_errno);
+                /* get a different socket, but do that BEFORE we release the current
+                 * one so we don't just get the same socket handed back to us */
+                sd2 = socket(addr->ss_family, SOCK_STREAM, 0);
                 CLOSE_THE_SOCKET(sd);
+                sd = sd2;
                 continue;
             }
         } else {

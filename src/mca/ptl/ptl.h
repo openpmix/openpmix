@@ -95,21 +95,6 @@ typedef pmix_status_t (*pmix_ptl_init_fn_t)(void);
 /* finalize an active plugin */
 typedef void (*pmix_ptl_finalize_fn_t)(void);
 
-/* (TWO-WAY) send a message to the peer, and get a response delivered
- * to the specified callback function. The buffer will be free'd
- * at the completion of the send, and the cbfunc will be called
- * when the corresponding reply is received */
-typedef pmix_status_t (*pmix_ptl_send_recv_fn_t)(struct pmix_peer_t *peer,
-                                                 pmix_buffer_t *bfr,
-                                                 pmix_ptl_cbfunc_t cbfunc,
-                                                 void *cbdata);
-
-/* (ONE-WAY) send a message to the peer. The buffer will be free'd
- * at the completion of the send */
-typedef pmix_status_t (*pmix_ptl_send_fn_t)(struct pmix_peer_t *peer,
-                                            pmix_buffer_t *bfr,
-                                            pmix_ptl_tag_t tag);
-
 /* (ONE-WAY) register a persistent recv */
 typedef pmix_status_t (*pmix_ptl_recv_fn_t)(struct pmix_peer_t *peer,
                                             pmix_ptl_cbfunc_t cbfunc,
@@ -135,10 +120,9 @@ typedef void (*pmix_ptl_query_servers_fn_t)(char *dirname, pmix_list_t *servers)
  * Base structure for a PTL module
  */
 struct pmix_ptl_module_t {
+    char *name;
     pmix_ptl_init_fn_t                  init;
     pmix_ptl_finalize_fn_t              finalize;
-    pmix_ptl_send_recv_fn_t             send_recv;
-    pmix_ptl_send_fn_t                  send;
     pmix_ptl_recv_fn_t                  recv;
     pmix_ptl_cancel_fn_t                cancel;
     pmix_ptl_connect_to_peer_fn_t       connect_to_peer;
@@ -148,22 +132,46 @@ typedef struct pmix_ptl_module_t pmix_ptl_module_t;
 
 
 /*****    MACROS FOR EXECUTING PTL FUNCTIONS    *****/
-#define PMIX_PTL_SEND_RECV(r, p, b, c, d)                                               \
-    do {                                                                                \
-        if ((p)->finalized) {                                                           \
-            (r) = PMIX_ERR_UNREACH;                                                     \
-        } else {                                                                        \
-            (r) = (p)->nptr->compat.ptl->send_recv((struct pmix_peer_t*)(p), b, c, d);  \
+
+/* (TWO-WAY) send a message to the peer, and get a response delivered
+ * to the specified callback function. The buffer will be free'd
+ * at the completion of the send, and the cbfunc will be called
+ * when the corresponding reply is received */
+#define PMIX_PTL_SEND_RECV(r, p, b, c, d)                       \
+    do {                                                        \
+        pmix_ptl_sr_t *ms;                                      \
+        pmix_peer_t *pr = (pmix_peer_t*)(p);                    \
+        if ((p)->finalized) {                                   \
+            (r) = PMIX_ERR_UNREACH;                             \
+        } else {                                                \
+                ms = PMIX_NEW(pmix_ptl_sr_t);                   \
+                PMIX_RETAIN(pr);                                \
+                ms->peer = pr;                                  \
+                ms->bfr = (b);                                  \
+                ms->cbfunc = (c);                               \
+                ms->cbdata = (d);                               \
+                PMIX_THREADSHIFT(ms, pmix_ptl_base_send_recv);  \
+                (r) = PMIX_SUCCESS;                             \
         }                                                                               \
     } while(0)
 
-#define PMIX_PTL_SEND_ONEWAY(r, p, b, t)                                        \
-    do {                                                                        \
-        if ((p)->finalized) {                                                   \
-            (r) = PMIX_ERR_UNREACH;                                             \
-        } else {                                                                \
-            (r) = (p)->nptr->compat.ptl->send((struct pmix_peer_t*)(p), b, t);  \
-        }                                                                       \
+/* (ONE-WAY) send a message to the peer. The buffer will be free'd
+ * at the completion of the send */
+#define PMIX_PTL_SEND_ONEWAY(r, p, b, t)                \
+    do {                                                \
+        pmix_ptl_queue_t *q;                            \
+        pmix_peer_t *pr = (pmix_peer_t*)(p);            \
+        if ((p)->finalized) {                           \
+            (r) = PMIX_ERR_UNREACH;                     \
+        } else {                                        \
+            q = PMIX_NEW(pmix_ptl_queue_t);             \
+            PMIX_RETAIN(pr);                            \
+            q->peer = pr;                               \
+            q->buf = (b);                               \
+            q->tag = (t);                               \
+            PMIX_THREADSHIFT(q, pmix_ptl_base_send);    \
+            (r) = PMIX_SUCCESS;                         \
+        }                                               \
     } while(0)
 
 #define PMIX_PTL_RECV(r, p, c, t)      \
@@ -175,6 +183,8 @@ typedef struct pmix_ptl_module_t pmix_ptl_module_t;
 PMIX_EXPORT extern pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t* peer,
                                                                pmix_info_t info[], size_t ninfo);
 
+PMIX_EXPORT extern void pmix_ptl_base_send(int sd, short args, void *cbdata);
+PMIX_EXPORT extern void pmix_ptl_base_send_recv(int sd, short args, void *cbdata);
 
 /****    COMPONENT STRUCTURE DEFINITION    ****/
 

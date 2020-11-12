@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2016-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -18,8 +18,8 @@
  * $HEADER$
  */
 
-#ifndef PMIX_PTL_TCP_H
-#define PMIX_PTL_TCP_H
+#ifndef PMIX_PTL_TOOL_H
+#define PMIX_PTL_TOOL_H
 
 #ifdef HAVE_NETINET_IN_H
 #include <netinet/in.h>
@@ -57,12 +57,12 @@ typedef struct {
     bool remote_connections;
     int handshake_wait_time;
     int handshake_max_retries;
-} pmix_ptl_tcp_component_t;
+} pmix_ptl_tool_component_t;
 
-extern pmix_ptl_tcp_component_t mca_ptl_tcp_component;
+extern pmix_ptl_tool_component_t mca_ptl_tool_component;
 
-extern pmix_ptl_module_t pmix_ptl_tcp_module;
+extern pmix_ptl_module_t pmix_ptl_tool_module;
 
 END_C_DECLS
 
-#endif /* PMIX_PTL_TCP_H */
+#endif /* PMIX_PTL_TOOL_H */
