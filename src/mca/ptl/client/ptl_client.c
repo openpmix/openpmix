@@ -72,9 +72,6 @@ pmix_ptl_module_t pmix_ptl_client_module = {
     .connect_to_peer = connect_to_peer
 };
 
-static pmix_status_t recv_connect_ack(pmix_peer_t *peer, uint8_t myflag);
-static pmix_status_t send_connect_ack(pmix_peer_t *peer, uint8_t *myflag);
-
 static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
                                      pmix_info_t *info, size_t ninfo)
 {
@@ -84,10 +81,6 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
     char **server_nspace = NULL, *rendfile = NULL;
     pmix_status_t rc;
     pmix_peer_t *peer = (pmix_peer_t*)pr;
-    struct sockaddr_storage myconnection;
-    size_t len;
-    uint8_t myflag;
-    int retries = 0;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:tcp: connecting to server");
@@ -166,40 +159,8 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:tcp:client attempt connect to %s:%u at %s", nspace, rank, suri);
 
-    /* setup the connection */
-    if (PMIX_SUCCESS != (rc = pmix_ptl_base_setup_connection(suri, &myconnection, &len))) {
-        free(nspace);
-        free(suri);
-        return rc;
-    }
-
-  retry:
-    /* try to connect */
-    if (PMIX_SUCCESS != (rc = pmix_ptl_base_connect(&myconnection, len, &peer->sd))) {
-        /* do not error log - might just be a stale connection point */
-        free(nspace);
-        free(suri);
-        return rc;
-    }
-
-    /* send our identity and any authentication credentials to the server */
-    if (PMIX_SUCCESS != (rc = send_connect_ack(peer, &myflag))) {
-        PMIX_ERROR_LOG(rc);
-        CLOSE_THE_SOCKET(peer->sd);
-        free(nspace);
-        free(suri);
-        return rc;
-    }
-
-    /* do whatever handshake is required */
-    if (PMIX_SUCCESS != (rc = recv_connect_ack(peer, myflag))) {
-        CLOSE_THE_SOCKET(peer->sd);
-        if (PMIX_ERR_TEMP_UNAVAILABLE == rc) {
-            ++retries;
-            if( retries < pmix_ptl_globals.handshake_max_retries ) {
-                goto retry;
-            }
-        }
+    rc = pmix_ptl_base_make_connection(peer, suri, NULL, 0);
+    if (PMIX_SUCCESS != rc) {
         free(nspace);
         free(suri);
         return rc;
@@ -228,90 +189,4 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
         free(server_nspace);
     }
     return rc;
-}
-
-static pmix_status_t send_connect_ack(pmix_peer_t *peer, uint8_t *myflag)
-{
-    char *msg;
-    size_t sdsize=0;
-    pmix_status_t rc;
-    uint8_t flag;
-
-    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "pmix:tcp SEND CONNECT ACK");
-
-    /* allow space for a marker indicating client vs tool */
-    sdsize = 1;
-
-    /* set our ID flag and compute the required handshake size */
-    flag = pmix_ptl_base_set_flag(&sdsize);
-    *myflag = flag;
-
-    /* construct the contact message */
-    rc = pmix_ptl_base_construct_message(peer, flag,
-                                         &msg, &sdsize, NULL, 0);
-    if (PMIX_SUCCESS != rc) {
-        return rc;
-    }
-
-    /* send the entire message across */
-    if (PMIX_SUCCESS != pmix_ptl_base_send_blocking(peer->sd, msg, sdsize)) {
-        free(msg);
-        return PMIX_ERR_UNREACH;
-    }
-    free(msg);
-
-    return PMIX_SUCCESS;
-}
-
-/* we receive a connection acknowledgment from the server,
- * consisting of nothing more than a status report. If success,
- * then we initiate authentication method */
-static pmix_status_t recv_connect_ack(pmix_peer_t *peer, uint8_t myflag)
-{
-    pmix_status_t reply;
-    pmix_status_t rc;
-    struct timeval save;
-    pmix_socklen_t sz;
-    bool sockopt = true;
-    uint32_t u32;
-
-    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "pmix: RECV CONNECT ACK FROM SERVER");
-
-    /* set the socket timeout so we don't hang on blocking recv */
-    rc = pmix_ptl_base_set_timeout(peer, &save, &sz, &sockopt);
-    if (PMIX_SUCCESS != rc) {
-        return rc;
-    }
-
-    /* receive the status reply */
-    rc = pmix_ptl_base_recv_blocking(peer->sd, (char*)&u32, sizeof(uint32_t));
-    if (PMIX_SUCCESS != rc) {
-        if (sockopt) {
-            /* return the socket to normal */
-            if (0 != setsockopt(peer->sd, SOL_SOCKET, SO_RCVTIMEO, &save, sz)) {
-                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                    "pmix: could not reset setsockopt SO_RCVTIMEO");
-            }
-        }
-        return rc;
-    }
-    reply = ntohl(u32);
-
-    if (0 == myflag) {
-        rc = pmix_ptl_base_client_handshake(peer, reply);
-    } else {  // we are a tool
-        rc = pmix_ptl_base_tool_handshake(peer, reply);
-    }
-
-    if (sockopt) {
-        /* return the socket to normal */
-        if (0 != setsockopt(peer->sd, SOL_SOCKET, SO_RCVTIMEO, &save, sz)) {
-            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                "pmix: could not reset setsockopt SO_RCVTIMEO");
-        }
-    }
-
-    return PMIX_SUCCESS;
 }

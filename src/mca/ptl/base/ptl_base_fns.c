@@ -187,6 +187,81 @@ pmix_status_t pmix_ptl_base_parse_uri_file(char *filename,
     return rc;
 }
 
+pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix,
+                                      pmix_info_t info[], size_t ninfo,
+                                      int *sd, char **nspace,
+                                      pmix_rank_t *rank, char **uri,
+                                      pmix_peer_t *peer)
+{
+    char *suri, *nsp, *newdir;
+    pmix_rank_t rk;
+    pmix_status_t rc;
+    struct stat buf;
+    DIR *cur_dirp;
+    struct dirent *dir_entry;
+
+    if (NULL == (cur_dirp = opendir(dirname))) {
+        return PMIX_ERR_NOT_FOUND;
+    }
+
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "pmix:ptl: searching directory %s", dirname);
+
+    /* search the entries for something that starts with the provided prefix */
+    while (NULL != (dir_entry = readdir(cur_dirp))) {
+        /* ignore the . and .. entries */
+        if (0 == strcmp(dir_entry->d_name, ".") ||
+            0 == strcmp(dir_entry->d_name, "..")) {
+            continue;
+        }
+        newdir = pmix_os_path(false, dirname, dir_entry->d_name, NULL);
+        /* coverity[toctou] */
+        if (-1 == stat(newdir, &buf)) {
+            free(newdir);
+            continue;
+        }
+        /* if it is a directory, down search */
+        if (S_ISDIR(buf.st_mode)) {
+            rc = pmix_ptl_base_df_search(newdir, prefix, info, ninfo,
+                                         sd, nspace, rank, uri, peer);
+            free(newdir);
+            if (PMIX_SUCCESS == rc) {
+                closedir(cur_dirp);
+                return rc;
+            }
+            continue;
+        }
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "pmix:tool: checking %s vs %s", dir_entry->d_name, prefix);
+        /* see if it starts with our prefix */
+        if (0 == strncmp(dir_entry->d_name, prefix, strlen(prefix))) {
+            /* try to read this file */
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "pmix:tool: reading file %s", newdir);
+            rc = pmix_ptl_base_parse_uri_file(newdir, &suri, &nsp, &rk, peer);
+            if (PMIX_SUCCESS == rc) {
+                /* go ahead and try to connect */
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "pmix:tool: attempting to connect to %s", suri);
+                rc = pmix_ptl_base_make_connection(peer, suri, info, ninfo);
+                if (PMIX_SUCCESS == rc) {
+                    (*nspace) = nsp;
+                    *rank = rk;
+                    closedir(cur_dirp);
+                    *uri = suri;
+                    free(newdir);
+                    return PMIX_SUCCESS;
+                }
+                free(suri);
+                free(nsp);
+            }
+        }
+        free(newdir);
+    }
+    closedir(cur_dirp);
+    return PMIX_ERR_NOT_FOUND;
+}
+
 pmix_status_t pmix_ptl_base_setup_connection(char *uri,
                                              struct sockaddr_storage *connection,
                                              size_t *len)
@@ -265,6 +340,134 @@ pmix_status_t pmix_ptl_base_setup_connection(char *uri,
     }
     if (NULL != p) {
         free(p);
+    }
+
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t send_connect_ack(pmix_peer_t *peer,
+                                      pmix_info_t iptr[],
+                                      size_t niptr)
+{
+    char *msg;
+    size_t sdsize=0;
+    pmix_status_t rc;
+    uint8_t flag;
+
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "pmix:ptl SEND CONNECT ACK");
+
+    /* allow space for a marker indicating client vs tool */
+    sdsize = 1;
+
+    /* set our ID flag and compute the required handshake size */
+    flag = pmix_ptl_base_set_flag(&sdsize);
+
+    /* construct the contact message */
+    rc = pmix_ptl_base_construct_message(peer, flag,
+                                         &msg, &sdsize, iptr, niptr);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+
+    /* send the entire message across */
+    if (PMIX_SUCCESS != pmix_ptl_base_send_blocking(peer->sd, msg, sdsize)) {
+        free(msg);
+        return PMIX_ERR_UNREACH;
+    }
+    free(msg);
+    return PMIX_SUCCESS;
+}
+
+/* we receive a connection acknowledgment from the server,
+ * consisting of nothing more than a status report. If success,
+ * then we initiate authentication method */
+static pmix_status_t recv_connect_ack(pmix_peer_t *peer)
+{
+    pmix_status_t reply;
+    pmix_status_t rc;
+    struct timeval save;
+    pmix_socklen_t sz;
+    bool sockopt = true;
+    uint32_t u32;
+
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "pmix: RECV CONNECT ACK FROM SERVER");
+
+    /* set the socket timeout so we don't hang on blocking recv */
+    rc = pmix_ptl_base_set_timeout(peer, &save, &sz, &sockopt);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+
+    /* receive the status reply */
+    rc = pmix_ptl_base_recv_blocking(peer->sd, (char*)&u32, sizeof(uint32_t));
+    if (PMIX_SUCCESS != rc) {
+        if (sockopt) {
+            /* return the socket to normal */
+            if (0 != setsockopt(peer->sd, SOL_SOCKET, SO_RCVTIMEO, &save, sz)) {
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "pmix: could not reset setsockopt SO_RCVTIMEO");
+            }
+        }
+        return rc;
+    }
+    reply = ntohl(u32);
+
+    if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer)) {
+        rc = pmix_ptl_base_client_handshake(peer, reply);
+    } else {  // we are a tool
+        rc = pmix_ptl_base_tool_handshake(peer, reply);
+    }
+
+    if (sockopt) {
+        /* return the socket to normal */
+        if (0 != setsockopt(peer->sd, SOL_SOCKET, SO_RCVTIMEO, &save, sz)) {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "pmix: could not reset setsockopt SO_RCVTIMEO");
+        }
+    }
+
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_ptl_base_make_connection(pmix_peer_t *peer, char *suri,
+                                            pmix_info_t *iptr, size_t niptr)
+{
+    struct sockaddr_storage myconnection;
+    pmix_status_t rc;
+    size_t len;
+    int retries = 0;
+
+    /* setup the connection */
+    if (PMIX_SUCCESS != (rc = pmix_ptl_base_setup_connection(suri, &myconnection, &len))) {
+        return rc;
+    }
+
+  retry:
+    /* try to connect */
+    if (PMIX_SUCCESS != (rc = pmix_ptl_base_connect(&myconnection, len, &peer->sd))) {
+        /* do not error log - might just be a stale connection point */
+        return rc;
+    }
+
+    /* send our identity and any authentication credentials to the server */
+    if (PMIX_SUCCESS != (rc = send_connect_ack(peer, iptr, niptr))) {
+        PMIX_ERROR_LOG(rc);
+        CLOSE_THE_SOCKET(peer->sd);
+        return rc;
+    }
+
+    /* do whatever handshake is required */
+    if (PMIX_SUCCESS != (rc = recv_connect_ack(peer))) {
+        CLOSE_THE_SOCKET(peer->sd);
+        if (PMIX_ERR_TEMP_UNAVAILABLE == rc) {
+            ++retries;
+            if( retries < pmix_ptl_globals.handshake_max_retries ) {
+                goto retry;
+            }
+        }
+        return rc;
     }
 
     return PMIX_SUCCESS;
