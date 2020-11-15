@@ -663,6 +663,7 @@ pmix_status_t pmix_ptl_base_construct_message(pmix_peer_t *peer, uint8_t flag,
                 + strlen(bfrops) + 1 + sizeof(bftype) \
                 + strlen(gds) + 1 + sizeof(uint32_t) + cred.size \
                 + buf.bytes_used;
+    pmix_output(0, "CRED %u BUF %u HDR %u", (unsigned)cred.size, (unsigned) buf.bytes_used, (unsigned)hdr.nbytes);
 
     /* create a space for our message */
     sdsize = sizeof(hdr) + hdr.nbytes;

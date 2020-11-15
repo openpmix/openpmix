@@ -472,7 +472,7 @@ PMIX_CLASS_DECLARATION(pmix_cb_t);
     struct timeval _tv = {0, 0};                            \
     pmix_event_evtimer_set(pmix_globals.evbase, &(r)->ev,   \
                                (c), (r));                   \
-    _tv.tv_sec = (t);                                       \
+    _tv.tv_sec = (int)(t);                                  \
     _tv.tv_usec = ((t) - _tv.tv_sec) * 1000000.0;           \
     PMIX_POST_OBJECT((r));                                  \
     pmix_event_evtimer_add(&(r)->ev, &_tv);                 \
