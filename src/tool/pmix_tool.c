@@ -592,20 +592,19 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         }
         pmix_globals.mypeer->info->pname.nspace = strdup(pmix_globals.myid.nspace);
         pmix_globals.mypeer->info->pname.rank = pmix_globals.myid.rank;
-        /* our bfrops module will be set when we connect to the server */
-    } else {
-        /* select our bfrops compat module */
-        pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
-        if (NULL == pmix_globals.mypeer->nptr->compat.bfrops) {
-            if (gdsfound) {
-                PMIX_INFO_DESTRUCT(&ginfo);
-            }
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
-            return PMIX_ERR_INIT;
-        }
-        /* the server will be using the same */
-        pmix_client_globals.myserver->nptr->compat.bfrops = pmix_globals.mypeer->nptr->compat.bfrops;
     }
+    
+    /* select our bfrops compat module */
+    pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
+    if (NULL == pmix_globals.mypeer->nptr->compat.bfrops) {
+        if (gdsfound) {
+            PMIX_INFO_DESTRUCT(&ginfo);
+        }
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return PMIX_ERR_INIT;
+    }
+    /* the server will be using the same */
+    pmix_client_globals.myserver->nptr->compat.bfrops = pmix_globals.mypeer->nptr->compat.bfrops;
 
     /* select our psec compat module - the selection may be based
      * on the corresponding envars that should have been passed
