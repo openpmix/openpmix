@@ -637,7 +637,7 @@ void pmix_ptl_base_send(int sd, short args, void *cbdata)
                         __FILE__, __LINE__,
                         (queue->peer)->info->pname.nspace,
                         (queue->peer)->info->pname.rank,
-                        (NULL == queue->buf) ? 0 : queue->buf->bytes_used,
+                        (NULL == queue->buf) ? 0 : (unsigned)queue->buf->bytes_used,
                         (queue->tag));
 
     if (NULL == queue->buf) {
