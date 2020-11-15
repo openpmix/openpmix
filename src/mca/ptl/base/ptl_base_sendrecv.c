@@ -495,6 +495,7 @@ void pmix_ptl_base_recv_handler(int sd, short flags, void *cbdata)
             peer->recv_msg->hdr.pindex = ntohl(hdr.pindex);
             peer->recv_msg->hdr.tag = ntohl(hdr.tag);
             peer->recv_msg->hdr.nbytes = ntohl(hdr.nbytes);
+            pmix_output(0, "HDR %u %u", (unsigned)hdr.nbytes, (unsigned)peer->recv_msg->hdr.nbytes);
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "%s RECVD MSG FROM %s FOR TAG %d SIZE %d",
                                 PMIX_NAME_PRINT(&pmix_globals.myid),
