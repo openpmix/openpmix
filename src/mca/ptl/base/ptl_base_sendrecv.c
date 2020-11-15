@@ -718,7 +718,8 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
         pmix_list_prepend(&pmix_ptl_globals.posted_recvs, &req->super);
     }
 
-    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+  //  pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+    pmix_output(0,
                         "QUEIENG MSG TO SERVER OF SIZE %d",
                         (int)ms->bfr->bytes_used);
     snd = PMIX_NEW(pmix_ptl_send_t);
