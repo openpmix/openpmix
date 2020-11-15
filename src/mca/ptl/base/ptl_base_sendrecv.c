@@ -522,6 +522,7 @@ void pmix_ptl_base_recv_handler(int sd, short flags, void *cbdata)
                                     (unsigned long)peer->recv_msg->hdr.nbytes);
                 /* allocate the data region */
                 if (pmix_ptl_globals.max_msg_size < peer->recv_msg->hdr.nbytes) {
+                    pmix_output(0, "%s TOO BIG", PMIX_NAME_PRINT(&pmix_globals.myid));
                     pmix_show_help("help-pmix-runtime.txt", "ptl:msg_size", true,
                                    (unsigned long)peer->recv_msg->hdr.nbytes,
                                    (unsigned long)pmix_ptl_globals.max_msg_size);
@@ -630,11 +631,14 @@ void pmix_ptl_base_send(int sd, short args, void *cbdata)
         return;
     }
 
-    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "[%s:%d] send to %s:%u on tag %d",
+  //  pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+    pmix_output(0,
+                        "[%s:%d] send to %s:%u of size %u on tag %d",
                         __FILE__, __LINE__,
                         (queue->peer)->info->pname.nspace,
-                        (queue->peer)->info->pname.rank, (queue->tag));
+                        (queue->peer)->info->pname.rank,
+                        (NULL == queue->buf) ? 0 : queue->buf->bytes_used,
+                        (queue->tag));
 
     if (NULL == queue->buf) {
         /* nothing to send? */
