@@ -369,7 +369,7 @@ static pmix_status_t send_connect_ack(pmix_peer_t *peer,
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
-
+pmix_output(0, "MYFLAG: %d", (int)flag);
     /* send the entire message across */
     if (PMIX_SUCCESS != pmix_ptl_base_send_blocking(peer->sd, msg, sdsize)) {
         free(msg);
@@ -691,7 +691,7 @@ pmix_status_t pmix_ptl_base_construct_message(pmix_peer_t *peer, uint8_t flag,
     memcpy(msg+csize, &u32, sizeof(uint32_t));
     csize += sizeof(uint32_t);
     /* load the credential */
-    if (0 < u32) {
+    if (0 < cred.size) {
         memcpy(msg+csize, cred.bytes, cred.size);
         csize += cred.size;
     }
@@ -760,8 +760,10 @@ pmix_status_t pmix_ptl_base_construct_message(pmix_peer_t *peer, uint8_t flag,
     csize += strlen(gds)+1;
 
     /* provide the info struct bytes */
-    memcpy(msg+csize, buf.base_ptr, buf.bytes_used);
-    csize += buf.bytes_used;
+    if (0 < buf.bytes_used) {
+	    memcpy(msg+csize, buf.base_ptr, buf.bytes_used);
+	    csize += buf.bytes_used;
+	}
 
     *msgout = msg;
     *sz = sdsize;
