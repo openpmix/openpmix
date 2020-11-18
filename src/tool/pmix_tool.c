@@ -386,8 +386,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     /* backward compatibility fix - remove any directive to use
      * the old usock component so we avoid a warning message */
     if (NULL != (evar = getenv("PMIX_MCA_ptl"))) {
-        char **snip;
-        int argc;
         if (0 == strcmp(evar, "usock")) {
             /* we cannot support a usock-only environment */
             PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -398,17 +396,8 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
             fprintf(stderr, "-------------------------------------------------------------------\n");
             return PMIX_ERR_INIT;
         }
-        /* anything else is okay - just clear the "usock" directive */
-        snip = pmix_argv_split(evar, ',');
-        for (n=0; NULL != snip[n]; n++) {
-            if (0 == strcmp(snip[n], "usock")) {
-                pmix_argv_delete(&argc, &snip, n, 1);
-                evar = pmix_argv_join(snip, ',');
-                pmix_setenv("PMIX_MCA_ptl", evar, true, &environ);
-                break;
-            }
-        }
-        pmix_argv_free(snip);
+        /* anything else should just be cleared */
+        pmix_unsetenv("PMIX_MCA_ptl", &environ);
     }
 
     /* parse the input directives */
@@ -551,7 +540,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     rcv->tag = PMIX_PTL_TAG_IOF;
     rcv->cbfunc = tool_iof_handler;
     /* add it to the end of the list of recvs */
-    pmix_list_append(&pmix_ptl_globals.posted_recvs, &rcv->super);
+    pmix_list_append(&pmix_ptl_base.posted_recvs, &rcv->super);
 
 
     /* setup the globals */
@@ -603,20 +592,19 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         }
         pmix_globals.mypeer->info->pname.nspace = strdup(pmix_globals.myid.nspace);
         pmix_globals.mypeer->info->pname.rank = pmix_globals.myid.rank;
-        /* our bfrops module will be set when we connect to the server */
-    } else {
-        /* select our bfrops compat module */
-        pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
-        if (NULL == pmix_globals.mypeer->nptr->compat.bfrops) {
-            if (gdsfound) {
-                PMIX_INFO_DESTRUCT(&ginfo);
-            }
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
-            return PMIX_ERR_INIT;
-        }
-        /* the server will be using the same */
-        pmix_client_globals.myserver->nptr->compat.bfrops = pmix_globals.mypeer->nptr->compat.bfrops;
     }
+
+    /* select our bfrops compat module */
+    pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
+    if (NULL == pmix_globals.mypeer->nptr->compat.bfrops) {
+        if (gdsfound) {
+            PMIX_INFO_DESTRUCT(&ginfo);
+        }
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return PMIX_ERR_INIT;
+    }
+    /* the server will be using the same */
+    pmix_client_globals.myserver->nptr->compat.bfrops = pmix_globals.mypeer->nptr->compat.bfrops;
 
     /* select our psec compat module - the selection may be based
      * on the corresponding envars that should have been passed
@@ -647,16 +635,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     }
     /* the server will be using the same */
     pmix_client_globals.myserver->nptr->compat.type = pmix_globals.mypeer->nptr->compat.type;
-
-    /* set the ptl component */
-    pmix_globals.mypeer->nptr->compat.ptl = pmix_ptl_base_assign_module();
-    if (NULL == pmix_globals.mypeer->nptr->compat.ptl) {
-        PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return rc;
-    }
-    /* the server will be using the same */
-    pmix_client_globals.myserver->nptr->compat.ptl = pmix_globals.mypeer->nptr->compat.ptl;
 
     /* select a GDS module for our own internal use - the user may
      * have passed down a directive for this purpose. If they did, then
@@ -728,7 +706,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         }
     } else {
         /* connect to the server */
-        rc = pmix_ptl_base_connect_to_peer((struct pmix_peer_t*)pmix_client_globals.myserver, info, ninfo);
+        rc = pmix_ptl.connect_to_peer((struct pmix_peer_t*)pmix_client_globals.myserver, info, ninfo);
         if (PMIX_SUCCESS != rc) {
             /* if connection wasn't optional, then error out */
             if (!connect_optional) {
@@ -773,7 +751,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         rcv->tag = UINT32_MAX;
         rcv->cbfunc = pmix_server_message_handler;
         /* add it to the end of the list of recvs */
-        pmix_list_append(&pmix_ptl_globals.posted_recvs, &rcv->super);
+        pmix_list_append(&pmix_ptl_base.posted_recvs, &rcv->super);
     }
 
     /* open the pmdl framework and select the active modules for this environment
@@ -1529,7 +1507,7 @@ static void retry_attach(int sd, short args, void *cbdata)
 
     /* now ask the ptl to establish connection to the new server */
     peer = PMIX_NEW(pmix_peer_t);
-    cb->status = pmix_ptl_base_connect_to_peer((struct pmix_peer_t*)peer, cb->info, cb->ninfo);
+    cb->status = pmix_ptl.connect_to_peer((struct pmix_peer_t*)peer, cb->info, cb->ninfo);
 
     /* once that activity has all completed, stop the new progress thread */
     pmix_progress_thread_stop("reconnect");

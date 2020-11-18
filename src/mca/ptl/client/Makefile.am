@@ -11,7 +11,7 @@
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
 # Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
-# Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+# Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -19,22 +19,22 @@
 # $HEADER$
 #
 
-headers = ptl_tcp.h
+headers = ptl_client.h
 sources = \
-        ptl_tcp_component.c \
-        ptl_tcp.c
+        ptl_client_component.c \
+        ptl_client.c
 
 # Make the output library in this directory, and name it either
 # mca_<type>_<name>.la (for DSO builds) or libmca_<type>_<name>.la
 # (for static builds).
 
-if MCA_BUILD_pmix_ptl_tcp_DSO
+if MCA_BUILD_pmix_ptl_client_DSO
 lib =
 lib_sources =
-component = mca_ptl_tcp.la
+component = mca_ptl_client.la
 component_sources = $(headers) $(sources)
 else
-lib = libmca_ptl_tcp.la
+lib = libmca_ptl_client.la
 lib_sources = $(headers) $(sources)
 component =
 component_sources =
@@ -42,12 +42,12 @@ endif
 
 mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component)
-mca_ptl_tcp_la_SOURCES = $(component_sources)
-mca_ptl_tcp_la_LDFLAGS = -module -avoid-version
+mca_ptl_client_la_SOURCES = $(component_sources)
+mca_ptl_client_la_LDFLAGS = -module -avoid-version
 if NEED_LIBPMIX
-mca_ptl_tcp_la_LIBADD = $(top_builddir)/src/libpmix.la
+mca_ptl_client_la_LIBADD = $(top_builddir)/src/libpmix.la
 endif
 
 noinst_LTLIBRARIES = $(lib)
-libmca_ptl_tcp_la_SOURCES = $(lib_sources)
-libmca_ptl_tcp_la_LDFLAGS = -module -avoid-version
+libmca_ptl_client_la_SOURCES = $(lib_sources)
+libmca_ptl_client_la_LDFLAGS = -module -avoid-version

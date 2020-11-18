@@ -56,56 +56,79 @@ PMIX_EXPORT extern pmix_mca_base_framework_t pmix_ptl_base_framework;
  */
 PMIX_EXPORT pmix_status_t pmix_ptl_base_select(void);
 
-/**
- * Track an active component
- */
-struct pmix_ptl_base_active_t {
-    pmix_list_item_t super;
-    pmix_status_t pri;
-    pmix_ptl_base_component_t *component;
-    pmix_ptl_module_t *module;
-};
-typedef struct pmix_ptl_base_active_t pmix_ptl_base_active_t;
-PMIX_CLASS_DECLARATION(pmix_ptl_base_active_t);
-
-
 /* framework globals */
-struct pmix_ptl_globals_t {
-    pmix_list_t actives;
+struct pmix_ptl_base_t {
     bool initialized;
     bool selected;
     pmix_list_t posted_recvs;     // list of pmix_ptl_posted_recv_t
     pmix_list_t unexpected_msgs;
     int stop_thread[2];
     bool listen_thread_active;
-    pmix_list_t listeners;
+    pmix_listener_t listener;
+    struct sockaddr_storage connection;
     uint32_t current_tag;
     size_t max_msg_size;
+    char *session_tmpdir;
+    char *system_tmpdir;
+    char *report_uri;
+    char *uri;
+    char *urifile;
+    char *system_filename;
+    char *session_filename;
+    char *nspace_filename;
+    char *pid_filename;
+    char *rendezvous_filename;
+    bool created_rendezvous_file;
+    bool created_session_tmpdir;
+    bool created_system_tmpdir;
+    bool created_system_filename;
+    bool created_session_filename;
+    bool created_nspace_filename;
+    bool created_pid_filename;
+    bool created_urifile;
+    bool remote_connections;
+    bool system_tool;
+    bool session_tool;
+    bool tool_support;
+    char *if_include;
+    char *if_exclude;
+    int ipv4_port;
+    bool disable_ipv4_family;
+    int ipv6_port;
+    bool disable_ipv6_family;
+    int max_retries;
+    int wait_to_connect;
+    int handshake_wait_time;
+    int handshake_max_retries;
 };
-typedef struct pmix_ptl_globals_t pmix_ptl_globals_t;
+typedef struct pmix_ptl_base_t pmix_ptl_base_t;
 
-PMIX_EXPORT extern pmix_ptl_globals_t pmix_ptl_globals;
+PMIX_EXPORT extern pmix_ptl_base_t pmix_ptl_base;
 
 /* API stubs */
 PMIX_EXPORT pmix_status_t pmix_ptl_base_set_notification_cbfunc(pmix_ptl_cbfunc_t cbfunc);
-PMIX_EXPORT char* pmix_ptl_base_get_available_modules(void);
-PMIX_EXPORT pmix_ptl_module_t* pmix_ptl_base_assign_module(void);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *peer,
                                                         pmix_info_t info[], size_t ninfo);
+PMIX_EXPORT pmix_status_t pmix_ptl_base_parse_uri_file(char *filename,
+                                                       char **uri,
+                                                       char **nspace,
+                                                       pmix_rank_t *rank,
+                                                       pmix_peer_t *peer);
 
-PMIX_EXPORT pmix_status_t pmix_ptl_base_register_recv(struct pmix_peer_t *peer,
-                                                      pmix_ptl_cbfunc_t cbfunc,
-                                                      pmix_ptl_tag_t tag);
-PMIX_EXPORT pmix_status_t pmix_ptl_base_cancel_recv(struct pmix_peer_t *peer,
-                                                    pmix_ptl_tag_t tag);
+PMIX_EXPORT pmix_status_t pmix_ptl_base_setup_connection(char *uri,
+                                                         struct sockaddr_storage *connection,
+                                                         size_t *len);
 
-PMIX_EXPORT pmix_status_t pmix_ptl_base_start_listening(pmix_info_t *info, size_t ninfo);
+PMIX_EXPORT void pmix_ptl_base_post_recv(int fd, short args, void *cbdata);
+PMIX_EXPORT void pmix_ptl_base_cancel_recv(int sd, short args, void *cbdata);
+
+PMIX_EXPORT pmix_status_t pmix_ptl_base_start_listening(pmix_info_t info[], size_t ninfo);
 PMIX_EXPORT void pmix_ptl_base_stop_listening(void);
-PMIX_EXPORT pmix_status_t pmix_ptl_base_setup_fork(const pmix_proc_t *proc, char ***env);
+PMIX_EXPORT pmix_status_t pmix_base_write_rndz_file(char *filename, char *uri, bool *created);
 
 /* base support functions */
-PMIX_EXPORT void pmix_ptl_base_send(int sd, short args, void *cbdata);
-PMIX_EXPORT void pmix_ptl_base_send_recv(int sd, short args, void *cbdata);
+PMIX_EXPORT pmix_status_t pmix_ptl_base_check_directives(pmix_info_t *info, size_t ninfo);
+PMIX_EXPORT pmix_status_t pmix_ptl_base_setup_fork(const pmix_proc_t *proc, char ***env);
 PMIX_EXPORT void pmix_ptl_base_send_handler(int sd, short flags, void *cbdata);
 PMIX_EXPORT void pmix_ptl_base_recv_handler(int sd, short flags, void *cbdata);
 PMIX_EXPORT void pmix_ptl_base_process_msg(int fd, short flags, void *cbdata);
@@ -116,11 +139,36 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_recv_blocking(int sd, char *data, size_t
 PMIX_EXPORT pmix_status_t pmix_ptl_base_connect(struct sockaddr_storage *addr,
                                                 pmix_socklen_t len, int *fd);
 PMIX_EXPORT void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata);
+PMIX_EXPORT pmix_status_t pmix_ptl_base_setup_listener(void);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_send_connect_ack(int sd);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_recv_connect_ack(int sd);
 PMIX_EXPORT void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err);
 PMIX_EXPORT bool pmix_ptl_base_peer_is_earlier(pmix_peer_t *peer, uint8_t major, uint8_t minor, uint8_t release);
 PMIX_EXPORT void pmix_ptl_base_query_servers(int sd, short args, void *cbdata);
+PMIX_EXPORT pmix_status_t pmix_ptl_base_parse_uri(const char *evar, char **nspace,
+                                                  pmix_rank_t *rank, char **suri);
+PMIX_EXPORT pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix,
+                                                  pmix_info_t info[], size_t ninfo,
+                                                  int *sd, char **nspace,
+                                                  pmix_rank_t *rank, char **uri,
+                                                  pmix_peer_t *peer);
+PMIX_EXPORT uint8_t pmix_ptl_base_set_flag(size_t *sz);
+PMIX_EXPORT pmix_status_t pmix_ptl_base_make_connection(pmix_peer_t *peer, char *suri,
+                                                        pmix_info_t *iptr, size_t niptr);
+PMIX_EXPORT void pmix_ptl_base_complete_connection(pmix_peer_t *peer, char *nspace,
+                                                   pmix_rank_t rank, char *uri);
+PMIX_EXPORT pmix_status_t pmix_ptl_base_construct_message(pmix_peer_t *peer,
+                                                          char **msgout, size_t *sz,
+                                                          pmix_info_t *iptr, size_t niptr);
+PMIX_EXPORT pmix_status_t pmix_ptl_base_set_timeout(pmix_peer_t *peer,
+                                                    struct timeval *save,
+                                                    pmix_socklen_t *sz,
+                                                    bool *sockopt);
+PMIX_EXPORT void pmix_ptl_base_setup_socket(pmix_peer_t *peer);
+PMIX_EXPORT pmix_status_t pmix_ptl_base_client_handshake(pmix_peer_t *peer,
+                                                         pmix_status_t reply);
+PMIX_EXPORT pmix_status_t pmix_ptl_base_tool_handshake(pmix_peer_t *peer, pmix_status_t rp);
+PMIX_EXPORT char **pmix_ptl_base_split_and_resolve(char **orig_str, char *name);
 
 END_C_DECLS
 

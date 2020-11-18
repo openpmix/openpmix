@@ -56,59 +56,22 @@ struct pmix_peer_t;
  * (b) using different transports as necessitated by different
  *     environments.
  *
- * This is a mult-select framework - i.e., multiple components
- * are selected and "active" at the same time. The intent is
+ * This is a single-select framework - i.e., only one component
+ * is selected and "active" at a time. The intent is
  * to have one component for each use-case, with the
  * expectation that the community will do its best not to revise
  * communications in manners that expand components to support (a).
  * Thus, new variations should be rare, and only a few components
  * will exist.
- *
- * The framework itself reflects the fact that any given peer
- * will utilize only one messaging method.
- * Thus, once a peer is identified, it will pass its version string
- * to this framework's "assign_module" function, which will then
- * pass it to each component until one returns a module capable of
- * processing the given version. This module is then "attached" to
- * the pmix_peer_t object so it can be used for all subsequent
- * communication to/from that peer.
- *
- * Accordingly, there are two levels of APIs defined for this
- * framework:
- *
- * (a) component level - these allow for init/finalize of the
- *     component, and assignment of a module to a given peer
- *     based on the version that peer is using
- *
- * (b) module level - implement send/recv/etc. Note that the
- *     module only needs to provide those functions that differ
- *     from the base functions - they don't need to duplicate
- *     all that code!
  */
 
 /****    MODULE INTERFACE DEFINITION    ****/
 
-/* initialize an active plugin - note that servers may have
- * multiple active plugins, while clients can only have one */
+/* initialize the active plugin */
 typedef pmix_status_t (*pmix_ptl_init_fn_t)(void);
 
-/* finalize an active plugin */
+/* finalize the active plugin */
 typedef void (*pmix_ptl_finalize_fn_t)(void);
-
-/* (TWO-WAY) send a message to the peer, and get a response delivered
- * to the specified callback function. The buffer will be free'd
- * at the completion of the send, and the cbfunc will be called
- * when the corresponding reply is received */
-typedef pmix_status_t (*pmix_ptl_send_recv_fn_t)(struct pmix_peer_t *peer,
-                                                 pmix_buffer_t *bfr,
-                                                 pmix_ptl_cbfunc_t cbfunc,
-                                                 void *cbdata);
-
-/* (ONE-WAY) send a message to the peer. The buffer will be free'd
- * at the completion of the send */
-typedef pmix_status_t (*pmix_ptl_send_fn_t)(struct pmix_peer_t *peer,
-                                            pmix_buffer_t *bfr,
-                                            pmix_ptl_tag_t tag);
 
 /* (ONE-WAY) register a persistent recv */
 typedef pmix_status_t (*pmix_ptl_recv_fn_t)(struct pmix_peer_t *peer,
@@ -120,9 +83,7 @@ typedef pmix_status_t (*pmix_ptl_cancel_fn_t)(struct pmix_peer_t *peer,
                                               pmix_ptl_tag_t tag);
 
 /* connect to a peer - this is a blocking function
- * to establish a connection to a peer. It assigns
- * the corresponding module to the peer's compat
- * structure for future use */
+ * to establish a connection to a peer*/
 typedef pmix_status_t (*pmix_ptl_connect_to_peer_fn_t)(struct pmix_peer_t *peer,
                                                        pmix_info_t info[], size_t ninfo);
 
@@ -130,67 +91,115 @@ typedef pmix_status_t (*pmix_ptl_connect_to_peer_fn_t)(struct pmix_peer_t *peer,
 /* query available servers on the local node */
 typedef void (*pmix_ptl_query_servers_fn_t)(char *dirname, pmix_list_t *servers);
 
+/* define an API for establishing a
+ * communication rendezvous point for local procs. The active component
+ * is given an opportunity to register a listener with the
+ * PTL base */
+typedef pmix_status_t (*pmix_ptl_setup_listener_fn_t)(pmix_info_t info[], size_t ninfo);
+
+/* define an API for obtaining any envars that are to
+ * be passed to client procs upon fork */
+typedef pmix_status_t (*pmix_ptl_setup_fork_fn_t)(const pmix_proc_t *proc, char ***env);
+
 
 /**
  * Base structure for a PTL module
  */
 struct pmix_ptl_module_t {
+    char *name;
     pmix_ptl_init_fn_t                  init;
     pmix_ptl_finalize_fn_t              finalize;
-    pmix_ptl_send_recv_fn_t             send_recv;
-    pmix_ptl_send_fn_t                  send;
     pmix_ptl_recv_fn_t                  recv;
     pmix_ptl_cancel_fn_t                cancel;
     pmix_ptl_connect_to_peer_fn_t       connect_to_peer;
     pmix_ptl_query_servers_fn_t         query_servers;
+    pmix_ptl_setup_listener_fn_t        setup_listener;
+    pmix_ptl_setup_fork_fn_t            setup_fork;
 };
 typedef struct pmix_ptl_module_t pmix_ptl_module_t;
 
 
 /*****    MACROS FOR EXECUTING PTL FUNCTIONS    *****/
-#define PMIX_PTL_SEND_RECV(r, p, b, c, d)                                               \
-    do {                                                                                \
-        if ((p)->finalized) {                                                           \
-            (r) = PMIX_ERR_UNREACH;                                                     \
-        } else {                                                                        \
-            (r) = (p)->nptr->compat.ptl->send_recv((struct pmix_peer_t*)(p), b, c, d);  \
+
+/* (TWO-WAY) send a message to the peer, and get a response delivered
+ * to the specified callback function. The buffer will be free'd
+ * at the completion of the send, and the cbfunc will be called
+ * when the corresponding reply is received */
+#define PMIX_PTL_SEND_RECV(r, p, b, c, d)                       \
+    do {                                                        \
+        pmix_ptl_sr_t *ms;                                      \
+        pmix_peer_t *pr = (pmix_peer_t*)(p);                    \
+        if ((p)->finalized) {                                   \
+            (r) = PMIX_ERR_UNREACH;                             \
+        } else {                                                \
+                ms = PMIX_NEW(pmix_ptl_sr_t);                   \
+                PMIX_RETAIN(pr);                                \
+                ms->peer = pr;                                  \
+                ms->bfr = (b);                                  \
+                ms->cbfunc = (c);                               \
+                ms->cbdata = (d);                               \
+                PMIX_THREADSHIFT(ms, pmix_ptl_base_send_recv);  \
+                (r) = PMIX_SUCCESS;                             \
         }                                                                               \
     } while(0)
 
-#define PMIX_PTL_SEND_ONEWAY(r, p, b, t)                                        \
-    do {                                                                        \
-        if ((p)->finalized) {                                                   \
-            (r) = PMIX_ERR_UNREACH;                                             \
-        } else {                                                                \
-            (r) = (p)->nptr->compat.ptl->send((struct pmix_peer_t*)(p), b, t);  \
-        }                                                                       \
+/* (ONE-WAY) send a message to the peer. The buffer will be free'd
+ * at the completion of the send */
+#define PMIX_PTL_SEND_ONEWAY(r, p, b, t)                \
+    do {                                                \
+        pmix_ptl_queue_t *q;                            \
+        pmix_peer_t *pr = (pmix_peer_t*)(p);            \
+        if ((p)->finalized) {                           \
+            (r) = PMIX_ERR_UNREACH;                     \
+        } else {                                        \
+            q = PMIX_NEW(pmix_ptl_queue_t);             \
+            PMIX_RETAIN(pr);                            \
+            q->peer = pr;                               \
+            q->buf = (b);                               \
+            q->tag = (t);                               \
+            PMIX_THREADSHIFT(q, pmix_ptl_base_send);    \
+            (r) = PMIX_SUCCESS;                         \
+        }                                               \
     } while(0)
 
-#define PMIX_PTL_RECV(r, p, c, t)      \
-    (r) = (p)->nptr->compat.ptl->recv((struct pmix_peer_t*)(p), c, t)
+#define PMIX_PTL_RECV(r, c, t)                                          \
+    do {                                                                \
+        pmix_ptl_posted_recv_t *req;                                    \
+        req = PMIX_NEW(pmix_ptl_posted_recv_t);                         \
+        if (NULL == req) {                                              \
+            (r) = PMIX_ERR_NOMEM;                                       \
+        } else {                                                        \
+            req->tag = (t);                                             \
+            req->cbfunc = (c);                                          \
+            pmix_event_assign(&(req->ev), pmix_globals.evbase, -1,      \
+                              EV_WRITE, pmix_ptl_base_post_recv, req);  \
+            pmix_event_active(&(req->ev), EV_WRITE, 1);                 \
+            (r) = PMIX_SUCCESS;                                         \
+        }                                                               \
+    } while(0)
 
-#define PMIX_PTL_CANCEL(r, p, t)                        \
-    (r) = (p)->nptr->compat.ptl->cancel((struct pmix_peer_t*)(p), t)
+#define PMIX_PTL_CANCEL(r, t)                                               \
+    do {                                                                    \
+        pmix_ptl_posted_recv_t *req;                                        \
+        req = PMIX_NEW(pmix_ptl_posted_recv_t);                             \
+        if (NULL == req) {                                                  \
+            (r) = PMIX_ERR_NOMEM;                                           \
+        } else {                                                            \
+            req->tag = (t);                                                 \
+            pmix_event_assign(&(req->ev), pmix_globals.evbase, -1,          \
+                              EV_WRITE, pmix_ptl_base_cancel_recv, req);    \
+            pmix_event_active(&(req->ev), EV_WRITE, 1);                     \
+            (r) = PMIX_SUCCESS;                                             \
+        }                                                                   \
+    } while(0)
 
-PMIX_EXPORT extern pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t* peer,
-                                                               pmix_info_t info[], size_t ninfo);
-
+/* expose functions used by the macros */
+PMIX_EXPORT extern void pmix_ptl_base_send(int sd, short args, void *cbdata);
+PMIX_EXPORT extern void pmix_ptl_base_send_recv(int sd, short args, void *cbdata);
+PMIX_EXPORT extern void pmix_ptl_base_register_recv(int sd, short args, void *cbdata);
+PMIX_EXPORT extern void pmix_ptl_base_cancel_recv(int sd, short args, void *cbdata);
 
 /****    COMPONENT STRUCTURE DEFINITION    ****/
-
-/* define a component-level API for establishing a
- * communication rendezvous point for local procs. Each active component
- * would be given an opportunity to register a listener with the
- * PTL base, and/or to establish their own method for handling
- * connection requests. The component sets the need_listener flag
- * to true if a listener thread is required - otherwise, it does _not_
- * modify this parameter */
-typedef pmix_status_t (*pmix_ptl_base_setup_listener_fn_t)(pmix_info_t info[], size_t ninfo,
-                                                           bool *need_listener);
-
-/* define a component-level API for obtaining any envars that are to
- * be passed to client procs upon fork */
-typedef pmix_status_t (*pmix_ptl_base_setup_fork_fn_t)(const pmix_proc_t *proc, char ***env);
 
 /*
  * the standard component data structure
@@ -200,18 +209,17 @@ struct pmix_ptl_base_component_t {
     pmix_mca_base_component_data_t                  data;
     int                                             priority;
     char*                                           uri;
-    pmix_ptl_base_setup_listener_fn_t               setup_listener;
-    pmix_ptl_base_setup_fork_fn_t                   setup_fork;
-
 };
 typedef struct pmix_ptl_base_component_t pmix_ptl_base_component_t;
 
+/* export the PTL module struct */
+PMIX_EXPORT extern pmix_ptl_module_t pmix_ptl;
 
 /*
  * Macro for use in components that are of type ptl
  */
-#define PMIX_PTL_BASE_VERSION_1_0_0 \
-    PMIX_MCA_BASE_VERSION_1_0_0("ptl", 1, 0, 0)
+#define PMIX_PTL_BASE_VERSION_2_0_0 \
+    PMIX_MCA_BASE_VERSION_1_0_0("ptl", 2, 0, 0)
 
 END_C_DECLS
 

@@ -67,7 +67,7 @@ typedef struct {
     uint8_t major;
     uint8_t minor;
     uint8_t release;
-    uint8_t padding;  // make the struct be 64-bits for addressing
+    uint8_t flag;  // see pmix_ptl_base_set_flag for definition of values
 } pmix_proc_type_t;
 
 #define PMIX_MAJOR_WILDCARD         255
@@ -81,7 +81,7 @@ typedef struct {
         .major = PMIX_MAJOR_WILDCARD,       \
         .minor = PMIX_MINOR_WILDCARD,       \
         .release = PMIX_RELEASE_WILDCARD,   \
-        .padding = 0                        \
+        .flag = 0                           \
     }
 
 /* Define process types - we use a bit-mask as procs can
@@ -126,6 +126,29 @@ typedef struct {
 
 /* provide macros for setting the major, minor, and release values
  * just so people don't have to deal with the details of the struct */
+#define PMIX_SET_PEER_VERSION(p, e, a, b)       \
+    do {                                        \
+        char *e2;                               \
+        unsigned long mj, mn, rl;               \
+        if (NULL != e) {                        \
+            if ('v' == e[0]) {                  \
+                mj = strtoul(&e[1], &e2, 10);   \
+            } else {                            \
+                mj = strtoul(e, &e2, 10);       \
+            }                                   \
+            ++e2;                               \
+            mn = strtoul(e2, &e2, 10);          \
+            ++e2;                               \
+            rl = strtoul(e2, NULL, 10);         \
+            PMIX_SET_PEER_MAJOR((p), mj);       \
+            PMIX_SET_PEER_MINOR((p), mn);       \
+            PMIX_SET_PEER_RELEASE((p), rl);     \
+        } else {                                \
+            PMIX_SET_PEER_MAJOR((p), (a));      \
+            PMIX_SET_PEER_MINOR((p), (b));      \
+        }                                       \
+    } while(0)
+
 #define PMIX_SET_PEER_MAJOR(p, a)   \
     (p)->proc_type.major = (a)
 #define PMIX_SET_PEER_MINOR(p, a)   \
@@ -276,16 +299,16 @@ typedef struct {
     int sd;
     bool need_id;
     uint8_t flag;
-    char nspace[PMIX_MAX_NSLEN+1];
+    pmix_proc_t proc;
     pmix_info_t *info;
     size_t ninfo;
     pmix_status_t status;
     struct sockaddr_storage addr;
     struct pmix_peer_t *peer;
+    char *version;
     char *bfrops;
     char *psec;
     char *gds;
-    struct pmix_ptl_module_t *ptl;
     pmix_bfrop_buffer_type_t buffer_type;
     char *cred;
     size_t len;
@@ -299,7 +322,6 @@ PMIX_CLASS_DECLARATION(pmix_pending_connection_t);
 typedef struct pmix_listener_t {
     pmix_list_item_t super;
     pmix_listener_protocol_t protocol;
-    struct pmix_ptl_module_t *ptl;
     int socket;
     char *varname;
     char *uri;

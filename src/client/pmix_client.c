@@ -559,8 +559,6 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     /* backward compatibility fix - remove any directive to use
      * the old usock component so we avoid a warning message */
     if (NULL != (evar = getenv("PMIX_MCA_ptl"))) {
-        char **snip;
-        int argc;
         if (0 == strcmp(evar, "usock")) {
             /* we cannot support a usock-only environment */
             PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -571,17 +569,8 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
             fprintf(stderr, "-------------------------------------------------------------------\n");
             return PMIX_ERR_INIT;
         }
-        /* anything else is okay - just clear the "usock" directive */
-        snip = pmix_argv_split(evar, ',');
-        for (n=0; NULL != snip[n]; n++) {
-            if (0 == strcmp(snip[n], "usock")) {
-                pmix_argv_delete(&argc, &snip, n, 1);
-                evar = pmix_argv_join(snip, ',');
-                pmix_setenv("PMIX_MCA_ptl", evar, true, &environ);
-                break;
-            }
-        }
-        pmix_argv_free(snip);
+        /* anything else should just be cleared */
+        pmix_unsetenv("PMIX_MCA_ptl", &environ);
     }
 
     /* setup the runtime - this init's the globals,
@@ -598,7 +587,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     rcv->tag = PMIX_PTL_TAG_IOF;
     rcv->cbfunc = client_iof_handler;
     /* add it to the end of the list of recvs */
-    pmix_list_append(&pmix_ptl_globals.posted_recvs, &rcv->super);
+    pmix_list_append(&pmix_ptl_base.posted_recvs, &rcv->super);
 
 
     /* setup the globals */
@@ -753,7 +742,6 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     PMIX_INFO_DESTRUCT(&ginfo);
 
     if (pmix_client_globals.singleton) {
-        pmix_globals.mypeer->nptr->compat.ptl = pmix_ptl_base_assign_module();
         pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
         pmix_client_globals.myserver->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
         /* initialize our data values */
@@ -766,14 +754,12 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         rc = PMIX_ERR_UNREACH;
     } else {
         /* connect to the server */
-        rc = pmix_ptl_base_connect_to_peer((struct pmix_peer_t*)pmix_client_globals.myserver, info, ninfo);
+        rc = pmix_ptl.connect_to_peer((struct pmix_peer_t*)pmix_client_globals.myserver, info, ninfo);
         if (PMIX_SUCCESS != rc) {
             pmix_init_result = rc;
             PMIX_RELEASE_THREAD(&pmix_global_lock);
             return rc;
         }
-        /* mark that we are using the same module as used for the server */
-        pmix_globals.mypeer->nptr->compat.ptl = pmix_client_globals.myserver->nptr->compat.ptl;
 
         /* send a request for our job info - we do this as a non-blocking
          * transaction because some systems cannot handle very large

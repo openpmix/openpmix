@@ -219,7 +219,7 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
         /* must set the buffer type so it doesn't fail in unpack */
         buf.type = pmix_client_globals.myserver->nptr->compat.type;
         hdr.nbytes = 0; // initialize the hdr to something safe
-        PMIX_LIST_FOREACH(rcv, &pmix_ptl_globals.posted_recvs, pmix_ptl_posted_recv_t) {
+        PMIX_LIST_FOREACH(rcv, &pmix_ptl_base.posted_recvs, pmix_ptl_posted_recv_t) {
             if (UINT_MAX != rcv->tag && NULL != rcv->cbfunc) {
                 /* construct and load the buffer */
                 hdr.tag = rcv->tag;
@@ -521,10 +521,10 @@ void pmix_ptl_base_recv_handler(int sd, short flags, void *cbdata)
                                     "ptl:base:recv:handler allocate data region of size %lu",
                                     (unsigned long)peer->recv_msg->hdr.nbytes);
                 /* allocate the data region */
-                if (pmix_ptl_globals.max_msg_size < peer->recv_msg->hdr.nbytes) {
+                if (pmix_ptl_base.max_msg_size < peer->recv_msg->hdr.nbytes) {
                     pmix_show_help("help-pmix-runtime.txt", "ptl:msg_size", true,
                                    (unsigned long)peer->recv_msg->hdr.nbytes,
-                                   (unsigned long)pmix_ptl_globals.max_msg_size);
+                                   (unsigned long)pmix_ptl_base.max_msg_size);
                     goto err_close;
                 }
                 peer->recv_msg->data = (char*)malloc(peer->recv_msg->hdr.nbytes);
@@ -631,10 +631,12 @@ void pmix_ptl_base_send(int sd, short args, void *cbdata)
     }
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "[%s:%d] send to %s:%u on tag %d",
+                        "[%s:%d] send to %s:%u of size %u on tag %d",
                         __FILE__, __LINE__,
                         (queue->peer)->info->pname.nspace,
-                        (queue->peer)->info->pname.rank, (queue->tag));
+                        (queue->peer)->info->pname.rank,
+                        (NULL == queue->buf) ? 0 : (unsigned)queue->buf->bytes_used,
+                        (queue->tag));
 
     if (NULL == queue->buf) {
         /* nothing to send? */
@@ -697,11 +699,11 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
     }
 
     /* take the next tag in the sequence */
-    pmix_ptl_globals.current_tag++;
-    if (UINT32_MAX == pmix_ptl_globals.current_tag ) {
-        pmix_ptl_globals.current_tag = PMIX_PTL_TAG_DYNAMIC;
+    pmix_ptl_base.current_tag++;
+    if (UINT32_MAX == pmix_ptl_base.current_tag ) {
+        pmix_ptl_base.current_tag = PMIX_PTL_TAG_DYNAMIC;
     }
-    tag = pmix_ptl_globals.current_tag;
+    tag = pmix_ptl_base.current_tag;
 
     if (NULL != ms->cbfunc) {
         /* if a callback msg is expected, setup a recv for it */
@@ -715,7 +717,7 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
         /* add it to the list of recvs - we cannot have unexpected messages
          * in this subsystem as the server never sends us something that
          * we didn't previously request */
-        pmix_list_prepend(&pmix_ptl_globals.posted_recvs, &req->super);
+        pmix_list_prepend(&pmix_ptl_base.posted_recvs, &req->super);
     }
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
@@ -765,7 +767,7 @@ void pmix_ptl_base_process_msg(int fd, short flags, void *cbdata)
                         (int)msg->hdr.nbytes, msg->hdr.tag, msg->sd);
 
     /* see if we have a waiting recv for this message */
-    PMIX_LIST_FOREACH(rcv, &pmix_ptl_globals.posted_recvs, pmix_ptl_posted_recv_t) {
+    PMIX_LIST_FOREACH(rcv, &pmix_ptl_base.posted_recvs, pmix_ptl_posted_recv_t) {
         pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
                             "checking msg on tag %u for tag %u",
                             msg->hdr.tag, rcv->tag);
@@ -794,7 +796,7 @@ void pmix_ptl_base_process_msg(int fd, short flags, void *cbdata)
             }
             /* done with the recv if it is a dynamic tag */
             if (PMIX_PTL_TAG_DYNAMIC <= rcv->tag && UINT_MAX != rcv->tag) {
-                pmix_list_remove_item(&pmix_ptl_globals.posted_recvs, &rcv->super);
+                pmix_list_remove_item(&pmix_ptl_base.posted_recvs, &rcv->super);
                 PMIX_RELEASE(rcv);
             }
             PMIX_RELEASE(msg);
@@ -815,7 +817,7 @@ void pmix_ptl_base_process_msg(int fd, short flags, void *cbdata)
 
     /* it is possible that someone may post a recv for this message
      * at some point, so we have to hold onto it */
-    pmix_list_append(&pmix_ptl_globals.unexpected_msgs, &msg->super);
+    pmix_list_append(&pmix_ptl_base.unexpected_msgs, &msg->super);
     /* ensure we post the modified object before another thread
      * picks it back up */
     PMIX_POST_OBJECT(msg);

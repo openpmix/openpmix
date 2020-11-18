@@ -43,6 +43,12 @@
 #include "src/mca/base/pmix_mca_base_framework.h"
 #include "src/class/pmix_list.h"
 #include "src/client/pmix_client_ops.h"
+#include "src/server/pmix_server_ops.h"
+#include "src/util/error.h"
+#include "src/util/os_dirpath.h"
+#include "src/util/pmix_environ.h"
+#include "src/util/show_help.h"
+
 #include "src/mca/ptl/ptl_types.h"
 #include "src/mca/ptl/base/base.h"
 
@@ -57,13 +63,16 @@
 #define PMIX_MAX_MSG_SIZE   16
 
 /* Instantiate the global vars */
-pmix_ptl_globals_t pmix_ptl_globals = {{{0}}};
+pmix_ptl_base_t pmix_ptl_base = {0};
 int pmix_ptl_base_output = -1;
+pmix_ptl_module_t pmix_ptl = {0};
 
 static size_t max_msg_size = PMIX_MAX_MSG_SIZE;
 
 static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
 {
+    int idx;
+
     (void)flags;
     pmix_mca_base_var_register("pmix", "ptl", "base", "max_msg_size",
                                "Max size (in Mbytes) of a client/server msg",
@@ -71,17 +80,119 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                PMIX_INFO_LVL_2,
                                PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                &max_msg_size);
-    pmix_ptl_globals.max_msg_size = max_msg_size * 1024 * 1024;
+    pmix_ptl_base.max_msg_size = max_msg_size * 1024 * 1024;
+
+    idx = pmix_mca_base_var_register("pmix", "ptl", "base", "if_include",
+                                     "Comma-delimited list of devices and/or CIDR notation of TCP networks "
+                                     "(e.g., \"eth0,192.168.0.0/16\").  Mutually exclusive with ptl_tcp_if_exclude.",
+                                     PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
+                                     PMIX_INFO_LVL_2,
+                                     PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
+                                     &pmix_ptl_base.if_include);
+    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "if_include", PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
+
+    idx = pmix_mca_base_var_register("pmix", "ptl", "base", "if_exclude",
+                                     "Comma-delimited list of devices and/or CIDR notation of TCP networks to NOT use "
+                                     "-- all devices not matching these specifications will be used (e.g., \"eth0,192.168.0.0/16\"). "
+                                     "If set to a non-default value, it is mutually exclusive with ptl_tcp_if_include.",
+                                     PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
+                                     PMIX_INFO_LVL_2,
+                                     PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
+                                     &pmix_ptl_base.if_exclude);
+    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "if_exclude", PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
+
+    /* if_include and if_exclude need to be mutually exclusive */
+    if (NULL != pmix_ptl_base.if_include &&
+        NULL != pmix_ptl_base.if_exclude) {
+        pmix_show_help("help-ptl-base.txt", "include-exclude", true,
+                       pmix_ptl_base.if_include,
+                       pmix_ptl_base.if_exclude);
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    idx = pmix_mca_base_var_register("pmix", "ptl", "base", "ipv4_port",
+                                     "IPv4 port to be used",
+                                     PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                                     PMIX_INFO_LVL_4,
+                                     PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+                                     &pmix_ptl_base.ipv4_port);
+    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "ipv4_port", PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
+
+    idx = pmix_mca_base_var_register("pmix", "ptl", "base", "ipv6_port",
+                                     "IPv6 port to be used",
+                                     PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                                     PMIX_INFO_LVL_4,
+                                     PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+                                     &pmix_ptl_base.ipv6_port);
+    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "ipv6_port", PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
+
+    idx = pmix_mca_base_var_register("pmix", "ptl", "base", "disable_ipv4_family",
+                                     "Disable the IPv4 interfaces",
+                                     PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, 0,
+                                     PMIX_INFO_LVL_4,
+                                     PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+                                     &pmix_ptl_base.disable_ipv4_family);
+    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "disable_ipv4_family", PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
+
+    idx = pmix_mca_base_var_register("pmix", "ptl", "base", "disable_ipv6_family",
+                                     "Disable the IPv6 interfaces",
+                                     PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, 0,
+                                     PMIX_INFO_LVL_4,
+                                     PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+                                     &pmix_ptl_base.disable_ipv6_family);
+    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "disable_ipv6_family", PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
+
+    idx = pmix_mca_base_var_register("pmix", "ptl", "base", "connection_wait_time",
+                                     "Number of seconds to wait for the server connection file to appear",
+                                     PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                                     PMIX_INFO_LVL_4,
+                                     PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+                                     &pmix_ptl_base.wait_to_connect);
+    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "connection_wait_time", PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
+
+    idx = pmix_mca_base_var_register("pmix", "ptl", "base", "max_retries",
+                                     "Number of times to look for the connection file before quitting",
+                                     PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                                     PMIX_INFO_LVL_4,
+                                     PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+                                     &pmix_ptl_base.max_retries);
+    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "max_retries", PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
+
+    idx = pmix_mca_base_var_register("pmix", "ptl", "base", "handshake_wait_time",
+                                     "Number of seconds to wait for the server reply to the handshake request",
+                                     PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                                     PMIX_INFO_LVL_4,
+                                     PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+                                     &pmix_ptl_base.handshake_wait_time);
+    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "handshake_wait_time", PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
+
+    idx = pmix_mca_base_var_register("pmix", "ptl", "base", "handshake_max_retries",
+                                     "Number of times to retry the handshake request before giving up",
+                                     PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                                     PMIX_INFO_LVL_4,
+                                     PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+                                     &pmix_ptl_base.handshake_max_retries);
+    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "handshake_max_retries", PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
+
+    idx = pmix_mca_base_var_register("pmix", "ptl", "base", "report_uri",
+                                     "Output URI [- => stdout, + => stderr, or filename]",
+                                     PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
+                                     PMIX_INFO_LVL_2,
+                                     PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
+                                     &pmix_ptl_base.report_uri);
+    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "report_uri", PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
+
+
     return PMIX_SUCCESS;
 }
 
 static pmix_status_t pmix_ptl_close(void)
 {
-    if (!pmix_ptl_globals.initialized) {
+    if (!pmix_ptl_base.initialized) {
         return PMIX_SUCCESS;
     }
-    pmix_ptl_globals.initialized = false;
-    pmix_ptl_globals.selected = false;
+    pmix_ptl_base.initialized = false;
+    pmix_ptl_base.selected = false;
 
     /* ensure the listen thread has been shut down */
     pmix_ptl_base_stop_listening();
@@ -93,11 +204,67 @@ static pmix_status_t pmix_ptl_close(void)
         }
     }
 
-    /* the components will cleanup when closed */
-    PMIX_LIST_DESTRUCT(&pmix_ptl_globals.actives);
-    PMIX_LIST_DESTRUCT(&pmix_ptl_globals.posted_recvs);
-    PMIX_LIST_DESTRUCT(&pmix_ptl_globals.unexpected_msgs);
-    PMIX_LIST_DESTRUCT(&pmix_ptl_globals.listeners);
+    /* the component will cleanup when closed */
+    PMIX_LIST_DESTRUCT(&pmix_ptl_base.posted_recvs);
+    PMIX_LIST_DESTRUCT(&pmix_ptl_base.unexpected_msgs);
+    PMIX_DESTRUCT(&pmix_ptl_base.listener);
+
+    if (NULL != pmix_ptl_base.system_filename) {
+        if (pmix_ptl_base.created_system_filename) {
+            remove(pmix_ptl_base.system_filename);
+        }
+        free(pmix_ptl_base.system_filename);
+    }
+    if (NULL != pmix_ptl_base.session_filename) {
+        if (pmix_ptl_base.created_session_filename) {
+            remove(pmix_ptl_base.session_filename);
+        }
+        free(pmix_ptl_base.session_filename);
+    }
+    if (NULL != pmix_ptl_base.nspace_filename) {
+        if (pmix_ptl_base.created_nspace_filename) {
+            remove(pmix_ptl_base.nspace_filename);
+        }
+        free(pmix_ptl_base.nspace_filename);
+    }
+    if (NULL != pmix_ptl_base.pid_filename) {
+        if (pmix_ptl_base.created_pid_filename) {
+            remove(pmix_ptl_base.pid_filename);
+        }
+        free(pmix_ptl_base.pid_filename);
+    }
+    if (NULL != pmix_ptl_base.rendezvous_filename) {
+        if (pmix_ptl_base.created_rendezvous_file) {
+            remove(pmix_ptl_base.rendezvous_filename);
+        }
+        free(pmix_ptl_base.rendezvous_filename);
+    }
+    if (NULL != pmix_ptl_base.uri) {
+        free(pmix_ptl_base.uri);
+    }
+    if (NULL != pmix_ptl_base.urifile) {
+        if (pmix_ptl_base.created_urifile) {
+            /* remove the file */
+            remove(pmix_ptl_base.urifile);
+        }
+        free(pmix_ptl_base.urifile);
+        pmix_ptl_base.urifile = NULL;
+    }
+    if (NULL != pmix_ptl_base.session_tmpdir) {
+        /* if I created the session tmpdir, then remove it if empty */
+        if (pmix_ptl_base.created_session_tmpdir) {
+            pmix_os_dirpath_destroy(pmix_ptl_base.session_tmpdir,
+                                    true, NULL);
+        }
+        free(pmix_ptl_base.session_tmpdir);
+    }
+    if (NULL != pmix_ptl_base.system_tmpdir) {
+        if (pmix_ptl_base.created_system_tmpdir) {
+            pmix_os_dirpath_destroy(pmix_ptl_base.system_tmpdir,
+                                    true, NULL);
+        }
+        free(pmix_ptl_base.system_tmpdir);
+    }
 
     return pmix_mca_base_framework_components_close(&pmix_ptl_base_framework, NULL);
 }
@@ -105,15 +272,52 @@ static pmix_status_t pmix_ptl_close(void)
 static pmix_status_t pmix_ptl_open(pmix_mca_base_open_flag_t flags)
 {
     pmix_status_t rc;
+    char *tdir;
 
     /* initialize globals */
-    pmix_ptl_globals.initialized = true;
-    PMIX_CONSTRUCT(&pmix_ptl_globals.actives, pmix_list_t);
-    PMIX_CONSTRUCT(&pmix_ptl_globals.posted_recvs, pmix_list_t);
-    PMIX_CONSTRUCT(&pmix_ptl_globals.unexpected_msgs, pmix_list_t);
-    pmix_ptl_globals.listen_thread_active = false;
-    PMIX_CONSTRUCT(&pmix_ptl_globals.listeners, pmix_list_t);
-    pmix_ptl_globals.current_tag = PMIX_PTL_TAG_DYNAMIC;
+    pmix_ptl_base.initialized = true;
+    PMIX_CONSTRUCT(&pmix_ptl_base.posted_recvs, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_ptl_base.unexpected_msgs, pmix_list_t);
+    pmix_ptl_base.listen_thread_active = false;
+    PMIX_CONSTRUCT(&pmix_ptl_base.listener, pmix_listener_t);
+    pmix_ptl_base.current_tag = PMIX_PTL_TAG_DYNAMIC;
+
+    /* check for environ-based directives
+     * on system tmpdir to use */
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) ||
+        PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
+        pmix_ptl_base.session_tmpdir = strdup(pmix_server_globals.tmpdir);
+    } else {
+        if (NULL != (tdir = getenv("PMIX_SERVER_TMPDIR"))) {
+            pmix_ptl_base.session_tmpdir = strdup(tdir);
+        } else {
+            pmix_ptl_base.session_tmpdir = strdup(pmix_tmp_directory());
+        }
+    }
+
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) ||
+        PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
+        pmix_ptl_base.system_tmpdir = strdup(pmix_server_globals.system_tmpdir);
+    } else {
+        if (NULL != (tdir = getenv("PMIX_SYSTEM_TMPDIR"))) {
+            pmix_ptl_base.system_tmpdir = strdup(tdir);
+        } else {
+            pmix_ptl_base.system_tmpdir = strdup(pmix_tmp_directory());
+        }
+    }
+
+    if (NULL != pmix_ptl_base.report_uri &&
+        0 != strcmp(pmix_ptl_base.report_uri, "-") &&
+        0 != strcmp(pmix_ptl_base.report_uri, "+")) {
+        pmix_ptl_base.urifile = strdup(pmix_ptl_base.report_uri);
+    }
+
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) ||
+        PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
+        if (NULL != (tdir = getenv("PMIX_LAUNCHER_RENDEZVOUS_FILE"))) {
+            pmix_ptl_base.rendezvous_filename = strdup(tdir);
+        }
+    }
 
     /* Open up all available components */
     rc = pmix_mca_base_framework_components_open(&pmix_ptl_base_framework, flags);
@@ -126,10 +330,6 @@ PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, ptl, "PMIx Transfer Layer",
                                 mca_ptl_base_static_components, 0);
 
 /***   INSTANTIATE INTERNAL CLASSES   ***/
-PMIX_CLASS_INSTANCE(pmix_ptl_base_active_t,
-                    pmix_list_item_t,
-                    NULL, NULL);
-
 static void scon(pmix_ptl_send_t *p)
 {
     memset(&p->hdr, 0, sizeof(pmix_ptl_hdr_t));
@@ -202,25 +402,28 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_ptl_sr_t,
 static void pccon(pmix_pending_connection_t *p)
 {
     p->need_id = false;
-    memset(p->nspace, 0, PMIX_MAX_NSLEN+1);
+    PMIX_LOAD_PROCID(&p->proc, NULL, PMIX_RANK_UNDEF);
     p->info = NULL;
     p->ninfo = 0;
     p->peer = NULL;
+    p->version = NULL;
     p->bfrops = NULL;
     p->psec = NULL;
     p->gds = NULL;
-    p->ptl = NULL;
     p->cred = NULL;
     p->proc_type.type = PMIX_PROC_UNDEF;
     p->proc_type.major = PMIX_MAJOR_WILDCARD;
     p->proc_type.minor = PMIX_MINOR_WILDCARD;
     p->proc_type.release = PMIX_RELEASE_WILDCARD;
-    p->proc_type.padding = 0;
+    p->proc_type.flag = 0;
 }
 static void pcdes(pmix_pending_connection_t *p)
 {
     if (NULL != p->info) {
         PMIX_INFO_FREE(p->info, p->ninfo);
+    }
+    if (NULL != p->version) {
+        free(p->version);
     }
     if (NULL != p->bfrops) {
         free(p->bfrops);

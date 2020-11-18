@@ -279,7 +279,7 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
             pmix_setenv("PMIX_SERVER_RANK", tmp, true, &env);
 
             /* get any PTL contribution such as tmpdir settings for session files */
-            if (PMIX_SUCCESS != (rc = pmix_ptl_base_setup_fork(&child->proc, &env))) {
+            if (PMIX_SUCCESS != (rc = pmix_ptl.setup_fork(&child->proc, &env))) {
                 PMIX_ERROR_LOG(rc);
                 pmix_list_remove_item(&pmix_pfexec_globals.children, &child->super);
                 PMIX_RELEASE(child);

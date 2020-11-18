@@ -212,7 +212,7 @@ static pmix_status_t heartbeat_start(pmix_peer_t *requestor, pmix_status_t error
         rcv->tag = PMIX_PTL_TAG_HEARTBEAT;
         rcv->cbfunc = pmix_psensor_heartbeat_recv_beats;
         /* add it to the beginning of the list of recvs */
-        pmix_list_prepend(&pmix_ptl_globals.posted_recvs, &rcv->super);
+        pmix_list_prepend(&pmix_ptl_base.posted_recvs, &rcv->super);
         mca_psensor_heartbeat_component.recv_active = true;
     }
 
