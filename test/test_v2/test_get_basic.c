@@ -29,7 +29,7 @@ pmix_proc_t this_proc;
 int main(int argc, char *argv[]) {
 
     pmix_value_t *val;
-    size_t ninfo = 1;
+    size_t ninfo = 0;
     test_params params;
     validation_params v_params;
     pmix_proc_t job_proc;

@@ -1,6 +1,7 @@
-INSTALLDIR = $(HOME)/pmix-install
-INCLUDES = -I. -I../../test -I../../include -I../.. -I../../src/include
-vpath %.h .:../../test:../../include:../..:../../src/include
+#Fix below to be your local openpmix installation
+INSTALLDIR = /opt/cps/pmix-install
+INCLUDES = -I. -I$(INSTALLDIR)/include -I../../include -I../.. -I../../src/include
+vpath %.h .:$(INSTALLDIR)/include:../../include:../..:../../src/include
 LDIR = $(INSTALLDIR)/lib
 
 CC = gcc
@@ -34,7 +35,6 @@ clean:
 
 pmix_test: $(POBJ) 
 	$(CC) -o $@ $^ $(CFLAGS) -L$(LDIR) $(LDFLAGS) $(LIBS)
-
 test_init_fin: $(T1OBJ)
 	$(CC) -o $@ $^ $(CFLAGS) -L$(LDIR) $(LDFLAGS) $(LIBS)
 test_helloworld: $(T2OBJ)
