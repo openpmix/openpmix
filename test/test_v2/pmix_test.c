@@ -38,7 +38,6 @@
 #include "src/util/output.h"
 
 #include "server_callbacks.h"
-#include "utils.h"
 #include "test_server.h"
 #include "test_common.h"
 
