@@ -348,7 +348,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     pmix_status_t rc;
     char *evar, *nspace = NULL;
     pmix_rank_t rank = PMIX_RANK_UNDEF;
-    bool gdsfound, do_not_connect = false;
+    bool do_not_connect = false;
     bool nspace_given = false;
     bool nspace_in_enviro = false;
     bool rank_given = false;
@@ -401,22 +401,15 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     }
 
     /* parse the input directives */
-    gdsfound = false;
     PMIX_SET_PROC_TYPE(&ptype, PMIX_PROC_TOOL);
     if (NULL != info) {
         for (n=0; n < ninfo; n++) {
-            if (0 == strncmp(info[n].key, PMIX_GDS_MODULE, PMIX_MAX_KEYLEN)) {
-                PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, info[n].value.data.string, PMIX_STRING);
-                gdsfound = true;
-            } else if (0 == strncmp(info[n].key, PMIX_TOOL_DO_NOT_CONNECT, PMIX_MAX_KEYLEN)) {
+            if (0 == strncmp(info[n].key, PMIX_TOOL_DO_NOT_CONNECT, PMIX_MAX_KEYLEN)) {
                 do_not_connect = PMIX_INFO_TRUE(&info[n]);
             } else if (0 == strncmp(info[n].key, PMIX_TOOL_NSPACE, PMIX_MAX_KEYLEN)) {
                 if (NULL != nspace) {
                     /* cannot define it twice */
                     free(nspace);
-                    if (gdsfound) {
-                        PMIX_INFO_DESTRUCT(&ginfo);
-                    }
                     PMIX_RELEASE_THREAD(&pmix_global_lock);
                     return PMIX_ERR_BAD_PARAM;
                 }
@@ -463,9 +456,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         if (NULL != nspace) {
             free(nspace);
         }
-        if (gdsfound) {
-            PMIX_INFO_DESTRUCT(&ginfo);
-        }
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_BAD_PARAM;
     }
@@ -506,9 +496,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
             if (NULL != nspace) {
                 free(nspace);
             }
-            if (gdsfound) {
-                PMIX_INFO_DESTRUCT(&ginfo);
-            }
             PMIX_RELEASE_THREAD(&pmix_global_lock);
             return PMIX_ERR_BAD_PARAM;
         }
@@ -521,9 +508,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         PMIX_ERROR_LOG(rc);
         if (NULL != nspace) {
             free(nspace);
-        }
-        if (gdsfound) {
-            PMIX_INFO_DESTRUCT(&ginfo);
         }
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
@@ -549,27 +533,18 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     pmix_pointer_array_init(&pmix_client_globals.peers, 1, INT_MAX, 1);
     pmix_client_globals.myserver = PMIX_NEW(pmix_peer_t);
     if (NULL == pmix_client_globals.myserver) {
-        if (gdsfound) {
-            PMIX_INFO_DESTRUCT(&ginfo);
-        }
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_NOMEM;
     }
     pmix_client_globals.myserver->nptr = PMIX_NEW(pmix_namespace_t);
     if (NULL == pmix_client_globals.myserver->nptr) {
         PMIX_RELEASE(pmix_client_globals.myserver);
-        if (gdsfound) {
-            PMIX_INFO_DESTRUCT(&ginfo);
-        }
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_NOMEM;
     }
     pmix_client_globals.myserver->info = PMIX_NEW(pmix_rank_info_t);
     if (NULL == pmix_client_globals.myserver->info) {
         PMIX_RELEASE(pmix_client_globals.myserver);
-        if (gdsfound) {
-            PMIX_INFO_DESTRUCT(&ginfo);
-        }
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_NOMEM;
     }
@@ -584,9 +559,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         /* setup a rank_info object for us */
         pmix_globals.mypeer->info = PMIX_NEW(pmix_rank_info_t);
         if (NULL == pmix_globals.mypeer->info) {
-            if (gdsfound) {
-                PMIX_INFO_DESTRUCT(&ginfo);
-            }
             PMIX_RELEASE_THREAD(&pmix_global_lock);
             return PMIX_ERR_NOMEM;
         }
@@ -597,9 +569,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     /* select our bfrops compat module */
     pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
     if (NULL == pmix_globals.mypeer->nptr->compat.bfrops) {
-        if (gdsfound) {
-            PMIX_INFO_DESTRUCT(&ginfo);
-        }
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_INIT;
     }
@@ -612,9 +581,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     evar = getenv("PMIX_SECURITY_MODE");
     pmix_globals.mypeer->nptr->compat.psec = pmix_psec_base_assign_module(evar);
     if (NULL == pmix_globals.mypeer->nptr->compat.psec) {
-        if (gdsfound) {
-            PMIX_INFO_DESTRUCT(&ginfo);
-        }
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_INIT;
     }
@@ -636,35 +602,16 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     /* the server will be using the same */
     pmix_client_globals.myserver->nptr->compat.type = pmix_globals.mypeer->nptr->compat.type;
 
-    /* select a GDS module for our own internal use - the user may
-     * have passed down a directive for this purpose. If they did, then
-     * use it. Otherwise, we want the "hash" module */
-    if (!gdsfound) {
-        PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, "hash", PMIX_STRING);
-    }
+    /* tools are restricted to the "hash" component for interacting
+     * with a server's GDS framework */
+    PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, "hash", PMIX_STRING);
     pmix_globals.mypeer->nptr->compat.gds = pmix_gds_base_assign_module(&ginfo, 1);
-    if (NULL == pmix_globals.mypeer->nptr->compat.gds) {
-        PMIX_INFO_DESTRUCT(&ginfo);
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return PMIX_ERR_INIT;
-    }
     PMIX_INFO_DESTRUCT(&ginfo);
-    /* select the gds compat module we will use to interact with
-     * our server- the selection will be based
-     * on the corresponding envars that should have been passed
-     * to us at launch */
-    evar = getenv("PMIX_GDS_MODULE");
-    if (NULL != evar) {
-        PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, evar, PMIX_STRING);
-        pmix_client_globals.myserver->nptr->compat.gds = pmix_gds_base_assign_module(&ginfo, 1);
-        PMIX_INFO_DESTRUCT(&ginfo);
-    } else {
-        pmix_client_globals.myserver->nptr->compat.gds = pmix_gds_base_assign_module(NULL, 0);
-    }
-    if (NULL == pmix_client_globals.myserver->nptr->compat.gds) {
+    if (NULL == pmix_globals.mypeer->nptr->compat.gds) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_INIT;
     }
+    pmix_client_globals.myserver->nptr->compat.gds = pmix_globals.mypeer->nptr->compat.gds;
 
     /* if we are a launcher, then we also need to act as a server,
      * so setup the server-related structures here */
@@ -674,9 +621,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
             PMIX_ERROR_LOG(rc);
             if (NULL != nspace) {
                 free(nspace);
-            }
-            if (gdsfound) {
-                PMIX_INFO_DESTRUCT(&ginfo);
             }
             PMIX_RELEASE_THREAD(&pmix_global_lock);
             return rc;
@@ -1507,6 +1451,14 @@ static void retry_attach(int sd, short args, void *cbdata)
 
     /* now ask the ptl to establish connection to the new server */
     peer = PMIX_NEW(pmix_peer_t);
+    /* setup the infrastructure - assume this new server will follow
+     * same rules as our current one */
+    peer->nptr = PMIX_NEW(pmix_namespace_t);
+    peer->info = PMIX_NEW(pmix_rank_info_t);
+    peer->nptr->compat.bfrops = pmix_globals.mypeer->nptr->compat.bfrops;
+    peer->nptr->compat.psec = pmix_globals.mypeer->nptr->compat.psec;
+    peer->nptr->compat.type = pmix_globals.mypeer->nptr->compat.type;
+    peer->nptr->compat.gds = pmix_globals.mypeer->nptr->compat.gds;
     cb->status = pmix_ptl.connect_to_peer((struct pmix_peer_t*)peer, cb->info, cb->ninfo);
 
     /* once that activity has all completed, stop the new progress thread */
@@ -1519,6 +1471,8 @@ static void retry_attach(int sd, short args, void *cbdata)
         /* return the name */
         cb->pname.nspace = strdup(peer->info->pname.nspace);
         cb->pname.rank = peer->info->pname.rank;
+        /* add the peer to our known clients */
+        pmix_pointer_array_add(&pmix_server_globals.clients, peer);
 
         if (cb->checked) {
             /* point our active server at this new one */

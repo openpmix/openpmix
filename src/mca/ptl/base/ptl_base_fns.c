@@ -54,6 +54,71 @@
 static void timeout(int sd, short args, void *cbdata);
 static char *pmix_getline(FILE *fp);
 
+pmix_status_t pmix_ptl_base_check_server_uris(pmix_peer_t *peer, char **ev)
+{
+    char *evar, *vrs;
+    pmix_status_t rc;
+
+    vrs = getenv("PMIX_VERSION");
+
+    if (NULL != (evar = getenv("PMIX_SERVER_URI4"))) {
+        /* we are talking to a v4 server */
+        PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
+        PMIX_SET_PEER_VERSION(peer, vrs, 4, 0);
+
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "V4 SERVER DETECTED");
+
+        /* must use the latest bfrops module */
+        PMIX_BFROPS_SET_MODULE(rc, pmix_globals.mypeer, peer, NULL);
+        *ev = evar;
+        return rc;
+    }
+
+    if (NULL != (evar = getenv("PMIX_SERVER_URI3"))) {
+        /* we are talking to a v3 server */
+        PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
+        PMIX_SET_PEER_VERSION(peer, vrs, 3, 0);
+
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "V3 SERVER DETECTED");
+
+        /* must use the v3 bfrops module */
+        PMIX_BFROPS_SET_MODULE(rc, pmix_globals.mypeer, peer, "v3");
+        *ev = evar;
+        return rc;
+    }
+
+    if (NULL != (evar = getenv("PMIX_SERVER_URI21"))) {
+        /* we are talking to a v2.1 server */
+        PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
+        PMIX_SET_PEER_VERSION(peer, vrs, 2, 1);
+
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "V21 SERVER DETECTED");
+
+        /* must use the v21 bfrops module */
+        PMIX_BFROPS_SET_MODULE(rc, pmix_globals.mypeer, peer, "v21");
+        *ev = evar;
+        return rc;
+    }
+
+    if (NULL != (evar = getenv("PMIX_SERVER_URI2"))) {
+        /* we are talking to a v2.0 server */
+        PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
+        PMIX_SET_PEER_VERSION(peer, vrs, 2, 0);
+
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "V20 SERVER DETECTED");
+
+        /* must use the v20 bfrops module */
+        PMIX_BFROPS_SET_MODULE(rc, pmix_globals.mypeer, peer, "v20");
+        *ev = evar;
+        return rc;
+    }
+
+    return PMIX_ERR_UNREACH;
+}
 
 pmix_status_t pmix_ptl_base_check_directives(pmix_info_t *info, size_t ninfo)
 {
@@ -486,7 +551,8 @@ static pmix_status_t recv_connect_ack(pmix_peer_t *peer)
     }
     reply = ntohl(u32);
 
-    if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
         rc = pmix_ptl_base_client_handshake(peer, reply);
     } else {  // we are a tool
         rc = pmix_ptl_base_tool_handshake(peer, reply);

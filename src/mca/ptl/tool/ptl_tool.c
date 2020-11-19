@@ -78,7 +78,7 @@ pmix_ptl_module_t pmix_ptl_tool_module = {
 static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
                                      pmix_info_t *info, size_t ninfo)
 {
-    char *suri = NULL, *st;
+    char *suri = NULL, *st, *evar;
     char *filename, *nspace=NULL;
     pmix_rank_t rank = PMIX_RANK_WILDCARD;
     char *p = NULL, *server_nspace = NULL, *rendfile = NULL;
@@ -147,6 +147,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
             }
         }
     }
+
     /* add our pid to the array */
     kv = PMIX_NEW(pmix_info_caddy_t);
     mypid = getpid();
@@ -424,26 +425,42 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
         goto cleanup;
     }
 
-    /* they didn't give us a pid, so we will search to see what session-level
-     * tools are available to this user. We will take the first connection
-     * that succeeds - this is based on the likelihood that there is only
-     * one session per user on a node */
+    /* see if we are a client of some server */
+    rc = pmix_ptl_base_check_server_uris(peer, &evar);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_SET_PEER_TYPE(pmix_globals.mypeer, PMIX_PROC_CLIENT_TOOL);
+        rc = pmix_ptl_base_parse_uri(evar, &nspace, &rank, &suri);
+        if (PMIX_SUCCESS != rc) {
+            goto cleanup;
+        }
+        rc = pmix_ptl_base_make_connection(peer, suri, iptr, niptr);
+        if (PMIX_SUCCESS != rc) {
+            goto cleanup;
+        }
+    } else if (PMIX_ERR_UNREACH != rc) {
+        goto cleanup;
+    } else {
+        /* we aren't a client, so we will search to see what session-level
+         * tools are available to this user. We will take the first connection
+         * that succeeds - this is based on the likelihood that there is only
+         * one session per user on a node */
 
-    if (0 > asprintf(&filename, "pmix.%s.tool", myhost)) {
-        rc = PMIX_ERR_NOMEM;
-        goto cleanup;
-    }
-    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "ptl:tool:tool searching for session server %s",
-                        filename);
-    nspace = NULL;
-    rc = pmix_ptl_base_df_search(pmix_ptl_base.system_tmpdir,
-                                 filename, iptr, niptr, &sd, &nspace,
-                                 &rank, &suri, peer);
-    free(filename);
-    if (PMIX_SUCCESS != rc) {
-        rc = PMIX_ERR_UNREACH;
-        goto cleanup;
+        if (0 > asprintf(&filename, "pmix.%s.tool", myhost)) {
+            rc = PMIX_ERR_NOMEM;
+            goto cleanup;
+        }
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:tool:tool searching for session server %s",
+                            filename);
+        nspace = NULL;
+        rc = pmix_ptl_base_df_search(pmix_ptl_base.system_tmpdir,
+                                     filename, iptr, niptr, &sd, &nspace,
+                                     &rank, &suri, peer);
+        free(filename);
+        if (PMIX_SUCCESS != rc) {
+            rc = PMIX_ERR_UNREACH;
+            goto cleanup;
+        }
     }
 
   complete:

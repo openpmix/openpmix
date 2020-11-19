@@ -65,7 +65,8 @@ static int component_query(pmix_mca_base_module_t **module, int *priority);
 static int component_query(pmix_mca_base_module_t **module, int *priority)
 {
     /* if I am not a client, then look elsewhere */
-    if (!PMIX_PEER_IS_CLIENT(pmix_globals.mypeer)) {
+    if (!PMIX_PEER_IS_CLIENT(pmix_globals.mypeer) ||
+        PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
         *module = NULL;
         *priority = 0;
         return PMIX_ERR_TAKE_NEXT_OPTION;

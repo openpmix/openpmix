@@ -127,6 +127,7 @@ PMIX_EXPORT void pmix_ptl_base_stop_listening(void);
 PMIX_EXPORT pmix_status_t pmix_base_write_rndz_file(char *filename, char *uri, bool *created);
 
 /* base support functions */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_check_server_uris(pmix_peer_t *peer, char **evar);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_check_directives(pmix_info_t *info, size_t ninfo);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_setup_fork(const pmix_proc_t *proc, char ***env);
 PMIX_EXPORT void pmix_ptl_base_send_handler(int sd, short flags, void *cbdata);

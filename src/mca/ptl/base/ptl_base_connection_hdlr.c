@@ -412,14 +412,6 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     }
     CLOSE_THE_SOCKET(pnd->sd);
     PMIX_RELEASE(pnd);
-
-    /* send an error reply to the client */
-    u32 = htonl(rc);
-    if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(int)))) {
-        PMIX_ERROR_LOG(rc);
-        CLOSE_THE_SOCKET(pnd->sd);
-    }
-    PMIX_RELEASE(pnd);
     return;
 }
 

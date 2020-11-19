@@ -75,7 +75,7 @@ pmix_ptl_module_t pmix_ptl_client_module = {
 static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
                                      pmix_info_t *info, size_t ninfo)
 {
-    char *evar, *vrs, *suri = NULL;
+    char *evar, *suri = NULL;
     char *nspace=NULL;
     pmix_rank_t rank = PMIX_RANK_WILDCARD;
     char **server_nspace = NULL, *rendfile = NULL;
@@ -85,66 +85,9 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:tcp: connecting to server");
 
-    vrs = getenv("PMIX_VERSION");
-
-    if (NULL != (evar = getenv("PMIX_SERVER_URI4"))) {
-        /* we are talking to a v4 server */
-        PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
-        PMIX_SET_PEER_VERSION(peer, vrs, 4, 0);
-
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "V4 SERVER DETECTED");
-
-        /* must use the latest bfrops module */
-        PMIX_BFROPS_SET_MODULE(rc, pmix_globals.mypeer, peer, NULL);
-        if (PMIX_SUCCESS != rc) {
-            return rc;
-        }
-
-    } else if (NULL != (evar = getenv("PMIX_SERVER_URI3"))) {
-        /* we are talking to a v3 server */
-        PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
-        PMIX_SET_PEER_VERSION(peer, vrs, 3, 0);
-
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "V3 SERVER DETECTED");
-
-        /* must use the v3 bfrops module */
-        PMIX_BFROPS_SET_MODULE(rc, pmix_globals.mypeer, peer, "v3");
-        if (PMIX_SUCCESS != rc) {
-            return rc;
-        }
-
-    } else if (NULL != (evar = getenv("PMIX_SERVER_URI21"))) {
-        /* we are talking to a v2.1 server */
-        PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
-        PMIX_SET_PEER_VERSION(peer, vrs, 2, 1);
-
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "V21 SERVER DETECTED");
-
-        /* must use the v21 bfrops module */
-        PMIX_BFROPS_SET_MODULE(rc, pmix_globals.mypeer, peer, "v21");
-        if (PMIX_SUCCESS != rc) {
-            return rc;
-        }
-
-    } else if (NULL != (evar = getenv("PMIX_SERVER_URI2"))) {
-        /* we are talking to a v2.0 server */
-        PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
-        PMIX_SET_PEER_VERSION(peer, vrs, 2, 0);
-
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "V20 SERVER DETECTED");
-
-        /* must use the v20 bfrops module */
-        PMIX_BFROPS_SET_MODULE(rc, pmix_globals.mypeer, peer, "v20");
-        if (PMIX_SUCCESS != rc) {
-            return rc;
-        }
-
-    } else {
-        return PMIX_ERR_UNREACH;
+    rc = pmix_ptl_base_check_server_uris(peer, &evar);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
     }
 
     /* the URI consists of the following elements:
