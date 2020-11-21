@@ -72,6 +72,15 @@ my $username;
 my $hostname;
 my $full_hostname;
 
+# Patch program
+my $patch_prog = "patch";
+# Solaris "patch" doesn't understand unified diffs, and will cause
+# autogen.pl to hang with a "File to patch:" prompt. Default to Linux
+# "patch", but use "gpatch" on Solaris.
+if ($^O eq "solaris") {
+    $patch_prog = "gpatch";
+}
+
 $username = getpwuid($>);
 $full_hostname = `hostname`;
 chomp($full_hostname);
@@ -548,6 +557,129 @@ sub safe_system {
 
 ##############################################################################
 
+sub patch_autotools_output {
+    my ($topdir) = @_;
+
+    # Set indentation string for verbose output depending on current directory.
+    my $indent_str = "    ";
+    if ($topdir eq ".") {
+        $indent_str = "=== ";
+    }
+
+    # Patch ltmain.sh error for PGI version numbers.  Redirect stderr to
+    # /dev/null because this patch is only necessary for some versions of
+    # Libtool (e.g., 2.2.6b); it'll [rightfully] fail if you have a new
+    # enough Libtool that doesn't need this patch.  But don't alarm the
+    # user and make them think that autogen failed if this patch fails --
+    # make the errors be silent.
+    # Also patch ltmain.sh for NAG compiler
+    if (-f "config/ltmain.sh") {
+        verbose "$indent_str"."Patching PGI compiler version numbers in ltmain.sh\n";
+        system("$patch_prog -N -p0 < $topdir/config/ltmain_pgi_tp.diff >/dev/null 2>&1");
+        unlink("config/ltmain.sh.rej");
+
+        verbose "$indent_str"."Patching \"-pthread\" option for NAG compiler in ltmain.sh\n";
+        system("$patch_prog -N -p0 < $topdir/config/ltmain_nag_pthread.diff >/dev/null 2>&1");
+        unlink("config/ltmain.sh.rej");
+    }
+
+    # If there's no configure script, there's nothing else to do.
+    return
+        if (! -f "configure");
+    my @verbose_out;
+
+    # Total ugh.  We have to patch the configure script itself.  See below
+    # for explanations why.
+    open(IN, "configure") || my_die "Can't open configure";
+    my $c;
+    $c .= $_
+        while(<IN>);
+    close(IN);
+    my $c_orig = $c;
+
+    # The PGI 10 version number broke <=LT
+    # 2.2.6b's version number checking regexps.  We can't fix the
+    # Libtool install; all we can do is patch the resulting configure
+    # script.  :-( The following comes from the upstream patch:
+    # http://lists.gnu.org/archive/html/libtool-patches/2009-11/msg00016.html
+    push(@verbose_out, $indent_str . "Patching configure for Libtool PGI version number regexps\n");
+    $c =~ s/\*pgCC\\ \[1-5\]\* \| \*pgcpp\\ \[1-5\]\*/*pgCC\\ [1-5]\.* | *pgcpp\\ [1-5]\.*/g;
+
+    # See http://git.savannah.gnu.org/cgit/libtool.git/commit/?id=v2.2.6-201-g519bf91 for details
+    # Note that this issue was fixed in LT 2.2.8, however most distros are still using 2.2.6b
+
+    push(@verbose_out, $indent_str . "Patching configure for IBM xlf libtool bug\n");
+    $c =~ s/(\$LD -shared \$libobjs \$deplibs \$)compiler_flags( -soname \$soname)/$1linker_flags$2/g;
+
+    #Check if we are using a recent enough libtool that supports PowerPC little endian
+    if(index($c, 'powerpc64le-*linux*)') == -1) {
+        push(@verbose_out, $indent_str . "Patching configure for PowerPC little endian support\n");
+        my $replace_string = "x86_64-*kfreebsd*-gnu|x86_64-*linux*|powerpc*-*linux*|";
+        $c =~ s/x86_64-\*kfreebsd\*-gnu\|x86_64-\*linux\*\|ppc\*-\*linux\*\|powerpc\*-\*linux\*\|/$replace_string/g;
+        $replace_string =
+        "powerpc64le-*linux*)\n\t    LD=\"\${LD-ld} -m elf32lppclinux\"\n\t    ;;\n\t  powerpc64-*linux*)";
+        $c =~ s/ppc64-\*linux\*\|powerpc64-\*linux\*\)/$replace_string/g;
+        $replace_string =
+        "powerpcle-*linux*)\n\t    LD=\"\${LD-ld} -m elf64lppc\"\n\t    ;;\n\t  powerpc-*linux*)";
+        $c =~ s/ppc\*-\*linux\*\|powerpc\*-\*linux\*\)/$replace_string/g;
+    }
+
+    # Fix consequence of broken libtool.m4
+    # see http://lists.gnu.org/archive/html/bug-libtool/2015-07/msg00002.html and
+    # https://github.com/open-mpi/ompi/issues/751
+    push(@verbose_out, $indent_str . "Patching configure for -L/-R libtool.m4 bug\n");
+    # patch for libtool < 2.4.3
+    $c =~ s/# Some compilers place space between "-\{L,R\}" and the path.\n       # Remove the space.\n       if test \$p = \"-L\" \|\|/# Some compilers place space between "-\{L,-l,R\}" and the path.\n       # Remove the spaces.\n       if test \$p = \"-L\" \|\|\n          test \$p = \"-l\" \|\|/g;
+    # patch for libtool >= 2.4.3
+    $c =~ s/# Some compilers place space between "-\{L,R\}" and the path.\n       # Remove the space.\n       if test x-L = \"\$p\" \|\|\n          test x-R = \"\$p\"\; then/# Some compilers place space between "-\{L,-l,R\}" and the path.\n       # Remove the spaces.\n       if test x-L = \"x\$p\" \|\|\n          test x-l = \"x\$p\" \|\|\n          test x-R = \"x\$p\"\; then/g;
+
+    # Fix OS X Big Sur (11.0.x) support
+    # From https://lists.gnu.org/archive/html/libtool-patches/2020-06/msg00001.html
+    push(@verbose_out, $indent_str . "Patching configure for MacOS Big Sur libtool.m4 bug\n");
+    # Some versions of Libtool use ${wl} consistently, but others did
+    # not (e.g., they used $wl).  Make the regexp be able to handle
+    # both.  Additionally, the case string searching for 10.[012]*
+    # changed over time.  So make sure it can handle both of the case
+    # strings that we're aware of.
+    my $WL = '(\$\{wl\}|\$wl)';
+    my $SOMETIMES = '(\[,.\])*';
+    my $search_string = 'darwin\*\) # darwin 5.x on
+      # if running on 10.5 or later, the deployment target defaults
+      # to the OS version, if on x86, and 10.4, the deployment
+      # target defaults to 10.4. Don\'t you love it\?
+      case \$\{MACOSX_DEPLOYMENT_TARGET-10.0\},\$host in
+    10.0,\*86\*-darwin8\*\|10.0,\*-darwin\[91\]\*\)
+      _lt_dar_allow_undefined=\'' . $WL . '-undefined ' . $WL . 'dynamic_lookup\' ;;
+    10.\[012\]' . $SOMETIMES . '\*\)
+      _lt_dar_allow_undefined=\'' . $WL . '-flat_namespace ' . $WL . '-undefined ' . $WL . 'suppress\' ;;
+    10.\*\)';
+    my $replace_string = 'darwin*)
+      # PMIx patched for Darwin / MacOS Big Sur.  See
+      # http://lists.gnu.org/archive/html/bug-libtool/2015-07/msg00001.html
+      case ${MACOSX_DEPLOYMENT_TARGET},$host in
+      10.[012],*|,*powerpc*)
+      _lt_dar_allow_undefined=\'${wl}-flat_namespace ${wl}-undefined ${wl}suppress\' ;;
+      *)';
+    $c =~ s/$search_string/$replace_string/g;
+
+    # Only write out verbose statements and a new configure if the
+    # configure content actually changed
+    return
+        if ($c eq $c_orig);
+    foreach my $str (@verbose_out) {
+        verbose($str);
+    }
+
+    open(OUT, ">configure.patched") || my_die "Can't open configure.patched";
+    print OUT $c;
+    close(OUT);
+    # Use cp so that we preserve permissions on configure
+    safe_system("cp configure.patched configure");
+    unlink("configure.patched");
+}
+
+##############################################################################
+
 sub in_tarball {
     my $tarball = 0;
     open(IN, "VERSION") || my_die "Can't open VERSION";
@@ -742,6 +874,8 @@ close(M4);
 verbose "==> Running autoreconf\n";
 my $cmd = "autoreconf -ivf --warnings=all,no-obsolete,no-override -I config";
 safe_system($cmd);
+
+patch_autotools_output(".");
 
 #---------------------------------------------------------------------------
 
