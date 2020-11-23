@@ -105,7 +105,6 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
 
     /* check any provided directives
      * to see where they want us to connect to */
-    suri = NULL;
     PMIX_CONSTRUCT(&ilist, pmix_list_t);
     if (NULL != info) {
         for (n=0; n < ninfo; n++) {
@@ -271,7 +270,8 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
          * us to a file we need to read to get the URI itself */
         if (0 == strncmp(pmix_ptl_base.uri, "file:", 5)) {
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                "ptl:tool:tool getting connection info from %s", suri);
+                                "ptl:tool:tool getting connection info from %s",
+                                pmix_ptl_base.uri);
             nspace = NULL;
             rc = pmix_ptl_base_parse_uri_file(&pmix_ptl_base.uri[5], &suri, &nspace, &rank, peer);
             if (PMIX_SUCCESS != rc) {
@@ -320,8 +320,6 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
     if (NULL != rendfile) {
         /* try to read the file */
         rc = pmix_ptl_base_parse_uri_file(rendfile, &suri, &nspace, &rank, peer);
-        free(rendfile);
-        rendfile = NULL;
         if (PMIX_SUCCESS == rc) {
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "ptl:tool:tool attempt connect to rendezvous server at %s", suri);
@@ -406,8 +404,6 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
             rc = PMIX_ERR_NOMEM;
             goto cleanup;
         }
-        free(server_nspace);
-        server_nspace = NULL;
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "ptl:tool:tool searching for given session server %s",
                             filename);
@@ -479,9 +475,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
     if (NULL != rendfile) {
         free(rendfile);
     }
-    if (NULL != suri) {
-        free(suri);
-    }
+    free(suri);
     if (NULL != server_nspace) {
         free(server_nspace);
     }

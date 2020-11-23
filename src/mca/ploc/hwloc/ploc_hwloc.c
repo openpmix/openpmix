@@ -892,12 +892,6 @@ static pmix_status_t get_relative_locality(const char *locality1,
     /* start with what we know - they share a node */
     locality = PMIX_LOCALITY_SHARE_NODE;
 
-    /* if either location is NULL, then that isn't bound */
-    if (NULL == loc1 || NULL == loc2) {
-        *loc = locality;
-        return PMIX_SUCCESS;
-    }
-
     set1 = pmix_argv_split(loc1, ':');
     set2 = pmix_argv_split(loc2, ':');
     bit1 = hwloc_bitmap_alloc();

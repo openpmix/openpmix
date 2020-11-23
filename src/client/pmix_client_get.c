@@ -290,7 +290,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
                 copy = true;
                 goto doget;
             }
-            if (wantinfo && (NULL != hostname || UINT32_MAX != nodeid)) {
+            if (NULL != hostname || UINT32_MAX != nodeid) {
                 /* they provided the "node-info" attribute. if they also
                  * specified the target node and it is NOT us, then dstore cannot
                  * resolve it and we need the rank to be undefined */
@@ -299,13 +299,6 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
                     goto fastpath;
                 }
                 goto doget;
-            } else if (wantinfo) {
-                /* they provided "node-info" but are missing the nodeid/hostname - assume
-                 * they are asking for info about our node. The dstore would have that */
-                pmix_output_verbose(2, pmix_client_globals.get_output,
-                                    "pmix: get_nb value assuming info about local node for proc %s key %s",
-                                    PMIX_NAME_PRINT(&p), (NULL == key) ? "NULL" : key);
-                goto fastpath;
             } else if (NULL != hostname) {
                 /* they did not provide the "node-info" attribute but did specify
                  * a hostname - if the ID is other than us, then we just need to

@@ -173,6 +173,9 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
         /* merge our launch environment into the app's */
         for (i=0; NULL != environ[i]; i++) {
             ptr = strchr(environ[i], '=');
+            if (NULL == ptr) {
+                continue;
+            }
             *ptr = '\0';
             ++ptr;
             pmix_setenv(environ[i], ptr, false, &app->env);  // do not overwrite a given value

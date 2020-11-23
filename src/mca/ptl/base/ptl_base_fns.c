@@ -772,6 +772,7 @@ pmix_status_t pmix_ptl_base_construct_message(pmix_peer_t *peer,
     PMIX_PSEC_CREATE_CRED(rc, pmix_globals.mypeer,
                           NULL, 0, NULL, 0, &cred);
     if (PMIX_SUCCESS != rc) {
+        PMIX_BYTE_OBJECT_DESTRUCT(&cred);
         return rc;
     }
 
@@ -873,6 +874,7 @@ pmix_status_t pmix_ptl_base_construct_message(pmix_peer_t *peer,
         default:
             /* we don't know what they are! */
             PMIX_DESTRUCT(&buf);
+            free(msg);
             return PMIX_ERR_NOT_SUPPORTED;
     }
 
