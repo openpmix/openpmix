@@ -305,7 +305,7 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
 {
     int flags = 0;
     pmix_listener_t *lt;
-    int i, rc, saveindex = -1;
+    int i, rc=0, saveindex = -1;
     char **interfaces = NULL;
     bool including = false;
     char name[32];

@@ -1478,33 +1478,30 @@ static void retry_attach(int sd, short args, void *cbdata)
             /* point our active server at this new one */
             pmix_client_globals.myserver = peer;
             /* update our active server's ID in the local key-value store */
-            if (NULL != peer->info &&
-                NULL != peer->info->pname.nspace) {
-                kptr = PMIX_NEW(pmix_kval_t);
-                kptr->key = strdup(PMIX_SERVER_NSPACE);
-                PMIX_VALUE_CREATE(kptr->value, 1);
-                kptr->value->type = PMIX_STRING;
-                kptr->value->data.string = strdup(peer->info->pname.nspace);
-                PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
-                                  &pmix_globals.myid,
-                                  PMIX_INTERNAL, kptr);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                }
-                PMIX_RELEASE(kptr); // maintain accounting
-                kptr = PMIX_NEW(pmix_kval_t);
-                kptr->key = strdup(PMIX_SERVER_RANK);
-                PMIX_VALUE_CREATE(kptr->value, 1);
-                kptr->value->type = PMIX_PROC_RANK;
-                kptr->value->data.rank = peer->info->pname.rank;
-                PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
-                                  &pmix_globals.myid,
-                                  PMIX_INTERNAL, kptr);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                }
-                PMIX_RELEASE(kptr); // maintain accounting
+            kptr = PMIX_NEW(pmix_kval_t);
+            kptr->key = strdup(PMIX_SERVER_NSPACE);
+            PMIX_VALUE_CREATE(kptr->value, 1);
+            kptr->value->type = PMIX_STRING;
+            kptr->value->data.string = strdup(peer->info->pname.nspace);
+            PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
+                              &pmix_globals.myid,
+                              PMIX_INTERNAL, kptr);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
             }
+            PMIX_RELEASE(kptr); // maintain accounting
+            kptr = PMIX_NEW(pmix_kval_t);
+            kptr->key = strdup(PMIX_SERVER_RANK);
+            PMIX_VALUE_CREATE(kptr->value, 1);
+            kptr->value->type = PMIX_PROC_RANK;
+            kptr->value->data.rank = peer->info->pname.rank;
+            PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
+                              &pmix_globals.myid,
+                              PMIX_INTERNAL, kptr);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
+            PMIX_RELEASE(kptr); // maintain accounting
         }
 
         /* setup the communication events for the new server */
@@ -1603,6 +1600,8 @@ static void disc(int sd, short args, void *cbdata)
     if (NULL == peer) {
         cb->status = PMIX_ERR_NOT_FOUND;
         PMIX_WAKEUP_THREAD(&cb->lock);
+        PMIX_POST_OBJECT(cb);
+        return;
     }
 
     /* if we are disconnecting from the active server, then we enter a

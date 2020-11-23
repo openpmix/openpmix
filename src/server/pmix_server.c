@@ -778,7 +778,7 @@ void pmix_server_purge_events(pmix_peer_t *peer,
     PMIX_LIST_FOREACH_SAFE(reginfo, regnext, &pmix_server_globals.events, pmix_regevents_info_t) {
         PMIX_LIST_FOREACH_SAFE(prev, pnext, &reginfo->peers, pmix_peer_events_info_t) {
             if ((NULL != peer && prev->peer == peer) ||
-                (NULL != proc && PMIX_CHECK_PROCID(proc, &prev->peer->info->pname))) {
+                (NULL != proc && NULL != prev->peer->info && PMIX_CHECK_PROCID(proc, &prev->peer->info->pname))) {
                 pmix_list_remove_item(&reginfo->peers, &prev->super);
                 PMIX_RELEASE(prev);
                 if (0 == pmix_list_get_size(&reginfo->peers)) {
@@ -805,7 +805,7 @@ void pmix_server_purge_events(pmix_peer_t *peer,
         if (NULL != peer && NULL == peer->info) {
             continue;
         }
-        if ((NULL != peer && PMIX_CHECK_PROCID(&req->requestor->info->pname, &peer->info->pname)) ||
+        if ((NULL != peer && NULL != peer->info && PMIX_CHECK_PROCID(&req->requestor->info->pname, &peer->info->pname)) ||
             (NULL != proc && PMIX_CHECK_PROCID(&req->requestor->info->pname, proc))) {
             pmix_pointer_array_set_item(&pmix_globals.iof_requests, i, NULL);
             PMIX_RELEASE(req);
@@ -814,7 +814,7 @@ void pmix_server_purge_events(pmix_peer_t *peer,
 
     /* see if this proc is involved in any direct modex requests */
     PMIX_LIST_FOREACH_SAFE(dlcd, dnxt, &pmix_server_globals.local_reqs, pmix_dmdx_local_t) {
-        if ((NULL != peer && PMIX_CHECK_PROCID(&peer->info->pname, &dlcd->proc)) ||
+        if ((NULL != peer && NULL != peer->info && PMIX_CHECK_PROCID(&peer->info->pname, &dlcd->proc)) ||
             (NULL != proc && PMIX_CHECK_PROCID(proc, &dlcd->proc))) {
                 /* cleanup this request */
             pmix_list_remove_item(&pmix_server_globals.local_reqs, &dlcd->super);
@@ -831,7 +831,7 @@ void pmix_server_purge_events(pmix_peer_t *peer,
         if (NULL != ncd && NULL != ncd->targets && 0 < ncd->ntargets) {
             tgt = NULL;
             for (n=0; n < ncd->ntargets; n++) {
-                if ((NULL != peer && PMIX_CHECK_PROCID(&peer->info->pname, &ncd->targets[n])) ||
+                if ((NULL != peer && NULL != peer->info && PMIX_CHECK_PROCID(&peer->info->pname, &ncd->targets[n])) ||
                     (NULL != proc && PMIX_CHECK_PROCID(proc, &ncd->targets[n]))) {
                     tgt = &ncd->targets[n];
                     break;

@@ -406,6 +406,9 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         info->proc_cnt--;
         PMIX_RELEASE(info);
     }
+    if (NULL != msg) {
+        free(msg);
+    }
     if (NULL != peer) {
         pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->index, NULL);
         PMIX_RELEASE(peer);
