@@ -76,6 +76,7 @@
 #include "src/util/pmix_pty.h"
 #include "src/util/printf.h"
 #include "src/util/show_help.h"
+#include "src/mca/gds/base/base.h"
 #include "src/mca/ptl/base/base.h"
 
 #include "src/client/pmix_client_ops.h"
@@ -83,6 +84,8 @@
 #include "src/mca/pfexec/base/base.h"
 
 static pmix_status_t setup_prefork(pmix_pfexec_child_t *child);
+static pmix_status_t register_nspace(char *nspace,
+                                     pmix_pfexec_fork_caddy_t *fcd);
 
 
 static pmix_status_t setup_path(pmix_app_t *app)
@@ -136,12 +139,13 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
     pmix_status_t rc;
     char **argv = NULL, **env = NULL;
     pmix_nspace_t nspace;
-    char basedir[MAXPATHLEN];
+    char basedir[MAXPATHLEN], sock[10];
     pmix_pfexec_child_t *child;
     pmix_rank_info_t *info;
     pmix_namespace_t *nptr;
     pmix_rank_t rank=0;
     char tmp[2048], *ptr;
+    bool nohup = false;
 
     pmix_output_verbose(5, pmix_pfexec_base_framework.framework_output,
                         "%s pfexec:base spawn proc",
@@ -167,6 +171,30 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
     nptr->nspace = strdup(nspace);
     pmix_list_append(&pmix_globals.nspaces, &nptr->super);
 
+    /* locally cache any job info that will later need to
+     * be communicated to the spawned job */
+    rc = register_nspace(nspace, fcd);
+    if (PMIX_SUCCESS != rc) {
+        pmix_list_remove_item(&pmix_globals.nspaces, &nptr->super);
+        PMIX_RELEASE(nptr);
+        goto complete;
+    }
+
+    for (k=0; k < fcd->njinfo; k++) {
+        if (PMIX_CHECK_KEY(&fcd->jobinfo[k], PMIX_SET_ENVAR)) {
+
+        } else if (PMIX_CHECK_KEY(&fcd->jobinfo[k], PMIX_ADD_ENVAR)) {
+
+        } else if (PMIX_CHECK_KEY(&fcd->jobinfo[k], PMIX_UNSET_ENVAR)) {
+        } else if (PMIX_CHECK_KEY(&fcd->jobinfo[k], PMIX_PREPEND_ENVAR)) {
+        } else if (PMIX_CHECK_KEY(&fcd->jobinfo[k], PMIX_APPEND_ENVAR)) {
+        } else if (PMIX_CHECK_KEY(&fcd->jobinfo[k], PMIX_NOHUP)) {
+            nohup = PMIX_INFO_TRUE(&fcd->jobinfo[k]);
+        }
+    }
+
+    /* cycle across the apps to prep their environment and
+     * launch their procs */
     for (m=0; m < fcd->napps; m++) {
         app = (pmix_app_t*)&fcd->apps[m];
 
@@ -193,6 +221,8 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
                 } else if (PMIX_CHECK_KEY(&fcd->jobinfo[k], PMIX_UNSET_ENVAR)) {
                 } else if (PMIX_CHECK_KEY(&fcd->jobinfo[k], PMIX_PREPEND_ENVAR)) {
                 } else if (PMIX_CHECK_KEY(&fcd->jobinfo[k], PMIX_APPEND_ENVAR)) {
+                } else if (PMIX_CHECK_KEY(&fcd->jobinfo[k], PMIX_NOHUP)) {
+                    nohup = PMIX_INFO_TRUE(&fcd->jobinfo[k]);
                 }
             }
         }
@@ -294,6 +324,13 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
 
             /* communicate our version */
             pmix_setenv("PMIX_VERSION", PMIX_VERSION, true, &env);
+
+            /* setup a keepalive pipe unless "nohup" was given */
+            if (!nohup) {
+                pipe(child->keepalive);
+                snprintf(sock, 10, "%d", child->keepalive[1]);
+                pmix_setenv("PMIX_KEEPALIVE_PIPE", sock, true, &env);
+            }
 
             pmix_output_verbose(5, pmix_pfexec_base_framework.framework_output,
                                 "%s pfexec:base spawning child %s",
@@ -499,11 +536,18 @@ pmix_status_t pmix_pfexec_base_setup_child(pmix_pfexec_child_t *child)
     int ret;
     pmix_pfexec_base_io_conf_t *opts = &child->opts;
 
-    if (opts->connect_stdin) {
+    if (opts->connect_stdin && 0 <= opts->p_stdin[1]) {
         close(opts->p_stdin[1]);
+        opts->p_stdin[1] = -1;
     }
-    close(opts->p_stdout[0]);
-    close(opts->p_stderr[0]);
+    if (0 <= opts->p_stdout[0]) {
+        close(opts->p_stdout[0]);
+        opts->p_stdout[0] = -1;
+    }
+    if (0 <= opts->p_stderr[0]) {
+        close(opts->p_stderr[0]);
+        opts->p_stderr[0] = -1;
+    }
 
     if (opts->usepty) {
         /* disable echo */
@@ -522,14 +566,20 @@ pmix_status_t pmix_pfexec_base_setup_child(pmix_pfexec_child_t *child)
         if (ret < 0) {
             return PMIX_ERR_SYS_OTHER;
         }
-        close(opts->p_stdout[1]);
+        if (0 <= opts->p_stdout[1]) {
+            close(opts->p_stdout[1]);
+            opts->p_stdout[1] = -1;
+        }
     } else {
         if(opts->p_stdout[1] != fileno(stdout)) {
             ret = dup2(opts->p_stdout[1], fileno(stdout));
             if (ret < 0) {
                 return PMIX_ERR_SYS_OTHER;
             }
-            close(opts->p_stdout[1]);
+            if (0 <= opts->p_stdout[1]) {
+                close(opts->p_stdout[1]);
+                opts->p_stdout[1] = -1;
+            }
         }
     }
     if (opts->connect_stdin) {
@@ -538,7 +588,10 @@ pmix_status_t pmix_pfexec_base_setup_child(pmix_pfexec_child_t *child)
             if (ret < 0) {
                 return PMIX_ERR_SYS_OTHER;
             }
-            close(opts->p_stdin[0]);
+            if (0 <= opts->p_stdin[0]) {
+                close(opts->p_stdin[0]);
+                opts->p_stdin[0] = -1;
+            }
         }
     } else {
         int fd;
@@ -563,8 +616,174 @@ pmix_status_t pmix_pfexec_base_setup_child(pmix_pfexec_child_t *child)
         if (ret < 0) {
             return PMIX_ERR_SYS_OTHER;
         }
-        close(opts->p_stderr[1]);
+        if (0 <= opts->p_stderr[1]) {
+            close(opts->p_stderr[1]);
+            opts->p_stderr[1] = -1;
+        }
     }
 
     return PMIX_SUCCESS;
+}
+
+static pmix_status_t register_nspace(char *nspace,
+                                     pmix_pfexec_fork_caddy_t *fcd)
+{
+    pmix_status_t rc;
+    size_t n, ninfo;
+    int m;
+    uint32_t nprocs, u32;
+    uint16_t u16;
+    pmix_proc_t proc;
+    pmix_rank_t zero=0, rk;
+    pmix_info_t *info = NULL;
+    pmix_namespace_t *nptr, *tmp;
+    void *jinfo, *tmpinfo, *pinfo;
+    pmix_data_array_t darray;
+    char *str;
+
+    /* quick compute the number of procs to be started */
+    nprocs = 0;
+    for (n=0; n < fcd->napps; n++) {
+        nprocs += fcd->apps[n].maxprocs;
+    }
+    if (0 == nprocs) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* see if we already have this nspace */
+    nptr = NULL;
+    PMIX_LIST_FOREACH(tmp, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (0 == strcmp(tmp->nspace, nspace)) {
+            nptr = tmp;
+            break;
+        }
+    }
+    if (NULL == nptr) {
+        nptr = PMIX_NEW(pmix_namespace_t);
+        if (NULL == nptr) {
+            rc = PMIX_ERR_NOMEM;
+            goto release;
+        }
+        nptr->nspace = strdup(nspace);
+        pmix_list_append(&pmix_globals.nspaces, &nptr->super);
+    }
+    nptr->nlocalprocs = nprocs;
+
+    /* start assembling the list */
+    PMIX_INFO_LIST_START(jinfo);
+
+    /* jobid */
+    PMIX_LOAD_PROCID(&proc, nspace, PMIX_RANK_UNDEF);
+    PMIX_INFO_LIST_ADD(rc, jinfo, PMIX_JOBID, &proc, PMIX_PROC);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_INFO_LIST_RELEASE(jinfo);
+        return rc;
+    }
+
+    /* hostname */
+    PMIX_INFO_LIST_ADD(rc, jinfo, PMIX_HOSTNAME, pmix_globals.hostname, PMIX_STRING);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_INFO_LIST_RELEASE(jinfo);
+        return rc;
+    }
+
+    /* node size */
+    PMIX_INFO_LIST_ADD(rc, jinfo, PMIX_NODE_SIZE, &nprocs, PMIX_UINT32);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_INFO_LIST_RELEASE(jinfo);
+        return rc;
+    }
+
+    /* local size */
+    PMIX_INFO_LIST_ADD(rc, jinfo, PMIX_LOCAL_SIZE, &nprocs, PMIX_UINT32);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_INFO_LIST_RELEASE(jinfo);
+        return rc;
+    }
+
+    /* local leader */
+    PMIX_INFO_LIST_ADD(rc, jinfo, PMIX_LOCALLDR, &zero, PMIX_PROC_RANK);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_INFO_LIST_RELEASE(jinfo);
+        return rc;
+    }
+
+    /* add in any info provided by the caller */
+    for (n=0; n < fcd->njinfo; n++) {
+        if (PMIX_ENVAR == fcd->jobinfo[n].value.type) {
+            continue;  // take care of these elsewhere
+        }
+        PMIX_INFO_LIST_XFER(rc, jinfo, &fcd->jobinfo[n]);
+    }
+
+    /* for each app in the job, create an app-array */
+    proc.rank = 0;
+    rk = 0;
+    for (n=0; n < fcd->napps; n++) {
+        PMIX_INFO_LIST_START(tmpinfo);
+        u32 = n;
+        PMIX_INFO_LIST_ADD(rc, tmpinfo, PMIX_APPNUM, &u32, PMIX_UINT32);
+        u32 = fcd->apps[n].maxprocs;
+        PMIX_INFO_LIST_ADD(rc, tmpinfo, PMIX_APP_SIZE, &u32, PMIX_UINT32);
+        PMIX_INFO_LIST_ADD(rc, tmpinfo, PMIX_APPLDR, &proc.rank, PMIX_PROC_RANK);
+        proc.rank += fcd->apps[n].maxprocs;
+        if (NULL != fcd->apps[n].cwd) {
+            PMIX_INFO_LIST_ADD(rc, tmpinfo, PMIX_WDIR, fcd->apps[n].cwd, PMIX_STRING);
+        }
+        str = pmix_argv_join(fcd->apps[n].argv, ' ');
+        PMIX_INFO_LIST_ADD(rc, tmpinfo, PMIX_APP_ARGV, str, PMIX_STRING);
+        /* convert the list into an array */
+        PMIX_INFO_LIST_CONVERT(rc, tmpinfo, &darray);
+        /* release the list */
+        PMIX_INFO_LIST_RELEASE(tmpinfo);
+        /* add it to the job info array */
+        PMIX_INFO_LIST_ADD(rc, jinfo, PMIX_APP_INFO_ARRAY, &darray, PMIX_DATA_ARRAY);
+        /* release the memory - the array was copied */
+        PMIX_DATA_ARRAY_DESTRUCT(&darray);
+        /* for each proc in this app, create a proc-array */
+        for (m=0; m < fcd->apps[n].maxprocs; m++) {
+            PMIX_INFO_LIST_START(pinfo);
+            /* must start with the rank */
+            PMIX_INFO_LIST_ADD(rc, pinfo, PMIX_RANK, &rk, PMIX_PROC_RANK);
+            ++rk;
+            /* app number for this proc */
+            u32 = n;
+            PMIX_INFO_LIST_ADD(rc, pinfo, PMIX_APPNUM, &u32, PMIX_UINT32);
+            /* local rank is the same as rank since we only fork locally */
+            u16 = rk;
+            PMIX_INFO_LIST_ADD(rc, pinfo, PMIX_LOCAL_RANK, &u16, PMIX_UINT16);
+            /* convert the list into an array */
+            PMIX_INFO_LIST_CONVERT(rc, pinfo, &darray);
+            /* release the list */
+            PMIX_INFO_LIST_RELEASE(pinfo);
+            /* add it to the job info array */
+            PMIX_INFO_LIST_ADD(rc, jinfo, PMIX_PROC_DATA, &darray, PMIX_DATA_ARRAY);
+            /* release the memory - the array was copied */
+            PMIX_DATA_ARRAY_DESTRUCT(&darray);
+        }
+    }
+
+    /* convert the full list of job info into an array */
+    PMIX_INFO_LIST_CONVERT(rc, jinfo, &darray);
+    PMIX_INFO_LIST_RELEASE(jinfo);
+
+    info = (pmix_info_t*)darray.array;
+    ninfo = darray.size;
+
+    /* register nspace for each activate components */
+    PMIX_GDS_ADD_NSPACE(rc, nptr->nspace, nprocs, info, ninfo);
+    if (PMIX_SUCCESS != rc) {
+        goto release;
+    }
+
+    /* store this data in our own GDS module - we will retrieve
+     * it later so it can be passed down to the launched procs
+     * once they connect to us and we know what GDS module they
+     * are using */
+    PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr,
+                            info, ninfo);
+
+  release:
+    PMIX_DATA_ARRAY_DESTRUCT(&darray);
+    return rc;
 }

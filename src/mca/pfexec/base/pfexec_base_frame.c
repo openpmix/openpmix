@@ -227,10 +227,21 @@ PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pfexec, "PMIx fork/exec Subsystem",
 
 static void chcon(pmix_pfexec_child_t *p)
 {
-    p->stdoutev = NULL;
-    p->stderrev = NULL;
+    memset(&p->ev, 0, sizeof(pmix_event_t));
+    PMIX_LOAD_PROCID(&p->proc, NULL, PMIX_RANK_UNDEF);
     p->pid = 0;
     p->completed = false;
+    p->keepalive[0] = -1;
+    p->keepalive[1] = -1;
+    memset(&p->opts, 0, sizeof(pmix_pfexec_base_io_conf_t));
+    p->opts.p_stdin[0] = -1;
+    p->opts.p_stdin[1] = -1;
+    p->opts.p_stdout[0] = -1;
+    p->opts.p_stdout[1] = -1;
+    p->opts.p_stderr[0] = -1;
+    p->opts.p_stderr[1] = -1;
+    p->stdoutev = NULL;
+    p->stderrev = NULL;
 }
 static void chdes(pmix_pfexec_child_t *p)
 {
@@ -239,6 +250,12 @@ static void chdes(pmix_pfexec_child_t *p)
     }
     if (NULL != p->stderrev) {
         PMIX_RELEASE(p->stderrev);
+    }
+    if (0 <= p->keepalive[0]) {
+        close(p->keepalive[0]);
+    }
+    if (0 <= p->keepalive[1]) {
+        close(p->keepalive[1]);
     }
 }
 PMIX_CLASS_INSTANCE(pmix_pfexec_child_t,
@@ -251,6 +268,9 @@ static void fccon(pmix_pfexec_fork_caddy_t *p)
     p->njinfo = 0;
     p->apps = NULL;
     p->napps = 0;
+    p->frkfn = NULL;
+    p->cbfunc = NULL;
+    p->cbdata = NULL;
 }
 PMIX_CLASS_INSTANCE(pmix_pfexec_fork_caddy_t,
                     pmix_object_t,

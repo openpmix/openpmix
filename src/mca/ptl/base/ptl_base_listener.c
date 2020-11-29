@@ -312,7 +312,7 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
     struct sockaddr_storage my_ss;
     int kindex;
     pmix_socklen_t addrlen;
-    char *prefix, myhost[PMIX_MAXHOSTNAMELEN] = {0};
+    char *prefix;
     char myconnhost[PMIX_MAXHOSTNAMELEN] = {0};
     int myport;
     pmix_kval_t *urikv;
@@ -509,7 +509,6 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
         goto sockerror;
     }
 
-    gethostname(myhost, sizeof(myhost)-1);
     if (AF_INET == pmix_ptl_base.connection.ss_family) {
         prefix = "tcp4://";
         myport = ntohs(((struct sockaddr_in*) &pmix_ptl_base.connection)->sin_port);
@@ -592,7 +591,7 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
     /* if we are going to support tools, then drop contact file(s) */
     if (pmix_ptl_base.system_tool) {
         if (0 > asprintf(&pmix_ptl_base.system_filename, "%s/pmix.sys.%s",
-                         pmix_ptl_base.system_tmpdir, myhost)) {
+                         pmix_ptl_base.system_tmpdir, pmix_globals.hostname)) {
             goto sockerror;
         }
         rc = pmix_base_write_rndz_file(pmix_ptl_base.system_filename, lt->uri,
@@ -606,7 +605,7 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
     if (pmix_ptl_base.session_tool) {
         /* first output to a std file */
         if (0 > asprintf(&pmix_ptl_base.session_filename, "%s/pmix.%s.tool",
-                         pmix_ptl_base.session_tmpdir, myhost)) {
+                         pmix_ptl_base.session_tmpdir, pmix_globals.hostname)) {
             goto sockerror;
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
@@ -624,7 +623,7 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
         /* now output to a file based on pid */
         mypid = getpid();
         if (0 > asprintf(&pmix_ptl_base.pid_filename, "%s/pmix.%s.tool.%d",
-                         pmix_ptl_base.session_tmpdir, myhost, mypid)) {
+                         pmix_ptl_base.session_tmpdir, pmix_globals.hostname, mypid)) {
             goto sockerror;
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
@@ -639,7 +638,7 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
 
         /* now output it into a file based on my nspace */
         if (0 > asprintf(&pmix_ptl_base.nspace_filename, "%s/pmix.%s.tool.%s",
-                         pmix_ptl_base.session_tmpdir, myhost, pmix_globals.myid.nspace)) {
+                         pmix_ptl_base.session_tmpdir, pmix_globals.hostname, pmix_globals.myid.nspace)) {
             goto sockerror;
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,

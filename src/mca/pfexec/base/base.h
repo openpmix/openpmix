@@ -63,6 +63,7 @@ typedef struct {
     pid_t pid;
     bool completed;
     int exitcode;
+    int keepalive[2];
     pmix_pfexec_base_io_conf_t opts;
     pmix_iof_read_event_t *stdoutev;
     pmix_iof_read_event_t *stderrev;

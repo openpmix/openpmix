@@ -202,8 +202,11 @@ pmix_status_t pmix_ptl_base_parse_uri(const char *evar, char **nspace,
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
-    /* set the server nspace */
-    if (NULL == (p = strchr(uri[0], '.'))) {
+    /* set the server nspace - the rank is appended
+     * to the end with a '.' separator. NOTE: we
+     * cannot search from the FRONT as that would
+     * stop on any FQDN or IPv4 separations */
+    if (NULL == (p = strrchr(uri[0], '.'))) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         pmix_argv_free(uri);
         return PMIX_ERR_NOT_SUPPORTED;
@@ -213,7 +216,9 @@ pmix_status_t pmix_ptl_base_parse_uri(const char *evar, char **nspace,
     *nspace = strdup(uri[0]);
     /* set the server rank */
     *rank = strtoull(p, NULL, 10);
-    *suri = strdup(uri[1]);
+    if (NULL != suri) {
+        *suri = strdup(uri[1]);
+    }
 
     pmix_argv_free(uri);
     return PMIX_SUCCESS;
@@ -422,7 +427,7 @@ pmix_status_t pmix_ptl_base_setup_connection(char *uri,
         }
 
         /* separate the IP address from the port */
-        p2 = strchr(p, ':');
+        p2 = strrchr(p, ':');
         if (NULL == p2) {
             free(p);
             PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
@@ -450,7 +455,7 @@ pmix_status_t pmix_ptl_base_setup_connection(char *uri,
             return PMIX_ERR_NOMEM;
         }
 
-        p2 = strchr(p, ':');
+        p2 = strrchr(p, ':');
         if (NULL == p2) {
             free(p);
             PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
@@ -1050,6 +1055,7 @@ static void check_server(char *filename,
     pmix_rank_t rank;
     pmix_list_t mylist;
     uint32_t u32;
+    pmix_status_t rc;
 
      /* if we cannot open the file, then the server must not
      * be configured to support tool connections, or this
@@ -1129,27 +1135,11 @@ static void check_server(char *filename,
         fclose(fp);
         return;
     }
-    /* up to the first ';' is the server nspace/rank */
-    if (NULL == (p = strchr(srvr, ';'))) {
-        /* malformed */
-        free(srvr);
-        fclose(fp);
+    rc = pmix_ptl_base_parse_uri(srvr, &nspace, &rank, NULL);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
         return;
     }
-    *p = '\0';
-    ++p;  // move past the semicolon
-    /* the nspace is the section up to the '.' */
-    if (NULL == (p2 = strchr(srvr, '.'))) {
-        /* malformed */
-        free(srvr);
-        fclose(fp);
-        return;
-    }
-    *p2 = '\0';
-    ++p2;
-    /* set the server nspace/rank */
-    nspace = srvr;
-    rank = strtoull(p2, NULL, 10);
 
     /* see if we already have this server in our list */
     PMIX_LIST_FOREACH(iptr, servers, pmix_infolist_t) {
@@ -1175,6 +1165,7 @@ static void check_server(char *filename,
     pmix_list_append(&mylist, &iptr->super);
 
     free(srvr);
+    free(nspace);
 
     /* see if this file contains the server's version */
     p2 = pmix_getline(fp);

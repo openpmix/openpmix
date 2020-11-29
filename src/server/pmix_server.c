@@ -70,6 +70,7 @@
 #include "src/mca/psensor/base/base.h"
 #include "src/mca/pstrg/base/base.h"
 #include "src/mca/ptl/base/base.h"
+#include "src/tool/pmix_tool_ops.h"
 
 /* the server also needs access to client operations
  * as it can, and often does, behave as a client */
@@ -3810,8 +3811,24 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
         return rc;
     }
     pmix_output_verbose(2, pmix_server_globals.base_output,
-                        "recvd pmix cmd %s from %s:%u",
-                        pmix_command_string(cmd), peer->info->pname.nspace, peer->info->pname.rank);
+                        "recvd pmix cmd %s from %s:%u bytes %u",
+                        pmix_command_string(cmd),
+                        peer->info->pname.nspace, peer->info->pname.rank,
+                        (unsigned int)buf->bytes_used);
+
+    /* if I am a tool, all I can do is relay this to my primary server
+     * if I am connected - if not connected, then I must return an error */
+    if (PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
+        rc = pmix_tool_relay_op(cmd, peer, buf, tag);
+        if (PMIX_ERR_NOT_SUPPORTED != rc) {
+            return rc;
+        }
+        /* if the tool relay doesn't support it, let it
+         * be processed by the logic tree */
+    }
+
+    /* if I am a server, then redirect the cmd to the appropriate
+     * function for processing */
 
     if (PMIX_REQ_CMD == cmd) {
         reply = PMIX_NEW(pmix_buffer_t);

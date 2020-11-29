@@ -1024,3 +1024,82 @@ const char* pmix_bfrops_base_data_type_string(pmix_pointer_array_t *regtypes,
 
     return info->odti_name;
 }
+
+PMIX_EXPORT void* pmix_info_list_start(void)
+{
+    pmix_list_t *p;
+
+    p = PMIX_NEW(pmix_list_t);
+    return p;
+}
+
+PMIX_EXPORT pmix_status_t pmix_info_list_add(void *ptr,
+                                             pmix_key_t key,
+                                             void *value,
+                                             pmix_data_type_t type)
+{
+    pmix_list_t *p = (pmix_list_t*)ptr;
+    pmix_infolist_t *iptr;
+
+    iptr = PMIX_NEW(pmix_infolist_t);
+    if (NULL == iptr) {
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_INFO_LOAD(&iptr->info, key, value, type);
+    pmix_list_append(p, &iptr->super);
+    return PMIX_SUCCESS;
+}
+
+PMIX_EXPORT pmix_status_t pmix_info_list_xfer(void *ptr,
+                                              const pmix_info_t *info)
+{
+    pmix_list_t *p = (pmix_list_t*)ptr;
+    pmix_infolist_t *iptr;
+
+    iptr = PMIX_NEW(pmix_infolist_t);
+    if (NULL == iptr) {
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_INFO_XFER(&iptr->info, info);
+    pmix_list_append(p, &iptr->super);
+    return PMIX_SUCCESS;
+}
+
+PMIX_EXPORT pmix_status_t pmix_info_list_convert(void *ptr, pmix_data_array_t *par)
+{
+    pmix_list_t *p = (pmix_list_t*)ptr;
+    size_t n;
+    pmix_infolist_t *iptr;
+    pmix_info_t *array;
+
+    if (NULL == par || NULL == ptr) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    n = pmix_list_get_size(p);
+    if (0 == n) {
+        return PMIX_ERR_EMPTY;
+    }
+    PMIX_INFO_CREATE(par->array, n);
+    if (NULL == par->array) {
+        return PMIX_ERR_NOMEM;
+    }
+    par->type = PMIX_INFO;
+    par->size = n;
+    array = (pmix_info_t*)par->array;
+
+    /* transfer the elements across */
+    n=0;
+    PMIX_LIST_FOREACH(iptr, p, pmix_infolist_t) {
+        PMIX_INFO_XFER(&array[n], &iptr->info);
+        ++n;
+    }
+
+    return PMIX_SUCCESS;
+}
+
+PMIX_EXPORT void pmix_info_list_release(void *ptr)
+{
+    pmix_list_t *p = (pmix_list_t*)ptr;
+    PMIX_LIST_RELEASE(p);
+}
