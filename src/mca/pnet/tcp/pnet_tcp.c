@@ -876,7 +876,7 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
                                        pmix_inventory_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_inventory_rollup_t *cd = (pmix_inventory_rollup_t*)cbdata;
-    char *prefix, myhost[PMIX_MAXHOSTNAMELEN] = {0};
+    char *prefix;
     char myconnhost[PMIX_MAXHOSTNAMELEN] = {0};
     char name[32], uri[2048];
     struct sockaddr_storage my_ss;
@@ -894,9 +894,7 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
     /* setup the bucket - we will pass the results as a blob */
     PMIX_CONSTRUCT(&bucket, pmix_buffer_t);
     /* add our hostname */
-    gethostname(myhost, sizeof(myhost)-1);
-    foo = &myhost[0];
-    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &bucket, &foo, 1, PMIX_STRING);
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &bucket, &pmix_globals.hostname, 1, PMIX_STRING);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_DESTRUCT(&bucket);

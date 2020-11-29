@@ -143,6 +143,8 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
         return "NOT-FOUND";
     case PMIX_ERR_NOT_SUPPORTED:
         return "NOT-SUPPORTED";
+    case PMIX_ERR_PARAM_VALUE_NOT_SUPPORTED:
+        return "PARAM-VALUE-NOT-SUPPORTED";
     case PMIX_ERR_NOT_IMPLEMENTED:
         return "NOT-IMPLEMENTED";
     case PMIX_ERR_COMM_FAILURE:
@@ -157,6 +159,8 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
         return "DUPLICATE KEY";
     case PMIX_ERR_GET_MALLOC_REQD:
         return "GET REQD MALLOC";
+    case PMIX_ERR_EMPTY:
+        return "EMPTY";
     case PMIX_PROCESS_SET_DEFINE:
         return "PROCESS SET DEFINED";
     case PMIX_ERR_IOF_FAILURE:
@@ -164,12 +168,8 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
     case PMIX_ERR_IOF_COMPLETE:
         return "IOF COMPLETE";
 
-    case PMIX_ERR_LOST_CONNECTION_TO_SERVER:
-        return "LOST_CONNECTION_TO_SERVER";
-    case PMIX_ERR_LOST_PEER_CONNECTION:
-        return "LOST-PEER-CONNECTION";
-    case PMIX_ERR_LOST_CONNECTION_TO_CLIENT:
-        return "LOST-CONNECTION-TO-CLIENT";
+    case PMIX_ERR_LOST_CONNECTION:
+        return "LOST_CONNECTION";
     case PMIX_QUERY_PARTIAL_SUCCESS:
         return "QUERY-PARTIAL-SUCCESS";
     case PMIX_NOTIFY_ALLOC_COMPLETE:
@@ -206,8 +206,6 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
     case PMIX_OPENMP_PARALLEL_EXITED:
         return "OPENMP-PARALLEL-EXITED";
 
-    case PMIX_LAUNCH_DIRECTIVE:
-        return "LAUNCH-DIRECTIVE";
     case PMIX_LAUNCHER_READY:
         return "LAUNCHER-READY";
     case PMIX_OPERATION_IN_PROGRESS:

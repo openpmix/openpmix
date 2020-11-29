@@ -115,15 +115,15 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
                          * as otherwise the collective will never complete */
                         if (PMIX_FENCENB_CMD == trk->type) {
                             if (NULL != trk->modexcbfunc) {
-                                trk->modexcbfunc(PMIX_ERR_LOST_CONNECTION_TO_CLIENT, NULL, 0, trk, NULL, NULL);
+                                trk->modexcbfunc(PMIX_ERR_LOST_CONNECTION, NULL, 0, trk, NULL, NULL);
                             }
                         } else if (PMIX_CONNECTNB_CMD == trk->type) {
                             if (NULL != trk->op_cbfunc) {
-                                trk->op_cbfunc(PMIX_ERR_LOST_CONNECTION_TO_CLIENT, trk);
+                                trk->op_cbfunc(PMIX_ERR_LOST_CONNECTION, trk);
                             }
                         } else if (PMIX_DISCONNECTNB_CMD == trk->type) {
                             if (NULL != trk->op_cbfunc) {
-                                trk->op_cbfunc(PMIX_ERR_LOST_CONNECTION_TO_CLIENT, trk);
+                                trk->op_cbfunc(PMIX_ERR_LOST_CONNECTION, trk);
                             }
                         }
                     } else {
@@ -207,7 +207,7 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
          * one connection we can have */
         pmix_globals.connected = false;
          /* set the public error status */
-        err = PMIX_ERR_LOST_CONNECTION_TO_SERVER;
+        err = PMIX_ERR_LOST_CONNECTION;
         /* it is possible that we have sendrecv's in progress where
          * we are waiting for a response to arrive. Since we have
          * lost connection to the server, that will never happen.
@@ -721,8 +721,9 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
     }
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "QUEIENG MSG TO SERVER OF SIZE %d",
-                        (int)ms->bfr->bytes_used);
+                        "QUEING MSG TO SERVER %s ON SOCKET %d OF SIZE %d",
+                        PMIX_PNAME_PRINT(&ms->peer->info->pname),
+                        ms->peer->sd, (int)ms->bfr->bytes_used);
     snd = PMIX_NEW(pmix_ptl_send_t);
     snd->hdr.pindex = htonl(pmix_globals.pindex);
     snd->hdr.tag = htonl(tag);
@@ -745,6 +746,7 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
         PMIX_POST_OBJECT(snd);
         pmix_event_add(&ms->peer->send_event, 0);
     }
+
     /* cleanup */
     PMIX_RELEASE(ms);
     PMIX_POST_OBJECT(snd);

@@ -211,7 +211,7 @@ PMIX_EXPORT void pmix_event_timeout_cb(int fd, short flags, void *arg);
             }                                                                           \
             /* if this is lost-connection-to-server, then we let it go to */            \
             /* the default event handler - otherwise, we don't */                       \
-            if (PMIX_ERR_LOST_CONNECTION_TO_SERVER != (e) &&                            \
+            if (PMIX_ERR_LOST_CONNECTION != (e) &&                            \
                 PMIX_ERR_UNREACH != (e)) {                                              \
                 ch->ninfo = 1;                                                          \
                 ch->nallocated = 3;                                                     \

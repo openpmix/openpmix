@@ -522,7 +522,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     pmix_cb_t cb;
     pmix_buffer_t *req;
     pmix_cmd_t cmd = PMIX_REQ_CMD;
-    pmix_status_t code = PMIX_ERR_DEBUGGER_RELEASE;
+    pmix_status_t code;
     pmix_proc_t wildcard;
     pmix_info_t ginfo, evinfo[2];
     pmix_value_t *val = NULL;
@@ -813,6 +813,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         pmix_output_verbose(2, pmix_client_globals.event_output,
                             "[%s:%d] WAITING IN INIT FOR DEBUGGER",
                             pmix_globals.myid.nspace, pmix_globals.myid.rank);
+        code = PMIX_ERR_DEBUGGER_RELEASE;
         PMIx_Register_event_handler(&code, 1, evinfo, 2,
                                     notification_fn, evhandler_reg_callbk, (void*)&reglock);
         /* wait for registration to complete */

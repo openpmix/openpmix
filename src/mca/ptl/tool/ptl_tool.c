@@ -84,7 +84,6 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
     char *p = NULL, *server_nspace = NULL, *rendfile = NULL;
     int sd, rc;
     size_t n;
-    char myhost[PMIX_MAXHOSTNAMELEN] = {0};
     bool system_level = false;
     bool system_level_only = false;
     pid_t pid = 0, mypid;
@@ -263,7 +262,6 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
 
     /* mark that we are using the V2 protocol */
     pmix_globals.mypeer->protocol = PMIX_PROTOCOL_V2;
-    gethostname(myhost, sizeof(myhost)-1);
     /* if we were given a URI, then look no further */
     if (NULL != pmix_ptl_base.uri) {
         /* if the string starts with "file:", then they are pointing
@@ -341,7 +339,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
 
     /* if they asked for system-level first or only, we start there */
     if (system_level || system_level_only) {
-        if (0 > asprintf(&filename, "%s/pmix.sys.%s", pmix_ptl_base.system_tmpdir, myhost)) {
+        if (0 > asprintf(&filename, "%s/pmix.sys.%s", pmix_ptl_base.system_tmpdir, pmix_globals.hostname)) {
             rc = PMIX_ERR_NOMEM;
             goto cleanup;
         }
@@ -377,7 +375,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
 
     /* if they gave us a pid, then look for it */
     if (0 != pid) {
-        if (0 > asprintf(&filename, "pmix.%s.tool.%d", myhost, pid)) {
+        if (0 > asprintf(&filename, "pmix.%s.tool.%d", pmix_globals.hostname, pid)) {
             rc = PMIX_ERR_NOMEM;
             goto cleanup;
         }
@@ -400,7 +398,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
 
     /* if they gave us an nspace, then look for it */
     if (NULL != server_nspace) {
-        if (0 > asprintf(&filename, "pmix.%s.tool.%s", myhost, server_nspace)) {
+        if (0 > asprintf(&filename, "pmix.%s.tool.%s", pmix_globals.hostname, server_nspace)) {
             rc = PMIX_ERR_NOMEM;
             goto cleanup;
         }
@@ -441,7 +439,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
          * that succeeds - this is based on the likelihood that there is only
          * one session per user on a node */
 
-        if (0 > asprintf(&filename, "pmix.%s.tool", myhost)) {
+        if (0 > asprintf(&filename, "pmix.%s.tool", pmix_globals.hostname)) {
             rc = PMIX_ERR_NOMEM;
             goto cleanup;
         }

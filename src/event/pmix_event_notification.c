@@ -51,8 +51,8 @@ PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status,
         return PMIX_ERR_INIT;
     }
 
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
-        !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) ||
+        PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
 
         pmix_output_verbose(2, pmix_server_globals.event_output,
@@ -67,7 +67,11 @@ PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status,
         if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
             PMIX_ERROR_LOG(rc);
         }
-        return rc;
+        if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+            !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
+            return rc;
+        }
+        PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     }
 
     /* if we aren't connected, don't attempt to send */
@@ -929,6 +933,20 @@ static void _notify_client_event(int sd, short args, void *cbdata)
     PMIX_INFO_CREATE(chain->info, chain->nallocated);
     /* prep the chain for processing */
     pmix_prep_event_chain(chain, cd->info, cd->ninfo, true);
+    /* if we are a tool, we send it to our clients regardless
+     * of the range - we assume that if we are in range, then
+     * so are any clients attached to us
+     *
+     * if we are a server but not a tool, then check the range
+     * before sending it to our client */
+    if (PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
+        /* remove the target designations */
+        if (NULL != chain->targets) {
+            free(chain->targets);
+            chain->targets = NULL;
+            chain->ntargets = 0;
+        }
+    }
 
     /* copy setup to the cd object */
     cd->nondefault = chain->nondefault;
@@ -1069,18 +1087,20 @@ static void _notify_client_event(int sd, short args, void *cbdata)
                                                     pr->affected, pr->naffected)) {
                         continue;
                     }
-                    /* check the range */
-                    if (NULL == cd->targets) {
-                        rngtrk.procs = &cd->source;
-                        rngtrk.nprocs = 1;
-                    } else {
-                        rngtrk.procs = cd->targets;
-                        rngtrk.nprocs = cd->ntargets;
-                    }
-                    rngtrk.range = cd->range;
-                    PMIX_LOAD_PROCID(&proc, pr->peer->info->pname.nspace, pr->peer->info->pname.rank);
-                    if (!pmix_notify_check_range(&rngtrk, &proc)) {
-                        continue;
+                    if (!PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
+                        /* check the range, if given */
+                        if (NULL == cd->targets) {
+                            rngtrk.procs = &cd->source;
+                            rngtrk.nprocs = 1;
+                        } else {
+                            rngtrk.procs = cd->targets;
+                            rngtrk.nprocs = cd->ntargets;
+                        }
+                        rngtrk.range = cd->range;
+                        PMIX_LOAD_PROCID(&proc, pr->peer->info->pname.nspace, pr->peer->info->pname.rank);
+                        if (!pmix_notify_check_range(&rngtrk, &proc)) {
+                            continue;
+                        }
                     }
                     pmix_output_verbose(2, pmix_server_globals.event_output,
                                         "pmix_server: notifying client %s:%u on status %s",
@@ -1197,17 +1217,15 @@ pmix_status_t pmix_server_notify_client_of_event(pmix_status_t status,
     size_t n;
 
     pmix_output_verbose(2, pmix_server_globals.event_output,
-                        "pmix_server: notify client of event %s",
-                        PMIx_Error_string(status));
+                        "pmix_server: notify client of event %s range %s",
+                        PMIx_Error_string(status), PMIx_Data_range_string(range));
 
     cd = PMIX_NEW(pmix_notify_caddy_t);
     cd->status = status;
     if (NULL == source) {
-        pmix_strncpy(cd->source.nspace, "UNDEF", PMIX_MAX_NSLEN);
-        cd->source.rank = PMIX_RANK_UNDEF;
+        PMIX_LOAD_PROCID(&cd->source, "UNDEF", PMIX_RANK_UNDEF);
     } else {
-        pmix_strncpy(cd->source.nspace, source->nspace, PMIX_MAX_NSLEN);
-        cd->source.rank = source->rank;
+        PMIX_LOAD_PROCID(&cd->source, source->nspace, source->rank);
     }
     cd->range = range;
     /* have to copy the info to preserve it for future when cached */
