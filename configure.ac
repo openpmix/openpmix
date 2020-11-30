@@ -308,7 +308,7 @@ AC_MSG_RESULT([$LIBS])
 # Dependencies that themselves have a pkg-config file available.
 #
 PC_REQUIRES=""
-AS_IF([test "$pmix_hwloc_support_will_build" = "yes"],
+AS_IF([test "$pmix_hwloc_source" != "cobuild"],
       [PC_REQUIRES="$PC_REQUIRES hwloc"])
 AS_IF([test $pmix_libevent_support -eq 1],
       [PC_REQUIRES="$PC_REQUIRES libevent"])
