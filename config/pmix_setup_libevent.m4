@@ -41,7 +41,6 @@
 # MCA_libevent_CONFIG([action-if-found], [action-if-not-found])
 # --------------------------------------------------------------------
 AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
-    PMIX_VAR_SCOPE_PUSH([libevent_build_mode])
 
     AC_ARG_WITH([libevent],
                 [AC_HELP_STRING([--with-libevent=DIR],
@@ -56,12 +55,9 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
                                 [The value that should be included in C files to include event.h.  This option only has meaning if --enable-embedded-mode is enabled.])])
 
     pmix_libevent_support=0
-    libevent_build_mode=""
 
     # figure out our mode...
-    AS_IF([test "$pmix_mode" = "embedded"],
-          [_PMIX_LIBEVENT_EMBEDDED_MODE(embedded)],
-          [test "$with_libevent" = "cobuild"],
+    AS_IF([test "$with_libevent" = "cobuild"],
           [_PMIX_LIBEVENT_EMBEDDED_MODE(cobuild)],
           [_PMIX_LIBEVENT_EXTERNAL])
 
@@ -78,7 +74,6 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
         PMIX_SUMMARY_ADD([[External Packages]],[[Libevent]], [pmix_libevent], [yes ($pmix_libevent_source)])
     fi
 
-    PMIX_VAR_SCOPE_POP
 ])
 
 AC_DEFUN([_PMIX_LIBEVENT_EMBEDDED_MODE], [
@@ -91,17 +86,16 @@ AC_DEFUN([_PMIX_LIBEVENT_EMBEDDED_MODE], [
           [PMIX_EVENT_HEADER="$with_libevent_header"
            PMIX_EVENT2_THREAD_HEADER="$with_libevent_header"])
 
-    AS_IF([test "$1" == "cobuild"],
-        [AC_MSG_CHECKING([if co-built libevent includes thread support])
-         AC_TRY_COMPILE([#include <event.h>
+    AC_MSG_CHECKING([if co-built libevent includes thread support])
+    AC_TRY_COMPILE([#include <event.h>
 #include <event2/thread.h>
            ],[
 #if !(EVTHREAD_LOCK_API_VERSION >= 1)
 #error "No threads!"
 #endif
-           ],[AC_MSG_RESULT([yes])],
-           [AC_MSG_RESULT([no])
-            AC_MSG_ERROR([No thread support in co-build libevent.  Aborting])])])
+    ],[AC_MSG_RESULT([yes])],
+    [AC_MSG_RESULT([no])
+    AC_MSG_ERROR([No thread support in co-build libevent.  Aborting])])
 
     pmix_libevent_source=$1
     pmix_libevent_support=1
