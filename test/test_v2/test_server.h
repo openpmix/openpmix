@@ -65,6 +65,12 @@ extern pmix_list_t *server_list;
 extern server_info_t *my_server_info;
 extern pmix_list_t *server_nspace;
 
+// Needed for easy implementation of pipe arrays below
+#define PMIXT_MAX_LOCAL_PROCS 4096
+// These are our pipes for the dynamic side channel
+extern int child_write_pipe[PMIXT_MAX_LOCAL_PROCS][2];
+extern int server_write_pipe[PMIXT_MAX_LOCAL_PROCS][2];
+
 int server_init(test_params *params, validation_params *val_params);
 int server_finalize(test_params *params, int local_fail);
 int server_barrier(void);

@@ -27,7 +27,11 @@
 
 /* base64 encoding with illegal characters removed ('=' is replaced by ' ') */
 static inline unsigned char pmixt_base64_encsym (unsigned char value) {
-    assert (value < 64);
+    if (value >= 64) {
+        TEST_ERROR(("Unknown value passed to encoding function, exiting."));
+        exit(1);
+    }
+    //assert (value < 64);
 
     if (value < 26) {
     return 'A' + value;
@@ -60,9 +64,18 @@ static inline unsigned char pmixt_base64_decsym (unsigned char value) {
 
 static inline void pmixt_base64_encode_block (const unsigned char in[3], char out[4], int len) {
     out[0] = pmixt_base64_encsym (in[0] >> 2);
-    out[1] = pmixt_base64_encsym (((in[0] & 0x03) << 4) | ((in[1] & 0xf0) >> 4));
-    out[2] = 1 < len ? pmixt_base64_encsym(((in[1] & 0x0f) << 2) | ((in[2] & 0xc0) >> 6)) : ' ';
+    // len is the length of in[] - we need to make sure we don't reference uninitialized data, hence the conditionals
+    out[1] = 1 < len ? pmixt_base64_encsym(((in[0] & 0x03) << 4) | ((in[1] & 0xf0) >> 4)) : pmixt_base64_encsym((in[0] & 0x03) << 4);
+
+    out[2] = 1 < len ? pmixt_base64_encsym((in[1] & 0x0f) << 2) : ' ';
+    out[2] = 2 < len ? pmixt_base64_encsym(((in[1] & 0x0f) << 2) | ((in[2] & 0xc0) >> 6)) : out[2];
+
+    //out[1] = pmixt_base64_encsym(((in[0] & 0x03) << 4) | ((in[1] & 0xf0) >> 4)) : out[1];
+    //out[2] = 1 < len ? (pmixt_base64_encsym(((in[1] & 0x0f) << 2) | ((in[2] & 0xc0) >> 6)) : ' ';
+
     out[3] = 2 < len ? pmixt_base64_encsym(in[2] & 0x3f) : ' ';
+
+
 }
 
 static inline int pmixt_base64_decode_block (const char in[4], unsigned char out[3]) {
@@ -79,7 +92,7 @@ static inline int pmixt_base64_decode_block (const char in[4], unsigned char out
     }
 
     out[1] = in_dec[1] << 4 | in_dec[2] >> 2;
-    if (64 == in_dec[3]) {     
+    if (64 == in_dec[3]) {
         return 2;
     }
 
@@ -110,7 +123,7 @@ char *pmixt_encode(const void *val, size_t vallen)
 ssize_t pmixt_decode (const char *data, void *decdata, size_t buffsz)
 {
     size_t input_len = strlen(data) / 4;
-    unsigned char *ret = decdata;
+    //unsigned char *ret = decdata;
     int out_len;
     size_t i;
 
@@ -124,6 +137,6 @@ ssize_t pmixt_decode (const char *data, void *decdata, size_t buffsz)
             exit(1);
         }
     }
-    
+
     return out_len;
 }

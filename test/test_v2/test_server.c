@@ -16,7 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <pthread.h>
+#include <pthread.h>/*  */
 #include <sys/types.h>
 #include <sys/wait.h>
 
@@ -30,6 +30,10 @@
 #include "server_callbacks.h"
 
 int my_server_id = 0;
+
+// Pipes for dynamic side channel
+int child_write_pipe[PMIXT_MAX_LOCAL_PROCS][2];
+int server_write_pipe[PMIXT_MAX_LOCAL_PROCS][2];
 
 server_info_t *my_server_info = NULL;
 pmix_list_t *server_list = NULL;
@@ -104,7 +108,34 @@ static void release_cb(pmix_status_t status, void *cbdata)
     *ptr = 0;
 }
 
-static void fill_seq_ranks_array(size_t nprocs, int base_rank, char **ranks)
+void set_client_argv(test_params *params, char ***argv)
+{
+    pmix_argv_append_nosize(argv, params->binary);
+    pmix_argv_append_nosize(argv, "-n");
+    if (NULL == params->np) {
+        pmix_argv_append_nosize(argv, "1");
+    } else {
+        pmix_argv_append_nosize(argv, params->np);
+    }
+    if( params->verbose ){
+        pmix_argv_append_nosize(argv, "-v");
+    }
+    if (NULL != params->prefix) {
+        pmix_argv_append_nosize(argv, "-o");
+        pmix_argv_append_nosize(argv, params->prefix);
+    }
+    if (params->nonblocking) {
+        pmix_argv_append_nosize(argv, "-nb");
+    }
+    if (params->collect) {
+        pmix_argv_append_nosize(argv, "-c");
+    }
+    if (params->collect_bad) {
+        pmix_argv_append_nosize(argv, "--collect-corrupt");
+    }
+}
+
+static void fill_seq_ranks_array(size_t nprocs, int base_rank, char **ranks, validation_params *v_params)
 {
     uint32_t i;
     int len = 0, max_ranks_len;
@@ -113,8 +144,14 @@ static void fill_seq_ranks_array(size_t nprocs, int base_rank, char **ranks)
     }
     max_ranks_len = nprocs * (MAX_DIGIT_LEN+1);
     *ranks = (char*) malloc(max_ranks_len);
+    // i is equivalent to local rank
     for (i = 0; i < nprocs; i++) {
-        len += snprintf(*ranks + len, max_ranks_len-len-1, "%d", i+base_rank);
+        if (v_params->custom_rank_placement) {
+            len += snprintf(*ranks + len, max_ranks_len-len-1, "%d", nodes[my_server_id].pmix_rank[i]);
+        }
+        else {
+            len += snprintf(*ranks + len, max_ranks_len-len-1, "%d", i+base_rank);
+        }
         if (i != nprocs-1) {
             len += snprintf(*ranks + len, max_ranks_len-len-1, "%c", ',');
         }
@@ -122,7 +159,7 @@ static void fill_seq_ranks_array(size_t nprocs, int base_rank, char **ranks)
     if (len >= max_ranks_len-1) {
         free(*ranks);
         *ranks = NULL;
-        TEST_ERROR(("Not enough allocated space for global ranks array."));
+        TEST_ERROR(("ERROR: Server id: %d Not enough allocated space for global ranks array.", my_server_id));
     }
 }
 
@@ -145,7 +182,7 @@ static void set_namespace(int local_size, int univ_size,
     pmix_info_t *info;
     ninfo = 8;
     char *regex, *ppn, *tmp;
-    char *ranks = NULL, **nodes = NULL;
+    char *ranks = NULL, **node_string = NULL;
     char **rks=NULL;
     int i;
     int rc;
@@ -164,30 +201,33 @@ static void set_namespace(int local_size, int univ_size,
     info[2].value.data.uint32 = local_size;
 
     /* generate the array of local peers */
-    fill_seq_ranks_array(local_size, base_rank, &ranks);
+    TEST_VERBOSE(("Server id: %d local_size: %d base_rank: %d", my_server_id, local_size, base_rank));
+    fill_seq_ranks_array(local_size, base_rank, &ranks, v_params);
     if (NULL == ranks) {
         return;
     }
     PMIXT_VAL_PARAM_SETSTR(v_params, pmix_local_peers, ranks, PMIX_MAX_KEYLEN);
+    TEST_VERBOSE(("Server id: %d Local peers array: %s", my_server_id, ranks));
     pmix_strncpy(info[3].key, PMIX_LOCAL_PEERS, PMIX_MAX_KEYLEN);
     info[3].value.type = PMIX_STRING;
     info[3].value.data.string = strdup(ranks);
 
     /* assemble the node and proc map info */
     if (1 == params.nservers) {
-        pmix_argv_append_nosize(&nodes, my_server_info->hostname);
-    } else {
+        pmix_argv_append_nosize(&node_string, my_server_info->hostname);
+    }
+    else {
         char hostname[PMIX_MAXHOSTNAMELEN];
         for (i = 0; i < params.nservers; i++) {
             snprintf(hostname, PMIX_MAXHOSTNAMELEN, "node%d", i);
-            pmix_argv_append_nosize(&nodes, hostname);
+            pmix_argv_append_nosize(&node_string, hostname);
         }
     }
 
-    if (NULL != nodes) {
-        tmp = pmix_argv_join(nodes, ',');
-        pmix_argv_free(nodes);
-        nodes = NULL;
+    if (NULL != node_string) {
+        tmp = pmix_argv_join(node_string, ',');
+        pmix_argv_free(node_string);
+        node_string = NULL;
         if (PMIX_SUCCESS != (rc = PMIx_generate_regex(tmp, &regex) )) {
             PMIX_ERROR_LOG(rc);
             return;
@@ -202,28 +242,48 @@ static void set_namespace(int local_size, int univ_size,
     if (2 == params.nservers) {
         pmix_argv_append_nosize(&rks, ranks);
         free(ranks);
-        nodes = NULL;
+        node_string = NULL;
         if (0 == my_server_id) {
-            for (i=base_rank+local_size; i < univ_size; i++) {
-                asprintf(&ppn, "%d", i);
-                pmix_argv_append_nosize(&nodes, ppn);
-                free(ppn);
+            if (v_params->custom_rank_placement) {
+                for (i = 0; i < nodes[1].pmix_local_size; i++) {
+                    asprintf(&ppn, "%d", nodes[1].pmix_rank[i]);
+                    pmix_argv_append_nosize(&node_string, ppn);
+                    free(ppn);
+                }
             }
-            ppn = pmix_argv_join(nodes, ',');
+            else {
+                // base_rank is used here to load the procs are on the *other* servers
+                for (i = base_rank + local_size; i < univ_size; i++) {
+                    asprintf(&ppn, "%d", i);
+                    pmix_argv_append_nosize(&node_string, ppn);
+                    free(ppn);
+                }
+            }
+            ppn = pmix_argv_join(node_string, ',');
             pmix_argv_append_nosize(&rks, ppn);
             free(ppn);
         } else {
-            for (i=0; i < base_rank; i++) {
-                asprintf(&ppn, "%d", i);
-                pmix_argv_append_nosize(&nodes, ppn);
-                free(ppn);
+            if (v_params->custom_rank_placement) {
+                for (i = 0; i < nodes[1].pmix_local_size; i++) {
+                    asprintf(&ppn, "%d", nodes[0].pmix_rank[i]);
+                    pmix_argv_append_nosize(&node_string, ppn);
+                    free(ppn);
+                }
             }
-            ppn = pmix_argv_join(nodes, ',');
+            else {
+                for (i=0; i < base_rank; i++) {
+                    asprintf(&ppn, "%d", i);
+                    pmix_argv_append_nosize(&node_string, ppn);
+                    free(ppn);
+                }
+            }
+            ppn = pmix_argv_join(node_string, ',');
             pmix_argv_prepend_nosize(&rks, ppn);
             free(ppn);
         }
         ranks = pmix_argv_join(rks, ';');
     }
+    // This must be wrong, because of failure in gds_hash.c
     PMIx_generate_ppn(ranks, &ppn);
     free(ranks);
     PMIX_INFO_LOAD(&info[5], PMIX_PROC_MAP, ppn, PMIX_REGEX);
@@ -238,6 +298,7 @@ static void set_namespace(int local_size, int univ_size,
     info[7].value.data.uint32 = getpid ();
 
     int in_progress = 1;
+    //
     if (PMIX_SUCCESS == (rc = PMIx_server_register_nspace(name, local_size,
                                     info, ninfo, release_cb, &in_progress))) {
         PMIX_WAIT_FOR_COMPLETION(in_progress);
@@ -388,6 +449,7 @@ static int srv_wait_all(double timeout)
 
     while (!pmix_list_is_empty(server_list) &&
                                 (timeout >= (cur_time - start_time))) {
+        TEST_VERBOSE(("Server list is not empty"));
         pid = waitpid(-1, &status, 0);
         if (pid >= 0) {
             PMIX_LIST_FOREACH_SAFE(server, next, server_list, server_info_t) {
@@ -403,7 +465,7 @@ static int srv_wait_all(double timeout)
         gettimeofday(&tv, NULL);
         cur_time = tv.tv_sec + 1E-6*tv.tv_usec;
     }
-
+    TEST_VERBOSE(("Inside serv_wait_all, ret = %d", ret));
     return ret;
 }
 
@@ -821,9 +883,11 @@ static void wait_signal_callback(int fd, short event, void *arg)
                 /* found it! */
                 if (WIFEXITED(status)) {
                     cli_info[i].exit_code = WEXITSTATUS(status);
+                    TEST_VERBOSE(("WIFEXITED, pid = %d, exit_code = %d", pid, cli_info[i].exit_code));
                 } else {
                     if (WIFSIGNALED(status)) {
                         cli_info[i].exit_code = WTERMSIG(status) + 128;
+                        TEST_VERBOSE(("WIFSIGNALED, pid = %d, exit_code = %d", pid, cli_info[i].exit_code));
                     }
                 }
                 cli_cleanup(&cli_info[i]);
@@ -867,6 +931,9 @@ int server_init(test_params *params, validation_params *val_params)
             pipe(fd2);
 
             if (0 != i) {
+                // Separate function to set up global validation info before the fork.
+                // Array of elements, each represents the node.
+                // Inside each node, dynamically allocated array that represents the clients.
                 pid = fork();
                 if (pid < 0) {
                     TEST_ERROR(("Fork failed"));
@@ -922,11 +989,17 @@ int server_init(test_params *params, validation_params *val_params)
     TEST_VERBOSE(("my_server_id: %d, pmix_node_id: %d, pmix_hostname: %s",
                    my_server_id, val_params->pmix_nodeid, val_params->pmix_hostname));
     /* compute local proc size */
-    local_size = (params->nprocs % params->nservers) > (uint32_t)my_server_id ?
+    if (val_params->custom_rank_placement){
+        local_size = nodes[my_server_id].pmix_local_size;
+    }
+    else {
+        local_size = (params->nprocs % params->nservers) > (uint32_t)my_server_id ?
                 params->nprocs / params->nservers + 1 :
                 params->nprocs / params->nservers;
+    }
     PMIXT_VAL_PARAM_SETNUM(val_params, pmix_local_size, local_size);
-    TEST_VERBOSE(("pmix_local_size = %d, params->nprocs = %d", local_size, params->nprocs));
+    TEST_VERBOSE(("my_server_id: %d local_size: %d, params->nprocs: %d", my_server_id, local_size, params->nprocs));
+
     /* setup the server library */
     uint32_t u32 = 0666;
     PMIX_INFO_LOAD(&info[0], PMIX_SOCKET_MODE, &u32, PMIX_UINT32);
@@ -986,7 +1059,7 @@ int server_finalize(test_params *params, int local_fail)
     }
 
     if (params->nservers && 0 == my_server_id) {
-        /* wait for all servers are finished */
+        /* wait for all servers to finish */
         total_ret += srv_wait_all(10.0);
         PMIX_LIST_RELEASE(server_list);
         TEST_VERBOSE(("SERVER %d FINALIZE PID:%d with status %d",
@@ -1019,25 +1092,27 @@ static void fill_global_validation_params(pmix_proc_t proc, int univ_size,
     PMIXT_VAL_PARAM_SETNUM(v_params, pmix_job_size, params->nprocs);
     PMIXT_VAL_PARAM_SETSTR(v_params, pmix_nspace, proc.nspace, PMIX_MAX_NSLEN);
     // more will be added as validation_params struct grows
-    // some validation params set inside server_init
+    // some validation params are set inside server_init
 }
 
-int fill_client_validation_params(pmix_proc_t proc, validation_params *val_params)
-{
-    int local_rank;
 
-    PMIXT_VAL_PARAM_SETNUM(val_params, pmix_rank, proc.rank);
+void read_from_pipe(int file) {
+    FILE *stream;
+    int c;
+    stream = fdopen(file, "r");
+    while ((c = fgetc(stream)) != EOF) {
+        putchar(c);
+    }
+    fclose(stream);
+}
 
-    if (val_params->pmix_nodeid == 0) {
-        PMIXT_VAL_PARAM_SETNUM(val_params, pmix_local_rank, proc.rank);
-    }
-    else {
-        local_rank = (int) proc.rank % (int) (val_params->pmix_nodeid * val_params->pmix_local_size);
-        PMIXT_VAL_PARAM_SETNUM(val_params, pmix_local_rank, local_rank);
-    }
-    // this function will be filled out as validation_params struct grows
-    // some validation params are set in other places out of necessity
-    return PMIX_SUCCESS;
+/* Write some random text to the pipe. */
+void write_to_pipe(int file) {
+    FILE *stream;
+    stream = fdopen(file, "w");
+    fprintf(stream, "hello, world!\n");
+    fprintf(stream, "goodbye, world!\n");
+    fclose(stream);
 }
 
 int server_launch_clients(int local_size, int univ_size, int base_rank,
@@ -1046,21 +1121,20 @@ int server_launch_clients(int local_size, int univ_size, int base_rank,
     int n;
     uid_t myuid;
     gid_t mygid;
+    //pid_t mypid;
     char *ranks = NULL;
     char digit[MAX_DIGIT_LEN];
     int rc;
     static int cli_counter = 0;
     static int num_ns = 0;
     pmix_proc_t proc;
-    int rank_counter = 0;
+    int custom_rank_val, rank_counter = 0;
     validation_params local_v_params;
     char *vptr;
     server_nspace_t *nspace_item = PMIX_NEW(server_nspace_t);
 
-    TEST_VERBOSE(("%d: lsize: %d, base rank %d, local_size %d, univ_size %d", my_server_id, v_params->pmix_local_size,
-                  base_rank, local_size, univ_size));
-
-    TEST_VERBOSE(("Setting job info"));
+    TEST_VERBOSE(("Server ID: %d: pmix_local_size: %d, base rank %d, local_size %d, univ_size %d, num_nodes %d",
+                  my_server_id, v_params->pmix_local_size, base_rank, local_size, univ_size, v_params->pmix_num_nodes));
     (void)snprintf(proc.nspace, PMIX_MAX_NSLEN, "%s-%d", TEST_NAMESPACE, num_ns);
     set_namespace(local_size, univ_size, base_rank, proc.nspace, v_params);
     if (NULL != ranks) {
@@ -1078,18 +1152,41 @@ int server_launch_clients(int local_size, int univ_size, int base_rank,
     fill_global_validation_params(proc, univ_size, params, v_params);
 
     for (n = 0; n < local_size; n++) {
-        proc.rank = base_rank + n;
-        nspace_item->task_map[proc.rank] = my_server_id;
+        if (v_params->custom_rank_placement) {
+            custom_rank_val = nodes[my_server_id].pmix_rank[n];
+            nspace_item->task_map[custom_rank_val] = my_server_id;
+        }
+        else {
+            nspace_item->task_map[base_rank + n] = my_server_id;
+        }
     }
 
-    server_send_procs();
+    server_send_procs(); // note: calls server_pack_procs
 
     myuid = getuid();
     mygid = getgid();
 
     /* fork/exec the test */
     for (n = 0; n < local_size; n++) {
-        proc.rank = base_rank + rank_counter;
+        // create pipes for side channel
+        /*
+        if (pipe(child_write_pipe[n])) {
+            TEST_ERROR(("Pipe for child writing failed to local rank: %d", n));
+            exit(1);
+        }
+        if (pipe(server_write_pipe[n])) {
+            TEST_ERROR(("Pipe for server writing failed to local rank: %d", n));
+            exit(1);
+        }
+        TEST_VERBOSE(("Successfully created pipes"));
+        */
+        if (v_params->custom_rank_placement) {
+            proc.rank = nodes[my_server_id].pmix_rank[n];
+        }
+        else {
+            proc.rank = base_rank + rank_counter;
+        }
+
         rc = PMIx_server_register_client(&proc, myuid, mygid, NULL, NULL, NULL);
         if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
             TEST_ERROR(("Server register client failed with error %d", rc));
@@ -1097,38 +1194,44 @@ int server_launch_clients(int local_size, int univ_size, int base_rank,
             cli_kill_all();
             return 0;
         }
-        if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(&proc, client_env))) {//n
+        if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(&proc, client_env))) {
             TEST_ERROR(("Server fork setup failed with error %d", rc));
             PMIx_server_finalize();
             cli_kill_all();
             return rc;
         }
         TEST_VERBOSE(("run namespace:%s rank:%d", proc.nspace, proc.rank));
-
+        // fork the client
         cli_info[cli_counter].pid = fork();
         //sleep for debugging purposes (to attach to clients)
-        //sleep(60);
+        //sleep(120);
         if (cli_info[cli_counter].pid < 0) {
             TEST_ERROR(("Fork failed"));
             PMIx_server_finalize();
             cli_kill_all();
             return 0;
         }
-        cli_info[cli_counter].rank = proc.rank;//n
+
+        cli_info[cli_counter].rank = proc.rank;
         cli_info[cli_counter].ns = strdup(proc.nspace);
 
         char **client_argv = pmix_argv_copy(*base_argv);
 
-        // assign values of globally applicable params
-        local_v_params = *v_params; // is copying into a local truly necessary? we run the
-                                   // risk of messing up any pointers that might be in
-                                   // the struct later because this is a 'shallow' copy
-        /* client-specific params filled in by fill_client_validation_params() */
         if (v_params->validate_params) {
-            if (PMIX_SUCCESS != fill_client_validation_params(proc, &local_v_params)) {
-                TEST_VERBOSE(("Unable to populate client-specific validation params."));
-                exit(1);
-            }
+            // bring in previously set globally applicable validation params
+            local_v_params = *v_params; // is copying into a local truly necessary? we run the
+                                        // risk of messing up any pointers that might be in
+                                        // the struct later because this is a 'shallow' copy
+
+            /* client-specific params set here */
+            local_v_params.check_pmix_rank = true;
+            local_v_params.pmix_rank = proc.rank;
+            local_v_params.check_pmix_local_rank = true;
+            local_v_params.pmix_local_rank = n;
+            local_v_params.check_pmix_node_rank = true;
+            local_v_params.pmix_node_rank = n;
+            /* end client-specific */
+
             vptr = (char *) &local_v_params;
             char *v_params_ascii = pmixt_encode(vptr, sizeof(local_v_params));
             /* provide the validation data to the client */
@@ -1136,14 +1239,7 @@ int server_launch_clients(int local_size, int univ_size, int base_rank,
             pmix_argv_append_nosize(&client_argv, v_params_ascii);
             free(v_params_ascii);
         }
-        /* add two last arguments: -r <rank> */
-        /*
-        sprintf(digit, "%d", proc.rank);
-        pmix_argv_append_nosize(&client_argv, "-r");
-        pmix_argv_append_nosize(&client_argv, digit);
-        pmix_argv_append_nosize(&client_argv, "-s");
-        pmix_argv_append_nosize(&client_argv, proc.nspace);
-        */
+
         sprintf(digit, "%d", univ_size);
         pmix_argv_append_nosize(&client_argv, "--ns-size");
         pmix_argv_append_nosize(&client_argv, digit);
@@ -1152,12 +1248,21 @@ int server_launch_clients(int local_size, int univ_size, int base_rank,
         pmix_argv_append_nosize(&client_argv, "--ns-id");
         pmix_argv_append_nosize(&client_argv, digit);
 
+        // FIX: This base rank is not correct when running with custom rank placement
         sprintf(digit, "%d", 0);
         pmix_argv_append_nosize(&client_argv, "--base-rank");
         pmix_argv_append_nosize(&client_argv, digit);
 
-
+        // child case
         if (cli_info[cli_counter].pid == 0) {
+        // Set up our two side channel pipes appropriately.
+        /*
+            close(child_write_pipe[n][0]);
+            // test write/read for child
+            write_to_pipe(child_write_pipe[n][1]);
+            close(server_write_pipe[n][1]);
+            read_from_pipe(server_write_pipe[n][0]);
+        */
             sigset_t sigs;
             set_handler_default(SIGTERM);
             set_handler_default(SIGINT);
@@ -1178,6 +1283,15 @@ int server_launch_clients(int local_size, int univ_size, int base_rank,
             TEST_ERROR(("execve() failed"));
             return 0;
         }
+        // Only servers make it to the region below. Set up our two side channel pipes for servers.
+        /*
+        close(server_write_pipe[n][0]);
+        // test write/read for server
+        write_to_pipe(server_write_pipe[n][1]);
+        close(child_write_pipe[n][1]);
+        read_from_pipe(child_write_pipe[n][0]);
+        TEST_VERBOSE(("Pipe side channel tested on server side"));
+        */
         cli_info[cli_counter].alive = true;
         cli_info[cli_counter].state = CLI_FORKED;
 

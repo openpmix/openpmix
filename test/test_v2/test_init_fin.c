@@ -28,19 +28,23 @@ int main(int argc, char *argv[]) {
     size_t ninfo = 0;
     test_params params;
     validation_params v_params;
+    int i;
 
-    /* Handles all setup that's required prior to calling PMIx_Init() */
-    pmixt_pre_init(argc, argv, &params, &v_params);
+    for (i = 0; i < 2; i++) {
+        /* Handles all setup that's required prior to calling PMIx_Init() */
+        pmixt_pre_init(argc, argv, &params, &v_params);
 
-    /* initialization */
-    PMIXT_CHECK(PMIx_Init(&this_proc, NULL, ninfo), params, v_params);
+        /* initialization */
+        PMIXT_CHECK(PMIx_Init(&this_proc, NULL, ninfo), params, v_params);
 
-    /* Handles everything that needs to happen after PMIx_Init() */
-    pmixt_post_init(&this_proc, &params, &v_params);
+        /* Handles everything that needs to happen after PMIx_Init() */
+        pmixt_post_init(&this_proc, &params, &v_params);
 
-    /* finalize */
-    PMIXT_CHECK(PMIx_Finalize(NULL, 0), params, v_params);
+        /* finalize */
+        PMIXT_CHECK(PMIx_Finalize(NULL, 0), params, v_params);
 
-    /* Handles cleanup */
-    pmixt_post_finalize(&this_proc, &params, &v_params);
+        /* Handles cleanup */
+        pmixt_post_finalize(&this_proc, &params, &v_params);
+
+    }
 }
