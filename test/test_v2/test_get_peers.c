@@ -102,11 +102,6 @@ int main(int argc, char *argv[]) {
         TEST_VERBOSE(("after PMIX_HOSTNAME check for rank = %d", peer_proc.rank));
     }
 
-    /*
-    PMIXT_CHECK(PMIx_Get(&job_proc, PMIX_LOCAL_PEERS, NULL, 0, &val), params, v_params);
-    pmixt_validate_predefined(&job_proc, PMIX_LOCAL_PEERS, val, PMIX_STRING, &v_params);
-    */
-
     /* finalize */
     PMIXT_CHECK(PMIx_Finalize(NULL, 0), params, v_params);
 
