@@ -56,6 +56,8 @@ def harvest_constants(options, path, constants):
                 continue
             if value.startswith("PMIX_LAUNCHER_RNDZ_URI"):
                 continue
+            if value.startswith("PMIX_KEEPALIVE_PIPE"):
+                continue
             tokens = value.split()
             if len(tokens) >= 2:
                 if tokens[1][0] == '"':

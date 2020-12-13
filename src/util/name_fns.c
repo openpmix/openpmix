@@ -124,7 +124,7 @@ static char* print_args(char *ns, pmix_rank_t rnk)
     index = ptr->cntr;
     snprintf(ptr->buffers[index],
              PMIX_PRINT_NAME_ARGS_MAX_SIZE,
-             "[%s:%s]", ns, rank);
+             "[%s.%s]", ns, rank);
     ptr->cntr++;
     if (PMIX_PRINT_NAME_ARG_NUM_BUFS == ptr->cntr) {
         ptr->cntr = 0;

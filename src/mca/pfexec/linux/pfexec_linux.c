@@ -304,8 +304,8 @@ static void send_error_show_help(int fd, int exit_status,
 }
 
 /* close all open file descriptors w/ exception of stdin/stdout/stderr
-   and the pipe up to the parent. */
-static int close_open_file_descriptors(int write_fd) {
+   the pipe up to the parent, and the keepalive pipe. */
+static int close_open_file_descriptors(int write_fd, int keepalive) {
     DIR *dir = opendir("/proc/self/fd");
     if (NULL == dir) {
         return PMIX_ERR_FILE_OPEN_FAILURE;
@@ -331,7 +331,8 @@ static int close_open_file_descriptors(int write_fd) {
         }
         if (fd >=3 &&
             fd != write_fd &&
-	        fd != dir_scan_fd) {
+	        fd != dir_scan_fd &&
+            fd != keepalive) {
             close(fd);
         }
     }
@@ -381,11 +382,10 @@ static void do_child(pmix_app_t *app, char **env,
     /* close all open file descriptors w/ exception of stdin/stdout/stderr,
        the pipe used for the IOF INTERNAL messages, and the pipe up to
        the parent. */
-    if (PMIX_SUCCESS != close_open_file_descriptors(write_fd)) {
+    if (PMIX_SUCCESS != close_open_file_descriptors(write_fd, child->keepalive[1])) {
         // close *all* file descriptors -- slow
         for(fd=3; fd<fdmax; fd++) {
-            if (
-                fd != write_fd) {
+            if (fd != write_fd && fd != child->keepalive[1]) {
                 close(fd);
             }
         }
@@ -441,11 +441,17 @@ static pmix_status_t do_parent(pmix_app_t *app, pmix_pfexec_child_t *child, int 
     pmix_pfexec_pipe_err_msg_t msg;
     char file[PMIX_PFEXEC_MAX_FILE_LEN + 1], topic[PMIX_PFEXEC_MAX_TOPIC_LEN + 1], *str = NULL;
 
-    if (child->opts.connect_stdin) {
+    if (child->opts.connect_stdin && 0 <= child->opts.p_stdin[0]) {
         close(child->opts.p_stdin[0]);
     }
-    close(child->opts.p_stdout[1]);
-    close(child->opts.p_stderr[1]);
+    if (0 <= child->opts.p_stdout[1]) {
+        close(child->opts.p_stdout[1]);
+    }
+    if (0 <= child->opts.p_stderr[1])
+        close(child->opts.p_stderr[1]);
+    if (0 <= child->keepalive[1]) {
+        close(child->keepalive[1]);
+    }
 
     /* Block reading a message from the pipe */
     while (1) {
@@ -501,7 +507,7 @@ static pmix_status_t do_parent(pmix_app_t *app, pmix_pfexec_child_t *child, int 
                                true,
                                pmix_globals.hostname, app->cmd,
                                "pmix_fd_read", __FILE__, __LINE__);
-		free(str);
+                free(str);
                 return rc;
             }
         }
@@ -521,7 +527,7 @@ static pmix_status_t do_parent(pmix_app_t *app, pmix_pfexec_child_t *child, int 
            successfully). */
         if (msg.fatal) {
             close(read_fd);
-	    if (NULL != str) {
+            if (NULL != str) {
                 free(str);
             }
             return PMIX_ERR_SYS_OTHER;
@@ -569,7 +575,13 @@ static int fork_proc(pmix_app_t *app, pmix_pfexec_child_t *child, char **env)
     }
 
     if (child->pid == 0) {
-        close(p[0]);
+        if (0 <= p[0]) {
+            close(p[0]);
+        }
+        if (0 <= child->keepalive[0]) {
+            close(child->keepalive[0]);
+            child->keepalive[0] = -1;
+        }
         do_child(app, env, child, p[1]);
         /* Does not return */
     }

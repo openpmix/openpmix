@@ -102,6 +102,16 @@ void pmix_ploc_base_destruct_topology(pmix_topology_t *topo);
 
 void pmix_ploc_base_release_topology(pmix_topology_t *topo, size_t n);
 
+void* pmix_info_list_start(void);
+
+pmix_status_t pmix_info_list_add(void *ptr, pmix_key_t key, void *value, pmix_data_type_t type);
+
+pmix_status_t pmix_info_list_xfer(void *ptr, const pmix_info_t *info);
+
+pmix_status_t pmix_info_list_convert(void *ptr, pmix_data_array_t *array);
+
+void pmix_info_list_release(void *ptr);
+
 #if defined(c_plusplus) || defined(__cplusplus)
 }
 #endif

@@ -34,6 +34,8 @@
 #endif
 
 #include "src/include/pmix_globals.h"
+#include "src/util/net.h"
+#include "src/util/name_fns.h"
 #include "src/util/output.h"
 #include "src/util/show_help.h"
 #include "src/mca/base/base.h"
@@ -110,6 +112,7 @@ int pmix_rte_init(uint32_t type,
     char *gds = NULL;
     pmix_info_t *iptr;
     size_t minfo;
+    bool keepfqdn = false;
 
     if( ++pmix_initialized != 1 ) {
         if( pmix_initialized < 1 ) {
@@ -204,13 +207,6 @@ int pmix_rte_init(uint32_t type,
     if (PMIX_SUCCESS != ret) {
         error = "notification hotel init";
         goto return_error;
-    }
-    /* if we were given a hostname in our environment, use it */
-    if (NULL != (evar = getenv("PMIX_HOSTNAME"))) {
-        pmix_globals.hostname = strdup(evar);
-    } else {
-        gethostname(hostname, PMIX_MAXHOSTNAMELEN-1);
-        pmix_globals.hostname = strdup(hostname);
     }
 
     /* and setup the iof request tracking list */
@@ -327,8 +323,23 @@ int pmix_rte_init(uint32_t type,
                 }
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_EXTERNAL_PROGRESS)) {
                 pmix_globals.external_progress = PMIX_INFO_TRUE(&info[n]);
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_HOSTNAME_KEEP_FQDN)) {
+                keepfqdn = PMIX_INFO_TRUE(&info[n]);
             }
         }
+    }
+
+    /* if we were given a hostname in our environment, use it */
+    if (NULL != (evar = getenv("PMIX_HOSTNAME"))) {
+        pmix_globals.hostname = strdup(evar);
+    } else {
+        gethostname(hostname, PMIX_MAXHOSTNAMELEN-1);
+        /* strip the FQDN unless told to keep it */
+        if (!keepfqdn && !pmix_net_isaddr(hostname) &&
+            NULL != (evar = strchr(hostname, '.'))) {
+            *evar = '\0';
+        }
+        pmix_globals.hostname = strdup(hostname);
     }
 
     /* the choice of modules to use when communicating with a peer

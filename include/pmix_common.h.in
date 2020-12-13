@@ -126,6 +126,12 @@ typedef uint32_t pmix_rank_t;
  */
 #define PMIX_LAUNCHER_RNDZ_FILE "PMIX_LAUNCHER_RNDZ_FILE"
 
+/* pipe to be monitored that indicates when the parent process
+ * terminates - used by fork'd tools to identify when the tool
+ * that started them has died */
+#define PMIX_KEEPALIVE_PIPE "PMIX_KEEPALIVE_PIPE"
+
+
 /* define a set of "standard" PMIx attributes that can
  * be queried. Implementations (and users) are free to extend as
  * desired, so the get functions need to be capable
@@ -208,6 +214,9 @@ typedef uint32_t pmix_rank_t;
                                                                     //        not connect back to the launcher's daemon. The exec agent is
                                                                     //        responsible for exec'ing the specified application process in
                                                                     //        its own place.
+#define PMIX_LAUNCH_DIRECTIVES              "pmix.lnch.dirs"        // (pmix_data_array_t*) Array of pmix_info_t containing directives for
+                                                                    //        the launcher - a convenience attribute for retrieving all
+                                                                    //        directives with a single call to PMIx_Get
 
 /* identification attributes */
 #define PMIX_USERID                         "pmix.euid"             // (uint32_t) effective user id
@@ -1137,12 +1146,15 @@ typedef int pmix_status_t;
 #define PMIX_ERR_NOMEM                              -32
 #define PMIX_ERR_NOT_FOUND                          -46
 #define PMIX_ERR_NOT_SUPPORTED                      -47
+#define PMIX_ERR_PARAM_VALUE_NOT_SUPPORTED          -59
 #define PMIX_ERR_COMM_FAILURE                       -49
 #define PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER     -50
 #define PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES     -51
 #define PMIX_ERR_PARTIAL_SUCCESS                    -52
 #define PMIX_ERR_DUPLICATE_KEY                      -53
 #define PMIX_ERR_GET_MALLOC_REQD                    -54
+#define PMIX_ERR_EMPTY                              -60
+#define PMIX_ERR_LOST_CONNECTION                    -61
 
 /* Process set */
 #define PMIX_PROCESS_SET_DEFINE                     -55
@@ -1152,12 +1164,13 @@ typedef int pmix_status_t;
 #define PMIX_DEBUGGER_RELEASE                       -57
 #define PMIX_DEBUG_WAITING_FOR_NOTIFY               -58
 
-/* v2.x communication errors */
+/* query errors */
 #define PMIX_QUERY_PARTIAL_SUCCESS                  -104
+
 /* job control */
 #define PMIX_JCTRL_CHECKPOINT                       -106    // monitored by client to trigger checkpoint operation
 #define PMIX_JCTRL_CHECKPOINT_COMPLETE              -107    // sent by client and monitored by server to notify that requested
-                                                                            //     checkpoint operation has completed
+                                                            //     checkpoint operation has completed
 #define PMIX_JCTRL_PREEMPT_ALERT                    -108    // monitored by client to detect RM intends to preempt
 
 /* monitoring */
@@ -1171,7 +1184,6 @@ typedef int pmix_status_t;
 #define PMIX_MODEL_RESOURCES                        -151     // model resource usage has changed
 #define PMIX_OPENMP_PARALLEL_ENTERED                -152     // an OpenMP parallel region has been entered
 #define PMIX_OPENMP_PARALLEL_EXITED                 -153     // an OpenMP parallel region has completed
-#define PMIX_LAUNCH_DIRECTIVE                       -154
 #define PMIX_LAUNCHER_READY                         -155
 #define PMIX_OPERATION_IN_PROGRESS                  -156
 #define PMIX_OPERATION_SUCCEEDED                    -157
@@ -2237,6 +2249,46 @@ typedef struct pmix_info {
         pmix_value_xfer(&(d)->value, (pmix_value_t*)&(s)->value);   \
     } while(0)
 
+/* macros for constructing an array of pmix_info_t
+ * on-the-fly, without knowing in advance the final
+ * number of elements it will hold */
+
+/* Start a list of pmix_info_t
+ * p - a void* pointer */
+#define PMIX_INFO_LIST_START(p)    \
+    (p) = pmix_info_list_start()
+
+/* Add a pmix_info_t to the list
+ * r - a returned pmix_status_t
+ * p - the void* pointer provided from PMIX_INFO_LIST_START
+ * a - an attribute key
+ * v - pointer to the value to be stored
+ * t - the PMIx data type of the value */
+#define PMIX_INFO_LIST_ADD(r, p, a, v, t)     \
+    (r) = pmix_info_list_add((p), (a), (v), (t))
+
+/* Transfer a pmix_info_t to the list
+ * r - a returned pmix_status_t
+ * p - the void* pointer provided from PMIX_INFO_LIST_START
+ * a - pointer to the pmix_info_t whose values are to be transferred
+ */
+#define PMIX_INFO_LIST_XFER(r, p, a)     \
+    (r) = pmix_info_list_xfer((p), (a))
+
+/* Convert a list of pmix_info_t into an array of pmix_info_t
+ * r - a returned pmix_status_t. PMIX_ERR_EMPTY if list was empty,
+ *     otherwise either success or error constant
+ * p - the void* pointer provided from PMIX_INFO_LIST_START
+ * m - address of a pmix_data_array_t into which
+ *     the array of info is to be placed */
+#define PMIX_INFO_LIST_CONVERT(r, p, m)   \
+    (r) = pmix_info_list_convert((p), (m))
+
+/* Release any memory associated with the list
+ * p - the void* pointer provided from PMIX_INFO_LIST_START */
+#define PMIX_INFO_LIST_RELEASE(p) \
+    pmix_info_list_release((p))
+
 
 /* macros for setting and unsetting the "reqd" flag
  * in a pmix_info_t */
@@ -3123,7 +3175,6 @@ static inline void pmix_darray_destruct(pmix_data_array_t *m)
             (m) = NULL;                     \
         }                                   \
     } while(0)
-
 
 /**
  * Provide a safe version of strncpy that doesn't generate
