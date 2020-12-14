@@ -1436,6 +1436,9 @@ cdef class PMIxClient:
             pmix_convert_locality(locality, pyloc)
         return (rc, pyloc)
 
+    def parse_cpuset_string(self, csetstr:str):
+        return (PMIX_ERR_NOT_SUPPORTED, None)
+
     def get_cpuset(self, ref:int):
         cdef pmix_cpuset_t cpuset
         cdef char* csetstr
@@ -1635,6 +1638,12 @@ cdef class PMIxServer(PMIxClient):
             # last case with no ':' in string
             ba = bytearray(ppn)
         return (rc, ba)
+
+    def generate_cpuset_string(self, cpuset:dict):
+        return (PMIX_ERR_NOT_SUPPORTED, None)
+
+    def generate_locality_string(self, cpuset:dict):
+        return (PMIX_ERR_NOT_SUPPORTED, None)
 
     # Register a namespace
     #
@@ -3089,15 +3098,27 @@ cdef class PMIxTool(PMIxServer):
         PyMem_Free(servers)
         return rc, pysrvrs
 
-    def set_server(self, server:dict):
+    def set_server(self, server:dict, pyinfo:list):
         cdef pmix_proc_t srvr
+        cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
 
         # convert the server name
         pmix_copy_nspace(srvr.nspace, server['nspace'])
         srvr.rank = server['rank']
 
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
+        if PMIX_SUCCESS != rc:
+            if 0 < ninfo:
+                pmix_free_info(info, ninfo)
+            return rc
+
         # perform op
-        rc = PMIx_tool_set_server(&srvr);
+        rc = PMIx_tool_set_server(&srvr, info, ninfo);
+        if 0 < ninfo:
+            pmix_free_info(info, ninfo)
         return rc
 
     def iof_pull(self, pyprocs:list, iof_channel:int, pydirs:list, hdlr):
