@@ -661,8 +661,7 @@ static pmix_status_t register_nspace(char *nspace,
     if (NULL == nptr) {
         nptr = PMIX_NEW(pmix_namespace_t);
         if (NULL == nptr) {
-            rc = PMIX_ERR_NOMEM;
-            goto release;
+            return PMIX_ERR_NOMEM;
         }
         nptr->nspace = strdup(nspace);
         pmix_list_append(&pmix_globals.nspaces, &nptr->super);
@@ -772,18 +771,15 @@ static pmix_status_t register_nspace(char *nspace,
 
     /* register nspace for each activate components */
     PMIX_GDS_ADD_NSPACE(rc, nptr->nspace, nprocs, info, ninfo);
-    if (PMIX_SUCCESS != rc) {
-        goto release;
+    if (PMIX_SUCCESS == rc) {
+        /* store this data in our own GDS module - we will retrieve
+         * it later so it can be passed down to the launched procs
+         * once they connect to us and we know what GDS module they
+         * are using */
+        PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr,
+                                info, ninfo);
     }
 
-    /* store this data in our own GDS module - we will retrieve
-     * it later so it can be passed down to the launched procs
-     * once they connect to us and we know what GDS module they
-     * are using */
-    PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr,
-                            info, ninfo);
-
-  release:
     PMIX_DATA_ARRAY_DESTRUCT(&darray);
     return rc;
 }

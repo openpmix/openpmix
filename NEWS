@@ -24,6 +24,23 @@ Master (not on release branches yet)
 ------------------------------------
 
 
+3.2.2 -- 7 Dec 2020
+----------------------
+ - PR #1930: Remove man page setup as there are no manpages in v3.2
+ - PR #1933: Remove stale config command
+ - PR #1940: Fix dependency issue with hwloc
+ - PR #1941: .spec: add *-devel packages
+
+
+3.2.1 -- 12 Nov 2020
+----------------------
+ - PR #1890:
+   - Fix Issue #1889: Fix symlinks in unit tests to include new timeout
+   - Fix Issue #1891: Remove pnet/opa component that should not be in v3.2
+ - PR #1904: Add more metadata to string generated from preg/compress
+ - PR #1919: Fix memory leak in PMIx_Get/fastpath
+
+
 3.2.0 -- 22 Oct 2020
 ----------------------
  - PR #1402/#1403/#1421/#1423: Modex size reductions

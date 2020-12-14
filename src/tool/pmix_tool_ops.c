@@ -62,7 +62,7 @@ pmix_status_t pmix_tool_relay_op(pmix_cmd_t cmd, pmix_peer_t *peer,
     pmix_cmd_t relaycmds[] = {
         PMIX_SPAWNNB_CMD
     };
-    bool found;
+    bool found=false;
     size_t nrelaycmds, n;
 
     /***** IF IT IS THE SPAWN COMMAND, WE SEND IT WITH A
