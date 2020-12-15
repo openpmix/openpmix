@@ -1051,7 +1051,7 @@ static void check_server(char *filename,
     pmix_info_t *sdata;
     size_t ndata, n;
     pmix_infolist_t *iptr, *ians;
-    char *nspace, *version;
+    char *nspace=NULL, *version=NULL;
     pmix_rank_t rank;
     pmix_list_t mylist;
     uint32_t u32;
@@ -1138,6 +1138,10 @@ static void check_server(char *filename,
     rc = pmix_ptl_base_parse_uri(srvr, &nspace, &rank, NULL);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        fclose(fp);
+        if (NULL != nspace) {
+            free(nspace);
+        }
         return;
     }
 
@@ -1151,6 +1155,9 @@ static void check_server(char *filename,
             /* already have this one */
             fclose(fp);
             free(srvr);
+            if (NULL != nspace) {
+                free(nspace);
+            }
             return;
         }
     }
