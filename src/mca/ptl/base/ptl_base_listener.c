@@ -481,7 +481,7 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
     }
 
     if (bind(lt->socket, (struct sockaddr*)&pmix_ptl_base.connection, sizeof(struct sockaddr)) < 0) {
-        printf("%s:%d bind() failed: %s\n", __FILE__, __LINE__, strerror(errno));
+        printf("%s:%d bind() failed for socket %d: %s\n", __FILE__, __LINE__, lt->socket, strerror(errno));
         goto sockerror;
     }
 
