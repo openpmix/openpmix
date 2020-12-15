@@ -1155,9 +1155,7 @@ static void check_server(char *filename,
             /* already have this one */
             fclose(fp);
             free(srvr);
-            if (NULL != nspace) {
-                free(nspace);
-            }
+            free(nspace);
             return;
         }
     }
