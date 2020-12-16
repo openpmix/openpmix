@@ -63,7 +63,6 @@
 #include "src/mca/ploc/base/base.h"
 #include "src/mca/pmdl/base/base.h"
 #include "src/mca/pnet/base/base.h"
-#include "src/mca/pstrg/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/mca/psec/psec.h"
 #include "src/include/pmix_globals.h"
@@ -1566,7 +1565,6 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     (void)pmix_mca_base_framework_close(&pmix_pfexec_base_framework);
     (void)pmix_mca_base_framework_close(&pmix_pmdl_base_framework);
     (void)pmix_mca_base_framework_close(&pmix_pnet_base_framework);
-    (void)pmix_mca_base_framework_close(&pmix_pstrg_base_framework);
 
     pmix_rte_finalize();
     if (NULL != pmix_globals.mypeer) {

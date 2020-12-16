@@ -23,6 +23,39 @@ multiple release branches.
 Master (not on release branches yet)
 ------------------------------------
 
+4.0.0 -- TBD
+----------------------
+**** NOTE: This release implements the complete PMIx v4.0 Standard
+**** and therefore includes a number of new APIs and features. These
+**** are fully documented in the official document - the details of
+**** the revisions included in v4.0 are summarized here:
+**** https://pmix.github.io/uploads/2020/12/pmix-standard-4.0.pdf#page=549
+**** Note that this version of OpenPMIx includes a first-cut at the
+**** Python bindings described in Appendix A of the v4.0 Standard.
+
+Beyond the v4.0 modifications and additions to APIs, datatypes, attributes,
+and macros, changes to the library include:
+
+ - Removal of the usock messaging component - only TCP is now supported
+ - Removal of the PMI-1 and PMI-2 backward compatibility libraries into
+   a new separate repository
+ - Packaging changes to push the headers into *-devel packages
+ - libtool patch for Mac BigSur OS
+ - Fixed dependency issue with HWLOC to protect against stone-age versions
+ - Changed man page format to Markdown, requires pandoc to generate from
+   Git repository (but not from tarball)
+ - Enable local fork/exec by tools when not connected to a server - this
+   is done transparently
+ - Support reproducible builds
+ - Multiple bug fixes and memory leak repairs
+ - Add support for network interface and GPU device distances
+ - Allow retrieval of the caller's own rank and process ID via PMIx_Get
+ - Provide full delineation of client, server, and tool attribute support
+ - Add support for libev in lieu of libevent
+ - Detect/avoid conflict with LSF version of "libevent"
+ - Auto-detect and forward envars from various identified programming models
+   (e.g., OpenMPI, OpenSHMEM) and fabrics
+
 
 3.2.2 -- 7 Dec 2020
 ----------------------

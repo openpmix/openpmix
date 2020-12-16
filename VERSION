@@ -23,7 +23,7 @@ release=0
 # The only requirement is that it must be entirely printable ASCII
 # characters and have no white space.
 
-greek=a1
+greek=rc1
 
 # If repo_rev is empty, then the repository version number will be
 # obtained during "make dist" via the "git describe --tags --always"
@@ -75,14 +75,12 @@ date="Mar 10, 2018"
 # Version numbers are described in the Libtool current:revision:age
 # format.
 
-libpmix_so_version=0:0:0
-libpmi_so_version=0:0:0
-libpmi2_so_version=0:0:0
+libpmix_so_version=5:0:3
 
 # "Common" components install standalone libraries that are run-time
 # # linked by one or more components.  So they need to be versioned as
 # # well.  Yuck; this somewhat breaks the
 # # components-don't-affect-the-build-system abstraction.
 #
-libmca_common_dstore_so_version=0:0:0
-libmca_common_sse_so_version=0:0:0
+libmca_common_dstore_so_version=1:3:0
+libmca_common_sse_so_version=1:0:0
