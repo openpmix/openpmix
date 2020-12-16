@@ -51,7 +51,6 @@
 #include "src/mca/preg/base/base.h"
 #include "src/mca/psec/base/base.h"
 #include "src/mca/psquash/base/base.h"
-#include "src/mca/pstrg/base/base.h"
 #include "src/mca/ptl/base/base.h"
 
 #include "src/client/pmix_client_ops.h"
@@ -460,16 +459,6 @@ int pmix_rte_init(uint32_t type,
     }
     if (PMIX_SUCCESS != (ret = pmix_ploc_base_select()) ) {
         error = "pmix_ploc_base_select";
-        goto return_error;
-    }
-
-    /* open the pstrg framework */
-    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_pstrg_base_framework, 0))) {
-        error = "pmix_strg_base_open";
-        goto return_error;
-    }
-    if (PMIX_SUCCESS != (ret = pmix_pstrg_base_select())) {
-        error = "pmix_pstrg_base_select";
         goto return_error;
     }
 
