@@ -157,8 +157,6 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
         return "PARTIAL SUCCESS";
     case PMIX_ERR_DUPLICATE_KEY:
         return "DUPLICATE KEY";
-    case PMIX_ERR_GET_MALLOC_REQD:
-        return "GET REQD MALLOC";
     case PMIX_ERR_EMPTY:
         return "EMPTY";
     case PMIX_PROCESS_SET_DEFINE:
@@ -170,6 +168,8 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
 
     case PMIX_ERR_LOST_CONNECTION:
         return "LOST_CONNECTION";
+    case PMIX_ERR_EXISTS_OUTSIDE_SCOPE:
+        return "OUTSIDE-SCOPE";
     case PMIX_QUERY_PARTIAL_SUCCESS:
         return "QUERY-PARTIAL-SUCCESS";
     case PMIX_NOTIFY_ALLOC_COMPLETE:
