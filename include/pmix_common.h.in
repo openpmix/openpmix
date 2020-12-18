@@ -932,8 +932,6 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_FABRIC_DEVICE_VENDORID         "pmix.fabdev.vendid"   // (char*) This is a vendor-provided identifier for the device or product.
 #define PMIX_FABRIC_NUM_DEVICES             "pmix.fab.nverts"      // (size_t) Total number of fabric devices in the system - corresponds to
                                                                    //          the number of rows or columns in the cost matrix
-#define PMIX_FABRIC_VIEW                    "pmix.fab.view"        // (pmix_coord_view_t) Used purely as a qualifier to requests, specifies the
-                                                                   //          view type (e.g., local vs. physical) for the requested information.
 #define PMIX_FABRIC_DIMS                    "pmix.fab.dims"        // (uint32_t) Number of dimensions in the specified fabric plane/view. If no
                                                                    //          plane is specified in a request, then the dimensions of all planes
                                                                    //          in the overall system will be returned as a pmix_data_array_t
@@ -1152,9 +1150,9 @@ typedef int pmix_status_t;
 #define PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES     -51
 #define PMIX_ERR_PARTIAL_SUCCESS                    -52
 #define PMIX_ERR_DUPLICATE_KEY                      -53
-#define PMIX_ERR_GET_MALLOC_REQD                    -54
 #define PMIX_ERR_EMPTY                              -60
 #define PMIX_ERR_LOST_CONNECTION                    -61
+#define PMIX_ERR_EXISTS_OUTSIDE_SCOPE               -62
 
 /* Process set */
 #define PMIX_PROCESS_SET_DEFINE                     -55
