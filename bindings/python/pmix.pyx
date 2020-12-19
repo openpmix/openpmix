@@ -77,10 +77,10 @@ cdef void pyiofhandler(size_t iofhdlr_id, pmix_iof_channel_t channel,
 
     # convert the source to python
     pysource = {}
-    kystr = strdup(source.nspace)
+    kystr = strdup(source[0].nspace)
     myns = kystr.decode('ascii')
     free(kystr)
-    pysource = {'nspace': myns, 'rank': source.rank}
+    pysource = {'nspace': myns, 'rank': source[0].rank}
 
     # convert the inbound info to python
     pyinfo = []
@@ -134,13 +134,18 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
     cdef pmix_info_t **myresults_ptr
     cdef size_t nmyresults
     cdef char* kystr
+    cdef pmix_nspace_t srcnspace
 
     # convert the source to python
     pysource = {}
-    kystr = strdup(source.nspace)
+    memset(srcnspace, 0, PMIX_MAX_NSLEN+1)
+    memcpy(srcnspace, source[0].nspace, PMIX_MAX_NSLEN)
+    kystr = strdup(srcnspace)
     myns = kystr.decode('ascii')
     free(kystr)
-    pysource = {'nspace': myns, 'rank': source.rank}
+    srcrank = int(source[0].rank)
+    print("EVHDLR ", myns, srcrank)
+    pysource = {'nspace': myns, 'rank': srcrank}
     pyev_id  = int(evhdlr_registration_id)
 
     # convert the inbound info to python
@@ -619,17 +624,21 @@ cdef class PMIxClient:
         cdef pmix_nspace_t nspace;
 
         # protect against bad input
-        if pyapps is None:
+        if pyapps is None or len(pyapps) == 0:
             return PMIX_ERR_BAD_PARAM, None
 
         # allocate and load pmix info structs from python list of dictionaries
-        jinfo_ptr = &jinfo
-        rc = pmix_alloc_info(jinfo_ptr, &ninfo, jobInfo)
+        if jobInfo is not None:
+            jinfo_ptr = &jinfo
+            rc = pmix_alloc_info(jinfo_ptr, &ninfo, jobInfo)
+        else:
+            jinfo = NULL
+            ninfo = 0
 
         # convert the list of apps to an array of pmix_app_t
         napps = len(pyapps)
         apps = <pmix_app_t*> PyMem_Malloc(napps * sizeof(pmix_app_t))
-        if not napps:
+        if not apps:
             pmix_free_info(jinfo, ninfo)
             return PMIX_ERR_NOMEM, None
         rc = pmix_load_apps(apps, pyapps)
@@ -638,6 +647,7 @@ cdef class PMIxClient:
             if 0 < ninfo:
                 pmix_free_info(jinfo, ninfo)
             return rc, None
+        apps[0].argv[0] = strdup("hostname")
         rc = PMIx_Spawn(jinfo, ninfo, apps, napps, nspace)
         pmix_free_apps(apps, napps)
         if 0 < ninfo:
@@ -1667,20 +1677,15 @@ cdef class PMIxServer(PMIxClient):
         global active
         # convert the args into the necessary C-arguments
         pmix_copy_nspace(nspace, ns)
-        active.clear()
 
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
         rc = pmix_alloc_info(info_ptr, &sz, dicts)
 
         if sz > 0:
-            rc = PMIx_server_register_nspace(nspace, nlocalprocs, info, sz, pmix_opcbfunc, NULL)
+            rc = PMIx_server_register_nspace(nspace, nlocalprocs, info, sz, NULL, NULL)
         else:
-            rc = PMIx_server_register_nspace(nspace, nlocalprocs, NULL, 0, pmix_opcbfunc, NULL)
-        if PMIX_SUCCESS == rc:
-            active.wait()
-            rc = active.get_status()
-        active.clear()
+            rc = PMIx_server_register_nspace(nspace, nlocalprocs, NULL, 0, NULL, NULL)
         return rc
 
     # Deregister a namespace
@@ -1693,10 +1698,7 @@ cdef class PMIxServer(PMIxClient):
         global active
         # convert the args into the necessary C-arguments
         pmix_copy_nspace(nspace, ns)
-        active.clear()
-        PMIx_server_deregister_nspace(nspace, pmix_opcbfunc, NULL)
-        active.wait()
-        active.clear()
+        PMIx_server_deregister_nspace(nspace, NULL, NULL)
         return
 
     # Register resources
@@ -1745,11 +1747,7 @@ cdef class PMIxServer(PMIxClient):
         cdef pmix_proc_t p;
         pmix_copy_nspace(p.nspace, proc['nspace'])
         p.rank = proc['rank']
-        active.clear()
-        rc = PMIx_server_register_client(&p, uid, gid, NULL, pmix_opcbfunc, NULL)
-        if PMIX_SUCCESS == rc:
-            active.wait()
-            rc = active.get_status()
+        rc = PMIx_server_register_client(&p, uid, gid, NULL, NULL, NULL)
         return rc
 
     # Deregister a client process
@@ -1762,11 +1760,7 @@ cdef class PMIxServer(PMIxClient):
         cdef pmix_proc_t p;
         pmix_copy_nspace(p.nspace, proc['nspace'])
         p.rank = proc['rank']
-        active.clear()
-        rc = PMIx_server_deregister_client(&p, pmix_opcbfunc, NULL)
-        if PMIX_SUCCESS == rc:
-            active.wait()
-            rc = active.get_status()
+        rc = PMIx_server_deregister_client(&p, NULL, NULL)
         return rc
 
     # Setup the environment of a child process that is to be forked
@@ -1938,7 +1932,7 @@ cdef class PMIxServer(PMIxClient):
         else:
             info = NULL
             sz = 0
-        rc = PMIx_server_setup_local_support(nspace, info, sz, pmix_opcbfunc, NULL);
+        rc = PMIx_server_setup_local_support(nspace, info, sz, NULL, NULL);
         if PMIX_SUCCESS == rc:
             active.wait()
         return rc
@@ -1976,9 +1970,7 @@ cdef class PMIxServer(PMIxClient):
 
         # call API
         rc = PMIx_server_IOF_deliver(source, channel, bo, directives, ndirs,
-                                     pmix_opcbfunc, NULL)
-        if PMIX_SUCCESS == rc:
-            active.wait()
+                                     NULL, NULL)
         return rc
 
     def define_process_set(members:list, name:str):
@@ -3102,6 +3094,7 @@ cdef class PMIxTool(PMIxServer):
         cdef pmix_proc_t srvr
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
+        cdef size_t ninfo
 
         # convert the server name
         pmix_copy_nspace(srvr.nspace, server['nspace'])
