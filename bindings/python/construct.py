@@ -509,7 +509,10 @@ def main():
     definitions.write("\n\n")
     constants.write("\n\n")
     harvest_constants(options, "pmix_tool.h", constants, definitions)
-
+    # close the files to ensure all output is written
+    constants.close()
+    definitions.close()
+    
 if __name__ == '__main__':
     main()
 
