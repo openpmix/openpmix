@@ -13,8 +13,8 @@ CC = gcc
 CFLAGS = $(INCLUDES) -fno-omit-frame-pointer -g -Wfatal-errors #-Wall -Wextra -Wpedantic -Wconversion -Wshadow
 # Use CFLAGS below instead if you want to run with Sanitizer
 #CFLAGS = $(INCLUDES) -fno-omit-frame-pointer -fsanitize=address -fsanitize=leak -fsanitize=undefined -g -Wfatal-errors -Wall
-LDFLAGS = -Wl,-rpath,$(LDIR)
-LIBS =-lpmix -lpthread -levent # -lefence # <-- can link against electric fence for memory checking
+LDFLAGS = -Wl,-rpath,$(LDIR) #-Wl,--stack,10485760
+LIBS =-lpmix -lpthread -levent #-lefence # <-- can link against electric fence for memory checking
 
 # Executables
 EXE = pmix_test test_init_fin test_helloworld test_get_basic test_get_peers

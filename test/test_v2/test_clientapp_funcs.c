@@ -60,7 +60,7 @@ void pmixt_pre_init(int argc, char **argv, test_params *params, validation_param
             char *local_rank_placement_string = NULL;
             TEST_VERBOSE(("Before parse_rank_placement_string, string: %s", v_params->rank_placement_string));
             local_rank_placement_string = strdup(v_params->rank_placement_string);
-            parse_rank_placement_string(local_rank_placement_string, params->nservers);
+            parse_rank_placement_string(local_rank_placement_string, v_params->pmix_num_nodes);
             free(local_rank_placement_string);
         }
     }

@@ -171,10 +171,6 @@ void parse_cmd(int argc, char **argv, test_params *params, validation_params *v_
                 params->nservers = atoi(argv[i]);
                 PMIXT_VAL_PARAM_SETNUM(v_params, pmix_num_nodes, params->nservers);
             }
-            if (2 < params->nservers) {
-                fprintf(stderr, "Only support up to 2 servers\n");
-                exit(1);
-            }
         } else if( 0 == strcmp(argv[i], "--verbose") || 0 == strcmp(argv[i],"-v") ){
             PMIXT_VERBOSE_ON();
             params->verbose = 1;

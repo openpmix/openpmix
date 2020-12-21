@@ -67,7 +67,7 @@ int main(int argc, char **argv)
 
     parse_cmd(argc, argv, &params, &val_params);
     if (val_params.custom_rank_placement){
-    TEST_VERBOSE(("val_params.pmix_num_nodes: %d being passed into init_nodes", val_params.pmix_num_nodes));
+        TEST_VERBOSE(("val_params.pmix_num_nodes: %d being passed into init_nodes", val_params.pmix_num_nodes));
         init_nodes(val_params.pmix_num_nodes);
         char *local_rank_placement_string = NULL;
         TEST_VERBOSE(("Before parse_rank_placement_string, string: %s", val_params.rank_placement_string));

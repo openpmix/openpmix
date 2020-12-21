@@ -184,7 +184,7 @@ static void set_namespace(int local_size, int univ_size,
     char *regex, *ppn, *tmp;
     char *ranks = NULL, **node_string = NULL;
     char **rks=NULL;
-    int i;
+    int i, j, start_rank, server_local_size;
     int rc;
 
     PMIX_INFO_CREATE(info, ninfo);
@@ -236,54 +236,57 @@ static void set_namespace(int local_size, int univ_size,
         PMIX_INFO_LOAD(&info[4], PMIX_NODE_MAP, regex, PMIX_REGEX);
     }
 
-    /* generate the global proc map - if we have two
-     * servers, then the procs not on this server must
-     * be on the other */
-    if (2 == params.nservers) {
-        pmix_argv_append_nosize(&rks, ranks);
-        free(ranks);
-        node_string = NULL;
-        if (0 == my_server_id) {
-            if (v_params->custom_rank_placement) {
-                for (i = 0; i < nodes[1].pmix_local_size; i++) {
-                    asprintf(&ppn, "%d", nodes[1].pmix_rank[i]);
+    /* generate the global proc map for multiserver case  */
+    if (2 <= params.nservers) {
+        if (v_params->custom_rank_placement) {
+            for (j = 0; j < params.nservers; j++){
+                for (i = 0; i < nodes[j].pmix_local_size; i++) {
+                    asprintf(&ppn, "%d", nodes[j].pmix_rank[i]);
                     pmix_argv_append_nosize(&node_string, ppn);
+                    TEST_VERBOSE(("custom placement, server id: %d, ppn: %s, node_string: %s",
+                    my_server_id, ppn, node_string[i]));
                     free(ppn);
                 }
+                ppn = pmix_argv_join(node_string, ',');
+                pmix_argv_append_nosize(&rks, ppn);
+                TEST_VERBOSE(("custom placement, my_server id: %d, remote server: %d, remote's local ranks: %s",
+                    my_server_id, j, ppn));
+                free(ppn);
+                pmix_argv_free(node_string);
+                node_string = NULL;
             }
-            else {
-                // base_rank is used here to load the procs are on the *other* servers
-                for (i = base_rank + local_size; i < univ_size; i++) {
+        }
+        else {
+            // load server ranks using default rank placement
+            start_rank = 0;
+            for(j = 0; j < params.nservers; j++) {
+                // if the remainder is greater than the present server number,
+                // add one to the local size for this server
+                if (params.nprocs % params.nservers > j) {
+                    server_local_size = params.nprocs / params.nservers + 1;
+                }
+                else {
+                    server_local_size = params.nprocs / params.nservers;
+                }
+                // append the string of ranks (node_string) for each server
+                for (i = start_rank; i < start_rank + server_local_size; i++) {
                     asprintf(&ppn, "%d", i);
                     pmix_argv_append_nosize(&node_string, ppn);
                     free(ppn);
                 }
+                ppn = pmix_argv_join(node_string, ',');
+                pmix_argv_append_nosize(&rks, ppn);
+                TEST_VERBOSE(("default placement, my_server id: %d, remote server: %d, remote's local ranks: %s",
+                    my_server_id, j, ppn));
+                free(ppn);
+                pmix_argv_free(node_string);
+                node_string = NULL;
+                start_rank += server_local_size;
             }
-            ppn = pmix_argv_join(node_string, ',');
-            pmix_argv_append_nosize(&rks, ppn);
-            free(ppn);
-        } else {
-            if (v_params->custom_rank_placement) {
-                for (i = 0; i < nodes[1].pmix_local_size; i++) {
-                    asprintf(&ppn, "%d", nodes[0].pmix_rank[i]);
-                    pmix_argv_append_nosize(&node_string, ppn);
-                    free(ppn);
-                }
-            }
-            else {
-                for (i=0; i < base_rank; i++) {
-                    asprintf(&ppn, "%d", i);
-                    pmix_argv_append_nosize(&node_string, ppn);
-                    free(ppn);
-                }
-            }
-            ppn = pmix_argv_join(node_string, ',');
-            pmix_argv_prepend_nosize(&rks, ppn);
-            free(ppn);
         }
         ranks = pmix_argv_join(rks, ';');
     }
-    // This must be wrong, because of failure in gds_hash.c
+    TEST_VERBOSE(("server ID: %d ranks array: %s", my_server_id, ranks));
     PMIx_generate_ppn(ranks, &ppn);
     free(ranks);
     PMIX_INFO_LOAD(&info[5], PMIX_PROC_MAP, ppn, PMIX_REGEX);
