@@ -1368,8 +1368,9 @@ typedef uint8_t pmix_persistence_t;
 /* define a set of bit-mask flags for specifying behavior of
  * command directives via pmix_info_t arrays */
 typedef uint32_t pmix_info_directives_t;
-#define PMIX_INFO_REQD          0x00000001
-#define PMIX_INFO_ARRAY_END     0x00000002      // mark the end of an array created by PMIX_INFO_CREATE
+#define PMIX_INFO_REQD              0x00000001
+#define PMIX_INFO_ARRAY_END         0x00000002      // mark the end of an array created by PMIX_INFO_CREATE
+#define PMIX_INFO_REQD_PROCESSED    0x00000004      // reqd attribute has been processed
 /* the top 16-bits are reserved for internal use by
  * implementers - these may be changed inside the
  * PMIx library */
@@ -2291,19 +2292,25 @@ typedef struct pmix_info {
 /* macros for setting and unsetting the "reqd" flag
  * in a pmix_info_t */
 #define PMIX_INFO_REQUIRED(m)       \
-    (m)->flags |= PMIX_INFO_REQD
+    ((m)->flags |= PMIX_INFO_REQD)
 #define PMIX_INFO_OPTIONAL(m)       \
-    (m)->flags &= ~PMIX_INFO_REQD
+    ((m)->flags &= ~PMIX_INFO_REQD)
 
 /* macros for testing the "reqd" flag in a pmix_info_t */
 #define PMIX_INFO_IS_REQUIRED(m)    \
-    (m)->flags & PMIX_INFO_REQD
+    ((m)->flags & PMIX_INFO_REQD)
 #define PMIX_INFO_IS_OPTIONAL(m)    \
     !((m)->flags & PMIX_INFO_REQD)
 
+/* macros for setting and testing the "reqd processed" flag */
+#define PMIX_INFO_WAS_PROCESSED(m)  \
+    ((m)->flags |= PMIX_INFO_REQD_PROCESSED)
+#define PMIX_INFO_PROCESSED(m)  \
+    ((m)->flags & PMIX_INFO_REQD_PROCESSED)
+
 /* macro for testing end of the array */
 #define PMIX_INFO_IS_END(m)         \
-    (m)->flags & PMIX_INFO_ARRAY_END
+    ((m)->flags & PMIX_INFO_ARRAY_END)
 
 /* define a special macro for checking if a boolean
  * info is true - when info structs are provided, a
