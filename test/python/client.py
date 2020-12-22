@@ -2,6 +2,11 @@
 
 from pmix import *
 
+def default_evhandler(evhdlr:int, status:int,
+                      source:dict, info:list, results:list):
+    print("DEFAULT HANDLER")
+    return PMIX_EVENT_ACTION_COMPLETE,None
+
 def main():
     foo = PMIxClient()
     print("Testing PMIx ", foo.get_version())
@@ -12,31 +17,34 @@ def main():
     if 0 != my_result[0]:
         print("FAILED TO INIT")
         exit(1)
+    # register an event handler
+    rc,myevhndlr = foo.register_event_handler(None, None, default_evhandler)
+    print("REGISTER", foo.error_string(rc))
     # try putting something
     print("PUT")
     rc = foo.put(PMIX_GLOBAL, "mykey", {'value':1, 'val_type':PMIX_INT32})
-    print("Put result ", rc);
+    print("Put result ",foo.error_string(rc));
     # commit it
     print("COMMIT")
     rc = foo.commit()
-    print ("Commit result ", rc)
+    print ("Commit result ", foo.error_string(rc))
     # execute fence
     print("FENCE")
     procs = []
     info = []
     rc = foo.fence(procs, info)
-    print("Fence result ", rc)
+    print("Fence result ", foo.error_string(rc))
     print("GET")
     info = []
     rc, get_val = foo.get({'nspace':"testnspace", 'rank': 0}, "mykey", info)
-    print("Get result: ", rc)
+    print("Get result: ", foo.error_string(rc))
     print("Get value returned: ", get_val)
     # test a fence that should return not_supported because
     # we pass a required attribute that doesn't exist
     procs = []
     info = [{'key': 'ARBITRARY', 'flags': PMIX_INFO_REQD, 'value':10, 'val_type':PMIX_INT}]
     rc = foo.fence(procs, info)
-    print("Fence should be not supported", rc)
+    print("Fence should be not supported:", foo.error_string(rc))
     # finalize
     info = []
     foo.finalize(info)
