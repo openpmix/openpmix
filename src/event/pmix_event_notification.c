@@ -1364,6 +1364,9 @@ void pmix_event_timeout_cb(int fd, short flags, void *arg)
     /* remove it from the list */
     pmix_list_remove_item(&pmix_globals.cached_events, &ch->super);
 
+    /* protect the chain */
+    PMIX_RETAIN(ch);
+
     /* process this event thru the regular channels */
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
         !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
