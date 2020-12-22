@@ -320,9 +320,85 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
 static void cycle_events(int sd, short args, void *cbdata)
 {
     pmix_event_chain_t *chain = (pmix_event_chain_t*)cbdata;
-    size_t n;
+    size_t n, nsave, cnt;
     pmix_list_item_t *item;
     pmix_event_hdlr_t *nxt;
+    pmix_info_t *newinfo;
+
+    pmix_output_verbose(2, pmix_client_globals.event_output,
+                        "%s progressing local event",
+                        PMIX_NAME_PRINT(&pmix_globals.myid));
+
+    /* aggregate the results per RFC0018 - first search the
+     * prior chained results to see if any keys have been NULL'd
+     * as this indicates that info struct should be removed */
+    nsave = 0;
+    for (n=0; n < chain->nresults; n++) {
+        if (0 < strlen(chain->results[n].key)) {
+            ++nsave;
+        }
+    }
+    /* we have to at least record the status returned by each
+     * stage of the event handler chain, so we have to reallocate
+     * the array to make space */
+
+    /* add in any new results plus space for the returned status */
+    nsave += chain->ninterim + 1;
+    /* create the new space */
+    PMIX_INFO_CREATE(newinfo, nsave);
+    /* transfer over the prior data */
+    cnt = 0;
+    for (n=0; n < chain->nresults; n++) {
+        if (0 < strlen(chain->results[n].key)) {
+            PMIX_INFO_XFER(&newinfo[cnt], &chain->results[n]);
+            ++cnt;
+        }
+    }
+
+    /* save this handler's returned status */
+    if (NULL != chain->evhdlr->name) {
+        pmix_strncpy(newinfo[cnt].key, chain->evhdlr->name, PMIX_MAX_KEYLEN);
+    } else {
+        pmix_strncpy(newinfo[cnt].key, "UNKNOWN", PMIX_MAX_KEYLEN);
+    }
+    newinfo[cnt].value.type = PMIX_STATUS;
+    newinfo[cnt].value.data.status = chain->status;
+    ++cnt;
+    /* transfer across the new results */
+    for (n=0; n < chain->ninterim; n++) {
+        PMIX_INFO_XFER(&newinfo[cnt], &chain->interim[n]);
+        ++cnt;
+    }
+    /* release the prior results */
+    if (0 < chain->nresults) {
+        PMIX_INFO_FREE(chain->results, chain->nresults);
+    }
+    /* pass along the new ones */
+    chain->results = newinfo;
+    chain->nresults = cnt;
+    /* clear any loaded name and object */
+    chain->ninfo = chain->nallocated - 2;
+    PMIX_INFO_DESTRUCT(&chain->info[chain->nallocated-2]);
+    PMIX_INFO_DESTRUCT(&chain->info[chain->nallocated-1]);
+    // call their interim cbfunc
+    if (NULL != chain->opcbfunc) {
+        chain->opcbfunc(PMIX_SUCCESS, chain->cbdata);
+    }
+    
+    /* if the caller indicates that the chain is completed,
+     * or we completed the "last" event */
+    if (PMIX_EVENT_ACTION_COMPLETE == chain->status || chain->endchain) {
+        if (PMIX_EVENT_ACTION_COMPLETE == chain->status) {
+            chain->status = PMIX_SUCCESS;
+        }
+        /* we still have to call their final callback */
+        if (NULL != chain->final_cbfunc) {
+            chain->final_cbfunc(chain->status, chain->final_cbdata);
+        }
+        /* maintain acctng */
+        PMIX_RELEASE(chain);
+        return;
+    }
 
     item = NULL;
     /* see if we need to continue, starting with the single code events */
@@ -545,89 +621,11 @@ static void progress_local_event_hdlr(pmix_status_t status,
      * before accessing our internal data */
 
     pmix_event_chain_t *chain = (pmix_event_chain_t*)notification_cbdata;
-    size_t n, nsave, cnt;
-    pmix_info_t *newinfo;
-
-    pmix_output_verbose(2, pmix_client_globals.event_output,
-                        "%s progressing local event",
-                        PMIX_NAME_PRINT(&pmix_globals.myid));
-
-    /* aggregate the results per RFC0018 - first search the
-     * prior chained results to see if any keys have been NULL'd
-     * as this indicates that info struct should be removed */
-    nsave = 0;
-    for (n=0; n < chain->nresults; n++) {
-        if (0 < strlen(chain->results[n].key)) {
-            ++nsave;
-        }
-    }
-    /* we have to at least record the status returned by each
-     * stage of the event handler chain, so we have to reallocate
-     * the array to make space */
-
-    /* add in any new results plus space for the returned status */
-    nsave += nresults + 1;
-    /* create the new space */
-    PMIX_INFO_CREATE(newinfo, nsave);
-    /* transfer over the prior data */
-    cnt = 0;
-    for (n=0; n < chain->nresults; n++) {
-        if (0 < strlen(chain->results[n].key)) {
-            PMIX_INFO_XFER(&newinfo[cnt], &chain->results[n]);
-            ++cnt;
-        }
-    }
-
-    /* save this handler's returned status */
-    if (NULL != chain->evhdlr->name) {
-        pmix_strncpy(newinfo[cnt].key, chain->evhdlr->name, PMIX_MAX_KEYLEN);
-    } else {
-        pmix_strncpy(newinfo[cnt].key, "UNKNOWN", PMIX_MAX_KEYLEN);
-    }
-    newinfo[cnt].value.type = PMIX_STATUS;
-    newinfo[cnt].value.data.status = status;
-    ++cnt;
-    /* transfer across the new results */
-    for (n=0; n < nresults; n++) {
-        PMIX_INFO_XFER(&newinfo[cnt], &results[n]);
-        ++cnt;
-    }
-    /* release the prior results */
-    if (0 < chain->nresults) {
-        PMIX_INFO_FREE(chain->results, chain->nresults);
-    }
-    /* pass along the new ones */
-    chain->results = newinfo;
-    chain->nresults = cnt;
-    /* clear any loaded name and object */
-    chain->ninfo = chain->nallocated - 2;
-    PMIX_INFO_DESTRUCT(&chain->info[chain->nallocated-2]);
-    PMIX_INFO_DESTRUCT(&chain->info[chain->nallocated-1]);
-
-    /* if the caller indicates that the chain is completed,
-     * or we completed the "last" event */
-    if (PMIX_EVENT_ACTION_COMPLETE == status || chain->endchain) {
-        if (PMIX_EVENT_ACTION_COMPLETE == status) {
-            status = PMIX_SUCCESS;
-        }
-        /* we still have to call their final callback */
-        if (NULL != chain->final_cbfunc) {
-            chain->final_cbfunc(status, chain->final_cbdata);
-        }
-        /* maintain acctng */
-        PMIX_RELEASE(chain);
-        /* let the caller know that we are done with their callback */
-        if (NULL != cbfunc) {
-            cbfunc(PMIX_SUCCESS, thiscbdata);
-        }
-        return;
-    }
-    /* let the caller know that we are done with their callback */
-    if (NULL != cbfunc) {
-        cbfunc(PMIX_SUCCESS, thiscbdata);
-    }
-    chain->status = status;
-    /* threadshift into our own progress thread */
+    
+    chain->interim = results;
+    chain->ninterim = nresults;
+    chain->opcbfunc = cbfunc;
+    chain->cbdata = thiscbdata;
     PMIX_THREADSHIFT(chain, cycle_events);
 }
 
@@ -1469,7 +1467,11 @@ static void chcon(pmix_event_chain_t *p)
     p->nallocated = 0;
     p->results = NULL;
     p->nresults = 0;
+    p->interim = NULL;
+    p->ninterim = 0;
     p->evhdlr = NULL;
+    p->opcbfunc = NULL;
+    p->cbdata = NULL;
     p->final_cbfunc = NULL;
     p->final_cbdata = NULL;
 }
