@@ -145,16 +145,6 @@ cdef void event_cache_cb(capsule, ret):
                    shifter[0].results, shifter[0].nresults,
                    shifter[0].event_handler, shifter[0].notification_cbdata)
 
-cdef void event_handler_cb(capsule, ret):
-    cdef pmix_pyshift_t *shifter
-    shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "event_handler")
-    shifter[0].event_handler(shifter[0].status, shifter[0].results, shifter[0].nresults,
-                             shifter[0].op_cbfunc, shifter[0].cbdata,
-                             shifter[0].notification_cbdata)
-    if 0 < shifter[0].nresults:
-        pmix_free_info(shifter[0].results, shifter[0].nresults)
-    return
-
 cdef void query_cb(capsule, ret):
     cdef pmix_pyshift_t *shifter
     shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "query")
@@ -1396,8 +1386,8 @@ cdef dict pmix_unload_value(const pmix_value_t *value):
     elif PMIX_REGEX == value[0].type:
         return {'value': value[0].data.bo.bytes, 'val_type': PMIX_REGEX}
     else:
-        print("Unload_value: provided type is unknown")
-        return PMIX_ERR_TYPE_MISMATCH
+        print("Unload_value: provided type is unknown", value[0].type)
+        return {'value': None, 'val_type': PMIX_UNDEF}
 
 cdef void pmix_destruct_value(pmix_value_t *value):
     if value[0].type == PMIX_STRING:
