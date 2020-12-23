@@ -413,7 +413,7 @@ static void check_cached_events(pmix_rshift_caddy_t *cd)
         /* we always leave space for event hdlr name and a callback object */
         chain->nallocated = ncd->ninfo + 2;
         PMIX_INFO_CREATE(chain->info, chain->nallocated);
-        if (0 < cd->ninfo) {
+        if (0 < ncd->ninfo) {
             chain->ninfo = ncd->ninfo;
             /* need to copy the info */
             for (n=0; n < ncd->ninfo; n++) {
@@ -871,7 +871,6 @@ PMIX_EXPORT pmix_status_t PMIx_Register_event_handler(pmix_status_t codes[], siz
                                                       void *cbdata)
 {
     pmix_rshift_caddy_t *cd;
-    size_t n;
     pmix_status_t rc = PMIX_SUCCESS;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
@@ -895,9 +894,7 @@ PMIX_EXPORT pmix_status_t PMIx_Register_event_handler(pmix_status_t codes[], siz
             PMIX_RELEASE(cd);
             return PMIX_ERR_NOMEM;
         }
-        for (n=0; n < ncodes; n++) {
-            cd->codes[n] = codes[n];
-        }
+        memcpy(cd->codes, codes, ncodes * sizeof(pmix_status_t));
     }
     cd->ncodes = ncodes;
     cd->info = info;
