@@ -8,7 +8,8 @@ from libc.stdio cimport printf
 from ctypes import addressof, c_int
 from cython.operator import address
 import signal, time
-import threading
+import threading, ctypes
+import queue
 import array
 import os
 #import time
@@ -23,11 +24,37 @@ include "tests/cython/cython_test_functions.pyx"
 active = myLock()
 myhdlrs = []
 myname = {}
+eventQueue = queue.Queue(maxsize=1000)
+stop_progress = False
 
-cdef void pmix_opcbfunc(pmix_status_t status, void *cbdata) with gil:
-    global active
-    active.set(status)
-    return
+def pyevhdlr(stop):
+    global eventQueue
+    global stop_progress
+
+    while True:
+        if stop_progress:
+            break
+        if not eventQueue.empty():
+            capsule = eventQueue.get()
+            shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "event_handler")
+            op = shifter[0].op.decode('ascii')
+            if "event_handler" == op:
+                shifter[0].event_handler(shifter[0].status, shifter[0].results, shifter[0].nresults,
+                                         shifter[0].op_cbfunc, shifter[0].cbdata,
+                                         shifter[0].notification_cbdata)
+                if 0 < shifter[0].nresults:
+                    pmix_free_info(shifter[0].results, shifter[0].nresults)
+            else:
+                print("UNSUPPORTED OP", op)
+        # don't beat on the cpu
+        time.sleep(0.001)
+
+
+# create a progress thread for processing events
+progressThread = threading.Thread(target = pyevhdlr, args =(lambda : stop_progress, ))
+# ensure the thread dies at termination of main so we can exit
+# if we should terminate without finalizing
+progressThread.setDaemon(True)
 
 cdef void dmodx_cbfunc(pmix_status_t status,
                        char *data, size_t sz,
@@ -135,6 +162,7 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
     cdef size_t nmyresults
     cdef char* kystr
     cdef pmix_nspace_t srcnspace
+    global eventQueue
 
     # convert the source to python
     pysource = {}
@@ -150,12 +178,20 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
 
     # convert the inbound info to python
     pyinfo = []
-    pmix_unload_info(info, ninfo, pyinfo)
+    if 0 < ninfo:
+        rc = pmix_unload_info(info, ninfo, pyinfo)
+        if PMIX_SUCCESS != rc:
+            print("Unable to unload info structs")
+            return
 
     # convert the inbound results from prior handlers
     # that serviced this event to python
     pyresults = []
-    pmix_unload_info(results, nresults, pyresults)
+    if 0 < nresults:
+        rc = pmix_unload_info(results, nresults, pyresults)
+        if PMIX_SUCCESS != rc:
+            print("Unable to unload prior results")
+            return
 
     # find the handler being called
     found = False
@@ -164,10 +200,13 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
         try:
             if evhdlr_registration_id == h['refid']:
                 found = True
+                # execute their handler
                 rc, pymyresults = h['hdlr'](pyev_id, status, pysource, pyinfo, pyresults)
                 # allocate and load pmix info structs from python list of dictionaries
                 myresults_ptr = &myresults
-                rc = pmix_alloc_info(myresults_ptr, &nmyresults, pymyresults)
+                prc = pmix_alloc_info(myresults_ptr, &nmyresults, pymyresults)
+                if PMIX_SUCCESS != prc:
+                    print("Unable to load new results")
                 mycaddy    = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
                 mycaddy.op = strdup("event_handler")
                 mycaddy.status              = rc
@@ -178,17 +217,18 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
                 mycaddy.notification_cbdata = cbdata
                 mycaddy.event_handler       = cbfunc
                 cb = PyCapsule_New(mycaddy, "event_handler", NULL)
-                threading.Timer(2, event_handler_cb, [cb, rc]).start()
+                # push the results into the queue to return them
+                # to the PMIx library
+                eventQueue.put(cb)
         except:
             pass
 
-    # if we didn't find the handler, cache this event in a timeshift
-    # and try it again
+    # if we didn't find the handler, delay a little and try again
     if not found:
         mycaddy    = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
         mycaddy.op = strdup("event_handler")
         mycaddy.idx                 = evhdlr_registration_id
-        mycaddy.status              = rc
+        mycaddy.status              = status
         memset(mycaddy.source.nspace, 0, PMIX_MAX_NSLEN+1)
         memcpy(mycaddy.source.nspace, source[0].nspace, PMIX_MAX_NSLEN)
         mycaddy.source.rank         = source[0].rank
@@ -201,7 +241,7 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
         mycaddy.notification_cbdata = cbdata
         mycaddy.event_handler       = cbfunc
         cb = PyCapsule_New(mycaddy, "event_handler", NULL)
-        threading.Timer(2, event_cache_cb, [cb, rc]).start()
+        threading.Timer(0.001, event_cache_cb, [cb, rc]).start()
     return
 
 cdef class PMIxClient:
@@ -246,7 +286,12 @@ cdef class PMIxClient:
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         myname = {}
+        global progressThread
 
+        # start the event handler progress thread
+        print("CLIENT STARTING THREAD")
+        progressThread.start()
+        print("CLIENT THREAD STARTED")
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
         rc = pmix_alloc_info(info_ptr, &klen, dicts)
@@ -263,6 +308,12 @@ cdef class PMIxClient:
         cdef size_t klen
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
+        global stop_progress
+        global progressThread
+
+        # stop progress thread
+        stop_progress = True
+        progressThread.join()
 
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
@@ -1245,10 +1296,16 @@ cdef class PMIxClient:
         else:
             codes = NULL
             ncodes = 0
-
         # allocate and load pmix info structs from python list of dictionaries
-        info_ptr = &info
-        rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
+        if pyinfo is not None:
+            info_ptr = &info
+            rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
+            if PMIX_SUCCESS != rc:
+                print("Error converting info array:", self.error_string(rc))
+                return rc, -1
+        else:
+            info = NULL
+            ninfo = 0
 
         # pass our hdlr switchyard to the API
         rc = PMIx_Register_event_handler(codes, ncodes, info, ninfo, pyeventhandler, NULL, NULL)
@@ -1532,7 +1589,8 @@ def setmodulefn(k, f):
         pmixservermodule[k] = f
 
 cdef class PMIxServer(PMIxClient):
-    cdef pmix_server_module_t myserver;
+    cdef pmix_server_module_t myserver
+
     def __cinit__(self):
         self.fabric_set = 0
         memset(self.myproc.nspace, 0, sizeof(self.myproc.nspace))
@@ -1587,7 +1645,12 @@ cdef class PMIxServer(PMIxClient):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
+        global progressThread
 
+        # start the event handler progress thread
+        progressThread.start()
+
+        # setup server module
         if map is None or 0 == len(map):
             print("SERVER REQUIRES AT LEAST ONE MODULE FUNCTION TO OPERATE")
             return PMIX_ERR_INIT
@@ -1609,6 +1672,13 @@ cdef class PMIxServer(PMIxClient):
         return rc
 
     def finalize(self):
+        global stop_progress
+        global progressThread
+
+        # stop progress thread
+        stop_progress = True
+        progressThread.join()
+        # finalize
         return PMIx_server_finalize()
 
     def generate_regex(self, hosts:list):
@@ -1902,9 +1972,7 @@ cdef class PMIxServer(PMIxClient):
 
         # call the API
         rc = PMIx_server_deliver_inventory(info, ninfo, directives, ndirs,
-                                           pmix_opcbfunc, NULL)
-        if PMIX_SUCCESS == rc:
-            active.wait()
+                                           NULL, NULL)
         return rc
 
     def setup_local_support(self, ns:str, ilist:list):
@@ -3018,6 +3086,12 @@ cdef class PMIxTool(PMIxServer):
         cdef pmix_info_t **info_ptr
         cdef size_t sz
         global myname
+        global progressThread
+
+        # start the event handler progress thread
+        print("TOOL STARTING THREAD")
+        progressThread.start()
+        print("TOOL THREAD STARTED")
 
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
@@ -3035,6 +3109,12 @@ cdef class PMIxTool(PMIxServer):
 
     # Finalize the tool library
     def finalize(self):
+        global stop_progress
+
+        # stop progress thread
+        stop_progress = True
+        progressThread.join()
+        # finalize
         rc = PMIx_tool_finalize()
         return rc
 
