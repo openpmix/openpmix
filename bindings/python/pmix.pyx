@@ -36,7 +36,10 @@ def pyevhdlr(stop):
             break
         if not eventQueue.empty():
             capsule = eventQueue.get()
-            shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "event_handler")
+            try:
+                shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, NULL)
+            except:
+                continue
             op = shifter[0].op.decode('ascii')
             if "event_handler" == op:
                 shifter[0].event_handler(shifter[0].status, shifter[0].results, shifter[0].nresults,
@@ -44,10 +47,48 @@ def pyevhdlr(stop):
                                          shifter[0].notification_cbdata)
                 if 0 < shifter[0].nresults:
                     pmix_free_info(shifter[0].results, shifter[0].nresults)
+            elif "fence" == op:
+                shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "fence")
+                shifter[0].modex(shifter[0].status, shifter[0].bo.bytes, shifter[0].bo.size,
+                                 shifter[0].cbdata, NULL, NULL)
+            elif "directmodex" == op:
+                shifter[0].modex(shifter[0].status, shifter[0].data, shifter[0].ndata,
+                                 shifter[0].cbdata, NULL, NULL)
+                if 0 < shifter[0].ndata:
+                    PyMem_Free(&(shifter[0].data))
+            elif "lookup" == op:
+                shifter[0].lookup(shifter[0].status, shifter[0].pdata, shifter[0].ndata, shifter[0].cbdata)
+                if 0 < shifter[0].ndata:
+                    pmix_free_pdata(shifter[0].pdata, shifter[0].ndata)
+            elif "spawn" == op:
+                shifter[0].spawn(shifter[0].status, shifter[0].nspace, shifter[0].cbdata)
+            elif "query" == op:
+                shifter[0].query(shifter[0].status, shifter[0].info, shifter[0].ndata, shifter[0].cbdata, NULL, NULL)
+                if 0 < shifter[0].ndata:
+                    pmix_free_info(shifter[0].info, shifter[0].ndata)
+            elif "toolconnected" == op:
+                shifter[0].toolconnected(shifter[0].status, shifter[0].proc, shifter[0].cbdata)
+            elif "allocate" == op:
+                shifter[0].allocate(shifter[0].status, shifter[0].info, shifter[0].ndata,
+                                    shifter[0].cbdata, shifter[0].release_fn,
+                                    shifter[0].notification_cbdata)
+                if 0 < shifter[0].ndata:
+                    pmix_free_info(shifter[0].info, shifter[0].ndata)
+            elif "getcredential" == op:
+                shifter[0].getcredential(shifter[0].status, shifter[0].cred, shifter[0].info,
+                                         shifter[0].ndata, shifter[0].cbdata)
+                if 0 < shifter[0].ndata:
+                    pmix_free_info(shifter[0].info, shifter[0].ndata)
+            elif "validationcredential" == op:
+                shifter[0].validationcredential(shifter[0].status, shifter[0].info, shifter[0].ndata,
+                                                shifter[0].cbdata)
+                if 0 < shifter[0].ndata:
+                    pmix_free_info(shifter[0].info, shifter[0].ndata)
             else:
                 print("UNSUPPORTED OP", op)
         # don't beat on the cpu
         time.sleep(0.001)
+        return
 
 
 # create a progress thread for processing events
@@ -147,7 +188,7 @@ cdef void pyiofhandler(size_t iofhdlr_id, pmix_iof_channel_t channel,
         mycaddy.info                = info
         mycaddy.ndata               = ninfo
         cb = PyCapsule_New(mycaddy, "iofhdlr_cache", NULL)
-        threading.Timer(2, iofhdlr_cache, [cb, rc]).start()
+        threading.Timer(0.001, iofhdlr_cache, [cb, rc]).start()
     return
 
 cdef void pyeventhandler(size_t evhdlr_registration_id,
@@ -2170,6 +2211,7 @@ cdef int fencenb(const pmix_proc_t procs[], size_t nprocs,
         blist = []
         ilist = []
         barray = None
+
         if NULL == procs:
             myprocs.append({'nspace': myname.nspace, 'rank': PMIX_RANK_WILDCARD})
         else:
@@ -2195,16 +2237,20 @@ cdef int fencenb(const pmix_proc_t procs[], size_t nprocs,
     # threadshift so we can generate the callback safely
     data  = strdup(ret_data)
     ndata = len(ret_data)
+    global eventQueue
     if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
         mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
         mycaddy.op = strdup("fence")
+        mycaddy.status = PMIX_SUCCESS
         mycaddy.bo.bytes = data
         mycaddy.bo.size = ndata
         mycaddy.modex = cbfunc
         mycaddy.cbdata = cbdata
-        cb = PyCapsule_New(mycaddy, "fence", NULL)
-        rc = PMIX_SUCCESS
-        threading.Timer(0.5, fence_cb, [cb, rc]).start()
+        cb = PyCapsule_New(mycaddy, NULL, NULL)
+        # push the results into the queue to return them
+        # to the PMIx library
+        eventQueue.put(cb)
+        return PMIX_SUCCESS
     return rc
 
 cdef int directmodex(const pmix_proc_t *proc,
@@ -2233,18 +2279,21 @@ cdef int directmodex(const pmix_proc_t *proc,
     cdef size_t ndata
     data  = strdup(ret_data)
     ndata = len(ret_data)
+    global eventQueue
 
     if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
         mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
         mycaddy.op = strdup("directmodex")
-        mycaddy.status = rc
+        mycaddy.status = PMIX_SUCCESS
         mycaddy.data = data
         mycaddy.ndata = ndata
         mycaddy.modex = cbfunc
         mycaddy.cbdata = cbdata
-        cb = PyCapsule_New(mycaddy, "directmodex", NULL)
-        rc = PMIX_SUCCESS
-        threading.Timer(0.5, dmodex_cb, [cb, rc]).start()
+        cb = PyCapsule_New(mycaddy, NULL, NULL)
+        # push the results into the queue to return them
+        # to the PMIx library
+        eventQueue.put(cb)
+        return PMIX_SUCCESS
     return rc
 
 cdef int publish(const pmix_proc_t *proc,
@@ -2310,10 +2359,10 @@ cdef int lookup(const pmix_proc_t *proc, char **keys,
             pd = <pmix_pdata_t*> PyMem_Malloc(ndata * sizeof(pmix_pdata_t))
             if not pdata:
                 return PMIX_ERR_NOMEM
-            rc = pmix_load_pdata(myprocs[0], pd, pdata)
-            if PMIX_SUCCESS != rc:
+            prc = pmix_load_pdata(myprocs[0], pd, pdata)
+            if PMIX_SUCCESS != prc:
                 pmix_free_pdata(pd, ndata)
-                return rc
+                return prc
         else:
             pd = NULL
     else:
@@ -2325,16 +2374,20 @@ cdef int lookup(const pmix_proc_t *proc, char **keys,
     # would require them to call a C-function. So
     # if they succeeded in processing this request,
     # threadshift so we can generate the callback safely
+    global eventQueue
     if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
         mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
         mycaddy.op = strdup("lookup")
+        mycaddy.status = PMIX_SUCCESS
         mycaddy.pdata = pd
         mycaddy.ndata = ndata
         mycaddy.lookup = cbfunc
         mycaddy.cbdata = cbdata
-        cb = PyCapsule_New(mycaddy, "lookup", NULL)
-        rc = PMIX_SUCCESS
-        threading.Timer(0.5, lookup_cb, [cb, rc]).start()
+        cb = PyCapsule_New(mycaddy, NULL, NULL)
+        # push the results into the queue to return them
+        # to the PMIx library
+        eventQueue.put(cb)
+        return PMIX_SUCCESS
     return rc
 
 cdef int unpublish(const pmix_proc_t *proc, char **keys,
@@ -2400,6 +2453,7 @@ cdef int spawn(const pmix_proc_t *proc,
     # would require them to call a C-function. So
     # if they succeeded in processing this request,
     # threadshift so we can generate the callback safely
+    global eventQueue
     if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
         mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
         mycaddy.op = strdup("spawn")
@@ -2407,9 +2461,11 @@ cdef int spawn(const pmix_proc_t *proc,
         mycaddy.nspace = ns
         mycaddy.spawn  = cbfunc
         mycaddy.cbdata = cbdata
-        cb = PyCapsule_New(mycaddy, "spawn", NULL)
-        rc = PMIX_SUCCESS
-        threading.Timer(0.5, spawn_cb, [cb, rc]).start()
+        cb = PyCapsule_New(mycaddy, NULL, NULL)
+        # push the results into the queue to return them
+        # to the PMIx library
+        eventQueue.put(cb)
+        return PMIX_SUCCESS
     return rc
 
 cdef int connect(const pmix_proc_t procs[], size_t nprocs,
@@ -2590,16 +2646,16 @@ cdef int query(pmix_proc_t *source,
     # pmix_info_t structs
     cdef pmix_info_t *info;
     cdef size_t ninfo
-    if results is not None:
+    if results is not None and 0 < len(results):
         ninfo = len(results)
         if 0 < nqueries:
             info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
             if not info:
                 return PMIX_ERR_NOMEM
-            rc = pmix_load_info(info, results)
-            if PMIX_SUCCESS != rc:
+            prc = pmix_load_info(info, results)
+            if PMIX_SUCCESS != prc:
                 pmix_free_info(info, ninfo)
-                return rc
+                return prc
         else:
             info = NULL
     else:
@@ -2611,16 +2667,20 @@ cdef int query(pmix_proc_t *source,
     # would require them to call a C-function. So
     # if they succeeded in processing this request,
     # threadshift so we can generate the callback safely
+    global eventQueue
     if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
         mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
         mycaddy.op = strdup("query")
+        mycaddy.status = rc
         mycaddy.info = info
         mycaddy.ndata = nqueries
         mycaddy.query = cbfunc
         mycaddy.cbdata = cbdata
-        cb = PyCapsule_New(mycaddy, "query", NULL)
-        rc = PMIX_SUCCESS
-        threading.Timer(0.5, query_cb, [cb, rc]).start()
+        cb = PyCapsule_New(mycaddy, NULL, NULL)
+        # push the results into the queue to return them
+        # to the PMIx library
+        eventQueue.put(cb)
+        return PMIX_SUCCESS
     return rc
 
 cdef void toolconnected(pmix_info_t *info, size_t ninfo,
@@ -2651,6 +2711,7 @@ cdef void toolconnected(pmix_info_t *info, size_t ninfo,
     # would require them to call a C-function. So
     # if they succeeded in processing this request,
     # threadshift so we can generate the callback safely
+    global eventQueue
     if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
         mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
         mycaddy.op = strdup("toolconnected")
@@ -2658,9 +2719,10 @@ cdef void toolconnected(pmix_info_t *info, size_t ninfo,
         mycaddy.proc = proc
         mycaddy.toolconnected = cbfunc
         mycaddy.cbdata = cbdata
-        cb = PyCapsule_New(mycaddy, "toolconnected", NULL)
-        rc = PMIX_SUCCESS
-        threading.Timer(0.5, toolconnected_cb, [cb, rc]).start()
+        cb = PyCapsule_New(mycaddy, NULL, NULL)
+        # push the results into the queue to return them
+        # to the PMIx library
+        eventQueue.put(cb)
     return
 
 cdef void log(const pmix_proc_t *client,
@@ -2729,26 +2791,32 @@ cdef int allocate(const pmix_proc_t *client,
     cdef size_t ninfo = 0
     info              = NULL
     info_ptr          = &info
-    rc = pmix_alloc_info(info_ptr, &ninfo, refarginfo)
+    prc = pmix_alloc_info(info_ptr, &ninfo, refarginfo)
+    if PMIX_SUCCESS != prc:
+        print("Error transferring info to C:", prc)
+        return prc
     # we cannot execute a callback function here as
     # that would cause PMIx to lockup. Likewise, the
     # Python function we called can't do it as it
     # would require them to call a C-function. So
     # if they succeeded in processing this request,
     # threadshift so we can generate the callback safely
+    global eventQueue
     if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
         mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
         mycaddy.op = strdup("allocate")
-        mycaddy.status = rc
+        mycaddy.status = PMIX_SUCCESS
         mycaddy.info = info
         mycaddy.ndata = ninfo
         mycaddy.allocate = cbfunc
         mycaddy.cbdata = cbdata
         mycaddy.release_fn = NULL
         mycaddy.notification_cbdata = NULL
-        cb = PyCapsule_New(mycaddy, "allocate", NULL)
-        rc = PMIX_SUCCESS
-        threading.Timer(0.5, allocate_cb, [cb, rc]).start()
+        cb = PyCapsule_New(mycaddy, NULL, NULL)
+        # push the results into the queue to return them
+        # to the PMIx library
+        eventQueue.put(cb)
+        return PMIX_SUCCESS
     return rc
 
 cdef int jobcontrol(const pmix_proc_t *requestor,
@@ -2870,6 +2938,7 @@ cdef int getcredential(const pmix_proc_t *proc,
     # would require them to call a C-function. So
     # if they succeeded in processing this request,
     # threadshift so we can generate the callback safely
+    global eventQueue
     if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
         mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
         mycaddy.op = strdup("getcredential")
@@ -2879,9 +2948,11 @@ cdef int getcredential(const pmix_proc_t *proc,
         mycaddy.cred = bo
         mycaddy.getcredential = cbfunc
         mycaddy.cbdata = cbdata
-        cb = PyCapsule_New(mycaddy, "getcredential", NULL)
-        rc = PMIX_SUCCESS
-        threading.Timer(0.5, getcredential_cb, [cb, rc]).start()
+        cb = PyCapsule_New(mycaddy, NULL, NULL)
+        # push the results into the queue to return them
+        # to the PMIx library
+        eventQueue.put(cb)
+        return PMIX_SUCCESS
     return rc
 
 cdef int validatecredential(const pmix_proc_t *proc,
@@ -2909,6 +2980,7 @@ cdef int validatecredential(const pmix_proc_t *proc,
             pmix_unload_info(directives, ndirs, mydirs)
             args['directives'] = mydirs
         status, pyinfo = pmixservermodule['validatecredential'](args)
+        rc = status
     else:
         rc = PMIX_ERR_NOT_SUPPORTED
     # we cannot execute a callback function here as
@@ -2920,14 +2992,17 @@ cdef int validatecredential(const pmix_proc_t *proc,
     cdef size_t ninfo = 0
     info              = NULL
     info_ptr          = &info
-    rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
-
+    prc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
+    if PMIX_SUCCESS != prc:
+        print("Error converting info to C:", prc)
+        return prc
     # we cannot execute a callback function here as
     # that would cause PMIx to lockup. Likewise, the
     # Python function we called can't do it as it
     # would require them to call a C-function. So
     # if they succeeded in processing this request,
     # threadshift so we can generate the callback safely
+    global eventQueue
     if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
         mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
         mycaddy.op = strdup("validationcredential")
@@ -2936,9 +3011,11 @@ cdef int validatecredential(const pmix_proc_t *proc,
         mycaddy.ndata = ninfo
         mycaddy.validationcredential = cbfunc
         mycaddy.cbdata = cbdata
-        cb = PyCapsule_New(mycaddy, "validationcredential", NULL)
-        rc = PMIX_SUCCESS
-        threading.Timer(0.5, validationcredential_cb, [cb, rc]).start()
+        cb = PyCapsule_New(mycaddy, NULL, NULL)
+        # push the results into the queue to return them
+        # to the PMIx library
+        eventQueue.put(cb)
+        return PMIX_SUCCESS
     return rc
 
 cdef int iofpull(const pmix_proc_t procs[], size_t nprocs,
@@ -3089,9 +3166,7 @@ cdef class PMIxTool(PMIxServer):
         global progressThread
 
         # start the event handler progress thread
-        print("TOOL STARTING THREAD")
         progressThread.start()
-        print("TOOL THREAD STARTED")
 
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
@@ -3113,7 +3188,7 @@ cdef class PMIxTool(PMIxServer):
 
         # stop progress thread
         stop_progress = True
-        progressThread.join()
+        progressThread.join(timeout=1)
         # finalize
         rc = PMIx_tool_finalize()
         return rc
