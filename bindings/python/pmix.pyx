@@ -39,6 +39,8 @@ def pyevhdlr(stop):
             try:
                 shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, NULL)
             except:
+                # don't beat on the cpu
+                time.sleep(0.001)
                 continue
             op = shifter[0].op.decode('ascii')
             if "event_handler" == op:
@@ -88,7 +90,7 @@ def pyevhdlr(stop):
                 print("UNSUPPORTED OP", op)
         # don't beat on the cpu
         time.sleep(0.001)
-        return
+    return
 
 
 # create a progress thread for processing events
