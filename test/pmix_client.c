@@ -106,6 +106,40 @@ int main(int argc, char **argv)
 
     TEST_VERBOSE(("rank %d: Universe size check: PASSED", myproc.rank));
 
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_HOSTNAME, NULL, 0, &val))) {
+        TEST_ERROR(("rank %d: PMIx_Get hostname failed: %s", myproc.rank, PMIx_Error_string(rc)));
+        FREE_TEST_PARAMS(params);
+        exit(rc);
+    }
+    if (NULL == val) {
+        TEST_ERROR(("rank %d: PMIx_Get hostname returned NULL value", myproc.rank));
+        FREE_TEST_PARAMS(params);
+        exit(1);
+    }
+    if (val->type != PMIX_STRING) {
+        TEST_ERROR(("rank %d: Hostname type mismatch: %s",
+                    myproc.rank, PMIx_Data_type_string(val->type)));
+        FREE_TEST_PARAMS(params);
+        exit(1);
+    }
+
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_NODEID, NULL, 0, &val))) {
+        TEST_ERROR(("rank %d: PMIx_Get nodeid failed: %s", myproc.rank, PMIx_Error_string(rc)));
+        FREE_TEST_PARAMS(params);
+        exit(rc);
+    }
+    if (NULL == val) {
+        TEST_ERROR(("rank %d: PMIx_Get nodeid returned NULL value", myproc.rank));
+        FREE_TEST_PARAMS(params);
+        exit(1);
+    }
+    if (val->type != PMIX_UINT32) {
+        TEST_ERROR(("rank %d: NodeID type mismatch: %s",
+                    myproc.rank, PMIx_Data_type_string(val->type)));
+        FREE_TEST_PARAMS(params);
+        exit(1);
+    }
+
     if( NULL != params.nspace && 0 != strcmp(myproc.nspace, params.nspace) ) {
         TEST_ERROR(("rank %d: Bad nspace!", myproc.rank));
         FREE_TEST_PARAMS(params);
