@@ -1917,6 +1917,9 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                 }
                 /* this is data provided by a job-level exchange, so store it
                  * in the job-level data hash_table */
+                pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
+                                    "[%s:%u] pmix:gds:hash store proc info for rank %u working key %s",
+                                    pmix_globals.myid.nspace, pmix_globals.myid.rank, rank, kp2->key);
                 if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, rank, kp2))) {
                     PMIX_ERROR_LOG(rc);
                     PMIX_RELEASE(kp2);
@@ -2015,6 +2018,9 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                     kp2->value->type = PMIX_STRING;
                     kp2->value->data.string = strdup(kv.key);
                     rank = strtol(procs[j], NULL, 10);
+                    pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
+                                        "[%s:%u] pmix:gds:hash store map info for rank %u working key %s",
+                                        pmix_globals.myid.nspace, pmix_globals.myid.rank, rank, kp2->key);
                     if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, rank, kp2))) {
                         PMIX_ERROR_LOG(rc);
                         PMIX_RELEASE(kp2);
@@ -2945,22 +2951,24 @@ static pmix_status_t hash_fetch(const pmix_proc_t *proc,
         return PMIX_ERR_INVALID_NAMESPACE;
     }
 
-    if (nodeinfo) {
-        rc = fetch_nodeinfo(key, &trk->nodeinfo, qualifiers, nqual, kvs);
-        if (PMIX_SUCCESS != rc && PMIX_RANK_WILDCARD == proc->rank) {
-            /* need to check internal as we might have an older peer */
-            ht = &trk->internal;
-            goto doover;
+    if (!PMIX_RANK_IS_VALID(proc->rank)) {
+        if (nodeinfo) {
+            rc = fetch_nodeinfo(key, &trk->nodeinfo, qualifiers, nqual, kvs);
+            if (PMIX_SUCCESS != rc && PMIX_RANK_WILDCARD == proc->rank) {
+                /* need to check internal as we might have an older peer */
+                ht = &trk->internal;
+                goto doover;
+            }
+            return rc;
+        } else if (appinfo) {
+            rc = fetch_appinfo(key, &trk->apps, qualifiers, nqual, kvs);
+            if (PMIX_SUCCESS != rc && PMIX_RANK_WILDCARD == proc->rank) {
+                /* need to check internal as we might have an older peer */
+                ht = &trk->internal;
+                goto doover;
+            }
+            return rc;
         }
-        return rc;
-    } else if (appinfo) {
-        rc = fetch_appinfo(key, &trk->apps, qualifiers, nqual, kvs);
-        if (PMIX_SUCCESS != rc && PMIX_RANK_WILDCARD == proc->rank) {
-            /* need to check internal as we might have an older peer */
-            ht = &trk->internal;
-            goto doover;
-        }
-        return rc;
     }
 
     /* fetch from the corresponding hash table - note that
