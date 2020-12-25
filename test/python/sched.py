@@ -48,14 +48,14 @@ def main():
     print("Version: ", vers)
 
     # Register a fabric
-    rc = foo.fabric_register(None)
-    print("Fabric registered: ", rc)
+    rc,fab = foo.fabric_register(None)
+    print("Fabric registered: ", foo.error_string(rc))
 
     # setup the application
     (rc, regex) = foo.generate_regex(["test000","test001","test002"])
-    print("Node regex, rc: ", regex, rc)
+    print("Node regex, rc: ", regex, foo.error_string(rc))
     (rc, ppn) = foo.generate_ppn(["0,1,2", "3,4,5", "6,7"])
-    print("PPN, rc: ", ppn, rc)
+    print("PPN, rc: ", ppn, foo.error_string(rc))
     darray = {'type':PMIX_INFO, 'array':[{'key':PMIX_ALLOC_FABRIC_ID,
                             'value':'SIMPSCHED.net', 'val_type':PMIX_STRING},
                            {'key':PMIX_ALLOC_FABRIC_SEC_KEY, 'value':'T',
@@ -71,7 +71,7 @@ def main():
     print("SETUPAPP: ", appinfo)
 
     rc = foo.setup_local_support("SIMPSCHED", appinfo)
-    print("SETUPLOCAL: ", rc)
+    print("SETUPLOCAL: ", foo.error_string(rc))
 
     # get our environment as a base
     env = os.environ.copy()
@@ -83,18 +83,18 @@ def main():
              {'key':PMIX_JOB_SIZE, 'value':1, 'val_type':PMIX_UINT32}]
     print("REGISTERING NSPACE")
     rc = foo.register_nspace("testnspace", 1, kvals)
-    print("RegNspace ", rc)
+    print("RegNspace ", foo.error_string(rc))
 
     # register a client
     uid = os.getuid()
     gid = os.getgid()
     print("REGISTERING CLIENT")
     rc = foo.register_client({'nspace':"testnspace", 'rank':0}, uid, gid)
-    print("RegClient ", rc)
+    print("RegClient ", foo.error_string(rc))
 
     # setup the fork
     rc = foo.setup_fork({'nspace':"testnspace", 'rank':0}, env)
-    print("SetupFrk", rc)
+    print("SetupFrk", foo.error_string(rc))
 
     # setup the client argv
     args = ["./client.py"]

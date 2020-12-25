@@ -111,6 +111,9 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_RANK_INVALID   UINT32_MAX-3
 /* define a boundary for valid ranks */
 #define PMIX_RANK_VALID         UINT32_MAX-50
+/* define a macro for testing for valid ranks */
+#define PMIX_RANK_IS_VALID(r)   \
+    ((r) < PMIX_RANK_VALID)
 
 /* define a value to indicate that data applies
  * to all apps in a job */

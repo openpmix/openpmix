@@ -92,49 +92,9 @@ cdef void iofhdlr_cache(capsule, ret):
     cdef pmix_pyshift_t *shifter
     shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "iofhdlr_cache")
     pyiofhandler(shifter[0].idx, shifter[0].channel, &shifter[0].source,
-            shifter[0].payload, shifter[0].info, shifter[0].ndata)
+                 shifter[0].payload, shifter[0].info, shifter[0].ndata)
     if 0 < shifter[0].ndata:
         pmix_free_info(shifter[0].info, shifter[0].ndata)
-    return
-
-cdef void validationcredential_cb(capsule, ret):
-    cdef pmix_pyshift_t *shifter
-    shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "validationcredential")
-    shifter[0].validationcredential(shifter[0].status, shifter[0].info, shifter[0].ndata,
-            shifter[0].cbdata)
-    if 0 < shifter[0].ndata:
-        pmix_free_info(shifter[0].info, shifter[0].ndata)
-    return
-
-cdef void getcredential_cb(capsule, ret):
-    cdef pmix_pyshift_t *shifter
-    shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "getcredential")
-    shifter[0].getcredential(shifter[0].status, shifter[0].cred, shifter[0].info,
-                        shifter[0].ndata, shifter[0].cbdata)
-    if 0 < shifter[0].ndata:
-        pmix_free_info(shifter[0].info, shifter[0].ndata)
-    return
-
-cdef void allocate_cb(capsule, ret):
-    cdef pmix_pyshift_t *shifter
-    shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "allocate")
-    shifter[0].allocate(shifter[0].status, shifter[0].info, shifter[0].ndata,
-                        shifter[0].cbdata, shifter[0].release_fn,
-                        shifter[0].notification_cbdata)
-    if 0 < shifter[0].ndata:
-        pmix_free_info(shifter[0].info, shifter[0].ndata)
-    return
-
-cdef void toolconnected_cb(capsule, ret):
-    cdef pmix_pyshift_t *shifter
-    shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "toolconnected")
-    shifter[0].toolconnected(shifter[0].status, shifter[0].proc, shifter[0].cbdata)
-    return
-
-cdef void spawn_cb(capsule, ret):
-    cdef pmix_pyshift_t *shifter
-    shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "spawn")
-    shifter[0].spawn(shifter[0].status, shifter[0].nspace, shifter[0].cbdata)
     return
 
 cdef void event_cache_cb(capsule, ret):
@@ -144,38 +104,6 @@ cdef void event_cache_cb(capsule, ret):
                    shifter[0].info, shifter[0].ndata,
                    shifter[0].results, shifter[0].nresults,
                    shifter[0].event_handler, shifter[0].notification_cbdata)
-
-cdef void query_cb(capsule, ret):
-    cdef pmix_pyshift_t *shifter
-    shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "query")
-    shifter[0].query(ret, shifter[0].info, shifter[0].ndata, shifter[0].cbdata, NULL, NULL)
-    if 0 < shifter[0].ndata:
-        pmix_free_info(shifter[0].info, shifter[0].ndata)
-    return
-
-cdef void lookup_cb(capsule, ret):
-    cdef pmix_pyshift_t *shifter
-    shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "lookup")
-    shifter[0].lookup(ret, shifter[0].pdata, shifter[0].ndata, shifter[0].cbdata)
-    if 0 < shifter[0].ndata:
-        pmix_free_pdata(shifter[0].pdata, shifter[0].ndata)
-    return
-
-cdef void fence_cb(capsule, ret):
-    cdef pmix_pyshift_t *shifter
-    shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "fence")
-    shifter[0].modex(ret, shifter[0].bo.bytes, shifter[0].bo.size,
-                     shifter[0].cbdata, NULL, NULL)
-    return
-
-cdef void dmodex_cb(capsule, ret):
-    cdef pmix_pyshift_t *shifter
-    shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "dmodex")
-    shifter[0].modex(shifter[0].status, shifter[0].data, shifter[0].ndata,
-                     shifter[0].cbdata, NULL, NULL)
-    if 0 < shifter[0].ndata:
-        PyMem_Free(&(shifter[0].data))
-    return
 
 cdef void pmix_convert_locality(pmix_locality_t loc, pyloc:list):
     if PMIX_LOCALITY_NONLOCAL & loc:
