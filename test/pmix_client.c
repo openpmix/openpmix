@@ -123,6 +123,8 @@ int main(int argc, char **argv)
         exit(1);
     }
 
+    TEST_VERBOSE(("rank %d: Hostname check: PASSED", myproc.rank));
+    
     if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_NODEID, NULL, 0, &val))) {
         TEST_ERROR(("rank %d: PMIx_Get nodeid failed: %s", myproc.rank, PMIx_Error_string(rc)));
         FREE_TEST_PARAMS(params);
@@ -139,6 +141,8 @@ int main(int argc, char **argv)
         FREE_TEST_PARAMS(params);
         exit(1);
     }
+
+    TEST_VERBOSE(("rank %d: NodeID check: PASSED", myproc.rank));
 
     if( NULL != params.nspace && 0 != strcmp(myproc.nspace, params.nspace) ) {
         TEST_ERROR(("rank %d: Bad nspace!", myproc.rank));
