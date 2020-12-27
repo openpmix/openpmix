@@ -19,7 +19,6 @@ from threading import Timer
 # store them in a separate file for neatness
 include "pmix_constants.pxi"
 include "pmix.pxi"
-include "tests/cython/cython_test_functions.pyx"
 
 active = myLock()
 myhdlrs = []
