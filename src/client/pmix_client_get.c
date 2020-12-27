@@ -351,9 +351,6 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
                         PMIX_VALUE_GET_NUMBER(rc, &info[n].value, appnum, uint32_t);
                         if (PMIX_SUCCESS != rc) {
                             PMIX_ERROR_LOG(rc);
-                            if (copy) {
-                                PMIX_INFO_FREE(iptr, nfo);
-                            }
                             return rc;
                         }
                     }
@@ -378,9 +375,6 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
                     PMIX_VALUE_GET_NUMBER(rc, ival, app, uint32_t);
                     if (PMIX_SUCCESS != rc) {
                         PMIX_ERROR_LOG(rc);
-                        if (copy) {
-                            PMIX_INFO_FREE(iptr, nfo);
-                        }
                         return rc;
                     }
                     PMIX_VALUE_RELEASE(ival);
@@ -404,9 +398,6 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
                         PMIX_VALUE_GET_NUMBER(rc, ival, app, uint32_t);
                         if (PMIX_SUCCESS != rc) {
                             PMIX_ERROR_LOG(rc);
-                            if (copy) {
-                                PMIX_INFO_FREE(iptr, nfo);
-                            }
                             return rc;
                         }
                         PMIX_VALUE_RELEASE(ival);
