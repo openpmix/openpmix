@@ -84,7 +84,6 @@ PMIX_EXPORT pmix_globals_t pmix_globals = {
     .debug_output = -1,
     .connected = false,
     .commits_pending = false,
-    .mygds = NULL,
     .pushstdin = false,
     .topology = {NULL, NULL},
     .external_topology = false,
@@ -109,7 +108,6 @@ int pmix_rte_init(uint32_t type,
     char *error = NULL, *evar;
     size_t n, m;
     char hostname[PMIX_MAXHOSTNAMELEN] = {0};
-    char *gds = NULL;
     pmix_info_t *iptr;
     size_t minfo;
     bool keepfqdn = false;
@@ -189,8 +187,15 @@ int pmix_rte_init(uint32_t type,
 
     /* setup the globals structure */
     pmix_globals.pid = getpid();
-    memset(&pmix_globals.myid.nspace, 0, PMIX_MAX_NSLEN+1);
-    pmix_globals.myid.rank = PMIX_RANK_INVALID;
+    PMIX_LOAD_PROCID(&pmix_globals.myid, NULL, PMIX_RANK_INVALID);
+
+    pmix_globals.myidval.type = PMIX_PROC;
+    pmix_globals.myidval.data.proc = (pmix_proc_t*)malloc(sizeof(pmix_proc_t));
+    PMIX_LOAD_PROCID(pmix_globals.myidval.data.proc, NULL, PMIX_RANK_INVALID);
+
+    pmix_globals.myrankval.type = PMIX_PROC_RANK;
+    pmix_globals.myrankval.data.rank = PMIX_RANK_INVALID;
+
     PMIX_CONSTRUCT(&pmix_globals.events, pmix_events_t);
     pmix_globals.event_window.tv_sec = pmix_event_caching_window;
     pmix_globals.event_window.tv_usec = 0;
@@ -302,8 +307,6 @@ int pmix_rte_init(uint32_t type,
                 if (PMIX_SUCCESS != ret) {
                     goto return_error;
                 }
-            } else if (PMIX_CHECK_KEY(&info[n], PMIX_GDS_MODULE)) {
-                gds = info[n].value.data.string;
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_NODE_INFO_ARRAY)) {
                 /* contains info about our node */
                 iptr = (pmix_info_t*)info[n].value.data.darray->array;
@@ -412,12 +415,6 @@ int pmix_rte_init(uint32_t type,
     }
 
     /* open the gds and select the active plugins */
-    if (NULL != gds) {
-        pmix_setenv("PMIX_MCA_gds", gds, true, &environ);
-    } else if (NULL != (evar = getenv("PMIX_GDS_MODULE"))) {
-        /* convert to an MCA param, but don't overwrite something already there */
-        pmix_setenv("PMIX_MCA_gds", evar, false, &environ);
-    }
     if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_gds_base_framework, 0)) ) {
         error = "pmix_gds_base_open";
         goto return_error;

@@ -147,6 +147,44 @@ typedef void (*pmix_destruct_t) (pmix_object_t *);
 
 /* types **************************************************************/
 
+/* memory allocator for objects */
+typedef struct pmix_tma {
+  void * (*malloc)(struct pmix_tma *, size_t);
+  void *data;
+  int dontfree; /* when set, free() or realloc() cannot be used, and tma->malloc() cannot fail */
+} pmix_tma_t;
+
+static inline void *
+pmix_tma_malloc(pmix_tma_t *tma, size_t size)
+{
+    if (NULL != tma) {
+        return tma->malloc(tma, size);
+    } else {
+        return malloc(size);
+    }
+}
+
+static inline void *
+pmix_tma_calloc(pmix_tma_t *tma, size_t size)
+{
+    char *ptr = pmix_tma_malloc(tma, size);
+    if (NULL != ptr) {
+        memset(ptr, 0, size);
+    }
+    return ptr;
+}
+
+static inline char *
+pmix_tma_strdup(pmix_tma_t *tma, const char *src)
+{
+    size_t len = strlen(src);
+    char *ptr = pmix_tma_malloc(tma, len+1);
+    if (NULL != ptr) {
+        memcpy(ptr, src, len+1);
+    }
+    return ptr;
+}
+
 /**
  * Class descriptor.
  *
@@ -180,6 +218,9 @@ PMIX_EXPORT extern int pmix_class_init_epoch;
         .obj_magic_id = PMIX_OBJ_MAGIC_ID,      \
         .obj_class = PMIX_CLASS(BASE_CLASS),    \
         .obj_reference_count = 1,               \
+        .obj_tma.malloc = NULL,                 \
+        .obj_tma.data = NULL,                   \
+        .obj_tma.dontfree = false,              \
         .cls_init_file_name = __FILE__,         \
         .cls_init_lineno = __LINE__,            \
     }
@@ -188,6 +229,9 @@ PMIX_EXPORT extern int pmix_class_init_epoch;
     {                                           \
         .obj_class = PMIX_CLASS(BASE_CLASS),    \
         .obj_reference_count = 1,               \
+        .obj_tma.malloc = NULL,                 \
+        .obj_tma.data = NULL,                   \
+        .obj_tma.dontfree = false,              \
     }
 #endif
 
@@ -204,6 +248,7 @@ struct pmix_object_t {
 #endif
     pmix_class_t *obj_class;            /**< class descriptor */
     pmix_atomic_int32_t obj_reference_count;   /**< reference count */
+    pmix_tma_t obj_tma;     /**< allocator for this object */
 #if PMIX_ENABLE_DEBUG
    const char* cls_init_file_name;        /**< In debug mode store the file where the object get contructed */
    int   cls_init_lineno;           /**< In debug mode store the line number where the object get contructed */
@@ -261,22 +306,31 @@ struct pmix_object_t {
  * @param type          Type (class) of the object
  * @return              Pointer to the object
  */
-static inline pmix_object_t *pmix_obj_new(pmix_class_t * cls);
+static inline pmix_object_t *pmix_obj_new_tma(pmix_class_t * cls, pmix_tma_t *tma);
 #if PMIX_ENABLE_DEBUG
-static inline pmix_object_t *pmix_obj_new_debug(pmix_class_t* type, const char* file, int line)
+static inline pmix_object_t *pmix_obj_new_debug_tma(pmix_class_t* type, pmix_tma_t *tma, const char* file, int line)
 {
-    pmix_object_t* object = pmix_obj_new(type);
+    pmix_object_t* object = pmix_obj_new_tma(type, tma);
     object->obj_magic_id = PMIX_OBJ_MAGIC_ID;
     object->cls_init_file_name = file;
     object->cls_init_lineno = line;
     return object;
 }
+#define PMIX_NEW_TMA(type, tma)                                   \
+    ((type *)pmix_obj_new_debug_tma(PMIX_CLASS(type), tma, __FILE__, __LINE__))
+
 #define PMIX_NEW(type)                                   \
-    ((type *)pmix_obj_new_debug(PMIX_CLASS(type), __FILE__, __LINE__))
+    ((type *)pmix_obj_new_debug_tma(PMIX_CLASS(type), NULL, __FILE__, __LINE__))
+
 #else
+#define PMIX_NEW_TMA(type, tma)                                   \
+    ((type *) pmix_obj_new_tma(PMIX_CLASS(type), tma))
+
 #define PMIX_NEW(type)                                   \
-    ((type *) pmix_obj_new(PMIX_CLASS(type)))
+    ((type *) pmix_obj_new_tma(PMIX_CLASS(type), NULL))
+
 #endif  /* PMIX_ENABLE_DEBUG */
+
 
 /**
  * Retain an object (by incrementing its reference count)
@@ -333,7 +387,9 @@ static inline pmix_object_t *pmix_obj_new_debug(pmix_class_t* type, const char* 
             PMIX_SET_MAGIC_ID((object), 0);                              \
             pmix_obj_run_destructors((pmix_object_t *) (object));       \
             PMIX_REMEMBER_FILE_AND_LINENO( object, __FILE__, __LINE__ ); \
-            free(object);                                               \
+            if (!((pmix_object_t *)object)->obj_tma.dontfree) {         \
+                free(object);                                           \
+            }                                                           \
             object = NULL;                                              \
         }                                                               \
     } while (0)
@@ -342,7 +398,9 @@ static inline pmix_object_t *pmix_obj_new_debug(pmix_class_t* type, const char* 
     do {                                                                \
         if (0 == pmix_obj_update((pmix_object_t *) (object), -1)) {     \
             pmix_obj_run_destructors((pmix_object_t *) (object));       \
-            free(object);                                               \
+            if (!((pmix_object_t *))object->obj_tma.dontfree) {         \
+                free(object);                                           \
+            }                                                           \
             object = NULL;                                              \
         }                                                               \
     } while (0)
@@ -355,24 +413,41 @@ static inline pmix_object_t *pmix_obj_new_debug(pmix_class_t* type, const char* 
  * @param object        Pointer to the object
  * @param type          The object type
  */
+static inline void pmix_obj_construct_tma(pmix_object_t *obj, pmix_tma_t *t)
+{
+    if (NULL == t) {
+        obj->obj_tma.malloc = NULL;
+        obj->obj_tma.data = NULL;
+        obj->obj_tma.dontfree = false;
+    } else {
+        obj->obj_tma.malloc = t->malloc;
+        obj->obj_tma.data = t->data;
+        obj->obj_tma.dontfree = t->dontfree;
+    }
+}
 
-#define PMIX_CONSTRUCT(object, type)                             \
+#define PMIX_CONSTRUCT_TMA(object, type, t)                     \
 do {                                                            \
-    PMIX_CONSTRUCT_INTERNAL((object), PMIX_CLASS(type));          \
+    PMIX_CONSTRUCT_INTERNAL_TMA((object), PMIX_CLASS(type), t); \
 } while (0)
 
-#define PMIX_CONSTRUCT_INTERNAL(object, type)                        \
+#define PMIX_CONSTRUCT_INTERNAL_TMA(object, type, t)                \
 do {                                                                \
-    PMIX_SET_MAGIC_ID((object), PMIX_OBJ_MAGIC_ID);              \
-    if (pmix_class_init_epoch != (type)->cls_initialized) {                             \
+    PMIX_SET_MAGIC_ID((object), PMIX_OBJ_MAGIC_ID);                 \
+    if (pmix_class_init_epoch != (type)->cls_initialized) {         \
         pmix_class_initialize((type));                              \
     }                                                               \
     ((pmix_object_t *) (object))->obj_class = (type);               \
     ((pmix_object_t *) (object))->obj_reference_count = 1;          \
+    pmix_obj_construct_tma(((pmix_object_t *) (object)), (t));      \
     pmix_obj_run_constructors((pmix_object_t *) (object));          \
     PMIX_REMEMBER_FILE_AND_LINENO( object, __FILE__, __LINE__ ); \
 } while (0)
 
+#define PMIX_CONSTRUCT(object, type)            \
+    do {                                        \
+        PMIX_CONSTRUCT_TMA(object, type, NULL); \
+    } while(0)
 
 /**
  * Destruct (finalize) an object that is not dynamically allocated.
@@ -478,23 +553,38 @@ static inline void pmix_obj_run_destructors(pmix_object_t * object)
  * @param cls           Pointer to the class descriptor of this object
  * @return              Pointer to the object
  */
-static inline pmix_object_t *pmix_obj_new(pmix_class_t * cls)
+static inline pmix_object_t *pmix_obj_new_tma(pmix_class_t * cls, pmix_tma_t *tma)
 {
     pmix_object_t *object;
     assert(cls->cls_sizeof >= sizeof(pmix_object_t));
 
-    object = (pmix_object_t *) malloc(cls->cls_sizeof);
+    if (NULL == tma) {
+        object = (pmix_object_t *) malloc(cls->cls_sizeof);
+    } else {
+        object = (pmix_object_t *) pmix_tma_malloc(tma, cls->cls_sizeof);
+    }
     if (pmix_class_init_epoch != cls->cls_initialized) {
         pmix_class_initialize(cls);
     }
     if (NULL != object) {
         object->obj_class = cls;
         object->obj_reference_count = 1;
+        if (NULL == tma) {
+            object->obj_tma.malloc = NULL;
+            object->obj_tma.data = NULL;
+            object->obj_tma.dontfree = false;
+        } else {
+            object->obj_tma = *tma;
+        }
         pmix_obj_run_constructors(object);
     }
     return object;
 }
 
+static inline pmix_object_t *pmix_obj_new(pmix_class_t * cls)
+{
+    return pmix_obj_new_tma(cls, NULL);
+}
 
 /**
  * Atomically update the object's reference count by some increment.
