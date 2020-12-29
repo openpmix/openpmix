@@ -379,26 +379,28 @@ static inline pmix_object_t *pmix_obj_new_debug_tma(pmix_class_t* type, pmix_tma
  * @param object        Pointer to the object
  */
 #if PMIX_ENABLE_DEBUG
-#define PMIX_RELEASE(object)                                             \
+#define PMIX_RELEASE(object)                                            \
     do {                                                                \
-        assert(NULL != ((pmix_object_t *) (object))->obj_class);        \
-        assert(PMIX_OBJ_MAGIC_ID == ((pmix_object_t *) (object))->obj_magic_id); \
-        if (0 == pmix_obj_update((pmix_object_t *) (object), -1)) {     \
-            PMIX_SET_MAGIC_ID((object), 0);                              \
-            pmix_obj_run_destructors((pmix_object_t *) (object));       \
+        pmix_object_t *_obj = (pmix_object_t*)object;                   \
+        assert(NULL != _obj->obj_class);                                \
+        assert(PMIX_OBJ_MAGIC_ID == _obj->obj_magic_id);                \
+        if (0 == pmix_obj_update(_obj, -1)) {                           \
+            PMIX_SET_MAGIC_ID((object), 0);                             \
+            pmix_obj_run_destructors(_obj);                             \
             PMIX_REMEMBER_FILE_AND_LINENO( object, __FILE__, __LINE__ ); \
-            if (!((pmix_object_t *)object)->obj_tma.dontfree) {         \
+            if (!(_obj->obj_tma.dontfree)) {                            \
                 free(object);                                           \
             }                                                           \
             object = NULL;                                              \
         }                                                               \
     } while (0)
 #else
-#define PMIX_RELEASE(object)                                             \
+#define PMIX_RELEASE(object)                                            \
     do {                                                                \
-        if (0 == pmix_obj_update((pmix_object_t *) (object), -1)) {     \
-            pmix_obj_run_destructors((pmix_object_t *) (object));       \
-            if (!((pmix_object_t *)object->obj_tma.dontfree)) {         \
+        pmix_object_t *_obj = (pmix_object_t*)object;                   \
+        if (0 == pmix_obj_update(_obj, -1)) {                           \
+            pmix_obj_run_destructors(_obj);                             \
+            if (!(_obj->obj_tma.dontfree)) {                            \
                 free(object);                                           \
             }                                                           \
             object = NULL;                                              \
