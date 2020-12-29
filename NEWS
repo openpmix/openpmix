@@ -23,7 +23,7 @@ multiple release branches.
 Master (not on release branches yet)
 ------------------------------------
 
-4.0.0 -- TBD
+4.0.0 -- 30 Dec 2020
 ----------------------
 **** NOTE: This release implements the complete PMIx v4.0 Standard
 **** and therefore includes a number of new APIs and features. These

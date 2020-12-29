@@ -317,6 +317,7 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
     int myport;
     pmix_kval_t *urikv;
     pid_t mypid;
+    pmix_socklen_t socklen;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:tool setup_listener");
@@ -480,7 +481,12 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
         goto sockerror;
     }
 
-    if (bind(lt->socket, (struct sockaddr*)&pmix_ptl_base.connection, sizeof(struct sockaddr_storage)) < 0) {
+#if PMIX_HAVE_APPLE
+    socklen = sizeof(struct sockaddr);
+#else
+    socklen = sizeof(struct sockaddr_storage);
+#endif
+    if (bind(lt->socket, (struct sockaddr*)&pmix_ptl_base.connection, socklen) < 0) {
         printf("%s:%d bind() failed for socket %d size %u: %s\n",
                __FILE__, __LINE__, lt->socket, (unsigned)sizeof(struct sockaddr_storage), strerror(errno));
         goto sockerror;

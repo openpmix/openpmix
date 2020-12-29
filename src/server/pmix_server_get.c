@@ -415,9 +415,15 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
         cb.ninfo = cd->ninfo;
         cb.key = key;
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+        /* if the requested key was found, but in a different scope,
+         * then we report this back as there is no point in waiting */
+        if (PMIX_ERR_EXISTS_OUTSIDE_SCOPE == rc) {
+            PMIX_DESTRUCT(&cb);
+            return PMIX_ERR_NOT_FOUND;
+        }
         /* A local client may send a get request concurrently with
          * a commit request from another client, but the server may
-         * have processed the commit request earlyer than the get
+         * have processed the commit request earlier than the get
          * request. In this case, we create a local tracker for
          * possibly existing keys that are added with the completed
          * commit request. Thus, the get request will be pended in
@@ -435,6 +441,11 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
             }
         }
         PMIX_DESTRUCT(&cb);  // does not release info or key
+        /* if the requested key was found, but in a different scope,
+         * then we report this back as there is no point in waiting */
+        if (PMIX_ERR_EXISTS_OUTSIDE_SCOPE == rc) {
+            return PMIX_ERR_NOT_FOUND;
+        }
         if (PMIX_SUCCESS != rc) {
             /* if the target proc is local, then we just need to wait */
             if (local) {
