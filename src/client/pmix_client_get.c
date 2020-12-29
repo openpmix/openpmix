@@ -332,6 +332,8 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
     cb->cbdata = cbdata;
     rc = get_data(key, info, ninfo, &val, cb);
     if (PMIX_OPERATION_SUCCEEDED == rc) {
+        /* we were able to obtain the data atomically, but
+         * we must threadshift to return it */
         cb->status = PMIX_SUCCESS;
         cb->value = val;
         cb->cbfunc.valuefn = cbfunc;

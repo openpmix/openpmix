@@ -153,7 +153,7 @@ typedef pmix_status_t (*pmix_gds_base_module_store_proc_info_fn_t)(pmix_buffer_t
     } while(0)
 
 
-/**
+/*
 * store key/value pair - these will either be values committed by the peer
 * and transmitted to the server, or values stored locally by the peer.
 * The format of the data depends on the GDS module. Note that data stored
@@ -186,7 +186,7 @@ typedef pmix_status_t (*pmix_gds_base_module_store_fn_t)(const pmix_proc_t *proc
     } while(0)
 
 
-/**
+/*
  * unpack and store a data "blob" from a peer so that the individual
  * elements can later be retrieved. This is an optimization path to
  * avoid repeatedly storing pmix_kval_t's for multiple local procs
@@ -223,7 +223,7 @@ typedef pmix_status_t (*pmix_gds_base_module_store_modex_fn_t)(struct pmix_names
         (r) = (n)->compat.gds->store_modex((struct pmix_namespace_t*)n, b, t); \
     } while (0)
 
-/**
+/*
 * fetch value corresponding to provided key from within the defined
 * scope. A NULL key returns all values committed by the given peer
 * for that scope.
@@ -285,7 +285,7 @@ typedef pmix_status_t (*pmix_gds_base_module_fetch_fn_t)(const pmix_proc_t *proc
     } while(0)
 
 
-/**
+/*
 * Add any envars to a peer's environment that the module needs
 * to communicate. The API stub will rotate across all active modules, giving
 * each a chance to contribute
@@ -295,7 +295,7 @@ typedef pmix_status_t (*pmix_gds_base_module_fetch_fn_t)(const pmix_proc_t *proc
 typedef pmix_status_t (*pmix_gds_base_module_setup_fork_fn_t)(const pmix_proc_t *proc,
                                                               char ***env);
 
-/**
+/*
 * Delete nspace and its associated data
 *
 * @param nspace   namespace string
@@ -324,7 +324,7 @@ typedef pmix_status_t (*pmix_gds_base_module_del_nspace_fn_t)(const char* nspace
         }                                                   \
     } while(0)
 
-/**
+/*
 * structure for gds modules
 */
 typedef struct {
