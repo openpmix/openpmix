@@ -398,7 +398,7 @@ static inline pmix_object_t *pmix_obj_new_debug_tma(pmix_class_t* type, pmix_tma
     do {                                                                \
         if (0 == pmix_obj_update((pmix_object_t *) (object), -1)) {     \
             pmix_obj_run_destructors((pmix_object_t *) (object));       \
-            if (!((pmix_object_t *))object->obj_tma.dontfree) {         \
+            if (!((pmix_object_t *)object->obj_tma.dontfree)) {         \
                 free(object);                                           \
             }                                                           \
             object = NULL;                                              \
