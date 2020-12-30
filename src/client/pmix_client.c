@@ -572,6 +572,10 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         /* anything else should just be cleared */
         pmix_unsetenv("PMIX_MCA_ptl", &environ);
     }
+    /* temporarily disable GDS MCA directive */
+    if (NULL != getenv("PMIX_MCA_gds")) {
+        pmix_unsetenv("PMIX_MCA_gds", &environ);
+    }
 
     /* setup the runtime - this init's the globals,
      * opens and initializes the required frameworks */
@@ -670,6 +674,8 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     }
     pmix_globals.mypeer->info->pname.nspace = strdup(proc->nspace);
     pmix_globals.mypeer->info->pname.rank = proc->rank;
+    PMIX_LOAD_PROCID(pmix_globals.myidval.data.proc, proc->nspace, proc->rank);
+    pmix_globals.myrankval.data.rank = proc->rank;
 
     /* select our psec compat module - the selection will be based
      * on the corresponding envars that should have been passed

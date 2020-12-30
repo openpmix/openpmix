@@ -3057,7 +3057,38 @@ static pmix_status_t hash_fetch(const pmix_proc_t *proc,
         }
     }
     if (0 == pmix_list_get_size(kvs)) {
-        rc = PMIX_ERR_NOT_FOUND;
+        /* if we didn't find it and the rank was valid, then
+         * check to see if the data exists in a different scope.
+         * This is done to avoid having the process go into a
+         * timeout wait when the data will never appear within
+         * the specified scope */
+        if (PMIX_RANK_IS_VALID(proc->rank)) {
+            if (PMIX_LOCAL == scope) {
+                /* check the remote scope */
+                rc = dohash(&trk->remote, key, proc->rank, false, kvs);
+                if (PMIX_SUCCESS == rc || 0 < pmix_list_get_size(kvs)) {
+                    while (NULL != (kv = (pmix_kval_t*)pmix_list_remove_first(kvs))) {
+                        PMIX_RELEASE(kv);
+                    }
+                    rc = PMIX_ERR_EXISTS_OUTSIDE_SCOPE;
+                } else {
+                    rc = PMIX_ERR_NOT_FOUND;
+                }
+            } else if (PMIX_REMOTE == scope) {
+                /* check the local scope */
+                rc = dohash(&trk->local, key, proc->rank, false, kvs);
+                if (PMIX_SUCCESS == rc || 0 < pmix_list_get_size(kvs)) {
+                    while (NULL != (kv = (pmix_kval_t*)pmix_list_remove_first(kvs))) {
+                        PMIX_RELEASE(kv);
+                    }
+                    rc = PMIX_ERR_EXISTS_OUTSIDE_SCOPE;
+                } else {
+                    rc = PMIX_ERR_NOT_FOUND;
+                }
+            }
+        } else {
+            rc = PMIX_ERR_NOT_FOUND;
+        }
     }
 
     return rc;

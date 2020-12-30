@@ -418,6 +418,17 @@ PMIX_CLASS_DECLARATION(pmix_server_caddy_t);
  } pmix_shift_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_shift_caddy_t);
 
+typedef struct {
+    pmix_object_t super;
+    pmix_proc_t p;
+    bool pntrval;
+    bool stval;
+    bool optional;
+    bool refresh_cache;
+    pmix_scope_t scope;
+} pmix_get_logic_t;
+PMIX_CLASS_DECLARATION(pmix_get_logic_t);
+
 /* struct for tracking ops */
 typedef struct {
     pmix_list_item_t super;
@@ -453,6 +464,7 @@ typedef struct {
     size_t nvals;
     pmix_list_t kvs;
     bool copy;
+    pmix_get_logic_t *lg;
     bool timer_running;
     pmix_fabric_t *fabric;
 } pmix_cb_t;
@@ -531,6 +543,8 @@ PMIX_CLASS_DECLARATION(pmix_notify_caddy_t);
 typedef struct {
     int init_cntr;                      // #times someone called Init - #times called Finalize
     pmix_proc_t myid;
+    pmix_value_t myidval;
+    pmix_value_t myrankval;
     pmix_peer_t *mypeer;                // my own peer object
     uid_t uid;                          // my effective uid
     gid_t gid;                          // my effective gid
@@ -550,13 +564,6 @@ typedef struct {
     int max_events;                     // size of the notifications hotel
     int event_eviction_time;            // max time to cache notifications
     pmix_hotel_t notifications;         // hotel of pending notifications
-    /* processes also need a place where they can store
-     * their own internal data - e.g., data provided by
-     * the user via the store_internal interface, as well
-     * as caching their own data obtained thru the "put"
-     * interface so that other parts of the process can
-     * look them up */
-    pmix_gds_base_module_t *mygds;
     /* IOF controls */
     bool pushstdin;
     pmix_list_t stdin_targets;          // list of pmix_namelist_t
