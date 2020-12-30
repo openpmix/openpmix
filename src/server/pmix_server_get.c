@@ -175,6 +175,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     bool diffnspace = false;
     bool refresh_cache = false;
     bool scope_given = false;
+    bool keyprovided = false;
     struct timeval tv = {0, 0};
     pmix_buffer_t pbkt;
     pmix_cb_t cb;
@@ -233,6 +234,9 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     if (PMIX_SUCCESS != rc && PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
+    }
+    if (PMIX_SUCCESS == rc) {
+        keyprovided = true;
     }
 
     /* search for directives we can deal with here */
@@ -399,7 +403,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     /* the target nspace is known - if they asked us to wait for a specific
      * key to be available, check if it is present. NOTE: key is only
      * NULL if the request came from an older version */
-    if (NULL != key) {
+    if (NULL != key || !keyprovided) {
         PMIX_LOAD_PROCID(&proc, nspace, rank);
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &proc;
