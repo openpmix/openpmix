@@ -332,17 +332,23 @@ int pmix_rte_init(uint32_t type,
         }
     }
 
-    /* if we were given a hostname in our environment, use it */
-    if (NULL != (evar = getenv("PMIX_HOSTNAME"))) {
-        pmix_globals.hostname = strdup(evar);
-    } else {
-        gethostname(hostname, PMIX_MAXHOSTNAMELEN-1);
-        /* strip the FQDN unless told to keep it */
-        if (!keepfqdn && !pmix_net_isaddr(hostname) &&
-            NULL != (evar = strchr(hostname, '.'))) {
-            *evar = '\0';
+    /* the passed-in hostname trumps all, so don't overwrite it
+     * if we were given one */
+    if (NULL == pmix_globals.hostname) {
+        /* if we were given a hostname in our environment, use it */
+        if (NULL != (evar = getenv("PMIX_HOSTNAME"))) {
+            pmix_globals.hostname = strdup(evar);
+        } else {
+            /* if we weren't previously given a hostname, then
+             * use the OS one */
+            gethostname(hostname, PMIX_MAXHOSTNAMELEN-1);
+            /* strip the FQDN unless told to keep it */
+            if (!keepfqdn && !pmix_net_isaddr(hostname) &&
+                NULL != (evar = strchr(hostname, '.'))) {
+                *evar = '\0';
+            }
+            pmix_globals.hostname = strdup(hostname);
         }
-        pmix_globals.hostname = strdup(hostname);
     }
 
     /* the choice of modules to use when communicating with a peer
