@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2021 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2014-2015 Artem Y. Polyakov <artpol84@gmail.com>.
@@ -133,6 +133,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
     pmix_proc_t proc;
     char *data;
     size_t sz, n;
+    pmix_peer_t *pr;
 
     pmix_output_verbose(2, pmix_server_globals.get_output,
                         "%s recvd GET",
@@ -343,8 +344,30 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf,
             PMIX_DESTRUCT(&cb);
             return rc;
         }
-        /* store this as a byte object in the eventual data to
-         * be returned */
+        /* if the requested rank is not WILDCARD, then retrieve the
+         * job-specific data for that rank - a scope of UNDEF
+         * will direct the GDS to provide it. Anything found will
+         * simply be added to the cb.kvs list */
+        if (PMIX_RANK_WILDCARD != rank) {
+            proc.rank = rank;
+            cb.scope = PMIX_REMOTE;
+            /* if we have a peer object for this proc, then it
+             * must be local to us */
+            for (cnt=0; cnt < pmix_server_globals.clients.size; cnt++) {
+                if (NULL != (pr = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, cnt))) {
+                    if (0 == strncmp(pr->info->pname.nspace, proc.nspace, PMIX_MAX_NSLEN) &&
+                        pr->info->pname.rank == rank) {
+                        cb.scope = PMIX_LOCAL;
+                        break;
+                    }
+                }
+            }
+            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_DESTRUCT(&cb);
+                return rc;
+            }
+        }
         PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
         cb.info = NULL;
         cb.ninfo = 0;
