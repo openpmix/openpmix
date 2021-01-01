@@ -389,10 +389,12 @@ static bool check_nodename(pmix_nodeinfo_t *nptr, char *hostname)
 /**********************************************
  *   Forward Declarations
  **********************************************/
-static pmix_status_t fetch_nodeinfo(const char *key, pmix_list_t *tgt,
+static pmix_status_t fetch_nodeinfo(const char *key,pmix_job_t *trk,
+                                    pmix_list_t *tgt,
                                     pmix_info_t *info, size_t ninfo,
                                     pmix_list_t *kvs);
-static pmix_status_t fetch_appinfo(const char *key, pmix_list_t *tgt,
+static pmix_status_t fetch_appinfo(const char *key, pmix_job_t *trk,
+                                   pmix_list_t *tgt,
                                    pmix_info_t *info, size_t ninfo,
                                    pmix_list_t *kvs);
 
@@ -1642,7 +1644,7 @@ static pmix_status_t register_info(pmix_peer_t *peer,
 
     /* get any node-level info for this job */
     PMIX_CONSTRUCT(&results, pmix_list_t);
-    rc = fetch_nodeinfo(NULL, &trk->nodeinfo, NULL, 0, &results);
+    rc = fetch_nodeinfo(NULL, trk, &trk->nodeinfo, NULL, 0, &results);
     if (PMIX_SUCCESS == rc) {
         PMIX_LIST_FOREACH(kvptr, &results, pmix_kval_t) {
             /* if the peer is earlier than v3.2.x, it is expecting
@@ -1682,7 +1684,7 @@ static pmix_status_t register_info(pmix_peer_t *peer,
 
     /* get any app-level info for this job */
     PMIX_CONSTRUCT(&results, pmix_list_t);
-    rc = fetch_appinfo(NULL, &trk->apps, NULL, 0, &results);
+    rc = fetch_appinfo(NULL, trk, &trk->apps, NULL, 0, &results);
     if (PMIX_SUCCESS == rc) {
         PMIX_LIST_FOREACH(kvptr, &results, pmix_kval_t) {
             PMIX_BFROPS_PACK(rc, peer, reply, kvptr, 1, PMIX_KVAL);
@@ -2474,7 +2476,8 @@ static pmix_status_t dohash(pmix_hash_table_t *ht,
     return rc;
 }
 
-static pmix_status_t fetch_nodeinfo(const char *key, pmix_list_t *tgt,
+static pmix_status_t fetch_nodeinfo(const char *key, pmix_job_t *trk,
+                                    pmix_list_t *tgt,
                                     pmix_info_t *info, size_t ninfo,
                                     pmix_list_t *kvs)
 {
@@ -2512,8 +2515,22 @@ static pmix_status_t fetch_nodeinfo(const char *key, pmix_list_t *tgt,
          * all nodes */
         if (NULL == key) {
      		PMIX_LIST_FOREACH(nd, tgt, pmix_nodeinfo_t) {
-     			kv = PMIX_NEW(pmix_kval_t);
-     			kv->key = strdup(PMIX_NODE_INFO_ARRAY);
+                kv = PMIX_NEW(pmix_kval_t);
+               /* if the proc's version is earlier than v3.1, then the
+                 * info must be provided as a data_array with a key
+                 * of the node's name as earlier versions don't understand
+                 * node_info arrays */
+                if (trk->nptr->version.major < 3 ||
+                    (3 == trk->nptr->version.major && 0 == trk->nptr->version.minor)) {
+                    if (NULL == nd->hostname) {
+                        /* skip this one */
+                        continue;
+                    }
+                    kv->key = strdup(nd->hostname);
+                } else {
+                    /* everyone else uses a node_info array */
+                    kv->key = strdup(PMIX_NODE_INFO_ARRAY);
+                }
      			kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
      			if (NULL == kv->value) {
      				PMIX_RELEASE(kv);
@@ -2590,7 +2607,21 @@ static pmix_status_t fetch_nodeinfo(const char *key, pmix_list_t *tgt,
     /* if they want it all, give it to them */
     if (NULL == key) {
         kv = PMIX_NEW(pmix_kval_t);
-        kv->key = strdup(PMIX_NODE_INFO_ARRAY);
+        /* if the proc's version is earlier than v3.1, then the
+         * info must be provided as a data_array with a key
+         * of the node's name as earlier versions don't understand
+         * node_info arrays */
+        if (trk->nptr->version.major < 3 ||
+            (3 == trk->nptr->version.major && 0 == trk->nptr->version.minor)) {
+            if (NULL == nd->hostname) {
+                kv->key = strdup(pmix_globals.hostname);
+            } else {
+                kv->key = strdup(nd->hostname);
+            }
+        } else {
+            /* everyone else uses a node_info array */
+            kv->key = strdup(PMIX_NODE_INFO_ARRAY);
+        }
         kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
         if (NULL == kv->value) {
             PMIX_RELEASE(kv);
@@ -2666,7 +2697,8 @@ static pmix_status_t fetch_nodeinfo(const char *key, pmix_list_t *tgt,
     return rc;
 }
 
-static pmix_status_t fetch_appinfo(const char *key, pmix_list_t *tgt,
+static pmix_status_t fetch_appinfo(const char *key, pmix_job_t *trk,
+                                   pmix_list_t *tgt,
                                    pmix_info_t *info, size_t ninfo,
                                    pmix_list_t *kvs)
 {
@@ -2752,7 +2784,7 @@ static pmix_status_t fetch_appinfo(const char *key, pmix_list_t *tgt,
 
     /* see if they wanted to know something about a node that
      * is associated with this app */
-    rc = fetch_nodeinfo(key, &app->nodeinfo, info, ninfo, kvs);
+    rc = fetch_nodeinfo(key, trk, &app->nodeinfo, info, ninfo, kvs);
     if (PMIX_ERR_DATA_VALUE_NOT_FOUND != rc) {
         return rc;
     }
@@ -2808,17 +2840,20 @@ static pmix_status_t hash_fetch(const pmix_proc_t *proc,
                         (NULL == key) ? "NULL" : key,
                         PMIX_NAME_PRINT(proc), PMIx_Scope_string(scope));
 
+    /* see if we have a tracker for this nspace - we will
+     * if we already cached the job info for it. If we
+     * didn't then we'll have no idea how to answer any
+     * questions */
+    trk = get_tracker(proc->nspace, false);
+    if (NULL == trk) {
+        /* let the caller know */
+        return PMIX_ERR_INVALID_NAMESPACE;
+    }
+
     /* if the rank is wildcard and the key is NULL, then
      * they are asking for a complete copy of the job-level
      * info for this nspace - retrieve it */
     if (NULL == key && PMIX_RANK_WILDCARD == proc->rank) {
-        /* see if we have a tracker for this nspace - we will
-         * if we already cached the job info for it */
-        trk = get_tracker(proc->nspace, false);
-        if (NULL == trk) {
-            /* let the caller know */
-            return PMIX_ERR_INVALID_NAMESPACE;
-        }
         /* fetch all values from the hash table tied to rank=wildcard */
         dohash(&trk->internal, NULL, PMIX_RANK_WILDCARD, 0, kvs);
         /* also need to add any job-level info */
@@ -2834,12 +2869,12 @@ static pmix_status_t hash_fetch(const pmix_proc_t *proc,
             pmix_list_append(kvs, &kv->super);
         }
         /* collect the relevant node-level info */
-        rc = fetch_nodeinfo(NULL, &trk->nodeinfo, qualifiers, nqual, kvs);
+        rc = fetch_nodeinfo(NULL, trk, &trk->nodeinfo, qualifiers, nqual, kvs);
         if (PMIX_SUCCESS != rc) {
             return rc;
         }
         /* collect the relevant app-level info */
-        rc = fetch_appinfo(NULL, &trk->apps, qualifiers, nqual, kvs);
+        rc = fetch_appinfo(NULL, trk, &trk->apps, qualifiers, nqual, kvs);
         if (PMIX_SUCCESS != rc) {
             return rc;
         }
@@ -2898,7 +2933,7 @@ static pmix_status_t hash_fetch(const pmix_proc_t *proc,
                     PMIX_LIST_FOREACH(sptr, &mysessions, pmix_session_t) {
                         if (sptr->session == sid) {
                             /* see if they want info for a specific node */
-                            rc = fetch_nodeinfo(key, &sptr->nodeinfo, qualifiers, nqual, kvs);
+                            rc = fetch_nodeinfo(key, trk, &sptr->nodeinfo, qualifiers, nqual, kvs);
                             /* if they did, then we are done */
                             if (PMIX_ERR_DATA_VALUE_NOT_FOUND != rc) {
                                 return rc;
@@ -2953,7 +2988,7 @@ static pmix_status_t hash_fetch(const pmix_proc_t *proc,
 
     if (!PMIX_RANK_IS_VALID(proc->rank)) {
         if (nodeinfo) {
-            rc = fetch_nodeinfo(key, &trk->nodeinfo, qualifiers, nqual, kvs);
+            rc = fetch_nodeinfo(key, trk, &trk->nodeinfo, qualifiers, nqual, kvs);
             if (PMIX_SUCCESS != rc && PMIX_RANK_WILDCARD == proc->rank) {
                 /* need to check internal as we might have an older peer */
                 ht = &trk->internal;
@@ -2961,7 +2996,7 @@ static pmix_status_t hash_fetch(const pmix_proc_t *proc,
             }
             return rc;
         } else if (appinfo) {
-            rc = fetch_appinfo(key, &trk->apps, qualifiers, nqual, kvs);
+            rc = fetch_appinfo(key, trk, &trk->apps, qualifiers, nqual, kvs);
             if (PMIX_SUCCESS != rc && PMIX_RANK_WILDCARD == proc->rank) {
                 /* need to check internal as we might have an older peer */
                 ht = &trk->internal;

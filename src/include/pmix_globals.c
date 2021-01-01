@@ -109,6 +109,7 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_cleanup_dir_t,
 static void nscon(pmix_namespace_t *p)
 {
     p->nspace = NULL;
+    memset(&p->version, 0, sizeof(p->version));
     p->nprocs = 0;
     p->nlocalprocs = SIZE_MAX;
     p->all_registered = false;

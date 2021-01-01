@@ -149,9 +149,10 @@ typedef void (*pmix_destruct_t) (pmix_object_t *);
 
 /* memory allocator for objects */
 typedef struct pmix_tma {
-  void * (*malloc)(struct pmix_tma *, size_t);
-  void *data;
-  int dontfree; /* when set, free() or realloc() cannot be used, and tma->malloc() cannot fail */
+    void * (*malloc)(struct pmix_tma *, size_t);
+    void * (*realloc)(struct pmix_tma *, void*, size_t);
+    void *data;
+    int dontfree; /* when set, free() or realloc() cannot be used, and tma->malloc() cannot fail */
 } pmix_tma_t;
 
 static inline void *
@@ -161,6 +162,16 @@ pmix_tma_malloc(pmix_tma_t *tma, size_t size)
         return tma->malloc(tma, size);
     } else {
         return malloc(size);
+    }
+}
+
+static inline void *
+pmix_tma_realloc(pmix_tma_t *tma, void *ptr, size_t size)
+{
+    if (NULL != tma) {
+        return tma->realloc(tma, ptr, size);
+    } else {
+        return realloc(ptr, size);
     }
 }
 

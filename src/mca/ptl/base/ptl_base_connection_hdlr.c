@@ -263,6 +263,13 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         goto error;
     }
 
+    /* save the version in the namespace object */
+    if (0 == nptr->version.major) {
+        nptr->version.major = pnd->proc_type.major;
+        nptr->version.minor = pnd->proc_type.minor;
+        nptr->version.release = pnd->proc_type.release;
+    }
+
     /* a peer can connect on multiple sockets since it can fork/exec
      * a child that also calls PMIX_Init, so add it here if necessary.
      * Create the tracker for this peer */
@@ -673,6 +680,10 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
                 return PMIX_ERR_NOMEM;
             }
             nptr->nspace = strdup(pnd->proc.nspace);
+            /* save the version */
+            nptr->version.major = pnd->proc_type.major;
+            nptr->version.minor = pnd->proc_type.minor;
+            nptr->version.release = pnd->proc_type.release;
         }
         /* now look for the rank */
         info = NULL;
