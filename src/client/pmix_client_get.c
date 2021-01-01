@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2021 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
@@ -8,6 +8,7 @@
  * Copyright (c) 2016-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -449,7 +450,6 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
     pmix_value_t *val = NULL;
     int32_t cnt;
     pmix_kval_t *kv;
-    bool diffnspace;
     pmix_get_logic_t *lg;
 
     PMIX_ACQUIRE_OBJECT(cb);
@@ -463,9 +463,6 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
         return;
     }
     lg = cb->lg;
-
-    /* check for a different nspace */
-    diffnspace = !PMIX_CHECK_NSPACE(pmix_globals.myid.nspace, lg->p.nspace);
 
     /* a zero-byte buffer indicates that this recv is being
      * completed due to a lost connection */
@@ -511,13 +508,6 @@ done:
             /* we have the data for this proc - see if we can find the key */
             cb->proc = &lg->p;
             cb->scope = PMIX_SCOPE_UNDEF;
-            /* fetch the data from our peer module */
-            if (PMIX_RANK_UNDEF == lg->p.rank || diffnspace) {
-                if (PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 1, 100)) {
-                    /* everything is under rank=wildcard */
-                    cb->proc->rank = PMIX_RANK_WILDCARD;
-                }
-            }
             pmix_output_verbose(2, pmix_client_globals.get_output,
                                 "pmix: get_nb searching for key %s for rank %s", cb->key, PMIX_RANK_PRINT(cb->proc->rank));
             PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
