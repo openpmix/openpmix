@@ -1,4 +1,4 @@
-Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
+Copyright (c) 2015-2021 Intel, Inc.  All rights reserved.
 Copyright (c) 2017-2018 IBM Corporation.  All rights reserved.
 $COPYRIGHT$
 
@@ -19,6 +19,11 @@ to only bug fixes.  Since these series are semi-independent of each
 other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to the
 current release as well as the "stable" bug fix release branch.
+
+
+2.2.5 -- 04 Jan 2021
+----------------------
+- PR #1990: Fix server/get for gds=hash
 
 
 2.2.4 -- 07 Jun 2020
