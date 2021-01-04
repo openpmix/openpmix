@@ -14,6 +14,7 @@
 # Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
 # Copyright (c) 2017      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -26,7 +27,10 @@ AM_CPPFLAGS = $(gds_hash_CPPFLAGS)
 headers = gds_hash.h
 sources = \
         gds_hash_component.c \
-        gds_hash.c
+        gds_hash.c \
+        process_arrays.c \
+        gds_utils.c \
+        gds_fetch.c
 
 # Make the output library in this directory, and name it either
 # mca_<type>_<name>.la (for DSO builds) or libmca_<type>_<name>.la
