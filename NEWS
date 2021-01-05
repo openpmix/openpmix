@@ -1,5 +1,6 @@
 Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
 Copyright (c) 2017-2020 IBM Corporation.  All rights reserved.
+Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 $COPYRIGHT$
 
 Additional copyrights may follow
@@ -22,6 +23,11 @@ multiple release branches.
 
 Master (not on release branches yet)
 ------------------------------------
+
+4.0.1 -- TBD
+----------------------
+ - PR #1998: Specify Python 3 for the configure check
+
 
 4.0.0 -- 30 Dec 2020
 ----------------------
