@@ -138,11 +138,30 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     fi
     AC_SUBST(PMIX_GREEK_VERSION)
 
+    AC_MSG_CHECKING([for pmix standard version])
+    PMIX_STD_VERSION="`$PMIX_top_srcdir/config/pmix_get_version.sh $PMIX_top_srcdir/VERSION --std-version`"
+    if test "$?" != "0"; then
+        AC_MSG_ERROR([Cannot continue])
+    fi
+    AC_MSG_RESULT([$PMIX_STD_VERSION])
+    AC_SUBST(PMIX_STD_VERSION)
+    AC_DEFINE_UNQUOTED([PMIX_STD_VERSION], ["$PMIX_STD_VERSION"],
+                       [The PMIx Standard compliance level])
+
     PMIX_REPO_REV="`$PMIX_top_srcdir/config/pmix_get_version.sh $PMIX_top_srcdir/VERSION --repo-rev`"
     if test "$?" != "0"; then
         AC_MSG_ERROR([Cannot continue])
     fi
     AC_SUBST(PMIX_REPO_REV)
+    AC_DEFINE_UNQUOTED([PMIX_REPO_REV], ["$PMIX_REPO_REV"],
+                       [The OpenPMIx Git Revision])
+
+    # A hint to tell us if we are working with a build from Git or a tarball.
+    # Helpful when preparing diagnostic output.
+    if test -e $PMIX_TOP_SRCDIR/.git; then
+        AC_DEFINE_UNQUOTED([PMIX_GIT_REPO_BUILD], ["1"],
+            [If built from a git repo])
+    fi
 
     PMIX_RELEASE_DATE="`$PMIX_top_srcdir/config/pmix_get_version.sh $PMIX_top_srcdir/VERSION --release-date`"
     if test "$?" != "0"; then
