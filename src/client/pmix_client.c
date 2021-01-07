@@ -7,7 +7,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016-2017 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2016-2017 IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2021 IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -49,7 +49,11 @@
 #include PMIX_EVENT2_THREAD_HEADER
 #endif
 
-static const char pmix_version_string[] = PMIX_VERSION;
+#ifdef PMIX_GIT_REPO_BUILD
+static const char pmix_version_string[] = "OpenPMIx "PMIX_VERSION", repo rev: "PMIX_REPO_REV" (PMIx Standard: "PMIX_STD_VERSION")";
+#else
+static const char pmix_version_string[] = "OpenPMIx "PMIX_VERSION" (PMIx Standard: "PMIX_STD_VERSION")";
+#endif
 static pmix_status_t pmix_init_result = PMIX_ERR_INIT;
 
 #include "src/class/pmix_list.h"

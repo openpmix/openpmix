@@ -12,6 +12,7 @@
 #                         All rights reserved.
 # Copyright (c) 2008-2020 Cisco Systems, Inc.  All rights reserved
 # Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
+# Copyright (c) 2021      IBM Corporation.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -54,6 +55,8 @@ else
     s/^minor/PMIX_MINOR_VERSION/
     s/^release/PMIX_RELEASE_VERSION/
     s/^greek/PMIX_GREEK_VERSION/
+    s/^std_major/PMIX_STD_MAJOR_VERSION/
+    s/^std_minor/PMIX_STD_MINOR_VERSION/
     s/^repo_rev/PMIX_REPO_REV/
     s/^tarball_version/PMIX_TARBALL_VERSION/
     s/^date/PMIX_RELEASE_DATE/
@@ -65,6 +68,8 @@ else
 
         PMIX_VERSION="$PMIX_MAJOR_VERSION.$PMIX_MINOR_VERSION.$PMIX_RELEASE_VERSION"
         PMIX_VERSION="${PMIX_VERSION}${PMIX_GREEK_VERSION}"
+
+        PMIX_STD_VERSION="$PMIX_STD_MAJOR_VERSION.$PMIX_STD_MINOR_VERSION"
 
         if test "$PMIX_TARBALL_VERSION" = ""; then
             PMIX_TARBALL_VERSION=$PMIX_VERSION
@@ -120,6 +125,9 @@ case "$option" in
     ;;
     --greek)
     echo $PMIX_GREEK_VERSION
+    ;;
+    --std-version)
+    echo $PMIX_STD_VERSION
     ;;
     --repo-rev)
     echo $PMIX_REPO_REV
