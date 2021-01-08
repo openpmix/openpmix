@@ -14,6 +14,7 @@
 # Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
 # Copyright (c) 2018      Research Organization for Information Science
 #                         and Technology (RIST).  All rights reserved.
+# Copyright (c) 2021      IBM Corporation.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -28,9 +29,11 @@ EXTRA_DIST = $(helpers)
 if WANT_PYTHON_BINDINGS
 
 install-exec-local: $(helpers)
-	$(PYTHON) $(top_srcdir)/bindings/python/construct.py --src="$(top_builddir)/include"
-	$(PYTHON) $(top_srcdir)/bindings/python/setup.py build_ext --include-dirs="$(top_builddir)/include" --library-dirs="$(DESTDIR)$(libdir)" --user
-	$(PYTHON) $(top_srcdir)/bindings/python/setup.py install --prefix="$(DESTDIR)$(prefix)"
+	$(PYTHON) $(top_srcdir)/bindings/python/construct.py --src="$(top_builddir)/include" --include-dir="$(top_srcdir)/include"
+	PMIX_TOP_SRCDIR=$(PMIX_TOP_SRCDIR) PMIX_TOP_BUILDDIR=$(PMIX_TOP_BUILDDIR) \
+		$(PYTHON) $(top_srcdir)/bindings/python/setup.py build_ext --library-dirs="$(DESTDIR)$(libdir)" --user
+	PMIX_TOP_SRCDIR=$(PMIX_TOP_SRCDIR) PMIX_TOP_BUILDDIR=$(PMIX_TOP_BUILDDIR) \
+		$(PYTHON) $(top_srcdir)/bindings/python/setup.py install --prefix="$(DESTDIR)$(prefix)"
 
 uninstall-hook:
 	rm -f $(pythondir)/pmix*.so
