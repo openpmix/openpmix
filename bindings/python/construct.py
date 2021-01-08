@@ -19,8 +19,12 @@ def harvest_constants(options, src, constants, definitions):
     try:
         inputfile = open(path, "r")
     except:
-        print("File", path, "could not be opened")
-        return
+        path = os.path.join(options.includedir, src)
+        try:
+            inputfile = open(path, "r")
+        except:
+            print("File", path, "could not be opened")
+            return -1
     # read the file - these files aren't too large
     # so ingest the whole thing at one gulp
     lines = inputfile.readlines()
@@ -408,7 +412,7 @@ def harvest_constants(options, src, constants, definitions):
                         definitions.write(" ")
                     definitions.write(api[n] + "\n")
             definitions.write("\n")
-    return
+    return 0
 
 def main():
     global takeconst, takeapis, takedtypes
@@ -427,6 +431,8 @@ def main():
     execGroup = OptionGroup(parser, "Execution Options")
     execGroup.add_option("--src", dest="src",
                          help="The directory where the PMIx header files will be found")
+    execGroup.add_option("--include-dir", dest="includedir",
+                         help="The directory where the generated PMIx header files will be found")
     execGroup.add_option("--constants",
                          action="store_true", dest="constants", default=False,
                          help="Translate constants")
@@ -463,6 +469,12 @@ def main():
             print("SOURCE directory",options.src,"does not exist")
             sys.exit(1)
 
+    if options.includedir:
+        # see if the include directory directory exists
+        if not os.path.exists(options.includedir):
+            print("Include directory",options.includedir,"does not exist")
+            sys.exit(1)
+
     if options.dryrun:
         constants = sys.stdout
         definitions = sys.stdout
@@ -497,7 +509,8 @@ def main():
     # scan across the header files in the src directory
     # looking for constants and typedefs
     # add some space
-    harvest_constants(options, "pmix_common.h", constants, definitions)
+    if harvest_constants(options, "pmix_common.h", constants, definitions) != 0:
+        sys.exit(1)
     definitions.write("\n\n")
     constants.write("\n\n")
     harvest_constants(options, "pmix.h", constants, definitions)
