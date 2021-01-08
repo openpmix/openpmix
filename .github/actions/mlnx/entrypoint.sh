@@ -45,7 +45,7 @@ build_dir=${work_dir}/build
 rpm_dir=${work_dir}/rpms
 tarball_dir=${work_dir}/tarball
 
-pmix_ver=`cat VERSION | grep "major=" | cut -d "=" -f 2``cat VERSION | grep "minor=" | cut -d "=" -f 2`
+pmix_ver=`cat VERSION | grep "^major=" | cut -d "=" -f 2``cat VERSION | grep "^minor=" | cut -d "=" -f 2`
 
 make_opt="-j$(nproc)"
 
