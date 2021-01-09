@@ -14,6 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -89,7 +90,8 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                      PMIX_INFO_LVL_2,
                                      PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
                                      &pmix_ptl_base.if_include);
-    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "if_include", PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
+    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "if_include",
+                                             PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "if_exclude",
                                      "Comma-delimited list of devices and/or CIDR notation of TCP networks to NOT use "
@@ -99,7 +101,8 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                      PMIX_INFO_LVL_2,
                                      PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
                                      &pmix_ptl_base.if_exclude);
-    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "if_exclude", PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
+    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "if_exclude",
+                                             PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 
     /* if_include and if_exclude need to be mutually exclusive */
     if (NULL != pmix_ptl_base.if_include &&
@@ -116,7 +119,8 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                      PMIX_INFO_LVL_4,
                                      PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                      &pmix_ptl_base.ipv4_port);
-    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "ipv4_port", PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
+    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "ipv4_port",
+                                             PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "ipv6_port",
                                      "IPv6 port to be used",
@@ -124,7 +128,8 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                      PMIX_INFO_LVL_4,
                                      PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                      &pmix_ptl_base.ipv6_port);
-    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "ipv6_port", PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
+    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "ipv6_port",
+                                             PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "disable_ipv4_family",
                                      "Disable the IPv4 interfaces",
@@ -132,15 +137,18 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                      PMIX_INFO_LVL_4,
                                      PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                      &pmix_ptl_base.disable_ipv4_family);
-    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "disable_ipv4_family", PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
+    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "disable_ipv4_family",
+                                             PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 
+    pmix_ptl_base.disable_ipv6_family = true;
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "disable_ipv6_family",
-                                     "Disable the IPv6 interfaces",
+                                     "Disable the IPv6 interfaces (default:disabled)",
                                      PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, 0,
                                      PMIX_INFO_LVL_4,
                                      PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                      &pmix_ptl_base.disable_ipv6_family);
-    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "disable_ipv6_family", PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
+    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "disable_ipv6_family",
+                                             PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "connection_wait_time",
                                      "Number of seconds to wait for the server connection file to appear",
@@ -148,7 +156,8 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                      PMIX_INFO_LVL_4,
                                      PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                      &pmix_ptl_base.wait_to_connect);
-    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "connection_wait_time", PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
+    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "connection_wait_time",
+                                             PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "max_retries",
                                      "Number of times to look for the connection file before quitting",
@@ -156,7 +165,8 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                      PMIX_INFO_LVL_4,
                                      PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                      &pmix_ptl_base.max_retries);
-    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "max_retries", PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
+    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "max_retries",
+                                             PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "handshake_wait_time",
                                      "Number of seconds to wait for the server reply to the handshake request",
@@ -164,7 +174,8 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                      PMIX_INFO_LVL_4,
                                      PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                      &pmix_ptl_base.handshake_wait_time);
-    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "handshake_wait_time", PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
+    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "handshake_wait_time",
+                                             PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "handshake_max_retries",
                                      "Number of times to retry the handshake request before giving up",
@@ -172,7 +183,8 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                      PMIX_INFO_LVL_4,
                                      PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                      &pmix_ptl_base.handshake_max_retries);
-    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "handshake_max_retries", PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
+    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "handshake_max_retries",
+                                             PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "report_uri",
                                      "Output URI [- => stdout, + => stderr, or filename]",
@@ -180,7 +192,8 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                      PMIX_INFO_LVL_2,
                                      PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
                                      &pmix_ptl_base.report_uri);
-    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "report_uri", PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
+    (void)pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "report_uri",
+                                             PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 
 
     return PMIX_SUCCESS;
