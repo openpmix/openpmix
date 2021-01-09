@@ -43,6 +43,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  * Copyright (c) 2020      Cisco Systems, Inc.  All rights reserved
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1162,7 +1163,7 @@ typedef int pmix_status_t;
 #define PMIX_PROCESS_SET_DELETE                     -56
 
 /* Debugger ops */
-#define PMIX_DEBUGGER_RELEASE                       -57
+#define PMIX_DEBUGGER_RELEASE                       -3      // replaced deprecated PMIX_ERR_DEBUGGER_RELEASE
 #define PMIX_DEBUG_WAITING_FOR_NOTIFY               -58
 
 /* query errors */
@@ -1207,7 +1208,7 @@ typedef int pmix_status_t;
 #define PMIX_LAUNCH_COMPLETE                        -174     // include nspace of the launched job with notification
 #define PMIX_FABRIC_UPDATED                         -175
 #define PMIX_FABRIC_UPDATE_PENDING                  -176
-#define PMIX_FABRIC_UPDATE_ENDPOINTS                 -57
+#define PMIX_FABRIC_UPDATE_ENDPOINTS                -113
 
 /* job-related errors */
 #define PMIX_ERR_JOB_APP_NOT_EXECUTABLE             -177
