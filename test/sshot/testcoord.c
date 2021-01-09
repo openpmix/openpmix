@@ -17,6 +17,7 @@
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -212,10 +213,12 @@ int main(int argc, char **argv)
     rc = PMIx_Get(&proc, "HPE_TRAFFIC_CLASS", NULL, 0, &val);
     if (PMIX_SUCCESS != rc) {
         pmix_output(0, "[%s:%d] Get of traffic class failed: %s", __FILE__, __LINE__, PMIx_Error_string(rc));
+        goto done;
     }
     PMIX_VALUE_GET_NUMBER(rc, val, tclass, int);
     if (PMIX_SUCCESS != rc) {
         pmix_output(0, "[%s:%d] Get of traffic class returned non-number", __FILE__, __LINE__);
+        goto done;
     }
     pmix_output(0, "[%s:%d] Got traffic class %d", __FILE__, __LINE__, tclass);
     PMIX_VALUE_RELEASE(val);
