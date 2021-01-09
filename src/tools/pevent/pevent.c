@@ -15,6 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -118,13 +119,13 @@ pmix_cmd_line_init_t cmd_line_opts[] = {
       'p', NULL, "pid",
       1,
       &pmix_pevent_globals.pid, PMIX_CMD_LINE_TYPE_INT,
-      "Specify starter pid" },
+      "Specify launcher pid" },
 
     { NULL,
       'e', NULL, "event",
       0,
       &pmix_pevent_globals.code, PMIX_CMD_LINE_TYPE_INT,
-      "Status code of event to be sent" },
+      "Status code (integer value) of event to be sent" },
 
     { NULL,
       'r', NULL, "range",
