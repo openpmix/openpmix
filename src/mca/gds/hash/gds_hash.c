@@ -1839,13 +1839,6 @@ static pmix_status_t hash_store_job_info(const char *nspace,
                         "[%s:%u] pmix:gds:hash store job info for nspace %s",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank, nspace);
 
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
-        !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
-        /* this function is NOT available on servers */
-        PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
-        return PMIX_ERR_NOT_SUPPORTED;
-    }
-
     /* check buf data */
     if ((NULL == buf) || (0 == buf->bytes_used)) {
         rc = PMIX_ERR_BAD_PARAM;

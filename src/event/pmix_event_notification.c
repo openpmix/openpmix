@@ -5,6 +5,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2017      IBM Corporation. All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -957,6 +958,12 @@ static void _notify_client_event(int sd, short args, void *cbdata)
     PMIX_INFO_CREATE(chain->info, chain->nallocated);
     /* prep the chain for processing */
     pmix_prep_event_chain(chain, cd->info, cd->ninfo, true);
+    /* if the range is PMIX_RANGE_RM, then we only process this
+     * event ourselves - the PMIx server may aggregate the
+     * events from a namespace prior to passing it to the host */
+    if (PMIX_RANGE_RM == cd->range) {
+        goto local;
+    }
     /* if we are a tool, we send it to our clients regardless
      * of the range - we assume that if we are in range, then
      * so are any clients attached to us
@@ -1211,6 +1218,7 @@ static void _notify_client_event(int sd, short args, void *cbdata)
         }
     }
 
+local:
     /* process it ourselves */
     pmix_invoke_local_event_hdlr(chain);
 

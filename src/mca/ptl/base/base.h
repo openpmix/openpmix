@@ -14,6 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -170,6 +171,8 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_client_handshake(pmix_peer_t *peer,
                                                          pmix_status_t reply);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_tool_handshake(pmix_peer_t *peer, pmix_status_t rp);
 PMIX_EXPORT char **pmix_ptl_base_split_and_resolve(char **orig_str, char *name);
+PMIX_EXPORT pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
+                                                        pmix_info_t *info, size_t ninfo);
 
 END_C_DECLS
 

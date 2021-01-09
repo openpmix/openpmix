@@ -12,6 +12,7 @@
  * Copyright (c) 2007-2012 Los Alamos National Security, LLC.
  *                         All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -47,7 +48,7 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
         return "SILENT_ERROR";
 
 
-    case PMIX_ERR_DEBUGGER_RELEASE:
+    case PMIX_DEBUGGER_RELEASE:
         return "DEBUGGER-RELEASE";
 
 
@@ -244,6 +245,8 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
         return "FABRIC-UPDATED";
     case PMIX_FABRIC_UPDATE_PENDING:
         return "FABRIC-UPDATE-PENDING";
+    case PMIX_FABRIC_UPDATE_ENDPOINTS:
+        return "FABRIC-UPDATE-ENDPOINTS";
     case PMIX_ERR_REPEAT_ATTR_REGISTRATION:
         return "REPEAT-ATTRIBUTE-REGISTRATION";
 
