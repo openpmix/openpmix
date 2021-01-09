@@ -15,6 +15,7 @@
  *                         reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -33,6 +34,7 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo);
 
 pmix_ptl_module_t pmix_ptl_server_module = {
     .name = "server",
+    .connect_to_peer = pmix_ptl_base_connect_to_peer,
     .setup_fork = pmix_ptl_base_setup_fork,
     .setup_listener = setup_listener
 };

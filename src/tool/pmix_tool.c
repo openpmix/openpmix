@@ -8,6 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1066,7 +1067,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         pmix_output_verbose(2, pmix_client_globals.event_output,
                             "[%s:%d] WAITING IN INIT FOR RELEASE",
                             pmix_globals.myid.nspace, pmix_globals.myid.rank);
-        code = PMIX_ERR_DEBUGGER_RELEASE;
+        code = PMIX_DEBUGGER_RELEASE;
         PMIx_Register_event_handler(&code, 1, evinfo, 2,
                                     notification_fn, evhandler_reg_callbk, (void*)&reglock);
         /* wait for registration to complete */
@@ -1891,6 +1892,15 @@ static void retry_set(int sd, short args, void *cbdata)
 
     PMIX_ACQUIRE_OBJECT(cb);
 
+    /* if we are switching back to me, then there is no point in
+     * searching the array of clients - I definitely won't be there! */
+    if (PMIX_CHECK_NSPACE(cb->proc->nspace, pmix_globals.myid.nspace) &&
+        PMIX_CHECK_RANK(cb->proc->rank, pmix_globals.myid.rank)) {
+        pmix_client_globals.myserver = pmix_globals.mypeer;
+        pmix_globals.connected = true;
+        goto done;
+    }
+
     /* see if we have this server */
     for (n=0; n < pmix_server_globals.clients.size; n++) {
         pr = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, n);
@@ -1937,6 +1947,7 @@ static void retry_set(int sd, short args, void *cbdata)
     pmix_client_globals.myserver = peer;
     pmix_globals.connected = true;
 
+done:
     cb->status = PMIX_SUCCESS;
     PMIX_WAKEUP_THREAD(&cb->lock);
     PMIX_POST_OBJECT(cb);
