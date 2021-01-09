@@ -8,6 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -444,11 +445,13 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
     /* set the port */
     if (AF_INET == pmix_ptl_base.connection.ss_family) {
         ((struct sockaddr_in*) &pmix_ptl_base.connection)->sin_port = htons(pmix_ptl_base.ipv4_port);
+        addrlen = sizeof(struct sockaddr_in);
         if (0 != pmix_ptl_base.ipv4_port) {
             flags = 1;
         }
     } else if (AF_INET6 == pmix_ptl_base.connection.ss_family) {
-        ((struct sockaddr_in6*) &pmix_ptl_base.connection)->sin6_port = htons(pmix_ptl_base.ipv6_port);
+       ((struct sockaddr_in6*) &pmix_ptl_base.connection)->sin6_port = htons(pmix_ptl_base.ipv6_port);
+        addrlen = sizeof(struct sockaddr_in6);
         if (0 != pmix_ptl_base.ipv6_port) {
             flags = 1;
         }
@@ -458,7 +461,6 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
     lt->protocol = PMIX_PROTOCOL_V2;
     lt->cbfunc = pmix_ptl_base_connection_handler;
 
-    addrlen = sizeof(struct sockaddr_storage);
     /* create a listen socket for incoming connection attempts */
     lt->socket = socket(pmix_ptl_base.connection.ss_family, SOCK_STREAM, 0);
     if (lt->socket < 0) {
@@ -480,8 +482,9 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
         goto sockerror;
     }
 
-    if (bind(lt->socket, (struct sockaddr*)&pmix_ptl_base.connection, sizeof(struct sockaddr)) < 0) {
-        printf("%s:%d bind() failed for socket %d: %s\n", __FILE__, __LINE__, lt->socket, strerror(errno));
+    if (bind(lt->socket, (struct sockaddr*)&pmix_ptl_base.connection, addrlen) < 0) {
+        printf("[%u] %s:%d bind() failed for socket %d storage size %u: %s\n",
+               (unsigned)getpid(), __FILE__, __LINE__, lt->socket, (unsigned)addrlen, strerror(errno));
         goto sockerror;
     }
 
