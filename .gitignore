@@ -110,6 +110,12 @@ src/tools/pquery/pquery
 src/tools/wrapper/pmixcc-wrapper-data.txt
 src/tools/wrapper/pmixcc.1
 src/tools/wrapper/pmixcc
+src/tools/pattrs/pattrs.1
+src/tools/pevent/pevent.1
+src/tools/plookup/plookup.1
+src/tools/pps/pps.1
+src/tools/pquery/pquery.1
+
 
 src/util/show_help_lex.c
 src/util/keyval/keyval_lex.c
