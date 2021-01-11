@@ -12,7 +12,7 @@ dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
 dnl Copyright (c) 2006-2020 Cisco Systems, Inc.  All rights reserved
 dnl Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
-dnl Copyright (c) 2009-2018 IBM Corporation.  All rights reserved.
+dnl Copyright (c) 2009-2021 IBM Corporation.  All rights reserved.
 dnl Copyright (c) 2009      Los Alamos National Security, LLC.  All rights
 dnl                         reserved.
 dnl Copyright (c) 2009-2011 Oak Ridge National Labs.  All rights reserved.
@@ -1256,15 +1256,14 @@ if test "$WANT_PYTHON_BINDINGS" = "1"; then
     else
         AC_MSG_RESULT([no])
         # Cython doesn't have any include or lib files - it is just a binary
-        AC_CHECK_PROG(pmix_cython_rpm, cython, ["found"], ["not found"])
-        if test "$pmix_cython_rpm" = "found"; then
+        AC_CHECK_PROG(pmix_cython_rpm, cython, [cython])
+        if test "$pmix_cython_rpm" != ""; then
             AC_MSG_CHECKING([Cython version])
             cyvers=`cython --version 2>&1`
             cython_version=${cyvers#"Cython version "}
             AC_MSG_RESULT([$cython_version])
             PMIX_SUMMARY_ADD([[Bindings]],[[Cython]], [pmix_cython], [yes ($cython_version)])
         else
-            AC_MSG_RESULT([no])
             AC_MSG_WARN([Python bindings were enabled, but the Cython])
             AC_MSG_WARN([package was not found. PMIx Python bindings])
             AC_MSG_WARN([require that the Cython package be installed])
