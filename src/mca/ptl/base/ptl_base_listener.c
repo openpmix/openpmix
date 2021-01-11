@@ -359,13 +359,19 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
             continue;
         }
         /* ignore any interfaces in a disabled family */
-        if (AF_INET == my_ss.ss_family &&
-            pmix_ptl_base.disable_ipv4_family) {
-            continue;
-        } else if (AF_INET6 == my_ss.ss_family &&
-                   pmix_ptl_base.disable_ipv6_family) {
+        if (AF_INET == my_ss.ss_family) {
+            if (pmix_ptl_base.disable_ipv4_family) {
+                continue;
+            }
+        } else if (AF_INET6 == my_ss.ss_family) {
+            if (pmix_ptl_base.disable_ipv6_family) {
+                continue;
+            }
+        } else {
+            /* ignore any other type */
             continue;
         }
+
         /* get the kernel index */
         kindex = pmix_ifindextokindex(i);
         if (kindex <= 0) {
@@ -455,6 +461,11 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
         if (0 != pmix_ptl_base.ipv6_port) {
             flags = 1;
         }
+    } else {
+        /* unrecognized family type - shouldn't be possible as we only
+         * included IPv4 and IPv6 interfaces, but this is needed to
+         * silence warnings */
+        return PMIX_ERR_NOT_SUPPORTED;
     }
 
     lt->varname = strdup("PMIX_SERVER_URI4:PMIX_SERVER_URI3:PMIX_SERVER_URI2:PMIX_SERVER_URI21");
