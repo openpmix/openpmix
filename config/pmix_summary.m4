@@ -6,6 +6,7 @@ dnl Copyright (c) 2016-2018 Cisco Systems, Inc.  All rights reserved
 dnl Copyright (c) 2016      Research Organization for Information Science
 dnl                         and Technology (RIST). All rights reserved.
 dnl Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
+dnl Copyright (c) 2021      IBM Corporation.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -42,6 +43,7 @@ AC_DEFUN([PMIX_SUMMARY_PRINT],[
 PMIx configuration:
 -----------------------
 Version: $PMIX_MAJOR_VERSION.$PMIX_MINOR_VERSION.$PMIX_RELEASE_VERSION$PMIX_GREEK_VERSION
+PMIx Standard Version: $PMIX_STD_VERSION
 EOF
 
     if test $WANT_DEBUG = 0 ; then
