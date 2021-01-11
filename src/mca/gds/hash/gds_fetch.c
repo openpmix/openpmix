@@ -525,7 +525,10 @@ pmix_status_t pmix_gds_hash_fetch(const pmix_proc_t *proc,
      * info for this nspace - retrieve it */
     if (NULL == key && PMIX_RANK_WILDCARD == proc->rank) {
         /* fetch all values from the hash table tied to rank=wildcard */
-        dohash(&trk->internal, NULL, PMIX_RANK_WILDCARD, 0, kvs);
+        rc = dohash(&trk->internal, NULL, PMIX_RANK_WILDCARD, 0, kvs);
+        if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
+            return rc;
+        }
         /* also need to add any job-level info */
         PMIX_LIST_FOREACH(kvptr, &trk->jobinfo, pmix_kval_t) {
             kv = PMIX_NEW(pmix_kval_t);
