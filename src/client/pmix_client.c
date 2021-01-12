@@ -8,6 +8,7 @@
  * Copyright (c) 2016-2017 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2021 IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -821,7 +822,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         PMIX_INFO_LOAD(&evinfo[0], PMIX_EVENT_RETURN_OBJECT, &releaselock, PMIX_POINTER);
         PMIX_INFO_LOAD(&evinfo[1], PMIX_EVENT_HDLR_NAME, "WAIT-FOR-DEBUGGER", PMIX_STRING);
         pmix_output_verbose(2, pmix_client_globals.event_output,
-                            "[%s:%d] WAITING IN INIT FOR DEBUGGER",
+                            "[%s:%d] REGISTERING WAIT FOR DEBUGGER",
                             pmix_globals.myid.nspace, pmix_globals.myid.rank);
         code = PMIX_ERR_DEBUGGER_RELEASE;
         PMIx_Register_event_handler(&code, 1, evinfo, 2,
@@ -831,6 +832,13 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         PMIX_DESTRUCT_LOCK(&reglock);
         PMIX_INFO_DESTRUCT(&evinfo[0]);
         PMIX_INFO_DESTRUCT(&evinfo[1]);
+        /* notify the host that we are waiting */
+        PMIX_INFO_LOAD(&evinfo[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
+        PMIx_Notify_event(PMIX_DEBUG_WAITING_FOR_NOTIFY,
+                          &pmix_globals.myid,
+                          PMIX_RANGE_RM, &evinfo[0], 1,
+                          NULL, NULL);
+        PMIX_INFO_DESTRUCT(&evinfo[0]);
         /* wait for release to arrive */
         PMIX_WAIT_THREAD(&releaselock);
         PMIX_DESTRUCT_LOCK(&releaselock);

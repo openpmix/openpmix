@@ -8,6 +8,7 @@
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -112,6 +113,7 @@ static void nscon(pmix_namespace_t *p)
     memset(&p->version, 0, sizeof(p->version));
     p->nprocs = 0;
     p->nlocalprocs = SIZE_MAX;
+    p->num_waiting = 0;
     p->all_registered = false;
     p->version_stored = false;
     p->jobbkt = NULL;
