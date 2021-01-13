@@ -818,7 +818,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         pmix_output_verbose(2, pmix_client_globals.event_output,
                             "[%s:%d] REGISTERING WAIT FOR DEBUGGER",
                             pmix_globals.myid.nspace, pmix_globals.myid.rank);
-        code = PMIX_ERR_DEBUGGER_RELEASE;
+        code = PMIX_DEBUGGER_RELEASE;
         PMIx_Register_event_handler(&code, 1, evinfo, 2,
                                     notification_fn, evhandler_reg_callbk, (void*)&reglock);
         /* wait for registration to complete */
