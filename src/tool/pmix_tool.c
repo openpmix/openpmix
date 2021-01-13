@@ -610,6 +610,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     if (nspace_given || nspace_in_enviro) {
         PMIX_LOAD_PROCID(&pmix_globals.myid, nspace, rank);
         free(nspace);
+        nspace = NULL;
     }
 
     /* setup the IO Forwarding recv */
@@ -710,9 +711,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
      * so initialize the server globals too */
     if (PMIX_SUCCESS != (rc = pmix_server_initialize())) {
         PMIX_ERROR_LOG(rc);
-        if (NULL != nspace) {
-            free(nspace);
-        }
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
