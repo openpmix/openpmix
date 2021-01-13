@@ -107,11 +107,13 @@ static void notify_event_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     int32_t cnt = 1;
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
 
-    /* unpack the status */
-    PMIX_BFROPS_UNPACK(rc, pr, buf, &ret, &cnt, PMIX_STATUS);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        ret = rc;
+    if (0 < hdr->nbytes) {
+        /* unpack the status */
+        PMIX_BFROPS_UNPACK(rc, pr, buf, &ret, &cnt, PMIX_STATUS);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            ret = rc;
+        }
     }
     /* do the cback */
     if (NULL != cb->cbfunc.opfn) {
@@ -281,6 +283,12 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
     chain->cached = true;
 
     if (PMIX_RANGE_PROC_LOCAL != range && NULL != msg) {
+        /* if this is a "lost-connection" event, then there is no
+         * server to pass it to! */
+        if (PMIX_ERR_LOST_CONNECTION == status) {
+            PMIX_RELEASE(msg);
+            goto local;
+        }
         /* create a callback object as we need to pass it to the
          * recv routine so we know which callback to use when
          * the server acks/nacks the register events request. The
@@ -306,6 +314,7 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
         cbfunc(PMIX_SUCCESS, cbdata);
     }
 
+local:
     /* now notify any matching registered callbacks we have */
     pmix_invoke_local_event_hdlr(chain);
 
