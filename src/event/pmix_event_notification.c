@@ -103,7 +103,7 @@ static void notify_event_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
                                 pmix_buffer_t *buf, void *cbdata)
 {
     (void)hdr;
-    pmix_status_t rc, ret;
+    pmix_status_t rc, ret=PMIX_ERR_LOST_CONNECTION;
     int32_t cnt = 1;
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
 
