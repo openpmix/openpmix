@@ -2284,8 +2284,11 @@ typedef struct pmix_info {
  * p - the void* pointer provided from PMIX_INFO_LIST_START
  * m - address of a pmix_data_array_t into which
  *     the array of info is to be placed */
-#define PMIX_INFO_LIST_CONVERT(r, p, m)   \
-    (r) = pmix_info_list_convert((p), (m))
+#define PMIX_INFO_LIST_CONVERT(r, p, m)                 \
+    do {                                                \
+        PMIX_DATA_ARRAY_CONSTRUCT((m), 0, PMIX_INFO);   \
+        (r) = pmix_info_list_convert((p), (m));         \
+    } while(0)
 
 /* Release any memory associated with the list
  * p - the void* pointer provided from PMIX_INFO_LIST_START */
