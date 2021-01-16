@@ -2,6 +2,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -376,7 +377,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
   complete:
     /* load all our results into a buffer for xmission to the backend */
     PMIX_KVAL_NEW(kv, PMIX_PNET_SSHOT_BLOB);
-    if (NULL == kv->value) {
+    if (NULL == kv || NULL == kv->value) {
         PMIX_RELEASE(kv);
         PMIX_DESTRUCT(&mydata);
         return PMIX_ERR_NOMEM;

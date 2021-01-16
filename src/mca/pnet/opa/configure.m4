@@ -100,12 +100,12 @@ AC_DEFUN([MCA_pmix_pnet_opa_CONFIG],[
     LIBS="$pmix_check_opamgt_save_LIBS"
 
     AS_IF([test "$pnet_opa_happy" = "yes"],
-          [PMIX_SUMMARY_ADD([[Optional Support]],[[OmniPath]], [pnet_opa], [yes ($pmix_check_psm2_dir)])
+          [PMIX_SUMMARY_ADD([[Transports]],[[OmniPath]], [pnet_opa], [yes ($pmix_check_psm2_dir)])
            AS_IF([test "$pmix_check_opamgt_happy" = "yes"],
-                 [PMIX_SUMMARY_ADD([[Optional Support]],[[OmniPath Mgmt]], [pnet_opa_mgmt], [yes ($pmix_check_opamgt_dir)])],
-                 [PMIX_SUMMARY_ADD([[Optional Support]],[[OmniPath Mgmt]], [pnet_opa_mgmt], [no])])
+                 [PMIX_SUMMARY_ADD([[Transports]],[[OmniPath Mgmt]], [pnet_opa_mgmt], [yes ($pmix_check_opamgt_dir)])],
+                 [PMIX_SUMMARY_ADD([[Transports]],[[OmniPath Mgmt]], [pnet_opa_mgmt], [no])])
            $1],
-          [PMIX_SUMMARY_ADD([[Optional Support]],[[OmniPath]], [pnet_opa], [no])
+          [PMIX_SUMMARY_ADD([[Transports]],[[OmniPath]], [pnet_opa], [no])
            $2])
 
     # substitute in the things needed to build psm2

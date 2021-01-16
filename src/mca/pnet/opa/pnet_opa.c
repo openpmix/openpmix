@@ -42,8 +42,10 @@
 #include "src/util/alfg.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
+#include "src/util/name_fns.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
+#include "src/mca/pcompress/pcompress.h"
 #include "src/mca/preg/preg.h"
 #include "src/mca/ploc/ploc.h"
 
@@ -51,14 +53,74 @@
 #include "src/mca/pnet/base/base.h"
 #include "pnet_opa.h"
 
+static pmix_status_t opa_init(void);
+static void opa_finalize(void);
 static pmix_status_t allocate(pmix_namespace_t *nptr,
                               pmix_info_t info[], size_t ninfo,
                               pmix_list_t *ilist);
-
+static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
+                                         pmix_info_t info[],
+                                         size_t ninfo);
+static pmix_status_t setup_fork(pmix_namespace_t *nptr,
+                                const pmix_proc_t *proc,
+                                char ***env);
 pmix_pnet_module_t pmix_opa_module = {
     .name = "opa",
-    .allocate = allocate
+    .init = opa_init,
+    .finalize = opa_finalize,
+    .allocate = allocate,
+    .setup_local_network = setup_local_network,
+    .setup_fork = setup_fork
 };
+
+/* internal structures */
+typedef struct {
+    pmix_list_item_t super;
+    pmix_envar_t envar;
+} opa_envar_t;
+static void encon(opa_envar_t *p)
+{
+    PMIX_ENVAR_CONSTRUCT(&p->envar);
+}
+static void endes(opa_envar_t *p)
+{
+    PMIX_ENVAR_DESTRUCT(&p->envar);
+}
+static PMIX_CLASS_INSTANCE(opa_envar_t,
+                           pmix_list_item_t,
+                           encon, endes);
+
+typedef struct {
+    pmix_list_item_t super;
+    pmix_nspace_t nspace;
+    pmix_list_t envars;
+} opa_nspace_t;
+static void nscon(opa_nspace_t *p)
+{
+    PMIX_CONSTRUCT(&p->envars, pmix_list_t);
+}
+static void nsdes(opa_nspace_t *p)
+{
+    PMIX_LIST_DESTRUCT(&p->envars);
+}
+static PMIX_CLASS_INSTANCE(opa_nspace_t,
+                           pmix_list_item_t,
+                           nscon, nsdes);
+
+/* local variables */
+static pmix_list_t mynspaces;
+
+
+static pmix_status_t opa_init(void)
+{
+    PMIX_CONSTRUCT(&mynspaces, pmix_list_t);
+    return PMIX_SUCCESS;
+}
+
+static void opa_finalize(void)
+{
+    PMIX_LIST_DESTRUCT(&mynspaces);
+}
 
 /* some network transports require a little bit of information to
  * "pre-condition" them - i.e., to setup their individual transport
@@ -154,11 +216,15 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
     char *string_key;
     int fd_rand;
     size_t bytes_read, n, m, p;
+    pmix_buffer_t mydata;        // Buffer used to store information to be transmitted (scratch storage)
     pmix_kval_t *kv;
+    pmix_envar_t envar;
+    pmix_byte_object_t bo;
     bool envars = false, seckeys = false;
     pmix_status_t rc;
     pmix_info_t *iptr;
-
+    pmix_list_t cache;
+    
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                         "pnet:opa:allocate for nspace %s", nptr->nspace);
 
@@ -193,6 +259,9 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             }
         }
     }
+    /* setup a buffer - we will pack the info into it for transmission to
+     * the backend compute node daemons */
+    PMIX_CONSTRUCT(&mydata, pmix_buffer_t);
 
     if (seckeys) {
         pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
@@ -200,11 +269,11 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
         /* put the number here - or else create an appropriate string. this just needs to
          * eventually be a string variable
          */
-        if(-1 == (fd_rand = open("/dev/urandom", O_RDONLY))) {
+        if (-1 == (fd_rand = open("/dev/urandom", O_RDONLY))) {
             transports_use_rand(unique_key);
         } else {
             bytes_read = read(fd_rand, (char *) unique_key, 16);
-            if(bytes_read != 16) {
+            if (bytes_read != 16) {
                 transports_use_rand(unique_key);
             }
             close(fd_rand);
@@ -212,26 +281,14 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
 
         if (NULL == (string_key = transports_print(unique_key))) {
             PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
+            PMIX_DESTRUCT(&mydata);
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
 
-        kv = PMIX_NEW(pmix_kval_t);
-        if (NULL == kv) {
-            free(string_key);
-            return PMIX_ERR_OUT_OF_RESOURCE;
-        }
-        kv->key = strdup(PMIX_SET_ENVAR);
-        kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
-        if (NULL == kv->value) {
-            free(string_key);
-            PMIX_RELEASE(kv);
-            return PMIX_ERR_OUT_OF_RESOURCE;
-        }
-        kv->value->type = PMIX_ENVAR;
-        PMIX_ENVAR_LOAD(&kv->value->data.envar,
+        PMIX_ENVAR_LOAD(&envar,
                         "OMPI_MCA_precondition_transports",
                         string_key, ':');
-        pmix_list_append(ilist, &kv->super);
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &mydata, &envar, 1, PMIX_ENVAR);
         free(string_key);
     }
 
@@ -241,16 +298,174 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
                             (NULL == mca_pnet_opa_component.incparms) ? "NONE" : mca_pnet_opa_component.incparms,
                             (NULL == mca_pnet_opa_component.excparms) ? "NONE" : mca_pnet_opa_component.excparms);
         /* harvest envars to pass along */
+        PMIX_CONSTRUCT(&cache, pmix_list_t);
         if (NULL != mca_pnet_opa_component.include) {
             rc = pmix_util_harvest_envars(mca_pnet_opa_component.include,
                                           mca_pnet_opa_component.exclude,
-                                          ilist);
+                                          &cache);
             if (PMIX_SUCCESS != rc) {
+                PMIX_LIST_DESTRUCT(&cache);
+                PMIX_DESTRUCT(&mydata);
                 return rc;
             }
+            /* pack anything that was found */
+            PMIX_LIST_FOREACH(kv, &cache, pmix_kval_t) {
+                PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &mydata, &kv->value->data.envar, 1, PMIX_ENVAR);
+            }
+            PMIX_LIST_DESTRUCT(&cache);
         }
     }
 
-    /* we don't currently manage OPA resources */
-    return PMIX_ERR_TAKE_NEXT_OPTION;
+
+    /* load all our results into a buffer for xmission to the backend */
+    PMIX_KVAL_NEW(kv, PMIX_PNET_OPA_BLOB);
+    if (NULL == kv || NULL == kv->value) {
+        PMIX_RELEASE(kv);
+        PMIX_DESTRUCT(&mydata);
+        return PMIX_ERR_NOMEM;
+    }
+    kv->value->type = PMIX_BYTE_OBJECT;
+    PMIX_UNLOAD_BUFFER(&mydata, bo.bytes, bo.size);
+    /* to help scalability, compress this blob */
+    if (pmix_compress.compress((uint8_t*)bo.bytes, bo.size,
+                               (uint8_t**)&kv->value->data.bo.bytes,
+                               &kv->value->data.bo.size)) {
+        kv->value->type = PMIX_COMPRESSED_BYTE_OBJECT;
+    } else {
+        kv->value->data.bo.bytes = bo.bytes;
+        kv->value->data.bo.size = bo.size;
+    }
+    PMIX_DESTRUCT(&mydata);
+    pmix_list_append(ilist, &kv->super);
+    return PMIX_SUCCESS;
+}
+
+/* PMIx_server_setup_local_support calls the "setup_local_network" function.
+ * The Standard requires that this come _after_ the host calls the
+ * PMIx_server_register_nspace function to ensure that any required information
+ * is available to the components. Thus, we have the PMIX_NODE_MAP and
+ * PMIX_PROC_MAP available to us and can use them here.
+ *
+ * When the host calls "setup_local_support", it passes down an array
+ * containing the information the "lead" server (e.g., "mpirun") collected
+ * from PMIx_server_setup_application. In this case, we search for a blob
+ * that our "allocate" function may have included in that info.
+ */
+static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
+                                         pmix_info_t info[],
+                                         size_t ninfo)
+{
+    size_t n;
+    pmix_buffer_t bkt;
+    int32_t cnt;
+    pmix_info_t *iptr;
+    pmix_status_t rc = PMIX_SUCCESS;
+    uint8_t *data;
+    size_t size;
+    bool restore = false;
+    opa_nspace_t *ns, *n2;
+    opa_envar_t *ev;
+    
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet:sshot:setup_local_network with %lu info", (unsigned long)ninfo);
+
+    /* prep the unpack buffer */
+    PMIX_CONSTRUCT(&bkt, pmix_buffer_t);
+
+    for (n=0; n < ninfo; n++) {
+        /* look for my key */
+        if (PMIX_CHECK_KEY(&info[n], PMIX_PNET_OPA_BLOB)) {
+            pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                                "pnet:opa:setup_local_network found my blob");
+
+            /* cache this so we can restore the payload after processing it.
+             * This is necessary as the incoming info array belongs to our
+             * host and so we cannot alter it */
+            iptr = &info[n];
+
+            /* if this is a compressed byte object, decompress it */
+            if (PMIX_COMPRESSED_BYTE_OBJECT == info[n].value.type) {
+                pmix_compress.decompress(&data, &size,
+                                         (uint8_t*)info[n].value.data.bo.bytes,
+                                         info[n].value.data.bo.size);
+            } else {
+                data = (uint8_t*)info[n].value.data.bo.bytes;
+                size = info[n].value.data.bo.size;
+                restore = true;
+            }
+
+            /* this macro NULLs and zero's the incoming bo */
+            PMIX_LOAD_BUFFER(pmix_globals.mypeer, &bkt, data, size);
+
+            /* do we have this nspace */
+            ns = NULL;
+            PMIX_LIST_FOREACH(n2, &mynspaces, opa_nspace_t) {
+                if PMIX_CHECK_NSPACE(n2->nspace, nptr->nspace) {
+                    ns = n2;
+                    break;
+                }
+            }
+            if (NULL == ns) {
+                ns = PMIX_NEW(opa_nspace_t);
+                PMIX_LOAD_NSPACE(ns->nspace, nptr->nspace);
+                pmix_list_append(&mynspaces, &ns->super);
+            }
+            
+            /* all we packed was envars, so just cycle thru */
+            ev = PMIX_NEW(opa_envar_t);
+            cnt = 1;
+            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
+                               &bkt, &ev->envar, &cnt, PMIX_ENVAR);
+            while (PMIX_SUCCESS == rc) {
+                pmix_list_append(&ns->envars, &ev->super);
+                /* get the next envar */
+                ev = PMIX_NEW(opa_envar_t);
+                cnt = 1;
+                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
+                                   &bkt, &ev->envar, &cnt, PMIX_ENVAR);
+            }
+
+            /* we are done */
+            break;
+        }
+    }
+
+    if (restore) {
+        /* restore the incoming data */
+        iptr->value.data.bo.bytes = bkt.base_ptr;
+        iptr->value.data.bo.size = bkt.bytes_used;
+    }
+
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t setup_fork(pmix_namespace_t *nptr,
+                                const pmix_proc_t *proc,
+                                char ***env)
+{
+    opa_nspace_t *ns, *ns2;
+    opa_envar_t *ev;
+
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet:opa: setup fork for %s", PMIX_NAME_PRINT(proc));
+
+    /* see if we already have this nspace */
+    ns = NULL;
+    PMIX_LIST_FOREACH(ns2, &mynspaces, opa_nspace_t) {
+        if (PMIX_CHECK_NSPACE(ns2->nspace, proc->nspace)) {
+            ns = ns2;
+            break;
+        }
+    }
+    if (NULL == ns) {
+        /* we don't know anything about this one or
+         * it doesn't have any opa data */
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+
+    PMIX_LIST_FOREACH(ev, &ns->envars, opa_envar_t) {
+        pmix_setenv(ev->envar.envar, ev->envar.value, true, env);
+    }
+
+    return PMIX_SUCCESS;
 }
