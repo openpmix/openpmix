@@ -6,6 +6,7 @@
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -28,8 +29,6 @@
 #include "src/mca/pnet/base/base.h"
 
 
-static pmix_status_t process_maps(char *nspace, char **nodes, char **procs);
-
 /* NOTE: a tool (e.g., prun) may call this function to
  * harvest local envars for inclusion in a call to
  * PMIx_Spawn, or it might be called in response to
@@ -41,12 +40,7 @@ pmix_status_t pmix_pnet_base_allocate(char *nspace,
     pmix_pnet_base_active_module_t *active;
     pmix_status_t rc;
     pmix_namespace_t *nptr, *ns;
-    size_t n;
-    char **nodes, **procs;
 
-    if (!pmix_pnet_globals.initialized) {
-        return PMIX_ERR_INIT;
-    }
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                         "pnet:allocate called");
@@ -56,112 +50,7 @@ pmix_status_t pmix_pnet_base_allocate(char *nspace,
         return PMIX_ERR_BAD_PARAM;
     }
 
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
-        PMIX_ACQUIRE_THREAD(&pmix_pnet_globals.lock);
-        if (0 == pmix_list_get_size(&pmix_pnet_globals.actives)) {
-            PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
-            return PMIX_SUCCESS;
-        }
-
-        nptr = NULL;
-        /* find this nspace - note that it may not have
-         * been registered yet */
-        PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_namespace_t) {
-            if (0 == strcmp(ns->nspace, nspace)) {
-                nptr = ns;
-                break;
-            }
-        }
-        if (NULL == nptr) {
-            /* add it */
-            nptr = PMIX_NEW(pmix_namespace_t);
-            if (NULL == nptr) {
-                PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
-                return PMIX_ERR_NOMEM;
-            }
-            nptr->nspace = strdup(nspace);
-            pmix_list_append(&pmix_globals.nspaces, &nptr->super);
-        }
-
-        if (NULL != info) {
-            /* check for description of the node and proc maps */
-            nodes = NULL;
-            procs = NULL;
-            for (n=0; n < ninfo; n++) {
-                if (PMIX_CHECK_KEY(&info[n], PMIX_NODE_MAP)) {
-                    rc = pmix_preg.parse_nodes(info[n].value.data.bo.bytes, &nodes);
-                    if (PMIX_SUCCESS != rc) {
-                        PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
-                        return rc;
-                    }
-                } else if (PMIX_CHECK_KEY(&info[n], PMIX_PROC_MAP)) {
-                    rc = pmix_preg.parse_procs(info[n].value.data.bo.bytes, &procs);
-                    if (PMIX_SUCCESS != rc) {
-                        PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
-                        return rc;
-                    }
-                }
-            }
-            if (NULL != nodes && NULL != procs) {
-                /* assemble the pnet node and proc descriptions
-                 * NOTE: this will eventually be folded into the
-                 * new shared memory system, but we do it here
-                 * as the pnet plugins need the information and
-                 * the host will not have registered the clients
-                 * and nspace prior to calling allocate
-                 */
-                rc = process_maps(nspace, nodes, procs);
-                pmix_argv_free(nodes);
-                pmix_argv_free(procs);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
-                    return rc;
-                }
-            }
-        }
-        /* process the allocation request */
-        PMIX_LIST_FOREACH(active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
-            if (NULL != active->module->allocate) {
-                if (PMIX_SUCCESS == (rc = active->module->allocate(nptr, info, ninfo, ilist))) {
-                    continue;
-                }
-                if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
-                    /* true error */
-                    PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
-                    return rc;
-                }
-            }
-        }
-        PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
-    }
-
-    return PMIX_SUCCESS;
-}
-
-/* can only be called by a server */
-pmix_status_t pmix_pnet_base_setup_local_network(char *nspace,
-                                                 pmix_info_t info[],
-                                                 size_t ninfo)
-{
-    pmix_pnet_base_active_module_t *active;
-    pmix_status_t rc;
-    pmix_namespace_t *nptr, *ns;
-
-    if (!pmix_pnet_globals.initialized) {
-        return PMIX_ERR_INIT;
-    }
-
-    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                        "pnet: setup_local_network called");
-
-    /* protect against bozo inputs */
-    if (NULL == nspace) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-
-    PMIX_ACQUIRE_THREAD(&pmix_pnet_globals.lock);
     if (0 == pmix_list_get_size(&pmix_pnet_globals.actives)) {
-        PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
         return PMIX_SUCCESS;
     }
 
@@ -177,7 +66,63 @@ pmix_status_t pmix_pnet_base_setup_local_network(char *nspace,
         /* add it */
         nptr = PMIX_NEW(pmix_namespace_t);
         if (NULL == nptr) {
-            PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
+            return PMIX_ERR_NOMEM;
+        }
+        nptr->nspace = strdup(nspace);
+        pmix_list_append(&pmix_globals.nspaces, &nptr->super);
+    }
+
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
+        /* process the allocation request */
+        PMIX_LIST_FOREACH(active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
+            if (NULL != active->module->allocate) {
+                if (PMIX_SUCCESS == (rc = active->module->allocate(nptr, info, ninfo, ilist))) {
+                    continue;
+                }
+                if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
+                    /* true error */
+                    return rc;
+                }
+            }
+        }
+    }
+
+    return PMIX_SUCCESS;
+}
+
+/* can only be called by a server from within an event! */
+pmix_status_t pmix_pnet_base_setup_local_network(char *nspace,
+                                                 pmix_info_t info[],
+                                                 size_t ninfo)
+{
+    pmix_pnet_base_active_module_t *active;
+    pmix_status_t rc;
+    pmix_namespace_t *nptr, *ns;
+
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet: setup_local_network called");
+
+    /* protect against bozo inputs */
+    if (NULL == nspace) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    if (0 == pmix_list_get_size(&pmix_pnet_globals.actives)) {
+        return PMIX_SUCCESS;
+    }
+
+    /* find this proc's nspace object */
+    nptr = NULL;
+    PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (0 == strcmp(ns->nspace, nspace)) {
+            nptr = ns;
+            break;
+        }
+    }
+    if (NULL == nptr) {
+        /* add it */
+        nptr = PMIX_NEW(pmix_namespace_t);
+        if (NULL == nptr) {
             return PMIX_ERR_NOMEM;
         }
         nptr->nspace = strdup(nspace);
@@ -187,26 +132,20 @@ pmix_status_t pmix_pnet_base_setup_local_network(char *nspace,
     PMIX_LIST_FOREACH(active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
         if (NULL != active->module->setup_local_network) {
             if (PMIX_SUCCESS != (rc = active->module->setup_local_network(nptr, info, ninfo))) {
-                PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
                 return rc;
             }
         }
     }
 
-    PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
     return PMIX_SUCCESS;
 }
 
-/* can only be called by a server */
+/* can only be called by a server from within an event! */
 pmix_status_t pmix_pnet_base_setup_fork(const pmix_proc_t *proc, char ***env)
 {
     pmix_pnet_base_active_module_t *active;
     pmix_status_t rc;
     pmix_namespace_t *nptr, *ns;
-
-    if (!pmix_pnet_globals.initialized) {
-        return PMIX_ERR_INIT;
-    }
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                         "pnet: setup_fork called");
@@ -216,9 +155,7 @@ pmix_status_t pmix_pnet_base_setup_fork(const pmix_proc_t *proc, char ***env)
         return PMIX_ERR_BAD_PARAM;
     }
 
-    PMIX_ACQUIRE_THREAD(&pmix_pnet_globals.lock);
     if (0 == pmix_list_get_size(&pmix_pnet_globals.actives)) {
-        PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
         return PMIX_SUCCESS;
     }
 
@@ -234,7 +171,6 @@ pmix_status_t pmix_pnet_base_setup_fork(const pmix_proc_t *proc, char ***env)
         /* add it */
         nptr = PMIX_NEW(pmix_namespace_t);
         if (NULL == nptr) {
-            PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
             return PMIX_ERR_NOMEM;
         }
         nptr->nspace = strdup(proc->nspace);
@@ -245,23 +181,17 @@ pmix_status_t pmix_pnet_base_setup_fork(const pmix_proc_t *proc, char ***env)
         if (NULL != active->module->setup_fork) {
             rc = active->module->setup_fork(nptr, proc, env);
             if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_AVAILABLE != rc) {
-                PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
                 return rc;
             }
         }
     }
 
-    PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
     return PMIX_SUCCESS;
 }
 
 void pmix_pnet_base_child_finalized(pmix_proc_t *peer)
 {
     pmix_pnet_base_active_module_t *active;
-
-    if (!pmix_pnet_globals.initialized) {
-        return;
-    }
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                         "pnet: child_finalized called");
@@ -272,9 +202,7 @@ void pmix_pnet_base_child_finalized(pmix_proc_t *peer)
         return;
     }
 
-    PMIX_ACQUIRE_THREAD(&pmix_pnet_globals.lock);
     if (0 == pmix_list_get_size(&pmix_pnet_globals.actives)) {
-        PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
         return;
     }
 
@@ -284,17 +212,12 @@ void pmix_pnet_base_child_finalized(pmix_proc_t *peer)
         }
     }
 
-    PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
     return;
 }
 
 void pmix_pnet_base_local_app_finalized(pmix_namespace_t *nptr)
 {
     pmix_pnet_base_active_module_t *active;
-
-    if (!pmix_pnet_globals.initialized) {
-        return;
-    }
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                         "pnet: local_app_finalized called");
@@ -304,9 +227,7 @@ void pmix_pnet_base_local_app_finalized(pmix_namespace_t *nptr)
         return;
     }
 
-    PMIX_ACQUIRE_THREAD(&pmix_pnet_globals.lock);
     if (0 == pmix_list_get_size(&pmix_pnet_globals.actives)) {
-        PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
         return;
     }
 
@@ -316,7 +237,6 @@ void pmix_pnet_base_local_app_finalized(pmix_namespace_t *nptr)
         }
     }
 
-    PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
     return;
 }
 
@@ -324,12 +244,6 @@ void pmix_pnet_base_deregister_nspace(char *nspace)
 {
     pmix_pnet_base_active_module_t *active;
     pmix_namespace_t *nptr, *ns;
-    pmix_pnet_job_t *job;
-    pmix_pnet_node_t *node;
-
-    if (!pmix_pnet_globals.initialized) {
-        return;
-    }
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                         "pnet: deregister_nspace called");
@@ -339,9 +253,7 @@ void pmix_pnet_base_deregister_nspace(char *nspace)
         return;
     }
 
-    PMIX_ACQUIRE_THREAD(&pmix_pnet_globals.lock);
     if (0 == pmix_list_get_size(&pmix_pnet_globals.actives)) {
-        PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
         return;
     }
 
@@ -355,7 +267,6 @@ void pmix_pnet_base_deregister_nspace(char *nspace)
     }
     if (NULL == nptr) {
         /* nothing we can do */
-        PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
         return;
     }
 
@@ -364,26 +275,6 @@ void pmix_pnet_base_deregister_nspace(char *nspace)
             active->module->deregister_nspace(nptr);
         }
     }
-
-    PMIX_LIST_FOREACH(job, &pmix_pnet_globals.jobs, pmix_pnet_job_t) {
-        if (0 == strcmp(nspace, job->nspace)) {
-            pmix_list_remove_item(&pmix_pnet_globals.jobs, &job->super);
-            PMIX_RELEASE(job);
-            break;
-        }
-    }
-
-    PMIX_LIST_FOREACH(node, &pmix_pnet_globals.nodes, pmix_pnet_node_t) {
-        pmix_pnet_local_procs_t *lp;
-        PMIX_LIST_FOREACH(lp, &node->local_jobs, pmix_pnet_local_procs_t) {
-            if (0 == strcmp(nspace, lp->nspace)) {
-                pmix_list_remove_item(&node->local_jobs, &lp->super);
-                PMIX_RELEASE(lp);
-                break;
-            }
-        }
-    }
-    PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
 }
 
 static void cicbfunc(pmix_status_t status,
@@ -436,13 +327,6 @@ void pmix_pnet_base_collect_inventory(pmix_info_t directives[], size_t ndirs,
      * the caller with a response. If "error", then we know we
      * won't be getting a response from them */
 
-    if (!pmix_pnet_globals.initialized) {
-        /* need to call them back so they know */
-        if (NULL != cbfunc) {
-            cbfunc(PMIX_ERR_INIT, NULL, cbdata);
-        }
-        return;
-    }
     if (0 == pmix_list_get_size(&pmix_pnet_globals.actives)) {
         cbfunc(PMIX_SUCCESS, NULL, cbdata);
         return;
@@ -544,13 +428,6 @@ void pmix_pnet_base_deliver_inventory(pmix_info_t info[], size_t ninfo,
      * the caller with a response. If "error", then we know we
      * won't be getting a response from them */
 
-    if (!pmix_pnet_globals.initialized) {
-        /* need to call them back so they know */
-        if (NULL != cbfunc) {
-            cbfunc(PMIX_ERR_INIT, cbdata);
-        }
-        return;
-    }
     if (0 == pmix_list_get_size(&pmix_pnet_globals.actives)) {
         cbfunc(PMIX_SUCCESS, cbdata);
         return;
@@ -622,10 +499,7 @@ pmix_status_t pmix_pnet_base_register_fabric(pmix_fabric_t *fabric,
     fabric->ninfo = 0;
     fabric->module = NULL;
 
-    PMIX_ACQUIRE_THREAD(&pmix_pnet_globals.lock);
-
     if (0 == pmix_list_get_size(&pmix_pnet_globals.actives)) {
-        PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
@@ -644,14 +518,10 @@ pmix_status_t pmix_pnet_base_register_fabric(pmix_fabric_t *fabric,
                 pmix_list_append(&pmix_pnet_globals.fabrics, &ft->super);
             } else if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
                 /* just return the result */
-                PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
                 return rc;
             }
         }
     }
-
-    /* unlock prior to return */
-    PMIX_RELEASE_THREAD(&pmix_pnet_globals.lock);
 
     return PMIX_ERR_NOT_FOUND;
 }
@@ -726,97 +596,4 @@ pmix_status_t pmix_pnet_base_deregister_fabric(pmix_fabric_t *fabric)
         rc = module->deregister_fabric(fabric);
     }
     return rc;
-}
-
-
-static pmix_status_t process_maps(char *nspace, char **nodes, char **procs)
-{
-    char **ranks;
-    pmix_status_t rc;
-    size_t m, n;
-    pmix_pnet_job_t *jptr, *job;
-    pmix_pnet_node_t *nd, *ndptr;
-    pmix_pnet_local_procs_t *lp;
-    bool needcheck;
-
-    /* bozo check */
-    if (pmix_argv_count(nodes) != pmix_argv_count(procs)) {
-        rc = PMIX_ERR_BAD_PARAM;
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-
-    /* see if we already know about this job */
-    job = NULL;
-    if (0 < pmix_list_get_size(&pmix_pnet_globals.jobs)) {
-        PMIX_LIST_FOREACH(jptr, &pmix_pnet_globals.jobs, pmix_pnet_job_t) {
-            if (0 == strcmp(nspace, jptr->nspace)) {
-                job = jptr;
-                break;
-            }
-        }
-    }
-    if (NULL == job) {
-        job = PMIX_NEW(pmix_pnet_job_t);
-        job->nspace = strdup(nspace);
-        pmix_list_append(&pmix_pnet_globals.jobs, &job->super);
-    }
-
-    if (0 < pmix_list_get_size(&pmix_pnet_globals.nodes)) {
-        needcheck = true;
-    } else {
-        needcheck = false;
-    }
-    for (n=0; NULL != nodes[n]; n++) {
-        if (needcheck) {
-            /* check and see if we already have data for this node */
-            nd = NULL;
-            PMIX_LIST_FOREACH(ndptr, &pmix_pnet_globals.nodes, pmix_pnet_node_t) {
-                if (0 == strcmp(nodes[n], ndptr->name)) {
-                    nd = ndptr;
-                    break;
-                }
-            }
-            if (NULL == nd) {
-                nd = PMIX_NEW(pmix_pnet_node_t);
-                nd->name = strdup(nodes[n]);
-                pmix_list_append(&pmix_pnet_globals.nodes, &nd->super);
-                /* add this node to the job */
-                PMIX_RETAIN(nd);
-                nd->index = pmix_pointer_array_add(&job->nodes, nd);
-            }
-        } else {
-            nd = PMIX_NEW(pmix_pnet_node_t);
-            nd->name = strdup(nodes[n]);
-            pmix_list_append(&pmix_pnet_globals.nodes, &nd->super);
-            /* add this node to the job */
-            PMIX_RETAIN(nd);
-            nd->index = pmix_pointer_array_add(&job->nodes, nd);
-        }
-        /* check and see if we already have this job on this node */
-        PMIX_LIST_FOREACH(lp, &nd->local_jobs, pmix_pnet_local_procs_t) {
-            if (0 == strcmp(nspace, lp->nspace)) {
-                /* we assume that the input replaces the prior
-                 * list of ranks */
-                pmix_list_remove_item(&nd->local_jobs, &lp->super);
-                PMIX_RELEASE(lp);
-                break;
-            }
-        }
-        /* track the local procs */
-        lp = PMIX_NEW(pmix_pnet_local_procs_t);
-        lp->nspace = strdup(nspace);
-        /* separate out the procs - they are a comma-delimited list
-         * of rank values */
-        ranks = pmix_argv_split(procs[n], ',');
-        lp->np = pmix_argv_count(ranks);
-        lp->ranks = (pmix_rank_t*)malloc(lp->np * sizeof(pmix_rank_t));
-        for (m=0; m < lp->np; m++) {
-            lp->ranks[m] = strtoul(ranks[m], NULL, 10);
-        }
-        pmix_list_append(&nd->local_jobs, &lp->super);
-        pmix_argv_free(ranks);
-    }
-
-    return PMIX_SUCCESS;
 }
