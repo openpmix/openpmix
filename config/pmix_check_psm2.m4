@@ -17,6 +17,7 @@
 #                         and Technology (RIST). All rights reserved.
 # Copyright (c) 2016      Los Alamos National Security, LLC. All rights
 #                         reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -36,11 +37,11 @@ AC_DEFUN([PMIX_CHECK_PSM2],[
     if test -z "$pmix_check_psm2_happy" ; then
 	AC_ARG_WITH([psm2],
 		    [AC_HELP_STRING([--with-psm2(=DIR)],
-				    [Build PSM2 (Intel PSM2) support, optionally adding DIR/include, DIR/lib, and DIR/lib64 to the search path for headers and libraries])])
+				    [Build PSM2 support, optionally adding DIR/include, DIR/lib, and DIR/lib64 to the search path for headers and libraries])])
 	PMIX_CHECK_WITHDIR([psm2], [$with_psm2], [include/psm2.h])
 	AC_ARG_WITH([psm2-libdir],
 		    [AC_HELP_STRING([--with-psm2-libdir=DIR],
-				    [Search for PSM (Intel PSM2) libraries in DIR])])
+				    [Search for PSM2 libraries in DIR])])
 	PMIX_CHECK_WITHDIR([psm2-libdir], [$with_psm2_libdir], [libpsm2.*])
 
 	pmix_check_psm2_save_CPPFLAGS="$CPPFLAGS"
@@ -89,6 +90,9 @@ AC_DEFUN([PMIX_CHECK_PSM2],[
           [AS_IF([test ! -z "$with_psm2" && test "$with_psm2" != "no"],
                  [AC_MSG_ERROR([PSM2 support requested but not found.  Aborting])])
            $3])
+
+    AS_IF([test -z $pmix_check_psm2_dir],
+          [pmix_check_psm2_dir="Default"])
 
     PMIX_VAR_SCOPE_POP
 ])

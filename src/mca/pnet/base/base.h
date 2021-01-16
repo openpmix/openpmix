@@ -14,6 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -70,37 +71,6 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pnet_base_active_module_t);
 
 typedef struct {
     pmix_list_item_t super;
-    char *nspace;
-    pmix_rank_t *ranks;
-    size_t np;
-} pmix_pnet_local_procs_t;
-PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pnet_local_procs_t);
-
-typedef struct {
-    pmix_list_item_t super;
-    char *name;
-    pmix_list_t resources;
-}pmix_pnet_resource_t;
-PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pnet_resource_t);
-
-typedef struct {
-    pmix_list_item_t super;
-    size_t index;
-    char *name;
-    pmix_list_t local_jobs;    // list of pmix_pnet_local_procs_t
-    pmix_list_t resources;     // list of pmix_pnet_resource_t
-} pmix_pnet_node_t;
-PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pnet_node_t);
-
-typedef struct {
-    pmix_list_item_t super;
-    char *nspace;
-    pmix_pointer_array_t nodes;
-} pmix_pnet_job_t;
-PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pnet_job_t);
-
-typedef struct {
-    pmix_list_item_t super;
     char *name;
     size_t index;
     /* provide access to the component
@@ -115,13 +85,9 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pnet_fabric_t);
 
 /* framework globals */
 struct pmix_pnet_globals_t {
-    pmix_lock_t lock;
     pmix_list_t actives;
     pmix_list_t fabrics;
-    bool initialized;
     bool selected;
-    pmix_list_t jobs;
-    pmix_list_t nodes;
 };
 typedef struct pmix_pnet_globals_t pmix_pnet_globals_t;
 
