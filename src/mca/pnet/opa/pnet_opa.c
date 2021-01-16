@@ -27,11 +27,6 @@
 #endif
 #include <time.h>
 
-#if PMIX_WANT_OPAMGT
-#include <opamgt/opamgt.h>
-#include <opamgt/opamgt_sa.h>
-#endif
-
 #include "include/pmix_common.h"
 
 #include "src/mca/base/pmix_mca_base_var.h"
