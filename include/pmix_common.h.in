@@ -2286,8 +2286,12 @@ typedef struct pmix_info {
  *     the array of info is to be placed */
 #define PMIX_INFO_LIST_CONVERT(r, p, m)                 \
     do {                                                \
-        PMIX_DATA_ARRAY_CONSTRUCT((m), 0, PMIX_INFO);   \
+        (m)->type = PMIX_INFO;                          \
         (r) = pmix_info_list_convert((p), (m));         \
+        if (PMIX_SUCCESS != (r)) {                      \
+            (m)->array = NULL;                          \
+            (m)->size = 0;                              \
+        }                                               \
     } while(0)
 
 /* Release any memory associated with the list
