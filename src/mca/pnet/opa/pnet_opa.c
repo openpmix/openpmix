@@ -360,7 +360,9 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
     bool restore = false;
     opa_nspace_t *ns, *n2;
     opa_envar_t *ev;
-    
+    pmix_proc_t proc;
+    pmix_kval_t *kv;
+
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                         "pnet:sshot:setup_local_network with %lu info", (unsigned long)ninfo);
 
@@ -413,6 +415,20 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
                                &bkt, &ev->envar, &cnt, PMIX_ENVAR);
             while (PMIX_SUCCESS == rc) {
                 pmix_list_append(&ns->envars, &ev->super);
+                /* if this is the transport key, save it */
+                if (0 == strncmp(ev->envar.envar, "OMPI_MCA_precondition_transports", PMIX_MAX_KEYLEN)) {
+                    /* add it to the job-level info */
+                    PMIX_LOAD_PROCID(&proc, ns->nspace, PMIX_RANK_WILDCARD);
+                    PMIX_KVAL_NEW(kv, PMIX_CREDENTIAL);
+                    kv->value->type = PMIX_STRING;
+                    kv->value->data.string = ev->envar.value;
+                    PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
+                                      &proc, PMIX_INTERNAL, kv);
+                    PMIX_RELEASE(kv);  // maintain refcount
+                    if (PMIX_SUCCESS != rc) {
+                        goto cleanup;
+                    }
+                }
                 /* get the next envar */
                 ev = PMIX_NEW(opa_envar_t);
                 cnt = 1;
@@ -425,13 +441,14 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
         }
     }
 
+cleanup:
     if (restore) {
         /* restore the incoming data */
         iptr->value.data.bo.bytes = bkt.base_ptr;
         iptr->value.data.bo.size = bkt.bytes_used;
     }
 
-    return PMIX_SUCCESS;
+    return rc;
 }
 
 static pmix_status_t setup_fork(pmix_namespace_t *nptr,
