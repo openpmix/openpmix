@@ -505,7 +505,7 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
             kv->value->type = PMIX_STRING;
             kv->value->data.string = vni;
             PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
-            				  &proc, PMIX_LOCAL, kv);
+                              &proc, PMIX_INTERNAL, kv);
             PMIX_RELEASE(kv);  // maintain refcount
             if (PMIX_SUCCESS != rc) {
                 goto cleanup;
@@ -526,7 +526,7 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
             kv->value->type = PMIX_INT;
             kv->value->data.integer = tclass;
             PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
-            				  &proc, PMIX_LOCAL, kv);
+                              &proc, PMIX_INTERNAL, kv);
             PMIX_RELEASE(kv);  // maintain refcount
             if (PMIX_SUCCESS != rc) {
             	goto cleanup;
