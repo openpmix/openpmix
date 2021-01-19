@@ -17,6 +17,7 @@
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -171,6 +172,15 @@ int main(int argc, char **argv)
     }
     pmix_output(0, "CLIENT HOSTNAME: %s", val->data.string);
     PMIX_VALUE_RELEASE(val);
+
+    /* check if a security credential was given */
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_CREDENTIAL, NULL, 0, &val))) {
+        pmix_output(0, "Client ns %s rank %d: PMIx_Get CREDENTIAL failed: %s",
+                    myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+    } else {
+        pmix_output(0, "CREDENTIAL: %s", val->data.string);
+        PMIX_VALUE_RELEASE(val);
+    }
 
     /* register a handler specifically for when models declare */
     ninfo = 1;
