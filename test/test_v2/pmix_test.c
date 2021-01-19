@@ -33,6 +33,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <signal.h>
+#include <limits.h>
 
 #include "src/util/pmix_environ.h"
 #include "src/util/output.h"
@@ -51,15 +52,13 @@ int main(int argc, char **argv)
     struct stat stat_buf;
     int test_fail = 0;
     char *tmp;
-    int ns_nprocs;
     sigset_t unblock;
 
     default_params(&params, &val_params);
 
     /* smoke test */
     if (PMIX_SUCCESS != 0) {
-        TEST_ERROR(("ERROR IN COMPUTING CONSTANTS: PMIX_SUCCESS = %d", PMIX_SUCCESS));
-        exit(1);
+        TEST_ERROR_EXIT(("ERROR IN COMPUTING CONSTANTS: PMIX_SUCCESS = %d", PMIX_SUCCESS));
     }
 
     TEST_VERBOSE(("Testing version %s", PMIx_Get_version()));
@@ -77,59 +76,39 @@ int main(int argc, char **argv)
 
     /* verify executable */
     if( 0 > ( rc = stat(params.binary, &stat_buf) ) ){
-        TEST_ERROR(("Cannot stat() executable \"%s\": %d: %s", params.binary, errno, strerror(errno)));
-        free_params(&params, &val_params);
-        return 0;
+        TEST_ERROR_EXIT(("Cannot stat() executable \"%s\": %d: %s", params.binary, errno, strerror(errno)));
     } else if( !S_ISREG(stat_buf.st_mode) ){
-        TEST_ERROR(("Client executable \"%s\": is not a regular file", params.binary));
-        free_params(&params, &val_params);
-        return 0;
+        TEST_ERROR_EXIT(("Client executable \"%s\": is not a regular file", params.binary));
     }else if( !(stat_buf.st_mode & S_IXUSR) ){
-        TEST_ERROR(("Client executable \"%s\": has no executable flag", params.binary));
-        free_params(&params, &val_params);
-        return 0;
+        TEST_ERROR_EXIT(("Client executable \"%s\": has no executable flag", params.binary));
     }
 
     /* ensure that SIGCHLD is unblocked as we need to capture it */
     if (0 != sigemptyset(&unblock)) {
-        fprintf(stderr, "SIGEMPTYSET FAILED\n");
-        exit(1);
+        TEST_ERROR_EXIT(("SIGEMPTYSET FAILED"));
     }
     if (0 != sigaddset(&unblock, SIGCHLD)) {
-        fprintf(stderr, "SIGADDSET FAILED\n");
-        exit(1);
+        TEST_ERROR_EXIT(("SIGADDSET FAILED"));
     }
     if (0 != sigprocmask(SIG_UNBLOCK, &unblock, NULL)) {
-        fprintf(stderr, "SIG_UNBLOCK FAILED\n");
-        exit(1);
+        TEST_ERROR_EXIT(("SIG_UNBLOCK FAILED"));
     }
 
+    // fork of other servers happens below in server_init
     if (PMIX_SUCCESS != (rc = server_init(&params, &val_params))) {
         free_params(&params, &val_params);
         return rc;
     }
-
+    // at this point, we can have multiple servers executing this code
     cli_init(val_params.pmix_local_size);
 
+    /* set namespaces and fork clients
+     * we always have a single namespace for all clients, unlike original version of this test */
     int launched = 0;
-    /* set namespaces and fork clients */
-    {
-        uint32_t j;
-        int base_rank = 0;
+    launched += server_launch_clients(&params, &val_params, &client_env, &client_argv);
 
-        /* compute my start counter */
-        for(j = 0; j < (uint32_t)my_server_id; j++) {
-            base_rank += (params.nprocs % params.nservers) > (uint32_t)j ?
-                        params.nprocs / params.nservers + 1 :
-                        params.nprocs / params.nservers;
-        }
-        /* we have a single namespace for all clients */
-        ns_nprocs = params.nprocs;
-        launched += server_launch_clients(val_params.pmix_local_size, params.nprocs, base_rank,
-                                   &params, &val_params, &client_env, &client_argv);
-    }
     if (val_params.pmix_local_size != (uint32_t)launched) {
-        TEST_ERROR(("srv #%d: Total number of processes doesn't correspond to number specified by ns_dist parameter.", 
+        TEST_ERROR(("srv #%d: Total number of processes doesn't correspond to pmix_local_size parameter.",
                     my_server_id));
         cli_kill_all();
         test_fail = 1;
@@ -157,16 +136,17 @@ int main(int argc, char **argv)
         if (cli_info[i].exit_code != 0) {
             ++test_fail;
         }
+       TEST_VERBOSE(("client %d exit code = %d, test_fail = %d", i, cli_info[i].exit_code, test_fail));
     }
 
     /* deregister the errhandler */
     PMIx_Deregister_event_handler(0, op_callbk, NULL);
 
   done:
-    TEST_VERBOSE(("srv #%d: call server_finalize!", my_server_id));
-    test_fail += server_finalize(&params, test_fail);
+    TEST_VERBOSE(("srv #%d: calling server_finalize", my_server_id));
+    test_fail += server_finalize(&val_params, test_fail);
 
-    TEST_VERBOSE(("srv #%d: exit sequence!", my_server_id));
+    TEST_VERBOSE(("srv #%d: exit sequence", my_server_id));
     free_params(&params, &val_params);
     pmix_argv_free(client_argv);
     pmix_argv_free(client_env);

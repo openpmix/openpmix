@@ -66,7 +66,7 @@ do {                                                   \
  */
 char *pmix_test_output_prepare(const char *fmt,... );
 extern int pmix_test_verbose;
-extern FILE *file;
+extern FILE *pmixt_outfile;
 
 #define STRIPPED_FILE_NAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 
@@ -74,18 +74,18 @@ extern FILE *file;
     struct timeval tv;                              \
     gettimeofday(&tv, NULL);                        \
     double ts = tv.tv_sec + 1E-6*tv.tv_usec;        \
-    fprintf(file,"==%d== [%lf] %s:%s: %s\n",        \
+    fprintf(pmixt_outfile,"==%d== [%lf] %s:%s: %s\n",        \
             getpid(), ts,STRIPPED_FILE_NAME,        \
             __func__,                               \
             pmix_test_output_prepare x );           \
-    fflush(file);                                   \
+    fflush(pmixt_outfile);                                   \
 }
 
 // Write output without adding anything to it.
 // Need for automate tests to receive "OK" string
 #define TEST_OUTPUT_CLEAR(x) { \
-    fprintf(file, "==%d== %s", getpid(), pmix_test_output_prepare x ); \
-    fflush(file); \
+    fprintf(pmixt_outfile, "==%d== %s", getpid(), pmix_test_output_prepare x ); \
+    fflush(pmixt_outfile); \
 }
 
 // Always write errors to stderr
@@ -101,6 +101,11 @@ extern FILE *file;
     fflush(stderr);                                 \
 }
 
+#define TEST_ERROR_EXIT(x) { \
+    TEST_ERROR(x);           \
+    pmixt_exit(1);           \
+}
+
 #define PMIXT_VERBOSE_ON() (pmix_test_verbose = 1)
 #define TEST_VERBOSE_GET() (pmix_test_verbose)
 
@@ -114,77 +119,78 @@ extern FILE *file;
 #define MAX_DIGIT_LEN 10
 #define TEST_REPLACE_DEFAULT "3:1"
 
-#define TEST_SET_FILE(prefix, ns_id, rank) { \
+#define PMIXT_SET_FILE(prefix, ns_id, rank) { \
     char *fname = malloc( strlen(prefix) + MAX_DIGIT_LEN + 2 ); \
     sprintf(fname, "%s.%d.%d", prefix, ns_id, rank); \
-    file = fopen(fname, "w"); \
+    pmixt_outfile = fopen(fname, "w"); \
     free(fname); \
-    if( NULL == file ){ \
+    if( NULL == pmixt_outfile ){ \
         fprintf(stderr, "Cannot open file %s for writing!", fname); \
         exit(1); \
     } \
 }
 
-#define TEST_CLOSE_FILE() { \
-    if ( stderr != file ) { \
-        fclose(file); \
+#define PMIXT_CLOSE_FILE() { \
+    if ( stderr != pmixt_outfile ) { \
+        fclose(pmixt_outfile); \
     } \
-}
-
-#define PMIXT_VAL_PARAM_SETNUM(base, field, val) {\
-    base->field = val;               \
-    base->check_ ## field = true;    \
-}
-
-#define PMIXT_VAL_PARAM_SETSTR(base, field, val, len) {\
-    strncpy(base->field, val, len);               \
-    base->check_ ## field = true;    \
 }
 
 /* a convenience macro for checking keys (test suite-specific) */
 #define PMIXT_CHECK_KEY(a, b) \
     (0 == strncmp((a), (b), PMIX_MAX_KEYLEN))
 
+/* condenses logic for checking numeric keys inside pmixt_validate_predefined() */
+#define PMIXT_TEST_NUM_KEY(myproc, key, expect_key, value, expect_value)                 \
+if (PMIXT_CHECK_KEY(key, expect_key)) {                                                  \
+    if (expect_value != value) {                                                         \
+        TEST_ERROR_EXIT(("Key %s failed validation. Get value: %d Validation value: %d", \
+                                     key, value, expect_value));                         \
+    }                                                                                    \
+    TEST_VERBOSE(("Namespace %s: Rank %d: Data validated: Key: %s Value: %u",            \
+                        myproc->nspace, myproc->rank, key, value));                      \
+    break;                                                                               \
+}
+
+/* condenses logic for checking string keys inside pmixt_validate_predefined() */
+#define PMIXT_TEST_STR_KEY(myproc, key, expect_key, strvalue, expect_value)              \
+if (PMIXT_CHECK_KEY(key, expect_key)) {                                                  \
+    if (0 != strcmp(expect_value, strvalue)) {                                           \
+        TEST_ERROR_EXIT(("Key %s failed validation. Get value: %s Validation value: %s", \
+                                     key, strvalue, expect_value));                      \
+    }                                                                                    \
+    TEST_VERBOSE(("Namespace %s: Rank %d: Data validated: Key: %s Value: %s",            \
+                        myproc->nspace, myproc->rank, key, strvalue));                   \
+    free(strvalue);                                                                      \
+    break;                                                                               \
+}
+typedef struct {
+    size_t pmix_local_size;
+    pmix_rank_t *pmix_rank;
+    uint32_t pmix_nodeid;
+    char pmix_hostname[PMIX_MAX_KEYLEN];
+} node_map;
+
+node_map *nodes;
+
 // order of these fields should be in order that we introduce them
 typedef struct {
     uint32_t version;
     bool validate_params;
-    bool check_pmix_rank;
+    bool custom_rank_placement;
+    char rank_placement_string[PMIX_MAX_KEYLEN];
     pmix_rank_t pmix_rank;
-    bool check_pmix_nspace;
     pmix_nspace_t pmix_nspace;
-    bool check_pmix_job_size;
     uint32_t pmix_job_size;
-    bool check_pmix_univ_size;
     uint32_t pmix_univ_size;
-    bool check_pmix_jobid;
     char pmix_jobid[PMIX_MAX_KEYLEN];
-    bool check_pmix_local_size;
     uint32_t pmix_local_size;
-    bool check_pmix_local_rank;
     uint16_t pmix_local_rank;
-    bool check_pmix_nodeid;
     uint32_t pmix_nodeid;
-    bool check_pmix_local_peers;
     char pmix_local_peers[PMIX_MAX_KEYLEN];
-    bool check_pmix_hostname;
     char pmix_hostname[PMIX_MAX_KEYLEN];
-    /*
-    bool check_pmix_job_num_apps;
-    uint32_t pmix_job_num_apps;
-    bool check_pmix_app_size;
-    uint32_t pmix_app_size;
-    bool check_pmix_node_size;
-    uint32_t pmix_node_size;
-    bool check_pmix_max_procs;
-    uint32_t pmix_max_procs;
-    bool check_pmix_num_slots;
-    uint32_t pmix_num_slots;
-    bool check_pmix_num_nodes;
     uint32_t pmix_num_nodes;
-    bool check_pmix_node_rank;
     uint16_t pmix_node_rank;
-    */
     // more as needed
 } validation_params;
 
@@ -195,31 +201,30 @@ typedef struct {
     char *binary;
     char *np;
     char *prefix;
-    char *nspace;
-    uint32_t nprocs;
     int timeout;
     int verbose;
-    pmix_rank_t rank;
-    int collect_bad;
-    int collect;
+    //int collect_bad;
+    //int collect;
     int nonblocking;
     int ns_size;
     int ns_id;
-    pmix_rank_t base_rank;
-    int nservers;
 } test_params;
 
 extern test_params params;
 
 void parse_cmd(int argc, char **argv, test_params *params, validation_params *v_params);
+void parse_rank_placement_string(char *placement_str, int num_nodes);
+
 int parse_fence(char *fence_param, int store);
 int parse_noise(char *noise_param, int store);
 int parse_replace(char *replace_param, int store, int *key_num);
 
 void default_params(test_params *params, validation_params *v_params);
+void init_nodes(int num_nodes);
 void free_params(test_params *params, validation_params *vparams);
 void set_client_argv(test_params *params, char ***argv);
 
+void pmixt_exit(int exit_code);
 void pmixt_fix_rank_and_ns(pmix_proc_t *this_proc, test_params *params, validation_params *v_params);
 void pmixt_post_init(pmix_proc_t *this_proc, test_params *params, validation_params *val_params);
 void pmixt_post_finalize(pmix_proc_t *this_proc, test_params *params, validation_params *v_params);
@@ -339,7 +344,7 @@ typedef struct {
 } while (0)
 
 #define PMIXT_OUTPUT_VALUE(this_proc, ns, r, key, datatype, value) do {         \
-    // we use the datatype of the value to extract the value                    \
+                                                                                \
 } while (0)
 
 
@@ -348,7 +353,7 @@ typedef struct {
         pmix_info_t *info = NULL;                                               \
         size_t ninfo = 0;                                                       \
         if (data_ex) {                                                          \
-            bool value = 1;                                            \
+            bool value = 1;                                                     \
             PMIX_INFO_CREATE(info, 1);                                          \
             (void)strncpy(info->key, PMIX_COLLECT_DATA, PMIX_MAX_KEYLEN);       \
             pmix_value_load(&info->value, &value, PMIX_BOOL);                   \

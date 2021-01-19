@@ -13,14 +13,6 @@
 
 #include "pmix.h"
 #include "test_common.h"
-#include <assert.h>
-#include <sys/time.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <unistd.h>
-
-extern FILE *file;
 
 int main(int argc, char *argv[]) {
 
@@ -43,4 +35,5 @@ int main(int argc, char *argv[]) {
 
     /* Handles cleanup */
     pmixt_post_finalize(&this_proc, &params, &v_params);
+
 }

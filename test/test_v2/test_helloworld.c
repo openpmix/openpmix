@@ -42,8 +42,8 @@ int main(int argc, char *argv[]) {
            this_proc.nspace, this_proc.rank, v_params.pmix_rank));
         exit(1);
     }
-    TEST_VERBOSE(("nspace validated: %s, rank validated: %d", v_params.pmix_nspace, 
-                   v_params.pmix_rank));  
+    TEST_VERBOSE(("nspace validated: %s, rank validated: %d", v_params.pmix_nspace,
+                   v_params.pmix_rank));
 
     PMIXT_CHECK(PMIx_Finalize(NULL, 0), params, v_params);
 

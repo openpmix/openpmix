@@ -65,15 +65,15 @@ extern pmix_list_t *server_list;
 extern server_info_t *my_server_info;
 extern pmix_list_t *server_nspace;
 
-int server_init(test_params *params, validation_params *val_params);
-int server_finalize(test_params *params, int local_fail);
+int server_init(test_params *params, validation_params *v_params);
+int server_finalize(validation_params *v_params, int local_fail);
 int server_barrier(void);
 int server_fence_contrib(char *data, size_t ndata,
                          pmix_modex_cbfunc_t cbfunc, void *cbdata);
 int server_dmdx_get(const char *nspace, int rank,
                     pmix_modex_cbfunc_t cbfunc, void *cbdata);
-int server_launch_clients(int local_size, int univ_size, int base_rank,
-                   test_params *params, validation_params *v_params, char *** client_env, char ***base_argv);
+int server_launch_clients(test_params *params,
+            validation_params *v_params, char ***client_env, char ***base_argv);
 
 
 #endif // TEST_SERVER_C
