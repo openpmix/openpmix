@@ -4,6 +4,8 @@ dnl Copyright (c) 2015-2020 Cisco Systems, Inc.  All rights reserved.
 dnl Copyright (c) 2016-2017 Los Alamos National Security, LLC. All rights
 dnl                         reserved.
 dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+dnl Copyright (c) 2021      Research Organization for Information Science
+dnl                         and Technology (RIST).  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -108,7 +110,15 @@ AC_DEFUN([_PMIX_CHECK_OFI],[
                  [AC_MSG_RESULT([(default search paths)])])
            AS_IF([test ! -z "$with_ofi_libdir" && \
                          test "$with_ofi_libdir" != "yes"],
-                 [pmix_ofi_libdir=$with_ofi_libdir])
+                 [pmix_ofi_libdir=$with_ofi_libdir],
+                 [if test -d $with_ofi/lib; then
+                      pmix_ofi_libdir=$with_ofi/lib
+                  elif test -d $with_ofi/lib64; then
+                      pmix_ofi_libdir=$with_ofi/lib64
+                  else
+                      AC_MSG_RESULT([Could not find $with_ofi/lib or $with_ofi/lib64])
+                      AC_MSG_ERROR([Can not continue])
+                  fi])
           ])
 
     AS_IF([test $pmix_ofi_happy = yes],
