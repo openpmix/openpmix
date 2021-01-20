@@ -13,6 +13,7 @@
 # Copyright (c) 2006-2015 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2009-2011 Oracle and/or its affiliates.  All rights reserved.
 # Copyright (c) 2017      Intel, Inc. All rights reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -28,7 +29,7 @@ AC_DEFUN([PMIX_CHECK_VISIBILITY],[
     # Check if the compiler has support for visibility, like some
     # versions of gcc, icc Sun Studio cc.
     AC_ARG_ENABLE(visibility,
-        AC_HELP_STRING([--enable-visibility],
+        AS_HELP_STRING([--enable-visibility],
             [enable visibility feature of certain compilers/linkers (default: enabled)]))
 
     WANT_VISIBILITY=0

@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -40,7 +41,7 @@ PMIX_EXPORT int pmix_show_help_yylex(void);
 PMIX_EXPORT int pmix_show_help_init_buffer(FILE *file);
 PMIX_EXPORT int pmix_show_help_yylex_destroy(void);
 
-PMIX_EXPORT extern FILE *pmix_show_help_yyin;
+extern FILE *pmix_show_help_yyin;
 PMIX_EXPORT extern bool pmix_show_help_parse_done;
 PMIX_EXPORT extern char *pmix_show_help_yytext;
 PMIX_EXPORT extern int pmix_show_help_yynewlines;

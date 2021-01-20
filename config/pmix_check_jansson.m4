@@ -17,6 +17,7 @@
 #                         and Technology (RIST). All rights reserved.
 # Copyright (c) 2016      Los Alamos National Security, LLC. All rights
 #                         reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -32,11 +33,11 @@ AC_DEFUN([PMIX_CHECK_JANSSON],[
 
     PMIX_VAR_SCOPE_PUSH(pmix_check_jansson_save_CPPFLAGS pmix_check_jansson_save_LDFLAGS pmix_check_jansson_save_LIBS)
 	AC_ARG_WITH([jansson],
-		    [AC_HELP_STRING([--with-jansson(=DIR)],
+		    [AS_HELP_STRING([--with-jansson(=DIR)],
 				    [Build jansson support (default=no), optionally adding DIR/include, DIR/lib, and DIR/lib64 to the search path for headers and libraries])])
 
     AC_ARG_WITH([jansson-libdir],
-            [AC_HELP_STRING([--with-jansson-libdir=DIR],
+            [AS_HELP_STRING([--with-jansson-libdir=DIR],
                     [Search for Jansson libraries in DIR])])
 
     pmix_check_jansson_happy=no

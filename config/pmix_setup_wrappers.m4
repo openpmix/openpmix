@@ -16,6 +16,7 @@ dnl Copyright (c) 2015-2017 Research Organization for Information Science
 dnl                         and Technology (RIST). All rights reserved.
 dnl Copyright (c) 2016      IBM Corporation.  All rights reserved.
 dnl Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
+dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -75,25 +76,25 @@ AC_DEFUN([PMIX_WRAPPER_FLAGS_ADD], [
 #     doing so, and we'd like to force the issue.
 AC_DEFUN([PMIX_SETUP_WRAPPER_INIT],[
     AC_ARG_WITH([wrapper-cflags],
-                [AC_HELP_STRING([--with-wrapper-cflags],
+                [AS_HELP_STRING([--with-wrapper-cflags],
                                 [Extra flags to add to CFLAGS when using mpicc])])
     AS_IF([test "$with_wrapper_cflags" = "yes" || test "$with_wrapper_cflags" = "no"],
           [AC_MSG_ERROR([--with-wrapper-cflags must have an argument.])])
 
     AC_ARG_WITH([wrapper-cflags-prefix],
-                [AC_HELP_STRING([--with-wrapper-cflags-prefix],
+                [AS_HELP_STRING([--with-wrapper-cflags-prefix],
                                 [Extra flags (before user flags) to add to CFLAGS when using mpicc])])
     AS_IF([test "$with_wrapper_cflags_prefix" = "yes" || test "$with_wrapper_cflags_prefix" = "no"],
           [AC_MSG_ERROR([--with-wrapper-cflags-prefix must have an argument.])])
 
     AC_ARG_WITH([wrapper-ldflags],
-                [AC_HELP_STRING([--with-wrapper-ldflags],
+                [AS_HELP_STRING([--with-wrapper-ldflags],
                                 [Extra flags to add to LDFLAGS when using wrapper compilers])])
     AS_IF([test "$with_wrapper_ldflags" = "yes" || test "$with_wrapper_ldflags" = "no"],
           [AC_MSG_ERROR([--with-wrapper-ldflags must have an argument.])])
 
     AC_ARG_WITH([wrapper-libs],
-                [AC_HELP_STRING([--with-wrapper-libs],
+                [AS_HELP_STRING([--with-wrapper-libs],
                                 [Extra flags to add to LIBS when using wrapper compilers])])
     AS_IF([test "$with_wrapper_libs" = "yes" || test "$with_wrapper_libs" = "no"],
           [AC_MSG_ERROR([--with-wrapper-libs must have an argument.])])
