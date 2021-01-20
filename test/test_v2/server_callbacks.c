@@ -84,7 +84,7 @@ pmix_status_t finalized(const pmix_proc_t *proc, void *server_object,
         }
     }
     if (NULL == cli) {
-        TEST_ERROR(("cannot found rank %d", proc->rank));
+        TEST_ERROR(("cannot find rank %d", proc->rank));
         return PMIX_SUCCESS;
     }
     if( CLI_TERM <= cli->state ){
