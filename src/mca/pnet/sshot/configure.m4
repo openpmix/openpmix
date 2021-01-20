@@ -1,6 +1,7 @@
 # -*- shell-script -*-
 #
 # Copyright (c) 2020      Intel, Inc.  All rights reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -14,15 +15,15 @@
 AC_DEFUN([MCA_pmix_pnet_sshot_CONFIG], [
     AC_CONFIG_FILES([src/mca/pnet/sshot/Makefile])
 
-    AC_ARG_WITH([slingshot], [AC_HELP_STRING([--with-slingshot], [Include Slingshot fabric support])],
+    AC_ARG_WITH([slingshot], [AS_HELP_STRING([--with-slingshot], [Include Slingshot fabric support])],
                 [pmix_want_sshot=yes], [pmix_want_sshot=no])
 
-    AC_ARG_WITH([cxi], [AC_HELP_STRING([--with-cxi(=DIR)],
+    AC_ARG_WITH([cxi], [AS_HELP_STRING([--with-cxi(=DIR)],
                                        [Include CXI service library support, optionally adding DIR/include, DIR/include/cxi, DIR/lib, and DIR/lib64 to the search path for headers and libraries])],
                 [], [with_cxi=no])
 
     AC_ARG_WITH([cxi-libdir],
-                [AC_HELP_STRING([--with-cxi-libdir=DIR],
+                [AS_HELP_STRING([--with-cxi-libdir=DIR],
                                 [Search for CXI libraries in DIR])])
 
     AS_IF([test "$with_cxi" = "no"],

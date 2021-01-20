@@ -196,7 +196,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     # Add any extra lib?
     AC_ARG_WITH([pmix-extra-lib],
-                AC_HELP_STRING([--with-pmix-extra-lib=LIB],
+                AS_HELP_STRING([--with-pmix-extra-lib=LIB],
                                [Link the output PMIx library to this extra lib (used in embedded mode)]))
     AC_MSG_CHECKING([for extra lib])
     AS_IF([test ! -z "$with_pmix_extra_lib"],
@@ -214,7 +214,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     # Add any extra libtool lib?
     AC_ARG_WITH([pmix-extra-ltlib],
-                AC_HELP_STRING([--with-pmix-extra-ltlib=LIB],
+                AS_HELP_STRING([--with-pmix-extra-ltlib=LIB],
                                [Link any embedded components/tools that require it to the provided libtool lib (used in embedded mode)]))
     AC_MSG_CHECKING([for extra ltlib])
     AS_IF([test ! -z "$with_pmix_extra_ltlib"],
@@ -235,7 +235,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     #
     AC_MSG_CHECKING([if want package/brand string])
     AC_ARG_WITH([pmix-package-string],
-         [AC_HELP_STRING([--with-pmix-package-string=STRING],
+         [AS_HELP_STRING([--with-pmix-package-string=STRING],
                          [Use a branding string throughout PMIx])])
     if test "$with_pmix_package_string" = "" || test "$with_pmix_package_string" = "no"; then
         with_package_string="PMIx $PMIX_CONFIGURE_USER@$PMIX_CONFIGURE_HOST Distribution"
@@ -632,9 +632,13 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     PMIX_VAR_SCOPE_PUSH([LDFLAGS_save])
     LDFLAGS_save=$LDFLAGS
     LDFLAGS="$LDFLAGS_save -Wl,-fini -Wl,finalize"
-    AC_TRY_LINK([void finalize (void) {}], [], [AC_MSG_RESULT([yes])
-            pmix_ld_have_fini=1], [AC_MSG_RESULT([no])
-            pmix_ld_have_fini=0])
+    AC_LINK_IFELSE([AC_LANG_PROGRAM([[
+        void finalize (void) {}
+        ]])],
+        [AC_MSG_RESULT([yes])
+         pmix_ld_have_fini=1],
+        [AC_MSG_RESULT([no])
+         pmix_ld_have_fini=0])
     LDFLAGS=$LDFLAGS_save
     PMIX_VAR_SCOPE_POP
 
@@ -827,7 +831,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     AC_MSG_CHECKING([for default value of mca_base_component_show_load_errors])
     AC_ARG_ENABLE([show-load-errors-by-default],
-                  [AC_HELP_STRING([--enable-show-load-errors-by-default],
+                  [AS_HELP_STRING([--enable-show-load-errors-by-default],
                                   [Set the default value for the MCA parameter
                                    mca_base_component_show_load_errors (but can be
                                    overridden at run time by the usual
@@ -991,7 +995,7 @@ AC_DEFUN([PMIX_DEFINE_ARGS],[
     # do we want dlopen support ?
     AC_MSG_CHECKING([if want dlopen support])
     AC_ARG_ENABLE([dlopen],
-        [AC_HELP_STRING([--enable-dlopen],
+        [AS_HELP_STRING([--enable-dlopen],
                         [Whether build should attempt to use dlopen (or
                          similar) to dynamically load components.
                          (default: enabled)])])
@@ -1012,7 +1016,7 @@ AC_DEFUN([PMIX_DEFINE_ARGS],[
     # Embedded mode, or standalone?
     AC_MSG_CHECKING([if embedded mode is enabled])
     AC_ARG_ENABLE([embedded-mode],
-        [AC_HELP_STRING([--enable-embedded-mode],
+        [AS_HELP_STRING([--enable-embedded-mode],
                 [Using --enable-embedded-mode causes PMIx to skip a few configure checks and install nothing.  It should only be used when building PMIx within the scope of a larger package.])])
     AS_IF([test "$enable_embedded_mode" = "yes"],
           [pmix_mode=embedded
@@ -1029,7 +1033,7 @@ AC_DEFUN([PMIX_DEFINE_ARGS],[
 if test -e $PMIX_TOP_SRCDIR/.git; then
     PMIX_DEVEL=1
     # check for Flex
-    AC_PROG_LEX
+    AC_PROG_LEX(yywrap)
     if test "x$LEX" != xflex; then
         AC_MSG_WARN([PMIx requires Flex to build from non-tarball sources,])
         AC_MSG_WARN([but Flex was not found. Please install Flex into])
@@ -1047,7 +1051,7 @@ fi
 
 AC_MSG_CHECKING([if want developer-level compiler pickyness])
 AC_ARG_ENABLE(picky,
-    AC_HELP_STRING([--enable-picky],
+    AS_HELP_STRING([--enable-picky],
                    [enable developer-level compiler pickyness when building PMIx (default: disabled)]))
 if test "$enable_picky" = "yes"; then
     AC_MSG_RESULT([yes])
@@ -1069,7 +1073,7 @@ fi
 
 AC_MSG_CHECKING([if want developer-level debugging code])
 AC_ARG_ENABLE(debug,
-    AC_HELP_STRING([--enable-debug],
+    AS_HELP_STRING([--enable-debug],
                    [enable developer-level debugging code (not for general PMIx users!) (default: disabled)]))
 if test "$enable_debug" = "yes"; then
     AC_MSG_RESULT([yes])
@@ -1087,7 +1091,7 @@ AC_DEFINE_UNQUOTED(PMIX_ENABLE_DEBUG, $WANT_DEBUG,
                    [Whether we want developer-level debugging code or not])
 
 AC_ARG_ENABLE(debug-symbols,
-              AC_HELP_STRING([--disable-debug-symbols],
+              AS_HELP_STRING([--disable-debug-symbols],
                              [Disable adding compiler flags to enable debugging symbols if --enable-debug is specified.  For non-debugging builds, this flag has no effect.]))
 
 #
@@ -1095,7 +1099,7 @@ AC_ARG_ENABLE(debug-symbols,
 #
 AC_MSG_CHECKING([if want to install project-internal header files])
 AC_ARG_WITH(devel-headers,
-    AC_HELP_STRING([--with-devel-headers],
+    AS_HELP_STRING([--with-devel-headers],
                    [normal PMIx users/applications do not need this (pmix.h and friends are ALWAYS installed).  Developer headers are only necessary for authors doing deeper integration (default: disabled).]))
 if test "$with_devel_headers" = "yes"; then
     AC_MSG_RESULT([yes])
@@ -1109,7 +1113,7 @@ fi
 # Install tests and examples?
 AC_MSG_CHECKING([if tests and examples are to be installed])
 AC_ARG_WITH([tests-examples],
-    [AC_HELP_STRING([--with-tests-examples],
+    [AS_HELP_STRING([--with-tests-examples],
             [Whether or not to install the tests and example programs.])])
 AS_IF([test "$pmix_install_primary_headers" = "no"],
       [AS_IF([test -z "$with_tests_examples" || test "$with_tests_examples" = "no"],
@@ -1130,7 +1134,7 @@ AS_IF([test "$pmix_install_primary_headers" = "no"],
 # Support per-user config files?
 #
 AC_ARG_ENABLE([per-user-config-files],
-   [AC_HELP_STRING([--enable-per-user-config-files],
+   [AS_HELP_STRING([--enable-per-user-config-files],
       [Disable per-user configuration files, to save disk accesses during job start-up.  This is likely desirable for large jobs.  Note that this can also be acheived by environment variables at run-time.  (default: enabled)])])
 if test "$enable_per_user_config_files" = "no" ; then
   result=0
@@ -1146,7 +1150,7 @@ AC_DEFINE_UNQUOTED([PMIX_WANT_HOME_CONFIG_FILES], [$result],
 
 AC_MSG_CHECKING([if want pretty-print stacktrace])
 AC_ARG_ENABLE([pretty-print-stacktrace],
-              [AC_HELP_STRING([--enable-pretty-print-stacktrace],
+              [AS_HELP_STRING([--enable-pretty-print-stacktrace],
                               [Pretty print stacktrace on process signal (default: enabled)])])
 if test "$enable_pretty_print_stacktrace" = "no" ; then
     AC_MSG_RESULT([no])
@@ -1165,7 +1169,7 @@ AC_DEFINE_UNQUOTED([PMIX_WANT_PRETTY_PRINT_STACKTRACE],
 DSTORE_PTHREAD_LOCK="1"
 AC_MSG_CHECKING([if want dstore pthread-based locking])
 AC_ARG_ENABLE([dstore-pthlck],
-              [AC_HELP_STRING([--disable-dstore-pthlck],
+              [AS_HELP_STRING([--disable-dstore-pthlck],
                               [Disable pthread-based locking in dstor (default: enabled)])])
 if test "$enable_dstore_pthlck" = "no" ; then
     AC_MSG_RESULT([no])
@@ -1180,7 +1184,7 @@ fi
 #
 AC_MSG_CHECKING([if want ident string])
 AC_ARG_WITH([ident-string],
-            [AC_HELP_STRING([--with-ident-string=STRING],
+            [AS_HELP_STRING([--with-ident-string=STRING],
                             [Embed an ident string into PMIx object files])])
 if test "$with_ident_string" = "" || test "$with_ident_string" = "no"; then
     with_ident_string="%VERSION%"
@@ -1204,7 +1208,7 @@ AC_MSG_RESULT([$with_ident_string])
 #
 AC_MSG_CHECKING([if want developer-level timing support])
 AC_ARG_ENABLE(pmix-timing,
-              AC_HELP_STRING([--enable-pmix-timing],
+              AS_HELP_STRING([--enable-pmix-timing],
                              [enable PMIx developer-level timing code (default: disabled)]))
 if test "$enable_pmix_timing" = "yes"; then
     AC_MSG_RESULT([yes])
@@ -1224,7 +1228,7 @@ AM_CONDITIONAL([WANT_INSTALL_HEADERS], [test $WANT_INSTALL_HEADERS -eq 1])
 #
 AC_MSG_CHECKING([if want to disable binaries])
 AC_ARG_ENABLE(pmix-binaries,
-              AC_HELP_STRING([--enable-pmix-binaries],
+              AS_HELP_STRING([--enable-pmix-binaries],
                              [enable PMIx tools]))
 if test "$enable_pmix_binaries" = "no"; then
     AC_MSG_RESULT([no])
@@ -1241,7 +1245,7 @@ AM_CONDITIONAL([PMIX_INSTALL_BINARIES], [test $WANT_PMIX_BINARIES -eq 1])
 #
 AC_MSG_CHECKING([if want install Python bindings])
 AC_ARG_ENABLE(python-bindings,
-              AC_HELP_STRING([--enable-python-bindings],
+              AS_HELP_STRING([--enable-python-bindings],
                              [enable Python bindings (default: disabled)]))
 if test "$enable_python_bindings" != "yes"; then
     AC_MSG_RESULT([no])
@@ -1315,7 +1319,7 @@ AS_IF([test "$PYTHON" = ":" && test ! -f $srcdir/include/dictionary.h],
 # see if they want to disable non-RTLD_GLOBAL dlopen
 AC_MSG_CHECKING([if want to support dlopen of non-global namespaces])
 AC_ARG_ENABLE([nonglobal-dlopen],
-              AC_HELP_STRING([--enable-nonglobal-dlopen],
+              AS_HELP_STRING([--enable-nonglobal-dlopen],
                              [enable non-global dlopen (default: enabled)]))
 if test "$enable_nonglobal_dlopen" = "no"; then
     AC_MSG_RESULT([no])
@@ -1336,7 +1340,7 @@ AS_IF([test -z "$enable_nonglobal_dlopen" && test "x$pmix_mode" = "xembedded" &&
 
 AC_MSG_CHECKING([if want pty support])
 AC_ARG_ENABLE(pty-support,
-    AC_HELP_STRING([--enable-pty-support],
+    AS_HELP_STRING([--enable-pty-support],
                    [Enable/disable PTY support for STDIO forwarding.  (default: enabled)]))
 if test "$enable_pty_support" = "no" ; then
     AC_MSG_RESULT([no])
@@ -1354,7 +1358,7 @@ AC_DEFINE_UNQUOTED([PMIX_ENABLE_PTY_SUPPORT], [$PMIX_ENABLE_PTY_SUPPORT],
 
 AC_MSG_CHECKING([if want build psec/dummy_handshake])
 AC_ARG_ENABLE(dummy-handshake,
-              AC_HELP_STRING([--enable-dummy-handshake],
+              AS_HELP_STRING([--enable-dummy-handshake],
                              [Enables psec dummy component intended to check the PTL handshake scenario (default: disabled)]))
 if test "$enable_dummy_handshake" != "yes"; then
     AC_MSG_RESULT([no])

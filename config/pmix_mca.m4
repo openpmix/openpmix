@@ -12,6 +12,7 @@ dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
 dnl Copyright (c) 2010-2015 Cisco Systems, Inc.  All rights reserved.
 dnl Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -50,11 +51,11 @@ AC_DEFUN([PMIX_MCA],[
     # --disable-mca-dso
     #
     AC_ARG_ENABLE([mca-no-build],
-        [AC_HELP_STRING([--enable-mca-no-build=LIST],
+        [AS_HELP_STRING([--enable-mca-no-build=LIST],
                         [Comma-separated list of <type>-<component> pairs
                          that will not be built.  Example: "--enable-mca-no-build=maffinity,btl-portals" will disable building all maffinity components and the "portals" btl components.])])
     AC_ARG_ENABLE(mca-dso,
-        AC_HELP_STRING([--enable-mca-dso=LIST],
+        AS_HELP_STRING([--enable-mca-dso=LIST],
                        [Comma-separated list of types and/or
                         type-component pairs that will be built as
                         run-time loadable components (as opposed to
@@ -62,7 +63,7 @@ AC_DEFUN([PMIX_MCA],[
                         platform.  The default is to build all components
                         as DSOs.]))
     AC_ARG_ENABLE(mca-static,
-        AC_HELP_STRING([--enable-mca-static=LIST],
+        AS_HELP_STRING([--enable-mca-static=LIST],
                        [Comma-separated list of types and/or
                         type-component pairs that will be built statically
                         linked into the library.  The default (if DSOs are
@@ -70,7 +71,7 @@ AC_DEFUN([PMIX_MCA],[
                         Enabling a component as static disables it
                         building as a DSO.]))
     AC_ARG_ENABLE(mca-direct,
-        AC_HELP_STRING([--enable-mca-direct=LIST],
+        AS_HELP_STRING([--enable-mca-direct=LIST],
                        [Comma-separated list of type-component pairs that
                         will be hard coded as the one component to use for
                         a given component type, saving the (small)
@@ -448,7 +449,7 @@ EOF
         # exist, or b) the contents are different.  Do this to not
         # trigger recompilation of certain .c files just because the
         # timestamp changed on $outfile_real (similar to the way AC
-        # handles AC_CONFIG_HEADER files).
+        # handles AC_CONFIG_HEADERS files).
         diff $outfile $outfile_real > /dev/null 2>&1
         if test "$?" != "0"; then
             mv $outfile $outfile_real

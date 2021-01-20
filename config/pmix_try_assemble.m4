@@ -10,6 +10,7 @@ dnl                         University of Stuttgart.  All rights reserved.
 dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
 dnl Copyright (c) 2014-2017 Intel, Inc. All rights reserved.
+dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -38,13 +39,13 @@ else
 fi
 if AC_TRY_EVAL(pmix_assemble); then
   # save the warnings
-  cat conftest.out >&AC_FD_CC
+  cat conftest.out >&AS_MESSAGE_LOG_FD
   ifelse([$2],,:,[$2])
 else
   # save compiler output and failed program
-  cat conftest.out >&AC_FD_CC
-  echo "configure: failed program was:" >&AC_FD_CC
-  cat conftest.s >&AC_FD_CC
+  cat conftest.out >&AS_MESSAGE_LOG_FD
+  echo "configure: failed program was:" >&AS_MESSAGE_LOG_FD
+  cat conftest.s >&AS_MESSAGE_LOG_FD
   ifelse([$3],,:,[$3])
 fi
 rm -rf conftest*

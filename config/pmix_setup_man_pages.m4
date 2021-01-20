@@ -3,6 +3,7 @@ dnl
 dnl Copyright (c) 2020      Cisco Systems, Inc.  All rights reserved.
 dnl
 dnl Copyright (c) 2020      Intel, Inc.  All rights reserved.
+dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -19,7 +20,7 @@ dnl
 
 AC_DEFUN([PMIX_SETUP_MAN_PAGES],[
     AC_ARG_ENABLE(man-pages,
-                  [AC_HELP_STRING([--disable-man-pages],
+                  [AS_HELP_STRING([--disable-man-pages],
                                   [Do not generate/install man pages (default: enabled)])])
 
     PANDOC=

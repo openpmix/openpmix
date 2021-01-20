@@ -21,6 +21,7 @@ dnl Copyright (c) 2020      Triad National Security, LLC. All rights
 dnl                         reserved.
 dnl Copyright (c) 2021      IBM Corporation.  All rights reserved.
 dnl
+dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -181,8 +182,11 @@ AC_DEFUN([PMIX_SETUP_CC],[
         # AC_MSG_WARNING([Open MPI requires a C11 (or newer) compiler])
         # AC_MSG_ERROR([Aborting.])
         # From Open MPI 1.7 on we require a C99 compiant compiler
-        AC_PROG_CC_C99
-        # The result of AC_PROG_CC_C99 is stored in ac_cv_prog_cc_c99
+        # with autoconf 2.70 AC_PROG_CC makes AC_PROG_CC_C99 obsolete
+        m4_version_prereq([2.70],
+            [],
+            [AC_PROG_CC_C99])
+        # The C99 result of AC_PROG_CC is stored in ac_cv_prog_cc_c99
         if test "x$ac_cv_prog_cc_c99" = xno ; then
             AC_MSG_WARN([Open MPI requires a C99 (or newer) compiler. C11 is recommended.])
             AC_MSG_ERROR([Aborting.])
@@ -222,10 +226,6 @@ AC_DEFUN([PMIX_SETUP_CC],[
                        [Whether C compiler supports __thread])
 
     PMIX_C_COMPILER_VENDOR([pmix_c_vendor])
-
-    # Check for standard headers, needed here because needed before
-    # the types checks.
-    AC_HEADER_STDC
 
     # GNU C and autotools are inconsistent about whether this is
     # defined so let's make it true everywhere for now...  However, IBM
@@ -330,11 +330,12 @@ AC_DEFUN([PMIX_SETUP_CC],[
     # see if the C compiler supports __builtin_expect
     AC_CACHE_CHECK([if $CC supports __builtin_expect],
         [pmix_cv_cc_supports___builtin_expect],
-        [AC_TRY_LINK([],
+        [AC_LINK_IFELSE([AC_LANG_PROGRAM([,
           [void *ptr = (void*) 0;
-           if (__builtin_expect (ptr != (void*) 0, 1)) return 0;],
+           if (__builtin_expect (ptr != (void*) 0, 1)) return 0;
+          ]],
           [pmix_cv_cc_supports___builtin_expect="yes"],
-          [pmix_cv_cc_supports___builtin_expect="no"])])
+          [pmix_cv_cc_supports___builtin_expect="no"])])])
     if test "$pmix_cv_cc_supports___builtin_expect" = "yes" ; then
         have_cc_builtin_expect=1
     else
@@ -346,11 +347,11 @@ AC_DEFUN([PMIX_SETUP_CC],[
     # see if the C compiler supports __builtin_prefetch
     AC_CACHE_CHECK([if $CC supports __builtin_prefetch],
         [pmix_cv_cc_supports___builtin_prefetch],
-        [AC_TRY_LINK([],
+        [AC_LINK_IFELSE([AC_LANG_PROGRAM([
           [int ptr;
-           __builtin_prefetch(&ptr,0,0);],
+           __builtin_prefetch(&ptr,0,0);]],
           [pmix_cv_cc_supports___builtin_prefetch="yes"],
-          [pmix_cv_cc_supports___builtin_prefetch="no"])])
+          [pmix_cv_cc_supports___builtin_prefetch="no"])])])
     if test "$pmix_cv_cc_supports___builtin_prefetch" = "yes" ; then
         have_cc_builtin_prefetch=1
     else
@@ -362,11 +363,11 @@ AC_DEFUN([PMIX_SETUP_CC],[
     # see if the C compiler supports __builtin_clz
     AC_CACHE_CHECK([if $CC supports __builtin_clz],
         [pmix_cv_cc_supports___builtin_clz],
-        [AC_TRY_LINK([],
+        [AC_LINK_IFELSE([AC_LANG_PROGRAM([
             [int value = 0xffff; /* we know we have 16 bits set */
-             if ((8*sizeof(int)-16) != __builtin_clz(value)) return 0;],
+             if ((8*sizeof(int)-16) != __builtin_clz(value)) return 0;]],
             [pmix_cv_cc_supports___builtin_clz="yes"],
-            [pmix_cv_cc_supports___builtin_clz="no"])])
+            [pmix_cv_cc_supports___builtin_clz="no"])])])
     if test "$pmix_cv_cc_supports___builtin_clz" = "yes" ; then
         have_cc_builtin_clz=1
     else

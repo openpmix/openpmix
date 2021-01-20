@@ -3,6 +3,7 @@
 # Copyright (c) 2015-2016 Intel, Inc. All rights reserved
 # Copyright (c) 2015      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -18,11 +19,11 @@ AC_DEFUN([MCA_pmix_psec_munge_CONFIG],[
     PMIX_VAR_SCOPE_PUSH([psec_munge_support psec_munge_dir psec_munge_libdir save_cpp save_ld])
 
     AC_ARG_WITH([munge],
-                [AC_HELP_STRING([--with-munge=DIR],
+                [AS_HELP_STRING([--with-munge=DIR],
                                 [Search for munge headers and libraries in DIR ])])
 
     AC_ARG_WITH([munge-libdir],
-                [AC_HELP_STRING([--with-munge-libdir=DIR],
+                [AS_HELP_STRING([--with-munge-libdir=DIR],
                                 [Search for munge libraries in DIR ])])
 
     psec_munge_support=0
