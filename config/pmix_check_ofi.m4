@@ -103,21 +103,27 @@ AC_DEFUN([_PMIX_CHECK_OFI],[
           [pmix_ofi_happy=no])
 
     AS_IF([test $pmix_ofi_happy = yes],
-          [AC_MSG_CHECKING([looking for OFI libfabric in])
-           AS_IF([test "$with_ofi" != "yes"],
+          [AC_MSG_CHECKING([for OFI libfabric headers in])
+           AS_IF([test ! -z "$with_ofi" && test "$with_ofi" != "yes"],
                  [pmix_ofi_dir=$with_ofi
                   AC_MSG_RESULT([($pmix_ofi_dir)])],
                  [AC_MSG_RESULT([(default search paths)])])
+           AC_MSG_CHECKING([for OFI libfabric library in])
            AS_IF([test ! -z "$with_ofi_libdir" && \
                          test "$with_ofi_libdir" != "yes"],
                  [pmix_ofi_libdir=$with_ofi_libdir],
-                 [if test -d $with_ofi/lib; then
-                      pmix_ofi_libdir=$with_ofi/lib
-                  elif test -d $with_ofi/lib64; then
-                      pmix_ofi_libdir=$with_ofi/lib64
+                 [if test ! -z "$with_ofi"; then
+                     if test -d $with_ofi/lib; then
+                         pmix_ofi_libdir=$with_ofi/lib
+                     elif test -d $with_ofi/lib64; then
+                         pmix_ofi_libdir=$with_ofi/lib64
+                     else
+                         AC_MSG_RESULT([Could not find $with_ofi/lib or $with_ofi/lib64])
+                         AC_MSG_ERROR([Can not continue])
+                     fi
+                     AC_MSG_RESULT([($pmix_ofi_libdir)])
                   else
-                      AC_MSG_RESULT([Could not find $with_ofi/lib or $with_ofi/lib64])
-                      AC_MSG_ERROR([Can not continue])
+                     AC_MSG_RESULT([(default search paths)])
                   fi])
           ])
 

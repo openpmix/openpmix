@@ -1456,6 +1456,9 @@ static inline void* pmix_calloc(size_t n, size_t m)
 #define PMIX_CHECK_RANK(a, b) \
     ((a) == (b) || (PMIX_RANK_WILDCARD == (a) || PMIX_RANK_WILDCARD == (b)))
 
+#define PMIX_NSPACE_INVALID(a) \
+    (0 < strlen((a)))
+
 /****    PMIX COORD    ****/
 /* define coordinate system views */
 typedef uint8_t pmix_coord_view_t;
