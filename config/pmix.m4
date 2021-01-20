@@ -799,6 +799,11 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     PMIX_CHECK_CURL
 
+    ##################################
+    # OFI
+    ##################################
+    pmix_show_title "OFI"
+
     PMIX_CHECK_OFI
 
     ##################################
