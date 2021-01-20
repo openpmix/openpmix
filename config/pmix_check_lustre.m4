@@ -17,6 +17,7 @@ dnl                         and Technology (RIST).  All rights reserved.
 dnl Copyright (c) 2020      Triad National Security, LLC. All rights
 dnl                         reserved.
 dnl Copyright (c) 2020      Intel, Inc.  All rights reserved.
+dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -43,7 +44,7 @@ AC_DEFUN([PMIX_CHECK_LUSTRE],[
 
     # Get some configuration information
     AC_ARG_WITH([lustre],
-        [AC_HELP_STRING([--with-lustre(=DIR)],
+        [AS_HELP_STRING([--with-lustre(=DIR)],
              [Build Lustre support, optionally adding DIR/include, DIR/lib, and DIR/lib64 to the search path for headers and libraries])])
     PMIX_CHECK_WITHDIR([lustre], [$with_lustre], [include/lustre/lustreapi.h])
 

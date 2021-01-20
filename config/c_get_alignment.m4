@@ -14,6 +14,7 @@ dnl Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
 dnl Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
 dnl Copyright (c) 2015-2019 Research Organization for Information Science
 dnl                         and Technology (RIST).  All rights reserved.
+dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -54,19 +55,12 @@ AC_DEFUN([PMIX_C_GET_ALIGNMENT],[
                                [ # cross compile - do a non-executable test.  Trick
                                  # taken from the Autoconf 2.59c.  Switch to using
                                  # AC_CHECK_ALIGNOF when we can require Autoconf 2.60.
-                                 _AC_COMPUTE_INT([(long int) offsetof (pmix__type_alignof_, y)],
-                                                 [AS_TR_SH([pmix_cv_c_align_$1])],
+                                 AC_CHECK_ALIGNOF([$1],
                                                  [AC_INCLUDES_DEFAULT
-#include <stdbool.h>
+                                                  #include <stdbool.h> ])
+                                 AS_TR_SH([pmix_cv_c_align_$1])
 
-#ifndef offsetof
-# define offsetof(type, member) ((char *) &((type *) 0)->member - (char *) 0)
-#endif
-typedef struct { char x; $1 y; } pmix__type_alignof_;
-],
-                                                 [AC_MSG_WARN([*** Problem running configure test!])
-                                                  AC_MSG_WARN([*** See config.log for details.])
-                                                  AC_MSG_ERROR([*** Cannot continue.])])])])
+])])
 
 AC_DEFINE_UNQUOTED([$2], [$AS_TR_SH([pmix_cv_c_align_$1])], [Alignment of type $1])
 eval "$2=$AS_TR_SH([pmix_cv_c_align_$1])"

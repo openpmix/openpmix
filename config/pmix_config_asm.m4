@@ -19,6 +19,7 @@ dnl Copyright (c) 2017      Amazon.com, Inc. or its affiliates.  All Rights
 dnl                         reserved.
 dnl Copyright (c) 2020      Google, LLC. All rights reserved.
 dnl Copyright (c) 2020      Intel, Inc.  All rights reserved.
+dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -303,29 +304,29 @@ AC_DEFUN([PMIX_CHECK_GCC_BUILTIN_CSWAP_INT128], [
 AC_DEFUN([PMIX_CHECK_GCC_ATOMIC_BUILTINS], [
   if test -z "$pmix_cv_have___atomic" ; then
     AC_MSG_CHECKING([for 32-bit GCC built-in atomics])
-    AC_TRY_LINK([
+    AC_LINK_IFELSE([AC_LANG_PROGRAM([[
 #include <stdint.h>
 uint32_t tmp, old = 0;
-uint64_t tmp64, old64 = 0;], [
+uint64_t tmp64, old64 = 0;
 __atomic_thread_fence(__ATOMIC_SEQ_CST);
 __atomic_compare_exchange_n(&tmp, &old, 1, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
 __atomic_add_fetch(&tmp, 1, __ATOMIC_RELAXED);
 __atomic_compare_exchange_n(&tmp64, &old64, 1, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
-__atomic_add_fetch(&tmp64, 1, __ATOMIC_RELAXED);],
+__atomic_add_fetch(&tmp64, 1, __ATOMIC_RELAXED);]],
         [pmix_cv_have___atomic=yes],
-        [pmix_cv_have___atomic=no])
+        [pmix_cv_have___atomic=no])])
     AC_MSG_RESULT([$pmix_cv_have___atomic])
-    if test $pmix_cv_have___atomic = "yes" ; then
+    if test "$pmix_cv_have___atomic" = "yes" ; then
     AC_MSG_CHECKING([for 64-bit GCC built-in atomics])
-    AC_TRY_LINK([
+    AC_LINK_IFELSE([AC_LANG_PROGRAM([[
 #include <stdint.h>
-uint64_t tmp64, old64 = 0;], [
+uint64_t tmp64, old64 = 0;
 __atomic_compare_exchange_n(&tmp64, &old64, 1, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
-__atomic_add_fetch(&tmp64, 1, __ATOMIC_RELAXED);],
+__atomic_add_fetch(&tmp64, 1, __ATOMIC_RELAXED);]],
             [pmix_cv_have___atomic_64=yes],
-            [pmix_cv_have___atomic_64=no])
+            [pmix_cv_have___atomic_64=no])])
     AC_MSG_RESULT([$pmix_cv_have___atomic_64])
-    if test $pmix_cv_have___atomic_64 = "yes" ; then
+    if test "$pmix_cv_have___atomic_64" = "yes" ; then
         AC_MSG_CHECKING([if 64-bit GCC built-in atomics are lock-free])
         AC_RUN_IFELSE([AC_LANG_PROGRAM([], [if (!__atomic_is_lock_free (8, 0)) { return 1; }])],
               [AC_MSG_RESULT([yes])],
@@ -461,12 +462,12 @@ AC_DEFUN([_PMIX_CHECK_ASM_LSYM],[
     $1="L"
     for sym in L .L $ L$ ; do
         asm_result=0
-        echo "configure: trying $sym" >&AC_FD_CC
+        echo "configure: trying $sym" >&AS_MESSAGE_LOG_FD
         PMIX_TRY_ASSEMBLE([foobar$pmix_cv_asm_label_suffix
 ${sym}mytestlabel$pmix_cv_asm_label_suffix],
             [# ok, we succeeded at assembling.  see if we can nm,
              # throwing the results in a file
-            if $NM conftest.$OBJEXT > conftest.out 2>&AC_FD_CC ; then
+            if $NM conftest.$OBJEXT > conftest.out 2>&AS_MESSAGE_LOG_FD ; then
                 if test "`$GREP mytestlabel conftest.out`" = "" ; then
                     # there was no symbol...  looks promising to me
                     $1="$sym"
@@ -478,8 +479,8 @@ ${sym}mytestlabel$pmix_cv_asm_label_suffix],
                 fi
             else
                 # not so much on the NM goodness :/
-                echo "$NM failed.  Output from NM was:" >&AC_FD_CC
-                cat conftest.out >&AC_FD_CC
+                echo "$NM failed.  Output from NM was:" >&AS_MESSAGE_LOG_FD
+                cat conftest.out >&AS_MESSAGE_LOG_FD
                 AC_MSG_WARN([$NM could not read object file])
             fi
             ])
@@ -494,7 +495,6 @@ ${sym}mytestlabel$pmix_cv_asm_label_suffix],
 # PMIX_CHECK_ASM_LSYM()
 # ---------------------
 AC_DEFUN([PMIX_CHECK_ASM_LSYM],[
-    AC_REQUIRE([AC_PROG_NM])
     AC_CACHE_CHECK([prefix for lsym labels],
                    [pmix_cv_asm_lsym],
                    [_PMIX_CHECK_ASM_LSYM([pmix_cv_asm_lsym])])
@@ -557,7 +557,7 @@ AC_DEFUN([_PMIX_CHECK_ASM_GSYM],[
     pmix_cv_asm_gsym="none"
     for sym in "_" "" "." ; do
         asm_result=0
-        echo "configure: trying $sym" >&AC_FD_CC
+        echo "configure: trying $sym" >&AS_MESSAGE_LOG_FD
 cat > conftest_c.c <<EOF
 #ifdef __cplusplus
 extern "C" {
@@ -583,25 +583,25 @@ $pmix_cv_asm_endproc ${sym}gsym_test_func
             [pmix_compile="$CC $CFLAGS -I. conftest_c.c -c > conftest.cmpl 2>&1"
              if AC_TRY_EVAL(pmix_compile) ; then
                 # save the warnings
-                 cat conftest.cmpl >&AC_FD_CC
+                 cat conftest.cmpl >&AS_MESSAGE_LOG_FD
                  pmix_link="$CC $CFLAGS conftest_c.$OBJEXT conftest.$OBJEXT -o conftest  $LDFLAGS $LIBS > conftest.link 2>&1"
                  if AC_TRY_EVAL(pmix_link) ; then
                      # save the warnings
-                     cat conftest.link >&AC_FD_CC
+                     cat conftest.link >&AS_MESSAGE_LOG_FD
                      asm_result=1
                  else
-                     cat conftest.link >&AC_FD_CC
-                     echo "configure: failed C program was: " >&AC_FD_CC
-                     cat conftest_c.c >&AC_FD_CC
-                     echo "configure: failed ASM program was: " >&AC_FD_CC
-                     cat conftest.s >&AC_FD_CC
+                     cat conftest.link >&AS_MESSAGE_LOG_FD
+                     echo "configure: failed C program was: " >&AS_MESSAGE_LOG_FD
+                     cat conftest_c.c >&AS_MESSAGE_LOG_FD
+                     echo "configure: failed ASM program was: " >&AS_MESSAGE_LOG_FD
+                     cat conftest.s >&AS_MESSAGE_LOG_FD
                      asm_result=0
                  fi
              else
                 # save output and failed program
-                 cat conftest.cmpl >&AC_FD_CC
-                 echo "configure: failed C program was: " >&AC_FD_CC
-                 cat conftest.c >&AC_FD_CC
+                 cat conftest.cmpl >&AS_MESSAGE_LOG_FD
+                 echo "configure: failed C program was: " >&AS_MESSAGE_LOG_FD
+                 cat conftest.c >&AS_MESSAGE_LOG_FD
                  asm_result=0
              fi],
             [asm_result=0])
@@ -649,7 +649,6 @@ dnl logarithmically, 0 otherwise
 dnl
 dnl #################################################################
 AC_DEFUN([PMIX_CHECK_ASM_ALIGN_LOG],[
-    AC_REQUIRE([AC_PROG_NM])
     AC_REQUIRE([AC_PROG_GREP])
     AC_CACHE_CHECK([if .align directive takes logarithmic value],
                    [pmix_cv_asm_align_log],
@@ -663,7 +662,7 @@ foo$pmix_cv_asm_label_suffix
         [pmix_asm_addr=[`$NM conftest.$OBJEXT | $GREP foo | sed -e 's/.*\([0-9a-fA-F][0-9a-fA-F]\).*foo.*/\1/'`]],
         [pmix_asm_addr=""])
     # test for both 16 and 10 (decimal and hex notations)
-    echo "configure: .align test address offset is $pmix_asm_addr" >&AC_FD_CC
+    echo "configure: .align test address offset is $pmix_asm_addr" >&AS_MESSAGE_LOG_FD
     if test "$pmix_asm_addr" = "16" || test "$pmix_asm_addr" = "10" ; then
        pmix_cv_asm_align_log="yes"
     else
@@ -715,7 +714,7 @@ AC_DEFUN([_PMIX_CHECK_ASM_TYPE],[
     *)
         for type  in @ \# % ; do
             asm_result=0
-            echo "configure: trying $type" >&AC_FD_CC
+            echo "configure: trying $type" >&AS_MESSAGE_LOG_FD
             PMIX_TRY_ASSEMBLE([     .type mysym, ${type}function
 mysym:],
                  [pmix_cv_asm_type="${type}"
@@ -1010,10 +1009,10 @@ dnl #################################################################
 AC_DEFUN([PMIX_CONFIG_ASM],[
     AC_REQUIRE([PMIX_SETUP_CC])
     AC_REQUIRE([AM_PROG_AS])
-    AC_ARG_ENABLE([c11-atomics],[AC_HELP_STRING([--enable-c11-atomics],
+    AC_ARG_ENABLE([c11-atomics],[AS_HELP_STRING([--enable-c11-atomics],
                   [Enable use of C11 atomics if available (default: enabled)])])
     AC_ARG_ENABLE([builtin-atomics],
-      [AC_HELP_STRING([--enable-builtin-atomics],
+      [AS_HELP_STRING([--enable-builtin-atomics],
          [Enable use of GCC built-in atomics (default: autodetect)])])
     PMIX_CHECK_C11_CSWAP_INT128
     pmix_cv_asm_builtin="BUILTIN_NO"
@@ -1025,7 +1024,7 @@ AC_DEFUN([PMIX_CONFIG_ASM],[
         AC_MSG_WARN([C11 atomics were requested but are not supported])
         AC_MSG_ERROR([Cannot continue])
     elif test "$enable_builtin_atomics" = "yes" ; then
-    if test $pmix_cv_have___atomic = "yes" ; then
+    if test "$pmix_cv_have___atomic" = "yes" ; then
        pmix_cv_asm_builtin="BUILTIN_GCC"
     else
         AC_MSG_WARN([GCC built-in atomics requested but not found.])
@@ -1103,7 +1102,7 @@ AC_DEFUN([PMIX_CONFIG_ASM],[
             PMIX_GCC_INLINE_ASSIGN='"1: li %0,0" : "=&r"(ret)'
             ;;
         *)
-        if test $pmix_cv_have___atomic = "yes" ; then
+        if test "$pmix_cv_have___atomic" = "yes" ; then
         pmix_cv_asm_builtin="BUILTIN_GCC"
         else
         AC_MSG_ERROR([No atomic primitives available for $host])
@@ -1162,14 +1161,14 @@ AC_DEFUN([PMIX_CONFIG_ASM],[
     AS_IF([test "$pmix_cv_asm_arch" = "PMIX_X86_64" || test "$pmix_cv_asm_arch" = "PMIX_IA32"],
           [AC_MSG_CHECKING([for RDTSCP assembly support])
            AC_LANG_PUSH([C])
-           AC_TRY_RUN([[
+           AC_RUN_IFELSE([AC_LANG_SOURCE([[
 int main(int argc, char* argv[])
 {
   unsigned int rax, rdx;
   __asm__ __volatile__ ("rdtscp\n": "=a" (rax), "=d" (rdx):: "%rax", "%rdx");
   return 0;
 }
-           ]],
+           ]])],
            [result=1
             AC_MSG_RESULT([yes])],
            [AC_MSG_RESULT([no])],

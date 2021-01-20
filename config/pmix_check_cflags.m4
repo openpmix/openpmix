@@ -2,6 +2,7 @@ dnl -*- shell-script -*-
 dnl
 dnl Copyright (c) 2021 IBM Corporation.  All rights reserved.
 dnl
+dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -24,7 +25,7 @@ AC_MSG_CHECKING(if $CC supports ([$1]))
             CFLAGS_orig=$CFLAGS
             CFLAGS="$CFLAGS $1"
             AC_CACHE_VAL(pmix_cv_cc_[$2], [
-                   AC_TRY_COMPILE([], [$3],
+                   AC_COMPILE_IFELSE([AC_LANG_PROGRAM([], [$3])],
                                    [
                                     pmix_cv_cc_[$2]=1
                                     _PMIX_CFLAGS_FAIL_SEARCH("ignored\|not recognized\|not supported\|not compatible\|unrecognized\|unknown", [$2])

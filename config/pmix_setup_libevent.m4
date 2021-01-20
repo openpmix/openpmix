@@ -8,6 +8,7 @@
 # Copyright (c) 2020      IBM Corporation.  All rights reserved.
 # Copyright (c) 2020      Amazon.com, Inc. or its affiliates.  All Rights
 #                         reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -43,15 +44,15 @@
 AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
 
     AC_ARG_WITH([libevent],
-                [AC_HELP_STRING([--with-libevent=DIR],
+                [AS_HELP_STRING([--with-libevent=DIR],
                                 [Search for libevent headers and libraries in DIR ])])
 
     AC_ARG_WITH([libevent-libdir],
-                [AC_HELP_STRING([--with-libevent-libdir=DIR],
+                [AS_HELP_STRING([--with-libevent-libdir=DIR],
                                 [Search for libevent libraries in DIR ])])
 
     AC_ARG_WITH([libevent-header],
-                [AC_HELP_STRING([--with-libevent-header=HEADER],
+                [AS_HELP_STRING([--with-libevent-header=HEADER],
                                 [The value that should be included in C files to include event.h.  This option only has meaning if --enable-embedded-mode is enabled.])])
 
     pmix_libevent_support=0
@@ -87,15 +88,17 @@ AC_DEFUN([_PMIX_LIBEVENT_EMBEDDED_MODE], [
            PMIX_EVENT2_THREAD_HEADER="$with_libevent_header"])
 
     AC_MSG_CHECKING([if co-built libevent includes thread support])
-    AC_TRY_COMPILE([#include <event.h>
-#include <event2/thread.h>
-           ],[
-#if !(EVTHREAD_LOCK_API_VERSION >= 1)
-#error "No threads!"
-#endif
-    ],[AC_MSG_RESULT([yes])],
-    [AC_MSG_RESULT([no])
-    AC_MSG_ERROR([No thread support in co-build libevent.  Aborting])])
+    AC_COMPILE_IFELSE([AC_LANG_PROGRAM([],
+        [
+         #include <event.h>
+         #include <event2/thread.h>
+         #if !(EVTHREAD_LOCK_API_VERSION >= 1)
+         #error "No threads!"
+         #endif
+        ])],
+        [AC_MSG_RESULT([yes])],
+        [AC_MSG_RESULT([no])
+         AC_MSG_ERROR([No thread support in co-build libevent.  Aborting])])
 
     pmix_libevent_source=$1
     pmix_libevent_support=1
