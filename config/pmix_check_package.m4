@@ -15,6 +15,7 @@
 # Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
 # Copyright (c) 2017      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -45,7 +46,6 @@ AC_DEFUN([_PMIX_CHECK_PACKAGE_HEADER], [
            test "$hdir_prefix" = "/usr" || \
            test "$hdir_prefix" = "/usr/local"],
            [ # try as is...
-            AC_VERBOSE([looking for header without includes])
             AC_CHECK_HEADERS([$2], [pmix_check_package_header_happy="yes"], [])
             AS_IF([test "$pmix_check_package_header_happy" = "no"],
                   [# no go on the as is - reset the cache and try again
