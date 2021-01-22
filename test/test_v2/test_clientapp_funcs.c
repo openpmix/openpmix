@@ -58,10 +58,9 @@ void pmixt_pre_init(int argc, char **argv, test_params *params, validation_param
 void pmixt_fix_rank_and_ns(pmix_proc_t *this_proc, test_params *params, validation_params *v_params) {
     // first check for bugs
     if (this_proc->rank != v_params->pmix_rank) {
-        TEST_ERROR(("Client ns: v_params %s; this_proc: %s, Rank returned in PMIx_Init: "
+        TEST_ERROR_EXIT(("Client ns: v_params %s; this_proc: %s, Rank returned in PMIx_Init: "
                     "%d does not match validation rank: %d.", v_params->pmix_nspace,
                     this_proc->nspace, this_proc->rank, v_params->pmix_rank));
-        pmixt_exit(1);
     }
     // Fix rank if running under RM
     if( PMIX_RANK_UNDEF == v_params->pmix_rank ){
@@ -73,10 +72,9 @@ void pmixt_fix_rank_and_ns(pmix_proc_t *this_proc, test_params *params, validati
             int count = pmix_argv_count(argv);
             int rankidx = strtoul(rankno, NULL, 10);
             if( rankidx >= count ){
-                TEST_ERROR(("It feels like we are running under SLURM:\n\t"
+                TEST_ERROR_EXIT(("It feels like we are running under SLURM:\n\t"
                             "SLURM_GTIDS=%s, SLURM_LOCALID=%s\nbut env vars are conflicting",
                             ranklist, rankno));
-                pmixt_exit(1);
             }
             v_params->pmix_rank = strtoul(argv[rankidx], NULL, 10);
             pmix_argv_free(argv);
@@ -89,12 +87,11 @@ void pmixt_fix_rank_and_ns(pmix_proc_t *this_proc, test_params *params, validati
             // e.g: fix_rank_and_ns_rm_pbs(), fix_rank_and_ns_rm_torque(), etc.
         }
         else { /* unknown situation - PMIX_RANK is not null but SLURM env vars are */
-            TEST_ERROR(("It feels like we are running under SLURM:\n\t"
+            TEST_ERROR_EXIT(("It feels like we are running under SLURM:\n\t"
                         "PMIX_RANK=%s\nbut SLURM env vars are null\n"
                         "v_params.pmix_rank = %d, this_proc.rank = %d, pmix_local_peers = %s",
                         getenv("PMIX_RANK"), v_params->pmix_rank, this_proc->rank,
                         v_params->pmix_local_peers));
-            pmixt_exit(1);
         }
     }
 
@@ -107,9 +104,8 @@ void pmixt_fix_rank_and_ns(pmix_proc_t *this_proc, test_params *params, validati
         }
         else { /* If we aren't running under SLURM, you should have set nspace
 	          in your custom fix_rank_and_ns_rm_* function! */
-            TEST_ERROR(("nspace not set and no value for PMIX_NAMESPACE env variable. "
+            TEST_ERROR_EXIT(("nspace not set and no value for PMIX_NAMESPACE env variable. "
                 "Is the fix_rank_and_ns_rm_* function for this resource manager failing to set it?"));
-                pmixt_exit(1);
         }
     }
 }
