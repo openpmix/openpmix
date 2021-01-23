@@ -281,7 +281,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
         }
 
         PMIX_ENVAR_LOAD(&envar,
-                        "OMPI_MCA_precondition_transports",
+                        "OMPI_MCA_orte_precondition_transports",
                         string_key, ':');
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &mydata, &envar, 1, PMIX_ENVAR);
         free(string_key);
@@ -416,7 +416,7 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
             while (PMIX_SUCCESS == rc) {
                 pmix_list_append(&ns->envars, &ev->super);
                 /* if this is the transport key, save it */
-                if (0 == strncmp(ev->envar.envar, "OMPI_MCA_precondition_transports", PMIX_MAX_KEYLEN)) {
+                if (0 == strncmp(ev->envar.envar, "OMPI_MCA_orte_precondition_transports", PMIX_MAX_KEYLEN)) {
                     /* add it to the job-level info */
                     PMIX_LOAD_PROCID(&proc, ns->nspace, PMIX_RANK_WILDCARD);
                     PMIX_KVAL_NEW(kv, PMIX_CREDENTIAL);
