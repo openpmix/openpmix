@@ -1449,6 +1449,9 @@ static inline void* pmix_calloc(size_t n, size_t m)
         (a)->rank = (c);                        \
     }while(0)
 
+#define PMIX_XFER_PROCID(a, b)      \
+    memcpy((a), (b), sizeof(pmix_proc_t))
+
 /* define a convenience macro for checking names */
 #define PMIX_CHECK_PROCID(a, b) \
     (PMIX_CHECK_NSPACE((a)->nspace, (b)->nspace) && ((a)->rank == (b)->rank || (PMIX_RANK_WILDCARD == (a)->rank || PMIX_RANK_WILDCARD == (b)->rank)))
@@ -1457,7 +1460,7 @@ static inline void* pmix_calloc(size_t n, size_t m)
     ((a) == (b) || (PMIX_RANK_WILDCARD == (a) || PMIX_RANK_WILDCARD == (b)))
 
 #define PMIX_NSPACE_INVALID(a) \
-    (0 < strlen((a)))
+    (NULL == (a) || 0 == strlen((a)))
 
 /****    PMIX COORD    ****/
 /* define coordinate system views */
