@@ -16,6 +16,7 @@
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -445,6 +446,9 @@ pmix_status_t pmix12_bfrop_unpack_float(pmix_pointer_array_t *regtypes,
         convert = NULL;
         if (PMIX_SUCCESS != (ret = pmix12_bfrop_unpack_string(regtypes, buffer,
                                                               &convert, &n, PMIX_STRING))) {
+            if (NULL != convert) {
+                free(convert);
+            }
             return ret;
         }
         if (NULL != convert) {
@@ -479,6 +483,9 @@ pmix_status_t pmix12_bfrop_unpack_double(pmix_pointer_array_t *regtypes,
         if (PMIX_SUCCESS != (ret = pmix12_bfrop_unpack_string(regtypes, buffer,
                                                               &convert, &n,
                                                               PMIX_STRING))) {
+            if (NULL != convert) {
+                free(convert);
+            }
             return ret;
         }
         if (NULL != convert) {
@@ -734,6 +741,9 @@ pmix_status_t pmix12_bfrop_unpack_info(pmix_pointer_array_t *regtypes,
         m=1;
         tmp = NULL;
         if (PMIX_SUCCESS != (ret = pmix12_bfrop_unpack_string(regtypes, buffer, &tmp, &m, PMIX_STRING))) {
+            if (NULL != tmp) {
+                free(tmp);
+            }
             return ret;
         }
         if (NULL == tmp) {
@@ -789,6 +799,9 @@ pmix_status_t pmix12_bfrop_unpack_pdata(pmix_pointer_array_t *regtypes,
         m=1;
         tmp = NULL;
         if (PMIX_SUCCESS != (ret = pmix12_bfrop_unpack_string(regtypes, buffer, &tmp, &m, PMIX_STRING))) {
+            if (NULL != tmp) {
+                free(tmp);
+            }
             return ret;
         }
         if (NULL == tmp) {
@@ -875,6 +888,9 @@ pmix_status_t pmix12_bfrop_unpack_proc(pmix_pointer_array_t *regtypes,
         m=1;
         tmp = NULL;
         if (PMIX_SUCCESS != (ret = pmix12_bfrop_unpack_string(regtypes, buffer, &tmp, &m, PMIX_STRING))) {
+            if (NULL != tmp) {
+                free(tmp);
+            }
             return ret;
         }
         if (NULL == tmp) {
@@ -933,6 +949,9 @@ pmix_status_t pmix12_bfrop_unpack_app(pmix_pointer_array_t *regtypes,
             m=1;
             tmp = NULL;
             if (PMIX_SUCCESS != (ret = pmix12_bfrop_unpack_string(regtypes, buffer, &tmp, &m, PMIX_STRING))) {
+                if (NULL != tmp) {
+                    free(tmp);
+                }
                 return ret;
             }
             if (NULL == tmp) {
@@ -950,6 +969,9 @@ pmix_status_t pmix12_bfrop_unpack_app(pmix_pointer_array_t *regtypes,
             m=1;
             tmp = NULL;
             if (PMIX_SUCCESS != (ret = pmix12_bfrop_unpack_string(regtypes, buffer, &tmp, &m, PMIX_STRING))) {
+                if (NULL != tmp) {
+                    free(tmp);
+                }
                 return ret;
             }
             if (NULL == tmp) {
